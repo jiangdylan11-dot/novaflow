@@ -40,9 +40,7 @@ from prompt_assistant.visual_contract import (
     compile_partial_visual_prompt_details,
     compile_visual_prompt_details,
     local_compact_visual_contract_instruction,
-    local_static_compact_visual_contract_instruction,
     parse_local_compact_visual_contract,
-    parse_local_static_compact_visual_contract,
     parse_visual_contract,
     rich_visual_prompt_instruction,
     validate_rich_visual_prompt,
@@ -77,7 +75,6 @@ ORDINARY_ART_PROMPT_BASE_CHAR_THRESHOLD = 320
 ORDINARY_ART_PROMPT_TOKEN_GROWTH = 0.65
 ORDINARY_ART_PROMPT_PATCH_MAX_LENGTH = 320
 ORDINARY_ART_PROMPT_PATCH_RETRY_LATEST_SECONDS = 120
-STATIC_VISUAL_V2_RICH_STAGE_LATEST_MS = 60_000
 ORDINARY_ART_EDIT_CONTRACT = "deterministic-merge-v1"
 PROMPT_ASSISTANT_GUARD_HOST = "127.0.0.1"
 PROMPT_ASSISTANT_GUARD_PORT = 4762
@@ -16477,37 +16474,70 @@ class PromptAssistant:
             requested_schema == VISUAL_SCHEMA_VERSION_V2
             and requested_provider != "qwen2.5-vl"
         )
-        contract_prompt = (
-            local_static_compact_visual_contract_instruction()
+        keyed_v2_contract_instruction = (
+            local_compact_visual_contract_instruction(allow_uncertain_age=False)
             if use_local_compact_v2
-            else visual_contract_instruction(requested_schema)
+            else ""
         )
-        truncated_v2_retry_prompt = (
-            "上一次同图视觉JSON提前结束。本次必须重新观察同一张图片并从头完整重写，"
-            "不是续写、补括号或修补上一次文本；不得引用上一次输出。"
-            "只输出一行JSON，根对象只能有n2版本键，必须完整闭合；"
-            "总长度以360字符为目标，根对象闭合后立即停止；不要Markdown、解释或前后缀。"
-            + contract_prompt
-            if use_local_compact_v2
-            else contract_prompt
-        )
-        invalid_json_v2_retry_prompt = (
-            "上一次同图视觉JSON虽然首尾闭合，但内部JSON语法不合法。"
-            "本次必须重新观察同一张图片并从头完整重写，不得引用或修补上一次输出。"
-            "本次改用带字段名的compact v2合同，只输出exact 13键的一行标准JSON；"
+        keyed_v2_contract_rules = (
+            "只输出带字段名的compact v2合同，即exact 13键的一行标准JSON；"
+            "必须是裸JSON对象，不要Markdown、代码围栏、解释、前缀或后缀，不得重复任何键。"
             "先数清可见完整或局部人物，people必须等于entities中person和partial_person的项数；"
             "山景、建筑、天空、地面和纯背景不得标成person或partial_person。"
+            "机器人、雕塑或玩偶若标成person或partial_person，age必须为age_unverifiable；"
+            "纯机械主体也可标成object并令people=0、age=not_applicable。"
             "level、body、signals和facts必须相互一致；非safe时facts必须写直接可见依据，"
+            "facts只用于敏感可见证据，普通画面事实写入entities、scene或look；"
+            "level=safe时必须body=none、interaction=none、signals=[]、facts=[]；"
+            "level=uncertain时也必须facts=[]。"
             "body只衡量裸体敏感部位暴露，不是服装覆盖率；低领、裸腿、贴身服装或盔甲露肤本身"
             "必须为body=none且不得写nudity，但不得隐去真正可见的裸体敏感内容。"
             "性化姿态信号只能写sexualized_pose，绝不能写suggestive_pose。"
+            "level=suggestive或nudity时，signals绝不能含explicit_activity、explicit_anatomy或sexual_fluid；"
+            "只要signals含这三项中的任一项，level必须为explicit。"
+            "age只允许adult_appearing、age_unverifiable、young_or_minor_indicators、not_applicable，"
+            "不得输出uncertain或ambiguous_or_young_appearing；存在年轻化措辞时不得声称adult_appearing。"
             "JSON结构符号只用标准半角ASCII字符，字符串值内部不要使用引号、反斜杠或换行，"
             "数组和对象末项不得有尾逗号；根闭合花括号必须是最后一个字符，后面禁止引号或任何文字。"
-            "不要Markdown、解释或前后缀。"
-            + local_compact_visual_contract_instruction()
-            if use_local_compact_v2
-            else contract_prompt
         )
+        keyed_v2_first_prompt = (
+            "直接观察当前图片并从头填写视觉事实，不得猜测不可见内容。"
+            + keyed_v2_contract_rules
+            + keyed_v2_contract_instruction
+            if use_local_compact_v2
+            else visual_contract_instruction(requested_schema)
+        )
+        keyed_v2_retry_prompt = (
+            "上一次同图视觉JSON未通过结构校验。本次必须重新观察同一张图片并从头完整重写，"
+            "不是续写、补括号或修补上一次文本；不得引用上一次输出。"
+            + keyed_v2_contract_rules
+            + keyed_v2_contract_instruction
+            if use_local_compact_v2
+            else visual_contract_instruction(requested_schema)
+        )
+        keyed_v2_age_retry_prompt = (
+            "上一次同图视觉JSON结构完整，但people与age字段互相矛盾。"
+            "本次必须重新观察同一张图片并从头完整重写，不得引用或修补上一次输出。"
+            "只要people大于0，age就不能是not_applicable；people为0时age必须是not_applicable。"
+            "机器人、雕塑或玩偶若被计为拟人角色，age使用age_unverifiable；"
+            "若是纯机械物体，则kind使用object、people=0、age=not_applicable。"
+            + keyed_v2_contract_rules
+            + keyed_v2_contract_instruction
+            if use_local_compact_v2
+            else visual_contract_instruction(requested_schema)
+        )
+        keyed_v2_participant_retry_prompt = (
+            "上一次同图视觉JSON的people与人物实体数量不一致。"
+            "本次必须重新观察同一张图片并从头完整重写，不得引用或修补上一次输出。"
+            "people必须严格等于entities中kind为person或partial_person的项数；"
+            "kind为object的机器人、雕塑、玩偶、动物、建筑和背景物体绝不能计入people。"
+            "不得为了通过校验而删除真实可见人物或把真实人物改成object。"
+            + keyed_v2_contract_rules
+            + keyed_v2_contract_instruction
+            if use_local_compact_v2
+            else visual_contract_instruction(requested_schema)
+        )
+        contract_prompt = keyed_v2_first_prompt
         fallback_code = ""
         semantic_gate_invalid = False
         quality_gate_retried = False
@@ -16598,6 +16628,7 @@ class PromptAssistant:
             output: str,
             *,
             validate_semantics: bool = True,
+            allow_incomplete_participants: bool = False,
         ) -> dict:
             text = str(output or "").strip()
             if not text.startswith("{"):
@@ -16608,8 +16639,33 @@ class PromptAssistant:
                 text,
                 validate_semantics=validate_semantics,
                 allow_legacy_read=False,
-                allow_young_wording_neutralization=not validate_semantics,
+                allow_young_wording_neutralization=False,
+                allow_incomplete_participants=allow_incomplete_participants,
             )
+
+        def parse_safe_semantic_retry_contract(output: str) -> dict | None:
+            """Read a failed keyed contract without semantics, but never relax safety."""
+
+            try:
+                structural_contract = parse_keyed_retry_contract(
+                    output,
+                    validate_semantics=False,
+                    allow_incomplete_participants=True,
+                )
+            except VisualContractError:
+                return None
+            content_safety = structural_contract.get("content_safety") or {}
+            if not (
+                content_safety.get("level") == "safe"
+                and content_safety.get("body_exposure") == "none"
+                and content_safety.get("interaction_category") == "none"
+                and content_safety.get("age_assessment")
+                != "young_or_minor_indicators"
+                and not content_safety.get("signals")
+                and not content_safety.get("sensitive_visible_facts")
+            ):
+                return None
+            return structural_contract
 
         def safe_contract_structure_diagnostics(
             output: str,
@@ -16781,7 +16837,7 @@ class PromptAssistant:
                 reverse_model_path,
                 max_side=768,
                 max_new_tokens=(
-                    160
+                    384
                     if requested_schema == VISUAL_SCHEMA_VERSION_V2
                     else 1600
                 ),
@@ -16818,102 +16874,42 @@ class PromptAssistant:
                             content_safety.get("interaction_category") == "sexual"
                             or "explicit_activity" in set(content_safety.get("signals") or [])
                         )
-                        rich_instruction = rich_visual_prompt_instruction(
-                            sensitive=sensitive
-                        )
-                        if require_interaction_evidence:
-                            if required:
-                                rich_instruction += (
-                                    "前一阶段只确认了内容分级，但互动证据不完整；本次必须重新观察图片。"
-                                )
-                            rich_instruction += (
-                                "逐区扫描画面，在[主体物品]中写清每个可见完整或局部参与者，以及关系两端、接触部位和具体可观察动作。"
-                                "禁止只写自慰、手淫、自我刺激、性行为或成人互动等泛化标签，也不得省略局部参与者。"
-                                "若使用手扶、扶住、触摸、握持、抓持、接触、按压或包覆等动作词，"
-                                "必须在同一短语中写明图片可见的明确敏感解剖目标；手扶大腿、接触床面或身体移动均不能替代互动动作证据。"
-                                "所有描述必须严格按图填写，不得猜测或照抄图片中不可见的动作。"
-                            )
-                        use_deterministic_rich = (
-                            use_local_compact_v2
-                            and contract_elapsed_ms
-                            >= STATIC_VISUAL_V2_RICH_STAGE_LATEST_MS
-                        )
-                        if use_deterministic_rich:
-                            if required:
-                                blocked = compile_degraded_visual_prompt_details(
-                                    contract
-                                )
-                                finalized.update(blocked)
-                                finalized["richPromptFallback"] = False
-                                log_prompt_assistant_event(
-                                    "reverse_rich_prompt_skipped",
-                                    command="reverseImagePrompt",
-                                    provider="qwen3_vl_abliterated_nf4",
-                                    visualSchema=requested_schema,
-                                    reason="partial-contract-stage-late",
-                                    contractElapsedMs=contract_elapsed_ms,
-                                )
-                                return finalized
-                            rich_visual_prompt = (
-                                compile_deterministic_rich_visual_prompt(
-                                    contract,
-                                    sensitive=sensitive,
-                                )
-                            )
-                            rich_visual_prompt = validate_rich_visual_prompt(
-                                rich_visual_prompt,
-                                sensitive=sensitive,
-                                require_interaction_evidence=(
-                                    require_interaction_evidence
-                                ),
-                            )
-                            rich_prompt_fallback = True
+                        if required:
+                            blocked = compile_degraded_visual_prompt_details(contract)
+                            finalized.update(blocked)
+                            finalized["richPromptFallback"] = False
                             log_prompt_assistant_event(
-                                "reverse_rich_prompt_deterministic",
+                                "reverse_rich_prompt_skipped",
                                 command="reverseImagePrompt",
                                 provider="qwen3_vl_abliterated_nf4",
                                 visualSchema=requested_schema,
-                                reason="contract-stage-late",
+                                reason="partial-contract-not-safe-to-enrich",
                                 contractElapsedMs=contract_elapsed_ms,
                             )
-                        else:
-                            try:
-                                rich_output = adapter.generate(
-                                    rich_instruction,
-                                    image_tensor,
-                                    unload_after=False,
-                                    system_text=RICH_VISUAL_SYSTEM_TEXT,
-                                    do_sample=True,
-                                    temperature=0.8,
-                                    top_p=0.9,
-                                    max_new_tokens=1024,
-                                )
-                                rich_visual_prompt = validate_rich_visual_prompt(
-                                    rich_output,
-                                    sensitive=sensitive,
-                                    require_interaction_evidence=(
-                                        require_interaction_evidence
-                                    ),
-                                )
-                            except (Qwen3VLProviderError, VisualContractError):
-                                if required:
-                                    raise
-                                rich_visual_prompt = (
-                                    compile_deterministic_rich_visual_prompt(
-                                        contract,
-                                        sensitive=sensitive,
-                                    )
-                                )
-                                rich_visual_prompt = validate_rich_visual_prompt(
-                                    rich_visual_prompt,
-                                    sensitive=sensitive,
-                                    require_interaction_evidence=(
-                                        require_interaction_evidence
-                                    ),
-                                )
-                                rich_prompt_fallback = True
-                            else:
-                                rich_prompt_fallback = False
+                            return finalized
+                        # The keyed contract is the only model-authored visual truth.
+                        # Compile the editable five-section prompt deterministically so
+                        # a second sampled pass cannot drift, bypass the contract, or
+                        # turn an otherwise valid reverse into a late provider failure.
+                        rich_visual_prompt = compile_deterministic_rich_visual_prompt(
+                            contract,
+                            sensitive=sensitive,
+                        )
+                        rich_visual_prompt = validate_rich_visual_prompt(
+                            rich_visual_prompt,
+                            sensitive=sensitive,
+                            require_interaction_evidence=require_interaction_evidence,
+                            minimum_body_chars=0,
+                        )
+                        rich_prompt_fallback = False
+                        log_prompt_assistant_event(
+                            "reverse_rich_prompt_deterministic",
+                            command="reverseImagePrompt",
+                            provider="qwen3_vl_abliterated_nf4",
+                            visualSchema=requested_schema,
+                            reason="validated-contract-primary",
+                            contractElapsedMs=contract_elapsed_ms,
+                        )
                         finalized["prompt"] = append_rich_generation_requirements(
                             rich_visual_prompt,
                             requirements,
@@ -16932,12 +16928,16 @@ class PromptAssistant:
                     for attempt in range(1, qwen3_attempts + 1):
                         attempt_started = time.monotonic()
                         prompt_for_attempt = (
-                            invalid_json_v2_retry_prompt
-                            if quality_gate_retried
+                            keyed_v2_age_retry_prompt
+                            if use_local_compact_v2
                             and attempt == 2
-                            and retry_reason == "invalid_json_closed"
-                            else truncated_v2_retry_prompt
-                            if quality_gate_retried and attempt == 2
+                            and retry_reason == "semantic-age-count"
+                            else keyed_v2_participant_retry_prompt
+                            if use_local_compact_v2
+                            and attempt == 2
+                            and retry_reason == "semantic-participant-count"
+                            else keyed_v2_retry_prompt
+                            if use_local_compact_v2 and attempt == 2
                             else contract_prompt
                         )
                         raw_output = (
@@ -16948,13 +16948,9 @@ class PromptAssistant:
                                 **(
                                     {
                                         "do_sample": False,
-                                        "max_new_tokens": (
-                                            384
-                                            if retry_reason == "invalid_json_closed"
-                                            else 128
-                                        ),
+                                        "max_new_tokens": 384,
                                     }
-                                    if attempt == 2
+                                    if use_local_compact_v2
                                     else {}
                                 ),
                             )
@@ -16965,16 +16961,11 @@ class PromptAssistant:
                             (time.monotonic() - attempt_started) * 1000
                         )
                         contract_parse_succeeded = False
-                        keyed_retry_attempt = (
-                            use_local_compact_v2
-                            and quality_gate_retried
-                            and attempt == 2
-                            and retry_reason == "invalid_json_closed"
-                        )
+                        keyed_contract_attempt = use_local_compact_v2
                         contract_output = raw_output
                         retry_syntax_normalization = ""
                         try:
-                            if keyed_retry_attempt:
+                            if keyed_contract_attempt:
                                 try:
                                     contract = parse_keyed_retry_contract(
                                         contract_output,
@@ -17011,11 +17002,6 @@ class PromptAssistant:
                                     contract = parse_keyed_retry_contract(
                                         contract_output,
                                     )
-                            elif use_local_compact_v2:
-                                contract = parse_local_static_compact_visual_contract(
-                                    contract_output,
-                                    allow_legacy_read=False,
-                                )
                             else:
                                 contract = parse_visual_contract(
                                     contract_output,
@@ -17050,55 +17036,34 @@ class PromptAssistant:
                                 "generatedTokens"
                             )
                             retry_output_text = str(raw_output or "").strip()
-                            retryable_truncated_json = (
-                                retry_category == "truncated_json"
-                                and isinstance(retry_generated_tokens, int)
-                                and retry_generated_tokens <= 64
-                            )
-                            retryable_closed_invalid_json = (
-                                retry_category == "invalid_json"
-                                and contract_structure_diagnostics.get("jsonStartState")
-                                == "object_open"
-                                and contract_structure_diagnostics.get("jsonEndState")
-                                == "object_close"
-                                and re.match(r'^\{\s*"n2"\s*:', retry_output_text)
-                                is not None
-                                and retry_output_text.endswith("}")
-                                and "\n" not in retry_output_text
-                                and "\r" not in retry_output_text
-                                and 16
+                            retryable_keyed_structure = (
+                                bool(retry_category)
+                                and bool(retry_output_text)
+                                and 1
                                 <= contract_structure_diagnostics.get("outputChars", 0)
-                                <= 512
+                                <= 4096
                                 and isinstance(retry_generated_tokens, int)
-                                and 1 <= retry_generated_tokens <= 128
+                                and 1 <= retry_generated_tokens <= 384
                                 and contract_structure_diagnostics.get(
                                     "generationTokenLimit"
                                 )
-                                == 160
+                                == 384
                                 and contract_structure_diagnostics.get(
                                     "generationHitTokenLimit"
                                 )
-                                is False
-                                and attempt_elapsed_ms <= 60_000
+                                in {True, False}
                             )
                             if (
                                 attempt == 1
-                                and use_local_compact_v2
+                                and keyed_contract_attempt
                                 and not exc.semantic
                                 and not contract_parse_succeeded
-                                and (
-                                    retryable_truncated_json
-                                    or retryable_closed_invalid_json
-                                )
+                                and retryable_keyed_structure
                                 and attempt_elapsed_ms <= 120_000
                             ):
                                 quality_gate_retried = True
                                 retry_count = 1
-                                retry_reason = (
-                                    "invalid_json_closed"
-                                    if retryable_closed_invalid_json
-                                    else retry_category
-                                )
+                                retry_reason = retry_category or "contract_structure"
                                 log_prompt_assistant_event(
                                     "reverse_visual_contract_retry",
                                     command="reverseImagePrompt",
@@ -17113,18 +17078,82 @@ class PromptAssistant:
                                     **contract_structure_diagnostics,
                                 )
                                 continue
+                            semantic_validation_leaf = clean_text(str(exc))[:120]
+                            safe_semantic_retry_contract = None
+                            if (
+                                attempt == 1
+                                and keyed_contract_attempt
+                                and exc.semantic
+                                and semantic_validation_leaf
+                                in {
+                                    "zero visible_person_count requires age_assessment=not_applicable",
+                                    "positive visible_person_count requires an applicable age_assessment",
+                                    "local_compact person and partial_person entities must match people",
+                                }
+                            ):
+                                safe_semantic_retry_contract = (
+                                    parse_safe_semantic_retry_contract(contract_output)
+                                )
+                            retryable_age_count_semantic = (
+                                isinstance(safe_semantic_retry_contract, dict)
+                                and semantic_validation_leaf
+                                in {
+                                    "zero visible_person_count requires age_assessment=not_applicable",
+                                    "positive visible_person_count requires an applicable age_assessment",
+                                }
+                            )
+                            if retryable_age_count_semantic:
+                                quality_gate_retried = True
+                                retry_count = 1
+                                retry_reason = "semantic-age-count"
+                                log_prompt_assistant_event(
+                                    "reverse_visual_contract_retry",
+                                    command="reverseImagePrompt",
+                                    provider="qwen3_vl_abliterated_nf4",
+                                    visualSchema=requested_schema,
+                                    attempt=attempt,
+                                    nextAttempt=2,
+                                    retryCount=retry_count,
+                                    retryReason=retry_reason,
+                                    failureCategory="semantic_contract",
+                                    errorCode=exc.code,
+                                    validationLeaf=semantic_validation_leaf,
+                                    attemptElapsedMs=attempt_elapsed_ms,
+                                )
+                                continue
+                            retryable_safe_participant_semantic = (
+                                isinstance(safe_semantic_retry_contract, dict)
+                                and semantic_validation_leaf
+                                == "local_compact person and partial_person entities must match people"
+                            )
+                            if retryable_safe_participant_semantic:
+                                quality_gate_retried = True
+                                retry_count = 1
+                                retry_reason = "semantic-participant-count"
+                                log_prompt_assistant_event(
+                                    "reverse_visual_contract_retry",
+                                    command="reverseImagePrompt",
+                                    provider="qwen3_vl_abliterated_nf4",
+                                    visualSchema=requested_schema,
+                                    attempt=attempt,
+                                    nextAttempt=2,
+                                    retryCount=retry_count,
+                                    retryReason=retry_reason,
+                                    failureCategory="semantic_contract",
+                                    errorCode=exc.code,
+                                    validationLeaf=semantic_validation_leaf,
+                                    attemptElapsedMs=attempt_elapsed_ms,
+                                )
+                                continue
                             if exc.semantic:
                                 semantic_gate_invalid = True
-                            closed_json_retry_semantic = (
-                                quality_gate_retried
-                                and attempt == 2
-                                and retry_reason == "invalid_json_closed"
-                                and exc.semantic
+                            keyed_contract_semantic = (
+                                keyed_contract_attempt and exc.semantic
                             )
                             if (
                                 quality_gate_retried
                                 and attempt == 2
-                                and not closed_json_retry_semantic
+                                and not keyed_contract_semantic
                             ):
                                 raise
                             if (
@@ -17135,15 +17164,9 @@ class PromptAssistant:
                                     parse_keyed_retry_contract(
                                         contract_output,
                                         validate_semantics=False,
-                                    )
-                                    if keyed_retry_attempt
-                                    else parse_local_static_compact_visual_contract(
-                                        contract_output,
-                                        validate_semantics=False,
                                         allow_incomplete_participants=True,
-                                        allow_legacy_read=False,
                                     )
-                                    if use_local_compact_v2
+                                    if keyed_contract_attempt
                                     else parse_visual_contract(
                                         raw_output,
                                         expected_schema=requested_schema,
@@ -17151,7 +17174,7 @@ class PromptAssistant:
                                     )
                                 )
                                 analysis_partial = (
-                                    not closed_json_retry_semantic
+                                    not keyed_contract_semantic
                                     and exc.code in partial_contract_codes
                                 )
                                 degraded = (
@@ -17162,7 +17185,9 @@ class PromptAssistant:
                                         failure_code=exc.code,
                                     )
                                     if analysis_partial
-                                    else compile_degraded_visual_prompt_details(structural_contract)
+                                    else compile_degraded_visual_prompt_details(
+                                        structural_contract
+                                    )
                                 )
                                 if (
                                     analysis_partial
@@ -17191,6 +17216,8 @@ class PromptAssistant:
                                     category="semantic_contract",
                                     retryable=True,
                                 )
+                                semantic_validation_leaf = clean_text(str(exc))[:120]
+                                diagnostics["validationLeaf"] = semantic_validation_leaf
                                 diagnostics["generationGate"] = degraded["generationGate"]
                                 if retry_syntax_normalization:
                                     diagnostics["retrySyntaxNormalization"] = (
@@ -17241,6 +17268,7 @@ class PromptAssistant:
                                         "generationHitTokenLimit"
                                     ),
                                     outputChars=len(raw_output),
+                                    validationLeaf=semantic_validation_leaf,
                                 )
                                 return {
                                     "description": degraded["prompt"],

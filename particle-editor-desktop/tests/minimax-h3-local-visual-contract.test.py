@@ -922,24 +922,26 @@ class H3LocalVisualContractTest(unittest.TestCase):
         self.assertEqual(compile_calls, [])
         self.assertEqual(compile_calls, [])
 
-    def test_static_v2_uses_bounded_tuple_budget_and_keeps_1024_rich_budget(self):
-        FakeAdapter.outputs = [static_contract_json(), rich_interaction_confirmation()]
+    def test_static_v2_uses_keyed_384_and_deterministic_rich_without_second_call(self):
+        FakeAdapter.outputs = [real_world_visual_v2_contract_json()]
         assistant, compile_calls = self.assistant([])
         result = assistant.reverse_plain_static_image(
             {"visualSchema": SERVICE.VISUAL_SCHEMA_VERSION_V2},
             "first-image",
             "",
         )
-        self.assertEqual(FakeAdapter.init_calls[0][1]["max_new_tokens"], 160)
-        self.assertEqual(len(FakeAdapter.calls), 2)
-        self.assertNotIn("max_new_tokens", FakeAdapter.calls[0][2])
-        self.assertIn("根对象只能有n2版本键", FakeAdapter.calls[0][0])
-        self.assertIn("总输出以360字符为目标", FakeAdapter.calls[0][0])
-        self.assertNotIn("总输出不超过720个字符", FakeAdapter.calls[0][0])
-        self.assertEqual(FakeAdapter.calls[1][2]["max_new_tokens"], 1024)
+        self.assertEqual(FakeAdapter.init_calls[0][1]["max_new_tokens"], 384)
+        self.assertEqual(len(FakeAdapter.calls), 1)
+        self.assertEqual(FakeAdapter.calls[0][2]["max_new_tokens"], 384)
+        self.assertFalse(FakeAdapter.calls[0][2]["do_sample"])
+        self.assertIn("exact 13键", FakeAdapter.calls[0][0])
+        self.assertIn('"asset"', FakeAdapter.calls[0][0])
+        self.assertNotIn("根对象只能有n2版本键", FakeAdapter.calls[0][0])
         self.assertNotIn("stop_strings", FakeAdapter.calls[0][2])
-        self.assertNotIn("stop_strings", FakeAdapter.calls[1][2])
         self.assertEqual(result["visualSchema"], SERVICE.VISUAL_SCHEMA_VERSION_V2)
+        self.assertEqual(result["generationGate"], "direct")
+        self.assertFalse(result["richPromptFallback"])
+        self.assertIn("silver-haired cat-eared swordswoman", result["description"])
         self.assertEqual(compile_calls, [])
 
     def test_h3_near_256_token_compact_json_is_complete_and_parseable(self):

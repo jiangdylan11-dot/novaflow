@@ -228,6 +228,130 @@ def compact_v2_json(contract: dict | None = None) -> str:
     )
 
 
+def safe_incomplete_compact_v2_contract() -> dict:
+    compact = compact_v2_contract()
+    compact.update({
+        "asset": "角色插画",
+        "level": "safe",
+        "body": "none",
+        "interaction": "none",
+        "age": "adult_appearing",
+        "people": 2,
+        "entities": [{
+            "kind": "person",
+            "name": "女性战士",
+            "appearance": ["银色长发"],
+            "pose": "",
+            "action": "",
+            "materials": [],
+            "colors": [],
+        }],
+        "relations": [],
+        "scene": {"environment": "", "background": "", "spatial_layers": []},
+        "look": {
+            "lighting": [],
+            "palette": [],
+            "materials": [],
+            "style": [],
+            "atmosphere": "",
+            "finish": "",
+        },
+        "camera": {
+            "shot": "",
+            "angle": "",
+            "composition": "",
+            "depth_of_field": "",
+        },
+        "signals": [],
+        "facts": [],
+    })
+    return compact
+
+
+def rich_safe_age_count_compact_v2_contract(*, people: int, age: str) -> dict:
+    contract = {
+        "asset": "角色插画",
+        "level": "safe",
+        "body": "none",
+        "interaction": "none",
+        "age": age,
+        "people": people,
+        "entities": [
+            {
+                "kind": "person",
+                "name": "成年女性战士",
+                "appearance": ["银色长发", "黑色盔甲"],
+                "pose": "站立",
+                "action": "右手握持长剑",
+                "materials": ["金属", "皮革"],
+                "colors": ["黑色", "银色"],
+            },
+            {
+                "kind": "object",
+                "name": "长剑",
+                "appearance": ["修长剑身", "蓝色宝石剑柄"],
+                "pose": "斜向上",
+                "action": "",
+                "materials": ["抛光金属", "水晶"],
+                "colors": ["银色", "蓝色"],
+            },
+        ],
+        "relations": ["女性战士右手握持长剑", "长剑位于人物右侧"],
+        "scene": {
+            "environment": "雪山",
+            "background": "远处山峰",
+            "spatial_layers": ["前景飞雪", "中景人物", "远景山峰"],
+        },
+        "look": {
+            "lighting": ["左侧冷光"],
+            "palette": ["冷蓝色", "银灰色"],
+            "materials": ["写实金属质感"],
+            "style": ["高质量游戏CG"],
+            "atmosphere": "肃穆",
+            "finish": "细腻材质",
+        },
+        "camera": {
+            "shot": "全身景",
+            "angle": "平视",
+            "composition": "中心构图",
+            "depth_of_field": "背景轻微虚化",
+        },
+        "signals": [],
+        "facts": [],
+    }
+    if people == 0:
+        contract.update({
+            "asset": "工业机械设备设计图",
+            "entities": [
+                {
+                    "kind": "object",
+                    "name": "工业机械臂",
+                    "appearance": ["多关节结构", "精密夹具", "外露液压组件"],
+                    "pose": "固定在基座上",
+                    "action": "夹具朝向工作台",
+                    "materials": ["拉丝金属", "橡胶线缆"],
+                    "colors": ["银灰色", "警示黄色"],
+                },
+                {
+                    "kind": "object",
+                    "name": "控制台",
+                    "appearance": ["多组按钮", "状态显示屏"],
+                    "pose": "位于机械臂右侧",
+                    "action": "",
+                    "materials": ["磨砂塑料", "玻璃"],
+                    "colors": ["深灰色", "绿色"],
+                },
+            ],
+            "relations": ["机械臂固定在基座上", "控制台位于机械臂右侧"],
+            "scene": {
+                "environment": "自动化车间",
+                "background": "金属墙面与管线",
+                "spatial_layers": ["前景工作台", "中景机械臂", "背景控制柜"],
+            },
+        })
+    return contract
+
+
 def compact_v2_json_with_length(target_length: int) -> str:
     compact = compact_v2_contract()
     expandable_fields = (
@@ -2346,11 +2470,23 @@ class VisualContractTests(unittest.TestCase):
         self.assertNotIn(contract["entities"][0]["action"], details["visualPrompt"])
         self.assertNotIn(contract["look"]["materials"][0], details["visualPrompt"])
 
-    def test_service_v2_uses_one_load_for_ir_and_editable_rich_candidate(self):
+    def test_service_v2_uses_one_model_call_for_keyed_ir_and_deterministic_rich(self):
         service = load_prompt_assistant_service()
         safe_contract = valid_v2_contract()
-        safe_contract["entities"][0]["action"] = "右手持剑"
-        safe_contract["relations"] = ["人物位于画面中央，长剑位于人物右侧"]
+        safe_contract["entities"][0]["action"] = "右手握持长剑"
+        safe_contract["entities"].append({
+            "name": "长剑",
+            "count": "一把",
+            "appearance": ["修长剑身", "蓝色宝石剑柄"],
+            "pose": "斜向上",
+            "action": None,
+            "materials": ["抛光金属", "水晶"],
+            "colors": ["银色", "蓝色"],
+        })
+        safe_contract["relations"] = [
+            "女性战士右手握持长剑",
+            "长剑位于人物右侧",
+        ]
         safe_contract["content_safety"] = {
             "level": "safe",
             "body_exposure": "none",
@@ -2360,12 +2496,7 @@ class VisualContractTests(unittest.TestCase):
             "signals": [],
             "sensitive_visible_facts": [],
         }
-        rich_output = valid_rich_prompt(
-            sensitive=False,
-            marker="SAFE_RICH_FINAL",
-            extra_subject_detail="右手持剑，长剑位于人物右侧",
-        )
-        outputs = [static_compact_v2_json(safe_contract), rich_output]
+        outputs = [compact_v2_json(safe_contract)]
 
         class FakeAdapter:
             instances = []
@@ -2416,36 +2547,41 @@ class VisualContractTests(unittest.TestCase):
 
         adapter = FakeAdapter.instances[0]
         self.assertEqual(adapter.init_options["max_side"], 768)
-        self.assertEqual(adapter.init_options["max_new_tokens"], 160)
-        self.assertEqual(len(adapter.calls), 2)
-        self.assertIn("根对象只能有n2版本键", adapter.calls[0]["prompt"])
+        self.assertEqual(adapter.init_options["max_new_tokens"], 384)
+        self.assertEqual(len(adapter.calls), 1)
+        self.assertIn("带字段名的compact v2合同", adapter.calls[0]["prompt"])
+        self.assertIn("exact 13键", adapter.calls[0]["prompt"])
+        self.assertIn(
+            "signals绝不能含explicit_activity、explicit_anatomy或sexual_fluid",
+            adapter.calls[0]["prompt"],
+        )
+        self.assertIn(
+            "level=safe时必须body=none、interaction=none、signals=[]、facts=[]",
+            adapter.calls[0]["prompt"],
+        )
+        self.assertNotIn('"n2"', adapter.calls[0]["prompt"])
+        self.assertEqual(adapter.calls[0]["max_new_tokens"], 384)
+        self.assertIs(adapter.calls[0]["do_sample"], False)
         self.assertNotIn("system_text", adapter.calls[0])
         self.assertFalse(adapter.calls[0]["unload_after"])
-        self.assertEqual(adapter.calls[1]["max_new_tokens"], 1024)
-        self.assertIs(adapter.calls[1]["do_sample"], True)
-        self.assertEqual(adapter.calls[1]["temperature"], 0.8)
-        self.assertEqual(adapter.calls[1]["top_p"], 0.9)
-        self.assertEqual(adapter.calls[1]["system_text"], RICH_VISUAL_SYSTEM_TEXT)
-        self.assertFalse(adapter.calls[1]["unload_after"])
         self.assertEqual(adapter.load_calls, 1)
         self.assertEqual(adapter.unload_calls, 1)
         self.assertFalse(adapter.loaded)
         self.assertEqual(result["generationGate"], "direct")
-        self.assertIn("SAFE_RICH_FINAL", result["description"])
+        self.assertIn("[风格设定]", result["description"])
+        self.assertIn('主体2 = "一个长剑"', result["description"])
+        self.assertIn("女性战士右手握持长剑", result["description"])
         self.assertIn("[用户附加要求]", result["description"])
         self.assertEqual(result["description"].count("REQ_DIRECT_KEEP_COMPOSITION"), 1)
-        self.assertIn("SAFE_RICH_FINAL", result["visualPrompt"])
+        self.assertIn("女性战士右手握持长剑", result["visualPrompt"])
         self.assertNotIn("REQ_DIRECT_KEEP_COMPOSITION", result["visualPrompt"])
         self.assertFalse(result["richPromptFallback"])
         self.assertEqual(result["reverseFallbackReason"], "")
 
-    def test_service_v2_valid_adult_candidate_runs_private_rich_stage(self):
+    def test_service_v2_valid_adult_candidate_uses_deterministic_rich_without_second_call(self):
         service = load_prompt_assistant_service()
         contract = valid_v2_contract()
-        outputs = [
-            static_compact_v2_json(contract),
-            valid_rich_prompt(sensitive=True, marker="ADULT_RICH_FINAL"),
-        ]
+        outputs = [compact_v2_json(contract)]
 
         class FakeAdapter:
             instances = []
@@ -2486,22 +2622,34 @@ class VisualContractTests(unittest.TestCase):
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
         adapter = FakeAdapter.instances[0]
-        self.assertEqual(len(adapter.calls), 2)
-        self.assertIn("逐区扫描画面", adapter.calls[1]["prompt"])
-        self.assertIn("局部参与者", adapter.calls[1]["prompt"])
-        self.assertIn("禁止只写自慰", adapter.calls[1]["prompt"])
-        self.assertIn("明确敏感解剖目标", adapter.calls[1]["prompt"])
+        self.assertEqual(len(adapter.calls), 1)
+        self.assertEqual(adapter.calls[0]["max_new_tokens"], 384)
+        self.assertFalse(adapter.calls[0]["do_sample"])
         self.assertEqual(adapter.unload_calls, 1)
-        self.assertIn("ADULT_RICH_FINAL", result["description"])
+        deterministic_visual = result["description"].split(
+            "\n\n[用户附加要求]", 1
+        )[0]
+        self.assertEqual(
+            validate_rich_visual_prompt(
+                deterministic_visual,
+                sensitive=True,
+                require_interaction_evidence=True,
+            ),
+            deterministic_visual,
+        )
+        self.assertIn(contract["entities"][0]["action"], result["description"])
+        self.assertIn(
+            contract["content_safety"]["sensitive_visible_facts"][0],
+            result["description"],
+        )
         self.assertIn("REQ_FALLBACK_KEEP_COMPOSITION", result["description"])
         self.assertFalse(result["richPromptFallback"])
         self.assertEqual(result["reverseFallbackReason"], "")
         self.assertEqual(result["contentWarnings"], ["nudity", "explicit_activity"])
         self.assertEqual(result["generationGate"], "adult_confirmation")
-        self.assertNotIn("ADULT_RICH_FINAL", result["visualPrompt"])
         self.assertNotIn("REQ_FALLBACK_KEEP_COMPOSITION", result["visualPrompt"])
 
-    def test_service_v2_late_contract_uses_deterministic_rich_without_second_call(self):
+    def test_service_v2_contract_always_uses_deterministic_rich_without_second_call(self):
         service = load_prompt_assistant_service()
         contract = valid_v2_contract()
 
@@ -2520,16 +2668,14 @@ class VisualContractTests(unittest.TestCase):
                     raise AssertionError("v2 IR must retain the task-scoped adapter")
                 type(self).calls += 1
                 if type(self).calls > 1:
-                    raise AssertionError("late v2 contract must not start a rich visual call")
-                return static_compact_v2_json(contract)
+                    raise AssertionError("ordinary v2 must not start a sampled rich call")
+                return compact_v2_json(contract)
 
             def unload(self):
                 type(self).unload_calls += 1
 
         original_adapter = service.Qwen3VLAbliteratedAdapter
-        original_latest_ms = service.STATIC_VISUAL_V2_RICH_STAGE_LATEST_MS
         service.Qwen3VLAbliteratedAdapter = FakeAdapter
-        service.STATIC_VISUAL_V2_RICH_STAGE_LATEST_MS = -1
         try:
             assistant = service.PromptAssistant()
             assistant.reset_loaded_clip = lambda: None
@@ -2545,27 +2691,26 @@ class VisualContractTests(unittest.TestCase):
             )
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
-            service.STATIC_VISUAL_V2_RICH_STAGE_LATEST_MS = original_latest_ms
 
         self.assertEqual(FakeAdapter.calls, 1)
         self.assertEqual(FakeAdapter.unload_calls, 1)
         self.assertEqual(result["generationGate"], "adult_confirmation")
-        self.assertTrue(result["richPromptFallback"])
-        self.assertEqual(result["reverseFallbackReason"], "rich-prompt-fallback")
+        self.assertFalse(result["richPromptFallback"])
+        self.assertEqual(result["reverseFallbackReason"], "")
         self.assertIn("REQ_LATE_KEEP_COMPOSITION", result["description"])
-        fallback_visual = result["description"].split(
+        deterministic_visual = result["description"].split(
             "\n\n[用户附加要求]", 1
         )[0]
         self.assertEqual(
             validate_rich_visual_prompt(
-                fallback_visual,
+                deterministic_visual,
                 sensitive=True,
                 require_interaction_evidence=True,
             ),
-            fallback_visual,
+            deterministic_visual,
         )
 
-    def test_service_v2_late_partial_contract_returns_blocked_without_second_call(self):
+    def test_service_v2_partial_contract_stays_blocked_without_second_call(self):
         service = load_prompt_assistant_service()
         contract = valid_v2_contract()
         contract["content_safety"]["sensitive_visible_facts"] = [
@@ -2586,16 +2731,14 @@ class VisualContractTests(unittest.TestCase):
                     raise AssertionError("v2 attempt must retain the task-scoped adapter")
                 type(self).calls += 1
                 if type(self).calls > 1:
-                    raise AssertionError("late partial must not start a rich visual call")
-                return static_compact_v2_json(contract)
+                    raise AssertionError("partial contract must not start a rich visual call")
+                return compact_v2_json(contract)
 
             def unload(self):
                 pass
 
         original_adapter = service.Qwen3VLAbliteratedAdapter
-        original_latest_ms = service.STATIC_VISUAL_V2_RICH_STAGE_LATEST_MS
         service.Qwen3VLAbliteratedAdapter = FakeAdapter
-        service.STATIC_VISUAL_V2_RICH_STAGE_LATEST_MS = -1
         try:
             assistant = service.PromptAssistant()
             assistant.reset_loaded_clip = lambda: None
@@ -2611,21 +2754,20 @@ class VisualContractTests(unittest.TestCase):
             )
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
-            service.STATIC_VISUAL_V2_RICH_STAGE_LATEST_MS = original_latest_ms
 
         self.assertEqual(FakeAdapter.calls, 1)
         self.assertTrue(result["qualityGateFailed"])
-        self.assertTrue(result["analysisPartial"])
-        self.assertFalse(result["analysisDegraded"])
+        self.assertFalse(result["analysisPartial"])
+        self.assertTrue(result["analysisDegraded"])
         self.assertEqual(result["generationGate"], "blocked")
         self.assertTrue(result["sensitivePromptBlocked"])
         self.assertEqual(result["generationRequirements"], "")
         self.assertNotIn("REQ_MUST_NOT_APPEAR", result["description"])
 
-    def test_service_v2_complete_contract_can_fallback_when_rich_validation_fails(self):
+    def test_service_v2_complete_contract_never_calls_sampled_rich_fallback(self):
         service = load_prompt_assistant_service()
         contract = valid_v2_contract()
-        outputs = [static_compact_v2_json(contract), "[风格设定]\n过短"]
+        outputs = [compact_v2_json(contract), "[风格设定]\n过短"]
 
         class FakeAdapter:
             calls = 0
@@ -2663,9 +2805,10 @@ class VisualContractTests(unittest.TestCase):
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
-        self.assertEqual(FakeAdapter.calls, 2)
-        self.assertTrue(result["richPromptFallback"])
-        self.assertEqual(result["reverseFallbackReason"], "rich-prompt-fallback")
+        self.assertEqual(FakeAdapter.calls, 1)
+        self.assertEqual(outputs, ["[风格设定]\n过短"])
+        self.assertFalse(result["richPromptFallback"])
+        self.assertEqual(result["reverseFallbackReason"], "")
         description = result["description"]
         self.assertEqual(
             tuple(
@@ -2676,14 +2819,14 @@ class VisualContractTests(unittest.TestCase):
             RICH_VISUAL_SECTIONS,
         )
         self.assertEqual(description.count("[用户附加要求]"), 1)
-        fallback_visual = description.split("\n\n[用户附加要求]", 1)[0]
+        deterministic_visual = description.split("\n\n[用户附加要求]", 1)[0]
         self.assertEqual(
             validate_rich_visual_prompt(
-                fallback_visual,
+                deterministic_visual,
                 sensitive=True,
                 require_interaction_evidence=True,
             ),
-            fallback_visual,
+            deterministic_visual,
         )
         for marker in (
             contract["entities"][0]["action"],
@@ -2699,7 +2842,7 @@ class VisualContractTests(unittest.TestCase):
         ):
             self.assertIn(marker, description)
 
-    def test_service_v2_sparse_safe_person_and_object_rich_failure_fail_closed(self):
+    def test_service_v2_sparse_safe_deterministic_rich_succeeds_once(self):
         service = load_prompt_assistant_service()
 
         def sparse_safe_contract(*, object_only: bool) -> dict:
@@ -2761,6 +2904,7 @@ class VisualContractTests(unittest.TestCase):
                         type(self).instances.append(self)
                         self.calls = 0
                         self.unload_calls = 0
+                        self.generation_options = []
 
                     def readiness(self):
                         return {"available": True}
@@ -2769,9 +2913,10 @@ class VisualContractTests(unittest.TestCase):
                         if unload_after:
                             raise AssertionError("v2 stages must retain the task-scoped adapter")
                         self.calls += 1
-                        if self.calls == 1:
-                            return static_compact_v2_json(contract)
-                        return "[风格设定]\n过短"
+                        self.generation_options.append(dict(_options))
+                        if self.calls > 1:
+                            raise AssertionError("sampled rich fallback must not run")
+                        return compact_v2_json(contract)
 
                     def unload(self):
                         self.unload_calls += 1
@@ -2782,30 +2927,40 @@ class VisualContractTests(unittest.TestCase):
                     assistant = service.PromptAssistant()
                     assistant.reset_loaded_clip = lambda: None
                     assistant.reverse_model_path = lambda: Path("fake-qwen3")
-                    with self.assertRaisesRegex(
-                        VisualContractError,
-                        "failed closed",
-                    ) as raised:
-                        assistant.reverse_plain_static_image(
-                            {
-                                "visualSchema": "nf.visual.v2",
-                                "nsfw": True,
-                                "reverseModelProvider": "qwen3-vl",
-                            },
-                            object(),
-                            "REQ_MUST_NOT_WRITE",
-                        )
+                    result = assistant.reverse_plain_static_image(
+                        {
+                            "visualSchema": "nf.visual.v2",
+                            "nsfw": True,
+                            "reverseModelProvider": "qwen3-vl",
+                        },
+                        object(),
+                        "REQ_SPARSE_KEEP",
+                    )
                 finally:
                     service.Qwen3VLAbliteratedAdapter = original_adapter
 
                 adapter = FakeAdapter.instances[0]
-                self.assertEqual(adapter.calls, 2)
-                self.assertEqual(adapter.unload_calls, 1)
-                self.assertEqual(raised.exception.code, "v2-qwen3-fail-closed")
+                self.assertEqual(adapter.calls, 1)
                 self.assertEqual(
-                    raised.exception.diagnostics["contractFailureCode"],
-                    "rich-visual-prompt-invalid",
+                    adapter.generation_options,
+                    [{"do_sample": False, "max_new_tokens": 384}],
                 )
+                self.assertEqual(adapter.unload_calls, 1)
+                self.assertFalse(result["qualityGateFailed"])
+                self.assertEqual(result["generationGate"], "direct")
+                self.assertFalse(result["sensitivePromptBlocked"])
+                self.assertFalse(result["richPromptFallback"])
+                self.assertEqual(result["reverseFallbackReason"], "")
+                self.assertEqual(
+                    tuple(
+                        line.strip()
+                        for line in result["visualPrompt"].splitlines()
+                        if line.strip() in RICH_VISUAL_SECTIONS
+                    ),
+                    RICH_VISUAL_SECTIONS,
+                )
+                self.assertIn("REQ_SPARSE_KEEP", result["description"])
+                self.assertNotIn("REQ_SPARSE_KEEP", result["visualPrompt"])
 
     def test_service_v2_blocked_candidate_skips_rich_stage(self):
         service = load_prompt_assistant_service()
@@ -2828,7 +2983,7 @@ class VisualContractTests(unittest.TestCase):
                 self.calls += 1
                 if self.calls > 1:
                     raise AssertionError("blocked candidate must skip rich generation")
-                return static_compact_v2_json(contract)
+                return compact_v2_json(contract)
 
             def unload(self):
                 self.unload_calls += 1
@@ -2880,7 +3035,7 @@ class VisualContractTests(unittest.TestCase):
                     self.calls += 1
                     if self.calls > 1:
                         raise AssertionError("minor requirements gate must skip rich generation")
-                    return static_compact_v2_json(contract)
+                    return compact_v2_json(contract)
 
                 def unload(self):
                     self.unload_calls += 1
@@ -2916,21 +3071,31 @@ class VisualContractTests(unittest.TestCase):
                 self.assertEqual(adapter.unload_calls, 1)
                 self.assertEqual(result["generationGate"], "blocked")
                 self.assertTrue(result["sensitivePromptBlocked"])
-                self.assertIn(
-                    "sensitive_prompt_minor_requirements",
-                    result["contentWarnings"],
-                )
+                if name == "full":
+                    self.assertIn(
+                        "sensitive_prompt_minor_requirements",
+                        result["contentWarnings"],
+                    )
+                else:
+                    self.assertEqual(result["contentWarnings"], [])
                 self.assertEqual(result["generationRequirements"], "")
                 self.assertNotIn("underage", result["description"].lower())
                 self.assertFalse(result["richPromptFallback"])
 
-    def test_service_v2_semantic_failure_degrades_without_second_model_call(self):
+    def test_service_v2_safe_participant_mismatch_with_requirements_retries_fresh(self):
         service = load_prompt_assistant_service()
-        invalid = valid_v2_contract()
-        invalid["content_safety"]["visible_person_count"] = 2
+        invalid = rich_safe_age_count_compact_v2_contract(
+            people=1,
+            age="adult_appearing",
+        )
+        invalid["people"] = 2
+        corrected = rich_safe_age_count_compact_v2_contract(
+            people=1,
+            age="adult_appearing",
+        )
         outputs = [
-            static_compact_v2_json(invalid),
-            static_compact_v2_json(valid_v2_contract()),
+            json.dumps(invalid, ensure_ascii=False, separators=(",", ":")),
+            json.dumps(corrected, ensure_ascii=False, separators=(",", ":")),
         ]
 
         class FakeAdapter:
@@ -2985,24 +3150,28 @@ class VisualContractTests(unittest.TestCase):
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
         adapter = FakeAdapter.instances[0]
-        self.assertEqual(len(FakeAdapter.prompts), 1)
+        self.assertEqual(len(FakeAdapter.prompts), 2)
         self.assertEqual(FakeAdapter.init_kwargs["max_side"], 768)
-        self.assertEqual(FakeAdapter.init_kwargs["max_new_tokens"], 160)
-        self.assertEqual(adapter.unload_after_values, [False])
+        self.assertEqual(FakeAdapter.init_kwargs["max_new_tokens"], 384)
+        self.assertEqual(adapter.unload_after_values, [False, False])
         self.assertEqual(adapter.load_calls, 1)
         self.assertEqual(adapter.unload_calls, 1)
         self.assertFalse(adapter.loaded)
-        self.assertEqual(adapter.generation_options[0], {})
-        self.assertTrue(result["qualityGateFailed"])
-        self.assertFalse(result["qualityGateRetried"])
-        self.assertEqual(result["visualSchema"], "nf.visual.v2")
-        self.assertEqual(result["generationRequirements"], "")
-        self.assertEqual(result["generationGate"], "blocked")
-        self.assertNotIn("保持构图", result["description"])
+        self.assertEqual(
+            adapter.generation_options,
+            [
+                {"do_sample": False, "max_new_tokens": 384},
+                {"do_sample": False, "max_new_tokens": 384},
+            ],
+        )
+        self.assertTrue(result["retryAttempted"])
+        self.assertEqual(result["retryCount"], 1)
+        self.assertEqual(result["generationGate"], "direct")
+        self.assertEqual(result["generationRequirements"], "保持构图")
+        self.assertIn("保持构图", result["description"])
         self.assertFalse(result["richPromptFallback"])
-        self.assertTrue(result["sensitivePromptBlocked"])
 
-    def test_service_v2_projection_redaction_partial_uses_required_rich_stage(self):
+    def test_service_v2_projection_semantic_failure_stays_degraded_blocked(self):
         service = load_prompt_assistant_service()
         invalid = valid_v2_contract()
         invalid["entities"][0]["appearance"].append("胸部完全可见")
@@ -3021,7 +3190,7 @@ class VisualContractTests(unittest.TestCase):
                     raise AssertionError("v2 attempt must retain the task-scoped adapter")
                 self.prompts.append(prompt)
                 if len(self.prompts) == 1:
-                    return static_compact_v2_json(invalid)
+                    return compact_v2_json(invalid)
                 return valid_rich_prompt(
                     sensitive=True,
                     marker="PROJECTION_RICH_FINAL",
@@ -3050,23 +3219,23 @@ class VisualContractTests(unittest.TestCase):
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
-        self.assertEqual(len(FakeAdapter.prompts), 2)
-        self.assertIn("重新直接观察当前图片", FakeAdapter.prompts[1])
+        self.assertEqual(len(FakeAdapter.prompts), 1)
         self.assertEqual(qwen2_calls, [])
         self.assertTrue(result["qualityGateFailed"])
         self.assertFalse(result["qualityGateRetried"])
-        self.assertTrue(result["analysisPartial"])
-        self.assertFalse(result.get("analysisDegraded", False))
-        self.assertFalse(result["sensitivePromptBlocked"])
-        self.assertEqual(result["generationGate"], "adult_confirmation")
-        self.assertEqual(result["generationRequirements"], "保持构图")
-        self.assertIn("PROJECTION_RICH_FINAL", result["description"])
+        self.assertFalse(result["analysisPartial"])
+        self.assertTrue(result["analysisDegraded"])
+        self.assertTrue(result["sensitivePromptBlocked"])
+        self.assertEqual(result["generationGate"], "blocked")
+        self.assertEqual(result["generationRequirements"], "")
+        self.assertNotIn("PROJECTION_RICH_FINAL", result["description"])
+        self.assertNotIn("保持构图", result["description"])
         self.assertFalse(result["richPromptFallback"])
         self.assertEqual(result["reverseFallbackReason"], "")
         self.assertFalse(result["retryAttempted"])
         self.assertEqual(result["retryCount"], 0)
 
-    def test_service_v2_final_projection_redaction_failure_returns_pending_real_candidate(self):
+    def test_service_v2_final_projection_redaction_failure_stays_degraded(self):
         service = load_prompt_assistant_service()
         invalid = valid_v2_contract()
         invalid["entities"][0]["appearance"] = ["银色长发", "胸部完全可见"]
@@ -3087,7 +3256,7 @@ class VisualContractTests(unittest.TestCase):
                     raise AssertionError("v2 attempt must retain the task-scoped adapter")
                 self.prompts.append(prompt)
                 if len(self.prompts) == 1:
-                    return static_compact_v2_json(invalid)
+                    return compact_v2_json(invalid)
                 return valid_rich_prompt(
                     sensitive=True,
                     marker="REDACTION_RICH_FINAL",
@@ -3116,17 +3285,17 @@ class VisualContractTests(unittest.TestCase):
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
-        self.assertEqual(len(FakeAdapter.prompts), 2)
+        self.assertEqual(len(FakeAdapter.prompts), 1)
         self.assertEqual(FakeAdapter.instances[0].unload_calls, 1)
         self.assertEqual(qwen2_calls, [])
-        self.assertTrue(result["analysisPartial"])
-        self.assertFalse(result["analysisDegraded"])
+        self.assertFalse(result["analysisPartial"])
+        self.assertTrue(result["analysisDegraded"])
         self.assertTrue(result["qualityGateFailed"])
         self.assertFalse(result["qualityGateRetried"])
-        self.assertFalse(result["sensitivePromptBlocked"])
-        self.assertEqual(result["generationGate"], "adult_confirmation")
+        self.assertTrue(result["sensitivePromptBlocked"])
+        self.assertEqual(result["generationGate"], "blocked")
         self.assertFalse(result["richPromptFallback"])
-        self.assertEqual(result["generationRequirements"], "REQ_SECRET_KEEP_COMPOSITION")
+        self.assertEqual(result["generationRequirements"], "")
         self.assertEqual(result["rawOutput"], "")
         self.assertEqual(result["reverseFallbackReason"], "")
         self.assertFalse(result["retryAttempted"])
@@ -3140,16 +3309,16 @@ class VisualContractTests(unittest.TestCase):
             "检测到敏感内容，但部分可见描述需要脱敏",
         )
         self.assertEqual(result["contentSafety"], {
-            "level": "explicit",
-            "body_exposure": "full",
-            "interaction_category": "sexual",
-            "age_assessment": "adult_appearing",
+            "level": "uncertain",
+            "body_exposure": "uncertain",
+            "interaction_category": "uncertain",
+            "age_assessment": "age_unverifiable",
             "visible_person_count": 1,
-            "signals": ["nudity", "explicit_activity"],
+            "signals": [],
             "sensitive_visible_facts": [],
         })
-        self.assertIn("REDACTION_RICH_FINAL", result["description"])
-        self.assertIn("REQ_SECRET_KEEP_COMPOSITION", result["description"])
+        self.assertNotIn("REDACTION_RICH_FINAL", result["description"])
+        self.assertNotIn("REQ_SECRET_KEEP_COMPOSITION", result["description"])
         for private_fact in (
             "胸部完全可见",
             invalid["entities"][0]["action"],
@@ -3160,7 +3329,7 @@ class VisualContractTests(unittest.TestCase):
         self.assertEqual(result["rawOutput"], "")
         self.assertEqual(result["contentSafety"]["sensitive_visible_facts"], [])
 
-    def test_service_v2_interaction_partial_is_replaced_by_required_rich_candidate(self):
+    def test_service_v2_interaction_semantic_failure_stays_degraded_blocked(self):
         service = load_prompt_assistant_service()
         invalid = valid_v2_contract()
         invalid["content_safety"]["sensitive_visible_facts"] = [
@@ -3181,7 +3350,7 @@ class VisualContractTests(unittest.TestCase):
                     raise AssertionError("v2 attempt must retain the task-scoped adapter")
                 self.prompts.append(prompt)
                 if len(self.prompts) == 1:
-                    return static_compact_v2_json(invalid)
+                    return compact_v2_json(invalid)
                 return valid_rich_prompt(
                     sensitive=True,
                     marker="INTERACTION_RICH_FINAL",
@@ -3210,26 +3379,21 @@ class VisualContractTests(unittest.TestCase):
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
-        self.assertEqual(len(FakeAdapter.prompts), 2)
-        self.assertIn("互动证据不完整", FakeAdapter.prompts[1])
-        self.assertIn("逐区扫描画面", FakeAdapter.prompts[1])
-        self.assertIn("局部参与者", FakeAdapter.prompts[1])
-        self.assertIn("禁止只写自慰", FakeAdapter.prompts[1])
-        self.assertIn("手扶大腿", FakeAdapter.prompts[1])
+        self.assertEqual(len(FakeAdapter.prompts), 1)
         self.assertEqual(qwen2_calls, [])
-        self.assertTrue(result["analysisPartial"])
-        self.assertFalse(result["analysisDegraded"])
+        self.assertFalse(result["analysisPartial"])
+        self.assertTrue(result["analysisDegraded"])
         self.assertTrue(result["qualityGateFailed"])
         self.assertFalse(result["qualityGateRetried"])
-        self.assertFalse(result["sensitivePromptBlocked"])
-        self.assertEqual(result["generationGate"], "adult_confirmation")
+        self.assertTrue(result["sensitivePromptBlocked"])
+        self.assertEqual(result["generationGate"], "blocked")
         self.assertFalse(result["richPromptFallback"])
         self.assertEqual(
             result["generationRequirements"],
-            "REQ_SECRET_KEEP_COMPOSITION",
+            "",
         )
         self.assertEqual(result["rawOutput"], "")
-        self.assertEqual(result["contentWarnings"], ["nudity", "explicit_activity"])
+        self.assertEqual(result["contentWarnings"], [])
         self.assertEqual(result["reverseFallbackReason"], "")
         self.assertEqual(
             result["contractFailureCode"],
@@ -3255,16 +3419,16 @@ class VisualContractTests(unittest.TestCase):
             "检测到敏感互动迹象，但详细互动证据未通过校验",
         )
         self.assertEqual(result["contentSafety"], {
-            "level": "explicit",
-            "body_exposure": "full",
-            "interaction_category": "sexual",
-            "age_assessment": "adult_appearing",
+            "level": "uncertain",
+            "body_exposure": "uncertain",
+            "interaction_category": "uncertain",
+            "age_assessment": "age_unverifiable",
             "visible_person_count": 1,
-            "signals": ["nudity", "explicit_activity"],
+            "signals": [],
             "sensitive_visible_facts": [],
         })
-        self.assertIn("INTERACTION_RICH_FINAL", result["description"])
-        self.assertIn("REQ_SECRET_KEEP_COMPOSITION", result["description"])
+        self.assertNotIn("INTERACTION_RICH_FINAL", result["description"])
+        self.assertNotIn("REQ_SECRET_KEEP_COMPOSITION", result["description"])
         self.assertNotIn(
             invalid["content_safety"]["sensitive_visible_facts"][0],
             result["description"],
@@ -3274,7 +3438,7 @@ class VisualContractTests(unittest.TestCase):
             result["visualPrompt"],
         )
 
-    def test_service_v2_interaction_partial_rich_failure_never_applies_low_quality_candidate(self):
+    def test_service_v2_interaction_failure_skips_rich_and_low_quality_candidate(self):
         service = load_prompt_assistant_service()
         invalid = valid_v2_contract()
         invalid["content_safety"]["sensitive_visible_facts"] = [
@@ -3296,7 +3460,7 @@ class VisualContractTests(unittest.TestCase):
                     raise AssertionError("v2 stages must retain the task-scoped adapter")
                 self.calls.append({"prompt": prompt, **options})
                 if len(self.calls) == 1:
-                    return static_compact_v2_json(invalid)
+                    return compact_v2_json(invalid)
                 return "[风格设定]\n内容太短"
 
             def unload(self):
@@ -3308,26 +3472,24 @@ class VisualContractTests(unittest.TestCase):
             assistant = service.PromptAssistant()
             assistant.reset_loaded_clip = lambda: None
             assistant.reverse_model_path = lambda: Path("fake-qwen3")
-            with self.assertRaisesRegex(VisualContractError, "failed closed") as raised:
-                assistant.reverse_plain_static_image(
-                    {
-                        "visualSchema": "nf.visual.v2",
-                        "nsfw": True,
-                        "reverseModelProvider": "qwen3-vl",
-                    },
-                    object(),
-                    "REQ_MUST_NOT_BE_APPLIED",
-                )
+            result = assistant.reverse_plain_static_image(
+                {
+                    "visualSchema": "nf.visual.v2",
+                    "nsfw": True,
+                    "reverseModelProvider": "qwen3-vl",
+                },
+                object(),
+                "REQ_MUST_NOT_BE_APPLIED",
+            )
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
-        self.assertEqual(len(FakeAdapter.calls), 2)
+        self.assertEqual(len(FakeAdapter.calls), 1)
         self.assertEqual(FakeAdapter.unload_calls, 1)
-        self.assertEqual(raised.exception.code, "v2-qwen3-fail-closed")
-        self.assertEqual(
-            raised.exception.diagnostics["contractFailureCode"],
-            "rich-visual-prompt-invalid",
-        )
+        self.assertTrue(result["analysisDegraded"])
+        self.assertEqual(result["generationGate"], "blocked")
+        self.assertNotIn("REQ_MUST_NOT_BE_APPLIED", result["description"])
+        self.assertNotIn("内容太短", result["description"])
 
     def test_service_v2_recoverable_failure_rich_stage_respects_safety_matrix(self):
         service = load_prompt_assistant_service()
@@ -3435,13 +3597,8 @@ class VisualContractTests(unittest.TestCase):
                                 raise AssertionError("v2 stages must retain the task-scoped adapter")
                             self.calls.append({"prompt": prompt, **options})
                             if len(self.calls) == 1:
-                                return static_compact_v2_json(contract)
-                            if case["expected_gate"] == "adult_confirmation":
-                                return valid_rich_prompt(
-                                    sensitive=True,
-                                    marker=f"MATRIX_RICH_{case['name']}",
-                                )
-                            raise AssertionError("blocked partial must skip rich generation")
+                                return compact_v2_json(contract)
+                            raise AssertionError("keyed semantic failure must skip rich generation")
 
                         def unload(self):
                             self.unload_calls += 1
@@ -3461,19 +3618,16 @@ class VisualContractTests(unittest.TestCase):
                     )
 
                     adapter = FakeAdapter.instances[0]
-                    self.assertEqual(
-                        len(adapter.calls),
-                        2 if case["expected_gate"] == "adult_confirmation" else 1,
-                    )
+                    self.assertEqual(len(adapter.calls), 1)
                     self.assertEqual(adapter.unload_calls, 1)
-                    self.assertTrue(result["analysisPartial"])
-                    self.assertFalse(result["analysisDegraded"])
+                    self.assertFalse(result["analysisPartial"])
+                    self.assertTrue(result["analysisDegraded"])
                     self.assertTrue(result["qualityGateFailed"])
                     self.assertFalse(result["qualityGateRetried"])
                     self.assertFalse(result["retryAttempted"])
                     self.assertEqual(result["retryCount"], 0)
                     self.assertEqual(result["contractFailureCode"], case["failure_code"])
-                    self.assertEqual(result["generationGate"], case["expected_gate"])
+                    self.assertEqual(result["generationGate"], "blocked")
                     self.assertEqual(result["rawOutput"], "")
                     self.assertEqual(
                         result["contentSafety"]["sensitive_visible_facts"],
@@ -3483,36 +3637,34 @@ class VisualContractTests(unittest.TestCase):
                         contract["content_safety"]["sensitive_visible_facts"][0],
                         result["visualPrompt"],
                     )
-                    if case["expected_gate"] == "adult_confirmation":
-                        self.assertFalse(result["sensitivePromptBlocked"])
-                        self.assertIn(
-                            f"MATRIX_RICH_{case['name']}",
-                            result["description"],
-                        )
-                        self.assertIn("REQ_MATRIX_KEEP_COMPOSITION", result["description"])
-                        self.assertNotIn(
-                            contract["content_safety"]["sensitive_visible_facts"][0],
-                            result["description"],
-                        )
-                    else:
-                        self.assertTrue(result["sensitivePromptBlocked"])
-                        self.assertNotIn("REQ_MATRIX_KEEP_COMPOSITION", result["description"])
-                        self.assertEqual(result["generationRequirements"], "")
+                    self.assertTrue(result["sensitivePromptBlocked"])
+                    self.assertNotIn("REQ_MATRIX_KEEP_COMPOSITION", result["description"])
+                    self.assertEqual(result["generationRequirements"], "")
+                    self.assertNotIn("MATRIX_RICH_", result["description"])
                     self.assertFalse(result["richPromptFallback"])
                     self.assertEqual(result["reverseFallbackReason"], "")
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
-    def test_service_v2_other_final_semantic_failure_stays_fully_degraded(self):
+    def test_service_v2_safe_participant_mismatch_without_requirements_retries_to_direct(self):
         service = load_prompt_assistant_service()
-        invalid = valid_v2_contract()
-        invalid["content_safety"]["visible_person_count"] = 2
+        invalid = rich_safe_age_count_compact_v2_contract(
+            people=1,
+            age="adult_appearing",
+        )
+        invalid["people"] = 2
+        corrected = rich_safe_age_count_compact_v2_contract(
+            people=1,
+            age="adult_appearing",
+        )
         outputs = [
-            static_compact_v2_json(invalid),
-            static_compact_v2_json(invalid),
+            json.dumps(invalid, ensure_ascii=False, separators=(",", ":")),
+            json.dumps(corrected, ensure_ascii=False, separators=(",", ":")),
         ]
 
         class FakeAdapter:
+            calls = 0
+
             def __init__(self, *_args, **_kwargs):
                 pass
 
@@ -3522,8 +3674,9 @@ class VisualContractTests(unittest.TestCase):
             def generate(self, _prompt, _image_tensor, *, unload_after=True, **options):
                 if unload_after:
                     raise AssertionError("v2 attempt must retain the task-scoped adapter")
-                if len(outputs) == 1 and options != {"max_new_tokens": 768}:
-                    raise AssertionError(f"unexpected retry options: {options}")
+                if options != {"do_sample": False, "max_new_tokens": 384}:
+                    raise AssertionError(f"unexpected keyed options: {options}")
+                type(self).calls += 1
                 return outputs.pop(0)
 
             def unload(self):
@@ -3542,33 +3695,25 @@ class VisualContractTests(unittest.TestCase):
                     "reverseModelProvider": "qwen3-vl",
                 },
                 object(),
-                "REQ_SECRET_KEEP_COMPOSITION",
+                "",
             )
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
-        self.assertFalse(result["analysisPartial"])
-        self.assertTrue(result["analysisDegraded"])
-        self.assertTrue(result["qualityGateFailed"])
-        self.assertTrue(result["sensitivePromptBlocked"])
-        self.assertEqual(result["generationGate"], "blocked")
-        self.assertEqual(result["contractFailureCode"], "visual-contract-semantic-invalid")
-        self.assertEqual(result["contentSafety"], {
-            "level": "uncertain",
-            "body_exposure": "uncertain",
-            "interaction_category": "uncertain",
-            "age_assessment": "age_unverifiable",
-            "visible_person_count": 2,
-            "signals": [],
-            "sensitive_visible_facts": [],
-        })
-        self.assertNotIn("REQ_SECRET_KEEP_COMPOSITION", json.dumps(result, ensure_ascii=False))
+        self.assertEqual(FakeAdapter.calls, 2)
+        self.assertTrue(result["retryAttempted"])
+        self.assertEqual(result["retryCount"], 1)
+        self.assertEqual(result["generationGate"], "direct")
+        self.assertEqual(result["generationRequirements"], "")
+        self.assertFalse(result["sensitivePromptBlocked"])
+        self.assertFalse(result["richPromptFallback"])
+        self.assertEqual(result["reverseFallbackReason"], "")
 
-    def test_service_v2_non_truncated_structural_failure_fails_closed_after_one_call(self):
+    def test_service_v2_non_json_structure_retries_once_without_raw_leak(self):
         service = load_prompt_assistant_service()
         outputs = [
             "RAW_SECRET_MARKER not-json",
-            static_compact_v2_json(valid_v2_contract()),
+            compact_v2_json(valid_v2_contract()),
         ]
 
         class FakeAdapter:
@@ -3586,7 +3731,7 @@ class VisualContractTests(unittest.TestCase):
                 self.prompts.append(prompt)
                 self.last_generation_diagnostics = {
                     "generatedTokens": 139,
-                    "generationTokenLimit": 160,
+                    "generationTokenLimit": 384,
                     "generationHitTokenLimit": False,
                 }
                 return outputs.pop(0)
@@ -3600,39 +3745,28 @@ class VisualContractTests(unittest.TestCase):
             assistant = service.PromptAssistant()
             assistant.reset_loaded_clip = lambda: None
             assistant.reverse_model_path = lambda: Path("fake-qwen3")
-            with self.assertRaisesRegex(VisualContractError, "failed closed") as raised:
-                assistant.reverse_plain_static_image(
-                    {
-                        "visualSchema": "nf.visual.v2",
-                        "nsfw": True,
-                        "reverseModelProvider": "qwen3-vl",
-                    },
-                    object(),
-                    "",
-                )
+            result = assistant.reverse_plain_static_image(
+                {
+                    "visualSchema": "nf.visual.v2",
+                    "nsfw": False,
+                    "reverseModelProvider": "qwen3-vl",
+                },
+                object(),
+                "",
+            )
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
-        self.assertEqual(len(FakeAdapter.prompts), 1)
-        self.assertIn("根对象只能有n2版本键", FakeAdapter.prompts[0])
-        self.assertNotIn("RAW_SECRET_MARKER", FakeAdapter.prompts[0])
-        self.assertFalse(raised.exception.diagnostics["retryAttempted"])
-        self.assertEqual(raised.exception.diagnostics["retryCount"], 0)
-        self.assertEqual(raised.exception.diagnostics["outputChars"], 26)
-        self.assertEqual(raised.exception.diagnostics["generatedTokens"], 139)
-        self.assertEqual(raised.exception.diagnostics["generationTokenLimit"], 160)
-        self.assertFalse(raised.exception.diagnostics["generationHitTokenLimit"])
-        self.assertEqual(raised.exception.diagnostics["jsonStartState"], "other")
-        self.assertEqual(raised.exception.diagnostics["jsonEndState"], "incomplete")
-        self.assertEqual(raised.exception.diagnostics["parseErrorCategory"], "invalid_json")
-        self.assertNotIn(
-            "RAW_SECRET_MARKER",
-            json.dumps(raised.exception.diagnostics, ensure_ascii=False),
-        )
+        self.assertEqual(len(FakeAdapter.prompts), 2)
+        self.assertIn("带字段名的compact v2合同", FakeAdapter.prompts[0])
+        self.assertIn("重新观察同一张图片并从头完整重写", FakeAdapter.prompts[1])
+        self.assertNotIn("RAW_SECRET_MARKER", "".join(FakeAdapter.prompts))
+        self.assertTrue(result["qualityGateRetried"])
+        self.assertEqual(result["retryCount"], 1)
 
     def test_service_v2_closed_invalid_json_retries_once_with_fresh_prompt_and_succeeds(self):
         service = load_prompt_assistant_service()
-        invalid_contract = static_compact_v2_json()[:-1] + ",}"
+        invalid_contract = compact_v2_json()[:-1] + ",}"
         outputs = [invalid_contract, compact_v2_json()]
 
         class FakeAdapter:
@@ -3655,7 +3789,7 @@ class VisualContractTests(unittest.TestCase):
                     raise AssertionError(f"unexpected retry options: {options}")
                 self.last_generation_diagnostics = {
                     "generatedTokens": 113 if len(self.prompts) == 1 else 242,
-                    "generationTokenLimit": 160 if len(self.prompts) == 1 else 384,
+                    "generationTokenLimit": 384,
                     "generationHitTokenLimit": False,
                 }
                 return outputs.pop(0)
@@ -3673,6 +3807,7 @@ class VisualContractTests(unittest.TestCase):
                 {
                     "visualSchema": "nf.visual.v2",
                     "reverseModelProvider": "qwen3-vl",
+                    "nsfw": True,
                 },
                 object(),
                 "",
@@ -3682,7 +3817,7 @@ class VisualContractTests(unittest.TestCase):
 
         self.assertEqual(len(FakeAdapter.prompts), 2)
         self.assertNotEqual(FakeAdapter.prompts[0], FakeAdapter.prompts[1])
-        self.assertIn("内部JSON语法不合法", FakeAdapter.prompts[1])
+        self.assertIn("未通过结构校验", FakeAdapter.prompts[1])
         self.assertIn("带字段名的compact v2合同", FakeAdapter.prompts[1])
         self.assertIn("exact 13键", FakeAdapter.prompts[1])
         self.assertIn("people必须等于entities", FakeAdapter.prompts[1])
@@ -3694,13 +3829,389 @@ class VisualContractTests(unittest.TestCase):
         self.assertTrue(result["retryAttempted"])
         self.assertEqual(result["retryCount"], 1)
         self.assertEqual(result["visualSchema"], "nf.visual.v2")
+        self.assertEqual(result["generationGate"], "adult_confirmation")
+        self.assertFalse(result["richPromptFallback"])
+        self.assertEqual(result["reverseFallbackReason"], "")
+
+    def test_service_v2_exact_age_count_semantic_leaves_retry_once_fresh(self):
+        fixtures = (
+            (
+                "zero-count",
+                0,
+                "adult_appearing",
+                "not_applicable",
+                "zero visible_person_count requires age_assessment=not_applicable",
+            ),
+            (
+                "positive-count",
+                1,
+                "not_applicable",
+                "adult_appearing",
+                "positive visible_person_count requires an applicable age_assessment",
+            ),
+        )
+        for label, people, invalid_age, corrected_age, validation_leaf in fixtures:
+            with self.subTest(leaf=label):
+                service = load_prompt_assistant_service()
+                invalid = rich_safe_age_count_compact_v2_contract(
+                    people=people,
+                    age=invalid_age,
+                )
+                raw_marker = f"AGE_COUNT_RAW_{label}"
+                invalid["look"]["finish"] += f" {raw_marker}"
+                corrected = rich_safe_age_count_compact_v2_contract(
+                    people=people,
+                    age=corrected_age,
+                )
+                outputs = [
+                    json.dumps(invalid, ensure_ascii=False, separators=(",", ":")),
+                    json.dumps(corrected, ensure_ascii=False, separators=(",", ":")),
+                ]
+                events = []
+
+                class FakeAdapter:
+                    prompts = []
+                    options = []
+                    unload_calls = 0
+
+                    def __init__(self, *_args, **_kwargs):
+                        pass
+
+                    def readiness(self):
+                        return {"available": True}
+
+                    def generate(
+                        self,
+                        prompt,
+                        _image_tensor,
+                        *,
+                        unload_after=True,
+                        **options,
+                    ):
+                        if unload_after:
+                            raise AssertionError("v2 attempts must retain the adapter")
+                        type(self).prompts.append(prompt)
+                        type(self).options.append(dict(options))
+                        return outputs.pop(0)
+
+                    def unload(self):
+                        type(self).unload_calls += 1
+
+                original_adapter = service.Qwen3VLAbliteratedAdapter
+                original_logger = service.log_prompt_assistant_event
+                service.Qwen3VLAbliteratedAdapter = FakeAdapter
+                service.log_prompt_assistant_event = (
+                    lambda event, **fields: events.append((event, fields))
+                )
+                try:
+                    assistant = service.PromptAssistant()
+                    assistant.reset_loaded_clip = lambda: None
+                    assistant.reverse_model_path = lambda: Path("fake-qwen3")
+                    result = assistant.reverse_plain_static_image(
+                        {
+                            "visualSchema": "nf.visual.v2",
+                            "reverseModelProvider": "qwen3-vl",
+                        },
+                        object(),
+                        "",
+                    )
+                finally:
+                    service.Qwen3VLAbliteratedAdapter = original_adapter
+                    service.log_prompt_assistant_event = original_logger
+
+                self.assertEqual(len(FakeAdapter.prompts), 2)
+                self.assertEqual(
+                    FakeAdapter.options,
+                    [
+                        {"do_sample": False, "max_new_tokens": 384},
+                        {"do_sample": False, "max_new_tokens": 384},
+                    ],
+                )
+                self.assertIn(
+                    "机器人、雕塑或玩偶若标成person或partial_person，age必须为age_unverifiable",
+                    FakeAdapter.prompts[0],
+                )
+                self.assertIn(
+                    "上一次同图视觉JSON结构完整，但people与age字段互相矛盾",
+                    FakeAdapter.prompts[1],
+                )
+                self.assertIn(
+                    "机器人、雕塑或玩偶若被计为拟人角色，age使用age_unverifiable",
+                    FakeAdapter.prompts[1],
+                )
+                self.assertNotIn(raw_marker, "".join(FakeAdapter.prompts))
+                retry_events = [
+                    fields
+                    for event, fields in events
+                    if event == "reverse_visual_contract_retry"
+                ]
+                self.assertEqual(len(retry_events), 1)
+                self.assertEqual(
+                    retry_events[0]["retryReason"],
+                    "semantic-age-count",
+                )
+                self.assertEqual(
+                    retry_events[0]["validationLeaf"],
+                    validation_leaf,
+                )
+                self.assertTrue(result["retryAttempted"])
+                self.assertEqual(result["retryCount"], 1)
+                self.assertEqual(result["generationGate"], "direct")
+                self.assertFalse(result["richPromptFallback"])
+                self.assertEqual(result["reverseFallbackReason"], "")
+                self.assertEqual(FakeAdapter.unload_calls, 1)
+
+    def test_service_v2_non_age_count_semantic_neighbor_does_not_retry(self):
+        service = load_prompt_assistant_service()
+        invalid = rich_safe_age_count_compact_v2_contract(
+            people=1,
+            age="adult_appearing",
+        )
+        invalid["signals"] = ["nudity"]
+        events = []
+
+        class FakeAdapter:
+            calls = 0
+
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def readiness(self):
+                return {"available": True}
+
+            def generate(self, _prompt, _image_tensor, *, unload_after=True, **_options):
+                if unload_after:
+                    raise AssertionError("v2 attempt must retain the adapter")
+                type(self).calls += 1
+                if type(self).calls > 1:
+                    raise AssertionError("non-age semantic failure must not retry")
+                return json.dumps(invalid, ensure_ascii=False, separators=(",", ":"))
+
+            def unload(self):
+                pass
+
+        original_adapter = service.Qwen3VLAbliteratedAdapter
+        original_logger = service.log_prompt_assistant_event
+        service.Qwen3VLAbliteratedAdapter = FakeAdapter
+        service.log_prompt_assistant_event = (
+            lambda event, **fields: events.append((event, fields))
+        )
+        try:
+            assistant = service.PromptAssistant()
+            assistant.reset_loaded_clip = lambda: None
+            assistant.reverse_model_path = lambda: Path("fake-qwen3")
+            result = assistant.reverse_plain_static_image(
+                {
+                    "visualSchema": "nf.visual.v2",
+                    "reverseModelProvider": "qwen3-vl",
+                },
+                object(),
+                "",
+            )
+        finally:
+            service.Qwen3VLAbliteratedAdapter = original_adapter
+            service.log_prompt_assistant_event = original_logger
+
+        self.assertEqual(FakeAdapter.calls, 1)
+        self.assertFalse(result["retryAttempted"])
+        self.assertEqual(result["retryCount"], 0)
+        self.assertTrue(result["qualityGateFailed"])
         self.assertEqual(result["generationGate"], "blocked")
-        self.assertTrue(result["sensitivePromptBlocked"])
+        self.assertEqual(result["rawOutput"], "")
+        self.assertFalse(any(
+            fields.get("retryReason") == "semantic-age-count"
+            for _event, fields in events
+        ))
+
+    def test_service_v2_safe_participant_count_semantic_retries_once_fresh(self):
+        service = load_prompt_assistant_service()
+        invalid = rich_safe_age_count_compact_v2_contract(
+            people=1,
+            age="adult_appearing",
+        )
+        invalid["people"] = 2
+        raw_marker = "PARTICIPANT_COUNT_RAW_MARKER"
+        invalid["look"]["finish"] += f" {raw_marker}"
+        corrected = rich_safe_age_count_compact_v2_contract(
+            people=1,
+            age="adult_appearing",
+        )
+        outputs = [
+            json.dumps(invalid, ensure_ascii=False, separators=(",", ":")),
+            json.dumps(corrected, ensure_ascii=False, separators=(",", ":")),
+        ]
+        events = []
+
+        class FakeAdapter:
+            prompts = []
+            options = []
+            unload_calls = 0
+
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def readiness(self):
+                return {"available": True}
+
+            def generate(
+                self,
+                prompt,
+                _image_tensor,
+                *,
+                unload_after=True,
+                **options,
+            ):
+                if unload_after:
+                    raise AssertionError("v2 attempts must retain the adapter")
+                type(self).prompts.append(prompt)
+                type(self).options.append(dict(options))
+                return outputs.pop(0)
+
+            def unload(self):
+                type(self).unload_calls += 1
+
+        original_adapter = service.Qwen3VLAbliteratedAdapter
+        original_logger = service.log_prompt_assistant_event
+        service.Qwen3VLAbliteratedAdapter = FakeAdapter
+        service.log_prompt_assistant_event = (
+            lambda event, **fields: events.append((event, fields))
+        )
+        try:
+            assistant = service.PromptAssistant()
+            assistant.reset_loaded_clip = lambda: None
+            assistant.reverse_model_path = lambda: Path("fake-qwen3")
+            result = assistant.reverse_plain_static_image(
+                {
+                    "visualSchema": "nf.visual.v2",
+                    "reverseModelProvider": "qwen3-vl",
+                },
+                object(),
+                "",
+            )
+        finally:
+            service.Qwen3VLAbliteratedAdapter = original_adapter
+            service.log_prompt_assistant_event = original_logger
+
+        self.assertEqual(len(FakeAdapter.prompts), 2)
+        self.assertEqual(
+            FakeAdapter.options,
+            [
+                {"do_sample": False, "max_new_tokens": 384},
+                {"do_sample": False, "max_new_tokens": 384},
+            ],
+        )
+        self.assertIn(
+            "上一次同图视觉JSON的people与人物实体数量不一致",
+            FakeAdapter.prompts[1],
+        )
+        self.assertIn(
+            "kind为object的机器人、雕塑、玩偶、动物、建筑和背景物体绝不能计入people",
+            FakeAdapter.prompts[1],
+        )
+        self.assertNotIn(raw_marker, "".join(FakeAdapter.prompts))
+        retry_events = [
+            fields
+            for event, fields in events
+            if event == "reverse_visual_contract_retry"
+        ]
+        self.assertEqual(len(retry_events), 1)
+        self.assertEqual(
+            retry_events[0]["retryReason"],
+            "semantic-participant-count",
+        )
+        self.assertEqual(
+            retry_events[0]["validationLeaf"],
+            "local_compact person and partial_person entities must match people",
+        )
+        self.assertTrue(result["retryAttempted"])
+        self.assertEqual(result["retryCount"], 1)
+        self.assertEqual(result["generationGate"], "direct")
+        self.assertFalse(result["richPromptFallback"])
+        self.assertEqual(FakeAdapter.unload_calls, 1)
+
+    def test_service_v2_sensitive_or_young_participant_mismatch_does_not_retry(self):
+        sensitive = compact_v2_contract()
+        sensitive["people"] = 2
+        young = rich_safe_age_count_compact_v2_contract(
+            people=1,
+            age="young_or_minor_indicators",
+        )
+        young["people"] = 2
+        for label, invalid in (("sensitive", sensitive), ("young", young)):
+            with self.subTest(policy=label):
+                service = load_prompt_assistant_service()
+                events = []
+
+                class FakeAdapter:
+                    calls = 0
+
+                    def __init__(self, *_args, **_kwargs):
+                        pass
+
+                    def readiness(self):
+                        return {"available": True}
+
+                    def generate(
+                        self,
+                        _prompt,
+                        _image_tensor,
+                        *,
+                        unload_after=True,
+                        **_options,
+                    ):
+                        if unload_after:
+                            raise AssertionError("v2 attempt must retain the adapter")
+                        type(self).calls += 1
+                        if type(self).calls > 1:
+                            raise AssertionError(
+                                "sensitive or young participant mismatch must not retry"
+                            )
+                        return json.dumps(
+                            invalid,
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+
+                    def unload(self):
+                        pass
+
+                original_adapter = service.Qwen3VLAbliteratedAdapter
+                original_logger = service.log_prompt_assistant_event
+                service.Qwen3VLAbliteratedAdapter = FakeAdapter
+                service.log_prompt_assistant_event = (
+                    lambda event, **fields: events.append((event, fields))
+                )
+                try:
+                    assistant = service.PromptAssistant()
+                    assistant.reset_loaded_clip = lambda: None
+                    assistant.reverse_model_path = lambda: Path("fake-qwen3")
+                    result = assistant.reverse_plain_static_image(
+                        {
+                            "visualSchema": "nf.visual.v2",
+                            "reverseModelProvider": "qwen3-vl",
+                            "nsfw": True,
+                        },
+                        object(),
+                        "",
+                    )
+                finally:
+                    service.Qwen3VLAbliteratedAdapter = original_adapter
+                    service.log_prompt_assistant_event = original_logger
+
+                self.assertEqual(FakeAdapter.calls, 1)
+                self.assertFalse(result["retryAttempted"])
+                self.assertEqual(result["retryCount"], 0)
+                self.assertEqual(result["generationGate"], "blocked")
+                self.assertEqual(result["rawOutput"], "")
+                self.assertFalse(any(
+                    fields.get("retryReason") == "semantic-participant-count"
+                    for _event, fields in events
+                ))
 
     def test_service_v2_keyed_retry_normalizes_only_allowlisted_syntax_drift(self):
         def execute(second_output, *, second_hit_token_limit=False):
             service = load_prompt_assistant_service()
-            invalid_contract = static_compact_v2_json()[:-1] + ",}"
+            invalid_contract = compact_v2_json()[:-1] + ",}"
             outputs = [invalid_contract, second_output]
 
             class FakeAdapter:
@@ -3728,7 +4239,7 @@ class VisualContractTests(unittest.TestCase):
                     self.last_generation_diagnostics = {
                         "generatedTokens": 113 if len(self.calls) == 1 else 242,
                         "generationTokenLimit": (
-                            160 if len(self.calls) == 1 else 384
+                            384
                         ),
                         "generationHitTokenLimit": (
                             second_hit_token_limit if len(self.calls) == 2 else False
@@ -3829,7 +4340,7 @@ class VisualContractTests(unittest.TestCase):
 
     def test_service_v2_closed_invalid_json_retry_semantic_failure_degrades_blocked(self):
         service = load_prompt_assistant_service()
-        invalid_contract = static_compact_v2_json()[:-1] + ",}"
+        invalid_contract = compact_v2_json()[:-1] + ",}"
         semantic_invalid = compact_v2_contract()
         semantic_invalid["level"] = "suggestive"
         semantic_invalid["body"] = "none"
@@ -3860,7 +4371,7 @@ class VisualContractTests(unittest.TestCase):
                 type(self).calls.append((prompt, options))
                 self.last_generation_diagnostics = {
                     "generatedTokens": 113 if len(self.calls) == 1 else 242,
-                    "generationTokenLimit": 160 if len(self.calls) == 1 else 384,
+                    "generationTokenLimit": 384,
                     "generationHitTokenLimit": False,
                 }
                 return outputs.pop(0)
@@ -3891,7 +4402,7 @@ class VisualContractTests(unittest.TestCase):
             FakeAdapter.calls[1][1],
             {"do_sample": False, "max_new_tokens": 384},
         )
-        self.assertIn("内部JSON语法不合法", FakeAdapter.calls[1][0])
+        self.assertIn("未通过结构校验", FakeAdapter.calls[1][0])
         self.assertNotIn(invalid_contract, FakeAdapter.calls[1][0])
         self.assertTrue(result["qualityGateFailed"])
         self.assertTrue(result["qualityGateRetried"])
@@ -3933,7 +4444,7 @@ class VisualContractTests(unittest.TestCase):
         ):
             with self.subTest(label=label):
                 service = load_prompt_assistant_service()
-                invalid_contract = static_compact_v2_json()[:-1] + ",}"
+                invalid_contract = compact_v2_json()[:-1] + ",}"
                 second_output = compact_v2_json(contract)
                 outputs = [invalid_contract, second_output]
 
@@ -3962,7 +4473,7 @@ class VisualContractTests(unittest.TestCase):
                         self.last_generation_diagnostics = {
                             "generatedTokens": 113 if len(self.calls) == 1 else 242,
                             "generationTokenLimit": (
-                                160 if len(self.calls) == 1 else 384
+                                384
                             ),
                             "generationHitTokenLimit": False,
                         }
@@ -4016,20 +4527,27 @@ class VisualContractTests(unittest.TestCase):
 
     def test_service_v2_closed_invalid_json_outside_retry_contract_fails_once(self):
         fixtures = (
-            ("wrong-root", '{"wrong":,}', 48, 160, False),
+            ("missing-token-diagnostics", '{"wrong":,}', None, 384, False),
             (
                 "over-token-budget",
-                static_compact_v2_json()[:-1] + ",}",
-                129,
-                160,
+                compact_v2_json()[:-1] + ",}",
+                385,
+                384,
                 False,
             ),
             (
-                "hit-token-limit",
-                static_compact_v2_json()[:-1] + ",}",
+                "wrong-generation-limit",
+                compact_v2_json()[:-1] + ",}",
                 128,
-                160,
-                True,
+                383,
+                False,
+            ),
+            (
+                "invalid-hit-limit-diagnostic",
+                compact_v2_json()[:-1] + ",}",
+                128,
+                384,
+                "yes",
             ),
         )
         for label, output, generated_tokens, generation_limit, hit_limit in fixtures:
@@ -4088,7 +4606,10 @@ class VisualContractTests(unittest.TestCase):
 
     def test_service_v2_fresh_generation_rejects_legacy_contract_shapes(self):
         for label, output in (
-            ("legacy-compact", json.dumps(compact_v2_contract(), ensure_ascii=False)),
+            (
+                "legacy-static-n2",
+                json.dumps(static_compact_v2_contract(), ensure_ascii=False),
+            ),
             ("canonical", json.dumps(valid_v2_contract(), ensure_ascii=False)),
         ):
             with self.subTest(shape=label):
@@ -4138,14 +4659,14 @@ class VisualContractTests(unittest.TestCase):
                 self.assertFalse(raised.exception.diagnostics["retryAttempted"])
 
     def test_service_v2_structural_diagnostics_distinguish_truncation_missing_keys_and_canonical_limit(self):
-        compact = static_compact_v2_contract()
+        compact = compact_v2_contract()
         missing_key = {}
-        array_limit = static_compact_v2_contract()
-        array_limit["n2"][6][0][2] = [
+        array_limit = compact_v2_contract()
+        array_limit["entities"][0]["appearance"] = [
             f"外观{index}" for index in range(17)
         ]
-        tuple_length = static_compact_v2_contract()
-        tuple_length["n2"] = tuple_length["n2"][:-1]
+        missing_nested_key = compact_v2_contract()
+        del missing_nested_key["entities"][0]["colors"]
         fixtures = (
             (
                 "truncated",
@@ -4155,7 +4676,7 @@ class VisualContractTests(unittest.TestCase):
                 2,
                 True,
                 1,
-                128,
+                384,
                 "",
             ),
             (
@@ -4163,32 +4684,32 @@ class VisualContractTests(unittest.TestCase):
                 json.dumps(missing_key, ensure_ascii=False),
                 "missing_keys",
                 "object_close",
+                2,
+                True,
                 1,
-                False,
-                0,
-                160,
-                "local_static_compact",
+                384,
+                "local_compact",
             ),
             (
                 "tuple-length",
-                json.dumps(tuple_length, ensure_ascii=False, separators=(",", ":")),
-                "tuple_length",
+                json.dumps(missing_nested_key, ensure_ascii=False, separators=(",", ":")),
+                "missing_keys",
                 "object_close",
+                2,
+                True,
                 1,
-                False,
-                0,
-                160,
-                "local_static_compact.n2",
+                384,
+                "local_compact.entities[0]",
             ),
             (
                 "array-limit",
                 json.dumps(array_limit, ensure_ascii=False, separators=(",", ":")),
                 "array_limit",
                 "object_close",
+                2,
+                True,
                 1,
-                False,
-                0,
-                160,
+                384,
                 "local_compact.entities[0].appearance",
             ),
         )
@@ -4233,7 +4754,7 @@ class VisualContractTests(unittest.TestCase):
                         type(self).calls += 1
                         type(self).prompts.append(_prompt)
                         generation_limit = int(
-                            _options.get("max_new_tokens", 160)
+                            _options.get("max_new_tokens", 384)
                         )
                         generated_tokens = (
                             48
@@ -4278,7 +4799,7 @@ class VisualContractTests(unittest.TestCase):
 
                 diagnostics = raised.exception.diagnostics
                 self.assertEqual(FakeAdapter.calls, expected_calls)
-                self.assertEqual(FakeAdapter.init_kwargs["max_new_tokens"], 160)
+                self.assertEqual(FakeAdapter.init_kwargs["max_new_tokens"], 384)
                 self.assertEqual(
                     diagnostics["retryAttempted"],
                     expected_retry_attempted,
@@ -4310,11 +4831,11 @@ class VisualContractTests(unittest.TestCase):
                 ):
                     self.assertNotIn(forbidden_key, diagnostics)
                 self.assertNotIn(
-                    compact["n2"][12][0],
+                    compact["facts"][0],
                     json.dumps(diagnostics, ensure_ascii=False),
                 )
                 for prompt in FakeAdapter.prompts:
-                    self.assertNotIn(compact["n2"][12][0], prompt)
+                    self.assertNotIn(compact["facts"][0], prompt)
                 if expected_retry_attempted:
                     self.assertNotEqual(
                         FakeAdapter.prompts[0],
@@ -4458,11 +4979,11 @@ class VisualContractTests(unittest.TestCase):
 
     def test_service_v2_truncated_contract_retries_once_with_fresh_prompt_and_succeeds(self):
         service = load_prompt_assistant_service()
-        first_contract = static_compact_v2_contract()
-        first_contract["n2"][12][0] += " FIRST_RAW_MARKER"
+        first_contract = compact_v2_contract()
+        first_contract["facts"][0] += " FIRST_RAW_MARKER"
         outputs = [
             json.dumps(first_contract, ensure_ascii=False)[:-1],
-            static_compact_v2_json(),
+            compact_v2_json(),
         ]
 
         class FakeAdapter:
@@ -4482,14 +5003,12 @@ class VisualContractTests(unittest.TestCase):
                 self.prompts.append(prompt)
                 if len(self.prompts) == 2 and options != {
                     "do_sample": False,
-                    "max_new_tokens": 128,
+                    "max_new_tokens": 384,
                 }:
                     raise AssertionError(f"unexpected retry options: {options}")
                 self.last_generation_diagnostics = {
                     "generatedTokens": 48 if len(self.prompts) == 1 else 96,
-                    "generationTokenLimit": (
-                        128 if len(self.prompts) == 2 else 160
-                    ),
+                    "generationTokenLimit": 384,
                     "generationHitTokenLimit": False,
                 }
                 return outputs.pop(0)
@@ -4518,10 +5037,10 @@ class VisualContractTests(unittest.TestCase):
 
         self.assertEqual(len(FakeAdapter.prompts), 2)
         self.assertNotEqual(FakeAdapter.prompts[0], FakeAdapter.prompts[1])
-        self.assertIn("根对象只能有n2版本键", FakeAdapter.prompts[0])
+        self.assertIn("带字段名的compact v2合同", FakeAdapter.prompts[0])
         self.assertIn("重新观察同一张图片并从头完整重写", FakeAdapter.prompts[1])
-        self.assertIn('{"n2":[', FakeAdapter.prompts[1])
-        self.assertNotIn("带字段名的compact v2合同", FakeAdapter.prompts[1])
+        self.assertIn('{"asset":""', FakeAdapter.prompts[1])
+        self.assertIn("带字段名的compact v2合同", FakeAdapter.prompts[1])
         self.assertNotIn("FIRST_RAW_MARKER", FakeAdapter.prompts[1])
         self.assertEqual(FakeAdapter.instances[0].unload_calls, 1)
         self.assertEqual(qwen2_calls, [])
@@ -4535,8 +5054,8 @@ class VisualContractTests(unittest.TestCase):
 
     def test_service_v2_participant_mismatch_degrades_without_retry(self):
         service = load_prompt_assistant_service()
-        mismatch = static_compact_v2_contract()
-        mismatch["n2"][5] = 2
+        mismatch = compact_v2_contract()
+        mismatch["people"] = 2
         output = json.dumps(mismatch, ensure_ascii=False, separators=(",", ":"))
 
         class FakeAdapter:
@@ -4546,7 +5065,7 @@ class VisualContractTests(unittest.TestCase):
             def __init__(self, *_args, **_kwargs):
                 self.last_generation_diagnostics = {
                     "generatedTokens": 137,
-                    "generationTokenLimit": 160,
+                    "generationTokenLimit": 384,
                     "generationHitTokenLimit": False,
                 }
 
@@ -4581,7 +5100,10 @@ class VisualContractTests(unittest.TestCase):
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
         self.assertEqual(len(FakeAdapter.prompts), 1)
-        self.assertEqual(FakeAdapter.options, [{}])
+        self.assertEqual(
+            FakeAdapter.options,
+            [{"do_sample": False, "max_new_tokens": 384}],
+        )
         self.assertTrue(result["qualityGateFailed"])
         self.assertFalse(result["qualityGateRetried"])
         self.assertFalse(result["retryAttempted"])
@@ -4595,8 +5117,8 @@ class VisualContractTests(unittest.TestCase):
 
     def test_service_v2_sensitive_young_wording_degrades_without_rich_or_requirements(self):
         service = load_prompt_assistant_service()
-        compact = static_compact_v2_contract()
-        compact["n2"][6][0][1] = "儿童"
+        compact = compact_v2_contract()
+        compact["entities"][0]["name"] = "儿童"
         output = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
 
         class FakeAdapter:
@@ -4632,7 +5154,7 @@ class VisualContractTests(unittest.TestCase):
                     "nsfw": True,
                 },
                 object(),
-                "REQ_MUST_NOT_APPEAR",
+                "",
             )
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
@@ -4642,11 +5164,10 @@ class VisualContractTests(unittest.TestCase):
         self.assertTrue(result["analysisDegraded"])
         self.assertEqual(result["generationGate"], "blocked")
         self.assertTrue(result["sensitivePromptBlocked"])
-        self.assertNotIn("REQ_MUST_NOT_APPEAR", result["description"])
 
-    def test_service_v2_late_truncation_fails_closed_without_unbounded_retry(self):
+    def test_service_v2_second_truncation_fails_closed_after_one_fresh_retry(self):
         service = load_prompt_assistant_service()
-        output = static_compact_v2_json()[:-1]
+        output = compact_v2_json()[:-1]
 
         class FakeAdapter:
             calls = 0
@@ -4663,7 +5184,7 @@ class VisualContractTests(unittest.TestCase):
                 type(self).calls += 1
                 self.last_generation_diagnostics = {
                     "generatedTokens": 139,
-                    "generationTokenLimit": 160,
+                    "generationTokenLimit": 384,
                     "generationHitTokenLimit": False,
                 }
                 return output
@@ -4689,19 +5210,19 @@ class VisualContractTests(unittest.TestCase):
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
-        self.assertEqual(FakeAdapter.calls, 1)
-        self.assertFalse(raised.exception.diagnostics["retryAttempted"])
-        self.assertEqual(raised.exception.diagnostics["retryCount"], 0)
+        self.assertEqual(FakeAdapter.calls, 2)
+        self.assertTrue(raised.exception.diagnostics["retryAttempted"])
+        self.assertEqual(raised.exception.diagnostics["retryCount"], 1)
         self.assertEqual(
             raised.exception.diagnostics["parseErrorCategory"],
             "truncated_json",
         )
 
-    def test_service_v2_retry_semantic_failure_fails_closed_without_partial_write(self):
+    def test_service_v2_retry_semantic_failure_stays_degraded_blocked(self):
         service = load_prompt_assistant_service()
-        first_output = static_compact_v2_json()[:-1]
-        semantic_invalid = static_compact_v2_contract()
-        semantic_invalid["n2"][5] = 2
+        first_output = compact_v2_json()[:-1]
+        semantic_invalid = compact_v2_contract()
+        semantic_invalid["people"] = 2
         outputs = [
             first_output,
             json.dumps(semantic_invalid, ensure_ascii=False),
@@ -4722,7 +5243,7 @@ class VisualContractTests(unittest.TestCase):
                 type(self).calls += 1
                 self.last_generation_diagnostics = {
                     "generatedTokens": 48 if type(self).calls == 1 else 96,
-                    "generationTokenLimit": 160 if type(self).calls == 1 else 128,
+                    "generationTokenLimit": 384,
                     "generationHitTokenLimit": False,
                 }
                 return outputs.pop(0)
@@ -4736,26 +5257,25 @@ class VisualContractTests(unittest.TestCase):
             assistant = service.PromptAssistant()
             assistant.reset_loaded_clip = lambda: None
             assistant.reverse_model_path = lambda: Path("fake-qwen3")
-            with self.assertRaisesRegex(VisualContractError, "failed closed") as raised:
-                assistant.reverse_plain_static_image(
-                    {
-                        "visualSchema": "nf.visual.v2",
-                        "reverseModelProvider": "qwen3-vl",
-                    },
-                    object(),
-                    "",
-                )
+            result = assistant.reverse_plain_static_image(
+                {
+                    "visualSchema": "nf.visual.v2",
+                    "reverseModelProvider": "qwen3-vl",
+                },
+                object(),
+                "",
+            )
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
         self.assertEqual(FakeAdapter.calls, 2)
-        self.assertTrue(raised.exception.semantic)
-        self.assertTrue(raised.exception.diagnostics["retryAttempted"])
-        self.assertEqual(raised.exception.diagnostics["retryCount"], 1)
-        self.assertEqual(
-            raised.exception.diagnostics["failureCategory"],
-            "semantic_contract",
-        )
+        self.assertTrue(result["retryAttempted"])
+        self.assertEqual(result["retryCount"], 1)
+        self.assertTrue(result["analysisDegraded"])
+        self.assertFalse(result["analysisPartial"])
+        self.assertEqual(result["generationGate"], "blocked")
+        self.assertEqual(result["generationRequirements"], "")
+        self.assertEqual(result["rawOutput"], "")
 
     def test_service_v2_qwen3_exception_releases_task_scoped_adapter(self):
         service = load_prompt_assistant_service()
@@ -4773,7 +5293,7 @@ class VisualContractTests(unittest.TestCase):
             def readiness(self):
                 return {"available": True}
 
-            def generate(self, _prompt, _image_tensor, *, unload_after=True):
+            def generate(self, _prompt, _image_tensor, *, unload_after=True, **_options):
                 self.unload_after_values.append(unload_after)
                 raise service.Qwen3VLProviderError("inference-failed", "boom")
 
@@ -4802,7 +5322,7 @@ class VisualContractTests(unittest.TestCase):
 
         adapter = FakeAdapter.instances[0]
         self.assertEqual(adapter.max_side, 768)
-        self.assertEqual(adapter.max_new_tokens, 160)
+        self.assertEqual(adapter.max_new_tokens, 384)
         self.assertEqual(adapter.unload_after_values, [False])
         self.assertEqual(adapter.unload_calls, 1)
         self.assertEqual(qwen2_calls, [])

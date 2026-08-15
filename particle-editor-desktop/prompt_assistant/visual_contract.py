@@ -512,7 +512,10 @@ def _neutralize_compact_young_wording(value: str) -> str:
     return _clean_text(YOUNG_AGE_PATTERN.sub("人物", str(value or "")), 160)
 
 
-def local_compact_visual_contract_instruction() -> str:
+def local_compact_visual_contract_instruction(
+    *,
+    allow_uncertain_age: bool = True,
+) -> str:
     """Return the single-line, low-token Local-only nf.visual.v2 IR prompt."""
 
     skeleton = {
@@ -520,7 +523,11 @@ def local_compact_visual_contract_instruction() -> str:
         "level": "safe|suggestive|nudity|explicit|uncertain",
         "body": "none|partial|full|uncertain",
         "interaction": "none|intimate|sexual|uncertain",
-        "age": "adult_appearing|age_unverifiable|young_or_minor_indicators|not_applicable|uncertain",
+        "age": (
+            "adult_appearing|age_unverifiable|young_or_minor_indicators|not_applicable|uncertain"
+            if allow_uncertain_age
+            else "adult_appearing|age_unverifiable|young_or_minor_indicators|not_applicable"
+        ),
         "people": 0,
         "entities": [{
             "kind": "person|partial_person|object",
@@ -849,6 +856,7 @@ def parse_local_compact_visual_contract(
     allow_projection_redaction: bool = False,
     allow_legacy_read: bool = True,
     allow_young_wording_neutralization: bool = True,
+    allow_incomplete_participants: bool = False,
 ) -> dict:
     """Map the current Local compact IR into the canonical nf.visual.v2 contract."""
 
@@ -948,7 +956,11 @@ def parse_local_compact_visual_contract(
                 100,
             ),
         })
-    if person_entity_count != people:
+    if allow_incomplete_participants and validate_semantics:
+        raise ValueError(
+            "allow_incomplete_participants requires validate_semantics=False"
+        )
+    if person_entity_count != people and not allow_incomplete_participants:
         raise VisualContractError(
             "local_compact person and partial_person entities must match people",
             code="visual-contract-semantic-invalid",
@@ -1064,49 +1076,50 @@ def parse_local_compact_visual_contract(
         and age != "young_or_minor_indicators"
         and has_young_wording
     ):
-        if not allow_young_wording_neutralization:
+        if not allow_young_wording_neutralization and validate_semantics:
             raise VisualContractError(
                 "local_compact sensitive ordinary fields contain young-age wording",
                 code="visual-contract-semantic-invalid",
                 semantic=True,
             )
-        age = "age_unverifiable"
-        if "age_ambiguous" not in signals:
-            signals.append("age_ambiguous")
-        asset = _neutralize_compact_young_wording(asset)
-        for entity in compact_entities:
-            for key in ("name", "pose", "action"):
-                entity[key] = _neutralize_compact_young_wording(entity[key])
-            for key in ("appearance", "materials", "colors"):
-                entity[key] = [
-                    _neutralize_compact_young_wording(value)
-                    for value in entity[key]
-                ]
-        relations = [
-            _neutralize_compact_young_wording(value) for value in relations
-        ]
-        facts = [_neutralize_compact_young_wording(value) for value in facts]
-        for key in ("environment", "background"):
-            normalized_scene[key] = _neutralize_compact_young_wording(
-                normalized_scene[key]
-            )
-        normalized_scene["spatial_layers"] = [
-            _neutralize_compact_young_wording(value)
-            for value in normalized_scene["spatial_layers"]
-        ]
-        for key in ("lighting", "palette", "materials", "style"):
-            normalized_look[key] = [
-                _neutralize_compact_young_wording(value)
-                for value in normalized_look[key]
+        if allow_young_wording_neutralization:
+            age = "age_unverifiable"
+            if "age_ambiguous" not in signals:
+                signals.append("age_ambiguous")
+            asset = _neutralize_compact_young_wording(asset)
+            for entity in compact_entities:
+                for key in ("name", "pose", "action"):
+                    entity[key] = _neutralize_compact_young_wording(entity[key])
+                for key in ("appearance", "materials", "colors"):
+                    entity[key] = [
+                        _neutralize_compact_young_wording(value)
+                        for value in entity[key]
+                    ]
+            relations = [
+                _neutralize_compact_young_wording(value) for value in relations
             ]
-        for key in ("atmosphere", "finish"):
-            normalized_look[key] = _neutralize_compact_young_wording(
-                normalized_look[key]
-            )
-        for key in CAMERA_KEYS:
-            normalized_camera[key] = _neutralize_compact_young_wording(
-                normalized_camera[key]
-            )
+            facts = [_neutralize_compact_young_wording(value) for value in facts]
+            for key in ("environment", "background"):
+                normalized_scene[key] = _neutralize_compact_young_wording(
+                    normalized_scene[key]
+                )
+            normalized_scene["spatial_layers"] = [
+                _neutralize_compact_young_wording(value)
+                for value in normalized_scene["spatial_layers"]
+            ]
+            for key in ("lighting", "palette", "materials", "style"):
+                normalized_look[key] = [
+                    _neutralize_compact_young_wording(value)
+                    for value in normalized_look[key]
+                ]
+            for key in ("atmosphere", "finish"):
+                normalized_look[key] = _neutralize_compact_young_wording(
+                    normalized_look[key]
+                )
+            for key in CAMERA_KEYS:
+                normalized_camera[key] = _neutralize_compact_young_wording(
+                    normalized_camera[key]
+                )
 
     if interaction != "none" and not relations:
         visible_actions = [
@@ -1957,12 +1970,15 @@ def validate_rich_visual_prompt(
     *,
     sensitive: bool = False,
     require_interaction_evidence: bool = False,
+    minimum_body_chars: int = RICH_VISUAL_MIN_CHARS,
 ) -> str:
     text = str(raw_output or "").strip()
     body_character_text = text
     for section in RICH_VISUAL_SECTIONS:
         body_character_text = body_character_text.replace(section, "", 1)
-    if len(re.sub(r"\s+", "", body_character_text)) < RICH_VISUAL_MIN_CHARS:
+    if len(re.sub(r"\s+", "", body_character_text)) < max(
+        0, int(minimum_body_chars)
+    ):
         raise VisualContractError(
             "rich visual prompt is too short",
             code="rich-visual-prompt-invalid",
