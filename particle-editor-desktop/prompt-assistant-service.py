@@ -44,6 +44,7 @@ from prompt_assistant.visual_contract import (
     parse_local_salient_inventory,
     parse_local_compact_visual_contract,
     parse_local_single_image_compact_visual_contract,
+    parse_local_single_image_recoverable_partial_contract,
     parse_visual_contract,
     rich_visual_prompt_instruction,
     validate_rich_visual_prompt,
@@ -17420,6 +17421,26 @@ class PromptAssistant:
                             keyed_contract_semantic = (
                                 keyed_contract_attempt and exc.semantic
                             )
+                            recoverable_keyed_partial_contract = None
+                            if (
+                                keyed_contract_semantic
+                                and not contract_parse_succeeded
+                                and attempt == 1
+                                and retry_count == 0
+                                and not quality_gate_retried
+                                and not retry_reason
+                                and nsfw_enabled
+                                and exc.code in partial_contract_codes
+                            ):
+                                try:
+                                    recoverable_keyed_partial_contract = (
+                                        parse_local_single_image_recoverable_partial_contract(
+                                            contract_output,
+                                            expected_failure_code=exc.code,
+                                        )
+                                    )
+                                except VisualContractError:
+                                    recoverable_keyed_partial_contract = None
                             if (
                                 quality_gate_retried
                                 and attempt == 2
@@ -17431,9 +17452,13 @@ class PromptAssistant:
                                 and exc.semantic
                             ):
                                 structural_contract = (
-                                    parse_keyed_retry_contract(
+                                    recoverable_keyed_partial_contract
+                                    if recoverable_keyed_partial_contract is not None
+                                    else parse_local_compact_visual_contract(
                                         contract_output,
                                         validate_semantics=False,
+                                        allow_legacy_read=False,
+                                        allow_young_wording_neutralization=False,
                                         allow_incomplete_participants=True,
                                     )
                                     if keyed_contract_attempt
@@ -17444,8 +17469,11 @@ class PromptAssistant:
                                     )
                                 )
                                 analysis_partial = (
-                                    not keyed_contract_semantic
-                                    and exc.code in partial_contract_codes
+                                    (
+                                        not keyed_contract_semantic
+                                        and exc.code in partial_contract_codes
+                                    )
+                                    or recoverable_keyed_partial_contract is not None
                                 )
                                 degraded = (
                                     compile_partial_visual_prompt_details(
@@ -17460,24 +17488,45 @@ class PromptAssistant:
                                     )
                                 )
                                 if (
+                                    recoverable_keyed_partial_contract is not None
+                                    and (
+                                        degraded.get("generationGate")
+                                        != "adult_confirmation"
+                                        or degraded.get("sensitivePromptBlocked")
+                                    )
+                                ):
+                                    degraded = compile_degraded_visual_prompt_details(
+                                        structural_contract
+                                    )
+                                    analysis_partial = False
+                                if (
                                     analysis_partial
                                     and degraded.get("generationGate")
                                     == "adult_confirmation"
                                 ):
-                                    degraded = enrich_v2_generation_candidate(
-                                        degraded,
-                                        structural_contract,
-                                        required=True,
-                                        contract_elapsed_ms=round(
-                                            (
-                                                time.monotonic()
-                                                - contract_stage_started
-                                            )
-                                            * 1000
-                                        ),
-                                    )
+                                    if recoverable_keyed_partial_contract is not None:
+                                        degraded = finalize_v2_generation_candidate(degraded)
+                                    else:
+                                        degraded = enrich_v2_generation_candidate(
+                                            degraded,
+                                            structural_contract,
+                                            required=True,
+                                            contract_elapsed_ms=round(
+                                                (
+                                                    time.monotonic()
+                                                    - contract_stage_started
+                                                )
+                                                * 1000
+                                            ),
+                                        )
                                 else:
                                     degraded = finalize_v2_generation_candidate(degraded)
+                                if recoverable_keyed_partial_contract is not None:
+                                    analysis_partial = (
+                                        degraded.get("generationGate")
+                                        == "adult_confirmation"
+                                        and not degraded.get("sensitivePromptBlocked")
+                                    )
                                 model_name = reverse_model_path.name[:160]
                                 diagnostics = v2_failure_diagnostics(
                                     error_code=exc.code,

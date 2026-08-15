@@ -178,15 +178,22 @@ LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_CORE_PATTERN = (
     r"(?:(?:design|depiction|print|pattern|carving|themed?)\s+)?"
     r"(?:(?:plush|cloth|plastic|wooden|metal)\s+)?"
     r"(?:dolls?|figurines?|statues?|posters?|signs?|packaging|toys?|badges?|"
-    r"magazines?|books?|covers?)"
+    r"magazines?|books?|covers?)(?:\s+displays?)?"
     r")"
 )
 LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_NAME_PATTERN = re.compile(
     rf"^{LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_CORE_PATTERN}$",
     flags=re.I,
 )
+LOCAL_SINGLE_IMAGE_NON_PERSON_REFERENCE_SUFFIX_PATTERN = (
+    r"(?=$|[ \t]*[,.;:!?，。；：！？)\]}\"'”’]"
+    r"|[ \t]+(?:in|on|at|by|near|beside|behind|inside|outside|under|over|"
+    r"against|from|with|without|of|for|while|where|located|placed|displayed)\b"
+    r"|[ \t]*(?:位于|放在|置于|摆在|陈列在|展示在|坐落在))"
+)
 LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_REFERENCE_PATTERN = re.compile(
-    rf"(?<![a-z0-9_]){LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_CORE_PATTERN}(?![a-z0-9_])",
+    rf"(?<![a-z0-9_]){LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_CORE_PATTERN}"
+    rf"(?![a-z0-9_]){LOCAL_SINGLE_IMAGE_NON_PERSON_REFERENCE_SUFFIX_PATTERN}",
     flags=re.I,
 )
 LOCAL_SINGLE_IMAGE_NON_AGE_COMPOUND_PATTERN = re.compile(
@@ -196,6 +203,7 @@ LOCAL_SINGLE_IMAGE_NON_AGE_COMPOUND_PATTERN = re.compile(
     flags=re.I,
 )
 LOCAL_SINGLE_IMAGE_AGE_MODIFIED_NON_PERSON_PATTERN = re.compile(
+    rf"(?:"
     r"(?<![a-z0-9_])(?:[0-9]{1,3}(?:[.,][0-9]+)?|"
     r"zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
     r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|"
@@ -206,7 +214,8 @@ LOCAL_SINGLE_IMAGE_AGE_MODIFIED_NON_PERSON_PATTERN = re.compile(
     r"dolls?|toys?|products?|objects?|items?|artifacts?)(?![a-z0-9_])"
     r"|(?<![0-9])(?:[0-9]{1,3}|[零〇一二三四五六七八九十百两]{1,6})\s*(?:周岁|岁)"
     r"(?:的)?(?:(?:威士忌|葡萄酒|玻璃|塑料|木质|金属|石质|砖石|办公|公寓|历史)的?)?"
-    r"(?:瓶子?|建筑|房屋|汽车|车辆|树木?|书籍?|海报|玩偶|玩具|产品|物体|物品|文物)",
+    r"(?:瓶子?|建筑|房屋|汽车|车辆|树木?|书籍?|海报|玩偶|玩具|产品|物体|物品|文物)"
+    rf"){LOCAL_SINGLE_IMAGE_NON_PERSON_REFERENCE_SUFFIX_PATTERN}",
     flags=re.I,
 )
 LOCAL_SINGLE_IMAGE_LIVING_PERSON_EVIDENCE_PATTERN = re.compile(
@@ -618,6 +627,47 @@ def _requirements_contain_explicit_minor_terms(requirements: str = "") -> bool:
     )
 
 
+def _local_partial_requirements_contain_explicit_minor_terms(
+    requirements: str = "",
+) -> bool:
+    normalized = _normalize_scan_text(_clean_text(str(requirements or ""), 2000))
+    if not normalized:
+        return False
+    if re.search(
+        r"(?<![a-z0-9_])minor[-\s]+characters?(?![a-z0-9_])",
+        normalized,
+        flags=re.I,
+    ):
+        return True
+    normalized = LOCAL_SINGLE_IMAGE_NON_AGE_COMPOUND_PATTERN.sub(
+        "颜色",
+        normalized,
+    )
+    normalized = LOCAL_SINGLE_IMAGE_AGE_MODIFIED_NON_PERSON_PATTERN.sub(
+        "物体",
+        normalized,
+    )
+    normalized = LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_REFERENCE_PATTERN.sub(
+        "物体",
+        normalized,
+    )
+    if LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_NAME_PATTERN.fullmatch(normalized):
+        return False
+    preservation_object = re.fullmatch(
+        r"(?:保留|保持|维持|保有|keep|preserve|retain|maintain)\s*(.+)",
+        normalized,
+        flags=re.I,
+    )
+    if (
+        preservation_object
+        and LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_NAME_PATTERN.fullmatch(
+            preservation_object.group(1).strip()
+        )
+    ):
+        return False
+    return _local_single_image_text_has_explicit_minor_evidence(normalized)
+
+
 def _requirements_contain_sensitive_terms(requirements: str = "") -> bool:
     normalized = _normalize_scan_text(_clean_text(str(requirements or ""), 2000))
     return bool(
@@ -709,16 +759,16 @@ def _neutralize_local_single_image_known_object_references(
         normalized = _normalize_scan_text(value)
         for name in object_names:
             normalized = re.sub(re.escape(name), "物体", normalized, flags=re.I)
-        normalized = LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_REFERENCE_PATTERN.sub(
-            "物体",
+        normalized = LOCAL_SINGLE_IMAGE_NON_AGE_COMPOUND_PATTERN.sub(
+            "颜色",
             normalized,
         )
         normalized = LOCAL_SINGLE_IMAGE_AGE_MODIFIED_NON_PERSON_PATTERN.sub(
             "物体",
             normalized,
         )
-        normalized = LOCAL_SINGLE_IMAGE_NON_AGE_COMPOUND_PATTERN.sub(
-            "颜色",
+        normalized = LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_REFERENCE_PATTERN.sub(
+            "物体",
             normalized,
         )
         return normalized
@@ -1862,6 +1912,53 @@ def parse_local_compact_visual_contract(
     )
 
 
+def _local_single_image_full_age_scan_contract(
+    raw_compact: dict,
+    structural: dict,
+) -> dict:
+    """Restore untruncated Local text fields for route-scoped age evidence scans."""
+
+    def raw_text_list(value: Any) -> list:
+        if value is None or value == "":
+            return []
+        if isinstance(value, str):
+            return [value]
+        return list(value)
+
+    candidate = json.loads(json.dumps(structural, ensure_ascii=False))
+    candidate["asset_type"] = raw_compact["asset"]
+    candidate["entities"] = [
+        {
+            "name": raw_entity["name"],
+            "count": (
+                "一名"
+                if raw_entity["kind"] in {"person", "partial_person"}
+                else "一个"
+            ),
+            "appearance": raw_text_list(raw_entity["appearance"]),
+            "pose": raw_entity["pose"],
+            "action": raw_entity["action"],
+            "materials": raw_text_list(raw_entity["materials"]),
+            "colors": raw_text_list(raw_entity["colors"]),
+        }
+        for raw_entity in raw_compact["entities"]
+    ]
+    candidate["relations"] = raw_text_list(raw_compact["relations"])
+    candidate["scene"] = json.loads(
+        json.dumps(raw_compact["scene"], ensure_ascii=False)
+    )
+    candidate["look"] = json.loads(
+        json.dumps(raw_compact["look"], ensure_ascii=False)
+    )
+    candidate["camera_cues"] = json.loads(
+        json.dumps(raw_compact["camera"], ensure_ascii=False)
+    )
+    candidate["content_safety"]["sensitive_visible_facts"] = raw_text_list(
+        raw_compact["facts"]
+    )
+    return candidate
+
+
 def parse_local_single_image_compact_visual_contract(
     raw_output: str,
     *,
@@ -1879,14 +1976,17 @@ def parse_local_single_image_compact_visual_contract(
         allow_young_wording_neutralization=False,
         allow_incomplete_participants=allow_incomplete_participants,
     )
-    if not validate_semantics:
-        return structural
 
     # The compact parser intentionally bounds asset_type to 40 characters. Preserve
-    # the complete raw asset only long enough to prove that an age phrase belongs
-    # to a non-person object before that bound can cut the object head in half.
+    # the complete raw fields long enough to prove that an age phrase belongs to a
+    # person rather than a non-person object before any field bound can cut away
+    # the decisive noun.
     raw_asset_adjusted = False
     raw_compact = _parse_json_object(raw_output, reject_duplicate_keys=True)
+    full_age_scan_contract = _local_single_image_full_age_scan_contract(
+        raw_compact,
+        structural,
+    )
     raw_asset = raw_compact.get("asset")
     if isinstance(raw_asset, str):
         complete_asset = re.sub(
@@ -1894,17 +1994,12 @@ def parse_local_single_image_compact_visual_contract(
             " ",
             unicodedata.normalize("NFKC", raw_asset),
         ).strip()
-        neutral_asset = LOCAL_SINGLE_IMAGE_AGE_MODIFIED_NON_PERSON_PATTERN.sub(
-            "物体",
+        normalized_complete_asset = _normalize_scan_text(complete_asset)
+        neutral_asset = _neutralize_local_single_image_known_object_references(
             complete_asset,
+            _local_single_image_trusted_non_person_names(full_age_scan_contract),
         )
-        if neutral_asset != complete_asset:
-            if _local_single_image_text_has_explicit_minor_evidence(neutral_asset):
-                raise VisualContractError(
-                    "local_compact sensitive fields contain explicit minor evidence",
-                    code="visual-contract-semantic-invalid",
-                    semantic=True,
-                )
+        if neutral_asset != normalized_complete_asset:
             structural["asset_type"] = _clean_text(neutral_asset, 40)
             raw_asset_adjusted = True
 
@@ -1918,20 +2013,26 @@ def parse_local_single_image_compact_visual_contract(
         and visible_person_count > 0
         and age_assessment in SENSITIVE_CANDIDATE_AGE_ASSESSMENTS
     ):
-        if _local_single_image_contract_has_explicit_minor_evidence(structural):
+        if _local_single_image_contract_has_explicit_minor_evidence(
+            full_age_scan_contract
+        ):
             raise VisualContractError(
                 "local_compact sensitive fields contain explicit minor evidence",
                 code="visual-contract-semantic-invalid",
                 semantic=True,
             )
-        if _local_single_image_contract_has_mislabeled_living_person(structural):
+        if _local_single_image_contract_has_mislabeled_living_person(
+            full_age_scan_contract
+        ):
             raise VisualContractError(
                 "local_compact object entity contains living person evidence",
                 code="visual-contract-semantic-invalid",
                 semantic=True,
             )
         neutralized = _neutralize_local_single_image_non_age_contexts(structural)
-        if _local_single_image_contract_has_ambiguous_age_noun(structural):
+        if _local_single_image_contract_has_ambiguous_age_noun(
+            full_age_scan_contract
+        ):
             neutralized = _neutralize_local_single_image_ambiguous_age_nouns(neutralized)
             neutralized_safety = neutralized["content_safety"]
             neutralized_safety["age_assessment"] = "age_unverifiable"
@@ -1952,9 +2053,12 @@ def parse_local_single_image_compact_visual_contract(
             return parse_visual_contract(
                 json.dumps(neutralized, ensure_ascii=False),
                 expected_schema=SCHEMA_VERSION_V2,
-                validate_semantics=True,
+                validate_semantics=validate_semantics,
                 allow_projection_redaction=allow_projection_redaction,
             )
+
+    if not validate_semantics:
+        return structural
 
     return parse_local_compact_visual_contract(
         raw_output,
@@ -1963,6 +2067,115 @@ def parse_local_single_image_compact_visual_contract(
         allow_legacy_read=False,
         allow_young_wording_neutralization=False,
         allow_incomplete_participants=allow_incomplete_participants,
+    )
+
+
+def parse_local_single_image_recoverable_partial_contract(
+    raw_output: str,
+    *,
+    expected_failure_code: str,
+) -> dict:
+    """Recover one exact first-pass semantic leaf without relaxing other semantics."""
+
+    recoverable_codes = {
+        "visual-contract-interaction-evidence-incomplete",
+        "visual-contract-projection-redaction-required",
+    }
+    if expected_failure_code not in recoverable_codes:
+        raise VisualContractError(
+            "local single-image partial recovery code is not allowed",
+            code="visual-contract-semantic-invalid",
+            semantic=True,
+        )
+
+    try:
+        parse_local_single_image_compact_visual_contract(
+            raw_output,
+            validate_semantics=True,
+            allow_projection_redaction=False,
+            allow_incomplete_participants=False,
+        )
+    except VisualContractError as strict_error:
+        if (
+            not strict_error.semantic
+            or strict_error.code != expected_failure_code
+        ):
+            raise VisualContractError(
+                "local single-image partial recovery strict replay mismatch",
+                code="visual-contract-semantic-invalid",
+                semantic=True,
+            ) from strict_error
+    else:
+        raise VisualContractError(
+            "local single-image partial recovery strict replay did not fail",
+            code="visual-contract-semantic-invalid",
+            semantic=True,
+        )
+
+    candidate = parse_local_single_image_compact_visual_contract(
+        raw_output,
+        validate_semantics=False,
+        allow_projection_redaction=False,
+        allow_incomplete_participants=False,
+    )
+    content_safety = candidate.get("content_safety") or {}
+    if not (
+        content_safety.get("level") in {"suggestive", "nudity", "explicit"}
+        and isinstance(content_safety.get("visible_person_count"), int)
+        and content_safety.get("visible_person_count") > 0
+        and content_safety.get("age_assessment")
+        in SENSITIVE_CANDIDATE_AGE_ASSESSMENTS
+    ):
+        raise VisualContractError(
+            "local single-image partial recovery safety envelope is not eligible",
+            code="visual-contract-semantic-invalid",
+            semantic=True,
+        )
+
+    serialized = json.dumps(candidate, ensure_ascii=False)
+    try:
+        parse_visual_contract(
+            serialized,
+            expected_schema=SCHEMA_VERSION_V2,
+            validate_semantics=True,
+            allow_projection_redaction=False,
+        )
+    except VisualContractError as replay_error:
+        if (
+            not replay_error.semantic
+            or replay_error.code != expected_failure_code
+        ):
+            raise VisualContractError(
+                "local single-image partial recovery semantic replay mismatch",
+                code="visual-contract-semantic-invalid",
+                semantic=True,
+            ) from replay_error
+    else:
+        raise VisualContractError(
+            "local single-image partial recovery did not reproduce the failure",
+            code="visual-contract-semantic-invalid",
+            semantic=True,
+        )
+
+    if expected_failure_code == "visual-contract-projection-redaction-required":
+        try:
+            return parse_visual_contract(
+                serialized,
+                expected_schema=SCHEMA_VERSION_V2,
+                validate_semantics=True,
+                allow_projection_redaction=True,
+            )
+        except VisualContractError as projection_error:
+            raise VisualContractError(
+                "local single-image projection recovery has another semantic failure",
+                code="visual-contract-semantic-invalid",
+                semantic=True,
+            ) from projection_error
+
+    return parse_visual_contract(
+        serialized,
+        expected_schema=SCHEMA_VERSION_V2,
+        validate_semantics=False,
     )
 
 
@@ -3626,8 +3839,15 @@ def compile_partial_visual_prompt_details(
         "nudity",
         "explicit",
     }
-    requirements_explicit_minor = _requirements_contain_explicit_minor_terms(requirements)
+    requirements_explicit_minor = (
+        _local_partial_requirements_contain_explicit_minor_terms(requirements)
+    )
     requirements_sensitive = _requirements_contain_sensitive_terms(requirements)
+    candidate_requirements = (
+        requirements
+        if requirements_explicit_minor
+        else _neutralize_local_single_image_ambiguous_age_nouns(requirements)
+    )
     requirements_minor_blocked = requirements_explicit_minor and (
         sensitive_level or requirements_sensitive
     )
@@ -3658,13 +3878,23 @@ def compile_partial_visual_prompt_details(
     if partial_candidate_allowed:
         candidate = compile_visual_prompt_details(
             normalized,
-            requirements,
+            "",
             nsfw=True,
             _validate_semantics=False,
         )
+        candidate_requirement_text = _clean_text(
+            str(candidate_requirements or ""),
+            2000,
+        )
+        candidate_prompt = candidate["prompt"]
+        if candidate_requirement_text:
+            candidate_prompt = (
+                f"{candidate_prompt.rstrip('。')}。用户附加要求："
+                f"{candidate_requirement_text.rstrip('。')}。"
+            )
         details.update({
-            "prompt": candidate["prompt"],
-            "generationRequirements": candidate["generationRequirements"],
+            "prompt": candidate_prompt,
+            "generationRequirements": candidate_requirement_text,
             "sensitivePromptBlocked": False,
             "generationGate": "adult_confirmation",
         })

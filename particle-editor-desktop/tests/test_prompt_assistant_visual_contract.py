@@ -31,6 +31,7 @@ from prompt_assistant.visual_contract import (
     merge_local_salient_inventory,
     parse_local_compact_visual_contract,
     parse_local_single_image_compact_visual_contract,
+    parse_local_single_image_recoverable_partial_contract,
     parse_local_salient_inventory,
     parse_local_static_compact_visual_contract,
     parse_visual_contract,
@@ -1472,6 +1473,182 @@ class VisualContractTests(unittest.TestCase):
             ],
             "direct",
         )
+
+    def test_local_single_image_partial_recovery_replays_only_the_expected_leaf(self):
+        incomplete = valid_v2_contract()
+        incomplete["content_safety"]["sensitive_visible_facts"] = [
+            "成年人物存在成人互动迹象"
+        ]
+        weak = compact_v2_contract(incomplete)
+        weak["asset"] = "猫耳少女插画"
+        weak["entities"][0]["name"] = "猫耳少女"
+        weak["entities"][0]["appearance"] = ["银发少女"]
+        recovered = parse_local_single_image_recoverable_partial_contract(
+            json.dumps(weak, ensure_ascii=False),
+            expected_failure_code="visual-contract-interaction-evidence-incomplete",
+        )
+        self.assertEqual(
+            recovered["content_safety"]["age_assessment"],
+            "age_unverifiable",
+        )
+        self.assertIn("age_ambiguous", recovered["content_safety"]["signals"])
+        self.assertNotIn("少女", json.dumps(recovered, ensure_ascii=False))
+
+        partial = compile_partial_visual_prompt_details(
+            recovered,
+            "保持猫耳少女构图",
+            nsfw=True,
+            failure_code="visual-contract-interaction-evidence-incomplete",
+        )
+        self.assertEqual(partial["generationGate"], "adult_confirmation")
+        self.assertFalse(partial["sensitivePromptBlocked"])
+        self.assertNotIn("少女", partial["prompt"])
+        self.assertNotIn("少女", partial["generationRequirements"])
+
+        with self.assertRaises(VisualContractError) as mismatch_context:
+            parse_local_single_image_recoverable_partial_contract(
+                json.dumps(weak, ensure_ascii=False),
+                expected_failure_code="visual-contract-projection-redaction-required",
+            )
+        self.assertEqual(
+            mismatch_context.exception.code,
+            "visual-contract-semantic-invalid",
+        )
+
+        participant_mismatch = compact_v2_contract(incomplete)
+        participant_mismatch["people"] = 2
+        with self.assertRaises(VisualContractError) as participant_context:
+            parse_local_single_image_recoverable_partial_contract(
+                json.dumps(participant_mismatch, ensure_ascii=False),
+                expected_failure_code="visual-contract-interaction-evidence-incomplete",
+            )
+        self.assertEqual(
+            participant_context.exception.code,
+            "visual-contract-semantic-invalid",
+        )
+
+        projection_then_interaction = valid_v2_contract()
+        projection_then_interaction["entities"][0]["appearance"].append(
+            "胸部完全可见"
+        )
+        projection_then_interaction["content_safety"]["sensitive_visible_facts"] = [
+            "成年人物存在成人互动迹象"
+        ]
+        with self.assertRaises(VisualContractError) as projection_context:
+            parse_local_single_image_recoverable_partial_contract(
+                compact_v2_json(projection_then_interaction),
+                expected_failure_code="visual-contract-projection-redaction-required",
+            )
+        self.assertEqual(
+            projection_context.exception.code,
+            "visual-contract-semantic-invalid",
+        )
+
+    def test_local_single_image_partial_recovery_scans_untruncated_age_evidence(self):
+        incomplete = valid_v2_contract()
+        incomplete["content_safety"]["sensitive_visible_facts"] = [
+            "成年人物存在成人互动迹象"
+        ]
+        explicit_minor = compact_v2_contract(incomplete)
+        explicit_minor["asset"] = (
+            "adult woman in a detailed scene with a 17-year-old whiskey bottle "
+            "beside a 17-year-old girl"
+        )
+        with self.assertRaises(VisualContractError) as minor_context:
+            parse_local_single_image_recoverable_partial_contract(
+                json.dumps(explicit_minor, ensure_ascii=False),
+                expected_failure_code="visual-contract-interaction-evidence-incomplete",
+            )
+        self.assertEqual(minor_context.exception.code, "visual-contract-semantic-invalid")
+
+        adult_object = compact_v2_contract(incomplete)
+        adult_object["asset"] = (
+            "adult woman holding a 17-year-old whiskey bottle in a detailed "
+            "studio environment"
+        )
+        recovered = parse_local_single_image_recoverable_partial_contract(
+            json.dumps(adult_object, ensure_ascii=False),
+            expected_failure_code="visual-contract-interaction-evidence-incomplete",
+        )
+        self.assertEqual(
+            recovered["content_safety"]["age_assessment"],
+            "adult_appearing",
+        )
+
+        for person_phrase in (
+            "17-year-old toy-holding girl",
+            "17-year-old doll holding girl",
+            "seventeen-year-old book-holding girl",
+            "17岁玩具店里的女孩",
+            "17岁玩偶旁的女孩",
+            "十七岁海报前的女孩",
+        ):
+            with self.subTest(person_phrase=person_phrase):
+                disguised_person = compact_v2_contract(incomplete)
+                disguised_person["entities"][0]["name"] = person_phrase
+                with self.assertRaises(VisualContractError) as disguised_context:
+                    parse_local_single_image_recoverable_partial_contract(
+                        json.dumps(disguised_person, ensure_ascii=False),
+                        expected_failure_code=(
+                            "visual-contract-interaction-evidence-incomplete"
+                        ),
+                    )
+                self.assertEqual(
+                    disguised_context.exception.code,
+                    "visual-contract-semantic-invalid",
+                )
+
+    def test_local_partial_requirements_distinguish_minor_evidence_from_objects(self):
+        incomplete = valid_v2_contract()
+        incomplete["content_safety"]["sensitive_visible_facts"] = [
+            "成年人物存在成人互动迹象"
+        ]
+        structural = parse_local_single_image_recoverable_partial_contract(
+            compact_v2_json(incomplete),
+            expected_failure_code="visual-contract-interaction-evidence-incomplete",
+        )
+        for strong_requirement in (
+            "add a seventeen-year-old character",
+            "not yet eighteen character",
+            "ages seventeen/eighteen characters",
+            "加入十七或十八岁角色",
+            "minor character",
+            "keep a 17-year-old toy-holding girl",
+            "add a seventeen-year-old book-holding girl",
+            "保持17岁玩偶旁的女孩",
+        ):
+            with self.subTest(strong_requirement=strong_requirement):
+                details = compile_partial_visual_prompt_details(
+                    structural,
+                    strong_requirement,
+                    nsfw=True,
+                    failure_code="visual-contract-interaction-evidence-incomplete",
+                )
+                self.assertEqual(details["generationGate"], "blocked")
+                self.assertTrue(details["sensitivePromptBlocked"])
+                self.assertEqual(details["generationRequirements"], "")
+
+        for benign_requirement in (
+            "保留小女孩玩偶",
+            "keep little girl doll",
+            "keep baby doll display on a shelf",
+            "保持17-year-old whiskey bottle",
+            "增强baby blue背景",
+            "18.5 years old adult woman",
+        ):
+            with self.subTest(benign_requirement=benign_requirement):
+                details = compile_partial_visual_prompt_details(
+                    structural,
+                    benign_requirement,
+                    nsfw=True,
+                    failure_code="visual-contract-interaction-evidence-incomplete",
+                )
+                self.assertEqual(
+                    details["generationGate"],
+                    "adult_confirmation",
+                )
+                self.assertFalse(details["sensitivePromptBlocked"])
+                self.assertTrue(details["generationRequirements"])
 
     def test_local_compact_rejects_duplicate_keys_and_supports_three_visible_participants(self):
         compact = compact_v2_contract()
@@ -3959,7 +4136,7 @@ class VisualContractTests(unittest.TestCase):
             deterministic_visual,
         )
 
-    def test_service_v2_partial_contract_stays_blocked_without_second_call(self):
+    def test_service_v2_first_keyed_interaction_partial_returns_adult_confirmation(self):
         service = load_prompt_assistant_service()
         contract = valid_v2_contract()
         contract["content_safety"]["sensitive_visible_facts"] = [
@@ -4006,12 +4183,152 @@ class VisualContractTests(unittest.TestCase):
 
         self.assertEqual(FakeAdapter.calls, 1)
         self.assertTrue(result["qualityGateFailed"])
+        self.assertFalse(result["qualityGateRetried"])
+        self.assertTrue(result["analysisPartial"])
+        self.assertFalse(result["analysisDegraded"])
+        self.assertEqual(result["generationGate"], "adult_confirmation")
+        self.assertFalse(result["sensitivePromptBlocked"])
+        self.assertEqual(result["generationRequirements"], "REQ_MUST_NOT_APPEAR")
+        self.assertIn("REQ_MUST_NOT_APPEAR", result["description"])
+        self.assertNotIn("REQ_MUST_NOT_APPEAR", result["visualPrompt"])
+        self.assertEqual(result["rawOutput"], "")
+        self.assertEqual(result["contentSafety"]["sensitive_visible_facts"], [])
+        self.assertFalse(result["retryAttempted"])
+        self.assertEqual(result["retryCount"], 0)
+
+    def test_service_v2_normalized_first_keyed_partial_still_returns_adult_confirmation(self):
+        service = load_prompt_assistant_service()
+        contract = valid_v2_contract()
+        contract["content_safety"]["sensitive_visible_facts"] = [
+            "成年角色存在明确成人互动"
+        ]
+        malformed = compact_v2_json(contract).replace(
+            '}],"relations":',
+            '}]}"relations":',
+            1,
+        )
+        self.assertEqual(malformed.count('}]}"relations":'), 1)
+        with self.assertRaises(json.JSONDecodeError):
+            json.loads(malformed)
+
+        class FakeAdapter:
+            calls = 0
+
+            def __init__(self, *_args, **_kwargs):
+                self.last_generation_diagnostics = {}
+
+            def readiness(self):
+                return {"available": True}
+
+            def generate(self, _prompt, _image_tensor, *, unload_after=True, **_options):
+                if unload_after:
+                    raise AssertionError("v2 attempt must retain the task-scoped adapter")
+                type(self).calls += 1
+                if type(self).calls > 1:
+                    raise AssertionError("syntax normalization must not start a model retry")
+                self.last_generation_diagnostics = {
+                    "generatedTokens": 211,
+                    "generationTokenLimit": 384,
+                    "generationHitTokenLimit": False,
+                }
+                return malformed
+
+            def unload(self):
+                pass
+
+        original_adapter = service.Qwen3VLAbliteratedAdapter
+        service.Qwen3VLAbliteratedAdapter = FakeAdapter
+        try:
+            assistant = service.PromptAssistant()
+            assistant.reset_loaded_clip = lambda: None
+            assistant.reverse_model_path = lambda: Path("fake-qwen3")
+            result = assistant.reverse_plain_static_image(
+                {
+                    "visualSchema": "nf.visual.v2",
+                    "nsfw": True,
+                    "reverseModelProvider": "qwen3-vl",
+                },
+                object(),
+                "",
+            )
+        finally:
+            service.Qwen3VLAbliteratedAdapter = original_adapter
+
+        self.assertEqual(FakeAdapter.calls, 1)
+        self.assertTrue(result["analysisPartial"])
+        self.assertFalse(result["analysisDegraded"])
+        self.assertEqual(result["generationGate"], "adult_confirmation")
+        self.assertEqual(
+            result["retrySyntaxNormalization"],
+            "entities_relations_delimiter",
+        )
+        self.assertFalse(result["qualityGateRetried"])
+        self.assertFalse(result["retryAttempted"])
+        self.assertEqual(result["retryCount"], 0)
+        self.assertEqual(result["rawOutput"], "")
+
+    def test_service_v2_partial_recovery_blocks_untruncated_minor_evidence(self):
+        service = load_prompt_assistant_service()
+        contract = valid_v2_contract()
+        contract["content_safety"]["sensitive_visible_facts"] = [
+            "MODEL_PRIVATE_INTERACTION_FACT"
+        ]
+        compact = compact_v2_contract(contract)
+        compact["asset"] = (
+            "adult woman in a detailed scene with a 17-year-old whiskey bottle "
+            "beside a 17-year-old girl"
+        )
+        raw = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
+
+        class FakeAdapter:
+            calls = 0
+
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def readiness(self):
+                return {"available": True}
+
+            def generate(self, _prompt, _image_tensor, *, unload_after=True, **_options):
+                if unload_after:
+                    raise AssertionError("v2 attempt must retain the task-scoped adapter")
+                type(self).calls += 1
+                if type(self).calls > 1:
+                    raise AssertionError("explicit minor evidence must not trigger a retry")
+                return raw
+
+            def unload(self):
+                pass
+
+        original_adapter = service.Qwen3VLAbliteratedAdapter
+        service.Qwen3VLAbliteratedAdapter = FakeAdapter
+        try:
+            assistant = service.PromptAssistant()
+            assistant.reset_loaded_clip = lambda: None
+            assistant.reverse_model_path = lambda: Path("fake-qwen3")
+            result = assistant.reverse_plain_static_image(
+                {
+                    "visualSchema": "nf.visual.v2",
+                    "nsfw": True,
+                    "reverseModelProvider": "qwen3-vl",
+                },
+                object(),
+                "REQ_PRIVATE_KEEP_COMPOSITION",
+            )
+        finally:
+            service.Qwen3VLAbliteratedAdapter = original_adapter
+
+        self.assertEqual(FakeAdapter.calls, 1)
         self.assertFalse(result["analysisPartial"])
         self.assertTrue(result["analysisDegraded"])
         self.assertEqual(result["generationGate"], "blocked")
         self.assertTrue(result["sensitivePromptBlocked"])
         self.assertEqual(result["generationRequirements"], "")
-        self.assertNotIn("REQ_MUST_NOT_APPEAR", result["description"])
+        self.assertEqual(result["rawOutput"], "")
+        self.assertEqual(result["contentSafety"]["sensitive_visible_facts"], [])
+        combined = json.dumps(result, ensure_ascii=False)
+        self.assertNotIn("MODEL_PRIVATE_INTERACTION_FACT", combined)
+        self.assertNotIn("REQ_PRIVATE_KEEP_COMPOSITION", combined)
 
     def test_service_v2_complete_contract_never_calls_sampled_rich_fallback(self):
         service = load_prompt_assistant_service()
@@ -4420,7 +4737,7 @@ class VisualContractTests(unittest.TestCase):
         self.assertIn("保持构图", result["description"])
         self.assertFalse(result["richPromptFallback"])
 
-    def test_service_v2_projection_semantic_failure_stays_degraded_blocked(self):
+    def test_service_v2_first_keyed_projection_partial_returns_adult_confirmation(self):
         service = load_prompt_assistant_service()
         invalid = valid_v2_contract()
         invalid["entities"][0]["appearance"].append("胸部完全可见")
@@ -4472,22 +4789,28 @@ class VisualContractTests(unittest.TestCase):
         self.assertEqual(qwen2_calls, [])
         self.assertTrue(result["qualityGateFailed"])
         self.assertFalse(result["qualityGateRetried"])
-        self.assertFalse(result["analysisPartial"])
-        self.assertTrue(result["analysisDegraded"])
-        self.assertTrue(result["sensitivePromptBlocked"])
-        self.assertEqual(result["generationGate"], "blocked")
-        self.assertEqual(result["generationRequirements"], "")
+        self.assertTrue(result["analysisPartial"])
+        self.assertFalse(result["analysisDegraded"])
+        self.assertFalse(result["sensitivePromptBlocked"])
+        self.assertEqual(result["generationGate"], "adult_confirmation")
+        self.assertEqual(result["generationRequirements"], "保持构图")
         self.assertNotIn("PROJECTION_RICH_FINAL", result["description"])
-        self.assertNotIn("保持构图", result["description"])
+        self.assertIn("保持构图", result["description"])
+        self.assertNotIn("保持构图", result["visualPrompt"])
+        self.assertNotIn("胸部完全可见", result["visualPrompt"])
+        self.assertEqual(result["contentSafety"]["sensitive_visible_facts"], [])
+        self.assertEqual(result["rawOutput"], "")
         self.assertFalse(result["richPromptFallback"])
         self.assertEqual(result["reverseFallbackReason"], "")
         self.assertFalse(result["retryAttempted"])
         self.assertEqual(result["retryCount"], 0)
 
-    def test_service_v2_final_projection_redaction_failure_stays_degraded(self):
+    def test_service_v2_age_unverifiable_projection_partial_returns_adult_confirmation(self):
         service = load_prompt_assistant_service()
         invalid = valid_v2_contract()
         invalid["entities"][0]["appearance"] = ["银色长发", "胸部完全可见"]
+        invalid["content_safety"]["age_assessment"] = "age_unverifiable"
+        invalid["content_safety"]["signals"].append("age_ambiguous")
 
         class FakeAdapter:
             prompts = []
@@ -4537,14 +4860,17 @@ class VisualContractTests(unittest.TestCase):
         self.assertEqual(len(FakeAdapter.prompts), 1)
         self.assertEqual(FakeAdapter.instances[0].unload_calls, 1)
         self.assertEqual(qwen2_calls, [])
-        self.assertFalse(result["analysisPartial"])
-        self.assertTrue(result["analysisDegraded"])
+        self.assertTrue(result["analysisPartial"])
+        self.assertFalse(result["analysisDegraded"])
         self.assertTrue(result["qualityGateFailed"])
         self.assertFalse(result["qualityGateRetried"])
-        self.assertTrue(result["sensitivePromptBlocked"])
-        self.assertEqual(result["generationGate"], "blocked")
+        self.assertFalse(result["sensitivePromptBlocked"])
+        self.assertEqual(result["generationGate"], "adult_confirmation")
         self.assertFalse(result["richPromptFallback"])
-        self.assertEqual(result["generationRequirements"], "")
+        self.assertEqual(
+            result["generationRequirements"],
+            "REQ_SECRET_KEEP_COMPOSITION",
+        )
         self.assertEqual(result["rawOutput"], "")
         self.assertEqual(result["reverseFallbackReason"], "")
         self.assertFalse(result["retryAttempted"])
@@ -4558,16 +4884,17 @@ class VisualContractTests(unittest.TestCase):
             "检测到敏感内容，但部分可见描述需要脱敏",
         )
         self.assertEqual(result["contentSafety"], {
-            "level": "uncertain",
-            "body_exposure": "uncertain",
-            "interaction_category": "uncertain",
+            "level": "explicit",
+            "body_exposure": "full",
+            "interaction_category": "sexual",
             "age_assessment": "age_unverifiable",
             "visible_person_count": 1,
-            "signals": [],
+            "signals": ["nudity", "explicit_activity", "age_ambiguous"],
             "sensitive_visible_facts": [],
         })
         self.assertNotIn("REDACTION_RICH_FINAL", result["description"])
-        self.assertNotIn("REQ_SECRET_KEEP_COMPOSITION", result["description"])
+        self.assertIn("REQ_SECRET_KEEP_COMPOSITION", result["description"])
+        self.assertNotIn("REQ_SECRET_KEEP_COMPOSITION", result["visualPrompt"])
         for private_fact in (
             "胸部完全可见",
             invalid["entities"][0]["action"],
@@ -4578,7 +4905,7 @@ class VisualContractTests(unittest.TestCase):
         self.assertEqual(result["rawOutput"], "")
         self.assertEqual(result["contentSafety"]["sensitive_visible_facts"], [])
 
-    def test_service_v2_interaction_semantic_failure_stays_degraded_blocked(self):
+    def test_service_v2_interaction_partial_preserves_candidate_and_public_partition(self):
         service = load_prompt_assistant_service()
         invalid = valid_v2_contract()
         invalid["content_safety"]["sensitive_visible_facts"] = [
@@ -4630,19 +4957,20 @@ class VisualContractTests(unittest.TestCase):
 
         self.assertEqual(len(FakeAdapter.prompts), 1)
         self.assertEqual(qwen2_calls, [])
-        self.assertFalse(result["analysisPartial"])
-        self.assertTrue(result["analysisDegraded"])
+        self.assertTrue(result["analysisPartial"])
+        self.assertFalse(result["analysisDegraded"])
         self.assertTrue(result["qualityGateFailed"])
         self.assertFalse(result["qualityGateRetried"])
-        self.assertTrue(result["sensitivePromptBlocked"])
-        self.assertEqual(result["generationGate"], "blocked")
+        self.assertFalse(result["sensitivePromptBlocked"])
+        self.assertEqual(result["generationGate"], "adult_confirmation")
         self.assertFalse(result["richPromptFallback"])
         self.assertEqual(
             result["generationRequirements"],
-            "",
+            "REQ_SECRET_KEEP_COMPOSITION",
         )
         self.assertEqual(result["rawOutput"], "")
-        self.assertEqual(result["contentWarnings"], [])
+        self.assertIn("nudity", result["contentWarnings"])
+        self.assertIn("explicit_activity", result["contentWarnings"])
         self.assertEqual(result["reverseFallbackReason"], "")
         self.assertEqual(
             result["contractFailureCode"],
@@ -4668,17 +4996,18 @@ class VisualContractTests(unittest.TestCase):
             "检测到敏感互动迹象，但详细互动证据未通过校验",
         )
         self.assertEqual(result["contentSafety"], {
-            "level": "uncertain",
-            "body_exposure": "uncertain",
-            "interaction_category": "uncertain",
-            "age_assessment": "age_unverifiable",
+            "level": "explicit",
+            "body_exposure": "full",
+            "interaction_category": "sexual",
+            "age_assessment": "adult_appearing",
             "visible_person_count": 1,
-            "signals": [],
+            "signals": ["nudity", "explicit_activity"],
             "sensitive_visible_facts": [],
         })
         self.assertNotIn("INTERACTION_RICH_FINAL", result["description"])
-        self.assertNotIn("REQ_SECRET_KEEP_COMPOSITION", result["description"])
-        self.assertNotIn(
+        self.assertIn("REQ_SECRET_KEEP_COMPOSITION", result["description"])
+        self.assertNotIn("REQ_SECRET_KEEP_COMPOSITION", result["visualPrompt"])
+        self.assertIn(
             invalid["content_safety"]["sensitive_visible_facts"][0],
             result["description"],
         )
@@ -4735,9 +5064,15 @@ class VisualContractTests(unittest.TestCase):
 
         self.assertEqual(len(FakeAdapter.calls), 1)
         self.assertEqual(FakeAdapter.unload_calls, 1)
-        self.assertTrue(result["analysisDegraded"])
-        self.assertEqual(result["generationGate"], "blocked")
-        self.assertNotIn("REQ_MUST_NOT_BE_APPLIED", result["description"])
+        self.assertTrue(result["analysisPartial"])
+        self.assertFalse(result["analysisDegraded"])
+        self.assertEqual(result["generationGate"], "adult_confirmation")
+        self.assertEqual(
+            result["generationRequirements"],
+            "REQ_MUST_NOT_BE_APPLIED",
+        )
+        self.assertIn("REQ_MUST_NOT_BE_APPLIED", result["description"])
+        self.assertNotIn("REQ_MUST_NOT_BE_APPLIED", result["visualPrompt"])
         self.assertNotIn("内容太短", result["description"])
 
     def test_service_v2_recoverable_failure_rich_stage_respects_safety_matrix(self):
@@ -4869,14 +5204,15 @@ class VisualContractTests(unittest.TestCase):
                     adapter = FakeAdapter.instances[0]
                     self.assertEqual(len(adapter.calls), 1)
                     self.assertEqual(adapter.unload_calls, 1)
-                    self.assertFalse(result["analysisPartial"])
-                    self.assertTrue(result["analysisDegraded"])
+                    allowed = case["expected_gate"] == "adult_confirmation"
+                    self.assertEqual(result["analysisPartial"], allowed)
+                    self.assertEqual(result["analysisDegraded"], not allowed)
                     self.assertTrue(result["qualityGateFailed"])
                     self.assertFalse(result["qualityGateRetried"])
                     self.assertFalse(result["retryAttempted"])
                     self.assertEqual(result["retryCount"], 0)
                     self.assertEqual(result["contractFailureCode"], case["failure_code"])
-                    self.assertEqual(result["generationGate"], "blocked")
+                    self.assertEqual(result["generationGate"], case["expected_gate"])
                     self.assertEqual(result["rawOutput"], "")
                     self.assertEqual(
                         result["contentSafety"]["sensitive_visible_facts"],
@@ -4886,9 +5222,26 @@ class VisualContractTests(unittest.TestCase):
                         contract["content_safety"]["sensitive_visible_facts"][0],
                         result["visualPrompt"],
                     )
-                    self.assertTrue(result["sensitivePromptBlocked"])
-                    self.assertNotIn("REQ_MATRIX_KEEP_COMPOSITION", result["description"])
-                    self.assertEqual(result["generationRequirements"], "")
+                    self.assertEqual(result["sensitivePromptBlocked"], not allowed)
+                    if allowed:
+                        self.assertIn(
+                            "REQ_MATRIX_KEEP_COMPOSITION",
+                            result["description"],
+                        )
+                        self.assertNotIn(
+                            "REQ_MATRIX_KEEP_COMPOSITION",
+                            result["visualPrompt"],
+                        )
+                        self.assertEqual(
+                            result["generationRequirements"],
+                            "REQ_MATRIX_KEEP_COMPOSITION",
+                        )
+                    else:
+                        self.assertNotIn(
+                            "REQ_MATRIX_KEEP_COMPOSITION",
+                            result["description"],
+                        )
+                        self.assertEqual(result["generationRequirements"], "")
                     self.assertNotIn("MATRIX_RICH_", result["description"])
                     self.assertFalse(result["richPromptFallback"])
                     self.assertEqual(result["reverseFallbackReason"], "")
@@ -6831,8 +7184,8 @@ class VisualContractTests(unittest.TestCase):
             "contractFailureCode": "visual-contract-semantic-invalid",
             "errorCode": "visual-contract-semantic-invalid",
             "providerFailureCode": "visual-contract-semantic-invalid",
-            "retryAttempted": True,
-            "retryCount": 1,
+            "retryAttempted": False,
+            "retryCount": 0,
             "legacyFallbackSuppressed": True,
             "requestedVisualSchema": "nf.visual.v2",
             "retryable": True,
@@ -6891,7 +7244,7 @@ class VisualContractTests(unittest.TestCase):
             "generationGate": "adult_confirmation",
             "rawOutput": "MODEL_RAW_MARKER",
             "qualityGateFailed": True,
-            "qualityGateRetried": True,
+            "qualityGateRetried": False,
             "visualSchema": "nf.visual.v2",
             "reverseProvider": "qwen3_vl_abliterated_nf4",
             "reverseModelPath": "fake",
@@ -6903,8 +7256,8 @@ class VisualContractTests(unittest.TestCase):
             "contractFailureCode": "visual-contract-interaction-evidence-incomplete",
             "errorCode": "visual-contract-interaction-evidence-incomplete",
             "providerFailureCode": "visual-contract-interaction-evidence-incomplete",
-            "retryAttempted": True,
-            "retryCount": 1,
+            "retryAttempted": False,
+            "retryCount": 0,
             "legacyFallbackSuppressed": True,
             "requestedVisualSchema": "nf.visual.v2",
             "retryable": True,
@@ -6925,6 +7278,9 @@ class VisualContractTests(unittest.TestCase):
         self.assertTrue(result["analysisPartial"])
         self.assertFalse(result["analysisDegraded"])
         self.assertTrue(result["qualityGateFailed"])
+        self.assertFalse(result["qualityGateRetried"])
+        self.assertFalse(result["retryAttempted"])
+        self.assertEqual(result["retryCount"], 0)
         self.assertFalse(result["sensitivePromptBlocked"])
         self.assertEqual(result["generationGate"], "adult_confirmation")
         self.assertEqual(result["prompt"], candidate)
@@ -6941,6 +7297,7 @@ class VisualContractTests(unittest.TestCase):
         self.assertEqual(result["contentSafety"]["interaction_category"], "sexual")
         self.assertEqual(result["contentSafety"]["signals"], ["nudity", "explicit_activity"])
         self.assertEqual(result["contentSafety"]["sensitive_visible_facts"], [])
+        self.assertEqual(result["rawOutput"], "")
         combined = json.dumps(result, ensure_ascii=False)
         self.assertNotIn("MODEL_PRIVATE_FACT", combined)
         self.assertNotIn("MODEL_RAW_MARKER", combined)
@@ -6981,7 +7338,7 @@ class VisualContractTests(unittest.TestCase):
             "generationGate": "adult_confirmation",
             "rawOutput": "MODEL_RAW_MARKER",
             "qualityGateFailed": True,
-            "qualityGateRetried": True,
+            "qualityGateRetried": False,
             "visualSchema": "nf.visual.v2",
             "reverseProvider": "qwen3_vl_abliterated_nf4",
             "reverseModelPath": "fake",
@@ -6993,8 +7350,8 @@ class VisualContractTests(unittest.TestCase):
             "contractFailureCode": "visual-contract-projection-redaction-required",
             "errorCode": "visual-contract-projection-redaction-required",
             "providerFailureCode": "visual-contract-projection-redaction-required",
-            "retryAttempted": True,
-            "retryCount": 1,
+            "retryAttempted": False,
+            "retryCount": 0,
             "legacyFallbackSuppressed": True,
             "requestedVisualSchema": "nf.visual.v2",
             "retryable": True,
@@ -7012,15 +7369,26 @@ class VisualContractTests(unittest.TestCase):
             service.data_url_to_tensor = original_decoder
             service.build_targeted_negative_prompt = original_negative
 
+        self.assertTrue(result["analysisPartial"])
+        self.assertFalse(result["analysisDegraded"])
+        self.assertTrue(result["qualityGateFailed"])
+        self.assertFalse(result["qualityGateRetried"])
+        self.assertFalse(result["retryAttempted"])
+        self.assertEqual(result["retryCount"], 0)
         self.assertEqual(result["generationGate"], "adult_confirmation")
         self.assertFalse(result["sensitivePromptBlocked"])
         self.assertEqual(result["prompt"], candidate)
+        self.assertEqual(
+            result["generationRequirements"],
+            "REQ_SECRET_KEEP_COMPOSITION",
+        )
         self.assertIn("PRIVATE_ACTION", result["prompt"])
         self.assertIn("PRIVATE_RELATION", result["prompt"])
         self.assertIn("PRIVATE_SENSITIVE_FACT", result["prompt"])
         self.assertNotIn("PRIVATE_ACTION", result["visualPrompt"])
         self.assertNotIn("PRIVATE_RELATION", result["visualPrompt"])
         self.assertNotIn("PRIVATE_SENSITIVE_FACT", result["visualPrompt"])
+        self.assertNotIn("REQ_SECRET_KEEP_COMPOSITION", result["visualPrompt"])
         self.assertEqual(result["contentSafety"]["sensitive_visible_facts"], [])
         self.assertEqual(result["rawOutput"], "")
         self.assertNotIn("MODEL_PRIVATE_FACT", json.dumps(result, ensure_ascii=False))
