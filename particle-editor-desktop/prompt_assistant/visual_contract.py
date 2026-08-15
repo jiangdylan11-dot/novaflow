@@ -156,6 +156,65 @@ YOUNG_AGE_PATTERN = re.compile(
     r"|(?<![a-z0-9_])(?:loli|shota|child(?:ren)?|teens?|teenagers?|girls?|boys?|minors?|underage)(?![a-z0-9_])",
     flags=re.I,
 )
+LOCAL_SINGLE_IMAGE_AMBIGUOUS_AGE_NOUN_PATTERN = re.compile(
+    r"(?:少女|少年|女孩|男孩|年轻(?:女性|男性|女人|男人|人物|角色)?)"
+    r"|(?<![a-z0-9_])(?:(?:young|youthful)\s+(?:wom[ae]n|m[ae]n|persons?|characters?|figures?)|"
+    r"girls?|boys?)(?![a-z0-9_])",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_CORE_PATTERN = (
+    r"(?:"
+    r"(?:(?:AI|3D|动漫|卡通|二次元|复古|塑料|木质|金属|毛绒|布艺|可爱|"
+    r"粉色|红色|蓝色|绿色|黄色|白色|黑色|大型|小型))*"
+    r"(?:小女孩|小男孩|女孩|男孩|少女|少年|儿童|女童|男童|幼女|幼童|婴儿)"
+    r"(?:(?:造型|形象|图案|印花|雕刻|款式|主题)(?:的)?)?"
+    r"(?:(?:毛绒|布艺|塑料|木质|金属))?"
+    r"(?:玩偶|娃娃|手办|雕像|海报|标牌|包装|玩具|校徽|杂志|书籍|封面|模型)"
+    r"|game\s+boy"
+    r"|(?:(?:anime|cartoon|vintage|plastic|wooden|metal|plush|cloth|cute|pink|red|"
+    r"blue|green|yellow|white|black|large|small)\s+)*"
+    r"(?:(?:baby|newborn|little|young|teen|teenage|teenaged|school[-\s]?age[dr]?)\s+)?"
+    r"(?:(?:girls?|boys?|child(?:ren)?|characters?)\s+)?"
+    r"(?:(?:design|depiction|print|pattern|carving|themed?)\s+)?"
+    r"(?:(?:plush|cloth|plastic|wooden|metal)\s+)?"
+    r"(?:dolls?|figurines?|statues?|posters?|signs?|packaging|toys?|badges?|"
+    r"magazines?|books?|covers?)"
+    r")"
+)
+LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_NAME_PATTERN = re.compile(
+    rf"^{LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_CORE_PATTERN}$",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_REFERENCE_PATTERN = re.compile(
+    rf"(?<![a-z0-9_]){LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_CORE_PATTERN}(?![a-z0-9_])",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_NON_AGE_COMPOUND_PATTERN = re.compile(
+    r"(?:婴儿蓝)"
+    r"|(?<![a-z0-9_])baby[-\s]+(?:blue|pink|oil)(?![a-z0-9_])"
+    r"|(?<![a-z0-9_])minor[-\s]+(?:characters?|scars?|scratches?|details?|changes?|issues?|damage)(?![a-z0-9_])",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_AGE_MODIFIED_NON_PERSON_PATTERN = re.compile(
+    r"(?<![a-z0-9_])(?:[0-9]{1,3}(?:[.,][0-9]+)?|"
+    r"zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|"
+    r"forty|fifty|sixty|seventy|eighty|ninety)"
+    r"[-\s]+(?:years?|yrs?)[-\s]+old[-\s]+"
+    r"(?:(?:whiskey|wine|glass|plastic|wooden|metal|stone|brick|office|apartment|historic)"
+    r"[-\s]+)?(?:bottles?|buildings?|houses?|cars?|vehicles?|trees?|books?|posters?|"
+    r"dolls?|toys?|products?|objects?|items?|artifacts?)(?![a-z0-9_])"
+    r"|(?<![0-9])(?:[0-9]{1,3}|[零〇一二三四五六七八九十百两]{1,6})\s*(?:周岁|岁)"
+    r"(?:的)?(?:(?:威士忌|葡萄酒|玻璃|塑料|木质|金属|石质|砖石|办公|公寓|历史)的?)?"
+    r"(?:瓶子?|建筑|房屋|汽车|车辆|树木?|书籍?|海报|玩偶|玩具|产品|物体|物品|文物)",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_LIVING_PERSON_EVIDENCE_PATTERN = re.compile(
+    r"(?:真人|真实人类|活人|活体|会呼吸|人体皮肤|人物皮肤|而非玩具|不是玩具)"
+    r"|(?<![a-z0-9_])(?:real\s+human|living\s+person|breathing\s+(?:person|body)|"
+    r"human\s+skin|not\s+a\s+(?:doll|toy))(?![a-z0-9_])",
+    flags=re.I,
+)
 SAFE_SENSITIVE_PATTERN = re.compile(
     r"(?:裸体|裸露|全裸|半裸|一丝不挂|性行为|性交|交合|性爱|性活动|口交|肛交|自慰|手淫|"
     r"生殖器|性器官|阴茎|阳具|龟头|阴道|外阴|阴唇|阴蒂|阴部|肛门|乳头|乳房|裸身|赤裸身体|精液|性体液|私处|下体|色情|情色|成人内容|"
@@ -400,6 +459,126 @@ REQUIREMENTS_EXPLICIT_MINOR_PATTERN = re.compile(
     r"(?:1[0-7]|[0-9])[-\s]*years?[-\s]*old|(?:1[0-7]|[0-9])\s*y\s*/?\s*o|aged?\s*(?:1[0-7]|[0-9]))(?![a-z0-9_])",
     flags=re.I,
 )
+LOCAL_SINGLE_IMAGE_EXPLICIT_MINOR_EVIDENCE_PATTERN = re.compile(
+    r"(?:未成年人?|青少年|儿童|孩童|孩子|小朋友|小孩|幼女|幼童|幼儿|婴幼儿?|婴儿|婴孩|新生儿|学童|萝莉|正太)"
+    r"|(?<![娇纤矮])小\s*(?:女孩|男孩)"
+    r"|(?:女童|男童|"
+    r"(?:幼年|年幼|幼小|年少)(?:的)?(?:女孩|男孩|少女|少年|人物|角色|女性|男性)|"
+    r"小学(?:生|学生|女孩|男孩|女生|男生)|初中(?:生|学生|女孩|男孩|女生|男生)|"
+    r"中学(?:生|学生|女孩|男孩|女生|男生)|高中(?:生|学生|女孩|男孩|女生|男生)|"
+    r"幼态|儿童比例|童颜|娃娃脸|青春期|稚嫩(?:面容|脸庞|外貌|五官)|未发育|"
+    r"(?:十几|十来|十多)\s*(?:周岁|岁)|(?:未满|不满|低于|不到)\s*(?:18|十八)\s*(?:周岁|岁)?|"
+    r"(?:18|十八)\s*(?:周岁|岁)\s*(?:及)?(?:以下|以内))"
+    r"|(?:学龄前|未入学)"
+    r"|(?<![a-z0-9_])(?:underage|minor(?:s|[-\s]+(?:person|child|girl|boy))|"
+    r"(?:a|the)[-\s]+minor|"
+    r"child(?:ren)?|loli|shota|prepubescent|juvenile|"
+    r"adolescents?|preteens?|preschoolers?|"
+    r"toddlers?|infants?|bab(?:y|ies)|newborns?|neonates?|kids?|"
+    r"school[-\s]?(?:children|child|girls?|boys?)|school[-\s]+aged?|"
+    r"(?:elementary|middle|high)[-\s]+school[-\s]+(?:students?|girls?|boys?)|"
+    r"child[-\s]?like|teen(?:age[dr]?)?|"
+    r"(?:under|below|less[-\s]+than)[-\s]*(?:the[-\s]+age[-\s]+of[-\s]+)?(?:18s?|eighteens?)|"
+    r"(?:not[-\s]+yet|almost)[-\s]+eighteen|"
+    r"young[-\s]+looking(?:[-\s]+(?:girls?|boys?|children?|persons?|characters?))?|"
+    r"(?:young|little|teen(?:age[dr]?)?|school[-\s]?)\s*(?:girls?|boys?|children?|kids?)"
+    r")(?![a-z0-9_])",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_CHINESE_AGE_PATTERN = re.compile(
+    r"(?<![零〇一二三四五六七八九十百千万两])"
+    r"([零〇一二三四五六七八九十百两]{1,6})(?:又半)?\s*(?:周岁|岁)"
+)
+LOCAL_SINGLE_IMAGE_CHINESE_AGE_RANGE_PATTERN = re.compile(
+    r"(?<![零〇一二三四五六七八九十百千万两])"
+    r"([零〇一二三四五六七八九十百两]{1,6})\s*(?:至|到|或|[/、~～—–-])\s*"
+    r"([零〇一二三四五六七八九十百两]{1,6})\s*(?:周岁|岁)"
+)
+LOCAL_SINGLE_IMAGE_CHINESE_AMBIGUOUS_MINOR_RANGE_PATTERN = re.compile(
+    r"(?<![零〇一二三四五六七八九十百千万两])十[一二三四五六七][一二三四五六七八九]\s*岁"
+)
+LOCAL_SINGLE_IMAGE_AGE_UNIT_PATTERN = (
+    r"(?:周岁|岁|(?:yrs?|years?)(?:[-\s]*olds?)?|"
+    r"y\.?\s*/?\s*o\.?|years?[-\s]+of[-\s]+age)"
+)
+LOCAL_SINGLE_IMAGE_ARABIC_AGE_VALUE_PATTERN = (
+    r"[0-9]{1,3}(?:[.,][0-9]+|½|1⁄2|\s+(?:1/2|1⁄2))?"
+)
+LOCAL_SINGLE_IMAGE_ARABIC_AGE_RANGE_PATTERN = re.compile(
+    rf"(?<![0-9.,/⁄])(?:between[-\s]+)?({LOCAL_SINGLE_IMAGE_ARABIC_AGE_VALUE_PATTERN})\s*"
+    rf"(?:to|through|and|或|至|到|[/~～—–-])\s*({LOCAL_SINGLE_IMAGE_ARABIC_AGE_VALUE_PATTERN})[-\s]*"
+    rf"{LOCAL_SINGLE_IMAGE_AGE_UNIT_PATTERN}(?![a-z0-9_])",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_ARABIC_AGE_PATTERN = re.compile(
+    rf"(?<![0-9.,/⁄])({LOCAL_SINGLE_IMAGE_ARABIC_AGE_VALUE_PATTERN})"
+    rf"(?:(?:又半)|[-\s]+and[-\s]+(?:(?:a|one)[-\s]+half|1\s*/\s*2))?[-\s]*"
+    rf"{LOCAL_SINGLE_IMAGE_AGE_UNIT_PATTERN}(?![a-z0-9_])",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_ARABIC_AGE_LABELED_RANGE_PATTERN = re.compile(
+    rf"(?<![a-z0-9_])(?:ages?|age[-\s]+range|aged)[-\s]*[:=]?[-\s]*"
+    rf"(?:between[-\s]+)?({LOCAL_SINGLE_IMAGE_ARABIC_AGE_VALUE_PATTERN})\s*"
+    rf"(?:to|through|and|or|[/~—–-])\s*({LOCAL_SINGLE_IMAGE_ARABIC_AGE_VALUE_PATTERN})"
+    rf"(?:[-\s]*{LOCAL_SINGLE_IMAGE_AGE_UNIT_PATTERN})?(?![a-z0-9_])",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_ARABIC_AGE_LABEL_PATTERN = re.compile(
+    r"(?<![a-z0-9_])(?:age|aged)[-\s]*[:=]?[-\s]*"
+    rf"({LOCAL_SINGLE_IMAGE_ARABIC_AGE_VALUE_PATTERN})(?![a-z0-9_])",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_ENGLISH_NUMBER_PATTERN = (
+    r"(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|"
+    r"forty|fifty|sixty|seventy|eighty|ninety|hundred)"
+    r"(?:[-\s]+(?:and[-\s]+)?(?:zero|one|two|three|four|five|six|seven|eight|nine|"
+    r"ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|"
+    r"twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)){0,8}"
+)
+LOCAL_SINGLE_IMAGE_ENGLISH_SIMPLE_NUMBER_PATTERN = (
+    r"(?:zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|"
+    r"thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|"
+    r"(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)"
+    r"(?:[-\s]+(?:one|two|three|four|five|six|seven|eight|nine))?)"
+)
+LOCAL_SINGLE_IMAGE_ENGLISH_AGE_RANGE_PATTERN = re.compile(
+    rf"(?<![-a-z0-9_])(?P<start>{LOCAL_SINGLE_IMAGE_ENGLISH_NUMBER_PATTERN}?)"
+    rf"[-\s]+(?:to|through|[-~—–])[-\s]+(?P<end>{LOCAL_SINGLE_IMAGE_ENGLISH_NUMBER_PATTERN})"
+    r"[-\s]+(?:years?|yrs?)[-\s]+old(?![a-z0-9_])",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_ENGLISH_AGE_BETWEEN_PATTERN = re.compile(
+    rf"(?<![-a-z0-9_])between[-\s]+(?P<start>{LOCAL_SINGLE_IMAGE_ENGLISH_NUMBER_PATTERN}?)"
+    rf"[-\s]+and[-\s]+(?P<end>{LOCAL_SINGLE_IMAGE_ENGLISH_NUMBER_PATTERN})"
+    r"[-\s]+(?:years?|yrs?)[-\s]+old(?![a-z0-9_])",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_ENGLISH_AGE_AND_RANGE_PATTERN = re.compile(
+    rf"(?<![-a-z0-9_])(?P<start>{LOCAL_SINGLE_IMAGE_ENGLISH_SIMPLE_NUMBER_PATTERN})"
+    rf"[-\s]*(?:and|or|/)[-\s]*(?P<end>{LOCAL_SINGLE_IMAGE_ENGLISH_SIMPLE_NUMBER_PATTERN})"
+    r"[-\s]+(?:years?|yrs?)[-\s]+olds?(?![a-z0-9_])",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_ENGLISH_AGE_LABELED_RANGE_PATTERN = re.compile(
+    rf"(?<![-a-z0-9_])(?:ages?|age[-\s]+range|aged)[-\s]*[:=]?[-\s]*"
+    rf"(?:between[-\s]+)?(?P<start>{LOCAL_SINGLE_IMAGE_ENGLISH_NUMBER_PATTERN}?)"
+    rf"[-\s]*(?:to|through|and|or|/|[-~—–])[-\s]*"
+    rf"(?P<end>{LOCAL_SINGLE_IMAGE_ENGLISH_NUMBER_PATTERN})"
+    r"(?:[-\s]+(?:years?|yrs?)[-\s]+olds?)?(?![a-z0-9_])",
+    flags=re.I,
+)
+LOCAL_SINGLE_IMAGE_ENGLISH_AGE_PATTERN = re.compile(
+    rf"(?<![-a-z0-9_])(?:(?P<before>{LOCAL_SINGLE_IMAGE_ENGLISH_NUMBER_PATTERN})"
+    r"(?:[-\s]+point[-\s]+(?:zero|one|two|three|four|five|six|seven|eight|nine))?"
+    r"(?:[-\s]+and[-\s]+(?:(?:a|one)[-\s]+half|1\s*/\s*2))?"
+    r"[-\s]+(?:years?|yrs?)[-\s]+old|"
+    rf"(?P<short>{LOCAL_SINGLE_IMAGE_ENGLISH_NUMBER_PATTERN})[-\s]+"
+    r"(?:y\.?\s*/?\s*o\.?|years?[-\s]+of[-\s]+age)|"
+    rf"(?:age|aged)[-\s]*[:=]?[-\s]*(?P<after>{LOCAL_SINGLE_IMAGE_ENGLISH_NUMBER_PATTERN}))"
+    r"(?![a-z0-9_])",
+    flags=re.I,
+)
 
 
 class VisualContractError(ValueError):
@@ -463,6 +642,411 @@ def _scan_text_values(value: Any) -> list[str]:
         for item in value.values():
             values.extend(_scan_text_values(item))
     return values
+
+
+def _local_single_image_asset_is_person_focused(contract: dict) -> bool:
+    asset = _normalize_scan_text(contract.get("asset_type"))
+    if not asset or LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_NAME_PATTERN.fullmatch(asset):
+        return False
+    return bool(
+        PERSON_ASSET_TYPE_PATTERN.fullmatch(asset)
+        or VISIBLE_PERSON_PATTERN.search(asset)
+        or ZERO_PERSON_GENDER_SUBJECT_PATTERN.search(asset)
+    )
+
+
+def _local_single_image_entity_is_trusted_non_person(entity: Any) -> bool:
+    if not isinstance(entity, dict) or entity.get("count") == "一名":
+        return False
+    name = _normalize_scan_text(entity.get("name"))
+    if not (
+        name
+        and LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_NAME_PATTERN.fullmatch(name)
+    ):
+        return False
+    if _normalize_scan_text(entity.get("pose")) or _normalize_scan_text(entity.get("action")):
+        return False
+    secondary_values = _scan_text_values([
+        entity.get("appearance"),
+        entity.get("materials"),
+        entity.get("colors"),
+    ])
+    for text in secondary_values:
+        if LOCAL_SINGLE_IMAGE_LIVING_PERSON_EVIDENCE_PATTERN.search(text):
+            return False
+        if _local_single_image_text_has_explicit_minor_evidence(text):
+            return False
+    return True
+
+
+def _local_single_image_trusted_non_person_names(contract: dict) -> list[str]:
+    names = [
+        _normalize_scan_text(entity.get("name"))
+        for entity in contract.get("entities") or []
+        if _local_single_image_entity_is_trusted_non_person(entity)
+    ]
+    return sorted({name for name in names if name}, key=len, reverse=True)
+
+
+def _local_single_image_text_has_person_age_context(text: str) -> bool:
+    normalized = _normalize_scan_text(text)
+    return bool(
+        normalized
+        and (
+            VISIBLE_PERSON_PATTERN.search(normalized)
+            or ZERO_PERSON_GENDER_SUBJECT_PATTERN.search(normalized)
+            or LOCAL_SINGLE_IMAGE_EXPLICIT_MINOR_EVIDENCE_PATTERN.search(normalized)
+            or LOCAL_SINGLE_IMAGE_LIVING_PERSON_EVIDENCE_PATTERN.search(normalized)
+        )
+    )
+
+
+def _neutralize_local_single_image_known_object_references(
+    value: Any,
+    object_names: list[str],
+) -> Any:
+    if isinstance(value, str):
+        normalized = _normalize_scan_text(value)
+        for name in object_names:
+            normalized = re.sub(re.escape(name), "物体", normalized, flags=re.I)
+        normalized = LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_REFERENCE_PATTERN.sub(
+            "物体",
+            normalized,
+        )
+        normalized = LOCAL_SINGLE_IMAGE_AGE_MODIFIED_NON_PERSON_PATTERN.sub(
+            "物体",
+            normalized,
+        )
+        normalized = LOCAL_SINGLE_IMAGE_NON_AGE_COMPOUND_PATTERN.sub(
+            "颜色",
+            normalized,
+        )
+        return normalized
+    if isinstance(value, list):
+        return [
+            _neutralize_local_single_image_known_object_references(item, object_names)
+            for item in value
+        ]
+    if isinstance(value, dict):
+        return {
+            key: _neutralize_local_single_image_known_object_references(item, object_names)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _local_single_image_age_evidence_values(contract: dict) -> list[str]:
+    values: list[str] = []
+    object_names = _local_single_image_trusted_non_person_names(contract)
+    asset = _neutralize_local_single_image_known_object_references(
+        contract.get("asset_type"),
+        object_names,
+    )
+    asset_text = _normalize_scan_text(asset)
+    asset_contract = {"asset_type": asset_text}
+    if (
+        asset_text
+        and not LOCAL_SINGLE_IMAGE_TRUSTED_NON_PERSON_NAME_PATTERN.fullmatch(asset_text)
+        and (
+            _local_single_image_asset_is_person_focused(asset_contract)
+            or _local_single_image_text_has_person_age_context(asset_text)
+        )
+    ):
+        values.append(asset_text)
+    for entity in contract.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        if _local_single_image_entity_is_trusted_non_person(entity):
+            continue
+        person_scope = entity.get("count") == "一名"
+        for key in ("name", "appearance", "pose", "action", "materials", "colors"):
+            normalized_values = _scan_text_values(
+                _neutralize_local_single_image_known_object_references(
+                    entity.get(key),
+                    object_names,
+                )
+            )
+            values.extend(
+                text
+                for text in normalized_values
+                if person_scope or _local_single_image_text_has_person_age_context(text)
+            )
+    relations = _neutralize_local_single_image_known_object_references(
+        contract.get("relations"),
+        object_names,
+    )
+    values.extend(
+        text
+        for text in _scan_text_values(relations)
+        if _local_single_image_text_has_person_age_context(text)
+    )
+    safety = contract.get("content_safety") or {}
+    facts = _neutralize_local_single_image_known_object_references(
+        safety.get("sensitive_visible_facts"),
+        object_names,
+    )
+    values.extend(_scan_text_values(facts))
+    scene_values = _neutralize_local_single_image_known_object_references(
+        contract.get("scene"),
+        object_names,
+    )
+    values.extend(
+        text
+        for text in _scan_text_values(scene_values)
+        if _local_single_image_text_has_person_age_context(text)
+    )
+    return values
+
+
+def _parse_local_single_image_chinese_age(value: str) -> int | None:
+    digits = {
+        "零": 0,
+        "〇": 0,
+        "一": 1,
+        "二": 2,
+        "两": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+    }
+    units = {"十": 10, "百": 100}
+    total = 0
+    number: int | None = None
+    for char in value:
+        if char in digits:
+            number = digits[char]
+            continue
+        unit = units.get(char)
+        if unit is None:
+            return None
+        total += (1 if number is None else number) * unit
+        number = None
+    return total + (0 if number is None else number)
+
+
+def _parse_local_single_image_english_age(value: str) -> int | None:
+    ones = {
+        "zero": 0,
+        "one": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+        "seven": 7,
+        "eight": 8,
+        "nine": 9,
+        "ten": 10,
+        "eleven": 11,
+        "twelve": 12,
+        "thirteen": 13,
+        "fourteen": 14,
+        "fifteen": 15,
+        "sixteen": 16,
+        "seventeen": 17,
+        "eighteen": 18,
+        "nineteen": 19,
+    }
+    tens = {
+        "twenty": 20,
+        "thirty": 30,
+        "forty": 40,
+        "fifty": 50,
+        "sixty": 60,
+        "seventy": 70,
+        "eighty": 80,
+        "ninety": 90,
+    }
+    total = 0
+    current = 0
+    for token in re.split(r"[-\s]+", value.lower().strip()):
+        if not token or token == "and":
+            continue
+        if token in ones:
+            current += ones[token]
+        elif token in tens:
+            current += tens[token]
+        elif token == "hundred":
+            current = max(1, current) * 100
+        else:
+            return None
+    total += current
+    return total
+
+
+def _parse_local_single_image_numeric_age(value: str) -> float | None:
+    normalized = _normalize_scan_text(value).replace(",", ".")
+    if normalized.endswith(("1⁄2", "1/2")):
+        normalized = f"{normalized[:-3].rstrip()}.5"
+    if normalized.endswith("½"):
+        normalized = f"{normalized[:-1]}.5"
+    try:
+        return float(normalized)
+    except (TypeError, ValueError):
+        return None
+
+
+def _local_single_image_text_has_explicit_minor_evidence(text: str) -> bool:
+    if LOCAL_SINGLE_IMAGE_EXPLICIT_MINOR_EVIDENCE_PATTERN.search(text):
+        return True
+    if LOCAL_SINGLE_IMAGE_CHINESE_AMBIGUOUS_MINOR_RANGE_PATTERN.search(text):
+        return True
+    for match in LOCAL_SINGLE_IMAGE_CHINESE_AGE_RANGE_PATTERN.finditer(text):
+        ages = (
+            _parse_local_single_image_chinese_age(match.group(1)),
+            _parse_local_single_image_chinese_age(match.group(2)),
+        )
+        if any(age is not None and age < 18 for age in ages):
+            return True
+    for match in LOCAL_SINGLE_IMAGE_CHINESE_AGE_PATTERN.finditer(text):
+        age = _parse_local_single_image_chinese_age(match.group(1))
+        if age is not None and age < 18:
+            return True
+    for match in LOCAL_SINGLE_IMAGE_ARABIC_AGE_RANGE_PATTERN.finditer(text):
+        if (
+            match.group(1) == "1"
+            and match.group(2) == "2"
+            and re.search(r"(?:[0-9]{1,3}|and)\s*$", text[:match.start()], flags=re.I)
+        ):
+            continue
+        ages = (
+            _parse_local_single_image_numeric_age(match.group(1)),
+            _parse_local_single_image_numeric_age(match.group(2)),
+        )
+        if any(age is not None and age < 18 for age in ages):
+            return True
+    for match in LOCAL_SINGLE_IMAGE_ARABIC_AGE_LABELED_RANGE_PATTERN.finditer(text):
+        ages = (
+            _parse_local_single_image_numeric_age(match.group(1)),
+            _parse_local_single_image_numeric_age(match.group(2)),
+        )
+        if any(age is not None and age < 18 for age in ages):
+            return True
+    for match in LOCAL_SINGLE_IMAGE_ARABIC_AGE_PATTERN.finditer(text):
+        age = _parse_local_single_image_numeric_age(match.group(1))
+        if age is not None and age < 18:
+            return True
+    for match in LOCAL_SINGLE_IMAGE_ARABIC_AGE_LABEL_PATTERN.finditer(text):
+        age = _parse_local_single_image_numeric_age(match.group(1))
+        if age is not None and age < 18:
+            return True
+    for pattern in (
+        LOCAL_SINGLE_IMAGE_ENGLISH_AGE_RANGE_PATTERN,
+        LOCAL_SINGLE_IMAGE_ENGLISH_AGE_BETWEEN_PATTERN,
+        LOCAL_SINGLE_IMAGE_ENGLISH_AGE_AND_RANGE_PATTERN,
+        LOCAL_SINGLE_IMAGE_ENGLISH_AGE_LABELED_RANGE_PATTERN,
+    ):
+        for match in pattern.finditer(text):
+            ages = (
+                _parse_local_single_image_english_age(match.group("start")),
+                _parse_local_single_image_english_age(match.group("end")),
+            )
+            if any(age is not None and age < 18 for age in ages):
+                return True
+    for match in LOCAL_SINGLE_IMAGE_ENGLISH_AGE_PATTERN.finditer(text):
+        value = match.group("before") or match.group("short") or match.group("after")
+        age = _parse_local_single_image_english_age(value)
+        if age is not None and age < 18:
+            return True
+    return False
+
+
+def _local_single_image_contract_has_explicit_minor_evidence(contract: dict) -> bool:
+    safety = contract.get("content_safety") or {}
+    if safety.get("age_assessment") == "young_or_minor_indicators":
+        return True
+    return any(
+        _local_single_image_text_has_explicit_minor_evidence(text)
+        for text in _local_single_image_age_evidence_values(contract)
+    )
+
+
+def _local_single_image_contract_has_ambiguous_age_noun(contract: dict) -> bool:
+    return any(
+        LOCAL_SINGLE_IMAGE_AMBIGUOUS_AGE_NOUN_PATTERN.search(text)
+        for text in _local_single_image_age_evidence_values(contract)
+    )
+
+
+def _local_single_image_contract_has_mislabeled_living_person(contract: dict) -> bool:
+    for entity in contract.get("entities") or []:
+        if not isinstance(entity, dict) or entity.get("count") == "一名":
+            continue
+        if any(
+            LOCAL_SINGLE_IMAGE_LIVING_PERSON_EVIDENCE_PATTERN.search(text)
+            for text in _scan_text_values(entity)
+        ):
+            return True
+    return False
+
+
+def _neutralize_local_single_image_ambiguous_age_nouns(value: Any) -> Any:
+    if isinstance(value, str):
+        return LOCAL_SINGLE_IMAGE_AMBIGUOUS_AGE_NOUN_PATTERN.sub("人物", value)
+    if isinstance(value, list):
+        return [
+            _neutralize_local_single_image_ambiguous_age_nouns(item)
+            for item in value
+        ]
+    if isinstance(value, dict):
+        return {
+            key: _neutralize_local_single_image_ambiguous_age_nouns(item)
+            for key, item in value.items()
+        }
+    return value
+
+
+def _neutralize_local_single_image_non_age_contexts(contract: dict) -> dict:
+    candidate = json.loads(json.dumps(contract, ensure_ascii=False))
+    object_names = _local_single_image_trusted_non_person_names(contract)
+
+    def neutralize(value: Any) -> Any:
+        if isinstance(value, str):
+            return RICH_SENSITIVE_YOUNG_PATTERN.sub("人物", value)
+        if isinstance(value, list):
+            return [neutralize(item) for item in value]
+        if isinstance(value, dict):
+            return {key: neutralize(item) for key, item in value.items()}
+        return value
+
+    candidate["asset_type"] = _neutralize_local_single_image_known_object_references(
+        candidate.get("asset_type"),
+        object_names,
+    )
+    if not _local_single_image_asset_is_person_focused(candidate):
+        candidate["asset_type"] = neutralize(candidate.get("asset_type"))
+    for entity in candidate.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        for key in ("name", "appearance", "pose", "action", "materials", "colors"):
+            entity[key] = _neutralize_local_single_image_known_object_references(
+                entity.get(key),
+                object_names,
+            )
+        if _local_single_image_entity_is_trusted_non_person(entity):
+            for key in ("name", "appearance", "pose", "action", "materials", "colors"):
+                entity[key] = neutralize(entity.get(key))
+        else:
+            for key in ("materials", "colors"):
+                entity[key] = neutralize(entity.get(key))
+    candidate["relations"] = _neutralize_local_single_image_known_object_references(
+        candidate.get("relations"),
+        object_names,
+    )
+    candidate_safety = candidate.get("content_safety") or {}
+    candidate_safety["sensitive_visible_facts"] = (
+        _neutralize_local_single_image_known_object_references(
+            candidate_safety.get("sensitive_visible_facts"),
+            object_names,
+        )
+    )
+    for key in ("scene", "look", "camera_cues", "ocr", "uncertain"):
+        candidate[key] = neutralize(candidate.get(key))
+    return candidate
 
 
 def _safe_projection_pose(value: Any) -> str:
@@ -1275,6 +1859,110 @@ def parse_local_compact_visual_contract(
         expected_schema=SCHEMA_VERSION_V2,
         validate_semantics=validate_semantics,
         allow_projection_redaction=allow_projection_redaction,
+    )
+
+
+def parse_local_single_image_compact_visual_contract(
+    raw_output: str,
+    *,
+    validate_semantics: bool = True,
+    allow_projection_redaction: bool = False,
+    allow_incomplete_participants: bool = False,
+) -> dict:
+    """Parse the strict Local single-image IR without treating weak age nouns as proof."""
+
+    structural = parse_local_compact_visual_contract(
+        raw_output,
+        validate_semantics=False,
+        allow_projection_redaction=allow_projection_redaction,
+        allow_legacy_read=False,
+        allow_young_wording_neutralization=False,
+        allow_incomplete_participants=allow_incomplete_participants,
+    )
+    if not validate_semantics:
+        return structural
+
+    # The compact parser intentionally bounds asset_type to 40 characters. Preserve
+    # the complete raw asset only long enough to prove that an age phrase belongs
+    # to a non-person object before that bound can cut the object head in half.
+    raw_asset_adjusted = False
+    raw_compact = _parse_json_object(raw_output, reject_duplicate_keys=True)
+    raw_asset = raw_compact.get("asset")
+    if isinstance(raw_asset, str):
+        complete_asset = re.sub(
+            r"\s+",
+            " ",
+            unicodedata.normalize("NFKC", raw_asset),
+        ).strip()
+        neutral_asset = LOCAL_SINGLE_IMAGE_AGE_MODIFIED_NON_PERSON_PATTERN.sub(
+            "物体",
+            complete_asset,
+        )
+        if neutral_asset != complete_asset:
+            if _local_single_image_text_has_explicit_minor_evidence(neutral_asset):
+                raise VisualContractError(
+                    "local_compact sensitive fields contain explicit minor evidence",
+                    code="visual-contract-semantic-invalid",
+                    semantic=True,
+                )
+            structural["asset_type"] = _clean_text(neutral_asset, 40)
+            raw_asset_adjusted = True
+
+    safety = structural.get("content_safety") or {}
+    sensitive_level = safety.get("level") in {"suggestive", "nudity", "explicit"}
+    visible_person_count = safety.get("visible_person_count")
+    age_assessment = safety.get("age_assessment")
+    if (
+        sensitive_level
+        and isinstance(visible_person_count, int)
+        and visible_person_count > 0
+        and age_assessment in SENSITIVE_CANDIDATE_AGE_ASSESSMENTS
+    ):
+        if _local_single_image_contract_has_explicit_minor_evidence(structural):
+            raise VisualContractError(
+                "local_compact sensitive fields contain explicit minor evidence",
+                code="visual-contract-semantic-invalid",
+                semantic=True,
+            )
+        if _local_single_image_contract_has_mislabeled_living_person(structural):
+            raise VisualContractError(
+                "local_compact object entity contains living person evidence",
+                code="visual-contract-semantic-invalid",
+                semantic=True,
+            )
+        neutralized = _neutralize_local_single_image_non_age_contexts(structural)
+        if _local_single_image_contract_has_ambiguous_age_noun(structural):
+            neutralized = _neutralize_local_single_image_ambiguous_age_nouns(neutralized)
+            neutralized_safety = neutralized["content_safety"]
+            neutralized_safety["age_assessment"] = "age_unverifiable"
+            signals = list(neutralized_safety.get("signals") or [])
+            if "age_ambiguous" not in signals:
+                signals.append("age_ambiguous")
+            neutralized_safety["signals"] = signals
+        if any(
+            RICH_SENSITIVE_YOUNG_PATTERN.search(text)
+            for text in _local_single_image_age_evidence_values(neutralized)
+        ):
+            raise VisualContractError(
+                "local_compact sensitive fields contain unresolved young-age evidence",
+                code="visual-contract-semantic-invalid",
+                semantic=True,
+            )
+        if neutralized != structural or raw_asset_adjusted:
+            return parse_visual_contract(
+                json.dumps(neutralized, ensure_ascii=False),
+                expected_schema=SCHEMA_VERSION_V2,
+                validate_semantics=True,
+                allow_projection_redaction=allow_projection_redaction,
+            )
+
+    return parse_local_compact_visual_contract(
+        raw_output,
+        validate_semantics=True,
+        allow_projection_redaction=allow_projection_redaction,
+        allow_legacy_read=False,
+        allow_young_wording_neutralization=False,
+        allow_incomplete_participants=allow_incomplete_participants,
     )
 
 

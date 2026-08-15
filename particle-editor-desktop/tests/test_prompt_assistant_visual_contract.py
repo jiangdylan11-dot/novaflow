@@ -30,6 +30,7 @@ from prompt_assistant.visual_contract import (
     local_static_compact_visual_contract_instruction,
     merge_local_salient_inventory,
     parse_local_compact_visual_contract,
+    parse_local_single_image_compact_visual_contract,
     parse_local_salient_inventory,
     parse_local_static_compact_visual_contract,
     parse_visual_contract,
@@ -925,6 +926,552 @@ class VisualContractTests(unittest.TestCase):
         self.assertNotRegex(mapped["entities"][0]["appearance"][0], YOUNG_AGE_PATTERN)
         details = compile_visual_prompt_details(mapped, "KEEP_REQ", nsfw=True)
         self.assertEqual(details["generationGate"], "adult_confirmation")
+
+    def test_local_single_image_neutralizes_only_ambiguous_age_nouns(self):
+        for ambiguous_name in (
+            "猫耳少女",
+            "动漫女孩",
+            "anime girl",
+            "小巧女孩",
+            "娇小女孩",
+            "大学女孩",
+            "college girl",
+            "年轻女性",
+            "young woman",
+        ):
+            with self.subTest(ambiguous_name=ambiguous_name):
+                compact = compact_v2_contract()
+                compact["asset"] = ambiguous_name
+                compact["entities"][0]["name"] = ambiguous_name
+                compact["age"] = "adult_appearing"
+                mapped = parse_local_single_image_compact_visual_contract(
+                    json.dumps(compact, ensure_ascii=False)
+                )
+                safety = mapped["content_safety"]
+                self.assertEqual(safety["age_assessment"], "age_unverifiable")
+                self.assertIn("age_ambiguous", safety["signals"])
+                self.assertNotIn(ambiguous_name, json.dumps(mapped, ensure_ascii=False))
+                details = compile_visual_prompt_details(mapped, "", nsfw=True)
+                self.assertEqual(details["generationGate"], "adult_confirmation")
+
+        for explicit_minor_text in (
+            "儿童",
+            "未成年人",
+            "17岁",
+            "loli",
+            "teen",
+            "幼态面容",
+            "young-looking girl",
+            "小女孩",
+            "小男孩",
+            "幼年少女",
+            "小学女孩",
+            "女童",
+            "男童",
+            "teenage girl",
+            "school girl",
+            "schoolgirl",
+            "high school student",
+            "little boy",
+            "年幼女孩",
+            "幼小少年",
+            "童颜人物",
+            "娃娃脸人物",
+            "青春期人物",
+            "十七岁角色",
+            "十七周岁角色",
+            "17周岁角色",
+            "十几岁角色",
+            "十来岁角色",
+            "17 yrs old character",
+            "seventeen-year-old girl",
+            "sixteen year old girl",
+            "sixteen yrs old girl",
+            "sixteen y/o girl",
+            "16 y.o. girl",
+            "sixteen y.o. girl",
+            "sixteen yo girl",
+            "sixteen years of age girl",
+            "17 and a half years old girl",
+            "seventeen and a half years old girl",
+            "17 and 1/2 years old girl",
+            "17 1/2 years old girl",
+            "seventeen and one half years old girl",
+            "seventeen point five years old girl",
+            "17,5岁女孩",
+            "17½岁女孩",
+            "17又半岁女孩",
+            "17-year-old girl",
+            "17-year old girl",
+            "17-yr-old girl",
+            "17-years-old girl",
+            "17–18-year-olds",
+            "17-18岁女孩",
+            "十六至十八岁女孩",
+            "16 to 18 years old girl",
+            "between sixteen and eighteen years old girl",
+            "seventeen and eighteen-year-old girls",
+            "seventeen/eighteen-year-old girls",
+            "seventeen or eighteen-year-old girls",
+            "seventeen or eighteen years old girls",
+            "十七或十八岁女孩",
+            "十七/十八岁女孩",
+            "十七、十八岁女孩",
+            "not yet eighteen girl",
+            "almost eighteen girl",
+            "age: sixteen girl",
+            "age=seventeen girl",
+            "aged=seventeen girl",
+            "age:seventeen girl",
+            "age 17 girl",
+            "age:17 girl",
+            "age=17 girl",
+            "aged 17 girl",
+            "under18 girl",
+            "under 18s",
+            "under-18s",
+            "ages 16-17",
+            "age range 16-17",
+            "aged between sixteen and eighteen",
+            "ages seventeen/eighteen",
+            "age range seventeen/eighteen",
+            "18岁以下女孩",
+            "18岁以内女孩",
+            "18周岁以下女孩",
+            "十八岁以下女孩",
+            "低于18岁女孩",
+            "不到18岁女孩",
+            "不到十八岁女孩",
+            "under eighteen girl",
+            "below eighteen girl",
+            "adolescent girl",
+            "preteen boy",
+            "baby girl",
+            "newborn girl",
+            "新生儿",
+            "婴孩",
+            "学童",
+            "孩子",
+            "小朋友",
+            "十七八岁女孩",
+            "17或18岁女孩",
+            "17/18岁女孩",
+            "学龄前女孩",
+            "未入学女孩",
+            "成年小女孩",
+        ):
+            with self.subTest(explicit_minor_text=explicit_minor_text):
+                compact = compact_v2_contract()
+                compact["entities"][0]["name"] = explicit_minor_text
+                compact["age"] = "age_unverifiable"
+                with self.assertRaisesRegex(
+                    VisualContractError,
+                    "explicit minor evidence",
+                ):
+                    parse_local_single_image_compact_visual_contract(
+                        json.dumps(compact, ensure_ascii=False)
+                    )
+
+        for explicit_minor_asset in (
+            "adult woman holding a 17-year-old whiskey bottle beside a 17-year-old girl",
+            "adult woman holding a 17-year-old whiskey bottle; background shows a 17-year-old girl",
+        ):
+            with self.subTest(explicit_minor_asset=explicit_minor_asset):
+                compact = compact_v2_contract()
+                compact["asset"] = explicit_minor_asset
+                with self.assertRaisesRegex(
+                    VisualContractError,
+                    "explicit minor evidence",
+                ):
+                    parse_local_single_image_compact_visual_contract(
+                        json.dumps(compact, ensure_ascii=False)
+                    )
+
+        non_person_age_words = compact_v2_contract()
+        non_person_age_words["asset"] = "成年女性与小女孩玩偶"
+        non_person_age_words["entities"][0]["appearance"].append("蓝色瞳孔 blue pupils")
+        non_person_age_words["entities"].extend([
+            {
+                "kind": "object",
+                "name": "小女孩玩偶",
+                "appearance": ["高中校徽"],
+                "pose": "",
+                "action": "",
+                "materials": ["塑料"],
+                "colors": ["蓝色"],
+            },
+            {
+                "kind": "object",
+                "name": "Game Boy",
+                "appearance": [],
+                "pose": "",
+                "action": "",
+                "materials": ["塑料"],
+                "colors": ["灰色"],
+            },
+            {
+                "kind": "object",
+                "name": "little girl doll",
+                "appearance": [],
+                "pose": "",
+                "action": "",
+                "materials": ["plastic"],
+                "colors": ["pink"],
+            },
+            *[
+                {
+                    "kind": "object",
+                    "name": name,
+                    "appearance": [],
+                    "pose": "",
+                    "action": "",
+                    "materials": ["毛绒"],
+                    "colors": ["粉色"],
+                }
+                for name in (
+                    "小女孩造型的玩偶",
+                    "粉色小女孩玩偶",
+                    "小女孩毛绒玩偶",
+                    "婴儿玩偶",
+                    "little girl plush doll",
+                    "pink little girl doll",
+                )
+            ],
+        ])
+        non_person_age_words["relations"].extend([
+            "成年女性手持小女孩玩偶",
+            "adult woman holds a little girl doll",
+        ])
+        non_person_age_words["scene"]["background"] = "高中校园背景"
+        non_person_age_words["look"]["style"] = ["teenage magazine style"]
+        mapped_non_person = parse_local_single_image_compact_visual_contract(
+            json.dumps(non_person_age_words, ensure_ascii=False)
+        )
+        self.assertEqual(
+            mapped_non_person["content_safety"]["age_assessment"],
+            "adult_appearing",
+        )
+        self.assertNotIn(
+            "age_ambiguous",
+            mapped_non_person["content_safety"]["signals"],
+        )
+        self.assertEqual(
+            compile_visual_prompt_details(mapped_non_person, "", nsfw=True)[
+                "generationGate"
+            ],
+            "adult_confirmation",
+        )
+
+        for adult_age_text in (
+            "十八岁成年女性",
+            "十九岁成年女性",
+            "二十岁成年女性",
+            "二十一岁成年女性",
+            "二十五岁成年女性",
+            "二十七岁成年女性",
+            "三十八岁成年女性",
+            "一百零七岁女性",
+            "38岁成年女性",
+            "18周岁成年女性",
+            "18.0岁成年女性",
+            "18.5岁成年女性",
+            "38.5岁成年女性",
+            "18,5岁成年女性",
+            "18½岁成年女性",
+            "eighteen-year-old woman",
+            "18 and a half years old woman",
+            "eighteen and a half years old woman",
+            "eighteen y.o. woman",
+            "18.5 years old woman",
+            "eighteen point five years old woman",
+            "18 and 1/2 years old woman",
+            "18 1/2 years old woman",
+            "18-year-old woman",
+            "18-yr-old woman",
+            "18-years-old woman",
+            "age=eighteen woman",
+            "age:18 woman",
+            "18-20岁成年女性",
+            "十八至二十岁成年女性",
+            "18\u201319-year-olds",
+            "between eighteen and twenty years old woman",
+            "twenty-one years old woman",
+            "twenty-five-year-old woman",
+            "twenty seven years old woman",
+            "thirty-eight-year-old woman",
+            "one hundred seven years old woman",
+            "one hundred and seven years old woman",
+        ):
+            with self.subTest(adult_age_text=adult_age_text):
+                compact = compact_v2_contract()
+                compact["entities"][0]["name"] = adult_age_text
+                mapped = parse_local_single_image_compact_visual_contract(
+                    json.dumps(compact, ensure_ascii=False)
+                )
+                self.assertEqual(
+                    mapped["content_safety"]["age_assessment"],
+                    "adult_appearing",
+                )
+                self.assertEqual(
+                    compile_visual_prompt_details(mapped, "", nsfw=True)[
+                        "generationGate"
+                    ],
+                    "adult_confirmation",
+                )
+
+        for school_relation in (
+            "成年女性站在小学门口",
+            "成年女性位于高中校园内",
+            "adult woman standing at high school",
+        ):
+            with self.subTest(school_relation=school_relation):
+                compact = compact_v2_contract()
+                compact["relations"].append(school_relation)
+                mapped = parse_local_single_image_compact_visual_contract(
+                    json.dumps(compact, ensure_ascii=False)
+                )
+                self.assertEqual(
+                    mapped["content_safety"]["age_assessment"],
+                    "adult_appearing",
+                )
+
+        for non_person_context, target in (
+            ("baby blue", "colors"),
+            ("baby pink", "colors"),
+            ("婴儿蓝", "colors"),
+            ("minor scratches on metal armor", "materials"),
+            ("baby oil sheen", "materials"),
+            ("minor scar on cheek", "appearance"),
+            ("minor character", "appearance"),
+            ("baby blue walls", "background"),
+            ("baby doll display on a shelf", "background"),
+            ("adult woman portrait with baby blue poster", "asset"),
+            ("adult woman holding a little girl doll", "asset"),
+        ):
+            with self.subTest(non_person_context=non_person_context, target=target):
+                compact = compact_v2_contract()
+                if target == "colors":
+                    compact["entities"][0]["colors"] = [non_person_context]
+                elif target == "materials":
+                    compact["entities"][0]["materials"] = [non_person_context]
+                elif target == "appearance":
+                    compact["entities"][0]["appearance"] = [non_person_context]
+                elif target == "asset":
+                    compact["asset"] = non_person_context
+                else:
+                    compact["scene"][target] = non_person_context
+                mapped = parse_local_single_image_compact_visual_contract(
+                    json.dumps(compact, ensure_ascii=False)
+                )
+                self.assertEqual(
+                    mapped["content_safety"]["age_assessment"],
+                    "adult_appearing",
+                )
+
+        for non_person_age_object, target in (
+            ("17-year-old whiskey bottle", "object"),
+            ("a 17-year-old building", "background"),
+            ("adult woman holding a 17-year-old whiskey bottle", "asset"),
+            ("adult woman holds a 17-year-old whiskey bottle", "background"),
+            ("adult woman stands beside a 17-year-old building", "background"),
+            ("teen magazine on a table", "background"),
+        ):
+            with self.subTest(non_person_age_object=non_person_age_object, target=target):
+                compact = compact_v2_contract()
+                if target == "object":
+                    compact["entities"].append({
+                        "kind": "object",
+                        "name": non_person_age_object,
+                        "appearance": [],
+                        "pose": "",
+                        "action": "",
+                        "materials": ["玻璃"],
+                        "colors": ["棕色"],
+                    })
+                elif target == "asset":
+                    compact["asset"] = non_person_age_object
+                else:
+                    compact["scene"][target] = non_person_age_object
+                mapped = parse_local_single_image_compact_visual_contract(
+                    json.dumps(compact, ensure_ascii=False)
+                )
+                self.assertEqual(
+                    mapped["content_safety"]["age_assessment"],
+                    "adult_appearing",
+                )
+                if target == "asset":
+                    self.assertIn("物体", mapped["asset_type"])
+                    self.assertNotIn("whiske", mapped["asset_type"])
+
+        for mislabeled_person in (
+            "小女孩",
+            "儿童",
+            "teenage girl",
+            "小女孩抱着玩偶",
+            "小女孩推着玩偶",
+            "小女孩看着海报",
+            "儿童与玩具",
+            "teenage girl holding a doll",
+            "little girl looking at a poster",
+            "little girl beside a poster",
+            "baby girl pushing a toy",
+            "newborn model",
+            "teenage model",
+            "school-aged model",
+            "little girl model",
+            "baby figure",
+            "teenage figure",
+        ):
+            with self.subTest(mislabeled_person=mislabeled_person):
+                compact = compact_v2_contract()
+                compact["entities"].append({
+                    "kind": "object",
+                    "name": mislabeled_person,
+                    "appearance": [],
+                    "pose": "",
+                    "action": "",
+                    "materials": [],
+                    "colors": [],
+                })
+                with self.assertRaisesRegex(
+                    VisualContractError,
+                    "explicit minor evidence",
+                ):
+                    parse_local_single_image_compact_visual_contract(
+                        json.dumps(compact, ensure_ascii=False)
+                    )
+
+        for hidden_minor_slot, hidden_minor_text in (
+            ("person_materials", "十七岁女孩的皮肤"),
+            ("person_colors", "十七岁女孩的肤色"),
+            ("object_colors", "十七岁女孩的肤色"),
+        ):
+            with self.subTest(hidden_minor_slot=hidden_minor_slot):
+                compact = compact_v2_contract()
+                if hidden_minor_slot == "object_colors":
+                    compact["entities"].append({
+                        "kind": "object",
+                        "name": "小女孩玩偶",
+                        "appearance": [],
+                        "pose": "",
+                        "action": "",
+                        "materials": ["塑料"],
+                        "colors": [hidden_minor_text],
+                    })
+                else:
+                    key = "materials" if hidden_minor_slot == "person_materials" else "colors"
+                    compact["entities"][0][key] = [hidden_minor_text]
+                with self.assertRaisesRegex(
+                    VisualContractError,
+                    "explicit minor evidence",
+                ):
+                    parse_local_single_image_compact_visual_contract(
+                        json.dumps(compact, ensure_ascii=False)
+                    )
+
+        for mixed_minor_context, target in (
+            ("小女孩与玩偶同框的双人插画", "asset"),
+            ("十七岁女孩与海报", "asset"),
+            ("child portrait", "asset"),
+            ("背景中站着十七岁女孩", "background"),
+            ("后景为十七岁女孩", "spatial_layers"),
+            ("a child stands in the background", "background"),
+        ):
+            with self.subTest(mixed_minor_context=mixed_minor_context, target=target):
+                compact = compact_v2_contract()
+                if target == "asset":
+                    compact["asset"] = mixed_minor_context
+                else:
+                    compact["scene"][target] = mixed_minor_context
+                with self.assertRaisesRegex(
+                    VisualContractError,
+                    "explicit minor evidence",
+                ):
+                    parse_local_single_image_compact_visual_contract(
+                        json.dumps(compact, ensure_ascii=False)
+                    )
+
+        for contradictory_object, expected_error in (
+            ({
+                "name": "小女孩玩偶",
+                "appearance": ["真实人类小女孩", "会呼吸的人物皮肤"],
+            }, "explicit minor evidence"),
+            ({
+                "name": "少女手办",
+                "appearance": ["真人少女而非玩具"],
+            }, "living person evidence"),
+            ({
+                "name": "little girl doll",
+                "appearance": [
+                    "seventeen-year-old girl standing",
+                    "floral pattern on dress",
+                ],
+            }, "explicit minor evidence"),
+            ({
+                "name": "little girl doll",
+                "appearance": ["pattern behind a seventeen-year-old girl"],
+            }, "explicit minor evidence"),
+        ):
+            with self.subTest(contradictory_object=contradictory_object):
+                compact = compact_v2_contract()
+                compact["entities"].append({
+                    "kind": "object",
+                    "name": contradictory_object["name"],
+                    "appearance": contradictory_object["appearance"],
+                    "pose": "",
+                    "action": "",
+                    "materials": ["皮肤"],
+                    "colors": [],
+                })
+                with self.assertRaisesRegex(
+                    VisualContractError,
+                    expected_error,
+                ):
+                    parse_local_single_image_compact_visual_contract(
+                        json.dumps(compact, ensure_ascii=False)
+                    )
+
+        young = compact_v2_contract()
+        young["entities"][0]["name"] = "人物"
+        young["entities"][0]["appearance"] = ["局部可见"]
+        young["facts"] = [
+            "画面直接可见儿童的手部与自身性器官保持接触并持续往复摩擦"
+        ]
+        young["age"] = "young_or_minor_indicators"
+        young["signals"].append("age_ambiguous")
+        mapped_young = parse_local_single_image_compact_visual_contract(
+            json.dumps(young, ensure_ascii=False)
+        )
+        self.assertEqual(
+            compile_visual_prompt_details(mapped_young, "", nsfw=True)[
+                "generationGate"
+            ],
+            "blocked",
+        )
+
+        safe_child = compact_v2_contract()
+        safe_child.update({
+            "level": "safe",
+            "body": "none",
+            "interaction": "none",
+            "age": "young_or_minor_indicators",
+            "signals": [],
+            "facts": [],
+        })
+        safe_child["asset"] = "儿童插画"
+        safe_child["entities"][0].update({
+            "name": "儿童",
+            "action": "站立",
+        })
+        mapped_safe_child = parse_local_single_image_compact_visual_contract(
+            json.dumps(safe_child, ensure_ascii=False)
+        )
+        self.assertEqual(
+            compile_visual_prompt_details(mapped_safe_child, "", nsfw=False)[
+                "generationGate"
+            ],
+            "direct",
+        )
 
     def test_local_compact_rejects_duplicate_keys_and_supports_three_visible_participants(self):
         compact = compact_v2_contract()
@@ -3214,6 +3761,72 @@ class VisualContractTests(unittest.TestCase):
         )
         self.assertNotIn("裸露人物", result["visualPrompt"])
 
+    def test_service_v2_ambiguous_age_noun_keeps_adult_candidate_without_second_call(self):
+        service = load_prompt_assistant_service()
+        compact = compact_v2_contract()
+        compact["asset"] = "动漫少女插画"
+        compact["entities"][0]["name"] = "猫耳少女"
+        compact["age"] = "adult_appearing"
+        output = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
+
+        class FakeAdapter:
+            calls = []
+            unload_calls = 0
+
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def readiness(self):
+                return {"available": True}
+
+            def generate(self, prompt, _image_tensor, *, unload_after=True, **options):
+                if unload_after:
+                    raise AssertionError("v2 IR must retain the task-scoped adapter")
+                type(self).calls.append({"prompt": prompt, **options})
+                if len(type(self).calls) > 1:
+                    raise AssertionError("ambiguous age noun must not start a model retry")
+                return output
+
+            def unload(self):
+                type(self).unload_calls += 1
+
+        original_adapter = service.Qwen3VLAbliteratedAdapter
+        service.Qwen3VLAbliteratedAdapter = FakeAdapter
+        try:
+            assistant = service.PromptAssistant()
+            assistant.reset_loaded_clip = lambda: None
+            assistant.reverse_model_path = lambda: Path("fake-qwen3")
+            result = assistant.reverse_plain_static_image(
+                {
+                    "visualSchema": "nf.visual.v2",
+                    "nsfw": True,
+                    "reverseModelProvider": "qwen3-vl",
+                },
+                object(),
+                "",
+            )
+        finally:
+            service.Qwen3VLAbliteratedAdapter = original_adapter
+
+        self.assertEqual(len(FakeAdapter.calls), 1)
+        self.assertEqual(FakeAdapter.unload_calls, 1)
+        self.assertIn("普通字段必须使用人物", FakeAdapter.calls[0]["prompt"])
+        self.assertEqual(result["generationGate"], "adult_confirmation")
+        self.assertFalse(result["sensitivePromptBlocked"])
+        self.assertFalse(result.get("analysisDegraded", False))
+        self.assertFalse(result.get("analysisPartial", False))
+        self.assertFalse(result.get("qualityGateFailed", False))
+        self.assertEqual(
+            result["contentSafety"]["age_assessment"],
+            "age_unverifiable",
+        )
+        self.assertIn("age_ambiguous", result["contentSafety"]["signals"])
+        self.assertNotIn("少女", result["description"])
+        self.assertIn(
+            valid_v2_contract()["content_safety"]["sensitive_visible_facts"][0],
+            result["description"],
+        )
+
     def test_service_v2_valid_adult_candidate_uses_deterministic_rich_without_second_call(self):
         service = load_prompt_assistant_service()
         contract = valid_v2_contract()
@@ -5042,8 +5655,8 @@ class VisualContractTests(unittest.TestCase):
         semantic_invalid["interaction"] = "none"
         semantic_invalid["age"] = "adult_appearing"
         semantic_invalid["signals"] = []
-        semantic_invalid["entities"][0]["name"] = "少女角色"
-        semantic_invalid["facts"] = ["少女角色衣着贴身 SECOND_OUTPUT_SECRET"]
+        semantic_invalid["entities"][0]["name"] = "儿童角色"
+        semantic_invalid["facts"] = ["儿童角色衣着贴身 SECOND_OUTPUT_SECRET"]
         second_output = json.dumps(
             semantic_invalid,
             ensure_ascii=False,
@@ -5817,7 +6430,8 @@ class VisualContractTests(unittest.TestCase):
     def test_service_v2_sensitive_young_wording_degrades_without_rich_or_requirements(self):
         service = load_prompt_assistant_service()
         compact = compact_v2_contract()
-        compact["entities"][0]["name"] = "儿童"
+        compact["entities"][0]["name"] = "小女孩"
+        compact["facts"] = ["小女孩敏感事实 SERVICE_MINOR_SECRET"]
         output = json.dumps(compact, ensure_ascii=False, separators=(",", ":"))
 
         class FakeAdapter:
@@ -5863,6 +6477,8 @@ class VisualContractTests(unittest.TestCase):
         self.assertTrue(result["analysisDegraded"])
         self.assertEqual(result["generationGate"], "blocked")
         self.assertTrue(result["sensitivePromptBlocked"])
+        self.assertEqual(result["rawOutput"], "")
+        self.assertNotIn("SERVICE_MINOR_SECRET", result["description"])
 
     def test_service_v2_second_truncation_fails_closed_after_one_fresh_retry(self):
         service = load_prompt_assistant_service()

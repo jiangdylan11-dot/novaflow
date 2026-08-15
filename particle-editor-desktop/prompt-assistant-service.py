@@ -43,6 +43,7 @@ from prompt_assistant.visual_contract import (
     merge_local_salient_inventory,
     parse_local_salient_inventory,
     parse_local_compact_visual_contract,
+    parse_local_single_image_compact_visual_contract,
     parse_visual_contract,
     rich_visual_prompt_instruction,
     validate_rich_visual_prompt,
@@ -16719,6 +16720,9 @@ class PromptAssistant:
             "只要signals含这三项中的任一项，level必须为explicit。"
             "age只允许adult_appearing、age_unverifiable、young_or_minor_indicators、not_applicable，"
             "不得输出uncertain或ambiguous_or_young_appearing；存在年轻化措辞时不得声称adult_appearing。"
+            "非safe且没有明确幼态或未成年人直接证据时，普通字段必须使用人物、女性角色、男性角色等中性称呼，"
+            "不得使用少女、少年、女孩、男孩、girl或boy，age无法确认就填age_unverifiable；"
+            "若确有儿童、未成年、未满18岁、teen、child等直接证据，age必须填young_or_minor_indicators并在facts如实保留证据，不得隐去。"
             "JSON结构符号只用标准半角ASCII字符，字符串值内部不要使用引号、反斜杠或换行，"
             "数组和对象末项不得有尾逗号；根闭合花括号必须是最后一个字符，后面禁止引号或任何文字。"
             "除kind、level、body、interaction、age、signals的规定英文枚举值外，其余字符串值一律使用简体中文自然短语；"
@@ -16903,11 +16907,9 @@ class PromptAssistant:
                 raise VisualContractError(
                     "keyed retry must be a bare JSON object"
                 )
-            return parse_local_compact_visual_contract(
+            return parse_local_single_image_compact_visual_contract(
                 text,
                 validate_semantics=validate_semantics,
-                allow_legacy_read=False,
-                allow_young_wording_neutralization=False,
                 allow_incomplete_participants=allow_incomplete_participants,
             )
 
