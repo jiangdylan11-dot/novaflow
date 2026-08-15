@@ -1,0 +1,652 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/x-icon" href="./assets/asset-CLAJAQ7J.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NovaFlow</title>
+    <!-- 寮曞叆FontAwesome浠ヤ究瀹岀編澶嶅埢缃戠珯鍥炬爣 -->
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" media="print" onload="this.media='all'" />
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" /></noscript>
+    <style>
+      html, body, #root { min-width: 1280px; min-height: 100%; background: #0b0b0b; color: #e5e7eb; }
+      body { margin: 0; padding: 0; background-color: #0b0b0b; color: #e5e7eb; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; overflow: hidden; }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+      ::-webkit-scrollbar-thumb { background: #303030; border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #3b3b3b; }
+      input, select, button { outline: none; font-family: inherit; box-sizing: border-box; }
+    </style>
+    <style id="novaflow-ai-sequence-first-paint-guard">
+      .novaflow-app [data-novaflow-ai-prompt-grid="1"]:has([data-novaflow-ai-storyboard-grid="1"]) {
+        flex: 0 0 132px !important;
+        height: 132px !important;
+        min-height: 132px !important;
+        max-height: 132px !important;
+        margin-top: -27px !important;
+        overflow: visible !important;
+        align-items: stretch !important;
+      }
+      .novaflow-app [data-novaflow-ai-storyboard-grid="1"] {
+        transform: none !important;
+        position: relative !important;
+        top: 28px !important;
+      }
+      .novaflow-app [data-novaflow-ai-storyboard-prompt-frame="1"] {
+        position: relative !important;
+        display: grid !important;
+        grid-template-rows: 26px minmax(0, 1fr) 26px !important;
+        gap: 4px !important;
+        height: 132px !important;
+        min-height: 132px !important;
+        max-height: 132px !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+      }
+      .novaflow-app [data-novaflow-ai-storyboard-prompt-frame="1"] > *:first-child {
+        display: flex !important;
+        flex: 0 0 26px !important;
+        height: 26px !important;
+        min-height: 26px !important;
+        max-height: 26px !important;
+        align-items: center !important;
+        justify-content: flex-start !important;
+        gap: 5px !important;
+        min-width: 0 !important;
+        overflow: hidden !important;
+        padding-right: 0 !important;
+        box-sizing: border-box !important;
+      }
+      .novaflow-app [data-novaflow-ai-storyboard-actions="1"] {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 5px !important;
+        position: static !important;
+        margin: 0 0 0 auto !important;
+        flex-shrink: 0 !important;
+      }
+      .novaflow-app [data-novaflow-ai-storyboard-optimize="1"],
+      .novaflow-app [data-novaflow-ai-storyboard-reverse="1"] {
+        display: none !important;
+      }
+    </style>
+    <style id="novaflow-boot-splash-style">
+      #novaflow-boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #0b0d10;
+        color: #f4f7fb;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      }
+
+      #novaflow-boot-splash.novaflow-boot-splash-hidden {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 140ms linear;
+      }
+
+      body.novaflow-boot-splash-active #root {
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+
+      .novaflow-boot-card {
+        display: grid;
+        justify-items: center;
+        gap: 12px;
+        min-width: 360px;
+      }
+
+      .novaflow-boot-brand {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .novaflow-boot-brand img {
+        width: 320px;
+        max-width: 42vw;
+        height: auto;
+        max-height: 128px;
+        object-fit: contain;
+      }
+
+      .novaflow-boot-progress {
+        position: relative;
+        width: 320px;
+        max-width: 42vw;
+        height: 5px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+      }
+
+      .novaflow-boot-progress::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: -45%;
+        width: 45%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, rgba(26, 178, 255, 0), #18b7ff 38%, #23d18b 100%);
+        animation: novaflow-boot-progress 1200ms ease-in-out infinite;
+      }
+
+      .novaflow-boot-label {
+        color: rgba(244, 247, 251, 0.72);
+        font-size: 13px;
+        letter-spacing: 0;
+        text-transform: none;
+      }
+
+      @keyframes novaflow-boot-progress {
+        0% { transform: translateX(0); }
+        100% { transform: translateX(320%); }
+      }
+    </style>
+    <style id="novaflow-chain-prepaint-lock">
+      html,
+      body,
+      #root {
+        background: #0b0b0b !important;
+      }
+
+      .novaflow-app,
+      .novaflow-app .nf-app-body {
+        background: #0b0b0b !important;
+      }
+
+      .novaflow-app :where(*, *::before, *::after) {
+        transition: none !important;
+        animation-duration: 0s !important;
+        animation-delay: 0s !important;
+      }
+
+      .novaflow-app .nf-topbar {
+        height: 56px !important;
+        min-height: 56px !important;
+        background: #242424 !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+        box-sizing: border-box !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        z-index: 60 !important;
+      }
+
+      .novaflow-app .nf-app-body {
+        min-height: calc(100vh - 56px) !important;
+        padding-top: 0 !important;
+        background: #0b0b0b !important;
+      }
+
+      .novaflow-app .nf-app-body > div:first-child {
+        width: 434px !important;
+        min-width: 434px !important;
+        max-width: 434px !important;
+        height: calc(100vh - 56px) !important;
+        min-height: calc(100vh - 56px) !important;
+        flex: 0 0 434px !important;
+        padding-left: 111px !important;
+        box-sizing: border-box !important;
+        background: linear-gradient(to right, #2a2a2a 0, #2a2a2a 100px, #181818 100px, #181818 100%) !important;
+        background-color: #181818 !important;
+        background-image: linear-gradient(to right, #2a2a2a 0, #2a2a2a 100px, #181818 100px, #181818 100%) !important;
+        overflow: visible !important;
+      }
+
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar {
+        position: fixed !important;
+        left: 111px !important;
+        top: 56px !important;
+        bottom: 0 !important;
+        width: 312px !important;
+        min-width: 312px !important;
+        max-width: 312px !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        background-image: none !important;
+        overflow-x: clip !important;
+        overflow-y: auto !important;
+        z-index: 20 !important;
+      }
+
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar > *,
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar [data-novaflow-left-content-shell="1"],
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar [data-novaflow-left-content-root="1"],
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar [data-novaflow-secondary-group="1"],
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar .nf-panel,
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar .nf-panel > .nf-panel-body,
+      [data-novaflow-left-content-root="1"]:not([data-novaflow-ai-bottom-workspace="1"]),
+      [data-novaflow-left-content-root="1"]:not([data-novaflow-ai-bottom-workspace="1"]) .nf-panel,
+      [data-novaflow-left-content-root="1"]:not([data-novaflow-ai-bottom-workspace="1"]) .nf-panel > .nf-panel-body {
+        background: transparent !important;
+        background-color: transparent !important;
+        background-image: none !important;
+        box-shadow: none !important;
+      }
+
+      [data-novaflow-left-content-root="1"] {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        justify-content: flex-start !important;
+        gap: 8px !important;
+        row-gap: 8px !important;
+        column-gap: 0 !important;
+      }
+
+      [data-novaflow-left-content-root="1"] > *:not([data-novaflow-secondary-group="1"]) {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+      }
+
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar .nf-panel,
+      [data-novaflow-left-content-root="1"]:not([data-novaflow-ai-bottom-workspace="1"]) .nf-panel,
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar .nf-panel > .nf-panel-body,
+      [data-novaflow-left-content-root="1"]:not([data-novaflow-ai-bottom-workspace="1"]) .nf-panel > .nf-panel-body {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        overflow-x: clip !important;
+      }
+
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar .nf-panel > .nf-panel-body > *,
+      [data-novaflow-left-content-root="1"]:not([data-novaflow-ai-bottom-workspace="1"]) .nf-panel > .nf-panel-body > * {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar .nf-panel-body div:has(+ div > svg[height="100"]) {
+        height: 15px !important;
+        min-height: 15px !important;
+        max-height: 15px !important;
+        line-height: 15px !important;
+        margin-top: 5px !important;
+        margin-bottom: 2px !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+      }
+
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar .nf-panel-body div:has(> svg[height="100"]) {
+        height: 116px !important;
+        min-height: 116px !important;
+        max-height: 116px !important;
+        padding: 6px !important;
+        margin-top: 5px !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+      }
+
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar .nf-panel-body div:has(> svg[height="100"]) > div,
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar .nf-panel-body div:has(> svg[height="100"]) + div {
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        line-height: 0 !important;
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        opacity: 0 !important;
+        visibility: hidden !important;
+        pointer-events: none !important;
+      }
+
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar .nf-panel-body div:has(> svg[height="100"]) > div > span,
+      .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar .nf-panel-body div:has(> svg[height="100"]) + div > span {
+        height: 0 !important;
+        line-height: 0 !important;
+        overflow: hidden !important;
+      }
+
+      .novaflow-app .nf-app-body > div:first-child > div[style*="grid-template-rows: repeat(4, 96px)"] {
+        position: fixed !important;
+        left: 0 !important;
+        top: 56px !important;
+        width: 100px !important;
+        min-width: 100px !important;
+        max-width: 100px !important;
+        height: 384px !important;
+        display: grid !important;
+        grid-template-rows: repeat(4, 96px) !important;
+        gap: 0 !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        background-image: none !important;
+        z-index: 25 !important;
+      }
+
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar > div:has(> button) {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 8px !important;
+        row-gap: 8px !important;
+        column-gap: 0 !important;
+        width: 312px !important;
+        min-width: 312px !important;
+        max-width: 312px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        background-image: none !important;
+        border: 0 !important;
+        box-shadow: none !important;
+      }
+
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar > div:has(> button) > button {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        height: 62px !important;
+        min-height: 62px !important;
+        max-height: 62px !important;
+        padding: 11px 12px !important;
+        border-radius: 8px !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+      }
+
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img),
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img),
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img):focus,
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img):focus-visible,
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img):focus,
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img):focus-visible,
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img)[aria-pressed="true"],
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img)[aria-selected="true"],
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img)[data-state="active"],
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img)[data-active="true"],
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img)[data-active="1"],
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img)[data-selected="true"],
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img)[data-selected="1"],
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img).active,
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img).selected,
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img)[style*="rgb(30, 41, 59)"],
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img)[style*="30, 41, 59"],
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img)[style*="29, 78, 216"],
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img)[style*="blue"],
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[aria-pressed="true"],
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[aria-selected="true"],
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[data-state="active"],
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[data-active="true"],
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[data-active="1"],
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[data-selected="true"],
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[data-selected="1"],
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img).active,
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img).selected,
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[style*="rgb(30, 41, 59)"],
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[style*="30, 41, 59"],
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[style*="29, 78, 216"],
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[style*="blue"] {
+        background: transparent !important;
+        background-color: transparent !important;
+        background-image: none !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+        outline: 0 !important;
+      }
+
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img):hover,
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img):hover {
+        background: rgba(255, 255, 255, 0.07) !important;
+        background-color: rgba(255, 255, 255, 0.07) !important;
+        background-image: none !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+        outline: 0 !important;
+      }
+
+      body.novaflow-blackgray-preview .novaflow-app .nf-app-body > div:first-child button:has(img):active,
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img):active {
+        background: rgba(30, 166, 114, 0.16) !important;
+        background-color: rgba(30, 166, 114, 0.16) !important;
+        background-image: none !important;
+        border-color: rgba(30, 166, 114, 0.44) !important;
+        box-shadow: none !important;
+        outline: 0 !important;
+      }
+
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-mode-section="1"] {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        padding: 52px 0 0 !important;
+        overflow-x: clip !important;
+        box-sizing: border-box !important;
+      }
+
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-mode-section="1"] [data-novaflow-ai-post-section="1"] {
+        margin-top: 8px !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        box-sizing: border-box !important;
+      }
+
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-mode-section="1"] > * {
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-mode-section="1"] input:not([type="range"]):not([type="color"]),
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-mode-section="1"] select,
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-mode-section="1"] textarea {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+      }
+
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-mode-section="1"] > div[style*="display: flex"][style*="gap: 8"] {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) 68px !important;
+        gap: 6px !important;
+        align-items: center !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+      }
+
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-mode-section="1"] > div[style*="display: flex"][style*="gap: 8"] > button {
+        width: 68px !important;
+        min-width: 68px !important;
+        max-width: 68px !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
+      }
+
+      body.novaflow-blackgray-preview .novaflow-app [data-novaflow-bottom-controls="1"] {
+        background: #181818 !important;
+        background-color: #181818 !important;
+        background-image: none !important;
+        border: 0 !important;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+        box-sizing: border-box !important;
+      }
+    </style>
+    <style id="novaflow-global-button-hover">
+      .novaflow-app :where(button, [role="button"]) {
+        position: relative;
+        transition: none !important;
+      }
+      .novaflow-app :where(button, [role="button"]):not(:disabled):not([disabled]):not([aria-disabled="true"])::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        background: rgba(255, 255, 255, 0.045);
+        opacity: 0;
+        pointer-events: none;
+        transition: none !important;
+      }
+      .novaflow-app :where(button, [role="button"]):not(:disabled):not([disabled]):not([aria-disabled="true"]):hover {
+        filter: brightness(1.08);
+        border-color: rgba(255, 255, 255, 0.20) !important;
+      }
+      .novaflow-app :where(button, [role="button"]):not(:disabled):not([disabled]):not([aria-disabled="true"]):hover::after {
+        opacity: 1;
+      }
+      .novaflow-app :where(button, [role="button"]):not(:disabled):not([disabled]):not([aria-disabled="true"]):active {
+        filter: brightness(1.02);
+      }
+      .novaflow-app :where(button, [role="button"]):is(:disabled, [disabled], [aria-disabled="true"]):hover {
+        filter: none;
+      }
+    </style>
+
+    <link rel="stylesheet" crossorigin href="./assets/index-ltGoDnmG.css">
+    <link rel="stylesheet" href="./resource-mention.tool.css?v=20260722-ui-design-17">
+  </head>
+  <body>
+    <div id="novaflow-boot-splash" aria-live="polite" aria-label="NovaFlow loading">
+      <div class="novaflow-boot-card">
+        <div class="novaflow-boot-brand">
+          <img src="./assets/asset-BmmmtA7v.png" alt="" />
+        </div>
+        <div class="novaflow-boot-label">loading...</div>
+        <div class="novaflow-boot-progress" role="progressbar" aria-label="Loading NovaFlow"></div>
+      </div>
+    </div>
+    <div id="root"></div>
+    <script id="novaflow-boot-splash-controller">
+      (function () {
+        var splash = document.getElementById("novaflow-boot-splash");
+        var root = document.getElementById("root");
+        if (!splash || !root) return;
+
+        var hidden = false;
+        var maxBootWaitMs = 10000;
+
+        document.body.classList.add("novaflow-boot-splash-active");
+
+        function hideSplash() {
+          if (hidden) return;
+          hidden = true;
+          document.body.classList.remove("novaflow-boot-splash-active");
+          document.body.classList.add("novaflow-boot-ready");
+          splash.classList.add("novaflow-boot-splash-hidden");
+          if (splash && splash.parentNode) splash.parentNode.removeChild(splash);
+        }
+
+        window.addEventListener("novaflow:app-ready", hideSplash, { once: true });
+        window.setTimeout(hideSplash, maxBootWaitMs);
+      })();
+    </script>
+    <script src="./ui-render-trace.js?v=20260520-trace-gated-1"></script>
+    <script src="./ai-sequence-frame-mode.js?v=20260710-first-frame-mode-1"></script>
+    <script src="./ai-sequence-minimax-h3.resource.js?v=20260810-minimax-h3-2"></script>
+    <script src="./ai-sequence-minimax-h3-output.resource.js?v=20260812-minimax-h3-timing-1"></script>
+    <script src="./ai-sequence-minimax-h3-lora.resource.js?v=20260810-minimax-h3-lora-1"></script>
+    <script src="./ai-sequence-wan22-lora.resource.js?v=20260810-wan22-lora-2"></script>
+    <script src="./ai-sequence-wan22-lora.workflow.js?v=20260810-wan22-lora-workflow-1"></script>
+    <script src="./ai-sequence-minimax-h3-prompt.workflow.js?v=20260813-minimax-h3-guaranteed-output-1"></script>
+    <script src="./ai-sequence-minimax-h3-reverse.workflow.js?v=20260813-minimax-h3-visual-facts-1"></script>
+    <script src="./ai-sequence-minimax-h3.workflow.js?v=20260812-minimax-h3-duration-1"></script>
+    <script type="module" crossorigin src="./assets/index-BbIa-2NM.js?v=20260812-minimax-h3-assistant-1"></script>
+    <script src="./ai-sequence-outpaint.workflow.js?v=20260710-first-frame-mode-1"></script>
+    <script src="./comfyui-workflow-credit-cost.js?v=20260711-art-dropdown-2"></script>
+    <script src="./art-generate-model.resource.js?v=20260813-ideogram-instant-1"></script>
+    <script src="./art-generate-ideogram.workflow.js?v=20260813-ideogram-instant-1"></script>
+    <script src="./ui-design-local-resolution.helper.js?v=20260729-ui-local-quality-21"></script>
+    <script src="./ui-design-local.workflow.js?v=20260729-ui-local-quality-21"></script>
+    <script src="./art-generate-provider.workflow.js?v=20260724-ui-local-txt2img-1"></script>
+    <script src="./left-panel-accordion.helper.js?v=20260723-ui-layout-projection-1"></script>
+    <script src="./art-generate-mode.tool.js?v=20260813-ideogram-instant-1"></script>
+    <script src="./proxy-electron-api.js?v=20260812-minimax-h3-output-1"></script>
+    <script src="./runtime-fetch-proxy.js?v=20260711-art-dropdown-2"></script>
+    <script src="./vendor/jsonata/jsonata.min.js?v=2.1.0"></script>
+    <script src="./art-generate-credit-pricing.tool.js?v=20260712-art-credit-1"></script>
+    <script src="./ai-sequence-credit-pricing.js?v=20260710-first-frame-mode-1"></script>
+    <script src="./runtime-detect-stabilizer.js?v=20260611-runtime-proxy-1"></script>
+    <script src="./spine-official-runtime.js?v=20260516-chain-unified-12"></script>
+    <script src="./ai-background-removal-runtime.js?v=20260719-unmult-1"></script>
+    <script src="./png-remove-black.tool.js?v=20260804-png-remove-black-output-actions-1"></script>
+    <script src="./aifx-provider.resource.js?v=20260801-aifx-sequence-2"></script>
+    <script src="./aifx-provider.tool.js?v=20260801-aifx-sequence-2"></script>
+  <script src="./aifx-prompt.workflow.js?v=20260804-aifx-prompt-supplement-1"></script>
+    <script src="./aifx-template.resource.js?v=20260801-aifx-sequence-2"></script>
+    <script src="./aifx-motion-guide.resource.js?v=20260801-aifx-sequence-2"></script>
+    <script src="./aifx-postprocess.workflow.js?v=20260801-aifx-sequence-2"></script>
+  <script src="./aifx-temporal-conform.workflow.js?v=20260802-aifx-sequence-18"></script>
+  <script src="./aifx-material-identity.resource.js?v=20260801-aifx-morphology-token-3"></script>
+  <script src="./aifx-material-reconstruct.workflow.js?v=20260804-aifx-prompt-supplement-1"></script>
+    <script src="./aifx-template-materialize.workflow.js?v=20260801-aifx-sequence-4"></script>
+    <script src="./aifx-sequence-quality.workflow.js?v=20260802-aifx-sequence-5"></script>
+    <script src="./aifx-export.workflow.js?v=20260801-aifx-sequence-5"></script>
+  <script src="./aifx-local.workflow.js?v=20260802-aifx-morphology-14"></script>
+  <script src="./aifx-generate.workflow.js?v=20260802-aifx-sequence-6"></script>
+    <script src="./aifx-rmbg.workflow.js?v=20260801-aifx-sequence-2"></script>
+    <script src="./aifx-repaint-runtime.js?v=20260804-aifx-primary-export-2" data-aifx-runtime="1"></script>
+    <script src="./split-inpaint-nsfw-pixels.helper.js?v=20260712-split-inpaint-nsfw-7"></script>
+    <script src="./split-inpaint-nsfw.workflow.js?v=20260712-split-inpaint-nsfw-7"></script>
+    <script src="./storyboard-director-quality.workflow.js?v=20260718-storyboard-director-quality-1"></script>
+    <script src="./storyboard-resource.workflow.js?v=20260718-storyboard-director-quality-1"></script>
+    <script src="./art-generate-reference-drop.tool.js?v=20260720-art-reference-drop-1"></script>
+    <script src="./spine-split-runtime.js?v=20260723-left-accordion-1"></script>
+    <script src="./ai-sequence-state-machine-runtime.js?v=20260525-ai-seq-editor-preview-perms-1"></script>
+    <script src="./ai-sequence-video-merge.resource.js?v=20260806-video-merge-shared-resources-1"></script>
+    <script src="./ai-sequence-video-merge.resource-bridge.js?v=20260806-video-merge-save-close-1"></script>
+    <script src="./ai-sequence-video-merge.mask.tool.js?v=20260806-video-merge-shared-resources-1"></script>
+    <script src="./ai-sequence-video-merge.preview.js?v=20260807-video-merge-mask-cursor-1"></script>
+    <script src="./ai-sequence-video-merge-export.workflow.js?v=20260807-video-merge-save-semantics-1"></script>
+    <script src="./ai-sequence-video-merge.workspace.js?v=20260807-video-merge-left-feedback-1"></script>
+    <script src="./ai-sequence-video-merge.tool.js?v=20260807-video-merge-save-semantics-1"></script>
+    <script src="./ai-sequence-input-compat.tool.js?v=20260710-six-slot-and-autopause-2"></script>
+    <script src="./resource-mention.tool.js?v=20260721-resource-mentions-9"></script>
+    <script src="./primary-entry-transition.preview.js?v=20260714-primary-entry-stability-1"></script>
+    <script src="./primary-entry-transition.bridge.js?v=20260713-primary-animation-transaction-2"></script>
+    <script src="./export-progress.dialog.js?v=20260717-skeleton-export-progress-1"></script>
+    <script src="./art-quality-profile.workflow.js?v=20260723-art-quality-1"></script>
+  <script src="./novaflow-brand-runtime.js?v=20260813-ideogram-instant-1"></script>
+    <script src="./novaflow-client-auth.js?v=20260720-client-auth-logout-1"></script>
+    <script src="./ui-design.structure.tool.js?v=20260722-ui-analysis-remove-1"></script>
+    <script src="./ui-design.inspector.tool.js?v=20260722-ui-shared-resources-1"></script>
+    <script src="./ui-design.project.resource.js?v=20260722-ui-analysis-remove-1"></script>
+    <script src="./ui-design.preview.js?v=20260722-ui-resource-headerless-1"></script>
+    <script src="./ui-design-layout-guide.helper.js?v=20260730-ui-grid-anchor-3"></script>
+    <script src="./ui-design-local-reference.helper.js?v=20260730-ui-local-semantic-fusion-2"></script>
+    <script src="./ui-design-local-director.workflow.js?v=20260729-ui-reference-contract-4"></script>
+    <script src="./ui-design-local-refine.workflow.js?v=20260729-ui-local-quality-21"></script>
+    <script src="./ui-design-image-preview.dialog.js?v=20260723-ui-result-preview-1"></script>
+    <script src="./ui-design.workspace.js?v=20260724-ui-selection-snapshot-1"></script>
+    <script src="./ui-design-generate.workflow.js?v=20260730-ui-local-semantic-fusion-2"></script>
+    <script src="./ui-design-generate.tool.js?v=20260724-ui-random-seed-default-1"></script>
+    <script src="./ui-design-mode.tool.js?v=20260723-ui-layout-projection-1"></script>
+    <script src="./ui-design-assistant-image.helper.js?v=20260722-ui-design-17"></script>
+    <script src="./ui-design-quality-profile.helper.js?v=20260724-ui-reference-contract-2"></script>
+    <script src="./ui-design-assistant.workflow.js?v=20260724-ui-quality-refine-1"></script>
+    <script src="./ui-design-assistant.dialog.js?v=20260723-ui-design-choice-1"></script>
+    <script src="./ui-design-quality-review.workflow.js?v=20260729-ui-quality-refine-4"></script>
+    <script src="./ui-design.bridge.js?v=20260730-ui-local-strict-retry-1"></script>
+    <script src="./art-reference-compiler.workflow.js?v=20260721-reference-compiler-1"></script>
+    <script src="./smart-ai-art-auto-intent.workflow.js?v=20260811-art-auto-intent-1"></script>
+    <script src="./novaflow-smart-ai.js?v=20260815-art-action-split-3"></script>
+    <script src="./ribbon-event-markers.js?v=20260516-chain-unified-19"></script>
+
+  </body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "updatedAt": "2026-05-22 00:51",
+  "purpose": "Active surface sync metadata for locked 4783 runtime verification.",
+  "entries": [
+    {
+      "path": "novaflow-brand-runtime.js",
+      "owner": "dist_renderer",
+      "reason": "Default-off Source upload island bridge loader remains dist-owned from the color_ref regression fix; chroma-key asset/active-state patches and the video AI cutout WEBM save branch are synchronized on all three runtime surfaces without promoting that dist-only bridge into source mirrors.",
+      "acceptActiveSurfaceDistHash": true,
+      "distSha256": "bfb1e8b75d5679f596ddbaec29c5af51a3cbf258f75ddfaeb6fc5264b6910707",
+      "sourceSha256": "d4a97e55cb105585c3a6273eea6c57c9c58e7679e19ffd9ac62baff45c818e06"
+    }
+  ]
+}

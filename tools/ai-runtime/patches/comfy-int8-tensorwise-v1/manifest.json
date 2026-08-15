@@ -1,0 +1,27 @@
+{
+  "patchId": "comfy-int8-tensorwise-v1",
+  "version": 1,
+  "upstreamCommit": "1a510f04234e5a213d3985a1a54f65652623f4bc",
+  "dependency": {
+    "name": "comfy-kitchen",
+    "baseVersion": "0.2.10",
+    "patchedVersion": "0.2.11"
+  },
+  "files": [
+    {
+      "path": "engine/ComfyUI/comfy/ops.py",
+      "baseSha256": "0251981259148CC2843D750F5F39AE2CBECC0B8BAF053BF7A2B52F882FEA6120",
+      "patchedSha256": "6AF6145B60EBEA79466A9132B56FC86AD19398F88CB4D202191115C85D6A642E"
+    },
+    {
+      "path": "engine/ComfyUI/comfy/quant_ops.py",
+      "baseSha256": "D619B88BAC2EA90C4BFA8550E209614E1126A3E7FEF870FB4075E085088370F8",
+      "patchedSha256": "AD6AEF8A1773DE5C75BC4A238D9C00A8F444007A8ED2312BE640AB1F7DB2A569"
+    },
+    {
+      "path": "engine/ComfyUI/requirements.txt",
+      "baseSha256": "253D2BEF4F540C3007CDE9F0B21C5130E130C741CAF0E28122FB80551897CF5E",
+      "patchedSha256": "5D93DAE049A43927886F940A30AEE4A7CB4D16DE7F28C30C43DC53B7A636F7E1"
+    }
+  ]
+}

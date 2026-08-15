@@ -1,0 +1,3417 @@
+const { createClient } = require("@supabase/supabase-js");
+const childProcess = require("child_process");
+const http = require("http");
+const https = require("https");
+const WebSocket = require("ws");
+
+if (typeof globalThis.WebSocket !== "function") {
+  globalThis.WebSocket = WebSocket;
+}
+
+const ENV_SUPABASE_URL = "NOVAFLOW_SUPABASE_URL";
+const ENV_SERVICE_ROLE_KEY = "NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY";
+const ENV_SUPABASE_PUBLISHABLE_KEY = "NOVAFLOW_SUPABASE_PUBLISHABLE_KEY";
+const ENV_SUPABASE_ANON_KEY = "NOVAFLOW_SUPABASE_ANON_KEY";
+const ENV_COMFYUI_BASE_URL = "NOVAFLOW_COMFYUI_BASE_URL";
+const ENV_COMFYUI_API_KEY = "NOVAFLOW_COMFYUI_API_KEY";
+const ENV_COMFYUI_API_KEY_SECRET_REF = "NOVAFLOW_COMFYUI_API_KEY_SECRET_REF";
+const ENV_GROK_BASE_URL = "NOVAFLOW_GROK_BASE_URL";
+const ENV_GROK_API_KEY = "NOVAFLOW_GROK_API_KEY";
+const ENV_GROK_MODEL = "NOVAFLOW_GROK_MODEL";
+const DEFAULT_LIMIT = 100;
+const ERROR_PREFIX = "Supabase Error";
+const DEFAULT_COMFYUI_BASE_URL = "https://cloud.comfy.org";
+const DEFAULT_GROK_BASE_URL = "https://api.x.ai/v1";
+const DEFAULT_GROK_MODEL = "grok-4.3";
+const COMFYUI_USER_PATH = "/api/user";
+const COMFYUI_TIMEOUT_MS = 10000;
+const PROVIDER_QUOTA_PREFIX = "provider_quota_";
+const INTERNAL_ACCOUNT_EMAIL_DOMAIN = "accounts.novaflow.local";
+const INTERNAL_ACCOUNT_EMAIL_PREFIX = "acct_";
+const WRITABLE_PROVIDER_ENV_NAMES = new Set([
+  ENV_COMFYUI_BASE_URL,
+  ENV_COMFYUI_API_KEY,
+  ENV_GROK_BASE_URL,
+  ENV_GROK_API_KEY,
+  ENV_GROK_MODEL
+]);
+
+let cachedClient = null;
+let cachedClientEnvKey = "";
+
+const adminQueries = {
+  users: {
+    select: "id,email,display_name,role,plan,status,created_at,updated_at",
+    orderBy: "created_at",
+    ascending: false
+  },
+  credits: {
+    select: "id,user_id,balance,updated_at",
+    orderBy: "updated_at",
+    ascending: false
+  },
+  ai_providers: {
+    select: "id,provider_key,name,status,billing_multiplier,api_key_secret_ref,created_at,updated_at",
+    orderBy: "created_at",
+    ascending: false
+  },
+  system_settings: {
+    select: "key,value,updated_at",
+    orderBy: "key",
+    ascending: true,
+    limit: 500
+  }
+};
+
+function disabledTableResult(tableName, message) {
+  return {
+    source: "disabled",
+    status: "disabled",
+    configured: false,
+    table: tableName,
+    records: [],
+    message,
+    durationMs: 0,
+    query: queryMeta(tableName, "-", { disabled: true })
+  };
+}
+
+const mockData = {
+  users: [
+    {
+      id: "U-1001",
+      email: "artist@demo.com",
+      display_name: "Artist",
+      role: "user",
+      plan: "Pro",
+      status: "active",
+      current_credits: 12800,
+      created_at: "2026-06-18T10:21:00.000Z",
+      updated_at: "2026-07-02T09:10:00.000Z"
+    },
+    {
+      id: "U-1002",
+      email: "ops@demo.com",
+      display_name: "Ops",
+      role: "user",
+      plan: "Team",
+      status: "active",
+      current_credits: 3420,
+      created_at: "2026-06-21T14:08:00.000Z",
+      updated_at: "2026-07-02T09:30:00.000Z"
+    },
+    {
+      id: "U-1003",
+      email: "trial@demo.com",
+      display_name: "Trial",
+      role: "user",
+      plan: "Trial",
+      status: "disabled",
+      current_credits: 0,
+      created_at: "2026-06-29T19:42:00.000Z",
+      updated_at: "2026-07-01T16:00:00.000Z"
+    }
+  ],
+  credits: [
+    { id: "C-1001", user_id: "U-1001", email: "artist@demo.com", balance: 12800, updated_at: "2026-07-02T09:10:00.000Z" },
+    { id: "C-1002", user_id: "U-1002", email: "ops@demo.com", balance: 3420, updated_at: "2026-07-02T09:30:00.000Z" },
+    { id: "C-1003", user_id: "U-1003", email: "trial@demo.com", balance: 0, updated_at: "2026-07-01T16:00:00.000Z" }
+  ],
+  ai_providers: [
+    {
+      id: "P-1001",
+      name: "Grok",
+      provider_key: "grok",
+      status: "disabled",
+      billing_multiplier: 0.1,
+      api_key_secret_ref: "",
+      created_at: "2026-07-01T08:00:00.000Z",
+      updated_at: "2026-07-01T08:00:00.000Z"
+    },
+    {
+      id: "P-1002",
+      name: "Qwen",
+      provider_key: "qwen",
+      status: "disabled",
+      billing_multiplier: 0.8,
+      api_key_secret_ref: "",
+      created_at: "2026-07-01T08:00:00.000Z",
+      updated_at: "2026-07-01T08:00:00.000Z"
+    },
+    {
+      id: "P-1003",
+      name: "ComfyUI",
+      provider_key: "comfyui",
+      status: "disabled",
+      billing_multiplier: 1.25,
+      api_key_secret_ref: "",
+      created_at: "2026-07-01T08:00:00.000Z",
+      updated_at: "2026-07-01T08:00:00.000Z"
+    }
+  ],
+  system_settings: [
+    { key: "default_billing_multiplier", value: { label: "默认积分倍率", value: "1.00x" }, updated_at: "2026-07-01T08:00:00.000Z" },
+    { key: "new_user_initial_credits", value: { label: "新用户初始积分", value: 0 }, updated_at: "2026-07-01T08:00:00.000Z" },
+    {
+      key: "provider_budget_comfyui",
+      value: {
+        label: "ComfyUI 手动总余额",
+        provider_key: "comfyui",
+        balance: 0,
+        unit: "credits",
+        source: "manual",
+        note: "mock placeholder"
+      },
+      updated_at: "2026-07-01T08:00:00.000Z"
+    }
+  ]
+};
+
+function readAdminSupabaseEnv() {
+  const supabaseUrl = readAdminEnvValue(ENV_SUPABASE_URL).replace(/\/+$/, "");
+  const serviceRoleKey = readAdminEnvValue(ENV_SERVICE_ROLE_KEY);
+  return {
+    supabaseUrl,
+    hasServiceRoleKey: Boolean(serviceRoleKey),
+    configured: Boolean(supabaseUrl && serviceRoleKey),
+    serviceRoleKey
+  };
+}
+
+function readAdminSupabaseAuthEnv() {
+  const supabaseUrl = readAdminEnvValue(ENV_SUPABASE_URL).replace(/\/+$/, "");
+  const publishableKey =
+    readAdminEnvValue(ENV_SUPABASE_PUBLISHABLE_KEY) ||
+    readAdminEnvValue(ENV_SUPABASE_ANON_KEY) ||
+    readBundledSupabasePublishableKey();
+  return {
+    supabaseUrl,
+    hasPublishableKey: Boolean(publishableKey),
+    configured: Boolean(supabaseUrl && publishableKey),
+    publishableKey
+  };
+}
+
+function readBundledSupabasePublishableKey() {
+  try {
+    const config = require("../license/config");
+    return String(config.SUPABASE_PUBLISHABLE_KEY || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function readAdminComfyUiEnv() {
+  const baseUrl = normalizeBaseUrl(readAdminEnvValue(ENV_COMFYUI_BASE_URL) || DEFAULT_COMFYUI_BASE_URL);
+  const apiKey = readAdminEnvValue(ENV_COMFYUI_API_KEY);
+  const apiKeySecretRef = readAdminEnvValue(ENV_COMFYUI_API_KEY_SECRET_REF);
+  return {
+    baseUrl,
+    configured: Boolean(apiKey),
+    secretConfigured: Boolean(apiKey || apiKeySecretRef),
+    hasBaseUrl: Boolean(baseUrl),
+    hasApiKey: Boolean(apiKey),
+    hasApiKeySecretRef: Boolean(apiKeySecretRef),
+    apiKeySecretRef,
+    apiKey
+  };
+}
+
+function readAdminGrokEnv() {
+  const baseUrl = normalizeBaseUrl(readAdminEnvValue(ENV_GROK_BASE_URL) || DEFAULT_GROK_BASE_URL);
+  const apiKey = readAdminEnvValue(ENV_GROK_API_KEY);
+  const model = String(readAdminEnvValue(ENV_GROK_MODEL) || DEFAULT_GROK_MODEL).trim() || DEFAULT_GROK_MODEL;
+  return {
+    baseUrl,
+    model,
+    configured: Boolean(apiKey),
+    hasBaseUrl: Boolean(baseUrl),
+    hasApiKey: Boolean(apiKey),
+    apiKey
+  };
+}
+
+function normalizeBaseUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return raw.replace(/\/+$/, "");
+}
+
+function readAdminEnvValue(name) {
+  const fromProcess = String(process.env[name] || "").trim();
+  if (fromProcess) return fromProcess;
+  return readWindowsUserEnvValue(name);
+}
+
+function readWindowsUserEnvValue(name) {
+  if (process.platform !== "win32") return "";
+  try {
+    const result = childProcess.spawnSync("reg.exe", ["query", "HKCU\\Environment", "/v", name], {
+      encoding: "utf8",
+      windowsHide: true
+    });
+    if (result.status !== 0) return "";
+    const line = String(result.stdout || "")
+      .split(/\r?\n/)
+      .find((item) => item.trim().startsWith(name));
+    if (!line) return "";
+    const match = line.match(/REG_\w+\s+(.+)$/);
+    return String(match?.[1] || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function assertWritableProviderEnvName(name) {
+  const envName = String(name || "").trim();
+  if (!WRITABLE_PROVIDER_ENV_NAMES.has(envName)) {
+    throw new Error("Unsupported provider env name");
+  }
+  return envName;
+}
+
+function writeAdminEnvValue(name, value) {
+  const envName = assertWritableProviderEnvName(name);
+  const text = String(value ?? "").trim();
+  if (text) {
+    process.env[envName] = text;
+  } else {
+    delete process.env[envName];
+  }
+
+  if (process.platform !== "win32") {
+    return { name: envName, configured: Boolean(text), persistent: false };
+  }
+
+  const args = text
+    ? ["add", "HKCU\\Environment", "/v", envName, "/t", "REG_SZ", "/d", text, "/f"]
+    : ["delete", "HKCU\\Environment", "/v", envName, "/f"];
+  const result = childProcess.spawnSync("reg.exe", args, {
+    encoding: "utf8",
+    windowsHide: true
+  });
+  if (result.status !== 0) {
+    throw new Error(result.stderr || result.stdout || `failed to write ${envName}`);
+  }
+  return { name: envName, configured: Boolean(text), persistent: true };
+}
+
+function queryMeta(tableName, selectFields, options = {}) {
+  return {
+    table: tableName,
+    select: selectFields,
+    orderBy: options.orderBy || "",
+    ascending: Boolean(options.ascending),
+    limit: options.limit || DEFAULT_LIMIT
+  };
+}
+
+function sanitizeError(err) {
+  const env = readAdminSupabaseEnv();
+  const comfyEnv = readAdminComfyUiEnv();
+  const grokEnv = readAdminGrokEnv();
+  let message = String(err?.message || err || "unknown");
+  if (env.serviceRoleKey) {
+    message = message.split(env.serviceRoleKey).join("[redacted-service-role-key]");
+  }
+  if (comfyEnv.apiKey) {
+    message = message.split(comfyEnv.apiKey).join("[redacted-comfyui-api-key]");
+  }
+  if (comfyEnv.apiKeySecretRef) {
+    message = message.split(comfyEnv.apiKeySecretRef).join("[redacted-comfyui-secret-ref]");
+  }
+  if (grokEnv.apiKey) {
+    message = message.split(grokEnv.apiKey).join("[redacted-grok-api-key]");
+  }
+  return message;
+}
+
+function logAdminData(level, message, details = {}) {
+  const safeDetails = {};
+  Object.entries(details || {}).forEach(([key, value]) => {
+    if (/key|secret|token/i.test(key)) return;
+    safeDetails[key] = value;
+  });
+  const suffix = Object.keys(safeDetails).length ? ` ${JSON.stringify(safeDetails)}` : "";
+  const line = `[AdminData] ${new Date().toISOString()} ${message}${suffix}`;
+  if (level === "error") {
+    console.warn(line);
+  } else {
+    console.log(line);
+  }
+}
+
+function mockResult(tableName, selectFields = "*", options = {}, durationMs = 0) {
+  return {
+    source: "mock",
+    status: "mock",
+    configured: false,
+    table: tableName,
+    records: mockData[tableName] || [],
+    reason: "supabase_env_missing",
+    durationMs,
+    query: queryMeta(tableName, selectFields, options)
+  };
+}
+
+function supabaseResult(tableName, records, selectFields, options, durationMs) {
+  return {
+    source: "supabase",
+    status: "connected",
+    configured: true,
+    table: tableName,
+    records: Array.isArray(records) ? records : [],
+    durationMs,
+    query: queryMeta(tableName, selectFields, options)
+  };
+}
+
+function errorResult(tableName, err, selectFields = "*", options = {}, durationMs = 0) {
+  return {
+    source: "supabase",
+    status: "error",
+    configured: true,
+    table: tableName,
+    records: [],
+    error: `${ERROR_PREFIX}: ${sanitizeError(err)}`,
+    durationMs,
+    query: queryMeta(tableName, selectFields, options)
+  };
+}
+
+function singleRecordResult(source, status, tableName, record, selectFields, options, durationMs) {
+  return {
+    source,
+    status,
+    configured: source === "supabase",
+    table: tableName,
+    record: record || null,
+    records: record ? [record] : [],
+    durationMs,
+    query: queryMeta(tableName, selectFields, options)
+  };
+}
+
+function supabaseErrorResult(tableName, err, selectFields, options, durationMs) {
+  return {
+    source: "supabase",
+    status: "error",
+    configured: true,
+    table: tableName,
+    records: [],
+    error: `${ERROR_PREFIX}: ${sanitizeError(err)}`,
+    durationMs,
+    query: queryMeta(tableName, selectFields, options)
+  };
+}
+
+function shouldRetryLegacySelect(err, options = {}) {
+  if (!options.fallbackSelect) return false;
+  const message = String(err?.message || err || "").toLowerCase();
+  return (
+    message.includes("schema cache") ||
+    message.includes("could not find")
+  );
+}
+
+function adminWriteErrorResult(operation, err, durationMs) {
+  return {
+    source: "supabase",
+    status: "error",
+    configured: true,
+    operation,
+    error: `${ERROR_PREFIX}: ${sanitizeError(err)}`,
+    durationMs
+  };
+}
+
+function localWriteErrorResult(operation, err, durationMs) {
+  return {
+    source: "local",
+    status: "error",
+    configured: true,
+    operation,
+    ok: false,
+    error: `Provider Config Error: ${sanitizeError(err)}`,
+    durationMs
+  };
+}
+
+function adminWriteMockResult(operation, durationMs) {
+  return {
+    source: "mock",
+    status: "mock",
+    configured: false,
+    operation,
+    ok: false,
+    error: "Supabase 未配置，mock 数据不可写入。",
+    durationMs
+  };
+}
+
+function parseCreditAdjustmentPayload(payload) {
+  const userId = String(payload?.userId || "").trim();
+  const mode = String(payload?.mode || "add").trim();
+  const amount = Number(payload?.amount);
+  const feature = String(payload?.feature || "后台积分分配").trim().slice(0, 120);
+  const note = String(payload?.note || "").trim().slice(0, 500);
+  if (!userId) throw new Error("请选择用户");
+  if (!["add", "deduct", "set"].includes(mode)) throw new Error("不支持的积分操作");
+  if (!Number.isInteger(amount)) throw new Error("积分必须是整数");
+  if (mode === "set") {
+    if (amount < 0) throw new Error("设置余额不能小于 0");
+  } else if (amount <= 0) {
+    throw new Error("充值或扣减积分必须大于 0");
+  }
+  return { userId, mode, amount, feature, note };
+}
+
+function creditAdjustmentSource(mode) {
+  if (mode === "deduct") return "后台扣减";
+  if (mode === "set") return "后台设置";
+  return "后台充值";
+}
+
+function normalizeUserPlan(value) {
+  const plan = String(value || "trial").trim().toLowerCase();
+  if (!["trial", "pro", "team"].includes(plan)) throw new Error("不支持的用户方案");
+  return plan;
+}
+
+function normalizeUserStatus(value) {
+  const status = String(value || "active").trim().toLowerCase();
+  if (!["active", "disabled"].includes(status)) throw new Error("不支持的用户状态");
+  return status;
+}
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || ""));
+}
+
+function normalizeAccountName(value) {
+  const account = String(value || "").trim().toLowerCase();
+  if (!account) throw new Error("账号不能为空");
+  if (account.length < 2) throw new Error("账号至少需要 2 个字符");
+  if (account.length > 64) throw new Error("账号不能超过 64 个字符");
+  if (!/^[a-z0-9._-]+$/.test(account)) throw new Error("账号只能包含小写字母、数字、点、下划线或短横线");
+  return account;
+}
+
+function accountToAuthEmail(value) {
+  const raw = String(value || "").trim();
+  if (isValidEmail(raw)) return normalizeEmail(raw);
+  const account = normalizeAccountName(raw);
+  return `${account}@${INTERNAL_ACCOUNT_EMAIL_DOMAIN}`;
+}
+
+function accountNameFromEmail(value) {
+  const email = normalizeEmail(value);
+  const suffix = `@${INTERNAL_ACCOUNT_EMAIL_DOMAIN}`;
+  if (!email.endsWith(suffix)) return email;
+  const local = email.slice(0, -suffix.length);
+  if (!local.startsWith(INTERNAL_ACCOUNT_EMAIL_PREFIX)) return local;
+  try {
+    const account = Buffer.from(local.slice(INTERNAL_ACCOUNT_EMAIL_PREFIX.length), "base64url").toString("utf8");
+    return /^[a-z0-9._-]{2,64}$/.test(account) ? account : email;
+  } catch {
+    return email;
+  }
+}
+
+function normalizePassword(value) {
+  return String(value || "");
+}
+
+function validatePassword(password) {
+  if (!password || password.length < 6) return "密码至少需要 6 位";
+  if (password.length > 128) return "密码不能超过 128 位";
+  return "";
+}
+
+function parseAdminUserCreatePayload(payload) {
+  const accountName = normalizeAccountName(payload?.accountName || payload?.account || payload?.username || payload?.email);
+  const email = accountToAuthEmail(accountName);
+  const displayName = String(payload?.displayName || payload?.display_name || "").trim().slice(0, 120);
+  const password = normalizePassword(payload?.password);
+  const plan = normalizeUserPlan(payload?.plan);
+  const status = normalizeUserStatus(payload?.status);
+  const initialCredits = Number(payload?.initialCredits ?? 0);
+  const note = String(payload?.note || "").trim().slice(0, 500);
+  const passwordError = validatePassword(password);
+  if (passwordError) throw new Error(passwordError);
+  if (!Number.isInteger(initialCredits) || initialCredits < 0) throw new Error("初始积分必须是大于等于 0 的整数");
+  return { accountName, email, displayName, password, plan, status, initialCredits, note };
+}
+
+function parseAdminUserUpdatePayload(payload) {
+  const userId = String(payload?.userId || "").trim();
+  const displayName = payload?.displayName === undefined && payload?.display_name === undefined
+    ? undefined
+    : String(payload?.displayName || payload?.display_name || "").trim().slice(0, 120);
+  const plan = payload?.plan === undefined ? undefined : normalizeUserPlan(payload.plan);
+  const status = payload?.status === undefined ? undefined : normalizeUserStatus(payload.status);
+  if (!userId) throw new Error("用户 ID 不能为空");
+  if (displayName === undefined && plan === undefined && status === undefined) {
+    throw new Error("没有需要更新的用户字段");
+  }
+  return { userId, displayName, plan, status };
+}
+
+function parseAdminUserDeletePayload(payload) {
+  const userId = String(payload?.userId || payload?.id || "").trim();
+  const confirmValue = String(payload?.confirmAccount || payload?.confirm_account || payload?.confirmEmail || payload?.confirm_email || "").trim();
+  if (!userId) throw new Error("用户 ID 不能为空");
+  if (!confirmValue) throw new Error("请输入要删除用户的账号进行确认");
+  const confirmAccount = isValidEmail(confirmValue) ? normalizeEmail(confirmValue) : normalizeAccountName(confirmValue);
+  return { userId, confirmAccount };
+}
+
+function parseAdminUserPasswordResetPayload(payload) {
+  const userId = String(payload?.userId || payload?.id || "").trim();
+  const password = normalizePassword(payload?.password);
+  if (!userId) throw new Error("用户 ID 不能为空");
+  const passwordError = validatePassword(password);
+  if (passwordError) throw new Error(passwordError);
+  return { userId, password };
+}
+
+function isAuthUserNotFoundError(err) {
+  const message = String(err?.message || err || "").toLowerCase();
+  return message.includes("user not found") || message.includes("not found");
+}
+
+function parseAuthProfilePayload(payload) {
+  const authUserId = String(payload?.authUserId || payload?.auth_user_id || payload?.id || "").trim();
+  const email = normalizeEmail(payload?.email);
+  const displayName = String(payload?.displayName || payload?.display_name || "").trim().slice(0, 120);
+  if (!authUserId) throw new Error("Supabase Auth user id is required");
+  if (!email || !isValidEmail(email)) throw new Error("valid email is required");
+  return { authUserId, email, displayName };
+}
+
+function parseProviderBudgetPayload(payload) {
+  const providerKey = String(payload?.providerKey || "comfyui").trim().toLowerCase();
+  const balance = Number(payload?.balance);
+  const unit = String(payload?.unit || "credits").trim().slice(0, 32) || "credits";
+  const note = String(payload?.note || "").trim().slice(0, 500);
+  if (!providerKey) throw new Error("Provider 不能为空");
+  if (!Number.isFinite(balance)) throw new Error("手动总余额必须是数字");
+  if (balance < 0) throw new Error("手动总余额不能小于 0");
+  return { providerKey, balance, unit, note };
+}
+
+function parseProviderBudgetAdjustmentPayload(payload) {
+  const providerKey = String(payload?.providerKey || "comfyui").trim().toLowerCase();
+  const mode = String(payload?.mode || "deduct").trim().toLowerCase();
+  const amount = Number(payload?.amount ?? payload?.balance ?? 0);
+  const unit = String(payload?.unit || "credits").trim().slice(0, 32) || "credits";
+  const note = String(payload?.note || "").trim().slice(0, 500);
+  if (!providerKey) throw new Error("Provider 不能为空");
+  if (!["add", "deduct", "set"].includes(mode)) throw new Error("不支持的手动总余额操作");
+  if (!Number.isFinite(amount)) throw new Error("手动总余额变更值必须是数字");
+  if (amount < 0) throw new Error("手动总余额变更值不能小于 0");
+  return { providerKey, mode, amount, unit, note };
+}
+
+function parseCanonicalCreditAmount(value) {
+  if (typeof value !== "string" || !/^(?:0|[1-9]\d{0,13})\.\d{6}$/.test(value)) {
+    throw new Error("canonical credit amount is invalid");
+  }
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("canonical credit amount is invalid");
+  return { amountText: value, amount };
+}
+
+function parseComfyUsageSettlementPayload(payload) {
+  const userId = String(payload?.userId || payload?.user_id || "").trim();
+  const promptId = String(payload?.promptId || payload?.prompt_id || "").trim().slice(0, 160);
+  const usageKey = String(payload?.usageKey || payload?.usage_key || (promptId ? `comfyui:${promptId}` : "")).trim().slice(0, 200);
+  const providerKey = String(payload?.providerKey || payload?.provider_key || "comfyui").trim().toLowerCase();
+  const modelKey = String(payload?.modelKey || payload?.model_key || "comfyui-workflow").trim().slice(0, 120);
+  const taskType = String(payload?.taskType || payload?.task_type || "local_workflow_video").trim().slice(0, 100);
+  const estimatedCreditCost = Number(payload?.estimatedCreditCost ?? payload?.estimated_credit_cost ?? 0);
+  const requestedPricingSource = String(payload?.pricingSource || payload?.pricing_source || "").trim().slice(0, 120);
+  const exactImagePricing = taskType === "local_workflow_image" && requestedPricingSource === "comfy_api_exact_price_v1";
+  const exactAmount = exactImagePricing
+    ? parseCanonicalCreditAmount(payload?.chargeAmount ?? payload?.charge_amount)
+    : null;
+  const chargeAmount = exactAmount
+    ? exactAmount.amountText
+    : Math.ceil(Number(payload?.chargeAmount ?? payload?.charge_amount ?? payload?.creditCost ?? payload?.credit_cost ?? 0));
+  const chargeValue = exactAmount ? exactAmount.amount : chargeAmount;
+  const pricingSource = String(requestedPricingSource || (chargeValue > 0 ? "workflow" : "unknown")).trim().slice(0, 120) || "unknown";
+  const pricingDetails = payload?.pricingDetails && typeof payload.pricingDetails === "object" && !Array.isArray(payload.pricingDetails)
+    ? payload.pricingDetails
+    : {};
+  if (!userId) throw new Error("ComfyUI usage user id is required");
+  if (!promptId) throw new Error("ComfyUI usage prompt id is required");
+  if (!usageKey || usageKey.length > 200) throw new Error("ComfyUI usage key is invalid");
+  if (providerKey !== "comfyui") throw new Error("ComfyUI usage provider must be comfyui");
+  if (!Number.isFinite(estimatedCreditCost) || estimatedCreditCost < 0) throw new Error("ComfyUI estimated credit cost is invalid");
+  if (exactAmount ? chargeValue < 0 : (!Number.isInteger(chargeAmount) || chargeAmount < 0)) throw new Error("ComfyUI charge amount is invalid");
+  return {
+    userId,
+    promptId,
+    usageKey,
+    providerKey,
+    modelKey,
+    taskType,
+    estimatedCreditCost,
+    chargeAmount,
+    pricingSource,
+    pricingDetails
+  };
+}
+
+function normalizeProviderQuotaKey(value) {
+  const providerKey = String(value || "grok").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_").slice(0, 80);
+  if (!providerKey) throw new Error("Provider 不能为空");
+  return providerKey;
+}
+
+function providerQuotaSettingKey(providerKey, userId) {
+  return `${PROVIDER_QUOTA_PREFIX}${normalizeProviderQuotaKey(providerKey)}_${String(userId || "").trim()}`;
+}
+
+function parseProviderQuotaPayload(payload) {
+  const userId = String(payload?.userId || payload?.user_id || "").trim();
+  const providerKey = normalizeProviderQuotaKey(payload?.providerKey || payload?.provider_key || "grok");
+  const allocatedCount = Number(payload?.allocatedCount ?? payload?.allocated_count ?? payload?.count ?? 0);
+  const note = String(payload?.note || "").trim().slice(0, 500);
+  if (!userId) throw new Error("请选择用户");
+  if (!Number.isInteger(allocatedCount) || allocatedCount < 0) throw new Error("分配次数必须是大于等于 0 的整数");
+  return { userId, providerKey, allocatedCount, note };
+}
+
+function normalizeProviderQuotaRecord(setting, user, providerKey) {
+  const value = setting?.value && typeof setting.value === "object" ? setting.value : {};
+  const allocatedCount = Math.max(0, Number(value.allocated_count ?? value.allocatedCount ?? 0) || 0);
+  const usedCount = Math.max(0, Number(value.used_count ?? value.usedCount ?? 0) || 0);
+  const reservedCount = Math.max(0, Number(value.reserved_count ?? value.reservedCount ?? 0) || 0);
+  const recentCalls = Array.isArray(value.recent_calls)
+    ? value.recent_calls.filter((item) => item && typeof item === "object").slice(-50)
+    : [];
+  const userId = String(user?.id || value.user_id || "").trim();
+  const email = user?.email || value.email || "";
+  const displayName = user?.display_name || value.display_name || "";
+  const normalizedProviderKey = normalizeProviderQuotaKey(value.provider_key || providerKey || "grok");
+  return {
+    key: setting?.key || providerQuotaSettingKey(normalizedProviderKey, userId),
+    user_id: userId,
+    email,
+    display_name: displayName,
+    provider_key: normalizedProviderKey,
+    allocated_count: allocatedCount,
+    used_count: usedCount,
+    reserved_count: reservedCount,
+    remaining_count: Math.max(0, allocatedCount - usedCount - reservedCount),
+    recent_calls: recentCalls,
+    note: value.note || "",
+    updated_at: value.updated_at || setting?.updated_at || ""
+  };
+}
+
+function normalizeProviderStatus(value) {
+  const status = String(value || "disabled").trim().toLowerCase();
+  if (!["enabled", "disabled"].includes(status)) throw new Error("不支持的 Provider 状态");
+  return status;
+}
+
+function normalizeTaskStatus(value) {
+  const status = String(value || "queued").trim().toLowerCase();
+  if (!["queued", "running", "success", "failed", "cancelled"].includes(status)) {
+    throw new Error("不支持的任务状态");
+  }
+  return status;
+}
+
+function normalizeProviderKey(value) {
+  const key = String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_").slice(0, 80);
+  if (!key) throw new Error("Provider key 不能为空");
+  return key;
+}
+
+function normalizeModelKey(value) {
+  const key = String(value || "").trim().toLowerCase().replace(/[^a-z0-9_.:-]/g, "_").slice(0, 120);
+  if (!key) throw new Error("Model key 不能为空");
+  return key;
+}
+
+function parseBillingMultiplier(value, fallback = 1) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error("计费倍率必须是大于等于 0 的数字");
+  return parsed;
+}
+
+function parseAdminAiProviderPayload(payload) {
+  if (payload?.apiKey || payload?.api_key || payload?.secret || payload?.secretKey) {
+    throw new Error("不要提交真实 API Key；这里只允许保存服务端密钥引用 api_key_secret_ref");
+  }
+  const providerKey = normalizeProviderKey(payload?.providerKey || payload?.provider_key);
+  const name = String(payload?.name || providerKey).trim().slice(0, 120);
+  const status = normalizeProviderStatus(payload?.status);
+  const billingMultiplier = parseBillingMultiplier(payload?.billingMultiplier ?? payload?.billing_multiplier, 1);
+  const apiKeySecretRef = String(payload?.apiKeySecretRef || payload?.api_key_secret_ref || "").trim().slice(0, 200);
+  return { providerKey, name, status, billingMultiplier, apiKeySecretRef };
+}
+
+function parseAdminAiModelPayload(payload) {
+  const providerId = String(payload?.providerId || payload?.provider_id || "").trim();
+  const providerKey = payload?.providerKey || payload?.provider_key
+    ? normalizeProviderKey(payload.providerKey || payload.provider_key)
+    : "";
+  const modelKey = normalizeModelKey(payload?.modelKey || payload?.model_key);
+  const modelName = String(payload?.modelName || payload?.model_name || modelKey).trim().slice(0, 160);
+  const purpose = String(payload?.purpose || "").trim().slice(0, 160);
+  const status = normalizeProviderStatus(payload?.status);
+  const isDefault = Boolean(payload?.isDefault ?? payload?.is_default ?? false);
+  const billingMultiplier = parseBillingMultiplier(payload?.billingMultiplier ?? payload?.billing_multiplier, 1);
+  if (!providerId && !providerKey) throw new Error("请选择 Provider");
+  return { providerId, providerKey, modelKey, modelName, purpose, status, isDefault, billingMultiplier };
+}
+
+function parseSystemSettingPayload(payload) {
+  const key = String(payload?.key || "").trim().slice(0, 120);
+  if (!key) throw new Error("设置 key 不能为空");
+  if (!/^[a-z0-9_.:-]+$/i.test(key)) throw new Error("设置 key 只能包含字母、数字、下划线、点、冒号和短横线");
+  const value = payload?.value;
+  if (value === undefined) throw new Error("设置 value 不能为空");
+  return { key, value };
+}
+
+function requestJson(urlString, headers = {}, timeoutMs = COMFYUI_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    let url;
+    try {
+      url = new URL(urlString);
+    } catch {
+      reject(new Error("invalid provider base URL"));
+      return;
+    }
+    const transport = url.protocol === "http:" ? http : url.protocol === "https:" ? https : null;
+    if (!transport) {
+      reject(new Error("provider base URL must use http or https"));
+      return;
+    }
+    const req = transport.request(
+      url,
+      {
+        method: "GET",
+        headers,
+        timeout: timeoutMs
+      },
+      (res) => {
+        const chunks = [];
+        let size = 0;
+        res.on("data", (chunk) => {
+          size += chunk.length;
+          if (size > 1024 * 1024) {
+            req.destroy(new Error("response too large"));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        res.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          let body = null;
+          if (text) {
+            try {
+              body = JSON.parse(text);
+            } catch {
+              body = { raw: text };
+            }
+          }
+          if (res.statusCode < 200 || res.statusCode >= 300) {
+            const msg = body?.error || body?.message || res.statusMessage || "request failed";
+            const err = new Error(`HTTP ${res.statusCode}: ${msg}`);
+            err.statusCode = res.statusCode;
+            reject(err);
+            return;
+          }
+          resolve({ statusCode: res.statusCode, body });
+        });
+      }
+    );
+    req.on("timeout", () => req.destroy(new Error("request timeout")));
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+function readNestedValue(source, paths) {
+  for (const path of paths) {
+    const value = path.split(".").reduce((cursor, key) => {
+      if (cursor && Object.prototype.hasOwnProperty.call(cursor, key)) return cursor[key];
+      return undefined;
+    }, source);
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return undefined;
+}
+
+function extractComfyUiBalance(userInfo) {
+  const value = readNestedValue(userInfo || {}, [
+    "credits",
+    "credit_balance",
+    "balance",
+    "remaining_credits",
+    "billing.credits",
+    "billing.balance"
+  ]);
+  if (value === undefined) {
+    return {
+      supported: false,
+      value: null,
+      unit: "credits",
+      text: "官方余额 API 未开放"
+    };
+  }
+  const numeric = Number(value);
+  return {
+    supported: true,
+    value,
+    unit: "credits",
+    text: Number.isFinite(numeric) ? new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 }).format(numeric) : String(value)
+  };
+}
+
+function getAdminClient() {
+  const env = readAdminSupabaseEnv();
+  if (!env.configured) return { client: null, env, status: "mock" };
+
+  const envKey = `${env.supabaseUrl}|${env.serviceRoleKey}`;
+  if (cachedClient && cachedClientEnvKey === envKey) {
+    return { client: cachedClient, env, status: "connected" };
+  }
+
+  try {
+    cachedClient = createClient(env.supabaseUrl, env.serviceRoleKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false
+      },
+      realtime: {
+        transport: WebSocket
+      }
+    });
+    cachedClientEnvKey = envKey;
+    logAdminData("info", "Supabase client initialized", { supabaseUrl: env.supabaseUrl });
+    return { client: cachedClient, env, status: "connected" };
+  } catch (err) {
+    cachedClient = null;
+    cachedClientEnvKey = "";
+    return { client: null, env, status: "error", error: err };
+  }
+}
+
+async function readTable(tableName, selectFields, options = {}) {
+  const startedAt = Date.now();
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") {
+      const result = mockResult(tableName, selectFields, options, durationMs);
+      logAdminData("info", `read ${tableName}`, {
+        source: result.source,
+        status: result.status,
+        rows: result.records.length,
+        durationMs,
+        reason: result.reason
+      });
+      return result;
+    }
+    const result = supabaseErrorResult(tableName, clientState.error || "client initialization failed", selectFields, options, durationMs);
+    logAdminData("error", `read ${tableName} failed`, {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  try {
+    let query = clientState.client.from(tableName).select(selectFields).limit(options.limit || DEFAULT_LIMIT);
+    if (options.orderBy) {
+      query = query.order(options.orderBy, { ascending: Boolean(options.ascending) });
+    }
+    const { data, error } = await query;
+    const durationMs = Date.now() - startedAt;
+    if (error && shouldRetryLegacySelect(error, options)) {
+      let fallbackQuery = clientState.client.from(tableName).select(options.fallbackSelect).limit(options.limit || DEFAULT_LIMIT);
+      if (options.orderBy) {
+        fallbackQuery = fallbackQuery.order(options.orderBy, { ascending: Boolean(options.ascending) });
+      }
+      const fallback = await fallbackQuery;
+      const fallbackDurationMs = Date.now() - startedAt;
+      if (!fallback.error) {
+        const result = supabaseResult(tableName, fallback.data, options.fallbackSelect, { ...options, usedFallbackSelect: true }, fallbackDurationMs);
+        logAdminData("info", `read ${tableName}`, {
+          source: result.source,
+          status: result.status,
+          rows: result.records.length,
+          durationMs: fallbackDurationMs,
+          usedFallbackSelect: true
+        });
+        return result;
+      }
+    }
+    if (error) {
+      const result = supabaseErrorResult(tableName, error, selectFields, options, durationMs);
+      logAdminData("error", `read ${tableName} failed`, {
+        source: result.source,
+        status: result.status,
+        durationMs,
+        error: result.error
+      });
+      return result;
+    }
+    const result = supabaseResult(tableName, data, selectFields, options, durationMs);
+    logAdminData("info", `read ${tableName}`, {
+      source: result.source,
+      status: result.status,
+      rows: result.records.length,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = supabaseErrorResult(tableName, err, selectFields, options, durationMs);
+    logAdminData("error", `read ${tableName} failed`, {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+async function readSingleBy(tableName, selectFields, columnName, value, options = {}) {
+  const startedAt = Date.now();
+  const clientState = getAdminClient();
+  const safeOptions = { ...options, filter: `${columnName}=eq.${String(value || "")}` };
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") {
+      const record = (mockData[tableName] || []).find((item) => String(item?.[columnName] || "") === String(value || "")) || null;
+      const result = singleRecordResult("mock", "mock", tableName, record, selectFields, safeOptions, durationMs);
+      logAdminData("info", `read ${tableName} single`, {
+        source: result.source,
+        status: result.status,
+        found: Boolean(record),
+        durationMs,
+        reason: "supabase_env_missing"
+      });
+      return result;
+    }
+    const result = supabaseErrorResult(tableName, clientState.error || "client initialization failed", selectFields, safeOptions, durationMs);
+    logAdminData("error", `read ${tableName} single failed`, {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  try {
+    const { data, error } = await clientState.client
+      .from(tableName)
+      .select(selectFields)
+      .eq(columnName, value)
+      .maybeSingle();
+    const durationMs = Date.now() - startedAt;
+    if (error) {
+      const result = supabaseErrorResult(tableName, error, selectFields, safeOptions, durationMs);
+      logAdminData("error", `read ${tableName} single failed`, {
+        source: result.source,
+        status: result.status,
+        durationMs,
+        error: result.error
+      });
+      return result;
+    }
+    const result = singleRecordResult("supabase", "connected", tableName, data || null, selectFields, safeOptions, durationMs);
+    logAdminData("info", `read ${tableName} single`, {
+      source: result.source,
+      status: result.status,
+      found: Boolean(data),
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = supabaseErrorResult(tableName, err, selectFields, safeOptions, durationMs);
+    logAdminData("error", `read ${tableName} single failed`, {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+function getAdminUsers() {
+  return readTable("users", adminQueries.users.select, adminQueries.users);
+}
+
+function getAdminCredits() {
+  return readTable("credits", adminQueries.credits.select, adminQueries.credits);
+}
+
+function getAdminCreditLogs() {
+  return disabledTableResult("credit_logs", "消费/积分流水已在轻量后台模式中关闭");
+}
+
+function getAdminAiProviders() {
+  return readTable("ai_providers", adminQueries.ai_providers.select, adminQueries.ai_providers);
+}
+
+function getAdminAiModels() {
+  return disabledTableResult("ai_models", "模型管理已在轻量后台模式中关闭；Provider 转发阶段不维护模型表");
+}
+
+function getAdminAiTasks() {
+  return disabledTableResult("ai_tasks", "任务记录已在轻量后台模式中关闭");
+}
+
+function getAdminSystemSettings() {
+  return readTable("system_settings", adminQueries.system_settings.select, adminQueries.system_settings);
+}
+
+function getAdminUserByEmail(email) {
+  return readSingleBy("users", adminQueries.users.select, "email", String(email || "").trim().toLowerCase(), {
+    purpose: "auth_login"
+  });
+}
+
+function getAdminUserByAccount(account) {
+  let email;
+  try {
+    email = accountToAuthEmail(account);
+  } catch (err) {
+    return Promise.resolve({
+      source: "supabase",
+      status: "error",
+      configured: true,
+      record: null,
+      error: `${ERROR_PREFIX}: ${sanitizeError(err)}`,
+      durationMs: 0,
+      query: queryMeta("users", adminQueries.users.select, { purpose: "auth_login" })
+    });
+  }
+  return getAdminUserByEmail(email);
+}
+
+function getAdminUserById(userId) {
+  return readSingleBy("users", adminQueries.users.select, "id", String(userId || "").trim(), {
+    purpose: "session_user"
+  });
+}
+
+function getAdminCreditByUserId(userId) {
+  return readSingleBy("credits", adminQueries.credits.select, "user_id", String(userId || "").trim(), {
+    purpose: "credit_balance"
+  });
+}
+
+async function syncAdminAuthUserProfile(payload) {
+  const startedAt = Date.now();
+  const operation = "auth.profile.sync";
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") {
+      const result = adminWriteMockResult(operation, durationMs);
+      logAdminData("info", "sync auth profile skipped", {
+        source: result.source,
+        status: result.status,
+        durationMs,
+        reason: "supabase_env_missing"
+      });
+      return result;
+    }
+    const result = adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+    logAdminData("error", "sync auth profile failed", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  let parsed;
+  try {
+    parsed = parseAuthProfilePayload(payload);
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = localWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "sync auth profile rejected", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  try {
+    const now = new Date().toISOString();
+    const { data: userById, error: idError } = await clientState.client
+      .from("users")
+      .select(adminQueries.users.select)
+      .eq("id", parsed.authUserId)
+      .maybeSingle();
+    if (idError) throw idError;
+
+    let user = userById || null;
+    let match = user ? "id" : "";
+    let createdUser = false;
+
+    if (!user) {
+      const { data: userByEmail, error: emailError } = await clientState.client
+        .from("users")
+        .select(adminQueries.users.select)
+        .eq("email", parsed.email)
+        .maybeSingle();
+      if (emailError) throw emailError;
+      user = userByEmail || null;
+      match = user ? "email" : "";
+    }
+
+    if (user) {
+      const patch = {
+        email: parsed.email,
+        updated_at: now
+      };
+      if (parsed.displayName && !user.display_name) patch.display_name = parsed.displayName;
+      const { data: updatedUser, error: updateError } = await clientState.client
+        .from("users")
+        .update(patch)
+        .eq("id", user.id)
+        .select(adminQueries.users.select)
+        .maybeSingle();
+      if (updateError) throw updateError;
+      user = updatedUser || user;
+    } else {
+      const { data: insertedUser, error: insertError } = await clientState.client
+        .from("users")
+        .insert({
+          id: parsed.authUserId,
+          email: parsed.email,
+          display_name: parsed.displayName || null,
+          role: "user",
+          plan: "trial",
+          status: "active",
+          updated_at: now
+        })
+        .select(adminQueries.users.select)
+        .maybeSingle();
+      if (insertError) throw insertError;
+      if (!insertedUser?.id) throw new Error("auth profile created but user id was not returned");
+      user = insertedUser;
+      match = "created";
+      createdUser = true;
+    }
+
+    const { data: creditRows, error: creditReadError } = await clientState.client
+      .from("credits")
+      .select("id,user_id,balance,updated_at")
+      .eq("user_id", user.id)
+      .limit(2);
+    if (creditReadError) throw creditReadError;
+    if ((creditRows || []).length > 1) {
+      throw new Error("user has duplicate credit balance rows");
+    }
+
+    let credit = (creditRows || [])[0] || null;
+    let createdCredit = false;
+    if (!credit) {
+      const { data: insertedCredit, error: creditInsertError } = await clientState.client
+        .from("credits")
+        .insert({
+          user_id: user.id,
+          balance: 0,
+          updated_at: now
+        })
+        .select("id,user_id,balance,updated_at")
+        .maybeSingle();
+      if (creditInsertError) throw creditInsertError;
+      credit = insertedCredit || null;
+      createdCredit = true;
+    }
+
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      user,
+      credit,
+      auth: {
+        provider: "supabase_auth",
+        match,
+        createdUser,
+        createdCredit
+      }
+    };
+    logAdminData("info", "sync auth profile", {
+      source: result.source,
+      status: result.status,
+      userId: user.id,
+      email: user.email,
+      match,
+      createdUser,
+      createdCredit,
+      creditBalance: Number(credit?.balance || 0),
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = localWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "sync auth profile failed", {
+      source: result.source,
+      status: result.status,
+      email: parsed.email,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+async function createAdminUser(payload) {
+  const startedAt = Date.now();
+  const operation = "users.create";
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") {
+      const result = adminWriteMockResult(operation, durationMs);
+      logAdminData("info", "create user skipped", {
+        source: result.source,
+        status: result.status,
+        durationMs,
+        reason: "supabase_env_missing"
+      });
+      return result;
+    }
+    const result = adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+    logAdminData("error", "create user failed", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  let parsed;
+  try {
+    parsed = parseAdminUserCreatePayload(payload);
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = localWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "create user rejected", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  try {
+    const now = new Date().toISOString();
+    let authUser = null;
+    let insertedPublicUser = null;
+    const { data: existingUser, error: existingError } = await clientState.client
+      .from("users")
+      .select("id,email")
+      .eq("email", parsed.email)
+      .maybeSingle();
+    if (existingError) throw existingError;
+    if (existingUser) throw new Error("该账号已存在后台用户");
+
+    try {
+      const { data: authData, error: authError } = await clientState.client.auth.admin.createUser({
+        email: parsed.email,
+        password: parsed.password,
+        email_confirm: true,
+        user_metadata: {
+          novaflow_account: parsed.accountName,
+          display_name: parsed.displayName || parsed.accountName
+        }
+      });
+      if (authError) {
+        const message = sanitizeError(authError);
+        if (/already|registered|exists/i.test(message)) throw new Error("该账号登录身份已存在");
+        throw authError;
+      }
+      authUser = authData?.user || null;
+      if (!authUser?.id) throw new Error("Supabase Auth 创建成功但未返回用户 ID");
+
+      const { data: user, error: userError } = await clientState.client
+        .from("users")
+        .insert({
+          id: authUser.id,
+          email: parsed.email,
+          display_name: parsed.displayName || parsed.accountName,
+          role: "user",
+          plan: parsed.plan,
+          status: parsed.status,
+          updated_at: now
+        })
+        .select(adminQueries.users.select)
+        .maybeSingle();
+      if (userError) throw userError;
+      if (!user?.id) throw new Error("用户创建成功但未返回 ID");
+      insertedPublicUser = user;
+    } catch (err) {
+      if (authUser?.id && !insertedPublicUser?.id) {
+        try {
+          await clientState.client.auth.admin.deleteUser(authUser.id);
+        } catch {
+          void 0;
+        }
+      }
+      throw err;
+    }
+
+    const { data: credit, error: creditError } = await clientState.client
+      .from("credits")
+      .insert({
+        user_id: insertedPublicUser.id,
+        balance: parsed.initialCredits,
+        updated_at: now
+      })
+      .select("id,user_id,balance,updated_at")
+      .maybeSingle();
+    if (creditError) {
+      try {
+        await clientState.client.from("users").delete().eq("id", insertedPublicUser.id);
+      } catch {
+        void 0;
+      }
+      try {
+        if (authUser?.id) await clientState.client.auth.admin.deleteUser(authUser.id);
+      } catch {
+        void 0;
+      }
+      throw creditError;
+    }
+
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      user: insertedPublicUser,
+      credit,
+      auth: {
+        provider: "supabase_auth",
+        created: true,
+        accountName: parsed.accountName,
+        email: parsed.email
+      }
+    };
+    logAdminData("info", "create user", {
+      source: result.source,
+      status: result.status,
+      userId: insertedPublicUser.id,
+      account: parsed.accountName,
+      plan: insertedPublicUser.plan,
+      userStatus: insertedPublicUser.status,
+      initialCredits: parsed.initialCredits,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = localWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "create user failed", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+async function updateAdminUser(payload) {
+  const startedAt = Date.now();
+  const operation = "users.update";
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") {
+      const result = adminWriteMockResult(operation, durationMs);
+      logAdminData("info", "update user skipped", {
+        source: result.source,
+        status: result.status,
+        durationMs,
+        reason: "supabase_env_missing"
+      });
+      return result;
+    }
+    const result = adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+    logAdminData("error", "update user failed", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  let parsed;
+  try {
+    parsed = parseAdminUserUpdatePayload(payload);
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "update user rejected", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  try {
+    const patch = { updated_at: new Date().toISOString() };
+    if (parsed.displayName !== undefined) patch.display_name = parsed.displayName || null;
+    if (parsed.plan !== undefined) patch.plan = parsed.plan;
+    if (parsed.status !== undefined) patch.status = parsed.status;
+
+    const { data: user, error } = await clientState.client
+      .from("users")
+      .update(patch)
+      .eq("id", parsed.userId)
+      .select(adminQueries.users.select)
+      .maybeSingle();
+    if (error) throw error;
+    if (!user) throw new Error("用户不存在，无法更新");
+
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      user
+    };
+    logAdminData("info", "update user", {
+      source: result.source,
+      status: result.status,
+      userId: user.id,
+      plan: user.plan,
+      userStatus: user.status,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "update user failed", {
+      source: result.source,
+      status: result.status,
+      userId: parsed.userId,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+async function findAdminAuthUserForDelete(client, user) {
+  let authUser = null;
+  try {
+    const { data, error } = await client.auth.admin.getUserById(user.id);
+    if (error) {
+      if (!isAuthUserNotFoundError(error)) throw error;
+    } else if (data?.user?.id) {
+      authUser = data.user;
+    }
+  } catch (err) {
+    if (!isAuthUserNotFoundError(err)) throw err;
+  }
+
+  if (authUser) {
+    const authEmail = String(authUser.email || "").toLowerCase();
+    const publicEmail = String(user.email || "").toLowerCase();
+    if (authEmail && publicEmail && authEmail !== publicEmail) {
+      throw new Error("Auth 用户邮箱与后台用户邮箱不一致，已中止删除");
+    }
+    return authUser;
+  }
+
+  try {
+    const { data, error } = await client.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (error) throw error;
+    return (data?.users || []).find((item) => String(item.email || "").toLowerCase() === String(user.email || "").toLowerCase()) || null;
+  } catch (err) {
+    if (isAuthUserNotFoundError(err)) return null;
+    throw err;
+  }
+}
+
+async function verifyAdminUserDeleted(client, userId, authUserId) {
+  const { data: publicUser, error: publicUserError } = await client
+    .from("users")
+    .select("id")
+    .eq("id", userId)
+    .maybeSingle();
+  if (publicUserError) throw publicUserError;
+  if (publicUser?.id) throw new Error("用户删除请求完成，但 public.users 仍存在");
+
+  if (authUserId) {
+    const { data: authData, error: authError } = await client.auth.admin.getUserById(authUserId);
+    if (authError && !isAuthUserNotFoundError(authError)) throw authError;
+    if (authData?.user?.id) throw new Error("用户删除请求完成，但 Supabase Auth 身份仍存在");
+  }
+}
+
+function verifyAdminUserPasswordReset(resetData, authUser) {
+  const resetUserId = resetData?.user?.id || "";
+  if (!resetUserId) throw new Error("Supabase Auth 未返回密码重置用户");
+  if (authUser?.id && resetUserId !== authUser.id) {
+    throw new Error("Supabase Auth 返回的密码重置用户与目标用户不一致");
+  }
+  return {
+    matched: true,
+    passwordReset: true,
+    authUserId: resetUserId
+  };
+}
+
+async function deleteAdminUser(payload) {
+  const startedAt = Date.now();
+  const operation = "users.delete";
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") {
+      const result = adminWriteMockResult(operation, durationMs);
+      logAdminData("info", "delete user skipped", {
+        source: result.source,
+        status: result.status,
+        durationMs,
+        reason: "supabase_env_missing"
+      });
+      return result;
+    }
+    const result = adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+    logAdminData("error", "delete user failed", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  let parsed;
+  try {
+    parsed = parseAdminUserDeletePayload(payload);
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "delete user rejected", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  try {
+    const { data: user, error: userError } = await clientState.client
+      .from("users")
+      .select(adminQueries.users.select)
+      .eq("id", parsed.userId)
+      .maybeSingle();
+    if (userError) throw userError;
+    if (!user) throw new Error("用户不存在，无法删除");
+    const accountName = accountNameFromEmail(user.email);
+    if (String(accountName || "").toLowerCase() !== parsed.confirmAccount) {
+      throw new Error("确认账号不匹配，已中止删除");
+    }
+
+    const authUser = await findAdminAuthUserForDelete(clientState.client, user);
+    let authDeleted = false;
+    if (authUser?.id) {
+      const { error: authDeleteError } = await clientState.client.auth.admin.deleteUser(authUser.id);
+      if (authDeleteError && !isAuthUserNotFoundError(authDeleteError)) throw authDeleteError;
+      authDeleted = true;
+    }
+
+    const { data: deletedCredits, error: creditsError } = await clientState.client
+      .from("credits")
+      .delete()
+      .eq("user_id", user.id)
+      .select("id,user_id,balance,updated_at");
+    if (creditsError) throw creditsError;
+
+    const { data: deletedProviderQuotas, error: providerQuotaError } = await clientState.client
+      .from("system_settings")
+      .delete()
+      .like("key", `${PROVIDER_QUOTA_PREFIX}%_${user.id}`)
+      .select("key,value,updated_at");
+    if (providerQuotaError) throw providerQuotaError;
+
+    const { data: deletedUser, error: deleteError } = await clientState.client
+      .from("users")
+      .delete()
+      .eq("id", user.id)
+      .select(adminQueries.users.select)
+      .maybeSingle();
+    if (deleteError) throw deleteError;
+    if (!deletedUser) throw new Error("用户删除未返回记录，请刷新确认");
+    await verifyAdminUserDeleted(clientState.client, user.id, authUser?.id || "");
+
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      user: deletedUser,
+      deletedCredits: deletedCredits || [],
+      deletedProviderQuotas: deletedProviderQuotas || [],
+      auth: {
+        matched: Boolean(authUser?.id),
+        deleted: authDeleted
+      }
+    };
+    logAdminData("info", "delete user", {
+      source: result.source,
+      status: result.status,
+      userId: deletedUser.id,
+      account: accountNameFromEmail(deletedUser.email),
+      deletedCredits: result.deletedCredits.length,
+      deletedProviderQuotas: result.deletedProviderQuotas.length,
+      authDeleted,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "delete user failed", {
+      source: result.source,
+      status: result.status,
+      userId: parsed.userId,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+async function resetAdminUserPassword(payload) {
+  const startedAt = Date.now();
+  const operation = "users.password.reset";
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") {
+      const result = adminWriteMockResult(operation, durationMs);
+      logAdminData("info", "reset user password skipped", {
+        source: result.source,
+        status: result.status,
+        durationMs,
+        reason: "supabase_env_missing"
+      });
+      return result;
+    }
+    const result = adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+    logAdminData("error", "reset user password failed", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  let parsed;
+  try {
+    parsed = parseAdminUserPasswordResetPayload(payload);
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "reset user password rejected", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  try {
+    const { data: user, error: userError } = await clientState.client
+      .from("users")
+      .select(adminQueries.users.select)
+      .eq("id", parsed.userId)
+      .maybeSingle();
+    if (userError) throw userError;
+    if (!user) throw new Error("用户不存在，无法修改密码");
+
+    const authUser = await findAdminAuthUserForDelete(clientState.client, user);
+    if (!authUser?.id) throw new Error("未找到匹配的 Supabase Auth 登录身份");
+
+    const { data: resetData, error: resetError } = await clientState.client.auth.admin.updateUserById(authUser.id, {
+      password: parsed.password
+    });
+    if (resetError) throw resetError;
+    const authReset = verifyAdminUserPasswordReset(resetData, authUser);
+
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      user,
+      auth: authReset
+    };
+    logAdminData("info", "reset user password", {
+      source: result.source,
+      status: result.status,
+      userId: user.id,
+      account: accountNameFromEmail(user.email),
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "reset user password failed", {
+      source: result.source,
+      status: result.status,
+      userId: parsed.userId,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+async function setAdminProviderBudget(payload) {
+  const startedAt = Date.now();
+  const operation = "provider_budget.set";
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") {
+      const result = adminWriteMockResult(operation, durationMs);
+      logAdminData("info", "set provider budget skipped", {
+        source: result.source,
+        status: result.status,
+        durationMs,
+        reason: "supabase_env_missing"
+      });
+      return result;
+    }
+    const result = adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+    logAdminData("error", "set provider budget failed", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  let parsed;
+  try {
+    parsed = parseProviderBudgetPayload(payload);
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "set provider budget rejected", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  try {
+    const now = new Date().toISOString();
+    const key = `provider_budget_${parsed.providerKey}`;
+    const value = {
+      label: `${parsed.providerKey === "comfyui" ? "ComfyUI" : parsed.providerKey} 手动总余额`,
+      provider_key: parsed.providerKey,
+      balance: parsed.balance,
+      unit: parsed.unit,
+      source: "manual",
+      note: parsed.note,
+      updated_at: now
+    };
+    const { data, error } = await clientState.client
+      .from("system_settings")
+      .upsert({ key, value, updated_at: now }, { onConflict: "key" })
+      .select("key,value,updated_at")
+      .maybeSingle();
+    if (error) throw error;
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      record: data
+    };
+    logAdminData("info", "set provider budget", {
+      source: result.source,
+      status: result.status,
+      providerKey: parsed.providerKey,
+      balance: parsed.balance,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "set provider budget failed", {
+      source: result.source,
+      status: result.status,
+      providerKey: parsed.providerKey,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+async function settleAdminComfyUsage(payload) {
+  const startedAt = Date.now();
+  const operation = "comfy_usage.settle";
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") return adminWriteMockResult(operation, durationMs);
+    return adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+  }
+
+  let parsed;
+  try {
+    parsed = parseComfyUsageSettlementPayload(payload);
+  } catch (err) {
+    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
+  }
+
+  try {
+    const { data, error } = await clientState.client.rpc("settle_comfy_usage", {
+      p_usage_key: parsed.usageKey,
+      p_user_id: parsed.userId,
+      p_prompt_id: parsed.promptId,
+      p_provider_key: parsed.providerKey,
+      p_model_key: parsed.modelKey,
+      p_task_type: parsed.taskType,
+      p_estimated_credit_cost: parsed.estimatedCreditCost,
+      p_charge_amount: parsed.chargeAmount,
+      p_pricing_source: parsed.pricingSource,
+      p_pricing_details: parsed.pricingDetails
+    });
+    if (error) throw error;
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      settlement: data
+    };
+    logAdminData("info", "settled ComfyUI usage", {
+      source: result.source,
+      status: data?.status || result.status,
+      usageKey: parsed.usageKey,
+      userId: parsed.userId,
+      chargeAmount: parsed.chargeAmount,
+      idempotent: Boolean(data?.idempotent),
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "settle ComfyUI usage failed", {
+      usageKey: parsed.usageKey,
+      userId: parsed.userId,
+      chargeAmount: parsed.chargeAmount,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+async function adjustAdminProviderBudget(payload) {
+  const startedAt = Date.now();
+  const operation = "provider_budget.adjust";
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") {
+      const result = adminWriteMockResult(operation, durationMs);
+      logAdminData("info", "adjust provider budget skipped", {
+        source: result.source,
+        status: result.status,
+        durationMs,
+        reason: "supabase_env_missing"
+      });
+      return result;
+    }
+    const result = adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+    logAdminData("error", "adjust provider budget failed", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  let parsed;
+  try {
+    parsed = parseProviderBudgetAdjustmentPayload(payload);
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "adjust provider budget rejected", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  try {
+    const key = `provider_budget_${parsed.providerKey}`;
+    const { data: existing, error: readError } = await clientState.client
+      .from("system_settings")
+      .select("key,value,updated_at")
+      .eq("key", key)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (!existing && parsed.mode !== "set") {
+      throw new Error("ComfyUI 手动总余额未保存，无法自动扣减");
+    }
+
+    const currentValue = existing?.value && typeof existing.value === "object" && !Array.isArray(existing.value)
+      ? existing.value
+      : {};
+    const beforeBalance = Number(currentValue.balance ?? currentValue.value ?? 0);
+    if (!Number.isFinite(beforeBalance)) throw new Error("ComfyUI 手动总余额不是有效数字");
+    const delta = parsed.mode === "set"
+      ? parsed.amount - beforeBalance
+      : parsed.mode === "deduct" ? -parsed.amount : parsed.amount;
+    const afterBalance = beforeBalance + delta;
+    if (afterBalance < 0) throw new Error("ComfyUI 手动总余额不足，无法扣减");
+
+    const now = new Date().toISOString();
+    const value = {
+      ...currentValue,
+      label: `${parsed.providerKey === "comfyui" ? "ComfyUI" : parsed.providerKey} 手动总余额`,
+      provider_key: parsed.providerKey,
+      balance: afterBalance,
+      unit: currentValue.unit || parsed.unit,
+      source: currentValue.source || "manual",
+      note: parsed.note || currentValue.note || "",
+      last_adjustment: {
+        mode: parsed.mode,
+        amount: parsed.amount,
+        delta,
+        note: parsed.note,
+        updated_at: now
+      },
+      updated_at: now
+    };
+
+    const query = existing
+      ? clientState.client
+        .from("system_settings")
+        .update({ value, updated_at: now })
+        .eq("key", key)
+      : clientState.client
+        .from("system_settings")
+        .insert({ key, value, updated_at: now });
+    const { data, error } = await query.select("key,value,updated_at").maybeSingle();
+    if (error) throw error;
+
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      adjustment: {
+        providerKey: parsed.providerKey,
+        mode: parsed.mode,
+        amount: parsed.amount,
+        delta,
+        beforeBalance,
+        afterBalance
+      },
+      record: data
+    };
+    logAdminData("info", "adjust provider budget", {
+      source: result.source,
+      status: result.status,
+      providerKey: parsed.providerKey,
+      mode: parsed.mode,
+      delta,
+      beforeBalance,
+      afterBalance,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "adjust provider budget failed", {
+      source: result.source,
+      status: result.status,
+      providerKey: parsed.providerKey,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+function parseProviderRuntimeConfigPayload(payload) {
+  const providerKey = String(payload?.providerKey || payload?.provider_key || "").trim().toLowerCase();
+  const baseUrl = normalizeBaseUrl(payload?.baseUrl ?? payload?.base_url ?? "");
+  const apiKey = String(payload?.apiKey ?? payload?.api_key ?? "").trim();
+  const model = String(payload?.model || "").trim();
+  const updateApiKey = Boolean(payload?.updateApiKey || payload?.update_api_key || apiKey);
+  const clearApiKey = Boolean(payload?.clearApiKey || payload?.clear_api_key);
+  if (!["comfyui", "grok"].includes(providerKey)) throw new Error("Unsupported Provider");
+  if (updateApiKey && !apiKey && !clearApiKey) throw new Error("API Key 不能为空；留空表示不修改，或勾选清空");
+  return { providerKey, baseUrl, apiKey, model, updateApiKey, clearApiKey };
+}
+
+async function setAdminProviderRuntimeConfig(payload) {
+  const startedAt = Date.now();
+  const operation = "provider_runtime_config.set";
+  let parsed;
+  try {
+    parsed = parseProviderRuntimeConfigPayload(payload);
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = localWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "set provider runtime config rejected", {
+      source: "local",
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  try {
+    const written = [];
+    if (parsed.providerKey === "comfyui") {
+      written.push(writeAdminEnvValue(ENV_COMFYUI_BASE_URL, parsed.baseUrl || DEFAULT_COMFYUI_BASE_URL));
+      if (parsed.clearApiKey) {
+        written.push(writeAdminEnvValue(ENV_COMFYUI_API_KEY, ""));
+      } else if (parsed.updateApiKey) {
+        written.push(writeAdminEnvValue(ENV_COMFYUI_API_KEY, parsed.apiKey));
+      }
+    } else if (parsed.providerKey === "grok") {
+      written.push(writeAdminEnvValue(ENV_GROK_BASE_URL, parsed.baseUrl || DEFAULT_GROK_BASE_URL));
+      written.push(writeAdminEnvValue(ENV_GROK_MODEL, parsed.model || DEFAULT_GROK_MODEL));
+      if (parsed.clearApiKey) {
+        written.push(writeAdminEnvValue(ENV_GROK_API_KEY, ""));
+      } else if (parsed.updateApiKey) {
+        written.push(writeAdminEnvValue(ENV_GROK_API_KEY, parsed.apiKey));
+      }
+    }
+
+    const env = parsed.providerKey === "grok" ? readAdminGrokEnv() : readAdminComfyUiEnv();
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "local",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      provider_key: parsed.providerKey,
+      durationMs,
+      env: {
+        provider_key: parsed.providerKey,
+        baseUrl: env.baseUrl,
+        model: env.model || "",
+        hasApiKey: Boolean(env.hasApiKey),
+        configured: Boolean(env.configured)
+      },
+      written: written.map((item) => ({
+        name: item.name,
+        configured: item.configured,
+        persistent: item.persistent
+      }))
+    };
+    logAdminData("info", "set provider runtime config", {
+      source: result.source,
+      status: result.status,
+      providerKey: parsed.providerKey,
+      baseUrl: result.env.baseUrl,
+      model: result.env.model || undefined,
+      hasApiKey: result.env.hasApiKey,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = localWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "set provider runtime config failed", {
+      source: "local",
+      status: result.status,
+      providerKey: parsed.providerKey,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+function mockProviderQuotaResult(providerKey, durationMs = 0) {
+  const records = (mockData.users || []).map((user, index) => {
+    const allocatedCount = index === 0 ? 20 : index === 1 ? 8 : 0;
+    const usedCount = index === 0 ? 3 : 0;
+    return normalizeProviderQuotaRecord({
+      key: providerQuotaSettingKey(providerKey, user.id),
+      value: {
+        provider_key: providerKey,
+        user_id: user.id,
+        email: user.email,
+        display_name: user.display_name,
+        allocated_count: allocatedCount,
+        used_count: usedCount,
+        note: "mock"
+      },
+      updated_at: user.updated_at
+    }, user, providerKey);
+  });
+  return {
+    source: "mock",
+    status: "mock",
+    configured: false,
+    table: "system_settings",
+    virtualTable: "provider_call_quotas",
+    providerKey,
+    records,
+    reason: "supabase_env_missing",
+    durationMs,
+    query: queryMeta("system_settings", adminQueries.system_settings.select, { providerQuota: true })
+  };
+}
+
+async function readProviderQuotaRecord(client, user, providerKey) {
+  const key = providerQuotaSettingKey(providerKey, user.id);
+  const { data, error } = await client
+    .from("system_settings")
+    .select(adminQueries.system_settings.select)
+    .eq("key", key)
+    .maybeSingle();
+  if (error) throw error;
+  return normalizeProviderQuotaRecord(data, user, providerKey);
+}
+
+async function getAdminProviderCallQuotas(input = {}) {
+  const startedAt = Date.now();
+  const providerKey = normalizeProviderQuotaKey(input?.providerKey || input?.provider_key || "grok");
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") return mockProviderQuotaResult(providerKey, durationMs);
+    return errorResult("system_settings", clientState.error || "client initialization failed", adminQueries.system_settings.select, { providerQuota: true }, durationMs);
+  }
+
+  try {
+    const [{ data: users, error: usersError }, { data: settings, error: settingsError }] = await Promise.all([
+      clientState.client
+        .from("users")
+        .select(adminQueries.users.select)
+        .order(adminQueries.users.orderBy, { ascending: adminQueries.users.ascending })
+        .limit(DEFAULT_LIMIT),
+      clientState.client
+        .from("system_settings")
+        .select(adminQueries.system_settings.select)
+        .like("key", `${PROVIDER_QUOTA_PREFIX}${providerKey}_%`)
+        .limit(1000)
+    ]);
+    if (usersError) throw usersError;
+    if (settingsError) throw settingsError;
+    const settingsByUserId = new Map((settings || []).map((setting) => {
+      const value = setting?.value && typeof setting.value === "object" ? setting.value : {};
+      return [String(value.user_id || setting.key.replace(`${PROVIDER_QUOTA_PREFIX}${providerKey}_`, "")), setting];
+    }));
+    const records = (users || []).map((user) => normalizeProviderQuotaRecord(settingsByUserId.get(String(user.id || "")), user, providerKey));
+    const durationMs = Date.now() - startedAt;
+    logAdminData("info", "read provider quotas", {
+      source: "supabase",
+      status: "connected",
+      provider: providerKey,
+      rows: records.length,
+      durationMs
+    });
+    return {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      table: "system_settings",
+      virtualTable: "provider_call_quotas",
+      providerKey,
+      records,
+      durationMs,
+      query: queryMeta("system_settings", adminQueries.system_settings.select, { providerQuota: true })
+    };
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    logAdminData("error", "read provider quotas failed", {
+      source: "supabase",
+      status: "error",
+      provider: providerKey,
+      durationMs,
+      error: sanitizeError(err)
+    });
+    return errorResult("system_settings", err, adminQueries.system_settings.select, { providerQuota: true }, durationMs);
+  }
+}
+
+async function getAdminProviderCallQuotaByUserId(userId, providerKey = "grok") {
+  const startedAt = Date.now();
+  const normalizedProviderKey = normalizeProviderQuotaKey(providerKey);
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") {
+      const user = (mockData.users || []).find((item) => String(item.id || "") === String(userId || "")) || null;
+      return {
+        source: "mock",
+        status: "mock",
+        configured: false,
+        record: user ? normalizeProviderQuotaRecord(null, user, normalizedProviderKey) : null,
+        durationMs
+      };
+    }
+    return {
+      source: "supabase",
+      status: "error",
+      configured: true,
+      error: `${ERROR_PREFIX}: ${sanitizeError(clientState.error || "client initialization failed")}`,
+      durationMs
+    };
+  }
+
+  try {
+    const { data: user, error: userError } = await clientState.client
+      .from("users")
+      .select(adminQueries.users.select)
+      .eq("id", String(userId || ""))
+      .maybeSingle();
+    if (userError) throw userError;
+    if (!user) throw new Error("用户不存在，无法读取提示词服务次数");
+    const record = await readProviderQuotaRecord(clientState.client, user, normalizedProviderKey);
+    const durationMs = Date.now() - startedAt;
+    return {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      record,
+      durationMs
+    };
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    return {
+      source: "supabase",
+      status: "error",
+      configured: true,
+      error: `${ERROR_PREFIX}: ${sanitizeError(err)}`,
+      durationMs
+    };
+  }
+}
+
+async function setAdminProviderCallQuota(payload) {
+  const startedAt = Date.now();
+  const operation = "provider_quota.set";
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") {
+      const result = adminWriteMockResult(operation, durationMs);
+      logAdminData("info", "set provider quota skipped", {
+        source: result.source,
+        status: result.status,
+        durationMs,
+        reason: "supabase_env_missing"
+      });
+      return result;
+    }
+    return adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+  }
+
+  let parsed;
+  try {
+    parsed = parseProviderQuotaPayload(payload);
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "set provider quota rejected", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  try {
+    const { data: user, error: userError } = await clientState.client
+      .from("users")
+      .select(adminQueries.users.select)
+      .eq("id", parsed.userId)
+      .maybeSingle();
+    if (userError) throw userError;
+    if (!user) throw new Error("用户不存在，无法分配提示词服务次数");
+
+    if (parsed.providerKey === "grok") {
+      const { data, error } = await clientState.client.rpc("set_grok_quota", {
+        p_user_id: user.id,
+        p_allocated_calls: parsed.allocatedCount,
+        p_reason: parsed.note,
+        p_metadata: { email: user.email, display_name: user.display_name || "" }
+      });
+      if (error) throw error;
+      return {
+        source: "supabase", status: "connected", configured: true, operation, ok: true,
+        durationMs: Date.now() - startedAt, allocation: data,
+        record: await readProviderQuotaRecord(clientState.client, user, "grok")
+      };
+    }
+
+    const current = await readProviderQuotaRecord(clientState.client, user, parsed.providerKey);
+    const now = new Date().toISOString();
+    const value = {
+      label: `${parsed.providerKey === "grok" ? "提示词服务" : parsed.providerKey}次数`,
+      provider_key: parsed.providerKey,
+      user_id: user.id,
+      email: user.email,
+      display_name: user.display_name || "",
+      allocated_count: parsed.allocatedCount,
+      used_count: current.used_count,
+      remaining_count: Math.max(0, parsed.allocatedCount - current.used_count),
+      source: "manual",
+      note: parsed.note,
+      updated_at: now
+    };
+    const key = providerQuotaSettingKey(parsed.providerKey, user.id);
+    const { data, error } = await clientState.client
+      .from("system_settings")
+      .upsert({ key, value, updated_at: now }, { onConflict: "key" })
+      .select(adminQueries.system_settings.select)
+      .maybeSingle();
+    if (error) throw error;
+
+    const durationMs = Date.now() - startedAt;
+    const record = normalizeProviderQuotaRecord(data, user, parsed.providerKey);
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      record
+    };
+    logAdminData("info", "set provider quota", {
+      source: result.source,
+      status: result.status,
+      provider: parsed.providerKey,
+      userId: user.id,
+      allocatedCount: parsed.allocatedCount,
+      usedCount: record.used_count,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "set provider quota failed", {
+      source: result.source,
+      status: result.status,
+      provider: parsed.providerKey,
+      userId: parsed.userId,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+function normalizeGrokReservationPayload(payload) {
+  const userId = String(payload?.userId || payload?.user_id || "").trim();
+  const usageKey = String(payload?.usageKey || payload?.usage_key || "").trim();
+  const feature = String(payload?.feature || "grok").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_").slice(0, 100);
+  const minCalls = Number(payload?.minCalls ?? payload?.min_calls ?? 1);
+  const maxCalls = Number(payload?.maxCalls ?? payload?.max_calls ?? minCalls);
+  if (!userId) throw new Error("Grok quota user id is required");
+  if (!usageKey || usageKey.length > 200) throw new Error("Grok quota usage key is invalid");
+  if (!feature) throw new Error("Grok quota feature is required");
+  if (!Number.isInteger(minCalls) || !Number.isInteger(maxCalls) || minCalls < 0 || maxCalls < minCalls || maxCalls > 20) {
+    throw new Error("Grok quota call bounds are invalid");
+  }
+  return { userId, usageKey, feature, minCalls, maxCalls };
+}
+
+async function readGrokQuotaUser(client, userId) {
+  const { data: user, error } = await client.from("users").select(adminQueries.users.select).eq("id", userId).maybeSingle();
+  if (error) throw error;
+  if (!user) throw new Error("Grok quota user does not exist");
+  return user;
+}
+
+async function reserveAdminGrokQuota(payload) {
+  const startedAt = Date.now();
+  const operation = "provider_quota.grok_reserve";
+  const clientState = getAdminClient();
+  if (!clientState.client) return adminWriteErrorResult(operation, clientState.error || "client initialization failed", Date.now() - startedAt);
+  try {
+    const parsed = normalizeGrokReservationPayload(payload);
+    const { data, error } = await clientState.client.rpc("reserve_grok_quota", {
+      p_user_id: parsed.userId,
+      p_usage_key: parsed.usageKey,
+      p_feature: parsed.feature,
+      p_min_calls: parsed.minCalls,
+      p_max_calls: parsed.maxCalls,
+      p_metadata: payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {}
+    });
+    if (error) throw error;
+    const user = await readGrokQuotaUser(clientState.client, parsed.userId);
+    return { source: "supabase", status: "connected", configured: true, operation, ok: true,
+      durationMs: Date.now() - startedAt, reservation: data,
+      record: await readProviderQuotaRecord(clientState.client, user, "grok") };
+  } catch (err) {
+    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
+  }
+}
+
+async function settleAdminGrokQuota(payload) {
+  const startedAt = Date.now();
+  const operation = "provider_quota.grok_settle";
+  const clientState = getAdminClient();
+  if (!clientState.client) return adminWriteErrorResult(operation, clientState.error || "client initialization failed", Date.now() - startedAt);
+  try {
+    const userId = String(payload?.userId || payload?.user_id || "").trim();
+    const usageKey = String(payload?.usageKey || payload?.usage_key || "").trim();
+    const actualCalls = Number(payload?.actualCalls ?? payload?.actual_calls ?? 0);
+    if (!userId || !usageKey || !Number.isInteger(actualCalls) || actualCalls < 0) throw new Error("Grok quota settlement is invalid");
+    const { data, error } = await clientState.client.rpc("settle_grok_quota", {
+      p_user_id: userId,
+      p_usage_key: usageKey,
+      p_actual_calls: actualCalls,
+      p_success: payload?.success === true,
+      p_call_records: Array.isArray(payload?.callRecords) ? payload.callRecords : [],
+      p_metadata: payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {}
+    });
+    if (error) throw error;
+    const user = await readGrokQuotaUser(clientState.client, userId);
+    return { source: "supabase", status: "connected", configured: true, operation, ok: true,
+      durationMs: Date.now() - startedAt, settlement: data,
+      record: await readProviderQuotaRecord(clientState.client, user, "grok") };
+  } catch (err) {
+    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
+  }
+}
+
+async function releaseAdminGrokQuota(payload) {
+  const startedAt = Date.now();
+  const operation = "provider_quota.grok_release";
+  const clientState = getAdminClient();
+  if (!clientState.client) return adminWriteErrorResult(operation, clientState.error || "client initialization failed", Date.now() - startedAt);
+  try {
+    const userId = String(payload?.userId || payload?.user_id || "").trim();
+    const usageKey = String(payload?.usageKey || payload?.usage_key || "").trim();
+    if (!userId || !usageKey) throw new Error("Grok quota release identity is required");
+    const { data, error } = await clientState.client.rpc("release_grok_quota", {
+      p_user_id: userId, p_usage_key: usageKey,
+      p_reason: String(payload?.reason || "").slice(0, 240),
+      p_metadata: payload?.metadata && typeof payload.metadata === "object" ? payload.metadata : {}
+    });
+    if (error) throw error;
+    const user = await readGrokQuotaUser(clientState.client, userId);
+    return { source: "supabase", status: "connected", configured: true, operation, ok: true,
+      durationMs: Date.now() - startedAt, release: data,
+      record: await readProviderQuotaRecord(clientState.client, user, "grok") };
+  } catch (err) {
+    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
+  }
+}
+
+function normalizeAdminGrokUsageMode(value) {
+  const mode = String(value || "prompt_optimize").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_").slice(0, 64);
+  return mode || "prompt_optimize";
+}
+
+function normalizeAdminGrokUsageStatus(value) {
+  const status = String(value || "success").trim().toLowerCase();
+  return ["success", "failed", "rejected"].includes(status) ? status : "failed";
+}
+
+function normalizeAdminGrokUsageDetail(payload) {
+  const tokenUsage = payload?.tokenUsage && typeof payload.tokenUsage === "object" ? payload.tokenUsage : {};
+  const inputTokens = Math.max(0, Math.round(Number(tokenUsage.inputTokens ?? tokenUsage.input_tokens ?? 0) || 0));
+  const outputTokens = Math.max(0, Math.round(Number(tokenUsage.outputTokens ?? tokenUsage.output_tokens ?? 0) || 0));
+  const totalTokens = Math.max(
+    inputTokens + outputTokens,
+    Math.round(Number(tokenUsage.totalTokens ?? tokenUsage.total_tokens ?? 0) || 0)
+  );
+  return {
+    id: String(payload?.id || `grok_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`).slice(0, 80),
+    user_id: String(payload?.userId || payload?.user_id || "").trim(),
+    at: String(payload?.at || new Date().toISOString()),
+    provider: "grok",
+    mode: normalizeAdminGrokUsageMode(payload?.mode),
+    token_usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: totalTokens
+    },
+    duration_ms: Math.max(0, Math.round(Number(payload?.durationMs ?? payload?.duration_ms ?? 0) || 0)),
+    model: String(payload?.model || "").trim().slice(0, 120),
+    status: normalizeAdminGrokUsageStatus(payload?.status),
+    error: String(payload?.error || "").trim().slice(0, 240)
+  };
+}
+
+async function recordAdminGrokUsageDetail(payload) {
+  const startedAt = Date.now();
+  const operation = "provider_quota.grok_usage_detail";
+  const userId = String(payload?.userId || payload?.user_id || "").trim();
+  const increment = Number(payload?.increment ?? 0);
+  const note = String(payload?.note || "").trim().slice(0, 500);
+  if (userId && Number.isInteger(increment) && increment >= 0) {
+    const usageKey = String(payload?.usageKey || payload?.usage_key || `grok:${Date.now()}:${Math.random().toString(16).slice(2)}`).slice(0, 200);
+    const reservation = await reserveAdminGrokQuota({
+      userId, usageKey, feature: normalizeAdminGrokUsageMode(payload?.mode),
+      minCalls: increment, maxCalls: increment, metadata: { source: "legacy_grok_usage_detail" }
+    });
+    if (!reservation?.ok || reservation.status === "error") return reservation;
+    return await settleAdminGrokQuota({
+      userId, usageKey, actualCalls: increment,
+      success: normalizeAdminGrokUsageStatus(payload?.status) === "success",
+      callRecords: [normalizeAdminGrokUsageDetail({ ...payload, userId })], metadata: { note }
+    });
+  }
+  if (!userId) return adminWriteErrorResult(operation, new Error("用户 ID 不能为空"), 0);
+  if (!Number.isInteger(increment) || increment < 0) return adminWriteErrorResult(operation, new Error("调用次数增量不能小于 0"), 0);
+
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") return adminWriteMockResult(operation, durationMs);
+    return adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+  }
+
+  try {
+    const { data: user, error: userError } = await clientState.client
+      .from("users")
+      .select(adminQueries.users.select)
+      .eq("id", userId)
+      .maybeSingle();
+    if (userError) throw userError;
+    if (!user) throw new Error("用户不存在，无法记录 Grok 使用明细");
+    const current = await readProviderQuotaRecord(clientState.client, user, "grok");
+    const beforeUsed = current.used_count;
+    const nextUsed = beforeUsed + increment;
+    const now = new Date().toISOString();
+    const detail = normalizeAdminGrokUsageDetail({ ...payload, userId: user.id, at: now });
+    const recent_calls = [...(Array.isArray(current.recent_calls) ? current.recent_calls : []), detail].slice(-50);
+    const value = {
+      label: "提示词服务次数",
+      provider_key: "grok",
+      user_id: user.id,
+      email: user.email,
+      display_name: user.display_name || "",
+      allocated_count: current.allocated_count,
+      used_count: nextUsed,
+      remaining_count: Math.max(0, current.allocated_count - nextUsed),
+      recent_calls,
+      source: "usage",
+      note: note || current.note || "",
+      updated_at: now
+    };
+    const key = providerQuotaSettingKey("grok", user.id);
+    const { data, error } = await clientState.client
+      .from("system_settings")
+      .upsert({ key, value, updated_at: now }, { onConflict: "key" })
+      .select(adminQueries.system_settings.select)
+      .maybeSingle();
+    if (error) throw error;
+    const durationMs = Date.now() - startedAt;
+    const record = normalizeProviderQuotaRecord(data, user, "grok");
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      beforeUsed,
+      afterUsed: record.used_count,
+      detail,
+      record
+    };
+    logAdminData("info", "record grok usage detail", {
+      source: result.source,
+      status: result.status,
+      provider: "grok",
+      userId: user.id,
+      mode: detail.mode,
+      callStatus: detail.status,
+      beforeUsed,
+      afterUsed: record.used_count,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "record grok usage detail failed", {
+      source: result.source,
+      status: result.status,
+      provider: "grok",
+      userId,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+async function recordAdminProviderCallUsage(payload) {
+  const startedAt = Date.now();
+  const operation = "provider_quota.usage";
+  const userId = String(payload?.userId || payload?.user_id || "").trim();
+  const providerKey = normalizeProviderQuotaKey(payload?.providerKey || payload?.provider_key || "grok");
+  const increment = Number(payload?.increment ?? 1);
+  const note = String(payload?.note || "").trim().slice(0, 500);
+  if (providerKey === "grok" && userId && Number.isInteger(increment) && increment > 0) {
+    const usageKey = String(payload?.usageKey || payload?.usage_key || `grok:${Date.now()}:${Math.random().toString(16).slice(2)}`).slice(0, 200);
+    const reservation = await reserveAdminGrokQuota({
+      userId, usageKey, feature: String(payload?.feature || "provider_usage"),
+      minCalls: increment, maxCalls: increment, metadata: { source: "legacy_provider_usage" }
+    });
+    if (!reservation?.ok || reservation.status === "error") return reservation;
+    return await settleAdminGrokQuota({
+      userId, usageKey, actualCalls: increment, success: payload?.success !== false,
+      callRecords: Array.isArray(payload?.callRecords) ? payload.callRecords : [], metadata: { note }
+    });
+  }
+  if (!userId) return adminWriteErrorResult(operation, new Error("用户 ID 不能为空"), 0);
+  if (!Number.isInteger(increment) || increment <= 0) return adminWriteErrorResult(operation, new Error("调用次数增量必须大于 0"), 0);
+
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") return adminWriteMockResult(operation, durationMs);
+    return adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+  }
+
+  try {
+    const { data: user, error: userError } = await clientState.client
+      .from("users")
+      .select(adminQueries.users.select)
+      .eq("id", userId)
+      .maybeSingle();
+    if (userError) throw userError;
+    if (!user) throw new Error("用户不存在，无法记录提示词服务使用次数");
+    const current = await readProviderQuotaRecord(clientState.client, user, providerKey);
+    const beforeUsed = current.used_count;
+    const nextUsed = beforeUsed + increment;
+    const now = new Date().toISOString();
+    const value = {
+      label: `${providerKey === "grok" ? "提示词服务" : providerKey}次数`,
+      provider_key: providerKey,
+      user_id: user.id,
+      email: user.email,
+      display_name: user.display_name || "",
+      allocated_count: current.allocated_count,
+      used_count: nextUsed,
+      remaining_count: Math.max(0, current.allocated_count - nextUsed),
+      source: "usage",
+      note: note || current.note || "",
+      updated_at: now
+    };
+    const key = providerQuotaSettingKey(providerKey, user.id);
+    const { data, error } = await clientState.client
+      .from("system_settings")
+      .upsert({ key, value, updated_at: now }, { onConflict: "key" })
+      .select(adminQueries.system_settings.select)
+      .maybeSingle();
+    if (error) throw error;
+    const durationMs = Date.now() - startedAt;
+    const record = normalizeProviderQuotaRecord(data, user, providerKey);
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      beforeUsed,
+      afterUsed: record.used_count,
+      record
+    };
+    logAdminData("info", "record provider usage", {
+      source: result.source,
+      status: result.status,
+      provider: providerKey,
+      userId: user.id,
+      beforeUsed,
+      afterUsed: record.used_count,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "record provider usage failed", {
+      source: result.source,
+      status: result.status,
+      provider: providerKey,
+      userId,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+async function adjustAdminUserCredits(payload) {
+  const startedAt = Date.now();
+  const operation = "credits.adjust";
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") {
+      const result = adminWriteMockResult(operation, durationMs);
+      logAdminData("info", "adjust credits skipped", {
+        source: result.source,
+        status: result.status,
+        durationMs,
+        reason: "supabase_env_missing"
+      });
+      return result;
+    }
+    const result = adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+    logAdminData("error", "adjust credits failed", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  let parsed;
+  try {
+    parsed = parseCreditAdjustmentPayload(payload);
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "adjust credits rejected", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+
+  try {
+    const { data: user, error: userError } = await clientState.client
+      .from("users")
+      .select("id,email,status")
+      .eq("id", parsed.userId)
+      .maybeSingle();
+    if (userError) throw userError;
+    if (!user) throw new Error("用户不存在，无法分配积分");
+
+    const { data: creditRows, error: creditReadError } = await clientState.client
+      .from("credits")
+      .select("id,user_id,balance,updated_at")
+      .eq("user_id", parsed.userId)
+      .limit(2);
+    if (creditReadError) throw creditReadError;
+    if ((creditRows || []).length > 1) {
+      throw new Error("该用户存在多条积分余额记录，请先清理重复 credits 数据");
+    }
+
+    const currentCredit = (creditRows || [])[0] || null;
+    const beforeBalance = Number(currentCredit?.balance || 0);
+    const delta = parsed.mode === "set"
+      ? parsed.amount - beforeBalance
+      : parsed.mode === "deduct" ? -parsed.amount : parsed.amount;
+    const afterBalance = beforeBalance + delta;
+    if (afterBalance < 0) throw new Error("扣减后积分不能小于 0");
+
+    let creditRecord;
+    if (currentCredit?.id) {
+      const { data: updatedCredit, error: updateError } = await clientState.client
+        .from("credits")
+        .update({ balance: afterBalance, updated_at: new Date().toISOString() })
+        .eq("id", currentCredit.id)
+        .select("id,user_id,balance,updated_at")
+        .maybeSingle();
+      if (updateError) throw updateError;
+      creditRecord = updatedCredit;
+    } else {
+      const { data: insertedCredit, error: insertError } = await clientState.client
+        .from("credits")
+        .insert({ user_id: parsed.userId, balance: afterBalance })
+        .select("id,user_id,balance,updated_at")
+        .maybeSingle();
+      if (insertError) throw insertError;
+      creditRecord = insertedCredit;
+    }
+
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      user: {
+        id: user.id,
+        email: user.email,
+        status: user.status
+      },
+      adjustment: {
+        mode: parsed.mode,
+        amount: parsed.amount,
+        delta,
+        beforeBalance,
+        afterBalance
+      },
+      credit: creditRecord
+    };
+    logAdminData("info", "adjust credits", {
+      source: result.source,
+      status: result.status,
+      userId: parsed.userId,
+      mode: parsed.mode,
+      delta,
+      beforeBalance,
+      afterBalance,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = adminWriteErrorResult(operation, err, durationMs);
+    logAdminData("error", "adjust credits failed", {
+      source: result.source,
+      status: result.status,
+      userId: parsed.userId,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+async function upsertAdminAiProvider(payload) {
+  const startedAt = Date.now();
+  const operation = "ai_providers.upsert";
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") return adminWriteMockResult(operation, durationMs);
+    return adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+  }
+
+  let parsed;
+  try {
+    parsed = parseAdminAiProviderPayload(payload);
+  } catch (err) {
+    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
+  }
+
+  try {
+    const now = new Date().toISOString();
+    const { data, error } = await clientState.client
+      .from("ai_providers")
+      .upsert({
+        provider_key: parsed.providerKey,
+        name: parsed.name,
+        status: parsed.status,
+        billing_multiplier: parsed.billingMultiplier,
+        api_key_secret_ref: parsed.apiKeySecretRef || null,
+        updated_at: now
+      }, { onConflict: "provider_key" })
+      .select(adminQueries.ai_providers.select)
+      .maybeSingle();
+    if (error) throw error;
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      record: data
+    };
+    logAdminData("info", "upsert ai provider", {
+      source: result.source,
+      status: result.status,
+      providerKey: parsed.providerKey,
+      providerStatus: parsed.status,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const result = adminWriteErrorResult(operation, err, Date.now() - startedAt);
+    logAdminData("error", "upsert ai provider failed", {
+      source: result.source,
+      status: result.status,
+      providerKey: parsed.providerKey,
+      error: result.error,
+      durationMs: result.durationMs
+    });
+    return result;
+  }
+}
+
+async function upsertAdminAiModel(payload) {
+  const startedAt = Date.now();
+  const operation = "ai_models.upsert";
+  return {
+    source: "disabled",
+    status: "disabled",
+    configured: false,
+    operation,
+    ok: false,
+    error: "模型管理已在轻量后台模式中关闭；当前只维护 Provider 和积分。",
+    durationMs: Date.now() - startedAt
+  };
+}
+
+async function upsertAdminSystemSetting(payload) {
+  const startedAt = Date.now();
+  const operation = "system_settings.upsert";
+  const clientState = getAdminClient();
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") return adminWriteMockResult(operation, durationMs);
+    return adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs);
+  }
+
+  let parsed;
+  try {
+    parsed = parseSystemSettingPayload(payload);
+  } catch (err) {
+    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
+  }
+
+  try {
+    const now = new Date().toISOString();
+    const { data, error } = await clientState.client
+      .from("system_settings")
+      .upsert({ key: parsed.key, value: parsed.value, updated_at: now }, { onConflict: "key" })
+      .select(adminQueries.system_settings.select)
+      .maybeSingle();
+    if (error) throw error;
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "supabase",
+      status: "connected",
+      configured: true,
+      operation,
+      ok: true,
+      durationMs,
+      record: data
+    };
+    logAdminData("info", "upsert system setting", {
+      source: result.source,
+      status: result.status,
+      key: parsed.key,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const result = adminWriteErrorResult(operation, err, Date.now() - startedAt);
+    logAdminData("error", "upsert system setting failed", {
+      source: result.source,
+      status: result.status,
+      key: parsed.key,
+      error: result.error,
+      durationMs: result.durationMs
+    });
+    return result;
+  }
+}
+
+async function readClientRowsForUser(tableName, selectFields, userId, options = {}) {
+  const startedAt = Date.now();
+  const clientState = getAdminClient();
+  const safeOptions = { ...options, filter: `user_id=eq.${String(userId || "")}` };
+  if (!clientState.client) {
+    const durationMs = Date.now() - startedAt;
+    if (clientState.status === "mock") {
+      const records = (mockData[tableName] || []).filter((item) => String(item.user_id || "") === String(userId || ""));
+      return {
+        source: "mock",
+        status: "mock",
+        configured: false,
+        table: tableName,
+        records,
+        reason: "supabase_env_missing",
+        durationMs,
+        query: queryMeta(tableName, selectFields, safeOptions)
+      };
+    }
+    return supabaseErrorResult(tableName, clientState.error || "client initialization failed", selectFields, safeOptions, durationMs);
+  }
+
+  try {
+    let query = clientState.client.from(tableName).select(selectFields).eq("user_id", userId).limit(options.limit || DEFAULT_LIMIT);
+    if (options.orderBy) query = query.order(options.orderBy, { ascending: Boolean(options.ascending) });
+    const { data, error } = await query;
+    const durationMs = Date.now() - startedAt;
+    if (error && shouldRetryLegacySelect(error, options)) {
+      let fallbackQuery = clientState.client.from(tableName).select(options.fallbackSelect).eq("user_id", userId).limit(options.limit || DEFAULT_LIMIT);
+      if (options.orderBy) fallbackQuery = fallbackQuery.order(options.orderBy, { ascending: Boolean(options.ascending) });
+      const fallback = await fallbackQuery;
+      if (!fallback.error) {
+        return supabaseResult(tableName, fallback.data, options.fallbackSelect, { ...safeOptions, usedFallbackSelect: true }, Date.now() - startedAt);
+      }
+    }
+    if (error) return supabaseErrorResult(tableName, error, selectFields, safeOptions, durationMs);
+    return supabaseResult(tableName, data, selectFields, safeOptions, durationMs);
+  } catch (err) {
+    return supabaseErrorResult(tableName, err, selectFields, safeOptions, Date.now() - startedAt);
+  }
+}
+
+function isClientAiSettingSafe(record) {
+  const key = String(record?.key || "").trim().toLowerCase();
+  return key === "default_billing_multiplier" ||
+    key === "gateway_default_credit_cost" ||
+    key.startsWith("gateway_cost_") ||
+    key.startsWith("credit_cost_");
+}
+
+async function getClientAiConfig() {
+  const [providers, settings] = await Promise.all([
+    getAdminAiProviders(),
+    getAdminSystemSettings()
+  ]);
+  const failed = [providers, settings].find((item) => item?.status === "error");
+  if (failed) {
+    return {
+      source: failed.source,
+      status: "error",
+      configured: Boolean(failed.configured),
+      error: failed.error || "AI config lookup failed",
+      durationMs: Math.max(Number(providers.durationMs || 0), Number(settings.durationMs || 0))
+    };
+  }
+  const providerRecords = (providers.records || []).map((item) => ({
+    id: item.id || "",
+    provider_key: item.provider_key || "",
+    name: item.name || "",
+    status: item.status || "disabled",
+    billing_multiplier: Number(item.billing_multiplier ?? 1)
+  }));
+  return {
+    source: providers.source || settings.source,
+    status: providers.status === "mock" ? "mock" : "connected",
+    configured: Boolean(providers.configured),
+    providers: providerRecords.filter((item) => item.status === "enabled"),
+    models: [],
+    settings: (settings.records || []).filter(isClientAiSettingSafe),
+    durationMs: Number(providers.durationMs || 0) + Number(settings.durationMs || 0)
+  };
+}
+
+function getClientCreditLogs(userId) {
+  return disabledTableResult("credit_logs", "客户端消费记录已在轻量后台模式中关闭");
+}
+
+function getClientAiTasks(userId) {
+  return disabledTableResult("ai_tasks", "客户端任务记录已在轻量后台模式中关闭");
+}
+
+async function recordClientGatewayTaskDraft(payload, user) {
+  const startedAt = Date.now();
+  const operation = "gateway_lite_check";
+  return {
+    source: "disabled",
+    status: "disabled",
+    configured: false,
+    operation,
+    ok: true,
+    mode: "gateway_lite_check",
+    task: null,
+    message: "任务记录已在轻量后台模式中关闭",
+    durationMs: Date.now() - startedAt
+  };
+}
+
+async function recordClientAiTaskUsage(payload, user) {
+  const startedAt = Date.now();
+  const operation = "record_usage_disabled";
+  return {
+    source: "disabled",
+    status: "disabled",
+    configured: false,
+    operation,
+    ok: false,
+    error: "recordUsage 已关闭；轻量后台不写任务记录或消费记录。",
+    durationMs: Date.now() - startedAt
+  };
+}
+
+async function getAdminComfyUiProviderStatus() {
+  const startedAt = Date.now();
+  const env = readAdminComfyUiEnv();
+  const endpoint = `GET ${env.baseUrl || DEFAULT_COMFYUI_BASE_URL}${COMFYUI_USER_PATH}`;
+  if (!env.configured) {
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "provider",
+      provider_key: "comfyui",
+      status: "mock",
+      configured: false,
+      secretConfigured: env.secretConfigured,
+      baseUrl: env.baseUrl || DEFAULT_COMFYUI_BASE_URL,
+      hasApiKeySecretRef: env.hasApiKeySecretRef,
+      connected: false,
+      accountStatus: "not_configured",
+      balance: extractComfyUiBalance(null),
+      models: {
+        supported: false,
+        records: [],
+        text: "模型列表检测未启用；模型选择由 NovaFlow 客户端负责"
+      },
+      endpoint,
+      durationMs,
+      reason: env.hasApiKeySecretRef ? "comfyui_secret_ref_without_secret_resolver" : "comfyui_env_missing"
+    };
+    logAdminData("info", "check comfyui provider", {
+      source: result.source,
+      status: result.status,
+      configured: result.configured,
+      secretConfigured: result.secretConfigured,
+      durationMs,
+      reason: result.reason
+    });
+    return result;
+  }
+
+  try {
+    const response = await requestJson(`${env.baseUrl || DEFAULT_COMFYUI_BASE_URL}${COMFYUI_USER_PATH}`, {
+      "X-API-Key": env.apiKey,
+      Accept: "application/json",
+      "User-Agent": "NovaFlow-Admin/1.0"
+    });
+    const durationMs = Date.now() - startedAt;
+    const body = response.body || {};
+    const result = {
+      source: "provider",
+      provider_key: "comfyui",
+      status: "connected",
+      configured: true,
+      secretConfigured: true,
+      baseUrl: env.baseUrl || DEFAULT_COMFYUI_BASE_URL,
+      hasApiKeySecretRef: env.hasApiKeySecretRef,
+      connected: true,
+      accountStatus: String(body.status || "unknown"),
+      balance: extractComfyUiBalance(body),
+      models: {
+        supported: false,
+        records: [],
+        text: "模型列表检测未启用；模型选择由 NovaFlow 客户端负责"
+      },
+      endpoint,
+      durationMs
+    };
+    logAdminData("info", "check comfyui provider", {
+      source: result.source,
+      status: result.status,
+      accountStatus: result.accountStatus,
+      durationMs
+    });
+    return result;
+  } catch (err) {
+    const durationMs = Date.now() - startedAt;
+    const result = {
+      source: "provider",
+      provider_key: "comfyui",
+      status: "error",
+      configured: true,
+      secretConfigured: true,
+      baseUrl: env.baseUrl || DEFAULT_COMFYUI_BASE_URL,
+      hasApiKeySecretRef: env.hasApiKeySecretRef,
+      connected: false,
+      accountStatus: "unknown",
+      balance: {
+        supported: false,
+        value: null,
+        unit: "credits",
+        text: "读取失败"
+      },
+      models: {
+        supported: false,
+        records: [],
+        text: "读取失败"
+      },
+      endpoint,
+      durationMs,
+      error: `ComfyUI Error: ${sanitizeError(err)}`
+    };
+    logAdminData("error", "check comfyui provider failed", {
+      source: result.source,
+      status: result.status,
+      durationMs,
+      error: result.error
+    });
+    return result;
+  }
+}
+
+async function getAdminGrokProviderStatus() {
+  const startedAt = Date.now();
+  const env = readAdminGrokEnv();
+  const durationMs = Date.now() - startedAt;
+  const result = {
+    source: "provider",
+    provider_key: "grok",
+    status: env.configured ? "configured" : "mock",
+    configured: Boolean(env.configured),
+    connected: Boolean(env.configured),
+    baseUrl: env.baseUrl || DEFAULT_GROK_BASE_URL,
+    model: env.model || DEFAULT_GROK_MODEL,
+    hasApiKey: Boolean(env.hasApiKey),
+    accountStatus: env.configured ? "backend_key_configured" : "not_configured",
+    balance: {
+      supported: false,
+      text: "Grok API 不读取账户余额；按管理员分配提示词服务次数控制"
+    },
+    endpoint: `${env.baseUrl || DEFAULT_GROK_BASE_URL}/chat/completions`,
+    durationMs,
+    reason: env.configured ? "grok_env_configured" : "grok_env_missing"
+  };
+  logAdminData("info", "check grok provider config", {
+    source: result.source,
+    status: result.status,
+    configured: result.configured,
+    model: result.model,
+    durationMs,
+    reason: result.reason
+  });
+  return result;
+}
+
+module.exports = {
+  ENV_SUPABASE_URL,
+  ENV_SERVICE_ROLE_KEY,
+  ENV_SUPABASE_PUBLISHABLE_KEY,
+  ENV_SUPABASE_ANON_KEY,
+  ENV_COMFYUI_BASE_URL,
+  ENV_COMFYUI_API_KEY,
+  ENV_COMFYUI_API_KEY_SECRET_REF,
+  ENV_GROK_BASE_URL,
+  ENV_GROK_API_KEY,
+  ENV_GROK_MODEL,
+  adminQueries,
+  readAdminEnvValue,
+  readAdminSupabaseEnv,
+  readAdminSupabaseAuthEnv,
+  readAdminComfyUiEnv,
+  readAdminGrokEnv,
+  getAdminUsers,
+  getAdminCredits,
+  getAdminCreditLogs,
+  getAdminAiProviders,
+  getAdminAiModels,
+  getAdminAiTasks,
+  getAdminSystemSettings,
+  getAdminUserByEmail,
+  getAdminUserByAccount,
+  getAdminUserById,
+  getAdminCreditByUserId,
+  syncAdminAuthUserProfile,
+  createAdminUser,
+  updateAdminUser,
+  deleteAdminUser,
+  resetAdminUserPassword,
+  accountToAuthEmail,
+  accountNameFromEmail,
+  upsertAdminAiProvider,
+  upsertAdminAiModel,
+  upsertAdminSystemSetting,
+  setAdminProviderBudget,
+  settleAdminComfyUsage,
+  adjustAdminProviderBudget,
+  setAdminProviderRuntimeConfig,
+  getAdminProviderCallQuotas,
+  getAdminProviderCallQuotaByUserId,
+  setAdminProviderCallQuota,
+  reserveAdminGrokQuota,
+  settleAdminGrokQuota,
+  releaseAdminGrokQuota,
+  recordAdminGrokUsageDetail,
+  recordAdminProviderCallUsage,
+  adjustAdminUserCredits,
+  getClientAiConfig,
+  getClientCreditLogs,
+  getClientAiTasks,
+  recordClientGatewayTaskDraft,
+  recordClientAiTaskUsage,
+  getAdminComfyUiProviderStatus,
+  getAdminGrokProviderStatus
+};

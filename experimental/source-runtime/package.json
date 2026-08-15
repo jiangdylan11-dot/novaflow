@@ -1,0 +1,15 @@
+{
+  "name": "novaflow-source-runtime-baseline",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node ../../particle-editor/node_modules/vite/bin/vite.js --host 127.0.0.1 --port 5174 --strictPort",
+    "build": "node ../../particle-editor/node_modules/vite/bin/vite.js build",
+    "preview": "node ../../particle-editor/node_modules/vite/bin/vite.js preview --host 127.0.0.1 --port 5799 --strictPort",
+    "verify": "node tools/verify-source-runtime.mjs"
+  },
+  "novaflow": {
+    "dependencySource": "Uses particle-editor/node_modules without installing a second dependency tree."
+  }
+}

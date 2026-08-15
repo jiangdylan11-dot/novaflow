@@ -1,0 +1,10 @@
+{
+  "name": "NovaFlow AI Runtime",
+  "version": "{{VERSION}}",
+  "engine": "comfyui-core",
+  "port": 8188,
+  "installPath": "{{INSTALL_PATH}}",
+  "assetsPath": "{{ASSETS_PATH}}",
+  "modelsPath": "{{MODELS_PATH}}",
+  "customNodesPath": "{{CUSTOM_NODES_PATH}}"
+}

@@ -1,0 +1,1944 @@
+import { createClient } from "npm:@supabase/supabase-js@2";
+import {
+  buildGrokImageReverseRequest,
+  buildGrokPromptOptimizeRequest,
+  callGrokResponseWithVisualRetry,
+  grokResponsesPublicResult,
+  grokVisualFailureEnvelope,
+  miniMaxH3FailureEnvelope,
+  miniMaxH3ReversePreflightFailure,
+  normalizeGrokResponseUsage
+} from "./smart-ai-grok.workflow.mjs";
+import {
+  buildStoryboardGrokPayload,
+  buildStoryboardGrokRepairPayload,
+  parseStoryboardGrokResult,
+  reconcileStoryboardGrokContinuity
+} from "./storyboard-grok.workflow.mjs";
+import {
+  licenseVerificationRejected,
+  normalizeLicenseVerificationInput,
+  validateLicenseVerificationRecord
+} from "./license-verification.workflow.mjs";
+
+const FUNCTION_NAME = "novaflow-backend";
+const DEFAULT_SESSION_TTL_SECONDS = 24 * 60 * 60;
+const MAX_BODY_BYTES = 1024 * 1024;
+const MAX_GROK_BODY_BYTES = 512 * 1024;
+const MAX_GROK_IMAGE_BODY_BYTES = 10 * 1024 * 1024;
+const MAX_LICENSE_VERIFY_BODY_BYTES = 2 * 1024;
+const LICENSE_VERIFY_RATE_LIMIT_RPC = "check_novaflow_license_verify_rate_limit";
+const LICENSE_VERIFY_RATE_LIMIT_WINDOW_SECONDS = 60;
+const LICENSE_VERIFY_RATE_LIMIT_MAX_ATTEMPTS = 10;
+const DEFAULT_GROK_BASE_URL = "https://api.x.ai/v1";
+const DEFAULT_GROK_MODEL = "grok-4.3";
+const GROK_CHAT_COMPLETIONS_PATH = "/chat/completions";
+const GROK_RESPONSES_PATH = "/responses";
+const PROVIDER_QUOTA_PREFIX = "provider_quota_";
+const PROVIDER_QUOTA_KEYS = ["grok"];
+const LOCAL_WORKFLOW_PROVIDER_KEYS = new Set(["comfyui"]);
+const INTERNAL_ACCOUNT_EMAIL_DOMAIN = "accounts.novaflow.local";
+const INTERNAL_ACCOUNT_EMAIL_PREFIX = "acct_";
+
+type AnyRecord = Record<string, unknown>;
+
+type PublicUser = {
+  id: string;
+  email: string;
+  display_name?: string | null;
+  role?: string | null;
+  plan?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type ProviderQuotaRecord = {
+  key: string;
+  provider_key: string;
+  user_id: string;
+  email: string;
+  display_name: string;
+  allocated_count: number;
+  used_count: number;
+  reserved_count: number;
+  remaining_count: number;
+  status: string;
+  note: string;
+  updated_at: string;
+  raw_value: AnyRecord;
+};
+
+function env(name: string): string {
+  return String(Deno.env.get(name) || "").trim();
+}
+
+function parseSecretDictionary(name: string): Record<string, string> {
+  const raw = env(name);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .filter(([, value]) => typeof value === "string" && value)
+        .map(([key, value]) => [key, String(value)])
+    );
+  } catch {
+    return {};
+  }
+}
+
+function firstJwtLikeValue(values: Record<string, string>): string {
+  return Object.values(values).find((value) => value.split(".").length >= 3) || "";
+}
+
+function serviceRoleKey(): string {
+  const secrets = parseSecretDictionary("SUPABASE_SECRET_KEYS");
+  return env("NOVAFLOW_SUPABASE_SERVICE_ROLE_KEY") ||
+    env("SUPABASE_SERVICE_ROLE_KEY") ||
+    secrets.service_role ||
+    secrets.service_role_key ||
+    firstJwtLikeValue(secrets);
+}
+
+function publishableKey(): string {
+  const publishable = parseSecretDictionary("SUPABASE_PUBLISHABLE_KEYS");
+  return env("NOVAFLOW_SUPABASE_PUBLISHABLE_KEY") ||
+    env("SUPABASE_ANON_KEY") ||
+    publishable.anon ||
+    publishable.publishable ||
+    firstJwtLikeValue(publishable) ||
+    serviceRoleKey();
+}
+
+function supabaseUrl(): string {
+  return (env("NOVAFLOW_SUPABASE_URL") || env("SUPABASE_URL")).replace(/\/+$/, "");
+}
+
+function sessionSecret(): string {
+  return env("NOVAFLOW_SESSION_SECRET");
+}
+
+function sessionTtlSeconds(): number {
+  const value = Number(env("NOVAFLOW_SESSION_TTL_SECONDS"));
+  return Number.isInteger(value) && value > 0 ? value : DEFAULT_SESSION_TTL_SECONDS;
+}
+
+function grokBaseUrl(): string {
+  return (env("NOVAFLOW_GROK_BASE_URL") || DEFAULT_GROK_BASE_URL).replace(/\/+$/, "");
+}
+
+function grokModel(): string {
+  return env("NOVAFLOW_GROK_MODEL") || DEFAULT_GROK_MODEL;
+}
+
+function grokApiKey(): string {
+  return env("NOVAFLOW_GROK_API_KEY") || env("XAI_API_KEY");
+}
+
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin") || "*";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "authorization,content-type,x-novaflow-admin-token,x-request-id",
+    "Access-Control-Max-Age": "600",
+    "Vary": "Origin"
+  };
+}
+
+function jsonResponse(req: Request, status: number, payload: AnyRecord): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      ...corsHeaders(req),
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer"
+    }
+  });
+}
+
+function sanitizeError(error: unknown): string {
+  let message = String(error instanceof Error ? error.message : error || "unknown");
+  const secrets = [
+    serviceRoleKey(),
+    publishableKey(),
+    sessionSecret(),
+    grokApiKey(),
+    env("NOVAFLOW_COMFYUI_API_KEY")
+  ].filter(Boolean);
+  for (const secret of secrets) {
+    message = message.split(secret).join("[redacted]");
+  }
+  return message;
+}
+
+function errorHttpStatus(error: unknown, fallback: number): number {
+  const statusCode = Number((error as Error & { statusCode?: number })?.statusCode || fallback);
+  return Number.isInteger(statusCode) && statusCode >= 400 && statusCode < 600 ? statusCode : fallback;
+}
+
+function logInfo(message: string, details: AnyRecord = {}): void {
+  const safe = Object.fromEntries(
+    Object.entries(details).filter(([key]) => !/key|secret|token/i.test(key))
+  );
+  console.log(`[NovaFlowBackend] ${new Date().toISOString()} ${message}`, safe);
+}
+
+function adminClient() {
+  const url = supabaseUrl();
+  const key = serviceRoleKey();
+  if (!url || !key) throw new Error("Supabase service role is not configured");
+  return createClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
+  });
+}
+
+function authClient() {
+  const url = supabaseUrl();
+  const key = publishableKey();
+  if (!url || !key) throw new Error("Supabase auth is not configured");
+  return createClient(url, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false
+    }
+  });
+}
+
+function normalizePath(url: URL): string {
+  let path = url.pathname.replace(/\/+$/, "") || "/";
+  const prefix = `/${FUNCTION_NAME}`;
+  if (path === prefix) return "/";
+  if (path.startsWith(`${prefix}/`)) path = path.slice(prefix.length);
+  return path || "/";
+}
+
+async function parseJsonBody(req: Request, maxBytes = MAX_BODY_BYTES): Promise<AnyRecord> {
+  const text = await req.text();
+  const size = new TextEncoder().encode(text).length;
+  if (size > maxBytes) {
+    const error = new Error("request body too large") as Error & { statusCode?: number };
+    error.statusCode = 413;
+    throw error;
+  }
+  if (!text.trim()) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    const error = new Error("invalid json request body") as Error & { statusCode?: number };
+    error.statusCode = 400;
+    throw error;
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+  return parsed as AnyRecord;
+}
+
+function normalizeEmail(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function normalizeAccountName(value: unknown): string {
+  const account = String(value || "").trim().toLowerCase();
+  if (!account) throw new Error("account is required");
+  if (account.length < 2) throw new Error("account must be at least 2 characters");
+  if (account.length > 64) throw new Error("account is too long");
+  if (!/^[a-z0-9._-]+$/.test(account)) throw new Error("account can only contain lowercase letters, numbers, dot, underscore, or hyphen");
+  return account;
+}
+
+function accountToAuthEmail(value: unknown): string {
+  const raw = String(value || "").trim();
+  if (isValidEmail(raw)) return normalizeEmail(raw);
+  const account = normalizeAccountName(raw);
+  return `${account}@${INTERNAL_ACCOUNT_EMAIL_DOMAIN}`;
+}
+
+function accountNameFromEmail(value: unknown): string {
+  const email = normalizeEmail(value);
+  const suffix = `@${INTERNAL_ACCOUNT_EMAIL_DOMAIN}`;
+  if (!email.endsWith(suffix)) return email;
+  const local = email.slice(0, -suffix.length);
+  if (!local.startsWith(INTERNAL_ACCOUNT_EMAIL_PREFIX)) return local;
+  try {
+    const account = new TextDecoder().decode(base64UrlDecode(local.slice(INTERNAL_ACCOUNT_EMAIL_PREFIX.length)));
+    return /^[a-z0-9._-]{2,64}$/.test(account) ? account : email;
+  } catch {
+    return email;
+  }
+}
+
+function validatePassword(password: string): string {
+  if (!password || password.length < 6) return "password must be at least 6 characters";
+  if (password.length > 128) return "password is too long";
+  return "";
+}
+
+function isActiveUser(user: PublicUser | null): boolean {
+  return String(user?.status || "active").toLowerCase() === "active";
+}
+
+function publicUser(user: PublicUser): AnyRecord {
+  const account = accountNameFromEmail(user.email || "");
+  return {
+    id: user.id || "",
+    account,
+    email: account,
+    display_name: user.display_name || "",
+    role: user.role || "user",
+    plan: user.plan || "trial",
+    status: user.status || "active",
+    created_at: user.created_at || ""
+  };
+}
+
+function base64UrlEncode(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value: string): Uint8Array {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+function base64UrlJson(value: AnyRecord): string {
+  return base64UrlEncode(new TextEncoder().encode(JSON.stringify(value)));
+}
+
+async function hmacSha256(input: string, secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(input));
+  return base64UrlEncode(new Uint8Array(signature));
+}
+
+function safeCompare(left: string, right: string): boolean {
+  if (left.length !== right.length) return false;
+  let diff = 0;
+  for (let i = 0; i < left.length; i += 1) diff |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  return diff === 0;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function licenseVerificationClientIp(req: Request): string {
+  const forwarded = String(req.headers.get("x-forwarded-for") || "").split(",")[0];
+  return String(
+    req.headers.get("cf-connecting-ip") ||
+    forwarded ||
+    req.headers.get("x-real-ip") ||
+    "unknown"
+  ).trim().slice(0, 128) || "unknown";
+}
+
+async function licenseVerificationIdentityHash(
+  req: Request,
+  input: { licenseKey: string; machineId: string }
+): Promise<string> {
+  const identity = [
+    "novaflow-license-verify-v1",
+    input.licenseKey,
+    input.machineId,
+    licenseVerificationClientIp(req)
+  ].join("\u0000");
+  return await sha256Hex(identity);
+}
+
+async function enforceLicenseVerificationRateLimit(
+  req: Request,
+  input: { licenseKey: string; machineId: string }
+): Promise<void> {
+  const identityHash = await licenseVerificationIdentityHash(req, input);
+  const { data, error } = await adminClient().rpc(LICENSE_VERIFY_RATE_LIMIT_RPC, {
+    p_identity_hash: identityHash,
+    p_window_seconds: LICENSE_VERIFY_RATE_LIMIT_WINDOW_SECONDS,
+    p_max_attempts: LICENSE_VERIFY_RATE_LIMIT_MAX_ATTEMPTS
+  });
+  if (error) throw error;
+  const result = (Array.isArray(data) ? data[0] : data) as AnyRecord | null;
+  if (!result || typeof result.allowed !== "boolean") {
+    throw new Error("license verification rate limit returned an invalid result");
+  }
+  if (!result.allowed) {
+    const rateError = new Error("license verification rate limit exceeded") as Error & { statusCode?: number };
+    rateError.statusCode = 429;
+    throw rateError;
+  }
+}
+
+async function issueSessionToken(user: PublicUser): Promise<AnyRecord> {
+  const secret = sessionSecret();
+  if (!secret) throw new Error("NOVAFLOW_SESSION_SECRET is not configured");
+  const now = Math.floor(Date.now() / 1000);
+  const ttl = sessionTtlSeconds();
+  const payload = {
+    sub: String(user.id || ""),
+    email: String(user.email || ""),
+    plan: String(user.plan || "trial"),
+    status: String(user.status || "active"),
+    iat: now,
+    exp: now + ttl,
+    nonce: crypto.randomUUID()
+  };
+  const encoded = base64UrlJson(payload);
+  const signature = await hmacSha256(encoded, secret);
+  return {
+    token: `nfs_${encoded}.${signature}`,
+    expiresAt: new Date(payload.exp * 1000).toISOString(),
+    ttlSeconds: ttl
+  };
+}
+
+async function verifySessionToken(token: string): Promise<AnyRecord> {
+  const secret = sessionSecret();
+  if (!secret) throw new Error("NOVAFLOW_SESSION_SECRET is not configured");
+  const raw = String(token || "").trim();
+  if (!raw.startsWith("nfs_")) throw new Error("invalid session token");
+  const parts = raw.slice(4).split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) throw new Error("invalid session token");
+  const expected = await hmacSha256(parts[0], secret);
+  if (!safeCompare(parts[1], expected)) throw new Error("invalid session token");
+  let payload: AnyRecord;
+  try {
+    payload = JSON.parse(new TextDecoder().decode(base64UrlDecode(parts[0])));
+  } catch {
+    throw new Error("invalid session token");
+  }
+  const now = Math.floor(Date.now() / 1000);
+  if (!payload.sub || !payload.exp || Number(payload.exp) <= now) throw new Error("session expired");
+  return payload;
+}
+
+function bearerToken(req: Request): string {
+  const auth = req.headers.get("authorization") || "";
+  return /^bearer\s+/i.test(auth) ? auth.replace(/^bearer\s+/i, "").trim() : "";
+}
+
+async function readUserById(userId: string): Promise<PublicUser | null> {
+  const { data, error } = await adminClient()
+    .from("users")
+    .select("id,email,display_name,role,plan,status,created_at,updated_at")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data || null) as PublicUser | null;
+}
+
+async function verifySupabaseClientSessionToken(token: string): Promise<AnyRecord> {
+  const raw = String(token || "").trim();
+  if (!raw) {
+    const error = new Error("missing session token") as Error & { statusCode?: number };
+    error.statusCode = 401;
+    throw error;
+  }
+  const { data, error } = await authClient().auth.getUser(raw);
+  if (error || !data?.user?.id) {
+    const authError = new Error(error?.message || "invalid session token") as Error & { statusCode?: number };
+    authError.statusCode = 401;
+    throw authError;
+  }
+  return {
+    sub: String(data.user.id || ""),
+    email: String(data.user.email || ""),
+    provider: "supabase_auth"
+  };
+}
+
+async function requireSession(req: Request): Promise<{ user: PublicUser; payload: AnyRecord }> {
+  const token = bearerToken(req);
+  const payload = String(token || "").trim().startsWith("nfs_")
+    ? await verifySessionToken(token)
+    : await verifySupabaseClientSessionToken(token);
+  const user = await readUserById(String(payload.sub || ""));
+  if (!user) throw new Error("session user not found");
+  if (!isActiveUser(user)) {
+    const err = new Error("user disabled");
+    (err as Error & { statusCode?: number }).statusCode = 403;
+    throw err;
+  }
+  return { user, payload };
+}
+
+async function ensureCreditRow(userId: string): Promise<AnyRecord> {
+  const client = adminClient();
+  const { data: existing, error: readError } = await client
+    .from("credits")
+    .select("id,user_id,balance,updated_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (readError) throw readError;
+  if (existing) return existing as AnyRecord;
+  const { data, error } = await client
+    .from("credits")
+    .insert({ user_id: userId, balance: 0 })
+    .select("id,user_id,balance,updated_at")
+    .maybeSingle();
+  if (error) throw error;
+  return (data || { user_id: userId, balance: 0 }) as AnyRecord;
+}
+
+async function creditBalance(userId: string): Promise<{ balance: number; record: AnyRecord }> {
+  const record = await ensureCreditRow(userId);
+  const balance = Number(record.balance || 0);
+  return { balance: Number.isFinite(balance) ? balance : 0, record };
+}
+
+async function syncAuthUserProfile(input: { authUserId: string; email: string; displayName?: string }): Promise<PublicUser> {
+  const client = adminClient();
+  const email = normalizeEmail(input.email);
+  const displayName = String(input.displayName || "").trim().slice(0, 120);
+  const { data: existing, error: readError } = await client
+    .from("users")
+    .select("id,email,display_name,role,plan,status,created_at,updated_at")
+    .or(`id.eq.${input.authUserId},email.eq.${email}`)
+    .limit(1)
+    .maybeSingle();
+  if (readError) throw readError;
+
+  let user: PublicUser;
+  if (existing) {
+    const updatePayload: AnyRecord = {
+      email,
+      updated_at: new Date().toISOString()
+    };
+    if (displayName) updatePayload.display_name = displayName;
+    const { data, error } = await client
+      .from("users")
+      .update(updatePayload)
+      .eq("id", (existing as PublicUser).id)
+      .select("id,email,display_name,role,plan,status,created_at,updated_at")
+      .maybeSingle();
+    if (error) throw error;
+    user = (data || existing) as PublicUser;
+  } else {
+    const { data, error } = await client
+      .from("users")
+      .insert({
+        id: input.authUserId,
+        email,
+        display_name: displayName,
+        role: "user",
+        plan: "trial",
+        status: "active"
+      })
+      .select("id,email,display_name,role,plan,status,created_at,updated_at")
+      .maybeSingle();
+    if (error) throw error;
+    user = data as PublicUser;
+  }
+  await ensureCreditRow(user.id);
+  return user;
+}
+
+async function authPayload(req: Request, user: PublicUser, provider: string, intent: string): Promise<Response> {
+  if (!isActiveUser(user)) return jsonResponse(req, 403, { ok: false, error: "user disabled" });
+  const session = await issueSessionToken(user);
+  const credits = await creditBalance(user.id);
+  logInfo("client auth", { intent, userId: user.id, email: user.email, creditBalance: credits.balance });
+  return jsonResponse(req, 200, {
+    ok: true,
+    auth: { provider, intent },
+    session,
+    user: publicUser(user),
+    credits: {
+      balance: credits.balance,
+      source: "supabase",
+      status: "connected"
+    }
+  });
+}
+
+async function handleRegister(req: Request): Promise<Response> {
+  return jsonResponse(req, 410, {
+    ok: false,
+    error: "self registration is disabled; ask the NovaFlow administrator to create an account"
+  });
+}
+
+async function handleLogin(req: Request): Promise<Response> {
+  const payload = await parseJsonBody(req);
+  let email = "";
+  try {
+    email = accountToAuthEmail(payload.account || payload.username || payload.email);
+  } catch (error) {
+    return jsonResponse(req, 400, { ok: false, error: sanitizeError(error) });
+  }
+  const password = String(payload.password || "");
+  const passwordError = validatePassword(password);
+  if (passwordError) return jsonResponse(req, 400, { ok: false, error: passwordError });
+
+  const { data, error } = await authClient().auth.signInWithPassword({ email, password });
+  if (error) return jsonResponse(req, 401, { ok: false, error: `Supabase Auth Error: ${sanitizeError(error)}` });
+  const authUser = data?.user;
+  if (!authUser?.id) return jsonResponse(req, 401, { ok: false, error: "Supabase Auth did not return a logged-in user" });
+  const user = await syncAuthUserProfile({
+    authUserId: authUser.id,
+    email: normalizeEmail(authUser.email || email),
+    displayName: String(authUser.user_metadata?.display_name || payload.displayName || payload.display_name || "")
+  });
+  return await authPayload(req, user, "supabase_password", "login");
+}
+
+function quotaKey(providerKey: string, userId: string): string {
+  return `${PROVIDER_QUOTA_PREFIX}${normalizeProviderKey(providerKey)}_${userId}`;
+}
+
+function normalizeProviderKey(value: unknown): string {
+  const key = String(value || "grok").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "_").slice(0, 80);
+  if (!key) throw new Error("provider is required");
+  return key;
+}
+
+function normalizeProviderQuota(setting: AnyRecord | null, user: PublicUser, providerKey: string): ProviderQuotaRecord {
+  const value = setting?.value && typeof setting.value === "object" && !Array.isArray(setting.value)
+    ? setting.value as AnyRecord
+    : {};
+  const allocated = Math.max(0, Number(value.allocated_count ?? value.allocatedCount ?? 0) || 0);
+  const used = Math.max(0, Number(value.used_count ?? value.usedCount ?? 0) || 0);
+  const reserved = Math.max(0, Number(value.reserved_count ?? value.reservedCount ?? 0) || 0);
+  return {
+    key: String(setting?.key || quotaKey(providerKey, user.id)),
+    provider_key: providerKey,
+    user_id: user.id,
+    email: user.email,
+    display_name: String(user.display_name || ""),
+    allocated_count: allocated,
+    used_count: used,
+    reserved_count: reserved,
+    remaining_count: Math.max(0, allocated - used - reserved),
+    status: allocated > used + reserved ? "available" : "empty",
+    note: String(value.note || ""),
+    updated_at: String(setting?.updated_at || value.updated_at || ""),
+    raw_value: { ...value }
+  };
+}
+
+async function readProviderQuota(user: PublicUser, providerKey: string): Promise<ProviderQuotaRecord> {
+  const key = quotaKey(providerKey, user.id);
+  const { data, error } = await adminClient()
+    .from("system_settings")
+    .select("key,value,updated_at")
+    .eq("key", key)
+    .maybeSingle();
+  if (error) throw error;
+  return normalizeProviderQuota((data || null) as AnyRecord | null, user, providerKey);
+}
+
+function normalizeGrokUsageDetail(user: PublicUser, input: AnyRecord, now: string): AnyRecord {
+  const tokenUsage = input.tokenUsage && typeof input.tokenUsage === "object" && !Array.isArray(input.tokenUsage)
+    ? input.tokenUsage as AnyRecord
+    : {};
+  const inputTokens = Math.max(0, Math.round(Number(tokenUsage.inputTokens ?? tokenUsage.input_tokens ?? 0) || 0));
+  const outputTokens = Math.max(0, Math.round(Number(tokenUsage.outputTokens ?? tokenUsage.output_tokens ?? 0) || 0));
+  const totalTokens = Math.max(
+    inputTokens + outputTokens,
+    Math.round(Number(tokenUsage.totalTokens ?? tokenUsage.total_tokens ?? 0) || 0)
+  );
+  const rawStatus = String(input.status || "success").trim().toLowerCase();
+  const status = ["success", "failed", "rejected"].includes(rawStatus) ? rawStatus : "failed";
+  const mode = String(input.mode || "prompt_optimize")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, "_")
+    .slice(0, 64) || "prompt_optimize";
+  return {
+    id: String(input.id || `grok_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`).slice(0, 80),
+    user_id: user.id,
+    at: now,
+    provider: "grok",
+    mode,
+    token_usage: {
+      input_tokens: inputTokens,
+      output_tokens: outputTokens,
+      total_tokens: totalTokens
+    },
+    duration_ms: Math.max(0, Math.round(Number(input.durationMs ?? input.duration_ms ?? 0) || 0)),
+    model: String(input.model || "").trim().slice(0, 120),
+    status,
+    error: String(input.error || "").trim().slice(0, 240)
+  };
+}
+
+function providerQuotaPayload(quota: ProviderQuotaRecord): AnyRecord {
+  return {
+    status: quota.remaining_count > 0 ? "available" : "empty",
+    allocated_count: quota.allocated_count,
+    used_count: quota.used_count,
+    reserved_count: quota.reserved_count,
+    remaining_count: quota.remaining_count
+  };
+}
+
+async function enabledProviders(): Promise<AnyRecord[]> {
+  const { data, error } = await adminClient()
+    .from("ai_providers")
+    .select("id,provider_key,name,status,billing_multiplier")
+    .eq("status", "enabled")
+    .limit(100);
+  if (error) return [];
+  return Array.isArray(data) ? data as AnyRecord[] : [];
+}
+
+async function clientSettings(): Promise<AnyRecord[]> {
+  const { data, error } = await adminClient()
+    .from("system_settings")
+    .select("key,value,updated_at")
+    .in("key", ["default_billing_multiplier", "gateway_default_credit_cost"])
+    .limit(100);
+  if (error) return [];
+  return Array.isArray(data) ? data as AnyRecord[] : [];
+}
+
+async function handleBootstrap(req: Request, session: { user: PublicUser }): Promise<Response> {
+  const providerKeys = PROVIDER_QUOTA_KEYS;
+  const [credits, providers, settings, ...quotaResults] = await Promise.all([
+    creditBalance(session.user.id),
+    enabledProviders(),
+    clientSettings(),
+    ...providerKeys.map((providerKey) => readProviderQuota(session.user, providerKey))
+  ]);
+  const quotas: Record<string, AnyRecord> = {};
+  providerKeys.forEach((providerKey, index) => {
+    const quota = quotaResults[index] as ProviderQuotaRecord;
+    quotas[providerKey] = {
+      status: "connected",
+      allocated_count: quota.allocated_count,
+      used_count: quota.used_count,
+      remaining_count: quota.remaining_count
+    };
+  });
+  return jsonResponse(req, 200, {
+    ok: true,
+    mode: "lite",
+    user: publicUser(session.user),
+    credits: {
+      balance: credits.balance,
+      source: "supabase",
+      status: "connected"
+    },
+    providerQuotas: quotas,
+    ai: {
+      ok: true,
+      result: {
+        source: "supabase",
+        status: "connected",
+        providers,
+        models: [],
+        settings
+      }
+    },
+    providerStatus: null,
+    gateway: {
+      endpoint: "POST /api/ai/tasks",
+      usageEndpoint: "POST /api/ai/tasks/usage",
+      localWorkflowAuthorizeEndpoint: "POST /api/ai/tasks",
+      localWorkflowUsageEndpoint: "POST /api/ai/tasks/usage",
+      grokEndpoint: "POST /api/provider/grok/chat",
+      smartAiPromptOptimizeEndpoint: "POST /api/client/grok/prompt-optimize",
+      smartAiImageReverseEndpoint: "POST /api/client/grok/image-reverse",
+      smartAiStoryboardEndpoint: "POST /api/client/grok/storyboard-unified-nine-shots",
+      mode: "gateway_lite_check",
+      calculatesCreditCost: true,
+      deductsCredits: false,
+      localWorkflowDeductsCredits: true,
+      writesTaskRecords: false,
+      writesConsumptionRecords: false,
+      storesWorkflow: false,
+      callsProvider: false
+    }
+  });
+}
+
+function parseCreditCost(payload: AnyRecord, allowZero = false): number {
+  const raw = payload.estimatedCreditCost ?? payload.creditCost ?? payload.credit_cost ?? payload.cost ?? 0;
+  const cost = Number(raw);
+  if (!Number.isFinite(cost)) throw new Error("credit cost must be a number");
+  if (allowZero ? cost < 0 : cost <= 0) {
+    throw new Error(allowZero ? "credit cost must be greater than or equal to 0" : "credit cost must be greater than 0");
+  }
+  return Math.ceil(cost);
+}
+
+function settingNumber(settings: AnyRecord[], keys: string[], fallback: number): number {
+  for (const key of keys) {
+    const record = settings.find((item) => String(item.key || "") === key);
+    const rawValue = record?.value;
+    const value = rawValue && typeof rawValue === "object" && !Array.isArray(rawValue)
+      ? (rawValue as AnyRecord).value ?? (rawValue as AnyRecord).amount ?? (rawValue as AnyRecord).cost
+      : rawValue;
+    const parsed = Number(String(value ?? "").replace(/x$/i, ""));
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  }
+  return fallback;
+}
+
+function fallbackBaseCost(taskType: string): number {
+  const key = String(taskType || "").toLowerCase();
+  if (key.includes("video")) return 500;
+  if (key.includes("image") || key.includes("repaint")) return 100;
+  if (key.includes("prompt")) return 10;
+  return 25;
+}
+
+function parseGatewayTask(payload: AnyRecord): AnyRecord {
+  const parameters = payload.parameters && typeof payload.parameters === "object" && !Array.isArray(payload.parameters)
+    ? payload.parameters as AnyRecord
+    : {};
+  const providerKey = normalizeProviderKey(payload.provider || payload.providerKey || payload.provider_key);
+  const modelKey = String(payload.modelKey || payload.model_key || payload.model || parameters.modelKey || parameters.model_key || "unconfigured")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.:-]/g, "_")
+    .slice(0, 120) || "unconfigured";
+  const taskType = String(payload.taskType || payload.task_type || parameters.taskType || parameters.task_type || "ai_task").trim().slice(0, 100) || "ai_task";
+  return { providerKey, modelKey, taskType };
+}
+
+async function calculateCreditCost(task: AnyRecord): Promise<AnyRecord> {
+  const [settings, providers] = await Promise.all([clientSettings(), enabledProviders()]);
+  const taskKey = String(task.taskType || "ai_task").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "ai_task";
+  const baseCost = settingNumber(settings, [`gateway_cost_${taskKey}`, `credit_cost_${taskKey}`, "gateway_default_credit_cost"], fallbackBaseCost(String(task.taskType || "")));
+  const provider = providers.find((item) => String(item.provider_key || "").toLowerCase() === task.providerKey);
+  const multiplier = Number(provider?.billing_multiplier ?? 1);
+  return {
+    creditCost: Math.max(1, Math.ceil(baseCost * (Number.isFinite(multiplier) ? multiplier : 1))),
+    source: "supabase",
+    status: "connected",
+    baseCost,
+    providerMultiplier: Number.isFinite(multiplier) ? multiplier : 1,
+    modelMultiplier: 1
+  };
+}
+
+function parseCanonicalCreditAmount(value: unknown): { amountText: string; amount: number } {
+  if (typeof value !== "string" || !/^(?:0|[1-9]\d{0,13})\.\d{6}$/.test(value)) {
+    throw new Error("canonical credit amount is invalid");
+  }
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error("canonical credit amount is invalid");
+  return { amountText: value, amount };
+}
+
+async function calculateLocalWorkflowCreditCost(payload: AnyRecord, _task: AnyRecord): Promise<AnyRecord> {
+  const parameters = payload.parameters && typeof payload.parameters === "object" && !Array.isArray(payload.parameters)
+    ? payload.parameters as AnyRecord
+    : {};
+  const pricingSource = String(payload.pricingSource || payload.pricing_source || parameters.pricingSource || "unknown").slice(0, 120);
+  const imageTask = String(_task?.taskType || "") === "local_workflow_image";
+  const exactImagePricing = imageTask && pricingSource === "comfy_api_exact_price_v1";
+  if (exactImagePricing) {
+    const exact = parseCanonicalCreditAmount(payload.chargeAmount ?? payload.charge_amount);
+    const estimatedCreditCost = Number(payload.estimatedCreditCost ?? payload.estimated_credit_cost ?? exact.amount);
+    if (!Number.isFinite(estimatedCreditCost) || estimatedCreditCost < 0) throw new Error("credit cost must be a number");
+    return {
+      creditCost: exact.amount,
+      chargeAmount: exact.amountText,
+      estimatedCreditCost,
+      source: pricingSource,
+      status: exact.amount > 0 ? "known" : "pending_pricing",
+      baseCost: exact.amount,
+      providerMultiplier: 1,
+      modelMultiplier: 1
+    };
+  }
+  if (imageTask) {
+    const estimate = Number(payload.estimatedCreditCost ?? payload.estimated_credit_cost ?? 0);
+    return {
+      creditCost: 0,
+      estimatedCreditCost: Number.isFinite(estimate) && estimate > 0 ? estimate : 0,
+      source: pricingSource,
+      status: "pending_pricing",
+      baseCost: 0,
+      providerMultiplier: 1,
+      modelMultiplier: 1
+    };
+  }
+  const rawCost = Number(payload.estimatedCreditCost ?? payload.creditCost ?? payload.credit_cost ?? payload.cost ?? 0);
+  if (Number.isFinite(rawCost) && rawCost > 0) {
+    return {
+      creditCost: Math.ceil(rawCost),
+      estimatedCreditCost: rawCost,
+      source: pricingSource === "unknown" ? "workflow" : pricingSource,
+      status: "known",
+      baseCost: rawCost,
+      providerMultiplier: 1,
+      modelMultiplier: 1
+    };
+  }
+  return {
+    creditCost: 0,
+    estimatedCreditCost: 0,
+    source: pricingSource,
+    status: "pending_pricing",
+    baseCost: 0,
+    providerMultiplier: 1,
+    modelMultiplier: 1
+  };
+}
+
+async function deductCredits(userId: string, amount: number): Promise<AnyRecord> {
+  const cost = Math.max(1, Math.ceil(Number(amount || 0)));
+  const current = await ensureCreditRow(userId);
+  if (!current.id) throw new Error("credit balance row is missing an id");
+  const beforeBalance = Number(current.balance || 0);
+  const afterBalance = beforeBalance - cost;
+  if (afterBalance < 0) throw new Error("insufficient credits");
+  const { data, error } = await adminClient()
+    .from("credits")
+    .update({ balance: afterBalance, updated_at: new Date().toISOString() })
+    .eq("id", current.id)
+    .select("id,user_id,balance,updated_at")
+    .maybeSingle();
+  if (error) throw error;
+  return {
+    beforeBalance,
+    afterBalance,
+    deducted: cost,
+    credit: (data || { ...current, balance: afterBalance }) as AnyRecord
+  };
+}
+
+async function handleCreditCheck(req: Request, session: { user: PublicUser }): Promise<Response> {
+  const payload = await parseJsonBody(req);
+  const cost = parseCreditCost(payload, true);
+  const credits = await creditBalance(session.user.id);
+  return jsonResponse(req, 200, {
+    ok: true,
+    user: publicUser(session.user),
+    credits: {
+      balance: credits.balance,
+      required: cost,
+      enough: credits.balance >= cost
+    }
+  });
+}
+
+async function handleAiTasks(req: Request, session: { user: PublicUser }): Promise<Response> {
+  const payload = await parseJsonBody(req);
+  if (payload.recordUsage || payload.record_usage || payload.commitUsage || payload.commit_usage) {
+    return jsonResponse(req, 400, {
+      ok: false,
+      error: "recordUsage has been disabled; the lite Gateway does not write task or consumption records"
+    });
+  }
+  const task = parseGatewayTask(payload);
+  const pricing = LOCAL_WORKFLOW_PROVIDER_KEYS.has(String(task.providerKey || ""))
+    ? await calculateLocalWorkflowCreditCost(payload, task)
+    : await calculateCreditCost(task);
+  const credits = await creditBalance(session.user.id);
+  if (LOCAL_WORKFLOW_PROVIDER_KEYS.has(String(task.providerKey || ""))) {
+    return jsonResponse(req, 200, {
+      ok: true,
+      accepted: false,
+      mode: "local_workflow_credit_authorize",
+      message: "ComfyUI generation is never blocked by balance. Successful output will be settled afterward using the workflow's real charge.",
+      user: publicUser(session.user),
+      provider: {
+        providerKey: task.providerKey,
+        modelKey: task.modelKey,
+        taskType: task.taskType
+      },
+      pricing,
+      credits: {
+        balance: credits.balance,
+        required: pricing.creditCost,
+        enough: true,
+        overdraftAllowed: true,
+        deducted: 0
+      },
+      providerBudget: {
+        providerKey: task.providerKey,
+        settlementMode: "post_success_atomic",
+        overdraftAllowed: true
+      },
+      localWorkflow: {
+        runtime: "comfyui",
+        callsProvider: false,
+        storesWorkflow: false
+      }
+    });
+  }
+  if (credits.balance < Number(pricing.creditCost || 0)) {
+    return jsonResponse(req, 402, {
+      ok: false,
+      error: "insufficient credits",
+      mode: "gateway_lite_check",
+      pricing,
+      credits: {
+        balance: credits.balance,
+        required: pricing.creditCost,
+        enough: false
+      }
+    });
+  }
+  return jsonResponse(req, 200, {
+    ok: true,
+    accepted: false,
+    mode: "gateway_lite_check",
+    message: "Lite Gateway check passed. No task record, consumption record, workflow hash, or credit deduction was written.",
+    user: publicUser(session.user),
+    provider: {
+      providerKey: task.providerKey,
+      modelKey: task.modelKey,
+      taskType: task.taskType
+    },
+    pricing,
+    credits: {
+      balance: credits.balance,
+      required: pricing.creditCost,
+      enough: true,
+      deducted: 0
+    }
+  });
+}
+
+async function handleAiTaskUsage(req: Request, session: { user: PublicUser }): Promise<Response> {
+  const payload = await parseJsonBody(req);
+  const task = parseGatewayTask(payload);
+  if (!LOCAL_WORKFLOW_PROVIDER_KEYS.has(String(task.providerKey || ""))) {
+    return jsonResponse(req, 400, {
+      ok: false,
+      error: "local workflow usage can only be committed for comfyui",
+      provider: {
+        providerKey: task.providerKey,
+        modelKey: task.modelKey,
+        taskType: task.taskType
+      }
+    });
+  }
+
+  const pricing = await calculateLocalWorkflowCreditCost(payload, task);
+  const promptId = String(payload.promptId || payload.prompt_id || "").trim().slice(0, 160);
+  if (!promptId) {
+    return jsonResponse(req, 400, {
+      ok: false,
+      error: "ComfyUI prompt id is required for idempotent usage settlement",
+      mode: "local_workflow_credit_usage",
+      provider: {
+        providerKey: task.providerKey,
+        modelKey: task.modelKey,
+        taskType: task.taskType
+      }
+    });
+  }
+
+  const parameters = payload.parameters && typeof payload.parameters === "object" && !Array.isArray(payload.parameters)
+    ? payload.parameters as AnyRecord
+    : {};
+  const usageKey = `comfyui:${promptId}`;
+  const { data, error } = await adminClient().rpc("settle_comfy_usage", {
+    p_usage_key: usageKey,
+    p_user_id: session.user.id,
+    p_prompt_id: promptId,
+    p_provider_key: task.providerKey,
+    p_model_key: task.modelKey,
+    p_task_type: task.taskType,
+    p_estimated_credit_cost: Number(pricing.estimatedCreditCost || 0),
+    p_charge_amount: pricing.chargeAmount ?? Number(pricing.creditCost || 0),
+    p_pricing_source: String(pricing.source || parameters.pricingSource || "unknown"),
+    p_pricing_details: {
+      runtime: "comfyui",
+      workflowNodeType: String(parameters.workflowNodeType || ""),
+      pricingStatus: pricing.status,
+      clientSource: String(parameters.source || "")
+    }
+  });
+  if (error) throw error;
+  const settlement = data && typeof data === "object" && !Array.isArray(data) ? data as AnyRecord : {};
+  const pendingPricing = settlement.status === "pending_pricing";
+  return jsonResponse(req, 200, {
+    ok: true,
+    mode: "local_workflow_credit_usage",
+    message: pendingPricing
+      ? "ComfyUI output was recorded with pending pricing; no fabricated fixed charge was deducted."
+      : "ComfyUI real workflow charge was atomically deducted from user credits and the manual provider balance.",
+    user: publicUser(session.user),
+    provider: {
+      providerKey: task.providerKey,
+      modelKey: task.modelKey,
+      taskType: task.taskType,
+      promptId
+    },
+    pricing,
+    usageKey,
+    idempotent: Boolean(settlement.idempotent),
+    pendingPricing,
+    settlement,
+    credits: pendingPricing ? null : settlement.credits || null,
+    providerBudget: settlement.provider_budget || null,
+    localWorkflow: {
+      runtime: "comfyui",
+      callsProvider: false,
+      storesWorkflow: false
+    }
+  });
+}
+
+function normalizeGrokRole(value: unknown): string {
+  const role = String(value || "user").trim().toLowerCase();
+  return ["system", "user", "assistant"].includes(role) ? role : "user";
+}
+
+function normalizeGrokPayload(payload: AnyRecord): { body: AnyRecord; inputMeta: AnyRecord } {
+  const sourceMessages = Array.isArray(payload.messages) ? payload.messages : [];
+  const messages = sourceMessages.length
+    ? sourceMessages.map((item) => ({
+      role: normalizeGrokRole((item as AnyRecord)?.role),
+      content: String((item as AnyRecord)?.content || "").slice(0, 20000)
+    })).filter((item) => item.content.trim())
+    : [{ role: "user", content: String(payload.prompt || payload.input || "").slice(0, 20000) }].filter((item) => item.content.trim());
+  if (!messages.length) throw new Error("grok prompt or messages are required");
+  const charCount = messages.reduce((sum, item) => sum + item.content.length, 0);
+  if (charCount > 24000) throw new Error("grok text input is too large");
+  const body: AnyRecord = { model: grokModel(), messages };
+  const temperature = Number(payload.temperature);
+  if (Number.isFinite(temperature)) body.temperature = Math.max(0, Math.min(2, temperature));
+  const maxTokens = Number(payload.max_tokens ?? payload.maxTokens);
+  if (Number.isInteger(maxTokens) && maxTokens > 0) body.max_tokens = Math.min(4096, maxTokens);
+  return { body, inputMeta: { messageCount: messages.length, charCount } };
+}
+
+function grokPublicResult(data: AnyRecord): AnyRecord {
+  return {
+    id: data.id || "",
+    object: data.object || "",
+    created: data.created || null,
+    model: data.model || "",
+    choices: Array.isArray(data.choices) ? data.choices : [],
+    usage: data.usage || null
+  };
+}
+
+async function callGrok(payload: AnyRecord): Promise<AnyRecord> {
+  const key = grokApiKey();
+  if (!key) {
+    const error = new Error("NOVAFLOW_GROK_API_KEY is not configured") as Error & { statusCode?: number };
+    error.statusCode = 503;
+    throw error;
+  }
+  const { body, inputMeta } = normalizeGrokPayload(payload);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 45000);
+  const startedAt = Date.now();
+  let providerCallStarted = false;
+  try {
+    providerCallStarted = true;
+    const response = await fetch(`${grokBaseUrl()}${GROK_CHAT_COMPLETIONS_PATH}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    let data: AnyRecord = {};
+    try {
+      data = text ? JSON.parse(text) as AnyRecord : {};
+    } catch {
+      data = { raw: text.slice(0, 1000) };
+    }
+    if (!response.ok) {
+      const message = String((data.error as AnyRecord)?.message || data.message || text || `xAI request failed with status ${response.status}`);
+      const error = new Error(message) as Error & { statusCode?: number };
+      error.statusCode = response.status;
+      throw error;
+    }
+    return {
+      ok: true,
+      statusCode: response.status,
+      durationMs: Date.now() - startedAt,
+      model: body.model,
+      inputMeta,
+      data: grokPublicResult(data)
+    };
+  } catch (error) {
+    const trackedError = error as Error & { grokProviderCallCount?: number };
+    trackedError.grokProviderCallCount = Math.max(
+      Number(trackedError.grokProviderCallCount || 0),
+      providerCallStarted ? 1 : 0
+    );
+    throw trackedError;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function isGrokResponseAttemptResultUsable(result: AnyRecord, resultOptions: AnyRecord): boolean {
+  if (String(result?.output_text || "").trim()) return true;
+  return resultOptions?.minimaxH3Reverse === true
+    && resultOptions?.minimaxH3RichVisualStage !== true
+    && result?.h3VisualFacts?.schema === "nf.visual.v2";
+}
+
+async function callGrokResponseAttempt(body: AnyRecord, inputMeta: AnyRecord, resultOptions: AnyRecord = {}): Promise<AnyRecord> {
+  const key = grokApiKey();
+  if (!key) {
+    const error = new Error("NOVAFLOW_GROK_API_KEY is not configured") as Error & { statusCode?: number };
+    error.statusCode = 503;
+    throw error;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 50000);
+  const startedAt = Date.now();
+  let providerCallStarted = false;
+  let attemptUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 };
+  try {
+    providerCallStarted = true;
+    const response = await fetch(`${grokBaseUrl()}${GROK_RESPONSES_PATH}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal
+    });
+    const text = await response.text();
+    let data: AnyRecord = {};
+    try {
+      data = text ? JSON.parse(text) as AnyRecord : {};
+    } catch {
+      data = { raw: text.slice(0, 1000) };
+    }
+    attemptUsage = normalizeGrokResponseUsage(data);
+    if (!response.ok) {
+      const message = String((data.error as AnyRecord)?.message || data.message || text || `xAI request failed with status ${response.status}`);
+      const error = new Error(message) as Error & { statusCode?: number };
+      error.statusCode = response.status;
+      throw error;
+    }
+    const result = grokResponsesPublicResult(data, {
+      ...resultOptions,
+      supportsNegativePrompt: inputMeta?.supportsNegativePrompt !== false
+    }) as AnyRecord;
+    if (!isGrokResponseAttemptResultUsable(result, resultOptions)) {
+      const error = new Error("Grok response did not include prompt text") as Error & { statusCode?: number };
+      error.statusCode = 502;
+      throw error;
+    }
+    return {
+      ok: true,
+      statusCode: response.status,
+      durationMs: Date.now() - startedAt,
+      model: body.model,
+      requestId: String(data.id || response.headers.get("x-request-id") || "").trim(),
+      inputMeta,
+      usage: attemptUsage,
+      providerCallCount: 1,
+      data: result
+    };
+  } catch (error) {
+    const trackedError = error as Error & {
+      grokUsage?: AnyRecord;
+      grokDurationMs?: number;
+      grokProviderCallCount?: number;
+    };
+    trackedError.grokUsage = attemptUsage;
+    trackedError.grokDurationMs = Date.now() - startedAt;
+    trackedError.grokProviderCallCount = providerCallStarted ? 1 : 0;
+    throw trackedError;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function createGrokUsageKey(feature: string): string {
+  return `grok:${String(feature || "call").replace(/[^a-z0-9_-]/gi, "_").slice(0, 60)}:${Date.now()}:${crypto.randomUUID()}`;
+}
+
+async function reserveGrokQuota(user: PublicUser, feature: string, minCalls: number, maxCalls: number): Promise<AnyRecord> {
+  const usageKey = createGrokUsageKey(feature);
+  const { data, error } = await adminClient().rpc("reserve_grok_quota", {
+    p_user_id: user.id, p_usage_key: usageKey, p_feature: feature,
+    p_min_calls: minCalls, p_max_calls: maxCalls,
+    p_metadata: { request_owner: "novaflow_backend" }
+  });
+  if (error) throw error;
+  return { ...(data as AnyRecord), usageKey };
+}
+
+function atomicGrokCallRecord(user: PublicUser, input: AnyRecord): AnyRecord {
+  return normalizeGrokUsageDetail(user, {
+    ...input,
+    id: `grok_${Date.now()}_${crypto.randomUUID().slice(0, 8)}`,
+    status: input.success === true ? "success" : "failed"
+  }, new Date().toISOString());
+}
+
+async function settleGrokQuota(user: PublicUser, reservation: AnyRecord, actualCalls: number, success: boolean, detail: AnyRecord): Promise<ProviderQuotaRecord> {
+  const { error } = await adminClient().rpc("settle_grok_quota", {
+    p_user_id: user.id, p_usage_key: String(reservation.usageKey || ""),
+    p_actual_calls: actualCalls, p_success: success,
+    p_call_records: [atomicGrokCallRecord(user, { ...detail, success })],
+    p_metadata: { request_owner: "novaflow_backend" }
+  });
+  if (error) throw error;
+  return await readProviderQuota(user, "grok");
+}
+
+async function releaseGrokQuota(user: PublicUser, reservation: AnyRecord, reason: string): Promise<ProviderQuotaRecord> {
+  const { error } = await adminClient().rpc("release_grok_quota", {
+    p_user_id: user.id, p_usage_key: String(reservation.usageKey || ""),
+    p_reason: reason.slice(0, 240), p_metadata: { request_owner: "novaflow_backend" }
+  });
+  if (error) throw error;
+  return await readProviderQuota(user, "grok");
+}
+
+async function callGrokResponse(body: AnyRecord, inputMeta: AnyRecord, resultOptions: AnyRecord = {}): Promise<AnyRecord> {
+  return await callGrokResponseWithVisualRetry(
+    body,
+    inputMeta,
+    resultOptions,
+    (attemptBody: AnyRecord) => callGrokResponseAttempt(attemptBody, inputMeta, resultOptions)
+  ) as AnyRecord;
+}
+
+async function handleGrokPromptOptimize(
+  req: Request,
+  session: { user: PublicUser }
+): Promise<Response> {
+  let payload: AnyRecord;
+  try {
+    payload = await parseJsonBody(req, MAX_GROK_BODY_BYTES);
+  } catch (error) {
+    return jsonResponse(req, errorHttpStatus(error, 400), { ok: false, error: sanitizeError(error) });
+  }
+  let request: AnyRecord;
+  try {
+    request = buildGrokPromptOptimizeRequest(payload, grokModel()) as AnyRecord;
+  } catch (error) {
+    return jsonResponse(req, 400, { ok: false, error: sanitizeError(error) });
+  }
+  const requiredProviderCalls = Math.max(
+    1,
+    Math.round(Number((request.resultOptions as AnyRecord)?.requiredProviderCalls || 1))
+  );
+  const isH3Prompt = (request.resultOptions as AnyRecord)?.minimaxH3Prompt === true;
+  let reservation: AnyRecord;
+  try {
+    reservation = await reserveGrokQuota(session.user, "prompt_optimize", requiredProviderCalls, isH3Prompt ? 2 : requiredProviderCalls);
+  } catch (error) {
+    return jsonResponse(req, 402, {
+      ok: false,
+      error: sanitizeError(error),
+      provider: "grok",
+      required_count: requiredProviderCalls,
+      quota: providerQuotaPayload(await readProviderQuota(session.user, "grok"))
+    });
+  }
+  const providerCallBudget = Math.max(0, Number(reservation.provider_call_budget || reservation.reserved_calls || 0));
+  const resultOptions = {
+    ...(request.resultOptions as AnyRecord),
+    visualRetryAllowed: isH3Prompt && providerCallBudget >= 2,
+    providerCallBudget,
+    h3RepairAllowed: (request.resultOptions as AnyRecord)?.minimaxH3Reverse === true
+      && providerCallBudget >= requiredProviderCalls + 1
+  };
+  let grok: AnyRecord;
+  try {
+    grok = await callGrokResponse(
+      request.body as AnyRecord,
+      request.inputMeta as AnyRecord,
+      resultOptions
+    );
+  } catch (error) {
+    const isMiniMaxH3 = resultOptions.minimaxH3Prompt === true;
+    const tracked = error as Error & { grokProviderCallCount?: number; grokUsage?: AnyRecord; grokDurationMs?: number };
+    const actualCalls = Math.max(0, Math.round(Number(tracked.grokProviderCallCount || 0)));
+    let failureQuota: ProviderQuotaRecord;
+    try {
+      failureQuota = actualCalls > 0
+        ? await settleGrokQuota(session.user, reservation, actualCalls, false, { mode: "prompt_optimize", error: sanitizeError(error), tokenUsage: tracked.grokUsage || null, durationMs: tracked.grokDurationMs || 0 })
+        : await releaseGrokQuota(session.user, reservation, sanitizeError(error));
+    } catch (settleError) {
+      return jsonResponse(req, 500, { ok: false, provider: "grok", error: `Grok quota settlement failed: ${sanitizeError(settleError)}` });
+    }
+    const statusCode = Number((error as Error & { statusCode?: number })?.statusCode || 502);
+    const h3Failure = isMiniMaxH3 ? miniMaxH3FailureEnvelope(error) : null;
+    const ordinaryArtPatchFailure = (resultOptions.ordinaryArtPromptPatch === true
+      || resultOptions.ordinaryArtStructuredPrompt === true)
+      && /^Grok ordinary Art\b/.test(sanitizeError(error));
+    return jsonResponse(req, statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
+      ok: false,
+      error: h3Failure?.message || (ordinaryArtPatchFailure
+        ? "提示词优化未落实你的修改要求，原提示词保持不变；请重试或把修改要求写得更具体"
+        : "生成失败，请稍后重试"),
+      provider: "grok",
+      ...(h3Failure || {}),
+      ...(ordinaryArtPatchFailure ? {
+        errorCode: "art-prompt-edit-not-applied",
+        failureClass: "application"
+      } : {}),
+      quota: providerQuotaPayload(failureQuota)
+    });
+  }
+  const providerCallCount = Math.max(1, Math.round(Number(grok.providerCallCount || 1)));
+  const usage = await settleGrokQuota(session.user, reservation, providerCallCount, true, {
+      mode: String((request.inputMeta as AnyRecord).mode || "prompt_optimize"),
+      tokenUsage: grok.usage,
+      durationMs: grok.durationMs,
+      model: grok.model,
+      providerCallCount,
+      h3ContractRepairUsed: Boolean(grok.h3ContractRepairUsed)
+  });
+  const data = grok.data as AnyRecord;
+  return jsonResponse(req, 200, {
+    ok: true,
+    provider: "grok",
+    mode: "prompt_optimize",
+    prompt: data.output_text,
+    negative_prompt: data.negative_prompt,
+    has_negative_prompt: Boolean(data.has_negative_prompt),
+    ...(data.editContract === "structured-recompile-v1"
+      && data.promptSchema === "nf.art.prompt.v1"
+      ? {
+          editContract: "structured-recompile-v1",
+          promptSchema: "nf.art.prompt.v1"
+        }
+      : (data.editContract === "deterministic-merge-v1"
+        ? { editContract: "deterministic-merge-v1" }
+        : {})),
+    user: publicUser(session.user),
+    quota: providerQuotaPayload(usage),
+    grok: {
+      statusCode: grok.statusCode,
+      durationMs: grok.durationMs,
+      input: grok.inputMeta,
+      usage: grok.usage,
+      model: grok.model,
+      providerCallCount,
+      h3ContractRepairUsed: Boolean(grok.h3ContractRepairUsed)
+    }
+  });
+}
+
+async function handleGrokImageReverse(
+  req: Request,
+  session: { user: PublicUser }
+): Promise<Response> {
+  let payload: AnyRecord;
+  try {
+    payload = await parseJsonBody(req, MAX_GROK_IMAGE_BODY_BYTES);
+  } catch (error) {
+    return jsonResponse(req, errorHttpStatus(error, 400), { ok: false, error: sanitizeError(error) });
+  }
+  let request: AnyRecord;
+  try {
+    request = buildGrokImageReverseRequest(payload, grokModel()) as AnyRecord;
+  } catch (error) {
+    const h3Preflight = miniMaxH3ReversePreflightFailure(payload, error);
+    if (h3Preflight) {
+      return jsonResponse(req, errorHttpStatus(error, h3Preflight.httpStatus), {
+        ok: false,
+        error: h3Preflight.envelope.message,
+        provider: "grok",
+        ...h3Preflight.envelope
+      });
+    }
+    return jsonResponse(req, 400, { ok: false, error: sanitizeError(error) });
+  }
+  const requiredProviderCalls = Math.max(
+    1,
+    Math.round(Number((request.resultOptions as AnyRecord)?.requiredProviderCalls || 1))
+  );
+  const isH3Reverse = (request.resultOptions as AnyRecord)?.minimaxH3Reverse === true;
+  let reservation: AnyRecord;
+  try {
+    reservation = await reserveGrokQuota(session.user,
+      String((request.inputMeta as AnyRecord).scenario || "") === "video_frames" ? "video_reverse" : "image_reverse",
+      requiredProviderCalls,
+      isH3Reverse ? requiredProviderCalls : Math.max(requiredProviderCalls, 2));
+  } catch (error) {
+    return jsonResponse(req, 402, {
+      ok: false,
+      error: sanitizeError(error),
+      provider: "grok",
+      required_count: requiredProviderCalls,
+      quota: providerQuotaPayload(await readProviderQuota(session.user, "grok"))
+    });
+  }
+  const providerCallBudget = Math.max(0, Number(reservation.provider_call_budget || reservation.reserved_calls || 0));
+  const resultOptions = {
+    ...(request.resultOptions as AnyRecord),
+    visualRetryAllowed: providerCallBudget >= 2,
+    providerCallBudget,
+    h3RepairAllowed: false
+  };
+  let grok: AnyRecord;
+  try {
+    grok = await callGrokResponse(
+      request.body as AnyRecord,
+      request.inputMeta as AnyRecord,
+      resultOptions
+    );
+  } catch (error) {
+    const isVisualV2 = String(resultOptions.visualIrSchema || "") === "nf.visual.v2";
+    const isMiniMaxH3 = resultOptions.minimaxH3Prompt === true;
+    const failureMode = String((request.inputMeta as AnyRecord).scenario || "") === "video_frames"
+      ? "video_reverse"
+      : "image_reverse";
+    const tracked = error as Error & { grokProviderCallCount?: number; grokUsage?: AnyRecord; grokDurationMs?: number };
+    const actualCalls = Math.max(0, Math.round(Number(tracked.grokProviderCallCount || 0)));
+    let failureQuota: ProviderQuotaRecord;
+    try {
+      failureQuota = actualCalls > 0
+        ? await settleGrokQuota(session.user, reservation, actualCalls, false, { mode: failureMode, error: sanitizeError(error), tokenUsage: tracked.grokUsage || null, durationMs: tracked.grokDurationMs || 0 })
+        : await releaseGrokQuota(session.user, reservation, sanitizeError(error));
+    } catch (settleError) {
+      return jsonResponse(req, 500, { ok: false, provider: "grok", error: `Grok quota settlement failed: ${sanitizeError(settleError)}` });
+    }
+    const statusCode = Number((error as Error & { statusCode?: number })?.statusCode || 502);
+    const h3Failure = isMiniMaxH3 ? miniMaxH3FailureEnvelope(error) : null;
+    return jsonResponse(req, statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
+      ok: false,
+      error: h3Failure?.message || "生成失败，请稍后重试",
+      provider: "grok",
+      ...(h3Failure || {}),
+      ...(isVisualV2 ? grokVisualFailureEnvelope(error) : {}),
+      quota: providerQuotaPayload(failureQuota)
+    });
+  }
+  const mode = String((request.inputMeta as AnyRecord).scenario || "") === "video_frames"
+    ? "video_reverse"
+    : "image_reverse";
+  const providerCallCount = Math.max(1, Math.round(Number(grok.providerCallCount || 1)));
+  const usage = await settleGrokQuota(session.user, reservation, providerCallCount, true, {
+      mode,
+      tokenUsage: grok.usage,
+      durationMs: grok.durationMs,
+      model: grok.model,
+      providerCallCount,
+      visualContractRetryUsed: Boolean(grok.visualContractRetryUsed)
+  });
+  const data = grok.data as AnyRecord;
+  return jsonResponse(req, 200, {
+    ok: true,
+    provider: "grok",
+    mode,
+    prompt: data.output_text,
+    negative_prompt: data.negative_prompt,
+    has_negative_prompt: Boolean(data.has_negative_prompt),
+    visualSchema: String(data.visualSchema || ""),
+    contentSafety: data.contentSafety || null,
+    contentWarnings: Array.isArray(data.contentWarnings) ? data.contentWarnings : [],
+    sensitivePromptBlocked: Boolean(data.sensitivePromptBlocked),
+    ...(String(data.visualSchema || "") === "nf.visual.v2"
+      ? { generationGate: String(data.generationGate || "blocked") }
+      : {}),
+    visualPrompt: String(data.visualPrompt || ""),
+    generationRequirements: String(data.generationRequirements || ""),
+    ...((data.analysisDegraded === true || data.analysisPartial === true) ? {
+      ...(data.analysisDegraded === true ? { analysisDegraded: true } : {}),
+      ...(data.analysisPartial === true ? { analysisPartial: true } : {}),
+      qualityGateFailed: data.qualityGateFailed === true,
+      qualityGateRetried: data.qualityGateRetried === true,
+      contractFailureCode: String(data.contractFailureCode || ""),
+      errorCode: String(data.errorCode || ""),
+      message: String(data.message || ""),
+      retryable: data.retryable === true,
+      retryAttempted: data.retryAttempted === true,
+      retryCount: Math.max(0, Math.min(1, Math.trunc(Number(data.retryCount) || 0))),
+      reverseProvider: "grok",
+      providerFailureCode: String(data.providerFailureCode || ""),
+      legacyFallbackSuppressed: data.legacyFallbackSuppressed === true,
+      requestedVisualSchema: String(data.requestedVisualSchema || ""),
+      failureCategory: String(data.failureCategory || ""),
+      reverseFallbackReason: ""
+    } : {}),
+    user: publicUser(session.user),
+    quota: providerQuotaPayload(usage),
+    grok: {
+      statusCode: grok.statusCode,
+      durationMs: grok.durationMs,
+      requestId: grok.requestId,
+      input: grok.inputMeta,
+      usage: grok.usage,
+      model: grok.model,
+      providerCallCount,
+      visualContractRetryUsed: Boolean(grok.visualContractRetryUsed)
+    }
+  });
+}
+
+function storyboardDirectorQualityNeedsRepair(quality: AnyRecord | null): boolean {
+  if (!quality || typeof quality !== "object") return false;
+  if (quality.repairRequired === true || quality.needsRepair === true) return true;
+  const issues = Array.isArray(quality.issues) ? quality.issues : [];
+  return issues.length > 0 && (quality.ok === false || String(quality.status || "").toUpperCase() === "FAIL");
+}
+
+function applyStoryboardContinuityFallback(data: AnyRecord): AnyRecord {
+  if (!data || !Array.isArray(data.shots)) return data;
+  const result = reconcileStoryboardGrokContinuity(data.shots) as AnyRecord;
+  const actions = Array.isArray(result?.actions) ? result.actions : [];
+  return {
+    ...data,
+    shots: Array.isArray(result?.shots) ? result.shots : data.shots,
+    directorQuality: result?.directorQuality || data.directorQuality || null,
+    continuityFallbackUsed: actions.length > 0,
+    continuityFallbackActions: actions
+  };
+}
+
+async function runGrokStoryboardUnifiedNineShots(
+  payload: AnyRecord,
+  remaining: number
+): Promise<{ data: AnyRecord; providerCallCount: number }> {
+  let providerCallCount = 0;
+  let firstData: AnyRecord;
+  try {
+    const firstGrok = await callGrok(buildStoryboardGrokPayload(payload) as AnyRecord);
+    providerCallCount += 1;
+    firstData = parseStoryboardGrokResult(firstGrok, payload.unifiedSeed, payload.storyText) as AnyRecord;
+  } catch (error) {
+    const trackedError = error as Error & { grokProviderCallCount?: number };
+    providerCallCount += Math.max(0, Math.round(Number(trackedError.grokProviderCallCount || 0)));
+    trackedError.grokProviderCallCount = providerCallCount;
+    throw trackedError;
+  }
+
+  const firstPassDirectorQuality = firstData.directorQuality as AnyRecord | null;
+  let data: AnyRecord = {
+    ...firstData,
+    repairUsed: false,
+    firstPassDirectorQuality,
+    grokCallCount: providerCallCount
+  };
+  if (!storyboardDirectorQualityNeedsRepair(firstPassDirectorQuality)) {
+    return { data, providerCallCount };
+  }
+  if (remaining < 2) {
+    data = {
+      ...applyStoryboardContinuityFallback(data),
+      repairSkippedReason: "quota"
+    };
+    return { data, providerCallCount };
+  }
+
+  try {
+    const repairRequest = buildStoryboardGrokRepairPayload(payload, firstData, firstPassDirectorQuality) as AnyRecord;
+    const repairedGrok = await callGrok(repairRequest);
+    providerCallCount += 1;
+    let repairedData = parseStoryboardGrokResult(repairedGrok, payload.unifiedSeed, payload.storyText) as AnyRecord;
+    if (storyboardDirectorQualityNeedsRepair(repairedData.directorQuality as AnyRecord | null)) {
+      repairedData = applyStoryboardContinuityFallback(repairedData);
+    }
+    data = {
+      ...repairedData,
+      repairUsed: true,
+      firstPassDirectorQuality,
+      firstPassGenerateProfile: firstData.generateProfile || null,
+      grokCallCount: providerCallCount
+    };
+  } catch (error) {
+    providerCallCount += Math.max(
+      0,
+      Math.round(Number((error as Error & { grokProviderCallCount?: number }).grokProviderCallCount || 0))
+    );
+    data = {
+      ...applyStoryboardContinuityFallback(data),
+      repairError: sanitizeError(error),
+      grokCallCount: providerCallCount
+    };
+  }
+  return { data, providerCallCount };
+}
+
+async function handleGrokStoryboardUnifiedNineShots(
+  req: Request,
+  session: { user: PublicUser }
+): Promise<Response> {
+  let payload: AnyRecord;
+  try {
+    payload = await parseJsonBody(req, MAX_GROK_BODY_BYTES);
+  } catch (error) {
+    return jsonResponse(req, errorHttpStatus(error, 400), { ok: false, error: sanitizeError(error) });
+  }
+  let reservation: AnyRecord;
+  try {
+    reservation = await reserveGrokQuota(session.user, "storyboard_unified_nine_shots", 1, 2);
+  } catch (error) {
+    return jsonResponse(req, 402, {
+      ok: false,
+      provider: "grok",
+      error: sanitizeError(error),
+      quota: providerQuotaPayload(await readProviderQuota(session.user, "grok"))
+    });
+  }
+  const budget = Math.max(0, Number(reservation.provider_call_budget || reservation.reserved_calls || 0));
+  let data: AnyRecord;
+  let providerCallCount = 0;
+  try {
+    const result = await runGrokStoryboardUnifiedNineShots(payload, budget);
+    data = result.data;
+    providerCallCount = result.providerCallCount;
+  } catch (error) {
+    providerCallCount = Number((error as Error & { grokProviderCallCount?: number }).grokProviderCallCount || 0);
+    if (providerCallCount > 0) {
+      try {
+        await settleGrokQuota(session.user, reservation, providerCallCount, false, { mode: "storyboard_unified_nine_shots", error: sanitizeError(error) });
+      } catch (usageError) {
+        logInfo("storyboard failed usage record failed", {
+          userId: session.user.id,
+          providerCallCount,
+          error: sanitizeError(usageError)
+        });
+      }
+    } else await releaseGrokQuota(session.user, reservation, sanitizeError(error));
+    const statusCode = Number((error as Error & { statusCode?: number }).statusCode || 502);
+    return jsonResponse(req, statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
+      ok: false,
+      provider: "grok",
+      error: `Grok分镜导演失败：${sanitizeError(error)}`
+    });
+  }
+  const usage = await settleGrokQuota(session.user, reservation, providerCallCount, true, { mode: "storyboard_unified_nine_shots" });
+  return jsonResponse(req, 200, {
+    ok: true,
+    provider: "grok",
+    data,
+    quota: providerQuotaPayload(usage)
+  });
+}
+
+async function handleGrokChat(req: Request, session: { user: PublicUser }): Promise<Response> {
+  const payload = await parseJsonBody(req, MAX_GROK_BODY_BYTES);
+  let reservation: AnyRecord;
+  try {
+    reservation = await reserveGrokQuota(session.user, "provider_gateway", 1, 1);
+  } catch (error) {
+    return jsonResponse(req, 402, {
+      ok: false,
+      error: sanitizeError(error),
+      provider: "grok",
+      quota: providerQuotaPayload(await readProviderQuota(session.user, "grok"))
+    });
+  }
+
+  let grok: AnyRecord;
+  try {
+    grok = await callGrok(payload);
+  } catch (error) {
+    const actualCalls = Math.max(
+      0,
+      Math.round(Number((error as Error & { grokProviderCallCount?: number }).grokProviderCallCount || 0))
+    );
+    let failureQuota: ProviderQuotaRecord;
+    try {
+      failureQuota = actualCalls > 0
+        ? await settleGrokQuota(session.user, reservation, actualCalls, false, {
+          mode: "provider_gateway", error: sanitizeError(error)
+        })
+        : await releaseGrokQuota(session.user, reservation, sanitizeError(error));
+    } catch (settleError) {
+      return jsonResponse(req, 500, {
+        ok: false,
+        provider: "grok",
+        error: `Grok quota finalization failed: ${sanitizeError(settleError)}`
+      });
+    }
+    const statusCode = Number((error as Error & { statusCode?: number })?.statusCode || 502);
+    return jsonResponse(req, statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
+      ok: false,
+      error: `Grok API Error: ${sanitizeError(error)}`,
+      provider: "grok",
+      quota: providerQuotaPayload(failureQuota)
+    });
+  }
+
+  const usage = await settleGrokQuota(session.user, reservation, 1, true, {
+    mode: "provider_gateway", tokenUsage: (grok.data as AnyRecord)?.usage || null,
+    durationMs: grok.durationMs, model: grok.model
+  });
+  return jsonResponse(req, 200, {
+    ok: true,
+    provider: "grok",
+    mode: "provider_gateway",
+    message: "Prompt service call completed; only used_count was recorded.",
+    user: publicUser(session.user),
+    quota: {
+      allocated_count: usage.allocated_count,
+      used_count: usage.used_count,
+      remaining_count: usage.remaining_count
+    },
+    grok: {
+      statusCode: grok.statusCode,
+      durationMs: grok.durationMs,
+      input: grok.inputMeta,
+      result: grok.data
+    }
+  });
+}
+
+async function handleLicenseVerification(req: Request): Promise<Response> {
+  let input: { licenseKey: string; machineId: string };
+  try {
+    const payload = await parseJsonBody(req, MAX_LICENSE_VERIFY_BODY_BYTES);
+    input = normalizeLicenseVerificationInput(payload);
+  } catch {
+    return jsonResponse(req, 400, { ok: false, error: "invalid license verification request" });
+  }
+
+  try {
+    await enforceLicenseVerificationRateLimit(req, input);
+    const { data, error } = await adminClient()
+      .from("licenses")
+      .select("status,expire_at,permissions")
+      .eq("license_key", input.licenseKey)
+      .eq("machine_id", input.machineId)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return jsonResponse(req, 200, validateLicenseVerificationRecord(data || null));
+  } catch (error) {
+    const statusCode = errorHttpStatus(error, 503);
+    if (statusCode !== 429) {
+      logInfo("license verification unavailable", { error: sanitizeError(error) });
+    }
+    return jsonResponse(req, statusCode === 429 ? 429 : 503, {
+      ok: false,
+      error: statusCode === 429
+        ? "license verification rate limit exceeded"
+        : "license verification unavailable"
+    });
+  }
+}
+
+function readiness(): AnyRecord {
+  const checks = [
+    { key: "supabase_url", ok: Boolean(supabaseUrl()), required: true },
+    { key: "service_role", ok: Boolean(serviceRoleKey()), required: true },
+    { key: "auth_key", ok: Boolean(publishableKey()), required: true },
+    { key: "session_secret", ok: Boolean(sessionSecret()) && sessionSecret().length >= 32, required: true },
+    { key: "grok_api_key", ok: Boolean(grokApiKey()), required: false }
+  ];
+  return {
+    ok: checks.every((item) => !item.required || item.ok),
+    service: "NovaFlow Backend",
+    mode: "supabase_edge_function",
+    checks,
+    config: {
+      supabaseUrl: supabaseUrl(),
+      serviceRoleConfigured: Boolean(serviceRoleKey()),
+      authKeyConfigured: Boolean(publishableKey()),
+      sessionSecretConfigured: Boolean(sessionSecret()),
+      sessionTtlSeconds: sessionTtlSeconds(),
+      grokBaseUrl: grokBaseUrl(),
+      grokModel: grokModel(),
+      grokApiKeyConfigured: Boolean(grokApiKey())
+    }
+  };
+}
+
+Deno.serve(async (req: Request) => {
+  const startedAt = Date.now();
+  const url = new URL(req.url);
+  const path = normalizePath(url);
+  try {
+    if (req.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders(req) });
+    }
+    if (req.method === "GET" && path === "/health") {
+      return jsonResponse(req, 200, {
+        ok: true,
+        service: "NovaFlow Backend",
+        status: "running",
+        mode: "supabase_edge_function",
+        config: readiness().config
+      });
+    }
+    if (req.method === "GET" && path === "/ready") {
+      const ready = readiness();
+      return jsonResponse(req, ready.ok ? 200 : 503, ready);
+    }
+    if (req.method === "POST" && path === "/api/client/license/verify") {
+      return await handleLicenseVerification(req);
+    }
+    if (req.method === "POST" && path === "/api/auth/register") return await handleRegister(req);
+    if (req.method === "POST" && path === "/api/auth/login") return await handleLogin(req);
+    if (req.method === "POST" && path === "/api/auth/verify") {
+      return jsonResponse(req, 410, { ok: false, error: "verification code login is disabled; use account and password" });
+    }
+    if (req.method === "POST" && path === "/api/auth/logout") {
+      return jsonResponse(req, 200, { ok: true, message: "stateless session token; client should discard it" });
+    }
+
+    const sessionRoutes = new Set([
+      "/api/auth/me",
+      "/api/client/credits",
+      "/api/client/bootstrap",
+      "/api/client/credits/check",
+      "/api/ai/tasks",
+      "/api/ai/tasks/usage",
+      "/api/client/grok/prompt-optimize",
+      "/api/client/grok/image-reverse",
+      "/api/client/grok/storyboard-unified-nine-shots",
+      "/api/provider/grok/chat"
+    ]);
+    if (sessionRoutes.has(path)) {
+      let session: { user: PublicUser; payload: AnyRecord };
+      try {
+        session = await requireSession(req);
+      } catch (error) {
+        const statusCode = Number((error as Error & { statusCode?: number })?.statusCode || 401);
+        return jsonResponse(req, statusCode, { ok: false, error: sanitizeError(error) });
+      }
+      if (req.method === "GET" && (path === "/api/auth/me" || path === "/api/client/credits")) {
+        const credits = await creditBalance(session.user.id);
+        return jsonResponse(req, 200, {
+          ok: true,
+          user: publicUser(session.user),
+          credits: {
+            balance: credits.balance,
+            source: "supabase",
+            status: "connected"
+          }
+        });
+      }
+      if (req.method === "GET" && path === "/api/client/bootstrap") return await handleBootstrap(req, session);
+      if (req.method === "POST" && path === "/api/client/credits/check") return await handleCreditCheck(req, session);
+      if (req.method === "POST" && path === "/api/ai/tasks") return await handleAiTasks(req, session);
+      if (req.method === "POST" && path === "/api/ai/tasks/usage") return await handleAiTaskUsage(req, session);
+      if (req.method === "POST" && path === "/api/client/grok/prompt-optimize") return await handleGrokPromptOptimize(req, session);
+      if (req.method === "POST" && path === "/api/client/grok/image-reverse") return await handleGrokImageReverse(req, session);
+      if (req.method === "POST" && path === "/api/client/grok/storyboard-unified-nine-shots") {
+        return await handleGrokStoryboardUnifiedNineShots(req, session);
+      }
+      if (req.method === "POST" && path === "/api/provider/grok/chat") return await handleGrokChat(req, session);
+    }
+
+    return jsonResponse(req, 404, { ok: false, error: "route not found", path });
+  } catch (error) {
+    logInfo("request failed", { path, method: req.method, durationMs: Date.now() - startedAt, error: sanitizeError(error) });
+    return jsonResponse(req, errorHttpStatus(error, 500), { ok: false, error: sanitizeError(error) });
+  }
+});

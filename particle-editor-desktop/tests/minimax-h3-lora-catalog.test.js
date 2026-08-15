@@ -1,0 +1,441 @@
+const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const test = require("node:test");
+
+const {
+  MAX_SAFETENSORS_HEADER_BYTES,
+  createMiniMaxH3LoraCatalog,
+} = require("../main/minimax-h3-lora-catalog");
+
+function abTensors(options = {}) {
+  const prefix = options.prefix || "diffusion_model.transformer_blocks.0.attn.to_q";
+  const rank = options.rank || 4;
+  const highRank = options.highRank || rank;
+  return {
+    [`${prefix}.lora_A.weight`]: {
+      dtype: "F16",
+      shape: [rank, 8],
+      data_offsets: [0, rank * 8 * 2],
+    },
+    [`${prefix}.lora_B.weight`]: {
+      dtype: "F16",
+      shape: [8, highRank],
+      data_offsets: [rank * 8 * 2, (rank * 8 * 2) + (8 * highRank * 2)],
+    },
+  };
+}
+
+const H3_DIMENSIONS = Object.freeze({
+  attn_out_proj: { input: 7168, output: 5376 },
+  attn_qkv_proj: { input: 5376, output: 21504 },
+  mlp_fc1: { input: 5376, output: 28672 },
+  mlp_fc2: { input: 14336, output: 5376 },
+});
+
+function h3Tensors(options = {}) {
+  const target = options.target || "attn_out_proj";
+  const dimensions = H3_DIMENSIONS[target];
+  const block = options.block == null ? 10 : options.block;
+  const rank = options.rank || 1;
+  const input = options.input || dimensions.input;
+  const output = options.output || dimensions.output;
+  const upRank = options.upRank || rank;
+  const prefix = `lora_unet_blocks_${block}_${target}`;
+  const downEnd = rank * input * 2;
+  const upEnd = downEnd + (output * upRank * 2);
+  const tensors = {
+    [`${prefix}.lora_down.weight`]: {
+      dtype: "BF16",
+      shape: [rank, input],
+      data_offsets: [0, downEnd],
+    },
+    [`${prefix}.lora_up.weight`]: {
+      dtype: "BF16",
+      shape: [output, upRank],
+      data_offsets: [downEnd, upEnd],
+    },
+  };
+  if (options.alpha !== false) {
+    tensors[`${prefix}.alpha`] = {
+      dtype: "F32",
+      shape: [],
+      data_offsets: [upEnd, upEnd + 4],
+    };
+  }
+  return tensors;
+}
+
+function combineTensors(...groups) {
+  let cursor = 0;
+  const combined = {};
+  for (const group of groups) {
+    for (const [name, tensor] of Object.entries(group)) {
+      const byteLength = tensor.data_offsets[1] - tensor.data_offsets[0];
+      combined[name] = {
+        ...tensor,
+        shape: [...tensor.shape],
+        data_offsets: [cursor, cursor + byteLength],
+      };
+      cursor += byteLength;
+    }
+  }
+  return combined;
+}
+
+function fakeTransformerTensors() {
+  return {
+    "diffusion_model.transformer_blocks.0.attn.to_q.lora_down.weight": {
+      dtype: "BF16",
+      shape: [4, 8],
+      data_offsets: [0, 64],
+    },
+    "diffusion_model.transformer_blocks.0.attn.to_q.lora_up.weight": {
+      dtype: "BF16",
+      shape: [8, 4],
+      data_offsets: [64, 128],
+    },
+  };
+}
+
+function h3Metadata(base = "fl2va", extra = {}) {
+  return {
+    ss_h3_lora_base: base,
+    ss_network_module: "networks.lora_minimax_h3",
+    ...extra,
+  };
+}
+
+function writeSafetensors(filePath, metadata, tensors = h3Tensors()) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const header = Buffer.from(JSON.stringify({ __metadata__: metadata, ...tensors }), "utf8");
+  const maxOffset = Math.max(...Object.values(tensors).map((tensor) => tensor.data_offsets[1]));
+  const length = Buffer.alloc(8);
+  length.writeBigUInt64LE(BigInt(header.length));
+  fs.writeFileSync(filePath, Buffer.concat([length, header, Buffer.alloc(maxOffset)]));
+}
+
+function writeBrokenHeader(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const header = Buffer.from("{not-json", "utf8");
+  const length = Buffer.alloc(8);
+  length.writeBigUInt64LE(BigInt(header.length));
+  fs.writeFileSync(filePath, Buffer.concat([length, header]));
+}
+
+function writeOversizedHeaderDeclaration(filePath) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const length = Buffer.alloc(8);
+  length.writeBigUInt64LE(BigInt(MAX_SAFETENSORS_HEADER_BYTES + 1));
+  fs.writeFileSync(filePath, length);
+}
+
+function createFixture(t) {
+  const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "novaflow-h3-lora-"));
+  const modelsPath = path.join(workspace, "models");
+  const lorasPath = path.join(modelsPath, "loras");
+  const h3LorasPath = path.join(lorasPath, "minimax_h3");
+  fs.mkdirSync(h3LorasPath, { recursive: true });
+  t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
+
+  const state = { runtimeNames: [] };
+  function makeCatalog(options = {}) {
+    return createMiniMaxH3LoraCatalog({
+      fs: options.fs || fs,
+      path,
+      readConfig: () => ({ ok: true, modelsPath: options.configModelsPath || modelsPath }),
+      listRuntimeLoraNames: async () => [...state.runtimeNames],
+      ...(options.expectedModelsPath ? { expectedModelsPath: options.expectedModelsPath } : {}),
+    });
+  }
+  return { workspace, modelsPath, lorasPath, h3LorasPath, state, makeCatalog };
+}
+
+test("shows a metadata-declared FL2VA standard LoRA at arbitrary valid step counts", async (t) => {
+  const fixture = createFixture(t);
+  const relativeName = "minimax_h3\\SexGod-NaughtyTimes-v2-rank256.safetensors";
+  writeSafetensors(
+    path.join(fixture.lorasPath, "minimax_h3", "SexGod-NaughtyTimes-v2-rank256.safetensors"),
+    h3Metadata("minimax_h3_fl2va_int8_convrot.safetensors", {
+      ss_output_name: "SexGod-NaughtyTimes-v2-rank256",
+    }),
+    h3Tensors({ target: "attn_out_proj", block: 10, rank: 256 }),
+  );
+  fixture.state.runtimeNames = [relativeName];
+  const catalogApi = fixture.makeCatalog();
+
+  for (const steps of [1, 4, 17, 20, 10_000]) {
+    const items = await catalogApi.catalog({ mode: "text_video", steps });
+    assert.equal(items.length, 1);
+    assert.equal(items[0].name, relativeName);
+    assert.equal(items[0].modelFamily, "fl2va");
+    assert.equal(items[0].kind, "standard");
+    assert.equal(items[0].supportedSteps, null);
+    assert.deepEqual(items[0].strengthRange, { min: 0, max: 2, default: 1, step: 0.05 });
+    assert.match(items[0].fingerprint, /^v1:\d+:[\d.]+:[a-f0-9]{64}$/);
+  }
+  assert.equal((await catalogApi.catalog({ mode: "t2v", steps: 4 })).length, 1);
+  assert.equal((await catalogApi.catalog({ mode: "i2v", steps: 4 })).length, 1);
+  assert.equal((await catalogApi.catalog({ mode: "fl2v", steps: 4 })).length, 1);
+  assert.equal((await catalogApi.catalog({ mode: "multi_reference", steps: 4 })).length, 0);
+  assert.equal((await catalogApi.catalog({ mode: "r2v", steps: 4 })).length, 0);
+});
+
+test("shows Ref2VA only in multi-reference mode and accepts an up/down tensor pair", async (t) => {
+  const fixture = createFixture(t);
+  const relativeName = "minimax_h3/ref2va/character-reference.safetensors";
+  writeSafetensors(
+    path.join(fixture.lorasPath, "minimax_h3", "ref2va", "character-reference.safetensors"),
+    h3Metadata("ref2va", { ss_network_module: "  Networks.Lora_MiniMax_H3  " }),
+    h3Tensors({ target: "attn_qkv_proj", block: 2, rank: 2 }),
+  );
+  fixture.state.runtimeNames = [relativeName];
+  const catalogApi = fixture.makeCatalog();
+
+  assert.equal((await catalogApi.catalog({ mode: "multi_reference", steps: 9 })).length, 1);
+  assert.equal((await catalogApi.catalog({ mode: "r2v", steps: 9 })).length, 1);
+  assert.equal((await catalogApi.catalog({ mode: "image_video", steps: 9 })).length, 0);
+  assert.equal((await catalogApi.catalog({ mode: "i2v", steps: 9 })).length, 0);
+});
+
+test("accepts all four real H3 target dimensions and rejects a single wrong target in a mixed file", async (t) => {
+  const fixture = createFixture(t);
+  const validName = "minimax_h3/all-real-targets.safetensors";
+  const wrongName = "minimax_h3/one-wrong-target.safetensors";
+  writeSafetensors(
+    path.join(fixture.lorasPath, ...validName.split("/")),
+    h3Metadata("fl2va"),
+    combineTensors(
+      h3Tensors({ target: "attn_out_proj", block: 0 }),
+      h3Tensors({ target: "attn_qkv_proj", block: 1 }),
+      h3Tensors({ target: "mlp_fc1", block: 2 }),
+      h3Tensors({ target: "mlp_fc2", block: 3 }),
+    ),
+  );
+  writeSafetensors(
+    path.join(fixture.lorasPath, ...wrongName.split("/")),
+    h3Metadata("fl2va"),
+    combineTensors(
+      h3Tensors({ target: "attn_qkv_proj", block: 1 }),
+      h3Tensors({ target: "mlp_fc2", block: 3, input: 14335 }),
+    ),
+  );
+  fixture.state.runtimeNames = [validName, wrongName];
+
+  const items = await fixture.makeCatalog().catalog({ mode: "t2v", steps: 6 });
+  assert.deepEqual(items.map((item) => item.name), [validName]);
+});
+
+test("requires object_info intersection and hides unknown, foreign, damaged, oversized, and shape-mismatched files", async (t) => {
+  const fixture = createFixture(t);
+  const validButMissing = "minimax_h3/valid-but-not-in-runtime.safetensors";
+  writeSafetensors(path.join(fixture.lorasPath, ...validButMissing.split("/")), h3Metadata("fl2va"));
+  writeSafetensors(path.join(fixture.h3LorasPath, "unknown.safetensors"), { ss_network_module: "networks.lora_minimax_h3" });
+  writeSafetensors(path.join(fixture.h3LorasPath, "wan.safetensors"), h3Metadata("wan2.2"));
+  writeSafetensors(path.join(fixture.h3LorasPath, "contains-only.safetensors"), h3Metadata("qwen_minimax_h3_fl2va"));
+  writeSafetensors(path.join(fixture.h3LorasPath, "missing-network.safetensors"), { ss_h3_lora_base: "fl2va" });
+  writeSafetensors(path.join(fixture.h3LorasPath, "wrong-network.safetensors"), {
+    ss_h3_lora_base: "fl2va",
+    ss_network_module: "networks.lora",
+  });
+  writeSafetensors(
+    path.join(fixture.h3LorasPath, "bad-shape.safetensors"),
+    h3Metadata("fl2va"),
+    h3Tensors({ target: "attn_out_proj", input: 7167 }),
+  );
+  writeSafetensors(path.join(fixture.h3LorasPath, "fake-transformer.safetensors"), h3Metadata("fl2va"), fakeTransformerTensors());
+  writeSafetensors(path.join(fixture.h3LorasPath, "ab-pair.safetensors"), h3Metadata("fl2va"), abTensors());
+  writeBrokenHeader(path.join(fixture.h3LorasPath, "broken.safetensors"));
+  writeOversizedHeaderDeclaration(path.join(fixture.h3LorasPath, "oversized.safetensors"));
+  fixture.state.runtimeNames = [
+    "minimax_h3/unknown.safetensors",
+    "minimax_h3/wan.safetensors",
+    "minimax_h3/contains-only.safetensors",
+    "minimax_h3/missing-network.safetensors",
+    "minimax_h3/wrong-network.safetensors",
+    "minimax_h3/bad-shape.safetensors",
+    "minimax_h3/fake-transformer.safetensors",
+    "minimax_h3/ab-pair.safetensors",
+    "minimax_h3/broken.safetensors",
+    "minimax_h3/oversized.safetensors",
+  ];
+
+  assert.deepEqual(await fixture.makeCatalog().catalog({ mode: "text_video", steps: 4 }), []);
+});
+
+test("hides the managed Turbo profile and every user-selectable accelerator", async (t) => {
+  const fixture = createFixture(t);
+  const managed = "minimax_h3\\minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors";
+  const external = "minimax_h3\\community-turbo-8steps.safetensors";
+  writeSafetensors(
+    path.join(fixture.lorasPath, "minimax_h3", path.basename(managed)),
+    h3Metadata("fl2va", { ss_h3_lora_kind: "turbo", ss_h3_lora_required_steps: "4" }),
+  );
+  writeSafetensors(
+    path.join(fixture.lorasPath, "minimax_h3", "community-turbo-8steps.safetensors"),
+    h3Metadata("fl2va", { ss_h3_lora_kind: "accelerator", ss_h3_lora_required_steps: "8" }),
+  );
+  fixture.state.runtimeNames = [managed, external];
+  const catalogApi = fixture.makeCatalog();
+
+  assert.equal((await catalogApi.catalog({ mode: "text_video", steps: 4 })).length, 0);
+  assert.equal((await catalogApi.catalog({ mode: "text_video", steps: 8 })).length, 0);
+});
+
+test("rejects symlink or junction escape and traversal-shaped runtime names", async (t) => {
+  const fixture = createFixture(t);
+  const outside = path.join(fixture.workspace, "outside");
+  writeSafetensors(path.join(outside, "escape.safetensors"), h3Metadata("fl2va"));
+  const crossDirectoryName = "cross-directory.safetensors";
+  writeSafetensors(path.join(fixture.lorasPath, crossDirectoryName), h3Metadata("fl2va"));
+  const linkPath = path.join(fixture.h3LorasPath, "linked");
+  try {
+    fs.symlinkSync(outside, linkPath, process.platform === "win32" ? "junction" : "dir");
+  } catch (error) {
+    if (["EPERM", "EACCES", "ENOSYS"].includes(error?.code)) {
+      t.skip(`symlink creation is unavailable: ${error.code}`);
+      return;
+    }
+    throw error;
+  }
+  fixture.state.runtimeNames = [
+    "minimax_h3/linked/escape.safetensors",
+    "minimax_h3/../outside/escape.safetensors",
+    crossDirectoryName,
+  ];
+
+  assert.deepEqual(await fixture.makeCatalog().catalog({ mode: "text_video", steps: 4 }), []);
+});
+
+test("pins config modelsPath to the expected real model root and rejects a junction to a different root", async (t) => {
+  const fixture = createFixture(t);
+  const relativeName = "minimax_h3/trusted.safetensors";
+  writeSafetensors(path.join(fixture.lorasPath, ...relativeName.split("/")), h3Metadata("fl2va"));
+  fixture.state.runtimeNames = [relativeName];
+
+  const trusted = fixture.makeCatalog({ expectedModelsPath: () => fixture.modelsPath });
+  assert.equal((await trusted.catalog({ mode: "t2v", steps: 4 })).length, 1);
+
+  const otherModelsPath = path.join(fixture.workspace, "other-models");
+  fs.mkdirSync(path.join(otherModelsPath, "loras"), { recursive: true });
+  const wrongExpectedRoot = fixture.makeCatalog({ expectedModelsPath: () => otherModelsPath });
+  assert.deepEqual(await wrongExpectedRoot.catalog({ mode: "t2v", steps: 4 }), []);
+
+  const junctionPath = path.join(fixture.workspace, "configured-models-junction");
+  try {
+    fs.symlinkSync(otherModelsPath, junctionPath, process.platform === "win32" ? "junction" : "dir");
+    const junctionEscape = fixture.makeCatalog({
+      configModelsPath: junctionPath,
+      expectedModelsPath: () => fixture.modelsPath,
+    });
+    assert.deepEqual(await junctionEscape.catalog({ mode: "t2v", steps: 4 }), []);
+  } catch (error) {
+    if (!["EPERM", "EACCES", "ENOSYS"].includes(error?.code)) throw error;
+    t.diagnostic(`junction assertion unavailable: ${error.code}`);
+  }
+
+  const expectedFailure = fixture.makeCatalog({ expectedModelsPath: () => { throw new Error("trusted root unavailable"); } });
+  assert.deepEqual(await expectedFailure.catalog({ mode: "t2v", steps: 4 }), []);
+});
+
+test("reads exactly the safetensors length prefix and JSON header, never tensor bytes", async (t) => {
+  const fixture = createFixture(t);
+  const relativeName = "minimax_h3/safe.safetensors";
+  const filePath = path.join(fixture.lorasPath, ...relativeName.split("/"));
+  writeSafetensors(filePath, h3Metadata("fl2va"));
+  fixture.state.runtimeNames = [relativeName];
+  const headerLengthBytes = fs.readFileSync(filePath).subarray(0, 8);
+  const headerLength = Number(headerLengthBytes.readBigUInt64LE());
+  const readCalls = [];
+  const trackedFs = Object.create(fs);
+  trackedFs.readSync = (fd, buffer, offset, length, position) => {
+    readCalls.push({ length, position });
+    assert.ok(position + length <= 8 + headerLength, "attempted to read tensor data");
+    return fs.readSync(fd, buffer, offset, length, position);
+  };
+
+  const items = await fixture.makeCatalog({ fs: trackedFs }).catalog({ mode: "first_last", steps: 31 });
+  assert.equal(items.length, 1);
+  assert.deepEqual(readCalls, [
+    { length: 8, position: 0 },
+    { length: headerLength, position: 8 },
+  ]);
+});
+
+test("validate rechecks strength, object_info, header, stat, mode, steps, and fingerprint", async (t) => {
+  const fixture = createFixture(t);
+  const relativeName = "minimax_h3/character-style.safetensors";
+  const filePath = path.join(fixture.lorasPath, "minimax_h3", "character-style.safetensors");
+  writeSafetensors(filePath, h3Metadata("fl2va", { revision: "one" }));
+  fixture.state.runtimeNames = [relativeName];
+  const catalogApi = fixture.makeCatalog();
+  const [item] = await catalogApi.catalog({ mode: "image_video", steps: 13 });
+
+  assert.deepEqual(
+    await catalogApi.validate({
+      mode: "image_video",
+      steps: 13,
+      name: item.name,
+      fingerprint: item.fingerprint,
+      strength: 0.75,
+    }),
+    { ok: true, item, strength: 0.75 },
+  );
+  assert.equal((await catalogApi.validate({ mode: "bad", steps: 13, name: item.name, fingerprint: item.fingerprint, strength: 1 })).error, "invalid_mode");
+  assert.equal((await catalogApi.validate({ mode: "image_video", steps: 0, name: item.name, fingerprint: item.fingerprint, strength: 1 })).error, "invalid_steps");
+  assert.equal((await catalogApi.validate({ mode: "image_video", steps: 13, name: "../bad.safetensors", fingerprint: item.fingerprint, strength: 1 })).error, "invalid_name");
+  assert.equal((await catalogApi.validate({ mode: "image_video", steps: 13, name: item.name, fingerprint: item.fingerprint, strength: 3 })).error, "invalid_strength");
+  assert.equal((await catalogApi.validate({ mode: "multi_reference", steps: 13, name: item.name, fingerprint: item.fingerprint, strength: 1 })).error, "lora_not_available");
+
+  fixture.state.runtimeNames = [];
+  assert.equal((await catalogApi.validate({ mode: "image_video", steps: 13, name: item.name, fingerprint: item.fingerprint, strength: 1 })).error, "lora_not_available");
+  fixture.state.runtimeNames = [relativeName];
+
+  writeSafetensors(filePath, h3Metadata("fl2va", { revision: crypto.randomUUID() }));
+  assert.equal(
+    (await catalogApi.validate({ mode: "image_video", steps: 13, name: item.name, fingerprint: item.fingerprint, strength: 1 })).error,
+    "fingerprint_mismatch",
+  );
+});
+
+test("validate rejects a selected file after it moves outside loras/minimax_h3", async (t) => {
+  const fixture = createFixture(t);
+  const relativeName = "minimax_h3/move-after-selection.safetensors";
+  const filePath = path.join(fixture.h3LorasPath, "move-after-selection.safetensors");
+  writeSafetensors(filePath, h3Metadata("fl2va"));
+  fixture.state.runtimeNames = [relativeName];
+  const api = fixture.makeCatalog();
+  const [item] = await api.catalog({ mode: "t2v", steps: 4 });
+  fs.renameSync(filePath, path.join(fixture.lorasPath, "move-after-selection.safetensors"));
+
+  assert.equal((await api.validate({
+    mode: "t2v",
+    steps: 4,
+    name: relativeName,
+    fingerprint: item.fingerprint,
+    strength: 1,
+  })).error, "lora_not_available");
+});
+
+test("returns an empty catalog when config, model root, runtime list, mode, or steps are unavailable", async (t) => {
+  const fixture = createFixture(t);
+  const missingConfig = createMiniMaxH3LoraCatalog({
+    fs,
+    path,
+    readConfig: () => ({ ok: false, modelsPath: fixture.modelsPath }),
+    listRuntimeLoraNames: () => [],
+  });
+  const runtimeFailure = createMiniMaxH3LoraCatalog({
+    fs,
+    path,
+    readConfig: () => ({ ok: true, modelsPath: fixture.modelsPath }),
+    listRuntimeLoraNames: () => { throw new Error("8189 unavailable"); },
+  });
+
+  assert.deepEqual(await missingConfig.catalog({ mode: "text_video", steps: 4 }), []);
+  assert.deepEqual(await runtimeFailure.catalog({ mode: "text_video", steps: 4 }), []);
+  assert.deepEqual(await fixture.makeCatalog().catalog({ mode: "missing", steps: 4 }), []);
+  assert.deepEqual(await fixture.makeCatalog().catalog({ mode: "text_video", steps: 10_001 }), []);
+});

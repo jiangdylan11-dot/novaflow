@@ -1,0 +1,29 @@
+{
+  "patchId": "comfy-partner-price-v1",
+  "version": 1,
+  "files": [
+    {
+      "path": "engine/ComfyUI/comfy_api_nodes/nodes_openai.py",
+      "kind": "gpt-image-2-pricing",
+      "baseSha256": [
+        "5B668FA3FF28D80FB39D407B2F24D0325DCE5EFD55407AAF9264B8F7CA49DCAE"
+      ],
+      "patchedSha256": "B00FEF6B01954FF90DAE507F4670EA00B647BDE1041AC1537EEEE7E59039C3AD",
+      "anchors": [
+        "    return ((response.usage.input_tokens * 8.0) + (response.usage.output_tokens * 30.0)) / 1_000_000.0"
+      ]
+    },
+    {
+      "path": "engine/ComfyUI/comfy_api_nodes/util/client.py",
+      "kind": "exact-credit-marker",
+      "baseSha256": [
+        "C589314EA798E3046B1C167ACE627DC8F0044FAEA4D71446F3014264C12F32F6"
+      ],
+      "patchedSha256": "F3C6B6D373E7C66563A253DEBFB2649E6540C07620437F9E9734728FFA2CECBC",
+      "anchors": [
+        "import contextlib",
+        "            display_lines.append(f\"Price: {p} credits\")"
+      ]
+    }
+  ]
+}

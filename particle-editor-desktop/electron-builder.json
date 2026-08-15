@@ -1,0 +1,68 @@
+{
+  "appId": "com.novaflow.novaflow",
+  "productName": "NovaFlow",
+  "electronVersion": "32.2.0",
+  "artifactName": "NovaFlow Setup ${version}.${ext}",
+  "executableName": "NovaFlowPortable",
+  "files": [
+    "main.js",
+    "main/**/*",
+    "client-auth-direct.js",
+    "admin-server/**/*",
+    "license-admin-gui/admin-data.js",
+    "license-admin-gui/renderer.js",
+    "prompt-assistant-service.py",
+    "prompt_assistant/**/*",
+    "!prompt_assistant/**/__pycache__/**",
+    "preload.js",
+    "license-core.js",
+    "license/**/*",
+    "license-public-key.b64",
+    "renderer/**/*",
+    "package.json"
+  ],
+  "extraResources": [
+    {
+      "from": "resources/initial-templates",
+      "to": "initial-templates"
+    },
+    {
+      "from": "build/icon.ico",
+      "to": "icon.ico"
+    }
+  ],
+  "directories": {
+    "output": "dist",
+    "buildResources": "build"
+  },
+  "afterPack": "scripts/afterPack.cjs",
+  "asar": false,
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  },
+  "mac": {
+    "icon": "build/icon.png",
+    "target": [
+      "dmg"
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": true,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "include": "scripts/nsis-include.nsh",
+    "installerIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico",
+    "installerHeaderIcon": "build/icon.ico"
+  }
+}

@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NovaFlow Legacy Bridge</title>
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #0b0b0b;
+      }
+
+      #legacy-frame {
+        width: 100%;
+        height: 100%;
+        display: block;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="legacy-bridge-log"
+      data-legacy-bridge-log="1"
+      data-message-count="0"
+      data-forward-enabled="false"
+      data-forward-count="0"
+      data-forwarded-count="0"
+      data-nested-test-count="0"
+      hidden
+    ></div>
+    <iframe
+      id="legacy-frame"
+      title="NovaFlow locked legacy runtime"
+      src="/legacy/index.html"
+      sandbox="allow-scripts allow-same-origin allow-forms allow-downloads"
+    ></iframe>
+    <script>
+      const forwardToLegacy = false;
+      const sourceMessageTypes = new Set(["SOURCE_COLOR_REF_SELECTED", "SOURCE_COLOR_REF_CLEARED"]);
+      const bridgeMessageTypes = new Set(["BRIDGE_COLOR_REF_SELECTED", "BRIDGE_COLOR_REF_CLEARED"]);
+      const forbiddenPayloadKeys = new Set(["file", "blob", "objectURL", "objectUrl", "url", "dataUrl"]);
+
+      window.__NOVAFLOW_LEGACY_BRIDGE_MESSAGES__ = [];
+      window.__NOVAFLOW_LEGACY_BRIDGE_FORWARDED_MESSAGES__ = [];
+      window.__NOVAFLOW_LEGACY_BRIDGE_NESTED_TEST_MESSAGES__ = [];
+      window.__NOVAFLOW_LEGACY_BRIDGE_FORWARD_COUNT__ = 0;
+
+      function hasForbiddenPayloadKey(value) {
+        if (!value || typeof value !== "object") {
+          return false;
+        }
+
+        if (Array.isArray(value)) {
+          return value.some(hasForbiddenPayloadKey);
+        }
+
+        return Object.entries(value).some(([key, nestedValue]) => {
+          return forbiddenPayloadKeys.has(key) || hasForbiddenPayloadKey(nestedValue);
+        });
+      }
+
+      function createBridgeMessage(data) {
+        if (!data || typeof data !== "object") {
+          return null;
+        }
+
+        if (data.type === "SOURCE_COLOR_REF_CLEARED") {
+          return {
+            type: "BRIDGE_COLOR_REF_CLEARED"
+          };
+        }
+
+        if (data.type !== "SOURCE_COLOR_REF_SELECTED" || hasForbiddenPayloadKey(data.payload)) {
+          return null;
+        }
+
+        const payload = data.payload || {};
+        return {
+          type: "BRIDGE_COLOR_REF_SELECTED",
+          payload: {
+            name: String(payload.name || ""),
+            size: Number(payload.size) || 0,
+            width: Number(payload.width) || 0,
+            height: Number(payload.height) || 0,
+            mime: String(payload.mime || "")
+          }
+        };
+      }
+
+      function updateBridgeLog() {
+        const log = document.getElementById("legacy-bridge-log");
+        if (log) {
+          log.dataset.messageCount = String(window.__NOVAFLOW_LEGACY_BRIDGE_MESSAGES__.length);
+          log.dataset.forwardEnabled = String(forwardToLegacy);
+          log.dataset.forwardCount = String(window.__NOVAFLOW_LEGACY_BRIDGE_FORWARD_COUNT__);
+          log.dataset.forwardedCount = String(window.__NOVAFLOW_LEGACY_BRIDGE_FORWARDED_MESSAGES__.length);
+          log.dataset.nestedTestCount = String(window.__NOVAFLOW_LEGACY_BRIDGE_NESTED_TEST_MESSAGES__.length);
+          log.textContent = JSON.stringify({
+            received: window.__NOVAFLOW_LEGACY_BRIDGE_MESSAGES__,
+            forwarded: window.__NOVAFLOW_LEGACY_BRIDGE_FORWARDED_MESSAGES__,
+            nestedTestReceived: window.__NOVAFLOW_LEGACY_BRIDGE_NESTED_TEST_MESSAGES__
+          });
+        }
+      }
+
+      function installNestedLegacyTestListener() {
+        const legacyFrame = document.getElementById("legacy-frame");
+        if (!legacyFrame || !legacyFrame.contentWindow) {
+          return;
+        }
+
+        try {
+          const nestedWindow = legacyFrame.contentWindow;
+          if (nestedWindow.__NOVAFLOW_BRIDGE_TEST_LISTENER_INSTALLED__) {
+            return;
+          }
+
+          nestedWindow.__NOVAFLOW_BRIDGE_TEST_LISTENER_INSTALLED__ = true;
+          nestedWindow.addEventListener("message", (nestedEvent) => {
+            const nestedData = nestedEvent.data;
+            if (!nestedData || typeof nestedData !== "object" || !bridgeMessageTypes.has(nestedData.type)) {
+              return;
+            }
+
+            window.__NOVAFLOW_LEGACY_BRIDGE_NESTED_TEST_MESSAGES__.push(nestedData);
+            updateBridgeLog();
+            console.log("[LegacyBridge] nested legacy test listener received", nestedData);
+          });
+        } catch (error) {
+          console.warn("[LegacyBridge] nested legacy test listener unavailable", error);
+        }
+      }
+
+      document.getElementById("legacy-frame")?.addEventListener("load", installNestedLegacyTestListener);
+      installNestedLegacyTestListener();
+      updateBridgeLog();
+
+      window.addEventListener("message", (event) => {
+        if (event.source !== window.parent) {
+          return;
+        }
+
+        const data = event.data;
+        window.__NOVAFLOW_LEGACY_BRIDGE_MESSAGES__.push(data);
+        console.log("[LegacyBridge] message received", data);
+
+        if (!data || typeof data !== "object" || !sourceMessageTypes.has(data.type)) {
+          updateBridgeLog();
+          return;
+        }
+
+        if (!forwardToLegacy) {
+          console.log("[LegacyBridge] forwarding disabled");
+          updateBridgeLog();
+          return;
+        }
+
+        const bridgeMessage = createBridgeMessage(data);
+        if (!bridgeMessage || hasForbiddenPayloadKey(bridgeMessage.payload)) {
+          console.warn("[LegacyBridge] rejected unsafe color reference message", data);
+          updateBridgeLog();
+          return;
+        }
+
+        const legacyFrame = document.getElementById("legacy-frame");
+        if (!legacyFrame || !legacyFrame.contentWindow) {
+          console.warn("[LegacyBridge] nested legacy iframe unavailable");
+          updateBridgeLog();
+          return;
+        }
+
+        installNestedLegacyTestListener();
+        legacyFrame.contentWindow.postMessage(bridgeMessage, "*");
+        window.__NOVAFLOW_LEGACY_BRIDGE_FORWARD_COUNT__ += 1;
+        window.__NOVAFLOW_LEGACY_BRIDGE_FORWARDED_MESSAGES__.push(bridgeMessage);
+        updateBridgeLog();
+      });
+    </script>
+  </body>
+</html>

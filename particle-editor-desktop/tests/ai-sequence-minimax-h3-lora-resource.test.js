@@ -1,0 +1,170 @@
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+const test = require('node:test')
+const vm = require('node:vm')
+
+const root = path.resolve(__dirname, '..', '..')
+const resourcePath = path.join(root, 'particle-editor', 'ai-sequence-minimax-h3-lora.resource.js')
+const resourceSource = fs.readFileSync(resourcePath, 'utf8')
+
+function loadResource() {
+  const context = { module: { exports: {} }, exports: {}, console }
+  context.globalThis = context
+  vm.runInNewContext(resourceSource, context, { filename: resourcePath })
+  return { api: context.module.exports, browserApi: context.NovaFlowAiSequenceMiniMaxH3LoraResource }
+}
+
+function item(overrides = {}) {
+  return {
+    name: 'compatible.safetensors',
+    modelFamily: 'fl2va',
+    kind: 'standard',
+    supportedSteps: null,
+    strengthRange: { min: 0, max: 2, default: 1, step: 0.05 },
+    fingerprint: 'size:mtime:header',
+    ...overrides,
+  }
+}
+
+test('exports a browser and CommonJS MiniMax H3 LoRA resource with integer step boundaries', () => {
+  const { api, browserApi } = loadResource()
+  assert.equal(api, browserApi)
+  assert.equal(api.DEFAULT_STEPS, 4)
+  assert.equal(api.normalizeSteps(1), 1)
+  assert.equal(api.normalizeSteps('10000'), 10000)
+  assert.throws(() => api.normalizeSteps(0), /1 to 10000/)
+  assert.throws(() => api.normalizeSteps(4.5), /integer/)
+  assert.throws(() => api.normalizeSteps(10001), /1 to 10000/)
+})
+
+test('maps UI and workflow modes to the correct model family', () => {
+  const { api } = loadResource()
+  for (const mode of ['text_video', 'image_video', 'first_last', 't2v', 'i2v', 'fl2v']) {
+    assert.equal(api.familyForMode(mode), 'fl2va')
+  }
+  assert.equal(api.familyForMode('multi_reference'), 'ref2va')
+  assert.equal(api.familyForMode('r2v'), 'ref2va')
+  assert.throws(() => api.familyForMode('missing'), /Unsupported MiniMax H3 mode/)
+})
+
+test('catalog filtering is fail closed for accelerator, unknown, wrong-family, and wrong-step items', () => {
+  const { api } = loadResource()
+  const filtered = api.filterCatalog([
+    item(),
+    item({ name: 'duplicate.safetensors', fingerprint: 'dup-a' }),
+    item({ name: 'DUPLICATE.safetensors', fingerprint: 'dup-b' }),
+    item({ name: 'wrong-family.safetensors', modelFamily: 'ref2va', fingerprint: 'ref' }),
+    item({ name: 'wrong-step.safetensors', supportedSteps: [20], fingerprint: 'step' }),
+    item({ name: 'managed-turbo.safetensors', kind: 'accelerator', supportedSteps: [4], fingerprint: 'turbo' }),
+    { name: 'unknown.safetensors', kind: 'standard', fingerprint: 'unknown' },
+  ], { mode: 't2v', steps: 4 })
+
+  assert.deepEqual(Array.from(filtered, (entry) => entry.name), [
+    'compatible.safetensors',
+    'duplicate.safetensors',
+  ])
+  assert.equal(filtered.every(Object.isFrozen), true)
+})
+
+test('refreshes from the narrow IPC bridge and prunes selections when mode or steps change', async () => {
+  const { api } = loadResource()
+  const calls = []
+  const electronAPI = {
+    minimaxH3LoraCatalog: async (payload) => {
+      calls.push(payload)
+      return {
+        ok: true,
+        items: [
+          item({ name: 'all-fl2va.safetensors', fingerprint: 'all' }),
+          item({ name: 'four-only.safetensors', supportedSteps: [4], fingerprint: 'four' }),
+          item({ name: 'ref-only.safetensors', modelFamily: 'ref2va', fingerprint: 'ref' }),
+        ],
+      }
+    },
+  }
+  const store = api.createMiniMaxH3LoraStore()
+  await store.refreshCatalog({ mode: 'text_video', steps: 4, electronAPI })
+  assert.equal(JSON.stringify(calls), JSON.stringify([{ mode: 't2v', steps: 4 }]))
+  assert.deepEqual(Array.from(store.getSnapshot().items, (entry) => entry.name), [
+    'all-fl2va.safetensors',
+    'four-only.safetensors',
+  ])
+  store.setSelection([{ name: 'four-only.safetensors', strength: 0.75 }])
+  assert.equal(store.getSnapshot().selected[0].strength, 0.75)
+  store.setContext({ mode: 't2v', steps: 20 })
+  assert.deepEqual(Array.from(store.getSnapshot().selected), [])
+  assert.deepEqual(Array.from(store.getSnapshot().items, (entry) => entry.name), ['all-fl2va.safetensors'])
+})
+
+test('revalidates every selected LoRA immediately before workflow construction', async () => {
+  const { api } = loadResource()
+  const sourceItem = item({ name: 'hero-style.safetensors', fingerprint: 'stable' })
+  const catalogAPI = { minimaxH3LoraCatalog: async () => ({ ok: true, items: [sourceItem] }) }
+  const store = api.createMiniMaxH3LoraStore()
+  await store.refreshCatalog({ mode: 't2v', steps: 7, electronAPI: catalogAPI })
+  store.setSelection([{ name: sourceItem.name, strength: 1.2 }])
+
+  const calls = []
+  const validated = await store.validateSelection({
+    mode: 't2v',
+    steps: 7,
+    electronAPI: {
+      minimaxH3LoraValidate: async (payload) => {
+        calls.push(payload)
+        return { ok: true, item: sourceItem }
+      },
+    },
+  })
+
+  assert.equal(JSON.stringify(calls), JSON.stringify([{
+    name: sourceItem.name,
+    fingerprint: 'stable',
+    mode: 't2v',
+    steps: 7,
+    strength: 1.2,
+  }]))
+  assert.deepEqual(Array.from(validated, (entry) => ({
+    name: entry.name,
+    strength: entry.strength,
+    modelFamily: entry.modelFamily,
+    kind: entry.kind,
+    enabled: entry.enabled,
+    fingerprint: entry.fingerprint,
+  })), [{
+    name: sourceItem.name,
+    strength: 1.2,
+    modelFamily: 'fl2va',
+    kind: 'standard',
+    enabled: true,
+    fingerprint: 'stable',
+  }])
+})
+
+test('fails closed when catalog or submit validation bridges are missing or stale', async () => {
+  const { api } = loadResource()
+  const store = api.createMiniMaxH3LoraStore()
+  await assert.rejects(
+    store.refreshCatalog({ mode: 't2v', steps: 4, electronAPI: {} }),
+    /compatibility service is unavailable/,
+  )
+
+  await store.refreshCatalog({
+    mode: 't2v',
+    steps: 4,
+    electronAPI: { minimaxH3LoraCatalog: async () => ({ ok: true, items: [item()] }) },
+  })
+  store.setSelection(['compatible.safetensors'])
+  await assert.rejects(
+    store.validateSelection({ mode: 't2v', steps: 4, electronAPI: {} }),
+    /validation is unavailable/,
+  )
+  await assert.rejects(
+    store.validateSelection({
+      mode: 't2v',
+      steps: 4,
+      electronAPI: { minimaxH3LoraValidate: async () => ({ ok: false, error: 'fingerprint_changed' }) },
+    }),
+    /fingerprint_changed/,
+  )
+})

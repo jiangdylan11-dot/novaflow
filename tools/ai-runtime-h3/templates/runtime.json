@@ -1,0 +1,12 @@
+{
+  "name": "NovaFlow AI Runtime H3",
+  "version": "{{VERSION}}",
+  "engine": "comfyui-core",
+  "host": "127.0.0.1",
+  "port": 8189,
+  "installPath": "C:\\ProgramData\\NovaFlow\\AI-Runtime-H3",
+  "assetsPath": "C:\\ProgramData\\NovaFlow\\AI-Runtime-H3\\assets",
+  "modelsPath": "C:\\ProgramData\\NovaFlow\\AI-Runtime-H3\\models",
+  "customNodesPath": "C:\\ProgramData\\NovaFlow\\AI-Runtime-H3\\custom_nodes",
+  "generatedPath": "C:\\ProgramData\\NovaFlow\\AI-Runtime-H3\\generated"
+}

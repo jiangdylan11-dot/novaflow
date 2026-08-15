@@ -1,0 +1,4 @@
+project_id = "cjakoblszlmbmotchzva"
+
+[functions.novaflow-backend]
+verify_jwt = false
