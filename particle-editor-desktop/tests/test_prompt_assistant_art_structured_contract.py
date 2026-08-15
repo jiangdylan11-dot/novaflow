@@ -1534,6 +1534,89 @@ class PromptAssistantStructuredArtTests(unittest.TestCase):
         self.assertEqual(result["editContract"], "structured-recompile-v1")
         self.assertIn(fact, result["positivePrompt"])
 
+    def test_trailing_generic_preservation_is_not_an_edit_ledger_clause(self):
+        instruction = "增强材质、光影层次和画面质感，保持主体与构图。"
+        self.assertEqual(
+            SERVICE.ordinary_art_structured_requirement_clause_specs(instruction),
+            [("材质、光影层次和画面质感", "increase")],
+        )
+
+        fact = "材质层次清晰，光影层次丰富，画面质感细腻"
+        ir = adult_pair_ir(applied_requirements=[fact])
+        ir["style"]["finish"] = fact
+        result, calls = self.run_with_ir(
+            ir,
+            requirements=f"用户本次修改要求（最高优先级）：{instruction}",
+        )
+
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(result["editContract"], "structured-recompile-v1")
+        front = front_five_sections(result["positivePrompt"])
+        self.assertIn(fact, front)
+        self.assertIn("25岁以上的成年东方女性角色A", front)
+        self.assertIn("稳定三角构图", front)
+        self.assertNotIn("保持主体与构图", result["positivePrompt"])
+
+    def test_trailing_generic_preservation_filter_stays_narrow(self):
+        cases = (
+            (
+                "保持主体与构图",
+                [("保持主体与构图", "target")],
+            ),
+            (
+                "增加质感，保持东方女性身份",
+                [("质感", "increase"), ("保持东方女性身份", "target")],
+            ),
+            (
+                "保持主体但将构图改为俯视",
+                [("保持主体但将构图改为俯视", "target")],
+            ),
+            (
+                "保持原风格基础上增强光影",
+                [("保持原风格基础上增强光影", "increase")],
+            ),
+            (
+                "enhance material detail, keep the subject unchanged",
+                [("material detail", "increase")],
+            ),
+            (
+                "enhance material detail, keep the subject and composition unchanged",
+                [("material detail", "increase")],
+            ),
+            (
+                "增强材质，同时保持主体与构图",
+                [("材质", "increase")],
+            ),
+            (
+                "保持主体与构图，增强材质",
+                [("材质", "increase")],
+            ),
+            (
+                "增强材质，保持主体与构图，提高光影层次",
+                [("材质", "increase"), ("光影层次", "increase")],
+            ),
+            (
+                "enhance material detail and keep the subject and composition unchanged",
+                [("material detail", "increase")],
+            ),
+            (
+                "保持主体；维持整体构图不变",
+                [("保持主体", "target"), ("维持整体构图不变", "target")],
+            ),
+            (
+                "增强材质，不要改变主体与构图",
+                [("材质", "increase"), ("不要改变主体与构图", "decrease")],
+            ),
+        )
+        for instruction, expected in cases:
+            with self.subTest(instruction=instruction):
+                self.assertEqual(
+                    SERVICE.ordinary_art_structured_requirement_clause_specs(
+                        instruction
+                    ),
+                    expected,
+                )
+
     def test_compound_negative_guard_requires_the_same_negative_object(self):
         accepted = (
             ("人物造型性感但不低俗", "人物造型性感但不低俗"),

@@ -40,6 +40,8 @@ from prompt_assistant.visual_contract import (
     compile_partial_visual_prompt_details,
     compile_visual_prompt_details,
     local_compact_visual_contract_instruction,
+    merge_local_salient_inventory,
+    parse_local_salient_inventory,
     parse_local_compact_visual_contract,
     parse_visual_contract,
     rich_visual_prompt_instruction,
@@ -8566,6 +8568,158 @@ def ordinary_art_user_change_instruction(requirements: str) -> str:
     return text
 
 
+ORDINARY_ART_SIMPLE_QUALITY_CLOSURE_PHRASES = {
+    "material": "材质与纹理细腻清晰",
+    "lighting": "光影层次丰富，高光与阴影过渡自然",
+    "quality": "画面质感精致，细节清晰，完成度高",
+}
+
+
+def ordinary_art_simple_quality_closure_domains(
+    raw_prompt: str,
+    requirements: str,
+    *,
+    prompt_schema: str = "",
+) -> list[str]:
+    """Return only strictly allowlisted quality domains for a short patch prompt."""
+
+    source = str(raw_prompt or "").strip()
+    if (
+        not source
+        or len(source) > 120
+        or re.search(r"[\r\n]", source)
+        or re.search(r"__NOVAFLOW_[A-Z0-9_:-]+__", source, flags=re.I)
+        or re.search(r"\[[^\]\r\n]{1,32}\]|【[^】\r\n]{1,32}】", source)
+        or clean_text(prompt_schema)
+    ):
+        return []
+
+    instruction = ordinary_art_user_change_instruction(requirements)
+    if (
+        not instruction
+        or len(instruction) > 120
+        or re.search(r"[\r\n]", instruction)
+        or not re.search(r"增强|提升|提高|强化|改善|优化", instruction, flags=re.I)
+        or re.search(
+            r"(?:背景|环境|场景|构图|布局|主体|人物|角色|数量|人数|颜色|色彩|配色|色调|"
+            r"镜头|视角|景别|裁切|透视|景深|姿势|动作|服装|道具|年龄|身份|性别|"
+            r"增加|添加|补充|删除|去除|移除|修改|调整|改为|改成|替换|"
+            r"不要|不得|禁止|避免|降低|减少|弱化|不|无|未|勿|别|"
+            r"更|更加|比较|相较|相比|高于|低于)",
+            instruction,
+            flags=re.I,
+        )
+    ):
+        return []
+
+    domain_patterns = (
+        ("material", r"材质|纹理"),
+        ("lighting", r"光影|光线|高光|阴影|层次"),
+        ("quality", r"画面质感|画质|细节|清晰度?|完成度"),
+    )
+    domains = [
+        domain
+        for domain, pattern in domain_patterns
+        if re.search(pattern, instruction, flags=re.I)
+    ]
+    if not domains:
+        return []
+
+    remainder = instruction
+    for pattern in (
+        r"画面质感|清晰度|完成度|材质|纹理|光影|光线|高光|阴影|层次|画质|细节|清晰",
+        r"增强|提升|提高|强化|改善|优化",
+        r"以及|并且|同时|和|与|及|并|请|整体|画面",
+        r"[\s、，,；;。.!！?？]+",
+    ):
+        remainder = re.sub(pattern, "", remainder, flags=re.I)
+    return domains if not remainder else []
+
+
+def ordinary_art_simple_quality_domain_present(candidate: str, domain: str) -> bool:
+    text = clean_text(candidate)
+    positive = r"(?:细腻|清晰|真实|自然|精致|丰富|高级|分明|立体|协调|受控|柔和|完整|出色|高)"
+    if domain == "material":
+        anchor = r"(?:材质|纹理)(?:与|和|及|、)?(?:材质|纹理)?"
+    elif domain == "lighting":
+        anchor = r"(?:光影|光线|高光|阴影|明暗)(?:层次)?"
+    elif domain == "quality":
+        anchor = r"(?:画面质感|画质|完成度)"
+    else:
+        return False
+    return bool(
+        re.search(rf"{anchor}[^，,；;。！？!?\n]{{0,12}}{positive}", text, flags=re.I)
+        or re.search(rf"{positive}[^，,；;。！？!?\n]{{0,8}}{anchor}", text, flags=re.I)
+    )
+
+
+def apply_ordinary_art_simple_quality_closure(
+    raw_prompt: str,
+    requirements: str,
+    candidate: str,
+    diagnostics: dict | None = None,
+    *,
+    prompt_schema: str = "",
+) -> str:
+    """Use the source, never an unproven provider delta, for pure quality closure."""
+
+    domains = ordinary_art_simple_quality_closure_domains(
+        raw_prompt,
+        requirements,
+        prompt_schema=prompt_schema,
+    )
+    merged = (
+        str(raw_prompt or "").strip()
+        if domains
+        else str(candidate or "")
+    )
+
+    def fail(reason: str) -> str:
+        if isinstance(diagnostics, dict):
+            diagnostics["failureReason"] = reason
+        return ""
+
+    if isinstance(diagnostics, dict):
+        diagnostics["eligible"] = bool(domains)
+        diagnostics["requestedDomains"] = list(domains)
+        diagnostics["providerDeltaDiscarded"] = bool(
+            domains
+            and ordinary_art_retention_compact(candidate)
+            != ordinary_art_retention_compact(raw_prompt)
+        )
+
+    missing = [
+        domain
+        for domain in domains
+        if not ordinary_art_simple_quality_domain_present(merged, domain)
+    ]
+    if isinstance(diagnostics, dict):
+        diagnostics["appendedDomains"] = list(missing)
+    if missing:
+        final_state = "；".join(
+            ORDINARY_ART_SIMPLE_QUALITY_CLOSURE_PHRASES[domain]
+            for domain in missing
+        )
+        trimmed = merged.rstrip()
+        separator = " " if re.search(r"[。！？.!?]$", trimmed) else "；"
+        merged = f"{trimmed}{separator}{final_state}。"
+
+    removal_targets = ordinary_art_explicit_removal_targets(requirements)
+    if ordinary_art_patch_resource_tokens(merged) != ordinary_art_patch_resource_tokens(raw_prompt):
+        return fail("simple-quality-closure-resource-token-mismatch")
+    if not ordinary_art_patch_named_blocks_preserved(raw_prompt, merged, removal_targets):
+        return fail("simple-quality-closure-named-block-missing")
+    retention_failure = ordinary_art_patch_priority_retention_failure(
+        raw_prompt, requirements, merged
+    )
+    if retention_failure:
+        return fail(retention_failure)
+    application_failure = ordinary_art_change_application_failure(
+        raw_prompt, requirements, merged
+    )
+    return fail(application_failure) if application_failure else merged
+
+
 def ordinary_art_retention_change_text(requirements: str) -> str:
     """Remove explicit preservation clauses before deriving editable anchors."""
 
@@ -11978,12 +12132,45 @@ def ordinary_art_structured_requirement_clause_specs(
     instruction = clean_text(ordinary_art_user_change_instruction(requirements))[:4000]
     if not instruction:
         return []
-    clauses: list[tuple[str, str]] = []
-    for raw_clause in re.split(
-        r"[，,；;。.!！？?\n]+|(?:并且|同时|以及|然后)|\b(?:and|also|then)\b",
-        instruction,
+    generic_preservation = re.compile(
+        r"^(?:(?:保留|保持|维持)(?:原有|当前)?"
+        r"(?:主体(?:身份)?|角色(?:身份)?|人物(?:身份)?|整体构图|镜头构图|构图|画面布局|整体布局)"
+        r"(?:(?:与|和|及|以及)(?:主体(?:身份)?|角色(?:身份)?|人物(?:身份)?|整体构图|镜头构图|构图|画面布局|整体布局))?"
+        r"(?:不变|一致)?|(?:keep|preserve|retain|maintain)(?: the)? "
+        r"(?:subject(?: identity)?|character identity|overall composition|camera composition|composition|image layout|layout)"
+        r"(?: and (?:subject(?: identity)?|character identity|overall composition|camera composition|composition|image layout|layout))?"
+        r"(?: unchanged)?)$",
         flags=re.I,
-    ):
+    )
+    operation_start = (
+        r"(?:保留|保持|维持|增强|提升|增加|添加|补充|降低|减少|弱化|去除|删除|"
+        r"修改|调整|改为|改成|替换|keep|preserve|retain|maintain|enhance|improve|"
+        r"increase|add|reduce|decrease|remove|change|modify|adjust|replace)"
+    )
+    connector_before_operation = re.compile(
+        rf"(?:并且|同时|以及|然后|\b(?:and|also|then)\b)(?=\s*{operation_start})",
+        flags=re.I,
+    )
+    raw_clauses: list[str] = []
+    for segment in re.split(r"[，,；;。.!！？?\n]+", instruction):
+        for value in connector_before_operation.split(segment):
+            clause = re.sub(
+                r"^(?:并且|同时|以及|然后|(?:and|also|then)\b)\s*",
+                "",
+                clean_text(value),
+                flags=re.I,
+            ).strip()
+            if clause:
+                raw_clauses.append(clause)
+    actionable_clauses = [
+        clause
+        for clause in raw_clauses
+        if not generic_preservation.fullmatch(clause)
+    ]
+    if actionable_clauses:
+        raw_clauses = actionable_clauses
+    clauses: list[tuple[str, str]] = []
+    for raw_clause in raw_clauses:
         clause = clean_text(raw_clause)
         if re.search(
             r"(?:减少|降低|弱化|减弱|去除|删除|移除|取消|避免|禁止|不要|不得|"
@@ -14946,6 +15133,41 @@ class PromptAssistant:
                             or application_failure
                         )
                 if not patch_failure:
+                    quality_closure_diagnostics = {}
+                    merged_with_quality_closure = apply_ordinary_art_simple_quality_closure(
+                        raw_prompt,
+                        requirements,
+                        merged_positive,
+                        quality_closure_diagnostics,
+                        prompt_schema=clean_text(payload.get("promptSchema") or ""),
+                    )
+                    if quality_closure_diagnostics.get("eligible"):
+                        log_prompt_assistant_event(
+                            "ordinary_art_prompt_simple_quality_closure",
+                            command="ordinaryArtPromptPatch",
+                            accepted=bool(merged_with_quality_closure),
+                            failureReason=clean_text(
+                                quality_closure_diagnostics.get("failureReason") or ""
+                            ),
+                            requestedDomains=list(
+                                quality_closure_diagnostics.get("requestedDomains") or []
+                            ),
+                            appendedDomains=list(
+                                quality_closure_diagnostics.get("appendedDomains") or []
+                            ),
+                            providerDeltaDiscarded=bool(
+                                quality_closure_diagnostics.get("providerDeltaDiscarded")
+                            ),
+                            elapsedMs=round((time.monotonic() - patch_started) * 1000),
+                        )
+                    if merged_with_quality_closure:
+                        merged_positive = merged_with_quality_closure
+                    else:
+                        patch_failure = clean_text(
+                            quality_closure_diagnostics.get("failureReason")
+                            or "simple-quality-closure-invalid"
+                        )
+                if not patch_failure:
                     positive = merged_positive
                     negative_prompt = ""
                     if art_supports_negative:
@@ -16499,6 +16721,12 @@ class PromptAssistant:
             "不得输出uncertain或ambiguous_or_young_appearing；存在年轻化措辞时不得声称adult_appearing。"
             "JSON结构符号只用标准半角ASCII字符，字符串值内部不要使用引号、反斜杠或换行，"
             "数组和对象末项不得有尾逗号；根闭合花括号必须是最后一个字符，后面禁止引号或任何文字。"
+            "除kind、level、body、interaction、age、signals的规定英文枚举值外，其余字符串值一律使用简体中文自然短语；"
+            "action只写直接可见的中文动作，不得写signals枚举码或snake_case标签。"
+            "输出前先逐边检查画面：任何不属于主角、仅从边缘进入画面的脸、手臂、手、腿或躯干都必须单独计为partial_person；"
+            "显著手持武器、道具及独立轮廓的能量、火焰、光环必须各自写为kind=object的entity，"
+            "并在relations写其与主角、主体或画面的位置或接触关系；不得使用未指明对象的与人物关系，"
+            "不得只并入action、look或scene，空间不足先缩减普通服装词。"
         )
         keyed_v2_first_prompt = (
             "直接观察当前图片并从头填写视觉事实，不得猜测不可见内容。"
@@ -16536,6 +16764,19 @@ class PromptAssistant:
             + keyed_v2_contract_instruction
             if use_local_compact_v2
             else visual_contract_instruction(requested_schema)
+        )
+        salient_inventory_system_text = (
+            "你是 NovaFlow 的本地显著视觉元素核对器。只返回指定的三行纯文本协议，"
+            "不得返回 JSON、Markdown、解释、前缀或后缀。"
+        )
+        salient_inventory_prompt = (
+            "重新观察当前图片，只补查主视觉合同容易遗漏的显著元素；不复述主角、普通服装、环境、风格、镜头、年龄、性别或内容安全判断。"
+            "只记录清楚可见且位置关系明确的三类内容：非主角的边缘或遮挡人物、显著独立武器或道具、具有独立轮廓的能量火焰或光环。"
+            "不确定就留空，禁止猜测。严格输出且只输出以下三行，顺序和英文前缀必须完全一致：\n"
+            "PARTIAL_PEOPLE=名称|简短外观|边缘遮挡或背景位置\n"
+            "OBJECTS=名称|简短外观|与主角、主体或画面的位置接触关系\n"
+            "EFFECTS=名称|简短外观|与主角、主体或画面的位置关系\n"
+            "同类多项仅用半角分号;分隔；每项必须恰好三个非空字段并仅用半角竖线|分隔；该类没有内容时等号后保持为空。"
         )
         contract_prompt = keyed_v2_first_prompt
         fallback_code = ""
@@ -17325,13 +17566,173 @@ class PromptAssistant:
                                     **diagnostics,
                                 }
                             raise
+                        contract_elapsed_ms = round(
+                            (time.monotonic() - contract_stage_started) * 1000
+                        )
+                        contract_safety = contract.get("content_safety") or {}
+                        salient_inventory_eligible = (
+                            use_local_compact_v2
+                            and str(payload.get("purpose") or "").strip()
+                            == "static-image-reverse"
+                            and not clean_text(requirements)
+                            and compiled.get("generationGate") == "direct"
+                            and contract_safety.get("level") == "safe"
+                            and contract_safety.get("body_exposure") == "none"
+                            and contract_safety.get("interaction_category") == "none"
+                            and not contract_safety.get("signals")
+                            and not contract_safety.get("sensitive_visible_facts")
+                            and contract_elapsed_ms <= 180_000
+                        )
+                        if salient_inventory_eligible:
+                            original_contract = contract
+                            original_compiled = compiled
+                            try:
+                                salient_raw_output = adapter.generate(
+                                    salient_inventory_prompt,
+                                    image_tensor,
+                                    unload_after=False,
+                                    system_text=salient_inventory_system_text,
+                                    do_sample=False,
+                                    max_new_tokens=128,
+                                )
+                                salient_inventory = parse_local_salient_inventory(
+                                    salient_raw_output
+                                )
+                                salient_item_count = sum(
+                                    len(items)
+                                    for items in salient_inventory.values()
+                                )
+                                if salient_item_count:
+                                    enriched_contract = merge_local_salient_inventory(
+                                        contract_output,
+                                        salient_inventory,
+                                    )
+                                    enriched_safety = (
+                                        enriched_contract.get("content_safety") or {}
+                                    )
+                                    for safety_key in (
+                                        "level",
+                                        "body_exposure",
+                                        "interaction_category",
+                                        "signals",
+                                        "sensitive_visible_facts",
+                                    ):
+                                        if enriched_safety.get(safety_key) != (
+                                            contract_safety.get(safety_key)
+                                        ):
+                                            raise VisualContractError(
+                                                "salient inventory changed protected safety fields"
+                                            )
+                                    enriched_compiled = compile_visual_prompt_details(
+                                        enriched_contract,
+                                        "",
+                                        nsfw=nsfw_enabled,
+                                    )
+                                    if enriched_compiled.get("generationGate") != "direct":
+                                        raise VisualContractError(
+                                            "salient inventory changed the generation gate"
+                                        )
+                                    contract = enriched_contract
+                                    compiled = enriched_compiled
+                                    log_prompt_assistant_event(
+                                        "reverse_salient_inventory_applied",
+                                        command="reverseImagePrompt",
+                                        provider="qwen3_vl_abliterated_nf4",
+                                        visualSchema=requested_schema,
+                                        partialPeopleCount=len(
+                                            salient_inventory["partial_people"]
+                                        ),
+                                        objectCount=len(salient_inventory["objects"]),
+                                        effectCount=len(salient_inventory["effects"]),
+                                        contractElapsedMs=contract_elapsed_ms,
+                                    )
+                                else:
+                                    log_prompt_assistant_event(
+                                        "reverse_salient_inventory_skipped",
+                                        command="reverseImagePrompt",
+                                        provider="qwen3_vl_abliterated_nf4",
+                                        visualSchema=requested_schema,
+                                        reason="empty-inventory",
+                                        contractElapsedMs=contract_elapsed_ms,
+                                    )
+                            except Exception as salient_error:
+                                contract = original_contract
+                                compiled = original_compiled
+                                salient_error_code = str(
+                                    getattr(salient_error, "code", "") or ""
+                                )
+                                if salient_error_code in {
+                                    "visual-contract-salient-inventory-sensitive",
+                                    "visual-contract-salient-inventory-safety-drift",
+                                }:
+                                    degraded = compile_degraded_visual_prompt_details(
+                                        original_contract
+                                    )
+                                    model_name = reverse_model_path.name[:160]
+                                    diagnostics = v2_failure_diagnostics(
+                                        error_code=salient_error_code,
+                                        provider_code=salient_error_code,
+                                        contract_code=salient_error_code,
+                                        category="semantic_contract",
+                                        retryable=True,
+                                    )
+                                    log_prompt_assistant_event(
+                                        "reverse_provider_degraded",
+                                        command="reverseImagePrompt",
+                                        provider="qwen3_vl_abliterated_nf4",
+                                        visualSchema=requested_schema,
+                                        errorCode=salient_error_code,
+                                        retryCount=retry_count,
+                                        retryReason=retry_reason,
+                                        attempt=attempt,
+                                        contractElapsedMs=contract_elapsed_ms,
+                                        validationLeaf="salient-inventory-safety-conflict",
+                                    )
+                                    return {
+                                        "description": degraded["prompt"],
+                                        "visualPrompt": degraded["visualPrompt"],
+                                        "generationRequirements": "",
+                                        "contentSafety": degraded["contentSafety"],
+                                        "contentWarnings": degraded["contentWarnings"],
+                                        "sensitivePromptBlocked": True,
+                                        "generationGate": "blocked",
+                                        "rawOutput": "",
+                                        "qualityGateFailed": True,
+                                        "qualityGateRetried": quality_gate_retried,
+                                        "retryAttempted": quality_gate_retried,
+                                        "retryCount": retry_count,
+                                        "visualSchema": requested_schema,
+                                        "reverseProvider": "qwen3_vl_abliterated_nf4",
+                                        "reverseModelPath": model_name,
+                                        "reverseFallbackReason": "",
+                                        "visualHasOcr": False,
+                                        "analysisPartial": False,
+                                        "analysisDegraded": True,
+                                        "richPromptFallback": False,
+                                        **diagnostics,
+                                    }
+                                salient_error_reason = (
+                                    "provider-error"
+                                    if isinstance(salient_error, Qwen3VLProviderError)
+                                    else "inventory-rejected"
+                                    if isinstance(
+                                        salient_error,
+                                        (VisualContractError, ValueError),
+                                    )
+                                    else "unexpected-error"
+                                )
+                                log_prompt_assistant_event(
+                                    "reverse_salient_inventory_skipped",
+                                    command="reverseImagePrompt",
+                                    provider="qwen3_vl_abliterated_nf4",
+                                    visualSchema=requested_schema,
+                                    reason=salient_error_reason,
+                                    contractElapsedMs=contract_elapsed_ms,
+                                )
                         compiled = enrich_v2_generation_candidate(
                             compiled,
                             contract,
-                            contract_elapsed_ms=round(
-                                (time.monotonic() - contract_stage_started)
-                                * 1000
-                            ),
+                            contract_elapsed_ms=contract_elapsed_ms,
                         )
                         model_name = reverse_model_path.name[:160]
                         log_prompt_assistant_event(

@@ -1,7 +1,7 @@
 (function () {
   if (window.__NovaFlowSmartAI && window.__NovaFlowSmartAI.version) return;
 
-  const VERSION = "20260815-art-action-split-3";
+  const VERSION = "20260815-art-e2e-parity-1";
   const STYLE_ID = "novaflow-smart-ai-style";
   const ROOT_ID = "novaflow-smart-ai-dialog-root";
   const SESSION_STORAGE_KEY = "novaflow.client.auth.session.v1";
@@ -3133,15 +3133,41 @@
     return "";
   }
 
+  function stripTrailingGenericArtPreservation(value) {
+    const source = String(value || "").replace(/\r\n?/g, "\n").trim();
+    if (!source) return "";
+    const genericPreservation = /^(?:(?:保留|保持|维持)(?:原有|当前)?(?:主体(?:身份)?|角色(?:身份)?|人物(?:身份)?|整体构图|镜头构图|构图|画面布局|整体布局)(?:(?:与|和|及|以及)(?:主体(?:身份)?|角色(?:身份)?|人物(?:身份)?|整体构图|镜头构图|构图|画面布局|整体布局))?(?:不变|一致)?|(?:keep|preserve|retain|maintain)(?: the)? (?:subject(?: identity)?|character identity|overall composition|camera composition|composition|image layout|layout)(?: and (?:subject(?: identity)?|character identity|overall composition|camera composition|composition|image layout|layout))?(?: unchanged)?)$/iu;
+    const operationStart = "(?:保留|保持|维持|增强|提升|增加|添加|补充|降低|减少|弱化|去除|删除|修改|调整|改为|改成|替换|keep|preserve|retain|maintain|enhance|improve|increase|add|reduce|decrease|remove|change|modify|adjust|replace)";
+    const connectorBeforeOperation = new RegExp(`(?:并且|同时|以及|然后|\\b(?:and|also|then)\\b)(?=\\s*${operationStart})`, "giu");
+    const clauses = source
+      .split(/[，,；;。.!！？?\n]+/u)
+      .flatMap((segment) => segment.split(connectorBeforeOperation))
+      .map((clause) => clause.replace(/^(?:并且|同时|以及|然后|(?:and|also|then)\b)\s*/iu, "").trim())
+      .filter(Boolean);
+    const actionable = clauses.filter((clause) => !genericPreservation.test(clause));
+    return actionable.length ? actionable.join("；") : source;
+  }
+
+  function shouldUseStructuredArtPromptContract(currentPrompt) {
+    const source = String(currentPrompt || "").trim();
+    if (!source) return false;
+    if (source.length > 120 || /[\r\n]/u.test(source)) return true;
+    if (/__NOVAFLOW_[A-Z0-9_:-]+__/iu.test(source)) return true;
+    return /\[[^\]\r\n]{1,32}\]|\u3010[^\u3011\r\n]{1,32}\u3011/u.test(source);
+  }
+
   function buildSmartAiRequirements(options = {}) {
     const requirements = String(state.requirements || "").trim();
     const includeUserIntent = options.includeUserIntent !== false;
     const userIntentFirst = options.userIntentFirst === true;
     const purpose = String(options.purpose || "").trim();
-    const userIntentInstruction = includeUserIntent && requirements
+    const modelFacingRequirements = purpose === "optimize"
+      ? stripTrailingGenericArtPreservation(requirements)
+      : requirements;
+    const userIntentInstruction = includeUserIntent && modelFacingRequirements
       ? (userIntentFirst
-        ? `用户本次${purpose === "optimize" ? "修改" : "创作"}要求（最高优先级）：${requirements}`
-        : requirements)
+        ? `用户本次${purpose === "optimize" ? "修改" : "创作"}要求（最高优先级）：${modelFacingRequirements}`
+        : modelFacingRequirements)
       : "";
     const textOperationInstruction = purpose === "optimize"
       ? "提示词编辑模式：以 prompt / currentPrompt 中的完整原提示词为唯一底稿，只执行用户本次明确提出的修改；人物、数量、身份、年龄、五官差异、服装、姿势、互动、构图、材质、风格、质量要求、避免项及其他未提及信息必须保留。输出必须是修改后的完整可生图提示词，禁止只输出修改建议、摘要或单个局部描述。"
@@ -3150,7 +3176,7 @@
         : "";
     if (state.context?.surface !== "art" || state.mode !== "optimize") return requirements;
     const sharedQualityProfile = window.NovaFlowArtQualityProfile?.build?.({
-      prompt: requirements,
+      prompt: modelFacingRequirements,
       assetType: state.starterPreset,
       style: "auto",
       mode: "txt2img"
@@ -3858,7 +3884,8 @@
     const usesStructuredArtPromptContract = isOptimizeRequest
       && isArtTextRequest
       && artTextPurpose === "optimize"
-      && !isMiniMaxH3Request;
+      && !isMiniMaxH3Request
+      && shouldUseStructuredArtPromptContract(currentPrompt);
     const prompt = isArt
       ? (isArtTextRequest
         ? (artTextPurpose === "optimize" ? currentPrompt : "")

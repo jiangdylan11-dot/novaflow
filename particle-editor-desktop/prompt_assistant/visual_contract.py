@@ -234,7 +234,8 @@ DEGRADED_NON_NEUTRAL_PATTERN = re.compile(
     r"(?:胸部|胸口|乳房|乳头|臀部|臀|胯部|胯下|大腿根|双腿分开|张开双腿|腿部张开|湿润|潮红|体液|"
     r"性器官|生殖器|阴茎|阳具|龟头|阴道|外阴|阴唇|阴蒂|肛门|下体|私处)"
     r"|(?<![a-z0-9_])(?:breasts?|nipples?|cleavage|buttocks?|crotch|groin|inner thighs?|"
-    r"legs? (?:spread|apart)|spread legs?|genitals?|penis|vagina|vulva|anus|wet(?:ness)?|sexual fluid)(?![a-z0-9_])",
+    r"legs? (?:spread|apart)|spread legs?|genitals?|penis|vagina|vulva|anus|wet(?:ness)?|sexual fluid|"
+    r"naked|erotic|intimate|sensual|seductive|sexually suggestive)(?![a-z0-9_])",
     flags=re.I,
 )
 PERSON_ASSET_TYPE_PATTERN = re.compile(
@@ -276,6 +277,106 @@ ZERO_PERSON_HUMAN_COUNT_PATTERN = re.compile(
 )
 
 _MAX_ENTITIES = 12
+LOCAL_SALIENT_INVENTORY_KEYS = (
+    "partial_people",
+    "objects",
+    "effects",
+)
+LOCAL_SALIENT_INVENTORY_PROTOCOL = (
+    ("PARTIAL_PEOPLE", "partial_people", 3),
+    ("OBJECTS", "objects", 4),
+    ("EFFECTS", "effects", 4),
+)
+LOCAL_SALIENT_INVENTORY_ITEM_KEYS = (
+    "name",
+    "appearance",
+    "relation",
+)
+LOCAL_SALIENT_INVENTORY_MAX_CHARS = 1200
+LOCAL_SALIENT_INVENTORY_MAX_LINE_CHARS = 480
+LOCAL_SALIENT_INVENTORY_FIELD_LIMITS = (40, 100, 120)
+LOCAL_SALIENT_INVENTORY_CJK_PATTERN = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
+LOCAL_SALIENT_INVENTORY_FORBIDDEN_FIELD_CHAR_PATTERN = re.compile(
+    r'''[A-Za-z_`{}\[\]<>\\"=|;]'''
+)
+LOCAL_SALIENT_INVENTORY_FORBIDDEN_TEXT_PATTERN = re.compile(
+    r"(?:系统|开发者|用户|助手|模型).{0,8}(?:提示|消息|指令|规则)"
+    r"|(?:忽略|无视|覆盖|绕过|替换|改写).{0,12}(?:以上|此前|系统|开发者|指令|规则|提示)"
+    r"|(?:请|必须|务必|应当|需要|立即|现在).{0,20}(?:执行|遵循|忽略|输出|返回|修改|写入|生成|回答)"
+    r"|(?:执行|遵循).{0,12}(?:命令|指令|要求|规则)"
+    r"|(?:删除|移除|去掉|取消|替换|改成|变成|生成|创建|新增|添加|改写).{0,12}"
+    r"(?:主角|主体|人物|角色|画面|内容|物体|物品|道具|武器|怪物)"
+    r"|(?:主角|主体|人物|角色|画面|内容).{0,12}"
+    r"(?:删除|移除|去掉|取消|替换|改成|变成|生成|创建|新增|添加|改写)"
+    r"|(?:输出|返回|回答|生成).{0,12}(?:json|markdown|代码|提示词|合同)"
+    r"|(?<![a-z0-9_])(?:system|developer|assistant|user|prompt|instruction|role)(?![a-z0-9_])"
+    r"|```|<\|",
+    flags=re.I,
+)
+LOCAL_SALIENT_PARTIAL_PERSON_PATTERN = re.compile(
+    r"(?:人物|行人|路人|游客|人影|人形|角色|参与者|女性|男性|女子|男子|女人|男人|成人)"
+)
+LOCAL_SALIENT_PARTIAL_BODY_NAME_PATTERN = re.compile(
+    r"^(?:(?:边缘|画外|局部|部分|裁切|截断|露出|可见|远处|背景|后景|远景)(?:的)?)?"
+    r"(?:背影|身影|脸|面孔|头部|手臂|手掌|手|肩膀|胳膊|"
+    r"腿部|大腿|小腿|腿|脚部|脚|躯干|身体)$"
+)
+LOCAL_SALIENT_PARTIAL_CONTEXT_PATTERN = re.compile(
+    r"(?:边缘|背景|远处|远景|后景|后方|角落|画外|裁切|截断|局部|部分可见|仅.{0,6}可见|遮挡|模糊)"
+)
+LOCAL_SALIENT_MULTI_PERSON_PATTERN = re.compile(
+    r"(?:[二两三四五六七八九十\d]+(?:名|位|个|道)?"
+    r"(?:人物|行人|路人|游客|人|人影|身影|成人)|"
+    r"(?:多|几|数|若干)(?:名|位|个|道)?"
+    r"(?:人物|行人|路人|游客|人|人影|身影|成人)|"
+    r"(?:一对|一双|成对)(?:的)?(?:人物|行人|路人|游客|人|人影|身影|男女)?|"
+    r"一群人|人群|众人|双人|"
+    r"[二两三四五六七八九十\d]+(?:只|条|张)?"
+    r"(?:脸|面孔|头部|手臂|手掌|手|肩膀|胳膊|腿部|大腿|小腿|腿|脚部|脚|躯干)|"
+    r"双(?:手|臂|腿|脚))"
+)
+LOCAL_SALIENT_NONHUMAN_PERSON_PATTERN = re.compile(
+    r"(?:机器人|机械人|人形机器|机械(?:手臂|臂|手|腿)|假肢|义肢|"
+    r"雕像|雕塑|玩偶|人偶|手办|模型|海报|照片|画像|壁画|屏幕人物)"
+)
+LOCAL_SALIENT_FOREIGN_PARTICIPANT_PATTERN = re.compile(
+    r"(?:(?:另一|其他|第二|第三)(?:名|位|个)?(?:人物|角色|参与者|人|男子|女子|男人|女人|男性|女性))"
+    r"|(?:人物|角色|参与者|男子|女子|男人|女人|男性|女性|行人|路人|游客|"
+    r"人影|身影|背影|人群|众人|陌生人|老人|老者|老年人|"
+    r"成年人|成人|人类)"
+)
+LOCAL_SALIENT_FOREIGN_BODY_PART_PATTERN = re.compile(
+    r"(?:另一|其他|第二|额外|画外|画面边缘|边缘|背景)(?:的)?"
+    r"(?:一)?(?:只|条|张)?(?:脸|面孔|头部|手臂|手掌|手|肩膀|胳膊|"
+    r"腿部|大腿|小腿|腿|脚部|脚|躯干|身体)"
+)
+LOCAL_SALIENT_BODY_PART_PATTERN = re.compile(
+    r"(?:(?:一只|一条|一张|半张|单独的?|独立的?|露出的?|可见的?|"
+    r"画面边缘的?|边缘的?)(?:脸|面孔|头部|手臂|手掌|手|肩膀|胳膊|"
+    r"腿部|大腿|小腿|腿|脚部|脚|躯干|身体)|"
+    r"(?:手臂|手掌|肩膀|胳膊|腿部|大腿|小腿|脚部|躯干|身体)"
+    r"(?:进入|伸入|露出|可见|出现))"
+)
+LOCAL_SALIENT_MAIN_BODY_PART_ANCHOR_PATTERN = re.compile(
+    r"(?:(?:主角|主体).{0,8}(?:脸|面孔|头部|头|手臂|手掌|手|肩膀|肩|"
+    r"胳膊|臂|腿部|大腿|小腿|腿|脚部|脚|躯干|身体)|"
+    r"(?:脸|面孔|头部|头|手臂|手掌|手|肩膀|肩|胳膊|臂|"
+    r"腿部|大腿|小腿|腿|脚部|脚|躯干|身体).{0,8}(?:主角|主体))"
+)
+LOCAL_SALIENT_GENERIC_OBJECT_PATTERN = re.compile(
+    r"^(?:(?:一个|某个|未知|显著|大型|小型)(?:的)?)?"
+    r"(?:物体|物品|物件|东西|道具|武器|装备|装饰)$"
+)
+LOCAL_SALIENT_POSITION_RELATION_PATTERN = re.compile(
+    r"(?:位于|处于|靠近|贴近|接触|贴合|环绕|悬浮|悬挂|放置|固定|"
+    r"持于|手持|握持|抓住|背负|佩戴|系于|装在|"
+    r"左(?:侧|边|手)?|右(?:侧|边|手)?|上方|下方|前方|后方|身后|肩后|"
+    r"腰间|脚边|手中|画面中央|画面中心|画面边缘)"
+)
+LOCAL_SALIENT_EFFECT_PATTERN = re.compile(
+    r"(?:能量|火焰|火光|光环|光效|特效|发光|辉光|光芒|光带|光束|光翼|"
+    r"电弧|闪电|雷电|粒子效果|魔法阵)"
+)
 RICH_VISUAL_SECTIONS = (
     "[风格设定]",
     "[主体物品]",
@@ -1175,6 +1276,520 @@ def parse_local_compact_visual_contract(
         validate_semantics=validate_semantics,
         allow_projection_redaction=allow_projection_redaction,
     )
+
+
+def _normalize_local_salient_inventory_field(
+    value: Any,
+    path: str,
+    limit: int,
+) -> str:
+    if not isinstance(value, str):
+        raise VisualContractError(
+            f"{path} must be a string",
+            code="visual-contract-salient-inventory-invalid",
+        )
+    if value != value.strip():
+        raise VisualContractError(
+            f"{path} must not contain outer whitespace",
+            code="visual-contract-salient-inventory-invalid",
+        )
+    normalized = unicodedata.normalize("NFKC", value)
+    normalized = re.sub(r"[ \t]+", " ", normalized).strip()
+    if not normalized:
+        raise VisualContractError(
+            f"{path} must be non-empty",
+            code="visual-contract-salient-inventory-invalid",
+        )
+    if len(normalized) > limit:
+        raise VisualContractError(
+            f"{path} exceeds {limit} characters",
+            code="visual-contract-salient-inventory-invalid",
+        )
+    if any(
+        unicodedata.category(character) in {"Cc", "Cf", "Cs", "Co"}
+        for character in normalized
+    ):
+        raise VisualContractError(
+            f"{path} contains unsupported control characters",
+            code="visual-contract-salient-inventory-invalid",
+        )
+    if LOCAL_SALIENT_INVENTORY_FORBIDDEN_FIELD_CHAR_PATTERN.search(normalized):
+        raise VisualContractError(
+            f"{path} must be a simplified-Chinese natural phrase",
+            code="visual-contract-salient-inventory-invalid",
+        )
+    if not LOCAL_SALIENT_INVENTORY_CJK_PATTERN.search(normalized):
+        raise VisualContractError(
+            f"{path} must contain simplified-Chinese text",
+            code="visual-contract-salient-inventory-invalid",
+        )
+
+    scan_text = _normalize_scan_text(normalized)
+    if (
+        YOUNG_AGE_PATTERN.search(scan_text)
+        or SAFE_SENSITIVE_PATTERN.search(scan_text)
+        or DEGRADED_NON_NEUTRAL_PATTERN.search(scan_text)
+    ):
+        raise VisualContractError(
+            f"{path} contains safety-sensitive text",
+            code="visual-contract-salient-inventory-sensitive",
+            semantic=True,
+        )
+    if LOCAL_SALIENT_INVENTORY_FORBIDDEN_TEXT_PATTERN.search(scan_text):
+        raise VisualContractError(
+            f"{path} contains an instruction-like phrase",
+            code="visual-contract-salient-inventory-instruction",
+            semantic=True,
+        )
+    if NON_VISIBLE_EVIDENCE_PATTERN.search(scan_text):
+        raise VisualContractError(
+            f"{path} must describe directly visible evidence",
+            code="visual-contract-salient-inventory-invalid",
+            semantic=True,
+        )
+    return normalized
+
+
+def _validate_local_salient_inventory_category(
+    key: str,
+    item: dict[str, str],
+    path: str,
+) -> None:
+    name = _normalize_scan_text(item["name"])
+    appearance = _normalize_scan_text(item["appearance"])
+    relation = _normalize_scan_text(item["relation"])
+    combined = " ".join((name, appearance, relation))
+    if key == "partial_people":
+        if LOCAL_SALIENT_NONHUMAN_PERSON_PATTERN.search(combined):
+            raise VisualContractError(
+                f"{path} cannot classify an artifact as a partial person",
+                code="visual-contract-salient-inventory-category-invalid",
+                semantic=True,
+            )
+        if LOCAL_SALIENT_MULTI_PERSON_PATTERN.search(combined):
+            raise VisualContractError(
+                f"{path} must describe exactly one partial person",
+                code="visual-contract-salient-inventory-safety-drift",
+                semantic=True,
+            )
+        if (
+            not LOCAL_SALIENT_PARTIAL_PERSON_PATTERN.search(name)
+            and not LOCAL_SALIENT_PARTIAL_BODY_NAME_PATTERN.fullmatch(name)
+        ):
+            raise VisualContractError(
+                f"{path}.name must identify a person",
+                code="visual-contract-salient-inventory-category-invalid",
+                semantic=True,
+            )
+        if not LOCAL_SALIENT_PARTIAL_CONTEXT_PATTERN.search(combined):
+            raise VisualContractError(
+                f"{path} lacks edge, occlusion, or background evidence",
+                code="visual-contract-salient-inventory-category-invalid",
+                semantic=True,
+            )
+        return
+    if key == "objects":
+        if LOCAL_SALIENT_FOREIGN_PARTICIPANT_PATTERN.search(combined):
+            raise VisualContractError(
+                f"{path} cannot introduce an uncounted participant",
+                code="visual-contract-salient-inventory-safety-drift",
+                semantic=True,
+            )
+        if LOCAL_SALIENT_FOREIGN_BODY_PART_PATTERN.search(combined):
+            raise VisualContractError(
+                f"{path} cannot introduce an uncounted participant body part",
+                code="visual-contract-salient-inventory-safety-drift",
+                semantic=True,
+            )
+        if (
+            LOCAL_SALIENT_BODY_PART_PATTERN.search(combined)
+            and not LOCAL_SALIENT_MAIN_BODY_PART_ANCHOR_PATTERN.search(combined)
+        ):
+            raise VisualContractError(
+                f"{path} cannot introduce an unanchored body part",
+                code="visual-contract-salient-inventory-safety-drift",
+                semantic=True,
+            )
+        if LOCAL_SALIENT_GENERIC_OBJECT_PATTERN.fullmatch(name):
+            raise VisualContractError(
+                f"{path}.name is a generic object label",
+                code="visual-contract-salient-inventory-category-invalid",
+                semantic=True,
+            )
+        if not LOCAL_SALIENT_POSITION_RELATION_PATTERN.search(relation):
+            raise VisualContractError(
+                f"{path}.relation lacks a visible position or contact",
+                code="visual-contract-salient-inventory-category-invalid",
+                semantic=True,
+            )
+        return
+    if key == "effects":
+        if LOCAL_SALIENT_FOREIGN_PARTICIPANT_PATTERN.search(combined):
+            raise VisualContractError(
+                f"{path} cannot introduce an uncounted participant",
+                code="visual-contract-salient-inventory-safety-drift",
+                semantic=True,
+            )
+        if LOCAL_SALIENT_FOREIGN_BODY_PART_PATTERN.search(combined):
+            raise VisualContractError(
+                f"{path} cannot introduce an uncounted participant body part",
+                code="visual-contract-salient-inventory-safety-drift",
+                semantic=True,
+            )
+        if (
+            LOCAL_SALIENT_BODY_PART_PATTERN.search(combined)
+            and not LOCAL_SALIENT_MAIN_BODY_PART_ANCHOR_PATTERN.search(combined)
+        ):
+            raise VisualContractError(
+                f"{path} cannot introduce an unanchored body part",
+                code="visual-contract-salient-inventory-safety-drift",
+                semantic=True,
+            )
+        if not LOCAL_SALIENT_EFFECT_PATTERN.search(f"{name} {appearance}"):
+            raise VisualContractError(
+                f"{path} lacks a visible effect term",
+                code="visual-contract-salient-inventory-category-invalid",
+                semantic=True,
+            )
+        if not LOCAL_SALIENT_POSITION_RELATION_PATTERN.search(relation):
+            raise VisualContractError(
+                f"{path}.relation lacks a visible effect position",
+                code="visual-contract-salient-inventory-category-invalid",
+                semantic=True,
+            )
+
+
+def _normalize_local_salient_inventory_mapping(value: Any) -> dict:
+    if not isinstance(value, dict):
+        raise VisualContractError(
+            "local salient inventory must be an object",
+            code="visual-contract-salient-inventory-invalid",
+        )
+    _require_exact_keys(
+        value,
+        LOCAL_SALIENT_INVENTORY_KEYS,
+        "local_salient_inventory",
+    )
+    normalized_inventory: dict[str, list[dict[str, str]]] = {}
+    for _label, key, max_items in LOCAL_SALIENT_INVENTORY_PROTOCOL:
+        raw_items = value[key]
+        if not isinstance(raw_items, list):
+            raise VisualContractError(
+                f"local_salient_inventory.{key} must be an array",
+                code="visual-contract-salient-inventory-invalid",
+            )
+        if len(raw_items) > max_items:
+            raise VisualContractError(
+                f"local_salient_inventory.{key} has too many items",
+                code=(
+                    "visual-contract-salient-inventory-safety-drift"
+                    if key == "partial_people"
+                    else "visual-contract-salient-inventory-invalid"
+                ),
+                semantic=key == "partial_people",
+            )
+        items: list[dict[str, str]] = []
+        seen: set[tuple[str, str, str]] = set()
+        for index, raw_item in enumerate(raw_items):
+            if not isinstance(raw_item, dict):
+                raise VisualContractError(
+                    f"local_salient_inventory.{key}[{index}] must be an object",
+                    code="visual-contract-salient-inventory-invalid",
+                )
+            _require_exact_keys(
+                raw_item,
+                LOCAL_SALIENT_INVENTORY_ITEM_KEYS,
+                f"local_salient_inventory.{key}[{index}]",
+            )
+            item = {
+                field: _normalize_local_salient_inventory_field(
+                    raw_item[field],
+                    f"local_salient_inventory.{key}[{index}].{field}",
+                    limit,
+                )
+                for field, limit in zip(
+                    LOCAL_SALIENT_INVENTORY_ITEM_KEYS,
+                    LOCAL_SALIENT_INVENTORY_FIELD_LIMITS,
+                )
+            }
+            _validate_local_salient_inventory_category(
+                key,
+                item,
+                f"local_salient_inventory.{key}[{index}]",
+            )
+            signature = tuple(
+                _normalize_scan_text(item[field])
+                for field in LOCAL_SALIENT_INVENTORY_ITEM_KEYS
+            )
+            if signature in seen:
+                continue
+            seen.add(signature)
+            items.append(item)
+        normalized_inventory[key] = items
+    return normalized_inventory
+
+
+def parse_local_salient_inventory(
+    raw_output: str,
+) -> dict[str, list[dict[str, str]]]:
+    """Parse the exact three-line, non-authoritative Local salience sidecar."""
+
+    if not isinstance(raw_output, str):
+        raise VisualContractError(
+            "local salient inventory output must be a string",
+            code="visual-contract-salient-inventory-invalid",
+        )
+    if not raw_output or len(raw_output) > LOCAL_SALIENT_INVENTORY_MAX_CHARS:
+        raise VisualContractError(
+            "local salient inventory output is empty or oversized",
+            code="visual-contract-salient-inventory-invalid",
+        )
+    text = raw_output.replace("\r\n", "\n")
+    if "\r" in text:
+        raise VisualContractError(
+            "local salient inventory contains an invalid line ending",
+            code="visual-contract-salient-inventory-invalid",
+        )
+    if text.endswith("\n"):
+        text = text[:-1]
+    lines = text.split("\n")
+    if len(lines) != len(LOCAL_SALIENT_INVENTORY_PROTOCOL):
+        raise VisualContractError(
+            "local salient inventory must contain exactly three lines",
+            code="visual-contract-salient-inventory-invalid",
+        )
+
+    parsed: dict[str, list[dict[str, str]]] = {}
+    for line_index, ((label, key, max_items), line) in enumerate(
+        zip(LOCAL_SALIENT_INVENTORY_PROTOCOL, lines)
+    ):
+        if len(line) > LOCAL_SALIENT_INVENTORY_MAX_LINE_CHARS:
+            raise VisualContractError(
+                f"local salient inventory line {line_index + 1} is oversized",
+                code="visual-contract-salient-inventory-invalid",
+            )
+        prefix = f"{label}="
+        if line.count("=") != 1 or not line.startswith(prefix):
+            raise VisualContractError(
+                f"local salient inventory line {line_index + 1} has an invalid prefix",
+                code="visual-contract-salient-inventory-invalid",
+            )
+        payload = line[len(prefix):]
+        if not payload:
+            parsed[key] = []
+            continue
+        if payload.startswith(";") or payload.endswith(";") or ";;" in payload:
+            raise VisualContractError(
+                f"local salient inventory line {line_index + 1} has an empty item",
+                code="visual-contract-salient-inventory-invalid",
+            )
+        raw_items = payload.split(";")
+        if len(raw_items) > max_items:
+            raise VisualContractError(
+                f"local salient inventory line {line_index + 1} has too many items",
+                code=(
+                    "visual-contract-salient-inventory-safety-drift"
+                    if key == "partial_people"
+                    else "visual-contract-salient-inventory-invalid"
+                ),
+                semantic=key == "partial_people",
+            )
+        items: list[dict[str, str]] = []
+        for item_index, raw_item in enumerate(raw_items):
+            if raw_item != raw_item.strip() or raw_item.count("|") != 2:
+                raise VisualContractError(
+                    f"local salient inventory line {line_index + 1} item {item_index + 1} has an invalid shape",
+                    code="visual-contract-salient-inventory-invalid",
+                )
+            fields = raw_item.split("|")
+            items.append(dict(zip(LOCAL_SALIENT_INVENTORY_ITEM_KEYS, fields)))
+        parsed[key] = items
+    return _normalize_local_salient_inventory_mapping(parsed)
+
+
+def _local_salient_inventory_relation(item: dict[str, str]) -> str:
+    name = item["name"]
+    relation = item["relation"]
+    if _normalize_scan_text(name) in _normalize_scan_text(relation):
+        return relation
+    return f"{name}{relation}"
+
+
+def merge_local_salient_inventory(
+    raw_contract: str,
+    inventory: dict[str, list[dict[str, str]]],
+) -> dict:
+    """Deterministically enrich a valid Local compact contract and revalidate it."""
+
+    primary_contract = parse_local_compact_visual_contract(
+        raw_contract,
+        validate_semantics=True,
+        allow_projection_redaction=False,
+        allow_legacy_read=False,
+        allow_young_wording_neutralization=False,
+        allow_incomplete_participants=False,
+    )
+    normalized_inventory = _normalize_local_salient_inventory_mapping(inventory)
+    compact = _parse_json_object(raw_contract, reject_duplicate_keys=True)
+    _require_exact_keys(compact, LOCAL_COMPACT_KEYS, "local_compact")
+    compact = json.loads(json.dumps(compact, ensure_ascii=False))
+    entities = compact["entities"]
+    relations = _compact_text_list(
+        compact["relations"],
+        "local_compact.relations",
+        20,
+        160,
+    )
+    added_partial_person = False
+
+    for key, expected_kind in (
+        ("partial_people", "partial_person"),
+        ("objects", "object"),
+        ("effects", "object"),
+    ):
+        for item in normalized_inventory[key]:
+            normalized_name = _normalize_scan_text(item["name"])
+            relation = _local_salient_inventory_relation(item)
+            matching_entities = [
+                entity
+                for entity in entities
+                if _normalize_scan_text(entity.get("name")) == normalized_name
+            ]
+            target = None
+            if expected_kind == "partial_person":
+                if any(
+                    entity.get("kind") == "object"
+                    for entity in matching_entities
+                ):
+                    raise VisualContractError(
+                        f"local salient inventory kind conflicts for {item['name']}",
+                        code="visual-contract-salient-inventory-conflict",
+                        semantic=True,
+                    )
+                # A full person and a distinct edge participant may share a generic
+                # name.  Only collapse an already-recorded partial person when all
+                # three sidecar facts are already present; name equality alone is
+                # never participant identity evidence.
+                for entity in matching_entities:
+                    if entity.get("kind") != "partial_person":
+                        continue
+                    appearance = _compact_text_list(
+                        entity.get("appearance"),
+                        f"local_compact.entities[{entities.index(entity)}].appearance",
+                        16,
+                        160,
+                    )
+                    if item["appearance"] in appearance and relation in relations:
+                        target = entity
+                        break
+            else:
+                target = matching_entities[0] if matching_entities else None
+                if target is not None and target.get("kind") != "object":
+                    raise VisualContractError(
+                        f"local salient inventory kind conflicts for {item['name']}",
+                        code="visual-contract-salient-inventory-conflict",
+                        semantic=True,
+                    )
+            if target is None:
+                target = {
+                    "kind": expected_kind,
+                    "name": item["name"],
+                    "appearance": [item["appearance"]],
+                    "pose": "",
+                    "action": "",
+                    "materials": [],
+                    "colors": [],
+                }
+                entities.append(target)
+                if expected_kind == "partial_person":
+                    added_partial_person = True
+            elif expected_kind == "object":
+                appearance = _compact_text_list(
+                    target.get("appearance"),
+                    f"local_compact.entities[{entities.index(target)}].appearance",
+                    16,
+                    160,
+                )
+                if item["appearance"] not in appearance:
+                    appearance.append(item["appearance"])
+                target["appearance"] = appearance
+
+            if relation not in relations:
+                relations.append(relation)
+
+    if len(entities) > _MAX_ENTITIES:
+        raise VisualContractError(
+            "local salient inventory would exceed the entity limit",
+            code="visual-contract-salient-inventory-invalid",
+            semantic=True,
+        )
+    people = sum(
+        entity.get("kind") in {"person", "partial_person"}
+        for entity in entities
+    )
+    if people > 3:
+        raise VisualContractError(
+            "local salient inventory would exceed the participant limit",
+            code="visual-contract-salient-inventory-safety-drift",
+            semantic=True,
+        )
+    compact["people"] = people
+    compact["entities"] = entities
+    compact["relations"] = relations
+    if added_partial_person and compact.get("age") in {
+        "adult_appearing",
+        "not_applicable",
+    }:
+        compact["age"] = "age_unverifiable"
+
+    merged_contract = parse_local_compact_visual_contract(
+        json.dumps(compact, ensure_ascii=False, separators=(",", ":")),
+        validate_semantics=True,
+        allow_projection_redaction=False,
+        allow_legacy_read=False,
+        allow_young_wording_neutralization=False,
+        allow_incomplete_participants=False,
+    )
+    primary_safety = primary_contract["content_safety"]
+    merged_safety = merged_contract["content_safety"]
+    for key in ("level", "body_exposure", "interaction_category"):
+        if merged_safety[key] != primary_safety[key]:
+            raise VisualContractError(
+                "local salient inventory cannot modify primary safety fields",
+                code="visual-contract-salient-inventory-safety-drift",
+                semantic=True,
+            )
+    expected_age = primary_safety["age_assessment"]
+    if added_partial_person and expected_age in {
+        "adult_appearing",
+        "not_applicable",
+    }:
+        expected_age = "age_unverifiable"
+    if (
+        merged_safety["age_assessment"] != expected_age
+        or merged_safety["visible_person_count"] != people
+    ):
+        raise VisualContractError(
+            "local salient inventory age or participant count drifted",
+            code="visual-contract-salient-inventory-safety-drift",
+            semantic=True,
+        )
+    if not set(primary_safety["signals"]).issubset(merged_safety["signals"]):
+        raise VisualContractError(
+            "local salient inventory cannot remove primary safety signals",
+            code="visual-contract-salient-inventory-safety-drift",
+            semantic=True,
+        )
+    if (
+        merged_safety["sensitive_visible_facts"]
+        != primary_safety["sensitive_visible_facts"]
+    ):
+        raise VisualContractError(
+            "local salient inventory cannot modify primary sensitive facts",
+            code="visual-contract-salient-inventory-safety-drift",
+            semantic=True,
+        )
+    return merged_contract
 
 
 def _local_static_compact_list(value: Any, path: str, expected_length: int) -> list:

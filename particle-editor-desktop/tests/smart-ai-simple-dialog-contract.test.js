@@ -121,7 +121,7 @@ assert.equal(workflow.writeProviderPreference(storage, "grok"), true);
 assert.equal(workflow.readProviderPreference(storage), "grok");
 
 const workflowTag = "smart-ai-art-auto-intent.workflow.js?v=20260811-art-auto-intent-1";
-const smartAiTag = "novaflow-smart-ai.js?v=20260815-art-action-split-3";
+const smartAiTag = "novaflow-smart-ai.js?v=20260815-art-e2e-parity-1";
 const runtimeTag = "novaflow-brand-runtime.js?v=20260813-ideogram-instant-1";
 assert.ok(indexSource.includes(workflowTag));
 assert.ok(indexSource.includes(smartAiTag));
@@ -220,7 +220,7 @@ assert.match(smartAiSource, /userIntentFirst: isArtTextRequest/);
 assert.match(smartAiSource, /currentPrompt: promptMentionProtection\.text/);
 assert.match(smartAiSource, /isArtTextRequest \? artTextPurpose : artIntent\?\.purpose/);
 assert.match(smartAiSource, /function validateSmartAiArtPromptPreservation\(currentPrompt, candidatePrompt, userInstruction = "", options = \{\}\)/);
-assert.match(smartAiSource, /const usesStructuredArtPromptContract = isOptimizeRequest[\s\S]*?isArtTextRequest[\s\S]*?artTextPurpose === "optimize"[\s\S]*?!isMiniMaxH3Request/);
+assert.match(smartAiSource, /const usesStructuredArtPromptContract = isOptimizeRequest[\s\S]*?isArtTextRequest[\s\S]*?artTextPurpose === "optimize"[\s\S]*?!isMiniMaxH3Request[\s\S]*?shouldUseStructuredArtPromptContract\(currentPrompt\)/);
 assert.match(smartAiSource, /usesStructuredArtPromptContract \? \{ promptSchema: ORDINARY_ART_PROMPT_SCHEMA \} : \{\}/);
 assert.match(smartAiSource, /parsed\.editContract !== ORDINARY_ART_EDIT_CONTRACT[\s\S]*?parsed\.promptSchema !== ORDINARY_ART_PROMPT_SCHEMA[\s\S]*?prompt_contract_mismatch/);
 assert.match(smartAiSource, /if \(usesStructuredArtPromptContract\) \{[\s\S]*?validateSmartAiStructuredArtPrompt\(nextPrompt\)[\s\S]*?validateSmartAiArtPromptPreservation\([\s\S]*?deterministicMerge: true[\s\S]*?throw smartAiPromptPreservationError\(preservation\)/);
@@ -248,6 +248,21 @@ assert.doesNotMatch(smartAiSource, /targetCompact\.includes\(labelCompact\)|bloc
 assert.match(smartAiSource, /buildStaticArtReverseRequirements\(promptMentionProtection\?\.text \?\? prompt\)/);
 assert.doesNotMatch(smartAiSource, /buildStaticArtReverseSelectionSummary|当前选择摘要/);
 assert.match(smartAiSource, /isSingleMainPreserveReverse = isArt[\s\S]*?&& isReverseRequest[\s\S]*?artIntent\?\.route === "static_reverse"/);
+
+const shouldUseStructuredArtPromptContract = vm.runInNewContext(
+  `(${extractNamedFunction(smartAiSource, "shouldUseStructuredArtPromptContract")})`
+);
+assert.equal(
+  shouldUseStructuredArtPromptContract("\u4e00\u540d\u6210\u5e74\u5973\u6218\u58eb\u7ad9\u5728\u5c71\u8c37\u4e2d\uff0c\u7535\u5f71\u7ea7\u5149\u5f71\uff0c\u7ec6\u8282\u6e05\u6670\u3002"),
+  false,
+  "a short single-paragraph Art prompt must use the shared deterministic patch path"
+);
+assert.equal(shouldUseStructuredArtPromptContract("甲".repeat(120)), false, "the bounded short-prompt edge stays on patch");
+assert.equal(shouldUseStructuredArtPromptContract("甲".repeat(121)), true, "a longer prompt keeps the structured contract");
+assert.equal(shouldUseStructuredArtPromptContract("主体立于山谷\n背景为雪山"), true, "multi-line prompts keep the structured contract");
+assert.equal(shouldUseStructuredArtPromptContract("[风格设定] 数字绘画"), true, "named square-bracket blocks keep the structured contract");
+assert.equal(shouldUseStructuredArtPromptContract("【主体物品】成年女战士"), true, "named full-width blocks keep the structured contract");
+assert.equal(shouldUseStructuredArtPromptContract("保留 __NOVAFLOW_IMAGE_01__ 资源"), true, "resource-bearing prompts keep the structured contract");
 assert.match(smartAiSource, /roleAwareReferences = isArt[\s\S]*?&& isReverseRequest[\s\S]*?artIntent\?\.route === "role_reference"/);
 assert.match(smartAiSource, /artIntent\?\.route === "static_reverse"/);
 assert.match(smartAiSource, /artIntent\?\.route === "role_reference"/);
@@ -259,7 +274,7 @@ assert.match(runtimeSource, /setMode: setArtGenerateMode,/);
 assert.match(smartAiSource, /Grok AI（云端，会上传参考图并消耗次数）/);
 
 const requirementState = {
-  requirements: "降低背景高光",
+  requirements: "降低背景高光，保持主体与构图",
   context: { surface: "art", artGenerateMode: "img2img" },
   mode: "optimize",
   starterPreset: "",
@@ -269,8 +284,81 @@ const requirementState = {
   images: [{ label: "参考图1" }],
   referenceRoles: ["subject"]
 };
+const stripTrailingGenericArtPreservation = vm.runInNewContext(
+  `(${extractNamedFunction(smartAiSource, "stripTrailingGenericArtPreservation")})`
+);
+for (const { input, expected, label } of [
+  {
+    input: "降低背景高光，保持主体与构图",
+    expected: "降低背景高光",
+    label: "terminal generic preservation"
+  },
+  {
+    input: "降低背景高光；保持主体；维持整体构图不变。",
+    expected: "降低背景高光",
+    label: "multiple terminal generic preservation clauses"
+  },
+  {
+    input: "enhance material detail, keep the subject and composition unchanged",
+    expected: "enhance material detail",
+    label: "english terminal generic preservation"
+  },
+  {
+    input: "增强材质，同时保持主体与构图",
+    expected: "增强材质",
+    label: "leading connector before generic preservation"
+  },
+  {
+    input: "保持主体与构图，增强材质",
+    expected: "增强材质",
+    label: "leading generic preservation"
+  },
+  {
+    input: "增强材质，保持主体与构图，提高光影层次",
+    expected: "增强材质；提高光影层次",
+    label: "middle generic preservation"
+  },
+  {
+    input: "enhance material detail and keep the subject and composition unchanged",
+    expected: "enhance material detail",
+    label: "english action connector preserves internal noun conjunction"
+  },
+  {
+    input: "保持主体与构图",
+    expected: "保持主体与构图",
+    label: "preservation-only intent must not become empty"
+  },
+  {
+    input: "保持主体；维持整体构图不变",
+    expected: "保持主体；维持整体构图不变",
+    label: "multiple preservation-only clauses remain intact"
+  },
+  {
+    input: "降低背景高光，保留蓝色发饰",
+    expected: "降低背景高光；保留蓝色发饰",
+    label: "named preservation constraint"
+  },
+  {
+    input: "降低背景高光，不要保持原构图",
+    expected: "降低背景高光；不要保持原构图",
+    label: "negated preservation instruction"
+  },
+  {
+    input: "降低背景高光，保持构图更紧凑",
+    expected: "降低背景高光；保持构图更紧凑",
+    label: "comparative target state"
+  },
+  {
+    input: "降低背景高光，保持主体与构图并增强轮廓",
+    expected: "降低背景高光；保持主体与构图并增强轮廓",
+    label: "mixed preservation and edit action"
+  }
+]) {
+  assert.equal(stripTrailingGenericArtPreservation(input), expected, label);
+}
 const buildSmartAiRequirements = vm.runInNewContext(`(${extractNamedFunction(smartAiSource, "buildSmartAiRequirements")})`, {
   state: requirementState,
+  stripTrailingGenericArtPreservation,
   window: {
     NovaFlowArtQualityProfile: {
       build: ({ style, mode }) => ({ directorInstruction: `QUALITY:${style}:${mode}` })
@@ -285,7 +373,7 @@ const optimizedTextRequirements = buildSmartAiRequirements({
   userIntentFirst: true,
   purpose: "optimize"
 });
-assert.match(optimizedTextRequirements, /^用户本次修改要求（最高优先级）：降低背景高光/);
+assert.equal(optimizedTextRequirements.split("\n")[0], "用户本次修改要求（最高优先级）：降低背景高光");
 assert.match(optimizedTextRequirements, /QUALITY:auto:txt2img/);
 assert.doesNotMatch(optimizedTextRequirements, /处理目标：|图1|参考图1|保留程度：|目标风格：|背景处理|参考图职责/,
   "text optimization must not receive hidden image-derived selections or roles");

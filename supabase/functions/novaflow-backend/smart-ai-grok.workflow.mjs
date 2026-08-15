@@ -3724,6 +3724,75 @@ function ordinaryArtPromptPatchRawUserInstruction(requirements) {
   return marked ? normalizeSmartAiText(marked[1], 4000) : text;
 }
 
+const ORDINARY_ART_SIMPLE_QUALITY_CLOSURE_PHRASES = Object.freeze({
+  material: "材质与纹理细腻清晰",
+  lighting: "光影层次丰富，高光与阴影过渡自然",
+  quality: "画面质感精致，细节清晰，完成度高"
+});
+
+function ordinaryArtPromptSimpleQualityClosureDomains(sourcePrompt, requirements, options = {}) {
+  const source = String(sourcePrompt || "").trim();
+  if (!source || source.length > 120 || /[\r\n]/u.test(source)
+    || /__NOVAFLOW_[A-Z0-9_:-]+__/iu.test(source)
+    || /\[[^\]\r\n]{1,32}\]|【[^】\r\n]{1,32}】/u.test(source)
+    || normalizeSmartAiText(options.promptSchema || "", 80)) {
+    return [];
+  }
+  const instruction = ordinaryArtPromptPatchRawUserInstruction(requirements);
+  if (!instruction || instruction.length > 120 || /[\r\n]/u.test(instruction)
+    || !/(?:增强|提升|提高|强化|改善|优化)/iu.test(instruction)
+    || /(?:背景|环境|场景|构图|布局|主体|人物|角色|数量|人数|颜色|色彩|配色|色调|镜头|视角|景别|裁切|透视|景深|姿势|动作|服装|道具|年龄|身份|性别|增加|添加|补充|删除|去除|移除|修改|调整|改为|改成|替换|不要|不得|禁止|避免|降低|减少|弱化|不|无|未|勿|别|更|更加|比较|相较|相比|高于|低于)/iu.test(instruction)) {
+    return [];
+  }
+  const domainPatterns = [
+    ["material", /材质|纹理/iu],
+    ["lighting", /光影|光线|高光|阴影|层次/iu],
+    ["quality", /画面质感|画质|细节|清晰度?|完成度/iu]
+  ];
+  const domains = domainPatterns
+    .filter(([, pattern]) => pattern.test(instruction))
+    .map(([domain]) => domain);
+  if (!domains.length) return [];
+  let remainder = instruction;
+  for (const pattern of [
+    /画面质感|清晰度|完成度|材质|纹理|光影|光线|高光|阴影|层次|画质|细节|清晰/giu,
+    /增强|提升|提高|强化|改善|优化/giu,
+    /以及|并且|同时|和|与|及|并|请|整体|画面/giu,
+    /[\s、，,；;。.!！?？]+/gu
+  ]) {
+    remainder = remainder.replace(pattern, "");
+  }
+  return remainder ? [] : domains;
+}
+
+function ordinaryArtPromptSimpleQualityDomainPresent(candidate, domain) {
+  const text = normalizeSmartAiText(candidate, 20000);
+  const positive = "(?:细腻|清晰|真实|自然|精致|丰富|高级|分明|立体|协调|受控|柔和|完整|出色|高)";
+  const anchor = domain === "material"
+    ? "(?:材质|纹理)(?:与|和|及|、)?(?:材质|纹理)?"
+    : (domain === "lighting"
+      ? "(?:光影|光线|高光|阴影|明暗)(?:层次)?"
+      : (domain === "quality" ? "(?:画面质感|画质|完成度)" : ""));
+  if (!anchor) return false;
+  return new RegExp(`${anchor}[^，,；;。！？!?\\n]{0,12}${positive}`, "iu").test(text)
+    || new RegExp(`${positive}[^，,；;。！？!?\\n]{0,8}${anchor}`, "iu").test(text);
+}
+
+function ordinaryArtPromptApplySimpleQualityClosure(sourcePrompt, requirements, candidate, options = {}) {
+  const source = normalizeSmartAiText(sourcePrompt, 20000);
+  const domains = ordinaryArtPromptSimpleQualityClosureDomains(source, requirements, options);
+  if (!domains.length) return String(candidate ?? "");
+  const missing = domains.filter(
+    (domain) => !ordinaryArtPromptSimpleQualityDomainPresent(source, domain)
+  );
+  if (!missing.length) return source;
+  const finalState = missing
+    .map((domain) => ORDINARY_ART_SIMPLE_QUALITY_CLOSURE_PHRASES[domain])
+    .join("；");
+  const separator = /[。！？.!?]$/u.test(source) ? " " : "；";
+  return `${source}${separator}${finalState}。`;
+}
+
 function ordinaryArtStructuredPromptUserInstruction(requirements) {
   const text = normalizeSmartAiText(requirements, 4000).replace(/\r\n?/g, "\n");
   if (!text) return "";
@@ -4523,6 +4592,12 @@ function parseOrdinaryArtPromptPatchResult(text, options = {}) {
     || ordinaryArtPromptPatchCompact(mergedPrompt) === ordinaryArtPromptPatchCompact(source)) {
     throw new Error("Grok ordinary Art patch did not change the prompt");
   }
+  mergedPrompt = ordinaryArtPromptApplySimpleQualityClosure(
+    source,
+    options.requirements,
+    mergedPrompt,
+    { promptSchema: options.promptSchema }
+  );
   if (ordinaryArtPromptPatchResourceTokens(mergedPrompt).join("\u0000")
     !== ordinaryArtPromptPatchResourceTokens(source).join("\u0000")) {
     throw new Error("Grok ordinary Art merged prompt damages a resource token");
@@ -4831,8 +4906,18 @@ function ordinaryArtStructuredPromptNegativePrompt(existingNegativePrompt, termi
 function ordinaryArtStructuredPromptRequirementClauseSpecs(instruction) {
   const source = ordinaryArtStructuredPromptLine(instruction, 4000);
   if (!source) return [];
+  const genericPreservation = /^(?:(?:保留|保持|维持)(?:原有|当前)?(?:主体(?:身份)?|角色(?:身份)?|人物(?:身份)?|整体构图|镜头构图|构图|画面布局|整体布局)(?:(?:与|和|及|以及)(?:主体(?:身份)?|角色(?:身份)?|人物(?:身份)?|整体构图|镜头构图|构图|画面布局|整体布局))?(?:不变|一致)?|(?:keep|preserve|retain|maintain)(?: the)? (?:subject(?: identity)?|character identity|overall composition|camera composition|composition|image layout|layout)(?: and (?:subject(?: identity)?|character identity|overall composition|camera composition|composition|image layout|layout))?(?: unchanged)?)$/iu;
+  const operationStart = "(?:保留|保持|维持|增强|提升|增加|添加|补充|降低|减少|弱化|去除|删除|修改|调整|改为|改成|替换|keep|preserve|retain|maintain|enhance|improve|increase|add|reduce|decrease|remove|change|modify|adjust|replace)";
+  const connectorBeforeOperation = new RegExp(`(?:并且|同时|以及|然后|\\b(?:and|also|then)\\b)(?=\\s*${operationStart})`, "giu");
+  let rawClauses = source
+    .split(/[，,；;。.!！？?\n]+/u)
+    .flatMap((segment) => segment.split(connectorBeforeOperation))
+    .map((clause) => clause.replace(/^(?:并且|同时|以及|然后|(?:and|also|then)\b)\s*/iu, "").trim())
+    .filter(Boolean);
+  const actionableClauses = rawClauses.filter((clause) => !genericPreservation.test(clause));
+  if (actionableClauses.length) rawClauses = actionableClauses;
   const specs = [];
-  for (const rawClause of source.split(/[，,；;。.!！？?\n]+|(?:并且|同时|以及|然后)|\b(?:and|also|then)\b/iu)) {
+  for (const rawClause of rawClauses) {
     let clause = rawClause.trim();
     const direction = /(?:减少|降低|弱化|减弱|去除|删除|移除|取消|避免|禁止|不要|不得|不再|无|没有|缺少|不足|\b(?:decrease|reduce|remove|delete|less|without|avoid|no|not|never)\b)/iu.test(clause)
       ? "decrease"

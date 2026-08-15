@@ -27,6 +27,37 @@ function structuredAdultRestoreBlock(source) {
   return source.slice(start, end);
 }
 
+function structuredRequirementClauseSpecs(source) {
+  const normalized = source.replaceAll("\r\n", "\n");
+  const start = normalized.indexOf("function ordinaryArtStructuredPromptRequirementClauseSpecs(");
+  const end = normalized.indexOf("function ordinaryArtStructuredPromptRequirementClauses(", start);
+  assert.ok(start >= 0 && end > start, "structured requirement-clause parser must exist");
+  const block = normalized.slice(start, end);
+  return Function(
+    "ordinaryArtStructuredPromptLine",
+    "ordinaryArtPromptPatchCompact",
+    `"use strict"; ${block}; return ordinaryArtStructuredPromptRequirementClauseSpecs;`
+  )(
+    (value, maxLength) => String(value ?? "").replace(/\s+/gu, " ").trim().slice(0, maxLength),
+    (value) => String(value ?? "").toLowerCase().replace(/\s+/gu, "").trim()
+  );
+}
+
+function simpleQualityClosure(source) {
+  const normalized = source.replaceAll("\r\n", "\n");
+  const start = normalized.indexOf("function ordinaryArtPromptPatchRawUserInstruction(");
+  const end = normalized.indexOf("function ordinaryArtStructuredPromptUserInstruction(", start);
+  assert.ok(start >= 0 && end > start, "simple quality closure helpers must exist");
+  const block = normalized.slice(start, end);
+  return Function(
+    "normalizeSmartAiText",
+    `"use strict"; ${block}; return {
+      domains: ordinaryArtPromptSimpleQualityClosureDomains,
+      close: ordinaryArtPromptApplySimpleQualityClosure
+    };`
+  )((value, limit = 20000) => String(value || "").replace(/\r\n/g, "\n").trim().slice(0, limit));
+}
+
 assert.equal(
   ordinaryPatchBlock(desktopSource),
   ordinaryPatchBlock(cloudSource),
@@ -35,6 +66,105 @@ assert.equal(
 
 for (const [name, source] of [["desktop", desktopSource], ["cloud", cloudSource]]) {
   const quoteTomlValue = structuredTomlQuoter(source);
+  const requirementClauseSpecs = structuredRequirementClauseSpecs(source);
+  const qualityClosure = simpleQualityClosure(source);
+  const simpleSource = "一名成年女战士站在山谷中，电影级光影，细节清晰。";
+  const qualityInstruction = "增强材质、光影层次和画面质感";
+  assert.deepEqual(
+    qualityClosure.domains(simpleSource, qualityInstruction),
+    ["material", "lighting", "quality"],
+    `${name} must classify the exact allowlisted three-domain request`
+  );
+  const discardedProviderDelta = qualityClosure.close(
+    simpleSource,
+    qualityInstruction,
+    "一名成年女战士站在海边，背景增加飞鸟，夕阳为红色。"
+  );
+  assert.ok(discardedProviderDelta.startsWith(simpleSource), `${name} closure must rebuild from the trusted source`);
+  assert.doesNotMatch(discardedProviderDelta, /海边|飞鸟|红色/u, `${name} closure must discard an unproven provider delta`);
+  for (const phrase of [
+    "材质与纹理细腻清晰",
+    "光影层次丰富，高光与阴影过渡自然",
+    "画面质感精致，细节清晰，完成度高"
+  ]) {
+    assert.match(discardedProviderDelta, new RegExp(phrase, "u"), `${name} must close every requested missing domain`);
+  }
+  const partialSource = "一名成年女战士站在山谷中，材质与纹理细腻清晰，光影层次丰富。";
+  const partialClosed = qualityClosure.close(partialSource, qualityInstruction, "provider changed background");
+  assert.equal((partialClosed.match(/材质与纹理细腻清晰/gu) || []).length, 1, `${name} must not duplicate material closure`);
+  assert.equal((partialClosed.match(/光影层次丰富/gu) || []).length, 1, `${name} must not duplicate lighting closure`);
+  assert.match(partialClosed, /画面质感精致，细节清晰，完成度高/u, `${name} must append only the missing quality closure`);
+  for (const instruction of [
+    "增强背景质感",
+    "增强材质并保持构图",
+    "不要增强材质",
+    "把材质改得更清晰",
+    "增强红色材质",
+    "增加细节",
+    "材质、光影层次和画面质感"
+  ]) {
+    assert.deepEqual(qualityClosure.domains(simpleSource, instruction), [], `${name} must abstain for ${instruction}`);
+  }
+  assert.deepEqual(
+    qualityClosure.domains("一名女战士使用 __NOVAFLOW_IMAGE_1__ 作为参考。", qualityInstruction),
+    [],
+    `${name} must not close resource-bearing prompts`
+  );
+  assert.deepEqual(
+    qualityClosure.domains("[风格设定]\n媒介=数字绘画", qualityInstruction),
+    [],
+    `${name} must not close structured prompts`
+  );
+  assert.deepEqual(
+    qualityClosure.domains(simpleSource, qualityInstruction, { promptSchema: "nf.art.prompt.v1" }),
+    [],
+    `${name} must not close a schema-bearing request`
+  );
+  const exactWhitespaceCandidate = "  first line\r\nsecond line  \n";
+  assert.equal(
+    qualityClosure.close(simpleSource, "增强背景质感", exactWhitespaceCandidate),
+    exactWhitespaceCandidate,
+    `${name} must preserve every noneligible candidate byte`
+  );
+  assert.deepEqual(
+    requirementClauseSpecs("增强材质、光影层次和画面质感，保持主体与构图。"),
+    [{ clause: "材质、光影层次和画面质感", direction: "increase" }],
+    `${name} must not count a terminal generic preservation clause as a new edit fact`
+  );
+  assert.deepEqual(
+    requirementClauseSpecs("enhance material detail, keep the subject and composition unchanged"),
+    [{ clause: "material detail", direction: "increase" }],
+    `${name} must preserve the same terminal generic-preservation behavior in English`
+  );
+  for (const [instruction, expected, label] of [
+    ["增强材质，同时保持主体与构图", [{ clause: "材质", direction: "increase" }], "connector"],
+    ["保持主体与构图，增强材质", [{ clause: "材质", direction: "increase" }], "leading"],
+    ["增强材质，保持主体与构图，提高光影层次", [
+      { clause: "材质", direction: "increase" },
+      { clause: "光影层次", direction: "increase" }
+    ], "middle"],
+    ["enhance material detail and keep the subject and composition unchanged", [
+      { clause: "material detail", direction: "increase" }
+    ], "english connector"],
+    ["保持主体；维持整体构图不变", [
+      { clause: "保持主体", direction: "target" },
+      { clause: "维持整体构图不变", direction: "target" }
+    ], "pure preservation"]
+  ]) {
+    assert.deepEqual(
+      requirementClauseSpecs(instruction),
+      expected,
+      `${name} must preserve ${label} generic-preservation semantics`
+    );
+  }
+  assert.deepEqual(
+    requirementClauseSpecs("增强材质，保留蓝色发饰"),
+    [
+      { clause: "材质", direction: "increase" },
+      { clause: "保留蓝色发饰", direction: "target" }
+    ],
+    `${name} must keep named preservation constraints in the edit ledger`
+  );
   const allC0 = Array.from({ length: 32 }, (_value, index) => String.fromCharCode(index)).join("");
   const dangerousValue = `prefix\"quote\\backslash/forward-slash${allC0}suffix`;
   const encodedValue = quoteTomlValue(dangerousValue);
@@ -66,6 +196,7 @@ for (const [name, source] of [["desktop", desktopSource], ["cloud", cloudSource]
   assert.match(source, /Grok ordinary Art patch collapses target content/, `${name} must reject destructive target collapse`);
   assert.match(source, /Grok ordinary Art patch damages a resource token/, `${name} must preserve protected resource tokens`);
   assert.match(source, /Grok ordinary Art merged prompt drops a named hard-constraint block/, `${name} must preserve named hard-constraint blocks`);
+  assert.match(source, /ordinaryArtPromptApplySimpleQualityClosure\([\s\S]*ordinaryArtPromptPatchResourceTokens\(mergedPrompt\)[\s\S]*ordinaryArtPromptPatchNamedHardBlocksPreserved\(source, mergedPrompt[\s\S]*ordinaryArtPromptCoreRedefinitionFailure\(/, `${name} must run resource, retention, and core gates after deterministic quality closure`);
   assert.match(source, /retained \/ blockBigrams\.size < 0\.6/, `${name} must retain named hard-block content, not only its label`);
   assert.match(source, /若统一变更要求确实与整个短 Prompt 冲突，可以替换全部受影响内容/, `${name} must allow legitimate fully conflicting short edits`);
   assert.match(source, /operation === "append"[\s\S]*ordinaryArtPromptPatchReplacementIsMetaInstruction\(replacement\)/, `${name} must reject append operation instructions`);

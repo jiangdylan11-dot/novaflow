@@ -220,8 +220,8 @@ assert.match(brandRuntimeSource, /data-novaflow-art-generate-nsfw/);
 assert.match(smartAiSource, /nsfw: surface === "art" \? readArtGenerateNsfw\(button\) : false/);
 assert.match(particleEditorIndexSource, /novaflow-brand-runtime\.js\?v=20260813-ideogram-instant-1/);
 assert.match(particleEditorIndexSource, /smart-ai-art-auto-intent\.workflow\.js\?v=20260811-art-auto-intent-1/);
-assert.match(particleEditorIndexSource, /novaflow-smart-ai\.js\?v=20260815-art-action-split-3/);
-assert.match(smartAiSource, /const VERSION = "20260815-art-action-split-3"/);
+assert.match(particleEditorIndexSource, /novaflow-smart-ai\.js\?v=20260815-art-e2e-parity-1/);
+assert.match(smartAiSource, /const VERSION = "20260815-art-e2e-parity-1"/);
 
 const requestFunction = mainSource.slice(
   mainSource.indexOf("async function requestPromptAssistant"),
@@ -620,6 +620,21 @@ const buildRequirementsEnd = smartAiSource.indexOf("\n\n  function renderEngineO
 assert.ok(buildRequirementsStart >= 0 && buildRequirementsEnd > buildRequirementsStart,
   "buildSmartAiRequirements should remain independently testable");
 const buildRequirementsSource = smartAiSource.slice(buildRequirementsStart, buildRequirementsEnd).trim();
+const stripTrailingGenericArtPreservation = vm.runInNewContext(
+  `(${extractNamedFunction(smartAiSource, "stripTrailingGenericArtPreservation")})`
+);
+const shouldUseStructuredArtPromptContract = vm.runInNewContext(
+  `(${extractNamedFunction(smartAiSource, "shouldUseStructuredArtPromptContract")})`
+);
+assert.equal(
+  shouldUseStructuredArtPromptContract("一名成年女战士站在山谷中，电影级光影，细节清晰。"),
+  false,
+  "short single-paragraph Art optimization must omit the structured schema for both providers"
+);
+assert.equal(shouldUseStructuredArtPromptContract("甲".repeat(121)), true);
+assert.equal(shouldUseStructuredArtPromptContract("主体立于山谷\n背景为雪山"), true);
+assert.equal(shouldUseStructuredArtPromptContract("[风格设定] 数字绘画"), true);
+assert.equal(shouldUseStructuredArtPromptContract("保留 __NOVAFLOW_IMAGE_01__ 资源"), true);
 const openDialogSource = extractNamedFunction(smartAiSource, "openDialog");
 const invalidateAnalysisSource = extractNamedFunction(smartAiSource, "invalidateSmartAiAnalysis");
 const readArtGenerateNsfwSource = extractNamedFunction(smartAiSource, "readArtGenerateNsfw");
@@ -843,6 +858,7 @@ function createSmartAiSubmitHarness({
     ART_REFERENCE_PLAN: null,
     ORDINARY_ART_PROMPT_SCHEMA,
     ORDINARY_ART_EDIT_CONTRACT,
+    shouldUseStructuredArtPromptContract,
     getPromptTextareasFromContext: () => ({ positive, negative }),
     isPromptTextControl: (value) => Boolean(value),
     buildSmartAiRequirements: () => internalRequirements || "高质量CG渲染约束：通用长质量块；基础质量由系统自动负责",
@@ -1479,7 +1495,7 @@ async function verifySmartAiBehavior() {
   }
 
   const textRequirementsState = {
-    requirements: "背景过于曝光",
+    requirements: "背景过于曝光，保持主体与构图",
     context: { surface: "art", artGenerateMode: "txt2img" },
     mode: "optimize",
     starterPreset: "",
@@ -1491,6 +1507,7 @@ async function verifySmartAiBehavior() {
   };
   const buildTextRequirements = vm.runInNewContext(`(${buildRequirementsSource})`, {
     state: textRequirementsState,
+    stripTrailingGenericArtPreservation,
     window: { NovaFlowArtQualityProfile: { build: () => ({ directorInstruction: "高质量CG渲染约束：保留完整商业插画质量" }) } },
     ART_TASK_PRESETS: [],
     ART_STYLE_PRESETS: [],
@@ -1509,6 +1526,7 @@ async function verifySmartAiBehavior() {
     purpose: "optimize"
   });
   assert.equal(editRequirements.split("\n")[0], "用户本次修改要求（最高优先级）：背景过于曝光");
+  assert.doesNotMatch(editRequirements.split("\n")[0], /保持主体与构图/);
   assert.match(editRequirements, /完整原提示词为唯一底稿/);
   assert.match(editRequirements, /未提及信息必须保留/);
   assert.match(editRequirements, /修改后的完整可生图提示词/);
@@ -2202,7 +2220,10 @@ async function verifySmartAiBehavior() {
   assert.equal(namedDeletionWriteback.calls.writes.length, 1,
     "an explicitly named deletion must pass the same writeback gate without disabling other preservation checks");
 
-  const fullBasePrompt = "两位25岁以上的成年东方女性，青绿色与象牙白金色华服，亲密依偎，顶级中国幻想RPG游戏CG，保留完整构图和避免项。";
+  const fullBasePrompt = STRUCTURED_ART_EDIT_FIXTURE.replace(
+    "背景过曝高光受到抑制",
+    "背景高光明显过曝"
+  );
   for (const engine of ["grok", "local"]) {
     const edit = createSmartAiSubmitHarness({
       engine,
@@ -2762,21 +2783,36 @@ async function verifySmartAiBehavior() {
   assert.equal(Object.hasOwn(animationOptimize.calls.localOptimize[0], "promptSchema"), false,
     "ordinary animation optimize must stay outside the Art structured schema");
 
-  const ordinaryOptimize = createSmartAiSubmitHarness({ engine: "local", artTask: "create", imageCount: 0, nsfw: true });
-  await ordinaryOptimize.runSmartAi();
-  assert.equal(ordinaryOptimize.calls.localOptimize.length, 1);
-  assert.match(ordinaryOptimize.calls.localOptimize[0].requirements, /高质量CG渲染约束/);
-  assert.equal(Object.hasOwn(ordinaryOptimize.calls.localOptimize[0], "visualSchema"), false);
-  assert.equal(ordinaryOptimize.calls.localOptimize[0].promptSchema, ORDINARY_ART_PROMPT_SCHEMA);
-  assert.equal(ordinaryOptimize.calls.localOptimize[0].nsfw, true,
-    "ordinary Local Art text optimization must forward the enabled NSFW state");
-
-  const ordinaryGrokOptimize = createSmartAiSubmitHarness({ engine: "grok", artTask: "create", imageCount: 0, nsfw: true });
-  await ordinaryGrokOptimize.runSmartAi();
-  assert.equal(ordinaryGrokOptimize.calls.grokOptimize.length, 1);
-  assert.equal(ordinaryGrokOptimize.calls.grokOptimize[0].promptSchema, ORDINARY_ART_PROMPT_SCHEMA);
-  assert.equal(ordinaryGrokOptimize.calls.grokOptimize[0].nsfw, true,
-    "ordinary Grok Art text optimization must forward the enabled NSFW state");
+  const simplePrompt = "一名成年女战士站在山谷中，电影级光影，细节清晰。";
+  const simpleResult = "一名成年女战士站在山谷中，材质纹理细腻，光影层次丰富，画面质感精致，细节清晰。";
+  for (const engine of ["local", "grok"]) {
+    const ordinaryOptimize = createSmartAiSubmitHarness({
+      engine,
+      artTask: "create",
+      imageCount: 0,
+      nsfw: true,
+      initialPrompt: simplePrompt,
+      userIntent: "增强材质、光影层次和画面质感",
+      response: {
+        ok: true,
+        prompt: simpleResult,
+        negative_prompt: "低质量, 模糊, 材质失真",
+        has_negative_prompt: true
+      }
+    });
+    await ordinaryOptimize.runSmartAi();
+    const optimizeCalls = engine === "local"
+      ? ordinaryOptimize.calls.localOptimize
+      : ordinaryOptimize.calls.grokOptimize;
+    assert.equal(optimizeCalls.length, 1);
+    assert.equal(optimizeCalls[0].currentPrompt, simplePrompt);
+    assert.equal(Object.hasOwn(optimizeCalls[0], "promptSchema"), false,
+      `${engine} short single-paragraph Art optimize must use the shared patch contract`);
+    assert.equal(Object.hasOwn(optimizeCalls[0], "visualSchema"), false);
+    assert.equal(optimizeCalls[0].nsfw, true,
+      `ordinary ${engine} Art text optimization must forward the enabled NSFW state`);
+    assert.equal(ordinaryOptimize.calls.writes[0].prompt, simpleResult);
+  }
 
   const blocked = createSmartAiSubmitHarness({
     engine: "local",

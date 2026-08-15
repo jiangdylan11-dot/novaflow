@@ -63,7 +63,7 @@ includes(
 );
 includes(
   index,
-  "novaflow-smart-ai.js?v=20260815-art-action-split-3",
+  "novaflow-smart-ai.js?v=20260815-art-e2e-parity-1",
   "active source entry publishes the capability-aware Smart AI module",
 );
 
