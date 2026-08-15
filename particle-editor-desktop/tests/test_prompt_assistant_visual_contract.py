@@ -4209,10 +4209,19 @@ class VisualContractTests(unittest.TestCase):
                 ))
 
     def test_service_v2_keyed_retry_normalizes_only_allowlisted_syntax_drift(self):
-        def execute(second_output, *, second_hit_token_limit=False):
+        def execute(
+            second_output=None,
+            *,
+            first_output=None,
+            second_hit_token_limit=False,
+        ):
             service = load_prompt_assistant_service()
             invalid_contract = compact_v2_json()[:-1] + ",}"
-            outputs = [invalid_contract, second_output]
+            outputs = (
+                [first_output]
+                if first_output is not None
+                else [invalid_contract, second_output]
+            )
 
             class FakeAdapter:
                 calls = []
@@ -4279,11 +4288,24 @@ class VisualContractTests(unittest.TestCase):
             '}]}"relations":',
             1,
         )
+        malformed_trailing_quote = keyed.replace(
+            '}],"relations":',
+            '}]","relations":',
+            1,
+        )
         self.assertIn('}]}"relations":', malformed_boundary)
+        self.assertIn('}]","relations":', malformed_trailing_quote)
+        self.assertEqual(malformed_trailing_quote.count('}]","relations":'), 1)
+        with self.assertRaisesRegex(
+            json.JSONDecodeError,
+            "Expecting ',' delimiter",
+        ):
+            json.loads(malformed_trailing_quote)
         for label, accepted in (
             ("clean", keyed),
             ("trailing-quote", keyed + '"'),
             ("entities-relations-delimiter", malformed_boundary),
+            ("entities-relations-trailing-quote", malformed_trailing_quote),
         ):
             with self.subTest(accepted=label):
                 result, error, calls = execute(accepted)
@@ -4291,6 +4313,12 @@ class VisualContractTests(unittest.TestCase):
                 self.assertIsNotNone(result)
                 self.assertEqual(len(calls), 2)
                 self.assertTrue(result["qualityGateRetried"])
+
+        result, error, calls = execute(first_output=malformed_trailing_quote)
+        self.assertIsNone(error)
+        self.assertIsNotNone(result)
+        self.assertEqual(len(calls), 1)
+        self.assertFalse(result["qualityGateRetried"])
 
         wrong_type = compact_v2_contract()
         wrong_type["people"] = "one"
@@ -4303,6 +4331,27 @@ class VisualContractTests(unittest.TestCase):
             '}]}"relations":',
             1,
         )
+        trailing_quote_wrong_type = json.dumps(
+            wrong_type,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        ).replace(
+            '}],"relations":',
+            '}]","relations":',
+            1,
+        )
+        trailing_quote_inside_string = keyed.replace(
+            '"asset":"角色插画"',
+            '"asset":"prefix }]","relations": suffix"',
+            1,
+        )
+        trailing_quote_twice = malformed_trailing_quote.replace(
+            '"asset":"角色插画"',
+            '"asset":"prefix }]","relations": suffix"',
+            1,
+        )
+        self.assertEqual(trailing_quote_inside_string.count('}]","relations":'), 1)
+        self.assertEqual(trailing_quote_twice.count('}]","relations":'), 2)
         rejected_outputs = (
             keyed + '"junk',
             keyed + '""',
@@ -4320,6 +4369,14 @@ class VisualContractTests(unittest.TestCase):
             malformed_boundary[:-1] + ',"asset":"duplicate"}',
             malformed_boundary[:-1] + ',"extra":"value"}',
             malformed_wrong_type,
+            malformed_trailing_quote.replace('}]","relations":', '}] ","relations":', 1),
+            malformed_trailing_quote.replace('"relations":', '"relationz":', 1),
+            malformed_trailing_quote.replace('}]","relations":', '}]"","relations":', 1),
+            trailing_quote_inside_string,
+            trailing_quote_twice,
+            trailing_quote_wrong_type,
+            malformed_trailing_quote[:-1] + ',"extra":"value"}',
+            malformed_trailing_quote + '"junk',
         )
         for rejected in rejected_outputs:
             with self.subTest(suffix=rejected[-16:]):
@@ -4329,14 +4386,16 @@ class VisualContractTests(unittest.TestCase):
                 self.assertIn("failed closed", str(error))
                 self.assertEqual(len(calls), 2)
 
-        result, error, calls = execute(
-            malformed_boundary,
-            second_hit_token_limit=True,
-        )
-        self.assertIsNone(result)
-        self.assertIsNotNone(error)
-        self.assertIn("failed closed", str(error))
-        self.assertEqual(len(calls), 2)
+        for hit_limited in (malformed_boundary, malformed_trailing_quote):
+            with self.subTest(hit_limited=hit_limited[-32:]):
+                result, error, calls = execute(
+                    hit_limited,
+                    second_hit_token_limit=True,
+                )
+                self.assertIsNone(result)
+                self.assertIsNotNone(error)
+                self.assertIn("failed closed", str(error))
+                self.assertEqual(len(calls), 2)
 
     def test_service_v2_closed_invalid_json_retry_semantic_failure_degrades_blocked(self):
         service = load_prompt_assistant_service()
@@ -4353,6 +4412,10 @@ class VisualContractTests(unittest.TestCase):
             semantic_invalid,
             ensure_ascii=False,
             separators=(",", ":"),
+        ).replace(
+            '}],"relations":',
+            '}]","relations":',
+            1,
         )
         outputs = [invalid_contract, second_output]
 

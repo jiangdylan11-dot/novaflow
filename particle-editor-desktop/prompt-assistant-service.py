@@ -16569,13 +16569,22 @@ class PromptAssistant:
             ):
                 return text, "", -1
             if not text.endswith('}"'):
-                marker = '}]}"relations":'
+                delimiter_marker = '}]}"relations":'
+                trailing_quote_marker = '}]","relations":'
+                delimiter_count = text.count(delimiter_marker)
+                trailing_quote_count = text.count(trailing_quote_marker)
                 if (
                     not text.startswith("{")
                     or not text.endswith("}")
-                    or text.count(marker) != 1
+                    or (delimiter_count, trailing_quote_count)
+                    not in {(1, 0), (0, 1)}
                 ):
                     return text, "", -1
+                marker = (
+                    delimiter_marker
+                    if delimiter_count == 1
+                    else trailing_quote_marker
+                )
                 marker_index = text.index(marker)
                 object_depth = 0
                 array_depth = 0
@@ -16604,6 +16613,24 @@ class PromptAssistant:
                         return text, "", -1
                 if in_string or object_depth != 2 or array_depth != 1:
                     return text, "", -1
+                if marker == trailing_quote_marker:
+                    quote_offset = marker_index + 2
+                    candidate = (
+                        text[:quote_offset]
+                        + text[quote_offset + 1 :]
+                    )
+                    if (
+                        len(candidate) != len(text) - 1
+                        or text[quote_offset] != '"'
+                        or candidate[:quote_offset] != text[:quote_offset]
+                        or candidate[quote_offset:] != text[quote_offset + 1 :]
+                    ):
+                        return text, "", -1
+                    return (
+                        candidate,
+                        "entities_relations_trailing_quote",
+                        quote_offset,
+                    )
                 candidate = (
                     text[: marker_index + 2]
                     + ","
