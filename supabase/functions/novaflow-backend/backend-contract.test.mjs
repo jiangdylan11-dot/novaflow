@@ -1308,6 +1308,14 @@ test("ordinary Art nf.art.prompt.v1 enforces Local-equivalent typed slots before
   assert.match(schemaProperties.style.properties.render_language.description, /渲染语言/);
   assert.match(schemaProperties.style.properties.atmosphere.description, /必须包含.*氛围.*情绪.*调性/);
   assert.match(schemaProperties.style.properties.finish.description, /必须包含.*材质.*纹理.*细节.*完成度/);
+  assert.match(schemaProperties.applied_requirements.description, /最终视觉事实账本.*每个原子要求/);
+  assert.match(
+    schemaProperties.applied_requirements.items.description,
+    /逐字等于.*一个完整scalar.*单一值.*全部视觉域/
+  );
+  assert.equal(schemaProperties.applied_requirements.minItems, 0);
+  assert.equal(schemaProperties.applied_requirements.maxItems, 16);
+  assert.equal(schemaProperties.applied_requirements.items.maxLength, 320);
   assert.match(schemaProperties.terminal_constraints.description, /最终画面硬约束.*最终状态/);
   assert.match(
     schemaProperties.terminal_constraints.items.description,
@@ -1361,6 +1369,68 @@ test("ordinary Art nf.art.prompt.v1 enforces Local-equivalent typed slots before
   assert.throws(
     () => grokResponsesPublicResult({ output_text: JSON.stringify(genericTerminal) }, request.resultOptions),
     /terminal constraint is not a final-state hard constraint/
+  );
+
+  const compoundQualityInstruction = "增强材质、光影层次和画面质感";
+  const compoundQualityRequest = buildStructuredArtContractRequest({
+    instruction: compoundQualityInstruction
+  });
+  const compoundQualityIr = validStructuredArtPromptIr([]);
+  const compoundQualityResult = grokResponsesPublicResult(
+    { output_text: JSON.stringify(compoundQualityIr) },
+    compoundQualityRequest.resultOptions
+  );
+  assert.equal(compoundQualityResult.editContract, "structured-recompile-v1");
+  assert.match(compoundQualityResult.output_text, /材质与纹理细腻清晰/);
+  assert.match(compoundQualityResult.output_text, /光影层次丰富，高光与阴影过渡自然/);
+  assert.match(compoundQualityResult.output_text, /画面质感精致，细节清晰，完成度高/);
+
+  for (const instruction of [
+    "增强材质并提升光影",
+    "增强材质、光影层次和画面质感并添加一只猫",
+    "材质、光影层次和画面质感",
+    "不要增强材质、光影层次和画面质感"
+  ]) {
+    const ineligibleRequest = buildStructuredArtContractRequest({ instruction });
+    assert.throws(
+      () => grokResponsesPublicResult(
+        { output_text: JSON.stringify(validStructuredArtPromptIr([])) },
+        ineligibleRequest.resultOptions
+      ),
+      /structured user requirement coverage is incomplete/,
+      instruction
+    );
+  }
+  const resourceSourceRequest = buildStructuredArtContractRequest({
+    base: "两位25岁以上的成年东方女性角色亲密依偎，使用@参考图1的构图。",
+    instruction: compoundQualityInstruction
+  });
+  assert.throws(
+    () => grokResponsesPublicResult(
+      { output_text: JSON.stringify(validStructuredArtPromptIr([])) },
+      resourceSourceRequest.resultOptions
+    ),
+    /structured user requirement coverage is incomplete/
+  );
+  const oppositeFinishIr = validStructuredArtPromptIr([]);
+  oppositeFinishIr.style.finish = "低质量粗糙材质，画面细节不足";
+  assert.throws(
+    () => grokResponsesPublicResult(
+      { output_text: JSON.stringify(oppositeFinishIr) },
+      compoundQualityRequest.resultOptions
+    ),
+    /structured user requirement coverage is incomplete/
+  );
+  const canonicalInSourceRequest = buildStructuredArtContractRequest({
+    base: "两位25岁以上的成年东方女性角色亲密依偎，材质与纹理细腻清晰。",
+    instruction: compoundQualityInstruction
+  });
+  assert.throws(
+    () => grokResponsesPublicResult(
+      { output_text: JSON.stringify(validStructuredArtPromptIr([])) },
+      canonicalInSourceRequest.resultOptions
+    ),
+    /structured user requirement coverage is incomplete/
   );
 
   const sparse813 = validStructuredArtPromptIr([]);

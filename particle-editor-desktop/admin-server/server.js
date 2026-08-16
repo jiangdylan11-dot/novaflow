@@ -5082,7 +5082,16 @@ function ordinaryArtStructuredPromptTextFormat() {
               description: "明确焦点、清晰范围与背景虚化，例如主体清晰对焦、背景轻度虚化"
             }
           }),
-          applied_requirements: list(0, 16, 320),
+          applied_requirements: {
+            type: "array",
+            minItems: 0,
+            maxItems: 16,
+            description: "用户修改要求的最终视觉事实账本；无真实修改要求时返回空数组，有要求时每个原子要求恰好对应一项",
+            items: {
+              ...scalar(320),
+              description: "必须逐字等于前五个视觉分区中的一个完整scalar值，并在该单一值中覆盖对应原子要求的全部视觉域；例如一个同时要求材质、光影和画面质感的复合要求必须由一个同时含三域最终状态的scalar完整落实，不得拆成多个账本项或写操作命令"
+            }
+          },
           terminal_constraints: {
             type: "array",
             minItems: 1,
@@ -6272,6 +6281,54 @@ function ordinaryArtStructuredPromptApplyCanonicalSafeClosure(instruction, style
     visualEntry.value = value;
   }
   return assignments.map(({ slot }) => style[slot]);
+}
+
+function ordinaryArtStructuredPromptApplySimpleQualityClosure(instruction, source, style, visualValues) {
+  const normalizedInstruction = ordinaryArtPromptPatchRawUserInstruction(instruction);
+  const clauseSpecs = ordinaryArtStructuredPromptRequirementClauseSpecs(normalizedInstruction);
+  const domains = ordinaryArtPromptSimpleQualityClosureDomains(source, normalizedInstruction, {});
+  if (!normalizedInstruction || clauseSpecs.length !== 1 || clauseSpecs[0].direction !== "increase"
+    || ordinaryArtPromptPatchCompact(clauseSpecs[0].clause)
+      !== ordinaryArtPromptPatchCompact("材质、光影层次和画面质感")
+    || domains.join("\u0000") !== "material\u0000lighting\u0000quality"
+    || /(?:@参考图\d*|@视频参考\d*|@声音参考\d*|@首帧|@尾帧)/iu.test(String(source || ""))
+    || ordinaryArtStructuredPromptCanonicalSlotHasOpposite("finish", style.finish)) {
+    return [];
+  }
+  const finishEntry = visualValues.find(({ path }) => path === "style.finish");
+  if (!finishEntry || finishEntry.value !== style.finish) return [];
+  const additions = domains
+    .map((domain) => ORDINARY_ART_SIMPLE_QUALITY_CLOSURE_PHRASES[domain])
+    .filter(Boolean);
+  if (additions.length !== domains.length) return [];
+  const sourceCompact = ordinaryArtPromptPatchCompact(source);
+  if (additions.some((addition) => sourceCompact.includes(ordinaryArtPromptPatchCompact(addition)))) {
+    return [];
+  }
+  const baseCompact = ordinaryArtPromptPatchCompact(style.finish);
+  const missing = additions.filter((addition) => !baseCompact.includes(ordinaryArtPromptPatchCompact(addition)));
+  let nextFinish = style.finish;
+  try {
+    if (missing.length) {
+      nextFinish = ordinaryArtStructuredPromptScalar(
+        `${style.finish}，${missing.join("，")}`,
+        "style.finish",
+        400
+      );
+    }
+    if (!ordinaryArtStructuredPromptRequirementCoverage(normalizedInstruction, [nextFinish])) return [];
+    ordinaryArtStructuredPromptEnsureUniqueVisualValues(
+      visualValues.map(({ path, value }) => ({
+        path,
+        value: path === "style.finish" ? nextFinish : value
+      }))
+    );
+  } catch (_error) {
+    return [];
+  }
+  style.finish = nextFinish;
+  finishEntry.value = nextFinish;
+  return [nextFinish];
 }
 
 function ordinaryArtStructuredPromptHasExplicitAdultIdentity(value) {
@@ -7704,6 +7761,15 @@ function parseOrdinaryArtStructuredPromptResult(text, options = {}) {
     }
     if (!groundedCoverage) {
       appliedRequirements = ordinaryArtStructuredPromptRebuildRequirementLedger(rawInstruction, frontValues);
+    }
+    if (!ordinaryArtStructuredPromptRequirementCoverage(rawInstruction, appliedRequirements)) {
+      appliedRequirements = ordinaryArtStructuredPromptApplySimpleQualityClosure(
+        rawInstruction,
+        source,
+        style,
+        visualValues
+      );
+      frontValues = visualValues.map(({ value }) => value);
     }
     if (!ordinaryArtStructuredPromptRequirementCoverage(rawInstruction, appliedRequirements)) {
       appliedRequirements = ordinaryArtStructuredPromptApplyCanonicalSafeClosure(
