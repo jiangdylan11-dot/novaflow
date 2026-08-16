@@ -6582,16 +6582,10 @@ function ordinaryArtStructuredPromptCriticalAnchorsPreserved(source, compiledPro
       `(?<![${countBoundary}])(?<count>\\d+|一|两|二|三)(?![${countBoundary}])\\s*(?:位|名|个|条|只|头|匹|辆|件|把|架|艘)`,
       "gu"
     );
-    const compiledBareSubjectCountPattern = /^主体(?:[1-9]|1[0-2])数量[ \t]*=[ \t]*"(?<count>\d+)"[ \t]*$/gmu;
     const compiledCounts = new Set(
-      [
-        ...[...String(compiledPrompt || "").matchAll(compiledCountPattern)]
-          .map((match) => ordinaryArtStructuredPromptManifestNumber(match.groups?.count))
-          .filter((count) => count > 0),
-        ...[...String(compiledPrompt || "").matchAll(compiledBareSubjectCountPattern)]
-          .map((match) => ordinaryArtStructuredPromptManifestNumber(match.groups?.count))
-          .filter((count) => count > 0 && count <= 12)
-      ]
+      [...String(compiledPrompt || "").matchAll(compiledCountPattern)]
+        .map((match) => ordinaryArtStructuredPromptManifestNumber(match.groups?.count))
+        .filter((count) => count > 0)
     );
     for (const match of String(source || "").matchAll(sourceCountPattern)) {
       const count = ordinaryArtStructuredPromptManifestNumber(match.groups?.count);
@@ -6723,9 +6717,14 @@ function parseOrdinaryArtStructuredPromptResult(text, options = {}) {
       ORDINARY_ART_STRUCTURED_SUBJECT_KEYS,
       path
     );
+    const name = scalar(subject.name, `${path}.name`);
+    const count = scalar(subject.count, `${path}.count`, 80);
+    if (/^\d+$/u.test(count)) {
+      throw new Error(`Grok ordinary Art structured ${path}.count must include a classifier`);
+    }
     return {
-      name: scalar(subject.name, `${path}.name`),
-      count: scalar(subject.count, `${path}.count`, 80),
+      name,
+      count,
       appearance: list(subject.appearance, `${path}.appearance`, 1, 10),
       pose: scalar(subject.pose, `${path}.pose`),
       action: scalar(subject.action, `${path}.action`),

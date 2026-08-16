@@ -591,16 +591,18 @@ test("ordinary Art nf.art.prompt.v1 preserves source cardinality across compatib
   assert.match(result.output_text, /光影层次丰富，高光与阴影过渡自然/);
   assert.match(result.output_text, /画面质感精致，细节清晰，完成度高/);
 
-  const bareCountIr = cloneJson(ir);
-  bareCountIr.subjects[0].count = "1";
-  bareCountIr.subjects[1].count = "1";
-  const bareCountResult = grokResponsesPublicResult(
-    { output_text: JSON.stringify(bareCountIr) },
-    request.resultOptions
-  );
-  assert.equal(bareCountResult.editContract, "structured-recompile-v1");
-  assert.match(bareCountResult.output_text, /^主体1数量 = "1"$/m);
-  assert.match(bareCountResult.output_text, /^主体2数量 = "1"$/m);
+  for (const bareCount of ["1", "11", "0", "13"]) {
+    const bareCountIr = cloneJson(ir);
+    bareCountIr.subjects[0].count = bareCount;
+    assert.throws(
+      () => grokResponsesPublicResult(
+        { output_text: JSON.stringify(bareCountIr) },
+        request.resultOptions
+      ),
+      /subjects\[0\]\.count must include a classifier/,
+      `bare subject count ${bareCount} must fail closed instead of borrowing another subject's count evidence`
+    );
+  }
 
   const womanOnly = cloneJson(ir);
   womanOnly.subject_count = 1;
@@ -631,11 +633,11 @@ test("ordinary Art nf.art.prompt.v1 preserves source cardinality across compatib
   });
   assert.throws(
     () => grokResponsesPublicResult(
-      { output_text: JSON.stringify(bareCountIr) },
+      { output_text: JSON.stringify(ir) },
       mismatchedRequest.resultOptions
     ),
     /drops unmodified source facts|source visible fact|subject count/,
-    "bare per-subject counts must not hide a two-to-one cardinality loss"
+    "compatible counter normalization must not hide a two-to-one cardinality loss"
   );
 });
 
