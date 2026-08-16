@@ -43,6 +43,20 @@ function structuredRequirementClauseSpecs(source) {
   );
 }
 
+function structuredCriticalAnchorsPreserved(source) {
+  const normalized = source.replaceAll("\r\n", "\n");
+  const numberStart = normalized.indexOf("function ordinaryArtStructuredPromptManifestNumber(");
+  const numberEnd = normalized.indexOf("function ordinaryArtStructuredPromptSourceSentences(", numberStart);
+  const criticalStart = normalized.indexOf("function ordinaryArtStructuredPromptCriticalAnchorsPreserved(");
+  const criticalEnd = normalized.indexOf("function ordinaryArtStructuredPromptHardBlocksPreserved(", criticalStart);
+  assert.ok(numberStart >= 0 && numberEnd > numberStart, "structured manifest-number helper must exist");
+  assert.ok(criticalStart >= 0 && criticalEnd > criticalStart, "structured critical-anchor helper must exist");
+  return Function(
+    "ordinaryArtPromptPatchCompact",
+    `"use strict"; ${normalized.slice(numberStart, numberEnd)}\n${normalized.slice(criticalStart, criticalEnd)}; return ordinaryArtStructuredPromptCriticalAnchorsPreserved;`
+  )((value) => String(value ?? "").toLowerCase().replace(/\s+/gu, "").trim());
+}
+
 function simpleQualityClosure(source) {
   const normalized = source.replaceAll("\r\n", "\n");
   const start = normalized.indexOf("function ordinaryArtPromptPatchRawUserInstruction(");
@@ -67,6 +81,7 @@ assert.equal(
 for (const [name, source] of [["desktop", desktopSource], ["cloud", cloudSource]]) {
   const quoteTomlValue = structuredTomlQuoter(source);
   const requirementClauseSpecs = structuredRequirementClauseSpecs(source);
+  const criticalAnchorsPreserved = structuredCriticalAnchorsPreserved(source);
   const qualityClosure = simpleQualityClosure(source);
   const simpleSource = "一名成年女战士站在山谷中，电影级光影，细节清晰。";
   const qualityInstruction = "增强材质、光影层次和画面质感";
@@ -136,6 +151,21 @@ for (const [name, source] of [["desktop", desktopSource], ["cloud", cloudSource]
     [{ clause: "material detail", direction: "increase" }],
     `${name} must preserve the same terminal generic-preservation behavior in English`
   );
+  for (const [sourceText, candidateText, instruction, expected, label] of [
+    ["一个物体", "一件物体", "", true, "one compatible classifier"],
+    ["两个物体", "一件物体", "", false, "two-to-one loss"],
+    ["一个物体", "11件物体", "", false, "one must not match eleven"],
+    ["两个物体", "12件物体", "", false, "two must not match twelve"],
+    ["4个物体", "4件物体", "", true, "arbitrary numeric count"],
+    ["12个物体", "12件物体", "", true, "two-digit numeric count"],
+    ["两个物体", "一件物体", "把两个物体改为一个物体", true, "explicit count edit"]
+  ]) {
+    assert.equal(
+      criticalAnchorsPreserved(sourceText, candidateText, instruction),
+      expected,
+      `${name} must handle ${label}`
+    );
+  }
   for (const [instruction, expected, label] of [
     ["增强材质，同时保持主体与构图", [{ clause: "材质", direction: "increase" }], "connector"],
     ["保持主体与构图，增强材质", [{ clause: "材质", direction: "increase" }], "leading"],
@@ -288,6 +318,8 @@ for (const [name, source] of [["desktop", desktopSource], ["cloud", cloudSource]
   assert.match(source, /ordinaryArtStructuredPromptAssertBodyRewriteMatchesSource\(source, rawInstruction\)[\s\S]*ordinaryArtStructuredPromptRestoreSourceAdultIdentity/, `${name} must reject mismatched body-count rewrites before source identity restoration`);
   assert.match(source, /const frontSubjectFacts = \(\) => \[[\s\S]*subject\.appearance[\s\S]*subject\.details[\s\S]*contradictoryRelation/, `${name} must detect body-count contradictions across every subject fact, not only restored relations`);
   assert.match(source, /ordinaryArtStructuredPromptValidateSourceVisibleManifest\(source, rawInstruction, visualValues\)/, `${name} must run ordinary visible-fact retention before signing the structured result`);
+  assert.match(source, /function ordinaryArtStructuredPromptCriticalAnchorsPreserved[\s\S]*sourceCountPattern[\s\S]*compiledCountPattern[\s\S]*位\|名\|个\|条\|只\|头\|匹\|辆\|件\|把\|架\|艘[\s\S]*compiledCounts/, `${name} must preserve source cardinality while allowing compatible Chinese classifier normalization`);
+  assert.doesNotMatch(source, /const categories = \[\s*\{\s*sourcePattern: \/\(\?:\\d\+\|一\|两\|二\|三\)\\s\*\(\?:位\|名\|个\)\/gu/, `${name} must not require the source classifier token to survive verbatim`);
   assert.match(source, /Grok ordinary Art structured response damages a resource token/, `${name} must preserve resource tokens during structured recompile`);
   assert.match(source, /Grok ordinary Art structured response drops a named hard-constraint block/, `${name} must preserve hard constraints during structured recompile`);
   assert.match(source, /ordinaryArtStructuredPromptInlineHardSentences[\s\S]*must\|required\|only\|keep\|never\|avoid\|prohibit\|forbid[\s\S]*ordinaryArtStructuredPromptInlineHardConstraintsPreserved/, `${name} must preserve unnamed inline hard constraints`);

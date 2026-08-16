@@ -6546,11 +6546,30 @@ function ordinaryArtStructuredPromptSourcePreserved(source, compiledPrompt, inst
 }
 
 function ordinaryArtStructuredPromptCriticalAnchorsPreserved(source, compiledPrompt, instruction) {
+  const countInstructionPattern = /(?:人数|数量|\d+|一|两|二|三)\s*(?:位|名|个)/u;
+  if (!countInstructionPattern.test(instruction)) {
+    const countBoundary = "\\d一二两三四五六七八九十";
+    const sourceCountPattern = new RegExp(
+      `(?<![${countBoundary}])(?<count>\\d+|一|两|二|三)(?![${countBoundary}])\\s*(?:位|名|个)`,
+      "gu"
+    );
+    const compiledCountPattern = new RegExp(
+      `(?<![${countBoundary}])(?<count>\\d+|一|两|二|三)(?![${countBoundary}])\\s*(?:位|名|个|条|只|头|匹|辆|件|把|架|艘)`,
+      "gu"
+    );
+    const compiledCounts = new Set(
+      [...String(compiledPrompt || "").matchAll(compiledCountPattern)]
+        .map((match) => ordinaryArtStructuredPromptManifestNumber(match.groups?.count))
+        .filter((count) => count > 0)
+    );
+    for (const match of String(source || "").matchAll(sourceCountPattern)) {
+      const count = ordinaryArtStructuredPromptManifestNumber(match.groups?.count);
+      if (!count || !compiledCounts.has(count)) {
+        return false;
+      }
+    }
+  }
   const categories = [
-    {
-      sourcePattern: /(?:\d+|一|两|二|三)\s*(?:位|名|个)/gu,
-      instructionPattern: /(?:人数|数量|\d+|一|两|二|三)\s*(?:位|名|个)/u
-    },
     {
       sourcePattern: /(?:\d+\s*岁\s*(?:以上|以下)?|18\s*\+)/gu,
       instructionPattern: /(?:年龄|\d+\s*岁|18\s*\+)/u

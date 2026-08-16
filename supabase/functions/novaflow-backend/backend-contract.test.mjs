@@ -221,6 +221,74 @@ function validSingleAdultWomanIr({
   return ir;
 }
 
+function validBikiniWomanDogBeachIr() {
+  return {
+    schema: "nf.art.prompt.v1",
+    subject_count: 2,
+    style: {
+      medium: "高精度数字插画",
+      render_language: "日式二次元动漫角色插画与清晰线条渲染",
+      atmosphere: "轻松、开阔且明快的海边氛围与清新审美",
+      finish: "人物轮廓清晰，基础材质与画面细节表达完整"
+    },
+    subjects: [
+      {
+        name: "身穿比基尼的成年女性",
+        count: "一名",
+        appearance: ["成熟自然的成年女性五官", "比基尼服装轮廓清晰", "头发分组自然"],
+        pose: "自然行走姿态，重心稳定",
+        action: "左手牵着犬只沿海边前行",
+        materials: ["自然皮肤", "弹性泳装布料"],
+        colors: ["自然肤色", "协调的泳装色彩"],
+        details: ["五官清晰", "手脚结构准确", "发丝层次明确"]
+      },
+      {
+        name: "犬只",
+        count: "一条",
+        appearance: ["四肢与躯干结构完整", "毛发轮廓清晰"],
+        pose: "在成年女性身侧自然行走",
+        action: "跟随成年女性沿海边同行",
+        materials: ["自然细密的毛发"],
+        colors: ["协调的自然毛色"],
+        details: ["犬只面部清晰", "四足落地关系准确", "牵引带连接明确"]
+      }
+    ],
+    relations: [
+      "成年女性牵着一条犬只沿海边同行",
+      "犬只位于成年女性身侧，牵引带连接关系清晰"
+    ],
+    environment: {
+      setting: "开阔的海边沙滩",
+      background: "海面与天空构成简洁远景",
+      spatial_layers: ["前景为细沙", "中景为成年女性与犬只", "远景为海面和天空"],
+      support_surface: "平整沙滩承托成年女性与犬只",
+      occlusion: ["主体轮廓彼此分离", "牵引带保持清晰可见"]
+    },
+    lighting_color: {
+      light_direction: "自然日光从画面左上方照射",
+      light_quality: "柔和明亮的自然光线",
+      light_shadow: "人物、犬只与沙滩具有自然明暗层次",
+      rim_light: "发丝与犬只毛发边缘带轻微轮廓光",
+      palette: ["海天蓝", "沙滩暖色", "自然肤色"],
+      local_colors: ["皮肤高光柔和", "毛发明暗清晰", "海面反光克制"]
+    },
+    camera: {
+      shot: "双主体全身景别",
+      angle: "自然平视视角",
+      composition: "成年女性与犬只形成稳定横向双主体构图",
+      crop: "完整保留成年女性、犬只与牵引带",
+      perspective: "标准镜头透视与自然空间纵深",
+      depth_of_field: "主体清晰，远处海面与天空轻微虚化"
+    },
+    applied_requirements: [],
+    terminal_constraints: [
+      "主体数量必须保持为一名成年女性与一条犬只",
+      "成年女性牵引犬只的关系必须保持清晰",
+      "海边地点与日式二次元风格必须保持不变"
+    ]
+  };
+}
+
 function validObjectOnlyNsfwIr() {
   return {
     schema: "nf.art.prompt.v1",
@@ -488,6 +556,60 @@ test("ordinary Art nf.art.prompt.v1 recompiles one Grok IR into detailed six-sec
   assert.equal(result.editContract, "structured-recompile-v1");
   assert.equal(result.promptSchema, "nf.art.prompt.v1");
   assert.equal(result.negative_prompt.includes("塑料皮肤"), true);
+});
+
+test("ordinary Art nf.art.prompt.v1 preserves source cardinality across compatible Chinese counters", () => {
+  const source = "一个比基尼女牵着一条狗走在海边，二次元风格";
+  const instruction = "增强材质、光影层次和画面质感";
+  const request = buildStructuredArtContractRequest({ base: source, instruction });
+  const ir = validBikiniWomanDogBeachIr();
+  const result = grokResponsesPublicResult(
+    { output_text: JSON.stringify(ir) },
+    request.resultOptions
+  );
+  assert.equal(result.editContract, "structured-recompile-v1");
+  assert.match(result.output_text, /主体1数量 = "一名"/);
+  assert.match(result.output_text, /主体2数量 = "一条"/);
+  assert.doesNotMatch(result.output_text, /一个/);
+  assert.match(result.output_text, /材质与纹理细腻清晰/);
+  assert.match(result.output_text, /光影层次丰富，高光与阴影过渡自然/);
+  assert.match(result.output_text, /画面质感精致，细节清晰，完成度高/);
+
+  const womanOnly = cloneJson(ir);
+  womanOnly.subject_count = 1;
+  womanOnly.subjects = [womanOnly.subjects[0]];
+  womanOnly.subjects[0].action = "沿海边自然行走";
+  womanOnly.relations = [];
+  womanOnly.environment.spatial_layers = ["前景为细沙", "中景为成年女性", "远景为海面和天空"];
+  womanOnly.environment.support_surface = "平整沙滩承托成年女性";
+  womanOnly.environment.occlusion = ["成年女性轮廓保持清晰", "四肢结构完整可见"];
+  womanOnly.camera.composition = "成年女性形成稳定居中构图";
+  womanOnly.camera.crop = "完整保留成年女性全身";
+  womanOnly.terminal_constraints = [
+    "主体数量必须保持为一名成年女性",
+    "海边地点与日式二次元风格必须保持不变"
+  ];
+  assert.throws(
+    () => grokResponsesPublicResult(
+      { output_text: JSON.stringify(womanOnly) },
+      request.resultOptions
+    ),
+    /drops unmodified source facts|source visible fact/,
+    "the exact source dog and leading relation must not disappear behind classifier normalization"
+  );
+
+  const mismatchedRequest = buildStructuredArtContractRequest({
+    base: "两个比基尼女牵着一条狗走在海边，二次元风格",
+    instruction
+  });
+  assert.throws(
+    () => grokResponsesPublicResult(
+      { output_text: JSON.stringify(ir) },
+      mismatchedRequest.resultOptions
+    ),
+    /drops unmodified source facts|source visible fact|subject count/,
+    "compatible counter normalization must not hide a two-to-one cardinality loss"
+  );
 });
 
 test("ordinary Art nf.art.prompt.v1 JSON-quotes every control character for renderer parsing", () => {
