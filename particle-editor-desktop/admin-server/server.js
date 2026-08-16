@@ -5016,8 +5016,14 @@ function ordinaryArtStructuredPromptTextFormat() {
               ...scalar(),
               description: "绘画或渲染语言，例如日式动漫、二次元赛璐璐、半写实厚涂、写实摄影或游戏CG造型语言"
             },
-            atmosphere: scalar(),
-            finish: scalar()
+            atmosphere: {
+              ...scalar(),
+              description: "画面情绪或审美氛围；值中必须包含氛围、气氛、意境、情绪、调性或审美之一，并包含至少两个具体情绪或审美属性；例如轻松、开阔的海边氛围；不得只写自然、高质量或单个泛词"
+            },
+            finish: {
+              ...scalar(),
+              description: "表面完成质感；值中必须包含材质、纹理、细节、高光、阴影、层次、过渡、质感或完成度之一，并写至少两项可见处理；例如布料纹理清晰、皮肤高光与阴影过渡细腻；不得只写高清、高质量或精致"
+            }
           }),
           subjects: {
             type: "array",
@@ -5051,12 +5057,30 @@ function ordinaryArtStructuredPromptTextFormat() {
             local_colors: list(1, 12)
           }),
           camera: exactObject(ORDINARY_ART_STRUCTURED_CAMERA_KEYS, {
-            shot: scalar(),
-            angle: scalar(),
-            composition: scalar(),
-            crop: scalar(),
-            perspective: scalar(),
-            depth_of_field: scalar()
+            shot: {
+              ...scalar(),
+              description: "明确景别，例如全身景、中景、近景或特写"
+            },
+            angle: {
+              ...scalar(),
+              description: "明确机位视角，例如平视、低角度仰视、高角度俯视或正面侧视"
+            },
+            composition: {
+              ...scalar(),
+              description: "明确构图、视觉中心与动线，例如居中构图、三角构图或对角线动线"
+            },
+            crop: {
+              ...scalar(),
+              description: "明确画面裁切和必须完整入画的主体部位、道具或关系"
+            },
+            perspective: {
+              ...scalar(),
+              description: "明确透视、镜头焦段或空间纵深，例如自然标准透视、广角透视或长焦压缩"
+            },
+            depth_of_field: {
+              ...scalar(),
+              description: "明确焦点、清晰范围与背景虚化，例如主体清晰对焦、背景轻度虚化"
+            }
           }),
           applied_requirements: list(0, 16, 320),
           terminal_constraints: list(1, 24, 600)

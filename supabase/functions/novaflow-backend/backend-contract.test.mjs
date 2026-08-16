@@ -1303,6 +1303,25 @@ test("ordinary Art nf.art.prompt.v1 preserves unnamed inline hard constraints un
 
 test("ordinary Art nf.art.prompt.v1 enforces Local-equivalent typed slots before canonical closure", () => {
   const request = buildStructuredArtContractRequest({ instruction: "" });
+  const schemaProperties = request.body.text.format.schema.properties;
+  assert.match(schemaProperties.style.properties.medium.description, /媒介/);
+  assert.match(schemaProperties.style.properties.render_language.description, /渲染语言/);
+  assert.match(schemaProperties.style.properties.atmosphere.description, /必须包含.*氛围.*情绪.*调性/);
+  assert.match(schemaProperties.style.properties.finish.description, /必须包含.*材质.*纹理.*细节.*完成度/);
+  for (const [key, anchor] of Object.entries({
+    shot: /景别/,
+    angle: /机位视角/,
+    composition: /构图.*动线/,
+    crop: /裁切.*完整入画/,
+    perspective: /透视.*焦段.*空间纵深/,
+    depth_of_field: /焦点.*清晰范围.*虚化/
+  })) {
+    assert.match(
+      String(schemaProperties.camera.properties[key].description || ""),
+      anchor,
+      `camera.${key} must describe its typed semantic slot to the provider`
+    );
+  }
   const invalidSlots = [
     ["style.medium", "art"],
     ["style.medium", "concept art"],
