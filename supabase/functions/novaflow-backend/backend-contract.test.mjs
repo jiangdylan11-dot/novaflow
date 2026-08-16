@@ -289,6 +289,21 @@ function validBikiniWomanDogBeachIr() {
   };
 }
 
+function validLexicallyAnchoredBikiniWomanDogBeachIr() {
+  const ir = validBikiniWomanDogBeachIr();
+  ir.style.render_language = "二次元风格，采用日式动漫角色插画与清晰线条渲染";
+  ir.subjects[0].name = "成年女性角色（比基尼女）";
+  ir.subjects[0].action = "比基尼女左手牵着一条狗，走在海边";
+  ir.subjects[1].name = "狗";
+  ir.subjects[1].action = "狗配合牵引节奏走在比基尼女身侧";
+  ir.relations = [
+    "比基尼女牵着一条狗，双方走在海边",
+    "狗位于比基尼女身侧，牵引带连接关系清晰"
+  ];
+  ir.environment.setting = "海边沙滩与开阔海岸线";
+  return ir;
+}
+
 function validObjectOnlyNsfwIr() {
   return {
     schema: "nf.art.prompt.v1",
@@ -510,6 +525,44 @@ test("ordinary Art nf.art.prompt.v1 recompiles one Grok IR into detailed six-sec
   assert.deepEqual(request.body.text.format.schema.properties.subjects.items.required, [
     "name", "count", "appearance", "pose", "action", "materials", "colors", "details"
   ]);
+  const structuredProperties = request.body.text.format.schema.properties;
+  const lexicalGuidanceBySlot = [
+    [
+      "style.render_language",
+      structuredProperties.style.properties.render_language.description,
+      /二次元风格/
+    ],
+    [
+      "subjects[].name",
+      structuredProperties.subjects.items.properties.name.description,
+      /比基尼女.*狗|狗.*比基尼女/
+    ],
+    [
+      "subjects[].action",
+      structuredProperties.subjects.items.properties.action.description,
+      /牵着.*走在|走在.*牵着/
+    ],
+    [
+      "relations.items",
+      structuredProperties.relations.items.description,
+      /比基尼女.*牵着.*狗|狗.*牵着.*比基尼女/
+    ],
+    [
+      "environment.setting",
+      structuredProperties.environment.properties.setting.description,
+      /海边/
+    ]
+  ];
+  for (const [slot, description, slotExample] of lexicalGuidanceBySlot) {
+    assert.match(description, /未.{0,24}明确.{0,24}(?:修改|替换|删除|否定)/, `${slot} must scope verbatim retention to unmodified source facts`);
+    assert.match(description, /逐字/, `${slot} must require verbatim source wording`);
+    assert.match(description, slotExample, `${slot} must provide a slot-specific lexical example`);
+    assert.match(description, /(?:非默认|(?:不是|并非|不作为|不得|不能).{0,24}默认|默认.{0,24}(?:不得|禁止|不可|不能))/, `${slot} examples must not become defaults`);
+  }
+  assert.equal(structuredProperties.relations.type, "array");
+  assert.equal(structuredProperties.relations.minItems, 0);
+  assert.equal(structuredProperties.relations.maxItems, 16);
+  assert.equal(structuredProperties.relations.items.maxLength, 320);
   assert.match(
     request.body.text.format.schema.properties.subjects.items.properties.count.description,
     /可见数量.*明确数词.*匹配的量词.*不得只写1等裸数字/
@@ -540,6 +593,34 @@ test("ordinary Art nf.art.prompt.v1 recompiles one Grok IR into detailed six-sec
   assert.match(request.body.input[1].content[0].text, /严格按用户分句原顺序一一对应/);
   assert.match(request.body.input[1].content[0].text, /逐字等于前五段一个独立 scalar value/);
   assert.match(request.body.input[1].content[0].text, /保留该分句区别于其他要求的具体锚点与增减方向/);
+  const structuredRuleLines = request.body.input[1].content[0].text.split("\n");
+  const slotMappingRule = structuredRuleLines.find((line) => (
+    line.includes("style.render_language")
+    && line.includes("subjects[].name")
+    && line.includes("subjects[].action")
+    && (line.includes("relations[]") || line.includes("relations.items"))
+    && line.includes("environment.setting")
+  ));
+  assert.ok(slotMappingRule, "rules must map every retained lexical class to one typed slot");
+  assert.match(slotMappingRule, /风格.*画种.*style\.render_language/);
+  assert.match(slotMappingRule, /主体身份.*物种.*物件名.*subjects\[\]\.name/);
+  assert.match(slotMappingRule, /主体动作.*subjects\[\]\.action/);
+  assert.match(slotMappingRule, /主体间关系.*relations(?:\[\]|\.items)/);
+  assert.match(slotMappingRule, /主地点.*environment\.setting/);
+  const synonymRule = structuredRuleLines.find((line) => /同义|近义/u.test(line) && /原词/u.test(line));
+  assert.ok(synonymRule, "rules must include a source-synonym retention boundary");
+  assert.match(synonymRule, /不得|禁止/);
+  assert.match(synonymRule, /全部|完全/);
+  assert.match(synonymRule, /替换|改写/);
+  const explicitEditRule = structuredRuleLines.find((line) => /明确(?:修改|替换|删除|否定)/u.test(line) && /新终态|修改后的终态/u.test(line));
+  assert.ok(explicitEditRule, "rules must define the explicit-edit boundary");
+  assert.match(explicitEditRule, /只写/);
+  const exampleBoundaryRule = structuredRuleLines.find((line) => /示例|例词/u.test(line) && /照抄/u.test(line));
+  assert.ok(exampleBoundaryRule, "rules must prohibit copying schema examples into unrelated prompts");
+  assert.match(exampleBoundaryRule, /不得|禁止|不可|不能/);
+  for (const exampleAnchor of ["比基尼女", "狗", "牵着一条狗", "走在海边", "海边", "二次元风格"]) {
+    assert.match(exampleBoundaryRule, new RegExp(exampleAnchor), `rules example must demonstrate ${exampleAnchor}`);
+  }
 
   const result = grokResponsesPublicResult({
     id: "structured-response",
@@ -639,6 +720,112 @@ test("ordinary Art nf.art.prompt.v1 preserves source cardinality across compatib
     /drops unmodified source facts|source visible fact|subject count/,
     "compatible counter normalization must not hide a two-to-one cardinality loss"
   );
+});
+
+test("ordinary Art nf.art.prompt.v1 keeps unchanged source wording and rejects typed plus lexical synonym drift", () => {
+  const source = "一个比基尼女牵着一条狗走在海边，二次元风格";
+  const instruction = "增强材质、光影层次和画面质感";
+  const request = buildStructuredArtContractRequest({ base: source, instruction });
+  const exactIr = validLexicallyAnchoredBikiniWomanDogBeachIr();
+
+  const exactResult = grokResponsesPublicResult(
+    { output_text: JSON.stringify(exactIr) },
+    request.resultOptions
+  );
+  assert.equal(exactResult.editContract, "structured-recompile-v1");
+  assert.match(exactResult.output_text, /绘画语言 = "二次元风格/);
+  assert.match(exactResult.output_text, /主体1 = "成年女性角色（比基尼女）"/);
+  assert.match(exactResult.output_text, /主体2 = "狗"/);
+  assert.match(exactResult.output_text, /主体1动作 = "比基尼女左手牵着一条狗，走在海边"/);
+  assert.match(exactResult.output_text, /主体关系 = "比基尼女牵着一条狗，双方走在海边；狗位于比基尼女身侧，牵引带连接关系清晰"/);
+  assert.match(exactResult.output_text, /环境 = "海边沙滩与开阔海岸线"/);
+
+  const replaceWithSynonyms = (value) => {
+    if (Array.isArray(value)) return value.map(replaceWithSynonyms);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([key, child]) => [key, replaceWithSynonyms(child)]));
+    }
+    if (typeof value !== "string") return value;
+    return value
+      .replaceAll("二次元风格", "日式动漫")
+      .replaceAll("二次元", "动漫")
+      .replaceAll("比基尼女", "泳装女性")
+      .replaceAll("比基尼", "泳装")
+      .replaceAll("牵着", "带领")
+      .replaceAll("走在", "同行于")
+      .replaceAll("狗", "犬只")
+      .replaceAll("海边", "海岸");
+  };
+  const synonymIr = cloneJson(exactIr);
+  for (const section of ["style", "subjects", "relations", "environment", "lighting_color", "camera"]) {
+    synonymIr[section] = replaceWithSynonyms(synonymIr[section]);
+  }
+  const synonymFront = JSON.stringify([
+    synonymIr.style,
+    synonymIr.subjects,
+    synonymIr.relations,
+    synonymIr.environment,
+    synonymIr.lighting_color,
+    synonymIr.camera
+  ]);
+  for (const sourceAnchor of ["比基尼女", "比基尼", "狗", "牵着", "走在", "海边", "二次元风格", "二次元"]) {
+    assert.equal(synonymFront.includes(sourceAnchor), false, `synonym replay must remove ${sourceAnchor} from every front-five slot`);
+  }
+  assert.throws(
+    () => grokResponsesPublicResult(
+      { output_text: JSON.stringify(synonymIr) },
+      request.resultOptions
+    ),
+    (error) => {
+      assert.equal(
+        error?.message,
+        "Grok ordinary Art structured response drops an unmodified source visible fact in its typed front section: environment-beach"
+      );
+      return true;
+    }
+  );
+
+  const lexicalDriftIr = cloneJson(synonymIr);
+  lexicalDriftIr.environment.setting = exactIr.environment.setting;
+  assert.throws(
+    () => grokResponsesPublicResult(
+      { output_text: JSON.stringify(lexicalDriftIr) },
+      request.resultOptions
+    ),
+    (error) => {
+      assert.equal(
+        error?.message,
+        "Grok ordinary Art structured response drops unmodified source facts: lexical retention"
+      );
+      return true;
+    }
+  );
+});
+
+test("ordinary Art nf.art.prompt.v1 allows an explicitly requested style replacement without reviving the old style", () => {
+  const source = "一个比基尼女牵着一条狗走在海边，二次元风格";
+  const instruction = "将二次元风格改为写实摄影风格";
+  const request = buildStructuredArtContractRequest({ base: source, instruction });
+  const ir = validLexicallyAnchoredBikiniWomanDogBeachIr();
+  ir.style.render_language = "写实摄影风格，采用自然人物与动物摄影语言";
+  ir.applied_requirements = [ir.style.render_language];
+  ir.terminal_constraints = [
+    "主体数量必须保持为一名成年女性与一条犬只",
+    "成年女性牵引犬只的关系必须保持清晰",
+    "写实摄影风格必须保持为最终画面终态"
+  ];
+
+  const result = grokResponsesPublicResult(
+    { output_text: JSON.stringify(ir) },
+    request.resultOptions
+  );
+  assert.equal(result.editContract, "structured-recompile-v1");
+  const [frontFive] = result.output_text.split("[用户附加要求]");
+  assert.match(frontFive, /绘画语言 = "写实摄影风格/);
+  assert.doesNotMatch(frontFive, /二次元/);
+  for (const anchor of ["比基尼", "狗", "牵着", "海边"]) {
+    assert.match(frontFive, new RegExp(anchor), `explicit style edit must preserve unrelated source anchor ${anchor}`);
+  }
 });
 
 test("ordinary Art nf.art.prompt.v1 JSON-quotes every control character for renderer parsing", () => {

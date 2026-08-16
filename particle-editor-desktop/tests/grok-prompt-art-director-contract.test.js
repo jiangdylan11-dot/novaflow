@@ -27,6 +27,27 @@ function structuredAdultRestoreBlock(source) {
   return source.slice(start, end);
 }
 
+function structuredLexicalGuidanceBlock(source) {
+  const normalized = source.replaceAll("\r\n", "\n");
+  const start = normalized.indexOf("function ordinaryArtStructuredPromptTextFormat(");
+  const end = normalized.indexOf("function ordinaryArtPromptCoreMixedAdultReconciliationEnabled(", start);
+  assert.ok(start >= 0 && end > start, "structured schema and rules guidance block must exist");
+  return normalized.slice(start, end);
+}
+
+function structuredGuidanceSlice(source, startNeedle, endNeedle, label) {
+  const start = source.indexOf(startNeedle);
+  const end = source.indexOf(endNeedle, start + startNeedle.length);
+  assert.ok(start >= 0 && end > start, `${label} guidance block must exist`);
+  return source.slice(start, end);
+}
+
+function structuredGuidanceDescription(source, label) {
+  const match = source.match(/description:\s*"([^"]+)"/u);
+  assert.ok(match, `${label} description must exist`);
+  return match[1];
+}
+
 function structuredRequirementClauseSpecs(source) {
   const normalized = source.replaceAll("\r\n", "\n");
   const start = normalized.indexOf("function ordinaryArtStructuredPromptRequirementClauseSpecs(");
@@ -76,6 +97,11 @@ assert.equal(
   ordinaryPatchBlock(desktopSource),
   ordinaryPatchBlock(cloudSource),
   "desktop and cloud must use the same deterministic merge validator"
+);
+assert.equal(
+  structuredLexicalGuidanceBlock(desktopSource),
+  structuredLexicalGuidanceBlock(cloudSource),
+  "desktop and cloud must use byte-equivalent structured schema and rules guidance"
 );
 
 for (const [name, source] of [["desktop", desktopSource], ["cloud", cloudSource]]) {
@@ -283,6 +309,62 @@ for (const [name, source] of [["desktop", desktopSource], ["cloud", cloudSource]
   assert.ok(source.includes('"schema", "subject_count", "style", "subjects", "relations", "environment"'), `${name} must use the fixed Local-compatible top-level semantic keys`);
   assert.ok(source.includes('"name", "count", "appearance", "pose", "action", "materials", "colors", "details"'), `${name} must use the fixed Local-compatible subject keys`);
   assert.match(source, /style: exactObject\(ORDINARY_ART_STRUCTURED_STYLE_KEYS[\s\S]*subjects:[\s\S]*items: exactObject\(ORDINARY_ART_STRUCTURED_SUBJECT_KEYS[\s\S]*environment: exactObject\(ORDINARY_ART_STRUCTURED_ENVIRONMENT_KEYS[\s\S]*lighting_color: exactObject\(ORDINARY_ART_STRUCTURED_LIGHTING_KEYS[\s\S]*camera: exactObject\(ORDINARY_ART_STRUCTURED_CAMERA_KEYS/, `${name} must expose only fixed nested semantic objects`);
+  const lexicalGuidance = structuredLexicalGuidanceBlock(source);
+  const renderLanguageBlock = structuredGuidanceSlice(lexicalGuidance, "render_language: {", "atmosphere: {", `${name} style.render_language`);
+  const subjectNameBlock = structuredGuidanceSlice(lexicalGuidance, "name: {", "count: {", `${name} subjects[].name`);
+  const subjectActionBlock = structuredGuidanceSlice(lexicalGuidance, "action: {", "materials: list", `${name} subjects[].action`);
+  const relationsBlock = structuredGuidanceSlice(lexicalGuidance, "relations: {", "environment: exactObject", `${name} relations`);
+  const relationItemsStart = relationsBlock.indexOf("items: {");
+  assert.ok(relationItemsStart >= 0, `${name} relations.items guidance block must exist`);
+  const environmentSettingBlock = structuredGuidanceSlice(lexicalGuidance, "setting: {", "background: scalar", `${name} environment.setting`);
+  const lexicalDescriptions = [
+    ["style.render_language", structuredGuidanceDescription(renderLanguageBlock, `${name} style.render_language`), /二次元风格/],
+    ["subjects[].name", structuredGuidanceDescription(subjectNameBlock, `${name} subjects[].name`), /比基尼女.*狗|狗.*比基尼女/],
+    ["subjects[].action", structuredGuidanceDescription(subjectActionBlock, `${name} subjects[].action`), /牵着.*走在|走在.*牵着/],
+    ["relations.items", structuredGuidanceDescription(relationsBlock.slice(relationItemsStart), `${name} relations.items`), /比基尼女.*牵着.*狗|狗.*牵着.*比基尼女/],
+    ["environment.setting", structuredGuidanceDescription(environmentSettingBlock, `${name} environment.setting`), /海边/]
+  ];
+  for (const [slot, description, slotExample] of lexicalDescriptions) {
+    assert.match(description, /未.{0,24}明确.{0,24}(?:修改|替换|删除|否定)/, `${name} ${slot} must scope verbatim retention to unmodified source facts`);
+    assert.match(description, /逐字/, `${name} ${slot} must require verbatim source wording`);
+    assert.match(description, slotExample, `${name} ${slot} must provide a slot-specific lexical example`);
+    assert.match(description, /(?:非默认|(?:不是|并非|不作为|不得|不能).{0,24}默认|默认.{0,24}(?:不得|禁止|不可|不能))/, `${name} ${slot} examples must not become defaults`);
+  }
+  assert.match(relationsBlock, /\.\.\.list\(0, 16, 320\)[\s\S]*items:\s*\{[\s\S]*\.\.\.scalar\(320\)/, `${name} relations lexical guidance must preserve the bounded array shape`);
+  const structuredRulesBlock = structuredGuidanceSlice(
+    source.replaceAll("\r\n", "\n"),
+    "function ordinaryArtStructuredPromptRules(",
+    "function ordinaryArtPromptCoreMixedAdultReconciliationEnabled(",
+    `${name} structured rules`
+  );
+  const structuredRuleLines = structuredRulesBlock.split("\n");
+  const slotMappingRule = structuredRuleLines.find((line) => (
+    line.includes("style.render_language")
+    && line.includes("subjects[].name")
+    && line.includes("subjects[].action")
+    && (line.includes("relations[]") || line.includes("relations.items"))
+    && line.includes("environment.setting")
+  ));
+  assert.ok(slotMappingRule, `${name} rules must map every retained lexical class to one typed slot`);
+  assert.match(slotMappingRule, /风格.*画种.*style\.render_language/);
+  assert.match(slotMappingRule, /主体身份.*物种.*物件名.*subjects\[\]\.name/);
+  assert.match(slotMappingRule, /主体动作.*subjects\[\]\.action/);
+  assert.match(slotMappingRule, /主体间关系.*relations(?:\[\]|\.items)/);
+  assert.match(slotMappingRule, /主地点.*environment\.setting/);
+  const synonymRule = structuredRuleLines.find((line) => /同义|近义/u.test(line) && /原词/u.test(line));
+  assert.ok(synonymRule, `${name} rules must include a source-synonym retention boundary`);
+  assert.match(synonymRule, /不得|禁止/);
+  assert.match(synonymRule, /全部|完全/);
+  assert.match(synonymRule, /替换|改写/);
+  const explicitEditRule = structuredRuleLines.find((line) => /明确(?:修改|替换|删除|否定)/u.test(line) && /新终态|修改后的终态/u.test(line));
+  assert.ok(explicitEditRule, `${name} rules must define the explicit-edit boundary`);
+  assert.match(explicitEditRule, /只写/);
+  const exampleBoundaryRule = structuredRuleLines.find((line) => /示例|例词/u.test(line) && /照抄/u.test(line));
+  assert.ok(exampleBoundaryRule, `${name} rules must prohibit copying schema examples into unrelated prompts`);
+  assert.match(exampleBoundaryRule, /不得|禁止|不可|不能/);
+  for (const exampleAnchor of ["比基尼女", "狗", "牵着一条狗", "走在海边", "海边", "二次元风格"]) {
+    assert.match(exampleBoundaryRule, new RegExp(exampleAnchor), `${name} rules example must demonstrate ${exampleAnchor}`);
+  }
   assert.match(source, /colors:\s*\{[\s\S]*主体固有颜色[\s\S]*不得逐字复制全局色板或局部受光颜色[\s\S]*palette:\s*\{[\s\S]*全局色板层级[\s\S]*local_colors:\s*\{[\s\S]*局部受光颜色[\s\S]*定位对象和受光结果/, `${name} must distinguish subject solid colors, global palette roles, and localized lighting colors in the strict schema`);
   assert.match(source, /ordinaryArtStructuredPromptExactObject\([\s\S]*ORDINARY_ART_STRUCTURED_TOP_LEVEL_KEYS[\s\S]*ordinaryArtStructuredPromptEnsureUniqueVisualValues\(visualValues\)[\s\S]*ordinaryArtStructuredPromptEnsureMinimumFacts\(style, subjects, environment, lightingColor, camera\)[\s\S]*ordinaryArtStructuredPromptEnsureObjectPersonConsistency\(subjects, camera\)/, `${name} must validate exact keys, independent detail, duplicate facts, and object-person consistency`);
   assert.match(source, /`媒介 = \$\{q\(style\.medium\)\}`[\s\S]*`主体数量 = \$\{subjectCount\}`[\s\S]*`环境 = \$\{q\(environment\.setting\)\}`[\s\S]*`光源方向 = \$\{q\(lightingColor\.light_direction\)\}`[\s\S]*`景别 = \$\{q\(camera\.shot\)\}`[\s\S]*`要求\$\{index \+ 1\} = \$\{q\(constraint\)\}`/, `${name} must compile deterministic fixed-key six-section TOML`);

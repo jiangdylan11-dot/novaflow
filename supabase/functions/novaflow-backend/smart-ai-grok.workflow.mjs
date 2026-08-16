@@ -4033,7 +4033,7 @@ function ordinaryArtStructuredPromptTextFormat() {
             },
             render_language: {
               ...scalar(),
-              description: "绘画或渲染语言，例如日式动漫、二次元赛璐璐、半写实厚涂、写实摄影或游戏CG造型语言"
+              description: "绘画或渲染语言，例如日式动漫、二次元赛璐璐、半写实厚涂、写实摄影或游戏CG造型语言。若用户未明确修改原 Prompt 的风格或画种，本值必须先逐字包含原风格核心词或原短语，再追加专业细化，不得只用同义词替换；例如原文为二次元风格时必须保留二次元风格。示例只说明保留方法，不是其他输入的默认风格。"
             },
             atmosphere: {
               ...scalar(),
@@ -4049,14 +4049,20 @@ function ordinaryArtStructuredPromptTextFormat() {
             minItems: 1,
             maxItems: 12,
             items: exactObject(ORDINARY_ART_STRUCTURED_SUBJECT_KEYS, {
-              name: scalar(),
+              name: {
+                ...scalar(),
+                description: "主体的身份、物种或物件名称。若用户未明确修改该主体，本值必须逐字包含原 Prompt 对该主体使用的核心名词或短语，不得改成泛称或只用同义词；例如原文比基尼女必须保留比基尼女，原文狗必须保留狗。可追加不冲突的细化；示例不是默认主体。"
+              },
               count: {
                 ...scalar(80),
                 description: "该subject记录对应的可见数量；中文必须写明确数词加与主体类别匹配的量词，例如一名、一条、一件或一把，不得只写1等裸数字；英文应使用数量加类别单位，避免只写one或single"
               },
               appearance: list(1, 10),
               pose: scalar(),
-              action: scalar(),
+              action: {
+                ...scalar(),
+                description: "该主体正在进行的可见动作。若用户未明确修改该动作，本值必须逐字保留原 Prompt 的核心动作片段及其对象或地点连接；例如原文牵着一条狗走在海边时，对应主体 action 至少保留牵着一条狗和走在海边，再追加动作细节，不得只改写为带领、同行或漫步。示例不是默认动作。"
+              },
               materials: list(1, 8),
               colors: {
                 ...list(1, 8),
@@ -4069,9 +4075,19 @@ function ordinaryArtStructuredPromptTextFormat() {
               details: list(1, 12)
             })
           },
-          relations: list(0, 16, 320),
+          relations: {
+            ...list(0, 16, 320),
+            description: "多主体之间的最终可见关系；每项只写一条关系终态，不复制整句到无关槽位。",
+            items: {
+              ...scalar(320),
+              description: "当本项承载一条未被用户明确修改的主体关系时，必须逐字包含原 Prompt 的参与主体核心名词和关系动词，不得只写泛化或同义关系；例如原文比基尼女牵着一条狗时，至少一项关系保留比基尼女、牵着和狗。只写关系终态，不复制整句到无关槽；示例不是默认关系。"
+            }
+          },
           environment: exactObject(ORDINARY_ART_STRUCTURED_ENVIRONMENT_KEYS, {
-            setting: scalar(),
+            setting: {
+              ...scalar(),
+              description: "主场景或地点。若用户未明确修改地点，本值必须逐字包含原 Prompt 的地点核心词或原短语，再追加空间细节，不得只用近义地点替换；例如原文海边必须保留海边，可细化为海边沙滩，不能仅写海岸或沙滩。示例不是默认地点。"
+            },
             background: scalar(),
             spatial_layers: list(1, 8),
             support_surface: scalar(),
@@ -4165,6 +4181,8 @@ function ordinaryArtStructuredPromptRules(nsfw = false) {
     "applied_requirements 只列用户修改要求逐条转化后的最终视觉事实；真实修改要求为空时必须返回空数组，非空时数组项数必须与逗号、分号、句号、并且或同时分隔的有效要求数完全相同，并严格按用户分句原顺序一一对应。每项必须逐字等于前五段一个独立 scalar value，并保留该分句区别于其他要求的具体锚点与增减方向；不得用一个聚合长句或泛化的画面、人物、造型、设计等词冒充多项落实。不得用 increase、make、use、set 等命令句回显要求，也不得把系统规则、操作指令或未落实的愿望放入该数组。",
     "terminal_constraints 是非空数组，只放最终硬约束、避免项、质量底线和画面目标；每项必须具有明确的必须、不得、避免、保持、身份、年龄、结构、质量或目标语义。不得写修改过程、建议或界面选择摘要。",
     "必须保留原 Prompt 中未被用户明确否定的具体设定、资源令牌、命名要求块和避免项；允许为缺失的视觉实现做专业补全，但不得新增主体、改变用途或编造与底稿冲突的剧情。",
+    "源视觉词保留锁：对用户未明确修改的底稿视觉事实核心词，必须先逐字保留，再追加专业细化，并放入唯一正确槽位：风格或画种写入 style.render_language，主体身份、物种或物件名写入 subjects[].name，主体动作写入 subjects[].action，主体间关系写入 relations[]，主地点写入 environment.setting。禁止用同义词完全替换原词，禁止把原整句复制到多个槽来凑保留率；若用户明确修改某个锚点，只写新终态，不得为逐字保留而留下冲突旧词。",
+    "仅作保留方式示例：原文一个比基尼女牵着一条狗走在海边，二次元风格，且用户只要求提升质量时，正确槽仍须逐字出现比基尼女、狗、牵着一条狗、走在海边、海边、二次元风格，可在这些原词后扩写；其他输入不得照抄本示例内容。",
     nsfw
       ? "用户已开启 NSFW：凡人物敏感内容都必须明确为成年人，并忠实保留用户指定的成年身份、性别、裸体状态、身体姿势、具体接触部位与人物关系；禁止任何肯定性的未成年人内容，也不得用年轻化称呼替代成年人。"
       : "不得把安全题材擅自改写为成人或敏感内容；原 Prompt 若没有明确敏感事实，不得自行新增裸露、性行为或显式解剖。",
