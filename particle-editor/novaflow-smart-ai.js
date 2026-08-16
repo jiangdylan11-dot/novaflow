@@ -1,7 +1,7 @@
 (function () {
   if (window.__NovaFlowSmartAI && window.__NovaFlowSmartAI.version) return;
 
-  const VERSION = "20260815-art-e2e-parity-1";
+  const VERSION = "20260816-art-simple-structured-1";
   const STYLE_ID = "novaflow-smart-ai-style";
   const ROOT_ID = "novaflow-smart-ai-dialog-root";
   const SESSION_STORAGE_KEY = "novaflow.client.auth.session.v1";
@@ -68,6 +68,7 @@
   const MINIMAX_H3_FL2V_REVERSE_PURPOSE = "minimax-h3-fl2v-reverse";
   const ORDINARY_ART_PROMPT_SCHEMA = "nf.art.prompt.v1";
   const ORDINARY_ART_EDIT_CONTRACT = "structured-recompile-v1";
+  const ORDINARY_ART_SIMPLE_STRUCTURED_MODE = "simple-structured-v1";
   const ORDINARY_ART_PROMPT_SECTIONS = Object.freeze([
     "[风格设定]",
     "[主体物品]",
@@ -3149,11 +3150,15 @@
   }
 
   function shouldUseStructuredArtPromptContract(currentPrompt) {
+    return Boolean(String(currentPrompt || "").trim());
+  }
+
+  function shouldUseSimpleStructuredArtPromptContract(currentPrompt) {
     const source = String(currentPrompt || "").trim();
-    if (!source) return false;
-    if (source.length > 120 || /[\r\n]/u.test(source)) return true;
-    if (/__NOVAFLOW_[A-Z0-9_:-]+__/iu.test(source)) return true;
-    return /\[[^\]\r\n]{1,32}\]|\u3010[^\u3011\r\n]{1,32}\u3011/u.test(source);
+    if (!source || source.length > 120 || /[\r\n]/u.test(source)) return false;
+    if (/__NOVAFLOW_[A-Z0-9_:-]+__/iu.test(source)) return false;
+    if (/@(?:参考图[1-9][0-9]*|视频参考|声音参考)/u.test(source)) return false;
+    return !/\[[^\]\r\n]{1,32}\]|\u3010[^\u3011\r\n]{1,32}\u3011/u.test(source);
   }
 
   function buildSmartAiRequirements(options = {}) {
@@ -3886,6 +3891,8 @@
       && artTextPurpose === "optimize"
       && !isMiniMaxH3Request
       && shouldUseStructuredArtPromptContract(currentPrompt);
+    const usesSimpleStructuredArtPromptContract = usesStructuredArtPromptContract
+      && shouldUseSimpleStructuredArtPromptContract(currentPrompt);
     const prompt = isArt
       ? (isArtTextRequest
         ? (artTextPurpose === "optimize" ? currentPrompt : "")
@@ -4101,6 +4108,9 @@
           prompt: promptMentionProtection.text,
           ...(isArtTextRequest ? { currentPrompt: promptMentionProtection.text } : {}),
           ...(usesStructuredArtPromptContract ? { promptSchema: ORDINARY_ART_PROMPT_SCHEMA } : {}),
+          ...(usesSimpleStructuredArtPromptContract
+            ? { promptDetailMode: ORDINARY_ART_SIMPLE_STRUCTURED_MODE }
+            : {}),
           negativePrompt: negativePromptMentionProtection?.text ?? negativePrompt,
           supportsNegativePrompt,
           nsfw: isArtTextRequest ? analysisNsfw : false,

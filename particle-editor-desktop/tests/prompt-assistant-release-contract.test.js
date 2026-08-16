@@ -17,6 +17,7 @@ const builderConfig = JSON.parse(fs.readFileSync(
 ));
 const ORDINARY_ART_PROMPT_SCHEMA = "nf.art.prompt.v1";
 const ORDINARY_ART_EDIT_CONTRACT = "structured-recompile-v1";
+const ORDINARY_ART_SIMPLE_STRUCTURED_MODE = "simple-structured-v1";
 const ORDINARY_ART_PROMPT_SECTIONS = Object.freeze([
   "[风格设定]",
   "[主体物品]",
@@ -198,6 +199,16 @@ assert.match(
   "the Electron bridge must pass the Art prompt schema only for an exact existing-text Art optimize request"
 );
 assert.match(
+  localOptimizeHandler,
+  /requestedPromptDetailMode[\s\S]*?provider === "local"[\s\S]*?promptSchema === "nf\.art\.prompt\.v1"[\s\S]*?requestedPromptDetailMode === "simple-structured-v1"[\s\S]*?\{ promptDetailMode \}/,
+  "the Electron bridge must pass the lightweight detail contract only for the exact signed Art schema and mode"
+);
+assert.match(
+  localOptimizeHandler,
+  /currentPrompt\.length <= 120[\s\S]*?__NOVAFLOW_[\s\S]*?@\(\?:参考图[\s\S]*?\[\^\\\]\\r\\n\]/,
+  "the Electron bridge must independently reject long, resource-bearing, and pre-structured detail-mode prompts"
+);
+assert.match(
   mainSource,
   /ipcMain\.handle\("smart-ai-prompt-optimize"[\s\S]*?requestNovaFlowSmartAiApi\("\/api\/client\/grok\/prompt-optimize", payload\)/,
   "the Grok Electron bridge must preserve the renderer payload, including the exact Art prompt schema"
@@ -220,8 +231,8 @@ assert.match(brandRuntimeSource, /data-novaflow-art-generate-nsfw/);
 assert.match(smartAiSource, /nsfw: surface === "art" \? readArtGenerateNsfw\(button\) : false/);
 assert.match(particleEditorIndexSource, /novaflow-brand-runtime\.js\?v=20260813-ideogram-instant-1/);
 assert.match(particleEditorIndexSource, /smart-ai-art-auto-intent\.workflow\.js\?v=20260811-art-auto-intent-1/);
-assert.match(particleEditorIndexSource, /novaflow-smart-ai\.js\?v=20260815-art-e2e-parity-1/);
-assert.match(smartAiSource, /const VERSION = "20260815-art-e2e-parity-1"/);
+assert.match(particleEditorIndexSource, /novaflow-smart-ai\.js\?v=20260816-art-simple-structured-1/);
+assert.match(smartAiSource, /const VERSION = "20260816-art-simple-structured-1"/);
 
 const requestFunction = mainSource.slice(
   mainSource.indexOf("async function requestPromptAssistant"),
@@ -626,11 +637,17 @@ const stripTrailingGenericArtPreservation = vm.runInNewContext(
 const shouldUseStructuredArtPromptContract = vm.runInNewContext(
   `(${extractNamedFunction(smartAiSource, "shouldUseStructuredArtPromptContract")})`
 );
+const shouldUseSimpleStructuredArtPromptContract = vm.runInNewContext(
+  `(${extractNamedFunction(smartAiSource, "shouldUseSimpleStructuredArtPromptContract")})`
+);
 assert.equal(
   shouldUseStructuredArtPromptContract("一名成年女战士站在山谷中，电影级光影，细节清晰。"),
-  false,
-  "short single-paragraph Art optimization must omit the structured schema for both providers"
+  true,
+  "every nonempty ordinary Art optimization must request the structured schema from both providers"
 );
+assert.equal(shouldUseStructuredArtPromptContract(""), false);
+assert.equal(shouldUseStructuredArtPromptContract("  \n  "), false);
+assert.equal(shouldUseStructuredArtPromptContract("甲".repeat(120)), true);
 assert.equal(shouldUseStructuredArtPromptContract("甲".repeat(121)), true);
 assert.equal(shouldUseStructuredArtPromptContract("主体立于山谷\n背景为雪山"), true);
 assert.equal(shouldUseStructuredArtPromptContract("[风格设定] 数字绘画"), true);
@@ -858,7 +875,9 @@ function createSmartAiSubmitHarness({
     ART_REFERENCE_PLAN: null,
     ORDINARY_ART_PROMPT_SCHEMA,
     ORDINARY_ART_EDIT_CONTRACT,
+    ORDINARY_ART_SIMPLE_STRUCTURED_MODE,
     shouldUseStructuredArtPromptContract,
+    shouldUseSimpleStructuredArtPromptContract,
     getPromptTextareasFromContext: () => ({ positive, negative }),
     isPromptTextControl: (value) => Boolean(value),
     buildSmartAiRequirements: () => internalRequirements || "高质量CG渲染约束：通用长质量块；基础质量由系统自动负责",
@@ -2784,7 +2803,7 @@ async function verifySmartAiBehavior() {
     "ordinary animation optimize must stay outside the Art structured schema");
 
   const simplePrompt = "一名成年女战士站在山谷中，电影级光影，细节清晰。";
-  const simpleResult = "一名成年女战士站在山谷中，材质纹理细腻，光影层次丰富，画面质感精致，细节清晰。";
+  const simpleResult = STRUCTURED_ART_EDIT_FIXTURE;
   for (const engine of ["local", "grok"]) {
     const ordinaryOptimize = createSmartAiSubmitHarness({
       engine,
@@ -2797,7 +2816,9 @@ async function verifySmartAiBehavior() {
         ok: true,
         prompt: simpleResult,
         negative_prompt: "低质量, 模糊, 材质失真",
-        has_negative_prompt: true
+        has_negative_prompt: true,
+        editContract: ORDINARY_ART_EDIT_CONTRACT,
+        promptSchema: ORDINARY_ART_PROMPT_SCHEMA
       }
     });
     await ordinaryOptimize.runSmartAi();
@@ -2806,12 +2827,28 @@ async function verifySmartAiBehavior() {
       : ordinaryOptimize.calls.grokOptimize;
     assert.equal(optimizeCalls.length, 1);
     assert.equal(optimizeCalls[0].currentPrompt, simplePrompt);
-    assert.equal(Object.hasOwn(optimizeCalls[0], "promptSchema"), false,
-      `${engine} short single-paragraph Art optimize must use the shared patch contract`);
+    assert.equal(optimizeCalls[0].promptSchema, ORDINARY_ART_PROMPT_SCHEMA,
+      `${engine} short single-paragraph Art optimize must use the exact structured schema`);
+    if (engine === "local") {
+      assert.equal(optimizeCalls[0].promptDetailMode, "simple-structured-v1",
+        "short Local Art optimize must select the lightweight structured detail contract");
+    } else {
+      assert.equal(Object.hasOwn(optimizeCalls[0], "promptDetailMode"), false,
+        "Grok must stay on its existing structured compiler without the Local-only detail marker");
+    }
+    assert.equal(Object.hasOwn(optimizeCalls[0], "images"), false,
+      `${engine} text optimization must not attach reference images`);
     assert.equal(Object.hasOwn(optimizeCalls[0], "visualSchema"), false);
     assert.equal(optimizeCalls[0].nsfw, true,
       `ordinary ${engine} Art text optimization must forward the enabled NSFW state`);
+    assert.equal(ordinaryOptimize.calls.writes.length, 1,
+      `${engine} must accept an exactly signed structured response`);
     assert.equal(ordinaryOptimize.calls.writes[0].prompt, simpleResult);
+    assert.deepEqual(
+      ordinaryOptimize.calls.writes[0].prompt.match(/^\[[^\]\r\n]+\]$/gmu),
+      [...ORDINARY_ART_PROMPT_SECTIONS],
+      `${engine} must preserve every structured section and newline during writeback`
+    );
   }
 
   const blocked = createSmartAiSubmitHarness({

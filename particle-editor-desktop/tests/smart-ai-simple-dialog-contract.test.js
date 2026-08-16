@@ -121,7 +121,7 @@ assert.equal(workflow.writeProviderPreference(storage, "grok"), true);
 assert.equal(workflow.readProviderPreference(storage), "grok");
 
 const workflowTag = "smart-ai-art-auto-intent.workflow.js?v=20260811-art-auto-intent-1";
-const smartAiTag = "novaflow-smart-ai.js?v=20260815-art-e2e-parity-1";
+const smartAiTag = "novaflow-smart-ai.js?v=20260816-art-simple-structured-1";
 const runtimeTag = "novaflow-brand-runtime.js?v=20260813-ideogram-instant-1";
 assert.ok(indexSource.includes(workflowTag));
 assert.ok(indexSource.includes(smartAiTag));
@@ -252,17 +252,37 @@ assert.match(smartAiSource, /isSingleMainPreserveReverse = isArt[\s\S]*?&& isRev
 const shouldUseStructuredArtPromptContract = vm.runInNewContext(
   `(${extractNamedFunction(smartAiSource, "shouldUseStructuredArtPromptContract")})`
 );
+const shouldUseSimpleStructuredArtPromptContract = vm.runInNewContext(
+  `(${extractNamedFunction(smartAiSource, "shouldUseSimpleStructuredArtPromptContract")})`
+);
 assert.equal(
   shouldUseStructuredArtPromptContract("\u4e00\u540d\u6210\u5e74\u5973\u6218\u58eb\u7ad9\u5728\u5c71\u8c37\u4e2d\uff0c\u7535\u5f71\u7ea7\u5149\u5f71\uff0c\u7ec6\u8282\u6e05\u6670\u3002"),
-  false,
-  "a short single-paragraph Art prompt must use the shared deterministic patch path"
+  true,
+  "every nonempty ordinary Art optimize prompt must use the structured contract"
 );
-assert.equal(shouldUseStructuredArtPromptContract("甲".repeat(120)), false, "the bounded short-prompt edge stays on patch");
-assert.equal(shouldUseStructuredArtPromptContract("甲".repeat(121)), true, "a longer prompt keeps the structured contract");
+assert.equal(shouldUseStructuredArtPromptContract(""), false, "an empty prompt remains outside structured optimize");
+assert.equal(shouldUseStructuredArtPromptContract("   \r\n  "), false, "whitespace-only input remains outside structured optimize");
+assert.equal(shouldUseStructuredArtPromptContract("甲".repeat(120)), true, "short nonempty prompts use the structured contract");
+assert.equal(shouldUseStructuredArtPromptContract("甲".repeat(121)), true, "longer prompts keep the structured contract");
 assert.equal(shouldUseStructuredArtPromptContract("主体立于山谷\n背景为雪山"), true, "multi-line prompts keep the structured contract");
 assert.equal(shouldUseStructuredArtPromptContract("[风格设定] 数字绘画"), true, "named square-bracket blocks keep the structured contract");
 assert.equal(shouldUseStructuredArtPromptContract("【主体物品】成年女战士"), true, "named full-width blocks keep the structured contract");
 assert.equal(shouldUseStructuredArtPromptContract("保留 __NOVAFLOW_IMAGE_01__ 资源"), true, "resource-bearing prompts keep the structured contract");
+assert.equal(
+  shouldUseSimpleStructuredArtPromptContract("一个比基尼女牵着一条狗走在海边，二次元风格"),
+  true,
+  "a short single-paragraph Art prompt uses the Local lightweight detail contract"
+);
+assert.equal(shouldUseSimpleStructuredArtPromptContract("甲".repeat(120)), true, "the Local lightweight contract includes its exact 120-character boundary");
+assert.equal(shouldUseSimpleStructuredArtPromptContract("甲".repeat(121)), false, "long Art prompts stay on the full structured compiler");
+assert.equal(shouldUseSimpleStructuredArtPromptContract("主体立于山谷\n背景为雪山"), false, "multi-line prompts stay on the full structured compiler");
+assert.equal(shouldUseSimpleStructuredArtPromptContract("[风格设定] 数字绘画"), false, "existing ASCII sections stay on the full structured compiler");
+assert.equal(shouldUseSimpleStructuredArtPromptContract("【主体物品】成年女战士"), false, "existing full-width sections stay on the full structured compiler");
+assert.equal(shouldUseSimpleStructuredArtPromptContract("保留 __NOVAFLOW_IMAGE_01__ 资源"), false, "resource-bearing prompts stay on the full structured compiler");
+assert.equal(shouldUseSimpleStructuredArtPromptContract("使用 @参考图1 的姿势"), false, "readable image mentions stay on the full structured compiler");
+assert.equal(shouldUseSimpleStructuredArtPromptContract("结合 @视频参考"), false, "readable video mentions stay on the full structured compiler");
+assert.equal(shouldUseSimpleStructuredArtPromptContract("参考 @声音参考"), false, "readable audio mentions stay on the full structured compiler");
+assert.equal(shouldUseSimpleStructuredArtPromptContract("   \r\n  "), false, "empty input never selects the Local lightweight contract");
 assert.match(smartAiSource, /roleAwareReferences = isArt[\s\S]*?&& isReverseRequest[\s\S]*?artIntent\?\.route === "role_reference"/);
 assert.match(smartAiSource, /artIntent\?\.route === "static_reverse"/);
 assert.match(smartAiSource, /artIntent\?\.route === "role_reference"/);

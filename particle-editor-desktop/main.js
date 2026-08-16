@@ -5691,6 +5691,19 @@ ipcMain.handle("prompt-assistant-optimize-prompt", async (_evt, payload) => {
     && requestedPromptSchema === "nf.art.prompt.v1"
       ? requestedPromptSchema
       : "";
+  const requestedPromptDetailMode = String(
+    payload?.promptDetailMode ?? payload?.prompt_detail_mode ?? ""
+  ).trim();
+  const promptDetailMode = provider === "local"
+    && promptSchema === "nf.art.prompt.v1"
+    && requestedPromptDetailMode === "simple-structured-v1"
+    && currentPrompt.length <= 120
+    && !/[\r\n]/u.test(currentPrompt)
+    && !/__NOVAFLOW_[A-Z0-9_:-]+__/iu.test(currentPrompt)
+    && !/@(?:参考图[1-9][0-9]*|视频参考|声音参考)/u.test(currentPrompt)
+    && !/\[[^\]\r\n]{1,32}\]|【[^】\r\n]{1,32}】/u.test(currentPrompt)
+      ? requestedPromptDetailMode
+      : "";
   const startedAt = Date.now();
   const optimizeTimeoutMs = 300_000;
   const ordinaryArtPromptPatch = isOrdinaryLocalArtPromptPatchRequest({
@@ -5772,7 +5785,8 @@ ipcMain.handle("prompt-assistant-optimize-prompt", async (_evt, payload) => {
     purpose,
     provider,
     currentPrompt,
-    ...(promptSchema ? { promptSchema } : {})
+    ...(promptSchema ? { promptSchema } : {}),
+    ...(promptDetailMode ? { promptDetailMode } : {})
   }, optimizeTimeoutMs, {
     verifiedCleanup: true,
     ...(beforeEnsure ? { beforeEnsure } : {})

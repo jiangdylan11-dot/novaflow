@@ -8,6 +8,28 @@ from typing import Any
 SCHEMA_VERSION = "nf.art.prompt.v1"
 EDIT_CONTRACT = "structured-recompile-v1"
 STRUCTURED_OUTPUT_MAX_TOKENS = 2048
+SIMPLE_STRUCTURED_OUTPUT_MAX_TOKENS = 768
+_SIMPLE_SUBJECT_COUNT_PATTERN = re.compile(
+    r"(?P<count>[一二两三四五六1-6])\s*(?:名|位|个|只|条|匹|辆|艘|件)?"
+)
+_SIMPLE_SUBJECT_NAME_UNBOUNDED_COUNT_PATTERN = re.compile(
+    r"(?:一群|一组|多名|多人|多个|若干|数名|成群|成组)"
+    r"|(?<![a-z0-9_])(?:many|several|multiple|a\s+group\s+of|a\s+crowd\s+of)(?![a-z0-9_])",
+    re.I,
+)
+_SIMPLE_SUBJECT_NAME_EXPLICIT_COUNT_PATTERN = re.compile(
+    r"(?P<count>[一二两三四五六1-6])\s*(?:名|位|人|个|只|条|匹|辆|件)"
+    r"|(?P<pair>一对|双胞胎|双生|二人组|双人(?:组|组合)?)"
+    r"|(?<![a-z0-9_])(?P<english>one|two|three|four|five|six)\s+"
+    r"(?:adult\s+)?(?:woman|women|man|men|people|persons?|characters?|girls?|boys?|dogs?|cats?|horses?|animals?|robots?|cars?|vehicles?|birds?)(?![a-z0-9_])"
+    r"|(?<![a-z0-9_])(?P<twins>twins?)(?![a-z0-9_])",
+    re.I,
+)
+_SIMPLE_SUBJECT_NAME_PLURAL_SEMANTICS_PATTERN = re.compile(
+    r"(?:们|姐妹|兄弟|母女|父女|母子|父子|夫妻|情侣|队伍|众人|双人(?:组|组合)?|二人组)"
+    r"|(?<![a-z0-9_])(?:women|men|people|persons|characters|girls|boys|dogs|cats|horses|animals|robots|cars|vehicles|birds|sisters|brothers|couples|partners)(?![a-z0-9_])",
+    re.I,
+)
 SECTIONS = (
     "[风格设定]",
     "[主体物品]",
@@ -195,6 +217,22 @@ _SLOT_GENERIC_VALUES = {
     "camera.depth_of_field": {"soft", "smooth", "clear", "柔和", "清晰", "自然"},
 }
 
+_SIMPLE_LIGHT_SLOT_PATTERNS = {
+    "light_direction": re.compile(
+        r"(?:方向|左上|右上|左下|右下|左侧|右侧|上方|下方|前方|后方|"
+        r"顶光|侧光|逆光|顺光|斜射|入射|照射)"
+        r"|(?<![a-z])(?:direction|from|left|right|above|below|front|back|"
+        r"overhead|side[-\s]*light|backlit)(?![a-z])",
+        re.I,
+    ),
+    "light_quality": re.compile(
+        r"(?:光质|软硬|柔和|软光|硬光|硬质(?:冷|暖)?光|扩散|漫射|聚光|均匀|高调|低调)"
+        r"|(?<![a-z])(?:soft|hard|diffus(?:e|ed)|scattered|focused|even|"
+        r"high[-\s]*key|low[-\s]*key)(?![a-z])",
+        re.I,
+    ),
+}
+
 _DETERMINISTIC_CANONICAL_SLOT_FACTS = (
     "画面质感细腻丰富",
     "人物造型性感且成年比例明确",
@@ -333,6 +371,17 @@ def _validate_slot_semantics(contract: dict) -> None:
         _validate_typed_slot(f"camera.{key}", camera[key])
 
 
+def _validate_simple_light_slot_semantics(contract: dict) -> None:
+    lighting = contract["lighting_color"]
+    for key, pattern in _SIMPLE_LIGHT_SLOT_PATTERNS.items():
+        value = str(lighting.get(key) or "").strip()
+        if not value or not pattern.search(value):
+            raise ArtPromptContractError(
+                f"lighting_color.{key} does not describe its slot semantics",
+                code="art-prompt-contract-slot-semantic",
+            )
+
+
 def build_art_prompt_contract_instruction(
     current_prompt: str,
     user_instruction: str,
@@ -405,6 +454,8 @@ def build_art_prompt_contract_instruction(
         if nsfw_enabled else
         "不得擅自改变原提示词中的年龄身份。"
     )
+
+
     change = str(user_instruction or "").strip() or "<无>"
     return (
         "你是 NovaFlow 普通 Art 提示词的结构化重编译器。只输出一个合法 JSON 对象，"
@@ -449,6 +500,92 @@ def build_art_prompt_contract_instruction(
         "当前完整 Prompt：\n"
         f"{str(current_prompt or '').strip()[:20000]}\n"
         "现在只输出单一严格 JSON。"
+    )
+
+
+def build_simple_art_prompt_contract_instruction(
+    current_prompt: str,
+    user_instruction: str,
+    *,
+    nsfw_enabled: bool = False,
+    repair_output: str = "",
+    repair_reason: str = "",
+) -> str:
+    """Build the bounded final-TOML contract used for sparse Art prompts."""
+
+    adult_rule = (
+        "NSFW 已开启：含泳装、内衣、裸露或成人语境的人物只能写成明确成年人物；"
+        "原文的女/女性不得改成少女、女孩或任何更年轻身份。"
+        if nsfw_enabled else
+        "不得擅自改变人物年龄；原文的女/女性不得改成少女、女孩。"
+    )
+    change = str(user_instruction or "").strip() or "<无>"
+    repair = ""
+    if str(repair_output or "").strip():
+        repair = (
+            "\n上一次输出未通过格式或字段校验。不要解释错误，重新观察底稿并从头输出。"
+            f"\n失败类型：{str(repair_reason or 'invalid-contract')[:120]}"
+            "\n上一次输出仅供识别格式错误，不得复制其中新增的主体、道具、地点、颜色、天气或年龄："
+            f"\n{str(repair_output or '')[:6000]}\n"
+        )
+    return (
+        "你是 NovaFlow 普通 Art 短提示词的结构化详化器。"
+        "只输出一份最终可生图的 TOML 风格文本，不要 JSON、Markdown 围栏、解释、前后缀或多个方案。"
+        "必须严格使用下面六个分区、固定键名和顺序；除主体数量外，每个值都必须是合法 JSON 双引号字符串。"
+        "主体数量写 1 到 6 的整数；有几名或几只明确独立的人物、动物，就完整输出几组主体字段；"
+        "只有原文明写独立数量词的关键道具才可另列主体，作为人物动作宾语出现的道具保留在动作或外观中。"
+        "每个主体必须填写名称、数量、外观、姿态、动作、材质、颜色、局部细节，列表内容用中文分号分隔。"
+        "环境、光线和镜头每个槽位都必须填写具体的最终画面事实，不得留空、写未知、写无要求或写操作建议。"
+        "输出总长度以 400 到 800 个中文字符为目标。"
+        "当前完整 Prompt 是唯一语义底稿：必须保留其中的主体、数量、身份、动作关系、地点和风格。"
+        "允许专业补全线条与上色语言、已出现材质的表现、自然光、构图、景别、透视、景深和结构质量；"
+        "禁止新增原文没有的人物、动物、道具、建筑、剧情、犬种、服装款式、具体颜色、时间或天气。"
+        "关系必须逐主体写清；不得把女性与犬只合并为一个主体。"
+        f"{adult_rule}"
+        "若用户本次修改要求为<无>，只做细节详化，要求段仍写至少一条保留底稿和禁止新增实体的硬约束。"
+        "若修改要求非空，必须在前五段落实，并在要求段写成已经满足的最终约束。"
+        "严格模板如下；按主体数量重复主体N的八个键，不要保留尖括号占位符：\n"
+        "[风格设定]\n"
+        "媒介 = \"<具体媒介>\"\n"
+        "绘画语言 = \"<具体绘画与渲染语言>\"\n"
+        "氛围 = \"<具体氛围>\"\n"
+        "完成质感 = \"<具体完成质感>\"\n\n"
+        "[主体物品]\n"
+        "主体数量 = <整数>\n"
+        "主体1 = \"<与主体1数量一致的精确数量短语加身份名称，例如一名成年女性；禁止无界复数名称>\"\n"
+        "主体1数量 = \"<数量短语>\"\n"
+        "主体1外观 = \"<外观事实；外观事实>\"\n"
+        "主体1姿态 = \"<姿态>\"\n"
+        "主体1动作 = \"<动作>\"\n"
+        "主体1材质 = \"<材质；材质>\"\n"
+        "主体1颜色 = \"<只保留原文已有颜色；未指定时写固有色层次清晰而不指定色相>\"\n"
+        "主体1局部细节 = \"<结构与局部质量事实；局部质量事实>\"\n"
+        "主体关系 = \"<主体之间的可见关系；单主体则写单主体无额外关系>\"\n\n"
+        "[环境背景]\n"
+        "环境 = \"<地点与环境>\"\n"
+        "背景 = \"<不新增地点的背景层次>\"\n"
+        "前中后景 = \"<前景；中景；后景>\"\n"
+        "承托面 = \"<主体与地面的承托关系>\"\n"
+        "遮挡层次 = \"<遮挡和空间归属>\"\n\n"
+        "[光线与色彩]\n"
+        "光源方向 = \"<通用自然或场景光方向>\"\n"
+        "光源软硬 = \"<软硬与扩散>\"\n"
+        "明暗关系 = \"<主体和背景明暗层次>\"\n"
+        "轮廓光 = \"<受控轮廓光>\"\n"
+        "主辅色 = \"<原文固有色层级；不新增具体色相>\"\n"
+        "局部颜色 = \"<人物；动物或道具；环境的固有色关系>\"\n\n"
+        "[拍摄参数]\n"
+        "景别 = \"<景别>\"\n"
+        "视角 = \"<视角>\"\n"
+        "构图 = \"<构图与主体完整性>\"\n"
+        "裁切 = \"<裁切边界>\"\n"
+        "透视 = \"<透视>\"\n"
+        "景深 = \"<景深与焦点>\"\n\n"
+        "[用户附加要求]\n"
+        "要求1 = \"<最终硬约束>\"\n"
+        f"当前完整 Prompt：{str(current_prompt or '').strip()}\n"
+        f"用户本次修改要求：{change}"
+        f"{repair}"
     )
 
 
@@ -680,6 +817,258 @@ def parse_art_prompt_contract(
     _validate_object_person_consistency(normalized)
     _validate_contract_fact_quality(normalized)
     _validate_slot_semantics(normalized)
+    return normalized
+
+
+def parse_simple_art_prompt_contract(raw_output: str) -> dict:
+    """Parse the exact six-section short-prompt model contract into nf.art.prompt.v1."""
+
+    text = str(raw_output or "").strip().lstrip("\ufeff").strip()
+    if not text or "```" in text:
+        raise ArtPromptContractError(
+            "simple structured output must be bare section text",
+            code="art-prompt-simple-contract-invalid-envelope",
+        )
+    lines = [line.strip() for line in text.replace("\r\n", "\n").replace("\r", "\n").split("\n") if line.strip()]
+    sections: dict[str, list[tuple[str, Any]]] = {}
+    seen_sections: list[str] = []
+    current = ""
+    for line_number, line in enumerate(lines, start=1):
+        if re.fullmatch(r"\[[^\]\r\n]+\]", line):
+            expected = SECTIONS[len(seen_sections)] if len(seen_sections) < len(SECTIONS) else ""
+            if line != expected:
+                raise ArtPromptContractError(
+                    f"simple structured section mismatch at line {line_number}",
+                    code="art-prompt-simple-contract-section-mismatch",
+                )
+            seen_sections.append(line)
+            sections[line] = []
+            current = line
+            continue
+        if not current:
+            raise ArtPromptContractError(
+                f"simple structured preamble at line {line_number}",
+                code="art-prompt-simple-contract-invalid-envelope",
+            )
+        match = re.fullmatch(r"([\u4e00-\u9fffA-Za-z0-9_.-]+)\s*=\s*(.+)", line)
+        if not match:
+            raise ArtPromptContractError(
+                f"simple structured key/value invalid at line {line_number}",
+                code="art-prompt-simple-contract-key-value-invalid",
+            )
+        key = match.group(1)
+        raw_value = match.group(2).strip()
+        if key == "主体数量":
+            if not re.fullmatch(r"[1-6]", raw_value):
+                raise ArtPromptContractError(
+                    "simple structured subject count invalid",
+                    code="art-prompt-simple-contract-subject-count-invalid",
+                )
+            value: Any = int(raw_value)
+        else:
+            try:
+                value = json.loads(raw_value)
+            except json.JSONDecodeError as exc:
+                raise ArtPromptContractError(
+                    f"simple structured string invalid at line {line_number}",
+                    code="art-prompt-simple-contract-string-invalid",
+                ) from exc
+            if not isinstance(value, str) or not value.strip():
+                raise ArtPromptContractError(
+                    f"simple structured value empty at line {line_number}",
+                    code="art-prompt-simple-contract-value-empty",
+                )
+            value = value.strip()
+        if any(existing_key == key for existing_key, _value in sections[current]):
+            raise ArtPromptContractError(
+                f"simple structured duplicate key: {key}",
+                code="art-prompt-simple-contract-duplicate-key",
+            )
+        sections[current].append((key, value))
+    if tuple(seen_sections) != SECTIONS:
+        raise ArtPromptContractError(
+            "simple structured sections incomplete",
+            code="art-prompt-simple-contract-section-mismatch",
+        )
+
+    def exact(section: str, keys: list[str]) -> dict[str, Any]:
+        entries = sections.get(section) or []
+        actual = [key for key, _value in entries]
+        if actual != keys:
+            raise ArtPromptContractError(
+                f"simple structured keys mismatch: {section}",
+                code="art-prompt-simple-contract-keys-mismatch",
+            )
+        return dict(entries)
+
+    def items(value: str) -> list[str]:
+        result = [item.strip() for item in re.split(r"[；;]", str(value or "")) if item.strip()]
+        if not result:
+            raise ArtPromptContractError(
+                "simple structured list value empty",
+                code="art-prompt-simple-contract-value-empty",
+            )
+        return result
+
+    style_values = exact(SECTIONS[0], ["媒介", "绘画语言", "氛围", "完成质感"])
+    subject_entries = sections.get(SECTIONS[1]) or []
+    if not subject_entries or subject_entries[0][0] != "主体数量":
+        raise ArtPromptContractError(
+            "simple structured subject count missing",
+            code="art-prompt-simple-contract-keys-mismatch",
+        )
+    subject_count = subject_entries[0][1]
+    expected_subject_keys = ["主体数量"]
+    for index in range(1, subject_count + 1):
+        expected_subject_keys.extend([
+            f"主体{index}",
+            f"主体{index}数量",
+            f"主体{index}外观",
+            f"主体{index}姿态",
+            f"主体{index}动作",
+            f"主体{index}材质",
+            f"主体{index}颜色",
+            f"主体{index}局部细节",
+        ])
+    expected_subject_keys.append("主体关系")
+    subject_values = exact(SECTIONS[1], expected_subject_keys)
+    subjects = []
+    simple_count_map = {
+        "一": 1,
+        "二": 2,
+        "两": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "one": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+    }
+    for index in range(1, subject_count + 1):
+        name = subject_values[f"主体{index}"]
+        count_text = subject_values[f"主体{index}数量"]
+        count_match = _SIMPLE_SUBJECT_COUNT_PATTERN.fullmatch(count_text)
+        if not count_match:
+            raise ArtPromptContractError(
+                f"simple structured subject{index} count is invalid",
+                code="art-prompt-simple-contract-subject-count-invalid",
+            )
+        raw_count = str(count_match.group("count") or "1")
+        count_value = int(raw_count) if raw_count.isdigit() else simple_count_map[raw_count]
+        if _SIMPLE_SUBJECT_NAME_UNBOUNDED_COUNT_PATTERN.search(name):
+            raise ArtPromptContractError(
+                f"simple structured subject{index} name has an unbounded count",
+                code="art-prompt-simple-contract-subject-count-invalid",
+            )
+        name_counts: list[int] = []
+        for name_count_match in _SIMPLE_SUBJECT_NAME_EXPLICIT_COUNT_PATTERN.finditer(name):
+            if name_count_match.group("pair") or name_count_match.group("twins"):
+                name_counts.append(2)
+                continue
+            raw_name_count = str(
+                name_count_match.group("count")
+                or name_count_match.group("english")
+                or "1"
+            ).lower()
+            name_counts.append(
+                int(raw_name_count)
+                if raw_name_count.isdigit()
+                else simple_count_map[raw_name_count]
+            )
+        if len(name_counts) != 1:
+            raise ArtPromptContractError(
+                f"simple structured subject{index} name must contain exactly one bounded count",
+                code="art-prompt-simple-contract-subject-count-invalid",
+            )
+        if _SIMPLE_SUBJECT_NAME_PLURAL_SEMANTICS_PATTERN.search(name) and name_counts[0] <= 1:
+            raise ArtPromptContractError(
+                f"simple structured subject{index} name has unbounded plural semantics",
+                code="art-prompt-simple-contract-subject-count-invalid",
+            )
+        if name_counts and any(name_count != count_value for name_count in name_counts):
+            raise ArtPromptContractError(
+                f"simple structured subject{index} name/count mismatch",
+                code="art-prompt-simple-contract-subject-count-invalid",
+            )
+        subjects.append({
+            "name": name,
+            "count": count_text,
+            "appearance": items(subject_values[f"主体{index}外观"]),
+            "pose": subject_values[f"主体{index}姿态"],
+            "action": subject_values[f"主体{index}动作"],
+            "materials": items(subject_values[f"主体{index}材质"]),
+            "colors": items(subject_values[f"主体{index}颜色"]),
+            "details": items(subject_values[f"主体{index}局部细节"]),
+        })
+    relation_text = subject_values["主体关系"]
+    relations = [] if subject_count == 1 and re.search(r"单主体|无额外主体关系", relation_text) else items(relation_text)
+    environment_values = exact(
+        SECTIONS[2],
+        ["环境", "背景", "前中后景", "承托面", "遮挡层次"],
+    )
+    lighting_values = exact(
+        SECTIONS[3],
+        ["光源方向", "光源软硬", "明暗关系", "轮廓光", "主辅色", "局部颜色"],
+    )
+    camera_values = exact(
+        SECTIONS[4],
+        ["景别", "视角", "构图", "裁切", "透视", "景深"],
+    )
+    requirement_entries = sections.get(SECTIONS[5]) or []
+    requirement_keys = [key for key, _value in requirement_entries]
+    if not requirement_keys or requirement_keys != [
+        f"要求{index}" for index in range(1, len(requirement_keys) + 1)
+    ]:
+        raise ArtPromptContractError(
+            "simple structured requirement keys mismatch",
+            code="art-prompt-simple-contract-keys-mismatch",
+        )
+    contract = {
+        "schema": SCHEMA_VERSION,
+        "subject_count": subject_count,
+        "style": {
+            "medium": style_values["媒介"],
+            "render_language": style_values["绘画语言"],
+            "atmosphere": style_values["氛围"],
+            "finish": style_values["完成质感"],
+        },
+        "subjects": subjects,
+        "relations": relations,
+        "environment": {
+            "setting": environment_values["环境"],
+            "background": environment_values["背景"],
+            "spatial_layers": items(environment_values["前中后景"]),
+            "support_surface": environment_values["承托面"],
+            "occlusion": items(environment_values["遮挡层次"]),
+        },
+        "lighting_color": {
+            "light_direction": lighting_values["光源方向"],
+            "light_quality": lighting_values["光源软硬"],
+            "light_shadow": lighting_values["明暗关系"],
+            "rim_light": lighting_values["轮廓光"],
+            "palette": items(lighting_values["主辅色"]),
+            "local_colors": items(lighting_values["局部颜色"]),
+        },
+        "camera": {
+            "shot": camera_values["景别"],
+            "angle": camera_values["视角"],
+            "composition": camera_values["构图"],
+            "crop": camera_values["裁切"],
+            "perspective": camera_values["透视"],
+            "depth_of_field": camera_values["景深"],
+        },
+        "applied_requirements": [],
+        "terminal_constraints": [value for _key, value in requirement_entries],
+    }
+    normalized = parse_art_prompt_contract(
+        json.dumps(contract, ensure_ascii=False, separators=(",", ":")),
+        ignore_applied_requirements=True,
+    )
+    _validate_simple_light_slot_semantics(normalized)
     return normalized
 
 

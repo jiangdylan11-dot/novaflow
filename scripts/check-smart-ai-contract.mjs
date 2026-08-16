@@ -395,7 +395,7 @@ function checkFrontendModule() {
     "particle-editor-desktop/dist/win-unpacked/resources/app/renderer/novaflow-smart-ai.js"
   ].forEach((filePath) => {
     const mirror = assertFile(filePath, "mirrored smart ai module");
-    assertIncludes(mirror, 'const VERSION = "20260815-art-e2e-parity-1"', `${filePath} explicit Art E2E parity SmartAI version`);
+    assertIncludes(mirror, 'const VERSION = "20260816-art-simple-structured-1"', `${filePath} explicit Art structured-detail SmartAI version`);
     assertIncludes(mirror, "只设计并写入提示词，不会直接生成视频", `${filePath} animation prompt-only explanation`);
     assertIncludes(mirror, "视频提示优化", `${filePath} animation optimize mode`);
     assertIncludes(mirror, "画面反推", `${filePath} animation reverse mode`);

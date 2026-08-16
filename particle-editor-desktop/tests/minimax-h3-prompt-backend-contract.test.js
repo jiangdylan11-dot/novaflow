@@ -696,6 +696,44 @@ assert forwarded == {
     "provider": "grok",
     "nsfw": False,
 }
+forwarded_simple_art = preview._prompt_assistant_optimize_payload({
+    "prompt": "一个比基尼女牵着一条狗走在海边，二次元风格",
+    "currentPrompt": "一个比基尼女牵着一条狗走在海边，二次元风格",
+    "promptSchema": "nf.art.prompt.v1",
+    "promptDetailMode": "simple-structured-v1",
+    "purpose": "optimize",
+    "surface": "art",
+})
+assert forwarded_simple_art["promptSchema"] == "nf.art.prompt.v1"
+assert forwarded_simple_art["promptDetailMode"] == "simple-structured-v1"
+forwarded_nonlocal_detail = preview._prompt_assistant_optimize_payload({
+    "prompt": "一个比基尼女牵着一条狗走在海边，二次元风格",
+    "currentPrompt": "一个比基尼女牵着一条狗走在海边，二次元风格",
+    "promptSchema": "nf.art.prompt.v1",
+    "promptDetailMode": "simple-structured-v1",
+    "purpose": "optimize",
+    "surface": "art",
+    "provider": "gpt",
+})
+assert forwarded_nonlocal_detail["promptSchema"] == "nf.art.prompt.v1"
+assert "promptDetailMode" not in forwarded_nonlocal_detail
+forwarded_invalid_detail = preview._prompt_assistant_optimize_payload({
+    "prompt": "short prompt",
+    "currentPrompt": "short prompt",
+    "promptDetailMode": "simple-structured-v1",
+    "purpose": "optimize",
+    "surface": "art",
+})
+assert "promptDetailMode" not in forwarded_invalid_detail
+forwarded_resource_detail = preview._prompt_assistant_optimize_payload({
+    "prompt": "使用 @参考图1 的姿势",
+    "currentPrompt": "使用 @参考图1 的姿势",
+    "promptSchema": "nf.art.prompt.v1",
+    "promptDetailMode": "simple-structured-v1",
+    "purpose": "optimize",
+    "surface": "art",
+})
+assert "promptDetailMode" not in forwarded_resource_detail
 forwarded_long = preview._prompt_assistant_optimize_payload({
     "purpose": "minimax-h3-prompt-enhance",
     "requirements": "R" * 13000,

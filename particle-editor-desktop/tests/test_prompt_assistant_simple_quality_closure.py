@@ -43,6 +43,15 @@ class SimpleQualityClosureTests(unittest.TestCase):
         for phrase in SERVICE.ORDINARY_ART_SIMPLE_QUALITY_CLOSURE_PHRASES.values():
             self.assertIn(phrase, result)
 
+    def test_operation_prefix_does_not_get_consumed_as_a_highlight_token(self):
+        self.assertEqual(
+            SERVICE.ordinary_art_simple_quality_closure_domains(
+                self.SOURCE,
+                "提高光影层次",
+            ),
+            ["lighting"],
+        )
+
     def test_existing_source_quality_only_receives_missing_domains(self):
         source = "一名成年女战士站在山谷中，材质与纹理细腻清晰，光影层次丰富。"
         diagnostics = {}

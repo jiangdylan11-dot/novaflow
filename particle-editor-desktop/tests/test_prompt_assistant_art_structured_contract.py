@@ -23,11 +23,14 @@ from prompt_assistant.art_prompt_contract import (  # noqa: E402
     ArtPromptContractError,
     SCHEMA_VERSION,
     SECTIONS,
+    SIMPLE_STRUCTURED_OUTPUT_MAX_TOKENS,
     STRUCTURED_OUTPUT_MAX_TOKENS,
     build_art_prompt_contract_instruction,
+    build_simple_art_prompt_contract_instruction,
     compile_art_prompt_contract,
     front_five_sections,
     parse_art_prompt_contract,
+    parse_simple_art_prompt_contract,
 )
 
 
@@ -98,6 +101,69 @@ def adult_pair_ir(*, applied_requirements=None, terminal_constraints=None) -> di
         "terminal_constraints": list(terminal_constraints or [
             "两位人物必须保持25岁以上的明确成年东方女性身份，肢体结构和归属必须正确",
         ]),
+    }
+
+
+def bikini_woman_and_dog_ir() -> dict:
+    return {
+        "schema": SCHEMA_VERSION,
+        "subject_count": 2,
+        "style": {
+            "medium": "高精度数字插画",
+            "render_language": "细腻二次元角色CG，清晰线条与柔和体积塑造",
+            "atmosphere": "开阔、自然、明快的海滨氛围",
+            "finish": "皮肤、比基尼布料、犬毛、海水与沙滩材质层次细腻，画面完成度高",
+        },
+        "subjects": [
+            {
+                "name": "一名身穿比基尼的成年女性",
+                "count": "一名",
+                "appearance": ["保持女性身份", "比基尼服装轮廓清晰", "全身比例自然"],
+                "pose": "自然行走姿态，重心稳定",
+                "action": "手臂伸向犬只方向并牵引同行",
+                "materials": ["皮肤质感", "比基尼布料"],
+                "colors": ["人物固有色层次清晰，不额外指定色相"],
+                "details": ["面部五官清晰", "手脚结构准确", "发丝分组自然"],
+            },
+            {
+                "name": "一条狗",
+                "count": "一条",
+                "appearance": ["犬只身体比例自然", "不指定原文未给出的犬种"],
+                "pose": "四足行走姿态",
+                "action": "在成年女性牵引下沿海边同行",
+                "materials": ["自然犬毛质感"],
+                "colors": ["犬毛固有色层次清晰，不额外指定色相"],
+                "details": ["四肢结构准确", "毛发轮廓清楚", "牵引方向明确"],
+            },
+        ],
+        "relations": ["一名成年女性牵着一条狗沿海边共同向前行走"],
+        "environment": {
+            "setting": "开阔海边与沙滩环境",
+            "background": "海面和天空形成简洁远景，不新增建筑或其他角色",
+            "spatial_layers": ["前景为脚部与沙滩接触", "中景为成年女性与犬只", "后景为海面与天空"],
+            "support_surface": "沙滩稳定承托成年女性与犬只的行走动作",
+            "occlusion": ["人物、牵引动作和犬只轮廓彼此清楚", "背景保持开阔纵深"],
+        },
+        "lighting_color": {
+            "light_direction": "自然海岸环境光从画面侧上方照射",
+            "light_quality": "柔和扩散光塑造主体体积",
+            "light_shadow": "人物、犬只与沙滩明暗层次自然，高光和阴影过渡受控",
+            "rim_light": "轻微轮廓光分离主体与海面背景",
+            "palette": ["人物、犬只、海面与沙滩按固有色建立主辅层级"],
+            "local_colors": ["人物固有色", "犬毛固有色", "海面与沙滩环境色"],
+        },
+        "camera": {
+            "shot": "人物与犬只完整入画的全身景",
+            "angle": "自然平视视角",
+            "composition": "成年女性与犬只形成稳定的双主体横向构图，牵引关系清楚",
+            "crop": "完整保留人物脚部、犬只四肢和牵引关系",
+            "perspective": "自然标准透视，人体与犬只比例无夸张变形",
+            "depth_of_field": "人物与犬只清晰对焦，远景海面轻度虚化",
+        },
+        "applied_requirements": [],
+        "terminal_constraints": [
+            "画面中只存在一名成年女性和一条狗，二者牵引同行，地点限定为海边，不出现其他人物、动物、道具或地点",
+        ],
     }
 
 
@@ -319,6 +385,95 @@ class ArtPromptContractModuleTests(unittest.TestCase):
         self.assertIn('前中后景 = ', compiled)
         self.assertIn('裁切 = ', compiled)
         self.assertIn('画面质感细腻丰富', front_five_sections(compiled))
+
+    def test_simple_section_contract_round_trips_into_strict_ir(self):
+        compiled = compile_art_prompt_contract(bikini_woman_and_dog_ir())
+        parsed = parse_simple_art_prompt_contract(compiled)
+        self.assertEqual(parsed["subject_count"], 2)
+        self.assertEqual(
+            [subject["name"] for subject in parsed["subjects"]],
+            ["一名身穿比基尼的成年女性", "一条狗"],
+        )
+        self.assertIn("牵着一条狗", parsed["relations"][0])
+        self.assertEqual(compile_art_prompt_contract(parsed), compiled)
+
+    def test_simple_section_contract_rejects_wrappers_missing_keys_and_young_slot_drift(self):
+        compiled = compile_art_prompt_contract(bikini_woman_and_dog_ir())
+        cases = (
+            f"```text\n{compiled}\n```",
+            compiled.replace('景深 = ', '焦点 = ', 1),
+            compiled.replace('主体2局部细节 = ', '主体2动作 = ', 1),
+        )
+        for output in cases:
+            with self.subTest(output=output[:48]):
+                with self.assertRaises(ArtPromptContractError):
+                    parse_simple_art_prompt_contract(output)
+
+        prompt = build_simple_art_prompt_contract_instruction(
+            "一个比基尼女牵着一条狗走在海边，二次元风格",
+            "",
+            nsfw_enabled=True,
+        )
+        self.assertEqual(SIMPLE_STRUCTURED_OUTPUT_MAX_TOKENS, 768)
+        for marker in (
+            "六个分区",
+            "禁止新增原文没有的人物、动物、道具",
+            "原文的女/女性不得改成少女、女孩",
+            "[用户附加要求]",
+        ):
+            self.assertIn(marker, prompt)
+
+    def test_simple_section_contract_rejects_swapped_light_direction_and_quality(self):
+        compiled = compile_art_prompt_contract(bikini_woman_and_dog_ir())
+        cases = (
+            compiled.replace(
+                '光源方向 = "自然海岸环境光从画面侧上方照射"',
+                '光源方向 = "柔和扩散的光源软硬表现"',
+                1,
+            ),
+            compiled.replace(
+                '光源软硬 = "柔和扩散光塑造主体体积"',
+                '光源软硬 = "画面左上方向照射主体"',
+                1,
+            ),
+        )
+        for output in cases:
+            with self.subTest(output=output):
+                with self.assertRaises(ArtPromptContractError) as caught:
+                    parse_simple_art_prompt_contract(output)
+                self.assertEqual(
+                    caught.exception.code,
+                    "art-prompt-contract-slot-semantic",
+                )
+
+    def test_simple_section_contract_rejects_invalid_or_conflicting_subject_counts(self):
+        compiled = compile_art_prompt_contract(bikini_woman_and_dog_ir())
+        cases = (
+            ('主体1 = "一名身穿比基尼的成年女性"', '主体1 = "两名身穿比基尼的成年女性"'),
+            ('主体1数量 = "一名"', '主体1数量 = "两名成年女性"'),
+            ('主体1数量 = "一名"', '主体1数量 = "一群"'),
+            ('主体1数量 = "一名"', '主体1数量 = "多名"'),
+            ('主体1 = "一名身穿比基尼的成年女性"', '主体1 = "一对身穿比基尼的成年女性"'),
+            ('主体1 = "一名身穿比基尼的成年女性"', '主体1 = "身穿比基尼的成年女性双胞胎"'),
+            ('主体1 = "一名身穿比基尼的成年女性"', '主体1 = "身穿比基尼的成年女性们"'),
+            ('主体1 = "一名身穿比基尼的成年女性"', '主体1 = "adult women in bikinis"'),
+            ('主体1 = "一名身穿比基尼的成年女性"', '主体1 = "身穿比基尼的成年女性姐妹"'),
+            ('主体1 = "一名身穿比基尼的成年女性"', '主体1 = "身穿比基尼的成年女性母女"'),
+            ('主体1 = "一名身穿比基尼的成年女性"', '主体1 = "身穿比基尼的成年女性二人组"'),
+            ('主体1 = "一名身穿比基尼的成年女性"', '主体1 = "身穿比基尼的成年女性双人组合"'),
+            ('主体1 = "一名身穿比基尼的成年女性"', '主体1 = "身穿比基尼的成年女性"'),
+            ('主体1 = "一名身穿比基尼的成年女性"', '主体1 = "一名成年女性和一名成年男性"'),
+            ('主体1 = "一名身穿比基尼的成年女性"', '主体1 = "adult female duo in bikinis"'),
+        )
+        for original, replacement in cases:
+            with self.subTest(replacement=replacement):
+                malformed = compiled.replace(original, replacement, 1)
+                with self.assertRaises(ArtPromptContractError) as caught:
+                    parse_simple_art_prompt_contract(malformed)
+                self.assertEqual(
+                    caught.exception.code,
+                    "art-prompt-simple-contract-subject-count-invalid",
+                )
 
     def test_terminal_section_rejects_operation_or_non_hard_text(self):
         for terminal in (
@@ -711,6 +866,611 @@ class PromptAssistantStructuredArtTests(unittest.TestCase):
         payload.update(payload_overrides or {})
         result = assistant.optimize_prompt(payload)
         return result, calls
+
+    def simple_payload(self) -> dict:
+        source = "一个比基尼女牵着一条狗走在海边，二次元风格"
+        return {
+            "surface": "art",
+            "purpose": "optimize",
+            "prompt": source,
+            "currentPrompt": source,
+            "promptSchema": SCHEMA_VERSION,
+            "promptDetailMode": "simple-structured-v1",
+            "requirements": (
+                "提示词编辑模式：以 prompt / currentPrompt 中的完整原提示词为唯一底稿，只执行用户本次明确提出的修改。\n"
+                "画面质量要求：结构准确、材质可信、光影层次清晰。"
+            ),
+            "supportsNegativePrompt": False,
+            "nsfw": True,
+        }
+
+    def test_service_short_prompt_uses_bounded_detailed_sections_without_age_drift(self):
+        assistant = SERVICE.PromptAssistant()
+        calls = []
+
+        def generate(prompt: str, **kwargs):
+            calls.append({"prompt": prompt, **kwargs})
+            self.fail("simple deterministic route must not call the local model")
+
+        assistant.generate = generate
+        result = assistant.optimize_prompt(self.simple_payload())
+        self.assertEqual(calls, [])
+        self.assertEqual(result["editContract"], "structured-recompile-v1")
+        self.assertEqual(result["promptSchema"], SCHEMA_VERSION)
+        self.assertEqual(
+            tuple(
+                line.strip()
+                for line in result["positivePrompt"].splitlines()
+                if line.strip().startswith("[") and line.strip().endswith("]")
+            ),
+            SECTIONS,
+        )
+        self.assertGreaterEqual(len(result["positivePrompt"].replace("\n", "")), 300)
+        self.assertIn("一名身穿比基尼的成年女性", result["positivePrompt"])
+        self.assertIn("一条狗", result["positivePrompt"])
+        self.assertIn("牵着一条狗", result["positivePrompt"])
+        self.assertIn("海边", result["positivePrompt"])
+        self.assertIn("二次元", result["positivePrompt"])
+        self.assertNotRegex(result["positivePrompt"], r"少女|女孩|未成年")
+
+    def test_service_short_prompt_applies_real_quality_instruction_without_model(self):
+        assistant = SERVICE.PromptAssistant()
+        calls = []
+
+        def generate(prompt: str, **kwargs):
+            calls.append({"prompt": prompt, **kwargs})
+            self.fail("simple deterministic quality closure must not call the local model")
+
+        assistant.generate = generate
+        payload = self.simple_payload()
+        payload["requirements"] = "增强材质、光影层次和画面质感"
+        result = assistant.optimize_prompt(payload)
+        self.assertEqual(calls, [])
+        self.assertEqual(result["editContract"], "structured-recompile-v1")
+        self.assertEqual(result["promptSchema"], SCHEMA_VERSION)
+        self.assertIn("材质与纹理细腻清晰", result["positivePrompt"])
+        self.assertIn("光影层次丰富，高光与阴影过渡自然", result["positivePrompt"])
+        self.assertIn("画面质感精致，细节清晰，完成度高", result["positivePrompt"])
+        self.assertIn(
+            '明暗关系 = "主体明暗层次清楚，高光与阴影过渡受控，'
+            '光影层次丰富，高光与阴影过渡自然，光线自然受控"',
+            result["positivePrompt"],
+        )
+        self.assertEqual(
+            tuple(
+                line.strip()
+                for line in result["positivePrompt"].splitlines()
+                if line.strip().startswith("[") and line.strip().endswith("]")
+            ),
+            SECTIONS,
+        )
+
+    def test_simple_quality_materializer_covers_every_allowlisted_domain_anchor(self):
+        source = self.simple_payload()["currentPrompt"]
+        payload = {"promptDetailMode": "simple-structured-v1"}
+        anchor_domains = {
+            "材质": "material",
+            "纹理": "material",
+            "光影": "lighting",
+            "光线": "lighting",
+            "高光": "lighting",
+            "阴影": "lighting",
+            "层次": "lighting",
+            "画面质感": "quality",
+            "画质": "quality",
+            "细节": "quality",
+            "清晰": "quality",
+            "清晰度": "quality",
+            "完成度": "quality",
+        }
+        for verb in ("增强", "提升", "提高", "强化", "改善", "优化"):
+            for anchor, domain in anchor_domains.items():
+                instruction = f"{verb}{anchor}"
+                with self.subTest(instruction=instruction):
+                    self.assertTrue(
+                        SERVICE.ordinary_art_uses_simple_structured_contract(
+                            payload,
+                            source,
+                            instruction,
+                        )
+                    )
+                    contract = SERVICE.ordinary_art_build_simple_deterministic_contract(
+                        source
+                    )
+                    ledger = (
+                        SERVICE.ordinary_art_apply_simple_deterministic_quality_requirements(
+                            source,
+                            instruction,
+                            contract,
+                        )
+                    )
+                    self.assertEqual(len(ledger), 1)
+                    self.assertIn(
+                        SERVICE.ORDINARY_ART_SIMPLE_STRUCTURED_QUALITY_PHRASES[domain],
+                        ledger[0],
+                    )
+                    self.assertEqual(
+                        SERVICE.ordinary_art_structured_requirement_ledger_failure(
+                            instruction,
+                            ledger,
+                            grounded_mapping=True,
+                            source_prompt=source,
+                        ),
+                        "",
+                    )
+                    assistant = SERVICE.PromptAssistant()
+                    calls = []
+
+                    def generate(prompt: str, **kwargs):
+                        calls.append({"prompt": prompt, **kwargs})
+                        self.fail(
+                            "every allowlisted simple quality edit must close without the model"
+                        )
+
+                    assistant.generate = generate
+                    service_payload = self.simple_payload()
+                    service_payload["requirements"] = instruction
+                    result = assistant.optimize_prompt(service_payload)
+                    self.assertEqual(calls, [])
+                    self.assertIn(
+                        SERVICE.ORDINARY_ART_SIMPLE_STRUCTURED_QUALITY_PHRASES[domain],
+                        result["positivePrompt"],
+                    )
+                    self.assertEqual(
+                        tuple(
+                            line.strip()
+                            for line in result["positivePrompt"].splitlines()
+                            if line.strip().startswith("[")
+                            and line.strip().endswith("]")
+                        ),
+                        SECTIONS,
+                    )
+
+        self.assertFalse(
+            SERVICE.ordinary_art_uses_simple_structured_contract(
+                payload,
+                source,
+                "增强材质；提高光影层次",
+            )
+        )
+
+        for instruction in (
+            "增强材质和提升光影",
+            "增强材质并提升光影",
+            "增强材质、提升光影",
+            "提升材质与强化画质",
+            "增强材质以及优化画质",
+        ):
+            with self.subTest(multi_operation=instruction):
+                self.assertFalse(
+                    SERVICE.ordinary_art_uses_simple_structured_contract(
+                        payload,
+                        source,
+                        instruction,
+                    )
+                )
+                assistant = SERVICE.PromptAssistant()
+
+                def generate(prompt: str, **kwargs):
+                    raise RuntimeError("full structured model fallback")
+
+                assistant.generate = generate
+                service_payload = self.simple_payload()
+                service_payload["requirements"] = instruction
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "full structured model fallback",
+                ):
+                    assistant.optimize_prompt(service_payload)
+
+    def test_service_short_prompt_bypasses_model_and_signs_deterministically(self):
+        assistant = SERVICE.PromptAssistant()
+        calls = []
+
+        def generate(prompt: str, **kwargs):
+            calls.append({"prompt": prompt, **kwargs})
+            self.fail("simple deterministic route must not enter model repair")
+
+        assistant.generate = generate
+        result = assistant.optimize_prompt(self.simple_payload())
+        self.assertEqual(calls, [])
+        self.assertEqual(result["promptSchema"], SCHEMA_VERSION)
+        self.assertIn("一名身穿比基尼的成年女性", result["positivePrompt"])
+        self.assertIn("一名成年女性牵着一条狗", result["positivePrompt"])
+
+    def test_service_short_prompt_builds_typed_lighting_slots_without_repair(self):
+        assistant = SERVICE.PromptAssistant()
+        calls = []
+
+        def generate(prompt: str, **kwargs):
+            calls.append({"prompt": prompt, **kwargs})
+            self.fail("simple deterministic route must not enter model repair")
+
+        assistant.generate = generate
+        result = assistant.optimize_prompt(self.simple_payload())
+        self.assertEqual(calls, [])
+        self.assertEqual(result["promptSchema"], SCHEMA_VERSION)
+        self.assertIn('光源方向 = "自然环境光从画面侧上方照射主体"', result["positivePrompt"])
+        self.assertIn('光源软硬 = "柔和主光配合受控轮廓光，明暗转折自然"', result["positivePrompt"])
+
+    def test_service_short_prompt_rejects_source_fact_drift_without_model_repair(self):
+        drift_cases = []
+
+        extra_cat = bikini_woman_and_dog_ir()
+        extra_cat["subject_count"] = 3
+        cat = json.loads(json.dumps(extra_cat["subjects"][1], ensure_ascii=False))
+        cat.update({
+            "name": "一只红色猫",
+            "count": "一只",
+            "appearance": ["红色猫咪身体比例自然"],
+            "pose": "四足行走姿态",
+            "action": "跟随人物与犬只同行",
+            "materials": ["自然猫毛质感"],
+            "colors": ["红色猫毛"],
+            "details": ["猫咪轮廓清楚"],
+        })
+        extra_cat["subjects"].append(cat)
+        extra_cat["relations"].append("红色猫跟随成年女性与犬只同行")
+        drift_cases.append(("extra-cat", extra_cat))
+
+        youngified = bikini_woman_and_dog_ir()
+        youngified["subjects"][0]["name"] = "一名身穿比基尼的少女"
+        drift_cases.append(("youngification", youngified))
+
+        gender_drift = bikini_woman_and_dog_ir()
+        gender_drift["subjects"][0]["name"] = "一名身穿比基尼的成年男性"
+        drift_cases.append(("gender", gender_drift))
+
+        color_drift = bikini_woman_and_dog_ir()
+        color_drift["subjects"][0]["colors"] = ["红色比基尼", "人物固有色"]
+        drift_cases.append(("color", color_drift))
+
+        surfboard_drift = bikini_woman_and_dog_ir()
+        surfboard_drift["environment"]["background"] = "海面、天空和冲浪板构成远景"
+        drift_cases.append(("surfboard", surfboard_drift))
+
+        weather_drift = bikini_woman_and_dog_ir()
+        weather_drift["environment"]["background"] = "正午多云天空与海面构成远景"
+        drift_cases.append(("time-weather", weather_drift))
+
+        setting_drift = bikini_woman_and_dog_ir()
+        setting_drift["environment"]["background"] = "海面远方出现巨大火山口"
+        drift_cases.append(("setting", setting_drift))
+
+        breed_drift = bikini_woman_and_dog_ir()
+        breed_drift["subjects"][1]["name"] = "一条泰迪狗"
+        drift_cases.append(("breed", breed_drift))
+
+        hidden_male = bikini_woman_and_dog_ir()
+        hidden_male["environment"]["background"] = "海面、天空和一名成年男性路人构成远景"
+        drift_cases.append(("cross-slot-male", hidden_male))
+
+        hidden_woman = bikini_woman_and_dog_ir()
+        hidden_woman["relations"].append("另一名成年女性在旁边同行")
+        drift_cases.append(("cross-slot-extra-woman", hidden_woman))
+
+        for label, background in (
+            ("seagull", "海面、天空和海鸥构成远景"),
+            ("castle", "海面、天空和城堡构成远景"),
+            ("palm-tree", "海面、天空和棕榈树构成远景"),
+            ("parasol", "海面、天空和太阳伞构成远景"),
+        ):
+            drift = bikini_woman_and_dog_ir()
+            drift["environment"]["background"] = background
+            drift_cases.append((label, drift))
+
+        pomeranian_drift = bikini_woman_and_dog_ir()
+        pomeranian_drift["subjects"][1]["appearance"] = ["博美犬的品种特征清晰"]
+        drift_cases.append(("pomeranian", pomeranian_drift))
+
+        hidden_action_male = bikini_woman_and_dog_ir()
+        hidden_action_male["subjects"][0]["action"] = "牵着狗并与一名成年男性路人握手"
+        drift_cases.append(("subject-action-hidden-male", hidden_action_male))
+
+        hidden_appearance_male = bikini_woman_and_dog_ir()
+        hidden_appearance_male["subjects"][0]["appearance"].append("肩后站着一名成年男性路人")
+        drift_cases.append(("subject-appearance-hidden-male", hidden_appearance_male))
+
+        camera_hidden_male = bikini_woman_and_dog_ir()
+        camera_hidden_male["camera"]["composition"] = "成年女性、狗与一名成年男性路人形成三主体构图"
+        drift_cases.append(("camera-hidden-male", camera_hidden_male))
+
+        camera_extra_woman = bikini_woman_and_dog_ir()
+        camera_extra_woman["camera"]["composition"] = "成年女性、狗与另一名成年女性形成三主体构图"
+        drift_cases.append(("camera-extra-woman", camera_extra_woman))
+
+        located_women = bikini_woman_and_dog_ir()
+        located_women["relations"] = ["前景成年女性牵着狗，远景成年女性面向镜头"]
+        drift_cases.append(("located-extra-woman", located_women))
+
+        located_dogs = bikini_woman_and_dog_ir()
+        located_dogs["relations"] = ["成年女性分别牵着前景狗与远景狗"]
+        drift_cases.append(("located-extra-dog", located_dogs))
+
+        three_silhouettes = bikini_woman_and_dog_ir()
+        three_silhouettes["relations"].append("画面形成三道独立身影")
+        drift_cases.append(("aggregate-three-silhouettes", three_silhouettes))
+
+        plural_action = bikini_woman_and_dog_ir()
+        plural_action["subjects"][0]["action"] = "她们共同牵着一条狗沿海边行走"
+        drift_cases.append(("subject-action-plural-women", plural_action))
+
+        plural_relation = bikini_woman_and_dog_ir()
+        plural_relation["relations"] = ["both women walk with the dog along the beach"]
+        drift_cases.append(("relation-plural-women", plural_relation))
+
+        plural_camera = bikini_woman_and_dog_ir()
+        plural_camera["camera"]["composition"] = "成年女性们与狗形成稳定横向构图"
+        drift_cases.append(("camera-plural-women", plural_camera))
+
+        plural_dogs = bikini_woman_and_dog_ir()
+        plural_dogs["subjects"][1]["action"] = "dogs walk beside the woman along the beach"
+        drift_cases.append(("subject-action-plural-dogs", plural_dogs))
+
+        tourist_crowd = bikini_woman_and_dog_ir()
+        tourist_crowd["environment"]["background"] = "海面和天空形成简洁远景，一群游客在后景散步"
+        drift_cases.append(("background-tourist-crowd", tourist_crowd))
+
+        sister_relation = bikini_woman_and_dog_ir()
+        sister_relation["relations"] = ["两姐妹牵着狗沿海边共同向前行走"]
+        drift_cases.append(("relation-sisters", sister_relation))
+
+        split_locator_women = bikini_woman_and_dog_ir()
+        split_locator_women["subjects"][0]["action"] = "前景成年女性牵着狗沿海边行走"
+        split_locator_women["environment"]["background"] = "海面和天空形成远景，远景成年女性面向镜头"
+        drift_cases.append(("cross-scalar-located-women", split_locator_women))
+
+        split_locator_dogs = bikini_woman_and_dog_ir()
+        split_locator_dogs["subjects"][1]["action"] = "前景一条狗沿海边行走"
+        split_locator_dogs["environment"]["background"] = "海面和天空形成远景，远景一条狗面向镜头"
+        drift_cases.append(("cross-scalar-located-dogs", split_locator_dogs))
+
+        generic_passerby = bikini_woman_and_dog_ir()
+        generic_passerby["environment"]["background"] = "海面和天空形成远景，一名路人在远景散步"
+        drift_cases.append(("generic-passerby", generic_passerby))
+
+        generic_person = bikini_woman_and_dog_ir()
+        generic_person["subjects"][0]["action"] = "牵着狗并与一名人物握手"
+        drift_cases.append(("generic-person", generic_person))
+
+        tagged_women = bikini_woman_and_dog_ir()
+        tagged_women["relations"] = ["成年女性A牵着狗，成年女性B面向镜头"]
+        drift_cases.append(("identity-tagged-women", tagged_women))
+
+        tagged_women_zh = bikini_woman_and_dog_ir()
+        tagged_women_zh["relations"] = ["成年女性甲牵着狗，成年女性乙面向镜头"]
+        drift_cases.append(("identity-tagged-women-zh", tagged_women_zh))
+
+        reversed_relation = bikini_woman_and_dog_ir()
+        reversed_relation["subjects"][0]["action"] = "被犬只牵引沿海边行走"
+        reversed_relation["subjects"][1]["action"] = "牵着成年女性沿海边行走"
+        reversed_relation["relations"] = ["一条狗牵着一名成年女性沿海边行走"]
+        drift_cases.append(("core-relation-reversed", reversed_relation))
+
+        removed_relation = bikini_woman_and_dog_ir()
+        removed_relation["subjects"][0]["action"] = "独自沿岸行走，不牵引犬只"
+        removed_relation["subjects"][1]["action"] = "脱离成年女性独自奔跑"
+        removed_relation["relations"] = ["彼此无牵引关系"]
+        drift_cases.append(("core-relation-removed", removed_relation))
+
+        replaced_style = bikini_woman_and_dog_ir()
+        replaced_style["style"]["medium"] = "写实摄影"
+        replaced_style["style"]["render_language"] = "照片级超写实摄影语言"
+        drift_cases.append(("core-style-replaced", replaced_style))
+
+        replaced_clothing = bikini_woman_and_dog_ir()
+        replaced_clothing["subjects"][0]["name"] = "一名身穿连衣裙的成年女性"
+        replaced_clothing["subjects"][0]["appearance"] = ["连衣裙装束", "成年女性外观"]
+        replaced_clothing["subjects"][0]["materials"] = ["连衣裙布料"]
+        drift_cases.append(("core-clothing-replaced", replaced_clothing))
+
+        replaced_setting = bikini_woman_and_dog_ir()
+        replaced_setting["environment"]["setting"] = "开阔湖边与湖岸环境"
+        replaced_setting["environment"]["background"] = "湖面形成简洁远景"
+        replaced_setting["environment"]["support_surface"] = "湖岸稳定承托主体行走"
+        drift_cases.append(("core-setting-replaced", replaced_setting))
+
+        camera_negates_relation = bikini_woman_and_dog_ir()
+        camera_negates_relation["camera"]["composition"] = "成年女性与犬只彼此无牵引关系，形成分离式双主体构图"
+        drift_cases.append(("camera-negates-core-relation", camera_negates_relation))
+
+        action_replaces_clothing = bikini_woman_and_dog_ir()
+        action_replaces_clothing["subjects"][0]["action"] = "身穿连衣裙的成年女性牵着犬只沿海边同行"
+        drift_cases.append(("action-replaces-core-clothing", action_replaces_clothing))
+
+        pose_replaces_clothing = bikini_woman_and_dog_ir()
+        pose_replaces_clothing["subjects"][0]["pose"] = "身穿连衣裙的成年女性自然行走，重心稳定"
+        drift_cases.append(("pose-replaces-core-clothing", pose_replaces_clothing))
+
+        details_replace_style = bikini_woman_and_dog_ir()
+        details_replace_style["subjects"][0]["details"].append("人物整体以写实摄影风格呈现")
+        drift_cases.append(("details-replace-core-style", details_replace_style))
+
+        camera_replaces_style = bikini_woman_and_dog_ir()
+        camera_replaces_style["camera"]["perspective"] = "照片级写实摄影风格的真实镜头透视"
+        drift_cases.append(("camera-replaces-core-style", camera_replaces_style))
+
+        for label, ir in drift_cases:
+            with self.subTest(label=label):
+                self.assertTrue(
+                    SERVICE.ordinary_art_simple_contract_source_failure(
+                        self.simple_payload()["currentPrompt"],
+                        ir,
+                    ),
+                    msg=label,
+                )
+
+    def test_service_short_prompt_replaces_model_terminal_facts_deterministically(self):
+        malicious_constraints = (
+            "主体数量限定为一名成年女性、一条狗和一只红色猫，地点限定为海边",
+            "背景只允许海边与一座金色宫殿，主体保持成年女性与狗",
+            "时间限定为黄昏，天气限定为暴雨，主体保持成年女性与狗",
+            "成年女性与狗保持同行，狗的品种限定为柯基犬",
+        )
+        for malicious in malicious_constraints:
+            with self.subTest(malicious=malicious):
+                assistant = SERVICE.PromptAssistant()
+                calls = []
+
+                def generate(prompt: str, **kwargs):
+                    calls.append({"prompt": prompt, **kwargs})
+                    self.fail("simple deterministic route must not read model terminal facts")
+
+                assistant.generate = generate
+                result = assistant.optimize_prompt(self.simple_payload())
+                terminal = result["positivePrompt"].split("[用户附加要求]", 1)[1]
+                self.assertEqual(calls, [])
+                self.assertNotIn(malicious, terminal)
+                for leaked in ("红色猫", "金色宫殿", "黄昏", "暴雨", "柯基犬"):
+                    self.assertNotIn(leaked, terminal)
+                self.assertIn("核心主体数量、身份、动作关系、地点与风格均与原始底稿一致", terminal)
+                self.assertIn("允许补充不与底稿冲突的材质、光影、镜头与背景表现细节", terminal)
+                self.assertIn("可直接生图的高完成度", terminal)
+
+    def test_service_simple_route_abstains_on_prop_wordplay_and_content_edits(self):
+        manifest_cases = {
+            "一个猫耳女性站在海边，二次元风格": [],
+            "一个猫女站在海边，二次元风格": [],
+            "一个女孩吃着热狗走在海边，二次元风格": ["female"],
+            "一个女孩站在花海，二次元风格": ["female"],
+            "一个女武士手持战斧站在山谷，二次元风格": [],
+            "三个女人牵着一条狗走在海边": ["female", "female", "female", "dog"],
+            "一个女人牵着两条狗走在海边": ["female", "dog", "dog"],
+            "两个女人和一个女人走在海边": ["female", "female", "female"],
+            "一个女骑士站在山谷": ["female"],
+            "一个机器人女孩站在城市": [],
+            "一辆跑车，少女漫画风格": [],
+            "a car, girl manga style": [],
+            "一件武士风格盔甲": [],
+            "一个龙女站在山谷": [],
+            "一个狐耳女孩走在海边，二次元风格": [],
+            "一个狼耳女孩走在海边，二次元风格": [],
+            "一个鹿角女站在山谷，二次元风格": [],
+            "a fox-eared girl walks on the beach, anime style": [],
+            "一辆跑车，女性向游戏风格": [],
+            "一辆跑车，人物插画风格": [],
+            "猫咪图案的背包放在桌面": [],
+            "小狗风格玩偶放在桌面": [],
+            "一个女人拿剑站在海边": [],
+            "一个女人拿花束站在海边": [],
+        }
+        for source, expected in manifest_cases.items():
+            with self.subTest(source=source):
+                self.assertEqual(
+                    SERVICE.ordinary_art_simple_source_subject_manifest(source),
+                    expected,
+                )
+
+        two_women_ir = bikini_woman_and_dog_ir()
+        two_women_ir["subjects"][0]["name"] = "两名身穿比基尼的成年女性"
+        two_women_ir["subjects"][0]["count"] = "两名"
+        two_women_ir["relations"] = ["两名成年女性共同牵着一条狗沿海边向前行走"]
+        self.assertEqual(
+            SERVICE.ordinary_art_simple_contract_source_failure(
+                "两个比基尼女牵着一条狗走在海边，二次元风格",
+                two_women_ir,
+            ),
+            "",
+        )
+
+        payload = {"promptDetailMode": "simple-structured-v1"}
+        source = "一个比基尼女牵着一条狗走在海边，二次元风格"
+        self.assertTrue(SERVICE.ordinary_art_uses_simple_structured_contract(
+            payload,
+            source,
+            "增强材质、光影层次和画面质感",
+        ))
+        preserved_sources = {
+            "一个穿红色比基尼的女人牵着一条狗走在黄昏海边，二次元风格": (
+                "红色比基尼",
+                "黄昏",
+            ),
+            "一个穿红比基尼的女人牵着一条狗走在黄昏海边，二次元风格": (
+                "红色比基尼",
+                "黄昏",
+            ),
+            "一个穿蓝色连衣裙的女人站在雨天海边，二次元风格": (
+                "蓝色连衣裙",
+                "雨天",
+            ),
+        }
+        for preserved_source, markers in preserved_sources.items():
+            with self.subTest(preserved_source=preserved_source):
+                self.assertTrue(
+                    SERVICE.ordinary_art_uses_simple_structured_contract(
+                        payload,
+                        preserved_source,
+                        "",
+                    )
+                )
+                compiled = compile_art_prompt_contract(
+                    SERVICE.ordinary_art_build_simple_deterministic_contract(
+                        preserved_source
+                    )
+                )
+                for marker in markers:
+                    self.assertIn(marker, compiled)
+        for instruction in ("把背景改成城市", "增加一只红猫"):
+            with self.subTest(instruction=instruction):
+                self.assertFalse(
+                    SERVICE.ordinary_art_uses_simple_structured_contract(
+                        payload,
+                        source,
+                        instruction,
+                    )
+                )
+        self.assertFalse(SERVICE.ordinary_art_uses_simple_structured_contract(
+            payload,
+            "两个成年人出现在海边，二次元风格",
+            "增强材质与光影",
+        ))
+        for unsafe_or_ambiguous_source in (
+            "一个穿旗袍的女人牵着一条狗走在海边，二次元风格",
+            "一个比基尼女牵着一条狗走在海边，蓝天，二次元风格",
+            "一个女人牵着一条狗站在海边，二次元风格",
+            "两个女人牵着一条狗走在海边，二次元风格",
+            "一个全裸女站在海边，二次元风格",
+            "一个比基尼女牵着一条狗走在海边，二次元风格，使用@参考图1",
+            "一群女人站在海边，二次元风格",
+            "two women standing on a beach, anime style",
+            "双胞胎女人站在海边，二次元风格",
+            "一个女人牵着狗们走在海边，二次元风格",
+            "一个比基尼女坐在海边牵着一条正在行走的狗，二次元风格",
+            "一个比基尼女站在海边牵着一条正在行走的狗，二次元风格",
+            "一个女人牵着一条穿西装的狗走在海边，二次元风格",
+            "女人俩站在海边，二次元风格",
+            "女人二人站在海边，二次元风格",
+            "一个穿红比基尼的女人牵着一条狗走在黄昏雨中的海边，二次元风格",
+            "一个比基尼女挥手牵着一条狗走在海边，二次元风格",
+            "一个女人看着他牵着一条狗走在海边，二次元风格",
+            "a woman watches him walk a dog on a beach, anime style",
+            "一个比基尼女牵着一条狗正在海边行走，二次元风格",
+            "一只猫站在海边，二次元风格",
+            "一个女人先站在海边再坐着，二次元风格",
+            "a woman with a dog walks a dog on a beach, anime style",
+        ):
+            with self.subTest(unsafe_or_ambiguous_source=unsafe_or_ambiguous_source):
+                self.assertFalse(
+                    SERVICE.ordinary_art_uses_simple_structured_contract(
+                        payload,
+                        unsafe_or_ambiguous_source,
+                        "",
+                    )
+                )
+
+    def test_service_short_prompt_never_enters_model_repair_path(self):
+        assistant = SERVICE.PromptAssistant()
+        calls = []
+
+        def generate(prompt: str, **kwargs):
+            calls.append({"prompt": prompt, **kwargs})
+            self.fail("simple deterministic route must not call model repair")
+
+        assistant.generate = generate
+        result = assistant.optimize_prompt(self.simple_payload())
+        self.assertEqual(calls, [])
+        self.assertEqual(result["promptSchema"], SCHEMA_VERSION)
+        self.assertIn("[用户附加要求]", result["positivePrompt"])
 
     def test_exact_acceptance_edit_is_applied_in_front_five_not_terminal_echo(self):
         requirements = f"用户本次修改要求（最高优先级）：{self.INSTRUCTION}"

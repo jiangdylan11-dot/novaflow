@@ -1484,6 +1484,21 @@ def _prompt_assistant_optimize_payload(request: dict) -> dict:
         and requested_prompt_schema == "nf.art.prompt.v1"
     ):
         payload["promptSchema"] = requested_prompt_schema
+        requested_detail_mode = str(
+            source.get("promptDetailMode") or source.get("prompt_detail_mode") or ""
+        ).strip()
+        simple_source = payload["currentPrompt"]
+        if (
+            payload["provider"].strip().lower() == "local"
+            and
+            requested_detail_mode == "simple-structured-v1"
+            and len(simple_source) <= 120
+            and not re.search(r"[\r\n]", simple_source)
+            and not re.search(r"__NOVAFLOW_[A-Z0-9_:-]+__", simple_source, re.I)
+            and not re.search(r"@(?:参考图[1-9][0-9]*|视频参考|声音参考)", simple_source)
+            and not re.search(r"\[[^\]\r\n]{1,32}\]|【[^】\r\n]{1,32}】", simple_source)
+        ):
+            payload["promptDetailMode"] = requested_detail_mode
     return payload
 
 

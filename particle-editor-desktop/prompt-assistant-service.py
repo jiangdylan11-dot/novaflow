@@ -19,13 +19,16 @@ from pathlib import Path
 from prompt_assistant.art_prompt_contract import (
     EDIT_CONTRACT as ART_PROMPT_EDIT_CONTRACT,
     SCHEMA_VERSION as ART_PROMPT_SCHEMA_VERSION,
+    SIMPLE_STRUCTURED_OUTPUT_MAX_TOKENS as ART_PROMPT_SIMPLE_STRUCTURED_OUTPUT_MAX_TOKENS,
     STRUCTURED_OUTPUT_MAX_TOKENS as ART_PROMPT_STRUCTURED_OUTPUT_MAX_TOKENS,
     ArtPromptContractError,
     build_art_prompt_contract_instruction,
+    build_simple_art_prompt_contract_instruction,
     compile_art_prompt_contract,
     front_five_scalar_values as art_prompt_front_five_scalar_values,
     front_five_sections as art_prompt_front_five_sections,
     parse_art_prompt_contract,
+    parse_simple_art_prompt_contract,
     terminal_constraint_text as art_prompt_terminal_constraint_text,
 )
 from prompt_assistant.qwen3_vl_adapter import Qwen3VLAbliteratedAdapter, Qwen3VLProviderError
@@ -8576,6 +8579,12 @@ ORDINARY_ART_SIMPLE_QUALITY_CLOSURE_PHRASES = {
     "quality": "画面质感精致，细节清晰，完成度高",
 }
 
+ORDINARY_ART_SIMPLE_STRUCTURED_QUALITY_PHRASES = {
+    "material": "材质与纹理细腻清晰",
+    "lighting": "光影层次丰富，高光与阴影过渡自然，光线自然受控",
+    "quality": "画面质感精致，细节清晰，完成度高，画质清晰且清晰度高",
+}
+
 
 def ordinary_art_simple_quality_closure_domains(
     raw_prompt: str,
@@ -8629,8 +8638,8 @@ def ordinary_art_simple_quality_closure_domains(
 
     remainder = instruction
     for pattern in (
-        r"画面质感|清晰度|完成度|材质|纹理|光影|光线|高光|阴影|层次|画质|细节|清晰",
         r"增强|提升|提高|强化|改善|优化",
+        r"画面质感|清晰度|完成度|材质|纹理|光影|光线|高光|阴影|层次|画质|细节|清晰",
         r"以及|并且|同时|和|与|及|并|请|整体|画面",
         r"[\s、，,；;。.!！?？]+",
     ):
@@ -10367,6 +10376,1393 @@ def is_ordinary_art_structured_recompile_payload(
         and clean_text(raw_prompt)
         and not ordinary_art_payload_has_reference_images(payload)
     )
+
+
+ORDINARY_ART_SIMPLE_SUBJECT_PATTERN = re.compile(
+    r"(?P<female>"
+    r"(?:成年)?(?:女性(?:角色|人物|战士|武士|骑士|模特)?|女人|女士|"
+    r"比基尼女|女孩(?!漫画|风格|画风|感|系)|少女(?!漫画|风格|画风|感|系)|"
+    r"(?<!少)女(?!孩|童|性)(?:角色|人物|战士|武士|骑士|模特)?)"
+    r"|(?<![a-z0-9_])(?:adult\s+)?(?:woman|women|female|lady|ladies|girl)(?![-\s]*(?:manga|style))(?![a-z0-9_])"
+    r")"
+    r"|(?P<male>"
+    r"(?:成年)?(?:男性(?:角色|人物|战士|武士|骑士|模特)?|男人|男士|"
+    r"男孩(?!漫画|风格|画风|感|系)|少年(?!漫画|风格|画风|感|系)|"
+    r"男(?!孩|童|性)(?:角色|人物|战士|武士|骑士|模特)?)"
+    r"|(?<![a-z0-9_])(?:adult\s+)?(?:man|men|male|gentleman|boy)(?![a-z0-9_])"
+    r")"
+    r"|(?P<dog>犬只|犬类|小狗|(?<!热)狗|(?<![a-z0-9_])dogs?(?![a-z0-9_]))"
+    r"|(?P<cat>猫咪|小猫|猫(?!耳|娘|女|眼|纹|步)|(?<![a-z0-9_])cats?(?![-\s]?ears?)(?![a-z0-9_]))"
+    r"|(?P<horse>马匹|骏马|马|(?<![a-z0-9_])horses?(?![a-z0-9_]))"
+    r"|(?P<rabbit>兔子|兔|(?<![a-z0-9_])rabbits?(?![a-z0-9_]))"
+    r"|(?P<bird>鸟类|飞鸟|海鸥|鸟|(?<![a-z0-9_])(?:birds?|seagulls?)(?![a-z0-9_]))"
+    r"|(?P<fish>鱼类|鱼|(?<![a-z0-9_])fish(?:es)?(?![a-z0-9_]))"
+    r"|(?P<wolf>狼|(?<![a-z0-9_])wolves?|wolf(?![a-z0-9_]))"
+    r"|(?P<fox>狐狸|狐|(?<![a-z0-9_])fox(?:es)?(?![a-z0-9_]))"
+    r"|(?P<bear>熊|(?<![a-z0-9_])bears?(?![a-z0-9_]))"
+    r"|(?P<deer>鹿|(?<![a-z0-9_])deer(?![a-z0-9_]))"
+    r"|(?P<dragon>龙(?!女|男|纹|图|袍|鳞|卷风)|(?<![a-z0-9_])dragons?(?![-\s]*(?:girl|boy|style))(?![a-z0-9_]))"
+    r"|(?P<robot>机器人|机械人|(?<![a-z0-9_])(?:robots?|androids?)(?![a-z0-9_]))"
+    r"|(?P<car>跑车|汽车|轿车|车辆|(?<![a-z0-9_])cars?|vehicles?(?![a-z0-9_]))"
+    r"|(?P<bicycle>自行车|单车|(?<![a-z0-9_])bicycles?|bikes?(?![a-z0-9_]))"
+    r"|(?P<motorcycle>摩托车|机车|(?<![a-z0-9_])motorcycles?(?![a-z0-9_]))"
+    r"|(?P<boat>船只|帆船|小船|船|(?<![a-z0-9_])boats?|ships?(?![a-z0-9_]))"
+    r"|(?P<person>人物|角色|人类|模特|路人|行人|游客|游人|(?:战士|武士|骑士)(?!风格|画风|盔甲|服装|装束|元素|主题)|"
+    r"(?<![a-z0-9_])(?:people|persons?|characters?|models?|passers?[-\s]*by|pedestrians?|tourists?|beachgoers?|warriors?|samurai|knights?)(?![-\s]*style)(?![a-z0-9_]))",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_SOURCE_COUNT_PATTERN = re.compile(
+    r"(?P<count>[一二两三四五六1-6])\s*(?:名|位|个|只|条|匹|辆|把|件|束|瓶)",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_YOUNG_NOUN_PATTERN = re.compile(
+    r"(?:少女|女孩)(?!漫画|风格|画风|感|系)"
+    r"|(?:女童|幼女|男孩|男童|少年|儿童|未成年|小朋友)"
+    r"|(?<![a-z0-9_])(?:girl|boy|child|minor|teen(?:ager)?)(?![-\s]*(?:manga|style))(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_CONCRETE_CONCEPTS = (
+    ("cat", re.compile(r"猫咪|小猫|猫(?!耳|娘|女|眼|纹|步)|(?<![a-z0-9_])cats?(?![-\s]?ears?)(?![a-z0-9_])", re.I)),
+    ("dog", re.compile(r"犬只|犬类|小狗|(?<!热)狗|(?<![a-z0-9_])dogs?(?![a-z0-9_])", re.I)),
+    ("horse", re.compile(r"马匹|骏马|马|(?<![a-z0-9_])horses?(?![a-z0-9_])", re.I)),
+    ("rabbit", re.compile(r"兔子|兔|(?<![a-z0-9_])rabbits?(?![a-z0-9_])", re.I)),
+    ("bird", re.compile(r"鸟类|飞鸟|海鸥|鸟|(?<![a-z0-9_])(?:birds?|seagulls?)(?![a-z0-9_])", re.I)),
+    ("fish", re.compile(r"鱼类|鱼|(?<![a-z0-9_])fish(?:es)?(?![a-z0-9_])", re.I)),
+    ("wolf", re.compile(r"狼|(?<![a-z0-9_])(?:wolf|wolves)(?![a-z0-9_])", re.I)),
+    ("fox", re.compile(r"狐狸|狐|(?<![a-z0-9_])fox(?:es)?(?![a-z0-9_])", re.I)),
+    ("bear", re.compile(r"熊|(?<![a-z0-9_])bears?(?![a-z0-9_])", re.I)),
+    ("deer", re.compile(r"鹿|(?<![a-z0-9_])deer(?![a-z0-9_])", re.I)),
+    ("building", re.compile(r"建筑|房屋|高楼|城堡|宫殿|寺庙|灯塔|码头|(?<![a-z0-9_])(?:buildings?|houses?|castles?|palaces?|temples?|tower|lighthouse|pier)(?![a-z0-9_])", re.I)),
+    ("plant", re.compile(r"棕榈树|椰子树|树木|大树|(?<![a-z0-9_])(?:palm[-\s]+trees?|coconut[-\s]+trees?|trees?)(?![a-z0-9_])", re.I)),
+    ("vehicle", re.compile(r"跑车|汽车|轿车|车辆|自行车|摩托车|船只|帆船|小船|(?<![a-z0-9_])(?:cars?|vehicles?|bicycles?|motorcycles?|boats?|ships?)(?![a-z0-9_])", re.I)),
+    ("weapon", re.compile(r"长剑|宝剑|剑|战斧|斧头|枪械|手枪|步枪|(?<![a-z0-9_])(?:swords?|axes?|guns?|rifles?|pistols?)(?![a-z0-9_])", re.I)),
+    ("furniture", re.compile(r"桌子|桌面|椅子|沙发|床铺|床榻|(?<![a-z0-9_])(?:tables?|chairs?|sofas?|beds?)(?![a-z0-9_])", re.I)),
+    ("hand-prop", re.compile(r"太阳伞|遮阳伞|雨伞|手机|电话|书本|书籍|瓶子|花束|(?<![a-z0-9_])(?:parasols?|umbrellas?|phones?|books?|bottles?|bouquets?)(?![a-z0-9_])", re.I)),
+    ("surfboard", re.compile(r"冲浪板|(?<![a-z0-9_])surfboards?(?![a-z0-9_])", re.I)),
+    ("passerby", re.compile(r"路人|行人|游客|游人|(?<![a-z0-9_])(?:passers?[-\s]*by|pedestrians?|tourists?|beachgoers?)(?![a-z0-9_])", re.I)),
+)
+_ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX = (
+    r"(?=比基尼|两件式泳装|连体泳衣|泳装|连衣裙|礼服裙|长裙|"
+    r"盔甲|铠甲|护甲|校服|水手服|西装|正装)"
+)
+ORDINARY_ART_SIMPLE_COLOR_CONCEPTS = (
+    ("red", re.compile(r"红(?:色|发|衣|裙|晕|帽|鞋|袜|伞|包|带|花|光|甲|墙|车|毛)|红" + _ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX + r"|(?<![a-z0-9_])reds?(?![a-z0-9_])", re.I)),
+    ("orange", re.compile(r"橙色|橘色|(?:橙|橘)" + _ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX + r"|(?<![a-z0-9_])oranges?(?![a-z0-9_])", re.I)),
+    ("yellow", re.compile(r"黄色|黄发|黄衣|黄" + _ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX + r"|(?<![a-z0-9_])yellows?(?![a-z0-9_])", re.I)),
+    ("green", re.compile(r"绿色|绿发|绿衣|青绿色|绿" + _ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX + r"|(?<![a-z0-9_])greens?(?![a-z0-9_])", re.I)),
+    ("blue", re.compile(r"蓝(?:色|发|衣|裙|天|海|眼|光|帽|鞋|袜|伞|包|带|花|甲|墙|车|毛)|蓝" + _ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX + r"|青蓝色|(?<![a-z0-9_])blues?(?![a-z0-9_])", re.I)),
+    ("purple", re.compile(r"紫色|紫发|紫衣|紫" + _ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX + r"|(?<![a-z0-9_])purples?(?![a-z0-9_])", re.I)),
+    ("pink", re.compile(r"粉色|粉发|粉衣|粉" + _ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX + r"|(?<![a-z0-9_])pinks?(?![a-z0-9_])", re.I)),
+    ("black", re.compile(r"黑色|黑发|黑衣|黑" + _ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX + r"|(?<![a-z0-9_])blacks?(?![a-z0-9_])", re.I)),
+    ("white", re.compile(r"白色|白发|白衣|白皙|白" + _ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX + r"|(?<![a-z0-9_])whites?(?![a-z0-9_])", re.I)),
+    ("gray", re.compile(r"灰色|银灰|灰" + _ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX + r"|(?<![a-z0-9_])gr[ae]ys?(?![a-z0-9_])", re.I)),
+    ("gold", re.compile(r"金色|金发|金" + _ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX + r"|(?<![a-z0-9_])gold(?:en)?(?![a-z0-9_])", re.I)),
+    ("silver", re.compile(r"银色|银发|银" + _ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX + r"|(?<![a-z0-9_])silver(?![a-z0-9_])", re.I)),
+    ("brown", re.compile(r"棕色|褐色|棕发|(?:棕|褐)" + _ORDINARY_ART_SIMPLE_COMPACT_CLOTHING_SUFFIX + r"|(?<![a-z0-9_])browns?(?![a-z0-9_])", re.I)),
+    ("beige", re.compile(r"米色|浅米色|(?<![a-z0-9_])beige(?![a-z0-9_])", re.I)),
+    ("warm-tone", re.compile(r"暖色|暖调|(?<![a-z0-9_])warm[-\s]+tones?(?![a-z0-9_])", re.I)),
+    ("cool-tone", re.compile(r"冷色|冷调|(?<![a-z0-9_])cool[-\s]+tones?(?![a-z0-9_])", re.I)),
+)
+ORDINARY_ART_SIMPLE_TIME_WEATHER_CONCEPTS = (
+    ("sunset", re.compile(r"日落|夕阳|黄昏|傍晚|(?<![a-z0-9_])(?:sunset|dusk|twilight)(?![a-z0-9_])", re.I)),
+    ("sunrise", re.compile(r"日出|黎明|清晨|(?<![a-z0-9_])(?:sunrise|dawn)(?![a-z0-9_])", re.I)),
+    ("night", re.compile(r"夜晚|夜景|深夜|星空|(?<![a-z0-9_])(?:night|nighttime|starry\s+sky)(?![a-z0-9_])", re.I)),
+    ("rain", re.compile(r"下雨|雨天|雨景|雨滴|(?<![a-z0-9_])(?:rain|rainy)(?![a-z0-9_])", re.I)),
+    ("snow", re.compile(r"下雪|雪天|雪景|飘雪|(?<![a-z0-9_])(?:snow|snowy)(?![a-z0-9_])", re.I)),
+    ("fog", re.compile(r"雾天|浓雾|薄雾|(?<![a-z0-9_])(?:fog|foggy|misty)(?![a-z0-9_])", re.I)),
+    ("sunny", re.compile(r"晴天|晴朗天气|(?<![a-z0-9_])sunny(?![a-z0-9_])", re.I)),
+    ("noon", re.compile(r"正午|中午|(?<![a-z0-9_])(?:noon|midday)(?![a-z0-9_])", re.I)),
+    ("cloudy", re.compile(r"多云|阴天|(?<![a-z0-9_])(?:cloudy|overcast)(?![a-z0-9_])", re.I)),
+)
+ORDINARY_ART_SIMPLE_SETTING_CONCEPTS = (
+    ("beach", re.compile(r"海边|海岸|沙滩|海滩|海面|(?<![a-z0-9_])(?:beach|seaside|coast|shore|ocean)(?![a-z0-9_])", re.I)),
+    ("lake", re.compile(r"湖边|湖岸|湖畔|湖面|湖泊|(?<![a-z0-9_])(?:lake|lakeside|lakefront)(?![a-z0-9_])", re.I)),
+    ("mountain", re.compile(r"山野|山谷|山地|山峰|雪山|(?<![a-z0-9_])(?:mountain|valley|highland)(?![a-z0-9_])", re.I)),
+    ("forest", re.compile(r"森林|树林|林地|(?<![a-z0-9_])forest(?![a-z0-9_])", re.I)),
+    ("urban", re.compile(r"城市|街道|街景|都市|(?<![a-z0-9_])(?:city|urban|street)(?![a-z0-9_])", re.I)),
+    ("interior", re.compile(r"室内|房间|卧室|客厅|(?<![a-z0-9_])(?:interior|room|bedroom|living\s+room)(?![a-z0-9_])", re.I)),
+    ("palace", re.compile(r"宫廷|宫殿|殿堂|(?<![a-z0-9_])palace(?![a-z0-9_])", re.I)),
+    ("school", re.compile(r"学校|校园|教室|(?<![a-z0-9_])(?:school|campus|classroom)(?![a-z0-9_])", re.I)),
+    ("office", re.compile(r"办公室|办公空间|(?<![a-z0-9_])office(?![a-z0-9_])", re.I)),
+    ("desert", re.compile(r"沙漠|荒漠|(?<![a-z0-9_])desert(?![a-z0-9_])", re.I)),
+    ("space", re.compile(r"太空|宇宙|星际|(?<![a-z0-9_])(?:space|cosmos|interstellar)(?![a-z0-9_])", re.I)),
+    ("underwater", re.compile(r"水下|海底|水底|(?<![a-z0-9_])underwater(?![a-z0-9_])", re.I)),
+    ("field", re.compile(r"草地|田野|原野|(?<![a-z0-9_])(?:grassland|field|meadow)(?![a-z0-9_])", re.I)),
+    ("volcano", re.compile(r"火山|火山口|(?<![a-z0-9_])(?:volcano|crater)(?![a-z0-9_])", re.I)),
+)
+ORDINARY_ART_SIMPLE_STYLE_CONCEPTS = (
+    ("anime", re.compile(r"二次元|动漫|日式动画|日式动漫|赛璐璐|(?<![a-z0-9_])(?:anime|manga|cel[-\s]*shaded)(?![a-z0-9_])", re.I)),
+    ("photography", re.compile(r"写实摄影|照片级|真实摄影|摄影作品|(?<![a-z0-9_])(?:photography|photographic|photorealistic|photo[-\s]*real)(?![a-z0-9_])", re.I)),
+    ("oil-painting", re.compile(r"油画|厚涂油画|(?<![a-z0-9_])oil[-\s]+painting(?![a-z0-9_])", re.I)),
+    ("watercolor", re.compile(r"水彩|水彩画|(?<![a-z0-9_])watercolou?r(?![a-z0-9_])", re.I)),
+    ("three-d", re.compile(r"三维渲染|3D渲染|三维动画|(?<![a-z0-9_])3d[-\s]+(?:render|animation)(?![a-z0-9_])", re.I)),
+)
+ORDINARY_ART_SIMPLE_CLOTHING_CONCEPTS = (
+    ("bikini", re.compile(r"比基尼|两件式泳装|(?<![a-z0-9_])bikinis?(?![a-z0-9_])", re.I)),
+    ("swimsuit", re.compile(r"连体泳衣|泳装|(?<![a-z0-9_])swimsuits?(?![a-z0-9_])", re.I)),
+    ("dress", re.compile(r"连衣裙|礼服裙|长裙|(?<![a-z0-9_])dresses?(?![a-z0-9_])", re.I)),
+    ("armor", re.compile(r"盔甲|铠甲|护甲|(?<![a-z0-9_])armou?r(?![a-z0-9_])", re.I)),
+    ("school-uniform", re.compile(r"校服|水手服|(?<![a-z0-9_])school[-\s]+uniform(?![a-z0-9_])", re.I)),
+    ("suit", re.compile(r"西装|正装|(?<![a-z0-9_])suits?(?![a-z0-9_])", re.I)),
+)
+ORDINARY_ART_SIMPLE_HUMAN_LEADS_DOG_PATTERN = re.compile(
+    r"(?:女性|女人|女士|女子|女孩|少女|女)[^，,。！？；;\n]{0,18}(?:牵着|牵引着|牵引|牵|带着)"
+    r"[^，,。！？；;\n]{0,12}(?:狗|犬只|犬类|犬)"
+    r"|(?<![a-z0-9_])(?:woman|female|lady|girl)[^,.;!?\n]{0,18}"
+    r"(?:walks?|leads?|holds?)\s+(?:a\s+)?(?:dog|canine)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_DOG_LEADS_HUMAN_PATTERN = re.compile(
+    r"(?:狗|犬只|犬类|犬)[^，,。！？；;\n]{0,18}(?:牵着|牵引着|牵引|牵|带着)"
+    r"[^，,。！？；;\n]{0,12}(?:女性|女人|女士|女子|人物|人)"
+    r"|(?<![a-z0-9_])(?:dog|canine)[^,.;!?\n]{0,18}"
+    r"(?:walks?|leads?|holds?)\s+(?:a\s+)?(?:woman|female|lady|person)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_SUPPORTED_HUMAN_DOG_WALK_PATTERN = re.compile(
+    r"(?:成年)?(?:女性|女人|女士|女子|比基尼女|女孩|少女|女)"
+    r"[^，,。！？；;\n]{0,18}(?:牵着|牵引着|牵引|牵|带着)"
+    r"[^，,。！？；;\n]{0,12}(?:狗|犬只|犬类|犬)"
+    r"\s*(?:共同|一起)?\s*(?:行走|走在|走向|散步|向前走)"
+    r"|(?<![a-z0-9_])(?:woman|female|lady|girl)[^,.;!?\n]{0,18}"
+    r"(?:walks?|walking|strolls?|strolling)\s+(?:with\s+)?(?:a\s+)?(?:dog|canine)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_STAND_OR_SIT_PATTERN = re.compile(
+    r"站立|站在|站着|坐在|坐着|端坐"
+    r"|(?<![a-z0-9_])(?:stand|standing|sit|sitting|seated)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_DOG_BREED_PATTERN = re.compile(
+    r"(?:金毛|拉布拉多|哈士奇|柴犬|柯基|博美犬?|贵宾犬|泰迪|牧羊犬|萨摩耶|斗牛犬|吉娃娃)"
+    r"|(?<![a-z0-9_])(?:golden\s+retriever|labrador|husky|shiba|corgi|poodle|"
+    r"pomeranian|shepherd|samoyed|bulldog|chihuahua)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_AMBIGUOUS_CONTEXT_PATTERN = re.compile(
+    r"(?:猫|狐|狼|兔|熊|鹿|龙|犬|狗)(?:耳|角|尾|娘|女|男|人)"
+    r"|(?:女性|男性|人物|角色|少女|女孩|男孩|猫咪|小狗|狐狸|兔子|机器人)"
+    r"[^，,。！？；;\n]{0,6}(?:向|风格|画风|插画|设计|图案|纹样|玩偶|题材|主题)"
+    r"|(?<![a-z0-9_])(?:cat|fox|wolf|rabbit|bunny|bear|deer|dog|dragon)"
+    r"[-\s]*(?:eared|horned|tailed|girl|boy|woman|man)(?![a-z0-9_])"
+    r"|(?<![a-z0-9_])(?:female|male|person|character|girl|boy|cat|dog)"
+    r"[-\s]+(?:oriented|manga|style|design|pattern|print|themed?)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_UNSUPPORTED_PROP_CONTEXT_PATTERN = re.compile(
+    r"(?:长剑|宝剑|剑|战斧|斧头|斧|枪械|手枪|步枪|枪|花束|鲜花|花朵|"
+    r"瓶子|香水瓶|雨伞|手机|电话|书本|书籍|冲浪板)"
+    r"|(?<![a-z0-9_])(?:swords?|axes?|guns?|rifles?|pistols?|bouquets?|flowers?|"
+    r"bottles?|umbrellas?|phones?|books?|surfboards?)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_ADDITIONAL_SUBJECT_PATTERN = re.compile(
+    r"(?:另一|另一个|另外一|额外一|新增一|第二|第三|还有一|又有一)\s*"
+    r"(?:名|位|个|只|条|匹)?\s*"
+    r"(?:成年)?(?:女性|男性|女人|男人|女子|男子|女孩|男孩|人物|角色|路人|行人|"
+    r"狗|犬|猫|马|兔|鸟|鱼|狼|狐狸|熊|鹿)"
+    r"|(?<![a-z0-9_])(?:another|additional|extra|second|third)\s+"
+    r"(?:adult\s+)?(?:woman|man|female|male|girl|boy|person|character|passer[-\s]*by|"
+    r"dog|cat|horse|rabbit|bird|fish|wolf|fox|bear|deer)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_SUBJECT_LOCATOR_PATTERN = re.compile(
+    r"前景|中景|后景|远景|近景|左侧|右侧|画面左|画面右|前方|后方|"
+    r"(?<![a-z0-9_])(?:foreground|midground|background|left|right|front|rear)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_TOTAL_SUBJECT_COUNT_PATTERN = re.compile(
+    r"(?P<count>[一二两三四五六1-6])\s*(?:名|位|个|只|条|匹|道)?\s*"
+    r"(?:明确|独立|可见)?\s*(?:人物|角色|主体|人|动物|身影|参与者|者)"
+    r"|(?P<double>双)\s*(?:人|主体|角色|身影)"
+    r"|(?<![a-z0-9_])(?P<english>[1-6]|one|two|three|four|five|six)\s+"
+    r"(?:distinct\s+|visible\s+|independent\s+)?"
+    r"(?:people|persons?|characters?|subjects?|figures?|participants?)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_SUBJECT_IDENTITY_TAG_PATTERN = re.compile(
+    r"^\s*(?P<tag>[AB甲乙丙丁])(?=\s*(?:牵|站|坐|面|位|在|行|走|跑|看|持|抱|扶|靠|，|,|。|;|；|$))",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_COUNTED_GENERIC_PERSON_PATTERN = re.compile(
+    r"(?:一名|一位|一个|1\s*(?:名|位|个))\s*(?:人物|角色|人|路人|行人|游客|游人)"
+    r"|(?<![a-z0-9_])(?:one|a|an)\s+(?:person|character|passer[-\s]*by|pedestrian|tourist|beachgoer)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_PLURAL_SUBJECT_TOKEN_PATTERN = re.compile(
+    r"(?<![a-z0-9_])(?:women|men|people|ladies|persons|characters|girls|boys|"
+    r"dogs|cats|horses|rabbits|birds|seagulls|wolves|foxes|bears|dragons|robots|"
+    r"cars|vehicles|bicycles|bikes|motorcycles|boats|ships|models|passers[-\s]*by|"
+    r"pedestrians|tourists|beachgoers|warriors|knights)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_PLURAL_QUANTIFIER_PATTERN = re.compile(
+    r"(?:一群|一组|成群|成组|多名|多人|多个|多只|若干名|若干个|若干只|众多)\s*$"
+    r"|(?<![a-z0-9_])(?:both|many|several|multiple|a\s+group\s+of|a\s+crowd\s+of)\s*$",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_FEMALE_PLURAL_REFERENCE_PATTERN = re.compile(
+    r"她们|女性们|女人们|女士们|女孩们|少女们|姐妹|母女|女伴们",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_MALE_PLURAL_REFERENCE_PATTERN = re.compile(
+    r"他们|男性们|男人们|男士们|男孩们|少年们|兄弟|父子|男伴们",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_HUMAN_GROUP_REFERENCE_PATTERN = re.compile(
+    r"夫妻|情侣|人群|众人|游客们|游人们|路人们|行人们|一群\s*(?:游客|游人|人|人物|角色|路人|行人)"
+    r"|(?<![a-z0-9_])(?:a\s+)?(?:crowd|group)\s+of\s+(?:people|persons?|tourists?|beachgoers?|women|men|girls|boys|characters?)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_NONHUMAN_PLURAL_REFERENCE_PATTERN = re.compile(
+    r"它们|动物们|犬只们|狗们|猫们|马群|鸟群|鱼群"
+    r"|(?<![a-z0-9_])(?:both|many|several|multiple|a\s+group\s+of)\s+"
+    r"(?:dogs|cats|horses|rabbits|birds|fish|wolves|foxes|bears|deer|animals|robots|cars|vehicles)(?![a-z0-9_])",
+    re.I,
+)
+ORDINARY_ART_SIMPLE_UNBOUNDED_GROUP_PATTERN = re.compile(
+    r"(?:一对|双胞胎|双生|二人组|双人(?:组|组合)?|一群|一组|成群|成组|"
+    r"多名|多人|多个|多只|若干名|若干个|若干只|众多)"
+    r"|(?<![a-z0-9_])(?:twins?|pair\s+of|both|many|several|multiple|"
+    r"a\s+group\s+of|a\s+crowd\s+of)(?![a-z0-9_])",
+    re.I,
+)
+
+
+def ordinary_art_simple_positive_concepts(value: str, definitions: tuple) -> set[str]:
+    text = str(value or "")
+    result: set[str] = set()
+    for name, pattern in definitions:
+        for match in pattern.finditer(text):
+            prefix = text[max(0, match.start() - 24):match.start()]
+            if re.search(
+                r"(?:不|未|无|没有|禁止|避免|不得|不能|不会|不再)\s*"
+                r"(?:新增|添加|出现|呈现|包含|包括|设置|指定|使用|采用)?"
+                r"[^，,。！？；;\n]{0,8}$"
+                r"|(?<![a-z0-9_])(?:no|not|without|avoid|never|do\s+not|must\s+not)\s+"
+                r"[^,.;!?\n]{0,10}$",
+                prefix,
+                re.I,
+            ):
+                continue
+            result.add(name)
+            break
+    return result
+
+
+def ordinary_art_simple_source_relation_kind(value: str) -> str:
+    text = clean_text(value)
+    if ORDINARY_ART_SIMPLE_HUMAN_LEADS_DOG_PATTERN.search(text):
+        return "human-leads-dog"
+    return ""
+
+
+def ordinary_art_simple_source_action_kind(value: str) -> str:
+    text = clean_text(value)
+    relation_kind = ordinary_art_simple_source_relation_kind(text)
+    if relation_kind:
+        return relation_kind
+    if re.search(r"站立|站在|站着|(?<![a-z0-9_])(?:stand|standing)(?![a-z0-9_])", text, re.I):
+        return "stand"
+    if re.search(r"行走|走在|走向|散步|(?<![a-z0-9_])(?:walk|walking|stroll)(?![a-z0-9_])", text, re.I):
+        return "walk"
+    if re.search(r"坐在|坐着|端坐|(?<![a-z0-9_])(?:sit|sitting|seated)(?![a-z0-9_])", text, re.I):
+        return "sit"
+    return ""
+
+
+def ordinary_art_simple_source_relation_has_bound_walk(value: str) -> bool:
+    """Accept the sparse relation only when walking belongs to the human clause."""
+
+    text = clean_text(value)
+    if ORDINARY_ART_SIMPLE_STAND_OR_SIT_PATTERN.search(text):
+        return False
+    return bool(ORDINARY_ART_SIMPLE_SUPPORTED_HUMAN_DOG_WALK_PATTERN.search(text))
+
+
+def ordinary_art_simple_source_has_unresolved_clothing(value: str) -> bool:
+    text = clean_text(value)
+    if not re.search(
+        r"(?:身穿|穿着|穿(?!过|越|行))\s*[^，,。！？；;\n]{1,18}"
+        r"|(?<![a-z0-9_])(?:woman|man|female|male|girl|boy)\s+(?:wearing|in)\s+[^,.;!?\n]{1,24}",
+        text,
+        re.I,
+    ):
+        return False
+    return not bool(ordinary_art_simple_positive_concepts(
+        text,
+        ORDINARY_ART_SIMPLE_CLOTHING_CONCEPTS,
+    ))
+
+
+def ordinary_art_simple_source_clothing_is_human_bound(value: str) -> bool:
+    """Require every recognized garment to be grammatically attached to a person."""
+
+    text = clean_text(value)
+    clothing = ordinary_art_simple_positive_concepts(
+        text,
+        ORDINARY_ART_SIMPLE_CLOTHING_CONCEPTS,
+    )
+    if not clothing:
+        return True
+    if len(clothing) != 1:
+        return False
+    garment_name = next(iter(clothing))
+    garment_pattern = {
+        "bikini": r"(?:比基尼|两件式泳装|bikinis?)",
+        "swimsuit": r"(?:连体泳衣|泳装|swimsuits?)",
+        "dress": r"(?:连衣裙|礼服裙|长裙|dresses?)",
+        "armor": r"(?:盔甲|铠甲|护甲|armou?r)",
+        "school-uniform": r"(?:校服|水手服|school[-\s]+uniform)",
+        "suit": r"(?:西装|正装|suits?)",
+    }.get(garment_name, "")
+    if not garment_pattern:
+        return False
+    zh_color = r"(?:红|橙|橘|黄|绿|蓝|紫|粉|黑|白|灰|金|银|棕|褐|米)(?:色)?"
+    en_color = (
+        r"(?:red|orange|yellow|green|blue|purple|pink|black|white|gr[ae]y|"
+        r"gold(?:en)?|silver|brown|beige)"
+    )
+    zh_human = r"(?:成年)?(?:女性|女人|女士|女子|女孩|少女|女)"
+    en_human = r"(?:adult\s+)?(?:woman|female|lady|girl)"
+    zh_garment = rf"(?:{zh_color}\s*)?(?:{garment_pattern})"
+    en_garment = rf"(?:{en_color}\s+)?(?:{garment_pattern})"
+    bound_patterns = (
+        re.compile(
+            rf"(?:身穿|穿着|穿(?!过|越|行))\s*{zh_garment}\s*(?:的)?\s*{zh_human}",
+            re.I,
+        ),
+        re.compile(
+            rf"{zh_human}\s*(?:身穿|穿着|穿(?!过|越|行))\s*{zh_garment}",
+            re.I,
+        ),
+        re.compile(rf"{zh_garment}\s*(?:的)?\s*{zh_human}", re.I),
+        re.compile(
+            rf"(?<![a-z0-9_]){en_human}\s+(?:wearing|in)\s+(?:an?\s+)?{en_garment}(?![a-z0-9_])",
+            re.I,
+        ),
+        re.compile(
+            rf"(?<![a-z0-9_]){en_garment}[-\s]+{en_human}(?![a-z0-9_])",
+            re.I,
+        ),
+    )
+    bound_spans = [
+        match.span()
+        for pattern in bound_patterns
+        for match in pattern.finditer(text)
+    ]
+    garment_regex = re.compile(garment_pattern, re.I)
+    garment_spans = [match.span() for match in garment_regex.finditer(text)]
+    return bool(
+        garment_spans
+        and bound_spans
+        and all(
+            any(bound_start <= start and end <= bound_end for bound_start, bound_end in bound_spans)
+            for start, end in garment_spans
+        )
+    )
+
+
+def ordinary_art_simple_source_color_is_clothing_bound(value: str) -> bool:
+    text = clean_text(value)
+    colors = ordinary_art_simple_positive_concepts(
+        text,
+        ORDINARY_ART_SIMPLE_COLOR_CONCEPTS,
+    )
+    if not colors:
+        return True
+    clothing = ordinary_art_simple_positive_concepts(
+        text,
+        ORDINARY_ART_SIMPLE_CLOTHING_CONCEPTS,
+    )
+    if len(colors) != 1 or len(clothing) != 1:
+        return False
+    color_pattern = {
+        "red": r"(?:红色?|red)",
+        "orange": r"(?:橙色|橘色|orange)",
+        "yellow": r"(?:黄色?|yellow)",
+        "green": r"(?:绿色?|green)",
+        "blue": r"(?:蓝色?|青蓝色|blue)",
+        "purple": r"(?:紫色?|purple)",
+        "pink": r"(?:粉色?|pink)",
+        "black": r"(?:黑色?|black)",
+        "white": r"(?:白色?|white)",
+        "gray": r"(?:灰色|银灰|gr[ae]y)",
+        "gold": r"(?:金色|gold(?:en)?)",
+        "silver": r"(?:银色|silver)",
+        "brown": r"(?:棕色|褐色|brown)",
+        "beige": r"(?:米色|浅米色|beige)",
+    }.get(next(iter(colors)), "")
+    clothing_pattern = {
+        "bikini": r"(?:比基尼|两件式泳装|bikini)",
+        "swimsuit": r"(?:连体泳衣|泳装|swimsuit)",
+        "dress": r"(?:连衣裙|礼服裙|长裙|dress)",
+        "armor": r"(?:盔甲|铠甲|护甲|armou?r)",
+        "school-uniform": r"(?:校服|水手服|school[-\s]+uniform)",
+        "suit": r"(?:西装|正装|suit)",
+    }.get(next(iter(clothing)), "")
+    if not color_pattern or not clothing_pattern:
+        return False
+    return bool(re.search(
+        rf"(?:{color_pattern})\s*(?:的)?\s*(?:{clothing_pattern})"
+        rf"|(?:{clothing_pattern})\s*(?:为|是|呈|采用|in)?\s*(?:{color_pattern})",
+        text,
+        re.I,
+    ))
+
+
+def ordinary_art_simple_source_has_unconsumed_visual_facts(value: str) -> bool:
+    """Keep the fast path closed: every source token must have known semantics."""
+
+    remainder = clean_text(value)
+    for pattern in (
+        ORDINARY_ART_SIMPLE_SUBJECT_PATTERN,
+        ORDINARY_ART_SIMPLE_SOURCE_COUNT_PATTERN,
+    ):
+        remainder = pattern.sub(" ", remainder)
+    for definitions in (
+        ORDINARY_ART_SIMPLE_COLOR_CONCEPTS,
+        ORDINARY_ART_SIMPLE_CLOTHING_CONCEPTS,
+        ORDINARY_ART_SIMPLE_TIME_WEATHER_CONCEPTS,
+        ORDINARY_ART_SIMPLE_SETTING_CONCEPTS,
+        ORDINARY_ART_SIMPLE_STYLE_CONCEPTS,
+    ):
+        for _name, pattern in definitions:
+            remainder = pattern.sub(" ", remainder)
+    remainder = re.sub(
+        r"牵着|牵引着|牵引|牵|带着|行走|走在|走向|散步|向前走|"
+        r"站立|站在|站着|坐在|坐着|端坐"
+        r"|(?<![a-z0-9_])(?:walks?|walking|strolls?|strolling|stands?|standing|"
+        r"sits?|sitting|seated|leads?)(?![a-z0-9_])",
+        " ",
+        remainder,
+        flags=re.I,
+    )
+    remainder = re.sub(
+        r"(?:身穿|穿着|穿(?!过|越|行))|风格|画风|"
+        r"(?:共同|一起|沿|向|在|和|与|及|的|时)"
+        r"|(?<![a-z0-9_])(?:a|an|one|the|with|on|at|in|along|and|of|"
+        r"wearing|style)(?![a-z0-9_])",
+        " ",
+        remainder,
+        flags=re.I,
+    )
+    remainder = re.sub(r"[\s，,。！？；;:：、()（）\-]+", "", remainder)
+    return bool(re.search(r"[\u4e00-\u9fffA-Za-z0-9]", remainder))
+
+
+def ordinary_art_simple_concept_label(value: str, definitions: tuple) -> str:
+    concepts = ordinary_art_simple_positive_concepts(value, definitions)
+    for name, _pattern in definitions:
+        if name in concepts:
+            return name
+    return ""
+
+
+def ordinary_art_build_simple_deterministic_contract(raw_prompt: str) -> dict:
+    """Build the sparse detailed prompt without a slow or drifting model call."""
+
+    source = clean_text(raw_prompt)
+    manifest = ordinary_art_simple_source_subject_manifest(source)
+    ordered_categories: list[str] = []
+    category_counts: dict[str, int] = {}
+    for category in manifest:
+        if category not in category_counts:
+            ordered_categories.append(category)
+            category_counts[category] = 0
+        category_counts[category] += 1
+    number_text = {1: "一", 2: "两", 3: "三", 4: "四", 5: "五", 6: "六"}
+    identity_text = {
+        "female": "成年女性",
+        "male": "成年男性",
+        "person": "人物",
+        "dog": "狗",
+        "cat": "猫",
+        "horse": "马",
+        "rabbit": "兔子",
+        "bird": "鸟",
+        "fish": "鱼",
+        "wolf": "狼",
+        "fox": "狐狸",
+        "bear": "熊",
+        "deer": "鹿",
+        "dragon": "龙",
+        "robot": "机器人",
+        "car": "汽车",
+        "bicycle": "自行车",
+        "motorcycle": "摩托车",
+        "boat": "船",
+    }
+    unit_text = {
+        "female": "名", "male": "名", "person": "名",
+        "dog": "条", "fish": "条",
+        "cat": "只", "rabbit": "只", "bird": "只", "wolf": "只",
+        "fox": "只", "bear": "只", "deer": "只", "dragon": "只",
+        "robot": "个", "car": "辆", "bicycle": "辆", "motorcycle": "辆",
+        "horse": "匹", "boat": "艘",
+    }
+    garment = ordinary_art_simple_concept_label(source, ORDINARY_ART_SIMPLE_CLOTHING_CONCEPTS)
+    garment_text = {
+        "bikini": "比基尼",
+        "swimsuit": "连体泳衣",
+        "dress": "连衣裙",
+        "armor": "铠甲",
+        "school-uniform": "校服",
+        "suit": "西装",
+    }.get(garment, "")
+    color = ordinary_art_simple_concept_label(source, ORDINARY_ART_SIMPLE_COLOR_CONCEPTS)
+    color_text = {
+        "red": "红色", "orange": "橙色", "yellow": "黄色", "green": "绿色",
+        "blue": "蓝色", "purple": "紫色", "pink": "粉色", "black": "黑色",
+        "white": "白色", "gray": "灰色", "gold": "金色", "silver": "银色",
+        "brown": "棕色", "beige": "米色", "warm-tone": "暖色", "cool-tone": "冷色",
+    }.get(color, "")
+    setting = ordinary_art_simple_concept_label(source, ORDINARY_ART_SIMPLE_SETTING_CONCEPTS)
+    setting_text = {
+        "beach": "海边与沙滩", "lake": "湖边与湖岸", "mountain": "山野",
+        "forest": "森林", "urban": "城市街道", "interior": "室内",
+        "palace": "宫廷", "school": "校园", "office": "办公室",
+        "desert": "沙漠", "space": "太空", "underwater": "水下",
+        "field": "草地与田野", "volcano": "火山地貌",
+    }[setting]
+    style = ordinary_art_simple_concept_label(source, ORDINARY_ART_SIMPLE_STYLE_CONCEPTS)
+    style_values = {
+        "anime": ("高精度数字插画", "细腻二次元角色CG，清晰轮廓与柔和体积塑造"),
+        "photography": ("高精度摄影", "真实摄影语言，结构准确且材质可信"),
+        "oil-painting": ("精细油画", "层次丰富的油画笔触与体积塑造"),
+        "watercolor": ("精细水彩画", "透明水彩叠色与自然边缘过渡"),
+        "three-d": ("高精度三维渲染", "精细三维角色渲染与可信材质表现"),
+    }[style]
+    action_kind = ordinary_art_simple_source_action_kind(source)
+    time_weather = ordinary_art_simple_positive_concepts(
+        source,
+        ORDINARY_ART_SIMPLE_TIME_WEATHER_CONCEPTS,
+    )
+    time_weather_text = "、".join(
+        {
+            "sunset": "黄昏", "sunrise": "清晨", "night": "夜晚", "rain": "雨天",
+            "snow": "雪天", "fog": "雾天", "sunny": "晴天", "noon": "正午",
+            "cloudy": "多云",
+        }[name]
+        for name, _pattern in ORDINARY_ART_SIMPLE_TIME_WEATHER_CONCEPTS
+        if name in time_weather
+    )
+    has_dog = bool(category_counts.get("dog", 0))
+    has_human = any(
+        category_counts.get(category, 0)
+        for category in ("female", "male", "person")
+    )
+    subjects: list[dict] = []
+    for category in ordered_categories:
+        count = category_counts[category]
+        count_phrase = f"{number_text[count]}{unit_text[category]}"
+        identity = identity_text[category]
+        is_human = category in {"female", "male", "person"}
+        name = f"{count_phrase}{'身穿' + garment_text + '的' if is_human and garment_text else ''}{identity}"
+        if is_human:
+            appearance = [
+                f"{garment_text}装束轮廓清晰" if garment_text else f"{identity}外观清晰",
+                "人物全身比例自然，身份特征稳定",
+            ]
+            materials = ["皮肤质感"] + ([f"{garment_text}布料质感"] if garment_text else ["服装材质质感"])
+            colors = [
+                f"{color_text}{garment_text or '服装'}与人物固有色层次清晰"
+                if color_text else
+                "人物与服装固有色层次清晰，不额外指定色相"
+            ]
+            pose = "自然行走姿态，重心稳定" if action_kind in {"walk", "human-leads-dog"} else (
+                "自然站立姿态，重心稳定" if action_kind == "stand" else "自然坐姿，身体结构稳定"
+            )
+            action = (
+                f"{'共同' if count > 1 else ''}牵着犬只沿{setting_text}向前行走"
+                if action_kind == "human-leads-dog" else
+                f"沿{setting_text}自然行走" if action_kind == "walk" else
+                "保持自然站立" if action_kind == "stand" else "自然坐于场景中"
+            )
+            details = ["面部五官清晰", "手脚结构准确", "发丝与服装边缘层次自然"]
+        elif category == "dog":
+            appearance = ["犬只身体比例自然", "毛发轮廓清楚，不新增原文未给出的犬种"]
+            materials = ["自然犬毛质感"]
+            colors = ["犬毛固有色层次清晰，不额外指定色相"]
+            pose = "四足行走姿态，重心稳定"
+            action = "在成年人物牵引下沿场景同行" if action_kind == "human-leads-dog" else "在场景中自然活动"
+            details = ["四肢结构准确", "毛发分组清楚", "运动方向明确"]
+        else:
+            appearance = [f"{identity}主体轮廓清晰", "结构比例自然，身份稳定"]
+            materials = [f"{identity}固有材质质感清楚"]
+            colors = [f"{identity}固有色层次清晰，不额外指定色相"]
+            pose = "自然稳定姿态"
+            action = f"在{setting_text}中自然活动"
+            details = ["主体结构准确", "边缘细节清楚", "动作方向明确"]
+        subjects.append({
+            "name": name,
+            "count": count_phrase,
+            "appearance": appearance,
+            "pose": pose,
+            "action": action,
+            "materials": materials,
+            "colors": colors,
+            "details": details,
+        })
+    if action_kind == "human-leads-dog":
+        human_count = sum(category_counts.get(category, 0) for category in ("female", "male", "person"))
+        human_categories = [
+            category
+            for category in ("female", "male", "person")
+            if category_counts.get(category, 0)
+        ]
+        relation_identity = {
+            "female": "成年女性",
+            "male": "成年男性",
+            "person": "人物",
+        }[human_categories[0]]
+        relations = [
+            f"{number_text[human_count]}名{relation_identity}牵着{number_text[category_counts.get('dog', 1)]}条狗沿{setting_text}共同向前行走"
+        ]
+    else:
+        relations = ["单一主体在场景中独立呈现，无额外人物或动物关系"]
+    atmosphere = f"{time_weather_text}、" if time_weather_text else ""
+    return {
+        "schema": ART_PROMPT_SCHEMA_VERSION,
+        "subject_count": len(subjects),
+        "style": {
+            "medium": style_values[0],
+            "render_language": style_values[1],
+            "atmosphere": f"{atmosphere}开阔、自然且主体明确的场景氛围",
+            "finish": (
+                f"{'皮肤、服装、' if has_human else ''}"
+                f"{'毛发、' if has_dog else ''}环境材质层次细腻，画面完成度高"
+            ),
+        },
+        "subjects": subjects,
+        "relations": relations,
+        "environment": {
+            "setting": f"开阔{setting_text}环境",
+            "background": f"{time_weather_text + '，' if time_weather_text else ''}{setting_text}形成简洁而有层次的远景",
+            "spatial_layers": ["前景保留主体完整落脚区域", "中景突出全部核心主体", f"后景延伸{setting_text}环境层次"],
+            "support_surface": f"{setting_text}地表稳定承托主体动作",
+            "occlusion": ["全部核心主体轮廓彼此清楚", "动作关系和接触位置不被遮挡"],
+        },
+        "lighting_color": {
+            "light_direction": "自然环境光从画面侧上方照射主体",
+            "light_quality": "柔和主光配合受控轮廓光，明暗转折自然",
+            "light_shadow": "主体明暗层次清楚，高光与阴影过渡受控",
+            "rim_light": "轻微轮廓光分离主体与环境背景",
+            "palette": [f"{color_text}作为原文明确色相" if color_text else "不新增原文未指定的具体色相", "主体与环境固有色协调", "明暗层次清楚"],
+            "local_colors": [
+                *(["人物与服装固有色"] if has_human else []),
+                *(["犬只固有色"] if has_dog else []),
+                "环境固有色",
+            ],
+        },
+        "camera": {
+            "shot": "全身景，完整保留核心主体与动作关系",
+            "angle": "自然平视角度",
+            "composition": "核心主体居中形成清晰视觉层级，动作方向连贯",
+            "crop": (
+                "人物脚部、犬只四肢和核心关系完整入画"
+                if has_human and has_dog else
+                "核心主体及其动作完整入画"
+            ),
+            "perspective": (
+                "自然标准透视，人物与犬只比例无夸张变形"
+                if has_human and has_dog else
+                "自然标准透视，主体比例无夸张变形"
+            ),
+            "depth_of_field": "核心主体清晰对焦，远景环境轻度虚化",
+        },
+        "applied_requirements": [],
+        "terminal_constraints": ordinary_art_simple_deterministic_terminal_constraints(),
+    }
+
+
+def ordinary_art_apply_simple_deterministic_quality_requirements(
+    raw_prompt: str,
+    requirements: str,
+    contract: dict,
+) -> list[str]:
+    """Materialize one allowlisted quality edit into a grounded front-five fact."""
+
+    instruction = ordinary_art_user_change_instruction(requirements)
+    if not instruction:
+        return []
+    if len(re.findall(r"增强|提升|提高|强化|改善|优化", instruction, flags=re.I)) != 1:
+        return []
+    domains = ordinary_art_simple_quality_closure_domains(
+        raw_prompt,
+        instruction,
+    )
+    clause_specs = ordinary_art_structured_requirement_clause_specs(instruction)
+    if not domains or len(clause_specs) != 1:
+        return []
+
+    style = contract.get("style") if isinstance(contract.get("style"), dict) else None
+    lighting = (
+        contract.get("lighting_color")
+        if isinstance(contract.get("lighting_color"), dict)
+        else None
+    )
+    if style is None or lighting is None:
+        return []
+
+    requested_phrases = [
+        ORDINARY_ART_SIMPLE_STRUCTURED_QUALITY_PHRASES[domain]
+        for domain in domains
+    ]
+    current_finish = clean_text(str(style.get("finish") or ""))
+    merged_parts = [current_finish] if current_finish else []
+    merged_compact = ordinary_art_retention_compact(current_finish)
+    for phrase in requested_phrases:
+        phrase_compact = ordinary_art_retention_compact(phrase)
+        if phrase_compact and phrase_compact not in merged_compact:
+            merged_parts.append(phrase)
+            merged_compact += phrase_compact
+    final_fact = clean_text("，".join(merged_parts))
+    if not final_fact or len(final_fact) > 400:
+        return []
+    style["finish"] = final_fact
+
+    if "lighting" in domains:
+        lighting_fact = ORDINARY_ART_SIMPLE_STRUCTURED_QUALITY_PHRASES["lighting"]
+        current_shadow = clean_text(str(lighting.get("light_shadow") or ""))
+        if (
+            ordinary_art_retention_compact(lighting_fact)
+            not in ordinary_art_retention_compact(current_shadow)
+        ):
+            lighting["light_shadow"] = clean_text(
+                f"{current_shadow}，{lighting_fact}" if current_shadow else lighting_fact
+            )
+
+    if ordinary_art_structured_requirement_ledger_failure(
+        instruction,
+        [final_fact],
+        grounded_mapping=True,
+        source_prompt=raw_prompt,
+    ):
+        return []
+    contract["applied_requirements"] = [final_fact]
+    return [final_fact]
+
+
+def ordinary_art_simple_core_fact_failure(raw_prompt: str, contract: dict) -> str:
+    """Lock only source facts the sparse route can extract with high confidence."""
+
+    source_text = clean_text(raw_prompt)
+    all_front_text = "\n".join(ordinary_art_simple_front_scan_values(contract))
+    style_text = "\n".join(
+        str(value)
+        for value in (contract.get("style") or {}).values()
+    )
+    source_styles = ordinary_art_simple_positive_concepts(
+        source_text,
+        ORDINARY_ART_SIMPLE_STYLE_CONCEPTS,
+    )
+    candidate_styles = ordinary_art_simple_positive_concepts(
+        style_text,
+        ORDINARY_ART_SIMPLE_STYLE_CONCEPTS,
+    )
+    all_front_styles = ordinary_art_simple_positive_concepts(
+        all_front_text,
+        ORDINARY_ART_SIMPLE_STYLE_CONCEPTS,
+    )
+    if not source_styles.issubset(candidate_styles):
+        return "simple-source-style-missing"
+    if all_front_styles - source_styles:
+        return f"simple-source-style-replaced:{sorted(all_front_styles - source_styles)[0]}"
+
+    subjects = contract.get("subjects") if isinstance(contract.get("subjects"), list) else []
+    subject_text = "\n".join(
+        str(value)
+        for subject in subjects
+        if isinstance(subject, dict)
+        for value in (
+            subject.get("name") or "",
+            *(subject.get("appearance") or []),
+            *(subject.get("materials") or []),
+            *(subject.get("details") or []),
+        )
+    )
+    source_clothing = ordinary_art_simple_positive_concepts(
+        source_text,
+        ORDINARY_ART_SIMPLE_CLOTHING_CONCEPTS,
+    )
+    candidate_clothing = ordinary_art_simple_positive_concepts(
+        subject_text,
+        ORDINARY_ART_SIMPLE_CLOTHING_CONCEPTS,
+    )
+    all_front_clothing = ordinary_art_simple_positive_concepts(
+        all_front_text,
+        ORDINARY_ART_SIMPLE_CLOTHING_CONCEPTS,
+    )
+    if not source_clothing.issubset(candidate_clothing):
+        return "simple-source-clothing-missing"
+    if source_clothing and all_front_clothing - source_clothing:
+        return f"simple-source-clothing-replaced:{sorted(all_front_clothing - source_clothing)[0]}"
+
+    environment_text = "\n".join(
+        str(value)
+        for value in (contract.get("environment") or {}).values()
+        if isinstance(value, str)
+    )
+    source_settings = ordinary_art_simple_positive_concepts(
+        source_text,
+        ORDINARY_ART_SIMPLE_SETTING_CONCEPTS,
+    )
+    candidate_settings = ordinary_art_simple_positive_concepts(
+        environment_text,
+        ORDINARY_ART_SIMPLE_SETTING_CONCEPTS,
+    )
+    all_front_settings = ordinary_art_simple_positive_concepts(
+        all_front_text,
+        ORDINARY_ART_SIMPLE_SETTING_CONCEPTS,
+    )
+    if not source_settings.issubset(candidate_settings):
+        return "simple-source-setting-missing"
+    if all_front_settings - source_settings:
+        return f"simple-source-setting-replaced:{sorted(all_front_settings - source_settings)[0]}"
+
+    relation_kind = ordinary_art_simple_source_relation_kind(source_text)
+    if relation_kind == "human-leads-dog":
+        relation_text = "\n".join([
+            *(str(value) for value in (contract.get("relations") or [])),
+            *(
+                str(subject.get("action") or "")
+                for subject in subjects
+                if isinstance(subject, dict)
+            ),
+        ])
+        if ORDINARY_ART_SIMPLE_DOG_LEADS_HUMAN_PATTERN.search(all_front_text):
+            return "simple-source-relation-direction-reversed"
+        if not ORDINARY_ART_SIMPLE_HUMAN_LEADS_DOG_PATTERN.search(relation_text):
+            return "simple-source-relation-missing"
+        if re.search(
+            r"(?:不|未|无|没有|脱离|取消)[^，,。！？；;\n]{0,8}(?:牵|牵引|同行|关系)"
+            r"|(?:彼此|双方)[^，,。！？；;\n]{0,8}(?:无|没有)[^，,。！？；;\n]{0,8}(?:牵|关系)"
+            r"|(?<![a-z0-9_])(?:no|not|without|separate|independent)[^,.;!?\n]{0,12}(?:lead|leash|walk\s+with|relation)(?![a-z0-9_])",
+            all_front_text,
+            re.I,
+        ):
+            return "simple-source-relation-negated"
+    return ""
+
+
+def ordinary_art_simple_subject_categories(value: str) -> list[str]:
+    text = clean_text(value)
+    result: list[str] = []
+    for match in ORDINARY_ART_SIMPLE_SUBJECT_PATTERN.finditer(text):
+        category = str(match.lastgroup or "")
+        if category:
+            result.append(category)
+    return result
+
+
+def ordinary_art_simple_front_scan_values(contract: dict) -> list[str]:
+    """Flatten every model-authored visual scalar except canonical name/count."""
+
+    values: list[str] = []
+
+    def collect(value) -> None:
+        if isinstance(value, str):
+            values.append(value)
+        elif isinstance(value, list):
+            for item in value:
+                collect(item)
+        elif isinstance(value, dict):
+            for item in value.values():
+                collect(item)
+
+    collect(contract.get("style") or {})
+    for subject in contract.get("subjects") or []:
+        if not isinstance(subject, dict):
+            continue
+        for key, value in subject.items():
+            if key not in {"name", "count"}:
+                collect(value)
+    collect(contract.get("relations") or [])
+    collect(contract.get("environment") or {})
+    collect(contract.get("lighting_color") or {})
+    collect(contract.get("camera") or {})
+    return values
+
+
+def ordinary_art_simple_cross_slot_plural_failure(
+    value: str,
+    source_subject_counts: dict[str, int],
+) -> str:
+    """Reject plural references that exceed the source's canonical cardinality."""
+
+    text = clean_text(value)
+    human_count = sum(
+        source_subject_counts.get(category, 0)
+        for category in ("female", "male", "person")
+    )
+    nonhuman_count = sum(
+        count
+        for category, count in source_subject_counts.items()
+        if category not in {"female", "male", "person"}
+    )
+    if (
+        ORDINARY_ART_SIMPLE_FEMALE_PLURAL_REFERENCE_PATTERN.search(text)
+        and source_subject_counts.get("female", 0) < 2
+    ):
+        return "female"
+    if (
+        ORDINARY_ART_SIMPLE_MALE_PLURAL_REFERENCE_PATTERN.search(text)
+        and human_count < 2
+    ):
+        return "human"
+    if ORDINARY_ART_SIMPLE_HUMAN_GROUP_REFERENCE_PATTERN.search(text) and human_count < 2:
+        return "human-group"
+    if (
+        ORDINARY_ART_SIMPLE_NONHUMAN_PLURAL_REFERENCE_PATTERN.search(text)
+        and nonhuman_count < 2
+    ):
+        return "nonhuman"
+    for match in ORDINARY_ART_SIMPLE_SUBJECT_PATTERN.finditer(text):
+        category = str(match.lastgroup or "")
+        if not category:
+            continue
+        matched_text = str(match.group(0) or "")
+        prefix = text[max(0, match.start() - 28):match.start()]
+        suffix = text[match.end():match.end() + 1]
+        is_plural = bool(
+            suffix == "们"
+            or ORDINARY_ART_SIMPLE_PLURAL_SUBJECT_TOKEN_PATTERN.search(matched_text)
+            or ORDINARY_ART_SIMPLE_PLURAL_QUANTIFIER_PATTERN.search(prefix)
+        )
+        if not is_plural:
+            continue
+        allowed_count = source_subject_counts.get(category, 0)
+        if category == "person":
+            allowed_count = human_count
+        if allowed_count < 2:
+            return category
+    return ""
+
+
+def ordinary_art_simple_source_has_unbounded_cardinality(
+    value: str,
+    manifest: list[str],
+) -> bool:
+    """Fail over when sparse source cardinality cannot be represented exactly."""
+
+    text = clean_text(value)
+    if ORDINARY_ART_SIMPLE_UNBOUNDED_GROUP_PATTERN.search(text):
+        return True
+    source_counts = {
+        category: manifest.count(category)
+        for category in set(manifest)
+    }
+    return bool(ordinary_art_simple_cross_slot_plural_failure(text, source_counts))
+
+
+def ordinary_art_simple_source_has_duplicate_subject_mentions(
+    value: str,
+    manifest: list[str],
+) -> bool:
+    """Do not collapse repeated same-category mentions into one physical subject."""
+
+    mention_counts: dict[str, int] = {}
+    for match in ORDINARY_ART_SIMPLE_SUBJECT_PATTERN.finditer(clean_text(value)):
+        category = str(match.lastgroup or "")
+        if category:
+            mention_counts[category] = mention_counts.get(category, 0) + 1
+    return any(
+        mention_count > manifest.count(category)
+        for category, mention_count in mention_counts.items()
+    )
+
+
+def _ordinary_art_simple_subject_manifest(value: str) -> list[str]:
+    source = clean_text(value)
+    manifest: list[str] = []
+    seen: set[str] = set()
+    count_map = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6}
+    for match in ORDINARY_ART_SIMPLE_SUBJECT_PATTERN.finditer(source):
+        category = str(match.lastgroup or "")
+        if not category:
+            continue
+        prefix = source[max(0, match.start() - 24):match.start()]
+        count_matches = list(ORDINARY_ART_SIMPLE_SOURCE_COUNT_PATTERN.finditer(prefix))
+        count_match = count_matches[-1] if count_matches else None
+        explicit_count = 1
+        if count_match:
+            raw_count = str(count_match.group("count") or "1")
+            explicit_count = int(raw_count) if raw_count.isdigit() else count_map.get(raw_count, 1)
+        repeated_subject = bool(re.search(r"(?:另(?:一|外)(?:名|位|个)?|和|与|及|、)\s*$", prefix))
+        if category in seen and not (count_match or repeated_subject):
+            continue
+        seen.add(category)
+        manifest.extend([category] * explicit_count)
+    return manifest[:7]
+
+
+def ordinary_art_simple_source_subject_manifest(raw_prompt: str) -> list[str]:
+    source = clean_text(raw_prompt)
+    if (
+        ORDINARY_ART_SIMPLE_AMBIGUOUS_CONTEXT_PATTERN.search(source)
+        or ORDINARY_ART_SIMPLE_UNSUPPORTED_PROP_CONTEXT_PATTERN.search(source)
+    ):
+        return []
+    if re.search(
+        r"(?:机器人|机械人).{0,4}(?:女孩|女性|女人|女士|少女)|"
+        r"(?:女孩|女性|女人|女士|少女).{0,4}(?:机器人|机械人)",
+        source,
+        re.I,
+    ):
+        return []
+    return _ordinary_art_simple_subject_manifest(source)
+
+
+def ordinary_art_simple_contract_source_failure(raw_prompt: str, contract: dict) -> str:
+    source_manifest = ordinary_art_simple_source_subject_manifest(raw_prompt)
+    subjects = contract.get("subjects") if isinstance(contract.get("subjects"), list) else []
+    if not source_manifest or len(source_manifest) > 6:
+        return "simple-source-subjects-unresolved"
+    candidate_manifest: list[str] = []
+    for index, subject in enumerate(subjects, start=1):
+        if not isinstance(subject, dict):
+            return f"simple-source-subject-invalid:{index}"
+        categories = ordinary_art_simple_subject_categories(subject.get("name") or "")
+        unique_categories = list(dict.fromkeys(categories))
+        if len(unique_categories) != 1:
+            return f"simple-source-subject-identity-ambiguous:{index}"
+        count_text = clean_text(subject.get("count") or "")
+        count_match = re.fullmatch(
+            r"(?P<count>[一二两三四五六1-6])\s*(?:名|位|个|只|条|匹|辆|把|件)?",
+            count_text,
+        )
+        if not count_match:
+            return f"simple-source-subject-count-invalid:{index}"
+        raw_count = str(count_match.group("count"))
+        count_value = int(raw_count) if raw_count.isdigit() else {
+            "一": 1,
+            "二": 2,
+            "两": 2,
+            "三": 3,
+            "四": 4,
+            "五": 5,
+            "六": 6,
+        }.get(raw_count, 1)
+        candidate_manifest.extend([unique_categories[0]] * count_value)
+    if len(candidate_manifest) != len(source_manifest):
+        return (
+            "simple-source-subject-count-drift:"
+            f"{len(candidate_manifest)}/{len(source_manifest)}"
+        )
+    if sorted(candidate_manifest) != sorted(source_manifest):
+        return "simple-source-subject-identity-drift"
+
+    source_subject_counts = {
+        category: source_manifest.count(category)
+        for category in set(source_manifest)
+    }
+    source_has_human = any(
+        category in {"female", "male", "person"}
+        for category in source_manifest
+    )
+    count_map = {
+        "一": 1,
+        "二": 2,
+        "两": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "one": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+    }
+    front_scan_values = ordinary_art_simple_front_scan_values(contract)
+    global_located_categories: dict[str, set[str]] = {}
+    global_identity_tags: dict[str, set[str]] = {}
+    for index, value in enumerate(front_scan_values, start=1):
+        if (
+            ORDINARY_ART_SIMPLE_COUNTED_GENERIC_PERSON_PATTERN.search(value)
+            and source_subject_counts.get("person", 0) == 0
+        ):
+            return f"simple-source-cross-slot-generic-person-drift:{index}"
+        plural_failure = ordinary_art_simple_cross_slot_plural_failure(
+            value,
+            source_subject_counts,
+        )
+        if plural_failure:
+            return f"simple-source-cross-slot-plural-drift:{plural_failure}:{index}"
+        if ORDINARY_ART_SIMPLE_ADDITIONAL_SUBJECT_PATTERN.search(value):
+            return f"simple-source-extra-subject-expression:{index}"
+        for total_match in ORDINARY_ART_SIMPLE_TOTAL_SUBJECT_COUNT_PATTERN.finditer(value):
+            raw_total = (
+                total_match.group("count")
+                or ("二" if total_match.group("double") else "")
+                or total_match.group("english")
+                or ""
+            ).lower()
+            total_value = int(raw_total) if raw_total.isdigit() else count_map.get(raw_total, 0)
+            if total_value > len(source_manifest):
+                return f"simple-source-total-subject-count-drift:{total_value}/{len(source_manifest)}"
+        fragment_manifest = _ordinary_art_simple_subject_manifest(value)
+        fragment_human_count = sum(
+            fragment_manifest.count(category)
+            for category in ("female", "male", "person")
+        )
+        source_human_count = sum(
+            source_subject_counts.get(category, 0)
+            for category in ("female", "male", "person")
+        )
+        if fragment_human_count > source_human_count:
+            return "simple-source-cross-slot-human-count-drift"
+        for category in set(fragment_manifest):
+            if category == "person" and source_has_human:
+                continue
+            if category not in source_subject_counts:
+                return f"simple-source-cross-slot-subject-added:{category}"
+            if fragment_manifest.count(category) > source_subject_counts[category]:
+                return f"simple-source-cross-slot-subject-count-drift:{category}"
+        for match in ORDINARY_ART_SIMPLE_SUBJECT_PATTERN.finditer(value):
+            category = str(match.lastgroup or "")
+            prefix = value[max(0, match.start() - 24):match.start()]
+            locators = list(ORDINARY_ART_SIMPLE_SUBJECT_LOCATOR_PATTERN.finditer(prefix))
+            if category and locators:
+                global_located_categories.setdefault(category, set()).add(
+                    clean_text(locators[-1].group(0)).lower()
+                )
+            suffix = value[match.end():match.end() + 12]
+            tag_match = ORDINARY_ART_SIMPLE_SUBJECT_IDENTITY_TAG_PATTERN.match(suffix)
+            if category and tag_match:
+                global_identity_tags.setdefault(category, set()).add(
+                    clean_text(tag_match.group("tag")).lower()
+                )
+
+    for category, locators in global_located_categories.items():
+        allowed_count = source_subject_counts.get(category, 0)
+        if category == "person" and source_has_human:
+            allowed_count = sum(
+                source_subject_counts.get(human_category, 0)
+                for human_category in ("female", "male", "person")
+            )
+        if len(locators) > allowed_count:
+            return f"simple-source-cross-slot-locator-count-drift:{category}"
+    for category, tags in global_identity_tags.items():
+        allowed_count = source_subject_counts.get(category, 0)
+        if category == "person" and source_has_human:
+            allowed_count = sum(
+                source_subject_counts.get(human_category, 0)
+                for human_category in ("female", "male", "person")
+            )
+        if len(tags) > allowed_count:
+            return f"simple-source-cross-slot-identity-tag-count-drift:{category}"
+
+    source_text = clean_text(raw_prompt)
+    front_text = "\n".join(art_prompt_front_five_scalar_values(contract))
+    subject_identity_text = "\n".join(
+        str(value)
+        for subject in subjects
+        for value in (
+            subject.get("name") or "",
+            *(subject.get("appearance") or []),
+            subject.get("pose") or "",
+            subject.get("action") or "",
+        )
+    )
+    source_has_weak_young = bool(ORDINARY_ART_SIMPLE_YOUNG_NOUN_PATTERN.search(source_text))
+    if (
+        not source_has_weak_young
+        and ORDINARY_ART_SIMPLE_YOUNG_NOUN_PATTERN.search(subject_identity_text)
+    ):
+        return "simple-source-age-young-drift"
+    for label, definitions in (
+        ("entity", ORDINARY_ART_SIMPLE_CONCRETE_CONCEPTS),
+        ("color", ORDINARY_ART_SIMPLE_COLOR_CONCEPTS),
+        ("time-weather", ORDINARY_ART_SIMPLE_TIME_WEATHER_CONCEPTS),
+        ("setting", ORDINARY_ART_SIMPLE_SETTING_CONCEPTS),
+    ):
+        source_concepts = ordinary_art_simple_positive_concepts(source_text, definitions)
+        candidate_concepts = ordinary_art_simple_positive_concepts(front_text, definitions)
+        missing = sorted(source_concepts - candidate_concepts)
+        if missing:
+            return f"simple-source-{label}-missing:{missing[0]}"
+        added = sorted(candidate_concepts - source_concepts)
+        if added:
+            return f"simple-source-{label}-added:{added[0]}"
+    if (
+        not ORDINARY_ART_SIMPLE_DOG_BREED_PATTERN.search(source_text)
+        and ORDINARY_ART_SIMPLE_DOG_BREED_PATTERN.search(front_text)
+    ):
+        return "simple-source-dog-breed-added"
+    return ordinary_art_simple_core_fact_failure(raw_prompt, contract)
+
+
+def ordinary_art_simple_deterministic_terminal_constraints() -> list[str]:
+    """Return the only terminal constraints signed by the sparse-detail route.
+
+    The model may describe the first five visual sections, but it must not gain a
+    second, unverified channel for adding subjects or scene facts in the terminal
+    section. Keep this list independent from both model output and raw user text.
+    """
+
+    return [
+        (
+            "核心主体数量、身份、动作关系、地点与风格均与原始底稿一致；"
+            "不新增人物或动物，不改变原始底稿已经明确的服装、道具、犬种、"
+            "具体色相、时间或天气"
+        ),
+        (
+            "允许补充不与底稿冲突的材质、光影、镜头与背景表现细节；"
+            "现有主体与场景结构准确，画面达到可直接生图的高完成度"
+        ),
+    ]
+
+
+def ordinary_art_simple_contract_error_is_repairable(error: ArtPromptContractError) -> bool:
+    code = clean_text(getattr(error, "code", "") or "")
+    return bool(
+        code.startswith("art-prompt-simple-contract-")
+        or code == "art-prompt-contract-slot-semantic"
+    )
+
+
+def ordinary_art_uses_simple_structured_contract(
+    payload: dict,
+    raw_prompt: str,
+    user_instruction: str,
+) -> bool:
+    """Route only sparse, unversioned text into the deterministic detail compiler."""
+
+    if clean_text(payload.get("promptDetailMode") or "") != "simple-structured-v1":
+        return False
+    source = str(raw_prompt or "").strip()
+    instruction = str(user_instruction or "").strip()
+    if not source or len(source) > 120 or re.search(r"[\r\n]", source):
+        return False
+    if instruction and (len(instruction) > 160 or re.search(r"[\r\n]", instruction)):
+        return False
+    if instruction and not ordinary_art_simple_quality_closure_domains(
+        source,
+        instruction,
+    ):
+        return False
+    if (
+        instruction
+        and len(ordinary_art_structured_requirement_clause_specs(instruction)) != 1
+    ):
+        return False
+    combined = f"{source}\n{instruction}"
+    if re.search(r"__NOVAFLOW_[A-Z0-9_:-]+__", combined, flags=re.I):
+        return False
+    if re.search(
+        r"@(?:参考图[1-9][0-9]*|视频参考|声音参考)",
+        combined,
+        flags=re.I,
+    ):
+        return False
+    if re.search(r"\[[^\]\r\n]{1,32}\]|【[^】\r\n]{1,32}】", combined):
+        return False
+    if ordinary_art_structured_hard_constraint_blocks(source):
+        return False
+    manifest = ordinary_art_simple_source_subject_manifest(source)
+    source_styles = ordinary_art_simple_positive_concepts(
+        source,
+        ORDINARY_ART_SIMPLE_STYLE_CONCEPTS,
+    )
+    source_settings = ordinary_art_simple_positive_concepts(
+        source,
+        ORDINARY_ART_SIMPLE_SETTING_CONCEPTS,
+    )
+    source_clothing = ordinary_art_simple_positive_concepts(
+        source,
+        ORDINARY_ART_SIMPLE_CLOTHING_CONCEPTS,
+    )
+    source_colors = ordinary_art_simple_positive_concepts(
+        source,
+        ORDINARY_ART_SIMPLE_COLOR_CONCEPTS,
+    )
+    source_time_weather = ordinary_art_simple_positive_concepts(
+        source,
+        ORDINARY_ART_SIMPLE_TIME_WEATHER_CONCEPTS,
+    )
+    relation_kind = ordinary_art_simple_source_relation_kind(source)
+    action_kind = ordinary_art_simple_source_action_kind(source)
+    source_atomic_actions = {
+        label
+        for label, pattern in (
+            ("stand", re.compile(r"站立|站在|站着|(?<![a-z0-9_])(?:stand|standing)(?![a-z0-9_])", re.I)),
+            ("walk", re.compile(r"行走|走在|走向|散步|(?<![a-z0-9_])(?:walk|walking|stroll)(?![a-z0-9_])", re.I)),
+            ("sit", re.compile(r"坐在|坐着|端坐|(?<![a-z0-9_])(?:sit|sitting|seated)(?![a-z0-9_])", re.I)),
+        )
+        if pattern.search(source)
+    }
+    source_relation_walk_is_bound = ordinary_art_simple_source_relation_has_bound_walk(
+        source
+    )
+    manifest_categories = set(manifest)
+    manifest_human_categories = manifest_categories.intersection(
+        {"female", "male", "person"}
+    )
+    eligible = bool(
+        manifest
+        and len(manifest) <= 6
+        and not ordinary_art_simple_source_has_unbounded_cardinality(source, manifest)
+        and not ordinary_art_simple_source_has_duplicate_subject_mentions(source, manifest)
+        and len(source_styles) == 1
+        and len(source_settings) == 1
+        and len(source_clothing) <= 1
+        and len(source_colors) <= 1
+        and len(source_time_weather) <= 2
+        and action_kind
+        and not ordinary_art_simple_source_has_unconsumed_visual_facts(source)
+        and not ordinary_art_simple_source_has_unresolved_clothing(source)
+        and ordinary_art_simple_source_clothing_is_human_bound(source)
+        and ordinary_art_simple_source_color_is_clothing_bound(source)
+        and not ORDINARY_ART_SIMPLE_DOG_BREED_PATTERN.search(source)
+        and not ORDINARY_ART_CORE_NUDITY_PATTERN.search(source)
+        and not ordinary_art_structured_has_sensitive_person_context(source)
+        and not (
+            ORDINARY_ART_SIMPLE_YOUNG_NOUN_PATTERN.search(source)
+            and not ordinary_art_structured_has_explicit_adult_identity(source)
+        )
+        and (
+            (
+                len(manifest) == 1
+                and manifest[0] in {"female", "male", "person"}
+                and not relation_kind
+                and len(source_atomic_actions) == 1
+            )
+            or (
+                bool(relation_kind)
+                and manifest_categories.issubset({"female", "male", "person", "dog"})
+                and manifest.count("dog") == 1
+                and len(manifest_human_categories) == 1
+                and sum(
+                    manifest.count(category)
+                    for category in ("female", "male", "person")
+                ) == 1
+                and source_relation_walk_is_bound
+            )
+        )
+    )
+    if not eligible:
+        return False
+    try:
+        preflight_contract = ordinary_art_build_simple_deterministic_contract(source)
+        if instruction and not (
+            ordinary_art_apply_simple_deterministic_quality_requirements(
+                source,
+                instruction,
+                preflight_contract,
+            )
+        ):
+            return False
+        candidate = parse_simple_art_prompt_contract(
+            compile_art_prompt_contract(
+                preflight_contract
+            )
+        )
+    except (ArtPromptContractError, KeyError, TypeError, ValueError):
+        return False
+    return not ordinary_art_simple_contract_source_failure(source, candidate)
 
 
 ORDINARY_ART_STRUCTURED_NAMED_HARD_LABEL_PATTERN = re.compile(
@@ -14553,52 +15949,109 @@ class PromptAssistant:
             raise OrdinaryArtPromptEditNotAppliedError(
                 "structured-sensitive-minor-request-blocked"
             )
-        model_prompt = build_art_prompt_contract_instruction(
+        uses_simple_contract = ordinary_art_uses_simple_structured_contract(
+            payload,
             raw_prompt,
             user_instruction,
-            hard_constraint_blocks=[block_text for _label, block_text in hard_blocks],
-            resource_tokens=resource_tokens,
-            nsfw_enabled=nsfw_enabled,
         )
-        self.status = "推理中"
-        raw_ir = self.generate(
-            model_prompt,
-            max_length=ART_PROMPT_STRUCTURED_OUTPUT_MAX_TOKENS,
-            seed=1,
-            trace_label="ordinaryArtStructuredRecompile",
-        )
+        simple_grounded_ledger: list[str] = []
+        if uses_simple_contract:
+            self.status = "编译中"
+            simple_contract = ordinary_art_build_simple_deterministic_contract(
+                raw_prompt
+            )
+            if user_instruction:
+                simple_grounded_ledger = (
+                    ordinary_art_apply_simple_deterministic_quality_requirements(
+                        raw_prompt,
+                        user_instruction,
+                        simple_contract,
+                    )
+                )
+            if user_instruction and not simple_grounded_ledger:
+                raise OrdinaryArtPromptEditNotAppliedError(
+                    "simple-structured-quality-closure-missing"
+                )
+            raw_ir = compile_art_prompt_contract(simple_contract)
+            log_prompt_assistant_event(
+                "ordinary_art_simple_deterministic_compiled",
+                command="ordinaryArtSimpleStructuredRecompile",
+                promptSchema=ART_PROMPT_SCHEMA_VERSION,
+                outputChars=len(raw_ir),
+            )
+        else:
+            model_prompt = build_art_prompt_contract_instruction(
+                raw_prompt,
+                user_instruction,
+                hard_constraint_blocks=[block_text for _label, block_text in hard_blocks],
+                resource_tokens=resource_tokens,
+                nsfw_enabled=nsfw_enabled,
+            )
+            self.status = "推理中"
+            raw_ir = self.generate(
+                model_prompt,
+                max_length=ART_PROMPT_STRUCTURED_OUTPUT_MAX_TOKENS,
+                seed=1,
+                trace_label="ordinaryArtStructuredRecompile",
+            )
         ledger_uses_grounded_model_mapping = False
         ledger_uses_canonical_closure = False
+        ledger_uses_simple_deterministic_closure = False
         grounded_model_ledger_parsed = False
         model_ledger_failure = ""
         try:
-            try:
-                contract = parse_art_prompt_contract(raw_ir)
-                grounded_model_ledger_parsed = True
-                model_ledger_failure = (
-                    ordinary_art_structured_requirement_ledger_failure(
-                        requirements,
-                        contract.get("applied_requirements") or [],
-                        grounded_mapping=True,
-                        source_prompt=raw_prompt,
+            if uses_simple_contract:
+                contract = parse_simple_art_prompt_contract(raw_ir)
+                contract["terminal_constraints"] = (
+                    ordinary_art_simple_deterministic_terminal_constraints()
+                )
+                if simple_grounded_ledger:
+                    # The sectioned text compiler intentionally omits the private
+                    # ledger. Restore only the already validated deterministic
+                    # fact after parsing; never infer it from generated prose.
+                    contract["applied_requirements"] = list(simple_grounded_ledger)
+                    model_ledger_failure = (
+                        ordinary_art_structured_requirement_ledger_failure(
+                            requirements,
+                            contract.get("applied_requirements") or [],
+                            grounded_mapping=True,
+                            source_prompt=raw_prompt,
+                        )
                     )
-                )
-                ledger_uses_grounded_model_mapping = (
-                    not model_ledger_failure
-                    or model_ledger_failure.startswith(
-                        "structured-ledger-no-new-fact:"
+                    ledger_uses_simple_deterministic_closure = not model_ledger_failure
+                else:
+                    model_ledger_failure = "art-prompt-contract-ledger-invalid"
+            else:
+                try:
+                    contract = parse_art_prompt_contract(raw_ir)
+                    grounded_model_ledger_parsed = True
+                    model_ledger_failure = (
+                        ordinary_art_structured_requirement_ledger_failure(
+                            requirements,
+                            contract.get("applied_requirements") or [],
+                            grounded_mapping=True,
+                            source_prompt=raw_prompt,
+                        )
                     )
-                )
-            except ArtPromptContractError as ledger_error:
-                if "applied_requirements" not in clean_text(str(ledger_error)):
-                    raise
-                contract = parse_art_prompt_contract(
-                    raw_ir,
-                    ignore_applied_requirements=True,
-                )
-                model_ledger_failure = "art-prompt-contract-ledger-invalid"
+                    ledger_uses_grounded_model_mapping = (
+                        not model_ledger_failure
+                        or model_ledger_failure.startswith(
+                            "structured-ledger-no-new-fact:"
+                        )
+                    )
+                except ArtPromptContractError as ledger_error:
+                    if "applied_requirements" not in clean_text(str(ledger_error)):
+                        raise
+                    contract = parse_art_prompt_contract(
+                        raw_ir,
+                        ignore_applied_requirements=True,
+                    )
+                    model_ledger_failure = "art-prompt-contract-ledger-invalid"
 
-            if not ledger_uses_grounded_model_mapping:
+            if not (
+                ledger_uses_grounded_model_mapping
+                or ledger_uses_simple_deterministic_closure
+            ):
                 rebuilt_ledger = ordinary_art_structured_rebuild_requirement_ledger(
                     requirements,
                     contract,
@@ -14650,6 +16103,16 @@ class PromptAssistant:
                     hard_restore_failure,
                     code=hard_restore_failure,
                 )
+            if uses_simple_contract:
+                source_failure = ordinary_art_simple_contract_source_failure(
+                    raw_prompt,
+                    contract,
+                )
+                if source_failure:
+                    raise ArtPromptContractError(
+                        source_failure,
+                        code="art-prompt-simple-source-drift",
+                    )
             positive = compile_art_prompt_contract(contract)
             front_five = art_prompt_front_five_sections(positive)
         except ArtPromptContractError as error:
@@ -14676,6 +16139,7 @@ class PromptAssistant:
             grounded_mapping=(
                 ledger_uses_grounded_model_mapping
                 or ledger_uses_canonical_closure
+                or ledger_uses_simple_deterministic_closure
             ),
             source_prompt=raw_prompt,
         )
@@ -14752,6 +16216,7 @@ class PromptAssistant:
         if not application_failure and not (
             ledger_uses_grounded_model_mapping
             or ledger_uses_canonical_closure
+            or ledger_uses_simple_deterministic_closure
         ):
             application_failure = ordinary_art_structured_front_change_failure(
                 requirements,
