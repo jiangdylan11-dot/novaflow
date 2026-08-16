@@ -4102,7 +4102,16 @@ function ordinaryArtStructuredPromptTextFormat() {
             }
           }),
           applied_requirements: list(0, 16, 320),
-          terminal_constraints: list(1, 24, 600)
+          terminal_constraints: {
+            type: "array",
+            minItems: 1,
+            maxItems: 24,
+            description: "最终画面硬约束数组；每项只写一条可直接验收的最终状态，不写建议、修改过程、界面选择或泛化总结",
+            items: {
+              ...scalar(600),
+              description: "每一项都必须是可直接保留到最终提示词中的终态硬约束，不能是普通视觉描述、解释或建议；句中必须明确包含必须、不得、禁止、避免、保持、只允许、不能、不允许、不可、务必、身份、年龄、结构、质量底线或画面目标之一，英文使用must、required、avoid、never、only、keep、constraint或target；例如主体身份必须保持不变、肢体结构必须正确、必须避免新增人物；不得只写自然协调、高质量、优化画面或建议增强"
+            }
+          }
         }
       }
     }

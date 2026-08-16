@@ -1308,6 +1308,16 @@ test("ordinary Art nf.art.prompt.v1 enforces Local-equivalent typed slots before
   assert.match(schemaProperties.style.properties.render_language.description, /渲染语言/);
   assert.match(schemaProperties.style.properties.atmosphere.description, /必须包含.*氛围.*情绪.*调性/);
   assert.match(schemaProperties.style.properties.finish.description, /必须包含.*材质.*纹理.*细节.*完成度/);
+  assert.match(schemaProperties.terminal_constraints.description, /最终画面硬约束.*最终状态/);
+  assert.match(
+    schemaProperties.terminal_constraints.items.description,
+    /终态硬约束.*普通视觉描述.*必须.*不得.*避免.*保持.*身份.*结构.*质量底线.*画面目标/
+  );
+  assert.equal(schemaProperties.terminal_constraints.minItems, 1);
+  assert.equal(schemaProperties.terminal_constraints.maxItems, 24);
+  assert.equal(schemaProperties.terminal_constraints.items.type, "string");
+  assert.equal(schemaProperties.terminal_constraints.items.minLength, 1);
+  assert.equal(schemaProperties.terminal_constraints.items.maxLength, 600);
   for (const [key, anchor] of Object.entries({
     shot: /景别/,
     angle: /机位视角/,
@@ -1346,6 +1356,12 @@ test("ordinary Art nf.art.prompt.v1 enforces Local-equivalent typed slots before
       `${path}=${value}`
     );
   }
+  const genericTerminal = validStructuredArtPromptIr([]);
+  genericTerminal.terminal_constraints = ["海边氛围轻松开阔，画面精致自然"];
+  assert.throws(
+    () => grokResponsesPublicResult({ output_text: JSON.stringify(genericTerminal) }, request.resultOptions),
+    /terminal constraint is not a final-state hard constraint/
+  );
 
   const sparse813 = validStructuredArtPromptIr([]);
   sparse813.style = {
