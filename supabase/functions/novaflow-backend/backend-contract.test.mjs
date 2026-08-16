@@ -511,6 +511,10 @@ test("ordinary Art nf.art.prompt.v1 recompiles one Grok IR into detailed six-sec
     "name", "count", "appearance", "pose", "action", "materials", "colors", "details"
   ]);
   assert.match(
+    request.body.text.format.schema.properties.subjects.items.properties.count.description,
+    /可见数量.*明确数词.*匹配的量词.*不得只写1等裸数字/
+  );
+  assert.match(
     request.body.text.format.schema.properties.subjects.items.properties.colors.items.description,
     /主体固有颜色.*不得写光照后的高光、阴影或色偏.*不得逐字复制全局色板或局部受光颜色/
   );
@@ -587,6 +591,17 @@ test("ordinary Art nf.art.prompt.v1 preserves source cardinality across compatib
   assert.match(result.output_text, /光影层次丰富，高光与阴影过渡自然/);
   assert.match(result.output_text, /画面质感精致，细节清晰，完成度高/);
 
+  const bareCountIr = cloneJson(ir);
+  bareCountIr.subjects[0].count = "1";
+  bareCountIr.subjects[1].count = "1";
+  const bareCountResult = grokResponsesPublicResult(
+    { output_text: JSON.stringify(bareCountIr) },
+    request.resultOptions
+  );
+  assert.equal(bareCountResult.editContract, "structured-recompile-v1");
+  assert.match(bareCountResult.output_text, /^主体1数量 = "1"$/m);
+  assert.match(bareCountResult.output_text, /^主体2数量 = "1"$/m);
+
   const womanOnly = cloneJson(ir);
   womanOnly.subject_count = 1;
   womanOnly.subjects = [womanOnly.subjects[0]];
@@ -616,11 +631,11 @@ test("ordinary Art nf.art.prompt.v1 preserves source cardinality across compatib
   });
   assert.throws(
     () => grokResponsesPublicResult(
-      { output_text: JSON.stringify(ir) },
+      { output_text: JSON.stringify(bareCountIr) },
       mismatchedRequest.resultOptions
     ),
     /drops unmodified source facts|source visible fact|subject count/,
-    "compatible counter normalization must not hide a two-to-one cardinality loss"
+    "bare per-subject counts must not hide a two-to-one cardinality loss"
   );
 });
 

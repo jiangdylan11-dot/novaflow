@@ -4050,7 +4050,10 @@ function ordinaryArtStructuredPromptTextFormat() {
             maxItems: 12,
             items: exactObject(ORDINARY_ART_STRUCTURED_SUBJECT_KEYS, {
               name: scalar(),
-              count: scalar(80),
+              count: {
+                ...scalar(80),
+                description: "该subject记录对应的可见数量；中文必须写明确数词加与主体类别匹配的量词，例如一名、一条、一件或一把，不得只写1等裸数字；英文应使用数量加类别单位，避免只写one或single"
+              },
               appearance: list(1, 10),
               pose: scalar(),
               action: scalar(),
@@ -4153,7 +4156,7 @@ function ordinaryArtStructuredPromptRules(nsfw = false) {
     `输出内部 JSON schema 固定为 ${ORDINARY_ART_STRUCTURED_PROMPT_SCHEMA}，由系统确定性编译为六段 TOML；不要直接输出 TOML、Markdown、解释或分析。`,
     "这是完整重编译，不是局部补丁。以当前完整 Prompt 为唯一底稿，把用户本次修改要求视为最高优先级并落实到前五个视觉分区；不得只把要求抄进末段，也不得恢复与新要求冲突的旧事实。",
     "顶层键必须且只能是 schema、subject_count、style、subjects、relations、environment、lighting_color、camera、applied_requirements、terminal_constraints；嵌套键也必须与 schema 固定字段完全一致，键顺序不限，不得使用 a1、item1 或自造 key。",
-    "每个可见人物或独立物体分别写一个 subject，subject_count 必须等于 subjects 数量；多主体必须填写 relations。所有 style、environment、lighting_color、camera 标量和 subjects 的身份、数量、外观、姿态、动作、材质、颜色、局部细节都必须具体填写。",
+    "每个可见人物或独立物体分别写一个 subject，subject_count 必须等于 subjects 数量；每个 subject.count 必须写该记录自身的明确数量并带合适量词，不得只写裸数字；多主体必须填写 relations。所有 style、environment、lighting_color、camera 标量和 subjects 的身份、数量、外观、姿态、动作、材质、颜色、局部细节都必须具体填写。",
     "固定字段必须写入正确语义槽位：medium 是媒介，render_language 是绘画或渲染语言，atmosphere 是情绪氛围，finish 是材质纹理与完成质感；perspective 必须描述透视或镜头空间，depth_of_field 必须描述焦点、清晰范围或虚化。禁止用 illustration、Chinese、romantic、high、柔和、亲密等泛词或错槽词单独填充字段。",
     "最低细节目标：每个 subject 至少两项具体外观、两项局部细节，并分别写明可执行的姿态、动作、材质和颜色；环境至少两层前中后景；色板和局部颜色各至少两项；六个 camera 字段都要包含对应镜头信息。不要用同义复述、系统 canonical 终态或末段要求凑详细度。",
     "颜色字段必须分工且不得逐字复用长句：subjects.colors 只写主体部位、服装、毛发或道具的固有色；lighting_color.palette 写全局主辅色与点缀色层级；lighting_color.local_colors 必须写明具体对象或区域在当前光线下的高光、阴影、明度、色偏或反射结果。",
@@ -6579,10 +6582,16 @@ function ordinaryArtStructuredPromptCriticalAnchorsPreserved(source, compiledPro
       `(?<![${countBoundary}])(?<count>\\d+|一|两|二|三)(?![${countBoundary}])\\s*(?:位|名|个|条|只|头|匹|辆|件|把|架|艘)`,
       "gu"
     );
+    const compiledBareSubjectCountPattern = /^主体(?:[1-9]|1[0-2])数量[ \t]*=[ \t]*"(?<count>\d+)"[ \t]*$/gmu;
     const compiledCounts = new Set(
-      [...String(compiledPrompt || "").matchAll(compiledCountPattern)]
-        .map((match) => ordinaryArtStructuredPromptManifestNumber(match.groups?.count))
-        .filter((count) => count > 0)
+      [
+        ...[...String(compiledPrompt || "").matchAll(compiledCountPattern)]
+          .map((match) => ordinaryArtStructuredPromptManifestNumber(match.groups?.count))
+          .filter((count) => count > 0),
+        ...[...String(compiledPrompt || "").matchAll(compiledBareSubjectCountPattern)]
+          .map((match) => ordinaryArtStructuredPromptManifestNumber(match.groups?.count))
+          .filter((count) => count > 0 && count <= 12)
+      ]
     );
     for (const match of String(source || "").matchAll(sourceCountPattern)) {
       const count = ordinaryArtStructuredPromptManifestNumber(match.groups?.count);
@@ -6953,9 +6962,11 @@ function parseOrdinaryArtStructuredPromptResult(text, options = {}) {
   if (ordinaryArtPromptPatchCompact(compiledPrompt) === ordinaryArtPromptPatchCompact(source)) {
     throw new Error("Grok ordinary Art structured response is a no-op");
   }
-  if (!ordinaryArtStructuredPromptSourcePreserved(source, firstFivePrompt, rawInstruction)
-    || !ordinaryArtStructuredPromptCriticalAnchorsPreserved(source, firstFivePrompt, rawInstruction)) {
-    throw new Error("Grok ordinary Art structured response drops unmodified source facts");
+  if (!ordinaryArtStructuredPromptSourcePreserved(source, firstFivePrompt, rawInstruction)) {
+    throw new Error("Grok ordinary Art structured response drops unmodified source facts: lexical retention");
+  }
+  if (!ordinaryArtStructuredPromptCriticalAnchorsPreserved(source, firstFivePrompt, rawInstruction)) {
+    throw new Error("Grok ordinary Art structured response drops unmodified source facts: critical anchor retention");
   }
   if (ordinaryArtPromptPatchResourceTokens(compiledPrompt).join("\u0000")
     !== ordinaryArtPromptPatchResourceTokens(source).join("\u0000")) {

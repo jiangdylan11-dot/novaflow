@@ -158,6 +158,17 @@ for (const [name, source] of [["desktop", desktopSource], ["cloud", cloudSource]
     ["两个物体", "12件物体", "", false, "two must not match twelve"],
     ["4个物体", "4件物体", "", true, "arbitrary numeric count"],
     ["12个物体", "12件物体", "", true, "two-digit numeric count"],
+    ["13个物体", "13件物体", "", true, "classified count above subject-record limit"],
+    ["一个物体", '主体1数量 = "1"', "", true, "compiler-owned bare per-subject count"],
+    ["12个物体", '主体1数量 = "12"', "", true, "largest compatible bare per-subject count"],
+    ["两个物体", '主体1数量 = "1"', "", false, "bare count must not hide two-to-one loss"],
+    ["一个物体", '主体1数量 = "11"', "", false, "bare one must not match eleven"],
+    ["一个物体", '主体数量 = "1"', "", false, "top-level subject record count"],
+    ["一个物体", '备注 = "1"', "", false, "unrelated bare number"],
+    ["一个物体", '年龄 = "1"', "", false, "unrelated age number"],
+    ["一个物体", '主体13数量 = "1"', "", false, "out-of-schema subject index"],
+    ["一个物体", '主体1数量 = "0"', "", false, "out-of-range zero count"],
+    ["13个物体", '主体1数量 = "13"', "", false, "out-of-schema thirteen count"],
     ["两个物体", "一件物体", "把两个物体改为一个物体", true, "explicit count edit"]
   ]) {
     assert.equal(
@@ -319,7 +330,8 @@ for (const [name, source] of [["desktop", desktopSource], ["cloud", cloudSource]
   assert.match(source, /ordinaryArtStructuredPromptAssertBodyRewriteMatchesSource\(source, rawInstruction\)[\s\S]*ordinaryArtStructuredPromptRestoreSourceAdultIdentity/, `${name} must reject mismatched body-count rewrites before source identity restoration`);
   assert.match(source, /const frontSubjectFacts = \(\) => \[[\s\S]*subject\.appearance[\s\S]*subject\.details[\s\S]*contradictoryRelation/, `${name} must detect body-count contradictions across every subject fact, not only restored relations`);
   assert.match(source, /ordinaryArtStructuredPromptValidateSourceVisibleManifest\(source, rawInstruction, visualValues\)/, `${name} must run ordinary visible-fact retention before signing the structured result`);
-  assert.match(source, /function ordinaryArtStructuredPromptCriticalAnchorsPreserved[\s\S]*sourceCountPattern[\s\S]*compiledCountPattern[\s\S]*位\|名\|个\|条\|只\|头\|匹\|辆\|件\|把\|架\|艘[\s\S]*compiledCounts/, `${name} must preserve source cardinality while allowing compatible Chinese classifier normalization`);
+  assert.match(source, /function ordinaryArtStructuredPromptCriticalAnchorsPreserved[\s\S]*sourceCountPattern[\s\S]*compiledCountPattern[\s\S]*位\|名\|个\|条\|只\|头\|匹\|辆\|件\|把\|架\|艘[\s\S]*compiledBareSubjectCountPattern[\s\S]*\^主体[\s\S]*compiledCounts/, `${name} must preserve source cardinality while allowing compatible classifiers and compiler-owned bare subject counts`);
+  assert.match(source, /drops unmodified source facts: lexical retention[\s\S]*drops unmodified source facts: critical anchor retention/, `${name} must expose separate lexical and critical source-retention leaves`);
   assert.doesNotMatch(source, /const categories = \[\s*\{\s*sourcePattern: \/\(\?:\\d\+\|一\|两\|二\|三\)\\s\*\(\?:位\|名\|个\)\/gu/, `${name} must not require the source classifier token to survive verbatim`);
   assert.match(source, /Grok ordinary Art structured response damages a resource token/, `${name} must preserve resource tokens during structured recompile`);
   assert.match(source, /Grok ordinary Art structured response drops a named hard-constraint block/, `${name} must preserve hard constraints during structured recompile`);
