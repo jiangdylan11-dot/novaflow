@@ -4027,8 +4027,14 @@ function ordinaryArtStructuredPromptTextFormat() {
           schema: { type: "string", enum: [ORDINARY_ART_STRUCTURED_PROMPT_SCHEMA] },
           subject_count: { type: "integer", minimum: 1, maximum: 12 },
           style: exactObject(ORDINARY_ART_STRUCTURED_STYLE_KEYS, {
-            medium: scalar(),
-            render_language: scalar(),
+            medium: {
+              ...scalar(),
+              description: "制作媒介，例如高精度数字插画、数字绘画、水彩、油画、摄影或3D渲染；不得只写二次元、动漫或风格词"
+            },
+            render_language: {
+              ...scalar(),
+              description: "绘画或渲染语言，例如日式动漫、二次元赛璐璐、半写实厚涂、写实摄影或游戏CG造型语言"
+            },
             atmosphere: scalar(),
             finish: scalar()
           }),
@@ -4795,6 +4801,48 @@ function ordinaryArtStructuredPromptRequireTypedValue(
   }
 }
 
+const ORDINARY_ART_STRUCTURED_MEDIUM_SEMANTIC_PATTERN = /(?:数字绘画|数字插画|厚涂|插画|水彩|油画|素描|版画|摄影|胶片|像素画|三维|3d|cg|手绘|digital\s+(?:painting|illustration|art)|oil\s+painting|watercolou?r|gouache|photograph\w*|film|pixel\s+art|3d\s+(?:render|art)|illustration)/iu;
+const ORDINARY_ART_STRUCTURED_ANIME_LANGUAGE_PATTERN = /(?:japanese\s+(?:anime|manga)|日式动漫|二次元|动漫|赛璐璐|anime|manga|cel[-\s]*shad(?:ed|ing))/iu;
+const ORDINARY_ART_STRUCTURED_PURE_ANIME_MEDIUM_LABEL_PATTERN = /^(?:(?:高精度|精细|高品质|高级)\s*)*(?:(?:日式)?(?:二次元|动漫)(?:二次元|动漫)?(?:风格|画风|渲染风格|造型语言)?|(?:japanese\s+)?(?:anime|manga)(?:\s+(?:anime|manga))?(?:\s+(?:style|rendering|visual\s+style))?|cel[-\s]*shad(?:ed|ing)(?:\s+(?:style|rendering))?)$/iu;
+
+function ordinaryArtStructuredPromptHasAffirmativeAnimeLanguage(value) {
+  const text = ordinaryArtStructuredPromptLine(value, 20000);
+  const pattern = new RegExp(
+    ORDINARY_ART_STRUCTURED_ANIME_LANGUAGE_PATTERN.source,
+    ORDINARY_ART_STRUCTURED_ANIME_LANGUAGE_PATTERN.flags.includes("g")
+      ? ORDINARY_ART_STRUCTURED_ANIME_LANGUAGE_PATTERN.flags
+      : `${ORDINARY_ART_STRUCTURED_ANIME_LANGUAGE_PATTERN.flags}g`
+  );
+  for (const match of text.matchAll(pattern)) {
+    const prefix = text.slice(Math.max(0, match.index - 32), match.index);
+    if (/(?:不是|并非|不采用|不使用|不要|避免|禁止|排除|去除|非)\s*$/iu.test(prefix)
+      || /(?<![a-z0-9_])(?:no|not(?:\s+an?)?|non[-\s]?|without|avoid(?:ing)?|exclude(?:s|d|ing)?|remove(?:s|d|ing)?)\s*$/iu.test(prefix)) {
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+function ordinaryArtStructuredPromptRepairAnimeMedium(medium, renderLanguage, source) {
+  const normalizedMedium = ordinaryArtStructuredPromptLine(medium, 400);
+  if (!normalizedMedium
+    || ORDINARY_ART_STRUCTURED_MEDIUM_SEMANTIC_PATTERN.test(normalizedMedium)) {
+    return normalizedMedium;
+  }
+  const rawSource = String(source || "").trim();
+  if (!rawSource || rawSource.length > 120 || /[\r\n]/u.test(rawSource)) return normalizedMedium;
+  const normalizedSource = ordinaryArtStructuredPromptLine(rawSource, 120);
+  const normalizedLanguage = ordinaryArtStructuredPromptLine(renderLanguage, 400);
+  if (!ORDINARY_ART_STRUCTURED_PURE_ANIME_MEDIUM_LABEL_PATTERN.test(normalizedMedium)
+    || ORDINARY_ART_STRUCTURED_MEDIUM_SEMANTIC_PATTERN.test(normalizedSource)
+    || !ordinaryArtStructuredPromptHasAffirmativeAnimeLanguage(normalizedSource)
+    || !ordinaryArtStructuredPromptHasAffirmativeAnimeLanguage(normalizedLanguage)) {
+    return normalizedMedium;
+  }
+  return "高精度数字插画";
+}
+
 function ordinaryArtStructuredPromptValidateTypedSlots(
   style,
   subjects,
@@ -4805,7 +4853,7 @@ function ordinaryArtStructuredPromptValidateTypedSlots(
 ) {
   const requireTyped = ordinaryArtStructuredPromptRequireTypedValue;
   requireTyped("style.medium", style.medium,
-    /(?:数字绘画|数字插画|厚涂|插画|水彩|油画|素描|版画|摄影|胶片|像素画|三维|3d|cg|手绘|digital\s+(?:painting|illustration|art)|oil\s+painting|watercolou?r|gouache|photograph\w*|film|pixel\s+art|3d\s+(?:render|art)|illustration)/iu,
+    ORDINARY_ART_STRUCTURED_MEDIUM_SEMANTIC_PATTERN,
     { generic: ["art", "image", "绘画", "艺术"] });
   requireTyped("style.render_language", style.render_language,
     /(?:厚涂|半写实|写实|二次元|动漫|赛璐璐|笔触|线条|渲染|造型|设计|性感|造型语言|体积塑造|明暗塑造|游戏cg|角色原画|painterly|semi[-\s]*realistic|photorealistic|anime|manga|cel[-\s]*shad(?:ed|ing)|brushwork|linework|render(?:ed|ing)?|painting|character\s+design|styling|sensual|game\s+cg|concept\s+art|splash\s+art)/iu,
@@ -6514,6 +6562,16 @@ function parseOrdinaryArtStructuredPromptResult(text, options = {}) {
     atmosphere: scalar(styleRaw.atmosphere, "style.atmosphere"),
     finish: scalar(styleRaw.finish, "style.finish")
   };
+  const repairedStyleMedium = ordinaryArtStructuredPromptRepairAnimeMedium(
+    style.medium,
+    style.render_language,
+    source
+  );
+  if (repairedStyleMedium !== style.medium) {
+    style.medium = repairedStyleMedium;
+    const mediumVisualValue = visualValues.find(({ path }) => path === "style.medium");
+    if (mediumVisualValue) mediumVisualValue.value = repairedStyleMedium;
+  }
 
   if (!Array.isArray(root.subjects) || root.subjects.length !== subjectCount) {
     throw new Error("Grok ordinary Art structured subjects must match subject_count");

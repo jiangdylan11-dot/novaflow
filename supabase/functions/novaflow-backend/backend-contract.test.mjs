@@ -1397,6 +1397,137 @@ test("ordinary Art nf.art.prompt.v1 enforces Local-equivalent typed slots before
   assert.match(detailedEnglishResult.output_text, /Material texture detail with layered highlights and shadows/);
 });
 
+test("ordinary Art nf.art.prompt.v1 repairs only an anime style misplaced into medium", () => {
+  const animeSource = "两位25岁以上的成年东方女性角色，亲密依偎在一起，日式二次元动漫风格。";
+  const animeRequest = buildStructuredArtContractRequest({
+    base: animeSource,
+    instruction: ""
+  });
+  const misplacedAnimeMedium = validStructuredArtPromptIr([]);
+  misplacedAnimeMedium.style.medium = "日式二次元动漫风格";
+  misplacedAnimeMedium.style.render_language = "精细日式二次元动漫角色渲染与清晰赛璐璐线条造型";
+  const repaired = grokResponsesPublicResult(
+    { output_text: JSON.stringify(misplacedAnimeMedium) },
+    animeRequest.resultOptions
+  );
+  assert.equal(repaired.editContract, "structured-recompile-v1");
+  assert.match(repaired.output_text, /媒介 = "高精度数字插画"/);
+  assert.match(repaired.output_text, /绘画语言 = "精细日式二次元动漫角色渲染与清晰赛璐璐线条造型"/);
+
+  const unrelatedSourceRequest = buildStructuredArtContractRequest({ instruction: "" });
+  assert.throws(
+    () => grokResponsesPublicResult(
+      { output_text: JSON.stringify(misplacedAnimeMedium) },
+      unrelatedSourceRequest.resultOptions
+    ),
+    /style\.medium/,
+    "an anime label must not be repaired when the source does not establish anime styling"
+  );
+
+  const watercolorSourceRequest = buildStructuredArtContractRequest({
+    base: `${animeSource} 使用细腻水彩媒介。`,
+    instruction: ""
+  });
+  assert.throws(
+    () => grokResponsesPublicResult(
+      { output_text: JSON.stringify(misplacedAnimeMedium) },
+      watercolorSourceRequest.resultOptions
+    ),
+    /style\.medium/,
+    "an explicit non-digital source medium must never be rewritten to digital illustration"
+  );
+
+  for (const explicitMediumSource of [
+    `${animeSource} 使用手绘媒介。`,
+    `${animeSource} 使用高精度数字绘画媒介。`
+  ]) {
+    const explicitMediumRequest = buildStructuredArtContractRequest({
+      base: explicitMediumSource,
+      instruction: ""
+    });
+    assert.throws(
+      () => grokResponsesPublicResult(
+        { output_text: JSON.stringify(misplacedAnimeMedium) },
+        explicitMediumRequest.resultOptions
+      ),
+      /style\.medium/,
+      "an explicit source medium must remain authoritative"
+    );
+  }
+
+  const mixedSlotMedium = cloneJson(misplacedAnimeMedium);
+  mixedSlotMedium.style.medium = "日式二次元动漫风格，海边浪漫氛围";
+  assert.throws(
+    () => grokResponsesPublicResult(
+      { output_text: JSON.stringify(mixedSlotMedium) },
+      animeRequest.resultOptions
+    ),
+    /style\.medium/,
+    "a mixed semantic slot must not be hidden by deterministic repair"
+  );
+
+  const negatedAnimeSourceRequest = buildStructuredArtContractRequest({
+    base: "两位25岁以上的成年东方女性角色，亲密依偎在一起，非二次元风格。",
+    instruction: ""
+  });
+  assert.throws(
+    () => grokResponsesPublicResult(
+      { output_text: JSON.stringify(misplacedAnimeMedium) },
+      negatedAnimeSourceRequest.resultOptions
+    ),
+    /style\.medium/,
+    "a negated anime source must not authorize digital illustration repair"
+  );
+
+  for (const negatedRenderLanguage of [
+    "非二次元而是写实渲染风格",
+    "不是二次元而是写实渲染风格",
+    "not Japanese anime, photorealistic rendering"
+  ]) {
+    const negatedLanguageIr = cloneJson(misplacedAnimeMedium);
+    negatedLanguageIr.style.render_language = negatedRenderLanguage;
+    assert.throws(
+      () => grokResponsesPublicResult(
+        { output_text: JSON.stringify(negatedLanguageIr) },
+        animeRequest.resultOptions
+      ),
+      /style\.medium/,
+      "a negated anime render language must not authorize medium repair"
+    );
+  }
+
+  for (const negatedEnglishSource of [
+    "Two adult East Asian women embrace, not Japanese anime style.",
+    "Two adult East Asian women embrace, not an anime style."
+  ]) {
+    const negatedEnglishRequest = buildStructuredArtContractRequest({
+      base: negatedEnglishSource,
+      instruction: ""
+    });
+    assert.throws(
+      () => grokResponsesPublicResult(
+        { output_text: JSON.stringify(misplacedAnimeMedium) },
+        negatedEnglishRequest.resultOptions
+      ),
+      /style\.medium/,
+      "an English-negated anime source must not authorize medium repair"
+    );
+  }
+
+  const longAnimeSourceRequest = buildStructuredArtContractRequest({
+    base: `${animeSource}${" 前景细节与背景层次保持原始设定。".repeat(8)}`,
+    instruction: ""
+  });
+  assert.throws(
+    () => grokResponsesPublicResult(
+      { output_text: JSON.stringify(misplacedAnimeMedium) },
+      longAnimeSourceRequest.resultOptions
+    ),
+    /style\.medium/,
+    "the repair is intentionally limited to sparse short prompts"
+  );
+});
+
 test("ordinary Art nf.art.prompt.v1 restores typed source facts and rejects front-section hard conflicts", () => {
   const typedSource = [
     "两位25岁以上的成年东方女性角色，亲密依偎在一起。",
