@@ -5036,7 +5036,14 @@ function ordinaryArtStructuredPromptTextFormat() {
               pose: scalar(),
               action: scalar(),
               materials: list(1, 8),
-              colors: list(1, 8),
+              colors: {
+                ...list(1, 8),
+                description: "主体自身的固有颜色列表，不写光照后的高光、阴影或色偏",
+                items: {
+                  ...scalar(240),
+                  description: "主体固有颜色；每项必须写明主体部位、服装、毛发或道具及其色相，例如比基尼布料为深蓝色、犬毛为暖棕色；不得写光照后的高光、阴影或色偏，不得逐字复制全局色板或局部受光颜色"
+                }
+              },
               details: list(1, 12)
             })
           },
@@ -5053,8 +5060,22 @@ function ordinaryArtStructuredPromptTextFormat() {
             light_quality: scalar(),
             light_shadow: scalar(),
             rim_light: scalar(),
-            palette: list(1, 8),
-            local_colors: list(1, 12)
+            palette: {
+              ...list(1, 8),
+              description: "全局主色、辅色或点缀色及其画面层级，不逐字复用主体固有色或局部受光描述",
+              items: {
+                ...scalar(240),
+                description: "全局色板层级；每项写明主色、辅色或点缀色在整幅画面中的作用，不得逐字复制某个主体的固有色描述或局部受光描述"
+              }
+            },
+            local_colors: {
+              ...list(1, 12),
+              description: "具体对象或场景区域在当前光线下呈现的局部色相、明度、高光、阴影或反射变化",
+              items: {
+                ...scalar(240),
+                description: "局部受光颜色；每项必须同时包含定位对象和受光结果，例如皮肤高光偏暖、犬毛阴影呈冷灰；不得只重复subjects.colors的固有色或palette色名"
+              }
+            }
           }),
           camera: exactObject(ORDINARY_ART_STRUCTURED_CAMERA_KEYS, {
             shot: {
@@ -5116,6 +5137,7 @@ function ordinaryArtStructuredPromptRules(nsfw = false) {
     "每个可见人物或独立物体分别写一个 subject，subject_count 必须等于 subjects 数量；多主体必须填写 relations。所有 style、environment、lighting_color、camera 标量和 subjects 的身份、数量、外观、姿态、动作、材质、颜色、局部细节都必须具体填写。",
     "固定字段必须写入正确语义槽位：medium 是媒介，render_language 是绘画或渲染语言，atmosphere 是情绪氛围，finish 是材质纹理与完成质感；perspective 必须描述透视或镜头空间，depth_of_field 必须描述焦点、清晰范围或虚化。禁止用 illustration、Chinese、romantic、high、柔和、亲密等泛词或错槽词单独填充字段。",
     "最低细节目标：每个 subject 至少两项具体外观、两项局部细节，并分别写明可执行的姿态、动作、材质和颜色；环境至少两层前中后景；色板和局部颜色各至少两项；六个 camera 字段都要包含对应镜头信息。不要用同义复述、系统 canonical 终态或末段要求凑详细度。",
+    "颜色字段必须分工且不得逐字复用长句：subjects.colors 只写主体部位、服装、毛发或道具的固有色；lighting_color.palette 写全局主辅色与点缀色层级；lighting_color.local_colors 必须写明具体对象或区域在当前光线下的高光、阴影、明度、色偏或反射结果。",
     "先逐句建立底稿事实清单：完整保留人数、年龄、成年身份、地域文化、性别组成、两张脸是否不同、肢体数量、解剖正确性和肢体归属。要求、避免、禁止、约束、画面目标等命名块内，以分号、句号或换行分隔的每个原子分句都继承该块的硬约束，必须逐条落入正确前景槽位和末段；无法无歧义映射时不要猜测。",
     "所有字段只写可直接用于生图的最终画面事实。不得输出当前Prompt、原提示词、用户要求、修改、优化、保持原图、处理目标、模型操作等元说明；不得在同一分区或跨分区重复同一个完整长句来凑字段。",
     "applied_requirements 只列用户修改要求逐条转化后的最终视觉事实；真实修改要求为空时必须返回空数组，非空时数组项数必须与逗号、分号、句号、并且或同时分隔的有效要求数完全相同，并严格按用户分句原顺序一一对应。每项必须逐字等于前五段一个独立 scalar value，并保留该分句区别于其他要求的具体锚点与增减方向；不得用一个聚合长句或泛化的画面、人物、造型、设计等词冒充多项落实。不得用 increase、make、use、set 等命令句回显要求，也不得把系统规则、操作指令或未落实的愿望放入该数组。",

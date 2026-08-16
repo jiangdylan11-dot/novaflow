@@ -510,6 +510,18 @@ test("ordinary Art nf.art.prompt.v1 recompiles one Grok IR into detailed six-sec
   assert.deepEqual(request.body.text.format.schema.properties.subjects.items.required, [
     "name", "count", "appearance", "pose", "action", "materials", "colors", "details"
   ]);
+  assert.match(
+    request.body.text.format.schema.properties.subjects.items.properties.colors.items.description,
+    /主体固有颜色.*不得写光照后的高光、阴影或色偏.*不得逐字复制全局色板或局部受光颜色/
+  );
+  assert.match(
+    request.body.text.format.schema.properties.lighting_color.properties.palette.items.description,
+    /全局色板层级.*主色、辅色或点缀色.*不得逐字复制某个主体的固有色描述或局部受光描述/
+  );
+  assert.match(
+    request.body.text.format.schema.properties.lighting_color.properties.local_colors.items.description,
+    /局部受光颜色.*定位对象和受光结果.*不得只重复subjects\.colors的固有色或palette色名/
+  );
   assert.equal(request.body.text.format.schema.properties.subjects.minItems, 1);
   assert.equal(request.body.text.format.schema.properties.applied_requirements.minItems, 0);
   assert.equal(request.body.text.format.schema.properties.negative_prompt, undefined);
@@ -1321,6 +1333,42 @@ test("ordinary Art nf.art.prompt.v1 rejects free semantic keys and repeated-valu
   assert.throws(
     () => grokResponsesPublicResult({ output_text: JSON.stringify(repeated) }, request.resultOptions),
     /repeats a visual value/
+  );
+
+  const repeatedCrossSlotColor = validStructuredArtPromptIr([]);
+  const copiedColor = "青绿色丝绸服饰呈现柔和统一的固有综合色彩";
+  repeatedCrossSlotColor.subjects[0].colors[0] = copiedColor;
+  repeatedCrossSlotColor.lighting_color.local_colors[1] = copiedColor;
+  assert.throws(
+    () => grokResponsesPublicResult(
+      { output_text: JSON.stringify(repeatedCrossSlotColor) },
+      request.resultOptions
+    ),
+    /repeats a visual value across subjects\[0\]\.colors\[0\] and lighting_color\.local_colors\[1\]/,
+    "slot descriptions must not weaken exact cross-slot padding rejection"
+  );
+
+  const typedCrossSlotColor = cloneJson(repeatedCrossSlotColor);
+  typedCrossSlotColor.lighting_color.local_colors[1] = "青绿色丝绸高光偏暖，阴影保留柔和冷灰层次";
+  assert.equal(
+    grokResponsesPublicResult(
+      { output_text: JSON.stringify(typedCrossSlotColor) },
+      request.resultOptions
+    ).editContract,
+    "structured-recompile-v1",
+    "a subject solid color and a distinct localized lighting result must remain valid"
+  );
+
+  const shortSharedColor = validStructuredArtPromptIr([]);
+  shortSharedColor.subjects[0].colors[0] = "深蓝色";
+  shortSharedColor.lighting_color.local_colors[1] = "深蓝色";
+  assert.equal(
+    grokResponsesPublicResult(
+      { output_text: JSON.stringify(shortSharedColor) },
+      request.resultOptions
+    ).editContract,
+    "structured-recompile-v1",
+    "the existing short color-name exception must remain unchanged"
   );
 });
 
