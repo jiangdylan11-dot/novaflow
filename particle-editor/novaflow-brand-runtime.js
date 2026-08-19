@@ -54333,16 +54333,44 @@
     return textControl;
   }
 
-  function applyAiAnimationPromptHistoryPickToTextarea(textControl) {
+  function getAiAnimationReactProps(element) {
+    if (!(element instanceof Element)) return null;
+    const key = Object.keys(element).find((name) => name.startsWith("__reactProps$"));
+    return key ? element[key] : null;
+  }
+
+  function setAiAnimationPromptTextControlDomValue(control, value) {
+    if (!isAiAnimationPromptTextControl(control)) return false;
+    const nextValue = String(value ?? "");
+    try {
+      const proto = control instanceof HTMLInputElement ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+      if (typeof setter === "function") setter.call(control, nextValue);
+      else control.value = nextValue;
+    } catch {
+      control.value = nextValue;
+    }
+    return true;
+  }
+
+  function refreshAiAnimationPromptHistoryPickTextarea(textControl) {
     if (!(textControl instanceof HTMLElement)) return false;
     const popover = textControl.closest('[data-novaflow-ai-history-positioned="1"], div[style*="position: fixed"][style*="z-index: 9999"]');
     const frame = getAiAnimationPromptHistoryAnchor(popover);
     if (!(frame instanceof HTMLElement)) return false;
     const textarea = frame.querySelector("textarea, input");
     if (!isAiAnimationPromptTextControl(textarea)) return false;
-    const nextValue = String(textControl.textContent || "").trim();
-    if (!nextValue) return false;
-    setPromptAssistantTextareaValue(textarea, nextValue);
+    const refresh = () => {
+      const props = getAiAnimationReactProps(textarea);
+      if (!props || !Object.prototype.hasOwnProperty.call(props, "value")) return;
+      const nextValue = String(props.value ?? "");
+      if (nextValue !== textarea.value) setAiAnimationPromptTextControlDomValue(textarea, nextValue);
+    };
+    try {
+      if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(refresh);
+      window.setTimeout(refresh, 0);
+      window.setTimeout(refresh, 32);
+    } catch {}
     return true;
   }
 
@@ -54366,8 +54394,8 @@
     AI_ANIMATION_PROMPT_HISTORY_LAST_PICK_TARGET = textControl;
     AI_ANIMATION_PROMPT_HISTORY_LAST_PICK_AT = now;
     try {
-      applyAiAnimationPromptHistoryPickToTextarea(textControl);
       textControl.click();
+      refreshAiAnimationPromptHistoryPickTextarea(textControl);
       event.preventDefault?.();
       event.stopPropagation?.();
     } catch {}
