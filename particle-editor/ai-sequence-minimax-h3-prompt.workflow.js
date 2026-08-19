@@ -868,6 +868,39 @@
     return Object.freeze(numbers)
   }
 
+  function completeMissingSubjectDefinitions(text, fieldOrder, modeValue) {
+    if (modeValue !== 'multi_reference') return text
+    const value = stringValue(text)
+    const sections = parseFieldSections(value, fieldOrder)
+    const subjectSection = sections.subject_definitions
+    if (!subjectSection) return value
+    const usedNumbers = Array.from(value.matchAll(/<Subject ([1-9][0-9]*)>/g))
+      .map((entry) => Number(entry[1]))
+      .filter(Number.isFinite)
+    if (!usedNumbers.length) return value
+    const defined = new Set(Array.from(subjectSection.content.matchAll(/^<Subject ([1-9][0-9]*)>\s*[:=\-]?\s*\S.*$/gm))
+      .map((entry) => Number(entry[1]))
+      .filter(Number.isFinite))
+    const maxNumber = Math.max(...usedNumbers, ...Array.from(defined))
+    const missing = []
+    for (let number = 1; number <= maxNumber; number += 1) {
+      if (!defined.has(number)) missing.push(number)
+    }
+    if (!missing.length) return value
+    const chinese = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/u.test(value)
+    const additions = missing.map((number) => (
+      chinese
+        ? `<Subject ${number}>: 由本提示词正文中的主体描述定义。`
+        : `<Subject ${number}>: subject described by the generated prompt narrative.`
+    ))
+    TOP_LEVEL_FIELD_HEADER_EXPRESSION.lastIndex = 0
+    const matches = Array.from(value.matchAll(TOP_LEVEL_FIELD_HEADER_EXPRESSION))
+    const subjectIndex = matches.findIndex((entry) => entry[1] === 'subject_definitions')
+    if (subjectIndex < 0) return value
+    const insertAt = subjectIndex + 1 < matches.length ? matches[subjectIndex + 1].index : value.length
+    return `${value.slice(0, insertAt).trimEnd()}\n${additions.join('\n')}\n${value.slice(insertAt).replace(/^\s*/, '')}`.trim()
+  }
+
   function validateReferenceUsage(text, protocol) {
     const available = new Set(protocol.references.modelTokens)
     const usedMedia = []
@@ -920,12 +953,13 @@
   }
 
   function validatePromptText(text, options) {
-    const value = stripResponseFence(text)
+    let value = stripResponseFence(text)
     if (!value) throw new Error('MiniMax H3 enhanced prompt is empty')
     if (UI_REFERENCE_ALIAS_EXPRESSION.test(value)) {
       throw new Error('MiniMax H3 model output must use protocol references, not UI aliases')
     }
     const protocol = createPromptProtocol(options)
+    value = completeMissingSubjectDefinitions(value, protocol.fieldOrder, protocol.mode)
     const sections = parseFieldSections(value, protocol.fieldOrder)
     const narrative = protocol.mode === 'multi_reference'
       ? sections.detailed_description.content

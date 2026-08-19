@@ -188,7 +188,8 @@ MINIMAX_H3_PROMPT_SYSTEM_INSTRUCTION = (
     "use [Shot N] At MM:SS.mmm with strictly increasing times inside the requested duration.\n"
     "Each shot must integrate composition, referenced subjects, environment, visible actions and state changes, "
     "camera behavior, and synchronized diegetic sound. Keep speaker IDs and reference labels stable. Only use labels "
-    "that the input establishes: <Subject N>, <Picture N>, <Video N>, and <Audio N>. For keyframe modes, explicitly "
+    "that the input establishes: <Subject N>, <Picture N>, <Video N>, and <Audio N>. For Ref2VA, subject_definitions "
+    "must define every <Subject N> used anywhere in the prompt, starting at <Subject 1> without gaps. For keyframe modes, explicitly "
     "describe the continuous path from or toward the supplied frame anchors.\n"
     "Do not invent unavailable reference assets. Resolve conflicting instructions in favor of explicit user constraints. "
     "Do not output negative prompts, avoidance lists, Markdown, analysis, alternatives, or commentary. Return only the "
@@ -21686,6 +21687,59 @@ def normalize_minimax_h3_prompt_output(output: str) -> str:
     return text
 
 
+def complete_minimax_h3_subject_definitions(text: str, use_simplified_chinese: bool = False) -> str:
+    """Add deterministic placeholder definitions for already emitted <Subject N> tokens."""
+    normalized = clean_text(text)
+    header_pattern = re.compile(r"(?m)^\s*([a-z][a-z0-9_]*)\s*:")
+    header_matches = list(header_pattern.finditer(normalized))
+    actual_fields = tuple(match.group(1) for match in header_matches)
+    if actual_fields != MINIMAX_H3_REFERENCE_PROMPT_FIELDS:
+        return normalized
+    subject_index = next(
+        (index for index, match in enumerate(header_matches) if match.group(1) == "subject_definitions"),
+        -1,
+    )
+    if subject_index < 0:
+        return normalized
+    section_start = header_matches[subject_index].end()
+    section_end = (
+        header_matches[subject_index + 1].start()
+        if subject_index + 1 < len(header_matches)
+        else len(normalized)
+    )
+    section = normalized[section_start:section_end]
+    used_numbers = [
+        int(match.group(1))
+        for match in re.finditer(r"<Subject ([1-9][0-9]*)>", normalized)
+    ]
+    if not used_numbers:
+        return normalized
+    defined_numbers = {
+        int(match.group(1))
+        for match in re.finditer(r"(?m)^<Subject ([1-9][0-9]*)>\s*[:=\-]?\s*\S.*$", section)
+    }
+    max_number = max(used_numbers + list(defined_numbers or [0]))
+    missing_numbers = [
+        number for number in range(1, max_number + 1)
+        if number not in defined_numbers
+    ]
+    if not missing_numbers:
+        return normalized
+    additions = []
+    for number in missing_numbers:
+        if use_simplified_chinese:
+            additions.append(f"<Subject {number}>: 由本提示词正文中的主体描述定义。")
+        else:
+            additions.append(f"<Subject {number}>: subject described by the generated prompt narrative.")
+    return (
+        normalized[:section_end].rstrip()
+        + "\n"
+        + "\n".join(additions)
+        + "\n"
+        + normalized[section_end:].lstrip()
+    ).strip()
+
+
 def complete_minimax_h3_mechanical_contract(
     text: str,
     mode: str = "",
@@ -21711,6 +21765,9 @@ def complete_minimax_h3_mechanical_contract(
     )
     if actual_fields != expected_fields:
         return normalized
+    if expected_fields == MINIMAX_H3_REFERENCE_PROMPT_FIELDS:
+        normalized = complete_minimax_h3_subject_definitions(normalized, use_simplified_chinese)
+        header_matches = list(header_pattern.finditer(normalized))
     narrative_field = "detailed_description" if expected_fields == MINIMAX_H3_REFERENCE_PROMPT_FIELDS else "integrated_multimodal_description"
 
     def narrative_bounds(value: str):
@@ -21898,6 +21955,13 @@ def validate_minimax_h3_prompt_contract(text: str, mode: str = "", duration_seco
         raise ValueError(
             f"MiniMax H3 {normalized_mode or '输出'} 字段必须完整且严格按协议排序"
         )
+    is_reference_contract = expected_fields == MINIMAX_H3_REFERENCE_PROMPT_FIELDS
+    if is_reference_contract:
+        normalized = complete_minimax_h3_subject_definitions(
+            normalized,
+            minimax_h3_preferred_value_language(normalized) == "zh-CN",
+        )
+        header_matches = list(header_pattern.finditer(normalized))
     field_values = {}
     for index, match in enumerate(header_matches):
         value_end = header_matches[index + 1].start() if index + 1 < len(header_matches) else len(normalized)
@@ -21905,7 +21969,6 @@ def validate_minimax_h3_prompt_contract(text: str, mode: str = "", duration_seco
         if not value:
             raise ValueError(f"MiniMax H3 字段 {match.group(1)} 不能为空")
         field_values[match.group(1)] = value
-    is_reference_contract = expected_fields == MINIMAX_H3_REFERENCE_PROMPT_FIELDS
     narrative_field = "detailed_description" if is_reference_contract else "integrated_multimodal_description"
     narrative = field_values.get(narrative_field, "")
     if "[Shot 1]" not in narrative:

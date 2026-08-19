@@ -54333,6 +54333,19 @@
     return textControl;
   }
 
+  function applyAiAnimationPromptHistoryPickToTextarea(textControl) {
+    if (!(textControl instanceof HTMLElement)) return false;
+    const popover = textControl.closest('[data-novaflow-ai-history-positioned="1"], div[style*="position: fixed"][style*="z-index: 9999"]');
+    const frame = getAiAnimationPromptHistoryAnchor(popover);
+    if (!(frame instanceof HTMLElement)) return false;
+    const textarea = frame.querySelector("textarea, input");
+    if (!isAiAnimationPromptTextControl(textarea)) return false;
+    const nextValue = String(textControl.textContent || "").trim();
+    if (!nextValue) return false;
+    setPromptAssistantTextareaValue(textarea, nextValue);
+    return true;
+  }
+
   function handleAiAnimationPromptHistoryPickEvent(event) {
     if (event?.type === "click") return false;
     const target = event?.target instanceof Element ? event.target : null;
@@ -54353,6 +54366,7 @@
     AI_ANIMATION_PROMPT_HISTORY_LAST_PICK_TARGET = textControl;
     AI_ANIMATION_PROMPT_HISTORY_LAST_PICK_AT = now;
     try {
+      applyAiAnimationPromptHistoryPickToTextarea(textControl);
       textControl.click();
       event.preventDefault?.();
       event.stopPropagation?.();
