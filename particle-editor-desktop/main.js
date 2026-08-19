@@ -1221,6 +1221,38 @@ function getLogDir() {
   }
 }
 
+let novaFlowConsoleSinkDisabled = false;
+
+function isNovaFlowConsoleSinkEpipe(error) {
+  return String(error?.code || "").toUpperCase() === "EPIPE"
+    || /\bEPIPE\b/i.test(String(error?.message || ""));
+}
+
+function handleNovaFlowConsoleSinkError(error) {
+  // Installed Electron instances may outlive the launcher that owned stdout.
+  // A broken console pipe is not an application failure; keep the file log
+  // available and disable only the dead console sink to prevent recursion via
+  // uncaughtException -> appendLogLine -> console.error -> EPIPE.
+  novaFlowConsoleSinkDisabled = true;
+  if (isNovaFlowConsoleSinkEpipe(error)) return;
+  try {
+    const dir = getLogDir();
+    if (dir) {
+      const line = `[${new Date().toISOString()}] [error] console-sink-error ${safeJson({
+        code: String(error?.code || "").slice(0, 40),
+        message: String(error?.message || error || "").slice(0, 240)
+      })}\n`;
+      fs.appendFileSync(path.join(dir, "main.log"), line, "utf8");
+    }
+  } catch {
+    void 0;
+  }
+}
+
+for (const sink of [process.stdout, process.stderr]) {
+  try { sink?.on?.("error", handleNovaFlowConsoleSinkError); } catch { void 0; }
+}
+
 function appendLogLine(level, message, meta) {
   const ts = new Date().toISOString();
   const line = `[${ts}] [${level}] ${String(message || "")}${meta ? ` ${safeJson(meta)}` : ""}\n`;
@@ -1230,6 +1262,7 @@ function appendLogLine(level, message, meta) {
   } catch {
     void 0;
   }
+  if (novaFlowConsoleSinkDisabled) return;
   try {
     if (level === "error") console.error(line);
     else console.log(line);
@@ -2046,6 +2079,7 @@ async function traceEncodedCutoutOutput(pipeline, payload, outPath, extra) {
 }
 
 process.on("uncaughtException", (err) => {
+  if (isNovaFlowConsoleSinkEpipe(err)) novaFlowConsoleSinkDisabled = true;
   appendLogLine("error", "uncaughtException", { message: String(err?.message || err), stack: String(err?.stack || "") });
 });
 
@@ -2295,6 +2329,10 @@ const NOVAFLOW_PROMPT_ASSISTANT_DEFAULT_MODEL_PATH = "E:\\BaiduNetdiskDownload\\
 const NOVAFLOW_PROMPT_ASSISTANT_MODEL_NAME = "qwen_2.5_vl_7b_fp8_scaled.safetensors";
 const NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_TYPE = "qwen3_vl_8b_abliterated_nf4";
 const NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_DIR_NAME = "Huihui-Qwen3-VL-8B-Instruct-Abliterated";
+const NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_DIR_NAME = `${NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_DIR_NAME}-novaflow-bnb-nf4-v1`;
+const NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_SCHEMA = "nf.qwen3-vl.bnb-nf4-cache.v1";
+const NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_MANIFEST = "novaflow_nf4_cache.json";
+const NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_INVALID_MARKER = ".novaflow-cache-invalid.json";
 const NOVAFLOW_PROMPT_ASSISTANT_REVERSE_DEFAULT_MODEL_PATH = path.join(
   "E:\\BaiduNetdiskDownload\\prompt_generator",
   NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_DIR_NAME
@@ -2939,6 +2977,111 @@ function resolvePromptAssistantReverseModelPath(runtimeConfig = readNovaFlowRunt
   return candidates[0] || NOVAFLOW_PROMPT_ASSISTANT_REVERSE_DEFAULT_MODEL_PATH;
 }
 
+function promptAssistantModelWeightFiles(modelPath) {
+  const direct = path.join(modelPath, "model.safetensors");
+  if (fs.existsSync(direct) && fs.statSync(direct).isFile()) return ["model.safetensors"];
+  const indexPath = path.join(modelPath, "model.safetensors.index.json");
+  if (!fs.existsSync(indexPath)) return [];
+  const index = JSON.parse(fs.readFileSync(indexPath, "utf8"));
+  return Array.from(new Set(Object.values(index?.weight_map || {})))
+    .map((name) => String(name || "").trim())
+    .filter((name) => name && path.basename(name) === name && !path.isAbsolute(name))
+    .sort();
+}
+
+function promptAssistantFileSha256(filePath) {
+  return crypto.createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+}
+
+function promptAssistantReverseSourceFingerprint(modelPath) {
+  const weightFiles = promptAssistantModelWeightFiles(modelPath);
+  const indexPath = path.join(modelPath, "model.safetensors.index.json");
+  return {
+    sourcePath: path.resolve(modelPath),
+    configSha256: promptAssistantFileSha256(path.join(modelPath, "config.json")),
+    indexSha256: fs.existsSync(indexPath) ? promptAssistantFileSha256(indexPath) : "",
+    weights: weightFiles.map((name) => {
+      const stat = fs.statSync(path.join(modelPath, name), { bigint: true });
+      return { name, size: Number(stat.size), mtimeNs: String(stat.mtimeNs) };
+    })
+  };
+}
+
+function promptAssistantReverseCacheArtifacts(cachePath) {
+  const weights = promptAssistantModelWeightFiles(cachePath).map((name) => {
+    const stat = fs.statSync(path.join(cachePath, name), { bigint: true });
+    return { name, size: Number(stat.size) };
+  });
+  const metadata = [
+    "config.json",
+    "model.safetensors.index.json",
+    "tokenizer_config.json",
+    "preprocessor_config.json"
+  ].filter((name) => fs.existsSync(path.join(cachePath, name))).map((name) => {
+    const filePath = path.join(cachePath, name);
+    const stat = fs.statSync(filePath, { bigint: true });
+    return { name, size: Number(stat.size), sha256: promptAssistantFileSha256(filePath) };
+  });
+  return { weights, metadata };
+}
+
+function inspectPromptAssistantReverseCache(cachePath, modelPath) {
+  try {
+    const resolvedCache = path.resolve(String(cachePath || ""));
+    const resolvedModel = path.resolve(String(modelPath || ""));
+    const cacheFromModel = path.relative(resolvedModel, resolvedCache);
+    const modelFromCache = path.relative(resolvedCache, resolvedModel);
+    const pathsOverlap = resolvedCache.toLowerCase() === resolvedModel.toLowerCase()
+      || (cacheFromModel && !cacheFromModel.startsWith("..") && !path.isAbsolute(cacheFromModel))
+      || (modelFromCache && !modelFromCache.startsWith("..") && !path.isAbsolute(modelFromCache));
+    if (pathsOverlap) return { ready: false, code: "cache-path-overlaps-source" };
+    if (!fs.existsSync(resolvedCache)) return { ready: false, code: "cache-missing" };
+    if (!fs.statSync(resolvedCache).isDirectory()) return { ready: false, code: "cache-path-not-directory" };
+    const manifestPath = path.join(resolvedCache, NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_MANIFEST);
+    if (!fs.existsSync(manifestPath)) return { ready: false, code: "cache-path-unowned" };
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    if (manifest?.schema !== NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_SCHEMA) {
+      return { ready: false, code: "cache-schema-mismatch" };
+    }
+    if (fs.existsSync(path.join(resolvedCache, NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_INVALID_MARKER))) {
+      return { ready: false, code: "cache-marked-invalid" };
+    }
+    if (safeJson(manifest.sourceFingerprint) !== safeJson(promptAssistantReverseSourceFingerprint(resolvedModel))) {
+      return { ready: false, code: "cache-source-mismatch" };
+    }
+    if (safeJson(manifest.artifacts) !== safeJson(promptAssistantReverseCacheArtifacts(resolvedCache))) {
+      return { ready: false, code: "cache-artifacts-mismatch" };
+    }
+    const config = JSON.parse(fs.readFileSync(path.join(resolvedCache, "config.json"), "utf8"));
+    if (String(config?.quantization_config?.quant_method || "") !== "bitsandbytes") {
+      return { ready: false, code: "cache-not-prequantized" };
+    }
+    return { ready: true, code: "cache-ready" };
+  } catch {
+    return { ready: false, code: "cache-invalid" };
+  }
+}
+
+function resolvePromptAssistantReverseCachePath(runtimeConfig = readNovaFlowRuntimeConfig(), reverseModelPath = "") {
+  const override = String(process.env.NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH || "").trim();
+  if (override) return path.resolve(override);
+  const runtimeModels = String(runtimeConfig?.modelsPath || "").trim();
+  if (runtimeModels) {
+    return path.join(
+      runtimeModels,
+      "prompt_assistant",
+      "cache",
+      NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_DIR_NAME
+    );
+  }
+  const selectedModelPath = String(reverseModelPath || NOVAFLOW_PROMPT_ASSISTANT_REVERSE_DEFAULT_MODEL_PATH).trim();
+  return path.join(
+    path.dirname(selectedModelPath),
+    ".novaflow-cache",
+    NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_DIR_NAME
+  );
+}
+
 function findPromptAssistantServiceScript() {
   const candidates = [
     path.join(__dirname, "prompt-assistant-service.py"),
@@ -2966,6 +3109,8 @@ function getPromptAssistantConfig() {
   const runtimeConfig = readNovaFlowRuntimeConfig();
   const modelPath = resolvePromptAssistantModelPath(runtimeConfig);
   const reverseModelPath = resolvePromptAssistantReverseModelPath(runtimeConfig);
+  const reverseCachePath = resolvePromptAssistantReverseCachePath(runtimeConfig, reverseModelPath);
+  const reverseCacheStatus = inspectPromptAssistantReverseCache(reverseCachePath, reverseModelPath);
   const serviceScript = findPromptAssistantServiceScript();
   const pythonPath = findPromptAssistantPython(runtimeConfig);
   const modelExists = (() => {
@@ -2984,6 +3129,9 @@ function getPromptAssistantConfig() {
     modelPath,
     reverseModelType: NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_TYPE,
     reverseModelPath,
+    reverseCachePath,
+    reverseCacheReady: reverseCacheStatus.ready === true,
+    reverseCacheStatus: reverseCacheStatus.code,
     reverseModelEnabled: reverseModelExists,
     modelExists,
     serviceExists,
@@ -3152,7 +3300,8 @@ async function ensurePromptAssistantProcess(options = {}) {
       NOVAFLOW_COMFY_ROOT: path.join(String(config.runtimeConfig?.installPath || ""), "engine", "ComfyUI"),
       NOVAFLOW_PROMPT_ASSISTANT_MODEL_PATH: config.modelPath,
       NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH: config.reverseModelPath,
-      NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_TYPE: config.reverseModelType
+      NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_TYPE: config.reverseModelType,
+      NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH: config.reverseCachePath
     };
     const proc = spawn(config.pythonPath, [config.serviceScript], {
       cwd: path.dirname(config.serviceScript),
@@ -3250,6 +3399,10 @@ function isPromptAssistantStaticImageReverseRequest(command, payload = {}) {
     && String(payload?.purpose || "").trim() === "static-image-reverse";
 }
 
+function isPromptAssistantReverseCachePrepareRequest(command) {
+  return command === "prepareReverseCache";
+}
+
 function isPromptAssistantMiniMaxH3ReverseRequest(command, payload = {}) {
   if (command !== "reverseImagePrompt") return false;
   const purpose = String(payload?.purpose || "").trim().toLowerCase().replace(/_/g, "-");
@@ -3292,6 +3445,102 @@ function createPromptAssistantH3TimeoutError() {
     requestedVisualSchema: "nf.h3.visual.v1"
   });
   return error;
+}
+
+function promptAssistantLastSafeStaticReverseStage() {
+  for (let index = promptAssistantStderrLines.length - 1; index >= 0; index -= 1) {
+    try {
+      const payload = JSON.parse(String(promptAssistantStderrLines[index] || ""));
+      if (String(payload?.event || "") !== "reverse_local_stage") continue;
+      const stage = String(payload?.stage || "")
+        .replace(/[^a-zA-Z0-9_.:-]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 80);
+      if (stage) return stage;
+    } catch { void 0; }
+  }
+  return "none";
+}
+
+function createPromptAssistantStaticReverseTimeoutError() {
+  const error = new Error("Prompt Assistant 推理超时");
+  Object.assign(error, {
+    errorCode: "static-image-local-timeout",
+    failureCategory: "timeout",
+    retryable: true,
+    retryAttempted: false,
+    legacyFallbackSuppressed: true,
+    requestedVisualSchema: "nf.visual.v2"
+  });
+  return error;
+}
+
+function tracePromptAssistantStaticReverseLifecycle(event, metadata = {}) {
+  const normalizedEvent = String(event || "unknown")
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64) || "unknown";
+  const cleanField = (value, maxLength) => String(value || "")
+    .replace(/[^a-zA-Z0-9_.:-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, maxLength);
+  const requestId = Number.isFinite(Number(metadata.requestId))
+    ? Math.max(0, Math.trunc(Number(metadata.requestId)))
+    : 0;
+  const childPid = Number.isFinite(Number(metadata.childPid))
+    ? Math.max(0, Math.trunc(Number(metadata.childPid)))
+    : 0;
+  const elapsedMs = Number.isFinite(Number(metadata.elapsedMs))
+    ? Math.max(0, Math.min(1_800_000, Math.trunc(Number(metadata.elapsedMs))))
+    : 0;
+  const lastSafeStage = cleanField(metadata.lastSafeStage || "none", 80) || "none";
+  const stopResult = cleanField(metadata.stopResult || "not-requested", 40) || "unknown";
+  const runtimeState = cleanField(metadata.runtimeState, 80);
+  const errorCode = cleanField(metadata.errorCode, 80);
+  appendLogLine(normalizedEvent.includes("timeout") || metadata.ok === false ? "error" : "info", `prompt-assistant-static-reverse-${normalizedEvent}`, {
+    elapsedMs,
+    requestId,
+    childPid,
+    lastSafeStage,
+    stopResult,
+    ...(runtimeState ? { runtimeState } : {}),
+    ...(Number.isFinite(Number(metadata.running)) ? { running: Math.max(0, Math.trunc(Number(metadata.running))) } : {}),
+    ...(Number.isFinite(Number(metadata.pending)) ? { pending: Math.max(0, Math.trunc(Number(metadata.pending))) } : {}),
+    ...(typeof metadata.released === "boolean" ? { released: metadata.released } : {}),
+    ...(typeof metadata.ok === "boolean" ? { ok: metadata.ok } : {}),
+    ...(errorCode ? { errorCode } : {})
+  });
+}
+
+function promptAssistantResultFailureCodes(result) {
+  const codes = [];
+  const pushCode = (value) => {
+    const code = String(value || "")
+      .replace(/[\u0000-\u001f\u007f]+/g, " ")
+      .trim()
+      .slice(0, 120);
+    if (code) codes.push(code);
+  };
+  const collect = (source) => {
+    if (!source || typeof source !== "object") return;
+    pushCode(source.errorCode);
+    pushCode(source.contractFailureCode);
+    pushCode(source.providerFailureCode);
+    pushCode(source.failureCode);
+    if (source.failure && typeof source.failure === "object") collect(source.failure);
+  };
+  collect(result);
+  collect(result?.data);
+  return Array.from(new Set(codes));
+}
+
+function isPromptAssistantReverseCachePreparationFailure(result) {
+  const cacheCodes = new Set([
+    "cache-preparation-required",
+    "cache-invalid-rebuild-required"
+  ]);
+  return promptAssistantResultFailureCodes(result).some((code) => cacheCodes.has(code));
 }
 
 function tracePromptAssistantH3Lifecycle(event, metadata = {}) {
@@ -3342,8 +3591,10 @@ async function requestPromptAssistant(command, payload = {}, timeoutMs = 300_000
   const traceStoryboardRequest = command === "storyboardDirectorPlan" || command === "storyboardVisualEventChain" || command === "storyboardUnifiedNineShots";
   const reverseCommand = command === "reverseImagePrompt";
   const staticImageReverseRequest = isPromptAssistantStaticImageReverseRequest(command, payload);
+  const reverseCachePrepareRequest = isPromptAssistantReverseCachePrepareRequest(command);
   const miniMaxH3ReverseRequest = isPromptAssistantMiniMaxH3ReverseRequest(command, payload);
-  const commandEnabled = config.serviceExists && (config.modelExists || (staticImageReverseRequest && config.reverseModelEnabled));
+  const reverseModelOnlyRequest = staticImageReverseRequest || reverseCachePrepareRequest;
+  const commandEnabled = config.serviceExists && (config.modelExists || (reverseModelOnlyRequest && config.reverseModelEnabled));
   if (!commandEnabled) {
     const error = config.serviceExists && reverseCommand && !staticImageReverseRequest && !config.modelExists
       ? "当前反推模式需要 Qwen2.5-VL 旧模型，但该模型未配置"
@@ -3376,6 +3627,7 @@ async function requestPromptAssistant(command, payload = {}, timeoutMs = 300_000
 
   let traceMeta = null;
   let h3TraceMeta = null;
+  let staticReverseTraceMeta = null;
   let childStartAttempted = false;
   let verifiedCleanupResult = "not-requested";
   let effectiveTimeoutMs = Math.max(10_000, Number(timeoutMs) || 300_000);
@@ -3400,7 +3652,7 @@ async function requestPromptAssistant(command, payload = {}, timeoutMs = 300_000
       }
     }
     childStartAttempted = true;
-    const proc = await ensurePromptAssistantProcess({ allowReverseOnly: staticImageReverseRequest });
+    const proc = await ensurePromptAssistantProcess({ allowReverseOnly: reverseModelOnlyRequest });
     const requestId = promptAssistantNextRequestId++;
     h3TraceMeta = miniMaxH3ReverseRequest ? {
       purpose: String(payload?.purpose || ""),
@@ -3408,6 +3660,19 @@ async function requestPromptAssistant(command, payload = {}, timeoutMs = 300_000
       childPid: proc?.pid,
       lastSafeStage: "none"
     } : null;
+    staticReverseTraceMeta = staticImageReverseRequest ? {
+      requestId,
+      childPid: proc?.pid,
+      lastSafeStage: "none"
+    } : null;
+    if (staticReverseTraceMeta) {
+      tracePromptAssistantStaticReverseLifecycle("start", {
+        ...staticReverseTraceMeta,
+        elapsedMs: Date.now() - startedAt,
+        stopResult: "not-requested",
+        ok: true
+      });
+    }
     if (h3TraceMeta) {
       tracePromptAssistantH3Lifecycle("start", {
         ...h3TraceMeta,
@@ -3452,6 +3717,19 @@ async function requestPromptAssistant(command, payload = {}, timeoutMs = 300_000
           reject(createPromptAssistantH3TimeoutError());
           return;
         }
+        if (staticReverseTraceMeta) {
+          const stopResult = await stopPromptAssistantServiceWithVerifiedResult();
+          tracePromptAssistantStaticReverseLifecycle("timeout", {
+            ...staticReverseTraceMeta,
+            elapsedMs: Date.now() - startedAt,
+            lastSafeStage: promptAssistantLastSafeStaticReverseStage(),
+            stopResult,
+            errorCode: "static-image-local-timeout",
+            ok: false
+          });
+          reject(createPromptAssistantStaticReverseTimeoutError());
+          return;
+        }
         stopPromptAssistantServiceSync();
         reject(new Error("Prompt Assistant 推理超时"));
       }, effectiveTimeoutMs);
@@ -3469,6 +3747,15 @@ async function requestPromptAssistant(command, payload = {}, timeoutMs = 300_000
         elapsedMs: Date.now() - startedAt,
         lastSafeStage: promptAssistantLastSafeH3Stage(),
         stopResult,
+        ok: true
+      });
+    }
+    if (staticReverseTraceMeta) {
+      tracePromptAssistantStaticReverseLifecycle("inference-done", {
+        ...staticReverseTraceMeta,
+        elapsedMs: Date.now() - startedAt,
+        lastSafeStage: promptAssistantLastSafeStaticReverseStage(),
+        stopResult: "not-requested",
         ok: true
       });
     }
@@ -3498,6 +3785,16 @@ async function requestPromptAssistant(command, payload = {}, timeoutMs = 300_000
         ...promptAssistantFailureMetadata(err)
       });
     }
+    if (staticImageReverseRequest && err?.errorCode !== "static-image-local-timeout") {
+      tracePromptAssistantStaticReverseLifecycle("inference-error", {
+        ...(staticReverseTraceMeta || {}),
+        elapsedMs: Date.now() - startedAt,
+        lastSafeStage: promptAssistantLastSafeStaticReverseStage(),
+        stopResult: "not-requested",
+        errorCode: String(err?.errorCode || "prompt-assistant-error"),
+        ok: false
+      });
+    }
     if (traceStoryboardRequest) {
       appendLogLine("error", "prompt-assistant-request-error", {
         ...(traceMeta || { command }),
@@ -3514,10 +3811,29 @@ async function requestPromptAssistant(command, payload = {}, timeoutMs = 300_000
     };
   } finally {
     if (requestLease && options.verifiedCleanup === true && childStartAttempted) {
+      if (staticImageReverseRequest) {
+        tracePromptAssistantStaticReverseLifecycle("cleanup-start", {
+          ...(staticReverseTraceMeta || {}),
+          elapsedMs: Date.now() - startedAt,
+          lastSafeStage: promptAssistantLastSafeStaticReverseStage(),
+          stopResult: "not-requested",
+          ok: true
+        });
+      }
       try {
         verifiedCleanupResult = await stopPromptAssistantServiceWithVerifiedResult();
       } catch {
         verifiedCleanupResult = "stop-error";
+      }
+      if (staticImageReverseRequest) {
+        tracePromptAssistantStaticReverseLifecycle("cleanup-done", {
+          ...(staticReverseTraceMeta || {}),
+          elapsedMs: Date.now() - startedAt,
+          lastSafeStage: promptAssistantLastSafeStaticReverseStage(),
+          stopResult: verifiedCleanupResult,
+          errorCode: verifiedCleanupResult === "stop-error" ? "prompt-assistant-stop-failed" : "",
+          ok: !["stop-timeout", "stop-error"].includes(verifiedCleanupResult)
+        });
       }
     }
     if (requestLease && promptAssistantRequestLease === requestLease) {
@@ -5951,7 +6267,78 @@ ipcMain.handle("prompt-assistant-reverse-image-prompt", async (_evt, payload) =>
     allSubjectsConfirmedAdult: sourceContentPolicy.allSubjectsConfirmedAdult === true
   } : null;
   const usesVisualV2 = purpose === "static-image-reverse" && images.length === 1 && visualSchema === "nf.visual.v2";
-  return await requestPromptAssistant("reverseImagePrompt", {
+  let staticReverseResourceHandoff = null;
+  let reverseCachePrepared = false;
+  if (usesVisualV2) {
+    const workflowStartedAt = Date.now();
+    tracePromptAssistantStaticReverseLifecycle("resource-handoff-start", {
+      elapsedMs: 0,
+      stopResult: "not-requested",
+      lastSafeStage: "resource-handoff-start",
+      ok: true
+    });
+    staticReverseResourceHandoff = await prepareOrdinaryArtPromptPatchResourceHandoff();
+    tracePromptAssistantStaticReverseLifecycle("resource-handoff-done", {
+      elapsedMs: Date.now() - workflowStartedAt,
+      stopResult: "not-requested",
+      lastSafeStage: "resource-handoff-done",
+      runtimeState: staticReverseResourceHandoff?.state,
+      running: staticReverseResourceHandoff?.running,
+      pending: staticReverseResourceHandoff?.pending,
+      released: staticReverseResourceHandoff?.released,
+      errorCode: staticReverseResourceHandoff?.errorCode,
+      ok: staticReverseResourceHandoff?.ok !== false
+    });
+    if (staticReverseResourceHandoff?.ok === false) {
+      return {
+        ok: false,
+        runtimeStatus: staticReverseResourceHandoff.state === "runtime-generation-busy" ? "绘图生成中" : "显存交接失败",
+        error: String(staticReverseResourceHandoff.error || "本地图片反推资源交接失败"),
+        errorCode: String(staticReverseResourceHandoff.errorCode || "runtime-resource-handoff-failed"),
+        retryable: true,
+        resourceHandoff: staticReverseResourceHandoff
+      };
+    }
+    const cacheBefore = getPromptAssistantConfig();
+    if (!cacheBefore.reverseCacheReady) {
+      tracePromptAssistantStaticReverseLifecycle("cache-prepare-start", {
+        elapsedMs: Date.now() - workflowStartedAt,
+        stopResult: "not-requested",
+        lastSafeStage: "cache-prepare-start",
+        runtimeState: staticReverseResourceHandoff?.state,
+        ok: true
+      });
+      const cachePrepare = await requestPromptAssistant(
+        "prepareReverseCache",
+        {},
+        900_000,
+        { verifiedCleanup: true }
+      );
+      const cacheAfter = getPromptAssistantConfig();
+      reverseCachePrepared = cachePrepare?.ok === true && cacheAfter.reverseCacheReady === true;
+      tracePromptAssistantStaticReverseLifecycle("cache-prepare-done", {
+        elapsedMs: Date.now() - workflowStartedAt,
+        stopResult: "stopped",
+        lastSafeStage: "cache-prepare-done",
+        runtimeState: staticReverseResourceHandoff?.state,
+        errorCode: reverseCachePrepared ? "" : String(cachePrepare?.errorCode || cacheAfter.reverseCacheStatus || "cache-prepare-failed"),
+        ok: reverseCachePrepared
+      });
+      if (!reverseCachePrepared) {
+        return {
+          ...cacheAfter,
+          ok: false,
+          runtimeStatus: "反推模型准备失败",
+          error: "本地反推模型的 NF4 磁盘缓存准备失败，请重试",
+          errorCode: String(cachePrepare?.errorCode || cacheAfter.reverseCacheStatus || "reverse-cache-prepare-failed"),
+          failureCategory: "model_preparation",
+          retryable: true,
+          resourceHandoff: staticReverseResourceHandoff
+        };
+      }
+    }
+  }
+  const reversePayload = {
     images,
     requirements,
     surface,
@@ -5964,7 +6351,61 @@ ipcMain.handle("prompt-assistant-reverse-image-prompt", async (_evt, payload) =>
     mandatoryChecklistTokens,
     ...(usesMiniMaxH3VisualV1 ? { visualSchema, contentPolicy } : {}),
     ...(usesVisualV2 ? { visualSchema, nsfw: payload?.nsfw === true } : {})
-  }, usesMiniMaxH3Reverse ? 180_000 : 300_000, { verifiedCleanup: true });
+  };
+  const runReversePromptAssistant = () => requestPromptAssistant(
+    "reverseImagePrompt",
+    reversePayload,
+    usesMiniMaxH3Reverse ? 180_000 : 300_000,
+    { verifiedCleanup: true }
+  );
+  let result = await runReversePromptAssistant();
+  if (usesVisualV2 && isPromptAssistantReverseCachePreparationFailure(result)) {
+    const retryStartedAt = Date.now();
+    tracePromptAssistantStaticReverseLifecycle("cache-reprepare-start", {
+      elapsedMs: 0,
+      stopResult: "not-requested",
+      lastSafeStage: "cache-reprepare-start",
+      errorCode: promptAssistantResultFailureCodes(result)[0] || "cache-preparation-required",
+      ok: true
+    });
+    const cachePrepare = await requestPromptAssistant(
+      "prepareReverseCache",
+      {},
+      900_000,
+      { verifiedCleanup: true }
+    );
+    const cacheAfter = getPromptAssistantConfig();
+    const cacheReprepared = cachePrepare?.ok === true && cacheAfter.reverseCacheReady === true;
+    reverseCachePrepared = reverseCachePrepared || cacheReprepared;
+    tracePromptAssistantStaticReverseLifecycle("cache-reprepare-done", {
+      elapsedMs: Date.now() - retryStartedAt,
+      stopResult: "stopped",
+      lastSafeStage: "cache-reprepare-done",
+      errorCode: cacheReprepared ? "" : String(cachePrepare?.errorCode || cacheAfter.reverseCacheStatus || "cache-reprepare-failed"),
+      ok: cacheReprepared
+    });
+    if (!cacheReprepared) {
+      return {
+        ...cacheAfter,
+        ok: false,
+        runtimeStatus: "反推模型准备失败",
+        error: "本地反推模型的 NF4 磁盘缓存准备失败，请重试",
+        errorCode: String(cachePrepare?.errorCode || cacheAfter.reverseCacheStatus || "reverse-cache-reprepare-failed"),
+        failureCategory: "model_preparation",
+        retryable: true,
+        resourceHandoff: staticReverseResourceHandoff,
+        reverseCachePrepared
+      };
+    }
+    result = await runReversePromptAssistant();
+  }
+  return usesVisualV2
+    ? {
+        ...result,
+        resourceHandoff: staticReverseResourceHandoff,
+        reverseCachePrepared
+      }
+    : result;
 });
 
 function isRuntimePromptPath(pathPart) {
@@ -9927,6 +10368,107 @@ const ensureAiSeqCacheDir = () => {
   try { fs.mkdirSync(dir, { recursive: true }); } catch {}
   return dir;
 };
+const AI_SEQ_GENERATED_CACHE_INDEX = ".generated-cache-index.json";
+const normalizeAiSeqGeneratedCacheKey = (value) => {
+  const key = String(value || "").trim();
+  if (!key) return "";
+  return key.replace(/[\r\n\t]+/g, " ").slice(0, 512);
+};
+const normalizeAiSeqGeneratedCacheGroup = (value, fallbackKey = "") => {
+  const explicit = String(value || "").trim();
+  const source = explicit || String(fallbackKey || "").split(":")[0] || "";
+  return normalizeAiSeqGeneratedCacheKey(source);
+};
+const formatAiSeqWarehouseTimestamp = (date = new Date()) => {
+  const pad = (value) => String(value).padStart(2, "0");
+  const year = String(date.getFullYear()).padStart(4, "0");
+  return `${year}${pad(date.getMonth() + 1)}${pad(date.getDate())}_${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+};
+const createAiSeqWarehouseFileName = (dir, prefix, ext) => {
+  const safePrefix = String(prefix || "ais").replace(/[^a-zA-Z0-9_-]+/g, "_").replace(/^_+|_+$/g, "") || "ais";
+  const safeExt = String(ext || ".mp4").match(/^\.[a-zA-Z0-9]{1,8}$/) ? String(ext).toLowerCase() : ".mp4";
+  const stamp = formatAiSeqWarehouseTimestamp();
+  const firstName = `${safePrefix}_${stamp}${safeExt}`;
+  if (!fs.existsSync(path.join(dir, firstName))) return firstName;
+  for (let index = 2; index <= 99; index += 1) {
+    const name = `${safePrefix}_${stamp}_${index}${safeExt}`;
+    if (!fs.existsSync(path.join(dir, name))) return name;
+  }
+  return `${safePrefix}_${stamp}_${Date.now()}${safeExt}`;
+};
+const isAiSeqCachePathInsideDir = (targetPath, dir) => {
+  try {
+    const resolvedTarget = path.resolve(String(targetPath || ""));
+    const resolvedDir = path.resolve(String(dir || ""));
+    return resolvedTarget === resolvedDir || resolvedTarget.startsWith(resolvedDir + path.sep);
+  } catch {
+    return false;
+  }
+};
+const readAiSeqGeneratedCacheIndex = (dir) => {
+  const indexPath = path.join(dir, AI_SEQ_GENERATED_CACHE_INDEX);
+  try {
+    const parsed = JSON.parse(fs.readFileSync(indexPath, "utf8"));
+    const items = Array.isArray(parsed?.items) ? parsed.items : [];
+    return {
+      version: 1,
+      items: items
+        .map((item) => ({
+          cacheKey: normalizeAiSeqGeneratedCacheKey(item?.cacheKey),
+          cacheGroup: normalizeAiSeqGeneratedCacheGroup(item?.cacheGroup, item?.cacheKey),
+          fileName: path.basename(String(item?.fileName || "")),
+          path: String(item?.path || ""),
+          mimeType: String(item?.mimeType || ""),
+          rank: Number.isFinite(Number(item?.rank)) ? Number(item.rank) : 999,
+          updatedAt: Number.isFinite(Number(item?.updatedAt)) ? Number(item.updatedAt) : 0,
+        }))
+        .filter((item) => item.cacheKey && item.fileName && item.path && isAiSeqCachePathInsideDir(item.path, dir)),
+    };
+  } catch {
+    return { version: 1, items: [] };
+  }
+};
+const writeAiSeqGeneratedCacheIndex = (dir, index) => {
+  const indexPath = path.join(dir, AI_SEQ_GENERATED_CACHE_INDEX);
+  const safeItems = (Array.isArray(index?.items) ? index.items : [])
+    .filter((item) => item?.cacheKey && item?.fileName && item?.path && isAiSeqCachePathInsideDir(item.path, dir))
+    .map((item) => ({
+      cacheKey: normalizeAiSeqGeneratedCacheKey(item.cacheKey),
+      cacheGroup: normalizeAiSeqGeneratedCacheGroup(item.cacheGroup, item.cacheKey),
+      fileName: path.basename(String(item.fileName || "")),
+      path: String(item.path || ""),
+      mimeType: String(item.mimeType || ""),
+      rank: Number.isFinite(Number(item.rank)) ? Number(item.rank) : 999,
+      updatedAt: Number.isFinite(Number(item.updatedAt)) ? Number(item.updatedAt) : Date.now(),
+    }));
+  fs.writeFileSync(indexPath, JSON.stringify({ version: 1, items: safeItems }, null, 2), "utf8");
+};
+const pruneAiSeqGeneratedCacheIndex = (dir, index, maxFiles, cacheGroup) => {
+  const limit = Math.max(0, Math.min(24, Math.floor(Number(maxFiles) || 0)));
+  const group = normalizeAiSeqGeneratedCacheGroup(cacheGroup);
+  if (!limit || !group || !Array.isArray(index?.items)) return index;
+  const scopedItems = index.items.filter((item) => normalizeAiSeqGeneratedCacheGroup(item?.cacheGroup, item?.cacheKey) === group);
+  if (scopedItems.length <= limit) return index;
+  const sorted = [...scopedItems].sort((a, b) => {
+    const rankA = Number.isFinite(Number(a?.rank)) ? Number(a.rank) : 999;
+    const rankB = Number.isFinite(Number(b?.rank)) ? Number(b.rank) : 999;
+    if (rankA !== rankB) return rankA - rankB;
+    return (Number(b?.updatedAt) || 0) - (Number(a?.updatedAt) || 0);
+  });
+  const keepKeys = new Set(sorted.slice(0, limit).map((item) => normalizeAiSeqGeneratedCacheKey(item.cacheKey)));
+  for (const item of sorted.slice(limit)) {
+    const filePath = String(item?.path || "");
+    if (filePath && isAiSeqCachePathInsideDir(filePath, dir)) {
+      try { fs.unlinkSync(filePath); } catch {}
+    }
+  }
+  index.items = index.items.filter((item) => {
+    const itemGroup = normalizeAiSeqGeneratedCacheGroup(item?.cacheGroup, item?.cacheKey);
+    if (itemGroup !== group) return true;
+    return keepKeys.has(normalizeAiSeqGeneratedCacheKey(item.cacheKey));
+  });
+  return index;
+};
 const miniMaxH3OutputPublisher = createMiniMaxH3OutputPublisher({
   readRuntimeConfig: () => miniMaxH3RuntimeLifecycle.readConfig(),
   getWarehouseDir: () => ensureAiSeqCacheDir(),
@@ -9956,13 +10498,27 @@ const cleanupAiSeqCacheDir = (source) => {
     source,
     retries: 2,
     retryDelayMs: 250,
-    logSuccess: source === "startup" || source === "before-quit"
+      logSuccess: source === "startup" || source === "before-quit"
   });
 };
+handleNovaFlowTempIpc("ai-seq-cache-clear", async (_evt, payload) => {
+  try {
+    const source = String(payload?.source || "manual").trim() || "manual";
+    await cleanupAiSeqCacheDir(source);
+    ensureAiSeqCacheDir();
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err || "unknown error") };
+  }
+});
 handleNovaFlowTempIpc("ai-seq-cache-temp-file", async (_evt, payload) => {
   try {
     const bytesIn = payload?.bytes;
     const inFileName = String(payload?.fileName || "output.mp4");
+    const cacheKey = normalizeAiSeqGeneratedCacheKey(payload?.cacheKey);
+    const cacheGroup = normalizeAiSeqGeneratedCacheGroup(payload?.cacheGroup, cacheKey);
+    const cacheRank = Number.isFinite(Number(payload?.cacheRank)) ? Number(payload.cacheRank) : 999;
+    const maxFiles = Math.max(0, Math.min(24, Math.floor(Number(payload?.maxFiles) || 0)));
     const safeBufFromBytes = (bytes) => {
       try {
         if (!bytes) return null;
@@ -9979,10 +10535,38 @@ handleNovaFlowTempIpc("ai-seq-cache-temp-file", async (_evt, payload) => {
     const buf = safeBufFromBytes(bytesIn);
     if (!buf || buf.length <= 0) return { ok: false, error: "bytes 无效" };
     const dir = ensureAiSeqCacheDir();
+    const cacheIndex = cacheKey ? readAiSeqGeneratedCacheIndex(dir) : null;
+    if (cacheKey && cacheIndex) {
+      const existing = cacheIndex.items.find((item) => item.cacheKey === cacheKey);
+      if (existing?.path && isAiSeqCachePathInsideDir(existing.path, dir) && fs.existsSync(existing.path)) {
+        return { ok: true, path: existing.path, fileName: existing.fileName, mimeType: existing.mimeType || guessMimeFromPath(existing.path), reused: true };
+      }
+    }
     const ext = (String(inFileName).match(/\.[a-zA-Z0-9]{1,8}$/)?.[0] || ".mp4").toLowerCase();
-    const outName = `ais_${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`;
+    const outPrefix = cacheKey ? "wan" : "ais";
+    const outName = cacheKey
+      ? createAiSeqWarehouseFileName(dir, outPrefix, ext)
+      : `${outPrefix}_${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`;
     const outPath = path.join(dir, outName);
     fs.writeFileSync(outPath, buf);
+    if (cacheKey && cacheIndex) {
+      cacheIndex.items = cacheIndex.items.filter((item) => item.cacheKey !== cacheKey);
+      cacheIndex.items.push({
+        cacheKey,
+        cacheGroup,
+        fileName: outName,
+        path: outPath,
+        mimeType: guessMimeFromPath(outPath),
+        rank: cacheRank,
+        updatedAt: Date.now(),
+      });
+      pruneAiSeqGeneratedCacheIndex(dir, cacheIndex, maxFiles, cacheGroup);
+      writeAiSeqGeneratedCacheIndex(dir, cacheIndex);
+      const kept = cacheIndex.items.find((item) => item.cacheKey === cacheKey);
+      if (!kept?.path || !fs.existsSync(kept.path)) {
+        return { ok: false, error: "generated output cache capped" };
+      }
+    }
     return { ok: true, path: outPath, fileName: outName, mimeType: guessMimeFromPath(outPath) };
   } catch (err) {
     return { ok: false, error: String(err?.message || err || "unknown error") };
@@ -10028,7 +10612,7 @@ handleNovaFlowTempIpc("ai-seq-cache-release-output", async (_evt, payload) => {
     const outputPath = String(payload?.path || "").trim();
     if (!outputPath) return { ok: false, error: "path 无效" };
     const dir = ensureAiSeqCacheDir();
-    if (!isPathInsideDir(outputPath, dir)) return { ok: false, error: "path 非法" };
+    if (!isAiSeqCachePathInsideDir(outputPath, dir)) return { ok: false, error: "path 非法" };
     const extension = path.extname(outputPath).toLowerCase();
     if (extension !== ".mp4" && extension !== ".webm") return { ok: false, error: "format 无效" };
     if (!fs.existsSync(outputPath)) return { ok: true, released: false };

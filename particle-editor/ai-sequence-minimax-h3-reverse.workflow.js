@@ -12,7 +12,7 @@
   const MINIMAX_H3_MODEL_ID = 'minimax_h3_local'
   const H3_VISUAL_SCHEMA = 'nf.h3.visual.v1'
   const MIN_DURATION_SECONDS = 1
-  const MAX_DURATION_SECONDS = 15
+  const MAX_DURATION_SECONDS = 30
   const IMAGE_DATA_URL_EXPRESSION = /^data:(image\/[a-z0-9.+-]+);base64,([a-z0-9+/=\r\n]+)$/i
 
   function capability(mode, supportsReverse, reverseKind, purpose, scenario, requiredSlots) {

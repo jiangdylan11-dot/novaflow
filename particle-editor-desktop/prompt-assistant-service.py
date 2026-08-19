@@ -117,7 +117,7 @@ MINIMAX_H3_PROMPT_MODE_REPAIR_MAX_LENGTHS = {
 MINIMAX_H3_I2V_REVERSE_PURPOSE = "minimax-h3-i2v-reverse"
 MINIMAX_H3_FL2V_REVERSE_PURPOSE = "minimax-h3-fl2v-reverse"
 MINIMAX_H3_MIN_DURATION_SECONDS = 1.0
-MINIMAX_H3_MAX_DURATION_SECONDS = 15.0
+MINIMAX_H3_MAX_DURATION_SECONDS = 30.0
 MINIMAX_H3_VISUAL_SCHEMA_VERSION = "nf.h3.visual.v1"
 MINIMAX_H3_VISUAL_CONTENT_POLICY_KEYS = (
     "sensitiveVisualAnalysis",
@@ -5229,17 +5229,17 @@ def minimax_h3_duration_from_requirements(requirements: str):
         clean_text(requirements),
     )
     if not match:
-        raise ValueError("MiniMax H3 请求缺少有效时长，时长必须为 1 到 15 秒")
+        raise ValueError("MiniMax H3 请求缺少有效时长，时长必须为 1 到 30 秒")
     try:
         duration = float(match.group(1))
     except (TypeError, ValueError):
-        raise ValueError("MiniMax H3 请求时长无效，时长必须为 1 到 15 秒") from None
+        raise ValueError("MiniMax H3 请求时长无效，时长必须为 1 到 30 秒") from None
     if (
         not math.isfinite(duration)
         or duration < MINIMAX_H3_MIN_DURATION_SECONDS
         or duration > MINIMAX_H3_MAX_DURATION_SECONDS
     ):
-        raise ValueError("MiniMax H3 请求时长超出范围，时长必须为 1 到 15 秒")
+        raise ValueError("MiniMax H3 请求时长超出范围，时长必须为 1 到 30 秒")
     return round(duration, 3)
 
 
@@ -5399,6 +5399,135 @@ def build_minimax_h3_prompt_repair_instruction(
         f"currentPrompt:\n{current_prompt or 'N/A'}\n\n"
         f"requirements:\n{requirements or 'N/A'}\n\n"
         f"invalidAnswer:\n{clean_text(output)[:6000]}"
+    )
+
+
+def minimax_h3_timeline_stamp(duration_seconds) -> str:
+    try:
+        duration = float(duration_seconds)
+    except (TypeError, ValueError):
+        duration = 5.0
+    if not math.isfinite(duration) or duration <= 0:
+        duration = 5.0
+    total_ms = max(1, int(round(duration * 1000)))
+    minutes, remainder_ms = divmod(total_ms, 60000)
+    seconds, milliseconds = divmod(remainder_ms, 1000)
+    return f"{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+
+
+def minimax_h3_prompt_enhance_user_requirement(requirements: str, current_prompt: str = "") -> str:
+    current = clean_text(current_prompt)
+    ignored_prefix = re.compile(
+        r"(?i)^(?:you are|protocol:|output fields|use \[shot|available resource|describe a continuous|"
+        r"for every shot|keep character|overall_soundscape|non_diegetic_music|return only|source prompt:|"
+        r"field-value language|currentprompt:|requirements:|mode:)"
+    )
+    candidates: list[str] = []
+    for raw_line in clean_text(requirements).splitlines():
+        line = clean_text(raw_line)
+        if not line or line == current or ignored_prefix.search(line):
+            continue
+        if "MiniMax H3" in line or "H3 " in line or "field" in line.lower():
+            continue
+        candidates.append(line)
+    return clean_text(candidates[-1] if candidates else "")[:240]
+
+
+def build_minimax_h3_prompt_enhance_deterministic_fallback(
+    current_prompt: str,
+    requirements: str,
+    mode: str = "",
+    duration_seconds=None,
+    value_language: str = "",
+) -> str:
+    normalized_mode = clean_text(mode).upper()
+    if normalized_mode in {"REF2VA", "FULL_REFERENCE"}:
+        return ""
+    if normalized_mode in {"IMAGE_VIDEO", "I2V"}:
+        normalized_mode = "I2VA"
+    elif normalized_mode in {"FIRST_LAST", "FL2V"}:
+        normalized_mode = "FL2VA"
+    elif normalized_mode in {"VIDEO_REFERENCE", "L2V"}:
+        normalized_mode = "L2VA"
+    elif normalized_mode not in {"T2VA", "I2VA", "FL2VA", "L2VA"}:
+        normalized_mode = "T2VA"
+    language = (
+        normalize_minimax_h3_preferred_output_language(value_language)
+        or minimax_h3_preferred_value_language(current_prompt, requirements)
+    )
+    chinese = language == "zh-CN"
+    source = clean_text(current_prompt)[:900]
+    user_requirement = minimax_h3_prompt_enhance_user_requirement(requirements, current_prompt)
+    if not source and not user_requirement:
+        return ""
+    source_fact = source or ("用户补充要求" if chinese else "the user requirement")
+    intent = user_requirement or (
+        "让动作更生动，同时保持原主体、场景、构图和参考关系不变"
+        if chinese
+        else "make the motion more vivid while preserving the original subjects, scene, composition, and references"
+    )
+    timestamp = minimax_h3_timeline_stamp(duration_seconds)
+    try:
+        duration_value = float(duration_seconds)
+    except (TypeError, ValueError):
+        duration_value = 5.0
+    if not math.isfinite(duration_value) or duration_value <= 0:
+        duration_value = 5.0
+    duration_text = f"{duration_value:.2f}"
+    if chinese:
+        reference_prefix = ""
+        if normalized_mode == "I2VA":
+            reference_prefix = "<Picture 1> 是 0.00 秒时提供的精确首帧。"
+        elif normalized_mode == "FL2VA":
+            reference_prefix = f"<Picture 1> 是 0.00 秒时提供的精确首帧；<Picture 2> 是 {duration_text} 秒的精确尾帧（final shot）。"
+        elif normalized_mode == "L2VA":
+            reference_prefix = "<Video 1> 作为视频参考，仅继承其运动节奏和可用参考信息。"
+        integrated = (
+            f"[Shot 1] {reference_prefix}当前底稿为：{source_fact}。"
+            f"动作从当前状态开始，随后按“{intent}”逐渐增强动作幅度、节奏和表情/姿态变化，"
+            "过程保持主体身份、服装、道具、场景和构图连续；镜头保持稳定构图并进行轻微跟随。"
+        )
+        if normalized_mode == "FL2VA":
+            integrated += f" [Shot 2] At {timestamp}，动作连续过渡并准确抵达 <Picture 2> 的尾帧状态。"
+        soundscape = "动作声、衣料摩擦声、脚步或环境声随动作节奏同步；未指定对白时不添加对白。"
+        music = "N/A"
+        alignment = ""
+        if normalized_mode == "I2VA":
+            alignment = "参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒\n"
+        elif normalized_mode == "FL2VA":
+            alignment = f"参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；<Picture 2> 对应 [Shot 2] = {duration_text} 秒\n"
+        return (
+            f"{alignment}"
+            f"integrated_multimodal_description: {integrated}\n"
+            f"overall_soundscape: {soundscape}\n"
+            f"non_diegetic_music: {music}"
+        )
+    reference_prefix = ""
+    if normalized_mode == "I2VA":
+        reference_prefix = "<Picture 1> is the exact supplied opening frame at 0.00 seconds. "
+    elif normalized_mode == "FL2VA":
+        reference_prefix = f"<Picture 1> is the exact opening frame at 0.00 seconds; <Picture 2> is the exact final shot at {duration_text} seconds. "
+    elif normalized_mode == "L2VA":
+        reference_prefix = "<Video 1> is used only for supported motion timing and reference information. "
+    integrated = (
+        f"[Shot 1] {reference_prefix}Current prompt: {source_fact}. "
+        f"The action begins from the current state, then follows the user requirement ({intent}) with clearer motion rhythm, "
+        "continuous posture change, and stable identity, wardrobe, props, scene, and composition; camera holds stable framing with a subtle follow. "
+    )
+    if normalized_mode == "FL2VA":
+        integrated += f"[Shot 2] At {timestamp}, the motion resolves continuously into <Picture 2>."
+    soundscape = "Synchronized movement sounds, cloth rustle, footsteps, or ambience follow the action rhythm; dialogue is N/A unless specified."
+    music = "N/A"
+    alignment = ""
+    if normalized_mode == "I2VA":
+        alignment = "Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds\n"
+    elif normalized_mode == "FL2VA":
+        alignment = f"Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds; <Picture 2> from [Shot 2] = {duration_text} seconds\n"
+    return (
+        f"{alignment}"
+        f"integrated_multimodal_description: {integrated}\n"
+        f"overall_soundscape: {soundscape}\n"
+        f"non_diegetic_music: {music}"
     )
 
 
@@ -15691,6 +15820,83 @@ class PromptAssistant:
             return "qwen3-vl-abliterated"
         return "auto"
 
+    def prepare_reverse_cache(self, _payload: dict | None = None) -> dict:
+        """Prepare the reusable disk NF4 cache before the timed reverse call."""
+
+        adapter = Qwen3VLAbliteratedAdapter(
+            self.reverse_model_path(),
+            max_side=768,
+            max_new_tokens=384,
+            require_prequantized_cache=True,
+        )
+
+        def emit_cache_stage(stage: str, fields: dict) -> None:
+            safe_fields = {
+                key: value
+                for key, value in (fields or {}).items()
+                if key in {
+                    "elapsedMs",
+                    "cacheBuildMs",
+                    "cacheHit",
+                    "cacheState",
+                    "cacheBytes",
+                    "errorCode",
+                    "modelSource",
+                }
+                and isinstance(value, (str, int, float, bool))
+            }
+            log_prompt_assistant_event(
+                "reverse_cache_prepare_stage",
+                command="prepareReverseCache",
+                stage=re.sub(
+                    r"[^a-z0-9_-]+",
+                    "-",
+                    str(stage or "unknown").strip().lower(),
+                ).strip("-")[:80] or "unknown",
+                **safe_fields,
+            )
+
+        adapter.event_sink = emit_cache_stage
+        started = time.monotonic()
+        log_prompt_assistant_event(
+            "reverse_cache_prepare_start",
+            command="prepareReverseCache",
+        )
+        try:
+            result = adapter.prepare_prequantized_cache()
+            safe_result = {
+                key: value
+                for key, value in result.items()
+                if key in {
+                    "ok",
+                    "loadMs",
+                    "cacheHit",
+                    "cacheState",
+                    "cacheBuildMs",
+                    "modelSource",
+                }
+                and isinstance(value, (str, int, float, bool))
+            }
+            log_prompt_assistant_event(
+                "reverse_cache_prepare_done",
+                command="prepareReverseCache",
+                elapsedMs=round((time.monotonic() - started) * 1000),
+                **safe_result,
+            )
+            return safe_result
+        except Exception as exc:
+            log_prompt_assistant_event(
+                "reverse_cache_prepare_error",
+                command="prepareReverseCache",
+                elapsedMs=round((time.monotonic() - started) * 1000),
+                errorCode=str(
+                    getattr(exc, "code", "") or type(exc).__name__
+                )[:80],
+            )
+            raise
+        finally:
+            adapter.unload()
+
     def read_runtime_config(self) -> dict:
         path = self.runtime_json_path()
         if not path.exists():
@@ -16759,10 +16965,49 @@ class PromptAssistant:
                         minimax_h3_mode,
                         minimax_h3_duration,
                     )
-                except ValueError:
-                    raise ValueError(
-                        "本地提示词助手未能生成符合 MiniMax H3 协议的提示词，请简化描述后重试"
-                    ) from None
+                except ValueError as repair_error:
+                    try:
+                        fallback_output = build_minimax_h3_prompt_enhance_deterministic_fallback(
+                            raw_prompt,
+                            requirements,
+                            minimax_h3_mode,
+                            minimax_h3_duration,
+                            minimax_h3_value_language,
+                        )
+                        fallback_output = validate_minimax_h3_value_language(
+                            fallback_output,
+                            minimax_h3_value_language,
+                        )
+                        positive = validate_minimax_h3_prompt_contract(
+                            complete_minimax_h3_mechanical_contract(
+                                fallback_output,
+                                minimax_h3_mode,
+                                minimax_h3_duration,
+                                minimax_h3_value_language,
+                            ),
+                            minimax_h3_mode,
+                            minimax_h3_duration,
+                        )
+                        log_prompt_assistant_event(
+                            "minimax_h3_prompt_enhance_deterministic_fallback",
+                            command="optimizePrompt",
+                            mode=minimax_h3_mode,
+                            firstFailure=clean_text(str(first_error))[:160],
+                            repairFailure=clean_text(str(repair_error))[:160],
+                            positiveChars=len(positive),
+                        )
+                    except ValueError as fallback_error:
+                        log_prompt_assistant_event(
+                            "minimax_h3_prompt_enhance_failed",
+                            command="optimizePrompt",
+                            mode=minimax_h3_mode,
+                            firstFailure=clean_text(str(first_error))[:160],
+                            repairFailure=clean_text(str(repair_error))[:160],
+                            fallbackFailure=clean_text(str(fallback_error))[:160],
+                        )
+                        raise ValueError(
+                            "本地提示词助手未能生成符合 MiniMax H3 协议的提示词，请简化描述后重试"
+                        ) from None
             negative = ""
         else:
             if is_ordinary_art and not art_supports_negative:
@@ -18577,7 +18822,109 @@ class PromptAssistant:
                     if requested_schema == VISUAL_SCHEMA_VERSION_V2
                     else 1600
                 ),
+                require_prequantized_cache=use_local_compact_v2,
             )
+            trace_local_static_reverse = (
+                use_local_compact_v2
+                and str(payload.get("purpose") or "").strip()
+                == "static-image-reverse"
+            )
+
+            def emit_local_reverse_stage(stage: str, **fields) -> None:
+                if not trace_local_static_reverse:
+                    return
+                bounded_stage = re.sub(
+                    r"[^a-z0-9_-]+",
+                    "-",
+                    str(stage or "unknown").strip().lower(),
+                ).strip("-")[:80] or "unknown"
+                safe_fields = {
+                    key: value
+                    for key, value in fields.items()
+                    if key in {
+                        "attempt",
+                        "elapsedMs",
+                        "cacheBuildMs",
+                        "cacheHit",
+                        "cacheState",
+                        "cacheBytes",
+                        "errorCode",
+                        "generatedTokens",
+                        "generationTokenLimit",
+                        "generationHitTokenLimit",
+                        "modelSource",
+                    }
+                    and isinstance(value, (str, int, float, bool))
+                }
+                log_prompt_assistant_event(
+                    "reverse_local_stage",
+                    command="reverseImagePrompt",
+                    provider="qwen3_vl_abliterated_nf4",
+                    visualSchema=requested_schema,
+                    stage=bounded_stage,
+                    **safe_fields,
+                )
+
+            if trace_local_static_reverse:
+                adapter.event_sink = lambda stage, fields: emit_local_reverse_stage(
+                    stage,
+                    **(fields if isinstance(fields, dict) else {}),
+                )
+
+            def run_local_reverse_generation(
+                stage: str,
+                prompt_text: str,
+                *,
+                attempt_number: int,
+                **generation_options,
+            ) -> str:
+                stage_started = time.monotonic()
+                emit_local_reverse_stage(
+                    f"{stage}-start",
+                    attempt=attempt_number,
+                )
+                try:
+                    output = adapter.generate(
+                        prompt_text,
+                        image_tensor,
+                        **generation_options,
+                    )
+                except Exception as stage_error:
+                    emit_local_reverse_stage(
+                        f"{stage}-error",
+                        attempt=attempt_number,
+                        elapsedMs=round(
+                            (time.monotonic() - stage_started) * 1000
+                        ),
+                        errorCode=str(
+                            getattr(stage_error, "code", "")
+                            or type(stage_error).__name__
+                        )[:80],
+                    )
+                    raise
+                diagnostics = getattr(
+                    adapter,
+                    "last_generation_diagnostics",
+                    {},
+                )
+                if not isinstance(diagnostics, dict):
+                    diagnostics = {}
+                emit_local_reverse_stage(
+                    f"{stage}-done",
+                    attempt=attempt_number,
+                    elapsedMs=round(
+                        (time.monotonic() - stage_started) * 1000
+                    ),
+                    generatedTokens=diagnostics.get("generatedTokens"),
+                    generationTokenLimit=diagnostics.get(
+                        "generationTokenLimit"
+                    ),
+                    generationHitTokenLimit=diagnostics.get(
+                        "generationHitTokenLimit"
+                    ),
+                )
+                return output
+
             readiness = adapter.readiness()
             if readiness.get("available"):
                 try:
@@ -18677,9 +19024,10 @@ class PromptAssistant:
                             else contract_prompt
                         )
                         raw_output = (
-                            adapter.generate(
+                            run_local_reverse_generation(
+                                "primary" if attempt == 1 else "retry",
                                 prompt_for_attempt,
-                                image_tensor,
+                                attempt_number=attempt,
                                 unload_after=False,
                                 **(
                                     {
@@ -18691,7 +19039,11 @@ class PromptAssistant:
                                 ),
                             )
                             if requested_schema == VISUAL_SCHEMA_VERSION_V2
-                            else adapter.generate(prompt_for_attempt, image_tensor)
+                            else run_local_reverse_generation(
+                                "primary",
+                                prompt_for_attempt,
+                                attempt_number=attempt,
+                            )
                         )
                         attempt_elapsed_ms = round(
                             (time.monotonic() - attempt_started) * 1000
@@ -18887,6 +19239,7 @@ class PromptAssistant:
                                 keyed_contract_attempt and exc.semantic
                             )
                             recoverable_keyed_partial_contract = None
+                            compile_stage_projection_partial_contract = None
                             if (
                                 keyed_contract_semantic
                                 and not contract_parse_succeeded
@@ -18907,6 +19260,34 @@ class PromptAssistant:
                                 except VisualContractError:
                                     recoverable_keyed_partial_contract = None
                             if (
+                                keyed_contract_semantic
+                                and contract_parse_succeeded
+                                and attempt == 1
+                                and retry_count == 0
+                                and not quality_gate_retried
+                                and not retry_reason
+                                and nsfw_enabled
+                                and exc.code
+                                == "visual-contract-projection-redaction-required"
+                            ):
+                                compile_stage_projection_partial_contract = contract
+                            partial_recovery_contract = (
+                                recoverable_keyed_partial_contract
+                                if recoverable_keyed_partial_contract is not None
+                                else compile_stage_projection_partial_contract
+                            )
+                            keyed_projection_structural_partial = (
+                                keyed_contract_semantic
+                                and partial_recovery_contract is None
+                                and attempt == 1
+                                and retry_count == 0
+                                and not quality_gate_retried
+                                and not retry_reason
+                                and nsfw_enabled
+                                and exc.code
+                                == "visual-contract-projection-redaction-required"
+                            )
+                            if (
                                 quality_gate_retried
                                 and attempt == 2
                                 and not keyed_contract_semantic
@@ -18917,8 +19298,8 @@ class PromptAssistant:
                                 and exc.semantic
                             ):
                                 structural_contract = (
-                                    recoverable_keyed_partial_contract
-                                    if recoverable_keyed_partial_contract is not None
+                                    partial_recovery_contract
+                                    if partial_recovery_contract is not None
                                     else parse_local_compact_visual_contract(
                                         contract_output,
                                         validate_semantics=False,
@@ -18938,22 +19319,31 @@ class PromptAssistant:
                                         not keyed_contract_semantic
                                         and exc.code in partial_contract_codes
                                     )
-                                    or recoverable_keyed_partial_contract is not None
+                                    or partial_recovery_contract is not None
+                                    or keyed_projection_structural_partial
                                 )
-                                degraded = (
-                                    compile_partial_visual_prompt_details(
-                                        structural_contract,
-                                        requirements,
-                                        nsfw=nsfw_enabled,
-                                        failure_code=exc.code,
-                                    )
-                                    if analysis_partial
-                                    else compile_degraded_visual_prompt_details(
+                                if analysis_partial:
+                                    try:
+                                        degraded = compile_partial_visual_prompt_details(
+                                            structural_contract,
+                                            requirements,
+                                            nsfw=nsfw_enabled,
+                                            failure_code=exc.code,
+                                        )
+                                    except VisualContractError:
+                                        degraded = compile_degraded_visual_prompt_details(
+                                            structural_contract
+                                        )
+                                        analysis_partial = False
+                                else:
+                                    degraded = compile_degraded_visual_prompt_details(
                                         structural_contract
                                     )
-                                )
                                 if (
-                                    recoverable_keyed_partial_contract is not None
+                                    (
+                                        partial_recovery_contract is not None
+                                        or keyed_projection_structural_partial
+                                    )
                                     and (
                                         degraded.get("generationGate")
                                         != "adult_confirmation"
@@ -18969,7 +19359,10 @@ class PromptAssistant:
                                     and degraded.get("generationGate")
                                     == "adult_confirmation"
                                 ):
-                                    if recoverable_keyed_partial_contract is not None:
+                                    if (
+                                        partial_recovery_contract is not None
+                                        or keyed_projection_structural_partial
+                                    ):
                                         degraded = finalize_v2_generation_candidate(degraded)
                                     else:
                                         degraded = enrich_v2_generation_candidate(
@@ -18986,7 +19379,10 @@ class PromptAssistant:
                                         )
                                 else:
                                     degraded = finalize_v2_generation_candidate(degraded)
-                                if recoverable_keyed_partial_contract is not None:
+                                if (
+                                    partial_recovery_contract is not None
+                                    or keyed_projection_structural_partial
+                                ):
                                     analysis_partial = (
                                         degraded.get("generationGate")
                                         == "adult_confirmation"
@@ -19103,9 +19499,10 @@ class PromptAssistant:
                             original_contract = contract
                             original_compiled = compiled
                             try:
-                                salient_raw_output = adapter.generate(
+                                salient_raw_output = run_local_reverse_generation(
+                                    "sidecar",
                                     salient_inventory_prompt,
-                                    image_tensor,
+                                    attempt_number=1,
                                     unload_after=False,
                                     system_text=salient_inventory_system_text,
                                     do_sample=False,
@@ -19364,7 +19761,18 @@ class PromptAssistant:
                     )
                 finally:
                     if requested_schema == VISUAL_SCHEMA_VERSION_V2:
-                        adapter.unload()
+                        cleanup_started = time.monotonic()
+                        emit_local_reverse_stage("cleanup-start", attempt=0)
+                        try:
+                            adapter.unload()
+                        finally:
+                            emit_local_reverse_stage(
+                                "cleanup-done",
+                                attempt=0,
+                                elapsedMs=round(
+                                    (time.monotonic() - cleanup_started) * 1000
+                                ),
+                            )
             else:
                 fallback_code = clean_text(str(readiness.get("code") or "qwen3-unavailable"))[:80]
                 provider_failure_code = fallback_code
@@ -21428,13 +21836,13 @@ def validate_minimax_h3_shot_timeline(narrative: str, duration_seconds) -> None:
     try:
         duration = float(duration_seconds)
     except (TypeError, ValueError):
-        raise ValueError("MiniMax H3 请求缺少有效时长，时长必须为 1 到 15 秒") from None
+        raise ValueError("MiniMax H3 请求缺少有效时长，时长必须为 1 到 30 秒") from None
     if (
         not math.isfinite(duration)
         or duration < MINIMAX_H3_MIN_DURATION_SECONDS
         or duration > MINIMAX_H3_MAX_DURATION_SECONDS
     ):
-        raise ValueError("MiniMax H3 请求时长超出范围，时长必须为 1 到 15 秒")
+        raise ValueError("MiniMax H3 请求时长超出范围，时长必须为 1 到 30 秒")
 
     raw_tags = list(re.finditer(r"\[Shot[^\]]*\]", narrative))
     if not raw_tags:
@@ -21835,6 +22243,8 @@ def handle_request(payload: dict) -> dict:
         return assistant.storyboard_director_plan(payload)
     if command == "reverseImagePrompt":
         return assistant.reverse_image_prompt(payload)
+    if command == "prepareReverseCache":
+        return assistant.prepare_reverse_cache(payload)
     if command == "shutdown":
         raise SystemExit(0)
     raise ValueError(f"未知 Prompt Assistant 命令：{command}")

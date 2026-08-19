@@ -137,7 +137,7 @@ function applyReferenceMediaContractFixes() {
 function applyFollowupParameterAndLayoutFixes() {
   replaceOnce(
     '}),Fr=Ja(`ai_seq_prompt`,{recentCap:6})',
-    '}),[nfH3DurationInput,nfSetH3DurationInput]=(0,_.useState)(`5`),nfH3WorkflowApi=()=>window.NovaFlowAiSequenceMiniMaxH3Workflow,nfH3Resolution=()=>{try{return nfH3WorkflowApi()?.matchResolution?.({width:yt,height:xt})||{aspectRatio:`9:16`,orientation:`portrait`,megapixels:.4,width:480,height:864,exact:!1}}catch{return{aspectRatio:`9:16`,orientation:`portrait`,megapixels:.4,width:480,height:864,exact:!1}}},nfApplyH3Resolution=(e,t)=>{try{let n=nfH3WorkflowApi()?.calculateResolution?.({aspectRatio:e,megapixels:t});n&&(bt(n.width),St(n.height),Pt(String(n.width)),It(String(n.height)))}catch(e){on({state:`error`,message:String(e?.message||e)})}},nfH3Duration=()=>{try{return nfH3WorkflowApi()?.normalizeDuration?.(nfH3DurationInput)||{requestedDuration:5,frames:124,actualDuration:124/24}}catch{return nfH3WorkflowApi()?.normalizeDuration?.(5)||{requestedDuration:5,frames:124,actualDuration:124/24}}},nfCommitH3Duration=e=>{let t=Number(e),n=Number.isFinite(t)?Math.max(1,Math.min(15,Math.round(t*100)/100)):5,r=nfH3WorkflowApi()?.normalizeDuration?.(n)||{requestedDuration:n,frames:124,actualDuration:124/24};nfSetH3DurationInput(String(r.requestedDuration)),wt(r.frames),Rt(String(r.frames));return r},nfH3ModeSyncEffect=(0,_.useEffect)(()=>{if(ze!==`minimax_h3_local`)return;let e=nfH3Resolution();e.exact||nfApplyH3Resolution(`9:16`,.4),nfCommitH3Duration(nfH3DurationInput)},[ze]),Fr=Ja(`ai_seq_prompt`,{recentCap:6})',
+    '}),[nfH3DurationInput,nfSetH3DurationInput]=(0,_.useState)(`5`),[nfH3Fps,nfSetH3Fps]=(0,_.useState)(24),nfH3WorkflowApi=()=>window.NovaFlowAiSequenceMiniMaxH3Workflow,nfH3Resolution=()=>{try{return nfH3WorkflowApi()?.matchResolution?.({width:yt,height:xt})||{aspectRatio:`9:16`,orientation:`portrait`,megapixels:.4,width:480,height:864,exact:!1}}catch{return{aspectRatio:`9:16`,orientation:`portrait`,megapixels:.4,width:480,height:864,exact:!1}}},nfApplyH3Resolution=(e,t)=>{try{let n=nfH3WorkflowApi()?.calculateResolution?.({aspectRatio:e,megapixels:t});n&&(bt(n.width),St(n.height),Pt(String(n.width)),It(String(n.height)))}catch(e){on({state:`error`,message:String(e?.message||e)})}},nfH3Duration=()=>{try{return nfH3WorkflowApi()?.normalizeDuration?.({seconds:nfH3DurationInput,fps:nfH3Fps})||{requestedDuration:5,frames:124,actualDuration:124/24,fps:24}}catch{return nfH3WorkflowApi()?.normalizeDuration?.({seconds:5,fps:nfH3Fps})||{requestedDuration:5,frames:124,actualDuration:124/24,fps:24}}},nfCommitH3Duration=e=>{let t=Number(e),n=Number.isFinite(t)?Math.max(1,Math.min(30,Math.round(t*100)/100)):5,r=nfH3WorkflowApi()?.normalizeDuration?.({seconds:n,fps:nfH3Fps})||{requestedDuration:n,frames:124,actualDuration:124/24,fps:24};nfSetH3DurationInput(String(r.requestedDuration)),wt(r.frames),Rt(String(r.frames));return r},nfH3ModeSyncEffect=(0,_.useEffect)(()=>{if(ze!==`minimax_h3_local`)return;let e=nfH3Resolution();e.exact||nfApplyH3Resolution(`9:16`,.4),nfCommitH3Duration(nfH3DurationInput)},[ze]),Fr=Ja(`ai_seq_prompt`,{recentCap:6})',
     'H3 UI parameter state and module adapters',
   )
 
@@ -169,8 +169,8 @@ function applyFollowupParameterAndLayoutFixes() {
     '(0,X.jsx)(yn,{"data-novaflow-h3-megapixels":`1`,value:String(nfH3Resolution().megapixels),onChange:e=>nfApplyH3Resolution(nfH3Resolution().aspectRatio,Number(e.target.value)||.4),style:{width:78,height:30,padding:`0 8px`},children:(nfH3WorkflowApi()?.MEGAPIXEL_OPTIONS||[.2,.3,.4,.5,.6,.7,.8,.9,.98]).map(e=>(0,X.jsx)(`option`,{value:String(e),children:`${e} MP`},String(e)))}),' +
     '(0,X.jsx)(`div`,{"data-novaflow-h3-output-size":`1`,style:{fontSize:11,color:`rgba(255,255,255,0.62)`,whiteSpace:`nowrap`},children:`${nfH3Resolution().width} × ${nfH3Resolution().height}`}),' +
     '(0,X.jsx)(`div`,{style:{fontSize:12,color:`rgba(255,255,255,0.75)`,whiteSpace:`nowrap`},children:`时长`}),' +
-    '(0,X.jsx)(_n,{"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:1,max:15,step:.01,value:nfH3DurationInput,onChange:e=>nfSetH3DurationInput(String(e.target.value||``)),onBlur:()=>nfCommitH3Duration(nfH3DurationInput),onKeyDown:e=>{e.key===`Enter`&&e.currentTarget.blur()},style:{width:72,height:30,padding:`4px 8px`,textAlign:`right`,boxSizing:`border-box`}}),' +
-    '(0,X.jsx)(`div`,{"data-novaflow-h3-duration-output":`1`,style:{fontSize:11,color:`rgba(255,255,255,0.55)`,whiteSpace:`nowrap`},children:`实际 ${nfH3Duration().actualDuration.toFixed(2)} 秒 / ${nfH3Duration().frames} 帧 · 24 FPS / 20 步`}),' +
+    '(0,X.jsx)(_n,{"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:1,max:30,step:.01,value:nfH3DurationInput,onChange:e=>nfSetH3DurationInput(String(e.target.value||``)),onBlur:()=>nfCommitH3Duration(nfH3DurationInput),onKeyDown:e=>{e.key===`Enter`&&e.currentTarget.blur()},style:{width:72,height:30,padding:`4px 8px`,textAlign:`right`,boxSizing:`border-box`}}),' +
+    '(0,X.jsx)(`div`,{"data-novaflow-h3-duration-output":`1`,style:{fontSize:11,color:`rgba(255,255,255,0.55)`,whiteSpace:`nowrap`},children:`实际 ${nfH3Duration().actualDuration.toFixed(2)} 秒 / ${nfH3Duration().frames} 帧 · ${nfH3Duration().fps} FPS / 20 步`}),' +
     '(0,X.jsxs)(`div`,{style:{display:`flex`,gap:8,alignItems:`center`},children:[' +
     '(0,X.jsx)(`div`,{style:{fontSize:12,color:`rgba(255,255,255,0.60)`},children:`随机种子`}),' +
     '(0,X.jsxs)(`button`,{"data-novaflow-ai-state-toggle":Gt?`on`:`off`,type:`button`,onClick:()=>Kt(e=>!e),style:{position:`relative`,display:`inline-flex`,alignItems:`center`,width:34,minWidth:34,height:18,padding:0,border:0,borderRadius:999,background:Gt?`#1ea672`:`#222222`,color:`transparent`,cursor:`pointer`,overflow:`hidden`},children:[' +
@@ -179,7 +179,7 @@ function applyFollowupParameterAndLayoutFixes() {
 
   replaceOnce(
     'width:[`480x864`,`864x480`,`768x1344`,`1344x768`].includes(`${e.aiSeqOutW}x${e.aiSeqOutH}`)?e.aiSeqOutW:480,height:[`480x864`,`864x480`,`768x1344`,`1344x768`].includes(`${e.aiSeqOutW}x${e.aiSeqOutH}`)?e.aiSeqOutH:864,length:[124,192,243,362].includes(Number(e.aiSeqOutFrames))?Number(e.aiSeqOutFrames):124',
-    'aspectRatio:nfH3Workflow.matchResolution({width:Number(e.aiSeqOutW),height:Number(e.aiSeqOutH)}).aspectRatio,megapixels:nfH3Workflow.matchResolution({width:Number(e.aiSeqOutW),height:Number(e.aiSeqOutH)}).megapixels,durationSeconds:Math.max(1,Math.min(15,Number(e.aiSeqOutFrames)/24))',
+    'aspectRatio:nfH3Workflow.matchResolution({width:Number(e.aiSeqOutW),height:Number(e.aiSeqOutH)}).aspectRatio,megapixels:nfH3Workflow.matchResolution({width:Number(e.aiSeqOutW),height:Number(e.aiSeqOutH)}).megapixels,durationSeconds:Math.max(1,Math.min(30,Number(e.aiSeqOutFrames)/24))',
     'H3 workflow dispatch must accept module-normalized parameters',
   )
 
@@ -235,8 +235,8 @@ function applySubmitDurationSnapshotFix() {
     'H3 generator submit-time parameter snapshot',
   )
   replaceOnce(
-    'durationSeconds:Math.max(1,Math.min(15,Number(e.aiSeqOutFrames)/24))',
-    'durationSeconds:nfH3SubmitOptions?.durationSeconds',
+    'durationSeconds:Math.max(1,Math.min(30,Number(e.aiSeqOutFrames)/24))',
+    'durationSeconds:nfH3SubmitOptions?.durationSeconds,fps:nfH3SubmitOptions?.fps',
     'H3 workflow duration from the submit-time snapshot',
   )
   replaceOnce(
@@ -250,7 +250,7 @@ function applyIndependentSurfaceStateAndWanRuntimeFixes() {
   replaceRange(
     '}),[nfH3DurationInput,nfSetH3DurationInput]=(0,_.useState)(`5`)',
     ',Fr=Ja(`ai_seq_prompt`',
-    '}),[nfH3AspectRatio,nfSetH3AspectRatio]=(0,_.useState)(`9:16`),[nfH3Megapixels,nfSetH3Megapixels]=(0,_.useState)(.4),[nfH3DurationInput,nfSetH3DurationInput]=(0,_.useState)(`5`),[nfH3Steps,nfSetH3Steps]=(0,_.useState)(4),nfH3WorkflowApi=()=>window.NovaFlowAiSequenceMiniMaxH3Workflow,nfH3AspectOptions=()=>nfH3WorkflowApi()?.ASPECT_RATIOS||[{value:`1:1`,label:`1:1（方形）`},{value:`2:3`,label:`2:3（竖屏照片）`},{value:`3:2`,label:`3:2（横屏照片）`},{value:`3:4`,label:`3:4（竖屏标准）`},{value:`4:3`,label:`4:3（横屏标准）`},{value:`9:16`,label:`9:16（竖屏宽银幕）`},{value:`16:9`,label:`16:9（横屏宽银幕）`},{value:`21:9`,label:`21:9（超宽屏）`}],nfH3Resolution=()=>{try{return nfH3WorkflowApi()?.calculateResolution?.({aspectRatio:nfH3AspectRatio,megapixels:nfH3Megapixels})||{aspectRatio:`9:16`,orientation:`portrait`,megapixels:.4,width:480,height:864}}catch{return{aspectRatio:`9:16`,orientation:`portrait`,megapixels:.4,width:480,height:864}}},nfH3ResolutionOptions=()=>{let e=nfH3WorkflowApi(),t=e?.MEGAPIXEL_OPTIONS||[.2,.3,.4,.5,.6,.7,.8,.9,.98,1,1.2,1.5,1.8,2];return t.map(t=>{try{return e?.calculateResolution?.({aspectRatio:nfH3AspectRatio,megapixels:t})||null}catch{return null}}).filter(e=>e&&Number.isFinite(e.width)&&Number.isFinite(e.height)).filter((e,t,n)=>n.findIndex(t=>`${t.width}x${t.height}`===`${e.width}x${e.height}`)===t)},nfH3Duration=()=>{try{return nfH3WorkflowApi()?.normalizeDuration?.(nfH3DurationInput)||{requestedDuration:5,frames:124,actualDuration:124/24}}catch{return nfH3WorkflowApi()?.normalizeDuration?.(5)||{requestedDuration:5,frames:124,actualDuration:124/24}}},nfCommitH3Duration=e=>{let t=Number(e),n=Number.isFinite(t)?Math.max(1,Math.min(15,Math.round(t*100)/100)):5,r=nfH3WorkflowApi()?.normalizeDuration?.(n)||{requestedDuration:n,frames:124,actualDuration:124/24};nfSetH3DurationInput(String(r.requestedDuration));return r},nfH3SubmitSteps=()=>Ve===`multi_reference`?20:nfH3Steps',
+    '}),[nfH3AspectRatio,nfSetH3AspectRatio]=(0,_.useState)(`9:16`),[nfH3Megapixels,nfSetH3Megapixels]=(0,_.useState)(.4),[nfH3DurationInput,nfSetH3DurationInput]=(0,_.useState)(`5`),[nfH3Fps,nfSetH3Fps]=(0,_.useState)(24),[nfH3Steps,nfSetH3Steps]=(0,_.useState)(4),nfH3WorkflowApi=()=>window.NovaFlowAiSequenceMiniMaxH3Workflow,nfH3AspectOptions=()=>nfH3WorkflowApi()?.ASPECT_RATIOS||[{value:`1:1`,label:`1:1（方形）`},{value:`2:3`,label:`2:3（竖屏照片）`},{value:`3:2`,label:`3:2（横屏照片）`},{value:`3:4`,label:`3:4（竖屏标准）`},{value:`4:3`,label:`4:3（横屏标准）`},{value:`9:16`,label:`9:16（竖屏宽银幕）`},{value:`16:9`,label:`16:9（横屏宽银幕）`},{value:`21:9`,label:`21:9（超宽屏）`}],nfH3Resolution=()=>{try{return nfH3WorkflowApi()?.calculateResolution?.({aspectRatio:nfH3AspectRatio,megapixels:nfH3Megapixels})||{aspectRatio:`9:16`,orientation:`portrait`,megapixels:.4,width:480,height:864}}catch{return{aspectRatio:`9:16`,orientation:`portrait`,megapixels:.4,width:480,height:864}}},nfH3ResolutionOptions=()=>{let e=nfH3WorkflowApi(),t=e?.MEGAPIXEL_OPTIONS||[.2,.3,.4,.5,.6,.7,.8,.9,.98,1,1.2,1.5,1.8,2];return t.map(t=>{try{return e?.calculateResolution?.({aspectRatio:nfH3AspectRatio,megapixels:t})||null}catch{return null}}).filter(e=>e&&Number.isFinite(e.width)&&Number.isFinite(e.height)).filter((e,t,n)=>n.findIndex(t=>`${t.width}x${t.height}`===`${e.width}x${e.height}`)===t)},nfH3Duration=()=>{try{return nfH3WorkflowApi()?.normalizeDuration?.({seconds:nfH3DurationInput,fps:nfH3Fps})||{requestedDuration:5,frames:124,actualDuration:124/24,fps:24}}catch{return nfH3WorkflowApi()?.normalizeDuration?.({seconds:5,fps:nfH3Fps})||{requestedDuration:5,frames:124,actualDuration:124/24,fps:24}}},nfCommitH3Duration=e=>{let t=Number(e),n=Number.isFinite(t)?Math.max(1,Math.min(30,Math.round(t*100)/100)):5,r=nfH3WorkflowApi()?.normalizeDuration?.({seconds:n,fps:nfH3Fps})||{requestedDuration:n,frames:124,actualDuration:124/24,fps:24};nfSetH3DurationInput(String(r.requestedDuration));return r},nfH3SubmitSteps=()=>Ve===`multi_reference`?20:nfH3Steps',
     'independent H3 surface parameter state',
   )
 
@@ -262,9 +262,9 @@ function applyIndependentSurfaceStateAndWanRuntimeFixes() {
     '(0,X.jsx)(`div`,{style:{fontSize:12,color:`rgba(255,255,255,0.75)`,whiteSpace:`nowrap`},children:`分辨率`}),' +
     '(0,X.jsx)(yn,{"data-novaflow-h3-resolution":`1`,value:`${nfH3Resolution().width}x${nfH3Resolution().height}`,onChange:e=>{let t=nfH3ResolutionOptions().find(t=>`${t.width}x${t.height}`===String(e.target.value||``));t&&nfSetH3Megapixels(t.megapixels)},style:{width:156,height:30,padding:`0 8px`},children:nfH3ResolutionOptions().map(e=>(0,X.jsx)(`option`,{value:`${e.width}x${e.height}`,children:`${e.width} × ${e.height}${e.megapixels>.98?`（高负载）`:``}`},`${e.width}x${e.height}`))}),' +
     '(0,X.jsx)(`div`,{style:{fontSize:12,color:`rgba(255,255,255,0.75)`,whiteSpace:`nowrap`},children:`时长`}),' +
-    '(0,X.jsx)(_n,{"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:1,max:15,step:.01,value:nfH3DurationInput,onChange:e=>nfSetH3DurationInput(String(e.target.value||``)),onBlur:()=>nfCommitH3Duration(nfH3DurationInput),onKeyDown:e=>{e.key===`Enter`&&e.currentTarget.blur()},style:{width:72,height:30,padding:`4px 8px`,textAlign:`right`,boxSizing:`border-box`}}),' +
-    '(0,X.jsx)(`div`,{"data-novaflow-h3-duration-output":`1`,style:{fontSize:11,color:nfH3Duration().frames<124?`#f0b35a`:`rgba(255,255,255,0.55)`,whiteSpace:`nowrap`},children:`${nfH3Duration().actualDuration.toFixed(2)} 秒 / ${nfH3Duration().frames} 帧 · 24 FPS${nfH3Duration().frames<124?` · 短时长实验模式，低于模型建议训练时长`:``}`}),' +
-    '(0,X.jsx)(`div`,{style:{fontSize:12,color:`rgba(255,255,255,0.75)`,whiteSpace:`nowrap`},children:`采样步数`}),' +
+    '(0,X.jsx)(_n,{"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:1,max:30,step:.01,value:nfH3DurationInput,onChange:e=>nfSetH3DurationInput(String(e.target.value||``)),onBlur:()=>nfCommitH3Duration(nfH3DurationInput),onKeyDown:e=>{e.key===`Enter`&&e.currentTarget.blur()},style:{width:72,height:30,padding:`4px 8px`,textAlign:`right`,boxSizing:`border-box`}}),' +
+    '(0,X.jsx)(`div`,{"data-novaflow-h3-duration-output":`1`,style:{fontSize:11,color:nfH3Duration().frames<124?`#f0b35a`:`rgba(255,255,255,0.55)`,whiteSpace:`nowrap`},children:`${nfH3Duration().actualDuration.toFixed(2)} 秒 / ${nfH3Duration().frames} 帧 · ${nfH3Duration().fps} FPS${nfH3Duration().frames<124?` · 短时长实验模式，低于模型建议训练时长`:nfH3Duration().requestedDuration>15?` · 长时长实验模式`:``}`}),' +
+    '(0,X.jsx)(`div`,{style:{fontSize:12,color:`rgba(255,255,255,0.75)`,whiteSpace:`nowrap`},children:`FPS`}),(0,X.jsxs)(yn,{"data-novaflow-h3-fps":`1`,value:String(nfH3Fps),onChange:e=>nfSetH3Fps(Number(e.target.value)===16?16:24),title:`输出 FPS（16 为本地长时长测试档，24 为官方默认）`,style:{width:72,height:30,padding:`0 8px`},children:[(0,X.jsx)(`option`,{value:`24`,children:`24`}),(0,X.jsx)(`option`,{value:`16`,children:`16`})]}),(0,X.jsx)(`div`,{style:{fontSize:12,color:`rgba(255,255,255,0.75)`,whiteSpace:`nowrap`},children:`采样步数`}),' +
     '(0,X.jsxs)(yn,{"data-novaflow-h3-steps":`1`,value:String(nfH3SubmitSteps()),disabled:Ve===`multi_reference`,onChange:e=>nfSetH3Steps(Number(e.target.value)===20?20:4),title:Ve===`multi_reference`?`多参视频固定 20 步`:``,style:{width:64,height:30,padding:`0 8px`},children:[(0,X.jsx)(`option`,{value:`4`,children:`4`}),(0,X.jsx)(`option`,{value:`20`,children:`20`})]}),' +
     '(0,X.jsxs)(`div`,{style:{display:`flex`,gap:8,alignItems:`center`},children:[' +
     '(0,X.jsx)(`div`,{style:{fontSize:12,color:`rgba(255,255,255,0.60)`},children:`随机种子`}),' +
@@ -273,8 +273,8 @@ function applyIndependentSurfaceStateAndWanRuntimeFixes() {
   replaceRange(settingsStart, settingsEnd, settingsReplacement, 'combined H3 aspect, resolution, duration, and steps controls')
 
   replaceOnce(
-    'aspectRatio:nfH3Workflow.matchResolution({width:Number(e.aiSeqOutW),height:Number(e.aiSeqOutH)}).aspectRatio,megapixels:nfH3Workflow.matchResolution({width:Number(e.aiSeqOutW),height:Number(e.aiSeqOutH)}).megapixels,durationSeconds:nfH3SubmitOptions?.durationSeconds',
-    'aspectRatio:nfH3SubmitOptions?.aspectRatio||`9:16`,megapixels:Number(nfH3SubmitOptions?.megapixels)||.4,durationSeconds:nfH3SubmitOptions?.durationSeconds,steps:nfH3ModeName===`r2v`?20:nfH3SubmitOptions?.steps',
+    'aspectRatio:nfH3Workflow.matchResolution({width:Number(e.aiSeqOutW),height:Number(e.aiSeqOutH)}).aspectRatio,megapixels:nfH3Workflow.matchResolution({width:Number(e.aiSeqOutW),height:Number(e.aiSeqOutH)}).megapixels,durationSeconds:nfH3SubmitOptions?.durationSeconds,fps:nfH3SubmitOptions?.fps',
+    'aspectRatio:nfH3SubmitOptions?.aspectRatio||`9:16`,megapixels:Number(nfH3SubmitOptions?.megapixels)||.4,durationSeconds:nfH3SubmitOptions?.durationSeconds,fps:nfH3SubmitOptions?.fps,steps:nfH3ModeName===`r2v`?20:nfH3SubmitOptions?.steps',
     'H3 workflow parameters from the synchronous submit snapshot',
   )
   replaceOnce(
@@ -316,8 +316,8 @@ function applyIndependentSurfaceStateAndWanRuntimeFixes() {
     'fixed selected Runtime probe action',
   )
   replaceOnce(
-    'detail:`固定 24 FPS、20 步；不接入 Wan2.2 High / Low、LoRA 或反向提示词。`',
-    'detail:`固定 24 FPS；前三模式默认 4 步并自动使用专用 Turbo LoRA，多参视频固定 20 步；不使用 Wan2.2 High / Low 或反向提示词。`',
+    'detail:`可选 16/24 FPS、20 步；不接入 Wan2.2 High / Low、LoRA 或反向提示词。`',
+    'detail:`可选 16/24 FPS；前三模式默认 4 步并自动使用专用 Turbo LoRA，多参视频固定 20 步；不使用 Wan2.2 High / Low 或反向提示词。`',
     'H3 model detail reflects per-mode steps',
   )
 }
@@ -364,8 +364,8 @@ function applyFinalH3ControlsAndEndpointFixes() {
   source = source.split(staleResolvedEndpoint).join(directFixedEndpoint)
 
   replaceOnce(
-    'detail:`固定 24 FPS；前三模式默认 4 步，多参视频固定 20 步；不接入 Wan2.2 High / Low、LoRA 或反向提示词。`',
-    'detail:`固定 24 FPS；前三模式默认 4 步并自动使用专用 Turbo LoRA，多参视频固定 20 步；不使用 Wan2.2 High / Low 或反向提示词。`',
+    'detail:`可选 16/24 FPS；前三模式默认 4 步，多参视频固定 20 步；不接入 Wan2.2 High / Low、LoRA 或反向提示词。`',
+    'detail:`可选 16/24 FPS；前三模式默认 4 步并自动使用专用 Turbo LoRA，多参视频固定 20 步；不使用 Wan2.2 High / Low 或反向提示词。`',
     'accurate H3 Turbo profile detail',
   )
 }
@@ -392,8 +392,8 @@ function applyFreeFormH3StepsFixes() {
     'H3 Generate click snapshots the entered integer steps',
   )
   replaceOnceOrAlready(
-    'detail:`固定 24 FPS；前三模式默认 4 步并自动使用专用 Turbo LoRA，多参视频固定 20 步；不使用 Wan2.2 High / Low 或反向提示词。`',
-    'detail:`固定 24 FPS；采样步数可输入 1–10000，4 步自动使用专用 Turbo LoRA，20 步为推荐质量基线。`',
+    'detail:`可选 16/24 FPS；前三模式默认 4 步并自动使用专用 Turbo LoRA，多参视频固定 20 步；不使用 Wan2.2 High / Low 或反向提示词。`',
+    'detail:`可选 16/24 FPS；采样步数可输入 1–10000，4 步自动使用专用 Turbo LoRA，20 步为推荐质量基线。`',
     'H3 model detail reflects free-form steps',
   )
 }
@@ -417,19 +417,19 @@ function applyH3PromptModeSemantics() {
 function applyH3ShortDurationUiFixes() {
   replaceOnceOrAlready(
     'nfCommitH3Duration=e=>{let t=Number(e),n=Number.isFinite(t)?Math.max(4,Math.min(15,Math.round(t*100)/100)):5',
-    'nfCommitH3Duration=e=>{let t=Number(e),n=Number.isFinite(t)?Math.max(1,Math.min(15,Math.round(t*100)/100)):5',
+    'nfCommitH3Duration=e=>{let t=Number(e),n=Number.isFinite(t)?Math.max(1,Math.min(30,Math.round(t*100)/100)):5',
     'H3 duration commit clamp starts at one second',
   )
   replaceOnceOrAlready(
-    '"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:4,max:15,step:.01',
-    '"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:1,max:15,step:.01',
+    '"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:4,max:30,step:.01',
+    '"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:1,max:30,step:.01',
     'H3 duration input starts at one second',
   )
   const durationTooltipMarker = 'title:`模型对齐输出 ${nfH3Duration().actualDuration.toFixed(2)} 秒 / ${nfH3Duration().frames} 帧 · 24 FPS'
   if (occurrenceCount(source, durationTooltipMarker) === 0) {
     replaceOnceOrAlready(
-      'color:`rgba(255,255,255,0.55)`,whiteSpace:`nowrap`},children:`${nfH3Duration().actualDuration.toFixed(2)} 秒 / ${nfH3Duration().frames} 帧 · 24 FPS`',
-      'color:nfH3Duration().frames<124?`#f0b35a`:`rgba(255,255,255,0.55)`,whiteSpace:`nowrap`},children:`${nfH3Duration().actualDuration.toFixed(2)} 秒 / ${nfH3Duration().frames} 帧 · 24 FPS${nfH3Duration().frames<124?` · 短时长实验模式，低于模型建议训练时长`:``}`',
+      'color:`rgba(255,255,255,0.55)`,whiteSpace:`nowrap`},children:`${nfH3Duration().actualDuration.toFixed(2)} 秒 / ${nfH3Duration().frames} 帧 · ${nfH3Duration().fps} FPS`',
+      'color:nfH3Duration().frames<124?`#f0b35a`:`rgba(255,255,255,0.55)`,whiteSpace:`nowrap`},children:`${nfH3Duration().actualDuration.toFixed(2)} 秒 / ${nfH3Duration().frames} 帧 · ${nfH3Duration().fps} FPS${nfH3Duration().frames<124?` · 短时长实验模式，低于模型建议训练时长`:nfH3Duration().requestedDuration>15?` · 长时长实验模式`:``}`',
       'H3 short-duration experimental warning',
     )
   } else if (occurrenceCount(source, durationTooltipMarker) !== 1) {
@@ -439,8 +439,8 @@ function applyH3ShortDurationUiFixes() {
 
 function applyH3ParameterTooltipFixes() {
   replaceOnceOrAlready(
-    '(0,X.jsx)(_n,{"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:1,max:15,step:.01,value:nfH3DurationInput,onChange:e=>nfSetH3DurationInput(String(e.target.value||``)),onBlur:()=>nfCommitH3Duration(nfH3DurationInput),onKeyDown:e=>{e.key===`Enter`&&e.currentTarget.blur()},style:{width:72,height:30,padding:`4px 8px`,textAlign:`right`,boxSizing:`border-box`}}),(0,X.jsx)(`div`,{"data-novaflow-h3-duration-output":`1`,style:{fontSize:11,color:nfH3Duration().frames<124?`#f0b35a`:`rgba(255,255,255,0.55)`,whiteSpace:`nowrap`},children:`${nfH3Duration().actualDuration.toFixed(2)} 秒 / ${nfH3Duration().frames} 帧 · 24 FPS${nfH3Duration().frames<124?` · 短时长实验模式，低于模型建议训练时长`:``}`}),',
-    '(0,X.jsx)(_n,{"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:1,max:15,step:.01,value:nfH3DurationInput,title:`模型对齐输出 ${nfH3Duration().actualDuration.toFixed(2)} 秒 / ${nfH3Duration().frames} 帧 · 24 FPS${nfH3Duration().frames<124?`；短时长实验模式`:``}`,"aria-label":`时长（秒）`,onChange:e=>nfSetH3DurationInput(String(e.target.value||``)),onBlur:()=>nfCommitH3Duration(nfH3DurationInput),onKeyDown:e=>{e.key===`Enter`&&e.currentTarget.blur()},style:{width:72,height:30,padding:`4px 8px`,textAlign:`right`,boxSizing:`border-box`}}),',
+    '(0,X.jsx)(_n,{"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:1,max:30,step:.01,value:nfH3DurationInput,onChange:e=>nfSetH3DurationInput(String(e.target.value||``)),onBlur:()=>nfCommitH3Duration(nfH3DurationInput),onKeyDown:e=>{e.key===`Enter`&&e.currentTarget.blur()},style:{width:72,height:30,padding:`4px 8px`,textAlign:`right`,boxSizing:`border-box`}}),(0,X.jsx)(`div`,{"data-novaflow-h3-duration-output":`1`,style:{fontSize:11,color:nfH3Duration().frames<124?`#f0b35a`:`rgba(255,255,255,0.55)`,whiteSpace:`nowrap`},children:`${nfH3Duration().actualDuration.toFixed(2)} 秒 / ${nfH3Duration().frames} 帧 · ${nfH3Duration().fps} FPS${nfH3Duration().frames<124?` · 短时长实验模式，低于模型建议训练时长`:nfH3Duration().requestedDuration>15?` · 长时长实验模式`:``}`}),',
+    '(0,X.jsx)(_n,{"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:1,max:30,step:.01,value:nfH3DurationInput,title:`模型对齐输出 ${nfH3Duration().actualDuration.toFixed(2)} 秒 / ${nfH3Duration().frames} 帧 · ${nfH3Duration().fps} FPS${nfH3Duration().frames<124?`；短时长实验模式`:nfH3Duration().requestedDuration>15?`；长时长实验模式`:``}`,"aria-label":`时长（秒）`,onChange:e=>nfSetH3DurationInput(String(e.target.value||``)),onBlur:()=>nfCommitH3Duration(nfH3DurationInput),onKeyDown:e=>{e.key===`Enter`&&e.currentTarget.blur()},style:{width:72,height:30,padding:`4px 8px`,textAlign:`right`,boxSizing:`border-box`}}),',
     'H3 duration technical details move to the input tooltip',
   )
   replaceOnceOrAlready(
@@ -863,7 +863,7 @@ replaceOnce(
 replaceRange(
   'aiSeqModelPresets={',
   '(0,_.useEffect)(()=>{r===`local`',
-  'aiSeqModelPresets={local_a:{mode:`local`,label:`Wan2_2`,high:`smoothMixWan22I2V14B_i2vHigh.safetensors`,low:`smoothMixWan22I2V14B_i2vLow.safetensors`,summary:`Wan2_2：沿用双 UNET High / Low 工作流。`,detail:`High: smoothMixWan22I2V14B_i2vHigh.safetensors / Low: smoothMixWan22I2V14B_i2vLow.safetensors`},minimax_h3_local:{mode:`minimax_h3_local`,label:`MiniMax_h3`,summary:`MiniMax H3：按模式使用单个 FL2VA 或 Ref2VA 模型，不使用 High / Low。`,detail:`固定 24 FPS、20 步；不接入 Wan2.2 High / Low、LoRA 或反向提示词。`}},aiSeqModelValue=r===`minimax_h3_local`?`minimax_h3_local`:`local_a`,aiSeqWanModel=aiSeqModelValue===`local_a`,aiSeqCloudModel=!1,applyAiSeqModelValue=e=>{let t=String(e||`local_a`),n=aiSeqModelPresets[t]||aiSeqModelPresets.local_a;t===`minimax_h3_local`?(i(`minimax_h3_local`),nfSetAiSeqGenType?.(`text_video`),g(`http://127.0.0.1:8189`)):(i(`local`),[`image_video`,`first_last`].includes(a)||nfSetAiSeqGenType?.(`image_video`),g(`http://127.0.0.1:8188`),x(n.high||``),C(n.low||``))};',
+  'aiSeqModelPresets={local_a:{mode:`local`,label:`Wan2_2`,high:`smoothMixWan22I2V14B_i2vHigh.safetensors`,low:`smoothMixWan22I2V14B_i2vLow.safetensors`,summary:`Wan2_2：沿用双 UNET High / Low 工作流。`,detail:`High: smoothMixWan22I2V14B_i2vHigh.safetensors / Low: smoothMixWan22I2V14B_i2vLow.safetensors`},minimax_h3_local:{mode:`minimax_h3_local`,label:`MiniMax_h3`,summary:`MiniMax H3：按模式使用单个 FL2VA 或 Ref2VA 模型，不使用 High / Low。`,detail:`可选 16/24 FPS、20 步；不接入 Wan2.2 High / Low、LoRA 或反向提示词。`}},aiSeqModelValue=r===`minimax_h3_local`?`minimax_h3_local`:`local_a`,aiSeqWanModel=aiSeqModelValue===`local_a`,aiSeqCloudModel=!1,applyAiSeqModelValue=e=>{let t=String(e||`local_a`),n=aiSeqModelPresets[t]||aiSeqModelPresets.local_a;t===`minimax_h3_local`?(i(`minimax_h3_local`),nfSetAiSeqGenType?.(`text_video`),g(`http://127.0.0.1:8189`)):(i(`local`),[`image_video`,`first_last`].includes(a)||nfSetAiSeqGenType?.(`image_video`),g(`http://127.0.0.1:8188`),x(n.high||``),C(n.low||``))};',
   'AI sequence model presets',
 )
 
@@ -933,7 +933,7 @@ const h3Settings = 'children:ze===`minimax_h3_local`?(0,X.jsxs)(X.Fragment,{chil
   '(0,X.jsx)(`div`,{style:{fontSize:12,color:`rgba(255,255,255,0.75)`,whiteSpace:`nowrap`},children:`时长`}),' +
   '(0,X.jsxs)(yn,{value:String([124,192,243,362].includes(Number(Ct))?Ct:124),onChange:e=>{let t=Te(Number(e.target.value)||124,5,362);wt(t),Rt(String(t))},style:{width:92,height:30,padding:`0 8px`},children:[' +
   '(0,X.jsx)(`option`,{value:`124`,children:`约 5 秒`}),(0,X.jsx)(`option`,{value:`192`,children:`约 8 秒`}),(0,X.jsx)(`option`,{value:`243`,children:`约 10 秒`}),(0,X.jsx)(`option`,{value:`362`,children:`约 15 秒`})]}),' +
-  '(0,X.jsx)(`div`,{style:{fontSize:11,color:`rgba(255,255,255,0.55)`,whiteSpace:`nowrap`},children:`固定 24 FPS / 20 步`}),' +
+  '(0,X.jsx)(`div`,{style:{fontSize:11,color:`rgba(255,255,255,0.55)`,whiteSpace:`nowrap`},children:`可选 16/24 FPS / 20 步`}),' +
   '(0,X.jsxs)(`div`,{style:{display:`flex`,gap:8,alignItems:`center`},children:[' +
   '(0,X.jsx)(`div`,{style:{fontSize:12,color:`rgba(255,255,255,0.60)`},children:`随机种子`}),' +
   '(0,X.jsxs)(`button`,{"data-novaflow-ai-state-toggle":Gt?`on`:`off`,type:`button`,onClick:()=>Kt(e=>!e),style:{position:`relative`,display:`inline-flex`,alignItems:`center`,width:34,minWidth:34,height:18,padding:0,border:0,borderRadius:999,background:Gt?`#1ea672`:`#222222`,color:`transparent`,cursor:`pointer`,overflow:`hidden`},children:[' +
@@ -1016,7 +1016,7 @@ const h3BuildBranch = 'try{if(nfH3Mode){' +
   '{key:`multi_ref_video_1`,occupied:!!e.aiSeqJimengVideoRef,sourceId:`multi_ref_video_1`,fileName:e.aiSeqJimengVideoRef?.fileName||``,type:e.aiSeqJimengVideoRef?.type||``},' +
   '{key:`multi_ref_audio_1`,occupied:!!e.aiSeqJimengAudioRef,sourceId:`multi_ref_audio_1`,fileName:e.aiSeqJimengAudioRef?.fileName||``,type:e.aiSeqJimengAudioRef?.type||``}];' +
   'let nfH3Compiled=nfH3Resource.compileMentions(nfH3Prompt,nfH3Resources);if(nfH3Compiled.invalidTokens.length)throw Error(`未绑定参考资源：${nfH3Compiled.invalidTokens.join(`、`)}`);let nfH3Tokens=nfH3Compiled.snapshot.filter(e=>e.occupied).map(e=>e.modelToken).filter(e=>!nfH3Compiled.text.includes(e));nfH3Prompt=`${nfH3Tokens.join(` `)} ${nfH3Compiled.text}`.trim()}' +
-  'u=nfH3Workflow.buildWorkflow({mode:nfH3ModeName,prompt:nfH3Prompt,width:[`480x864`,`864x480`,`768x1344`,`1344x768`].includes(`${e.aiSeqOutW}x${e.aiSeqOutH}`)?e.aiSeqOutW:480,height:[`480x864`,`864x480`,`768x1344`,`1344x768`].includes(`${e.aiSeqOutW}x${e.aiSeqOutH}`)?e.aiSeqOutH:864,length:[124,192,243,362].includes(Number(e.aiSeqOutFrames))?Number(e.aiSeqOutFrames):124,seed:d,outputPrefix:`video/MiniMax_H3_${nfH3ModeName}`,...a===`image_video`||a===`first_last`?{images:s}:{},...a===`multi_reference`?{referenceImages:s,referenceVideo:nfVideos[0]||void 0,referenceAudio:nfAudios[0]||void 0}:{}})' +
+  'u=nfH3Workflow.buildWorkflow({mode:nfH3ModeName,prompt:nfH3Prompt,aspectRatio:nfH3SubmitOptions?.aspectRatio||`9:16`,megapixels:Number(nfH3SubmitOptions?.megapixels)||.4,durationSeconds:nfH3SubmitOptions?.durationSeconds,fps:nfH3SubmitOptions?.fps,steps:nfH3SubmitOptions?.steps,seed:d,outputPrefix:`video/MiniMax_H3_${nfH3ModeName}`,...a===`image_video`||a===`first_last`?{images:s}:{},...a===`multi_reference`?{referenceImages:s,referenceVideo:nfVideos[0]||void 0,referenceAudio:nfAudios[0]||void 0}:{}})' +
   '}else{u=Cn(u,{prompt:e.aiSeqPrompt,negative:e.aiSeqNegativePrompt,width:e.aiSeqOutW,height:e.aiSeqOutH,frames:e.aiSeqOutFrames,fps:e.aiSeqFps,steps:e.aiSeqSampleSteps,seed:d,images:s,unetHighName:String(e.aiSeqComfyUnetHighName||``).trim()||void 0,unetLowName:String(e.aiSeqComfyUnetLowName||``).trim()||void 0,loras:Array.isArray(e.aiSeqComfyLoras)?e.aiSeqComfyLoras:void 0})}}'
 
 replaceRange('try{u=Cn(u,{', 'catch(t){e.setAiSeqJob({state:`error`', h3BuildBranch, 'H3 and Wan workflow dispatch')

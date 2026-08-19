@@ -1,7 +1,7 @@
 (function () {
   if (window.__NovaFlowSmartAI && window.__NovaFlowSmartAI.version) return;
 
-  const VERSION = "20260816-art-simple-structured-1";
+  const VERSION = "20260817-prompt-editor-modal-1";
   const STYLE_ID = "novaflow-smart-ai-style";
   const ROOT_ID = "novaflow-smart-ai-dialog-root";
   const SESSION_STORAGE_KEY = "novaflow.client.auth.session.v1";
@@ -1373,6 +1373,148 @@
     } catch {
       textarea.focus();
     }
+    return true;
+  }
+
+  function closeSmartAiPromptEditor(root) {
+    if (root instanceof HTMLElement && root.parentElement) root.parentElement.removeChild(root);
+  }
+
+  function openSmartAiPromptEditor(control, titleText = "提示词") {
+    if (!isPromptTextControl(control) || !document.body) return false;
+    const existing = document.querySelector('[data-novaflow-smart-ai-prompt-editor="1"]');
+    if (existing instanceof HTMLElement) closeSmartAiPromptEditor(existing);
+    const root = document.createElement("div");
+    root.setAttribute("data-novaflow-smart-ai-prompt-editor", "1");
+    const dialog = document.createElement("div");
+    const header = document.createElement("div");
+    const title = document.createElement("div");
+    const closeButton = document.createElement("button");
+    const textarea = document.createElement("textarea");
+    const footer = document.createElement("div");
+    const confirmButton = document.createElement("button");
+    closeButton.type = "button";
+    confirmButton.type = "button";
+    title.textContent = titleText;
+    closeButton.textContent = "×";
+    closeButton.setAttribute("aria-label", "关闭");
+    textarea.spellcheck = false;
+    textarea.value = String(control.value || "");
+    confirmButton.textContent = "确认编辑";
+    header.append(title, closeButton);
+    footer.appendChild(confirmButton);
+    dialog.append(header, textarea, footer);
+    root.appendChild(dialog);
+    document.body.appendChild(root);
+    Object.assign(root.style, {
+      position: "fixed",
+      inset: "0",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "24px",
+      background: "rgba(0, 0, 0, 0.62)",
+      zIndex: "2147483646",
+      boxSizing: "border-box"
+    });
+    Object.assign(dialog.style, {
+      display: "flex",
+      flexDirection: "column",
+      width: "min(920px, calc(100vw - 48px))",
+      height: "min(680px, calc(100vh - 64px))",
+      background: "#1f1f1f",
+      border: "1px solid rgba(255, 255, 255, 0.14)",
+      borderRadius: "8px",
+      boxShadow: "0 24px 80px rgba(0, 0, 0, 0.55)",
+      overflow: "hidden",
+      color: "#f8fafc",
+      boxSizing: "border-box"
+    });
+    Object.assign(header.style, {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      height: "48px",
+      minHeight: "48px",
+      padding: "0 16px 0 18px",
+      borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+      boxSizing: "border-box"
+    });
+    Object.assign(title.style, {
+      fontSize: "14px",
+      fontWeight: "600",
+      color: "#f8fafc",
+      whiteSpace: "nowrap",
+      overflow: "hidden",
+      textOverflow: "ellipsis"
+    });
+    Object.assign(closeButton.style, {
+      width: "32px",
+      height: "32px",
+      minWidth: "32px",
+      padding: "0",
+      border: "0",
+      borderRadius: "6px",
+      background: "transparent",
+      color: "rgba(248, 250, 252, 0.72)",
+      fontSize: "22px",
+      lineHeight: "30px",
+      cursor: "pointer"
+    });
+    Object.assign(textarea.style, {
+      flex: "1 1 auto",
+      width: "100%",
+      minHeight: "0",
+      padding: "16px 18px",
+      border: "0",
+      outline: "0",
+      resize: "none",
+      background: "#050505",
+      color: "#f8fafc",
+      fontSize: "14px",
+      lineHeight: "1.6",
+      fontFamily: "Consolas, 'Microsoft YaHei UI', monospace",
+      whiteSpace: "pre-wrap",
+      overflowWrap: "anywhere",
+      wordBreak: "break-word",
+      overflowY: "auto",
+      boxSizing: "border-box"
+    });
+    Object.assign(footer.style, {
+      display: "flex",
+      justifyContent: "flex-end",
+      alignItems: "center",
+      height: "58px",
+      minHeight: "58px",
+      padding: "10px 16px",
+      borderTop: "1px solid rgba(255, 255, 255, 0.1)",
+      boxSizing: "border-box"
+    });
+    Object.assign(confirmButton.style, {
+      height: "36px",
+      minWidth: "112px",
+      padding: "0 18px",
+      border: "0",
+      borderRadius: "7px",
+      background: "#218b66",
+      color: "#ffffff",
+      fontSize: "13px",
+      fontWeight: "600",
+      cursor: "pointer"
+    });
+    const close = () => closeSmartAiPromptEditor(root);
+    closeButton.addEventListener("click", close);
+    root.addEventListener("mousedown", (event) => {
+      if (event.target === root) close();
+    });
+    root.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") close();
+    });
+    confirmButton.addEventListener("click", () => {
+      setTextareaValue(control, textarea.value);
+      close();
+    });
+    window.setTimeout(() => textarea.focus(), 0);
     return true;
   }
 
@@ -3626,9 +3768,9 @@
           ? (state.mode === "reverse" ? "反推并写入提示词" : "优化并写入提示词")
           : "生成并写入提示词"));
     root.innerHTML = `
-      <div class="novaflow-smart-ai-dialog" role="dialog" aria-modal="true" aria-label="AI提示助手">
+      <div class="novaflow-smart-ai-dialog" role="dialog" aria-modal="true" aria-label="AI 助手">
         <div class="novaflow-smart-ai-header">
-          <div class="novaflow-smart-ai-title">AI提示助手</div>
+          <div class="novaflow-smart-ai-title">AI 助手</div>
           <button type="button" class="novaflow-smart-ai-close" aria-label="关闭">×</button>
         </div>
         <div class="novaflow-smart-ai-body">
@@ -4492,6 +4634,41 @@
     setSmartAiAttributeIfChanged(button, NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR, "1");
   }
 
+  function mountPromptEditButton(actions, surface) {
+    if (!(actions instanceof HTMLElement)) return;
+    if (surface === "animation" && actions.getAttribute("data-novaflow-ai-storyboard-actions") === "1") return;
+    if (surface !== "animation" && surface !== "art") return;
+    let editButton = actions.querySelector('[data-novaflow-ai-prompt-expand-button="1"]');
+    let created = false;
+    if (!(editButton instanceof HTMLButtonElement)) {
+      editButton = document.createElement("button");
+      created = true;
+    }
+    setSmartAiButtonTypeIfChanged(editButton);
+    setSmartAiTextIfChanged(editButton, "编辑");
+    copyButtonLook(editButton, actions.querySelector(`[${SMART_BUTTON_ATTR}="1"]`) || actions.querySelector("button"));
+    setSmartAiAttributeIfChanged(editButton, "data-novaflow-ai-prompt-expand-button", "1");
+    setSmartAiAttributeIfChanged(editButton, "data-novaflow-ai-prompt-assistant-button", "1");
+    setSmartAiAttributeIfChanged(editButton, "title", "编辑完整提示词");
+    if (editButton.getAttribute("data-novaflow-ai-prompt-editor-bound") !== "1") {
+      editButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        if (surface === "art") {
+          const textareas = getPromptTextareasFromContext({ surface: "art", button: actions });
+          openSmartAiPromptEditor(textareas.positive, "提示词");
+          return;
+        }
+        const promptEditor = window.__NovaFlowPromptEditor;
+        if (promptEditor && typeof promptEditor.openFromActions === "function") {
+          promptEditor.openFromActions(actions);
+        }
+      });
+      editButton.setAttribute("data-novaflow-ai-prompt-editor-bound", "1");
+    }
+    if (created) actions.appendChild(editButton);
+  }
+
   function mountButton(actions, surface) {
     if (!(actions instanceof HTMLElement)) return;
     let button = actions.querySelector(`[${SMART_BUTTON_ATTR}="1"]`);
@@ -4501,7 +4678,7 @@
       created = true;
     }
     setSmartAiButtonTypeIfChanged(button);
-    setSmartAiTextIfChanged(button, "AI提示助手");
+    setSmartAiTextIfChanged(button, "AI 助手");
     copyButtonLook(button, actions.querySelector("button"));
     if (button.getAttribute("data-novaflow-smart-ai-bound") !== "1") {
       button.addEventListener("click", (event) => {
@@ -4526,8 +4703,9 @@
     if (surface === "animation" && actions.getAttribute("data-novaflow-ai-storyboard-actions") !== "1") {
       const frame = actions.closest('[data-novaflow-ai-prompt-kind="positive"], [data-novaflow-ai-prompt-frame="1"]');
       const topRow = frame?.firstElementChild;
-      if (topRow instanceof HTMLElement) topRow.style.setProperty("padding-right", "112px", "important");
+      if (topRow instanceof HTMLElement) topRow.style.setProperty("padding-right", "176px", "important");
     }
+    mountPromptEditButton(actions, surface);
   }
 
   function mountSmartAiButtons() {

@@ -3572,12 +3572,16 @@ def compile_deterministic_rich_visual_prompt(
     contract: dict,
     *,
     sensitive: bool = False,
+    validate_semantics: bool = True,
+    allow_projection_redaction: bool = False,
 ) -> str:
     """Compile a validated contract into the five editable rich prompt sections."""
 
     normalized = parse_visual_contract(
         json.dumps(contract, ensure_ascii=False),
         expected_schema=SCHEMA_VERSION_V2,
+        validate_semantics=validate_semantics,
+        allow_projection_redaction=allow_projection_redaction,
     )
     look = normalized["look"]
     scene = normalized["scene"]
@@ -3814,16 +3818,46 @@ def compile_partial_visual_prompt_details(
 ) -> dict:
     """Compile a recoverable v2 failure without exposing its sensitive facts publicly."""
 
-    normalized = parse_visual_contract(
-        json.dumps(contract, ensure_ascii=False),
-        expected_schema=SCHEMA_VERSION_V2,
-        validate_semantics=(failure_code == "visual-contract-projection-redaction-required"),
-        allow_projection_redaction=(
-            failure_code == "visual-contract-projection-redaction-required"
-        ),
+    projection_redaction_failure = (
+        failure_code == "visual-contract-projection-redaction-required"
     )
+    serialized_contract = json.dumps(contract, ensure_ascii=False)
+    try:
+        normalized = parse_visual_contract(
+            serialized_contract,
+            expected_schema=SCHEMA_VERSION_V2,
+            validate_semantics=projection_redaction_failure,
+            allow_projection_redaction=projection_redaction_failure,
+        )
+    except VisualContractError as partial_error:
+        if not (projection_redaction_failure and partial_error.semantic):
+            raise
+        normalized = parse_visual_contract(
+            serialized_contract,
+            expected_schema=SCHEMA_VERSION_V2,
+            validate_semantics=False,
+            allow_projection_redaction=True,
+        )
     neutral_details = compile_degraded_visual_prompt_details(normalized)
     content_safety = normalized["content_safety"]
+    _enum_text(content_safety["level"], CONTENT_LEVELS, "content_safety.level")
+    _enum_text(
+        content_safety["body_exposure"],
+        BODY_EXPOSURES,
+        "content_safety.body_exposure",
+    )
+    _enum_text(
+        content_safety["interaction_category"],
+        INTERACTION_CATEGORIES,
+        "content_safety.interaction_category",
+    )
+    _enum_text(
+        content_safety["age_assessment"],
+        AGE_ASSESSMENTS,
+        "content_safety.age_assessment",
+    )
+    for index, signal in enumerate(content_safety["signals"]):
+        _enum_text(signal, CONTENT_SIGNALS, f"content_safety.signals[{index}]")
     public_content_safety = {
         "level": content_safety["level"],
         "body_exposure": content_safety["body_exposure"],
@@ -3851,8 +3885,13 @@ def compile_partial_visual_prompt_details(
     requirements_minor_blocked = requirements_explicit_minor and (
         sensitive_level or requirements_sensitive
     )
+    explicit_minor_evidence_blocked = (
+        sensitive_level and _local_single_image_contract_has_explicit_minor_evidence(normalized)
+    )
     if requirements_minor_blocked:
         content_warnings.append("sensitive_prompt_minor_requirements")
+    if explicit_minor_evidence_blocked:
+        content_warnings.append("sensitive_prompt_minor_evidence")
     if sensitive_level and not nsfw:
         content_warnings.append("sensitive_prompt_nsfw_disabled")
     if (
@@ -3872,11 +3911,12 @@ def compile_partial_visual_prompt_details(
         and public_content_safety["visible_person_count"] > 0
         and age_assessment in SENSITIVE_CANDIDATE_AGE_ASSESSMENTS
         and not requirements_minor_blocked
+        and not explicit_minor_evidence_blocked
     )
 
     details = dict(neutral_details)
     if partial_candidate_allowed:
-        candidate = compile_visual_prompt_details(
+        candidate_details = compile_visual_prompt_details(
             normalized,
             "",
             nsfw=True,
@@ -3886,17 +3926,22 @@ def compile_partial_visual_prompt_details(
             str(candidate_requirements or ""),
             2000,
         )
-        candidate_prompt = candidate["prompt"]
+        candidate_prompt = compile_deterministic_rich_visual_prompt(
+            normalized,
+            sensitive=True,
+            validate_semantics=False,
+            allow_projection_redaction=True,
+        )
         if candidate_requirement_text:
-            candidate_prompt = (
-                f"{candidate_prompt.rstrip('。')}。用户附加要求："
-                f"{candidate_requirement_text.rstrip('。')}。"
+            candidate_prompt = append_rich_generation_requirements(
+                candidate_prompt,
+                candidate_requirement_text,
             )
         details.update({
             "prompt": candidate_prompt,
             "generationRequirements": candidate_requirement_text,
             "sensitivePromptBlocked": False,
-            "generationGate": "adult_confirmation",
+            "generationGate": candidate_details["generationGate"],
         })
     else:
         details.update({

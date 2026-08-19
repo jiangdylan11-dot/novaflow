@@ -54714,6 +54714,274 @@
     );
   }
 
+  function findAiAnimationPromptEditorControl(frame) {
+    if (!(frame instanceof HTMLElement)) return null;
+    const control = frame.querySelector("textarea, input");
+    return isAiAnimationPromptTextControl(control) ? control : null;
+  }
+
+  function aiAnimationPromptEditorTitle(frame) {
+    const kind = frame instanceof HTMLElement ? frame.getAttribute("data-novaflow-ai-prompt-kind") : "";
+    return kind === "negative" ? "反向提示词" : "正向提示词";
+  }
+
+  function setAiAnimationPromptEditorControlValue(control, value) {
+    if (!isAiAnimationPromptTextControl(control)) return false;
+    const nextValue = String(value ?? "");
+    const prototype = control instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+    const descriptor = Object.getOwnPropertyDescriptor(prototype, "value");
+    if (descriptor?.set) {
+      descriptor.set.call(control, nextValue);
+    } else {
+      control.value = nextValue;
+    }
+    control.dispatchEvent(new Event("input", { bubbles: true }));
+    control.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
+
+  function closeAiAnimationPromptEditorModal(modal) {
+    if (modal instanceof HTMLElement && modal.parentElement) {
+      modal.parentElement.removeChild(modal);
+    }
+  }
+
+  function openAiAnimationPromptEditorModal(frame) {
+    if (!(frame instanceof HTMLElement) || !document.body) return;
+    const control = findAiAnimationPromptEditorControl(frame);
+    if (!isAiAnimationPromptTextControl(control)) return;
+    const existing = document.querySelector('[data-novaflow-ai-prompt-editor-modal="1"]');
+    if (existing instanceof HTMLElement) closeAiAnimationPromptEditorModal(existing);
+
+    const modal = document.createElement("div");
+    modal.setAttribute("data-novaflow-ai-prompt-editor-modal", "1");
+    const dialog = document.createElement("div");
+    dialog.setAttribute("data-novaflow-ai-prompt-editor-dialog", "1");
+    const header = document.createElement("div");
+    header.setAttribute("data-novaflow-ai-prompt-editor-header", "1");
+    const title = document.createElement("div");
+    title.setAttribute("data-novaflow-ai-prompt-editor-title", "1");
+    title.textContent = aiAnimationPromptEditorTitle(frame);
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.setAttribute("data-novaflow-ai-prompt-editor-close", "1");
+    closeButton.setAttribute("aria-label", "关闭");
+    closeButton.textContent = "×";
+    const textarea = document.createElement("textarea");
+    textarea.setAttribute("data-novaflow-ai-prompt-editor-textarea", "1");
+    textarea.spellcheck = false;
+    textarea.value = String(control.value || "");
+    const footer = document.createElement("div");
+    footer.setAttribute("data-novaflow-ai-prompt-editor-footer", "1");
+    const confirmButton = document.createElement("button");
+    confirmButton.type = "button";
+    confirmButton.setAttribute("data-novaflow-ai-prompt-editor-confirm", "1");
+    confirmButton.textContent = "确认编辑";
+
+    header.append(title, closeButton);
+    footer.appendChild(confirmButton);
+    dialog.append(header, textarea, footer);
+    modal.appendChild(dialog);
+    document.body.appendChild(modal);
+
+    setImportantStyles(modal, {
+      position: "fixed",
+      inset: "0",
+      display: "flex",
+      "align-items": "center",
+      "justify-content": "center",
+      padding: "24px",
+      background: "rgba(0, 0, 0, 0.62)",
+      "z-index": String(Number(MODAL_LAYER_Z_INDEX) + 8),
+      "box-sizing": "border-box"
+    });
+    setImportantStyles(dialog, {
+      display: "flex",
+      "flex-direction": "column",
+      width: "min(920px, calc(100vw - 48px))",
+      height: "min(680px, calc(100vh - 64px))",
+      background: "#1f1f1f",
+      "background-color": "#1f1f1f",
+      border: "1px solid rgba(255, 255, 255, 0.14)",
+      "border-radius": "8px",
+      "box-shadow": "0 24px 80px rgba(0, 0, 0, 0.55)",
+      overflow: "hidden",
+      color: "#f8fafc",
+      "box-sizing": "border-box"
+    });
+    setImportantStyles(header, {
+      display: "flex",
+      "align-items": "center",
+      "justify-content": "space-between",
+      height: "48px",
+      "min-height": "48px",
+      padding: "0 16px 0 18px",
+      border: "0",
+      "border-bottom": "1px solid rgba(255, 255, 255, 0.1)",
+      "box-sizing": "border-box"
+    });
+    setImportantStyles(title, {
+      "font-size": "14px",
+      "font-weight": "600",
+      color: "#f8fafc",
+      "white-space": "nowrap",
+      overflow: "hidden",
+      "text-overflow": "ellipsis"
+    });
+    setImportantStyles(closeButton, {
+      width: "32px",
+      height: "32px",
+      "min-width": "32px",
+      padding: "0",
+      border: "0",
+      outline: "0",
+      "border-radius": "6px",
+      background: "transparent",
+      "background-color": "transparent",
+      color: "rgba(248, 250, 252, 0.72)",
+      "font-size": "22px",
+      "line-height": "30px",
+      cursor: "pointer"
+    });
+    setImportantStyles(textarea, {
+      flex: "1 1 auto",
+      width: "100%",
+      "min-height": "0",
+      padding: "16px 18px",
+      border: "0",
+      outline: "0",
+      resize: "none",
+      background: "#050505",
+      "background-color": "#050505",
+      color: "#f8fafc",
+      "font-size": "14px",
+      "line-height": "1.6",
+      "font-family": "Consolas, 'Microsoft YaHei UI', monospace",
+      "white-space": "pre-wrap",
+      "overflow-wrap": "anywhere",
+      "word-break": "break-word",
+      "overflow-y": "auto",
+      "box-sizing": "border-box"
+    });
+    setImportantStyles(footer, {
+      display: "flex",
+      "justify-content": "flex-end",
+      "align-items": "center",
+      height: "58px",
+      "min-height": "58px",
+      padding: "10px 16px",
+      border: "0",
+      "border-top": "1px solid rgba(255, 255, 255, 0.1)",
+      "box-sizing": "border-box"
+    });
+    setImportantStyles(confirmButton, {
+      height: "36px",
+      "min-width": "112px",
+      padding: "0 18px",
+      border: "0",
+      outline: "0",
+      "border-radius": "7px",
+      background: "#218b66",
+      "background-color": "#218b66",
+      color: "#ffffff",
+      "font-size": "13px",
+      "font-weight": "600",
+      cursor: "pointer"
+    });
+
+    const close = () => closeAiAnimationPromptEditorModal(modal);
+    closeButton.addEventListener("click", close);
+    modal.addEventListener("mousedown", (event) => {
+      if (event.target === modal) close();
+    });
+    modal.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") close();
+    });
+    confirmButton.addEventListener("click", () => {
+      setAiAnimationPromptEditorControlValue(control, textarea.value);
+      close();
+      if (typeof control.focus === "function") control.focus();
+    });
+    window.setTimeout(() => textarea.focus(), 0);
+  }
+
+  function findAiAnimationPromptEditorFrameFromActions(actions) {
+    if (!(actions instanceof HTMLElement)) return null;
+    const promptFrame = actions.closest('[data-novaflow-ai-prompt-frame="1"]');
+    if (promptFrame instanceof HTMLElement && findAiAnimationPromptEditorControl(promptFrame)) return promptFrame;
+    const promptKindFrame = actions.closest('[data-novaflow-ai-prompt-kind]');
+    if (promptKindFrame instanceof HTMLElement && findAiAnimationPromptEditorControl(promptKindFrame)) return promptKindFrame;
+    return null;
+  }
+
+  function openAiAnimationPromptEditorFromActions(actions) {
+    const frame = findAiAnimationPromptEditorFrameFromActions(actions);
+    if (!(frame instanceof HTMLElement)) return false;
+    openAiAnimationPromptEditorModal(frame);
+    return true;
+  }
+
+  if (typeof window !== "undefined") {
+    const promptEditorApi = window.__NovaFlowPromptEditor && typeof window.__NovaFlowPromptEditor === "object"
+      ? window.__NovaFlowPromptEditor
+      : {};
+    promptEditorApi.openFromActions = openAiAnimationPromptEditorFromActions;
+    window.__NovaFlowPromptEditor = promptEditorApi;
+  }
+
+  function ensureAiAnimationPromptEditorButtons(promptFrames) {
+    Array.from(promptFrames || []).forEach((frame) => {
+      if (!(frame instanceof HTMLElement)) return;
+      if (isAiAnimationStoryboardPromptFrame(frame)) return;
+      if (!findAiAnimationPromptEditorControl(frame)) return;
+      setImportantStyles(frame, { position: "relative" });
+      const topRow = frame.firstElementChild instanceof HTMLElement ? frame.firstElementChild : null;
+      if (topRow instanceof HTMLElement) {
+        setImportantStyles(topRow, {
+          "padding-right": "176px",
+          "box-sizing": "border-box"
+        });
+      }
+      let actions = frame.querySelector('[data-novaflow-ai-prompt-assistant-actions="1"]');
+      if (!(actions instanceof HTMLElement)) {
+        actions = document.createElement("div");
+        actions.className = "novaflow-ai-animation-prompt-assistant-actions";
+        actions.setAttribute("data-novaflow-ai-prompt-assistant-actions", "1");
+      }
+      if (actions.parentElement !== frame) frame.appendChild(actions);
+      setImportantStyles(actions, {
+        display: "inline-flex",
+        "align-items": "center",
+        gap: "5px",
+        position: "absolute",
+        top: "5px",
+        right: "12px",
+        "z-index": "8",
+        "pointer-events": "auto",
+        margin: "0"
+      });
+      let editButton = actions.querySelector('[data-novaflow-ai-prompt-expand-button="1"]');
+      if (!(editButton instanceof HTMLButtonElement)) {
+        editButton = document.createElement("button");
+        editButton.type = "button";
+        editButton.textContent = "编辑";
+        editButton.setAttribute("data-novaflow-ai-prompt-expand-button", "1");
+        editButton.setAttribute("data-novaflow-ai-prompt-assistant-button", "1");
+        editButton.setAttribute(NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR, "1");
+        editButton.setAttribute("title", "编辑完整提示词");
+        editButton.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openAiAnimationPromptEditorModal(frame);
+        });
+        actions.appendChild(editButton);
+      }
+      applyNovaflowPromptActionButtonStyle(editButton);
+    });
+  }
+
   let AI_ANIMATION_STORYBOARD_PROMPT_ASSISTANT_OBSERVER = null;
   let AI_ANIMATION_STORYBOARD_PROMPT_ASSISTANT_REFRESH_TIMER = 0;
 
@@ -54792,7 +55060,7 @@
         gap: "10px",
         "min-width": "0",
         overflow: "hidden",
-        "padding-right": "112px",
+        "padding-right": "176px",
         "box-sizing": "border-box"
       });
       Array.from(topRow.children || []).forEach((child) => {
@@ -54825,6 +55093,7 @@
     });
     actions.innerHTML = "";
     restoreAiAnimationPromptAssistantExternalButtons(actions, preservedExternalButtons);
+    ensureAiAnimationPromptEditorButtons(promptFrames);
     Array.from(actions.querySelectorAll("button")).forEach((button) => {
       applyNovaflowPromptActionButtonStyle(button);
     });

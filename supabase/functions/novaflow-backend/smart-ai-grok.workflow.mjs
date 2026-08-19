@@ -131,21 +131,21 @@ function miniMaxH3ContractError(code, message, statusCode = 502, failureCategory
 function miniMaxH3RequestedDuration(payload) {
   const directValue = payload?.durationSeconds ?? payload?.duration_seconds ?? payload?.duration;
   const direct = Number(directValue);
-  if (Number.isFinite(direct) && direct >= 1 && direct <= 15) return direct;
+  if (Number.isFinite(direct) && direct >= 1 && direct <= 30) return direct;
   if (directValue !== undefined && directValue !== null && directValue !== "") {
     throw miniMaxH3ContractError(
       "h3_contract_duration",
-      "MiniMax H3 reverse duration must be between 1 and 15 seconds",
+      "MiniMax H3 reverse duration must be between 1 and 30 seconds",
       400
     );
   }
   const text = normalizeSmartAiText(payload?.requirements || payload?.requirement || payload?.instructions || "", 12000);
   const match = text.match(/(?:duration|时长)\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(?:seconds?|秒)/i);
   const parsed = Number(match?.[1] || 0);
-  if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 15) return parsed;
+  if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 30) return parsed;
   throw miniMaxH3ContractError(
     "h3_contract_duration",
-    "MiniMax H3 reverse duration must be between 1 and 15 seconds",
+    "MiniMax H3 reverse duration must be between 1 and 30 seconds",
     400
   );
 }
@@ -818,6 +818,78 @@ function miniMaxH3PromptProtocolRules(mode, contentPolicy) {
   ].join("\n");
 }
 
+function miniMaxH3PromptEnhanceDurationFromText(requirements) {
+  const text = normalizeSmartAiText(requirements || "", 12000);
+  const match = text.match(/(?:duration|时长)\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(?:seconds?|秒)/i);
+  const parsed = Number(match?.[1] || 0);
+  return Number.isFinite(parsed) && parsed >= 1 && parsed <= 30 ? parsed : 5;
+}
+
+function miniMaxH3PromptEnhanceUserRequirement(requirements, currentPrompt = "") {
+  const current = normalizeSmartAiText(currentPrompt || "", 1000);
+  const ignored = /^(?:you are|protocol:|output fields|use \[shot|available resource|describe a continuous|for every shot|keep character|overall_soundscape|non_diegetic_music|return only|source prompt:|field-value language|currentprompt:|requirements:|mode:)/i;
+  const lines = normalizeSmartAiText(requirements || "", 12000).split(/\r?\n/).map((line) => normalizeSmartAiText(line, 400)).filter(Boolean);
+  const candidates = lines.filter((line) => {
+    if (!line || line === current || ignored.test(line)) return false;
+    if (/MiniMax H3|H3\s|fields?/i.test(line)) return false;
+    return true;
+  });
+  return normalizeSmartAiText(candidates[candidates.length - 1] || "", 240);
+}
+
+function buildMiniMaxH3PromptEnhanceDeterministicFallback(options = {}) {
+  const rawMode = String(options.minimaxH3Mode || options.mode || "").toLowerCase();
+  if (rawMode === "full_reference" || rawMode === "ref2va") return "";
+  const mode = /first[-_ ]?last|fl2va|fl2v/.test(rawMode)
+    ? "first_last"
+    : /image[-_ ]?video|i2va|i2v/.test(rawMode)
+      ? "image_video"
+      : /video[-_ ]?reference|l2va|l2v/.test(rawMode)
+        ? "video_reference"
+        : "text_video";
+  const currentPrompt = normalizeSmartAiText(options.currentPrompt || options.prompt || "", 900);
+  const requirements = normalizeSmartAiText(options.requirements || "", 12000);
+  const userRequirement = miniMaxH3PromptEnhanceUserRequirement(requirements, currentPrompt);
+  if (!currentPrompt && !userRequirement) return "";
+  const languageText = `${currentPrompt}\n${requirements}`;
+  const chinese = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(languageText);
+  const durationSeconds = Number(options.durationSeconds || 0) >= 1 && Number(options.durationSeconds || 0) <= 30
+    ? Number(options.durationSeconds)
+    : miniMaxH3PromptEnhanceDurationFromText(requirements);
+  const durationText = Number.isInteger(durationSeconds) ? String(durationSeconds) : durationSeconds.toFixed(2);
+  const timestamp = miniMaxH3TimelineStamp(durationSeconds);
+  const sourceFact = currentPrompt || (chinese ? "用户补充要求" : "the user requirement");
+  const intent = userRequirement || (chinese
+    ? "让动作更生动，同时保持原主体、场景、构图和参考关系不变"
+    : "make the motion more vivid while preserving the original subjects, scene, composition, and references");
+  if (chinese) {
+    let referencePrefix = "";
+    if (mode === "image_video") referencePrefix = "<Picture 1> 是 0.00 秒时提供的精确首帧。";
+    else if (mode === "first_last") referencePrefix = `<Picture 1> 是 0.00 秒时提供的精确首帧；<Picture 2> 是 ${durationText} 秒的精确尾帧（final shot）。`;
+    else if (mode === "video_reference") referencePrefix = "<Video 1> 作为视频参考，仅继承其运动节奏和可用参考信息。";
+    let integrated = `[Shot 1] ${referencePrefix}当前底稿为：${sourceFact}。动作从当前状态开始，随后按“${intent}”逐渐增强动作幅度、节奏和表情/姿态变化，过程保持主体身份、服装、道具、场景和构图连续；镜头保持稳定构图并进行轻微跟随。`;
+    if (mode === "first_last") integrated += ` [Shot 2] At ${timestamp}，动作连续过渡并准确抵达 <Picture 2> 的尾帧状态。`;
+    const alignment = mode === "image_video"
+      ? "参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒\n"
+      : mode === "first_last"
+        ? `参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；<Picture 2> 对应 [Shot 2] = ${durationText} 秒\n`
+        : "";
+    return `${alignment}integrated_multimodal_description: ${integrated}\noverall_soundscape: 动作声、衣料摩擦声、脚步或环境声随动作节奏同步；未指定对白时不添加对白。\nnon_diegetic_music: N/A`;
+  }
+  let referencePrefix = "";
+  if (mode === "image_video") referencePrefix = "<Picture 1> is the exact supplied opening frame at 0.00 seconds. ";
+  else if (mode === "first_last") referencePrefix = `<Picture 1> is the exact opening frame at 0.00 seconds; <Picture 2> is the exact final shot at ${durationText} seconds. `;
+  else if (mode === "video_reference") referencePrefix = "<Video 1> is used only for supported motion timing and reference information. ";
+  let integrated = `[Shot 1] ${referencePrefix}Current prompt: ${sourceFact}. The action begins from the current state, then follows the user requirement (${intent}) with clearer motion rhythm, continuous posture change, and stable identity, wardrobe, props, scene, and composition; camera holds stable framing with a subtle follow. `;
+  if (mode === "first_last") integrated += `[Shot 2] At ${timestamp}, the motion resolves continuously into <Picture 2>.`;
+  const alignment = mode === "image_video"
+    ? "Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds\n"
+    : mode === "first_last"
+      ? `Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds; <Picture 2> from [Shot 2] = ${durationText} seconds\n`
+      : "";
+  return `${alignment}integrated_multimodal_description: ${integrated}\noverall_soundscape: Synchronized movement sounds, cloth rustle, footsteps, or ambience follow the action rhythm; dialogue is N/A unless specified.\nnon_diegetic_music: N/A`;
+}
+
 function miniMaxH3PromptFieldsAreOrdered(text, fields) {
   let cursor = -1;
   for (const field of fields) {
@@ -1270,6 +1342,8 @@ const GROK_VISUAL_IR_INTERACTION_EVIDENCE_REASON = "sexual or explicit activity 
 const GROK_VISUAL_IR_INTERACTION_SAFETY_REASON = "content_safety_interaction";
 const GROK_VISUAL_IR_PROJECTION_REDACTION_REASON = "projection-safe fields cannot contain explicit sensitive semantics";
 const GROK_VISUAL_RICH_SECTION_HEADERS = ["[风格设定]", "[主体物品]", "[环境背景]", "[光线与色彩]", "[拍摄参数]"];
+const GROK_DETERMINISTIC_VISUAL_RICH_MAX_LENGTH = 10000;
+const GROK_VALIDATED_VISUAL_IR = Symbol("novaflow.grok.validatedVisualIr");
 const MINIMAX_H3_RICH_VISUAL_SECTION_ALIASES = new Map([
   ["[风格设定]", new Set(["[风格设定]", "[风格与设定]", "[风格设置]"])],
   ["[主体物品]", new Set(["[主体物品]", "[主体与物品]", "[主体及物品]", "[主体和物品]", "[主体与道具]", "[主体及道具]", "[主体和道具]"])],
@@ -2078,6 +2152,112 @@ function isValidGrokVisualRichPrompt(text, sensitive = false, requireInteraction
   return true;
 }
 
+function grokVisualRichTomlValue(value, fallback = "参考图中未明确", maxLength = 320) {
+  const limit = Math.max(24, Math.min(1200, Math.trunc(Number(maxLength) || 320)));
+  let normalized = uniqueGrokVisualIrParts([value]).join("；") || fallback;
+  if (normalized.length > limit) normalized = `${normalized.slice(0, Math.max(1, limit - 1)).trimEnd()}…`;
+  return JSON.stringify(normalized);
+}
+
+function compileGrokVisualIrRichPrompt(ir, options = {}) {
+  let visualIr = null;
+  try {
+    visualIr = parseGrokVisualIr(JSON.stringify(ir), GROK_VISUAL_IR_SCHEMA_V2);
+  } catch {
+    return "";
+  }
+  if (!visualIr) return "";
+  const sensitiveState = grokVisualIrSensitivePromptState(visualIr, {
+    nsfw: options.nsfw === true,
+    requirements: options.requirements
+  });
+  const generationGate = sensitiveState.generationGate;
+  if (!["direct", "adult_confirmation"].includes(generationGate)) return "";
+
+  const q = (value, fallback, maxLength) => grokVisualRichTomlValue(value, fallback, maxLength);
+  const entities = visualIr.entities || [];
+  const visiblePersonCount = Math.max(0, Math.min(12, Math.trunc(Number(
+    visualIr.content_safety?.visible_person_count || 0
+  ))));
+  const entityCounts = entities.map((entity) => {
+    const identity = entity.name || "未命名主体";
+    return `${identity}：${entity.count || "数量未明确"}`;
+  });
+  const localColors = entities.map((entity) => {
+    const identity = [entity.count, entity.name].filter(Boolean).join("") || "主体";
+    return entity.colors.length ? `${identity}：${entity.colors.join("、")}` : "";
+  }).filter(Boolean);
+  const subjectLines = [
+    `主体记录数 = ${q(String(entities.length), "0", 24)}`,
+    `已验证可见人物数量 = ${q(String(visiblePersonCount), "0", 24)}`,
+    `主体数量描述 = ${q(entityCounts, entities.length ? "各主体数量未单独明确" : "参考图中未识别到主体记录", 520)}`
+  ];
+  const perEntityDetailBudget = Math.max(180, Math.min(900, Math.floor(2800 / Math.max(1, entities.length))));
+  entities.forEach((entity, index) => {
+    const prefix = `主体${index + 1}`;
+    subjectLines.push(
+      `${prefix} = ${q([entity.count, entity.name].filter(Boolean).join(""), "未命名主体", 140)}`,
+      `${prefix}.外观 = ${q(entity.appearance, "参考图中未明确", Math.floor(perEntityDetailBudget * 0.30))}`,
+      `${prefix}.姿态 = ${q(entity.pose, "参考图中未明确", Math.floor(perEntityDetailBudget * 0.15))}`,
+      `${prefix}.动作 = ${q(entity.action, "参考图中未明确", Math.floor(perEntityDetailBudget * 0.15))}`,
+      `${prefix}.材质 = ${q(entity.materials, "参考图中未明确", Math.floor(perEntityDetailBudget * 0.20))}`,
+      `${prefix}.颜色 = ${q(entity.colors, "参考图中未明确", Math.floor(perEntityDetailBudget * 0.20))}`
+    );
+  });
+  if (!entities.length) subjectLines.push(`主体概况 = ${q(visualIr.asset_type, "参考图中未识别到主体", 180)}`);
+  const relationFallback = entities.length === 0
+    ? "参考图中无已验证主体关系"
+    : entities.length === 1
+      ? "单一主体，无额外主体关系"
+      : "参考图中未明确";
+  subjectLines.push(
+    `主体间关系 = ${q(visualIr.relations, relationFallback, 420)}`,
+    `可见文字 = ${q(visualIr.ocr, "参考图中未见需要保留的清晰文字", 220)}`
+  );
+  if (generationGate === "adult_confirmation") {
+    subjectLines.push(`敏感可见事实 = ${q(sensitiveState.sensitiveFacts, "参考图中未明确", 520)}`);
+  }
+
+  const spatialLayers = visualIr.scene.spatial_layers || [];
+  const prompt = [
+    "[风格设定]",
+    `资产类型 = ${q(visualIr.asset_type, "参考图中未明确", 140)}`,
+    `绘画或渲染语言 = ${q(visualIr.look.style, "参考图中未明确", 260)}`,
+    `表面完成质感 = ${q(visualIr.look.finish, "参考图中未明确", 180)}`,
+    `整体氛围 = ${q(visualIr.look.atmosphere, "参考图中未明确", 140)}`,
+    `全局可见材质 = ${q(visualIr.look.materials, "参考图中未明确", 260)}`,
+    "",
+    "[主体物品]",
+    ...subjectLines,
+    "",
+    "[环境背景]",
+    `环境 = ${q(visualIr.scene.environment, "参考图中未明确", 180)}`,
+    `背景物 = ${q(visualIr.scene.background, "参考图中未明确", 260)}`,
+    `前中后景层次 = ${q(spatialLayers, "参考图中未明确", 380)}`,
+    `主体与场景关系 = ${q(spatialLayers, "参考图中未明确", 380)}`,
+    "",
+    "[光线与色彩]",
+    `光线特征 = ${q(visualIr.look.lighting, "参考图中未明确", 320)}`,
+    `综合色板 = ${q(visualIr.look.palette, "参考图中未明确", 240)}`,
+    `局部色彩 = ${q(localColors, "参考图中未明确", 420)}`,
+    `材质受光 = ${q(visualIr.look.materials, "参考图中未明确", 240)}`,
+    "",
+    "[拍摄参数]",
+    `景别 = ${q(visualIr.camera_cues.shot, "参考图中未明确", 160)}`,
+    `视角 = ${q(visualIr.camera_cues.angle, "参考图中未明确", 160)}`,
+    `构图 = ${q(visualIr.camera_cues.composition, "参考图中未明确", 220)}`,
+    `透视与镜头感 = ${q("", "参考图中未明确", 120)}`,
+    `景深 = ${q(visualIr.camera_cues.depth_of_field, "参考图中未明确", 180)}`
+  ].join("\n");
+  const requireInteractionEvidence = visualIr.content_safety?.interaction_category === "sexual"
+    || visualIr.content_safety?.signals?.includes?.("explicit_activity");
+  return prompt.length <= GROK_DETERMINISTIC_VISUAL_RICH_MAX_LENGTH && isValidGrokVisualRichPrompt(
+    prompt,
+    generationGate === "adult_confirmation",
+    requireInteractionEvidence
+  ) ? prompt : "";
+}
+
 function miniMaxH3RichSubjectFacts(text) {
   const normalized = normalizeGrokVisualRichPrompt(text);
   const matches = [...normalized.matchAll(/^\s*(\[[^\]\r\n]+\])\s*$/gm)];
@@ -2741,6 +2921,22 @@ async function callGrokResponseWithVisualRetry(body, inputMeta, resultOptions, e
       }
     };
   };
+  const finalizeWithDeterministicRichPrompt = (result) => {
+    const richPrompt = compileGrokVisualIrRichPrompt(
+      result?.data?.[GROK_VALIDATED_VISUAL_IR],
+      resultOptions
+    );
+    if (richPrompt) {
+      return finalizeResult(result, {
+        ...result.data,
+        output_text: appendGrokVisualRichRequirements(richPrompt, resultOptions?.requirements)
+      }, { richPromptComplete: true });
+    }
+    return finalizeResult(result, result?.data, {
+      failureCode: "visual-rich-deterministic-compile-failed",
+      failureMessage: "修复后的视觉事实无法安全编译为五段详细提示词，已阻止写入"
+    });
+  };
   const finalizeWithRichPrompt = async (result, generationGate) => {
     const requireInteractionEvidence = result?.data?.contentSafety?.interaction_category === "sexual"
       || result?.data?.contentSafety?.signals?.includes?.("explicit_activity");
@@ -2812,6 +3008,13 @@ async function callGrokResponseWithVisualRetry(body, inputMeta, resultOptions, e
         && ["direct", "adult_confirmation"].includes(generationGate);
       if (richEligible) {
         return await finalizeWithRichPrompt(result, generationGate);
+      }
+      const repairedRichEligible = attempt > 1
+        && retryEnabled
+        && retryUsed
+        && ["direct", "adult_confirmation"].includes(generationGate);
+      if (repairedRichEligible) {
+        return finalizeWithDeterministicRichPrompt(result);
       }
       return finalizeResult(result);
     } catch (error) {
@@ -2891,6 +3094,39 @@ async function callGrokResponseWithVisualRetry(body, inputMeta, resultOptions, e
             visualContractRetryUsed: true
           }
         }, degradedData);
+      }
+      if (h3Enabled && error?.minimaxH3ContractInvalid === true) {
+        const fallbackPrompt = buildMiniMaxH3PromptEnhanceDeterministicFallback(resultOptions);
+        if (fallbackPrompt) {
+          try {
+            const prompt = normalizeMiniMaxH3PromptOutput(fallbackPrompt, resultOptions);
+            return finalizeResult({
+              ok: true,
+              statusCode: 200,
+              durationMs: totalDurationMs,
+              model: "",
+              requestId: "",
+              usage: totalUsage,
+              providerCallCount,
+              h3ContractRepairUsed: h3RetryEnabled && retryUsed,
+              inputMeta: {
+                ...(inputMeta || {}),
+                providerCallCount,
+                h3ContractRepairUsed: h3RetryEnabled && retryUsed,
+                h3RetryCount: h3RetryEnabled && retryUsed ? 1 : 0,
+                h3DeterministicPromptFallback: true
+              }
+            }, {
+              output_text: prompt,
+              negative_prompt: "",
+              has_negative_prompt: false,
+              visualSchema: String(resultOptions?.visualSchema || ""),
+              contentPolicy: resultOptions?.contentPolicy || null,
+              usage: totalUsage,
+              h3DeterministicPromptFallback: true
+            });
+          } catch {}
+        }
       }
       try {
         error.grokUsage = totalUsage;
@@ -7333,7 +7569,7 @@ function grokResponsesPublicResult(data, options = {}) {
         options.supportsNegativePrompt !== false
       )
     : parseSmartAiPromptResult(rawText, options);
-  return {
+  const result = {
     id: data?.id || "",
     object: data?.object || "",
     created: data?.created || null,
@@ -7357,6 +7593,8 @@ function grokResponsesPublicResult(data, options = {}) {
       : generationRequirements,
     usage: data?.usage || null
   };
+  if (expectsVisualIr) Object.defineProperty(result, GROK_VALIDATED_VISUAL_IR, { value: visualIr });
+  return result;
 }
 
 function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
@@ -7410,6 +7648,10 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
     resultOptions: {
       minimaxH3Prompt: true,
       minimaxH3Mode: mode,
+      visualRetryAllowed: true,
+      currentPrompt: prompt,
+      requirements,
+      durationSeconds: miniMaxH3PromptEnhanceDurationFromText(requirements),
       supportsNegativePrompt: false
     }
   };

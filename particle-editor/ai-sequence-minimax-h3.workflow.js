@@ -9,6 +9,7 @@
   const MODES = Object.freeze(['t2v', 'i2v', 'fl2v', 'r2v'])
   const MODE_SET = new Set(MODES)
   const OUTPUT_FPS = 24
+  const FPS_OPTIONS = Object.freeze([16, 24])
   const DEFAULT_STEPS = 4
   const OUTPUT_STEPS = DEFAULT_STEPS
   const STEP_OPTIONS = Object.freeze([4, 20])
@@ -24,7 +25,7 @@
   const DEFAULT_HEIGHT = 864
   const DEFAULT_DURATION = 5
   const MIN_DURATION = 1
-  const MAX_DURATION = 15
+  const MAX_DURATION = 30
   const DURATION_STEP = 0.01
   const DEFAULT_PREFIX = 'video/MiniMax_H3'
   const MAX_REFERENCE_IMAGES = 4
@@ -200,7 +201,14 @@
           path.length === 0 ||
           (path.length === 1 && normalizedKey(path[0]) === 'params')
         )
-        if ((FORBIDDEN_KEY_TOKENS.has(token) && !controlledLoras) || LOCKED_OPTION_TOKENS.has(token)) {
+        const controlledFps = token === 'fps' && (
+          path.length === 0 ||
+          (path.length === 1 && normalizedKey(path[0]) === 'params')
+        )
+        if (
+          (FORBIDDEN_KEY_TOKENS.has(token) && !controlledLoras) ||
+          (LOCKED_OPTION_TOKENS.has(token) && !controlledFps)
+        ) {
           throw new TypeError('MiniMax H3 option is not supported: ' + key)
         }
         visit(child, path.concat(key))
@@ -254,6 +262,18 @@
       throw new RangeError(
         'MiniMax H3 steps must be an integer between ' + MIN_STEPS + ' and ' + MAX_STEPS,
       )
+    }
+    return parsed
+  }
+
+  function normalizeFps(value) {
+    if (value == null || value === '') return OUTPUT_FPS
+    const parsed = Number(value)
+    if (!Number.isInteger(parsed)) {
+      throw new TypeError('MiniMax H3 fps must be 16 or 24')
+    }
+    if (!FPS_OPTIONS.includes(parsed)) {
+      throw new RangeError('MiniMax H3 fps must be 16 or 24')
     }
     return parsed
   }
@@ -428,15 +448,16 @@
   }
 
   function alignFrameCount(value) {
-    let frames = clampInteger(value, 124, 5, 362)
-    while (frames % 17 !== 5 && frames < 362) frames += 1
-    return Math.min(362, frames)
+    let frames = clampInteger(value, 124, 5, 736)
+    while (frames % 17 !== 5 && frames < 736) frames += 1
+    return Math.min(736, frames)
   }
 
   function normalizeDuration(value) {
     const source = isRecord(value)
       ? firstProvided(value.seconds, value.duration, value.durationSeconds)
       : value
+    const fps = normalizeFps(isRecord(value) ? value.fps : undefined)
     const parsed = source == null || source === '' ? DEFAULT_DURATION : Number(source)
     if (!Number.isFinite(parsed) || parsed < MIN_DURATION || parsed > MAX_DURATION) {
       throw new RangeError(
@@ -444,12 +465,12 @@
       )
     }
     const requestedDuration = Math.round(parsed / DURATION_STEP) * DURATION_STEP
-    const frames = alignFrameCount(Math.round(requestedDuration * OUTPUT_FPS))
+    const frames = alignFrameCount(Math.round(requestedDuration * fps))
     return Object.freeze({
       requestedDuration: Math.round(requestedDuration * 100) / 100,
       frames,
-      actualDuration: frames / OUTPUT_FPS,
-      fps: OUTPUT_FPS,
+      actualDuration: frames / fps,
+      fps,
     })
   }
 
@@ -457,7 +478,10 @@
     if (options.length != null && options.length !== '') {
       return alignFrameCount(options.length)
     }
-    return normalizeDuration(firstProvided(options.duration, options.durationSeconds, options.seconds)).frames
+    return normalizeDuration({
+      seconds: firstProvided(options.duration, options.durationSeconds, options.seconds),
+      fps: options.fps,
+    }).frames
   }
 
   function normalizeSeed(value) {
@@ -842,10 +866,12 @@
       ? oneByClass(workflow, 'MiniMaxH3ReferenceToVideo')[1]
       : oneByClass(workflow, 'MiniMaxH3ImageToVideo')[1]
     const dimensions = normalizeDimensions(normalized)
+    const fps = normalizeFps(normalized.fps)
     conditioning.inputs.prompt = requiredText(normalized.prompt, 'MiniMax H3 prompt')
     conditioning.inputs.width = dimensions.width
     conditioning.inputs.height = dimensions.height
     conditioning.inputs.length = normalizeLength(normalized)
+    oneByClass(workflow, 'CreateVideo')[1].inputs.fps = fps
     oneByClass(workflow, 'RandomNoise')[1].inputs.noise_seed = normalizeSeed(normalized.seed)
     oneByClass(workflow, 'SaveVideo')[1].inputs.filename_prefix = String(
       firstProvided(normalized.outputPrefix, normalized.filenamePrefix, DEFAULT_PREFIX),
@@ -1135,15 +1161,18 @@
     if (
       !Number.isInteger(conditioning.inputs.length) ||
       conditioning.inputs.length < 5 ||
-      conditioning.inputs.length > 362 ||
+      conditioning.inputs.length > 736 ||
       conditioning.inputs.length % 17 !== 5
     ) {
       throw new TypeError('MiniMax H3 workflow has an invalid frame count')
     }
 
     const createVideo = oneByClass(workflow, 'CreateVideo')[1]
-    if (createVideo.inputs.fps !== OUTPUT_FPS || createVideo.inputs.bit_depth !== 8) {
-      throw new TypeError('MiniMax H3 output must be 24 fps at 8-bit')
+    const expectedFps = isRecord(options) && options.fps != null
+      ? normalizeFps(options.fps)
+      : normalizeFps(createVideo.inputs.fps)
+    if (createVideo.inputs.fps !== expectedFps || createVideo.inputs.bit_depth !== 8) {
+      throw new TypeError('MiniMax H3 output must be 16 or 24 fps at 8-bit')
     }
 
     if (mode === 't2v') {
@@ -1212,6 +1241,7 @@
     MODEL_ID,
     MODES,
     OUTPUT_FPS,
+    FPS_OPTIONS,
     OUTPUT_STEPS,
     DEFAULT_STEPS,
     STEP_OPTIONS,
@@ -1230,6 +1260,7 @@
     calculateResolution,
     matchResolution,
     normalizeSteps,
+    normalizeFps,
     normalizeLoras,
     normalizeDuration,
     getWorkflowJson,
