@@ -395,7 +395,16 @@
   }
 
   function prepareMiniMaxH3PromptRequest(prompt, requirements) {
-    const captured = state.context?.miniMaxH3;
+    let captured = state.context?.miniMaxH3;
+    const live = typeof readMiniMaxH3PromptSurfaceState === "function"
+      ? readMiniMaxH3PromptSurfaceState(state.context?.button, state.context?.promptTarget)
+      : null;
+    if (live?.modelId === MINIMAX_H3_MODEL_ID) {
+      captured = live;
+      if (state.context && typeof state.context === "object") {
+        state.context = Object.assign({}, state.context, { miniMaxH3: captured });
+      }
+    }
     if (!captured || captured.modelId !== MINIMAX_H3_MODEL_ID) return null;
     const workflow = getMiniMaxH3PromptWorkflow();
     const prepared = workflow.prepareRequest({
@@ -554,7 +563,16 @@
   }
 
   function prepareMiniMaxH3ReverseRequest(prompt, requirements) {
-    const captured = state.context?.miniMaxH3;
+    let captured = state.context?.miniMaxH3;
+    const live = typeof readMiniMaxH3PromptSurfaceState === "function"
+      ? readMiniMaxH3PromptSurfaceState(state.context?.button, state.context?.promptTarget)
+      : null;
+    if (live?.modelId === MINIMAX_H3_MODEL_ID) {
+      captured = live;
+      if (state.context && typeof state.context === "object") {
+        state.context = Object.assign({}, state.context, { miniMaxH3: captured });
+      }
+    }
     if (!captured || captured.modelId !== MINIMAX_H3_MODEL_ID) return null;
     const workflow = getMiniMaxH3ReverseWorkflow();
     const contentPolicy = miniMaxH3ContentPolicy();

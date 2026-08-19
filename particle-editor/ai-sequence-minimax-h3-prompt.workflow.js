@@ -632,7 +632,7 @@
         : '<Picture 1> and <Picture 2> are independent exact endpoint bindings. Preserve each endpoint at its own time and infer only the supported transition between them; never blend or swap their roles.')
     }
     if (protocol.mode === 'multi_reference') {
-      lines.push(`summary must begin with one or more supported relations: ${REFERENCE_RELATIONS.join(', ')}.`)
+      lines.push(`When useful, summary may begin with one or more supported relations in brackets: ${REFERENCE_RELATIONS.join(', ')}.`)
       lines.push('Define every <Subject N> in subject_definitions before using it, starting at <Subject 1> without gaps.')
       lines.push('retention_analysis must state, separately for every supplied media reference, which identity, appearance, motion, timing, or sound properties are retained and which are not transferred.')
       lines.push('Keep each resource role independent: an image does not become an audio cue, a video does not overwrite subject identity, and audio does not imply unseen visual events.')
@@ -888,11 +888,33 @@
 
   function validateReferenceSummary(sections, protocol) {
     if (protocol.mode !== 'multi_reference') return Object.freeze([])
-    const match = sections.summary.content.match(/^\[([^\]]+)\]\s*\S/)
-    if (!match) throw new Error('MiniMax H3 Ref2VA summary must begin with a supported relation in brackets')
+    const summary = sections.summary.content
+    const match = summary.match(/^\[([^\]]+)\]\s*\S/)
+    if (!match) return inferReferenceRelations(summary, protocol)
     const relations = match[1].split(/\s*(?:\+|,|\uFF0C|\/)\s*/).filter(Boolean)
     if (!relations.length || relations.some((relation) => !REFERENCE_RELATIONS.includes(relation))) {
       throw new Error(`Unsupported MiniMax H3 reference relation: ${match[1]}`)
+    }
+    return Object.freeze(relations)
+  }
+
+  function inferReferenceRelations(summary, protocol) {
+    const references = protocol.references.references
+    const hasKind = (kind) => references.some((reference) => reference.kind === kind)
+    const text = stringValue(summary)
+    const relations = []
+    const add = (relation) => {
+      if (REFERENCE_RELATIONS.includes(relation) && !relations.includes(relation)) relations.push(relation)
+    }
+    add('reference generation')
+    if (hasKind('audio') && /(?:<Audio\s+[1-9][0-9]*>|audio|sound|voice|dialogue|\u58f0\u97f3|\u97f3\u9891|\u97f3\u6548|\u97f3\u8272|\u5bf9\u767d|\u8bed\u97f3)/i.test(text)) {
+      add('audio reference')
+    }
+    if (hasKind('video') && /(?:<Video\s+[1-9][0-9]*>|video|motion|timing|cadence|\u89c6\u9891|\u52a8\u4f5c|\u8fd0\u52a8|\u8282\u594f|\u65f6\u5e8f)/i.test(text)) {
+      add('video continuation')
+    }
+    if (hasKind('image') && /(?:<Picture\s+[1-9][0-9]*>|image|picture|identity|appearance|\u56fe\u7247|\u53c2\u8003\u56fe|\u8eab\u4efd|\u5916\u89c2|\u6784\u56fe)/i.test(text)) {
+      add('keyframe completion')
     }
     return Object.freeze(relations)
   }
