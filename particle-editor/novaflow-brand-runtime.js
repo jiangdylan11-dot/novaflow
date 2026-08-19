@@ -54016,6 +54016,8 @@
   let AI_ANIMATION_PROMPT_HISTORY_POSITIONING_TIMER = 0;
   let AI_ANIMATION_PROMPT_HISTORY_ACTIVE_FRAME = null;
   let AI_ANIMATION_PROMPT_HISTORY_DOCUMENT_GUARD_BOUND = false;
+  let AI_ANIMATION_PROMPT_HISTORY_LAST_PICK_TARGET = null;
+  let AI_ANIMATION_PROMPT_HISTORY_LAST_PICK_AT = 0;
 
   function isAiAnimationHistoryPopoverActionText(value) {
     const text = normalizeText(value || "");
@@ -54303,6 +54305,59 @@
       });
       positionAiAnimationPromptHistoryPopover(popover);
     });
+  }
+
+  function isAiAnimationPromptHistoryUtilityTarget(target, textControl) {
+    if (!(target instanceof Element)) return false;
+    const control = target.closest('button, [role="button"]');
+    if (!(control instanceof HTMLElement)) return false;
+    if (control === textControl || textControl?.contains?.(control)) return false;
+    const text = normalizeText(`${control.textContent || ""} ${control.getAttribute("title") || ""} ${control.getAttribute("aria-label") || ""}`);
+    return text.includes("\u4fdd\u5b58") || text.includes("\u5220\u9664") || text === "\u00d7" || text === "x" || text === "X";
+  }
+
+  function findAiAnimationPromptHistoryPickTextControl(target) {
+    if (!(target instanceof Element)) return null;
+    const popover = target.closest('[data-novaflow-ai-history-positioned="1"], div[style*="position: fixed"][style*="z-index: 9999"]');
+    if (!(popover instanceof HTMLElement) || !isAiAnimationPromptHistoryPopoverCandidate(popover)) return null;
+    const row = target.closest('[data-novaflow-ai-history-popover-row="1"], div[style*="display: flex"][style*="height: 28px"][style*="border-radius: 10px"]');
+    if (!(row instanceof HTMLElement) || !popover.contains(row)) return null;
+    const marked = row.querySelector('[data-novaflow-ai-history-popover-text="1"]');
+    const textControl = marked instanceof HTMLElement
+      ? marked
+      : Array.from(row.children || []).find((child) => (
+        child instanceof HTMLElement && isAiAnimationHistoryPopoverActionText(child.textContent || "")
+      ));
+    if (!(textControl instanceof HTMLElement)) return null;
+    if (isAiAnimationPromptHistoryUtilityTarget(target, textControl)) return null;
+    return textControl;
+  }
+
+  function handleAiAnimationPromptHistoryPickEvent(event) {
+    if (event?.type === "click") return false;
+    const target = event?.target instanceof Element ? event.target : null;
+    if (!(target instanceof Element)) return false;
+    const textControl = findAiAnimationPromptHistoryPickTextControl(target);
+    if (!(textControl instanceof HTMLElement)) return false;
+    const now = Date.now();
+    if (
+      AI_ANIMATION_PROMPT_HISTORY_LAST_PICK_TARGET === textControl &&
+      now - AI_ANIMATION_PROMPT_HISTORY_LAST_PICK_AT < 180
+    ) {
+      try {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+      } catch {}
+      return true;
+    }
+    AI_ANIMATION_PROMPT_HISTORY_LAST_PICK_TARGET = textControl;
+    AI_ANIMATION_PROMPT_HISTORY_LAST_PICK_AT = now;
+    try {
+      textControl.click();
+      event.preventDefault?.();
+      event.stopPropagation?.();
+    } catch {}
+    return true;
   }
 
   function scheduleAiAnimationPromptHistoryPopoverStyle() {
@@ -54656,11 +54711,12 @@
   function armAiAnimationPromptHistoryGuardFromEvent(event, preferredFrame = null) {
     const target = event?.target instanceof Element ? event.target : null;
     if (!(target instanceof Element)) return false;
+    const handledPick = handleAiAnimationPromptHistoryPickEvent(event);
     const frame = findAiAnimationPromptHistoryFrameFromTarget(target, preferredFrame);
     if (!(frame instanceof HTMLElement) || !frame.contains(target)) return false;
     const topRow = frame.firstElementChild instanceof HTMLElement ? frame.firstElementChild : null;
     const isHistoryControl = isAiAnimationPromptHistoryControlTarget(target);
-    if (!isHistoryControl && !(topRow instanceof HTMLElement && topRow.contains(target))) return false;
+    if (!handledPick && !isHistoryControl && !(topRow instanceof HTMLElement && topRow.contains(target))) return false;
     AI_ANIMATION_PROMPT_HISTORY_ACTIVE_FRAME = frame;
     markAiAnimationPromptHistoryPopoversRepositioning();
     armAiAnimationPromptAssistantGuard();
