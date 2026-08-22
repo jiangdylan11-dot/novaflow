@@ -17155,6 +17155,7 @@
     syncAiSequenceTimelineEditControlsLock();
     restoreAiAnimationAutoFitChromeForResourceMode(document);
     restoreAiSequenceResourceSidebarLayoutForResourceMode();
+    restoreAiSequenceCutoutResourcePreviewDisplay(document);
   }
 
   function restoreAiSequenceResourceSidebarLayoutForResourceMode() {
@@ -29808,6 +29809,7 @@
     } else {
       syncAiAnimationGenerationPanelHeight(bottomWorkspace);
     }
+    restoreAiSequenceCutoutResourcePreviewDisplay(document);
     requestAiAnimationPreviewRealGeometrySync();
     scheduleAiSequencePreviewMediaPanZoom();
     return true;

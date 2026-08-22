@@ -619,6 +619,7 @@ assert(
 
 const resourceModeChromeRestoreFunction = getFunctionBody("scheduleAiSequenceResourceModeChromeRestore");
 const resourceModeBottomLayoutFunction = getFunctionBody("syncAiSequenceResourceModeBottomWorkspaceLayout");
+const resourceModeDomRestoreFunction = getFunctionBody("restoreAiSequenceResourceModeDom");
 const cutoutResourceSettleFunction = getFunctionBody("settleAiSequenceCutoutResourceModeNow");
 const cutoutMediaSaveAndCloseFunction = getFunctionBody("completeAiSequenceCutoutMediaSaveAndClose");
 const cutoutToolSaveFunction = getFunctionBody("completeAiSequenceToolSave");
@@ -631,8 +632,10 @@ assert(
     resourceModeChromeRestoreFunction.includes("syncAiSequenceResourceModeBottomWorkspaceLayout()") &&
     resourceModeBottomLayoutFunction.includes("syncAiAnimationSourceOwnedBottomWorkspaceFinalLayout(bottomWorkspace)") &&
     resourceModeBottomLayoutFunction.includes("syncAiAnimationGenerationPanelHeight(bottomWorkspace)") &&
+    resourceModeDomRestoreFunction.includes("restoreAiSequenceCutoutResourcePreviewDisplay(document)") &&
+    resourceModeBottomLayoutFunction.includes("restoreAiSequenceCutoutResourcePreviewDisplay(document)") &&
     resourceModeBottomLayoutFunction.includes("scheduleAiSequencePreviewMediaPanZoom()"),
-  "Closing or settling processing tools must reset preview media and rerun final bottom layout plus RAF-coalesced pan/zoom after React restores resource mode"
+  "Closing or settling processing tools must reset preview media and rerun final DOM, bottom layout, preview display, plus RAF-coalesced pan/zoom after React restores resource mode"
 );
 
 const cutoutCancelSourceResetIndex = cutoutCancelEditingFunction.indexOf('window.dispatchEvent(new CustomEvent("novaflow:reset-ai-cutouts"');
@@ -759,7 +762,6 @@ assert(
   "Generation-panel marking must preserve or restore the direct Source-owned semantic panel before clearing stale tags or running visual fallbacks"
 );
 
-const resourceModeDomRestoreFunction = getFunctionBody("restoreAiSequenceResourceModeDom");
 const resourceDomWasProcessingHiddenIndex = resourceModeDomRestoreFunction.indexOf("const wasProcessingHidden");
 const resourceDomRemoveProcessingMarkerIndex = resourceModeDomRestoreFunction.indexOf('removeAttributeIfPresent(node, "data-novaflow-ai-processing-hidden")', resourceDomWasProcessingHiddenIndex);
 const resourceDomReleaseHiddenStateIndex = resourceModeDomRestoreFunction.indexOf("setAiSequenceHidden(node, false)", resourceDomRemoveProcessingMarkerIndex);
