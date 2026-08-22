@@ -884,6 +884,8 @@ const previewPanZoomBindingFunction = getFunctionBody("bindAiSequencePreviewMedi
 const previewCanvasFrameFunction = getFunctionBody("styleAiAnimationCanvasFrame");
 const sourcePreviewOwnerFunction = getFunctionBody("isAiSequenceSourcePreviewPanZoomOwner");
 const sourceRuntimeReleaseFunction = getFunctionBody("releaseAiSequenceRuntimePreviewOwnershipToSource");
+const sourcePreviewReactPresentationFunction = getFunctionBody("restoreAiSequenceSourcePreviewPresentationFromReact");
+const plainBoardMediaRestoreFunction = getFunctionBody("restoreAiSequencePlainBoardMediaDisplay");
 const previewWheelCaptureIndex = previewPanZoomBindingFunction.indexOf('document.addEventListener("wheel"');
 const previewDragHelperIndex = previewPanZoomBindingFunction.indexOf("const getPreviewDragPointerId", previewWheelCaptureIndex);
 const previewWheelCaptureBlock = previewWheelCaptureIndex >= 0 && previewDragHelperIndex > previewWheelCaptureIndex
@@ -903,6 +905,13 @@ assert(
     !sourcePreviewOwnerFunction.includes("getAiSequenceCurrentSession()") &&
     sourcePreviewOwnerFunction.includes("!isAiSequencePreviewBackplateEditingActive()") &&
     sourceRuntimeReleaseFunction.includes("releaseAiSequenceRuntimePreviewNodeToSource(node)") &&
+    sourcePreviewReactPresentationFunction.includes("getAiSequenceReactDomProps(node)") &&
+    sourcePreviewReactPresentationFunction.includes('["opacity", "opacity"]') &&
+    sourcePreviewReactPresentationFunction.includes('["visibility", "visibility"]') &&
+    sourcePreviewReactPresentationFunction.includes('["pointer-events", "pointerEvents"]') &&
+    plainBoardMediaRestoreFunction.indexOf("releaseAiSequenceRuntimePreviewNodeToSource(node)") >= 0 &&
+    plainBoardMediaRestoreFunction.indexOf("restoreAiSequenceSourcePreviewPresentationFromReact(node)") >
+      plainBoardMediaRestoreFunction.indexOf("releaseAiSequenceRuntimePreviewNodeToSource(node)") &&
     previewPanZoomFunction.indexOf("isAiSequenceSourcePreviewPanZoomOwner(viewport)") >= 0 &&
     previewPanZoomFunction.indexOf("releaseAiSequenceRuntimePreviewOwnershipToSource(viewport)") >
       previewPanZoomFunction.indexOf("isAiSequenceSourcePreviewPanZoomOwner(viewport)") &&
@@ -1781,6 +1790,31 @@ class CutoutReleaseContractElement extends CutoutContractCanvas {
   removeAttribute(name) { this.attributes.delete(name); }
   hasAttribute(name) { return this.attributes.has(name); }
 }
+const sourcePreviewPresentationContract = getFunctionWithBindings(
+  runtime,
+  "restoreAiSequenceSourcePreviewPresentationFromReact",
+  {
+    HTMLElement: CutoutReleaseContractElement,
+    getAiSequenceReactDomProps: () => ({
+      style: {
+        opacity: 1,
+        pointerEvents: "none"
+      }
+    })
+  }
+);
+const staleSavedVideoPresentation = new CutoutReleaseContractElement(false);
+staleSavedVideoPresentation.style.setProperty("opacity", "0", "important");
+staleSavedVideoPresentation.style.setProperty("pointer-events", "auto", "important");
+const restoredSavedVideoPresentation = sourcePreviewPresentationContract?.(staleSavedVideoPresentation) === true;
+assert(
+  restoredSavedVideoPresentation &&
+    staleSavedVideoPresentation.styleValues.get("opacity") === "1" &&
+    !staleSavedVideoPresentation.stylePriorities.has("opacity") &&
+    staleSavedVideoPresentation.styleValues.get("pointer-events") === "none" &&
+    !staleSavedVideoPresentation.stylePriorities.has("pointer-events"),
+  "Source-owned preview release must replace stale Runtime suppression with React's current presentation"
+);
 const cutoutReleaseContract = getFunctionWithBindings(runtime, "releaseAiSequenceRuntimePreviewNodeToSource", {
   HTMLElement: CutoutReleaseContractElement,
   HTMLCanvasElement: CutoutReleaseContractElement,

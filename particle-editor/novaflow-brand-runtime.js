@@ -17582,6 +17582,31 @@
     return true;
   }
 
+  function restoreAiSequenceSourcePreviewPresentationFromReact(node) {
+    if (!(node instanceof HTMLElement)) return false;
+    const props = getAiSequenceReactDomProps(node);
+    const reactStyle = props && props.style && typeof props.style === "object" ? props.style : null;
+    if (!reactStyle) return false;
+    let restored = false;
+    [
+      ["opacity", "opacity"],
+      ["visibility", "visibility"],
+      ["pointer-events", "pointerEvents"]
+    ].forEach(([cssProperty, reactProperty]) => {
+      if (!Object.prototype.hasOwnProperty.call(reactStyle, reactProperty)) return;
+      const value = reactStyle[reactProperty];
+      if (value === null || value === undefined || value === "") return;
+      const nextValue = String(value);
+      if (
+        node.style.getPropertyValue(cssProperty) === nextValue &&
+        !node.style.getPropertyPriority(cssProperty)
+      ) return;
+      node.style.setProperty(cssProperty, nextValue);
+      restored = true;
+    });
+    return restored;
+  }
+
   function releaseAiSequenceRuntimePreviewNodeToSource(node) {
     if (!(node instanceof HTMLElement)) return false;
     const sourceControlledCutoutStyle = (
@@ -18339,7 +18364,9 @@
       if (!(node instanceof HTMLElement) || !isAiSequencePlainBoardMediaNode(node)) return;
       const sourceViewport = node.closest('[data-ais-canvas="1"][data-novaflow-source-layout="1"]');
       if (sourceViewport instanceof HTMLElement && isAiSequenceSourcePreviewPanZoomOwner(sourceViewport)) {
-        if (releaseAiSequenceRuntimePreviewNodeToSource(node)) restored += 1;
+        const released = releaseAiSequenceRuntimePreviewNodeToSource(node);
+        const presentationRestored = restoreAiSequenceSourcePreviewPresentationFromReact(node);
+        if (released || presentationRestored) restored += 1;
         return;
       }
       if (!hasAiSequencePlainBoardMediaSuppression(node)) return;
