@@ -623,6 +623,7 @@ const cutoutResourceSettleFunction = getFunctionBody("settleAiSequenceCutoutReso
 const cutoutMediaSaveAndCloseFunction = getFunctionBody("completeAiSequenceCutoutMediaSaveAndClose");
 const cutoutToolSaveFunction = getFunctionBody("completeAiSequenceToolSave");
 const cutoutCancelEditingFunction = getFunctionBody("cancelAiSequenceCutoutEditingSession");
+const cutoutResourcePreviewRestoreFunction = getFunctionBody("restoreAiSequenceCutoutResourcePreviewDisplay");
 assert(
   collapseHeadingFunction.includes("scheduleAiSequenceResourceModeChromeRestore") &&
     cutoutResourceSettleFunction.includes("scheduleAiSequenceResourceModeChromeRestore") &&
@@ -637,27 +638,30 @@ assert(
 const cutoutCancelSourceResetIndex = cutoutCancelEditingFunction.indexOf('window.dispatchEvent(new CustomEvent("novaflow:reset-ai-cutouts"');
 const cutoutCancelDomResetIndex = cutoutCancelEditingFunction.indexOf("resetAiSequenceCutoutEditingDom(document)", cutoutCancelSourceResetIndex);
 const cutoutCancelSettleIndex = cutoutCancelEditingFunction.indexOf("settleAiSequenceCutoutResourceModeNow", cutoutCancelDomResetIndex);
-const cutoutCancelViewportIndex = cutoutCancelEditingFunction.indexOf("getAiSequencePreviewViewport(document)", cutoutCancelSettleIndex);
-const cutoutCancelOwnerGuardIndex = cutoutCancelEditingFunction.indexOf("isAiSequenceSourcePreviewPanZoomOwner(previewViewport)", cutoutCancelViewportIndex);
-const cutoutCancelOwnershipReleaseIndex = cutoutCancelEditingFunction.indexOf("releaseAiSequenceRuntimePreviewOwnershipToSource(previewViewport)", cutoutCancelOwnerGuardIndex);
-const cutoutCancelPlainMediaRestoreIndex = cutoutCancelEditingFunction.indexOf("restoreAiSequencePlainBoardMediaDisplay(previewViewport || document)", cutoutCancelOwnershipReleaseIndex);
-const cutoutCancelGuardedOwnershipRelease = /if\s*\(\s*previewViewport instanceof HTMLElement\s*&&\s*isAiSequenceSourcePreviewPanZoomOwner\(previewViewport\)\s*\)\s*\{\s*releaseAiSequenceRuntimePreviewOwnershipToSource\(previewViewport\);\s*\}/.test(cutoutCancelEditingFunction);
+const cutoutResourcePreviewViewportIndex = cutoutResourcePreviewRestoreFunction.indexOf("getAiSequencePreviewViewport(root)");
+const cutoutResourcePreviewOwnerGuardIndex = cutoutResourcePreviewRestoreFunction.indexOf("isAiSequenceSourcePreviewPanZoomOwner(previewViewport)", cutoutResourcePreviewViewportIndex);
+const cutoutResourcePreviewOwnershipReleaseIndex = cutoutResourcePreviewRestoreFunction.indexOf("releaseAiSequenceRuntimePreviewOwnershipToSource(previewViewport)", cutoutResourcePreviewOwnerGuardIndex);
+const cutoutResourcePreviewPlainMediaRestoreIndex = cutoutResourcePreviewRestoreFunction.indexOf("restoreAiSequencePlainBoardMediaDisplay(previewViewport || root || document)", cutoutResourcePreviewOwnershipReleaseIndex);
+const cutoutResourcePreviewGuardedOwnershipRelease = /if\s*\(\s*previewViewport instanceof HTMLElement\s*&&\s*isAiSequenceSourcePreviewPanZoomOwner\(previewViewport\)\s*\)\s*\{\s*releaseAiSequenceRuntimePreviewOwnershipToSource\(previewViewport\);\s*\}/.test(cutoutResourcePreviewRestoreFunction);
 assert(
   cutoutCancelSourceResetIndex >= 0 &&
     cutoutCancelDomResetIndex > cutoutCancelSourceResetIndex &&
     cutoutCancelSettleIndex > cutoutCancelDomResetIndex &&
-    cutoutCancelViewportIndex > cutoutCancelSettleIndex &&
-    cutoutCancelOwnerGuardIndex > cutoutCancelViewportIndex &&
-    cutoutCancelOwnershipReleaseIndex > cutoutCancelOwnerGuardIndex &&
-    cutoutCancelPlainMediaRestoreIndex > cutoutCancelOwnershipReleaseIndex &&
-    cutoutCancelGuardedOwnershipRelease &&
-    cutoutCancelEditingFunction.split("releaseAiSequenceRuntimePreviewOwnershipToSource").length - 1 === 1 &&
-    cutoutCancelEditingFunction.split("restoreAiSequencePlainBoardMediaDisplay").length - 1 === 1 &&
+    cutoutCancelEditingFunction.split("settleAiSequenceCutoutResourceModeNow").length - 1 === 1 &&
+    !cutoutCancelEditingFunction.includes("releaseAiSequenceRuntimePreviewOwnershipToSource") &&
+    !cutoutCancelEditingFunction.includes("restoreAiSequencePlainBoardMediaDisplay") &&
+    cutoutResourcePreviewViewportIndex >= 0 &&
+    cutoutResourcePreviewOwnerGuardIndex > cutoutResourcePreviewViewportIndex &&
+    cutoutResourcePreviewOwnershipReleaseIndex > cutoutResourcePreviewOwnerGuardIndex &&
+    cutoutResourcePreviewPlainMediaRestoreIndex > cutoutResourcePreviewOwnershipReleaseIndex &&
+    cutoutResourcePreviewGuardedOwnershipRelease &&
+    cutoutResourcePreviewRestoreFunction.split("releaseAiSequenceRuntimePreviewOwnershipToSource").length - 1 === 1 &&
+    cutoutResourcePreviewRestoreFunction.split("restoreAiSequencePlainBoardMediaDisplay").length - 1 === 1 &&
     !cutoutMediaSaveAndCloseFunction.includes("releaseAiSequenceRuntimePreviewOwnershipToSource") &&
     !cutoutMediaSaveAndCloseFunction.includes("restoreAiSequencePlainBoardMediaDisplay") &&
     !cutoutResourceSettleFunction.includes("releaseAiSequenceRuntimePreviewOwnershipToSource") &&
     !cutoutResourceSettleFunction.includes("restoreAiSequencePlainBoardMediaDisplay"),
-  "Cancelling cutout editing must settle resource mode, release source-owned Runtime preview ownership, and restore plain board media without changing save-and-close"
+  "Cancelling and saving cutout editing must settle resource mode through one shared preview-display restore helper"
 );
 
 const cutoutSaveCommitGuardIndex = cutoutMediaSaveAndCloseFunction.indexOf("if (!committed)");
@@ -683,7 +687,8 @@ const cutoutSettleForceResourceIndex = cutoutResourceSettleFunction.indexOf("for
 const cutoutSettleResetGuardIndex = cutoutResourceSettleFunction.indexOf("options.resetCutoutSource === true", cutoutSettleForceResourceIndex);
 const cutoutSettleSourceResetIndex = cutoutResourceSettleFunction.indexOf('window.dispatchEvent(new CustomEvent("novaflow:reset-ai-cutouts"', cutoutSettleResetGuardIndex);
 const cutoutSettlePreviewResetIndex = cutoutResourceSettleFunction.indexOf("resetAiSequencePreviewMediaStateForLayoutTransition(document)", cutoutSettleSourceResetIndex);
-const cutoutSettleSidebarRestoreIndex = cutoutResourceSettleFunction.indexOf("restoreAiSequenceResourceSidebarLayoutForResourceMode()", cutoutSettlePreviewResetIndex);
+const cutoutSettlePreviewDisplayRestoreIndex = cutoutResourceSettleFunction.indexOf("restoreAiSequenceCutoutResourcePreviewDisplay(document)", cutoutSettlePreviewResetIndex);
+const cutoutSettleSidebarRestoreIndex = cutoutResourceSettleFunction.indexOf("restoreAiSequenceResourceSidebarLayoutForResourceMode()", cutoutSettlePreviewDisplayRestoreIndex);
 const cutoutSettleLayoutRestoreIndex = cutoutResourceSettleFunction.indexOf("scheduleAiSequenceResourceModeChromeRestore", cutoutSettleSidebarRestoreIndex);
 assert(
   cutoutResourceSettleFunction.includes('options = {}') &&
@@ -691,12 +696,14 @@ assert(
     cutoutSettleResetGuardIndex > cutoutSettleForceResourceIndex &&
     cutoutSettleSourceResetIndex > cutoutSettleResetGuardIndex &&
     cutoutSettlePreviewResetIndex > cutoutSettleSourceResetIndex &&
-    cutoutSettleSidebarRestoreIndex > cutoutSettlePreviewResetIndex &&
+    cutoutSettlePreviewDisplayRestoreIndex > cutoutSettlePreviewResetIndex &&
+    cutoutSettleSidebarRestoreIndex > cutoutSettlePreviewDisplayRestoreIndex &&
     cutoutSettleLayoutRestoreIndex > cutoutSettleSidebarRestoreIndex &&
     cutoutResourceSettleFunction.split('window.dispatchEvent(new CustomEvent("novaflow:reset-ai-cutouts"').length - 1 === 1 &&
+    cutoutResourceSettleFunction.split("restoreAiSequenceCutoutResourcePreviewDisplay(document)").length - 1 === 1 &&
     !cutoutResourceSettleFunction.includes("cutoutBridge.reset") &&
     !cutoutResourceSettleFunction.includes("NovaFlowAiCutoutSessionBridge.reset"),
-  "Cutout save settling must force resource mode before one guarded Source reset, then restore preview, sidebar, and final resource layout in order"
+  "Cutout save settling must force resource mode before one guarded Source reset, then restore preview display, sidebar, and final resource layout in order"
 );
 
 const processingStateClassesFunction = getFunctionBody("syncAiAnimationProcessingStateClasses");

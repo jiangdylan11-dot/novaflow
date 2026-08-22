@@ -15012,11 +15012,6 @@
     clearAiAnimationCutoutSavedMarkers(document);
     resetAiSequenceCutoutEditingDom(document);
     settleAiSequenceCutoutResourceModeNow(activeController, "cancel-editing-session", { preserveMedia: preserveVideoMergeMedia });
-    const previewViewport = getAiSequencePreviewViewport(document);
-    if (previewViewport instanceof HTMLElement && isAiSequenceSourcePreviewPanZoomOwner(previewViewport)) {
-      releaseAiSequenceRuntimePreviewOwnershipToSource(previewViewport);
-    }
-    restoreAiSequencePlainBoardMediaDisplay(previewViewport || document);
   }
 
   function getAiSequenceCutoutModeFromTool(toolOrMode) {
@@ -29846,6 +29841,14 @@
     });
   }
 
+  function restoreAiSequenceCutoutResourcePreviewDisplay(root = document) {
+    const previewViewport = getAiSequencePreviewViewport(root);
+    if (previewViewport instanceof HTMLElement && isAiSequenceSourcePreviewPanZoomOwner(previewViewport)) {
+      releaseAiSequenceRuntimePreviewOwnershipToSource(previewViewport);
+    }
+    restoreAiSequencePlainBoardMediaDisplay(previewViewport || root || document);
+  }
+
   function settleAiSequenceCutoutResourceModeNow(controller = null, reason = "", options = {}) {
     forceAiSequenceCutoutSaveResourceMode(controller, reason || "cutout-resource-settle-now", options);
     if (options && options.resetCutoutSource === true) {
@@ -29859,6 +29862,7 @@
       } catch {}
     }
     resetAiSequencePreviewMediaStateForLayoutTransition(document);
+    restoreAiSequenceCutoutResourcePreviewDisplay(document);
     restoreAiSequenceResourceSidebarLayoutForResourceMode();
     scheduleAiSequenceResourceModeChromeRestore([0, 32, 120, 260]);
     const targets = getCurrentAiAnimationLayoutTargets();
