@@ -15937,6 +15937,7 @@ class PromptAssistant:
     def reverse_model_path(self) -> Path:
         return Path(
             os.environ.get("NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH")
+            or self.read_runtime_config().get("promptAssistantReverseModelPath")
             or str(DEFAULT_REVERSE_QWEN3_MODEL_PATH)
         )
 

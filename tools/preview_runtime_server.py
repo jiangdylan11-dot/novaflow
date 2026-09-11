@@ -746,6 +746,9 @@ def _resolve_prompt_assistant_reverse_model_path(runtime_config: dict) -> Path:
     candidates: list[Path] = []
     if override:
         candidates.append(Path(override))
+    configured = str(runtime_config.get("promptAssistantReverseModelPath") or "").strip()
+    if configured:
+        candidates.append(Path(configured))
     candidates.append(PROMPT_ASSISTANT_REVERSE_DEFAULT_MODEL_PATH)
     models_path = str(runtime_config.get("modelsPath") or "").strip()
     if models_path:

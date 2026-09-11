@@ -2498,6 +2498,7 @@ function readNovaFlowRuntimeConfig() {
       installPath,
       assetsPath: String(data.assetsPath || ""),
       modelsPath: String(data.modelsPath || ""),
+      promptAssistantReverseModelPath: String(data.promptAssistantReverseModelPath || ""),
       customNodesPath: String(data.customNodesPath || ""),
       generatedPath,
       inputPath: path.join(generatedPath, "input"),
@@ -2980,6 +2981,8 @@ function resolvePromptAssistantReverseModelPath(runtimeConfig = readNovaFlowRunt
   const override = String(process.env.NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH || "").trim();
   const candidates = [];
   if (override) candidates.push(path.resolve(override));
+  const configured = String(runtimeConfig?.promptAssistantReverseModelPath || "").trim();
+  if (configured) candidates.push(path.resolve(configured));
   candidates.push(NOVAFLOW_PROMPT_ASSISTANT_REVERSE_DEFAULT_MODEL_PATH);
   const runtimeModels = String(runtimeConfig?.modelsPath || "").trim();
   if (runtimeModels) {
