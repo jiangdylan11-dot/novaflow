@@ -527,6 +527,19 @@ assert.doesNotMatch(i2v.body.input[0].content.at(-1).text, /STRICT nf\.visual\.v
 assert.match(i2v.body.input[0].content.at(-1).text, /Simplified Chinese/);
 assert.doesNotMatch(i2v.body.input[0].content.at(-1).text, /骑士缓慢举起长剑|currentPrompt:|requirements:/);
 
+const localizedI2v = build({
+  userPrompt: "",
+  userRequirements: "",
+  purpose: "minimax-h3-i2v-reverse",
+  currentPrompt: "",
+  requirements: "I2VA；时长 5 秒；使用中文首帧槽位",
+  images: [{ label: "首帧", dataUrl: "data:image/png;base64,Q0hJTkVTRV9GSVJTVA==" }],
+  visualSchema: "nf.h3.visual.v1",
+  contentPolicy: { sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false },
+});
+assert.equal(localizedI2v.inputMeta.mode, "minimax_h3_i2v_reverse");
+assert.equal(localizedI2v.inputMeta.scenario, "single_reference");
+
 for (const userRequirements of [
   "no nudity; keep the blue coat",
   "without sexual activity, preserve the quiet room",
@@ -824,6 +837,25 @@ assert.equal(fl2v.resultOptions.h3VisualBodies.every((frameBody) => (
 )), true);
 assert.equal(fl2v.resultOptions.requiredProviderCalls, 2);
 assert.equal(fl2v.resultOptions.minimaxH3Mode, "first_last");
+
+const localizedFl2v = build({
+  userPrompt: "",
+  userRequirements: "",
+  purpose: "minimax-h3-fl2v-reverse",
+  requirements: "FL2VA; duration 8 seconds; use localized frame slots",
+  images: [
+    { label: "尾帧", dataUrl: "data:image/png;base64,Q0hJTkVTRV9MQVNU" },
+    { label: "首帧", dataUrl: "data:image/png;base64,Q0hJTkVTRV9GSVJTVA==" },
+  ],
+  visualSchema: "nf.h3.visual.v1",
+  contentPolicy: { sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false },
+});
+assert.equal(localizedFl2v.inputMeta.mode, "minimax_h3_fl2v_reverse");
+assert.equal(localizedFl2v.inputMeta.scenario, "video_frames");
+assert.deepEqual(
+  Array.from(localizedFl2v.resultOptions.h3VisualBodies, (frameBody) => frameBody.input[0].content[0].image_url),
+  ["data:image/png;base64,Q0hJTkVTRV9GSVJTVA==", "data:image/png;base64,Q0hJTkVTRV9MQVNU"],
+);
 
 assert.throws(
   () => build({

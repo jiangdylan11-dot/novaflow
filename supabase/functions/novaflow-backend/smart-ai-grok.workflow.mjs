@@ -7674,10 +7674,10 @@ function buildMiniMaxH3GrokReverseRequest(payload, model = "grok-4.3") {
     throw miniMaxH3ContractError("h3_contract_raw_user_text", "MiniMax H3 reverse requires raw userPrompt and userRequirements strings", 400);
   }
   const images = normalizeGrokSmartAiImages(payload);
-  const isFirstFrame = (item) => /(?:^|[_\s-])first(?:[_\s-]*frame)?(?:$|[_\s-])|\bstart\b/i.test(
+  const isFirstFrame = (item) => /(?:^|[_\s-])first(?:[_\s-]*frame)?(?:$|[_\s-])|\bstart\b|首帧|开始帧|起始帧|参考图\s*1|图\s*1|图片\s*1/i.test(
     `${item.role} ${item.slotType} ${item.label}`
   );
-  const isLastFrame = (item) => /(?:^|[_\s-])last(?:[_\s-]*frame)?(?:$|[_\s-])|\bend\b/i.test(
+  const isLastFrame = (item) => /(?:^|[_\s-])last(?:[_\s-]*frame)?(?:$|[_\s-])|\bend\b|尾帧|结束帧|末帧|参考图\s*2|图\s*2|图片\s*2/i.test(
     `${item.role} ${item.slotType} ${item.label}`
   );
   let orderedImages;
