@@ -8588,6 +8588,13 @@ function buildGrokPromptOptimizeRequest(payload) {
   const purpose = smartAiPayloadPurpose(payload);
   const surface = normalizeSmartAiText(payload?.surface || "", 80);
   const provider = normalizeSmartAiText(payload?.provider || "grok", 80);
+  const h3Mode = isMiniMaxH3 ? miniMaxH3EnhanceMode(payload) : "";
+  const h3DirectDuration = payload?.durationSeconds ?? payload?.duration_seconds ?? payload?.duration;
+  const h3DurationSeconds = isMiniMaxH3
+    ? (h3DirectDuration === undefined || h3DirectDuration === null || h3DirectDuration === ""
+        ? miniMaxH3PromptEnhanceDurationFromText(requirements)
+        : miniMaxH3RequestedDuration(payload))
+    : 0;
   const isCreate = !prompt && !isAnimation;
   if (!prompt && isMiniMaxH3 && !requirements) throw new Error("请输入 MiniMax H3 视频创意或当前 Prompt");
   if (!prompt && isAnimation && !isMiniMaxH3) throw new Error("请输入Prompt");
@@ -8657,13 +8664,15 @@ function buildGrokPromptOptimizeRequest(payload) {
   ].join("\n") : "";
   const userText = isMiniMaxH3
     ? [
+        `mode: ${h3Mode}`,
+        `durationSeconds: ${h3DurationSeconds}`,
         "currentPrompt:",
         prompt || "N/A",
         "",
         "requirements:",
         requirements || "N/A",
         "",
-        miniMaxH3PromptProtocolRules()
+        miniMaxH3PromptProtocolRules(h3Mode, miniMaxH3ContentContract(payload))
       ].join("\n")
     : (isOrdinaryArtOptimize
       ? (usesStructuredArtPrompt ? ordinaryArtStructuredUserText : ordinaryArtUserText)
@@ -8746,11 +8755,11 @@ function buildGrokPromptOptimizeRequest(payload) {
     inputMeta,
     resultOptions: isMiniMaxH3 ? {
       minimaxH3Prompt: true,
-      minimaxH3Mode: miniMaxH3EnhanceMode(payload),
+      minimaxH3Mode: h3Mode,
       visualRetryAllowed: true,
       currentPrompt: prompt,
       requirements,
-      durationSeconds: miniMaxH3PromptEnhanceDurationFromText(requirements),
+      durationSeconds: h3DurationSeconds,
       supportsNegativePrompt: false
     } : (isOrdinaryArtOptimize
       ? (usesStructuredArtPrompt ? {

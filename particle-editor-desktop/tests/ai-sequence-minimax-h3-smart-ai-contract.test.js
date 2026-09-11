@@ -119,8 +119,10 @@ assert.doesNotMatch(source, /buildMiniMaxH3GuaranteedFallback|已写入可用H3�
   "H3 reverse failures must never promote a generic protocol template to a successful writeback");
 assert.match(source, /state\.messageTone === "error" \? "error"/,
   "H3 reverse fact-validation failures must expose an explicit error tone");
-assert.match(source, /视觉事实校验失败，已重试1次，未写入/);
-assert.match(source, /原提示词保持不变，可重新分析参考图/);
+assert.match(source, /validationLeaf: cleanSmartAiFailureCode\(readValue\("validationLeaf"\) \|\| readValue\("h3ValidationLeaf"\)\)/,
+  "H3 failure details must preserve the backend validation leaf for diagnosis");
+assert.match(source, /failure\?\.failureClass,[\s\S]*?failure\?\.validationLeaf/,
+  "H3 status text must include the failure class and validation leaf in its error codes");
 assert.match(source, /role="\$\{state\.messageTone === "error" \? "alert" : "status"\}"/);
 
 const failureCategorySource = extractNamedFunction(source, "smartAiFailureCategoryLabel");
@@ -293,7 +295,7 @@ const captureContextVm = vm.createContext({
 });
 const captureH3Context = vm.runInContext(`(${captureContextSource})`, captureContextVm);
 assert.equal(captureH3Context({}, {}), null, "Wan and other animation surfaces must not enter the H3 branch");
-assert.match(source, /if \(isMiniMaxH3ReverseRequest[\s\S]*?视觉事实校验失败，已重试1次，未写入/,
+assert.match(source, /if \(isMiniMaxH3ReverseRequest[\s\S]*?state\.message = smartAiAnalysisFailureStatusMessage\(failure\)/,
   "the no-write failure state must remain scoped to H3 reverse rather than Wan or other providers");
 captureContextVm.readMiniMaxH3PromptSurfaceState = () => ({ modelId: "minimax_h3_local", mode: "text_video" });
 assert.equal(captureH3Context({}, {}).mode, "text_video");
@@ -1039,7 +1041,7 @@ async function verifySubmitRouting() {
   assert.equal(invalidContract.calls.writes.length, 0);
   assert.equal(invalidContract.positive.value, "人物向镜头转身");
   assert.equal(invalidContract.state.messageTone, "error");
-  assert.match(invalidContract.state.message, /视觉事实校验失败，已重试1次，未写入/);
+  assert.match(invalidContract.state.message, /分析失败—未写入：MiniMax H3 fields must appear exactly in protocol order/);
 
   const missingReference = createReverseSubmitHarness("local", "image_video");
   missingReference.state.miniMaxH3ReverseError = "首帧尚未添加可用参考图";
@@ -1069,7 +1071,7 @@ async function verifySubmitRouting() {
     assert.equal(timedOut.state.analysisFailure.requestedVisualSchema, "nf.h3.visual.v1");
     assert.equal(timedOut.state.analysisFailure.retryAttempted, true);
     assert.equal(timedOut.state.analysisFailure.retryCount, 1);
-    assert.match(timedOut.state.message, /视觉事实校验失败，已重试1次，未写入/);
+    assert.match(timedOut.state.message, new RegExp(`分析失败—未写入：${engine} H3 bridge timeout`));
   }
 
   for (const engine of ["local", "grok"]) {
@@ -1087,7 +1089,7 @@ async function verifySubmitRouting() {
       `${engine} stage-one fact failure must preserve the original prompt`);
     assert.equal(stageOneFailed.positive.value, "人物向镜头转身");
     assert.equal(stageOneFailed.state.messageTone, "error");
-    assert.match(stageOneFailed.state.message, /视觉事实校验失败，已重试1次，未写入/);
+    assert.match(stageOneFailed.state.message, new RegExp(`分析失败—未写入：${engine} H3 stage-one visual facts failed`));
   }
 
   const deterministicValidationFailed = createReverseSubmitHarness("local", "image_video", "", {
@@ -1112,7 +1114,7 @@ async function verifySubmitRouting() {
     "deterministic validation failure must preserve the original prompt");
   assert.equal(deterministicValidationFailed.positive.value, "人物向镜头转身");
   assert.equal(deterministicValidationFailed.state.messageTone, "error");
-  assert.match(deterministicValidationFailed.state.message, /视觉事实校验失败，已重试1次，未写入/);
+  assert.match(deterministicValidationFailed.state.message, /分析失败—未写入：local H3 deterministic validation failed/);
 
   const invalid = createReverseSubmitHarness("local", "first_last", "", {
     ok: true,
@@ -1125,7 +1127,7 @@ async function verifySubmitRouting() {
   assert.equal(invalid.calls.fallback, 0);
   assert.equal(invalid.calls.writes.length, 0);
   assert.equal(invalid.positive.value, "人物向镜头转身");
-  assert.match(invalid.state.message, /视觉事实校验失败，已重试1次，未写入/);
+  assert.match(invalid.state.message, /分析失败—未写入：MiniMax H3 反推返回了不兼容的视觉合同/);
 
   for (const engine of ["local", "grok"]) {
     for (const visualSchema of [undefined, "nf.visual.v2"]) {

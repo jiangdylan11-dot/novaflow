@@ -736,8 +736,29 @@ const optimizeContext = {
   smartAiImageArtDirectorRules: () => "",
   smartAiChinesePromptOutputRules: () => "",
   smartAiInputText: context.smartAiInputText,
-  miniMaxH3PromptProtocolRules: () => protocolRules,
-  miniMaxH3EnhanceMode: () => "text_video",
+  miniMaxH3PromptProtocolRules: vm.runInNewContext(
+    `(${extractNamedFunction(source, "miniMaxH3PromptProtocolRules")})`,
+    {
+      MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER: "H3_CONTENT_POLICY_BLOCKED",
+    },
+  ),
+  miniMaxH3PromptEnhanceDurationFromText: vm.runInNewContext(
+    `(${extractNamedFunction(source, "miniMaxH3PromptEnhanceDurationFromText")})`,
+    {
+      normalizeSmartAiText: context.normalizeSmartAiText,
+    },
+  ),
+  miniMaxH3RequestedDuration: vm.runInNewContext(
+    `(${extractNamedFunction(source, "miniMaxH3RequestedDuration")})`,
+    {
+      normalizeSmartAiText: context.normalizeSmartAiText,
+    },
+  ),
+  miniMaxH3ContentContract: () => ({
+    visualSchema: "nf.h3.visual.v1",
+    contentPolicy: { sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false },
+  }),
+  miniMaxH3EnhanceMode: (payload) => String(payload?.h3Mode || "text_video"),
   MINIMAX_H3_PROMPT_MAX_OUTPUT_TOKENS: 4096,
   adminData: context.adminData,
   Error,
@@ -750,6 +771,8 @@ const optimized = buildOptimize({
   purpose: "minimax-h3-prompt-enhance",
   currentPrompt: "白色纸飞机从桌面起飞",
   requirements: "T2VA；时长 5 秒；保持柔和晨光",
+  h3Mode: "text_video",
+  durationSeconds: 5,
   surface: "animation",
   provider: "grok",
 });
@@ -759,7 +782,27 @@ assert.match(optimizeUserText, /contains Chinese[\s\S]*?Simplified Chinese/);
 assert.match(optimizeUserText, /integrated_multimodal_description[\s\S]*?overall_soundscape[\s\S]*?non_diegetic_music/);
 assert.match(optimizeUserText, /\[Shot 1\][\s\S]*?\[Shot N\] At MM:SS\.mmm/);
 assert.equal(optimized.inputMeta.mode, "minimax_h3_prompt_enhance");
+assert.equal(optimized.resultOptions.visualRetryAllowed, true);
+assert.equal(optimized.resultOptions.durationSeconds, 5);
 assert.equal(optimized.resultOptions.supportsNegativePrompt, false);
+
+const optimizedFl2v = buildOptimize({
+  purpose: "minimax-h3-prompt-enhance",
+  currentPrompt: "小角色从首帧动作连续过渡到尾帧",
+  requirements: "让动画更生动",
+  h3Mode: "first_last",
+  durationSeconds: 4,
+  visualSchema: "nf.h3.visual.v1",
+  surface: "animation",
+  provider: "grok",
+});
+const optimizeFl2vUserText = optimizedFl2v.body.input[1].content[0].text;
+assert.match(optimizeFl2vUserText, /mode: first_last/);
+assert.match(optimizeFl2vUserText, /durationSeconds: 4/);
+assert.match(optimizeFl2vUserText, /<Picture 1>[\s\S]*?<Picture 2>[\s\S]*?\[Shot 1\][\s\S]*?selected duration/);
+assert.match(optimizeFl2vUserText, /FL2VA may reference only <Picture 1> and <Picture 2>/);
+assert.equal(optimizedFl2v.resultOptions.minimaxH3Mode, "first_last");
+assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
 
 const fl2v = build({
   userPrompt: "",

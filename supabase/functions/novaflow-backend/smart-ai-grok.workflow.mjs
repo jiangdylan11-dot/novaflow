@@ -7605,15 +7605,20 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
   );
   if (!prompt && !requirements) throw new Error("请输入 MiniMax H3 视频创意或当前 Prompt");
   const mode = miniMaxH3EnhanceMode(payload);
+  const directDuration = payload?.durationSeconds ?? payload?.duration_seconds ?? payload?.duration;
+  const durationSeconds = directDuration === undefined || directDuration === null || directDuration === ""
+    ? miniMaxH3PromptEnhanceDurationFromText(requirements)
+    : miniMaxH3RequestedDuration(payload);
   const userText = [
     `mode: ${mode}`,
+    `durationSeconds: ${durationSeconds}`,
     "currentPrompt:",
     prompt || "N/A",
     "",
     "requirements:",
     requirements || "N/A",
     "",
-    miniMaxH3PromptProtocolRules(),
+    miniMaxH3PromptProtocolRules(mode, miniMaxH3ContentContract(payload)),
     "",
     "The selected H3 mode is authoritative. Return the three-field contract for T2VA/I2VA/FL2VA/L2VA or the six-field contract for Ref2VA."
   ].join("\n");
@@ -7651,7 +7656,7 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
       visualRetryAllowed: true,
       currentPrompt: prompt,
       requirements,
-      durationSeconds: miniMaxH3PromptEnhanceDurationFromText(requirements),
+      durationSeconds,
       supportsNegativePrompt: false
     }
   };

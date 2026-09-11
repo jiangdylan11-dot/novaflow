@@ -2295,6 +2295,7 @@
       requestedVisualSchema: cleanSmartAiFailureCode(readValue("requestedVisualSchema")),
       failureCategory: cleanSmartAiFailureText(readValue("failureCategory"), 120),
       failureClass: cleanSmartAiFailureCode(readValue("failureClass")),
+      validationLeaf: cleanSmartAiFailureCode(readValue("validationLeaf") || readValue("h3ValidationLeaf")),
       generationGate: cleanSmartAiFailureCode(readValue("generationGate")),
       sensitivePromptBlocked: readValue("sensitivePromptBlocked") === true
     };
@@ -2355,7 +2356,12 @@
         : "为避免旧版 v1 内容错误写入，本次未回退到 legacy 合同。");
     }
     if (failure?.reverseProvider) lines.push(`分析引擎：${failure.reverseProvider}`);
-    const codes = Array.from(new Set([failure?.errorCode, failure?.providerFailureCode].filter(Boolean)));
+    const codes = Array.from(new Set([
+      failure?.errorCode,
+      failure?.providerFailureCode,
+      failure?.failureClass,
+      failure?.validationLeaf
+    ].filter(Boolean)));
     if (codes.length) lines.push(`错误代码：${codes.join(" / ")}`);
     return lines.join("\n");
   }
@@ -4600,7 +4606,7 @@
         state.pendingApply = null;
         state.revealAnalysisOnRender = false;
         state.messageTone = "error";
-        state.message = "视觉事实校验失败，已重试1次，未写入。原提示词保持不变，可重新分析参考图。";
+        state.message = smartAiAnalysisFailureStatusMessage(failure);
         renderDialog();
         return;
       }

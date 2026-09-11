@@ -3857,7 +3857,10 @@ test("ordinary Art create and animation retain their existing full-result contra
     surface: "animation",
     purpose: "minimax-h3-prompt-enhance",
     prompt: "一名角色抬手",
-    requirements: "固定镜头"
+    requirements: "固定镜头",
+    h3Mode: "text_video",
+    durationSeconds: 5,
+    visualSchema: "nf.h3.visual.v1"
   }, "grok-contract-test");
   assert.equal(h3Request.resultOptions.minimaxH3Prompt, true);
   assert.equal(h3Request.resultOptions.ordinaryArtPromptPatch, undefined);
