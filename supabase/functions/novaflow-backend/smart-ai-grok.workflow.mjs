@@ -2096,11 +2096,14 @@ function miniMaxH3RichVisualValidationLeaf(text) {
   ));
   if (missingConcreteSection >= 0) return `rich_section_${missingConcreteSection + 1}_facts_missing`;
   const subjectText = normalizeGrokVisualIrScanText(sectionBodies[1] || "");
-  const hasSensitiveFact = GROK_VISUAL_IR_SAFE_SENSITIVE_PATTERN.test(subjectText);
+  const categories = miniMaxH3SensitiveCategories(subjectText, { affirmativeOnly: true });
+  // Exposed skin or a static pose does not establish an interaction in a still image.
+  const hasActivityClaim = ["sexual_activity", "penetration", "oral_sex", "anal_sex", "masturbation"]
+    .some((category) => categories.has(category));
   const hasParticipantContact = GROK_VISUAL_IR_PARTICIPANT_CONTACT_PATTERN.test(subjectText);
   const hasConcreteAction = GROK_VISUAL_IR_CONCRETE_INTERACTION_PATTERN.test(subjectText);
-  if (hasSensitiveFact && hasConcreteAction && !hasParticipantContact) return "rich_interaction_contact_missing";
-  if (hasSensitiveFact && hasParticipantContact && !hasConcreteAction) return "rich_interaction_action_missing";
+  if (hasActivityClaim && !hasParticipantContact) return "rich_interaction_contact_missing";
+  if (hasActivityClaim && !hasConcreteAction) return "rich_interaction_action_missing";
   return "rich_valid";
 }
 
