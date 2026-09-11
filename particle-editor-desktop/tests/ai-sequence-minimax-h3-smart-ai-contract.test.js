@@ -8,9 +8,9 @@ const source = fs.readFileSync(path.join(root, "particle-editor", "novaflow-smar
 const index = fs.readFileSync(path.join(root, "particle-editor", "index.html"), "utf8");
 const bundle = fs.readFileSync(path.join(root, "particle-editor", "assets", "index-BbIa-2NM.js"), "utf8");
 
-const promptWorkflowScript = "ai-sequence-minimax-h3-prompt.workflow.js?v=20260813-minimax-h3-guaranteed-output-1";
-const reverseWorkflowScript = "ai-sequence-minimax-h3-reverse.workflow.js?v=20260813-minimax-h3-visual-facts-1";
-const smartAiScript = "novaflow-smart-ai.js?v=20260816-art-simple-structured-1";
+const promptWorkflowScript = "ai-sequence-minimax-h3-prompt.workflow.js?v=20260819-minimax-h3-longfps-1";
+const reverseWorkflowScript = "ai-sequence-minimax-h3-reverse.workflow.js?v=20260819-minimax-h3-longfps-1";
+const smartAiScript = "novaflow-smart-ai.js?v=20260907-h3-assistant-hydrate-1";
 assert.ok(index.includes(promptWorkflowScript), "the H3 prompt workflow must load from the authoritative entry");
 assert.ok(index.includes(reverseWorkflowScript), "the H3 reverse workflow must load from the authoritative entry");
 assert.ok(index.includes(smartAiScript), "the H3-aware Smart AI surface must use its current cache key");
@@ -563,11 +563,13 @@ const fakeWorkflow = {
 };
 const prepareState = {
   context: {
+    button: {},
+    promptTarget: {},
     miniMaxH3: {
       modelId: "minimax_h3_local",
       mode: "multi_reference",
       durationSeconds: 5,
-      resources: capturedResources
+      resources: []
     }
   }
 };
@@ -577,6 +579,12 @@ const prepareContext = vm.createContext({
   MINIMAX_H3_VISUAL_SCHEMA: "nf.h3.visual.v1",
   miniMaxH3ContentPolicy: () => ({ sensitiveVisualAnalysis: true, allSubjectsConfirmedAdult: false }),
   getMiniMaxH3PromptWorkflow: () => fakeWorkflow,
+  readMiniMaxH3PromptSurfaceState: () => ({
+    modelId: "minimax_h3_local",
+    mode: "multi_reference",
+    durationSeconds: 5,
+    resources: capturedResources
+  }),
   Object
 });
 const prepareRequest = vm.runInContext(`(${prepareSource})`, prepareContext);
@@ -589,6 +597,103 @@ assert.equal(prepareCalls[0].durationSeconds, 5);
 assert.equal(prepareCalls[0].prompt, "@参考图1 转身");
 assert.deepEqual({ ...prepareCalls[0].contentPolicy }, { sensitiveVisualAnalysis: true, allSubjectsConfirmedAdult: false });
 assert.equal(prepareCalls[0].resources[0].fileName, "hero.png");
+assert.equal(prepareState.context.miniMaxH3.resources[0].fileName, "hero.png", "H3 prompt preparation must refresh live resources selected after dialog open");
+
+const reversePrepareSource = extractNamedFunction(source, "prepareMiniMaxH3ReverseRequest");
+const reversePrepareCalls = [];
+const reverseHydrateCalls = [];
+const reverseContentPolicy = { sensitiveVisualAnalysis: true, allSubjectsConfirmedAdult: false };
+const hydratedFirstLastResources = [
+  {
+    key: "first_frame",
+    label: "首帧",
+    kind: "image",
+    occupied: true,
+    identity: "first-live",
+    sourceId: "first-live",
+    fileName: "first.png",
+    mimeType: "image/png",
+    dataUrl: "data:image/png;base64,RklSU1Q="
+  },
+  {
+    key: "last_frame",
+    label: "尾帧",
+    kind: "image",
+    occupied: true,
+    identity: "last-live",
+    sourceId: "last-live",
+    fileName: "last.png",
+    mimeType: "image/png",
+    dataUrl: "data:image/png;base64,TEFTVA=="
+  }
+];
+const reversePrepareState = {
+  context: {
+    button: {},
+    promptTarget: {},
+    miniMaxH3: {
+      modelId: "minimax_h3_local",
+      mode: "first_last",
+      durationSeconds: 5,
+      resources: []
+    }
+  }
+};
+const reversePrepareContext = vm.createContext({
+  state: reversePrepareState,
+  MINIMAX_H3_MODEL_ID: "minimax_h3_local",
+  MINIMAX_H3_VISUAL_SCHEMA: "nf.h3.visual.v1",
+  MINIMAX_H3_I2V_REVERSE_PURPOSE: "minimax-h3-i2v-reverse",
+  MINIMAX_H3_FL2V_REVERSE_PURPOSE: "minimax-h3-fl2v-reverse",
+  miniMaxH3ContentPolicy: () => reverseContentPolicy,
+  readMiniMaxH3PromptSurfaceState: () => ({
+    modelId: "minimax_h3_local",
+    mode: "first_last",
+    durationSeconds: 5,
+    resources: [
+      {
+        key: "first_frame",
+        label: "首帧",
+        kind: "image",
+        occupied: true,
+        identity: "first-live",
+        sourceId: "first-live",
+        previewUrl: "blob:first-frame"
+      },
+      {
+        key: "last_frame",
+        label: "尾帧",
+        kind: "image",
+        occupied: true,
+        identity: "last-live",
+        sourceId: "last-live",
+        previewUrl: "blob:last-frame"
+      }
+    ]
+  }),
+  hydrateMiniMaxH3ReverseResources: async (captured) => {
+    reverseHydrateCalls.push(captured);
+    return hydratedFirstLastResources;
+  },
+  getMiniMaxH3ReverseWorkflow: () => ({
+    getCapability: () => ({ supportsReverse: true }),
+    prepareRequest(input) {
+      reversePrepareCalls.push(input);
+      return {
+        request: {
+          purpose: "minimax-h3-fl2v-reverse",
+          visualSchema: "nf.h3.visual.v1",
+          contentPolicy: input.contentPolicy,
+          images: input.resources.map((item) => ({ role: item.key, dataUrl: item.dataUrl }))
+        },
+        context: { requestId: "h3-reverse-1" }
+      };
+    },
+    validateAndRestore() {}
+  }),
+  Object
+});
+const prepareReverseRequest = vm.runInContext(`(${reversePrepareSource})`, reversePrepareContext);
 
 const validateSource = extractNamedFunction(source, "validateMiniMaxH3PromptResult");
 const validateCalls = [];
@@ -638,8 +743,8 @@ function createSubmitHarness(engine, validationFailure = "") {
       promptTarget: {},
       miniMaxH3: {
         modelId: "minimax_h3_local",
-        mode: "multi_reference",
-        durationSeconds: 5,
+        mode: "first_last",
+        durationSeconds: 4,
         resources: capturedResources
       }
     },
@@ -657,6 +762,7 @@ function createSubmitHarness(engine, validationFailure = "") {
   const context = vm.createContext({
     state,
     MINIMAX_H3_PROMPT_PURPOSE: "minimax-h3-prompt-enhance",
+    MINIMAX_H3_VISUAL_SCHEMA: "nf.h3.visual.v1",
     window: {
       electronAPI: {
         async smartAiPromptOptimize(payload) { calls.grok.push(payload); return response; },
@@ -672,7 +778,12 @@ function createSubmitHarness(engine, validationFailure = "") {
     renderDialog: () => { calls.renders += 1; },
     prepareMiniMaxH3PromptRequest: () => {
       calls.prepare += 1;
-      return { prompt: "compiled H3 request", requirements: "H3 protocol", context: {}, workflow: {} };
+      return {
+        prompt: "compiled H3 request",
+        requirements: "H3 protocol",
+        context: { mode: "first_last", durationSeconds: 4 },
+        workflow: {}
+      };
     },
     validateMiniMaxH3PromptResult: () => {
       calls.validate += 1;
@@ -833,6 +944,17 @@ async function verifySubmitRouting() {
   assert.equal(refreshCalls.strict, 1, "H3 assistant must hydrate through the strict reverse workflow path");
   assert.equal(refreshCalls.generic, 0, "H3 assistant must never scan generic animation image DOM");
 
+  const reversePrepared = await prepareReverseRequest("人物从首帧走向尾帧", "保持身份");
+  assert.equal(reverseHydrateCalls.length, 1, "H3 reverse submit preparation must hydrate the latest live resources");
+  assert.equal(reverseHydrateCalls[0].resources[0].previewUrl, "blob:first-frame");
+  assert.equal(reversePrepareCalls.length, 1);
+  assert.equal(reversePrepareCalls[0].mode, "first_last");
+  assert.equal(reversePrepareCalls[0].resources[0].dataUrl, "data:image/png;base64,RklSU1Q=");
+  assert.equal(reversePrepareCalls[0].resources[1].dataUrl, "data:image/png;base64,TEFTVA==");
+  assert.equal(reversePrepareState.context.miniMaxH3.resources[0].dataUrl, "data:image/png;base64,RklSU1Q=",
+    "H3 reverse preparation must not overwrite hydrated state with a preview-only live snapshot");
+  assert.equal(reversePrepared.request.purpose, "minimax-h3-fl2v-reverse");
+
   for (const engine of ["grok", "local"]) {
     const harness = createSubmitHarness(engine);
     await harness.run();
@@ -843,6 +965,9 @@ async function verifySubmitRouting() {
     assert.equal(payloads[0].supportsNegativePrompt, false);
     assert.equal(payloads[0].negativePrompt, "");
     assert.equal(payloads[0].prompt, "compiled H3 request");
+    assert.equal(payloads[0].h3Mode, "first_last");
+    assert.equal(payloads[0].durationSeconds, 4);
+    assert.equal(payloads[0].visualSchema, "nf.h3.visual.v1");
     assert.equal(Object.hasOwn(payloads[0], "promptSchema"), false,
       "H3 prompt enhancement must stay outside the ordinary Art structured schema");
     assert.match(payloads[0].requirements, /H3 protocol/);

@@ -202,6 +202,22 @@ const buildRequest = vm.runInNewContext(
     normalizeSmartAiText: (value, limit = 20000) => String(value || "").trim().slice(0, limit),
     smartAiPayloadPurpose: (payload) => String(payload?.purpose || "").toLowerCase(),
     miniMaxH3PromptProtocolRules: protocolRules,
+    miniMaxH3PromptEnhanceDurationFromText: vm.runInNewContext(
+      `(${extractNamedFunction(serverSource, "miniMaxH3PromptEnhanceDurationFromText")})`,
+      {
+        normalizeSmartAiText: (value, limit = 12000) => String(value || "").trim().slice(0, limit),
+      },
+    ),
+    miniMaxH3RequestedDuration: vm.runInNewContext(
+      `(${extractNamedFunction(serverSource, "miniMaxH3RequestedDuration")})`,
+      {
+        normalizeSmartAiText: (value, limit = 12000) => String(value || "").trim().slice(0, limit),
+      },
+    ),
+    miniMaxH3ContentContract: () => ({
+      visualSchema: "nf.h3.visual.v1",
+      contentPolicy: { sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false },
+    }),
     miniMaxH3EnhanceMode: () => "full_reference",
     smartAiImageArtDirectorRules: () => "generic image rules",
     smartAiChinesePromptOutputRules: () => "generic output rules",
@@ -228,6 +244,9 @@ assert.equal(cloud.inputMeta.purpose, "minimax-h3-prompt-enhance");
 assert.equal(cloud.inputMeta.surface, "animation");
 assert.equal(cloud.inputMeta.provider, "grok");
 assert.equal(cloud.resultOptions.minimaxH3Prompt, true);
+assert.equal(cloud.resultOptions.visualRetryAllowed, true);
+assert.equal(cloud.resultOptions.currentPrompt, "current H3 prompt");
+assert.equal(cloud.resultOptions.durationSeconds, 8);
 assert.equal(cloud.resultOptions.supportsNegativePrompt, false);
 const cloudUserText = cloud.body.input[1].content[0].text;
 assert.match(cloudUserText, /currentPrompt:\s*current H3 prompt/);
@@ -405,19 +424,19 @@ def fake_failed_generate(prompt, **kwargs):
     return """integrated_multimodal_description: Incomplete protocol.\noverall_soundscape: N/A"""
 
 failed_assistant.generate = fake_failed_generate
-try:
-    failed_assistant.optimize_prompt({
-        "currentPrompt": "A subject moves",
-        "requirements": "Protocol: T2VA; duration 5 seconds",
-        "purpose": "minimax-h3-prompt-enhance",
-    })
-    raise AssertionError("two invalid H3 outputs must fail closed")
-except ValueError as error:
-    assert "MiniMax H3" in str(error)
-    assert "重试" in str(error)
+failed_fallback = failed_assistant.optimize_prompt({
+    "currentPrompt": "A subject moves",
+    "requirements": "Protocol: T2VA; duration 5 seconds",
+    "purpose": "minimax-h3-prompt-enhance",
+})
 assert len(failed_calls) == 2
 assert failed_calls[0][1]["max_length"] == expected_initial_budgets["T2VA"]
 assert failed_calls[1][1]["max_length"] == expected_repair_budgets["T2VA"]
+assert failed_fallback["negativePrompt"] == ""
+assert "integrated_multimodal_description:" in failed_fallback["positivePrompt"]
+assert "[Shot 1]" in failed_fallback["positivePrompt"]
+assert "A subject moves" in failed_fallback["positivePrompt"]
+assert service["validate_minimax_h3_prompt_contract"](failed_fallback["positivePrompt"], "T2VA", 5) == failed_fallback["positivePrompt"]
 
 base_output = """integrated_multimodal_description: [Shot 1] A subject begins moving while Camera holds stable framing.\noverall_soundscape: Footsteps.\nnon_diegetic_music: N/A"""
 shotless_output = """integrated_multimodal_description: A subject begins moving while Camera holds stable framing.\noverall_soundscape: Footsteps.\nnon_diegetic_music: N/A"""
@@ -459,7 +478,9 @@ for negative_section in (
 
 reference_output = """subject_definitions: <Subject 1> is established by <Picture 1>.\nsummary: [reference generation] The target uses <Subject 1>.\nretention_analysis: <Subject 1>: fully_preserved.\ndetailed_description: [Shot 1] The subject moves through the scene while Camera holds stable framing.\noverall_soundscape: Synchronized ambience.\nnon_diegetic_music: N/A"""
 assert service["normalize_minimax_h3_prompt_output"](reference_output) == reference_output
-assert service["validate_minimax_h3_prompt_contract"](reference_output, "Ref2VA", 5) == reference_output
+validated_reference_output = service["validate_minimax_h3_prompt_contract"](reference_output, "Ref2VA", 5)
+assert "<Subject 1>: subject described by the generated prompt narrative." in validated_reference_output
+assert "detailed_description: [Shot 1] The subject moves through the scene while Camera holds stable framing." in validated_reference_output
 try:
     service["normalize_minimax_h3_prompt_output"]("plain prose without H3 fields")
     raise AssertionError("invalid H3 output must fail")
@@ -684,6 +705,9 @@ forwarded = preview._prompt_assistant_optimize_payload({
     "requirements": "H3 field protocol",
     "currentPrompt": "current surface prompt",
     "provider": "grok",
+    "h3Mode": "first_last",
+    "durationSeconds": 4,
+    "visualSchema": "nf.h3.visual.v1",
 })
 assert forwarded == {
     "prompt": "compiled prompt",
@@ -695,6 +719,9 @@ assert forwarded == {
     "currentPrompt": "current surface prompt",
     "provider": "grok",
     "nsfw": False,
+    "h3Mode": "first_last",
+    "durationSeconds": 4,
+    "visualSchema": "nf.h3.visual.v1",
 }
 forwarded_simple_art = preview._prompt_assistant_optimize_payload({
     "prompt": "一个比基尼女牵着一条狗走在海边，二次元风格",
@@ -768,6 +795,9 @@ class FakePreviewHandler:
             "requirements": "H3 field protocol",
             "currentPrompt": "current surface prompt",
             "provider": "grok",
+            "h3Mode": "first_last",
+            "durationSeconds": 4,
+            "visualSchema": "nf.h3.visual.v1",
         }).encode("utf-8")
     def _write_json_response(self, status, payload):
         self.response = (status, payload)

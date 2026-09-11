@@ -2285,7 +2285,9 @@ class H3LocalVisualContractTest(unittest.TestCase):
     def test_duration_contract_is_strict_and_timeline_accepts_exact_endpoint_only(self):
         self.assertEqual(SERVICE.minimax_h3_duration_from_requirements("duration 1 second"), 1.0)
         self.assertEqual(SERVICE.minimax_h3_duration_from_requirements("duration: 15.00 seconds"), 15.0)
-        for invalid in ("", "duration 0.99 seconds", "duration 15.001 seconds"):
+        self.assertEqual(SERVICE.minimax_h3_duration_from_requirements("duration 30.00 seconds"), 30.0)
+
+        for invalid in ("", "duration 0.99 seconds", "duration 30.001 seconds"):
             with self.subTest(invalid=invalid):
                 with self.assertRaises(ValueError):
                     SERVICE.minimax_h3_duration_from_requirements(invalid)
@@ -2302,7 +2304,7 @@ class H3LocalVisualContractTest(unittest.TestCase):
             )
 
     def test_reverse_rejects_missing_or_out_of_range_duration_before_visual_inference(self):
-        for requirements in ("no duration supplied", "duration 20 seconds"):
+        for requirements in ("no duration supplied", "duration 30.001 seconds"):
             with self.subTest(requirements=requirements):
                 assistant, compile_calls = self.assistant([h3_output()])
                 with self.assertRaises(ValueError):
@@ -2596,6 +2598,28 @@ class H3LocalVisualContractTest(unittest.TestCase):
         self.assertEqual(completed[0]["repairCalls"], 0)
         self.assertTrue(completed[0]["deterministicVisualPrimary"])
         self.assertFalse(completed[0]["deterministicVisualFallback"])
+
+    def test_deterministic_primary_preserves_dialogue_and_ambient_sync_request(self):
+        FakeAdapter.outputs = [contract_json()]
+        assistant, compile_calls = self.assistant([h3_output()])
+        request_text = "保留人物身份与对白，强化镜头节奏，并让环境声与动作同步。"
+        result = assistant.reverse_image_prompt(self.request(
+            userPrompt=request_text,
+            userRequirements="",
+        ))
+        prompt = result["positivePrompt"]
+        self.assertEqual(compile_calls, [])
+        self.assertIn("overall_soundscape:", prompt)
+        self.assertIn("对白", prompt)
+        self.assertIn("环境声与动作同步", prompt)
+        SERVICE.validate_minimax_h3_prompt_contract(prompt, "I2VA", 5)
+        SERVICE.validate_minimax_h3_visual_fact_coverage(
+            prompt,
+            [SERVICE.parse_local_compact_visual_contract(contract_json())],
+            False,
+            request_text,
+            require_entity_slots=True,
+        )
 
     def test_invalid_deterministic_primary_returns_safe_structured_error(self):
         FakeAdapter.outputs = [contract_json()]

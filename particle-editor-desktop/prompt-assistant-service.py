@@ -5208,9 +5208,41 @@ def minimax_h3_mode_from_requirements(requirements: str) -> str:
         text,
     )
     if explicit:
-        return explicit.group(1).upper()
+        return "Ref2VA" if explicit.group(1).lower() == "ref2va" else explicit.group(1).upper()
     fallback = re.search(r"(?i)\b(T2VA|I2VA|FL2VA|L2VA|Ref2VA)\b", text)
-    return fallback.group(1).upper() if fallback else ""
+    if not fallback:
+        return ""
+    return "Ref2VA" if fallback.group(1).lower() == "ref2va" else fallback.group(1).upper()
+
+
+def minimax_h3_mode_from_payload(payload: dict, requirements: str) -> str:
+    raw_mode = clean_text(
+        payload.get("h3Mode")
+        or payload.get("h3_mode")
+        or payload.get("minimaxH3Mode")
+        or payload.get("minimax_h3_mode")
+        or ""
+    ).lower()
+    aliases = {
+        "text_video": "T2VA",
+        "text-video": "T2VA",
+        "t2va": "T2VA",
+        "image_video": "I2VA",
+        "image-video": "I2VA",
+        "i2va": "I2VA",
+        "first_last": "FL2VA",
+        "first-last": "FL2VA",
+        "fl2va": "FL2VA",
+        "video_reference": "L2VA",
+        "video-reference": "L2VA",
+        "l2va": "L2VA",
+        "multi_reference": "Ref2VA",
+        "multi-reference": "Ref2VA",
+        "full_reference": "Ref2VA",
+        "full-reference": "Ref2VA",
+        "ref2va": "Ref2VA",
+    }
+    return aliases.get(raw_mode) or minimax_h3_mode_from_requirements(requirements)
 
 
 def minimax_h3_prompt_max_length(mode: str, repair: bool = False) -> int:
@@ -5233,6 +5265,31 @@ def minimax_h3_duration_from_requirements(requirements: str):
         raise ValueError("MiniMax H3 请求缺少有效时长，时长必须为 1 到 30 秒")
     try:
         duration = float(match.group(1))
+    except (TypeError, ValueError):
+        raise ValueError("MiniMax H3 请求时长无效，时长必须为 1 到 30 秒") from None
+    if (
+        not math.isfinite(duration)
+        or duration < MINIMAX_H3_MIN_DURATION_SECONDS
+        or duration > MINIMAX_H3_MAX_DURATION_SECONDS
+    ):
+        raise ValueError("MiniMax H3 请求时长超出范围，时长必须为 1 到 30 秒")
+    return round(duration, 3)
+
+
+def minimax_h3_duration_from_payload(payload: dict, requirements: str):
+    direct = (
+        payload.get("durationSeconds")
+        if "durationSeconds" in payload
+        else payload.get("duration_seconds")
+        if "duration_seconds" in payload
+        else payload.get("duration")
+        if "duration" in payload
+        else None
+    )
+    if direct is None or clean_text(direct) == "":
+        return minimax_h3_duration_from_requirements(requirements)
+    try:
+        duration = float(direct)
     except (TypeError, ValueError):
         raise ValueError("MiniMax H3 请求时长无效，时长必须为 1 到 30 秒") from None
     if (
@@ -16474,9 +16531,9 @@ class PromptAssistant:
         )
         requirements_limit = 12000 if is_minimax_h3 else 2000
         requirements = clean_text(payload.get("requirements") or "")[:requirements_limit]
-        minimax_h3_mode = minimax_h3_mode_from_requirements(requirements) if is_minimax_h3 else ""
+        minimax_h3_mode = minimax_h3_mode_from_payload(payload, requirements) if is_minimax_h3 else ""
         minimax_h3_duration = (
-            minimax_h3_duration_from_requirements(requirements)
+            minimax_h3_duration_from_payload(payload, requirements)
             if is_minimax_h3
             else None
         )

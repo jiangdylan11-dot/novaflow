@@ -562,7 +562,7 @@
     }
   }
 
-  function prepareMiniMaxH3ReverseRequest(prompt, requirements) {
+  async function prepareMiniMaxH3ReverseRequest(prompt, requirements) {
     let captured = state.context?.miniMaxH3;
     const live = typeof readMiniMaxH3PromptSurfaceState === "function"
       ? readMiniMaxH3PromptSurfaceState(state.context?.button, state.context?.promptTarget)
@@ -574,6 +574,11 @@
       }
     }
     if (!captured || captured.modelId !== MINIMAX_H3_MODEL_ID) return null;
+    const resources = await hydrateMiniMaxH3ReverseResources(captured);
+    captured = Object.freeze(Object.assign({}, captured, { resources }));
+    if (state.context && typeof state.context === "object") {
+      state.context = Object.assign({}, state.context, { miniMaxH3: captured });
+    }
     const workflow = getMiniMaxH3ReverseWorkflow();
     const contentPolicy = miniMaxH3ContentPolicy();
     const prepared = workflow.prepareRequest({
@@ -583,7 +588,7 @@
       prompt: String(prompt || ""),
       requirements: String(requirements || ""),
       contentPolicy,
-      resources: captured.resources
+      resources
     });
     if (!prepared || typeof prepared !== "object" || !prepared.request || typeof prepared.request !== "object") {
       throw new Error("MiniMax H3 参考图反推请求无效");
@@ -4148,7 +4153,7 @@
         ? prepareMiniMaxH3PromptRequest(prompt, requirements)
         : null;
       miniMaxH3ReversePrepared = isMiniMaxH3ReverseRequest
-        ? prepareMiniMaxH3ReverseRequest(prompt, requirements)
+        ? await prepareMiniMaxH3ReverseRequest(prompt, requirements)
         : null;
       const protectPrompt = (isOptimizeRequest || (isArt && isReverseRequest)) && !isMiniMaxH3Request;
       const promptMentionProtection = protectPrompt
@@ -4236,6 +4241,9 @@
           negativePrompt: "",
           supportsNegativePrompt: false,
           requirements: miniMaxH3Prepared.requirements,
+          h3Mode: miniMaxH3Prepared.context?.mode || state.context?.miniMaxH3?.mode || "",
+          durationSeconds: miniMaxH3Prepared.context?.durationSeconds || state.context?.miniMaxH3?.durationSeconds || 0,
+          visualSchema: MINIMAX_H3_VISUAL_SCHEMA,
           purpose: MINIMAX_H3_PROMPT_PURPOSE,
           surface: "animation"
         });
@@ -4245,6 +4253,9 @@
           negativePrompt: "",
           supportsNegativePrompt: false,
           requirements: miniMaxH3Prepared.requirements,
+          h3Mode: miniMaxH3Prepared.context?.mode || state.context?.miniMaxH3?.mode || "",
+          durationSeconds: miniMaxH3Prepared.context?.durationSeconds || state.context?.miniMaxH3?.durationSeconds || 0,
+          visualSchema: MINIMAX_H3_VISUAL_SCHEMA,
           purpose: MINIMAX_H3_PROMPT_PURPOSE,
           surface: "animation"
         });
