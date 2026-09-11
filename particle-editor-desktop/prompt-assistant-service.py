@@ -191,6 +191,23 @@ MINIMAX_H3_PROMPT_SYSTEM_INSTRUCTION = (
     "that the input establishes: <Subject N>, <Picture N>, <Video N>, and <Audio N>. For Ref2VA, subject_definitions "
     "must define every <Subject N> used anywhere in the prompt, starting at <Subject 1> without gaps. For keyframe modes, explicitly "
     "describe the continuous path from or toward the supplied frame anchors.\n"
+    "Separate every field with a blank line and split narrative into short readable paragraphs. "
+    "Describe each subject's appearance once; do not repeat background, lighting, or reference inventories. "
+    "Never include internal validation notes, source-prompt labels, or UI instructions in the result. "
+    "I2VA and FL2VA start with an independent reference-alignment line, then a blank line before the fields. "
+    "FL2VA defaults to one continuous [Shot 1], with both endpoint times aligned to that shot; "
+    "an ending frame is not a new shot. Add later shots only for explicitly requested cuts. "
+    "In base modes put [Shot 1] before the opening style and scene; in Ref2VA put global style before [Shot 1]. "
+    "Keep dialogue and lyrics verbatim inside <d>...</d> in the narrative, not in overall_soundscape. "
+    "overall_soundscape summarizes ambience and physical/nonverbal sounds only; N/A means explicitly total silence. "
+    "non_diegetic_music is only background score; use N/A when no score is requested.\n"
+    "For Ref2VA put each subject definition and retention item on its own line. Define reusable appearance "
+    "as <Subject N> citing its <Picture N> source; standalone Picture references are frame/composition anchors. "
+    "The summary identifies actual bracketed reference task roles. Appearance guidance does not imply keyframe "
+    "completion, and motion guidance does not imply continuation. Visual retention uses fully_preserved, "
+    "partially_preserved, attribute_transfer, or weak_reference; audio retention uses fully_copy, partially_copy, "
+    "reference, or weak_reference. New actions do not reduce appearance retention, and attribute_transfer "
+    "requires a different target subject.\n"
     "Do not invent unavailable reference assets. Resolve conflicting instructions in favor of explicit user constraints. "
     "Do not output negative prompts, avoidance lists, Markdown, analysis, alternatives, or commentary. Return only the "
     "final H3 field structure."
@@ -5359,7 +5376,7 @@ def minimax_h3_explicit_user_motion_intents(
     clauses = [
         clean_text(item)
         for source in (user_prompt, user_requirements)
-        for item in re.split(r"[\r\n，。；;!?！？]+", clean_text(source))
+        for item in re.split(r"[\r\n，。；;!?！？]+", MINIMAX_H3_DIALOGUE_PATTERN.sub("", clean_text(source)))
         if clean_text(item)
     ]
     for raw_clause in clauses:
@@ -5475,6 +5492,13 @@ def minimax_h3_timeline_stamp(duration_seconds) -> str:
 
 def minimax_h3_prompt_enhance_user_requirement(requirements: str, current_prompt: str = "") -> str:
     current = clean_text(current_prompt)
+    raw = clean_text(requirements)
+    marker = "Source prompt:\n"
+    if marker in raw:
+        tail = raw.split(marker, 1)[1]
+        if current and tail.startswith(current):
+            return tail[len(current):].strip()
+        return ""
     ignored_prefix = re.compile(
         r"(?i)^(?:you are|protocol:|output fields|use \[shot|available resource|describe a continuous|"
         r"for every shot|keep character|overall_soundscape|non_diegetic_music|return only|source prompt:|"
@@ -5488,7 +5512,7 @@ def minimax_h3_prompt_enhance_user_requirement(requirements: str, current_prompt
         if "MiniMax H3" in line or "H3 " in line or "field" in line.lower():
             continue
         candidates.append(line)
-    return clean_text(candidates[-1] if candidates else "")[:240]
+    return "\n".join(dict.fromkeys(candidates))
 
 
 def build_minimax_h3_prompt_enhance_deterministic_fallback(
@@ -5514,8 +5538,13 @@ def build_minimax_h3_prompt_enhance_deterministic_fallback(
         or minimax_h3_preferred_value_language(current_prompt, requirements)
     )
     chinese = language == "zh-CN"
-    source = clean_text(current_prompt)[:900]
+    source = clean_text(current_prompt)
     user_requirement = minimax_h3_prompt_enhance_user_requirement(requirements, current_prompt)
+    # Re-optimizing a structured prompt must not nest its fields in the narrative.
+    if minimax_h3_prompt_fields_are_ordered(source, MINIMAX_H3_BASE_PROMPT_FIELDS):
+        if user_requirement:
+            return ""
+        return complete_minimax_h3_mechanical_contract(source, normalized_mode, duration_seconds, language)
     if not source and not user_requirement:
         return ""
     source_fact = source or ("用户补充要求" if chinese else "the user requirement")
@@ -5524,7 +5553,6 @@ def build_minimax_h3_prompt_enhance_deterministic_fallback(
         if chinese
         else "make the motion more vivid while preserving the original subjects, scene, composition, and references"
     )
-    timestamp = minimax_h3_timeline_stamp(duration_seconds)
     try:
         duration_value = float(duration_seconds)
     except (TypeError, ValueError):
@@ -5537,24 +5565,22 @@ def build_minimax_h3_prompt_enhance_deterministic_fallback(
         if normalized_mode == "I2VA":
             reference_prefix = "<Picture 1> 是 0.00 秒时提供的精确首帧。"
         elif normalized_mode == "FL2VA":
-            reference_prefix = f"<Picture 1> 是 0.00 秒时提供的精确首帧；<Picture 2> 是 {duration_text} 秒的精确尾帧（final shot）。"
+            reference_prefix = f"<Picture 1> 是 0.00 秒时提供的精确首帧；<Picture 2> 是 {duration_text} 秒的精确尾帧。"
         elif normalized_mode == "L2VA":
             reference_prefix = "<Video 1> 作为视频参考，仅继承其运动节奏和可用参考信息。"
         integrated = (
-            f"[Shot 1] {reference_prefix}当前底稿为：{source_fact}。"
-            f"动作从当前状态开始，随后按“{intent}”逐渐增强动作幅度、节奏和表情/姿态变化，"
-            "过程保持主体身份、服装、道具、场景和构图连续；镜头保持稳定构图并进行轻微跟随。"
+            f"[Shot 1] {reference_prefix}{source_fact}\n\n"
+            f"{intent}。动作连贯推进，保持主体身份与场景连续；镜头遵循指定运镜，未指定时保持构图。"
         )
         if normalized_mode == "FL2VA":
-            integrated += f" [Shot 2] At {timestamp}，动作连续过渡并准确抵达 <Picture 2> 的尾帧状态。"
-        soundscape = "动作声、衣料摩擦声、脚步或环境声随动作节奏同步；未指定对白时不添加对白。"
-        music = "N/A"
+            integrated += f"在 {duration_text} 秒准确抵达 <Picture 2> 的尾帧状态。"
+        soundscape, music = minimax_h3_deterministic_audio_fields(source, user_requirement, language)
         alignment = ""
         if normalized_mode == "I2VA":
             alignment = "参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒\n"
         elif normalized_mode == "FL2VA":
-            alignment = f"参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；<Picture 2> 对应 [Shot 2] = {duration_text} 秒\n"
-        return (
+            alignment = f"参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；<Picture 2> 对应 [Shot 1] = {duration_text} 秒\n"
+        return format_minimax_h3_prompt_layout(
             f"{alignment}"
             f"integrated_multimodal_description: {integrated}\n"
             f"overall_soundscape: {soundscape}\n"
@@ -5564,24 +5590,23 @@ def build_minimax_h3_prompt_enhance_deterministic_fallback(
     if normalized_mode == "I2VA":
         reference_prefix = "<Picture 1> is the exact supplied opening frame at 0.00 seconds. "
     elif normalized_mode == "FL2VA":
-        reference_prefix = f"<Picture 1> is the exact opening frame at 0.00 seconds; <Picture 2> is the exact final shot at {duration_text} seconds. "
+        reference_prefix = f"<Picture 1> is the exact opening frame at 0.00 seconds; <Picture 2> is the exact ending frame at {duration_text} seconds. "
     elif normalized_mode == "L2VA":
         reference_prefix = "<Video 1> is used only for supported motion timing and reference information. "
     integrated = (
-        f"[Shot 1] {reference_prefix}Current prompt: {source_fact}. "
-        f"The action begins from the current state, then follows the user requirement ({intent}) with clearer motion rhythm, "
-        "continuous posture change, and stable identity, wardrobe, props, scene, and composition; camera holds stable framing with a subtle follow. "
+        f"[Shot 1] {reference_prefix}{source_fact}\n\n"
+        f"{intent}. Action progresses continuously with stable identity and scene; "
+        "camera follows the specified movement, holding the framing otherwise. "
     )
     if normalized_mode == "FL2VA":
-        integrated += f"[Shot 2] At {timestamp}, the motion resolves continuously into <Picture 2>."
-    soundscape = "Synchronized movement sounds, cloth rustle, footsteps, or ambience follow the action rhythm; dialogue is N/A unless specified."
-    music = "N/A"
+        integrated += f"Motion resolves into <Picture 2> at {duration_text} seconds."
+    soundscape, music = minimax_h3_deterministic_audio_fields(source, user_requirement, language)
     alignment = ""
     if normalized_mode == "I2VA":
         alignment = "Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds\n"
     elif normalized_mode == "FL2VA":
-        alignment = f"Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds; <Picture 2> from [Shot 2] = {duration_text} seconds\n"
-    return (
+        alignment = f"Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds; <Picture 2> from [Shot 1] = {duration_text} seconds\n"
+    return format_minimax_h3_prompt_layout(
         f"{alignment}"
         f"integrated_multimodal_description: {integrated}\n"
         f"overall_soundscape: {soundscape}\n"
@@ -6262,7 +6287,7 @@ def minimax_h3_compact_verified_visual_fact_slots(
             + ", ".join(sensitive_facts)
         )
 
-    separator = ". " if use_english else "。"
+    separator = ".\n\n" if use_english else "。\n\n"
     return separator.join(parts) + ("." if use_english and parts else "。" if parts else "")
 
 
@@ -6323,9 +6348,9 @@ def build_minimax_h3_deterministic_verified_visual_candidate(
         )
     else:
         action_progression = (
-            "The verified frame state continues; no unverified action is added."
+            "The opening state continues naturally."
             if use_english
-            else "已验证画面状态持续保持，不增加未经验证的动作。"
+            else "画面从首帧状态自然延续。"
         )
     if camera_intent:
         camera_progression = (
@@ -6335,18 +6360,20 @@ def build_minimax_h3_deterministic_verified_visual_candidate(
         )
     else:
         camera_progression = (
-            "Camera holds the verified framing."
+            "Camera holds the framing."
             if use_english
-            else "镜头保持上述已验证构图。"
+            else "镜头保持构图。"
         )
 
     if normalized_mode == "I2VA":
+        alignment = (
+            "Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds"
+            if use_english else "参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒"
+        )
         narrative = (
-            f"[Shot 1] <Picture 1> is the verified frame at 0.00 seconds; frame facts: {facts[0]} "
-            f"{action_progression} {camera_progression}"
+            f"[Shot 1] {facts[0]}\n\n{action_progression} {camera_progression}"
             if use_english
-            else f"[Shot 1] <Picture 1> 是 0.00 秒已验证画面；画面事实：{facts[0]} "
-            f"{action_progression}{camera_progression}"
+            else f"[Shot 1] {facts[0]}\n\n{action_progression}{camera_progression}"
         )
     else:
         try:
@@ -6355,35 +6382,44 @@ def build_minimax_h3_deterministic_verified_visual_candidate(
             raise ValueError("MiniMax H3 FL2VA 确定性视觉候选缺少有效时长") from None
         if not math.isfinite(duration) or duration <= 0:
             raise ValueError("MiniMax H3 FL2VA 确定性视觉候选缺少有效时长")
-        total_ms = max(1, int(round(duration * 1000)))
-        minutes, remainder_ms = divmod(total_ms, 60000)
-        seconds, milliseconds = divmod(remainder_ms, 1000)
-        timestamp = f"{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
         duration_text = f"{duration:.2f}"
-        first_shot = (
-            f"[Shot 1] <Picture 1> at 0.00 seconds; frame facts: {facts[0]} "
-            f"Between anchors: {action_intent + '.' if action_intent else action_progression} {camera_progression}"
+        alignment = (
+            f"Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds; "
+            f"<Picture 2> from [Shot 1] = {duration_text} seconds"
             if use_english
-            else f"[Shot 1] <Picture 1> 为 0.00 秒首帧；首帧事实：{facts[0]} "
-            f"首尾锚点之间：{action_intent + '。' if action_intent else action_progression}{camera_progression}"
+            else f"参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；"
+            f"<Picture 2> 对应 [Shot 1] = {duration_text} 秒"
         )
-        last_shot = (
-            f"[Shot 2] At {timestamp}, <Picture 2> at {duration_text} seconds; "
-            f"frame facts: {facts[1]} Camera holds."
+        # Share only identical complete semantic slots, never attributes across
+        # different subjects. Explicit frame labels retain endpoint ownership.
+        frame_slots = [item.split("\n\n") for item in facts]
+        common = [slot for slot in frame_slots[0] if slot in frame_slots[1]]
+        blocks = [f"<Picture 1> + <Picture 2>: {slot}" for slot in common]
+        for index, slots in enumerate(frame_slots, start=1):
+            blocks.extend(f"<Picture {index}>: {slot}" for slot in slots if slot not in common)
+        ending = (
+            f"Motion resolves into the ending state at {duration_text} seconds."
             if use_english
-            else f"[Shot 2] At {timestamp}，<Picture 2> 为 {duration_text} 秒尾帧；"
-            f"尾帧事实：{facts[1]} 镜头保持。"
+            else f"动作在 {duration_text} 秒连续抵达尾帧状态。"
         )
-        narrative = f"{first_shot} {last_shot}"
+        narrative = "[Shot 1]\n" + "\n\n".join(blocks)
+        narrative += f"\n\n{action_progression} {camera_progression} {ending}"
+
+    dialogue = minimax_h3_explicit_dialogue(user_prompt, user_requirements)
+    if dialogue:
+        narrative += "\n\n" + "\n\n".join(dialogue)
+    elif "audio_dialogue" in minimax_h3_audio_fact_concepts(user_prompt + "\n" + user_requirements):
+        narrative += "\n\n" + ("Dialogue stays synchronized with the scene." if use_english else "对白与画面动作同步。")
 
     soundscape, music = minimax_h3_deterministic_audio_fields(
         user_prompt,
         user_requirements,
         value_language,
     )
-    return (
-        f"integrated_multimodal_description: {narrative}\n"
-        f"overall_soundscape: {soundscape}\n"
+    return format_minimax_h3_prompt_layout(
+        f"{alignment}\n\n"
+        f"integrated_multimodal_description: {narrative}\n\n"
+        f"overall_soundscape: {soundscape}\n\n"
         f"non_diegetic_music: {music}"
     )
 
@@ -8050,7 +8086,8 @@ def minimax_h3_deterministic_entity_scope(scope: str, entity_index: int) -> str:
         ):
             return True
         prefix = clean_text(scope[:match.start()]).casefold()
-        return prefix.endswith((
+        return not prefix or prefix.endswith((
+            "[shot 1]",
             "frame facts:", "画面事实：", "首帧事实：", "尾帧事实：", "。", ".",
         ))
 
@@ -8230,7 +8267,7 @@ def validate_minimax_h3_user_motion_intent_coverage(
         "integrated_multimodal_description",
     )
     fact_markers = [
-        position for marker in ("frame facts:", "画面事实：", "首帧事实：")
+        position for marker in ("frame facts:", "画面事实：", "首帧事实：", "主体1：", "Subject 1:", "<Picture 1>:", "<Picture 1> + <Picture 2>:")
         if (position := narrative.find(marker)) >= 0
     ]
     first_fact_marker = min(fact_markers) if fact_markers else -1
@@ -8241,6 +8278,25 @@ def validate_minimax_h3_user_motion_intent_coverage(
         if first_fact_marker < 0 or position <= first_fact_marker:
             raise ValueError("MiniMax H3 输出把用户后续意图错误写成了首帧视觉事实")
     return text
+
+
+MINIMAX_H3_DIALOGUE_PATTERN = re.compile(
+    r'<d>[\s\S]*?</d>|(?:[^\n，,。！？;；]*?(?:说|喊|唱|对白|台词|says?|shouts?|sings?|dialogue)[：:\s]*)'
+    r'(?:“[^”]*”|「[^」]*」|"[^"\n]*")', re.I,
+)
+
+
+def minimax_h3_explicit_dialogue(*values: str) -> list[str]:
+    result = []
+    for value in values:
+        for match in MINIMAX_H3_DIALOGUE_PATTERN.finditer(clean_text(value)):
+            clause = match.group(0)
+            if not clause.startswith("<d>"):
+                clause = re.sub(r'“([^”]*)”|「([^」]*)」|"([^"\n]*)"',
+                                lambda m: "<d>" + next(g for g in m.groups() if g is not None) + "</d>", clause)
+            if clause not in result:
+                result.append(clause)
+    return result
 
 
 def minimax_h3_request_audio_facts(value: str) -> list[str]:
@@ -8314,6 +8370,7 @@ def minimax_h3_deterministic_audio_fields(
     request_text = "\n".join(
         item for item in (clean_text(user_prompt), clean_text(user_requirements)) if item
     )
+    request_text = MINIMAX_H3_DIALOGUE_PATTERN.sub("", request_text)
     clauses = minimax_h3_request_audio_facts(request_text)
     sound_values: list[str] = []
     music_values: list[str] = []
@@ -8330,7 +8387,7 @@ def minimax_h3_deterministic_audio_fields(
         if "music_none" in concepts:
             no_music = True
         for concept in MINIMAX_H3_AUDIO_FACT_PATTERNS:
-            if concept not in concepts or concept == "music_none":
+            if concept not in concepts or concept in {"music_none", "audio_dialogue"}:
                 continue
             label = MINIMAX_H3_DETERMINISTIC_AUDIO_LABELS[concept][language]
             if concept.startswith("music_"):
@@ -8352,16 +8409,17 @@ def minimax_h3_deterministic_audio_fields(
         raise ValueError("MiniMax H3 用户音频要求同时要求音乐与无音乐")
     separator = "; " if use_english else "、"
     soundscape = separator.join(sound_values) if sound_values else (
-        "No verified sound."
-        if use_english else "无额外已验证的事件声。"
+        "Low ambience consistent with the scene."
+        if use_english else "与场景一致的低强度环境底声。"
     )
+    if re.search(r"完全静音|全片静音|绝对静音|\btotal silence\b|\bcomplete silence\b|\bno sound\s*(?=$|[.,;!])", request_text, re.I):
+        if sound_values or positive_music:
+            raise ValueError("MiniMax H3 用户音频要求同时要求完全静音与声音")
+        return "N/A", "N/A"
     if no_music:
         music = "N/A (no music)." if use_english else "N/A（无音乐）。"
     else:
-        music = separator.join(music_values) if music_values else (
-            "N/A."
-            if use_english else "N/A（无额外已验证音乐）。"
-        )
+        music = separator.join(music_values) if music_values else "N/A"
     return soundscape, music
 
 
@@ -8382,6 +8440,16 @@ def minimax_h3_picture_scope(text: str, picture_index: int, picture_count: int) 
         return narrative
 
     shot_matches = list(re.finditer(r"\[Shot ([1-9][0-9]*)\]", narrative))
+    if len(shot_matches) == 1:
+        # Single-shot FL2VA has explicit shared/endpoint fact paragraphs, not
+        # separate shots. Never borrow another endpoint's private paragraphs.
+        blocks = re.findall(
+            r"(?m)^(<Picture [12]>(?: \+ <Picture [12]>)?): ([\s\S]*?)(?=\n\s*\n|\Z)",
+            narrative,
+        )
+        if blocks:
+            token = f"<Picture {picture_index}>"
+            return "\n".join(body for labels, body in blocks if token in labels)
     shot_scope = ""
     if shot_matches:
         if picture_index == 1 or len(shot_matches) > 1:
@@ -8612,7 +8680,13 @@ def validate_minimax_h3_visual_fact_coverage(
         minimax_h3_output_field_value(normalized, "non_diegetic_music"),
     ]))
     output_audio_concepts = minimax_h3_audio_fact_concepts(audio_output)
-    for audio_fact in minimax_h3_request_audio_facts(raw_request_text):
+    narrative = minimax_h3_output_field_value(normalized, "integrated_multimodal_description")
+    if "audio_dialogue" in minimax_h3_audio_fact_concepts(narrative) or minimax_h3_explicit_dialogue(narrative):
+        output_audio_concepts.add("audio_dialogue")
+    for dialogue in minimax_h3_explicit_dialogue(raw_request_text):
+        if dialogue not in narrative:
+            raise ValueError("MiniMax H3 输出未完整保留原始用户对白")
+    for audio_fact in minimax_h3_request_audio_facts(MINIMAX_H3_DIALOGUE_PATTERN.sub("", raw_request_text)):
         required_audio_concepts = minimax_h3_audio_fact_concepts(audio_fact)
         if required_audio_concepts:
             if not required_audio_concepts.issubset(output_audio_concepts):
@@ -21718,6 +21792,61 @@ def minimax_h3_prompt_fields_are_ordered(text: str, fields: tuple[str, ...]) -> 
     return True
 
 
+def format_minimax_h3_prompt_layout(text: str) -> str:
+    """Reflow known fields without rewriting dialogue, labels, or scene facts."""
+    fields = tuple(dict.fromkeys((*MINIMAX_H3_BASE_PROMPT_FIELDS, *MINIMAX_H3_REFERENCE_PROMPT_FIELDS)))
+    pattern = re.compile(r"(?m)^[ \t]*(" + "|".join(fields) + r")[ \t]*:[ \t]*")
+    normalized = clean_text(text)
+    matches = list(pattern.finditer(normalized))
+    if not matches:
+        return normalized
+    sections = [normalized[:matches[0].start()].strip()]
+    protected = re.compile(r'<d>[\s\S]*?</d>|“[^”]*”|「[^」]*」|"[^"\n]*"')
+
+    def reflow(value: str) -> str:
+        saved = []
+
+        def hold(match):
+            saved.append(match.group(0))
+            return f"\x00{len(saved) - 1}\x00"
+
+        value = protected.sub(hold, value)
+        value = re.sub(r"(?<!^)\s*(?=\[Shot [2-9][0-9]*\])", "\n\n", value)
+        paragraphs = []
+        for paragraph in re.split(r"\n\s*\n", value.strip()):
+            if re.search(r"(?m)^(?:<Picture [12]>(?: \+ <Picture [12]>)?:|(?:主体|Subject)\s*[1-9][0-9]*[:：])", paragraph):
+                paragraphs.append(paragraph)
+                continue
+            units = re.split(r"(?<=[。！？])|(?<=[.!?])\s+", paragraph)
+            pending = ""
+            for unit in units:
+                if not unit:
+                    continue
+                if pending and len(pending) + len(unit) > 220:
+                    paragraphs.append(pending.strip())
+                    pending = ""
+                pending += (" " if pending and pending[-1:] in ".!?" else "") + unit
+            if pending.strip():
+                paragraphs.append(pending.strip())
+        result = "\n\n".join(paragraphs)
+        return re.sub(r"\x00(\d+)\x00", lambda m: saved[int(m.group(1))], result)
+
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(normalized)
+        body = normalized[match.end():end].strip()
+        field = match.group(1)
+        if field == "integrated_multimodal_description":
+            shot = re.search(r"\[Shot 1\]", body)
+            if shot and shot.start() > 0:
+                body = "[Shot 1] " + body[:shot.start()].strip() + " " + body[shot.end():].lstrip()
+        if field in {"subject_definitions", "retention_analysis"}:
+            body = re.sub(r"(?<!^)\s+(?=<(?:Subject|Picture|Video|Audio) [1-9][0-9]*>\s*[:=])", "\n", body)
+            sections.append(field + ":\n" + body)
+        else:
+            sections.append(field + ": " + reflow(body))
+    return "\n\n".join(section for section in sections if section)
+
+
 def normalize_minimax_h3_prompt_output(output: str) -> str:
     text = clean_text(output)
     if text.startswith("{"):
@@ -21726,6 +21855,13 @@ def normalize_minimax_h3_prompt_output(output: str) -> str:
         except Exception:
             parsed = None
         if isinstance(parsed, dict):
+            fields = MINIMAX_H3_REFERENCE_PROMPT_FIELDS if "subject_definitions" in parsed else MINIMAX_H3_BASE_PROMPT_FIELDS
+            if all(isinstance(parsed.get(key), str) and parsed[key].strip() for key in fields):
+                alignment = parsed.get("reference_alignment")
+                text = "\n\n".join([
+                    *([alignment.strip()] if isinstance(alignment, str) and alignment.strip() else []),
+                    *(f"{key}: {parsed[key].strip()}" for key in fields),
+                ])
             for key in ("prompt", "positive_prompt", "positivePrompt", "output_text"):
                 candidate = parsed.get(key)
                 if isinstance(candidate, str) and candidate.strip():
@@ -21735,13 +21871,15 @@ def normalize_minimax_h3_prompt_output(output: str) -> str:
     negative_match = MINIMAX_H3_NEGATIVE_SECTION_PATTERN.search(text)
     if negative_match:
         text = text[:negative_match.start()].strip()
+    fields = tuple(dict.fromkeys((*MINIMAX_H3_BASE_PROMPT_FIELDS, *MINIMAX_H3_REFERENCE_PROMPT_FIELDS)))
+    text = re.sub(r"(?m)^[ \t]*(" + "|".join(fields) + r")[ \t]*$", r"\1:", text)
     valid_structure = (
         minimax_h3_prompt_fields_are_ordered(text, MINIMAX_H3_BASE_PROMPT_FIELDS)
         or minimax_h3_prompt_fields_are_ordered(text, MINIMAX_H3_REFERENCE_PROMPT_FIELDS)
     )
     if not valid_structure:
         raise ValueError("模型未返回有效的 MiniMax H3 字段结构")
-    return text
+    return format_minimax_h3_prompt_layout(text)
 
 
 def complete_minimax_h3_subject_definitions(text: str, use_simplified_chinese: bool = False) -> str:
@@ -21875,7 +22013,7 @@ def complete_minimax_h3_mechanical_contract(
             )
             normalized = normalized[:start] + picture_anchor + normalized[start:]
         first_line = next((line.strip() for line in normalized.splitlines() if line.strip()), "")
-        if not ("<Picture 1>" in first_line and "[Shot 1]" in first_line and "0.00" in first_line):
+        if first_line.startswith("integrated_multimodal_description:") or not ("<Picture 1>" in first_line and "[Shot 1]" in first_line and "0.00" in first_line):
             alignment = (
                 "参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒\n"
                 if use_simplified_chinese
@@ -21893,16 +22031,6 @@ def complete_minimax_h3_mechanical_contract(
         start, end = bounds
         narrative = normalized[start:end].strip()
         exact_shots = list(re.finditer(r"\[Shot ([1-9][0-9]*)\]", narrative))
-        if len(exact_shots) == 1:
-            total_ms = max(1, int(round(duration * 1000)))
-            minutes, remainder_ms = divmod(total_ms, 60000)
-            seconds, milliseconds = divmod(remainder_ms, 1000)
-            ending = (
-                f"\n[Shot 2] At {minutes:02d}:{seconds:02d}.{milliseconds:03d}，画面连续运动并准确过渡到 <Picture 2>。"
-                if use_simplified_chinese
-                else f"\n[Shot 2] At {minutes:02d}:{seconds:02d}.{milliseconds:03d}, motion resolves continuously into <Picture 2>."
-            )
-            normalized = normalized[:end].rstrip() + ending + "\n" + normalized[end:]
         bounds = narrative_bounds(normalized)
         start, end = bounds
         narrative = normalized[start:end].strip()
@@ -21912,14 +22040,14 @@ def complete_minimax_h3_mechanical_contract(
         last_shot = int(exact_shots[-1].group(1))
         if "<Picture 2>" not in narrative:
             ending_anchor = (
-                " <Picture 2> 是提供的精确尾帧。\n"
+                f" 动作在 {duration:.2f} 秒连续抵达 <Picture 2> 的精确尾帧状态。\n"
                 if use_simplified_chinese
-                else " <Picture 2> is the exact supplied ending frame.\n"
+                else f" Motion resolves into the exact ending frame <Picture 2> at {duration:.2f} seconds.\n"
             )
             normalized = normalized[:end].rstrip() + ending_anchor + normalized[end:]
         first_line = next((line.strip() for line in normalized.splitlines() if line.strip()), "")
         duration_text = f"{duration:.2f}"
-        if not all(token in first_line for token in ("<Picture 1>", "<Picture 2>", "[Shot 1]", f"[Shot {last_shot}]", "0.00", duration_text)):
+        if first_line.startswith("integrated_multimodal_description:") or not all(token in first_line for token in ("<Picture 1>", "<Picture 2>", "[Shot 1]", f"[Shot {last_shot}]", "0.00", duration_text)):
             alignment = (
                 f"参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；"
                 f"<Picture 2> 对应 [Shot {last_shot}] = {duration_text} 秒\n"
@@ -21928,7 +22056,7 @@ def complete_minimax_h3_mechanical_contract(
                 f"<Picture 2> from [Shot {last_shot}] = {duration_text} seconds\n"
             )
             normalized = alignment + normalized
-    return normalized
+    return format_minimax_h3_prompt_layout(normalized)
 
 
 def validate_minimax_h3_value_language(text: str, value_language: str) -> str:

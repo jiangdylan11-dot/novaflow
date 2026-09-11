@@ -448,8 +448,9 @@ assert "integrated_multimodal_description: [Shot 1] <Picture 1>" in completed_i2
 assert "0.00 seconds" in completed_i2v.splitlines()[0]
 assert service["validate_minimax_h3_prompt_contract"](completed_i2v, "I2VA", 5) == completed_i2v
 completed_fl2v = service["complete_minimax_h3_mechanical_contract"](shotless_output, "FL2VA", 8)
-assert completed_fl2v.startswith("Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds; <Picture 2> from [Shot 2] = 8.00 seconds")
-assert "[Shot 2] At 00:08.000, motion resolves continuously into <Picture 2>." in completed_fl2v
+assert completed_fl2v.startswith("Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds; <Picture 2> from [Shot 1] = 8.00 seconds")
+assert "[Shot 2]" not in completed_fl2v
+assert "Motion resolves into the exact ending frame <Picture 2> at 8.00 seconds." in completed_fl2v
 assert service["validate_minimax_h3_prompt_contract"](completed_fl2v, "FL2VA", 8) == completed_fl2v
 zh_shotless_output = """integrated_multimodal_description: 人物从静止姿态开始抬手，镜头保持稳定。\noverall_soundscape: 轻微衣料摩擦声。\nnon_diegetic_music: 柔和背景音乐。"""
 completed_zh_t2v = service["complete_minimax_h3_mechanical_contract"](zh_shotless_output, "T2VA", 5, "zh-CN")
@@ -458,8 +459,9 @@ completed_zh_i2v = service["complete_minimax_h3_mechanical_contract"](zh_shotles
 assert "[Shot 1] <Picture 1> 是 0.00 秒时提供的精确首帧" in completed_zh_i2v
 assert "exact supplied opening frame" not in completed_zh_i2v
 completed_zh_fl2v = service["complete_minimax_h3_mechanical_contract"](zh_shotless_output, "FL2VA", 8, "zh-CN")
-assert completed_zh_fl2v.startswith("参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；<Picture 2> 对应 [Shot 2] = 8.00 秒")
-assert "[Shot 2] At 00:08.000，画面连续运动并准确过渡到 <Picture 2>。" in completed_zh_fl2v
+assert completed_zh_fl2v.startswith("参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；<Picture 2> 对应 [Shot 1] = 8.00 秒")
+assert "[Shot 2]" not in completed_zh_fl2v
+assert "动作在 8.00 秒连续抵达 <Picture 2> 的精确尾帧状态。" in completed_zh_fl2v
 assert "Reference alignment" not in completed_zh_fl2v
 assert "motion resolves continuously" not in completed_zh_fl2v
 incomplete_output = """integrated_multimodal_description: Incomplete protocol.\noverall_soundscape: N/A"""
@@ -477,7 +479,7 @@ for negative_section in (
     assert "负向提示词" not in cleaned
 
 reference_output = """subject_definitions: <Subject 1> is established by <Picture 1>.\nsummary: [reference generation] The target uses <Subject 1>.\nretention_analysis: <Subject 1>: fully_preserved.\ndetailed_description: [Shot 1] The subject moves through the scene while Camera holds stable framing.\noverall_soundscape: Synchronized ambience.\nnon_diegetic_music: N/A"""
-assert service["normalize_minimax_h3_prompt_output"](reference_output) == reference_output
+assert service["normalize_minimax_h3_prompt_output"](reference_output) == service["format_minimax_h3_prompt_layout"](reference_output)
 validated_reference_output = service["validate_minimax_h3_prompt_contract"](reference_output, "Ref2VA", 5)
 assert "<Subject 1>: subject described by the generated prompt narrative." in validated_reference_output
 assert "detailed_description: [Shot 1] The subject moves through the scene while Camera holds stable framing." in validated_reference_output
@@ -567,7 +569,7 @@ i2v_result = i2v_assistant.reverse_image_prompt(h3_reverse_request({
 assert len(i2v_calls) == 0
 assert i2v_result["negativePrompt"] == ""
 assert i2v_result["reverseProvider"] == "qwen3_vl_abliterated_nf4+deterministic_h3"
-assert i2v_result["positivePrompt"].startswith("integrated_multimodal_description:")
+assert i2v_result["positivePrompt"].startswith("Reference alignment -")
 assert "<Picture 1>" in i2v_result["positivePrompt"]
 
 zh_i2v_assistant = service["PromptAssistant"]()
@@ -586,7 +588,7 @@ zh_i2v_result = zh_i2v_assistant.reverse_image_prompt(h3_reverse_request({
     "images": [{"dataUrl": "first-image", "role": "first_frame"}],
 }))
 assert len(zh_i2v_calls) == 0
-assert zh_i2v_result["positivePrompt"].startswith("integrated_multimodal_description:")
+assert zh_i2v_result["positivePrompt"].startswith("参考帧对齐：")
 assert all(token in zh_i2v_result["positivePrompt"].splitlines()[0] for token in ("[Shot 1]", "<Picture 1>", "0.00 秒"))
 
 zh_default_i2v_assistant = service["PromptAssistant"]()
@@ -599,7 +601,7 @@ def fake_zh_default_i2v_generate(prompt, **kwargs):
 zh_default_i2v_assistant.generate = fake_zh_default_i2v_generate
 zh_default_i2v_result = zh_default_i2v_assistant.reverse_image_prompt(workflow_empty_reverse_request)
 assert len(zh_default_i2v_calls) == 0
-assert zh_default_i2v_result["positivePrompt"].startswith("integrated_multimodal_description:")
+assert zh_default_i2v_result["positivePrompt"].startswith("参考帧对齐：")
 assert "<Picture 1>" in zh_default_i2v_result["positivePrompt"]
 
 fl2v_assistant = service["PromptAssistant"]()
@@ -622,7 +624,7 @@ fl2v_result = fl2v_assistant.reverse_image_prompt(h3_reverse_request({
 }))
 assert len(fl2v_calls) == 0
 assert fl2v_result["negativePrompt"] == ""
-assert fl2v_result["positivePrompt"].startswith("integrated_multimodal_description:")
+assert fl2v_result["positivePrompt"].startswith("Reference alignment -")
 assert "<Picture 1>" in fl2v_result["positivePrompt"]
 assert "<Picture 2>" in fl2v_result["positivePrompt"]
 
@@ -645,8 +647,9 @@ zh_fl2v_result = zh_fl2v_assistant.reverse_image_prompt(h3_reverse_request({
     ],
 }))
 assert len(zh_fl2v_calls) == 0
-assert zh_fl2v_result["positivePrompt"].startswith("integrated_multimodal_description:")
-assert all(token in zh_fl2v_result["positivePrompt"].splitlines()[0] for token in ("<Picture 1>", "<Picture 2>", "[Shot 1]", "[Shot 2]", "00:08.000"))
+assert zh_fl2v_result["positivePrompt"].startswith("参考帧对齐：")
+assert all(token in zh_fl2v_result["positivePrompt"].splitlines()[0] for token in ("<Picture 1>", "<Picture 2>", "[Shot 1]", "8.00"))
+assert "[Shot 2]" not in zh_fl2v_result["positivePrompt"]
 
 reverse_repair_assistant = service["PromptAssistant"]()
 reverse_repair_calls = []
@@ -689,7 +692,8 @@ reverse_fallback = reverse_failed_assistant.reverse_image_prompt(h3_reverse_requ
         {"dataUrl": "last-image", "role": "last_frame"},
     ],
 }))
-assert all(token in reverse_fallback["positivePrompt"] for token in ("<Picture 1>", "<Picture 2>", "[Shot 1]", "[Shot 2]", "00:08.000"))
+assert all(token in reverse_fallback["positivePrompt"] for token in ("<Picture 1>", "<Picture 2>", "[Shot 1]", "8.00"))
+assert "[Shot 2]" not in reverse_fallback["positivePrompt"]
 assert service["MINIMAX_H3_ACTION_PROGRESSION_PATTERN"].search(reverse_fallback["positivePrompt"])
 assert service["MINIMAX_H3_CAMERA_DIRECTION_PATTERN"].search(reverse_fallback["positivePrompt"])
 assert len(reverse_failed_calls) == 0

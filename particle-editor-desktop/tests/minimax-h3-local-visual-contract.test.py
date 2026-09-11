@@ -2470,7 +2470,7 @@ class H3LocalVisualContractTest(unittest.TestCase):
         ))
         self.assertEqual(compile_calls, [])
         self.assertEqual(result["generationGate"], "direct")
-        self.assertIn("无额外已验证的事件声", result["positivePrompt"])
+        self.assertIn("与场景一致的低强度环境底声", result["positivePrompt"])
 
     def test_explicit_unknown_audio_cue_remains_strict(self):
         request_text = "请加入海浪声"
@@ -2788,8 +2788,8 @@ class H3LocalVisualContractTest(unittest.TestCase):
             chinese, "integrated_multimodal_description",
         )
         self.assertEqual(metadata["generationGate"], "direct")
-        self.assertTrue(chinese.startswith("integrated_multimodal_description:"))
-        self.assertNotRegex(chinese, r"^(?:参考帧对齐|Reference alignment)")
+        self.assertTrue(chinese.startswith("参考帧对齐："))
+        self.assertIn("\n\nintegrated_multimodal_description:", chinese)
         self.assertEqual(
             re.findall(r"(?m)^([a-z][a-z0-9_]*)\s*:", chinese),
             ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"],
@@ -2816,8 +2816,8 @@ class H3LocalVisualContractTest(unittest.TestCase):
         english_narrative = SERVICE.minimax_h3_output_field_value(
             english, "integrated_multimodal_description",
         )
-        self.assertTrue(english.startswith("integrated_multimodal_description:"))
-        self.assertNotRegex(english, r"^(?:参考帧对齐|Reference alignment)")
+        self.assertTrue(english.startswith("Reference alignment -"))
+        self.assertIn("\n\nintegrated_multimodal_description:", english)
         self.assertEqual(
             re.findall(r"(?m)^([a-z][a-z0-9_]*)\s*:", english),
             ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"],
@@ -2868,24 +2868,24 @@ class H3LocalVisualContractTest(unittest.TestCase):
             ],
         ))
         prompt = result["positivePrompt"]
-        self.assertTrue(prompt.startswith("integrated_multimodal_description:"))
-        self.assertNotRegex(prompt, r"^(?:参考帧对齐|Reference alignment)")
+        self.assertTrue(prompt.startswith("参考帧对齐："))
+        self.assertIn("\n\nintegrated_multimodal_description:", prompt)
         self.assertEqual(
             re.findall(r"(?m)^([a-z][a-z0-9_]*)\s*:", prompt),
             ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"],
         )
         first_line = prompt.splitlines()[0]
-        for anchor in ("<Picture 1>", "<Picture 2>", "[Shot 1]", "[Shot 2]", "0.00", "8.00"):
+        for anchor in ("<Picture 1>", "<Picture 2>", "[Shot 1]", "0.00", "8.00"):
             self.assertIn(anchor, first_line)
         self.assertIn("<Picture 1>", prompt)
         self.assertIn("<Picture 2>", prompt)
         self.assertIn("[Shot 1]", prompt)
-        self.assertIn("[Shot 2] At 00:08.000", prompt)
+        self.assertNotIn("[Shot 2]", prompt)
         self.assertRegex(prompt, SERVICE.MINIMAX_H3_ACTION_PROGRESSION_PATTERN)
         self.assertRegex(prompt, SERVICE.MINIMAX_H3_CAMERA_DIRECTION_PATTERN)
         self.assertIn("镜头保持", prompt)
-        self.assertGreaterEqual(prompt.count("日式房间"), 2)
-        self.assertGreaterEqual(prompt.count("纸拉门"), 2)
+        self.assertEqual(prompt.count("日式房间"), 1)
+        self.assertEqual(prompt.count("纸拉门"), 1)
         self.assertNotIn("未来城市街道", prompt)
         self.assertEqual(compile_calls, [])
 
@@ -2989,7 +2989,7 @@ class H3LocalVisualContractTest(unittest.TestCase):
         self.assertIn("人物随后转身并抬起右手", prompt)
         self.assertIn("镜头缓慢推进", prompt)
         self.assertNotIn("人物奔跑并快速推镜", prompt)
-        first_fact = prompt.index("画面事实：")
+        first_fact = prompt.index("主体1：")
         self.assertGreater(prompt.index("人物随后转身并抬起右手"), first_fact)
         self.assertGreater(prompt.index("镜头缓慢推进"), first_fact)
 
@@ -3005,8 +3005,8 @@ class H3LocalVisualContractTest(unittest.TestCase):
                 ))
                 prompt = result["positivePrompt"]
                 self.assertEqual(compile_calls, [])
-                self.assertIn("已验证画面状态持续保持", prompt)
-                self.assertIn("镜头保持上述已验证构图", prompt)
+                self.assertIn("画面从首帧状态自然延续", prompt)
+                self.assertIn("镜头保持构图", prompt)
                 self.assertNotIn("旧编译文本中的人物奔跑并快速推镜", prompt)
                 self.assertNotIn("不要转身", prompt)
                 self.assertNotIn("不要推镜", prompt)
@@ -3028,7 +3028,7 @@ class H3LocalVisualContractTest(unittest.TestCase):
         prompt = result["positivePrompt"]
         action_at = prompt.index("人物从站立逐渐坐下")
         camera_at = prompt.index("镜头环绕拍摄")
-        last_anchor_at = prompt.index("<Picture 2>")
+        last_anchor_at = prompt.index("动作在 8.00 秒连续抵达尾帧状态")
         self.assertEqual(compile_calls, [])
         self.assertLess(prompt.index("<Picture 1>"), action_at)
         self.assertLess(action_at, last_anchor_at)
