@@ -879,16 +879,19 @@ assert.throws(
   }),
   /exactly one first_frame and one last_frame/,
 );
-assert.throws(
-  () => build({
+const sameFrameFl2v = build({
     userPrompt: "",
     userRequirements: "",
     purpose: "minimax-h3-fl2v-reverse",
     visualSchema: "nf.h3.visual.v1",
     requirements: "required",
     images: [frame("first_frame", "SAME"), frame("last_frame", "SAME")],
-  }),
-  /two distinct frame images/,
+});
+assert.equal(sameFrameFl2v.resultOptions.minimaxH3Mode, "first_last");
+assert.equal(sameFrameFl2v.resultOptions.requiredProviderCalls, 2);
+assert.deepEqual(
+  Array.from(sameFrameFl2v.resultOptions.h3VisualBodies, (body) => body.input[0].content[0].image_url),
+  ["data:image/png;base64,SAME", "data:image/png;base64,SAME"],
 );
 for (const [payload, expectedCode] of [
   [{

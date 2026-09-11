@@ -8813,9 +8813,7 @@ function buildMiniMaxH3GrokReverseRequest(payload, model = "grok-4.3") {
     if (images.length !== 2 || firstFrames.length !== 1 || lastFrames.length !== 1) {
       throw miniMaxH3ContractError("h3_contract_images", "MiniMax H3 FL2V reverse requires exactly one first_frame and one last_frame image", 400);
     }
-    if (firstFrames[0].imageUrl === lastFrames[0].imageUrl) {
-      throw miniMaxH3ContractError("h3_contract_images", "MiniMax H3 FL2V reverse requires two distinct frame images", 400);
-    }
+    // Loop endpoints may share an image while retaining separate frame roles.
     orderedImages = [firstFrames[0], lastFrames[0]];
     scenario = "video_frames";
   }
