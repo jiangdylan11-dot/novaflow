@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
-import { buildGrokImageReverseRequest } from "./smart-ai-grok.workflow.mjs";
+import { buildGrokImageReverseRequest, callGrokResponseWithVisualRetry } from "./smart-ai-grok.workflow.mjs";
 
 const browser = {};
 for (const name of ["prompt", "reverse"]) {
@@ -56,4 +56,29 @@ test("FL2V still rejects a missing endpoint and duplicate frame roles", () => {
       (error) => error.errorCode === "h3_contract_images" && error.statusCode === 400
     );
   }
+});
+
+test("ordinary overlapping shapes remain visible facts in an H3 same-frame result", async () => {
+  const built = buildGrokImageReverseRequest(prepare());
+  const richPrompt = [
+    "[主体物品]",
+    "外观 = \"两块蓝色图形交叠，边缘清晰，表面光滑\"",
+    "[环境背景]",
+    "环境 = \"纯白背景，标志位于画面中央\"",
+    "[风格设定]",
+    "风格 = \"简洁平面设计，几何造型\"",
+    "[光线与色彩]",
+    "光线 = \"均匀柔光，蓝白配色\"",
+    "[拍摄参数]",
+    "构图 = \"正面视角，居中构图，边缘清晰\""
+  ].join("\n");
+  const result = await callGrokResponseWithVisualRetry(
+    built.body, built.inputMeta, built.resultOptions,
+    async () => ({ data: { output_text: richPrompt }, providerCallCount: 1 })
+  );
+  assert.equal(result.data.visualSchema, "nf.h3.visual.v1");
+  assert.equal(result.providerCallCount, 2);
+  assert.match(result.data.output_text, /两块蓝色图形交叠/);
+  assert.match(result.data.output_text, /<Picture 1>/);
+  assert.match(result.data.output_text, /<Picture 2>/);
 });

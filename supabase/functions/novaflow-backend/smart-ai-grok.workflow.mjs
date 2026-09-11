@@ -2497,6 +2497,16 @@ function projectMiniMaxH3RichFactsToVisualIr(structuralIr, richPrompt, diagnosti
     ordinaryFacts.sensitive,
     projected.content_safety.sensitive_visible_facts || []
   ], 6);
+  if (projected.content_safety.level === "safe") {
+    // Ordinary contact (for example overlapping shapes) belongs in visual relations.
+    const interactionFacts = projected.content_safety.sensitive_visible_facts;
+    const isSensitiveFact = (fact) => GROK_VISUAL_IR_SAFE_SENSITIVE_PATTERN.test(normalizeGrokVisualIrScanText(fact));
+    projected.relations = miniMaxH3UniqueFacts([
+      projected.relations,
+      interactionFacts.filter((fact) => !isSensitiveFact(fact))
+    ], 20);
+    projected.content_safety.sensitive_visible_facts = interactionFacts.filter(isSensitiveFact);
+  }
   const canonicalDiagnostics = {};
   const canonical = parseGrokVisualIr(
     JSON.stringify(projected),
