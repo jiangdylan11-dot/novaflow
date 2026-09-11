@@ -618,22 +618,27 @@
       'You are a MiniMax H3 video-prompt formatter.',
       `Protocol: ${protocol.protocolName}; duration: ${protocol.durationSeconds.toFixed(2)} seconds.`,
       `Output fields in this exact order: ${protocol.fieldOrder.join(' -> ')}.`,
+      'Separate the alignment line and core fields with blank lines. Use short paragraphs for the opening, action progression, and ending; describe each visual fact once and omit internal validation commentary.',
       'Use [Shot 1] without a timestamp. Every later shot must use [Shot N] At MM:SS.mmm, with strictly increasing times not beyond the requested duration.',
       `Available resource labels: ${references}. Never invent a resource label.`,
       'Describe a continuous, physically achievable action from its initial state through intermediate progression to its final state; do not stop at a static image caption.',
       'For every shot, state the camera behavior explicitly, including movement type or locked position, direction, amplitude, and speed.',
       'Keep character identity, anatomy, wardrobe/material state, composition, lighting, and environment continuous unless the source prompt explicitly changes them.',
-      'overall_soundscape is only diegetic sound: synchronize action sounds, ambience, dialogue, and supplied audio with the shot timeline. non_diegetic_music is only off-screen score; use N/A when none is intended.',
+      'overall_soundscape is only diegetic sound: one short paragraph of ambience, physical-action sounds, and non-verbal sounds. Keep dialogue, singing, and diegetic music in the visual timeline, without repeating them here. Use N/A only for explicitly requested complete silence. non_diegetic_music is only off-screen score; use N/A when none is intended.',
     ]
     if (protocol.alignment.required) {
       lines.push(protocol.alignment.description)
+      if (protocol.mode === 'first_last') lines.push('FL2VA defaults to one continuous shot unless multiple shots are explicitly requested. Do not add a cut at the final-frame time. Describe common appearance once, then connect the meaningful endpoint differences through observable motion.')
       lines.push(protocol.mode === 'image_video'
         ? '<Picture 1> is independently bound only as the exact opening frame at 0.00 seconds; infer later motion without rewriting its visible opening facts.'
         : '<Picture 1> and <Picture 2> are independent exact endpoint bindings. Preserve each endpoint at its own time and infer only the supported transition between them; never blend or swap their roles.')
     }
     if (protocol.mode === 'multi_reference') {
-      lines.push(`When useful, summary may begin with one or more supported relations in brackets: ${REFERENCE_RELATIONS.join(', ')}.`)
+      lines.push(`summary must begin with the actual task types in brackets: ${REFERENCE_RELATIONS.join(', ')}. Use one short paragraph; image appearance guidance is not automatically keyframe completion and video motion guidance is not automatically video continuation.`)
       lines.push('Define every <Subject N> in subject_definitions before using it, starting at <Subject 1> without gaps.')
+      lines.push('Define reusable appearance or style as <Subject N>, citing its <Picture N> source inside the definition. Use standalone picture entries only for frame or composition anchors. Never copy internal inventory wording or captured slot names into the final prompt.')
+      lines.push('Put each independently tracked reference definition and retention entry on its own line. Visual retention markers are fully_preserved, partially_preserved, attribute_transfer, weak_reference; audio markers are fully_copy, partially_copy, reference, weak_reference. Keep the labels and their roles stable.')
+      lines.push('Begin detailed_description with the overall style before [Shot 1]. Describe playback in short paragraphs, maintaining necessary subject details at first appearance without repeating complete definitions or retention lists.')
       lines.push('retention_analysis must state, separately for every supplied media reference, which identity, appearance, motion, timing, or sound properties are retained and which are not transferred.')
       lines.push('Keep each resource role independent: an image does not become an audio cue, a video does not overwrite subject identity, and audio does not imply unseen visual events.')
     }
@@ -943,13 +948,57 @@
     if (hasKind('audio') && /(?:<Audio\s+[1-9][0-9]*>|audio|sound|voice|dialogue|\u58f0\u97f3|\u97f3\u9891|\u97f3\u6548|\u97f3\u8272|\u5bf9\u767d|\u8bed\u97f3)/i.test(text)) {
       add('audio reference')
     }
-    if (hasKind('video') && /(?:<Video\s+[1-9][0-9]*>|video|motion|timing|cadence|\u89c6\u9891|\u52a8\u4f5c|\u8fd0\u52a8|\u8282\u594f|\u65f6\u5e8f)/i.test(text)) {
+    if (hasKind('video') && /(?:continu(?:e|ation)|extend.*video|续写|续接|延续原视频|视频续)/i.test(text)) {
       add('video continuation')
     }
-    if (hasKind('image') && /(?:<Picture\s+[1-9][0-9]*>|image|picture|identity|appearance|\u56fe\u7247|\u53c2\u8003\u56fe|\u8eab\u4efd|\u5916\u89c2|\u6784\u56fe)/i.test(text)) {
+    if (hasKind('image') && /(?:first frame|last frame|keyframe|frame anchor|首帧|尾帧|关键帧)/i.test(text)) {
       add('keyframe completion')
     }
     return Object.freeze(relations)
+  }
+
+  function formatPromptLayout(text, sections, fieldOrder) {
+    const formatNarrative = (content) => {
+      // Only insert paragraph breaks outside quoted text and verbatim dialogue.
+      const protectedRanges = Array.from(content.matchAll(/<d>[\s\S]*?<\/d>|"(?:\\.|[^"\\])*"|“[^”]*”/gu),
+        (match) => [match.index, match.index + match[0].length])
+      const boundaries = new Set([0, content.length])
+      for (const part of new Intl.Segmenter('zh', { granularity: 'sentence' }).segment(content)) {
+        boundaries.add(part.index + part.segment.length)
+      }
+      for (const match of content.matchAll(/\[Shot [1-9][0-9]*\]|\n[ \t]*\n/gu)) boundaries.add(match.index)
+      const offsets = Array.from(boundaries).filter((offset) =>
+        !protectedRanges.some(([start, end]) => offset > start && offset < end)).sort((a, b) => a - b)
+      const paragraphs = []
+      let paragraph = ''
+      for (let index = 1; index < offsets.length; index += 1) {
+        const raw = content.slice(offsets[index - 1], offsets[index])
+        const chunk = raw.trim()
+        if (!chunk) continue
+        if (paragraph && (paragraph.length + chunk.length > 220 || /^\s*\[Shot /u.test(raw) || /^\n[ \t]*\n/u.test(raw))) {
+          paragraphs.push(paragraph)
+          paragraph = ''
+        }
+        paragraph += (paragraph ? ' ' : '') + chunk
+        if (/\n[ \t]*\n\s*$/u.test(raw)) {
+          paragraphs.push(paragraph)
+          paragraph = ''
+        }
+      }
+      if (paragraph) paragraphs.push(paragraph)
+      return paragraphs.join('\n\n')
+    }
+    const prefix = text.slice(0, sections[fieldOrder[0]].headerIndex).trim()
+    return [prefix, ...fieldOrder.map((field) => {
+      let content = sections[field].content
+      const narrative = field === 'integrated_multimodal_description' || field === 'detailed_description'
+      const firstShot = content.indexOf('[Shot 1]')
+      if (field === 'integrated_multimodal_description' && firstShot > 0) {
+        content = `[Shot 1] ${content.slice(0, firstShot).trim()}\n\n${content.slice(firstShot + '[Shot 1]'.length).trim()}`
+      }
+      const multiline = field === 'subject_definitions' || field === 'retention_analysis'
+      return `${field}:${multiline ? '\n' : ' '}${narrative ? formatNarrative(content) : content}`
+    })].filter(Boolean).join('\n\n')
   }
 
   function validatePromptText(text, options) {
@@ -959,6 +1008,7 @@
       throw new Error('MiniMax H3 model output must use protocol references, not UI aliases')
     }
     const protocol = createPromptProtocol(options)
+    value = value.replace(new RegExp(`^([ \\t]*)(${protocol.fieldOrder.join('|')})[ \\t]*$`, 'gm'), '$1$2:')
     value = completeMissingSubjectDefinitions(value, protocol.fieldOrder, protocol.mode)
     const sections = parseFieldSections(value, protocol.fieldOrder)
     const narrative = protocol.mode === 'multi_reference'
@@ -982,7 +1032,9 @@
     }
     return deepFreeze({
       valid: true,
-      text: value,
+      text: formatPromptLayout(value, protocol.mode === 'multi_reference' && !/^\[/.test(sections.summary.content)
+        ? Object.assign({}, sections, { summary: Object.assign({}, sections.summary, { content: `[${relations.join(' + ')}] ${sections.summary.content}` }) })
+        : sections, protocol.fieldOrder),
       mode: protocol.mode,
       protocolName: protocol.protocolName,
       durationSeconds: protocol.durationSeconds,

@@ -798,10 +798,15 @@ function miniMaxH3PromptProtocolRules(mode, contentPolicy) {
     "First identify the applicable H3 mode: T2VA, I2VA, FL2VA, L2VA, or full-reference Ref2VA.",
     "For T2VA, I2VA, FL2VA, and L2VA, output these fields in this exact order: integrated_multimodal_description, overall_soundscape, non_diegetic_music.",
     "For Ref2VA, output these fields in this exact order: subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music.",
+    "For Ref2VA, put each tracked reference definition and retention entry on its own line. summary is one short paragraph beginning with the actual task types in brackets. Image appearance guidance is reference generation, not automatically keyframe completion; video motion guidance is not automatically video continuation.",
+    "For image appearance or style references, define reusable visible content as <Subject N> and cite its source <Picture N> inside that definition. A standalone <Picture N> definition is only for an actual frame or composition anchor. Never copy internal inventory phrases, captured slot names, or multi_ref_* identifiers into output.",
+    "Ref2VA retention_analysis uses fully_preserved, partially_preserved, attribute_transfer, or weak_reference for visual references; fully_copy, partially_copy, reference, or weak_reference for audio. Describe only the supplied role, without repeating the whole inventory. Begin detailed_description with the overall style before [Shot 1], then use readable paragraphs in playback order while retaining necessary subject details and source labels.",
     "Use the exact English field names followed by colons. Choose the field-value language from the user's natural-language creative text and requirements, ignoring protocol labels. If that material contains Chinese and does not explicitly request another output language, write field values in Simplified Chinese; otherwise follow the user's explicitly requested or dominant language. Preserve dialogue, lyrics, and visible scene text in their original language.",
     "Use [Shot 1] without a timestamp; later shots use [Shot N] At MM:SS.mmm with strictly increasing times inside the requested duration.",
+    "Separate the alignment line and each core field with a blank line. Within the visual field, use short readable paragraphs for the opening state, action progression, and ending. State each fact once; remove repeated scene inventories and internal validation or instruction commentary.",
+    "FL2VA defaults to one continuous shot. Use additional shots only when explicitly requested, never create a cut merely to label the final frame. Describe shared appearance once and connect only the meaningful endpoint differences through motion.",
     "Each shot must integrate composition, referenced subjects, environment, a concrete start-to-process-to-result action progression, continuous camera behavior (or an explicit locked camera), and synchronized diegetic sound.",
-    "overall_soundscape must describe time-aligned diegetic sound and ambience; non_diegetic_music must independently describe score or use N/A when no score is intended.",
+    "overall_soundscape is one short paragraph of ambient, physical-action, and non-verbal sounds, not a copy of action instructions or dialogue. Dialogue, singing, and diegetic music belong in the visual timeline. Use N/A for overall_soundscape only for explicitly requested complete silence; non_diegetic_music independently describes score or uses N/A when no score is intended.",
     "Keep speaker IDs and reference labels stable. Only use labels established by the input: <Subject N>, <Picture N>, <Video N>, and <Audio N>.",
     "For keyframe modes, describe the continuous path from or toward the supplied frame anchors. Do not invent unavailable reference assets.",
     ...(isKeyframeMode ? [
@@ -814,7 +819,11 @@ function miniMaxH3PromptProtocolRules(mode, contentPolicy) {
       "Preserve every directly visible sensitive fact from the validated visual IR without euphemism. Never infer minor or adult status from ambiguous age, gender, or appearance wording. Do not treat young_looking, age_unverifiable, or uncertain candidate wording alone as minor evidence. Return exactly H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content only when explicit minor, underage, or child evidence coexists with sensitive content."
     ] : []),
     "Resolve conflicts in favor of explicit user constraints. Do not output negative prompts, avoidance lists, Markdown, analysis, alternatives, or commentary.",
-    "Return only the final H3 field structure."
+    "Return only the final H3 field structure. Keep the colon after every field name, including headings whose content begins on the next line.",
+    "When a JSON response schema is supplied, place only each section's non-empty content in its corresponding property, without repeating the field name inside the value. reference_alignment contains only the independent image alignment sentence. The application adds field headings and paragraph spacing.",
+    mode === "full_reference"
+      ? "Required headings: subject_definitions:\nsummary:\nretention_analysis:\ndetailed_description:\noverall_soundscape:\nnon_diegetic_music:"
+      : "Required headings: integrated_multimodal_description:\noverall_soundscape:\nnon_diegetic_music:"
   ].join("\n");
 }
 
@@ -826,7 +835,14 @@ function miniMaxH3PromptEnhanceDurationFromText(requirements) {
 }
 
 function miniMaxH3PromptEnhanceUserRequirement(requirements, currentPrompt = "") {
-  const current = normalizeSmartAiText(currentPrompt || "", 1000);
+  const current = normalizeSmartAiText(currentPrompt || "", 20000);
+  const source = String(requirements || "").replace(/\r\n/g, "\n");
+  const sourceHeader = /^Source prompt:[ \t]*\n/im.exec(source);
+  if (sourceHeader) {
+    const tail = source.slice(sourceHeader.index + sourceHeader[0].length).trim();
+    // The renderer appends actual user requirements after its complete source prompt.
+    return current && tail.startsWith(current) ? tail.slice(current.length).trim() : "";
+  }
   const ignored = /^(?:you are|protocol:|output fields|use \[shot|available resource|describe a continuous|for every shot|keep character|overall_soundscape|non_diegetic_music|return only|source prompt:|field-value language|currentprompt:|requirements:|mode:)/i;
   const lines = normalizeSmartAiText(requirements || "", 12000).split(/\r?\n/).map((line) => normalizeSmartAiText(line, 400)).filter(Boolean);
   const candidates = lines.filter((line) => {
@@ -849,7 +865,7 @@ function buildMiniMaxH3PromptEnhanceDeterministicFallback(options = {}) {
         : "text_video";
   const currentPrompt = normalizeSmartAiText(options.currentPrompt || options.prompt || "", 900);
   const requirements = normalizeSmartAiText(options.requirements || "", 12000);
-  const userRequirement = miniMaxH3PromptEnhanceUserRequirement(requirements, currentPrompt);
+  const userRequirement = miniMaxH3PromptEnhanceUserRequirement(requirements, options.currentPrompt || options.prompt || "");
   if (!currentPrompt && !userRequirement) return "";
   const languageText = `${currentPrompt}\n${requirements}`;
   const chinese = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/.test(languageText);
@@ -857,37 +873,30 @@ function buildMiniMaxH3PromptEnhanceDeterministicFallback(options = {}) {
     ? Number(options.durationSeconds)
     : miniMaxH3PromptEnhanceDurationFromText(requirements);
   const durationText = Number.isInteger(durationSeconds) ? String(durationSeconds) : durationSeconds.toFixed(2);
-  const timestamp = miniMaxH3TimelineStamp(durationSeconds);
   const sourceFact = currentPrompt || (chinese ? "用户补充要求" : "the user requirement");
   const intent = userRequirement || (chinese
     ? "让动作更生动，同时保持原主体、场景、构图和参考关系不变"
     : "make the motion more vivid while preserving the original subjects, scene, composition, and references");
   if (chinese) {
-    let referencePrefix = "";
-    if (mode === "image_video") referencePrefix = "<Picture 1> 是 0.00 秒时提供的精确首帧。";
-    else if (mode === "first_last") referencePrefix = `<Picture 1> 是 0.00 秒时提供的精确首帧；<Picture 2> 是 ${durationText} 秒的精确尾帧（final shot）。`;
-    else if (mode === "video_reference") referencePrefix = "<Video 1> 作为视频参考，仅继承其运动节奏和可用参考信息。";
-    let integrated = `[Shot 1] ${referencePrefix}当前底稿为：${sourceFact}。动作从当前状态开始，随后按“${intent}”逐渐增强动作幅度、节奏和表情/姿态变化，过程保持主体身份、服装、道具、场景和构图连续；镜头保持稳定构图并进行轻微跟随。`;
-    if (mode === "first_last") integrated += ` [Shot 2] At ${timestamp}，动作连续过渡并准确抵达 <Picture 2> 的尾帧状态。`;
+    const referencePrefix = mode === "video_reference" ? "<Video 1> 作为视频参考，仅继承其运动节奏和可用参考信息。" : "";
+    let integrated = `[Shot 1] ${referencePrefix}${sourceFact}\n\n${intent}。动作从当前状态开始，随后连续推进，保持主体身份、服装、道具与场景连贯；镜头保持稳定构图。`;
+    if (mode === "first_last") integrated += `\n\n动作逐渐收束，在 ${durationText} 秒准确抵达 <Picture 2> 的尾帧状态。`;
     const alignment = mode === "image_video"
-      ? "参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒\n"
+      ? "参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒\n\n"
       : mode === "first_last"
-        ? `参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；<Picture 2> 对应 [Shot 2] = ${durationText} 秒\n`
+        ? `参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；<Picture 2> 对应 [Shot 1] = ${durationSeconds.toFixed(2)} 秒（尾帧）\n\n`
         : "";
-    return `${alignment}integrated_multimodal_description: ${integrated}\noverall_soundscape: 动作声、衣料摩擦声、脚步或环境声随动作节奏同步；未指定对白时不添加对白。\nnon_diegetic_music: N/A`;
+    return `${alignment}integrated_multimodal_description: ${integrated}\n\noverall_soundscape: 轻微的环境底声持续，可见动作产生的声音随动作节奏同步。\n\nnon_diegetic_music: N/A`;
   }
-  let referencePrefix = "";
-  if (mode === "image_video") referencePrefix = "<Picture 1> is the exact supplied opening frame at 0.00 seconds. ";
-  else if (mode === "first_last") referencePrefix = `<Picture 1> is the exact opening frame at 0.00 seconds; <Picture 2> is the exact final shot at ${durationText} seconds. `;
-  else if (mode === "video_reference") referencePrefix = "<Video 1> is used only for supported motion timing and reference information. ";
-  let integrated = `[Shot 1] ${referencePrefix}Current prompt: ${sourceFact}. The action begins from the current state, then follows the user requirement (${intent}) with clearer motion rhythm, continuous posture change, and stable identity, wardrobe, props, scene, and composition; camera holds stable framing with a subtle follow. `;
-  if (mode === "first_last") integrated += `[Shot 2] At ${timestamp}, the motion resolves continuously into <Picture 2>.`;
+  const referencePrefix = mode === "video_reference" ? "<Video 1> is used only for supported motion timing and reference information. " : "";
+  let integrated = `[Shot 1] ${referencePrefix}${sourceFact}\n\n${intent}. The action begins from the current state, then progresses continuously with stable identity, wardrobe, props, and scene; the camera holds stable framing.`;
+  if (mode === "first_last") integrated += `\n\nThe motion gradually settles into the exact final state of <Picture 2> at ${durationText} seconds.`;
   const alignment = mode === "image_video"
-    ? "Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds\n"
+    ? "Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds\n\n"
     : mode === "first_last"
-      ? `Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds; <Picture 2> from [Shot 2] = ${durationText} seconds\n`
+      ? `Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds; <Picture 2> from [Shot 1] = ${durationSeconds.toFixed(2)} seconds (final shot)\n\n`
       : "";
-  return `${alignment}integrated_multimodal_description: ${integrated}\noverall_soundscape: Synchronized movement sounds, cloth rustle, footsteps, or ambience follow the action rhythm; dialogue is N/A unless specified.\nnon_diegetic_music: N/A`;
+  return `${alignment}integrated_multimodal_description: ${integrated}\n\noverall_soundscape: Low ambience continues as quiet physical sounds follow the visible action.\n\nnon_diegetic_music: N/A`;
 }
 
 function miniMaxH3PromptFieldsAreOrdered(text, fields) {
@@ -951,6 +960,20 @@ function normalizeMiniMaxH3PromptOutput(text, options) {
     ? ["subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music"]
     : MINIMAX_H3_BASE_PROMPT_FIELDS;
   const knownFields = new Set([...MINIMAX_H3_BASE_PROMPT_FIELDS, "subject_definitions", "summary", "retention_analysis", "detailed_description"]);
+  if (parsed && expectedFields.some((field) => Object.prototype.hasOwnProperty.call(parsed, field))) {
+    const alignmentRequired = mode === "image_video" || mode === "first_last";
+    const schemaFields = alignmentRequired ? ["reference_alignment", ...expectedFields] : expectedFields;
+    if (Object.keys(parsed).some((field) => !schemaFields.includes(field))
+      || schemaFields.some((field) => typeof parsed[field] !== "string" || !parsed[field].trim())) {
+      throw miniMaxH3ContractError("h3_contract_fields", "MiniMax H3 structured output requires all non-empty sections");
+    }
+    prompt = [
+      alignmentRequired ? parsed.reference_alignment.trim() : "",
+      ...expectedFields.map((field) => `${field}: ${parsed[field].trim()}`)
+    ].filter(Boolean).join("\n\n");
+  }
+  // A missing delimiter is formatting damage, not a missing semantic section.
+  prompt = prompt.replace(new RegExp(`^([ \\t]*)(${[...knownFields].join("|")})[ \\t]*$`, "gm"), "$1$2:");
   const allFieldHeaders = Array.from(prompt.matchAll(/^\s*([a-z][a-z0-9_]*)\s*:/gim), (match) => match[1].toLowerCase());
   const fieldHeaders = allFieldHeaders.filter((field) => knownFields.has(field));
   if (!miniMaxH3PromptFieldsAreOrdered(prompt, expectedFields)
@@ -959,11 +982,27 @@ function normalizeMiniMaxH3PromptOutput(text, options) {
     || fieldHeaders.some((field, index) => field !== expectedFields[index])) {
     throw miniMaxH3ContractError("h3_contract_fields", `MiniMax H3 prompt must contain exactly ${expectedFields.length} required fields in order`);
   }
+  if (mode === "full_reference") {
+    const inventory = String(options.requirements || "").match(/^Available resource labels:([^\n]+)/im)?.[1] || "";
+    const references = inventory.match(/<(?:Picture|Video|Audio) [1-9][0-9]*>/g) || [];
+    if (references.some((token) => !prompt.includes(token))) {
+      throw miniMaxH3ContractError("h3_contract_references", "MiniMax H3 prompt must retain all captured reference labels");
+    }
+  }
+  if (expectedFields.some((field, index) => !miniMaxH3PromptFieldValue(prompt, field, expectedFields[index + 1] || ""))) {
+    throw miniMaxH3ContractError("h3_contract_fields", "MiniMax H3 prompt fields cannot be empty");
+  }
   if (!/(?:^|\s)\[Shot 1\](?:\s|$)/.test(prompt)) {
     throw miniMaxH3ContractError("h3_contract_timeline", "MiniMax H3 prompt must contain [Shot 1]");
   }
   const visualField = mode === "full_reference" ? "detailed_description" : "integrated_multimodal_description";
-  const visual = miniMaxH3PromptFieldValue(prompt, visualField, "overall_soundscape");
+  let visual = miniMaxH3PromptFieldValue(prompt, visualField, "overall_soundscape");
+  const firstShotIndex = visual.indexOf("[Shot 1]");
+  if (mode !== "full_reference" && firstShotIndex > 0) {
+    const originalVisual = visual;
+    visual = `[Shot 1] ${visual.slice(0, firstShotIndex).trim()}\n\n${visual.slice(firstShotIndex + "[Shot 1]".length).trim()}`;
+    prompt = prompt.replace(originalVisual, visual);
+  }
   const soundscape = miniMaxH3PromptFieldValue(prompt, "overall_soundscape", "non_diegetic_music");
   const music = miniMaxH3PromptFieldValue(prompt, "non_diegetic_music");
   if (!visual || !soundscape || !music) throw miniMaxH3ContractError("h3_contract_fields", "MiniMax H3 prompt fields cannot be empty");
@@ -996,6 +1035,7 @@ function normalizeMiniMaxH3PromptOutput(text, options) {
       }
     }
   }
+  prompt = prompt.replace(new RegExp(`\\n+[ \\t]*(?=(?:${expectedFields.join("|")})\\s*:)`, "g"), "\n\n");
   return options.minimaxH3Reverse === true
     ? miniMaxH3ValidateCompiledPromptAgainstIr(prompt, options.minimaxH3TrustedVisualIr, options)
     : prompt;
@@ -1880,6 +1920,7 @@ function buildMiniMaxH3RepairBody(body, errorCode = "h3_contract_invalid") {
     "DIRECTED H3 CONTRACT REPAIR (one final attempt).",
     `Failed gate: ${String(errorCode || "h3_contract_invalid").slice(0, 80)}.`,
     "Rebuild from the original images and requirements. Do not repeat or comment on the prior answer.",
+    "Every captured reference label listed in Available resource labels must occur in the appropriate final section. Do not omit supplied references or leave definitions or retention_analysis empty.",
     "Return only the exact mode-specific H3 structure: exact ordered fields; independent keyframe alignment when required; [Shot 1] timeline; concrete action progression; declared camera behavior; separately usable diegetic soundscape and non-diegetic music.",
     `Return exactly ${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}: explicit_minor_sensitive_content only when explicit minor, underage, or child evidence coexists with sensitive content. Do not treat young_looking, age_unverifiable, or uncertain candidate wording alone as minor evidence, and never infer age from ambiguous appearance wording.`
   ].join("\n")));
@@ -2666,37 +2707,58 @@ function miniMaxH3UniqueFacts(values, limit = 12) {
   return output.slice(0, limit);
 }
 
-function miniMaxH3VisualFactsSummary(ir) {
-  const entities = ir.entities.slice(0, 4).map((entity) => miniMaxH3UniqueFacts([
-    [entity.count, entity.name].filter(Boolean).join(" "),
-    entity.appearance.slice(0, 8),
-    entity.pose,
-    entity.action,
-    entity.materials.slice(0, 4),
-    entity.colors.slice(0, 4)
-  ], 18).join("，")).filter(Boolean);
-  const relations = miniMaxH3UniqueFacts(ir.relations, 5);
-  const scene = miniMaxH3UniqueFacts([
-    ir.scene.environment,
-    ir.scene.background,
-    ir.scene.spatial_layers.slice(0, 8)
-  ], 10);
-  const look = miniMaxH3UniqueFacts([
-    ir.look.lighting.slice(0, 3),
-    ir.look.palette.slice(0, 3),
-    ir.look.materials.slice(0, 2),
-    ir.look.style.slice(0, 3),
-    ir.look.atmosphere,
-    ir.look.finish
-  ], 10);
-  const camera = miniMaxH3UniqueFacts([
-    ir.camera_cues.shot,
-    ir.camera_cues.angle,
-    ir.camera_cues.composition,
-    ir.camera_cues.depth_of_field
-  ], 6);
-  const sensitive = miniMaxH3UniqueFacts(ir.content_safety?.sensitive_visible_facts || [], 4);
-  return miniMaxH3UniqueFacts([entities, relations, scene, look, camera, sensitive], 48).join("；");
+function miniMaxH3VisualFactsSummary(ir, baseline = null) {
+  // Compare clauses within their own scope, never across different subjects.
+  const clauses = (values) => miniMaxH3UniqueFacts(values.flat(Infinity).flatMap((value) => {
+    const text = String(value || "");
+    return /["“”]|<d>/u.test(text) ? [text] : text.split(/[；;\n]+/u);
+  }), Infinity).map((text) => text.replace(/[。.;；]+$/u, "").trim()).filter(Boolean);
+  const groups = (facts) => {
+    if (!facts) return [];
+    return [
+      clauses([facts.look.style, Object.values(facts.camera_cues)]),
+      ...facts.entities.map((entity) => {
+        const detail = clauses([entity.appearance, entity.pose, entity.action]);
+        const description = detail.join("；");
+        const extras = clauses([entity.materials, entity.colors]).filter((value) => !description.includes(value));
+        const identity = /^(?:物品|主体|object|item)$/iu.test(entity.name) && detail.length
+          ? "" : [entity.count, entity.name].filter(Boolean).join(" ");
+        return clauses([identity,
+          detail.filter((value) => value !== entity.name), extras]);
+      }),
+      clauses([facts.relations]),
+      clauses([facts.scene.environment, facts.scene.background, facts.scene.spatial_layers]),
+      clauses([facts.look.lighting, facts.look.palette, facts.look.materials, facts.look.atmosphere, facts.look.finish]),
+      clauses([facts.content_safety?.sensitive_visible_facts || []]),
+      (facts.ocr || []).map((text) => JSON.stringify(text))
+    ];
+  };
+  const previous = groups(baseline);
+  const current = groups(ir);
+  // Differing subject counts cannot be matched reliably by array index.
+  const comparable = !baseline || baseline.entities.length === ir.entities.length;
+  const paragraphs = [];
+  const sharedSceneFacts = new Set();
+  current.forEach((group, index) => {
+    const seen = new Set(comparable ? (previous[index] || []).map((text) => text.toLowerCase()) : []);
+    let paragraph = "";
+    for (const text of group) {
+      const key = text.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (index === 0 || index > ir.entities.length) {
+        if (sharedSceneFacts.has(key)) continue;
+        sharedSceneFacts.add(key);
+      }
+      if (paragraph && paragraph.length + text.length > 180) {
+        paragraphs.push(paragraph);
+        paragraph = "";
+      }
+      paragraph += (paragraph ? "；" : "") + text;
+    }
+    if (paragraph) paragraphs.push(paragraph);
+  });
+  return paragraphs.join("\n\n");
 }
 
 function miniMaxH3VisualFactsHaveExplicitMinor(ir) {
@@ -2735,10 +2797,30 @@ function miniMaxH3AssertVisualFactsPolicy(ir, options = {}) {
 
 function miniMaxH3IntentFacts(options = {}) {
   const parts = [options.currentPrompt, options.requirements]
-    .flatMap((value) => String(value || "").split(/(?:\r?\n|[。！？!?；;]+)/u))
-    .map((value) => value.replace(/\s+/g, " ").trim())
+    .map((value) => String(value || "").replace(/\r\n/g, "\n").trim())
     .filter(Boolean);
-  return miniMaxH3UniqueFacts(parts, 4);
+  return [...new Set(parts)];
+}
+
+function miniMaxH3IntentSections(options = {}) {
+  const visual = [];
+  const soundscape = [];
+  const music = [];
+  for (const text of miniMaxH3IntentFacts(options)) {
+    if (/^integrated_multimodal_description\s*:/im.test(text)) {
+      visual.push(miniMaxH3PromptFieldValue(text, "integrated_multimodal_description", "overall_soundscape"));
+      soundscape.push(miniMaxH3PromptFieldValue(text, "overall_soundscape", "non_diegetic_music"));
+      music.push(miniMaxH3PromptFieldValue(text, "non_diegetic_music"));
+    } else if (/^(?:背景音乐|配乐|background music|score)\s*[:：]/iu.test(text)) {
+      music.push(text.replace(/^[^:：]+[:：]\s*/u, ""));
+    } else if (/^(?:环境音|音效|soundscape|ambient sound)\s*[:：]/iu.test(text)) {
+      soundscape.push(text.replace(/^[^:：]+[:：]\s*/u, ""));
+    } else {
+      visual.push(text);
+    }
+  }
+  const join = (values) => [...new Set(values.filter(Boolean))].join("\n\n");
+  return { visual: join(visual), soundscape: join(soundscape), music: join(music) };
 }
 
 function miniMaxH3TimelineStamp(durationSeconds) {
@@ -2757,38 +2839,49 @@ function compileMiniMaxH3PromptFromVisualFacts(frameFacts, options = {}) {
     frame?.picture !== `<Picture ${index + 1}>` || frame?.ir?.schema !== GROK_VISUAL_IR_SCHEMA_V2
   ))) throw miniMaxH3VisualFactsError("structure", "validated frame-scoped nf.visual.v2 facts are required");
   for (const frame of frames) miniMaxH3AssertVisualFactsPolicy(frame.ir, options);
-  const summaries = frames.map((frame) => ({
-    picture: frame.picture,
-    facts: miniMaxH3VisualFactsSummary(frame.ir)
-  }));
-  if (summaries.some((frame) => !frame.facts)) throw miniMaxH3VisualFactsError("semantic", "visual contract contains no visual facts");
+  const opening = miniMaxH3VisualFactsSummary(frames[0].ir);
+  if (!opening) throw miniMaxH3VisualFactsError("semantic", "visual contract contains no visual facts");
   const durationSeconds = Number(options.durationSeconds || 0);
-  const durationText = Number.isInteger(durationSeconds) ? String(durationSeconds) : durationSeconds.toFixed(2);
+  const durationText = durationSeconds.toFixed(2);
   const english = String(options.preferredOutputLanguage || "").toLowerCase() === "en";
-  const intentFacts = miniMaxH3IntentFacts(options);
-  const intent = intentFacts.join(english ? "; " : "；") || (english
-    ? "preserve the visible reference state and use only natural, continuous, minimal motion"
-    : "保持参考帧可见状态，仅做自然、连续、最小幅度的动作推进");
-  let integrated;
-  let soundscape;
-  if (english) {
-    const scopedFacts = summaries.map((frame) => `${frame.picture}: ${frame.facts}`).join("; ");
-    integrated = mode === "first_last"
-      ? `[Shot 1] <Picture 1> is the exact opening frame at 0.00 seconds. Validated frame facts: ${scopedFacts}. Motion begins from <Picture 1>, then follows only the user-supplied action and camera intent (${intent}) as a continuous transition. [Shot 2] At ${miniMaxH3TimelineStamp(durationSeconds)}, <Picture 2> is the exact final shot at ${durationText} seconds. The camera preserves each endpoint's shot, angle, and composition unless the user explicitly requests camera motion.`
-      : `[Shot 1] <Picture 1> is the exact opening frame at 0.00 seconds. Validated visible facts: ${summaries[0].facts}. Motion begins from the visible opening state, then follows the user-supplied action and camera intent (${intent}) naturally and continuously. The camera preserves the reference shot, angle, and composition unless the user explicitly requests camera motion.`;
-    soundscape = `Use only user-supplied sound that matches visible action. User action, camera, or audio intent: ${intent}. Unspecified dialogue, event sound, ambience, and music are N/A.`;
-  } else {
-    const scopedFacts = summaries.map((frame) => `${frame.picture}：${frame.facts}`).join("；");
-    integrated = mode === "first_last"
-      ? `[Shot 1] <Picture 1> 是 0.00 秒的精确首帧。已验证分帧事实：${scopedFacts}。动作从 <Picture 1> 的可见状态开始，随后仅按用户动作与运镜要求“${intent}”连续过渡。[Shot 2] At ${miniMaxH3TimelineStamp(durationSeconds)}, <Picture 2> 是 ${durationText} 秒的精确尾帧（final shot）。镜头保持各端点的景别、视角与构图，除非用户明确指定运镜。`
-      : `[Shot 1] <Picture 1> 是 0.00 秒的精确首帧。已验证可见事实：${summaries[0].facts}。动作从首帧可见状态开始，随后按用户动作与运镜要求“${intent}”自然、连续推进。镜头保持参考帧的景别、视角与构图，除非用户明确指定运镜。`;
-    soundscape = `仅使用用户明确要求且与可见动作相符的声音。用户动作、运镜或音频要求：${intent}。未明确要求的对白、事件声、环境声与音乐为 N/A。`;
-  }
+  const intentSections = miniMaxH3IntentSections(options);
+  const intent = intentSections.visual;
+  const silenceText = miniMaxH3IntentFacts(options).join("\n");
+  const silent = /(?:全程(?:静音|无声)|完全静音|complete silence|silent throughout|no sound at all)/iu.test(silenceText)
+    && !/(?:不要|并非|禁止|not|without)\s*(?:全程(?:静音|无声)|完全静音|complete silence|silent throughout)/iu.test(silenceText);
+  const soundscape = silent ? "N/A" : intentSections.soundscape || (english
+    ? "Low, steady ambience accompanies the scene; quiet physical movement sounds follow the action."
+    : "低声、平稳的环境底声贯穿画面，轻微的动作声随可见运动同步起落。");
+  const sameFrames = options.h3SameFrameImages === true;
+  const ending = mode === "first_last" && !sameFrames
+    ? miniMaxH3VisualFactsSummary(frames[1].ir, frames[0].ir) : "";
+  const shotTags = Array.from(intent.matchAll(/\[Shot (\d+)\]/g));
+  const finalShot = shotTags.length ? Number(shotTags[shotTags.length - 1][1]) : 1;
+  const alignment = english
+    ? `Reference alignment - <Picture 1> from [Shot 1] = 0.00 seconds${mode === "first_last" ? `; <Picture 2> from [Shot ${finalShot}] = ${durationText} seconds (final shot)` : ""}.`
+    : `参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒${mode === "first_last" ? `；<Picture 2> 对应 [Shot ${finalShot}] = ${durationText} 秒（尾帧）` : ""}。`;
+  const motion = intent.replace(/^\s*\[Shot 1\]\s*/u, "") || (english
+    ? "Motion begins gently from the opening pose, develops with small, continuous changes, then gradually settles."
+    : "动作从首帧姿态轻缓开始，以小幅、连续的姿态变化自然推进，随后逐渐收稳。");
+  const camera = MINIMAX_H3_CAMERA_DIRECTION_PATTERN.test(intent) ? "" : (english
+    ? "The camera holds a static shot, preserving the opening angle and framing."
+    : "镜头保持固定，延续首帧的视角与构图。");
+  const landing = mode !== "first_last" ? "" : (english
+    ? `By ${durationText} seconds, the motion ${sameFrames ? "returns" : "converges"} continuously to the exact pose, object positions, and composition of <Picture 2>.`
+    : `到 ${durationText} 秒，动作连续${sameFrames ? "回归" : "收束至"} <Picture 2> 的准确姿态、物体位置与构图。`);
+  const integrated = [
+    `[Shot 1] ${opening}`,
+    motion,
+    camera,
+    ending ? (english ? `The transition gradually reaches: ${ending}` : `过渡过程中逐步到达尾帧状态：${ending}`) : "",
+    landing
+  ].filter(Boolean).join("\n\n");
   return [
+    alignment,
     `integrated_multimodal_description: ${integrated}`,
     `overall_soundscape: ${soundscape}`,
-    "non_diegetic_music: N/A"
-  ].join("\n");
+    `non_diegetic_music: ${silent ? "N/A" : intentSections.music || "N/A"}`
+  ].join("\n\n");
 }
 
 async function callMiniMaxH3ReverseWithVisualIr(body, inputMeta, resultOptions, executeAttempt) {
@@ -7618,6 +7711,10 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
   );
   if (!prompt && !requirements) throw new Error("请输入 MiniMax H3 视频创意或当前 Prompt");
   const mode = miniMaxH3EnhanceMode(payload);
+  const responseFields = mode === "full_reference"
+    ? ["subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music"]
+    : ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"];
+  if (mode === "image_video" || mode === "first_last") responseFields.unshift("reference_alignment");
   const directDuration = payload?.durationSeconds ?? payload?.duration_seconds ?? payload?.duration;
   const durationSeconds = directDuration === undefined || directDuration === null || directDuration === ""
     ? miniMaxH3PromptEnhanceDurationFromText(requirements)
@@ -7649,7 +7746,15 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
         { role: "user", content: [smartAiInputText(userText)] }
       ],
       temperature: 0.35,
-      max_output_tokens: MINIMAX_H3_PROMPT_MAX_OUTPUT_TOKENS
+      max_output_tokens: MINIMAX_H3_PROMPT_MAX_OUTPUT_TOKENS,
+      text: { format: { type: "json_schema", name: "minimax_h3_prompt", strict: true, schema: {
+        type: "object", additionalProperties: false,
+        properties: Object.fromEntries(responseFields.map((field) => [field, {
+          type: "string", minLength: 1,
+          ...(field === "subject_definitions" ? { description: `Define reusable visible content as <Subject N> and cite its source media labels: ${(requirements.match(/^Available resource labels:([^\n]+)/im)?.[1]?.match(/<(?:Picture|Video|Audio) [1-9][0-9]*>/g) || []).join(", ")}. Use every supplied source label. Each definition has its own line. A picture used for identity or style belongs inside a subject definition, not a standalone picture entry. Describe only user-supported roles and details; never copy internal slot names or inventory wording.` } : {})
+        }])),
+        required: responseFields
+      } } }
     },
     inputMeta: {
       mode: "minimax_h3_prompt_enhance",
@@ -7778,6 +7883,8 @@ function buildMiniMaxH3GrokReverseRequest(payload, model = "grok-4.3") {
       durationSeconds,
       requiredProviderCalls: richVisualBodies.length,
       h3VisualBodies: richVisualBodies,
+      h3SameFrameImages: visualBodies.length === 2
+        && visualBodies[0].input[0].content[0].image_url === visualBodies[1].input[0].content[0].image_url,
       currentPrompt: userPrompt,
       requirements: userRequirements,
       explicitYouthUserRequest: rawContentState.hasExplicitYouth,

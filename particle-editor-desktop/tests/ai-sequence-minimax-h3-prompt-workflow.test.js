@@ -453,6 +453,18 @@ test('validates Ref2VA relations and contiguous subject definitions', () => {
   assert.deepEqual(Array.from(valid.relations), ['reference generation', 'audio reference'])
   assert.deepEqual(Array.from(valid.usedReferences), ['<Picture 1>', '<Video 1>', '<Audio 1>'])
 
+  const naturalSummary = workflow.validatePromptText(
+    multiReferencePrompt().replace(
+      '[reference generation + audio reference] Keep the hero, motion cadence, and supplied voice.',
+      '\u4fdd\u7559 <Picture 1> \u7684\u8eab\u4efd\u4e0e\u5916\u89c2\uff0c\u53c2\u8003 <Video 1> \u7684\u52a8\u4f5c\u8282\u594f\uff0c\u5e76\u540c\u6b65 <Audio 1> \u7684\u58f0\u97f3\u3002',
+    ),
+    options,
+  )
+  assert.deepEqual(
+    Array.from(naturalSummary.relations),
+    ['reference generation', 'audio reference'],
+  )
+
   assert.throws(
     () => workflow.validatePromptText(
       multiReferencePrompt().replace('[reference generation + audio reference]', '[unsupported relation]'),
