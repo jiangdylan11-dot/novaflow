@@ -1339,6 +1339,21 @@ function joinNovaFlowClientApiUrl(baseUrl, pathName) {
   return url.toString();
 }
 
+function novaFlowClientApiTimeoutLimit(pathName, payload) {
+  if (pathName === NOVAFLOW_GROK_STORYBOARD_PATH) return 120_000;
+  const purpose = String(payload?.purpose || "").trim().toLowerCase().replace(/_/g, "-");
+  const isH3 = (
+    pathName === "/api/client/grok/image-reverse"
+    && ["minimax-h3-i2v-reverse", "minimax-h3-fl2v-reverse"].includes(purpose)
+  ) || (
+    pathName === "/api/client/grok/prompt-optimize"
+    && purpose === "minimax-h3-prompt-enhance"
+  );
+  // H3 may run two sequential provider calls (cloud: 50s each, local proxy:
+  // 60s each). Leave room for upload and quota settlement around those calls.
+  return isH3 ? 135_000 : 60_000;
+}
+
 async function requestNovaFlowClientApi(pathName, options = {}) {
   const pathPart = String(pathName || "").trim();
   if (!NOVAFLOW_CLIENT_API_ALLOWED_PATHS.has(pathPart)) {
@@ -1353,7 +1368,7 @@ async function requestNovaFlowClientApi(pathName, options = {}) {
   const token = String(options.token || "").trim();
   if (token) headers.Authorization = `Bearer ${token}`;
   const controller = new AbortController();
-  const maxTimeout = pathPart === NOVAFLOW_GROK_STORYBOARD_PATH ? 120_000 : 60_000;
+  const maxTimeout = novaFlowClientApiTimeoutLimit(pathPart, options.body);
   const timeout = Math.max(3000, Math.min(maxTimeout, Number(options.timeoutMs || 12000)));
   const timer = setTimeout(() => controller.abort(), timeout);
   let baseUrl = getNovaFlowClientApiBaseUrl();
@@ -1648,7 +1663,7 @@ async function requestNovaFlowSmartAiApi(pathName, payload) {
     method: "POST",
     token,
     body,
-    timeoutMs: pathName === NOVAFLOW_GROK_STORYBOARD_PATH ? 120_000 : 60_000,
+    timeoutMs: novaFlowClientApiTimeoutLimit(pathName, body),
     baseUrl: target.baseUrl
   });
 }

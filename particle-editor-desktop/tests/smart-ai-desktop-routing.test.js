@@ -210,6 +210,7 @@ test("storyboard receives 120 seconds while image reverse preserves v2 metadata 
     },
   });
   const functionSource = extractNamedFunction(source, "requestNovaFlowSmartAiApi");
+  vm.runInContext(extractNamedFunction(source, "novaFlowClientApiTimeoutLimit"), context);
   const requestSmartAi = vm.runInContext(`(${functionSource})`, context);
 
   await requestSmartAi("/api/client/grok/storyboard-unified-nine-shots", { token: "story-token" });
@@ -231,4 +232,57 @@ test("storyboard receives 120 seconds while image reverse preserves v2 metadata 
   assert.equal(calls[2].options.body.visualSchema, "nf.visual.v2");
   assert.equal(calls[2].options.body.nsfw, true);
   assert.equal(calls[2].options.body.purpose, "static-image-reverse");
+});
+
+test("H3 waits for both provider calls and the transport does not clamp it to 60 seconds", async () => {
+  const timers = [];
+  let elapsedMs = 100_000;
+  const context = vm.createContext({
+    NOVAFLOW_GROK_STORYBOARD_PATH: "/api/client/grok/storyboard-unified-nine-shots",
+    NOVAFLOW_CLIENT_API_ALLOWED_PATHS: new Set(["/api/client/grok/image-reverse", "/api/client/grok/prompt-optimize"]),
+    AbortController,
+    URL,
+    getNovaFlowClientApiBaseUrl: () => "https://cloud.example.test",
+    joinNovaFlowClientApiUrl: (base, route) => base + route,
+    setTimeout(callback, ms) { timers.push({ callback, ms }); return timers.length; },
+    clearTimeout() {},
+    fetch: async (_url, options) => {
+      // Simulate provider responses after the old deadline, without wall-clock waits.
+      for (const timer of timers) if (timer.ms <= elapsedMs) timer.callback();
+      if (options.signal.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
+      return { ok: true, status: 200, text: async () => JSON.stringify({ ok: true, positivePrompt: "complete" }) };
+    },
+    appendLogLine() {},
+    redactNovaFlowClientApiText: (value) => String(value),
+  });
+  vm.runInContext(extractNamedFunction(source, "novaFlowClientApiTimeoutLimit"), context);
+  const limit = vm.runInContext("novaFlowClientApiTimeoutLimit", context);
+  const transportSource = source.slice(source.indexOf("async function requestNovaFlowClientApi("), source.indexOf("let novaFlowAdminServerProcess ="));
+  const request = vm.runInContext(`(${transportSource})`, context);
+  for (const [route, purpose] of [
+    ["image-reverse", "minimax-h3-i2v-reverse"],
+    ["image-reverse", "minimax-h3-fl2v-reverse"],
+    ["prompt-optimize", "minimax-h3-prompt-enhance"],
+  ]) {
+    timers.length = 0;
+    const pathName = `/api/client/grok/${route}`;
+    const body = { purpose };
+    assert.equal(limit(pathName, body), 135_000);
+    const result = await request(pathName, { body, method: "POST", timeoutMs: limit(pathName, body) });
+    assert.equal(result.ok, true, "a complete H3 response at 100 seconds must reach the renderer");
+    assert.equal(timers[0].ms, 135_000);
+  }
+  assert.equal(limit("/api/client/grok/image-reverse", { purpose: "static-image-reverse" }), 60_000);
+  assert.equal(limit("/api/client/bootstrap", { purpose: "minimax-h3-fl2v-reverse" }), 60_000);
+  timers.length = 0;
+  const ordinary = await request("/api/client/grok/image-reverse", { body: {}, timeoutMs: 999_000 });
+  assert.equal(ordinary.ok, false);
+  assert.equal(timers[0].ms, 60_000);
+  timers.length = 0;
+  elapsedMs = 136_000;
+  const overdue = await request("/api/client/grok/image-reverse", {
+    body: { purpose: "minimax-h3-fl2v-reverse" }, timeoutMs: 999_000,
+  });
+  assert.equal(overdue.ok, false, "H3 still has a bounded deadline");
+  assert.equal(timers[0].ms, 135_000);
 });
