@@ -11,8 +11,8 @@ const runtimeGroups = [
   ...spineWebpRuntimeFiles.map((file) => ({
     name: file,
     files: [
-      { label: 'desktop exact WebP runtime', path: path.join(repoRoot, 'particle-editor-desktop', file) },
-      { label: 'win-unpacked exact WebP runtime', path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', file) },
+      { label: 'desktop exact WebP runtime', path: path.join(repoRoot, 'particle-editor-desktop', file), dependencyManifest: file.endsWith('/package.json') },
+      { label: 'win-unpacked exact WebP runtime', path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', file), dependencyManifest: file.endsWith('/package.json') },
     ],
   })),
   {
@@ -923,7 +923,14 @@ function sha256(buffer) {
 
 async function hashRuntimeFile(file) {
   try {
-    const buffer = await readFile(file.path)
+    let buffer = await readFile(file.path)
+    if (file.dependencyManifest) {
+      // electron-builder strips these development-only fields from dependencies.
+      const manifest = JSON.parse(buffer.toString('utf8'))
+      delete manifest.scripts
+      delete manifest.keywords
+      buffer = Buffer.from(JSON.stringify(manifest))
+    }
     return {
       ...file,
       hash: sha256(buffer),
