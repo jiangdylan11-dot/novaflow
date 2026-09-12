@@ -111,6 +111,8 @@ const runtimeGroups = [
     'art_prompt_contract.py',
     'visual_contract.py',
     'qwen3_vl_adapter.py',
+    'h3_prompt_enhance.py',
+    'h3_prompt_enhance_policy.json',
   ].map((fileName) => ({
     name: `prompt_assistant/${fileName}`,
     files: [
@@ -135,6 +137,13 @@ const runtimeGroups = [
         label: 'win-unpacked admin server',
         path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'admin-server', 'server.js'),
       },
+    ],
+  },
+  {
+    name: 'admin-server/h3-prompt-enhance.js',
+    files: [
+      { label: 'desktop H3 optimizer', path: path.join(repoRoot, 'particle-editor-desktop', 'admin-server', 'h3-prompt-enhance.js') },
+      { label: 'runtime H3 optimizer', path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'admin-server', 'h3-prompt-enhance.js') },
     ],
   },
   {
@@ -233,6 +242,18 @@ const runtimeGroups = [
     ],
   },
   {
+    name: 'main/qwen-lora-catalog.js',
+    files: [
+      {
+        label: 'desktop Qwen LoRA catalog',
+        path: path.join(repoRoot, 'particle-editor-desktop', 'main', 'qwen-lora-catalog.js'),
+      },
+      {
+        label: 'win-unpacked Qwen LoRA catalog',
+        path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'main', 'qwen-lora-catalog.js'),
+      },
+    ],
+  },  {
     name: 'main/wan22-lora-catalog.js',
     files: [
       {
@@ -341,6 +362,14 @@ const runtimeGroups = [
         label: 'win-unpacked renderer',
         path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'comfyui-workflow-credit-cost.js'),
       },
+    ],
+  },
+  {
+    name: 'art-generate-lora.js',
+    files: [
+      { label: 'source', path: path.join(repoRoot, 'particle-editor', 'art-generate-lora.js') },
+      { label: 'desktop renderer', path: path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'art-generate-lora.js') },
+      { label: 'win-unpacked renderer', path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'art-generate-lora.js') },
     ],
   },
   {

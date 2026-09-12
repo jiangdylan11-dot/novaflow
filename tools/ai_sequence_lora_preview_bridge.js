@@ -1,5 +1,6 @@
 "use strict";
 
+const { createQwenLoraCatalog } = require("../particle-editor-desktop/main/qwen-lora-catalog");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -14,6 +15,7 @@ const DEFAULT_RUNTIME_JSON = "C:\\ProgramData\\NovaFlow\\AI-Runtime\\runtime.jso
 const DEFAULT_H3_RUNTIME_JSON = "C:\\ProgramData\\NovaFlow\\AI-Runtime-H3\\runtime.json";
 const REQUEST_TIMEOUT_MS = 8_000;
 const ALLOWED_ACTIONS = new Set([
+  "qwen-catalog",
   "minimax-h3-catalog",
   "minimax-h3-validate",
   "wan22-catalog",
@@ -84,6 +86,7 @@ function createPreviewLoraBridge(options = {}) {
     listRuntimeLoraNames: getMainObjectInfo,
   });
 
+  const qwenCatalog = options.qwenCatalog || createQwenLoraCatalog({ listRuntimeLoraNames: getMainObjectInfo });
   const wanCatalog = options.wanCatalog || createWan22LoraCatalog({
     readConfig: readMainConfig,
     expectedModelsPath: async () => String((await Promise.resolve(readMainConfig()))?.modelsPath || ""),
@@ -99,6 +102,7 @@ function createPreviewLoraBridge(options = {}) {
       return Object.freeze({ ok: false, error: "unsupported_action" });
     }
     try {
+      if (action === "qwen-catalog") return { ok: true, items: await qwenCatalog.catalog({ nsfw: payload.nsfw === true }) };
       if (action === "minimax-h3-catalog") {
         const items = await h3Catalog.catalog({ mode: payload.mode, steps: payload.steps });
         return Object.freeze({ ok: true, items });

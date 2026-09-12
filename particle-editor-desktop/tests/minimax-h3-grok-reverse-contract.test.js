@@ -105,7 +105,8 @@ function extractNamedConstant(text, name) {
   const start = text.indexOf(marker);
   assert.ok(start >= 0, name + " must exist");
   const valueStart = start + marker.length;
-  const end = text.indexOf(";\n", valueStart);
+  const terminator = /;\r?\n/.exec(text.slice(valueStart));
+  const end = terminator ? valueStart + terminator.index : -1;
   assert.ok(end > valueStart, name + " initializer must be complete");
   return text.slice(valueStart, end);
 }
@@ -740,6 +741,7 @@ assert.equal(englishPromptWorkflowRequest.preferredOutputLanguage, "en");
 assert.match(build(englishPromptWorkflowRequest).body.input[0].content.at(-1).text, /descriptive fact values in English/);
 
 const optimizeContext = {
+  h3PromptEnhance: require('../admin-server/h3-prompt-enhance'),
   isMiniMaxH3PromptEnhancePayload: () => true,
   smartAiSupportsNegativePrompt: () => true,
   isSmartAiAnimationPayload: () => false,

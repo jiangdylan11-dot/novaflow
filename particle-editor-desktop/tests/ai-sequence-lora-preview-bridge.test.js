@@ -35,10 +35,11 @@ function makeBridge(calls) {
   });
 }
 
-test("preview bridge exposes only the four fixed LoRA actions", () => {
+test("preview bridge exposes only the five fixed LoRA actions", () => {
   assert.deepEqual([...ALLOWED_ACTIONS].sort(), [
     "minimax-h3-catalog",
     "minimax-h3-validate",
+    "qwen-catalog",
     "wan22-catalog",
     "wan22-validate",
   ]);
@@ -127,4 +128,13 @@ test("preview bridge rejects unsupported actions and closes catalog failures", a
     items: [],
     error: "catalog offline",
   });
+});
+
+
+test("Qwen preview forwards only the route, never a caller-selected directory", async () => {
+  const calls = [];
+  const bridge = createPreviewLoraBridge({ qwenCatalog: { catalog: async payload => { calls.push(payload); return [{ name: 'qwen/example.safetensors' }]; } } });
+  const result = await bridge.handle({ action: 'qwen-catalog', payload: { nsfw: true, root: 'C:/forbidden', modelsPath: 'C:/forbidden' } });
+  assert.deepEqual(calls, [{ nsfw: true }]);
+  assert.deepEqual(result, { ok: true, items: [{ name: 'qwen/example.safetensors' }] });
 });

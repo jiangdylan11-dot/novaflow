@@ -67,6 +67,13 @@ test('catalog filtering is fail closed for accelerator, unknown, wrong-family, a
   assert.equal(filtered.every(Object.isFrozen), true)
 })
 
+test('accepts structurally identified H3 entries while retaining explicit family restrictions', () => {
+  const { api } = loadResource()
+  const entries = [item({ name: 'shared.safetensors', modelFamily: 'h3' }), item({ name: 'fl2va.safetensors' })]
+  assert.deepEqual(Array.from(api.filterCatalog(entries, { mode: 't2v', steps: 4 }), e => e.name), ['fl2va.safetensors', 'shared.safetensors'])
+  assert.deepEqual(Array.from(api.filterCatalog(entries, { mode: 'r2v', steps: 4 }), e => e.name), ['shared.safetensors'])
+})
+
 test('refreshes from the narrow IPC bridge and prunes selections when mode or steps change', async () => {
   const { api } = loadResource()
   const calls = []

@@ -944,6 +944,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   minimaxH3RuntimeStop: (payload) => ipcRenderer.invoke("minimax-h3-runtime-stop", payload),
   minimaxH3OutputPublish: (payload) => ipcRenderer.invoke("minimax-h3-output-publish", payload),
   minimaxH3OutputList: () => ipcRenderer.invoke("minimax-h3-output-list"),
+  qwenLoraCatalog: (payload) => ipcRenderer.invoke("qwen-lora-catalog", payload),
   minimaxH3LoraCatalog: (payload) => ipcRenderer.invoke("minimax-h3-lora-catalog", payload),
   minimaxH3LoraValidate: (payload) => ipcRenderer.invoke("minimax-h3-lora-validate", payload),
   wan22LoraCatalog: (payload) => ipcRenderer.invoke("wan22-lora-catalog", payload),

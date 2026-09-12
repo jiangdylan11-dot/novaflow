@@ -20,8 +20,9 @@ function extractFunction(name) {
 
 assert.match(source, /function captureArtGeneratePromptSnapshot\(\)[\s\S]*?ART_GENERATE_STATE\.prompt\s*=\s*prompt/);
 assert.match(source, /async function runArtGenerate\(\)[\s\S]*?const promptSnapshot\s*=\s*captureArtGeneratePromptSnapshot\(\)/);
-assert.match(source, /compileArtGeneratePromptMentions\(refs,\s*promptSnapshot\.prompt\)/);
-assert.match(source, /buildArtGenerateRunWorkflow\([\s\S]*?promptSnapshot\.negativePrompt,\s*clientId,\s*referenceSizes\)/);
+assert.match(source, /const qualityCompiled = [\s\S]*?prompt: promptSnapshot\.prompt,[\s\S]*?negativePrompt: promptSnapshot\.negativePrompt/);
+assert.match(source, /compileArtGeneratePromptMentions\(refs,\s*promptWithReferenceRoles\)/);
+assert.match(source, /buildArtGenerateRunWorkflow\([\s\S]*?qualityCompiled\.negativePrompt,\s*clientId,\s*referenceSizes\)/);
 assert.match(source, /function injectArtWorkflowTargetSize\(workflow, sourceSize\)[\s\S]*?class_type:\s*"ImageScale"/);
 assert.match(source, /class_type:\s*"ImagePadForOutpaint"/);
 assert.match(source, /function artGenerateAspectFitPlan\(sourceSize, targetSize\)/);
@@ -64,7 +65,7 @@ const targetEntry = Object.entries(workflow).find(([, node]) => node.class_type 
 assert.ok(targetEntry, "target size node should be inserted");
 const [scaleKey, targetNode] = targetEntry;
 assert.deepEqual(targetNode.inputs, {
-  image: ["142", 0],
+  image: ["41", 0],
   upscale_method: "lanczos",
   width: 540,
   height: 1024,

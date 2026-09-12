@@ -3255,6 +3255,9 @@ class VisualContractTests(unittest.TestCase):
 
         self.assertFalse(interaction_pending["sensitivePromptBlocked"])
         self.assertEqual(interaction_pending["generationGate"], "adult_confirmation")
+        self.assertTrue(interaction_pending["prompt"].startswith("[风格设定]"))
+        self.assertIn("[主体物品]", interaction_pending["prompt"])
+        self.assertIn("[用户附加要求]", interaction_pending["prompt"])
         self.assertEqual(
             interaction_pending["generationRequirements"],
             "REQ_SECRET_KEEP_COMPOSITION",
@@ -3351,6 +3354,9 @@ class VisualContractTests(unittest.TestCase):
         )
         self.assertFalse(pending["sensitivePromptBlocked"])
         self.assertEqual(pending["generationGate"], "adult_confirmation")
+        self.assertTrue(pending["prompt"].startswith("[风格设定]"))
+        self.assertIn("[主体物品]", pending["prompt"])
+        self.assertIn("[用户附加要求]", pending["prompt"])
         self.assertEqual(pending["generationRequirements"], "REQ_SECRET_KEEP_COMPOSITION")
         for expected in (
             "银色长发",
@@ -4903,6 +4909,226 @@ class VisualContractTests(unittest.TestCase):
         ):
             self.assertNotIn(private_fact, result["visualPrompt"])
         self.assertEqual(result["rawOutput"], "")
+        self.assertEqual(result["contentSafety"]["sensitive_visible_facts"], [])
+
+    def test_service_v2_compile_stage_projection_partial_returns_adult_confirmation(self):
+        service = load_prompt_assistant_service()
+
+        class FakeAdapter:
+            prompts = []
+
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def readiness(self):
+                return {"available": True}
+
+            def generate(self, prompt, _image_tensor, *, unload_after=True, **_options):
+                if unload_after:
+                    raise AssertionError("v2 attempt must retain the task-scoped adapter")
+                type(self).prompts.append(prompt)
+                return compact_v2_json(valid_v2_contract())
+
+            def unload(self):
+                pass
+
+        original_adapter = service.Qwen3VLAbliteratedAdapter
+        original_compile = service.compile_visual_prompt_details
+
+        def compile_with_projection_failure(contract, *args, **kwargs):
+            if contract.get("content_safety", {}).get("level") == "explicit":
+                raise VisualContractError(
+                    "projection-safe fields cannot contain explicit sensitive semantics",
+                    code="visual-contract-projection-redaction-required",
+                    semantic=True,
+                )
+            return original_compile(contract, *args, **kwargs)
+
+        service.Qwen3VLAbliteratedAdapter = FakeAdapter
+        service.compile_visual_prompt_details = compile_with_projection_failure
+        try:
+            assistant = service.PromptAssistant()
+            assistant.reset_loaded_clip = lambda: None
+            assistant.reverse_model_path = lambda: Path("fake-qwen3")
+            result = assistant.reverse_plain_static_image(
+                {
+                    "visualSchema": "nf.visual.v2",
+                    "nsfw": True,
+                    "reverseModelProvider": "qwen3-vl",
+                },
+                object(),
+                "REQ_SECRET_KEEP_COMPOSITION",
+            )
+        finally:
+            service.Qwen3VLAbliteratedAdapter = original_adapter
+            service.compile_visual_prompt_details = original_compile
+
+        self.assertEqual(len(FakeAdapter.prompts), 1)
+        self.assertTrue(result["analysisPartial"])
+        self.assertFalse(result["analysisDegraded"])
+        self.assertTrue(result["qualityGateFailed"])
+        self.assertFalse(result["qualityGateRetried"])
+        self.assertFalse(result["retryAttempted"])
+        self.assertEqual(result["retryCount"], 0)
+        self.assertEqual(result["generationGate"], "adult_confirmation")
+        self.assertFalse(result["sensitivePromptBlocked"])
+        self.assertEqual(
+            result["contractFailureCode"],
+            "visual-contract-projection-redaction-required",
+        )
+        self.assertEqual(
+            result["generationRequirements"],
+            "REQ_SECRET_KEEP_COMPOSITION",
+        )
+        self.assertTrue(result["description"].startswith("[风格设定]"))
+        self.assertIn("[主体物品]", result["description"])
+        self.assertIn("[用户附加要求]", result["description"])
+        self.assertIn("REQ_SECRET_KEEP_COMPOSITION", result["description"])
+        self.assertNotIn("REQ_SECRET_KEEP_COMPOSITION", result["visualPrompt"])
+        self.assertEqual(result["rawOutput"], "")
+        self.assertEqual(result["contentSafety"]["sensitive_visible_facts"], [])
+        self.assertFalse(result["richPromptFallback"])
+        self.assertEqual(result["reverseFallbackReason"], "")
+
+    def test_service_v2_structural_projection_partial_survives_recovery_miss(self):
+        service = load_prompt_assistant_service()
+        invalid = valid_v2_contract()
+        invalid["entities"][0]["appearance"].append("胸部完全可见")
+
+        class FakeAdapter:
+            prompts = []
+
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def readiness(self):
+                return {"available": True}
+
+            def generate(self, prompt, _image_tensor, *, unload_after=True, **_options):
+                if unload_after:
+                    raise AssertionError("v2 attempt must retain the task-scoped adapter")
+                type(self).prompts.append(prompt)
+                return compact_v2_json(invalid)
+
+            def unload(self):
+                pass
+
+        original_adapter = service.Qwen3VLAbliteratedAdapter
+        original_recover = service.parse_local_single_image_recoverable_partial_contract
+
+        def fail_recoverable_partial(*_args, **_kwargs):
+            raise VisualContractError(
+                "simulated recovery miss",
+                code="visual-contract-semantic-invalid",
+                semantic=True,
+            )
+
+        service.Qwen3VLAbliteratedAdapter = FakeAdapter
+        service.parse_local_single_image_recoverable_partial_contract = fail_recoverable_partial
+        try:
+            assistant = service.PromptAssistant()
+            assistant.reset_loaded_clip = lambda: None
+            assistant.reverse_model_path = lambda: Path("fake-qwen3")
+            result = assistant.reverse_plain_static_image(
+                {
+                    "visualSchema": "nf.visual.v2",
+                    "nsfw": True,
+                    "reverseModelProvider": "qwen3-vl",
+                },
+                object(),
+                "REQ_SECRET_KEEP_COMPOSITION",
+            )
+        finally:
+            service.Qwen3VLAbliteratedAdapter = original_adapter
+            service.parse_local_single_image_recoverable_partial_contract = original_recover
+
+        self.assertEqual(len(FakeAdapter.prompts), 1)
+        self.assertTrue(result["analysisPartial"])
+        self.assertFalse(result["analysisDegraded"])
+        self.assertEqual(result["generationGate"], "adult_confirmation")
+        self.assertFalse(result["sensitivePromptBlocked"])
+        self.assertEqual(
+            result["contractFailureCode"],
+            "visual-contract-projection-redaction-required",
+        )
+        self.assertEqual(result["generationRequirements"], "REQ_SECRET_KEEP_COMPOSITION")
+        self.assertTrue(result["description"].startswith("[风格设定]"))
+        self.assertIn("[主体物品]", result["description"])
+        self.assertIn("[用户附加要求]", result["description"])
+        self.assertIn("REQ_SECRET_KEEP_COMPOSITION", result["description"])
+        self.assertNotIn("REQ_SECRET_KEEP_COMPOSITION", result["visualPrompt"])
+        self.assertNotIn("胸部完全可见", result["visualPrompt"])
+        self.assertEqual(result["rawOutput"], "")
+        self.assertFalse(result["retryAttempted"])
+        self.assertEqual(result["retryCount"], 0)
+
+    def test_service_v2_projection_partial_tolerates_followup_interaction_failure(self):
+        service = load_prompt_assistant_service()
+        invalid = valid_v2_contract()
+        invalid["entities"][0]["appearance"].append("胸部完全可见")
+        invalid["entities"][0]["action"] = "成人互动"
+        invalid["relations"] = []
+        invalid["content_safety"]["sensitive_visible_facts"] = ["成人互动"]
+
+        class FakeAdapter:
+            prompts = []
+
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def readiness(self):
+                return {"available": True}
+
+            def generate(self, prompt, _image_tensor, *, unload_after=True, **_options):
+                if unload_after:
+                    raise AssertionError("v2 attempt must retain the task-scoped adapter")
+                type(self).prompts.append(prompt)
+                return compact_v2_json(invalid)
+
+            def unload(self):
+                pass
+
+        original_adapter = service.Qwen3VLAbliteratedAdapter
+        original_recover = service.parse_local_single_image_recoverable_partial_contract
+
+        def fail_recoverable_partial(*_args, **_kwargs):
+            raise VisualContractError(
+                "simulated recovery miss",
+                code="visual-contract-semantic-invalid",
+                semantic=True,
+            )
+
+        service.Qwen3VLAbliteratedAdapter = FakeAdapter
+        service.parse_local_single_image_recoverable_partial_contract = fail_recoverable_partial
+        try:
+            assistant = service.PromptAssistant()
+            assistant.reset_loaded_clip = lambda: None
+            assistant.reverse_model_path = lambda: Path("fake-qwen3")
+            result = assistant.reverse_plain_static_image(
+                {
+                    "visualSchema": "nf.visual.v2",
+                    "nsfw": True,
+                    "reverseModelProvider": "qwen3-vl",
+                },
+                object(),
+                "",
+            )
+        finally:
+            service.Qwen3VLAbliteratedAdapter = original_adapter
+            service.parse_local_single_image_recoverable_partial_contract = original_recover
+
+        self.assertEqual(len(FakeAdapter.prompts), 1)
+        self.assertTrue(result["analysisPartial"])
+        self.assertFalse(result["analysisDegraded"])
+        self.assertEqual(result["generationGate"], "adult_confirmation")
+        self.assertFalse(result["sensitivePromptBlocked"])
+        self.assertEqual(
+            result["contractFailureCode"],
+            "visual-contract-projection-redaction-required",
+        )
+        self.assertTrue(result["description"].startswith("[风格设定]"))
+        self.assertIn("[主体物品]", result["description"])
+        self.assertNotIn("胸部完全可见", result["visualPrompt"])
         self.assertEqual(result["contentSafety"]["sensitive_visible_facts"], [])
 
     def test_service_v2_interaction_partial_preserves_candidate_and_public_partition(self):

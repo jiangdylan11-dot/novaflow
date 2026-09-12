@@ -2386,6 +2386,17 @@ const miniMaxH3LoraCatalog = createMiniMaxH3LoraCatalog({
     }
   },
 });
+const { createQwenLoraCatalog } = require("./main/qwen-lora-catalog");
+const qwenLoraCatalog = createQwenLoraCatalog({
+  listRuntimeLoraNames: async () => {
+    const config = readNovaFlowRuntimeConfig();
+    const baseUrl = sanitizeRuntimeBaseUrl(config?.baseUrl || `http://127.0.0.1:${config?.port || 8188}`);
+    if (!baseUrl) throw new Error("novaflow_runtime_base_url_missing");
+    const response = await fetch(new URL("/object_info/LoraLoaderModelOnly", `${baseUrl}/`), { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    return response.json();
+  },
+});
 const wan22LoraCatalog = createWan22LoraCatalog({
   readConfig: () => readNovaFlowRuntimeConfig(),
   expectedModelsPath: () => readNovaFlowRuntimeConfig()?.modelsPath,
@@ -5682,6 +5693,11 @@ ipcMain.handle("minimax-h3-runtime-stop", async (_evt, payload) => {
   return await miniMaxH3RuntimeLifecycle.stop({ timeoutMs: payload?.timeoutMs });
 });
 
+ipcMain.handle("qwen-lora-catalog", async (_event, payload) => {
+  try { return { ok: true, items: await qwenLoraCatalog.catalog({ nsfw: payload?.nsfw === true }) }; }
+  catch (error) { return { ok: false, items: [], error: String(error?.message || error) }; }
+});
+
 ipcMain.handle("minimax-h3-lora-catalog", async (_evt, payload) => {
   try {
     const started = await miniMaxH3RuntimeLifecycle.start({ timeoutMs: payload?.timeoutMs });
@@ -6019,6 +6035,10 @@ ipcMain.handle("prompt-assistant-optimize-prompt", async (_evt, payload) => {
     .slice(0, promptAssistantOptimizeRequirementsLimit(purpose));
   const provider = normalizePromptAssistantProvider(payload?.provider);
   const currentPrompt = String(payload?.currentPrompt ?? payload?.current_prompt ?? prompt).trim().slice(0, 20000);
+  const usesMiniMaxH3Prompt = purpose.toLowerCase().replace(/_/g, "-") === "minimax-h3-prompt-enhance";
+  const h3Mode = String(payload?.h3Mode ?? payload?.h3_mode ?? "").trim().slice(0, 80);
+  const h3DurationSource = payload?.durationSeconds ?? payload?.duration_seconds ?? payload?.duration;
+  const h3VisualSchema = String(payload?.visualSchema ?? payload?.visual_schema ?? "").trim().slice(0, 80);
   const requestedPromptSchema = String(payload?.promptSchema ?? payload?.prompt_schema ?? "").trim();
   const promptSchema = surface === "art"
     && purpose === "optimize"
@@ -6120,6 +6140,9 @@ ipcMain.handle("prompt-assistant-optimize-prompt", async (_evt, payload) => {
     purpose,
     provider,
     currentPrompt,
+    ...(usesMiniMaxH3Prompt && h3Mode ? { h3Mode } : {}),
+    ...(usesMiniMaxH3Prompt && h3DurationSource !== undefined && h3DurationSource !== null && h3DurationSource !== "" ? { durationSeconds: h3DurationSource } : {}),
+    ...(usesMiniMaxH3Prompt && h3VisualSchema ? { visualSchema: h3VisualSchema } : {}),
     ...(promptSchema ? { promptSchema } : {}),
     ...(promptDetailMode ? { promptDetailMode } : {})
   }, optimizeTimeoutMs, {

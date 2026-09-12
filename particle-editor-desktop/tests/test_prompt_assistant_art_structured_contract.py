@@ -1091,7 +1091,8 @@ class PromptAssistantStructuredArtTests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertEqual(result["promptSchema"], SCHEMA_VERSION)
         self.assertIn('光源方向 = "自然环境光从画面侧上方照射主体"', result["positivePrompt"])
-        self.assertIn('光源软硬 = "柔和主光配合受控轮廓光，明暗转折自然"', result["positivePrompt"])
+        self.assertIn('光源软硬 = "柔和自然光，明暗转折自然"', result["positivePrompt"])
+        self.assertIn('轮廓光 = "无额外轮廓光"', result["positivePrompt"])
 
     def test_service_short_prompt_rejects_source_fact_drift_without_model_repair(self):
         drift_cases = []

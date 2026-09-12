@@ -1,0 +1,339 @@
+[
+  {
+    "name": "art",
+    "prompt_id": "adc436ac-4749-41df-8541-72590ce4faca",
+    "seconds": 28.061,
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "adc436ac-4749-41df-8541-72590ce4faca",
+            "timestamp": 1789185153307
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "1",
+              "900001"
+            ],
+            "prompt_id": "adc436ac-4749-41df-8541-72590ce4faca",
+            "timestamp": 1789185153310
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "adc436ac-4749-41df-8541-72590ce4faca",
+            "timestamp": 1789185177781
+          }
+        ]
+      ]
+    },
+    "outputs": {
+      "13": {
+        "images": [
+          {
+            "filename": "rapid_art_00001_.png",
+            "subfolder": "NovaFlow_validation",
+            "type": "output"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "ui",
+    "prompt_id": "b75bb482-85a1-4b08-b854-a200dd6da309",
+    "seconds": 28.078,
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "b75bb482-85a1-4b08-b854-a200dd6da309",
+            "timestamp": 1789185181385
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "1",
+              "3",
+              "4",
+              "10",
+              "16",
+              "900001",
+              "900002",
+              "900003",
+              "nf_art_lora_1"
+            ],
+            "prompt_id": "b75bb482-85a1-4b08-b854-a200dd6da309",
+            "timestamp": 1789185181387
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "b75bb482-85a1-4b08-b854-a200dd6da309",
+            "timestamp": 1789185207561
+          }
+        ]
+      ]
+    },
+    "outputs": {
+      "13": {
+        "images": [
+          {
+            "filename": "rapid_art_00002_.png",
+            "subfolder": "NovaFlow_validation",
+            "type": "output"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "edit",
+    "prompt_id": "7a53d70b-580c-4e25-8b84-ddd088c4d320",
+    "seconds": 56.478,
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "7a53d70b-580c-4e25-8b84-ddd088c4d320",
+            "timestamp": 1789185270321
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "1",
+              "5"
+            ],
+            "prompt_id": "7a53d70b-580c-4e25-8b84-ddd088c4d320",
+            "timestamp": 1789185270329
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "7a53d70b-580c-4e25-8b84-ddd088c4d320",
+            "timestamp": 1789185326413
+          }
+        ]
+      ]
+    },
+    "outputs": {
+      "13": {
+        "images": [
+          {
+            "filename": "rapid_edit_00001_.png",
+            "subfolder": "NovaFlow_validation",
+            "type": "output"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "completion",
+    "prompt_id": "36842b53-bc48-476e-ac4d-c7db19a1941f",
+    "seconds": 60.14,
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "36842b53-bc48-476e-ac4d-c7db19a1941f",
+            "timestamp": 1789185326812
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "1",
+              "5",
+              "6",
+              "7",
+              "9"
+            ],
+            "prompt_id": "36842b53-bc48-476e-ac4d-c7db19a1941f",
+            "timestamp": 1789185326813
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "36842b53-bc48-476e-ac4d-c7db19a1941f",
+            "timestamp": 1789185383959
+          }
+        ]
+      ]
+    },
+    "outputs": {
+      "13": {
+        "images": [
+          {
+            "filename": "rapid_completion_00001_.png",
+            "subfolder": "NovaFlow_validation",
+            "type": "output"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "aifx-tail",
+    "prompt_id": "3f1607f8-c376-4e5f-a25f-e26254cc87a0",
+    "seconds": 24.049,
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "3f1607f8-c376-4e5f-a25f-e26254cc87a0",
+            "timestamp": 1789185386978
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "3"
+            ],
+            "prompt_id": "3f1607f8-c376-4e5f-a25f-e26254cc87a0",
+            "timestamp": 1789185386983
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "3f1607f8-c376-4e5f-a25f-e26254cc87a0",
+            "timestamp": 1789185407831
+          }
+        ]
+      ]
+    },
+    "outputs": {
+      "17": {
+        "images": [
+          {
+            "filename": "NovaFlow_VFX_1789185270308_00001_.png",
+            "subfolder": "",
+            "type": "output"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "edit-roof",
+    "prompt_id": "4621fc09-d914-4e4b-9536-f53066b634f5",
+    "seconds": 52.148,
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "4621fc09-d914-4e4b-9536-f53066b634f5",
+            "timestamp": 1789185491911
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "1"
+            ],
+            "prompt_id": "4621fc09-d914-4e4b-9536-f53066b634f5",
+            "timestamp": 1789185491922
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "4621fc09-d914-4e4b-9536-f53066b634f5",
+            "timestamp": 1789185543482
+          }
+        ]
+      ]
+    },
+    "outputs": {
+      "13": {
+        "images": [
+          {
+            "filename": "rapid_edit_roof_00001_.png",
+            "subfolder": "NovaFlow_validation",
+            "type": "output"
+          }
+        ]
+      }
+    }
+  },
+  {
+    "name": "completion-roof",
+    "prompt_id": "b7b8e045-388b-4451-98a3-14051fa68415",
+    "seconds": 56.158,
+    "status": {
+      "status_str": "success",
+      "completed": true,
+      "messages": [
+        [
+          "execution_start",
+          {
+            "prompt_id": "b7b8e045-388b-4451-98a3-14051fa68415",
+            "timestamp": 1789185544070
+          }
+        ],
+        [
+          "execution_cached",
+          {
+            "nodes": [
+              "1",
+              "9"
+            ],
+            "prompt_id": "b7b8e045-388b-4451-98a3-14051fa68415",
+            "timestamp": 1789185544081
+          }
+        ],
+        [
+          "execution_success",
+          {
+            "prompt_id": "b7b8e045-388b-4451-98a3-14051fa68415",
+            "timestamp": 1789185597799
+          }
+        ]
+      ]
+    },
+    "outputs": {
+      "13": {
+        "images": [
+          {
+            "filename": "rapid_completion_roof_00001_.png",
+            "subfolder": "NovaFlow_validation",
+            "type": "output"
+          }
+        ]
+      }
+    }
+  }
+]

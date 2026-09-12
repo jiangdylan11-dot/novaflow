@@ -28,20 +28,22 @@ for (const name of [
   'normalizeSteps',
   'normalizeLoras',
   'normalizeDuration',
+  'normalizeFps',
 ]) {
   assert.equal(typeof api[name], 'function', name + ' must be exposed')
 }
 
-const FL2VA = 'Minimax_H3\\minimax_h3_fl2va_pruned_int8_convrot.safetensors'
-const REF2VA = 'Minimax_H3\\minimax_h3_ref2va_pruned_int8_convrot.safetensors'
+const FL2VA = 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors'
+const REF2VA = 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors'
 const TURBO_LORA = 'minimax_h3\\minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors'
 const VALID_LORA_FINGERPRINT = 'v1:123456:1750000000000.125:' + 'a'.repeat(64)
-const FORBIDDEN_CLASS = /kj|sage|te.?speed|negative/i
+const FORBIDDEN_CLASS = /kj|te.?speed|negative/i
 const FORBIDDEN_INPUT = /^(high|low|lora|lora_name|kj|sage|sage_attention|te_speed|negative|negative_prompt)$/i
 const H3_ASPECT_RATIOS = Object.freeze(['1:1', '2:3', '3:2', '3:4', '4:3', '9:16', '16:9', '21:9'])
 const H3_MEGAPIXELS = Object.freeze([0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.98, 1, 1.2, 1.5, 1.8, 2])
 
 assert.equal(api.OUTPUT_FPS, 24)
+assert.deepEqual(Array.from(api.FPS_OPTIONS), [16, 24])
 assert.equal(api.OUTPUT_STEPS, 4)
 assert.equal(api.DEFAULT_STEPS, 4)
 assert.deepEqual(Array.from(api.STEP_OPTIONS), [4, 20])
@@ -53,7 +55,7 @@ assert.equal(api.MIN_MEGAPIXELS, 0.2)
 assert.equal(api.MAX_MEGAPIXELS, 2)
 assert.equal(api.MAX_CANVAS_PIXELS, 2208 * 960)
 assert.equal(api.MIN_DURATION, 1)
-assert.equal(api.MAX_DURATION, 15)
+assert.equal(api.MAX_DURATION, 30)
 assert.equal(api.DURATION_STEP, 0.01)
 assert.deepEqual(Array.from(api.ASPECT_RATIOS, (entry) => entry.value), H3_ASPECT_RATIOS)
 assert.deepEqual(Array.from(api.ASPECT_RATIOS, (entry) => entry.label), [
@@ -96,7 +98,7 @@ function assertStepTopology(workflow, expectedSteps, mode, declaredLoras = []) {
   const expectedLoras = declaredLoras.filter((descriptor) => descriptor.enabled !== false)
   assert.equal(
     loraLoaders.length,
-    expectedLoras.length + (expectedSteps === 4 ? 1 : 0),
+    expectedLoras.length,
     'LoRA loader count must match the declared chain',
   )
   const unused = new Map(loraLoaders)
@@ -110,13 +112,6 @@ function assertStepTopology(workflow, expectedSteps, mode, declaredLoras = []) {
   }
   let upstreamId = unetId
 
-  if (expectedSteps === 4) {
-    const [turboId, turbo] = takeNext(unetId)
-    assert.deepEqual(hostClone(turbo.inputs.model), [unetId, 0])
-    assert.equal(turbo.inputs.lora_name, TURBO_LORA)
-    assert.equal(turbo.inputs.strength_model, 0.75)
-    upstreamId = turboId
-  }
   for (const descriptor of expectedLoras) {
     const [loraId, lora] = takeNext(upstreamId)
     assert.equal(lora.inputs.lora_name, descriptor.name)
@@ -124,11 +119,13 @@ function assertStepTopology(workflow, expectedSteps, mode, declaredLoras = []) {
     upstreamId = loraId
   }
   assert.equal(unused.size, 0, 'every LoRA loader must be part of the declared chain')
-  assert.deepEqual(hostClone(guider.inputs.model), [upstreamId, 0], 'guider must use the end of the LoRA chain')
+  const [sageId, sage] = oneByClass(workflow, 'NovaFlowH3SageAttention')
+  assert.deepEqual(hostClone(sage.inputs.model), [upstreamId, 0])
+  assert.deepEqual(hostClone(guider.inputs.model), [sageId, 0], 'guider must use Sage after the LoRA chain')
 }
 
-function assertWorkflowContract(workflow, expectedUnet, expectedSteps, mode, loras = []) {
-  assert.equal(api.validateWorkflow(workflow, { mode, steps: expectedSteps, loras }), true)
+function assertWorkflowContract(workflow, expectedUnet, expectedSteps, mode, loras = [], expectedFps = 24) {
+  assert.equal(api.validateWorkflow(workflow, { mode, steps: expectedSteps, loras, fps: expectedFps }), true)
   const unets = entriesByClass(workflow, 'UNETLoader')
   assert.equal(unets.length, 1, 'each mode must have exactly one UNETLoader')
   assert.equal(unets[0][1].inputs.unet_name, expectedUnet)
@@ -144,7 +141,7 @@ function assertWorkflowContract(workflow, expectedUnet, expectedSteps, mode, lor
   assert.equal(scheduler.inputs.denoise, 1)
   assertStepTopology(workflow, expectedSteps, mode, loras)
   assert.equal(oneByClass(workflow, 'KSamplerSelect')[1].inputs.sampler_name, 'res_multistep')
-  assert.equal(oneByClass(workflow, 'CreateVideo')[1].inputs.fps, 24)
+  assert.equal(oneByClass(workflow, 'CreateVideo')[1].inputs.fps, expectedFps)
   assert.equal(oneByClass(workflow, 'CreateVideo')[1].inputs.bit_depth, 8)
 }
 
@@ -273,11 +270,33 @@ assert.equal(duration15.requestedDuration, 15)
 assert.equal(duration15.frames, 362)
 assert.equal(duration15.actualDuration, 362 / 24)
 
-for (const invalidDuration of [0.99, 15.01, Number.NaN, Number.POSITIVE_INFINITY]) {
+const duration30 = hostClone(api.normalizeDuration(30))
+assert.equal(duration30.requestedDuration, 30)
+assert.equal(duration30.frames, 736)
+assert.equal(duration30.actualDuration, 736 / 24)
+
+assert.equal(api.normalizeFps(undefined), 24)
+assert.equal(api.normalizeFps('16'), 16)
+assert.equal(api.normalizeFps(24), 24)
+for (const invalidFps of [15, 23.976, 30, Number.NaN, Number.POSITIVE_INFINITY]) {
+  assert.throws(
+    () => api.normalizeFps(invalidFps),
+    (error) => error?.name === 'RangeError' || error?.name === 'TypeError',
+    'H3 output FPS must be limited to the local 16/24 test gears',
+  )
+}
+
+const duration30At16 = hostClone(api.normalizeDuration({ seconds: 30, fps: 16 }))
+assert.equal(duration30At16.requestedDuration, 30)
+assert.equal(duration30At16.frames, 481)
+assert.equal(duration30At16.actualDuration, 481 / 16)
+assert.equal(duration30At16.fps, 16)
+
+for (const invalidDuration of [0.99, 30.01, Number.NaN, Number.POSITIVE_INFINITY]) {
   assert.throws(
     () => api.normalizeDuration(invalidDuration),
     (error) => error?.name === 'RangeError' || error?.name === 'TypeError',
-    'duration outside 1.00-15.00 seconds must be rejected instead of silently clamped',
+    'duration outside 1.00-30.00 seconds must be rejected instead of silently clamped',
   )
 }
 
@@ -293,6 +312,18 @@ assertWorkflowContract(parameterizedT2v, FL2VA, 4, 't2v')
 assert.equal(parameterizedConditioning.inputs.width, 864)
 assert.equal(parameterizedConditioning.inputs.height, 480)
 assert.equal(parameterizedConditioning.inputs.length, 158)
+
+const lowFpsT2v = api.buildWorkflow({
+  mode: 't2v',
+  prompt: 'A local low-FPS long-duration H3 test clip.',
+  aspectRatio: '9:16',
+  megapixels: 0.4,
+  durationSeconds: 30,
+  fps: 16,
+})
+const lowFpsConditioning = oneByClass(lowFpsT2v, 'MiniMaxH3ImageToVideo')[1]
+assertWorkflowContract(lowFpsT2v, FL2VA, 4, 't2v', [], 16)
+assert.equal(lowFpsConditioning.inputs.length, 481)
 
 const ultrawide2Workflow = api.buildWorkflow({
   mode: 't2v',
@@ -704,14 +735,6 @@ loraInjected['99'] = {
 }
 assert.throws(() => api.validateWorkflow(loraInjected), /undeclared user LoRA/i)
 
-const wrongTurboName = hostClone(t2v)
-oneByClass(wrongTurboName, 'LoraLoaderModelOnly')[1].inputs.lora_name = 'forbidden.safetensors'
-assert.throws(() => api.validateWorkflow(wrongTurboName), /internal Turbo LoRA.*wrong name or strength/i)
-
-const wrongTurboStrength = hostClone(t2v)
-oneByClass(wrongTurboStrength, 'LoraLoaderModelOnly')[1].inputs.strength_model = 1
-assert.throws(() => api.validateWorkflow(wrongTurboStrength), /internal Turbo LoRA.*wrong name or strength/i)
-
 const wrongUserLoraName = hostClone(fourStepWithLoras)
 entriesByClass(wrongUserLoraName, 'LoraLoaderModelOnly')
   .find(([, value]) => value.inputs.lora_name === fl2vaLoras[0].name)[1]
@@ -731,11 +754,10 @@ assert.throws(
 )
 
 const wrongUserLoraOrder = hostClone(fourStepWithLoras)
-const [turboId] = entriesByClass(wrongUserLoraOrder, 'LoraLoaderModelOnly')
-  .find(([, value]) => value.inputs.lora_name === TURBO_LORA)
+const [unetChainId] = oneByClass(wrongUserLoraOrder, 'UNETLoader')
 entriesByClass(wrongUserLoraOrder, 'LoraLoaderModelOnly')
   .find(([, value]) => value.inputs.lora_name === fl2vaLoras[1].name)[1]
-  .inputs.model = [turboId, 0]
+  .inputs.model = [unetChainId, 0]
 assert.throws(
   () => api.validateWorkflow(wrongUserLoraOrder, { mode: 't2v', steps: 4, loras: fl2vaLoras }),
   /invalid model-chain order/i,
@@ -756,20 +778,20 @@ const twentyTemplate = api.buildWorkflow({
   prompt: 'Twenty-step topology mutation guard.',
   steps: 20,
 })
-const fourWithoutTurbo = hostClone(twentyTemplate)
-oneByClass(fourWithoutTurbo, 'BasicScheduler')[1].inputs.steps = 4
-assert.throws(() => api.validateWorkflow(fourWithoutTurbo), /LoRA count does not match/i)
+const fourWithoutExtraLora = hostClone(twentyTemplate)
+oneByClass(fourWithoutExtraLora, 'BasicScheduler')[1].inputs.steps = 4
+assert.equal(api.validateWorkflow(fourWithoutExtraLora), true)
 
-const twentyWithTurbo = hostClone(t2v)
-oneByClass(twentyWithTurbo, 'BasicScheduler')[1].inputs.steps = 20
-assert.throws(() => api.validateWorkflow(twentyWithTurbo), /undeclared user LoRA/i)
+const twentyWithoutExtraLora = hostClone(t2v)
+oneByClass(twentyWithoutExtraLora, 'BasicScheduler')[1].inputs.steps = 20
+assert.equal(api.validateWorkflow(twentyWithoutExtraLora), true)
 
 const negativeInjected = hostClone(t2v)
 oneByClass(negativeInjected, 'MiniMaxH3ImageToVideo')[1].inputs.negative_prompt = 'forbidden'
 assert.throws(() => api.validateWorkflow(negativeInjected), /forbidden input/i)
 
 const wrongR2vUnet = hostClone(r2v)
-oneByClass(wrongR2vUnet, 'UNETLoader')[1].inputs.unet_name = FL2VA
+oneByClass(wrongR2vUnet, 'UNETLoader')[1].inputs.unet_name = 'wrong-model.safetensors'
 assert.throws(() => api.validateWorkflow(wrongR2vUnet), /wrong UNet/i)
 
 console.log('AI sequence MiniMax H3 workflow tests passed')

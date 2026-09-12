@@ -226,7 +226,7 @@
         }))
       }
       if (fields.has('seed')) nodes.push(options.renderSeedToggle())
-      if (fields.has('nsfw')) nodes.push(options.nsfwSwitch)
+      if (fields.has('nsfw') && options.nsfwSwitch) nodes.push(options.nsfwSwitch)
       return nodes
     }
     if (provider === 'gpt') {

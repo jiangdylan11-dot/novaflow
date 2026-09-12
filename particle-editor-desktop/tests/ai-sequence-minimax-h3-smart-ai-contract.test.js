@@ -10,7 +10,7 @@ const bundle = fs.readFileSync(path.join(root, "particle-editor", "assets", "ind
 
 const promptWorkflowScript = "ai-sequence-minimax-h3-prompt.workflow.js?v=20260819-minimax-h3-longfps-1";
 const reverseWorkflowScript = "ai-sequence-minimax-h3-reverse.workflow.js?v=20260819-minimax-h3-longfps-1";
-const smartAiScript = "novaflow-smart-ai.js?v=20260907-h3-assistant-hydrate-1";
+const smartAiScript = "novaflow-smart-ai.js?v=20260912-soft-edge-1";
 assert.ok(index.includes(promptWorkflowScript), "the H3 prompt workflow must load from the authoritative entry");
 assert.ok(index.includes(reverseWorkflowScript), "the H3 reverse workflow must load from the authoritative entry");
 assert.ok(index.includes(smartAiScript), "the H3-aware Smart AI surface must use its current cache key");

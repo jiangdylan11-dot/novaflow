@@ -5,6 +5,7 @@ const { URL } = require("url");
 const { createClient } = require("@supabase/supabase-js");
 const WebSocket = require("ws");
 const adminData = require("../license-admin-gui/admin-data");
+const h3PromptEnhance = require("./h3-prompt-enhance");
 const {
   buildStoryboardGrokPayload,
   buildStoryboardGrokRepairPayload,
@@ -2003,6 +2004,9 @@ function buildMiniMaxH3RepairBody(body, errorCode = "h3_contract_invalid") {
   user.content.push(smartAiInputText([
     "DIRECTED H3 CONTRACT REPAIR (one final attempt).",
     `Failed gate: ${String(errorCode || "h3_contract_invalid").slice(0, 80)}.`,
+    ...(errorCode === "h3_contract_enhancement_not_applied" ? [
+      "The narrative was only a copy, generic padding, or an incomplete loop. Rewrite the actual motion into observable, feasible progression; for a requested loop connect the ending to the initial pose and movement phase. Preserve all hard constraints. Do not fix this by adding only headings or audio fields."
+    ] : []),
     "Rebuild from the original images and requirements. Do not repeat or comment on the prior answer.",
     "Every captured reference label listed in Available resource labels must occur in the appropriate final section. Do not omit supplied references or leave definitions or retention_analysis empty.",
     "Return only the exact mode-specific H3 structure: exact ordered fields; independent keyframe alignment when required; [Shot 1] timeline; concrete action progression; declared camera behavior; separately usable diegetic soundscape and non-diegetic music.",
@@ -3285,7 +3289,7 @@ async function callGrokResponseWithVisualRetry(body, inputMeta, resultOptions, e
           }
         }, degradedData);
       }
-      if (h3Enabled && error?.minimaxH3ContractInvalid === true) {
+      if (h3Enabled && resultOptions?.minimaxH3Enhance !== true && error?.minimaxH3ContractInvalid === true) {
         const fallbackPrompt = buildMiniMaxH3PromptEnhanceDeterministicFallback(resultOptions);
         if (fallbackPrompt) {
           try {
@@ -4628,6 +4632,14 @@ function normalizeMiniMaxH3PromptOutput(text, options) {
     }
   }
   prompt = prompt.replace(new RegExp(`\\n+[ \\t]*(?=(?:${expectedFields.join("|")})\\s*:)`, "g"), "\n\n");
+  if (options.minimaxH3Enhance === true) {
+    try {
+      h3PromptEnhance.validate(prompt, options.currentPrompt,
+        miniMaxH3PromptEnhanceUserRequirement(options.requirements, options.currentPrompt));
+    } catch (error) {
+      throw miniMaxH3ContractError("h3_contract_enhancement_not_applied", error.message);
+    }
+  }
   return options.minimaxH3Reverse === true
     ? miniMaxH3ValidateCompiledPromptAgainstIr(prompt, options.minimaxH3TrustedVisualIr, options)
     : prompt;
@@ -8810,7 +8822,7 @@ function buildGrokPromptOptimizeRequest(payload) {
         role: "system",
         content: [
           smartAiInputText(isMiniMaxH3
-            ? "You are NovaFlow's dedicated MiniMax H3 prompt compiler. Follow the requested H3 field contract and return only the final structured audiovisual prompt."
+            ? "You are NovaFlow's dedicated MiniMax H3 prompt compiler. Follow the requested H3 field contract and return only the final structured audiovisual prompt.\n" + h3PromptEnhance.instruction
             : (isOrdinaryArtOptimize
               ? (usesStructuredArtPrompt
                 ? "你是 NovaFlow 的图片 Prompt 结构化重编译器。用一次艺术总监级决策把完整底稿和真实用户要求编译为严格 JSON 视觉 IR；只输出 schema 内字段，系统将确定性生成六段提示词。"
@@ -8873,6 +8885,7 @@ function buildGrokPromptOptimizeRequest(payload) {
     inputMeta,
     resultOptions: isMiniMaxH3 ? {
       minimaxH3Prompt: true,
+      minimaxH3Enhance: true,
       minimaxH3Mode: h3Mode,
       visualRetryAllowed: true,
       currentPrompt: prompt,

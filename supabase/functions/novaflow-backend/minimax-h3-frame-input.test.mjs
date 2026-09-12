@@ -216,17 +216,19 @@ test("already structured user dialogue and an explicit cut retain one set of fie
   assert.match(text, /non_diegetic_music: Slow piano notes\./);
 });
 
-test("enhance fallback never treats renderer protocol instructions as user requirements", async () => {
+test("enhance failure preserves the original instead of fabricating a fallback", async () => {
   const options = { modelId: "minimax_h3_local", mode: "first_last", durationSeconds: 5,
     prompt: "人物抬手，再慢慢放下，固定镜头。", resources: ["first_frame", "last_frame"].map((key) => ({ key, identity: key, occupied: true, mimeType: "image/png" })) };
   const prepared = browser.NovaFlowAiSequenceMiniMaxH3PromptWorkflow.prepareRequest(options);
   const built = buildGrokPromptOptimizeRequest({ prompt: prepared.prompt, requirements: prepared.requirements + "\n\n保持杯子竖直。",
     h3Mode: "first_last", durationSeconds: 5, visualSchema: "nf.h3.visual.v1", purpose: "minimax-h3-prompt-enhance", surface: "animation" });
-  const result = await callGrokResponseWithVisualRetry(built.body, built.inputMeta, built.resultOptions, async () => {
+  let calls = 0;
+  await assert.rejects(callGrokResponseWithVisualRetry(built.body, built.inputMeta, built.resultOptions, async () => {
+    calls++;
     throw Object.assign(new Error("invalid fields"), { minimaxH3ContractInvalid: true, errorCode: "h3_contract_fields" });
-  });
-  assert.match(result.data.output_text, /保持杯子竖直/);
-  assert.doesNotMatch(result.data.output_text, /independent exact endpoint|Preserve each endpoint|Source prompt|Available resource|\[Shot 2\]/);
+  }));
+  assert.equal(calls, 2);
+  assert.match(built.resultOptions.requirements, /保持杯子竖直/);
 });
 
 test("bare official field headings are repaired without accepting absent or duplicate fields", () => {

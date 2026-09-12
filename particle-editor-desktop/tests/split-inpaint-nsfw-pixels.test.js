@@ -48,6 +48,43 @@ function rgbDistance(a, b) {
   return a.reduce((sum, value, index) => sum + Math.abs(value - b[index]), 0)
 }
 
+test('completion joins truncated subjects without a colour step at the source cut', async () => {
+  const api = await loadHelper()
+  const width = 64, height = 96
+  const original = solidRgba(width, height, [255, 255, 255])
+  const guide = solidRgba(width, height, [0, 0, 0], 0)
+  const generated = solidRgba(width, height, [0, 0, 0], 0)
+  const mask = solidRgba(width, height, [0, 0, 0])
+  fillMaskRect(mask, width, 0, 30, 63, 95)
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 8; x < 56; x += 1) {
+      if (x >= 28 && x < 36) continue
+      setPixel(generated, width, x, y, [200, 155, 130, 255])
+      if (y < 48) {
+        setPixel(original, width, x, y, x < 28 ? [140, 95, 70, 255] : [245, 200, 175, 255])
+        setPixel(guide, width, x, y, [140, 95, 70, 255])
+      }
+    }
+  }
+  const args = {width, height, generatedRgba:generated, originalRgba:original, maskRgba:mask,
+    subjectGuideRgba:guide, ringWidth:32, falloffExponent:0.5, restoreAlpha:true}
+  const before = api.blendSubjectJoinRgb(args).pixels
+  const after = api.blendSubjectJoinRgb({...args, sourceEdgeFeather:16}).pixels
+  for (const x of [18, 46]) {
+    const jump = data => rgbDistance(pixel(data,width,x,46).slice(0,3), pixel(data,width,x,47).slice(0,3))
+    assert.ok(jump(before) > 50, 'fixture must reproduce the binary source-guide seam')
+    assert.ok(jump(after) <= 12, 'correction must continue smoothly across the source cut')
+    assert.deepEqual(pixel(after,width,x,30),pixel(original,width,x,30), 'mask entrance matches source')
+    assert.deepEqual(pixel(after,width,x,70),pixel(generated,width,x,70), 'distant generated content is preserved')
+  }
+  for (let y=0;y<height;y++) for(let x=0;x<width;x++) {
+    const p=(y*width+x)*4
+    if(y<30) assert.deepEqual(pixel(after,width,x,y),pixel(generated,width,x,y), 'unselected pixels stay unchanged')
+    assert.equal(after[p+3],generated[p+3], 'joining must not bridge transparent background or alter opaque alpha')
+  }
+  assert.throws(()=>api.blendSubjectJoinRgb({...args, sourceEdgeFeather:33}), /source edge feather/)
+})
+
 test('NSFW foreground de-matte removes white contamination without changing alpha or opaque white content', async () => {
   const api = await loadHelper()
   const source = new Uint8ClampedArray([
@@ -472,6 +509,7 @@ test('subject join confines its byte depth allocation to the expanded mask ROI',
   assert.ok(byteAllocations.every((length) => length < width * height), 'no byte work map may cover the full canvas')
 
   const source = require('node:fs').readFileSync(helperPath, 'utf8')
-  assert.doesNotMatch(source, /new Int32Array\(/)
+  assert.doesNotMatch(source, /new Int32Array\((?:total|width \* height)\)/)
+  assert.match(source, /new Int32Array\(roiWidth \* roiHeight\)/, 'completion propagation stays bounded to the mask ROI')
   assert.doesNotMatch(source, /const (?:maskValues|inside|guideVisible|guideInterior) = new Uint8Array\(total\)/)
 })

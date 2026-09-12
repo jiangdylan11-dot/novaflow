@@ -144,6 +144,7 @@
         : 4,
       guideAlphaThreshold: GUIDE_ALPHA_THRESHOLD,
       falloffExponent: normalizedMode === 'completion' ? 0.5 : 1,
+      sourceEdgeFeather: normalizedMode === 'completion' ? Math.round(Math.max(8, Math.min(24, edge * 0.03125))) : 0,
       restoreAlpha: true,
     }
   }

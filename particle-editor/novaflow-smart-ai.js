@@ -49,7 +49,7 @@
     ["reference", "跟随风格图", "只提取风格参考图的线条、笔触、上色、材质和光影语言，不复制其中的主体、服装、姿势、背景或构图"],
     ["realistic", "偏写实", "偏写实表现，比例与材质可信，光影自然，避免塑料感"],
     ["2_5d", "2.5D", "2.5D游戏美术，二维设计语言结合适度体积光影与半写实材质"],
-    ["anime", "二次元", "高质量二次元游戏角色CG，精细半厚涂与柔和渐变上色，可信的面部体积、皮肤透光感、分组清晰的发丝、准确的人体结构和电影级光影；轮廓主要由明暗、色彩与材质边缘建立，只允许局部细而轻的彩色辅助线"],
+    ["anime", "二次元", "高质量二次元游戏角色CG，精细半厚涂与柔和渐变上色，可信的面部体积、皮肤透光感、分组清晰的发丝、准确的人体结构和电影级光影；轮廓主要由明暗、色彩与材质边缘建立，边缘干净自然、与整体画风一致"],
     ["cel_comic", "赛璐璐 / 漫画线稿", "传统赛璐璐或漫画线稿表现，允许明确线条、墨线轮廓和概括色块，同时保持结构准确与商业插画完成度"],
     ["painted", "厚涂手绘", "高完成度厚涂手绘，可见但受控的笔触，扎实体积与软硬边变化"],
     ["game_cg", "高清游戏 CG", "高品质游戏宣传CG，电影级光影，精细材质，清晰轮廓和丰富但受控的细节"],
@@ -3207,7 +3207,7 @@
   }
 
   function artExplicitOutlineRequested() {
-    return state.artStyle === "cel_comic" || /粗黑描边|黑色外轮廓|粗线稿|漫画线稿|墨线插画|传统赛璐璐|美式卡通/i.test(String(state.requirements || ""));
+    return window.NovaFlowArtQualityProfile?.hasExplicitFlatStyle?.(state.requirements, state.artStyle) === true;
   }
 
   function artNeedsHighQualityCgGuard() {
@@ -3221,7 +3221,7 @@
       ? /真人.{0,8}(?:转|改|重绘).{0,8}(?:二次元|动漫|2\.5D|游戏\s*CG)|(?:二次元|动漫|2\.5D|游戏\s*CG).{0,8}(?:重绘|风格化)/i.test(String(state.requirements || ""))
       : artNeedsHighQualityCgGuard();
     if (!needsGuard) return "";
-    return "高质量CG渲染约束：若主图是真人照片，保留人物身份、脸型、发型、可见外观状态、姿势、镜头关系与场景结构，不保留摄影媒介；必须彻底重绘材质、体积与光影，禁止在照片上叠加漫画描边滤镜。轮廓主要依靠明暗、色彩、材质、景深与柔和边缘建立，只允许局部细弱的彩色辅助线；皮肤、头发、原图已有材质与环境必须具有可信层次，达到高品质二次元游戏宣传CG完成度。";
+    return "高质量CG渲染约束：若主图是真人照片，保留人物身份、脸型、发型、可见外观状态、姿势、镜头关系与场景结构，不保留摄影媒介；必须彻底重绘材质、体积与光影，禁止在照片上叠加漫画描边滤镜。轮廓主要依靠明暗、色彩、材质、景深与柔和边缘建立，边缘干净自然、与整体画风一致；皮肤、头发、原图已有材质与环境必须具有可信层次，达到高品质二次元游戏宣传CG完成度。";
   }
 
   function artHighQualityCgNegativeGuardInstruction(options = {}) {
@@ -4057,10 +4057,15 @@
     const currentPrompt = String(textareas.positive?.value || "").trim();
     const isArtTextRequest = isArt && isOptimizeRequest;
     const artTextPurpose = isArtTextRequest ? (currentPrompt ? "optimize" : "create") : "";
+    // Pure local edge edits preserve the entire base. Recompiling six sections
+    // adds no value and can reject a valid edit on unrelated model JSON fields.
+    const usesLocalSoftEdgeEdit = isArtTextRequest && !useGrok
+      && window.NovaFlowArtQualityProfile?.canApplySoftEdgeEdit?.(currentPrompt, state.requirements) === true;
     const usesStructuredArtPromptContract = isOptimizeRequest
       && isArtTextRequest
       && artTextPurpose === "optimize"
       && !isMiniMaxH3Request
+      && !usesLocalSoftEdgeEdit
       && shouldUseStructuredArtPromptContract(currentPrompt);
     const usesSimpleStructuredArtPromptContract = usesStructuredArtPromptContract
       && shouldUseSimpleStructuredArtPromptContract(currentPrompt);

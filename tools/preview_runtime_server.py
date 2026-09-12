@@ -1477,6 +1477,18 @@ def _prompt_assistant_optimize_payload(request: dict) -> dict:
         "currentPrompt": str(current_prompt or "").strip()[:20000],
         "provider": str(source.get("provider") or "local").strip()[:80],
     }
+    if payload["purpose"].lower().replace("_", "-") == "minimax-h3-prompt-enhance":
+        h3_mode = str(source.get("h3Mode") or source.get("h3_mode") or "").strip()[:80]
+        duration_seconds = source.get("durationSeconds")
+        if duration_seconds is None:
+            duration_seconds = source.get("duration_seconds")
+        visual_schema = str(source.get("visualSchema") or source.get("visual_schema") or "").strip()[:80]
+        if h3_mode:
+            payload["h3Mode"] = h3_mode
+        if duration_seconds is not None:
+            payload["durationSeconds"] = duration_seconds
+        if visual_schema:
+            payload["visualSchema"] = visual_schema
     requested_prompt_schema = str(
         source.get("promptSchema") or source.get("prompt_schema") or ""
     ).strip()

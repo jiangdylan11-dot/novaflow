@@ -44,6 +44,7 @@ function node(required = {}, optional = {}) {
 
 function objectInfoFixture() {
   return {
+    CheckpointLoaderSimple: node({ ckpt_name: combo(['Qwen-Rapid-AIO-NSFW-v20.safetensors']) }),
     UNETLoader: node({
       unet_name: combo([
         'Qwen-Image-Edit-2509_fp8_e4m3fn.safetensors',
@@ -116,8 +117,8 @@ function objectInfoFixture() {
       seed: ['INT', {}],
       steps: ['INT', {}],
       cfg: ['FLOAT', {}],
-      sampler_name: combo(['euler', 'dpmpp_2m']),
-      scheduler: combo(['simple', 'karras']),
+      sampler_name: combo(['euler_ancestral', 'euler', 'dpmpp_2m']),
+      scheduler: combo(['beta', 'simple', 'karras']),
       positive: ['CONDITIONING', {}],
       negative: ['CONDITIONING', {}],
       latent_image: ['LATENT', {}],
@@ -143,10 +144,7 @@ function occurrenceCount(value, token) {
 function assertLocalWorkflowContract() {
   const info = objectInfoFixture()
   const resolved = local.resolveModels(info)
-  assert.equal(resolved.unet, 'qwen_image_edit_2511_fp8mixed.safetensors')
-  assert.equal(resolved.lora, 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors')
-  assert.equal(resolved.clip, 'qwen_2.5_vl_7b_fp8_scaled.safetensors')
-  assert.equal(resolved.vae, 'qwen_image_vae.safetensors')
+  assert.equal(resolved.checkpoint, 'Qwen-Rapid-AIO-NSFW-v20.safetensors')
   assert.equal(resolved.controlNet, 'Qwen-Image-ControlNet-Union.safetensors')
   assert.equal(resolved.controlType, 'hed/pidi/scribble/ted')
 
@@ -169,7 +167,7 @@ function assertLocalWorkflowContract() {
   assert.ok(built.warnings.some((warning) => warning.includes('aligned')))
   assert.equal(workflowEntries(workflow, 'TextEncodeQwenImageEditPlus').length, 2)
   assert.equal(workflowEntries(workflow, 'IPAdapter').length, 0)
-  assert.equal(Object.values(workflow).some((item) => /IPAdapter|CheckpointLoaderSimple/i.test(item.class_type)), false)
+  assert.equal(Object.values(workflow).some((item) => /IPAdapter|UNETLoader|LoraLoaderModelOnly/i.test(item.class_type)), false)
 
   const structure = workflowEntries(workflow, 'TextEncodeQwenImageEditPlus')[0][1]
   const style = workflowEntries(workflow, 'TextEncodeQwenImageEditPlus')[1][1]
@@ -206,8 +204,8 @@ function assertLocalWorkflowContract() {
   assert.equal(built.controlStrength, 0.62)
   assert.equal(built.controlEndPercent, 0.72)
   const sampler = workflowEntries(workflow, 'KSampler')[0][1]
-  assertJsonEqual(sampler.inputs.model, ['4', 0])
-  assert.equal(sampler.inputs.steps, 4)
+  assertJsonEqual(sampler.inputs.model, ['3', 0])
+  assert.equal(sampler.inputs.steps, 6)
   assert.equal(sampler.inputs.seed, 42)
   assertJsonEqual(sampler.inputs.positive, ['13', 0])
   assertJsonEqual(sampler.inputs.negative, ['13', 1])
@@ -539,10 +537,10 @@ function assertLocalWorkflowContract() {
   assert.equal(local.resolveModels(lineArtFallback).controlType, 'canny/lineart/anime_lineart/mlsd')
 
   const staleOnly = objectInfoFixture()
-  staleOnly.UNETLoader.input.required.unet_name = combo(['Qwen-Image-Edit-2509_fp8_e4m3fn.safetensors'])
+  staleOnly.CheckpointLoaderSimple.input.required.ckpt_name = combo(['other.safetensors'])
   assert.throws(
     () => local.resolveModels(staleOnly),
-    (error) => error?.code === 'AIFX_LOCAL_MODEL_UNAVAILABLE' && /2511/.test(error.message),
+    (error) => error?.code === 'AIFX_LOCAL_MODEL_UNAVAILABLE' && /Rapid/.test(error.message),
   )
   return built
 }
@@ -725,7 +723,7 @@ async function assertGenerateWorkflowContract() {
   assert.equal(result.provider, 'local')
   assert.equal(result.promptId, 'prompt-contract-1')
   assert.equal(result.effectiveStrength, 0.64)
-  assert.match(result.modelKey, /qwen-image-edit-2511/)
+  assert.match(result.modelKey, /qwen-rapid-aio/)
   assert.match(result.promptHash, /^[a-f0-9]{64}$/)
   assert.match(result.workflowHash, /^[a-f0-9]{64}$/)
   assert.match(result.dataUrl, /^data:image\/png;base64,/)

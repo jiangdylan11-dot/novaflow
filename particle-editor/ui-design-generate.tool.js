@@ -456,7 +456,6 @@
           switchField(record, 'randomSeed', '随机种子', state.randomSeed, {
             trailing: seedField(record, { inline: true, disabled: state.randomSeed }),
           }),
-          switchField(record, 'nsfw', 'NSFW', state.nsfw),
         ]),
       ]
     }
@@ -566,7 +565,7 @@
     if (state.provider === 'google') return `分辨率 ${state.googleResolution || '1K'} · 画幅 ${state.googleAspectRatioImg2img}`
     const strength = state.localEditStrength === 'enhanced' ? '增强' : '保真'
     const seed = state.randomSeed ? '随机种子' : `Seed ${Math.max(0, Number(state.seed) || 0)}`
-    return `${strength} · ${seed} · NSFW${state.nsfw ? '开' : '关'}`
+    return `${strength} · ${seed}`
   }
 
   function compactOutputSizeRow(record, size) {

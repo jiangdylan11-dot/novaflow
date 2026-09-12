@@ -142,7 +142,7 @@ test('declares all four H3 protocol modes with their exact field order', () => {
 
 test('accepts one-second H3 prompt enhancement and rejects values below the product minimum', () => {
   assert.equal(workflow.MIN_DURATION_SECONDS, 1)
-  assert.equal(workflow.MAX_DURATION_SECONDS, 15)
+  assert.equal(workflow.MAX_DURATION_SECONDS, 30)
 
   const protocol = workflow.createPromptProtocol({
     mode: 'text_video',
@@ -163,7 +163,12 @@ test('accepts one-second H3 prompt enhancement and rejects values below the prod
 
   assert.throws(
     () => workflow.createPromptProtocol({ mode: 'text_video', durationSeconds: 0.99, resources: [] }),
-    /between 1 and 15/,
+    /between 1 and 30/,
+  )
+
+  assert.equal(
+    workflow.createPromptProtocol({ mode: 'text_video', durationSeconds: 30, resources: [] }).durationSeconds,
+    30,
   )
 })
 
@@ -481,10 +486,10 @@ test('validates Ref2VA relations and contiguous subject definitions', () => {
   )
   assert.throws(
     () => workflow.validatePromptText(
-      multiReferencePrompt().replace('<Subject 1> enters', '<Subject 2> enters'),
+      multiReferencePrompt().replace('<Subject 1>: the hero identity', '<Subject 2>: the hero identity'),
       options,
     ),
-    /used without a subject_definitions entry/,
+    /must start at <Subject 1> without gaps/,
   )
 })
 

@@ -161,16 +161,23 @@ function isTensorEntry(value, tensorDataBytes) {
 }
 
 function parseH3TargetTensor(name) {
-  const match = String(name || "").match(
-    /^lora_unet_blocks_(\d+)_(attn_out_proj|attn_qkv_proj|mlp_fc1|mlp_fc2)\.lora_(down|up)\.weight$/i,
+  const raw = String(name || "");
+  const match = raw.match(
+    /^lora_unet_(token_refiner_)?blocks_(\d+)_(attn_out_proj|attn_qkv_proj|mlp_fc1|mlp_fc2)\.lora_(down|up)\.weight$/i,
+  ) || raw.match(
+    /^diffusion_model\.(token_refiner\.)?blocks\.(\d+)\.(attn\.out_proj|attn\.qkv_proj|mlp\.fc1|mlp\.fc2)\.lora_(A|B)\.weight$/i,
   );
   if (!match) return null;
-  const block = Number(match[1]);
-  if (!Number.isSafeInteger(block)) return null;
-  const target = match[2].toLowerCase();
+  const refiner = !!match[1];
+  const block = Number(match[2]);
+  if (!Number.isSafeInteger(block) || block < 0 || block >= (refiner ? 2 : 50)) return null;
+  const target = match[3].toLowerCase().replace(/\./g, "_");
+  const side = match[4].toLowerCase();
   return {
-    key: `${block}:${target}`,
-    side: match[3].toLowerCase(),
+    key: `${refiner ? 'refiner' : 'main'}:${block}:${target}`,
+    side: side === 'a' ? 'down' : side === 'b' ? 'up' : side,
+    target,
+    refiner,
     dimensions: H3_TARGET_DIMENSIONS[target],
   };
 }
@@ -206,6 +213,19 @@ function hasH3TensorSignature(header, tensorDataBytes) {
     ) return false;
   }
   return true;
+}
+
+// Community exporters often omit trainer-specific metadata. In that case,
+// require all four distinctive H3 main-block projections, after validating
+// every adapter pair, rank, dimension and data range above. Names alone do not
+// establish compatibility. An explicit FL2VA/Ref2VA declaration still wins.
+function hasBroadH3TensorSignature(header) {
+  const targets = new Set();
+  for (const name of Object.keys(header)) {
+    const target = parseH3TargetTensor(name);
+    if (target && !target.refiner) targets.add(target.target);
+  }
+  return targets.size === Object.keys(H3_TARGET_DIMENSIONS).length;
 }
 
 function parseStepList(value) {
@@ -252,6 +272,7 @@ function isManagedTurbo(metadata, name) {
 }
 
 function supportsMode(modelFamily, mode) {
+  if (modelFamily === "h3") return VALID_MODES.has(mode);
   return modelFamily === "fl2va" ? FL2VA_MODES.has(mode) : modelFamily === "ref2va" && REF2VA_MODES.has(mode);
 }
 
@@ -388,9 +409,13 @@ function createMiniMaxH3LoraCatalog(options = {}) {
       if (statAfter.size !== statBefore.size || statAfter.mtimeMs !== statBefore.mtimeMs) return null;
       const tensorDataBytes = Number(statAfter.size) - 8 - parsed.headerLength;
       const metadata = normalizeMetadata(parsed.header);
-      const modelFamily = parseBaseFamily(metadata);
-      if (!modelFamily || !hasH3NetworkModule(metadata) || !supportsMode(modelFamily, mode)) return null;
       if (!hasH3TensorSignature(parsed.header, tensorDataBytes)) return null;
+      const declaredFamily = parseBaseFamily(metadata);
+      if (metadata.ss_h3_lora_base && !declaredFamily) return null;
+      const trustedDeclaration = declaredFamily && hasH3NetworkModule(metadata);
+      if (!trustedDeclaration && !hasBroadH3TensorSignature(parsed.header)) return null;
+      const modelFamily = declaredFamily || "h3";
+      if (!supportsMode(modelFamily, mode)) return null;
       if (isManagedTurbo(metadata, file.runtimeName)) return null;
 
       const supportedSteps = inferRequiredSteps(metadata, file.runtimeName);

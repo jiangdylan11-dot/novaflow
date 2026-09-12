@@ -84,6 +84,44 @@
     return true
   }
 
+  // Continue the local RGB correction across a truncated source silhouette.
+  // Propagate only through generated foreground so separate body parts cannot
+  // borrow a correction across transparent background.
+  function sourceJoinAnchors(guide, generated, width, height, threshold, limit, bounds) {
+    const roiWidth = bounds.right - bounds.left + 1
+    const roiHeight = bounds.bottom - bounds.top + 1
+    const nearest = new Int32Array(roiWidth * roiHeight).fill(-1)
+    const distance = new Uint8Array(roiWidth * roiHeight)
+    const queue = new Int32Array(roiWidth * roiHeight)
+    const globalPixel = p => (Math.floor(p / roiWidth) + bounds.top) * width + p % roiWidth + bounds.left
+    let tail = 0
+    for (let y = bounds.top; y <= bounds.bottom; y += 1) {
+      for (let x = bounds.left; x <= bounds.right; x += 1) {
+        const p = (y - bounds.top) * roiWidth + x - bounds.left
+        if (generated[(y * width + x) * 4 + 3] >= threshold && safeGuideInterior(guide, width, height, x, y, threshold)) {
+          nearest[p] = y * width + x
+          queue[tail++] = p
+        }
+      }
+    }
+    for (let head = 0; head < tail; head += 1) {
+      const p = queue[head]
+      if (distance[p] >= limit) continue
+      const x = p % roiWidth
+      const visit = (next) => {
+        if (next < 0 || next >= nearest.length || nearest[next] >= 0 || generated[globalPixel(next) * 4 + 3] < threshold) return
+        nearest[next] = nearest[p]
+        distance[next] = distance[p] + 1
+        queue[tail++] = next
+      }
+      if (x > 0) visit(p - 1)
+      if (x + 1 < roiWidth) visit(p + 1)
+      visit(p - roiWidth)
+      visit(p + roiWidth)
+    }
+    return { nearest, distance }
+  }
+
   function removeWhiteMatteRgb(sourceRgba, maskRgba) {
     const pixels = rgbaCopy(sourceRgba)
     const mask = maskRgba == null ? null : rgbaView(maskRgba)
@@ -146,9 +184,16 @@
       throw new Error('NSFW subject join falloffExponent must be between 0.25 and 2')
     }
     const restoreAlpha = request.restoreAlpha === true
+    const sourceEdgeFeather = request.sourceEdgeFeather == null ? 0 : Number(request.sourceEdgeFeather)
+    if (!Number.isInteger(sourceEdgeFeather) || sourceEdgeFeather < 0 || sourceEdgeFeather > 32) {
+      throw new Error('NSFW source edge feather must be an integer from 0 to 32')
+    }
     const pixels = new Uint8ClampedArray(generated)
     const bounds = maskBounds(mask, width, height)
     if (!bounds) return { pixels, changedPixels: 0, joinPixels: 0, alphaRaisedPixels: 0 }
+    const sourceAnchors = sourceEdgeFeather
+      ? sourceJoinAnchors(guide, generated, width, height, guideAlphaThreshold, sourceEdgeFeather, bounds)
+      : null
     const roiWidth = bounds.right - bounds.left + 1
     const roiHeight = bounds.bottom - bounds.top + 1
     const far = ringWidth + 1
@@ -199,12 +244,19 @@
       for (let rx = 0; rx < roiWidth; rx += 1) {
         const x = bounds.left + rx
         const layer = depth[ry * roiWidth + rx]
-        if (!layer || layer > ringWidth || !safeGuideInterior(guide, width, height, x, y, guideAlphaThreshold)) continue
+        if (!layer || layer > ringWidth) continue
         const i = (y * width + x) * 4
+        const sourceInterior = safeGuideInterior(guide, width, height, x, y, guideAlphaThreshold)
+        const anchor = sourceInterior ? y * width + x : sourceAnchors ? sourceAnchors.nearest[ry * roiWidth + rx] : -1
+        if (anchor < 0) continue
+        const anchorOffset = anchor * 4
         if (generated[i + 3] <= 8 && !restoreAlpha) continue
         const maskValue = effectiveMaskValue(mask, i)
-        const ringWeight = Math.pow((ringWidth - layer + 1) / (ringWidth + 1), falloffExponent)
-        const weight = ringWeight * (maskValue / 255) * (guide[i + 3] / 255)
+        const ringT = (ringWidth - layer) / (ringWidth - 1)
+        const ringWeight = sourceAnchors ? ringT * ringT * (3 - 2 * ringT) : Math.pow((ringWidth - layer + 1) / (ringWidth + 1), falloffExponent)
+        const sourceEdgeT = sourceAnchors && !sourceInterior ? Math.max(0, 1 - sourceAnchors.distance[ry * roiWidth + rx] / sourceEdgeFeather) : 1
+        const sourceEdgeWeight = sourceEdgeT * sourceEdgeT * (3 - 2 * sourceEdgeT)
+        const weight = ringWeight * (maskValue / 255) * (guide[anchorOffset + 3] / 255) * sourceEdgeWeight
         if (weight <= 0) continue
         joinPixels += 1
         let changed = false
@@ -212,11 +264,12 @@
         const transparentRgbWasCleared = restoreAlpha && sourceAlpha <= 1
         for (let channel = 0; channel < 3; channel += 1) {
           const generatedChannel = transparentRgbWasCleared ? original[i + channel] : generated[i + channel]
-          const next = Math.round(generatedChannel * (1 - weight) + original[i + channel] * weight)
+          const correction = sourceInterior ? original[i + channel] - generatedChannel : original[anchorOffset + channel] - generated[anchorOffset + channel]
+          const next = Math.round(Math.max(0, Math.min(255, generatedChannel + correction * weight)))
           if (next !== pixels[i + channel]) changed = true
           pixels[i + channel] = next
         }
-        if (restoreAlpha) {
+        if (restoreAlpha && sourceInterior) {
           const targetAlpha = Math.max(sourceAlpha, guide[i + 3])
           const nextAlpha = Math.round(sourceAlpha + (targetAlpha - sourceAlpha) * weight)
           if (nextAlpha > sourceAlpha) {

@@ -157,7 +157,10 @@
     if (!textEncoders.length) throw new Error('Local UI refinement requires TextEncodeQwenImageEditPlus')
     if (!vaeEncoders.length) throw new Error('Local UI refinement requires VAEEncode')
     if (!samplers.length) throw new Error('Local UI refinement requires at least one KSampler node')
-    const rapidFamily = options.nsfw === true
+    const rapidFamily = options.nsfw === true || Object.values(workflow).some((node) => (
+      node?.class_type === 'CheckpointLoaderSimple'
+      && node.inputs?.ckpt_name === 'Qwen-Rapid-AIO-NSFW-v20.safetensors'
+    ))
     if (!rapidFamily && !lightningToggles.length) {
       throw new Error('Local UI refinement requires an Enable 4 Step(s) LoRA switch')
     }

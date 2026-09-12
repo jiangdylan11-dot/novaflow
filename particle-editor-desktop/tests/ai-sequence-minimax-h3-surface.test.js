@@ -10,10 +10,14 @@ const bundlePath = path.join(root, 'particle-editor', 'assets', 'index-BbIa-2NM.
 const indexPath = path.join(root, 'particle-editor', 'index.html')
 const runtimePath = path.join(root, 'particle-editor', 'novaflow-brand-runtime.js')
 const patchScriptPath = path.join(root, 'scripts', 'patch-ai-sequence-minimax-h3.mjs')
+const mainPath = path.join(root, 'particle-editor-desktop', 'main.js')
+const preloadPath = path.join(root, 'particle-editor-desktop', 'preload.js')
 const bundle = fs.readFileSync(bundlePath, 'utf8')
 const indexHtml = fs.readFileSync(indexPath, 'utf8')
 const runtimeSource = fs.readFileSync(runtimePath, 'utf8')
 const patchScript = fs.readFileSync(patchScriptPath, 'utf8')
+const mainSource = fs.readFileSync(mainPath, 'utf8')
+const preloadSource = fs.readFileSync(preloadPath, 'utf8')
 
 function enclosingMemoComponentForMarker(source, marker, label) {
   const markerIndex = source.indexOf(marker)
@@ -160,8 +164,8 @@ test('MiniMax_h3 dispatch is isolated from Wan controls and accepts only validat
   )
   assert.doesNotMatch(
     buildOptions,
-    /\b(?:(?:aiSeqComfy)?(?:high|low|unet|negative)\w*|fps)\b/i,
-    'H3 workflow options must not inherit Wan high/low UNET, negative, or FPS fields',
+    /\b(?:(?:aiSeqComfy)?(?:high|low|unet|negative)\w*|aiSeqFps)\b/i,
+    'H3 workflow options must not inherit Wan high/low UNET, negative, or shared FPS fields',
   )
   assert.doesNotMatch(buildOptions, /aiSeqComfyLoras/, 'H3 must not inherit the Wan LoRA state')
   assert.match(
@@ -201,6 +205,11 @@ test('MiniMax_h3 dispatch is isolated from Wan controls and accepts only validat
   )
   assert.match(
     buildOptions,
+    /fps\s*:\s*nfH3SubmitOptions\?\.fps/,
+    'H3 dispatch must pass the submit-time output FPS snapshot',
+  )
+  assert.match(
+    buildOptions,
     /steps\s*:\s*nfH3SubmitOptions\?\.steps/,
     'H3 dispatch must pass the submitted integer steps in every mode',
   )
@@ -217,8 +226,8 @@ test('MiniMax_h3 dispatch is isolated from Wan controls and accepts only validat
   )
   assert.match(
     bundle,
-    /nfH3SubmitSnapshot=ze===`minimax_h3_local`\?\(\(\)=>\{let e=nfCommitH3Duration\(nfH3DurationInput\);return\{aspectRatio:nfH3AspectRatio,megapixels:nfH3Megapixels,durationSeconds:e\.requestedDuration,steps:nfCommitH3Steps\(nfH3Steps\)\}\}\)\(\):null[\s\S]{0,80}Er\(nfH3SubmitSnapshot\|\|void 0\)/,
-    'clicking Generate must synchronously snapshot the entered integer steps without a mode override',
+    /nfH3SubmitSnapshot=ze===`minimax_h3_local`\?\(\(\)=>\{let e=nfCommitH3Duration\(nfH3DurationInput\);return\{profile:nfH3Profile,acceleration:nfH3Acceleration,aspectRatio:nfH3AspectRatio,megapixels:nfH3Megapixels,durationSeconds:e\.requestedDuration,fps:nfH3Fps,steps:nfCommitH3Steps\(nfH3Steps\)\}\}\)\(\):null[\s\S]{0,80}Er\(nfH3SubmitSnapshot\|\|void 0\)/,
+    'clicking Generate must synchronously snapshot duration, FPS, and integer steps without a mode override',
   )
   assert.doesNotMatch(
     buildOptions,
@@ -275,7 +284,7 @@ test('MiniMax_h3 LoRA controls consume only the dedicated compatible catalog sto
   assert.match(stateFragment, /subscribe\(t\)/)
   assert.match(stateFragment, /setContext\?\.\(\{mode:t,steps:n\}\)/)
   assert.match(stateFragment, /refreshCatalog\(\{mode:t,steps:n\}\)/)
-  assert.match(stateFragment, /\[ze,Ve,nfH3Steps\]/)
+  assert.match(stateFragment, /\[ze,Ve,nfH3Steps,nfH3Profile\]/)
   assert.match(
     stateFragment,
     /Array\.isArray\(nfH3LoraSnapshot\?\.items\)\?nfH3LoraSnapshot\.items:\[\]/,
@@ -311,9 +320,7 @@ test('MiniMax_h3 LoRA controls consume only the dedicated compatible catalog sto
   const uiEnd = panelComponent.indexOf(',(0,X.jsxs)(`div`,{"data-novaflow-ai-post-section":`1`', uiStart)
   assert.ok(uiStart >= 0 && uiEnd > uiStart, 'H3 LoRA surface must be owned by the nn model-panel function')
   const uiFragment = panelComponent.slice(uiStart, uiEnd)
-  assert.match(uiFragment, /"data-novaflow-h3-internal-turbo":`1`/)
-  assert.match(uiFragment, /children:`内置 Turbo LoRA · 0\.75 · 已启用`/)
-  assert.match(uiFragment, /Number\(nfPanelH3LoraSnapshot\?\.steps\)===4/)
+  assert.doesNotMatch(uiFragment, /data-novaflow-h3-internal-turbo/)
   assert.match(uiFragment, /"data-novaflow-h3-lora-add":`1`/)
   assert.match(uiFragment, /\.\.\.nfPanelH3LoraAvailable\(\)\.map/)
   assert.match(uiFragment, /setSelection\?\.\(\[\.\.\.n,\{name:t\}\]\)/)
@@ -337,6 +344,7 @@ test('MiniMax_h3 LoRA controls consume only the dedicated compatible catalog sto
   const jsx = (type, props) => ({ type, props })
   const renderContext = {
     r: 'minimax_h3_local',
+    window: { NovaFlowAiSequenceMiniMaxH3Workflow: { getSelectedProfile: () => 'classic' } },
     X: { jsx, jsxs: jsx },
     Qt: 'label',
     tn: 'select',
@@ -348,7 +356,7 @@ test('MiniMax_h3 LoRA controls consume only the dedicated compatible catalog sto
   const rendered = vm.runInNewContext(uiFragment, renderContext)
   assert.equal(rendered?.props?.['data-novaflow-h3-lora-section'], '1')
   assert.equal(rendered?.props?.['data-novaflow-ai-mode-body-item'], '1')
-  assert.equal(rendered?.props?.children?.[1]?.props?.['data-novaflow-h3-internal-turbo'], '1')
+  assert.equal(rendered?.props?.children?.[1]?.props?.['data-novaflow-h3-internal-turbo'], undefined)
   assert.equal(
     vm.runInNewContext(uiFragment, { ...renderContext, r: 'local' }),
     false,
@@ -541,24 +549,25 @@ test('MiniMax_h3 text-to-video collapses the empty reference column and exposes 
     'data-novaflow-h3-aspect-ratio',
     'data-novaflow-h3-resolution',
     'data-novaflow-h3-duration',
+    'data-novaflow-h3-fps',
     'data-novaflow-h3-steps',
   ]) {
     assert.match(bundle, new RegExp(escapeRegExp(attribute)), attribute + ' must be rendered')
   }
   assert.match(
     bundle,
-    /"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:1,max:15,step:\.01/,
-    'H3 duration must be a free decimal input constrained to 1.00-15.00 seconds',
+    /"data-novaflow-h3-duration":`1`,type:`number`,inputMode:`decimal`,min:1,max:30,step:\.01/,
+    'H3 duration must be a free decimal input constrained to 1.00-30.00 seconds',
   )
-  assert.match(bundle, /normalizeDuration\?\.\(nfH3DurationInput\)/)
+  assert.match(bundle, /normalizeDuration\?\.\(\{seconds:nfH3DurationInput,fps:nfH3Fps\}\)/)
   assert.match(
     bundle,
-    /nfCommitH3Duration=e=>\{let t=Number\(e\),n=Number\.isFinite\(t\)\?Math\.max\(1,Math\.min\(15,Math\.round\(t\*100\)\/100\)\):5/,
-    'H3 duration commit must clamp to the visible 1.00-15.00 second range',
+    /nfCommitH3Duration=e=>\{let t=Number\(e\),n=Number\.isFinite\(t\)\?Math\.max\(1,Math\.min\(30,Math\.round\(t\*100\)\/100\)\):5/,
+    'H3 duration commit must clamp to the visible 1.00-30.00 second range',
   )
   assert.match(
     bundle,
-    /title:`模型对齐输出 \$\{nfH3Duration\(\)\.actualDuration\.toFixed\(2\)\} 秒 \/ \$\{nfH3Duration\(\)\.frames\} 帧 · 24 FPS\$\{nfH3Duration\(\)\.frames<124\?`；短时长实验模式`:``\}`/,
+    /title:`模型对齐输出 \$\{nfH3Duration\(\)\.actualDuration\.toFixed\(2\)\} 秒 \/ \$\{nfH3Duration\(\)\.frames\} 帧 · \$\{nfH3Duration\(\)\.fps\} FPS\$\{nfH3Duration\(\)\.frames<124\?`；短时长实验模式`:nfH3Duration\(\)\.requestedDuration>15\?`；长时长实验模式`:``\}`/,
     'H3 duration alignment details must remain available in the input tooltip',
   )
   assert.doesNotMatch(bundle, /data-novaflow-h3-duration-output/, 'duration details must not occupy the parameter row')
@@ -567,9 +576,10 @@ test('MiniMax_h3 text-to-video collapses the empty reference column and exposes 
   const stateEnd = bundle.indexOf(',Fr=Ja(`ai_seq_prompt`', stateStart)
   assert.ok(stateStart >= 0 && stateEnd > stateStart, 'independent H3 state must have stable boundaries')
   const stateFragment = bundle.slice(stateStart, stateEnd)
-  assert.match(stateFragment, /useState\)\(`9:16`\)/, 'H3 must default to 9:16')
-  assert.match(stateFragment, /nfH3Megapixels,nfSetH3Megapixels\]=\(0,_\.useState\)\(\.4\)/)
-  assert.match(stateFragment, /nfH3Steps,nfSetH3Steps\]=\(0,_\.useState\)\(4\)/)
+  assert.match(stateFragment, /useState\)\(\(\)=>nfH3Saved\(\)\.aspectRatio\)/, 'H3 must default to 9:16')
+  assert.match(stateFragment, /nfH3Megapixels,nfSetH3Megapixels\]=\(0,_\.useState\)\(\(\)=>nfH3Saved\(\)\.megapixels\)/)
+  assert.match(stateFragment, /nfH3Fps,nfSetH3Fps\]=\(0,_\.useState\)\(\(\)=>nfH3Saved\(\)\.fps\)/)
+  assert.match(stateFragment, /nfH3Steps,nfSetH3Steps\]=\(0,_\.useState\)\(\(\)=>nfH3Saved\(\)\.steps\)/)
   assert.match(stateFragment, /width:480,height:864/, 'H3 must default to 480 x 864')
   assert.doesNotMatch(
     stateFragment,
@@ -608,6 +618,14 @@ test('MiniMax_h3 text-to-video collapses the empty reference column and exposes 
     'resolution choices must show direct dimensions and flag presets above the verified 0.98 level',
   )
   assert.match(settingsFragment, /children:`采样步数`/)
+  assert.match(settingsFragment, /children:`FPS`/)
+  assert.match(
+    settingsFragment,
+    /"data-novaflow-h3-fps":`1`,value:String\(nfH3Fps\),onChange:e=>nfSetH3Fps\(Number\(e\.target\.value\)===16\?16:24\)/,
+    'FPS must be a dedicated H3 selector with 16 and 24 FPS gears',
+  )
+  assert.match(settingsFragment, /value:`24`,children:`24`/)
+  assert.match(settingsFragment, /value:`16`,children:`16`/)
   assert.match(
     settingsFragment,
     /"data-novaflow-h3-steps":`1`,type:`number`,inputMode:`numeric`,min:1,max:1e4,step:1,value:String\(nfH3Steps\)/,
@@ -616,7 +634,7 @@ test('MiniMax_h3 text-to-video collapses the empty reference column and exposes 
   assert.doesNotMatch(settingsFragment, /disabled:Ve===`multi_reference`/)
   assert.doesNotMatch(settingsFragment, /value:`4`,children:`4`|value:`20`,children:`20`/)
   assert.doesNotMatch(settingsFragment, /"data-novaflow-h3-steps-hint":`1`/)
-  assert.match(settingsFragment, /title:nfH3SubmitSteps\(\)===4\?`4 步会自动启用内置 Turbo LoRA（0\.75）`/)
+  assert.match(settingsFragment, /title:`beta5 TURBO 已内置加速权重；不额外叠加 Turbo LoRA`/)
   assert.match(stateFragment, /e===4\?`4 步：自动启用 Turbo LoRA`/)
   assert.match(stateFragment, /e===20\?`20 步：推荐质量基线`/)
   assert.match(stateFragment, /`\$\{e\} 步：自定义采样`/)
@@ -624,8 +642,12 @@ test('MiniMax_h3 text-to-video collapses the empty reference column and exposes 
   const commonModeBodySelector = '[data-novaflow-ai-mode-section="1"] > [data-novaflow-ai-mode-body-item="1"],'
   const commonRuleStart = runtimeSource.indexOf(commonModeBodySelector)
   assert.notEqual(commonRuleStart, -1, 'shared mode-body sizing rule must exist')
-  const scopedLoraRule = '[data-novaflow-ai-mode-section="1"] > *:has([data-novaflow-ai-lora-section="1"]) {\n        min-height:'
-  const scopedLoraRuleStart = runtimeSource.indexOf(scopedLoraRule, commonRuleStart + commonModeBodySelector.length)
+  const scopedLoraRuleMatch = /body\.novaflow-ai-animation-section-layers\.novaflow-ai-bottom-workspace-active \[data-novaflow-ai-mode-section="1"\] > \*:has\(\[data-novaflow-ai-lora-section="1"\]\) \{\s*min-height:/m.exec(
+    runtimeSource.slice(commonRuleStart + commonModeBodySelector.length),
+  )
+  const scopedLoraRuleStart = scopedLoraRuleMatch
+    ? commonRuleStart + commonModeBodySelector.length + scopedLoraRuleMatch.index
+    : -1
   assert.notEqual(scopedLoraRuleStart, -1, 'LoRA-owned branch sizing rule must exist after the shared rule')
   const commonRuleBody = runtimeSource.slice(commonRuleStart, scopedLoraRuleStart)
   assert.doesNotMatch(
@@ -872,7 +894,7 @@ test('MiniMax_h3 keeps 8189 out of the shared Wan Runtime URL and coordinates re
   )
 })
 
-test('MiniMax_h3 publishes stable outputs into the temp warehouse and restores them on entry', () => {
+test('MiniMax_h3 publishes only the final output while Wan keeps only the normal video_a output', () => {
   assert.match(
     bundle,
     /NovaFlowAiSequenceMiniMaxH3OutputResource[\s\S]{0,260}\.list\(\)/,
@@ -880,13 +902,108 @@ test('MiniMax_h3 publishes stable outputs into the temp warehouse and restores t
   )
   assert.match(
     bundle,
-    /if\(P>=2\)\{if\(nfH3Mode\)[\s\S]{0,1200}\.publish\(\{promptId:A,filename:nfOutput\.filename,subfolder:nfOutput\.subfolder\|\|``,type:nfOutput\.type\|\|`output`,mediaDurationSec:nfH3NormalizedMediaDurationSec,generationElapsedSec:nfH3NormalizedGenerationElapsedSec\}\)/,
-    'only stable H3 history outputs must be published before completion',
+    /nfH3PublishOutputs=d\?\[d\]:\[\][\s\S]{0,900}\.publish\(\{promptId:A,filename:nfOutput\.filename,subfolder:nfOutput\.subfolder\|\|``,type:nfOutput\.type\|\|`output`,mediaDurationSec:nfH3NormalizedMediaDurationSec,generationElapsedSec:nfH3NormalizedGenerationElapsedSec\}\)/,
+    'MiniMax H3 must publish only the final output loaded to the canvas',
   )
   assert.match(
     bundle,
-    /h=async\(nfCacheBlob,nfCacheName\)=>\{try\{if\(e\.aiSeqMode===`minimax_h3_local`\)return null/,
-    'H3 output publishing must replace the legacy duplicate byte cache',
+    /for\(let n of \(d\?\[d\]:u\.slice\(0,1\)\)\)\{if\(t!==e\.aiSeqRunTokenRef\.current\)return;await C\(\{/,
+    'Wan generation must publish only the selected video_a history output',
+  )
+  assert.doesNotMatch(
+    bundle,
+    /"filename_prefix": "video_b"/,
+    'Wan workflows must not retain the filtered video_b save node',
+  )
+  assert.match(
+    bundle,
+    /d=u\.find\(e=>\/\^video_a\/i\.test\(String\(e\?\.filename\|\|``\)\)\)\|\|u\[0\]/,
+    'Wan canvas and resource publication must prefer the normal video_a output',
+  )
+  assert.doesNotMatch(
+    preloadSource,
+    /aiSeqCacheClear:\s*\(payload\)\s*=>\s*ipcRenderer\.invoke\("ai-seq-cache-clear",\s*payload\)/,
+    'the renderer bridge must not expose a full physical warehouse clear operation to generation UI',
+  )
+  assert.match(
+    mainSource,
+    /handleNovaFlowTempIpc\("ai-seq-cache-clear"[\s\S]{0,420}cleanupAiSeqCacheDir\(source\)[\s\S]{0,160}ensureAiSeqCacheDir\(\)/,
+    'the main process must clear and recreate the physical ai-sequence-cache directory',
+  )
+  assert.doesNotMatch(
+    bundle,
+    /aiSeqCacheClear\?\.\(\{source:`ai-sequence-generate-start`\}\)[\s\S]{0,120}nfRunAiSeqGenerate\(\)/,
+    'starting a new AI sequence generation must not delete existing warehouse resources',
+  )
+  assert.match(
+    bundle,
+    /h=async\(nfCacheBlob,nfCacheName,nfCacheKey\)=>\{try\{if\(e\.aiSeqMode===`minimax_h3_local`\)return null;if\(!nfCacheKey\)return null/,
+    'only selected Wan outputs with stable output ids may be written to the physical cache',
+  )
+  assert.match(
+    bundle,
+    /aiSeqCacheTempFile\(\{bytes:r,fileName:nfCacheFileName,cacheKey:String\(nfCacheKey\),cacheRank:nfCacheRank,maxFiles:1\}\)/,
+    'Wan cache writes must be keyed and capped to one physical warehouse file',
+  )
+  assert.match(
+    bundle,
+    /s=await h\(o,t\.filename,t\.id\),c=i\(o\)/,
+    'resource object-url prefetch must cache by the generated output id',
+  )
+  assert.match(
+    bundle,
+    /o=await h\(n,d\.filename,a\),s=await v\(n,d\.filename\)/,
+    'canvas preview cache writes must reuse the same selected generated output id',
+  )
+  assert.doesNotMatch(
+    bundle,
+    /await h\([^,\)]*,[^,\)]*\)/,
+    'unkeyed Comfy downloads must not write arbitrary history outputs into ai-sequence-cache',
+  )
+  assert.match(
+    mainSource,
+    /AI_SEQ_GENERATED_CACHE_INDEX = "\.generated-cache-index\.json"/,
+    'Wan duplicate-cache state must be isolated from the H3 manifest.json warehouse',
+  )
+  assert.match(
+    mainSource,
+    /const cacheKey = normalizeAiSeqGeneratedCacheKey\(payload\?\.cacheKey\)/,
+    'the renderer-provided generated output id must reach the main-process cache writer',
+  )
+  assert.match(
+    mainSource,
+    /existing\?\.path[\s\S]{0,260}reused: true/,
+    'the main process must reuse an existing physical file for the same generated output id',
+  )
+  assert.match(
+    mainSource,
+    /const cacheGroup = normalizeAiSeqGeneratedCacheGroup\(payload\?\.cacheGroup, cacheKey\)/,
+    'the main process must derive a generated-output group from the current Wan prompt id',
+  )
+  assert.match(
+    mainSource,
+    /const scopedItems = index\.items\.filter\(\(item\) => normalizeAiSeqGeneratedCacheGroup\(item\?\.cacheGroup, item\?\.cacheKey\) === group\)/,
+    'the generated-output cap must be scoped to the current prompt group instead of the whole warehouse',
+  )
+  assert.match(
+    mainSource,
+    /pruneAiSeqGeneratedCacheIndex\(dir, cacheIndex, maxFiles, cacheGroup\)/,
+    'the main process must enforce the requested cap only within the current generated-output group',
+  )
+  assert.match(
+    mainSource,
+    /const formatAiSeqWarehouseTimestamp = \(date = new Date\(\)\) =>/,
+    'generated Wan warehouse files must use a readable timestamp instead of a random suffix',
+  )
+  assert.match(
+    mainSource,
+    /const firstName = `\$\{safePrefix\}_\$\{stamp\}\$\{safeExt\}`/,
+    'the first generated Wan warehouse name must be short and readable',
+  )
+  assert.match(
+    mainSource,
+    /const outPrefix = cacheKey \? "wan" : "ais";[\s\S]{0,180}cacheKey[\s\S]{0,80}createAiSeqWarehouseFileName\(dir, outPrefix, ext\)/,
+    'generated Wan warehouse files must use wan_ readable names while generic temp copies keep ais_',
   )
   assert.match(bundle, /视频已生成，但加入临时仓库失败/)
   assert.match(bundle, /已生成并加入临时仓库/)
@@ -953,14 +1070,14 @@ test('HTML loads H3 workflow/resource modules and retires the AI sequence cloud 
   assert.ok(sources.includes(h3Resource), `${h3Resource} must be loaded`)
   assert.match(
     indexHtml,
-    /assets\/index-BbIa-2NM\.js\?v=20260812-minimax-h3-assistant-1/,
-    'the formal surface must invalidate the H3 resource timing bundle cache',
+    /assets\/index-BbIa-2NM\.js\?v=20260912-h3-beta5-profiles-1/,
+    'the formal surface must invalidate the Wan A-only bundle cache',
   )
   assert.match(indexHtml, /ai-sequence-minimax-h3-output\.resource\.js\?v=20260812-minimax-h3-timing-1/)
-  assert.match(indexHtml, /novaflow-brand-runtime\.js\?v=20260813-ideogram-instant-1/)
-  assert.match(indexHtml, /ai-sequence-minimax-h3-prompt\.workflow\.js\?v=20260813-minimax-h3-guaranteed-output-1/)
-  assert.match(indexHtml, /ai-sequence-minimax-h3-reverse\.workflow\.js\?v=20260813-minimax-h3-visual-facts-1/)
-  assert.match(indexHtml, /ai-sequence-minimax-h3\.workflow\.js\?v=20260812-minimax-h3-duration-1/)
+  assert.match(indexHtml, /novaflow-brand-runtime\.js\?v=20260817-prompt-editor-modal-1/)
+  assert.match(indexHtml, /ai-sequence-minimax-h3-prompt\.workflow\.js\?v=20260819-minimax-h3-longfps-1/)
+  assert.match(indexHtml, /ai-sequence-minimax-h3-reverse\.workflow\.js\?v=20260819-minimax-h3-longfps-1/)
+  assert.match(indexHtml, /ai-sequence-minimax-h3\.workflow\.js\?v=20260819-minimax-h3-longfps-1/)
   assert.ok(sources.includes(h3LoraResource), `${h3LoraResource} must be loaded`)
   assert.ok(sources.includes(h3OutputResource), `${h3OutputResource} must be loaded`)
   assert.ok(sources.includes(wanLoraResource), `${wanLoraResource} must be loaded`)

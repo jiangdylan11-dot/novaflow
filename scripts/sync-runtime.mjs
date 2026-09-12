@@ -4,6 +4,7 @@ import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { TextDecoder } from 'node:util'
 import { fileURLToPath } from 'node:url'
+import './sync-h3-prompt-enhance.mjs'
 import { spineWebpRuntimeFiles } from './spine-webp-runtime-files.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -72,6 +73,12 @@ const syncEntries = [
     ],
   },
   {
+    label: 'main/qwen-lora-catalog.js',
+    sourcePath: path.join(repoRoot, 'particle-editor-desktop', 'main', 'qwen-lora-catalog.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'main', 'qwen-lora-catalog.js'),
+    ],
+  },  {
     label: 'main/wan22-lora-catalog.js',
     sourcePath: path.join(repoRoot, 'particle-editor-desktop', 'main', 'wan22-lora-catalog.js'),
     targetPaths: [
@@ -118,6 +125,8 @@ const syncEntries = [
     'art_prompt_contract.py',
     'visual_contract.py',
     'qwen3_vl_adapter.py',
+    'h3_prompt_enhance.py',
+    'h3_prompt_enhance_policy.json',
   ].map((fileName) => ({
     label: `prompt_assistant/${fileName}`,
     sourcePath: path.join(repoRoot, 'particle-editor-desktop', 'prompt_assistant', fileName),
@@ -130,6 +139,13 @@ const syncEntries = [
     sourcePath: path.join(repoRoot, 'particle-editor-desktop', 'admin-server', 'server.js'),
     targetPaths: [
       path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'admin-server', 'server.js'),
+    ],
+  },
+  {
+    label: 'admin-server/h3-prompt-enhance.js',
+    sourcePath: path.join(repoRoot, 'particle-editor-desktop', 'admin-server', 'h3-prompt-enhance.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'admin-server', 'h3-prompt-enhance.js'),
     ],
   },
   {
@@ -232,6 +248,14 @@ const syncEntries = [
     targetPaths: [
       path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'comfyui-workflow-credit-cost.js'),
       path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'comfyui-workflow-credit-cost.js'),
+    ],
+  },
+  {
+    label: 'art-generate-lora.js',
+    sourcePath: path.join(repoRoot, 'particle-editor', 'art-generate-lora.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'art-generate-lora.js'),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'art-generate-lora.js'),
     ],
   },
   {

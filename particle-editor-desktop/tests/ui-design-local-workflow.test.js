@@ -62,7 +62,7 @@ function localWorkflowFixture() {
     unet: {
       class_type: 'UNETLoader',
       inputs: {
-        unet_name: 'qwen_image_edit_2511_bf16.safetensors',
+        unet_name: 'qwen_image_edit_2511_fp8mixed.safetensors',
         weight_dtype: 'default',
       },
     },
@@ -262,8 +262,8 @@ test('an automatic ordinary primary enables the native-canvas forty-step base-mo
   assert.equal(result.metadata.latentCanvas.strategy, 'auto-primary-reference')
   assert.deepEqual(result.metadata.resolution.requested, { width: 720, height: 1280 })
   assert.deepEqual(result.metadata.resolution.working, { width: 720, height: 1280 })
-  assert.equal(result.workflow.unet.inputs.unet_name, 'qwen_image_edit_2511_bf16.safetensors')
-  assert.equal(result.metadata.modelName, 'qwen_image_edit_2511_bf16.safetensors')
+  assert.equal(result.workflow.unet.inputs.unet_name, 'qwen_image_edit_2511_fp8mixed.safetensors')
+  assert.equal(result.metadata.modelName, 'qwen_image_edit_2511_fp8mixed.safetensors')
   assert.equal(result.workflow.lightning.inputs.value, false)
   assert.equal(result.workflow.lora.inputs.lora_name, 'existing-general-lora.safetensors')
   assert.equal(result.metadata.loraName, '')
@@ -302,7 +302,7 @@ test('an automatic-primary quality correction escalates to the native forty-step
   assert.equal(result.workflow.sampler.inputs.steps, 40)
   assert.equal(result.workflow.sampler.inputs.cfg, 4)
   assert.equal(result.workflow.lightning.inputs.value, false)
-  assert.equal(result.workflow.unet.inputs.unet_name, 'qwen_image_edit_2511_bf16.safetensors')
+  assert.equal(result.workflow.unet.inputs.unet_name, 'qwen_image_edit_2511_fp8mixed.safetensors')
   assert.equal(result.metadata.loraName, '')
 })
 

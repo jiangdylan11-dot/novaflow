@@ -122,3 +122,13 @@ test('invalid preview responses fail closed without exposing raw candidates', as
   })
   assert.equal('items' in result, false)
 })
+
+
+test('Qwen uses the shared preview adapter and preserves native preload when present', async () => {
+  const calls = [];
+  const api = loadProxy({}, async (url, init) => { calls.push([url, JSON.parse(init.body)]); return new Response(JSON.stringify({ok:true, items:[]})); });
+  await api.qwenLoraCatalog({ nsfw: true });
+  assert.deepEqual(calls, [['/__ai_sequence_lora', {action:'qwen-catalog', payload:{nsfw:true}}]]);
+  const native = async () => ({ok:true, items:[]});
+  assert.equal(loadProxy({qwenLoraCatalog:native}, () => { throw new Error('unexpected HTTP'); }).qwenLoraCatalog, native);
+});

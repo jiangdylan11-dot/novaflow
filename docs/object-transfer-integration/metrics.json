@@ -1,0 +1,37 @@
+{
+  "size": {
+    "width": 1016,
+    "height": 1018
+  },
+  "bounds": {
+    "x": 532,
+    "y": 546,
+    "width": 457,
+    "height": 457
+  },
+  "shadowPixels": 13861,
+  "subjectPixels": 163149,
+  "protectedPixels": 151705,
+  "drift": [
+    1,
+    0,
+    -4
+  ],
+  "ambientTint": [
+    0.8206172675324153,
+    1.0340636983861946,
+    1.2659177087375826
+  ],
+  "shadowLimit": 0.3591466354802235,
+  "shadowSoftness": 4,
+  "region": {
+    "left": 56,
+    "top": 560,
+    "right": 1015,
+    "bottom": 1017
+  },
+  "grow": 21,
+  "feather": 13,
+  "protectedChanged": 0,
+  "outsideChanged": 0
+}

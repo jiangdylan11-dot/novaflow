@@ -2,7 +2,7 @@
   "use strict";
 
   const PROFILE_VERSION = "art-quality-v1";
-  const EXPLICIT_FLAT_STYLE_RE = /(赛璐璐|cel[\s-]?shad|漫画粗线|粗黑描边|黑色外轮廓|厚重墨线|线稿|ink(?:ed)?\s+line|pixel\s*art|像素画|低多边形|low[\s-]?poly)/i;
+  const EXPLICIT_FLAT_STYLE_RE = /(赛璐璐|cel[\s-]?shad|漫画粗线|粗线稿|漫画线稿|墨线插画|美式卡通|粗黑描边|黑色外轮廓|厚重墨线|线稿|ink(?:ed)?\s+line|pixel\s*art|像素画|低多边形|low[\s-]?poly)/i;
   const EXPLICIT_CLOTHING_DESIGN_RE = /(服装设计|服饰设计|时装|衣装|穿搭|裙装|长裙|短裙|礼服|制服|铠甲|盔甲|披风|斗篷|长袍|上衣|下装|裤装|鞋靴|帽饰|outfit|costume|fashion|dress|skirt|uniform|armor|cape|robe)/i;
   const ASSET_ALIASES = {
     character: "character",
@@ -22,8 +22,9 @@
     key_visual: "poster"
   };
 
+  const PREVIOUS_CHARACTER_INSTRUCTION = "高完成度角色CG质量：用户指定的角色身份、可见外观状态、姿态、景别、构图和道具最高优先，不得擅自新增、删减或重新设计原图内容，不得擅自改成近景或裁切主体；用户要求全身时必须从头到脚完整入画，脚部和核心道具都保留在画面内。建立清晰轮廓、稳定重心和有表现力的动作线；面部五官、眼神、发丝分组、手脚与人体结构准确。皮肤、头发及原图已有材质分别呈现可信质感，遵循用户指定或参考图已有的光照，以自然明暗转折塑造体积。配色遵循主色、辅色、点缀色层级；轮廓主要由明暗、色彩和材质边缘建立，边缘干净自然，与用户指定或原图已有的画风一致。画面达到高品质角色插画的精修完成度。";
   const PROFILE_INSTRUCTIONS = {
-    character: "高完成度角色CG质量：用户指定的角色身份、可见外观状态、姿态、景别、构图和道具最高优先，不得擅自新增、删减或重新设计原图内容，不得擅自改成近景或裁切主体；用户要求全身时必须从头到脚完整入画，脚部和核心道具都保留在画面内。建立清晰轮廓、稳定重心和有表现力的动作线；面部五官、眼神、发丝分组、手脚与人体结构准确。皮肤、头发及原图已有材质分别呈现可信质感，使用柔和体积光、受控轮廓光和自然明暗转折塑造体积。配色遵循主色、辅色、点缀色层级；轮廓主要由明暗、色彩和材质边缘建立，只允许局部细弱彩色辅助线。画面达到高品质角色插画的精修完成度。",
+    character: "高完成度角色CG质量：用户指定的角色身份、可见外观状态、姿态、景别、构图和道具最高优先，不得擅自新增、删减或重新设计原图内容，不得擅自改成近景或裁切主体；用户要求全身时必须从头到脚完整入画，脚部和核心道具都保留在画面内。保持稳定重心和原有动作；面部五官、眼神、发丝分组、手脚与人体结构准确。皮肤、头发及原图已有材质分别呈现可信质感，遵循用户指定或参考图已有的光照，以自然明暗转折塑造体积。配色遵循主色、辅色、点缀色层级；轮廓由局部固有色与明暗过渡自然衔接，边缘轻柔细腻，线条纤细轻淡，与用户指定或原图已有的画风一致。画面达到高品质角色插画的精修完成度。",
     scene: "高完成度场景CG质量：建立明确前中后景、主地标、视线引导、尺度参照和可用空间；透视、结构、接触关系与光源方向一致。建筑、岩石、植被、水体和空气透视具有不同材质层次，重点区域细节密度高、次要区域主动收敛，形成可读的大形与专业级氛围光。",
     game_ui: "商业游戏UI质量：建立明确的信息层级、功能分区、按钮状态、文字安全区和操作焦点；边框、面板、图标与装饰使用统一的形状语言和材质逻辑。保证文字区域可读、控件可执行、九宫格与切图可落地，不生成伪文字堆叠或只可观看而不可使用的概念图。",
     icon_prop: "高完成度图标与道具质量：轮廓一眼可识别，视角、结构、功能和受力关系明确；金属、木材、皮革、玻璃、宝石与能量体材质区分清楚。用受控高光、接触阴影和局部磨损表现体积，背景与特效不遮挡主体，适合缩小后识别及真实资产落地。",
@@ -42,6 +43,30 @@
   const PURE_ARTWORK_ASSET_TYPES = new Set(["character", "scene", "icon_prop", "vfx"]);
   const PURE_ARTWORK_INSTRUCTION = "只输出用户要求的纯画面内容，不添加游戏界面、界面边框、操作按钮、状态栏、菜单面板、文字标签、Logo或水印。";
   const PURE_ARTWORK_NEGATIVE = "游戏界面，界面边框，操作按钮，状态栏，菜单面板，文字标签，伪文字，Logo，水印";
+  const CLOTHING_DESIGN_INSTRUCTION = "用户已明确提出衣装内容时，仅精修用户指定或原图可见的衣装结构、材质与细节，不新增其他服饰，不改变覆盖范围。";
+  // Match only the exact suffix emitted by the previous compiler. Never remove
+  // individual lighting/outline words from user-authored prompts or history.
+  const LEGACY_CHARACTER_INSTRUCTION = PREVIOUS_CHARACTER_INSTRUCTION
+    .replace("遵循用户指定或参考图已有的光照，以自然明暗转折塑造体积", "使用柔和体积光、受控轮廓光和自然明暗转折塑造体积")
+    .replace("边缘干净自然，与用户指定或原图已有的画风一致", "只允许局部细弱彩色辅助线");
+
+  function removeLegacyQualitySuffix(prompt) {
+    const suffixes = [
+      PREVIOUS_CHARACTER_INSTRUCTION + CLOTHING_DESIGN_INSTRUCTION + PURE_ARTWORK_INSTRUCTION,
+      PREVIOUS_CHARACTER_INSTRUCTION + PURE_ARTWORK_INSTRUCTION,
+      PREVIOUS_CHARACTER_INSTRUCTION + CLOTHING_DESIGN_INSTRUCTION,
+      PREVIOUS_CHARACTER_INSTRUCTION,
+      LEGACY_CHARACTER_INSTRUCTION + CLOTHING_DESIGN_INSTRUCTION + PURE_ARTWORK_INSTRUCTION,
+      LEGACY_CHARACTER_INSTRUCTION + PURE_ARTWORK_INSTRUCTION,
+      LEGACY_CHARACTER_INSTRUCTION + CLOTHING_DESIGN_INSTRUCTION,
+      LEGACY_CHARACTER_INSTRUCTION
+    ];
+    for (const suffix of suffixes) {
+      const marker = `\n\n${suffix}`;
+      if (prompt.endsWith(marker)) return prompt.slice(0, -marker.length).trim();
+    }
+    return prompt;
+  }
 
   function clean(value) {
     return String(value || "").trim();
@@ -69,7 +94,11 @@
   }
 
   function hasExplicitFlatStyle(prompt, style) {
-    return style === "cel_comic" || style === "pixel" || EXPLICIT_FLAT_STYLE_RE.test(`${clean(style)} ${clean(prompt)}`);
+    // A complaint about a style is not a request to apply that style.
+    const affirmative = clean(prompt).split(/[，,。；;！!？?\n]+/).filter((clause) =>
+      !/(不要(?!改动|变动)|避免|禁止|不得(?!改动|变动)|去掉|去除|取消|减轻|减弱|弱化|降低|减少|太黑|太重|太粗|过黑|过重|过粗|without|avoid|no\s)/i.test(clause)
+    ).join("，");
+    return style === "cel_comic" || style === "pixel" || EXPLICIT_FLAT_STYLE_RE.test(`${clean(style)} ${affirmative}`);
   }
 
   function mergeNegativePrompt(base, addition) {
@@ -78,6 +107,21 @@
       if (!parts.some((existing) => existing.toLowerCase() === item.toLowerCase())) parts.push(item);
     });
     return parts.join("，");
+  }
+
+  function canApplySoftEdgeEdit(prompt, requirements) {
+    const source = clean(prompt);
+    if (!source || source.length > 2000 || /[\r\n]|__NOVAFLOW_|@(?:参考图[1-9][0-9]*|视频参考|声音参考)|\[[^\]]+\]|【[^】]+】/.test(source)) return false;
+    if (/粗黑描边|黑色外轮廓|厚重墨线|粗线稿|漫画|赛璐璐|像素/.test(source)) return false;
+    const instruction = clean(requirements).replace(/\s+/g, "").replace(/^[，,。.!！]+|[，,。.!！]+$/g, "").replace(/^请/, "");
+    const target = "(?:人体|人物|角色|身体)?的?(?:黑色)?(?:描边|轮廓线|外轮廓)";
+    const excess = "(?:(?:过于|过|太)?(?:黑|重|粗|厚重|浓重))+";
+    return [
+      `(?:不要|避免)${excess}的?${target}`,
+      `${target}(?:不要|避免)${excess}`,
+      `(?:减轻|减弱|弱化|淡化)${target}`,
+      `(?:把|将)?${target}(?:改得|变得|调整得|改为|变为)?(?:更细更淡|细一点|淡一点|轻一点|纤细轻淡)`
+    ].some((pattern) => new RegExp(`^(?:${pattern})$`).test(instruction));
   }
 
   function build(options) {
@@ -90,7 +134,7 @@
       ? `商业资产完成度：保持用户明确指定的${style === "pixel" ? "像素" : "线稿/赛璐璐"}表现语言，不改成写实厚涂；提升构图、结构、色彩层级、边缘控制和细节准确性，保证主体清晰、风格统一、可直接用于游戏资产。`
       : PROFILE_INSTRUCTIONS[assetType];
     const clothingDesignInstruction = assetType === "character" && EXPLICIT_CLOTHING_DESIGN_RE.test(prompt)
-      ? "用户已明确提出衣装内容时，仅精修用户指定或原图可见的衣装结构、材质与细节，不新增其他服饰，不改变覆盖范围。"
+      ? CLOTHING_DESIGN_INSTRUCTION
       : "";
     const pureArtworkInstruction = PURE_ARTWORK_ASSET_TYPES.has(assetType) ? PURE_ARTWORK_INSTRUCTION : "";
     const positiveInstruction = [basePositiveInstruction, clothingDesignInstruction, pureArtworkInstruction].filter(Boolean).join("");
@@ -113,8 +157,8 @@
 
   function compileFinal(options) {
     const source = options || {};
-    const prompt = clean(source.prompt);
-    const profile = build(source);
+    const prompt = removeLegacyQualitySuffix(clean(source.prompt));
+    const profile = build({ ...source, prompt });
     const alreadyCompiled = Boolean(profile.positiveInstruction) && prompt.includes(profile.positiveInstruction);
     return {
       ...profile,
@@ -129,6 +173,8 @@
     build,
     compileFinal,
     inferAssetType,
+    hasExplicitFlatStyle,
+    canApplySoftEdgeEdit,
     mergeNegativePrompt
   });
 })(window);

@@ -86,7 +86,7 @@
     const kind = stringValue(value.kind || 'standard').trim().toLowerCase()
     const fingerprint = stringValue(value.fingerprint).trim()
     if (!name || !fingerprint) throw new Error('MiniMax H3 LoRA catalog item is missing name or fingerprint')
-    if (modelFamily !== 'fl2va' && modelFamily !== 'ref2va') throw new Error(`Unsupported MiniMax H3 LoRA family: ${modelFamily}`)
+    if (!['fl2va', 'ref2va', 'h3'].includes(modelFamily)) throw new Error(`Unsupported MiniMax H3 LoRA family: ${modelFamily}`)
     if (kind !== 'standard') throw new Error(`MiniMax H3 managed accelerator cannot be selected: ${name}`)
     return Object.freeze({
       name,
@@ -101,7 +101,7 @@
   function itemSupportsContext(item, mode, steps) {
     const family = familyForMode(mode)
     const normalizedSteps = normalizeSteps(steps)
-    return item.modelFamily === family && (
+    return (item.modelFamily === family || item.modelFamily === 'h3') && (
       item.supportedSteps == null || item.supportedSteps.includes(normalizedSteps)
     )
   }

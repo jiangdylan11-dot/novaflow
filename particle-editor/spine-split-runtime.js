@@ -237,16 +237,7 @@
   const IMAGE_WASH_QWEN_CHECKPOINT = 'Qwen-Rapid-AIO-NSFW-v20.safetensors'
   const IMAGE_ANGLE_ADJUST_TIMEOUT_MS = 600000
   const IMAGE_ANGLE_ADJUST_FILENAME_PREFIX = 'NovaFlow_angle_adjust'
-  const IMAGE_ANGLE_ADJUST_UNET = 'qwen_image_edit_2511_fp8mixed.safetensors'
-  const IMAGE_ANGLE_ADJUST_CLIP = 'qwen_2.5_vl_7b_fp8_scaled.safetensors'
-  const IMAGE_ANGLE_ADJUST_VAE = 'qwen_image_vae.safetensors'
   const IMAGE_ANGLE_ADJUST_MULTIANGLE_LORA = 'qwen-image-edit-2511-multiple-angles-lora.safetensors'
-  const IMAGE_ANGLE_ADJUST_LIGHTNING_LORAS = [
-    'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
-    'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
-    'Qwen-Image-Lightning-8steps-V2.0.safetensors',
-    'Qwen-Image-Lightning-8steps-V1.0.safetensors'
-  ]
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_DEFAULT = 0
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_MIN = 0
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_MAX = 359
@@ -262,15 +253,6 @@
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
   const OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE = '\u53c2\u8003\u7269\u4e3b\u4f53\u4e0d\u6e05\u6670\uff0c\u8bf7\u6362\u4e00\u5f20\u80cc\u666f\u66f4\u7b80\u5355\u7684\u56fe\u7247\u3002'
-  const OBJECT_TRANSFER_QWEN_UNETS = ['qwen_image_edit_2511_fp8mixed.safetensors', 'qwen_image_edit_2511_bf16.safetensors']
-  const OBJECT_TRANSFER_QWEN_CLIP = 'qwen_2.5_vl_7b_fp8_scaled.safetensors'
-  const OBJECT_TRANSFER_QWEN_VAE = 'qwen_image_vae.safetensors'
-  const OBJECT_TRANSFER_QWEN_LIGHTNING_LORAS = [
-    'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
-    'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
-    'Qwen-Image-Lightning-8steps-V2.0.safetensors',
-    'Qwen-Image-Lightning-8steps-V1.0.safetensors'
-  ]
   const STORYBOARD_MODEL_MODE_DEFAULT = 'default'
   const STORYBOARD_MODEL_MODE_NSFW = 'qwenNsfw'
   const STORYBOARD_QWEN_NSFW_CHECKPOINT = IMAGE_WASH_QWEN_CHECKPOINT
@@ -5701,15 +5683,13 @@
   function buildQwenImageOutpaintWorkflow(info, imageName, prefix, delta, options = {}) {
     const required = [
       'LoadImage',
+      'CheckpointLoaderSimple',
       'ImagePadForOutpaint',
       'GetImageSizeAndCount',
       'Image Blank',
       'JoinImageWithAlpha',
       'ImageCompositeMasked',
       'FluxKontextImageScale',
-      'UNETLoader',
-      'CLIPLoader',
-      'VAELoader',
       'VAEEncode',
       'TextEncodeQwenImageEditPlus',
       'ConditioningZeroOut',
@@ -5719,28 +5699,10 @@
       'SaveImage'
     ]
     required.forEach((name) => requiredComfyNode(info, name))
-    const unet = requiredComfyNode(info, 'UNETLoader')
-    const clip = requiredComfyNode(info, 'CLIPLoader')
-    const vae = requiredComfyNode(info, 'VAELoader')
     const qwenText = requiredComfyNode(info, 'TextEncodeQwenImageEditPlus')
     const ksampler = requiredComfyNode(info, 'KSampler')
-    const lora = info.LoraLoaderModelOnly || null
-    const aura = info.ModelSamplingAuraFlow || null
-    const cfgNorm = info.CFGNorm || null
-    const unetName = comfyChoiceFromCandidates(unet, 'unet_name', [
-      'qwen_image_edit_2511_fp8mixed.safetensors',
-      'qwen_image_edit_2511_bf16.safetensors'
-    ], 'Qwen Edit UNET')
-    const clipName = requireComfyChoice(clip, 'clip_name', 'qwen_2.5_vl_7b_fp8_scaled.safetensors', 'Qwen CLIP')
-    const vaeName = requireComfyChoice(vae, 'vae_name', 'qwen_image_vae.safetensors', 'Qwen VAE')
-    const lightningLora = lora
-      ? comfyChoiceFromCandidates(lora, 'lora_name', [
-        'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
-        'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
-        'Qwen-Image-Lightning-8steps-V2.0.safetensors',
-        'Qwen-Image-Lightning-8steps-V1.0.safetensors'
-      ], 'Qwen Edit Lightning LoRA', { optional: true })
-      : ''
+    const checkpoint = requiredComfyNode(info, 'CheckpointLoaderSimple')
+    const checkpointName = requireComfyChoice(checkpoint, 'ckpt_name', IMAGE_WASH_QWEN_CHECKPOINT, 'Qwen Rapid checkpoint')
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
       '2': { class_type: 'ImagePadForOutpaint', inputs: { left: Math.max(0, Math.round(Number(delta.left) || 0)), top: Math.max(0, Math.round(Number(delta.top) || 0)), right: Math.max(0, Math.round(Number(delta.right) || 0)), bottom: Math.max(0, Math.round(Number(delta.bottom) || 0)), feathering: imageOutpaintFeather(delta), image: ['1', 0] } },
@@ -5749,31 +5711,14 @@
       '5': { class_type: 'JoinImageWithAlpha', inputs: { image: ['4', 0], alpha: ['2', 1] } },
       '6': { class_type: 'ImageCompositeMasked', inputs: { x: 0, y: 0, resize_source: false, destination: ['2', 0], source: ['5', 0], mask: ['2', 1] } },
       '7': { class_type: 'FluxKontextImageScale', inputs: { image: ['6', 0] } },
-      '8': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' }) },
-      '9': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: clipName, type: 'qwen_image', device: 'default' }) },
-      '10': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) }
+      '8': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: checkpointName } },
     }
     let modelRef = ['8', 0]
     let nextId = 11
-    if (lora && lightningLora) {
-      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: lightningLora, strength_model: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (aura) {
-      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 3 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (cfgNorm) {
-      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: { pixels: ['6', 0], vae: ['10', 0] } }
+    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: { pixels: ['6', 0], vae: ['8', 2] } }
     const latentRef = [String(nextId), 0]
     nextId += 1
-    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: imageOutpaintPromptText(), clip: ['9', 0], image1: ['7', 0] }) }
+    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: imageOutpaintPromptText(), clip: ['8', 1], image1: ['7', 0] }) }
     const positiveRef = [String(nextId), 0]
     nextId += 1
     workflow[String(nextId)] = { class_type: 'ReferenceLatent', inputs: { conditioning: positiveRef, latent: latentRef } }
@@ -5790,26 +5735,23 @@
         negative: negativeRef,
         latent_image: latentRef,
         seed: Math.floor(Math.random() * 1000000000),
-        steps: 5,
+        steps: 6,
         cfg: 1,
-        sampler_name: 'euler',
-        scheduler: 'simple',
+        sampler_name: 'euler_ancestral',
+        scheduler: 'beta',
         denoise: 1
       })
     }
     const samplesRef = [String(nextId), 0]
     nextId += 1
-    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: { samples: samplesRef, vae: ['10', 0] } }
+    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: { samples: samplesRef, vae: ['8', 2] } }
     const imageRef = [String(nextId), 0]
     nextId += 1
     workflow[String(nextId)] = { class_type: 'SaveImage', inputs: { images: imageRef, filename_prefix: prefix } }
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       imageOutpaint: {
-        unet: unetName,
-        clip: clipName,
-        vae: vaeName,
-        lora: lightningLora,
+        checkpoint: checkpointName,
         feathering: imageOutpaintFeather(delta),
         delta: { top: delta.top, bottom: delta.bottom, left: delta.left, right: delta.right },
         latentSource: 'target-padded-composite',
@@ -5829,7 +5771,7 @@
     const uploadName = await uploadDataUrl(baseUrl, safeDownloadFileName(fileName || 'source.png', 'source.png'), dataUrl)
     const prefix = `novaflow_outpaint_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
     const workflow = buildQwenImageOutpaintWorkflow(info, uploadName, prefix, delta, options)
-    setSplitBusyDetail(`Qwen Image Edit 2511\n${nextSize.width} x ${nextSize.height} px`)
+    setSplitBusyDetail(`Qwen Rapid v20\n${nextSize.width} x ${nextSize.height} px`)
     return await runPromptForFirstImage(baseUrl, workflow, prefix, IMAGE_OUTPAINT_TIMEOUT_MS)
   }
 
@@ -5983,7 +5925,7 @@
     state.busy = true
     state.busyAction = 'imageOutpaint'
     state.busyStartedAt = Date.now()
-    state.busyDetail = `Qwen Image Edit 2511\n${nextSize.width} x ${nextSize.height} px`
+    state.busyDetail = `Qwen Rapid v20\n${nextSize.width} x ${nextSize.height} px`
     syncSplitGlobalBusyOverlay()
     try {
       const rawResult = await runQwenImageOutpaint(dataUrl, fileName, plan.delta, nextSize, {
@@ -6123,7 +6065,7 @@
     state.busy = true
     state.busyAction = 'imageOutpaint'
     state.busyStartedAt = Date.now()
-    state.busyDetail = `Qwen Image Edit 2511\n${nextSize.width} x ${nextSize.height} px`
+    state.busyDetail = `Qwen Rapid v20\n${nextSize.width} x ${nextSize.height} px`
     setMessage(plan && plan.optimized ? `无限扩图生成中... 尺寸已优化为 ${nextSize.width} x ${nextSize.height}` : '无限扩图生成中...')
     render()
     syncSplitWorkspace()
@@ -6653,12 +6595,8 @@
   function buildImageAngleAdjustWorkflow(info, imageName, options = {}) {
     const required = [
       'LoadImage',
-      'UNETLoader',
-      'CLIPLoader',
-      'VAELoader',
+      'CheckpointLoaderSimple',
       'LoraLoaderModelOnly',
-      'ModelSamplingAuraFlow',
-      'CFGNorm',
       'VAEEncode',
       'TextEncodeQwenImageEditPlus',
       'QwenMultiangleCameraNode',
@@ -6668,12 +6606,7 @@
       'SaveImage'
     ]
     required.forEach((name) => requiredComfyNode(info, name))
-    const unet = requiredComfyNode(info, 'UNETLoader')
-    const clip = requiredComfyNode(info, 'CLIPLoader')
-    const vae = requiredComfyNode(info, 'VAELoader')
     const lora = requiredComfyNode(info, 'LoraLoaderModelOnly')
-    const aura = requiredComfyNode(info, 'ModelSamplingAuraFlow')
-    const cfgNorm = requiredComfyNode(info, 'CFGNorm')
     const vaeEncode = requiredComfyNode(info, 'VAEEncode')
     const qwenText = requiredComfyNode(info, 'TextEncodeQwenImageEditPlus')
     const multiangle = requiredComfyNode(info, 'QwenMultiangleCameraNode')
@@ -6683,49 +6616,40 @@
     const horizontalAngle = normalizeImageAngleHorizontal(options.horizontalAngle)
     const verticalAngle = normalizeImageAngleVertical(options.verticalAngle)
     const zoom = normalizeImageAngleZoom(options.zoom)
-    const unetName = requiredImageAngleChoice(unet, 'unet_name', IMAGE_ANGLE_ADJUST_UNET, 'Qwen angle UNET')
-    const clipName = requiredImageAngleChoice(clip, 'clip_name', IMAGE_ANGLE_ADJUST_CLIP, 'Qwen CLIP')
-    const vaeName = requiredImageAngleChoice(vae, 'vae_name', IMAGE_ANGLE_ADJUST_VAE, 'Qwen VAE')
-    const lightningLora = requiredImageAngleChoice(lora, 'lora_name', IMAGE_ANGLE_ADJUST_LIGHTNING_LORAS, 'Qwen angle Lightning LoRA')
+    const checkpoint = requiredComfyNode(info, 'CheckpointLoaderSimple')
+    const checkpointName = requiredImageAngleChoice(checkpoint, 'ckpt_name', IMAGE_WASH_QWEN_CHECKPOINT, 'Qwen Rapid checkpoint')
     const multiangleLora = requiredImageAngleChoice(lora, 'lora_name', IMAGE_ANGLE_ADJUST_MULTIANGLE_LORA, 'Qwen Multiangle LoRA')
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '2': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' }) },
-      '3': { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: ['2', 0], lora_name: lightningLora, strength_model: 1 }) },
-      '4': { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: ['3', 0], lora_name: multiangleLora, strength_model: 1 }) },
-      '5': { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: ['4', 0], shift: 3 }) },
-      '6': { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: ['5', 0], strength: 1 }) },
-      '7': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) },
-      '8': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: clipName, type: 'qwen_image', device: 'default' }) },
+      '2': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: checkpointName } },
+      '4': { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: ['2', 0], lora_name: multiangleLora, strength_model: 1 }) },
       '9': { class_type: 'QwenMultiangleCameraNode', inputs: buildComfyNodeInputs(multiangle, { image: ['1', 0], horizontal_angle: horizontalAngle, vertical_angle: verticalAngle, zoom, default_prompts: false, camera_view: false }) },
-      '10': { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { clip: ['8', 0], vae: ['7', 0], image1: ['1', 0], prompt: ['9', 0] }) },
+      '10': { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { clip: ['2', 1], vae: ['2', 2], image1: ['1', 0], prompt: ['9', 0] }) },
       '11': { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['10', 0] } },
-      '12': { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['1', 0], vae: ['7', 0] }) },
+      '12': { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['1', 0], vae: ['2', 2] }) },
       '13': {
         class_type: 'KSampler',
         inputs: buildComfyNodeInputs(ksampler, {
-          model: ['6', 0],
+          model: ['4', 0],
           positive: ['10', 0],
           negative: ['11', 0],
           latent_image: ['12', 0],
           seed: Math.floor(Math.random() * 1000000000),
           steps: 6,
           cfg: 1,
-          sampler_name: 'euler',
-          scheduler: 'simple',
+          sampler_name: 'euler_ancestral',
+          scheduler: 'beta',
           denoise: 1
         })
       },
-      '14': { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(vaeDecode, { samples: ['13', 0], vae: ['7', 0] }) },
+      '14': { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(vaeDecode, { samples: ['13', 0], vae: ['2', 2] }) },
       '15': { class_type: 'SaveImage', inputs: buildComfyNodeInputs(saveImage, { images: ['14', 0], filename_prefix: IMAGE_ANGLE_ADJUST_FILENAME_PREFIX }) }
     }
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       imageAngleAdjust: {
-        unet: unetName,
-        clip: clipName,
-        vae: vaeName,
-        loras: [lightningLora, multiangleLora],
+        checkpoint: checkpointName,
+        loras: [multiangleLora],
         horizontalAngle,
         verticalAngle,
         zoom,
@@ -6830,7 +6754,7 @@
   }
 
   function normalizeStoryboardModelMode(value) {
-    return String(value || '') === STORYBOARD_MODEL_MODE_NSFW ? STORYBOARD_MODEL_MODE_NSFW : STORYBOARD_MODEL_MODE_DEFAULT
+    return STORYBOARD_MODEL_MODE_NSFW // Includes legacy persisted 'default' values.
   }
 
   function storyboardUsesNsfwModel(value) {
@@ -6878,7 +6802,7 @@
         resolve(value)
       }
       let selectedPresetId = STORYBOARD_DEFAULT_FRAME_PRESET_ID
-      let nsfwEnabled = false
+      const nsfwEnabled = true
       let grokEnabled = false
       const referenceStrength = STORYBOARD_REFERENCE_STRENGTH_DEFAULT
       const resolutionButtons = []
@@ -6979,68 +6903,6 @@
           boxSizing: 'border-box'
         }
       })
-      let nsfwToggleTrack = null
-      let nsfwToggleKnob = null
-      const updateNsfwToggle = () => {
-        if (!nsfwToggleTrack || !nsfwToggleKnob) return
-        nsfwToggleButton.setAttribute('aria-pressed', nsfwEnabled ? 'true' : 'false')
-        nsfwToggleTrack.style.background = nsfwEnabled ? SPLIT_ACTIVE_BACKGROUND : '#303337'
-        nsfwToggleKnob.style.transform = nsfwEnabled ? 'translateX(14px)' : 'translateX(0)'
-        nsfwToggleKnob.style.background = nsfwEnabled ? '#fff' : 'rgba(178,188,198,0.78)'
-      }
-      nsfwToggleKnob = h('span', {
-        style: {
-          width: '10px',
-          height: '10px',
-          borderRadius: '999px',
-          background: 'rgba(178,188,198,0.78)',
-          transition: 'transform 120ms ease, background 120ms ease',
-          display: 'block'
-        }
-      })
-      nsfwToggleTrack = h('span', {
-        style: {
-          width: '30px',
-          height: '16px',
-          borderRadius: '999px',
-          border: '0',
-          background: '#303337',
-          padding: '3px',
-          boxSizing: 'border-box',
-          display: 'flex',
-          alignItems: 'center',
-          flex: '0 0 auto'
-        }
-      }, nsfwToggleKnob)
-      const nsfwToggleButton = h('button', {
-        type: 'button',
-        'aria-pressed': 'false',
-        'aria-label': 'NSFW',
-        onclick: () => {
-          nsfwEnabled = !nsfwEnabled
-          updateNsfwToggle()
-        },
-        style: {
-          width: 'fit-content',
-          height: '24px',
-          padding: '0',
-          border: '0',
-          background: 'transparent',
-          color: '#fff',
-          cursor: 'pointer',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '8px',
-          fontSize: '12px',
-          fontWeight: '400',
-          lineHeight: '1',
-          justifySelf: 'start'
-        }
-      }, [
-        h('span', { style: { fontSize: '12px', fontWeight: '400', lineHeight: '1', color: '#fff' } }, 'NSFW'),
-        nsfwToggleTrack
-      ])
-      updateNsfwToggle()
       let grokToggleTrack = null
       let grokToggleKnob = null
       const updateGrokToggle = () => {
@@ -7128,7 +6990,6 @@
               STORYBOARD_FRAME_PRESETS.map((preset) => makeResolutionButton(preset)))
           ]),
           h('div', { style: { display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap' } }, [
-            nsfwToggleButton,
             grokToggleButton
           ]),
           loginHint,
@@ -13389,189 +13250,7 @@
   }
 
   function buildStoryboardSceneWorkflow(info, imageName, prefix, promptText, frameSize, modelMode, options = {}) {
-    const frame = normalizeStoryboardFrameSize(frameSize)
-    const mode = normalizeStoryboardModelMode(modelMode)
-    if (storyboardUsesNsfwModel(mode)) return buildStoryboardNsfwSceneWorkflow(info, imageName, prefix, promptText, frame, options)
-    const hasReferenceImage = !!String(imageName || '').trim()
-    const styleReferenceImageName = String(options && options.styleReferenceImageName || '').trim()
-    const hasStyleReferenceImage = hasReferenceImage && !!styleReferenceImageName && styleReferenceImageName !== String(imageName || '').trim()
-    const referenceOptions = storyboardReferenceWorkflowOptions(options)
-    const shouldUseReferenceLatent = hasReferenceImage && storyboardUsesReferenceLatent(referenceOptions.referenceStrength)
-    const prompt = options && options.disablePromptExpansion
-      ? String(promptText || '').trim()
-      : storyboardEnsureSingleFramePrompt(promptText, { referenceImage: hasReferenceImage })
-    if (!prompt) throw new Error('Storyboard prompt is empty')
-    const emptyLatent = storyboardEmptyLatentNode(info)
-    const required = ['UNETLoader', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImageEditPlus', 'ConditioningZeroOut', 'KSampler', 'VAEDecode', 'SaveImage']
-    required.forEach((name) => requiredComfyNode(info, name))
-    requiredComfyNode(info, emptyLatent.name)
-    const unet = requiredComfyNode(info, 'UNETLoader')
-    const clip = requiredComfyNode(info, 'CLIPLoader')
-    const vae = requiredComfyNode(info, 'VAELoader')
-    const qwenText = requiredComfyNode(info, 'TextEncodeQwenImageEditPlus')
-    const ksampler = requiredComfyNode(info, 'KSampler')
-    const lora = info.LoraLoaderModelOnly || null
-    const aura = info.ModelSamplingAuraFlow || null
-    const cfgNorm = info.CFGNorm || null
-    const fluxScale = info.FluxKontextImageScale || null
-    const imageScale = info.ImageScale || null
-    const vaeEncode = info.VAEEncode || null
-    const multiReference = info.FluxKontextMultiReferenceLatentMethod || null
-    const unetName = comfyChoiceFromCandidates(unet, 'unet_name', [
-      'qwen_image_edit_2511_fp8mixed.safetensors',
-      'qwen_image_edit_2511_bf16.safetensors'
-    ], 'Qwen Edit UNET')
-    const clipName = requireComfyChoice(clip, 'clip_name', 'qwen_2.5_vl_7b_fp8_scaled.safetensors', 'Qwen CLIP')
-    const vaeName = requireComfyChoice(vae, 'vae_name', 'qwen_image_vae.safetensors', 'Qwen VAE')
-    const lightningLora = lora
-      ? comfyChoiceFromCandidates(lora, 'lora_name', [
-        'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
-        'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
-        'Qwen-Image-Lightning-8steps-V2.0.safetensors',
-        'Qwen-Image-Lightning-8steps-V1.0.safetensors'
-      ], 'Qwen Edit Lightning LoRA', { optional: true })
-      : ''
-    const workflow = {
-      '2': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' }) },
-      '3': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: clipName, type: 'qwen_image', device: 'default' }) },
-      '4': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) },
-      '5': { class_type: emptyLatent.name, inputs: storyboardEmptyLatentInputs(emptyLatent.name, emptyLatent.info, frame) }
-    }
-    let modelRef = ['2', 0]
-    let latentRef = ['5', 0]
-    let usesReferenceLatent = false
-    let referenceImageRef = hasReferenceImage ? ['1', 0] : null
-    let styleReferenceImageRef = null
-    let referenceWorkflowMode = hasReferenceImage ? 'qwen_edit_reference_condition_only_no_latent' : 'qwen_edit_text_to_image'
-    let nextId = 6
-    if (hasReferenceImage) {
-      workflow['1'] = { class_type: 'LoadImage', inputs: { image: imageName } }
-    }
-    if (hasStyleReferenceImage) {
-      workflow[String(nextId)] = { class_type: 'LoadImage', inputs: { image: styleReferenceImageName } }
-      styleReferenceImageRef = [String(nextId), 0]
-      nextId += 1
-      referenceWorkflowMode = 'qwen_edit_subject_reference_plus_style_reference'
-    }
-    if (shouldUseReferenceLatent && imageScale && vaeEncode) {
-      workflow[String(nextId)] = {
-        class_type: 'ImageScale',
-        inputs: buildComfyNodeInputs(imageScale, {
-          image: ['1', 0],
-          upscale_method: 'lanczos',
-          width: frame.width,
-          height: frame.height,
-          crop: 'center'
-        })
-      }
-      const scaledLatentImageRef = [String(nextId), 0]
-      nextId += 1
-      workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: scaledLatentImageRef, vae: ['4', 0] }) }
-      latentRef = [String(nextId), 0]
-      usesReferenceLatent = true
-      referenceWorkflowMode = multiReference ? 'qwen_edit_reference_controlled_img2img_multiref' : 'qwen_edit_reference_controlled_img2img'
-      nextId += 1
-    }
-    if (hasReferenceImage && fluxScale) {
-      workflow[String(nextId)] = { class_type: 'FluxKontextImageScale', inputs: buildComfyNodeInputs(fluxScale, { image: ['1', 0] }) }
-      referenceImageRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (hasStyleReferenceImage && fluxScale && styleReferenceImageRef) {
-      workflow[String(nextId)] = { class_type: 'FluxKontextImageScale', inputs: buildComfyNodeInputs(fluxScale, { image: styleReferenceImageRef }) }
-      styleReferenceImageRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (lora && lightningLora) {
-      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: lightningLora, strength_model: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (aura) {
-      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 3 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (cfgNorm) {
-      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    const positiveInputs = { prompt, clip: ['3', 0], vae: ['4', 0] }
-    if (referenceImageRef) positiveInputs.image1 = referenceImageRef
-    if (styleReferenceImageRef) positiveInputs.image2 = styleReferenceImageRef
-    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, positiveInputs) }
-    const positiveRef = [String(nextId), 0]
-    nextId += 1
-    let finalPositiveRef = positiveRef
-    if (hasReferenceImage && multiReference) {
-      workflow[String(nextId)] = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: buildComfyNodeInputs(multiReference, { conditioning: finalPositiveRef, reference_latents_method: 'index_timestep_zero' }) }
-      finalPositiveRef = [String(nextId), 0]
-      nextId += 1
-    }
-    let negativeRef = null
-    if (hasReferenceImage) {
-      const negativeInputs = { prompt: STORYBOARD_NEGATIVE_PROMPT, clip: ['3', 0], vae: ['4', 0] }
-      if (referenceImageRef) negativeInputs.image1 = referenceImageRef
-      if (styleReferenceImageRef) negativeInputs.image2 = styleReferenceImageRef
-      workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, negativeInputs) }
-      negativeRef = [String(nextId), 0]
-      nextId += 1
-      if (multiReference) {
-        workflow[String(nextId)] = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: buildComfyNodeInputs(multiReference, { conditioning: negativeRef, reference_latents_method: 'index_timestep_zero' }) }
-        negativeRef = [String(nextId), 0]
-        nextId += 1
-      }
-    } else {
-      workflow[String(nextId)] = {
-        class_type: 'TextEncodeQwenImageEditPlus',
-        inputs: buildComfyNodeInputs(qwenText, { prompt: STORYBOARD_NEGATIVE_PROMPT, clip: ['3', 0], vae: ['4', 0] })
-      }
-      negativeRef = [String(nextId), 0]
-      nextId += 1
-    }
-    const usesLightning = !!lightningLora
-    workflow[String(nextId)] = {
-      class_type: 'KSampler',
-      inputs: buildComfyNodeInputs(ksampler, {
-        model: modelRef,
-        positive: finalPositiveRef,
-        negative: negativeRef,
-        latent_image: latentRef,
-        seed: Math.floor(Math.random() * 1000000000),
-        steps: usesLightning ? 6 : 28,
-        cfg: usesLightning ? 1 : 4,
-        sampler_name: 'euler',
-        scheduler: 'simple',
-        denoise: hasReferenceImage && usesReferenceLatent ? referenceOptions.referenceDenoise : 1
-      })
-    }
-    const samplesRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: { samples: samplesRef, vae: ['4', 0] } }
-    const imageRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: { images: imageRef, filename_prefix: prefix } }
-    state.lastProcessingDebug = {
-      ...(state.lastProcessingDebug || {}),
-      storyboard: {
-        mode,
-        unet: unetName,
-        clip: clipName,
-        vae: vaeName,
-        lora: lightningLora,
-        latent: hasReferenceImage && usesReferenceLatent ? 'reference_scaled_vae_latent' : emptyLatent.name,
-        referenceWorkflowMode,
-        referenceStrength: referenceOptions.referenceStrength,
-        denoise: hasReferenceImage && usesReferenceLatent ? referenceOptions.referenceDenoise : 1,
-        hasReferenceImage,
-        hasStyleReferenceImage,
-        multiReference: !!(hasReferenceImage && multiReference),
-        size: `${frame.width}x${frame.height}`,
-        promptHead: prompt.slice(0, 500)
-      }
-    }
-    return workflow
+    return buildStoryboardNsfwSceneWorkflow(info, imageName, prefix, promptText, normalizeStoryboardFrameSize(frameSize), options)
   }
 
   async function runStoryboardSceneImage(baseUrl, info, uploadedName, scene, promptText, frameSize, modelMode, options = {}) {
@@ -15919,6 +15598,7 @@
       size,
       bounds,
       baseCanvas,
+      subjectMaskCanvas: hardAlphaMask,
       transferMaskCanvas,
       placementGuideDataUrl: placementGuideCanvas.toDataURL('image/png'),
       referenceDataUrl: tool.referenceOriginalDataUrl,
@@ -15942,9 +15622,7 @@
     const requiredNodes = [
       'LoadImage',
       'FluxKontextImageScale',
-      'UNETLoader',
-      'CLIPLoader',
-      'VAELoader',
+      'CheckpointLoaderSimple',
       'VAEEncode',
       'TextEncodeQwenImageEditPlus',
       'ConditioningZeroOut',
@@ -15954,66 +15632,42 @@
     ]
     const missing = requiredNodes.filter((name) => !info || !info[name])
     if (missing.length) throw new Error(OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE)
-    const unetName = objectTransferChoice(info.UNETLoader, 'unet_name', OBJECT_TRANSFER_QWEN_UNETS, 'Qwen Edit UNET')
-    const clipName = objectTransferChoice(info.CLIPLoader, 'clip_name', OBJECT_TRANSFER_QWEN_CLIP, 'Qwen CLIP')
-    const vaeName = objectTransferChoice(info.VAELoader, 'vae_name', OBJECT_TRANSFER_QWEN_VAE, 'Qwen VAE')
-    const loraName = info.LoraLoaderModelOnly
-      ? comfyChoiceFromCandidates(info.LoraLoaderModelOnly, 'lora_name', OBJECT_TRANSFER_QWEN_LIGHTNING_LORAS, 'Qwen Edit Lightning LoRA', { optional: true })
-      : ''
-    return { unetName, clipName, vaeName, loraName }
+    const checkpointName = objectTransferChoice(info.CheckpointLoaderSimple, 'ckpt_name', IMAGE_WASH_QWEN_CHECKPOINT, 'Qwen Rapid checkpoint')
+    return { checkpointName }
   }
 
   function objectTransferPromptText() {
     return [
-      '把图1中的蓝色区域自然改成图2里的参考物体，位置、大小、轮廓以蓝色区域为准。',
-      '使用图1的绘画风格、线条粗细、光影方向、投影、透视、色温、清晰度和整体画面质感重新绘制参考物。',
-      '参考物必须像原图中本来存在的物体一样融入场景，不能像贴图、拼贴、抠图或透明物体。',
-      '保持图2参考物的主体结构、关键特征、材质、颜色和身份完整，不要缺失部件，不要变透明，不要雾化。',
-      '只修改蓝色区域以及必要的接触阴影和遮挡融合，保持图1蓝色区域之外的人物、背景、道路、道具和其他物体不变。',
-      '完全去除蓝色标记，最终画面中不要残留蓝色区域。'
+      '最终画面必须是图1。将图2所示物体重新绘制到图1的蓝色定位区域，蓝色轮廓只指定物体的位置、大小和姿态，不是裁切边界。',
+      '图1是唯一的画风、光照和摄影机标准。图2只提供物体身份、造型结构、关键部件和固有颜色；舍弃图2的背景、打光、投影、描边、渲染风格与表面细节密度。',
+      '像图1的原作者亲手画出新物体：严格沿用图1邻近主体的笔触、轮廓线粗细、边缘软硬、明暗分块、材质概括程度、对比度、饱和度和细节密度。插画场景中的物体也要用同样的插画语言重新画，写实场景中的物体则保持同样的写实程度，不要把参考图的渲染质感带进来。',
+      '重新计算新物体在图1环境中的受光面、背光面、反光和环境色。高光方向、亮度、色温、阴影颜色与图1已有主体和地面阴影一致，不保留图2原有高光，不出现独立的一套灯光。',
+      '新物体的透视、体积、尺度、清晰度、景深和空气透视必须符合图1中同一位置。主体结构和细小部件完整、不透明，轮廓完整且自然，与已有物体的前后遮挡正确。',
+      '沿图1已有投影的方向、深浅、色偏和软硬程度，在接触面生成完整自然的接触阴影和投影。投影可以超出蓝色定位区域；落地处贴合、远端自然变软，与地面纹理融合。',
+      '仅新增该物体及其必要的接触、投影和遮挡关系，图1已有的人物、背景和其他物体保持原样，尤其不能把原人物改成参考图的画风。',
+      '去掉全部蓝色定位标记。最终是一张统一画风、统一光照的完整画面，没有贴纸感、拼接边缘、半透明部件或独立渲染物体的感觉。'
     ].join('\n')
   }
 
   function buildObjectTransferQwenWorkflow(info, uploads, prefix, resolved) {
     const ksampler = info.KSampler
-    const vaeLoader = info.VAELoader
     const qwenText = info.TextEncodeQwenImageEditPlus
-    const unet = info.UNETLoader
-    const clip = info.CLIPLoader
     const fluxScale = info.FluxKontextImageScale
     const vaeEncode = info.VAEEncode
-    const lora = info.LoraLoaderModelOnly || null
-    const aura = info.ModelSamplingAuraFlow || null
-    const cfgNorm = info.CFGNorm || null
+    const checkpoint = requiredComfyNode(info, 'CheckpointLoaderSimple')
+    const checkpointName = resolved.checkpointName
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: uploads.placementName } },
       '2': { class_type: 'LoadImage', inputs: { image: uploads.referenceName } },
       '3': { class_type: 'FluxKontextImageScale', inputs: buildComfyNodeInputs(fluxScale, { image: ['1', 0] }) },
-      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: resolved.unetName, weight_dtype: 'fp8_e4m3fn' }) },
-      '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
-      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vaeLoader, { vae_name: resolved.vaeName }) }
+      '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: checkpointName } },
     }
     let modelRef = ['4', 0]
     let nextId = 7
-    if (lora && resolved.loraName) {
-      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: resolved.loraName, strength_model: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (aura) {
-      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 1.5 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (cfgNorm) {
-      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['3', 0], vae: ['6', 0] }) }
+    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['3', 0], vae: ['4', 2] }) }
     const latentRef = [String(nextId), 0]
     nextId += 1
-    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: objectTransferPromptText(), clip: ['5', 0], vae: ['6', 0], image1: ['3', 0], image2: ['2', 0] }) }
+    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: objectTransferPromptText(), clip: ['4', 1], vae: ['4', 2], image1: ['3', 0], image2: ['2', 0] }) }
     const positiveRef = [String(nextId), 0]
     nextId += 1
     workflow[String(nextId)] = { class_type: 'ConditioningZeroOut', inputs: { conditioning: positiveRef } }
@@ -16023,10 +15677,10 @@
       class_type: 'KSampler',
       inputs: buildComfyNodeInputs(ksampler, {
         seed: Math.floor(Math.random() * 1000000000),
-        steps: resolved.loraName ? 6 : 30,
+        steps: 6,
         cfg: 1,
-        sampler_name: 'euler',
-        scheduler: 'simple',
+        sampler_name: 'euler_ancestral',
+        scheduler: 'beta',
         denoise: 1,
         model: modelRef,
         positive: positiveRef,
@@ -16036,7 +15690,7 @@
     }
     const samplerRef = [String(nextId), 0]
     nextId += 1
-    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(info.VAEDecode, { samples: samplerRef, vae: ['6', 0] }) }
+    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(info.VAEDecode, { samples: samplerRef, vae: ['4', 2] }) }
     const decodedRef = [String(nextId), 0]
     nextId += 1
     workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: decodedRef }) }
@@ -16044,10 +15698,7 @@
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
         workflow: 'qwen-image-edit-object-transfer',
-        unet: resolved.unetName,
-        lora: resolved.loraName,
-        clip: resolved.clipName,
-        vae: resolved.vaeName,
+        checkpoint: checkpointName,
         promptHead: objectTransferPromptText().slice(0, 1000)
       }
     }
@@ -16076,40 +15727,197 @@
     return pasteMask
   }
 
+  function objectTransferScenePixels(base, generated, mask, sourceForeground, generatedForeground, width, height, box, subjectMask) {
+    const out = new Uint8ClampedArray(base)
+    const luminance = (d, i) => d[i] * 0.2126 + d[i + 1] * 0.7152 + d[i + 2] * 0.0722
+    const bw = Math.max(1, box.width), bh = Math.max(1, box.height)
+    const grow = Math.round(clampNumber(Math.min(bw, bh) * 0.06, 12, 48))
+    const feather = Math.round(clampNumber(grow * 0.6, 6, 24))
+    const left = Math.max(0, Math.floor(box.x - bh * 1.25))
+    const right = Math.min(width - 1, Math.ceil(box.x + bw + bh * 1.25))
+    const top = Math.max(0, Math.floor(box.y - grow - feather))
+    const bottom = Math.min(height - 1, Math.ceil(box.y + bh * 1.5))
+    const roiWidth = right - left + 1, roiHeight = bottom - top + 1
+    const shadowCandidate = new Uint8Array(roiWidth * roiHeight)
+    const shadowConnected = new Uint8Array(roiWidth * roiHeight)
+    const queue = new Int32Array(roiWidth * roiHeight)
+    const histogram = [new Uint32Array(511), new Uint32Array(511), new Uint32Array(511)]
+    let samples = 0
+    // Estimate modest global background drift from unchanged, non-shadow context.
+    for (let y = top; y <= bottom; y += 3) for (let x = left; x <= right; x += 3) {
+      const i = (y * width + x) * 4
+      if (maskPixelValue(mask, i) > 8 || sourceForeground[i + 3] > 32 || generatedForeground[i + 3] > 32) continue
+      if (Math.abs(luminance(base, i) - luminance(generated, i)) > 24) continue
+      for (let c = 0; c < 3; c++) histogram[c][generated[i + c] - base[i + c] + 255]++
+      samples++
+    }
+    const drift = histogram.map(h => {
+      if (!samples) return 0
+      let count = 0
+      for (let j = 0; j < h.length; j++) {
+        count += h[j]
+        if (count >= Math.ceil(samples / 2)) return clampNumber(j - 255, -20, 20)
+      }
+      return 0
+    })
+    const driftLuma = drift[0] * 0.2126 + drift[1] * 0.7152 + drift[2] * 0.0722
+    // Learn ambient shadow tint from the original receiving surface, excluding
+    // foreground and strongly coloured vegetation/materials.
+    const surface = []
+    for (let y = Math.max(top, Math.floor(box.y + bh * 0.6)); y <= bottom; y += 4) {
+      for (let x = Math.max(left, Math.floor(box.x - bw * 0.5)); x <= Math.min(right, box.x + bw * 1.5); x += 4) {
+        const i = (y * width + x) * 4
+        if (sourceForeground[i + 3] > 32 || base[i + 3] < 250) continue
+        const rgb = [base[i], base[i + 1], base[i + 2]], hi = Math.max(...rgb), lo = Math.min(...rgb)
+        const luma = luminance(base, i)
+        if (luma < 40 || hi - lo > hi * 0.38) continue
+        surface.push({ rgb, luma })
+      }
+    }
+    surface.sort((a, b) => a.luma - b.luma)
+    let ambientTint = [1, 1, 1], shadowLimit = 0.55
+    if (surface.length >= 32) {
+      const dark = surface.slice(Math.floor(surface.length * 0.02), Math.ceil(surface.length * 0.1))
+      const light = surface.slice(Math.floor(surface.length * 0.65), Math.ceil(surface.length * 0.8))
+      const mean = rows => [0, 1, 2].map(c => rows.reduce((n, p) => n + p.rgb[c], 0) / rows.length)
+      const darkRgb = mean(dark), lightRgb = mean(light)
+      const dl = luminance(darkRgb, 0), ll = luminance(lightRgb, 0)
+      if (dl < ll * 0.8) {
+        ambientTint = darkRgb.map((v, c) => clampNumber((v / dl) / Math.max(0.1, lightRgb[c] / ll), 0.7, 1.3))
+        shadowLimit = clampNumber(1 - dl / ll, 0.25, 0.6)
+      }
+    }
+    let tail = 0
+    for (let y = Math.max(top, Math.floor(box.y + bh * 0.55)); y <= bottom; y++) {
+      for (let x = left; x <= right; x++) {
+        const i = (y * width + x) * 4
+        // A cast shadow lives on the receiving surface, not on either foreground.
+        if (sourceForeground[i + 3] > 32 || generatedForeground[i + 3] > 32 || base[i + 3] < 250 || generated[i + 3] < 250) continue
+        const delta = luminance(base, i) - luminance(generated, i) + driftLuma
+        if (delta <= 8 || luminance(base, i) < 32) continue
+        const p = (y - top) * roiWidth + x - left
+        shadowCandidate[p] = 1
+        if (x >= box.x - grow && x <= box.x + bw + grow && y >= box.y + bh * 0.75 && y <= box.y + bh + grow) {
+          shadowConnected[p] = 1
+          queue[tail++] = p
+        }
+      }
+    }
+    for (let head = 0; head < tail; head++) {
+      const p = queue[head], x = p % roiWidth, y = Math.floor(p / roiWidth)
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy
+        if (nx < 0 || nx >= roiWidth || ny < 0 || ny >= roiHeight) continue
+        const n = ny * roiWidth + nx
+        if (!shadowCandidate[n] || shadowConnected[n]) continue
+        shadowConnected[n] = 1
+        queue[tail++] = n
+      }
+    }
+    const shadowStrength = new Float32Array(roiWidth * roiHeight)
+    const shadowHorizontal = new Float32Array(roiWidth * roiHeight)
+    for (let p = 0; p < shadowStrength.length; p++) {
+      if (!shadowConnected[p]) continue
+      const i = ((Math.floor(p / roiWidth) + top) * width + p % roiWidth + left) * 4
+      const baseLuma = luminance(base, i)
+      shadowStrength[p] = Math.min(shadowLimit, Math.max(0, baseLuma - luminance(generated, i) + driftLuma - 8) / Math.max(32, baseLuma))
+    }
+    const shadowSoftness = Math.round(clampNumber(Math.min(width, height) * 0.004, 1, 6))
+    const kernel = shadowSoftness * 2 + 1
+    for (let y = 0; y < roiHeight; y++) {
+      let sum = 0
+      const at = x => shadowStrength[y * roiWidth + clampNumber(x, 0, roiWidth - 1)]
+      for (let d = -shadowSoftness; d <= shadowSoftness; d++) sum += at(d)
+      for (let x = 0; x < roiWidth; x++) {
+        shadowHorizontal[y * roiWidth + x] = Math.max(0, sum / kernel)
+        sum += at(x + shadowSoftness + 1) - at(x - shadowSoftness)
+      }
+    }
+    for (let x = 0; x < roiWidth; x++) {
+      let sum = 0
+      const at = y => shadowHorizontal[clampNumber(y, 0, roiHeight - 1) * roiWidth + x]
+      for (let d = -shadowSoftness; d <= shadowSoftness; d++) sum += at(d)
+      for (let y = 0; y < roiHeight; y++) {
+        shadowStrength[y * roiWidth + x] = Math.max(0, sum / kernel)
+        sum += at(y + shadowSoftness + 1) - at(y - shadowSoftness)
+      }
+    }
+    let shadowPixels = 0, subjectPixels = 0, protectedPixels = 0
+    for (let y = top; y <= bottom; y++) for (let x = left; x <= right; x++) {
+      const i = (y * width + x) * 4
+      const explicitlyPlaced = maskPixelValue(subjectMask || mask, i) > 8
+      if (sourceForeground[i + 3] > 32 && !explicitlyPlaced) { protectedPixels++; continue }
+      const shadowAmount = shadowStrength[(y - top) * roiWidth + x - left]
+      if (shadowAmount > 0.002 && generatedForeground[i + 3] <= 32 && base[i + 3] >= 250) {
+        // Preserve surface texture and use the scene's ambient shade colour.
+        let amount = shadowAmount
+        // Keep contact occlusion crisp at the feet while the distant cast
+        // shadow softens. Blurring this join equally makes the subject float.
+        if (y >= box.y + bh * 0.75) {
+          let nearContact = false
+          for (let dy = -4; dy <= 4 && !nearContact; dy += 2) for (let dx = -4; dx <= 4; dx += 2) {
+            const nx = x + dx, ny = y + dy
+            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
+            if (generatedForeground[(ny * width + nx) * 4 + 3] > 128) { nearContact = true; break }
+          }
+          if (nearContact) {
+            const baseLuma = luminance(base, i)
+            const contactAmount = Math.max(0, baseLuma - luminance(generated, i) + driftLuma - 8) / Math.max(32, baseLuma)
+            amount = Math.max(amount, Math.min(0.55, contactAmount))
+          }
+        }
+        const boundary = Math.min(x - left, right - x, y - top, bottom - y)
+        const edge = (x === 0 || y === 0 || x === width - 1 || y === height - 1) ? 1 : clampNumber(boundary / feather, 0, 1)
+        for (let c = 0; c < 3; c++) out[i + c] = Math.round(clampNumber(base[i + c] * (1 - amount * edge) * (1 + amount * edge * (ambientTint[c] - 1) * 2), 0, 255))
+        shadowPixels++
+        continue
+      }
+      const distance = Math.max(box.x - x, x - (box.x + bw - 1), box.y - y, y - (box.y + bh - 1), 0)
+      if (distance >= grow + feather) continue
+      const isSubject = generatedForeground[i + 3] > 32
+      const t = clampNumber((grow + feather - distance) / feather, 0, 1)
+      // Fade background context only. Opaque generated edges within the allowed
+      // region must not inherit the shape or alpha of the reference cutout.
+      const alpha = isSubject ? 1 : t * t * (3 - 2 * t)
+      for (let c = 0; c < 3; c++) {
+        const value = isSubject ? generated[i + c] : clampNumber(generated[i + c] - drift[c], 0, 255)
+        out[i + c] = Math.round(base[i + c] * (1 - alpha) + value * alpha)
+      }
+      out[i + 3] = Math.max(base[i + 3], generated[i + 3])
+      subjectPixels++
+    }
+    return { pixels: out, stats: { shadowPixels, subjectPixels, protectedPixels, drift, ambientTint, shadowLimit, shadowSoftness, region: { left, top, right, bottom }, grow, feather } }
+  }
+
   async function objectTransferProtectedResultDataUrl(dataUrl, assets) {
     const size = assets && assets.size || await sourceSize()
     const normalizedDataUrl = await objectTransferNormalizeResultDataUrl(dataUrl, size)
     const resultCanvas = await canvasFromDataUrl(normalizedDataUrl, size.width, size.height)
     const baseCanvas = assets && assets.baseCanvas || await sourceFullCanvas(size)
-    const pasteMask = objectTransferPasteMaskCanvas(assets && assets.transferMaskCanvas, assets && assets.bounds)
     const width = Math.max(1, Math.round(size.width || baseCanvas.width || resultCanvas.width || 1))
     const height = Math.max(1, Math.round(size.height || baseCanvas.height || resultCanvas.height || 1))
+    setSplitBusyDetail('正在融合物体边缘与场景投影...')
+    const sourceForeground = assets.sourceForegroundCanvas || await canvasFromDataUrl(await runRmbgCutout(baseCanvas.toDataURL('image/png')), width, height)
+    const generatedForeground = assets.generatedForegroundCanvas || await canvasFromDataUrl(await runRmbgCutout(normalizedDataUrl), width, height)
     const out = canvasOfSize(width, height)
     const outCtx = out.getContext('2d', { willReadFrequently: true })
     outCtx.drawImage(baseCanvas, 0, 0, width, height)
     const resultCtx = resultCanvas.getContext('2d', { willReadFrequently: true })
-    const maskCtx = pasteMask.getContext('2d', { willReadFrequently: true })
     const baseImage = outCtx.getImageData(0, 0, width, height)
     const resultImage = resultCtx.getImageData(0, 0, width, height)
-    const maskImage = maskCtx.getImageData(0, 0, width, height)
-    let affectedPixels = 0
-    for (let i = 0; i < baseImage.data.length; i += 4) {
-      const alpha = clampNumber(maskPixelValue(maskImage.data, i) / 255, 0, 1)
-      if (alpha <= 0) continue
-      affectedPixels += 1
-      const inv = 1 - alpha
-      baseImage.data[i] = Math.round(baseImage.data[i] * inv + resultImage.data[i] * alpha)
-      baseImage.data[i + 1] = Math.round(baseImage.data[i + 1] * inv + resultImage.data[i + 1] * alpha)
-      baseImage.data[i + 2] = Math.round(baseImage.data[i + 2] * inv + resultImage.data[i + 2] * alpha)
-      baseImage.data[i + 3] = Math.max(baseImage.data[i + 3], resultImage.data[i + 3])
-    }
+    const readPixels = canvas => canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+    const sourceProtection = readPixels(expandedMaskCanvas(sourceForeground, Math.round(clampNumber(Math.min(width, height) * 0.008, 2, 12)), 0))
+    const maskCanvas = assets.transferMaskCanvas
+    const box = maskBBoxEngine(maskCanvas, 8)
+    const composite = objectTransferScenePixels(baseImage.data, resultImage.data, readPixels(maskCanvas), sourceProtection, readPixels(generatedForeground), width, height, { x: box.minX, y: box.minY, width: box.width, height: box.height }, assets.subjectMaskCanvas ? readPixels(assets.subjectMaskCanvas) : null)
+    baseImage.data.set(composite.pixels)
     outCtx.putImageData(baseImage, 0, 0)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
         ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}),
-        pasteBack: 'qwen-result-limited-to-placement-mask',
-        pasteMask: { ...(pasteMask.__novaflowObjectTransferPaste || {}), affectedPixels }
+        pasteBack: 'subject-and-scene-shadow-composite',
+        pasteMask: composite.stats
       }
     }
     return out.toDataURL('image/png')
@@ -16138,7 +15946,7 @@
         runtimeInputs: { placementName, referenceName }
       }
     }
-    setSplitBusyDetail(`Qwen Image Edit 2511\n${assets.size.width} x ${assets.size.height} px`)
+    setSplitBusyDetail(`Qwen Rapid v20\n${assets.size.width} x ${assets.size.height} px`)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, runId, OBJECT_TRANSFER_TIMEOUT_MS)
     return await objectTransferProtectedResultDataUrl(resultDataUrl, assets)
   }
@@ -16440,7 +16248,7 @@
         outputMode: 'replacement'
       }
     }
-    const rapidAioNsfwRequested = provider === true || provider === 'qwen-rapid-aio-nsfw-v20' || provider === 'rapid-aio-nsfw'
+    const rapidAioNsfwRequested = true // Local edit/completion now share the existing Rapid route.
     if (selectionInpaintNsfwAvailable(normalizedMode) && rapidAioNsfwRequested) {
       return {
         mode: normalizedMode,
@@ -16666,163 +16474,7 @@
   }
 
   async function defaultQwenInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
-    const route = options && options.route || resolveInpaintWorkflowRoute(options && options.inpaintMode, options && options.inpaintProvider)
-    const info = await comfyAllObjectInfo(baseUrl).catch(() => ({}))
-    const textNodeName = info.TextEncodeQwenImageEditPlusAdvance_lrzjason
-      ? 'TextEncodeQwenImageEditPlusAdvance_lrzjason'
-      : 'TextEncodeQwenImageEditPlusAdvance'
-    const required = [
-      'UNETLoader',
-      'CLIPLoader',
-      'VAELoader',
-      'TextEncodeQwenImageEdit',
-      textNodeName,
-      'KSampler',
-      'VAEDecode',
-      'SaveImage',
-      'ImageToMask'
-    ]
-    required.forEach((name) => requiredComfyNode(info, name))
-    const unet = requiredComfyNode(info, 'UNETLoader')
-    const clip = requiredComfyNode(info, 'CLIPLoader')
-    const vae = requiredComfyNode(info, 'VAELoader')
-    const qwenText = requiredComfyNode(info, textNodeName)
-    const negText = requiredComfyNode(info, 'TextEncodeQwenImageEdit')
-    const ksampler = requiredComfyNode(info, 'KSampler')
-    const isEditV5 = !!(route && route.mode === 'edit' && route.editV5)
-    const editV5NoLightningLora = '__novaflow_edit_v5_no_lightning_lora__'
-    const lora = route.v4 && !isEditV5 ? requiredComfyNode(info, 'LoraLoaderModelOnly') : (info.LoraLoaderModelOnly || null)
-    const aura = info.ModelSamplingAuraFlow || null
-    const cfgNorm = info.CFGNorm || null
-    const unetName = isEditV5
-      ? comfyChoiceFromCandidates(unet, 'unet_name', [
-        'qwen_image_edit_2511_fp8mixed.safetensors'
-      ], 'Qwen Edit UNET')
-      : requireComfyChoice(unet, 'unet_name', 'Qwen-Image-Edit-2509_fp8_e4m3fn.safetensors', 'Qwen UNET')
-    const qwenInpaintUses2511 = unetName === 'qwen_image_edit_2511_fp8mixed.safetensors'
-    const clipName = requireComfyChoice(clip, 'clip_name', 'qwen_2.5_vl_7b_fp8_scaled.safetensors', 'Qwen CLIP')
-    const vaeName = requireComfyChoice(vae, 'vae_name', 'qwen_image_vae.safetensors', 'Qwen VAE')
-    const eigenLora = lora
-      ? isEditV5
-        ? ''
-        : (route.v4 ? requireComfyChoice(lora, 'lora_name', 'eigen-banana-qwen-image-edit-2509-fp16-lora.safetensors', 'Qwen edit LoRA') : optionalComfyChoice(lora, 'lora_name', 'eigen-banana-qwen-image-edit-2509-fp16-lora.safetensors', []))
-      : ''
-    const lightningLora = lora
-      ? isEditV5
-        ? comfyChoiceFromCandidates(lora, 'lora_name', [
-          'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
-          'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
-          'Qwen-Image-Lightning-8steps-V2.0.safetensors',
-          'Qwen-Image-Lightning-8steps-V1.0.safetensors'
-        ], 'Qwen Edit Lightning LoRA', { optional: true }) || editV5NoLightningLora
-        : optionalComfyChoice(lora, 'lora_name', 'Qwen-Image-Lightning-8steps-V2.0.safetensors', [
-          'Qwen-Image-Lightning-8steps-V1.0.safetensors',
-          'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
-          'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors'
-        ])
-      : ''
-    if (lora && !lightningLora) throw new Error('NovaFlow AI Runtime 缺少 Qwen inpaint 加速 LoRA，不能输出假修图')
-    const inpaintMode = normalizeSelectionInpaintMode(options && options.inpaintMode)
-    const stableInpaintSeed = 746924259
-    const fixedSeed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed))) : null
-    const seed = fixedSeed == null ? stableInpaintSeed : fixedSeed
-    const { prompt, instruction } = qwenRetouchPromptParts(promptText, route)
-    setInpaintDebugAttr('workflow-mode', inpaintMode)
-    setInpaintDebugAttr('workflow-provider', route.provider)
-    setInpaintDebugAttr('workflow-prompt-head', prompt.slice(0, 1000))
-    const workflow = {
-      '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '2': { class_type: 'LoadImage', inputs: { image: maskName } },
-      '3': { class_type: 'ImageToMask', inputs: { image: ['2', 0], channel: 'red' } },
-      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: unetName, weight_dtype: 'default' }) },
-      '5': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) },
-      '6': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: clipName, type: 'qwen_image', device: 'default' }) },
-      '7': { class_type: 'TextEncodeQwenImageEdit', inputs: buildComfyNodeInputs(negText, { clip: ['6', 0], vae: ['5', 0], prompt: 'low quality' }) }
-    }
-    let modelRef = ['4', 0]
-    let nextId = 8
-    if (lora && eigenLora) {
-      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: eigenLora, strength_model: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (lora && lightningLora && lightningLora !== editV5NoLightningLora) {
-      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: lightningLora, strength_model: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (aura) {
-      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 3.1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (cfgNorm) {
-      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    const qwenInputs = {
-      clip: ['6', 0],
-      vae: ['5', 0],
-      vl_resize_image1: ['1', 0],
-      prompt,
-      target_size: 1024,
-      target_vl_size: 384,
-      upscale_method: 'lanczos',
-      crop_method: 'pad',
-      instruction
-    }
-    if (route.v4) qwenInputs.vl_resize_image2 = ['2', 0]
-    workflow[String(nextId)] = {
-      class_type: textNodeName,
-      inputs: buildComfyNodeInputs(qwenText, qwenInputs)
-    }
-    const positiveRef = [String(nextId), 0]
-    const latentRef = [String(nextId), 1]
-    nextId += 1
-    workflow[String(nextId)] = {
-      class_type: 'KSampler',
-      inputs: buildComfyNodeInputs(ksampler, {
-        model: modelRef,
-        positive: positiveRef,
-        negative: ['7', 0],
-        latent_image: latentRef,
-        seed,
-        steps: qwenInpaintUses2511 ? 6 : 8,
-        cfg: 1,
-        sampler_name: 'euler',
-        scheduler: 'simple',
-        denoise: 1
-      })
-    }
-    const sampleRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: { samples: sampleRef, vae: ['5', 0] } }
-    const imageRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: { images: imageRef, filename_prefix: prefix } }
-    state.lastProcessingDebug = {
-      ...(state.lastProcessingDebug || {}),
-      qwenInpaint: {
-        unet: unetName,
-        clip: clipName,
-        vae: vaeName,
-        loras: [eigenLora, lightningLora].filter((item) => item && item !== editV5NoLightningLora),
-        model: qwenInpaintUses2511 ? '2511' : '2509',
-        textNode: textNodeName,
-        provider: route.provider,
-        controlMode: route.qwenControlMode || 2,
-        editV5: isEditV5 ? {
-          model: '2511',
-          lightningOptional: true,
-          lightningApplied: lightningLora && lightningLora !== editV5NoLightningLora ? lightningLora : '',
-          steps: 6
-        } : null,
-        seed,
-        seedMode: fixedSeed == null ? 'stable-default' : 'explicit'
-      }
-    }
-    return workflow
+    return defaultRapidAioNsfwInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options)
   }
 
   async function defaultRapidAioNsfwInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
@@ -25761,6 +25413,7 @@
       ringWidth: joinPolicy.ringWidth,
       guideAlphaThreshold: joinPolicy.guideAlphaThreshold,
       falloffExponent: joinPolicy.falloffExponent,
+      sourceEdgeFeather: joinPolicy.sourceEdgeFeather,
       restoreAlpha: joinPolicy.restoreAlpha
     })
     image.data.set(result.pixels)
@@ -29884,8 +29537,6 @@
     const isInpaint = state.selectionTool && state.selectionTool.mode === 'inpaint'
     const inpaintPromptValue = String(state.selectionTool && state.selectionTool.inpaintPrompt || '')
     const selectedInpaintMode = normalizeSelectionInpaintMode(state.selectionTool && state.selectionTool.inpaintMode)
-    const showInpaintNsfw = isInpaint && selectionInpaintNsfwAvailable(selectedInpaintMode)
-    const inpaintNsfwEnabled = showInpaintNsfw && !!(state.selectionTool && state.selectionTool.inpaintNsfwEnabled)
     const showInpaintPrompt = isInpaint && selectionInpaintModeHasPrompt(selectedInpaintMode)
     const inpaintPromptLabel = selectionInpaintModePromptLabel(selectedInpaintMode)
     const inpaintPromptPlaceholder = selectionInpaintModePromptPlaceholder(selectedInpaintMode)
@@ -29903,16 +29554,6 @@
           h('input', { [TOOL_RANGE_ATTR]: 'selectionBrush', type: 'range', min: '1', max: '260', value: brush, oninput: (event) => { setSelectionBrushSize(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(brush, 1, 260, '92px') })
         ]),
         button('\u9000\u51fa', () => stopSelectionTool(), false, { [TOOL_ACTION_ATTR]: 'selectionExit' }),
-        showInpaintNsfw ? button('NSFW', () => toggleSelectionInpaintNsfw(), inpaintNsfwEnabled, {
-          [TOOL_ACTION_ATTR]: 'selectionNsfw',
-          'data-novaflow-selection-inpaint-nsfw': inpaintNsfwEnabled ? 'on' : 'off',
-          role: 'switch',
-          'aria-checked': inpaintNsfwEnabled ? 'true' : 'false',
-          'aria-label': `NSFW ${inpaintNsfwEnabled ? '已开启' : '已关闭'}`,
-          title: inpaintNsfwEnabled ? 'NSFW 已开启：使用 Qwen Rapid AIO NSFW V20' : 'NSFW 已关闭：使用当前默认修图模型',
-          disabled: state.busy,
-          style: { marginLeft: '2px', minWidth: '48px' }
-        }) : null
       ]),
       isInpaint && !showInpaintPrompt ? h('div', {
         'data-novaflow-split-pan-exempt': '1',

@@ -15,6 +15,10 @@ import time
 import traceback
 from difflib import SequenceMatcher
 from pathlib import Path
+from prompt_assistant.h3_prompt_enhance import (
+    INSTRUCTION as H3_PROMPT_ENHANCE_INSTRUCTION,
+    validate_enhancement as validate_h3_prompt_enhancement,
+)
 
 from prompt_assistant.art_prompt_contract import (
     EDIT_CONTRACT as ART_PROMPT_EDIT_CONTRACT,
@@ -5450,8 +5454,9 @@ def minimax_h3_value_language_instruction(
 
 def build_minimax_h3_prompt_instruction(current_prompt: str, requirements: str) -> str:
     return (
-        "Compile one final MiniMax H3 audiovisual prompt using the contract in the system message. "
+        "Optimize and compile one final MiniMax H3 audiovisual prompt using the contract in the system message. "
         "Return only the final field structure.\n\n"
+        f"{H3_PROMPT_ENHANCE_INSTRUCTION}\n\n"
         f"{minimax_h3_value_language_instruction(current_prompt, requirements)}\n\n"
         f"currentPrompt:\n{current_prompt or 'N/A'}\n\n"
         f"requirements:\n{requirements or 'N/A'}"
@@ -5470,6 +5475,7 @@ def build_minimax_h3_prompt_repair_instruction(
         "The previous answer violated the MiniMax H3 output contract. Rewrite it once as a complete, compact final "
         "H3 prompt. Do not explain the correction and do not repeat the invalid answer. "
         f"Required mode: {mode or 'infer from requirements'}. Validation failure: {clean_text(str(error))[:240]}.\n\n"
+        f"{H3_PROMPT_ENHANCE_INSTRUCTION}\n\n"
         f"{minimax_h3_value_language_instruction(current_prompt, requirements, preferred_output_language)}\n\n"
         f"currentPrompt:\n{current_prompt or 'N/A'}\n\n"
         f"requirements:\n{requirements or 'N/A'}\n\n"
@@ -8834,6 +8840,42 @@ def ordinary_art_user_change_instruction(requirements: str) -> str:
     return text
 
 
+ORDINARY_ART_SOFT_EDGE_FINAL_STATE = (
+    "轮廓由局部固有色与明暗过渡自然衔接，边缘轻柔细腻，线条纤细轻淡。"
+)
+
+
+def ordinary_art_soft_edge_edit(raw_prompt: str, requirements: str, *, prompt_schema: str = "") -> str:
+    """Close a pure edge-softening request without rewriting unrelated content.
+
+    This is deliberately separate from quality enhancement: negated, mixed and
+    ambiguous requests must not become generic quality additions.
+    """
+    source = str(raw_prompt or "").strip()
+    if (not source or len(source) > 2000 or prompt_schema
+            or re.search(r"[\r\n]|__NOVAFLOW_|@(?:参考图[1-9][0-9]*|视频参考|声音参考)|\[[^\]]+\]|【[^】]+】", source)):
+        return ""
+    instruction = ordinary_art_user_change_instruction(requirements)
+    instruction = re.sub(r"\s+", "", instruction).strip("，,。.!！")
+    instruction = re.sub(r"^请", "", instruction)
+    target = r"(?:人体|人物|角色|身体)?的?(?:黑色)?(?:描边|轮廓线|外轮廓)"
+    excess = r"(?:(?:过于|过|太)?(?:黑|重|粗|厚重|浓重))+"
+    patterns = (
+        rf"(?:不要|避免){excess}的?{target}",
+        rf"{target}(?:不要|避免){excess}",
+        rf"(?:减轻|减弱|弱化|淡化){target}",
+        rf"(?:把|将)?{target}(?:改得|变得|调整得|改为|变为)?(?:更细更淡|细一点|淡一点|轻一点|纤细轻淡)",
+    )
+    if not any(re.fullmatch(pattern, instruction) for pattern in patterns):
+        return ""
+    # Existing conflicting style requests need the normal anchored edit route.
+    if re.search(r"粗黑描边|黑色外轮廓|厚重墨线|粗线稿|漫画|赛璐璐|像素", source):
+        return ""
+    if ORDINARY_ART_SOFT_EDGE_FINAL_STATE in source:
+        return source
+    return source + (" " if source.endswith(("。", ".", "!", "！")) else "；") + ORDINARY_ART_SOFT_EDGE_FINAL_STATE
+
+
 ORDINARY_ART_SIMPLE_QUALITY_CLOSURE_PHRASES = {
     "material": "材质与纹理细腻清晰",
     "lighting": "光影层次丰富，高光与阴影过渡自然",
@@ -11306,9 +11348,9 @@ def ordinary_art_build_simple_deterministic_contract(raw_prompt: str) -> dict:
         },
         "lighting_color": {
             "light_direction": "自然环境光从画面侧上方照射主体",
-            "light_quality": "柔和主光配合受控轮廓光，明暗转折自然",
+            "light_quality": "柔和自然光，明暗转折自然",
             "light_shadow": "主体明暗层次清楚，高光与阴影过渡受控",
-            "rim_light": "轻微轮廓光分离主体与环境背景",
+            "rim_light": "无额外轮廓光",
             "palette": [f"{color_text}作为原文明确色相" if color_text else "不新增原文未指定的具体色相", "主体与环境固有色协调", "明暗层次清楚"],
             "local_colors": [
                 *(["人物与服装固有色"] if has_human else []),
@@ -16761,6 +16803,26 @@ class PromptAssistant:
                 nsfw_enabled=ordinary_art_nsfw_enabled,
             )
         if ordinary_art_patch_edit:
+            soft_edge_prompt = ordinary_art_soft_edge_edit(
+                raw_prompt, requirements,
+                prompt_schema=clean_text(payload.get("promptSchema") or ""),
+            )
+            if soft_edge_prompt:
+                if ordinary_art_nsfw_enabled and ordinary_art_core_affirmative_minor_present(soft_edge_prompt):
+                    raise OrdinaryArtPromptEditNotAppliedError("structured-sensitive-minor-output-blocked")
+                # Preserve the complete base and put the requested final state
+                # in the positive channel, including models running at CFG 1.
+                self.status = "模型可用"
+                log_prompt_assistant_event(
+                    "ordinary_art_prompt_soft_edge_edit", accepted=True,
+                    alreadySatisfied=soft_edge_prompt == raw_prompt,
+                )
+                return {
+                    "positivePrompt": soft_edge_prompt,
+                    "negativePrompt": build_targeted_negative_prompt(raw_prompt, soft_edge_prompt, "") if art_supports_negative else "",
+                    "rawOutput": soft_edge_prompt,
+                    "editContract": ORDINARY_ART_EDIT_CONTRACT,
+                }
             patch_intents = ordinary_art_patch_intents(requirements)
             if not patch_intents:
                 log_prompt_assistant_event(
@@ -17068,6 +17130,10 @@ class PromptAssistant:
                     minimax_h3_mode,
                     minimax_h3_duration,
                 )
+                validate_h3_prompt_enhancement(
+                    positive, raw_prompt,
+                    minimax_h3_prompt_enhance_user_requirement(requirements, raw_prompt),
+                )
             except ValueError as first_error:
                 repair_prompt = build_minimax_h3_prompt_repair_instruction(
                     output,
@@ -17098,49 +17164,21 @@ class PromptAssistant:
                         minimax_h3_mode,
                         minimax_h3_duration,
                     )
+                    validate_h3_prompt_enhancement(
+                        positive, raw_prompt,
+                        minimax_h3_prompt_enhance_user_requirement(requirements, raw_prompt),
+                    )
                 except ValueError as repair_error:
-                    try:
-                        fallback_output = build_minimax_h3_prompt_enhance_deterministic_fallback(
-                            raw_prompt,
-                            requirements,
-                            minimax_h3_mode,
-                            minimax_h3_duration,
-                            minimax_h3_value_language,
-                        )
-                        fallback_output = validate_minimax_h3_value_language(
-                            fallback_output,
-                            minimax_h3_value_language,
-                        )
-                        positive = validate_minimax_h3_prompt_contract(
-                            complete_minimax_h3_mechanical_contract(
-                                fallback_output,
-                                minimax_h3_mode,
-                                minimax_h3_duration,
-                                minimax_h3_value_language,
-                            ),
-                            minimax_h3_mode,
-                            minimax_h3_duration,
-                        )
-                        log_prompt_assistant_event(
-                            "minimax_h3_prompt_enhance_deterministic_fallback",
-                            command="optimizePrompt",
-                            mode=minimax_h3_mode,
-                            firstFailure=clean_text(str(first_error))[:160],
-                            repairFailure=clean_text(str(repair_error))[:160],
-                            positiveChars=len(positive),
-                        )
-                    except ValueError as fallback_error:
-                        log_prompt_assistant_event(
-                            "minimax_h3_prompt_enhance_failed",
-                            command="optimizePrompt",
-                            mode=minimax_h3_mode,
-                            firstFailure=clean_text(str(first_error))[:160],
-                            repairFailure=clean_text(str(repair_error))[:160],
-                            fallbackFailure=clean_text(str(fallback_error))[:160],
-                        )
-                        raise ValueError(
-                            "本地提示词助手未能生成符合 MiniMax H3 协议的提示词，请简化描述后重试"
-                        ) from None
+                    log_prompt_assistant_event(
+                        "minimax_h3_prompt_enhance_failed",
+                        command="optimizePrompt",
+                        mode=minimax_h3_mode,
+                        firstFailure=clean_text(str(first_error))[:160],
+                        repairFailure=clean_text(str(repair_error))[:160],
+                    )
+                    raise ValueError(
+                        "H3 提示词优化未通过内容或格式检查，原提示词未修改，请重试。"
+                    ) from None
             negative = ""
         else:
             if is_ordinary_art and not art_supports_negative:

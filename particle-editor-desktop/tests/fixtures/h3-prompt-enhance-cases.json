@@ -1,0 +1,13 @@
+[
+  {"name":"copied Chinese narrative","source":"角色在固定绿幕前进行2秒生动的待机循环动画，眼睛注视镜头，动作连贯流畅，镜头固定不变，主体位置与大小完全稳定，无任何光效与特效，主体身份外观保持一致。","result":"角色在固定绿幕前进行2秒生动的待机循环动画，眼睛注视镜头，动作连贯流畅，镜头固定不变，主体位置与大小完全稳定，无任何光效与特效，主体身份外观保持一致。","ok":false},
+  {"name":"concrete idle with loop closure","source":"角色在固定绿幕前进行2秒生动的待机循环动画，动作连贯，镜头固定不变，无特效。","result":"镜头固定，绿幕颜色与亮度保持不变，无特效。角色目光朝向镜头，脚底位置固定；肩部随轻微呼吸缓慢起伏，中段自然眨眼一次。随后动作平滑回到起始姿势与运动相位，形成2秒连续循环。","ok":true},
+  {"name":"English exact copy","source":"A fixed camera frames a character gently waving.","result":"A fixed camera frames a character gently waving.","ok":false},
+  {"name":"English refinement","source":"A fixed camera frames a character waving naturally.","result":"A fixed camera frames the character raising one hand to shoulder height, waving twice with a relaxed wrist, then lowering it to the original resting position.","ok":true},
+  {"name":"headers and generic padding are not improvements","source":"一个角色面向镜头，站在完全不变的绿色背景前，位置保持稳定，外观保持一致，镜头固定不变。","result":"一个角色面向镜头，站在完全不变的绿色背景前，位置保持稳定，外观保持一致，镜头固定不变。动作连贯推进，保持主体身份与场景连续。","ok":false},
+  {"name":"loop paraphrase without closure","source":"A two-second idle loop with a locked camera.","result":"The camera remains locked while the character slowly raises the shoulders and blinks in a smooth, lively two-second idle animation.","ok":false},
+  {"name":"explicit format-only permits same narrative","source":"角色站立，镜头固定。","result":"角色站立，镜头固定。","requirement":"只调整格式，不修改正文。","ok":true},
+  {"name":"do not only format does not bypass","source":"角色站立，镜头固定。","result":"角色站立，镜头固定。","requirement":"不要只调整格式，需要优化正文。","ok":false},
+  {"name":"cancel previous loop","source":"角色进行待机循环。","result":"角色随后抬手一次并停在举手姿势，镜头固定。","requirement":"取消循环，改为举手后停住。","ok":true},
+  {"name":"stillness clarified without forced motion","source":"角色完全静止，镜头固定。","result":"整个片段中角色保持同一姿势，眼睑、肢体和衣物均不运动；镜头的位置、焦距与构图持续不变。","ok":true},
+  {"name":"English loop closure","source":"A character performs an idle loop.","result":"The camera holds fixed framing. The shoulders rise slightly with one quiet breath, then return to the initial pose and movement phase for a continuous loop.","ok":true}
+]

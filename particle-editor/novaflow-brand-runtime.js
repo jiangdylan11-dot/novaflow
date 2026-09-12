@@ -37771,6 +37771,7 @@
     Array.from(root.querySelectorAll("div, section")).forEach((container) => {
       if (!(container instanceof HTMLElement) || container === root || !isVisible(container)) return;
       if (container.getAttribute("data-novaflow-secondary-group") === "1") return;
+      if (container.closest('[data-novaflow-art-lora="1"]')) return;
       if (container.closest("[data-novaflow-ai-mode-section='1'], [data-novaflow-ai-post-section='1'], [data-novaflow-ai-bottom-workspace='1']")) return;
       const rect = container.getBoundingClientRect();
       if (rect.left < rootRect.left - 4 || rect.right > rootRect.right + 4) return;
@@ -48599,6 +48600,7 @@
     const normalizePass = () => {
       Array.from(body.querySelectorAll(":scope > *, div, section, [role='group'], .nf-slider")).forEach((container) => {
         if (!(container instanceof HTMLElement) || container === body || !isVisible(container)) return;
+        if (container.closest('[data-novaflow-art-lora="1"]')) return;
         if (container.closest("[data-nf-upload-dropzone='1'], [data-novaflow-ai-bottom-workspace='1']")) return;
         if (/^(BUTTON|INPUT|SELECT|TEXTAREA|CANVAS|SVG|IMG)$/.test(container.tagName)) return;
         if (isInsideSpriteEditorMaterialCard(container)) return;
@@ -70238,7 +70240,7 @@
 
   const ART_GENERATE_WORKFLOW_TEMPLATES = {
     txt2imgNsfw: `{"1":{"inputs":{"ckpt_name":"Qwen-Rapid-AIO-NSFW-v20.safetensors"},"class_type":"CheckpointLoaderSimple","_meta":{"title":"Checkpoint\\u52a0\\u8f7d\\u5668\\uff08\\u7b80\\u6613\\uff09"}},"2":{"inputs":{"seed":130320976182154,"steps":4,"cfg":1,"sampler_name":"euler","scheduler":"simple","denoise":1,"model":["1",0],"positive":["3",0],"negative":["4",0],"latent_image":["9",0]},"class_type":"KSampler","_meta":{"title":"K\\u91c7\\u6837\\u5668"}},"3":{"inputs":{"prompt":"\\u4e00\\u4e2a\\u7f8e\\u5973\\u62b1\\u7740\\u4e00\\u53ea\\u732b\\u5750\\u5728\\u6c99\\u53d1\\u4e0a\\uff0c\\u8fea\\u58eb\\u5c3c\\u98ce\\u683c\\uff0c\\u9ad8\\u6e05","clip":["1",1],"vae":["1",2]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"TextEncodeQwenImageEditPlus Input Prompt"}},"4":{"inputs":{"prompt":"Vibrant colors, overexposed, blurred details, poor composition, image, overall gray, worst quality, low quality, ugly, imperfect, extra fingers, poor hand drawing, poor face drawing, deformed, disfigured, deformed limbs, fused fingers, static image, cluttered background, three legs, many people in the background,oversaturated","clip":["1",1],"vae":["1",2]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"TextEncodeQwenImageEditPlus Negative (leave blank)"}},"5":{"inputs":{"samples":["2",0],"vae":["1",2]},"class_type":"VAEDecode","_meta":{"title":"VAE\\u89e3\\u7801"}},"9":{"inputs":{"width":720,"height":1280,"batch_size":1},"class_type":"EmptyLatentImage","_meta":{"title":"Final Image Size"}},"13":{"inputs":{"filename_prefix":"ComfyUI","images":["5",0]},"class_type":"SaveImage","_meta":{"title":"\\u4fdd\\u5b58\\u56fe\\u50cf"}}}`,
-    img2img: `{"9":{"inputs":{"filename_prefix":"Qwen_Edit_2511","images":["143:141",0]},"class_type":"SaveImage","_meta":{"title":"\\u4fdd\\u5b58\\u56fe\\u50cf"}},"41":{"inputs":{"image":"ComfyUI_00212_.png"},"class_type":"LoadImage","_meta":{"title":"\\u52a0\\u8f7d\\u56fe\\u50cf"}},"83":{"inputs":{"image":"ComfyUI_temp_idqno_00001_.png"},"class_type":"LoadImage","_meta":{"title":"\\u52a0\\u8f7d\\u56fe\\u50cf"}},"145":{"inputs":{"rgthree_comparer":{"images":[{"name":"A","selected":true,"url":"/api/view?filename=rgthree.compare._temp_etpnv_00005_.png&type=temp&subfolder=&rand=0.024835789677640996"},{"name":"B","selected":true,"url":"/api/view?filename=rgthree.compare._temp_etpnv_00006_.png&type=temp&subfolder=&rand=0.10108328870357619"}]},"image_a":["41",0],"image_b":["143:141",0]},"class_type":"Image Comparer (rgthree)","_meta":{"title":"\\u56fe\\u50cf\\u6bd4\\u8f83\\u5668"}},"146":{"inputs":{"prompt":"\\u56fe1\\u7684\\u5973\\u4eba\\u53c2\\u8003\\u56fe2\\u7684\\u59ff\\u52bf\\uff0c\\u540c\\u65f6\\u4fdd\\u6301\\u4eba\\u7269\\u4e00\\u81f4\\u6027\\uff0c\\u8138\\u90e8\\u7279\\u5f81\\u4e00\\u81f4\\u6027\\uff0c\\u80cc\\u666f\\u4e0d\\u53d8","start_index":0,"max_rows":1000,"remove_empty_lines":""},"class_type":"easy promptLine","_meta":{"title":"\\u63d0\\u793a\\u8bcd\\u884c"}},"143:119":{"inputs":{"shift":3.1,"model":["143:121",0]},"class_type":"ModelSamplingAuraFlow","_meta":{"title":"\\u91c7\\u6837\\u7b97\\u6cd5\\uff08AuraFlow\\uff09"}},"143:120":{"inputs":{"vae_name":"qwen_image_vae.safetensors"},"class_type":"VAELoader","_meta":{"title":"\\u52a0\\u8f7dVAE"}},"143:122":{"inputs":{"reference_latents_method":"index_timestep_zero","conditioning":["143:124",0]},"class_type":"FluxKontextMultiReferenceLatentMethod","_meta":{"title":"FluxKontext\\u591a\\u53c2\\u8003\\u6f5c\\u5728\\u65b9\\u6cd5"}},"143:123":{"inputs":{"reference_latents_method":"index_timestep_zero","conditioning":["143:126",0]},"class_type":"FluxKontextMultiReferenceLatentMethod","_meta":{"title":"FluxKontext\\u591a\\u53c2\\u8003\\u6f5c\\u5728\\u65b9\\u6cd5"}},"143:124":{"inputs":{"prompt":"","clip":["143:127",0],"vae":["143:120",0],"image1":["143:142",0],"image2":["83",0]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"\\u6587\\u672c\\u7f16\\u7801\\uff08QwenImageEditPlus\\uff09"}},"143:129":{"inputs":{"strength":1,"model":["143:119",0]},"class_type":"CFGNorm","_meta":{"title":"CFG\\u5f52\\u4e00\\u5316"}},"143:130":{"inputs":{"lora_name":"Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors","strength_model":1,"model":["143:129",0]},"class_type":"LoraLoaderModelOnly","_meta":{"title":"LoRA\\u52a0\\u8f7d\\u5668\\uff08\\u4ec5\\u6a21\\u578b\\uff09"}},"143:131":{"inputs":{"value":4},"class_type":"PrimitiveInt","_meta":{"title":"Steps"}},"143:132":{"inputs":{"value":4},"class_type":"PrimitiveFloat","_meta":{"title":"CFG"}},"143:133":{"inputs":{"value":1},"class_type":"PrimitiveFloat","_meta":{"title":"CFG"}},"143:137":{"inputs":{"pixels":["143:142",0],"vae":["143:120",0]},"class_type":"VAEEncode","_meta":{"title":"VAE\\u7f16\\u7801"}},"143:141":{"inputs":{"samples":["143:128",0],"vae":["143:120",0]},"class_type":"VAEDecode","_meta":{"title":"VAE\\u89e3\\u7801"}},"143:128":{"inputs":{"seed":116173378250817,"steps":["143:136",0],"cfg":["143:134",0],"sampler_name":"euler","scheduler":"simple","denoise":1,"model":["143:135",0],"positive":["143:123",0],"negative":["143:122",0],"latent_image":["143:137",0]},"class_type":"KSampler","_meta":{"title":"K\\u91c7\\u6837\\u5668"}},"143:139":{"inputs":{"value":40},"class_type":"PrimitiveInt","_meta":{"title":"Steps"}},"143:142":{"inputs":{"image":["41",0]},"class_type":"FluxKontextImageScale","_meta":{"title":"\\u56fe\\u50cf\\u7f29\\u653e\\u4e3aFluxKontext"}},"143:121":{"inputs":{"unet_name":"qwen_image_edit_2511_bf16.safetensors","weight_dtype":"default"},"class_type":"UNETLoader","_meta":{"title":"UNet\\u52a0\\u8f7d\\u5668"}},"143:127":{"inputs":{"clip_name":"qwen_2.5_vl_7b_fp8_scaled.safetensors","type":"qwen_image","device":"default"},"class_type":"CLIPLoader","_meta":{"title":"\\u52a0\\u8f7dCLIP"}},"143:138":{"inputs":{"value":true},"class_type":"PrimitiveBoolean","_meta":{"title":"Enable 4steps LoRA?"}},"143:135":{"inputs":{"switch":["143:138",0],"on_false":["143:129",0],"on_true":["143:130",0]},"class_type":"ComfySwitchNode","_meta":{"title":"Switch (Model)"}},"143:134":{"inputs":{"switch":["143:138",0],"on_false":["143:132",0],"on_true":["143:133",0]},"class_type":"ComfySwitchNode","_meta":{"title":"Switch (CFG)"}},"143:136":{"inputs":{"switch":["143:138",0],"on_false":["143:139",0],"on_true":["143:131",0]},"class_type":"ComfySwitchNode","_meta":{"title":"Switch (Steps)"}},"143:126":{"inputs":{"prompt":["146",0],"clip":["143:127",0],"vae":["143:120",0],"image1":["143:142",0],"image2":["83",0]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"TextEncodeQwenImageEditPlus (Positive)"}}}`,
+    img2img: `{"1":{"inputs":{"ckpt_name":"Qwen-Rapid-AIO-NSFW-v20.safetensors"},"class_type":"CheckpointLoaderSimple","_meta":{"title":"Checkpoint\\u52a0\\u8f7d\\u5668\\uff08\\u7b80\\u6613\\uff09"}},"2":{"inputs":{"seed":896290897812950,"steps":8,"cfg":1,"sampler_name":"euler","scheduler":"simple","denoise":1,"model":["1",0],"positive":["3",0],"negative":["4",0],"latent_image":["16",0]},"class_type":"KSampler","_meta":{"title":"K\\u91c7\\u6837\\u5668"}},"3":{"inputs":{"prompt":"\\u56fe1\\u7684\\u5973\\u4eba\\u6362\\u4e00\\u4e2a\\u6027\\u611f\\u7ad9\\u52bf\\uff0c\\u540c\\u65f6\\u4fdd\\u6301\\u4eba\\u7269\\u4e00\\u81f4\\u6027\\uff0c\\u8138\\u90e8\\u7279\\u5f81\\u4e00\\u81f4\\u6027\\uff0c\\u80cc\\u666f\\u4e0d\\u53d8","clip":["1",1],"vae":["1",2],"image1":["10",0]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"TextEncodeQwenImageEditPlus Input Prompt"}},"4":{"inputs":{"prompt":"Vibrant colors, overexposed, blurred details, poor composition, image, overall gray, worst quality, low quality, ugly, imperfect, extra fingers, poor hand drawing, poor face drawing, deformed, disfigured, deformed limbs, fused fingers, static image, cluttered background, three legs, many people in the background,oversaturated","clip":["1",1],"vae":["1",2]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"TextEncodeQwenImageEditPlus Negative (leave blank)"}},"5":{"inputs":{"samples":["2",0],"vae":["1",2]},"class_type":"VAEDecode","_meta":{"title":"VAE\\u89e3\\u7801"}},"9":{"inputs":{"width":1536,"height":2720,"batch_size":1},"class_type":"EmptyLatentImage","_meta":{"title":"Final Image Size"}},"10":{"inputs":{"image":"ComfyUI_00212_.png"},"class_type":"LoadImage","_meta":{"title":"Optional Input Image"}},"13":{"inputs":{"filename_prefix":"ComfyUI","images":["5",0]},"class_type":"SaveImage","_meta":{"title":"\\u4fdd\\u5b58\\u56fe\\u50cf"}},"15":{"inputs":{"upscale_method":"lanczos","megapixels":1,"resolution_steps":1,"image":["10",0]},"class_type":"ImageScaleToTotalPixels","_meta":{"title":"\\u7f29\\u653e\\u56fe\\u50cf\\uff08\\u50cf\\u7d20\\uff09"}},"16":{"inputs":{"pixels":["15",0],"vae":["1",2]},"class_type":"VAEEncode","_meta":{"title":"VAE\\u7f16\\u7801"}},"22":{"inputs":{"rgthree_comparer":{"images":[{"name":"A","selected":true,"url":"/api/view?filename=rgthree.compare._temp_huhrx_00003_.png&type=temp&subfolder=&rand=0.6706113575006749"},{"name":"B","selected":true,"url":"/api/view?filename=rgthree.compare._temp_huhrx_00004_.png&type=temp&subfolder=&rand=0.3979363499997244"}]},"image_a":["10",0],"image_b":["5",0]},"class_type":"Image Comparer (rgthree)","_meta":{"title":"\\u56fe\\u50cf\\u6bd4\\u8f83\\u5668"}}}`,
     img2imgNsfw: `{"1":{"inputs":{"ckpt_name":"Qwen-Rapid-AIO-NSFW-v20.safetensors"},"class_type":"CheckpointLoaderSimple","_meta":{"title":"Checkpoint\\u52a0\\u8f7d\\u5668\\uff08\\u7b80\\u6613\\uff09"}},"2":{"inputs":{"seed":896290897812950,"steps":8,"cfg":1,"sampler_name":"euler","scheduler":"simple","denoise":1,"model":["1",0],"positive":["3",0],"negative":["4",0],"latent_image":["16",0]},"class_type":"KSampler","_meta":{"title":"K\\u91c7\\u6837\\u5668"}},"3":{"inputs":{"prompt":"\\u56fe1\\u7684\\u5973\\u4eba\\u6362\\u4e00\\u4e2a\\u6027\\u611f\\u7ad9\\u52bf\\uff0c\\u540c\\u65f6\\u4fdd\\u6301\\u4eba\\u7269\\u4e00\\u81f4\\u6027\\uff0c\\u8138\\u90e8\\u7279\\u5f81\\u4e00\\u81f4\\u6027\\uff0c\\u80cc\\u666f\\u4e0d\\u53d8","clip":["1",1],"vae":["1",2],"image1":["10",0]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"TextEncodeQwenImageEditPlus Input Prompt"}},"4":{"inputs":{"prompt":"Vibrant colors, overexposed, blurred details, poor composition, image, overall gray, worst quality, low quality, ugly, imperfect, extra fingers, poor hand drawing, poor face drawing, deformed, disfigured, deformed limbs, fused fingers, static image, cluttered background, three legs, many people in the background,oversaturated","clip":["1",1],"vae":["1",2]},"class_type":"TextEncodeQwenImageEditPlus","_meta":{"title":"TextEncodeQwenImageEditPlus Negative (leave blank)"}},"5":{"inputs":{"samples":["2",0],"vae":["1",2]},"class_type":"VAEDecode","_meta":{"title":"VAE\\u89e3\\u7801"}},"9":{"inputs":{"width":1536,"height":2720,"batch_size":1},"class_type":"EmptyLatentImage","_meta":{"title":"Final Image Size"}},"10":{"inputs":{"image":"ComfyUI_00212_.png"},"class_type":"LoadImage","_meta":{"title":"Optional Input Image"}},"13":{"inputs":{"filename_prefix":"ComfyUI","images":["5",0]},"class_type":"SaveImage","_meta":{"title":"\\u4fdd\\u5b58\\u56fe\\u50cf"}},"15":{"inputs":{"upscale_method":"lanczos","megapixels":1,"resolution_steps":1,"image":["10",0]},"class_type":"ImageScaleToTotalPixels","_meta":{"title":"\\u7f29\\u653e\\u56fe\\u50cf\\uff08\\u50cf\\u7d20\\uff09"}},"16":{"inputs":{"pixels":["15",0],"vae":["1",2]},"class_type":"VAEEncode","_meta":{"title":"VAE\\u7f16\\u7801"}},"22":{"inputs":{"rgthree_comparer":{"images":[{"name":"A","selected":true,"url":"/api/view?filename=rgthree.compare._temp_huhrx_00003_.png&type=temp&subfolder=&rand=0.6706113575006749"},{"name":"B","selected":true,"url":"/api/view?filename=rgthree.compare._temp_huhrx_00004_.png&type=temp&subfolder=&rand=0.3979363499997244"}]},"image_a":["10",0],"image_b":["5",0]},"class_type":"Image Comparer (rgthree)","_meta":{"title":"\\u56fe\\u50cf\\u6bd4\\u8f83\\u5668"}}}`
   };
 
@@ -70261,6 +70263,7 @@
     height: 1024,
     localTextQuality: "fine",
     localEditStrength: "faithful",
+    loras: [],
     seed: -1,
     randomSeed: true,
     running: false,
@@ -71883,10 +71886,20 @@
   function syncArtGenerateControlPanel() {
     const host = document.querySelector('[data-novaflow-art-generate-control-host="1"]');
     const tool = window.NovaFlowArtGenerateModeTool;
-    return !!(host instanceof HTMLElement && tool?.syncControlPanel?.({
+    const mounted = !!(host instanceof HTMLElement && tool?.syncControlPanel?.({
       host, state: ART_GENERATE_STATE, workspaceId: ART_GENERATE_WORKSPACE_ID,
       onChange: () => { renderArtGenerateSurfaces({ forceBottom: true }); syncArtGenerateRuntime(); scheduleArtGeneratePreviewRefresh([0, 16, 64]); }
     }));
+    if (mounted) window.NovaFlowArtGenerateLora?.mount?.({
+      host, state: ART_GENERATE_STATE,
+      async loadCatalog(context) {
+        await detectArtGenerateBaseUrl();
+        const response = await window.electronAPI?.qwenLoraCatalog?.(context);
+        if (!response?.ok) throw new Error(response?.error || "读取兼容 LoRA 列表失败");
+        return response;
+      }
+    });
+    return mounted;
   }
 
   function artGenerateProviderFromEntryLabel(label) {
@@ -73158,7 +73171,9 @@
   }
 
   function renderArtGenerateParamRow() {
-    const nsfwSwitch = createArtEl("div", { className: "novaflow-art-generate-param" }, [
+    const nsfwSwitch = ART_GENERATE_STATE.provider === "local" && ART_GENERATE_STATE.mode === "img2img"
+      ? null
+      : createArtEl("div", { className: "novaflow-art-generate-param" }, [
       createArtEl("span", { text: "NSFW" }),
       renderArtGenerateToggleButton(ART_GENERATE_STATE.nsfw, "NSFW", () => {
         setArtGenerateNsfwEnabled(!ART_GENERATE_STATE.nsfw);
@@ -74789,7 +74804,9 @@
       return Object.values(workflow || {}).some((node) => ["EmptyLatentImage", "EmptySD3LatentImage"].includes(String(node?.class_type || "")));
     }
     const [sourceKey, sourceNode] = scaleEntry;
-    const sourceImage = String(sourceNode?.class_type || "") === "ImageScaleToTotalPixels" && Array.isArray(sourceNode?.inputs?.image)
+    // Fit the original reference: FluxKontextImageScale center-crops to a preset
+    // aspect ratio, which cannot be undone by resizing its output to the target.
+    const sourceImage = Array.isArray(sourceNode?.inputs?.image)
       ? sourceNode.inputs.image
       : [sourceKey, 0];
     const plan = artGenerateAspectFitPlan(sourceSize, {
@@ -74927,6 +74944,14 @@
       const title = String(node._meta && node._meta.title || "");
       if (type === "SaveImage" && "filename_prefix" in inputs) inputs.filename_prefix = prefix;
       if (type === "CLIPTextEncode" && "text" in inputs) inputs.text = artPromptLikeNegative(title) ? negativePrompt : positivePrompt;
+      // The UI submits one editing instruction. easy promptLine turns every
+      // newline (including appended quality guidance) into a separate image.
+      if (type === "TextEncodeQwenImageEditPlus" && Array.isArray(inputs.prompt)) {
+        const promptSource = workflow[String(inputs.prompt[0])];
+        if (promptSource?.class_type === "easy promptLine") {
+          inputs.prompt = artPromptLikeNegative(title) ? negativePrompt : positivePrompt;
+        }
+      }
       if (type === "TextEncodeQwenImageEditPlus" && "prompt" in inputs && !Array.isArray(inputs.prompt)) {
         if (artPromptLikeNegative(title)) inputs.prompt = negativePrompt;
         else if (artPromptLikePositive(title)) inputs.prompt = positivePrompt;
@@ -74945,9 +74970,10 @@
   }
 
   function buildArtGenerateRunWorkflow(provider, mode, uploadedNames, outputPrefix, positivePrompt, negativePrompt, clientId, referenceSizes = []) {
-    const state = arguments.length > 8 && arguments[8] && typeof arguments[8] === "object"
+    const requestedState = arguments.length > 8 && arguments[8] && typeof arguments[8] === "object"
       ? arguments[8]
       : ART_GENERATE_STATE;
+    const state = provider === "local" && mode === "img2img" ? { ...requestedState, nsfw: true } : requestedState;
     const providerOptions = arguments.length > 10 && arguments[10] && typeof arguments[10] === "object"
       ? arguments[10]
       : {};
@@ -74986,6 +75012,11 @@
           localWorkflow = patchArtWorkflow(cloneArtWorkflowForState(state), uploadedNames, outputPrefix, positivePrompt, negativePrompt, referenceSizes, state);
           localWorkflow = modelApi.applyLocalWorkflowPreset(localWorkflow, state, mode);
         }
+        if (Array.isArray(state.loras) && state.loras.length) {
+          const loraApi = window.NovaFlowArtGenerateLora;
+          if (!loraApi) throw new Error("LoRA 模块未就绪，请刷新后重试");
+          localWorkflow = loraApi.apply(localWorkflow, { ...state, provider, mode });
+        }
       }
       if (!localWorkflow || typeof localWorkflow !== "object") {
         throw new Error("NovaFlow \u672c\u5730\u751f\u6210\u9884\u8bbe\u5e94\u7528\u5931\u8d25");
@@ -75015,6 +75046,13 @@
   async function validateArtWorkflowNodes(baseUrl, workflow) {
     const info = await artRequestJson(baseUrl, "/object_info", { method: "GET" });
     const objectInfo = info && info.data && typeof info.data === "object" ? info.data : {};
+    window.NovaFlowArtGenerateLora?.validate(workflow, objectInfo);
+    if (Object.keys(workflow).some(id => /^nf_art_lora_/.test(id))) {
+      const nsfw = Object.values(workflow).some(node => node.class_type === "CheckpointLoaderSimple" && /Qwen-Rapid/i.test(String(node.inputs?.ckpt_name)));
+      const catalog = await window.electronAPI?.qwenLoraCatalog?.({ nsfw });
+      if (!catalog?.ok) throw new Error(catalog?.error || "无法验证 LoRA 兼容性");
+      window.NovaFlowArtGenerateLora.validate(workflow, catalog);
+    }
     const ignored = new Set(["PrimitiveInt", "PrimitiveFloat", "PrimitiveBoolean"]);
     const missing = Array.from(new Set(Object.values(workflow || {}).map((node) => String(node && node.class_type || "")).filter(Boolean)))
       .filter((type) => !ignored.has(type) && !objectInfo[type]);
@@ -75348,7 +75386,7 @@
       return {
         mode,
         provider,
-        nsfw: !!source.nsfw,
+        nsfw: provider === "local" && mode === "img2img" ? true : !!source.nsfw,
         width: Math.max(64, Math.round(Number(source.width) || 1024)),
         height: Math.max(64, Math.round(Number(source.height) || 1024)),
         randomSeed: source.randomSeed !== false,

@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const RESOURCE_MENTION_TOOL_VERSION = "20260721-ui-design-resource-mentions-2";
+  const RESOURCE_MENTION_TOOL_VERSION = "20260912-resource-mentions-ime-1";
 
   const SEEDANCE_RESOURCE_CONFIG = Object.freeze([
     Object.freeze({ key: "ref_image", label: "参考图1", kind: "image" }),
@@ -742,6 +742,8 @@
   }
 
   function renderController(controller, requestedSelection) {
+    // Native IME owns both the DOM and selection until its final input event.
+    if (controller.composing) return;
     if (!controller.editor.isConnected || !controller.textarea.isConnected) return;
     const hadFocus = controller.document.activeElement === controller.editor;
     const selection = requestedSelection || (hadFocus ? editorSelection(controller) : null);
@@ -994,6 +996,7 @@
   }
 
   function syncEditorToBacking(controller, shouldRender) {
+    if (controller.composing) return;
     const selection = editorSelection(controller);
     clearSubmissionError(controller);
     writeBackingValue(controller, serializeEditor(controller.editor), selection.end);
@@ -1005,6 +1008,7 @@
   }
 
   function handleEditorKeyDown(controller, event) {
+    if (controller.composing || event.isComposing || event.keyCode === 229) return;
     if (activeMenuState && activeMenuState.controller === controller) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault();
@@ -1039,6 +1043,7 @@
   }
 
   function handleBeforeInput(controller, event) {
+    if (controller.composing || event.isComposing || /composition/i.test(event.inputType || "")) return;
     if (event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") {
       event.preventDefault();
       const selection = editorSelection(controller);
@@ -1093,18 +1098,30 @@
     const editor = controller.editor;
     const textarea = controller.textarea;
     const handlers = controller.handlers;
-    handlers.input = function () {
-      syncEditorToBacking(controller, !controller.composing);
+    handlers.input = function (event) {
+      if (controller.composing || event.isComposing) return;
+      syncEditorToBacking(controller, true);
     };
     handlers.keydown = function (event) { handleEditorKeyDown(controller, event); };
     handlers.beforeinput = function (event) { handleBeforeInput(controller, event); };
     handlers.compositionstart = function () {
+      const view = controller.document.defaultView || window;
+      if (controller.compositionCommitTimer != null) view.clearTimeout(controller.compositionCommitTimer);
+      controller.compositionCommitTimer = null;
       controller.composing = true;
       closeMenu(controller);
     };
     handlers.compositionend = function () {
-      controller.composing = false;
-      syncEditorToBacking(controller, true);
+      const view = controller.document.defaultView || window;
+      if (controller.compositionCommitTimer != null) view.clearTimeout(controller.compositionCommitTimer);
+      // Chromium can send the committed input after compositionend. Rebuilding
+      // here would invalidate that event's target and the native caret range.
+      controller.composing = true;
+      controller.compositionCommitTimer = view.setTimeout(function () {
+        controller.compositionCommitTimer = null;
+        controller.composing = false;
+        if (editor.isConnected && textarea.isConnected) syncEditorToBacking(controller, true);
+      }, 0);
     };
     handlers.focus = function () {
       clearSubmissionError(controller);
@@ -1181,6 +1198,9 @@
   }
 
   function unbindControllerEvents(controller) {
+    const view = controller.document.defaultView || window;
+    if (controller.compositionCommitTimer != null) view.clearTimeout(controller.compositionCommitTimer);
+    controller.compositionCommitTimer = null;
     const editor = controller.editor;
     const textarea = controller.textarea;
     const handlers = controller.handlers;
@@ -1269,6 +1289,7 @@
       renderSignature: null,
       handlers: {},
       composing: false,
+      compositionCommitTimer: null,
       writingBacking: false,
       originalAriaHidden: textarea.getAttribute("aria-hidden"),
       originalTabIndex: textarea.getAttribute("tabindex"),

@@ -5495,6 +5495,15 @@ test("nf.visual.v2 retries one contract-invalid provider result and aggregates c
   const originalBody = cloneJson(body);
   const inputMeta = { scenario: "single_reference", visualIrSchema: "nf.visual.v2" };
   const resultOptions = { visualIrSchema: "nf.visual.v2", visualRetryAllowed: true };
+  const repairedVisualIr = validVisualIrV2({
+    level: "safe",
+    body_exposure: "none",
+    interaction_category: "none",
+    age_assessment: "adult_appearing",
+    visible_person_count: 1,
+    signals: [],
+    sensitive_visible_facts: []
+  });
   const calls = [];
   const firstError = new Error("invalid first visual contract");
   firstError.grokVisualIrContractInvalid = true;
@@ -5513,7 +5522,7 @@ test("nf.visual.v2 retries one contract-invalid provider result and aggregates c
       durationMs: 30,
       providerCallCount: 1,
       inputMeta,
-      data: { output_text: "compiled", generationGate: "adult_confirmation" }
+      data: grokResponsesPublicResult({ output_text: JSON.stringify(repairedVisualIr) }, resultOptions)
     };
   });
 
@@ -5528,9 +5537,12 @@ test("nf.visual.v2 retries one contract-invalid provider result and aggregates c
   assert.equal(result.visualContractRetryUsed, true);
   assert.equal(result.inputMeta.providerCallCount, 2);
   assert.equal(result.inputMeta.visualContractRetryUsed, true);
-  assert.equal(result.data.generationGate, "blocked");
-  assert.equal(result.data.contractFailureCode, "visual-rich-prompt-unavailable");
-  assert.equal(result.data.output_text, result.data.visualPrompt);
+  assert.equal(result.data.generationGate, "direct");
+  assert.equal(result.data.contractFailureCode, undefined);
+  assert.deepEqual(
+    [...result.data.output_text.matchAll(/^\s*(\[[^\]\r\n]+\])\s*$/gm)].map((match) => match[1]),
+    ["[风格设定]", "[主体物品]", "[环境背景]", "[光线与色彩]", "[拍摄参数]"]
+  );
 });
 
 test("nf.visual.v2 sends first-pass incomplete interaction evidence directly to rich confirmation without an IR retry", async () => {

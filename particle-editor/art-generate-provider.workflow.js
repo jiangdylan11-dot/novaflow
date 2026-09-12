@@ -6,7 +6,8 @@
   'use strict'
 
   const TASK_TYPE = 'local_workflow_image'
-  const GPT_MODEL = 'gpt-image-2'
+  const GPT_TEXT_MODEL = 'gpt-image-2.5-flare'
+  const GPT_EDIT_MODEL = 'gpt-image-2.5-sunburst'
   const GOOGLE_TEXT_MODEL = 'gemini-2.5-flash-image'
   const GOOGLE_EDIT_MODEL = 'gemini-3-pro-image-preview'
   const TEXT_EVENT_TYPE = 3
@@ -133,6 +134,7 @@
   }
 
   function buildGptWorkflow(options, mode, uploadedNames, outputPrefix, nodeIdPrefix) {
+    const model = mode === 'img2img' ? GPT_EDIT_MODEL : GPT_TEXT_MODEL
     const workflow = {}
     const references = addLoadImageNodes(workflow, uploadedNames, 1, nodeIdPrefix)
     const providerNodeId = namespacedNodeId(nodeIdPrefix, references.length + 1)
@@ -160,7 +162,7 @@
     }
     const inputs = {
       prompt: String(options.prompt || ''),
-      model: GPT_MODEL,
+      model,
       'model.size': size,
       'model.custom_width': customWidth,
       'model.custom_height': customHeight,
@@ -183,7 +185,7 @@
       workflow,
       providerNodeIds: [providerNodeId],
       providerNodeType: 'OpenAIGPTImageNodeV2',
-      modelKey: GPT_MODEL,
+      modelKey: model,
       taskType: TASK_TYPE,
     }
   }

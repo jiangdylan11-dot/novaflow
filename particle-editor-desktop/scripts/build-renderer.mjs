@@ -60,6 +60,7 @@ const runtimeShellFiles = [
   "ui-render-trace.js",
   "comfyui-workflow-credit-cost.js",
   "art-generate-model.resource.js",
+  "art-generate-lora.js",
   "art-generate-ideogram.workflow.js",
   "art-generate-provider.workflow.js",
   "art-generate-mode.tool.js",

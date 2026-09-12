@@ -107,8 +107,9 @@ assert.equal(isStaticImageReverseRequest("reverseImagePrompt", { purpose: "" }),
 assert.equal(isStaticImageReverseRequest("reverseImagePrompt", { purpose: "storyboardReference" }), false);
 assert.equal(isStaticImageReverseRequest("reverseImagePrompt", { purpose: "static_image_reverse" }), false);
 assert.equal(isStaticImageReverseRequest("optimizePrompt", { purpose: "static-image-reverse" }), false);
-assert.match(mainSource, /const commandEnabled = config\.serviceExists && \(config\.modelExists \|\| \(staticImageReverseRequest && config\.reverseModelEnabled\)\)/);
-assert.match(mainSource, /allowReverseOnly: staticImageReverseRequest/);
+assert.match(mainSource, /const reverseModelOnlyRequest = staticImageReverseRequest \|\| reverseCachePrepareRequest/);
+assert.match(mainSource, /const commandEnabled = config\.serviceExists && \(config\.modelExists \|\| \(reverseModelOnlyRequest && config\.reverseModelEnabled\)\)/);
+assert.match(mainSource, /allowReverseOnly: reverseModelOnlyRequest/);
 assert.match(mainSource, /当前反推模式需要 Qwen2\.5-VL 旧模型，但该模型未配置/);
 assert.match(mainSource, /reverseModelEnabled: config\.reverseModelEnabled/);
 assert.match(mainSource, /promptAssistantStopPromise[\s\S]*?await promptAssistantStopPromise/);
@@ -216,7 +217,7 @@ assert.match(
 const localReverseReleaseHandler = mainSource.match(/ipcMain\.handle\("prompt-assistant-reverse-image-prompt"[\s\S]*?\n\}\);\r?\n/)?.[0] || "";
 assert.match(
   localReverseReleaseHandler,
-  /requestPromptAssistant\("reverseImagePrompt"[\s\S]*?verifiedCleanup:\s*true/,
+  /requestPromptAssistant\(\s*"reverseImagePrompt"[\s\S]*?verifiedCleanup:\s*true/,
   "prompt reverse must delegate verified local-model release to the leased request"
 );
 
@@ -227,12 +228,76 @@ assert.match(localReverseHandler, /usesMiniMaxH3Reverse[\s\S]*?visualSchema !== 
 assert.match(localReverseHandler, /requires explicit userPrompt and userRequirements fields/);
 assert.match(localReverseHandler, /usesMiniMaxH3VisualV1 \? \{ userPrompt, userRequirements \} : \{\}/);
 assert.match(localReverseHandler, /usesMiniMaxH3Reverse \? 180_000 : 300_000/);
+assert.match(localReverseHandler, /const reversePayload = \{/);
+assert.match(localReverseHandler, /let result = await runReversePromptAssistant\(\)/);
+assert.match(localReverseHandler, /usesVisualV2 && isPromptAssistantReverseCachePreparationFailure\(result\)/);
+assert.match(localReverseHandler, /cache-reprepare-start/);
+assert.match(localReverseHandler, /prepareReverseCache[\s\S]*?900_000[\s\S]*?verifiedCleanup:\s*true/);
+assert.match(localReverseHandler, /result = await runReversePromptAssistant\(\)/);
+assert.match(localReverseHandler, /reverseCachePrepared = reverseCachePrepared \|\| cacheReprepared/);
 assert.match(brandRuntimeSource, /data-novaflow-art-generate-nsfw/);
 assert.match(smartAiSource, /nsfw: surface === "art" \? readArtGenerateNsfw\(button\) : false/);
-assert.match(particleEditorIndexSource, /novaflow-brand-runtime\.js\?v=20260813-ideogram-instant-1/);
+assert.match(particleEditorIndexSource, /novaflow-brand-runtime\.js\?v=20260817-prompt-editor-modal-1/);
 assert.match(particleEditorIndexSource, /smart-ai-art-auto-intent\.workflow\.js\?v=20260811-art-auto-intent-1/);
-assert.match(particleEditorIndexSource, /novaflow-smart-ai\.js\?v=20260816-art-simple-structured-1/);
-assert.match(smartAiSource, /const VERSION = "20260816-art-simple-structured-1"/);
+assert.match(particleEditorIndexSource, /novaflow-smart-ai\.js\?v=20260817-prompt-editor-modal-1/);
+assert.match(smartAiSource, /const VERSION = "20260817-prompt-editor-modal-1"/);
+assert.match(
+  brandRuntimeSource,
+  /data-novaflow-ai-prompt-expand-button/,
+  "prompt frames must expose a compact edit entry for long multiline prompts"
+);
+assert.match(
+  brandRuntimeSource,
+  /data-novaflow-ai-prompt-expand-button[\s\S]*?data-novaflow-ai-prompt-assistant-button/,
+  "the full prompt edit button must opt into prompt-action button visibility rules"
+);
+assert.match(
+  brandRuntimeSource,
+  /data-novaflow-ai-prompt-editor-modal/,
+  "the prompt edit entry must open a full-size modal editor"
+);
+assert.match(
+  brandRuntimeSource,
+  /window\.__NovaFlowPromptEditor[\s\S]*?openFromActions/,
+  "the full prompt editor must expose a bridge for buttons mounted by the Smart AI runtime"
+);
+assert.match(
+  smartAiSource,
+  /function mountPromptEditButton\(actions, surface\)[\s\S]*?data-novaflow-ai-prompt-expand-button[\s\S]*?window\.__NovaFlowPromptEditor[\s\S]*?openFromActions\(actions\)/,
+  "the visible Smart AI action container must mount the full prompt edit button beside AI 助手"
+);
+assert.match(
+  smartAiSource,
+  /function openSmartAiPromptEditor\(control, titleText = "提示词"\)[\s\S]*?confirmButton\.textContent = "确认编辑"[\s\S]*?setTextareaValue\(control, textarea\.value\)/,
+  "Smart AI must provide a full prompt editor for surfaces that do not use the animation prompt bridge"
+);
+assert.match(
+  smartAiSource,
+  /surface === "art"[\s\S]*?getPromptTextareasFromContext\(\{ surface: "art", button: actions \}\)[\s\S]*?openSmartAiPromptEditor\(textareas\.positive, "提示词"\)/,
+  "Art Generate must mount a visible edit button that opens the full prompt editor"
+);
+assert.doesNotMatch(smartAiSource, /AI提示助手/, "Smart AI visible copy must use AI 助手");
+assert.match(smartAiSource, /setSmartAiTextIfChanged\(button, "AI 助手"\)/);
+assert.match(
+  brandRuntimeSource,
+  /confirmButton\.textContent = "确认编辑"/,
+  "the full prompt editor must provide an explicit confirm-edit action"
+);
+assert.match(
+  brandRuntimeSource,
+  /control\.dispatchEvent\(new Event\("input", \{ bubbles: true \}\)\);[\s\S]*?control\.dispatchEvent\(new Event\("change", \{ bubbles: true \}\)\);/,
+  "confirmed full-prompt edits must flow through the original prompt control events"
+);
+assert.match(
+  brandRuntimeSource,
+  /setImportantStyles\(topRow,[\s\S]*?"padding-right": "176px"/,
+  "prompt frame title rows must reserve enough right-side space for AI assistant and edit actions"
+);
+assert.match(
+  smartAiSource,
+  /topRow\.style\.setProperty\("padding-right", "176px", "important"\)/,
+  "Smart AI button mounting must not shrink the prompt title row below the two-action width"
+);
 
 const requestFunction = mainSource.slice(
   mainSource.indexOf("async function requestPromptAssistant"),
@@ -278,6 +343,8 @@ const h3ReverseRequestSource = mainSource.match(
 )?.[0] || "";
 assert.ok(h3ReverseRequestSource);
 const isPromptAssistantMiniMaxH3ReverseRequest = vm.runInNewContext(`(${h3ReverseRequestSource})`);
+const reverseCachePrepareRequestSource = extractNamedFunction(mainSource, "isPromptAssistantReverseCachePrepareRequest");
+const isPromptAssistantReverseCachePrepareRequest = vm.runInNewContext(`(${reverseCachePrepareRequestSource})`);
 const h3TimeoutErrorSource = extractNamedFunction(mainSource, "createPromptAssistantH3TimeoutError");
 const createPromptAssistantH3TimeoutError = vm.runInNewContext(`(${h3TimeoutErrorSource})`);
 const verifiedStopSource = extractNamedFunction(mainSource, "stopPromptAssistantServiceWithVerifiedResult");
@@ -381,6 +448,7 @@ async function runPromptAssistantEnvelopeCase(config, childMessage) {
   const context = vm.createContext({
     getPromptAssistantConfig: () => ({ ...config }),
     isPromptAssistantStaticImageReverseRequest: isStaticImageReverseRequest,
+    isPromptAssistantReverseCachePrepareRequest,
     isPromptAssistantMiniMaxH3ReverseRequest,
     ensurePromptAssistantProcess: async () => processStub,
     promptAssistantNextRequestId: 1,
@@ -391,6 +459,8 @@ async function runPromptAssistantEnvelopeCase(config, childMessage) {
     promptAssistantLastError: "",
     promptAssistantLastWarning: "",
     appendLogLine: () => {},
+    tracePromptAssistantStaticReverseLifecycle: () => {},
+    promptAssistantLastSafeStaticReverseStage: () => "complete",
     stopPromptAssistantServiceSync: () => {},
     promptAssistantFailureMetadata,
     setTimeout,
@@ -416,6 +486,7 @@ async function runElectronH3TimeoutCase() {
   const context = vm.createContext({
     getPromptAssistantConfig: () => ({ serviceExists: true, modelExists: true, enabled: true }),
     isPromptAssistantStaticImageReverseRequest: isStaticImageReverseRequest,
+    isPromptAssistantReverseCachePrepareRequest,
     isPromptAssistantMiniMaxH3ReverseRequest,
     ensurePromptAssistantProcess: async () => { ensureCalls += 1; return processStub; },
     promptAssistantNextRequestId: 10,
@@ -496,6 +567,7 @@ async function runElectronH3DeterministicFailureCase() {
   const context = vm.createContext({
     getPromptAssistantConfig: () => ({ serviceExists: true, modelExists: true, enabled: true }),
     isPromptAssistantStaticImageReverseRequest: isStaticImageReverseRequest,
+    isPromptAssistantReverseCachePrepareRequest,
     isPromptAssistantMiniMaxH3ReverseRequest,
     ensurePromptAssistantProcess: async () => processStub,
     promptAssistantNextRequestId: 30,
@@ -571,6 +643,7 @@ async function runElectronH3SuccessCase() {
   const context = vm.createContext({
     getPromptAssistantConfig: () => ({ serviceExists: true, modelExists: true, enabled: true }),
     isPromptAssistantStaticImageReverseRequest: isStaticImageReverseRequest,
+    isPromptAssistantReverseCachePrepareRequest,
     isPromptAssistantMiniMaxH3ReverseRequest,
     ensurePromptAssistantProcess: async () => processStub,
     promptAssistantNextRequestId: 20,

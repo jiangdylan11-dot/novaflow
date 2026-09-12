@@ -1,8 +1,85 @@
 (function (root, factory) {
-  const api = factory()
+  const profiles = Object.freeze([
+    Object.freeze({ id: 'beta5_int8', label: 'H3 beta5 TURBO · INT8', steps: 4, checkpoint: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors' }),
+    Object.freeze({ id: 'beta5_fp8', label: 'H3 beta5 TURBO · W4A8', steps: 4, checkpoint: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_w4a8_14gb_optimized.safetensors' }),
+  ])
+  const instances = new Map(profiles.map(profile => [profile.id, factory(profile)]))
+  const storageKey = 'novaflow-h3-beta5-profiles-v1'
+  let selected = 'beta5_int8'
+  const settings = {}
+  try {
+    const saved = JSON.parse(root.localStorage.getItem(storageKey) || '{}')
+    if (saved.uiVersion === 3 && instances.has(saved.selected)) selected = saved.selected
+    if (saved.settings && typeof saved.settings === 'object') {
+      for (const profile of profiles) {
+        if (saved.settings[profile.id]) settings[profile.id] = saved.settings[profile.id]
+      }
+    }
+    // Repair the previously shipped 20-step default once; keep other custom
+    // values, and allow users to explicitly save 20 again after this revision.
+    if (saved.defaultsVersion !== 2) {
+      for (const id of ['beta5_int8', 'beta5_fp8']) {
+        if (Number(settings[id]?.steps) === 20) settings[id] = { ...settings[id], steps: 4 }
+      }
+    }
+  } catch (_) {}
+  const profileFor = id => {
+    const profile = profiles.find(profile => profile.id === (id || 'beta5_int8'))
+    if (!profile) throw new TypeError('Unknown H3 profile: ' + id)
+    return profile
+  }
+  const persist = () => {
+    try { root.localStorage.setItem(storageKey, JSON.stringify({ selected, settings, defaultsVersion: 2, uiVersion: 3 })) } catch (_) {}
+  }
+  const getProfileSettings = (id = selected) => {
+    const profile = profileFor(id)
+    const core = instances.get(profile.id)
+    const defaults = { aspectRatio: '9:16', megapixels: 0.4, durationSeconds: 5, fps: 24, steps: profile.steps, acceleration: 'sage' }
+    const value = { ...defaults, ...settings[profile.id] }
+    value.acceleration = defaults.acceleration
+    try {
+      core.calculateResolution(value)
+      core.normalizeDuration(value.durationSeconds)
+      core.normalizeFps(value.fps)
+      core.normalizeSteps(value.steps, 't2v')
+      return { ...value, steps: Number(value.steps), fps: Number(value.fps), durationSeconds: Number(value.durationSeconds), megapixels: Number(value.megapixels) }
+    } catch (_) { return defaults }
+  }
+  const pick = options => {
+    const bag = options && typeof options === 'object' ? { ...options.params, ...options } : {}
+    const profile = profileFor(bag.profile)
+    const acceleration = bag.acceleration || 'sage'
+    if (!['off', 'sage'].includes(acceleration)) throw new TypeError('Unknown H3 acceleration: ' + acceleration)
+    if (acceleration === 'off') return instances.get(profile.id)
+    const key = profile.id + ':' + acceleration
+    if (!instances.has(key)) instances.set(key, factory(profile, acceleration))
+    return instances.get(key)
+  }
+  const api = Object.freeze({
+    ...instances.get('beta5_int8'),
+    PROFILES: profiles,
+    getSelectedProfile: () => selected,
+    setSelectedProfile: id => { selected = profileFor(id).id; persist(); return selected },
+    getProfileSettings,
+    saveProfileSettings: (id, value) => {
+      const key = profileFor(id).id
+      settings[key] = { ...getProfileSettings(key), ...value }
+      settings[key] = getProfileSettings(key)
+      persist()
+      return { ...settings[key] }
+    },
+    supportsMode: (id, mode) => {
+      const core = instances.get(profileFor(id).id)
+      try { core.normalizeSteps(4, mode); return true } catch (_) { return false }
+    },
+    getWorkflowJson: options => pick(options).getWorkflowJson(options),
+    buildWorkflow: options => pick(options).buildWorkflow(options),
+    patchWorkflow: (workflow, options) => pick(options).patchWorkflow(workflow, options),
+    validateWorkflow: (workflow, options) => pick(options).validateWorkflow(workflow, options),
+  })
   if (typeof module === 'object' && module.exports) module.exports = api
   if (root && typeof root === 'object') root.NovaFlowAiSequenceMiniMaxH3Workflow = api
-})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+})(typeof globalThis !== 'undefined' ? globalThis : this, function (profile, acceleration) {
   'use strict'
 
   const MODEL_ID = 'MiniMax_h3'
@@ -10,7 +87,8 @@
   const MODE_SET = new Set(MODES)
   const OUTPUT_FPS = 24
   const FPS_OPTIONS = Object.freeze([16, 24])
-  const DEFAULT_STEPS = 4
+  const DEFAULT_STEPS = profile.steps
+  const SAGE_ATTENTION = acceleration === 'sage'
   const OUTPUT_STEPS = DEFAULT_STEPS
   const STEP_OPTIONS = Object.freeze([4, 20])
   const MIN_STEPS = 1
@@ -80,15 +158,15 @@
   })
 
   const MODELS = Object.freeze({
-    fl2va: 'Minimax_H3\\minimax_h3_fl2va_pruned_int8_convrot.safetensors',
-    ref2va: 'Minimax_H3\\minimax_h3_ref2va_pruned_int8_convrot.safetensors',
-    turboLora: 'minimax_h3\\minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors',
+    fl2va: profile.checkpoint,
+    ref2va: profile.checkpoint,
     clip: 'qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors',
     videoVae: 'minimax_h3_video_vae_fp16.safetensors',
     audioVae: 'minimax_h3_audio_vae_fp32.safetensors',
   })
 
   const CORE_NODE_TYPES = new Set([
+    'NovaFlowH3SageAttention',
     'UNETLoader',
     'CLIPLoader',
     'VAELoader',
@@ -312,7 +390,7 @@
     if (!Array.isArray(value)) throw new TypeError('MiniMax H3 loras must be an array')
 
     const expectedFamily = mode === 'r2v' ? 'ref2va' : 'fl2va'
-    const internalTurboIdentity = loraIdentity(MODELS.turboLora)
+    const internalTurboIdentity = loraIdentity('minimax_h3\\minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors')
     const seenNames = new Set()
     const normalized = []
     for (let index = 0; index < value.length; index += 1) {
@@ -344,7 +422,7 @@
         throw new TypeError('MiniMax H3 only supports standard user LoRAs; accelerator LoRAs are managed internally')
       }
       const modelFamily = String(descriptor.modelFamily || '').trim().toLowerCase()
-      if (modelFamily !== expectedFamily) {
+      if (modelFamily !== expectedFamily && modelFamily !== 'h3') {
         throw new TypeError(
           'MiniMax H3 ' + mode + ' mode requires a ' + expectedFamily + ' LoRA',
         )
@@ -605,15 +683,11 @@
       }, 'Save MiniMax H3 video'),
     }
 
-    if (steps === 4) {
-      workflow['15'] = node('LoraLoaderModelOnly', {
-        model: ['1', 0],
-        lora_name: MODELS.turboLora,
-        strength_model: 0.75,
-      }, 'MiniMax H3 Turbo 4-step LoRA')
-      workflow['9'].inputs.model = ['15', 0]
-    }
 
+    if (SAGE_ATTENTION) {
+      workflow['16'] = node('NovaFlowH3SageAttention', { model: ['1', 0] }, 'H3 SageAttention 加速')
+      workflow['9'].inputs.model = ['16', 0]
+    }
     return workflow
   }
 
@@ -819,14 +893,6 @@
     const [unetId] = oneByClass(workflow, 'UNETLoader')
     const guider = oneByClass(workflow, 'BasicGuider')[1]
     let upstreamId = unetId
-    if (steps === 4) {
-      const internalTurbo = entriesByClass(workflow, 'LoraLoaderModelOnly')
-        .find(([, value]) => loraIdentity(value.inputs.lora_name) === loraIdentity(MODELS.turboLora))
-      if (!internalTurbo) {
-        throw new TypeError('MiniMax H3 4-step workflow is missing its internal Turbo LoRA')
-      }
-      upstreamId = internalTurbo[0]
-    }
 
     for (const descriptor of loras) {
       const id = nextNodeId(workflow, 30)
@@ -837,7 +903,13 @@
       }, 'MiniMax H3 user LoRA')
       upstreamId = id
     }
-    guider.inputs.model = [upstreamId, 0]
+    if (SAGE_ATTENTION) {
+      const [attentionId, attention] = oneByClass(workflow, 'NovaFlowH3SageAttention')
+      attention.inputs.model = [upstreamId, 0]
+      guider.inputs.model = [attentionId, 0]
+    } else {
+      guider.inputs.model = [upstreamId, 0]
+    }
   }
 
   function patchWorkflow(workflowValue, options = {}) {
@@ -1004,6 +1076,7 @@
     }
 
     const expectedCounts = {
+      NovaFlowH3SageAttention: SAGE_ATTENTION ? 1 : 0,
       UNETLoader: 1,
       CLIPLoader: 1,
       VAELoader: 2,
@@ -1081,9 +1154,9 @@
       ? normalizeLoras(options.loras, mode, steps)
       : []
     const loraLoaders = entriesByClass(workflow, 'LoraLoaderModelOnly')
-    const expectedLoaderCount = expectedUserLoras.length + (steps === 4 ? 1 : 0)
+    const expectedLoaderCount = expectedUserLoras.length
     if (loraLoaders.length !== expectedLoaderCount) {
-      if (!hasDeclaredLoras && loraLoaders.length > (steps === 4 ? 1 : 0)) {
+      if (!hasDeclaredLoras && loraLoaders.length > 0) {
         throw new TypeError('MiniMax H3 workflow contains an undeclared user LoRA')
       }
       throw new TypeError(
@@ -1120,11 +1193,6 @@
     }
 
     let guiderModelId = unetId
-    if (steps === 4) {
-      const [turboId, turbo] = takeNextLoader(unetId, 'MiniMax H3 internal Turbo LoRA')
-      requireLoraInputs(turbo, MODELS.turboLora, 0.75, 'MiniMax H3 internal Turbo LoRA')
-      guiderModelId = turboId
-    }
     for (let index = 0; index < expectedUserLoras.length; index += 1) {
       const descriptor = expectedUserLoras[index]
       const [loraId, loraNode] = takeNextLoader(
@@ -1141,6 +1209,12 @@
     }
     if (unusedLoaders.size) {
       throw new TypeError('MiniMax H3 workflow contains a LoRA outside the declared model chain')
+    }
+    if (SAGE_ATTENTION) {
+      const [attentionId, attention] = oneByClass(workflow, 'NovaFlowH3SageAttention')
+      if (Object.keys(attention.inputs).length !== 1) throw new TypeError('Unexpected H3 attention settings')
+      requireLink(attention.inputs.model, guiderModelId, 0, 'MiniMax H3 attention model')
+      guiderModelId = attentionId
     }
     requireLink(guider.inputs.model, guiderModelId, 0, 'MiniMax H3 guider model')
 

@@ -195,6 +195,7 @@ assert.match(mainReverseHandler, /usesMiniMaxH3VisualV1 \? \{ userPrompt, userRe
 const buildRequest = vm.runInNewContext(
   `(${extractNamedFunction(serverSource, "buildGrokPromptOptimizeRequest")})`,
   {
+    h3PromptEnhance: require('../admin-server/h3-prompt-enhance'),
     isMiniMaxH3PromptEnhancePayload: (payload) => payload?.purpose === "minimax-h3-prompt-enhance",
     smartAiSupportsNegativePrompt: () => true,
     isSmartAiAnimationPayload: () => false,
@@ -424,19 +425,18 @@ def fake_failed_generate(prompt, **kwargs):
     return """integrated_multimodal_description: Incomplete protocol.\noverall_soundscape: N/A"""
 
 failed_assistant.generate = fake_failed_generate
-failed_fallback = failed_assistant.optimize_prompt({
-    "currentPrompt": "A subject moves",
-    "requirements": "Protocol: T2VA; duration 5 seconds",
-    "purpose": "minimax-h3-prompt-enhance",
-})
+try:
+    failed_assistant.optimize_prompt({
+        "currentPrompt": "A subject moves",
+        "requirements": "Protocol: T2VA; duration 5 seconds",
+        "purpose": "minimax-h3-prompt-enhance",
+    })
+    raise AssertionError("failed optimization must not return a fabricated success")
+except ValueError as error:
+    assert "原提示词未修改" in str(error)
 assert len(failed_calls) == 2
 assert failed_calls[0][1]["max_length"] == expected_initial_budgets["T2VA"]
 assert failed_calls[1][1]["max_length"] == expected_repair_budgets["T2VA"]
-assert failed_fallback["negativePrompt"] == ""
-assert "integrated_multimodal_description:" in failed_fallback["positivePrompt"]
-assert "[Shot 1]" in failed_fallback["positivePrompt"]
-assert "A subject moves" in failed_fallback["positivePrompt"]
-assert service["validate_minimax_h3_prompt_contract"](failed_fallback["positivePrompt"], "T2VA", 5) == failed_fallback["positivePrompt"]
 
 base_output = """integrated_multimodal_description: [Shot 1] A subject begins moving while Camera holds stable framing.\noverall_soundscape: Footsteps.\nnon_diegetic_music: N/A"""
 shotless_output = """integrated_multimodal_description: A subject begins moving while Camera holds stable framing.\noverall_soundscape: Footsteps.\nnon_diegetic_music: N/A"""

@@ -278,15 +278,16 @@ assert.ok(lastIndex < index.indexOf("novaflow-brand-runtime.js"), "provider modu
 assert.ok(index.indexOf("vendor/jsonata/jsonata.min.js") < index.indexOf("art-generate-credit-pricing.tool.js"), "JSONata must load before Art credit pricing");
 const cacheBusters = {
   "comfyui-workflow-credit-cost.js": "20260711-art-dropdown-2",
-  "art-generate-model.resource.js": "20260813-ideogram-instant-1",
+  "art-generate-model.resource.js": "20260912-qwen-rapid-1",
   "art-generate-ideogram.workflow.js": "20260813-ideogram-instant-1",
-  "art-generate-provider.workflow.js": "20260724-ui-local-txt2img-1",
-  "art-generate-mode.tool.js": "20260813-ideogram-instant-1",
+  "art-generate-provider.workflow.js": "20260911-gpt-image-25-1",
+  "art-generate-lora.js": "20260912-qwen-rapid-1",
+  "art-generate-mode.tool.js": "20260912-rapid-ui-clean-1",
   "runtime-fetch-proxy.js": "20260711-art-dropdown-2",
   "art-generate-credit-pricing.tool.js": "20260712-art-credit-1",
   "art-generate-reference-drop.tool.js": "20260720-art-reference-drop-1",
-  "spine-split-runtime.js": "20260723-left-accordion-1",
-  "novaflow-brand-runtime.js": "20260813-ideogram-instant-1",
+  "spine-split-runtime.js": "20260912-object-integration-1",
+  "novaflow-brand-runtime.js": "20260912-rapid-ui-clean-1",
   "novaflow-client-auth.js": "20260720-client-auth-logout-1",
 };
 for (const [scriptName, cacheBuster] of Object.entries(cacheBusters)) {

@@ -615,7 +615,10 @@
       ? protocol.references.references.map((reference) => `${reference.modelToken} = captured ${reference.kind} slot ${reference.slotKey}`).join('; ')
       : '(none)'
     const lines = [
-      'You are a MiniMax H3 video-prompt formatter.',
+      'You are a MiniMax H3 video-prompt optimizer and compiler. Improve the narrative itself, then preserve the required H3 format.',
+      'Replace vague motion adjectives with observable action, direction, amplitude, rhythm and a clear ending. Keep details concise and achievable within the selected duration; do not add unrelated events, camera moves, effects or appearance details.',
+      'Preserve explicit user constraints and reference roles. Stable framing and root position allow requested local body motion; complete stillness remains stillness. For requested loops, describe a smooth return to the initial pose and movement phase without overriding explicit endpoint anchors.',
+      'Do not merely repeat the source under field names or append generic quality words. Tighten already detailed prompts without forcing extra motion. Keep a constant green screen unchanged when requested; no visual effects does not mean silence.',
       `Protocol: ${protocol.protocolName}; duration: ${protocol.durationSeconds.toFixed(2)} seconds.`,
       `Output fields in this exact order: ${protocol.fieldOrder.join(' -> ')}.`,
       'Separate the alignment line and core fields with blank lines. Use short paragraphs for the opening, action progression, and ending; describe each visual fact once and omit internal validation commentary.',
@@ -646,7 +649,7 @@
       lines.push('Fact-faithful analysis is enabled. Preserve sensitive facts explicitly present in the source prompt or supported by the references accurately and neutrally, without euphemistic omission, invented clothing, or invented activity.')
       lines.push('Do not guess or require an adult classification. Fail closed only when explicit minor or underage evidence coexists with sensitive content.')
     }
-    lines.push('Return only the formatted protocol text. Do not use Markdown fences or add commentary.')
+    lines.push('Return only the optimized prompt in the required protocol format. Do not use Markdown fences or add commentary.')
     lines.push('Source prompt:')
     lines.push(compiledPrompt)
     return lines.join('\n')

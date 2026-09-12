@@ -1,0 +1,887 @@
+{
+  "CheckpointLoaderSimple": {
+    "input": {
+      "required": {
+        "ckpt_name": [
+          [
+            "Qwen-Rapid-AIO-NSFW-v20.safetensors"
+          ],
+          {
+            "tooltip": "The name of the checkpoint (model) to load."
+          }
+        ]
+      }
+    }
+  },
+  "LoadImage": {
+    "input": {
+      "required": {
+        "image": [
+          [
+            "scene.png",
+            "reference.png",
+            "mask.png"
+          ],
+          {
+            "image_upload": true
+          }
+        ]
+      }
+    }
+  },
+  "ImagePadForOutpaint": {
+    "input": {
+      "required": {
+        "image": [
+          "IMAGE"
+        ],
+        "left": [
+          "INT",
+          {
+            "default": 0,
+            "min": 0,
+            "max": 16384,
+            "step": 8
+          }
+        ],
+        "top": [
+          "INT",
+          {
+            "default": 0,
+            "min": 0,
+            "max": 16384,
+            "step": 8
+          }
+        ],
+        "right": [
+          "INT",
+          {
+            "default": 0,
+            "min": 0,
+            "max": 16384,
+            "step": 8
+          }
+        ],
+        "bottom": [
+          "INT",
+          {
+            "default": 0,
+            "min": 0,
+            "max": 16384,
+            "step": 8
+          }
+        ],
+        "feathering": [
+          "INT",
+          {
+            "default": 40,
+            "min": 0,
+            "max": 16384,
+            "step": 1,
+            "advanced": true
+          }
+        ]
+      }
+    }
+  },
+  "GetImageSizeAndCount": {
+    "input": {
+      "required": {
+        "image": [
+          "IMAGE"
+        ]
+      }
+    }
+  },
+  "Image Blank": {
+    "input": {
+      "required": {
+        "width": [
+          "INT",
+          {
+            "default": 512,
+            "min": 8,
+            "max": 4096,
+            "step": 1
+          }
+        ],
+        "height": [
+          "INT",
+          {
+            "default": 512,
+            "min": 8,
+            "max": 4096,
+            "step": 1
+          }
+        ],
+        "red": [
+          "INT",
+          {
+            "default": 255,
+            "min": 0,
+            "max": 255,
+            "step": 1
+          }
+        ],
+        "green": [
+          "INT",
+          {
+            "default": 255,
+            "min": 0,
+            "max": 255,
+            "step": 1
+          }
+        ],
+        "blue": [
+          "INT",
+          {
+            "default": 255,
+            "min": 0,
+            "max": 255,
+            "step": 1
+          }
+        ]
+      }
+    }
+  },
+  "JoinImageWithAlpha": {
+    "input": {
+      "required": {
+        "image": [
+          "IMAGE",
+          {}
+        ],
+        "alpha": [
+          "MASK",
+          {}
+        ]
+      }
+    }
+  },
+  "ImageCompositeMasked": {
+    "input": {
+      "required": {
+        "destination": [
+          "IMAGE",
+          {}
+        ],
+        "source": [
+          "IMAGE",
+          {}
+        ],
+        "x": [
+          "INT",
+          {
+            "default": 0,
+            "min": 0,
+            "max": 16384,
+            "step": 1
+          }
+        ],
+        "y": [
+          "INT",
+          {
+            "default": 0,
+            "min": 0,
+            "max": 16384,
+            "step": 1
+          }
+        ],
+        "resize_source": [
+          "BOOLEAN",
+          {
+            "default": false
+          }
+        ]
+      },
+      "optional": {
+        "mask": [
+          "MASK",
+          {}
+        ]
+      }
+    }
+  },
+  "FluxKontextImageScale": {
+    "input": {
+      "required": {
+        "image": [
+          "IMAGE",
+          {}
+        ]
+      }
+    }
+  },
+  "VAEEncode": {
+    "input": {
+      "required": {
+        "pixels": [
+          "IMAGE"
+        ],
+        "vae": [
+          "VAE"
+        ]
+      }
+    }
+  },
+  "TextEncodeQwenImageEditPlus": {
+    "input": {
+      "required": {
+        "clip": [
+          "CLIP",
+          {}
+        ],
+        "prompt": [
+          "STRING",
+          {
+            "multiline": true,
+            "dynamicPrompts": true
+          }
+        ]
+      },
+      "optional": {
+        "vae": [
+          "VAE",
+          {}
+        ],
+        "image1": [
+          "IMAGE",
+          {}
+        ],
+        "image2": [
+          "IMAGE",
+          {}
+        ],
+        "image3": [
+          "IMAGE",
+          {}
+        ]
+      }
+    }
+  },
+  "TextEncodeQwenImageEdit": {
+    "input": {
+      "required": {
+        "clip": [
+          "CLIP",
+          {}
+        ],
+        "prompt": [
+          "STRING",
+          {
+            "multiline": true,
+            "dynamicPrompts": true
+          }
+        ]
+      },
+      "optional": {
+        "vae": [
+          "VAE",
+          {}
+        ],
+        "image": [
+          "IMAGE",
+          {}
+        ]
+      }
+    }
+  },
+  "ConditioningZeroOut": {
+    "input": {
+      "required": {
+        "conditioning": [
+          "CONDITIONING"
+        ]
+      }
+    }
+  },
+  "ReferenceLatent": {
+    "input": {
+      "required": {
+        "conditioning": [
+          "CONDITIONING",
+          {}
+        ]
+      },
+      "optional": {
+        "latent": [
+          "LATENT",
+          {}
+        ]
+      }
+    }
+  },
+  "KSampler": {
+    "input": {
+      "required": {
+        "model": [
+          "MODEL",
+          {
+            "tooltip": "The model used for denoising the input latent."
+          }
+        ],
+        "seed": [
+          "INT",
+          {
+            "default": 0,
+            "min": 0,
+            "max": 18446744073709552000,
+            "control_after_generate": true,
+            "tooltip": "The random seed used for creating the noise."
+          }
+        ],
+        "steps": [
+          "INT",
+          {
+            "default": 20,
+            "min": 1,
+            "max": 10000,
+            "tooltip": "The number of steps used in the denoising process."
+          }
+        ],
+        "cfg": [
+          "FLOAT",
+          {
+            "default": 8,
+            "min": 0,
+            "max": 100,
+            "step": 0.1,
+            "round": 0.01,
+            "tooltip": "The Classifier-Free Guidance scale balances creativity and adherence to the prompt. Higher values result in images more closely matching the prompt however too high values will negatively impact quality."
+          }
+        ],
+        "sampler_name": [
+          [
+            "euler",
+            "euler_cfg_pp",
+            "euler_ancestral",
+            "euler_ancestral_cfg_pp",
+            "heun",
+            "heunpp2",
+            "exp_heun_2_x0",
+            "exp_heun_2_x0_sde",
+            "dpm_2",
+            "dpm_2_ancestral",
+            "lms",
+            "dpm_fast",
+            "dpm_adaptive",
+            "dpmpp_2s_ancestral",
+            "dpmpp_2s_ancestral_cfg_pp",
+            "dpmpp_sde",
+            "dpmpp_sde_gpu",
+            "dpmpp_2m",
+            "dpmpp_2m_cfg_pp",
+            "dpmpp_2m_sde",
+            "dpmpp_2m_sde_gpu",
+            "dpmpp_2m_sde_heun",
+            "dpmpp_2m_sde_heun_gpu",
+            "dpmpp_3m_sde",
+            "dpmpp_3m_sde_gpu",
+            "ddpm",
+            "lcm",
+            "ipndm",
+            "ipndm_v",
+            "deis",
+            "res_multistep",
+            "res_multistep_cfg_pp",
+            "res_multistep_ancestral",
+            "res_multistep_ancestral_cfg_pp",
+            "gradient_estimation",
+            "gradient_estimation_cfg_pp",
+            "er_sde",
+            "seeds_2",
+            "seeds_3",
+            "sa_solver",
+            "sa_solver_pece",
+            "ddim",
+            "uni_pc",
+            "uni_pc_bh2"
+          ],
+          {
+            "tooltip": "The algorithm used when sampling, this can affect the quality, speed, and style of the generated output."
+          }
+        ],
+        "scheduler": [
+          [
+            "simple",
+            "sgm_uniform",
+            "karras",
+            "exponential",
+            "ddim_uniform",
+            "beta",
+            "normal",
+            "linear_quadratic",
+            "kl_optimal"
+          ],
+          {
+            "tooltip": "The scheduler controls how noise is gradually removed to form the image."
+          }
+        ],
+        "positive": [
+          "CONDITIONING",
+          {
+            "tooltip": "The conditioning describing the attributes you want to include in the image."
+          }
+        ],
+        "negative": [
+          "CONDITIONING",
+          {
+            "tooltip": "The conditioning describing the attributes you want to exclude from the image."
+          }
+        ],
+        "latent_image": [
+          "LATENT",
+          {
+            "tooltip": "The latent image to denoise."
+          }
+        ],
+        "denoise": [
+          "FLOAT",
+          {
+            "default": 1,
+            "min": 0,
+            "max": 1,
+            "step": 0.01,
+            "tooltip": "The amount of denoising applied, lower values will maintain the structure of the initial image allowing for image to image sampling."
+          }
+        ]
+      }
+    }
+  },
+  "VAEDecode": {
+    "input": {
+      "required": {
+        "samples": [
+          "LATENT",
+          {
+            "tooltip": "The latent to be decoded."
+          }
+        ],
+        "vae": [
+          "VAE",
+          {
+            "tooltip": "The VAE model used for decoding the latent."
+          }
+        ]
+      }
+    }
+  },
+  "SaveImage": {
+    "input": {
+      "required": {
+        "images": [
+          "IMAGE",
+          {
+            "tooltip": "The images to save."
+          }
+        ],
+        "filename_prefix": [
+          "STRING",
+          {
+            "default": "ComfyUI",
+            "tooltip": "The prefix for the file to save. This may include formatting information such as %date:yyyy-MM-dd% or %Empty Latent Image.width% to include values from nodes."
+          }
+        ]
+      },
+      "hidden": {
+        "prompt": "PROMPT",
+        "extra_pnginfo": "EXTRA_PNGINFO"
+      }
+    }
+  },
+  "LoraLoaderModelOnly": {
+    "input": {
+      "required": {
+        "model": [
+          "MODEL"
+        ],
+        "lora_name": [
+          [
+            "qwen-image-edit-2511-multiple-angles-lora.safetensors",
+            "qwen/HQL0.2.safetensors"
+          ]
+        ],
+        "strength_model": [
+          "FLOAT",
+          {
+            "default": 1,
+            "min": -100,
+            "max": 100,
+            "step": 0.01
+          }
+        ]
+      }
+    }
+  },
+  "QwenMultiangleCameraNode": {
+    "input": {
+      "required": {
+        "horizontal_angle": [
+          "INT",
+          {
+            "default": 0,
+            "min": 0,
+            "max": 360,
+            "step": 1,
+            "display": "slider"
+          }
+        ],
+        "vertical_angle": [
+          "INT",
+          {
+            "default": 0,
+            "min": -30,
+            "max": 60,
+            "step": 1,
+            "display": "slider"
+          }
+        ],
+        "zoom": [
+          "FLOAT",
+          {
+            "default": 5,
+            "min": 0,
+            "max": 10,
+            "step": 0.1,
+            "display": "slider"
+          }
+        ],
+        "default_prompts": [
+          "BOOLEAN",
+          {
+            "default": true,
+            "display": "checkbox"
+          }
+        ],
+        "camera_view": [
+          "BOOLEAN",
+          {
+            "default": false,
+            "display": "checkbox"
+          }
+        ]
+      },
+      "optional": {
+        "image": [
+          "IMAGE"
+        ]
+      },
+      "hidden": {
+        "unique_id": "UNIQUE_ID"
+      }
+    }
+  },
+  "ConditioningAverage": {
+    "input": {
+      "required": {
+        "conditioning_to": [
+          "CONDITIONING"
+        ],
+        "conditioning_from": [
+          "CONDITIONING"
+        ],
+        "conditioning_to_strength": [
+          "FLOAT",
+          {
+            "default": 1,
+            "min": 0,
+            "max": 1,
+            "step": 0.01
+          }
+        ]
+      }
+    }
+  },
+  "ConditioningSetTimestepRange": {
+    "input": {
+      "required": {
+        "conditioning": [
+          "CONDITIONING"
+        ],
+        "start": [
+          "FLOAT",
+          {
+            "default": 0,
+            "min": 0,
+            "max": 1,
+            "step": 0.001
+          }
+        ],
+        "end": [
+          "FLOAT",
+          {
+            "default": 1,
+            "min": 0,
+            "max": 1,
+            "step": 0.001
+          }
+        ]
+      }
+    }
+  },
+  "ConditioningCombine": {
+    "input": {
+      "required": {
+        "conditioning_1": [
+          "CONDITIONING"
+        ],
+        "conditioning_2": [
+          "CONDITIONING"
+        ]
+      }
+    }
+  },
+  "ControlNetLoader": {
+    "input": {
+      "required": {
+        "control_net_name": [
+          [
+            "Qwen-Image-ControlNet-Union.safetensors"
+          ]
+        ]
+      }
+    }
+  },
+  "SetUnionControlNetType": {
+    "input": {
+      "required": {
+        "control_net": [
+          "CONTROL_NET",
+          {}
+        ],
+        "type": [
+          "COMBO",
+          {
+            "multiselect": false,
+            "options": [
+              "auto",
+              "openpose",
+              "depth",
+              "hed/pidi/scribble/ted",
+              "canny/lineart/anime_lineart/mlsd",
+              "normal",
+              "segment",
+              "tile",
+              "repaint"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "ControlNetApplyAdvanced": {
+    "input": {
+      "required": {
+        "positive": [
+          "CONDITIONING"
+        ],
+        "negative": [
+          "CONDITIONING"
+        ],
+        "control_net": [
+          "CONTROL_NET"
+        ],
+        "image": [
+          "IMAGE"
+        ],
+        "strength": [
+          "FLOAT",
+          {
+            "default": 1,
+            "min": 0,
+            "max": 10,
+            "step": 0.01
+          }
+        ],
+        "start_percent": [
+          "FLOAT",
+          {
+            "default": 0,
+            "min": 0,
+            "max": 1,
+            "step": 0.001
+          }
+        ],
+        "end_percent": [
+          "FLOAT",
+          {
+            "default": 1,
+            "min": 0,
+            "max": 1,
+            "step": 0.001
+          }
+        ]
+      },
+      "optional": {
+        "vae": [
+          "VAE"
+        ]
+      }
+    }
+  },
+  "EmptyQwenImageLayeredLatentImage": {
+    "input": {
+      "required": {
+        "width": [
+          "INT",
+          {
+            "default": 640,
+            "min": 16,
+            "max": 16384,
+            "step": 16
+          }
+        ],
+        "height": [
+          "INT",
+          {
+            "default": 640,
+            "min": 16,
+            "max": 16384,
+            "step": 16
+          }
+        ],
+        "layers": [
+          "INT",
+          {
+            "default": 3,
+            "min": 0,
+            "max": 16384,
+            "step": 1
+          }
+        ],
+        "batch_size": [
+          "INT",
+          {
+            "default": 1,
+            "min": 1,
+            "max": 4096
+          }
+        ]
+      }
+    }
+  },
+  "EmptySD3LatentImage": {
+    "input": {
+      "required": {
+        "width": [
+          "INT",
+          {
+            "default": 1024,
+            "min": 16,
+            "max": 16384,
+            "step": 16
+          }
+        ],
+        "height": [
+          "INT",
+          {
+            "default": 1024,
+            "min": 16,
+            "max": 16384,
+            "step": 16
+          }
+        ],
+        "batch_size": [
+          "INT",
+          {
+            "default": 1,
+            "min": 1,
+            "max": 4096
+          }
+        ]
+      }
+    }
+  },
+  "ImageScale": {
+    "input": {
+      "required": {
+        "image": [
+          "IMAGE"
+        ],
+        "upscale_method": [
+          [
+            "nearest-exact",
+            "bilinear",
+            "area",
+            "bicubic",
+            "lanczos"
+          ]
+        ],
+        "width": [
+          "INT",
+          {
+            "default": 512,
+            "min": 0,
+            "max": 16384,
+            "step": 1
+          }
+        ],
+        "height": [
+          "INT",
+          {
+            "default": 512,
+            "min": 0,
+            "max": 16384,
+            "step": 1
+          }
+        ],
+        "crop": [
+          [
+            "disabled",
+            "center"
+          ]
+        ]
+      }
+    }
+  },
+  "InpaintModelConditioning": {
+    "input": {
+      "required": {
+        "positive": [
+          "CONDITIONING"
+        ],
+        "negative": [
+          "CONDITIONING"
+        ],
+        "vae": [
+          "VAE"
+        ],
+        "pixels": [
+          "IMAGE"
+        ],
+        "mask": [
+          "MASK"
+        ],
+        "noise_mask": [
+          "BOOLEAN",
+          {
+            "default": true,
+            "tooltip": "Add a noise mask to the latent so sampling will only happen within the mask. Might improve results or completely break things depending on the model."
+          }
+        ]
+      }
+    }
+  },
+  "ImageToMask": {
+    "input": {
+      "required": {
+        "image": [
+          "IMAGE",
+          {}
+        ],
+        "channel": [
+          "COMBO",
+          {
+            "multiselect": false,
+            "options": [
+              "red",
+              "green",
+              "blue",
+              "alpha"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

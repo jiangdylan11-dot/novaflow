@@ -1,0 +1,13 @@
+{
+  "profile": "lightx_768",
+  "repository": "lightx2v/Minimax-h3-Turbo",
+  "revision": "3ec17a324ced54151364f24f8b5fb6bf7e26414f",
+  "minimumComfyVersion": "0.31.0",
+  "requiredNodes": ["MiniMaxH3SigmaShift", "MiniMaxH3ImageToVideo", "MiniMaxH3ReferenceToVideo", "LoraLoaderModelOnly", "SamplerCustomAdvanced", "VAEDecodeAudio", "CreateVideo", "SaveVideo"],
+  "files": [
+    {"name": "minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors", "bytes": 1956192992, "sha256": "449d80f301ac571622c72e28b8fd72a4b3681b7a8df8a92f17c8f6ec43f56558"},
+    {"name": "minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors", "bytes": 1956193000, "sha256": "08cfe946033af7d27719b964b6e0a0e50c32138daabbd6ce4137e23df6bf9980"},
+    {"name": "minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors", "bytes": 1956193000, "sha256": "5b9ab5ade15d0775676d01a907268a69a1468dc6033b3b0d3ded5502f3ebb84c"},
+    {"name": "minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors", "bytes": 1956193000, "sha256": "6a56f41ab4229c9dd845b9501bbd475ee57e112d846cf2e819d534a1ae928c5a"}
+  ]
+}

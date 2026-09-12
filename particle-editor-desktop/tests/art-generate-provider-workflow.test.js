@@ -170,13 +170,13 @@ test("local presets map the ordinary and NSFW text/edit routes to the measured s
       name: "ordinary edit faithful",
       mode: "img2img",
       state: { nsfw: false, localEditStrength: "faithful" },
-      expected: { steps: 4, cfg: 1, samplerName: "euler", scheduler: "simple", denoise: 1, lightning: true },
+      expected: { steps: 4, cfg: 1, samplerName: "euler_ancestral", scheduler: "beta", denoise: 1, lightning: false },
     },
     {
       name: "ordinary edit enhanced",
       mode: "img2img",
       state: { nsfw: false, localEditStrength: "enhanced" },
-      expected: { steps: 12, cfg: 4, samplerName: "euler", scheduler: "simple", denoise: 1, lightning: false },
+      expected: { steps: 6, cfg: 1, samplerName: "euler_ancestral", scheduler: "beta", denoise: 1, lightning: false },
     },
     {
       name: "NSFW text fast",
@@ -206,7 +206,7 @@ test("local presets map the ordinary and NSFW text/edit routes to the measured s
 
   for (const entry of cases) {
     assert.deepEqual(models.localPresetFor(entry.state, entry.mode), entry.expected, `${entry.name} preset should remain stable`);
-    const workflow = localWorkflowFixture({ includeLightning: !entry.state.nsfw });
+    const workflow = localWorkflowFixture({ includeLightning: entry.mode !== "img2img" && !entry.state.nsfw });
     const applied = models.applyLocalWorkflowPreset(workflow, entry.state, entry.mode);
     assert.equal(applied, workflow, `${entry.name} should patch the supplied workflow in place`);
     assert.equal(workflow.sampler.inputs.steps, entry.expected.steps, `${entry.name} should write direct KSampler steps`);
@@ -216,7 +216,7 @@ test("local presets map the ordinary and NSFW text/edit routes to the measured s
     assert.equal(workflow.sampler.inputs.denoise, entry.expected.denoise, `${entry.name} should write denoise`);
     assert.equal(Array.isArray(workflow.sampler.inputs.steps), false, `${entry.name} steps must not retain a switch reference`);
     assert.equal(Array.isArray(workflow.sampler.inputs.cfg), false, `${entry.name} CFG must not retain a switch reference`);
-    if (!entry.state.nsfw) {
+    if (entry.mode !== "img2img" && !entry.state.nsfw) {
       assert.equal(workflow.lightning.inputs.value, entry.expected.lightning, `${entry.name} should synchronize the Lightning switch`);
     }
   }
@@ -405,7 +405,7 @@ test("Local UI provider fails closed when the dedicated workflow module is unava
   }
 });
 
-test("GPT Image 2 keeps the shared default at three and accepts an explicit maximum of sixteen references", async () => {
+test("GPT Image 2.5 routes text to Flare and edits to Sunburst while preserving reference limits", async () => {
   const workflow = await loadWorkflow();
   assert.equal(typeof globalThis.NovaFlowArtGenerateProviderWorkflow?.buildWorkflow, "function");
 
@@ -420,11 +420,11 @@ test("GPT Image 2 keeps the shared default at three and accepts an explicit maxi
   });
   const gptTextNode = providerNode(gptText);
   assert.equal(gptText.providerNodeType, "OpenAIGPTImageNodeV2");
-  assert.equal(gptText.modelKey, "gpt-image-2");
+  assert.equal(gptText.modelKey, "gpt-image-2.5-flare");
   assert.equal(gptText.taskType, "local_workflow_image");
   assert.equal(gptTextNode.class_type, "OpenAIGPTImageNodeV2");
   assert.equal(gptTextNode.inputs.n, 1);
-  assert.equal(gptTextNode.inputs.model, "gpt-image-2");
+  assert.equal(gptTextNode.inputs.model, "gpt-image-2.5-flare");
   assert.equal(gptTextNode.inputs["model.size"], "Custom");
   assert.equal(gptTextNode.inputs["model.quality"], "medium");
   assert.equal(gptTextNode.inputs["model.custom_width"], 1280);
@@ -443,6 +443,8 @@ test("GPT Image 2 keeps the shared default at three and accepts an explicit maxi
     settings: { quality: "low", size: "1024x1024", customWidth: 1024, customHeight: 1024 },
   });
   const gptEditNode = providerNode(gptEdit);
+  assert.equal(gptEdit.modelKey, "gpt-image-2.5-sunburst");
+  assert.equal(gptEditNode.inputs.model, "gpt-image-2.5-sunburst");
   assert.equal(gptEdit.providerNodeType, "OpenAIGPTImageNodeV2");
   assert.deepEqual(
     Object.keys(gptEditNode.inputs).filter((key) => key.startsWith("model.images.")),

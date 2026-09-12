@@ -1,4 +1,5 @@
 "use strict";
+import * as h3PromptEnhance from './h3-prompt-enhance.mjs';
 
 const MINIMAX_H3_I2V_REVERSE_PURPOSE = "minimax-h3-i2v-reverse";
 const MINIMAX_H3_FL2V_REVERSE_PURPOSE = "minimax-h3-fl2v-reverse";
@@ -1036,6 +1037,14 @@ function normalizeMiniMaxH3PromptOutput(text, options) {
     }
   }
   prompt = prompt.replace(new RegExp(`\\n+[ \\t]*(?=(?:${expectedFields.join("|")})\\s*:)`, "g"), "\n\n");
+  if (options.minimaxH3Enhance === true) {
+    try {
+      h3PromptEnhance.validate(prompt, options.currentPrompt,
+        miniMaxH3PromptEnhanceUserRequirement(options.requirements, options.currentPrompt));
+    } catch (error) {
+      throw miniMaxH3ContractError("h3_contract_enhancement_not_applied", error.message);
+    }
+  }
   return options.minimaxH3Reverse === true
     ? miniMaxH3ValidateCompiledPromptAgainstIr(prompt, options.minimaxH3TrustedVisualIr, options)
     : prompt;
@@ -1919,6 +1928,9 @@ function buildMiniMaxH3RepairBody(body, errorCode = "h3_contract_invalid") {
   user.content.push(smartAiInputText([
     "DIRECTED H3 CONTRACT REPAIR (one final attempt).",
     `Failed gate: ${String(errorCode || "h3_contract_invalid").slice(0, 80)}.`,
+    ...(errorCode === "h3_contract_enhancement_not_applied" ? [
+      "The narrative was only a copy, generic padding, or an incomplete loop. Rewrite the actual motion into observable, feasible progression; for a requested loop connect the ending to the initial pose and movement phase. Preserve all hard constraints. Do not fix this by adding only headings or audio fields."
+    ] : []),
     "Rebuild from the original images and requirements. Do not repeat or comment on the prior answer.",
     "Every captured reference label listed in Available resource labels must occur in the appropriate final section. Do not omit supplied references or leave definitions or retention_analysis empty.",
     "Return only the exact mode-specific H3 structure: exact ordered fields; independent keyframe alignment when required; [Shot 1] timeline; concrete action progression; declared camera behavior; separately usable diegetic soundscape and non-diegetic music.",
@@ -3201,7 +3213,7 @@ async function callGrokResponseWithVisualRetry(body, inputMeta, resultOptions, e
           }
         }, degradedData);
       }
-      if (h3Enabled && error?.minimaxH3ContractInvalid === true) {
+      if (h3Enabled && resultOptions?.minimaxH3Enhance !== true && error?.minimaxH3ContractInvalid === true) {
         const fallbackPrompt = buildMiniMaxH3PromptEnhanceDeterministicFallback(resultOptions);
         if (fallbackPrompt) {
           try {
@@ -7740,7 +7752,7 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
         {
           role: "system",
           content: [smartAiInputText(
-            "You are NovaFlow's dedicated MiniMax H3 prompt compiler. Follow the selected H3 mode, field, timeline, action, camera, and audiovisual contracts and return only the final structured prompt."
+            "You are NovaFlow's dedicated MiniMax H3 prompt compiler. Follow the selected H3 mode, field, timeline, action, camera, and audiovisual contracts and return only the final structured prompt.\n" + h3PromptEnhance.instruction
           )]
         },
         { role: "user", content: [smartAiInputText(userText)] }
@@ -7772,6 +7784,7 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
       minimaxH3Prompt: true,
       minimaxH3Mode: mode,
       visualRetryAllowed: true,
+      minimaxH3Enhance: true,
       currentPrompt: prompt,
       requirements,
       durationSeconds,

@@ -100,6 +100,47 @@ function fakeTransformerTensors() {
   };
 }
 
+function broadH3Tensors(format = 'updown', refiner = false) {
+  const values = combineTensors(...Object.keys(H3_DIMENSIONS).map(target => h3Tensors({ target, block: 1 })))
+  if (format === 'updown') return values;
+  return Object.fromEntries(Object.entries(values).filter(([name]) => !name.endsWith('.alpha')).map(([name, value]) => [
+    name.replace(/^lora_unet_blocks_(\d+)_(attn|mlp)_(out_proj|qkv_proj|fc1|fc2)\.lora_(down|up)\.weight$/,
+      (_, block, group, projection, side) => `diffusion_model.${refiner ? 'token_refiner.' : ''}blocks.${block}.${group}.${projection}.lora_${side === 'down' ? 'A' : 'B'}.weight`), value,
+  ]));
+}
+
+test('recognizes community A/B and up/down H3 adapters without trainer-specific metadata', async t => {
+  const fixture = createFixture(t);
+  for (const format of ['ab', 'updown']) {
+    const name = `minimax_h3/community-${format}.safetensors`;
+    const tensors = format === 'ab' ? combineTensors(broadH3Tensors('ab'), broadH3Tensors('ab', true)) : broadH3Tensors();
+    writeSafetensors(path.join(fixture.lorasPath, ...name.split('/')), { ss_base_model_version: format === 'ab' ? 'minimax_h3' : 'community-export' }, tensors);
+    fixture.state.runtimeNames.push(name);
+  }
+  const api = fixture.makeCatalog();
+  const entries = await api.catalog({ mode: 't2v', steps: 4 });
+  assert.equal(entries.length, 2);
+  assert.ok(entries.every(e => e.modelFamily === 'h3'));
+  assert.equal((await api.catalog({ mode: 'r2v', steps: 4 })).length, 2);
+  for (const entry of entries) assert.equal((await api.validate({ mode: 't2v', steps: 4, name: entry.name, fingerprint: entry.fingerprint, strength: 1 })).ok, true);
+});
+
+test('structural fallback rejects wrong shapes and out-of-range main or refiner blocks', async t => {
+  const fixture = createFixture(t);
+  for (const fault of ['shape', 'block', 'refiner', 'unpaired']) {
+    let tensors = broadH3Tensors('ab');
+    const firstKey = Object.keys(tensors)[0];
+    if (fault === 'shape') tensors[firstKey].shape[1] -= 1;
+    if (fault === 'unpaired') delete tensors[firstKey];
+    if (fault === 'block') tensors = Object.fromEntries(Object.entries(tensors).map(([k, v]) => [k.replace('blocks.1.', 'blocks.50.'), v]));
+    if (fault === 'refiner') tensors = combineTensors(tensors, Object.fromEntries(Object.entries(broadH3Tensors('ab', true)).map(([k, v]) => [k.replace('blocks.1.', 'blocks.2.'), v])));
+    const name = `minimax_h3/${fault}.safetensors`;
+    writeSafetensors(path.join(fixture.lorasPath, ...name.split('/')), {}, tensors);
+    fixture.state.runtimeNames.push(name);
+  }
+  assert.deepEqual(await fixture.makeCatalog().catalog({ mode: 't2v', steps: 4 }), []);
+});
+
 function h3Metadata(base = "fl2va", extra = {}) {
   return {
     ss_h3_lora_base: base,

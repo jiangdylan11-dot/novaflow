@@ -353,30 +353,35 @@ test('workflow owns the edit and completion subject-join policy', async () => {
     ringWidth: 4,
     guideAlphaThreshold: 128,
     falloffExponent: 1,
+    sourceEdgeFeather: 0,
     restoreAlpha: true,
   })
   assert.deepEqual(api.resolveSubjectJoinPolicy('completion', 128), {
     ringWidth: 16,
     guideAlphaThreshold: 128,
     falloffExponent: 0.5,
+    sourceEdgeFeather: 8,
     restoreAlpha: true,
   })
   assert.deepEqual(api.resolveSubjectJoinPolicy('completion', 512), {
     ringWidth: 32,
     guideAlphaThreshold: 128,
     falloffExponent: 0.5,
+    sourceEdgeFeather: 16,
     restoreAlpha: true,
   })
   assert.deepEqual(api.resolveSubjectJoinPolicy('completion', 392), {
     ringWidth: 25,
     guideAlphaThreshold: 128,
     falloffExponent: 0.5,
+    sourceEdgeFeather: 12,
     restoreAlpha: true,
   })
   assert.deepEqual(api.resolveSubjectJoinPolicy('completion', 4096), {
     ringWidth: 32,
     guideAlphaThreshold: 128,
     falloffExponent: 0.5,
+    sourceEdgeFeather: 24,
     restoreAlpha: true,
   })
   assert.throws(() => api.resolveSubjectJoinPolicy('completion', 0), /shortEdge/i)

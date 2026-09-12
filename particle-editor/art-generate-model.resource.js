@@ -144,7 +144,7 @@
   function localPresetFor(state, mode) {
     const source = state && typeof state === 'object' ? state : {}
     const modeKey = normalizeMode(mode || source.mode)
-    const familyKey = source.nsfw ? 'rapid' : 'standard'
+    const familyKey = modeKey === 'img2img' || source.nsfw ? 'rapid' : 'standard'
     const selection = modeKey === 'img2img'
       ? normalizeLocalEditStrength(source.localEditStrength)
       : normalizeLocalTextQuality(source.localTextQuality)
@@ -172,8 +172,9 @@
     const samplers = nodes.filter((node) => String(node?.class_type || '') === 'KSampler' && node?.inputs && typeof node.inputs === 'object')
     if (!samplers.length) throw new Error('\u672c\u5730\u751f\u6210\u5de5\u4f5c\u6d41\u7f3a\u5c11 KSampler \u8282\u70b9')
 
-    const lightningToggles = source.nsfw ? [] : nodes.filter(isLightningToggle)
-    if (!source.nsfw && !lightningToggles.length) {
+    const rapidFamily = normalizeMode(mode || source.mode) === 'img2img' || source.nsfw
+    const lightningToggles = rapidFamily ? [] : nodes.filter(isLightningToggle)
+    if (!rapidFamily && !lightningToggles.length) {
       throw new Error('\u672c\u5730\u751f\u6210\u5de5\u4f5c\u6d41\u7f3a\u5c11 Enable 4 Step(s) LoRA \u5f00\u5173')
     }
 

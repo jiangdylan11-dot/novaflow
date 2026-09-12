@@ -5,8 +5,8 @@
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   'use strict'
 
-  const VERSION = '20260801-aifx-local-workflow-2'
-  const PIPELINE = 'qwen-image-edit-2511-spritesheet-conditioned-v1'
+  const VERSION = '20260912-aifx-rapid-1'
+  const PIPELINE = 'qwen-rapid-aio-spritesheet-conditioned-v2'
   const DEFAULT_CONTROL_TYPE = 'hed/pidi/scribble/ted'
   const DEFAULT_CONTROL_STRENGTH = 0.62
   const DEFAULT_CONTROL_END_PERCENT = 0.72
@@ -20,10 +20,7 @@
     default: 'Material silhouette evolution: regenerate a changing outer shape around the motion anchors instead of tracing the template pixels.',
   })
   const REQUIRED_NODES = Object.freeze([
-    'UNETLoader',
-    'LoraLoaderModelOnly',
-    'CLIPLoader',
-    'VAELoader',
+    'CheckpointLoaderSimple',
     'LoadImage',
     'TextEncodeQwenImageEditPlus',
     'TextEncodeQwenImageEdit',
@@ -369,34 +366,11 @@
       })
     }
 
-    const unet = selectModel(
-      comboOptions(info.UNETLoader, 'unet_name'),
-      (name) => name.includes('qwen') && name.includes('image') && name.includes('edit') && name.includes('2511'),
-      (name) => (name.includes('fp8mixed') ? 20 : 0) + (name.includes('bf16') ? 12 : 0) + (name.includes('fp8') ? 6 : 0),
-      'Qwen Image Edit 2511 UNET',
-    )
-    const lora = selectModel(
-      comboOptions(info.LoraLoaderModelOnly, 'lora_name'),
-      (name) => name.includes('qwen')
-        && name.includes('image')
-        && name.includes('edit')
-        && name.includes('2511')
-        && name.includes('lightning')
-        && /4[-_ ]?steps?/.test(name),
-      (name) => (name.includes('bf16') ? 20 : 0) + (name.includes('fp32') ? 10 : 0) + (name.includes('v1.0') ? 2 : 0),
-      'matching Qwen Image Edit 2511 Lightning 4-step LoRA',
-    )
-    const clip = selectModel(
-      comboOptions(info.CLIPLoader, 'clip_name'),
-      (name) => name.includes('qwen') && (name.includes('vl') || name.includes('vision')),
-      (name) => (name.includes('2.5') ? 8 : 0) + (name.includes('7b') ? 6 : 0) + (name.includes('fp8_scaled') ? 4 : 0),
-      'Qwen vision-language CLIP',
-    )
-    const vae = selectModel(
-      comboOptions(info.VAELoader, 'vae_name'),
-      (name) => name.includes('qwen') && name.includes('image') && name.includes('vae'),
-      (name) => (name.endsWith('qwen_image_vae.safetensors') ? 20 : 0) + (!name.includes('layered') ? 8 : 0),
-      'Qwen Image VAE',
+    const checkpoint = selectModel(
+      comboOptions(info.CheckpointLoaderSimple, 'ckpt_name'),
+      (name) => name === 'qwen-rapid-aio-nsfw-v20.safetensors',
+      () => 1,
+      'Qwen Rapid AIO checkpoint',
     )
     const controlNet = selectModel(
       comboOptions(info.ControlNetLoader, 'control_net_name'),
@@ -405,13 +379,8 @@
       'Qwen Image ControlNet Union',
     )
 
-    const weightDtypeOptions = comboOptions(info.UNETLoader, 'weight_dtype')
-    const weightDtype = normalizedName(unet).includes('fp8') && weightDtypeOptions.includes('fp8_e4m3fn')
-      ? 'fp8_e4m3fn'
-      : selectExactOption(info.UNETLoader, 'weight_dtype', ['default', 'fp8_e4m3fn'], 'UNET weight dtype')
-    const clipType = selectExactOption(info.CLIPLoader, 'type', ['qwen_image'], 'Qwen CLIP type')
-    const samplerName = selectExactOption(info.KSampler, 'sampler_name', ['euler'], 'Qwen sampler')
-    const scheduler = selectExactOption(info.KSampler, 'scheduler', ['simple'], 'Qwen scheduler')
+    const samplerName = selectExactOption(info.KSampler, 'sampler_name', ['euler_ancestral'], 'Qwen Rapid sampler')
+    const scheduler = selectExactOption(info.KSampler, 'scheduler', ['beta'], 'Qwen Rapid scheduler')
     const controlType = selectExactOption(
       info.SetUnionControlNetType,
       'type',
@@ -420,13 +389,8 @@
     )
 
     return Object.freeze({
-      unet,
-      lora,
-      clip,
-      vae,
+      checkpoint,
       controlNet,
-      weightDtype,
-      clipType,
       samplerName,
       scheduler,
       controlType,
@@ -587,19 +551,19 @@
     const seed = normalizeSeed(options.seed)
     const styleConditioningInputs = semanticMaterialConditioning
       ? {
-          clip: ['5', 0],
+          clip: ['3', 1],
           prompt: prompts.style,
         }
       : stagedReferenceConditioning
       ? {
-          clip: ['5', 0],
-          vae: ['6', 0],
+          clip: ['3', 1],
+          vae: ['3', 2],
           image1: ['2', 0],
           prompt: prompts.style,
         }
       : {
-          clip: ['5', 0],
-          vae: ['6', 0],
+          clip: ['3', 1],
+          vae: ['3', 2],
           image1: ['1', 0],
           image2: ['2', 0],
           prompt: prompts.style,
@@ -611,24 +575,12 @@
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: sheetImageName } },
       '2': { class_type: 'LoadImage', inputs: { image: styleImageName } },
-      '3': {
-        class_type: 'UNETLoader',
-        inputs: { unet_name: models.unet, weight_dtype: models.weightDtype },
-      },
-      '4': {
-        class_type: 'LoraLoaderModelOnly',
-        inputs: { model: ['3', 0], lora_name: models.lora, strength_model: 1 },
-      },
-      '5': {
-        class_type: 'CLIPLoader',
-        inputs: { clip_name: models.clip, type: models.clipType, device: 'default' },
-      },
-      '6': { class_type: 'VAELoader', inputs: { vae_name: models.vae } },
+      '3': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: models.checkpoint } },
       '7': {
         class_type: stagedReferenceConditioning ? 'TextEncodeQwenImageEdit' : 'TextEncodeQwenImageEditPlus',
         inputs: stagedReferenceConditioning
-          ? { clip: ['5', 0], prompt: prompts.structure }
-          : { clip: ['5', 0], vae: ['6', 0], image1: ['1', 0], prompt: prompts.structure },
+          ? { clip: ['3', 1], prompt: prompts.structure }
+          : { clip: ['3', 1], vae: ['3', 2], image1: ['1', 0], prompt: prompts.structure },
       },
       '8': {
         class_type: semanticMaterialConditioning ? 'TextEncodeQwenImageEdit' : 'TextEncodeQwenImageEditPlus',
@@ -644,7 +596,7 @@
       },
       '10': {
         class_type: 'TextEncodeQwenImageEdit',
-        inputs: { clip: ['5', 0], prompt: prompts.negative },
+        inputs: { clip: ['3', 1], prompt: prompts.negative },
       },
       '11': { class_type: 'ControlNetLoader', inputs: { control_net_name: models.controlNet } },
       '12': {
@@ -661,7 +613,7 @@
           strength: controlStrength,
           start_percent: 0,
           end_percent: controlEndPercent,
-          vae: ['6', 0],
+          vae: ['3', 2],
         },
       },
       '14': {
@@ -671,9 +623,9 @@
       '15': {
         class_type: 'KSampler',
         inputs: {
-          model: ['4', 0],
+          model: ['3', 0],
           seed,
-          steps: 4,
+          steps: 6,
           cfg: 1,
           sampler_name: models.samplerName,
           scheduler: models.scheduler,
@@ -683,7 +635,7 @@
           denoise: 1,
         },
       },
-      '16': { class_type: 'VAEDecode', inputs: { samples: ['15', 0], vae: ['6', 0] } },
+      '16': { class_type: 'VAEDecode', inputs: { samples: ['15', 0], vae: ['3', 2] } },
       '17': { class_type: 'SaveImage', inputs: { images: ['16', 0], filename_prefix: outputPrefix } },
     }
     if (identityImageName) {
@@ -696,7 +648,7 @@
       }
       workflow['20'] = {
         class_type: 'ConditioningSetTimestepRange',
-        // The four-step sampler quantizes every tail window below 0.25 to its first
+        // The Rapid sampler keeps the short tail reference window at its first
         // evaluation. Keep the role-specific structure condition active across the
         // full tail schedule so that first evaluation averages token identity with
         // breakup/dissipation topology instead of becoming a token-only shape lock.
@@ -720,7 +672,7 @@
       warnings.push(`Sprite-sheet latent size was aligned from ${requestedWidth}x${requestedHeight} to ${width}x${height}.`)
     }
 
-    const modelKey = [PIPELINE, models.unet, models.lora, models.controlNet].join(':')
+    const modelKey = [PIPELINE, models.checkpoint, models.controlNet].join(':')
     return Object.freeze({
       version: VERSION,
       pipeline: PIPELINE,

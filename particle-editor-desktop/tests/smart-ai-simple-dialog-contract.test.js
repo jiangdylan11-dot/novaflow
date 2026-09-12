@@ -121,8 +121,8 @@ assert.equal(workflow.writeProviderPreference(storage, "grok"), true);
 assert.equal(workflow.readProviderPreference(storage), "grok");
 
 const workflowTag = "smart-ai-art-auto-intent.workflow.js?v=20260811-art-auto-intent-1";
-const smartAiTag = "novaflow-smart-ai.js?v=20260816-art-simple-structured-1";
-const runtimeTag = "novaflow-brand-runtime.js?v=20260813-ideogram-instant-1";
+const smartAiTag = "novaflow-smart-ai.js?v=20260912-soft-edge-1";
+const runtimeTag = "novaflow-brand-runtime.js?v=20260911-art-preprocess-1";
 assert.ok(indexSource.includes(workflowTag));
 assert.ok(indexSource.includes(smartAiTag));
 assert.ok(indexSource.includes(runtimeTag));
