@@ -3,10 +3,18 @@ import { createHash } from 'node:crypto'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { spineWebpRuntimeFiles } from './spine-webp-runtime-files.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const runtimeGroups = [
+  ...spineWebpRuntimeFiles.map((file) => ({
+    name: file,
+    files: [
+      { label: 'desktop exact WebP runtime', path: path.join(repoRoot, 'particle-editor-desktop', file) },
+      { label: 'win-unpacked exact WebP runtime', path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', file) },
+    ],
+  })),
   {
     name: 'electron-main.js',
     files: [
@@ -56,6 +64,19 @@ const runtimeGroups = [
       {
         label: 'win-unpacked Runtime lifecycle',
         path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'main', 'runtime-lifecycle.js'),
+      },
+    ],
+  },
+  {
+    name: 'main/spine-atlas-webp-converter.js',
+    files: [
+      {
+        label: 'desktop SPINE atlas WebP converter',
+        path: path.join(repoRoot, 'particle-editor-desktop', 'main', 'spine-atlas-webp-converter.js'),
+      },
+      {
+        label: 'win-unpacked SPINE atlas WebP converter',
+        path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'main', 'spine-atlas-webp-converter.js'),
       },
     ],
   },

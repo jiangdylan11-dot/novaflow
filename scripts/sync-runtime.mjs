@@ -4,10 +4,17 @@ import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { TextDecoder } from 'node:util'
 import { fileURLToPath } from 'node:url'
+import { spineWebpRuntimeFiles } from './spine-webp-runtime-files.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const syncEntries = [
+  ...spineWebpRuntimeFiles.map((file) => ({
+    label: file,
+    sourcePath: path.join(repoRoot, 'particle-editor-desktop', file),
+    targetPaths: [path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', file)],
+    binary: file.endsWith('.wasm'),
+  })),
   {
     label: 'electron-main.js',
     sourcePath: path.join(repoRoot, 'particle-editor-desktop', 'main.js'),
@@ -34,6 +41,13 @@ const syncEntries = [
     sourcePath: path.join(repoRoot, 'particle-editor-desktop', 'main', 'runtime-lifecycle.js'),
     targetPaths: [
       path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'main', 'runtime-lifecycle.js'),
+    ],
+  },
+  {
+    label: 'main/spine-atlas-webp-converter.js',
+    sourcePath: path.join(repoRoot, 'particle-editor-desktop', 'main', 'spine-atlas-webp-converter.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'main', 'spine-atlas-webp-converter.js'),
     ],
   },
   {
@@ -177,6 +191,14 @@ const syncEntries = [
     targetPaths: [
       path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'png-remove-black.tool.js'),
       path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'png-remove-black.tool.js'),
+    ],
+  },
+  {
+    label: 'spine-atlas-webp.tool.js',
+    sourcePath: path.join(repoRoot, 'particle-editor', 'spine-atlas-webp.tool.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'spine-atlas-webp.tool.js'),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'spine-atlas-webp.tool.js'),
     ],
   },
   ...[

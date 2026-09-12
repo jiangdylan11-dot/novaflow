@@ -19,6 +19,7 @@ const licenseOnline = require("./license/verifyLicenseOnline");
 const { renderLicenseLockScreenHtml } = require("./license/licenseLockScreen");
 const { dataUrlToBuffer, clampManifestNumber } = require("./main/buffer-helpers");
 const { createPngCompressor } = require("./main/compression-helpers");
+const { convertSpineAtlasWebp, overwriteSpineAtlasWebpOutput, writeSpineAtlasWebpOutput } = require("./main/spine-atlas-webp-converter");
 const {
   sanitizeFileName,
   sanitizeFileStem,
@@ -9539,6 +9540,36 @@ ipcMain.handle("compress-spine-atlas-safe", async (_evt, payload) => {
     return await compressPngWithSharp(payload, { palette: false });
   } catch (err) {
     return { ok: false, error: String(err?.message || err) };
+  }
+});
+
+ipcMain.handle("convert-spine-atlas-webp", async (_evt, payload) => {
+  try {
+    return await convertSpineAtlasWebp(payload, { fs, sharp });
+  } catch (err) {
+    return { ok: false, error: String(err?.message || err) };
+  }
+});
+
+ipcMain.handle("save-spine-atlas-webp-output", async (_evt, payload) => {
+  try {
+    const pick = await dialog.showOpenDialog({
+      properties: ["openDirectory", "createDirectory"]
+    });
+    if (pick.canceled || !pick.filePaths?.[0]) return { ok: true, canceled: true };
+
+    const saved = writeSpineAtlasWebpOutput({ ...payload, dir: pick.filePaths[0] }, { fs });
+    return { ...saved, canceled: false };
+  } catch (err) {
+    return toIpcErrorResult(err, "save_spine_atlas_webp_output_failed");
+  }
+});
+
+ipcMain.handle("overwrite-spine-atlas-webp-output", async (_evt, payload) => {
+  try {
+    return overwriteSpineAtlasWebpOutput(payload, { fs });
+  } catch (err) {
+    return toIpcErrorResult(err, "overwrite_spine_atlas_webp_output_failed");
   }
 });
 
