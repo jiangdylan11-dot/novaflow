@@ -1819,6 +1819,9 @@ const cutoutReleaseContract = getFunctionWithBindings(runtime, "releaseAiSequenc
   HTMLElement: CutoutReleaseContractElement,
   HTMLCanvasElement: CutoutReleaseContractElement,
   AI_SEQUENCE_CUTOUT_EDIT_CANVAS_ATTR: cutoutEditCanvasAttr,
+  // This fallback fixture has no React DOM props; the Electron lifecycle test
+  // separately covers cleanup after real React presentation changes.
+  restoreAiSequenceSourcePreviewPresentationFromReact: () => false,
   restoreAiSequenceSourcePreviewStyle: (node) => {
     node.style.setProperty("display", "block");
     node.style.setProperty("opacity", "1");

@@ -491,6 +491,7 @@ const runtimeGroups = [
     ],
   },
   ...[
+    'ai-sequence-green-screen-matting.js',
     'ai-sequence-state-machine-runtime.js',
     'ai-sequence-video-merge.resource.js',
     'ai-sequence-video-merge.resource-bridge.js',

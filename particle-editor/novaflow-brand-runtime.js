@@ -14543,9 +14543,20 @@
       document.body.setAttribute("aria-busy", "true");
     }
     let released = false;
+    const onSaveProgress = (event) => {
+      if (released) return;
+      const detail = event?.detail || {};
+      const text = detail.stage === "frames"
+        ? `正在生成透明帧 ${Math.max(0, Number(detail.current) || 0)} / ${Math.max(1, Number(detail.total) || 1)}`
+        : detail.stage === "encode" ? "正在合成透明视频…"
+        : detail.stage === "commit" ? "正在加入资源列表…" : "";
+      if (text) renderAiSequenceCutoutSavingOverlay(text, { status: "saving" });
+    };
+    window.addEventListener("novaflow:cutout-save-progress", onSaveProgress);
     return (options = {}) => {
       if (released) return;
       released = true;
+      window.removeEventListener("novaflow:cutout-save-progress", onSaveProgress);
       const successMessage = options && options.successMessage ? String(options.successMessage) : "";
       AI_SEQUENCE_CUTOUT_SAVE_LOCK_COUNT = Math.max(0, AI_SEQUENCE_CUTOUT_SAVE_LOCK_COUNT - 1);
       if (AI_SEQUENCE_CUTOUT_SAVE_LOCK_COUNT === 0) {
@@ -14804,6 +14815,7 @@
       fileSize: file.size,
       captureMeta
     });
+    window.dispatchEvent(new CustomEvent("novaflow:cutout-save-progress", { detail: { stage: "commit" } }));
     const asset = await assetBridge.commitCutoutFile(file, { tool: labels.tool, source: "save-and-close", assetKind, mimeType });
     const result = {
       kind: "asset-media",
@@ -15077,10 +15089,10 @@
 
   function hasAiSequenceCutoutNativeDetailReady(postSection, actionButton) {
     if (!(postSection instanceof HTMLElement)) return false;
-    const existingDetail = postSection.querySelector(
-      '[data-novaflow-ai-cutout-detail="1"]:not([data-novaflow-ai-sequence-hidden="1"]), [data-novaflow-ai-sequence-edit-panel="1"]:not([data-novaflow-ai-sequence-hidden="1"])'
+    const existingDetails = postSection.querySelectorAll(
+      '[data-novaflow-green-screen-light-preserve="1"], [data-novaflow-shadow-preserve="1"], [data-novaflow-ai-cutout-detail="1"]:not([data-novaflow-ai-sequence-hidden="1"]), [data-novaflow-ai-sequence-edit-panel="1"]:not([data-novaflow-ai-sequence-hidden="1"])'
     );
-    if (existingDetail instanceof HTMLElement && isVisible(existingDetail)) return true;
+    if (Array.from(existingDetails).some((node) => node instanceof HTMLElement && isVisible(node))) return true;
     const actionRow = actionButton instanceof HTMLElement ? actionButton.parentElement : null;
     if (!(actionRow instanceof HTMLElement)) return false;
     const detailTokens = [
@@ -17454,7 +17466,7 @@
 
   function hasVisibleAiSequenceCutoutEditingSurface() {
     const cutoutNodes = Array.from(document.querySelectorAll(
-      '[data-novaflow-ai-sequence-save-button="1"], [data-novaflow-ai-chroma-close="1"], [data-novaflow-ai-cutout-detail="1"]'
+      '[data-novaflow-ai-sequence-save-button="1"], [data-novaflow-ai-chroma-close="1"], [data-novaflow-ai-cutout-detail="1"], [data-novaflow-green-screen-light-preserve="1"], [data-novaflow-shadow-preserve="1"]'
     ));
     if (cutoutNodes.some((node) => node instanceof HTMLElement && isVisible(node))) return true;
     return Array.from(document.querySelectorAll('button, [role="button"]')).some((node) => {
@@ -17579,29 +17591,48 @@
     if (cssText === null) node.removeAttribute("style");
     else node.setAttribute("style", cssText);
     AI_SEQUENCE_PREVIEW_SOURCE_STYLE_SNAPSHOTS.delete(node);
+    // React may have committed another frame, tool or aspect ratio while the
+    // runtime owned this node. The snapshot only removes runtime decoration;
+    // it must not roll the source component back to its previous presentation.
+    restoreAiSequenceSourcePreviewPresentationFromReact(node, true);
     return true;
   }
 
-  function restoreAiSequenceSourcePreviewPresentationFromReact(node) {
+  function restoreAiSequenceSourcePreviewPresentationFromReact(node, restoreLayout = false) {
     if (!(node instanceof HTMLElement)) return false;
     const props = getAiSequenceReactDomProps(node);
     const reactStyle = props && props.style && typeof props.style === "object" ? props.style : null;
     if (!reactStyle) return false;
     let restored = false;
     [
+      ["display", "display"],
       ["opacity", "opacity"],
       ["visibility", "visibility"],
-      ["pointer-events", "pointerEvents"]
+      ["pointer-events", "pointerEvents"],
+      ["position", "position"],
+      ["inset", "inset"],
+      ["left", "left"], ["top", "top"],
+      ["right", "right"], ["bottom", "bottom"],
+      ["width", "width"], ["height", "height"],
+      ["min-width", "minWidth"], ["min-height", "minHeight"],
+      ["max-width", "maxWidth"], ["max-height", "maxHeight"],
+      ["margin", "margin"],
+      ["transform", "transform"], ["transform-origin", "transformOrigin"],
+      ["object-fit", "objectFit"], ["z-index", "zIndex"], ["cursor", "cursor"]
     ].forEach(([cssProperty, reactProperty]) => {
-      if (!Object.prototype.hasOwnProperty.call(reactStyle, reactProperty)) return;
+      const presentationProperty = ["display", "opacity", "visibility", "pointer-events"].includes(cssProperty);
+      if (!presentationProperty && (!restoreLayout || !Object.prototype.hasOwnProperty.call(reactStyle, reactProperty))) return;
       const value = reactStyle[reactProperty];
-      if (value === null || value === undefined || value === "") return;
-      const nextValue = String(value);
+      const unitless = cssProperty === "opacity" || cssProperty === "z-index";
+      const nextValue = value === null || value === undefined || value === ""
+        ? ""
+        : typeof value === "number" && value !== 0 && !unitless ? `${value}px` : String(value);
       if (
         node.style.getPropertyValue(cssProperty) === nextValue &&
         !node.style.getPropertyPriority(cssProperty)
       ) return;
-      node.style.setProperty(cssProperty, nextValue);
+      if (nextValue) node.style.setProperty(cssProperty, nextValue);
+      else node.style.removeProperty(cssProperty);
       restored = true;
     });
     return restored;
@@ -17651,7 +17682,8 @@
         else node.style.removeProperty(property);
       });
     }
-    return restored || runtimeSuppressed;
+    const presentationRestored = restoreAiSequenceSourcePreviewPresentationFromReact(node);
+    return restored || runtimeSuppressed || presentationRestored;
   }
 
   function releaseAiSequenceRuntimePreviewOwnershipToSource(viewport) {
@@ -18376,7 +18408,7 @@
       restored += 1;
     };
     restoreNode(scope);
-    Array.from(scope.querySelectorAll('[data-novaflow-ai-media-underlay-hidden="1"], img, video')).forEach(restoreNode);
+    Array.from(scope.querySelectorAll('[data-novaflow-ai-media-underlay-hidden="1"], img, video, canvas')).forEach(restoreNode);
     return restored;
   }
 

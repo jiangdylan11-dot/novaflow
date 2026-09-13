@@ -15,6 +15,11 @@ let source = verifyHeadReplay
       maxBuffer: 64 * 1024 * 1024
     })
   : diskSource;
+// Earlier migrations match the original AI branch. Normalize only this new
+// option for replay; the export verification patch below restores it.
+source = source.replace("requireRvfcVerified:!!n?.exportMedia,", "");
+const sequenceMaterialOption = 'sequence:R===`ai`&&!e.inputImageDataUrl?{frames:fe.current?.frames,masks:U.current,maskWidth:Number(G.current?.w),maskHeight:Number(G.current?.h)}:null,';
+source = source.replace(sequenceMaterialOption, "");
 let changed = false;
 
 function replaceExact(label, before, after) {
@@ -41,6 +46,13 @@ function replaceLegacyExact(label, before, after) {
   source = source.slice(0, first) + after + source.slice(first + before.length);
   changed = true;
 }
+
+replaceLegacyExact("Shadow preservation runtime migration 0", "[nfGreenScreen,nfSetGreenScreen]=Tt(`nf_green_screen_light_preserve`,!0,{parse:e=>e!==`false`,serialize:e=>String(!!e)}),[nfGreenScreenActive,nfSetGreenScreenActive]", "[nfGreenScreen,nfSetGreenScreen]=Tt(`nf_green_screen_light_preserve`,!0,{parse:e=>e!==`false`,serialize:e=>String(!!e)}),[nfPreserveShadow,nfSetPreserveShadow]=Tt(`nf_cutout_preserve_shadow`,!0,{parse:e=>e!==`false`,serialize:e=>String(!!e)}),[nfGreenScreenActive,nfSetGreenScreenActive]");
+replaceLegacyExact("Shadow preservation runtime migration 1", "{enabled:nfGreenScreen,subjectMask:nfSubjectMask,requireSubjectMask:R===`ai`", "{enabled:nfGreenScreen,preserveShadow:nfPreserveShadow,subjectMask:nfSubjectMask,requireSubjectMask:R===`ai`");
+replaceLegacyExact("Shadow preservation runtime migration 2", "ie,Fn,nfGreenScreen,ye,s,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale].join(`|`)", "ie,Fn,nfGreenScreen,nfPreserveShadow,ye,s,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale].join(`|`)");
+replaceLegacyExact("Shadow preservation runtime migration 3", "[N,b,V,S,y,j,R,ie,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale,p,m,C,ut,yr,pn,Fn,nfGreenScreen]", "[N,b,V,S,y,j,R,ie,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale,p,m,C,ut,yr,pn,Fn,nfGreenScreen,nfPreserveShadow]");
+replaceLegacyExact("Shadow preservation runtime migration 4", "[N,b,V,R,yr,p,m,a,y,w,e.fps,ie,ut,pn,Fn,nfGreenScreen]", "[N,b,V,R,yr,p,m,a,y,w,e.fps,ie,ut,pn,Fn,nfGreenScreen,nfPreserveShadow]");
+replaceLegacyExact("Shadow preservation runtime migration 5", "[O,N,r,a,e.boards,o,s,c,l,u,d,f,k,A,w,T,E,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale,j,ut,nfGreenScreen]", "[O,N,r,a,e.boards,o,s,c,l,u,d,f,k,A,w,T,E,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale,j,ut,nfGreenScreen,nfPreserveShadow]");
 
 replaceExact(
   "AI sequence cutout output canvas identity",
@@ -303,7 +315,7 @@ replaceExact(
 replaceExact(
   "AI sequence chroma frame sync captures decoder verification result",
   "let t=R===`ai`?S.frameTimeSec:v.frameTimeSec,a=null,c=null,l=()=>typeof performance<`u`&&typeof performance.now==`function`?performance.now():Date.now();",
-  "let t=R===`ai`?S.frameTimeSec:v.frameTimeSec,a=null,c=null,q=null,l=()=>typeof performance<`u`&&typeof performance.now==`function`?performance.now():Date.now();"
+  "let t=R===`ai`?S.frameTimeSec:Math.min(Math.max(0,h-.0001),v.frameTimeSec+.25/Math.max(1,s)),a=null,c=null,q=null,l=()=>typeof performance<`u`&&typeof performance.now==`function`?performance.now():Date.now();"
 );
 
 replaceLegacyExact(
@@ -531,7 +543,7 @@ replaceExact(
 replaceExact(
   "AI sequence despill range cache identity",
   ",ie,Fn,ye,s,De,ke,je,Ne,Y,Be,Ie,Re,He].join(`|`)",
-  ",ie,Fn,ye,s,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale].join(`|`)"
+  ",ie,Fn,nfGreenScreen,nfPreserveShadow,ye,s,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale].join(`|`)"
 );
 
 replaceExact(
@@ -555,7 +567,7 @@ replaceExact(
 replaceExact(
   "AI sequence live preview dependency tracks despill range",
   "[N,b,V,S,y,j,R,ie,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,p,m,C,ut,yr,pn,Fn]",
-  "[N,b,V,S,y,j,R,ie,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale,p,m,C,ut,yr,pn,Fn]"
+  "[N,b,V,S,y,j,R,ie,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale,p,m,C,ut,yr,pn,Fn,nfGreenScreen,nfPreserveShadow]"
 );
 
 replaceExact(
@@ -597,7 +609,7 @@ replaceExact(
 replaceExact(
   "AI sequence export dependency tracks despill range",
   "[O,N,r,a,e.boards,o,s,c,l,u,d,f,k,A,w,T,E,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,j,ut]",
-  "[O,N,r,a,e.boards,o,s,c,l,u,d,f,k,A,w,T,E,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale,j,ut]"
+  "[O,N,r,a,e.boards,o,s,c,l,u,d,f,k,A,w,T,E,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale,j,ut,nfGreenScreen,nfPreserveShadow]"
 );
 
 replaceLegacyExact(
@@ -696,6 +708,78 @@ replaceExact(
   'r===`minimax_h3_local`&&(0,X.jsxs)(`div`,{"data-novaflow-ai-lora-section":`1`,"data-novaflow-h3-lora-section":`1`,"data-novaflow-ai-mode-body-item":`1`,style:'
 );
 
+replaceExact(
+  "Image AI cutout supplies the single-frame manifest required by final composition",
+  'G.current={fps:c,frames:1,w:_,h:v,times:[0],sourceFrameIndices:g}',
+  'G.current={fps:c,frames:1,w:_,h:v,times:[0],sourceFrameIndices:g,timelineFrameCount:1,decodedFrameCount:1,alphaFrames:1,timelineToDecodedFrameMap:[0],decodedFrameManifest:[{decodedFrameIndex:0,representativeTimelineFrameIndex:0,mediaTime:0}]}'
+);
+
+replaceExact(
+  "Green-screen light preservation controls",
+  ',[V,H]=(0,_.useState)(!1);(0,_.useEffect)(()=>{e.inputImageDataUrl&&Je(!1)}',
+  ',[V,H]=(0,_.useState)(!1),[nfGreenScreen,nfSetGreenScreen]=Tt(`nf_green_screen_light_preserve`,!0,{parse:e=>e!==`false`,serialize:e=>String(!!e)}),[nfPreserveShadow,nfSetPreserveShadow]=Tt(`nf_cutout_preserve_shadow`,!0,{parse:e=>e!==`false`,serialize:e=>String(!!e)}),[nfGreenScreenActive,nfSetGreenScreenActive]=(0,_.useState)(!1);(0,_.useEffect)(()=>{e.inputImageDataUrl&&Je(!1)}'
+);
+replaceLegacyExact("Multi-screen light preservation uses the decoded AI subject mask", "if(!d||!f)return null;let nfSoftGreen=window.NovaFlowGreenScreenMatting?.render(t,{enabled:nfGreenScreen&&(R===`ai`||he(it(ye)||ot(_e)||{r:0,g:255,b:0})===`green`),maskCanvas:l,rgbaCanvas:u,globalEdit:Kt.current,frameEdit:Ut.get(Hn(n))})||null;nfSetGreenScreenActive(!!nfSoftGreen);if(nfSoftGreen)return{...nfSoftGreen,sourceFrameIndex:s,decodedFrameIndex:R===`ai`?c:void 0,alphaFrameIndex:R===`ai`?c:null};if(d.clearRect(0,0,r,i),pr(a,o))", "if(!d||!f)return null;let nfSubjectAlpha=R===`ai`?U.current.get(e.inputImageDataUrl?0:c??s):null,nfSubjectMask=nfSubjectAlpha?{data:nfSubjectAlpha,width:nfSubjectAlpha.length===r*i?r:Number(G.current?.w),height:nfSubjectAlpha.length===r*i?i:Number(G.current?.h)}:null;let nfSoftGreen=window.NovaFlowGreenScreenMatting?.render(t,{enabled:nfGreenScreen,preserveShadow:nfPreserveShadow,subjectMask:nfSubjectMask,requireSubjectMask:R===`ai`,maskCanvas:l,rgbaCanvas:u,globalEdit:Kt.current,frameEdit:Ut.get(Hn(n))})||null;nfSetGreenScreenActive(nfSoftGreen?.screen?.kind||!1);if(nfSoftGreen)return{...nfSoftGreen,sourceFrameIndex:s,decodedFrameIndex:R===`ai`?c:void 0,alphaFrameIndex:R===`ai`?c:null};if(d.clearRect(0,0,r,i),pr(a,o))");
+replaceExact(
+  "Green-screen matte and RGB are composed together before legacy threshold and despill",
+  'if(!d||!f)return null;if(d.clearRect(0,0,r,i),pr(a,o))',
+  'if(!d||!f)return null;let nfSubjectAlpha=R===`ai`?U.current.get(e.inputImageDataUrl?0:c??s):null,nfSubjectMask=nfSubjectAlpha?{data:nfSubjectAlpha,width:nfSubjectAlpha.length===r*i?r:Number(G.current?.w),height:nfSubjectAlpha.length===r*i?i:Number(G.current?.h)}:null;let nfSoftGreen=window.NovaFlowGreenScreenMatting?.render(t,{enabled:nfGreenScreen,preserveShadow:nfPreserveShadow,subjectMask:nfSubjectMask,requireSubjectMask:R===`ai`,maskCanvas:l,rgbaCanvas:u,globalEdit:Kt.current,frameEdit:Ut.get(Hn(n))})||null;nfSetGreenScreenActive(nfSoftGreen?.screen?.kind||!1);if(nfSoftGreen)return{...nfSoftGreen,sourceFrameIndex:s,decodedFrameIndex:R===`ai`?c:void 0,alphaFrameIndex:R===`ai`?c:null};if(d.clearRect(0,0,r,i),pr(a,o))'
+);
+replaceExact("Green-screen preview cache follows the selected algorithm", 'ie,Fn,ye,s,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale].join(`|`)', 'ie,Fn,nfGreenScreen,nfPreserveShadow,ye,s,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale].join(`|`)');
+// Seek inside the selected video frame. At an exact fractional timestamp,
+// Chromium can return the preceding frame (e.g. 1/24 before a 0.041667 PTS).
+replaceExact("Chroma source capture avoids frame-boundary rounding", 'let t=R===`ai`?S.frameTimeSec:v.frameTimeSec,a=null,c=null,q=null', 'let t=R===`ai`?S.frameTimeSec:Math.min(Math.max(0,h-.0001),v.frameTimeSec+.25/Math.max(1,s)),a=null,c=null,q=null');
+replaceExact("Green-screen paused preview refresh", '[N,b,V,S,y,j,R,ie,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale,p,m,C,ut,yr,pn,Fn]', '[N,b,V,S,y,j,R,ie,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale,p,m,C,ut,yr,pn,Fn,nfGreenScreen,nfPreserveShadow]');
+replaceExact("Green-screen playback cache refresh", '[N,b,V,R,yr,p,m,a,y,w,e.fps,ie,ut,pn,Fn]', '[N,b,V,R,yr,p,m,a,y,w,e.fps,ie,ut,pn,Fn,nfGreenScreen,nfPreserveShadow]');
+replaceExact("Green-screen export callback refresh", '[O,N,r,a,e.boards,o,s,c,l,u,d,f,k,A,w,T,E,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale,j,ut]', '[O,N,r,a,e.boards,o,s,c,l,u,d,f,k,A,w,T,E,_e,De,ke,je,Ne,Y,Be,Ie,Re,He,nfDespillRangeScale,j,ut,nfGreenScreen,nfPreserveShadow]');
+replaceLegacyExact("Keep manual brush visible in soft-green mode", "(0,X.jsxs)(`div`,{style:{padding:`10px 14px 12px 14px`,display:nfGreenScreenActive&&nfGreenScreen?`none`:`grid`,gap:10},children:[null,null,R===`key`", "(0,X.jsx)(`style`,{children:`[data-novaflow-soft-green-active=\"1\"] > div:not([data-novaflow-manual-brush]){display:none!important}`}),!nfGreenScreen&&(0,X.jsxs)(`div`,{\"data-novaflow-soft-green-active\":nfGreenScreen?`1`:`0`,style:{padding:`10px 14px 12px 14px`,display:`grid`,gap:10},children:[null,null,R===`key`");
+replaceLegacyExact("Automatic mode hides manual edge controls before detection completes", '"data-novaflow-soft-green-active":nfGreenScreenActive&&nfGreenScreen?`1`:`0`,style:{padding:', '"data-novaflow-soft-green-active":nfGreenScreen?`1`:`0`,style:{padding:');
+const previousGreenScreenToggle = "(0,X.jsxs)(X.Fragment,{children:[(0,X.jsxs)(`button`,{type:`button`,role:`switch`,\"aria-label\":`光效透明保留`,\"aria-checked\":nfGreenScreen,\"data-novaflow-green-screen-light-preserve\":`1`,\"data-novaflow-green-screen-active\":nfGreenScreenActive&&nfGreenScreen?`1`:`0`,title:nfGreenScreen?(nfGreenScreenActive?`光效透明保留：已启用`:`光效透明保留：开启，自动识别绿、蓝、黑、白底`):`光效透明保留：关闭`,onClick:()=>{wi(),nfSetGreenScreen(!nfGreenScreen),Xn(`dirty`)},style:{margin:`10px 14px`,padding:`0 12px`,width:`calc(100% - 28px)`,minWidth:0,height:36,minHeight:36,boxSizing:`border-box`,display:`flex`,alignItems:`center`,justifyContent:`space-between`,gap:10,border:0,borderRadius:6,background:`#333333`,fontSize:12,fontWeight:600,color:`#eee`,cursor:`pointer`,textAlign:`left`,whiteSpace:`nowrap`},children:[(0,X.jsx)(`span`,{style:{flex:`1 1 auto`,minWidth:0,whiteSpace:`nowrap`},children:`光效透明保留`}),(0,X.jsx)(`span`,{\"aria-hidden\":!0,style:{position:`relative`,display:`block`,flex:`0 0 26px`,width:26,height:14,borderRadius:999,background:nfGreenScreen?`#1ea672`:`#222222`,transition:`background-color 140ms ease-out`},children:(0,X.jsx)(`span`,{style:{position:`absolute`,top:2,left:nfGreenScreen?14:2,width:10,height:10,borderRadius:`50%`,background:nfGreenScreen?`#e8e8e8`:`#8f98a3`,transition:`left 140ms ease-out, background-color 140ms ease-out`}})})]}),nfGreenScreen&&(0,X.jsx)(`div`,{\"data-novaflow-screen-light-help\":`1`,style:{margin:`-4px 14px 10px`,fontSize:11,lineHeight:1.5,color:`#a5a5a5`,whiteSpace:`normal`},children:nfGreenScreenActive?`已识别${({green:`绿`,blue:`蓝`,black:`黑`,white:`白`})[nfGreenScreenActive]||``}底`+((nfGreenScreenActive===`black`||nfGreenScreenActive===`white`)&&R!==`ai`?`。含角色请用 AI 抠图保护主体；色键适合纯光效。`:``):`自动识别绿、蓝、黑、白纯色背景`})]})";
+// Remove status copy from the control itself; it is not an editable setting.
+const greenScreenToggle = previousGreenScreenToggle.slice(0, previousGreenScreenToggle.indexOf(',nfGreenScreen&&(0,X.jsx)(`div`,{"data-novaflow-screen-light-help"')) + ']})';
+replaceLegacyExact("Remove screen recognition status copy", previousGreenScreenToggle, greenScreenToggle);
+replaceLegacyExact("Light preservation switch covers multiple screen colors", "(0,X.jsxs)(`button`,{type:`button`,role:`switch`,\"aria-label\":`绿幕光效保留`,\"aria-checked\":nfGreenScreen,\"data-novaflow-green-screen-light-preserve\":`1`,\"data-novaflow-green-screen-active\":nfGreenScreenActive&&nfGreenScreen?`1`:`0`,title:nfGreenScreen?(nfGreenScreenActive?`绿幕光效保留：已启用`:`绿幕光效保留：开启，检测到绿幕时自动应用`):`绿幕光效保留：关闭`,onClick:()=>{wi(),nfSetGreenScreen(!nfGreenScreen),Xn(`dirty`)},style:{margin:`10px 14px`,padding:`0 12px`,width:`calc(100% - 28px)`,minWidth:0,height:36,minHeight:36,boxSizing:`border-box`,display:`flex`,alignItems:`center`,justifyContent:`space-between`,gap:10,border:0,borderRadius:6,background:`#333333`,fontSize:12,fontWeight:600,color:`#eee`,cursor:`pointer`,textAlign:`left`,whiteSpace:`nowrap`},children:[(0,X.jsx)(`span`,{style:{flex:`1 1 auto`,minWidth:0,whiteSpace:`nowrap`},children:`绿幕光效保留`}),(0,X.jsx)(`span`,{\"aria-hidden\":!0,style:{position:`relative`,display:`block`,flex:`0 0 26px`,width:26,height:14,borderRadius:999,background:nfGreenScreen?`#1ea672`:`#222222`,transition:`background-color 140ms ease-out`},children:(0,X.jsx)(`span`,{style:{position:`absolute`,top:2,left:nfGreenScreen?14:2,width:10,height:10,borderRadius:`50%`,background:nfGreenScreen?`#e8e8e8`:`#8f98a3`,transition:`left 140ms ease-out, background-color 140ms ease-out`}})})]})", greenScreenToggle);
+replaceLegacyExact("Green-screen light preservation uses a compact switch", "(0,X.jsxs)(`label`,{\"data-novaflow-green-screen-light-preserve\":`1`,style:{padding:`10px 14px`,display:`flex`,alignItems:`center`,gap:8,fontSize:12,color:`#eee`,cursor:`pointer`},children:[(0,X.jsx)(`input`,{type:`checkbox`,checked:nfGreenScreen,onChange:e=>{wi(),nfSetGreenScreen(!!e.target.checked),Xn(`dirty`)}}),`绿幕光效保留`,nfGreenScreenActive&&nfGreenScreen?(0,X.jsx)(`span`,{style:{color:`#1ea672`,fontSize:11},children:`已启用`}):null]})", greenScreenToggle);
+const shadowToggle = "(0,X.jsxs)(`button`,{type:`button`,role:`switch`,\"aria-label\":`保留投影`,\"aria-checked\":nfPreserveShadow,\"data-novaflow-shadow-preserve\":`1`,title:nfPreserveShadow?`保留投影：开启`:`保留投影：关闭，移除可识别投影；重叠处可用笔刷修复`,onClick:()=>{wi(),nfSetPreserveShadow(!nfPreserveShadow),Xn(`dirty`)},style:{margin:`0 14px 10px`,padding:`0 12px`,width:`calc(100% - 28px)`,minWidth:0,height:36,minHeight:36,boxSizing:`border-box`,display:`flex`,alignItems:`center`,justifyContent:`space-between`,gap:10,border:0,borderRadius:6,background:`#333333`,fontSize:12,fontWeight:600,color:`#eee`,cursor:`pointer`,textAlign:`left`,whiteSpace:`nowrap`},children:[(0,X.jsx)(`span`,{children:`保留投影`}),(0,X.jsx)(`span`,{\"aria-hidden\":!0,style:{position:`relative`,display:`block`,flex:`0 0 26px`,width:26,height:14,borderRadius:999,background:nfPreserveShadow?`#1ea672`:`#222222`,transition:`background-color 140ms ease-out`},children:(0,X.jsx)(`span`,{style:{position:`absolute`,top:2,left:nfPreserveShadow?14:2,width:10,height:10,borderRadius:`50%`,background:nfPreserveShadow?`#e8e8e8`:`#8f98a3`,transition:`left 140ms ease-out, background-color 140ms ease-out`}})})]})";
+replaceLegacyExact("Add independent shadow control beside light preservation", greenScreenToggle+',(0,X.jsx)(`style`,{children:`[data-novaflow-soft-green-active=', greenScreenToggle+','+shadowToggle+',(0,X.jsx)(`style`,{children:`[data-novaflow-soft-green-active=');
+replaceLegacyExact("Do not mount manual sliders in automatic mode", ",(0,X.jsxs)(`div`,{\"data-novaflow-soft-green-active\":nfGreenScreen?`1`:`0`", ",!nfGreenScreen&&(0,X.jsxs)(`div`,{\"data-novaflow-soft-green-active\":nfGreenScreen?`1`:`0`");
+replaceExact(
+  "Green-screen toggle and legacy-only edge controls",
+  'N&&(0,X.jsxs)(X.Fragment,{children:[(0,X.jsx)(`div`,{style:{height:1,background:`rgba(255,255,255,0.08)`}}),(0,X.jsxs)(`div`,{style:{padding:`10px 14px 12px 14px`,display:`grid`,gap:10},children:[null,null,R===`key`',
+  'N&&(0,X.jsxs)(X.Fragment,{children:[(0,X.jsx)(`div`,{style:{height:1,background:`rgba(255,255,255,0.08)`}}),' + greenScreenToggle + ',' + shadowToggle + ',(0,X.jsx)(`style`,{children:`[data-novaflow-soft-green-active="1"] > div:not([data-novaflow-manual-brush]){display:none!important}`}),!nfGreenScreen&&(0,X.jsxs)(`div`,{"data-novaflow-soft-green-active":nfGreenScreen?`1`:`0`,style:{padding:`10px 14px 12px 14px`,display:`grid`,gap:10},children:[null,null,R===`key`'
+);
+
+replaceExact("Manual brush layout identity", '(S||!!e.inputImageDataUrl)&&(0,X.jsxs)(`div`,{style:{marginTop:12,borderTop:', '(S||!!e.inputImageDataUrl)&&(0,X.jsxs)(`div`,{"data-novaflow-manual-brush":`1`,style:{marginTop:12,borderTop:');
+
+replaceExact("Legacy shadow removal before brush 0","let e=mr(t);{let t=t=>","let e=mr(t);nfPreserveShadow||(e=window.NovaFlowGreenScreenMatting?.removeShadowAlpha(t,e,{preserveShadow:!1,subjectMask:nfSubjectMask})||e);{let t=t=>");
+replaceExact("Legacy shadow removal before brush 1","b=yt(d.getImageData(0,0,r,i)))}{let e=e=>","b=yt(d.getImageData(0,0,r,i)))}nfPreserveShadow||(b=window.NovaFlowGreenScreenMatting?.removeShadowAlpha(t,b,{preserveShadow:!1,subjectMask:nfSubjectMask})||b);{let e=e=>");
+
+
+// Cold exports need their own presented decoder. The preview video is hidden
+// during editing, so waiting for its seek/RVFC repeatedly hits browser timeouts.
+// Keep the original media identity for cache keys; only verified native-size
+// frames can be reused. Readers are released even when encoding/export fails.
+replaceExact("Cutout export reader lifetime", "j=G.current,P=U.current;try{En.current=!0", "j=G.current,P=U.current,nfExportReaders=[],nfDecodedExportSource=R===\u0060ai\u0060&&ce?.base64?de.current:null;try{En.current=!0");
+replaceExact("Cutout cold key export uses presented source", "_=async(e,t,n,r,i,o,s,c)=>{let p=typeof HTMLImageElement<\u0060u\u0060&&e instanceof HTMLImageElement;p||await Rt(e);", "_=async(e,t,n,r,i,o,s,c)=>{let p=typeof HTMLImageElement<\u0060u\u0060&&e instanceof HTMLImageElement,nfCacheMedia=nfDecodedExportSource||e;if(g&&!p){let reader=await nfCreateCutoutExportReader(nfCacheMedia);nfExportReaders.push(reader);e=reader.media}p||await Rt(e);");
+replaceExact("Cutout export verifies decoded frames", "rr({media:e,sourceFrameIndex:E+t,timeSec:n,traceSurface:ce,exportFrameIndex:t})", "rr({media:e,cacheMedia:nfCacheMedia,sourceFrameIndex:E+t,timeSec:n,traceSurface:ce,exportFrameIndex:t,strictFrameSync:!0,exportMedia:!0})");
+replaceExact("Cutout export releases decoders", "finally{En.current=!1;try{await wt(i,O)}catch{}}},ri=async", "finally{for(const reader of nfExportReaders)reader.release();En.current=!1;try{await wt(i,O)}catch{}}},ri=async");
+if (!source.includes("nfCreateCutoutExportReader=async")) replaceExact("Cutout export decoder factory", "},Lt=async(e,t,n)=>{", "},nfCreateCutoutExportReader=async(source)=>{const media=document.createElement(\u0060video\u0060),host=document.createElement(\u0060div\u0060);media.muted=!0;media.playsInline=!0;media.preload=\u0060auto\u0060;media.setAttribute(\u0060data-novaflow-cutout-preview-media\u0060,\u00601\u0060);Object.assign(media.style,{width:\u00601px\u0060,height:\u00601px\u0060});Object.assign(host.style,{position:\u0060fixed\u0060,left:\u00600\u0060,top:\u00600\u0060,width:\u00601px\u0060,height:\u00601px\u0060,opacity:\u0060.001\u0060,pointerEvents:\u0060none\u0060,overflow:\u0060hidden\u0060});host.setAttribute(\u0060aria-hidden\u0060,\u0060true\u0060);host.setAttribute(\u0060data-novaflow-cutout-export-reader\u0060,\u00601\u0060);(host.attachShadow?.({mode:\u0060closed\u0060})||host).append(media);document.body.append(host);const release=()=>{try{media.pause();media.removeAttribute(\u0060src\u0060);media.load()}catch{}host.remove()};try{media.src=source.currentSrc||source.src;await Rt(media);return{media,release}}catch(error){release();throw error}},Lt=async(e,t,n)=>{");
+
+
+replaceExact("Cutout export reader selection", "let r=R===\u0060ai\u0060&&ce?.base64&&de.current?de.current:n?.media||t.current;", "let r=n?.exportMedia?n.media:R===\u0060ai\u0060&&ce?.base64&&de.current?de.current:n?.media||t.current;");
+replaceExact("Cutout AI export prearms decoded frame verification", "R===\u0060ai\u0060?{traceProbe:a,strict:!0,frameSyncTimeoutMs:1500", "R===\u0060ai\u0060?{traceProbe:a,strict:!0,requireRvfcVerified:!!n?.exportMedia,frameSyncTimeoutMs:1500");
+
+
+replaceExact("Cutout export and preview serialize by original source", "await nr(R===\u0060ai\u0060&&!Rn&&r&&(r?.currentSrc||r?.src)?r:null,async()=>{", "await nr(!Rn&&r&&(r?.currentSrc||r?.src)?n?.cacheMedia||r:null,async()=>{");
+
+
+replaceExact("Cutout save reports actual frame preparation", "for(let t=0;t<A.length;t++){let n=A[t];if(g){", "for(let t=0;t<A.length;t++){let n=A[t];if(ce===\u0060save-and-close\u0060)window.dispatchEvent(new CustomEvent(\u0060novaflow:cutout-save-progress\u0060,{detail:{stage:\u0060frames\u0060,current:t,total:A.length}}));if(g){");
+replaceExact("Cutout save reports video encoding", "l=await n.exportEncodeFramesToVideo({dir:i,pattern:String(r?.pattern||", "l=await (window.dispatchEvent(new CustomEvent(\u0060novaflow:cutout-save-progress\u0060,{detail:{stage:\u0060encode\u0060}})),n.exportEncodeFramesToVideo)({dir:i,pattern:String(r?.pattern||");
+
+replaceExact("Cutout material reference uses this clip's captured RGB and masks",
+  'requireSubjectMask:R===`ai`,maskCanvas:l',
+  'requireSubjectMask:R===`ai`,' + sequenceMaterialOption + 'maskCanvas:l');
+
 if (verifyHeadReplay) {
   const replayComparable = source.replace(/\r\n?/g, "\n");
   const diskComparable = diskSource.replace(/\r\n?/g, "\n");
@@ -714,6 +798,7 @@ if (verifyHeadReplay) {
   }
   console.log("AI sequence cutout edit HEAD replay matches current bundle");
 } else {
+  changed = source !== diskSource;
   if (changed) fs.writeFileSync(bundlePath, source, "utf8");
   console.log(changed ? `patched ${path.relative(repoRoot, bundlePath)}` : "AI sequence cutout edit patches already applied");
 }

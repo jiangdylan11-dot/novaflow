@@ -10041,7 +10041,9 @@ handleNovaFlowTempIpc("export-encode-frames-to-video", async (_evt, payload) => 
     };
     const inPattern = path.join(dir, pattern);
     const vf = `scale=${w}:${h}:flags=lanczos`;
-    const vfAlpha = keepAlpha ? `${vf},format=yuva444p,premultiply=inplace=1` : vf;
+    // PNG frames contain straight RGB. VP9 alpha also expects straight RGB;
+    // premultiplying here makes translucent light dark when composited again.
+    const vfAlpha = keepAlpha ? `${vf},format=yuva420p` : vf;
 
     if (format === "gif") {
       const args = [
@@ -10071,7 +10073,7 @@ handleNovaFlowTempIpc("export-encode-frames-to-video", async (_evt, payload) => 
         "-vf", vfAlpha,
         "-c:v", "libvpx-vp9",
         ...(keepAlpha ? ["-auto-alt-ref", "0"] : []),
-        "-pix_fmt", keepAlpha ? "yuva444p" : "yuv420p",
+        "-pix_fmt", keepAlpha ? "yuva420p" : "yuv420p",
         ...(keepAlpha ? ["-metadata:s:v:0", "alpha_mode=1"] : []),
         "-b:v", "0",
         "-crf", "30",
@@ -10133,7 +10135,8 @@ handleNovaFlowTempIpc("export-encode-video-to-video", async (_evt, payload) => {
     };
     const dir = path.dirname(inPath);
     const vf = `fps=${fps},scale=${w}:${h}:flags=lanczos`;
-    const vfAlpha = keepAlpha ? `${vf},format=yuva444p,premultiply=inplace=1` : vf;
+    // Keep straight RGB through the alpha encode path (no second alpha multiply).
+    const vfAlpha = keepAlpha ? `${vf},format=yuva420p` : vf;
 
     if (format === "gif") {
       const args = [
@@ -10159,7 +10162,7 @@ handleNovaFlowTempIpc("export-encode-video-to-video", async (_evt, payload) => {
         "-vf", vfAlpha,
         "-c:v", "libvpx-vp9",
         ...(keepAlpha ? ["-auto-alt-ref", "0"] : []),
-        "-pix_fmt", keepAlpha ? "yuva444p" : "yuv420p",
+        "-pix_fmt", keepAlpha ? "yuva420p" : "yuv420p",
         ...(keepAlpha ? ["-metadata:s:v:0", "alpha_mode=1"] : []),
         "-b:v", "0",
         "-crf", "30",
