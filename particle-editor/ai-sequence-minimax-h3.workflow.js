@@ -843,7 +843,7 @@
       const videoLink = conditioning.inputs['ref_videos.ref_video_0']
       const preserveLayout = referenceImages.length === 1 && !!videoLink &&
         replacesSourceAppearance(conditioning.inputs.prompt) &&
-        /^<Video 1>[^\n]*:\s*partially_preserved[^\n]*(?:background|framing|composition|scale)/im.test(conditioning.inputs.prompt)
+        /^<Video 1>[^\n]*:\s*partially_preserved[^\n]*(?:background|framing|composition|scale|背景|构图|画面占比|镜头|相机|机位|大小)/im.test(conditioning.inputs.prompt)
       workflow[prepareId] = node('NovaFlowH3PrepareReferenceImage', {
         image: imageLink.slice(), mask: [imageLink[0], 1],
         width: conditioning.inputs.width, height: conditioning.inputs.height,
@@ -853,15 +853,9 @@
       conditioning.inputs['ref_images.ref_image_' + index] = [prepareId, 0]
     }
 
-    if (referenceImages.length === 1 && referenceVideo &&
-        replacesSourceAppearance(conditioning.inputs.prompt) &&
-        /^<Video 1>[^\n]*:\s*partially_preserved/m.test(conditioning.inputs.prompt)) {
-      const motionId = nextNodeId(workflow)
-      workflow[motionId] = node('NovaFlowH3PrepareMotionReference', {
-        images: conditioning.inputs['ref_videos.ref_video_0'].slice(),
-      }, 'Separate flat-sprite motion from source appearance')
-      conditioning.inputs['ref_videos.ref_video_0'] = [motionId, 0]
-    }
+    // Keep the original reference frames. A uniform silhouette discards face,
+    // rim and shading cues that disambiguate rotation direction and phase.
+    // Appearance replacement belongs to H3's image/video retention contract.
 
     if (referenceAudio) {
       const audioId = nextNodeId(workflow)
@@ -893,10 +887,12 @@
     const summary = /(?:^|\n)summary:\s*([\s\S]*?)(?=\n\s*retention_analysis:|$)/.exec(String(prompt || ''))?.[1] || ''
     if (!/^\[[^\]]*video editing/.test(summary)) return false
     const replacement = /\breplac(?:e|es|ing)\b([^.!\n]*?)\bwith\b/i.exec(summary)
+      || /(?:^|[.!]\s*)([^.!\n]*?)\b(?:is|are|was|were)\s+(?:\w+\s+){0,2}replaced\b[^.!\n]*?\b(?:by|with)\b/i.exec(summary.replace(/^\[[^\]]+\]\s*/, ''))
+      || /(?:将|把)([^。\n]{1,160}?)(?:替换为|替换成|换成|变成)/.exec(summary)
     // A background, lighting, clothing or logo edit must retain the original
     // subject pixels. Only an explicit whole-object replacement can benefit
     // from a neutral motion guide; ambiguous instructions use native H3 input.
-    return !!replacement && !/\b(?:background|backdrop|setting|environment|lighting|logo|text|caption|lettering|colou?r|texture|material|outfit|clothing|hair|face)\b/i.test(replacement[1])
+    return !!replacement && !/\b(?:background|backdrop|setting|environment|lighting|logo|text|caption|lettering|colou?r|texture|material|outfit|clothing|hair|face)\b|背景|环境|光照|文字|字幕|颜色|材质|服装|头发/i.test(replacement[1])
   }
 
   function fullyCopiesReferenceAudio(prompt) {

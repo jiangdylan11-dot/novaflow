@@ -5,7 +5,9 @@ import sys
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
-out = root / 'docs/h3-multireference-20260914'
+out = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else root / 'docs/h3-multireference-20260914'
+out.mkdir(parents=True, exist_ok=True)
+request_path = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else out / 'local-request.json'
 sys.path.insert(0, str(root / 'particle-editor-desktop'))
 spec = importlib.util.spec_from_file_location('reference_live', root / 'particle-editor-desktop/prompt-assistant-service.py')
 service = importlib.util.module_from_spec(spec)
@@ -20,6 +22,6 @@ def capture(*args, **kwargs):
     (out / f'local-raw-{attempt}.txt').write_text(result, encoding='utf8')
     return result
 assistant.generate = capture
-result = assistant.optimize_prompt(json.loads((out / 'local-request.json').read_text(encoding='utf8')))
+result = assistant.optimize_prompt(json.loads(request_path.read_text(encoding='utf8')))
 (out / 'local-compiled.txt').write_text(result['positivePrompt'], encoding='utf8')
 print(json.dumps({'ok': True, 'attempts': attempt, 'chars': len(result['positivePrompt'])}))

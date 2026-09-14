@@ -35,11 +35,64 @@ const sectionFields = ['task', 'speakers', 'description', 'dialogue', 'constrain
 const formatInstruction = policy.formatInstructions.join('\n');
 const referenceFields = ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description', 'overall_soundscape', 'non_diegetic_music'];
 const referenceInstruction = policy.referenceInstructions.join('\n');
+const referenceResultInstruction = 'Return a bilingual object with modelPrompt and displayPrompt. Each contains the same six H3 fields. modelPrompt has English prose for H3; displayPrompt is its faithful Simplified Chinese translation for the editor. Keep every media tag, subject ID, task, retention relation, time, direction, dialogue and constraint identical in meaning. Do not add creative changes while translating.';
+const referenceFieldSchema = language => ({type:'object', additionalProperties:false, properties:Object.fromEntries(referenceFields.map(k=>[k,{type:'string',description:language==='zh'?'本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。':'Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue.'}])), required:referenceFields});
+const referenceResultSchema = {type:'object', additionalProperties:false, properties:{modelPrompt:referenceFieldSchema('en'),displayPrompt:referenceFieldSchema('zh')},required:['modelPrompt','displayPrompt']};
+function referenceResult(value) {
+  let parsed;
+  try { parsed = typeof value === 'string' ? JSON.parse(value) : value; } catch (_) {}
+  if (parsed && Object.hasOwn(parsed,'modelPrompt') && Object.hasOwn(parsed,'displayPrompt')) return parsed;
+  return null;
+}
+function validateReferenceResult(value, options = {}) {
+  const pair = referenceResult(value);
+  if (!pair) return validateReference(value, options);
+  const serialize = v => typeof v === 'string' ? v : JSON.stringify(v);
+  const modelPrompt = validateReference(serialize(pair.modelPrompt), {...options,requireChineseOutput:false});
+  const displayPrompt = validateReference(serialize(pair.displayPrompt), {...options,requireChineseOutput:true});
+  const narrative = modelPrompt.split('detailed_description:')[1]?.split('overall_soundscape:')[0] || '';
+  const prose = narrative.replace(/<d>[\s\S]*?<\/d>|<(?:Picture|Video|Audio|Subject) \d+>|\[Shot \d+\]|"[^"\n]*"|“[^”\n]*”/g, '');
+  const han = (prose.match(/[\u3400-\u9fff]/g)||[]).length;
+  if (han > 8 && (prose.match(/[A-Za-z]{2,}/g)||[]).join('').length < han * 2) throw new Error('H3 模型侧提示词需要英文正文，中文内容仅用于编辑器显示');
+  const bindings = text => [...text.matchAll(/^<(Subject|Video|Picture|Audio) ([1-9]\d*)>[^\n:]*:\s*(fully_preserved|partially_preserved|attribute_transfer|weak_reference|fully_copy|partially_copy|reference)\b/gm)].map(m=>[m[1],m[2],m[3]].join(':')).sort().join('|');
+  const sources = text => text.split('summary:')[0].split('\n').filter(l=>/^<Subject \d+>/.test(l)).map(l=>[l.match(/^<Subject \d+>/)[0],...[...new Set(l.match(/<(?:Picture|Video|Audio) \d+>/g)||[])].sort()].join('|')).sort().join('\n');
+  const tasks = text => /summary:\s*\[([^\]]+)\]/.exec(text)?.[1].split(/\s*\+\s*/).sort().join('|');
+  if (bindings(modelPrompt) !== bindings(displayPrompt) || sources(modelPrompt) !== sources(displayPrompt) || tasks(modelPrompt) !== tasks(displayPrompt)) throw new Error('H3 中英文提示词的素材关系不一致');
+  return JSON.stringify({modelPrompt,displayPrompt});
+}
+const referenceDisplayFields = ['主体定义', '任务说明', '保留规则', '画面与动作', '环境声音', '背景音乐'];
+const referenceDisplayTerms = {
+  'reference generation': '参考生成', 'keyframe completion': '关键帧补全', 'video editing': '视频编辑',
+  'video continuation': '视频续写', 'audio reuse': '音频复用', 'audio reference': '音频参考',
+  fully_preserved: '完全保留', partially_preserved: '部分保留', attribute_transfer: '属性迁移', weak_reference: '弱参考',
+  fully_copy: '完整复用', partially_copy: '部分复用', reference: '参考',
+};
+function toReferenceDisplay(value) {
+  let text = String(value || '').replace(/\r\n/g, '\n');
+  referenceFields.forEach((field, i) => { text = text.replace(new RegExp('^' + field + ':[ \\t]*', 'gm'), '【' + referenceDisplayFields[i] + '】\n'); });
+  text = text.replace(/<Subject ([1-9]\d*)>/g, '<主体 $1>').replace(/\[Shot ([1-9]\d*)\]/g, '【镜头 $1】')
+    .replace(/The target video is an edited version of (<Video [1-9]\d*>|@视频参考)\./g, '输出视频由 $1 编辑而成。')
+    .replace(/Source assets:/g, '素材来源：').replace(/The shot shows (<主体 [1-9]\d*>)\./g, '画面中呈现 $1。')
+    .replace(/^(<主体 [1-9]\d*>) is /gm, '$1：').replace(/^N\/A\.?$/gm, '无');
+  text = text.replace(/\[([^\]\n]+)\]/g, (all, terms) => terms.split(/\s*\+\s*/).every(t => referenceDisplayTerms[t]) ? '[' + terms.split(/\s*\+\s*/).map(t => referenceDisplayTerms[t]).join(' + ') + ']' : all);
+  return text.replace(/:\s*(fully_preserved|partially_preserved|attribute_transfer|weak_reference|fully_copy|partially_copy|reference)\b/g, (_, term) => ': ' + referenceDisplayTerms[term]);
+}
+function fromReferenceDisplay(value) {
+  let text = String(value || '').replace(/\r\n/g, '\n');
+  if (!/^【主体定义】/m.test(text)) return text;
+  referenceDisplayFields.forEach((field, i) => { text = text.replace(new RegExp('^【' + field + '】[ \\t]*', 'gm'), referenceFields[i] + ':\n'); });
+  const reverse = Object.fromEntries(Object.entries(referenceDisplayTerms).map(([key, val]) => [val, key]));
+  text = text.replace(/<主体 ([1-9]\d*)>/g, '<Subject $1>').replace(/【镜头 ([1-9]\d*)】/g, '[Shot $1]')
+    .replace(/输出视频由 (<Video [1-9]\d*>|@视频参考) 编辑而成。/g, 'The target video is an edited version of $1.')
+    .replace(/素材来源：/g, 'Source assets:').replace(/^无$/gm, 'N/A');
+  text = text.replace(/\[([^\]\n]+)\]/g, (all, terms) => terms.split(/\s*\+\s*/).every(t => reverse[t]) ? '[' + terms.split(/\s*\+\s*/).map(t => reverse[t]).join(' + ') + ']' : all);
+  return text.replace(/[:：]\s*(完全保留|部分保留|属性迁移|弱参考|完整复用|部分复用|参考)(?=\s|[-—]|$)/gm, (_, term) => ': ' + reverse[term]);
+}
 function isReferenceMode(options = {}) {
   return /^(?:ref2va|r2v|multi_reference|full_reference)$/i.test(String(options.mode || options.minimaxH3Mode || options.h3Mode || ''));
 }
 function validateReference(value, options = {}) {
-  let text = String(value || '').trim().replace(/^```(?:json|text)?\s*\n([\s\S]*?)\n```$/i, '$1').trim();
+  let text = fromReferenceDisplay(value).trim().replace(/^```(?:json|text)?\s*\n([\s\S]*?)\n```$/i, '$1').trim();
   if (text.startsWith('{')) {
     const parsed = JSON.parse(text);
     if (Object.keys(parsed).some(k => !referenceFields.includes(k)) || referenceFields.some(k => typeof parsed[k] !== 'string' || !parsed[k].trim())) throw new Error('H3 多参需要完整的六个参考字段');
@@ -49,6 +102,17 @@ function validateReference(value, options = {}) {
   if (headers.length !== referenceFields.length || headers.some((m, i) => m[1] !== referenceFields[i])) throw new Error('H3 多参需要完整的六个参考字段');
   const fields = Object.fromEntries(headers.map((m, i) => [m[1], text.slice(m.index + m[0].length, headers[i + 1]?.index ?? text.length).trim()]));
   if (Object.values(fields).some(v => !v)) throw new Error('H3 多参字段不能为空');
+  fields.summary = fields.summary.replace(/^(\[[^\]]+\]\s*)(?:目标视频是\s*(<Video [1-9]\d*>)\s*的编辑版本|输出视频由\s*(<Video [1-9]\d*>)\s*编辑而成)[。.]?/, (_, prefix, first, second) => prefix + 'The target video is an edited version of ' + (first || second) + '.');
+  fields.summary = fields.summary.replace(/^(\[[^\]]+\]\s*The target video is an edited version of <Video [1-9]\d*>)。/, '$1.');
+  fields.retention_analysis = fields.retention_analysis.replace(/：\s*(fully_preserved|partially_preserved|attribute_transfer|weak_reference|fully_copy|partially_copy|reference)\b/g, ': $1');
+  if (options.requireChineseOutput) {
+    for (const field of ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description']) {
+      const prose = fields[field].replace(/<(?:Picture|Video|Audio|Subject) \d+>|<d>.*?<\/d>|\[[^\]]+\]|The target video is an edited version of|\([^)]*\)|fully_preserved|partially_preserved|attribute_transfer|weak_reference|fully_copy|partially_copy/g, '');
+      const words = prose.match(/[A-Za-z]{2,}/g) || [];
+      const han = (prose.match(/[\u3400-\u9fff]/g) || []).length;
+      if (words.length >= 8 && words.join('').length > han * 2) throw new Error('请将多参主体、任务说明和画面动作改为简体中文，保留原台词和媒体标签');
+    }
+  }
   const inventory = String(options.requirements || '').match(/^Available resource labels:([^\n]*)/im);
   const media = v => [...new Set(v.match(/<(?:Picture|Video|Audio) [1-9]\d*>/g) || [])];
   if (inventory) {
@@ -64,6 +128,7 @@ function validateReference(value, options = {}) {
   const task = /^\[([^\]]+)\]/.exec(fields.summary);
   const tasks = task?.[1].split(/\s*\+\s*/) || [];
   if (!tasks.length || tasks.some(t => !['reference generation','keyframe completion','video editing','video continuation','audio reuse','audio reference'].includes(t))) throw new Error('H3 多参缺少明确任务关系');
+  if (tasks.includes('reference generation') && text.includes('<Picture ') && !ids.length) throw new Error('H3 多参主体缺少独立定义');
   if (tasks.includes('video editing') && !/^\[[^\]]+\]\s*The target video is an edited version of <Video [1-9]\d*>(?:\.|\s)/.test(fields.summary)) throw new Error('H3 视频编辑必须指定源视频');
   const tracked = [...fields.subject_definitions.matchAll(/^<(Subject|Picture|Video|Audio) ([1-9]\d*)>/gm)];
   for (const m of tracked) {
@@ -86,6 +151,9 @@ function validateReference(value, options = {}) {
 // Only return application-owned messages. Provider text must never become a
 // diagnostic or a repair instruction, even when it resembles an error message.
 const validationIssues = [
+  ['language', ['请将多参主体、任务说明和画面动作改为简体中文，保留原台词和媒体标签']],
+  ['references', ['H3 中英文提示词的素材关系不一致']],
+  ['language', ['H3 模型侧提示词需要英文正文，中文内容仅用于编辑器显示']],
   ['references', ['H3 多参引用与已上传素材不一致', 'H3 多参主体缺少独立定义', 'H3 多参主体必须说明外观或动作的素材来源', 'H3 多参缺少主体或声音的保留规则', 'H3 多参镜头必须引用已定义主体']],
   ['sections', ['H3 多参需要完整的六个参考字段', 'H3 多参字段不能为空']],
   ['references', ['H3 多参缺少明确任务关系', 'H3 视频编辑必须指定源视频']],
@@ -218,4 +286,4 @@ function fromValidatedLegacy(text, options = {}) {
   const overall=visual.replace(/\[Shot \d+\](?:\s+At\s+\d{2}:\d{2}\.\d{3},?)?/g,'').trim();
   return validateFormat(JSON.stringify({task,speakers:definitions,description:overall+'\n\n'+phases.join('\n\n'),dialogue,constraints:`1. 保持上述人物身份、参考帧绑定及原文明确的约束。\n2. 环境与动作声音：${values.overall_soundscape}\n3. 配乐：${values.non_diegetic_music}`}),options);
 }
-module.exports = { instruction, validate, sectionNames, sectionFields, formatInstruction, validateFormat, fromValidatedLegacy, requiresChineseOutput, validationIssue, referenceFields, referenceInstruction, isReferenceMode, validateReference };
+module.exports = { instruction, validate, sectionNames, sectionFields, formatInstruction, validateFormat, fromValidatedLegacy, requiresChineseOutput, validationIssue, referenceFields, referenceInstruction, isReferenceMode, validateReference, toReferenceDisplay, fromReferenceDisplay, referenceResultInstruction, referenceResultSchema, referenceResult, validateReferenceResult };

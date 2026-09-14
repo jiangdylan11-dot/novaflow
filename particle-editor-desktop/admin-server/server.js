@@ -4521,13 +4521,13 @@ function normalizeMiniMaxH3PromptOutput(text, options) {
     let formatted;
     try {
       formatted = h3PromptEnhance.isReferenceMode(options)
-        ? h3PromptEnhance.validateReference(text, options)
+        ? h3PromptEnhance.validateReferenceResult(text, options)
         : h3PromptEnhance.validateFormat(text, options);
     } catch (error) {
       throw miniMaxH3ContractError("h3_contract_five_sections", error.message);
     }
     try {
-      h3PromptEnhance.validate(formatted, options.currentPrompt,
+      h3PromptEnhance.validate(h3PromptEnhance.referenceResult(formatted)?.modelPrompt || formatted, options.currentPrompt,
         miniMaxH3PromptEnhanceUserRequirement(options.requirements, options.currentPrompt));
       return formatted;
     } catch (error) {
@@ -8935,7 +8935,7 @@ function buildGrokPromptOptimizeRequest(payload) {
         (miniMaxH3PromptEnhanceUserRequirement(requirements, prompt) || "N/A"),
         requirements.match(/^Available resource labels:[^\n]*/im)?.[0] || "",
         "",
-        h3Mode === "full_reference" ? h3PromptEnhance.referenceInstruction : h3PromptEnhance.formatInstruction
+        h3Mode === "full_reference" ? h3PromptEnhance.referenceInstruction + (/^H3 response format: bilingual-v1$/m.test(requirements) ? '\n' + h3PromptEnhance.referenceResultInstruction : '') : h3PromptEnhance.formatInstruction
       ].join("\n")
     : (isOrdinaryArtOptimize
       ? (usesStructuredArtPrompt ? ordinaryArtStructuredUserText : ordinaryArtUserText)
@@ -8967,7 +8967,7 @@ function buildGrokPromptOptimizeRequest(payload) {
         role: "system",
         content: [
           smartAiInputText(isMiniMaxH3
-            ? "You are NovaFlow's dedicated MiniMax H3 prompt compiler. Follow the requested H3 field contract and return only the final structured audiovisual prompt.\n" + h3PromptEnhance.instruction
+            ? "You are NovaFlow's dedicated MiniMax H3 prompt compiler. Follow the requested H3 field contract and return only the final structured audiovisual prompt.\n" + (h3Mode === "full_reference" ? h3PromptEnhance.referenceInstruction : h3PromptEnhance.instruction)
             : (isOrdinaryArtOptimize
               ? (usesStructuredArtPrompt
                 ? "你是 NovaFlow 的图片 Prompt 结构化重编译器。用一次艺术总监级决策把完整底稿和真实用户要求编译为严格 JSON 视觉 IR；只输出 schema 内字段，系统将确定性生成六段提示词。"
@@ -8996,7 +8996,7 @@ function buildGrokPromptOptimizeRequest(payload) {
     body.temperature = 0.35;
     body.max_output_tokens = MINIMAX_H3_PROMPT_MAX_OUTPUT_TOKENS;
     const responseFields = h3Mode === "full_reference" ? h3PromptEnhance.referenceFields : h3PromptEnhance.sectionFields;
-    body.text = { format: { type: "json_schema", name: "minimax_h3_prompt", strict: true, schema: {
+    body.text = { format: { type: "json_schema", name: "minimax_h3_prompt", strict: true, schema: h3Mode === "full_reference" && /^H3 response format: bilingual-v1$/m.test(requirements) ? h3PromptEnhance.referenceResultSchema : {
       type: "object", additionalProperties: false,
       properties: Object.fromEntries(responseFields.map((field) => [field, {
         type: "string", minLength: 1,
@@ -9028,7 +9028,7 @@ function buildGrokPromptOptimizeRequest(payload) {
     resultOptions: isMiniMaxH3 ? {
       minimaxH3Prompt: true,
       minimaxH3Enhance: true,
-      requireChineseOutput: h3PromptEnhance.requiresChineseOutput(miniMaxH3PromptEnhanceUserRequirement(requirements, prompt)),
+      requireChineseOutput: h3Mode === 'full_reference' ? false : h3PromptEnhance.requiresChineseOutput(miniMaxH3PromptEnhanceUserRequirement(requirements, prompt)),
       minimaxH3Mode: h3Mode,
       visualRetryAllowed: true,
       currentPrompt: prompt,

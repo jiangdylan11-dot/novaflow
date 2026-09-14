@@ -946,13 +946,13 @@ function normalizeMiniMaxH3PromptOutput(text, options) {
     let formatted;
     try {
       formatted = h3PromptEnhance.isReferenceMode(options)
-        ? h3PromptEnhance.validateReference(text, options)
+        ? h3PromptEnhance.validateReferenceResult(text, options)
         : h3PromptEnhance.validateFormat(text, options);
     } catch (error) {
       throw miniMaxH3ContractError("h3_contract_five_sections", error.message);
     }
     try {
-      h3PromptEnhance.validate(formatted, options.currentPrompt,
+      h3PromptEnhance.validate(h3PromptEnhance.referenceResult(formatted)?.modelPrompt || formatted, options.currentPrompt,
         miniMaxH3PromptEnhanceUserRequirement(options.requirements, options.currentPrompt));
       return formatted;
     } catch (error) {
@@ -7782,6 +7782,7 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
   if (!prompt && !requirements) throw new Error("请输入 MiniMax H3 视频创意或当前 Prompt");
   const mode = miniMaxH3EnhanceMode(payload);
   const referenceMode = mode === "full_reference";
+  const bilingualReference = referenceMode && /^H3 response format: bilingual-v1$/m.test(requirements);
   const responseFields = referenceMode ? h3PromptEnhance.referenceFields : h3PromptEnhance.sectionFields;
   const directDuration = payload?.durationSeconds ?? payload?.duration_seconds ?? payload?.duration;
   const durationSeconds = directDuration === undefined || directDuration === null || directDuration === ""
@@ -7798,6 +7799,7 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
     requirements.match(/^Available resource labels:[^\n]*/im)?.[0] || "",
     "",
     referenceMode ? h3PromptEnhance.referenceInstruction : h3PromptEnhance.formatInstruction,
+    bilingualReference ? h3PromptEnhance.referenceResultInstruction : '',
     "",
     "The selected mode and duration are authoritative. Return the requested field structure."
   ].join("\n");
@@ -7809,14 +7811,14 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
         {
           role: "system",
           content: [smartAiInputText(
-            "You are NovaFlow's dedicated MiniMax H3 prompt compiler. Follow the selected H3 mode, field, timeline, action, camera, and audiovisual contracts and return only the final structured prompt.\n" + h3PromptEnhance.instruction
+            "You are NovaFlow's dedicated MiniMax H3 prompt compiler. Follow the selected H3 mode, field, timeline, action, camera, and audiovisual contracts and return only the final structured prompt.\n" + (referenceMode ? h3PromptEnhance.referenceInstruction : h3PromptEnhance.instruction)
           )]
         },
         { role: "user", content: [smartAiInputText(userText)] }
       ],
       temperature: 0.35,
       max_output_tokens: MINIMAX_H3_PROMPT_MAX_OUTPUT_TOKENS,
-      text: { format: { type: "json_schema", name: "minimax_h3_prompt", strict: true, schema: {
+      text: { format: { type: "json_schema", name: "minimax_h3_prompt", strict: true, schema: bilingualReference ? h3PromptEnhance.referenceResultSchema : {
         type: "object", additionalProperties: false,
         properties: Object.fromEntries(responseFields.map((field) => [field, {
           type: "string", minLength: 1,
@@ -7842,7 +7844,7 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
       minimaxH3Mode: mode,
       visualRetryAllowed: true,
       minimaxH3Enhance: true,
-      requireChineseOutput: h3PromptEnhance.requiresChineseOutput(miniMaxH3PromptEnhanceUserRequirement(requirements, prompt)),
+      requireChineseOutput: referenceMode ? false : h3PromptEnhance.requiresChineseOutput(miniMaxH3PromptEnhanceUserRequirement(requirements, prompt)),
       currentPrompt: prompt,
       requirements,
       durationSeconds,

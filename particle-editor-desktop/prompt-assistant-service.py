@@ -23,6 +23,7 @@ from prompt_assistant.h3_prompt_enhance import (
     REFERENCE_INSTRUCTION as H3_REFERENCE_INSTRUCTION,
     validate_reference as validate_h3_reference,
     render_reference_plan as render_h3_reference_plan,
+    compile_explicit_replacement as compile_h3_explicit_replacement,
 )
 
 from prompt_assistant.art_prompt_contract import (
@@ -16778,22 +16779,38 @@ class PromptAssistant:
             "promptSchema": ART_PROMPT_SCHEMA_VERSION,
         }
 
+    def translate_h3_reference(self, display, inventory, duration):
+        instruction = "You faithfully translate structured video prompts into English, preserving every field and relationship. Return JSON with the six required H3 fields, no explanations."
+        template = "<|im_start|>system\n" + instruction + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+        translated = self.generate("Translate this complete H3 reference prompt into English. Return only subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music, as six JSON string fields. Keep all reference tags, task markers, retention enums, timing, direction and factual relationships unchanged. Preserve literal dialogue in its original language. Do not add or remove instructions.\n" + display,
+            llama_template=template, max_length=2300, seed=1, temperature=0.0, do_sample=False, trace_label="minimaxH3ReferenceTranslate")
+        model_prompt = validate_h3_reference(translated, inventory, duration)
+        return {"positivePrompt": json.dumps({"modelPrompt": model_prompt, "displayPrompt": display}, ensure_ascii=False), "negativePrompt": "", "rawOutput": translated}
+
     def optimize_h3_reference(self, source, requirements, duration):
         user_requirement = minimax_h3_prompt_enhance_user_requirement(requirements, source)
         inventory = re.search(r"(?im)^Available resource labels:[^\n]*", requirements)
-        inventory_text = inventory.group() if inventory else "Available resource labels: " + "; ".join(dict.fromkeys(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", source)))
-        rules = "You translate and compile video editing requests into a compact JSON relationship plan. Follow the user's facts exactly. Write factual English, preserving literal dialogue and visible symbols. No explanations."
+        inventory_text = "Available resource labels: " + "; ".join(dict.fromkeys(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory.group() if inventory else source)))
+        explicit = compile_h3_explicit_replacement(source, inventory_text, duration, user_requirement)
+        if explicit is not None:
+            model_prompt = compile_h3_explicit_replacement(source, inventory_text, duration, user_requirement, language="en")
+            return {"positivePrompt": json.dumps({"modelPrompt": model_prompt, "displayPrompt": explicit}, ensure_ascii=False), "negativePrompt": "", "rawOutput": "", "compiler": "explicit-reference-edit"}
+        if source.strip().startswith('subject_definitions:') and not user_requirement:
+            return self.translate_h3_reference(validate_h3_reference(source, inventory_text, duration), inventory_text, duration)
+        rules = "You translate and compile video editing requests into a compact JSON relationship plan. Follow the user's facts exactly. Write factual Simplified Chinese, preserving literal dialogue and visible symbols. No explanations."
         template = "<|im_start|>system\n" + rules + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
         request = f"任务时长 {duration} 秒。\n{inventory_text}\n用户原文：\n{source}\n补充要求：\n{user_requirement}\n" + (
             "输出 JSON，根字段恰好为 references, tasks, summary, description, soundscape, music。不要照抄字段解释。\n"
-            "references 是对象数组，每项恰好包含 label, sources, description, relation, keep。label 为 <Subject N>、<Video N> 或 <Audio N>；sources 是上传素材标签的数组；description 用英文写该主体实际外观及来源；keep 用英文写实际保留和替换的属性。\n"
+            "references 是对象数组，每项恰好包含 label, sources, description, relation, keep。label 为 <Subject N>、<Video N> 或 <Audio N>；sources 必须是上传素材标签字符串的数组，例如 [\"<Picture 1>\"]。来源只写标签，不写路径、说明或主体标签；description 用中文写该主体实际外观及来源；keep 用中文写实际保留和替换的属性。\n"
             "每个可见主体从 <Subject 1> 连续编号，将图片外观和视频动作绑定同一主体。源视频与音频各自独立一项。没有上传的素材不得出现。\n"
+            "对象替换时，必须有 label 为 <Subject 1>、sources 为 [\"<Picture 1>\"] 的替换对象；不要把图片标签 <Picture 1> 当成对象 label。<Video 1> 单独定义，sources 可为空数组。视频只部分保留，图片只提供替换对象外观，位置、运动和镜头来自视频。\n"
             "视觉 relation 只能是 fully_preserved, partially_preserved, attribute_transfer, weak_reference；声音 relation 只能是 fully_copy, partially_copy, reference, weak_reference。\n"
             "tasks 是英文字符串数组，从 reference generation, video editing, video continuation, keyframe completion, audio reuse, audio reference 中按用户实际意图选择。替换视频内容用 video editing 加 reference generation。\n"
-            "summary 用一句英文描述本次具体任务，无标题和任务前缀。description 用一段英文写真实起始状态、动作如何发展、固定或移动镜头以及结束状态；使用实际 <Subject N> 标签。\n"
+            "summary 用一句中文描述本次具体任务，无标题和任务前缀。description 用一段中文写真实起始状态、动作如何发展、固定或移动镜头以及结束状态；使用实际 <Subject N> 标签。\n"
             "如果要求循环，必须在 description 明确写出运动结束返回初始姿态和相位，不能只写 seamless loop。原文若有旋转轴、角度、方向、位置、尺寸、背景，全部保留。\n"
-            "soundscape 和 music 分别为英文环境及动作声音和配乐描述，无相关声音时用 N/A。不要添加未要求的声音。声音完整复用使用 fully_copy 和 audio reuse；风格、节奏或声线参考使用 reference 和 audio reference。\n"
-            "所有字符串写实际事实，不写占位符、字段说明、模板示例或中文解释。仅输出 JSON。"
+            "视频内容替换默认沿用源视频每个时刻的运动方向、速度变化、姿态、轨迹、镜头、背景、构图和起止相位。只替换用户指定的对象；从第一帧起完成替换，不做中途变形。没有看到媒体像素，不得臆造旋转角度、顺逆时针、匀速、固定镜头或循环，不得从文件名猜外观风格或动作。\n"
+            "soundscape 和 music 分别为中文环境及动作声音和配乐描述，无相关声音时用 N/A。不要添加未要求的声音。声音完整复用使用 fully_copy 和 audio reuse；风格、节奏或声线参考使用 reference 和 audio reference。\n"
+            "所有字符串写实际事实，不写占位符、字段说明、模板示例或字段解释。仅输出 JSON。"
         )
         failure = ""
         for attempt in range(2):
@@ -16803,8 +16820,9 @@ class PromptAssistant:
             try:
                 positive = render_h3_reference_plan(output, inventory_text, duration, source, user_requirement)
                 validate_h3_prompt_enhancement(positive, source, user_requirement)
+                bilingual = self.translate_h3_reference(positive, inventory_text, duration)
                 self.status = "模型可用"
-                return {"positivePrompt": positive, "negativePrompt": "", "rawOutput": output}
+                return bilingual
             except (ValueError, TypeError) as error:
                 failure = str(error)
         raise ValueError("H3 多参编译失败：" + failure + "；原提示词未修改。")

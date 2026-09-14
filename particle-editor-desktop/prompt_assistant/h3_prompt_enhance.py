@@ -10,6 +10,63 @@ REFERENCE_INSTRUCTION = "\n".join(POLICY["referenceInstructions"])
 REFERENCE_FIELDS = ("subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music")
 
 
+def compile_explicit_replacement(source, requirements="", duration=30, user_requirement="", language="zh"):
+    """Compile an unambiguous one-object edit; do not infer unseen media facts."""
+    if user_requirement.strip() and user_requirement.strip() != source.strip():
+        return None
+    match = re.fullmatch(r"\s*(?:把|将)\s*(?:参考视频|视频参考|@视频参考|<Video 1>)(?:中|里)的\s*([^，。！？;；\n]{1,30}?)\s*(?:替换为|替换成|换成)\s*(?:@?参考图\s*([1-9]\d*)|<Picture ([1-9]\d*)>)\s*[。.!！]?\s*", source)
+    if not match:
+        return None
+    target, image_id = match[1], match[2] or match[3]
+    if re.search(r"背景|环境|光照|文字|字幕|颜色|材质|服装|头发|图案|纹样|脸", target):
+        return None
+    picture = f"<Picture {image_id}>"
+    media = set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", requirements))
+    if media != {picture, '<Video 1>'}:
+        return None
+    plan = {
+        "references": [
+            {"label": "<Subject 1>", "sources": [picture], "description": "参考图片中的完整替换主体，外观取自图片，运动取自 <Video 1>。", "relation": "fully_preserved", "keep": "保留图片主体的轮廓、图案、颜色和材质；图片的展示姿态不覆盖源视频的运动姿态。"},
+            {"label": "<Video 1>", "sources": [], "description": f"包含待替换{target}的源视频。", "relation": "partially_preserved", "keep": f"保留原视频的背景、构图、镜头，以及{target}的位置、画面占比、运动方向、速度变化和起止相位；移除原{target}外观。"}
+        ],
+        "tasks": ["video editing", "reference generation"],
+        "summary": f"把 <Video 1> 中的{target}换成 {picture} 对应的 <Subject 1>，从第一帧起完成替换。",
+        "description": f"[Shot 1] 0秒起，<Subject 1> 已占据原{target}的位置，呈现参考图中的完整外观。随后按照 <Video 1> 每个对应时刻的运动轨迹、方向、速度变化和姿态持续运动，保持原视频的镜头、背景和构图。{float(duration):g}秒结束时保持源视频对应时刻的姿态和运动相位，不自行增加转动圈数或改变转向。整个片段保持替换后的外观，不在中途渐变回原{target}图案。",
+        "soundscape": "N/A", "music": "N/A"
+    }
+    if language == "en":
+        name = {"金币": "gold coin", "硬币": "coin"}.get(target, f'object named "{target}"')
+        plan['references'][0]['description'] = 'The complete replacement subject from the reference picture; its appearance comes from the image and its motion comes from <Video 1>.'
+        plan['references'][0]['keep'] = 'Keep the image subject silhouette, markings, colors and material. The image presentation angle does not override the source video motion poses.'
+        plan['references'][1]['description'] = f'The source video containing the {name} to replace.'
+        plan['references'][1]['keep'] = f'Keep the source background, framing, camera, and the original {name} positions, screen size, rotation direction, changing speed and start/end phase. Remove the original subject appearance.'
+        plan['summary'] = f'Replace the {name} in <Video 1> with <Subject 1> from {picture}, beginning at the first frame.'
+        plan['description'] = f'The replacement retains the visual appearance of {picture}. [Shot 1] At 0 seconds, <Subject 1> already occupies the original {name} position. It then follows the trajectory, direction, changing speed and orientation at each corresponding time in <Video 1>. The camera follows the original source camera; the source background and framing remain unchanged. At {float(duration):g} seconds it reaches the source video pose and motion phase at that time, without extra revolutions or a reversed turn. Keep the replacement appearance throughout; do not morph it back into the original {name} design.'
+    result = render_reference_plan(json.dumps(plan, ensure_ascii=False), requirements, duration)
+    return result.replace('素材来源：', 'Source assets:') if language == 'en' else result
+
+
+def reference_label(value):
+    """Accept equivalent label spellings without inventing or renumbering assets."""
+    if not isinstance(value, str):
+        raise ValueError("H3 多参关系计划素材来源无效")
+    value = value.strip()
+    aliases = {"视频参考": "<Video 1>", "参考视频": "<Video 1>", "声音参考": "<Audio 1>", "音频参考": "<Audio 1>"}
+    if value.lstrip('@') in aliases:
+        return aliases[value.lstrip('@')]
+    match = re.fullmatch(r"multi_ref_(image|video|audio)_([1-9]\d*)", value)
+    if match:
+        return "<" + {"image": "Picture", "video": "Video", "audio": "Audio"}[match[1]] + " " + match[2] + ">"
+    match = re.fullmatch(r"@?(?:参考图|图片)\s*([1-9]\d*)", value)
+    if match:
+        return "<Picture " + match[1] + ">"
+    match = re.fullmatch(r"<?\s*(Subject|Picture|Image|Video|Audio)\s*([1-9]\d*)\s*>?", value, re.I)
+    if not match:
+        raise ValueError("H3 多参关系计划素材来源无效")
+    kind = match[1].capitalize()
+    return "<" + ("Picture" if kind == "Image" else kind) + " " + match[2] + ">"
+
+
 def render_reference_plan(value, requirements="", duration=30, source="", user_requirement=""):
     """Serialize model-authored relationships; Python owns all H3 punctuation."""
     text = re.sub(r"^```(?:json)?\s*\n([\s\S]*?)\n```$", r"\1", str(value).strip()).strip()
@@ -21,7 +78,8 @@ def render_reference_plan(value, requirements="", duration=30, source="", user_r
     for item in plan["references"]:
         if not isinstance(item, dict) or set(item) != {"label", "sources", "description", "relation", "keep"}:
             raise ValueError("H3 多参关系计划字段不完整")
-        label = item["label"]
+        label = reference_label(item["label"])
+        item["label"] = label
         if not isinstance(label, str) or not re.fullmatch(r"<(?:Subject|Picture|Video|Audio) [1-9]\d*>", label):
             raise ValueError("H3 多参关系计划标签无效")
         if isinstance(item["keep"], list) and all(isinstance(v, str) for v in item["keep"]):
@@ -30,12 +88,18 @@ def render_reference_plan(value, requirements="", duration=30, source="", user_r
         # replacement itself necessarily changes part of its content.
         if label.startswith("<Video ") and "video editing" in plan["tasks"] and item["relation"] == "fully_preserved":
             item["relation"] = "partially_preserved"
-        if not isinstance(item["sources"], list) or any(not isinstance(t, str) or not re.fullmatch(r"<(?:Picture|Video|Audio) [1-9]\d*>", t) for t in item["sources"]):
+        sources = item["sources"]
+        if isinstance(sources, str):
+            sources = [] if not sources.strip() else re.split(r"\s*[,，;；、]\s*", sources.strip())
+        if not isinstance(sources, list):
             raise ValueError("H3 多参关系计划素材来源无效")
+        item["sources"] = [reference_label(t) for t in sources]
+        if any(t.startswith('<Subject ') for t in item['sources']):
+            raise ValueError("H3 多参来源必须是上传素材标签，不能引用主体自身")
         if any(not isinstance(item[k], str) or not item[k].strip() for k in ("description", "relation", "keep")):
             raise ValueError("H3 多参关系计划内容为空")
-        origins = " Source assets: " + ", ".join(item["sources"]) + "." if item["sources"] else ""
-        definitions.append(label + " is " + item["description"].strip() + origins)
+        origins = " 素材来源：" + "、".join(item["sources"]) + "。" if item["sources"] else ""
+        definitions.append(label + "：" + item["description"].strip() + origins)
         retention.append(label + ": " + item["relation"].strip() + " - " + item["keep"].strip())
         if label.startswith("<Subject "):
             subjects.append(label)
@@ -53,7 +117,7 @@ def render_reference_plan(value, requirements="", duration=30, source="", user_r
     description = plan["description"].strip()
     loop_requested = re.search(POLICY["loopPattern"], source + "\n" + user_requirement, re.I) and not re.search(POLICY["cancelLoopPattern"], user_requirement or source, re.I)
     if loop_requested and not re.search(POLICY["closurePattern"], description, re.I):
-        description += " At the end, the subject returns smoothly to its starting pose and motion phase to close the requested loop."
+        description += " 结束时平滑回到起始姿态与运动相位，使循环自然衔接。"
     if "[Shot 1]" not in description:
         description = "[Shot 1] " + description
     result = dict(zip(REFERENCE_FIELDS, ("\n".join(definitions), "[" + " + ".join(plan["tasks"]) + "] " + summary, "\n".join(retention), description, plan["soundscape"], plan["music"])))
@@ -89,6 +153,8 @@ def validate_reference(value, requirements="", duration=30):
     tasks = re.split(r"\s*\+\s*", task.group(1)) if task else []
     if not tasks or any(t not in ("reference generation", "keyframe completion", "video editing", "video continuation", "audio reuse", "audio reference") for t in tasks):
         raise ValueError("H3 多参缺少明确任务关系")
+    if 'reference generation' in tasks and '<Picture ' in text and not ids:
+        raise ValueError("H3 多参主体缺少独立定义")
     if "video editing" in tasks and not re.match(r"\[[^\]]+\]\s*The target video is an edited version of <Video [1-9]\d*>(?:\.|\s)", fields["summary"]):
         raise ValueError("H3 视频编辑必须指定源视频")
     for m in re.finditer(r"(?m)^<(Subject|Picture|Video|Audio) ([1-9]\d*)>", fields["subject_definitions"]):
@@ -97,7 +163,7 @@ def validate_reference(value, requirements="", duration=30):
         if not re.search(r":\s*(?:" + relations + r")\b", line):
             raise ValueError("H3 多参缺少主体或声音的保留规则")
     if len(ids) == 1 and not re.search(r"<Subject [1-9]\d*>", fields["detailed_description"]):
-        fields["detailed_description"] = fields["detailed_description"].replace("[Shot 1]", "[Shot 1] The shot shows <Subject 1>.")
+        fields["detailed_description"] = fields["detailed_description"].replace("[Shot 1]", "[Shot 1] 画面中呈现 <Subject 1>。")
     if any(f"<Subject {n}>" not in fields["detailed_description"] for n in ids):
         raise ValueError("H3 多参镜头必须引用已定义主体")
     if "[Shot 1]" not in fields["detailed_description"]:

@@ -1,0 +1,21 @@
+subject_definitions:
+<Subject 1>：The complete replacement subject from the reference picture; its appearance comes from the image and its motion comes from <Video 1>. Source assets:<Picture 1>。
+<Video 1>：The source video containing the gold coin to replace.
+
+summary: [video editing + reference generation] The target video is an edited version of <Video 1>. Replace the gold coin in <Video 1> with <Subject 1> from <Picture 1>, beginning at the first frame.
+
+retention_analysis:
+<Subject 1>: fully_preserved - Keep the image subject silhouette, markings, colors and material. The image presentation angle does not override the source video motion poses.
+<Video 1>: partially_preserved - Keep the source background, framing, camera, and the original gold coin positions, screen size, rotation direction, changing speed and start/end phase. Remove the original subject appearance.
+
+detailed_description: The replacement retains the visual appearance of <Picture 1>.
+
+[Shot 1] At 0 seconds, <Subject 1> already occupies the original gold coin position. It then follows the trajectory, direction, changing speed and orientation at each corresponding time in <Video 1>.
+
+The camera follows the original source camera; the source background and framing remain unchanged. At 3 seconds it reaches the source video pose and motion phase at that time, without extra revolutions or a reversed turn.
+
+Keep the replacement appearance throughout; do not morph it back into the original gold coin design.
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A

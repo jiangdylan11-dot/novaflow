@@ -658,7 +658,7 @@
 
   function buildInstructions(protocol, compiledPrompt) {
     if (protocol.mode === 'multi_reference') {
-      return buildLegacyInstructions(protocol, compiledPrompt).replace('Source prompt:', globalThis.NovaFlowH3PromptFormat.referenceInstruction + '\nSource prompt:')
+      return buildLegacyInstructions(protocol, compiledPrompt).replace('Source prompt:', globalThis.NovaFlowH3PromptFormat.referenceInstruction + '\nH3 response format: bilingual-v1\nSource prompt:')
     }
     const references = protocol.references.references.length
       ? protocol.references.references.map((reference) => `${reference.modelToken} = captured ${reference.kind} slot ${reference.slotKey}`).join('; ')
@@ -686,7 +686,7 @@
     })
     const sourcePrompt = stringValue(input.prompt).trim()
     if (!sourcePrompt) throw new Error('MiniMax H3 source prompt cannot be empty')
-    const compiledPrompt = toModelReferences(sourcePrompt, protocol.references)
+    const compiledPrompt = globalThis.NovaFlowH3PromptFormat.fromReferenceDisplay(toModelReferences(sourcePrompt, protocol.references))
     const snapshot = createPromptSnapshot({
       modelId,
       mode: protocol.mode,
@@ -1020,7 +1020,7 @@
       }
       const multiline = field === 'subject_definitions' || field === 'retention_analysis'
       return `${field}:${multiline ? '\n' : ' '}${narrative ? formatNarrative(content) : content}`
-    })].filter(Boolean).join('\n\n')
+    })].filter(Boolean).join('\n\n').replace(/\[\s+Shot\s+([1-9]\d*)\]/g, '[Shot $1]')
   }
 
   function validatePromptText(text, options) {
@@ -1067,10 +1067,13 @@
       throw new Error('MiniMax H3 sensitive visual output is blocked because explicit minor evidence coexists with sensitive content')
     }
     const hasIdleOrStillMotion = /呼吸|起伏|待机|(?:全程|保持|完全|持续)(?:静止|不动)|\b(?:breath\w*|idle|remain\w* still|completely still)\b/iu.test(narrative)
-    if (!ACTION_PROGRESSION_EXPRESSION.test(narrative) && !hasIdleOrStillMotion) {
+    const sourceVideoEdit = protocol.mode === 'multi_reference' && relations.includes('video editing') && /<Video [1-9]\d*>/.test(value)
+    const hasSourceMotion = sourceVideoEdit && /(?:保留|按照|沿用|跟随|保持|遵循)[^。\n]{0,60}(?:轨迹|速度|运动|动作)|\b(?:follow\w*|match\w*|retain\w*|preserv\w*)\b[^.\n]{0,80}\b(?:trajector(?:y|ies)|movements?|motion|direction|phase)\b/iu.test(narrative)
+    const hasSourceCamera = sourceVideoEdit && /(?:保留|沿用|跟随|保持)[^。\n]{0,35}(?:原|源|参考|相同)[^。\n]{0,20}(?:镜头|相机|摄像机|机位)|(?:镜头|相机|摄像机|机位)[^。\n]{0,35}(?:沿用|跟随|保留)[^。\n]{0,20}(?:原|源|参考)/u.test(narrative)
+    if (!ACTION_PROGRESSION_EXPRESSION.test(narrative) && !hasIdleOrStillMotion && !hasSourceMotion) {
       throw new Error('MiniMax H3 narrative must describe action progression, not only a static image caption')
     }
-    if (!CAMERA_DIRECTION_EXPRESSION.test(narrative)) {
+    if (!CAMERA_DIRECTION_EXPRESSION.test(narrative) && !hasSourceCamera) {
       throw new Error('MiniMax H3 narrative must state an explicit camera movement or locked-camera choice')
     }
     return deepFreeze({
@@ -1089,6 +1092,7 @@
     })
   }
 
+  const referenceTranslations = new Map()
   function validateAndRestore(options) {
     const input = options && typeof options === 'object' ? options : {}
     const context = input.context
@@ -1097,16 +1101,26 @@
       throw new Error('MiniMax H3 prompt response is stale; discard it and request enhancement again')
     }
     const catalog = catalogFromContext(context)
-    const validation = validatePromptText(input.text, {
+    const pair = context.mode === 'multi_reference' ? globalThis.NovaFlowH3PromptFormat.referenceResult(input.text) : null
+    const serialized = value => typeof value === 'string' ? value : JSON.stringify(value)
+    const validationOptions = {
       mode: context.mode,
       durationSeconds: context.durationSeconds,
       resources: resourcesFromSnapshot(context.snapshot),
       contentPolicy: context.contentPolicy,
       requireReady: true,
-    })
+    }
+    if (pair) globalThis.NovaFlowH3PromptFormat.validateReferenceResult(input.text, {requirements:'Available resource labels: ' + catalog.references.map(r=>r.modelToken).join('; '), durationSeconds:context.durationSeconds})
+    const validation = validatePromptText(pair ? serialized(pair.modelPrompt) : input.text, validationOptions)
+    const displayed = pair ? validatePromptText(serialized(pair.displayPrompt), validationOptions) : validation
     const restoredText = context.mode === 'multi_reference'
-      ? toDisplayReferences(validation.text, catalog)
+      ? globalThis.NovaFlowH3PromptFormat.toReferenceDisplay(toDisplayReferences(displayed.text, catalog))
       : validation.text
+    if (pair && input.current) {
+      const key = createPromptSnapshot({...input.current,prompt:restoredText}).fingerprint
+      referenceTranslations.set(key, {modelPrompt:validation.text,displayPrompt:displayed.text})
+      if (referenceTranslations.size > 40) referenceTranslations.delete(referenceTranslations.keys().next().value)
+    }
     return deepFreeze({
       text: restoredText,
       modelText: validation.text,
@@ -1118,7 +1132,10 @@
   async function compileForGeneration(options, optimize) {
     const current = { ...options, modelId: MINIMAX_H3_MODEL_ID, mode: 'multi_reference' }
     const prepared = prepareRequest(current)
-    if (/^subject_definitions\s*:/.test(prepared.prompt)) {
+    if (globalThis.NovaFlowH3PromptFormat.referenceResult(prepared.prompt)) return validateAndRestore({text:prepared.prompt,context:prepared.context,current})
+    const cached = referenceTranslations.get(createPromptSnapshot(current).fingerprint)
+    if (cached) return validateAndRestore({text:JSON.stringify(cached),context:prepared.context,current})
+    if (/^subject_definitions\s*:/.test(prepared.prompt) && !/[\u3400-\u9fff]/.test(prepared.prompt.replace(/<d>[\s\S]*?<\/d>/g,''))) {
       return validateAndRestore({ text: prepared.prompt, context: prepared.context, current })
     }
     if (typeof optimize !== 'function') throw new Error('多参提示词编译服务不可用')
