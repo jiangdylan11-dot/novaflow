@@ -10594,7 +10594,7 @@ handleNovaFlowTempIpc("ai-seq-cache-temp-file", async (_evt, payload) => {
       }
     }
     const ext = (String(inFileName).match(/\.[a-zA-Z0-9]{1,8}$/)?.[0] || ".mp4").toLowerCase();
-    const outPrefix = cacheKey ? "wan" : "ais";
+    const outPrefix = cacheKey ? (/^\.(png|jpe?g|webp)$/i.test(ext) ? "image" : "wan") : "ais";
     const outName = cacheKey
       ? createAiSeqWarehouseFileName(dir, outPrefix, ext)
       : `${outPrefix}_${Date.now()}_${Math.random().toString(16).slice(2)}${ext}`;

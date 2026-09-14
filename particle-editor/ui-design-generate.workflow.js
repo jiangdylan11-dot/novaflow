@@ -2254,15 +2254,19 @@
       if (!files.length) throw new Error('UI 生成超时，未找到输出图片')
 
       const file = files[0]
+      let blob = null
       emitProgress(onProgress, 'download', '正在载入 UI 设计结果', 0.96, { promptId })
-      const blob = await bridgeTimeout(
-        bridge,
-        () => bridge.fetchBlob(baseUrl, resultFileUrl(file)),
-        DOWNLOAD_TIMEOUT_MS,
-        '下载 UI 设计结果超时',
-      )
-      throwIfAborted(signal)
-      if (!blob) throw new Error('UI 设计结果下载失败')
+      for (const outputFile of files) {
+        const outputBlob = await bridgeTimeout(
+          bridge,
+          () => bridge.fetchBlob(baseUrl, resultFileUrl(outputFile)),
+          DOWNLOAD_TIMEOUT_MS,
+          '下载 UI 设计结果超时',
+        )
+        throwIfAborted(signal)
+        if (!outputBlob) throw new Error('UI 设计结果下载失败')
+        if (!blob) blob = outputBlob
+      }
       const imageUrl = await bridge.blobToDataUrl(blob)
       throwIfAborted(signal)
       if (!cleanText(imageUrl)) throw new Error('UI 设计结果读取失败')

@@ -75013,16 +75013,35 @@
 
   async function artFetchBlob(baseUrl, path) {
     const api = window.electronAPI;
+    let blob;
     if (api && typeof api.runtimeRequestBinary === "function") {
       const out = await api.runtimeRequestBinary({ baseUrl, path, init: { method: "GET" } });
       if (!out || !out.ok || !out.dataBase64) return null;
       const raw = atob(String(out.dataBase64 || ""));
       const bytes = new Uint8Array(raw.length);
       for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i);
-      return new Blob([bytes], { type: out.contentType || "image/png" });
+      blob = new Blob([bytes], { type: out.contentType || "image/png" });
+    } else {
+      const res = await fetch(new URL(path, baseUrl).toString());
+      blob = res.ok ? await res.blob() : null;
     }
-    const res = await fetch(new URL(path, baseUrl).toString());
-    return res.ok ? await res.blob() : null;
+    const outputUrl = new URL(path, baseUrl);
+    const fileName = outputUrl.searchParams.get("filename") || "";
+    const outputType = outputUrl.searchParams.get("type") || "output";
+    if (blob && /\/view$/.test(outputUrl.pathname) && outputType === "output" && /\.(png|jpe?g|webp)$/i.test(fileName)
+      && typeof api?.aiSeqCacheTempFile === "function") {
+      try {
+        const stored = await api.aiSeqCacheTempFile({
+          fileName,
+          bytes: new Uint8Array(await blob.arrayBuffer()),
+          cacheKey: JSON.stringify(["art-output", outputUrl.origin, outputType, outputUrl.searchParams.get("subfolder") || "", fileName])
+        });
+        if (!stored?.ok || !stored.path) throw new Error(stored?.error || "未返回保存路径");
+      } catch (error) {
+        throw new Error(`图片已生成，但加入临时仓库失败：${String(error?.message || error)}`);
+      }
+    }
+    return blob;
   }
 
   async function artUploadDataUrl(baseUrl, fileName, dataUrl) {
@@ -75661,18 +75680,22 @@
       if (!isArtGenerateRunCurrent(runToken)) return;
       if (!files.length) throw new Error("\u751f\u6210\u8d85\u65f6\uff0c\u672a\u627e\u5230\u8f93\u51fa\u56fe\u7247");
       const file = files[0];
-      const qs = new URLSearchParams();
-      qs.set("filename", file.filename);
-      if (file.subfolder) qs.set("subfolder", file.subfolder);
-      qs.set("type", file.type || "output");
-      setArtGenerateProgress("\u6b63\u5728\u8f7d\u5165\u751f\u6210\u56fe...", 0.96, { promptId });
-      const blob = await withArtGenerateTimeout(
-        () => artFetchBlob(baseUrl, `/view?${qs.toString()}`),
-        ART_GENERATE_DOWNLOAD_TIMEOUT_MS,
-        "\u4e0b\u8f7d\u751f\u6210\u56fe\u8d85\u65f6"
-      );
-      if (!isArtGenerateRunCurrent(runToken)) return;
-      if (!blob) throw new Error("PNG \u4e0b\u8f7d\u5931\u8d25");
+      let blob = null;
+      for (const outputFile of files) {
+        const qs = new URLSearchParams();
+        qs.set("filename", outputFile.filename);
+        if (outputFile.subfolder) qs.set("subfolder", outputFile.subfolder);
+        qs.set("type", outputFile.type || "output");
+        setArtGenerateProgress("\u6b63\u5728\u8f7d\u5165\u751f\u6210\u56fe...", 0.96, { promptId });
+        const outputBlob = await withArtGenerateTimeout(
+          () => artFetchBlob(baseUrl, `/view?${qs.toString()}`),
+          ART_GENERATE_DOWNLOAD_TIMEOUT_MS,
+          "\u4e0b\u8f7d\u751f\u6210\u56fe\u8d85\u65f6"
+        );
+        if (!isArtGenerateRunCurrent(runToken)) return;
+        if (!outputBlob) throw new Error("图片下载失败");
+        if (!blob) blob = outputBlob;
+      }
       const imageUrl = await artBlobToDataUrl(blob);
       if (!isArtGenerateRunCurrent(runToken)) return;
       const result = {
