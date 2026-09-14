@@ -185,6 +185,9 @@
     'SamplerCustomAdvanced',
     'VAEDecode',
     'VAEDecodeAudio',
+    'TrimAudioDuration',
+    'NovaFlowH3PrepareReferenceImage',
+    'NovaFlowH3PrepareMotionReference',
     'CreateVideo',
     'SaveVideo',
     'LoadImage',
@@ -774,7 +777,7 @@
   }
 
   function removeReferenceLoaders(workflow) {
-    const removable = new Set(['LoadImage', 'LoadVideo', 'GetVideoComponents', 'LoadAudio'])
+    const removable = new Set(['LoadImage', 'LoadVideo', 'GetVideoComponents', 'LoadAudio', 'TrimAudioDuration', 'NovaFlowH3PrepareReferenceImage', 'NovaFlowH3PrepareMotionReference'])
     for (const [id, value] of Object.entries(workflow)) {
       if (removable.has(value && value.class_type)) delete workflow[id]
     }
@@ -812,9 +815,6 @@
     if (!referenceImages.length && !referenceVideo && !referenceAudio) {
       throw new TypeError('MiniMax H3 reference mode requires an image, video, or audio reference')
     }
-    if (referenceAudio && !referenceImages.length && !referenceVideo) {
-      throw new TypeError('MiniMax H3 standalone audio cannot be the only reference')
-    }
 
     removeReferenceLoaders(workflow)
     removeReferenceInputs(conditioning.inputs)
@@ -837,11 +837,73 @@
       conditioning.inputs['ref_videos.ref_video_0'] = [componentsId, 0]
     }
 
+    for (let index = 0; index < referenceImages.length; index += 1) {
+      const imageLink = conditioning.inputs['ref_images.ref_image_' + index]
+      const prepareId = nextNodeId(workflow)
+      const videoLink = conditioning.inputs['ref_videos.ref_video_0']
+      const preserveLayout = referenceImages.length === 1 && !!videoLink &&
+        replacesSourceAppearance(conditioning.inputs.prompt) &&
+        /^<Video 1>[^\n]*:\s*partially_preserved[^\n]*(?:background|framing|composition|scale)/im.test(conditioning.inputs.prompt)
+      workflow[prepareId] = node('NovaFlowH3PrepareReferenceImage', {
+        image: imageLink.slice(), mask: [imageLink[0], 1],
+        width: conditioning.inputs.width, height: conditioning.inputs.height,
+        preserve_video_layout: preserveLayout,
+        ...(preserveLayout ? { reference_video: videoLink.slice() } : {}),
+      }, 'Prepare reference image ' + (index + 1))
+      conditioning.inputs['ref_images.ref_image_' + index] = [prepareId, 0]
+    }
+
+    if (referenceImages.length === 1 && referenceVideo &&
+        replacesSourceAppearance(conditioning.inputs.prompt) &&
+        /^<Video 1>[^\n]*:\s*partially_preserved/m.test(conditioning.inputs.prompt)) {
+      const motionId = nextNodeId(workflow)
+      workflow[motionId] = node('NovaFlowH3PrepareMotionReference', {
+        images: conditioning.inputs['ref_videos.ref_video_0'].slice(),
+      }, 'Separate flat-sprite motion from source appearance')
+      conditioning.inputs['ref_videos.ref_video_0'] = [motionId, 0]
+    }
+
     if (referenceAudio) {
       const audioId = nextNodeId(workflow)
       workflow[audioId] = node('LoadAudio', { audio: referenceAudio }, 'reference_audio')
       conditioning.inputs['ref_audios.ref_audio_0'] = [audioId, 0]
     }
+    // Only literal full-track reuse bypasses generated audio. Voice/style/rhythm
+    // references still condition the model and use its decoded soundtrack.
+    const create = oneByClass(workflow, 'CreateVideo')[1]
+    const decoders = entriesByClass(workflow, 'VAEDecodeAudio')
+    if (fullyCopiesReferenceAudio(conditioning.inputs.prompt)) {
+      if (!referenceAudio) throw new TypeError('H3 音频完整复用缺少声音参考文件')
+      const trimId = nextNodeId(workflow)
+      workflow[trimId] = node('TrimAudioDuration', {
+        audio: conditioning.inputs['ref_audios.ref_audio_0'].slice(), start_index: 0,
+        duration: conditioning.inputs.length / create.inputs.fps,
+      }, 'Reuse reference audio within video duration')
+      create.inputs.audio = [trimId, 0]
+      for (const [id] of decoders) delete workflow[id]
+    } else if (!decoders.length) {
+      const id = nextNodeId(workflow)
+      const audioVae = entriesByClass(workflow, 'VAELoader').find(([, n]) => n.inputs.vae_name === MODELS.audioVae)
+      workflow[id] = node('VAEDecodeAudio', { samples: [oneByClass(workflow, 'SamplerCustomAdvanced')[0], 0], vae: [audioVae[0], 0] }, 'Decode MiniMax H3 audio')
+      create.inputs.audio = [id, 0]
+    }
+  }
+
+  function replacesSourceAppearance(prompt) {
+    const summary = /(?:^|\n)summary:\s*([\s\S]*?)(?=\n\s*retention_analysis:|$)/.exec(String(prompt || ''))?.[1] || ''
+    if (!/^\[[^\]]*video editing/.test(summary)) return false
+    const replacement = /\breplac(?:e|es|ing)\b([^.!\n]*?)\bwith\b/i.exec(summary)
+    // A background, lighting, clothing or logo edit must retain the original
+    // subject pixels. Only an explicit whole-object replacement can benefit
+    // from a neutral motion guide; ambiguous instructions use native H3 input.
+    return !!replacement && !/\b(?:background|backdrop|setting|environment|lighting|logo|text|caption|lettering|colou?r|texture|material|outfit|clothing|hair|face)\b/i.test(replacement[1])
+  }
+
+  function fullyCopiesReferenceAudio(prompt) {
+    const text = String(prompt || '')
+    const summary = /(?:^|\n)summary:\s*\[([^\]]+)\]/.exec(text)
+    const retention = /(?:^|\n)retention_analysis:\s*([\s\S]*?)(?=\n\s*detailed_description:|$)/.exec(text)?.[1] || ''
+    return !!summary?.[1].split(/\s*\+\s*/).includes('audio reuse') && /^<Audio 1>[^\n:]*:\s*fully_copy\b/m.test(retention)
   }
 
   function patchFrameWorkflow(workflow, mode, conditioning, options) {
@@ -1008,11 +1070,25 @@
       if (key !== 'ref_images.ref_image_' + index || !isLink(link)) {
         throw new TypeError('MiniMax H3 r2v image references must be contiguous')
       }
-      const target = workflow[link[0]]
-      if (!target || target.class_type !== 'LoadImage' || link[1] !== 0 || usedImages.has(link[0])) {
+      let target = workflow[link[0]]
+      let imageLink = link
+      if (target?.class_type === 'NovaFlowH3PrepareReferenceImage') {
+        imageLink = target.inputs.image
+        if (!isLink(imageLink)) throw new TypeError('H3 reference preparation has no source image')
+        requireLink(target.inputs.mask, imageLink[0], 1, 'H3 reference alpha')
+        if (target.inputs.width !== inputs.width || target.inputs.height !== inputs.height) throw new TypeError('H3 reference preparation dimensions do not match the canvas')
+        if (target.inputs.preserve_video_layout) {
+          let videoLink = inputs['ref_videos.ref_video_0']
+          if (workflow[videoLink?.[0]]?.class_type === 'NovaFlowH3PrepareMotionReference') videoLink = workflow[videoLink[0]].inputs.images
+          if (!videoLink) throw new TypeError('H3 reference layout requires a video')
+          requireLink(target.inputs.reference_video, videoLink[0], 0, 'H3 reference layout video')
+        }
+        target = workflow[imageLink[0]]
+      }
+      if (!target || target.class_type !== 'LoadImage' || imageLink[1] !== 0 || link[1] !== 0 || usedImages.has(imageLink[0])) {
         throw new TypeError('MiniMax H3 r2v image reference link is invalid')
       }
-      usedImages.add(link[0])
+      usedImages.add(imageLink[0])
     }
 
     const videoNodes = entriesByClass(workflow, 'LoadVideo')
@@ -1028,7 +1104,12 @@
       const [videoId] = videoNodes[0]
       const [componentId, componentNode] = componentNodes[0]
       requireLink(componentNode.inputs.video, videoId, 0, 'MiniMax H3 reference video components')
-      requireLink(inputs['ref_videos.ref_video_0'], componentId, 0, 'MiniMax H3 reference video')
+      const motion = entriesByClass(workflow, 'NovaFlowH3PrepareMotionReference')
+      if (motion.length) {
+        if (motion.length !== 1) throw new TypeError('H3 motion reference topology is invalid')
+        requireLink(motion[0][1].inputs.images, componentId, 0, 'H3 source motion video')
+        requireLink(inputs['ref_videos.ref_video_0'], motion[0][0], 0, 'H3 prepared motion video')
+      } else requireLink(inputs['ref_videos.ref_video_0'], componentId, 0, 'MiniMax H3 reference video')
     } else if (inputs['ref_videos.ref_video_0'] != null) {
       throw new TypeError('MiniMax H3 r2v has dangling video reference inputs')
     }
@@ -1091,7 +1172,7 @@
       BasicGuider: 1,
       SamplerCustomAdvanced: 1,
       VAEDecode: 1,
-      VAEDecodeAudio: 1,
+      VAEDecodeAudio: entriesByClass(workflow, 'MiniMaxH3ReferenceToVideo').some(([, n]) => fullyCopiesReferenceAudio(n.inputs.prompt)) ? 0 : 1,
       CreateVideo: 1,
       SaveVideo: 1,
     }
@@ -1247,6 +1328,16 @@
     }
 
     const createVideo = oneByClass(workflow, 'CreateVideo')[1]
+    if (mode === 'r2v' && fullyCopiesReferenceAudio(conditioning.inputs.prompt)) {
+      const audioId = oneByClass(workflow, 'LoadAudio')[0]
+      const [trimId, trim] = oneByClass(workflow, 'TrimAudioDuration')
+      requireLink(trim.inputs.audio, audioId, 0, 'MiniMax H3 copied reference audio')
+      if (trim.inputs.start_index !== 0 || trim.inputs.duration !== conditioning.inputs.length / createVideo.inputs.fps) throw new TypeError('H3 复用音轨时长与视频不一致')
+      requireLink(createVideo.inputs.audio, trimId, 0, 'MiniMax H3 trimmed reference audio')
+    } else {
+      requireClassCount(workflow, 'TrimAudioDuration', 0)
+      requireLink(createVideo.inputs.audio, oneByClass(workflow, 'VAEDecodeAudio')[0], 0, 'MiniMax H3 generated audio')
+    }
     const expectedFps = isRecord(options) && options.fps != null
       ? normalizeFps(options.fps)
       : normalizeFps(createVideo.inputs.fps)

@@ -90,7 +90,7 @@ function multiReferencePrompt() {
     'summary:',
     '[reference generation + audio reference] Keep the hero, motion cadence, and supplied voice.',
     'retention_analysis:',
-    'Retain <Subject 1> exactly; follow <Video 1> for movement and <Audio 1> for sound timing.',
+    '<Subject 1>: fully_preserved - keep identity and costume; follow <Video 1> for movement and <Audio 1> for sound timing.',
     'detailed_description:',
     '[Shot 1] <Subject 1> enters frame with the reference-video motion while the camera slowly tracks left.',
     '[Shot 2] At 00:03.000, <Subject 1> gradually stops and looks forward as the camera remains locked.',
@@ -227,12 +227,12 @@ test('prepareRequest returns separate requirements, compiled prompt, and immutab
   assert.equal(request.context.snapshot.modelId, 'minimax_h3_local')
   assert.equal(request.text, request.requirements)
   assert.match(request.requirements, /Protocol: Ref2VA/)
-  assert.match(request.requirements, /【任务定位】[\s\S]*【连续性与约束】/)
+  assert.match(request.requirements, /subject_definitions[\s\S]*retention_analysis/)
   assert.match(request.requirements, /Available resource labels: <Picture 1> = captured image slot multi_ref_image_2/)
   assert.doesNotMatch(request.requirements, /@\u53c2\u8003\u56fe2/)
-  assert.match(request.requirements, /observable actions/)
-  assert.match(request.requirements, /direction, by how much/)
-  assert.match(request.requirements, /ambience and music choices/)
+  assert.match(request.requirements, /observable action/)
+  assert.match(request.requirements, /direction, amplitude/)
+  assert.match(request.requirements, /ambience and physical sounds/)
   assert.equal(request.context.fingerprint, request.context.snapshot.fingerprint)
   assert.ok(Object.isFrozen(request))
   assert.ok(Object.isFrozen(request.context))
@@ -459,38 +459,28 @@ test('validates Ref2VA relations and contiguous subject definitions', () => {
   assert.deepEqual(Array.from(valid.relations), ['reference generation', 'audio reference'])
   assert.deepEqual(Array.from(valid.usedReferences), ['<Picture 1>', '<Video 1>', '<Audio 1>'])
 
-  const naturalSummary = workflow.validatePromptText(
-    multiReferencePrompt().replace(
-      '[reference generation + audio reference] Keep the hero, motion cadence, and supplied voice.',
-      '\u4fdd\u7559 <Picture 1> \u7684\u8eab\u4efd\u4e0e\u5916\u89c2\uff0c\u53c2\u8003 <Video 1> \u7684\u52a8\u4f5c\u8282\u594f\uff0c\u5e76\u540c\u6b65 <Audio 1> \u7684\u58f0\u97f3\u3002',
-    ),
-    options,
-  )
-  assert.deepEqual(
-    Array.from(naturalSummary.relations),
-    ['reference generation', 'audio reference'],
-  )
+  assert.throws(() => workflow.validatePromptText(multiReferencePrompt().replace('[reference generation + audio reference]', ''), options), /明确任务关系/)
 
   assert.throws(
     () => workflow.validatePromptText(
       multiReferencePrompt().replace('[reference generation + audio reference]', '[unsupported relation]'),
       options,
     ),
-    /Unsupported MiniMax H3 reference relation/,
+    /明确任务关系/,
   )
   assert.throws(
     () => workflow.validatePromptText(
       multiReferencePrompt().replace(/<Subject 1>/g, '<Subject 2>'),
       options,
     ),
-    /must start at <Subject 1> without gaps/,
+    /主体缺少独立定义/,
   )
   assert.throws(
     () => workflow.validatePromptText(
       multiReferencePrompt().replace('<Subject 1>: the hero identity', '<Subject 2>: the hero identity'),
       options,
     ),
-    /must start at <Subject 1> without gaps/,
+    /主体缺少独立定义/,
   )
 })
 

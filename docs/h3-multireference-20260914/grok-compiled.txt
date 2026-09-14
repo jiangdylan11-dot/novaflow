@@ -1,0 +1,19 @@
+subject_definitions:
+<Subject 1> is the dollar-sign gold coin in <Picture 1>. Its identity, embossed dollar symbol, double gold rim, warm yellow color and cartoon-metal material come exclusively from <Picture 1>. Its rotation follows the coin in <Video 1>.
+<Video 1> is the source video to edit; its mask-emblem coin is the object being replaced.
+
+summary:
+[video editing + reference generation] The target video is an edited version of <Video 1>. Replace the entire mask-emblem coin with <Subject 1> throughout the complete video, preserving the source rotation, camera, coin position and green background.
+
+retention_analysis:
+<Subject 1> (appears in [Shot 1]): fully_preserved - retain the dollar symbol, rim, proportions, gold material and identity from <Picture 1> continuously through all rotation phases.
+<Video 1> (source video edit): partially_preserved - retain the rotation trajectory, timing, center position, apparent scale, fixed camera and green background. Replace the original coin appearance completely on both faces; none of its mask emblem is retained.
+
+detailed_description:
+A stylized gold coin on a flat green background. [Shot 1] The shot shows <Subject 1> alone at the same position and apparent scale as the source coin in <Video 1>. The camera remains static. Starting at 0 seconds, <Subject 1> turns continuously around its vertical axis, with the same timing and orientation changes as the source video. Its dollar-sign face turns away to expose the gold rim, then the other dollar-sign face becomes visible, followed by the opposite rim and a smooth return toward the opening phase at 3 seconds. Every visible face belongs to the dollar coin from <Picture 1> throughout the motion. The embossed dollar symbol and double rim remain consistent whenever a face is visible. The coin never becomes the mask-emblem source coin. The green background remains constant; no additional objects or cuts appear.
+
+overall_soundscape:
+No dialogue.
+
+non_diegetic_music:
+N/A

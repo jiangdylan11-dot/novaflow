@@ -785,7 +785,7 @@ function miniMaxH3EnhanceMode(payload) {
   ).toLowerCase();
   const requirements = normalizeSmartAiText(payload?.requirements || payload?.requirement || "", 12000).toLowerCase();
   const text = `${source} ${requirements}`;
-  if (/(?:ref2va|full[-_\s]?reference|全参考)/i.test(text)) return "full_reference";
+  if (/(?:ref2va|r2v|multi[-_\s]?reference|full[-_\s]?reference|全参考|多参)/i.test(text)) return "full_reference";
   if (/(?:fl2va|first[-_\s]?last|首尾帧)/i.test(text)) return "first_last";
   if (/(?:i2va|image[-_\s]?video|图生视频)/i.test(text)) return "image_video";
   if (/(?:l2va|video[-_\s]?reference|视频参考)/i.test(text)) return "video_reference";
@@ -945,7 +945,9 @@ function normalizeMiniMaxH3PromptOutput(text, options) {
   if (options.minimaxH3Enhance) {
     let formatted;
     try {
-      formatted = h3PromptEnhance.validateFormat(text, options);
+      formatted = h3PromptEnhance.isReferenceMode(options)
+        ? h3PromptEnhance.validateReference(text, options)
+        : h3PromptEnhance.validateFormat(text, options);
     } catch (error) {
       throw miniMaxH3ContractError("h3_contract_five_sections", error.message);
     }
@@ -7779,7 +7781,8 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
   );
   if (!prompt && !requirements) throw new Error("请输入 MiniMax H3 视频创意或当前 Prompt");
   const mode = miniMaxH3EnhanceMode(payload);
-  const responseFields = h3PromptEnhance.sectionFields;
+  const referenceMode = mode === "full_reference";
+  const responseFields = referenceMode ? h3PromptEnhance.referenceFields : h3PromptEnhance.sectionFields;
   const directDuration = payload?.durationSeconds ?? payload?.duration_seconds ?? payload?.duration;
   const durationSeconds = directDuration === undefined || directDuration === null || directDuration === ""
     ? miniMaxH3PromptEnhanceDurationFromText(requirements)
@@ -7794,9 +7797,9 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
     miniMaxH3PromptEnhanceUserRequirement(requirements, prompt) || "N/A",
     requirements.match(/^Available resource labels:[^\n]*/im)?.[0] || "",
     "",
-    h3PromptEnhance.formatInstruction,
+    referenceMode ? h3PromptEnhance.referenceInstruction : h3PromptEnhance.formatInstruction,
     "",
-    "The selected mode and duration are authoritative. Return the five-section prompt."
+    "The selected mode and duration are authoritative. Return the requested field structure."
   ].join("\n");
   return {
     body: {

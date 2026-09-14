@@ -1,0 +1,8 @@
+{
+  "ok": true,
+  "attempts": 1,
+  "chars": 1349,
+  "promptSha256": "3fc24c1d1652fa6691851be27622e5a9dbcac1af9139808f7c5b2da045a62ba5",
+  "service": "particle-editor-desktop/prompt-assistant-service.py",
+  "sourceRequest": "local-request.json"
+}

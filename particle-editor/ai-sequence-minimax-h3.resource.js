@@ -400,9 +400,6 @@
     const images = policyList(options.images, 'reference images', REFERENCE_MEDIA_POLICY.maxImages)
     const videos = policyList(options.videos, 'reference videos', REFERENCE_MEDIA_POLICY.maxVideos)
     const audios = policyList(options.audios, 'reference audios', REFERENCE_MEDIA_POLICY.maxAudios)
-    if (audios.length && !images.length && !videos.length) {
-      throw new TypeError('MiniMax H3 standalone audio cannot be the only reference')
-    }
 
     let videoDurationSec = 0
     for (const video of videos) {

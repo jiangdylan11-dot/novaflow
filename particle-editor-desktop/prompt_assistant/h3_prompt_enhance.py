@@ -6,6 +6,106 @@ from pathlib import Path
 
 POLICY = json.loads(Path(__file__).with_name("h3_prompt_enhance_policy.json").read_text(encoding="utf-8"))
 INSTRUCTION = "\n".join(POLICY["instructions"])
+REFERENCE_INSTRUCTION = "\n".join(POLICY["referenceInstructions"])
+REFERENCE_FIELDS = ("subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music")
+
+
+def render_reference_plan(value, requirements="", duration=30, source="", user_requirement=""):
+    """Serialize model-authored relationships; Python owns all H3 punctuation."""
+    text = re.sub(r"^```(?:json)?\s*\n([\s\S]*?)\n```$", r"\1", str(value).strip()).strip()
+    plan = json.loads(text)
+    required = {"references", "tasks", "summary", "description", "soundscape", "music"}
+    if not isinstance(plan, dict) or set(plan) != required or not isinstance(plan["references"], list) or not isinstance(plan["tasks"], list):
+        raise ValueError("H3 多参关系计划不完整")
+    definitions, retention, subjects = [], [], []
+    for item in plan["references"]:
+        if not isinstance(item, dict) or set(item) != {"label", "sources", "description", "relation", "keep"}:
+            raise ValueError("H3 多参关系计划字段不完整")
+        label = item["label"]
+        if not isinstance(label, str) or not re.fullmatch(r"<(?:Subject|Picture|Video|Audio) [1-9]\d*>", label):
+            raise ValueError("H3 多参关系计划标签无效")
+        if isinstance(item["keep"], list) and all(isinstance(v, str) for v in item["keep"]):
+            item["keep"] = "; ".join(item["keep"])
+        # An edited source video cannot be retained in its entirety: the
+        # replacement itself necessarily changes part of its content.
+        if label.startswith("<Video ") and "video editing" in plan["tasks"] and item["relation"] == "fully_preserved":
+            item["relation"] = "partially_preserved"
+        if not isinstance(item["sources"], list) or any(not isinstance(t, str) or not re.fullmatch(r"<(?:Picture|Video|Audio) [1-9]\d*>", t) for t in item["sources"]):
+            raise ValueError("H3 多参关系计划素材来源无效")
+        if any(not isinstance(item[k], str) or not item[k].strip() for k in ("description", "relation", "keep")):
+            raise ValueError("H3 多参关系计划内容为空")
+        origins = " Source assets: " + ", ".join(item["sources"]) + "." if item["sources"] else ""
+        definitions.append(label + " is " + item["description"].strip() + origins)
+        retention.append(label + ": " + item["relation"].strip() + " - " + item["keep"].strip())
+        if label.startswith("<Subject "):
+            subjects.append(label)
+    for k in ("summary", "description", "soundscape", "music"):
+        if not isinstance(plan[k], str) or not plan[k].strip():
+            raise ValueError("H3 多参关系计划内容为空")
+    if any(not isinstance(t, str) for t in plan["tasks"]):
+        raise ValueError("H3 多参缺少明确任务关系")
+    summary = plan["summary"].strip()
+    if "video editing" in plan["tasks"]:
+        videos = [r["label"] for r in plan["references"] if r["label"].startswith("<Video ")]
+        if not videos:
+            raise ValueError("H3 视频编辑必须指定源视频")
+        summary = "The target video is an edited version of " + videos[0] + ". " + summary
+    description = plan["description"].strip()
+    loop_requested = re.search(POLICY["loopPattern"], source + "\n" + user_requirement, re.I) and not re.search(POLICY["cancelLoopPattern"], user_requirement or source, re.I)
+    if loop_requested and not re.search(POLICY["closurePattern"], description, re.I):
+        description += " At the end, the subject returns smoothly to its starting pose and motion phase to close the requested loop."
+    if "[Shot 1]" not in description:
+        description = "[Shot 1] " + description
+    result = dict(zip(REFERENCE_FIELDS, ("\n".join(definitions), "[" + " + ".join(plan["tasks"]) + "] " + summary, "\n".join(retention), description, plan["soundscape"], plan["music"])))
+    return validate_reference(json.dumps(result), requirements, duration)
+
+
+def validate_reference(value, requirements="", duration=30):
+    text = re.sub(r"^```(?:json|text)?\s*\n([\s\S]*?)\n```$", r"\1", str(value).strip()).strip()
+    if text.startswith("{"):
+        fields = json.loads(text)
+        if set(fields) != set(REFERENCE_FIELDS) or any(not isinstance(fields[k], str) or not fields[k].strip() for k in REFERENCE_FIELDS):
+            raise ValueError("H3 多参需要完整的六个参考字段")
+    else:
+        headers = list(re.finditer(r"(?m)^([a-z][a-z0-9_]*):[ \t]*", text))
+        if tuple(m.group(1) for m in headers) != REFERENCE_FIELDS:
+            raise ValueError("H3 多参需要完整的六个参考字段")
+        fields = {m.group(1): text[m.end():headers[i+1].start() if i+1 < len(headers) else len(text)].strip() for i, m in enumerate(headers)}
+    if any(not fields[k].strip() for k in REFERENCE_FIELDS):
+        raise ValueError("H3 多参字段不能为空")
+    text = "\n\n".join(k + ":\n" + fields[k].strip() for k in REFERENCE_FIELDS)
+    inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements)
+    if inventory:
+        media = lambda v: set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", v))
+        if media(inventory.group(1)) != media(text):
+            raise ValueError("H3 多参引用与已上传素材不一致")
+    definitions = list(re.finditer(r"(?m)^<Subject ([1-9]\d*)>[^\n]+", fields["subject_definitions"]))
+    ids = [int(m.group(1)) for m in definitions]
+    if ids != list(range(1, len(ids)+1)) or any(int(n) not in ids for n in re.findall(r"<Subject ([1-9]\d*)>", text)):
+        raise ValueError("H3 多参主体缺少独立定义")
+    if re.search(r"<(?:Picture|Video) [1-9]\d*>", inventory.group(1) if inventory else text) and any(not re.search(r"<(?:Picture|Video) [1-9]\d*>", m.group()) for m in definitions):
+        raise ValueError("H3 多参主体必须说明外观或动作的素材来源")
+    task = re.match(r"\[([^\]]+)\]", fields["summary"])
+    tasks = re.split(r"\s*\+\s*", task.group(1)) if task else []
+    if not tasks or any(t not in ("reference generation", "keyframe completion", "video editing", "video continuation", "audio reuse", "audio reference") for t in tasks):
+        raise ValueError("H3 多参缺少明确任务关系")
+    if "video editing" in tasks and not re.match(r"\[[^\]]+\]\s*The target video is an edited version of <Video [1-9]\d*>(?:\.|\s)", fields["summary"]):
+        raise ValueError("H3 视频编辑必须指定源视频")
+    for m in re.finditer(r"(?m)^<(Subject|Picture|Video|Audio) ([1-9]\d*)>", fields["subject_definitions"]):
+        line = next((s for s in fields["retention_analysis"].splitlines() if s.strip().startswith(m.group())), "")
+        relations = "fully_copy|partially_copy|reference|weak_reference" if m.group(1) == "Audio" else "fully_preserved|partially_preserved|attribute_transfer|weak_reference"
+        if not re.search(r":\s*(?:" + relations + r")\b", line):
+            raise ValueError("H3 多参缺少主体或声音的保留规则")
+    if len(ids) == 1 and not re.search(r"<Subject [1-9]\d*>", fields["detailed_description"]):
+        fields["detailed_description"] = fields["detailed_description"].replace("[Shot 1]", "[Shot 1] The shot shows <Subject 1>.")
+    if any(f"<Subject {n}>" not in fields["detailed_description"] for n in ids):
+        raise ValueError("H3 多参镜头必须引用已定义主体")
+    if "[Shot 1]" not in fields["detailed_description"]:
+        raise ValueError("H3 多参缺少镜头描述")
+    for m in re.finditer(r"\[Shot \d+\] At (\d+):(\d+)\.(\d+)", fields["detailed_description"]):
+        if int(m[1])*60 + int(m[2]) + float("0."+m[3]) > float(duration or 30):
+            raise ValueError("H3 多参镜头超出所选时长")
+    return "\n\n".join(k + ":\n" + fields[k].strip() for k in REFERENCE_FIELDS)
 
 
 def narrative(value):

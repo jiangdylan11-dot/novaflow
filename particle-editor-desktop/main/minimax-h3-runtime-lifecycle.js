@@ -371,6 +371,31 @@ function createMiniMaxH3RuntimeLifecycle(options = {}) {
     const promise = (async () => {
       const config = readConfig();
       if (!config.ok || !config.installed) return publish({ ...config, running: false, connected: false });
+      // Ship reference preparation with the app, not as an untracked runtime
+      // patch. A running engine must reload changed node code before reuse.
+      const referenceSource = pathApi.join(__dirname, 'h3-reference-nodes.py');
+      const referenceTarget = pathApi.join(config.customNodesPath, 'novaflow_h3_reference', '__init__.py');
+      if (fsApi.existsSync(referenceSource)) {
+        const sourceCode = fsApi.readFileSync(referenceSource, 'utf8');
+        const previousCode = fsApi.existsSync(referenceTarget) ? fsApi.readFileSync(referenceTarget, 'utf8') : '';
+        if (sourceCode !== previousCode) {
+          const before = await getStatus({ timeoutMs: 1200 });
+          if (before.running) {
+            const response = await (options.fetch || fetch)(config.baseUrl + '/queue', { signal: AbortSignal.timeout(3000) });
+            if (!response.ok) throw new Error('H3 reference update could not check the active queue');
+            const queue = await response.json();
+            if (queue.queue_running?.length || queue.queue_pending?.length) {
+              return publish({ ...before, ok: false, error: 'H3 正在生成，完成后再次生成即可加载多参更新' });
+            }
+            const stopped = await stopRuntime();
+            if (!stopped.ok) return stopped;
+          } else if (before.processRunning) {
+            return publish({ ...before, ok: false, error: 'H3 正在启动，请就绪后再次生成以加载多参更新' });
+          }
+          fsApi.mkdirSync(pathApi.dirname(referenceTarget), { recursive: true });
+          fsApi.writeFileSync(referenceTarget, sourceCode, 'utf8');
+        }
+      }
       const current = await getStatus({ timeoutMs: 1200 });
       if (current.running && await canReuseRuntimeProcess(config, current)) return publish({ ...current, reused: true });
       if (!fsApi.existsSync(config.startScriptPath)) {
@@ -457,6 +482,10 @@ function createMiniMaxH3RuntimeLifecycle(options = {}) {
     if (startPromise) {
       try { await startPromise; } catch { void 0; }
     }
+    return stopRuntime(stopOptions);
+  }
+
+  async function stopRuntime(stopOptions = {}) {
     const config = readConfig();
     if (!config.ok || !config.installed) return publish({ ...config, running: false, connected: false, stopped: false });
     if (!fsApi.existsSync(config.stopScriptPath)) {

@@ -20,6 +20,9 @@ const {
 function createInstalledRuntime() {
   const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "novaflow-h3-runtime-test-"));
   const scriptsDir = path.join(runtimeRoot, "scripts");
+  const referenceDir = path.join(runtimeRoot, 'custom_nodes', 'novaflow_h3_reference');
+  fs.mkdirSync(referenceDir, { recursive: true });
+  fs.copyFileSync(path.join(root, 'particle-editor-desktop/main/h3-reference-nodes.py'), path.join(referenceDir, '__init__.py'));
   fs.mkdirSync(scriptsDir, { recursive: true });
   fs.writeFileSync(path.join(scriptsDir, "start-runtime.bat"), "@exit /b 0\n", "utf8");
   fs.writeFileSync(path.join(scriptsDir, "stop-runtime.bat"), "@exit /b 0\n", "utf8");
@@ -49,6 +52,23 @@ function createNeverClosingChild(pid) {
   };
   return child;
 }
+
+test('H3 node update preserves active generations and leaves loaded code unchanged', async () => {
+  const runtimeRoot = createInstalledRuntime();
+  const target = path.join(runtimeRoot, 'custom_nodes/novaflow_h3_reference/__init__.py');
+  try {
+    fs.writeFileSync(target, 'previous node code');
+    const lifecycle = createMiniMaxH3RuntimeLifecycle({ runtimeRoot,
+      probe: async () => ({ ok: true }), processAlive: () => true,
+      fetch: async () => ({ ok: true, json: async () => ({ queue_running: [['active job']], queue_pending: [] }) }),
+      runCommand: async () => { throw new Error('must not stop active generation'); },
+    });
+    const result = await lifecycle.start();
+    assert.equal(result.ok, false);
+    assert.match(result.error, /正在生成/);
+    assert.equal(fs.readFileSync(target, 'utf8'), 'previous node code');
+  } finally { fs.rmSync(runtimeRoot, { recursive: true, force: true }); }
+});
 
 test("H3 Runtime defaults are isolated under ProgramData and fixed to 127.0.0.1:8189", () => {
   const paths = resolveMiniMaxH3RuntimePaths({ programData: "C:\\ProgramData" });

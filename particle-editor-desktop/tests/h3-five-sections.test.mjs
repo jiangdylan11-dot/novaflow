@@ -119,7 +119,7 @@ test('cloud schema and repair preserve five sections and real content checks',as
 });
 
 test('Grok retry receives the exact safe failed gate and final error retains reason and retry count',async()=>{
-  const built=buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance',h3Mode:'Ref2VA',durationSeconds:10,currentPrompt:'人物原地站立。',requirements:'Available resource labels: <Picture 1>, <Picture 2>',visualSchema:'nf.h3.visual.v1'});
+  const built=buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance',h3Mode:'FL2VA',durationSeconds:10,currentPrompt:'人物原地站立。',requirements:'Available resource labels: <Picture 1>, <Picture 2>',visualSchema:'nf.h3.visual.v1'});
   let calls=0;
   await assert.rejects(callGrokResponseWithVisualRetry(built.body,built.inputMeta,built.resultOptions,async body=>{
     calls++;

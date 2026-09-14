@@ -228,10 +228,7 @@ test('validates the current 4+1+1 reference-media safety policy', () => {
   assert.equal(valid.videoDurationSec, 15)
   assert.equal(valid.audioDurationSec, 2)
 
-  assert.throws(
-    () => resource.validateReferenceMediaPolicy({ audios: [{ durationSec: 4 }] }),
-    /standalone audio cannot be the only reference/i,
-  )
+  assert.equal(resource.validateReferenceMediaPolicy({ audios: [{ durationSec: 4 }] }).audioCount, 1)
   assert.throws(
     () => resource.validateReferenceMediaPolicy({ images: [{}], videos: [{ fps: 30, durationSec: 4 }] }),
     /24 FPS/i,

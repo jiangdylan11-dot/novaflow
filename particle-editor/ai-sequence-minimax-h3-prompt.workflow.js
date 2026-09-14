@@ -120,8 +120,8 @@
   const MODEL_REFERENCE_EXPRESSION = /<(Picture|Video|Audio|Subject) ([1-9][0-9]*)>/g
   const MEDIA_REFERENCE_EXPRESSION = /<(Picture|Video|Audio) ([1-9][0-9]*)>/g
   const UI_REFERENCE_ALIAS_EXPRESSION = /@(?:\u9996\u5e27|\u5c3e\u5e27|\u7ed3\u675f\u5e27|\u53c2\u8003\u56fe(?:[1-4])?|\u56fe\u7247[1-4]|\u89c6\u9891\u53c2\u8003|\u89c6\u98911|\u58f0\u97f3\u53c2\u8003|\u97f3\u9891\u53c2\u8003|\u97f3\u98911)(?:\s*\((?:image|video|audio)\))?/iu
-  const CAMERA_DIRECTION_EXPRESSION = /(?:\u8fd0\u955c|\u955c\u5934(?:\u4fdd\u6301|\u56fa\u5b9a|\u9759\u6b62|\u7a33\u5b9a|\u7f13\u6162|\u8f7b\u5fae|\u5e73\u7a33|\u8ddf\u968f|\u63a8\u8fdb|\u62c9\u8fdc|\u6447\u6444|\u79fb\u52a8|\u73af\u7ed5|\u4e0a\u5347|\u4e0b\u964d|\u53d8\u7126|\u5207\u6362)|(?:\u56fa\u5b9a|\u9759\u6b62|\u624b\u6301|\u8ddf\u968f|\u63a8\u8fdb|\u62c9\u8fdc|\u6447\u6444|\u73af\u7ed5|\u5347\u964d|\u53d8\u7126|\u63a8\u8f68)[^\u3002\n]{0,10}\u955c\u5934)|\bcamera\b[^.\n]{0,36}\b(?:holds|remains|stays|static|locked|moves|pushes|pulls|pans|tilts|tracks|orbits|dollies|cranes|follows)\b|\b(?:static camera|locked[- ]off camera|handheld camera|camera (?:movement|motion)|dolly|tracking shot|push[- ]in|pull[- ]out)\b/iu
-  const ACTION_PROGRESSION_EXPRESSION = /(?:\u5f00\u59cb|\u968f\u540e|\u63a5\u7740|\u9010\u6e10|\u6301\u7eed|\u8fc7\u7a0b|\u8f6c\u8eab|\u79fb\u52a8|\u62ac\u8d77|\u653e\u4e0b|\u5b8c\u6210|\u6700\u7ec8|\u8fc7\u6e21|\u52a8\u4f5c)|\b(?:begin(?:s)?|then|next|gradually|progress(?:es|ion)?|continues?|turns?|moves?|raises?|lowers?|completes?|finally|resolves?|transition|motion|action)\b/iu
+  const CAMERA_DIRECTION_EXPRESSION = /(?:\u8fd0\u955c|\u955c\u5934(?:\u4fdd\u6301|\u56fa\u5b9a|\u9759\u6b62|\u7a33\u5b9a|\u7f13\u6162|\u8f7b\u5fae|\u5e73\u7a33|\u8ddf\u968f|\u63a8\u8fdb|\u62c9\u8fdc|\u6447\u6444|\u79fb\u52a8|\u73af\u7ed5|\u4e0a\u5347|\u4e0b\u964d|\u53d8\u7126|\u5207\u6362)|(?:\u56fa\u5b9a|\u9759\u6b62|\u624b\u6301|\u8ddf\u968f|\u63a8\u8fdb|\u62c9\u8fdc|\u6447\u6444|\u73af\u7ed5|\u5347\u964d|\u53d8\u7126|\u63a8\u8f68)[^\u3002\n]{0,10}\u955c\u5934)|\bcamera\b[^.\n]{0,100}\b(?:preserved|unchanged|matches|holds|remains|stays|static|locked|moves|pushes|pulls|pans|tilts|tracks|orbits|dollies|cranes|follows)\b|\b(?:static camera|fixed camera|locked[- ]off camera|handheld camera|camera (?:movement|motion)|dolly|tracking shot|push[- ]in|pull[- ]out)\b/iu
+  const ACTION_PROGRESSION_EXPRESSION = /(?:\u5f00\u59cb|\u968f\u540e|\u63a5\u7740|\u9010\u6e10|\u6301\u7eed|\u8fc7\u7a0b|\u8f6c\u8eab|\u79fb\u52a8|\u62ac\u8d77|\u653e\u4e0b|\u5b8c\u6210|\u6700\u7ec8|\u8fc7\u6e21|\u52a8\u4f5c)|\b(?:begin(?:s)?|then|next|gradually|progress(?:es|ion)?|continues?|turns?|moves?|raises?|lowers?|completes?|finally|resolves?|transition|motion|action|rotat\w*|return\w*|spins?)\b/iu
   const EXPLICIT_MINOR_EXPRESSION = /(?:\u672a\u6210\u5e74\u4eba?|\u672a\u6ee1\s*(?:18|\u5341\u516b)\s*\u5c81?|(?:18|\u5341\u516b)\s*\u5c81?\s*(?:\u4ee5\u4e0b|\u4ee5\u5185)|(?<![0-9])(?:1[0-7]|[0-9])\s*\u5c81(?![0-9])|\u513f\u7ae5|\u5b69\u7ae5|\u5c0f\u5b69|\u5e7c\u5973|\u5e7c\u7ae5|\u5e7c\u513f|\u5a74\u5e7c\u513f?|\u5a74\u513f|\u841d\u8389|\u6b63\u592a)|(?<![a-z0-9_])(?:underage|minors?|child(?:ren)?(?![-\s]?like\b)|juveniles?|loli|shota|under[-\s]*18|(?:1[0-7]|[0-9])[-\s]*years?[-\s]*old|(?:1[0-7]|[0-9])\s*y\s*\/?\s*o|aged?\s*(?:1[0-7]|[0-9]))(?![a-z0-9_])/iu
 
   function stringValue(value) {
@@ -657,6 +657,9 @@
   }
 
   function buildInstructions(protocol, compiledPrompt) {
+    if (protocol.mode === 'multi_reference') {
+      return buildLegacyInstructions(protocol, compiledPrompt).replace('Source prompt:', globalThis.NovaFlowH3PromptFormat.referenceInstruction + '\nSource prompt:')
+    }
     const references = protocol.references.references.length
       ? protocol.references.references.map((reference) => `${reference.modelToken} = captured ${reference.kind} slot ${reference.slotKey}`).join('; ')
       : '(none)'
@@ -1027,6 +1030,12 @@
       throw new Error('MiniMax H3 model output must use protocol references, not UI aliases')
     }
     const protocol = createPromptProtocol(options)
+    if (protocol.mode === 'multi_reference') {
+      value = globalThis.NovaFlowH3PromptFormat.validateReference(value, {
+        mode: protocol.mode, durationSeconds: protocol.durationSeconds,
+        requirements: 'Available resource labels: ' + protocol.references.references.map(r => r.modelToken).join('; '),
+      })
+    }
     if (/^【任务定位】/.test(value)) {
       const formatted = globalThis.NovaFlowH3PromptFormat.validateFormat(value, {
         mode: protocol.mode, durationSeconds: protocol.durationSeconds,
@@ -1106,7 +1115,25 @@
     })
   }
 
+  async function compileForGeneration(options, optimize) {
+    const current = { ...options, modelId: MINIMAX_H3_MODEL_ID, mode: 'multi_reference' }
+    const prepared = prepareRequest(current)
+    if (/^subject_definitions\s*:/.test(prepared.prompt)) {
+      return validateAndRestore({ text: prepared.prompt, context: prepared.context, current })
+    }
+    if (typeof optimize !== 'function') throw new Error('多参提示词编译服务不可用')
+    const text = await optimize({
+      prompt: prepared.prompt, requirements: prepared.requirements,
+      h3Mode: 'multi_reference', durationSeconds: current.durationSeconds,
+      purpose: 'minimax-h3-prompt-enhance', surface: 'animation',
+      visualSchema: H3_VISUAL_SCHEMA, contentPolicy: prepared.context.contentPolicy,
+      supportsNegativePrompt: false,
+    })
+    return validateAndRestore({ text, context: prepared.context, current })
+  }
+
   const API = {
+    compileForGeneration,
     SNAPSHOT_VERSION,
     MINIMAX_H3_MODEL_ID,
     H3_VISUAL_SCHEMA,

@@ -1,0 +1,69 @@
+{
+  "installer": "D:\\AI_APP\\NovaFlow\\particle-editor-desktop\\dist\\NovaFlow Setup 2.3.214.exe",
+  "size": 250177926,
+  "sha256": "f2ee6b84730563fb04ae13e52c5e01cd9e4f5cd4014b59327bb3558817dad990",
+  "verifiedFiles": [
+    {
+      "file": "main.js",
+      "sha256": "8f7987525f5d42175be7f8e4b921e6d28d874bae5a5ece6c5132f7c8c17f6f0a"
+    },
+    {
+      "file": "main/minimax-h3-runtime-lifecycle.js",
+      "sha256": "b4a29a37e5189dcc80012c5510a6dfb1aad83f0a3c898f5498dc9849571f1f41"
+    },
+    {
+      "file": "main/h3-reference-nodes.py",
+      "sha256": "54859f36353c5bb6fd40e97400dcaeffcd00dc454ca439cc3dbe6eda14503a66"
+    },
+    {
+      "file": "prompt-assistant-service.py",
+      "sha256": "ecc14df1f4cb6392f078f90099fd8ef47ade58cb158c266318adb3d8a4e8a298"
+    },
+    {
+      "file": "prompt_assistant/h3_prompt_enhance.py",
+      "sha256": "34c41ea3751a4818f20fa58a4f9bfa66eb83b1af9314801e7f924feb136686b1"
+    },
+    {
+      "file": "prompt_assistant/h3_prompt_enhance_policy.json",
+      "sha256": "f3b0697a6a339e3e318dc199df36440fb44efbab9ff1c77d6d21d2975185b645"
+    },
+    {
+      "file": "admin-server/h3-prompt-enhance.js",
+      "sha256": "2de80ab4a95e05b7e8366fc55cecb76f0d32700687f74ae56de2316f99bf6b15"
+    },
+    {
+      "file": "admin-server/server.js",
+      "sha256": "2b37fa58486307508f3b780894aa35841808f02d84d98c2307d65bd75ab6dd75"
+    },
+    {
+      "file": "renderer/ai-sequence-minimax-h3.workflow.js",
+      "sha256": "d5581f241a396bcdb9937227efd5e367f13269f817153a875b3c880ec1497b49"
+    },
+    {
+      "file": "renderer/ai-sequence-minimax-h3-prompt.workflow.js",
+      "sha256": "6e88a75507dfee91800618e09acb161f7cd0363e336e86aaf316a756a5c20365"
+    },
+    {
+      "file": "renderer/ai-sequence-minimax-h3-reverse.workflow.js",
+      "sha256": "ba8747b42d208aca9633bf2b41be3567a112ddb82dff6706c028de93e5d9c51d"
+    },
+    {
+      "file": "renderer/ai-sequence-minimax-h3.resource.js",
+      "sha256": "99e296608c944d910b4a1fb8e39ad07966b827e7371407aacd24a6a940101f1e"
+    },
+    {
+      "file": "renderer/h3-prompt-format.js",
+      "sha256": "911e311419bbec2fda3e7cf44b823953e774ba7abca23e538493ca062980ff87"
+    },
+    {
+      "file": "renderer/novaflow-smart-ai.js",
+      "sha256": "5012a63e3b59f585ebd50098cdd82e76697f577bbcb95f94ddedcd5cf595ee43"
+    },
+    {
+      "file": "renderer/assets/index-BbIa-2NM.js",
+      "sha256": "dc024651ac36326312a6f79024e9c91b4bffdc01180119d87ff57dd7c1865e7f"
+    }
+  ],
+  "installedApplicationUpdated": false,
+  "reason": "Program Files write denied; apply the installer to update the installed app"
+}

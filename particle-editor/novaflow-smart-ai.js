@@ -4848,6 +4848,16 @@
     });
     observer.observe(document.documentElement || document.body, { childList: true, subtree: true });
     window.__NovaFlowSmartAI = {
+      async compileH3ReferenceForGeneration(options) {
+        const workflow = getMiniMaxH3PromptWorkflow();
+        return workflow.compileForGeneration(options, async payload => {
+          const api = window.electronAPI || {};
+          // Compilation is local and does not silently spend cloud credits.
+          const response = await api.promptAssistantOptimizePrompt?.(payload);
+          if (!response || response.ok === false) throw new Error(response?.error || '多参提示词编译失败');
+          return readSmartAiResult(response).prompt;
+        });
+      },
       version: VERSION,
       refresh: mountSmartAiButtons,
       close: closeDialog,

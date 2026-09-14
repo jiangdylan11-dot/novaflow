@@ -6154,6 +6154,17 @@ ipcMain.handle("prompt-assistant-optimize-prompt", async (_evt, payload) => {
       ok: true
     });
     return { ok: true, timeoutMs: remainingMs };
+  } : usesMiniMaxH3Prompt && provider === 'local' ? async () => {
+    const shared = await prepareOrdinaryArtPromptPatchResourceHandoff();
+    if (!shared.ok) return { ok: false, response: { ok: false, error: shared.error, errorCode: shared.errorCode } };
+    const h3 = await miniMaxH3RuntimeLifecycle.getStatus({ timeoutMs: 1500 });
+    if (!h3.running && !h3.processRunning) return { ok: true };
+    const queue = await inspectNovaFlowRuntimeQueue(h3.baseUrl, 3000);
+    if (!queue.ok || queue.state === 'busy') {
+      return { ok: false, response: { ok: false, error: 'H3 正在生成或队列状态无法确认，请完成后再整理多参提示词', errorCode: 'h3-reference-compiler-runtime-busy' } };
+    }
+    const released = await requestNovaFlowRuntimeFreeMemory(h3.baseUrl, 15000);
+    return released?.ok ? { ok: true } : { ok: false, response: { ok: false, error: 'H3 模型显存释放失败，未开始多参整理', errorCode: 'h3-reference-compiler-release-failed' } };
   } : null;
   let result = await requestPromptAssistant("optimizePrompt", {
     prompt,

@@ -550,7 +550,7 @@
         contentPolicy: current.contentPolicy,
       },
     })
-    const formatted = globalThis.NovaFlowH3PromptFormat.fromValidatedLegacy(restored.text, {
+    const formatted = context.mode === 'multi_reference' ? restored.text : globalThis.NovaFlowH3PromptFormat.fromValidatedLegacy(restored.text, {
         mode: context.mode,
         durationSeconds: context.durationSeconds,
         currentPrompt: context.sourcePrompt,

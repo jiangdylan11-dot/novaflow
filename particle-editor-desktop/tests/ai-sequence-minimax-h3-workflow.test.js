@@ -448,7 +448,8 @@ const r2vConditioning = oneByClass(r2v, 'MiniMaxH3ReferenceToVideo')[1]
 assert.equal(r2vConditioning.inputs.ref_image_size, 'match')
 for (let index = 0; index < 4; index += 1) {
   const link = r2vConditioning.inputs['ref_images.ref_image_' + index]
-  assert.equal(r2v[link[0]].class_type, 'LoadImage')
+  assert.equal(r2v[link[0]].class_type, 'NovaFlowH3PrepareReferenceImage')
+  assert.equal(r2v[r2v[link[0]].inputs.image[0]].class_type, 'LoadImage')
   assert.equal(link[1], 0)
 }
 assert.deepEqual(
@@ -718,11 +719,9 @@ assert.throws(() => api.buildWorkflow({
   mode: 'r2v',
   prompt: 'No references.',
 }), /requires an image, video, or audio/i)
-assert.throws(() => api.buildWorkflow({
-  mode: 'r2v',
-  prompt: '<Audio 1> must not be the only reference.',
-  referenceAudio: 'standalone-only.wav',
-}), /standalone audio cannot be the only reference/i)
+assert.doesNotThrow(() => api.buildWorkflow({
+  mode: 'r2v', prompt: 'A geometric animation follows <Audio 1>.', referenceAudio: 'standalone-only.wav',
+}))
 
 const duplicateUnet = hostClone(t2v)
 duplicateUnet['99'] = hostClone(duplicateUnet['1'])

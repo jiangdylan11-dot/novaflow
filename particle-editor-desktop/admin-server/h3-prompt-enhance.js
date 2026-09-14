@@ -33,9 +33,63 @@ function validate(output, source, userRequirement = '') {
 const sectionNames = ['任务定位', '说话者', '递进式详细提示词', '台词', '连续性与约束'];
 const sectionFields = ['task', 'speakers', 'description', 'dialogue', 'constraints'];
 const formatInstruction = policy.formatInstructions.join('\n');
+const referenceFields = ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description', 'overall_soundscape', 'non_diegetic_music'];
+const referenceInstruction = policy.referenceInstructions.join('\n');
+function isReferenceMode(options = {}) {
+  return /^(?:ref2va|r2v|multi_reference|full_reference)$/i.test(String(options.mode || options.minimaxH3Mode || options.h3Mode || ''));
+}
+function validateReference(value, options = {}) {
+  let text = String(value || '').trim().replace(/^```(?:json|text)?\s*\n([\s\S]*?)\n```$/i, '$1').trim();
+  if (text.startsWith('{')) {
+    const parsed = JSON.parse(text);
+    if (Object.keys(parsed).some(k => !referenceFields.includes(k)) || referenceFields.some(k => typeof parsed[k] !== 'string' || !parsed[k].trim())) throw new Error('H3 多参需要完整的六个参考字段');
+    text = referenceFields.map(k => k + ':\n' + parsed[k].trim()).join('\n\n');
+  }
+  const headers = [...text.matchAll(/^([a-z][a-z0-9_]*):[ \t]*/gm)];
+  if (headers.length !== referenceFields.length || headers.some((m, i) => m[1] !== referenceFields[i])) throw new Error('H3 多参需要完整的六个参考字段');
+  const fields = Object.fromEntries(headers.map((m, i) => [m[1], text.slice(m.index + m[0].length, headers[i + 1]?.index ?? text.length).trim()]));
+  if (Object.values(fields).some(v => !v)) throw new Error('H3 多参字段不能为空');
+  const inventory = String(options.requirements || '').match(/^Available resource labels:([^\n]*)/im);
+  const media = v => [...new Set(v.match(/<(?:Picture|Video|Audio) [1-9]\d*>/g) || [])];
+  if (inventory) {
+    const allowed = media(inventory[1]), used = media(text);
+    if (allowed.some(t => !used.includes(t)) || used.some(t => !allowed.includes(t))) throw new Error('H3 多参引用与已上传素材不一致');
+  }
+  const definitions = [...fields.subject_definitions.matchAll(/^<Subject ([1-9]\d*)>[^\n]+/gm)];
+  const ids = definitions.map(m => Number(m[1]));
+  if (ids.some((id, i) => id !== i + 1) || [...text.matchAll(/<Subject ([1-9]\d*)>/g)].some(m => !ids.includes(Number(m[1])))) throw new Error('H3 多参主体缺少独立定义');
+  for (const m of definitions) {
+    if (/<(?:Picture|Video) [1-9]\d*>/.test(inventory?.[1] || text) && !/<(?:Picture|Video) [1-9]\d*>/.test(m[0])) throw new Error('H3 多参主体必须说明外观或动作的素材来源');
+  }
+  const task = /^\[([^\]]+)\]/.exec(fields.summary);
+  const tasks = task?.[1].split(/\s*\+\s*/) || [];
+  if (!tasks.length || tasks.some(t => !['reference generation','keyframe completion','video editing','video continuation','audio reuse','audio reference'].includes(t))) throw new Error('H3 多参缺少明确任务关系');
+  if (tasks.includes('video editing') && !/^\[[^\]]+\]\s*The target video is an edited version of <Video [1-9]\d*>(?:\.|\s)/.test(fields.summary)) throw new Error('H3 视频编辑必须指定源视频');
+  const tracked = [...fields.subject_definitions.matchAll(/^<(Subject|Picture|Video|Audio) ([1-9]\d*)>/gm)];
+  for (const m of tracked) {
+    const line = fields.retention_analysis.split('\n').find(l => l.trim().startsWith(m[0]));
+    const relation = m[1] === 'Audio' ? /:\s*(?:fully_copy|partially_copy|reference|weak_reference)\b/ : /:\s*(?:fully_preserved|partially_preserved|attribute_transfer|weak_reference)\b/;
+    if (!line || !relation.test(line)) throw new Error('H3 多参缺少主体或声音的保留规则');
+  }
+  // A single explicitly defined subject is unambiguous. Bind its prose to the
+  // existing ID without changing appearance or action. Never guess with many.
+  if (ids.length === 1 && !/<Subject [1-9]\d*>/.test(fields.detailed_description)) {
+    fields.detailed_description = fields.detailed_description.replace('[Shot 1]', '[Shot 1] The shot shows <Subject 1>.');
+  }
+  if (ids.some(id => !fields.detailed_description.includes('<Subject ' + id + '>'))) throw new Error('H3 多参镜头必须引用已定义主体');
+  if (!fields.detailed_description.includes('[Shot 1]')) throw new Error('H3 多参缺少镜头描述');
+  for (const m of fields.detailed_description.matchAll(/\[Shot \d+\] At (\d+):(\d+)\.(\d+)/g)) {
+    if (Number(m[1])*60 + Number(m[2]) + Number('0.'+m[3]) > Number(options.durationSeconds || 30)) throw new Error('H3 多参镜头超出所选时长');
+  }
+  return referenceFields.map(k => k + ':\n' + fields[k]).join('\n\n');
+}
 // Only return application-owned messages. Provider text must never become a
 // diagnostic or a repair instruction, even when it resembles an error message.
 const validationIssues = [
+  ['references', ['H3 多参引用与已上传素材不一致', 'H3 多参主体缺少独立定义', 'H3 多参主体必须说明外观或动作的素材来源', 'H3 多参缺少主体或声音的保留规则', 'H3 多参镜头必须引用已定义主体']],
+  ['sections', ['H3 多参需要完整的六个参考字段', 'H3 多参字段不能为空']],
+  ['references', ['H3 多参缺少明确任务关系', 'H3 视频编辑必须指定源视频']],
+  ['timeline', ['H3 多参缺少镜头描述', 'H3 多参镜头超出所选时长']],
   ['language', ['请将任务定位、整体描述、时间段及约束改为简体中文，保留原台词和媒体标签']],
   ['sections', ['五段提示词字段缺失或为空', '请按任务定位、说话者、递进式详细提示词、台词、连续性与约束输出完整五段', '五段提示词内容不能为空']],
   ['timeline', ['详细提示词缺少分时段动作', '动作时间段必须从 0 连续递进且不超过所选时长', '动作时间段未覆盖完整时长']],
@@ -164,4 +218,4 @@ function fromValidatedLegacy(text, options = {}) {
   const overall=visual.replace(/\[Shot \d+\](?:\s+At\s+\d{2}:\d{2}\.\d{3},?)?/g,'').trim();
   return validateFormat(JSON.stringify({task,speakers:definitions,description:overall+'\n\n'+phases.join('\n\n'),dialogue,constraints:`1. 保持上述人物身份、参考帧绑定及原文明确的约束。\n2. 环境与动作声音：${values.overall_soundscape}\n3. 配乐：${values.non_diegetic_music}`}),options);
 }
-module.exports = { instruction, validate, sectionNames, sectionFields, formatInstruction, validateFormat, fromValidatedLegacy, requiresChineseOutput, validationIssue };
+module.exports = { instruction, validate, sectionNames, sectionFields, formatInstruction, validateFormat, fromValidatedLegacy, requiresChineseOutput, validationIssue, referenceFields, referenceInstruction, isReferenceMode, validateReference };
