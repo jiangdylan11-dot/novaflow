@@ -60,20 +60,59 @@ function referenceFrames(value, requirements = '') {
     return {label, dataUrl, timeSeconds};
   });
 }
-const referenceFieldSchema = language => ({type:'object', additionalProperties:false, properties:Object.fromEntries(referenceFields.map(k=>[k,{type:'string',description:language==='zh'?'本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。':'Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue.'}])), required:referenceFields});
+const referenceFieldSchema = language => ({type:'object', additionalProperties:false, properties:Object.fromEntries(referenceFields.map(k=>[k,{type:'string',minLength:1,description:(language==='zh'?'本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。':'Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue.') + (k==='subject_definitions'?' Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately.':k==='retention_analysis'?' One rule per defined Subject and source Video; image attributes belong to the Subject using that picture.':k==='overall_soundscape'||k==='non_diegetic_music'?' Use N/A for absent or unrequested audio, never an empty string.':'')}])), required:referenceFields});
 const referenceResultSchema = {type:'object', additionalProperties:false, properties:{modelPrompt:referenceFieldSchema('en'),displayPrompt:referenceFieldSchema('zh')},required:['modelPrompt','displayPrompt']};
 function referenceResult(value) {
   let parsed;
-  try { parsed = typeof value === 'string' ? JSON.parse(value) : value; } catch (_) {}
+  try { parsed = typeof value === 'string' ? JSON.parse(value.trim().replace(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i,'$1').trim()) : value; } catch (_) {}
   if (parsed && Object.hasOwn(parsed,'modelPrompt') && Object.hasOwn(parsed,'displayPrompt')) return parsed;
   return null;
 }
+function compileReferenceFields(value, options) {
+  let fields;
+  try { fields = typeof value === 'string' ? JSON.parse(value) : value; } catch (_) { return value; }
+  if (!fields || Array.isArray(fields) || typeof fields !== 'object') return value;
+  fields = {...fields};
+  const explicitAudio = /<Audio [1-9]\d*>/.test(options.requirements || '') || /声音|音频|音乐|配乐|\b(?:sound|audio|music)\b/i.test((options.currentPrompt || '') + (options.userRequirement || ''));
+  for (const key of ['overall_soundscape','non_diegetic_music']) {
+    if (!explicitAudio && (fields[key] == null || fields[key] === '')) fields[key] = 'N/A';
+  }
+  if (typeof fields.subject_definitions !== 'string' || typeof fields.retention_analysis !== 'string') return fields;
+  // Multiple sentences about the same ID are one subject, not new identities.
+  const definitions = new Map();
+  for (const line of fields.subject_definitions.split(/\r?\n/).filter(l=>l.trim())) {
+    const match = /^(<(?:Subject|Video|Picture|Audio) [1-9]\d*>)(.*)$/.exec(line.trim());
+    if (!match) return fields;
+    definitions.set(match[1], [definitions.get(match[1]), match[2].trim()].filter(Boolean).join('; '));
+  }
+  let retention = fields.retention_analysis;
+  const subjects = [...definitions].filter(([id])=>id.startsWith('<Subject '));
+  // Move an image-attribute rule only when the model binds that picture to
+  // exactly one subject and has not already supplied a subject rule.
+  retention = retention.split(/\r?\n/).map(line=>{
+    const picture = /^(<Picture [1-9]\d*>)(?:[^:]*):\s*(attribute_transfer|fully_preserved|partially_preserved|weak_reference)\b/.exec(line);
+    if (!picture) return line;
+    const owners = subjects.filter(([,description])=>description.includes(picture[1]));
+    if (owners.length!==1 || retention.split(/\r?\n/).some(l=>l.startsWith(owners[0][0]))) return line;
+    return line.replace(picture[1],owners[0][0]);
+  }).join('\n');
+  const sourceVideo = /(?:The target video is an edited version of\s*|目标视频是\s*|输出视频由\s*)(<Video [1-9]\d*>)/.exec(fields.summary || '')?.[1];
+  if (sourceVideo && !definitions.has(sourceVideo) && retention.split('\n').some(l=>l.startsWith(sourceVideo))) {
+    definitions.set(sourceVideo, options.requireChineseOutput ? '：本次编辑的源视频。' : ': The source video for this edit.');
+  }
+  fields.subject_definitions = [...definitions].map(([label,description])=>label+' '+description).join('\n');
+  fields.retention_analysis = retention;
+  return fields;
+}
 function validateReferenceResult(value, options = {}) {
   const pair = referenceResult(value);
-  if (!pair) return validateReference(value, options);
+  if (!pair) {
+    const compiled = compileReferenceFields(value, options);
+    return validateReference(typeof compiled === 'string' ? compiled : JSON.stringify(compiled), options);
+  }
   const serialize = v => typeof v === 'string' ? v : JSON.stringify(v);
-  const modelPrompt = validateReference(serialize(pair.modelPrompt), {...options,requireChineseOutput:false});
-  const displayPrompt = validateReference(serialize(pair.displayPrompt), {...options,requireChineseOutput:true});
+  const modelPrompt = validateReference(serialize(compileReferenceFields(pair.modelPrompt, {...options,requireChineseOutput:false})), {...options,requireChineseOutput:false});
+  const displayPrompt = validateReference(serialize(compileReferenceFields(pair.displayPrompt, {...options,requireChineseOutput:true})), {...options,requireChineseOutput:true});
   const narrative = modelPrompt.split('detailed_description:')[1]?.split('overall_soundscape:')[0] || '';
   const prose = narrative.replace(/<d>[\s\S]*?<\/d>|<(?:Picture|Video|Audio|Subject) \d+>|\[Shot \d+\]|"[^"\n]*"|“[^”\n]*”/g, '');
   const han = (prose.match(/[\u3400-\u9fff]/g)||[]).length;

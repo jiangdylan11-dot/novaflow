@@ -31,7 +31,7 @@ test('video editing may preserve its camera in the source-video retention rule',
   retention_analysis:fixture.retention_analysis.replace('retain rotation and framing','retain rotation, camera and framing')};
  assert.doesNotThrow(()=>prompt.validateAndRestore({text:JSON.stringify(candidate),context:prepared.context,current}));
  candidate.retention_analysis=fixture.retention_analysis.replace('dollar sign and gold rim from the image remain','preserve the camera and dollar sign');
- assert.throws(()=>prompt.validateAndRestore({text:JSON.stringify(candidate),context:prepared.context,current}),/camera movement/);
+ assert.doesNotThrow(()=>prompt.validateAndRestore({text:JSON.stringify(candidate),context:prepared.context,current}));
 });
 
 test('reference contract preserves a silent object, video edit and separate audio reuse across JS and Python',()=>{
@@ -177,19 +177,67 @@ except ValueError: pass
 else: raise AssertionError('filename is not an asset label')`],{encoding:'utf8',cwd:new URL('../../',import.meta.url),env:{...process.env,PYTHONIOENCODING:'utf-8'}});
  assert.equal(py.status,0,py.stderr);assert.equal(py.stdout.replace(/\r/g,'').trim(),'<Picture 1>\n<Picture 1>\n<Picture 1>\n<Video 1>\n<Picture 1>');
 });
-test('explicit local replacement preserves source motion and declines ambiguous edits',()=>{
- const py=spawnSync('python',['-c',`import sys;sys.path.insert(0,'particle-editor-desktop')
-from prompt_assistant.h3_prompt_enhance import compile_explicit_replacement
+
+test('a real wardrobe-edit response inherits source action without matching a motion keyword list',()=>{
+ const input={...current,prompt:'给视频中的人物换成深蓝色长袖牛仔外套和长裤，脸、头发、动作和背景保持原样。',durationSeconds:4,resources:resources.filter(r=>r.kind==='video')};
+ const prepared=prompt.prepareRequest(input);
+ const response=fs.readFileSync(new URL('./fixtures/h3-wardrobe-response.json',import.meta.url),'utf8');
+ const result=prompt.validateAndRestore({text:response,context:prepared.context,current:input});
+ assert.match(result.text,/深蓝色.*牛仔/);
+ assert.match(result.modelText,/deep blue.*denim/);
+ assert.match(result.modelText,/<Video 1>/);
+});
+
+test('compiler merges a model subject repeated for appearance and motion without changing its meaning',()=>{
+ const duplicated={...english,
+  subject_definitions:'<Subject 1> appearance from <Picture 1>\n<Subject 1> motion from <Video 1>\n<Video 1> source clip',
+  retention_analysis:'<Picture 1>: attribute_transfer - apply the image design to <Subject 1>.\n<Video 1>: partially_preserved - preserve source background, camera and motion.'};
+ const zh={...chinese,
+  subject_definitions:'<Subject 1> 外观来自 <Picture 1>\n<Subject 1> 动作来自 <Video 1>\n<Video 1> 源视频',
+  retention_analysis:'<Picture 1>: attribute_transfer - 将图片外观应用于 <Subject 1>。\n<Video 1>: partially_preserved - 保留原视频背景、镜头和动作。'};
+ for(const api of [local,edge,context.NovaFlowH3PromptFormat]) {
+  const pair=JSON.parse(api.validateReferenceResult('```json\n'+JSON.stringify({modelPrompt:duplicated,displayPrompt:zh})+'\n```',chineseOptions));
+  assert.equal((pair.modelPrompt.split('summary:')[0].match(/^<Subject 1>/gm)||[]).length,1);
+  assert.match(pair.modelPrompt,/<Subject 1>: attribute_transfer/);
+  assert.match(pair.modelPrompt,/motion from <Video 1>/);
+ }
+});
+
+test('blank unrequested audio and an omitted source-video row compile without inventing content',()=>{
+ const model={...english,overall_soundscape:'',non_diegetic_music:''};
+ const display={...chinese,overall_soundscape:'',non_diegetic_music:''};
+ model.subject_definitions=model.subject_definitions.split('\n')[0];
+ display.subject_definitions=display.subject_definitions.split('\n')[0];
+ for(const api of [local,edge,context.NovaFlowH3PromptFormat]) {
+  const result=JSON.parse(api.validateReferenceResult(JSON.stringify({modelPrompt:model,displayPrompt:display}),chineseOptions));
+  assert.match(result.modelPrompt,/overall_soundscape:\nN\/A/);
+  assert.match(result.displayPrompt,/<Video 1> [：:]本次编辑的源视频/);
+  assert.throws(()=>api.validateReferenceResult(JSON.stringify({modelPrompt:model,displayPrompt:display}),{...chineseOptions,currentPrompt:'保留原有音乐'}),/六个参考字段/);
+  assert.throws(()=>api.validateReferenceResult(JSON.stringify({modelPrompt:{...model,summary:''},displayPrompt:display}),chineseOptions),/六个参考字段/);
+ }
+});
+
+test('local model owns intent while Python compiles omitted relation enums and source-video bindings',()=>{
+ const plan={references:[{label:'<Subject 1>',sources:['<Picture 1>'],description:'参考图的猫脸金币',keep:'图片外观'}],tasks:['video editing'],summary:'将 <Video 1> 中的旋转金币外观替换成参考图的样式，背景和轨迹保持原样。',description:'从第一帧起 <Subject 1> 已使用图片样式，持续沿用 <Video 1> 原金币方向、速度和运动轨迹，镜头和背景保持不变。',soundscape:'N/A',music:'N/A'};
+ const py=spawnSync('python',['-c',`import json,sys;sys.path.insert(0,'particle-editor-desktop')
+from prompt_assistant.h3_prompt_enhance import render_reference_plan
+p=json.load(sys.stdin)
 r='Available resource labels: <Picture 1>; <Video 1>'
-s='把参考视频中的金币换成参考图1'
-out=compile_explicit_replacement(s,r,3)
-assert out and '<Subject 1>' in out and '<Video 1>: partially_preserved' in out
-assert '<Subject 1>: attribute_transfer' in out, 'only image appearance transfers; video owns poses and timing'
-assert '速度变化' in out and '方向' in out and '起止相位' in out
-assert '360' not in out and '顺时针' not in out and '猫' not in out
-for text, inventory, extra in [(s,r,'再把背景变为蓝色'),(s+'并改变运动',r,''),(s,r+'; <Audio 1>',''),(s.replace('金币','背景'),r,''),(s.replace('参考图1','参考图2'),r,'')]:
- assert compile_explicit_replacement(text,inventory,3,extra) is None
-print(out)`],{encoding:'utf8',cwd:new URL('../../',import.meta.url),env:{...process.env,PYTHONIOENCODING:'utf-8'}});
+out=render_reference_plan(json.dumps(p,ensure_ascii=False),r,3)
+assert '<Subject 1>: attribute_transfer' in out
+assert '<Video 1>: partially_preserved' in out
+assert '[video editing + reference generation]' in out
+assert p['description'] in out
+p['summary']=p['summary'].replace('<Video 1>', '原视频')
+p['description']=p['description'].replace('<Video 1>', '原视频')
+assert '<Video 1>: partially_preserved' in render_reference_plan(json.dumps(p),r,3)
+p['references'][0]['sources']=['<Picture 2>']
+try: render_reference_plan(json.dumps(p),r,3)
+except ValueError: pass
+else: raise AssertionError('invented reference was accepted')
+print(out)`],{input:JSON.stringify(plan),encoding:'utf8',cwd:new URL('../../',import.meta.url),env:{...process.env,PYTHONIOENCODING:'utf-8'}});
  assert.equal(py.status,0,py.stderr);
  assert.doesNotThrow(()=>local.validateReference(py.stdout,chineseOptions));
+ const service=fs.readFileSync(new URL('../prompt-assistant-service.py',import.meta.url),'utf8');
+ assert.doesNotMatch(service,/compile_h3_explicit_replacement|explicit-reference-edit/);
 });

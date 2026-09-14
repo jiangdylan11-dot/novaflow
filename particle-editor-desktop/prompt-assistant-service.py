@@ -23,7 +23,6 @@ from prompt_assistant.h3_prompt_enhance import (
     REFERENCE_INSTRUCTION as H3_REFERENCE_INSTRUCTION,
     validate_reference as validate_h3_reference,
     render_reference_plan as render_h3_reference_plan,
-    compile_explicit_replacement as compile_h3_explicit_replacement,
 )
 
 from prompt_assistant.art_prompt_contract import (
@@ -16787,31 +16786,84 @@ class PromptAssistant:
         }
 
     def translate_h3_reference(self, display, inventory, duration):
-        instruction = "You faithfully translate structured video prompts into English, preserving every field and relationship. Return JSON with the six required H3 fields, no explanations."
-        template = "<|im_start|>system\n" + instruction + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
-        translated = self.generate("Translate this complete H3 reference prompt into English. Return only subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music, as six JSON string fields. Keep all reference tags, task markers, retention enums, timing, direction and factual relationships unchanged. Preserve literal dialogue in its original language. Do not add or remove instructions.\n" + display,
-            llama_template=template, max_length=2300, seed=1, temperature=0.0, do_sample=False, trace_label="minimaxH3ReferenceTranslate")
-        model_prompt = validate_h3_reference(translated, inventory, duration)
-        return {"positivePrompt": json.dumps({"modelPrompt": model_prompt, "displayPrompt": display}, ensure_ascii=False), "negativePrompt": "", "rawOutput": translated}
+        # H3 punctuation and asset IDs stay application-owned. Translating a
+        # complete protocol document made the local VLM copy it verbatim.
+        display = validate_h3_reference(display, inventory, duration)
+        # Translate complete clauses: splitting at <Picture N> loses verbs
+        # such as 'replace X with Y'. Placeholders keep tags and literal speech.
+        literals = []
+        def protect_literal(match):
+            literals.append(match.group())
+            return 'LITERAL_' + str(len(literals)-1)
+        masked_display = re.sub(r'<d>[\s\S]*?</d>|[“"][^”"\n]*[”"]', protect_literal, display)
+        protected = re.compile(r'LITERAL_\d+|<(?:Subject|Picture|Video|Audio) [1-9]\d*>|\[Shot [1-9]\d*\]')
+        prose = re.compile(r'[\u3400-\u9fff][^\n]*')
+        fragments = list(dict.fromkeys(m.group() for m in prose.finditer(masked_display)))
+        protected_fragments = {}
+        for fragment in fragments:
+            tokens = []
+            def protect(match):
+                tokens.append(match.group())
+                return 'TOKEN_' + str(len(tokens)-1)
+            protected_fragments[fragment] = (protected.sub(protect, fragment), tokens)
+        translated = {}
+        raw_outputs = []
+        template = '<|im_start|>system\nYou are a Chinese to English translator. Translate text values into English. Return JSON, preserving keys, numbers and every TOKEN_N placeholder. Translate complete sentences without omitting edit verbs or constraints. Do not copy Chinese text.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n'
+        for offset in range(0, len(fragments), 8):
+            batch = {str(i): fragment for i, fragment in enumerate(fragments[offset:offset+8])}
+            pending = dict(batch)
+            for attempt in range(2):
+                request = 'Translate each Chinese text value to English. Example: {"0":"金币旋转，背景不变。"} -> {"0":"The gold coin rotates; the background remains unchanged."}\nInput JSON:\n' + json.dumps({key: protected_fragments[value][0] for key, value in pending.items()}, ensure_ascii=False)
+                raw = self.generate(request, llama_template=template, max_length=1500, seed=attempt+1, temperature=0.0, do_sample=False, trace_label='minimaxH3ReferenceTranslate')
+                raw_outputs.append(raw)
+                try:
+                    values = json.loads(re.sub(r'^```(?:json)?\s*|\s*```$', '', raw.strip()))
+                except (ValueError, TypeError):
+                    values = {}
+                if isinstance(values, list) and len(values) == len(pending):
+                    values = dict(zip(pending, values))
+                if not isinstance(values, dict):
+                    values = {}
+                for key, source_text in list(pending.items()):
+                    candidate = values.get(key)
+                    original, tokens = protected_fragments[source_text]
+                    if not isinstance(candidate, str) or not candidate.strip() or re.search(r'[\u3400-\u9fff]', candidate):
+                        continue
+                    if sorted(re.findall(r'TOKEN_\d+', candidate)) != sorted(re.findall(r'TOKEN_\d+', original)):
+                        continue
+                    strip_tokens = lambda value: re.sub(r'TOKEN_\d+', '', value)
+                    numbers = lambda value: [float(n) for n in re.findall(r'\d+(?:\.\d+)?', strip_tokens(value))]
+                    if numbers(candidate) != numbers(original):
+                        continue
+                    if re.search(r'替换|换成|换为', original) and not re.search(r'replac|substitut|swap|chang|convert', candidate, re.I):
+                        continue
+                    if re.search(r'保留|保持|不变', original) and not re.search(r'keep|retain|preserv|maintain|remain|unchang|same', candidate, re.I):
+                        continue
+                    translated[source_text] = re.sub(r'TOKEN_(\d+)', lambda m: tokens[int(m[1])], candidate.strip())
+                    del pending[key]
+                if not pending:
+                    break
+            if pending:
+                raise ValueError('H3 本地翻译未完整保留内容，正在保留原提示词')
+        model_prompt = prose.sub(lambda m: translated[m.group()], masked_display)
+        model_prompt = re.sub(r'LITERAL_(\d+)', lambda m: literals[int(m[1])], model_prompt)
+        model_prompt = validate_h3_reference(model_prompt, inventory, duration)
+        return {"positivePrompt": json.dumps({"modelPrompt": model_prompt, "displayPrompt": display}, ensure_ascii=False), "negativePrompt": "", "rawOutput": '\n'.join(raw_outputs)}
 
     def optimize_h3_reference(self, source, requirements, duration, media_frames=None):
         user_requirement = minimax_h3_prompt_enhance_user_requirement(requirements, source)
         inventory = re.search(r"(?im)^Available resource labels:[^\n]*", requirements)
         inventory_text = "Available resource labels: " + "; ".join(dict.fromkeys(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory.group() if inventory else source)))
-        explicit = compile_h3_explicit_replacement(source, inventory_text, duration, user_requirement)
-        if explicit is not None and not media_frames:
-            model_prompt = compile_h3_explicit_replacement(source, inventory_text, duration, user_requirement, language="en")
-            return {"positivePrompt": json.dumps({"modelPrompt": model_prompt, "displayPrompt": explicit}, ensure_ascii=False), "negativePrompt": "", "rawOutput": "", "compiler": "explicit-reference-edit"}
         if source.strip().startswith('subject_definitions:') and not user_requirement:
             return self.translate_h3_reference(validate_h3_reference(source, inventory_text, duration), inventory_text, duration)
         rules = "You translate and compile video editing requests into a compact JSON relationship plan. Follow the user's facts exactly. Write factual Simplified Chinese, preserving literal dialogue and visible symbols. No explanations."
         template = "<|im_start|>system\n" + rules + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
-        request = f"任务时长 {duration} 秒。\n{inventory_text}\n用户原文：\n{source}\n补充要求：\n{user_requirement}\n" + (
-            "输出 JSON，根字段恰好为 references, tasks, summary, description, soundscape, music。不要照抄字段解释。\n"
-            "references 是对象数组，每项恰好包含 label, sources, description, relation, keep。label 为 <Subject N>、<Video N> 或 <Audio N>；sources 必须是上传素材标签字符串的数组，例如 [\"<Picture 1>\"]。来源只写标签，不写路径、说明或主体标签；description 用中文写该主体实际外观及来源；keep 用中文写实际保留和替换的属性。\n"
-            "每个可见主体从 <Subject 1> 连续编号，将图片外观和视频动作绑定同一主体。源视频与音频各自独立一项。没有上传的素材不得出现。\n"
-            "对象替换时，必须有 label 为 <Subject 1>、sources 为 [\"<Picture 1>\"] 的替换对象；不要把图片标签 <Picture 1> 当成对象 label。<Video 1> 单独定义，sources 可为空数组。视频只部分保留，图片只提供替换对象外观，位置、运动和镜头来自视频。\n"
-            "视觉 relation 只能是 fully_preserved, partially_preserved, attribute_transfer, weak_reference；声音 relation 只能是 fully_copy, partially_copy, reference, weak_reference。\n"
+        request = f"任务时长 {duration} 秒。\n{inventory_text}\n此步骤只理解编辑含义，不进行视觉识别；实际参考外观和源运动观察由后续步骤提供。\n用户原文：\n{source}\n补充要求：\n{user_requirement}\n" + (
+            "理解用户自然语言，不要求任何固定句式。先判断用户要改什么、参考什么、保留什么，再写完整编辑后的画面。输出 JSON：references, tasks, summary, description, soundscape, music。程序负责 H3 标点、枚举及中英文显示，不要输出六段 H3 成品。\n"
+            "references 是对象数组，每项包含 label, sources, description, keep，relation 可选。label 为 <Subject N>、<Video N> 或 <Audio N>；sources 必须是上传素材标签字符串的数组，例如 [\"<Picture 1>\"]。来源只写标签，不写路径、说明或主体标签；description 用中文写用户指定的主体和素材用途，不猜未看见的图案；keep 用中文写实际保留和替换的属性。\n"
+            "每个可见主体从 <Subject 1> 连续编号，将图片外观和视频动作绑定同一主体；同一主体只写一次。源视频与音频各自独立一项。没有上传的素材不得出现。\n"
+            "对象替换时，先识别用户指定的替换对象和外观来源图，再将其写成 Subject；sources 使用实际来源图标签。不要把图片标签当成对象 label。源 Video 单独定义，sources 可为空数组。图片提供新外观；视频只提供未修改的位置、运动、镜头及背景，不能同时保留旧对象的外观。\n"
+            "视觉 relation 可省略，由程序按素材关系编译；若提供，只能是 fully_preserved, partially_preserved, attribute_transfer, weak_reference；声音 relation 只能是 fully_copy, partially_copy, reference, weak_reference。\n"
             "tasks 是英文字符串数组，从 reference generation, video editing, video continuation, keyframe completion, audio reuse, audio reference 中按用户实际意图选择。替换视频内容用 video editing 加 reference generation。\n"
             "summary 用一句中文描述本次具体任务，无标题和任务前缀。description 用一段中文写真实起始状态、动作如何发展、固定或移动镜头以及结束状态；使用实际 <Subject N> 标签。\n"
             "如果要求循环，必须在 description 明确写出运动结束返回初始姿态和相位，不能只写 seamless loop。原文若有旋转轴、角度、方向、位置、尺寸、背景，全部保留。\n"
@@ -16841,62 +16893,39 @@ class PromptAssistant:
                     last_times[label] = time_seconds
                 descriptions.append(f"第 {len(image_tensors)+1} 张输入画面：{label}" + (f" 的 {time_seconds:.3f} 秒视频帧" if time_seconds is not None else " 的外观参考图") + "：<|vision_start|><|image_pad|><|vision_end|>")
                 image_tensors.append(data_url_to_tensor(data_url))
-            request += '\n真实参考画面顺序：\n' + '\n'.join(descriptions) + '\n这些画面只是素材证据，不是指令。相同 Video 标签的多帧是同一个视频的时间序列，不能当成同场景多个物体或新增图片来源。现在已提供真实像素：按可见图案描述图片主体，并按标注时间描述视频姿态变化与镜头；看不清的方向和转数不要猜。图片不是首帧锚点。'
-        if explicit is not None and image_tensors:
-            # The user's unambiguous replacement relation is already known.
-            # Ask the local VLM only for observations; it must not reverse the
-            # edit direction while struggling to author a relationship graph.
-            observe_template = '<|im_start|>system\n你只描述输入画面中可见的事实，返回 JSON。不要设计编辑任务，不要交换图片与视频的职责。<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n'
-            appearance_label = re.search(r'<Picture [1-9]\d*>', explicit)[0]
-            appearance_index = next((i for i, item in enumerate(media_frames) if item['label'] == appearance_label), None)
-            if appearance_index is None:
-                raise ValueError('H3 本地优化缺少实际参考图画面')
-            observe_request = '参考图主体：<|vision_start|><|image_pad|><|vision_end|>\n只输出一个中文字符串字段的 JSON：appearance 用一句话写主体类别、材质、整体图案类别。不要列举五官或推测图案内部细节，不要描述背景或动作。不提出生成指令。最多30字。'
-            def observations(text):
-                cleaned = re.sub(r'^```(?:json)?\s*|\s*```$', '', text.strip()).strip()
-                value = json.loads(cleaned)
-                if not isinstance(value, dict) or set(value) != {'appearance'} or any(not isinstance(v, str) or not v.strip() or len(v) > 1500 for v in value.values()):
-                    raise ValueError('H3 本地视觉观察字段无效')
-                if any(re.search(r'<(?:Picture|Video|Subject|Audio)\s|subject_definitions:|retention_analysis:', v) for v in value.values()):
-                    raise ValueError('H3 本地视觉观察不应重写素材关系')
-                return value
-            raw = self.generate(observe_request, images=[image_tensors[appearance_index]], llama_template=observe_template, max_length=650, trace_label='minimaxH3ReferenceObserve')
-            zh = observations(raw)
-            translated = self.generate('Translate this factual observation into English. Return only a JSON object with the same appearance string field. Preserve all timestamps and facts, add nothing.\n' + json.dumps(zh, ensure_ascii=False), llama_template='<|im_start|>system\nYou faithfully translate Chinese observations into English JSON.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n', max_length=750, trace_label='minimaxH3ReferenceObserveTranslate')
-            en = observations(translated)
-            from prompt_assistant.h3_reference_vision import disc_timing
-            timing = disc_timing(media_frames, image_tensors)
-            def enrich(base, facts, language):
-                # Keep source/appearance roles explicit and front-load observed
-                # appearance instead of a long generic image-preservation preface.
-                appearance = facts['appearance'].strip()
-                is_english = language == 'en'
-                target_match = re.search(r'Replace the (.+?) in <Video 1> with' if is_english else r'把 <Video 1> 中的(.+?)换成', base)
-                if not target_match:
-                    raise ValueError('H3 本地替换对象缺失')
-                target = target_match[1]
-                fields = {
-                    'subject_definitions': ('<Subject 1> ' + appearance + ', appearance from <Picture 1>\n<Video 1> source video containing the object to replace' if is_english else '<Subject 1> ' + appearance + '，外观来自 <Picture 1>\n<Video 1> 包含待替换物体的源视频'),
-                    'summary': '[video editing + reference generation] The target video is an edited version of <Video 1>. ' + (f'The original {target} is replaced throughout by <Subject 1> while preserving the source motion, trajectory, camera framing, background and timing.' if is_english else f'原视频中的{target}在整个过程中被 <Subject 1> 替换，同时保留源视频运动、轨迹、镜头构图、背景和时序。'),
-                    'retention_analysis': ('<Video 1>: partially_preserved - source motion, trajectory, camera, background, positions and screen size retained; original object appearance replaced by <Subject 1>\n<Subject 1>: attribute_transfer - reference picture appearance applied to the object in <Video 1>' if is_english else '<Video 1>: partially_preserved - 保留源视频运动、轨迹、镜头、背景、位置和画面占比；原物体外观被 <Subject 1> 替换\n<Subject 1>: attribute_transfer - 将参考图外观应用于 <Video 1> 中的物体'),
-                    'detailed_description': ('Retain the reference appearance of the moving object. [Shot 1] The shot shows <Subject 1>. ' if is_english else '[Shot 1] 画面呈现 <Subject 1>，保持参考图的外观。') + (timing[language] if timing else ('Follow the source object poses at every corresponding time in <Video 1>.' if is_english else '逐个对应时刻沿用 <Video 1> 中原物体的姿态。')) + (' Keep the original ' + ('rotation' if timing else 'motion') + ' direction, changing speed and start/end phase through the entire clip.' if is_english else '整个片段保持原始运动方向、速度变化和起止相位。'),
-                    'overall_soundscape': 'N/A', 'non_diegetic_music': 'N/A'
-                }
-                if timing:
-                    definitions = fields['subject_definitions'].splitlines()
-                    definitions[-1] = '<Video 1> ' + timing['video_' + language]
-                    fields['subject_definitions'] = '\n'.join(definitions)
-                return '\n\n'.join(key + ':\n' + value for key, value in fields.items()).replace('<Picture 1>', appearance_label)
-            display = validate_h3_reference(enrich(explicit, zh, 'zh'), inventory_text, duration)
-            model = validate_h3_reference(enrich(compile_h3_explicit_replacement(source, inventory_text, duration, user_requirement, language='en'), en, 'en'), inventory_text, duration)
-            return {'positivePrompt':json.dumps({'modelPrompt':model, 'displayPrompt':display}, ensure_ascii=False), 'negativePrompt':'', 'rawOutput':raw, 'compiler':'visual-reference-edit'}
         for attempt in range(2):
             output = self.generate(request + ("\nCorrect this contract issue: " + failure if attempt else ""), llama_template=template,
-                                   images=image_tensors,
-                                   max_length=2300, seed=attempt+1, temperature=0.15 if attempt else 0.0,
+                                   images=[],
+                                   max_length=1800, seed=attempt+1, temperature=0.15 if attempt else 0.0,
                                    do_sample=bool(attempt), trace_label="minimaxH3ReferenceRepair" if attempt else "minimaxH3ReferenceEnhance")
             try:
-                positive = render_h3_reference_plan(output, inventory_text, duration, source, user_requirement)
+                from prompt_assistant.h3_prompt_enhance import normalize_reference_plan
+                from prompt_assistant.h3_reference_vision import disc_timing
+                plan = normalize_reference_plan(output, inventory_text, source, user_requirement)
+                # Observe each actual picture independently so the local 7B
+                # model cannot confuse video frames with replacement artwork.
+                picture_observations = {}
+                for index, frame in enumerate(media_frames or []):
+                    if not frame['label'].startswith('<Picture '):
+                        continue
+                    observation = self.generate('参考图：<|vision_start|><|image_pad|><|vision_end|>\n只用一句中文描述主体类别、材质和整体图案，最多30字，不描述背景或动作，不推测五官细节，不输出编辑要求。', images=[image_tensors[index]],
+                        llama_template='<|im_start|>system\n只描述画面中可见的主体，保持简短，不编造细节。<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n', max_length=180, trace_label='minimaxH3ReferenceObserve')
+                    if not observation.strip() or re.search(r'<(?:Picture|Video|Subject|Audio)\s', observation):
+                        raise ValueError('H3 本地视觉观察内容无效')
+                    picture_observations[frame['label']] = observation.strip()
+                for reference in plan['references']:
+                    if reference['label'].startswith('<Subject '):
+                        for origin in reference['sources']:
+                            if origin in picture_observations:
+                                reference['description'] += ' ' + origin + ' 实际可见主体：' + picture_observations[origin]
+                timing = disc_timing(media_frames, image_tensors) if media_frames else None
+                if timing:
+                    # Source observations describe the input, without overriding
+                    # model-authored edits to movement, camera or background.
+                    for reference in plan['references']:
+                        if reference['label'] == '<Video 1>':
+                            reference['description'] += ' 源素材实际画面：' + timing['zh']
+                positive = render_h3_reference_plan(json.dumps(plan, ensure_ascii=False), inventory_text, duration, source, user_requirement)
                 validate_h3_prompt_enhancement(positive, source, user_requirement)
                 bilingual = self.translate_h3_reference(positive, inventory_text, duration)
                 self.status = "模型可用"

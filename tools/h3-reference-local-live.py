@@ -22,6 +22,19 @@ def capture(*args, **kwargs):
     (out / f'local-raw-{attempt}.txt').write_text(result, encoding='utf8')
     return result
 assistant.generate = capture
-result = assistant.optimize_prompt(json.loads(request_path.read_text(encoding='utf8')))
+payload = json.loads(request_path.read_text(encoding='utf8'))
+if '--translate-only' in sys.argv:
+    display = json.loads((out / 'local-compiled.txt').read_text(encoding='utf8'))['displayPrompt']
+    result = assistant.translate_h3_reference(display, payload['requirements'], payload['durationSeconds'])
+else:
+    result = assistant.optimize_prompt(payload)
 (out / 'local-compiled.txt').write_text(result['positivePrompt'], encoding='utf8')
 print(json.dumps({'ok': True, 'attempts': attempt, 'chars': len(result['positivePrompt'])}))
+for extra in (arg[7:] for arg in sys.argv if arg.startswith('--also=')):
+    request_path = (root / extra).resolve()
+    out = request_path.parent
+    out.mkdir(parents=True, exist_ok=True)
+    attempt = 0
+    result = assistant.optimize_prompt(json.loads(request_path.read_text(encoding='utf8')))
+    (out / 'local-compiled.txt').write_text(result['positivePrompt'], encoding='utf8')
+    print(json.dumps({'ok': True, 'case': out.name, 'attempts': attempt, 'chars': len(result['positivePrompt'])}))

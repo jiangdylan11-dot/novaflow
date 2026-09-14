@@ -10,42 +10,6 @@ REFERENCE_INSTRUCTION = "\n".join(POLICY["referenceInstructions"])
 REFERENCE_FIELDS = ("subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music")
 
 
-def compile_explicit_replacement(source, requirements="", duration=30, user_requirement="", language="zh"):
-    """Compile an unambiguous one-object edit; do not infer unseen media facts."""
-    if user_requirement.strip() and user_requirement.strip() != source.strip():
-        return None
-    match = re.fullmatch(r"\s*(?:把|将)\s*(?:参考视频|视频参考|@视频参考|<Video 1>)(?:中|里)的\s*([^，。！？;；\n]{1,30}?)\s*(?:替换为|替换成|换成)\s*(?:@?参考图\s*([1-9]\d*)|<Picture ([1-9]\d*)>)\s*[。.!！]?\s*", source)
-    if not match:
-        return None
-    target, image_id = match[1], match[2] or match[3]
-    if re.search(r"背景|环境|光照|文字|字幕|颜色|材质|服装|头发|图案|纹样|脸", target):
-        return None
-    picture = f"<Picture {image_id}>"
-    media = set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", requirements))
-    if media != {picture, '<Video 1>'}:
-        return None
-    plan = {
-        "references": [
-            {"label": "<Subject 1>", "sources": [picture], "description": "参考图片中的完整替换主体，外观取自图片，运动取自 <Video 1>。", "relation": "attribute_transfer", "keep": "保留图片主体的轮廓、图案、颜色和材质；图片的展示姿态不覆盖源视频的运动姿态。"},
-            {"label": "<Video 1>", "sources": [], "description": f"包含待替换{target}的源视频。", "relation": "partially_preserved", "keep": f"保留原视频的背景、构图、镜头，以及{target}的位置、画面占比、运动方向、速度变化和起止相位；移除原{target}外观。"}
-        ],
-        "tasks": ["video editing", "reference generation"],
-        "summary": f"把 <Video 1> 中的{target}换成 {picture} 对应的 <Subject 1>，从第一帧起完成替换。",
-        "description": f"[Shot 1] 0秒起，<Subject 1> 已占据原{target}的位置，呈现参考图中的完整外观。随后按照 <Video 1> 每个对应时刻的运动轨迹、方向、速度变化和姿态持续运动，保持原视频的镜头、背景和构图。{float(duration):g}秒结束时保持源视频对应时刻的姿态和运动相位，不自行增加转动圈数或改变转向。整个片段保持替换后的外观，不在中途渐变回原{target}图案。",
-        "soundscape": "N/A", "music": "N/A"
-    }
-    if language == "en":
-        name = {"金币": "gold coin", "硬币": "coin"}.get(target, f'object named "{target}"')
-        plan['references'][0]['description'] = 'The complete replacement subject from the reference picture; its appearance comes from the image and its motion comes from <Video 1>.'
-        plan['references'][0]['keep'] = 'Keep the image subject silhouette, markings, colors and material. The image presentation angle does not override the source video motion poses.'
-        plan['references'][1]['description'] = f'The source video containing the {name} to replace.'
-        plan['references'][1]['keep'] = f'Keep the source background, framing, camera, and the original {name} positions, screen size, rotation direction, changing speed and start/end phase. Remove the original subject appearance.'
-        plan['summary'] = f'Replace the {name} in <Video 1> with <Subject 1> from {picture}, beginning at the first frame.'
-        plan['description'] = f'The replacement retains the visual appearance of {picture}. [Shot 1] At 0 seconds, <Subject 1> already occupies the original {name} position. It then follows the trajectory, direction, changing speed and orientation at each corresponding time in <Video 1>. The camera follows the original source camera; the source background and framing remain unchanged. At {float(duration):g} seconds it reaches the source video pose and motion phase at that time, without extra revolutions or a reversed turn. Keep the replacement appearance throughout; do not morph it back into the original {name} design.'
-    result = render_reference_plan(json.dumps(plan, ensure_ascii=False), requirements, duration)
-    return result.replace('素材来源：', 'Source assets:') if language == 'en' else result
-
-
 def reference_label(value):
     """Accept equivalent label spellings without inventing or renumbering assets."""
     if not isinstance(value, str):
@@ -67,10 +31,108 @@ def reference_label(value):
     return "<" + ("Picture" if kind == "Image" else kind) + " " + match[2] + ">"
 
 
-def render_reference_plan(value, requirements="", duration=30, source="", user_requirement=""):
-    """Serialize model-authored relationships; Python owns all H3 punctuation."""
+def normalize_reference_plan(value, requirements="", source="", user_requirement=""):
+    """Compile optional protocol details from model-authored semantic bindings.
+
+    Missing creative content is still an error. Labels may only be resolved
+    from the model's own sources and the uploaded inventory, never filenames.
+    """
     text = re.sub(r"^```(?:json)?\s*\n([\s\S]*?)\n```$", r"\1", str(value).strip()).strip()
     plan = json.loads(text)
+    if not isinstance(plan, dict):
+        raise ValueError("H3 多参关系计划不完整")
+    for alias, name in (("subjects", "references"), ("detailed_description", "description"), ("overall_soundscape", "soundscape"), ("non_diegetic_music", "music")):
+        if name not in plan and alias in plan:
+            plan[name] = plan.pop(alias)
+    if not isinstance(plan.get('references'), list) or not isinstance(plan.get('tasks'), list):
+        raise ValueError("H3 多参关系计划不完整")
+    inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements)
+    allowed = set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory[1] if inventory else text))
+    editing = 'video editing' in plan['tasks']
+    merged = {}
+    subject_ids = {int(m[1]) for item in plan['references'] if isinstance(item, dict) for m in [re.fullmatch(r'<Subject ([1-9]\d*)>', str(item.get('label', '')))] if m}
+    image_subjects = {}
+    for item in plan['references']:
+        if not isinstance(item, dict):
+            raise ValueError("H3 多参关系计划字段不完整")
+        item = dict(item)
+        label = reference_label(item.get('label'))
+        item['label'] = label
+        origins = item.get('sources', [])
+        if isinstance(origins, str):
+            origins = re.split(r"\s*[,，;；、]\s*", origins.strip()) if origins.strip() else []
+        if not isinstance(origins, list):
+            raise ValueError("H3 多参关系计划素材来源无效")
+        origins = [reference_label(v) for v in origins]
+        if label.startswith('<Subject '):
+            # The semantic description may bind appearance plus movement even
+            # when the optional sources array only repeats one of those assets.
+            origins = list(dict.fromkeys(origins + re.findall(r'<(?:Picture|Video|Audio) [1-9]\d*>', str(item.get('description', '')))))
+        if any(origin not in allowed for origin in origins) or (not label.startswith('<Subject ') and label not in allowed):
+            raise ValueError("H3 多参关系计划素材来源无效")
+        item['sources'] = list(dict.fromkeys(origins))
+        if label.startswith('<Picture ') and set(origins or [label]) == {label}:
+            # A model may name the asset instead of creating an internal ID.
+            # Allocate that bookkeeping ID while retaining the actual source.
+            if label not in image_subjects:
+                number = next(n for n in range(1, len(plan['references'])+2) if n not in subject_ids)
+                subject_ids.add(number)
+                image_subjects[label] = f'<Subject {number}>'
+            item['sources'] = origins = [label]
+            item['label'] = label = image_subjects[label]
+        if editing and label.startswith('<Subject ') and any(origin.startswith('<Picture ') for origin in origins) and item.get('relation') == 'fully_preserved':
+            # The complete image appearance transfers, but an image pose must
+            # not become a fixed first-frame anchor for a video edit.
+            item['relation'] = 'attribute_transfer'
+        if not item.get('relation'):
+            if label.startswith('<Video ') and editing:
+                item['relation'] = 'partially_preserved'
+            elif label.startswith('<Subject ') and origins:
+                item['relation'] = ('attribute_transfer' if any(origin.startswith('<Picture ') for origin in origins) else 'partially_preserved') if editing else 'weak_reference'
+            else:
+                # In particular never guess copy versus reference for audio.
+                raise ValueError("H3 多参缺少主体或声音的保留规则")
+        if isinstance(item.get('keep'), list):
+            item['keep'] = '; '.join(item['keep'])
+        if label in merged:
+            old = merged[label]
+            if old['relation'] != item['relation']:
+                raise ValueError("H3 同一主体的保留规则冲突")
+            old['sources'] = list(dict.fromkeys(old['sources'] + item['sources']))
+            for field in ('description', 'keep'):
+                old[field] = old.get(field, '') + '; ' + item.get(field, '')
+        else:
+            merged[label] = item
+    # A source video named by the model's edit is a resource binding, not a
+    # second creative subject. Reuse its authored constraints when its row is omitted.
+    used_videos = set(re.findall(r'<Video [1-9]\d*>', str(plan.get('summary', '')) + '\n' + str(plan.get('description', ''))))
+    if editing:
+        available_videos = {label for label in allowed if label.startswith('<Video ')}
+        if not used_videos and len(available_videos) == 1:
+            used_videos = available_videos
+        for video in sorted(used_videos):
+            if video not in allowed:
+                raise ValueError("H3 多参关系计划素材来源无效")
+            if video not in merged:
+                merged[video] = {'label': video, 'sources': [], 'description': '本次编辑的源视频。', 'relation': 'partially_preserved', 'keep': plan.get('description', '')}
+        if any(any(s.startswith('<Picture ') for s in item['sources']) for item in merged.values()) and 'reference generation' not in plan['tasks']:
+            plan['tasks'].append('reference generation')
+        if not re.search(r'镜头|相机|摄像|机位|运镜|\bcamera\b|\bzoom\b|\bdolly\b|\bpanning\b', text + source + user_requirement, re.I):
+            for video in used_videos:
+                merged[video]['keep'] += ' 保留原视频镜头。'
+    plan['references'] = list(merged.values())
+    for picture, subject in image_subjects.items():
+        if isinstance(plan.get('description'), str):
+            plan['description'] = plan['description'].replace(picture, subject)
+    for field in ('soundscape', 'music'):
+        if not plan.get(field) and not any(v.startswith('<Audio ') for v in allowed):
+            plan[field] = 'N/A'
+    return plan
+
+
+def render_reference_plan(value, requirements="", duration=30, source="", user_requirement=""):
+    """Serialize model-authored relationships; Python owns all H3 punctuation."""
+    plan = normalize_reference_plan(value, requirements, source, user_requirement)
     required = {"references", "tasks", "summary", "description", "soundscape", "music"}
     if not isinstance(plan, dict) or set(plan) != required or not isinstance(plan["references"], list) or not isinstance(plan["tasks"], list):
         raise ValueError("H3 多参关系计划不完整")
