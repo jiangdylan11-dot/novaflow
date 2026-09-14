@@ -188,6 +188,7 @@
     'TrimAudioDuration',
     'NovaFlowH3PrepareReferenceImage',
     'NovaFlowH3PrepareMotionReference',
+    'NovaFlowH3MatchReferenceLayout',
     'CreateVideo',
     'SaveVideo',
     'LoadImage',
@@ -777,7 +778,7 @@
   }
 
   function removeReferenceLoaders(workflow) {
-    const removable = new Set(['LoadImage', 'LoadVideo', 'GetVideoComponents', 'LoadAudio', 'TrimAudioDuration', 'NovaFlowH3PrepareReferenceImage', 'NovaFlowH3PrepareMotionReference'])
+    const removable = new Set(['LoadImage', 'LoadVideo', 'GetVideoComponents', 'LoadAudio', 'TrimAudioDuration', 'NovaFlowH3PrepareReferenceImage', 'NovaFlowH3PrepareMotionReference', 'NovaFlowH3MatchReferenceLayout'])
     for (const [id, value] of Object.entries(workflow)) {
       if (removable.has(value && value.class_type)) delete workflow[id]
     }
@@ -816,6 +817,7 @@
       throw new TypeError('MiniMax H3 reference mode requires an image, video, or audio reference')
     }
 
+    oneByClass(workflow, 'CreateVideo')[1].inputs.images = [oneByClass(workflow, 'VAEDecode')[0], 0]
     removeReferenceLoaders(workflow)
     removeReferenceInputs(conditioning.inputs)
 
@@ -841,21 +843,32 @@
       const imageLink = conditioning.inputs['ref_images.ref_image_' + index]
       const prepareId = nextNodeId(workflow)
       const videoLink = conditioning.inputs['ref_videos.ref_video_0']
-      const preserveLayout = referenceImages.length === 1 && !!videoLink &&
-        replacesSourceAppearance(conditioning.inputs.prompt) &&
-        /^<Video 1>[^\n]*:\s*partially_preserved[^\n]*(?:background|framing|composition|scale|背景|构图|画面占比|镜头|相机|机位|大小)/im.test(conditioning.inputs.prompt)
       workflow[prepareId] = node('NovaFlowH3PrepareReferenceImage', {
         image: imageLink.slice(), mask: [imageLink[0], 1],
         width: conditioning.inputs.width, height: conditioning.inputs.height,
-        preserve_video_layout: preserveLayout,
-        ...(preserveLayout ? { reference_video: videoLink.slice() } : {}),
+        // Appearance references must not become first-frame compositions.
+        preserve_video_layout: false,
+        ...(videoLink ? { reference_video: videoLink.slice() } : {}),
       }, 'Prepare reference image ' + (index + 1))
       conditioning.inputs['ref_images.ref_image_' + index] = [prepareId, 0]
     }
 
-    // Keep the original reference frames. A uniform silhouette discards face,
-    // rim and shading cues that disambiguate rotation direction and phase.
-    // Appearance replacement belongs to H3's image/video retention contract.
+    const sourceVideoLink = conditioning.inputs['ref_videos.ref_video_0']
+    if (referenceImages.length === 1 && sourceVideoLink && replacesSourceAppearance(conditioning.inputs.prompt)) {
+      // The node checks every frame and leaves complex scenes untouched. For
+      // a single flat-background sprite it suppresses old surface markings,
+      // retaining the original boundary and directional lighting cues.
+      const guideId = nextNodeId(workflow)
+      workflow[guideId] = node('NovaFlowH3PrepareMotionReference', {images:sourceVideoLink.slice()}, 'Separate source motion from appearance')
+      conditioning.inputs['ref_videos.ref_video_0'] = [guideId, 0]
+      const layoutId = nextNodeId(workflow)
+      const create = oneByClass(workflow, 'CreateVideo')[1]
+      workflow[layoutId] = node('NovaFlowH3MatchReferenceLayout', {
+        images:create.inputs.images.slice(), reference_video:sourceVideoLink.slice(),
+        fps:create.inputs.fps, source_fps:[sourceVideoLink[0], 2],
+      }, 'Match source sprite position and scale')
+      create.inputs.images = [layoutId, 0]
+    }
 
     if (referenceAudio) {
       const audioId = nextNodeId(workflow)
@@ -1324,6 +1337,16 @@
     }
 
     const createVideo = oneByClass(workflow, 'CreateVideo')[1]
+    const layout = entriesByClass(workflow, 'NovaFlowH3MatchReferenceLayout')
+    if (layout.length) {
+      if (mode !== 'r2v' || layout.length !== 1 || !entriesByClass(workflow, 'NovaFlowH3PrepareMotionReference').length) throw new TypeError('H3 reference layout topology is invalid')
+      const componentId = oneByClass(workflow, 'GetVideoComponents')[0]
+      requireLink(layout[0][1].inputs.images, oneByClass(workflow, 'VAEDecode')[0], 0, 'H3 generated layout images')
+      requireLink(layout[0][1].inputs.reference_video, componentId, 0, 'H3 original reference layout')
+      requireLink(layout[0][1].inputs.source_fps, componentId, 2, 'H3 source layout timing')
+      if (layout[0][1].inputs.fps !== createVideo.inputs.fps) throw new TypeError('H3 layout frame rate mismatch')
+      requireLink(createVideo.inputs.images, layout[0][0], 0, 'H3 aligned output images')
+    } else requireLink(createVideo.inputs.images, oneByClass(workflow, 'VAEDecode')[0], 0, 'H3 decoded output images')
     if (mode === 'r2v' && fullyCopiesReferenceAudio(conditioning.inputs.prompt)) {
       const audioId = oneByClass(workflow, 'LoadAudio')[0]
       const [trimId, trim] = oneByClass(workflow, 'TrimAudioDuration')

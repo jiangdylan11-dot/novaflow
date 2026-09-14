@@ -112,6 +112,7 @@ const runtimeGroups = [
     'visual_contract.py',
     'qwen3_vl_adapter.py',
     'h3_prompt_enhance.py',
+    'h3_reference_vision.py',
     'h3_prompt_enhance_policy.json',
   ].map((fileName) => ({
     name: `prompt_assistant/${fileName}`,

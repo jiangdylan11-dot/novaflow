@@ -26,7 +26,7 @@ def compile_explicit_replacement(source, requirements="", duration=30, user_requ
         return None
     plan = {
         "references": [
-            {"label": "<Subject 1>", "sources": [picture], "description": "参考图片中的完整替换主体，外观取自图片，运动取自 <Video 1>。", "relation": "fully_preserved", "keep": "保留图片主体的轮廓、图案、颜色和材质；图片的展示姿态不覆盖源视频的运动姿态。"},
+            {"label": "<Subject 1>", "sources": [picture], "description": "参考图片中的完整替换主体，外观取自图片，运动取自 <Video 1>。", "relation": "attribute_transfer", "keep": "保留图片主体的轮廓、图案、颜色和材质；图片的展示姿态不覆盖源视频的运动姿态。"},
             {"label": "<Video 1>", "sources": [], "description": f"包含待替换{target}的源视频。", "relation": "partially_preserved", "keep": f"保留原视频的背景、构图、镜头，以及{target}的位置、画面占比、运动方向、速度变化和起止相位；移除原{target}外观。"}
         ],
         "tasks": ["video editing", "reference generation"],

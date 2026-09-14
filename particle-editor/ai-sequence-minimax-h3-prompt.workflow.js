@@ -255,6 +255,10 @@
   }
 
   function resourceIdentity(resource, slotKey) {
+    // The editor DOM and generation state use different internal IDs. Both
+    // must bind a translation to the actual same media, not those UI IDs.
+    const mediaUrl = stringValue(resource?.previewUrl || resource?.objectUrl || resource?.dataUrl).trim()
+    if (mediaUrl) return 'media:' + fingerprintText(mediaUrl)
     const explicit = stringValue(
       resource?.identity || resource?.sourceId || resource?.resourceId || resource?.id,
     ).trim()
@@ -1069,7 +1073,13 @@
     const hasIdleOrStillMotion = /呼吸|起伏|待机|(?:全程|保持|完全|持续)(?:静止|不动)|\b(?:breath\w*|idle|remain\w* still|completely still)\b/iu.test(narrative)
     const sourceVideoEdit = protocol.mode === 'multi_reference' && relations.includes('video editing') && /<Video [1-9]\d*>/.test(value)
     const hasSourceMotion = sourceVideoEdit && /(?:保留|按照|沿用|跟随|保持|遵循)[^。\n]{0,60}(?:轨迹|速度|运动|动作)|\b(?:follow\w*|match\w*|retain\w*|preserv\w*)\b[^.\n]{0,80}\b(?:trajector(?:y|ies)|movements?|motion|direction|phase)\b/iu.test(narrative)
-    const hasSourceCamera = sourceVideoEdit && /(?:保留|沿用|跟随|保持)[^。\n]{0,35}(?:原|源|参考|相同)[^。\n]{0,20}(?:镜头|相机|摄像机|机位)|(?:镜头|相机|摄像机|机位)[^。\n]{0,35}(?:沿用|跟随|保留)[^。\n]{0,20}(?:原|源|参考)/u.test(narrative)
+    const sourceCameraBindings = sourceVideoEdit
+      ? (sections.retention_analysis?.content || '').split('\n').filter(line => /^<Video [1-9]\d*>[^\n]*:\s*(?:fully_preserved|partially_preserved)\b/.test(line)).join('\n')
+      : ''
+    const hasSourceCamera = sourceVideoEdit && (
+      /(?:保留|沿用|跟随|保持)[^。\n]{0,35}(?:原|源|参考|相同)[^。\n]{0,20}(?:镜头|相机|摄像机|机位)|(?:镜头|相机|摄像机|机位)[^。\n]{0,35}(?:沿用|跟随|保留)[^。\n]{0,20}(?:原|源|参考)/u.test(narrative)
+      || /(?:保留|沿用|保持)[^。\n]{0,80}(?:镜头|相机|摄像机|机位)|(?:镜头|相机|摄像机|机位)[^。\n]{0,80}(?:保留|沿用|保持)|\b(?:keep|retain\w*|preserv\w*|maintain\w*)\b[^.\n]{0,80}\bcamera\b|\bcamera\b[^.\n]{0,80}\b(?:retain\w*|preserv\w*|maintain\w*|unchanged)\b/iu.test(sourceCameraBindings)
+    )
     if (!ACTION_PROGRESSION_EXPRESSION.test(narrative) && !hasIdleOrStillMotion && !hasSourceMotion) {
       throw new Error('MiniMax H3 narrative must describe action progression, not only a static image caption')
     }

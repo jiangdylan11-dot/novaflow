@@ -69,7 +69,7 @@ if(copyAudio) {
     .replace(/overall_soundscape:[\s\S]*$/, 'overall_soundscape:\nThe exact supplied electronic tones from <Audio 1>.\n\nnon_diegetic_music:\nN/A');
 }
 compiled=await promptApi.compileForGeneration({...current,prompt:compiled.modelText,resources:[...current.resources,...(copyAudio?[{key:'multi_ref_audio_1',kind:'audio',occupied:true,identity:'novaflow_h3_audio_acceptance.wav',fileName:'novaflow_h3_audio_acceptance.wav',mimeType:'audio/wav'}]:[])]},async()=>{throw Error('Expected an already compiled reference prompt')});
-const graph=graphApi.buildWorkflow({profile:'beta5_int8',acceleration:'sage',mode:'r2v',prompt:compiled.modelText,aspectRatio:'1:1',megapixels:.4,durationSeconds:3,fps:24,steps:4,seed:1696013393,referenceImages:[image],referenceVideo:video,...(copyAudio?{referenceAudio:'novaflow_h3_audio_acceptance.wav'}:{}),outputPrefix:'video/NovaFlow_H3_'+runName+'_reference_fixed'});
+const graph=graphApi.buildWorkflow({profile:'beta5_int8',acceleration:'sage',mode:'r2v',prompt:compiled.modelText,aspectRatio:'1:1',megapixels:.4,durationSeconds:3,fps:24,steps:4,seed:Number(argValue('--seed')??1696013393),referenceImages:[image],referenceVideo:video,...(copyAudio?{referenceAudio:'novaflow_h3_audio_acceptance.wav'}:{}),outputPrefix:'video/NovaFlow_H3_'+runName+'_reference_fixed'});
 save(runName+'-workflow.json',graph);
 const submitted=await api('/prompt',{prompt:graph,client_id:'novaflow-h3-reference-acceptance'});save(runName+'-submission.json',submitted);console.log('SUBMITTED',submitted.prompt_id);
 for(let n=0;n<300;n++) {

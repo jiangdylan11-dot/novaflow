@@ -8,6 +8,28 @@ const bundlePath = path.join(repoRoot, 'particle-editor', 'assets', 'index-BbIa-
 
 let source = fs.readFileSync(bundlePath, 'utf8')
 
+function applyReferenceVisualInputs() {
+  const newline = source.includes('if(Ve===`multi_reference`){\r\n') ? '\r\n' : '\n'
+  replaceOnceOrAlready('if(Ve===`multi_reference`){' + newline + 'if(t){return(0,X.jsxs)(`div`,{style:',
+    'if(Ve===`multi_reference`){' + newline + 'if(t){return(0,X.jsxs)(`div`,{"data-novaflow-h3-video-url":nfJimengVideoRef?.objectUrl||``,style:', 'expose the actual H3 video reference to the prompt assistant')
+  for (const [field, kind, urlKey] of [
+    ['aiSeqRefImage','image','dataUrl'], ['aiSeqJimengImage2Ref','image','dataUrl'],
+    ['aiSeqJimengImage3Ref','image','dataUrl'], ['aiSeqJimengImage4Ref','image','dataUrl'],
+    ['aiSeqJimengVideoRef','video','objectUrl'], ['aiSeqJimengAudioRef','audio','objectUrl'],
+  ]) {
+    const before = 'fileName:e.' + field + '?.fileName||``,type:e.' + field + '?.type||``}';
+    const after = 'fileName:e.' + field + '?.fileName||``,type:e.' + field + '?.type||``,kind:`' + kind + '`,previewUrl:e.' + field + '?.' + urlKey + '||``}';
+    replaceOnceOrAlready(before, after, 'carry real H3 reference pixels: ' + field)
+  }
+}
+
+if (process.argv.includes('--reference-visual-inputs-only')) {
+  applyReferenceVisualInputs()
+  fs.writeFileSync(bundlePath, source, 'utf8')
+  console.log('patched H3 reference visual inputs')
+  process.exit(0)
+}
+
 function occurrenceCount(haystack, needle) {
   let count = 0
   let cursor = 0
@@ -1038,6 +1060,8 @@ applyWan22CompatibleLoraSurfaceFixes()
 applyH3PromptModeSemantics()
 applyH3ShortDurationUiFixes()
 applyH3ParameterTooltipFixes()
+
+applyReferenceVisualInputs()
 
 fs.writeFileSync(bundlePath, source, 'utf8')
 console.log(`patched ${path.relative(repoRoot, bundlePath)}`)

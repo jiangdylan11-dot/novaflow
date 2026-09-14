@@ -85,6 +85,30 @@ const formatInstruction = policy.formatInstructions.join('\n');
 const referenceFields = ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description', 'overall_soundscape', 'non_diegetic_music'];
 const referenceInstruction = policy.referenceInstructions.join('\n');
 const referenceResultInstruction = 'Return a bilingual object with modelPrompt and displayPrompt. Each contains the same six H3 fields. modelPrompt has English prose for H3; displayPrompt is its faithful Simplified Chinese translation for the editor. Keep every media tag, subject ID, task, retention relation, time, direction, dialogue and constraint identical in meaning. Do not add creative changes while translating.';
+function referenceFrames(value, requirements = '') {
+  if (value == null) return [];
+  if (!Array.isArray(value) || value.length > 13) throw new Error('H3 参考画面数量无效');
+  const labels = new Set((requirements.match(/^Available resource labels:[^\n]*/im)?.[0] || '').match(/<(?:Picture|Video) [1-9]\d*>/g) || []);
+  const seen = new Map();
+  let bytes = 0;
+  return value.map(item => {
+    const label = String(item?.label || '');
+    const dataUrl = String(item?.dataUrl || '');
+    if (!labels.has(label) || !/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(dataUrl)) throw new Error('H3 参考画面与素材不匹配');
+    bytes += dataUrl.length;
+    if (dataUrl.length > 2500000 || bytes > 16000000) throw new Error('H3 参考画面过大');
+    if (label.startsWith('<Picture')) {
+      if (seen.has(label)) throw new Error('H3 参考图重复');
+      seen.set(label, 0);
+      return {label, dataUrl};
+    }
+    const timeSeconds = Number(item?.timeSeconds);
+    const previous = seen.get(label);
+    if (!Number.isFinite(timeSeconds) || timeSeconds < 0 || timeSeconds > 15 || (previous != null && timeSeconds <= previous)) throw new Error('H3 参考视频帧时间无效');
+    seen.set(label, timeSeconds);
+    return {label, dataUrl, timeSeconds};
+  });
+}
 const referenceFieldSchema = language => ({type:'object', additionalProperties:false, properties:Object.fromEntries(referenceFields.map(k=>[k,{type:'string',description:language==='zh'?'本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。':'Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue.'}])), required:referenceFields});
 const referenceResultSchema = {type:'object', additionalProperties:false, properties:{modelPrompt:referenceFieldSchema('en'),displayPrompt:referenceFieldSchema('zh')},required:['modelPrompt','displayPrompt']};
 function referenceResult(value) {
@@ -335,4 +359,4 @@ function fromValidatedLegacy(text, options = {}) {
   const overall=visual.replace(/\[Shot \d+\](?:\s+At\s+\d{2}:\d{2}\.\d{3},?)?/g,'').trim();
   return validateFormat(JSON.stringify({task,speakers:definitions,description:overall+'\n\n'+phases.join('\n\n'),dialogue,constraints:`1. 保持上述人物身份、参考帧绑定及原文明确的约束。\n2. 环境与动作声音：${values.overall_soundscape}\n3. 配乐：${values.non_diegetic_music}`}),options);
 }
-export { instruction, validate, sectionNames, sectionFields, formatInstruction, validateFormat, fromValidatedLegacy, requiresChineseOutput, validationIssue, referenceFields, referenceInstruction, isReferenceMode, validateReference, toReferenceDisplay, fromReferenceDisplay, referenceResultInstruction, referenceResultSchema, referenceResult, validateReferenceResult };
+export { instruction, validate, sectionNames, sectionFields, formatInstruction, validateFormat, fromValidatedLegacy, requiresChineseOutput, validationIssue, referenceFields, referenceInstruction, isReferenceMode, validateReference, toReferenceDisplay, fromReferenceDisplay, referenceResultInstruction, referenceResultSchema, referenceResult, validateReferenceResult, referenceFrames };

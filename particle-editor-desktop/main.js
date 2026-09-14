@@ -6176,6 +6176,7 @@ ipcMain.handle("prompt-assistant-optimize-prompt", async (_evt, payload) => {
     purpose,
     provider,
     currentPrompt,
+    ...(usesMiniMaxH3Prompt ? {h3ReferenceFrames: require('./admin-server/h3-prompt-enhance.js').referenceFrames(payload?.h3ReferenceFrames, requirements)} : {}),
     ...(usesMiniMaxH3Prompt && h3Mode ? { h3Mode } : {}),
     ...(usesMiniMaxH3Prompt && h3DurationSource !== undefined && h3DurationSource !== null && h3DurationSource !== "" ? { durationSeconds: h3DurationSource } : {}),
     ...(usesMiniMaxH3Prompt && h3VisualSchema ? { visualSchema: h3VisualSchema } : {}),

@@ -24,6 +24,16 @@ const current={modelId:'minimax_h3_local',mode:'multi_reference',durationSeconds
 const options={mode:'multi_reference',durationSeconds:3,requirements:'Available resource labels: <Picture 1>; <Video 1>; <Audio 1>\nH3 response format: bilingual-v1'};
 const text=local.validateReference(JSON.stringify(fixture),options);
 
+test('video editing may preserve its camera in the source-video retention rule',()=>{
+ const prepared=prompt.prepareRequest(current);
+ const candidate={...fixture,
+  detailed_description:fixture.detailed_description.replace('The camera remains static. ',''),
+  retention_analysis:fixture.retention_analysis.replace('retain rotation and framing','retain rotation, camera and framing')};
+ assert.doesNotThrow(()=>prompt.validateAndRestore({text:JSON.stringify(candidate),context:prepared.context,current}));
+ candidate.retention_analysis=fixture.retention_analysis.replace('dollar sign and gold rim from the image remain','preserve the camera and dollar sign');
+ assert.throws(()=>prompt.validateAndRestore({text:JSON.stringify(candidate),context:prepared.context,current}),/camera movement/);
+});
+
 test('reference contract preserves a silent object, video edit and separate audio reuse across JS and Python',()=>{
  for(const api of [local,edge,context.NovaFlowH3PromptFormat])assert.equal(api.validateReference(text,options),text);
  const py=spawnSync('python',['-c',"import json,sys;sys.path.insert(0,'particle-editor-desktop');from prompt_assistant.h3_prompt_enhance import validate_reference;d=json.load(sys.stdin);print(validate_reference(d['text'],d['requirements'],3))"],{input:JSON.stringify({text,requirements:options.requirements}),encoding:'utf8',cwd:new URL('../../',import.meta.url),env:{...process.env,PYTHONIOENCODING:'utf-8'}});
@@ -73,7 +83,33 @@ test('full audio reuse really connects the input track; timbre/style references 
  assert.throws(()=>workflow.buildWorkflow({...params,referenceAudio:undefined}),/声音参考/);
  const background=workflow.buildWorkflow({...params,prompt:text.replace('Replace the mask coin with <Subject 1>', 'Replace the background with a forest behind <Subject 1>')});
  assert.equal(find(background,'NovaFlowH3PrepareMotionReference'),undefined);
+ assert.equal(find(background,'NovaFlowH3MatchReferenceLayout'),undefined);
+ const layout=find(copy,'NovaFlowH3MatchReferenceLayout');
+ assert.deepEqual(Array.from(find(copy,'CreateVideo')[1].inputs.images),[layout[0],0]);
+ assert.deepEqual(Array.from(layout[1].inputs.images),[find(copy,'VAEDecode')[0],0]);
+ const changed=workflow.patchWorkflow(copy,{...params,prompt:text.replace('Replace the mask coin with <Subject 1>', 'Replace the background with a forest behind <Subject 1>')});
+ assert.equal(find(changed,'NovaFlowH3MatchReferenceLayout'),undefined);
+ assert.deepEqual(Array.from(find(changed,'CreateVideo')[1].inputs.images),[find(changed,'VAEDecode')[0],0]);
  assert.equal(find(background,'NovaFlowH3PrepareReferenceImage')[1].inputs.preserve_video_layout,false);
+});
+
+test('real video frames reach Grok with labels and timestamps rather than becoming extra references',()=>{
+ const media=[{label:'<Picture 1>',dataUrl:'data:image/png;base64,YQ=='},{label:'<Video 1>',timeSeconds:0,dataUrl:'data:image/jpeg;base64,Yg=='},{label:'<Video 1>',timeSeconds:1.5,dataUrl:'data:image/jpeg;base64,Yw=='}];
+ const built=buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance',h3Mode:'multi_reference',durationSeconds:3,prompt:current.prompt,requirements:options.requirements,h3ReferenceFrames:media});
+ assert.equal(built.inputMeta.imageCount,3);
+ assert.equal(built.body.input[1].content.filter(x=>x.type==='input_image').length,3);
+ assert.match(JSON.stringify(built.body.input[1]),/<Video 1> video frame at 1.500 seconds/);
+ assert.throws(()=>local.referenceFrames([...media,media[1]],options.requirements),/帧时间/);
+ assert.throws(()=>local.referenceFrames([{...media[0],label:'<Picture 2>'}],options.requirements),/素材不匹配/);
+ assert.throws(()=>local.referenceFrames([{...media[0],dataUrl:'https://example.org/secret.png'}],options.requirements),/素材不匹配/);
+});
+
+test('editor and generator bind translations to the same media bytes, independent of DOM IDs',()=>{
+ const a={...current,resources:resources.slice(0,2).map((r,i)=>({...r,identity:'dom-'+i,previewUrl:'data:media,'+i}))};
+ const b={...current,resources:a.resources.map((r,i)=>({...r,identity:'runtime-'+i,fileName:'uploaded-'+i}))};
+ assert.equal(prompt.createPromptSnapshot(a).fingerprint,prompt.createPromptSnapshot(b).fingerprint);
+ b.resources[0].previewUrl+='changed';
+ assert.notEqual(prompt.createPromptSnapshot(a).fingerprint,prompt.createPromptSnapshot(b).fingerprint);
 });
 
 test('local relationship rendering accepts lists, resolves edit retention and closes only requested loops',()=>{
@@ -126,9 +162,9 @@ test('replacement syntax cannot erase direction cues from the source video',()=>
   const modelText=local.validateReference(JSON.stringify({...chinese,summary}),chineseOptions);
   const g=workflow.buildWorkflow({mode:'r2v',prompt:modelText,referenceImages:['cat.png'],referenceVideo:'spin.mp4',durationSeconds:3,seed:1});
   const find=klass=>Object.entries(g).find(([,n])=>n.class_type===klass);
-  assert.equal(find('NovaFlowH3PrepareMotionReference'),undefined);
-  assert.deepEqual(Array.from(find('MiniMaxH3ReferenceToVideo')[1].inputs['ref_videos.ref_video_0']),[find('GetVideoComponents')[0],0]);
-  assert.equal(find('NovaFlowH3PrepareReferenceImage')[1].inputs.preserve_video_layout,true);
+  assert.deepEqual(Array.from(find('NovaFlowH3PrepareMotionReference')[1].inputs.images),[find('GetVideoComponents')[0],0]);
+  assert.deepEqual(Array.from(find('MiniMaxH3ReferenceToVideo')[1].inputs['ref_videos.ref_video_0']),[find('NovaFlowH3PrepareMotionReference')[0],0]);
+  assert.equal(find('NovaFlowH3PrepareReferenceImage')[1].inputs.preserve_video_layout,false);
  }
 });
 test('local source labels normalize common spellings and reject invented sources',()=>{
@@ -148,6 +184,7 @@ r='Available resource labels: <Picture 1>; <Video 1>'
 s='把参考视频中的金币换成参考图1'
 out=compile_explicit_replacement(s,r,3)
 assert out and '<Subject 1>' in out and '<Video 1>: partially_preserved' in out
+assert '<Subject 1>: attribute_transfer' in out, 'only image appearance transfers; video owns poses and timing'
 assert '速度变化' in out and '方向' in out and '起止相位' in out
 assert '360' not in out and '顺时针' not in out and '猫' not in out
 for text, inventory, extra in [(s,r,'再把背景变为蓝色'),(s+'并改变运动',r,''),(s,r+'; <Audio 1>',''),(s.replace('金币','背景'),r,''),(s.replace('参考图1','参考图2'),r,'')]:

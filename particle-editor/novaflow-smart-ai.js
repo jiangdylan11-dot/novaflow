@@ -312,11 +312,12 @@
       const media = slot instanceof HTMLElement ? slot.querySelector("video, audio") : null;
       const title = slot instanceof HTMLElement ? slot.querySelector(".nf-upload-dropzone__title") : null;
       const titleText = String(title?.textContent || "").trim();
-      const previewUrl = image instanceof HTMLImageElement
+      const previewUrl = descriptor.kind === 'video' && workspace.querySelector('[data-novaflow-h3-video-url]')?.getAttribute('data-novaflow-h3-video-url')
+        || (image instanceof HTMLImageElement
         ? String(image.currentSrc || image.src || "")
         : media instanceof HTMLMediaElement
           ? String(media.currentSrc || media.src || "")
-          : "";
+          : "");
       const clearControl = slot instanceof HTMLElement
         ? slot.querySelector('button[title="清除"], button[aria-label="清除"], [data-novaflow-ai-upload-clear="1"]')
         : null;
@@ -528,6 +529,55 @@
       }));
     }
     return Object.freeze(hydrated);
+  }
+
+  async function captureH3ReferenceFrames(captured, prepared) {
+    if (captured?.mode !== 'multi_reference') return [];
+    const catalog = prepared?.protocol?.references?.references
+      || getMiniMaxH3PromptWorkflow().createReferenceCatalog({mode:'multi_reference', resources:captured.resources}).references;
+    const frames = [];
+    const draw = media => {
+      const w = media.videoWidth || media.naturalWidth, h = media.videoHeight || media.naturalHeight;
+      if (!w || !h) throw new Error('参考画面尺寸无效');
+      const scale = Math.min(1, 768 / Math.max(w, h));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.max(1, Math.round(w * scale)); canvas.height = Math.max(1, Math.round(h * scale));
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#808080'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(media, 0, 0, canvas.width, canvas.height);
+      return canvas.toDataURL('image/jpeg', .88);
+    };
+    const event = (media, name, action) => new Promise((resolve, reject) => {
+      const cleanup = () => { clearTimeout(timer); media.removeEventListener(name, ok); media.removeEventListener('error', fail); };
+      const ok = () => { cleanup(); resolve(); };
+      const fail = () => { cleanup(); reject(new Error('参考视频读取失败')); };
+      const timer = setTimeout(fail, 20000);
+      media.addEventListener(name, ok, {once:true}); media.addEventListener('error', fail, {once:true});
+      try { action(); } catch(error) { cleanup(); reject(error); }
+    });
+    for (const reference of catalog) {
+      const resource = captured.resources.find(item => item.key === reference.slotKey);
+      if (!resource || resource.kind === 'audio' || reference.kind === 'audio') continue;
+      const src = resource.previewUrl || resource.objectUrl || resource.dataUrl;
+      if (!src) throw new Error(`${reference.uiToken || reference.modelToken} 尚未读取到真实素材，请重新添加该素材`);
+      if (reference.kind === 'image') {
+        const img = new Image(); img.src = await miniMaxH3ImageDataUrl(src); await img.decode();
+        frames.push({label:reference.modelToken, dataUrl:draw(img)});
+      } else if (reference.kind === 'video') {
+        const video = document.createElement('video'); video.muted = true; video.preload = 'auto';
+        try {
+          await event(video, 'loadeddata', () => { video.src = src; video.load(); });
+          if (!Number.isFinite(video.duration) || video.duration <= 0) throw new Error('参考视频时长无效');
+          const end = Math.min(Number(captured.durationSeconds) || video.duration, video.duration - .001, 15);
+          for (let i = 0; i < 9; i++) {
+            const timeSeconds = end * i / 8;
+            if (Math.abs(video.currentTime - timeSeconds) > .00001) await event(video, 'seeked', () => { video.currentTime = timeSeconds; });
+            frames.push({label:reference.modelToken, timeSeconds, dataUrl:draw(video)});
+          }
+        } finally { video.removeAttribute('src'); video.load(); }
+      }
+    }
+    return frames;
   }
 
   async function refreshMiniMaxH3ReverseContext() {
@@ -4197,6 +4247,9 @@
       const miniMaxH3Prepared = isMiniMaxH3OptimizeRequest
         ? prepareMiniMaxH3PromptRequest(prompt, requirements)
         : null;
+      const h3ReferenceFrames = isMiniMaxH3OptimizeRequest
+        ? await captureH3ReferenceFrames(state.context?.miniMaxH3, miniMaxH3Prepared)
+        : [];
       miniMaxH3ReversePrepared = isMiniMaxH3ReverseRequest
         ? await prepareMiniMaxH3ReverseRequest(prompt, requirements)
         : null;
@@ -4281,6 +4334,7 @@
         }
       } else if (isMiniMaxH3OptimizeRequest && useGrok) {
         result = await api.smartAiPromptOptimize?.({
+          h3ReferenceFrames,
           token,
           prompt: miniMaxH3Prepared.prompt,
           negativePrompt: "",
@@ -4295,6 +4349,7 @@
         });
       } else if (isMiniMaxH3OptimizeRequest) {
         result = await api.promptAssistantOptimizePrompt?.({
+          h3ReferenceFrames,
           prompt: miniMaxH3Prepared.prompt,
           negativePrompt: "",
           supportsNegativePrompt: false,
@@ -4852,8 +4907,9 @@
         const workflow = getMiniMaxH3PromptWorkflow();
         return workflow.compileForGeneration(options, async payload => {
           const api = window.electronAPI || {};
+          const h3ReferenceFrames = await captureH3ReferenceFrames({...options, mode:'multi_reference'});
           // Compilation is local and does not silently spend cloud credits.
-          const response = await api.promptAssistantOptimizePrompt?.(payload);
+          const response = await api.promptAssistantOptimizePrompt?.({...payload, h3ReferenceFrames});
           if (!response || response.ok === false) throw new Error(response?.error || '多参提示词编译失败');
           return readSmartAiResult(response).prompt;
         });
