@@ -8489,10 +8489,22 @@ handleNovaFlowTempIpc("ai-seq-rembg-batch", async (evt, payload) => {
       const runBiRefNetImage = async (inPath, outPath) => {
         const scriptPath = path.join(workDir, "birefnet_run.py");
         writeBiRefNetScript(scriptPath);
-        sendProgress({ state: "running", stage: "rembg", message: "AI 分割中…（BiRefNet）", progress01: 0.3 });
-        const r = await runCmd(pythonExe, ["-W", "ignore::FutureWarning", scriptPath, "--mode", "image", "--input", inPath, "--output", outPath, ...buildBiRefNetRunArgs()], { cwd: workDir, env: birefEnv });
-        if (!r.ok) return { ok: false, error: String(r.stderr || r.stdout || "").slice(0, 520) };
-        return { ok: true };
+        const startedAt = Date.now();
+        const report = () => sendProgress({ state: "running", stage: "rembg", message: `单图 AI 加载 / 分割中…（BiRefNet，已等待 ${Math.floor((Date.now() - startedAt) / 1000)} 秒）`, progress01: 0.3 });
+        report();
+        const heartbeat = setInterval(report, 1000);
+        try {
+          const r = await runCmd(pythonExe, ["-W", "ignore::FutureWarning", scriptPath, "--mode", "image", "--input", inPath, "--output", outPath, ...buildBiRefNetRunArgs()], { cwd: workDir, env: birefEnv });
+          appendLogLine(r.ok ? "info" : "warn", "ai-cutout-image-result", { jobId, elapsedMs: Date.now() - startedAt, ok: r.ok, code: r.code, stdout: String(r.stdout || "").slice(-2000), stderr: String(r.stderr || "").slice(-2000) });
+          if (!r.ok) {
+            const error = String(r.stderr || r.stdout || r.error || "BiRefNet 未正常完成").slice(-520);
+            sendProgress({ state: "error", stage: "error", message: error, progress01: 1 });
+            return { ok: false, error };
+          }
+          return { ok: true };
+        } finally {
+          clearInterval(heartbeat);
+        }
       };
 
       if (kind === "image") {
