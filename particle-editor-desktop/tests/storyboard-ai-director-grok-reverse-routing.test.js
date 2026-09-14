@@ -8,7 +8,7 @@ const adminServerSource = fs.readFileSync(path.resolve(__dirname, '../admin-serv
 
 const grokStart = source.indexOf('async function runStoryboardGrokReferencePrompt')
 const analysisStart = source.indexOf('async function runStoryboardReferenceAnalysis')
-const analysisEnd = source.indexOf('\n  function isImageWashRuntimeDisconnectError', analysisStart)
+const analysisEnd = source.indexOf('\n  function requiredImageAngleChoice', analysisStart)
 const unifiedStart = source.indexOf('async function runStoryboardUnifiedNineShots')
 const unifiedEnd = source.indexOf('\n  function storyboardScenesFromUnifiedShots', unifiedStart)
 const unifiedScenesStart = unifiedEnd + 3
@@ -54,11 +54,11 @@ assert.match(grokSource, /model: String\(grokMeta\.model/, 'Grok model metadata 
 assert.match(grokSource, /durationMs: Number\(grokMeta\.durationMs/, 'Grok duration metadata must be propagated to director debug')
 assert.match(adminServerSource, /requestId: String\(data\?\.id \|\| response\.headers\.get\("x-request-id"\)/, 'the admin provider call must capture a provider request id when available')
 assert.match(adminServerSource, /requestId: grok\.requestId/, 'the image-reverse response must expose the provider request id in its grok envelope')
-assert.doesNotMatch(grokSource, /promptAssistantReverseImagePrompt|runImageWashReversePrompt/, 'Grok helper must never call local reverse analysis')
+assert.doesNotMatch(grokSource, /promptAssistantReverseImagePrompt|runStoryboardReferenceReversePrompt/, 'Grok helper must never call local reverse analysis')
 assert.match(grokSource, /requirements:[\s\S]*?视觉锚点[\s\S]*?不得被当成固定剧情[\s\S]*?不要续写故事/, 'Grok reverse must receive storyboard-specific visual analysis rules')
 assert.match(grokSource, /固有颜色[\s\S]*?霓虹灯[\s\S]*?环境光[\s\S]*?不等于[\s\S]*?渐变/, 'Grok reverse must distinguish intrinsic colors from neon or environmental color casts')
 assert.match(grokSource, /发梢实际最低位置[\s\S]*?耳上[\s\S]*?下颌[\s\S]*?齐肩[\s\S]*?不要同时写/, 'Grok reverse must produce one non-conflicting hair-length category')
-assert.match(analysisSource, /provider === 'grok'[\s\S]*?runStoryboardGrokReferencePrompt\(dataUrl, fileName\)[\s\S]*?: runImageWashReversePrompt\(/, 'reference analysis must branch exclusively by director provider')
+assert.match(analysisSource, /provider === 'grok'[\s\S]*?runStoryboardGrokReferencePrompt\(dataUrl, fileName\)[\s\S]*?: runStoryboardReferenceReversePrompt\(/, 'reference analysis must branch exclusively by director provider')
 assert.match(analysisSource, /const cacheKey = contentCacheKey \? `\$\{provider\}:\$\{contentCacheKey\}` : ''/, 'reference cache must be isolated by provider')
 assert.match(analysisSource, /if \(provider === 'grok'\) \{[\s\S]*?throw new Error\(`/,'Grok reverse failure must stop the run')
 assert.match(unifiedSource, /const directorSourceAnalysis = useGrok[\s\S]*?String\(sourceAnalysis \|\| ''\)\.trim\(\)\.slice\(0, 6000\)[\s\S]*?: worldContinuity/, 'Grok planner must receive the full reverse-analysis appearance contract while local planning keeps world-only continuity')
@@ -106,7 +106,7 @@ async function runBehaviorTests() {
     storyboardReferenceAnalysisCache: referenceCache,
     storyboardNormalizeReferenceAnalysisForStoryboard: (value) => String(value || '').trim(),
     storyboardTrimReferenceAnalysisCache() {},
-    runImageWashReversePrompt: async (dataUrl) => {
+    runStoryboardReferenceReversePrompt: async (dataUrl) => {
       calls.local += 1
       return `local-analysis:${String(dataUrl || '')}`
     },

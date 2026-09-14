@@ -133,7 +133,7 @@
   const LAYER_POINTER_AUTO_SCROLL_MAX_PX = 22
   const LAYER_POINTER_NEAREST_Y_SLACK_PX = 72
   const SPLIT_BUSY_OVERLAY_Z_INDEX = '2147483647'
-  const COMFY_BUSY_ACTIONS = new Set(['split', 'cutout', 'inpaint', 'imageUpscale', 'imageOutpaint', 'imageWash', 'imageAngleAdjust', 'objectTransfer', 'storyboard'])
+  const COMFY_BUSY_ACTIONS = new Set(['split', 'cutout', 'inpaint', 'imageUpscale', 'imageOutpaint', 'imageAngleAdjust', 'objectTransfer', 'storyboard'])
   const STORYBOARD_DIALOG_ID = 'novaflow-storyboard-dialog'
   const STORYBOARD_EDIT_DIALOG_ID = 'novaflow-storyboard-edit-dialog'
   const STORYBOARD_DEBUG_DIALOG_ID = 'novaflow-storyboard-debug-dialog'
@@ -225,16 +225,8 @@
   const IMAGE_OUTPAINT_TIMEOUT_MS = 600000
   const IMAGE_OUTPAINT_SAFE_DIMENSION_STEP = 8
   const IMAGE_OUTPAINT_ORIGINAL_EDGE_FEATHER_PX = 24
-  const IMAGE_WASH_DEFAULT_DENOISE = 0.2
-  const IMAGE_WASH_MIN_DENOISE = 0.1
-  const IMAGE_WASH_MAX_DENOISE = 1
-  const IMAGE_WASH_DENOISE_STEP = 0.01
-  const IMAGE_WASH_TIMEOUT_MS = 600000
-  const IMAGE_WASH_WAN_GGUF = 'Wan22\\Wan2.2-T2V-A14B-LowNoise-Q4_K_S.gguf'
-  const IMAGE_WASH_WAN_LORA = 'Wan21\\Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors'
-  const IMAGE_WASH_WAN_VAE = 'wan_2.1_vae_fp8_e4m3fn.safetensors'
-  const IMAGE_WASH_WAN_CLIP = 'umt5_xxl_fp8_e4m3fn_scaled.safetensors'
-  const IMAGE_WASH_QWEN_CHECKPOINT = 'Qwen-Rapid-AIO-NSFW-v20.safetensors'
+  // Shared by storyboard, local editing, angle adjustment and object transfer.
+  const QWEN_RAPID_CHECKPOINT = 'Qwen-Rapid-AIO-NSFW-v20.safetensors'
   const IMAGE_ANGLE_ADJUST_TIMEOUT_MS = 600000
   const IMAGE_ANGLE_ADJUST_FILENAME_PREFIX = 'NovaFlow_angle_adjust'
   const IMAGE_ANGLE_ADJUST_MULTIANGLE_LORA = 'qwen-image-edit-2511-multiple-angles-lora.safetensors'
@@ -255,13 +247,7 @@
   const OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE = '\u53c2\u8003\u7269\u4e3b\u4f53\u4e0d\u6e05\u6670\uff0c\u8bf7\u6362\u4e00\u5f20\u80cc\u666f\u66f4\u7b80\u5355\u7684\u56fe\u7247\u3002'
   const STORYBOARD_MODEL_MODE_DEFAULT = 'default'
   const STORYBOARD_MODEL_MODE_NSFW = 'qwenNsfw'
-  const STORYBOARD_QWEN_NSFW_CHECKPOINT = IMAGE_WASH_QWEN_CHECKPOINT
-  const IMAGE_WASH_NEGATIVE_PROMPT = 'low quality, worst quality, blurry, overexposed, oversaturated, artifacts, jpeg artifacts, distorted anatomy, deformed hands, extra fingers, missing fingers, poor face, bad eyes, disfigured, watermark, text, logo, cluttered background'
-  const IMAGE_WASH_ADULT_NEGATIVE_PROMPT = `${IMAGE_WASH_NEGATIVE_PROMPT}, minor, child, underage, loli, shota, childlike face, childlike body`
-  const IMAGE_WASH_WAN_SYSTEM_PROMPT = 'Preserve the original subject, composition, pose, face identity, outfit, materials, line art, colors, lighting, transparent or alpha intent, and game-art style. Refine details, clean artifacts, improve edges and texture quality, and keep the image faithful to the source.'
-  const IMAGE_WASH_QWEN_LOW_SYSTEM_PROMPT = 'The source is mature adult game artwork. Keep the original adult character identity, composition, pose, face, outfit, materials, background, colors, lighting, and style. Only refine texture, edges, anatomy details, rendering clarity, and artifacts. Avoid noticeable redesign.'
-  const IMAGE_WASH_QWEN_MID_SYSTEM_PROMPT = 'The source is mature adult game artwork. Preserve the adult character identity, pose, silhouette, main outfit shapes, and main composition. Improve rendering quality, materials, costume details, lighting, background details, and visual effects. Allow moderate repainting while keeping the source recognizable.'
-  const IMAGE_WASH_QWEN_HIGH_SYSTEM_PROMPT = 'The source is mature adult game artwork. Preserve the adult character identity and overall composition. Repaint the image with stronger detail, cleaner anatomy, richer materials, improved costume details, enhanced lighting, stronger background atmosphere, and polished game-art quality. Allow visible changes while keeping the source recognizable.'
+  const STORYBOARD_QWEN_NSFW_CHECKPOINT = QWEN_RAPID_CHECKPOINT
   const SPLIT_MODE_DIALOG_ID = 'novaflow-spine-split-mode-dialog'
   const SPLIT_MODE_DIALOG_STYLE_ID = 'novaflow-spine-split-mode-dialog-style'
   const SEE_THROUGH_DEFAULT_STEPS = 30
@@ -2100,283 +2086,6 @@
     })
   }
 
-  function normalizeImageWashMode(value) {
-    return String(value || '') === 'qwenNsfw' ? 'qwenNsfw' : 'wan'
-  }
-
-  function imageWashModeLabel(mode) {
-    return normalizeImageWashMode(mode) === 'qwenNsfw' ? '洗图-成人' : '洗图-高质量'
-  }
-
-  function normalizeImageWashDenoise(value) {
-    const next = Math.round(Number(value) * 100) / 100
-    if (!Number.isFinite(next)) return IMAGE_WASH_DEFAULT_DENOISE
-    return Math.max(IMAGE_WASH_MIN_DENOISE, Math.min(IMAGE_WASH_MAX_DENOISE, next))
-  }
-
-  function showImageWashDialog(sourceSize) {
-    removeSplitModeDialog()
-    if (!document.body) return Promise.resolve(null)
-    const width = Math.max(1, Math.round(Number(sourceSize && sourceSize.width) || 1))
-    const height = Math.max(1, Math.round(Number(sourceSize && sourceSize.height) || 1))
-    let resolved = false
-    let selectedMode = 'wan'
-    let denoise = IMAGE_WASH_DEFAULT_DENOISE
-    let denoiseRange = null
-    let denoiseNumber = null
-    let denoiseValueNode = null
-    const modeButtons = []
-    return new Promise((resolve) => {
-      ensureSplitModeDialogStyle()
-      const cleanup = () => {
-        document.removeEventListener('keydown', handleKeydown, true)
-        removeSplitModeDialog()
-      }
-      const close = () => {
-        if (resolved) return
-        resolved = true
-        cleanup()
-        resolve(null)
-      }
-      const finish = () => {
-        if (resolved) return
-        resolved = true
-        cleanup()
-        resolve({ mode: normalizeImageWashMode(selectedMode), denoise: normalizeImageWashDenoise(denoise) })
-      }
-      function handleKeydown(event) {
-        if (!event) return
-        if (event.key === 'Escape') {
-          if (typeof event.preventDefault === 'function') event.preventDefault()
-          stopSplitModeDialogEvent(event)
-          close()
-        } else if (event.key === 'Enter') {
-          if (typeof event.preventDefault === 'function') event.preventDefault()
-          stopSplitModeDialogEvent(event)
-          finish()
-        }
-      }
-      const applyButtonState = (event, hovering, tone) => {
-        const buttonNode = event && event.currentTarget
-        if (!(buttonNode instanceof HTMLElement)) return
-        const primary = tone === 'primary'
-        const base = primary ? '#21ad78' : 'rgba(255,255,255,0.08)'
-        const hover = primary ? SPLIT_ACTIVE_HOVER_BACKGROUND : 'rgba(255,255,255,0.14)'
-        buttonNode.style.background = hovering ? hover : base
-        buttonNode.style.backgroundColor = hovering ? hover : base
-        buttonNode.style.boxShadow = 'none'
-        buttonNode.style.transform = 'none'
-      }
-      const applyCloseButtonState = (event, hovering) => {
-        const buttonNode = event && event.currentTarget
-        if (!(buttonNode instanceof HTMLElement)) return
-        buttonNode.style.background = hovering ? 'rgba(255,255,255,0.08)' : 'transparent'
-        buttonNode.style.backgroundColor = hovering ? 'rgba(255,255,255,0.08)' : 'transparent'
-        buttonNode.style.color = hovering ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.58)'
-      }
-      const syncDenoise = (value) => {
-        denoise = normalizeImageWashDenoise(value)
-        const text = denoise.toFixed(2)
-        if (denoiseRange) denoiseRange.value = text
-        if (denoiseNumber) denoiseNumber.value = text
-        if (denoiseValueNode) denoiseValueNode.textContent = text
-      }
-      const syncModeButtons = () => {
-        modeButtons.forEach((button) => {
-          const active = button && button.__novaflowImageWashMode === selectedMode
-          if (!button || !button.style) return
-          button.style.background = active ? 'rgba(33,173,120,0.18)' : 'rgba(255,255,255,0.06)'
-          button.style.backgroundColor = active ? 'rgba(33,173,120,0.18)' : 'rgba(255,255,255,0.06)'
-          button.style.borderColor = active ? 'rgba(33,173,120,0.78)' : 'rgba(255,255,255,0.12)'
-          button.style.color = active ? '#ffffff' : 'rgba(255,255,255,0.84)'
-        })
-      }
-      const modeButton = (mode, title, detail) => {
-        const buttonNode = h('button', {
-          type: 'button',
-          onclick: () => {
-            selectedMode = normalizeImageWashMode(mode)
-            syncModeButtons()
-          },
-          style: {
-            minHeight: '76px',
-            padding: '10px 10px',
-            borderRadius: '8px',
-            border: '1px solid rgba(255,255,255,0.12)',
-            background: 'rgba(255,255,255,0.06)',
-            color: 'rgba(255,255,255,0.84)',
-            cursor: 'pointer',
-            display: 'grid',
-            gap: '6px',
-            alignContent: 'center',
-            textAlign: 'left',
-            boxShadow: 'none',
-            transform: 'none',
-            transition: 'none'
-          }
-        }, [
-          h('div', { style: { fontSize: '13px', fontWeight: '900', lineHeight: '1.25' } }, title),
-          h('div', { style: { fontSize: '11px', lineHeight: '1.35', color: 'rgba(226,232,240,0.72)' } }, detail)
-        ])
-        buttonNode.__novaflowImageWashMode = normalizeImageWashMode(mode)
-        modeButtons.push(buttonNode)
-        return buttonNode
-      }
-      const actionButton = (label, onClick, tone) => h('button', {
-        type: 'button',
-        onclick: onClick,
-        onmouseenter: (event) => applyButtonState(event, true, tone),
-        onmouseleave: (event) => applyButtonState(event, false, tone),
-        onfocus: (event) => applyButtonState(event, true, tone),
-        onblur: (event) => applyButtonState(event, false, tone),
-        style: {
-          height: '32px',
-          minWidth: tone === 'primary' ? '220px' : '86px',
-          padding: '0 14px',
-          borderRadius: '8px',
-          border: '0',
-          background: tone === 'primary' ? '#21ad78' : 'rgba(255,255,255,0.08)',
-          color: '#fff',
-          cursor: 'pointer',
-          fontSize: '12px',
-          fontWeight: '900',
-          boxShadow: 'none',
-          transform: 'none',
-          transition: 'none'
-        }
-      }, label)
-      denoiseValueNode = h('span', null, IMAGE_WASH_DEFAULT_DENOISE.toFixed(2))
-      denoiseRange = h('input', {
-        type: 'range',
-        'data-novaflow-split-step-range': '1',
-        min: IMAGE_WASH_MIN_DENOISE.toFixed(2),
-        max: IMAGE_WASH_MAX_DENOISE.toFixed(2),
-        step: IMAGE_WASH_DENOISE_STEP.toFixed(2),
-        value: IMAGE_WASH_DEFAULT_DENOISE.toFixed(2),
-        oninput: (event) => syncDenoise(event && event.target && event.target.value)
-      })
-      denoiseNumber = h('input', {
-        type: 'number',
-        'data-novaflow-split-step-number': '1',
-        min: IMAGE_WASH_MIN_DENOISE.toFixed(2),
-        max: IMAGE_WASH_MAX_DENOISE.toFixed(2),
-        step: IMAGE_WASH_DENOISE_STEP.toFixed(2),
-        value: IMAGE_WASH_DEFAULT_DENOISE.toFixed(2),
-        oninput: (event) => syncDenoise(event && event.target && event.target.value),
-        onblur: (event) => syncDenoise(event && event.target && event.target.value),
-        style: {
-          width: '58px',
-          height: '28px',
-          borderRadius: '6px',
-          border: '0',
-          background: '#050505',
-          color: '#fff',
-          textAlign: 'center',
-          fontWeight: '800',
-          outline: 'none',
-          MozAppearance: 'textfield'
-        }
-      })
-      const shell = createDialogShell({
-        id: SPLIT_MODE_DIALOG_ID,
-        ariaLabel: '洗图',
-        stopEvent: stopSplitModeDialogEvent,
-        close,
-        closeButtonLabel: '\u00d7',
-        closeAriaLabel: '关闭',
-        overlayStyle: {
-          position: 'fixed',
-          inset: '0',
-          zIndex: String(Number(SPLIT_BUSY_OVERLAY_Z_INDEX) - 1),
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'rgba(0,0,0,0.46)',
-          pointerEvents: 'auto',
-          boxSizing: 'border-box',
-          webkitAppRegion: 'no-drag'
-        },
-        dialogStyle: {
-          position: 'relative',
-          width: 'min(440px, calc(100vw - 44px))',
-          maxHeight: 'calc(100vh - 52px)',
-          overflow: 'auto',
-          borderRadius: '8px',
-          border: '1px solid rgba(255,255,255,0.14)',
-          background: '#202020',
-          boxShadow: '0 22px 60px rgba(0,0,0,0.42)',
-          color: '#fff'
-        },
-        headerStyle: {
-          minHeight: '48px',
-          padding: '14px 14px',
-          borderBottom: '1px solid rgba(255,255,255,0.10)',
-          background: '#1a1a1a',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: '12px',
-          boxSizing: 'border-box'
-        },
-        titleNode: h('div', { style: { minWidth: '0', display: 'grid', gap: '5px' } }, [
-          h('div', { style: { fontSize: '14px', fontWeight: SPLIT_TOOL_FONT_WEIGHT, lineHeight: '1.2' } }, '洗图')
-        ]),
-        closeButtonEvents: {
-          onmouseenter: (event) => applyCloseButtonState(event, true),
-          onmouseleave: (event) => applyCloseButtonState(event, false),
-          onfocus: (event) => applyCloseButtonState(event, true),
-          onblur: (event) => applyCloseButtonState(event, false)
-        },
-        closeButtonStyle: {
-          flex: '0 0 auto',
-          width: '24px',
-          height: '24px',
-          borderRadius: '6px',
-          border: '0',
-          background: 'transparent',
-          color: 'rgba(255,255,255,0.58)',
-          cursor: 'pointer',
-          fontSize: '16px',
-          lineHeight: '1',
-          boxShadow: 'none',
-          outline: '0',
-          transform: 'none',
-          transition: 'none'
-        },
-        bodyNode: h('div', { style: { padding: '16px 18px 15px', display: 'grid', gap: '14px', background: '#242424' } }, [
-          h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.72)', lineHeight: '1.35', textAlign: 'center' } }, `当前原图 ${width} x ${height} px`),
-          h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' } }, [
-            modeButton('wan', '高质量洗图 Wan', '使用 Wan 保留原图结构并修复细节'),
-            modeButton('qwenNsfw', '成人洗图 Qwen NSFW', '按强度分层处理成人美术图')
-          ]),
-          h('div', { style: { display: 'grid', gap: '9px' } }, [
-            h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', fontSize: '12px', color: 'rgba(255,255,255,0.86)', fontWeight: '900' } }, [
-              h('span', null, '重绘强度'),
-              denoiseValueNode
-            ]),
-            h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 58px', gap: '14px', alignItems: 'center' } }, [
-              denoiseRange,
-              denoiseNumber
-            ]),
-            h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 58px', gap: '14px', alignItems: 'center', marginTop: '-5px' } }, [
-              h('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: '11px', lineHeight: '1.2', color: 'rgba(226,232,240,0.58)' } }, [
-                h('span', null, '保守'),
-                h('span', null, '重绘')
-              ]),
-              h('span', { 'aria-hidden': 'true' }, '')
-            ])
-          ]),
-          h('div', { style: { display: 'flex', justifyContent: 'center', paddingTop: '2px' } }, [
-            actionButton('开始洗图', finish, 'primary')
-          ])
-        ])
-      })
-      document.addEventListener('keydown', handleKeydown, true)
-      document.body.appendChild(shell.overlay)
-      syncDenoise(IMAGE_WASH_DEFAULT_DENOISE)
-      syncModeButtons()
-    })
-  }
 
   function normalizeImageAngleHorizontal(value) {
     let next = Math.round(Number(value))
@@ -2990,7 +2699,6 @@
       inpaint: `${selectionInpaintModeStartLabel(state.selectionTool && state.selectionTool.inpaintMode)}\u5904\u7406\u4e2d...`,
       imageUpscale: '\u6b63\u5728\u9ad8\u6e05\u653e\u5927...',
       imageOutpaint: '\u65e0\u9650\u6269\u56fe\u751f\u6210\u4e2d...',
-      imageWash: '正在洗图...',
       storyboard: '正在生成 Storyboard...',
       imageAngleAdjust: '正在角度调整...',
       healing: '\u4fee\u8865\u4e2d...',
@@ -4515,7 +4223,6 @@
       || name === 'canvasResize'
       || name === 'imageUpscale'
       || name === 'imageOutpaint'
-      || name === 'imageWash'
       || name === 'imageAngleAdjust'
       || name === 'objectTransfer'
       || name === 'storyboard'
@@ -5702,7 +5409,7 @@
     const qwenText = requiredComfyNode(info, 'TextEncodeQwenImageEditPlus')
     const ksampler = requiredComfyNode(info, 'KSampler')
     const checkpoint = requiredComfyNode(info, 'CheckpointLoaderSimple')
-    const checkpointName = requireComfyChoice(checkpoint, 'ckpt_name', IMAGE_WASH_QWEN_CHECKPOINT, 'Qwen Rapid checkpoint')
+    const checkpointName = requireComfyChoice(checkpoint, 'ckpt_name', QWEN_RAPID_CHECKPOINT, 'Qwen Rapid checkpoint')
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
       '2': { class_type: 'ImagePadForOutpaint', inputs: { left: Math.max(0, Math.round(Number(delta.left) || 0)), top: Math.max(0, Math.round(Number(delta.top) || 0)), right: Math.max(0, Math.round(Number(delta.right) || 0)), bottom: Math.max(0, Math.round(Number(delta.bottom) || 0)), feathering: imageOutpaintFeather(delta), image: ['1', 0] } },
@@ -6095,13 +5802,13 @@
     }
   }
 
-  function imageWashNormalizedChoiceName(value) {
+  function normalizeComfyModelChoiceName(value) {
     return String(value || '').replace(/\\/g, '/').toLowerCase()
   }
 
-  function imageWashChoiceMatches(choice, wanted) {
-    const left = imageWashNormalizedChoiceName(choice)
-    const right = imageWashNormalizedChoiceName(wanted)
+  function comfyModelChoiceMatches(choice, wanted) {
+    const left = normalizeComfyModelChoiceName(choice)
+    const right = normalizeComfyModelChoiceName(wanted)
     if (!left || !right) return false
     if (left === right) return true
     if (left.endsWith(`/${right}`)) return true
@@ -6110,68 +5817,17 @@
     return !!leftBase && leftBase === rightBase
   }
 
-  function requiredImageWashNode(info, name, label) {
-    if (!info || !info[name]) {
-      throw new Error(`NovaFlow AI Runtime 未加载 ${label || name} 节点，请重启 Runtime 后重试。Missing: ${name}`)
-    }
-    return info[name]
-  }
 
-  function requiredImageWashChoice(nodeInfo, key, candidates, label) {
-    const list = comfyComboChoices(nodeInfo, key)
-    const wanted = (Array.isArray(candidates) ? candidates : [candidates]).filter(Boolean)
-    if (!wanted.length) return ''
-    if (!list.length) throw new Error(`NovaFlow AI Runtime 未暴露 ${label || key} 模型列表，请确认模型文件已安装并重启 Runtime。`)
-    for (const item of wanted) {
-      const match = list.find((choice) => imageWashChoiceMatches(choice, item))
-      if (match) return match
-    }
-    throw new Error(`NovaFlow AI Runtime 缺少 ${label || key}：${wanted[0]}`)
-  }
-
-  function imageWashNegativePrompt(mode) {
-    return normalizeImageWashMode(mode) === 'qwenNsfw' ? IMAGE_WASH_ADULT_NEGATIVE_PROMPT : IMAGE_WASH_NEGATIVE_PROMPT
-  }
-
-  function imageWashQwenStrengthTier(denoise) {
-    const strength = normalizeImageWashDenoise(denoise)
-    if (strength <= 0.3) return 'low'
-    if (strength <= 0.6) return 'medium'
-    return 'high'
-  }
-
-  function imageWashQwenSystemPrompt(denoise) {
-    const tier = imageWashQwenStrengthTier(denoise)
-    if (tier === 'high') return IMAGE_WASH_QWEN_HIGH_SYSTEM_PROMPT
-    if (tier === 'medium') return IMAGE_WASH_QWEN_MID_SYSTEM_PROMPT
-    return IMAGE_WASH_QWEN_LOW_SYSTEM_PROMPT
-  }
-
-  function imageWashQwenEffectiveDenoise(denoise) {
-    return normalizeImageWashDenoise(denoise)
-  }
-
-  function buildImageWashFinalPrompt(reversePrompt, mode, denoise) {
-    const systemPrompt = normalizeImageWashMode(mode) === 'qwenNsfw'
-      ? imageWashQwenSystemPrompt(denoise)
-      : IMAGE_WASH_WAN_SYSTEM_PROMPT
-    return [reversePrompt, systemPrompt].map((item) => String(item || '').trim()).filter(Boolean).join('\n\n').trim()
-  }
-
-  function imageWashSeed() {
-    return Math.floor(Math.random() * 1000000000000000)
-  }
-
-  async function runImageWashReversePrompt(dataUrl, fileName, options = {}) {
+  async function runStoryboardReferenceReversePrompt(dataUrl, fileName) {
     const api = window.electronAPI
-    if (!api || typeof api.promptAssistantReverseImagePrompt !== 'function') throw new Error('Prompt Assistant IPC 未就绪，无法执行洗图反推。')
+    if (!api || typeof api.promptAssistantReverseImagePrompt !== 'function') throw new Error('Prompt Assistant IPC 未就绪，无法分析分镜参考图。')
     const result = await api.promptAssistantReverseImagePrompt({
-      purpose: options && options.purpose || '',
+      purpose: 'storyboardReference',
       images: [{
         name: safeDownloadFileName(fileName || 'source.png', 'source.png'),
         role: 'source',
         slotType: 'source',
-        label: 'image-wash-source',
+        label: 'storyboard-reference',
         dataUrl
       }]
     })
@@ -6326,7 +5982,7 @@
       const analysisResult = await Promise.race([
         provider === 'grok'
           ? runStoryboardGrokReferencePrompt(dataUrl, fileName)
-          : runImageWashReversePrompt(dataUrl, fileName, { purpose: 'storyboardReference' }),
+          : runStoryboardReferenceReversePrompt(dataUrl, fileName),
         new Promise((_, reject) => {
           window.setTimeout(() => reject(new Error(`参考图分析超过 ${Math.round(STORYBOARD_REFERENCE_ANALYSIS_TIMEOUT_MS / 1000)} 秒，已跳过分析继续生成`)), STORYBOARD_REFERENCE_ANALYSIS_TIMEOUT_MS)
         })
@@ -6388,197 +6044,6 @@
     }
   }
 
-  function isImageWashRuntimeDisconnectError(error) {
-    const message = String(error && (error.message || error.error || error.raw) || error || '')
-    return /(failed to fetch|fetch failed|networkerror|load failed|err_connection|econnrefused|econnreset|connection\s*(refused|reset|aborted)|proxy request failed|10053|10054|10061|runtime.*未连接|无法连接|连接.*拒绝|连接.*中断|强迫关闭)/i.test(message)
-  }
-
-  function imageWashRuntimeError(error) {
-    if (isImageWashRuntimeDisconnectError(error)) {
-      const wrapped = new Error('NovaFlow AI Runtime 已断开，洗图已取消。请重启 Runtime 后重试，当前资源未被修改。')
-      wrapped.cause = error
-      wrapped.novaflowImageWashRuntimeDisconnected = true
-      return wrapped
-    }
-    return error instanceof Error ? error : new Error(String(error || '洗图失败'))
-  }
-
-  function buildWanImageWashWorkflow(info, imageName, prefix, finalPrompt, denoise) {
-    requiredImageWashNode(info, 'LoadImage')
-    const imageScale = requiredImageWashNode(info, 'ImageScaleToTotalPixels')
-    const loader = requiredImageWashNode(info, 'LoaderGGUF')
-    const lora = requiredImageWashNode(info, 'LoraLoaderModelOnly')
-    const modelSampling = requiredImageWashNode(info, 'ModelSamplingSD3')
-    const clip = requiredImageWashNode(info, 'CLIPLoader')
-    const vae = requiredImageWashNode(info, 'VAELoader')
-    const vaeEncode = requiredImageWashNode(info, 'VAEEncode')
-    const clipText = requiredImageWashNode(info, 'CLIPTextEncode')
-    const ksampler = requiredImageWashNode(info, 'KSampler')
-    const vaeDecode = requiredImageWashNode(info, 'VAEDecode')
-    const saveImage = requiredImageWashNode(info, 'SaveImage')
-    const prompt = String(finalPrompt || '').trim()
-    if (!prompt) throw new Error('洗图提示词为空，已取消执行。')
-    const ggufName = requiredImageWashChoice(loader, 'gguf_name', IMAGE_WASH_WAN_GGUF, 'Wan GGUF')
-    const loraName = requiredImageWashChoice(lora, 'lora_name', IMAGE_WASH_WAN_LORA, 'Wan LoRA')
-    const vaeName = requiredImageWashChoice(vae, 'vae_name', IMAGE_WASH_WAN_VAE, 'Wan VAE')
-    const clipName = requiredImageWashChoice(clip, 'clip_name', IMAGE_WASH_WAN_CLIP, 'Wan CLIP')
-    const safeDenoise = normalizeImageWashDenoise(denoise)
-    const workflow = {
-      '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '2': { class_type: 'ImageScaleToTotalPixels', inputs: buildComfyNodeInputs(imageScale, { image: ['1', 0], upscale_method: 'lanczos', megapixels: 1, resolution_steps: 1 }) },
-      '3': { class_type: 'LoaderGGUF', inputs: buildComfyNodeInputs(loader, { gguf_name: ggufName }) },
-      '4': { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: ['3', 0], lora_name: loraName, strength_model: 1 }) },
-      '5': { class_type: 'ModelSamplingSD3', inputs: buildComfyNodeInputs(modelSampling, { model: ['4', 0], shift: 8 }) },
-      '6': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: clipName, type: 'wan', device: 'default' }) },
-      '7': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) },
-      '8': { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['2', 0], vae: ['7', 0] }) },
-      '9': { class_type: 'CLIPTextEncode', inputs: buildComfyNodeInputs(clipText, { text: prompt, clip: ['6', 0] }) },
-      '10': { class_type: 'CLIPTextEncode', inputs: buildComfyNodeInputs(clipText, { text: imageWashNegativePrompt('wan'), clip: ['6', 0] }) },
-      '11': {
-        class_type: 'KSampler',
-        inputs: buildComfyNodeInputs(ksampler, {
-          model: ['5', 0],
-          positive: ['9', 0],
-          negative: ['10', 0],
-          latent_image: ['8', 0],
-          seed: imageWashSeed(),
-          steps: 7,
-          cfg: 1,
-          sampler_name: 'euler',
-          scheduler: 'beta',
-          denoise: safeDenoise
-        })
-      },
-      '12': { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(vaeDecode, { samples: ['11', 0], vae: ['7', 0] }) },
-      '13': { class_type: 'SaveImage', inputs: buildComfyNodeInputs(saveImage, { images: ['12', 0], filename_prefix: prefix }) }
-    }
-    state.lastProcessingDebug = {
-      ...(state.lastProcessingDebug || {}),
-      imageWash: { mode: 'wan', gguf: ggufName, lora: loraName, vae: vaeName, clip: clipName, denoise: safeDenoise, promptHead: prompt.slice(0, 500) }
-    }
-    return workflow
-  }
-
-  function buildQwenNsfwImageWashWorkflow(info, imageName, prefix, finalPrompt, denoise) {
-    requiredImageWashNode(info, 'LoadImage')
-    const imageScale = requiredImageWashNode(info, 'ImageScaleToTotalPixels')
-    const checkpoint = requiredImageWashNode(info, 'CheckpointLoaderSimple')
-    const vaeEncode = requiredImageWashNode(info, 'VAEEncode')
-    const qwenText = requiredImageWashNode(info, 'TextEncodeQwenImageEditPlus')
-    const ksampler = requiredImageWashNode(info, 'KSampler')
-    const vaeDecode = requiredImageWashNode(info, 'VAEDecode')
-    const saveImage = requiredImageWashNode(info, 'SaveImage')
-    const prompt = String(finalPrompt || '').trim()
-    if (!prompt) throw new Error('洗图提示词为空，已取消执行。')
-    const checkpointName = requiredImageWashChoice(checkpoint, 'ckpt_name', IMAGE_WASH_QWEN_CHECKPOINT, 'Qwen NSFW checkpoint')
-    const safeDenoise = normalizeImageWashDenoise(denoise)
-    const effectiveDenoise = imageWashQwenEffectiveDenoise(safeDenoise)
-    const strengthTier = imageWashQwenStrengthTier(safeDenoise)
-    const workflow = {
-      '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '2': { class_type: 'ImageScaleToTotalPixels', inputs: buildComfyNodeInputs(imageScale, { image: ['1', 0], upscale_method: 'lanczos', megapixels: 1, resolution_steps: 1 }) },
-      '3': { class_type: 'CheckpointLoaderSimple', inputs: buildComfyNodeInputs(checkpoint, { ckpt_name: checkpointName }) },
-      '4': { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['2', 0], vae: ['3', 2] }) },
-      '5': { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt, clip: ['3', 1], vae: ['3', 2] }) },
-      '6': { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: imageWashNegativePrompt('qwenNsfw'), clip: ['3', 1], vae: ['3', 2] }) },
-      '7': {
-        class_type: 'KSampler',
-        inputs: buildComfyNodeInputs(ksampler, {
-          model: ['3', 0],
-          positive: ['5', 0],
-          negative: ['6', 0],
-          latent_image: ['4', 0],
-          seed: imageWashSeed(),
-          steps: 8,
-          cfg: 1,
-          sampler_name: 'euler',
-          scheduler: 'simple',
-          denoise: effectiveDenoise
-        })
-      },
-      '8': { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(vaeDecode, { samples: ['7', 0], vae: ['3', 2] }) },
-      '9': { class_type: 'SaveImage', inputs: buildComfyNodeInputs(saveImage, { images: ['8', 0], filename_prefix: prefix }) }
-    }
-    state.lastProcessingDebug = {
-      ...(state.lastProcessingDebug || {}),
-      imageWash: { mode: 'qwenNsfw', checkpoint: checkpointName, userDenoise: safeDenoise, denoise: effectiveDenoise, strengthTier, imageCondition: false, promptHead: prompt.slice(0, 500) }
-    }
-    return workflow
-  }
-
-  async function runImageWash(dataUrl, fileName, options) {
-    const mode = normalizeImageWashMode(options && options.mode)
-    const denoise = normalizeImageWashDenoise(options && options.denoise)
-    const baseUrl = await detectComfyBaseUrl()
-    setSplitBusyDetail(`${imageWashModeLabel(mode)}\n正在分析画面...`)
-    const reversePrompt = await runImageWashReversePrompt(dataUrl, fileName)
-    const finalPrompt = buildImageWashFinalPrompt(reversePrompt, mode, denoise)
-    if (!finalPrompt) throw new Error('洗图提示词为空，已取消执行。')
-    setSplitBusyDetail(`${imageWashModeLabel(mode)}\n正在检查 Runtime...`)
-    const info = await comfyAllObjectInfo(baseUrl)
-    const uploadName = await uploadDataUrl(baseUrl, safeDownloadFileName(fileName || 'source.png', 'source.png'), dataUrl)
-    const prefix = `novaflow_image_wash_${mode}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
-    const workflow = mode === 'qwenNsfw'
-      ? buildQwenNsfwImageWashWorkflow(info, uploadName, prefix, finalPrompt, denoise)
-      : buildWanImageWashWorkflow(info, uploadName, prefix, finalPrompt, denoise)
-    setSplitBusyDetail(`${imageWashModeLabel(mode)}\n重绘强度 ${denoise.toFixed(2)}`)
-    try {
-      return await runPromptForFirstImage(baseUrl, workflow, prefix, IMAGE_WASH_TIMEOUT_MS)
-    } catch (error) {
-      throw imageWashRuntimeError(error)
-    }
-  }
-
-  async function executeImageWashTool() {
-    if (state.busy) return
-    if (!isSourceDataUrlReady()) {
-      setMessage('请先导入一张原图', true)
-      render()
-      syncSplitWorkspace()
-      return
-    }
-    let currentSize = null
-    try {
-      currentSize = await sourceSize()
-    } catch {
-      currentSize = state.sourceSize || { width: 1, height: 1 }
-    }
-    const options = await showImageWashDialog(currentSize)
-    if (!options) return
-    const sourceDataUrl = String(state.source && state.source.dataUrl || '')
-    const sourceName = String(state.source && (state.source.fileName || state.source.name) || 'source.png')
-    const mode = normalizeImageWashMode(options.mode)
-    const denoise = normalizeImageWashDenoise(options.denoise)
-    state.busy = true
-    state.busyAction = 'imageWash'
-    state.busyStartedAt = Date.now()
-    state.busyDetail = `${imageWashModeLabel(mode)}\n重绘强度 ${denoise.toFixed(2)}`
-    setMessage('正在洗图...')
-    render()
-    syncSplitWorkspace()
-    syncSplitGlobalBusyOverlay()
-    try {
-      const resultDataUrl = await runImageWash(sourceDataUrl, sourceName, { mode, denoise })
-      const resultName = safeDownloadFileName(`${imageWashModeLabel(mode)}_${Date.now()}.png`, 'image-wash.png')
-      await addSourceDataUrlResource(resultName, resultDataUrl, {
-        resetViewport: true,
-        message: `${imageWashModeLabel(mode)}完成`
-      })
-    } catch (error) {
-      const friendlyError = imageWashRuntimeError(error)
-      setMessage(String(friendlyError && friendlyError.message || friendlyError || '洗图失败'), true)
-    } finally {
-      state.busy = false
-      state.busyAction = ''
-      state.busyStartedAt = 0
-      state.busyDetail = ''
-      render()
-      updatePreviewOverlay()
-      updateRightPanel()
-      syncSplitWorkspace()
-      syncSplitGlobalBusyOverlay()
-    }
-  }
 
   function requiredImageAngleChoice(nodeInfo, key, candidates, label) {
     const list = comfyComboChoices(nodeInfo, key)
@@ -6586,7 +6051,7 @@
     if (!wanted.length) return ''
     if (!list.length) throw new Error(`NovaFlow AI Runtime 未暴露 ${label || key} 列表，请确认模型已安装并重启 Runtime。`)
     for (const item of wanted) {
-      const match = list.find((choice) => imageWashChoiceMatches(choice, item))
+      const match = list.find((choice) => comfyModelChoiceMatches(choice, item))
       if (match) return match
     }
     throw new Error(`NovaFlow AI Runtime 缺少 ${label || key}：${wanted[0]}`)
@@ -6617,7 +6082,7 @@
     const verticalAngle = normalizeImageAngleVertical(options.verticalAngle)
     const zoom = normalizeImageAngleZoom(options.zoom)
     const checkpoint = requiredComfyNode(info, 'CheckpointLoaderSimple')
-    const checkpointName = requiredImageAngleChoice(checkpoint, 'ckpt_name', IMAGE_WASH_QWEN_CHECKPOINT, 'Qwen Rapid checkpoint')
+    const checkpointName = requiredImageAngleChoice(checkpoint, 'ckpt_name', QWEN_RAPID_CHECKPOINT, 'Qwen Rapid checkpoint')
     const multiangleLora = requiredImageAngleChoice(lora, 'lora_name', IMAGE_ANGLE_ADJUST_MULTIANGLE_LORA, 'Qwen Multiangle LoRA')
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
@@ -15632,7 +15097,7 @@
     ]
     const missing = requiredNodes.filter((name) => !info || !info[name])
     if (missing.length) throw new Error(OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE)
-    const checkpointName = objectTransferChoice(info.CheckpointLoaderSimple, 'ckpt_name', IMAGE_WASH_QWEN_CHECKPOINT, 'Qwen Rapid checkpoint')
+    const checkpointName = objectTransferChoice(info.CheckpointLoaderSimple, 'ckpt_name', QWEN_RAPID_CHECKPOINT, 'Qwen Rapid checkpoint')
     return { checkpointName }
   }
 
@@ -20291,7 +19756,6 @@
         { action: 'imageUpscale', label: '\u9ad8\u6e05\u653e\u5927', title: '\u4f7f\u7528 SeedVR2 3B FP8 \u5bf9\u5f53\u524d\u539f\u56fe\u6267\u884c\u5355\u56fe\u9ad8\u6e05\u653e\u5927' },
         { action: 'imageOutpaint', label: '无限扩图', title: '扩展画布后使用 Qwen 生成新增区域，原图区域强制保留' },
         { action: 'objectTransfer', label: '\u4e07\u7269\u8fc1\u79fb', title: '\u4e0a\u4f20\u53c2\u8003\u7269\uff0c\u81ea\u52a8\u63d0\u53d6\u4e3b\u4f53\u540e\u62d6\u653e\u5230\u753b\u5e03\u76ee\u6807\u4f4d\u7f6e\u5e76\u6267\u884c\u878d\u5408\u8fc1\u79fb' },
-        { action: 'imageWash', label: '洗图', title: '反推原图后使用 Wan 或 Qwen NSFW 执行单图洗图' },
         { action: 'imageAngleAdjust', label: '角度调整', title: '使用 Qwen Multiangle Camera 对当前原图执行单图角度调整' }
       ]
     }
@@ -20791,7 +20255,6 @@
       imageUpscale: state.busy && state.busyAction === 'imageUpscale' ? '\u9ad8\u6e05\u653e\u5927\u4e2d\u2026' : '\u9ad8\u6e05\u653e\u5927',
       objectTransfer: state.busy && state.busyAction === 'objectTransfer' ? '\u8fc1\u79fb\u4e2d\u2026' : (objectTransferActive ? '\u6267\u884c\u8fc1\u79fb' : '\u4e07\u7269\u8fc1\u79fb'),
       imageOutpaint: state.busy && state.busyAction === 'imageOutpaint' ? '无限扩图中…' : '无限扩图',
-      imageWash: state.busy && state.busyAction === 'imageWash' ? '洗图中…' : '洗图',
       imageAngleAdjust: state.busy && state.busyAction === 'imageAngleAdjust' ? '角度调整中…' : '角度调整',
       cutout: isCutting ? '智能抠图中…' : (cutoutActive ? '执行抠图' : '智能抠图'),
       storyboard: state.busy && state.busyAction === 'storyboard' ? '分镜生成中…' : '一键分镜',
@@ -36836,7 +36299,6 @@
     if (action === 'canvasResize') return executeCanvasResizeTool()
     if (action === 'imageUpscale') return executeImageUpscaleTool()
     if (action === 'imageOutpaint') return executeImageOutpaintTool()
-    if (action === 'imageWash') return executeImageWashTool()
     if (action === 'imageAngleAdjust') return executeImageAngleAdjustTool()
     if (action === 'objectTransfer') return executeObjectTransferTool()
     if (action === 'storyboard') return executeStoryboardTool()
@@ -41242,13 +40704,6 @@
     buildStoryboardSceneWorkflow,
     normalizeStoryboardReferenceStrength,
     storyboardReferenceDenoiseFromStrength,
-    buildImageWashFinalPrompt,
-    buildWanImageWashWorkflow,
-    buildQwenNsfwImageWashWorkflow,
-    normalizeImageWashDenoise,
-    imageWashQwenStrengthTier,
-    imageWashQwenEffectiveDenoise,
-    imageWashQwenSystemPrompt,
     buildImageAngleAdjustWorkflow,
     normalizeImageAngleHorizontal,
     normalizeImageAngleVertical,

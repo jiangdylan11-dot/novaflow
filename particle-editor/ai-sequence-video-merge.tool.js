@@ -34,7 +34,7 @@
       display: "inline-flex",
       alignItems: "center",
       justifyContent: "center",
-      marginTop: "10px",
+      marginTop: "0",
       padding: "0 12px",
       boxSizing: "border-box",
       border: "0",
@@ -50,8 +50,8 @@
   function applyEntryPresentation(entry, active) {
     if (!(entry instanceof HTMLElement)) return;
     styleEntry(entry);
-    entry.textContent = active ? ACTIVE_LABEL : IDLE_LABEL;
-    entry.setAttribute("aria-label", active ? ACTIVE_LABEL : IDLE_LABEL);
+    entry.textContent = IDLE_LABEL;
+    entry.setAttribute("aria-label", IDLE_LABEL);
     entry.setAttribute("aria-pressed", active ? "true" : "false");
     entry.setAttribute("data-novaflow-ai-video-merge-entry-active", active ? "1" : "0");
     [
@@ -61,8 +61,8 @@
       "data-novaflow-ai-cutout-stashed",
       "data-novaflow-ai-cutout-stash"
     ].forEach((attribute) => entry.removeAttribute(attribute));
-    const background = active ? "#6f1f2a" : "rgba(255, 255, 255, 0.08)";
-    const color = active ? "#fff1f3" : "#f0f0f0";
+    const background = "rgba(255, 255, 255, 0.08)";
+    const color = "#f0f0f0";
     entry.style.setProperty("background", background, "important");
     entry.style.setProperty("background-color", background, "important");
     entry.style.setProperty("background-image", "none", "important");
@@ -100,7 +100,7 @@
     if (!(postSection instanceof HTMLElement)) return null;
     const anchor = options.anchor instanceof HTMLElement
       ? options.anchor
-      : postSection.querySelector('[data-novaflow-ai-post-action-row="1"]');
+      : postSection.querySelector('[data-novaflow-ai-post-primary-action="1"]');
     if (!(anchor instanceof HTMLElement)) return null;
 
     let entry = postSection.querySelector(`[${ENTRY_ATTR}="1"]`);

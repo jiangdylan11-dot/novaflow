@@ -431,7 +431,7 @@
     const cardTitle = createElement("span", {
       "data-novaflow-source-upload-card-title": "1"
     });
-    appendText(cardTitle, "\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167");
+    appendText(cardTitle, "上传色彩校正参照");
     const cardHint = createElement("span", {
       "data-novaflow-source-upload-card-hint": "1"
     });
@@ -581,6 +581,10 @@
 
   function syncBridgeVisibility(root, container) {
     if (!isBridgeRoot(root) || !(container instanceof HTMLElement)) return;
+    if (container.querySelector('[data-nf-color-correction-open]')) {
+      setRootVisible(root, Boolean(container.querySelector('[data-nf-color-correction-open="1"]')) && isProcessingToolsExpanded(container));
+      return;
+    }
     if (isProcessingToolsSection(container)) {
       clearRootHidden(root);
       return;
@@ -714,6 +718,9 @@
 
   function isRootPlacedForContainer(root, container) {
     if (!(root instanceof HTMLElement) || !(container instanceof HTMLElement)) return false;
+    if (container.querySelector('[data-nf-color-correction-open]')) {
+      return root.parentElement === container.querySelector('[data-nf-color-correction-panel]');
+    }
     if (isProcessingToolsSection(container)) {
       const host = findProcessingToolsBodyHost(container);
       if (host instanceof HTMLElement) {
@@ -725,6 +732,15 @@
   }
 
   function placeRoot(root, container) {
+    if (container.querySelector('[data-nf-color-correction-open]')) {
+      const panel = container.querySelector('[data-nf-color-correction-panel]');
+      if (!(panel instanceof HTMLElement)) return false;
+      setAttributeIfChanged(root, "data-novaflow-source-island-placement", "color-correction");
+      clearRootHidden(root);
+      if (root.parentElement !== panel) panel.insertBefore(root, panel.querySelector('[data-nf-tool-panel-actions]')?.nextSibling || panel.firstChild);
+      hideLegacyColorReference(panel);
+      return true;
+    }
     if (isProcessingToolsSection(container)) {
       const bodyHost = findProcessingToolsBodyHost(container);
       if (!(bodyHost instanceof HTMLElement)) return false;
@@ -775,8 +791,18 @@
     const container = resolveMountContainer();
     if (!(container instanceof HTMLElement)) return false;
 
+    // Desktop native file input follows the same React-owned disclosure as the
+    // browser upload. Keep a detached root so the selected reference survives
+    // cancel/reopen without leaving an always-visible duplicate above the tools.
+    if (container.querySelector('[data-nf-color-correction-open]') && !container.querySelector('[data-nf-color-correction-panel]')) {
+      const root = state.root || document.getElementById(ROOT_ID);
+      if (isBridgeRoot(root)) { state.root = root; root.remove(); }
+      restoreLegacyColorReference();
+      return true;
+    }
+
     ensureStyle();
-    const existing = document.getElementById(ROOT_ID);
+    const existing = document.getElementById(ROOT_ID) || state.root;
     if (
       isProcessingToolsSection(container) &&
       !(findProcessingToolsBodyHost(container) instanceof HTMLElement) &&
@@ -866,6 +892,7 @@
         "aria-expanded",
         "data-collapsed",
         "data-novaflow-ai-sequence-mode",
+        "data-nf-color-correction-open",
         "class"
       ]
     });

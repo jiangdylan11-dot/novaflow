@@ -2,6 +2,7 @@ const path = require("path");
 const { Worker } = require("node:worker_threads");
 const { dataUrlToBuffer, safeBufferFromBytes, hasPngSignature } = require("./buffer-helpers");
 const { sanitizeFileName, sanitizeFileStem } = require("./path-helpers");
+const { encodePmaCompatibleWebp } = require("./spine-webp-pma-encoder");
 
 function normalizeName(value) {
   return String(value || "").replace(/\\/g, "/").split("/").pop().trim().toLowerCase();
@@ -90,23 +91,31 @@ function clampInt(value, fallback, min, max) {
 }
 
 function resolveWebpEncodeOptions(options) {
+  const presets = { clarity: 95, compact: 90, small: 86 };
+  const hasPreset = options?.preset !== undefined;
+  if (hasPreset && (typeof options.preset !== "string" || !Object.hasOwn(presets, options.preset))) throw new Error("压缩档位无效");
+  const presetQuality = hasPreset ? presets[options.preset] : null;
   const mode = String(options?.mode || "").trim().toLowerCase();
-  if (options?.lossless === true || mode === "lossless") {
+  if (!hasPreset && (options?.lossless === true || mode === "lossless")) {
     return {
       mode: "lossless",
       sharp: { lossless: true, effort: 6 },
       quality: null,
-      alphaQuality: null
+      alphaQuality: null,
+      jpgQuality: clampInt(options?.jpgQuality, 85, 1, 100)
     };
   }
 
-  const quality = clampInt(options?.quality, 75, 1, 100);
-  const alphaQuality = clampInt(options?.alphaQuality, 90, 1, 100);
+  const quality = presetQuality ?? clampInt(options?.quality, 75, 1, 100);
+  const alphaQuality = 100;
   return {
     mode: "spine",
     sharp: { quality, alphaQuality, smartSubsample: true, effort: 6 },
     quality,
-    alphaQuality
+    alphaQuality,
+    pmaQuality: presetQuality ?? 90,
+    pmaCodecPreset: options?.preset === "small" ? "drawing" : null,
+    jpgQuality: presetQuality ?? clampInt(options?.jpgQuality, 85, 1, 100)
   };
 }
 
@@ -131,7 +140,8 @@ function atlasPages(lines) {
   for (let i = 0; i < lines.length; i += 1) {
     if (!isAtlasPageHeader(lines, i)) continue;
     let end = i + 1;
-    let pma = false;
+    // Legacy atlases may omit this flag even when the PNG is premultiplied.
+    let pma = null;
     let pmaIndex = -1;
     while (end < lines.length && lines[end].body.includes(":")) {
       const match = lines[end].body.match(/^\s*pma\s*:\s*(true|false)\s*$/i);
@@ -189,7 +199,7 @@ async function encodeExactWebp(input, sharp) {
   });
   const decoded = await sharp(data).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   if (decoded.info.width !== info.width || decoded.info.height !== info.height || !original.equals(decoded.data)) {
-    throw new Error("PMA WebP 像素校验失败，未生成可导出结果");
+    throw new Error("WebP RGBA 像素校验失败，未生成可导出结果");
   }
   return { data, info };
 }
@@ -214,7 +224,7 @@ function normalizeAtlasInputs(payload) {
   return atlases;
 }
 
-async function convertSpineAtlasWebp(payload, { fs, sharp }) {
+async function convertSpineAtlasWebp(payload, { fs, sharp, encodePma = encodePmaCompatibleWebp }) {
   const atlasInputs = normalizeAtlasInputs(payload);
   if (!atlasInputs.length) throw new Error("缺少 atlas 文件内容");
   const encodeOptions = resolveWebpEncodeOptions(payload?.options || {});
@@ -238,8 +248,10 @@ async function convertSpineAtlasWebp(payload, { fs, sharp }) {
     const alphaMode = image?.alphaMode || "auto";
     if (!["auto", "straight", "pma"].includes(alphaMode)) throw new Error(`Alpha 设置无效：${sourceName}`);
     const pageModes = new Set(pages.filter((page) => normalizeName(page.name) === key).map((page) => page.pma));
-    if (alphaMode === "auto" && pageModes.size > 1) throw new Error(`atlas 的 PMA 标记冲突，请指定原图 Alpha：${sourceName}`);
-    const pma = alphaMode === "pma" || (alphaMode === "auto" && pageModes.has(true));
+    if (alphaMode === "auto" && pageModes.has(true) && pageModes.has(false)) throw new Error(`atlas 的 PMA 标记冲突，请指定原图 Alpha：${sourceName}`);
+    const pma = alphaMode === "auto"
+      ? (pageModes.has(null) || !pageModes.size ? null : pageModes.has(true))
+      : alphaMode === "pma";
     if (alphaMode !== "auto" || outputFormat === "jpg") outputPma.set(key, outputFormat === "webp" && pma);
     imageInputs.push({ sourceName, input, outputName, outputFormat, pma });
     pngNameToOutputName.set(normalizeName(sourceName), outputName);
@@ -271,19 +283,40 @@ async function convertSpineAtlasWebp(payload, { fs, sharp }) {
   const convertedImages = [];
   for (const image of imageInputs) {
     if (!matchedSourceNames.has(normalizeName(image.sourceName))) continue;
+    if (image.outputFormat === "jpg" && image.pma === null) {
+      throw new Error(`${image.sourceName}：atlas 未标记原图 Alpha，转 JPG 前请选择已预乘（PMA）或未预乘（Straight）`);
+    }
     const pipeline = sharp(image.input, { limitInputPixels: false });
-    const protectedPma = image.pma && image.outputFormat === "webp";
-    const { data, info } = protectedPma
+    let compatible;
+    if (image.outputFormat === "webp" && image.pma === true && encodeOptions.mode !== "lossless") {
+      try {
+        try {
+          compatible = await encodePma(image.input, sharp, {
+            quality: encodeOptions.pmaQuality, codecPreset: encodeOptions.pmaCodecPreset
+          });
+        } catch (error) {
+          // A smaller preset must not bypass verification or immediately inflate to lossless.
+          if (!encodeOptions.pmaCodecPreset || error.code !== "PMA_TRANSPARENT_RGB") throw error;
+          compatible = await encodePma(image.input, sharp, { quality: 90 });
+          warnings.push(`${image.sourceName}：Q${encodeOptions.pmaQuality} 边缘校验未通过，已改用 Q90 并通过校验`);
+        }
+      } catch (error) {
+        warnings.push(`${image.sourceName}：PMA 兼容压缩未通过（${error.message}），已回退无损；体积可能较大`);
+      }
+    }
+    const exactRgba = !compatible && image.outputFormat === "webp" && (image.pma !== false || encodeOptions.mode === "lossless");
+    const { data, info } = compatible || (exactRgba
       ? await encodeExactWebp(image.input, sharp)
       : image.outputFormat === "jpg"
       ? await (image.pma ? pipeline.removeAlpha() : pipeline.flatten({ background: { r: 0, g: 0, b: 0 } }))
-        .jpeg({ quality: clampInt(payload?.options?.jpgQuality, 85, 1, 100), mozjpeg: true })
+        .jpeg({ quality: encodeOptions.jpgQuality, mozjpeg: true })
         .toBuffer({ resolveWithObject: true })
       : await pipeline
         .ensureAlpha()
         .webp(encodeOptions.sharp)
-        .toBuffer({ resolveWithObject: true });
-    if (protectedPma) warnings.push(`${image.sourceName}：PMA 无损保护，已校验 RGBA；体积可能较大`);
+        .toBuffer({ resolveWithObject: true }));
+    if (exactRgba && image.pma === true) warnings.push(`${image.sourceName}：PMA 无损保护，已校验 RGBA；体积可能较大`);
+    if (exactRgba && image.pma === null) warnings.push(`${image.sourceName}：atlas 未标记原图 Alpha，已无损保留 RGBA；不改变预乘状态，体积可能较大`);
     if (image.outputFormat === "jpg") warnings.push(`${image.sourceName}：JPG 不保留透明，输出黑底`);
     convertedImages.push({
       sourceName: image.sourceName,
@@ -293,12 +326,14 @@ async function convertSpineAtlasWebp(payload, { fs, sharp }) {
       width: Number(info?.width) || 0,
       height: Number(info?.height) || 0,
       size: data.length,
-      sourceAlphaMode: image.pma ? "pma" : "straight",
+      sourceAlphaMode: image.pma === null ? "unknown" : image.pma ? "pma" : "straight",
       pma: image.outputFormat === "webp" && image.pma,
-      rgbaVerified: protectedPma,
-      encoding: protectedPma ? "pma-lossless" : image.outputFormat === "jpg" ? "jpg" : encodeOptions.mode,
-      quality: image.outputFormat === "jpg" ? clampInt(payload?.options?.jpgQuality, 85, 1, 100) : protectedPma ? null : encodeOptions.quality,
-      alphaQuality: image.outputFormat === "jpg" || protectedPma ? null : encodeOptions.alphaQuality
+      rgbaVerified: exactRgba,
+      alphaVerified: !!compatible || exactRgba,
+      transparentRgbVerified: !!compatible,
+      encoding: compatible ? "pma-compatible" : exactRgba ? (image.pma === true ? "pma-lossless" : encodeOptions.mode === "lossless" ? "lossless" : "rgba-lossless") : image.outputFormat === "jpg" ? "jpg" : encodeOptions.mode,
+      quality: compatible ? compatible.quality : image.outputFormat === "jpg" ? encodeOptions.jpgQuality : exactRgba ? null : encodeOptions.quality,
+      alphaQuality: image.outputFormat === "jpg" || exactRgba ? null : encodeOptions.alphaQuality
     });
   }
 

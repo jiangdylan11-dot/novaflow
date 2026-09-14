@@ -889,7 +889,7 @@ class H3LocalVisualContractTest(unittest.TestCase):
                 self.assertEqual(raised.exception.code, "h3-bounded-visual-slots-invalid")
                 self.assertIn(
                     raised.exception.diagnostics["validationLeaf"],
-                    {"slot_count", "slot_order"},
+                    {"slot_count", "slot_labels"},
                 )
                 self.assertLessEqual(raised.exception.diagnostics["slotCount"], 5)
                 self.assertEqual(raised.exception.diagnostics["expectedSlotCount"], 5)
@@ -1809,8 +1809,29 @@ class H3LocalVisualContractTest(unittest.TestCase):
         self.assertIn("阴茎", result["positivePrompt"])
         self.assertIn("阴道", result["positivePrompt"])
         self.assertEqual(compile_calls, [])
+
         self.assertEqual(len(result["contentSafety"]), 2)
         self.assertIn("explicit_anatomy", result["contentSafety"][0]["signals"])
+        self.assertEqual(result["contentSafety"][1]["signals"], [])
+        self.assertNotIn("成人互动", result["positivePrompt"])
+
+    def test_fl2va_missing_slots_repair_same_anchor_before_reading_tail(self):
+        complete = 'A|S:银发女性；蓝色护目镜；黑色夹克|R:右手握设备\nV|E:城市雨夜街道|L:写实渲染；蓝色霓虹|C:中近景；平视'
+        FakeAdapter.outputs = [complete.split('|C:')[0], 'L:写实渲染；蓝色霓虹\nC:中近景；平视', complete]
+        assistant, compile_calls = self.assistant([])
+        result = assistant.reverse_image_prompt(self.request(
+            purpose='minimax-h3-fl2v-reverse', userPrompt='角色原地站立。', currentPrompt='角色原地站立。',
+            requirements='duration 3 seconds', userRequirements='只允许轻微呼吸。',
+            images=[{'dataUrl':'last-image','role':'last_frame'}, {'dataUrl':'first-image','role':'first_frame'}],
+        ))
+        self.assertEqual([call[1] for call in FakeAdapter.calls], ['first-image','first-image','last-image'])
+        self.assertIn('C:', FakeAdapter.calls[1][0])
+        self.assertNotIn('S:', FakeAdapter.calls[1][0])
+        self.assertIn('右手握设备', result['positivePrompt'])
+        self.assertIn('<Picture 2>', result['positivePrompt'])
+        self.assertEqual(compile_calls, [])
+        self.assertEqual(len(result["contentSafety"]), 2)
+        self.assertEqual(result["contentSafety"][0]["signals"], [])
         self.assertEqual(result["contentSafety"][1]["signals"], [])
         self.assertNotIn("成人互动", result["positivePrompt"])
 

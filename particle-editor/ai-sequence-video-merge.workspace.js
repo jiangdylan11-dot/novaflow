@@ -47,6 +47,9 @@
     .nf-vm-auto-fit{position:absolute;top:8px;right:0;z-index:14;width:92px;min-width:92px;height:34px;min-height:34px;padding:0 18px;border:0;border-radius:8px;background:#2a2a2a;color:#fff;font-size:13px;font-weight:400;line-height:34px;cursor:pointer}
     .nf-vm-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin:7px 0}.nf-vm-label{color:rgba(255,255,255,.7);font-size:10px}.nf-vm-value{min-width:30px;color:#fff;font-size:10px;text-align:right}
     .nf-vm-select{width:100%;height:30px;padding:0 8px;border:1px solid rgba(255,255,255,.12);border-radius:7px;background:#282828;color:#eee;font-size:11px}.nf-vm-range{width:100%;accent-color:#27c889}
+    input.nf-vm-range{appearance:none!important;-webkit-appearance:none!important;height:20px!important;min-height:20px!important;padding:0!important;border:0!important;border-radius:0!important;outline:none;background:linear-gradient(to right,#1fc896 0%,#1fc896 var(--nf-vm-fill,0%),#333 var(--nf-vm-fill,0%),#333 100%) center/100% 2px no-repeat!important;cursor:pointer}
+    input.nf-vm-range::-webkit-slider-runnable-track{height:2px!important;background:transparent!important;border:0!important}
+    input.nf-vm-range::-webkit-slider-thumb{appearance:none!important;-webkit-appearance:none!important;width:12px!important;height:12px!important;margin-top:-5px!important;border:0!important;border-radius:50%!important;background:#d9e2e8!important;box-shadow:none!important}
     .nf-vm-mode{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-vm-mode button[aria-pressed="true"]{background:#1ea672;color:#fff;border-color:rgba(84,234,178,.35)}
     .nf-vm-mask-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-vm-mask-help{margin-top:8px;color:rgba(255,255,255,.43);font-size:9px;line-height:1.55}
     .nf-vm-status{min-height:34px;padding:8px;border-radius:7px;background:rgba(255,255,255,.045);color:rgba(255,255,255,.62);font-size:10px;line-height:1.45;word-break:break-word}.nf-vm-status[data-error="1"]{background:rgba(239,68,68,.12);color:#fca5a5}.nf-vm-status[data-success="1"]{background:rgba(39,200,137,.11);color:#8ff0c7}
@@ -329,12 +332,14 @@
     }
 
     function beginMaskEditing() {
+      if (maskEditing?.layerId === selectedLayer()?.id) return true
       if (exporting || projectIsImporting(store.getState())) return false
       const layer = selectedLayer()
       if (!layer?.source) {
         store.setMessage('请先为当前图层载入视频', true)
         return false
       }
+      if (maskEditing) applyMaskEditing()
       preview.pause()
       let surface = maskSurfaces.get(layer.id)
       if (!surface) {
@@ -357,11 +362,7 @@
     function applyMaskEditing() {
       if (!maskEditing) return false
       const revision = maskEditing.surface.debugState().revision
-      if (surfaceIsPristine(maskEditing.surface)) {
-        maskEditing.surface.destroy()
-        maskSurfaces.delete(maskEditing.layerId)
-        store.setMaskRevision(maskEditing.layerId, 0)
-      } else store.setMaskRevision(maskEditing.layerId, revision || 1)
+      store.setMaskRevision(maskEditing.layerId, revision)
       maskEditing = null
       maskEntryCoverage = null
       updateMaskPreview()
@@ -425,11 +426,7 @@
         queueRender()
         return false
       }
-      if (maskEditing) {
-        store.setMessage('请先应用或取消当前蒙版编辑', true)
-        queueRender()
-        return false
-      }
+      if (maskEditing) applyMaskEditing()
       dropBusy = true
       successMessage = ''
       store.setMessage(text(loadingMessage, '正在读取拖入的视频…'), false)
@@ -551,10 +548,7 @@
       const publishToResources = exportOptions.publishToResources === true
       if (exporting || dropBusy) return { ok: false, blocked: true }
       exportFeedbackVisible = true
-      if (maskEditing) {
-        store.setMessage('请先应用或取消当前蒙版编辑', true)
-        return { ok: false, blocked: true }
-      }
+      if (maskEditing) applyMaskEditing()
       const state = store.getSnapshot()
       const requestedCapability = publishToResources
         ? exportCapability.canSaveToResources
@@ -653,7 +647,7 @@
       event.preventDefault?.()
       event.stopPropagation?.()
       try {
-        const blocked = exporting || dropBusy || projectIsImporting(store.getState()) || Boolean(maskEditing)
+        const blocked = exporting || dropBusy || projectIsImporting(store.getState())
         event.dataTransfer.dropEffect = blocked ? 'none' : 'copy'
       } catch (_) {}
       return true
@@ -662,7 +656,7 @@
     function bindLayerDropTarget(card, layerId) {
       card.addEventListener('dragenter', function (event) {
         if (!prepareDropEvent(event)) return
-        if (!exporting && !dropBusy && !projectIsImporting(store.getState()) && !maskEditing) card.setAttribute('data-drop-active', '1')
+        if (!exporting && !dropBusy && !projectIsImporting(store.getState())) card.setAttribute('data-drop-active', '1')
       })
       card.addEventListener('dragover', prepareDropEvent)
       card.addEventListener('dragleave', function (event) {
@@ -777,7 +771,7 @@
         title: '下移一层',
         'aria-label': '下移选中图层',
         'data-novaflow-ai-video-merge-move': 'down',
-        disabled: editingLocked || !selectedLayer || state.layers[0]?.id === selectedLayer.id || Boolean(maskEditing),
+        disabled: editingLocked || !selectedLayer || state.layers[0]?.id === selectedLayer.id,
       })
       down.appendChild(createElement(documentRef, 'i', { className: 'fas fa-arrow-down', 'aria-hidden': 'true' }))
       down.addEventListener('click', function () { if (selectedLayer) store.moveLayer(selectedLayer.id, -1) })
@@ -786,7 +780,7 @@
         title: '上移一层',
         'aria-label': '上移选中图层',
         'data-novaflow-ai-video-merge-move': 'up',
-        disabled: editingLocked || !selectedLayer || state.layers[state.layers.length - 1]?.id === selectedLayer.id || Boolean(maskEditing),
+        disabled: editingLocked || !selectedLayer || state.layers[state.layers.length - 1]?.id === selectedLayer.id,
       })
       up.appendChild(createElement(documentRef, 'i', { className: 'fas fa-arrow-up', 'aria-hidden': 'true' }))
       up.addEventListener('click', function () { if (selectedLayer) store.moveLayer(selectedLayer.id, 1) })
@@ -836,10 +830,7 @@
         })
         card.append(leading, remove)
         card.addEventListener('click', function () {
-          if (maskEditing && maskEditing.layerId !== layer.id) {
-            store.setMessage('请先应用或取消当前蒙版编辑', true)
-            return
-          }
+          if (maskEditing && maskEditing.layerId !== layer.id) applyMaskEditing()
           store.selectLayer(layer.id)
         })
         bindLayerDropTarget(card, layer.id)
@@ -849,13 +840,21 @@
       return section
     }
 
+    function paintRange(input) {
+      const min = Number(input.min) || 0, max = Number(input.max) || 1
+      input.style.setProperty('--nf-vm-fill', Math.max(0, Math.min(100, (Number(input.value) - min) / Math.max(1, max - min) * 100)) + '%')
+      input.style.setProperty('background', 'linear-gradient(to right,#1fc896 0%,#1fc896 var(--nf-vm-fill,0%),#333 var(--nf-vm-fill,0%),#333 100%) center / 100% 2px no-repeat', 'important')
+    }
+
     function rangeRow(label, value, minimum, maximum, step, onInput, suffix) {
       const wrapper = createElement(documentRef, 'div')
       const row = createElement(documentRef, 'div', { className: 'nf-vm-row' })
       const labelNode = createElement(documentRef, 'span', { className: 'nf-vm-label', text: label })
       const valueNode = createElement(documentRef, 'span', { className: 'nf-vm-value', text: `${Math.round(value)}${suffix || ''}` })
       const input = createElement(documentRef, 'input', { className: 'nf-vm-range', type: 'range', min: String(minimum), max: String(maximum), step: String(step), value: String(value) })
+      paintRange(input)
       input.addEventListener('input', function () {
+        paintRange(input)
         valueNode.textContent = `${Math.round(finite(input.value, value))}${suffix || ''}`
         onInput(finite(input.value, value))
       })
@@ -871,14 +870,14 @@
 
       const maskSection = createElement(documentRef, 'section', { className: 'nf-vm-section', 'data-novaflow-ai-video-merge-mask-panel': '1' })
       if (!maskEditing) {
-        const edit = button(documentRef, '编辑图层蒙版', {
-          className: 'nf-vm-btn nf-vm-btn-primary',
-          'data-novaflow-ai-video-merge-edit-mask': '1',
-          disabled: exporting || dropBusy || importing || !layer?.source,
-        })
-        edit.style.width = '100%'
-        edit.addEventListener('click', beginMaskEditing)
-        maskSection.appendChild(edit)
+        const mode = createElement(documentRef, 'div', { className: 'nf-vm-mode' })
+        mode.append(button(documentRef, '擦除', { disabled: true }), button(documentRef, '修复', { disabled: true }))
+        maskSection.appendChild(mode)
+        for (const row of [rangeRow('笔刷', 22, 1, 200, 1, () => {}, ''), rangeRow('羽化', 0, 0, 100, 1, () => {}, '')]) {
+          row.querySelector('[type="range"]').disabled = true
+          maskSection.appendChild(row)
+        }
+        maskSection.appendChild(createElement(documentRef, 'div', { className: 'nf-vm-mask-help', text: '载入并选中视频图层后，可直接擦除或修复蒙版。' }))
       } else {
         maskSection.appendChild(createElement(documentRef, 'h3', { className: 'nf-vm-section-title', text: '蒙版编辑（应用全部帧）' }))
         const mode = createElement(documentRef, 'div', { className: 'nf-vm-mode' })
@@ -896,20 +895,6 @@
           maskEditing.feather = value
           preview.updateMaskBrush({ feather: value })
         }, ''))
-        const history = createElement(documentRef, 'div', { className: 'nf-vm-mask-actions' })
-        const undo = button(documentRef, '撤销', { disabled: !maskEditing.surface.canUndo() })
-        const redo = button(documentRef, '重做', { disabled: !maskEditing.surface.canRedo() })
-        undo.addEventListener('click', function () { maskEditing.surface.undo(); store.setMaskRevision(layer.id, maskEditing.surface.debugState().revision); preview.render(); queueRender() })
-        redo.addEventListener('click', function () { maskEditing.surface.redo(); store.setMaskRevision(layer.id, maskEditing.surface.debugState().revision); preview.render(); queueRender() })
-        history.append(undo, redo)
-        maskSection.appendChild(history)
-        const commit = createElement(documentRef, 'div', { className: 'nf-vm-mask-actions', style: { marginTop: '6px' } })
-        const apply = button(documentRef, '应用蒙版', { className: 'nf-vm-btn nf-vm-btn-primary' })
-        const cancel = button(documentRef, '取消编辑')
-        apply.addEventListener('click', applyMaskEditing)
-        cancel.addEventListener('click', cancelMaskEditing)
-        commit.append(apply, cancel)
-        maskSection.appendChild(commit)
         maskSection.appendChild(createElement(documentRef, 'div', { className: 'nf-vm-mask-help', text: '蒙版始终影响全部帧。Ctrl+Z 撤销，Ctrl+Shift+Z / Ctrl+Y 重做；[ ] 调笔刷，- / + 调羽化。' }))
       }
       fragment.appendChild(maskSection)
@@ -919,6 +904,14 @@
 
     function renderLeftPanel(state) {
       const fragment = documentRef.createDocumentFragment()
+      const actions = createElement(documentRef, 'div', { 'data-nf-tool-panel-actions': '1' })
+      Object.assign(actions.style, { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', paddingTop: '12px', marginBottom: '12px' })
+      const confirm = button(documentRef, '确定', { 'data-nf-merge-confirm': '1', disabled: exporting, className: 'nf-vm-btn nf-vm-btn-primary' })
+      const cancel = button(documentRef, '取消', { 'data-nf-merge-cancel': '1', disabled: exporting })
+      confirm.addEventListener('click', () => saveAndClose())
+      cancel.addEventListener('click', () => requestClose('panel-cancel'))
+      actions.append(confirm, cancel)
+      fragment.appendChild(actions)
       fragment.appendChild(renderLayerTools(state))
       fragment.appendChild(renderLayerPanel(state))
       fragment.appendChild(outputPanel)
@@ -964,6 +957,7 @@
       const duration = store.projectDurationSec()
       timelineRange.max = String(Math.max(0, duration))
       timelineRange.value = String(clamp(state.timeSec, 0, Math.max(0, duration)))
+      paintRange(timelineRange)
       timelineRange.disabled = duration <= 0
       playButton.textContent = state.playing ? 'Ⅱ' : '▶'
       playButton.setAttribute('aria-label', state.playing ? '暂停' : '播放')
@@ -975,6 +969,11 @@
       if (!alive) return
       renderQueued = false
       const state = store.getState()
+      if (!exporting && !dropBusy && !projectIsImporting(state)) {
+        const selected = state.layers.find(layer => layer.id === state.selectedLayerId)
+        if (selected?.source && maskEditing?.layerId !== selected.id) beginMaskEditing()
+        else if (!selected?.source && maskEditing) applyMaskEditing()
+      }
       renderLeftPanel(state)
       renderOutputPanel(state)
       renderTimeline(state)
@@ -1005,7 +1004,7 @@
       if (!prepareDropEvent(event)) return
       if (event.relatedTarget && stageHost.contains?.(event.relatedTarget)) return
       stageDragDepth += 1
-      if (!exporting && !dropBusy && !projectIsImporting(store.getState()) && !maskEditing) stageHost.setAttribute('data-drop-active', '1')
+      if (!exporting && !dropBusy && !projectIsImporting(store.getState())) stageHost.setAttribute('data-drop-active', '1')
     }, true)
     stageHost.addEventListener('dragover', prepareDropEvent, true)
     stageHost.addEventListener('dragleave', function (event) {
@@ -1057,7 +1056,7 @@
         maskEditing.feather = clamp(maskEditing.feather + featherDelta, 0, 100)
         preview.updateMaskBrush({ feather: maskEditing.feather }); queueRender(); return
       }
-      if (key === 'Escape') { event.preventDefault(); cancelMaskEditing() }
+
     }
     shell.addEventListener('keydown', handleMaskShortcut)
     leftPanel.addEventListener('keydown', handleMaskShortcut)

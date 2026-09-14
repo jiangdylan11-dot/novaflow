@@ -5,7 +5,8 @@
   const ROOT_ID = 'novaflow-spine-atlas-webp-root'
   const STYLE_ID = 'novaflow-spine-atlas-webp-style'
   const BUTTON_ATTR = 'data-novaflow-spine-atlas-webp-entry'
-  const state = { active: false, atlases: [], images: [], selectedId: '', mode: 'spine', processing: false, exporting: false, resultAtlases: [], warnings: [] }
+  const PRESETS = [{ id: 'clarity', label: '画质优先', quality: 95 }, { id: 'compact', label: '均衡', quality: 90 }, { id: 'small', label: '更小体积', quality: 86 }]
+  const state = { active: false, atlases: [], images: [], selectedId: '', preset: 'compact', processing: false, exporting: false, resultAtlases: [], warnings: [] }
   let nativeWorkspaces = []
   let objectUrls = []
 
@@ -45,12 +46,12 @@
     const style = document.createElement('style')
     style.id = STYLE_ID
     style.textContent = `
-      #${ROOT_ID}{position:fixed;z-index:120;display:grid;grid-template-columns:220px minmax(0,1fr);gap:12px;padding:14px 14px 14px 12px;background:#151515;color:#e6e6e6;box-sizing:border-box;overflow:hidden;font-size:13px}
+      #${ROOT_ID}{position:fixed;z-index:120;display:grid;grid-template-columns:220px minmax(0,1fr);gap:12px;padding:14px 14px 14px 12px;background:#151515;color:#e6e6e6;box-sizing:border-box;overflow:hidden;font-size:13px;container-type:inline-size}
       #${ROOT_ID} *{box-sizing:border-box} #${ROOT_ID} button,#${ROOT_ID} input{font:inherit}
       .nf-saw-side{min-width:0;display:grid;grid-template-rows:44px auto minmax(0,1fr);gap:8px;overflow:hidden}
       .nf-saw-upload{width:220px;height:44px;border:1px dashed rgba(255,255,255,.16);border-radius:8px;background:#1b1b1b;color:#f3f3f3;cursor:pointer;font-size:12px;font-weight:400;padding:0}
       .nf-saw-controls{display:grid;gap:8px}.nf-saw-count,.nf-saw-status{font-size:11px;line-height:1.6;color:#929292}.nf-saw-status{min-height:16px;color:#bfe8d7}
-      .nf-saw-mode{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:220px}.nf-saw-mode button{height:30px;border:0;border-radius:7px;background:rgba(255,255,255,.055);color:rgba(232,239,246,.72);font-size:12px!important}.nf-saw-mode button.active{background:rgba(30,166,114,.92);color:#effcf5}
+      .nf-saw-preset{display:grid;gap:6px;width:220px;min-width:0;font-size:12px;color:#bfe8d7}.nf-saw-preset-options{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.nf-saw-preset button{height:34px;min-width:0;padding:0 6px;border:0;border-radius:7px;background:#282828;color:#cbd3d9;font-size:12px!important}.nf-saw-preset button.active{background:#1ea672;color:#effcf5}
       .nf-saw-alpha{display:grid;gap:6px;min-width:0;font-size:12px;color:#bfe8d7}.nf-saw-alpha span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.nf-saw-alpha select{width:220px;height:34px;border:1px solid #363636;border-radius:7px;background:#242424;color:#f3f3f3;font:inherit;padding:0 8px}.nf-saw-alpha select:focus-visible{outline:2px solid #25bc84;outline-offset:2px}.nf-saw-status{max-height:64px;overflow:auto;overflow-wrap:anywhere}
       .nf-saw-actions{display:grid;grid-template-columns:220px;gap:6px}.nf-saw-btn{width:220px;height:40px;border:0;border-radius:8px;background:#1ea672;color:#effcf5;cursor:pointer;font-size:12px;font-weight:400;padding:0 12px}.nf-saw-btn.alt{height:34px;background:rgba(255,255,255,.043);color:rgba(232,239,246,.78);padding:0 10px}.nf-saw-btn:disabled{opacity:.45;cursor:default;filter:none}
       .nf-saw-list{min-height:0;overflow-y:auto;padding:0 12px 12px;display:grid;align-content:start;gap:6px}.nf-saw-item{position:relative;width:100%;min-width:0;max-width:100%;min-height:52px;height:52px;max-height:52px;display:grid;grid-template-columns:42px minmax(0,1fr);column-gap:8px;align-items:center;padding:6px 8px;border:0;border-radius:6px;background:transparent;color:#eee;text-align:left;cursor:pointer;overflow:hidden}.nf-saw-item.has-format{grid-template-columns:42px minmax(0,1fr) 62px}.nf-saw-item.active{background:linear-gradient(90deg,rgba(30,166,114,.12),rgba(30,166,114,.02) 68%,rgba(30,166,114,0));box-shadow:inset 2px 0 0 rgba(37,188,132,.92)}
@@ -60,15 +61,16 @@
       .nf-saw-main{position:relative;min-width:100%;max-width:calc(100% + 14px);min-height:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:minmax(0,1fr);gap:14px;margin-top:-14px;margin-right:-14px;width:calc(100% + 14px);height:100%;padding:12px 12px 16px;background:#090a0a;overflow:hidden}
       .nf-saw-panel{min-width:0;min-height:0;display:grid;grid-template-rows:49px minmax(0,1fr);overflow:hidden}.nf-saw-panel-head{display:flex;align-items:center;justify-content:flex-start;gap:8px;color:#f8fafc;font-size:14px;font-weight:400}.nf-saw-panel-head small{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:rgba(232,239,246,.62);font-size:11px;font-weight:400;line-height:1}
       .nf-saw-preview{min-width:0;min-height:0;display:grid;place-items:center;overflow:hidden;border:1px solid #262626;background:transparent}.nf-saw-preview img{display:block;max-width:94%;max-height:94%;object-fit:contain}.nf-saw-empty{text-align:center;color:#777;font-size:12px;line-height:1.8;padding:12px}.nf-saw-atlas{width:100%;height:100%;overflow:auto;padding:12px;color:#b8c0c8;font-size:12px;line-height:1.7;white-space:pre-wrap}
-      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-mode button,.nf-saw-format button,.nf-saw-top-actions button){position:relative;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;white-space:nowrap;cursor:pointer;font-weight:400!important;line-height:1!important;transition:none!important}
-      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-mode button,.nf-saw-format button,.nf-saw-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"])::after{content:"";position:absolute;inset:0;border-radius:inherit;background:rgba(255,255,255,.045);opacity:0;pointer-events:none;transition:none!important}
-      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-mode button,.nf-saw-format button,.nf-saw-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"]):hover{filter:brightness(1.08);border-color:rgba(255,255,255,.20)!important}
-      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-mode button,.nf-saw-format button,.nf-saw-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"]):hover::after{opacity:1}
-      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-mode button,.nf-saw-format button,.nf-saw-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"]):active{filter:brightness(1.02)}
-      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-mode button,.nf-saw-format button,.nf-saw-top-actions button):focus-visible{outline:2px solid rgba(255,255,255,.22);outline-offset:2px}
-      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-mode button,.nf-saw-format button,.nf-saw-top-actions button):is(:disabled,[disabled],[aria-disabled="true"]){opacity:.45;cursor:default;filter:none}
-      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-mode button,.nf-saw-format button,.nf-saw-top-actions button):is(:disabled,[disabled],[aria-disabled="true"]):hover{filter:none}
+      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-preset button,.nf-saw-format button,.nf-saw-top-actions button){position:relative;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;white-space:nowrap;cursor:pointer;font-weight:400!important;line-height:1!important;transition:none!important}
+      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-preset button,.nf-saw-format button,.nf-saw-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"])::after{content:"";position:absolute;inset:0;border-radius:inherit;background:rgba(255,255,255,.045);opacity:0;pointer-events:none;transition:none!important}
+      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-preset button,.nf-saw-format button,.nf-saw-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"]):hover{filter:brightness(1.08);border-color:rgba(255,255,255,.20)!important}
+      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-preset button,.nf-saw-format button,.nf-saw-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"]):hover::after{opacity:1}
+      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-preset button,.nf-saw-format button,.nf-saw-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"]):active{filter:brightness(1.02)}
+      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-preset button,.nf-saw-format button,.nf-saw-top-actions button):focus-visible{outline:2px solid rgba(255,255,255,.22);outline-offset:2px}
+      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-preset button,.nf-saw-format button,.nf-saw-top-actions button):is(:disabled,[disabled],[aria-disabled="true"]){opacity:.45;cursor:default;filter:none}
+      #${ROOT_ID} :where(.nf-saw-upload,.nf-saw-btn,.nf-saw-preset button,.nf-saw-format button,.nf-saw-top-actions button):is(:disabled,[disabled],[aria-disabled="true"]):hover{filter:none}
       .nf-saw-top-actions{position:absolute;right:26px;top:14px;display:flex;gap:8px}#${ROOT_ID} .nf-saw-top-actions button{width:102px;height:36px;padding:0 12px;border:0;border-radius:8px;background:linear-gradient(135deg,rgba(30,166,114,.96),rgba(30,166,114,.92));color:#effcf5;font-size:12px!important;font-weight:400!important;line-height:normal!important}#${ROOT_ID} .nf-saw-top-actions button:last-child{background:#b98218;color:#fff2c0;border-color:rgba(255,211,105,.32)}#${ROOT_ID} .nf-saw-top-actions button:disabled{opacity:.45;cursor:default;filter:none}
+      @container (max-width:980px){#${ROOT_ID} .nf-saw-main{padding-top:56px}}
     `
     document.head.appendChild(style)
   }
@@ -236,7 +238,7 @@
   }
 
   async function processAll() {
-    if (state.processing || !state.atlases.length || !state.images.length) return
+    if (state.processing || state.exporting || !state.atlases.length || !state.images.length) return
     const api = window.electronAPI
     if (!api?.convertSpineAtlasWebp) { alert('SPINE 转 WebP 能力未加载，请重启 NovaFlow 后重试。'); return }
     state.processing = true
@@ -248,9 +250,7 @@
       const result = await api.convertSpineAtlasWebp({
         atlases: state.atlases.map((item) => ({ fileName: item.name, text: item.text })),
         images: state.images.map((item) => ({ fileName: item.name, bytes: item.bytes, outputFormat: item.outputFormat || 'webp', alphaMode: item.alphaMode || 'auto' })),
-        options: state.mode === 'lossless'
-          ? { mode: 'lossless', lossless: true }
-          : { mode: 'spine', quality: 75, alphaQuality: 90 }
+        options: { preset: state.preset }
       })
       if (!result?.ok) throw new Error(result?.error || '转换失败')
       const bySource = new Map((result.images || []).map((item) => [normalizeName(item.sourceName), item]))
@@ -264,7 +264,7 @@
         const url = URL.createObjectURL(blob)
         objectUrls.push(url)
         item.result = { ...output, blob, url }
-        item.status = output.rgbaVerified ? 'PMA 无损｜RGBA 已校验' : '转换完成'
+        item.status = output.encoding === 'pma-compatible' ? `已转换 Q${output.quality}｜Alpha 已校验` : output.rgbaVerified ? '已转换｜RGBA 已校验' : '转换完成'
       }
       state.resultAtlases = Array.isArray(result.atlases) && result.atlases.length ? result.atlases : (result.atlas ? [result.atlas] : [])
       state.warnings = Array.isArray(result.warnings) ? result.warnings : []
@@ -363,17 +363,17 @@
     render()
   }
 
-  function setMode(mode) {
-    const nextMode = mode === 'lossless' ? 'lossless' : 'spine'
-    if (state.mode === nextMode || state.processing) return
-    state.mode = nextMode
+  function setPreset(preset) {
+    if (!PRESETS.some((item) => item.id === preset) || state.preset === preset || state.processing || state.exporting) return
+    state.preset = preset
     revokeResults()
     render()
+    document.querySelector(`[data-saw-preset="${preset}"]`)?.focus({ preventScroll: true })
   }
 
   function setImageFormat(id, format) {
     const image = state.images.find((item) => item.id === id)
-    if (!image || state.processing) return
+    if (!image || state.processing || state.exporting) return
     const nextFormat = format === 'jpg' ? 'jpg' : 'webp'
     if (image.outputFormat === nextFormat) return
     image.outputFormat = nextFormat
@@ -415,7 +415,7 @@
       && readyForOverwrite.length > 0
       && readyForOverwrite.every((item) => item.inputPath)
       && state.resultAtlases.every((atlas) => state.atlases.some((item) => normalizeName(item.name) === normalizeName(atlas.fileName) && item.inputPath))
-    const canRun = state.atlases.length > 0 && state.images.length > 0 && !state.processing
+    const canRun = state.atlases.length > 0 && state.images.length > 0 && !state.processing && !state.exporting
     const status = state.processing ? '正在转换 SPINE 图集…' : state.warnings.join('\n') || ''
     const resultAtlas = state.resultAtlases[0] || null
     const atlasByName = new Map(state.resultAtlases.map((atlas) => [normalizeName(atlas.fileName), atlas]))
@@ -427,7 +427,7 @@
       <input data-saw-file type="file" accept=".atlas,image/png,.png" multiple hidden>
       <div class="nf-saw-side">
         <button class="nf-saw-upload" data-saw-pick>＋　选择 atlas / PNG</button>
-        <div class="nf-saw-controls"><div class="nf-saw-mode"><button data-saw-mode="spine" class="${state.mode === 'spine' ? 'active' : ''}">Spine兼容</button><button data-saw-mode="lossless" class="${state.mode === 'lossless' ? 'active' : ''}">无损</button></div><div class="nf-saw-actions"><button class="nf-saw-btn" data-saw-run ${canRun ? '' : 'disabled'}>${state.processing ? '转换中…' : '开始转换'}</button><button class="nf-saw-btn alt" data-saw-clear ${state.processing || (!state.atlases.length && !state.images.length) ? 'disabled' : ''}>清空</button></div><div class="nf-saw-count">Atlas ${state.atlases.length} 个｜PNG ${state.images.length} 张｜完成 ${done} 张</div><div class="nf-saw-status">${escapeHtml(status)}</div></div>
+        <div class="nf-saw-controls"><div class="nf-saw-preset"><span>压缩档位</span><div class="nf-saw-preset-options" role="group" aria-label="压缩档位">${PRESETS.map((preset) => `<button data-saw-preset="${preset.id}" class="${state.preset === preset.id ? 'active' : ''}" aria-pressed="${state.preset === preset.id}" title="Q${preset.quality}" ${state.processing || state.exporting ? 'disabled' : ''}>${preset.label}</button>`).join('')}</div></div><div class="nf-saw-actions"><button class="nf-saw-btn" data-saw-run ${canRun ? '' : 'disabled'}>${state.processing ? '转换中…' : '开始转换'}</button><button class="nf-saw-btn alt" data-saw-clear ${state.processing || state.exporting || (!state.atlases.length && !state.images.length) ? 'disabled' : ''}>清空</button></div><div class="nf-saw-count">Atlas ${state.atlases.length} 个｜PNG ${state.images.length} 张｜完成 ${done} 张</div><div class="nf-saw-status">${escapeHtml(status)}</div></div>
         <div class="nf-saw-list">${state.atlases.length ? state.atlases.map((atlas) => { const output = atlasByName.get(normalizeName(atlas.name)); return `<div class="nf-saw-item"><div class="nf-saw-fileicon">ATLAS</div><div class="nf-saw-item-info"><div class="nf-saw-item-name">${escapeHtml(atlas.name)}</div><div class="nf-saw-item-meta">${escapeHtml(output?.fileName || atlas.status)}</div></div></div>` }).join('') : ''}${state.images.length ? state.images.map((item) => { const outputSize = getResultSize(item); const sizeText = item.result ? `原 ${formatBytes(item.sourceSize)} → 改 ${formatBytes(outputSize)}｜${formatSizeDelta(item.sourceSize, outputSize)}` : `原 ${formatBytes(item.sourceSize)}｜${item.status}`; return `<div class="nf-saw-item has-format ${item.id === selected?.id ? 'active' : ''}" data-saw-item="${item.id}" role="button" tabindex="0"><img class="nf-saw-thumb" src="${item.dataUrl}"><div class="nf-saw-item-info"><div class="nf-saw-item-name">${escapeHtml(item.name)}</div><div class="nf-saw-item-meta">${escapeHtml(sizeText)}</div></div><div class="nf-saw-format"><button data-saw-format="${item.id}:jpg" class="${item.outputFormat === 'jpg' ? 'active' : ''}" title="输出 JPG，透明会变黑底">JPG</button><button data-saw-format="${item.id}:webp" class="${item.outputFormat !== 'jpg' ? 'active' : ''}" title="输出 WebP，保留透明">WEBP</button></div></div>` }).join('') : '<div class="nf-saw-empty">支持 atlas + PNG 图集</div>'}</div>
       </div>
       <div class="nf-saw-main">
@@ -449,7 +449,7 @@
     root.querySelector('[data-saw-clear]')?.addEventListener('click', clearAll)
     root.querySelector('[data-saw-export]')?.addEventListener('click', exportAll)
     root.querySelector('[data-saw-overwrite]')?.addEventListener('click', overwriteAll)
-    root.querySelectorAll('[data-saw-mode]').forEach((button) => button.addEventListener('click', () => setMode(button.getAttribute('data-saw-mode') || 'spine')))
+    root.querySelectorAll('[data-saw-preset]').forEach((button) => button.addEventListener('click', () => setPreset(button.getAttribute('data-saw-preset'))))
     root.querySelectorAll('[data-saw-format]').forEach((button) => button.addEventListener('click', (event) => {
       event.preventDefault()
       event.stopPropagation()

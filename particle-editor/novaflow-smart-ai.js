@@ -2303,6 +2303,9 @@
 
   function smartAiFailureCategoryLabel(failure) {
     const isMiniMaxH3 = failure?.requestedVisualSchema === "nf.h3.visual.v1";
+    if (failure?.validationLeaf === "visual-person-count") {
+      return "视觉分析的人物数量校验未通过";
+    }
     const category = String(failure?.failureCategory || "").trim();
     if (/[\u3400-\u9fff]/.test(category)) return category;
     const normalizedCategory = category.toLowerCase().replace(/[\s-]+/g, "_");
@@ -3016,17 +3019,17 @@
     }
     if (state.mode === "optimize") {
       if (intent?.hasReferences) {
-        return `<div class="novaflow-smart-ai-auto-status">本次只优化你手写的提示词；参考图仍保留在生成面板，但不会用于图片反推</div>`;
+        return `<div class="novaflow-smart-ai-auto-status">结合原提示词与补充要求，分析并融合为完整生图提示词。参考图用于后续生成；需要分析图片内容时请选择图片反推。</div>`;
       }
-      return `<div class="novaflow-smart-ai-auto-status">本次将根据当前文字生成或优化可直接生图的提示词</div>`;
+      return `<div class="novaflow-smart-ai-auto-status">结合原提示词与补充要求，分析并融合为完整生图提示词</div>`;
     }
     if (!intent?.hasReferences) {
       return `<div class="novaflow-smart-ai-auto-status">图片反推需要至少一张参考图</div>`;
     }
     const roleNote = intent.imageCount > 1 && intent.roleConfidence === "low"
-      ? "；辅助图职责不明确时可在高级设置中确认"
+      ? "；可在下方选择辅助图用途"
       : "";
-    return `<div class="novaflow-smart-ai-auto-status">已检测 ${intent.imageCount} 张参考图，本次将分析图片并生成可直接生图的提示词${roleNote}</div>`;
+    return `<div class="novaflow-smart-ai-auto-status">已检测 ${intent.imageCount} 张参考图；有补充要求时，先分析图片，再融合修改并写入完整提示词${roleNote}</div>`;
   }
 
   function artAutoSubmitLabel(intent, currentPrompt = "") {
@@ -3035,7 +3038,7 @@
     return "反推并写入提示词";
   }
 
-  function renderArtAdvancedSettings(intent) {
+  function renderArtReferenceRoles(intent) {
     const unresolved = Array.isArray(intent?.unresolvedRoleIndices) ? intent.unresolvedRoleIndices : [];
     const editableRoleIndices = state.mode === "reverse" && intent?.imageCount > 1
       ? Array.from({ length: intent.imageCount - 1 }, (_, index) => index + 1)
@@ -3048,20 +3051,7 @@
         <select class="novaflow-smart-ai-reference-role-select" data-smart-ai-reference-role="${index}">${options.map(([value, label]) => `<option value="${value}" ${state.referenceRoles[index] === value ? "selected" : ""}>${label}</option>`).join("")}</select>
       </label>`;
     }).join("");
-    return `
-      <details class="novaflow-smart-ai-advanced" ${state.advancedOpen ? "open" : ""}>
-        <summary>高级设置</summary>
-        <div class="novaflow-smart-ai-advanced-body">
-          <label class="novaflow-smart-ai-advanced-field"><span>处理模型</span>
-            <select class="novaflow-smart-ai-advanced-select" data-smart-ai-engine-select="1">
-              <option value="local" ${state.engine === "local" ? "selected" : ""}>本地模型</option>
-              <option value="grok" ${state.engine === "grok" ? "selected" : ""}>Grok AI（云端，会上传参考图并消耗次数）</option>
-            </select>
-          </label>
-          ${roleFields}
-        </div>
-      </details>
-    `;
+    return roleFields ? `<div class="novaflow-smart-ai-section"><div class="novaflow-smart-ai-label">参考图用途</div>${roleFields}</div>` : "";
   }
 
   function rememberArtEngine(engine) {
@@ -3321,7 +3311,12 @@
   }
 
   function shouldUseStructuredArtPromptContract(currentPrompt) {
-    return Boolean(String(currentPrompt || "").trim());
+    const source = String(currentPrompt || "").trim();
+    // Only recompile an existing machine-structured prompt. Preserve the
+    // format of ordinary prose and handwritten section headings.
+    return /^媒介\s*=/mu.test(source) && /^主体数量\s*=\s*\d+/mu.test(source)
+      && ["风格设定", "主体物品", "环境背景", "光线与色彩", "拍摄参数", "用户附加要求"]
+        .every((section) => source.includes(`[${section}]`));
   }
 
   function shouldUseSimpleStructuredArtPromptContract(currentPrompt) {
@@ -3346,7 +3341,7 @@
         : modelFacingRequirements)
       : "";
     const textOperationInstruction = purpose === "optimize"
-      ? "提示词编辑模式：以 prompt / currentPrompt 中的完整原提示词为唯一底稿，只执行用户本次明确提出的修改；人物、数量、身份、年龄、五官差异、服装、姿势、互动、构图、材质、风格、质量要求、避免项及其他未提及信息必须保留。输出必须是修改后的完整可生图提示词，禁止只输出修改建议、摘要或单个局部描述。"
+      ? "提示词编辑模式：以 prompt / currentPrompt 中的完整原提示词为语义底稿，先分析原画面设定，再把本次补充要求融合成连贯的最终画面描述。明确修改与原文冲突时以新要求为准，清理冲突旧描述；人物、数量、身份、年龄、五官差异、服装、姿势、互动、构图、材质、风格、质量要求、避免项及其他未提及信息必须保留。提升丰富度、质感或质量等开放要求，应结合底稿已有对象，具体落实空间层次、材质纹理、光影过渡等适合原画风的视觉细节；不要仅追加质量词或照抄修改要求，不要凭空增加人物、道具或改变主题。没有补充要求时，主动分析表达缺口并优化。输出必须是修改后的完整可生图提示词，禁止只输出修改建议、摘要或单个局部描述。"
       : purpose === "create"
         ? "提示词创作模式：当前没有原提示词；根据用户创作要求输出一份完整、可直接生图的提示词，禁止只输出建议或摘要。"
         : "";
@@ -3377,7 +3372,7 @@
           </label>
           <label class="novaflow-smart-ai-engine-option">
             <input type="radio" name="novaflow-smart-ai-engine" value="local" ${state.engine === "local" ? "checked" : ""}>
-            <span>本地模型<span class="novaflow-smart-ai-engine-meta">本地 · 快速处理</span></span>
+            <span>本地模型<span class="novaflow-smart-ai-engine-meta">本地 · 耗时取决于模型与显卡</span></span>
           </label>
         </div>
       </div>
@@ -3806,11 +3801,12 @@
           ${isArt ? `<div class="novaflow-smart-ai-section">
             <div class="novaflow-smart-ai-label">你希望 AI 做什么</div>
             <div>${renderArtModeRadios(artIntent)}</div>
-          </div>${renderArtAutoStatus(artIntent)}` : `<div class="novaflow-smart-ai-section">
+          </div>` : `<div class="novaflow-smart-ai-section">
             <div class="novaflow-smart-ai-label">你希望 AI 做什么</div>
             <div>${renderModeRadios()}</div>
           </div>`}
-          ${isArt ? "" : renderEngineOptions()}
+          ${renderEngineOptions()}
+          ${isArt ? renderArtAutoStatus(artIntent) : ""}
           ${renderAnimationProcessingNote()}
           ${isArt ? "" : renderImageTargets()}
           ${renderMiniMaxH3SensitiveAnalysisControls()}
@@ -3818,7 +3814,7 @@
             <div class="novaflow-smart-ai-label">${isArt ? artRequirementsLabel : requirementsLabel}</div>
             <textarea class="novaflow-smart-ai-textarea" placeholder="${requirementsPlaceholder.replace(/"/g, "&quot;")}"></textarea>
           </div>
-          ${isArt ? renderArtAdvancedSettings(artIntent) : ""}
+          ${isArt ? renderArtReferenceRoles(artIntent) : ""}
           ${renderSmartAiAnalysisResult()}
         </div>
         <div class="novaflow-smart-ai-message" data-visible="${state.message ? "1" : "0"}" data-tone="${state.messageTone === "error" ? "error" : (state.messageTone === "warning" ? "warning" : "")}" role="${state.messageTone === "error" ? "alert" : "status"}" aria-live="${state.messageTone === "error" ? "assertive" : "polite"}" aria-atomic="true">${escapeSmartAiHtml(state.message || "")}</div>
@@ -3876,20 +3872,10 @@
       radio.addEventListener("change", () => {
         invalidateSmartAiAnalysis();
         state.engine = String(radio.value || "grok") === "local" ? "local" : "grok";
+        if (isArt) rememberArtEngine(state.engine);
         state.message = "";
         renderDialog();
       });
-    });
-    const advanced = root.querySelector(".novaflow-smart-ai-advanced");
-    advanced?.addEventListener?.("toggle", () => {
-      state.advancedOpen = advanced.open === true;
-    });
-    const engineSelect = root.querySelector("[data-smart-ai-engine-select]");
-    engineSelect?.addEventListener?.("change", () => {
-      invalidateSmartAiAnalysis();
-      rememberArtEngine(engineSelect.value);
-      state.message = "";
-      renderDialog();
     });
     Array.from(root.querySelectorAll("[data-smart-ai-preset]")).forEach((button) => {
       button.addEventListener("click", () => {
@@ -4002,6 +3988,54 @@
     return user
       ? `用户补充要求（只作为最终提示词约束，不作为图片可见事实）：${user}`
       : "";
+  }
+
+  function prepareStaticArtReverseFusion(sourcePrompt, userRequirements) {
+    const instruction = String(userRequirements || "").trim();
+    if (!instruction) return null;
+    // The reverse compiler's final section carries requested edits, not image
+    // facts. It must not become a preserved constraint during the edit pass.
+    const source = String(sourcePrompt || "").replace(/\r\n?/g, "\n").trim();
+    const carrier = /\n\s*\[用户附加要求\]\s*\n(?=[\s\S]*用户补充要求（只作为最终提示词约束，不作为图片可见事实）)/u;
+    const index = source.search(carrier);
+    const basePrompt = (index >= 0 ? source.slice(0, index) : source).trim();
+    if (!basePrompt) throw new Error("图片反推未返回可供融合的画面描述，原提示词未修改");
+    return {
+      basePrompt,
+      userInstruction: instruction,
+      request: {
+        prompt: basePrompt,
+        currentPrompt: basePrompt,
+        surface: "art",
+        purpose: "optimize",
+        requirements: `用户本次修改要求（最高优先级）：${instruction.replace(/\r?\n/g, "；")}\n反推后融合：完整原文是已识别的图片画面，补充要求是目标画面的修改意图。先分析并融合全部修改，把最终状态写入相应的背景、人物、光线、材质和镜头段落；新要求与原图描述冲突时替换冲突旧描述，并同步关联段落，不能同时保留互相矛盾的状态。质量与精美度要落实为适合原画风的具体视觉细节，未要求改变的人物身份、数量、服饰、姿态和构图必须保留。不要新增“用户附加要求”段落或复述请求，不要仅把补充要求附在原文末尾。`
+      }
+    };
+  }
+
+  async function fuseStaticArtReversePrompt(sourcePrompt, userRequirements, options) {
+    const prepared = prepareStaticArtReverseFusion(sourcePrompt, userRequirements);
+    if (!prepared) return null;
+    const response = await options.optimize({
+      ...prepared.request,
+      negativePrompt: options.negativePrompt || "",
+      supportsNegativePrompt: options.supportsNegativePrompt === true,
+      nsfw: options.nsfw === true
+    });
+    if (!response || response.ok === false) {
+      const failure = readSmartAiFailureEnvelope(response);
+      throw Object.assign(new Error(failure.message || "补充要求融合失败，原提示词未修改"), failure);
+    }
+    const fused = readSmartAiResult(response);
+    if (options.supportsNegativePrompt === true && (!fused.hasNegativePrompt || !String(fused.negativePrompt || "").trim())) {
+      throw new Error("补充要求融合未返回完整反向提示词，原提示词未修改");
+    }
+    if (/用户补充要求（只作为最终提示词约束|不作为图片可见事实/u.test(fused.prompt)) {
+      throw new Error("模型仍在复述补充要求，未完成画面融合，原提示词未修改");
+    }
+    const preservation = validateSmartAiArtPromptPreservation(prepared.basePrompt, fused.prompt, prepared.userInstruction);
+    if (!preservation.ok) throw smartAiPromptPreservationError(preservation);
+    return fused;
   }
 
   async function runSmartAi() {
@@ -4256,6 +4290,7 @@
           durationSeconds: miniMaxH3Prepared.context?.durationSeconds || state.context?.miniMaxH3?.durationSeconds || 0,
           visualSchema: MINIMAX_H3_VISUAL_SCHEMA,
           purpose: MINIMAX_H3_PROMPT_PURPOSE,
+          contentPolicy: miniMaxH3ContentPolicy(),
           surface: "animation"
         });
       } else if (isMiniMaxH3OptimizeRequest) {
@@ -4300,9 +4335,7 @@
           purpose: isArt
             ? (isArtTextRequest ? artTextPurpose : artIntent?.purpose)
             : (createFromRequirements ? "create" : "optimize"),
-          ...(usesStructuredArtPromptContract
-            ? { surface: "art" }
-            : (isArt ? {} : { surface: "animation" }))
+          surface: isArt ? "art" : "animation"
         });
       } else if (useGrok) {
         result = await api.smartAiImageReverse?.({
@@ -4471,9 +4504,43 @@
       )) {
         throw new Error("本地模型未返回反向提示词，请重试");
       }
+      if (usesStaticVisualV2 && String(promptMentionProtection?.text ?? prompt).trim()) {
+        state.message = "图片分析完成，正在融合补充要求并更新画面描述...";
+        renderDialog();
+        const fused = await fuseStaticArtReversePrompt(nextPrompt, promptMentionProtection?.text ?? prompt, {
+          optimize: (payload) => useGrok
+            ? api.smartAiPromptOptimize?.({ token, ...payload })
+            : api.promptAssistantOptimizePrompt?.(payload),
+          negativePrompt: nextNegativePrompt,
+          supportsNegativePrompt,
+          nsfw: analysisNsfw
+        });
+        if (requestFingerprint !== buildSmartAiRequestFingerprint(requestFingerprintOptions)) {
+          throw new Error("融合期间原提示词、参考图或要求发生变化，本次未写入，请重新分析。");
+        }
+        nextPrompt = fused.prompt;
+        nextNegativePrompt = fused.negativePrompt;
+        parsed.hasNegativePrompt = fused.hasNegativePrompt;
+      }
       if (isMiniMaxH3ReverseRequest) {
         try {
           nextPrompt = await validateMiniMaxH3ReverseResult(nextPrompt, miniMaxH3ReversePrepared, textareas);
+          const refinement = miniMaxH3ReversePrepared.workflow.prepareRefinement({
+            text: nextPrompt,
+            context: miniMaxH3ReversePrepared.context
+          });
+          if (refinement) {
+            state.message = "图片分析完成，正在融合原提示词与补充要求...";
+            renderDialog();
+            const refined = useGrok
+              ? await api.smartAiPromptOptimize?.({ token, ...refinement })
+              : await api.promptAssistantOptimizePrompt?.(refinement);
+            if (!refined || refined.ok === false) {
+              const failure = readSmartAiFailureEnvelope(refined);
+              throw Object.assign(new Error(failure.message || "补充要求融合优化失败，原提示词未修改"), failure);
+            }
+            nextPrompt = await validateMiniMaxH3ReverseResult(readSmartAiResult(refined).prompt, miniMaxH3ReversePrepared, textareas);
+          }
         } catch (validationFailure) {
           const validationError = new Error(String(validationFailure?.message || validationFailure || "MiniMax H3 contract validation failed"));
           if (validationFailure && typeof validationFailure === "object") Object.assign(validationError, validationFailure);
@@ -4510,6 +4577,10 @@
           state.requirements,
           { deterministicMerge: true }
         );
+        if (!preservation.ok) throw smartAiPromptPreservationError(preservation);
+      }
+      if (isArtTextRequest && currentPrompt && !usesStructuredArtPromptContract) {
+        const preservation = validateSmartAiArtPromptPreservation(currentPrompt, nextPrompt, state.requirements);
         if (!preservation.ok) throw smartAiPromptPreservationError(preservation);
       }
       if (isReverseRequest && !isMiniMaxH3Request) {
@@ -4603,8 +4674,8 @@
         const failure = readSmartAiFailureEnvelope(err);
         failure.requestedVisualSchema = failure.requestedVisualSchema || "nf.h3.visual.v1";
         failure.legacyFallbackSuppressed = true;
-        failure.retryAttempted = true;
-        failure.retryCount = Math.max(1, Number(failure.retryCount) || 0);
+        failure.retryAttempted = failure.retryAttempted === true;
+        failure.retryCount = Math.max(0, Number(failure.retryCount) || 0);
         state.loading = false;
         state.analysisResult = null;
         state.analysisFailure = failure;

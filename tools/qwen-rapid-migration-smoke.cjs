@@ -13,7 +13,8 @@ function loadSpine(file) {
   const routeConstants = [...source.matchAll(/^  const ((?:STORYBOARD_|SELECTION_INPAINT_MODE_)[A-Z_]+) = [\s\S]*?(?=^  (?:const |let |(?:async )?function ))/gm)].map(m=>m[0]).join('\n');
   const sandbox = { state: {}, console };
   vm.createContext(sandbox);
-  vm.runInContext('const IMAGE_OUTPAINT_SAFE_DIMENSION_STEP = 8; const IMAGE_WASH_QWEN_CHECKPOINT = '+JSON.stringify(checkpoint)+';\n' + constants + '\n' + routeConstants + '\n' + declarations, sandbox);
+  const checkpointConstant = source.includes('const QWEN_RAPID_CHECKPOINT =') ? 'QWEN_RAPID_CHECKPOINT' : 'IMAGE_WASH_QWEN_CHECKPOINT';
+  vm.runInContext('const IMAGE_OUTPAINT_SAFE_DIMENSION_STEP = 8; const '+checkpointConstant+' = '+JSON.stringify(checkpoint)+';\n' + constants + '\n' + routeConstants + '\n' + declarations, sandbox);
   return sandbox;
 }
 function rapidCandidate(graph) {

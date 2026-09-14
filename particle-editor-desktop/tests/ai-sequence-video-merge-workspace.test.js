@@ -730,7 +730,7 @@ test('workspace exposes two video slots, layer ordering, canvas transforms, glob
   assert.doesNotMatch(workspaceSource, /nf-vm-header|nf-vm-title|nf-vm-subtitle/)
   assert.match(workspaceSource, /externalControlsHost\.appendChild\(leftPanel\)/)
   assert.match(workspaceSource, /data-novaflow-ai-video-merge-controls-external/)
-  assert.match(workspaceSource, /编辑图层蒙版/)
+  assert.doesNotMatch(workspaceSource, /text: '编辑图层蒙版'|button\(documentRef, '应用蒙版'|button\(documentRef, '取消编辑'/)
   assert.doesNotMatch(workspaceSource, /编辑当前图层蒙版|退出视频合并|nf-vm-exit|nf-vm-layer-actions/)
   assert.match(workspaceSource, /nf-vm-layer-toolbar/)
   assert.match(workspaceSource, /data-novaflow-ai-video-merge-edit-mask[\s\S]{0,80}height:34px/)
@@ -772,7 +772,10 @@ test('workspace mounts editing controls below the shared left section and remove
   const outputPanel = panel.querySelector('[data-novaflow-ai-video-merge-output-panel="1"]')
   const autoFit = shell.querySelector('[data-novaflow-ai-video-merge-auto-fit="1"]')
   assert.equal(maskPanel.parentElement.children[0], maskPanel)
-  assert.equal(editMask.textContent, '编辑图层蒙版')
+  assert.equal(editMask, null)
+  assert.equal(harness.handle.debugSnapshot().maskEditing, harness.state.selectedLayerId)
+  assert.ok(panel.querySelector('[data-nf-merge-confirm="1"]'))
+  assert.ok(panel.querySelector('[data-nf-merge-cancel="1"]'))
   assert.ok(toolbar)
   assert.equal(moveButtons.length, 2)
   assert.equal(cards.length, 2)
@@ -789,7 +792,6 @@ test('workspace mounts editing controls below the shared left section and remove
   panel.querySelector('[data-novaflow-ai-video-merge-move="up"]').dispatchEvent({ type: 'click' })
   assert.deepEqual(harness.moves, [{ layerId: 'video-layer-bottom', direction: 1 }])
 
-  editMask.dispatchEvent({ type: 'click', target: editMask })
   await flushWorkspaceTasks()
   const plus = {
     type: 'keydown', key: '+', code: 'Equal', target: panel,
@@ -825,7 +827,7 @@ test('mask editing keeps the merge timeline active and routes feather shortcuts 
   const maskPanel = shell.querySelector('[data-novaflow-ai-video-merge-mask-panel="1"]')
   const editMaskButton = maskPanel.querySelector('[data-novaflow-ai-video-merge-edit-mask="1"]')
 
-  editMaskButton.dispatchEvent({ type: 'click', target: editMaskButton })
+  assert.equal(editMaskButton, null)
   await flushWorkspaceTasks()
 
   assert.equal(harness.previewCalls.pause, 1)

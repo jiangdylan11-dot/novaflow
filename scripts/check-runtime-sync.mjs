@@ -8,11 +8,11 @@ import { spineWebpRuntimeFiles } from './spine-webp-runtime-files.mjs'
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const runtimeGroups = [
-  ...spineWebpRuntimeFiles.map((file) => ({
+  ...[...spineWebpRuntimeFiles, 'main/birefnet-runner.py', 'main/cutout-raw-encoder.js', 'main/cutout-mask-stream.js'].map((file) => ({
     name: file,
     files: [
-      { label: 'desktop exact WebP runtime', path: path.join(repoRoot, 'particle-editor-desktop', file), dependencyManifest: file.endsWith('/package.json') },
-      { label: 'win-unpacked exact WebP runtime', path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', file), dependencyManifest: file.endsWith('/package.json') },
+      { label: 'desktop runtime file', path: path.join(repoRoot, 'particle-editor-desktop', file), dependencyManifest: file.endsWith('/package.json') },
+      { label: 'win-unpacked runtime file', path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', file), dependencyManifest: file.endsWith('/package.json') },
     ],
   })),
   {
@@ -492,6 +492,8 @@ const runtimeGroups = [
   },
   ...[
     'ai-sequence-green-screen-matting.js',
+    'ai-sequence-matting-worker.js',
+    'ai-sequence-cutout-pipeline.js',
     'ai-sequence-state-machine-runtime.js',
     'ai-sequence-video-merge.resource.js',
     'ai-sequence-video-merge.resource-bridge.js',
@@ -572,6 +574,7 @@ const runtimeGroups = [
     'ai-sequence-minimax-h3-lora.resource.js',
     'ai-sequence-wan22-lora.resource.js',
     'ai-sequence-wan22-lora.workflow.js',
+    'h3-prompt-format.js',
     'ai-sequence-minimax-h3-prompt.workflow.js',
     'ai-sequence-minimax-h3-reverse.workflow.js',
     'ai-sequence-minimax-h3.workflow.js',

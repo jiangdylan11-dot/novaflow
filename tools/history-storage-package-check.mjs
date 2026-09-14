@@ -1,0 +1,25 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+const root=path.resolve(import.meta.dirname,'..'),out=path.join(root,'docs/history-storage-15-20260914');
+const installer=path.join(root,'particle-editor-desktop/dist/NovaFlow Setup 2.3.214 - 历史15条存储与反推错误提示修复.exe');
+const target=path.join(out,'nsis');
+const seven=path.join(root,'particle-editor-desktop/node_modules/7zip-bin/win/x64/7za.exe');
+const extracted=spawnSync(seven,['x','-y',installer,'-o'+target],{encoding:'utf8',windowsHide:true});
+assert.equal(extracted.status,0,extracted.stderr);
+const previous=JSON.parse(fs.readFileSync(path.join(root,'docs/cutout-performance-20260914/package-validation.json')));
+const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const files=previous.files.map(({file})=>{
+ const source=file.startsWith('renderer/')?path.join(root,'particle-editor',file.slice(9)):path.join(root,'particle-editor-desktop',file);
+ const shipped=path.join(target,'resources/app',file);
+ assert.equal(hash(source),hash(shipped),file);
+ return {file,sha256:hash(shipped),match:true};
+});
+const test=spawnSync(process.execPath,['--test',path.join(root,'particle-editor-desktop/tests/prompt-history-display-limit.test.mjs')],{encoding:'utf8',windowsHide:true,env:{...process.env,NOVAFLOW_HISTORY_TEST_BUNDLE:path.join(target,'resources/app/renderer/assets/index-BbIa-2NM.js')}});
+assert.equal(test.status,0,test.stdout+test.stderr);
+const report={installer,bytes:fs.statSync(installer).size,sha256:hash(installer),files,packagedHistoryTests:'PASS'};
+fs.writeFileSync(path.join(out,'package-validation.json'),JSON.stringify(report,null,2));
+fs.writeFileSync(path.join(out,'packaged-history-tests.txt'),test.stdout);
+console.log(JSON.stringify({installer,bytes:report.bytes,sha256:report.sha256,files:files.length,packagedHistoryTests:'PASS'}));

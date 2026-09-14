@@ -425,11 +425,12 @@
 
   function assertNoUnavailableModelTokens(text, catalog, options) {
     const allowSubjects = Boolean(options?.allowSubjects)
+    const speakers = new Set(Array.from(stringValue(text).matchAll(/<Subject ([1-9][0-9]*)>\s*=\s*[（(]S\1[）)]/g), match => match[1]))
     const available = new Set(catalog.modelTokens)
     const matches = stringValue(text).matchAll(MODEL_REFERENCE_EXPRESSION)
     for (const match of matches) {
       const token = match[0]
-      if (match[1] === 'Subject' && allowSubjects) continue
+      if (match[1] === 'Subject' && (allowSubjects || speakers.has(match[2]))) continue
       if (!available.has(token)) throw new Error(`Reference ${token} is not available in the captured MiniMax H3 resources`)
     }
   }
@@ -610,7 +611,7 @@
     return true
   }
 
-  function buildInstructions(protocol, compiledPrompt) {
+  function buildLegacyInstructions(protocol, compiledPrompt) {
     const references = protocol.references.references.length
       ? protocol.references.references.map((reference) => `${reference.modelToken} = captured ${reference.kind} slot ${reference.slotKey}`).join('; ')
       : '(none)'
@@ -655,6 +656,21 @@
     return lines.join('\n')
   }
 
+  function buildInstructions(protocol, compiledPrompt) {
+    const references = protocol.references.references.length
+      ? protocol.references.references.map((reference) => `${reference.modelToken} = captured ${reference.kind} slot ${reference.slotKey}`).join('; ')
+      : '(none)'
+    const lines = [
+      globalThis.NovaFlowH3PromptFormat.instruction,
+      globalThis.NovaFlowH3PromptFormat.formatInstruction,
+      `Protocol: ${protocol.protocolName}; duration: ${protocol.durationSeconds.toFixed(2)} seconds.`,
+      `Available resource labels: ${references}. Never invent a resource label.`,
+      ...(protocol.contentPolicy.sensitiveVisualAnalysis ? ['Fact-faithful analysis is enabled. Preserve only user-supported facts; do not guess age or add appearance.'] : []),
+      'Source prompt:', compiledPrompt,
+    ]
+    return lines.join('\n')
+  }
+
   function prepareRequest(options) {
     const input = options && typeof options === 'object' ? options : {}
     const modelId = normalizeModelId(input.modelId)
@@ -690,7 +706,7 @@
       visualSchema: H3_VISUAL_SCHEMA,
       contentPolicy: protocol.contentPolicy,
     })
-    const requirements = buildInstructions(protocol, compiledPrompt)
+    const requirements = input.promptFormat === 'legacy' ? buildLegacyInstructions(protocol, compiledPrompt) : buildInstructions(protocol, compiledPrompt)
     return deepFreeze({
       requirements,
       text: requirements,
@@ -1011,6 +1027,20 @@
       throw new Error('MiniMax H3 model output must use protocol references, not UI aliases')
     }
     const protocol = createPromptProtocol(options)
+    if (/^【任务定位】/.test(value)) {
+      const formatted = globalThis.NovaFlowH3PromptFormat.validateFormat(value, {
+        mode: protocol.mode, durationSeconds: protocol.durationSeconds,
+        requirements: 'Available resource labels: ' + protocol.references.references.map(r => r.modelToken).join('; '),
+      })
+      if (protocol.contentPolicy.sensitiveVisualAnalysis && containsExplicitMinorTerms(formatted) && containsSensitiveContentTerms(formatted)) {
+        throw new Error('MiniMax H3 sensitive visual output is blocked because explicit minor evidence coexists with sensitive content')
+      }
+      return deepFreeze({ valid: true, text: formatted, mode: protocol.mode,
+        protocolName: protocol.protocolName, durationSeconds: protocol.durationSeconds,
+        fieldOrder: globalThis.NovaFlowH3PromptFormat.sectionNames.slice(),
+        usedReferences: protocol.references.references.map(r => r.modelToken), shots: [], subjects: [], relations: [],
+      })
+    }
     value = value.replace(new RegExp(`^([ \\t]*)(${protocol.fieldOrder.join('|')})[ \\t]*$`, 'gm'), '$1$2:')
     value = completeMissingSubjectDefinitions(value, protocol.fieldOrder, protocol.mode)
     const sections = parseFieldSections(value, protocol.fieldOrder)
@@ -1027,7 +1057,8 @@
       && containsSensitiveContentTerms(value)) {
       throw new Error('MiniMax H3 sensitive visual output is blocked because explicit minor evidence coexists with sensitive content')
     }
-    if (!ACTION_PROGRESSION_EXPRESSION.test(narrative)) {
+    const hasIdleOrStillMotion = /呼吸|起伏|待机|(?:全程|保持|完全|持续)(?:静止|不动)|\b(?:breath\w*|idle|remain\w* still|completely still)\b/iu.test(narrative)
+    if (!ACTION_PROGRESSION_EXPRESSION.test(narrative) && !hasIdleOrStillMotion) {
       throw new Error('MiniMax H3 narrative must describe action progression, not only a static image caption')
     }
     if (!CAMERA_DIRECTION_EXPRESSION.test(narrative)) {

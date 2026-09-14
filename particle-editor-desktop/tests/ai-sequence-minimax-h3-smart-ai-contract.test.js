@@ -8,9 +8,9 @@ const source = fs.readFileSync(path.join(root, "particle-editor", "novaflow-smar
 const index = fs.readFileSync(path.join(root, "particle-editor", "index.html"), "utf8");
 const bundle = fs.readFileSync(path.join(root, "particle-editor", "assets", "index-BbIa-2NM.js"), "utf8");
 
-const promptWorkflowScript = "ai-sequence-minimax-h3-prompt.workflow.js?v=20260819-minimax-h3-longfps-1";
-const reverseWorkflowScript = "ai-sequence-minimax-h3-reverse.workflow.js?v=20260819-minimax-h3-longfps-1";
-const smartAiScript = "novaflow-smart-ai.js?v=20260912-soft-edge-1";
+const promptWorkflowScript = "ai-sequence-minimax-h3-prompt.workflow.js?v=20260914-h3-history-15-1";
+const reverseWorkflowScript = "ai-sequence-minimax-h3-reverse.workflow.js?v=20260914-h3-history-15-1";
+const smartAiScript = "novaflow-smart-ai.js?v=20260914-history-storage-15-1";
 assert.ok(index.includes(promptWorkflowScript), "the H3 prompt workflow must load from the authoritative entry");
 assert.ok(index.includes(reverseWorkflowScript), "the H3 reverse workflow must load from the authoritative entry");
 assert.ok(index.includes(smartAiScript), "the H3-aware Smart AI surface must use its current cache key");
@@ -225,6 +225,7 @@ function loadRealH3WorkflowModule(moduleSource, filename, dependency = null) {
       throw new Error(`Unexpected real H3 workflow dependency: ${request}`);
     }
   };
+  context.NovaFlowH3PromptFormat = require('../admin-server/h3-prompt-enhance.js');
   context.globalThis = context;
   vm.runInNewContext(moduleSource, context, { filename });
   return context.module.exports;
@@ -818,7 +819,7 @@ function createSubmitHarness(engine, validationFailure = "") {
   return { state, calls, run: vm.runInContext(`(${runSmartAiSource})`, context) };
 }
 
-function createReverseSubmitHarness(engine, h3Mode, validationFailure = "", responseOverride = null) {
+function createReverseSubmitHarness(engine, h3Mode, validationFailure = "", responseOverride = null, refinement = null, refinementResponse = null) {
   const positive = { value: "人物向镜头转身", isConnected: true };
   const negative = { value: "must remain untouched", isConnected: true };
   const purpose = h3Mode === "image_video" ? "minimax-h3-i2v-reverse" : "minimax-h3-fl2v-reverse";
@@ -866,8 +867,8 @@ function createReverseSubmitHarness(engine, h3Mode, validationFailure = "", resp
       electronAPI: {
         async smartAiImageReverse(payload) { calls.grok.push(payload); return response; },
         async promptAssistantReverseImagePrompt(payload) { calls.local.push(payload); return response; },
-        async smartAiPromptOptimize() { calls.optimize += 1; return response; },
-        async promptAssistantOptimizePrompt() { calls.optimize += 1; return response; }
+        async smartAiPromptOptimize() { calls.optimize += 1; return refinementResponse || response; },
+        async promptAssistantOptimizePrompt() { calls.optimize += 1; return refinementResponse || response; }
       }
     },
     ART_REFERENCE_PLAN: null,
@@ -897,7 +898,7 @@ function createReverseSubmitHarness(engine, h3Mode, validationFailure = "", resp
           images
         },
         context: {},
-        workflow: {}
+        workflow: { prepareRefinement: () => refinement }
       };
     },
     validateMiniMaxH3PromptResult: () => { throw new Error("reverse must not use optimize validation"); },
@@ -996,7 +997,7 @@ async function verifySubmitRouting() {
       await harness.run();
       const payloads = engine === "grok" ? harness.calls.grok : harness.calls.local;
       assert.equal(payloads.length, 1, `${h3Mode}/${engine} must issue exactly one reverse request`);
-      assert.equal(harness.calls.optimize, 0, "H3 reverse must not issue a prompt-optimize request");
+      assert.equal(harness.calls.optimize, 0, "H3 reverse without supplementary requirements needs no refinement request");
       assert.equal(payloads[0].purpose, harness.purpose);
       assert.equal(payloads[0].surface, "animation");
       assert.equal(payloads[0].supportsNegativePrompt, false);
@@ -1016,6 +1017,20 @@ async function verifySubmitRouting() {
       assert.equal(harness.calls.writes[0].options.supportsNegativePrompt, false);
       assert.equal(harness.calls.closes, 1);
     }
+  }
+
+  for (const engine of ["local", "grok"]) {
+    const refined = createReverseSubmitHarness(engine, "image_video", "", null, { prompt: "validated picture facts", requirements: "镜头缓慢拉近" });
+    await refined.run();
+    assert.equal(refined.calls.optimize, 1, "supplementary requirements must trigger semantic refinement");
+    assert.equal(refined.calls.validate, 2, "check freshness and format again after refinement");
+    assert.equal(refined.calls.writes.length, 1, "only the completed result may be written");
+    const failed = createReverseSubmitHarness(engine, "image_video", "", null, { prompt: "validated facts" }, { ok: false, error: "refinement failed" });
+    await failed.run();
+    assert.equal(failed.calls.optimize, 1);
+    assert.equal(failed.calls.writes.length, 0, "refinement failure must preserve the original prompt");
+    assert.equal(failed.calls.closes, 0);
+    assert.equal(failed.state.loading, false);
   }
 
   const staleReverse = createReverseSubmitHarness(
@@ -1069,8 +1084,8 @@ async function verifySubmitRouting() {
     assert.equal(timedOut.calls.closes, 0, "failure must keep the dialog open for re-analysis");
     assert.equal(timedOut.state.messageTone, "error");
     assert.equal(timedOut.state.analysisFailure.requestedVisualSchema, "nf.h3.visual.v1");
-    assert.equal(timedOut.state.analysisFailure.retryAttempted, true);
-    assert.equal(timedOut.state.analysisFailure.retryCount, 1);
+    assert.equal(timedOut.state.analysisFailure.retryAttempted, false);
+    assert.equal(timedOut.state.analysisFailure.retryCount, 0);
     assert.match(timedOut.state.message, new RegExp(`分析失败—未写入：${engine} H3 bridge timeout`));
   }
 

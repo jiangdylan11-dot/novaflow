@@ -409,6 +409,7 @@
     const sourcePrompt = [normalized.prompt, reverseDirective(selectedCapability)].filter(Boolean).join('\n')
     const h3Resources = resourcesForPromptWorkflow(normalized.resources)
     const h3Prepared = requirePromptWorkflow().prepareRequest({
+      promptFormat: 'legacy',
       modelId: normalized.modelId,
       mode: selectedCapability.mode,
       durationSeconds: normalized.durationSeconds,
@@ -421,6 +422,8 @@
     const request = deepFreeze({
       purpose: selectedCapability.purpose,
       surface: 'animation',
+      h3Mode: selectedCapability.mode,
+      durationSeconds: normalized.durationSeconds,
       scenario: selectedCapability.scenario,
       sourceCount: normalized.resources.length,
       supportsNegativePrompt: false,
@@ -485,6 +488,35 @@
     return true
   }
 
+  function prepareRefinement(options) {
+    const context = options.context
+    assertContextIntegrity(context)
+    if (!context.snapshot.requirements.trim()) return null
+    const current = {
+      modelId: context.modelId,
+      mode: context.mode,
+      durationSeconds: context.durationSeconds,
+      prompt: stringValue(options.text).trim(),
+      resources: resourcesForPromptWorkflow(context.snapshot.resources),
+      contentPolicy: context.contentPolicy,
+    }
+    const prepared = requirePromptWorkflow().prepareRequest(current)
+    return deepFreeze({
+      prompt: prepared.prompt,
+      requirements: prepared.requirements
+        + '\n\n原始创作意图（仅保留未被最新补充要求修改的部分）：\n' + context.snapshot.prompt
+        + '\n\n最新补充要求（优先于原提示词中的冲突设定；直接落实到描述与动作中，删除被替换的旧设定）：\n' + context.snapshot.requirements,
+      h3Mode: context.mode,
+      durationSeconds: context.durationSeconds,
+      contentPolicy: context.contentPolicy,
+      visualSchema: H3_VISUAL_SCHEMA,
+      purpose: 'minimax-h3-prompt-enhance',
+      surface: 'animation',
+      supportsNegativePrompt: false,
+      negativePrompt: '',
+    })
+  }
+
   function buildGuaranteedFallback(options) {
     const input = options && typeof options === 'object' ? options : {}
     const context = input.context
@@ -518,8 +550,16 @@
         contentPolicy: current.contentPolicy,
       },
     })
+    const formatted = globalThis.NovaFlowH3PromptFormat.fromValidatedLegacy(restored.text, {
+        mode: context.mode,
+        durationSeconds: context.durationSeconds,
+        currentPrompt: context.sourcePrompt,
+        userPrompt: current.prompt,
+      })
     return deepFreeze({
       ...restored,
+      text: formatted,
+      modelText: formatted,
       operation: 'reverse',
       purpose: context.purpose,
       mode: context.mode,
@@ -545,6 +585,7 @@
     assertRequestSnapshotFresh,
     assertContextIntegrity,
     prepareRequest,
+    prepareRefinement,
     buildGuaranteedFallback,
     validateAndRestore,
   })

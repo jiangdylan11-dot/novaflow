@@ -26,6 +26,7 @@ function loadWorkflowModule(source, filename, dependency = null) {
       throw new Error(`Unexpected workflow dependency: ${request}`);
     },
   };
+  context.NovaFlowH3PromptFormat = require('../admin-server/h3-prompt-enhance.js');
   context.globalThis = context;
   vm.runInNewContext(source, context, { filename });
   return context.module.exports;
@@ -190,7 +191,7 @@ const mainReverseHandler = mainSource.match(
 assert.match(mainReverseHandler, /preferredOutputLanguageValue[\s\S]*?preferredOutputLanguage[\s\S]*?requestPromptAssistant/);
 assert.match(mainReverseHandler, /usesMiniMaxH3Reverse[\s\S]*?visualSchema !== "nf\.h3\.visual\.v1"[\s\S]*?throw new Error/);
 assert.match(mainReverseHandler, /requires explicit userPrompt and userRequirements fields/);
-assert.match(mainReverseHandler, /usesMiniMaxH3VisualV1 \? \{ userPrompt, userRequirements \} : \{\}/);
+assert.match(mainReverseHandler, /usesMiniMaxH3VisualV1 \? \{\s*userPrompt, userRequirements,\s*h3Mode: payload\?\.h3Mode,\s*durationSeconds: payload\?\.durationSeconds\s*\} : \{\}/);
 
 const buildRequest = vm.runInNewContext(
   `(${extractNamedFunction(serverSource, "buildGrokPromptOptimizeRequest")})`,
@@ -202,6 +203,7 @@ const buildRequest = vm.runInNewContext(
     smartAiCurrentPrompt: (payload) => String(payload?.currentPrompt || payload?.prompt || "").trim(),
     normalizeSmartAiText: (value, limit = 20000) => String(value || "").trim().slice(0, limit),
     smartAiPayloadPurpose: (payload) => String(payload?.purpose || "").toLowerCase(),
+    miniMaxH3PromptEnhanceUserRequirement: (requirements) => requirements,
     miniMaxH3PromptProtocolRules: protocolRules,
     miniMaxH3PromptEnhanceDurationFromText: vm.runInNewContext(
       `(${extractNamedFunction(serverSource, "miniMaxH3PromptEnhanceDurationFromText")})`,
@@ -258,7 +260,7 @@ const longCloud = buildRequest({
   requirements: "R".repeat(13000),
   purpose: "minimax-h3-prompt-enhance",
 });
-assert.equal(longCloud.inputMeta.charCount, "H3 prompt".length + 12000);
+assert.equal(longCloud.inputMeta.charCount, "H3 prompt".length + 13000);
 
 const pythonProbe = String.raw`
 import importlib.util
@@ -311,132 +313,8 @@ assert profile_assistant.generate("profile", max_length=3, trace_label="budgetPr
 assert profile_assistant.last_generate_profile["generatedTokenCount"] == 3
 assert profile_assistant.last_generate_profile["hitTokenLimit"] is True
 
-assistant = service["PromptAssistant"]()
-calls = []
-
-def fake_generate(prompt, **kwargs):
-    calls.append((prompt, kwargs))
-    return """integrated_multimodal_description: [Shot 1] A static camera frames the subject as the action develops.\noverall_soundscape: Quiet room tone and synchronized footsteps.\nnon_diegetic_music: N/A\nnegative_prompt: must be removed"""
-
-assistant.generate = fake_generate
-result = assistant.optimize_prompt({
-    "prompt": "stale prompt",
-    "currentPrompt": "current H3 prompt",
-    "negativePrompt": "must not reach H3",
-    "requirements": "T2VA, duration 5 seconds",
-    "purpose": "minimax-h3-prompt-enhance",
-    "surface": "animation",
-    "provider": "local",
-})
-assert result["negativePrompt"] == ""
-assert "negative_prompt" not in result["positivePrompt"]
-assert "negative_prompt" not in result["rawOutput"]
-assert result["positivePrompt"].startswith("integrated_multimodal_description:")
-assert calls[0][1]["max_length"] == expected_initial_budgets["T2VA"]
-assert calls[0][1]["trace_label"] == "minimaxH3PromptEnhance"
-assert "<|im_start|>system" in calls[0][1]["llama_template"]
-assert "dedicated MiniMax H3 audiovisual prompt compiler" in calls[0][1]["llama_template"]
-assert "primary language of the user's input" in service["MINIMAX_H3_PROMPT_SYSTEM_INSTRUCTION"]
-assert "when that language is Chinese, use Simplified Chinese" in service["MINIMAX_H3_PROMPT_SYSTEM_INSTRUCTION"]
-assert "Write field values in English" not in service["MINIMAX_H3_PROMPT_SYSTEM_INSTRUCTION"]
-assert "dialogue, lyrics, and visible scene text in their original language" in service["MINIMAX_H3_PROMPT_SYSTEM_INSTRUCTION"]
-assert "current H3 prompt" in calls[0][0]
-assert "stale prompt" not in calls[0][0]
-assert "T2VA, duration 5 seconds" in calls[0][0]
-
-assert service["minimax_h3_preferred_value_language"]("女孩抬头并说 Hello", "Protocol: T2VA") == "zh-CN"
-assert service["minimax_h3_preferred_value_language"]("A girl looks up and says 你好", "Protocol: T2VA") == "zh-CN"
-assert service["minimax_h3_preferred_value_language"]("NovaFlow MiniMax H3 character says Hello，随后转身", "Protocol: T2VA") == "zh-CN"
-assert service["minimax_h3_preferred_value_language"]("女孩抬头并说 Hello", "output language: English") == "en"
-assert service["minimax_h3_preferred_value_language"]("A girl looks up and says hello", "Protocol: T2VA") == "en"
-assert service["minimax_h3_preferred_value_language"]("", "Required protocol: I2VA; duration 5 seconds") == "zh-CN"
-assert service["minimax_h3_preferred_value_language"]("", "Required protocol: I2VA; output language: English") == "en"
-mixed_language_output = """integrated_multimodal_description: [Shot 1] 女孩开始缓慢转向镜头并说 “This is a long English dialogue with product names NovaFlow and MiniMax H3”，镜头保持稳定。\noverall_soundscape: 保留原始英文对白。\nnon_diegetic_music: N/A"""
-assert service["validate_minimax_h3_value_language"](mixed_language_output, "zh-CN") == mixed_language_output
-
-zh_t2_assistant = service["PromptAssistant"]()
-zh_t2_calls = []
-zh_t2_outputs = iter((
-    """integrated_multimodal_description: [Shot 1] A girl turns toward camera and says Hello while START remains on screen; the action continues while Camera holds stable framing.\noverall_soundscape: Soft footsteps.\nnon_diegetic_music: Gentle music.""",
-    """integrated_multimodal_description: [Shot 1] 女孩缓慢转向镜头并开始说“Hello”，屏幕文字“START”保持原样，镜头保持稳定。\noverall_soundscape: 轻柔脚步声与衣料摩擦声同步出现。\nnon_diegetic_music: 柔和舒缓的背景音乐。""",
-))
-
-def fake_zh_t2_generate(prompt, **kwargs):
-    zh_t2_calls.append((prompt, kwargs))
-    return next(zh_t2_outputs)
-
-zh_t2_assistant.generate = fake_zh_t2_generate
-zh_t2_result = zh_t2_assistant.optimize_prompt({
-    "currentPrompt": "女孩缓慢转向镜头并说 Hello，屏幕显示 START",
-    "requirements": "Protocol: T2VA; duration 5 seconds",
-    "purpose": "minimax-h3-prompt-enhance",
-})
-assert len(zh_t2_calls) == 2
-assert all("Field-value language: Simplified Chinese" in call[0] for call in zh_t2_calls)
-assert "女孩缓慢转向镜头" in zh_t2_result["positivePrompt"]
-assert "Hello" in zh_t2_result["positivePrompt"]
-assert "START" in zh_t2_result["positivePrompt"]
-assert "A girl turns toward camera" not in zh_t2_result["positivePrompt"]
-
-en_t2_assistant = service["PromptAssistant"]()
-en_t2_calls = []
-
-def fake_en_t2_generate(prompt, **kwargs):
-    en_t2_calls.append((prompt, kwargs))
-    return """integrated_multimodal_description: [Shot 1] A paper airplane lifts from the desk, then circles in morning light while Camera holds stable framing.\noverall_soundscape: Soft paper rustle and quiet room tone.\nnon_diegetic_music: Gentle ambient music."""
-
-en_t2_assistant.generate = fake_en_t2_generate
-en_t2_result = en_t2_assistant.optimize_prompt({
-    "currentPrompt": "A paper airplane lifts from the desk",
-    "requirements": "Protocol: T2VA; duration 5 seconds",
-    "purpose": "minimax-h3-prompt-enhance",
-})
-assert len(en_t2_calls) == 1
-assert "Field-value language: English" in en_t2_calls[0][0]
-assert "A paper airplane lifts from the desk" in en_t2_result["positivePrompt"]
-
-repair_assistant = service["PromptAssistant"]()
-repair_calls = []
-repair_outputs = iter((
-    """integrated_multimodal_description: A subject moves without a shot marker.\noverall_soundscape: Footsteps.\nnon_diegetic_music: N/A""",
-    """integrated_multimodal_description: [Shot 1] A subject begins moving while Camera holds stable framing.\noverall_soundscape: Footsteps.\nnon_diegetic_music: N/A""",
-))
-
-def fake_repair_generate(prompt, **kwargs):
-    repair_calls.append((prompt, kwargs))
-    return next(repair_outputs)
-
-repair_assistant.generate = fake_repair_generate
-repaired = repair_assistant.optimize_prompt({
-    "currentPrompt": "A subject moves",
-    "requirements": "Protocol: T2VA; duration 5 seconds",
-    "purpose": "minimax-h3-prompt-enhance",
-})
-assert "[Shot 1]" in repaired["positivePrompt"]
-assert len(repair_calls) == 2
-assert repair_calls[0][1]["trace_label"] == "minimaxH3PromptEnhance"
-assert repair_calls[1][1]["trace_label"] == "minimaxH3PromptRepair"
-
-failed_assistant = service["PromptAssistant"]()
-failed_calls = []
-
-def fake_failed_generate(prompt, **kwargs):
-    failed_calls.append((prompt, kwargs))
-    return """integrated_multimodal_description: Incomplete protocol.\noverall_soundscape: N/A"""
-
-failed_assistant.generate = fake_failed_generate
-try:
-    failed_assistant.optimize_prompt({
-        "currentPrompt": "A subject moves",
-        "requirements": "Protocol: T2VA; duration 5 seconds",
-        "purpose": "minimax-h3-prompt-enhance",
-    })
-    raise AssertionError("failed optimization must not return a fabricated success")
-except ValueError as error:
-    assert "原提示词未修改" in str(error)
-assert len(failed_calls) == 2
-assert failed_calls[0][1]["max_length"] == expected_initial_budgets["T2VA"]
-assert failed_calls[1][1]["max_length"] == expected_repair_budgets["T2VA"]
+# Five-section optimizer behavior and repair are tested in test_h3_prompt_enhancement.py
+# and h3-five-sections.test.mjs; the remainder covers legacy reverse projection.
 
 base_output = """integrated_multimodal_description: [Shot 1] A subject begins moving while Camera holds stable framing.\noverall_soundscape: Footsteps.\nnon_diegetic_music: N/A"""
 shotless_output = """integrated_multimodal_description: A subject begins moving while Camera holds stable framing.\noverall_soundscape: Footsteps.\nnon_diegetic_music: N/A"""

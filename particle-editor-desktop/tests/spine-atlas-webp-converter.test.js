@@ -100,6 +100,66 @@ async function makePng(width = 4, height = 4) {
   return sharp(data, { raw: { width, height, channels: 4 } }).png().toBuffer();
 }
 
+test("legacy auto mode preserves all alpha levels and transparent RGB with lossy options", async () => {
+  const pixels = Buffer.alloc(256 * 4 * 4);
+  for (let i = 0; i < pixels.length; i += 4) {
+    const alpha = (i / 4) % 256;
+    pixels[i] = Math.round(alpha * 0.8);
+    pixels[i + 1] = Math.round(alpha * 0.4);
+    pixels[i + 3] = alpha;
+  }
+  pixels[0] = 93;
+  const png = await sharp(pixels, { raw: { width: 256, height: 4, channels: 4 } }).png().toBuffer();
+  for (const extraHeader of ["", "pma: false\r\n"]) {
+    const atlasText = `\uFEFFfx.png\r\nsize: 256,4\r\n${extraHeader}region.png\r\nbounds: 0,0,256,4\r\n`;
+    const result = await convertSpineAtlasWebp({
+      atlasText, images: [{ fileName: "fx.png", bytes: png }],
+      options: extraHeader ? { lossless: true } : { mode: "spine", quality: 75, alphaQuality: 90 }
+    }, { fs: memoryFs, sharp });
+    assert.equal(result.images[0].rgbaVerified, true);
+    assert.deepEqual(await sharp(Buffer.from(result.images[0].bytes)).ensureAlpha().raw().toBuffer(), pixels);
+    assert.equal(result.atlas.text, atlasText.replace("fx.png", "fx.webp"));
+  }
+});
+
+test("explicit straight lossy WebP retains every alpha byte even with stale alphaQuality", async () => {
+  const pixels = Buffer.alloc(256 * 4);
+  for (let i = 0; i < 256; i += 1) {
+    pixels[i * 4] = 210;
+    pixels[i * 4 + 1] = 90;
+    pixels[i * 4 + 3] = i;
+  }
+  const png = await sharp(pixels, { raw: { width: 256, height: 1, channels: 4 } }).png().toBuffer();
+  const result = await convertSpineAtlasWebp({
+    atlasText: "fx.png\nsize: 256,1\npma: false\n",
+    images: [{ fileName: "fx.png", bytes: png }], options: { alphaQuality: 90 }
+  }, { fs: memoryFs, sharp });
+  assert.equal(result.images[0].encoding, "spine");
+  assert.equal(result.images[0].alphaQuality, 100);
+  assert.equal(result.images[0].rgbaVerified, false);
+  const decoded = await sharp(Buffer.from(result.images[0].bytes)).ensureAlpha().raw().toBuffer();
+  for (let i = 3; i < pixels.length; i += 4) assert.equal(decoded[i], pixels[i]);
+});
+
+test("unknown JPG source alpha requires an explicit choice instead of guessing", async () => {
+  await assert.rejects(convertSpineAtlasWebp({
+    atlasText: "fx.png\nsize: 4,4\n",
+    images: [{ fileName: "fx.png", bytes: await makePng(), outputFormat: "jpg" }]
+  }, { fs: memoryFs, sharp }), /转 JPG 前请选择/);
+});
+
+test("shared pages with missing and explicit PMA flags preserve pixels and both atlases", async () => {
+  const png = await makePng();
+  const atlases = [
+    { fileName: "legacy.atlas", text: "fx.png\nsize: 4,4\n" },
+    { fileName: "tagged.atlas", text: "fx.png\nsize: 4,4\npma: true\n" }
+  ];
+  const result = await convertSpineAtlasWebp({ atlases, images: [{ fileName: "fx.png", bytes: png }] }, { fs: memoryFs, sharp });
+  assert.equal(result.images[0].sourceAlphaMode, "unknown");
+  assert.equal(result.images[0].rgbaVerified, true);
+  assert.deepEqual(result.atlases.map((atlas) => atlas.text), atlases.map((atlas) => atlas.text.replace("fx.png", "fx.webp")));
+});
+
 test("atlas rewrite changes only matching page headers", () => {
   const atlas = [
     "",
@@ -153,7 +213,7 @@ function isJpeg(buffer) {
     && buffer[buffer.length - 1] === 0xd9;
 }
 
-test("converts matched PNG atlas pages to Spine-compatible WebP outputs by default", async () => {
+test("unmarked legacy atlas pages default to exact RGBA without inventing PMA metadata", async () => {
   const png = await makePng();
   const result = await convertSpineAtlasWebp(
     {
@@ -173,10 +233,15 @@ test("converts matched PNG atlas pages to Spine-compatible WebP outputs by defau
   const output = Buffer.from(result.images[0].bytes);
   assert.equal(output.subarray(0, 4).toString("ascii"), "RIFF");
   assert.equal(output.subarray(8, 12).toString("ascii"), "WEBP");
-  assert.deepEqual(webpChunkTypes(output), ["VP8X", "ALPH", "VP8 "]);
-  assert.equal(result.images[0].encoding, "spine");
-  assert.equal(result.images[0].quality, 75);
-  assert.equal(result.images[0].alphaQuality, 90);
+  assert.deepEqual(webpChunkTypes(output), ["VP8L"]);
+  assert.equal(result.images[0].encoding, "rgba-lossless");
+  assert.equal(result.images[0].sourceAlphaMode, "unknown");
+  assert.equal(result.images[0].pma, null);
+  assert.equal(result.images[0].rgbaVerified, true);
+  assert.equal(result.images[0].quality, null);
+  assert.equal(result.images[0].alphaQuality, null);
+  assert.doesNotMatch(result.atlas.text, /pma:/);
+  assert.deepEqual(await sharp(output).ensureAlpha().raw().toBuffer(), await sharp(png).ensureAlpha().raw().toBuffer());
   assert.equal(result.images[0].width, 4);
   assert.equal(result.images[0].height, 4);
 });
@@ -231,7 +296,8 @@ test("converts multiple atlas files by matching page file names", async () => {
   assert.match(result.atlases[0].text, /\nbodyRegion\n  rotate: false/);
   assert.match(result.atlases[1].text, /\nfaceRegion\n  rotate: false/);
   assert.deepEqual(result.images.map((item) => item.fileName).sort(), ["body.webp", "face.webp"]);
-  assert.deepEqual(result.warnings, []);
+  assert.equal(result.warnings.length, 2);
+  assert.ok(result.warnings.every((warning) => warning.includes("atlas 未标记原图 Alpha")));
 });
 
 test("converts one atlas with mixed JPG and WebP page outputs", async () => {
@@ -259,7 +325,7 @@ test("converts one atlas with mixed JPG and WebP page outputs", async () => {
         ""
       ].join("\n"),
       images: [
-        { fileName: "body.png", outputFormat: "jpg", bytes: Array.from(body) },
+        { fileName: "body.png", outputFormat: "jpg", alphaMode: "straight", bytes: Array.from(body) },
         { fileName: "fx.png", outputFormat: "webp", bytes: Array.from(fx) }
       ]
     },
@@ -347,7 +413,7 @@ test("writes mixed JPG and WebP page outputs to the selected directory", async (
       atlasName: "mixed.atlas",
       atlasText: "body.png\nsize: 2,2\nformat: RGBA8888\nfilter: Linear,Linear\nrepeat: none\n\nfx.png\nsize: 3,3\nformat: RGBA8888\nfilter: Linear,Linear\nrepeat: none\n",
       images: [
-        { fileName: "body.png", outputFormat: "jpg", bytes: Array.from(body) },
+        { fileName: "body.png", outputFormat: "jpg", alphaMode: "straight", bytes: Array.from(body) },
         { fileName: "fx.png", outputFormat: "webp", bytes: Array.from(fx) }
       ]
     },
@@ -385,7 +451,7 @@ test("overwrites source atlas, writes mixed outputs beside PNGs, and deletes ori
       atlasName: "mixed.atlas",
       atlasText: fs.readFileSync(atlasPath, "utf8"),
       images: [
-        { fileName: "body.png", outputFormat: "jpg", inputPath: bodyPath },
+        { fileName: "body.png", outputFormat: "jpg", alphaMode: "straight", inputPath: bodyPath },
         { fileName: "fx.png", outputFormat: "webp", inputPath: fxPath }
       ]
     },
@@ -435,7 +501,7 @@ test("reports atlas PNG page references that were not uploaded", async () => {
   );
 
   assert.equal(result.ok, true);
-  assert.deepEqual(result.warnings, ["hero.atlas 引用的 PNG 未上传：extra.png"]);
+  assert.ok(result.warnings.includes("hero.atlas 引用的 PNG 未上传：extra.png"));
   assert.equal(result.images.length, 1);
 });
 

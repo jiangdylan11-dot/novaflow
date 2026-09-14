@@ -36,7 +36,7 @@
   const ART_GENERATE_PROMPT_HISTORY_POPOVER_MAX_ROWS = 10;
   const NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR = "data-novaflow-prompt-action-button";
   const SOURCE_UPLOAD_ISLAND_BRIDGE_SCRIPT_ID = "novaflow-source-upload-island-bridge-loader";
-  const SOURCE_UPLOAD_ISLAND_BRIDGE_SCRIPT_SRC = "./novaflow-source-upload-island-bridge.js?v=20260524-desktop-color-ref-1";
+  const SOURCE_UPLOAD_ISLAND_BRIDGE_SCRIPT_SRC = "./novaflow-source-upload-island-bridge.js?v=20260914-color-disclosure-2";
   const SECONDARY_ENTRY_GROUPS = [
     ["\u7c92\u5b50\u7279\u6548", "AI\u7279\u6548"],
     ["AI\u5e8f\u5217\u52a8\u753b", "\u9aa8\u9abc\u52a8\u753b"],
@@ -2046,6 +2046,8 @@
   let AI_ANIMATION_CUTOUT_EXIT_AUTOFIT_TIMER = null;
   let AI_ANIMATION_FORCE_NATIVE_CUTOUT_CLOSE = false;
   let AI_SEQUENCE_CUTOUT_SAVE_IN_FLIGHT = false;
+  let AI_SEQUENCE_CUTOUT_SAVE_PROMISE = null;
+  let AI_SEQUENCE_CUTOUT_EXPORT_PENDING = null;
   let AI_SEQUENCE_CHROMA_KEY_SAVE_IN_FLIGHT = false;
   let AI_SEQUENCE_RESOURCE_SAVE_TRANSITION_UNTIL = 0;
   let AI_SEQUENCE_ROUTE_EDIT_STATE_SNAPSHOT = null;
@@ -7289,6 +7291,7 @@
     }
     const mode = getNovaflowExportActionModeFromButton(button);
     if (!mode) return;
+    if (deferAiSequenceCutoutExportUntilSaved(event, button)) return;
     const context = getNovaflowExportContextKind(root);
     if (context === "aifx") {
       stopNovaflowExportDialogEvent(event);
@@ -10702,7 +10705,7 @@
     const explicitZone = getAiAnimationReferenceUploadLabel(dropzone.getAttribute("data-novaflow-ai-sequence-upload-zone") || "");
     if (explicitZone) return explicitZone;
     const importType = normalizeText(dropzone.getAttribute("data-ais-import") || "");
-    if (importType === "color_ref") return "\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167";
+    if (importType === "color_ref") return "\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167";
     return normalizeText(
       dropzone.getAttribute("title") ||
       dropzone.getAttribute("data-ais-import") ||
@@ -10719,7 +10722,7 @@
     if (lower === "ref_image" || lower === "reference_image" || lower === "image_video") return "\u53c2\u8003\u56fe";
     if (lower === "first_frame" || lower === "firstframe") return "\u9996\u5e27";
     if (lower === "last_frame" || lower === "lastframe") return "\u5c3e\u5e27";
-    const labels = ["\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167", "\u53c2\u8003\u56fe", "\u9996\u5e27", "\u5c3e\u5e27"];
+    const labels = ["\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167", "\u53c2\u8003\u56fe", "\u9996\u5e27", "\u5c3e\u5e27"];
     return labels.find((label) => normalized === label || normalized.includes(label)) || "";
   }
 
@@ -10899,7 +10902,7 @@
       '[data-nf-upload-dropzone="1"]',
       '.nf-upload-dropzone',
       '[data-novaflow-ai-post-reference-dropzone="1"]',
-      '[title="\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167"]',
+      '[title="\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167"]',
       '[title="\u53c2\u8003\u56fe"]',
       '[title="\u9996\u5e27"]',
       '[title="\u5c3e\u5e27"]'
@@ -10925,7 +10928,7 @@
       '[data-nf-upload-dropzone="1"]',
       '.nf-upload-dropzone',
       '[data-novaflow-ai-post-reference-dropzone="1"]',
-      '[title="\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167"]',
+      '[title="\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167"]',
       '[title="\u53c2\u8003\u56fe"]',
       '[title="\u9996\u5e27"]',
       '[title="\u5c3e\u5e27"]'
@@ -10946,15 +10949,17 @@
 
   function isAiAnimationPostReferenceDropzone(dropzone) {
     if (!(dropzone instanceof HTMLElement)) return false;
+    if (dropzone.hasAttribute("data-nf-color-correction-panel")) return false;
     if (dropzone.getAttribute("data-novaflow-ai-post-reference-dropzone") === "1") return true;
     if (dropzone.getAttribute("data-ais-import") === "color_ref") return true;
-    return normalizeText(dropzone.textContent || "").includes("\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167");
+    return normalizeText(dropzone.textContent || "").includes("\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167");
   }
 
   function isAiAnimationColorReferenceDropzone(dropzone) {
     if (!(dropzone instanceof HTMLElement)) return false;
+    if (dropzone.hasAttribute("data-nf-color-correction-panel")) return false;
     if (dropzone.getAttribute("data-ais-import") === "color_ref") return true;
-    return getAiAnimationDropzoneLabel(dropzone).includes("\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167");
+    return getAiAnimationDropzoneLabel(dropzone).includes("\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167");
   }
 
   function getAiSequenceUploadInputZoneLabel(input) {
@@ -10990,7 +10995,7 @@
       .filter(isAiSequenceNativeReferenceInput);
     if (inputs.length < 3) return;
     const zoneLabels = inputs.length >= 4
-      ? ["\u53c2\u8003\u56fe", "\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167", "\u9996\u5e27", "\u5c3e\u5e27"]
+      ? ["\u53c2\u8003\u56fe", "\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167", "\u9996\u5e27", "\u5c3e\u5e27"]
       : ["\u53c2\u8003\u56fe", "\u9996\u5e27", "\u5c3e\u5e27"];
     zoneLabels.forEach((label, index) => {
       const input = inputs[index];
@@ -11115,7 +11120,7 @@
     if (label.includes("\u9996\u5e27")) return fallbackInputs[frameInputOffset] || fallbackInputs[1] || fallbackInputs[0] || null;
     if (label.includes("\u5c3e\u5e27")) return fallbackInputs[frameInputOffset + 1] || fallbackInputs[2] || fallbackInputs[1] || fallbackInputs[0] || null;
     if (label.includes("\u53c2\u8003\u56fe")) return fallbackInputs[0] || null;
-    if (label.includes("\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167")) return bottomInputs[1] || fallbackInputs[1] || bottomInputs[0] || fallbackInputs[0] || null;
+    if (label.includes("\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167")) return bottomInputs[1] || fallbackInputs[1] || bottomInputs[0] || fallbackInputs[0] || null;
     if (bottomZoneLabel) return fallbackInputs[0] || null;
     const visibleDropzones = getAiAnimationReferenceDropzones(primaryScope)
       .filter((node) => node instanceof HTMLElement && isVisible(node));
@@ -11648,7 +11653,7 @@
       if (input.getAttribute("data-novaflow-ai-sequence-upload-click-proxy") === "1") return;
       if (!(input.files && input.files.length > 0)) return;
       const zoneLabel = getAiAnimationReferenceUploadLabel(input.getAttribute("data-novaflow-ai-sequence-upload-zone") || "");
-      if (!zoneLabel || zoneLabel === "\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167") return;
+      if (!zoneLabel || zoneLabel === "\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167") return;
       const dropzone = findAiSequenceBottomUploadDropzoneByZoneLabel(zoneLabel, input.__novaflowAiSequenceDropzone);
       if (!(dropzone instanceof HTMLElement)) return;
       scheduleAiSequenceBottomUploadDropBridge(input, dropzone, Array.from(input.files));
@@ -12277,7 +12282,7 @@
       text.includes("\u9996\u5c3e\u5e27\u89c6\u9891") ||
       text.includes("\u591a\u53c2\u89c6\u9891");
     const isAiProviderSwitch = text.includes("\u672c\u5730AI") || text.includes("\u4e91\u7aefAI");
-    const isProcessingToolsSwitch = text.includes("\u5904\u7406\u5de5\u5177");
+    const isProcessingToolsSwitch = text.includes("视频处理");
     if (!isTopModeSwitch && !isAiProviderSwitch && !isProcessingToolsSwitch) return;
     const mainStage = document.querySelector('[data-novaflow-ai-main-stage="1"]');
     if (mainStage instanceof HTMLElement) {
@@ -12745,7 +12750,7 @@
         if (!(node instanceof HTMLElement) || !isVisible(node)) return false;
         if (node.getAttribute("data-novaflow-ai-collapse-heading") === "post") return true;
         const text = normalizeText(node.textContent || "");
-        return text === "\u5904\u7406\u5de5\u5177" || text === "\u540e\u5904\u7406\u5de5\u5177";
+        return text === "视频处理" || text === "\u5904\u7406\u5de5\u5177" || text === "\u540e\u5904\u7406\u5de5\u5177";
       });
     const heading = headings[0];
     if (!(heading instanceof HTMLElement)) {
@@ -12770,7 +12775,7 @@
     const stored = String(node.getAttribute("data-novaflow-ai-cutout-mode") || "").trim();
     if (stored === "ai" || stored === "key") return stored;
     const text = normalizeText(node.textContent || "");
-    if (text.includes("AI\u62a0\u56fe")) return "ai";
+    if (text.includes("\u89c6\u9891\u62a0\u56fe")) return "ai";
     if (text.includes("\u8272\u952e\u62a0\u56fe")) return "key";
     return "";
   }
@@ -12787,7 +12792,7 @@
     const activeCandidate = (
       node.getAttribute("data-novaflow-ai-chroma-close") === "1" ||
       text.includes("\u4fdd\u5b58\u5e76\u5173\u95ed") ||
-      text.includes("\u5173\u95edAI\u62a0\u56fe") ||
+      text.includes("\u5173\u95ed\u89c6\u9891\u62a0\u56fe") ||
       text.includes("\u5173\u95ed\u8272\u952e\u62a0\u56fe")
     );
     return activeCandidate && isAiAnimationToolButtonAvailable(node);
@@ -12863,7 +12868,7 @@
   }
 
   function getAiAnimationCutoutIdleLabel(mode) {
-    return mode === "key" ? "\u8272\u952e\u62a0\u56fe" : "AI\u62a0\u56fe";
+    return mode === "key" ? "\u8272\u952e\u62a0\u56fe" : "\u89c6\u9891\u62a0\u56fe";
   }
 
   function isAiAnimationToolButtonAvailable(node) {
@@ -12883,7 +12888,7 @@
     return candidates.find((node) => node.getAttribute("data-novaflow-ai-cutout-mode") === "ai" || node.getAttribute("data-novaflow-ai-cutout-mode") === "key")
       || candidates.find((node) => exactText(node).includes("\u4fdd\u5b58\u5e76\u5173\u95ed"))
       || buttons.find((node) => exactText(node).includes("\u5173\u95ed\u8272\u952e\u62a0\u56fe"))
-      || buttons.find((node) => exactText(node).includes("\u5173\u95edAI\u62a0\u56fe"))
+      || buttons.find((node) => exactText(node).includes("\u5173\u95ed\u89c6\u9891\u62a0\u56fe"))
       || null;
   }
 
@@ -13491,15 +13496,15 @@
     if (mode === "key") return "chroma-key";
     const text = normalizeText(node.getAttribute("aria-label") || node.getAttribute("title") || node.textContent || "");
     if (text.includes("\u8272\u952e")) return "chroma-key";
-    if (text.includes("AI\u62a0\u56fe")) return "ai-cutout";
-    if (node.getAttribute("data-novaflow-ai-post-primary-action") === "1" || text.includes("\u89c6\u9891\u8272\u5f69\u4fee\u590d") || text.includes("\u8272\u5f69\u4fee\u6b63")) return "color-correct";
+    if (text.includes("\u89c6\u9891\u62a0\u56fe")) return "ai-cutout";
+    if (node.getAttribute("data-novaflow-ai-post-primary-action") === "1" || text.includes("\u989c\u8272\u6821\u6b63") || text.includes("\u8272\u5f69\u4fee\u6b63")) return "color-correct";
     return null;
   }
 
   function getAiSequenceToolIdleLabel(tool) {
-    if (tool === "ai-cutout") return "AI\u62a0\u56fe";
+    if (tool === "ai-cutout") return "\u89c6\u9891\u62a0\u56fe";
     if (tool === "chroma-key") return "\u8272\u952e\u62a0\u56fe";
-    if (tool === "color-correct") return "\u89c6\u9891\u8272\u5f69\u4fee\u590d";
+    if (tool === "color-correct") return "\u989c\u8272\u6821\u6b63";
     if (tool === "video-merge") return "\u89c6\u9891\u5408\u5e76";
     return "";
   }
@@ -13537,13 +13542,13 @@
     const session = controller?.getActiveSession ? controller.getActiveSession() : null;
     deactivateAiSequenceVideoMergeWorkspace(reason || "workspace-close");
     if (!controller || !session || session.mode !== "editing" || session.activeTool !== "video-merge") return false;
-    cancelAiSequenceCutoutEditingSession(controller);
+    cancelAiSequenceCutoutEditingSession(controller, { keepToolsExpanded: true });
     return true;
   }
 
   function mountAiSequenceVideoMergeEntry(postSection) {
     const api = getAiSequenceVideoMergeToolApi();
-    const anchor = postSection?.querySelector?.('[data-novaflow-ai-post-action-row="1"]');
+    const anchor = postSection?.querySelector?.('[data-novaflow-ai-post-primary-action="1"]');
     if (typeof api?.mountEntry !== "function" || !(anchor instanceof HTMLElement)) return null;
     return api.mountEntry({ postSection, anchor, onRequestActivate: handleAiSequenceVideoMergeEntryRequest });
   }
@@ -13553,7 +13558,7 @@
     if (typeof api?.syncLifecycle !== "function") return false;
     return api.syncLifecycle({
       postSection,
-      anchor: postSection?.querySelector?.('[data-novaflow-ai-post-action-row="1"]'),
+      anchor: postSection?.querySelector?.('[data-novaflow-ai-post-primary-action="1"]'),
       boardId: session?.id || AI_SEQUENCE_ACTIVE_RESOURCE_BOARD_ID || "board-1",
       sourceMedia: session?.sourceMedia || null,
       processedMedia: session?.processedMedia || null,
@@ -13629,10 +13634,52 @@
     return false;
   }
 
-  function shouldDisableAiSequenceToolDuringCutoutEdit(tool, session) {
-    if (!isAiSequenceCutoutEditingSession(session)) return false;
-    if (tool === session.activeTool) return false;
-    return isAiSequenceStatefulEditTool(tool) || tool === "color-correct";
+  function shouldDisableAiSequenceToolForActiveTool(tool, session, scope = document) {
+    if (!isAiSequenceStatefulEditTool(tool) && tool !== "color-correct") return false;
+    const activeTool = session?.mode === "editing" && isAiSequenceStatefulEditTool(session.activeTool)
+      ? session.activeTool
+      : scope.querySelector?.('[data-nf-color-correction-open="1"]') ? "color-correct" : "";
+    return Boolean(activeTool);
+  }
+
+  function syncAiSequencePanelEntryPresentation(postSection) {
+    const session = getAiSequenceCurrentSession();
+    for (const node of postSection.querySelectorAll('[data-nf-color-correction-open], [data-novaflow-ai-video-merge-entry="1"], [data-novaflow-video-cutout="1"]')) {
+      const tool = aiSequenceToolFromNode(node);
+      const disabled = shouldDisableAiSequenceToolForActiveTool(tool, session, postSection) || node.getAttribute('data-nf-color-correction-busy') === '1';
+      // Keep React's child elements: only replace the leaf label, never its tree.
+      const label = tool === 'color-correct' ? '颜色校正' : tool === 'video-merge' ? '视频合并' : '视频抠图';
+      const leaf = node.firstElementChild || node;
+      if (leaf.textContent !== label) leaf.textContent = label;
+      node.setAttribute('aria-disabled', String(disabled));
+      node.setAttribute('tabindex', disabled ? '-1' : '0');
+      setImportantStyles(node, { background: UI_BUTTON_BACKGROUND, 'background-color': UI_BUTTON_BACKGROUND, color: '#f0f0f0', opacity: disabled ? '0.55' : '1', 'pointer-events': disabled ? 'none' : 'auto', cursor: disabled ? 'not-allowed' : 'pointer' });
+    }
+  }
+
+  let aiSequenceSaveCopyPromise = null;
+  function saveAiSequenceCutoutCopy() {
+    if (aiSequenceSaveCopyPromise) return aiSequenceSaveCopyPromise;
+    const session = getAiSequenceCurrentSession();
+    if (session?.mode !== 'editing' || !['ai-cutout', 'chroma-key'].includes(session.activeTool)) return Promise.reject(new Error('请先进入视频抠图编辑。'));
+    const tool = session.activeTool;
+    const release = beginAiSequenceCutoutSavingLock('正在保存抠图结果…');
+    aiSequenceSaveCopyPromise = (async () => {
+      try {
+        const assetBridge = window.NovaFlowAiSequenceAssetBridge;
+        if (!assetBridge?.commitCutoutFile) throw new Error('资源列表暂不可用');
+        const capture = await captureAiSequenceCutoutSaveFile(window.NovaFlowAiCutoutSessionBridge, tool);
+        const fileName = `cutout_${Date.now()}_${Math.random().toString(36).slice(2,8)}.${capture.assetKind === 'video' ? 'webm' : 'png'}`;
+        const file = new File([capture.blob], fileName, { type: capture.mimeType });
+        const asset = await assetBridge.commitCutoutFile(file, { tool, source: 'save-copy', activate: false, assetKind: capture.assetKind, mimeType: capture.mimeType });
+        release({ successMessage: '已新增到资源列表，可继续调整并保存', durationMs: 900 });
+        return asset;
+      } finally {
+        release();
+        aiSequenceSaveCopyPromise = null;
+      }
+    })();
+    return aiSequenceSaveCopyPromise;
   }
 
   function getAiSequenceCutoutReferencePrevAttr(property, suffix) {
@@ -13743,7 +13790,7 @@
     getAiAnimationReferenceDropzones(postSection).forEach((dropzone) => {
       if (dropzone instanceof HTMLElement) candidates.add(dropzone);
     });
-    Array.from(postSection.querySelectorAll('[data-novaflow-ai-cutout-reference-disabled="1"], [data-novaflow-ai-post-reference-dropzone="1"], [data-ais-import="color_ref"], [data-novaflow-source-upload-card="color_ref"], #novaflow-source-island-root [for="novaflow-source-color-ref-native-input"], #novaflow-source-color-ref-native-input, [title="\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167"]')).forEach((node) => {
+    Array.from(postSection.querySelectorAll('[data-novaflow-ai-cutout-reference-disabled="1"], [data-novaflow-ai-post-reference-dropzone="1"], [data-ais-import="color_ref"], [data-novaflow-source-upload-card="color_ref"], #novaflow-source-island-root [for="novaflow-source-color-ref-native-input"], #novaflow-source-color-ref-native-input, [title="\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167"]')).forEach((node) => {
       if (node instanceof HTMLElement) candidates.add(node);
     });
     Array.from(document.querySelectorAll('#novaflow-source-island-root [data-novaflow-source-upload-card="color_ref"], #novaflow-source-island-root [for="novaflow-source-color-ref-native-input"], #novaflow-source-color-ref-native-input')).forEach((node) => {
@@ -14358,7 +14405,7 @@
       };
       if (type === "range") {
         styles["accent-color"] = "#747b84";
-        styles.background = "linear-gradient(90deg, #747b84 0%, #747b84 var(--nf-range-pct, 0%), #303238 var(--nf-range-pct, 0%), #303238 100%) center / 100% 4px no-repeat";
+        styles.background = "linear-gradient(90deg, #747b84 0%, #747b84 var(--nf-range-pct, 0%), #303238 var(--nf-range-pct, 0%), #303238 100%) center / 100% 2px no-repeat";
       } else if (type === "checkbox") {
         styles["accent-color"] = "#747b84";
       }
@@ -14547,7 +14594,8 @@
       if (released) return;
       const detail = event?.detail || {};
       const text = detail.stage === "frames"
-        ? `正在生成透明帧 ${Math.max(0, Number(detail.current) || 0)} / ${Math.max(1, Number(detail.total) || 1)}`
+        ? `正在准备保存帧 ${Math.max(0, Number(detail.current) || 0)} / ${Math.max(1, Number(detail.total) || 1)}`
+        : detail.stage === "reuse" ? `正在读取已渲染帧 ${Math.max(0, Number(detail.current) || 0)} / ${Math.max(1, Number(detail.total) || 1)}`
         : detail.stage === "encode" ? "正在合成透明视频…"
         : detail.stage === "commit" ? "正在加入资源列表…" : "";
       if (text) renderAiSequenceCutoutSavingOverlay(text, { status: "saving" });
@@ -14793,7 +14841,51 @@
     return { blob, fileName, mimeType, assetKind: "image", captureMeta: null };
   }
 
-  async function completeAiSequenceCutoutMediaSaveAndClose(controller, tool) {
+  function completeAiSequenceCutoutMediaSaveAndClose(controller, tool) {
+    if (AI_SEQUENCE_CUTOUT_SAVE_PROMISE) return AI_SEQUENCE_CUTOUT_SAVE_PROMISE;
+    const task = performAiSequenceCutoutMediaSaveAndClose(controller, tool);
+    AI_SEQUENCE_CUTOUT_SAVE_PROMISE = task;
+    task.finally(() => {
+      if (AI_SEQUENCE_CUTOUT_SAVE_PROMISE === task) AI_SEQUENCE_CUTOUT_SAVE_PROMISE = null;
+    }).catch(() => {});
+    return task;
+  }
+
+  function deferAiSequenceCutoutExportUntilSaved(event, button) {
+    if (!document.body?.classList.contains("novaflow-ai-animation-section-layers")) return false;
+    const bridge = window.NovaFlowAiCutoutSessionBridge;
+    if (!AI_SEQUENCE_CUTOUT_EXPORT_PENDING && !bridge?.isActive?.()) return false;
+    stopNovaflowExportDialogEvent(event);
+    if (AI_SEQUENCE_CUTOUT_EXPORT_PENDING || !["click", "keydown"].includes(event.type)) return true;
+    const controller = getAiSequenceStateController();
+    const tool = bridge?.tool?.() === "key" ? "chroma-key" : "ai-cutout";
+    const release = beginAiSequenceCutoutSavingLock("正在保存抠图结果，完成后继续导出…");
+    AI_SEQUENCE_CUTOUT_EXPORT_PENDING = (async () => {
+      let saved = false;
+      try {
+        await completeAiSequenceCutoutMediaSaveAndClose(controller, tool);
+        saved = true;
+        // Let the committed asset and native exporter registration reach React
+        // before continuing the original action. No preview/playback warmup.
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      } catch (error) {
+        showAiSequenceCutoutSaveError(error, "导出前自动保存");
+      } finally {
+        release({});
+        AI_SEQUENCE_CUTOUT_EXPORT_PENDING = null;
+      }
+      if (!saved) return;
+      if (window.NovaFlowAiCutoutSessionBridge?.isActive?.()) {
+        showTopbarExportAvailabilityNotice("抠图已保存，请稍后重新点击导出");
+        return;
+      }
+      if (button.isConnected && !button.disabled) button.click();
+      else triggerNovaflowExportShortcutAction();
+    })();
+    return true;
+  }
+
+  async function performAiSequenceCutoutMediaSaveAndClose(controller, tool) {
     const labels = getAiSequenceCutoutSaveLabels(tool);
     markAiSequenceResourceSaveTransition(4500);
     const sessionBeforeSave = controller?.getActiveSession ? controller.getActiveSession() : null;
@@ -15000,7 +15092,36 @@
     return true;
   }
 
-  function cancelAiSequenceCutoutEditingSession(controller) {
+  function bindAiSequenceCutoutFailureRecovery() {
+    if (window.__novaflowCutoutFailureRecoveryBound) return;
+    window.__novaflowCutoutFailureRecoveryBound = true;
+    const clearNotice = () => document.querySelector('[data-novaflow-cutout-failure-notice="1"]')?.remove();
+    document.addEventListener('click', (event) => {
+      if (event.target?.closest?.('[data-novaflow-video-cutout="1"]')) clearNotice();
+    }, true);
+    window.addEventListener('novaflow:cutout-failed', (event) => {
+      const controller = getAiSequenceStateController();
+      const failedSession = controller?.getActiveSession?.();
+      // React clears the empty result first; then release the shell's editing
+      // ownership, which otherwise keeps the original video at opacity zero.
+      requestAnimationFrame(() => {
+        if (controller?.getActiveSession?.() !== failedSession) return;
+        settleAiSequenceCutoutResourceModeNow(controller, 'cutout-failed', { preserveMedia: true });
+        clearNotice();
+        const notice = document.createElement('div');
+        notice.setAttribute('data-novaflow-cutout-failure-notice', '1');
+        notice.setAttribute('role', 'alert');
+        Object.assign(notice.style, {position:'fixed',top:'80px',left:'50%',transform:'translateX(-50%)',zIndex:'100100',maxWidth:'560px',padding:'12px 36px 12px 14px',background:'#462121',color:'#fecaca',borderRadius:'8px',fontSize:'13px',whiteSpace:'pre-wrap'});
+        notice.textContent = `AI 抠图失败，已恢复原视频。\n${String(event.detail?.message || '请重试')}`;
+        const close = document.createElement('button');
+        close.textContent = '×';close.setAttribute('aria-label','关闭错误提示');
+        Object.assign(close.style,{position:'absolute',right:'8px',top:'8px',color:'inherit',background:'transparent',border:'0',cursor:'pointer'});
+        close.addEventListener('click',clearNotice);notice.append(close);document.body.append(notice);
+      });
+    });
+  }
+
+  function cancelAiSequenceCutoutEditingSession(controller, options = {}) {
     clearAiSequenceRouteEditStateSnapshot("cancel-editing-session");
     const activeController = controller || getAiSequenceStateController();
     const session = activeController?.getActiveSession ? activeController.getActiveSession() : null;
@@ -15024,6 +15145,15 @@
     clearAiAnimationCutoutSavedMarkers(document);
     resetAiSequenceCutoutEditingDom(document);
     settleAiSequenceCutoutResourceModeNow(activeController, "cancel-editing-session", { preserveMedia: preserveVideoMergeMedia });
+    if (options.keepToolsExpanded) {
+      activeController?.expandTools?.(true);
+      AI_ANIMATION_COLLAPSE_STATE.post = false;
+      const post = document.querySelector('[data-novaflow-ai-post-section="1"]');
+      if (post) {
+        post.setAttribute('data-novaflow-ai-post-collapsed', '0');
+        applyAiSequenceToolDetailState(post, activeController?.getActiveSession?.() || { mode: 'editor-preview' });
+      }
+    }
   }
 
   function getAiSequenceCutoutModeFromTool(toolOrMode) {
@@ -15289,6 +15419,9 @@
         const session = getAiSequenceCurrentSession();
         if (!controller || !session) return;
         const currentTool = aiSequenceToolFromNode(node) || tool;
+        if (shouldDisableAiSequenceToolForActiveTool(currentTool, session, postSection)) {
+          event.preventDefault(); event.stopPropagation(); event.stopImmediatePropagation(); return;
+        }
         if (session.mode === "resource") {
           const beginResult = beginAiSequenceStatefulToolFromResourceAction(node, currentTool, "tool-button-resource");
           if (beginResult === "passthrough") {
@@ -16689,11 +16822,26 @@
   function ensureAiSequenceStateDomGuards() {
     if (AI_SEQUENCE_STATE_DOM_GUARDS_BOUND) return;
     AI_SEQUENCE_STATE_DOM_GUARDS_BOUND = true;
+    document.addEventListener('novaflow:cutout-panel-action', (event) => {
+      if (AI_SEQUENCE_CUTOUT_SAVE_LOCK_COUNT > 0) return;
+      if (event.detail?.action === 'save') saveAiSequenceCutoutCopy().catch(error => showAiSequenceCutoutSaveError(error, '保存抠图'));
+      if (event.detail?.action === 'cancel') cancelAiSequenceCutoutEditingSession(getAiSequenceStateController(), { keepToolsExpanded: true });
+    });
+    document.addEventListener("novaflow:color-correction-state", () => {
+      window.queueMicrotask(() => {
+        const post = document.querySelector('[data-novaflow-ai-post-section="1"]');
+        if (post instanceof HTMLElement) {
+          applyAiSequenceToolDetailState(post, getAiSequenceCurrentSession() || { mode: "editor-preview" });
+          window.__NovaFlowSourceUploadIslandBridge?.mount?.();
+        }
+      });
+    });
     bindAiSequenceCutoutParameterInteractionGuard();
     const guardSaveAndClose = (event) => {
       if (event.__novaflowAiSequenceToolBeginPassthrough || event.__novaflowAiSequenceToolBeginDeferred || event.__novaflowAiSequenceToolSavePassthrough) return;
       const action = event.target instanceof HTMLElement ? event.target.closest('button, [role="button"]') : null;
       if (!(action instanceof HTMLElement) || !isAiSequenceSaveAndCloseAction(action)) return;
+      if (action.getAttribute('aria-disabled') === 'true') return;
       const controller = getAiSequenceStateController();
       const session = controller?.getActiveSession ? controller.getActiveSession() : null;
       const tool = resolveAiSequenceSaveAndCloseTool(action, session);
@@ -16708,12 +16856,19 @@
     const guardToolAction = (event) => {
       const action = event.target instanceof HTMLElement ? event.target.closest('button, [role="button"]') : null;
       if (!(action instanceof HTMLElement)) return;
-      if (action.getAttribute("data-novaflow-ai-sequence-runtime-owned") === "1") return;
       const tool = aiSequenceToolFromNode(action);
       if (!tool) return;
+      if (shouldDisableAiSequenceToolForActiveTool(tool, getAiSequenceCurrentSession(), action.closest('[data-novaflow-ai-post-section="1"]') || document)) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        return;
+      }
+      if (action.getAttribute("data-novaflow-ai-sequence-runtime-owned") === "1") return;
       if (tool === "video-merge") return;
       if (!isAiSequenceStatefulEditTool(tool)) return;
       if ((tool === "ai-cutout" || tool === "chroma-key") && !hasAiSequenceBoardResource(document)) {
+        window.alert("请先上传或选择视频或图片资源，再使用视频抠图。");
         event.preventDefault();
         event.stopPropagation();
         if (typeof event.stopImmediatePropagation === "function") event.stopImmediatePropagation();
@@ -16972,15 +17127,15 @@
       if (!tool) return;
       if (!isAiSequenceStatefulEditTool(tool) && tool !== "color-correct") return;
       const active = editing && tool === session.activeTool;
-      const disabledForCutoutEdit = shouldDisableAiSequenceToolDuringCutoutEdit(tool, session);
-      const unavailableWithoutResource = tool !== "video-merge" && !hasAiSequenceBoardResource(document);
-      const disabled = disabledForCutoutEdit || unavailableWithoutResource;
+      const disabledForOtherTool = shouldDisableAiSequenceToolForActiveTool(tool, session, postSection);
+      const colorBusy = tool === "color-correct" && node.getAttribute("data-nf-color-correction-busy") === "1";
+      const disabled = disabledForOtherTool || colorBusy;
       const saved = !editing && isAiSequenceStatefulEditTool(tool) && Boolean(session.processedMedia) && session.processedMedia.tool === tool;
       node.setAttribute("data-novaflow-ai-sequence-tool", tool);
-      node.setAttribute("data-novaflow-ai-sequence-tool-active", active ? "1" : "0");
+      node.setAttribute("data-novaflow-ai-sequence-tool-active", active || (tool === "color-correct" && node.getAttribute("data-nf-color-correction-open") === "1") ? "1" : "0");
       node.setAttribute("aria-disabled", disabled ? "true" : "false");
-      if (unavailableWithoutResource) node.setAttribute("data-novaflow-ai-sequence-tool-unavailable", "1");
-      else node.removeAttribute("data-novaflow-ai-sequence-tool-unavailable");
+      node.setAttribute("tabindex", disabled ? "-1" : "0");
+      node.removeAttribute("data-novaflow-ai-sequence-tool-unavailable");
       if (active) {
         node.setAttribute("data-novaflow-ai-sequence-tool-source", tool);
         node.removeAttribute("data-novaflow-ai-cutout-saved");
@@ -17018,14 +17173,20 @@
           restoreAiSequenceIdleCutoutButtonStyle(node);
         }
       }
+      if (tool === "color-correct" && node.hasAttribute("data-nf-color-correction-open")) {
+        const expanded = node.getAttribute("data-nf-color-correction-open") === "1";
+        setImportantStyles(node, { background: expanded ? "#6f1f2a" : UI_BUTTON_BACKGROUND, "background-color": expanded ? "#6f1f2a" : UI_BUTTON_BACKGROUND });
+      }
       setAiSequenceHidden(node, false);
       setImportantStyles(node, {
         "pointer-events": disabled ? "none" : "auto",
-        opacity: disabled ? "0.55" : "1"
+        opacity: disabled ? "0.55" : "1",
+        cursor: disabled ? "not-allowed" : "pointer"
       });
     });
     syncAiSequenceCutoutReferenceDisabled(postSection, session);
     syncAiAnimationPostSectionStaticLayout(postSection);
+    syncAiSequencePanelEntryPresentation(postSection);
   }
 
   function applyAiSequenceBottomWorkspaceState(bottomWorkspace, session) {
@@ -17330,6 +17491,8 @@
     applyAiSequenceAddBoardState(session);
     if (workspace instanceof HTMLElement) setAttributeIfChanged(workspace, "data-novaflow-ai-sequence-mode", session.mode);
     syncAiSequenceTimelineEditControlsLock();
+    // Tool transitions can skip early layout, but preview chrome must remain interactive.
+    ensureAiSequencePreviewBgToggle(mainStage instanceof HTMLElement ? mainStage : document);
     return session;
   }
 
@@ -17433,25 +17596,29 @@
   }
 
   function getAiSequencePreviewBgMode() {
-    return AI_SEQUENCE_PREVIEW_BG_MODE === "gray" ? "gray" : "dark";
+    return ["white", "gray"].includes(AI_SEQUENCE_PREVIEW_BG_MODE) ? AI_SEQUENCE_PREVIEW_BG_MODE : "dark";
   }
 
   function applyAiSequencePreviewBgMode(viewport) {
     if (!(viewport instanceof HTMLElement)) return;
-    viewport.setAttribute("data-novaflow-ai-preview-bg", "dark");
+    const mode = getAiSequencePreviewBgMode();
+    const color = getAiSequencePreviewMediaBackplateColor();
+    const background = color;
+    setStylePropertyIfChanged(viewport, "--novaflow-ai-preview-color", color);
+    setAttributeIfChanged(viewport, "data-novaflow-ai-preview-bg", mode);
     viewport.style.setProperty(
       "background",
-      AI_ANIMATION_PREVIEW_BACKGROUND,
+      background,
       "important"
     );
     viewport.style.setProperty(
       "background-color",
-      AI_ANIMATION_PREVIEW_BACKGROUND_COLOR,
+      color,
       "important"
     );
     viewport.style.setProperty(
       "background-image",
-      AI_ANIMATION_PREVIEW_BACKGROUND,
+      "none",
       "important"
     );
     viewport.style.setProperty("background-size", "auto", "important");
@@ -17508,14 +17675,61 @@
 
   function ensureAiSequencePreviewBgToggle(root = document) {
     const viewport = getAiSequencePreviewViewport(root);
-    Array.from(document.querySelectorAll('[data-novaflow-ai-preview-bg-toggle="1"], [data-novaflow-ai-preview-bg-option]')).forEach((node) => {
-      if (!(node instanceof HTMLElement)) return;
-      if (node.getAttribute("data-novaflow-ai-preview-bg-option") && node.closest('[data-novaflow-ai-preview-bg-toggle="1"]')) return;
-      if (removeAiSequenceRuntimeOwnedNode(node)) return;
-      node.remove();
-    });
     if (!(viewport instanceof HTMLElement)) return;
+    let toggle = viewport.querySelector('[data-novaflow-ai-preview-bg-toggle="1"]');
+    if (!(toggle instanceof HTMLElement)) {
+      toggle = document.createElement("div");
+      toggle.setAttribute("data-novaflow-ai-preview-bg-toggle", "1");
+      toggle.setAttribute("data-novaflow-ai-sequence-runtime-owned", "1");
+      toggle.setAttribute("data-preview-ui", "1");
+      toggle.setAttribute("role", "group");
+      toggle.setAttribute("aria-label", "画板背景");
+      toggle.title = "仅切换预览背景，不影响透明导出";
+      setImportantStyles(toggle, {
+        position: "absolute", "z-index": "130", transform: "translateX(-50%)",
+        display: "flex", "align-items": "center", gap: "8px", padding: "4px 6px",
+        background: "rgba(38,38,38,0.85)", color: "#dedede", "border-radius": "16px",
+        "font-size": "12px", "pointer-events": "auto", "user-select": "none",
+        "-webkit-app-region": "no-drag"
+      });
+      for (const [mode, text] of [["dark", "深色"], ["white", "白色"], ["gray", "灰色"]]) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.title = text + "背景";
+        button.setAttribute("aria-label", text + "背景");
+        button.setAttribute("data-novaflow-ai-preview-bg-option", mode);
+        setImportantStyles(button, {
+          width: "16px", "min-width": "16px", "max-width": "16px",
+          height: "16px", "min-height": "16px", "max-height": "16px",
+          padding: "0", margin: "0", "border-radius": "50%", border: "1px solid #999",
+          cursor: "pointer", "box-shadow": "none", flex: "0 0 16px"
+        });
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          AI_SEQUENCE_PREVIEW_BG_MODE = mode;
+          ensureAiSequencePreviewBgToggle(viewport);
+          // The backplate is a DOM-only preview layer; never paint this color into media.
+          viewport.querySelectorAll('[data-novaflow-ai-preview-media-backplate="1"]').forEach((node) => {
+            setAttributeIfChanged(node, "data-novaflow-ai-preview-media-backplate-mode", mode);
+            setImportantStyles(node, { background: getAiSequencePreviewMediaBackplateColor(), "background-color": getAiSequencePreviewMediaBackplateColor() });
+          });
+        });
+        toggle.appendChild(button);
+      }
+      viewport.appendChild(toggle);
+    }
+    toggle.querySelectorAll('[data-novaflow-ai-preview-bg-option]').forEach((button) => {
+      const selected = button.getAttribute("data-novaflow-ai-preview-bg-option") === getAiSequencePreviewBgMode();
+      setAttributeIfChanged(button, "aria-pressed", selected ? "true" : "false");
+      const mode = button.getAttribute("data-novaflow-ai-preview-bg-option");
+      setImportantStyles(button, {
+        background: mode === "white" ? "#ffffff" : mode === "gray" ? AI_ANIMATION_PREVIEW_GRAY_BACKGROUND : AI_ANIMATION_PREVIEW_BACKGROUND_COLOR,
+        outline: selected ? "2px solid #20c997" : "none", "outline-offset": "2px"
+      });
+    });
     applyAiSequencePreviewBgMode(viewport);
+    getAiSequencePreviewEffectiveRect(viewport);
     if (!isAiSequencePreviewBackplateEditingActive()) {
       removeAiSequencePreviewMediaBackplate(viewport);
       return;
@@ -17953,7 +18167,7 @@
     }
     const top = rect.top + padTop;
     let bottom = Math.max(top + 1, rect.bottom - padBottom);
-    Array.from(document.querySelectorAll('[data-novaflow-ai-bottom-workspace="1"]')).forEach((node) => {
+    Array.from(document.querySelectorAll('[data-novaflow-ai-bottom-workspace="1"], [data-novaflow-ai-video-merge-workspace="1"] .nf-vm-timeline')).forEach((node) => {
       if (!(node instanceof HTMLElement) || !isVisible(node)) return;
       const workspaceRect = node.getBoundingClientRect();
       if (workspaceRect.top > top + 40 && workspaceRect.top < bottom) {
@@ -17977,6 +18191,12 @@
     setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-center-y", `${localCenterY}px`);
     setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-width", `${Math.max(1, Math.round(effectiveRect.width))}px`);
     setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-height", `${Math.max(1, Math.round(effectiveRect.height))}px`);
+    const backgroundToggle = viewport.querySelector('[data-novaflow-ai-preview-bg-toggle="1"]');
+    if (backgroundToggle instanceof HTMLElement) {
+      // Follow the visible stage, above either generation controls or the editing timeline.
+      setStylePropertyIfChanged(backgroundToggle, "left", `${localCenterX}px`, "important");
+      setStylePropertyIfChanged(backgroundToggle, "top", `${Math.max(0, Math.round(bottom - rect.top - 26))}px`, "important");
+    }
     return effectiveRect;
   }
 
@@ -18173,7 +18393,8 @@
   }
 
   function getAiSequencePreviewMediaBackplateColor() {
-    return getAiSequencePreviewBgMode() === "gray" ? AI_ANIMATION_PREVIEW_GRAY_BACKGROUND : AI_ANIMATION_PREVIEW_BLACK_BACKPLATE;
+    if (getAiSequencePreviewBgMode() === "white") return "#ffffff";
+    return getAiSequencePreviewBgMode() === "gray" ? AI_ANIMATION_PREVIEW_GRAY_BACKGROUND : AI_ANIMATION_PREVIEW_BACKGROUND_COLOR;
   }
 
   function syncAiSequencePreviewMediaBackplate(viewport, state, size, effectiveRect, viewportRect) {
@@ -20010,6 +20231,13 @@
       body[data-novaflow-dropdown-open="1"] [data-novaflow-ai-brush-layer="1"],
       body[data-novaflow-dropdown-open="1"] [data-novaflow-ai-brush-cursor="1"] {
         z-index: ${DROPDOWN_UNDERLAY_Z_INDEX} !important;
+      }
+      [data-novaflow-ai-preview-bg] > :is(img, video, canvas) {
+        background: transparent !important;
+        background-image: none !important;
+      }
+      [data-novaflow-ai-preview-bg] :is(.nf-vm-body, .nf-vm-center, [data-novaflow-ai-video-merge-preview="1"]) {
+        background: var(--novaflow-ai-preview-color, #0b0b0b) !important;
       }
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] img[alt="logo"] {
         width: 196px !important;
@@ -21889,7 +22117,26 @@
         column-gap: ${NOVAFLOW_UNIFORM_GAP}px !important;
         row-gap: 0 !important;
       }
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-action-row="1"]::before {
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-action-row="1"]:has(> [data-novaflow-video-cutout="1"]) {
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] div:has(> [data-novaflow-ai-post-primary-action="1"]) {
+        gap: 8px !important;
+        margin-bottom: 8px !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-nf-color-correction-panel="1"] {
+        margin: 0 !important;
+        padding: 0 0 12px !important;
+        display: grid !important;
+        gap: 8px !important;
+        width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-nf-color-correction-panel="1"] [data-ais-import="color_ref"] {
+        width: 100% !important;
+        box-sizing: border-box !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-action-row="1"]::after {
         content: "" !important;
         display: block !important;
         grid-column: 1 / -1 !important;
@@ -21897,7 +22144,7 @@
         height: 1px !important;
         min-height: 1px !important;
         max-height: 1px !important;
-        margin: 7px 0 !important;
+        margin: 8px 0 !important;
         padding: 0 !important;
         border: 0 !important;
         border-radius: 999px !important;
@@ -25626,7 +25873,7 @@
       }
       body.novaflow-blackgray-preview-with-bottom-controls input[type="range"][data-novaflow-ai-timeline-edit-locked="1"]:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *) {
         accent-color: #6f7680 !important;
-        background: linear-gradient(90deg, #747b84 0%, #747b84 var(--nf-range-pct, 0%), #303238 var(--nf-range-pct, 0%), #303238 100%) center / 100% 4px no-repeat !important;
+        background: linear-gradient(90deg, #747b84 0%, #747b84 var(--nf-range-pct, 0%), #303238 var(--nf-range-pct, 0%), #303238 100%) center / 100% 2px no-repeat !important;
         cursor: not-allowed !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-ai-timeline-edit-group-locked="1"]:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *) {
@@ -33638,7 +33885,7 @@
       text.includes("\u8d44\u6e90") ||
       text.includes("\u56fe\u751f\u89c6\u9891") ||
       text.includes("\u9996\u5c3e\u5e27\u89c6\u9891") ||
-      text.includes("\u5904\u7406\u5de5\u5177")
+      text.includes("视频处理")
     );
   }
 
@@ -50987,6 +51234,8 @@
     });
     Array.from(document.querySelectorAll('[data-novaflow-ai-preview-bg-toggle="1"]')).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
+      // Active chrome survives section refreshes, including refreshes that skip early layout.
+      if (activeRoot instanceof HTMLElement && getAiSequencePreviewViewport(document)?.contains(node)) return;
       if (removeAiSequenceRuntimeOwnedNode(node)) return;
       removeAttributeIfPresent(node, "data-novaflow-ai-preview-bg-toggle");
       removeStylePropertiesIfPresent(node, ["position", "left", "right", "top", "bottom", "display", "visibility", "opacity", "pointer-events"]);
@@ -51288,9 +51537,9 @@
   function primeAiAnimationPostLayoutMarkers(postSection) {
     if (!(postSection instanceof HTMLElement)) return;
     const tokens = {
-      reference: "\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167",
-      repair: "\u89c6\u9891\u8272\u5f69\u4fee\u590d",
-      aiCutout: "AI\u62a0\u56fe",
+      reference: "\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167",
+      repair: "\u989c\u8272\u6821\u6b63",
+      aiCutout: "\u89c6\u9891\u62a0\u56fe",
       chromaCutout: "\u8272\u952e\u62a0\u56fe"
     };
     const normalizedTokens = Object.fromEntries(Object.entries(tokens).map(([key, value]) => [key, normalizeText(value)]));
@@ -51298,6 +51547,12 @@
     const hasToken = (text, key) => text.includes(normalizedTokens[key]);
     Array.from(postSection.querySelectorAll("div")).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
+      if (node.hasAttribute("data-nf-color-correction-panel")) {
+        removeAttributeIfPresent(node, "data-novaflow-ai-post-reference-dropzone");
+        return;
+      }
+      if (node.hasAttribute("data-nf-cutout-post-shell")) setAttributeIfChanged(node, "data-novaflow-ai-post-content-shell", "1");
+      if (node.hasAttribute("data-nf-color-correction-actions")) setAttributeIfChanged(node, "data-novaflow-ai-post-clean-surface", "1");
       if (node === postSection || node.getAttribute("data-novaflow-ai-collapse-heading")) return;
       const text = getText(node);
       const count = Object.keys(normalizedTokens).filter((key) => hasToken(text, key)).length;
@@ -51439,9 +51694,9 @@
     }
     const postRect = postSection.getBoundingClientRect();
     const tokens = [
-      "\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167",
-      "\u89c6\u9891\u8272\u5f69\u4fee\u590d",
-      "AI\u62a0\u56fe",
+      "\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167",
+      "\u989c\u8272\u6821\u6b63",
+      "\u89c6\u9891\u62a0\u56fe",
       "\u8272\u952e\u62a0\u56fe"
     ];
     const tokenCount = (node) => {
@@ -51456,6 +51711,12 @@
     const headingBottom = postHeading instanceof HTMLElement ? postHeading.getBoundingClientRect().bottom : postRect.top;
     Array.from(postSection.querySelectorAll("div")).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
+      if (node.hasAttribute("data-nf-color-correction-panel")) {
+        removeAttributeIfPresent(node, "data-novaflow-ai-post-reference-dropzone");
+        return;
+      }
+      if (node.hasAttribute("data-nf-cutout-post-shell")) setAttributeIfChanged(node, "data-novaflow-ai-post-content-shell", "1");
+      if (node.hasAttribute("data-nf-color-correction-actions")) setAttributeIfChanged(node, "data-novaflow-ai-post-clean-surface", "1");
       if (node === postHeading || node.contains(postHeading)) return;
       const count = tokenCount(node);
       if (count < 1) return;
@@ -51474,10 +51735,10 @@
     Array.from(postSection.querySelectorAll('div[role="button"], button')).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
       const text = normalizeText(node.textContent || "");
-      if (text === "\u89c6\u9891\u8272\u5f69\u4fee\u590d") {
+      if (text === "\u989c\u8272\u6821\u6b63") {
         node.setAttribute("data-novaflow-ai-post-primary-action", "1");
       }
-      if (text === "AI\u62a0\u56fe" || text === "\u8272\u952e\u62a0\u56fe") {
+      if (text === "\u89c6\u9891\u62a0\u56fe" || text === "\u8272\u952e\u62a0\u56fe") {
         node.setAttribute("data-novaflow-ai-post-action-button", "1");
         if (node.parentElement instanceof HTMLElement) {
           node.parentElement.setAttribute("data-novaflow-ai-post-action-row", "1");
@@ -51537,13 +51798,6 @@
           '[data-novaflow-ai-chroma-picker="1"], [data-novaflow-ai-chroma-picker-panel="1"], [data-novaflow-ai-chroma-picker-row="1"]'
         );
         const hadParamRow = row.getAttribute("data-novaflow-ai-cutout-param-row") === "1";
-        removeAttributeIfPresent(row, "data-novaflow-ai-cutout-param-row");
-        Array.from(row.querySelectorAll('[data-novaflow-ai-cutout-param-range="1"], [data-novaflow-ai-cutout-param-value="1"]')).forEach((node) => {
-          if (node instanceof HTMLElement) {
-            removeAttributeIfPresent(node, "data-novaflow-ai-cutout-param-range");
-            removeAttributeIfPresent(node, "data-novaflow-ai-cutout-param-value");
-          }
-        });
         const ranges = Array.from(row.querySelectorAll('input[type="range"]'))
           .filter((input) => input instanceof HTMLInputElement);
         const valueInputs = Array.from(row.querySelectorAll("input"))
@@ -51612,6 +51866,13 @@
             "box-sizing": "border-box"
           });
         } else if (hadParamRow || row.style.getPropertyValue("grid-template-columns")) {
+        removeAttributeIfPresent(row, "data-novaflow-ai-cutout-param-row");
+        Array.from(row.querySelectorAll('[data-novaflow-ai-cutout-param-range="1"], [data-novaflow-ai-cutout-param-value="1"]')).forEach((node) => {
+          if (node instanceof HTMLElement) {
+            removeAttributeIfPresent(node, "data-novaflow-ai-cutout-param-range");
+            removeAttributeIfPresent(node, "data-novaflow-ai-cutout-param-value");
+          }
+        });
           if (preserveChromaPickerLayout) return;
           removeStylePropertiesIfPresent(row, [
             "display",
@@ -51924,11 +52185,11 @@
       const text = normalizeText(node.textContent || "");
       const mode = getAiAnimationCutoutButtonMode(node);
       const isSavedCutout = isAiAnimationSavedCutoutButton(node);
-      const isCloseCutout = Boolean(mode && node.getAttribute("data-novaflow-ai-cutout-mode")) || isSavedCutout || text.includes("\u4fdd\u5b58\u5e76\u5173\u95ed") || text.includes("\u5173\u95edAI\u62a0\u56fe") || text.includes("\u5173\u95ed\u8272\u952e\u62a0\u56fe");
-      const isCutoutButton = !isCloseCutout && (text.includes("AI\u62a0\u56fe") || text.includes("\u8272\u952e\u62a0\u56fe"));
+      const isCloseCutout = Boolean(mode && node.getAttribute("data-novaflow-ai-cutout-mode")) || isSavedCutout || text.includes("\u4fdd\u5b58\u5e76\u5173\u95ed") || text.includes("\u5173\u95ed\u89c6\u9891\u62a0\u56fe") || text.includes("\u5173\u95ed\u8272\u952e\u62a0\u56fe");
+      const isCutoutButton = !isCloseCutout && (text.includes("\u89c6\u9891\u62a0\u56fe") || text.includes("\u8272\u952e\u62a0\u56fe"));
       if (isCutoutButton) {
         styleActionButtonBase(node);
-        if (text.includes("AI\u62a0\u56fe") || text.includes("\u8272\u952e\u62a0\u56fe")) restoreAiSequenceIdleCutoutButtonStyle(node);
+        if (text.includes("\u89c6\u9891\u62a0\u56fe") || text.includes("\u8272\u952e\u62a0\u56fe")) restoreAiSequenceIdleCutoutButtonStyle(node);
         bindCutoutRefresh(node);
       }
       if (isCloseCutout) {
@@ -51943,7 +52204,7 @@
           cutoutActionRow = node.parentElement;
           node.parentElement.setAttribute("data-novaflow-ai-cutout-action-row", "1");
           setImportantStyles(node.parentElement, {
-            "margin-top": "10px",
+            "margin-top": "0",
             "column-gap": `${NOVAFLOW_UNIFORM_GAP}px`,
             "row-gap": "0",
             border: "0",
@@ -52018,6 +52279,7 @@
       let node = cutoutActionRow.nextElementSibling;
       let detailIndex = 0;
       while (node instanceof HTMLElement) {
+        if (node.matches("[data-nf-color-correction-panel]")) { node = node.nextElementSibling; continue; }
         const wasCutoutDivider = node.getAttribute("data-novaflow-ai-cutout-divider") === "1";
         const detailText = normalizeText(node.textContent || "");
         const detailRect = node.getBoundingClientRect();
@@ -52059,6 +52321,7 @@
     syncAiAnimationProcessingStateClasses();
     styleAiAnimationChromaColorRows(postSection);
 
+    syncAiSequencePanelEntryPresentation(postSection);
     const eraseButton = Array.from(postSection.querySelectorAll("button"))
       .find((button) => button instanceof HTMLButtonElement && isVisible(button) && normalizeText(button.textContent || "") === "\u64e6\u9664");
     const repairButton = Array.from(postSection.querySelectorAll("button"))
@@ -52132,7 +52395,7 @@
     if (!(postSection instanceof HTMLElement)) return;
     postSection.setAttribute("data-novaflow-ai-post-section", "1");
     postSection.setAttribute("data-novaflow-ai-post-collapsed", AI_ANIMATION_COLLAPSE_STATE.post ? "1" : "0");
-    const postHeading = ensureAiAnimationCollapseHeading(postSection, "post", "\u5904\u7406\u5de5\u5177", ["\u540e\u5904\u7406\u5de5\u5177"]);
+    const postHeading = ensureAiAnimationCollapseHeading(postSection, "post", "视频处理", ["\u5904\u7406\u5de5\u5177", "\u540e\u5904\u7406\u5de5\u5177"]);
     markAiAnimationPostBodyItems(postSection, postHeading);
     primeAiAnimationPostLayoutMarkers(postSection);
     markAiAnimationPostLayout(postSection);
@@ -53746,17 +54009,17 @@
     const existing = root.querySelector('[data-novaflow-ai-post-section="1"]');
     if (existing instanceof HTMLElement) return existing;
     const readRect = createScopedClientRectReader();
-    const postLabels = ["\u5904\u7406\u5de5\u5177", "\u540e\u5904\u7406\u5de5\u5177"];
+    const postLabels = ["视频处理", "\u5904\u7406\u5de5\u5177", "\u540e\u5904\u7406\u5de5\u5177"];
     const heading = postLabels
       .map((label) => findAiAnimationTextElement(root, label))
       .find((candidate) => candidate instanceof HTMLElement);
     if (!(heading instanceof HTMLElement)) return null;
     const postTokens = [
       ...postLabels,
-      "\u89c6\u9891\u8272\u5f69\u4fee\u590d",
-      "AI\u62a0\u56fe",
+      "\u989c\u8272\u6821\u6b63",
+      "\u89c6\u9891\u62a0\u56fe",
       "\u8272\u952e\u62a0\u56fe",
-      "\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167"
+      "\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167"
     ];
     for (let node = heading.parentElement; node instanceof HTMLElement && node !== root; node = node.parentElement) {
       const rect = readRect(node);
@@ -53790,7 +54053,7 @@
       "\u4e3b\u6a21\u578b",
       "LORA",
       "\u540e\u5904\u7406\u5de5\u5177",
-      "\u5904\u7406\u5de5\u5177"
+      "视频处理"
     ];
     const cloudTokens = [
       "\u9009\u62e9\u670d\u52a1\u5546",
@@ -55733,7 +55996,7 @@
     if (!document.body.classList.contains("novaflow-ai-animation-section-layers")) return;
     ensureAiAnimationReferenceDragCapture();
     const labelTexts = [
-      "\u81ea\u5b9a\u4e49\u8272\u5f69\u53c2\u7167",
+      "\u4e0a\u4f20\u8272\u5f69\u6821\u6b63\u53c2\u7167",
       "\u53c2\u8003\u56fe",
       "\u9996\u5e27",
       "\u5c3e\u5e27",
@@ -55922,7 +56185,7 @@
         nfAnimationPerfRunLayoutStep("applyAiAnimationSectionLayers", "postSectionLayers", () => {
           postSection.setAttribute("data-novaflow-ai-post-section", "1");
           postSection.setAttribute("data-novaflow-ai-post-collapsed", AI_ANIMATION_COLLAPSE_STATE.post ? "1" : "0");
-          const postHeading = ensureAiAnimationCollapseHeading(postSection, "post", "\u5904\u7406\u5de5\u5177", ["\u540e\u5904\u7406\u5de5\u5177"]);
+          const postHeading = ensureAiAnimationCollapseHeading(postSection, "post", "视频处理", ["\u5904\u7406\u5de5\u5177", "\u540e\u5904\u7406\u5de5\u5177"]);
           markAiAnimationPostBodyItems(postSection, postHeading);
           primeAiAnimationPostLayoutMarkers(postSection);
           markAiAnimationPostLayout(postSection);
@@ -63923,6 +64186,7 @@
     syncTopbarExportMenuItemState(button, availability);
     if (isAifxTopbarExportContext() || isNovaflowAifxSecondaryActiveContext()) markNovaflowAifxExportIntent();
     if (availability.allowed) {
+      if (deferAiSequenceCutoutExportUntilSaved(event, button)) return;
       if (isNovaflowArtExportContextActive()) {
         event.preventDefault();
         event.stopPropagation();
@@ -64075,7 +64339,7 @@
   }
 
   function getAiSequenceColorStabilizeBusyNode() {
-    const busyText = "\u89c6\u9891\u8272\u5f69\u4fee\u590d\u5904\u7406\u4e2d\uff0c\u8bf7\u7a0d\u5019...";
+    const busyText = "\u989c\u8272\u6821\u6b63\u5904\u7406\u4e2d\uff0c\u8bf7\u7a0d\u5019...";
     const nodes = Array.from(document.querySelectorAll("div"));
     for (const node of nodes) {
       if (!(node instanceof HTMLElement)) continue;
@@ -64086,7 +64350,7 @@
   }
 
   function syncAiSequenceColorStabilizeOverlayLayering() {
-    const busyMessage = "\u89c6\u9891\u8272\u5f69\u4fee\u590d\u5904\u7406\u4e2d\uff0c\u8bf7\u7a0d\u5019...";
+    const busyMessage = "\u989c\u8272\u6821\u6b63\u5904\u7406\u4e2d\uff0c\u8bf7\u7a0d\u5019...";
     syncNovaflowGlobalBusyOverlay(
       "color-stabilize",
       busyMessage,
@@ -75831,6 +76095,7 @@
   }
 
   function bootstrapEarlyRuntime() {
+    bindAiSequenceCutoutFailureRecovery();
     installNovaflowSkeletonExportCanvasCompatibility();
     installNFAnimationPerfProbe();
     installNFDesktopPerfProbe();

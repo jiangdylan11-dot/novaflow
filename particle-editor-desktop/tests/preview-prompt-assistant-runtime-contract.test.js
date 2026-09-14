@@ -11,7 +11,7 @@ assert.match(source, /creationflags=PROMPT_ASSISTANT_CREATION_FLAGS/);
 assert.match(source, /NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH/);
 assert.match(source, /NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_TYPE/);
 assert.match(source, /available = bool\(payload\.get\("enabled"\) or payload\.get\("reverseModelEnabled"\)\)/);
-assert.match(source, /finally:\s+if static_image_reverse or \(minimax_h3_reverse and not h3_cleanup_done\):\s+_stop_prompt_assistant_process\(\)/);
+assert.match(source, /finally:\s+if reverse_model_only or \(minimax_h3_reverse and not h3_cleanup_done\):\s+_stop_prompt_assistant_process\(\)/);
 assert.match(source, /timeout=180 if _is_prompt_assistant_minimax_h3_reverse\([\s\S]*?else 300,/);
 assert.match(source, /raw_h3_reverse = _is_prompt_assistant_minimax_h3_reverse\([\s\S]*?try:\s+reverse_payload = _prompt_assistant_reverse_payload\(request\)[\s\S]*?finally:\s+if raw_h3_reverse:\s+with PROMPT_ASSISTANT_LOCK:\s+_stop_prompt_assistant_process\(\)/);
 assert.match(source, /_stop_owned_novaflow_admin_server\(\)/);

@@ -16,8 +16,10 @@ import traceback
 from difflib import SequenceMatcher
 from pathlib import Path
 from prompt_assistant.h3_prompt_enhance import (
+    compile_action_phases as compile_h3_action_phases,
     INSTRUCTION as H3_PROMPT_ENHANCE_INSTRUCTION,
     validate_enhancement as validate_h3_prompt_enhancement,
+    validate_format as validate_h3_five_sections,
 )
 
 from prompt_assistant.art_prompt_contract import (
@@ -6731,11 +6733,60 @@ def minimax_h3_faithful_rich_primary_instruction() -> str:
     )
 
 
+def minimax_h3_repair_bounded_visual_slots(raw_output: str, generate_missing) -> str:
+    """Complete only missing/invalid slots from the same image, once.
+
+    Existing complete facts stay model-owned and unchanged. No prose fallback
+    or invented defaults can satisfy a missing slot.
+    """
+    try:
+        return minimax_h3_bounded_visual_slots_to_rich(raw_output)
+    except VisualContractError as original_error:
+        text = str(raw_output).split(MINIMAX_H3_RICH_VISUAL_STOP_MARKER, 1)[0].strip()
+        limits = {"S": 30, "R": 35, "E": 18, "L": 22, "C": 15}
+        values, seen = {}, set()
+        for part in re.split(r"[|｜\r\n]+", text):
+            match = re.fullmatch(r"\s*([SRELC])\s*[:：]\s*(.+?)\s*", part)
+            if not match:
+                continue
+            tag, value = match[1], match[2].strip("；;。")
+            if tag in seen:
+                values.pop(tag, None)
+            elif 0 < len(value) <= limits[tag] and re.search(r"[\u4e00-\u9fffA-Za-z0-9]", value):
+                values[tag] = value
+            seen.add(tag)
+        if not values:
+            raise original_error
+        # The final partial field may have been cut off together with the
+        # missing slots. Re-observe it rather than treating a fragment as fact.
+        final = re.search(r"(?:^|[|｜\r\n])\s*([SRELC])\s*[:：][^|｜\r\n]+$", text)
+        if final and MINIMAX_H3_RICH_VISUAL_STOP_MARKER not in str(raw_output):
+            values.pop(final[1], None)
+        missing = [tag for tag in limits if tag not in values]
+        if not missing:
+            raise original_error
+        descriptions = {"S": "主体身份、发色、身体状态与姿态", "R": "具体动作及可见接触关系", "E": "环境与背景结构", "L": "媒介风格、光线与主色", "C": "景别、视角与景深"}
+        instruction = (
+            "重新观察同一张参考图，补全以下缺失字段。只写直接可见事实，不补写不可见内容或年龄推断。\n"
+            "只输出下列标签，每项一行，使用中文短语。不要标题、解释或重复其它字段：\n"
+            + "\n".join(f"{tag}:{descriptions[tag]}，最多{limits[tag]}字" for tag in missing)
+            + f"\n最后另起一行输出 {MINIMAX_H3_RICH_VISUAL_STOP_MARKER}"
+        )
+        repaired = str(generate_missing(instruction)).split(MINIMAX_H3_RICH_VISUAL_STOP_MARKER, 1)[0]
+        additions = []
+        for part in re.split(r"[|｜\r\n]+", repaired):
+            match = re.fullmatch(r"\s*([SRELC])\s*[:：]\s*(.+?)\s*", part)
+            if match and match[1] in missing:
+                additions.append(f"{match[1]}:{match[2]}")
+        merged = "\n".join([f"{tag}:{value}" for tag,value in values.items()] + additions)
+        return minimax_h3_bounded_visual_slots_to_rich(merged)
+
+
 def minimax_h3_bounded_visual_slots_to_rich(raw_output: str) -> str:
     """Turn two closed envelopes with five fact slots into the rich skeleton.
 
     This is a structural projection only: every returned value is copied from
-    a complete model-owned slot.  Missing, reordered, duplicated or oversized
+    a complete model-owned slot.  Missing, duplicated or oversized
     slots fail closed.  The legacy five-section input remains accepted for
     deterministic fixtures and already-produced cached values.
     """
@@ -6747,8 +6798,6 @@ def minimax_h3_bounded_visual_slots_to_rich(raw_output: str) -> str:
     if marker_position >= 0:
         text = text[:marker_position].rstrip()
     text = re.sub(r"^```[^\r\n]*[\r\n]+|[\r\n]+```$", "", text).strip()
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-
     def slot_diagnostics(leaf: str, slot_count: int) -> dict:
         return {
             "errorCode": "h3-bounded-visual-slots-invalid",
@@ -6757,33 +6806,26 @@ def minimax_h3_bounded_visual_slots_to_rich(raw_output: str) -> str:
             "expectedSlotCount": len(MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS),
         }
 
-    recognized_slots = len(re.findall(r"(?:^|[|｜])\s*[SRELC]\s*[:：]", text, re.M))
-    if len(lines) != len(MINIMAX_H3_BOUNDED_VISUAL_LINE_TAGS):
+    # Labels, not their physical order or line wrapping, own the fact values.
+    parts = [part.strip() for part in re.split(r"[|｜\r\n]+", text) if part.strip()]
+    slots = []
+    invalid_part = False
+    for part in parts:
+        if re.fullmatch(r"[AV]\s*[:：]?", part):
+            continue
+        match = re.fullmatch(r"([SRELC])\s*[:：]\s*(.+)", part)
+        if match is None:
+            invalid_part = True
+        else:
+            slots.append((match[1], match[2]))
+    values = dict(slots)
+    if invalid_part or len(slots) != 5 or set(values) != set(MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS):
         raise VisualContractError(
-            "MiniMax H3 闭合视觉槽位输出不完整",
+            "MiniMax H3 视觉槽位缺失、重复或无法识别",
             code="h3-bounded-visual-slots-invalid",
             semantic=True,
-            diagnostics=slot_diagnostics("slot_count", recognized_slots),
+            diagnostics=slot_diagnostics("slot_count" if len(slots) != 5 or len(values) != 5 else "slot_labels", len(slots)),
         )
-
-    envelope_patterns = (
-        r"A\s*[|｜]\s*S\s*[:：]\s*([^|｜]+?)\s*[|｜]\s*R\s*[:：]\s*([^|｜]+)",
-        r"V\s*[|｜]\s*E\s*[:：]\s*([^|｜]+?)\s*[|｜]\s*L\s*[:：]\s*([^|｜]+?)\s*[|｜]\s*C\s*[:：]\s*([^|｜]+)",
-    )
-    matches = [re.fullmatch(pattern, line) for pattern, line in zip(envelope_patterns, lines)]
-    if any(match is None for match in matches):
-        leaf = "slot_count" if recognized_slots != len(MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS) else "slot_order"
-        raise VisualContractError(
-            "MiniMax H3 闭合视觉槽位顺序无效",
-            code="h3-bounded-visual-slots-invalid",
-            semantic=True,
-            diagnostics=slot_diagnostics(leaf, recognized_slots),
-        )
-
-    values = dict(zip(
-        MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS,
-        [*matches[0].groups(), *matches[1].groups()],
-    ))
     limits = {"S": 30, "R": 35, "E": 18, "L": 22, "C": 15}
     for expected_tag in MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS:
         value = clean_text(values[expected_tag]).strip("；;。")
@@ -6802,18 +6844,19 @@ def minimax_h3_bounded_visual_slots_to_rich(raw_output: str) -> str:
                 ),
             )
         values[expected_tag] = value
+    values = {key: json.dumps(value, ensure_ascii=False) for key, value in values.items()}
     return (
         "[风格设定]\n"
-        f"风格与完成质感 = \"{values['L']}\"\n\n"
+        f"风格与完成质感 = {values['L']}\n\n"
         "[主体物品]\n"
-        f"主体1 = \"{values['S']}\"\n"
-        f"可见接触关系 = \"{values['R']}\"\n\n"
+        f"主体1 = {values['S']}\n"
+        f"可见接触关系 = {values['R']}\n\n"
         "[环境背景]\n"
-        f"环境与层次 = \"{values['E']}\"\n\n"
+        f"环境与层次 = {values['E']}\n\n"
         "[光线与色彩]\n"
-        f"光线色彩与材质 = \"{values['L']}\"\n\n"
+        f"光线色彩与材质 = {values['L']}\n\n"
         "[拍摄参数]\n"
-        f"镜头与构图 = \"{values['C']}\""
+        f"镜头与构图 = {values['C']}"
     )
 
 
@@ -6984,7 +7027,7 @@ MINIMAX_H3_RICH_PARTIAL_EXPOSURE_PATTERN = re.compile(
 
 def minimax_h3_rich_primary_subject_entities(
     subject_pairs: list[tuple[str, str]],
-) -> tuple[list[dict], list[str], list[str]]:
+) -> tuple[list[dict], list[str], list[str], int]:
     """Map verified rich subject keys into canonical entity and relation slots."""
 
     subjects: dict[int, dict] = {}
@@ -7093,6 +7136,7 @@ def minimax_h3_rich_primary_subject_entities(
     if not subjects and loose_subject_values:
         subject(1)["name"] = loose_subject_values.pop(0)
     entities: list[dict] = []
+    visible_person_slots = 0
     for index in sorted(subjects):
         entity = subjects[index]
         if not entity["name"]:
@@ -7121,7 +7165,10 @@ def minimax_h3_rich_primary_subject_entities(
                 for item in entity[list_key]
                 if item and not minimax_h3_rich_fact_is_sensitive(item)
             ))[:12]
-        entity.pop("_person", None)
+        # Count the observed subject evidence before classification separates
+        # appearance into ordinary and restricted fields. Re-scanning only the
+        # filtered name/appearance loses evidence from body/pose slots.
+        visible_person_slots += int(bool(entity.pop("_person", False)))
         entities.append(entity)
     relations = list(dict.fromkeys(
         minimax_h3_neutralize_rich_adult_assertion(item)
@@ -7133,7 +7180,7 @@ def minimax_h3_rich_primary_subject_entities(
     ))[:12]
     if relations and entities and not entities[0].get("action"):
         entities[0]["action"] = "；".join(relations[:3])
-    return entities, relations, sensitive_values
+    return entities, relations, sensitive_values, visible_person_slots
 
 
 def minimax_h3_project_faithful_rich_contract(
@@ -7156,7 +7203,7 @@ def minimax_h3_project_faithful_rich_contract(
         for header in MINIMAX_H3_RICH_VISUAL_SECTIONS
     }
     subject_pairs = section_pairs["[主体物品]"]
-    entities, relations, sensitive_values = minimax_h3_rich_primary_subject_entities(subject_pairs)
+    entities, relations, sensitive_values, visible_person_slots = minimax_h3_rich_primary_subject_entities(subject_pairs)
     if not entities:
         raise VisualContractError(
             "MiniMax H3 富视觉主分析缺少可验证主体",
@@ -7179,6 +7226,7 @@ def minimax_h3_project_faithful_rich_contract(
     body_exposure = (
         "full" if MINIMAX_H3_RICH_BODY_EXPOSURE_PATTERN.search(subject_text)
         else "partial" if MINIMAX_H3_RICH_PARTIAL_EXPOSURE_PATTERN.search(subject_text)
+        else "uncertain" if "nudity" in signals
         else "none"
     )
     if body_exposure in {"partial", "full"} and "nudity" not in signals:
@@ -7266,11 +7314,7 @@ def minimax_h3_project_faithful_rich_contract(
             "age_assessment": (
                 "young_or_minor_indicators" if explicit_minor else "age_unverifiable"
             ),
-            "visible_person_count": sum(
-                1 for entity in entities if MINIMAX_H3_RICH_PERSON_PATTERN.search(
-                    " ".join([entity["name"], *entity["appearance"]])
-                )
-            ),
+            "visible_person_count": visible_person_slots,
             "signals": signals,
             "sensitive_visible_facts": minimax_h3_pack_verified_rich_facts(sensitive_values[:12]) if sensitive_values else [],
         },
@@ -8764,6 +8808,57 @@ def is_ui_design_prompt_payload(payload: dict) -> bool:
     return surface in {"ui", "ui-design", "uidesign"} or purpose.startswith("ui-design")
 
 
+
+ART_SEMANTIC_FUSION_RULES = '你是图像提示词的视觉编辑。将完整底稿和补充要求融合成唯一的最终画面。\n先理解每项修改涉及的段落，再通读全篇消除冲突。新要求覆盖冲突旧描述；未被要求改变的身份、人数、年龄、发色、服饰、姿态、物品、画风和构图完整保留。\n修改场景时同步环境段落、光线和景深。例如白底改室外，必须替换白底、无其他物体、后景无层次等旧设定，写出适合主体的具体室外环境，不能在风格段追加室外而保留旧背景。环境细节应可辨，不能又完全虚化。\n要求增加人物细节时，必须在主体段落补充与已有角色一致的五官、发丝、手部、服饰或配饰细节，不只改风格或背景。不能改变原来的动作或暴露程度。\n质量、精美度、丰富感等要求，落实为具体的纹理、材质反光、光影过渡、空间层次或色彩关系，不能照抄提升画面质量等口号。结合原画风，不能把水彩、漫画、像素画擅自改成摄影或三维渲染。\n每项补充要求都必须体现在相关正文中；保留原段落标题，未受影响的句子尽量原样保留。没有标题时保持自然段。\n完成后检查每项要求是否已落实、是否有冲突旧描述残留、是否遗漏未修改细节。只输出最终完整提示词，不输出修改建议、分析过程、用户附加要求段落或原文与新版并列。不添加未提供的图片事实。姿态可能写在环境段里；更换背景也不能丢掉站立、坐姿等原动作。人物细节要求必须在主体物品段产生至少两处具体新细节，不允许该段完全照抄。'
+
+def art_semantic_fusion_input(source, requirements):
+    text = str(source or "").strip()
+    carrier = re.search(r"\n\s*\[用户附加要求\]\s*\n[\s\S]*?用户补充要求（只作为最终提示词约束，不作为图片可见事实）\s*[:：]([\s\S]*)$", text)
+    return (text[:carrier.start()].strip() if carrier else text,
+            ordinary_art_user_change_instruction(requirements) or (carrier.group(1).rstrip('"” \r\n') if carrier else ""))
+
+def finalize_art_semantic_fusion(candidate, instruction):
+    if (not re.search(r"(?:增加|添加|改为|改成|换成|更换|替换).{0,8}(?:室外|户外)", instruction)
+            or not re.search(r"质量|精美|丰富|细节", instruction)
+            or re.search(r"(?:保持|保留).{0,12}(?:虚化|浅景深)", instruction)
+            or not re.search(r"室外|户外|花园|庭院|森林|草地|天空|街道|海滩", candidate)):
+        return candidate
+    return re.sub(r"背景(?:完全|彻底|全部)虚化(?:浅景深)?", "背景适度虚化，保留室外环境与空间层次", candidate)
+
+
+def art_semantic_fusion_failure(source, instruction, candidate):
+    if not candidate:
+        return "未返回完整提示词"
+    if ordinary_art_retention_compact(source) == ordinary_art_retention_compact(candidate):
+        return "" if not instruction or ordinary_art_instruction_allows_unchanged(instruction) else "未实际融合修改要求"
+    if re.search(r"用户补充要求（只作为最终提示词约束|\[用户附加要求\]|不作为图片可见事实", candidate):
+        return "仍在照搬补充要求"
+    def sections(value):
+        return dict((m[0], m[1].strip()) for m in re.findall(r"(?:^|\n)\s*\[([^\]\n]+)\]\s*\n([\s\S]*?)(?=\n\s*\[|$)", value))
+    before, after = sections(source), sections(candidate)
+    for title in before:
+        if not after.get(title):
+            return "缺少原段落：" + title
+    for pattern, title in [
+        (r"(?:增加|添加|修改|更换|改为|改成|替换|丰富|调整).{0,12}(?:背景|场景)|(?:背景|场景).{0,12}(?:改为|改成|换成)", "环境背景"),
+        (r"(?:增加|丰富|增强|细化|完善).{0,8}(?:人物|角色|主体).{0,6}细节|(?:人物|角色).{0,6}(?:更细致|更精细)", "主体物品")]:
+        if re.search(pattern, instruction) and title in before and not ordinary_art_richness_visual_change(before[title], after.get(title, "")):
+            return "未落实对应段落：" + title
+    if re.search(r"(?:增加|添加|改为|改成|换成|更换|替换).{0,8}(?:室外|户外)", instruction):
+        if re.search(r"纯白色?背景|无其他物体|后景无层次", candidate):
+            return "室外背景仍与白底或空背景冲突"
+        if not re.search(r"室外|户外|花园|庭院|森林|花海|草地|山谷|天空|街道|海滩|山林|屋外", after.get("环境背景", candidate)):
+            return "缺少具体室外背景"
+    failure = ordinary_art_retention_failure(source, instruction, candidate) or ordinary_art_core_redefinition_failure(source, instruction, candidate)
+    if failure:
+        return failure
+    if re.search(r"质量|精美|丰富|细节", instruction) and not ordinary_art_richness_visual_change(source, candidate):
+        return "仅追加泛化质量词"
+    for token in re.findall(r"__NOVAFLOW_[A-Z0-9_:-]+__|<(?:Picture|Video|Audio) [1-9]\d*>", source):
+        if token not in candidate:
+            return "遗漏资源引用"
+    return ""
+
 def is_ordinary_art_prompt_payload(payload: dict) -> bool:
     """Return whether optimizePrompt is using the ordinary still-image surface."""
 
@@ -10162,6 +10257,9 @@ def build_ordinary_art_patch_repair_prompt(
         + adult_context
         +
         "把整条要求作为一个完整编辑任务理解，不要按逗号、分号或句号拆成必须逐项绑定的 intent。"
+        "先分析完整底稿，再融合补充要求；丰富感、丰富度等开放目标应落实为底稿已有对象的具体视觉细节，"
+        "至少结合空间层次、材质纹理、光影过渡或色彩呼应中的两个维度，把成品描述合入相关片段。"
+        "禁止只追加更丰富、更高清等空泛词，也不得声称看到了未提供给本次文字任务的参考图。"
         f"一次要求可以用一个或多个精确 patch 共同完成，本轮最多 {bounded_patch_count} 项。"
         "若要求重定义核心人物、动作、构图或场景，可直接替换对应的旧片段；"
         "新要求与旧提示词冲突时，新要求拥有最高优先级；性别、人数、年龄、主体身份、动作、"
@@ -13923,6 +14021,32 @@ def ordinary_art_structured_requirement_clauses(requirements: str) -> list[str]:
     ]
 
 
+def ordinary_art_richness_visual_change(before: str, after: str) -> bool:
+    def meaningful(value):
+        return ordinary_art_retention_compact(re.sub(
+            r"(?:画面|视觉|整体|更加|更|丰富感|丰富度|丰富程度|丰富|高质量|高品质|高清|精美|精致|细腻|完美|优秀|提升|增加|增强|优化)", "", str(value or "")))
+    return len(meaningful(after)) >= 8 and meaningful(before) != meaningful(after)
+
+
+def ordinary_art_richness_fact_coverage(clause: str, fact: str, direction: str = "target"):
+    target = re.sub(r"\s+", "", str(clause or ""))
+    target = re.sub(r"^(?:参考图|原图|图片)(?:中|里)?的?", "", target)
+    if not re.fullmatch(r"(?:(?:画面|视觉|整体|细节)的?)?(?:丰富感|丰富度|丰富程度|更丰富)", target):
+        return None
+    if direction == "decrease":
+        return None
+    if re.search(r"(?:^|[，,；;。])\s*(?:请|建议|应该|需要|希望|增加|提升|增强|优化|更丰富|不丰富|缺少层次)", fact):
+        return False
+    dimensions = [
+        r"(?:前景|中景|远景|前中后景|空间|景深|遮挡).{0,24}(?:层次|递进|分明|纵深|清晰|虚实|分离)",
+        r"(?:材质|金属|木纹|木材|木质|陶瓷|织物|布料|石材|表面).{0,24}(?:纹理|粗糙|反射|磨损|颗粒|纤维|细节)",
+        r"(?:光影|光线|明暗|高光|阴影|反光).{0,24}(?:过渡|渐变|柔和|层次|细腻|自然|受控)",
+        r"(?:色彩|颜色|冷暖|主辅色).{0,24}(?:呼应|变化|层次|对比|协调|统一)",
+        r"(?:笔触|发丝|发束|边缘|轮廓).{0,24}(?:细腻|疏密|清晰|柔和|自然|虚实)",
+    ]
+    return sum(bool(re.search(pattern, fact)) for pattern in dimensions) >= 2
+
+
 def ordinary_art_structured_requirement_fact_covers(
     clause: str,
     applied_fact: str,
@@ -13931,6 +14055,9 @@ def ordinary_art_structured_requirement_fact_covers(
 ) -> bool:
     """Require a grounded model mapping to retain a distinctive clause anchor."""
 
+    richness_coverage = ordinary_art_richness_fact_coverage(clause, applied_fact, direction)
+    if richness_coverage is not None:
+        return richness_coverage
     clause_compact = ordinary_art_retention_compact(clause)
     fact_compact = ordinary_art_retention_compact(applied_fact)
     if not clause_compact or not fact_compact:
@@ -15041,6 +15168,20 @@ def apply_ordinary_art_patch_output(
     merged = str(raw_prompt or "")
     for start, end, replacement in reversed(ordered):
         merged = f"{merged[:start]}{replacement}{merged[end:]}"
+    richness_specs = ordinary_art_structured_requirement_clause_specs(requirements)
+    if len(richness_specs) == 1 and ordinary_art_richness_fact_coverage(
+        richness_specs[0][0], "", richness_specs[0][1]
+    ) is not None and not any(ordinary_art_richness_visual_change(raw_prompt[start:end], replacement) for start, end, replacement in ordered):
+        if isinstance(diagnostics, dict):
+            diagnostics["failureReason"] = "patch-richness-without-visual-details"
+        return ""
+    # Quality-only enrichment cannot authorize dropping an existing constraint,
+    # even when it occurs inside a single unlabelled paragraph.
+    if len(richness_specs) == 1 and ordinary_art_richness_fact_coverage(richness_specs[0][0], "", richness_specs[0][1]) is not None:
+        for sentence in re.split(r"(?<=[。！？!?])|\n", raw_prompt):
+            sentence = sentence.strip()
+            if re.match(r"^(?:保持|保留|不得|不要|不增加|禁止|避免|必须)", sentence) and ordinary_art_retention_compact(sentence) not in ordinary_art_retention_compact(merged):
+                merged = f"{merged.rstrip()}\n{sentence}"
     if ordinary_art_retention_compact(merged) == ordinary_art_retention_compact(raw_prompt):
         if isinstance(diagnostics, dict):
             diagnostics["failureReason"] = "patch-merged-no-op"
@@ -16634,6 +16775,116 @@ class PromptAssistant:
             "promptSchema": ART_PROMPT_SCHEMA_VERSION,
         }
 
+    def optimize_h3_five_sections(self, source, requirements, mode, duration):
+        # Do not feed the retired renderer field instructions back into the model.
+        user_requirement = minimax_h3_prompt_enhance_user_requirement(requirements, source)
+        inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements)
+        labels = inventory.group(0) if inventory else ""
+        media_tokens = sorted(set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory.group(1) if inventory else source)))
+        rules = H3_PROMPT_ENHANCE_INSTRUCTION + "\n综合原提示词与补充要求，重写整体设定、动作进程和约束。补充要求明确修改的属性以新要求为准，删除冲突的旧设定，其余事实保持。程序只负责显示格式、时间和媒体绑定。"
+        dialogue_lines = re.findall(r'[（(]S[1-9]\d*[）)]\s*[:：]\s*[“"][^”"]+[”"]', source)
+        if dialogue_lines:
+            rules += "\n按原台词安排说话动作与口型，不改写台词。"
+        template = "<|im_start|>system\n" + rules + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+        bindings = (
+            "本次只有一张图 <Picture 1>，它是起始首帧。只可引用 <Picture 1>，绝对没有第二张图或尾帧图。"
+            if mode.upper() == "I2VA" else
+            "<Picture 1> 是起始首帧，<Picture 2> 是结束尾帧。保持两个端点的独立作用。"
+            if mode.upper() == "FL2VA" else
+            "本次可用参考媒体只有：" + "、".join(media_tokens) + "。保留每个标签的原作用，不得添加其他标签。" if media_tokens else
+            "本次没有上传任何参考媒体。禁止出现 <Picture N>、<Video N>、<Audio N> 标签，不得添加首帧、尾帧或参考图绑定。"
+        )
+        request = (
+            f"综合分析原提示词与补充要求，写出优化后的{duration}秒视频创意。{bindings}\n"
+            "只输出下面五个标签及对应内容，每个标签独占一行：\n"
+            "概述：融合新要求后的主体、场景、风格、光线及镜头设定\n"
+            "起始：具体起始动作、方向与幅度\n递进：动作如何发展、节奏如何变化\n收束：如何结束或衔接下一轮\n"
+            "约束：融合后应遵守的限制，分行编号\n"
+            "替换示例内容，不要原样输出示例。概述保留未被修改的外观、材质、环境等关键细节。每个动作阶段写1-2句。"
+            "必须把补充要求落实到概述或对应动作中，不能只附在约束末尾。明确的新要求覆盖冲突旧设定，不并列保留旧版本。"
+            "不要复制原文再追加一段，不要三次复制同一句动作。"
+            "保留未被补充要求修改的静止、待机、循环、固定机位等明确意图；只有新要求明确提出时才改变对应意图，不新增无关事件。"
+            "若要求仅呼吸待机，只描述胸肩随吸气微幅起伏、呼气回落；头部朝向、手臂和身体位置保持不变，禁止把呼吸写成抬头、转头或抬手。若要求完全静止则保持静止。"
+            "不要添加图片、视频、音频标签；原有引用只有在确实需要时原样保留。\n"
+            f"{labels}\nSource prompt:\n{source}\nUser requirement:\n{user_requirement}"
+        )
+        if dialogue_lines:
+            request += (
+                "\n本次已提供对白，三阶段应安排对应说话者开始说话、继续说话、说完的过程。原句由程序完整保留，不要改写：\n" + "\n".join(dialogue_lines)
+            )
+        failure = ""
+        for attempt in range(2):
+            output = self.generate(
+                request + (f"\n请重新融合内容，完整输出概述、起始、递进、收束、约束。上次问题：{failure}\n上次输出：\n{output}" if attempt else ""),
+                llama_template=template, max_length=1280, seed=attempt + 1,
+                do_sample=bool(attempt), temperature=0.25 if attempt else 0.0,
+                trace_label="minimaxH3PromptRepair" if attempt else "minimaxH3PromptEnhance",
+            )
+            try:
+                positive = (
+                    validate_h3_five_sections(output, mode, duration, source, requirements)
+                    if output.strip().startswith("【任务定位】") else
+                    compile_h3_action_phases(output, mode, duration, source, requirements, user_requirement)
+                )
+                validate_h3_prompt_enhancement(positive, source, user_requirement)
+                self.status = "模型可用"
+                return {"positivePrompt": positive, "negativePrompt": "", "rawOutput": output}
+            except ValueError as error:
+                failure = str(error)
+                log_prompt_assistant_event("minimax_h3_prompt_enhance_failed", command="optimizePrompt", mode=mode, attempt=attempt + 1, failure=failure[:240])
+        raise ValueError(f"H3 提示词优化失败：{failure}。原提示词未修改。")
+
+    def fuse_art_prompt(self, payload, source, requirements):
+        source, instruction = art_semantic_fusion_input(source, requirements)
+        template = "<|im_start|>system\n" + ART_SEMANTIC_FUSION_RULES + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+        preserve = list(dict.fromkeys(re.findall(r"成年|女性|男性|站立|坐姿|跪姿|俯卧|仰卧|右手|左手|全身|仰视", source)))
+        for requested, category in [(r"男|女|性别", r"女性|男性"), (r"动作|姿势|姿态|站|坐|躺|趴|跪",r"站立|坐姿|跪姿|俯卧|仰卧"), (r"右手|左手|手臂|抬手",r"右手|左手"), (r"构图|镜头|全身|半身|特写|俯视|仰视|平视|景别",r"全身|仰视")]:
+            if re.search(requested, instruction):
+                preserve = [word for word in preserve if not re.search(category, word)]
+        request = (
+            "必须保留的原设定（除非用户明确要求替换）：" + "、".join(word for word in preserve if word not in instruction) + "\n完整底稿：\n" + source + "\n\n补充要求（最高优先级）：\n" + (instruction or "保留核心设定，修复矛盾，补足适合原画风的具体视觉细节。")
+            + ("\n其他调用约束（以用户补充要求为优先，不要照抄约束文字）：\n" + requirements if requirements and requirements != instruction else "")
+            + "\n\n只输出完整中文正向提示词，保留原段落标题。不要输出 JSON、负向提示词或解释。各段先保留未修改的原有细节，再融入对应修改，避免无关扩写。"
+        )
+        if re.search(r"(?:增加|丰富|增强|细化|完善).{0,8}(?:人物|角色|主体).{0,6}细节", instruction):
+            request += "\n本次验收：主体物品段在完整保留原人物的同时，必须新增至少两处具体人物细节（例如五官、发丝、手指或服饰纹理），不能原样复制。"
+        if re.search(r"(?:室外|户外)", instruction):
+            request += "\n本次验收：环境背景段必须写出具体室外环境，删除冲突的白底、无其他物体、后景无层次，保留原人物姿态。光线及景深与新环境一致。"
+        if payload.get("nsfw") is True:
+            request += "\n成人内容上下文：用户已开启 NSFW。保持未要求修改的性别、成年身份、裸体状态、身体姿势与人物关系；任何未成年人相关内容仍然禁止。"
+        failure = ""
+        output = ""
+        for attempt in range(2):
+            repair = ("\n上次融合未通过检查：" + failure + "。请修复遗漏或冲突，重新输出完整提示词。\n上次结果：\n" + output) if attempt else ""
+            output = self.generate(request + repair, llama_template=template,
+                                   max_length=min(4096, max(1024, len(source) * 2)),
+                                   seed=attempt + 1, do_sample=False, temperature=0.0,
+                                   trace_label="artSemanticFusionRepair" if attempt else "artSemanticFusion")
+            positive_output = output
+            patch_failure = ""
+            # Some existing local model templates still emit the legacy patch envelope.
+            # Accept its format only after exact merging and the same fusion checks.
+            if str(output).lstrip().startswith("{"):
+                try:
+                    envelope = json.loads(output)
+                except (ValueError, TypeError):
+                    envelope = None
+                if isinstance(envelope, dict) and "patches" in envelope:
+                    diagnostics = {}
+                    positive_output = apply_ordinary_art_patch_output(source, requirements, output, diagnostics)
+                    patch_failure = "" if positive_output else str(diagnostics.get("failureReason") or "patch-json-or-anchor-invalid")
+            positive = finalize_art_semantic_fusion(normalize_ordinary_art_positive_only_output(positive_output), instruction)
+            if payload.get("nsfw") is True and ordinary_art_core_affirmative_minor_present(positive):
+                raise ValueError("提示词融合未通过内容检查，原提示词未修改")
+            failure = patch_failure or art_semantic_fusion_failure(source, instruction, positive)
+            if not failure:
+                negative = build_targeted_negative_prompt(source, positive, str(payload.get("negativePrompt") or "")) if ordinary_art_supports_negative_prompt(payload) else ""
+                self.status = "模型可用"
+                return {"positivePrompt": positive, "negativePrompt": negative, "rawOutput": positive, "editContract": "nf.art.semantic-fusion.v1"}
+        if failure.startswith(("missing-blocks:", "candidate-too-short:", "anchors-missing:")):
+            raise OrdinaryArtPromptRetentionError(failure)
+        raise OrdinaryArtPromptEditNotAppliedError(failure)
+
     def optimize_prompt(self, payload: dict) -> dict:
         is_minimax_h3 = is_minimax_h3_prompt_payload(payload)
         raw_prompt = (
@@ -16646,7 +16897,8 @@ class PromptAssistant:
                 or ""
             ).strip()
         )
-        requirements_limit = 12000 if is_minimax_h3 else 2000
+        # H3 requirements include the full source (up to 20k), protocol and appended user edits.
+        requirements_limit = 48000 if is_minimax_h3 else 2000
         requirements = clean_text(payload.get("requirements") or "")[:requirements_limit]
         minimax_h3_mode = minimax_h3_mode_from_payload(payload, requirements) if is_minimax_h3 else ""
         minimax_h3_duration = (
@@ -16654,6 +16906,8 @@ class PromptAssistant:
             if is_minimax_h3
             else None
         )
+        if is_minimax_h3:
+            return self.optimize_h3_five_sections(raw_prompt, requirements, minimax_h3_mode, minimax_h3_duration)
         is_animation = is_minimax_h3 or is_animation_prompt_payload(payload)
         is_ui_design = is_ui_design_prompt_payload(payload)
         is_create = not raw_prompt and not is_animation
@@ -16668,12 +16922,6 @@ class PromptAssistant:
         ordinary_art_user_instruction = (
             ordinary_art_user_change_instruction(requirements)
             if is_ordinary_art and not is_create else ""
-        )
-        ordinary_art_patch_edit = bool(
-            is_ordinary_art
-            and not is_create
-            and ordinary_art_user_instruction
-            and not ordinary_art_instruction_allows_unchanged(requirements)
         )
         ordinary_art_structured_recompile = is_ordinary_art_structured_recompile_payload(
             payload,
@@ -16802,7 +17050,7 @@ class PromptAssistant:
                 supports_negative=art_supports_negative,
                 nsfw_enabled=ordinary_art_nsfw_enabled,
             )
-        if ordinary_art_patch_edit:
+        if is_ordinary_art and not is_create:
             soft_edge_prompt = ordinary_art_soft_edge_edit(
                 raw_prompt, requirements,
                 prompt_schema=clean_text(payload.get("promptSchema") or ""),
@@ -16823,281 +17071,7 @@ class PromptAssistant:
                     "rawOutput": soft_edge_prompt,
                     "editContract": ORDINARY_ART_EDIT_CONTRACT,
                 }
-            patch_intents = ordinary_art_patch_intents(requirements)
-            if not patch_intents:
-                log_prompt_assistant_event(
-                    "ordinary_art_prompt_patch_rejected",
-                    command="ordinaryArtPromptPatch",
-                    failureReason="patch-requirement-empty",
-                    intentCount=len(patch_intents),
-                )
-                raise OrdinaryArtPromptEditNotAppliedError(
-                    "patch-requirement-empty"
-                )
-            patch_prompt = build_ordinary_art_patch_repair_prompt(
-                raw_prompt,
-                requirements,
-                "primary-local-edit",
-                ordinary_art_nsfw_enabled,
-            )
-            patch_failure = ""
-            patch_output = ""
-            merged_positive = ""
-            patch_base = raw_prompt
-            repair_required_unit_ids = []
-            cumulative_patch_count = 0
-            cumulative_target_chars = 0
-            patch_started = time.monotonic()
-            for attempt in range(2):
-                incremental_repair = bool(
-                    attempt > 0
-                    and patch_base != raw_prompt
-                    and repair_required_unit_ids
-                )
-                remaining_patch_count = 4 - cumulative_patch_count if incremental_repair else 4
-                remaining_target_chars = 320 - cumulative_target_chars if incremental_repair else 320
-                if incremental_repair and (
-                    remaining_patch_count <= 0 or remaining_target_chars <= 0
-                ):
-                    patch_failure = "patch-cumulative-budget-exhausted"
-                    break
-                patch_output = self.generate(
-                    patch_prompt if attempt == 0 else build_ordinary_art_patch_repair_prompt(
-                        patch_base,
-                        requirements,
-                        patch_failure or "patch-json-or-anchor-invalid",
-                        ordinary_art_nsfw_enabled,
-                        required_unit_ids=repair_required_unit_ids if incremental_repair else None,
-                        remaining_patch_count=remaining_patch_count,
-                        remaining_target_chars=remaining_target_chars,
-                    ) + (
-                        (
-                            "\n上一次补丁已通过结构、资源与硬约束校验，并已合并为本轮列出的完整底稿。"
-                            "不要重复已经完成的修改；只 patch 校验上下文指出的剩余冲突单元，"
-                            "使当前底稿与统一修改要求完全一致。现在只输出补充修正所需的严格 JSON。"
-                        )
-                        if incremental_repair else
-                        (
-                            f"\n上一次不合格 JSON（仅作反例，绝对不要复制）：\n"
-                            f"{clean_text(patch_output)[:4000]}\n"
-                            f"该反例失败原因：{clean_text(patch_failure or 'patch-json-or-anchor-invalid')[:160]}。"
-                            "请重新选择原文中的精确 target_quote，并输出不同的修正 JSON。"
-                            "target_quote 不需要复述用户要求，只需逐字来自应修改的原文片段。"
-                            "若用户说的是画面问题，replacement 必须描述该问题已经消失后的最终画面，"
-                            "不得再次出现原问题表述。现在只输出修正后的严格 JSON。"
-                        )
-                    ),
-                    max_length=ORDINARY_ART_PROMPT_PATCH_MAX_LENGTH,
-                    seed=1 + attempt,
-                    trace_label="ordinaryArtPromptPatch",
-                )
-                patch_diagnostics = {}
-                merged_positive = apply_ordinary_art_patch_output(
-                    patch_base,
-                    requirements,
-                    patch_output,
-                    patch_diagnostics,
-                    allowed_unit_ids=repair_required_unit_ids if incremental_repair else None,
-                    required_unit_ids=None,
-                    max_patch_count=remaining_patch_count,
-                    max_target_chars=remaining_target_chars,
-                )
-                log_prompt_assistant_event(
-                    "ordinary_art_prompt_patch_attempt",
-                    command="ordinaryArtPromptPatch",
-                    attempt=attempt + 1,
-                    accepted=bool(merged_positive),
-                    failureReason=clean_text(patch_diagnostics.get("failureReason") or ""),
-                    patchCount=int(patch_diagnostics.get("patchCount") or 0),
-                    targetChars=int(patch_diagnostics.get("targetChars") or 0),
-                    replacementChars=int(patch_diagnostics.get("replacementChars") or 0),
-                    intentCount=int(patch_diagnostics.get("intentCount") or len(patch_intents)),
-                    coveredIntents=list(patch_diagnostics.get("coveredIntents") or []),
-                    missingIntents=list(patch_diagnostics.get("missingIntents") or []),
-                    elapsedMs=round((time.monotonic() - patch_started) * 1000),
-                )
-                if not merged_positive:
-                    patch_failure = clean_text(
-                        patch_diagnostics.get("failureReason")
-                        or "patch-json-or-anchor-invalid"
-                    )
-                    if (
-                        attempt == 0
-                        and time.monotonic() - patch_started
-                        >= ORDINARY_ART_PROMPT_PATCH_RETRY_LATEST_SECONDS
-                    ):
-                        break
-                    continue
-                retention_failure = ordinary_art_patch_priority_retention_failure(
-                    raw_prompt,
-                    requirements,
-                    merged_positive,
-                )
-                application_failure = ordinary_art_change_application_failure(
-                    raw_prompt,
-                    requirements,
-                    merged_positive,
-                )
-                patch_failure = retention_failure or application_failure
-                deterministic_closure_diagnostics = {}
-                scoped_residual_core_failure = bool(
-                    not retention_failure
-                    and application_failure.startswith(
-                        "core-redefinition-incomplete:stale-"
-                    )
-                )
-                if scoped_residual_core_failure:
-                    total_model_target_chars = (
-                        cumulative_target_chars
-                        + int(patch_diagnostics.get("targetChars") or 0)
-                    )
-                    merged_with_closure = apply_ordinary_art_deterministic_mixed_pair_closure(
-                        raw_prompt,
-                        requirements,
-                        merged_positive,
-                        application_failure,
-                        deterministic_closure_diagnostics,
-                        max_unit_count=ORDINARY_ART_DETERMINISTIC_CLOSURE_MAX_UNITS,
-                        max_target_chars=(
-                            ORDINARY_ART_DETERMINISTIC_CLOSURE_MAX_TARGET_CHARS
-                            - total_model_target_chars
-                        ),
-                    )
-                    log_prompt_assistant_event(
-                        "ordinary_art_prompt_deterministic_closure",
-                        command="ordinaryArtPromptPatch",
-                        accepted=bool(merged_with_closure),
-                        failureReason=clean_text(
-                            deterministic_closure_diagnostics.get("failureReason") or ""
-                        ),
-                        unitCount=int(
-                            deterministic_closure_diagnostics.get("unitCount") or 0
-                        ),
-                        patchCount=int(
-                            deterministic_closure_diagnostics.get("patchCount") or 0
-                        ),
-                        targetChars=int(
-                            deterministic_closure_diagnostics.get("targetChars") or 0
-                        ),
-                        modelTargetChars=total_model_target_chars,
-                        elapsedMs=round((time.monotonic() - patch_started) * 1000),
-                    )
-                    if merged_with_closure:
-                        merged_positive = merged_with_closure
-                        retention_failure = ordinary_art_patch_priority_retention_failure(
-                            raw_prompt,
-                            requirements,
-                            merged_positive,
-                        )
-                        application_failure = ordinary_art_change_application_failure(
-                            raw_prompt,
-                            requirements,
-                            merged_positive,
-                        )
-                        patch_failure = retention_failure or application_failure
-                    else:
-                        patch_failure = clean_text(
-                            deterministic_closure_diagnostics.get("failureReason")
-                            or application_failure
-                        )
-                if not patch_failure:
-                    quality_closure_diagnostics = {}
-                    merged_with_quality_closure = apply_ordinary_art_simple_quality_closure(
-                        raw_prompt,
-                        requirements,
-                        merged_positive,
-                        quality_closure_diagnostics,
-                        prompt_schema=clean_text(payload.get("promptSchema") or ""),
-                    )
-                    if quality_closure_diagnostics.get("eligible"):
-                        log_prompt_assistant_event(
-                            "ordinary_art_prompt_simple_quality_closure",
-                            command="ordinaryArtPromptPatch",
-                            accepted=bool(merged_with_quality_closure),
-                            failureReason=clean_text(
-                                quality_closure_diagnostics.get("failureReason") or ""
-                            ),
-                            requestedDomains=list(
-                                quality_closure_diagnostics.get("requestedDomains") or []
-                            ),
-                            appendedDomains=list(
-                                quality_closure_diagnostics.get("appendedDomains") or []
-                            ),
-                            providerDeltaDiscarded=bool(
-                                quality_closure_diagnostics.get("providerDeltaDiscarded")
-                            ),
-                            elapsedMs=round((time.monotonic() - patch_started) * 1000),
-                        )
-                    if merged_with_quality_closure:
-                        merged_positive = merged_with_quality_closure
-                    else:
-                        patch_failure = clean_text(
-                            quality_closure_diagnostics.get("failureReason")
-                            or "simple-quality-closure-invalid"
-                        )
-                if not patch_failure:
-                    positive = merged_positive
-                    negative_prompt = ""
-                    if art_supports_negative:
-                        negative_prompt = build_targeted_negative_prompt(
-                            raw_prompt,
-                            positive,
-                            "",
-                        )
-                        if not negative_prompt:
-                            raise ValueError("模型未返回可用的负向关键词")
-                    self.status = "模型可用"
-                    return {
-                        "positivePrompt": positive,
-                        "negativePrompt": negative_prompt,
-                        "rawOutput": positive,
-                        "editContract": ORDINARY_ART_EDIT_CONTRACT,
-                    }
-                if attempt == 0:
-                    scoped_core_failure = bool(
-                        not retention_failure
-                        and (
-                            application_failure.startswith(
-                                "core-redefinition-incomplete:stale-"
-                            )
-                            or application_failure == (
-                                "core-redefinition-incomplete:one-of-two-composition"
-                            )
-                        )
-                    )
-                    unresolved_unit_ids = (
-                        ordinary_art_core_conflicting_unit_ids(
-                            merged_positive,
-                            application_failure,
-                        )
-                        if scoped_core_failure else
-                        []
-                    )
-                    if unresolved_unit_ids:
-                        patch_base = merged_positive
-                        repair_required_unit_ids = unresolved_unit_ids
-                        cumulative_patch_count = int(
-                            patch_diagnostics.get("patchCount") or 0
-                        )
-                        cumulative_target_chars = int(
-                            patch_diagnostics.get("targetChars") or 0
-                        )
-                    else:
-                        patch_base = raw_prompt
-                        repair_required_unit_ids = []
-                        cumulative_patch_count = 0
-                        cumulative_target_chars = 0
-                if (
-                    attempt == 0
-                    and time.monotonic() - patch_started
-                    >= ORDINARY_ART_PROMPT_PATCH_RETRY_LATEST_SECONDS
-                ):
-                    break
-            if patch_failure.startswith("missing-blocks:") or patch_failure.startswith("candidate-too-short:") or patch_failure.startswith("anchors-missing:"):
-                raise OrdinaryArtPromptRetentionError(patch_failure)
-            raise OrdinaryArtPromptEditNotAppliedError(
-                patch_failure or "patch-json-or-anchor-invalid"
-            )
+            return self.fuse_art_prompt(payload, raw_prompt, requirements)
         output_max_length = (
             minimax_h3_prompt_max_length(minimax_h3_mode)
             if is_minimax_h3
@@ -20187,6 +20161,7 @@ class PromptAssistant:
                 sensitive_ir_review_calls = 0
                 visual_ir_repair_calls = 0
                 rich_visual_primary_calls = 0
+                rich_visual_slot_repair_calls = 0
                 for index, image_tensor in enumerate(image_tensors, start=1):
                     rich_visual_primary_calls += 1
                     log_minimax_h3_bounded_stage(
@@ -20207,9 +20182,21 @@ class PromptAssistant:
                         stop_strings=(MINIMAX_H3_RICH_VISUAL_STOP_MARKER,),
                     )
                     try:
-                        rich_primary = minimax_h3_bounded_visual_slots_to_rich(
-                            rich_primary
-                        )
+                        def generate_missing_slots(instruction):
+                            nonlocal rich_visual_slot_repair_calls
+                            rich_visual_slot_repair_calls += 1
+                            log_minimax_h3_bounded_stage(
+                                "rich-visual-slot-repair", "started", mode=mode,
+                                schema=visual_policy.get("schema") or "",
+                                picture_index=index, attempt=1,
+                            )
+                            return adapter.generate(
+                                instruction, image_tensor, unload_after=False,
+                                system_text=MINIMAX_H3_BOUNDED_VISUAL_SYSTEM_TEXT,
+                                do_sample=False, max_new_tokens=160,
+                                stop_strings=(MINIMAX_H3_RICH_VISUAL_STOP_MARKER,),
+                            )
+                        rich_primary = minimax_h3_repair_bounded_visual_slots(rich_primary, generate_missing_slots)
                         contract = minimax_h3_project_faithful_rich_contract(
                             rich_primary,
                             index,
@@ -20759,15 +20746,16 @@ class PromptAssistant:
                 mode=mode,
                 visualSchema=visual_policy.get("schema") or "",
                 imageCount=len(image_tensors),
-                visualFactCalls=len(image_tensors),
+                visualFactCalls=len(image_tensors) + rich_visual_slot_repair_calls,
                 richVisualPrimaryCalls=rich_visual_primary_calls,
+                visualSlotRepairCalls=rich_visual_slot_repair_calls,
                 visualIrRepairCalls=visual_ir_repair_calls,
                 interactionIrRepairCalls=interaction_ir_repair_calls,
                 interactionRichConfirmationCalls=interaction_rich_confirmation_calls,
                 interactionDeactivationFallbacks=interaction_deactivation_fallbacks,
                 sensitiveIrReviewCalls=sensitive_ir_review_calls,
                 h3CompileCalls=0,
-                repairCalls=0,
+                repairCalls=rich_visual_slot_repair_calls,
                 deterministicVisualPrimary=True,
                 deterministicVisualFallback=False,
                 deterministicOutputChars=output_chars,

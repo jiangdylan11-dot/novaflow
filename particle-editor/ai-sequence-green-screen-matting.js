@@ -4,6 +4,8 @@
   else root.NovaFlowGreenScreenMatting = api;
 })(typeof window !== "undefined" ? window : globalThis, function () {
   "use strict";
+  const workerUrl = typeof document !== 'undefined' && document.currentScript?.src
+    ? new URL('ai-sequence-matting-worker.js' + new URL(document.currentScript.src).search, document.currentScript.src).href : null;
   const clamp = (x, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, x));
   const smooth = (lo, hi, x) => { const t = clamp((x - lo) / (hi - lo)); return t * t * (3 - 2 * t); };
 
@@ -155,11 +157,13 @@
     const visit = (p, q, step) => { const d = distance[q] + step; if (d < distance[p]) { distance[p] = d; owner[p] = owner[q]; } };
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const p = y * w + x;
+      if (!distance[p]) continue;
       if (x) visit(p, p - 1, 1);
       if (y) { visit(p, p - w, 1); if (x) visit(p, p - w - 1, 1.414); if (x + 1 < w) visit(p, p - w + 1, 1.414); }
     }
     for (let y = h - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) {
       const p = y * w + x;
+      if (!distance[p]) continue;
       if (x + 1 < w) visit(p, p + 1, 1);
       if (y + 1 < h) { visit(p, p + w, 1); if (x) visit(p, p + w - 1, 1.414); if (x + 1 < w) visit(p, p + w + 1, 1.414); }
     }
@@ -167,6 +171,21 @@
   }
 
   const sequenceMaterials = new WeakMap();
+  const preparedFrameReaders = new WeakMap();
+  function referenceFrameIndices(frames) {
+    const indices=[...frames.keys()].sort((a,b)=>a-b),step=Math.max(1,Math.floor(indices.length/16));
+    return indices.filter((_,index)=>index%step===0);
+  }
+  function prepareSequenceReference(sequence) {
+    if(!referenceFrameIndices(sequence.frames).every(index=>sequence.masks.has(index)))throw Error('Sequence reference masks are incomplete');
+    const profile=sequenceMaterial(sequence);
+    sequenceMaterials.set(sequence.frames,{maskCount:sequence.frames.size,profile});
+    return profile;
+  }
+  function registerPreparedFrame(frame,reader) {
+    preparedFrameReaders.set(frame.data,reader);
+    return ()=>{if(preparedFrameReaders.get(frame.data)===reader)preparedFrameReaders.delete(frame.data);};
+  }
   function samplePlane(data, w, h, x, y, channels, channel) {
     x = clamp(x, 0, w - 1); y = clamp(y, 0, h - 1);
     const ix = Math.floor(x), iy = Math.floor(y), jx = Math.min(ix + 1, w - 1), jy = Math.min(iy + 1, h - 1), fx = x - ix, fy = y - iy;
@@ -264,7 +283,7 @@
         // Downweight only sparse positive peaks, never dark material edges.
         lastSparkle=smooth(.1,1,peaks)*(1-smooth(3,7,peaks))*(1-smooth(.025,.08,Math.max(robust0,robust1)));
         const ordinary=Math.max(0,sq/25-mean0*mean0-mean1*mean1);
-        return ordinary*(1-lastSparkle)+error/25*lastSparkle+md*.02/25+(dx*dx+dy*dy)*.000006;
+        return ordinary*(1-lastSparkle)+error/25*lastSparkle+md*.02/25+(dx*dx+dy*dy)*.00003;
       };
       for(let dy=-radius;dy<=radius;dy+=2)for(let dx=-radius;dx<=radius;dx+=2){const c=cost(dx,dy);if(c<best){best=c;bx=dx;by=dy;}}
       const cx=bx,cy=by;for(let dy=cy-1;dy<=cy+1;dy++)for(let dx=cx-1;dx<=cx+1;dx++){const c=cost(dx,dy);if(c<best){best=c;bx=dx;by=dy;}}
@@ -310,7 +329,12 @@
     const solid = new Uint8Array(n), pale = new Uint8Array(n), lights = new Uint8Array(n), translucent = new Uint8Array(n);
     const population = new Uint32Array(h), hist = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
     let count = 0, paleCount = 0, translucentCount = 0;
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    if (mw === w && mh === h) {
+      for (let y=0,p=0;y<h;y++) for (let x=0;x<w;x++,p++) {
+        coverage[p] = mask.data[p] / 255;
+        if (coverage[p] > .9) { population[y]++; count++; }
+      }
+    } else for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const p = y * w + x, sx = clamp((x + .5) * mw / w - .5, 0, mw - 1), sy = clamp((y + .5) * mh / h - .5, 0, mh - 1);
       const x0 = Math.floor(sx), y0 = Math.floor(sy), x1 = Math.min(mw - 1, x0 + 1), y1 = Math.min(mh - 1, y0 + 1), dx = sx - x0, dy = sy - y0;
       coverage[p] = ((mask.data[y0 * mw + x0] * (1 - dx) + mask.data[y0 * mw + x1] * dx) * (1 - dy)
@@ -318,7 +342,7 @@
       if (coverage[p] > .9) { population[y]++; count++; }
     }
     if (!count) return result;
-    const candidateReference = sequenceMaterial(options.sequence);
+    const candidateReference = options.sequenceProfile || sequenceMaterial(options.sequence);
     const reference = candidateReference?.screen.kind === result.screen.kind ? candidateReference : null, motion = materialMotion(frame, coverage, reference);
     let acc = 0, y0 = 0, y1 = h - 1;
     for (let y = 0; y < h; y++) { acc += population[y]; if (acc < count * .02) y0 = y; if (acc >= count * .98) { y1 = y; break; } }
@@ -351,38 +375,114 @@
         tintIntegral[(y+1)*tintStride+x+1]=sum+tintIntegral[y*tintStride+x+1];
       }
     }
+    // Require a spatially broad emission outside the subject. A narrow screen
+    // fringe may share a glow hue, but is not evidence for restoring it.
+    const emission = new Uint8Array(n), emissionSeeds = new Uint8Array(n);
+    const emissionRadius = Math.max(3, Math.round(Math.min(w,h)*.008));
+    for(let p=0;p<n;p++){
+      const i=p*4,row=Math.floor(p/w)*3;
+      if(coverage[p]<.005 && result.alpha[p]>12 && data[i+key]/255>=rows[row+key]-.003
+        && Math.max(data[i+c0]/255-rows[row+c0],data[i+c1]/255-rows[row+c1])>.10)emission[p]=1;
+    }
+    for(let y=emissionRadius;y<h-emissionRadius;y++)for(let x=emissionRadius;x<w-emissionRadius;x++){
+      const p=y*w+x,r=emissionRadius;
+      if(body.distance[p]>=24 && emission[p] && emission[p-r] && emission[p+r]
+        && emission[p-r*w] && emission[p+r*w])emissionSeeds[p]=1;
+    }
+    const externalEmission=nearestSeeds(emissionSeeds,w,h);
     const lightBins = new Map();
     for (let p = 0; p < n; p++) if (lights[p] && body.distance[p] > Math.max(5, Math.min(w, h) * .012)) {
       const i = p * 4, maximum = Math.max(out[i], out[i + 1], out[i + 2], 1), rgb = [out[i] / maximum, out[i + 1] / maximum, out[i + 2] / maximum];
       const id = rgb.reduce((v, c) => v * 6 + Math.round(c * 5), 0), bin = lightBins.get(id) || { count: 0, sum: [0, 0, 0] };
-      bin.count++; for (let c = 0; c < 3; c++) bin.sum[c] += rgb[c]; lightBins.set(id, bin);
+      bin.count++; for (let c = 0; c < 3; c++) bin.sum[c] += rgb[c];
+      // For a calibrated shadow, estimate the separate light directly from
+      // the source over its measured screen, before spill normalisation.
+      const row=Math.floor(p/w)*3,opacity=Math.max(.005,...[c0,c1].map(c=>clamp((data[i+c]/255-rows[row+c])/Math.max(.1,1-rows[row+c]))));
+      const tx=(p%w+.5)*(reference?.w||1)/w-.5,ty=(Math.floor(p/w)+.5)*(reference?.h||1)/h-.5;
+      const referenceRgb=reference?[0,1,2].map(c=>samplePlane(reference.rgb,reference.w,reference.h,tx,ty,3,c)):null;
+      const onShadow=referenceRgb&&referenceRgb[key]>Math.max(referenceRgb[c0],referenceRgb[c1])+.10&&referenceRgb[key]<reference.screen.rgb[key]/255*.965;
+      bin.shadowSum ||= [0,0,0];bin.shadowCount ||= 0;
+      if(!onShadow){bin.shadowCount++;for(let c=0;c<3;c++)bin.shadowSum[c]+=clamp((data[i+c]/255-(1-opacity)*rows[row+c])/opacity);}
+      lightBins.set(id, bin);
     }
     const peakLightCount = Math.max(0, ...[...lightBins.values()].map(bin => bin.count));
-    const lightColors = [...lightBins.values()].filter(bin => bin.count >= Math.max(3, n * .000003, peakLightCount * .025)).map(bin => bin.sum.map(v => v / bin.count)).filter(color => Math.max(...color) > .9);
+    const selectedLights=[...lightBins.values()].filter(bin => bin.count >= Math.max(3, n * .000003, peakLightCount * .025)).filter(bin=>Math.max(...bin.sum)/bin.count>.9);
+    const lightColors=selectedLights.map(bin=>bin.sum.map(v=>v/bin.count)),shadowLightColors=selectedLights.map(bin=>bin.shadowCount>=3?bin.shadowSum.map(v=>v/bin.shadowCount):null);
     // Learn a possible cast in the generated shadow from darkened screen
     // samples. This is a measured color, not a rule tied to gold/cyan effects.
     const shadowHist = [new Uint32Array(256), new Uint32Array(256), new Uint32Array(256)];
     let shadowSamples = 0;
-    for (let y = Math.floor(y0 + (y1 - y0) * .60); y < h; y++) for (let x = 0; x < w; x++) {
-      const p = y * w + x, i = p * 4, B = rows.subarray(y * 3, y * 3 + 3), shade = 1 - data[i + key] / 255 / Math.max(.1, B[key]);
+    for (let y = Math.floor(y0 + (y1 - y0) * .60); y < h; y++) {
+      const B = rows.subarray(y * 3, y * 3 + 3);
+      for (let x = 0; x < w; x++) {
+      const p = y * w + x, i = p * 4, shade = 1 - data[i + key] / 255 / Math.max(.1, B[key]);
       if (coverage[p] > .01 || shade < .08 || shade > .65) continue;
       const u0 = Math.max(0, data[i + c0] / 255 - (1 - shade) * B[c0]), u1 = Math.max(0, data[i + c1] / 255 - (1 - shade) * B[c1]);
       if (Math.min(u0, u1) > .035 || Math.max(u0, u1) > .28 || Math.max(u0, u1) / shade > .85) continue;
       shadowSamples++; shadowHist[c0][Math.round(clamp(u0 / shade) * 255)]++; shadowHist[c1][Math.round(clamp(u1 / shade) * 255)]++;
+      }
     }
     const shadowCast = [0, 0, 0];
     if (shadowSamples > 30) for (const c of [c0, c1]) {
       let sum = 0; for (let v = 0; v < 256; v++) { sum += shadowHist[c][v]; if (sum >= shadowSamples / 2) { shadowCast[c] = v / 255; break; } }
     }
+    // Calibrate only absorption already present outside the reference subject.
+    // Spatially measured shadow contamination is not a new emission colour.
+    let shadowReference = reference?.shadowReference;
+    if(reference && !shadowReference){
+      const rw=reference.w,rh=reference.h,field=new Float32Array(rw*rh*4);
+      // Each reference sample participates in 25 neighboring windows. Compute
+      // its classification once, then retain the original summation order.
+      const valid=new Uint8Array(rw*rh),shades=new Float64Array(rw*rh),u0s=new Float64Array(rw*rh),u1s=new Float64Array(rw*rh);
+      for(let ry=0;ry<rh;ry++){
+        const sy=(ry+.5)*h/rh-.5,B=[0,1,2].map(c=>samplePlane(reference.rows,1,h,0,sy,3,c));
+        for(let rx=0;rx<rw;rx++){
+          const p=ry*rw+rx;if(reference.coverage[p]>.01)continue;
+          const C=reference.rgb.subarray(p*3,p*3+3),shade=clamp(1-C[key]/Math.max(.1,B[key]));
+          if(shade<.035||shade>.65||Math.min(C[c0],C[c1])>.12||Math.max(C[c0],C[c1])>.38)continue;
+          valid[p]=1;shades[p]=shade;u0s[p]=Math.max(0,C[c0]-(1-shade)*B[c0]);u1s[p]=Math.max(0,C[c1]-(1-shade)*B[c1]);
+        }
+      }
+      for(let ry=2;ry<rh-2;ry++)for(let rx=2;rx<rw-2;rx++){
+        let count=0,shadeSum=0,u0=0,u1=0;
+        for(let oy=-2;oy<=2;oy++)for(let ox=-2;ox<=2;ox++){
+          const p=(ry+oy)*rw+rx+ox;if(!valid[p])continue;
+          count++;shadeSum+=shades[p];u0+=u0s[p];u1+=u1s[p];
+        }
+        if(count>=12){const i=(ry*rw+rx)*4;field[i+c0]=u0/shadeSum;field[i+c1]=u1/shadeSum;field[i+3]=smooth(.035,.10,shadeSum/count)*smooth(11,22,count);}
+      }
+      // Fill only a narrow unsupported boundary from neighbouring measured
+      // shadow samples. Current-frame subject/absorption gates still apply.
+      const seeds=new Uint8Array(rw*rh);for(let p=0;p<seeds.length;p++)if(field[p*4+3]>.98)seeds[p]=1;
+      const near=nearestSeeds(seeds,rw,rh),filled=new Float32Array(field);
+      for(let p=0;p<seeds.length;p++){
+        const q=near.owner[p],d=near.distance[p];if(q<0||d>=8)continue;
+        const support=1-smooth(2,8,d);if(support<=field[p*4+3])continue;
+        for(let c=0;c<3;c++)filled[p*4+c]=field[q*4+c];filled[p*4+3]=support;
+      }
+      shadowReference=reference.shadowReference={data:filled,w:rw,h:rh};
+    }
     const lightConfidence = (premul, exact = false) => {
       if (!lightColors.length) return 0;
-      const maximum = Math.max(...premul, .005), rgb = premul.map(v => v / maximum);
+      const maximum = Math.max(premul[0], premul[1], premul[2], .005);
+      const r = premul[0] / maximum, g = premul[1] / maximum, b = premul[2] / maximum;
       let difference = 3;
-      for (const color of lightColors) difference = Math.min(difference, Math.hypot(...rgb.map((v, c) => v - color[c])));
+      for (const color of lightColors) {
+        const dr=r-color[0],dg=g-color[1],db=b-color[2];
+        if (Math.max(Math.abs(dr),Math.abs(dg),Math.abs(db)) >= difference) continue;
+        difference = Math.min(difference, Math.hypot(dr,dg,db));
+      }
       return 1 - smooth(exact ? .08 : .2, exact ? .16 : .45, difference);
     };
     const palette = reference?.palette || hist.map(histogram => { let sum = 0; for (let v = 0; v < 256; v++) { sum += histogram[v]; if (sum >= paleCount / 2) return v / 255; } return .9; });
     let fabricPixels = 0, shadowPixels = 0, edgePixels = 0;
+    // These scratch colors never escape a pixel iteration. Reuse them instead
+    // of allocating colors and a closure millions of times per full-size frame.
+    const C = [0, 0, 0], B = [0, 0, 0], P = [0, 0, 0];
+    const shadowMix = [0, 0, 0], D = [0, 0, 0], S = [0, 0, 0], ep = [0, 0, 0];
+    let a = 0;
+    const combine = (opacity, premul, weight) => { a = a * (1 - weight) + opacity * weight; for (let c = 0; c < 3; c++) P[c] = P[c] * (1 - weight) + premul[c] * weight; };
+    const groundStart = y0 + .42 * (y1 - y0), groundEnd = y0 + .64 * (y1 - y0);
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
       const p = y * w + x, i = p * 4, m = coverage[p];
       if (!out[i + 3] && data[i + key] >= rows[y * 3 + key] * 255 - .25
@@ -390,9 +490,9 @@
         out[i] = out[i + 1] = out[i + 2] = 0; continue;
       }
       if (solid[p] && (!fabricSupport || fabricSupport.distance[p] >= Math.min(w, h) * .10)) continue;
-      const C = [data[i] / 255, data[i + 1] / 255, data[i + 2] / 255], B = [rows[y * 3], rows[y * 3 + 1], rows[y * 3 + 2]];
-      let a = out[i + 3] / 255, P = [out[i] / 255 * a, out[i + 1] / 255 * a, out[i + 2] / 255 * a], materialWeight = 0;
-      const combine = (opacity, premul, weight) => { a = a * (1 - weight) + opacity * weight; for (let c = 0; c < 3; c++) P[c] = P[c] * (1 - weight) + premul[c] * weight; };
+      a = out[i + 3] / 255;
+      for (let c = 0; c < 3; c++) { C[c] = data[i + c] / 255; B[c] = rows[y * 3 + c]; P[c] = out[i + c] / 255 * a; }
+      let materialWeight = 0;
       // White/lilac fabric is recognized by nearby opaque pale material and
       // agreement of the two non-key channels. No position or effect hue list.
       if (fabric && m > .06 && fabric.distance[p] < Math.min(w, h) * .24) {
@@ -412,7 +512,11 @@
           combine(fa, fp, materialWeight); if (materialWeight > .5) fabricPixels++;
         }
       }
-      if (motion && m > .15) {
+      // A solid contour can occlude the reference fold. If this frame has no
+      // evidence of translucent material here, keep that solid's own color
+      // and alpha; surrounding patch agreement must not transplant the fold.
+      // Preserve the existing reconstruction wherever material was detected.
+      if (motion && m > .15 && (!solid[p] || materialWeight > .01)) {
         const mx=((x+.5)*motion.scaleX-.5)/motion.step,my=((y+.5)*motion.scaleY-.5)/motion.step;
         const confidence=samplePlane(motion.data,motion.w,motion.h,mx,my,3,2);
         if(confidence>.01){
@@ -433,25 +537,41 @@
               const weight=Math.exp(-distance*distance/.018),s=(e0*color[c0]+e1*color[c1])/Math.max(.01,color[c0]**2+color[c1]**2);
               sum+=weight;green+=weight*s*color[key];
             }
-            if(sum>.05)delta[key]=green/sum;
+            const neutral=(e0+e1)*F[key]/Math.max(.1,F[c0]+F[c1]);
+            delta[key]=(green+neutral*.08)/(sum+.08);
           }
           const fp=F.map(v=>v*baseAlpha);
           fp[c0]=clamp(C0[c0]-(1-baseAlpha)*B0[c0]);fp[c1]=clamp(C0[c1]-(1-baseAlpha)*B0[c1]);
           fp[key]=(fp[c0]+fp[c1])*F[key]/Math.max(.1,F[c0]+F[c1]);
           for(let c=0;c<3;c++)fp[c]=clamp(fp[c]+Math.max(0,delta[c])*lightWeight);
-          const weight=confidence*support*smooth(.15,.8,m)*(1-smooth(.08,.22,-Math.min(delta[c0],delta[c1])));
+          const weight=confidence*support*smooth(.15,.8,m)*(1-smooth(.08,.22,-Math.min(delta[c0],delta[c1])))
+            * (solid[p] ? smooth(.01,.06,materialWeight) : 1);
           if(weight>.01){combine(Math.max(baseAlpha,...fp),fp,weight);materialWeight=Math.max(materialWeight,weight);}
         }
       }
       // Re-estimate a narrow solid contour from adjacent foreground. This is
       // separate from fabric so a thin skirt is never eroded as an opaque edge.
       const q = body.owner[p], d = body.distance[p];
+      // A measured external light that adds non-key energy without absorbing
+      // the screen is emission, even beside a warm solid. Decide before any
+      // contour fit can erase/recolour that evidence. Dark screen spill keeps
+      // the existing cleanup, as do pixels protected by the subject mask.
+      const emissionOwner=externalEmission.owner[p],emissionDistance=externalEmission.distance[p];
+      let localEmission=0;
+      if(q>=0 && d>0 && d<24 && m<.025 && a>0 && emissionOwner>=0 && emissionDistance<60){
+        const j=emissionOwner*4,scale=Math.max(out[j],out[j+1],out[j+2],1),peak=Math.max(P[0],P[1],P[2],.005);
+        localEmission=(1-smooth(36,60,emissionDistance))*(1-smooth(.08,.16,
+          Math.hypot(P[0]/peak-out[j]/scale,P[1]/peak-out[j+1]/scale,P[2]/peak-out[j+2]/scale)));
+      }
+      const contourLight = localEmission>0 && q >= 0 && d > 0 && d < 24 && m < .025 && a > 0
+        ? lightConfidence(P, true) * smooth(.03, .10, Math.max(C[c0]-B[c0],C[c1]-B[c1]))
+          * (1-smooth(.005,.035,clamp(1-C[key]/Math.max(.1,B[key])))) * (1-smooth(.005,.025,m))*localEmission : 0;
       if (q >= 0 && d > 0 && d < 9 && m > .01 && materialWeight < .2) {
         const F = C.map((_, c) => data[q * 4 + c] / 255), delta = F.map((v, c) => v - B[c]);
         const fit = clamp(C.reduce((sum, v, c) => sum + (v - B[c]) * delta[c], 0) / Math.max(.01, delta.reduce((sum, v) => sum + v * v, 0)));
         const residual = Math.hypot(...C.map((v, c) => v - F[c] * fit - B[c] * (1 - fit)));
         const cast = C[key] - (C[c0] + C[c1]) * F[key] / Math.max(.08, F[c0] + F[c1]);
-        const weight = (1 - smooth(.055, .18, residual)) * (1 - smooth(5, 9, d)) * smooth(.005, .045, cast);
+        const weight = (1 - smooth(.055, .18, residual)) * (1 - smooth(5, 9, d)) * smooth(.005, .045, cast) * (1-contourLight);
         if (weight > 0) { combine(fit, F.map(v => v * fit), weight); if (weight > .5) edgePixels++; }
       }
       // Generated rim contamination can include the neighbouring chroma
@@ -465,7 +585,7 @@
         const density=(tintIntegral[y1*tintStride+x1]-tintIntegral[y1*tintStride+x0]-tintIntegral[y0*tintStride+x1]+tintIntegral[y0*tintStride+x0])/((x1-x0)*(y1-y0));
         const redFit=clamp((C[0]-B[0])/Math.max(.1,F[0]-B[0]));
         const weight=smooth(.025,.11,cast)*(1-smooth(7,18,d))*(1-smooth(.22,.44,density))*smooth(.16,.4,F[0]-B[0])
-          *(1-smooth(.02,.12,C[0]-C[c1]))*(1-smooth(1.05,1.35,redFit/Math.max(.01,a)));
+          *(1-smooth(.02,.12,C[0]-C[c1]))*(1-smooth(1.05,1.35,redFit/Math.max(.01,a)))*(1-contourLight);
         if(weight>.01){const fit=Math.min(a,redFit);combine(fit,F.map(v=>v*fit),weight);edgePixels++;}
       }
       // Background-colored fringe immediately outside a solid is not a new
@@ -473,35 +593,55 @@
       if (m < .15 && d < 24 && q >= 0 && a > 0) {
         const F = P.map(v => v / Math.max(.005, a));
         const cast = F[key] - (F[c0] + F[c1]) * .5;
-        const weight = smooth(.04, .2, cast) * (1 - smooth(.01, .15, m)) * (1 - smooth(10, 24, d)) * (1 - lightConfidence(P));
+        const weight = smooth(.04, .2, cast) * (1 - smooth(.01, .15, m)) * (1 - smooth(10, 24, d)) * (1 - lightConfidence(P)) * (1-contourLight);
         if (weight > 0) combine(0, [0, 0, 0], weight);
       }
       // Neutral absorption retains the broad shadow opacity. Its tiny colored
       // residue must not be normalized into bright cyan/green RGB. Protect
       // observed emission near the same hue, including dim parts of a glow.
-      if (m < .3) {
+      if (m < .3 && y > groundStart) {
         const shade = clamp(1 - C[key] / Math.max(.1, B[key]));
         const dominance = (C[key] - Math.max(C[c0], C[c1])) / Math.max(.1, B[key] - Math.max(B[c0], B[c1]));
-        const ground = smooth(y0 + .42 * (y1 - y0), y0 + .64 * (y1 - y0), y);
-        let weight = smooth(.005, .03, shade) * smooth(.15, .4, dominance) * (1 - smooth(.025, .22, m)) * ground;
+        const ground = smooth(groundStart, groundEnd, y);
+        const rx=(x+.5)*(shadowReference?.w||1)/w-.5,ry=(y+.5)*(shadowReference?.h||1)/h-.5;
+          const calibration=shadowReference ? samplePlane(shadowReference.data,shadowReference.w,shadowReference.h,rx,ry,4,3)*(1-smooth(.005,.025,m)) : 0;
+          let weight = smooth(.005, .03, shade) * (calibration+(1-calibration)*smooth(.15, .4, dominance)) * (1 - smooth(.025, .22, m)) * ground;
         if (weight > 0) {
-          const D = C.map((v, c) => v - B[c]), S = B.map((v, c) => shadowCast[c] - v), ss = S.reduce((sum, v) => sum + v * v, 0);
-          let sa = clamp(D.reduce((sum, v, c) => sum + v * S[c], 0) / Math.max(.01, ss));
-          let best = Math.hypot(...D.map((v, c) => v - sa * S[c])), ep = [0, 0, 0];
-          for (const color of lightColors) {
-            const ll = color.reduce((sum, v) => sum + v * v, 0), sl = color.reduce((sum, v, c) => sum + v * S[c], 0);
-            const ds = D.reduce((sum, v, c) => sum + v * S[c], 0), dl = D.reduce((sum, v, c) => sum + v * color[c], 0), det = ss * ll - sl * sl;
+          for (let c = 0; c < 3; c++) {
+            const v = shadowCast[c];
+            shadowMix[c] = v*(1-calibration)+(shadowReference?samplePlane(shadowReference.data,shadowReference.w,shadowReference.h,rx,ry,4,c):v)*calibration;
+            D[c] = C[c] - B[c]; S[c] = shadowMix[c] - B[c]; ep[c] = 0;
+          }
+          const ss = S[0]*S[0] + S[1]*S[1] + S[2]*S[2];
+          let sa = clamp((D[0]*S[0] + D[1]*S[1] + D[2]*S[2]) / Math.max(.01, ss));
+          let best = Math.hypot(D[0]-sa*S[0], D[1]-sa*S[1], D[2]-sa*S[2]);
+          // Keep the same least-squares fit and operation order, without
+          // allocating color/map/reduce arrays for every light at every pixel.
+          const ds = D[0] * S[0] + D[1] * S[1] + D[2] * S[2];
+          for (let j=0;j<lightColors.length;j++) {
+            const color = lightColors[j], shadow = shadowLightColors[j];
+            const r = color[0]*(1-calibration)+(shadow?.[0]??color[0])*calibration;
+            const g = color[1]*(1-calibration)+(shadow?.[1]??color[1])*calibration;
+            const b = color[2]*(1-calibration)+(shadow?.[2]??color[2])*calibration;
+            const ll = r*r + g*g + b*b, sl = r*S[0] + g*S[1] + b*S[2];
+            const dl = D[0]*r + D[1]*g + D[2]*b, det = ss * ll - sl * sl;
             if (det < .01) continue;
-            const s = clamp((ds * ll - dl * sl) / det), e = clamp((dl * ss - ds * sl) / det);
-            const error = Math.hypot(...D.map((v, c) => v - s * S[c] - e * color[c]));
-            if (error < best) { best = error; sa = s; ep = color.map(v => v * e); }
+            let s = clamp((ds * ll - dl * sl) / det), e = clamp((dl * ss - ds * sl) / det);
+            if(!shadow&&calibration>0){e*=1-calibration;s=clamp((ds-e*sl)/Math.max(.01,ss));}
+            const er = D[0]-s*S[0]-e*r, eg = D[1]-s*S[1]-e*g, eb = D[2]-s*S[2]-e*b;
+            // A vector's length cannot be smaller than any component. Reject
+            // candidates that cannot beat the current fit before the costly
+            // hypot, retaining the original norm and strict winning comparison.
+            if (Math.max(Math.abs(er), Math.abs(eg), Math.abs(eb)) >= best) continue;
+            const error = Math.hypot(er, eg, eb);
+            if (error < best) { best = error; sa = s; ep[0] = r*e; ep[1] = g*e; ep[2] = b*e; }
           }
           weight *= 1 - smooth(.055, .14, best);
           // Faint true emission without absorption keeps its original solution.
           weight *= smooth(.006, .025, sa);
-          weight *= smooth(.005, .055, sa - Math.max(...ep) * 1.2);
+          weight *= calibration + (1-calibration)*smooth(.005, .055, sa - Math.max(...ep) * 1.2);
           const observedEmission = Math.max(0, C[c0] - B[c0], C[c1] - B[c1]);
-          weight *= 1 - lightConfidence(P, true) * (1 - smooth(.85, 1.35, shade / Math.max(.005, observedEmission)));
+          weight *= 1 - (1-calibration)*lightConfidence(P, true) * (1 - smooth(.85, 1.35, shade / Math.max(.005, observedEmission)));
           if (weight > 0) { combine(Math.max(sa, ...ep) * smooth(.003, .015, sa), ep, weight); if (weight > .5) shadowPixels++; }
         }
       }
@@ -718,8 +858,12 @@
   }
 
   function render(frame, options) {
+    return renderMatte(frame, options, options?.enabled ? matte(frame, options) : null);
+  }
+
+  function renderMatte(frame, options, prepared) {
     if (!options?.enabled) return null;
-    const result = matte(frame, options);
+    const result = prepared;
     if (!result) return null;
     const { width, height } = frame, rgba = options.rgbaCanvas, mask = options.maskCanvas;
     const color = rgba.getContext("2d", { willReadFrequently: true });
@@ -737,7 +881,142 @@
       maskPixels[i + 3] = result.alpha[p];
     }
     mask.getContext("2d").putImageData(new ImageData(maskPixels, width, height), 0, 0);
-    return { maskCanvas: mask, rgbaCanvas: rgba, finalAlpha: result.alpha, screen: result.screen, materialStats: result.materialStats };
+    return { maskCanvas: mask, rgbaCanvas: rgba, finalAlpha: result.alpha, screen: result.screen, materialStats: result.materialStats, ...(options.prewarm ? {rawPixels:result.data} : {}) };
   }
-  return { detectScreen, matte, removeShadowAlpha, applyBrush, render };
+
+  // Send immutable pixel snapshots, not canvases or the entire decoded clip.
+  // Each worker retains only the selected sequence reference and one active frame.
+  const workerSlots = [], workerQueue = [], profileIds = new WeakMap();
+  let profileSerial = 0, taskSerial = 0, workerDisabled = false, idleTimer = null;
+  function parallelism(width,height) {
+    const cores = typeof navigator !== 'undefined' ? navigator.hardwareConcurrency || 2 : 2;
+    // Estimate 64 bytes/pixel for masks, distance fields, input and result;
+    // larger clips reduce concurrency instead of multiplying memory unchecked.
+    return Math.max(1,Math.min(8,Math.floor(cores/4),Math.floor(1024*1024*1024/Math.max(1,width*height*64))));
+  }
+  const workerMetrics = {completed:0, failed:0, computeMs:0, maxActive:0,prewarmHits:0};
+  function workerStats() { return {...workerMetrics, workers:workerSlots.length, queued:workerQueue.length}; }
+  function disableWorkers(error) {
+    workerDisabled = true;
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+    for (const slot of workerSlots) { slot.worker.terminate(); slot.task?.reject(error); }
+    workerSlots.length = 0;
+    for (const task of workerQueue.splice(0)) task.reject(error);
+  }
+  function pumpWorkers() {
+    if (idleTimer) { clearTimeout(idleTimer); idleTimer = null; }
+    for (const slot of workerSlots) {
+      if (slot.task || !workerQueue.length) continue;
+      if (workerSlots.filter(s=>s.task).length >= parallelism(workerQueue[0].frame.width,workerQueue[0].frame.height)) break;
+      const task = workerQueue.shift(); slot.task = task;
+      try {
+        if (slot.profileId !== task.profileId) {
+          slot.worker.postMessage({type:'profile', profile:task.profile}); slot.profileId = task.profileId;
+        }
+        slot.worker.postMessage({type:'matte', id:task.id, frame:task.frame, options:task.options}, task.buffers);
+        workerMetrics.maxActive = Math.max(workerMetrics.maxActive, workerSlots.filter(s => s.task).length);
+      } catch (error) { disableWorkers(error); return; }
+    }
+    if (!workerQueue.length && workerSlots.every(s=>!s.task)) idleTimer=setTimeout(()=>{
+      for (const slot of workerSlots) slot.worker.terminate();
+      workerSlots.length=0;idleTimer=null;
+    },30000);
+  }
+  async function renderAsync(frame, options) {
+    if (!options?.enabled) return null;
+    if(!options.prewarm){const original=options.preparedFrame?.width===frame.width&&options.preparedFrame?.height===frame.height?options.preparedFrame:frame;const reader=preparedFrameReaders.get(original.data);if(reader){const hit=await reader(options);if(hit){workerMetrics.prewarmHits++;return hit;}}}
+    if (!workerUrl || workerDisabled || typeof Worker !== 'function') return render(frame, options);
+    if (workerSlots.length < parallelism(frame.width,frame.height)) {
+      try {
+        const count = parallelism(frame.width,frame.height);
+        for (let i=workerSlots.length;i<count;i++) {
+          const slot = {worker:new Worker(workerUrl), task:null, profileId:null};
+          slot.worker.onmessage = ({data}) => {
+            const task = slot.task;
+            if (!task || data.id !== task.id) return;
+            slot.task = null;
+            if (data.error) { workerMetrics.failed++; task.reject(new Error(data.error)); }
+            else { workerMetrics.completed++; workerMetrics.computeMs += data.ms || 0; task.resolve(data.result); }
+            pumpWorkers();
+          };
+          slot.worker.onerror = event => { event.preventDefault(); disableWorkers(new Error(event.message || 'Matting worker unavailable')); };
+          workerSlots.push(slot);
+        }
+      } catch (error) { disableWorkers(error); return render(frame, options); }
+    }
+    const profile = options.sequenceProfile !== undefined ? options.sequenceProfile : sequenceMaterial(options.sequence);
+    if (profile && !profileIds.has(profile)) profileIds.set(profile, ++profileSerial);
+    const pixels = new Uint8ClampedArray(frame.data), mask = options.subjectMask;
+    const maskData = mask?.data ? new Uint8ClampedArray(mask.data) : null;
+    const result = await new Promise((resolve,reject) => {
+      workerQueue.push({id:++taskSerial, profile, profileId:profile ? profileIds.get(profile) : 0,
+        frame:{data:pixels,width:frame.width,height:frame.height},
+        options:{preserveShadow:options.preserveShadow,normalizeGlow:options.normalizeGlow,screen:options.screen,
+          requireSubjectMask:options.requireSubjectMask,subjectMask:maskData ? {data:maskData,width:mask.width,height:mask.height} : null},
+        buffers:maskData ? [pixels.buffer,maskData.buffer] : [pixels.buffer],resolve,reject});
+      pumpWorkers();
+    }).catch(error => {
+      if (!workerDisabled) throw error;
+      return matte(frame, options);
+    });
+    return renderMatte(frame, options, result);
+  }
+
+  // Keep exact full-size RGBA between preview and save, compressed rather than
+  // retaining gigabytes of uncompressed frames. This cache belongs to one dock.
+  function createFrameCache({maxBytes = 192 * 1024 * 1024, maxFrames = 300} = {}) {
+    if (typeof CompressionStream !== 'function' || typeof DecompressionStream !== 'function') return null;
+    const entries = new Map(); let bytes = 0, epoch = 0;
+    const drop = key => { const entry = entries.get(key); if (entry) { bytes -= entry.blob.size; entries.delete(key); } };
+    return {
+      get epoch() { return epoch; },
+      stats() { return {bytes, frames:entries.size, maxBytes, epoch}; },
+      delete(key) { drop(key); },
+      clear() { entries.clear(); bytes = 0; epoch++; },
+      invalidateFrame(index) {
+        // Reject stale pending writes while retaining the other decoded frames.
+        epoch++;
+        for (const [key, entry] of entries) if (entry.meta.decodedFrameIndex === index || entry.meta.cacheFrameIndex === index) drop(key);
+      },
+      async get(key) {
+        const entry = entries.get(key), version = epoch;
+        if (!entry) return null;
+        try {
+          const data = new Uint8ClampedArray(await new Response(entry.blob.stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
+          if (epoch !== version || entries.get(key) !== entry) return null;
+          if (data.length !== entry.meta.width * entry.meta.height * 4) { drop(key); return null; }
+          entries.delete(key); entries.set(key, entry);
+          return {...entry.meta, imageData:new ImageData(data,entry.meta.width,entry.meta.height), cacheHit:true};
+        } catch { if (entries.get(key) === entry) drop(key); return null; }
+      },
+      async put(key, frame, version = epoch) {
+        if (version !== epoch || !frame?.imageData?.data || frame.imageData.data.length !== frame.width * frame.height * 4) return false;
+        try {
+          const blob = await new Response(new Blob([frame.imageData.data]).stream().pipeThrough(new CompressionStream('deflate'))).blob();
+          if (version !== epoch || blob.size > maxBytes) return false;
+          const {imageData, drawCanvas, ...meta} = frame;
+          drop(key);
+          while(entries.size && (bytes + blob.size > maxBytes || entries.size >= maxFrames)) drop(entries.keys().next().value);
+          entries.set(key,{blob,meta}); bytes += blob.size; return true;
+        } catch { return false; }
+      }
+    };
+  }
+  let rawCalibration;
+  function rawEncodeCalibration() {
+    // Canvas PNG and getImageData use slightly different unpremultiplication
+    // rounding. Capture the current renderer's PNG mapping once (64K pixels),
+    // so raw video saves retain the previous PNG path's exact colors.
+    return rawCalibration ||= (async()=>{
+      const canvas=document.createElement('canvas');canvas.width=canvas.height=256;
+      const data=new Uint8ClampedArray(256*256*4);
+      for(let alpha=0;alpha<256;alpha++)for(let value=0;value<256;value++){
+        const i=(alpha*256+value)*4;data[i]=data[i+1]=data[i+2]=value;data[i+3]=alpha;
+      }
+      canvas.getContext('2d').putImageData(new ImageData(data,256,256),0,0);
+      const blob=await new Promise((resolve,reject)=>canvas.toBlob(value=>value?resolve(value):reject(Error('PNG calibration failed')),'image/png'));
+      return new Uint8Array(await blob.arrayBuffer());
+    })().catch(error=>{rawCalibration=null;throw error;});
+  }
+  return { detectScreen, matte, removeShadowAlpha, applyBrush, render, renderAsync, workerStats, parallelism, createFrameCache,referenceFrameIndices,prepareSequenceReference,registerPreparedFrame,rawEncodeCalibration };
 });

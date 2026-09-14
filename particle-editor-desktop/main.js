@@ -1,3 +1,4 @@
+require("./main/stdio-guard").installStdioGuards();
 const { app, BrowserWindow, shell, ipcMain, dialog, Menu, screen, protocol, net: electronNet } = require("electron");
 const path = require("path");
 const fs = require("fs");
@@ -3237,6 +3238,11 @@ function promptAssistantFailureMetadata(value) {
     const text = clean(field, maxLength);
     if (text) metadata[field] = text;
   }
+  // Forward only fixed diagnostic categories, never model text or image details.
+  const validationLeaf = clean("validationLeaf", 80);
+  if (["visual-semantics", "visual-person-count", "visual-body-exposure", "visual-age", "visual-interaction", "visual-signals", "visual-fact-classification"].includes(validationLeaf)) {
+    metadata.validationLeaf = validationLeaf;
+  }
   for (const field of ["retryable", "retryAttempted", "legacyFallbackSuppressed", "sensitivePromptBlocked"]) {
     if (typeof source[field] === "boolean") metadata[field] = source[field];
   }
@@ -3283,7 +3289,7 @@ function logPromptAssistantStderrLine(clean) {
       const commandName = String(payload.command || "");
       const ordinaryArtPromptPatch = eventName.startsWith("ordinary_art_prompt_patch")
         || commandName === "ordinaryArtPromptPatch";
-      if (eventName.includes("storyboard_") || commandName.includes("storyboard") || eventName.startsWith("reverse_") || ordinaryArtPromptPatch) {
+      if (eventName.includes("storyboard_") || commandName.includes("storyboard") || eventName.startsWith("reverse_") || ordinaryArtPromptPatch || eventName.startsWith("minimax_h3_") || commandName.startsWith("minimaxH3")) {
         appendLogLine(
           eventName.includes("error") ? "error" : "info",
           `prompt-assistant-service:${eventName}`,
@@ -3384,6 +3390,13 @@ async function ensurePromptAssistantProcess(options = {}) {
       if (promptAssistantStderrLines.length > 40) {
         promptAssistantStderrLines = promptAssistantStderrLines.slice(-40);
       }
+    });
+    proc.stdin.on("error", (err) => {
+      if (promptAssistantProcess !== proc) return;
+      promptAssistantLastError = `Prompt Assistant 请求管道已断开：${String(err?.message || err)}`;
+      rejectPromptAssistantPending(promptAssistantLastError);
+      if (!settled) settleFail(err);
+      stopPromptAssistantServiceSync();
     });
     proc.once("error", (err) => {
       if (promptAssistantProcess !== proc) return;
@@ -3764,7 +3777,19 @@ async function requestPromptAssistant(command, payload = {}, timeoutMs = 300_000
         reject(new Error("Prompt Assistant 推理超时"));
       }, effectiveTimeoutMs);
       promptAssistantPending.set(requestId, { resolve, reject, timer });
-      proc.stdin.write(JSON.stringify({ id: requestId, command, ...payload }) + "\n");
+      const failWrite = (error) => {
+        if (!error) return;
+        const pending = promptAssistantPending.get(requestId);
+        if (!pending) return;
+        clearTimeout(pending.timer);
+        promptAssistantPending.delete(requestId);
+        pending.reject(new Error(`Prompt Assistant 请求发送失败：${String(error.message || error)}`));
+      };
+      try {
+        proc.stdin.write(JSON.stringify({ id: requestId, command, ...payload }) + "\n", failWrite);
+      } catch (error) {
+        failWrite(error);
+      }
     });
     promptAssistantLastError = "";
     promptAssistantLastWarning = data?.reverseFallbackReason
@@ -6060,13 +6085,13 @@ ipcMain.handle("prompt-assistant-optimize-prompt", async (_evt, payload) => {
       ? requestedPromptDetailMode
       : "";
   const startedAt = Date.now();
-  const optimizeTimeoutMs = 300_000;
   const ordinaryArtPromptPatch = isOrdinaryLocalArtPromptPatchRequest({
     provider,
     surface,
     purpose,
     currentPrompt
   });
+  const optimizeTimeoutMs = usesMiniMaxH3Prompt || (ordinaryArtPromptPatch && !promptSchema) ? 900_000 : 300_000;
   let resourceHandoff = null;
   const beforeEnsure = ordinaryArtPromptPatch ? async () => {
     traceOrdinaryArtPromptPatchStage("resource-handoff-start", { elapsedMs: 0 });
@@ -6387,7 +6412,11 @@ ipcMain.handle("prompt-assistant-reverse-image-prompt", async (_evt, payload) =>
     purpose,
     provider,
     currentPrompt,
-    ...(usesMiniMaxH3VisualV1 ? { userPrompt, userRequirements } : {}),
+    ...(usesMiniMaxH3VisualV1 ? {
+      userPrompt, userRequirements,
+      h3Mode: payload?.h3Mode,
+      durationSeconds: payload?.durationSeconds
+    } : {}),
     ...(preferredOutputLanguage ? { preferredOutputLanguage } : {}),
     mandatoryChecklist,
     mandatoryChecklistTokens,
@@ -8411,96 +8440,7 @@ handleNovaFlowTempIpc("ai-seq-rembg-batch", async (evt, payload) => {
       const birefEnv = buildBiRefNetEnv();
 
       const writeBiRefNetScript = (scriptPath) => {
-        const code = `
-import argparse, os, warnings
-warnings.filterwarnings("ignore", category=FutureWarning)
-import torch
-import torchvision.transforms as T
-from PIL import Image
-from transformers import AutoModelForImageSegmentation
-
-def load_model(model_id, device, local_files_only):
-    model = AutoModelForImageSegmentation.from_pretrained(model_id, trust_remote_code=True, local_files_only=local_files_only)
-    model.eval()
-    if device == "cuda" and torch.cuda.is_available():
-        model = model.cuda()
-        try:
-            torch.set_float32_matmul_precision("high")
-        except Exception:
-            pass
-        return model, "cuda"
-    return model, "cpu"
-
-def select_prediction(raw):
-    if isinstance(raw, (list, tuple)):
-        return raw[-1]
-    if isinstance(raw, dict):
-        for key in ("pred", "preds", "logits", "out"):
-            if key in raw:
-                return raw[key]
-        return list(raw.values())[-1]
-    return raw
-
-def run_prediction(model, device, inp):
-    with torch.no_grad():
-        return select_prediction(model(inp)).sigmoid().cpu()
-
-def retry_on_cpu(model, inp):
-    model = model.cpu()
-    try:
-        torch.cuda.empty_cache()
-    except Exception:
-        pass
-    return model, "cpu", run_prediction(model, "cpu", inp.cpu())
-
-def process_image(model, device, in_path, out_path):
-    img = Image.open(in_path).convert("RGB")
-    orig_size = img.size
-    image_size = (1024, 1024)
-    transform = T.Compose([
-        T.Resize(image_size),
-        T.ToTensor(),
-        T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-    ])
-    inp = transform(img).unsqueeze(0).to(device)
-    try:
-        preds = run_prediction(model, device, inp)
-    except Exception:
-        if device != "cuda":
-            raise
-        model, device, preds = retry_on_cpu(model, inp)
-    pred = preds[0].squeeze()
-    mask_pil = T.ToPILImage()(pred).resize(orig_size)
-    out = img.convert("RGBA")
-    out.putalpha(mask_pil)
-    os.makedirs(os.path.dirname(out_path), exist_ok=True)
-    out.save(out_path)
-    return model, device
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["image","folder"], required=True)
-    ap.add_argument("--input", required=True)
-    ap.add_argument("--output", required=True)
-    ap.add_argument("--model_id", default="ZhengPeng7/BiRefNet")
-    ap.add_argument("--local_files_only", action="store_true")
-    ap.add_argument("--device", default="auto")
-    args = ap.parse_args()
-    dev = "cuda" if (args.device == "auto" and torch.cuda.is_available()) or args.device == "cuda" else "cpu"
-    model, dev = load_model(args.model_id, dev, args.local_files_only)
-    if args.mode == "image":
-        process_image(model, dev, args.input, args.output)
-        return
-    names = [n for n in os.listdir(args.input) if n.lower().endswith(".png")]
-    names.sort()
-    for n in names:
-        in_p = os.path.join(args.input, n)
-        out_p = os.path.join(args.output, n)
-        model, dev = process_image(model, dev, in_p, out_p)
-
-if __name__ == "__main__":
-    main()
-`;
+        const code = fs.readFileSync(path.join(__dirname, "main", "birefnet-runner.py"), "utf8");
         try { fs.mkdirSync(path.dirname(scriptPath), { recursive: true }); } catch {}
         const finalCode = String(code || "").replace(/^\n/, "");
         fs.writeFileSync(scriptPath, finalCode, "utf8");
@@ -8518,7 +8458,19 @@ if __name__ == "__main__":
         const scriptPath = path.join(workDir, "birefnet_run.py");
         writeBiRefNetScript(scriptPath);
         sendProgress({ state: "running", stage: "rembg", message: "AI 分割中…（BiRefNet）", progress01: 0.35 });
-        const r = await runProcWithPolling(pythonExe, ["-W", "ignore::FutureWarning", scriptPath, "--mode", "folder", "--input", inDir, "--output", outDir, ...buildBiRefNetRunArgs()], birefEnv, { label: "BiRefNet", outDir, expectedCount, progressStart01: 0.35, progressEnd01: 0.69 });
+        const streamEnabled=payload?.streamMasks===true&&hasRendererDecodedFrames&&payload?.returnMaskOnly===true;
+        const priorities=new Set(Array.isArray(payload?.referenceDecodedFrameIndices)?payload.referenceDecodedFrameIndices:[]);
+        const aliases=new Map((inferenceInput.duplicatePairs||[]).map(pair=>[pair.duplicateName,pair.sourceName]));
+        const priorityNames=(framePlanItems||[]).filter(f=>priorities.has(f.decodedFrameIndex)).map(f=>aliases.get(f.outputFilename)||f.outputFilename);
+        const priorityFile=path.join(workDir,"reference-priority.json");fs.writeFileSync(priorityFile,JSON.stringify([...new Set(priorityNames)]));
+        const stream=streamEnabled?require("./main/cutout-mask-stream").createCutoutMaskStream({jobId,sender:evt.sender,frames:framePlanItems,duplicates:inferenceInput.duplicatePairs,outDir,width:Number(payload.rendererFrameWidth),height:Number(payload.rendererFrameHeight)}):null;
+        const interval=stream?setInterval(()=>{stream.pump().catch(error=>{stream.stop();appendLogLine("warn","cutout-mask-stream-fallback",{jobId,error:String(error)});});},200):null;
+        let r;
+        try {
+          r = await runProcWithPolling(pythonExe, ["-W", "ignore::FutureWarning", scriptPath, "--mode", "folder", "--input", inDir, "--output", outDir, "--priority-file",priorityFile, ...buildBiRefNetRunArgs()], birefEnv, { label: "BiRefNet", outDir, expectedCount, progressStart01: 0.35, progressEnd01: 0.69 });
+          if(r.ok&&stream)await stream.pump(true).catch(error=>appendLogLine("warn","cutout-mask-stream-final-fallback",{jobId,error:String(error)}));
+          appendLogLine("info","cutout-inference-runtime",{jobId,stdout:r.stdout,streamedFrames:stream?.count||0});
+        } finally {if(interval)clearInterval(interval);stream?.stop();}
         if (!r.ok) return { ok: false, error: String(r.stderr || r.stdout || "").slice(0, 520) };
         return { ok: true };
       };
@@ -9382,6 +9334,33 @@ if __name__ == "__main__":
       const finalFrameTimes = canonicalFramePlan?.frameTimes?.length === sourceFiles.length
         ? sourceFiles.map((f) => canonicalFramePlan.frameTimes[f.sequenceIndex])
         : frameTimes;
+      const buildMaskResult = () => ({
+        ok: true,
+        jobId,
+        kind: "video",
+        fps,
+        frames: maxFrames,
+        width,
+        height,
+        sourceFrameIndices,
+        decodedFrameIndices,
+        frameTimes: Array.isArray(finalFrameTimes) ? finalFrameTimes.slice(0, maxFrames) : null,
+        frameManifest,
+        decodedFrameManifest: rendererDecodedFrameManifest,
+        timelineToDecodedFrameMap: rendererTimelineToDecodedFrameMap,
+        decodedFrameManifestHash,
+        debugDir,
+        alphaEncoding: "u8-mask-v1",
+        alphaByteLength: alphaAll.length,
+        alphaBytes: new Uint8Array(alphaAll.buffer, alphaAll.byteOffset, alphaAll.byteLength)
+      });
+      // Only clients that retain the exact captured RGB frames opt into this.
+      // Their preview and final matting consume the checked binary masks; the
+      // two legacy intermediate video encodes would immediately be discarded.
+      if (payload?.returnMaskOnly === true && Number(payload?.rendererFramesVersion) === 2 && hasRendererDecodedFrames) {
+        sendProgress({ state: "done", stage: "done", message: "完成", progress01: 1 });
+        return { ...buildMaskResult(), maskOnly: true };
+      }
       const makeEncodePattern = (srcDir, names, label) => {
         try {
           const alreadySequential = names.every((name, i) => String(name || "").toLowerCase() === frameFileName(i).toLowerCase());
@@ -9446,24 +9425,7 @@ if __name__ == "__main__":
 
       sendProgress({ state: "done", stage: "done", message: "完成", progress01: 1 });
       return {
-        ok: true,
-        jobId,
-        kind: "video",
-        fps,
-        frames: maxFrames,
-        width,
-        height,
-        sourceFrameIndices,
-        decodedFrameIndices,
-        frameTimes: Array.isArray(finalFrameTimes) ? finalFrameTimes.slice(0, maxFrames) : null,
-        frameManifest,
-        decodedFrameManifest: rendererDecodedFrameManifest,
-        timelineToDecodedFrameMap: rendererTimelineToDecodedFrameMap,
-        decodedFrameManifestHash,
-        debugDir,
-        alphaEncoding: "u8-mask-v1",
-        alphaByteLength: alphaAll.length,
-        alphaBytes: new Uint8Array(alphaAll.buffer, alphaAll.byteOffset, alphaAll.byteLength),
+        ...buildMaskResult(),
         srcVideoFileName: srcVideoFileName,
         srcVideoBase64: srcVideoBuf ? srcVideoBuf.toString("base64") : null,
         outVideoFileName: path.basename(outVideo),
@@ -10009,6 +9971,15 @@ handleNovaFlowTempIpc("export-cleanup-dir", async (_evt, payload) => {
   }
 });
 
+const cutoutRawEncoder = require("./main/cutout-raw-encoder").createCutoutRawEncoder({ffmpegPath, validate:isInternalCutoutSaveFrameEncode});
+for (const [channel, method] of [["cutout-raw-start","start"],["cutout-raw-write","write"],["cutout-raw-abort","abort"]]) {
+  handleNovaFlowTempIpc(channel, async (evt,payload) => {
+    try { return await cutoutRawEncoder[method](evt,payload); }
+    catch (error) { return toIpcErrorResult(error,"cutout_raw_"+method+"_failed"); }
+  });
+}
+app.on("before-quit", () => { void cutoutRawEncoder.dispose(); });
+
 handleNovaFlowTempIpc("export-encode-frames-to-video", async (_evt, payload) => {
   try {
     if (!isInternalCutoutSaveFrameEncode(payload)) {
@@ -10039,6 +10010,10 @@ handleNovaFlowTempIpc("export-encode-frames-to-video", async (_evt, payload) => 
       await traceEncodedCutoutOutput("exportEncodeFramesToVideo", payload, outPath, {});
       return buildEncodeResult();
     };
+    if (payload?.rawSessionId) {
+      await cutoutRawEncoder.finish(_evt,payload);
+      return await finalizeEncodeResult();
+    }
     const inPattern = path.join(dir, pattern);
     const vf = `scale=${w}:${h}:flags=lanczos`;
     // PNG frames contain straight RGB. VP9 alpha also expects straight RGB;
@@ -10072,6 +10047,7 @@ handleNovaFlowTempIpc("export-encode-frames-to-video", async (_evt, payload) => 
         "-i", inPattern,
         "-vf", vfAlpha,
         "-c:v", "libvpx-vp9",
+        ...(isInternalCutoutSaveFrameEncode(payload) ? ["-row-mt", "1", "-threads", "4"] : []),
         ...(keepAlpha ? ["-auto-alt-ref", "0"] : []),
         "-pix_fmt", keepAlpha ? "yuva420p" : "yuv420p",
         ...(keepAlpha ? ["-metadata:s:v:0", "alpha_mode=1"] : []),

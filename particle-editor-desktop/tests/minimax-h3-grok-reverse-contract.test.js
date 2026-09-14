@@ -51,6 +51,7 @@ function loadWorkflowModule(workflowSource, filename, dependency = null) {
       throw new Error(`Unexpected workflow dependency: ${request}`);
     },
   };
+  context.NovaFlowH3PromptFormat = require('../admin-server/h3-prompt-enhance.js');
   context.globalThis = context;
   vm.runInNewContext(workflowSource, context, { filename });
   return context.module.exports;
@@ -306,6 +307,7 @@ const keyframeProtocolRules = vm.runInNewContext(
 const h3FailureEnvelope = vm.runInNewContext(
   `(${extractNamedFunction(source, "miniMaxH3FailureEnvelope")})`,
   {
+    h3PromptEnhance: require('../admin-server/h3-prompt-enhance.js'),
     MINIMAX_H3_VISUAL_SCHEMA: "nf.h3.visual.v1",
     normalizeSmartAiText: (value, limit) => String(value || "").trim().slice(0, limit),
     miniMaxH3ValidationLeaf: (value, fallback) => /^[a-z0-9_]{3,80}$/.test(String(value || "").trim().toLowerCase())
@@ -741,6 +743,7 @@ assert.equal(englishPromptWorkflowRequest.preferredOutputLanguage, "en");
 assert.match(build(englishPromptWorkflowRequest).body.input[0].content.at(-1).text, /descriptive fact values in English/);
 
 const optimizeContext = {
+  miniMaxH3PromptEnhanceUserRequirement: (requirements) => requirements,
   h3PromptEnhance: require('../admin-server/h3-prompt-enhance'),
   isMiniMaxH3PromptEnhancePayload: () => true,
   smartAiSupportsNegativePrompt: () => true,
@@ -793,9 +796,9 @@ const optimized = buildOptimize({
 });
 const optimizeUserText = optimized.body.input[1].content[0].text;
 assert.match(optimizeUserText, /白色纸飞机从桌面起飞/);
-assert.match(optimizeUserText, /contains Chinese[\s\S]*?Simplified Chinese/);
-assert.match(optimizeUserText, /integrated_multimodal_description[\s\S]*?overall_soundscape[\s\S]*?non_diegetic_music/);
-assert.match(optimizeUserText, /\[Shot 1\][\s\S]*?\[Shot N\] At MM:SS\.mmm/);
+assert.match(optimizeUserText, /默认使用简体中文/);
+assert.match(optimizeUserText, /【任务定位】[\s\S]*?【连续性与约束】/);
+assert.match(optimizeUserText, /consecutive time ranges/);
 assert.equal(optimized.inputMeta.mode, "minimax_h3_prompt_enhance");
 assert.equal(optimized.resultOptions.visualRetryAllowed, true);
 assert.equal(optimized.resultOptions.durationSeconds, 5);
@@ -814,8 +817,8 @@ const optimizedFl2v = buildOptimize({
 const optimizeFl2vUserText = optimizedFl2v.body.input[1].content[0].text;
 assert.match(optimizeFl2vUserText, /mode: first_last/);
 assert.match(optimizeFl2vUserText, /durationSeconds: 4/);
-assert.match(optimizeFl2vUserText, /<Picture 1>[\s\S]*?<Picture 2>[\s\S]*?\[Shot 1\][\s\S]*?selected duration/);
-assert.match(optimizeFl2vUserText, /FL2VA may reference only <Picture 1> and <Picture 2>/);
+assert.match(optimizeFl2vUserText, /<Picture 1>[\s\S]*?<Picture 2>[\s\S]*?selected duration/);
+assert.match(optimizeFl2vUserText, /exact final frame/);
 assert.equal(optimizedFl2v.resultOptions.minimaxH3Mode, "first_last");
 assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
 

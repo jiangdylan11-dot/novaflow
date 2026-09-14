@@ -20,6 +20,7 @@ function loadCommonJsSource(source, filename, dependency) {
       throw new Error(`Unexpected test dependency: ${request}`)
     },
   }
+  context.NovaFlowH3PromptFormat = require('../admin-server/h3-prompt-enhance.js');
   context.globalThis = context
   vm.runInNewContext(source, context, { filename })
   return context.module.exports
@@ -105,6 +106,23 @@ function firstLastOutput(durationSeconds = 8) {
   ].join('\n')
 }
 
+test('refinement includes verified facts, original intent and supplementary requirements with the same references', () => {
+  const current = firstLastOptions({ requirements: '镜头缓慢拉近，动作幅度减半' })
+  const prepared = workflow.prepareRequest(current)
+  const verified = workflow.validateAndRestore({ text: firstLastOutput(), context: prepared.context, current })
+  const refinement = workflow.prepareRefinement({ text: verified.text, context: prepared.context })
+  assert.ok(refinement.prompt.includes(verified.text))
+  assert.ok(refinement.requirements.includes(current.prompt))
+  assert.ok(refinement.requirements.endsWith(current.requirements))
+  assert.match(refinement.requirements, /<Picture 1>/)
+  assert.match(refinement.requirements, /<Picture 2>/)
+  assert.equal(refinement.durationSeconds, 8)
+  assert.equal(refinement.h3Mode, 'first_last')
+  assert.equal(refinement.purpose, 'minimax-h3-prompt-enhance')
+  const blank = workflow.prepareRequest(firstLastOptions({ requirements: '' }))
+  assert.equal(workflow.prepareRefinement({ text: verified.text, context: blank.context }), null)
+})
+
 test('exports one immutable pure reverse workflow through CommonJS and the browser global', () => {
   const browser = { console }
   browser.globalThis = browser
@@ -150,6 +168,8 @@ test('builds one strict first-frame bridge request for I2V', () => {
   assert.deepEqual(JSON.parse(JSON.stringify(prepared.request)), {
     purpose: 'minimax-h3-i2v-reverse',
     surface: 'animation',
+    h3Mode: 'image_video',
+    durationSeconds: 5,
     scenario: 'single_reference',
     sourceCount: 1,
     supportsNegativePrompt: false,

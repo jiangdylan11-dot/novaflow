@@ -2,6 +2,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { patchAutomaticKeyCutout } from './patch-cutout-automatic-key.mjs';
+import { patchUnifiedCutoutTool } from './patch-cutout-unified-tool.mjs';
+import { patchCutoutPreviewBackground } from './patch-cutout-preview-background.mjs';
+import { patchVerifiedCapture } from './patch-cutout-verified-capture.mjs';
+import { patchCutoutPerformance } from './patch-cutout-performance.mjs';
+import { patchCutoutFrameReuse } from './patch-cutout-frame-reuse.mjs';
+import { patchCutoutPrerender } from './patch-cutout-prerender.mjs';
+import { patchCutoutRawSave } from './patch-cutout-raw-save.mjs';
+import { patchCutoutMaskStream } from './patch-cutout-mask-stream.mjs';
+import { patchCutoutControls } from './patch-cutout-controls.mjs';
+import { patchToolPanelActions } from './patch-tool-panel-actions.mjs';
+import { patchPromptHistoryLimit } from './patch-prompt-history-limit.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bundleGitPath = "particle-editor/assets/index-BbIa-2NM.js";
@@ -15,12 +27,17 @@ let source = verifyHeadReplay
       maxBuffer: 64 * 1024 * 1024
     })
   : diskSource;
+let changed = false;
+// Keep the completed historical migrations from rewriting the unified
+// tool controls back into the old two-entry interface on each build.
+if (!source.includes('nfUnifiedVideoCutoutV1')) {
 // Earlier migrations match the original AI branch. Normalize only this new
 // option for replay; the export verification patch below restores it.
 source = source.replace("requireRvfcVerified:!!n?.exportMedia,", "");
 const sequenceMaterialOption = 'sequence:R===`ai`&&!e.inputImageDataUrl?{frames:fe.current?.frames,masks:U.current,maskWidth:Number(G.current?.w),maskHeight:Number(G.current?.h)}:null,';
 source = source.replace(sequenceMaterialOption, "");
-let changed = false;
+// Reapply the newer callback dependencies after the legacy dependency migrations.
+source = source.replace('nfGreenScreen,nfPreserveShadow,R,nfCutoutMode,V,ie]', 'nfGreenScreen,nfPreserveShadow]');
 
 function replaceExact(label, before, after) {
   if (source.includes(after)) {
@@ -714,7 +731,7 @@ replaceExact(
   'G.current={fps:c,frames:1,w:_,h:v,times:[0],sourceFrameIndices:g,timelineFrameCount:1,decodedFrameCount:1,alphaFrames:1,timelineToDecodedFrameMap:[0],decodedFrameManifest:[{decodedFrameIndex:0,representativeTimelineFrameIndex:0,mediaTime:0}]}'
 );
 
-replaceExact(
+if (!source.includes('nfOpenCutoutTool=')) replaceExact(
   "Green-screen light preservation controls",
   ',[V,H]=(0,_.useState)(!1);(0,_.useEffect)(()=>{e.inputImageDataUrl&&Je(!1)}',
   ',[V,H]=(0,_.useState)(!1),[nfGreenScreen,nfSetGreenScreen]=Tt(`nf_green_screen_light_preserve`,!0,{parse:e=>e!==`false`,serialize:e=>String(!!e)}),[nfPreserveShadow,nfSetPreserveShadow]=Tt(`nf_cutout_preserve_shadow`,!0,{parse:e=>e!==`false`,serialize:e=>String(!!e)}),[nfGreenScreenActive,nfSetGreenScreenActive]=(0,_.useState)(!1);(0,_.useEffect)(()=>{e.inputImageDataUrl&&Je(!1)}'
@@ -743,7 +760,7 @@ replaceLegacyExact("Green-screen light preservation uses a compact switch", "(0,
 const shadowToggle = "(0,X.jsxs)(`button`,{type:`button`,role:`switch`,\"aria-label\":`保留投影`,\"aria-checked\":nfPreserveShadow,\"data-novaflow-shadow-preserve\":`1`,title:nfPreserveShadow?`保留投影：开启`:`保留投影：关闭，移除可识别投影；重叠处可用笔刷修复`,onClick:()=>{wi(),nfSetPreserveShadow(!nfPreserveShadow),Xn(`dirty`)},style:{margin:`0 14px 10px`,padding:`0 12px`,width:`calc(100% - 28px)`,minWidth:0,height:36,minHeight:36,boxSizing:`border-box`,display:`flex`,alignItems:`center`,justifyContent:`space-between`,gap:10,border:0,borderRadius:6,background:`#333333`,fontSize:12,fontWeight:600,color:`#eee`,cursor:`pointer`,textAlign:`left`,whiteSpace:`nowrap`},children:[(0,X.jsx)(`span`,{children:`保留投影`}),(0,X.jsx)(`span`,{\"aria-hidden\":!0,style:{position:`relative`,display:`block`,flex:`0 0 26px`,width:26,height:14,borderRadius:999,background:nfPreserveShadow?`#1ea672`:`#222222`,transition:`background-color 140ms ease-out`},children:(0,X.jsx)(`span`,{style:{position:`absolute`,top:2,left:nfPreserveShadow?14:2,width:10,height:10,borderRadius:`50%`,background:nfPreserveShadow?`#e8e8e8`:`#8f98a3`,transition:`left 140ms ease-out, background-color 140ms ease-out`}})})]})";
 replaceLegacyExact("Add independent shadow control beside light preservation", greenScreenToggle+',(0,X.jsx)(`style`,{children:`[data-novaflow-soft-green-active=', greenScreenToggle+','+shadowToggle+',(0,X.jsx)(`style`,{children:`[data-novaflow-soft-green-active=');
 replaceLegacyExact("Do not mount manual sliders in automatic mode", ",(0,X.jsxs)(`div`,{\"data-novaflow-soft-green-active\":nfGreenScreen?`1`:`0`", ",!nfGreenScreen&&(0,X.jsxs)(`div`,{\"data-novaflow-soft-green-active\":nfGreenScreen?`1`:`0`");
-replaceExact(
+if (!source.includes('nfOpenCutoutTool=')) replaceExact(
   "Green-screen toggle and legacy-only edge controls",
   'N&&(0,X.jsxs)(X.Fragment,{children:[(0,X.jsx)(`div`,{style:{height:1,background:`rgba(255,255,255,0.08)`}}),(0,X.jsxs)(`div`,{style:{padding:`10px 14px 12px 14px`,display:`grid`,gap:10},children:[null,null,R===`key`',
   'N&&(0,X.jsxs)(X.Fragment,{children:[(0,X.jsx)(`div`,{style:{height:1,background:`rgba(255,255,255,0.08)`}}),' + greenScreenToggle + ',' + shadowToggle + ',(0,X.jsx)(`style`,{children:`[data-novaflow-soft-green-active="1"] > div:not([data-novaflow-manual-brush]){display:none!important}`}),!nfGreenScreen&&(0,X.jsxs)(`div`,{"data-novaflow-soft-green-active":nfGreenScreen?`1`:`0`,style:{padding:`10px 14px 12px 14px`,display:`grid`,gap:10},children:[null,null,R===`key`'
@@ -779,6 +796,19 @@ replaceExact("Cutout save reports video encoding", "l=await n.exportEncodeFrames
 replaceExact("Cutout material reference uses this clip's captured RGB and masks",
   'requireSubjectMask:R===`ai`,maskCanvas:l',
   'requireSubjectMask:R===`ai`,' + sequenceMaterialOption + 'maskCanvas:l');
+
+source = patchAutomaticKeyCutout(source);
+}
+source = patchUnifiedCutoutTool(source);
+source = patchCutoutPreviewBackground(source);
+if (!source.includes('nfCaptureReader=null')) source = patchCutoutPerformance(source);
+if (!source.includes('nfFinalFrames=')) source = patchCutoutFrameReuse(source);
+source = patchVerifiedCapture(source);
+source = patchCutoutPrerender(source);
+source = patchCutoutMaskStream(patchCutoutRawSave(source));
+source = patchCutoutControls(source);
+source = patchToolPanelActions(source);
+source = patchPromptHistoryLimit(source);
 
 if (verifyHeadReplay) {
   const replayComparable = source.replace(/\r\n?/g, "\n");

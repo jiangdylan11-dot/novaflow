@@ -3096,10 +3096,26 @@ def parse_visual_contract(
 
 
 def _semantic_error(message: str) -> None:
+    # Static category only: do not expose model output or image facts in logs.
+    leaf = "visual-semantics"
+    for marker, category in (
+        ("visible_person_count", "person-count"),
+        ("body_exposure", "body-exposure"),
+        ("body exposure", "body-exposure"),
+        ("age_", "age"),
+        ("interaction", "interaction"),
+        ("signals", "signals"),
+        ("sensitive_visible_facts", "fact-classification"),
+        ("visual fields", "fact-classification"),
+    ):
+        if marker in message:
+            leaf = "visual-" + category
+            break
     raise VisualContractError(
         message,
         code="visual-contract-semantic-invalid",
         semantic=True,
+        diagnostics={"validationLeaf": leaf},
     )
 
 

@@ -1,0 +1,40 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
+const root=path.resolve(import.meta.dirname,'..');
+const history15=process.argv.includes('--history-15');
+const remainingThree=history15||process.argv.includes('--remaining-three');
+const out=path.join(root,history15?'docs/h3-history-15-validation':remainingThree?'docs/h3-final-three-validation':'docs/h3-semantic-fusion-validation');
+const unpacked=path.join(out,'installer/resources/app');
+const hash=file=>createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+const files=['prompt-assistant-service.py','prompt_assistant/h3_prompt_enhance.py','prompt_assistant/h3_prompt_enhance_policy.json','admin-server/h3-prompt-enhance.js','admin-server/server.js','renderer/h3-prompt-format.js','renderer/ai-sequence-minimax-h3-prompt.workflow.js','renderer/ai-sequence-minimax-h3-reverse.workflow.js','renderer/novaflow-smart-ai.js','renderer/index.html','main.js','main/stdio-guard.js'];
+if(history15) files.push('prompt_assistant/visual_contract.py','renderer/assets/index-BbIa-2NM.js','renderer/ai-sequence-green-screen-matting.js');
+const fileResults=files.map(file=>{
+  const source=file.startsWith('renderer/')?path.join(root,'particle-editor',file.slice(9)):path.join(root,'particle-editor-desktop',file);
+  const sourceHash=hash(source), packagedHash=hash(path.join(unpacked,file));
+  assert.equal(packagedHash,sourceHash,file+' differs from final source');
+  return {file,sha256:packagedHash,match:true};
+});
+const context={console};context.globalThis=context;
+for(const file of ['h3-prompt-format.js','ai-sequence-minimax-h3-prompt.workflow.js','ai-sequence-minimax-h3-reverse.workflow.js']) vm.runInNewContext(fs.readFileSync(path.join(unpacked,'renderer',file),'utf8'),context);
+const rows=[];
+const cases=history15?[['local','reverse'],['grok','optimize']]:remainingThree?[['local','optimize'],['local','reverse'],['grok','optimize']]:['local','grok'].flatMap(provider=>['optimize','reverse'].map(operation=>[provider,operation]));
+for(const [provider,operation] of cases) {
+  const prefix=provider+'-'+(remainingThree?(provider==='grok'?'multi-reference-':'first-last-'):'')+operation;
+  const current=JSON.parse(fs.readFileSync(path.join(out,prefix+'-input.json'),'utf8'));
+  const text=fs.readFileSync(path.join(out,prefix+'-output.txt'),'utf8');
+  const workflow=operation==='reverse'?context.NovaFlowAiSequenceMiniMaxH3ReverseWorkflow:context.NovaFlowAiSequenceMiniMaxH3PromptWorkflow;
+  const prepared=workflow.prepareRequest(current);
+  const modelText=current.mode==='multi_reference'?JSON.parse(fs.readFileSync(path.join(out,prefix+'-stage1-response.json'),'utf8')).data.output_text:text;
+  assert.equal(workflow.validateAndRestore({text:modelText,context:prepared.context,current}).text,text);
+  assert.throws(()=>workflow.validateAndRestore({text,context:prepared.context,current:{...current,prompt:current.prompt+' 已修改'}}));
+  const result=JSON.parse(fs.readFileSync(path.join(out,prefix+'-result.json'),'utf8'));
+  assert.equal(result.ok,true);
+  rows.push({provider,operation,...result,installerRendererValidated:true,staleRejected:true});
+}
+const installer=path.join(root,'particle-editor-desktop/dist/'+(history15?'NovaFlow Setup 2.3.214 - H3校验与历史15条修复.exe':remainingThree?'NovaFlow Setup 2.3.214 - H3首尾帧与中文修复.exe':'NovaFlow Setup 2.3.214 - H3内容融合优化修复.exe'));
+const report={installer,bytes:fs.statSync(installer).size,sha256:hash(installer),files:fileResults,cases:rows};
+fs.writeFileSync(path.join(out,'package-validation.json'),JSON.stringify(report,null,2));
+console.log(JSON.stringify({ok:true,files:files.length,cases:rows.length,sha256:report.sha256}));

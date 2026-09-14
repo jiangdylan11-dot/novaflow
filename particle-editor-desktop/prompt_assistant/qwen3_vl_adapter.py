@@ -39,6 +39,7 @@ class Qwen3VLAbliteratedAdapter:
         event_sink: Callable[[str, dict[str, Any]], None] | None = None,
         build_cache: bool | None = None,
         require_prequantized_cache: bool = False,
+        trim_transient_cuda_cache: bool = False,
     ):
         self.model_path = Path(model_path)
         self.max_side = max(256, min(1536, int(max_side)))
@@ -65,6 +66,7 @@ class Qwen3VLAbliteratedAdapter:
         )
         self.event_sink = event_sink
         self.require_prequantized_cache = bool(require_prequantized_cache)
+        self.trim_transient_cuda_cache = bool(trim_transient_cuda_cache)
         self.model = None
         self.processor = None
         self.last_generation_diagnostics: dict[str, Any] = {}
@@ -85,6 +87,9 @@ class Qwen3VLAbliteratedAdapter:
                 "cacheBytes",
                 "errorCode",
                 "modelSource",
+                "allocatedBytes",
+                "reservedBeforeBytes",
+                "reservedAfterBytes",
             }
             and isinstance(value, (str, int, float, bool))
         }
@@ -92,6 +97,17 @@ class Qwen3VLAbliteratedAdapter:
             sink(str(stage or "unknown")[:80], safe_fields)
         except Exception:
             pass
+
+    def _trim_cuda_cache(self, torch, stage: str) -> None:
+        if not self.trim_transient_cuda_cache or not torch.cuda.is_available():
+            return
+        # On Windows, unused allocator blocks can still consume the dedicated
+        # GPU budget and push live NF4 weights into slow shared GPU memory.
+        allocated = int(torch.cuda.memory_allocated())
+        reserved = int(torch.cuda.memory_reserved())
+        torch.cuda.empty_cache()
+        self._emit_stage(stage, allocatedBytes=allocated, reservedBeforeBytes=reserved,
+                         reservedAfterBytes=int(torch.cuda.memory_reserved()))
 
     @staticmethod
     def _weight_file_names(path: Path) -> list[str]:
@@ -324,6 +340,30 @@ class Qwen3VLAbliteratedAdapter:
     def _pid_alive(pid: int) -> bool:
         if pid <= 0:
             return False
+        if os.name == "nt":
+            # Signal 0 is CTRL_C_EVENT on Windows, not a POSIX liveness probe.
+            # A zero-timeout wait only observes the process; it sends no signal.
+            import ctypes
+            from ctypes import wintypes
+
+            if pid > 0xFFFFFFFF:
+                return False
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+            kernel32.OpenProcess.restype = wintypes.HANDLE
+            kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+            kernel32.WaitForSingleObject.restype = wintypes.DWORD
+            kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+            kernel32.CloseHandle.restype = wintypes.BOOL
+            handle = kernel32.OpenProcess(0x00100000, False, pid)  # SYNCHRONIZE only
+            if not handle:
+                # Only ERROR_INVALID_PARAMETER proves the PID no longer exists.
+                # Keep a lock on access denial or an uncertain query failure.
+                return ctypes.get_last_error() != 87
+            try:
+                return kernel32.WaitForSingleObject(handle, 0) != 0  # WAIT_OBJECT_0
+            finally:
+                kernel32.CloseHandle(handle)
         try:
             os.kill(pid, 0)
             return True
@@ -541,6 +581,7 @@ class Qwen3VLAbliteratedAdapter:
                 local_files_only=True,
                 trust_remote_code=False,
             )
+            self._trim_cuda_cache(torch, "model-load-cache-trim")
             load_ms = round((time.perf_counter() - load_started) * 1000)
             cache_build = {"ok": False, "code": "cache-hit"}
             if not cache_hit and allow_cache_rebuild:
@@ -766,11 +807,17 @@ class Qwen3VLAbliteratedAdapter:
                     "temperature": max(0.01, min(2.0, float(temperature))),
                     "top_p": max(0.01, min(1.0, float(top_p))),
                 })
+            self._trim_cuda_cache(torch, "prefill-cache-trim")
+            generation_started = time.perf_counter()
+            if self.trim_transient_cuda_cache:
+                self._emit_stage("generation-start")
             with torch.inference_mode():
                 generated = self.model.generate(
                     **model_inputs,
                     **generation_kwargs,
                 )
+            if self.trim_transient_cuda_cache:
+                self._emit_stage("generation-done", elapsedMs=round((time.perf_counter() - generation_started) * 1000))
             input_length = model_inputs["input_ids"].shape[1]
             trimmed = generated[:, input_length:]
             generated_tokens = int(trimmed.shape[-1])

@@ -77,7 +77,7 @@ assert(
 );
 assert(tool.includes('data-novaflow-ai-video-merge-entry'), "Video merge entry must have its dedicated semantic marker");
 assert(tool.includes('data-novaflow-ai-sequence-tool", TOOL_ID'), "Video merge entry must declare its state-machine tool id");
-assert(tool.includes('insertAdjacentElement("afterend", entry)'), "Video merge entry must mount immediately after the processing action row");
+assert(tool.includes('insertAdjacentElement("afterend", entry)') && tool.includes('[data-novaflow-ai-post-primary-action="1"]'), "Video merge entry must mount immediately after video color repair");
 assert(tool.includes('width: "100%"') && tool.includes('gridColumn: "1 / -1"'), "Video merge entry must be full width");
 assert(tool.includes("workspace.open(options)"), "activate must delegate to workspace.open(options)");
 assert(tool.includes("workspace.close(options)"), "deactivate must delegate to workspace.close(options)");
@@ -101,12 +101,12 @@ assert(
   "Video merge viewport controls must publish the current Preview cache revision"
 );
 assert(
-    rendererIndex.includes("assets/index-BbIa-2NM.js?v=20260806-video-merge-save-close-1") &&
+    rendererIndex.includes("assets/index-BbIa-2NM.js?v=20260914-preview-background-2") &&
     rendererIndex.includes("ai-sequence-video-merge.resource-bridge.js?v=20260806-video-merge-save-close-1") &&
     rendererIndex.includes("ai-sequence-video-merge-export.workflow.js?v=20260807-video-merge-save-semantics-1") &&
     rendererIndex.includes("ai-sequence-video-merge.workspace.js?v=20260807-video-merge-left-feedback-1") &&
-    rendererIndex.includes("ai-sequence-video-merge.tool.js?v=20260807-video-merge-save-semantics-1") &&
-    rendererIndex.includes("novaflow-brand-runtime.js?v=20260807-video-merge-event-ownership-1"),
+    rendererIndex.includes("ai-sequence-video-merge.tool.js?v=20260914-preview-background-2") &&
+    rendererIndex.includes("novaflow-brand-runtime.js?v=20260914-preview-background-2"),
   "Video merge save semantics must publish the current cache revision"
 );
 

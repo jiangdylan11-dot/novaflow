@@ -462,14 +462,15 @@ test("smart AI request builders preserve Responses API contracts", () => {
   assert.equal(promptRequest.body.model, "grok-contract-test");
   assert.equal(promptRequest.body.store, false);
   assert.equal(promptRequest.body.max_output_tokens, 4096);
-  assert.equal(promptRequest.body.text.format.name, "novaflow_art_prompt_patch_v1");
+  assert.equal(promptRequest.body.text.format.name, "novaflow_art_semantic_fusion_v1");
   assert.equal(promptRequest.body.text.format.strict, true);
   assert.equal(promptRequest.inputMeta.mode, "prompt_optimize");
   assert.deepEqual(promptRequest.resultOptions, {
-    ordinaryArtPromptPatch: true,
+    artSemanticFusion: true,
     originalPrompt: "一名剑客站在雪山前",
     requirements: "电影感",
-    supportsNegativePrompt: true
+    supportsNegativePrompt: true,
+    nsfw: false
   });
 
   const imageRequest = buildGrokImageReverseRequest({
@@ -2723,8 +2724,8 @@ test("ordinary Art structured recompile is enabled only by the exact promptSchem
   ];
   for (const legacyPayload of legacyPayloads) {
     const request = buildGrokPromptOptimizeRequest(legacyPayload, "grok-contract-test");
-    assert.equal(request.body.text.format.name, "novaflow_art_prompt_patch_v1");
-    assert.equal(request.resultOptions.ordinaryArtPromptPatch, true);
+    assert.equal(request.body.text.format.name, "novaflow_art_semantic_fusion_v1");
+    assert.equal(request.resultOptions.artSemanticFusion, true);
     assert.equal(request.resultOptions?.ordinaryArtStructuredPrompt, undefined);
     assert.equal(request.inputMeta.promptSchema, undefined);
   }
@@ -2750,9 +2751,9 @@ test("ordinary Art structured recompile is enabled only by the exact promptSchem
       ...referenceCarrier,
       promptSchema: "nf.art.prompt.v1"
     }, "grok-contract-test");
-    assert.equal(request.body.text.format.name, "novaflow_art_prompt_patch_v1");
+    assert.equal(request.body.text.format.name, "novaflow_art_semantic_fusion_v1");
     assert.equal(request.body.max_output_tokens, 4096);
-    assert.equal(request.resultOptions.ordinaryArtPromptPatch, true);
+    assert.equal(request.resultOptions.artSemanticFusion, true);
     assert.equal(request.resultOptions?.ordinaryArtStructuredPrompt, undefined);
     assert.equal(request.inputMeta.promptSchema, undefined);
   }
@@ -2794,13 +2795,11 @@ test("ordinary Art optimize uses exact block patches and deterministic full-prom
 
   assert.deepEqual(layout.blocks.map((block) => block.id), ["B001", "B002", "B003"]);
   assert.equal(userText.includes(requirements), true, "the unified change request must be carried verbatim");
-  assert.match(userText, /不得按逗号、顿号、分号或短语机械拆/);
-  assert.match(userText, /replacement 不需要与 target_quote 有词面重合/);
-  assert.match(userText, /未返回的段落由系统逐字保留/);
-  assert.doesNotMatch(userText, /最终只能返回 JSON 对象，格式为 \{\"prompt\"/);
-  assert.deepEqual(request.body.text.format.schema.properties.patches.items.properties.block_id.enum, [
-    "B001", "B002", "B003", "APPEND"
-  ]);
+  assert.equal(request.resultOptions.artSemanticFusion, true);
+  assert.match(request.body.input[0].content[0].text, /先理解每项修改涉及的段落/);
+  assert.match(request.body.input[0].content[0].text, /未受影响的句子尽量原样保留/);
+  assert.deepEqual(request.body.text.format.schema.required, ["prompt", "negative_prompt"]);
+
 
   const merged = grokResponsesPublicResult({
     id: "patch-response",
@@ -2821,7 +2820,7 @@ test("ordinary Art optimize uses exact block patches and deterministic full-prom
       ],
       negative_prompt: "过曝，背景扁平，塑料皮肤"
     })
-  }, request.resultOptions);
+  }, { ...request.resultOptions, artSemanticFusion: false, ordinaryArtPromptPatch: true });
 
   assert.equal(merged.output_text, [
     layout.blocks[0].text,
@@ -2908,14 +2907,12 @@ test("ordinary Art deterministic merge edits unique spans inside one long block 
       ],
       negative_prompt: ""
     })
-  }, request.resultOptions);
+  }, { ...request.resultOptions, artSemanticFusion: false, ordinaryArtPromptPatch: true });
   assert.equal(parsed.output_text, "主体：两名成年东方女性身穿华服相拥。背景：象牙白宫廷保持明亮，高光曝光受控且背景细节清晰。人物面部：精致东方二次元厚涂塑造，保留手绘质感。风格：东方幻想游戏CG厚涂。要求：四肢归属明确。");
   assert.equal(parsed.editContract, "deterministic-merge-v1");
-  assert.equal(request.body.text.format.schema.properties.patches.maxItems, 4);
-  assert.match(request.body.input[1].content[0].text, /同一段落可以返回多个互不重叠的 replace/);
-  assert.match(request.body.input[1].content[0].text, /最小充分原文片段/);
-  assert.match(request.body.input[1].content[0].text, /若统一变更要求确实与整个短 Prompt 冲突，可以替换全部受影响内容/);
-  assert.match(request.body.input[1].content[0].text, /不能写成修改建议或操作说明/);
+  assert.equal(request.resultOptions.artSemanticFusion, true);
+  assert.match(request.body.input[0].content[0].text, /不输出修改建议/);
+
 });
 
 test("ordinary Art deterministic merge rejects unsafe span patches before trusted marking", () => {
@@ -3204,8 +3201,8 @@ test("ordinary Art core redefinition rejects stale subject blocks and accepts a 
     supportsNegativePrompt: false,
     nsfw: true
   }, "grok-contract-test");
-  assert.match(request.body.input[1].content[0].text, /必须扫描全部 block/);
-  assert.match(request.body.input[1].content[0].text, /未被新要求否定或替换的旧动作可以保留/);
+  assert.match(request.body.input[0].content[0].text, /通读全篇消除冲突/);
+  assert.match(request.body.input[0].content[0].text, /未被要求改变的身份、人数、年龄、发色、服饰、姿态/);
 });
 
 test("ordinary Art deterministic core closure neutralizes seven real mixed-pair identity slots within its eight-unit bound", () => {

@@ -1,7 +1,6 @@
 (function (root, factory) {
   const profiles = Object.freeze([
     Object.freeze({ id: 'beta5_int8', label: 'H3 beta5 TURBO · INT8', steps: 4, checkpoint: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors' }),
-    Object.freeze({ id: 'beta5_fp8', label: 'H3 beta5 TURBO · W4A8', steps: 4, checkpoint: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_w4a8_14gb_optimized.safetensors' }),
   ])
   const instances = new Map(profiles.map(profile => [profile.id, factory(profile)]))
   const storageKey = 'novaflow-h3-beta5-profiles-v1'
@@ -9,27 +8,32 @@
   const settings = {}
   try {
     const saved = JSON.parse(root.localStorage.getItem(storageKey) || '{}')
-    if (saved.uiVersion === 3 && instances.has(saved.selected)) selected = saved.selected
     if (saved.settings && typeof saved.settings === 'object') {
       for (const profile of profiles) {
         if (saved.settings[profile.id]) settings[profile.id] = saved.settings[profile.id]
+      }
+      // Keep the controls last used with the retired low-VRAM option.
+      if (saved.uiVersion === 3 && saved.selected === 'beta5_fp8' && saved.settings.beta5_fp8) {
+        settings.beta5_int8 = saved.settings.beta5_fp8
       }
     }
     // Repair the previously shipped 20-step default once; keep other custom
     // values, and allow users to explicitly save 20 again after this revision.
     if (saved.defaultsVersion !== 2) {
-      for (const id of ['beta5_int8', 'beta5_fp8']) {
+      for (const { id } of profiles) {
         if (Number(settings[id]?.steps) === 20) settings[id] = { ...settings[id], steps: 4 }
       }
     }
   } catch (_) {}
   const profileFor = id => {
-    const profile = profiles.find(profile => profile.id === (id || 'beta5_int8'))
+    // Old saved requests may still carry this ID; never load the deleted model.
+    const resolvedId = !id || id === 'beta5_fp8' ? 'beta5_int8' : id
+    const profile = profiles.find(profile => profile.id === resolvedId)
     if (!profile) throw new TypeError('Unknown H3 profile: ' + id)
     return profile
   }
   const persist = () => {
-    try { root.localStorage.setItem(storageKey, JSON.stringify({ selected, settings, defaultsVersion: 2, uiVersion: 3 })) } catch (_) {}
+    try { root.localStorage.setItem(storageKey, JSON.stringify({ selected, settings, defaultsVersion: 2, uiVersion: 4 })) } catch (_) {}
   }
   const getProfileSettings = (id = selected) => {
     const profile = profileFor(id)
@@ -77,6 +81,7 @@
     patchWorkflow: (workflow, options) => pick(options).patchWorkflow(workflow, options),
     validateWorkflow: (workflow, options) => pick(options).validateWorkflow(workflow, options),
   })
+  persist()
   if (typeof module === 'object' && module.exports) module.exports = api
   if (root && typeof root === 'object') root.NovaFlowAiSequenceMiniMaxH3Workflow = api
 })(typeof globalThis !== 'undefined' ? globalThis : this, function (profile, acceleration) {

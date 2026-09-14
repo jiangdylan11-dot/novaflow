@@ -861,6 +861,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onExportPickSaveFileCanceled,
   exportCreateTempDir: (payload) => ipcRenderer.invoke("export-create-temp-dir", payload),
   exportCleanupDir: (payload) => ipcRenderer.invoke("export-cleanup-dir", payload),
+  cutoutRawStart: payload => ipcRenderer.invoke("cutout-raw-start",payload),
+  cutoutRawWrite: payload => ipcRenderer.invoke("cutout-raw-write",payload),
+  cutoutRawAbort: payload => ipcRenderer.invoke("cutout-raw-abort",payload),
   exportEncodeFramesToVideo: (payload) => ipcRenderer.invoke("export-encode-frames-to-video", payload),
   exportEncodeVideoToVideo: (payload) => ipcRenderer.invoke("export-encode-video-to-video", payload),
   videoCompositorOpenSession: (payload) => ipcRenderer.invoke("video-compositor-session-open", payload),
@@ -987,6 +990,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
     };
   },
   aiSeqRembgBatch: (payload) => ipcRenderer.invoke("ai-seq-rembg-batch", payload),
+  onAiSeqRembgMaskChunk: cb => {
+    if(typeof cb!=="function")return()=>{};
+    const handler=(_evt,data)=>cb(data);ipcRenderer.on("ai-seq-rembg-mask-chunk",handler);
+    return()=>ipcRenderer.removeListener("ai-seq-rembg-mask-chunk",handler);
+  },
   onAiSeqRembgBatchProgress: (cb) => {
     const fn = typeof cb === "function" ? cb : null;
     if (!fn) return () => void 0;

@@ -16,6 +16,7 @@ function loadCommonJsWorkflow() {
     exports: {},
     console,
   }
+  context.NovaFlowH3PromptFormat = require('../admin-server/h3-prompt-enhance.js');
   context.globalThis = context
   vm.runInNewContext(workflowSource, context, { filename: workflowPath })
   return context.module.exports
@@ -226,12 +227,12 @@ test('prepareRequest returns separate requirements, compiled prompt, and immutab
   assert.equal(request.context.snapshot.modelId, 'minimax_h3_local')
   assert.equal(request.text, request.requirements)
   assert.match(request.requirements, /Protocol: Ref2VA/)
-  assert.match(request.requirements, /subject_definitions -> summary -> retention_analysis/)
+  assert.match(request.requirements, /【任务定位】[\s\S]*【连续性与约束】/)
   assert.match(request.requirements, /Available resource labels: <Picture 1> = captured image slot multi_ref_image_2/)
   assert.doesNotMatch(request.requirements, /@\u53c2\u8003\u56fe2/)
-  assert.match(request.requirements, /continuous, physically achievable action/)
-  assert.match(request.requirements, /movement type or locked position, direction, amplitude, and speed/)
-  assert.match(request.requirements, /overall_soundscape is only diegetic sound/)
+  assert.match(request.requirements, /observable actions/)
+  assert.match(request.requirements, /direction, by how much/)
+  assert.match(request.requirements, /ambience and music choices/)
   assert.equal(request.context.fingerprint, request.context.snapshot.fingerprint)
   assert.ok(Object.isFrozen(request))
   assert.ok(Object.isFrozen(request.context))
@@ -599,6 +600,13 @@ test('validateAndRestore can reject a response against current state before rest
     /response is stale/,
   )
 })
+
+test('breathing idle and explicit stillness are valid temporal intent',()=>{
+  for(const action of ['角色保持待机状态，呼吸带动肩部轻微起伏，最后平滑回到起始姿态。','角色全程保持静止。']) {
+    const value=textVideoPrompt().replace(/integrated_multimodal_description:[\s\S]*?(?=overall_soundscape:)/,'integrated_multimodal_description: [Shot 1] '+action+' 镜头保持固定。\n');
+    assert.equal(workflow.validatePromptText(value,{mode:'text_video',durationSeconds:5,resources:[]}).valid,true);
+  }
+});
 
 test('sensitive validation ignores ambiguous age wording and blocks only explicit minor evidence', () => {
   const sensitive = {

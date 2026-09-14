@@ -6,7 +6,7 @@ const sharp = require('sharp');
 // not identify the same pixels at a frame boundary. Match the actual image
 // sent to AI, as the real AI service does, before replaying its saved mask.
 async function createMaskFixtureMatcher(sourceDirectory) {
-  const names = fs.readdirSync(sourceDirectory).filter(n => /^frame_\d+\.png$/.test(n)).sort();
+  const names = fs.readdirSync(sourceDirectory).filter(n => /^(?:frame_|f_)\d+\.png$/.test(n)).sort();
   if (!names.length) throw new Error('Cached AI masks require their source RGB frames');
   const thumbnail = bytes => sharp(bytes).resize(128, 128).removeAlpha().raw().toBuffer();
   const sources = [];

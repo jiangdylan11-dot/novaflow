@@ -718,14 +718,15 @@ function miniMaxH3FailureEnvelope(error) {
       : errorCode.startsWith("h3_contract_")
         ? "h3_contract"
         : "provider_http";
+  const issue = h3PromptEnhance.validationIssue(error?.minimaxH3SafeError === true ? error : null);
   const message = failureCategory === "provider_content_policy"
     ? "Grok 未通过 H3 未成年人敏感内容安全校验"
     : failureCategory === "timeout"
       ? "Grok H3 分析超时，请重试"
       : failureCategory === "h3_contract"
-        ? "Grok 返回内容未通过 H3 协议校验"
+        ? (issue.reason === "contract_invalid" ? "Grok 返回内容未通过 H3 协议校验" : `Grok 优化失败：${issue.message}。原提示词未修改。`)
         : "Grok H3 服务暂时不可用";
-  const h3RetryCount = error?.h3ContractRepairUsed === true
+  const h3RetryCount = error?.h3ContractRepairUsed === true || error?.grokVisualContractRetryUsed === true
     ? 1
     : Math.max(0, Math.min(1, Math.round(Number(error?.h3RetryCount || 0))));
   const failureStage = ["visual_facts", "deterministic_compile", "provider_request", "safety_policy"].includes(String(error?.h3FailureStage || ""))
@@ -738,7 +739,7 @@ function miniMaxH3FailureEnvelope(error) {
     ? rawFailureReason
     : (failureCategory === "provider_content_policy"
         ? "explicit_minor_sensitive"
-        : failureCategory === "timeout" ? "provider_timeout" : failureCategory === "provider_http" ? "provider_unavailable" : "contract_invalid");
+        : failureCategory === "timeout" ? "provider_timeout" : failureCategory === "provider_http" ? "provider_unavailable" : issue.reason);
   const validationLeaf = miniMaxH3ValidationLeaf(
     error?.h3ValidationLeaf,
     failureStage === "visual_facts" ? `strict_ir_${failureReason}` : failureReason
@@ -941,6 +942,21 @@ function miniMaxH3ValidateTimeline(visual, durationSeconds = 0) {
 
 function normalizeMiniMaxH3PromptOutput(text, options) {
   options = options && typeof options === "object" ? options : {};
+  if (options.minimaxH3Enhance) {
+    let formatted;
+    try {
+      formatted = h3PromptEnhance.validateFormat(text, options);
+    } catch (error) {
+      throw miniMaxH3ContractError("h3_contract_five_sections", error.message);
+    }
+    try {
+      h3PromptEnhance.validate(formatted, options.currentPrompt,
+        miniMaxH3PromptEnhanceUserRequirement(options.requirements, options.currentPrompt));
+      return formatted;
+    } catch (error) {
+      throw miniMaxH3ContractError("h3_contract_enhancement_not_applied", error.message);
+    }
+  }
   const raw = normalizeGeneratedPrompt(text);
   const parsed = parseSmartAiPromptJson(raw);
   let prompt = normalizeGeneratedPrompt(readPromptResultString(parsed, [
@@ -1920,7 +1936,7 @@ function buildGrokVisualIrRetryBody(body, reason = "") {
   return retryBody;
 }
 
-function buildMiniMaxH3RepairBody(body, errorCode = "h3_contract_invalid") {
+function buildMiniMaxH3RepairBody(body, errorCode = "h3_contract_invalid", validationError = null) {
   const next = JSON.parse(JSON.stringify(body || {}));
   const input = Array.isArray(next.input) ? next.input : [];
   const user = [...input].reverse().find((item) => item?.role === "user");
@@ -1928,12 +1944,15 @@ function buildMiniMaxH3RepairBody(body, errorCode = "h3_contract_invalid") {
   user.content.push(smartAiInputText([
     "DIRECTED H3 CONTRACT REPAIR (one final attempt).",
     `Failed gate: ${String(errorCode || "h3_contract_invalid").slice(0, 80)}.`,
+    `具体失败项：${h3PromptEnhance.validationIssue(validationError).message}。请针对这一项修正，同时保留原提示词事实、完整原台词和用户补充要求。`,
     ...(errorCode === "h3_contract_enhancement_not_applied" ? [
       "The narrative was only a copy, generic padding, or an incomplete loop. Rewrite the actual motion into observable, feasible progression; for a requested loop connect the ending to the initial pose and movement phase. Preserve all hard constraints. Do not fix this by adding only headings or audio fields."
     ] : []),
     "Rebuild from the original images and requirements. Do not repeat or comment on the prior answer.",
     "Every captured reference label listed in Available resource labels must occur in the appropriate final section. Do not omit supplied references or leave definitions or retention_analysis empty.",
-    "Return only the exact mode-specific H3 structure: exact ordered fields; independent keyframe alignment when required; [Shot 1] timeline; concrete action progression; declared camera behavior; separately usable diegetic soundscape and non-diegetic music.",
+    next.text?.format?.schema?.properties?.task
+      ? h3PromptEnhance.formatInstruction
+      : "Return only the exact mode-specific H3 structure: exact ordered fields; independent keyframe alignment when required; [Shot 1] timeline; concrete action progression; declared camera behavior; separately usable diegetic soundscape and non-diegetic music.",
     `Return exactly ${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}: explicit_minor_sensitive_content only when explicit minor, underage, or child evidence coexists with sensitive content. Do not treat young_looking, age_unverifiable, or uncertain candidate wording alone as minor evidence, and never infer age from ambiguous appearance wording.`
   ].join("\n")));
   next.temperature = 0.15;
@@ -2102,21 +2121,13 @@ function canonicalizeMiniMaxH3RichVisualSections(text) {
   }
   if (matches.length !== GROK_VISUAL_RICH_SECTION_HEADERS.length
     || Number(matches[0]?.index || 0) !== 0) return normalized;
-  const canonical = [];
+  const canonical = new Map();
   for (let index = 0; index < GROK_VISUAL_RICH_SECTION_HEADERS.length; index += 1) {
-    const expected = GROK_VISUAL_RICH_SECTION_HEADERS[index];
-    if (!MINIMAX_H3_RICH_VISUAL_SECTION_ALIASES.get(expected)?.has(matches[index][1])) return normalized;
-    canonical.push(expected);
+    const expected = GROK_VISUAL_RICH_SECTION_HEADERS.find(header=>MINIMAX_H3_RICH_VISUAL_SECTION_ALIASES.get(header)?.has(matches[index][1]));
+    if (!expected || canonical.has(expected)) return normalized;
+    canonical.set(expected, normalized.slice(matches[index].index+matches[index][0].length,matches[index+1]?.index ?? normalized.length).trim());
   }
-  if (matches.every((match, index) => match[1] === canonical[index])) return normalized;
-  let cursor = 0;
-  const parts = [];
-  matches.forEach((match, index) => {
-    parts.push(normalized.slice(cursor, Number(match.index || 0)), canonical[index]);
-    cursor = Number(match.index || 0) + match[0].length;
-  });
-  parts.push(normalized.slice(cursor));
-  return parts.join("");
+  return GROK_VISUAL_RICH_SECTION_HEADERS.map(header=>header+'\n'+canonical.get(header)).join('\n\n');
 }
 
 function miniMaxH3RichVisualValidationLeaf(text) {
@@ -3145,7 +3156,7 @@ async function callGrokResponseWithVisualRetry(body, inputMeta, resultOptions, e
           ? "visual-contract-projection-redaction-required"
           : "";
       if (attempt === 1 && h3RetryEnabled && error?.minimaxH3ContractInvalid === true) {
-        currentBody = buildMiniMaxH3RepairBody(body, error?.errorCode);
+        currentBody = buildMiniMaxH3RepairBody(body, error?.errorCode, error);
         retryUsed = true;
         continue;
       }
@@ -4532,6 +4543,7 @@ function ordinaryArtStructuredPromptRules(nsfw = false) {
     "颜色字段必须分工且不得逐字复用长句：subjects.colors 只写主体部位、服装、毛发或道具的固有色；lighting_color.palette 写全局主辅色与点缀色层级；lighting_color.local_colors 必须写明具体对象或区域在当前光线下的高光、阴影、明度、色偏或反射结果。",
     "先逐句建立底稿事实清单：完整保留人数、年龄、成年身份、地域文化、性别组成、两张脸是否不同、肢体数量、解剖正确性和肢体归属。要求、避免、禁止、约束、画面目标等命名块内，以分号、句号或换行分隔的每个原子分句都继承该块的硬约束，必须逐条落入正确前景槽位和末段；无法无歧义映射时不要猜测。",
     "所有字段只写可直接用于生图的最终画面事实。不得输出当前Prompt、原提示词、用户要求、修改、优化、保持原图、处理目标、模型操作等元说明；不得在同一分区或跨分区重复同一个完整长句来凑字段。",
+    "语义融合：先理解完整底稿，再把补充要求转为最终画面事实。丰富感、丰富度等开放要求不是要求复述原词，应结合底稿已有对象具体设计空间层次、材质纹理、光影过渡、色彩呼应与绘画细节，选取适合原风格的至少两个维度写成一条具体终态事实并纳入对应字段；不得新增无关主体或只写更丰富、更高清。文字优化中的参考图指代只绑定底稿所描述的画面，不得声称看到了未提供的图片。",
     "applied_requirements 只列用户修改要求逐条转化后的最终视觉事实；真实修改要求为空时必须返回空数组，非空时数组项数必须与逗号、分号、句号、并且或同时分隔的有效要求数完全相同，并严格按用户分句原顺序一一对应。每项必须逐字等于前五段一个独立 scalar value，并保留该分句区别于其他要求的具体锚点与增减方向；不得用一个聚合长句或泛化的画面、人物、造型、设计等词冒充多项落实。不得用 increase、make、use、set 等命令句回显要求，也不得把系统规则、操作指令或未落实的愿望放入该数组。",
     "terminal_constraints 是非空数组，只放最终硬约束、避免项、质量底线和画面目标；每项必须具有明确的必须、不得、避免、保持、身份、年龄、结构、质量或目标语义。不得写修改过程、建议或界面选择摘要。",
     "必须保留原 Prompt 中未被用户明确否定的具体设定、资源令牌、命名要求块和避免项；允许为缺失的视觉实现做专业补全，但不得新增主体、改变用途或编造与底稿冲突的剧情。",
@@ -5072,6 +5084,17 @@ function parseOrdinaryArtPromptPatchResult(text, options = {}) {
   if (!supportsNegativePrompt && parsed.negative_prompt !== "") {
     throw new Error("Grok ordinary Art patch response returned an unsupported negative_prompt");
   }
+  const richnessSpecs = ordinaryArtStructuredPromptRequirementClauseSpecs(ordinaryArtPromptPatchRawUserInstruction(options.requirements));
+  if (richnessSpecs.length === 1 && ordinaryArtRichnessFactCoverage(richnessSpecs[0].clause, "", richnessSpecs[0].direction) !== null
+    && !patches.some((patch) => ordinaryArtRichnessVisualChange(patch.target_quote, patch.replacement))) {
+    throw new Error("Grok ordinary Art patch did not turn richness into concrete visual details");
+  }
+  if (richnessSpecs.length === 1 && ordinaryArtRichnessFactCoverage(richnessSpecs[0].clause, "", richnessSpecs[0].direction) !== null) {
+    for (const sentence of source.split(/(?<=[。！？!?])|\n/u).map((line) => line.trim()).filter(Boolean)) {
+      if (/^(?:保持|保留|不得|不要|不增加|禁止|避免|必须)/u.test(sentence)
+        && !ordinaryArtPromptPatchCompact(mergedPrompt).includes(ordinaryArtPromptPatchCompact(sentence))) mergedPrompt += `\n${sentence}`;
+    }
+  }
   return {
     prompt: mergedPrompt,
     negative_prompt: negativePrompt,
@@ -5493,7 +5516,33 @@ function ordinaryArtStructuredPromptSegmentPolarity(segment) {
   return { negative: intrinsicNegativePattern.test(segment), target: segment.trim() };
 }
 
+function ordinaryArtRichnessVisualChange(before, after) {
+  const meaningful = (value) => ordinaryArtPromptPatchCompact(String(value || "")
+    .replace(/(?:画面|视觉|整体|更加|更|丰富感|丰富度|丰富程度|丰富|高质量|高品质|高清|精美|精致|细腻|完美|优秀|提升|增加|增强|优化)/gu, ""));
+  return meaningful(after).length >= 8 && meaningful(before) !== meaningful(after);
+}
+
+function ordinaryArtRichnessFactCoverage(clause, fact, direction = "target") {
+  const target = String(clause || "").replace(/\s+/gu, "")
+    .replace(/^(?:参考图|原图|图片)(?:中|里)?的?/u, "");
+  if (!/^(?:(?:画面|视觉|整体|细节)的?)?(?:丰富感|丰富度|丰富程度|更丰富)$/u.test(target)) return null;
+  if (direction === "decrease") return null;
+  // Open visual requests are evidenced by concrete rendering decisions, not
+  // by repeating the request's words. Only this whole-clause intent qualifies.
+  if (/(?:^|[，,；;。])\s*(?:请|建议|应该|需要|希望|增加|提升|增强|优化|更丰富|不丰富|缺少层次)/u.test(fact)) return false;
+  const dimensions = [
+    /(?:前景|中景|远景|前中后景|空间|景深|遮挡).{0,24}(?:层次|递进|分明|纵深|清晰|虚实|分离)/u,
+    /(?:材质|金属|木纹|木材|木质|陶瓷|织物|布料|石材|表面).{0,24}(?:纹理|粗糙|反射|磨损|颗粒|纤维|细节)/u,
+    /(?:光影|光线|明暗|高光|阴影|反光).{0,24}(?:过渡|渐变|柔和|层次|细腻|自然|受控)/u,
+    /(?:色彩|颜色|冷暖|主辅色).{0,24}(?:呼应|变化|层次|对比|协调|统一)/u,
+    /(?:笔触|发丝|发束|边缘|轮廓).{0,24}(?:细腻|疏密|清晰|柔和|自然|虚实)/u
+  ];
+  return dimensions.filter((pattern) => pattern.test(fact)).length >= 2;
+}
+
 function ordinaryArtStructuredPromptClauseCovered(clause, appliedFact, direction = "target") {
+  const richnessCoverage = ordinaryArtRichnessFactCoverage(clause, appliedFact, direction);
+  if (richnessCoverage !== null) return richnessCoverage;
   const compactClause = ordinaryArtPromptPatchCompact(clause);
   const compactFact = ordinaryArtPromptPatchCompact(appliedFact);
   if (!compactClause || !compactFact) return false;
@@ -7687,6 +7736,13 @@ function grokResponsesPublicResult(data, options = {}) {
         options.supportsNegativePrompt !== false
       )
     : parseSmartAiPromptResult(rawText, options);
+  if (options.artSemanticFusion === true) {
+    parsed.prompt = finalizeArtSemanticFusion(parsed.prompt, options.requirements);
+    const failure = artSemanticFusionFailure(options.originalPrompt, options.requirements, parsed.prompt);
+    if (failure) throw new Error("提示词融合未完成：" + failure + "；原提示词未修改");
+    if (options.nsfw && ordinaryArtPromptCoreAffirmativeMinorPresent(parsed.prompt)) throw new Error("提示词融合未通过内容检查");
+    if (options.supportsNegativePrompt && !parsed.negative_prompt) throw new Error("提示词融合未返回反向提示词");
+  }
   const result = {
     id: data?.id || "",
     object: data?.object || "",
@@ -7719,14 +7775,11 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
   const prompt = smartAiCurrentPrompt(payload, 20000);
   const requirements = normalizeSmartAiText(
     payload?.requirements || payload?.requirement || payload?.instructions || "",
-    12000
+    48000
   );
   if (!prompt && !requirements) throw new Error("请输入 MiniMax H3 视频创意或当前 Prompt");
   const mode = miniMaxH3EnhanceMode(payload);
-  const responseFields = mode === "full_reference"
-    ? ["subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music"]
-    : ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"];
-  if (mode === "image_video" || mode === "first_last") responseFields.unshift("reference_alignment");
+  const responseFields = h3PromptEnhance.sectionFields;
   const directDuration = payload?.durationSeconds ?? payload?.duration_seconds ?? payload?.duration;
   const durationSeconds = directDuration === undefined || directDuration === null || directDuration === ""
     ? miniMaxH3PromptEnhanceDurationFromText(requirements)
@@ -7738,11 +7791,12 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
     prompt || "N/A",
     "",
     "requirements:",
-    requirements || "N/A",
+    miniMaxH3PromptEnhanceUserRequirement(requirements, prompt) || "N/A",
+    requirements.match(/^Available resource labels:[^\n]*/im)?.[0] || "",
     "",
-    miniMaxH3PromptProtocolRules(mode, miniMaxH3ContentContract(payload)),
+    h3PromptEnhance.formatInstruction,
     "",
-    "The selected H3 mode is authoritative. Return the three-field contract for T2VA/I2VA/FL2VA/L2VA or the six-field contract for Ref2VA."
+    "The selected mode and duration are authoritative. Return the five-section prompt."
   ].join("\n");
   return {
     body: {
@@ -7785,6 +7839,7 @@ function buildMiniMaxH3GrokOptimizeRequest(payload, model = "grok-4.3") {
       minimaxH3Mode: mode,
       visualRetryAllowed: true,
       minimaxH3Enhance: true,
+      requireChineseOutput: h3PromptEnhance.requiresChineseOutput(miniMaxH3PromptEnhanceUserRequirement(requirements, prompt)),
       currentPrompt: prompt,
       requirements,
       durationSeconds,
@@ -7908,6 +7963,90 @@ function buildMiniMaxH3GrokReverseRequest(payload, model = "grok-4.3") {
   };
 }
 
+
+const ART_SEMANTIC_FUSION_RULES = "你是图像提示词的视觉编辑。将完整底稿和补充要求融合成唯一的最终画面。\n先理解每项修改涉及的段落，再通读全篇消除冲突。新要求覆盖冲突旧描述；未被要求改变的身份、人数、年龄、发色、服饰、姿态、物品、画风和构图完整保留。\n修改场景时同步环境段落、光线和景深。例如白底改室外，必须替换白底、无其他物体、后景无层次等旧设定，写出适合主体的具体室外环境，不能在风格段追加室外而保留旧背景。环境细节应可辨，不能又完全虚化。\n要求增加人物细节时，必须在主体段落补充与已有角色一致的五官、发丝、手部、服饰或配饰细节，不只改风格或背景。不能改变原来的动作或暴露程度。\n质量、精美度、丰富感等要求，落实为具体的纹理、材质反光、光影过渡、空间层次或色彩关系，不能照抄提升画面质量等口号。结合原画风，不能把水彩、漫画、像素画擅自改成摄影或三维渲染。\n每项补充要求都必须体现在相关正文中；保留原段落标题，未受影响的句子尽量原样保留。没有标题时保持自然段。\n完成后检查每项要求是否已落实、是否有冲突旧描述残留、是否遗漏未修改细节。只输出最终完整提示词，不输出修改建议、分析过程、用户附加要求段落或原文与新版并列。不添加未提供的图片事实。姿态可能写在环境段里；更换背景也不能丢掉站立、坐姿等原动作。人物细节要求必须在主体物品段产生至少两处具体新细节，不允许该段完全照抄。";
+
+function artSemanticFusionInput(source, requirements) {
+  const text = String(source || "").trim();
+  const carrier = text.match(/\n\s*\[用户附加要求\]\s*\n[\s\S]*?用户补充要求（只作为最终提示词约束，不作为图片可见事实）\s*[:：]([\s\S]*)$/u);
+  return {
+    source: carrier ? text.slice(0, carrier.index).trim() : text,
+    instruction: (/^提示词编辑模式：/u.test(String(requirements || "").trim()) ? "" : ordinaryArtPromptPatchRawUserInstruction(requirements)) || (carrier ? carrier[1].replace(/["”\s]+$/u, "").trim() : "")
+  };
+}
+
+function finalizeArtSemanticFusion(candidate, instruction) {
+  // Retaining an old fully-blurred backdrop defeats a requested detailed outdoor scene.
+  // Explicit requests to keep the blur still take priority.
+  if (!/(?:增加|添加|改为|改成|换成|更换|替换).{0,8}(?:室外|户外)/u.test(instruction)
+    || !/质量|精美|丰富|细节/u.test(instruction)
+    || /(?:保持|保留).{0,12}(?:虚化|浅景深)/u.test(instruction)
+    || !/室外|户外|花园|庭院|森林|草地|天空|街道|海滩/u.test(candidate)) return candidate;
+  return candidate.replace(/背景(?:完全|彻底|全部)虚化(?:浅景深)?/gu, "背景适度虚化，保留室外环境与空间层次");
+}
+
+function artSemanticFusionFailure(source, instruction, candidate) {
+  if (!candidate) return "未返回完整提示词";
+  if (ordinaryArtPromptPatchCompact(source) === ordinaryArtPromptPatchCompact(candidate)) {
+    return !instruction || /^(?:保持原样|保持不变|不做修改|无需修改|原样保留)[。.!！\s]*$/u.test(instruction) ? "" : "未实际融合修改要求";
+  }
+  if (/用户补充要求（只作为最终提示词约束|\[用户附加要求\]|不作为图片可见事实/u.test(candidate)) return "仍在照搬补充要求";
+  const sections = value => new Map([...String(value).matchAll(/(?:^|\n)\s*\[([^\]\n]+)\]\s*\n([\s\S]*?)(?=\n\s*\[|$)/gu)].map(m => [m[1], m[2].trim()]));
+  const before = sections(source), after = sections(candidate);
+  for (const title of before.keys()) if (!after.get(title)) return "缺少原段落：" + title;
+  for (const [pattern, title] of [
+    [/(?:增加|添加|修改|更换|改为|改成|替换|丰富|调整).{0,12}(?:背景|场景)|(?:背景|场景).{0,12}(?:改为|改成|换成)/u, "环境背景"],
+    [/(?:增加|丰富|增强|细化|完善).{0,8}(?:人物|角色|主体).{0,6}细节|(?:人物|角色).{0,6}(?:更细致|更精细)/u, "主体物品"]
+  ]) {
+    if (pattern.test(instruction) && before.has(title) && !ordinaryArtRichnessVisualChange(before.get(title), after.get(title))) return "未落实对应段落：" + title;
+  }
+  if (/(?:增加|添加|改为|改成|换成|更换|替换).{0,8}(?:室外|户外)/u.test(instruction)) {
+    const background = after.get("环境背景") || candidate;
+    if (/纯白色?背景|无其他物体|后景无层次/u.test(candidate)) return "室外背景仍与白底或空背景冲突";
+    if (!/室外|户外|花园|庭院|森林|花海|草地|山谷|天空|街道|海滩|山林|屋外/u.test(background)) return "缺少具体室外背景";
+  }
+  if (!ordinaryArtStructuredPromptSourcePreserved(source, candidate, instruction)
+    || !ordinaryArtStructuredPromptCriticalAnchorsPreserved(source, candidate.replace(/站在|站于|站着/gu, "站立"), instruction)
+    || !ordinaryArtPromptPatchNamedHardBlocksPreserved(source, candidate, instruction)) return "遗漏未要求修改的原始设定";
+  const coreFailure = ordinaryArtPromptCoreRedefinitionFailure(source, instruction, candidate);
+  if (coreFailure) return coreFailure;
+  if (/质量|精美|丰富|细节/u.test(instruction) && !ordinaryArtRichnessVisualChange(source, candidate)) return "仅追加泛化质量词";
+  const resources = source.match(/__NOVAFLOW_[A-Z0-9_:-]+__|<(?:Picture|Video|Audio) [1-9]\d*>/gu) || [];
+  if (resources.some(token => !candidate.includes(token))) return "遗漏资源引用";
+  return "";
+}
+
+function buildArtSemanticFusionRequest(payload, model) {
+  const { source, instruction } = artSemanticFusionInput(smartAiCurrentPrompt(payload, 20000), payload.requirements || payload.requirement || payload.instructions);
+  const supportsNegativePrompt = smartAiSupportsNegativePrompt(payload);
+  const preserve = [...new Set(source.match(/成年|女性|男性|站立|坐姿|跪姿|俯卧|仰卧|右手|左手|全身|仰视/g) || [])].filter(word => {
+    if (instruction.includes(word)) return false;
+    if (/男|女|性别/u.test(instruction) && /女性|男性/u.test(word)) return false;
+    if (/动作|姿势|姿态|站|坐|躺|趴|跪/u.test(instruction) && /站立|坐姿|跪姿|俯卧|仰卧/u.test(word)) return false;
+    if (/右手|左手|手臂|抬手/u.test(instruction) && /右手|左手/u.test(word)) return false;
+    if (/构图|镜头|全身|半身|特写|俯视|仰视|平视|景别/u.test(instruction) && /全身|仰视/u.test(word)) return false;
+    return true;
+  });
+  const userText = "必须保留的原设定（除非用户明确要求替换）：" + preserve.join("、") + "\n完整底稿：\n" + source + "\n\n补充要求（最高优先级）：\n" + (instruction || "保留核心设定，修复矛盾，补足适合原画风的具体视觉细节。")
+    + "\n\n" + (supportsNegativePrompt
+      ? '严格只返回 JSON：{"prompt":"完整中文提示词，原段落标题及换行保留","negative_prompt":"与最终画面一致的中文负向关键词"}，两个字段都不能为空。'
+      : '严格只返回 JSON：{"prompt":"完整中文提示词，原段落标题及换行保留"}。没有负向通道，不返回 negative_prompt。')
+    + (payload.nsfw === true ? "\n成人内容上下文：用户已开启 NSFW。保持未要求修改的性别、成年身份、裸体状态、身体姿势与人物关系；任何未成年人相关内容仍然禁止。" : "")
+    + (payload.requirements && payload.requirements !== instruction ? "\n其他调用约束（以用户补充要求为优先，不要照抄约束文字）：\n" + payload.requirements : "")
+    + (supportsNegativePrompt ? "\n原负向提示词：" + (payload.negativePrompt || payload.negative_prompt || "无") : "")
+    + "\n输出前逐字核对这些未要求修改的原设定，每项都必须出现在最终正文中，不能遗漏：" + preserve.join("、");
+  return {
+    body: { model, store: false, temperature: 0.25, max_output_tokens: 4096,
+      text: { format: { type: "json_schema", name: "novaflow_art_semantic_fusion_v1", strict: true,
+        schema: { type: "object", additionalProperties: false,
+          properties: { prompt: { type: "string" }, ...(supportsNegativePrompt ? { negative_prompt: { type: "string" } } : {}) },
+          required: supportsNegativePrompt ? ["prompt", "negative_prompt"] : ["prompt"] } } },
+      input: [ { role: "system", content: [smartAiInputText(ART_SEMANTIC_FUSION_RULES)] }, { role: "user", content: [smartAiInputText(userText)] } ] },
+    inputMeta: { mode: "prompt_optimize", scenario: "prompt_optimize", charCount: source.length + instruction.length, imageCount: 0, supportsNegativePrompt, hasNegativePrompt: Boolean(payload.negativePrompt || payload.negative_prompt) },
+    resultOptions: { artSemanticFusion: true, originalPrompt: source, requirements: instruction, supportsNegativePrompt, nsfw: payload.nsfw === true }
+  };
+}
+
 function buildGrokPromptOptimizeRequest(payload, model = "grok-4.3") {
   if (isMiniMaxH3PromptEnhancePayload(payload)) return buildMiniMaxH3GrokOptimizeRequest(payload, model);
   const supportsNegativePrompt = smartAiSupportsNegativePrompt(payload);
@@ -7932,6 +8071,7 @@ function buildGrokPromptOptimizeRequest(payload, model = "grok-4.3") {
   const structuredUserInstruction = usesStructuredArtPrompt
     ? ordinaryArtStructuredPromptUserInstruction(requirements)
     : "";
+  if (isOrdinaryArtOptimize && !usesStructuredArtPrompt) return buildArtSemanticFusionRequest(payload, model);
   const ordinaryArtLayout = isOrdinaryArtOptimize && !usesStructuredArtPrompt
     ? ordinaryArtPromptPatchBlocks(prompt)
     : null;
@@ -7950,6 +8090,7 @@ function buildGrokPromptOptimizeRequest(payload, model = "grok-4.3") {
     smartAiImageArtDirectorRules(false),
     "",
     "补丁协议：",
+    "先分析完整底稿，再融合补充要求；丰富感、丰富度等开放目标应落实为底稿已有对象的具体视觉细节，至少结合空间层次、材质纹理、光影过渡或色彩呼应中的两个维度。把这些成品描述合入相关片段，禁止只追加更丰富、更高清、质量更高等空泛词。不得声称看到了没有提供给本次文字任务的参考图。",
     "1. 把上面的整段变更要求作为一个统一意图理解；不得按逗号、顿号、分号或短语机械拆成彼此独立的意图。",
     "1a. 新要求与旧 Prompt 冲突时，新要求拥有最高优先级；性别、人数、年龄、主体身份、动作、裸露状态、取景范围等明确字段必须使用新要求，不得回退到旧值。",
     "1b. 只改动作段不等于完成主体重定义；必须扫描全部 block，同时 patch 所有仍与新性别、人数、身份、裸体状态或取景冲突的旧主体陈述，并确保明确要求的新动作出现。",

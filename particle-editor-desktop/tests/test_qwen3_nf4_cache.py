@@ -1,8 +1,10 @@
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 
 DESKTOP_ROOT = Path(__file__).resolve().parents[1]
@@ -47,6 +49,56 @@ def make_saved_prequantized_cache(path: Path) -> None:
 
 
 class Qwen3NF4CacheTests(unittest.TestCase):
+    def setUp(self):
+        if os.name == "nt":
+            # A regression must fail the test, never signal the shared console.
+            kill_guard = patch("os.kill", side_effect=AssertionError("Windows PID probes must not send signals"))
+            kill_guard.start()
+            self.addCleanup(kill_guard.stop)
+
+    @unittest.skipUnless(os.name == "nt", "Windows process query")
+    def test_windows_pid_probe_queries_state_and_closes_handle(self):
+        api = Mock()
+        api.OpenProcess.return_value = 123
+        with patch("ctypes.WinDLL", return_value=api):
+            for wait_result, expected in ((258, True), (0, False), (0xFFFFFFFF, True)):
+                with self.subTest(wait_result=wait_result):
+                    api.reset_mock()
+                    api.WaitForSingleObject.return_value = wait_result
+                    self.assertIs(Qwen3VLAbliteratedAdapter._pid_alive(42), expected)
+                    api.OpenProcess.assert_called_once_with(0x00100000, False, 42)
+                    api.WaitForSingleObject.assert_called_once_with(123, 0)
+                    api.CloseHandle.assert_called_once_with(123)
+
+    @unittest.skipUnless(os.name == "nt", "Windows process query")
+    def test_windows_pid_probe_preserves_lock_when_query_is_uncertain(self):
+        api = Mock()
+        api.OpenProcess.return_value = None
+        with patch("ctypes.WinDLL", return_value=api):
+            for error, expected in ((87, False), (5, True), (8, True)):
+                with self.subTest(error=error), patch("ctypes.get_last_error", return_value=error):
+                    self.assertIs(Qwen3VLAbliteratedAdapter._pid_alive(42), expected)
+            api.WaitForSingleObject.assert_not_called()
+            api.CloseHandle.assert_not_called()
+
+    @unittest.skipUnless(os.name == "nt", "Windows process query")
+    def test_windows_pid_probe_observes_child_without_interrupting_it(self):
+        child_code = "import sys; print('ready', flush=True); sys.stdin.read(1); sys.exit(259)"
+        with subprocess.Popen(
+            [os.sys.executable, "-c", child_code], stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+            creationflags=subprocess.CREATE_NO_WINDOW,
+        ) as child:
+            try:
+                self.assertEqual(child.stdout.readline().strip(), "ready")
+                self.assertTrue(Qwen3VLAbliteratedAdapter._pid_alive(child.pid))
+                self.assertIsNone(child.poll())
+            finally:
+                child.communicate(input="x", timeout=10)
+            self.assertEqual(child.returncode, 259)
+            # Exit code 259 must not be mistaken for STILL_ACTIVE.
+            self.assertFalse(Qwen3VLAbliteratedAdapter._pid_alive(child.pid))
+
     def make_ready_cache(self, adapter: Qwen3VLAbliteratedAdapter) -> None:
         make_model(adapter.cache_path, quantized=True)
         manifest = {

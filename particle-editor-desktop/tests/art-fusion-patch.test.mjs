@@ -1,0 +1,25 @@
+import assert from 'node:assert/strict';
+import {buildGrokPromptOptimizeRequest, parseOrdinaryArtPromptPatchResult, ordinaryArtPromptPatchBlocks} from '../../supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs';
+
+const original = '[风格设定]\n精细水彩插画，温暖午后。\n\n[主体物品]\n一只橘猫坐在木桌上，旁边是一只蓝色陶瓷杯。\n\n[环境背景]\n背景是木质窗框与窗外花园。\n\n[光线与色彩]\n阳光从左侧照入。\n\n[要求]\n不增加其他动物，保持水彩风格。';
+const requirements = '用户本次修改要求（最高优先级）：增加参考图的画面丰富感。';
+const built = buildGrokPromptOptimizeRequest({prompt:original,currentPrompt:original,surface:'art',purpose:'optimize',requirements,supportsNegativePrompt:true});
+assert.equal(built.resultOptions.artSemanticFusion,true);
+assert.notEqual(built.resultOptions.ordinaryArtStructuredPrompt,true);
+const block = ordinaryArtPromptPatchBlocks(original).blocks.find(block=>block.text.includes('背景是木质'));
+const quote = '背景是木质窗框与窗外花园。';
+const replacement = '背景是木质窗框与窗外花园，木质窗框的纹理清晰，前中后景层次递进，暖色光影过渡自然。';
+const result = (value)=>JSON.stringify({patches:[{operation:'replace',block_id:block.id,target_quote:quote,replacement:value}],negative_prompt:'模糊，结构错误，水印'});
+const options = {...built.resultOptions,originalPrompt:original,requirements};
+const merged = parseOrdinaryArtPromptPatchResult(result(replacement), options);
+assert.equal(merged.prompt,original.replace(quote,replacement),'all untouched source text must remain byte-for-byte identical');
+assert.throws(()=>parseOrdinaryArtPromptPatchResult(result(quote+'画面更丰富、更高清、高质量。'),options),/richness/);
+assert.throws(()=>parseOrdinaryArtPromptPatchResult(result(quote),options),/no-op/);
+console.log('Art semantic patch merge: preserved base, applied visual details, rejected padding and no-op');
+const constraint = '保持猫、杯子、木桌和花园，不增加其他动物。';
+const scene = '一只橘猫坐在木桌上，绿色眼睛看向窗外，前爪并拢。蓝色陶瓷杯放在木桌上。背景为花园。阳光从左侧照入，精细水彩插画。';
+const prose = scene + constraint;
+const proseBlock = ordinaryArtPromptPatchBlocks(prose).blocks[0];
+const candidate = scene.replace('阳光从左侧照入','阳光从左侧照入，柔和光影过渡落在猫和杯子上');
+const proseResult = parseOrdinaryArtPromptPatchResult(JSON.stringify({patches:[{operation:'replace',block_id:proseBlock.id,target_quote:prose,replacement:candidate}],negative_prompt:'模糊，水印'}),{originalPrompt:prose,requirements:'增加画面丰富感',supportsNegativePrompt:true});
+assert.ok(proseResult.prompt.includes(constraint),'quality enrichment must preserve unlabelled original constraints');

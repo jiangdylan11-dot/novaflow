@@ -157,3 +157,45 @@ test('moving sparks do not displace unchanged folds and keep their own light', (
   }
   assert(drift/pixels<.1,'passing sparks moved the opacity of unchanged fabric');
 });
+
+test('smooth external light hue changes cannot produce posterized jumps in unchanged cloth', () => {
+  const ref=movingFold(0),sequence=sequenceOf(ref,ref);
+  let previous=null,largest=0;
+  for(let blue=75;blue<=121;blue+=2){
+    const f=movingFold(0);
+    // The material and the light over it are identical in every frame.
+    for(let y=72;y<137;y++)for(let x=30;x<128;x++){
+      const i=(y*160+x)*4;
+      f.frame.data[i]+=22;f.frame.data[i+1]+=3;f.frame.data[i+2]+=2;
+    }
+    // Only a separate emission patch changes hue, continuously by two levels.
+    for(let y=20;y<65;y++)for(let x=141;x<153;x++)
+      f.frame.data.set([153,216,Math.round(12*.4+blue*.6),255],(y*160+x)*4);
+    const out=matte(f.frame,{subjectMask:f.subjectMask,sequence}),values=[];
+    for(let y=95;y<115;y++)for(let x=60;x<100;x++){
+      const p=y*160+x,a=out.alpha[p]/255;
+      values.push(out.data[p*4+1]*a+128*(1-a));
+    }
+    if(previous)largest=Math.max(largest,...values.map((v,i)=>Math.abs(v-previous[i])));
+    previous=values;
+  }
+  assert(largest<2,`external hue changes introduced a ${largest.toFixed(2)} level block flash`);
+});
+
+test('opaque material crossing a translucent fold keeps its own color and opacity', () => {
+  for (const swap of [false, true]) for (const rgb of [[190,115,158], [190,130,95], [105,70,140]]) {
+    const ref=movingFold(0),sequence=sequenceOf(ref,ref);
+    if(swap)for(let i=0;i<ref.frame.data.length;i+=4)
+      [ref.frame.data[i+1],ref.frame.data[i+2]]=[ref.frame.data[i+2],ref.frame.data[i+1]];
+    const color=swap?[rgb[0],rgb[2],rgb[1]]:rgb;
+    for(let x=63;x<73;x++){
+      const data=new Uint8ClampedArray(ref.frame.data),p=105*160+x;
+      // A thin moving opaque contour overlaps a patch that otherwise still
+      // looks like the old fold. Matching the patch must not transplant it.
+      for(let y=90;y<123;y++)data.set([...color,255],(y*160+x)*4);
+      const out=matte({...ref.frame,data},{subjectMask:ref.subjectMask,sequence});
+      assert.deepEqual([...out.data.slice(p*4,p*4+4)],[...color,255],
+        'the old translucent fold whitened or made the new solid transparent');
+    }
+  }
+});

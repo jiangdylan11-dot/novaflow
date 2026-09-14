@@ -11,7 +11,7 @@ test("SPINE WebP tool is loaded and packaged as a required runtime helper", () =
   const buildScript = fs.readFileSync(path.join(repoRoot, "particle-editor-desktop", "scripts", "build-renderer.mjs"), "utf8");
   const syncScript = fs.readFileSync(path.join(repoRoot, "scripts", "sync-runtime.mjs"), "utf8");
 
-  assert.match(html, /spine-atlas-webp\.tool\.js\?v=20260912-spine-atlas-webp-8/);
+  assert.match(html, /spine-atlas-webp\.tool\.js\?v=20260912-spine-atlas-webp-12/);
   assert.equal((buildScript.match(/"spine-atlas-webp\.tool\.js"/g) || []).length, 2);
   assert.match(syncScript, /label: 'spine-atlas-webp\.tool\.js'/);
   assert.match(syncScript, /particle-editor-desktop', 'renderer', 'spine-atlas-webp\.tool\.js'/);
@@ -42,11 +42,24 @@ test("SPINE WebP tool accepts atlas and PNG files and calls the Electron convert
   assert.match(source, /sourceSize: file\.size \|\| bytes\.length/);
   assert.match(source, /outputFormat: item\.outputFormat \|\| 'webp'/);
   assert.match(source, /Atlas \$\{state\.atlases\.length\} 个/);
-  assert.match(source, /mode: 'spine'/);
-  assert.match(source, /Spine兼容/);
-  assert.match(source, /无损/);
-  assert.match(source, /options: state\.mode === 'lossless'/);
-  assert.match(source, /mode: 'spine', quality: 75, alphaQuality: 90/);
+  assert.match(source, /preset: 'compact'/);
+  assert.doesNotMatch(source, /Spine兼容|data-saw-mode|nf-saw-mode|state\.mode/);
+  assert.doesNotMatch(source, /data-saw-strength|compressionStrength|state\.strength/);
+  assert.match(source, /options: \{ preset: state\.preset \}/);
+  assert.match(source, /id: 'clarity', label: '画质优先', quality: 95/);
+  assert.match(source, /id: 'compact', label: '均衡', quality: 90/);
+  assert.match(source, /id: 'small', label: '更小体积', quality: 86/);
+  assert.match(source, /data-saw-preset="\$\{preset\.id\}"/);
+  assert.match(source, /画质优先/);
+  assert.match(source, /更小体积/);
+  assert.match(source, /role="group" aria-label="压缩档位"/);
+  assert.match(source, /aria-pressed="\$\{state\.preset === preset\.id\}"/);
+  assert.match(source, /function setPreset\(preset\)/);
+  assert.match(source, /setPreset\(button\.getAttribute\('data-saw-preset'\)\)/);
+  assert.match(source, /原图 Alpha/);
+  assert.match(source, /跟随 atlas/);
+  assert.match(source, /output\.encoding === 'pma-compatible'/);
+  assert.match(source, /已转换 Q\$\{output\.quality\}｜Alpha 已校验/);
   assert.match(source, /formatBytes/);
   assert.match(source, /formatSizeDelta/);
   assert.match(source, /原 \$\{formatBytes\(item\.sourceSize\)\} → 改 \$\{formatBytes\(outputSize\)\}/);
@@ -90,7 +103,8 @@ test("SPINE WebP workspace keeps the compression-tool pixel contract", () => {
   assert.match(source, /grid-template-columns:220px minmax\(0,1fr\)/);
   assert.match(source, /gap:12px;padding:14px 14px 14px 12px/);
   assert.match(source, /\.nf-saw-upload\{width:220px;height:44px/);
-  assert.match(source, /\.nf-saw-mode\{display:grid;grid-template-columns:1fr 1fr;gap:6px;width:220px/);
+  assert.match(source, /\.nf-saw-preset\{display:grid;gap:6px;width:220px/);
+  assert.match(source, /\.nf-saw-preset-options\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
   assert.match(source, /\.nf-saw-format\{width:62px;height:24px;display:grid;grid-template-columns:1fr 1fr/);
   assert.match(source, /\.nf-saw-actions\{display:grid;grid-template-columns:220px/);
   assert.match(source, /right:26px;top:14px/);
@@ -107,8 +121,9 @@ test("SPINE WebP controls keep the native compression interaction and typography
   const source = fs.readFileSync(toolPath, "utf8");
   const topActionsRule = source.match(/#\$\{ROOT_ID\} \.nf-saw-top-actions button\{[^}]*\}/)?.[0] || "";
 
-  assert.match(source, /#\$\{ROOT_ID\} :where\(\.nf-saw-upload,\.nf-saw-btn,\.nf-saw-mode button,\.nf-saw-format button,\.nf-saw-top-actions button\)\{/);
-  assert.match(source, /\.nf-saw-mode button\{[^}]*font-size:12px!important/);
+  assert.match(source, /#\$\{ROOT_ID\} :where\(\.nf-saw-upload,\.nf-saw-btn,\.nf-saw-preset button,\.nf-saw-format button,\.nf-saw-top-actions button\)\{/);
+  assert.match(source, /\.nf-saw-preset button\{height:34px;[^}]*font-size:12px!important/);
+  assert.match(source, /@container \(max-width:980px\)\{#\$\{ROOT_ID\} \.nf-saw-main\{padding-top:56px\}\}/);
   assert.match(source, /\.nf-saw-format button\{[^}]*font-size:10px!important/);
   assert.match(source, /background:rgba\(255,255,255,\.045\);opacity:0;pointer-events:none/);
   assert.match(source, /:hover\{filter:brightness\(1\.08\);border-color:rgba\(255,255,255,\.20\)!important\}/);

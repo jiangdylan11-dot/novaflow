@@ -140,17 +140,11 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             "requirements": requirements,
         })
 
-        self.assertEqual(captured["max_length"], SERVICE.ORDINARY_ART_PROMPT_PATCH_MAX_LENGTH)
+        self.assertGreaterEqual(captured["max_length"], 1024)
         self.assertIn(raw_prompt, captured["prompt"])
         self.assertIn(requirements, captured["prompt"])
-        self.assertIn("局部编辑器", captured["prompt"])
-        self.assertIn("target_quote", captured["prompt"])
-        self.assertIn("不能把画面翻到相反极端", captured["prompt"])
-        self.assertIn("不能改成暗淡", captured["prompt"])
-        self.assertIn("不能完整照抄原句后追加一句修改意见", captured["prompt"])
-        self.assertIn("泛化形容词通常不足以表达修改目标", captured["prompt"])
         self.assertIn(replacement, result["positivePrompt"])
-        self.assertEqual(result["editContract"], "deterministic-merge-v1")
+        self.assertEqual(result["editContract"], "nf.art.semantic-fusion.v1")
 
     def test_unified_merge_replaces_conflicting_core_people_and_action(self):
         base = (
@@ -186,125 +180,37 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             "风格：高完成度东方幻想游戏CG厚涂，细腻手绘材质。\n\n"
             "要求：人物结构自然，肢体归属明确。"
         ))
-        self.assertEqual(result["editContract"], "deterministic-merge-v1")
-        self.assertIn("target_quote 不需要与用户要求共享字词", captured["prompt"])
+        self.assertEqual(result["editContract"], "nf.art.semantic-fusion.v1")
+        self.assertIn("补充要求（最高优先级）", captured["prompt"])
         self.assertIn("用户已开启 NSFW", captured["prompt"])
         self.assertIn("性别、成年身份、裸体状态、身体姿势与人物关系", captured["prompt"])
         self.assertIn("任何未成年人相关内容仍然禁止", captured["prompt"])
 
-    def test_core_redefinition_closes_stale_subjects_after_primary_patch(self):
-        base = (
-            "主体人数：两位明确成年的东方女性。\n\n"
-            "外观：两人都拥有丰满匀称的成年女性身材与乌黑长发。\n\n"
-            "动作：两人坐在床上温柔亲吻。\n\n"
-            "风格：高完成度东方幻想游戏CG厚涂。"
-        )
-        requirements = "男人躺在床上，裸体，只看得到下半身，女人坐在男人身上"
-        stale_action_only = self.patch_output(self.patch(
-            "P03",
-            "动作：两人坐在床上温柔亲吻。",
-            "动作：成年男人裸体躺在床上，只看得到下半身，成年女人坐在男人身上。",
-        ))
+    def test_core_redefinition_repairs_the_complete_prompt(self):
+        source = "主体：一名成年女性站立。\n\n风格：精细水彩插画。"
+        target = source.replace("成年女性", "成年男性")
         assistant = SERVICE.PromptAssistant()
         calls = []
-
-        def generate(prompt: str, **_kwargs):
+        def generate(prompt, **kwargs):
             calls.append(prompt)
-            return stale_action_only
-
+            return source if len(calls) == 1 else target
         assistant.generate = generate
-        result = assistant.optimize_prompt({
-            "surface": "art",
-            "purpose": "optimize",
-            "prompt": base,
-            "requirements": requirements,
-            "supportsNegativePrompt": False,
-            "nsfw": True,
-        })
+        result = assistant.optimize_prompt({"surface":"art", "prompt":source, "requirements":"将成年女性替换为成年男性"})
+        self.assertEqual(result["positivePrompt"], target)
+        self.assertEqual(len(calls), 2)
+        self.assertIn(source, calls[1])
 
-        self.assertEqual(len(calls), 1)
-        self.assertIn("必须扫描全部单元", calls[0])
-        self.assertNotIn("两位明确成年的东方女性", result["positivePrompt"])
-        self.assertNotIn("两人都拥有丰满匀称的成年女性身材", result["positivePrompt"])
-        self.assertIn("成年男人裸体躺在床上", result["positivePrompt"])
-        self.assertEqual(result["editContract"], "deterministic-merge-v1")
-
-    def test_core_primary_patch_uses_bounded_deterministic_closure(self):
-        base = self.mixed_pair_long_base()
-        requirements = "男人裸体躺在床上，只看得到下半身，女人坐在男人身上"
-        original_left_clothing = (
-            "身穿青绿色中国幻想华服，服装融合古典汉服与轻薄丝纱，佩戴翡翠首饰。"
-        )
-        original_right_clothing = (
-            "身穿象牙白与淡金色中国幻想华服，带有金色刺绣，佩戴金色发冠。"
-        )
-        original_background = (
-            "背景采用极简明亮的象牙白与淡金色中国宫廷空间，保留丝绸帷幔与雕花屏风。"
-        )
-        original_style = (
-            "顶级中国幻想RPG游戏CG，精致东方二次元厚涂，高完成度商业游戏美宣插画。"
-        )
-        original_avoid = (
-            "避免：真人摄影、3D渲染、塑料皮肤、幼态儿童比例、错误手指和融合肢体。"
-        )
-        creative_action = (
-            "一位成年男人裸体躺在柔软的丝绸床榻上，只看得到下半身；"
-            "一位成年女人坐在男人身上，两人姿态关系明确。"
-        )
-        primary_output = self.patch_output(self.patch(
-            "P05",
-            "两位女性坐在柔软的丝绸床榻上，身体紧密依偎，双腿自然交叠。",
-            creative_action,
-        ))
-        calls = []
+    def test_core_fusion_rejects_repeated_stale_identity(self):
+        source = "主体：一名成年女性站立。\n\n风格：精细水彩插画。"
         assistant = SERVICE.PromptAssistant()
-
-        def generate(prompt: str, **_kwargs):
+        calls = []
+        def generate(prompt, **kwargs):
             calls.append(prompt)
-            return primary_output
-
+            return source
         assistant.generate = generate
-        with mock.patch.object(
-            SERVICE,
-            "apply_ordinary_art_deterministic_mixed_pair_closure",
-            wraps=SERVICE.apply_ordinary_art_deterministic_mixed_pair_closure,
-        ) as closure_mock:
-            result = assistant.optimize_prompt({
-                "surface": "art",
-                "purpose": "optimize",
-                "prompt": base,
-                "requirements": requirements,
-                "supportsNegativePrompt": False,
-                "nsfw": True,
-            })
-
-        positive = result["positivePrompt"]
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(closure_mock.call_count, 1)
-        self.assertEqual(
-            closure_mock.call_args.kwargs["max_target_chars"],
-            320
-            - len("两位女性坐在柔软的丝绸床榻上，身体紧密依偎，双腿自然交叠。"),
-        )
-        self.assertEqual(closure_mock.call_args.kwargs["max_unit_count"], 8)
-        self.assertIn(creative_action, positive)
-        self.assertIn("成年男性与成年女性各自明确的体态", positive)
-        self.assertIn(f"左侧角色{original_left_clothing}", positive)
-        self.assertIn(f"右侧角色{original_right_clothing}", positive)
-        self.assertIn("两位角色必须明确为成年男性与成年女性", positive)
-        self.assertIn("中国幻想成年男女双角色游戏CG厚涂插画", positive)
-        self.assertNotIn("成年女性身材", positive)
-        self.assertNotIn("左侧女性", positive)
-        self.assertNotIn("右侧女性", positive)
-        self.assertIn("左侧角色一只手扶住另一人的长发", positive)
-        self.assertIn("右侧角色轻轻靠向她", positive)
-        self.assertNotIn("必须明确为成年女性", positive)
-        self.assertNotIn("双女性角色", positive)
-        self.assertIn(original_background, positive)
-        self.assertIn(original_style, positive)
-        self.assertIn(original_avoid, positive)
-        self.assertIn("正在温柔亲吻", positive)
-        self.assertEqual(result["editContract"], "deterministic-merge-v1")
+        with self.assertRaises(SERVICE.OrdinaryArtPromptEditNotAppliedError):
+            assistant.optimize_prompt({"surface":"art", "prompt":source, "requirements":"将成年女性替换为成年男性"})
+        self.assertEqual(len(calls), 2)
 
     def test_deterministic_closure_rejects_unsupported_or_over_budget_units(self):
         requirements = "男人裸体躺在床上，只看得到下半身，女人坐在男人身上"
@@ -459,102 +365,28 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             "patch-required-units-missing:P02",
         )
 
-    def test_primary_model_patch_limit_is_separate_from_deterministic_closure(self):
-        base = (
-            "主体人数：两位明确成年的东方女性。\n\n"
-            "外观：两人都拥有丰满匀称的成年女性身材与乌黑长发。\n\n"
-            "动作：两人坐在床上温柔亲吻。\n\n"
-            "光线：柔和暖光。\n\n"
-            "风格：东方幻想厚涂。"
-        )
-        requirements = "男人躺在床上，裸体，只看得到下半身，女人坐在男人身上"
-        first_four_patches = self.patch_output(
-            self.patch(
-                "P03",
-                "动作：两人坐在床上温柔亲吻。",
-                "动作：成年男人裸体躺在床上，只看得到下半身，成年女人坐在男人身上。",
-            ),
-            self.patch("P04", "光线：柔和暖光。", "光线：柔和暖光与受控高光。"),
-            self.patch("P05", "风格：东方幻想厚涂。", "风格：精细东方幻想厚涂。"),
-            self.patch(
-                "P01",
-                "主体人数：两位明确成年的东方女性。",
-                "主体人数：一位明确成年的男性与一位明确成年的女性。",
-            ),
-        )
+    def test_full_fusion_is_not_limited_to_four_patch_spans(self):
+        source = "\n\n".join(f"[区域{i}]\n木制饰品，表面朴素。" for i in range(6))
+        target = source.replace("表面朴素", "木纹清晰，雕花边缘细致")
         assistant = SERVICE.PromptAssistant()
-        calls = []
+        assistant.generate = lambda prompt, **kwargs: target
+        result = assistant.optimize_prompt({"surface":"art", "prompt":source, "requirements":"丰富所有木制饰品的纹理细节"})
+        self.assertEqual(result["positivePrompt"], target)
+        self.assertEqual(result["positivePrompt"].count("雕花边缘细致"), 6)
 
-        def generate(prompt: str, **_kwargs):
-            calls.append(prompt)
-            return first_four_patches
-
-        assistant.generate = generate
-        result = assistant.optimize_prompt({
-            "surface": "art",
-            "purpose": "optimize",
-            "prompt": base,
-            "requirements": requirements,
-            "supportsNegativePrompt": False,
-            "nsfw": True,
-        })
-
-        self.assertEqual(len(calls), 1)
-        self.assertIn("一位明确成年的男性与一位明确成年的女性", result["positivePrompt"])
-        self.assertNotIn("两人都拥有丰满匀称的成年女性身材", result["positivePrompt"])
-        self.assertEqual(result["editContract"], "deterministic-merge-v1")
-
-    def test_primary_model_and_deterministic_target_budget_stays_bounded(self):
-        long_action = "动作：两人坐在床上温柔亲吻，" + ("A" * 130)
-        long_material = "材质：" + ("B" * 145)
-        base = (
-            "主体人数：两位明确成年的东方女性。\n\n"
-            "外观：两人都拥有丰满匀称的成年女性身材与乌黑长发。\n\n"
-            f"{long_action}\n\n"
-            f"{long_material}"
-        )
-        requirements = "男人躺在床上，裸体，只看得到下半身，女人坐在男人身上"
-        first_two_patches = self.patch_output(
-            self.patch(
-                "P03",
-                long_action,
-                "动作：成年男人裸体躺在床上，只看得到下半身，成年女人坐在男人身上，"
-                + ("A" * 100),
-            ),
-            self.patch("P04", long_material, "材质：" + ("C" * 145)),
-        )
-        first_target_chars = len(long_action) + len(long_material)
-        self.assertLessEqual(first_target_chars, 320)
-        self.assertLess(320 - first_target_chars, 42)
-        assistant = SERVICE.PromptAssistant()
-        calls = []
-
-        def generate(prompt: str, **_kwargs):
-            calls.append(prompt)
-            return first_two_patches
-
-        assistant.generate = generate
-        with mock.patch.object(
-            SERVICE,
-            "apply_ordinary_art_deterministic_mixed_pair_closure",
-            wraps=SERVICE.apply_ordinary_art_deterministic_mixed_pair_closure,
-        ) as closure_mock:
-            result = assistant.optimize_prompt({
-                "surface": "art",
-                "purpose": "optimize",
-                "prompt": base,
-                "requirements": requirements,
-                "supportsNegativePrompt": False,
-                "nsfw": True,
-            })
-
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(closure_mock.call_count, 1)
-        self.assertEqual(
-            closure_mock.call_args.kwargs["max_target_chars"],
-            320 - first_target_chars,
-        )
-        self.assertEqual(result["editContract"], "deterministic-merge-v1")
+    def test_full_fusion_output_budget_scales_with_source_and_is_bounded(self):
+        for length in [50, 1000, 20000]:
+            source = "木纹细节清晰。" * (length // 8)
+            target = source + "暖色光影过渡自然。"
+            assistant = SERVICE.PromptAssistant()
+            captured = {}
+            def generate(prompt, **kwargs):
+                captured.update(kwargs)
+                return target
+            assistant.generate = generate
+            result = assistant.optimize_prompt({"surface":"art", "prompt":source, "requirements":"增加光影层次"})
+            self.assertEqual(captured["max_length"], min(4096,max(1024,len(source)*2)))
+            self.assertEqual(result["positivePrompt"],target)
 
     def test_core_gender_only_preserves_unmentioned_action(self):
         raw_prompt = (
@@ -779,7 +611,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
         self.assertIn("脚边补充一只安静蜷卧的白猫", result["positivePrompt"])
         self.assertIn("主体：一位成年女法师坐在窗边阅读古籍。", result["positivePrompt"])
         self.assertIn("画面目标：安静细腻的东方幻想游戏CG。", result["positivePrompt"])
-        self.assertEqual(result["editContract"], "deterministic-merge-v1")
+        self.assertEqual(result["editContract"], "nf.art.semantic-fusion.v1")
 
     def test_problem_feedback_compiles_to_generic_final_state_hints(self):
         cases = (
@@ -980,22 +812,18 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             SERVICE.ordinary_art_patch_intents(requirements),
             [{"id": "I01", "text": requirements}],
         )
-        self.assertEqual(result["editContract"], "deterministic-merge-v1")
+        self.assertEqual(result["editContract"], "nf.art.semantic-fusion.v1")
 
-    def test_patch_retry_is_skipped_when_first_attempt_reaches_120_seconds(self):
+    def test_full_fusion_repair_is_bounded_to_one_retry(self):
         assistant = SERVICE.PromptAssistant()
         calls = []
-        assistant.generate = lambda *_args, **_kwargs: calls.append(True) or "not-json"
-        with mock.patch.object(SERVICE.time, "monotonic", side_effect=[0.0, 120.0, 120.0]):
-            with self.assertRaises(SERVICE.OrdinaryArtPromptEditNotAppliedError):
-                assistant.optimize_prompt({
-                    "surface": "art",
-                    "purpose": "optimize",
-                    "prompt": "背景曝光过强。",
-                    "requirements": "背景太曝光",
-                    "supportsNegativePrompt": False,
-                })
-        self.assertEqual(len(calls), 1)
+        def generate(prompt, **kwargs):
+            calls.append(kwargs["trace_label"])
+            return "一只橘猫。"
+        assistant.generate = generate
+        with self.assertRaises(SERVICE.OrdinaryArtPromptEditNotAppliedError):
+            assistant.optimize_prompt({"surface":"art", "prompt":"一只橘猫。", "requirements":"增加毛发细节"})
+        self.assertEqual(calls,["artSemanticFusion","artSemanticFusionRepair"])
 
     def test_process_guard_is_explicit_nonblocking_and_import_safe(self):
         probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1018,7 +846,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             "prompt": "成年女性角色站在宫殿中",
             "requirements": "背景更柔和",
         })
-        self.assertEqual(captured["max_length"], SERVICE.ORDINARY_ART_PROMPT_PATCH_MAX_LENGTH)
+        self.assertGreaterEqual(captured["max_length"], 1024)
 
     def test_non_art_and_create_budgets_are_unchanged(self):
         long_prompt = "长提示" * 1000
@@ -1059,7 +887,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             "requirements": "背景过曝，降低背景高光",
         })
         self.assertEqual(len(prompts), 1)
-        self.assertIn("只输出严格 JSON", prompts[0])
+        self.assertIn("只输出完整中文正向提示词", prompts[0])
         self.assertEqual(result["positivePrompt"], candidate)
         self.assertTrue(result["negativePrompt"])
 
@@ -1084,8 +912,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             "requirements": "背景过曝，降低背景高光",
             "supportsNegativePrompt": False,
         })
-        self.assertIn("只输出严格 JSON", captured["prompt"])
-        self.assertIn("target_quote", captured["prompt"])
+        self.assertIn("只输出完整中文正向提示词", captured["prompt"])
         self.assertEqual(result["positivePrompt"], candidate)
         self.assertIn("避免真人摄影", result["positivePrompt"])
         self.assertEqual(result["negativePrompt"], "")
@@ -1121,10 +948,10 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
 
         self.assertEqual(len(calls), 2)
         self.assertIn("patch-json-or-anchor-invalid", calls[1]["prompt"])
-        self.assertIn("上一次不合格 JSON", calls[1]["prompt"])
+        self.assertIn("上次融合未通过检查", calls[1]["prompt"])
         self.assertIn("背景过于曝光", calls[0]["prompt"])
-        self.assertEqual(calls[0]["max_length"], SERVICE.ORDINARY_ART_PROMPT_PATCH_MAX_LENGTH)
-        self.assertEqual(calls[1]["max_length"], SERVICE.ORDINARY_ART_PROMPT_PATCH_MAX_LENGTH)
+        self.assertGreaterEqual(calls[0]["max_length"], 1024)
+        self.assertGreaterEqual(calls[1]["max_length"], 1024)
         self.assertEqual(result["positivePrompt"], repaired)
         self.assertEqual(result["negativePrompt"], "")
 
@@ -1786,10 +1613,10 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
         self.assertIn(self.long_art_base(), calls[1]["prompt"])
         self.assertIn(priority_block, calls[1]["prompt"])
         self.assertIn(requirements, calls[1]["prompt"])
-        self.assertIn("上一次不合格 JSON", calls[1]["prompt"])
+        self.assertIn("上次融合未通过检查", calls[1]["prompt"])
         self.assertIn("missing-blocks:要求", calls[1]["prompt"])
-        self.assertEqual(calls[0]["max_length"], SERVICE.ORDINARY_ART_PROMPT_PATCH_MAX_LENGTH)
-        self.assertEqual(calls[1]["max_length"], SERVICE.ORDINARY_ART_PROMPT_PATCH_MAX_LENGTH)
+        self.assertGreaterEqual(calls[0]["max_length"], 1024)
+        self.assertGreaterEqual(calls[1]["max_length"], 1024)
         self.assertEqual(result["positivePrompt"], repaired)
 
     def test_second_retention_failure_raises_bounded_contract_error(self):
@@ -1852,7 +1679,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             "supportsNegativePrompt": False,
         })
         self.assertEqual(len(calls), 2)
-        self.assertIn("上一次不合格 JSON", calls[1])
+        self.assertIn("上次融合未通过检查", calls[1])
         self.assertIn("target_quote", calls[1])
         self.assertIn("避免：真人摄影", result["positivePrompt"])
         self.assertEqual(result["negativePrompt"], "")

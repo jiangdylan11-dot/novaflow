@@ -121,8 +121,8 @@ assert.equal(workflow.writeProviderPreference(storage, "grok"), true);
 assert.equal(workflow.readProviderPreference(storage), "grok");
 
 const workflowTag = "smart-ai-art-auto-intent.workflow.js?v=20260811-art-auto-intent-1";
-const smartAiTag = "novaflow-smart-ai.js?v=20260912-soft-edge-1";
-const runtimeTag = "novaflow-brand-runtime.js?v=20260911-art-preprocess-1";
+const smartAiTag = "novaflow-smart-ai.js?v=20260914-art-fusion-2";
+const runtimeTag = indexSource.match(/novaflow-brand-runtime\.js\?v=[^"']+/)?.[0];
 assert.ok(indexSource.includes(workflowTag));
 assert.ok(indexSource.includes(smartAiTag));
 assert.ok(indexSource.includes(runtimeTag));
@@ -135,7 +135,7 @@ const roleRenderState = {
   engine: "local",
   mode: "reverse"
 };
-const renderArtAdvancedSettings = vm.runInNewContext(`(${extractNamedFunction(smartAiSource, "renderArtAdvancedSettings")})`, {
+const renderArtReferenceRoles = vm.runInNewContext(`(${extractNamedFunction(smartAiSource, "renderArtReferenceRoles")})`, {
   state: roleRenderState,
   escapeSmartAiHtml: (value) => String(value),
   artReferenceRoleOptions: () => [
@@ -148,23 +148,25 @@ const renderArtAdvancedSettings = vm.runInNewContext(`(${extractNamedFunction(sm
 });
 let rerenderedIntent = workflow.derive({ imageCount: 3, userIntent: "", roleOverrides: { 1: "pose", 2: "background" } });
 roleRenderState.referenceRoles = Array.from(rerenderedIntent.roles);
-let advancedHtml = renderArtAdvancedSettings(rerenderedIntent);
+let advancedHtml = renderArtReferenceRoles(rerenderedIntent);
 assert.match(advancedHtml, /data-smart-ai-reference-role="1"/);
 assert.match(advancedHtml, /data-smart-ai-reference-role="2"/);
 assert.match(advancedHtml, /<option value="pose" selected>/);
 rerenderedIntent = workflow.derive({ imageCount: 3, userIntent: "", roleOverrides: { 1: "background", 2: "style" } });
 roleRenderState.referenceRoles = Array.from(rerenderedIntent.roles);
-advancedHtml = renderArtAdvancedSettings(rerenderedIntent);
+advancedHtml = renderArtReferenceRoles(rerenderedIntent);
 assert.match(advancedHtml, /data-smart-ai-reference-role="1"/,
   "the role selector must remain available after the first explicit correction");
 assert.match(advancedHtml, /<option value="background" selected>/,
   "the same auxiliary image must support a second role correction");
 roleRenderState.mode = "optimize";
-advancedHtml = renderArtAdvancedSettings(rerenderedIntent);
+advancedHtml = renderArtReferenceRoles(rerenderedIntent);
 assert.doesNotMatch(advancedHtml, /data-smart-ai-reference-role=/,
   "text optimization must not expose image-role controls that it will not use");
-assert.match(advancedHtml, /data-smart-ai-engine-select="1"/,
-  "provider selection must remain available in both Art actions");
+assert.equal(advancedHtml, "", "text optimization has no reference controls");
+assert.doesNotMatch(smartAiSource, /<summary>高级设置<\/summary>/);
+assert.match(extractNamedFunction(smartAiSource, "renderDialog"), /\$\{renderEngineOptions\(\)\}/);
+assert.match(extractNamedFunction(smartAiSource, "renderDialog"), /if \(isArt\) rememberArtEngine\(state.engine\)/);
 
 const artStorageValues = new Map();
 const artStorage = {
@@ -204,7 +206,7 @@ const renderDialogSource = extractNamedFunction(smartAiSource, "renderDialog");
 assert.match(renderDialogSource, /renderArtModeRadios\(artIntent\)/);
 assert.match(smartAiSource, /\[\["optimize", "优化提示词"\], \["reverse", "图片反推"\]\]/);
 assert.match(renderDialogSource, /renderArtAutoStatus\(artIntent\)/);
-assert.match(renderDialogSource, /isArt \? renderArtAdvancedSettings\(artIntent\)/);
+assert.match(renderDialogSource, /isArt \? renderArtReferenceRoles\(artIntent\)/);
 assert.match(renderDialogSource, /const isArtTextEdit = isArt && state\.mode === "optimize" && Boolean\(currentArtPrompt\)/);
 assert.match(renderDialogSource, /说明你希望修改的内容（可选）/);
 assert.match(renderDialogSource, /背景过于曝光，降低背景高光并恢复层次/);
@@ -257,17 +259,15 @@ const shouldUseSimpleStructuredArtPromptContract = vm.runInNewContext(
 );
 assert.equal(
   shouldUseStructuredArtPromptContract("\u4e00\u540d\u6210\u5e74\u5973\u6218\u58eb\u7ad9\u5728\u5c71\u8c37\u4e2d\uff0c\u7535\u5f71\u7ea7\u5149\u5f71\uff0c\u7ec6\u8282\u6e05\u6670\u3002"),
-  true,
-  "every nonempty ordinary Art optimize prompt must use the structured contract"
+  false,
+  "ordinary prose preserves its original format through semantic patch merging"
 );
 assert.equal(shouldUseStructuredArtPromptContract(""), false, "an empty prompt remains outside structured optimize");
 assert.equal(shouldUseStructuredArtPromptContract("   \r\n  "), false, "whitespace-only input remains outside structured optimize");
-assert.equal(shouldUseStructuredArtPromptContract("甲".repeat(120)), true, "short nonempty prompts use the structured contract");
-assert.equal(shouldUseStructuredArtPromptContract("甲".repeat(121)), true, "longer prompts keep the structured contract");
-assert.equal(shouldUseStructuredArtPromptContract("主体立于山谷\n背景为雪山"), true, "multi-line prompts keep the structured contract");
-assert.equal(shouldUseStructuredArtPromptContract("[风格设定] 数字绘画"), true, "named square-bracket blocks keep the structured contract");
-assert.equal(shouldUseStructuredArtPromptContract("【主体物品】成年女战士"), true, "named full-width blocks keep the structured contract");
-assert.equal(shouldUseStructuredArtPromptContract("保留 __NOVAFLOW_IMAGE_01__ 资源"), true, "resource-bearing prompts keep the structured contract");
+for (const original of ["甲".repeat(120), "甲".repeat(121), "主体立于山谷\n背景为雪山", "[风格设定] 数字绘画", "【主体物品】成年女战士", "保留 __NOVAFLOW_IMAGE_01__ 资源"]) {
+  assert.equal(shouldUseStructuredArtPromptContract(original), false, "ordinary prose and headings must not trigger forced recompile");
+}
+assert.equal(shouldUseStructuredArtPromptContract('[风格设定]\n媒介 = "水彩插画"\n[主体物品]\n主体数量 = 1\n[环境背景]\n[光线与色彩]\n[拍摄参数]\n[用户附加要求]'), true, "existing machine-structured prompts retain their contract");
 assert.equal(
   shouldUseSimpleStructuredArtPromptContract("一个比基尼女牵着一条狗走在海边，二次元风格"),
   true,
@@ -291,7 +291,7 @@ assert.match(smartAiSource, /state\.images = context\?\.surface === "art" \? ima
 assert.match(smartAiSource, /if \(intent\?\.imageCount > 1\) return "结合多参考图生成提示词"/);
 assert.match(smartAiSource, /submit\.textContent = artAutoSubmitLabel\(intent, currentPrompt\)/);
 assert.match(runtimeSource, /setMode: setArtGenerateMode,/);
-assert.match(smartAiSource, /Grok AI（云端，会上传参考图并消耗次数）/);
+assert.match(smartAiSource, /云端 · 深度处理/);
 
 const requirementState = {
   requirements: "降低背景高光，保持主体与构图",

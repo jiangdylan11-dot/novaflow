@@ -10,7 +10,7 @@ import { spineWebpRuntimeFiles } from './spine-webp-runtime-files.mjs'
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const syncEntries = [
-  ...spineWebpRuntimeFiles.map((file) => ({
+  ...[...spineWebpRuntimeFiles, 'main/birefnet-runner.py', 'main/cutout-raw-encoder.js', 'main/cutout-mask-stream.js'].map((file) => ({
     label: file,
     sourcePath: path.join(repoRoot, 'particle-editor-desktop', file),
     targetPaths: [path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', file)],
@@ -378,6 +378,8 @@ const syncEntries = [
   },
   ...[
     'ai-sequence-green-screen-matting.js',
+    'ai-sequence-matting-worker.js',
+    'ai-sequence-cutout-pipeline.js',
     'ai-sequence-state-machine-runtime.js',
     'ai-sequence-video-merge.resource.js',
     'ai-sequence-video-merge.resource-bridge.js',
@@ -449,6 +451,7 @@ const syncEntries = [
     'ai-sequence-minimax-h3-lora.resource.js',
     'ai-sequence-wan22-lora.resource.js',
     'ai-sequence-wan22-lora.workflow.js',
+    'h3-prompt-format.js',
     'ai-sequence-minimax-h3-prompt.workflow.js',
     'ai-sequence-minimax-h3-reverse.workflow.js',
     'ai-sequence-minimax-h3.workflow.js',

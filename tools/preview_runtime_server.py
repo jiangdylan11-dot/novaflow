@@ -1325,6 +1325,11 @@ def _ensure_prompt_assistant_process(
     env["NOVAFLOW_PROMPT_ASSISTANT_MODEL_PATH"] = str(config.get("modelPath") or "")
     env["NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH"] = str(config.get("reverseModelPath") or "")
     env["NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_TYPE"] = str(config.get("reverseModelType") or "")
+    if runtime_config.get("modelsPath"):
+        env.setdefault("NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH", str(
+            Path(runtime_config["modelsPath"]) / "prompt_assistant" / "cache"
+            / f"{PROMPT_ASSISTANT_REVERSE_MODEL_DIR_NAME}-novaflow-bnb-nf4-v1"
+        ))
     if install_path:
         env["NOVAFLOW_COMFY_ROOT"] = str(Path(install_path) / "engine" / "ComfyUI")
 
@@ -1735,11 +1740,12 @@ def _request_prompt_assistant(
 
     request_data = payload if isinstance(payload, dict) else {}
     static_image_reverse = _is_prompt_assistant_static_image_reverse(command, request_data)
+    reverse_model_only = static_image_reverse or command == "prepareReverseCache"
     minimax_h3_reverse = _is_prompt_assistant_minimax_h3_reverse(command, request_data)
     config = _prompt_assistant_config()
     command_enabled = bool(config.get("serviceExists")) and bool(
         config.get("modelExists")
-        or (static_image_reverse and config.get("reverseModelEnabled"))
+        or (reverse_model_only and config.get("reverseModelEnabled"))
     )
     if not command_enabled:
         if command == "reverseImagePrompt" and not static_image_reverse and not config.get("modelExists"):
@@ -1761,11 +1767,11 @@ def _request_prompt_assistant(
                 # surface; only the bounded ordinary-Art path needs ownership
                 # and an absolute deadline propagated into startup.
                 proc, out_queue = _ensure_prompt_assistant_process(
-                    allow_reverse_only=static_image_reverse,
+                    allow_reverse_only=reverse_model_only,
                 )
             else:
                 proc, out_queue = _ensure_prompt_assistant_process(
-                    allow_reverse_only=static_image_reverse,
+                    allow_reverse_only=reverse_model_only,
                     deadline_monotonic=deadline_monotonic,
                     caller_owns_cleanup=lock_already_held,
                 )
@@ -1921,7 +1927,7 @@ def _request_prompt_assistant(
                 })
             raise
         finally:
-            if static_image_reverse or (minimax_h3_reverse and not h3_cleanup_done):
+            if reverse_model_only or (minimax_h3_reverse and not h3_cleanup_done):
                 _stop_prompt_assistant_process()
 
 
@@ -2503,9 +2509,9 @@ class PreviewRuntimeHandler(SimpleHTTPRequestHandler):
             if suffix in {"/optimize", "/optimize-prompt"}:
                 optimize_payload = _prompt_assistant_optimize_payload(request)
                 ordinary_art_prompt_patch = _is_ordinary_local_art_prompt_patch(optimize_payload)
-                optimize_timeout = 300
+                optimize_timeout = 900 if (str(optimize_payload.get("purpose") or "").lower().replace("_", "-") == "minimax-h3-prompt-enhance" or (ordinary_art_prompt_patch and not optimize_payload.get("promptSchema"))) else 300
                 if ordinary_art_prompt_patch:
-                    ordinary_art_deadline = optimize_started + 300.0
+                    ordinary_art_deadline = optimize_started + float(optimize_timeout)
                     ordinary_art_inference_deadline = ordinary_art_deadline - 5.5
                     ordinary_art_lock_acquired = PROMPT_ASSISTANT_LOCK.acquire(blocking=False)
                     if not ordinary_art_lock_acquired:

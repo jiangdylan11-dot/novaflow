@@ -145,8 +145,8 @@ const animationReverseBlock = brandRuntimeSource.match(
 const artReverseBlock = brandRuntimeSource.match(
   /async function runArtGenerateReverseImagePrompt\(sources\)[\s\S]*?\n\s*function handleArtGenerateReverseButton/
 )?.[0] || "";
-const imageWashReverseBlock = spineSplitRuntimeSource.match(
-  /async function runImageWashReversePrompt\(dataUrl, fileName, options = \{\}\)[\s\S]*?\n\s*function storyboardFastStringHash/
+const storyboardReferenceReverseBlock = spineSplitRuntimeSource.match(
+  /async function runStoryboardReferenceReversePrompt\(dataUrl, fileName\)[\s\S]*?\n\s*function storyboardFastStringHash/
 )?.[0] || "";
 assert.doesNotMatch(animationReverseBlock, /static-image-reverse/);
 assert.doesNotMatch(animationReverseBlock, /result\.warning|prompt-assistant-warning|showTopbarExportAvailabilityNotice/);
@@ -172,7 +172,7 @@ assert.match(
 );
 assert.match(artReverseBlock, /const warning = String\(result\.warning \|\| ""\)\.trim\(\)/);
 assert.match(artReverseBlock, /if \(warning\) showTopbarExportAvailabilityNotice\(warning\)/);
-assert.doesNotMatch(imageWashReverseBlock, /static-image-reverse/);
+assert.doesNotMatch(storyboardReferenceReverseBlock, /static-image-reverse/);
 assert.match(
   mainSource,
   /NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH: config\.reverseModelPath/,
@@ -237,9 +237,9 @@ assert.match(localReverseHandler, /result = await runReversePromptAssistant\(\)/
 assert.match(localReverseHandler, /reverseCachePrepared = reverseCachePrepared \|\| cacheReprepared/);
 assert.match(brandRuntimeSource, /data-novaflow-art-generate-nsfw/);
 assert.match(smartAiSource, /nsfw: surface === "art" \? readArtGenerateNsfw\(button\) : false/);
-assert.match(particleEditorIndexSource, /novaflow-brand-runtime\.js\?v=20260817-prompt-editor-modal-1/);
+assert.match(particleEditorIndexSource, /novaflow-brand-runtime\.js\?v=[\w-]+/);
 assert.match(particleEditorIndexSource, /smart-ai-art-auto-intent\.workflow\.js\?v=20260811-art-auto-intent-1/);
-assert.match(particleEditorIndexSource, /novaflow-smart-ai\.js\?v=20260817-prompt-editor-modal-1/);
+assert.match(particleEditorIndexSource, /novaflow-smart-ai\.js\?v=20260914-art-fusion-2/);
 assert.match(smartAiSource, /const VERSION = "20260817-prompt-editor-modal-1"/);
 assert.match(
   brandRuntimeSource,
