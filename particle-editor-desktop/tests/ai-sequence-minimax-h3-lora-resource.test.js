@@ -27,6 +27,20 @@ function item(overrides = {}) {
   }
 }
 
+test('a runtime log-lock error remains diagnostic detail and does not flood the sidebar', async () => {
+  const { api } = loadResource()
+  const store = api.createMiniMaxH3LoraStore()
+  const detail = 'Move-Item : runtime.out.log is used by another process\nFullyQualifiedErrorId: MoveFileInfoItemIOError'
+  await assert.rejects(store.refreshCatalog({ electronAPI: {
+    minimaxH3LoraCatalog: async () => ({ ok: false, error: detail }),
+  } }), /Move-Item/)
+  assert.equal(store.getSnapshot().error, 'H3 服务尚未就绪，请稍后重新选择模型重试。')
+  assert.equal(store.getSnapshot().loading, false)
+  await store.refreshCatalog({ electronAPI: { minimaxH3LoraCatalog: async () => ({ ok: true, items: [item()] }) } })
+  assert.equal(store.getSnapshot().error, '')
+  assert.equal(store.getSnapshot().items.length, 1)
+})
+
 test('exports a browser and CommonJS MiniMax H3 LoRA resource with integer step boundaries', () => {
   const { api, browserApi } = loadResource()
   assert.equal(api, browserApi)

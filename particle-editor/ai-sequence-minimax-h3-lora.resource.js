@@ -257,6 +257,11 @@
         return emit()
       } catch (error) {
         if (version !== requestVersion) return snapshot()
+        const detail = stringValue(error?.message || error || 'catalog_failed')
+        console.warn('[NovaFlow] H3 LoRA catalog unavailable:', detail)
+        const displayError = /Move-Item|MoveFileInfoItemIOError|runtime_(?:start|health|command)|^starting$/.test(detail)
+          ? 'H3 服务尚未就绪，请稍后重新选择模型重试。'
+          : detail.replace(/\s+/g, ' ').slice(0, 160)
         state = {
           ...state,
           mode,
@@ -264,7 +269,7 @@
           items: Object.freeze([]),
           selected: Object.freeze([]),
           loading: false,
-          error: stringValue(error?.message || error || 'catalog_failed'),
+          error: displayError,
         }
         emit()
         throw error

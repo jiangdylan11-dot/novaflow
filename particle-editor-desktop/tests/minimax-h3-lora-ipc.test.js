@@ -25,7 +25,7 @@ test('main creates the isolated H3 LoRA catalog from the H3 lifecycle config and
     /const\s*\{\s*createMiniMaxH3LoraCatalog\s*\}\s*=\s*require\("\.\/main\/minimax-h3-lora-catalog"\)/,
   )
   const start = mainSource.indexOf('const miniMaxH3LoraCatalog = createMiniMaxH3LoraCatalog({')
-  const end = mainSource.indexOf('let promptAssistantProcess', start)
+  const end = mainSource.indexOf('\n});', start) + 4
   assert.ok(start >= 0 && end > start)
   const block = mainSource.slice(start, end)
   assert.match(block, /miniMaxH3RuntimeLifecycle\.readConfig\(\)/)

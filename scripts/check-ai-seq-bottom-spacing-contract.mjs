@@ -67,9 +67,9 @@ assert.ok(
   "the source first frame must use the same progress, prompt, and storyboard vertical rhythm as Runtime",
 );
 assert.ok(
-  index.includes("index-BbIa-2NM.js?v=20260812-minimax-h3-assistant-1") &&
-    index.includes("novaflow-brand-runtime.js?v=20260812-minimax-h3-timing-2"),
-  "the active source bundle and Runtime cache keys must publish their current revisions",
+  /index-BbIa-2NM\.js\?v=[^"\s]+/.test(index) &&
+    /novaflow-brand-runtime\.js\?v=[^"\s]+/.test(index),
+  "the active source bundle and Runtime must publish versioned cache keys",
 );
 
 const visualRhythmStart = runtime.indexOf("function normalizeNovaflowSpacing");

@@ -9721,6 +9721,7 @@
     } else if (syncSourceOwnedLayout) {
       syncAiAnimationSourceOwnedBottomWorkspaceFinalLayout(bottomWorkspace);
     }
+    bindAiSequencePreviewGeometryObserver(getAiSequencePreviewViewport(document));
     return bottomWorkspace;
   }
 
@@ -17673,6 +17674,32 @@
     return Date.now() < AI_SEQUENCE_PREVIEW_BRUSH_INTERACTION_UNTIL;
   }
 
+  let aiSequencePreviewGeometryObserver = null;
+  let aiSequencePreviewGeometryTargets = [];
+
+  function bindAiSequencePreviewGeometryObserver(viewport) {
+    if (typeof ResizeObserver !== "function") return;
+    const targets = viewport instanceof HTMLElement ? [viewport, ...document.querySelectorAll(
+      '[data-novaflow-ai-bottom-workspace="1"], [data-novaflow-ai-video-merge-workspace="1"] .nf-vm-timeline'
+    )] : [];
+    if (targets.length === aiSequencePreviewGeometryTargets.length &&
+        targets.every((node, index) => node === aiSequencePreviewGeometryTargets[index])) return;
+    aiSequencePreviewGeometryObserver?.disconnect();
+    aiSequencePreviewGeometryTargets = targets;
+    if (!targets.length) return;
+    // Measure after React and the bottom-panel layout settle, including async row wrapping.
+    // Only update preview geometry here; never enqueue the full workspace layout.
+    aiSequencePreviewGeometryObserver = new ResizeObserver(() => {
+      if (!viewport.isConnected || !viewport.querySelector('[data-novaflow-ai-preview-bg-toggle="1"]')) {
+        aiSequencePreviewGeometryObserver?.disconnect();
+        aiSequencePreviewGeometryTargets = [];
+        return;
+      }
+      getAiSequencePreviewEffectiveRect(viewport);
+    });
+    targets.forEach((node) => aiSequencePreviewGeometryObserver.observe(node));
+  }
+
   function ensureAiSequencePreviewBgToggle(root = document) {
     const viewport = getAiSequencePreviewViewport(root);
     if (!(viewport instanceof HTMLElement)) return;
@@ -17729,6 +17756,7 @@
       });
     });
     applyAiSequencePreviewBgMode(viewport);
+    bindAiSequencePreviewGeometryObserver(viewport);
     getAiSequencePreviewEffectiveRect(viewport);
     if (!isAiSequencePreviewBackplateEditingActive()) {
       removeAiSequencePreviewMediaBackplate(viewport);
@@ -51226,6 +51254,7 @@
   }
 
   function clearAiAnimationSectionLayers(activeRoot, activePost) {
+    if (!(activeRoot instanceof HTMLElement)) bindAiSequencePreviewGeometryObserver(null);
     Array.from(document.querySelectorAll('[data-novaflow-ai-collapse-button]')).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
       if (removeAiSequenceRuntimeOwnedNode(node)) return;
@@ -55149,7 +55178,7 @@
   }
 
   function aiAnimationPromptEditorTitle(frame) {
-    const kind = frame instanceof HTMLElement ? frame.getAttribute("data-novaflow-ai-prompt-kind") : "";
+    const kind = frame instanceof HTMLElement ? (frame.getAttribute("data-novaflow-ai-prompt-kind") || frame.getAttribute("data-novaflow-art-generate-prompt-kind")) : "";
     return kind === "negative" ? "反向提示词" : "正向提示词";
   }
 
@@ -71927,7 +71956,8 @@
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-history .novaflow-art-generate-history-slot:disabled:hover {
         color: rgba(154, 160, 168, 0.48) !important;
       }
-      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-assistant-actions {
+      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-assistant-actions,
+      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-editor-actions {
         flex: 0 0 auto !important;
         display: inline-flex !important;
         align-items: center !important;
@@ -71939,6 +71969,7 @@
         pointer-events: auto !important;
       }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-history-label[${NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR}="1"],
+      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-editor-actions button,
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-assistant-actions button {
         height: 22px !important;
         min-height: 22px !important;
@@ -71959,6 +71990,7 @@
         cursor: pointer !important;
       }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-history-label[${NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR}="1"]:not(:disabled):hover,
+      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-editor-actions button:not(:disabled):hover,
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-assistant-actions button:not(:disabled):hover {
         background: rgba(255, 255, 255, 0.10) !important;
         background-color: rgba(255, 255, 255, 0.10) !important;
@@ -74251,7 +74283,19 @@
       createArtEl("div", { className: "novaflow-art-generate-history-main" }, [
         label
       ]),
-      key === "prompt" ? renderArtGeneratePromptAssistantActions() : null
+      key === "prompt" ? renderArtGeneratePromptAssistantActions() : createArtEl("div", {
+        className: "novaflow-art-generate-editor-actions"
+      }, [createArtEl("button", {
+        type: "button",
+        className: "novaflow-art-generate-assistant-button",
+        [NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR]: "1",
+        "data-novaflow-art-negative-prompt-edit": "1",
+        onclick: (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          openAiAnimationPromptEditorModal(event.currentTarget.closest('[data-novaflow-art-generate-prompt-frame="1"]'));
+        }
+      }, "编辑")])
     ]);
   }
 

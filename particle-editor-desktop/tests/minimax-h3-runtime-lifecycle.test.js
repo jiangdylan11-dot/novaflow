@@ -338,3 +338,56 @@ test("H3 templates bind locally, isolate generated files, disable API nodes, and
   assert.match(stop, /--port\\s\+' \+ \$port/);
   assert.doesNotMatch(stop, /if \(-not \$targetPid\) \{ \$targetPid=\$pidValue \}/);
 });
+
+test("H3 waits for an owned process that is importing before its port opens", async () => {
+  const runtimeRoot = createInstalledRuntime();
+  try {
+    fs.mkdirSync(path.join(runtimeRoot, "generated"), { recursive: true });
+    fs.writeFileSync(path.join(runtimeRoot, "generated", "runtime.pid"), "4103");
+    let probes = 0;
+    const lifecycle = createMiniMaxH3RuntimeLifecycle({
+      runtimeRoot,
+      processAlive: () => true,
+      inspectProcess: async () => ({ alive: true, verified: true,
+        commandLine: `python.exe "${path.join(runtimeRoot, 'engine', 'ComfyUI', 'main.py')}" --port 8189 --disable-api-nodes` }),
+      probe: async () => ({ ok: ++probes >= 4 }),
+      wait: async () => {},
+      runCommand: async () => assert.fail("must not relaunch Python or rotate its open logs"),
+    });
+    const result = await lifecycle.start();
+    assert.equal(result.running, true);
+    assert.equal(result.reused, true);
+    assert.equal(result.pid, 4103);
+    assert.equal(probes, 4);
+  } finally { fs.rmSync(runtimeRoot, { recursive: true, force: true }); }
+});
+
+test("H3 log rotation uses a fresh log when Windows holds the previous file open", { skip: process.platform !== 'win32' }, () => {
+  const { spawnSync } = require('node:child_process');
+  const runtimeRoot = createInstalledRuntime();
+  try {
+    const start = fs.readFileSync(path.join(templateRoot, 'start-runtime.bat'), 'utf8');
+    const rotation = start.match(/function Archive-PreviousLog.*?(?= }; \$stdout=)/)[0] + ' }';
+    const script = `
+$ErrorActionPreference='Stop'
+$env:LOG_DIR=$env:NOVAFLOW_TEST_LOG_DIR
+$archiveDir=Join-Path $env:LOG_DIR 'archive'
+New-Item -ItemType Directory -Path $archiveDir -Force | Out-Null
+$runId='test'
+${rotation}
+$source=Join-Path $env:LOG_DIR 'runtime.out.log'
+[IO.File]::WriteAllText($source,'previous diagnostic')
+$handle=[IO.File]::Open($source,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None)
+try { $launch=Archive-PreviousLog $source; if ($launch -eq $source) { throw 'locked source reused' }; [IO.File]::WriteAllText($launch,'new diagnostic') } finally { $handle.Dispose() }
+if ([IO.File]::ReadAllText($source) -ne 'previous diagnostic') { throw 'previous log lost' }
+if ((Archive-PreviousLog $source) -ne $source) { throw 'unlocked log not archived' }
+if (Test-Path -LiteralPath $source) { throw 'source still present' }
+Write-Output 'PASS: locked log preserved, fresh log writable, unlocked log archived'
+`;
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], {
+      windowsHide: true, encoding: 'utf8', env: { ...process.env, NOVAFLOW_TEST_LOG_DIR: runtimeRoot }, timeout: 15000,
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /PASS/);
+  } finally { fs.rmSync(runtimeRoot, { recursive: true, force: true }); }
+});

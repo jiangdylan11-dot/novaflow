@@ -307,8 +307,8 @@ function createMiniMaxH3RuntimeLifecycle(options = {}) {
 
   const readConfig = () => readMiniMaxH3RuntimeConfig(configOptions);
 
-  async function canReuseHealthyRuntime(config, status) {
-    if (status?.running !== true || !inspectProcess) return false;
+  async function canReuseRuntimeProcess(config, status) {
+    if ((!status?.running && !status?.processRunning) || !inspectProcess) return false;
     const pid = readRuntimePid(fsApi, config);
     if (!pid || !processAlive(pid)) return false;
     try {
@@ -372,14 +372,28 @@ function createMiniMaxH3RuntimeLifecycle(options = {}) {
       const config = readConfig();
       if (!config.ok || !config.installed) return publish({ ...config, running: false, connected: false });
       const current = await getStatus({ timeoutMs: 1200 });
-      if (await canReuseHealthyRuntime(config, current)) return publish({ ...current, reused: true });
+      if (current.running && await canReuseRuntimeProcess(config, current)) return publish({ ...current, reused: true });
       if (!fsApi.existsSync(config.startScriptPath)) {
         return publish({ ...config, ok: false, status: "error", running: false, connected: false, error: "start_script_missing" });
       }
       try {
         return await coordinator.withStartLock(config.generatedPath, async (lock) => {
           const lockedCurrent = await getStatus({ timeoutMs: 1200 });
-          if (await canReuseHealthyRuntime(config, lockedCurrent)) return publish({ ...lockedCurrent, reused: true });
+          if (await canReuseRuntimeProcess(config, lockedCurrent)) {
+            if (lockedCurrent.running) return publish({ ...lockedCurrent, reused: true });
+            // Python may still be importing models before opening 8189. It already owns
+            // the log handles: wait for this verified process instead of launching again.
+            const ready = await waitForState(config, true, Math.max(1000, Number(startOptions.timeoutMs) || 120_000), signal);
+            const currentStatus = await getStatus({ probe: false });
+            const running = ready.ok && !signal.aborted;
+            const starting = !signal.aborted && !running && currentStatus.processRunning;
+            return publish({
+              ...currentStatus, ok: running || starting, reused: true,
+              status: running ? "running" : starting ? "starting" : signal.aborted ? "stopped" : "error",
+              running, connected: running,
+              error: running || starting ? "" : signal.aborted ? "runtime_start_aborted" : ready.error,
+            });
+          }
           if (signal.aborted) return publish({ ...config, ok: false, status: "stopped", running: false, connected: false, error: "runtime_start_aborted" });
           lock.assertOwned();
           publish({ ...config, ok: true, status: "starting", running: false, connected: false, processRunning: lockedCurrent.processRunning === true, error: "" });
