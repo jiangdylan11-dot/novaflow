@@ -30,25 +30,30 @@ TRANSLATIONS = {
     '把 TOKEN_0 中的金币替换成 TOKEN_1，保持背景。': 'Replace the coin in TOKEN_0 with TOKEN_1, keeping the background.',
     '保留图片外观。': 'Keep the image appearance.',
     '保留背景和运动。': 'Preserve background and motion.',
-    '按原视频旋转，角色说TOKEN_0。在1.500秒呈现侧面。': 'Rotate as in the source video; the character says TOKEN_0. Show the side at 1.5 seconds.',
+    '按原视频旋转，角色说TOKEN_0。在TOKEN_1秒呈现侧面。': 'Rotate as in the source video; the character says TOKEN_0. Show the side at TOKEN_1 seconds.',
 }
 
 
 class TranslationTest(unittest.TestCase):
-    def run_translation(self, corrupt=None):
+    def run_translation(self, corrupt=None, spatial=False):
         calls = []
+        fields = dict(FIELDS)
+        translations = dict(TRANSLATIONS)
+        if spatial:
+            fields['subject_definitions'] = fields['subject_definitions'].replace('原始视频。', '带立体浮雕的原始视频。')
+            translations['带立体浮雕的原始视频。'] = 'The original video with a 3D relief.'
         class FakeAssistant:
             translate = scope['translate_h3_reference']
             def generate(self, request, **kwargs):
                 pending = json.loads(request.split('Input JSON:\n', 1)[1])
                 calls.append(pending)
-                result = {key: TRANSLATIONS[value] for key, value in pending.items()}
+                result = {key: translations[value] for key, value in pending.items()}
                 if len(calls) == 1 and corrupt:
                     for key, value in pending.items():
                         if value.startswith('把 '):
                             result[key] = corrupt(result[key])
                 return json.dumps(result)
-        result = FakeAssistant().translate(json.dumps(FIELDS, ensure_ascii=False), 'Available resource labels: <Picture 1>; <Video 1>', 3)
+        result = FakeAssistant().translate(json.dumps(fields, ensure_ascii=False), 'Available resource labels: <Picture 1>; <Video 1>', 3)
         return json.loads(result['positivePrompt']), calls
 
     def test_full_clause_bindings_and_literal_dialogue_survive(self):
@@ -56,16 +61,27 @@ class TranslationTest(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertIn('Replace the coin in <Video 1> with <Subject 1>, keeping the background.', pair['modelPrompt'])
         self.assertIn('“你好”', pair['modelPrompt'])
-        self.assertIn('1.5 seconds', pair['modelPrompt'])
+        self.assertIn('1.500 seconds', pair['modelPrompt'])
         self.assertIn('把 <Video 1> 中的金币替换成 <Subject 1>', pair['displayPrompt'])
 
     def test_bad_translation_retries_only_the_failed_clause(self):
-        for corrupt in (lambda value: value.replace('Replace', 'Show'), lambda value: value.replace('TOKEN_1', 'TOKEN_7'), lambda value: '照抄中文'):
+        for corrupt in (lambda value: value.replace('TOKEN_1', 'TOKEN_7'), lambda value: '照抄中文'):
             with self.subTest(corrupt=corrupt):
                 pair, calls = self.run_translation(corrupt)
                 self.assertEqual(len(calls), 2)
                 self.assertEqual(len(calls[1]), 1)
                 self.assertIn('Replace the coin', pair['modelPrompt'])
+
+    def test_spatial_translation_may_introduce_3d_without_changing_literal_timing(self):
+        pair, calls = self.run_translation(spatial=True)
+        self.assertEqual(len(calls), 1)
+        self.assertIn('3D relief', pair['modelPrompt'])
+        self.assertIn('1.500 seconds', pair['modelPrompt'])
+
+    def test_valid_edit_translation_does_not_require_whitelisted_english_verbs(self):
+        pair, calls = self.run_translation(lambda value: 'Exchange the coin in TOKEN_0 for TOKEN_1; leave the backdrop intact.')
+        self.assertEqual(len(calls), 1)
+        self.assertIn('Exchange the coin in <Video 1> for <Subject 1>', pair['modelPrompt'])
 
 
 if __name__ == '__main__':

@@ -35,16 +35,18 @@ const policy = {
     "When a JSON schema is supplied, return only the content of each corresponding section in task, speakers, description, dialogue, constraints. The app adds the five headings."
   ],
   "referenceInstructions": [
+    "When returning a bilingual JSON object, also provide editPolicy with three booleans inferred from the user's meaning: preserveBackground (the source background is to stay), preserveMotion (source trajectory, orientation, speed and timing are to stay), sameShapeAppearanceOnly (only the complete visible object's surface/design changes using an appearance image, while its geometry stays). These controls are false for generation without a source edit. Keep unspecified background and motion for source edits; set the corresponding control false when the user changes them. Local clothing/color edits on a person, changed object categories, and effect-theme/shape changes must set sameShapeAppearanceOnly=false. These controls are internal; do not write them in either six-section prompt. They are never an instruction to force unrelated foreground pixels to change.",
     "Ref2VA model input uses six fields in this order: subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape, non_diegetic_music. The model-facing prose is English, as required by the H3 reference guide. Preserve dialogue, lyrics and visible text in their original language. When a bilingual result is requested, translate all descriptive prose faithfully into Simplified Chinese in displayPrompt only; field names and relationship markers stay canonical in both versions.",
     "This is the reference-mode contract, overriding five-section and speaker-only formatting. <Subject N> defines reusable visible content (objects, people, scenes, styles or actions), not just speakers. Only speaking subjects need a separate (Sx) voice identifier.",
     "Define each subject on its own line and cite the source media. For image appearance plus video motion, explicitly bind the SAME subject: appearance from <Picture N>, motion from <Video N>. Images used only for appearance are NOT exact first frames. Do not infer a frame anchor from slot order.",
-    "For video content replacement, define <Video N> as the source video. Begin summary with [video editing + reference generation] The target video is an edited version of <Video N>. Identify the original target being replaced, the replacement subject and precisely which motion, timing, camera, setting or sound is retained. Remove the original target appearance throughout, rather than adding another subject or morphing late.",
-    "Motion/camera guidance alone uses [reference generation]; continuation uses [video continuation]. Do not invent editing, continuation or keyframe completion merely because a file exists. Follow the user intent when these roles differ.",
-    "retention_analysis uses one line per tracked subject/video/audio/frame anchor. Visual relationships: fully_preserved, partially_preserved, attribute_transfer, weak_reference. State the transferred attributes and their target. Audio relationships: fully_copy, partially_copy, reference, weak_reference.",
+    "For video editing, define <Video N> as the source video. Begin summary with [video editing] The target video is an edited version of <Video N>. Add reference generation when another asset provides guidance. Identify the target, the specific properties changed, the desired result and the properties retained. Whole-object replacement removes the old target appearance; attribute editing changes only the requested attribute. Do not replace an entire person when only their outfit changes, or redesign clothing when only its color changes.",
+    "Understand ordinary user language without requiring fixed verbs or templates. Targets may be people, arbitrary objects, clothes, props, backgrounds, visual effects or their attributes. For color-only edits retain design, material, transparency, folds and coverage. A costume reference supplies clothing, not automatically the identity or pose of the person wearing it. For effect-theme changes describe the new material, shapes and effect elements while preserving the requested trajectories and timing. Appearance/style of a rotating object is distinct from the rotation itself. If the user explicitly changes motion, timing, camera or background, apply that change instead of also declaring it preserved. No reference image is required when the target appearance is specified in text.",
+    "Motion/camera guidance alone uses [reference generation]; continuation uses [video continuation]. Do not invent editing, continuation or keyframe completion merely because a file exists. Available uploads are optional sources: use only the ones relevant to the user's edit. When changing speed within a fixed output duration, do not also force the original ending pose or a complete original cycle; only the portion of source motion that fits the requested speed is shown.",
+    "retention_analysis uses one line per tracked subject/video/audio/frame anchor. Visual relationships: fully_preserved, partially_preserved, attribute_transfer, weak_reference. Each relation applies only to the role defined in subject_definitions. Fully preserving an image costume or a video's camera/timing role is compatible with editing another property; it does not make the image a first-frame anchor or preserve all source pixels. Keep appearance constraints on the relevant Subject and whole-video constraints on Video. State the transferred attributes and their target. Audio relationships: fully_copy, partially_copy, reference, weak_reference.",
     "Audio reuse means retaining the supplied sound signal and uses [audio reuse]. Voice timbre, music style or rhythm guidance uses [audio reference]; do not claim identical audio copying for these. Bind voice reference to the actual speaker (Sx) only when requested. Never invent dialogue, visible events, speech or silence from an audio filename.",
     "A video asset does not implicitly supply an <Audio N>. Use only the audio labels actually available. Independent image, video and audio numbering follows Available resource labels exactly.",
     "detailed_description begins with the intended visual style when supplied (otherwise retain the reference appearance without assigning a new style), then [Shot 1], and describes the actual opening, action progression, camera and ending within the selected duration. Keep necessary source relationships in the narrative itself, not only in metadata. Use later [Shot N] At MM:SS.mmm only for actual cuts.",
-    "For source-video editing, preserve the original motion direction, speed changes, trajectory, frame-by-frame orientation, camera, framing and start/end phase unless the user changes them. Do not invent a 360-degree turn, clockwise direction, constant speed, fixed camera or closed loop from a video filename or the word rotation. With only text and resource labels you have not seen the media; bind those properties to the source video instead of claiming measured facts. Do not introduce breathing or human anatomy for an object replacement. Do not turn an immediate replacement into a progressive morph.",
+    "For source-video editing, preserve the original motion direction, speed changes, trajectory, frame-by-frame orientation, camera, framing and start/end phase unless the user changes them. Do not invent a 360-degree turn, clockwise direction, constant speed, fixed camera or closed loop from a video filename or the word rotation. With only text and resource labels you have not seen the media; bind those properties to the source video instead of claiming measured facts. Do not introduce breathing or human anatomy for an object replacement. Apply edits throughout by default; gradual transformations or timed changes are appropriate only when requested.",
     "overall_soundscape describes diegetic ambience and physical sounds; non_diegetic_music describes score. Place dialogue verbatim as <d>[Language] ...</d> in the narrative and keep speaker IDs stable. Respect explicit silence/no music.",
     "Keep all user constraints and independent reference roles. Return only the six fields (or their JSON values when a schema is supplied); no explanations, slot names or generic subject placeholders.",
     "Use exact retention syntax: <Subject 1>: fully_preserved - concrete retained appearance. <Video 1>: partially_preserved - concrete retained motion and replaced content. <Audio 1>: reference - concrete sound characteristics. These are syntax examples, not default roles or wording to copy. Put the ASCII colon BEFORE the relationship marker. Explicitly name each retained subject inside detailed_description using its <Subject N> label, and preserve the source camera unless changed by the user. Do not invent numeric frame indices; express timing in seconds."
@@ -84,7 +86,7 @@ const sectionFields = ['task', 'speakers', 'description', 'dialogue', 'constrain
 const formatInstruction = policy.formatInstructions.join('\n');
 const referenceFields = ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description', 'overall_soundscape', 'non_diegetic_music'];
 const referenceInstruction = policy.referenceInstructions.join('\n');
-const referenceResultInstruction = 'Return a bilingual object with modelPrompt and displayPrompt. Each contains the same six H3 fields. modelPrompt has English prose for H3; displayPrompt is its faithful Simplified Chinese translation for the editor. Keep every media tag, subject ID, task, retention relation, time, direction, dialogue and constraint identical in meaning. Do not add creative changes while translating.';
+const referenceResultInstruction = 'Return a bilingual object with modelPrompt, displayPrompt and editPolicy. The two prompts contain the same six H3 fields. editPolicy contains only the three internal booleans defined in the instructions. modelPrompt has English prose for H3; displayPrompt is its faithful Simplified Chinese translation for the editor. Keep every media tag, subject ID, task, retention relation, time, direction, dialogue and constraint identical in meaning. Do not add creative changes while translating.';
 function referenceFrames(value, requirements = '') {
   if (value == null) return [];
   if (!Array.isArray(value) || value.length > 13) throw new Error('H3 参考画面数量无效');
@@ -110,7 +112,11 @@ function referenceFrames(value, requirements = '') {
   });
 }
 const referenceFieldSchema = language => ({type:'object', additionalProperties:false, properties:Object.fromEntries(referenceFields.map(k=>[k,{type:'string',minLength:1,description:(language==='zh'?'本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。':'Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue.') + (k==='subject_definitions'?' Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately.':k==='retention_analysis'?' One rule per defined Subject and source Video; image attributes belong to the Subject using that picture.':k==='overall_soundscape'||k==='non_diegetic_music'?' Use N/A for absent or unrequested audio, never an empty string.':'')}])), required:referenceFields});
-const referenceResultSchema = {type:'object', additionalProperties:false, properties:{modelPrompt:referenceFieldSchema('en'),displayPrompt:referenceFieldSchema('zh')},required:['modelPrompt','displayPrompt']};
+const referenceEditPolicySchema = {type:'object',additionalProperties:false,properties:{preserveBackground:{type:'boolean'},preserveMotion:{type:'boolean'},sameShapeAppearanceOnly:{type:'boolean'}},required:['preserveBackground','preserveMotion','sameShapeAppearanceOnly']};
+const referenceResultSchema = {type:'object', additionalProperties:false, properties:{modelPrompt:referenceFieldSchema('en'),displayPrompt:referenceFieldSchema('zh'),editPolicy:referenceEditPolicySchema},required:['modelPrompt','displayPrompt','editPolicy']};
+function referenceEditPolicy(value) {
+  return Object.fromEntries(['preserveBackground','preserveMotion','sameShapeAppearanceOnly'].map(key=>[key,value?.[key]===true]));
+}
 function referenceResult(value) {
   let parsed;
   try { parsed = typeof value === 'string' ? JSON.parse(value.trim().replace(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i,'$1').trim()) : value; } catch (_) {}
@@ -136,6 +142,15 @@ function compileReferenceFields(value, options) {
   }
   let retention = fields.retention_analysis;
   const subjects = [...definitions].filter(([id])=>id.startsWith('<Subject '));
+  // Task markers follow the model's actual bindings, not a phrase the user
+  // must type. An appearance image attached to a Subject is guidance.
+  if (typeof fields.summary === 'string' && subjects.some(([,description])=>/<Picture [1-9]\d*>/.test(description))) {
+    fields.summary = fields.summary.replace(/^\[([^\]]+)\]/, (prefix, content)=>{
+      const tasks = content.split(/\s*\+\s*/);
+      return tasks.includes('video editing') && !tasks.includes('reference generation')
+        ? '[' + [...tasks, 'reference generation'].join(' + ') + ']' : prefix;
+    });
+  }
   // Move an image-attribute rule only when the model binds that picture to
   // exactly one subject and has not already supplied a subject rule.
   retention = retention.split(/\r?\n/).map(line=>{
@@ -170,7 +185,9 @@ function validateReferenceResult(value, options = {}) {
   const sources = text => text.split('summary:')[0].split('\n').filter(l=>/^<Subject \d+>/.test(l)).map(l=>[l.match(/^<Subject \d+>/)[0],...[...new Set(l.match(/<(?:Picture|Video|Audio) \d+>/g)||[])].sort()].join('|')).sort().join('\n');
   const tasks = text => /summary:\s*\[([^\]]+)\]/.exec(text)?.[1].split(/\s*\+\s*/).sort().join('|');
   if (bindings(modelPrompt) !== bindings(displayPrompt) || sources(modelPrompt) !== sources(displayPrompt) || tasks(modelPrompt) !== tasks(displayPrompt)) throw new Error('H3 中英文提示词的素材关系不一致');
-  return JSON.stringify({modelPrompt,displayPrompt});
+  const editPolicy = pair.editPolicy ? referenceEditPolicy(pair.editPolicy) : null;
+  if (editPolicy && !/<Picture [1-9]\d*>/.test(modelPrompt)) editPolicy.sameShapeAppearanceOnly = false;
+  return JSON.stringify({modelPrompt,displayPrompt,...(editPolicy ? {editPolicy} : {})});
 }
 const referenceDisplayFields = ['主体定义', '任务说明', '保留规则', '画面与动作', '环境声音', '背景音乐'];
 const referenceDisplayTerms = {
@@ -229,7 +246,7 @@ function validateReference(value, options = {}) {
   const media = v => [...new Set(v.match(/<(?:Picture|Video|Audio) [1-9]\d*>/g) || [])];
   if (inventory) {
     const allowed = media(inventory[1]), used = media(text);
-    if (allowed.some(t => !used.includes(t)) || used.some(t => !allowed.includes(t))) throw new Error('H3 多参引用与已上传素材不一致');
+    if (used.some(t => !allowed.includes(t))) throw new Error('H3 多参引用与已上传素材不一致');
   }
   const definitions = [...fields.subject_definitions.matchAll(/^<Subject ([1-9]\d*)>[^\n]+/gm)];
   const ids = definitions.map(m => Number(m[1]));

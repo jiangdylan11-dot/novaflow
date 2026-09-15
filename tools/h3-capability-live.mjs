@@ -10,7 +10,7 @@ const args=process.argv.slice(2);
 const name=args.find(v=>v.startsWith('--case='))?.slice(7)||'color';
 const native=args.includes('--native');
 const steps=Number(args.find(v=>v.startsWith('--steps='))?.slice(8)||(native?20:4));
-const out=path.resolve('docs/h3-capability-20260915',`${name}-${native?'ref2va':'beta5'}-${steps}`);
+const out=path.resolve(args.find(v=>v.startsWith('--out='))?.slice(6)||path.join('docs/h3-capability-20260915',`${name}-${native?'ref2va':'beta5'}-${steps}`));
 fs.mkdirSync(out,{recursive:true});
 const input='C:/ProgramData/NovaFlow/AI-Runtime-H3/generated/input';
 const api=async(route,body)=>{const r=await fetch('http://127.0.0.1:8189'+route,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});if(!r.ok)throw Error(`${route}: ${r.status} ${await r.text()}`);return r.json();};
@@ -47,13 +47,18 @@ const descriptions={
  coin:{subject:'the replacement gold coin whose circular border and cat-outline emblem come from <Picture 1> and whose movement comes from the original coin in <Video 1>',edit:'Replace the original mask-emblem gold coin in <Video 1> with the cat-outline coin from <Picture 1>. Keep the target picture\'s cat-outline emblem and circular gold border throughout.',target:'The replacement coin is already visible at the first frame. It follows the original coin\'s rotation direction, speed, perspective, position and scale at each matching source timestamp. The old mask emblem is absent throughout.'},
 };
 const d=descriptions[name];
-const prompt=`subject_definitions:\n<Subject 1> is ${d.subject}.\n<Video 1> is the original source video to edit, providing the existing shot, background and temporal motion.\n\nsummary:\n[video editing${name==='coin'?' + reference generation':''}] The target video is an edited version of <Video 1>. ${d.edit}\n\nretention_analysis:\n<Subject 1>: partially_preserved - ${d.edit}\n<Video 1>: fully_preserved - Retain the source camera, background, framing, subject placement, scale, action timing, direction and speed. Change only the explicitly requested appearance.\n\ndetailed_description:\n[Shot 1] At 0.000 seconds, ${d.target} Throughout the shot, follow the action, camera and timing of <Video 1> at the corresponding source timestamps. Preserve the source lighting, shadows, background and every unedited element. The camera follows the original source camera. At ${duration.toFixed(3)} seconds, the edited subject reaches the same pose and location as in the source at that time.\n\noverall_soundscape:\nN/A\n\nnon_diegetic_music:\nN/A`;
-const g=build({profile:'beta5_int8',acceleration:'sage',mode:'r2v',prompt,aspectRatio:clothes?'9:16':'1:1',megapixels:.6,durationSeconds:duration,fps:24,steps:4,seed:1696013393,referenceImages:name==='coin'?['27_1789394327015_ac9a64.png']:[],referenceVideo:video,outputPrefix:`video/NovaFlow_H3_probe_${name}_${native?'ref2va':'beta5'}_${steps}`});
+const promptPath=args.find(v=>v.startsWith('--prompt-file='))?.slice(14);
+const policyPath=args.find(v=>v.startsWith('--policy-file='))?.slice(14);
+const referenceEditPolicy=policyPath?JSON.parse(fs.readFileSync(policyPath,'utf8')):null;
+const prompt=promptPath?fs.readFileSync(promptPath,'utf8'):`subject_definitions:\n<Subject 1> is ${d.subject}.\n<Video 1> is the original source video to edit, providing the existing shot, background and temporal motion.\n\nsummary:\n[video editing${name==='coin'?' + reference generation':''}] The target video is an edited version of <Video 1>. ${d.edit}\n\nretention_analysis:\n<Subject 1>: partially_preserved - ${d.edit}\n<Video 1>: fully_preserved - Retain the source camera, background, framing, subject placement, scale, action timing, direction and speed. Change only the explicitly requested appearance.\n\ndetailed_description:\n[Shot 1] At 0.000 seconds, ${d.target} Throughout the shot, follow the action, camera and timing of <Video 1> at the corresponding source timestamps. Preserve the source lighting, shadows, background and every unedited element. The camera follows the original source camera. At ${duration.toFixed(3)} seconds, the edited subject reaches the same pose and location as in the source at that time.\n\noverall_soundscape:\nN/A\n\nnon_diegetic_music:\nN/A`;
+const g=build({profile:'beta5_int8',acceleration:'sage',mode:'r2v',prompt,referenceEditPolicy,aspectRatio:clothes?'9:16':'1:1',megapixels:.6,durationSeconds:duration,fps:24,steps:4,seed:1696013393,referenceImages:name==='coin'?['27_1789394327015_ac9a64.png']:[],referenceVideo:video,outputPrefix:`video/NovaFlow_H3_probe_${name}_${native?'ref2va':'beta5'}_${steps}`});
 // Probe the model's own reference conditioning and decoded output, even for coins.
-const components=Object.entries(g).find(([,n])=>n.class_type==='GetVideoComponents')[0];
-g['5'].inputs['ref_videos.ref_video_0']=[components,0];
-g['13'].inputs.images=['11',0];
-for(const [id,n] of Object.entries(g))if(['NovaFlowH3PrepareMotionReference','NovaFlowH3MatchReferenceLayout'].includes(n.class_type))delete g[id];
+if(!policyPath){
+ const components=Object.entries(g).find(([,n])=>n.class_type==='NovaFlowH3ReferenceVideoFrames')[0];
+ g['5'].inputs['ref_videos.ref_video_0']=[components,0];
+ g['13'].inputs.images=['11',0];
+ for(const [id,n] of Object.entries(g))if(['NovaFlowH3PrepareMotionReference','NovaFlowH3MatchReferenceLayout'].includes(n.class_type))delete g[id];
+}
 if(native)g['1'].inputs.unet_name='Minimax_H3\\minimax_h3_ref2va_pruned_int8_convrot.safetensors';
 g['6'].inputs.steps=steps;
 if(native)g['6'].inputs.scheduler='beta';

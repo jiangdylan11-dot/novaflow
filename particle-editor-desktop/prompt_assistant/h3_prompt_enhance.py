@@ -71,7 +71,7 @@ def normalize_reference_plan(value, requirements="", source="", user_requirement
         if any(origin not in allowed for origin in origins) or (not label.startswith('<Subject ') and label not in allowed):
             raise ValueError("H3 多参关系计划素材来源无效")
         item['sources'] = list(dict.fromkeys(origins))
-        if label.startswith('<Picture ') and set(origins or [label]) == {label}:
+        if label.startswith('<Picture ') and 'keyframe completion' not in plan['tasks'] and set(origins or [label]) == {label}:
             # A model may name the asset instead of creating an internal ID.
             # Allocate that bookkeeping ID while retaining the actual source.
             if label not in image_subjects:
@@ -80,10 +80,9 @@ def normalize_reference_plan(value, requirements="", source="", user_requirement
                 image_subjects[label] = f'<Subject {number}>'
             item['sources'] = origins = [label]
             item['label'] = label = image_subjects[label]
-        if editing and label.startswith('<Subject ') and any(origin.startswith('<Picture ') for origin in origins) and item.get('relation') == 'fully_preserved':
-            # The complete image appearance transfers, but an image pose must
-            # not become a fixed first-frame anchor for a video edit.
-            item['relation'] = 'attribute_transfer'
+        # Fidelity applies to the role defined by the model. A fully retained
+        # costume/image identity is compatible with editing another attribute;
+        # it does not turn that image into a first-frame composition anchor.
         if not item.get('relation'):
             if label.startswith('<Video ') and editing:
                 item['relation'] = 'partially_preserved'
@@ -114,13 +113,22 @@ def normalize_reference_plan(value, requirements="", source="", user_requirement
             if video not in allowed:
                 raise ValueError("H3 多参关系计划素材来源无效")
             if video not in merged:
-                merged[video] = {'label': video, 'sources': [], 'description': '本次编辑的源视频。', 'relation': 'partially_preserved', 'keep': plan.get('description', '')}
+                merged[video] = {'label': video, 'sources': [], 'description': '本次编辑的源视频。', 'relation': 'partially_preserved', 'keep': '按目标描述执行本次修改；未指定修改的背景、镜头、构图及动作时序沿用源视频。'}
         if any(any(s.startswith('<Picture ') for s in item['sources']) for item in merged.values()) and 'reference generation' not in plan['tasks']:
             plan['tasks'].append('reference generation')
         if not re.search(r'镜头|相机|摄像|机位|运镜|\bcamera\b|\bzoom\b|\bdolly\b|\bpanning\b', text + source + user_requirement, re.I):
             for video in used_videos:
                 merged[video]['keep'] += ' 保留原视频镜头。'
     plan['references'] = list(merged.values())
+    # A single source-only edit may name its target in the shot but omit the
+    # bookkeeping Subject row. Bind that already-authored target to the sole
+    # video; reuse its edited narrative, without inventing an object/appearance.
+    mentioned_subjects = set(re.findall(r'<Subject [1-9]\d*>', str(plan.get('description', ''))))
+    if editing and mentioned_subjects == {'<Subject 1>'} and not any(k.startswith('<Subject ') for k in merged) and len(used_videos) == 1 and all(k.startswith('<Video ') for k in merged):
+        video = next(iter(used_videos))
+        plan['references'].insert(0, {'label': '<Subject 1>', 'sources': [video],
+            'description': str(plan['description']).replace('<Subject 1>', '目标内容'),
+            'relation': 'partially_preserved', 'keep': merged[video]['keep']})
     for picture, subject in image_subjects.items():
         if isinstance(plan.get('description'), str):
             plan['description'] = plan['description'].replace(picture, subject)
@@ -133,6 +141,7 @@ def normalize_reference_plan(value, requirements="", source="", user_requirement
 def render_reference_plan(value, requirements="", duration=30, source="", user_requirement=""):
     """Serialize model-authored relationships; Python owns all H3 punctuation."""
     plan = normalize_reference_plan(value, requirements, source, user_requirement)
+    plan.pop('editPolicy', None)
     required = {"references", "tasks", "summary", "description", "soundscape", "music"}
     if not isinstance(plan, dict) or set(plan) != required or not isinstance(plan["references"], list) or not isinstance(plan["tasks"], list):
         raise ValueError("H3 多参关系计划不完整")
@@ -146,10 +155,6 @@ def render_reference_plan(value, requirements="", duration=30, source="", user_r
             raise ValueError("H3 多参关系计划标签无效")
         if isinstance(item["keep"], list) and all(isinstance(v, str) for v in item["keep"]):
             item["keep"] = "; ".join(item["keep"])
-        # An edited source video cannot be retained in its entirety: the
-        # replacement itself necessarily changes part of its content.
-        if label.startswith("<Video ") and "video editing" in plan["tasks"] and item["relation"] == "fully_preserved":
-            item["relation"] = "partially_preserved"
         sources = item["sources"]
         if isinstance(sources, str):
             sources = [] if not sources.strip() else re.split(r"\s*[,，;；、]\s*", sources.strip())
@@ -177,6 +182,11 @@ def render_reference_plan(value, requirements="", duration=30, source="", user_r
             raise ValueError("H3 视频编辑必须指定源视频")
         summary = "The target video is an edited version of " + videos[0] + ". " + summary
     description = plan["description"].strip()
+    if "video editing" in plan["tasks"]:
+        # Source editing retains unspecified content by definition. Express
+        # that temporal binding without inventing observed motion or overriding
+        # explicit camera, timing, background or transformation requests.
+        description += ' 除本次明确要求改变的部分外，沿用 ' + videos[0] + ' 对应时刻的背景、镜头、构图、动作方向、速度、轨迹和姿态；指定的编辑效果按上述要求持续生效。'
     loop_requested = re.search(POLICY["loopPattern"], source + "\n" + user_requirement, re.I) and not re.search(POLICY["cancelLoopPattern"], user_requirement or source, re.I)
     if loop_requested and not re.search(POLICY["closurePattern"], description, re.I):
         description += " 结束时平滑回到起始姿态与运动相位，使循环自然衔接。"
@@ -203,7 +213,7 @@ def validate_reference(value, requirements="", duration=30):
     inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements)
     if inventory:
         media = lambda v: set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", v))
-        if media(inventory.group(1)) != media(text):
+        if not media(text).issubset(media(inventory.group(1))):
             raise ValueError("H3 多参引用与已上传素材不一致")
     definitions = list(re.finditer(r"(?m)^<Subject ([1-9]\d*)>[^\n]+", fields["subject_definitions"]))
     ids = [int(m.group(1)) for m in definitions]

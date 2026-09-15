@@ -2,6 +2,7 @@
 import torch
 import torch.nn.functional as F
 import numpy as np
+import math
 from scipy.ndimage import label, gaussian_filter, distance_transform_edt
 
 
@@ -71,6 +72,49 @@ def prepare(image, mask, width, height, preserve_video_layout=False, reference_v
     top, left = (y0+y1-th)//2, (x0+x1-tw)//2
     canvas[:, top:top+th, left:left+tw] = rgb + color * (1-a)
     return canvas
+
+
+def reference_frames_24fps(images, source_fps):
+    """Sample source timestamps; H3 interprets every reference frame as 24 fps."""
+    return resample_frames(images, source_fps, 24)
+
+
+def resample_frames(images, source_fps, target_fps):
+    rate = float(source_fps)
+    target = float(target_fps)
+    if not math.isfinite(rate) or rate <= 0 or not math.isfinite(target) or target <= 0 or len(images) == 0:
+        raise ValueError("H3 参考视频缺少有效帧率或画面")
+    if abs(rate - target) < 1e-6:
+        return images
+    count = math.floor((len(images) - 1) * target / rate + 1e-6) + 1
+    indices = (torch.arange(count, device=images.device, dtype=torch.float64) * rate / target + .5).floor().long()
+    return images.index_select(0, indices.clamp(max=len(images) - 1))
+
+
+class NovaFlowH3ReferenceVideoFrames:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"images": ("IMAGE",), "source_fps": ("FLOAT", {"default": 24})}}
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "run"
+    CATEGORY = "NovaFlow/H3"
+
+    def run(self, images, source_fps):
+        return (reference_frames_24fps(images, source_fps),)
+
+
+class NovaFlowH3OutputVideoFrames:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"images": ("IMAGE",), "fps": ("FLOAT", {"default": 24})}}
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "run"
+    CATEGORY = "NovaFlow/H3"
+
+    def run(self, images, fps):
+        return (resample_frames(images, 24, fps),)
 
 
 class NovaFlowH3PrepareReferenceImage:
@@ -143,7 +187,104 @@ class NovaFlowH3PrepareMotionReference:
     CATEGORY = "NovaFlow/H3"
 
     def run(self, images):
-        return (motion_only_flat_sprite(images),)
+        return (motion_only_flat_sprite(images) if is_rotating_disc(images) else images,)
+
+
+def is_rotating_disc(images):
+    """Conservative eligibility for the previously validated turntable guide.
+
+    A person on a flat background is not sufficient. Require an isolated,
+    stationary elliptical disc that demonstrably turns from broadside to edge.
+    """
+    if len(images) < 5:
+        return False
+    geometry = []
+    for index in np.linspace(0, len(images) - 1, min(13, len(images))).round().astype(int):
+        frame = images[index]
+        bounds = sprite_bounds(frame)
+        if bounds is None:
+            return False
+        color, (y0, x0, y1, x1) = bounds
+        height, width = y1 - y0, x1 - x0
+        if width / height > .4:
+            yy, xx = np.ogrid[:height, :width]
+            ellipse = ((xx + .5 - width / 2) / (width / 2)) ** 2 + ((yy + .5 - height / 2) / (height / 2)) ** 2 <= 1
+            mask = ((frame[y0:y1, x0:x1] - color).abs().amax(-1) > .12).cpu().numpy()
+            if np.logical_and(ellipse, mask).sum() / max(1, np.logical_or(ellipse, mask).sum()) < .82:
+                return False
+        geometry.append([height, width, (x0 + x1) / 2, (y0 + y1) / 2])
+    geometry = np.asarray(geometry)
+    h = np.median(geometry[:, 0])
+    return bool(np.ptp(geometry[:, 0]) < .08 * h and
+                np.max(np.ptp(geometry[:, 2:], axis=0)) < .08 * h and
+                .8 < np.max(geometry[:, 1]) / h < 1.3 and
+                np.min(geometry[:, 1]) / h < .35)
+
+
+def flat_background_color(frame, border_fraction=.97):
+    border = torch.cat((frame[0], frame[-1], frame[:, 0], frame[:, -1]))
+    color = border.median(dim=0).values
+    if float(((border - color).abs().amax(-1) < .06).float().mean()) < border_fraction:
+        return None
+    if float(((frame - color).abs().amax(-1) < .06).float().mean()) < .4:
+        return None
+    return color
+
+
+def flat_video_background_colors(images):
+    # Establish an unambiguous background at both ends, then tolerate transient
+    # particles crossing the border. Every frame must keep the same flat color
+    # and a substantial visible background; never switch correction on/off.
+    if not len(images):
+        return None
+    anchors = [flat_background_color(images[0]), flat_background_color(images[-1])]
+    if any(color is None for color in anchors):
+        return None
+    colors = [flat_background_color(frame, .8) for frame in images]
+    if any(color is None or float((color - anchors[0]).abs().max()) > .04 for color in colors):
+        return None
+    return colors
+
+
+def restore_flat_reference_background(images, reference_video):
+    """Restore a flat background only when the edit explicitly retains it.
+
+    Correct a chromatic background's contribution, retaining antialiasing and
+    neutral local glow. Complex or neutral backgrounds pass through. Like any
+    color key, this cannot distinguish an opaque foreground of the key color.
+    """
+    if not len(reference_video) or not len(images):
+        return images
+    source_colors = flat_video_background_colors(reference_video)
+    output_colors = flat_video_background_colors(images)
+    if source_colors is None or output_colors is None:
+        return images
+    dominant = int(output_colors[0].argmax())
+    others = [channel for channel in range(3) if channel != dominant]
+    if any(float(color[dominant] - color[others].max()) < .25 for color in output_colors):
+        return images
+    result = images.clone()
+    for index, frame in enumerate(images):
+        source = source_colors[min(index, len(source_colors) - 1)].to(frame)
+        output = output_colors[index]
+        # Continuous chroma key rather than a color-distance cutoff: the latter
+        # leaves dark rings around pale particles and translucent subjects.
+        key = (frame[..., dominant] - frame[..., others].amax(-1)) / (output[dominant] - output[others].max())
+        result[index] = (frame + key.clamp(0, 1).unsqueeze(-1) * (source - output)).clamp(0, 1)
+    return result
+
+
+class NovaFlowH3RestoreReferenceBackground:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {"images": ("IMAGE",), "reference_video": ("IMAGE",)}}
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "run"
+    CATEGORY = "NovaFlow/H3"
+
+    def run(self, images, reference_video):
+        return (restore_flat_reference_background(images, reference_video),)
 
 
 def sprite_bounds(frame):
@@ -216,9 +357,12 @@ class NovaFlowH3MatchReferenceLayout:
     CATEGORY = "NovaFlow/H3"
 
     def run(self, **kwargs):
-        return (match_reference_layout(**kwargs),)
+        return (match_reference_layout(**kwargs) if is_rotating_disc(kwargs['reference_video']) else kwargs['images'],)
 
 
 NODE_CLASS_MAPPINGS = {"NovaFlowH3PrepareReferenceImage": NovaFlowH3PrepareReferenceImage,
+                       "NovaFlowH3ReferenceVideoFrames": NovaFlowH3ReferenceVideoFrames,
+                       "NovaFlowH3OutputVideoFrames": NovaFlowH3OutputVideoFrames,
+                       "NovaFlowH3RestoreReferenceBackground": NovaFlowH3RestoreReferenceBackground,
                        "NovaFlowH3PrepareMotionReference": NovaFlowH3PrepareMotionReference,
                        "NovaFlowH3MatchReferenceLayout": NovaFlowH3MatchReferenceLayout}

@@ -439,9 +439,12 @@ assert.deepEqual(
 
 const [videoId, videoNode] = oneByClass(r2v, 'LoadVideo')
 const [componentsId, componentsNode] = oneByClass(r2v, 'GetVideoComponents')
+const [referenceFramesId, referenceFramesNode] = oneByClass(r2v, 'NovaFlowH3ReferenceVideoFrames')
 const [audioId, audioNode] = oneByClass(r2v, 'LoadAudio')
 assert.equal(videoNode.inputs.file, 'reference-motion.mp4')
 assert.deepEqual(hostClone(componentsNode.inputs.video), [videoId, 0])
+assert.deepEqual(hostClone(referenceFramesNode.inputs.images), [componentsId, 0])
+assert.deepEqual(hostClone(referenceFramesNode.inputs.source_fps), [componentsId, 2])
 assert.equal(audioNode.inputs.audio, 'reference-voice.wav')
 
 const r2vConditioning = oneByClass(r2v, 'MiniMaxH3ReferenceToVideo')[1]
@@ -454,7 +457,7 @@ for (let index = 0; index < 4; index += 1) {
 }
 assert.deepEqual(
   hostClone(r2vConditioning.inputs['ref_videos.ref_video_0']),
-  [componentsId, 0],
+  [referenceFramesId, 0],
 )
 assert.equal(r2vConditioning.inputs['ref_video_audios.ref_video_audio_0'], undefined)
 assert.deepEqual(

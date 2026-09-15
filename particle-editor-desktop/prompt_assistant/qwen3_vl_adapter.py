@@ -735,8 +735,8 @@ class Qwen3VLAbliteratedAdapter:
             import torch
             from PIL import Image
 
-            image = self._tensor_to_pil(image_tensor)
-            if max(image.size) > self.max_side:
+            image = self._tensor_to_pil(image_tensor) if image_tensor is not None else None
+            if image is not None and max(image.size) > self.max_side:
                 scale = self.max_side / max(image.size)
                 image = image.resize(
                     (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
@@ -756,8 +756,7 @@ class Qwen3VLAbliteratedAdapter:
                 },
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "image", "image": image},
+                    "content": ([{"type": "image", "image": image}] if image is not None else []) + [
                         {"type": "text", "text": str(prompt or "")},
                     ],
                 },
@@ -769,7 +768,7 @@ class Qwen3VLAbliteratedAdapter:
             )
             inputs = self.processor(
                 text=[text_prompt],
-                images=[image],
+                **({"images": [image]} if image is not None else {}),
                 padding=True,
                 return_tensors="pt",
             )

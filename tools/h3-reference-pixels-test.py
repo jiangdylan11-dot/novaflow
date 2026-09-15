@@ -61,6 +61,9 @@ for width in [80, 54, 8, 54, 80]:
 assert '1.500s' in timing.disc_timing(frames, poses)['en']
 assert 'green screen background' in timing.disc_timing(frames, poses)['video_en']
 blue_poses = [pose[..., [0, 2, 1]] for pose in poses]
+assert timing.flat_background_fact(poses[0]) == '平整的纯绿色背景'
+assert timing.flat_background_fact(blue_poses[0]) == '平整的纯蓝色背景'
+assert timing.flat_background_fact(torch.rand_like(poses[0])) is None
 assert 'green' not in timing.disc_timing(frames, blue_poses)['en'], 'background prose must follow the actual pixels'
 moving = [torch.roll(pose, i*10, dims=2) for i, pose in enumerate(poses)]
 assert timing.disc_timing(frames, moving) is None, 'translation must not be described as stationary rotation'

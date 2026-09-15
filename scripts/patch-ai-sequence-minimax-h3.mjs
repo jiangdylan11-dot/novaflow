@@ -8,6 +8,22 @@ const bundlePath = path.join(repoRoot, 'particle-editor', 'assets', 'index-BbIa-
 
 let source = fs.readFileSync(bundlePath, 'utf8')
 
+function applyReferenceEditPolicyBridge() {
+  replaceOnceOrAlready('nfH3Prompt=String(e.aiSeqPrompt||``).trim();',
+    'nfH3Prompt=String(e.aiSeqPrompt||``).trim(),nfH3ReferenceEditPolicy=null;', 'declare H3 edit policy')
+  replaceOnceOrAlready('nfH3Prompt=nfH3Prepared.modelText}',
+    'nfH3Prompt=nfH3Prepared.modelText;nfH3ReferenceEditPolicy=nfH3Prepared.referenceEditPolicy}', 'receive H3 edit policy')
+  replaceOnceOrAlready('referenceAudio:nfAudios[0]||void 0}:{}})',
+    'referenceAudio:nfAudios[0]||void 0,referenceEditPolicy:nfH3ReferenceEditPolicy}:{}})', 'submit H3 edit policy')
+}
+
+if (process.argv.includes('--reference-edit-policy-only')) {
+  applyReferenceEditPolicyBridge()
+  fs.writeFileSync(bundlePath, source, 'utf8')
+  console.log('patched H3 edit policy bridge')
+  process.exit(0)
+}
+
 function applyReferenceVisualInputs() {
   const newline = source.includes('if(Ve===`multi_reference`){\r\n') ? '\r\n' : '\n'
   replaceOnceOrAlready('if(Ve===`multi_reference`){' + newline + 'if(t){return(0,X.jsxs)(`div`,{style:',
@@ -1028,7 +1044,7 @@ replaceRange(
 replaceOnce('let g=await x();', 'let g=nfH3Mode?null:await x();', 'H3 checkpoint isolation')
 
 const h3BuildBranch = 'try{if(nfH3Mode){' +
-  'let nfH3Workflow=window.NovaFlowAiSequenceMiniMaxH3Workflow,nfH3Resource=window.NovaFlowAiSequenceMiniMaxH3Resource,nfH3ModeName={text_video:`t2v`,image_video:`i2v`,first_last:`fl2v`,multi_reference:`r2v`}[a],nfH3Prompt=String(e.aiSeqPrompt||``).trim();' +
+  'let nfH3Workflow=window.NovaFlowAiSequenceMiniMaxH3Workflow,nfH3Resource=window.NovaFlowAiSequenceMiniMaxH3Resource,nfH3ModeName={text_video:`t2v`,image_video:`i2v`,first_last:`fl2v`,multi_reference:`r2v`}[a],nfH3Prompt=String(e.aiSeqPrompt||``).trim(),nfH3ReferenceEditPolicy=null;' +
   'if(!nfH3Workflow?.buildWorkflow||!nfH3Resource?.compileMentions)throw Error(`MiniMax H3 工作流模块未加载`);' +
   'if(a===`multi_reference`){let nfH3Resources=[' +
   '{key:`multi_ref_image_1`,occupied:!!e.aiSeqRefImage,sourceId:`multi_ref_image_1`,fileName:e.aiSeqRefImage?.fileName||``,type:e.aiSeqRefImage?.type||``},' +
@@ -1037,8 +1053,8 @@ const h3BuildBranch = 'try{if(nfH3Mode){' +
   '{key:`multi_ref_image_4`,occupied:!!e.aiSeqJimengImage4Ref,sourceId:`multi_ref_image_4`,fileName:e.aiSeqJimengImage4Ref?.fileName||``,type:e.aiSeqJimengImage4Ref?.type||``},' +
   '{key:`multi_ref_video_1`,occupied:!!e.aiSeqJimengVideoRef,sourceId:`multi_ref_video_1`,fileName:e.aiSeqJimengVideoRef?.fileName||``,type:e.aiSeqJimengVideoRef?.type||``},' +
   '{key:`multi_ref_audio_1`,occupied:!!e.aiSeqJimengAudioRef,sourceId:`multi_ref_audio_1`,fileName:e.aiSeqJimengAudioRef?.fileName||``,type:e.aiSeqJimengAudioRef?.type||``}];' +
-  'let nfH3Compiled=nfH3Resource.compileMentions(nfH3Prompt,nfH3Resources);if(nfH3Compiled.invalidTokens.length)throw Error(`未绑定参考资源：${nfH3Compiled.invalidTokens.join(`、`)}`);if(!window.__NovaFlowSmartAI?.compileH3ReferenceForGeneration)throw Error(`多参提示词编译模块未加载`);e.setAiSeqJob({state:`running`,message:`正在整理多参主体、动作和声音关系…`});let nfH3Prepared=await window.__NovaFlowSmartAI.compileH3ReferenceForGeneration({prompt:nfH3Compiled.text,resources:nfH3Resources,durationSeconds:nfH3SubmitOptions?.durationSeconds||3});if(t!==e.aiSeqRunTokenRef.current)return;nfH3Prompt=nfH3Prepared.modelText}' +
-  'u=nfH3Workflow.buildWorkflow({mode:nfH3ModeName,prompt:nfH3Prompt,aspectRatio:nfH3SubmitOptions?.aspectRatio||`9:16`,megapixels:Number(nfH3SubmitOptions?.megapixels)||.4,durationSeconds:nfH3SubmitOptions?.durationSeconds,fps:nfH3SubmitOptions?.fps,steps:nfH3SubmitOptions?.steps,seed:d,outputPrefix:`video/MiniMax_H3_${nfH3ModeName}`,...a===`image_video`||a===`first_last`?{images:s}:{},...a===`multi_reference`?{referenceImages:s,referenceVideo:nfVideos[0]||void 0,referenceAudio:nfAudios[0]||void 0}:{}})' +
+  'let nfH3Compiled=nfH3Resource.compileMentions(nfH3Prompt,nfH3Resources);if(nfH3Compiled.invalidTokens.length)throw Error(`未绑定参考资源：${nfH3Compiled.invalidTokens.join(`、`)}`);if(!window.__NovaFlowSmartAI?.compileH3ReferenceForGeneration)throw Error(`多参提示词编译模块未加载`);e.setAiSeqJob({state:`running`,message:`正在整理多参主体、动作和声音关系…`});let nfH3Prepared=await window.__NovaFlowSmartAI.compileH3ReferenceForGeneration({prompt:nfH3Compiled.text,resources:nfH3Resources,durationSeconds:nfH3SubmitOptions?.durationSeconds||3});if(t!==e.aiSeqRunTokenRef.current)return;nfH3Prompt=nfH3Prepared.modelText;nfH3ReferenceEditPolicy=nfH3Prepared.referenceEditPolicy}' +
+  'u=nfH3Workflow.buildWorkflow({mode:nfH3ModeName,prompt:nfH3Prompt,aspectRatio:nfH3SubmitOptions?.aspectRatio||`9:16`,megapixels:Number(nfH3SubmitOptions?.megapixels)||.4,durationSeconds:nfH3SubmitOptions?.durationSeconds,fps:nfH3SubmitOptions?.fps,steps:nfH3SubmitOptions?.steps,seed:d,outputPrefix:`video/MiniMax_H3_${nfH3ModeName}`,...a===`image_video`||a===`first_last`?{images:s}:{},...a===`multi_reference`?{referenceImages:s,referenceVideo:nfVideos[0]||void 0,referenceAudio:nfAudios[0]||void 0,referenceEditPolicy:nfH3ReferenceEditPolicy}:{}})' +
   '}else{u=Cn(u,{prompt:e.aiSeqPrompt,negative:e.aiSeqNegativePrompt,width:e.aiSeqOutW,height:e.aiSeqOutH,frames:e.aiSeqOutFrames,fps:e.aiSeqFps,steps:e.aiSeqSampleSteps,seed:d,images:s,unetHighName:String(e.aiSeqComfyUnetHighName||``).trim()||void 0,unetLowName:String(e.aiSeqComfyUnetLowName||``).trim()||void 0,loras:Array.isArray(e.aiSeqComfyLoras)?e.aiSeqComfyLoras:void 0})}}'
 
 replaceRange('try{u=Cn(u,{', 'catch(t){e.setAiSeqJob({state:`error`', h3BuildBranch, 'H3 and Wan workflow dispatch')

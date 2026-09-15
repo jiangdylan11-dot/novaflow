@@ -647,7 +647,7 @@
       lines.push('Define reusable appearance or style as <Subject N>, citing its <Picture N> source inside the definition. Use standalone picture entries only for frame or composition anchors. Never copy internal inventory wording or captured slot names into the final prompt.')
       lines.push('Put each independently tracked reference definition and retention entry on its own line. Visual retention markers are fully_preserved, partially_preserved, attribute_transfer, weak_reference; audio markers are fully_copy, partially_copy, reference, weak_reference. Keep the labels and their roles stable.')
       lines.push('Begin detailed_description with the overall style before [Shot 1]. Describe playback in short paragraphs, maintaining necessary subject details at first appearance without repeating complete definitions or retention lists.')
-      lines.push('retention_analysis must state, separately for every supplied media reference, which identity, appearance, motion, timing, or sound properties are retained and which are not transferred.')
+      lines.push('Available uploads are optional sources. Use only assets relevant to the requested edit; an unused uploaded picture must not change the source subject. For each used reference, state which identity, appearance, motion, timing, or sound properties are retained and which are not transferred.')
       lines.push('Keep each resource role independent: an image does not become an audio cue, a video does not overwrite subject identity, and audio does not imply unseen visual events.')
     }
     if (protocol.contentPolicy.sensitiveVisualAnalysis) {
@@ -944,7 +944,7 @@
         usedMedia.push(token)
       }
     }
-    protocol.references.modelTokens.forEach((token) => {
+    if (protocol.mode !== 'multi_reference') protocol.references.modelTokens.forEach((token) => {
       if (!seen.has(token)) throw new Error(`MiniMax H3 output does not use captured reference ${token}`)
     })
     return Object.freeze(usedMedia)
@@ -1051,7 +1051,7 @@
       return deepFreeze({ valid: true, text: formatted, mode: protocol.mode,
         protocolName: protocol.protocolName, durationSeconds: protocol.durationSeconds,
         fieldOrder: globalThis.NovaFlowH3PromptFormat.sectionNames.slice(),
-        usedReferences: protocol.references.references.map(r => r.modelToken), shots: [], subjects: [], relations: [],
+        usedReferences: protocol.references.references.map(r => r.modelToken).filter(token => value.includes(token)), shots: [], subjects: [], relations: [],
       })
     }
     value = value.replace(new RegExp(`^([ \\t]*)(${protocol.fieldOrder.join('|')})[ \\t]*$`, 'gm'), '$1$2:')
@@ -1131,12 +1131,15 @@
       : validation.text
     if (pair && input.current) {
       const key = createPromptSnapshot({...input.current,prompt:restoredText}).fingerprint
-      referenceTranslations.set(key, {modelPrompt:validation.text,displayPrompt:displayed.text})
-      if (referenceTranslations.size > 40) referenceTranslations.delete(referenceTranslations.keys().next().value)
+      const compiled = {modelPrompt:validation.text,displayPrompt:displayed.text,...(pair.editPolicy ? {editPolicy:pair.editPolicy} : {})}
+      referenceTranslations.set(key, compiled)
+      referenceTranslations.set(createPromptSnapshot(input.current).fingerprint, compiled)
+      while (referenceTranslations.size > 40) referenceTranslations.delete(referenceTranslations.keys().next().value)
     }
     return deepFreeze({
       text: restoredText,
       modelText: validation.text,
+      referenceEditPolicy: pair?.editPolicy || null,
       validation,
       fingerprint: context.fingerprint,
     })
@@ -1148,7 +1151,7 @@
     if (globalThis.NovaFlowH3PromptFormat.referenceResult(prepared.prompt)) return validateAndRestore({text:prepared.prompt,context:prepared.context,current})
     const cached = referenceTranslations.get(createPromptSnapshot(current).fingerprint)
     if (cached) return validateAndRestore({text:JSON.stringify(cached),context:prepared.context,current})
-    if (/^subject_definitions\s*:/.test(prepared.prompt) && !/[\u3400-\u9fff]/.test(prepared.prompt.replace(/<d>[\s\S]*?<\/d>/g,''))) {
+    if (/^subject_definitions\s*:/.test(prepared.prompt) && !/(?:^|\n)summary:\s*\[[^\]]*\bvideo editing\b/.test(prepared.prompt) && !/[\u3400-\u9fff]/.test(prepared.prompt.replace(/<d>[\s\S]*?<\/d>/g,''))) {
       return validateAndRestore({ text: prepared.prompt, context: prepared.context, current })
     }
     if (typeof optimize !== 'function') throw new Error('多参提示词编译服务不可用')

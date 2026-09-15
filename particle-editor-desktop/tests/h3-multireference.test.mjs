@@ -41,13 +41,13 @@ test('reference contract preserves a silent object, video edit and separate audi
 });
 test('multireference optimizer uses official fields, including explicit audio and video roles',()=>{
  const prepared=prompt.prepareRequest(current);
- assert.match(prepared.requirements,/video editing \+ reference generation/);
+ assert.match(prepared.requirements,/For video editing/);
  assert.doesNotMatch(prepared.requirements,/Return exactly these five sections/);
  const restored=prompt.validateAndRestore({text,context:prepared.context,current});
  assert.match(restored.text,/@参考图1/);assert.match(restored.modelText,/<Subject 1>/);
  assert.doesNotMatch(restored.modelText,/无说话者/);
  const built=buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance',h3Mode:'multi_reference',durationSeconds:3,prompt:current.prompt,requirements:options.requirements+'\nWrite in English.',visualSchema:'nf.h3.visual.v1'});
- assert.deepEqual(built.body.text.format.schema.required,['modelPrompt','displayPrompt']);
+ assert.deepEqual(built.body.text.format.schema.required,['modelPrompt','displayPrompt','editPolicy']);
  assert.deepEqual(built.body.text.format.schema.properties.modelPrompt.required,local.referenceFields);
  const legacy=buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance',h3Mode:'multi_reference',durationSeconds:3,prompt:current.prompt,requirements:options.requirements.replace('\nH3 response format: bilingual-v1',''),visualSchema:'nf.h3.visual.v1'});
  assert.deepEqual(legacy.body.text.format.schema.required,local.referenceFields);
@@ -59,10 +59,11 @@ test('missing media, invented speaker identities and invalid retention fail befo
   for(const bad of [text.replaceAll('<Picture 1>','<Picture 2>'),text.replace('<Subject 1> is','<Subject 2> is'),text.replace('fully_copy','fully_preserved'),text.replace('The target video is an edited version of <Video 1>.','Copy the video.')])assert.throws(()=>api.validateReference(bad,options));
  }
 });
-test('generation compiles old/free text once and preserves valid reference prompts without another provider call',async()=>{
+test('generation compiles free text and upgrades legacy video edits with missing processing controls',async()=>{
  let calls=0;const result=await prompt.compileForGeneration(current,async payload=>{calls++;assert.equal(payload.h3Mode,'multi_reference');return text});
  assert.equal(result.modelText.replace(/\s+/g,' '),text.replace(/\s+/g,' '));assert.equal(calls,1);
- await prompt.compileForGeneration({...current,prompt:text},async()=>{throw Error('must not recompile')});
+ await prompt.compileForGeneration({...current,prompt:text},async payload=>{calls++;assert.match(payload.prompt,/subject_definitions:/);return text});
+ assert.equal(calls,2);
  await assert.rejects(prompt.compileForGeneration(current,async()=> '【任务定位】\nold output'),/六个参考字段/);
 });
 test('full audio reuse really connects the input track; timbre/style references use generated audio',()=>{
@@ -84,10 +85,12 @@ test('full audio reuse really connects the input track; timbre/style references 
  const background=workflow.buildWorkflow({...params,prompt:text.replace('Replace the mask coin with <Subject 1>', 'Replace the background with a forest behind <Subject 1>')});
  assert.equal(find(background,'NovaFlowH3PrepareMotionReference'),undefined);
  assert.equal(find(background,'NovaFlowH3MatchReferenceLayout'),undefined);
- const layout=find(copy,'NovaFlowH3MatchReferenceLayout');
- assert.deepEqual(Array.from(find(copy,'CreateVideo')[1].inputs.images),[layout[0],0]);
+ assert.equal(find(copy,'NovaFlowH3MatchReferenceLayout'),undefined);
+ const explicit=workflow.buildWorkflow({...params,referencePreprocessing:'isolated_sprite_motion'});
+ const layout=find(explicit,'NovaFlowH3MatchReferenceLayout');
+ assert.deepEqual(Array.from(find(explicit,'CreateVideo')[1].inputs.images),[layout[0],0]);
  assert.deepEqual(Array.from(layout[1].inputs.images),[find(copy,'VAEDecode')[0],0]);
- const changed=workflow.patchWorkflow(copy,{...params,prompt:text.replace('Replace the mask coin with <Subject 1>', 'Replace the background with a forest behind <Subject 1>')});
+ const changed=workflow.patchWorkflow(explicit,{...params,prompt:text.replace('Replace the mask coin with <Subject 1>', 'Replace the background with a forest behind <Subject 1>')});
  assert.equal(find(changed,'NovaFlowH3MatchReferenceLayout'),undefined);
  assert.deepEqual(Array.from(find(changed,'CreateVideo')[1].inputs.images),[find(changed,'VAEDecode')[0],0]);
  assert.equal(find(background,'NovaFlowH3PrepareReferenceImage')[1].inputs.preserve_video_layout,false);
@@ -112,11 +115,12 @@ test('editor and generator bind translations to the same media bytes, independen
  assert.notEqual(prompt.createPromptSnapshot(a).fingerprint,prompt.createPromptSnapshot(b).fingerprint);
 });
 
-test('local relationship rendering accepts lists, resolves edit retention and closes only requested loops',()=>{
+test('local relationship rendering retains role fidelity and closes only requested loops',()=>{
  const plan={references:[{label:'<Subject 1>',sources:['<Picture 1>'],description:'the gold dollar coin',relation:'fully_preserved',keep:['dollar sign','gold rim']},{label:'<Video 1>',sources:[],description:'the rotation video',relation:'fully_preserved',keep:'rotation and green background'}],tasks:['video editing','reference generation'],summary:'Replace the mask coin with the dollar coin.',description:'The camera remains static while <Subject 1> rotates following <Video 1>.',soundscape:'N/A',music:'N/A'};
  const py=spawnSync('python',['-c',"import json,sys;sys.path.insert(0,'particle-editor-desktop');from prompt_assistant.h3_prompt_enhance import render_reference_plan;print(render_reference_plan(sys.stdin.read(),'Available resource labels: <Picture 1>; <Video 1>',3,'loop'))"],{input:JSON.stringify(plan),encoding:'utf8',cwd:new URL('../../',import.meta.url),env:{...process.env,PYTHONIOENCODING:'utf-8'}});
  assert.equal(py.status,0,py.stderr);
- assert.match(py.stdout,/<Video 1>: partially_preserved/);
+ assert.match(py.stdout,/<Video 1>: fully_preserved/);
+ assert.match(py.stdout,/<Subject 1>: fully_preserved/);
  assert.match(py.stdout,/回到起始姿态与运动相位/);
  assert.match(py.stdout,/dollar sign; gold rim/);
 });
@@ -154,16 +158,21 @@ test('Chinese editor uses English generation text and recompiles changed instruc
  const built=buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance',h3Mode:'multi_reference',durationSeconds:3,prompt:c.prompt,requirements:chineseOptions.requirements,visualSchema:'nf.h3.visual.v1'});
  assert.doesNotMatch(JSON.stringify(built.body),/胸肩随呼吸/);
 });
-test('replacement syntax cannot erase direction cues from the source video',()=>{
+test('natural-language edits preserve native source pixels and decoded output regardless of replacement wording',()=>{
  for(const summary of [
   '[video editing + reference generation] The target video is an edited version of <Video 1>. Gold coins are replaced throughout by <Subject 1>.',
-  '[video editing + reference generation] The target video is an edited version of <Video 1>. 把原视频中的金币换成 <Subject 1>。'
+  '[video editing + reference generation] The target video is an edited version of <Video 1>. 把原视频中的金币换成 <Subject 1>。',
+  '[video editing + reference generation] The target video is an edited version of <Video 1>. Replace the white dress with a red dress on <Subject 1>.',
+  '[video editing + reference generation] The target video is an edited version of <Video 1>. Replace the flames with icy frost around <Subject 1>.'
  ]) {
-  const modelText=local.validateReference(JSON.stringify({...chinese,summary}),chineseOptions);
+  const modelText=local.validateReference(JSON.stringify({...chinese,summary}),{...chineseOptions,requireChineseOutput:false});
   const g=workflow.buildWorkflow({mode:'r2v',prompt:modelText,referenceImages:['cat.png'],referenceVideo:'spin.mp4',durationSeconds:3,seed:1});
   const find=klass=>Object.entries(g).find(([,n])=>n.class_type===klass);
-  assert.deepEqual(Array.from(find('NovaFlowH3PrepareMotionReference')[1].inputs.images),[find('GetVideoComponents')[0],0]);
-  assert.deepEqual(Array.from(find('MiniMaxH3ReferenceToVideo')[1].inputs['ref_videos.ref_video_0']),[find('NovaFlowH3PrepareMotionReference')[0],0]);
+  assert.equal(find('NovaFlowH3PrepareMotionReference'),undefined);
+  assert.equal(find('NovaFlowH3MatchReferenceLayout'),undefined);
+  assert.deepEqual(Array.from(find('MiniMaxH3ReferenceToVideo')[1].inputs['ref_videos.ref_video_0']),[find('NovaFlowH3ReferenceVideoFrames')[0],0]);
+  assert.deepEqual(Array.from(find('NovaFlowH3ReferenceVideoFrames')[1].inputs.source_fps),[find('GetVideoComponents')[0],2]);
+  assert.deepEqual(Array.from(find('CreateVideo')[1].inputs.images),[find('VAEDecode')[0],0]);
   assert.equal(find('NovaFlowH3PrepareReferenceImage')[1].inputs.preserve_video_layout,false);
  }
 });
@@ -176,6 +185,79 @@ try: reference_label('coin.png')
 except ValueError: pass
 else: raise AssertionError('filename is not an asset label')`],{encoding:'utf8',cwd:new URL('../../',import.meta.url),env:{...process.env,PYTHONIOENCODING:'utf-8'}});
  assert.equal(py.status,0,py.stderr);assert.equal(py.stdout.replace(/\r/g,'').trim(),'<Picture 1>\n<Picture 1>\n<Picture 1>\n<Video 1>\n<Picture 1>');
+});
+test('a source-only edit binds the model-authored target when its Subject bookkeeping row is omitted',()=>{
+ const plan={references:[{label:'<Video 1>',sources:[],description:'金币在原始绿色背景上旋转',keep:'保留金币外观和运动，只改背景为紫色'}],tasks:['video editing'],summary:'将原视频背景改为紫色，金币外观和动作不变',description:'<Subject 1>在紫色背景中央沿用原视频的动作旋转。',soundscape:'N/A',music:'N/A'};
+ const py=spawnSync('python',['-c',"import sys,json;sys.path.insert(0,'particle-editor-desktop');from prompt_assistant.h3_prompt_enhance import render_reference_plan;print(render_reference_plan(sys.stdin.read(),'Available resource labels: <Video 1>',3))"],{input:JSON.stringify(plan),encoding:'utf8',cwd:new URL('../../',import.meta.url),env:{...process.env,PYTHONIOENCODING:'utf-8'}});
+ assert.equal(py.status,0,py.stderr);
+ assert.match(py.stdout,/<Subject 1>[^\n]*紫色[^\n]*<Video 1>/);
+ assert.doesNotMatch(py.stdout,/<Picture/);
+ assert.doesNotThrow(()=>local.validateReference(py.stdout,{...options,requirements:'Available resource labels: <Video 1>'}));
+});
+test('unused uploads do not reject an edit or condition it; selected picture IDs stay bound',()=>{
+ const videoOnly=Object.fromEntries(Object.entries(fixture).map(([k,v])=>[k,v.replaceAll('<Picture 1>','<Video 1>').replaceAll('<Audio 1>','<Video 1>').replaceAll('audio reuse','video editing').replaceAll('fully_copy','fully_preserved')]));
+ videoOnly.subject_definitions='<Subject 1> is the original coin from <Video 1>.';
+ videoOnly.retention_analysis='<Subject 1>: fully_preserved - coin artwork remains.';
+ const edited=local.validateReference(JSON.stringify(videoOnly),options);
+ const prepared=prompt.prepareRequest(current);
+ assert.doesNotThrow(()=>prompt.validateAndRestore({text:edited,context:prepared.context,current}));
+ const params={mode:'r2v',prompt:edited,referenceImages:['unused.png'],referenceVideo:'source.mp4',referenceAudio:'unused.wav',durationSeconds:3};
+ const g=workflow.buildWorkflow(params);
+ assert.equal(Object.values(g).some(n=>n.class_type==='LoadImage'||n.class_type==='LoadAudio'),false);
+ assert.equal(workflow.validateWorkflow(g),true);
+ const picture2=text.replaceAll('<Picture 1>','<Picture 2>');
+ const selected=workflow.buildWorkflow({...params,prompt:picture2,referenceImages:['unused.png','selected.png'],referenceAudio:'music.wav'});
+ assert.deepEqual(Array.from(Object.values(selected).filter(n=>n.class_type==='LoadImage').map(n=>n.inputs.image)),['selected.png']);
+ const c=Object.values(selected).find(n=>n.class_type==='MiniMaxH3ReferenceToVideo').inputs;
+ assert.match(c.prompt,/<Picture 1>/);assert.doesNotMatch(c.prompt,/<Picture 2>/);
+ assert.equal(workflow.validateWorkflow(selected),true);
+ const py=spawnSync('python',['-c',"import sys,json;sys.path.insert(0,'particle-editor-desktop');from prompt_assistant.h3_prompt_enhance import validate_reference;d=json.load(sys.stdin);validate_reference(d['text'],d['requirements'],3)"],{input:JSON.stringify({text:edited,requirements:options.requirements}),encoding:'utf8',cwd:new URL('../../',import.meta.url)});
+ assert.equal(py.status,0,py.stderr);
+});
+
+test('AI edit controls survive Chinese writeback and cache, and govern preprocessing independently of prose',async()=>{
+ const input={...current,prompt:'把金币样式换成参考图，背景和旋转照原片。',resources:resources.slice(0,2)};
+ const editPolicy={preserveBackground:true,preserveMotion:true,sameShapeAppearanceOnly:true};
+ const result=await prompt.compileForGeneration(input,async()=>JSON.stringify({modelPrompt:english,displayPrompt:chinese,editPolicy}));
+ assert.equal(result.referenceEditPolicy.preserveBackground,true);
+ assert.doesNotMatch(result.text,/editPolicy|sameShapeAppearanceOnly/);
+ const cached=await prompt.compileForGeneration({...input,prompt:result.text},()=>{throw Error('same media and text should retain controls')});
+ const originalCached=await prompt.compileForGeneration(input,()=>{throw Error('unchanged original request should also retain controls')});
+ assert.deepEqual({...originalCached.referenceEditPolicy},editPolicy);
+ assert.equal(cached.referenceEditPolicy.sameShapeAppearanceOnly,true);
+ const params={mode:'r2v',prompt:result.modelText,referenceImages:['coin.png'],referenceVideo:'spin.mp4',durationSeconds:3,seed:1};
+ const has=(g,klass)=>Object.values(g).some(n=>n.class_type===klass);
+ const whole=workflow.buildWorkflow({...params,referenceEditPolicy:cached.referenceEditPolicy});
+ assert.equal(has(whole,'NovaFlowH3PrepareMotionReference'),true);
+ assert.equal(has(whole,'NovaFlowH3RestoreReferenceBackground'),true);
+ const clothes=workflow.buildWorkflow({...params,referenceEditPolicy:{...editPolicy,sameShapeAppearanceOnly:false}});
+ assert.equal(has(clothes,'NovaFlowH3PrepareMotionReference'),false);
+ assert.equal(has(clothes,'NovaFlowH3MatchReferenceLayout'),false);
+ assert.equal(has(clothes,'NovaFlowH3RestoreReferenceBackground'),true);
+ const background=workflow.buildWorkflow({...params,referenceEditPolicy:{...editPolicy,preserveBackground:false}});
+ assert.equal(has(background,'NovaFlowH3PrepareMotionReference'),false);
+ assert.equal(has(background,'NovaFlowH3RestoreReferenceBackground'),false);
+ const legacy=JSON.parse(local.validateReferenceResult(JSON.stringify({modelPrompt:english,displayPrompt:chinese}),chineseOptions));
+ assert.equal(legacy.editPolicy,undefined);
+ const invalid=JSON.parse(local.validateReferenceResult(JSON.stringify({modelPrompt:english,displayPrompt:chinese,editPolicy:{preserveBackground:'true'}}),chineseOptions));
+ assert.equal(invalid.editPolicy.preserveBackground,false);
+});
+
+test('16fps reference exports retain the 24fps model timeline and copied audio timing',()=>{
+ const params={mode:'r2v',prompt:text,referenceVideo:'spin.mp4',referenceImages:['coin.png'],referenceAudio:'music.wav',durationSeconds:3,seed:1};
+ const normal=workflow.buildWorkflow({...params,fps:24});
+ const low=workflow.buildWorkflow({...params,fps:16});
+ const find=(g,klass)=>Object.entries(g).find(([,n])=>n.class_type===klass);
+ assert.equal(find(low,'MiniMaxH3ReferenceToVideo')[1].inputs.length,find(normal,'MiniMaxH3ReferenceToVideo')[1].inputs.length);
+ assert.equal(find(low,'MiniMaxH3ReferenceToVideo')[1].inputs.length,73);
+ assert.equal(find(low,'TrimAudioDuration')[1].inputs.duration,73/24);
+ const frames=find(low,'NovaFlowH3OutputVideoFrames');
+ assert.equal(frames[1].inputs.fps,16);
+ assert.deepEqual(Array.from(frames[1].inputs.images),[find(low,'VAEDecode')[0],0]);
+ assert.deepEqual(Array.from(find(low,'CreateVideo')[1].inputs.images),[frames[0],0]);
+ const restored=workflow.patchWorkflow(low,{...params,fps:24});
+ assert.equal(find(restored,'NovaFlowH3OutputVideoFrames'),undefined);
+ assert.equal(workflow.validateWorkflow(restored),true);
 });
 
 test('a real wardrobe-edit response inherits source action without matching a motion keyword list',()=>{

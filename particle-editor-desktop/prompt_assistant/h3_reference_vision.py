@@ -3,6 +3,25 @@ import numpy as np
 from scipy.ndimage import label
 
 
+def flat_background_fact(tensor):
+    """Name only a visibly uniform color, never infer a physical backdrop."""
+    image = tensor[0].cpu().numpy()
+    border = np.concatenate((image[0], image[-1], image[:, 0], image[:, -1]))
+    color = np.median(border, axis=0)
+    if (np.mean(np.max(abs(border-color), axis=-1) < .06) < .99
+            or np.mean(np.max(abs(image-color), axis=-1) < .06) < .4):
+        return None
+    if color[1] > .6 and max(color[0], color[2]) < .35:
+        return '平整的纯绿色背景'
+    if color[2] > .6 and max(color[0], color[1]) < .35:
+        return '平整的纯蓝色背景'
+    if max(color) < .08:
+        return '平整的纯黑色背景'
+    if min(color) > .92:
+        return '平整的纯白色背景'
+    return None
+
+
 def disc_timing(frames, tensors):
     samples = []
     backgrounds = []

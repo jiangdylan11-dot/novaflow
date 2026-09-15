@@ -35,7 +35,7 @@ const sectionFields = ['task', 'speakers', 'description', 'dialogue', 'constrain
 const formatInstruction = policy.formatInstructions.join('\n');
 const referenceFields = ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description', 'overall_soundscape', 'non_diegetic_music'];
 const referenceInstruction = policy.referenceInstructions.join('\n');
-const referenceResultInstruction = 'Return a bilingual object with modelPrompt and displayPrompt. Each contains the same six H3 fields. modelPrompt has English prose for H3; displayPrompt is its faithful Simplified Chinese translation for the editor. Keep every media tag, subject ID, task, retention relation, time, direction, dialogue and constraint identical in meaning. Do not add creative changes while translating.';
+const referenceResultInstruction = 'Return a bilingual object with modelPrompt, displayPrompt and editPolicy. The two prompts contain the same six H3 fields. editPolicy contains only the three internal booleans defined in the instructions. modelPrompt has English prose for H3; displayPrompt is its faithful Simplified Chinese translation for the editor. Keep every media tag, subject ID, task, retention relation, time, direction, dialogue and constraint identical in meaning. Do not add creative changes while translating.';
 function referenceFrames(value, requirements = '') {
   if (value == null) return [];
   if (!Array.isArray(value) || value.length > 13) throw new Error('H3 参考画面数量无效');
@@ -61,7 +61,11 @@ function referenceFrames(value, requirements = '') {
   });
 }
 const referenceFieldSchema = language => ({type:'object', additionalProperties:false, properties:Object.fromEntries(referenceFields.map(k=>[k,{type:'string',minLength:1,description:(language==='zh'?'本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。':'Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue.') + (k==='subject_definitions'?' Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately.':k==='retention_analysis'?' One rule per defined Subject and source Video; image attributes belong to the Subject using that picture.':k==='overall_soundscape'||k==='non_diegetic_music'?' Use N/A for absent or unrequested audio, never an empty string.':'')}])), required:referenceFields});
-const referenceResultSchema = {type:'object', additionalProperties:false, properties:{modelPrompt:referenceFieldSchema('en'),displayPrompt:referenceFieldSchema('zh')},required:['modelPrompt','displayPrompt']};
+const referenceEditPolicySchema = {type:'object',additionalProperties:false,properties:{preserveBackground:{type:'boolean'},preserveMotion:{type:'boolean'},sameShapeAppearanceOnly:{type:'boolean'}},required:['preserveBackground','preserveMotion','sameShapeAppearanceOnly']};
+const referenceResultSchema = {type:'object', additionalProperties:false, properties:{modelPrompt:referenceFieldSchema('en'),displayPrompt:referenceFieldSchema('zh'),editPolicy:referenceEditPolicySchema},required:['modelPrompt','displayPrompt','editPolicy']};
+function referenceEditPolicy(value) {
+  return Object.fromEntries(['preserveBackground','preserveMotion','sameShapeAppearanceOnly'].map(key=>[key,value?.[key]===true]));
+}
 function referenceResult(value) {
   let parsed;
   try { parsed = typeof value === 'string' ? JSON.parse(value.trim().replace(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i,'$1').trim()) : value; } catch (_) {}
@@ -87,6 +91,15 @@ function compileReferenceFields(value, options) {
   }
   let retention = fields.retention_analysis;
   const subjects = [...definitions].filter(([id])=>id.startsWith('<Subject '));
+  // Task markers follow the model's actual bindings, not a phrase the user
+  // must type. An appearance image attached to a Subject is guidance.
+  if (typeof fields.summary === 'string' && subjects.some(([,description])=>/<Picture [1-9]\d*>/.test(description))) {
+    fields.summary = fields.summary.replace(/^\[([^\]]+)\]/, (prefix, content)=>{
+      const tasks = content.split(/\s*\+\s*/);
+      return tasks.includes('video editing') && !tasks.includes('reference generation')
+        ? '[' + [...tasks, 'reference generation'].join(' + ') + ']' : prefix;
+    });
+  }
   // Move an image-attribute rule only when the model binds that picture to
   // exactly one subject and has not already supplied a subject rule.
   retention = retention.split(/\r?\n/).map(line=>{
@@ -121,7 +134,9 @@ function validateReferenceResult(value, options = {}) {
   const sources = text => text.split('summary:')[0].split('\n').filter(l=>/^<Subject \d+>/.test(l)).map(l=>[l.match(/^<Subject \d+>/)[0],...[...new Set(l.match(/<(?:Picture|Video|Audio) \d+>/g)||[])].sort()].join('|')).sort().join('\n');
   const tasks = text => /summary:\s*\[([^\]]+)\]/.exec(text)?.[1].split(/\s*\+\s*/).sort().join('|');
   if (bindings(modelPrompt) !== bindings(displayPrompt) || sources(modelPrompt) !== sources(displayPrompt) || tasks(modelPrompt) !== tasks(displayPrompt)) throw new Error('H3 中英文提示词的素材关系不一致');
-  return JSON.stringify({modelPrompt,displayPrompt});
+  const editPolicy = pair.editPolicy ? referenceEditPolicy(pair.editPolicy) : null;
+  if (editPolicy && !/<Picture [1-9]\d*>/.test(modelPrompt)) editPolicy.sameShapeAppearanceOnly = false;
+  return JSON.stringify({modelPrompt,displayPrompt,...(editPolicy ? {editPolicy} : {})});
 }
 const referenceDisplayFields = ['主体定义', '任务说明', '保留规则', '画面与动作', '环境声音', '背景音乐'];
 const referenceDisplayTerms = {
@@ -180,7 +195,7 @@ function validateReference(value, options = {}) {
   const media = v => [...new Set(v.match(/<(?:Picture|Video|Audio) [1-9]\d*>/g) || [])];
   if (inventory) {
     const allowed = media(inventory[1]), used = media(text);
-    if (allowed.some(t => !used.includes(t)) || used.some(t => !allowed.includes(t))) throw new Error('H3 多参引用与已上传素材不一致');
+    if (used.some(t => !allowed.includes(t))) throw new Error('H3 多参引用与已上传素材不一致');
   }
   const definitions = [...fields.subject_definitions.matchAll(/^<Subject ([1-9]\d*)>[^\n]+/gm)];
   const ids = definitions.map(m => Number(m[1]));

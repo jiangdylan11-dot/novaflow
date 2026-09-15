@@ -13,16 +13,21 @@ current.prompt=process.argv.find(a=>a.startsWith('--prompt='))?.slice(9)||(proce
 const prepared=api.prepareRequest(current);
 const frames=JSON.parse(fs.readFileSync(process.argv.find(a=>a.startsWith('--frames='))?.slice(9)||'docs/h3-chinese-reference-20260914/vision-grok/frames.json','utf8'));
 const payload={prompt:prepared.prompt,requirements:prepared.requirements,h3Mode:'multi_reference',durationSeconds:current.durationSeconds,purpose:'minimax-h3-prompt-enhance',surface:'animation',visualSchema:'nf.h3.visual.v1',supportsNegativePrompt:false,h3ReferenceFrames:frames};
-fs.writeFileSync(path.join(out,'current.json'),JSON.stringify(current,null,2));
-fs.writeFileSync(path.join(out,'local-request.json'),JSON.stringify(payload));
+if(!process.argv.includes('--check-local')&&!process.argv.includes('--check-grok')) {
+ fs.writeFileSync(path.join(out,'current.json'),JSON.stringify(current,null,2));
+ fs.writeFileSync(path.join(out,'local-request.json'),JSON.stringify(payload));
+}
 if(process.argv.includes('--prepare-only')) {console.log('Prepared exact user request with '+frames.length+' real images');process.exit(0);}
 if(process.argv.includes('--check-local')) {
  const result=api.validateAndRestore({text:fs.readFileSync(path.join(out,'local-compiled.txt'),'utf8'),context:prepared.context,current});
  fs.writeFileSync(path.join(out,'local-display.txt'),result.text);fs.writeFileSync(path.join(out,'local-model.txt'),result.modelText);
+ fs.writeFileSync(path.join(out,'local-policy.json'),JSON.stringify(result.referenceEditPolicy));
  console.log(JSON.stringify({ok:true,provider:'local',displayChars:result.text.length,modelChars:result.modelText.length}));process.exit(0);
 }
 if(process.argv.includes('--check-grok')) {
- const result=api.validateAndRestore({text:fs.readFileSync(path.join(out,'grok-raw-1.txt'),'utf8'),context:prepared.context,current});
+ const rawFile=process.argv.find(a=>a.startsWith('--raw-file='))?.slice(11)||path.join(out,'grok-raw-1.txt');
+ const result=api.validateAndRestore({text:fs.readFileSync(rawFile,'utf8'),context:prepared.context,current});
+ fs.writeFileSync(path.join(out,'grok-policy.json'),JSON.stringify(result.referenceEditPolicy));
  fs.writeFileSync(path.join(out,'grok-display.txt'),result.text);fs.writeFileSync(path.join(out,'grok-model.txt'),result.modelText);
  fs.writeFileSync(path.join(out,'grok-replay.json'),JSON.stringify({ok:true,replayed:true,providerCalls:0}));
  console.log(JSON.stringify({ok:true,provider:'grok',replayed:true}));process.exit(0);
@@ -42,6 +47,7 @@ try {
   return {ok:true,data:{output_text:normalizeMiniMaxH3PromptOutput(text,built.resultOptions)},providerCallCount:1};
  });
  const validated=api.validateAndRestore({text:result.data.output_text,context:prepared.context,current});
+ fs.writeFileSync(path.join(out,'grok-policy.json'),JSON.stringify(validated.referenceEditPolicy));
  fs.writeFileSync(path.join(out,'grok-display.txt'),validated.text);fs.writeFileSync(path.join(out,'grok-model.txt'),validated.modelText);
  fs.writeFileSync(path.join(out,'grok-result.json'),JSON.stringify({ok:true,calls,displayChars:validated.text.length,modelChars:validated.modelText.length},null,2));
  console.log(JSON.stringify({ok:true,calls}));

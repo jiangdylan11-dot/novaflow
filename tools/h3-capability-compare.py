@@ -12,14 +12,14 @@ source = Path('C:/ProgramData/NovaFlow/AI-Runtime-H3/generated/input') / source
 output = next(v for n in history['outputs'].values() for values in n.values() if isinstance(values, list) for v in values if isinstance(v, dict) and v.get('filename', '').endswith('.mp4'))
 target = Path('C:/ProgramData/NovaFlow/AI-Runtime-H3/generated/output') / output.get('subfolder', '') / output['filename']
 paths = [source, target]
+caps = [cv2.VideoCapture(str(p)) for p in paths]
+common_duration = min(4, *(max(0, cap.get(cv2.CAP_PROP_FRAME_COUNT) - 1) / cap.get(cv2.CAP_PROP_FPS) for cap in caps))
 records = []
 rows = []
-for p in paths:
-    cap = cv2.VideoCapture(str(p))
+for p, cap in zip(paths, caps):
     fps = cap.get(cv2.CAP_PROP_FPS)
     count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    duration = min(4, (count - 1) / fps)
-    samples = [round(t * duration * fps / 6) for t in range(7)]
+    samples = [round(t * common_duration * fps / 6) for t in range(7)]
     tiles = []
     for idx in samples:
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
