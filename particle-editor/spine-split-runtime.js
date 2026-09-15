@@ -30000,7 +30000,16 @@
           nextPart
         ])
       } else {
-        state.parts = normalizeSpineLayerOrder([...state.parts, nextPart])
+        const remainingCanvas = applyMaskToCanvas(baseCanvas, maskCanvas, 'destination-out')
+        const remainingId = uniqueManualPartId('pen_remaining')
+        const remainingPart = await updatePartFromFullCanvas({
+          ...nextPart,
+          id: remainingId,
+          name: '钢笔抠图（选区外）',
+          prompt: 'Remaining source pixels outside pen cutout',
+          layer: layer - 0.01
+        }, remainingCanvas)
+        state.parts = normalizeSpineLayerOrder([...state.parts, remainingPart, nextPart].filter(Boolean))
       }
       state.activePartId = nextPart.id
       state.selectedPartIds = [nextPart.id]
@@ -30010,7 +30019,7 @@
       if (!state.splitSets.length) registerSplitSet()
       else syncActiveSplitSet()
       await cacheTempSplitPackage()
-      setMessage(selected ? `已图层分割：${selected.name || selected.id} → ${nextPart.id}` : `已新增图层分割图层：${nextPart.id}`)
+      setMessage(selected ? `已图层分割：${selected.name || selected.id} → ${nextPart.id}` : '已切割原图：选区内、选区外分别保存为图层（空白区域不创建图层）')
       render()
       updatePreviewOverlay()
       syncSplitWorkspace()
@@ -39883,6 +39892,59 @@
     }
   }
 
+  async function runPenSourceSplitSmokeTest() {
+    const fixture = await prepareSplitEditorRegressionFixture()
+    const size = { width: fixture.width, height: fixture.height }
+    const sourceDataUrl = state.source.dataUrl
+    const original = await fullRgbaFromDataUrlForPenSmoke(sourceDataUrl, size)
+    const unrelatedParts = state.parts.slice()
+    const splitRect = async (targetId, left, top, right, bottom) => {
+      selectSplitPart(targetId, targetId ? 'parts' : 'source')
+      await startPenTool('cutout')
+      if (state.penTool.target !== (targetId ? 'layer' : 'source')) throw new Error('wrong pen target')
+      state.penTool.points = [[left, top], [right, top], [right, bottom], [left, bottom]].map(([x, y]) => ({ x, y, in: null, out: null }))
+      state.penTool.closed = true
+      await executePenCutoutTool()
+      if (state.penTool.active || state.viewMode !== 'parts') throw new Error(`pen cut did not finish: ${state.message}`)
+    }
+    const assertPixelPartition = async (parts, expected) => {
+      const pixels = await fullRgbaFromParts(parts, parts.map((part) => part.id), size)
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (Math.abs(pixels[i + 3] - expected[i + 3]) > 1) throw new Error(`split alpha changed at ${i / 4}: ${pixels[i + 3]}/${expected[i + 3]}`)
+        if (expected[i + 3] > 8 && [0, 1, 2].some((channel) => Math.abs(pixels[i + channel] - expected[i + channel]) > 2)) throw new Error(`split color changed at ${i / 4}`)
+      }
+    }
+    await splitRect('', 132, 58, 162, 96)
+    const cut = state.parts.find((part) => part.id === state.activePartId)
+    const remaining = state.parts.find((part) => part.id === 'pen_remaining')
+    if (!cut || !remaining || state.parts.length !== unrelatedParts.length + 2) throw new Error('source cut must add inside and outside layers')
+    if (!cut.visible || !remaining.visible) throw new Error('split layers must be visible')
+    for (const part of unrelatedParts) {
+      if (state.parts.find((item) => item.id === part.id).dataUrl !== part.dataUrl) throw new Error('unrelated layer changed')
+    }
+    await assertPixelPartition([remaining, cut], original)
+    const inside = await fullRgbaFromPart(cut, size)
+    const outside = await fullRgbaFromPart(remaining, size)
+    for (let i = 3; i < inside.length; i += 4) if (inside[i] && outside[i]) throw new Error('split layers overlap')
+    const saved = activeSplitSet()
+    if (!saved.parts.some((part) => part.id === remaining.id)) throw new Error('outside layer missing from saved split set')
+    for (const part of [remaining, cut]) {
+      if (!Array.from(document.querySelectorAll(`[${LAYER_ROW_ATTR}]`)).some((row) => row.getAttribute(LAYER_ROW_ATTR) === part.id && isVisibleElement(row))) throw new Error(`split layer row missing: ${part.id}`)
+    }
+    await splitRect(remaining.id, 168, 48, 186, 106)
+    if (state.parts.length !== unrelatedParts.length + 3) throw new Error('repeat cut must split remaining layer')
+    await assertPixelPartition(state.parts.filter((part) => !unrelatedParts.some((item) => item.id === part.id)), original)
+    await splitRect('', 0, 0, size.width, size.height)
+    if (state.parts.length !== unrelatedParts.length + 4) throw new Error('empty outside must not create a blank layer')
+    if (state.source.dataUrl !== sourceDataUrl) throw new Error('source resource changed')
+    document.body.setAttribute('data-novaflow-pen-source-split-smoke', 'ok:inside+outside:rgba:transparent:rows:saved:repeat:empty-outside')
+  }
+
+  async function fullRgbaFromDataUrlForPenSmoke(dataUrl, size) {
+    const canvas = await fullCanvasFromDataUrl(dataUrl, size)
+    return canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, size.width, size.height).data
+  }
+
   async function runSplitEditorFullRegressionSmokeTest() {
     await waitForSplitEditorPanel('split editor full regression')
     assertSplitHeaderRenameSmoke()
@@ -41408,6 +41470,14 @@
       syncSplitWorkspace()
     }), 240)
   }
+  if (new URLSearchParams(window.location.search).has('__novaflow_pen_source_split_smoke')) {
+    window.setTimeout(() => {
+      runPenSourceSplitSmokeTest().catch((error) => {
+        document.body.setAttribute('data-novaflow-pen-source-split-smoke', `fail:${error && error.message || error}`)
+      })
+    }, 260)
+  }
+
   if (new URLSearchParams(window.location.search).has('__novaflow_split_full_regression_smoke')) {
     window.setTimeout(() => {
       runSplitEditorFullRegressionSmokeTest().catch((error) => {
