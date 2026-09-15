@@ -142,6 +142,11 @@
     }
   }
 
+  function handleToolEntryClick(event) {
+    const entry = event.target instanceof Element ? event.target.closest('[data-novaflow-tools-entry]') : null
+    if (entry && entry.getAttribute('data-novaflow-tools-entry') !== TOOL_ID) deactivate()
+  }
+
   function deactivate() {
     if (!state.active) return
     state.active = false
@@ -464,6 +469,7 @@
   }
 
   installStyle()
+  document.addEventListener('click', handleToolEntryClick, true)
   const observer = new MutationObserver(() => { ensureEntry(); if (state.active && !document.getElementById(ROOT_ID)) render() })
   observer.observe(document.documentElement, { childList: true, subtree: true })
   window.addEventListener('resize', syncBounds)

@@ -2,6 +2,7 @@ const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
 const assert = require('node:assert/strict')
+const vm = require('node:vm')
 
 const repoRoot = path.resolve(__dirname, '..', '..')
 const toolPath = path.join(repoRoot, 'particle-editor', 'png-remove-black.tool.js')
@@ -22,6 +23,32 @@ test('PNG remove-black entry is scoped to the primary Tools section', () => {
   assert.match(source, /png\.parentElement === jpg\.parentElement/)
   assert.match(source, /existing\?\.remove\(\)/)
 })
+
+for (const [fileName, ownKey, otherKey] of [
+  ['png-remove-black.tool.js', 'png_remove_black', 'spine_atlas_webp'],
+  ['spine-atlas-webp.tool.js', 'spine_atlas_webp', 'png_remove_black'],
+]) {
+  test(`${fileName} deactivates on peer entry clicks before target activation`, () => {
+    const source = fs.readFileSync(path.join(repoRoot, 'particle-editor', fileName), 'utf8')
+    assert.match(source, /document\.addEventListener\('click', handleToolEntryClick, true\)/)
+    const handler = source.match(/  function handleToolEntryClick\(event\) \{[\s\S]*?\n  \}/)?.[0]
+    assert.ok(handler)
+    let deactivations = 0
+    class Element {
+      constructor(entry) { this.entry = entry }
+      closest(selector) { assert.equal(selector, '[data-novaflow-tools-entry]'); return this.entry }
+    }
+    const click = vm.runInNewContext(`(${handler})`, { Element, TOOL_ID: ownKey, deactivate: () => deactivations++ })
+    const target = key => new Element({ getAttribute: name => { assert.equal(name, 'data-novaflow-tools-entry'); return key } })
+    click({ target: target(ownKey) })
+    click({ target: new Element(null) })
+    click({ target: null })
+    assert.equal(deactivations, 0)
+    // Delegation handles entry descendants and buttons created after activation.
+    for (const key of [otherKey, 'png_compress', 'jpg_compress', otherKey]) click({ target: target(key) })
+    assert.equal(deactivations, 4)
+  })
+}
 
 test('PNG remove-black drop handlers bind once per root lifecycle', () => {
   const source = fs.readFileSync(toolPath, 'utf8')
@@ -121,7 +148,7 @@ test('PNG remove-black list supports single-item deletion without leaking previe
 test('PNG remove-black tool is loaded and packaged as a required runtime helper', () => {
   const html = fs.readFileSync(path.join(repoRoot, 'particle-editor', 'index.html'), 'utf8')
   const buildScript = fs.readFileSync(path.join(repoRoot, 'particle-editor-desktop', 'scripts', 'build-renderer.mjs'), 'utf8')
-  assert.match(html, /png-remove-black\.tool\.js\?v=20260804-png-remove-black-output-actions-1/)
+  assert.match(html, /png-remove-black\.tool\.js\?v=20260915-png-remove-black-entry-2/)
   assert.equal((buildScript.match(/"png-remove-black\.tool\.js"/g) || []).length, 2)
 })
 
