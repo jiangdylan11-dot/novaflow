@@ -16,8 +16,17 @@
     Object.freeze({ key: "art_reference_2", label: "参考图2", kind: "image" }),
     Object.freeze({ key: "art_reference_3", label: "参考图3", kind: "image" })
   ]);
+  // MiniMax H3 图生视频 / 首尾帧视频 bind their frame slots through the same display aliases the H3
+  // prompt workflow already accepts (@参考图 -> <Picture 1>, @首帧 / @尾帧 -> <Picture 1> / <Picture 2>).
+  const MINIMAX_H3_IMAGE_VIDEO_RESOURCE_CONFIG = Object.freeze([
+    Object.freeze({ key: "first_frame", label: "参考图", kind: "image" })
+  ]);
+  const MINIMAX_H3_FIRST_LAST_RESOURCE_CONFIG = Object.freeze([
+    Object.freeze({ key: "first_frame", label: "首帧", kind: "image" }),
+    Object.freeze({ key: "last_frame", label: "尾帧", kind: "image" })
+  ]);
   const UI_DESIGN_MAX_REFERENCES = 15;
-  const READABLE_MENTION_SOURCE = "@参考图[1-9][0-9]*|@视频参考|@声音参考";
+  const READABLE_MENTION_SOURCE = "@参考图[1-9][0-9]*|@参考图(?![0-9])|@首帧|@尾帧|@视频参考|@声音参考";
   const mountedControllers = new Set();
   const controllerByTextarea = new WeakMap();
   const menuByDocument = new WeakMap();
@@ -35,6 +44,12 @@
     }
     if (value === "ui" || value === "ui_design" || value === "uidesign") {
       return "ui-design";
+    }
+    if (value === "minimax_h3_image_video" || value === "minimax-h3-image-video" || value === "h3_image_video") {
+      return "minimax-h3-image-video";
+    }
+    if (value === "minimax_h3_first_last" || value === "minimax-h3-first-last" || value === "h3_first_last") {
+      return "minimax-h3-first-last";
     }
     return value;
   }
@@ -55,6 +70,8 @@
     const normalized = normalizeSurface(surface);
     if (normalized === "art-generate") return ART_GENERATE_RESOURCE_CONFIG;
     if (normalized === "ui-design") return uiDesignResourceConfig(resources);
+    if (normalized === "minimax-h3-image-video") return MINIMAX_H3_IMAGE_VIDEO_RESOURCE_CONFIG;
+    if (normalized === "minimax-h3-first-last") return MINIMAX_H3_FIRST_LAST_RESOURCE_CONFIG;
     return SEEDANCE_RESOURCE_CONFIG;
   }
 
@@ -128,7 +145,8 @@
       .map(function (descriptor) { return descriptor.alias; })
       .sort(function (left, right) { return right.length - left.length; })
       .map(function (alias) {
-        return escapeRegExp(alias) + (/[0-9]$/.test(alias) ? "(?![0-9])" : "");
+        // "@参考图" must not swallow the prefix of "@参考图1"; digit-suffixed aliases keep their boundary too.
+        return escapeRegExp(alias) + "(?![0-9])";
       });
     return aliases.length ? new RegExp(aliases.join("|"), "g") : null;
   }
@@ -1024,7 +1042,9 @@
         return;
       }
       if (event.key === "Escape") {
+        // Only the mention menu consumes this Escape; a surrounding dialog must stay open.
         event.preventDefault();
+        event.stopPropagation();
         closeMenu(controller);
         return;
       }

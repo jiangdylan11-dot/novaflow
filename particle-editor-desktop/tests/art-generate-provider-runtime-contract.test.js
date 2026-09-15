@@ -287,7 +287,7 @@ const cacheBusters = {
   "art-generate-credit-pricing.tool.js": "20260712-art-credit-1",
   "art-generate-reference-drop.tool.js": "20260720-art-reference-drop-1",
   "spine-split-runtime.js": "20260916-prompt-input-perf-1",
-  "novaflow-brand-runtime.js": "20260916-prompt-input-perf-2",
+  "novaflow-brand-runtime.js": "20260916-mention-surfaces-1",
   "novaflow-client-auth.js": "20260916-prompt-input-perf-1",
 };
 for (const [scriptName, cacheBuster] of Object.entries(cacheBusters)) {
@@ -297,7 +297,7 @@ for (const [scriptName, cacheBuster] of Object.entries(cacheBusters)) {
     `${scriptName} should cache-bust the locked browser surface`,
   );
 }
-assert.match(index, /resource-mention\.tool\.css\?v=20260722-ui-design-17/, "the mention CSS fix should cache-bust the locked browser surface");
+assert.match(index, /resource-mention\.tool\.css\?v=20260916-mention-surfaces-1/, "the mention CSS fix should cache-bust the locked browser surface");
 
 const manifestNames = [...moduleNames.filter((name) => name !== "art-generate-ideogram.workflow.js"), "novaflow-client-auth.js"];
 for (const manifestPath of [syncPath, checkPath, buildPath]) {

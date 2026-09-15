@@ -186,7 +186,7 @@ textarea.nf-resource-mention-backing::placeholder {
 
 .nf-resource-mention-menu {
   position: fixed;
-  z-index: 2147483000;
+  z-index: 2147483647;
   box-sizing: border-box;
   max-height: 260px;
   padding: 6px;
@@ -257,7 +257,7 @@ textarea.nf-resource-mention-backing::placeholder {
 
 .nf-resource-mention-error {
   position: fixed;
-  z-index: 2147483001;
+  z-index: 2147483647;
   box-sizing: border-box;
   padding: 9px 11px;
   color: #fecaca;

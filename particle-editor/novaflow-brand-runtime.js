@@ -4486,6 +4486,8 @@
       if (!(node instanceof HTMLElement) || isDropdownControllerNode(node)) return false;
       if (isTopbarHoverMenuNode(node)) return false;
       if (node.closest(`#${DROPDOWN_PORTAL_ID}, #${DROPDOWN_OVERLAY_ID}`)) return false;
+      // Runtime-owned popovers (the @ resource mention menu, prompt history) manage themselves.
+      if (node.closest('[data-novaflow-runtime-ignore="1"], .nf-resource-mention-menu')) return false;
       const rect = node.getBoundingClientRect();
       if (rect.width < 40 || rect.height < 16) return false;
       const style = window.getComputedStyle(node);
@@ -54934,30 +54936,96 @@
     });
   }
 
-  function mountAiSequenceMiniMaxH3ResourceMentionTextarea(promptFrames) {
-    const textarea = getAiAnimationPromptTextarea(promptFrames, "positive");
-    if (!(textarea instanceof HTMLTextAreaElement)) return false;
-    const tool = window.NovaFlowResourceMentionTool;
-    const modelMethod = getAiAnimationSelectedModelMethod(document);
-    const activeModeLabel = normalizeText(
+  // 图生视频 binds one frame slot, 首尾帧视频 two; the dropzones carry their title as data-ais-import.
+  const AI_SEQUENCE_H3_FRAME_MENTION_SLOTS = Object.freeze({
+    image_video: Object.freeze([
+      Object.freeze({ key: "first_frame", label: "\u53c2\u8003\u56fe", domKinds: Object.freeze(["\u53c2\u8003\u56fe", "\u9996\u5e27"]), family: "image" })
+    ]),
+    first_last: Object.freeze([
+      Object.freeze({ key: "first_frame", label: "\u9996\u5e27", domKinds: Object.freeze(["\u9996\u5e27"]), family: "image" }),
+      Object.freeze({ key: "last_frame", label: "\u5c3e\u5e27", domKinds: Object.freeze(["\u5c3e\u5e27"]), family: "image" })
+    ])
+  });
+
+  function aiSequenceUploadSlotMentionResource(slot, key, label, family) {
+    const image = slot instanceof HTMLElement ? slot.querySelector("img") : null;
+    const media = slot instanceof HTMLElement ? slot.querySelector("video, audio") : null;
+    const title = slot instanceof HTMLElement ? slot.querySelector(".nf-upload-dropzone__title") : null;
+    const titleText = normalizeText(title?.textContent || "");
+    const previewUrl = image instanceof HTMLImageElement
+      ? String(image.currentSrc || image.src || "")
+      : media instanceof HTMLMediaElement
+        ? String(media.currentSrc || media.src || "")
+        : "";
+    const occupied = Boolean(
+      slot instanceof HTMLElement &&
+      (previewUrl || slot.querySelector('button[title="\u6e05\u9664"], button'))
+    );
+    return {
+      key,
+      label,
+      kind: family,
+      previewUrl,
+      fileName: occupied && titleText && titleText !== label ? titleText : "",
+      occupied,
+      available: slot instanceof HTMLElement
+    };
+  }
+
+  function aiSequenceMiniMaxH3FrameResourceMentionSnapshot(modeKey) {
+    const workspace = document.querySelector('[data-novaflow-ai-bottom-workspace="1"]');
+    const slots = AI_SEQUENCE_H3_FRAME_MENTION_SLOTS[modeKey] || [];
+    return slots.map((config) => {
+      const slot = workspace instanceof HTMLElement
+        ? config.domKinds.map((domKind) => workspace.querySelector(`[data-ais-import="${domKind}"]`)).find((node) => node instanceof HTMLElement) || null
+        : null;
+      return aiSequenceUploadSlotMentionResource(slot, config.key, config.label, config.family);
+    });
+  }
+
+  function getAiAnimationActiveTopModeLabel() {
+    return normalizeText(
       Array.from(document.querySelectorAll('[data-novaflow-ai-top-mode-tabs="1"] button'))
         .find((button) => button instanceof HTMLButtonElement && button.getAttribute("aria-pressed") === "true")
         ?.textContent || ""
     );
-    if (modelMethod !== "minimax_h3_local" || activeModeLabel !== "\u591a\u53c2\u89c6\u9891") {
+  }
+
+  // Which @ mention surface the AI sequence positive prompt uses right now (null: no mentions).
+  function resolveAiSequenceMiniMaxH3ResourceMentionSurface() {
+    if (getAiAnimationSelectedModelMethod(document) !== "minimax_h3_local") return null;
+    const activeModeLabel = getAiAnimationActiveTopModeLabel();
+    if (activeModeLabel === "\u591a\u53c2\u89c6\u9891") {
+      return { surface: "minimax_h3", getResources: aiSequenceMiniMaxH3ResourceMentionSnapshot };
+    }
+    if (activeModeLabel === "\u56fe\u751f\u89c6\u9891") {
+      return { surface: "minimax_h3_image_video", getResources: () => aiSequenceMiniMaxH3FrameResourceMentionSnapshot("image_video") };
+    }
+    if (activeModeLabel === "\u9996\u5c3e\u5e27\u89c6\u9891") {
+      return { surface: "minimax_h3_first_last", getResources: () => aiSequenceMiniMaxH3FrameResourceMentionSnapshot("first_last") };
+    }
+    return null;
+  }
+
+  function mountAiSequenceMiniMaxH3ResourceMentionTextarea(promptFrames) {
+    const textarea = getAiAnimationPromptTextarea(promptFrames, "positive");
+    if (!(textarea instanceof HTMLTextAreaElement)) return false;
+    const tool = window.NovaFlowResourceMentionTool;
+    const resolved = resolveAiSequenceMiniMaxH3ResourceMentionSurface();
+    if (!resolved) {
       tool?.unmountTextarea?.(textarea);
       return false;
     }
-    const resources = aiSequenceMiniMaxH3ResourceMentionSnapshot();
-    if (!resources.every((resource) => resource.available)) {
+    const resources = resolved.getResources();
+    if (!resources.length || !resources.every((resource) => resource.available)) {
       tool?.unmountTextarea?.(textarea);
       return false;
     }
     if (!tool || typeof tool.mountTextarea !== "function") return false;
     tool.mountTextarea({
       textarea,
-      surface: "minimax_h3",
-      getResources: aiSequenceMiniMaxH3ResourceMentionSnapshot
+      surface: resolved.surface,
+      getResources: resolved.getResources
     });
     return true;
   }
@@ -55278,6 +55346,53 @@
     }
   }
 
+  // The 编辑 modal edits the same text as the inline prompt, so it gets the same @ mention surface:
+  // art 图生图 references, or the AI sequence H3 mode surface (多参 / 图生 / 首尾帧).
+  function resolveAiAnimationPromptEditorMentionSurface(frame) {
+    if (!(frame instanceof HTMLElement)) return null;
+    const artFrame = frame.getAttribute("data-novaflow-art-generate-prompt-frame") === "1"
+      ? frame
+      : frame.closest('[data-novaflow-art-generate-prompt-frame="1"]');
+    if (artFrame instanceof HTMLElement) {
+      const kindNode = artFrame.closest("[data-novaflow-art-generate-prompt-kind]") || artFrame.querySelector("[data-novaflow-art-generate-prompt-kind]");
+      const kind = kindNode instanceof HTMLElement ? kindNode.getAttribute("data-novaflow-art-generate-prompt-kind") || "" : "";
+      if (kind === "negative" || ART_GENERATE_STATE.mode !== "img2img") return null;
+      return { surface: "art-generate", getResources: artGenerateResourceMentionSnapshot };
+    }
+    const kind = frame.getAttribute("data-novaflow-ai-prompt-kind") || "";
+    if (kind && kind !== "positive") return null;
+    return resolveAiSequenceMiniMaxH3ResourceMentionSurface();
+  }
+
+  function mountAiAnimationPromptEditorMention(frame, textarea) {
+    const tool = window.NovaFlowResourceMentionTool;
+    const mention = resolveAiAnimationPromptEditorMentionSurface(frame);
+    if (!mention || !tool || typeof tool.mountTextarea !== "function") return null;
+    let handle = null;
+    try {
+      handle = tool.mountTextarea({ textarea, surface: mention.surface, getResources: mention.getResources });
+    } catch (_) {
+      handle = null;
+    }
+    const editor = handle?.editor;
+    if (editor instanceof HTMLElement) {
+      // The overlay editor carries data-novaflow-runtime-ignore, so style it directly to match the textarea.
+      Object.entries({
+        padding: "16px 18px",
+        color: "#f8fafc",
+        "font-size": "14px",
+        "line-height": "1.6",
+        "font-family": "Consolas, 'Microsoft YaHei UI', monospace",
+        background: "#050505",
+        "background-color": "#050505",
+        border: "0",
+        "border-radius": "0",
+        "box-shadow": "none"
+      }).forEach(([property, value]) => setRawStylePropertyIfChanged(editor, property, value, "important"));
+    }
+    return handle;
+  }
+
   function openAiAnimationPromptEditorModal(frame) {
     if (!(frame instanceof HTMLElement) || !document.body) return;
     const control = findAiAnimationPromptEditorControl(frame);
@@ -55421,7 +55536,13 @@
       cursor: "pointer"
     });
 
-    const close = () => closeAiAnimationPromptEditorModal(modal);
+    const mentionHandle = mountAiAnimationPromptEditorMention(frame, textarea);
+    const close = () => {
+      if (mentionHandle && typeof mentionHandle.unmount === "function") {
+        try { mentionHandle.unmount(); } catch (_) { void 0; }
+      }
+      closeAiAnimationPromptEditorModal(modal);
+    };
     closeButton.addEventListener("click", close);
     modal.addEventListener("mousedown", (event) => {
       if (event.target === modal) close();
@@ -55434,7 +55555,11 @@
       close();
       if (typeof control.focus === "function") control.focus();
     });
-    window.setTimeout(() => textarea.focus(), 0);
+    window.setTimeout(() => {
+      const editor = mentionHandle?.editor;
+      if (editor instanceof HTMLElement && editor.isConnected) editor.focus();
+      else textarea.focus();
+    }, 0);
   }
 
   function findAiAnimationPromptEditorFrameFromActions(actions) {
@@ -55458,6 +55583,11 @@
       ? window.__NovaFlowPromptEditor
       : {};
     promptEditorApi.openFromActions = openAiAnimationPromptEditorFromActions;
+    promptEditorApi.mountMentionForControl = (control, textarea) => {
+      if (!(control instanceof Element) || !(textarea instanceof HTMLTextAreaElement)) return null;
+      const frame = control.closest('[data-novaflow-art-generate-prompt-frame="1"], [data-novaflow-ai-prompt-frame="1"], [data-novaflow-ai-prompt-kind]');
+      return mountAiAnimationPromptEditorMention(frame, textarea);
+    };
     window.__NovaFlowPromptEditor = promptEditorApi;
   }
 

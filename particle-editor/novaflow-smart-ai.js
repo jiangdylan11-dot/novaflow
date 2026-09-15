@@ -1591,7 +1591,18 @@
       fontWeight: "600",
       cursor: "pointer"
     });
-    const close = () => closeSmartAiPromptEditor(root);
+    // The editor edits the same prompt as the inline field, so it gets the same @ mention surface.
+    const promptEditorBridge = window.__NovaFlowPromptEditor;
+    let mentionHandle = null;
+    if (promptEditorBridge && typeof promptEditorBridge.mountMentionForControl === "function") {
+      try { mentionHandle = promptEditorBridge.mountMentionForControl(control, textarea) || null; } catch { mentionHandle = null; }
+    }
+    const close = () => {
+      if (mentionHandle && typeof mentionHandle.unmount === "function") {
+        try { mentionHandle.unmount(); } catch { void 0; }
+      }
+      closeSmartAiPromptEditor(root);
+    };
     closeButton.addEventListener("click", close);
     root.addEventListener("mousedown", (event) => {
       if (event.target === root) close();
@@ -1603,7 +1614,11 @@
       setTextareaValue(control, textarea.value);
       close();
     });
-    window.setTimeout(() => textarea.focus(), 0);
+    window.setTimeout(() => {
+      const editor = mentionHandle && mentionHandle.editor;
+      if (editor instanceof HTMLElement && editor.isConnected) editor.focus();
+      else textarea.focus();
+    }, 0);
     return true;
   }
 

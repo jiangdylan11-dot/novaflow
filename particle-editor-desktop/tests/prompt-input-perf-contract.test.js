@@ -177,7 +177,7 @@ test("index.html cache-busts every runtime file touched by the prompt input fix"
     "png-remove-black.tool.js": CACHE_VERSION,
     "spine-atlas-webp.tool.js": CACHE_VERSION,
     "novaflow-client-auth.js": CACHE_VERSION,
-    "novaflow-brand-runtime.js": "20260916-prompt-input-perf-2",
+    "novaflow-brand-runtime.js": "20260916-mention-surfaces-1",
     "spine-split-runtime.js": CACHE_VERSION,
     "art-generate-lora.js": CACHE_VERSION,
   };
