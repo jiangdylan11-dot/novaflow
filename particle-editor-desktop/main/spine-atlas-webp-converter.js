@@ -91,7 +91,7 @@ function clampInt(value, fallback, min, max) {
 }
 
 function resolveWebpEncodeOptions(options) {
-  const presets = { clarity: 95, compact: 90, small: 86 };
+  const presets = { clarity: 95, compact: 90, small: 70 };
   const hasPreset = options?.preset !== undefined;
   if (hasPreset && (typeof options.preset !== "string" || !Object.hasOwn(presets, options.preset))) throw new Error("压缩档位无效");
   const presetQuality = hasPreset ? presets[options.preset] : null;
@@ -290,15 +290,16 @@ async function convertSpineAtlasWebp(payload, { fs, sharp, encodePma = encodePma
     let compatible;
     if (image.outputFormat === "webp" && image.pma === true && encodeOptions.mode !== "lossless") {
       try {
-        try {
-          compatible = await encodePma(image.input, sharp, {
-            quality: encodeOptions.pmaQuality, codecPreset: encodeOptions.pmaCodecPreset
-          });
-        } catch (error) {
-          // A smaller preset must not bypass verification or immediately inflate to lossless.
-          if (!encodeOptions.pmaCodecPreset || error.code !== "PMA_TRANSPARENT_RGB") throw error;
-          compatible = await encodePma(image.input, sharp, { quality: 90 });
-          warnings.push(`${image.sourceName}：Q${encodeOptions.pmaQuality} 边缘校验未通过，已改用 Q90 并通过校验`);
+        const attempts = [{ quality: encodeOptions.pmaQuality, codecPreset: encodeOptions.pmaCodecPreset }];
+        if (encodeOptions.pmaCodecPreset) attempts.push({ quality: 80, codecPreset: "drawing" }, { quality: 90 });
+        for (let attempt = 0; attempt < attempts.length; attempt++) {
+          try {
+            compatible = await encodePma(image.input, sharp, attempts[attempt]);
+            if (attempt) warnings.push(`${image.sourceName}：Q${encodeOptions.pmaQuality} 边缘校验未通过，已改用 Q${compatible.quality} 并通过校验`);
+            break;
+          } catch (error) {
+            if (error.code !== "PMA_TRANSPARENT_RGB" || attempt === attempts.length - 1) throw error;
+          }
         }
       } catch (error) {
         warnings.push(`${image.sourceName}：PMA 兼容压缩未通过（${error.message}），已回退无损；体积可能较大`);

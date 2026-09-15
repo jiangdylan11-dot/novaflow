@@ -11,7 +11,7 @@ test("SPINE WebP tool is loaded and packaged as a required runtime helper", () =
   const buildScript = fs.readFileSync(path.join(repoRoot, "particle-editor-desktop", "scripts", "build-renderer.mjs"), "utf8");
   const syncScript = fs.readFileSync(path.join(repoRoot, "scripts", "sync-runtime.mjs"), "utf8");
 
-  assert.match(html, /spine-atlas-webp\.tool\.js\?v=20260912-spine-atlas-webp-12/);
+  assert.match(html, /spine-atlas-webp\.tool\.js\?v=20260915-spine-atlas-webp-13/);
   assert.equal((buildScript.match(/"spine-atlas-webp\.tool\.js"/g) || []).length, 2);
   assert.match(syncScript, /label: 'spine-atlas-webp\.tool\.js'/);
   assert.match(syncScript, /particle-editor-desktop', 'renderer', 'spine-atlas-webp\.tool\.js'/);
@@ -48,7 +48,7 @@ test("SPINE WebP tool accepts atlas and PNG files and calls the Electron convert
   assert.match(source, /options: \{ preset: state\.preset \}/);
   assert.match(source, /id: 'clarity', label: '画质优先', quality: 95/);
   assert.match(source, /id: 'compact', label: '均衡', quality: 90/);
-  assert.match(source, /id: 'small', label: '更小体积', quality: 86/);
+  assert.match(source, /id: 'small', label: '更小体积', quality: 70/);
   assert.match(source, /data-saw-preset="\$\{preset\.id\}"/);
   assert.match(source, /画质优先/);
   assert.match(source, /更小体积/);

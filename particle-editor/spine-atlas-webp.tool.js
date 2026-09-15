@@ -5,7 +5,7 @@
   const ROOT_ID = 'novaflow-spine-atlas-webp-root'
   const STYLE_ID = 'novaflow-spine-atlas-webp-style'
   const BUTTON_ATTR = 'data-novaflow-spine-atlas-webp-entry'
-  const PRESETS = [{ id: 'clarity', label: '画质优先', quality: 95 }, { id: 'compact', label: '均衡', quality: 90 }, { id: 'small', label: '更小体积', quality: 86 }]
+  const PRESETS = [{ id: 'clarity', label: '画质优先', quality: 95 }, { id: 'compact', label: '均衡', quality: 90 }, { id: 'small', label: '更小体积', quality: 70 }]
   const state = { active: false, atlases: [], images: [], selectedId: '', preset: 'compact', processing: false, exporting: false, resultAtlases: [], warnings: [] }
   let nativeWorkspaces = []
   let objectUrls = []

@@ -92,6 +92,8 @@ function runFfmpeg(args, input, maxOutputBytes) {
 async function encodePmaCompatibleWebp(input, sharp, { run = runFfmpeg, quality = PMA_QUALITY, codecPreset = null } = {}) {
   if (codecPreset !== null && codecPreset !== "drawing") throw new Error("Invalid PMA codec preset");
   quality = Number.isFinite(quality) ? Math.max(1, Math.min(100, Math.round(quality))) : PMA_QUALITY;
+  const compactGuard = codecPreset === "drawing" && quality <= 80;
+  const maxPasses = compactGuard ? 12 : MAX_PASSES;
   const { data: original, info } = await sharp(input).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   const { width, height } = info;
   if (width > 16383 || height > 16383) throw new Error("Image exceeds WebP dimensions");
@@ -133,7 +135,7 @@ async function encodePmaCompatibleWebp(input, sharp, { run = runFfmpeg, quality 
   // Alpha and the luma of every visible pixel remain untouched here.
   for (let i = 0; i < count; i++) if (original[i * 4 + 3] === 0) yuv[i] = 0;
 
-  for (let pass = 0; pass < MAX_PASSES; pass++) {
+  for (let pass = 0; pass < maxPasses; pass++) {
     const color = await run([
       "-f", "rawvideo", "-pixel_format", "yuv420p", "-video_size", `${width}x${height}`,
       "-i", "pipe:0", "-frames:v", "1", "-c:v", "libwebp",
@@ -154,13 +156,28 @@ async function encodePmaCompatibleWebp(input, sharp, { run = runFfmpeg, quality 
       spills++;
       const x = Math.floor((i % width) / 2);
       const y = Math.floor(Math.floor(i / width) / 2);
-      for (let yy = Math.max(0, y - 1); yy <= Math.min(ch - 1, y + 1); yy++) {
-        for (let xx = Math.max(0, x - 1); xx <= Math.min(cw - 1, x + 1); xx++) cells[yy * cw + xx] = 1;
+      const radius = compactGuard ? Math.min(4, pass + 1) : 1;
+      for (let yy = Math.max(0, y - radius); yy <= Math.min(ch - 1, y + radius); yy++) {
+        for (let xx = Math.max(0, x - radius); xx <= Math.min(cw - 1, x + radius); xx++) cells[yy * cw + xx] = 1;
       }
     }
     if (!spills) return { data, info, quality, passes: pass + 1 };
     // Only desaturate chroma cells responsible for RGB leaking into alpha=0.
     for (let cell = 0; cell < chromaCount; cell++) if (cells[cell]) {
+      if (compactGuard) {
+        // Low-Q ringing also needs luma headroom in nearby near-black pixels.
+        // Bound this lossy adjustment to flagged cells and RGB <= 16, never alpha.
+        const bx = (cell % cw) * 2;
+        const by = Math.floor(cell / cw) * 2;
+        const blackLimit = Math.min(16, (pass + 1) * 2);
+        for (let y = by; y < Math.min(by + 2, height); y++) {
+          for (let x = bx; x < Math.min(bx + 2, width); x++) {
+            const pixel = y * width + x;
+            const offset = pixel * 4;
+            if (Math.max(original[offset], original[offset + 1], original[offset + 2]) <= blackLimit) yuv[pixel] = 0;
+          }
+        }
+      }
       for (const offset of [count, count + chromaCount]) {
         yuv[offset + cell] = Math.round(128 + (yuv[offset + cell] - 128) * 0.35);
       }
