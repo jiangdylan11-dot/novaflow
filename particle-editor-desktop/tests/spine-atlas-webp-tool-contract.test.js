@@ -11,7 +11,7 @@ test("SPINE WebP tool is loaded and packaged as a required runtime helper", () =
   const buildScript = fs.readFileSync(path.join(repoRoot, "particle-editor-desktop", "scripts", "build-renderer.mjs"), "utf8");
   const syncScript = fs.readFileSync(path.join(repoRoot, "scripts", "sync-runtime.mjs"), "utf8");
 
-  assert.match(html, /spine-atlas-webp\.tool\.js\?v=20260915-spine-atlas-webp-13/);
+  assert.match(html, /spine-atlas-webp\.tool\.js\?v=20260915-spine-atlas-webp-14/);
   assert.equal((buildScript.match(/"spine-atlas-webp\.tool\.js"/g) || []).length, 2);
   assert.match(syncScript, /label: 'spine-atlas-webp\.tool\.js'/);
   assert.match(syncScript, /particle-editor-desktop', 'renderer', 'spine-atlas-webp\.tool\.js'/);
@@ -57,7 +57,7 @@ test("SPINE WebP tool accepts atlas and PNG files and calls the Electron convert
   assert.match(source, /function setPreset\(preset\)/);
   assert.match(source, /setPreset\(button\.getAttribute\('data-saw-preset'\)\)/);
   assert.match(source, /原图 Alpha/);
-  assert.match(source, /跟随 atlas/);
+  assert.doesNotMatch(source, /跟随 atlas/);
   assert.match(source, /output\.encoding === 'pma-compatible'/);
   assert.match(source, /已转换 Q\$\{output\.quality\}｜Alpha 已校验/);
   assert.match(source, /formatBytes/);
@@ -69,6 +69,17 @@ test("SPINE WebP tool accepts atlas and PNG files and calls the Electron convert
   assert.doesNotMatch(source, /\$\{item\.width\} × \$\{item\.height\}｜\$\{escapeHtml\(sizeText\)\}/);
   assert.match(preload, /convertSpineAtlasWebp: \(payload\) => ipcRenderer\.invoke\("convert-spine-atlas-webp", payload\)/);
   assert.match(main, /ipcMain\.handle\("convert-spine-atlas-webp"/);
+});
+
+test("SPINE WebP tool defaults each imported page to explicit PMA with a manual straight override", () => {
+  const source = fs.readFileSync(toolPath, "utf8");
+  assert.match(source, /outputFormat: 'webp', alphaMode: 'pma', result: null/);
+  assert.match(source, /alphaMode: item\.alphaMode \|\| 'pma'/);
+  assert.match(source, /alphaSelect\.value = selected\?\.alphaMode \|\| 'pma'/);
+  assert.match(source, /<option value="pma">已预乘（PMA）<\/option><option value="straight">未预乘（Straight）<\/option>/);
+  assert.match(source, /!\['straight', 'pma'\]\.includes\(alphaMode\)/);
+  assert.match(source, /image\.alphaMode = alphaMode\s+revokeResults\(\)/);
+  assert.doesNotMatch(source, /value="auto"|alphaMode[^\n]*'auto'/);
 });
 
 test("SPINE WebP tool exports to a folder or directly overwrites source files", () => {

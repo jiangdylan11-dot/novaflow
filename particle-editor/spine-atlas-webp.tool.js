@@ -212,7 +212,7 @@
       node.onerror = () => reject(new Error('PNG 解码失败'))
       node.src = dataUrl
     })
-    return { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, name: file.name, inputPath: getFilePath(file), bytes, sourceSize: file.size || bytes.length, dataUrl, width: image.naturalWidth || image.width, height: image.naturalHeight || image.height, status: '等待转换', outputFormat: 'webp', result: null }
+    return { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, name: file.name, inputPath: getFilePath(file), bytes, sourceSize: file.size || bytes.length, dataUrl, width: image.naturalWidth || image.width, height: image.naturalHeight || image.height, status: '等待转换', outputFormat: 'webp', alphaMode: 'pma', result: null }
   }
 
   async function addFiles(files) {
@@ -249,7 +249,7 @@
       render()
       const result = await api.convertSpineAtlasWebp({
         atlases: state.atlases.map((item) => ({ fileName: item.name, text: item.text })),
-        images: state.images.map((item) => ({ fileName: item.name, bytes: item.bytes, outputFormat: item.outputFormat || 'webp', alphaMode: item.alphaMode || 'auto' })),
+        images: state.images.map((item) => ({ fileName: item.name, bytes: item.bytes, outputFormat: item.outputFormat || 'webp', alphaMode: item.alphaMode || 'pma' })),
         options: { preset: state.preset }
       })
       if (!result?.ok) throw new Error(result?.error || '转换失败')
@@ -383,7 +383,7 @@
 
   function setImageAlpha(id, alphaMode) {
     const image = state.images.find((item) => item.id === id)
-    if (!image || state.processing || state.exporting || !['auto', 'straight', 'pma'].includes(alphaMode)) return
+    if (!image || state.processing || state.exporting || !['straight', 'pma'].includes(alphaMode)) return
     image.alphaMode = alphaMode
     revokeResults()
     render()
@@ -441,9 +441,9 @@
     const controls = root.querySelector('.nf-saw-controls')
     const alphaLabel = document.createElement('label')
     alphaLabel.className = 'nf-saw-alpha'
-    alphaLabel.innerHTML = `<span title="${escapeHtml(selected?.name || '')}">原图 Alpha${selected ? ` · ${escapeHtml(selected.name)}` : ''}</span><select data-saw-alpha aria-label="当前图集原图 Alpha" ${!selected || state.processing || state.exporting ? 'disabled' : ''}><option value="auto">跟随 atlas</option><option value="straight">未预乘（Straight）</option><option value="pma">已预乘（PMA）</option></select>`
+    alphaLabel.innerHTML = `<span title="${escapeHtml(selected?.name || '')}">原图 Alpha${selected ? ` · ${escapeHtml(selected.name)}` : ''}</span><select data-saw-alpha aria-label="当前图集原图 Alpha" ${!selected || state.processing || state.exporting ? 'disabled' : ''}><option value="pma">已预乘（PMA）</option><option value="straight">未预乘（Straight）</option></select>`
     const alphaSelect = alphaLabel.querySelector('select')
-    alphaSelect.value = selected?.alphaMode || 'auto'
+    alphaSelect.value = selected?.alphaMode || 'pma'
     alphaSelect.addEventListener('change', () => setImageAlpha(selected?.id, alphaSelect.value))
     controls.insertBefore(alphaLabel, controls.querySelector('.nf-saw-actions'))
     root.querySelector('[data-saw-clear]')?.addEventListener('click', clearAll)
