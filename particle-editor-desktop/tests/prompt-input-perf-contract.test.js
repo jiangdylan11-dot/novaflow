@@ -144,18 +144,45 @@ test("preview wheel zoom coalesces notches instead of re-rendering the panel per
   assert.doesNotMatch(bundle, /oe\(e=>Math\.round\(Math\.max\(\.1,Math\.min\(8,e\*n\)\)\*1e3\)\/1e3\)/);
 });
 
+test("scrolling inside a text control never triggers the brand runtime layout refreshers", () => {
+  const source = read("particle-editor/novaflow-brand-runtime.js");
+  assert.match(source, /function isNovaflowTextControlScrollEvent\(event\)/);
+  // The preview runtime layout listener, the reference resolution overlay refresher and the dropdown
+  // controller all bail out before scheduling anything for textarea/input/contenteditable scrolls.
+  assert.match(source, /window\.addEventListener\("scroll", \(event\) => \{\n\s+if \(isNovaflowTextControlScrollEvent\(event\)\) return;\n\s+if \(isDropdownPanelScrollEvent\(event\)\) \{/);
+  assert.match(source, /document\.addEventListener\("scroll", \(event\) => \{\n\s+if \(isNovaflowTextControlScrollEvent\(event\)\) return;\n\s+schedule\(\);\n\s+\}, \{ passive: true, capture: true \}\);/);
+  assert.match(source, /function syncGlobalDropdownController\(\) \{\n\s+const event = arguments\[0\];\n\s+if \(isNovaflowTextControlScrollEvent\(event\)\) return;/);
+  assert.doesNotMatch(source, /document\.addEventListener\("scroll", schedule, \{ passive: true, capture: true \}\);/);
+
+  const helper = source.match(/  function isNovaflowTextControlScrollEvent\(event\) \{[\s\S]*?\n  \}/)?.[0];
+  assert.ok(helper);
+  class Element {}
+  class HTMLElement extends Element { constructor(editable = false) { super(); this.isContentEditable = editable; } }
+  class HTMLTextAreaElement extends HTMLElement {}
+  class HTMLInputElement extends HTMLElement {}
+  const isTextControlScroll = vm.runInNewContext(`(${helper})`, { Element, HTMLElement, HTMLTextAreaElement, HTMLInputElement });
+  assert.equal(isTextControlScroll({ type: "scroll", target: new HTMLTextAreaElement() }), true);
+  assert.equal(isTextControlScroll({ type: "scroll", target: new HTMLInputElement() }), true);
+  assert.equal(isTextControlScroll({ type: "scroll", target: new HTMLElement(true) }), true);
+  assert.equal(isTextControlScroll({ type: "scroll", target: new HTMLElement(false) }), false);
+  assert.equal(isTextControlScroll({ type: "resize", target: new HTMLTextAreaElement() }), false);
+  assert.equal(isTextControlScroll({ type: "scroll", target: {} }), false);
+  assert.equal(isTextControlScroll(null), false);
+});
+
 test("index.html cache-busts every runtime file touched by the prompt input fix", () => {
   const html = read("particle-editor/index.html");
-  for (const fileName of [
-    "runtime-detect-stabilizer.js",
-    "png-remove-black.tool.js",
-    "spine-atlas-webp.tool.js",
-    "novaflow-client-auth.js",
-    "novaflow-brand-runtime.js",
-    "spine-split-runtime.js",
-    "art-generate-lora.js",
-  ]) {
-    assert.ok(html.includes(`${fileName}?v=${CACHE_VERSION}`), `${fileName} should cache-bust with ${CACHE_VERSION}`);
+  const expected = {
+    "runtime-detect-stabilizer.js": CACHE_VERSION,
+    "png-remove-black.tool.js": CACHE_VERSION,
+    "spine-atlas-webp.tool.js": CACHE_VERSION,
+    "novaflow-client-auth.js": CACHE_VERSION,
+    "novaflow-brand-runtime.js": "20260916-prompt-input-perf-2",
+    "spine-split-runtime.js": CACHE_VERSION,
+    "art-generate-lora.js": CACHE_VERSION,
+  };
+  for (const [fileName, version] of Object.entries(expected)) {
+    assert.ok(html.includes(`${fileName}?v=${version}`), `${fileName} should cache-bust with ${version}`);
   }
   // The bundle key moves with every bundle patch; it must at least be newer than the first prompt-perf build.
   const bundleKey = html.match(/assets\/index-BbIa-2NM\.js\?v=([^"]+)"/)?.[1] || "";

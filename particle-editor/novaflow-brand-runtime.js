@@ -2748,6 +2748,18 @@
     return false;
   }
 
+  // Scrolling inside a text control (prompt textarea, inputs, editable areas) moves nothing else on the
+  // page, so layout refreshers must not treat it like a page or panel scroll. Before this guard every
+  // wheel notch inside the prompt textarea re-ran the full AI animation layout (~25k DOM mutations and
+  // several 900ms tasks for ten notches).
+  function isNovaflowTextControlScrollEvent(event) {
+    if (!event || event.type !== "scroll") return false;
+    const target = event.target;
+    if (!(target instanceof Element)) return false;
+    if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) return true;
+    return target instanceof HTMLElement && target.isContentEditable === true;
+  }
+
   function areNovaflowTextControlInternalMutations(mutations) {
     const list = Array.from(mutations || []);
     return list.length > 0 && list.every(isNovaflowTextControlInternalMutation);
@@ -4640,6 +4652,7 @@
 
   function syncGlobalDropdownController() {
     const event = arguments[0];
+    if (isNovaflowTextControlScrollEvent(event)) return;
     if (isDropdownPanelScrollEvent(event)) {
       clearDropdownPortalModalState();
       return;
@@ -29342,7 +29355,10 @@
       });
     };
     window.addEventListener("resize", schedule, { passive: true });
-    document.addEventListener("scroll", schedule, { passive: true, capture: true });
+    document.addEventListener("scroll", (event) => {
+      if (isNovaflowTextControlScrollEvent(event)) return;
+      schedule();
+    }, { passive: true, capture: true });
   }
 
   function ensureAiAnimationReferenceResolutionOverlayRoot() {
@@ -69104,6 +69120,7 @@
     };
     window.addEventListener("resize", schedule, { passive: true });
     window.addEventListener("scroll", (event) => {
+      if (isNovaflowTextControlScrollEvent(event)) return;
       if (isDropdownPanelScrollEvent(event)) {
         clearDropdownPortalModalState();
         return;
