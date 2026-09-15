@@ -182,6 +182,9 @@ assertNotIncludes(promptHistoryStyleBody, "promoteAiAnimationPromptHistoryPopove
 assertNotIncludes(runtime, "layer.appendChild(popover)", "Runtime must not reparent React-owned prompt history popovers");
 assertIncludes(runtime, "getAiAnimationPromptHistoryPositionRect", "Runtime must use a shared positioning rect for Kling storyboard history popovers");
 assertIncludes(promptHistoryPositionBody, "getAiAnimationPromptHistoryPositionRect(anchor, popover)", "Prompt history popover positioning must use the shared storyboard rect when available");
+assertIncludes(promptHistoryPositionBody, "AI_ANIMATION_PROMPT_HISTORY_POPOVER_MAX_HEIGHT", "Prompt history popover must be allowed to grow to the full 15-row budget");
+assertNotIncludes(promptHistoryPositionBody, "Math.min(320,", "Prompt history popover must not clamp its height to 320px, which hides rows beyond the ninth");
+assertIncludes(promptHistoryPositionBody, 'contentHeight > height ? "auto" : "hidden"', "Prompt history popover must scroll whenever its rows exceed the available height");
 assertIncludes(runtime, "getAiAnimationPromptHistoryInlineSlotControls", "Runtime must scope Kling storyboard slot hiding to the inline slot strip");
 assertIncludes(hidePromptHistorySlotButtonsBody, "getAiAnimationPromptHistoryInlineSlotControls(topRow)", "Runtime must not scan the whole top row when hiding inline history slots");
 assertNotIncludes(hidePromptHistorySlotButtonsBody, "topRow.querySelectorAll('button, [role=\"button\"]')", "Runtime must not hide prompt history popover descendants from the top row");
@@ -237,6 +240,8 @@ for (const { filePath, text } of bundles) {
   }
   assertNotIncludes(text, "Array.from({length:5})", `${filePath} inline prompt history must not generate transient record slot buttons`);
   assertNotIncludes(text, "children:`记录${n+1}`", `${filePath} inline prompt history must not render dynamic record slot labels before first paint`);
+  assertIncludes(text, "Math.min(528,22+i*30+Math.max(0,i-1)*4)", `${filePath} prompt history popover must size itself for the full 15-row budget of 30px bordered rows`);
+  assertNotIncludes(text, "Math.min(320,20+i*28", `${filePath} prompt history popover must not clamp to the old 320px height`);
 }
 
 const [firstBundle, ...restBundles] = bundles;

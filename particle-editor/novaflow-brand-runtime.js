@@ -32,8 +32,8 @@
   const ART_GENERATE_LAST_RUNTIME_KEY = "novaflow_runtime_last_connected_url";
   const ART_GENERATE_PROMPT_HISTORY_STORAGE_KEY = "novaflow_art_generate_prompt_history_v1";
   const ART_GENERATE_PROMPT_HISTORY_SLOT_COUNT = 5;
-  const ART_GENERATE_PROMPT_HISTORY_RECENT_CAP = 10;
-  const ART_GENERATE_PROMPT_HISTORY_POPOVER_MAX_ROWS = 10;
+  // Art prompt history mirrors the AI sequence history: saved slots and recent entries share one 15-row budget.
+  const ART_GENERATE_PROMPT_HISTORY_TOTAL_CAP = 15;
   const NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR = "data-novaflow-prompt-action-button";
   const SOURCE_UPLOAD_ISLAND_BRIDGE_SCRIPT_ID = "novaflow-source-upload-island-bridge-loader";
   const SOURCE_UPLOAD_ISLAND_BRIDGE_SCRIPT_SRC = "./novaflow-source-upload-island-bridge.js?v=20260914-color-disclosure-2";
@@ -2410,6 +2410,12 @@
   const AI_ANIMATION_REFERENCE_FALLBACK_TOP = 112;
   const AI_ANIMATION_SOURCE_REFERENCE_COLUMN_TOP = 83;
   const AI_ANIMATION_PROMPT_HISTORY_LAYER_ID = "novaflow-ai-animation-prompt-history-layer";
+  // The AI prompt history keeps a 15-row budget. Each source row is 28px plus a 1px border on each
+  // side (30px), rows sit in a 4px grid gap, and the popover adds 10px padding and a 1px border.
+  // The popover may grow to that height so every row stays visible when the viewport allows it.
+  const AI_ANIMATION_PROMPT_HISTORY_POPOVER_ROW_BUDGET = 15;
+  const AI_ANIMATION_PROMPT_HISTORY_POPOVER_MAX_HEIGHT =
+    22 + AI_ANIMATION_PROMPT_HISTORY_POPOVER_ROW_BUDGET * 30 + (AI_ANIMATION_PROMPT_HISTORY_POPOVER_ROW_BUDGET - 1) * 4;
   const PRIMARY_PANEL_BACKGROUND = "#2a2a2a";
   const PRIMARY_PANEL_EXPANDED_BACKGROUND = "#181818";
   const LEFT_PANEL_BACKGROUND = "#181818";
@@ -54561,7 +54567,9 @@
     const viewportW = Math.max(320, Number(window.innerWidth) || 1280);
     const viewportH = Math.max(320, Number(window.innerHeight) || 720);
     const naturalRect = popover.getBoundingClientRect();
-    const naturalHeight = Math.max(52, Math.min(320, Math.ceil(popover.scrollHeight || naturalRect.height || 220)));
+    const frameHeight = Math.max(0, Math.ceil((popover.offsetHeight || 0) - (popover.clientHeight || 0)));
+    const contentHeight = Math.max(52, Math.ceil(popover.scrollHeight || naturalRect.height || 220) + frameHeight);
+    const naturalHeight = Math.min(AI_ANIMATION_PROMPT_HISTORY_POPOVER_MAX_HEIGHT, contentHeight);
     const width = Math.max(300, Math.min(Math.floor(anchorRect.width || naturalRect.width || 340), viewportW - 20));
     const availableAbove = Math.max(0, Math.floor(anchorRect.top) - 18);
     const availableBelow = Math.max(0, viewportH - Math.ceil(anchorRect.bottom) - 10);
@@ -54581,7 +54589,7 @@
     popover.style.setProperty("height", `${height}px`, "important");
     popover.style.setProperty("max-height", `${height}px`, "important");
     popover.style.setProperty("overflow-x", "hidden", "important");
-    popover.style.setProperty("overflow-y", naturalHeight > height ? "auto" : "hidden", "important");
+    popover.style.setProperty("overflow-y", contentHeight > height ? "auto" : "hidden", "important");
     popover.style.setProperty("z-index", String(Number(MODAL_LAYER_Z_INDEX) - 1010), "important");
     clearAiAnimationPromptHistoryPositioningState();
   }
@@ -54620,7 +54628,7 @@
     if (!(popover instanceof HTMLElement)) return false;
     if (popover.getAttribute("data-novaflow-ai-history-positioned") === "1") return true;
     const styleText = String(popover.getAttribute("style") || "");
-    if (styleText.includes("z-index: 9999") && styleText.includes("max-height: 320px")) return true;
+    if (styleText.includes("z-index: 9999") && /max-height: \d+px/.test(styleText) && styleText.includes("overflow-y: auto")) return true;
     const text = normalizeText(popover.textContent || "");
     if (text.includes("\u6682\u65e0") && styleText.includes("z-index: 9999")) return true;
     if (!text.includes("\u4fdd\u5b58") && !/\u8bb0\u5f55\d+/u.test(text)) return false;
@@ -73913,6 +73921,14 @@
 
   function createEmptyArtGeneratePromptHistorySlots() {
     return Array.from({ length: ART_GENERATE_PROMPT_HISTORY_SLOT_COUNT }, () => null);
+  function countArtGeneratePromptHistoryPinned(pinnedSlots) {
+    return (Array.isArray(pinnedSlots) ? pinnedSlots : []).reduce((count, item) => count + (item ? 1 : 0), 0);
+  }
+
+  function getArtGeneratePromptHistoryRecentCap(pinnedSlots) {
+    return Math.max(1, ART_GENERATE_PROMPT_HISTORY_TOTAL_CAP - countArtGeneratePromptHistoryPinned(pinnedSlots));
+  }
+
   }
 
   function normalizeArtGeneratePromptHistoryItem(value, fallbackAt) {
@@ -73924,7 +73940,7 @@
     return { text, at: Number.isFinite(at) && at > 0 ? at : (Number(fallbackAt) || Date.now()) };
   }
 
-  function normalizeArtGeneratePromptHistoryItems(value, cap = ART_GENERATE_PROMPT_HISTORY_RECENT_CAP) {
+  function normalizeArtGeneratePromptHistoryItems(value, cap = ART_GENERATE_PROMPT_HISTORY_TOTAL_CAP) {
     const list = Array.isArray(value) ? value : [];
     const seen = new Set();
     const out = [];
@@ -73966,7 +73982,7 @@
     const pinnedKeys = new Set(pinnedSlots.map((item) => item ? artGeneratePromptHistoryCompareKey(item.text) : "").filter(Boolean));
     const recent = normalizeArtGeneratePromptHistoryItems(obj.recent || obj.history || [])
       .filter((item) => !pinnedKeys.has(artGeneratePromptHistoryCompareKey(item.text)))
-      .slice(0, ART_GENERATE_PROMPT_HISTORY_RECENT_CAP);
+      .slice(0, getArtGeneratePromptHistoryRecentCap(pinnedSlots));
     return { recent, pinnedSlots };
   }
 
@@ -73983,7 +73999,7 @@
     const pinnedKeys = new Set(ART_GENERATE_STATE[keys.slotKey].map((item) => item ? artGeneratePromptHistoryCompareKey(item.text) : "").filter(Boolean));
     ART_GENERATE_STATE[keys.recentKey] = normalizeArtGeneratePromptHistoryItems(ART_GENERATE_STATE[keys.recentKey])
       .filter((item) => !pinnedKeys.has(artGeneratePromptHistoryCompareKey(item.text)))
-      .slice(0, ART_GENERATE_PROMPT_HISTORY_RECENT_CAP);
+      .slice(0, getArtGeneratePromptHistoryRecentCap(ART_GENERATE_STATE[keys.slotKey]));
     return {
       recent: ART_GENERATE_STATE[keys.recentKey],
       pinnedSlots: ART_GENERATE_STATE[keys.slotKey]
@@ -74003,7 +74019,7 @@
       ? group.recent.filter((item) => artGeneratePromptHistoryCompareKey(item.text) !== textKey)
       : [{ text, at: Date.now() }]
           .concat(group.recent.filter((item) => artGeneratePromptHistoryCompareKey(item.text) !== textKey))
-          .slice(0, ART_GENERATE_PROMPT_HISTORY_RECENT_CAP);
+          .slice(0, getArtGeneratePromptHistoryRecentCap(group.pinnedSlots));
     ART_GENERATE_STATE[keys.recentKey] = recent;
     saveArtGeneratePromptHistory();
   }
@@ -74035,7 +74051,9 @@
     }
     group.pinnedSlots[targetIndex] = { text, at: Date.now() };
     ART_GENERATE_STATE[keys.slotKey] = normalizeArtGeneratePromptHistorySlots(group.pinnedSlots);
-    ART_GENERATE_STATE[keys.recentKey] = group.recent.filter((item) => artGeneratePromptHistoryCompareKey(item.text) !== textKey);
+    ART_GENERATE_STATE[keys.recentKey] = group.recent
+      .filter((item) => artGeneratePromptHistoryCompareKey(item.text) !== textKey)
+      .slice(0, getArtGeneratePromptHistoryRecentCap(ART_GENERATE_STATE[keys.slotKey]));
     saveArtGeneratePromptHistory();
     return targetIndex;
   }
@@ -74100,7 +74118,7 @@
       if (item) add(item, { slotIndex0: index });
     });
     recent.slice(1).forEach((item) => add(item));
-    return entries.slice(0, ART_GENERATE_PROMPT_HISTORY_POPOVER_MAX_ROWS);
+    return entries.slice(0, ART_GENERATE_PROMPT_HISTORY_TOTAL_CAP);
   }
 
   function getArtGeneratePromptHistoryPopoverEstimatedHeight(key) {
