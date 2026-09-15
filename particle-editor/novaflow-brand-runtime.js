@@ -2707,16 +2707,71 @@
     document.addEventListener("visibilitychange", syncNovaflowWindowFocusState, true);
   }
 
+  let NF_INLINE_STYLE_VALUE_SCRATCH = null;
+
+  function nfNormalizeInlineStyleValue(property, value, priority) {
+    try {
+      if (!NF_INLINE_STYLE_VALUE_SCRATCH) NF_INLINE_STYLE_VALUE_SCRATCH = document.createElement("div");
+      const scratch = NF_INLINE_STYLE_VALUE_SCRATCH.style;
+      scratch.setProperty(property, value, priority);
+      const normalized = scratch.getPropertyValue(property);
+      scratch.removeProperty(property);
+      return normalized;
+    } catch (_) {
+      return String(value);
+    }
+  }
+
+  // Inline styles read back normalized ("0" -> "0px"), so a raw string compare rewrote the same value on
+  // every pass and each rewrite emitted a style mutation that re-triggered every runtime observer.
+  function nfInlineStylePropertyMatches(element, property, nextValue, nextPriority) {
+    if (element.style.getPropertyPriority(property) !== nextPriority) return false;
+    const current = element.style.getPropertyValue(property);
+    if (current === nextValue) return true;
+    if (!current) return false;
+    return current === nfNormalizeInlineStyleValue(property, nextValue, nextPriority);
+  }
+
+  function isNovaflowTextControlInternalMutation(mutation) {
+    const target = mutation?.target;
+    if (mutation?.type === "childList") {
+      return target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement;
+    }
+    if (mutation?.type === "characterData") {
+      const parent = target?.parentNode;
+      return parent instanceof HTMLTextAreaElement || parent instanceof HTMLInputElement;
+    }
+    if (mutation?.type === "attributes") {
+      const attributeName = String(mutation.attributeName || "");
+      return target instanceof HTMLInputElement && (attributeName === "name" || attributeName === "type" || attributeName === "value");
+    }
+    return false;
+  }
+
+  function areNovaflowTextControlInternalMutations(mutations) {
+    const list = Array.from(mutations || []);
+    return list.length > 0 && list.every(isNovaflowTextControlInternalMutation);
+  }
+
+  function nfCoalesceMutationCallback(callback) {
+    let frame = 0;
+    return (mutations) => {
+      if (areNovaflowTextControlInternalMutations(mutations)) return;
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        try { callback(); } catch (_) { void 0; }
+      });
+    };
+  }
+
   function setStylePropertyIfChanged(element, property, value, priority = "") {
     if (!(element instanceof HTMLElement)) return;
     if (isInsideNovaflowRuntimeIgnore(element)) return;
     const __nfPerfStartedAt = nfAnimationPerfVisualRhythmMark();
     const nextValue = String(value);
     const nextPriority = priority || "";
-    if (
-      element.style.getPropertyValue(property) === nextValue &&
-      element.style.getPropertyPriority(property) === nextPriority
-    ) {
+    if (nfInlineStylePropertyMatches(element, property, nextValue, nextPriority)) {
       nfAnimationPerfMeasureVisualRhythmStep("skipExisting", __nfPerfStartedAt);
       return;
     }
@@ -2729,10 +2784,7 @@
     const __nfPerfStartedAt = nfAnimationPerfVisualRhythmMark();
     const nextValue = String(value);
     const nextPriority = priority || "";
-    if (
-      element.style.getPropertyValue(property) === nextValue &&
-      element.style.getPropertyPriority(property) === nextPriority
-    ) {
+    if (nfInlineStylePropertyMatches(element, property, nextValue, nextPriority)) {
       nfAnimationPerfMeasureVisualRhythmStep("skipExisting", __nfPerfStartedAt);
       return;
     }
@@ -13729,10 +13781,7 @@
     if (!(element instanceof HTMLElement)) return;
     const nextValue = String(value);
     const nextPriority = priority || "";
-    if (
-      element.style.getPropertyValue(property) === nextValue &&
-      element.style.getPropertyPriority(property) === nextPriority
-    ) {
+    if (nfInlineStylePropertyMatches(element, property, nextValue, nextPriority)) {
       return;
     }
     element.style.setProperty(property, nextValue, nextPriority);
@@ -50038,7 +50087,7 @@
 
   function hideAiAnimationComfyHintNode(node) {
     if (!(node instanceof HTMLElement)) return;
-    node.setAttribute("data-novaflow-ai-comfy-env-hint", "1");
+    setAttributeIfChanged(node, "data-novaflow-ai-comfy-env-hint", "1");
     setImportantStyles(node, {
       display: "none",
       visibility: "hidden",
@@ -50128,7 +50177,7 @@
     if (!(parent instanceof HTMLElement) || typeof MutationObserver !== "function") return;
     panel.setAttribute("data-novaflow-ai-runtime-legacy-observer", "1");
     const hide = () => hideLegacyComfyRuntimeSiblings(panel);
-    const observer = new MutationObserver(hide);
+    const observer = new MutationObserver(nfCoalesceMutationCallback(hide));
     observer.observe(parent, { childList: true, characterData: true, subtree: true });
     hide();
     setTimeout(hide, 0);
@@ -54164,7 +54213,7 @@
     if (typeof MutationObserver !== "function") return;
     root.setAttribute("data-novaflow-ai-comfy-env-observer", "1");
     const hide = () => hideAiAnimationComfyEnvironmentHint(root);
-    const observer = new MutationObserver(hide);
+    const observer = new MutationObserver(nfCoalesceMutationCallback(hide));
     observer.observe(root, { childList: true, characterData: true, subtree: true });
     hide();
     setTimeout(hide, 0);
@@ -69875,6 +69924,7 @@
   function isAiAnimationInputNoiseMutation(mutation) {
     if (!document.body || !document.body.classList.contains("novaflow-primary-target-animation")) return false;
     if (isAiAnimationPromptAssistantGuardMutation(mutation)) return true;
+    if (isNovaflowTextControlInternalMutation(mutation)) return true;
     const attributeName = mutation.attributeName || "";
     if (mutation.type === "childList") {
       const nodes = [mutation.target, ...Array.from(mutation.addedNodes || []), ...Array.from(mutation.removedNodes || [])];
@@ -70436,6 +70486,8 @@
       tryReleasePrimaryAnimationEntryRollbackPreview("brand-mutation");
       tryCommitPrimaryAnimationEntryTransaction("brand-mutation");
       if (document.hidden) return;
+      // React syncs a controlled textarea's text child on every keystroke; that never needs a layout pass.
+      if (areNovaflowTextControlInternalMutations(mutations)) return;
       const debugEnabled = nfTopbarHelpDebugEnabled();
       if (debugEnabled) nfTopbarHelpDebug("brandMutationObserver:raw", { mutations: nfTopbarHelpDebugMutationSummary(mutations) });
       if (isAiAnimationRangeDragGuardActive()) {

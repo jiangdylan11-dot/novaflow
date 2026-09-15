@@ -422,6 +422,14 @@ const runtimeGroups = [
     ],
   },
   {
+    name: 'runtime-detect-stabilizer.js',
+    files: [
+      { label: 'source', path: path.join(repoRoot, 'particle-editor', 'runtime-detect-stabilizer.js') },
+      { label: 'desktop renderer', path: path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'runtime-detect-stabilizer.js') },
+      { label: 'win-unpacked renderer', path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'runtime-detect-stabilizer.js') },
+    ],
+  },
+  {
     name: 'novaflow-client-auth.js',
     files: [
       { label: 'source', path: path.join(repoRoot, 'particle-editor', 'novaflow-client-auth.js') },

@@ -108,7 +108,7 @@
     attempts = 0
     clearRetry()
     try {
-      localStorage.setItem(LAST_OK_KEY, ctx.baseUrl)
+      if (normalizeUrl(localStorage.getItem(LAST_OK_KEY) || '') !== ctx.baseUrl) localStorage.setItem(LAST_OK_KEY, ctx.baseUrl)
     } catch {
       void 0
     }
@@ -162,24 +162,44 @@
     }
   }
 
+  const isTextControlInternalMutation = (mutation) => {
+    const target = mutation && mutation.target
+    if (mutation && mutation.type === 'childList') {
+      return target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement
+    }
+    if (mutation && mutation.type === 'characterData') {
+      const parent = target && target.parentNode
+      return parent instanceof HTMLTextAreaElement || parent instanceof HTMLInputElement
+    }
+    return false
+  }
+
+  let observerTimer = 0
+  const handleObservedMutations = () => {
+    observerTimer = 0
+    const ctx = findDetectContext()
+    if (!ctx) return
+    if (ctx.statusText.includes(TEXT.connected)) {
+      markConnected(ctx)
+      return
+    }
+    if (ctx.statusText.includes(TEXT.missing)) {
+      void stabilizeRuntimeStatus()
+    }
+  }
+
   const installObserver = () => {
     if (observer) return
-    observer = new MutationObserver(() => {
-      const ctx = findDetectContext()
-      if (!ctx) return
-      if (ctx.statusText.includes(TEXT.connected)) {
-        markConnected(ctx)
-        return
-      }
-      if (ctx.statusText.includes(TEXT.missing)) {
-        void stabilizeRuntimeStatus()
-      }
+    observer = new MutationObserver((mutations) => {
+      // Typing inside inputs/textareas never changes the runtime status row; skip the full DOM scan.
+      if (mutations.every(isTextControlInternalMutation)) return
+      if (observerTimer) return
+      observerTimer = window.setTimeout(handleObservedMutations, 250)
     })
     observer.observe(document.documentElement, {
       subtree: true,
       childList: true,
       characterData: true,
-      attributes: true,
     })
   }
 

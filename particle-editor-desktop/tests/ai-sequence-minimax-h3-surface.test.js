@@ -797,7 +797,7 @@ test('MiniMax H3 surface changes preserve Art Generate, credit, and auth impleme
     'particle-editor/ai-sequence-credit-pricing.js': 'B57159EE6F2C220961C634CB37CB0F4A6CB912359C9445D9DFE04B108C18ECC5',
     'particle-editor/comfyui-workflow-credit-cost.js': '02D0BC55EB9B7EA09431815A92A75DE0E41450BA4F310EF1B13FDB414AE34EF8',
     'particle-editor/runtime-fetch-proxy.js': '077061238A8F180BE634EA4A5C98E271B841126EF86C118C8C75AA6F97F58D89',
-    'particle-editor/novaflow-client-auth.js': '87B47407B628A9961C9987B315CD8ED76FAE85C54A32FA4B90331419A8A08ED5',
+    'particle-editor/novaflow-client-auth.js': '5207E9259CA41301A6A08A1BD780421577CB6914B8B1E3BF1D6C5515EA14949C',
   }
 
   for (const [relativePath, expectedHash] of Object.entries(protectedFiles)) {

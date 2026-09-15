@@ -103,9 +103,11 @@
     record.options = options
     const context = `${state.provider}:${state.mode}:${!!state.nsfw}`
     if (record.context !== context) { record.context = context; record.loaded = false; record.names = []; record.signature = '' }
-    record.slot.hidden = !supports(state)
-    record.slot.style.display = supports(state) ? 'grid' : 'none'
-    if (!supports(state)) return
+    const supported = supports(state)
+    if (record.slot.hidden !== !supported) record.slot.hidden = !supported
+    const display = supported ? 'grid' : 'none'
+    if (record.slot.style.display !== display) record.slot.style.display = display
+    if (!supported) return
     const signature = JSON.stringify([state.loras, state.running, record.names, record.loading, record.error])
     if (signature !== record.signature) {
       record.signature = signature

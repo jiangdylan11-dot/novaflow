@@ -21445,8 +21445,8 @@
         buttonNode.textContent = status.text
         patched = true
       }
-      buttonNode.disabled = blocked
-      buttonNode.setAttribute('aria-disabled', blocked ? 'true' : 'false')
+      if (buttonNode.disabled !== blocked) buttonNode.disabled = blocked
+      setSplitAttributeIfChanged(buttonNode, 'aria-disabled', blocked ? 'true' : 'false')
       buttonNode.style.setProperty('background', background, 'important')
       buttonNode.style.setProperty('background-color', background, 'important')
       buttonNode.style.setProperty('border', border, 'important')
@@ -22051,6 +22051,12 @@
     return button
   }
 
+  function setSplitAttributeIfChanged(node, name, value) {
+    if (!node || typeof node.setAttribute !== 'function') return
+    const next = String(value)
+    if (node.getAttribute(name) !== next) node.setAttribute(name, next)
+  }
+
   function applySplitCanvasPersistentToolStyle(button, active, hovering, disabled) {
     if (!(button instanceof HTMLElement)) return
     const blocked = !!disabled
@@ -22059,30 +22065,26 @@
       : hovering
       ? (active ? SPLIT_ACTIVE_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND)
       : (active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND)
+    // Properties re-set below with !important are left out of this plain assignment: writing them twice
+    // with different priorities emitted two style mutations per property on every sync pass.
     Object.assign(button.style, {
       height: '34px',
       minHeight: '34px',
       maxHeight: '34px',
       minWidth: '68px',
       borderRadius: SPLIT_RECT_RADIUS,
-      background,
-      backgroundColor: background,
       backgroundImage: 'none',
       border: '0',
       color: blocked ? 'rgba(255,255,255,0.42)' : '#fff',
       cursor: blocked || state.busy ? 'default' : 'pointer',
       fontWeight: '400',
-      fontSize: SPLIT_CONTROL_FONT_SIZE,
-      lineHeight: '34px',
       padding: '0 14px',
       display: 'inline-flex',
       alignItems: 'center',
       justifyContent: 'center',
       boxSizing: 'border-box',
-      boxShadow: 'none',
       whiteSpace: 'nowrap',
-      opacity: blocked ? '0.72' : '1',
-      transition: 'none'
+      opacity: blocked ? '0.72' : '1'
     })
     button.style.setProperty('background', background, 'important')
     button.style.setProperty('background-color', background, 'important')
@@ -22122,11 +22124,12 @@
       root.appendChild(button)
     }
     if (button.textContent !== label) button.textContent = label
-    button.setAttribute(TOOL_ACTION_ATTR, key === 'source' ? 'viewSource' : 'viewParts')
-    button.setAttribute('data-novaflow-spine-split-tool-active', !blocked && active ? '1' : '0')
-    button.setAttribute('aria-disabled', blocked ? 'true' : 'false')
-    button.disabled = blocked
-    button.tabIndex = blocked ? -1 : 0
+    setSplitAttributeIfChanged(button, TOOL_ACTION_ATTR, key === 'source' ? 'viewSource' : 'viewParts')
+    setSplitAttributeIfChanged(button, 'data-novaflow-spine-split-tool-active', !blocked && active ? '1' : '0')
+    setSplitAttributeIfChanged(button, 'aria-disabled', blocked ? 'true' : 'false')
+    if (button.disabled !== blocked) button.disabled = blocked
+    const nextTabIndex = blocked ? -1 : 0
+    if (button.tabIndex !== nextTabIndex) button.tabIndex = nextTabIndex
     button.onclick = blocked
       ? (event) => { event.preventDefault(); event.stopPropagation() }
       : (event) => runDirectSplitToolAction(button.getAttribute(TOOL_ACTION_ATTR) || key, onClick, event)
@@ -35868,7 +35871,7 @@
     if (!node.hasAttribute(RIGHT_WORKSPACE_ROOT_STYLE_ATTR)) {
       node.setAttribute(RIGHT_WORKSPACE_ROOT_STYLE_ATTR, node.getAttribute('style') || '')
     }
-    node.setAttribute(RIGHT_WORKSPACE_ROOT_ATTR, '1')
+    setSplitAttributeIfChanged(node, RIGHT_WORKSPACE_ROOT_ATTR, '1')
     const width = `${SPLIT_RIGHT_WORKSPACE_WIDTH}px`
     node.style.setProperty('width', width, 'important')
     node.style.setProperty('min-width', width, 'important')

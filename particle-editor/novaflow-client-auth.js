@@ -510,6 +510,7 @@
   function clearExternalHost(target) {
     if (!(target instanceof HTMLElement)) return;
     target.removeAttribute(HOST_ATTR);
+    target.__nfClientAuthRenderedContent = "";
     target.innerHTML = "";
   }
 
@@ -572,7 +573,10 @@
     if (!getBridge()) {
       removeHost();
       mountedHosts.forEach((target) => {
-        if (target instanceof HTMLElement) target.innerHTML = "";
+        if (target instanceof HTMLElement) {
+          target.__nfClientAuthRenderedContent = "";
+          target.innerHTML = "";
+        }
       });
       return;
     }
@@ -625,7 +629,11 @@
       <div class="nf-client-auth-message ${escapeHtml(state.messageKind)}">${escapeHtml(message)}</div>
     `;
     targets.forEach((target) => {
-      target.setAttribute(HOST_ATTR, "1");
+      if (target.getAttribute(HOST_ATTR) !== "1") target.setAttribute(HOST_ATTR, "1");
+      // Rewriting identical markup emits DOM mutations that re-trigger this panel's own observer
+      // (and every other runtime observer) in an endless 80ms loop; only touch the DOM on real changes.
+      if (target.__nfClientAuthRenderedContent === content && target.childElementCount > 0) return;
+      target.__nfClientAuthRenderedContent = content;
       target.innerHTML = content;
       bindHostEvents(target);
     });
@@ -969,9 +977,19 @@
     }, 80);
   }
 
+  function isOwnHostMutation(mutation) {
+    const target = mutation?.target;
+    const element = target instanceof Element ? target : target?.parentElement;
+    return element instanceof Element && element.closest(`[${HOST_ATTR}="1"]`) instanceof Element;
+  }
+
   function startObserver() {
     if (observer || typeof MutationObserver !== "function") return;
-    observer = new MutationObserver(scheduleRender);
+    observer = new MutationObserver((mutations) => {
+      // Mutations produced by our own render() must not schedule another render.
+      if (mutations.every(isOwnHostMutation)) return;
+      scheduleRender();
+    });
     observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "data-novaflow-ai-mode-section"] });
   }
 

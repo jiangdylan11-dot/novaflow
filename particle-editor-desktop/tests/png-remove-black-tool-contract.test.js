@@ -148,7 +148,7 @@ test('PNG remove-black list supports single-item deletion without leaking previe
 test('PNG remove-black tool is loaded and packaged as a required runtime helper', () => {
   const html = fs.readFileSync(path.join(repoRoot, 'particle-editor', 'index.html'), 'utf8')
   const buildScript = fs.readFileSync(path.join(repoRoot, 'particle-editor-desktop', 'scripts', 'build-renderer.mjs'), 'utf8')
-  assert.match(html, /png-remove-black\.tool\.js\?v=20260915-png-remove-black-entry-2/)
+  assert.match(html, /png-remove-black\.tool\.js\?v=20260916-prompt-input-perf-1/)
   assert.equal((buildScript.match(/"png-remove-black\.tool\.js"/g) || []).length, 2)
 })
 

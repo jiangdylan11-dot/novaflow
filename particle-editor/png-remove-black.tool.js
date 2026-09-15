@@ -139,9 +139,10 @@
 
   function ensureEntry() {
     const existing = document.querySelector(`[${BUTTON_ATTR}="1"]`)
-    const png = findEntry('PNG 压缩')
-    const jpg = findEntry('JPG 压缩')
-    const validToolsHost = isToolsSectionActive()
+    const toolsActive = isToolsSectionActive()
+    const png = toolsActive ? findEntry('PNG 压缩') : null
+    const jpg = toolsActive ? findEntry('JPG 压缩') : null
+    const validToolsHost = toolsActive
       && png instanceof HTMLElement
       && jpg instanceof HTMLElement
       && png.parentElement instanceof HTMLElement
@@ -315,7 +316,21 @@
 
   installStyle()
   document.addEventListener('click', handleToolEntryClick, true)
-  const observer = new MutationObserver(() => { ensureEntry(); if (state.active && !document.getElementById(ROOT_ID)) render() })
+  let entrySyncTimer = 0
+  const syncEntryFromMutations = () => {
+    entrySyncTimer = 0
+    ensureEntry()
+    if (state.active && !document.getElementById(ROOT_ID)) render()
+  }
+  const mutationAddsElement = (mutation) => Array.from(mutation.addedNodes || []).some((node) => node.nodeType === 1)
+  const observer = new MutationObserver((mutations) => {
+    // Only newly added elements can mount the Tools entry host; text edits and attribute churn cannot.
+    if (!mutations.some(mutationAddsElement)) return
+    // Outside the primary Tools section with nothing mounted, ensureEntry() is a no-op; the 1s interval still covers section switches.
+    if (!state.active && !document.body?.classList.contains('novaflow-primary-target-tools') && !document.querySelector(`[${BUTTON_ATTR}="1"]`)) return
+    if (entrySyncTimer) return
+    entrySyncTimer = window.setTimeout(syncEntryFromMutations, 120)
+  })
   observer.observe(document.documentElement, { childList: true, subtree: true })
   window.addEventListener('resize', syncBounds)
   window.setInterval(ensureEntry, 1000)

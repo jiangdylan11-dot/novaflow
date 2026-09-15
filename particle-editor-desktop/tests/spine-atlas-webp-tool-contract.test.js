@@ -11,7 +11,7 @@ test("SPINE WebP tool is loaded and packaged as a required runtime helper", () =
   const buildScript = fs.readFileSync(path.join(repoRoot, "particle-editor-desktop", "scripts", "build-renderer.mjs"), "utf8");
   const syncScript = fs.readFileSync(path.join(repoRoot, "scripts", "sync-runtime.mjs"), "utf8");
 
-  assert.match(html, /spine-atlas-webp\.tool\.js\?v=20260915-spine-atlas-webp-15/);
+  assert.match(html, /spine-atlas-webp\.tool\.js\?v=20260916-prompt-input-perf-1/);
   assert.equal((buildScript.match(/"spine-atlas-webp\.tool\.js"/g) || []).length, 2);
   assert.match(syncScript, /label: 'spine-atlas-webp\.tool\.js'/);
   assert.match(syncScript, /particle-editor-desktop', 'renderer', 'spine-atlas-webp\.tool\.js'/);

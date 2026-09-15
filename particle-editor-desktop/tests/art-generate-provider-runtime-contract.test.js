@@ -281,14 +281,14 @@ const cacheBusters = {
   "art-generate-model.resource.js": "20260915-qwen-2511-restore-1",
   "art-generate-ideogram.workflow.js": "20260813-ideogram-instant-1",
   "art-generate-provider.workflow.js": "20260911-gpt-image-25-1",
-  "art-generate-lora.js": "20260915-qwen-2511-restore-1",
+  "art-generate-lora.js": "20260916-prompt-input-perf-1",
   "art-generate-mode.tool.js": "20260912-rapid-ui-clean-1",
   "runtime-fetch-proxy.js": "20260711-art-dropdown-2",
   "art-generate-credit-pricing.tool.js": "20260712-art-credit-1",
   "art-generate-reference-drop.tool.js": "20260720-art-reference-drop-1",
-  "spine-split-runtime.js": "20260915-split-leg-face-1",
-  "novaflow-brand-runtime.js": "20260915-art-history-15-1",
-  "novaflow-client-auth.js": "20260720-client-auth-logout-1",
+  "spine-split-runtime.js": "20260916-prompt-input-perf-1",
+  "novaflow-brand-runtime.js": "20260916-prompt-input-perf-1",
+  "novaflow-client-auth.js": "20260916-prompt-input-perf-1",
 };
 for (const [scriptName, cacheBuster] of Object.entries(cacheBusters)) {
   assert.match(

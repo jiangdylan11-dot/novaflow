@@ -55,7 +55,7 @@ test('one-click split wires automatic leg splitting and a default-off facial fea
   assert.match(source, /catch \(error\) \{\s*console\.warn\('\[NovaFlow\] automatic leg split skipped:'/, 'a leg-split failure must degrade to the plain See-through layers instead of failing the split')
   assert.match(source, /parts\.find\(\(part\) => rawId\(part\) === 'face'\) \|\| parts\.find\(\(part\) => rawId\(part\) === 'head'\)/, 'merge target must be matched by raw See-through id because normalizeId folds face into head')
   assert.match(source, /const faceId = rawId\(face\)/)
-  assert.match(read('particle-editor/index.html'), /spine-split-runtime\.js\?v=20260915-split-leg-face-1/)
+  assert.match(read('particle-editor/index.html'), /spine-split-runtime\.js\?v=20260916-prompt-input-perf-1/)
 })
 
 test('facial feature ids cover See-through eye, brow, ear, nose and mouth layers but not accessories', () => {

@@ -310,6 +310,14 @@ const syncEntries = [
     ],
   },
   {
+    label: 'runtime-detect-stabilizer.js',
+    sourcePath: path.join(repoRoot, 'particle-editor', 'runtime-detect-stabilizer.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'runtime-detect-stabilizer.js'),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'runtime-detect-stabilizer.js'),
+    ],
+  },
+  {
     label: 'novaflow-client-auth.js',
     sourcePath: path.join(repoRoot, 'particle-editor', 'novaflow-client-auth.js'),
     targetPaths: [
