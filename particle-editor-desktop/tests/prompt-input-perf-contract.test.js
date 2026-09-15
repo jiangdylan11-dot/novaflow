@@ -131,6 +131,19 @@ test("art panel idle sync passes write LoRA slot and split tool state only on ch
   assert.match(styleBody, /button\.style\.setProperty\('background', background, 'important'\)/);
 });
 
+test("preview wheel zoom coalesces notches instead of re-rendering the panel per notch", () => {
+  const bundle = read("particle-editor/assets/index-BbIa-2NM.js");
+  const patch = read("scripts/patch-ai-seq-cutout-edit.mjs");
+  assert.match(patch, /import \{ patchPreviewWheelZoom \} from '\.\/patch-preview-wheel-zoom\.mjs';/);
+  assert.match(patch, /source = patchPreviewWheelZoom\(source\);/);
+  assert.equal((bundle.match(/nfAiSeqQueuePreviewZoom=\(e,t\)=>\{/g) || []).length, 1);
+  // First notch commits immediately; later notches within 100ms are queued and applied with the original rounding.
+  assert.match(bundle, /t\.length&&e\(e=>t\.reduce\(\(e,t\)=>Math\.round\(Math\.max\(\.1,Math\.min\(8,e\*t\)\)\*1e3\)\/1e3,e\)\)/);
+  assert.match(bundle, /i>=100&&!n\.timer\?r\(\):n\.timer\|\|\(n\.timer=window\.setTimeout\(r,Math\.max\(16,100-i\)\)\)/);
+  assert.equal((bundle.match(/nfAiSeqQueuePreviewZoom\(oe,n\)/g) || []).length, 2);
+  assert.doesNotMatch(bundle, /oe\(e=>Math\.round\(Math\.max\(\.1,Math\.min\(8,e\*n\)\)\*1e3\)\/1e3\)/);
+});
+
 test("index.html cache-busts every runtime file touched by the prompt input fix", () => {
   const html = read("particle-editor/index.html");
   for (const fileName of [
@@ -141,10 +154,12 @@ test("index.html cache-busts every runtime file touched by the prompt input fix"
     "novaflow-brand-runtime.js",
     "spine-split-runtime.js",
     "art-generate-lora.js",
-    "assets/index-BbIa-2NM.js",
   ]) {
     assert.ok(html.includes(`${fileName}?v=${CACHE_VERSION}`), `${fileName} should cache-bust with ${CACHE_VERSION}`);
   }
+  // The bundle key moves with every bundle patch; it must at least be newer than the first prompt-perf build.
+  const bundleKey = html.match(/assets\/index-BbIa-2NM\.js\?v=([^"]+)"/)?.[1] || "";
+  assert.ok(bundleKey && bundleKey !== "20260915-ai-history-rows-1" && bundleKey !== "20260916-prompt-input-perf-1", `bundle cache key must be newer than the first prompt-perf build (got ${bundleKey})`);
   const sync = read("scripts/sync-runtime.mjs");
   const check = read("scripts/check-runtime-sync.mjs");
   assert.match(sync, /label: 'runtime-detect-stabilizer\.js'/);

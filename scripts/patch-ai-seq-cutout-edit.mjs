@@ -15,6 +15,7 @@ import { patchCutoutControls } from './patch-cutout-controls.mjs';
 import { patchToolPanelActions } from './patch-tool-panel-actions.mjs';
 import { patchPromptHistoryLimit } from './patch-prompt-history-limit.mjs';
 import { patchPromptInputPerf } from './patch-prompt-input-perf.mjs';
+import { patchPreviewWheelZoom } from './patch-preview-wheel-zoom.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bundleGitPath = "particle-editor/assets/index-BbIa-2NM.js";
@@ -811,6 +812,7 @@ source = patchCutoutControls(source);
 source = patchToolPanelActions(source);
 source = patchPromptHistoryLimit(source);
 source = patchPromptInputPerf(source);
+source = patchPreviewWheelZoom(source);
 
 if (verifyHeadReplay) {
   const replayComparable = source.replace(/\r\n?/g, "\n");
