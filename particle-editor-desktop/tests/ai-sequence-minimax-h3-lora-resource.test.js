@@ -29,7 +29,7 @@ function item(overrides = {}) {
 
 test('a runtime log-lock error remains diagnostic detail and does not flood the sidebar', async () => {
   const { api } = loadResource()
-  const store = api.createMiniMaxH3LoraStore()
+  const store = api.createMiniMaxH3LoraStore({ maxNotReadyRetries: 0 })
   const detail = 'Move-Item : runtime.out.log is used by another process\nFullyQualifiedErrorId: MoveFileInfoItemIOError'
   await assert.rejects(store.refreshCatalog({ electronAPI: {
     minimaxH3LoraCatalog: async () => ({ ok: false, error: detail }),
@@ -188,4 +188,59 @@ test('fails closed when catalog or submit validation bridges are missing or stal
     }),
     /fingerprint_changed/,
   )
+})
+
+test('a not-ready catalog failure retries in the background until the H3 runtime is up', async () => {
+  const { api } = loadResource()
+  const timers = []
+  const store = api.createMiniMaxH3LoraStore({
+    notReadyRetryDelayMs: 4000,
+    maxNotReadyRetries: 3,
+    setTimeout: (callback, delay) => { timers.push({ callback, delay }); return timers.length },
+    clearTimeout: () => {},
+  })
+  let calls = 0
+  const electronAPI = { minimaxH3LoraCatalog: async () => { calls += 1; return calls < 3 ? { ok: false, error: 'starting' } : { ok: true, items: [item()] } } }
+  await assert.rejects(store.refreshCatalog({ mode: 't2v', steps: 4, electronAPI }), /starting/)
+  assert.equal(store.getSnapshot().error, 'H3 服务启动中，兼容 LoRA 列表将自动加载…')
+  assert.equal(store.getSnapshot().loading, false)
+  assert.equal(timers.length, 1)
+  assert.equal(timers[0].delay, 4000)
+  await timers[0].callback()
+  assert.equal(calls, 2)
+  assert.equal(store.getSnapshot().error, 'H3 服务启动中，兼容 LoRA 列表将自动加载…')
+  assert.equal(timers.length, 2)
+  await timers[1].callback()
+  assert.equal(calls, 3)
+  assert.equal(store.getSnapshot().error, '')
+  assert.equal(store.getSnapshot().items.length, 1)
+  assert.equal(timers.length, 2)
+})
+
+test('not-ready retries stop at the limit and a newer request supersedes a pending retry', async () => {
+  const { api } = loadResource()
+  const timers = []
+  const store = api.createMiniMaxH3LoraStore({
+    notReadyRetryDelayMs: 0,
+    maxNotReadyRetries: 2,
+    setTimeout: (callback) => { timers.push(callback); return timers.length },
+    clearTimeout: () => {},
+  })
+  const failing = { minimaxH3LoraCatalog: async () => ({ ok: false, error: 'runtime_start_failed' }) }
+  await assert.rejects(store.refreshCatalog({ mode: 't2v', steps: 4, electronAPI: failing }), /runtime_start_failed/)
+  await timers[0]()
+  await timers[1]()
+  assert.equal(timers.length, 2, 'no retry is scheduled beyond the limit')
+  assert.equal(store.getSnapshot().error, 'H3 服务尚未就绪，请稍后重新选择模型重试。')
+
+  // A manual refresh resets the budget; a newer request makes the stale retry a no-op.
+  await assert.rejects(store.refreshCatalog({ mode: 't2v', steps: 4, electronAPI: failing }), /runtime_start_failed/)
+  assert.equal(timers.length, 3)
+  let laterCalls = 0
+  await store.refreshCatalog({ mode: 't2v', steps: 4, electronAPI: { minimaxH3LoraCatalog: async () => { laterCalls += 1; return { ok: true, items: [item()] } } } })
+  assert.equal(store.getSnapshot().items.length, 1)
+  await timers[2]()
+  assert.equal(laterCalls, 1, 'the superseded retry must not issue another catalog request')
+  assert.equal(store.getSnapshot().error, '')
+  assert.equal(store.getSnapshot().items.length, 1)
 })

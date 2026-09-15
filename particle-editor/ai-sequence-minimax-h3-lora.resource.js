@@ -144,9 +144,24 @@
     })
   }
 
+  // The desktop catalog IPC first waits for the local H3 runtime to start. On a cold start the runtime
+  // can still be loading models when that wait times out, so the first catalog request after entering
+  // the AI sequence panel fails with "starting" although nothing is wrong. Instead of leaving the error
+  // until the user re-selects the model, keep retrying in the background until the runtime is up.
+  const NOT_READY_ERROR_PATTERN = /Move-Item|MoveFileInfoItemIOError|runtime_(?:start|health|command)|^starting$/
+  const NOT_READY_ERROR_MESSAGE = 'H3 服务尚未就绪，请稍后重新选择模型重试。'
+  const NOT_READY_RETRY_MESSAGE = 'H3 服务启动中，兼容 LoRA 列表将自动加载…'
+  const DEFAULT_NOT_READY_RETRY_DELAY_MS = 4000
+  const DEFAULT_MAX_NOT_READY_RETRIES = 8
+
   function createMiniMaxH3LoraStore(options = {}) {
     const listeners = new Set()
+    const notReadyRetryDelayMs = Math.max(0, Number(options.notReadyRetryDelayMs ?? DEFAULT_NOT_READY_RETRY_DELAY_MS) || 0)
+    const maxNotReadyRetries = Math.max(0, Math.floor(Number(options.maxNotReadyRetries ?? DEFAULT_MAX_NOT_READY_RETRIES) || 0))
+    const scheduleTimer = typeof options.setTimeout === 'function' ? options.setTimeout : (callback, delay) => setTimeout(callback, delay)
+    const cancelTimer = typeof options.clearTimeout === 'function' ? options.clearTimeout : (id) => clearTimeout(id)
     let requestVersion = 0
+    const notReadyRetry = { attempts: 0, timer: null }
     let state = {
       mode: normalizeMode(options.mode || 't2v'),
       steps: normalizeSteps(options.steps == null ? DEFAULT_STEPS : options.steps),
@@ -234,11 +249,32 @@
       return typeof bridge === 'function' ? bridge.bind(api) : null
     }
 
+    function cancelNotReadyRetryTimer() {
+      if (notReadyRetry.timer == null) return
+      try { cancelTimer(notReadyRetry.timer) } catch { void 0 }
+      notReadyRetry.timer = null
+    }
+
+    function scheduleNotReadyRetry(context, version) {
+      if (notReadyRetry.attempts >= maxNotReadyRetries) return false
+      cancelNotReadyRetryTimer()
+      notReadyRetry.attempts += 1
+      notReadyRetry.timer = scheduleTimer(() => {
+        notReadyRetry.timer = null
+        // A newer request (mode/steps change or a manual refresh) supersedes this retry.
+        if (version !== requestVersion) return undefined
+        return refreshCatalog({ ...context, autoRetry: true }).catch(() => {})
+      }, notReadyRetryDelayMs)
+      return true
+    }
+
     async function refreshCatalog(context = {}) {
       const mode = normalizeMode(context.mode == null ? state.mode : context.mode)
       const steps = normalizeSteps(context.steps == null ? state.steps : context.steps)
       const bridge = resolveBridge('minimaxH3LoraCatalog', context.electronAPI)
       if (!bridge) throw new Error('MiniMax H3 LoRA compatibility service is unavailable')
+      cancelNotReadyRetryTimer()
+      if (context.autoRetry !== true) notReadyRetry.attempts = 0
       const version = ++requestVersion
       state = { ...state, mode, steps, loading: true, error: '' }
       emit()
@@ -253,14 +289,17 @@
           const item = byName.get(entry.name.toLowerCase())
           return item && item.fingerprint === entry.fingerprint ? [freezeSelection(item, entry.strength)] : []
         }))
+        notReadyRetry.attempts = 0
         state = { ...state, mode, steps, items, selected, loading: false, error: '' }
         return emit()
       } catch (error) {
         if (version !== requestVersion) return snapshot()
         const detail = stringValue(error?.message || error || 'catalog_failed')
         console.warn('[NovaFlow] H3 LoRA catalog unavailable:', detail)
-        const displayError = /Move-Item|MoveFileInfoItemIOError|runtime_(?:start|health|command)|^starting$/.test(detail)
-          ? 'H3 服务尚未就绪，请稍后重新选择模型重试。'
+        const notReady = NOT_READY_ERROR_PATTERN.test(detail)
+        const retryScheduled = notReady && scheduleNotReadyRetry({ mode, steps, electronAPI: context.electronAPI }, version)
+        const displayError = notReady
+          ? (retryScheduled ? NOT_READY_RETRY_MESSAGE : NOT_READY_ERROR_MESSAGE)
           : detail.replace(/\s+/g, ' ').slice(0, 160)
         state = {
           ...state,
