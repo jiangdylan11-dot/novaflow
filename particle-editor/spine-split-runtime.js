@@ -35538,7 +35538,8 @@
     protectSplitEditorControls()
     if (!overlay) {
       uiTraceCurrent('SpineSplitWorkspaceOverlay', { phase: 'create-overlay' })
-      overlay = h('div', { id: WORKSPACE_OVERLAY_ID, style: { position: 'fixed', zIndex: '2147482600', pointerEvents: 'auto', boxSizing: 'border-box' } })
+      // Keep the underlying preview's window-level pan handler out of this canvas.
+      overlay = h('div', { id: WORKSPACE_OVERLAY_ID, 'data-preview-ui': '1', style: { position: 'fixed', zIndex: '2147482600', pointerEvents: 'auto', boxSizing: 'border-box' } })
       document.body.appendChild(overlay)
     }
     Object.assign(overlay.style, {
