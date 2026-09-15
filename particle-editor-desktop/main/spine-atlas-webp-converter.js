@@ -143,20 +143,34 @@ function atlasPages(lines) {
     // Legacy atlases may omit this flag even when the PNG is premultiplied.
     let pma = null;
     let pmaIndex = -1;
+    const headerKeys = new Set();
     while (end < lines.length && lines[end].body.includes(":")) {
       const match = lines[end].body.match(/^\s*pma\s*:\s*(true|false)\s*$/i);
       if (match) { pma = match[1].toLowerCase() === "true"; pmaIndex = end; }
+      headerKeys.add(lines[end].body.split(":")[0].trim().toLowerCase());
       end += 1;
     }
-    pages.push({ index: i, end, pma, pmaIndex, name: lines[i].body.trim() });
+    pages.push({ index: i, end, pma, pmaIndex, name: lines[i].body.trim(), legacy: isLegacyAtlasPage(lines, end, headerKeys) });
   }
   return pages;
+}
+
+// Spine 3.x (libgdx) atlases are parsed positionally: name, size, format, filter, repeat, then
+// regions. Any extra header line such as "pma: true" is read as a region name and breaks the page.
+function isLegacyAtlasPage(lines, regionStart, headerKeys) {
+  for (let i = regionStart; i < lines.length && !isAtlasPageHeader(lines, i); i += 1) {
+    const key = lines[i].body.split(":")[0].trim().toLowerCase();
+    if (key === "bounds" || key === "offsets") return false;
+    if (key === "xy" || key === "orig") return true;
+  }
+  return headerKeys.has("format") && headerKeys.has("repeat");
 }
 
 function rewriteAtlasPngPagesToOutput(atlasText, pngNameToOutputName, outputPma = new Map()) {
   const lines = splitAtlasLines(atlasText);
   const replacements = [];
   const referencedPngNames = new Set();
+  const legacyPmaPages = [];
   // Page boundaries, not property indentation, distinguish modern atlas regions.
   for (const page of atlasPages(lines).reverse()) {
     const line = lines[page.index];
@@ -171,6 +185,8 @@ function rewriteAtlasPngPagesToOutput(atlasText, pngNameToOutputName, outputPma 
       const pma = outputPma.get(normalizeName(original));
       if (page.pmaIndex >= 0) {
         lines[page.pmaIndex].body = lines[page.pmaIndex].body.replace(/(true|false)/i, String(pma));
+      } else if (pma && page.legacy) {
+        legacyPmaPages.push(nextName);
       } else if (pma) {
         const newline = line.newline || "\n";
         if (!lines[page.end - 1].newline) lines[page.end - 1].newline = newline;
@@ -179,7 +195,7 @@ function rewriteAtlasPngPagesToOutput(atlasText, pngNameToOutputName, outputPma 
     }
   }
   const output = lines.map((line) => `${line.body}${line.newline}`).join("");
-  return { text: output, replacements, referencedPngNames: Array.from(referencedPngNames) };
+  return { text: output, replacements, referencedPngNames: Array.from(referencedPngNames), legacyPmaPages };
 }
 
 async function encodeExactWebp(input, sharp) {
@@ -271,6 +287,9 @@ async function convertSpineAtlasWebp(payload, { fs, sharp, encodePma = encodePma
     for (const replacement of atlas.replacements) matchedSourceNames.add(normalizeName(replacement.oldName));
     for (const ref of atlas.referencedPngNames) {
       if (!pngNameToOutputName.has(ref)) warnings.push(`${inputAtlas.fileName} 引用的 PNG 未上传：${ref}`);
+    }
+    for (const pageName of atlas.legacyPmaPages) {
+      warnings.push(`${inputAtlas.fileName}：${pageName} 为 Spine 3.x 格式，未写入 pma 标记（3.x 运行时会将其误读为区域名）`);
     }
     convertedAtlases.push({
       fileName: inputAtlas.fileName,

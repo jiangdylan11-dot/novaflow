@@ -519,3 +519,21 @@ test("fails closed when atlas does not match uploaded PNG files", async () => {
     /atlas 未匹配到已上传的 PNG 图集/
   );
 });
+
+test("never injects a pma line into Spine 3.x positional atlases", async () => {
+  const png = await makePng();
+  const atlasText = "\nbg.png\nsize: 2048,2048\nformat: RGBA8888\nfilter: Linear,Linear\nrepeat: none\nleaf\n  rotate: false\n  xy: 2, 2\n  size: 100, 100\n  orig: 100, 100\n  offset: 0, 0\n  index: -1\n";
+  const result = await convertSpineAtlasWebp(
+    { atlasText, atlasName: "bg.atlas", images: [{ fileName: "bg.png", bytes: png, alphaMode: "pma" }] },
+    { fs: memoryFs, sharp }
+  );
+  assert.equal(result.atlas.text, atlasText.replace("bg.png", "bg.webp"));
+  assert.equal(result.images[0].pma, true);
+  assert.ok(result.warnings.some((warning) => /Spine 3\.x/.test(warning)));
+
+  const modern = await convertSpineAtlasWebp(
+    { atlasText: "bg.png\nsize: 2048,2048\nfilter: Linear,Linear\nleaf\nbounds: 2,2,100,100\n", images: [{ fileName: "bg.png", bytes: png, alphaMode: "pma" }] },
+    { fs: memoryFs, sharp }
+  );
+  assert.equal(modern.atlas.text, "bg.webp\nsize: 2048,2048\nfilter: Linear,Linear\npma: true\nleaf\nbounds: 2,2,100,100\n");
+});
