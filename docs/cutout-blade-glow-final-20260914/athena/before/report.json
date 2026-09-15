@@ -1,0 +1,1788 @@
+{
+  "baselineSha256": "2b35ef174370b3ffc9b991b22e0a05e12d53924f6522e9ce04930ffc0e0e75a7",
+  "sameInputsAsLiveExport": true,
+  "candidateReplayChecks": [
+    {
+      "frame": 0,
+      "changedBytes": 0,
+      "maximum": 0
+    },
+    {
+      "frame": 18,
+      "changedBytes": 0,
+      "maximum": 0
+    },
+    {
+      "frame": 36,
+      "changedBytes": 0,
+      "maximum": 0
+    },
+    {
+      "frame": 54,
+      "changedBytes": 0,
+      "maximum": 0
+    },
+    {
+      "frame": 116,
+      "changedBytes": 0,
+      "maximum": 0
+    }
+  ],
+  "stats": [
+    {
+      "frame": 0,
+      "material": {
+        "fabricPixels": 24027,
+        "shadowPixels": 74044,
+        "edgePixels": 62572,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4549019607843137
+        ],
+        "lightColorCount": 5,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 1,
+      "material": {
+        "fabricPixels": 23533,
+        "shadowPixels": 75056,
+        "edgePixels": 64198,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.47843137254901963
+        ],
+        "lightColorCount": 4,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 2,
+      "material": {
+        "fabricPixels": 24146,
+        "shadowPixels": 74286,
+        "edgePixels": 61771,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.4745098039215686
+        ],
+        "lightColorCount": 3,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 3,
+      "material": {
+        "fabricPixels": 24228,
+        "shadowPixels": 72906,
+        "edgePixels": 60842,
+        "shadowCast": [
+          0.03529411764705882,
+          0,
+          0.4627450980392157
+        ],
+        "lightColorCount": 3,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 4,
+      "material": {
+        "fabricPixels": 24302,
+        "shadowPixels": 72868,
+        "edgePixels": 60675,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.4745098039215686
+        ],
+        "lightColorCount": 3,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 5,
+      "material": {
+        "fabricPixels": 24448,
+        "shadowPixels": 73360,
+        "edgePixels": 60839,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.47058823529411764
+        ],
+        "lightColorCount": 2,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 6,
+      "material": {
+        "fabricPixels": 23050,
+        "shadowPixels": 72777,
+        "edgePixels": 61317,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.4666666666666667
+        ],
+        "lightColorCount": 2,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 7,
+      "material": {
+        "fabricPixels": 22053,
+        "shadowPixels": 71718,
+        "edgePixels": 60643,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.4823529411764706
+        ],
+        "lightColorCount": 2,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 8,
+      "material": {
+        "fabricPixels": 23318,
+        "shadowPixels": 71554,
+        "edgePixels": 59150,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.48627450980392156
+        ],
+        "lightColorCount": 2,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 9,
+      "material": {
+        "fabricPixels": 25945,
+        "shadowPixels": 72466,
+        "edgePixels": 59568,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.4745098039215686
+        ],
+        "lightColorCount": 6,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 10,
+      "material": {
+        "fabricPixels": 24254,
+        "shadowPixels": 70817,
+        "edgePixels": 60051,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.4745098039215686
+        ],
+        "lightColorCount": 3,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 11,
+      "material": {
+        "fabricPixels": 24443,
+        "shadowPixels": 71595,
+        "edgePixels": 59026,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.4627450980392157
+        ],
+        "lightColorCount": 12,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 12,
+      "material": {
+        "fabricPixels": 22136,
+        "shadowPixels": 70008,
+        "edgePixels": 63218,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.4666666666666667
+        ],
+        "lightColorCount": 2,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 13,
+      "material": {
+        "fabricPixels": 23830,
+        "shadowPixels": 69851,
+        "edgePixels": 58233,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.4666666666666667
+        ],
+        "lightColorCount": 2,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 14,
+      "material": {
+        "fabricPixels": 24271,
+        "shadowPixels": 71011,
+        "edgePixels": 53126,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.4549019607843137
+        ],
+        "lightColorCount": 9,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 15,
+      "material": {
+        "fabricPixels": 24832,
+        "shadowPixels": 70726,
+        "edgePixels": 54589,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.45098039215686275
+        ],
+        "lightColorCount": 4,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 16,
+      "material": {
+        "fabricPixels": 24638,
+        "shadowPixels": 71184,
+        "edgePixels": 52189,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.4666666666666667
+        ],
+        "lightColorCount": 4,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 17,
+      "material": {
+        "fabricPixels": 23021,
+        "shadowPixels": 71736,
+        "edgePixels": 55538,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.4745098039215686
+        ],
+        "lightColorCount": 7,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 18,
+      "material": {
+        "fabricPixels": 25446,
+        "shadowPixels": 70863,
+        "edgePixels": 50256,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.47058823529411764
+        ],
+        "lightColorCount": 4,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 19,
+      "material": {
+        "fabricPixels": 25480,
+        "shadowPixels": 69367,
+        "edgePixels": 50618,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.49411764705882355
+        ],
+        "lightColorCount": 2,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 20,
+      "material": {
+        "fabricPixels": 27480,
+        "shadowPixels": 69488,
+        "edgePixels": 48795,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.48627450980392156
+        ],
+        "lightColorCount": 6,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 21,
+      "material": {
+        "fabricPixels": 24897,
+        "shadowPixels": 68751,
+        "edgePixels": 49774,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.47843137254901963
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 22,
+      "material": {
+        "fabricPixels": 24625,
+        "shadowPixels": 69110,
+        "edgePixels": 49710,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.4823529411764706
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 23,
+      "material": {
+        "fabricPixels": 27253,
+        "shadowPixels": 70264,
+        "edgePixels": 49352,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.4823529411764706
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 24,
+      "material": {
+        "fabricPixels": 29017,
+        "shadowPixels": 72380,
+        "edgePixels": 47879,
+        "shadowCast": [
+          0.03529411764705882,
+          0,
+          0.47843137254901963
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 25,
+      "material": {
+        "fabricPixels": 28501,
+        "shadowPixels": 72196,
+        "edgePixels": 48437,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.47058823529411764
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 26,
+      "material": {
+        "fabricPixels": 27730,
+        "shadowPixels": 72165,
+        "edgePixels": 49303,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.4745098039215686
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 27,
+      "material": {
+        "fabricPixels": 27998,
+        "shadowPixels": 71460,
+        "edgePixels": 48860,
+        "shadowCast": [
+          0.03529411764705882,
+          0,
+          0.4666666666666667
+        ],
+        "lightColorCount": 2,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 28,
+      "material": {
+        "fabricPixels": 27839,
+        "shadowPixels": 72302,
+        "edgePixels": 49555,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.4666666666666667
+        ],
+        "lightColorCount": 1,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 29,
+      "material": {
+        "fabricPixels": 28441,
+        "shadowPixels": 73098,
+        "edgePixels": 47933,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.47058823529411764
+        ],
+        "lightColorCount": 1,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 30,
+      "material": {
+        "fabricPixels": 27618,
+        "shadowPixels": 72070,
+        "edgePixels": 47927,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4588235294117647
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 31,
+      "material": {
+        "fabricPixels": 26339,
+        "shadowPixels": 72470,
+        "edgePixels": 48012,
+        "shadowCast": [
+          0.03529411764705882,
+          0,
+          0.4588235294117647
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 32,
+      "material": {
+        "fabricPixels": 26097,
+        "shadowPixels": 72252,
+        "edgePixels": 48686,
+        "shadowCast": [
+          0.03529411764705882,
+          0,
+          0.45098039215686275
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 33,
+      "material": {
+        "fabricPixels": 26036,
+        "shadowPixels": 72871,
+        "edgePixels": 48905,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.45098039215686275
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 34,
+      "material": {
+        "fabricPixels": 25399,
+        "shadowPixels": 73950,
+        "edgePixels": 49172,
+        "shadowCast": [
+          0.03529411764705882,
+          0,
+          0.4470588235294118
+        ],
+        "lightColorCount": 1,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 35,
+      "material": {
+        "fabricPixels": 24097,
+        "shadowPixels": 74028,
+        "edgePixels": 50961,
+        "shadowCast": [
+          0.03529411764705882,
+          0,
+          0.4588235294117647
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 36,
+      "material": {
+        "fabricPixels": 24042,
+        "shadowPixels": 75172,
+        "edgePixels": 51265,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4470588235294118
+        ],
+        "lightColorCount": 1,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 37,
+      "material": {
+        "fabricPixels": 25949,
+        "shadowPixels": 75437,
+        "edgePixels": 53297,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.48627450980392156
+        ],
+        "lightColorCount": 10,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 38,
+      "material": {
+        "fabricPixels": 27762,
+        "shadowPixels": 75629,
+        "edgePixels": 53403,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.48627450980392156
+        ],
+        "lightColorCount": 7,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 39,
+      "material": {
+        "fabricPixels": 32416,
+        "shadowPixels": 76228,
+        "edgePixels": 49621,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.4823529411764706
+        ],
+        "lightColorCount": 9,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 40,
+      "material": {
+        "fabricPixels": 34724,
+        "shadowPixels": 75863,
+        "edgePixels": 48840,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.48627450980392156
+        ],
+        "lightColorCount": 12,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 41,
+      "material": {
+        "fabricPixels": 25769,
+        "shadowPixels": 77005,
+        "edgePixels": 56236,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.4666666666666667
+        ],
+        "lightColorCount": 9,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 42,
+      "material": {
+        "fabricPixels": 29626,
+        "shadowPixels": 77291,
+        "edgePixels": 46284,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.4666666666666667
+        ],
+        "lightColorCount": 9,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 43,
+      "material": {
+        "fabricPixels": 44395,
+        "shadowPixels": 76606,
+        "edgePixels": 44244,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.47058823529411764
+        ],
+        "lightColorCount": 11,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 44,
+      "material": {
+        "fabricPixels": 53872,
+        "shadowPixels": 76860,
+        "edgePixels": 46324,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.47058823529411764
+        ],
+        "lightColorCount": 10,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 45,
+      "material": {
+        "fabricPixels": 62198,
+        "shadowPixels": 77650,
+        "edgePixels": 44567,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.4627450980392157
+        ],
+        "lightColorCount": 9,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 46,
+      "material": {
+        "fabricPixels": 66575,
+        "shadowPixels": 77972,
+        "edgePixels": 48001,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.4588235294117647
+        ],
+        "lightColorCount": 7,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 47,
+      "material": {
+        "fabricPixels": 51525,
+        "shadowPixels": 78675,
+        "edgePixels": 45591,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.4627450980392157
+        ],
+        "lightColorCount": 9,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 48,
+      "material": {
+        "fabricPixels": 65303,
+        "shadowPixels": 77817,
+        "edgePixels": 43200,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.4235294117647059
+        ],
+        "lightColorCount": 7,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 49,
+      "material": {
+        "fabricPixels": 52558,
+        "shadowPixels": 68625,
+        "edgePixels": 41843,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.44313725490196076
+        ],
+        "lightColorCount": 7,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 50,
+      "material": {
+        "fabricPixels": 31616,
+        "shadowPixels": 37333,
+        "edgePixels": 37224,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.41568627450980394
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 51,
+      "material": {
+        "fabricPixels": 31320,
+        "shadowPixels": 37166,
+        "edgePixels": 37865,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.43137254901960786
+        ],
+        "lightColorCount": 9,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 52,
+      "material": {
+        "fabricPixels": 23205,
+        "shadowPixels": 35383,
+        "edgePixels": 38824,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.4392156862745098
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 53,
+      "material": {
+        "fabricPixels": 21376,
+        "shadowPixels": 34352,
+        "edgePixels": 38857,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.43529411764705883
+        ],
+        "lightColorCount": 7,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 54,
+      "material": {
+        "fabricPixels": 21364,
+        "shadowPixels": 40384,
+        "edgePixels": 39098,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.43137254901960786
+        ],
+        "lightColorCount": 11,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 55,
+      "material": {
+        "fabricPixels": 21137,
+        "shadowPixels": 41332,
+        "edgePixels": 40258,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.44313725490196076
+        ],
+        "lightColorCount": 11,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 56,
+      "material": {
+        "fabricPixels": 22006,
+        "shadowPixels": 44863,
+        "edgePixels": 38343,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.4470588235294118
+        ],
+        "lightColorCount": 12,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 57,
+      "material": {
+        "fabricPixels": 25423,
+        "shadowPixels": 41838,
+        "edgePixels": 35848,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.4392156862745098
+        ],
+        "lightColorCount": 10,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 58,
+      "material": {
+        "fabricPixels": 35696,
+        "shadowPixels": 39571,
+        "edgePixels": 33377,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.4392156862745098
+        ],
+        "lightColorCount": 9,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 59,
+      "material": {
+        "fabricPixels": 25319,
+        "shadowPixels": 38296,
+        "edgePixels": 36295,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.42745098039215684
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 60,
+      "material": {
+        "fabricPixels": 41917,
+        "shadowPixels": 37460,
+        "edgePixels": 31515,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.43137254901960786
+        ],
+        "lightColorCount": 9,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 61,
+      "material": {
+        "fabricPixels": 29744,
+        "shadowPixels": 40435,
+        "edgePixels": 36535,
+        "shadowCast": [
+          0.050980392156862744,
+          0,
+          0.4117647058823529
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 62,
+      "material": {
+        "fabricPixels": 36144,
+        "shadowPixels": 44158,
+        "edgePixels": 38550,
+        "shadowCast": [
+          0.050980392156862744,
+          0,
+          0.41568627450980394
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 63,
+      "material": {
+        "fabricPixels": 35260,
+        "shadowPixels": 41270,
+        "edgePixels": 39565,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.3764705882352941
+        ],
+        "lightColorCount": 6,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 64,
+      "material": {
+        "fabricPixels": 23773,
+        "shadowPixels": 49649,
+        "edgePixels": 38417,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.37254901960784315
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 65,
+      "material": {
+        "fabricPixels": 21614,
+        "shadowPixels": 57030,
+        "edgePixels": 43515,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.3843137254901961
+        ],
+        "lightColorCount": 11,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 66,
+      "material": {
+        "fabricPixels": 21195,
+        "shadowPixels": 67789,
+        "edgePixels": 45454,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.39215686274509803
+        ],
+        "lightColorCount": 13,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 67,
+      "material": {
+        "fabricPixels": 32968,
+        "shadowPixels": 71509,
+        "edgePixels": 46379,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.39215686274509803
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 68,
+      "material": {
+        "fabricPixels": 21350,
+        "shadowPixels": 72730,
+        "edgePixels": 44906,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.39215686274509803
+        ],
+        "lightColorCount": 10,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 69,
+      "material": {
+        "fabricPixels": 29692,
+        "shadowPixels": 73165,
+        "edgePixels": 48213,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.4
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 70,
+      "material": {
+        "fabricPixels": 25152,
+        "shadowPixels": 74055,
+        "edgePixels": 46248,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.3843137254901961
+        ],
+        "lightColorCount": 7,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 71,
+      "material": {
+        "fabricPixels": 28759,
+        "shadowPixels": 73965,
+        "edgePixels": 49205,
+        "shadowCast": [
+          0.047058823529411764,
+          0,
+          0.3843137254901961
+        ],
+        "lightColorCount": 7,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 72,
+      "material": {
+        "fabricPixels": 22608,
+        "shadowPixels": 73538,
+        "edgePixels": 46734,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.3764705882352941
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 73,
+      "material": {
+        "fabricPixels": 31041,
+        "shadowPixels": 73821,
+        "edgePixels": 50144,
+        "shadowCast": [
+          0.043137254901960784,
+          0,
+          0.3843137254901961
+        ],
+        "lightColorCount": 7,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 74,
+      "material": {
+        "fabricPixels": 30005,
+        "shadowPixels": 73813,
+        "edgePixels": 47927,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.3764705882352941
+        ],
+        "lightColorCount": 7,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 75,
+      "material": {
+        "fabricPixels": 30781,
+        "shadowPixels": 74034,
+        "edgePixels": 49553,
+        "shadowCast": [
+          0.03529411764705882,
+          0,
+          0.37254901960784315
+        ],
+        "lightColorCount": 7,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 76,
+      "material": {
+        "fabricPixels": 27078,
+        "shadowPixels": 73656,
+        "edgePixels": 49609,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.3843137254901961
+        ],
+        "lightColorCount": 9,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 77,
+      "material": {
+        "fabricPixels": 27858,
+        "shadowPixels": 74084,
+        "edgePixels": 51240,
+        "shadowCast": [
+          0.03529411764705882,
+          0,
+          0.37254901960784315
+        ],
+        "lightColorCount": 7,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 78,
+      "material": {
+        "fabricPixels": 26415,
+        "shadowPixels": 73013,
+        "edgePixels": 52357,
+        "shadowCast": [
+          0.03529411764705882,
+          0,
+          0.37254901960784315
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 79,
+      "material": {
+        "fabricPixels": 28092,
+        "shadowPixels": 73289,
+        "edgePixels": 49953,
+        "shadowCast": [
+          0.03529411764705882,
+          0,
+          0.38823529411764707
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 80,
+      "material": {
+        "fabricPixels": 25671,
+        "shadowPixels": 72274,
+        "edgePixels": 51119,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.3803921568627451
+        ],
+        "lightColorCount": 6,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 81,
+      "material": {
+        "fabricPixels": 25494,
+        "shadowPixels": 71830,
+        "edgePixels": 50388,
+        "shadowCast": [
+          0.027450980392156862,
+          0,
+          0.39215686274509803
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 82,
+      "material": {
+        "fabricPixels": 28141,
+        "shadowPixels": 73159,
+        "edgePixels": 47741,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.39215686274509803
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 83,
+      "material": {
+        "fabricPixels": 26746,
+        "shadowPixels": 71075,
+        "edgePixels": 44515,
+        "shadowCast": [
+          0.0196078431372549,
+          0,
+          0.38823529411764707
+        ],
+        "lightColorCount": 12,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 84,
+      "material": {
+        "fabricPixels": 24242,
+        "shadowPixels": 72644,
+        "edgePixels": 46167,
+        "shadowCast": [
+          0.027450980392156862,
+          0,
+          0.4
+        ],
+        "lightColorCount": 8,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 85,
+      "material": {
+        "fabricPixels": 26006,
+        "shadowPixels": 71351,
+        "edgePixels": 43227,
+        "shadowCast": [
+          0.023529411764705882,
+          0,
+          0.403921568627451
+        ],
+        "lightColorCount": 10,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 86,
+      "material": {
+        "fabricPixels": 23424,
+        "shadowPixels": 71324,
+        "edgePixels": 47581,
+        "shadowCast": [
+          0.023529411764705882,
+          0,
+          0.4
+        ],
+        "lightColorCount": 6,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 87,
+      "material": {
+        "fabricPixels": 27252,
+        "shadowPixels": 72682,
+        "edgePixels": 46048,
+        "shadowCast": [
+          0.027450980392156862,
+          0,
+          0.40784313725490196
+        ],
+        "lightColorCount": 10,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 88,
+      "material": {
+        "fabricPixels": 24193,
+        "shadowPixels": 73513,
+        "edgePixels": 50573,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4117647058823529
+        ],
+        "lightColorCount": 4,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 89,
+      "material": {
+        "fabricPixels": 28179,
+        "shadowPixels": 71986,
+        "edgePixels": 49516,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.41568627450980394
+        ],
+        "lightColorCount": 17,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 90,
+      "material": {
+        "fabricPixels": 30118,
+        "shadowPixels": 73055,
+        "edgePixels": 54075,
+        "shadowCast": [
+          0.027450980392156862,
+          0,
+          0.40784313725490196
+        ],
+        "lightColorCount": 2,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 91,
+      "material": {
+        "fabricPixels": 30478,
+        "shadowPixels": 72932,
+        "edgePixels": 54314,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4117647058823529
+        ],
+        "lightColorCount": 17,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 92,
+      "material": {
+        "fabricPixels": 27761,
+        "shadowPixels": 73330,
+        "edgePixels": 50343,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.403921568627451
+        ],
+        "lightColorCount": 15,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 93,
+      "material": {
+        "fabricPixels": 28481,
+        "shadowPixels": 72788,
+        "edgePixels": 49137,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.40784313725490196
+        ],
+        "lightColorCount": 18,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 94,
+      "material": {
+        "fabricPixels": 28429,
+        "shadowPixels": 72924,
+        "edgePixels": 52782,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.403921568627451
+        ],
+        "lightColorCount": 9,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 95,
+      "material": {
+        "fabricPixels": 29863,
+        "shadowPixels": 73297,
+        "edgePixels": 49997,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4
+        ],
+        "lightColorCount": 19,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 96,
+      "material": {
+        "fabricPixels": 25326,
+        "shadowPixels": 73513,
+        "edgePixels": 51351,
+        "shadowCast": [
+          0.027450980392156862,
+          0,
+          0.39215686274509803
+        ],
+        "lightColorCount": 11,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 97,
+      "material": {
+        "fabricPixels": 25036,
+        "shadowPixels": 73408,
+        "edgePixels": 50094,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.396078431372549
+        ],
+        "lightColorCount": 13,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 98,
+      "material": {
+        "fabricPixels": 22308,
+        "shadowPixels": 73737,
+        "edgePixels": 55022,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4
+        ],
+        "lightColorCount": 5,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 99,
+      "material": {
+        "fabricPixels": 26993,
+        "shadowPixels": 73525,
+        "edgePixels": 46923,
+        "shadowCast": [
+          0.027450980392156862,
+          0,
+          0.403921568627451
+        ],
+        "lightColorCount": 7,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 100,
+      "material": {
+        "fabricPixels": 26872,
+        "shadowPixels": 73940,
+        "edgePixels": 47405,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.40784313725490196
+        ],
+        "lightColorCount": 14,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 101,
+      "material": {
+        "fabricPixels": 28910,
+        "shadowPixels": 73835,
+        "edgePixels": 43695,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4117647058823529
+        ],
+        "lightColorCount": 5,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 102,
+      "material": {
+        "fabricPixels": 27408,
+        "shadowPixels": 73107,
+        "edgePixels": 46785,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.40784313725490196
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 103,
+      "material": {
+        "fabricPixels": 25320,
+        "shadowPixels": 72791,
+        "edgePixels": 49160,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.41568627450980394
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 104,
+      "material": {
+        "fabricPixels": 23952,
+        "shadowPixels": 72050,
+        "edgePixels": 53332,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4196078431372549
+        ],
+        "lightColorCount": 1,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 105,
+      "material": {
+        "fabricPixels": 27182,
+        "shadowPixels": 72725,
+        "edgePixels": 49836,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4117647058823529
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 106,
+      "material": {
+        "fabricPixels": 26229,
+        "shadowPixels": 71825,
+        "edgePixels": 53136,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4196078431372549
+        ],
+        "lightColorCount": 1,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 107,
+      "material": {
+        "fabricPixels": 26485,
+        "shadowPixels": 71916,
+        "edgePixels": 53241,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.41568627450980394
+        ],
+        "lightColorCount": 1,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 108,
+      "material": {
+        "fabricPixels": 26438,
+        "shadowPixels": 72881,
+        "edgePixels": 54358,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.41568627450980394
+        ],
+        "lightColorCount": 1,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 109,
+      "material": {
+        "fabricPixels": 26212,
+        "shadowPixels": 72858,
+        "edgePixels": 54331,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4235294117647059
+        ],
+        "lightColorCount": 1,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 110,
+      "material": {
+        "fabricPixels": 24446,
+        "shadowPixels": 72761,
+        "edgePixels": 55167,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4196078431372549
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 111,
+      "material": {
+        "fabricPixels": 24506,
+        "shadowPixels": 72707,
+        "edgePixels": 55088,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.43137254901960786
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 112,
+      "material": {
+        "fabricPixels": 23276,
+        "shadowPixels": 73089,
+        "edgePixels": 57591,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4392156862745098
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 113,
+      "material": {
+        "fabricPixels": 24404,
+        "shadowPixels": 73145,
+        "edgePixels": 55710,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4392156862745098
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 114,
+      "material": {
+        "fabricPixels": 24112,
+        "shadowPixels": 73327,
+        "edgePixels": 56614,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.44313725490196076
+        ],
+        "lightColorCount": 0,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 115,
+      "material": {
+        "fabricPixels": 24493,
+        "shadowPixels": 74081,
+        "edgePixels": 59920,
+        "shadowCast": [
+          0.03137254901960784,
+          0,
+          0.4549019607843137
+        ],
+        "lightColorCount": 2,
+        "referenceFrame": 14
+      }
+    },
+    {
+      "frame": 116,
+      "material": {
+        "fabricPixels": 24190,
+        "shadowPixels": 79483,
+        "edgePixels": 70355,
+        "shadowCast": [
+          0.0392156862745098,
+          0,
+          0.49019607843137253
+        ],
+        "lightColorCount": 4,
+        "referenceFrame": 14
+      }
+    }
+  ]
+}

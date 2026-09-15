@@ -1,0 +1,86 @@
+{
+  "created_at": 1789322491,
+  "completed_at": 1789322504,
+  "id": "e3b33cc5-1891-9c8e-90eb-cb15451e2933",
+  "max_output_tokens": 3072,
+  "model": "grok-4.3",
+  "object": "response",
+  "output": [
+    {
+      "id": "rs_e3b33cc5-1891-9c8e-90eb-cb15451e2933",
+      "summary": [
+        {
+          "text": "The task is to output in a specific TOML style but actually just the five sections in Chinese, no JSON or anything else. The output must be strictly:\n",
+          "type": "summary_text"
+        }
+      ],
+      "type": "reasoning",
+      "status": "completed"
+    },
+    {
+      "content": [
+        {
+          "type": "output_text",
+          "text": "[风格设定]\n赛博朋克数字渲染风格，锐利清晰轮廓，流线型紧身造型，表面光泽金属面板与防水织物纹理结合。\n[主体物品]\n短银白色头发女性戴发光蓝色透明护目镜。身穿黑色战术夹克，带有蓝色发光条纹、多个口袋与拉链。背负黑色背包，腰部系安全带。手持黑色带屏幕的便携箱式设备，设备表面有青色光边与按键。女性站立姿态，身体正面朝向镜头，夹克与设备为黑色与青色材质。\n[环境背景]\n雨夜城市街道，背景有高楼与霓虹灯招牌，地面湿润积水反射灯光，主体位于街道中央前景位置。\n[光线与色彩]\n多方向霓虹光源照射，蓝色与粉色为主色调，雨水反射光线形成光斑，主体夹克与护目镜受青色光照亮。\n[拍摄参数]\n中景正面视角，中心构图，广角镜头透视，浅景深聚焦主体。",
+          "logprobs": [],
+          "annotations": []
+        }
+      ],
+      "id": "msg_e3b33cc5-1891-9c8e-90eb-cb15451e2933",
+      "role": "assistant",
+      "type": "message",
+      "status": "completed"
+    }
+  ],
+  "parallel_tool_calls": true,
+  "previous_response_id": null,
+  "reasoning": {
+    "effort": "low",
+    "summary": "detailed"
+  },
+  "temperature": 0.2,
+  "text": {
+    "format": {
+      "type": "text"
+    }
+  },
+  "tool_choice": "auto",
+  "tools": [],
+  "top_p": 0.95,
+  "usage": {
+    "input_tokens": 1732,
+    "input_tokens_details": {
+      "cached_tokens": 1728
+    },
+    "output_tokens": 981,
+    "output_tokens_details": {
+      "reasoning_tokens": 741
+    },
+    "total_tokens": 2713,
+    "num_sources_used": 0,
+    "num_server_side_tools_used": 0,
+    "cost_in_usd_ticks": 28031000,
+    "context_details": {
+      "input_tokens": 1732,
+      "output_tokens": 981
+    }
+  },
+  "user": null,
+  "incomplete_details": null,
+  "status": "completed",
+  "store": false,
+  "metadata": {
+    "system_fingerprint": "fp_eb3c003fc66c14ed"
+  },
+  "background": false,
+  "service_tier": "default",
+  "truncation": "disabled",
+  "top_logprobs": 0,
+  "presence_penalty": 0,
+  "frequency_penalty": 0,
+  "prompt_cache_key": null,
+  "max_tool_calls": null,
+  "safety_identifier": null,
+  "error": null,
+  "instructions": null
+}

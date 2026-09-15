@@ -3149,6 +3149,16 @@ def _validate_v2_semantics(
     signals = set(content_safety["signals"])
     sensitive_facts = content_safety["sensitive_visible_facts"]
     projection_redaction_required = False
+    # A visible person whose age the model left "not applicable" is completed
+    # fail-closed (mirrors the Edge/desktop validator): the age becomes
+    # unverifiable and, outside safe frames, is flagged as ambiguous. This only
+    # tightens downstream gating instead of discarding the whole analysis.
+    if person_count > 0 and age_assessment == "not_applicable":
+        age_assessment = "age_unverifiable"
+        content_safety["age_assessment"] = age_assessment
+        if level != "safe" and "age_ambiguous" not in signals:
+            signals.add("age_ambiguous")
+            content_safety["signals"] = list(content_safety["signals"]) + ["age_ambiguous"]
 
     if level == "safe":
         if body_exposure != "none" or interaction_category != "none":
@@ -3274,8 +3284,6 @@ def _validate_v2_semantics(
             for text in _scan_text_values(zero_person_fields)
         ):
             _semantic_error("zero visible_person_count conflicts with visible person semantics")
-    if person_count > 0 and age_assessment == "not_applicable":
-        _semantic_error("positive visible_person_count requires an applicable age_assessment")
     if level == "nudity" and body_exposure == "none":
         _semantic_error("nudity level cannot use body_exposure=none")
     if (

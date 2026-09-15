@@ -1,0 +1,118 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "wash_validation_redraw-default.png"
+    }
+  },
+  "2": {
+    "class_type": "ImageScale",
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "width": 1008,
+      "height": 1008,
+      "crop": "disabled"
+    }
+  },
+  "3": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "Qwen-Rapid-AIO-NSFW-v20.safetensors"
+    }
+  },
+  "4": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "2",
+        0
+      ],
+      "vae": [
+        "3",
+        2
+      ]
+    }
+  },
+  "5": {
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "inputs": {
+      "clip": [
+        "3",
+        1
+      ],
+      "prompt": "以图1为内容参考，重新绘制这张作品。保留主体身份、主要服装设计、主体数量、年龄外观和大体构图，允许调整局部造型。保持原图的绘制风格，沿用图中实际呈现的笔触、线条与边缘处理方式。\n\n重新绘制整张作品，达到精致成稿的完成度，允许明显重绘。重新设计有方向的主光、柔和补光、环境反射和接触阴影，拉开明暗层次与空间纵深。重新刻画主体的结构、五官、头发、衣褶和各种材质，让皮肤、布料、金属等各有符合画风的质感；修正生硬、扁平和含糊的部分。背景也要重新绘制，与主体统一色彩和光照，营造更有感染力的氛围。不要仅仅锐化、增加细碎纹理或复刻原有明暗。\n\n如果是纯色底的独立素材，保持外轮廓和周围底色，在轮廓内部重绘；如果是完整场景，主体与背景一起改善。",
+      "image1": [
+        "2",
+        0
+      ]
+    }
+  },
+  "6": {
+    "class_type": "TextEncodeQwenImageEditPlus",
+    "inputs": {
+      "clip": [
+        "3",
+        1
+      ],
+      "prompt": "low quality, worst quality, blurry, overexposed, oversaturated, artifacts, jpeg artifacts, distorted anatomy, deformed hands, extra fingers, missing fingers, poor face, bad eyes, disfigured, watermark, text, logo, cluttered background, minor, child, underage, loli, shota, childlike face, childlike body",
+      "image1": [
+        "2",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "3",
+        0
+      ],
+      "seed": 9122026,
+      "steps": 16,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": [
+        "5",
+        0
+      ],
+      "negative": [
+        "6",
+        0
+      ],
+      "latent_image": [
+        "4",
+        0
+      ],
+      "denoise": 0.65
+    }
+  },
+  "8": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "7",
+        0
+      ],
+      "vae": [
+        "3",
+        2
+      ]
+    }
+  },
+  "9": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "8",
+        0
+      ],
+      "filename_prefix": "novaflow_image_wash_qwenNsfw_1789193961519_8f6434"
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "case": "wan-low",
+  "strength": 0.2,
+  "promptId": "ac270605-4373-4120-9ee8-881199a4e185",
+  "seed": 9122026,
+  "fixedDescription": "A polished anime illustration of a hiker with short dark bob hair, orange short-sleeved buttoned shirt, olive green shorts and a large green backpack, standing on a sunlit countryside road. Blue sky, soft clouds, distant hills, trees, grass and fences. Gentle warm light, soft painted shading and delicate material textures.",
+  "reverseInference": "not exercised; fixed identical description for comparison",
+  "status": "success",
+  "seconds": 42.832,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "ac270605-4373-4120-9ee8-881199a4e185",
+          "timestamp": 1789197363005
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [],
+          "prompt_id": "ac270605-4373-4120-9ee8-881199a4e185",
+          "timestamp": 1789197363013
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "ac270605-4373-4120-9ee8-881199a4e185",
+          "timestamp": 1789197403495
+        }
+      ]
+    ]
+  }
+}

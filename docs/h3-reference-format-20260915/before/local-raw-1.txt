@@ -1,0 +1,17 @@
+```json
+{
+  "references": [
+    {
+      "label": "<Subject 1>",
+      "sources": ["<Picture 1>"],
+      "description": "带有猫脸图案的金色硬币",
+      "keep": "保留硬币的外观、位置、运动和镜头"
+    }
+  ],
+  "tasks": ["video editing"],
+  "summary": "将<Video 1>中的旋转金币样式替换成<Picture 1>的样式，保持背景和金币运动轨迹。",
+  "description": "从<Video 1>的第0.000秒开始，将金币替换为<Picture 1>中的猫脸金币。保留金币的外观、位置、运动和镜头。背景和金币的运动轨迹保持不变。",
+  "soundscape": "N/A",
+  "music": "N/A"
+}
+```

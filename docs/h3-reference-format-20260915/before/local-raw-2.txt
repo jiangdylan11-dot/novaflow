@@ -1,0 +1,17 @@
+```json
+{
+  "references": [
+    {
+      "label": "<Subject 1>",
+      "sources": ["<Picture 1>"],
+      "description": "猫脸金币的外观参考图",
+      "keep": "实际保留和替换的属性：外观、位置、运动、镜头、背景、构图、起止相位"
+    }
+  ],
+  "tasks": ["reference generation", "video editing"],
+  "summary": "将<Video 1>中的旋转金币样式替换成<Picture 1>的猫脸金币样式，保持视频的背景和金币运动轨迹。",
+  "description": "从<Video 1>的第0.000秒开始，将金币样式替换为<Subject 1>的猫脸金币外观。金币保持在视频中心位置，运动轨迹和速度与原视频一致，背景和构图不变。金币的外观、位置、运动、镜头、背景、构图和起止相位均沿用原视频。",
+  "soundscape": "N/A",
+  "music": "N/A"
+}
+```

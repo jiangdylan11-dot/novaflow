@@ -1,0 +1,18 @@
+```json
+{
+  "references": [
+    {
+      "label": "<Subject 1>",
+      "sources": ["<Picture 1>"],
+      "description": "金币外观参考图",
+      "relation": "attribute_transfer",
+      "keep": "实际保留和替换的属性"
+    }
+  ],
+  "tasks": ["video editing", "reference generation"],
+  "summary": "将参考视频中的金币换成参考图1",
+  "description": "从<Video 1>的0.000秒开始，金币被替换为<Subject 1>的外观参考图。金币的外观、位置、运动和镜头沿用<Video 1>的原始状态。",
+  "soundscape": "N/A",
+  "music": "N/A"
+}
+```

@@ -1,0 +1,19 @@
+subject_definitions:
+<Subject 1> golden coin with cat face emblem, appearance from <Picture 1>
+<Video 1> source video of spinning coin on green screen
+
+summary: [video editing + reference generation] The target video is an edited version of <Video 1>. The original owl-faced coin is replaced throughout by <Subject 1> while preserving the exact spinning motion, trajectory, camera framing, green screen background and timing.
+
+retention_analysis:
+<Video 1>: partially_preserved - spinning motion, rotation trajectory, camera position and green screen background retained; original coin design replaced by <Subject 1>
+<Subject 1>: attribute_transfer - cat face emblem applied to the coin in <Video 1>
+
+detailed_description: Retain the reference appearance of the spinning coin.
+
+[Shot 1] The shot shows <Subject 1>.
+
+A golden coin with a cat face emblem spins and flips in the center of a green screen background, following the exact motion path from the source video, starting face-on, rotating to show edge at 1.500s, and returning to face-on by 3.000s.
+
+overall_soundscape: Silent with no diegetic sounds.
+
+non_diegetic_music: None.

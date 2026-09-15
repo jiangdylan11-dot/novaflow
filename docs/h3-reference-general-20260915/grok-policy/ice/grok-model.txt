@@ -1,0 +1,21 @@
+subject_definitions:
+<Subject 1> : money tree with coins and floating coin particles from <Video 1>, transformed to ice crystal theme.
+<Video 1> : captured video slot multi_ref_video_1.
+
+summary: [video editing] The target video is an edited version of <Video 1>. Change the golden coin tree and coin particle effects to ice crystal theme while preserving the growth and falling motion paths and rhythm. Original background remains unchanged.
+
+retention_analysis:
+<Subject 1>: partially_preserved - growth and falling trajectories, speed, timing and overall shape retained.
+<Video 1>: fully_preserved - camera framing, background and exact 3-second timing.
+
+detailed_description: Ice crystal visual style.
+
+[Shot 1] The shot shows <Subject 1>. The ice-crystal money tree grows from the pot with crystalline branches and faceted coin-shaped ice elements following the exact growth path and timing of <Video 1>.
+
+At 1.000 seconds a bright crystalline glow appears at the canopy.
+
+Ice particles float outward and fall with identical trajectories, speed and rhythm as the original golden coins, ending at 3.000 seconds with the fully formed ice tree against the unchanged solid blue background.
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A

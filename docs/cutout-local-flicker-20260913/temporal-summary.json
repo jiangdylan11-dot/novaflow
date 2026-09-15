@@ -1,0 +1,22 @@
+[
+  {
+    "alphaBefore": 0.007914441992489488,
+    "alphaAfter": 0.005798246110210467,
+    "visibleBefore": 0.004582475118393648,
+    "visibleAfter": 0.0037270750062342838,
+    "clip": "gloweyes",
+    "transitions": 120,
+    "residualGreenBefore": 28737.656219482422,
+    "residualGreenAfter": 28738.814666748047
+  },
+  {
+    "alphaBefore": 0.0057103690116024385,
+    "alphaAfter": 0.005288526205570821,
+    "visibleBefore": 0.0034819593669848567,
+    "visibleAfter": 0.0032549486956634332,
+    "clip": "athena",
+    "transitions": 116,
+    "residualGreenBefore": 30025.05750465393,
+    "residualGreenAfter": 29937.983045578003
+  }
+]

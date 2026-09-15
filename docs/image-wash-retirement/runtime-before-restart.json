@@ -1,0 +1,6 @@
+{
+  "ProcessId": 64544,
+  "ParentProcessId": 59992,
+  "ExecutablePath": "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\python\\python.exe",
+  "CommandLine": "\"C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\python\\python.exe\"  \"C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\ComfyUI\\main.py\" --listen 127.0.0.1 --port 8188 --base-directory \"E:/NovaFlow\" --extra-model-paths-config \"C:\\Users\\jiang\\AppData\\Local\\Temp\\NovaFlow\\AI-Runtime\\runtime-generated\\extra_model_paths.yaml\" --input-directory \"C:\\Users\\jiang\\AppData\\Local\\Temp\\NovaFlow\\AI-Runtime\\runtime-generated\\input\" --output-directory \"C:\\Users\\jiang\\AppData\\Local\\Temp\\NovaFlow\\AI-Runtime\\runtime-generated\\output\" --temp-directory \"C:\\Users\\jiang\\AppData\\Local\\Temp\\NovaFlow\\AI-Runtime\\runtime-generated\\temp-root\" --user-directory \"C:\\Users\\jiang\\AppData\\Local\\Temp\\NovaFlow\\AI-Runtime\\runtime-generated\\user\"  "
+}

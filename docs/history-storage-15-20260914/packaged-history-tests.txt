@@ -1,0 +1,11 @@
+✔ AI positive and negative history persist 15 combined entries through add, save, remove and remount (18.6343ms)
+✔ history default and legacy six-entry data grow to fifteen without padding missing records (2.9183ms)
+✔ both shipped history components cap rows and pick the full original text without changing storage (29.6591ms)
+ℹ tests 3
+ℹ suites 0
+ℹ pass 3
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1053.8571

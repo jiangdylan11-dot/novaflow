@@ -12,7 +12,7 @@
   const ITERATION_INTENT = 'iteration'
   const QUALITY_MODE = 'quality'
   const PERFORMANCE_MODE = 'performance'
-  const QWEN_EDIT_MODEL_NAME = 'qwen_image_edit_2511_fp8mixed.safetensors'
+  const QWEN_EDIT_MODEL_NAME = 'qwen_image_edit_2511_bf16.safetensors'
   const QWEN_EDIT_4STEP_LORA = 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors'
   const REDESIGN_ANTI_COPY_PREFIX = '本地UI重绘约束：'
   const ITERATION_ANTI_COPY_PREFIX = '本地UI修改约束：'
@@ -468,14 +468,9 @@
 
   function buildLocalUiWorkflow(options = {}) {
     const roles = validateUiLocalContract(options)
-    const sourceState = options.state && typeof options.state === 'object' && !Array.isArray(options.state)
+    const state = options.state && typeof options.state === 'object' && !Array.isArray(options.state)
       ? options.state
       : {}
-    const rapidCheckpoint = Object.values(options.localWorkflow || {}).some((node) => (
-      node?.class_type === 'CheckpointLoaderSimple'
-      && node.inputs?.ckpt_name === 'Qwen-Rapid-AIO-NSFW-v20.safetensors'
-    ))
-    const state = rapidCheckpoint ? { ...sourceState, nsfw: true } : sourceState
     const intent = resolveIntent(state, options.referenceRoles)
     const qualityMode = resolveQualityMode(intent, state, roles)
     const sampling = samplingForIntent(intent, state, qualityMode)

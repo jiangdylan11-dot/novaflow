@@ -24,6 +24,7 @@ test('catalog enforces exact root, all tensor pairs, payload integrity and actua
   const root = path.join(temp, 'models/loras/qwen');
   const baseKey = 'transformer_blocks.0.attn.add_k_proj';
   write(path.join(temp, 'models', BASE_MODELS.rapid), { [`model.diffusion_model.${baseKey}.weight`]: [4, 6], [`model.diffusion_model.${baseKey}.weight_scale`]: [] }, 'F8_E4M3');
+  write(path.join(temp, 'models', BASE_MODELS.edit), { [`model.diffusion_model.${baseKey}.weight`]: [4, 6] }, 'BF16');
   const pair = (out = 4, prefix = 'diffusion_model', a = 'lora_A', b = 'lora_B') => ({ [`${prefix}.${baseKey}.${a}.weight`]: [2, 6], [`${prefix}.${baseKey}.${b}.weight`]: [out, 2] });
   write(path.join(root, 'valid.safetensors'), pair());
   write(path.join(root, 'sub/alternate.safetensors'), { ...pair(4, 'transformer', 'lora_down', 'lora_up'), [`transformer.${baseKey}.alpha`]: [] });
@@ -36,7 +37,8 @@ test('catalog enforces exact root, all tensor pairs, payload integrity and actua
   const names = ['qwen/valid.safetensors', 'qwen/sub/alternate.safetensors', 'qwen/rapid.safetensors', 'qwen/wrong.safetensors', 'qwen/partial.safetensors', 'qwen/broken.safetensors', 'qwen/../outside.safetensors', 'outside.safetensors', 'other/qwen/valid.safetensors'];
   const catalog = createQwenLoraCatalog({ root, listRuntimeLoraNames: async () => ({ LoraLoaderModelOnly: { input: { required: { lora_name: [names] } } } }) });
   assert.deepEqual((await catalog.catalog()).map(x => x.name).sort(), ['qwen/sub/alternate.safetensors', 'qwen/valid.safetensors']);
-  assert.equal(BASE_MODELS.edit, BASE_MODELS.rapid);
+  assert.equal(BASE_MODELS.edit, 'diffusion_models/qwen_image_edit_2511_bf16.safetensors');
+  assert.equal(BASE_MODELS.rapid, 'checkpoints/Qwen-Rapid-AIO-NSFW-v20.safetensors');
   assert.deepEqual((await catalog.catalog({ nsfw: true })).map(x => x.name).sort(), ['qwen/sub/alternate.safetensors', 'qwen/valid.safetensors']);
   // A changed file is re-read instead of trusting an earlier compatibility verdict.
   write(path.join(root, 'valid.safetensors'), pair(7));

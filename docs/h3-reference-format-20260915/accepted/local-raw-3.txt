@@ -1,0 +1,10 @@
+```json
+{
+    "0": "Replace the rotating gold coin style in TOKEN_0 with the style in TOKEN_1. Actual visible subject: golden circular emblem with a cat face pattern, simple and cute. Material source: TOKEN_3, TOKEN_4.",
+    "1": "The source video for this edit. Actual footage in the source material: TOKEN_0 rotating in the center of a green solid background, following the motion path of the source video: 0.000 seconds starting from the front, 1.500 seconds reaching the narrowest side, 3.000 seconds returning to the front.",
+    "2": "Replace the rotating gold coin style in TOKEN_0 with the style in TOKEN_1.",
+    "3": "Background and gold coin motion trajectory.",
+    "4": "Replace the gold coin's rotation style in TOKEN_0 with the style in TOKEN_1, keeping the video's background and gold coin motion trajectory. Maintain the original video shot.",
+    "5": "TOKEN_0 is displayed in the scene. Replace the gold coin's rotation style in TOKEN_1 with the style in TOKEN_2, keeping the video's background and gold coin motion trajectory."
+}
+```

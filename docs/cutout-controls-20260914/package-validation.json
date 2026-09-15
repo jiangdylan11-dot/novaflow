@@ -1,0 +1,23 @@
+{
+  "installer": "D:\\AI_APP\\NovaFlow\\particle-editor-desktop\\dist\\NovaFlow Setup 2.3.214.exe",
+  "version": "2.3.214",
+  "bytes": 250163114,
+  "sha256": "6c26e24b364710853b6c7436edab51b383086276daa0ea33c9d4d01b7282833a",
+  "files": [
+    {
+      "file": "assets/index-BbIa-2NM.js",
+      "sha256": "cca5dd526fa8e4f4299a443ad20b71d44e23fe17d6c4f11c5fc9643c763236c4",
+      "match": true
+    },
+    {
+      "file": "novaflow-brand-runtime.js",
+      "sha256": "03ba735b39920b3372f0aefc668a3083f86b58b98377978334edcd8404b3ff50",
+      "match": true
+    },
+    {
+      "file": "index.html",
+      "sha256": "0ca0420a3e7982b7ee76204611785a256033fcf5c6b60396ab0558154f5d52d4",
+      "match": true
+    }
+  ]
+}

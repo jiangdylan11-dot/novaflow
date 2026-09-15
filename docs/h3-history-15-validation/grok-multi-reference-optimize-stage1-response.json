@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "data": {
+    "output_text": "【任务定位】\n多参视频 模式，持续3秒，<Picture 1> 绑定为精确起始帧提供人物外观，<Picture 2> 提供背景风格，创意焦点为雨夜街道原地待机姿态。\n\n【说话者】\n无说话者\n\n【递进式详细提示词】\n角色在雨夜街道原地站立待机，仅胸肩有呼吸微动。\n\n0.0-3.0s：胸肩随呼吸轻微起伏与回落，头部朝向、手臂和身体位置保持不变。\n\n【台词】\n无台词\n\n【连续性与约束】\n1. 只允许轻微呼吸，其余姿态保持不变，不走动、不转身、不挥手。2. <Picture 1> 人物外观与<Picture 2> 背景风格完全保留且不变。"
+  },
+  "providerCallCount": 1,
+  "durationMs": 0,
+  "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "totalTokens": 0
+  },
+  "visualContractRetryUsed": false,
+  "h3ContractRepairUsed": false,
+  "inputMeta": {
+    "mode": "minimax_h3_prompt_enhance",
+    "charCount": 5854,
+    "imageCount": 0,
+    "scenario": "minimax_h3_prompt_enhance",
+    "hasNegativePrompt": false,
+    "supportsNegativePrompt": false,
+    "purpose": "minimax-h3-prompt-enhance",
+    "surface": "animation",
+    "provider": "grok",
+    "h3Mode": "full_reference",
+    "providerCallCount": 1,
+    "visualContractRetryUsed": false,
+    "h3ContractRepairUsed": false
+  }
+}

@@ -1,0 +1,732 @@
+[
+  {
+    "decodedFrameIndex": 0,
+    "timelineIndex": 0,
+    "sourceIndex": 0,
+    "meanError": 0.4979044596354167,
+    "runnerUp": {
+      "sourceIndex": 1,
+      "meanError": 0.8500773111979166
+    }
+  },
+  {
+    "decodedFrameIndex": 1,
+    "timelineIndex": 1,
+    "sourceIndex": 0,
+    "meanError": 0.4979044596354167,
+    "runnerUp": {
+      "sourceIndex": 1,
+      "meanError": 0.8500773111979166
+    }
+  },
+  {
+    "decodedFrameIndex": 2,
+    "timelineIndex": 2,
+    "sourceIndex": 1,
+    "meanError": 0.4961344401041667,
+    "runnerUp": {
+      "sourceIndex": 0,
+      "meanError": 0.8297119140625
+    }
+  },
+  {
+    "decodedFrameIndex": 3,
+    "timelineIndex": 3,
+    "sourceIndex": 3,
+    "meanError": 0.4615275065104167,
+    "runnerUp": {
+      "sourceIndex": 2,
+      "meanError": 1.6973876953125
+    }
+  },
+  {
+    "decodedFrameIndex": 4,
+    "timelineIndex": 4,
+    "sourceIndex": 3,
+    "meanError": 0.4615275065104167,
+    "runnerUp": {
+      "sourceIndex": 2,
+      "meanError": 1.6973876953125
+    }
+  },
+  {
+    "decodedFrameIndex": 5,
+    "timelineIndex": 5,
+    "sourceIndex": 4,
+    "meanError": 0.463134765625,
+    "runnerUp": {
+      "sourceIndex": 5,
+      "meanError": 1.3626302083333333
+    }
+  },
+  {
+    "decodedFrameIndex": 6,
+    "timelineIndex": 6,
+    "sourceIndex": 6,
+    "meanError": 0.4448649088541667,
+    "runnerUp": {
+      "sourceIndex": 5,
+      "meanError": 1.2205810546875
+    }
+  },
+  {
+    "decodedFrameIndex": 7,
+    "timelineIndex": 7,
+    "sourceIndex": 6,
+    "meanError": 0.4448649088541667,
+    "runnerUp": {
+      "sourceIndex": 5,
+      "meanError": 1.2205810546875
+    }
+  },
+  {
+    "decodedFrameIndex": 8,
+    "timelineIndex": 8,
+    "sourceIndex": 7,
+    "meanError": 0.4394124348958333,
+    "runnerUp": {
+      "sourceIndex": 8,
+      "meanError": 1.4125162760416667
+    }
+  },
+  {
+    "decodedFrameIndex": 9,
+    "timelineIndex": 9,
+    "sourceIndex": 9,
+    "meanError": 0.4401041666666667,
+    "runnerUp": {
+      "sourceIndex": 8,
+      "meanError": 1.060302734375
+    }
+  },
+  {
+    "decodedFrameIndex": 10,
+    "timelineIndex": 10,
+    "sourceIndex": 9,
+    "meanError": 0.4401041666666667,
+    "runnerUp": {
+      "sourceIndex": 8,
+      "meanError": 1.060302734375
+    }
+  },
+  {
+    "decodedFrameIndex": 11,
+    "timelineIndex": 11,
+    "sourceIndex": 10,
+    "meanError": 0.4604695638020833,
+    "runnerUp": {
+      "sourceIndex": 9,
+      "meanError": 1.2004191080729167
+    }
+  },
+  {
+    "decodedFrameIndex": 12,
+    "timelineIndex": 12,
+    "sourceIndex": 12,
+    "meanError": 0.5088297526041666,
+    "runnerUp": {
+      "sourceIndex": 13,
+      "meanError": 1.6324869791666667
+    }
+  },
+  {
+    "decodedFrameIndex": 13,
+    "timelineIndex": 13,
+    "sourceIndex": 12,
+    "meanError": 0.5088297526041666,
+    "runnerUp": {
+      "sourceIndex": 13,
+      "meanError": 1.6324869791666667
+    }
+  },
+  {
+    "decodedFrameIndex": 14,
+    "timelineIndex": 14,
+    "sourceIndex": 13,
+    "meanError": 0.5264689127604166,
+    "runnerUp": {
+      "sourceIndex": 12,
+      "meanError": 1.7040812174479167
+    }
+  },
+  {
+    "decodedFrameIndex": 15,
+    "timelineIndex": 15,
+    "sourceIndex": 15,
+    "meanError": 0.5666910807291666,
+    "runnerUp": {
+      "sourceIndex": 14,
+      "meanError": 1.9910888671875
+    }
+  },
+  {
+    "decodedFrameIndex": 16,
+    "timelineIndex": 16,
+    "sourceIndex": 15,
+    "meanError": 0.5666910807291666,
+    "runnerUp": {
+      "sourceIndex": 14,
+      "meanError": 1.9910888671875
+    }
+  },
+  {
+    "decodedFrameIndex": 17,
+    "timelineIndex": 17,
+    "sourceIndex": 16,
+    "meanError": 0.5941365559895834,
+    "runnerUp": {
+      "sourceIndex": 17,
+      "meanError": 2.2871500651041665
+    }
+  },
+  {
+    "decodedFrameIndex": 18,
+    "timelineIndex": 18,
+    "sourceIndex": 18,
+    "meanError": 0.643310546875,
+    "runnerUp": {
+      "sourceIndex": 19,
+      "meanError": 2.26397705078125
+    }
+  },
+  {
+    "decodedFrameIndex": 19,
+    "timelineIndex": 19,
+    "sourceIndex": 18,
+    "meanError": 0.643310546875,
+    "runnerUp": {
+      "sourceIndex": 19,
+      "meanError": 2.26397705078125
+    }
+  },
+  {
+    "decodedFrameIndex": 20,
+    "timelineIndex": 20,
+    "sourceIndex": 19,
+    "meanError": 0.685302734375,
+    "runnerUp": {
+      "sourceIndex": 18,
+      "meanError": 2.3059285481770835
+    }
+  },
+  {
+    "decodedFrameIndex": 21,
+    "timelineIndex": 21,
+    "sourceIndex": 21,
+    "meanError": 0.7133992513020834,
+    "runnerUp": {
+      "sourceIndex": 22,
+      "meanError": 2.3710530598958335
+    }
+  },
+  {
+    "decodedFrameIndex": 22,
+    "timelineIndex": 22,
+    "sourceIndex": 21,
+    "meanError": 0.7133992513020834,
+    "runnerUp": {
+      "sourceIndex": 22,
+      "meanError": 2.3710530598958335
+    }
+  },
+  {
+    "decodedFrameIndex": 23,
+    "timelineIndex": 23,
+    "sourceIndex": 22,
+    "meanError": 0.6979166666666666,
+    "runnerUp": {
+      "sourceIndex": 23,
+      "meanError": 2.14849853515625
+    }
+  },
+  {
+    "decodedFrameIndex": 24,
+    "timelineIndex": 24,
+    "sourceIndex": 24,
+    "meanError": 0.6544392903645834,
+    "runnerUp": {
+      "sourceIndex": 23,
+      "meanError": 1.86956787109375
+    }
+  },
+  {
+    "decodedFrameIndex": 25,
+    "timelineIndex": 25,
+    "sourceIndex": 24,
+    "meanError": 0.6544392903645834,
+    "runnerUp": {
+      "sourceIndex": 23,
+      "meanError": 1.86956787109375
+    }
+  },
+  {
+    "decodedFrameIndex": 26,
+    "timelineIndex": 26,
+    "sourceIndex": 25,
+    "meanError": 0.6110432942708334,
+    "runnerUp": {
+      "sourceIndex": 26,
+      "meanError": 1.4993896484375
+    }
+  },
+  {
+    "decodedFrameIndex": 27,
+    "timelineIndex": 27,
+    "sourceIndex": 27,
+    "meanError": 0.56707763671875,
+    "runnerUp": {
+      "sourceIndex": 26,
+      "meanError": 1.2190755208333333
+    }
+  },
+  {
+    "decodedFrameIndex": 28,
+    "timelineIndex": 28,
+    "sourceIndex": 27,
+    "meanError": 0.56707763671875,
+    "runnerUp": {
+      "sourceIndex": 26,
+      "meanError": 1.2190755208333333
+    }
+  },
+  {
+    "decodedFrameIndex": 29,
+    "timelineIndex": 29,
+    "sourceIndex": 28,
+    "meanError": 0.54876708984375,
+    "runnerUp": {
+      "sourceIndex": 27,
+      "meanError": 1.3615315755208333
+    }
+  },
+  {
+    "decodedFrameIndex": 30,
+    "timelineIndex": 30,
+    "sourceIndex": 30,
+    "meanError": 0.5189412434895834,
+    "runnerUp": {
+      "sourceIndex": 29,
+      "meanError": 1.7398274739583333
+    }
+  },
+  {
+    "decodedFrameIndex": 31,
+    "timelineIndex": 31,
+    "sourceIndex": 30,
+    "meanError": 0.5189412434895834,
+    "runnerUp": {
+      "sourceIndex": 29,
+      "meanError": 1.7398274739583333
+    }
+  },
+  {
+    "decodedFrameIndex": 32,
+    "timelineIndex": 32,
+    "sourceIndex": 31,
+    "meanError": 0.5157877604166666,
+    "runnerUp": {
+      "sourceIndex": 30,
+      "meanError": 2.173095703125
+    }
+  },
+  {
+    "decodedFrameIndex": 33,
+    "timelineIndex": 33,
+    "sourceIndex": 33,
+    "meanError": 0.5114339192708334,
+    "runnerUp": {
+      "sourceIndex": 34,
+      "meanError": 1.6667683919270833
+    }
+  },
+  {
+    "decodedFrameIndex": 34,
+    "timelineIndex": 34,
+    "sourceIndex": 33,
+    "meanError": 0.5114339192708334,
+    "runnerUp": {
+      "sourceIndex": 34,
+      "meanError": 1.6667683919270833
+    }
+  },
+  {
+    "decodedFrameIndex": 35,
+    "timelineIndex": 35,
+    "sourceIndex": 34,
+    "meanError": 0.5276082356770834,
+    "runnerUp": {
+      "sourceIndex": 35,
+      "meanError": 1.710205078125
+    }
+  },
+  {
+    "decodedFrameIndex": 36,
+    "timelineIndex": 36,
+    "sourceIndex": 36,
+    "meanError": 0.5579630533854166,
+    "runnerUp": {
+      "sourceIndex": 35,
+      "meanError": 1.76690673828125
+    }
+  },
+  {
+    "decodedFrameIndex": 37,
+    "timelineIndex": 37,
+    "sourceIndex": 36,
+    "meanError": 0.5579630533854166,
+    "runnerUp": {
+      "sourceIndex": 35,
+      "meanError": 1.76690673828125
+    }
+  },
+  {
+    "decodedFrameIndex": 38,
+    "timelineIndex": 38,
+    "sourceIndex": 37,
+    "meanError": 0.591552734375,
+    "runnerUp": {
+      "sourceIndex": 36,
+      "meanError": 2.1041666666666665
+    }
+  },
+  {
+    "decodedFrameIndex": 39,
+    "timelineIndex": 39,
+    "sourceIndex": 39,
+    "meanError": 0.7718709309895834,
+    "runnerUp": {
+      "sourceIndex": 40,
+      "meanError": 2.7180989583333335
+    }
+  },
+  {
+    "decodedFrameIndex": 40,
+    "timelineIndex": 40,
+    "sourceIndex": 39,
+    "meanError": 0.7718709309895834,
+    "runnerUp": {
+      "sourceIndex": 40,
+      "meanError": 2.7180989583333335
+    }
+  },
+  {
+    "decodedFrameIndex": 41,
+    "timelineIndex": 41,
+    "sourceIndex": 40,
+    "meanError": 0.7901814778645834,
+    "runnerUp": {
+      "sourceIndex": 41,
+      "meanError": 2.2270711263020835
+    }
+  },
+  {
+    "decodedFrameIndex": 42,
+    "timelineIndex": 42,
+    "sourceIndex": 42,
+    "meanError": 0.8733317057291666,
+    "runnerUp": {
+      "sourceIndex": 43,
+      "meanError": 2.24664306640625
+    }
+  },
+  {
+    "decodedFrameIndex": 43,
+    "timelineIndex": 43,
+    "sourceIndex": 42,
+    "meanError": 0.8733317057291666,
+    "runnerUp": {
+      "sourceIndex": 43,
+      "meanError": 2.24664306640625
+    }
+  },
+  {
+    "decodedFrameIndex": 44,
+    "timelineIndex": 44,
+    "sourceIndex": 43,
+    "meanError": 0.9684244791666666,
+    "runnerUp": {
+      "sourceIndex": 44,
+      "meanError": 2.6537272135416665
+    }
+  },
+  {
+    "decodedFrameIndex": 45,
+    "timelineIndex": 45,
+    "sourceIndex": 45,
+    "meanError": 1.15338134765625,
+    "runnerUp": {
+      "sourceIndex": 44,
+      "meanError": 3.1770222981770835
+    }
+  },
+  {
+    "decodedFrameIndex": 46,
+    "timelineIndex": 46,
+    "sourceIndex": 45,
+    "meanError": 1.15338134765625,
+    "runnerUp": {
+      "sourceIndex": 44,
+      "meanError": 3.1770222981770835
+    }
+  },
+  {
+    "decodedFrameIndex": 47,
+    "timelineIndex": 47,
+    "sourceIndex": 46,
+    "meanError": 1.29241943359375,
+    "runnerUp": {
+      "sourceIndex": 45,
+      "meanError": 3.23583984375
+    }
+  },
+  {
+    "decodedFrameIndex": 48,
+    "timelineIndex": 48,
+    "sourceIndex": 48,
+    "meanError": 1.3594767252604167,
+    "runnerUp": {
+      "sourceIndex": 47,
+      "meanError": 3.6073201497395835
+    }
+  },
+  {
+    "decodedFrameIndex": 49,
+    "timelineIndex": 49,
+    "sourceIndex": 48,
+    "meanError": 1.3594767252604167,
+    "runnerUp": {
+      "sourceIndex": 47,
+      "meanError": 3.6073201497395835
+    }
+  },
+  {
+    "decodedFrameIndex": 50,
+    "timelineIndex": 50,
+    "sourceIndex": 49,
+    "meanError": 1.3153889973958333,
+    "runnerUp": {
+      "sourceIndex": 48,
+      "meanError": 3.2234090169270835
+    }
+  },
+  {
+    "decodedFrameIndex": 51,
+    "timelineIndex": 51,
+    "sourceIndex": 51,
+    "meanError": 1.46234130859375,
+    "runnerUp": {
+      "sourceIndex": 52,
+      "meanError": 3.4580281575520835
+    }
+  },
+  {
+    "decodedFrameIndex": 52,
+    "timelineIndex": 52,
+    "sourceIndex": 51,
+    "meanError": 1.46234130859375,
+    "runnerUp": {
+      "sourceIndex": 52,
+      "meanError": 3.4580281575520835
+    }
+  },
+  {
+    "decodedFrameIndex": 53,
+    "timelineIndex": 53,
+    "sourceIndex": 52,
+    "meanError": 1.5155232747395833,
+    "runnerUp": {
+      "sourceIndex": 51,
+      "meanError": 3.7214152018229165
+    }
+  },
+  {
+    "decodedFrameIndex": 54,
+    "timelineIndex": 54,
+    "sourceIndex": 54,
+    "meanError": 1.554443359375,
+    "runnerUp": {
+      "sourceIndex": 53,
+      "meanError": 3.7104899088541665
+    }
+  },
+  {
+    "decodedFrameIndex": 55,
+    "timelineIndex": 55,
+    "sourceIndex": 54,
+    "meanError": 1.554443359375,
+    "runnerUp": {
+      "sourceIndex": 53,
+      "meanError": 3.7104899088541665
+    }
+  },
+  {
+    "decodedFrameIndex": 56,
+    "timelineIndex": 56,
+    "sourceIndex": 55,
+    "meanError": 1.5975138346354167,
+    "runnerUp": {
+      "sourceIndex": 54,
+      "meanError": 3.9084065755208335
+    }
+  },
+  {
+    "decodedFrameIndex": 57,
+    "timelineIndex": 57,
+    "sourceIndex": 57,
+    "meanError": 1.4260457356770833,
+    "runnerUp": {
+      "sourceIndex": 56,
+      "meanError": 3.2733968098958335
+    }
+  },
+  {
+    "decodedFrameIndex": 58,
+    "timelineIndex": 58,
+    "sourceIndex": 57,
+    "meanError": 1.4260457356770833,
+    "runnerUp": {
+      "sourceIndex": 56,
+      "meanError": 3.2733968098958335
+    }
+  },
+  {
+    "decodedFrameIndex": 59,
+    "timelineIndex": 59,
+    "sourceIndex": 58,
+    "meanError": 1.5016072591145833,
+    "runnerUp": {
+      "sourceIndex": 59,
+      "meanError": 3.4354451497395835
+    }
+  },
+  {
+    "decodedFrameIndex": 60,
+    "timelineIndex": 60,
+    "sourceIndex": 60,
+    "meanError": 1.5184529622395833,
+    "runnerUp": {
+      "sourceIndex": 59,
+      "meanError": 3.3571370442708335
+    }
+  },
+  {
+    "decodedFrameIndex": 61,
+    "timelineIndex": 61,
+    "sourceIndex": 60,
+    "meanError": 1.5184529622395833,
+    "runnerUp": {
+      "sourceIndex": 59,
+      "meanError": 3.3571370442708335
+    }
+  },
+  {
+    "decodedFrameIndex": 62,
+    "timelineIndex": 62,
+    "sourceIndex": 61,
+    "meanError": 1.4000651041666667,
+    "runnerUp": {
+      "sourceIndex": 60,
+      "meanError": 3.2483927408854165
+    }
+  },
+  {
+    "decodedFrameIndex": 63,
+    "timelineIndex": 63,
+    "sourceIndex": 63,
+    "meanError": 1.30401611328125,
+    "runnerUp": {
+      "sourceIndex": 62,
+      "meanError": 3.2637939453125
+    }
+  },
+  {
+    "decodedFrameIndex": 64,
+    "timelineIndex": 64,
+    "sourceIndex": 63,
+    "meanError": 1.30401611328125,
+    "runnerUp": {
+      "sourceIndex": 62,
+      "meanError": 3.2637939453125
+    }
+  },
+  {
+    "decodedFrameIndex": 65,
+    "timelineIndex": 65,
+    "sourceIndex": 64,
+    "meanError": 1.15643310546875,
+    "runnerUp": {
+      "sourceIndex": 63,
+      "meanError": 3.2580362955729165
+    }
+  },
+  {
+    "decodedFrameIndex": 66,
+    "timelineIndex": 66,
+    "sourceIndex": 66,
+    "meanError": 1.0352376302083333,
+    "runnerUp": {
+      "sourceIndex": 65,
+      "meanError": 2.50830078125
+    }
+  },
+  {
+    "decodedFrameIndex": 67,
+    "timelineIndex": 67,
+    "sourceIndex": 66,
+    "meanError": 1.0352376302083333,
+    "runnerUp": {
+      "sourceIndex": 65,
+      "meanError": 2.50830078125
+    }
+  },
+  {
+    "decodedFrameIndex": 68,
+    "timelineIndex": 68,
+    "sourceIndex": 67,
+    "meanError": 1.0579833984375,
+    "runnerUp": {
+      "sourceIndex": 66,
+      "meanError": 2.67034912109375
+    }
+  },
+  {
+    "decodedFrameIndex": 69,
+    "timelineIndex": 69,
+    "sourceIndex": 69,
+    "meanError": 0.9578653971354166,
+    "runnerUp": {
+      "sourceIndex": 68,
+      "meanError": 3.0626220703125
+    }
+  },
+  {
+    "decodedFrameIndex": 70,
+    "timelineIndex": 70,
+    "sourceIndex": 69,
+    "meanError": 0.9578653971354166,
+    "runnerUp": {
+      "sourceIndex": 68,
+      "meanError": 3.0626220703125
+    }
+  },
+  {
+    "decodedFrameIndex": 71,
+    "timelineIndex": 71,
+    "sourceIndex": 70,
+    "meanError": 0.9340413411458334,
+    "runnerUp": {
+      "sourceIndex": 69,
+      "meanError": 2.8619791666666665
+    }
+  },
+  {
+    "decodedFrameIndex": 72,
+    "timelineIndex": 72,
+    "sourceIndex": 72,
+    "meanError": 0.8278605143229166,
+    "runnerUp": {
+      "sourceIndex": 71,
+      "meanError": 2.77215576171875
+    }
+  }
+]

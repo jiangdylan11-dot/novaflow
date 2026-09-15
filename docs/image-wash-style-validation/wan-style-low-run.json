@@ -1,0 +1,52 @@
+{
+  "case": "wan-style-low",
+  "promptId": "b78d3104-63bf-4f9a-babd-8f28434f95fc",
+  "model": "Wan22\\Wan2.2-T2V-A14B-LowNoise-Q4_K_S.gguf",
+  "strength": 0.2,
+  "status": "success",
+  "baseline": "wan-low",
+  "baselineReused": true,
+  "change": "source style profile and revised production prompt; model as recorded",
+  "reverseInference": "real image-wash-style vision profile loaded from recorded service response",
+  "styleProfile": {
+    "style": "2D illustration",
+    "content": "The image depicts a young person standing on a rural road, wearing a bright orange shirt, green shorts, and a large green backpack. The character has short, dark hair and is looking slightly to the side with a gentle smile. The background features a lush green landscape with trees, a clear blue sky, and a few scattered clouds. The lighting is bright and even, suggesting a sunny day. The foreground and background are both rendered in a soft, anime-style with smooth lines and gentle shading, giving the image a dreamy, almost painterly quality."
+  },
+  "seconds": 52.735,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "b78d3104-63bf-4f9a-babd-8f28434f95fc",
+          "timestamp": 1789202469737
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [
+            "1",
+            "2",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10"
+          ],
+          "prompt_id": "b78d3104-63bf-4f9a-babd-8f28434f95fc",
+          "timestamp": 1789202469748
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "b78d3104-63bf-4f9a-babd-8f28434f95fc",
+          "timestamp": 1789202520469
+        }
+      ]
+    ]
+  }
+}

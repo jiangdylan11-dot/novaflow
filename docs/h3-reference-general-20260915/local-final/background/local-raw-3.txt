@@ -1,0 +1,30 @@
+{
+  "references": [
+    {
+      "label": "<Video 1>",
+      "sources": [],
+      "description": "旋转的金币，表面有立体猫头鹰图案，材质似金属，边缘有光泽。",
+      "keep": "金币外观、旋转运动路径、时序：0.000秒从正面开始，1.500秒到达最窄侧面，3.000秒回到正面。",
+      "relation": "fully_preserved"
+    },
+    {
+      "label": "<Picture 1>",
+      "sources": [],
+      "description": "金色圆形金币，表面有猫头图案浮雕，边缘有环形凸起。",
+      "keep": "金币外观样式，不改变旋转运动或背景。",
+      "relation": "attribute_transfer"
+    }
+  ],
+  "tasks": [
+    "video editing"
+  ],
+  "summary": "将源视频绿色背景替换为紫色，金币外观和旋转动作保持不变。",
+  "description": "<Subject 1> 在紫色纯色背景的画面中央旋转，遵循源视频的运动路径：0.000秒从正面开始，1.500秒到达最窄侧面，3.000秒回到正面。",
+  "soundscape": "N/A",
+  "music": "N/A",
+  "editPolicy": {
+    "preserveBackground": false,
+    "preserveMotion": true,
+    "sameShapeAppearanceOnly": true
+  }
+}

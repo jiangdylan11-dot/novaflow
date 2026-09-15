@@ -1,0 +1,27 @@
+AI sequence MiniMax H3 workflow tests passed
+✔ particle-editor-desktop\tests\ai-sequence-minimax-h3-workflow.test.js (147.9657ms)
+✔ video editing may preserve its camera in the source-video retention rule (45.902ms)
+✔ reference contract preserves a silent object, video edit and separate audio reuse across JS and Python (132.0424ms)
+✔ multireference optimizer uses official fields, including explicit audio and video roles (10.6436ms)
+✔ missing media, invented speaker identities and invalid retention fail before sampling (0.8185ms)
+✔ generation compiles old/free text once and preserves valid reference prompts without another provider call (17.8244ms)
+✔ full audio reuse really connects the input track; timbre/style references use generated audio (16.9946ms)
+✔ real video frames reach Grok with labels and timestamps rather than becoming extra references (1.5456ms)
+✔ editor and generator bind translations to the same media bytes, independent of DOM IDs (1.7525ms)
+✔ local relationship rendering retains role fidelity and closes only requested loops (121.0888ms)
+✔ bilingual results reject stale roles and untranslated model prose (3.7992ms)
+✔ Chinese editor uses English generation text and recompiles changed instructions (18.5899ms)
+✔ natural-language edits preserve native source pixels and decoded output regardless of replacement wording (5.3762ms)
+✔ local source labels normalize common spellings and reject invented sources (125.5233ms)
+✔ a real wardrobe-edit response inherits source action without matching a motion keyword list (4.6405ms)
+✔ compiler merges a model subject repeated for appearance and motion without changing its meaning (1.8994ms)
+✔ blank unrequested audio and an omitted source-video row compile without inventing content (2.6473ms)
+✔ local model owns intent while Python compiles omitted relation enums and source-video bindings (130.5429ms)
+ℹ tests 18
+ℹ suites 0
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 804.2404

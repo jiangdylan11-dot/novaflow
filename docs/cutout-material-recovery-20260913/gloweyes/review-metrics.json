@@ -1,0 +1,849 @@
+[
+  {
+    "frame": 0,
+    "sourceFrame": 0,
+    "changedAlphaPixels": 123284,
+    "transparentPixels": 1680367,
+    "softPixels": 157877
+  },
+  {
+    "frame": 1,
+    "sourceFrame": 0,
+    "changedAlphaPixels": 123284,
+    "transparentPixels": 1680367,
+    "softPixels": 157877
+  },
+  {
+    "frame": 2,
+    "sourceFrame": 1,
+    "changedAlphaPixels": 122406,
+    "transparentPixels": 1677176,
+    "softPixels": 161175
+  },
+  {
+    "frame": 3,
+    "sourceFrame": 3,
+    "changedAlphaPixels": 140912,
+    "transparentPixels": 1664841,
+    "softPixels": 172475
+  },
+  {
+    "frame": 4,
+    "sourceFrame": 3,
+    "changedAlphaPixels": 140912,
+    "transparentPixels": 1664841,
+    "softPixels": 172475
+  },
+  {
+    "frame": 5,
+    "sourceFrame": 4,
+    "changedAlphaPixels": 137323,
+    "transparentPixels": 1659310,
+    "softPixels": 177376
+  },
+  {
+    "frame": 6,
+    "sourceFrame": 6,
+    "changedAlphaPixels": 136763,
+    "transparentPixels": 1656584,
+    "softPixels": 181502
+  },
+  {
+    "frame": 7,
+    "sourceFrame": 6,
+    "changedAlphaPixels": 136763,
+    "transparentPixels": 1656584,
+    "softPixels": 181502
+  },
+  {
+    "frame": 8,
+    "sourceFrame": 7,
+    "changedAlphaPixels": 135434,
+    "transparentPixels": 1653422,
+    "softPixels": 185439
+  },
+  {
+    "frame": 9,
+    "sourceFrame": 9,
+    "changedAlphaPixels": 132889,
+    "transparentPixels": 1648718,
+    "softPixels": 190194
+  },
+  {
+    "frame": 10,
+    "sourceFrame": 9,
+    "changedAlphaPixels": 132889,
+    "transparentPixels": 1648718,
+    "softPixels": 190194
+  },
+  {
+    "frame": 11,
+    "sourceFrame": 10,
+    "changedAlphaPixels": 133000,
+    "transparentPixels": 1647422,
+    "softPixels": 192152
+  },
+  {
+    "frame": 12,
+    "sourceFrame": 12,
+    "changedAlphaPixels": 132336,
+    "transparentPixels": 1646536,
+    "softPixels": 191426
+  },
+  {
+    "frame": 13,
+    "sourceFrame": 12,
+    "changedAlphaPixels": 132336,
+    "transparentPixels": 1646536,
+    "softPixels": 191426
+  },
+  {
+    "frame": 14,
+    "sourceFrame": 13,
+    "changedAlphaPixels": 132273,
+    "transparentPixels": 1644075,
+    "softPixels": 193413
+  },
+  {
+    "frame": 15,
+    "sourceFrame": 15,
+    "changedAlphaPixels": 132729,
+    "transparentPixels": 1644162,
+    "softPixels": 193585
+  },
+  {
+    "frame": 16,
+    "sourceFrame": 15,
+    "changedAlphaPixels": 132729,
+    "transparentPixels": 1644162,
+    "softPixels": 193585
+  },
+  {
+    "frame": 17,
+    "sourceFrame": 16,
+    "changedAlphaPixels": 132837,
+    "transparentPixels": 1644179,
+    "softPixels": 194255
+  },
+  {
+    "frame": 18,
+    "sourceFrame": 18,
+    "changedAlphaPixels": 129069,
+    "transparentPixels": 1646587,
+    "softPixels": 190710
+  },
+  {
+    "frame": 19,
+    "sourceFrame": 18,
+    "changedAlphaPixels": 129069,
+    "transparentPixels": 1646587,
+    "softPixels": 190710
+  },
+  {
+    "frame": 20,
+    "sourceFrame": 19,
+    "changedAlphaPixels": 131750,
+    "transparentPixels": 1643660,
+    "softPixels": 193948
+  },
+  {
+    "frame": 21,
+    "sourceFrame": 21,
+    "changedAlphaPixels": 131120,
+    "transparentPixels": 1641514,
+    "softPixels": 196510
+  },
+  {
+    "frame": 22,
+    "sourceFrame": 21,
+    "changedAlphaPixels": 131120,
+    "transparentPixels": 1641514,
+    "softPixels": 196510
+  },
+  {
+    "frame": 23,
+    "sourceFrame": 22,
+    "changedAlphaPixels": 133794,
+    "transparentPixels": 1642948,
+    "softPixels": 198338
+  },
+  {
+    "frame": 24,
+    "sourceFrame": 24,
+    "changedAlphaPixels": 131336,
+    "transparentPixels": 1646353,
+    "softPixels": 192986
+  },
+  {
+    "frame": 25,
+    "sourceFrame": 24,
+    "changedAlphaPixels": 131336,
+    "transparentPixels": 1646353,
+    "softPixels": 192986
+  },
+  {
+    "frame": 26,
+    "sourceFrame": 25,
+    "changedAlphaPixels": 130571,
+    "transparentPixels": 1643525,
+    "softPixels": 195397
+  },
+  {
+    "frame": 27,
+    "sourceFrame": 27,
+    "changedAlphaPixels": 130879,
+    "transparentPixels": 1643510,
+    "softPixels": 196357
+  },
+  {
+    "frame": 28,
+    "sourceFrame": 27,
+    "changedAlphaPixels": 130879,
+    "transparentPixels": 1643510,
+    "softPixels": 196357
+  },
+  {
+    "frame": 29,
+    "sourceFrame": 28,
+    "changedAlphaPixels": 131211,
+    "transparentPixels": 1642367,
+    "softPixels": 197406
+  },
+  {
+    "frame": 30,
+    "sourceFrame": 30,
+    "changedAlphaPixels": 132440,
+    "transparentPixels": 1640956,
+    "softPixels": 200058
+  },
+  {
+    "frame": 31,
+    "sourceFrame": 30,
+    "changedAlphaPixels": 132440,
+    "transparentPixels": 1640956,
+    "softPixels": 200058
+  },
+  {
+    "frame": 32,
+    "sourceFrame": 31,
+    "changedAlphaPixels": 132252,
+    "transparentPixels": 1639491,
+    "softPixels": 200923
+  },
+  {
+    "frame": 33,
+    "sourceFrame": 33,
+    "changedAlphaPixels": 132875,
+    "transparentPixels": 1639017,
+    "softPixels": 201573
+  },
+  {
+    "frame": 34,
+    "sourceFrame": 33,
+    "changedAlphaPixels": 132875,
+    "transparentPixels": 1639017,
+    "softPixels": 201573
+  },
+  {
+    "frame": 35,
+    "sourceFrame": 34,
+    "changedAlphaPixels": 132635,
+    "transparentPixels": 1639195,
+    "softPixels": 200916
+  },
+  {
+    "frame": 36,
+    "sourceFrame": 36,
+    "changedAlphaPixels": 130140,
+    "transparentPixels": 1639956,
+    "softPixels": 198431
+  },
+  {
+    "frame": 37,
+    "sourceFrame": 36,
+    "changedAlphaPixels": 130140,
+    "transparentPixels": 1639956,
+    "softPixels": 198431
+  },
+  {
+    "frame": 38,
+    "sourceFrame": 37,
+    "changedAlphaPixels": 131955,
+    "transparentPixels": 1638565,
+    "softPixels": 201654
+  },
+  {
+    "frame": 39,
+    "sourceFrame": 39,
+    "changedAlphaPixels": 132048,
+    "transparentPixels": 1639757,
+    "softPixels": 200762
+  },
+  {
+    "frame": 40,
+    "sourceFrame": 39,
+    "changedAlphaPixels": 132048,
+    "transparentPixels": 1639757,
+    "softPixels": 200762
+  },
+  {
+    "frame": 41,
+    "sourceFrame": 40,
+    "changedAlphaPixels": 132704,
+    "transparentPixels": 1640637,
+    "softPixels": 199812
+  },
+  {
+    "frame": 42,
+    "sourceFrame": 42,
+    "changedAlphaPixels": 131413,
+    "transparentPixels": 1639381,
+    "softPixels": 200428
+  },
+  {
+    "frame": 43,
+    "sourceFrame": 42,
+    "changedAlphaPixels": 131413,
+    "transparentPixels": 1639381,
+    "softPixels": 200428
+  },
+  {
+    "frame": 44,
+    "sourceFrame": 43,
+    "changedAlphaPixels": 126502,
+    "transparentPixels": 1642011,
+    "softPixels": 196065
+  },
+  {
+    "frame": 45,
+    "sourceFrame": 45,
+    "changedAlphaPixels": 127224,
+    "transparentPixels": 1635035,
+    "softPixels": 201880
+  },
+  {
+    "frame": 46,
+    "sourceFrame": 45,
+    "changedAlphaPixels": 127224,
+    "transparentPixels": 1635035,
+    "softPixels": 201880
+  },
+  {
+    "frame": 47,
+    "sourceFrame": 46,
+    "changedAlphaPixels": 126957,
+    "transparentPixels": 1634739,
+    "softPixels": 202341
+  },
+  {
+    "frame": 48,
+    "sourceFrame": 48,
+    "changedAlphaPixels": 129470,
+    "transparentPixels": 1634325,
+    "softPixels": 204696
+  },
+  {
+    "frame": 49,
+    "sourceFrame": 48,
+    "changedAlphaPixels": 129470,
+    "transparentPixels": 1634325,
+    "softPixels": 204696
+  },
+  {
+    "frame": 50,
+    "sourceFrame": 49,
+    "changedAlphaPixels": 125437,
+    "transparentPixels": 1631044,
+    "softPixels": 205413
+  },
+  {
+    "frame": 51,
+    "sourceFrame": 51,
+    "changedAlphaPixels": 129154,
+    "transparentPixels": 1631392,
+    "softPixels": 208686
+  },
+  {
+    "frame": 52,
+    "sourceFrame": 51,
+    "changedAlphaPixels": 129154,
+    "transparentPixels": 1631392,
+    "softPixels": 208686
+  },
+  {
+    "frame": 53,
+    "sourceFrame": 52,
+    "changedAlphaPixels": 125428,
+    "transparentPixels": 1629422,
+    "softPixels": 207706
+  },
+  {
+    "frame": 54,
+    "sourceFrame": 54,
+    "changedAlphaPixels": 122645,
+    "transparentPixels": 1627693,
+    "softPixels": 209419
+  },
+  {
+    "frame": 55,
+    "sourceFrame": 54,
+    "changedAlphaPixels": 122645,
+    "transparentPixels": 1627693,
+    "softPixels": 209419
+  },
+  {
+    "frame": 56,
+    "sourceFrame": 55,
+    "changedAlphaPixels": 124514,
+    "transparentPixels": 1626342,
+    "softPixels": 211177
+  },
+  {
+    "frame": 57,
+    "sourceFrame": 57,
+    "changedAlphaPixels": 123591,
+    "transparentPixels": 1625709,
+    "softPixels": 211232
+  },
+  {
+    "frame": 58,
+    "sourceFrame": 57,
+    "changedAlphaPixels": 123591,
+    "transparentPixels": 1625709,
+    "softPixels": 211232
+  },
+  {
+    "frame": 59,
+    "sourceFrame": 58,
+    "changedAlphaPixels": 124071,
+    "transparentPixels": 1626616,
+    "softPixels": 210556
+  },
+  {
+    "frame": 60,
+    "sourceFrame": 60,
+    "changedAlphaPixels": 123824,
+    "transparentPixels": 1628685,
+    "softPixels": 208496
+  },
+  {
+    "frame": 61,
+    "sourceFrame": 60,
+    "changedAlphaPixels": 123824,
+    "transparentPixels": 1628685,
+    "softPixels": 208496
+  },
+  {
+    "frame": 62,
+    "sourceFrame": 61,
+    "changedAlphaPixels": 124188,
+    "transparentPixels": 1623526,
+    "softPixels": 213468
+  },
+  {
+    "frame": 63,
+    "sourceFrame": 63,
+    "changedAlphaPixels": 122897,
+    "transparentPixels": 1626135,
+    "softPixels": 210883
+  },
+  {
+    "frame": 64,
+    "sourceFrame": 63,
+    "changedAlphaPixels": 122897,
+    "transparentPixels": 1626135,
+    "softPixels": 210883
+  },
+  {
+    "frame": 65,
+    "sourceFrame": 64,
+    "changedAlphaPixels": 122492,
+    "transparentPixels": 1624930,
+    "softPixels": 211817
+  },
+  {
+    "frame": 66,
+    "sourceFrame": 66,
+    "changedAlphaPixels": 121448,
+    "transparentPixels": 1622513,
+    "softPixels": 213693
+  },
+  {
+    "frame": 67,
+    "sourceFrame": 66,
+    "changedAlphaPixels": 121448,
+    "transparentPixels": 1622513,
+    "softPixels": 213693
+  },
+  {
+    "frame": 68,
+    "sourceFrame": 67,
+    "changedAlphaPixels": 121418,
+    "transparentPixels": 1624553,
+    "softPixels": 211657
+  },
+  {
+    "frame": 69,
+    "sourceFrame": 69,
+    "changedAlphaPixels": 122437,
+    "transparentPixels": 1623744,
+    "softPixels": 213250
+  },
+  {
+    "frame": 70,
+    "sourceFrame": 69,
+    "changedAlphaPixels": 122437,
+    "transparentPixels": 1623744,
+    "softPixels": 213250
+  },
+  {
+    "frame": 71,
+    "sourceFrame": 70,
+    "changedAlphaPixels": 121462,
+    "transparentPixels": 1624603,
+    "softPixels": 212052
+  },
+  {
+    "frame": 72,
+    "sourceFrame": 72,
+    "changedAlphaPixels": 122952,
+    "transparentPixels": 1624203,
+    "softPixels": 212259
+  },
+  {
+    "frame": 73,
+    "sourceFrame": 72,
+    "changedAlphaPixels": 122952,
+    "transparentPixels": 1624203,
+    "softPixels": 212259
+  },
+  {
+    "frame": 74,
+    "sourceFrame": 73,
+    "changedAlphaPixels": 122686,
+    "transparentPixels": 1622237,
+    "softPixels": 213754
+  },
+  {
+    "frame": 75,
+    "sourceFrame": 75,
+    "changedAlphaPixels": 122941,
+    "transparentPixels": 1628037,
+    "softPixels": 207538
+  },
+  {
+    "frame": 76,
+    "sourceFrame": 75,
+    "changedAlphaPixels": 122941,
+    "transparentPixels": 1628037,
+    "softPixels": 207538
+  },
+  {
+    "frame": 77,
+    "sourceFrame": 76,
+    "changedAlphaPixels": 122694,
+    "transparentPixels": 1628656,
+    "softPixels": 206773
+  },
+  {
+    "frame": 78,
+    "sourceFrame": 78,
+    "changedAlphaPixels": 124129,
+    "transparentPixels": 1625836,
+    "softPixels": 209967
+  },
+  {
+    "frame": 79,
+    "sourceFrame": 78,
+    "changedAlphaPixels": 124129,
+    "transparentPixels": 1625836,
+    "softPixels": 209967
+  },
+  {
+    "frame": 80,
+    "sourceFrame": 79,
+    "changedAlphaPixels": 123307,
+    "transparentPixels": 1628014,
+    "softPixels": 207859
+  },
+  {
+    "frame": 81,
+    "sourceFrame": 81,
+    "changedAlphaPixels": 124356,
+    "transparentPixels": 1628135,
+    "softPixels": 208785
+  },
+  {
+    "frame": 82,
+    "sourceFrame": 81,
+    "changedAlphaPixels": 124356,
+    "transparentPixels": 1628135,
+    "softPixels": 208785
+  },
+  {
+    "frame": 83,
+    "sourceFrame": 82,
+    "changedAlphaPixels": 123139,
+    "transparentPixels": 1627405,
+    "softPixels": 209887
+  },
+  {
+    "frame": 84,
+    "sourceFrame": 84,
+    "changedAlphaPixels": 123770,
+    "transparentPixels": 1630824,
+    "softPixels": 207075
+  },
+  {
+    "frame": 85,
+    "sourceFrame": 84,
+    "changedAlphaPixels": 123770,
+    "transparentPixels": 1630824,
+    "softPixels": 207075
+  },
+  {
+    "frame": 86,
+    "sourceFrame": 85,
+    "changedAlphaPixels": 124076,
+    "transparentPixels": 1626893,
+    "softPixels": 210856
+  },
+  {
+    "frame": 87,
+    "sourceFrame": 87,
+    "changedAlphaPixels": 123350,
+    "transparentPixels": 1629993,
+    "softPixels": 207539
+  },
+  {
+    "frame": 88,
+    "sourceFrame": 87,
+    "changedAlphaPixels": 123350,
+    "transparentPixels": 1629993,
+    "softPixels": 207539
+  },
+  {
+    "frame": 89,
+    "sourceFrame": 88,
+    "changedAlphaPixels": 124331,
+    "transparentPixels": 1627806,
+    "softPixels": 210060
+  },
+  {
+    "frame": 90,
+    "sourceFrame": 90,
+    "changedAlphaPixels": 126301,
+    "transparentPixels": 1627971,
+    "softPixels": 211452
+  },
+  {
+    "frame": 91,
+    "sourceFrame": 90,
+    "changedAlphaPixels": 126301,
+    "transparentPixels": 1627971,
+    "softPixels": 211452
+  },
+  {
+    "frame": 92,
+    "sourceFrame": 91,
+    "changedAlphaPixels": 124955,
+    "transparentPixels": 1625920,
+    "softPixels": 211676
+  },
+  {
+    "frame": 93,
+    "sourceFrame": 93,
+    "changedAlphaPixels": 125307,
+    "transparentPixels": 1625159,
+    "softPixels": 212228
+  },
+  {
+    "frame": 94,
+    "sourceFrame": 93,
+    "changedAlphaPixels": 125307,
+    "transparentPixels": 1625159,
+    "softPixels": 212228
+  },
+  {
+    "frame": 95,
+    "sourceFrame": 94,
+    "changedAlphaPixels": 126734,
+    "transparentPixels": 1625992,
+    "softPixels": 212278
+  },
+  {
+    "frame": 96,
+    "sourceFrame": 96,
+    "changedAlphaPixels": 127162,
+    "transparentPixels": 1627162,
+    "softPixels": 211228
+  },
+  {
+    "frame": 97,
+    "sourceFrame": 96,
+    "changedAlphaPixels": 127162,
+    "transparentPixels": 1627162,
+    "softPixels": 211228
+  },
+  {
+    "frame": 98,
+    "sourceFrame": 97,
+    "changedAlphaPixels": 127957,
+    "transparentPixels": 1624638,
+    "softPixels": 213585
+  },
+  {
+    "frame": 99,
+    "sourceFrame": 99,
+    "changedAlphaPixels": 127219,
+    "transparentPixels": 1627099,
+    "softPixels": 210853
+  },
+  {
+    "frame": 100,
+    "sourceFrame": 99,
+    "changedAlphaPixels": 127219,
+    "transparentPixels": 1627099,
+    "softPixels": 210853
+  },
+  {
+    "frame": 101,
+    "sourceFrame": 100,
+    "changedAlphaPixels": 127097,
+    "transparentPixels": 1625854,
+    "softPixels": 211568
+  },
+  {
+    "frame": 102,
+    "sourceFrame": 102,
+    "changedAlphaPixels": 126807,
+    "transparentPixels": 1626965,
+    "softPixels": 210296
+  },
+  {
+    "frame": 103,
+    "sourceFrame": 102,
+    "changedAlphaPixels": 126807,
+    "transparentPixels": 1626965,
+    "softPixels": 210296
+  },
+  {
+    "frame": 104,
+    "sourceFrame": 103,
+    "changedAlphaPixels": 127336,
+    "transparentPixels": 1624139,
+    "softPixels": 213250
+  },
+  {
+    "frame": 105,
+    "sourceFrame": 105,
+    "changedAlphaPixels": 128531,
+    "transparentPixels": 1621802,
+    "softPixels": 215425
+  },
+  {
+    "frame": 106,
+    "sourceFrame": 105,
+    "changedAlphaPixels": 128531,
+    "transparentPixels": 1621802,
+    "softPixels": 215425
+  },
+  {
+    "frame": 107,
+    "sourceFrame": 106,
+    "changedAlphaPixels": 129698,
+    "transparentPixels": 1619037,
+    "softPixels": 218499
+  },
+  {
+    "frame": 108,
+    "sourceFrame": 108,
+    "changedAlphaPixels": 128943,
+    "transparentPixels": 1624110,
+    "softPixels": 213029
+  },
+  {
+    "frame": 109,
+    "sourceFrame": 108,
+    "changedAlphaPixels": 128943,
+    "transparentPixels": 1624110,
+    "softPixels": 213029
+  },
+  {
+    "frame": 110,
+    "sourceFrame": 109,
+    "changedAlphaPixels": 130204,
+    "transparentPixels": 1619825,
+    "softPixels": 217715
+  },
+  {
+    "frame": 111,
+    "sourceFrame": 111,
+    "changedAlphaPixels": 130268,
+    "transparentPixels": 1626440,
+    "softPixels": 211703
+  },
+  {
+    "frame": 112,
+    "sourceFrame": 111,
+    "changedAlphaPixels": 130268,
+    "transparentPixels": 1626440,
+    "softPixels": 211703
+  },
+  {
+    "frame": 113,
+    "sourceFrame": 112,
+    "changedAlphaPixels": 130863,
+    "transparentPixels": 1629237,
+    "softPixels": 208968
+  },
+  {
+    "frame": 114,
+    "sourceFrame": 114,
+    "changedAlphaPixels": 126856,
+    "transparentPixels": 1630823,
+    "softPixels": 205862
+  },
+  {
+    "frame": 115,
+    "sourceFrame": 114,
+    "changedAlphaPixels": 126856,
+    "transparentPixels": 1630823,
+    "softPixels": 205862
+  },
+  {
+    "frame": 116,
+    "sourceFrame": 115,
+    "changedAlphaPixels": 129167,
+    "transparentPixels": 1629144,
+    "softPixels": 207682
+  },
+  {
+    "frame": 117,
+    "sourceFrame": 117,
+    "changedAlphaPixels": 133775,
+    "transparentPixels": 1631964,
+    "softPixels": 206355
+  },
+  {
+    "frame": 118,
+    "sourceFrame": 117,
+    "changedAlphaPixels": 133775,
+    "transparentPixels": 1631964,
+    "softPixels": 206355
+  },
+  {
+    "frame": 119,
+    "sourceFrame": 118,
+    "changedAlphaPixels": 133038,
+    "transparentPixels": 1627980,
+    "softPixels": 208949
+  },
+  {
+    "frame": 120,
+    "sourceFrame": 120,
+    "changedAlphaPixels": 120892,
+    "transparentPixels": 1687537,
+    "softPixels": 149406
+  }
+]

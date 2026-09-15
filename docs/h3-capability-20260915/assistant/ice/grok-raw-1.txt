@@ -1,0 +1,18 @@
+{
+  "modelPrompt": {
+    "subject_definitions": "<Subject 1> ice crystal money tree with crystalline branches and ice particle effects, appearance transformed from golden coin tree, motion and trajectory bound from <Video 1>.",
+    "summary": "[video editing + reference generation] The target video is an edited version of <Video 1>. The original golden coin tree and coin particle effects are replaced by an ice crystal tree and ice particle effects while exactly retaining the growth motion paths, falling particle trajectories, timing, rhythm, camera movement, framing and solid blue background throughout the 3-second duration.",
+    "retention_analysis": "<Video 1>: partially_preserved - original growth motion paths, particle falling trajectories, timing, rhythm, camera, framing and solid blue background fully retained.\n<Subject 1>: attribute_transfer - ice crystal material, translucent crystalline structure and frosty particle appearance transferred onto the tree and particle system of <Video 1>.",
+    "detailed_description": "Ice crystal theme, translucent frosty crystalline surfaces with cool blue-white highlights. [Shot 1] At 0.000s <Subject 1> appears as a small ice crystal tree in a frosted pot against solid blue background. From 0.000s to 1.000s the crystalline branches grow upward and outward while ice particles begin to form on the structure. At 1.000s a bright crystalline glow pulses from the top of <Subject 1>. From 1.000s to 3.000s ice particles detach and drift downward in the exact trajectories and rhythm of the original coin particles while the fully grown ice crystal tree remains centered; camera and solid blue background stay unchanged.",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  },
+  "displayPrompt": {
+    "subject_definitions": "<Subject 1> 冰晶金钱树，带有结晶枝干和冰晶粒子特效，外观从金色金币树转换而来，动作和轨迹绑定自 <Video 1>。",
+    "summary": "[video editing + reference generation] 目标视频是 <Video 1> 的编辑版本。原金色金币树和金币粒子特效被替换为冰晶树和冰晶粒子特效，同时在3秒全程精确保留生长动作路径、粒子飘落轨迹、时序、节奏、摄像机运动、构图和纯蓝色背景。",
+    "retention_analysis": "<Video 1>: partially_preserved - 原生长动作路径、粒子飘落轨迹、时序、节奏、摄像机、构图和纯蓝色背景完全保留。\n<Subject 1>: attribute_transfer - 冰晶材质、半透明结晶结构和霜冻粒子外观转移到 <Video 1> 的树和粒子系统上。",
+    "detailed_description": "冰晶主题，半透明霜冻结晶表面带有冷蓝白高光。[Shot 1] 0.000s 时 <Subject 1> 以冰晶小树形态出现在霜冻花盆中，背景为纯蓝色。从0.000s至1.000s，结晶枝干向上向外生长，冰晶粒子开始在结构上形成。1.000s 时 <Subject 1> 顶部发出明亮结晶光晕。从1.000s至3.000s，冰晶粒子以与原金币粒子完全相同的轨迹和节奏向下飘落，完整生长的冰晶树保持居中；摄像机与纯蓝色背景保持不变。",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  }
+}

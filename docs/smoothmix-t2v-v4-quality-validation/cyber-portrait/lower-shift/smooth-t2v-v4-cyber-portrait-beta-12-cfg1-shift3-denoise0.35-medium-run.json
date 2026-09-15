@@ -1,0 +1,70 @@
+{
+  "case": "smooth-t2v-v4-cyber-portrait-beta-12-cfg1-shift3-denoise0.35-medium",
+  "status": "success",
+  "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+  "sourceSha256": "89bc170e0b97ad8a8cda70d7aaec9fecdc01e842c0ebae19f62d92668ac1fdb9",
+  "workflowSha256": "a5997047b6438154f0cccba4790216a0336bfb391c27487a432626bd1425cea5",
+  "strength": 0.35,
+  "fixture": "cyber-portrait",
+  "baselineReused": false,
+  "baseline": null,
+  "sampling": {
+    "steps": 12,
+    "cfg": 1,
+    "scheduler": "beta",
+    "shift": 3,
+    "sampler": "euler",
+    "seed": 9122026,
+    "externalLora": null
+  },
+  "sourceStyleProfile": {
+    "medium": "photorealistic cinematic digital art",
+    "style": "Photorealistic cinematic portrait, natural face proportions and skin texture, fine textile grain, cool dark blue palette with cyan and magenta neon reflections, rainfall and a softly blurred urban background.",
+    "content": "An adult woman with a short silver bob and transparent cyan illuminated glasses stands facing the viewer in a rainy futuristic alley. She wears a zipped black high-neck outfit and a black technical jacket with cyan lights around the high collar, dark backpack straps and a rectangular illuminated device hanging at her hip. Wet pavement and neon signs recede behind her.",
+    "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+  },
+  "styleTrigger": "",
+  "promptFormat": "baseline",
+  "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+  "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+  "settingProvenance": "Only sampling shift changed from 8 to 3 against more-steps; lower starting sigma at equal denoise.",
+  "outputBlend": false,
+  "productionDefaultChanged": false,
+  "startedAt": "2026-09-12T16:45:28.245Z",
+  "promptId": "48b2670d-2844-4542-ae12-5374e2597a79",
+  "seconds": 27.599,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "48b2670d-2844-4542-ae12-5374e2597a79",
+          "timestamp": 1789231528251
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [],
+          "prompt_id": "48b2670d-2844-4542-ae12-5374e2597a79",
+          "timestamp": 1789231528261
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "48b2670d-2844-4542-ae12-5374e2597a79",
+          "timestamp": 1789231554672
+        }
+      ]
+    ]
+  },
+  "output": {
+    "filename": "smooth-t2v-v4-cyber-portrait-beta-12-cfg1-shift3-denoise0.35-medium_00001_.png",
+    "subfolder": "NovaFlow_validation",
+    "type": "output"
+  },
+  "outputSha256": "59b4e578308b27d1ced4b63c9938a6a3090ee0757fb30cf5d6b091a6f622c8a4"
+}

@@ -1,0 +1,57 @@
+[
+  {
+    "file": "prompt-assistant-service.py",
+    "sha256": "a5d37e8bb2a8709ecae10a375f0ba20370fa31b0b339765dad480c5f7be72981",
+    "verifiedInsideInstaller": true
+  },
+  {
+    "file": "prompt_assistant/h3_prompt_enhance.py",
+    "sha256": "3c4c72ccd4316c757928ab79cec5290a6ff46025e8695d0d54fec8f93799a753",
+    "verifiedInsideInstaller": true
+  },
+  {
+    "file": "prompt_assistant/h3_prompt_enhance_policy.json",
+    "sha256": "e1641e585f5d724b923cf5e91217d31fd6913a51e18c0bb16158e9b37ecb7be1",
+    "verifiedInsideInstaller": true
+  },
+  {
+    "file": "admin-server/server.js",
+    "sha256": "3db9c58472bdc4bb9198d9c6c0e60781126005d9542664594a8f818abee30d2e",
+    "verifiedInsideInstaller": true
+  },
+  {
+    "file": "admin-server/h3-prompt-enhance.js",
+    "sha256": "5f0ceb79e0b4a638f5a2ee9957f8adb5b4d64440053cd1b222e0aabf92077b86",
+    "verifiedInsideInstaller": true
+  },
+  {
+    "file": "main.js",
+    "sha256": "cd9f722ac9e0c5a941468cb31ed2197dd34fcb92e5c53b5176bcb2fa002e0379",
+    "verifiedInsideInstaller": true
+  },
+  {
+    "file": "renderer/h3-prompt-format.js",
+    "sha256": "64d2455c9fb626507bde25d70f9e4826b1839bc25e87c2a3696d339111704ce4",
+    "verifiedInsideInstaller": true
+  },
+  {
+    "file": "renderer/ai-sequence-minimax-h3-prompt.workflow.js",
+    "sha256": "8f8f1aed6ef5e712ba81458d564e2c7ba6abe8a6cf7e1cb971aebe01c5cea206",
+    "verifiedInsideInstaller": true
+  },
+  {
+    "file": "renderer/ai-sequence-minimax-h3-reverse.workflow.js",
+    "sha256": "766a9f6925c6b4fb104f78423509ab5606a303e8d6e2b0aa2a0d813b699666ed",
+    "verifiedInsideInstaller": true
+  },
+  {
+    "file": "renderer/index.html",
+    "sha256": "25848b966ea38e6a51510375f09271024f18f1a0657d139422929a10a6429b9c",
+    "verifiedInsideInstaller": true
+  },
+  {
+    "file": "renderer/assets/index-BbIa-2NM.js",
+    "sha256": "d334d825373df99bac384a418ca3fa356da26c79950f70866b2845edd64e4753",
+    "verifiedInsideInstaller": true
+  }
+]

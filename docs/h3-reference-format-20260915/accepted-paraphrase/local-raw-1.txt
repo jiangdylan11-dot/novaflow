@@ -1,0 +1,18 @@
+```json
+{
+  "references": [
+    {
+      "label": "<Subject 1>",
+      "sources": ["<Picture 1>"],
+      "description": "将视频中的金币替换为第一张参考图的外观",
+      "keep": "原背景别动，转动方向、速度和路径都照原片",
+      "relation": "attribute_transfer"
+    }
+  ],
+  "tasks": ["video editing", "reference generation"],
+  "summary": "将视频中的金币替换为第一张参考图的外观。",
+  "description": "视频中有一枚金币，需要将其替换为第一张参考图的外观。金币的转动方向、速度和路径保持不变，原背景保持不动。",
+  "soundscape": "N/A",
+  "music": "N/A"
+}
+```

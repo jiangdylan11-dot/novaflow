@@ -1,0 +1,13 @@
+{
+  "version": "2.3.214",
+  "path": "D:\\AI_APP\\NovaFlow\\particle-editor-desktop\\dist\\NovaFlow Setup 2.3.214.exe",
+  "bytes": 250115782,
+  "modifiedAt": "2026-09-12T17:23:43.763Z",
+  "sha256": "551c9f83819c9b1347cd6f745c96f329df8ef4824874016210837835fec0cbd9",
+  "packagedRuntimeSha256": "7a5ac09f94412002f10882954b80d80655d7475d65074bc8053521af948bf11f",
+  "packagedRuntimeMatchesSource": true,
+  "packagedBuilderLoraVerified": true,
+  "defaultLoraStrength": 0.6,
+  "buildCommand": "npm --prefix particle-editor-desktop run build:win:nobump",
+  "buildExitCode": 0
+}

@@ -1,0 +1,42 @@
+[
+  {
+    "file": "main.js",
+    "sha256": "a02ea0da74a22a97f04c754284d31d374a2f498a5fc2d1517ac4dd4a88fd658c",
+    "matches": true
+  },
+  {
+    "file": "main/stdio-guard.js",
+    "sha256": "32ef4870fcf3d8d76ab6377c5b02a7db4be68838f6709ce829f78582f2093365",
+    "matches": true
+  },
+  {
+    "file": "admin-server/h3-prompt-enhance.js",
+    "sha256": "82a389ca53a6ca4e52555869125321bbd8ff4f76517271dccb5f629b94b43afe",
+    "matches": true
+  },
+  {
+    "file": "prompt_assistant/h3_prompt_enhance.py",
+    "sha256": "1da82a140f33a37822d6b548f572e00613dd996bb8f620049705d0f7936dd9b3",
+    "matches": true
+  },
+  {
+    "file": "renderer/h3-prompt-format.js",
+    "sha256": "12f129810d22802acc46c44345f9c64963aad35c4ced43a153fa75c94812d7d5",
+    "matches": true
+  },
+  {
+    "file": "renderer/ai-sequence-minimax-h3-reverse.workflow.js",
+    "sha256": "29c1472bfd7be9667f5613ab6c46b3a2c97a03a319b88263d6e5acb5d41d38d8",
+    "matches": true
+  },
+  {
+    "file": "renderer/novaflow-smart-ai.js",
+    "sha256": "10541e2b2143290dbe0c3a70bd9c87d2ff445fd2c7372c3d177761cedf00e6e9",
+    "matches": true
+  },
+  {
+    "file": "renderer/index.html",
+    "sha256": "bd991ce9469fac3ef578a9f46b6554c17a29f51af404ca9a91f736b55d3d8af9",
+    "matches": true
+  }
+]

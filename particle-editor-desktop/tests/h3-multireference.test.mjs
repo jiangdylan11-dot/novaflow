@@ -59,6 +59,27 @@ test('missing media, invented speaker identities and invalid retention fail befo
   for(const bad of [text.replaceAll('<Picture 1>','<Picture 2>'),text.replace('<Subject 1> is','<Subject 2> is'),text.replace('fully_copy','fully_preserved'),text.replace('The target video is an edited version of <Video 1>.','Copy the video.')])assert.throws(()=>api.validateReference(bad,options));
  }
 });
+test('uploads decide the task list: a picture-only inventory never demands a source video',()=>{
+ const pictureOnly={
+  subject_definitions:'<Subject 1> is the character from <Picture 1>, keeping her face and hairstyle.',
+  summary:'[video editing + reference generation + audio reuse] The character repeats a quick back-and-forth motion for 3 seconds.',
+  retention_analysis:'<Subject 1>: fully_preserved - face and hairstyle from the image remain.',
+  detailed_description:'[Shot 1] <Subject 1> stands at the center and repeats the motion, returning to the starting pose at 3 seconds. The camera remains static.',
+  overall_soundscape:'N/A',non_diegetic_music:'N/A'};
+ const pictureOptions={mode:'multi_reference',durationSeconds:3,requirements:'Available resource labels: <Picture 1>'};
+ for(const api of [local,edge,context.NovaFlowH3PromptFormat]){
+  const compiled=api.validateReference(JSON.stringify(pictureOnly),pictureOptions);
+  assert.match(compiled,/\nsummary:\n\[reference generation\] The character/);
+ }
+ // With a video uploaded the edit stays available and still needs its source binding.
+ assert.throws(()=>local.validateReference(JSON.stringify(pictureOnly),{...pictureOptions,requirements:'Available resource labels: <Picture 1>; <Video 1>'}),/源视频/);
+});
+test('a bound editor alias echoed in a multi-reference result binds to its protocol token instead of failing generation',async()=>{
+ const echoed=text.replace('<Subject 1> is the dollar coin from <Picture 1>','<Subject 1> is the dollar coin from @参考图1');
+ const result=await prompt.compileForGeneration(current,async()=>echoed);
+ assert.match(result.modelText,/from <Picture 1>/);assert.doesNotMatch(result.modelText,/@参考图/);
+ await assert.rejects(prompt.compileForGeneration(current,async()=>text.replace('<Picture 1>','@参考图3')),/not UI aliases \(@参考图3\)/);
+});
 test('generation compiles free text and upgrades legacy video edits with missing processing controls',async()=>{
  let calls=0;const result=await prompt.compileForGeneration(current,async payload=>{calls++;assert.equal(payload.h3Mode,'multi_reference');return text});
  assert.equal(result.modelText.replace(/\s+/g,' '),text.replace(/\s+/g,' '));assert.equal(calls,1);

@@ -2476,6 +2476,29 @@ function findNovaFlowRuntimeScript(installPath, fileName) {
   return candidates[0];
 }
 
+const NOVAFLOW_SEETHROUGH_HEAD_NODE_FILE = "novaflow_seethrough_head_layer.py";
+
+// The See-through split needs NovaFlow's whole-head helper node. It ships with the app (main/novaflow-seethrough-head-node.py)
+// and is copied into the runtime's custom_nodes folder before the runtime starts; the See-through plugin is left untouched.
+function ensureNovaFlowSeeThroughHeadNode(config) {
+  try {
+    const source = path.join(__dirname, "main", "novaflow-seethrough-head-node.py");
+    const customNodesPath = String((config && config.customNodesPath) || "");
+    if (!customNodesPath || !fs.existsSync(source)) return { ok: false, reason: "missing" };
+    const target = path.join(customNodesPath, NOVAFLOW_SEETHROUGH_HEAD_NODE_FILE);
+    const code = fs.readFileSync(source, "utf8");
+    const previous = fs.existsSync(target) ? fs.readFileSync(target, "utf8") : "";
+    if (code === previous) return { ok: true, updated: false, target };
+    fs.mkdirSync(customNodesPath, { recursive: true });
+    fs.writeFileSync(target, code, "utf8");
+    appendLogLine("info", "novaflow-seethrough-head-node-installed", { target });
+    return { ok: true, updated: true, target };
+  } catch (err) {
+    appendLogLine("warn", "novaflow-seethrough-head-node-install-failed", { message: String((err && err.message) || err) });
+    return { ok: false, reason: String((err && err.message) || err) };
+  }
+}
+
 function readNovaFlowRuntimeConfig() {
   const runtimeJsonPath = getNovaFlowRuntimeJsonPath();
   const runtimeDir = path.dirname(runtimeJsonPath);
@@ -4231,6 +4254,7 @@ async function ensureNovaFlowRuntimeStarted(options = {}) {
           return failed;
         }
 
+        ensureNovaFlowSeeThroughHeadNode(config);
         appendLogLine("info", "novaflow-runtime-start", { source: options.source || "", scriptPath: config.startScriptPath, baseUrl: config.baseUrl });
         const starting = { ...config, ok: true, status: "starting", running: false, connected: false, processRunning: isNovaFlowRuntimeProcessAlive(config), reused: false, health: { ok: false, error: "starting" }, error: "" };
         novaFlowRuntimeLastStatus = starting;
@@ -6177,6 +6201,7 @@ ipcMain.handle("prompt-assistant-optimize-prompt", async (_evt, payload) => {
     provider,
     currentPrompt,
     ...(usesMiniMaxH3Prompt ? {h3ReferenceFrames: require('./admin-server/h3-prompt-enhance.js').referenceFrames(payload?.h3ReferenceFrames, requirements)} : {}),
+    ...(usesMiniMaxH3Prompt && payload?.h3Reverse === true ? { h3Reverse: true } : {}),
     ...(usesMiniMaxH3Prompt && h3Mode ? { h3Mode } : {}),
     ...(usesMiniMaxH3Prompt && h3DurationSource !== undefined && h3DurationSource !== null && h3DurationSource !== "" ? { durationSeconds: h3DurationSource } : {}),
     ...(usesMiniMaxH3Prompt && h3VisualSchema ? { visualSchema: h3VisualSchema } : {}),
@@ -6438,7 +6463,9 @@ ipcMain.handle("prompt-assistant-reverse-image-prompt", async (_evt, payload) =>
   const runReversePromptAssistant = () => requestPromptAssistant(
     "reverseImagePrompt",
     reversePayload,
-    usesMiniMaxH3Reverse ? 180_000 : 300_000,
+    // Each frame is analyzed in its own bounded stage; a slow or shared GPU can
+    // take minutes per frame, so budget the timeout per image rather than per call.
+    usesMiniMaxH3Reverse ? 180_000 * Math.max(1, Array.isArray(images) ? images.length : 1) : 300_000,
     { verifiedCleanup: true }
   );
   let result = await runReversePromptAssistant();

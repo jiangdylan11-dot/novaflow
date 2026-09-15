@@ -1,0 +1,4755 @@
+{
+  "w": 1080,
+  "h": 1920,
+  "fps": 24,
+  "count": 121,
+  "duration": 5.056,
+  "text": "+\n自定义色彩参照\n视频色彩修复\n关闭视频抠图\n光效透明保留\n保留投影\n单帧擦除 / 修复\n全局\n擦除\n修复\n笔刷\n羽化\n勾选全局后绘制会影响所有帧；单帧修复/擦除优先级高于全局。Ctrl+Z 撤销 CapsLock 显示笔刷圈 [ 缩小 ] 放大 ： 羽化减小 ’ 羽化增大",
+  "entry": {
+    "count": 1,
+    "label": "视频抠图",
+    "icons": 0,
+    "legacy": 0
+  },
+  "startupErrors": [],
+  "errors": [],
+  "modelCalls": 1,
+  "processingTitles": [
+    "视频抠图 · AI 主体识别"
+  ],
+  "materialReferences": [
+    0
+  ],
+  "brush": {
+    "changed": 15815,
+    "soft": 11001,
+    "recovered": 16565,
+    "visible": true
+  },
+  "toolMode": "video",
+  "liveBackend": false,
+  "writes": [
+    "clean_0000.png",
+    "clean_0001.png",
+    "clean_0002.png",
+    "clean_0003.png",
+    "clean_0004.png",
+    "clean_0005.png",
+    "clean_0006.png",
+    "clean_0007.png",
+    "clean_0008.png",
+    "clean_0009.png",
+    "clean_0010.png",
+    "clean_0011.png",
+    "clean_0012.png",
+    "clean_0013.png",
+    "clean_0014.png",
+    "clean_0015.png",
+    "clean_0016.png",
+    "clean_0017.png",
+    "clean_0018.png",
+    "clean_0019.png",
+    "clean_0020.png",
+    "clean_0021.png",
+    "clean_0022.png",
+    "clean_0023.png",
+    "clean_0024.png",
+    "clean_0025.png",
+    "clean_0026.png",
+    "clean_0027.png",
+    "clean_0028.png",
+    "clean_0029.png",
+    "clean_0030.png",
+    "clean_0031.png",
+    "clean_0032.png",
+    "clean_0033.png",
+    "clean_0034.png",
+    "clean_0035.png",
+    "clean_0036.png",
+    "clean_0037.png",
+    "clean_0038.png",
+    "clean_0039.png",
+    "clean_0040.png",
+    "clean_0041.png",
+    "clean_0042.png",
+    "clean_0043.png",
+    "clean_0044.png",
+    "clean_0045.png",
+    "clean_0046.png",
+    "clean_0047.png",
+    "clean_0048.png",
+    "clean_0049.png",
+    "clean_0050.png",
+    "clean_0051.png",
+    "clean_0052.png",
+    "clean_0053.png",
+    "clean_0054.png",
+    "clean_0055.png",
+    "clean_0056.png",
+    "clean_0057.png",
+    "clean_0058.png",
+    "clean_0059.png",
+    "clean_0060.png",
+    "clean_0061.png",
+    "clean_0062.png",
+    "clean_0063.png",
+    "clean_0064.png",
+    "clean_0065.png",
+    "clean_0066.png",
+    "clean_0067.png",
+    "clean_0068.png",
+    "clean_0069.png",
+    "clean_0070.png",
+    "clean_0071.png",
+    "clean_0072.png",
+    "clean_0073.png",
+    "clean_0074.png",
+    "clean_0075.png",
+    "clean_0076.png",
+    "clean_0077.png",
+    "clean_0078.png",
+    "clean_0079.png",
+    "clean_0080.png",
+    "clean_0081.png",
+    "clean_0082.png",
+    "clean_0083.png",
+    "clean_0084.png",
+    "clean_0085.png",
+    "clean_0086.png",
+    "clean_0087.png",
+    "clean_0088.png",
+    "clean_0089.png",
+    "clean_0090.png",
+    "clean_0091.png",
+    "clean_0092.png",
+    "clean_0093.png",
+    "clean_0094.png",
+    "clean_0095.png",
+    "clean_0096.png",
+    "clean_0097.png",
+    "clean_0098.png",
+    "clean_0099.png",
+    "clean_0100.png",
+    "clean_0101.png",
+    "clean_0102.png",
+    "clean_0103.png",
+    "clean_0104.png",
+    "clean_0105.png",
+    "clean_0106.png",
+    "clean_0107.png",
+    "clean_0108.png",
+    "clean_0109.png",
+    "clean_0110.png",
+    "clean_0111.png",
+    "clean_0112.png",
+    "clean_0113.png",
+    "clean_0114.png",
+    "clean_0115.png",
+    "clean_0116.png",
+    "clean_0117.png",
+    "clean_0118.png",
+    "clean_0119.png",
+    "clean_0120.png"
+  ],
+  "maskMatches": [
+    {
+      "decodedFrameIndex": 0,
+      "timelineIndex": 0,
+      "fileName": "frame_0000.png",
+      "sourceIndex": 0,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0001.png",
+        "sourceIndex": 1,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 1,
+      "timelineIndex": 1,
+      "fileName": "frame_0000.png",
+      "sourceIndex": 0,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0001.png",
+        "sourceIndex": 1,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 2,
+      "timelineIndex": 2,
+      "fileName": "frame_0002.png",
+      "sourceIndex": 2,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0000.png",
+        "sourceIndex": 0,
+        "meanError": 0.9068306260919133,
+        "rawMeanError": 0.880615234375,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.006025889542686,
+            "offset": 0.17733540856393404
+          },
+          {
+            "channel": 2,
+            "gain": 1.002133468588157,
+            "offset": 1.015010439212979
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 3,
+      "timelineIndex": 3,
+      "fileName": "frame_0003.png",
+      "sourceIndex": 3,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0004.png",
+        "sourceIndex": 4,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 4,
+      "timelineIndex": 4,
+      "fileName": "frame_0003.png",
+      "sourceIndex": 3,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0004.png",
+        "sourceIndex": 4,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 5,
+      "timelineIndex": 5,
+      "fileName": "frame_0005.png",
+      "sourceIndex": 5,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0003.png",
+        "sourceIndex": 3,
+        "meanError": 1.1805555926437286,
+        "rawMeanError": 0.9268798828125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.0023688771722477,
+            "offset": 0.5912970115267342
+          },
+          {
+            "channel": 2,
+            "gain": 1.000458211335168,
+            "offset": 0.528883403724187
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 6,
+      "timelineIndex": 6,
+      "fileName": "frame_0006.png",
+      "sourceIndex": 6,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0007.png",
+        "sourceIndex": 7,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 7,
+      "timelineIndex": 7,
+      "fileName": "frame_0006.png",
+      "sourceIndex": 6,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0007.png",
+        "sourceIndex": 7,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 8,
+      "timelineIndex": 8,
+      "fileName": "frame_0008.png",
+      "sourceIndex": 8,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0006.png",
+        "sourceIndex": 6,
+        "meanError": 1.1539309687413302,
+        "rawMeanError": 0.948272705078125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.0080715317947213,
+            "offset": 0.4781547747801156
+          },
+          {
+            "channel": 2,
+            "gain": 1.0076709878944077,
+            "offset": 0.32174057345884677
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 9,
+      "timelineIndex": 9,
+      "fileName": "frame_0009.png",
+      "sourceIndex": 9,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0010.png",
+        "sourceIndex": 10,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 10,
+      "timelineIndex": 10,
+      "fileName": "frame_0009.png",
+      "sourceIndex": 9,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0010.png",
+        "sourceIndex": 10,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 11,
+      "timelineIndex": 11,
+      "fileName": "frame_0011.png",
+      "sourceIndex": 11,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0009.png",
+        "sourceIndex": 9,
+        "meanError": 1.461043793822693,
+        "rawMeanError": 1.228668212890625,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.00466480467857,
+            "offset": 0.45197922411554003
+          },
+          {
+            "channel": 2,
+            "gain": 1.0007695548501523,
+            "offset": 0.1719762271758043
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 12,
+      "timelineIndex": 12,
+      "fileName": "frame_0012.png",
+      "sourceIndex": 12,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0013.png",
+        "sourceIndex": 13,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 13,
+      "timelineIndex": 13,
+      "fileName": "frame_0012.png",
+      "sourceIndex": 12,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0013.png",
+        "sourceIndex": 13,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 14,
+      "timelineIndex": 14,
+      "fileName": "frame_0014.png",
+      "sourceIndex": 14,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0012.png",
+        "sourceIndex": 12,
+        "meanError": 1.1702998014790893,
+        "rawMeanError": 1.079864501953125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.0028593084960824,
+            "offset": 0.22490637699469573
+          },
+          {
+            "channel": 2,
+            "gain": 1.0041389052773304,
+            "offset": 0.157538250179158
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 15,
+      "timelineIndex": 15,
+      "fileName": "frame_0015.png",
+      "sourceIndex": 15,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0016.png",
+        "sourceIndex": 16,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 16,
+      "timelineIndex": 16,
+      "fileName": "frame_0015.png",
+      "sourceIndex": 15,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0016.png",
+        "sourceIndex": 16,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 17,
+      "timelineIndex": 17,
+      "fileName": "frame_0017.png",
+      "sourceIndex": 17,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0015.png",
+        "sourceIndex": 15,
+        "meanError": 1.4491945531110446,
+        "rawMeanError": 1.338714599609375,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9975299039374718,
+            "offset": 0.08639167455255858
+          },
+          {
+            "channel": 2,
+            "gain": 0.9945266478783313,
+            "offset": 0.591043873826095
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 18,
+      "timelineIndex": 18,
+      "fileName": "frame_0018.png",
+      "sourceIndex": 18,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0019.png",
+        "sourceIndex": 19,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 19,
+      "timelineIndex": 19,
+      "fileName": "frame_0018.png",
+      "sourceIndex": 18,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0019.png",
+        "sourceIndex": 19,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 20,
+      "timelineIndex": 20,
+      "fileName": "frame_0020.png",
+      "sourceIndex": 20,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0018.png",
+        "sourceIndex": 18,
+        "meanError": 1.1715792340783646,
+        "rawMeanError": 1.07269287109375,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9999433201167963,
+            "offset": 0.12328125308025761
+          },
+          {
+            "channel": 2,
+            "gain": 1.0054931351408678,
+            "offset": -0.6930731451159602
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 21,
+      "timelineIndex": 21,
+      "fileName": "frame_0021.png",
+      "sourceIndex": 21,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0022.png",
+        "sourceIndex": 22,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 22,
+      "timelineIndex": 22,
+      "fileName": "frame_0021.png",
+      "sourceIndex": 21,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0022.png",
+        "sourceIndex": 22,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 23,
+      "timelineIndex": 23,
+      "fileName": "frame_0023.png",
+      "sourceIndex": 23,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0021.png",
+        "sourceIndex": 21,
+        "meanError": 1.258041059682672,
+        "rawMeanError": 1.153717041015625,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9979881748335412,
+            "offset": 0.20814394043831896
+          },
+          {
+            "channel": 2,
+            "gain": 0.9956355436802242,
+            "offset": 0.7093155653065111
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 24,
+      "timelineIndex": 24,
+      "fileName": "frame_0024.png",
+      "sourceIndex": 24,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0025.png",
+        "sourceIndex": 25,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 25,
+      "timelineIndex": 25,
+      "fileName": "frame_0024.png",
+      "sourceIndex": 24,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0025.png",
+        "sourceIndex": 25,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 26,
+      "timelineIndex": 26,
+      "fileName": "frame_0026.png",
+      "sourceIndex": 26,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0024.png",
+        "sourceIndex": 24,
+        "meanError": 0.8530716279452607,
+        "rawMeanError": 0.76092529296875,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.0025923133291441,
+            "offset": 0.13049194306919532
+          },
+          {
+            "channel": 2,
+            "gain": 1.0044539305879323,
+            "offset": 0.16593496735988822
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 27,
+      "timelineIndex": 27,
+      "fileName": "frame_0027.png",
+      "sourceIndex": 27,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0028.png",
+        "sourceIndex": 28,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 28,
+      "timelineIndex": 28,
+      "fileName": "frame_0027.png",
+      "sourceIndex": 27,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0028.png",
+        "sourceIndex": 28,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 29,
+      "timelineIndex": 29,
+      "fileName": "frame_0029.png",
+      "sourceIndex": 29,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0027.png",
+        "sourceIndex": 27,
+        "meanError": 1.1979666889083613,
+        "rawMeanError": 1.084747314453125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9970040578900382,
+            "offset": 0.09979164120854733
+          },
+          {
+            "channel": 2,
+            "gain": 0.9962660036986731,
+            "offset": 0.38326193669147557
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 30,
+      "timelineIndex": 30,
+      "fileName": "frame_0030.png",
+      "sourceIndex": 30,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0031.png",
+        "sourceIndex": 31,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 31,
+      "timelineIndex": 31,
+      "fileName": "frame_0030.png",
+      "sourceIndex": 30,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0031.png",
+        "sourceIndex": 31,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 32,
+      "timelineIndex": 32,
+      "fileName": "frame_0032.png",
+      "sourceIndex": 32,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0030.png",
+        "sourceIndex": 30,
+        "meanError": 0.9968473475875933,
+        "rawMeanError": 0.925628662109375,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.0007820325296382,
+            "offset": 0.10006077308990768
+          },
+          {
+            "channel": 2,
+            "gain": 1.002349812715676,
+            "offset": 0.10045346551649459
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 33,
+      "timelineIndex": 33,
+      "fileName": "frame_0033.png",
+      "sourceIndex": 33,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0034.png",
+        "sourceIndex": 34,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 34,
+      "timelineIndex": 34,
+      "fileName": "frame_0033.png",
+      "sourceIndex": 33,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0034.png",
+        "sourceIndex": 34,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 35,
+      "timelineIndex": 35,
+      "fileName": "frame_0035.png",
+      "sourceIndex": 35,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0033.png",
+        "sourceIndex": 33,
+        "meanError": 1.1886192722015545,
+        "rawMeanError": 1.12091064453125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9986088292409343,
+            "offset": 0.10653290814999394
+          },
+          {
+            "channel": 2,
+            "gain": 0.9991686748288374,
+            "offset": 0.11096650750553039
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 36,
+      "timelineIndex": 36,
+      "fileName": "frame_0036.png",
+      "sourceIndex": 36,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0037.png",
+        "sourceIndex": 37,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 37,
+      "timelineIndex": 37,
+      "fileName": "frame_0036.png",
+      "sourceIndex": 36,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0037.png",
+        "sourceIndex": 37,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 38,
+      "timelineIndex": 38,
+      "fileName": "frame_0038.png",
+      "sourceIndex": 38,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0036.png",
+        "sourceIndex": 36,
+        "meanError": 1.2165635426582773,
+        "rawMeanError": 1.1190185546875,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.000930633699609,
+            "offset": 0.10376627991198006
+          },
+          {
+            "channel": 2,
+            "gain": 0.9978663610568641,
+            "offset": 0.7811128936861707
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 39,
+      "timelineIndex": 39,
+      "fileName": "frame_0039.png",
+      "sourceIndex": 39,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0040.png",
+        "sourceIndex": 40,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 40,
+      "timelineIndex": 40,
+      "fileName": "frame_0039.png",
+      "sourceIndex": 39,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0040.png",
+        "sourceIndex": 40,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 41,
+      "timelineIndex": 41,
+      "fileName": "frame_0041.png",
+      "sourceIndex": 41,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0039.png",
+        "sourceIndex": 39,
+        "meanError": 1.0776352108802913,
+        "rawMeanError": 0.957611083984375,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9980935432331075,
+            "offset": 0.14823596430804287
+          },
+          {
+            "channel": 2,
+            "gain": 0.9961566547884613,
+            "offset": 0.44658065692429716
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 42,
+      "timelineIndex": 42,
+      "fileName": "frame_0042.png",
+      "sourceIndex": 42,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0043.png",
+        "sourceIndex": 43,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 43,
+      "timelineIndex": 43,
+      "fileName": "frame_0042.png",
+      "sourceIndex": 42,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0043.png",
+        "sourceIndex": 43,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 44,
+      "timelineIndex": 44,
+      "fileName": "frame_0044.png",
+      "sourceIndex": 44,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0042.png",
+        "sourceIndex": 42,
+        "meanError": 0.9999614351274484,
+        "rawMeanError": 0.884429931640625,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.0008663621277492,
+            "offset": 0.13435200676096315
+          },
+          {
+            "channel": 2,
+            "gain": 1.0015155147983499,
+            "offset": 0.2935059954086512
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 45,
+      "timelineIndex": 45,
+      "fileName": "frame_0045.png",
+      "sourceIndex": 45,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0046.png",
+        "sourceIndex": 46,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 46,
+      "timelineIndex": 46,
+      "fileName": "frame_0045.png",
+      "sourceIndex": 45,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0046.png",
+        "sourceIndex": 46,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 47,
+      "timelineIndex": 47,
+      "fileName": "frame_0047.png",
+      "sourceIndex": 47,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0045.png",
+        "sourceIndex": 45,
+        "meanError": 0.8536641233223079,
+        "rawMeanError": 0.77130126953125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9994884562985789,
+            "offset": 0.08793957590166457
+          },
+          {
+            "channel": 2,
+            "gain": 0.9990840393480394,
+            "offset": 0.22137894394922597
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 48,
+      "timelineIndex": 48,
+      "fileName": "frame_0048.png",
+      "sourceIndex": 48,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0049.png",
+        "sourceIndex": 49,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 49,
+      "timelineIndex": 49,
+      "fileName": "frame_0048.png",
+      "sourceIndex": 48,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0049.png",
+        "sourceIndex": 49,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 50,
+      "timelineIndex": 50,
+      "fileName": "frame_0050.png",
+      "sourceIndex": 50,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0048.png",
+        "sourceIndex": 48,
+        "meanError": 1.249089834417909,
+        "rawMeanError": 1.1275634765625,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.0017499980707716,
+            "offset": 0.23127064487178473
+          },
+          {
+            "channel": 2,
+            "gain": 1.0046458521641215,
+            "offset": 0.13402539714465433
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 51,
+      "timelineIndex": 51,
+      "fileName": "frame_0051.png",
+      "sourceIndex": 51,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0052.png",
+        "sourceIndex": 52,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 52,
+      "timelineIndex": 52,
+      "fileName": "frame_0051.png",
+      "sourceIndex": 51,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0052.png",
+        "sourceIndex": 52,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 53,
+      "timelineIndex": 53,
+      "fileName": "frame_0053.png",
+      "sourceIndex": 53,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0051.png",
+        "sourceIndex": 51,
+        "meanError": 1.2267372021904563,
+        "rawMeanError": 1.136566162109375,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.997351733676193,
+            "offset": 0.11647222332141638
+          },
+          {
+            "channel": 2,
+            "gain": 0.99828885755495,
+            "offset": 0.19474708905195115
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 54,
+      "timelineIndex": 54,
+      "fileName": "frame_0054.png",
+      "sourceIndex": 54,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0055.png",
+        "sourceIndex": 55,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 55,
+      "timelineIndex": 55,
+      "fileName": "frame_0054.png",
+      "sourceIndex": 54,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0055.png",
+        "sourceIndex": 55,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 56,
+      "timelineIndex": 56,
+      "fileName": "frame_0056.png",
+      "sourceIndex": 56,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0054.png",
+        "sourceIndex": 54,
+        "meanError": 1.4615573425628283,
+        "rawMeanError": 1.4215087890625,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9995220400838981,
+            "offset": 0.12953589525649534
+          },
+          {
+            "channel": 2,
+            "gain": 1.003336134838284,
+            "offset": -0.0551807738237855
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 57,
+      "timelineIndex": 57,
+      "fileName": "frame_0057.png",
+      "sourceIndex": 57,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0058.png",
+        "sourceIndex": 58,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 58,
+      "timelineIndex": 58,
+      "fileName": "frame_0057.png",
+      "sourceIndex": 57,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0058.png",
+        "sourceIndex": 58,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 59,
+      "timelineIndex": 59,
+      "fileName": "frame_0059.png",
+      "sourceIndex": 59,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0057.png",
+        "sourceIndex": 57,
+        "meanError": 1.1820292879097998,
+        "rawMeanError": 1.154937744140625,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.997901114512241,
+            "offset": -0.0019253296186008129
+          },
+          {
+            "channel": 2,
+            "gain": 0.998064766468014,
+            "offset": 0.015805045317691224
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 60,
+      "timelineIndex": 60,
+      "fileName": "frame_0060.png",
+      "sourceIndex": 60,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0061.png",
+        "sourceIndex": 61,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 61,
+      "timelineIndex": 61,
+      "fileName": "frame_0060.png",
+      "sourceIndex": 60,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0061.png",
+        "sourceIndex": 61,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 62,
+      "timelineIndex": 62,
+      "fileName": "frame_0062.png",
+      "sourceIndex": 62,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0060.png",
+        "sourceIndex": 60,
+        "meanError": 1.2521437695351705,
+        "rawMeanError": 1.15625,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.0006589301969893,
+            "offset": 0.3377182141108719
+          },
+          {
+            "channel": 2,
+            "gain": 1.0039767219413096,
+            "offset": -0.10478694045590231
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 63,
+      "timelineIndex": 63,
+      "fileName": "frame_0063.png",
+      "sourceIndex": 63,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0064.png",
+        "sourceIndex": 64,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 64,
+      "timelineIndex": 64,
+      "fileName": "frame_0063.png",
+      "sourceIndex": 63,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0064.png",
+        "sourceIndex": 64,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 65,
+      "timelineIndex": 65,
+      "fileName": "frame_0065.png",
+      "sourceIndex": 65,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0063.png",
+        "sourceIndex": 63,
+        "meanError": 1.0631126047659214,
+        "rawMeanError": 0.98681640625,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9990979518517126,
+            "offset": 0.0755218813736036
+          },
+          {
+            "channel": 2,
+            "gain": 0.9981075965052769,
+            "offset": 0.22349626129507527
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 66,
+      "timelineIndex": 66,
+      "fileName": "frame_0066.png",
+      "sourceIndex": 66,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0067.png",
+        "sourceIndex": 67,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 67,
+      "timelineIndex": 67,
+      "fileName": "frame_0066.png",
+      "sourceIndex": 66,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0067.png",
+        "sourceIndex": 67,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 68,
+      "timelineIndex": 68,
+      "fileName": "frame_0068.png",
+      "sourceIndex": 68,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0066.png",
+        "sourceIndex": 66,
+        "meanError": 1.041571022879676,
+        "rawMeanError": 0.996368408203125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.001220167536017,
+            "offset": 0.07768033799901986
+          },
+          {
+            "channel": 2,
+            "gain": 1.0028969270656816,
+            "offset": -0.010760441682791111
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 69,
+      "timelineIndex": 69,
+      "fileName": "frame_0069.png",
+      "sourceIndex": 69,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0070.png",
+        "sourceIndex": 70,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 70,
+      "timelineIndex": 70,
+      "fileName": "frame_0069.png",
+      "sourceIndex": 69,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0070.png",
+        "sourceIndex": 70,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 71,
+      "timelineIndex": 71,
+      "fileName": "frame_0071.png",
+      "sourceIndex": 71,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0069.png",
+        "sourceIndex": 69,
+        "meanError": 1.2904561098718663,
+        "rawMeanError": 1.2589111328125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9979152093956102,
+            "offset": -0.014569160368395728
+          },
+          {
+            "channel": 2,
+            "gain": 0.9977527060074163,
+            "offset": 0.02935643680578437
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 72,
+      "timelineIndex": 72,
+      "fileName": "frame_0072.png",
+      "sourceIndex": 72,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0073.png",
+        "sourceIndex": 73,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 73,
+      "timelineIndex": 73,
+      "fileName": "frame_0072.png",
+      "sourceIndex": 72,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0073.png",
+        "sourceIndex": 73,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 74,
+      "timelineIndex": 74,
+      "fileName": "frame_0074.png",
+      "sourceIndex": 74,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0072.png",
+        "sourceIndex": 72,
+        "meanError": 1.2179755911869643,
+        "rawMeanError": 1.102142333984375,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.0012577940135443,
+            "offset": 0.1806300834415211
+          },
+          {
+            "channel": 2,
+            "gain": 1.0027276623654888,
+            "offset": 0.13457564740149763
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 75,
+      "timelineIndex": 75,
+      "fileName": "frame_0075.png",
+      "sourceIndex": 75,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0076.png",
+        "sourceIndex": 76,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 76,
+      "timelineIndex": 76,
+      "fileName": "frame_0075.png",
+      "sourceIndex": 75,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0076.png",
+        "sourceIndex": 76,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 77,
+      "timelineIndex": 77,
+      "fileName": "frame_0077.png",
+      "sourceIndex": 77,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0075.png",
+        "sourceIndex": 75,
+        "meanError": 1.251044735485678,
+        "rawMeanError": 1.199981689453125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9963463597448454,
+            "offset": 0.047030538286335855
+          },
+          {
+            "channel": 2,
+            "gain": 0.9965377399594028,
+            "offset": 0.03439417255081878
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 78,
+      "timelineIndex": 78,
+      "fileName": "frame_0078.png",
+      "sourceIndex": 78,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0079.png",
+        "sourceIndex": 79,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 79,
+      "timelineIndex": 79,
+      "fileName": "frame_0078.png",
+      "sourceIndex": 78,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0079.png",
+        "sourceIndex": 79,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 80,
+      "timelineIndex": 80,
+      "fileName": "frame_0080.png",
+      "sourceIndex": 80,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0078.png",
+        "sourceIndex": 78,
+        "meanError": 0.9166239812112227,
+        "rawMeanError": 0.896026611328125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.0002913980864183,
+            "offset": 0.006664850096711916
+          },
+          {
+            "channel": 2,
+            "gain": 1.0011665040853606,
+            "offset": 0.02452753464432078
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 81,
+      "timelineIndex": 81,
+      "fileName": "frame_0081.png",
+      "sourceIndex": 81,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0082.png",
+        "sourceIndex": 82,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 82,
+      "timelineIndex": 82,
+      "fileName": "frame_0081.png",
+      "sourceIndex": 81,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0082.png",
+        "sourceIndex": 82,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 83,
+      "timelineIndex": 83,
+      "fileName": "frame_0083.png",
+      "sourceIndex": 83,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0081.png",
+        "sourceIndex": 81,
+        "meanError": 1.2060279481844267,
+        "rawMeanError": 1.126007080078125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9979858187655724,
+            "offset": 0.11528136803793387
+          },
+          {
+            "channel": 2,
+            "gain": 0.9983448345596425,
+            "offset": 0.1428502762116608
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 84,
+      "timelineIndex": 84,
+      "fileName": "frame_0084.png",
+      "sourceIndex": 84,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0085.png",
+        "sourceIndex": 85,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 85,
+      "timelineIndex": 85,
+      "fileName": "frame_0084.png",
+      "sourceIndex": 84,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0085.png",
+        "sourceIndex": 85,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 86,
+      "timelineIndex": 86,
+      "fileName": "frame_0086.png",
+      "sourceIndex": 86,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0084.png",
+        "sourceIndex": 84,
+        "meanError": 1.1228535548380947,
+        "rawMeanError": 1.049072265625,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9988309595224256,
+            "offset": 0.11727871732048811
+          },
+          {
+            "channel": 2,
+            "gain": 1.0011261219332994,
+            "offset": -0.20608900672756647
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 87,
+      "timelineIndex": 87,
+      "fileName": "frame_0087.png",
+      "sourceIndex": 87,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0088.png",
+        "sourceIndex": 88,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 88,
+      "timelineIndex": 88,
+      "fileName": "frame_0087.png",
+      "sourceIndex": 87,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0088.png",
+        "sourceIndex": 88,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 89,
+      "timelineIndex": 89,
+      "fileName": "frame_0089.png",
+      "sourceIndex": 89,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0087.png",
+        "sourceIndex": 87,
+        "meanError": 1.180418468036391,
+        "rawMeanError": 1.12249755859375,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.997271841379164,
+            "offset": 0.018263777453903174
+          },
+          {
+            "channel": 2,
+            "gain": 0.9973792293200006,
+            "offset": -0.09545101332107464
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 90,
+      "timelineIndex": 90,
+      "fileName": "frame_0090.png",
+      "sourceIndex": 90,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0091.png",
+        "sourceIndex": 91,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 91,
+      "timelineIndex": 91,
+      "fileName": "frame_0090.png",
+      "sourceIndex": 90,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0091.png",
+        "sourceIndex": 91,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 92,
+      "timelineIndex": 92,
+      "fileName": "frame_0092.png",
+      "sourceIndex": 92,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0090.png",
+        "sourceIndex": 90,
+        "meanError": 1.1614073956558997,
+        "rawMeanError": 1.119049072265625,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9992224294122546,
+            "offset": 0.03090569442799307
+          },
+          {
+            "channel": 2,
+            "gain": 1.0019732536283426,
+            "offset": -0.13162593294176617
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 93,
+      "timelineIndex": 93,
+      "fileName": "frame_0093.png",
+      "sourceIndex": 93,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0094.png",
+        "sourceIndex": 94,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 94,
+      "timelineIndex": 94,
+      "fileName": "frame_0093.png",
+      "sourceIndex": 93,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0094.png",
+        "sourceIndex": 94,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 95,
+      "timelineIndex": 95,
+      "fileName": "frame_0095.png",
+      "sourceIndex": 95,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0093.png",
+        "sourceIndex": 93,
+        "meanError": 1.3436465613065487,
+        "rawMeanError": 1.261444091796875,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9975213275388827,
+            "offset": 0.009751996263332785
+          },
+          {
+            "channel": 2,
+            "gain": 0.99985622136452,
+            "offset": -0.32592953007464587
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 96,
+      "timelineIndex": 96,
+      "fileName": "frame_0096.png",
+      "sourceIndex": 96,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0097.png",
+        "sourceIndex": 97,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 97,
+      "timelineIndex": 97,
+      "fileName": "frame_0096.png",
+      "sourceIndex": 96,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0097.png",
+        "sourceIndex": 97,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 98,
+      "timelineIndex": 98,
+      "fileName": "frame_0098.png",
+      "sourceIndex": 98,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0096.png",
+        "sourceIndex": 96,
+        "meanError": 1.2430535790237087,
+        "rawMeanError": 1.128082275390625,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.0017232765630153,
+            "offset": 0.20148555678547098
+          },
+          {
+            "channel": 2,
+            "gain": 1.0039066936747598,
+            "offset": 0.13457970579383982
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 99,
+      "timelineIndex": 99,
+      "fileName": "frame_0099.png",
+      "sourceIndex": 99,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0100.png",
+        "sourceIndex": 100,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 100,
+      "timelineIndex": 100,
+      "fileName": "frame_0099.png",
+      "sourceIndex": 99,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0100.png",
+        "sourceIndex": 100,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 101,
+      "timelineIndex": 101,
+      "fileName": "frame_0101.png",
+      "sourceIndex": 101,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0099.png",
+        "sourceIndex": 99,
+        "meanError": 1.2204991384434263,
+        "rawMeanError": 1.140594482421875,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9984555289289712,
+            "offset": 0.14633084487839199
+          },
+          {
+            "channel": 2,
+            "gain": 0.9989240303126747,
+            "offset": 0.14225790302602803
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 102,
+      "timelineIndex": 102,
+      "fileName": "frame_0102.png",
+      "sourceIndex": 102,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0103.png",
+        "sourceIndex": 103,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 103,
+      "timelineIndex": 103,
+      "fileName": "frame_0102.png",
+      "sourceIndex": 102,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0103.png",
+        "sourceIndex": 103,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 104,
+      "timelineIndex": 104,
+      "fileName": "frame_0104.png",
+      "sourceIndex": 104,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0102.png",
+        "sourceIndex": 102,
+        "meanError": 1.1059461677496518,
+        "rawMeanError": 1.058807373046875,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.0001202199774892,
+            "offset": 0.07336643379463226
+          },
+          {
+            "channel": 2,
+            "gain": 1.0008649662531401,
+            "offset": 0.05642218234808638
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 105,
+      "timelineIndex": 105,
+      "fileName": "frame_0105.png",
+      "sourceIndex": 105,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0106.png",
+        "sourceIndex": 106,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 106,
+      "timelineIndex": 106,
+      "fileName": "frame_0105.png",
+      "sourceIndex": 105,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0106.png",
+        "sourceIndex": 106,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 107,
+      "timelineIndex": 107,
+      "fileName": "frame_0107.png",
+      "sourceIndex": 107,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0105.png",
+        "sourceIndex": 105,
+        "meanError": 1.1822945450001803,
+        "rawMeanError": 1.099822998046875,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9980607117292414,
+            "offset": 0.12828668992160175
+          },
+          {
+            "channel": 2,
+            "gain": 0.9989151234855435,
+            "offset": -0.1041275181437058
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 108,
+      "timelineIndex": 108,
+      "fileName": "frame_0108.png",
+      "sourceIndex": 108,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0109.png",
+        "sourceIndex": 109,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 109,
+      "timelineIndex": 109,
+      "fileName": "frame_0108.png",
+      "sourceIndex": 108,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0109.png",
+        "sourceIndex": 109,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 110,
+      "timelineIndex": 110,
+      "fileName": "frame_0110.png",
+      "sourceIndex": 110,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0108.png",
+        "sourceIndex": 108,
+        "meanError": 1.257219010824624,
+        "rawMeanError": 1.186065673828125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.999788646443459,
+            "offset": 0.0811842509229308
+          },
+          {
+            "channel": 2,
+            "gain": 0.9991895488179109,
+            "offset": 0.19962978635822992
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 111,
+      "timelineIndex": 111,
+      "fileName": "frame_0111.png",
+      "sourceIndex": 111,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0112.png",
+        "sourceIndex": 112,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 112,
+      "timelineIndex": 112,
+      "fileName": "frame_0111.png",
+      "sourceIndex": 111,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0112.png",
+        "sourceIndex": 112,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 113,
+      "timelineIndex": 113,
+      "fileName": "frame_0113.png",
+      "sourceIndex": 113,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0111.png",
+        "sourceIndex": 111,
+        "meanError": 1.1545224831010574,
+        "rawMeanError": 1.095794677734375,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9958920829305359,
+            "offset": 0.008609302937813368
+          },
+          {
+            "channel": 2,
+            "gain": 0.9954658809219198,
+            "offset": -0.1988645703685279
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 114,
+      "timelineIndex": 114,
+      "fileName": "frame_0114.png",
+      "sourceIndex": 114,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0115.png",
+        "sourceIndex": 115,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 115,
+      "timelineIndex": 115,
+      "fileName": "frame_0114.png",
+      "sourceIndex": 114,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0115.png",
+        "sourceIndex": 115,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 116,
+      "timelineIndex": 116,
+      "fileName": "frame_0116.png",
+      "sourceIndex": 116,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0114.png",
+        "sourceIndex": 114,
+        "meanError": 1.067205178610681,
+        "rawMeanError": 1.048614501953125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.0003673883867266,
+            "offset": -0.015740360721721913
+          },
+          {
+            "channel": 2,
+            "gain": 1.0015679291747255,
+            "offset": 0.016140855040127633
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 117,
+      "timelineIndex": 117,
+      "fileName": "frame_0117.png",
+      "sourceIndex": 117,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0118.png",
+        "sourceIndex": 118,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 118,
+      "timelineIndex": 118,
+      "fileName": "frame_0117.png",
+      "sourceIndex": 117,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0118.png",
+        "sourceIndex": 118,
+        "meanError": 0,
+        "rawMeanError": 0,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1,
+            "offset": 0
+          },
+          {
+            "channel": 2,
+            "gain": 1,
+            "offset": 0
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 119,
+      "timelineIndex": 119,
+      "fileName": "frame_0119.png",
+      "sourceIndex": 119,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0117.png",
+        "sourceIndex": 117,
+        "meanError": 0.9848971902666962,
+        "rawMeanError": 0.918853759765625,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 0.9981053246058877,
+            "offset": -0.06741550964728305
+          },
+          {
+            "channel": 2,
+            "gain": 0.9991264258092597,
+            "offset": -0.09502015768652683
+          }
+        ]
+      }
+    },
+    {
+      "decodedFrameIndex": 120,
+      "timelineIndex": 120,
+      "fileName": "frame_0120.png",
+      "sourceIndex": 120,
+      "meanError": 0,
+      "rawMeanError": 0,
+      "colorFit": [
+        {
+          "channel": 0,
+          "gain": 1,
+          "offset": 0
+        },
+        {
+          "channel": 2,
+          "gain": 1,
+          "offset": 0
+        }
+      ],
+      "runnerUp": {
+        "fileName": "frame_0000.png",
+        "sourceIndex": 0,
+        "meanError": 1.316466935615801,
+        "rawMeanError": 1.59942626953125,
+        "colorFit": [
+          {
+            "channel": 0,
+            "gain": 1.014605554235658,
+            "offset": 0.019657076339875346
+          },
+          {
+            "channel": 2,
+            "gain": 1.0021573846674345,
+            "offset": 1.8801178322736334
+          }
+        ]
+      }
+    }
+  ],
+  "mattingSha256": "43535ef65fa6e8d488675103f1e7770e2d2336f349d7f1b36bae67de3202f203"
+}

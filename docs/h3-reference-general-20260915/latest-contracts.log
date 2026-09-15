@@ -1,0 +1,49 @@
+✔ exports one immutable pure workflow contract through CommonJS and the browser global (2.5346ms)
+✔ declares all four H3 protocol modes with their exact field order (0.8367ms)
+✔ accepts one-second H3 prompt enhancement and rejects values below the product minimum (1.6149ms)
+✔ builds a compact resource-label catalog and restores labels to their original UI slots (1.045ms)
+✔ prepareRequest returns separate requirements, compiled prompt, and immutable stale context (0.9234ms)
+✔ validates and restores a response for every H3 product mode (25.7535ms)
+✔ rejects wrong field order, missing fields, and illegal mode references (0.5132ms)
+✔ rejects extra top-level fields without treating ordinary body colons as fields (0.3939ms)
+✔ rejects Markdown-wrapped and Chinese negative-prompt headings (0.3078ms)
+✔ rejects malformed, non-contiguous, non-increasing, and out-of-range shot times (0.949ms)
+✔ accepts numerically equivalent first-last alignment seconds (0.3298ms)
+✔ validates Ref2VA relations and contiguous subject definitions (0.8882ms)
+✔ captures an immutable fingerprint and detects prompt, mode, duration, or resource changes (3.1926ms)
+✔ locks fact-faithful H3 analysis and rejects only minor-sensitive, alias, or shallow output (5.0239ms)
+✔ validateAndRestore can reject a response against current state before restoring it (1.9017ms)
+✔ breathing idle and explicit stillness are valid temporal intent (0.4505ms)
+✔ sensitive validation ignores ambiguous age wording and blocks only explicit minor evidence (5.6856ms)
+✔ stays a pure prompt module with no DOM, network, runtime, or filesystem dependency (0.3331ms)
+✔ clean desktop builds copy and require the H3 prompt workflow module (0.1336ms)
+✔ video editing may preserve its camera in the source-video retention rule (21.2979ms)
+✔ reference contract preserves a silent object, video edit and separate audio reuse across JS and Python (75.7311ms)
+✔ multireference optimizer uses official fields, including explicit audio and video roles (5.3243ms)
+✔ missing media, invented speaker identities and invalid retention fail before sampling (0.5265ms)
+✔ generation compiles free text and upgrades legacy video edits with missing processing controls (8.931ms)
+✔ full audio reuse really connects the input track; timbre/style references use generated audio (8.9191ms)
+✔ real video frames reach Grok with labels and timestamps rather than becoming extra references (0.9708ms)
+✔ editor and generator bind translations to the same media bytes, independent of DOM IDs (1.1614ms)
+✔ local relationship rendering retains role fidelity and closes only requested loops (72.2343ms)
+✔ bilingual results reject stale roles and untranslated model prose (2.5148ms)
+✔ Chinese editor uses English generation text and recompiles changed instructions (10.8834ms)
+✔ natural-language edits preserve native source pixels and decoded output regardless of replacement wording (2.9548ms)
+✔ local source labels normalize common spellings and reject invented sources (72.6607ms)
+✔ unused uploads do not reject an edit or condition it; selected picture IDs stay bound (78.3125ms)
+✔ AI edit controls survive Chinese writeback and cache, and govern preprocessing independently of prose (9.5096ms)
+✔ 16fps reference exports retain the 24fps model timeline and copied audio timing (2.2456ms)
+✔ a real wardrobe-edit response inherits source action without matching a motion keyword list (2.615ms)
+✔ compiler merges a model subject repeated for appearance and motion without changing its meaning (0.9341ms)
+✔ blank unrequested audio and an omitted source-video row compile without inventing content (1.0974ms)
+✔ local model owns intent while Python compiles omitted relation enums and source-video bindings (92.9107ms)
+minimax-h3-prompt-backend-contract: passed
+✔ particle-editor-desktop\tests\minimax-h3-prompt-backend-contract.test.js (5591.7431ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5613.9185

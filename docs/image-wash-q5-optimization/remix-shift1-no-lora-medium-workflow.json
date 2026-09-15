@@ -1,0 +1,133 @@
+{
+  "1": {
+    "class_type": "LoadImage",
+    "inputs": {
+      "image": "remix_wash_comparison_source.png"
+    }
+  },
+  "2": {
+    "class_type": "ImageScaleToTotalPixels",
+    "inputs": {
+      "image": [
+        "1",
+        0
+      ],
+      "upscale_method": "lanczos",
+      "megapixels": 1,
+      "resolution_steps": 1
+    }
+  },
+  "3": {
+    "class_type": "LoaderGGUF",
+    "inputs": {
+      "gguf_name": "Wan22\\wan22RemixT2VI2V_t2vLowV20-Q5_K_M.gguf"
+    }
+  },
+  "5": {
+    "class_type": "ModelSamplingSD3",
+    "inputs": {
+      "model": [
+        "3",
+        0
+      ],
+      "shift": 1
+    }
+  },
+  "6": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan",
+      "device": "default"
+    }
+  },
+  "7": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "wan_2.1_vae_fp8_e4m3fn.safetensors"
+    }
+  },
+  "8": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "2",
+        0
+      ],
+      "vae": [
+        "7",
+        0
+      ]
+    }
+  },
+  "9": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "Source visual style: A two-dimensional hand-drawn anime illustration, with stylized anime facial proportions and large drawn eyes. Fine dark drawn contours delineate the hair, face, clothing and backpack. Skin is painted with smooth simplified color shading, without photographic surface detail. Clothing folds are drawn and softly painted, with restrained highlights rather than glossy reflections. The character combines clear drawn edges with soft painted gradients. The countryside background is a soft digital painting with loosely painted vegetation and clouds. Preserve this specific combination of fine anime linework and gentle painterly shading throughout the image.\n\nThe image depicts a young person standing on a rural road, wearing a bright orange shirt, green shorts, and a large green backpack. The character has short, dark hair and is looking slightly to the side with a gentle smile. The background features a lush green landscape with trees, a clear blue sky, and a few scattered clouds. The lighting is bright and even, suggesting a sunny day. The foreground and background are both rendered in a soft, anime-style with smooth lines and gentle shading, giving the image a dreamy, almost painterly quality.\n\nRedraw this image in its observed source medium and visual style. Keep the same degree of stylization, line weight, edge treatment, shading, brushwork, palette and material depiction throughout the subject and background. Refine texture and detail only in that visual language. Preserve subject identity, outfit design and overall composition. Redraw strength controls the amount of reconstruction within the same style, never a change of medium or realism.",
+      "clip": [
+        "6",
+        0
+      ]
+    }
+  },
+  "10": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "low quality, worst quality, blurry, overexposed, oversaturated, artifacts, jpeg artifacts, distorted anatomy, deformed hands, extra fingers, missing fingers, poor face, bad eyes, disfigured, watermark, text, logo, cluttered background, photograph, photorealistic, live action, 3D render, realistic skin pores, photographic skin, glossy plastic skin, hyperrealistic, medium change",
+      "clip": [
+        "6",
+        0
+      ]
+    }
+  },
+  "11": {
+    "class_type": "KSampler",
+    "inputs": {
+      "model": [
+        "5",
+        0
+      ],
+      "seed": 9122026,
+      "steps": 20,
+      "cfg": 6,
+      "sampler_name": "euler",
+      "scheduler": "beta",
+      "positive": [
+        "9",
+        0
+      ],
+      "negative": [
+        "10",
+        0
+      ],
+      "latent_image": [
+        "8",
+        0
+      ],
+      "denoise": 0.65
+    }
+  },
+  "12": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "11",
+        0
+      ],
+      "vae": [
+        "7",
+        0
+      ]
+    }
+  },
+  "13": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "12",
+        0
+      ],
+      "filename_prefix": "NovaFlow_validation/remix-shift1-no-lora-medium"
+    }
+  }
+}

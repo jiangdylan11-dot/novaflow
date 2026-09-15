@@ -1,0 +1,22 @@
+{
+  "options": {
+    "denoise": 0.2,
+    "seed": 9122026,
+    "wanLoraStrength": 0,
+    "positivePrompt": "Refine fabric stitching and backpack seams. Preserve the original anime drawing style and green and orange palette.",
+    "negativePrompt": "duplicate straps, blurred fabric seams, washed out colors",
+    "cfg": 1.5
+  },
+  "promptId": "847519e3-92cc-4d3f-b54e-d7b7287f76b2",
+  "status": "success",
+  "sourceSha256": "25de3a8d5c48d989489926f8718e69ed2767fe35ee1d2ecca35621b6217e57c3",
+  "runtimeSourceSha256": "5bfeea4cf5068815ed4b487b7f4bc961075dc081ad5ff3b578fcf3b80cda65e5",
+  "limitations": "Recorded source style analysis reused; Prompt Assistant and formal 4783 UI not exercised. Single neutral image smoke, not a comparative quality result.",
+  "seconds": 293.618,
+  "outputSha256": "8553dffe1cda6906305600a6ad8333cd96e445e2c9918a50c5a7ceb113e463f2",
+  "output": {
+    "filename": "novaflow_image_wash_wan_1789237255554_d6ffe8_00001_.png",
+    "subfolder": "",
+    "type": "output"
+  }
+}

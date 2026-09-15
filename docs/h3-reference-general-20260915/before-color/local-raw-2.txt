@@ -1,0 +1,10 @@
+```json
+{
+    "0": "The person in the video is changing their white skirt to red. Material source: TOKEN_0.",
+    "1": "The original video used for this edit.",
+    "2": "Change the person's white skirt to red in the video.",
+    "3": "Skirt style, person, action, and background",
+    "4": "In the video, the person is wearing a white skirt, and the background and actions remain unchanged. Replace the white skirt with red, keeping the person's skirt style, person, actions, and background. Keep the original video shots.",
+    "5": "TOKEN_0 is shown in the scene. In the video, the person is wearing a white skirt, and the background and actions remain unchanged. Replace the white skirt with red, keeping the person's skirt style, person, actions, and background."
+}
+```

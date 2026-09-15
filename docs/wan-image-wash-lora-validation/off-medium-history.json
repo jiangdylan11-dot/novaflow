@@ -1,0 +1,214 @@
+{
+  "prompt": [
+    37,
+    "86fb70fd-4326-4b0f-a321-7ad8bdf9a45e",
+    {
+      "1": {
+        "class_type": "LoadImage",
+        "inputs": {
+          "image": "wan_lora_validation_source.png"
+        }
+      },
+      "2": {
+        "class_type": "ImageScaleToTotalPixels",
+        "inputs": {
+          "image": [
+            "1",
+            0
+          ],
+          "upscale_method": "lanczos",
+          "megapixels": 1,
+          "resolution_steps": 1
+        }
+      },
+      "3": {
+        "class_type": "LoaderGGUF",
+        "inputs": {
+          "gguf_name": "Wan22\\Wan2.2-T2V-A14B-LowNoise-Q4_K_S.gguf"
+        }
+      },
+      "4": {
+        "class_type": "LoraLoaderModelOnly",
+        "inputs": {
+          "model": [
+            "3",
+            0
+          ],
+          "lora_name": "Wan21\\Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+          "strength_model": 1
+        }
+      },
+      "5": {
+        "class_type": "ModelSamplingSD3",
+        "inputs": {
+          "model": [
+            "4",
+            0
+          ],
+          "shift": 8
+        }
+      },
+      "6": {
+        "class_type": "CLIPLoader",
+        "inputs": {
+          "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+          "type": "wan",
+          "device": "default"
+        }
+      },
+      "7": {
+        "class_type": "VAELoader",
+        "inputs": {
+          "vae_name": "wan_2.1_vae_fp8_e4m3fn.safetensors"
+        }
+      },
+      "8": {
+        "class_type": "VAEEncode",
+        "inputs": {
+          "pixels": [
+            "2",
+            0
+          ],
+          "vae": [
+            "7",
+            0
+          ]
+        }
+      },
+      "9": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "text": "Source visual style: anime drawing; soft, blended outlines around figure and background elements; smooth cel shading with gradient transitions on skin and clothing; vivid saturation with high contrast, warm orange and green tones under bright sky; smooth digital paint texture on skin and fabric, no visible brushstrokes or grain\n\nA young woman with short bobbed black hair stands on a rural road. She wears an orange collared shirt with buttoned front, short sleeves, and green shorts with belt loops. A green backpack with straps is worn over her shoulders. She faces slightly right, looking toward viewer. Background shows winding road, grassy fields, distant hills, and blue sky with clouds. Lighting is bright, casting soft shadows on road and clothing.\n\nRedraw this image in its observed source medium and visual style. Keep the same degree of stylization, line weight, edge treatment, shading, brushwork, palette and material depiction throughout the subject and background. Refine texture and detail only in that visual language. Preserve subject identity, outfit design and overall composition. Redraw strength controls the amount of reconstruction within the same style, never a change of medium or realism.",
+          "clip": [
+            "6",
+            0
+          ]
+        }
+      },
+      "10": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "text": "low quality, worst quality, blurry, overexposed, oversaturated, artifacts, jpeg artifacts, distorted anatomy, deformed hands, extra fingers, missing fingers, poor face, bad eyes, disfigured, watermark, text, logo, cluttered background, photograph, photorealistic, live action, 3D render, photographic skin texture, realistic skin pores",
+          "clip": [
+            "6",
+            0
+          ]
+        }
+      },
+      "11": {
+        "class_type": "KSampler",
+        "inputs": {
+          "model": [
+            "5",
+            0
+          ],
+          "seed": 9122026,
+          "steps": 7,
+          "cfg": 1,
+          "sampler_name": "euler",
+          "scheduler": "beta",
+          "positive": [
+            "9",
+            0
+          ],
+          "negative": [
+            "10",
+            0
+          ],
+          "latent_image": [
+            "8",
+            0
+          ],
+          "denoise": 0.65
+        }
+      },
+      "12": {
+        "class_type": "VAEDecode",
+        "inputs": {
+          "samples": [
+            "11",
+            0
+          ],
+          "vae": [
+            "7",
+            0
+          ]
+        }
+      },
+      "13": {
+        "class_type": "SaveImage",
+        "inputs": {
+          "images": [
+            "12",
+            0
+          ],
+          "filename_prefix": "novaflow_image_wash_wan_1789233429402_00b101"
+        }
+      }
+    },
+    {
+      "client_id": "novaflow-wan-lora-validation",
+      "create_time": 1789233429405
+    },
+    [
+      "13"
+    ]
+  ],
+  "outputs": {
+    "13": {
+      "images": [
+        {
+          "filename": "novaflow_image_wash_wan_1789233429402_00b101_00001_.png",
+          "subfolder": "",
+          "type": "output"
+        }
+      ]
+    }
+  },
+  "status": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "86fb70fd-4326-4b0f-a321-7ad8bdf9a45e",
+          "timestamp": 1789233429406
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [
+            "1",
+            "2",
+            "3",
+            "4",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10"
+          ],
+          "prompt_id": "86fb70fd-4326-4b0f-a321-7ad8bdf9a45e",
+          "timestamp": 1789233429414
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "86fb70fd-4326-4b0f-a321-7ad8bdf9a45e",
+          "timestamp": 1789233459648
+        }
+      ]
+    ]
+  },
+  "meta": {
+    "13": {
+      "node_id": "13",
+      "display_node": "13",
+      "parent_node": null,
+      "real_node_id": "13"
+    }
+  }
+}

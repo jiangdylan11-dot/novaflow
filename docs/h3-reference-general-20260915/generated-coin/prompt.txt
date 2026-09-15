@@ -1,0 +1,15 @@
+subject_definitions:
+<Subject 1>：Replace the coin style with a golden circular coin featuring a cat head relief on its surface, with a ring-shaped raised edge, metallic texture, and no transparency. Material source: <Picture 1>.
+<Video 1>：The source video for this edit.
+
+summary: [video editing + reference generation] The target video is an edited version of <Video 1>. Replace the appearance of the rotating coin in <Video 1> with the style of <Picture 1>, while preserving its original motion trajectory and background.
+
+retention_analysis:
+<Subject 1>: attribute_transfer - The rotation trajectory, background color, rotation timing, and sequence remain consistent with the source video; do not alter the rotation axis, speed, or start/end phase.
+<Video 1>: partially_preserved - <Subject 1>Rotate centrally on a solid green background, starting from the front at 0.000 seconds, reaching the narrow side at 1.500 seconds, and returning to the front at 3.000 seconds. Preserve the original video shot.
+
+detailed_description: [Shot 1] <Subject 1>Rotate centrally on a solid green background, starting from the front at 0.000 seconds, reaching the narrow side at 1.500 seconds, and returning to the front at 3.000 seconds.
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A

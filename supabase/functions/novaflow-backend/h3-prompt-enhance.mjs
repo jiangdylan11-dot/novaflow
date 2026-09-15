@@ -175,8 +175,25 @@ function validateReferenceResult(value, options = {}) {
     return validateReference(typeof compiled === 'string' ? compiled : JSON.stringify(compiled), options);
   }
   const serialize = v => typeof v === 'string' ? v : JSON.stringify(v);
-  const modelPrompt = validateReference(serialize(compileReferenceFields(pair.modelPrompt, {...options,requireChineseOutput:false})), {...options,requireChineseOutput:false});
-  const displayPrompt = validateReference(serialize(compileReferenceFields(pair.displayPrompt, {...options,requireChineseOutput:true})), {...options,requireChineseOutput:true});
+  let modelPrompt = validateReference(serialize(compileReferenceFields(pair.modelPrompt, {...options,requireChineseOutput:false})), {...options,requireChineseOutput:false});
+  let displayPrompt = validateReference(serialize(compileReferenceFields(pair.displayPrompt, {...options,requireChineseOutput:true})), {...options,requireChineseOutput:true});
+  // Mirror the local compiler's defaults so a provider result is completed, not
+  // rejected: a requested loop gets its closure, a generated shot its camera.
+  const appendNarrative = (text, sentence) => text.replace(/(detailed_description:\n[\s\S]*?)(?=\n\noverall_soundscape:)/, m => m.trimEnd() + ' ' + sentence);
+  const narrativeOf = text => text.split('detailed_description:')[1]?.split('overall_soundscape:')[0] || '';
+  const sourcePrompt = String(options.currentPrompt || '');
+  const userTail = (String(options.requirements || '').split(/Source prompt:\n/)[1] || '').slice(sourcePrompt.length);
+  const intent = sourcePrompt + '\n' + userTail;
+  if (new RegExp(policy.loopPattern, 'i').test(intent) && !new RegExp(policy.cancelLoopPattern, 'i').test(intent)
+      && !new RegExp(policy.closurePattern, 'i').test(narrativeOf(modelPrompt))) {
+    modelPrompt = appendNarrative(modelPrompt, 'It ends by returning smoothly to the starting pose and motion phase so the loop joins naturally.');
+    if (!new RegExp(policy.closurePattern, 'i').test(narrativeOf(displayPrompt))) displayPrompt = appendNarrative(displayPrompt, '结束时平滑回到起始姿态与运动相位，使循环自然衔接。');
+  }
+  const cameraPattern = /镜头|相机|摄像|机位|运镜|\bcamera\b|\bzoom\b|\bdolly\b|\bpanning\b/i;
+  if (!/summary:\s*\[[^\]]*\bvideo editing\b/.test(modelPrompt) && !cameraPattern.test(narrativeOf(modelPrompt) + intent)) {
+    modelPrompt = appendNarrative(modelPrompt, 'The camera remains static and the framing stays stable.');
+    if (!cameraPattern.test(narrativeOf(displayPrompt))) displayPrompt = appendNarrative(displayPrompt, '镜头固定，构图保持稳定。');
+  }
   const narrative = modelPrompt.split('detailed_description:')[1]?.split('overall_soundscape:')[0] || '';
   const prose = narrative.replace(/<d>[\s\S]*?<\/d>|<(?:Picture|Video|Audio|Subject) \d+>|\[Shot \d+\]|"[^"\n]*"|“[^”\n]*”/g, '');
   const han = (prose.match(/[\u3400-\u9fff]/g)||[]).length;
@@ -220,6 +237,19 @@ function fromReferenceDisplay(value) {
 function isReferenceMode(options = {}) {
   return /^(?:ref2va|r2v|multi_reference|full_reference)$/i.test(String(options.mode || options.minimaxH3Mode || options.h3Mode || ''));
 }
+function reconcileReferenceTasks(tasks, allowed) {
+  const has = prefix => allowed.some(label => label.startsWith(prefix));
+  const kept = [];
+  for (const raw of tasks) {
+    const task = String(raw).trim().toLowerCase();
+    if ((task === 'video editing' || task === 'video continuation') && !has('<Video ')) continue;
+    if ((task === 'audio reuse' || task === 'audio reference') && !has('<Audio ')) continue;
+    if (task === 'keyframe completion' && !has('<Picture ')) continue;
+    if (!kept.includes(task)) kept.push(task);
+  }
+  if (!kept.some(task => ['reference generation', 'keyframe completion', 'video editing', 'video continuation'].includes(task))) kept.unshift('reference generation');
+  return kept;
+}
 function validateReference(value, options = {}) {
   let text = fromReferenceDisplay(value).trim().replace(/^```(?:json|text)?\s*\n([\s\S]*?)\n```$/i, '$1').trim();
   if (text.startsWith('{')) {
@@ -255,8 +285,18 @@ function validateReference(value, options = {}) {
     if (/<(?:Picture|Video) [1-9]\d*>/.test(inventory?.[1] || text) && !/<(?:Picture|Video) [1-9]\d*>/.test(m[0])) throw new Error('H3 多参主体必须说明外观或动作的素材来源');
   }
   const task = /^\[([^\]]+)\]/.exec(fields.summary);
-  const tasks = task?.[1].split(/\s*\+\s*/) || [];
+  let tasks = task?.[1].split(/\s*\+\s*/) || [];
   if (!tasks.length || tasks.some(t => !['reference generation','keyframe completion','video editing','video continuation','audio reuse','audio reference'].includes(t))) throw new Error('H3 多参缺少明确任务关系');
+  if (inventory) {
+    // The uploads decide the task list: no video means nothing to edit or
+    // continue, no audio means no audio task. Trim the guess instead of failing.
+    const reconciled = reconcileReferenceTasks(tasks, media(inventory[1]));
+    if (reconciled.join(' + ') !== tasks.join(' + ')) {
+      tasks = reconciled;
+      fields.summary = '[' + tasks.join(' + ') + ']' + fields.summary.slice(task[0].length);
+      text = referenceFields.map(k => k + ':\n' + fields[k]).join('\n\n');
+    }
+  }
   if (tasks.includes('reference generation') && text.includes('<Picture ') && !ids.length) throw new Error('H3 多参主体缺少独立定义');
   if (tasks.includes('video editing') && !/^\[[^\]]+\]\s*The target video is an edited version of <Video [1-9]\d*>(?:\.|\s)/.test(fields.summary)) throw new Error('H3 视频编辑必须指定源视频');
   const tracked = [...fields.subject_definitions.matchAll(/^<(Subject|Picture|Video|Audio) ([1-9]\d*)>/gm)];

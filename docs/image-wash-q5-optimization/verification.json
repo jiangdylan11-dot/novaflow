@@ -1,0 +1,83 @@
+{
+  "sourceSha256": "25de3a8d5c48d989489926f8718e69ed2767fe35ee1d2ecca35621b6217e57c3",
+  "verification": "PNG integrity, Q5 model, original-image latent and seed; not a visual-quality score",
+  "results": [
+    {
+      "case": "remix-auto-cfg4-no-lora-low",
+      "promptId": "771e0490-85e1-4478-b5b1-3e1c25068934",
+      "seconds": 165.864,
+      "size": [
+        1016,
+        1024
+      ],
+      "strength": 0.2,
+      "sha256": "5abab30b58c5ae1471a8d13899b920cca2ab3a60d50f8ced6ea28c99207878b3"
+    },
+    {
+      "case": "remix-auto-cfg4-no-lora-medium",
+      "promptId": "ef650220-a84b-4fea-9c8e-7f343f3c2e58",
+      "seconds": 175.844,
+      "size": [
+        1016,
+        1024
+      ],
+      "strength": 0.65,
+      "sha256": "d3846450eedbab4e0d1da263e7705258735071cd754b2ad282d8138b5c44e302"
+    },
+    {
+      "case": "remix-descriptive-norm-no-lora-medium",
+      "promptId": "8b7638a8-9f04-4e23-b4a1-907154d15424",
+      "seconds": 282.591,
+      "size": [
+        1016,
+        1024
+      ],
+      "strength": 0.65,
+      "sha256": "6cb0fc4fc95eae7ebd7b954135e6a11998271c8ca3ee288ec21dfcfbee2e892a"
+    },
+    {
+      "case": "remix-medium-aware-no-lora-medium",
+      "promptId": "48a96005-a426-4d8b-8edc-232ef1f21d21",
+      "seconds": 213.611,
+      "size": [
+        1016,
+        1024
+      ],
+      "strength": 0.65,
+      "sha256": "0d217755da77493f3a7e18bac0d8c6b6e3a041d3ddbf7daa9767df5ac60d3e10"
+    },
+    {
+      "case": "remix-shift1-no-lora-low",
+      "promptId": "b4244817-e6ca-4ce7-9bc5-a8da1a17863c",
+      "seconds": 118.016,
+      "size": [
+        1016,
+        1024
+      ],
+      "strength": 0.2,
+      "sha256": "c787dcec59ac6ce156d2aa276ddb143df55b514c809eb8d7af40b74cd7016b7c"
+    },
+    {
+      "case": "remix-shift1-no-lora-medium",
+      "promptId": "6faf20da-290d-49ba-80f2-ae543d0fcb8c",
+      "seconds": 180.953,
+      "size": [
+        1016,
+        1024
+      ],
+      "strength": 0.65,
+      "sha256": "12696818ea99e9e5707d521b279f66081b523ee570b8f47bd72615440d132f2c"
+    },
+    {
+      "case": "remix-strong-style-no-lora-medium",
+      "promptId": "49c161c4-3535-4089-b213-2c1a3ea0e726",
+      "seconds": 520.349,
+      "size": [
+        1016,
+        1024
+      ],
+      "strength": 0.65,
+      "sha256": "a37438a43ef2d7250fada2ee341fb06c6a95442b2619f4ff1a2a87a8d2550884"
+    }
+  ]
+}

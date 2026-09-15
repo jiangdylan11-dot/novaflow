@@ -1,0 +1,287 @@
+{
+  "recordedUtc": "2026-09-12T18:40:52.850Z",
+  "modelsPath": "E:\\NovaFlow\\models",
+  "liveSystem": {
+    "os": "win32",
+    "ram_total": 67862265856,
+    "ram_free": 30308626432,
+    "comfyui_version": "0.24.1",
+    "required_frontend_version": "1.44.19",
+    "installed_templates_version": "0.9.98",
+    "required_templates_version": "0.9.98",
+    "comfy_package_versions": [
+      {
+        "name": "comfyui-frontend-package",
+        "installed": "1.44.19",
+        "required": "1.44.19"
+      },
+      {
+        "name": "comfyui-workflow-templates",
+        "installed": "0.9.98",
+        "required": "0.9.98"
+      },
+      {
+        "name": "comfyui-embedded-docs",
+        "installed": "0.5.2",
+        "required": "0.5.2"
+      },
+      {
+        "name": "comfy-kitchen",
+        "installed": "0.2.11",
+        "required": "0.2.11"
+      },
+      {
+        "name": "comfy-aimdo",
+        "installed": "0.4.8",
+        "required": "0.4.8"
+      }
+    ],
+    "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+    "pytorch_version": "2.10.0+cu130",
+    "embedded_python": false,
+    "argv": [
+      "C:\\ProgramData\\NovaFlow\\AI-Runtime\\engine\\ComfyUI\\main.py",
+      "--listen",
+      "127.0.0.1",
+      "--port",
+      "8188",
+      "--base-directory",
+      "E:/NovaFlow",
+      "--extra-model-paths-config",
+      "C:\\Users\\jiang\\AppData\\Local\\Temp\\NovaFlow\\AI-Runtime\\runtime-generated\\extra_model_paths.yaml",
+      "--input-directory",
+      "C:\\Users\\jiang\\AppData\\Local\\Temp\\NovaFlow\\AI-Runtime\\runtime-generated\\input",
+      "--output-directory",
+      "C:\\Users\\jiang\\AppData\\Local\\Temp\\NovaFlow\\AI-Runtime\\runtime-generated\\output",
+      "--temp-directory",
+      "C:\\Users\\jiang\\AppData\\Local\\Temp\\NovaFlow\\AI-Runtime\\runtime-generated\\temp-root",
+      "--user-directory",
+      "C:\\Users\\jiang\\AppData\\Local\\Temp\\NovaFlow\\AI-Runtime\\runtime-generated\\user"
+    ]
+  },
+  "bundle": "particle-editor/assets/index-BbIa-2NM.js",
+  "selector": "D=()=>u===`minimax_h3_local`?window.NovaFlowAiSequenceMiniMaxH3Workflow?.getWorkflowJson?.({mode:{text_video:`t2v`,image_video:`i2v`,first_last:`fl2v`,multi_reference:`r2v`}[f],profile:window.NovaFlowAiSequenceMiniMaxH3Workflow?.getSelectedProfile?.(),steps:window.NovaFlowAiSequenceMiniMaxH3Workflow?.getProfileSettings?.()?.steps,acceleration:window.NovaFlowAiSequenceMiniMaxH3Workflow?.getProfileSettings?.()?.acceleration||`off`}):f===`image_video`?Vt:Ht",
+  "video": {
+    "image_video": {
+      "models": [
+        {
+          "id": "37",
+          "type": "UNETLoader",
+          "input": "unet_name",
+          "name": "smoothMixWan22I2V14B_i2vHigh.safetensors"
+        },
+        {
+          "id": "38",
+          "type": "CLIPLoader",
+          "input": "clip_name",
+          "name": "umt5_xxl_fp16.safetensors"
+        },
+        {
+          "id": "39",
+          "type": "VAELoader",
+          "input": "vae_name",
+          "name": "wan_2.1_vae.safetensors"
+        },
+        {
+          "id": "56",
+          "type": "UNETLoader",
+          "input": "unet_name",
+          "name": "smoothMixWan22I2V14B_i2vLow.safetensors"
+        },
+        {
+          "id": "108",
+          "type": "CLIPVisionLoader",
+          "input": "clip_name",
+          "name": "clip_vision_h.safetensors"
+        }
+      ],
+      "samplerTypes": [
+        "WanMoeKSampler"
+      ]
+    },
+    "first_last": {
+      "models": [
+        {
+          "id": "226",
+          "type": "VAELoader",
+          "input": "vae_name",
+          "name": "wan_2.1_vae.safetensors"
+        },
+        {
+          "id": "227",
+          "type": "CLIPLoader",
+          "input": "clip_name",
+          "name": "umt5_xxl_fp16.safetensors"
+        },
+        {
+          "id": "232",
+          "type": "UNETLoader",
+          "input": "unet_name",
+          "name": "smoothMixWan22I2V14B_i2vLow.safetensors"
+        },
+        {
+          "id": "239",
+          "type": "UNETLoader",
+          "input": "unet_name",
+          "name": "smoothMixWan22I2V14B_i2vHigh.safetensors"
+        },
+        {
+          "id": "244",
+          "type": "CLIPVisionLoader",
+          "input": "clip_name",
+          "name": "clip_vision_h.safetensors"
+        }
+      ],
+      "samplerTypes": [
+        "WanMoeKSampler"
+      ]
+    }
+  },
+  "retained": {
+    "outpaint": {
+      "unchanged": true,
+      "models": [
+        {
+          "id": "8",
+          "type": "CheckpointLoaderSimple",
+          "input": "ckpt_name",
+          "name": "Qwen-Rapid-AIO-NSFW-v20.safetensors"
+        }
+      ]
+    },
+    "angle": {
+      "unchanged": true,
+      "models": [
+        {
+          "id": "2",
+          "type": "CheckpointLoaderSimple",
+          "input": "ckpt_name",
+          "name": "Qwen-Rapid-AIO-NSFW-v20.safetensors"
+        },
+        {
+          "id": "4",
+          "type": "LoraLoaderModelOnly",
+          "input": "lora_name",
+          "name": "qwen-image-edit-2511-multiple-angles-lora.safetensors"
+        }
+      ]
+    },
+    "transfer": {
+      "unchanged": true,
+      "models": [
+        {
+          "id": "4",
+          "type": "CheckpointLoaderSimple",
+          "input": "ckpt_name",
+          "name": "Qwen-Rapid-AIO-NSFW-v20.safetensors"
+        }
+      ]
+    },
+    "storyboard": {
+      "unchanged": true,
+      "models": [
+        {
+          "id": "2",
+          "type": "CheckpointLoaderSimple",
+          "input": "ckpt_name",
+          "name": "Qwen-Rapid-AIO-NSFW-v20.safetensors"
+        }
+      ]
+    }
+  },
+  "videoLoraCatalog": [
+    {
+      "name": "wan2_2\\Sensual_fingering_v1_low_noise手扣.safetensors",
+      "role": "low"
+    },
+    {
+      "name": "wan2_2\\wan22-i2v-rub-pussy-os-high摩擦阴部.safetensors",
+      "role": "high"
+    },
+    {
+      "name": "wan2_2\\x-ray_i2v_high_v1.1切面.safetensors",
+      "role": "high"
+    }
+  ],
+  "activeJobs": [],
+  "historyModels": [
+    {
+      "id": "f461e1d8-d284-4a75-8415-f36e51aa031a",
+      "status": "success",
+      "models": [
+        {
+          "id": "3",
+          "type": "LoaderGGUF",
+          "input": "gguf_name",
+          "name": "Wan22\\Wan2.2-T2V-A14B-LowNoise-Q4_K_S.gguf"
+        },
+        {
+          "id": "4",
+          "type": "LoraLoaderModelOnly",
+          "input": "lora_name",
+          "name": "Wan21\\Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors"
+        },
+        {
+          "id": "6",
+          "type": "CLIPLoader",
+          "input": "clip_name",
+          "name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+        },
+        {
+          "id": "7",
+          "type": "VAELoader",
+          "input": "vae_name",
+          "name": "wan_2.1_vae_fp8_e4m3fn.safetensors"
+        },
+        {
+          "id": "14",
+          "type": "LoraLoaderModelOnly",
+          "input": "lora_name",
+          "name": "wan22-k3nk4llinon3-15epoc-full-low-k3nk.safetensors"
+        }
+      ]
+    }
+  ],
+  "candidates": [
+    {
+      "relative": "unet/Wan22/Wan2.2-T2V-A14B-LowNoise-Q4_K_S.gguf",
+      "path": "E:\\NovaFlow\\models\\unet\\Wan22\\Wan2.2-T2V-A14B-LowNoise-Q4_K_S.gguf",
+      "bytes": 8746512896,
+      "links": 1,
+      "modifiedUtc": "2026-03-04T08:06:22.810Z"
+    },
+    {
+      "relative": "loras/Wan21/Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+      "path": "E:\\NovaFlow\\models\\loras\\Wan21\\Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+      "bytes": 631344264,
+      "links": 1,
+      "modifiedUtc": "2026-03-04T08:02:58.145Z"
+    },
+    {
+      "relative": "loras/wan22-k3nk4llinon3-15epoc-full-low-k3nk.safetensors",
+      "path": "E:\\NovaFlow\\models\\loras\\wan22-k3nk4llinon3-15epoc-full-low-k3nk.safetensors",
+      "bytes": 306807976,
+      "links": 1,
+      "modifiedUtc": "2026-09-12T17:07:11.761Z"
+    },
+    {
+      "relative": "vae/wan_2.1_vae_fp8_e4m3fn.safetensors",
+      "path": "E:\\NovaFlow\\models\\vae\\wan_2.1_vae_fp8_e4m3fn.safetensors",
+      "bytes": 126914115,
+      "links": 1,
+      "modifiedUtc": "2026-03-14T21:52:26.733Z"
+    },
+    {
+      "relative": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "path": "E:\\NovaFlow\\models\\text_encoders\\umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "bytes": 6735906897,
+      "links": 1,
+      "modifiedUtc": "2025-12-24T18:50:56.030Z"
+    }
+  ],
+  "totalBytes": 16547486148,
+  "absentFormerCandidates": [
+    "unet/Wan22/wan22RemixT2VI2V_t2vLowV20-Q5_K_M.gguf",
+    "unet/Wan22/smoothMixWan2214BI2V_t2vLowV40.safetensors"
+  ]
+}

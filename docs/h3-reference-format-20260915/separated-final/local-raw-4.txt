@@ -1,0 +1,6 @@
+```json
+{
+    "4": "Starting from TOKEN_0, replace the rotation style of the coin with the style in TOKEN_1, keeping the video's background and the coin's trajectory.",
+    "5": "TOKEN_0 appears in the scene. Starting from TOKEN_1, replace the rotation style of the coin with the style in TOKEN_2, keeping the video's background and the coin's trajectory."
+}
+```

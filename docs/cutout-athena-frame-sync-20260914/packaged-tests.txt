@@ -1,0 +1,17 @@
+✔ enabled dock with cleared source metadata performs inference when reopened (1.9759ms)
+✔ missing masks also require inference; a complete same-source result can reopen directly (1.4078ms)
+✔ snapshot is captured in the verified callback before pause can advance the media clock (1.1344ms)
+✔ wrong frame and snapshot failures never become accepted captures (0.3892ms)
+✔ strict seek accepts clock drift only when verified pixels were frozen, rejects clock-only and wrong-frame paths (5.7537ms)
+✔ ended tail capture seeks to the preceding frame before presenting the target again (1.3262ms)
+✔ AI positive and negative history persist 15 combined entries through add, save, remove and remount (14.8919ms)
+✔ history default and legacy six-entry data grow to fifteen without padding missing records (2.2459ms)
+✔ both shipped history components cap rows and pick the full original text without changing storage (23.8039ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 973.3434

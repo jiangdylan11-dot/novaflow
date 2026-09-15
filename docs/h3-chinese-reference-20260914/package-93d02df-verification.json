@@ -1,0 +1,99 @@
+{
+  "ok": true,
+  "sourceCommit": "93d02df",
+  "installer": "D:\\AI_APP\\NovaFlow\\particle-editor-desktop\\dist\\NovaFlow Setup 2.3.214.exe",
+  "version": "2.3.214",
+  "bytes": 250193113,
+  "modified": "2026-09-14T16:30:43.691Z",
+  "sha256": "505b617eeb91c287e64adabb52d06b6ad36d9fe364a0ad636420823abf5ac063",
+  "files": [
+    {
+      "file": "package.json",
+      "version": "2.3.214",
+      "sha256": "28234af912e9c33f587a19acdf1cd0532ee01ce46317037aa25618ca4a1fb467",
+      "match": true
+    },
+    {
+      "file": "main.js",
+      "sha256": "1971a49831e929ea79f56353bb8a4b892e5105b9409e1a5cad668d84a69c7d12",
+      "match": true
+    },
+    {
+      "file": "preload.js",
+      "sha256": "026e35f86bf6a8e558a38985c59feefe737f6301ba54f93033dd4652253b18ca",
+      "match": true
+    },
+    {
+      "file": "main/h3-reference-nodes.py",
+      "sha256": "6d4691ca58119873a5f6df007304d45a7627ab079b132c97b0f02292c0543f4a",
+      "match": true
+    },
+    {
+      "file": "main/minimax-h3-runtime-lifecycle.js",
+      "sha256": "b4a29a37e5189dcc80012c5510a6dfb1aad83f0a3c898f5498dc9849571f1f41",
+      "match": true
+    },
+    {
+      "file": "prompt-assistant-service.py",
+      "sha256": "f2a2cc0dad4115fb1c699ccd522318af040696c4505291f77a3752d4d7db79de",
+      "match": true
+    },
+    {
+      "file": "prompt_assistant/h3_prompt_enhance.py",
+      "sha256": "d3c8f71c148e3e6d52feeea49fba7776792cd92f648f885c59a8d0810b779bb0",
+      "match": true
+    },
+    {
+      "file": "prompt_assistant/h3_reference_vision.py",
+      "sha256": "2bd8928d8e8b72cabc24b2d016e8e75797d160c232422c6b56cc1d4d71d8dc71",
+      "match": true
+    },
+    {
+      "file": "prompt_assistant/h3_prompt_enhance_policy.json",
+      "sha256": "9c1ef59db5bda42713c2fcc4bfe374502e68e394f9f5d69a50fca412d04397c3",
+      "match": true
+    },
+    {
+      "file": "admin-server/h3-prompt-enhance.js",
+      "sha256": "c52a7a481ccebdfeef727b23336dc04ae710f89bfefafe62278becdcadaaefa8",
+      "match": true
+    },
+    {
+      "file": "admin-server/server.js",
+      "sha256": "0b89857f270d926921dbae67cd7959d6c55a45ce87b212b690e85201653ad5fd",
+      "match": true
+    },
+    {
+      "file": "renderer/h3-prompt-format.js",
+      "sha256": "3941a4bd749f2d0209077c04b969adfbfc36a7339aef3afd17001e55dddd1f3b",
+      "match": true
+    },
+    {
+      "file": "renderer/ai-sequence-minimax-h3-prompt.workflow.js",
+      "sha256": "f7e4f31fec2f7cac5e4d24e1019b1aee455ba922e6af4045e778c0d630424ae0",
+      "match": true
+    },
+    {
+      "file": "renderer/ai-sequence-minimax-h3.workflow.js",
+      "sha256": "ef28412dbf9e8c1a8a75742e8fc255b5ed08f213faf3493d2bd4a946312309b7",
+      "match": true
+    },
+    {
+      "file": "renderer/novaflow-smart-ai.js",
+      "sha256": "e820047c93b561e01c0bd38324916ca33bd532b56f391db7806ffb49f92cf070",
+      "match": true
+    },
+    {
+      "file": "renderer/assets/index-BbIa-2NM.js",
+      "sha256": "d291be09b3198e6e965a24e0a2feaf4fab3c6364a1adfcea6f43005f0a43a8a8",
+      "match": true
+    },
+    {
+      "file": "renderer/index.html",
+      "sha256": "2cec7d8f2281f56812d1c873cf7ddaedcc30a93fcea76e5e80c219301ca92c40",
+      "match": true
+    }
+  ],
+  "runtimeCheck": "PASS",
+  "desktopEntry": "Not revalidated; prior 4783 startup was blocked by policy"
+}

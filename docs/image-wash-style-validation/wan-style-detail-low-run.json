@@ -1,0 +1,60 @@
+{
+  "case": "wan-style-detail-low",
+  "promptId": "d2271edb-176e-4ed4-b812-d7befab4fd35",
+  "model": "Wan22\\Wan2.2-T2V-A14B-LowNoise-Q4_K_S.gguf",
+  "strength": 0.2,
+  "status": "success",
+  "baseline": "wan-low",
+  "baselineReused": true,
+  "change": "source style profile and revised production prompt; model as recorded",
+  "reverseInference": "real image-wash-style vision profile loaded from recorded service response",
+  "styleProfile": {
+    "style": "digital illustration; smooth, slightly rounded; soft, subtle gradients; vibrant, natural tones; smooth, slightly painterly",
+    "content": "The image depicts a young person standing on a rural road, wearing a bright orange shirt, green shorts, and a large green backpack. The individual has short, dark hair and is looking slightly to the side with a gentle smile. The background features a lush green landscape with a clear blue sky, scattered clouds, and distant hills. The road is paved and curves gently into the distance, bordered by grass and a wooden fence. The lighting is bright and even, suggesting a sunny day."
+  },
+  "sampling": {
+    "steps": 7,
+    "cfg": 1,
+    "sampler": "euler",
+    "scheduler": "beta",
+    "shift": 8,
+    "lora": {
+      "model": [
+        "3",
+        0
+      ],
+      "lora_name": "Wan21\\Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+      "strength_model": 1
+    },
+    "negative": "low quality, worst quality, blurry, overexposed, oversaturated, artifacts, jpeg artifacts, distorted anatomy, deformed hands, extra fingers, missing fingers, poor face, bad eyes, disfigured, watermark, text, logo, cluttered background"
+  },
+  "seconds": 35.151,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "d2271edb-176e-4ed4-b812-d7befab4fd35",
+          "timestamp": 1789202933114
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [],
+          "prompt_id": "d2271edb-176e-4ed4-b812-d7befab4fd35",
+          "timestamp": 1789202933122
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "d2271edb-176e-4ed4-b812-d7befab4fd35",
+          "timestamp": 1789202967412
+        }
+      ]
+    ]
+  }
+}

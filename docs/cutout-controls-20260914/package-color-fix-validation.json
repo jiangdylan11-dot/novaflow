@@ -1,0 +1,28 @@
+{
+  "installer": "D:\\AI_APP\\NovaFlow\\particle-editor-desktop\\dist\\NovaFlow Setup 2.3.214-color-fix.exe",
+  "version": "2.3.214",
+  "bytes": 250163556,
+  "sha256": "b55907a9354844c66ffe0486a5674adf030b72622e7e4a5c902c9d29235b9bd1",
+  "files": [
+    {
+      "file": "assets/index-BbIa-2NM.js",
+      "sha256": "0e611ddb59a4ba307895a0dbef8abbb1a329c6b859374cc86c16bdb790a5fa3a",
+      "match": true
+    },
+    {
+      "file": "novaflow-brand-runtime.js",
+      "sha256": "d84a39171fe78c113af0e67959a57df83c5f7d8763a4cc205ce40291f4dbfdc7",
+      "match": true
+    },
+    {
+      "file": "novaflow-source-upload-island-bridge.js",
+      "sha256": "40c6dbbca455a5e958aa3e9fe9fbd20f0ef9f2e4528433e6eadc399166f5b7e8",
+      "match": true
+    },
+    {
+      "file": "index.html",
+      "sha256": "0ca0420a3e7982b7ee76204611785a256033fcf5c6b60396ab0558154f5d52d4",
+      "match": true
+    }
+  ]
+}

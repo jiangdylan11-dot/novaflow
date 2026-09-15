@@ -1,0 +1,31 @@
+{
+  "local": {
+    "traceLabel": "minimaxH3PromptEnhance",
+    "promptChars": 667,
+    "safePromptChars": 667,
+    "imageCount": 0,
+    "maxLength": 2048,
+    "seed": 1,
+    "doSample": false,
+    "temperature": 0.0,
+    "topP": 1.0,
+    "loadMs": 12110,
+    "tokenizeMs": 7,
+    "generateMs": 101105,
+    "decodeMs": 3,
+    "totalMs": 113224,
+    "outputChars": 388,
+    "generatedTokenCount": 293,
+    "hitTokenLimit": false,
+    "tokenizeRetry": false
+  },
+  "grok": {
+    "ok": true,
+    "calls": 1,
+    "elapsedMs": 10966,
+    "model": "grok-4.3"
+  },
+  "installedUpdate": "not_applied_windows_permission_denied_on_first_file",
+  "lockedEntry": "NO-GO; launch rejected by approval policy",
+  "cloudVersion": 59
+}

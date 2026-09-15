@@ -1,0 +1,18 @@
+```json
+{
+  "references": [
+    {
+      "label": "<Subject 1>",
+      "sources": ["<Picture 1>"],
+      "description": "带有猫脸图案的金色硬币",
+      "keep": "外观",
+      "relation": "attribute_transfer"
+    }
+  ],
+  "tasks": ["video editing"],
+  "summary": "将视频中硬币的外观替换为第一张参考图中的外观。",
+  "description": "视频中硬币的外观被替换为第一张参考图中的外观，原背景保持不变，硬币的转动方向、速度和路径都保持原样。",
+  "soundscape": "N/A",
+  "music": "N/A"
+}
+```

@@ -1,0 +1,21 @@
+subject_definitions:
+<Subject 1> ice crystal money tree with crystalline branches and ice particle effects, appearance transformed from golden coin tree, motion and trajectory bound from <Video 1>.
+<Video 1> : The source video for this edit.
+
+summary: [video editing + reference generation] The target video is an edited version of <Video 1>. The original golden coin tree and coin particle effects are replaced by an ice crystal tree and ice particle effects while exactly retaining the growth motion paths, falling particle trajectories, timing, rhythm, camera movement, framing and solid blue background throughout the 3-second duration.
+
+retention_analysis:
+<Video 1>: partially_preserved - original growth motion paths, particle falling trajectories, timing, rhythm, camera, framing and solid blue background fully retained.
+<Subject 1>: attribute_transfer - ice crystal material, translucent crystalline structure and frosty particle appearance transferred onto the tree and particle system of <Video 1>.
+
+detailed_description: Ice crystal theme, translucent frosty crystalline surfaces with cool blue-white highlights.
+
+[Shot 1] At 0.000s <Subject 1> appears as a small ice crystal tree in a frosted pot against solid blue background.
+
+From 0.000s to 1.000s the crystalline branches grow upward and outward while ice particles begin to form on the structure. At 1.000s a bright crystalline glow pulses from the top of <Subject 1>.
+
+From 1.000s to 3.000s ice particles detach and drift downward in the exact trajectories and rhythm of the original coin particles while the fully grown ice crystal tree remains centered; camera and solid blue background stay unchanged.
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A

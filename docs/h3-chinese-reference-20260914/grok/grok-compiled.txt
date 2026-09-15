@@ -1,0 +1,18 @@
+subject_definitions:
+<Subject 1> 金币替换物，外观来自 <Picture 1>，动作来自 <Video 1>
+
+summary:
+[video editing + reference generation] The target video is an edited version of <Video 1>.将原视频中的金币完全替换为 <Subject 1>，保留原金币的运动轨迹、速度变化、相机运动、构图和起止阶段。
+
+retention_analysis:
+<Video 1>（源视频）: partially_preserved - 保留金币的运动方向、轨迹、相机和时间设置。
+<Subject 1>（出现于 [Shot 1]）: attribute_transfer - 外观从 <Picture 1> 转移至金币位置。
+
+detailed_description:
+保留参考外观 [Shot 1] 0秒起，<Subject 1> 按照原金币轨迹在画面中运动，3秒结束时保持原相机构图和相位。
+
+overall_soundscape:
+保留原视频中金币碰撞的物理声音。
+
+non_diegetic_music:
+无

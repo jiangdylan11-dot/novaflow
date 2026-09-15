@@ -1,0 +1,1 @@
+window.testWrite=p=>require('electron').ipcRenderer.invoke('test-write',p);window.testAiMask=p=>require('electron').ipcRenderer.invoke('test-ai-mask',p).catch(error=>{window.__nfTestMaskError=String(error);throw error;});

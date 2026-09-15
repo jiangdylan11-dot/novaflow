@@ -1,0 +1,30 @@
+[
+  {
+    "path": "C:\\ProgramData\\NovaFlow\\AI-Runtime-H3\\generated\\input\\novaflow_capability_ice_source.mp4",
+    "fps": 24.0,
+    "frames": 73,
+    "sample_indices": [
+      0,
+      12,
+      24,
+      36,
+      48,
+      60,
+      72
+    ]
+  },
+  {
+    "path": "C:\\ProgramData\\NovaFlow\\AI-Runtime-H3\\generated\\output\\video\\NovaFlow_H3_background_probe_00003_.mp4",
+    "fps": 24.0,
+    "frames": 73,
+    "sample_indices": [
+      0,
+      12,
+      24,
+      36,
+      48,
+      60,
+      72
+    ]
+  }
+]

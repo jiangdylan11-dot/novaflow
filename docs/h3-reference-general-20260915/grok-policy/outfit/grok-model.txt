@@ -1,0 +1,21 @@
+subject_definitions:
+<Subject 1> : woman with purple hair and face from <Video 1>, motion from <Video 1>
+<Video 1> : The source video for this edit.
+
+summary: [video editing] The target video is an edited version of <Video 1>. Change the woman's outfit to a dark blue long-sleeve denim jacket and long pants while keeping face, hair, actions and background unchanged.
+
+retention_analysis:
+<Subject 1>: fully_preserved - face, hair, body geometry and motion
+<Video 1>: partially_preserved - original motion trajectory, timing, camera framing and green background; clothing appearance replaced
+
+detailed_description: Retain reference appearance.
+
+[Shot 1] The shot shows <Subject 1>. The woman with purple hair sits against the green background holding the golden staff.
+
+She raises the staff upward, triggering a glowing magical effect that swirls and trails particles. She lowers the staff while the effect fades, then raises it again.
+
+The sequence repeats the original poses and timing exactly with the new dark blue denim outfit.
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A

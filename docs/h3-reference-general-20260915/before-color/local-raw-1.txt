@@ -1,0 +1,21 @@
+```json
+{
+  "references": [
+    {
+      "label": "<Subject 1>",
+      "sources": ["<Video 1>"],
+      "description": "视频里这个人的白色裙子改成红色",
+      "keep": "裙子款式、人物、动作和背景",
+      "relation": "attribute_transfer"
+    }
+  ],
+  "tasks": [
+    "video editing",
+    "reference generation"
+  ],
+  "summary": "将视频中人物的白色裙子改为红色。",
+  "description": "视频中，人物穿着白色裙子，背景和动作保持不变。将白色裙子替换为红色，保留人物的裙子款式、人物、动作和背景。",
+  "soundscape": "N/A",
+  "music": "N/A"
+}
+```

@@ -1,0 +1,18 @@
+{
+  "modelPrompt": {
+    "subject_definitions": "<Subject 1>: Female character with long purple hair, golden accessories and staff, appearance and motion from <Video 1>.",
+    "summary": "[video editing] The target video is an edited version of <Video 1>. Change the character's clothing to a dark blue long-sleeved denim jacket and long pants while keeping face, hair, actions and background unchanged.",
+    "retention_analysis": "<Subject 1>: partially_preserved - face, hair, body pose, motion and accessories retained from <Video 1>.\n<Video 1>: partially_preserved - camera, timing, background and motion retained; clothing attribute edited.",
+    "detailed_description": "Realistic 3D animation style. [Shot 1] <Subject 1> sits against a solid green background, initially holding the golden staff low, then raises it high while emitting glowing particles, swings it creating a sparkling light trail, and returns to the starting pose over the 4-second duration, wearing the new dark blue long-sleeved denim jacket and long pants.",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  },
+  "displayPrompt": {
+    "subject_definitions": "<Subject 1>: 紫色长发女性角色，带有金色配饰和权杖，外观与动作来自 <Video 1>。",
+    "summary": "[video editing] The target video is an edited version of <Video 1>。将角色服装更换为深蓝色长袖牛仔外套和长裤，同时保持脸部、头发、动作和背景不变。",
+    "retention_analysis": "<Subject 1>: partially_preserved - 保留 <Video 1> 中的脸部、头发、身体姿势、动作和配饰。\n<Video 1>: partially_preserved - 保留相机、时序、背景和动作；仅编辑服装属性。",
+    "detailed_description": "写实3D动画风格。[Shot 1] <Subject 1> 坐在纯绿色背景前，最初低持金色权杖，随后高举权杖并释放发光粒子，挥舞时产生闪耀光迹，最后回到起始姿势，整个4秒过程中穿着新的深蓝色长袖牛仔外套和长裤。",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  }
+}

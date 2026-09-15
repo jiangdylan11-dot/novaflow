@@ -1,0 +1,23 @@
+{
+  "modelPrompt": {
+    "subject_definitions": "<Subject 1> gold coin with owl emblem from <Video 1>",
+    "summary": "[video editing] The target video is an edited version of <Video 1>. Slow the coin rotation to half speed while keeping coin appearance and green background unchanged.",
+    "retention_analysis": "<Subject 1>: fully_preserved - coin appearance, design and surface details.\n<Video 1>: partially_preserved - camera framing, green background and motion trajectory with halved rotation speed.",
+    "detailed_description": "Retain reference appearance. [Shot 1] The gold coin rotates slowly at half its original speed on a solid green background, completing a partial rotation over the full 3-second duration while maintaining the original camera position and framing.",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  },
+  "displayPrompt": {
+    "subject_definitions": "<Subject 1> 来自<Video 1>的猫头鹰浮雕金币",
+    "summary": "[video editing] 目标视频是<Video 1>的编辑版本。将金币旋转速度减慢至原速的一半，同时保持金币外观和绿色背景不变。",
+    "retention_analysis": "<Subject 1>: fully_preserved - 金币外观、设计和表面细节。\n<Video 1>: partially_preserved - 摄像机取景、绿色背景以及运动轨迹（旋转速度减半）。",
+    "detailed_description": "保留参考外观。[Shot 1] 金币在纯绿色背景上以原速一半的速度缓慢旋转，在完整的3秒时长内完成部分旋转，同时保持原始摄像机位置和取景。",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  },
+  "editPolicy": {
+    "preserveBackground": true,
+    "preserveMotion": false,
+    "sameShapeAppearanceOnly": false
+  }
+}

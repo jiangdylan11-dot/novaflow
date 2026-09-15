@@ -1,0 +1,10 @@
+```json
+{
+    "0": "Replace the rotating gold coin style in TOKEN_0 with the style in TOKEN_1. Material source: TOKEN_2.",
+    "1": "The source video for this edit. Actual footage in the source material: The gold coin rotates in the center of a green solid background in TOKEN_0, following the motion path of the source video: 0.000 seconds starting from the front, 1.500 seconds reaching the narrowest side, and 3.000 seconds returning to the front.",
+    "2": "Replace the rotating gold coin style in TOKEN_0 with the style in TOKEN_1.",
+    "3": "Background and gold coin motion trajectory.",
+    "4": "Replace the gold coin's rotation style in TOKEN_0 with the style in TOKEN_1, maintaining the video's background and gold coin motion trajectory.",
+    "5": "TOKEN_0 is displayed in the scene. Replace the gold coin's rotation style in TOKEN_1 with the style in TOKEN_2, maintaining the video's background and gold coin motion trajectory."
+}
+```

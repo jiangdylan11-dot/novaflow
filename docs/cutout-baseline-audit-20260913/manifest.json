@@ -1,0 +1,28 @@
+{
+  "note": "Diagnostic comparison only. No production algorithm changes. Approved sample is offline material-aware processing, not the installed app.",
+  "production": "cae387f54ac37601f581a0cbe280d154ae40bf87060a48044656e94207efca94",
+  "approved": [
+    {
+      "frame": 0,
+      "path": "D:\\AI_APP\\NovaFlow\\logs\\divinepower-matting-study\\temporal-refine\\frames\\frame_0000.png",
+      "sha256": "179cadc2de55c4d7d08b9d3450afc92f41d99bacf44eea029527f175e6765827"
+    },
+    {
+      "frame": 54,
+      "path": "D:\\AI_APP\\NovaFlow\\logs\\divinepower-matting-study\\temporal-refine\\frames\\frame_0054.png",
+      "sha256": "f30546c57af27dabf36eec108a463f7781fe105b48dde104c1c7c8c2f529902c"
+    }
+  ],
+  "current": [
+    {
+      "frame": 0,
+      "path": "current-0.png",
+      "sha256": "7fd80a10aa80880676fd20e5c3e14e217f8d4da42f8a5deb665a342ab5a4d572"
+    },
+    {
+      "frame": 54,
+      "path": "current-54.png",
+      "sha256": "42ff280a72656ecd0aa99cc426d30f546adc344c9e7faab388e850021c3d9192"
+    }
+  ]
+}

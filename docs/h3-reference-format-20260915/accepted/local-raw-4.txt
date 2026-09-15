@@ -1,0 +1,1 @@
+{"0": "Replace the rotating gold coin style in TOKEN_0 with the style of TOKEN_1. TOKEN_2 The actual visible subject is: a golden circular emblem with a cat face pattern, simple and cute. Material source: TOKEN_3, TOKEN_4."}

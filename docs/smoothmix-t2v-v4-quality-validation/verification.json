@@ -1,0 +1,433 @@
+{
+  "records": [
+    {
+      "case": "smooth-t2v-v4-anime-fan-beta-12-cfg1-shift3-denoise0.35-medium",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "f82e8218e78bb093dfcb722fc6953aff1983edce14a1cda1ed4873aa48ff95a8",
+      "workflowSha256": "9106ca323f9569e2d8b62f6d4af9edc52ce08a657dc677e6d0db03649c5fd8a5",
+      "strength": 0.35,
+      "fixture": "anime-fan",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 12,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 3,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "anime illustration",
+        "style": "Two-dimensional painted anime game illustration, delicate dark contours, broad soft painted shadows and graphic folds, subdued black, cream, red and gold palette, painterly white clouds and traditional architecture.",
+        "content": "Low-angle full-body illustration of an adult female warrior with a short black bob, closed eyes, a gold and red hair ornament, black and gold open kimono over a white fitted wrap top, a wide red waist sash and black legwear. One gloved hand raises a large black and gold folding fan and the other holds a sword. Ornate fabric and red ribbons flow around her, with layered traditional temples and bright billowing clouds behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "smoothmixanime, anime style",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "Only sampling shift changed from 8 to 3 against more-steps; lower starting sigma at equal denoise.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:44:13.864Z",
+      "promptId": "2fba75bb-df66-4408-8644-d76952b71b83",
+      "seconds": 25.095,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "2fba75bb-df66-4408-8644-d76952b71b83",
+              "timestamp": 1789231453868
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "2fba75bb-df66-4408-8644-d76952b71b83",
+              "timestamp": 1789231453875
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "2fba75bb-df66-4408-8644-d76952b71b83",
+              "timestamp": 1789231477199
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-anime-fan-beta-12-cfg1-shift3-denoise0.35-medium_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "d00dce3f306c1ac814890c464c0405b4a5b6d86a587cd6f9123ef146c08fb45d",
+      "assessment": "Increasing 7 to 12 steps produced no material visual improvement in the two inspected sources. Reducing shift 8 to 3 preserves source appearance but also reduces redraw; it does not demonstrate a high-strength color fix."
+    },
+    {
+      "case": "smooth-t2v-v4-anime-fan-beta-7-cfg1-shift8-denoise0.35-medium",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "f82e8218e78bb093dfcb722fc6953aff1983edce14a1cda1ed4873aa48ff95a8",
+      "workflowSha256": "238c5e361fef355ecaf6be1114955314e9909021133a0f4fb209990db75b72e8",
+      "strength": 0.35,
+      "fixture": "anime-fan",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "anime illustration",
+        "style": "Two-dimensional painted anime game illustration, delicate dark contours, broad soft painted shadows and graphic folds, subdued black, cream, red and gold palette, painterly white clouds and traditional architecture.",
+        "content": "Low-angle full-body illustration of an adult female warrior with a short black bob, closed eyes, a gold and red hair ornament, black and gold open kimono over a white fitted wrap top, a wide red waist sash and black legwear. One gloved hand raises a large black and gold folding fan and the other holds a sword. Ornate fabric and red ribbons flow around her, with layered traditional temples and bright billowing clouds behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "smoothmixanime, anime style",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "New 0.35 strength reference; all other settings and prompt match the previous matrix.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:43:24.473Z",
+      "promptId": "34b8c887-edd3-4a8c-97f7-9165cd2b017b",
+      "seconds": 20.055,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "34b8c887-edd3-4a8c-97f7-9165cd2b017b",
+              "timestamp": 1789231404477
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "34b8c887-edd3-4a8c-97f7-9165cd2b017b",
+              "timestamp": 1789231404484
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "34b8c887-edd3-4a8c-97f7-9165cd2b017b",
+              "timestamp": 1789231423192
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-anime-fan-beta-7-cfg1-shift8-denoise0.35-medium_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "4f404ca44bf36fda8dcc3b7d4a41173c3efddba0705e4bdfad8bed641d56b3f0",
+      "assessment": "Increasing 7 to 12 steps produced no material visual improvement in the two inspected sources. Reducing shift 8 to 3 preserves source appearance but also reduces redraw; it does not demonstrate a high-strength color fix."
+    },
+    {
+      "case": "smooth-t2v-v4-anime-fan-beta-12-cfg1-shift8-denoise0.35-medium",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "f82e8218e78bb093dfcb722fc6953aff1983edce14a1cda1ed4873aa48ff95a8",
+      "workflowSha256": "e49932bf2914d31be0e942e6c85d48dfaaceb0b154406151ef8c46a5a348b388",
+      "strength": 0.35,
+      "fixture": "anime-fan",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 12,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "anime illustration",
+        "style": "Two-dimensional painted anime game illustration, delicate dark contours, broad soft painted shadows and graphic folds, subdued black, cream, red and gold palette, painterly white clouds and traditional architecture.",
+        "content": "Low-angle full-body illustration of an adult female warrior with a short black bob, closed eyes, a gold and red hair ornament, black and gold open kimono over a white fitted wrap top, a wide red waist sash and black legwear. One gloved hand raises a large black and gold folding fan and the other holds a sword. Ornate fabric and red ribbons flow around her, with layered traditional temples and bright billowing clouds behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "smoothmixanime, anime style",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "Only step count changed from 7 to 12 against mid-strength.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:43:46.661Z",
+      "promptId": "d5e8f1fc-9940-497c-be10-2b648c14343c",
+      "seconds": 25.081,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "d5e8f1fc-9940-497c-be10-2b648c14343c",
+              "timestamp": 1789231426664
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "d5e8f1fc-9940-497c-be10-2b648c14343c",
+              "timestamp": 1789231426672
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "d5e8f1fc-9940-497c-be10-2b648c14343c",
+              "timestamp": 1789231449928
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-anime-fan-beta-12-cfg1-shift8-denoise0.35-medium_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "ec108fb497a0bc155a9f0e22d774400b1fd57bdd717031ffff27455f7d39caee",
+      "assessment": "Increasing 7 to 12 steps produced no material visual improvement in the two inspected sources. Reducing shift 8 to 3 preserves source appearance but also reduces redraw; it does not demonstrate a high-strength color fix."
+    },
+    {
+      "case": "smooth-t2v-v4-cyber-portrait-beta-12-cfg1-shift3-denoise0.35-medium",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "89bc170e0b97ad8a8cda70d7aaec9fecdc01e842c0ebae19f62d92668ac1fdb9",
+      "workflowSha256": "a5997047b6438154f0cccba4790216a0336bfb391c27487a432626bd1425cea5",
+      "strength": 0.35,
+      "fixture": "cyber-portrait",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 12,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 3,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "photorealistic cinematic digital art",
+        "style": "Photorealistic cinematic portrait, natural face proportions and skin texture, fine textile grain, cool dark blue palette with cyan and magenta neon reflections, rainfall and a softly blurred urban background.",
+        "content": "An adult woman with a short silver bob and transparent cyan illuminated glasses stands facing the viewer in a rainy futuristic alley. She wears a zipped black high-neck outfit and a black technical jacket with cyan lights around the high collar, dark backpack straps and a rectangular illuminated device hanging at her hip. Wet pavement and neon signs recede behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "Only sampling shift changed from 8 to 3 against more-steps; lower starting sigma at equal denoise.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:45:28.245Z",
+      "promptId": "48b2670d-2844-4542-ae12-5374e2597a79",
+      "seconds": 27.599,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "48b2670d-2844-4542-ae12-5374e2597a79",
+              "timestamp": 1789231528251
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "48b2670d-2844-4542-ae12-5374e2597a79",
+              "timestamp": 1789231528261
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "48b2670d-2844-4542-ae12-5374e2597a79",
+              "timestamp": 1789231554672
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-cyber-portrait-beta-12-cfg1-shift3-denoise0.35-medium_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "59b4e578308b27d1ced4b63c9938a6a3090ee0757fb30cf5d6b091a6f622c8a4",
+      "assessment": "Increasing 7 to 12 steps produced no material visual improvement in the two inspected sources. Reducing shift 8 to 3 preserves source appearance but also reduces redraw; it does not demonstrate a high-strength color fix."
+    },
+    {
+      "case": "smooth-t2v-v4-cyber-portrait-beta-7-cfg1-shift8-denoise0.35-medium",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "89bc170e0b97ad8a8cda70d7aaec9fecdc01e842c0ebae19f62d92668ac1fdb9",
+      "workflowSha256": "fdc752be4e2a3e280eb2d6faf13d1de251ff38275ff13313a8ffec3e3d966e8a",
+      "strength": 0.35,
+      "fixture": "cyber-portrait",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "photorealistic cinematic digital art",
+        "style": "Photorealistic cinematic portrait, natural face proportions and skin texture, fine textile grain, cool dark blue palette with cyan and magenta neon reflections, rainfall and a softly blurred urban background.",
+        "content": "An adult woman with a short silver bob and transparent cyan illuminated glasses stands facing the viewer in a rainy futuristic alley. She wears a zipped black high-neck outfit and a black technical jacket with cyan lights around the high collar, dark backpack straps and a rectangular illuminated device hanging at her hip. Wet pavement and neon signs recede behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "New 0.35 strength reference; all other settings and prompt match the previous matrix.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:44:41.123Z",
+      "promptId": "32bc9bd0-7979-4f7a-a857-22e79a11ba6e",
+      "seconds": 17.564,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "32bc9bd0-7979-4f7a-a857-22e79a11ba6e",
+              "timestamp": 1789231481127
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "32bc9bd0-7979-4f7a-a857-22e79a11ba6e",
+              "timestamp": 1789231481135
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "32bc9bd0-7979-4f7a-a857-22e79a11ba6e",
+              "timestamp": 1789231498226
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-cyber-portrait-beta-7-cfg1-shift8-denoise0.35-medium_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "016c40d17a06d628d82e6a13f4518418c767e978759e1c50077dd7c8c887b97f",
+      "assessment": "Increasing 7 to 12 steps produced no material visual improvement in the two inspected sources. Reducing shift 8 to 3 preserves source appearance but also reduces redraw; it does not demonstrate a high-strength color fix."
+    },
+    {
+      "case": "smooth-t2v-v4-cyber-portrait-beta-12-cfg1-shift8-denoise0.35-medium",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "89bc170e0b97ad8a8cda70d7aaec9fecdc01e842c0ebae19f62d92668ac1fdb9",
+      "workflowSha256": "6bd99f02d1833a7420d37778e8e1217e3d2cfb71e8d7df3390f6c161bb18f4f5",
+      "strength": 0.35,
+      "fixture": "cyber-portrait",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 12,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "photorealistic cinematic digital art",
+        "style": "Photorealistic cinematic portrait, natural face proportions and skin texture, fine textile grain, cool dark blue palette with cyan and magenta neon reflections, rainfall and a softly blurred urban background.",
+        "content": "An adult woman with a short silver bob and transparent cyan illuminated glasses stands facing the viewer in a rainy futuristic alley. She wears a zipped black high-neck outfit and a black technical jacket with cyan lights around the high collar, dark backpack straps and a rectangular illuminated device hanging at her hip. Wet pavement and neon signs recede behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "Only step count changed from 7 to 12 against mid-strength.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:45:00.809Z",
+      "promptId": "d1f201bd-b7a6-4d7e-a8ed-af5c13d06860",
+      "seconds": 25.29,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "d1f201bd-b7a6-4d7e-a8ed-af5c13d06860",
+              "timestamp": 1789231500814
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "d1f201bd-b7a6-4d7e-a8ed-af5c13d06860",
+              "timestamp": 1789231500823
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "d1f201bd-b7a6-4d7e-a8ed-af5c13d06860",
+              "timestamp": 1789231525756
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-cyber-portrait-beta-12-cfg1-shift8-denoise0.35-medium_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "4b2a8b813cc0a1da99ee860d9555dfa04d0a0d2038edbd6b11276ea267c09e4c",
+      "assessment": "Increasing 7 to 12 steps produced no material visual improvement in the two inspected sources. Reducing shift 8 to 3 preserves source appearance but also reduces redraw; it does not demonstrate a high-strength color fix."
+    }
+  ],
+  "qualityAccepted": false,
+  "productionDefaultChanged": false,
+  "decision": "Superseded as the main decision test by user-requested direct original-Wan comparison; six outputs preserved."
+}

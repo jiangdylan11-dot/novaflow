@@ -1,0 +1,205 @@
+{
+  "created_at": 1789439610,
+  "completed_at": 1789439620,
+  "id": "2f1e7f32-dcd6-967c-a6da-2280789b798f",
+  "max_output_tokens": 4096,
+  "model": "grok-4.3",
+  "object": "response",
+  "output": [
+    {
+      "id": "rs_2f1e7f32-dcd6-967c-a6da-2280789b798f",
+      "summary": [
+        {
+          "text": "The task is to edit the video: change the golden coin tree and coin particle effects to an ice crystal theme, keep the growth and falling motion paths and rhythm, original background unchanged.\n{\n  \"modelPrompt\": \"[video editing] The target video is an edited version of <Video 1>. Change the golden coin tree and coin particle effects to an ice crystal theme while preserving the growth and falling motion paths and rhythm.",
+          "type": "summary_text"
+        }
+      ],
+      "type": "reasoning",
+      "status": "completed"
+    },
+    {
+      "content": [
+        {
+          "type": "output_text",
+          "text": "{\n  \"modelPrompt\": {\n    \"subject_definitions\": \"<Subject 1>: money tree with coins and floating coin particles from <Video 1>, transformed to ice crystal theme.\\n<Video 1>: captured video slot multi_ref_video_1.\",\n    \"summary\": \"[video editing] The target video is an edited version of <Video 1>. Change the golden coin tree and coin particle effects to ice crystal theme while preserving the growth and falling motion paths and rhythm. Original background remains unchanged.\",\n    \"retention_analysis\": \"<Subject 1>: partially_preserved - growth and falling trajectories, speed, timing and overall shape retained.\\n<Video 1>: fully_preserved - camera framing, background and exact 3-second timing.\",\n    \"detailed_description\": \"Ice crystal visual style. [Shot 1] The ice-crystal money tree grows from the pot with crystalline branches and faceted coin-shaped ice elements following the exact growth path and timing of <Video 1>. At 1.000 seconds a bright crystalline glow appears at the canopy. Ice particles float outward and fall with identical trajectories, speed and rhythm as the original golden coins, ending at 3.000 seconds with the fully formed ice tree against the unchanged solid blue background.\",\n    \"overall_soundscape\": \"N/A\",\n    \"non_diegetic_music\": \"N/A\"\n  },\n  \"displayPrompt\": {\n    \"subject_definitions\": \"<Subject 1>: 来自<Video 1>的金币树与金币粒子，转换为冰晶主题。\\n<Video 1>: captured video slot multi_ref_video_1。\",\n    \"summary\": \"[video editing] The target video is an edited version of <Video 1>。将金色金币树和金币粒子特效改为冰晶主题，保留生长、飘落的动作路径和节奏，原背景不变。\",\n    \"retention_analysis\": \"<Subject 1>: partially_preserved - 生长与飘落轨迹、速度、时序及整体形状保留。\\n<Video 1>: fully_preserved - 摄像机取景、背景及精确3秒时序。\",\n    \"detailed_description\": \"冰晶视觉风格。[Shot 1] 冰晶材质的金币树从花盆中生长，晶体枝干与多面冰币元素严格遵循<Video 1>的生长路径与时序。在1.000秒树冠出现明亮晶体光效。冰晶粒子以与原金币完全相同的轨迹、速度和节奏向外飘落，3.000秒结束时形成完整冰晶树，背景保持不变的纯蓝色。\",\n    \"overall_soundscape\": \"N/A\",\n    \"non_diegetic_music\": \"N/A\"\n  },\n  \"editPolicy\": {\n    \"preserveBackground\": true,\n    \"preserveMotion\": true,\n    \"sameShapeAppearanceOnly\": false\n  }\n}",
+          "logprobs": [],
+          "annotations": []
+        }
+      ],
+      "id": "msg_2f1e7f32-dcd6-967c-a6da-2280789b798f",
+      "role": "assistant",
+      "type": "message",
+      "status": "completed"
+    }
+  ],
+  "parallel_tool_calls": true,
+  "previous_response_id": null,
+  "reasoning": {
+    "effort": "low",
+    "summary": "detailed"
+  },
+  "temperature": 0.35,
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "modelPrompt": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "subject_definitions": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately."
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "retention_analysis": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. One rule per defined Subject and source Video; image attributes belong to the Subject using that picture."
+              },
+              "detailed_description": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "overall_soundscape": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. Use N/A for absent or unrequested audio, never an empty string."
+              },
+              "non_diegetic_music": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. Use N/A for absent or unrequested audio, never an empty string."
+              }
+            },
+            "required": [
+              "subject_definitions",
+              "summary",
+              "retention_analysis",
+              "detailed_description",
+              "overall_soundscape",
+              "non_diegetic_music"
+            ]
+          },
+          "displayPrompt": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "subject_definitions": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately."
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "retention_analysis": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 One rule per defined Subject and source Video; image attributes belong to the Subject using that picture."
+              },
+              "detailed_description": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "overall_soundscape": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 Use N/A for absent or unrequested audio, never an empty string."
+              },
+              "non_diegetic_music": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 Use N/A for absent or unrequested audio, never an empty string."
+              }
+            },
+            "required": [
+              "subject_definitions",
+              "summary",
+              "retention_analysis",
+              "detailed_description",
+              "overall_soundscape",
+              "non_diegetic_music"
+            ]
+          },
+          "editPolicy": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "preserveBackground": {
+                "type": "boolean"
+              },
+              "preserveMotion": {
+                "type": "boolean"
+              },
+              "sameShapeAppearanceOnly": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "preserveBackground",
+              "preserveMotion",
+              "sameShapeAppearanceOnly"
+            ]
+          }
+        },
+        "required": [
+          "modelPrompt",
+          "displayPrompt",
+          "editPolicy"
+        ]
+      }
+    }
+  },
+  "tool_choice": "auto",
+  "tools": [],
+  "top_p": 0.95,
+  "usage": {
+    "input_tokens": 6764,
+    "input_tokens_details": {
+      "cached_tokens": 192
+    },
+    "output_tokens": 1011,
+    "output_tokens_details": {
+      "reasoning_tokens": 416
+    },
+    "total_tokens": 7775,
+    "num_sources_used": 0,
+    "num_server_side_tools_used": 0,
+    "cost_in_usd_ticks": 107809000,
+    "context_details": {
+      "input_tokens": 6764,
+      "output_tokens": 1011
+    }
+  },
+  "user": null,
+  "incomplete_details": null,
+  "status": "completed",
+  "store": false,
+  "metadata": {
+    "system_fingerprint": "fp_eb3c003fc66c14ed"
+  },
+  "background": false,
+  "service_tier": "default",
+  "truncation": "disabled",
+  "top_logprobs": 0,
+  "presence_penalty": 0,
+  "frequency_penalty": 0,
+  "prompt_cache_key": null,
+  "max_tool_calls": null,
+  "safety_identifier": null,
+  "error": null,
+  "instructions": null
+}

@@ -1,0 +1,112 @@
+[
+  {
+    "Path": "E:\\NovaFlow\\models\\loras\\minimax_h3\\Ending_Reaction_Booster.safetensors",
+    "Bytes": 155110280,
+    "SHA256": "0B5ECA00E8C1A80EEA01E41F0CAC7EF495A46915EBD0EB1A62786007E0A79CFC"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\loras\\minimax_h3\\H3_Motion_Booster_anime.safetensors",
+    "Bytes": 155110280,
+    "SHA256": "CF23F3F8AC3D663DD3EA49482F90DD4321EFF6A052AD6DFC7518321C01B78B9B"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\SeeThrough\\seethroughv0.0.1_marigold\\vae\\diffusion_pytorch_model.safetensors",
+    "Bytes": 167335590,
+    "SHA256": "8D0C34F57ABE50F323040F2366C8E22B941068DCDF53C8EB1D6FAFB838AFECB7"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\SeeThrough\\seethroughv0.0.2_layerdiff3d\\vae\\diffusion_pytorch_model.safetensors",
+    "Bytes": 167335590,
+    "SHA256": "CE4B137ACAD050C9072769CFB02FDC6ECB8DC0957586DB5F6FAB71D18103CCC1"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\loras\\wan2_2\\wan22-i2v-rub-pussy-os-high摩擦阴部.safetensors",
+    "Bytes": 306807976,
+    "SHA256": "FBAA73EA4E6AD330CBA2DC21B44C9D666E4F867F4341CE2A641EBA1529C4DE1A"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\loras\\wan2_2\\x-ray_i2v_high_v1.1切面.safetensors",
+    "Bytes": 306807976,
+    "SHA256": "685EE88082F0733B44BA036EA4BC3E1CECA6A25B09278A09C9FB6AB3316676A4"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\RMBG\\BiRefNet\\BiRefNet-HR-matting.safetensors",
+    "Bytes": 444473596,
+    "SHA256": "A5A4DE698739EA5E0E8BBAB28E1B293DDE95092B87A442D566CBC585C53CEF55"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\RMBG\\BiRefNet\\BiRefNet-HR.safetensors",
+    "Bytes": 444473596,
+    "SHA256": "9D678BAFEC0B0019FBB073B7FD02F05EDE25DC4B15254F23B2FB0BE333200C0D"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\loras\\qwen\\深喉.safetensors",
+    "Bytes": 590058824,
+    "SHA256": "E52896C5763A08CF94F201407F0F89C33E0A71B9FE54AFC78C32BD03A33D62FC"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\loras\\qwen\\gnass_2512_qwen.safetensors",
+    "Bytes": 590058824,
+    "SHA256": "663B2202108DD1EFA1A7E830F2608EDED9D11CF16082E7F442F9031605191905"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\loras\\Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+    "Bytes": 849608296,
+    "SHA256": "22226E8D05D354BB356627D428809F5AFD7819399B077238A2B70A82883A904F"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\loras\\Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors",
+    "Bytes": 849608296,
+    "SHA256": "A9E81A58A78F260F67B337A6F615E8FA4CD3BC79847C77B7D61A581B789B1BA8"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\RMBG\\BiRefNet\\BiRefNet-general.safetensors",
+    "Bytes": 884878856,
+    "SHA256": "77277264C0E8C74149D3FF2FADE4FD8176965B7108F3C5FC3B8C9C811EDB4519"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\RMBG\\BiRefNet\\BiRefNet-matting.safetensors",
+    "Bytes": 884878856,
+    "SHA256": "A9875DE5B1E6C8EB5FDAA8C727A82927CE442CDC87BA3ABEE6A77E6FA46C25BB"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\RMBG\\RMBG-2.0\\model.safetensors",
+    "Bytes": 884878856,
+    "SHA256": "566ED80C3D95F87ADA6864D4CBE2290A1C5EB1C7BB0B123E984F60F76B02C3A7"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\loras\\qwen\\HQL0.2.safetensors",
+    "Bytes": 1179883632,
+    "SHA256": "6519BE40C81541800E9D50F0B3FBD888ADE1F136B4FD25F21496B5401F8DBE7F"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\loras\\qwen\\QwenMix_v0.1.safetensors",
+    "Bytes": 1179883632,
+    "SHA256": "8289177FB6326D8DB6DD12A313F8223C0CE7E75BFF625C0E0C66297C6D8CA1B8"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\clip_vision\\clip_vision_h.safetensors",
+    "Bytes": 1264219396,
+    "SHA256": "64A7EF761BFCCBADBAA3DA77366AAC4185A6C58FA5DE5F589B42A65BCC21F161"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\clip_vision\\CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+    "Bytes": 1264219396,
+    "SHA256": "64A7EF761BFCCBADBAA3DA77366AAC4185A6C58FA5DE5F589B42A65BCC21F161"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\loras\\minimax_h3\\lightx_768\\minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "Bytes": 1956193000,
+    "SHA256": "08CFE946033AF7D27719B964B6E0A0E50C32138DAABBD6CE4137E23DF6BF9980"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\loras\\minimax_h3\\lightx_768\\minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+    "Bytes": 1956193000,
+    "SHA256": "5B9AB5ADE15D0775676D01A907268A69A1468DC6033B3B0D3DED5502F3EBB84C"
+  },
+  {
+    "Path": "E:\\NovaFlow\\models\\loras\\minimax_h3\\lightx_768\\minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+    "Bytes": 1956193000,
+    "SHA256": "6A56F41AB4229C9DD845B9501BBD475EE57E112D846CF2E819D534A1AE928C5A"
+  }
+]

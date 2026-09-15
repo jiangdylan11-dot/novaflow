@@ -2622,12 +2622,20 @@ class VisualContractTests(unittest.TestCase):
         with self.assertRaisesRegex(VisualContractError, "zero visible_person_count"):
             parse_visual_contract(json.dumps(contract, ensure_ascii=False))
 
+        # A visible person with a "not applicable" age is completed fail-closed
+        # as unverifiable instead of discarding the whole analysis.
         contract["content_safety"].update({
             "age_assessment": "not_applicable",
             "visible_person_count": 1,
         })
-        with self.assertRaisesRegex(VisualContractError, "positive visible_person_count"):
-            parse_visual_contract(json.dumps(contract, ensure_ascii=False))
+        parsed = parse_visual_contract(json.dumps(contract, ensure_ascii=False))
+        self.assertEqual(parsed["content_safety"]["age_assessment"], "age_unverifiable")
+        self.assertNotIn("age_ambiguous", parsed["content_safety"]["signals"])
+        contract = valid_v2_contract()
+        contract["content_safety"].update({"age_assessment": "not_applicable", "visible_person_count": 1})
+        parsed = parse_visual_contract(json.dumps(contract, ensure_ascii=False))
+        self.assertEqual(parsed["content_safety"]["age_assessment"], "age_unverifiable")
+        self.assertIn("age_ambiguous", parsed["content_safety"]["signals"])
 
     def test_v2_sensitive_age_uses_neutral_entities_but_safe_child_content_is_unchanged(self):
         contract = valid_v2_contract()
@@ -5670,13 +5678,8 @@ class VisualContractTests(unittest.TestCase):
                 "not_applicable",
                 "zero visible_person_count requires age_assessment=not_applicable",
             ),
-            (
-                "positive-count",
-                1,
-                "not_applicable",
-                "adult_appearing",
-                "positive visible_person_count requires an applicable age_assessment",
-            ),
+            # A positive count with a "not applicable" age is now completed
+            # fail-closed as age_unverifiable instead of triggering a retry.
         )
         for label, people, invalid_age, corrected_age, validation_leaf in fixtures:
             with self.subTest(leaf=label):

@@ -1,0 +1,44 @@
+{
+  "path": "E:\\NovaFlow\\models\\unet\\Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+  "bytes": 16065804446,
+  "headerBytes": 328480,
+  "dtypes": {
+    "F32": 600,
+    "F16": 1209,
+    "F8_E4M3": 406,
+    "U8": 406
+  },
+  "tensorGroupBytes": {
+    "diffusion": 14293752234,
+    "other": 507570124,
+    "clip_vision": 1264153600
+  },
+  "patchEmbedding": {
+    "dtype": "F16",
+    "shape": [
+      5120,
+      16,
+      1,
+      2,
+      2
+    ],
+    "data_offsets": [
+      517310116,
+      517965476
+    ]
+  },
+  "architecture": "Wan T2V: 16 latent input channels",
+  "loader": "UNETLoader; use diffusion weights, keep existing Wan VAE and UMT5",
+  "authorModelId": 1995784,
+  "authorVersionId": 3138091,
+  "authorFileBytes": 16065804446.000006,
+  "authorSHA256": "EC57FBFBB0655620D9187394611CCF1CC6E9145C105F8704D2CAAC2FF26A2619",
+  "fullFileHashVerified": false,
+  "guide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+  "guideFindings": [
+    "Author says no style trigger defaults to photorealism.",
+    "smoothmixanime and smoothmixrealism select author style families.",
+    "T2V v3 explicitly baked Lightx2v; v4 guide does not restate sampling settings. No extra acceleration LoRA in candidate workflow."
+  ],
+  "productionDefaultChanged": false
+}

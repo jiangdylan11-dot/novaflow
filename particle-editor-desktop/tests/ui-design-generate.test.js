@@ -347,9 +347,12 @@ test("GenerateTool node variant keeps parameters visible, exposes orientation sh
   assert.equal(initialSwitchStack.style.gridTemplateColumns, "minmax(0, 1fr)");
   assert.equal(initialSwitchStack.style.gap, "5px");
   assert.equal(initialSwitchStack.children[0], initialRandomRow);
-  assert.equal(initialSwitchStack.children.length, 1, "fixed Rapid model has no extra switch row");
-  assert.equal(initialNsfw, null);
-  assert.equal(initialNsfwRow, null);
+  assert.equal(initialSwitchStack.children[1], initialNsfwRow, "NSFW is rendered on its own row");
+  assert.equal(initialNsfw.getAttribute("role"), "switch");
+  assert.equal(initialNsfw.children[0].style.width, "10px");
+  assert.equal(initialNsfw.children[0].style.left, "4px");
+  assert.equal(initialNsfwRow.style.gridTemplateColumns, "48px 34px minmax(0, 1fr)");
+  assert.equal(initialNsfwRow.children[1], initialNsfw, "NSFW switch stays beside its title");
   assert.equal(initialPrompt.style.minHeight, "88px", "positive UI design requirements need a usable editing area");
   assert.equal(initialNegativePrompt.style.minHeight, initialPrompt.style.minHeight, "local negative requirements match the design requirements height");
 

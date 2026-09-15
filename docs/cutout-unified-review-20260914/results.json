@@ -1,0 +1,27 @@
+[
+  {
+    "clip": "blue",
+    "code": 0,
+    "seconds": 66.862
+  },
+  {
+    "clip": "minimax",
+    "code": 0,
+    "seconds": 70.801
+  },
+  {
+    "clip": "scatter",
+    "code": 0,
+    "seconds": 39.451
+  },
+  {
+    "clip": "gloweyes",
+    "code": 0,
+    "seconds": 199.451
+  },
+  {
+    "clip": "athena",
+    "code": 0,
+    "seconds": 150.312
+  }
+]

@@ -8,6 +8,9 @@ POLICY = json.loads(Path(__file__).with_name("h3_prompt_enhance_policy.json").re
 INSTRUCTION = "\n".join(POLICY["instructions"])
 REFERENCE_INSTRUCTION = "\n".join(POLICY["referenceInstructions"])
 REFERENCE_FIELDS = ("subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music")
+CAMERA_PATTERN = r"镜头|相机|摄像|机位|运镜|\bcamera\b|\bzoom\b|\bdolly\b|\bpanning\b"
+DEFAULT_CAMERA_ZH = "镜头固定，构图保持稳定。"
+DEFAULT_CAMERA_EN = "The camera remains static and the framing stays stable."
 
 
 def reference_label(value):
@@ -31,6 +34,34 @@ def reference_label(value):
     return "<" + ("Picture" if kind == "Image" else kind) + " " + match[2] + ">"
 
 
+def reconcile_tasks(tasks, allowed):
+    """Bind the task list to what was actually uploaded.
+
+    The uploads decide the mode: without a source video there is no video
+    editing or continuation, without audio no audio task. The model's guess is
+    trimmed rather than rejected so a single picture never demands a video.
+    """
+    has_video = any(label.startswith('<Video ') for label in allowed)
+    has_audio = any(label.startswith('<Audio ') for label in allowed)
+    has_picture = any(label.startswith('<Picture ') for label in allowed)
+    kept = []
+    for task in tasks:
+        if not isinstance(task, str):
+            continue
+        task = task.strip().lower()
+        if task in ('video editing', 'video continuation') and not has_video:
+            continue
+        if task in ('audio reuse', 'audio reference') and not has_audio:
+            continue
+        if task == 'keyframe completion' and not has_picture:
+            continue
+        if task not in kept:
+            kept.append(task)
+    if not any(task in kept for task in ('reference generation', 'keyframe completion', 'video editing', 'video continuation')):
+        kept.insert(0, 'reference generation')
+    return kept
+
+
 def normalize_reference_plan(value, requirements="", source="", user_requirement=""):
     """Compile optional protocol details from model-authored semantic bindings.
 
@@ -48,7 +79,13 @@ def normalize_reference_plan(value, requirements="", source="", user_requirement
         raise ValueError("H3 多参关系计划不完整")
     inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements)
     allowed = set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory[1] if inventory else text))
+    plan['tasks'] = reconcile_tasks(plan['tasks'], allowed)
     editing = 'video editing' in plan['tasks']
+    # A model may invent a row for an asset that was never uploaded (typically a
+    # source video). Drop that row instead of failing the whole compile.
+    plan['references'] = [item for item in plan['references'] if not (isinstance(item, dict)
+        and re.fullmatch(r"<(?:Picture|Video|Audio) [1-9]\d*>", str(item.get('label', '')).strip())
+        and str(item.get('label', '')).strip() not in allowed)]
     merged = {}
     subject_ids = {int(m[1]) for item in plan['references'] if isinstance(item, dict) for m in [re.fullmatch(r'<Subject ([1-9]\d*)>', str(item.get('label', '')))] if m}
     image_subjects = {}
@@ -190,6 +227,10 @@ def render_reference_plan(value, requirements="", duration=30, source="", user_r
     loop_requested = re.search(POLICY["loopPattern"], source + "\n" + user_requirement, re.I) and not re.search(POLICY["cancelLoopPattern"], user_requirement or source, re.I)
     if loop_requested and not re.search(POLICY["closurePattern"], description, re.I):
         description += " 结束时平滑回到起始姿态与运动相位，使循环自然衔接。"
+    # A generated (non-edit) shot must state its camera; an edit inherits the
+    # source camera. Default to a locked camera rather than rejecting the plan.
+    if "video editing" not in plan["tasks"] and not re.search(CAMERA_PATTERN, description + " " + source + " " + user_requirement, re.I):
+        description += " " + DEFAULT_CAMERA_ZH
     if "[Shot 1]" not in description:
         description = "[Shot 1] " + description
     result = dict(zip(REFERENCE_FIELDS, ("\n".join(definitions), "[" + " + ".join(plan["tasks"]) + "] " + summary, "\n".join(retention), description, plan["soundscape"], plan["music"])))
@@ -225,6 +266,12 @@ def validate_reference(value, requirements="", duration=30):
     tasks = re.split(r"\s*\+\s*", task.group(1)) if task else []
     if not tasks or any(t not in ("reference generation", "keyframe completion", "video editing", "video continuation", "audio reuse", "audio reference") for t in tasks):
         raise ValueError("H3 多参缺少明确任务关系")
+    if inventory:
+        reconciled = reconcile_tasks(tasks, set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory.group(1))))
+        if reconciled != tasks:
+            tasks = reconciled
+            fields["summary"] = "[" + " + ".join(tasks) + "]" + fields["summary"][task.end():]
+            text = "\n\n".join(k + ":\n" + fields[k].strip() for k in REFERENCE_FIELDS)
     if 'reference generation' in tasks and '<Picture ' in text and not ids:
         raise ValueError("H3 多参主体缺少独立定义")
     if "video editing" in tasks and not re.match(r"\[[^\]]+\]\s*The target video is an edited version of <Video [1-9]\d*>(?:\.|\s)", fields["summary"]):

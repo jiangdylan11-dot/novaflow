@@ -1,0 +1,23 @@
+file:///D:/AI_APP/NovaFlow/supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs:123
+  const error = new Error(message);
+                ^
+
+Error: H3 多参需要完整的六个参考字段
+    at miniMaxH3ContractError (file:///D:/AI_APP/NovaFlow/supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs:123:17)
+    at normalizeMiniMaxH3PromptOutput (file:///D:/AI_APP/NovaFlow/supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs:952:13)
+    at file:///D:/AI_APP/NovaFlow/tools/h3-reference-format-live.mjs:36:37
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async callGrokResponseWithVisualRetry (file:///D:/AI_APP/NovaFlow/supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs:3131:22)
+    at async file:///D:/AI_APP/NovaFlow/tools/h3-reference-format-live.mjs:28:15 {
+  statusCode: 502,
+  errorCode: 'h3_contract_five_sections',
+  failureCategory: 'h3_contract_five_sections',
+  minimaxH3ContractInvalid: true,
+  minimaxH3SafeError: true,
+  grokUsage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+  grokDurationMs: 0,
+  grokProviderCallCount: 0,
+  grokVisualContractRetryUsed: true
+}
+
+Node.js v24.14.1

@@ -1,0 +1,19 @@
+subject_definitions:
+<Subject 1> : gold coin with emblem, appearance and motion from <Video 1>
+<Video 1> : The source video for this edit.
+
+summary: [video editing] The target video is an edited version of <Video 1>. Change the green background to purple while retaining the coin's appearance and motion.
+
+retention_analysis:
+<Subject 1>: fully_preserved - gold coin appearance and motion
+<Video 1>: partially_preserved - coin motion and replaced background content
+
+detailed_description: Retain reference appearance.
+
+[Shot 1] The shot shows <Subject 1>.
+
+The gold coin spins and rotates in the center against a solid purple background, preserving the exact trajectory, orientation changes, speed and timing from the source video across the full 3 seconds.
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A

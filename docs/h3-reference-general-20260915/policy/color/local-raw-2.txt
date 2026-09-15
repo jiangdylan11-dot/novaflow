@@ -1,0 +1,21 @@
+{
+  "references": [
+    {
+      "label": "<Subject 1>",
+      "sources": ["<Video 1>"],
+      "description": "紫发女性角色身着红色长裙，裙料轻薄半透明，配金色腰饰与臂环，手持金色法杖，背景为纯绿色幕布。",
+      "keep": "人物身份、动作、背景、金色腰饰与臂环、手持法杖、纯绿色幕布",
+      "relation": "attribute_transfer"
+    }
+  ],
+  "tasks": ["video editing"],
+  "summary": "将视频中人物的白色裙子替换为红色，其余元素保持不变。",
+  "description": "<Subject 1> 坐姿，身着红色长裙，裙料轻薄半透明，配金色腰饰与臂环，手持金色法杖，背景为纯绿色幕布。",
+  "soundscape": "N/A",
+  "music": "N/A",
+  "editPolicy": {
+    "preserveBackground": true,
+    "preserveMotion": true,
+    "sameShapeAppearanceOnly": true
+  }
+}

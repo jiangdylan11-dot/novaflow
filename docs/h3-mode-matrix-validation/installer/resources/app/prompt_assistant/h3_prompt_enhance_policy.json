@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "instructions": [
+    "Improve the actual video prompt, not just its H3 formatting. Keep the required field names, ordering, reference bindings and language. Return one concise final prompt, with no explanation of your edits.",
+    "Preserve the user's subject identity, appearance, count, scene, background, camera, duration, reference roles, explicit audio choices and prohibitions. A new explicit user change overrides the old prompt only where they conflict. Never invent visible appearance from an unseen reference.",
+    "Replace vague motion adjectives such as vivid, natural and smooth with a small number of observable actions: what moves, in which direction, by how much, at what rhythm, and how it starts and ends. Choose only details consistent with the requested action and available duration. Improve clarity rather than adding length, cinematic buzzwords or a list of new events.",
+    "Distinguish a locked camera and stable root position/framing from permitted local body motion. Do not freeze the entire body merely because position and scale must remain stable. If the user explicitly requests complete stillness or forbids a movement, preserve that restriction; never force blinking, breathing or swaying onto every subject.",
+    "For a requested loop, describe the motion returning smoothly to its initial pose and movement phase for a seamless join. For a short idle loop, use one restrained cycle; do not add walking, turning, cuts or camera moves. Do not override different explicit first/last frame anchors to force a loop.",
+    "If a constant green-screen background is requested, keep its color, brightness and texture constant, with no added background shadows, gradients, scenery, relighting or effects. Preserve restrictions on effects and camera motion explicitly.",
+    "Do not treat no visual effects as a request for silence. Preserve requested silence, dialogue, music and reference audio accurately. Avoid invented prominent sounds or music.",
+    "Before returning, check that the narrative itself has become more precise, unambiguous or executable. Copying the source under field headers, swapping synonyms, or appending generic quality/stability phrases is not optimization. When the prompt is already detailed, tighten redundancy and resolve wording without expanding its events. Only a user's explicit format-only request permits an unchanged narrative."
+  ],
+  "formatOnlyPattern": "^(?:请)?\\s*(?:只(?:需|要)?(?:调整|修改|整理|转换)?格式|仅(?:调整|修改|整理|转换)?格式|只做格式)|^(?:please )?(?:format[- ]only|only (?:change|fix|adjust|convert) (?:the )?format)",
+  "loopPattern": "循环|无缝|\\bloop(?:ing)?\\b|seamless",
+  "cancelLoopPattern": "(?:取消|不要|无需|不做|不需要).{0,6}(?:循环|无缝)|(?:no|without|remove|cancel|do not).{0,12}loop",
+  "closurePattern": "(?:回到|返回|恢复|回归|衔接|接回).{0,24}(?:起始|初始|开始|首帧|初态)|(?:首尾|起止).{0,20}(?:衔接|匹配|一致|闭合)|(?:return|match|join|reconnect).{0,70}(?:initial|start|opening|first frame)|(?:end|last frame).{0,50}(?:match|join).{0,40}(?:start|first)",
+  "genericPaddingPattern": "让动作更生动|动作连贯推进|动作从当前状态开始|随后连续推进|保持主体身份与场景连续|镜头遵循指定运镜|未指定时保持构图|动画生动自然|动作连贯流畅|make the motion more vivid|action progresses continuously|the action begins from the current state|then progresses continuously|camera follows the specified movement|holding the framing otherwise",
+  "noChangeMessage": "H3 优化仅复述原文或添加格式/泛化修饰；请细化可见动作、节奏或消除歧义，保留原约束。",
+  "loopMessage": "H3 循环描述缺少回到起始状态的衔接；请补充循环闭合，不新增镜头或无关动作。",
+  "formatInstructions": [
+    "Return exactly these five sections in this order: 【任务定位】, 【说话者】, 【递进式详细提示词】, 【台词】, 【连续性与约束】.",
+    "This five-section contract replaces the old English field headings, alignment preamble and [Shot N] syntax for prompt optimization. Do not output them.",
+    "任务定位: state the actual mode, selected duration, aspect ratio only when supplied, reference roles and creative focus. I2V binds <Picture 1> as the exact starting frame; FL2V also binds <Picture 2> as the exact final frame at the selected duration. In reference mode keep every supplied media label and its independent identity/style/motion/audio role, including what is and is not transferred.",
+    "说话者: when dialogue exists, define each speaker as <Subject 1> = (S1), followed by the user-supported identity, continuing consecutively for more speakers. Subject identifiers are speaker identities, not additional uploaded media. For no dialogue write 无说话者; never invent dialogue or a speaking character.",
+    "递进式详细提示词: begin with one coherent overall description, then 2-5 consecutive time ranges covering 0 through the selected duration, e.g. 0.0-2.0s：... . These are phases of continuous motion, not camera cuts. Include visible actions, camera behavior and an ending; synchronize any requested speech, lighting and physical sounds. Use fewer phases for short clips. Preserve first/last anchors and requested loops. For an 8-10 second clip prefer five phases when the source supplies enough distinct actions. Preserve defining appearance, material and lighting details in the overall description; do not reduce a rich source to a generic one-line caption.",
+    "台词: preserve the supplied spoken words verbatim with (S1)：“...” labels. Do not invent speech; write 无台词 when none is requested. Keep any requested silence, ambience and music choices explicit in description or constraints.",
+    "连续性与约束: a short numbered list preserving the user constraints on identity, face/lip sync when speaking, references, framing, background, effects and prohibited changes. Do not add generic restrictions conflicting with requested motion. Do not add a ban on effects, background changes or camera moves unless the user requested it; requested eye glow and lighting changes remain enabled.",
+    "Use Chinese prose unless another language is explicitly requested; an English overall-description paragraph may precede Chinese timeline phases. Preserve all literal dialogue and visible text. No Markdown fences, explanations or template example content.",
+    "When a JSON schema is supplied, return only the content of each corresponding section in task, speakers, description, dialogue, constraints. The app adds the five headings."
+  ]
+}

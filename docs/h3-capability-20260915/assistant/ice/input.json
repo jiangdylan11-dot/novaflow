@@ -1,0 +1,1 @@
+{"modelId": "minimax_h3_local", "mode": "multi_reference", "durationSeconds": 3, "prompt": "把视频里的金色金币树和金币粒子特效改成冰晶主题，保留生长、飘落的动作路径和节奏，原背景不变。", "resources": [{"key": "multi_ref_video_1", "kind": "video", "identity": "novaflow_capability_ice_source.mp4", "fileName": "novaflow_capability_ice_source.mp4", "occupied": true, "mimeType": "video/mp4"}]}

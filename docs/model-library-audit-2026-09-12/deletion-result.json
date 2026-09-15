@@ -1,0 +1,107 @@
+{
+  "startedAt": "2026-09-12T12:21:23.8684422+07:00",
+  "scope": "E:\\NovaFlow\\models",
+  "status": "completed",
+  "approvedCount": 14,
+  "logicalBytes": 99347961827,
+  "freeBytesBefore": 717570183168,
+  "deleted": [
+    {
+      "path": "E:\\NovaFlow\\models\\clip_vision\\CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+      "bytes": 1264219396,
+      "deletedAt": "2026-09-12T12:21:23.9970018+07:00"
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\diffusion_models\\qwen_image_edit_2511_bf16.safetensors",
+      "bytes": 40861031560,
+      "deletedAt": "2026-09-12T12:21:24.0134723+07:00"
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\diffusion_models\\wan2.1_vace_1.3B_fp16.safetensors",
+      "bytes": 4309519800,
+      "deletedAt": "2026-09-12T12:21:24.0176285+07:00"
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\loras\\eigen-banana-qwen-image-edit-2509-fp16-lora.safetensors",
+      "bytes": 472047184,
+      "deletedAt": "2026-09-12T12:21:24.0199606+07:00"
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\loras\\Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+      "bytes": 849608296,
+      "deletedAt": "2026-09-12T12:21:24.1041602+07:00"
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\loras\\Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors",
+      "bytes": 849608296,
+      "deletedAt": "2026-09-12T12:21:24.1800677+07:00"
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\loras\\Qwen-Image-Lightning-8steps-V2.0.safetensors",
+      "bytes": 1698951104,
+      "deletedAt": "2026-09-12T12:21:24.1827503+07:00"
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\loras\\minimax_h3\\lightx_768\\minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
+      "bytes": 1956192992,
+      "deletedAt": "2026-09-12T12:21:24.1911944+07:00"
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\loras\\minimax_h3\\lightx_768\\minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+      "bytes": 1956193000,
+      "deletedAt": "2026-09-12T12:21:24.3690861+07:00"
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\loras\\minimax_h3\\lightx_768\\minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+      "bytes": 1956193000,
+      "deletedAt": "2026-09-12T12:21:24.5322671+07:00"
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\loras\\minimax_h3\\lightx_768\\minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+      "bytes": 1956193000,
+      "deletedAt": "2026-09-12T12:21:24.7160770+07:00"
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\unet\\qwen_image_edit_2511_fp8mixed.safetensors",
+      "bytes": 20533762817,
+      "deletedAt": "2026-09-12T12:21:24.7265229+07:00"
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\unet\\Qwen-Image-Edit-2509_fp8_e4m3fn.safetensors",
+      "bytes": 20430635136,
+      "deletedAt": "2026-09-12T12:21:24.7335199+07:00"
+    },
+    {
+      "path": "E:\\NovaFlow\\models\\vae\\qwen_image_vae.safetensors",
+      "bytes": 253806246,
+      "deletedAt": "2026-09-12T12:21:24.7509747+07:00"
+    }
+  ],
+  "failures": [],
+  "verification": {
+    "retainedIssues": [],
+    "remainingFiles": 352,
+    "remainingBytes": 300473849768.0,
+    "freeBytesAfter": 816918171648
+  },
+  "postDeleteRuntimeCheck": {
+    "workflowBuildsPassed": 9,
+    "workflowBuildsFailed": 0,
+    "qwenCompatibleLoras": 15,
+    "h3T2VLoras": 6,
+    "h3R2VLoras": 5,
+    "deletedModelsInPrimaryLoaders": [],
+    "otherNodeCachedModelNames": [
+      "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+      "Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors",
+      "Qwen-Image-Lightning-8steps-V2.0.safetensors",
+      "eigen-banana-qwen-image-edit-2509-fp16-lora.safetensors",
+      "minimax_h3\\lightx_768\\minimax_h3_fl2v_turbo_4step_v1.1_768p_comfyui_bf16.safetensors",
+      "minimax_h3\\lightx_768\\minimax_h3_fl2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+      "minimax_h3\\lightx_768\\minimax_h3_ref2v_turbo_4step_v0.1_comfyui_bf16.safetensors",
+      "minimax_h3\\lightx_768\\minimax_h3_ref2v_turbo_8step_v1.0_768p_comfyui_bf16.safetensors",
+      "qwen_image_vae.safetensors"
+    ],
+    "inferenceSubmitted": false
+  }
+}

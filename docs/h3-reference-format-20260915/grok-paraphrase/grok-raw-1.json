@@ -1,0 +1,184 @@
+{
+  "created_at": 1789407054,
+  "completed_at": 1789407061,
+  "id": "4e933e0a-8668-9bdb-8ed3-dae6a88dacae",
+  "max_output_tokens": 4096,
+  "model": "grok-4.3",
+  "object": "response",
+  "output": [
+    {
+      "id": "rs_4e933e0a-8668-9bdb-8ed3-dae6a88dacae",
+      "summary": [
+        {
+          "text": "The task is to replace the gold coin in the original video with the design from Picture 1, keeping the background unchanged and the rotation as in the original video.\n{\n  \"modelPrompt\": \"[video editing + reference generation] The target video is an edited version of <Video 1>.",
+          "type": "summary_text"
+        }
+      ],
+      "type": "reasoning",
+      "status": "completed"
+    },
+    {
+      "content": [
+        {
+          "type": "output_text",
+          "text": "{\n  \"modelPrompt\": {\n    \"subject_definitions\": \"<Subject 1>: golden coin featuring cat-face embossing, appearance from <Picture 1>, spinning motion from <Video 1>.\",\n    \"summary\": \"[video editing + reference generation] The target video is an edited version of <Video 1>. The original owl-face coin is replaced throughout by <Subject 1> while the exact rotation motion, timing, camera framing and solid green background are retained.\",\n    \"retention_analysis\": \"<Subject 1>: attribute_transfer - cat-face appearance transferred from <Picture 1> onto the coin body.\\n<Video 1>: partially_preserved - original coin rotation trajectory, speed changes, edge-on phases, camera position and green-screen background retained; original owl-face design removed.\",\n    \"detailed_description\": \"Retain reference appearance. [Shot 1] A golden coin with cat-face design from <Picture 1> spins continuously on a solid green background exactly as shown in <Video 1>. At 0.000 s the coin lies flat showing the cat face. It rotates gradually, revealing its edge at 1.500 s, then continues the identical spinning motion through 3.000 s while the camera and framing remain unchanged.\",\n    \"overall_soundscape\": \"N/A\",\n    \"non_diegetic_music\": \"N/A\"\n  },\n  \"displayPrompt\": {\n    \"subject_definitions\": \"<Subject 1>: 带有猫脸浮雕的金币，外观来自<Picture 1>，旋转动作来自<Video 1>。\",\n    \"summary\": \"[video editing + reference generation] 目标视频是<Video 1>的编辑版本。原猫头鹰脸金币被<Subject 1>全程替换，同时保留完全相同的旋转动作、时序、机位构图和纯绿色背景。\",\n    \"retention_analysis\": \"<Subject 1>: attribute_transfer - 猫脸外观从<Picture 1>转移到金币主体。\\n<Video 1>: partially_preserved - 原金币旋转轨迹、速度变化、侧面阶段、机位位置和绿幕背景保留；原猫头鹰脸设计移除。\",\n    \"detailed_description\": \"保留参考外观。[Shot 1] 一枚带有<Picture 1>猫脸设计的金币在纯绿色背景上完全按照<Video 1>所示持续旋转。0.000秒时金币平放展示猫脸，随后逐步旋转，在1.500秒呈现侧面，并以相同动作延续至3.000秒，机位与构图保持不变。\",\n    \"overall_soundscape\": \"N/A\",\n    \"non_diegetic_music\": \"N/A\"\n  }\n}",
+          "logprobs": [],
+          "annotations": []
+        }
+      ],
+      "id": "msg_4e933e0a-8668-9bdb-8ed3-dae6a88dacae",
+      "role": "assistant",
+      "type": "message",
+      "status": "completed"
+    }
+  ],
+  "parallel_tool_calls": true,
+  "previous_response_id": null,
+  "reasoning": {
+    "effort": "low",
+    "summary": "detailed"
+  },
+  "temperature": 0.35,
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "modelPrompt": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "subject_definitions": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately."
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "retention_analysis": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. One rule per defined Subject and source Video; image attributes belong to the Subject using that picture."
+              },
+              "detailed_description": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "overall_soundscape": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. Use N/A for absent or unrequested audio, never an empty string."
+              },
+              "non_diegetic_music": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. Use N/A for absent or unrequested audio, never an empty string."
+              }
+            },
+            "required": [
+              "subject_definitions",
+              "summary",
+              "retention_analysis",
+              "detailed_description",
+              "overall_soundscape",
+              "non_diegetic_music"
+            ]
+          },
+          "displayPrompt": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "subject_definitions": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately."
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "retention_analysis": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 One rule per defined Subject and source Video; image attributes belong to the Subject using that picture."
+              },
+              "detailed_description": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "overall_soundscape": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 Use N/A for absent or unrequested audio, never an empty string."
+              },
+              "non_diegetic_music": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 Use N/A for absent or unrequested audio, never an empty string."
+              }
+            },
+            "required": [
+              "subject_definitions",
+              "summary",
+              "retention_analysis",
+              "detailed_description",
+              "overall_soundscape",
+              "non_diegetic_music"
+            ]
+          }
+        },
+        "required": [
+          "modelPrompt",
+          "displayPrompt"
+        ]
+      }
+    }
+  },
+  "tool_choice": "auto",
+  "tools": [],
+  "top_p": 0.95,
+  "usage": {
+    "input_tokens": 8681,
+    "input_tokens_details": {
+      "cached_tokens": 192
+    },
+    "output_tokens": 912,
+    "output_tokens_details": {
+      "reasoning_tokens": 355
+    },
+    "total_tokens": 9593,
+    "num_sources_used": 0,
+    "num_server_side_tools_used": 0,
+    "cost_in_usd_ticks": 129296500,
+    "context_details": {
+      "input_tokens": 8681,
+      "output_tokens": 912
+    }
+  },
+  "user": null,
+  "incomplete_details": null,
+  "status": "completed",
+  "store": false,
+  "metadata": {
+    "system_fingerprint": "fp_eb3c003fc66c14ed"
+  },
+  "background": false,
+  "service_tier": "default",
+  "truncation": "disabled",
+  "top_logprobs": 0,
+  "presence_penalty": 0,
+  "frequency_penalty": 0,
+  "prompt_cache_key": null,
+  "max_tool_calls": null,
+  "safety_identifier": null,
+  "error": null,
+  "instructions": null
+}

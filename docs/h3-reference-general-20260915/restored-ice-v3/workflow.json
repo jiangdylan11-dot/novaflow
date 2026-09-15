@@ -1,0 +1,88 @@
+{
+  "1": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": "novaflow_capability_ice_source.mp4"
+    }
+  },
+  "2": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": [
+        "1",
+        0
+      ]
+    }
+  },
+  "3": {
+    "class_type": "NovaFlowH3ReferenceVideoFrames",
+    "inputs": {
+      "images": [
+        "2",
+        0
+      ],
+      "source_fps": [
+        "2",
+        2
+      ]
+    }
+  },
+  "4": {
+    "class_type": "LoadVideo",
+    "inputs": {
+      "file": "novaflow_background_probe_NovaFlow_H3_probe_ice_beta5_4_00001_.mp4"
+    }
+  },
+  "5": {
+    "class_type": "GetVideoComponents",
+    "inputs": {
+      "video": [
+        "4",
+        0
+      ]
+    }
+  },
+  "6": {
+    "class_type": "NovaFlowH3RestoreReferenceBackground",
+    "inputs": {
+      "images": [
+        "5",
+        0
+      ],
+      "reference_video": [
+        "3",
+        0
+      ]
+    }
+  },
+  "7": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": [
+        "6",
+        0
+      ],
+      "audio": [
+        "5",
+        1
+      ],
+      "fps": [
+        "5",
+        2
+      ],
+      "bit_depth": 8
+    }
+  },
+  "8": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": [
+        "7",
+        0
+      ],
+      "filename_prefix": "video/NovaFlow_H3_background_probe",
+      "format": "auto",
+      "codec": "auto"
+    }
+  }
+}

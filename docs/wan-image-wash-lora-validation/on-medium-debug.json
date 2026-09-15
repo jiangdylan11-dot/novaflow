@@ -1,0 +1,13 @@
+{
+  "imageWash": {
+    "mode": "wan",
+    "gguf": "Wan22\\Wan2.2-T2V-A14B-LowNoise-Q4_K_S.gguf",
+    "lora": "Wan21\\Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+    "extraLora": "wan22-k3nk4llinon3-15epoc-full-low-k3nk.safetensors",
+    "extraLoraStrength": 0.6,
+    "vae": "wan_2.1_vae_fp8_e4m3fn.safetensors",
+    "clip": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+    "denoise": 0.65,
+    "promptHead": "Source visual style: anime drawing; soft, blended outlines around figure and background elements; smooth cel shading with gradient transitions on skin and clothing; vivid saturation with high contrast, warm orange and green tones under bright sky; smooth digital paint texture on skin and fabric, no visible brushstrokes or grain\n\nA young woman with short bobbed black hair stands on a rural road. She wears an orange collared shirt with buttoned front, short sleeves, and green shorts with belt loop"
+  }
+}

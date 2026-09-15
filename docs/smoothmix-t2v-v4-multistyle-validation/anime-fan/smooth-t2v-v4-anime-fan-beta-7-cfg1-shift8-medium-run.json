@@ -1,0 +1,70 @@
+{
+  "case": "smooth-t2v-v4-anime-fan-beta-7-cfg1-shift8-medium",
+  "status": "success",
+  "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+  "sourceSha256": "f82e8218e78bb093dfcb722fc6953aff1983edce14a1cda1ed4873aa48ff95a8",
+  "workflowSha256": "1098fcde70dcdd26c25ab6c10f736029f4a2c05845c3ee2cb12467169d1acc7d",
+  "strength": 0.65,
+  "fixture": "anime-fan",
+  "baselineReused": false,
+  "baseline": null,
+  "sampling": {
+    "steps": 7,
+    "cfg": 1,
+    "scheduler": "beta",
+    "shift": 8,
+    "sampler": "euler",
+    "seed": 9122026,
+    "externalLora": null
+  },
+  "sourceStyleProfile": {
+    "medium": "anime illustration",
+    "style": "Two-dimensional painted anime game illustration, delicate dark contours, broad soft painted shadows and graphic folds, subdued black, cream, red and gold palette, painterly white clouds and traditional architecture.",
+    "content": "Low-angle full-body illustration of an adult female warrior with a short black bob, closed eyes, a gold and red hair ornament, black and gold open kimono over a white fitted wrap top, a wide red waist sash and black legwear. One gloved hand raises a large black and gold folding fan and the other holds a sword. Ornate fabric and red ribbons flow around her, with layered traditional temples and bright billowing clouds behind her.",
+    "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+  },
+  "styleTrigger": "smoothmixanime, anime style",
+  "promptFormat": "baseline",
+  "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+  "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+  "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+  "outputBlend": false,
+  "productionDefaultChanged": false,
+  "startedAt": "2026-09-12T16:33:14.567Z",
+  "promptId": "066999c5-abcf-424a-b521-4f31c4b20253",
+  "seconds": 22.586,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "066999c5-abcf-424a-b521-4f31c4b20253",
+          "timestamp": 1789230794570
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [],
+          "prompt_id": "066999c5-abcf-424a-b521-4f31c4b20253",
+          "timestamp": 1789230794572
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "066999c5-abcf-424a-b521-4f31c4b20253",
+          "timestamp": 1789230815255
+        }
+      ]
+    ]
+  },
+  "output": {
+    "filename": "smooth-t2v-v4-anime-fan-beta-7-cfg1-shift8-medium_00001_.png",
+    "subfolder": "NovaFlow_validation",
+    "type": "output"
+  },
+  "outputSha256": "ce57f6e0cc8ce8900c574d0f3d9ef52eaec35762b2228daadf53990a555a4ee9"
+}

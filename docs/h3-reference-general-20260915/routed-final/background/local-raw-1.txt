@@ -1,0 +1,8 @@
+{
+  "sources": ["<Video 1>"],
+  "editPolicy": {
+    "preserveBackground": true,
+    "preserveMotion": true,
+    "sameShapeAppearanceOnly": false
+  }
+}

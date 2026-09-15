@@ -1,0 +1,8 @@
+{
+  "0": "Replace the coin style with a golden circular coin, featuring a cat head relief on its surface, a ring-shaped raised edge, metallic material, and no transparency. Source material: TOKEN_0.",
+  "1": "The source video has a solid green background; the coin's rotation path: starts front-facing at 0.000 seconds, reaches the narrowest side at 1.500 seconds, and returns to front-facing at 3.000 seconds.",
+  "2": "Replace the appearance of the rotating coin in TOKEN_0 with the style of TOKEN_1, while preserving the background and motion trajectory.",
+  "3": "Solid green background; retain the original rotation path and timing: starts front-facing at 0.000 seconds, reaches the narrowest side at 1.500 seconds, and returns to front-facing at 3.000 seconds.",
+  "4": "Solid green background; fully retain the rotation path and timing. Preserve the original video shot.",
+  "5": "Rotate centrally against a solid green background: starts front-facing at 0.000 seconds, reaches the narrowest side at 1.500 seconds, and returns to front-facing at 3.000 seconds. Except for explicitly specified changes, retain all elements from TOKEN_0 at corresponding timestamps — including background, shot, composition, motion direction, speed, trajectory, and pose; the specified editing effects remain continuously active as per the above requirements."
+}

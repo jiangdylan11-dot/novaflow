@@ -1,0 +1,172 @@
+{
+  "created_at": 1789396551,
+  "completed_at": 1789396583,
+  "id": "c37b163f-c2e2-96b0-8af6-c7cf5be4787c",
+  "max_output_tokens": 4096,
+  "model": "grok-4.3",
+  "object": "response",
+  "output": [
+    {
+      "id": "rs_c37b163f-c2e2-96b0-8af6-c7cf5be4787c",
+      "summary": [
+        {
+          "text": "The task is to replace the gold coins in the reference video with the reference image 1, which is <Picture 1>.\n",
+          "type": "summary_text"
+        }
+      ],
+      "type": "reasoning",
+      "status": "completed"
+    },
+    {
+      "content": [
+        {
+          "type": "output_text",
+          "text": "{\n  \"modelPrompt\": {\n    \"subject_definitions\": \"<Subject 1>: replacement object with appearance from <Picture 1> and motion from <Video 1>\",\n    \"summary\": \"[video editing + reference generation] The target video is an edited version of <Video 1>. The original gold coins are replaced throughout by <Subject 1> while retaining all original motion, timing, camera and setting.\",\n    \"retention_analysis\": \"<Subject 1>: attribute_transfer - appearance from <Picture 1> applied to coin motion\\n<Video 1>: partially_preserved - motion, camera, timing and framing retained; gold coin appearance replaced\",\n    \"detailed_description\": \"Retain reference appearance. [Shot 1] The <Subject 1> objects follow the exact trajectories and movements of the original gold coins in <Video 1> for the full 3 seconds, with the camera and framing preserved from the source video.\",\n    \"overall_soundscape\": \"No diegetic sounds specified.\",\n    \"non_diegetic_music\": \"No non-diegetic music specified.\"\n  },\n  \"displayPrompt\": {\n    \"subject_definitions\": \"<Subject 1>: 替换物体，外观来自 <Picture 1>，动作来自 <Video 1>\",\n    \"summary\": \"[video editing + reference generation] 目标视频是 <Video 1> 的编辑版本。原金币在整个片段中被 <Subject 1> 替换，同时保留所有原始动作、时序、机位和场景。\",\n    \"retention_analysis\": \"<Subject 1>: attribute_transfer - 将 <Picture 1> 的外观应用于金币动作\\n<Video 1>: partially_preserved - 保留动作、机位、时序和构图；替换金币外观\",\n    \"detailed_description\": \"保留参考外观。[Shot 1] <Subject 1> 物体在完整3秒内跟随 <Video 1> 中原金币的精确轨迹和运动，机位与构图完全保留源视频。\",\n    \"overall_soundscape\": \"未指定任何环境音效。\",\n    \"non_diegetic_music\": \"未指定任何非故事性音乐。\"\n  }\n}",
+          "logprobs": [],
+          "annotations": []
+        }
+      ],
+      "id": "msg_c37b163f-c2e2-96b0-8af6-c7cf5be4787c",
+      "role": "assistant",
+      "type": "message",
+      "status": "completed"
+    }
+  ],
+  "parallel_tool_calls": true,
+  "previous_response_id": null,
+  "reasoning": {
+    "effort": "low",
+    "summary": "detailed"
+  },
+  "temperature": 0.15,
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "modelPrompt": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "subject_definitions": {
+                "type": "string",
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "summary": {
+                "type": "string",
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "retention_analysis": {
+                "type": "string",
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "detailed_description": {
+                "type": "string",
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "overall_soundscape": {
+                "type": "string",
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "non_diegetic_music": {
+                "type": "string",
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              }
+            },
+            "required": [
+              "subject_definitions",
+              "summary",
+              "retention_analysis",
+              "detailed_description",
+              "overall_soundscape",
+              "non_diegetic_music"
+            ]
+          },
+          "displayPrompt": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "subject_definitions": {
+                "type": "string",
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "summary": {
+                "type": "string",
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "retention_analysis": {
+                "type": "string",
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "detailed_description": {
+                "type": "string",
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "overall_soundscape": {
+                "type": "string",
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "non_diegetic_music": {
+                "type": "string",
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              }
+            },
+            "required": [
+              "subject_definitions",
+              "summary",
+              "retention_analysis",
+              "detailed_description",
+              "overall_soundscape",
+              "non_diegetic_music"
+            ]
+          }
+        },
+        "required": [
+          "modelPrompt",
+          "displayPrompt"
+        ]
+      }
+    }
+  },
+  "tool_choice": "auto",
+  "tools": [],
+  "top_p": 0.95,
+  "usage": {
+    "input_tokens": 2974,
+    "input_tokens_details": {
+      "cached_tokens": 192
+    },
+    "output_tokens": 1653,
+    "output_tokens_details": {
+      "reasoning_tokens": 1204
+    },
+    "total_tokens": 4627,
+    "num_sources_used": 0,
+    "num_server_side_tools_used": 0,
+    "cost_in_usd_ticks": 76484000,
+    "context_details": {
+      "input_tokens": 2974,
+      "output_tokens": 1653
+    }
+  },
+  "user": null,
+  "incomplete_details": null,
+  "status": "completed",
+  "store": false,
+  "metadata": {
+    "system_fingerprint": "fp_eb3c003fc66c14ed"
+  },
+  "background": false,
+  "service_tier": "default",
+  "truncation": "disabled",
+  "top_logprobs": 0,
+  "presence_penalty": 0,
+  "frequency_penalty": 0,
+  "prompt_cache_key": null,
+  "max_tool_calls": null,
+  "safety_identifier": null,
+  "error": null,
+  "instructions": null
+}

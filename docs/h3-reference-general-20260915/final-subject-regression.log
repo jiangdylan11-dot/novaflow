@@ -1,0 +1,29 @@
+✔ video editing may preserve its camera in the source-video retention rule (40.7612ms)
+✔ reference contract preserves a silent object, video edit and separate audio reuse across JS and Python (131.9229ms)
+✔ multireference optimizer uses official fields, including explicit audio and video roles (9.129ms)
+✔ missing media, invented speaker identities and invalid retention fail before sampling (0.8857ms)
+✔ generation compiles free text and upgrades legacy video edits with missing processing controls (16.8532ms)
+✔ full audio reuse really connects the input track; timbre/style references use generated audio (14.3531ms)
+✔ real video frames reach Grok with labels and timestamps rather than becoming extra references (1.3488ms)
+✔ editor and generator bind translations to the same media bytes, independent of DOM IDs (1.634ms)
+✔ local relationship rendering retains role fidelity and closes only requested loops (112.3724ms)
+✔ bilingual results reject stale roles and untranslated model prose (4.0549ms)
+✔ Chinese editor uses English generation text and recompiles changed instructions (20.3494ms)
+✔ natural-language edits preserve native source pixels and decoded output regardless of replacement wording (5.3071ms)
+✔ local source labels normalize common spellings and reject invented sources (110.1366ms)
+✔ a source-only edit binds the model-authored target when its Subject bookkeeping row is omitted (119.6743ms)
+✔ unused uploads do not reject an edit or condition it; selected picture IDs stay bound (114.6413ms)
+✔ AI edit controls survive Chinese writeback and cache, and govern preprocessing independently of prose (14.9723ms)
+✔ 16fps reference exports retain the 24fps model timeline and copied audio timing (3.5625ms)
+✔ a real wardrobe-edit response inherits source action without matching a motion keyword list (4.6036ms)
+✔ compiler merges a model subject repeated for appearance and motion without changing its meaning (1.6637ms)
+✔ blank unrequested audio and an omitted source-video row compile without inventing content (1.8054ms)
+✔ local model owns intent while Python compiles omitted relation enums and source-video bindings (111.8308ms)
+ℹ tests 21
+ℹ suites 0
+ℹ pass 21
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1004.4078

@@ -1,0 +1,154 @@
+{
+  "source": "C:/Users/jiang/OneDrive/Desktop/新建文件夹/DivinePower.mp4",
+  "liveInference": {
+    "w": 1080,
+    "h": 1920,
+    "fps": 24,
+    "count": 117,
+    "duration": 4.885333,
+    "text": "+\n自定义色彩参照\n视频色彩修复\n关闭视频抠图\n光效透明保留\n保留投影\n单帧擦除 / 修复\n全局\n擦除\n修复\n笔刷\n羽化\n勾选全局后绘制会影响所有帧；单帧修复/擦除优先级高于全局。Ctrl+Z 撤销 CapsLock 显示笔刷圈 [ 缩小 ] 放大 ： 羽化减小 ’ 羽化增大",
+    "entry": {
+      "count": 1,
+      "label": "视频抠图",
+      "icons": 0,
+      "legacy": 0
+    },
+    "startupErrors": [],
+    "errors": [],
+    "modelCalls": 1,
+    "processingTitles": [
+      "视频抠图 · AI 主体识别"
+    ],
+    "timings": {
+      "started": 563.5,
+      "prepareMs": 14548.699999988079,
+      "backendMs": 122979.10000002384,
+      "mattingMs": 0,
+      "exportMs": 0,
+      "totalMs": 141657.5,
+      "exportRenderCalls": 0,
+      "frameStores": [
+        {
+          "bytes": 902771,
+          "frames": 1,
+          "maxBytes": 201326592,
+          "epoch": 0
+        }
+      ]
+    },
+    "toolMode": "video",
+    "liveBackend": true,
+    "writes": [],
+    "mattingSha256": "d5609792d73df698893bd0bcb7d72b4803ed4b8cd40e6bef3e8acfa57084316b"
+  },
+  "electron32Lifecycle": {
+    "checks": [
+      {
+        "label": "open-0",
+        "alpha": 384834,
+        "display": "block",
+        "opacity": "1",
+        "visibility": "visible",
+        "width": 393.659912109375,
+        "height": 699.8399658203125,
+        "bitmap": [
+          1080,
+          1920
+        ],
+        "ratio": 0.5624999018853536,
+        "expectedRatio": 0.5625,
+        "insideViewport": true,
+        "bodyMode": "editing"
+      },
+      {
+        "label": "open-29",
+        "alpha": 389104,
+        "display": "block",
+        "opacity": "1",
+        "visibility": "visible",
+        "width": 393.659912109375,
+        "height": 699.8399658203125,
+        "bitmap": [
+          1080,
+          1920
+        ],
+        "ratio": 0.5624999018853536,
+        "expectedRatio": 0.5625,
+        "insideViewport": true,
+        "bodyMode": "editing"
+      },
+      {
+        "label": "second-source-after-save",
+        "alpha": 389104,
+        "display": "block",
+        "opacity": "1",
+        "visibility": "visible",
+        "width": 393.659912109375,
+        "height": 699.8399658203125,
+        "bitmap": [
+          1080,
+          1920
+        ],
+        "ratio": 0.5624999018853536,
+        "expectedRatio": 0.5625,
+        "insideViewport": true,
+        "bodyMode": "editing"
+      }
+    ],
+    "buttons": [
+      {
+        "label": "保存并关闭",
+        "icons": 0,
+        "width": 318,
+        "rowWidth": 318
+      },
+      {
+        "label": "保存并关闭",
+        "icons": 0,
+        "width": 1381,
+        "rowWidth": 1381
+      }
+    ],
+    "presentation": {
+      "display": "block",
+      "opacity": "1",
+      "width": "368px",
+      "height": "640px",
+      "transform": "translate(12px, 18px) scale(0.8)"
+    },
+    "errors": [],
+    "saved": [
+      {
+        "name": "ai_cutout_1789358019371.webm",
+        "bytes": 4893279,
+        "width": 1080,
+        "height": 1920,
+        "duration": 4.875
+      }
+    ],
+    "maskCalls": 2,
+    "resumedExports": 1,
+    "saveMs": 37355.200000047684,
+    "encodeTimings": [
+      {
+        "ms": 23279,
+        "ok": true
+      }
+    ]
+  },
+  "electron32FailureRecovery": {
+    "failureRecovered": true,
+    "sourceOpacity": "1",
+    "sourceDisplay": "inline",
+    "sourceReady": 4,
+    "mode": "resource",
+    "message": "AI 抠图失败，已恢复原视频。\ntest recognition unavailable×",
+    "errors": [],
+    "encodeTimings": []
+  },
+  "focusedTests": 34,
+  "packagedTests": 9,
+  "runtimeCheck": "PASS",
+  "entryCheck": "NO-GO: locked 4783 unavailable; existing AI effects integration checks",
+  "installedAppReplaced": false
+}

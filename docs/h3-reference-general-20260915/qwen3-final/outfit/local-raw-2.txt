@@ -1,0 +1,15 @@
+{
+  "references": [
+    {
+      "label": "<Subject 1>",
+      "sources": ["<Video 1>"],
+      "description": "紫发女性角色，身着深蓝色长袖牛仔外套和长裤，手持金色法杖，背景为纯绿色幕布。",
+      "keep": "脸、头发、动作、背景保持原样。"
+    }
+  ],
+  "tasks": ["video editing"],
+  "summary": "将视频中人物服装替换为深蓝色长袖牛仔外套和长裤，其余保持原样。",
+  "description": "<Subject 1> 坐姿，身着深蓝色长袖牛仔外套和长裤，手持金色法杖，紫发，背景纯绿色幕布。",
+  "soundscape": "N/A",
+  "music": "N/A"
+}

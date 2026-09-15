@@ -1,0 +1,15 @@
+{
+  "references": [
+    {
+      "label": "<Subject 1>",
+      "sources": ["<Picture 1>"],
+      "description": "金色圆形硬币，表面有猫头浮雕，边缘有环形凸起，金属材质，不透明。",
+      "keep": "旋转路径、起止时间、绿色背景、镜头构图"
+    }
+  ],
+  "tasks": ["video editing", "reference generation"],
+  "summary": "将<Video 1>中旋转金币的外观替换为<Picture 1>的样式，保留原旋转轨迹与绿色背景。",
+  "description": "<Subject 1>在纯绿色背景中央旋转：0.000秒正面起始，1.500秒至最窄侧面，3.000秒返回正面。",
+  "soundscape": "N/A",
+  "music": "N/A"
+}

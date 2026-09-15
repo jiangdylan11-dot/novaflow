@@ -1,0 +1,41 @@
+{
+  "videos": [
+    {
+      "id": "gloweyes",
+      "duration": 5.041667,
+      "width": 1280,
+      "height": 918
+    },
+    {
+      "id": "athena",
+      "duration": 4.875,
+      "width": 1280,
+      "height": 918
+    },
+    {
+      "id": "blue",
+      "duration": 3.041667,
+      "width": 1280,
+      "height": 580
+    },
+    {
+      "id": "minimax",
+      "duration": 3.041667,
+      "width": 1280,
+      "height": 580
+    },
+    {
+      "id": "scatter",
+      "duration": 3.041667,
+      "width": 1280,
+      "height": 580
+    }
+  ],
+  "png": {
+    "width": 1020,
+    "height": 870,
+    "frame": "53",
+    "background": "scene"
+  },
+  "errors": []
+}

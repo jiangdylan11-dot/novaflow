@@ -1,0 +1,7 @@
+{
+  "0": "The target content rotates centrally on a solid purple background, starting from the front at TOKEN_0 seconds, reaching the narrowest side at TOKEN_1 seconds, and returning to the front at TOKEN_2 seconds. Source material: TOKEN_3.",
+  "1": "A golden circular badge with a 3D owl pattern on its surface, featuring raised edge textures, centered on a solid green background.",
+  "2": "Change the video background from green to purple; the appearance and rotation motion of the gold coin remain unchanged.",
+  "3": "Gold coin appearance, rotation motion, and timing path: starts from the front at TOKEN_0 seconds, reaches the narrowest side at TOKEN_1 seconds, and returns to the front at TOKEN_2 seconds. Preserve the original video shot.",
+  "4": "Rotates centrally on a solid purple background, starting from the front at TOKEN_0 seconds, reaching the narrowest side at TOKEN_1 seconds, and returning to the front at TOKEN_2 seconds. Except for the explicitly specified changes, retain the background, shot, composition, motion direction, speed, trajectory, and posture corresponding to TOKEN_3 at each moment; the specified editing effects remain continuously active as per the above requirements."
+}

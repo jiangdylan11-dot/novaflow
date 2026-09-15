@@ -1,0 +1,23 @@
+{
+  "modelPrompt": {
+    "subject_definitions": "<Subject 1>: woman with purple hair and face from <Video 1>, motion from <Video 1>",
+    "summary": "[video editing] The target video is an edited version of <Video 1>. Change the woman's outfit to a dark blue long-sleeve denim jacket and long pants while keeping face, hair, actions and background unchanged.",
+    "retention_analysis": "<Subject 1>: fully_preserved - face, hair, body geometry and motion\n<Video 1>: partially_preserved - original motion trajectory, timing, camera framing and green background; clothing appearance replaced",
+    "detailed_description": "Retain reference appearance. [Shot 1] The woman with purple hair sits against the green background holding the golden staff. She raises the staff upward, triggering a glowing magical effect that swirls and trails particles. She lowers the staff while the effect fades, then raises it again. The sequence repeats the original poses and timing exactly with the new dark blue denim outfit.",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  },
+  "displayPrompt": {
+    "subject_definitions": "<Subject 1>: 紫色头发的女性，脸部和头发来自<Video 1>，动作来自<Video 1>",
+    "summary": "[video editing] The target video is an edited version of <Video 1>。将视频中女性的服装更换为深蓝色长袖牛仔外套和长裤，同时保持脸部、头发、动作和背景不变。",
+    "retention_analysis": "<Subject 1>: fully_preserved - 脸部、头发、身体几何形状和动作\n<Video 1>: partially_preserved - 原始动作轨迹、时序、摄像机取景和绿色背景；服装外观被替换",
+    "detailed_description": "保留参考外观。[Shot 1] 紫色头发的女性靠在绿色背景上，手持金色法杖。她将法杖举起，触发发光的魔法效果并产生粒子轨迹。她放下法杖，效果逐渐消失，然后再次举起法杖。整个序列完全保留原始姿势和时序，仅更换为深蓝色牛仔服装。",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  },
+  "editPolicy": {
+    "preserveBackground": true,
+    "preserveMotion": true,
+    "sameShapeAppearanceOnly": false
+  }
+}

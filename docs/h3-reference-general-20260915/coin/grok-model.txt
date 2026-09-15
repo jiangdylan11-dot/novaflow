@@ -1,0 +1,19 @@
+subject_definitions:
+<Subject 1> gold coin with cat face design, appearance from <Picture 1>, motion from <Video 1>
+<Video 1> source video showing rotating gold coin on green background
+
+summary: [video editing] The target video is an edited version of <Video 1>. Replace the coin design with the cat-face style from <Picture 1> while retaining the exact motion trajectory, rotation timing, camera, framing and solid green background.
+
+retention_analysis:
+<Subject 1>: attribute_transfer - coin style replaced by <Picture 1> while preserving rotation and trajectory from <Video 1>
+<Video 1>: partially_preserved - original camera, framing, timing, trajectory and green background retained
+
+detailed_description: Retain reference appearance without new visual style.
+
+[Shot 1] The shot shows <Subject 1>.
+
+A gold coin matching the cat-face design of <Picture 1> rotates continuously in the center of a solid green background, following the exact trajectory, speed changes and orientation sequence shown in <Video 1> from 0.000s to 3.000s.
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A

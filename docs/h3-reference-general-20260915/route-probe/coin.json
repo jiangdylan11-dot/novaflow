@@ -1,0 +1,12 @@
+{
+  "request": "把<Video 1>中旋转的金币样式换成<Picture 1>的样式，保持背景和运动轨迹",
+  "sources": [
+    "<Video 1>",
+    "<Picture 1>"
+  ],
+  "editPolicy": {
+    "preserveBackground": true,
+    "preserveMotion": true,
+    "sameShapeAppearanceOnly": true
+  }
+}

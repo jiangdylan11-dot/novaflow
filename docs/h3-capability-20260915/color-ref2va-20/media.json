@@ -1,0 +1,30 @@
+[
+  {
+    "path": "C:\\ProgramData\\NovaFlow\\AI-Runtime-H3\\generated\\input\\novaflow_capability_color_source.mp4",
+    "fps": 24.0,
+    "frames": 117,
+    "sample_indices": [
+      0,
+      16,
+      32,
+      48,
+      64,
+      80,
+      96
+    ]
+  },
+  {
+    "path": "C:\\ProgramData\\NovaFlow\\AI-Runtime-H3\\generated\\output\\video\\NovaFlow_H3_probe_color_ref2va_20_00001_.mp4",
+    "fps": 24.0,
+    "frames": 107,
+    "sample_indices": [
+      0,
+      16,
+      32,
+      48,
+      64,
+      80,
+      96
+    ]
+  }
+]

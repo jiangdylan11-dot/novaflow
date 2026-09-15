@@ -1,0 +1,966 @@
+{
+  "model": "Wan22/smoothMixWan2214BI2V_t2vLowV40.safetensors",
+  "executionPassed": true,
+  "completedRuns": 12,
+  "distinctSources": 4,
+  "productionDefaultChanged": false,
+  "oldExperimentsRerun": false,
+  "singleSeed": 9122026,
+  "megapixels": 1,
+  "inputCaptionMethod": "Manual descriptions from sources visually inspected this turn; no automated style-recognition acceptance claim.",
+  "coverage": [
+    "anime character illustration",
+    "photorealistic cinematic portrait",
+    "stylized 3D robot",
+    "photographic still life"
+  ],
+  "notEvaluated": [
+    "multiple seeds",
+    "pixel art",
+    "line art",
+    "transparent background preservation",
+    "NSFW content",
+    "formal UI integration and automated Prompt Assistant"
+  ],
+  "findings": {
+    "overall": "四类原图都完成了三档重绘。0.2 更接近保真增强，能补出褶皱、金属磨损、雨水和木纹；0.65 已经会明显重构人物、物体与构图，0.9 通常进一步改变细节，但并非等比例增加变化。各类题材没有被统一变成动漫，不过中高强度普遍更光滑、明亮，写实人物的脸也会明显变化。",
+    "anime-fan": {
+      "summary": "动漫表现保持，饰物与纹样更清楚；低强度接近原构图，中高强度重设姿态、服装和取景，适合允许较大改动的再创作。",
+      "low": "低视角、持扇姿势和黑白红金配色基本保留，织物纹样与金饰更清楚；头饰、发型和局部服装已有改写，面部与腿部更光滑。",
+      "medium": "仍是动漫角色，金饰与丝绸高光更鲜明；持扇手举得更高、服装和发型重设，原来的全身构图变得更近。",
+      "high": "姿态和服装延续中强度的重构方向，脸部角度、腰带和剑鞘等继续变化；光泽更强，与 0.65 的差距小于从 0.2 到 0.65 的差距。"
+    },
+    "cyber-portrait": {
+      "summary": "雨夜赛博主题与写实大类保留；0.2 的雨水、面料细节较好，中高强度明显换脸、拉近取景，皮肤更光滑且偏精修 CG。",
+      "low": "保持银发、冷色雨夜、背带与腰间设备，衣料雨珠和接缝更明显；眼镜结构、眼睛和脸部细节已有变化。",
+      "medium": "取景拉近为胸像，腰间设备不再入镜；脸、眼镜和服装灯带被重新设计，皮肤更光滑，原人物身份特征保留较弱。",
+      "high": "延续近景写实赛博人物，脸和眼睛继续变化，面料趋向更亮的皮革质感；与中强度结果相近，不适合要求保留同一张脸的场景。"
+    },
+    "cg-robot": {
+      "summary": "三维表现稳定，0.2 保留原机器人并重画锈迹和植被；中高强度将它改成更高、更光亮的新造型，暖色温室主题仍在。",
+      "low": "保留圆头、身体比例、铜绿配色与浇水壶，补出了锈迹、关节和地面细节；胸口面板、壶身与部分植物有重绘。",
+      "medium": "机器人变高，头部、躯干与关节结构重设；壶嘴转向，背景温室更明确，金属更亮、旧化磨损减少。",
+      "high": "继续保持三维机器人和温室场景，身体更粗、颈部和壶嘴形态变化，表面偏光滑；属于新造型重绘，不能当原角色细节修复。"
+    },
+    "coffee-photo": {
+      "summary": "静物摄影主题保持，低强度最接近原摆放；中高强度改变杯碟造型、把手和汤匙位置，整体更像明亮光洁的产品图。",
+      "low": "杯碟、把手和汤匙摆放大体保留，木纹与咖啡油脂更清楚，色调较接近原图；细节属于重新生成，并非恢复真实拍摄细节。",
+      "medium": "杯型与碟沿改变，碟子增加白边，汤匙转向且匙头被遮挡；桌面木纹与反光重画，产品图的光洁感更强。",
+      "high": "杯碟大体沿用中强度的新设计，木纹、反射和咖啡液面继续变化；与中强度较相近，仍存在汤匙位置和形态偏离原图的问题。"
+    }
+  },
+  "records": [
+    {
+      "case": "smooth-t2v-v4-anime-fan-beta-7-cfg1-shift8-low",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "f82e8218e78bb093dfcb722fc6953aff1983edce14a1cda1ed4873aa48ff95a8",
+      "workflowSha256": "3d04ab095a4ddb74c7215d26ae699c1ee99ab31c9645c6f3e594f43f74029215",
+      "strength": 0.2,
+      "fixture": "anime-fan",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "anime illustration",
+        "style": "Two-dimensional painted anime game illustration, delicate dark contours, broad soft painted shadows and graphic folds, subdued black, cream, red and gold palette, painterly white clouds and traditional architecture.",
+        "content": "Low-angle full-body illustration of an adult female warrior with a short black bob, closed eyes, a gold and red hair ornament, black and gold open kimono over a white fitted wrap top, a wide red waist sash and black legwear. One gloved hand raises a large black and gold folding fan and the other holds a sword. Ornate fabric and red ribbons flow around her, with layered traditional temples and bright billowing clouds behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "smoothmixanime, anime style",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:32:54.976Z",
+      "promptId": "f12f0ec9-18ee-4e6b-86ff-36fb6daae7ee",
+      "seconds": 17.564,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "f12f0ec9-18ee-4e6b-86ff-36fb6daae7ee",
+              "timestamp": 1789230774980
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "f12f0ec9-18ee-4e6b-86ff-36fb6daae7ee",
+              "timestamp": 1789230774986
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "f12f0ec9-18ee-4e6b-86ff-36fb6daae7ee",
+              "timestamp": 1789230790799
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-anime-fan-beta-7-cfg1-shift8-low_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "48cbb689b91b3582eee68344c9bc1b9ae12277d89e8e78d0595e99e9d000b097",
+      "dimensions": [
+        688,
+        1504
+      ],
+      "visualAssessment": "低视角、持扇姿势和黑白红金配色基本保留，织物纹样与金饰更清楚；头饰、发型和局部服装已有改写，面部与腿部更光滑。",
+      "assessmentMethod": "Manual inspection of the actual source and all three raw generated outputs."
+    },
+    {
+      "case": "smooth-t2v-v4-anime-fan-beta-7-cfg1-shift8-medium",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "f82e8218e78bb093dfcb722fc6953aff1983edce14a1cda1ed4873aa48ff95a8",
+      "workflowSha256": "1098fcde70dcdd26c25ab6c10f736029f4a2c05845c3ee2cb12467169d1acc7d",
+      "strength": 0.65,
+      "fixture": "anime-fan",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "anime illustration",
+        "style": "Two-dimensional painted anime game illustration, delicate dark contours, broad soft painted shadows and graphic folds, subdued black, cream, red and gold palette, painterly white clouds and traditional architecture.",
+        "content": "Low-angle full-body illustration of an adult female warrior with a short black bob, closed eyes, a gold and red hair ornament, black and gold open kimono over a white fitted wrap top, a wide red waist sash and black legwear. One gloved hand raises a large black and gold folding fan and the other holds a sword. Ornate fabric and red ribbons flow around her, with layered traditional temples and bright billowing clouds behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "smoothmixanime, anime style",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:33:14.567Z",
+      "promptId": "066999c5-abcf-424a-b521-4f31c4b20253",
+      "seconds": 22.586,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "066999c5-abcf-424a-b521-4f31c4b20253",
+              "timestamp": 1789230794570
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "066999c5-abcf-424a-b521-4f31c4b20253",
+              "timestamp": 1789230794572
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "066999c5-abcf-424a-b521-4f31c4b20253",
+              "timestamp": 1789230815255
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-anime-fan-beta-7-cfg1-shift8-medium_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "ce57f6e0cc8ce8900c574d0f3d9ef52eaec35762b2228daadf53990a555a4ee9",
+      "dimensions": [
+        688,
+        1504
+      ],
+      "visualAssessment": "仍是动漫角色，金饰与丝绸高光更鲜明；持扇手举得更高、服装和发型重设，原来的全身构图变得更近。",
+      "assessmentMethod": "Manual inspection of the actual source and all three raw generated outputs."
+    },
+    {
+      "case": "smooth-t2v-v4-anime-fan-beta-7-cfg1-shift8-high",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "f82e8218e78bb093dfcb722fc6953aff1983edce14a1cda1ed4873aa48ff95a8",
+      "workflowSha256": "dcc7ca12cf3be3aa5b971a7f78a0eaf9396d359617a6910318cd4f6050f38c10",
+      "strength": 0.9,
+      "fixture": "anime-fan",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "anime illustration",
+        "style": "Two-dimensional painted anime game illustration, delicate dark contours, broad soft painted shadows and graphic folds, subdued black, cream, red and gold palette, painterly white clouds and traditional architecture.",
+        "content": "Low-angle full-body illustration of an adult female warrior with a short black bob, closed eyes, a gold and red hair ornament, black and gold open kimono over a white fitted wrap top, a wide red waist sash and black legwear. One gloved hand raises a large black and gold folding fan and the other holds a sword. Ornate fabric and red ribbons flow around her, with layered traditional temples and bright billowing clouds behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "smoothmixanime, anime style",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:33:39.171Z",
+      "promptId": "399f0939-0ca4-464f-94e7-591f91f714e6",
+      "seconds": 20.048,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "399f0939-0ca4-464f-94e7-591f91f714e6",
+              "timestamp": 1789230819174
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "399f0939-0ca4-464f-94e7-591f91f714e6",
+              "timestamp": 1789230819176
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "399f0939-0ca4-464f-94e7-591f91f714e6",
+              "timestamp": 1789230836926
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-anime-fan-beta-7-cfg1-shift8-high_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "8f4a6cff87138a597094ed63b40a2d9dcb3933beff8f45f58f83ee7d9746507e",
+      "dimensions": [
+        688,
+        1504
+      ],
+      "visualAssessment": "姿态和服装延续中强度的重构方向，脸部角度、腰带和剑鞘等继续变化；光泽更强，与 0.65 的差距小于从 0.2 到 0.65 的差距。",
+      "assessmentMethod": "Manual inspection of the actual source and all three raw generated outputs."
+    },
+    {
+      "case": "smooth-t2v-v4-cyber-portrait-beta-7-cfg1-shift8-low",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "89bc170e0b97ad8a8cda70d7aaec9fecdc01e842c0ebae19f62d92668ac1fdb9",
+      "workflowSha256": "fe5df090338385690749aab28323a7832d3195ad21b0de649f05a088337d36aa",
+      "strength": 0.2,
+      "fixture": "cyber-portrait",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "photorealistic cinematic digital art",
+        "style": "Photorealistic cinematic portrait, natural face proportions and skin texture, fine textile grain, cool dark blue palette with cyan and magenta neon reflections, rainfall and a softly blurred urban background.",
+        "content": "An adult woman with a short silver bob and transparent cyan illuminated glasses stands facing the viewer in a rainy futuristic alley. She wears a zipped black high-neck outfit and a black technical jacket with cyan lights around the high collar, dark backpack straps and a rectangular illuminated device hanging at her hip. Wet pavement and neon signs recede behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:34:01.358Z",
+      "promptId": "2f693f42-b919-4ac0-b291-d3afa22f994f",
+      "seconds": 17.555,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "2f693f42-b919-4ac0-b291-d3afa22f994f",
+              "timestamp": 1789230841362
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "2f693f42-b919-4ac0-b291-d3afa22f994f",
+              "timestamp": 1789230841374
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "2f693f42-b919-4ac0-b291-d3afa22f994f",
+              "timestamp": 1789230857652
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-cyber-portrait-beta-7-cfg1-shift8-low_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "f64ecb3b99c9c1abec65a8b1b8dcbd42ff30fbda79a1b3378303aea251932f8c",
+      "dimensions": [
+        1024,
+        1016
+      ],
+      "visualAssessment": "保持银发、冷色雨夜、背带与腰间设备，衣料雨珠和接缝更明显；眼镜结构、眼睛和脸部细节已有变化。",
+      "assessmentMethod": "Manual inspection of the actual source and all three raw generated outputs."
+    },
+    {
+      "case": "smooth-t2v-v4-cyber-portrait-beta-7-cfg1-shift8-medium",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "89bc170e0b97ad8a8cda70d7aaec9fecdc01e842c0ebae19f62d92668ac1fdb9",
+      "workflowSha256": "7766282c983a4da7df2ad42c9d6ad8d2b19b9ee3212008bd8302654b7d70fbfd",
+      "strength": 0.65,
+      "fixture": "cyber-portrait",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "photorealistic cinematic digital art",
+        "style": "Photorealistic cinematic portrait, natural face proportions and skin texture, fine textile grain, cool dark blue palette with cyan and magenta neon reflections, rainfall and a softly blurred urban background.",
+        "content": "An adult woman with a short silver bob and transparent cyan illuminated glasses stands facing the viewer in a rainy futuristic alley. She wears a zipped black high-neck outfit and a black technical jacket with cyan lights around the high collar, dark backpack straps and a rectangular illuminated device hanging at her hip. Wet pavement and neon signs recede behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:34:20.938Z",
+      "promptId": "f1eb125b-bc25-42d6-adc4-cbac465d8cd9",
+      "seconds": 17.572,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "f1eb125b-bc25-42d6-adc4-cbac465d8cd9",
+              "timestamp": 1789230860941
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "f1eb125b-bc25-42d6-adc4-cbac465d8cd9",
+              "timestamp": 1789230860944
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "f1eb125b-bc25-42d6-adc4-cbac465d8cd9",
+              "timestamp": 1789230877863
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-cyber-portrait-beta-7-cfg1-shift8-medium_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "73afebe6e4bd1258d38f963cc452c53b1ad2a76f8ee959856f1f936472ae8619",
+      "dimensions": [
+        1024,
+        1016
+      ],
+      "visualAssessment": "取景拉近为胸像，腰间设备不再入镜；脸、眼镜和服装灯带被重新设计，皮肤更光滑，原人物身份特征保留较弱。",
+      "assessmentMethod": "Manual inspection of the actual source and all three raw generated outputs."
+    },
+    {
+      "case": "smooth-t2v-v4-cyber-portrait-beta-7-cfg1-shift8-high",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "89bc170e0b97ad8a8cda70d7aaec9fecdc01e842c0ebae19f62d92668ac1fdb9",
+      "workflowSha256": "e83fa68553553bb66dc34b481cc240901e2af9a3220db73377a17afadbd85bb9",
+      "strength": 0.9,
+      "fixture": "cyber-portrait",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "photorealistic cinematic digital art",
+        "style": "Photorealistic cinematic portrait, natural face proportions and skin texture, fine textile grain, cool dark blue palette with cyan and magenta neon reflections, rainfall and a softly blurred urban background.",
+        "content": "An adult woman with a short silver bob and transparent cyan illuminated glasses stands facing the viewer in a rainy futuristic alley. She wears a zipped black high-neck outfit and a black technical jacket with cyan lights around the high collar, dark backpack straps and a rectangular illuminated device hanging at her hip. Wet pavement and neon signs recede behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:34:40.530Z",
+      "promptId": "2185445d-75d7-488d-8872-143058e6f686",
+      "seconds": 17.564,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "2185445d-75d7-488d-8872-143058e6f686",
+              "timestamp": 1789230880533
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "2185445d-75d7-488d-8872-143058e6f686",
+              "timestamp": 1789230880536
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "2185445d-75d7-488d-8872-143058e6f686",
+              "timestamp": 1789230897494
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-cyber-portrait-beta-7-cfg1-shift8-high_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "de0385c5153958440423786948c7fbea60cf5412ce34b3ae6fa6a5c76fefd83c",
+      "dimensions": [
+        1024,
+        1016
+      ],
+      "visualAssessment": "延续近景写实赛博人物，脸和眼睛继续变化，面料趋向更亮的皮革质感；与中强度结果相近，不适合要求保留同一张脸的场景。",
+      "assessmentMethod": "Manual inspection of the actual source and all three raw generated outputs."
+    },
+    {
+      "case": "smooth-t2v-v4-cg-robot-beta-7-cfg1-shift8-low",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "775f0befaad1a4875540e4b7b5caf4868c30e343fa759a89cd0457d7a834ad45",
+      "workflowSha256": "bb39f617e7bc994541ad9c0d5732672d1929a7a48bbdaa5f4e69b42d9c28e299",
+      "strength": 0.2,
+      "fixture": "cg-robot",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "3D rendering with cinematic lighting",
+        "style": "Stylized three-dimensional rendering with warm soft cinematic sunlight, physically shaded worn copper and green metal, rounded forms, amber glowing eyes, mossy wooden planters, shallow depth of field and blurred greenhouse foliage.",
+        "content": "A small rounded copper and green robot holds a metal watering can in one hand and stands among wooden planters in a lush greenhouse. It has a domed head with two antennae, a black faceplate with two circular glowing amber eyes, riveted joints and broad boots. Warm sunlight filters through greenhouse windows.",
+        "provenance": "Existing local source and recorded CG profile rechecked visually this turn; caption corrected to observed source. No old workflow rerun."
+      },
+      "styleTrigger": "",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:35:00.243Z",
+      "promptId": "a2a402e2-cf66-4a9b-9e94-70ad8b105f9b",
+      "seconds": 17.81,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "a2a402e2-cf66-4a9b-9e94-70ad8b105f9b",
+              "timestamp": 1789230900246
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "a2a402e2-cf66-4a9b-9e94-70ad8b105f9b",
+              "timestamp": 1789230900254
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "a2a402e2-cf66-4a9b-9e94-70ad8b105f9b",
+              "timestamp": 1789230917709
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-cg-robot-beta-7-cfg1-shift8-low_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "bc346f71201b6cbbcbb208b70c6117745ef97f622516b024f5a1f6618a1c3acc",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "visualAssessment": "保留圆头、身体比例、铜绿配色与浇水壶，补出了锈迹、关节和地面细节；胸口面板、壶身与部分植物有重绘。",
+      "assessmentMethod": "Manual inspection of the actual source and all three raw generated outputs."
+    },
+    {
+      "case": "smooth-t2v-v4-cg-robot-beta-7-cfg1-shift8-medium",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "775f0befaad1a4875540e4b7b5caf4868c30e343fa759a89cd0457d7a834ad45",
+      "workflowSha256": "d4737a0657bb6bf49dc391b69b717f4e0ae8fc3742c737a23a5a21782fd33223",
+      "strength": 0.65,
+      "fixture": "cg-robot",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "3D rendering with cinematic lighting",
+        "style": "Stylized three-dimensional rendering with warm soft cinematic sunlight, physically shaded worn copper and green metal, rounded forms, amber glowing eyes, mossy wooden planters, shallow depth of field and blurred greenhouse foliage.",
+        "content": "A small rounded copper and green robot holds a metal watering can in one hand and stands among wooden planters in a lush greenhouse. It has a domed head with two antennae, a black faceplate with two circular glowing amber eyes, riveted joints and broad boots. Warm sunlight filters through greenhouse windows.",
+        "provenance": "Existing local source and recorded CG profile rechecked visually this turn; caption corrected to observed source. No old workflow rerun."
+      },
+      "styleTrigger": "",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:35:20.073Z",
+      "promptId": "cf2d6270-1782-463e-9341-1f123e6dcc37",
+      "seconds": 20.082,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "cf2d6270-1782-463e-9341-1f123e6dcc37",
+              "timestamp": 1789230920077
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "cf2d6270-1782-463e-9341-1f123e6dcc37",
+              "timestamp": 1789230920078
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "cf2d6270-1782-463e-9341-1f123e6dcc37",
+              "timestamp": 1789230938576
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-cg-robot-beta-7-cfg1-shift8-medium_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "e76c44301cdfc165cae58f0f8b775d78c3fc3841aab492de848f837a9e0bb8cb",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "visualAssessment": "机器人变高，头部、躯干与关节结构重设；壶嘴转向，背景温室更明确，金属更亮、旧化磨损减少。",
+      "assessmentMethod": "Manual inspection of the actual source and all three raw generated outputs."
+    },
+    {
+      "case": "smooth-t2v-v4-cg-robot-beta-7-cfg1-shift8-high",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "775f0befaad1a4875540e4b7b5caf4868c30e343fa759a89cd0457d7a834ad45",
+      "workflowSha256": "4bce8f28641b4f6cac1958d666eb9df3a1e473965212e22edc76e1e5e9a42185",
+      "strength": 0.9,
+      "fixture": "cg-robot",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "3D rendering with cinematic lighting",
+        "style": "Stylized three-dimensional rendering with warm soft cinematic sunlight, physically shaded worn copper and green metal, rounded forms, amber glowing eyes, mossy wooden planters, shallow depth of field and blurred greenhouse foliage.",
+        "content": "A small rounded copper and green robot holds a metal watering can in one hand and stands among wooden planters in a lush greenhouse. It has a domed head with two antennae, a black faceplate with two circular glowing amber eyes, riveted joints and broad boots. Warm sunlight filters through greenhouse windows.",
+        "provenance": "Existing local source and recorded CG profile rechecked visually this turn; caption corrected to observed source. No old workflow rerun."
+      },
+      "styleTrigger": "",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:35:42.175Z",
+      "promptId": "30347922-88bf-49df-a8b6-b9c56c1ec955",
+      "seconds": 20.074,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "30347922-88bf-49df-a8b6-b9c56c1ec955",
+              "timestamp": 1789230942177
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "30347922-88bf-49df-a8b6-b9c56c1ec955",
+              "timestamp": 1789230942179
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "30347922-88bf-49df-a8b6-b9c56c1ec955",
+              "timestamp": 1789230960554
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-cg-robot-beta-7-cfg1-shift8-high_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "5e4709062444b4dbe00cf4fb36eb8a5e1dd36e2b8d9fe9e1676c3cf93e48f6e9",
+      "dimensions": [
+        1024,
+        1024
+      ],
+      "visualAssessment": "继续保持三维机器人和温室场景，身体更粗、颈部和壶嘴形态变化，表面偏光滑；属于新造型重绘，不能当原角色细节修复。",
+      "assessmentMethod": "Manual inspection of the actual source and all three raw generated outputs."
+    },
+    {
+      "case": "smooth-t2v-v4-coffee-photo-beta-7-cfg1-shift8-low",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "32029eba116c64a51e3b486cbca0e164408c5b0ae046dea96a275637829c47e0",
+      "workflowSha256": "0a789ef38f3688992aad9962ca0ede7a15ea7404a0584a32bc1d8bb6ca5afe6b",
+      "strength": 0.2,
+      "fixture": "coffee-photo",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "photograph",
+        "style": "Color still-life photograph with warm directional daylight, realistic shadows and glossy ceramic highlights, reddish brown and orange tones, visible wooden grain, metallic reflections and coffee crema texture.",
+        "content": "A brown ceramic cup with a white interior contains espresso and rests on a matching brown saucer on a wooden tabletop. The handle points toward the lower left. A small silver teaspoon rests on the right side of the saucer with its handle behind the cup. The tabletop runs diagonally through the image, viewed from above at an oblique angle.",
+        "provenance": "Manually rechecked local scikit-image coffee fixture; photograph by Rachel Michetti, CC0. Not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:36:04.406Z",
+      "promptId": "6278edc5-84b9-4364-b7c1-ea4d7e534f6c",
+      "seconds": 20.072,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "6278edc5-84b9-4364-b7c1-ea4d7e534f6c",
+              "timestamp": 1789230964409
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "6278edc5-84b9-4364-b7c1-ea4d7e534f6c",
+              "timestamp": 1789230964418
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "6278edc5-84b9-4364-b7c1-ea4d7e534f6c",
+              "timestamp": 1789230983341
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-coffee-photo-beta-7-cfg1-shift8-low_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "9be1e520819dc1884d76d69ee3b096bcee8ecf2b2ec195e9a921da601ff2eb2e",
+      "dimensions": [
+        1248,
+        832
+      ],
+      "visualAssessment": "杯碟、把手和汤匙摆放大体保留，木纹与咖啡油脂更清楚，色调较接近原图；细节属于重新生成，并非恢复真实拍摄细节。",
+      "assessmentMethod": "Manual inspection of the actual source and all three raw generated outputs."
+    },
+    {
+      "case": "smooth-t2v-v4-coffee-photo-beta-7-cfg1-shift8-medium",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "32029eba116c64a51e3b486cbca0e164408c5b0ae046dea96a275637829c47e0",
+      "workflowSha256": "f5953c57595b21943c31fa52a96d9c21fd6b16f149d11d8c7b41747a2f2ed679",
+      "strength": 0.65,
+      "fixture": "coffee-photo",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "photograph",
+        "style": "Color still-life photograph with warm directional daylight, realistic shadows and glossy ceramic highlights, reddish brown and orange tones, visible wooden grain, metallic reflections and coffee crema texture.",
+        "content": "A brown ceramic cup with a white interior contains espresso and rests on a matching brown saucer on a wooden tabletop. The handle points toward the lower left. A small silver teaspoon rests on the right side of the saucer with its handle behind the cup. The tabletop runs diagonally through the image, viewed from above at an oblique angle.",
+        "provenance": "Manually rechecked local scikit-image coffee fixture; photograph by Rachel Michetti, CC0. Not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:36:26.518Z",
+      "promptId": "0c02d946-b0d5-4909-a2a0-8012833808af",
+      "seconds": 20.077,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "0c02d946-b0d5-4909-a2a0-8012833808af",
+              "timestamp": 1789230986521
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "0c02d946-b0d5-4909-a2a0-8012833808af",
+              "timestamp": 1789230986523
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "0c02d946-b0d5-4909-a2a0-8012833808af",
+              "timestamp": 1789231005115
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-coffee-photo-beta-7-cfg1-shift8-medium_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "02a09ba998edd66df069aee7496b57ce5e0d9eef940542d1602ca1f08f9d2972",
+      "dimensions": [
+        1248,
+        832
+      ],
+      "visualAssessment": "杯型与碟沿改变，碟子增加白边，汤匙转向且匙头被遮挡；桌面木纹与反光重画，产品图的光洁感更强。",
+      "assessmentMethod": "Manual inspection of the actual source and all three raw generated outputs."
+    },
+    {
+      "case": "smooth-t2v-v4-coffee-photo-beta-7-cfg1-shift8-high",
+      "status": "success",
+      "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+      "sourceSha256": "32029eba116c64a51e3b486cbca0e164408c5b0ae046dea96a275637829c47e0",
+      "workflowSha256": "e748c12aa1a239fced299c4755e3edeca2c1c3f26746f6dce7a3aa66556f9c61",
+      "strength": 0.9,
+      "fixture": "coffee-photo",
+      "baselineReused": false,
+      "baseline": null,
+      "sampling": {
+        "steps": 7,
+        "cfg": 1,
+        "scheduler": "beta",
+        "shift": 8,
+        "sampler": "euler",
+        "seed": 9122026,
+        "externalLora": null
+      },
+      "sourceStyleProfile": {
+        "medium": "photograph",
+        "style": "Color still-life photograph with warm directional daylight, realistic shadows and glossy ceramic highlights, reddish brown and orange tones, visible wooden grain, metallic reflections and coffee crema texture.",
+        "content": "A brown ceramic cup with a white interior contains espresso and rests on a matching brown saucer on a wooden tabletop. The handle points toward the lower left. A small silver teaspoon rests on the right side of the saucer with its handle behind the cup. The tabletop runs diagonally through the image, viewed from above at an oblique angle.",
+        "provenance": "Manually rechecked local scikit-image coffee fixture; photograph by Rachel Michetti, CC0. Not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "",
+      "promptFormat": "baseline",
+      "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+      "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+      "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+      "outputBlend": false,
+      "productionDefaultChanged": false,
+      "startedAt": "2026-09-12T16:36:48.629Z",
+      "promptId": "2958d81e-6c02-4d0b-ba35-a3b469f6b942",
+      "seconds": 20.071,
+      "runtimeStatus": {
+        "status_str": "success",
+        "completed": true,
+        "messages": [
+          [
+            "execution_start",
+            {
+              "prompt_id": "2958d81e-6c02-4d0b-ba35-a3b469f6b942",
+              "timestamp": 1789231008633
+            }
+          ],
+          [
+            "execution_cached",
+            {
+              "nodes": [],
+              "prompt_id": "2958d81e-6c02-4d0b-ba35-a3b469f6b942",
+              "timestamp": 1789231008634
+            }
+          ],
+          [
+            "execution_success",
+            {
+              "prompt_id": "2958d81e-6c02-4d0b-ba35-a3b469f6b942",
+              "timestamp": 1789231027859
+            }
+          ]
+        ]
+      },
+      "output": {
+        "filename": "smooth-t2v-v4-coffee-photo-beta-7-cfg1-shift8-high_00001_.png",
+        "subfolder": "NovaFlow_validation",
+        "type": "output"
+      },
+      "outputSha256": "114a276acbc334b3032a90173a1534c0cb4fcc43eeedb05b937099228b1a2dc7",
+      "dimensions": [
+        1248,
+        832
+      ],
+      "visualAssessment": "杯碟大体沿用中强度的新设计，木纹、反射和咖啡液面继续变化；与中强度较相近，仍存在汤匙位置和形态偏离原图的问题。",
+      "assessmentMethod": "Manual inspection of the actual source and all three raw generated outputs."
+    }
+  ]
+}

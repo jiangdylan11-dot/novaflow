@@ -1,0 +1,18 @@
+{
+  "modelPrompt": {
+    "subject_definitions": "<Subject 1>: Woman with long purple hair, golden accessories, holding golden crescent staff, seated pose on green screen background, appearance and motion from <Video 1>",
+    "summary": "[video editing] The target video is an edited version of <Video 1>. Change only the color of the flowing dress from white to red while retaining exact dress style, folds, material, transparency, coverage, person identity, actions, staff, background and camera.",
+    "retention_analysis": "<Subject 1>: fully_preserved - face, hair, body, golden accessories, staff, seated pose and all motion from <Video 1>\n<Video 1>: partially_preserved - original motion trajectory, timing, camera framing, background and all elements except dress color changed to red",
+    "detailed_description": "Retain reference appearance and 3D CGI style. [Shot 1] At 0.000s <Subject 1> sits holding staff low with white dress now red. At 0.667s raises staff higher. At 1.333s lifts staff fully upward. At 2.000s swings staff left emitting golden particles. At 2.667s continues swing with particles trailing. At 3.333s raises staff high again. At 4.000s returns to lowered staff position. All motion, camera and framing exactly as <Video 1>.",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  },
+  "displayPrompt": {
+    "subject_definitions": "<Subject 1>: 拥有长紫色头发的女性，佩戴金色配饰，手持金色新月权杖，坐在绿幕背景上，appearance and motion from <Video 1>",
+    "summary": "[video editing] The target video is an edited version of <Video 1>。仅将飘逸裙子的颜色从白色改为红色，同时保留裙子款式、褶皱、材质、透明度、覆盖度、人物身份、动作、权杖、背景和镜头完全不变。",
+    "retention_analysis": "<Subject 1>: fully_preserved - 面部、头发、身体、金色配饰、权杖、坐姿及所有动作 from <Video 1>\n<Video 1>: partially_preserved - 原始动作轨迹、时序、镜头构图、背景及除裙子颜色改为红色外的所有元素",
+    "detailed_description": "保留参考外观与3D CGI风格。[Shot 1] 0.000s时<Subject 1>坐姿手持权杖较低，白色裙子现已改为红色。0.667s时权杖举高。1.333s时权杖完全举起。2.000s时向左挥动权杖并释放金色粒子。2.667s时继续挥动伴随粒子轨迹。3.333s时再次高举权杖。4.000s时恢复权杖降低姿势。所有动作、镜头与构图完全同<Video 1>。",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  }
+}

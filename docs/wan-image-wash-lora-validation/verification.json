@@ -1,0 +1,63 @@
+{
+  "runs": [
+    {
+      "case": "off-low",
+      "status": "success",
+      "seconds": 35.139,
+      "promptId": "af0ea3f2-bba5-493a-8a85-1c411f4a2871",
+      "outputSha256": "71a27ba6c29379f3119cafb971d71e06a94b249ce9f26c267fa4ad63b280f1bc",
+      "size": [
+        1016,
+        1024
+      ]
+    },
+    {
+      "case": "on-low",
+      "status": "success",
+      "seconds": 37.625,
+      "promptId": "a7dcb334-dd28-40c4-a847-da0445eb3b2b",
+      "outputSha256": "d04e485b9c83ab1a0e753125833233a9c640e31e3eaed783bf05bb40a170ba6a",
+      "size": [
+        1016,
+        1024
+      ]
+    },
+    {
+      "case": "off-medium",
+      "status": "success",
+      "seconds": 32.619,
+      "promptId": "86fb70fd-4326-4b0f-a321-7ad8bdf9a45e",
+      "outputSha256": "dbdcdde5a394107502ee766053be37b9efe2047f29ec804c084fa725834eaefa",
+      "size": [
+        1016,
+        1024
+      ]
+    },
+    {
+      "case": "on-medium",
+      "status": "success",
+      "seconds": 40.144,
+      "promptId": "a2bc6e70-0695-4f1c-9982-32083eaeacf4",
+      "outputSha256": "1dbb702c5923eb8726fcc7f01b049f02d00048e464a3b88adc3b402eea2f6cb0",
+      "size": [
+        1016,
+        1024
+      ]
+    }
+  ],
+  "pairedGraphsIdenticalExceptExtraLoraAndOutputPrefix": true,
+  "sourceAndOutputHashesVerified": true,
+  "actualRuntimeWorkflowVerified": true,
+  "unitTestsPassed": 17,
+  "runtimeSync": "PASS",
+  "entryCheck": "NO-GO: 4783 unavailable; existing AI-effects integration check also incomplete",
+  "cleanup": {
+    "httpStatus": 200,
+    "bodyBytes": 0
+  },
+  "nsfwCapabilityEvaluated": false,
+  "installerBuilt": true,
+  "installerRecord": "installer.json",
+  "postPackageRuntimeSync": "PASS",
+  "postPackageEntryCheck": "NO-GO: 4783 unavailable; existing AI-effects integration check also incomplete"
+}

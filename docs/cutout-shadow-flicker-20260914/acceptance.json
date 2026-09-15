@@ -1,0 +1,128 @@
+{
+  "coreSha256": "805e64e7b4dce684cd78fbc6e4ca6ac290b9a0ebf35d9f67c924d6f1c53ccf70",
+  "tests": {
+    "passed": 43,
+    "failed": 0
+  },
+  "clips": [
+    {
+      "id": "blue",
+      "frames": 73,
+      "entry": {
+        "count": 1,
+        "label": "视频抠图",
+        "icons": 0,
+        "legacy": 0
+      },
+      "brush": {
+        "changed": 13174,
+        "soft": 10880,
+        "recovered": 13646,
+        "visible": true
+      },
+      "modelMasks": "cached genuine native model outputs matched to decoded source",
+      "subjectPixelsChanged": 0,
+      "changedPixels": 0
+    },
+    {
+      "id": "minimax",
+      "frames": 73,
+      "entry": {
+        "count": 1,
+        "label": "视频抠图",
+        "icons": 0,
+        "legacy": 0
+      },
+      "brush": {
+        "changed": 9981,
+        "soft": 9540,
+        "recovered": 9881,
+        "visible": true
+      },
+      "modelMasks": "cached genuine native model outputs matched to decoded source",
+      "subjectPixelsChanged": 0,
+      "changedPixels": 0
+    },
+    {
+      "id": "gloweyes",
+      "frames": 121,
+      "entry": {
+        "count": 1,
+        "label": "视频抠图",
+        "icons": 0,
+        "legacy": 0
+      },
+      "brush": {
+        "changed": 15815,
+        "soft": 11001,
+        "recovered": 16565,
+        "visible": true
+      },
+      "modelMasks": "cached genuine native model outputs matched to decoded source",
+      "subjectPixelsChanged": 0,
+      "changedPixels": 7989635
+    },
+    {
+      "id": "scatter",
+      "frames": 73,
+      "entry": {
+        "count": 1,
+        "label": "视频抠图",
+        "icons": 0,
+        "legacy": 0
+      },
+      "brush": {
+        "changed": 8776,
+        "soft": 1130,
+        "recovered": 12742,
+        "visible": true
+      },
+      "modelMasks": "cached genuine native model outputs matched to decoded source",
+      "subjectPixelsChanged": 0,
+      "changedPixels": 0
+    },
+    {
+      "id": "athena",
+      "frames": 117,
+      "entry": {
+        "count": 1,
+        "label": "视频抠图",
+        "icons": 0,
+        "legacy": 0
+      },
+      "brush": {
+        "changed": 17307,
+        "soft": 14574,
+        "recovered": 17199,
+        "visible": true
+      },
+      "modelMasks": "cached genuine native model outputs matched to decoded source",
+      "subjectPixelsChanged": 0,
+      "changedPixels": 7080307
+    }
+  ],
+  "package": {
+    "installer": "D:\\AI_APP\\NovaFlow\\particle-editor-desktop\\dist\\NovaFlow Setup 2.3.214 - 投影局部修正-20260914.exe",
+    "size": 250137651,
+    "sha256": "2caa6f44752d8fde0cd8e1967ef52019dce9c2d3200370197fa817e4b58da23b",
+    "files": [
+      {
+        "file": "assets/index-BbIa-2NM.js",
+        "sha256": "fc5115e77e1d6caa2b6a8402a04736ab3092be84ac49350cbd56b5209ea3b078"
+      },
+      {
+        "file": "ai-sequence-green-screen-matting.js",
+        "sha256": "805e64e7b4dce684cd78fbc6e4ca6ac290b9a0ebf35d9f67c924d6f1c53ccf70"
+      },
+      {
+        "file": "novaflow-brand-runtime.js",
+        "sha256": "0a6ab4f02766880e2ff632ddeb8615ceb7dad2a437325d6f5140629212eee751"
+      }
+    ],
+    "sourceMatches": true,
+    "uiUnchangedFromAccepted": true,
+    "acceptedInstallerPreserved": true
+  },
+  "runtimeParity": "PASS",
+  "fullApplicationEntry": "NO-GO: locked 4783 unavailable; pre-existing AI effects integration gate incomplete"
+}

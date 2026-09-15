@@ -1,0 +1,78 @@
+{
+  "case": "original-wan-anime-fan-beta-7-cfg1-shift8-high",
+  "status": "success",
+  "model": "Wan22\\Wan2.2-T2V-A14B-LowNoise-Q4_K_S.gguf",
+  "modelFamily": "original-wan",
+  "sourceSha256": "f82e8218e78bb093dfcb722fc6953aff1983edce14a1cda1ed4873aa48ff95a8",
+  "workflowSha256": "5cb6c1d2a983e9be422dd6c78c5ec46df8a6d53bba48e73ded7c73d4caaef1fd",
+  "strength": 0.9,
+  "fixture": "anime-fan",
+  "baselineReused": false,
+  "baseline": null,
+  "sampling": {
+    "steps": 7,
+    "cfg": 1,
+    "scheduler": "beta",
+    "shift": 8,
+    "sampler": "euler",
+    "seed": 9122026,
+    "externalLora": {
+      "model": [
+        "3",
+        0
+      ],
+      "lora_name": "Wan21\\Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+      "strength_model": 1
+    }
+  },
+  "sourceStyleProfile": {
+    "medium": "anime illustration",
+    "style": "Two-dimensional painted anime game illustration, delicate dark contours, broad soft painted shadows and graphic folds, subdued black, cream, red and gold palette, painterly white clouds and traditional architecture.",
+    "content": "Low-angle full-body illustration of an adult female warrior with a short black bob, closed eyes, a gold and red hair ornament, black and gold open kimono over a white fitted wrap top, a wide red waist sash and black legwear. One gloved hand raises a large black and gold folding fan and the other holds a sword. Ornate fabric and red ribbons flow around her, with layered traditional temples and bright billowing clouds behind her.",
+    "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+  },
+  "styleTrigger": "",
+  "promptFormat": "baseline",
+  "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+  "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+  "settingProvenance": "Original NovaFlow Wan recipe including its external acceleration LoRA. Matches SmoothMix source, base caption, seed, size and sampler settings; anime-only SmoothMix trigger omitted for original Wan.",
+  "outputBlend": false,
+  "productionDefaultChanged": false,
+  "startedAt": "2026-09-12T16:48:11.999Z",
+  "promptId": "24a502e5-ce7f-410f-bcee-eba2ce1a7dcd",
+  "seconds": 37.808,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "24a502e5-ce7f-410f-bcee-eba2ce1a7dcd",
+          "timestamp": 1789231693639
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [],
+          "prompt_id": "24a502e5-ce7f-410f-bcee-eba2ce1a7dcd",
+          "timestamp": 1789231693643
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "24a502e5-ce7f-410f-bcee-eba2ce1a7dcd",
+          "timestamp": 1789231728125
+        }
+      ]
+    ]
+  },
+  "output": {
+    "filename": "original-wan-anime-fan-beta-7-cfg1-shift8-high_00001_.png",
+    "subfolder": "NovaFlow_validation",
+    "type": "output"
+  },
+  "outputSha256": "dbe22b8164cea50265baf3eeed33031c5a74a9be65b4c9e103fea1a919225130"
+}

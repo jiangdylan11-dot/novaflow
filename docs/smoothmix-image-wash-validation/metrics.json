@@ -1,0 +1,57 @@
+[
+  {
+    "case": "wan-low",
+    "size": [
+      1016,
+      1024
+    ],
+    "strength": 0.2,
+    "seconds": 42.832,
+    "rgbMAEFromResizedSource": 12.340966412401574,
+    "promptId": "ac270605-4373-4120-9ee8-881199a4e185"
+  },
+  {
+    "case": "wan-medium",
+    "size": [
+      1016,
+      1024
+    ],
+    "strength": 0.65,
+    "seconds": 30.141,
+    "rgbMAEFromResizedSource": 48.12277037452838,
+    "promptId": "ff57992c-f633-499e-b22f-53752b1a6a08"
+  },
+  {
+    "case": "smooth-low",
+    "size": [
+      1016,
+      1024
+    ],
+    "strength": 0.2,
+    "seconds": 257.504,
+    "rgbMAEFromResizedSource": 4.9565628332103016,
+    "promptId": "b36541f8-8798-4884-a81a-929121862f40"
+  },
+  {
+    "case": "smooth-medium",
+    "size": [
+      1016,
+      1024
+    ],
+    "strength": 0.65,
+    "seconds": 110.957,
+    "rgbMAEFromResizedSource": 5.105561023622047,
+    "promptId": "7093f378-bb28-48c9-a665-59eb939d3a19"
+  },
+  {
+    "case": "smooth-unconditioned-medium",
+    "size": [
+      1016,
+      1024
+    ],
+    "strength": 0.65,
+    "seconds": 78.596,
+    "rgbMAEFromResizedSource": 80.9814100691027,
+    "promptId": "c62893c2-6769-4b9b-a1ef-b4a9d7d0f603"
+  }
+]

@@ -1,0 +1,117 @@
+{
+  "frames": 457,
+  "reports": [
+    {
+      "id": "blue",
+      "frames": 73,
+      "writes": 73,
+      "entry": {
+        "count": 1,
+        "label": "视频抠图",
+        "icons": 0,
+        "legacy": 0
+      },
+      "modelCalls": 1,
+      "errors": [],
+      "maskSource": "cached native AI outputs matched against captured RGB",
+      "matting": "321647e3c47b1010b02d01c85d137248171605b0556e25bd259313ec0149941a",
+      "brush": {
+        "changed": 13174,
+        "soft": 10880,
+        "recovered": 13646,
+        "visible": true
+      }
+    },
+    {
+      "id": "minimax",
+      "frames": 73,
+      "writes": 73,
+      "entry": {
+        "count": 1,
+        "label": "视频抠图",
+        "icons": 0,
+        "legacy": 0
+      },
+      "modelCalls": 1,
+      "errors": [],
+      "maskSource": "cached native AI outputs matched against captured RGB",
+      "matting": "321647e3c47b1010b02d01c85d137248171605b0556e25bd259313ec0149941a",
+      "brush": {
+        "changed": 9981,
+        "soft": 9540,
+        "recovered": 9881,
+        "visible": true
+      }
+    },
+    {
+      "id": "scatter",
+      "frames": 73,
+      "writes": 73,
+      "entry": {
+        "count": 1,
+        "label": "视频抠图",
+        "icons": 0,
+        "legacy": 0
+      },
+      "modelCalls": 1,
+      "errors": [],
+      "maskSource": "cached native AI outputs matched against captured RGB",
+      "matting": "321647e3c47b1010b02d01c85d137248171605b0556e25bd259313ec0149941a",
+      "brush": {
+        "changed": 8776,
+        "soft": 1130,
+        "recovered": 12742,
+        "visible": true
+      }
+    },
+    {
+      "id": "gloweyes",
+      "frames": 121,
+      "writes": 121,
+      "entry": {
+        "count": 1,
+        "label": "视频抠图",
+        "icons": 0,
+        "legacy": 0
+      },
+      "modelCalls": 1,
+      "errors": [],
+      "maskSource": "cached native AI outputs matched against captured RGB",
+      "matting": "321647e3c47b1010b02d01c85d137248171605b0556e25bd259313ec0149941a",
+      "brush": {
+        "changed": 15815,
+        "soft": 11001,
+        "recovered": 16565,
+        "visible": true
+      }
+    },
+    {
+      "id": "athena",
+      "frames": 117,
+      "writes": 117,
+      "entry": {
+        "count": 1,
+        "label": "视频抠图",
+        "icons": 0,
+        "legacy": 0
+      },
+      "modelCalls": 1,
+      "errors": [],
+      "maskSource": "cached native AI outputs matched against captured RGB",
+      "matting": "321647e3c47b1010b02d01c85d137248171605b0556e25bd259313ec0149941a",
+      "brush": {
+        "changed": 17307,
+        "soft": 14574,
+        "recovered": 17199,
+        "visible": true
+      }
+    }
+  ],
+  "focusedTests": 39,
+  "entryGate": "NO-GO: locked 4783 unavailable; AI effects integration check incomplete",
+  "installerProof": "../../logs/cutout-unified-20260914/package-verification.json",
+  "lifecycle": {
+    "preview": "../../logs/cutout-unified-20260914/close-reopen/report.json",
+    "saveButton": "../../logs/cutout-unified-20260914/single-button-acceptance/report.json"
+  }
+}

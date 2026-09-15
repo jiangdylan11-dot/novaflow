@@ -170,13 +170,13 @@ test("local presets map the ordinary and NSFW text/edit routes to the measured s
       name: "ordinary edit faithful",
       mode: "img2img",
       state: { nsfw: false, localEditStrength: "faithful" },
-      expected: { steps: 4, cfg: 1, samplerName: "euler_ancestral", scheduler: "beta", denoise: 1, lightning: false },
+      expected: { steps: 4, cfg: 1, samplerName: "euler", scheduler: "simple", denoise: 1, lightning: true },
     },
     {
       name: "ordinary edit enhanced",
       mode: "img2img",
       state: { nsfw: false, localEditStrength: "enhanced" },
-      expected: { steps: 6, cfg: 1, samplerName: "euler_ancestral", scheduler: "beta", denoise: 1, lightning: false },
+      expected: { steps: 12, cfg: 4, samplerName: "euler", scheduler: "simple", denoise: 1, lightning: false },
     },
     {
       name: "NSFW text fast",
@@ -206,7 +206,7 @@ test("local presets map the ordinary and NSFW text/edit routes to the measured s
 
   for (const entry of cases) {
     assert.deepEqual(models.localPresetFor(entry.state, entry.mode), entry.expected, `${entry.name} preset should remain stable`);
-    const workflow = localWorkflowFixture({ includeLightning: entry.mode !== "img2img" && !entry.state.nsfw });
+    const workflow = localWorkflowFixture({ includeLightning: !entry.state.nsfw });
     const applied = models.applyLocalWorkflowPreset(workflow, entry.state, entry.mode);
     assert.equal(applied, workflow, `${entry.name} should patch the supplied workflow in place`);
     assert.equal(workflow.sampler.inputs.steps, entry.expected.steps, `${entry.name} should write direct KSampler steps`);
@@ -216,7 +216,7 @@ test("local presets map the ordinary and NSFW text/edit routes to the measured s
     assert.equal(workflow.sampler.inputs.denoise, entry.expected.denoise, `${entry.name} should write denoise`);
     assert.equal(Array.isArray(workflow.sampler.inputs.steps), false, `${entry.name} steps must not retain a switch reference`);
     assert.equal(Array.isArray(workflow.sampler.inputs.cfg), false, `${entry.name} CFG must not retain a switch reference`);
-    if (entry.mode !== "img2img" && !entry.state.nsfw) {
+    if (!entry.state.nsfw) {
       assert.equal(workflow.lightning.inputs.value, entry.expected.lightning, `${entry.name} should synchronize the Lightning switch`);
     }
   }

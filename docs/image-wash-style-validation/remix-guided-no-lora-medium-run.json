@@ -1,0 +1,60 @@
+{
+  "case": "remix-guided-no-lora-medium",
+  "promptId": "bdf05ef5-8fa5-471f-8bf0-8d90453f1801",
+  "model": "Wan22\\wan22RemixT2VI2V_t2vLowV20-Q5_K_M.gguf",
+  "strength": 0.65,
+  "status": "success",
+  "baseline": "wan-medium",
+  "baselineReused": true,
+  "change": "source style profile and revised production prompt; model as recorded",
+  "reverseInference": "real image-wash-style vision profile loaded from recorded service response",
+  "styleProfile": {
+    "style": "2D illustration",
+    "content": "The image depicts a young person standing on a rural road, wearing a bright orange shirt, green shorts, and a large green backpack. The character has short, dark hair and is looking slightly to the side with a gentle smile. The background features a lush green landscape with trees, a clear blue sky, and a few scattered clouds. The lighting is bright and even, suggesting a sunny day. The foreground and background are both rendered in a soft, anime-style with smooth lines and gentle shading, giving the image a dreamy, almost painterly quality."
+  },
+  "sampling": {
+    "steps": 20,
+    "cfg": 3,
+    "sampler": "euler",
+    "scheduler": "beta",
+    "shift": 8,
+    "lora": null,
+    "negative": "low quality, worst quality, blurry, overexposed, oversaturated, artifacts, jpeg artifacts, distorted anatomy, deformed hands, extra fingers, missing fingers, poor face, bad eyes, disfigured, watermark, text, logo, cluttered background, photograph, photorealistic, live action, 3D render, realistic skin pores, photographic skin, glossy plastic skin, hyperrealistic, medium change"
+  },
+  "seconds": 145.531,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "bdf05ef5-8fa5-471f-8bf0-8d90453f1801",
+          "timestamp": 1789202594424
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [
+            "1",
+            "2",
+            "6",
+            "7",
+            "8",
+            "9"
+          ],
+          "prompt_id": "bdf05ef5-8fa5-471f-8bf0-8d90453f1801",
+          "timestamp": 1789202594434
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "bdf05ef5-8fa5-471f-8bf0-8d90453f1801",
+          "timestamp": 1789202738425
+        }
+      ]
+    ]
+  }
+}

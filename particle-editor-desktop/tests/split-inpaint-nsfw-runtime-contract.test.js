@@ -62,8 +62,8 @@ test('selection tool exposes a default-off busy-safe switch only for edit and co
   assert.match(source, /'aria-checked':\s*inpaintNsfwEnabled \? 'true' : 'false'/)
   assert.match(source, /\[TOOL_ACTION_ATTR\]:\s*'selectionNsfw'/)
   assert.match(source, /selectedInpaintMode[\s\S]{0,240}selectionInpaintNsfwAvailable/)
-  assert.match(source, /function patchSelectionToolChrome\(\)[\s\S]{0,900}nsfwButton\.disabled = state\.busy/)
-  assert.match(source, /function patchSelectionToolChrome\(\)[\s\S]{0,1100}nsfwButton\.setAttribute\('aria-disabled', state\.busy \? 'true' : 'false'\)/)
+  assert.match(source, /function patchSelectionToolChrome\(\)[\s\S]{0,1400}nsfwButton\.disabled = state\.busy/)
+  assert.match(source, /function patchSelectionToolChrome\(\)[\s\S]{0,1600}nsfwButton\.setAttribute\('aria-disabled', state\.busy \? 'true' : 'false'\)/)
 })
 
 test('new entry, mode change, exit, and successful completion reset OFF while failure preserves retry state', () => {

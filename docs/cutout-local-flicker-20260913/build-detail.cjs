@@ -1,0 +1,8 @@
+const fs=require('fs'),path=require('path'),cp=require('child_process'),assert=require('assert/strict');
+const root=path.resolve(__dirname,'../..'),sharp=require(path.join(root,'particle-editor-desktop/node_modules/sharp')),ffmpeg=require(path.join(root,'particle-editor-desktop/node_modules/ffmpeg-static'));
+(async()=>{const scene=await sharp(path.join(__dirname,'scene.png')).resize(1080,1920,{fit:'fill'}).png().toBuffer(),out=path.join(__dirname,'gloweyes/detail');fs.mkdirSync(out,{recursive:true});
+const label=Buffer.from('<svg width="960" height="32"><rect width="960" height="32" fill="#222"/><g fill="white" font-family="Microsoft YaHei" font-size="18"><text x="12" y="24">上一版</text><text x="492" y="24">本次局部稳定</text></g></svg>');
+for(let n=0;n<121;n++){const name=String(n).padStart(4,'0'),parts=[];for(const [i,file] of [path.join(__dirname,'gloweyes/before/frame_'+name+'.png'),path.join(__dirname,'gloweyes/frames/clean_'+name+'.png')].entries()){
+const comp=await sharp(scene).composite([{input:file}]).png().toBuffer();parts.push({input:await sharp(comp).extract({left:490,top:1470,width:200,height:185}).resize(480,444).png().toBuffer(),left:i*480,top:32});}
+await sharp({create:{width:960,height:476,channels:3,background:'#222'}}).composite([...parts,{input:label,left:0,top:0}]).png().toFile(path.join(out,name+'.png'));}
+const r=cp.spawnSync(ffmpeg,['-y','-hide_banner','-loglevel','error','-framerate','24','-i',path.join(out,'%04d.png'),'-c:v','libx264','-crf','12','-pix_fmt','yuv420p','-movflags','+faststart',path.join(__dirname,'gloweyes-detail.mp4')],{windowsHide:true,encoding:'utf8'});assert.equal(r.status,0,r.stderr);console.log('detail video ready');})().catch(e=>{console.error(e);process.exit(1)});

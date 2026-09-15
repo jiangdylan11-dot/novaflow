@@ -1,0 +1,29 @@
+{
+  "unitTests": 22,
+  "runs": [
+    {
+      "name": "smoothmix-low",
+      "status": "success",
+      "promptId": "5f12a24c-6806-4143-91c7-c37e5f607666",
+      "seconds": 17.554,
+      "outputSha256": "40fd4d30919ff790cac6072a60cf285f296c5d9d7b33af26fe083166e82f817d"
+    },
+    {
+      "name": "smoothmix-medium",
+      "status": "success",
+      "promptId": "fa84d912-4b0a-407c-a5d2-4f2e57c228d0",
+      "seconds": 12.566,
+      "outputSha256": "38d56200817fa8fe48db42623f5be10c55b3f4fb177f3131ff63d02406436541"
+    }
+  ],
+  "sourceAndOutputHashesVerified": true,
+  "actualRuntimeGraphsVerified": true,
+  "packagedRuntimeMatchesTestedCode": true,
+  "reverseInference": "Recorded style profile used in inference test; live analysis not rerun.",
+  "postPackageRuntimeSync": "PASS",
+  "postPackageEntryCheck": "NO-GO: 4783 and 8188 refused connections at final probe; existing AI-effects integration check also incomplete",
+  "finalRuntimeProbe": {
+    "port4783": "connection refused",
+    "port8188": "connection refused"
+  }
+}

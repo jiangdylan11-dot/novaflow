@@ -1,0 +1,18 @@
+{
+  "name": "on-medium",
+  "denoise": 0.65,
+  "wanLoraStrength": 0.6,
+  "seed": 9122026,
+  "promptId": "a2bc6e70-0695-4f1c-9982-32083eaeacf4",
+  "status": "success",
+  "sourceSha256": "25de3a8d5c48d989489926f8718e69ed2767fe35ee1d2ecca35621b6217e57c3",
+  "reverseInference": "Recorded profile reused; live Prompt Assistant not exercised.",
+  "runtimeSourceSha256": "7a5ac09f94412002f10882954b80d80655d7475d65074bc8053521af948bf11f",
+  "seconds": 40.144,
+  "outputSha256": "1dbb702c5923eb8726fcc7f01b049f02d00048e464a3b88adc3b402eea2f6cb0",
+  "output": {
+    "filename": "novaflow_image_wash_wan_1789233462083_9472cf_00001_.png",
+    "subfolder": "",
+    "type": "output"
+  }
+}

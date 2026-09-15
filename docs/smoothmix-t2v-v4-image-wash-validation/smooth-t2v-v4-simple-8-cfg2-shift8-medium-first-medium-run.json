@@ -1,0 +1,68 @@
+{
+  "case": "smooth-t2v-v4-simple-8-cfg2-shift8-medium-first-medium",
+  "status": "success",
+  "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+  "sourceSha256": "25de3a8d5c48d989489926f8718e69ed2767fe35ee1d2ecca35621b6217e57c3",
+  "workflowSha256": "c6a7921709993807591a6b7fbfccae569d295efdcf6a2770a7c22d105245f162",
+  "strength": 0.65,
+  "baselineReused": true,
+  "baseline": "wan-medium",
+  "sampling": {
+    "steps": 8,
+    "cfg": 2,
+    "scheduler": "simple",
+    "shift": 8,
+    "sampler": "euler",
+    "seed": 9122026,
+    "externalLora": null
+  },
+  "sourceStyleProfile": {
+    "style": "anime drawing; soft, blended outlines around figure and background elements; smooth cel shading with gradient transitions on skin and clothing; vivid saturation with high contrast, warm orange and green tones under bright sky; smooth digital paint texture on skin and fabric, no visible brushstrokes or grain",
+    "content": "A young woman with short bobbed black hair stands on a rural road. She wears an orange collared shirt with buttoned front, short sleeves, and green shorts with belt loops. A green backpack with straps is worn over her shoulders. She faces slightly right, looking toward viewer. Background shows winding road, grassy fields, distant hills, and blue sky with clouds. Lighting is bright, casting soft shadows on road and clothing.",
+    "medium": "anime drawing"
+  },
+  "styleTrigger": "smoothmixanime, anime style",
+  "promptFormat": "medium-first",
+  "promptChange": "Recorded source medium and content, expressed as 2D painted animation with author anime trigger; negative excludes photographic and 3D materials.",
+  "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+  "settingProvenance": "8-step Euler/simple suggested for author T2V v3; used as a v4 experiment. Shift 8 from original NovaFlow wash, not claimed as v4 author guidance.",
+  "outputBlend": false,
+  "productionDefaultChanged": false,
+  "startedAt": "2026-09-12T16:19:28.192Z",
+  "promptId": "d20a12d8-a10f-41e3-86b3-cc028ab65e8e",
+  "seconds": 27.645,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "d20a12d8-a10f-41e3-86b3-cc028ab65e8e",
+          "timestamp": 1789229968195
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [],
+          "prompt_id": "d20a12d8-a10f-41e3-86b3-cc028ab65e8e",
+          "timestamp": 1789229968201
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "d20a12d8-a10f-41e3-86b3-cc028ab65e8e",
+          "timestamp": 1789229995507
+        }
+      ]
+    ]
+  },
+  "output": {
+    "filename": "smooth-t2v-v4-simple-8-cfg2-shift8-medium-first-medium_00001_.png",
+    "subfolder": "NovaFlow_validation",
+    "type": "output"
+  },
+  "outputSha256": "ab2c307eea055ab2af08ab7912d16e823702bbbc478a34c1bfe0796087e18172"
+}

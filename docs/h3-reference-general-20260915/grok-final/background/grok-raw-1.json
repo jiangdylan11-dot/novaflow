@@ -1,0 +1,205 @@
+{
+  "created_at": 1789440231,
+  "completed_at": 1789440240,
+  "id": "35bf45b4-3c84-9e8e-8e44-7767c362148c",
+  "max_output_tokens": 4096,
+  "model": "grok-4.3",
+  "object": "response",
+  "output": [
+    {
+      "id": "rs_35bf45b4-3c84-9e8e-8e44-7767c362148c",
+      "summary": [
+        {
+          "text": "The task is to edit the reference video: change the green background to purple, keep the gold coin's appearance and actions.\n{\n  \"modelPrompt\": \"[video editing] The target video is an edited version of <Video 1>. The green background is replaced with purple while the gold coin's appearance and motion are fully retained. The coin continues its original rotation and flipping actions unchanged. The video duration remains 3 seconds.",
+          "type": "summary_text"
+        }
+      ],
+      "type": "reasoning",
+      "status": "completed"
+    },
+    {
+      "content": [
+        {
+          "type": "output_text",
+          "text": "{\n  \"modelPrompt\": {\n    \"subject_definitions\": \"<Subject 1> gold coin with fox-like emblem, appearance and motion from <Video 1>\\n<Video 1> source video showing the coin against green background\",\n    \"summary\": \"[video editing] The target video is an edited version of <Video 1>. Change the green background to purple while preserving the gold coin's appearance and motion.\",\n    \"retention_analysis\": \"<Subject 1>: fully_preserved - gold coin appearance and motion\\n<Video 1>: partially_preserved - coin motion and replaced background\",\n    \"detailed_description\": \"Retain reference appearance. [Shot 1] The gold coin <Subject 1> rotates and flips against a solid purple background over the full 3 seconds, exactly matching the original trajectory, orientation, speed and timing from <Video 1>.\",\n    \"overall_soundscape\": \"N/A\",\n    \"non_diegetic_music\": \"N/A\"\n  },\n  \"displayPrompt\": {\n    \"subject_definitions\": \"<Subject 1> 金币带有狐狸状标志，外观和动作来自 <Video 1>\\n<Video 1> 源视频显示金币在绿色背景前\",\n    \"summary\": \"[video editing] 目标视频是 <Video 1> 的编辑版本。将绿色背景改为紫色，同时保留金币的外观和动作。\",\n    \"retention_analysis\": \"<Subject 1>: fully_preserved - 金币外观和动作\\n<Video 1>: partially_preserved - 金币动作和替换后的背景\",\n    \"detailed_description\": \"保留参考外观。[Shot 1] 金币 <Subject 1> 在纯紫色背景前旋转翻转，持续完整3秒，完全匹配 <Video 1> 中的原始轨迹、方向、速度和时序。\",\n    \"overall_soundscape\": \"N/A\",\n    \"non_diegetic_music\": \"N/A\"\n  },\n  \"editPolicy\": {\n    \"preserveBackground\": false,\n    \"preserveMotion\": true,\n    \"sameShapeAppearanceOnly\": false\n  }\n}",
+          "logprobs": [],
+          "annotations": []
+        }
+      ],
+      "id": "msg_35bf45b4-3c84-9e8e-8e44-7767c362148c",
+      "role": "assistant",
+      "type": "message",
+      "status": "completed"
+    }
+  ],
+  "parallel_tool_calls": true,
+  "previous_response_id": null,
+  "reasoning": {
+    "effort": "low",
+    "summary": "detailed"
+  },
+  "temperature": 0.35,
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "modelPrompt": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "subject_definitions": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately."
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "retention_analysis": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. One rule per defined Subject and source Video; image attributes belong to the Subject using that picture."
+              },
+              "detailed_description": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "overall_soundscape": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. Use N/A for absent or unrequested audio, never an empty string."
+              },
+              "non_diegetic_music": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. Use N/A for absent or unrequested audio, never an empty string."
+              }
+            },
+            "required": [
+              "subject_definitions",
+              "summary",
+              "retention_analysis",
+              "detailed_description",
+              "overall_soundscape",
+              "non_diegetic_music"
+            ]
+          },
+          "displayPrompt": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "subject_definitions": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately."
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "retention_analysis": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 One rule per defined Subject and source Video; image attributes belong to the Subject using that picture."
+              },
+              "detailed_description": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "overall_soundscape": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 Use N/A for absent or unrequested audio, never an empty string."
+              },
+              "non_diegetic_music": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 Use N/A for absent or unrequested audio, never an empty string."
+              }
+            },
+            "required": [
+              "subject_definitions",
+              "summary",
+              "retention_analysis",
+              "detailed_description",
+              "overall_soundscape",
+              "non_diegetic_music"
+            ]
+          },
+          "editPolicy": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "preserveBackground": {
+                "type": "boolean"
+              },
+              "preserveMotion": {
+                "type": "boolean"
+              },
+              "sameShapeAppearanceOnly": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "preserveBackground",
+              "preserveMotion",
+              "sameShapeAppearanceOnly"
+            ]
+          }
+        },
+        "required": [
+          "modelPrompt",
+          "displayPrompt",
+          "editPolicy"
+        ]
+      }
+    }
+  },
+  "tool_choice": "auto",
+  "tools": [],
+  "top_p": 0.95,
+  "usage": {
+    "input_tokens": 9497,
+    "input_tokens_details": {
+      "cached_tokens": 192
+    },
+    "output_tokens": 935,
+    "output_tokens_details": {
+      "reasoning_tokens": 502
+    },
+    "total_tokens": 10432,
+    "num_sources_used": 0,
+    "num_server_side_tools_used": 0,
+    "cost_in_usd_ticks": 140071500,
+    "context_details": {
+      "input_tokens": 9497,
+      "output_tokens": 935
+    }
+  },
+  "user": null,
+  "incomplete_details": null,
+  "status": "completed",
+  "store": false,
+  "metadata": {
+    "system_fingerprint": "fp_eb3c003fc66c14ed"
+  },
+  "background": false,
+  "service_tier": "default",
+  "truncation": "disabled",
+  "top_logprobs": 0,
+  "presence_penalty": 0,
+  "frequency_penalty": 0,
+  "prompt_cache_key": null,
+  "max_tool_calls": null,
+  "safety_identifier": null,
+  "error": null,
+  "instructions": null
+}

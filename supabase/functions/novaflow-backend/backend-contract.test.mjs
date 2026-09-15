@@ -4769,7 +4769,11 @@ test("nf.visual.v2 semantic gates match the local static reverse contract", () =
   invalid.push(validVisualIrV2({ signals: Array.from({ length: 17 }, () => "nudity") }));
   invalid.push(validVisualIrV2({ sensitive_visible_facts: ["1", "2", "3", "4", "5", "6", "7"] }));
   invalid.push(validVisualIrV2({ visible_person_count: 0, age_assessment: "adult_appearing" }));
-  invalid.push(validVisualIrV2({ visible_person_count: 1, age_assessment: "not_applicable" }));
+  // A visible person with a "not applicable" age is completed fail-closed as
+  // unverifiable instead of discarding the whole analysis.
+  const coercedAge = parseGrokVisualIr(JSON.stringify(validVisualIrV2({ visible_person_count: 1, age_assessment: "not_applicable" })), "nf.visual.v2");
+  assert.equal(coercedAge?.content_safety?.age_assessment, "age_unverifiable");
+  if (coercedAge?.content_safety?.level !== "safe") assert.ok(coercedAge.content_safety.signals.includes("age_ambiguous"));
   invalid.push(validVisualIrV2({ visible_person_count: 2 }));
   invalid.push(validVisualIrV2({
     level: "safe",

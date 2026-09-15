@@ -1,0 +1,26 @@
+{
+  "references": [
+    {
+      "label": "<Subject 1>",
+      "sources": ["<Picture 1>"],
+      "description": "金币样式替换为金色圆形金币，表面有猫头图案浮雕，边缘有环形凸起，材质似金属，无透明度。",
+      "keep": "背景为纯绿色，旋转运动轨迹和时序保持原视频：0.000秒从正面开始，1.500秒到达最窄侧面，3.000秒回到正面。"
+    },
+    {
+      "label": "<Video 1>",
+      "sources": [],
+      "description": "源视频起始画面中央一枚金色圆形徽章，表面有立体猫头鹰图案，背景为纯绿色，徽章材质似金属，边缘有光泽，背景无其他元素。",
+      "keep": "背景纯绿色，旋转运动轨迹和时序完全保留：0.000秒从正面开始，1.500秒到达最窄侧面，3.000秒回到正面。"
+    }
+  ],
+  "tasks": ["video editing", "reference generation"],
+  "summary": "将<Video 1>中旋转的金币样式替换为<Picture 1>的样式，保持背景和运动轨迹。",
+  "description": "<Subject 1>在绿色纯色背景的画面中央旋转，0.000秒从正面开始，1.500秒到达最窄侧面，3.000秒回到正面。",
+  "soundscape": "N/A",
+  "music": "N/A",
+  "editPolicy": {
+    "preserveBackground": true,
+    "preserveMotion": true,
+    "sameShapeAppearanceOnly": false
+  }
+}

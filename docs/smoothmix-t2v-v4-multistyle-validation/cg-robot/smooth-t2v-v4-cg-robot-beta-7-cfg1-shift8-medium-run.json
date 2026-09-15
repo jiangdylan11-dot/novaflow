@@ -1,0 +1,70 @@
+{
+  "case": "smooth-t2v-v4-cg-robot-beta-7-cfg1-shift8-medium",
+  "status": "success",
+  "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+  "sourceSha256": "775f0befaad1a4875540e4b7b5caf4868c30e343fa759a89cd0457d7a834ad45",
+  "workflowSha256": "d4737a0657bb6bf49dc391b69b717f4e0ae8fc3742c737a23a5a21782fd33223",
+  "strength": 0.65,
+  "fixture": "cg-robot",
+  "baselineReused": false,
+  "baseline": null,
+  "sampling": {
+    "steps": 7,
+    "cfg": 1,
+    "scheduler": "beta",
+    "shift": 8,
+    "sampler": "euler",
+    "seed": 9122026,
+    "externalLora": null
+  },
+  "sourceStyleProfile": {
+    "medium": "3D rendering with cinematic lighting",
+    "style": "Stylized three-dimensional rendering with warm soft cinematic sunlight, physically shaded worn copper and green metal, rounded forms, amber glowing eyes, mossy wooden planters, shallow depth of field and blurred greenhouse foliage.",
+    "content": "A small rounded copper and green robot holds a metal watering can in one hand and stands among wooden planters in a lush greenhouse. It has a domed head with two antennae, a black faceplate with two circular glowing amber eyes, riveted joints and broad boots. Warm sunlight filters through greenhouse windows.",
+    "provenance": "Existing local source and recorded CG profile rechecked visually this turn; caption corrected to observed source. No old workflow rerun."
+  },
+  "styleTrigger": "",
+  "promptFormat": "baseline",
+  "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+  "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+  "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+  "outputBlend": false,
+  "productionDefaultChanged": false,
+  "startedAt": "2026-09-12T16:35:20.073Z",
+  "promptId": "cf2d6270-1782-463e-9341-1f123e6dcc37",
+  "seconds": 20.082,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "cf2d6270-1782-463e-9341-1f123e6dcc37",
+          "timestamp": 1789230920077
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [],
+          "prompt_id": "cf2d6270-1782-463e-9341-1f123e6dcc37",
+          "timestamp": 1789230920078
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "cf2d6270-1782-463e-9341-1f123e6dcc37",
+          "timestamp": 1789230938576
+        }
+      ]
+    ]
+  },
+  "output": {
+    "filename": "smooth-t2v-v4-cg-robot-beta-7-cfg1-shift8-medium_00001_.png",
+    "subfolder": "NovaFlow_validation",
+    "type": "output"
+  },
+  "outputSha256": "e76c44301cdfc165cae58f0f8b775d78c3fc3841aab492de848f837a9e0bb8cb"
+}

@@ -1,0 +1,50 @@
+{
+  "case": "remix-no-lora-medium",
+  "promptId": "933e3ae2-e2f4-457e-8a93-28f1eff95dbf",
+  "model": "Wan22\\wan22RemixT2VI2V_t2vLowV20-Q5_K_M.gguf",
+  "strength": 0.65,
+  "status": "success",
+  "baseline": "wan-medium",
+  "baselineReused": true,
+  "change": "weights and acceleration LoRA removed",
+  "reverseInference": "fixed baseline prompt; no reverse inference",
+  "seconds": 25.089,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "933e3ae2-e2f4-457e-8a93-28f1eff95dbf",
+          "timestamp": 1789201781798
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [
+            "1",
+            "2",
+            "3",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10"
+          ],
+          "prompt_id": "933e3ae2-e2f4-457e-8a93-28f1eff95dbf",
+          "timestamp": 1789201781802
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "933e3ae2-e2f4-457e-8a93-28f1eff95dbf",
+          "timestamp": 1789201806130
+        }
+      ]
+    ]
+  }
+}

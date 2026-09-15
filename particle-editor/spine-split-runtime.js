@@ -225,10 +225,20 @@
   const IMAGE_OUTPAINT_TIMEOUT_MS = 600000
   const IMAGE_OUTPAINT_SAFE_DIMENSION_STEP = 8
   const IMAGE_OUTPAINT_ORIGINAL_EDGE_FEATHER_PX = 24
-  // Shared by storyboard, local editing, angle adjustment and object transfer.
+  // NSFW option for storyboard, local editing and completion; the default chains use Qwen Image Edit 2511.
   const QWEN_RAPID_CHECKPOINT = 'Qwen-Rapid-AIO-NSFW-v20.safetensors'
   const IMAGE_ANGLE_ADJUST_TIMEOUT_MS = 600000
   const IMAGE_ANGLE_ADJUST_FILENAME_PREFIX = 'NovaFlow_angle_adjust'
+  // fp8mixed is preferred when present; the bf16 release is the copy kept in the legacy runtime.
+  const IMAGE_ANGLE_ADJUST_UNET = ['qwen_image_edit_2511_fp8mixed.safetensors', 'qwen_image_edit_2511_bf16.safetensors']
+  const IMAGE_ANGLE_ADJUST_CLIP = 'qwen_2.5_vl_7b_fp8_scaled.safetensors'
+  const IMAGE_ANGLE_ADJUST_VAE = 'qwen_image_vae.safetensors'
+  const IMAGE_ANGLE_ADJUST_LIGHTNING_LORAS = [
+    'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
+    'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
+    'Qwen-Image-Lightning-8steps-V2.0.safetensors',
+    'Qwen-Image-Lightning-8steps-V1.0.safetensors'
+  ]
   const IMAGE_ANGLE_ADJUST_MULTIANGLE_LORA = 'qwen-image-edit-2511-multiple-angles-lora.safetensors'
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_DEFAULT = 0
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_MIN = 0
@@ -245,6 +255,15 @@
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
   const OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE = '\u53c2\u8003\u7269\u4e3b\u4f53\u4e0d\u6e05\u6670\uff0c\u8bf7\u6362\u4e00\u5f20\u80cc\u666f\u66f4\u7b80\u5355\u7684\u56fe\u7247\u3002'
+  const OBJECT_TRANSFER_QWEN_UNETS = ['qwen_image_edit_2511_fp8mixed.safetensors', 'qwen_image_edit_2511_bf16.safetensors']
+  const OBJECT_TRANSFER_QWEN_CLIP = 'qwen_2.5_vl_7b_fp8_scaled.safetensors'
+  const OBJECT_TRANSFER_QWEN_VAE = 'qwen_image_vae.safetensors'
+  const OBJECT_TRANSFER_QWEN_LIGHTNING_LORAS = [
+    'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
+    'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
+    'Qwen-Image-Lightning-8steps-V2.0.safetensors',
+    'Qwen-Image-Lightning-8steps-V1.0.safetensors'
+  ]
   const STORYBOARD_MODEL_MODE_DEFAULT = 'default'
   const STORYBOARD_MODEL_MODE_NSFW = 'qwenNsfw'
   const STORYBOARD_QWEN_NSFW_CHECKPOINT = QWEN_RAPID_CHECKPOINT
@@ -469,7 +488,9 @@
     layerSourceName: '',
     fusionFeatherPx: 4,
     secondPassSplit: false,
-    includeFaceDetails: true,
+    includeFaceDetails: false,
+    splitLegs: true,
+    seeThroughHeadLayerNodeAvailable: false,
     splitPreviewDataUrl: '',
     splitPreviewRefreshToken: 0,
     splitPreviewRefreshTimer: 0,
@@ -1278,11 +1299,12 @@
   function showSeeThroughSplitModeDialog(size) {
     removeSplitModeDialog()
     if (!document.body) {
-      return Promise.resolve({ mode: 'default', steps: SEE_THROUGH_DEFAULT_STEPS })
+      return Promise.resolve({ mode: 'default', steps: SEE_THROUGH_DEFAULT_STEPS, faceDetails: !!state.includeFaceDetails })
     }
     let resolved = false
     let stepRange = null
     let stepNumber = null
+    let faceDetailsInput = null
     const sourceSizeText = `${Math.max(1, Math.round(Number(size && size.width) || 1))} x ${Math.max(1, Math.round(Number(size && size.height) || 1))}`
     return new Promise((resolve) => {
       ensureSplitModeDialogStyle()
@@ -1300,8 +1322,9 @@
         if (resolved) return
         resolved = true
         const steps = normalizeSeeThroughSteps(stepNumber && stepNumber.value)
+        const faceDetails = !!(faceDetailsInput && faceDetailsInput.checked)
         cleanup()
-        resolve({ mode, steps })
+        resolve({ mode, steps, faceDetails })
       }
       function handleKeydown(event) {
         if (event && event.key === 'Escape') {
@@ -1411,6 +1434,19 @@
           MozAppearance: 'textfield'
         }
       })
+      faceDetailsInput = h('input', {
+        type: 'checkbox',
+        'data-novaflow-split-face-details': '1',
+        checked: !!state.includeFaceDetails,
+        style: {
+          flex: '0 0 auto',
+          width: '16px',
+          height: '16px',
+          margin: '0',
+          accentColor: '#21ad78',
+          cursor: 'pointer'
+        }
+      })
       const overlay = h('div', {
         id: SPLIT_MODE_DIALOG_ID,
         role: 'dialog',
@@ -1499,10 +1535,22 @@
               stepNumber
             ])
           ]),
+          h('label', {
+            'data-novaflow-split-face-details-row': '1',
+            style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: 'pointer' }
+          }, [
+            h('div', { style: { minWidth: '0', display: 'grid', gap: '4px' } }, [
+              h('div', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.86)', fontWeight: '900' } }, '五官单独成层'),
+              h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.62)', lineHeight: '1.35' } }, '做眨眼、口型时打开：眉毛、眼白、眼珠、睫毛、鼻子、嘴巴、耳朵各自成层。关闭时由模型直接生成带五官的整脸，多约 2 分钟')
+            ]),
+            faceDetailsInput
+          ]),
           h('div', { style: { display: 'grid', gap: '6px', fontSize: '11px', lineHeight: '1.45', color: 'rgba(226,232,240,0.72)' } }, [
             h('div', null, '1. \u9ed8\u8ba4\u62c6\u56fe\uff1a\u901f\u5ea6\u66f4\u5feb\uff0c\u9002\u5408\u5e38\u89c4\u89d2\u8272\u62c6\u5c42\u3002'),
             h('div', null, '2. \u9ad8\u6e05\u62c6\u56fe\uff1a\u4fdd\u7559\u66f4\u591a\u7ec6\u8282\uff0c\u8017\u65f6\u660e\u663e\u589e\u52a0\u3002'),
-            h('div', null, '3. \u6b65\u6570\uff1a\u8d8a\u9ad8\u8d8a\u7a33\u5b9a\uff0c\u4f46\u8017\u65f6\u8d8a\u957f\u3002')
+            h('div', null, '3. \u6b65\u6570\uff1a\u8d8a\u9ad8\u8d8a\u7a33\u5b9a\uff0c\u4f46\u8017\u65f6\u8d8a\u957f\u3002'),
+            h('div', null, '4. 腿部：站姿自动拆成左右大腿、小腿和脚；坐姿、交叉腿会整块保留，用钢笔抠图手动拆。'),
+            h('div', null, '5. 五官：默认整脸一层；做眨眼、口型时打开五官单独成层。')
           ])
         ])
       ]))
@@ -5390,13 +5438,15 @@
   function buildQwenImageOutpaintWorkflow(info, imageName, prefix, delta, options = {}) {
     const required = [
       'LoadImage',
-      'CheckpointLoaderSimple',
       'ImagePadForOutpaint',
       'GetImageSizeAndCount',
       'Image Blank',
       'JoinImageWithAlpha',
       'ImageCompositeMasked',
       'FluxKontextImageScale',
+      'UNETLoader',
+      'CLIPLoader',
+      'VAELoader',
       'VAEEncode',
       'TextEncodeQwenImageEditPlus',
       'ConditioningZeroOut',
@@ -5406,10 +5456,28 @@
       'SaveImage'
     ]
     required.forEach((name) => requiredComfyNode(info, name))
+    const unet = requiredComfyNode(info, 'UNETLoader')
+    const clip = requiredComfyNode(info, 'CLIPLoader')
+    const vae = requiredComfyNode(info, 'VAELoader')
     const qwenText = requiredComfyNode(info, 'TextEncodeQwenImageEditPlus')
     const ksampler = requiredComfyNode(info, 'KSampler')
-    const checkpoint = requiredComfyNode(info, 'CheckpointLoaderSimple')
-    const checkpointName = requireComfyChoice(checkpoint, 'ckpt_name', QWEN_RAPID_CHECKPOINT, 'Qwen Rapid checkpoint')
+    const lora = info.LoraLoaderModelOnly || null
+    const aura = info.ModelSamplingAuraFlow || null
+    const cfgNorm = info.CFGNorm || null
+    const unetName = comfyChoiceFromCandidates(unet, 'unet_name', [
+      'qwen_image_edit_2511_fp8mixed.safetensors',
+      'qwen_image_edit_2511_bf16.safetensors'
+    ], 'Qwen Edit UNET')
+    const clipName = requireComfyChoice(clip, 'clip_name', 'qwen_2.5_vl_7b_fp8_scaled.safetensors', 'Qwen CLIP')
+    const vaeName = requireComfyChoice(vae, 'vae_name', 'qwen_image_vae.safetensors', 'Qwen VAE')
+    const lightningLora = lora
+      ? comfyChoiceFromCandidates(lora, 'lora_name', [
+        'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
+        'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
+        'Qwen-Image-Lightning-8steps-V2.0.safetensors',
+        'Qwen-Image-Lightning-8steps-V1.0.safetensors'
+      ], 'Qwen Edit Lightning LoRA', { optional: true })
+      : ''
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
       '2': { class_type: 'ImagePadForOutpaint', inputs: { left: Math.max(0, Math.round(Number(delta.left) || 0)), top: Math.max(0, Math.round(Number(delta.top) || 0)), right: Math.max(0, Math.round(Number(delta.right) || 0)), bottom: Math.max(0, Math.round(Number(delta.bottom) || 0)), feathering: imageOutpaintFeather(delta), image: ['1', 0] } },
@@ -5418,14 +5486,31 @@
       '5': { class_type: 'JoinImageWithAlpha', inputs: { image: ['4', 0], alpha: ['2', 1] } },
       '6': { class_type: 'ImageCompositeMasked', inputs: { x: 0, y: 0, resize_source: false, destination: ['2', 0], source: ['5', 0], mask: ['2', 1] } },
       '7': { class_type: 'FluxKontextImageScale', inputs: { image: ['6', 0] } },
-      '8': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: checkpointName } },
+      '8': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' }) },
+      '9': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: clipName, type: 'qwen_image', device: 'default' }) },
+      '10': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) }
     }
     let modelRef = ['8', 0]
     let nextId = 11
-    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: { pixels: ['6', 0], vae: ['8', 2] } }
+    if (lora && lightningLora) {
+      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: lightningLora, strength_model: 1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (aura) {
+      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 3 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (cfgNorm) {
+      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: { pixels: ['6', 0], vae: ['10', 0] } }
     const latentRef = [String(nextId), 0]
     nextId += 1
-    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: imageOutpaintPromptText(), clip: ['8', 1], image1: ['7', 0] }) }
+    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: imageOutpaintPromptText(), clip: ['9', 0], image1: ['7', 0] }) }
     const positiveRef = [String(nextId), 0]
     nextId += 1
     workflow[String(nextId)] = { class_type: 'ReferenceLatent', inputs: { conditioning: positiveRef, latent: latentRef } }
@@ -5442,23 +5527,26 @@
         negative: negativeRef,
         latent_image: latentRef,
         seed: Math.floor(Math.random() * 1000000000),
-        steps: 6,
+        steps: 5,
         cfg: 1,
-        sampler_name: 'euler_ancestral',
-        scheduler: 'beta',
+        sampler_name: 'euler',
+        scheduler: 'simple',
         denoise: 1
       })
     }
     const samplesRef = [String(nextId), 0]
     nextId += 1
-    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: { samples: samplesRef, vae: ['8', 2] } }
+    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: { samples: samplesRef, vae: ['10', 0] } }
     const imageRef = [String(nextId), 0]
     nextId += 1
     workflow[String(nextId)] = { class_type: 'SaveImage', inputs: { images: imageRef, filename_prefix: prefix } }
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       imageOutpaint: {
-        checkpoint: checkpointName,
+        unet: unetName,
+        clip: clipName,
+        vae: vaeName,
+        lora: lightningLora,
         feathering: imageOutpaintFeather(delta),
         delta: { top: delta.top, bottom: delta.bottom, left: delta.left, right: delta.right },
         latentSource: 'target-padded-composite',
@@ -5478,7 +5566,7 @@
     const uploadName = await uploadDataUrl(baseUrl, safeDownloadFileName(fileName || 'source.png', 'source.png'), dataUrl)
     const prefix = `novaflow_outpaint_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
     const workflow = buildQwenImageOutpaintWorkflow(info, uploadName, prefix, delta, options)
-    setSplitBusyDetail(`Qwen Rapid v20\n${nextSize.width} x ${nextSize.height} px`)
+    setSplitBusyDetail(`Qwen Image Edit 2511\n${nextSize.width} x ${nextSize.height} px`)
     return await runPromptForFirstImage(baseUrl, workflow, prefix, IMAGE_OUTPAINT_TIMEOUT_MS)
   }
 
@@ -5632,7 +5720,7 @@
     state.busy = true
     state.busyAction = 'imageOutpaint'
     state.busyStartedAt = Date.now()
-    state.busyDetail = `Qwen Rapid v20\n${nextSize.width} x ${nextSize.height} px`
+    state.busyDetail = `Qwen Image Edit 2511\n${nextSize.width} x ${nextSize.height} px`
     syncSplitGlobalBusyOverlay()
     try {
       const rawResult = await runQwenImageOutpaint(dataUrl, fileName, plan.delta, nextSize, {
@@ -5772,7 +5860,7 @@
     state.busy = true
     state.busyAction = 'imageOutpaint'
     state.busyStartedAt = Date.now()
-    state.busyDetail = `Qwen Rapid v20\n${nextSize.width} x ${nextSize.height} px`
+    state.busyDetail = `Qwen Image Edit 2511\n${nextSize.width} x ${nextSize.height} px`
     setMessage(plan && plan.optimized ? `无限扩图生成中... 尺寸已优化为 ${nextSize.width} x ${nextSize.height}` : '无限扩图生成中...')
     render()
     syncSplitWorkspace()
@@ -6060,8 +6148,12 @@
   function buildImageAngleAdjustWorkflow(info, imageName, options = {}) {
     const required = [
       'LoadImage',
-      'CheckpointLoaderSimple',
+      'UNETLoader',
+      'CLIPLoader',
+      'VAELoader',
       'LoraLoaderModelOnly',
+      'ModelSamplingAuraFlow',
+      'CFGNorm',
       'VAEEncode',
       'TextEncodeQwenImageEditPlus',
       'QwenMultiangleCameraNode',
@@ -6071,7 +6163,12 @@
       'SaveImage'
     ]
     required.forEach((name) => requiredComfyNode(info, name))
+    const unet = requiredComfyNode(info, 'UNETLoader')
+    const clip = requiredComfyNode(info, 'CLIPLoader')
+    const vae = requiredComfyNode(info, 'VAELoader')
     const lora = requiredComfyNode(info, 'LoraLoaderModelOnly')
+    const aura = requiredComfyNode(info, 'ModelSamplingAuraFlow')
+    const cfgNorm = requiredComfyNode(info, 'CFGNorm')
     const vaeEncode = requiredComfyNode(info, 'VAEEncode')
     const qwenText = requiredComfyNode(info, 'TextEncodeQwenImageEditPlus')
     const multiangle = requiredComfyNode(info, 'QwenMultiangleCameraNode')
@@ -6081,40 +6178,49 @@
     const horizontalAngle = normalizeImageAngleHorizontal(options.horizontalAngle)
     const verticalAngle = normalizeImageAngleVertical(options.verticalAngle)
     const zoom = normalizeImageAngleZoom(options.zoom)
-    const checkpoint = requiredComfyNode(info, 'CheckpointLoaderSimple')
-    const checkpointName = requiredImageAngleChoice(checkpoint, 'ckpt_name', QWEN_RAPID_CHECKPOINT, 'Qwen Rapid checkpoint')
+    const unetName = requiredImageAngleChoice(unet, 'unet_name', IMAGE_ANGLE_ADJUST_UNET, 'Qwen angle UNET')
+    const clipName = requiredImageAngleChoice(clip, 'clip_name', IMAGE_ANGLE_ADJUST_CLIP, 'Qwen CLIP')
+    const vaeName = requiredImageAngleChoice(vae, 'vae_name', IMAGE_ANGLE_ADJUST_VAE, 'Qwen VAE')
+    const lightningLora = requiredImageAngleChoice(lora, 'lora_name', IMAGE_ANGLE_ADJUST_LIGHTNING_LORAS, 'Qwen angle Lightning LoRA')
     const multiangleLora = requiredImageAngleChoice(lora, 'lora_name', IMAGE_ANGLE_ADJUST_MULTIANGLE_LORA, 'Qwen Multiangle LoRA')
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '2': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: checkpointName } },
-      '4': { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: ['2', 0], lora_name: multiangleLora, strength_model: 1 }) },
+      '2': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' }) },
+      '3': { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: ['2', 0], lora_name: lightningLora, strength_model: 1 }) },
+      '4': { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: ['3', 0], lora_name: multiangleLora, strength_model: 1 }) },
+      '5': { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: ['4', 0], shift: 3 }) },
+      '6': { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: ['5', 0], strength: 1 }) },
+      '7': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) },
+      '8': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: clipName, type: 'qwen_image', device: 'default' }) },
       '9': { class_type: 'QwenMultiangleCameraNode', inputs: buildComfyNodeInputs(multiangle, { image: ['1', 0], horizontal_angle: horizontalAngle, vertical_angle: verticalAngle, zoom, default_prompts: false, camera_view: false }) },
-      '10': { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { clip: ['2', 1], vae: ['2', 2], image1: ['1', 0], prompt: ['9', 0] }) },
+      '10': { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { clip: ['8', 0], vae: ['7', 0], image1: ['1', 0], prompt: ['9', 0] }) },
       '11': { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['10', 0] } },
-      '12': { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['1', 0], vae: ['2', 2] }) },
+      '12': { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['1', 0], vae: ['7', 0] }) },
       '13': {
         class_type: 'KSampler',
         inputs: buildComfyNodeInputs(ksampler, {
-          model: ['4', 0],
+          model: ['6', 0],
           positive: ['10', 0],
           negative: ['11', 0],
           latent_image: ['12', 0],
           seed: Math.floor(Math.random() * 1000000000),
           steps: 6,
           cfg: 1,
-          sampler_name: 'euler_ancestral',
-          scheduler: 'beta',
+          sampler_name: 'euler',
+          scheduler: 'simple',
           denoise: 1
         })
       },
-      '14': { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(vaeDecode, { samples: ['13', 0], vae: ['2', 2] }) },
+      '14': { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(vaeDecode, { samples: ['13', 0], vae: ['7', 0] }) },
       '15': { class_type: 'SaveImage', inputs: buildComfyNodeInputs(saveImage, { images: ['14', 0], filename_prefix: IMAGE_ANGLE_ADJUST_FILENAME_PREFIX }) }
     }
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       imageAngleAdjust: {
-        checkpoint: checkpointName,
-        loras: [multiangleLora],
+        unet: unetName,
+        clip: clipName,
+        vae: vaeName,
+        loras: [lightningLora, multiangleLora],
         horizontalAngle,
         verticalAngle,
         zoom,
@@ -6219,7 +6325,7 @@
   }
 
   function normalizeStoryboardModelMode(value) {
-    return STORYBOARD_MODEL_MODE_NSFW // Includes legacy persisted 'default' values.
+    return String(value || '') === STORYBOARD_MODEL_MODE_NSFW ? STORYBOARD_MODEL_MODE_NSFW : STORYBOARD_MODEL_MODE_DEFAULT
   }
 
   function storyboardUsesNsfwModel(value) {
@@ -6267,7 +6373,7 @@
         resolve(value)
       }
       let selectedPresetId = STORYBOARD_DEFAULT_FRAME_PRESET_ID
-      const nsfwEnabled = true
+      let nsfwEnabled = false
       let grokEnabled = false
       const referenceStrength = STORYBOARD_REFERENCE_STRENGTH_DEFAULT
       const resolutionButtons = []
@@ -6368,6 +6474,68 @@
           boxSizing: 'border-box'
         }
       })
+      let nsfwToggleTrack = null
+      let nsfwToggleKnob = null
+      const updateNsfwToggle = () => {
+        if (!nsfwToggleTrack || !nsfwToggleKnob) return
+        nsfwToggleButton.setAttribute('aria-pressed', nsfwEnabled ? 'true' : 'false')
+        nsfwToggleTrack.style.background = nsfwEnabled ? SPLIT_ACTIVE_BACKGROUND : '#303337'
+        nsfwToggleKnob.style.transform = nsfwEnabled ? 'translateX(14px)' : 'translateX(0)'
+        nsfwToggleKnob.style.background = nsfwEnabled ? '#fff' : 'rgba(178,188,198,0.78)'
+      }
+      nsfwToggleKnob = h('span', {
+        style: {
+          width: '10px',
+          height: '10px',
+          borderRadius: '999px',
+          background: 'rgba(178,188,198,0.78)',
+          transition: 'transform 120ms ease, background 120ms ease',
+          display: 'block'
+        }
+      })
+      nsfwToggleTrack = h('span', {
+        style: {
+          width: '30px',
+          height: '16px',
+          borderRadius: '999px',
+          border: '0',
+          background: '#303337',
+          padding: '3px',
+          boxSizing: 'border-box',
+          display: 'flex',
+          alignItems: 'center',
+          flex: '0 0 auto'
+        }
+      }, nsfwToggleKnob)
+      const nsfwToggleButton = h('button', {
+        type: 'button',
+        'aria-pressed': 'false',
+        'aria-label': 'NSFW',
+        onclick: () => {
+          nsfwEnabled = !nsfwEnabled
+          updateNsfwToggle()
+        },
+        style: {
+          width: 'fit-content',
+          height: '24px',
+          padding: '0',
+          border: '0',
+          background: 'transparent',
+          color: '#fff',
+          cursor: 'pointer',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '8px',
+          fontSize: '12px',
+          fontWeight: '400',
+          lineHeight: '1',
+          justifySelf: 'start'
+        }
+      }, [
+        h('span', { style: { fontSize: '12px', fontWeight: '400', lineHeight: '1', color: '#fff' } }, 'NSFW'),
+        nsfwToggleTrack
+      ])
+      updateNsfwToggle()
       let grokToggleTrack = null
       let grokToggleKnob = null
       const updateGrokToggle = () => {
@@ -6455,6 +6623,7 @@
               STORYBOARD_FRAME_PRESETS.map((preset) => makeResolutionButton(preset)))
           ]),
           h('div', { style: { display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap' } }, [
+            nsfwToggleButton,
             grokToggleButton
           ]),
           loginHint,
@@ -12715,7 +12884,189 @@
   }
 
   function buildStoryboardSceneWorkflow(info, imageName, prefix, promptText, frameSize, modelMode, options = {}) {
-    return buildStoryboardNsfwSceneWorkflow(info, imageName, prefix, promptText, normalizeStoryboardFrameSize(frameSize), options)
+    const frame = normalizeStoryboardFrameSize(frameSize)
+    const mode = normalizeStoryboardModelMode(modelMode)
+    if (storyboardUsesNsfwModel(mode)) return buildStoryboardNsfwSceneWorkflow(info, imageName, prefix, promptText, frame, options)
+    const hasReferenceImage = !!String(imageName || '').trim()
+    const styleReferenceImageName = String(options && options.styleReferenceImageName || '').trim()
+    const hasStyleReferenceImage = hasReferenceImage && !!styleReferenceImageName && styleReferenceImageName !== String(imageName || '').trim()
+    const referenceOptions = storyboardReferenceWorkflowOptions(options)
+    const shouldUseReferenceLatent = hasReferenceImage && storyboardUsesReferenceLatent(referenceOptions.referenceStrength)
+    const prompt = options && options.disablePromptExpansion
+      ? String(promptText || '').trim()
+      : storyboardEnsureSingleFramePrompt(promptText, { referenceImage: hasReferenceImage })
+    if (!prompt) throw new Error('Storyboard prompt is empty')
+    const emptyLatent = storyboardEmptyLatentNode(info)
+    const required = ['UNETLoader', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImageEditPlus', 'ConditioningZeroOut', 'KSampler', 'VAEDecode', 'SaveImage']
+    required.forEach((name) => requiredComfyNode(info, name))
+    requiredComfyNode(info, emptyLatent.name)
+    const unet = requiredComfyNode(info, 'UNETLoader')
+    const clip = requiredComfyNode(info, 'CLIPLoader')
+    const vae = requiredComfyNode(info, 'VAELoader')
+    const qwenText = requiredComfyNode(info, 'TextEncodeQwenImageEditPlus')
+    const ksampler = requiredComfyNode(info, 'KSampler')
+    const lora = info.LoraLoaderModelOnly || null
+    const aura = info.ModelSamplingAuraFlow || null
+    const cfgNorm = info.CFGNorm || null
+    const fluxScale = info.FluxKontextImageScale || null
+    const imageScale = info.ImageScale || null
+    const vaeEncode = info.VAEEncode || null
+    const multiReference = info.FluxKontextMultiReferenceLatentMethod || null
+    const unetName = comfyChoiceFromCandidates(unet, 'unet_name', [
+      'qwen_image_edit_2511_fp8mixed.safetensors',
+      'qwen_image_edit_2511_bf16.safetensors'
+    ], 'Qwen Edit UNET')
+    const clipName = requireComfyChoice(clip, 'clip_name', 'qwen_2.5_vl_7b_fp8_scaled.safetensors', 'Qwen CLIP')
+    const vaeName = requireComfyChoice(vae, 'vae_name', 'qwen_image_vae.safetensors', 'Qwen VAE')
+    const lightningLora = lora
+      ? comfyChoiceFromCandidates(lora, 'lora_name', [
+        'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
+        'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
+        'Qwen-Image-Lightning-8steps-V2.0.safetensors',
+        'Qwen-Image-Lightning-8steps-V1.0.safetensors'
+      ], 'Qwen Edit Lightning LoRA', { optional: true })
+      : ''
+    const workflow = {
+      '2': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' }) },
+      '3': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: clipName, type: 'qwen_image', device: 'default' }) },
+      '4': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) },
+      '5': { class_type: emptyLatent.name, inputs: storyboardEmptyLatentInputs(emptyLatent.name, emptyLatent.info, frame) }
+    }
+    let modelRef = ['2', 0]
+    let latentRef = ['5', 0]
+    let usesReferenceLatent = false
+    let referenceImageRef = hasReferenceImage ? ['1', 0] : null
+    let styleReferenceImageRef = null
+    let referenceWorkflowMode = hasReferenceImage ? 'qwen_edit_reference_condition_only_no_latent' : 'qwen_edit_text_to_image'
+    let nextId = 6
+    if (hasReferenceImage) {
+      workflow['1'] = { class_type: 'LoadImage', inputs: { image: imageName } }
+    }
+    if (hasStyleReferenceImage) {
+      workflow[String(nextId)] = { class_type: 'LoadImage', inputs: { image: styleReferenceImageName } }
+      styleReferenceImageRef = [String(nextId), 0]
+      nextId += 1
+      referenceWorkflowMode = 'qwen_edit_subject_reference_plus_style_reference'
+    }
+    if (shouldUseReferenceLatent && imageScale && vaeEncode) {
+      workflow[String(nextId)] = {
+        class_type: 'ImageScale',
+        inputs: buildComfyNodeInputs(imageScale, {
+          image: ['1', 0],
+          upscale_method: 'lanczos',
+          width: frame.width,
+          height: frame.height,
+          crop: 'center'
+        })
+      }
+      const scaledLatentImageRef = [String(nextId), 0]
+      nextId += 1
+      workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: scaledLatentImageRef, vae: ['4', 0] }) }
+      latentRef = [String(nextId), 0]
+      usesReferenceLatent = true
+      referenceWorkflowMode = multiReference ? 'qwen_edit_reference_controlled_img2img_multiref' : 'qwen_edit_reference_controlled_img2img'
+      nextId += 1
+    }
+    if (hasReferenceImage && fluxScale) {
+      workflow[String(nextId)] = { class_type: 'FluxKontextImageScale', inputs: buildComfyNodeInputs(fluxScale, { image: ['1', 0] }) }
+      referenceImageRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (hasStyleReferenceImage && fluxScale && styleReferenceImageRef) {
+      workflow[String(nextId)] = { class_type: 'FluxKontextImageScale', inputs: buildComfyNodeInputs(fluxScale, { image: styleReferenceImageRef }) }
+      styleReferenceImageRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (lora && lightningLora) {
+      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: lightningLora, strength_model: 1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (aura) {
+      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 3 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (cfgNorm) {
+      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    const positiveInputs = { prompt, clip: ['3', 0], vae: ['4', 0] }
+    if (referenceImageRef) positiveInputs.image1 = referenceImageRef
+    if (styleReferenceImageRef) positiveInputs.image2 = styleReferenceImageRef
+    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, positiveInputs) }
+    const positiveRef = [String(nextId), 0]
+    nextId += 1
+    let finalPositiveRef = positiveRef
+    if (hasReferenceImage && multiReference) {
+      workflow[String(nextId)] = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: buildComfyNodeInputs(multiReference, { conditioning: finalPositiveRef, reference_latents_method: 'index_timestep_zero' }) }
+      finalPositiveRef = [String(nextId), 0]
+      nextId += 1
+    }
+    let negativeRef = null
+    if (hasReferenceImage) {
+      const negativeInputs = { prompt: STORYBOARD_NEGATIVE_PROMPT, clip: ['3', 0], vae: ['4', 0] }
+      if (referenceImageRef) negativeInputs.image1 = referenceImageRef
+      if (styleReferenceImageRef) negativeInputs.image2 = styleReferenceImageRef
+      workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, negativeInputs) }
+      negativeRef = [String(nextId), 0]
+      nextId += 1
+      if (multiReference) {
+        workflow[String(nextId)] = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: buildComfyNodeInputs(multiReference, { conditioning: negativeRef, reference_latents_method: 'index_timestep_zero' }) }
+        negativeRef = [String(nextId), 0]
+        nextId += 1
+      }
+    } else {
+      workflow[String(nextId)] = {
+        class_type: 'TextEncodeQwenImageEditPlus',
+        inputs: buildComfyNodeInputs(qwenText, { prompt: STORYBOARD_NEGATIVE_PROMPT, clip: ['3', 0], vae: ['4', 0] })
+      }
+      negativeRef = [String(nextId), 0]
+      nextId += 1
+    }
+    const usesLightning = !!lightningLora
+    workflow[String(nextId)] = {
+      class_type: 'KSampler',
+      inputs: buildComfyNodeInputs(ksampler, {
+        model: modelRef,
+        positive: finalPositiveRef,
+        negative: negativeRef,
+        latent_image: latentRef,
+        seed: Math.floor(Math.random() * 1000000000),
+        steps: usesLightning ? 6 : 28,
+        cfg: usesLightning ? 1 : 4,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        denoise: hasReferenceImage && usesReferenceLatent ? referenceOptions.referenceDenoise : 1
+      })
+    }
+    const samplesRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: { samples: samplesRef, vae: ['4', 0] } }
+    const imageRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: { images: imageRef, filename_prefix: prefix } }
+    state.lastProcessingDebug = {
+      ...(state.lastProcessingDebug || {}),
+      storyboard: {
+        mode,
+        unet: unetName,
+        clip: clipName,
+        vae: vaeName,
+        lora: lightningLora,
+        latent: hasReferenceImage && usesReferenceLatent ? 'reference_scaled_vae_latent' : emptyLatent.name,
+        referenceWorkflowMode,
+        referenceStrength: referenceOptions.referenceStrength,
+        denoise: hasReferenceImage && usesReferenceLatent ? referenceOptions.referenceDenoise : 1,
+        hasReferenceImage,
+        hasStyleReferenceImage,
+        multiReference: !!(hasReferenceImage && multiReference),
+        size: `${frame.width}x${frame.height}`,
+        promptHead: prompt.slice(0, 500)
+      }
+    }
+    return workflow
   }
 
   async function runStoryboardSceneImage(baseUrl, info, uploadedName, scene, promptText, frameSize, modelMode, options = {}) {
@@ -15087,7 +15438,9 @@
     const requiredNodes = [
       'LoadImage',
       'FluxKontextImageScale',
-      'CheckpointLoaderSimple',
+      'UNETLoader',
+      'CLIPLoader',
+      'VAELoader',
       'VAEEncode',
       'TextEncodeQwenImageEditPlus',
       'ConditioningZeroOut',
@@ -15097,8 +15450,13 @@
     ]
     const missing = requiredNodes.filter((name) => !info || !info[name])
     if (missing.length) throw new Error(OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE)
-    const checkpointName = objectTransferChoice(info.CheckpointLoaderSimple, 'ckpt_name', QWEN_RAPID_CHECKPOINT, 'Qwen Rapid checkpoint')
-    return { checkpointName }
+    const unetName = objectTransferChoice(info.UNETLoader, 'unet_name', OBJECT_TRANSFER_QWEN_UNETS, 'Qwen Edit UNET')
+    const clipName = objectTransferChoice(info.CLIPLoader, 'clip_name', OBJECT_TRANSFER_QWEN_CLIP, 'Qwen CLIP')
+    const vaeName = objectTransferChoice(info.VAELoader, 'vae_name', OBJECT_TRANSFER_QWEN_VAE, 'Qwen VAE')
+    const loraName = info.LoraLoaderModelOnly
+      ? comfyChoiceFromCandidates(info.LoraLoaderModelOnly, 'lora_name', OBJECT_TRANSFER_QWEN_LIGHTNING_LORAS, 'Qwen Edit Lightning LoRA', { optional: true })
+      : ''
+    return { unetName, clipName, vaeName, loraName }
   }
 
   function objectTransferPromptText() {
@@ -15116,23 +15474,44 @@
 
   function buildObjectTransferQwenWorkflow(info, uploads, prefix, resolved) {
     const ksampler = info.KSampler
+    const vaeLoader = info.VAELoader
     const qwenText = info.TextEncodeQwenImageEditPlus
+    const unet = info.UNETLoader
+    const clip = info.CLIPLoader
     const fluxScale = info.FluxKontextImageScale
     const vaeEncode = info.VAEEncode
-    const checkpoint = requiredComfyNode(info, 'CheckpointLoaderSimple')
-    const checkpointName = resolved.checkpointName
+    const lora = info.LoraLoaderModelOnly || null
+    const aura = info.ModelSamplingAuraFlow || null
+    const cfgNorm = info.CFGNorm || null
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: uploads.placementName } },
       '2': { class_type: 'LoadImage', inputs: { image: uploads.referenceName } },
       '3': { class_type: 'FluxKontextImageScale', inputs: buildComfyNodeInputs(fluxScale, { image: ['1', 0] }) },
-      '4': { class_type: 'CheckpointLoaderSimple', inputs: { ckpt_name: checkpointName } },
+      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: resolved.unetName, weight_dtype: 'fp8_e4m3fn' }) },
+      '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
+      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vaeLoader, { vae_name: resolved.vaeName }) }
     }
     let modelRef = ['4', 0]
     let nextId = 7
-    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['3', 0], vae: ['4', 2] }) }
+    if (lora && resolved.loraName) {
+      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: resolved.loraName, strength_model: 1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (aura) {
+      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 1.5 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (cfgNorm) {
+      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['3', 0], vae: ['6', 0] }) }
     const latentRef = [String(nextId), 0]
     nextId += 1
-    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: objectTransferPromptText(), clip: ['4', 1], vae: ['4', 2], image1: ['3', 0], image2: ['2', 0] }) }
+    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: objectTransferPromptText(), clip: ['5', 0], vae: ['6', 0], image1: ['3', 0], image2: ['2', 0] }) }
     const positiveRef = [String(nextId), 0]
     nextId += 1
     workflow[String(nextId)] = { class_type: 'ConditioningZeroOut', inputs: { conditioning: positiveRef } }
@@ -15142,10 +15521,10 @@
       class_type: 'KSampler',
       inputs: buildComfyNodeInputs(ksampler, {
         seed: Math.floor(Math.random() * 1000000000),
-        steps: 6,
+        steps: resolved.loraName ? 6 : 30,
         cfg: 1,
-        sampler_name: 'euler_ancestral',
-        scheduler: 'beta',
+        sampler_name: 'euler',
+        scheduler: 'simple',
         denoise: 1,
         model: modelRef,
         positive: positiveRef,
@@ -15155,7 +15534,7 @@
     }
     const samplerRef = [String(nextId), 0]
     nextId += 1
-    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(info.VAEDecode, { samples: samplerRef, vae: ['4', 2] }) }
+    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(info.VAEDecode, { samples: samplerRef, vae: ['6', 0] }) }
     const decodedRef = [String(nextId), 0]
     nextId += 1
     workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: decodedRef }) }
@@ -15163,7 +15542,10 @@
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
         workflow: 'qwen-image-edit-object-transfer',
-        checkpoint: checkpointName,
+        unet: resolved.unetName,
+        lora: resolved.loraName,
+        clip: resolved.clipName,
+        vae: resolved.vaeName,
         promptHead: objectTransferPromptText().slice(0, 1000)
       }
     }
@@ -15411,7 +15793,7 @@
         runtimeInputs: { placementName, referenceName }
       }
     }
-    setSplitBusyDetail(`Qwen Rapid v20\n${assets.size.width} x ${assets.size.height} px`)
+    setSplitBusyDetail(`Qwen Image Edit 2511\n${assets.size.width} x ${assets.size.height} px`)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, runId, OBJECT_TRANSFER_TIMEOUT_MS)
     return await objectTransferProtectedResultDataUrl(resultDataUrl, assets)
   }
@@ -15713,7 +16095,7 @@
         outputMode: 'replacement'
       }
     }
-    const rapidAioNsfwRequested = true // Local edit/completion now share the existing Rapid route.
+    const rapidAioNsfwRequested = provider === true || provider === 'qwen-rapid-aio-nsfw-v20' || provider === 'rapid-aio-nsfw'
     if (selectionInpaintNsfwAvailable(normalizedMode) && rapidAioNsfwRequested) {
       return {
         mode: normalizedMode,
@@ -15939,7 +16321,179 @@
   }
 
   async function defaultQwenInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
-    return defaultRapidAioNsfwInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options)
+    const route = options && options.route || resolveInpaintWorkflowRoute(options && options.inpaintMode, options && options.inpaintProvider)
+    const info = await comfyAllObjectInfo(baseUrl).catch(() => ({}))
+    const textNodeName = info.TextEncodeQwenImageEditPlusAdvance_lrzjason
+      ? 'TextEncodeQwenImageEditPlusAdvance_lrzjason'
+      : 'TextEncodeQwenImageEditPlusAdvance'
+    const required = [
+      'UNETLoader',
+      'CLIPLoader',
+      'VAELoader',
+      'TextEncodeQwenImageEdit',
+      textNodeName,
+      'KSampler',
+      'VAEDecode',
+      'SaveImage',
+      'ImageToMask'
+    ]
+    required.forEach((name) => requiredComfyNode(info, name))
+    const unet = requiredComfyNode(info, 'UNETLoader')
+    const clip = requiredComfyNode(info, 'CLIPLoader')
+    const vae = requiredComfyNode(info, 'VAELoader')
+    const qwenText = requiredComfyNode(info, textNodeName)
+    const negText = requiredComfyNode(info, 'TextEncodeQwenImageEdit')
+    const ksampler = requiredComfyNode(info, 'KSampler')
+    const isEditV5 = !!(route && route.mode === 'edit' && route.editV5)
+    const editV5NoLightningLora = '__novaflow_edit_v5_no_lightning_lora__'
+    const lora = route.v4 && !isEditV5 ? requiredComfyNode(info, 'LoraLoaderModelOnly') : (info.LoraLoaderModelOnly || null)
+    const aura = info.ModelSamplingAuraFlow || null
+    const cfgNorm = info.CFGNorm || null
+    // The 2511 test line also accepts the bf16 release kept in the legacy runtime; it is cast to fp8 at load time.
+    const unetName = isEditV5
+      ? comfyChoiceFromCandidates(unet, 'unet_name', [
+        'qwen_image_edit_2511_fp8mixed.safetensors',
+        'qwen_image_edit_2511_bf16.safetensors'
+      ], 'Qwen Edit UNET')
+      : comfyChoiceFromCandidates(unet, 'unet_name', [
+        'Qwen-Image-Edit-2509_fp8_e4m3fn.safetensors',
+        'qwen_image_edit_2511_fp8mixed.safetensors',
+        'qwen_image_edit_2511_bf16.safetensors'
+      ], 'Qwen UNET')
+    const qwenInpaintUses2511 = /2511/.test(unetName)
+    const unetWeightDtype = /bf16/.test(unetName) ? 'fp8_e4m3fn' : 'default'
+    const clipName = requireComfyChoice(clip, 'clip_name', 'qwen_2.5_vl_7b_fp8_scaled.safetensors', 'Qwen CLIP')
+    const vaeName = requireComfyChoice(vae, 'vae_name', 'qwen_image_vae.safetensors', 'Qwen VAE')
+    const eigenLora = lora
+      ? isEditV5
+        ? ''
+        : qwenInpaintUses2511
+          ? '' // The 2509 adapter stays off the 2511 base.
+          : (route.v4 ? requireComfyChoice(lora, 'lora_name', 'eigen-banana-qwen-image-edit-2509-fp16-lora.safetensors', 'Qwen edit LoRA') : optionalComfyChoice(lora, 'lora_name', 'eigen-banana-qwen-image-edit-2509-fp16-lora.safetensors', []))
+      : ''
+    const lightningLora = lora
+      ? isEditV5
+        ? comfyChoiceFromCandidates(lora, 'lora_name', [
+          'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
+          'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
+          'Qwen-Image-Lightning-8steps-V2.0.safetensors',
+          'Qwen-Image-Lightning-8steps-V1.0.safetensors'
+        ], 'Qwen Edit Lightning LoRA', { optional: true }) || editV5NoLightningLora
+        : qwenInpaintUses2511
+          ? optionalComfyChoice(lora, 'lora_name', 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors', [
+            'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
+            'Qwen-Image-Lightning-8steps-V2.0.safetensors',
+            'Qwen-Image-Lightning-8steps-V1.0.safetensors'
+          ])
+          : optionalComfyChoice(lora, 'lora_name', 'Qwen-Image-Lightning-8steps-V2.0.safetensors', [
+            'Qwen-Image-Lightning-8steps-V1.0.safetensors',
+            'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
+            'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors'
+          ])
+      : ''
+    if (lora && !lightningLora) throw new Error('NovaFlow AI Runtime 缺少 Qwen inpaint 加速 LoRA，不能输出假修图')
+    const inpaintMode = normalizeSelectionInpaintMode(options && options.inpaintMode)
+    const stableInpaintSeed = 746924259
+    const fixedSeed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed))) : null
+    const seed = fixedSeed == null ? stableInpaintSeed : fixedSeed
+    const { prompt, instruction } = qwenRetouchPromptParts(promptText, route)
+    setInpaintDebugAttr('workflow-mode', inpaintMode)
+    setInpaintDebugAttr('workflow-provider', route.provider)
+    setInpaintDebugAttr('workflow-prompt-head', prompt.slice(0, 1000))
+    const workflow = {
+      '1': { class_type: 'LoadImage', inputs: { image: imageName } },
+      '2': { class_type: 'LoadImage', inputs: { image: maskName } },
+      '3': { class_type: 'ImageToMask', inputs: { image: ['2', 0], channel: 'red' } },
+      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: unetName, weight_dtype: unetWeightDtype }) },
+      '5': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) },
+      '6': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: clipName, type: 'qwen_image', device: 'default' }) },
+      '7': { class_type: 'TextEncodeQwenImageEdit', inputs: buildComfyNodeInputs(negText, { clip: ['6', 0], vae: ['5', 0], prompt: 'low quality' }) }
+    }
+    let modelRef = ['4', 0]
+    let nextId = 8
+    if (lora && eigenLora) {
+      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: eigenLora, strength_model: 1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (lora && lightningLora && lightningLora !== editV5NoLightningLora) {
+      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: lightningLora, strength_model: 1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (aura) {
+      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 3.1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (cfgNorm) {
+      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    const qwenInputs = {
+      clip: ['6', 0],
+      vae: ['5', 0],
+      vl_resize_image1: ['1', 0],
+      prompt,
+      target_size: 1024,
+      target_vl_size: 384,
+      upscale_method: 'lanczos',
+      crop_method: 'pad',
+      instruction
+    }
+    if (route.v4) qwenInputs.vl_resize_image2 = ['2', 0]
+    workflow[String(nextId)] = {
+      class_type: textNodeName,
+      inputs: buildComfyNodeInputs(qwenText, qwenInputs)
+    }
+    const positiveRef = [String(nextId), 0]
+    const latentRef = [String(nextId), 1]
+    nextId += 1
+    workflow[String(nextId)] = {
+      class_type: 'KSampler',
+      inputs: buildComfyNodeInputs(ksampler, {
+        model: modelRef,
+        positive: positiveRef,
+        negative: ['7', 0],
+        latent_image: latentRef,
+        seed,
+        steps: qwenInpaintUses2511 ? 6 : 8,
+        cfg: 1,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        denoise: 1
+      })
+    }
+    const sampleRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: { samples: sampleRef, vae: ['5', 0] } }
+    const imageRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: { images: imageRef, filename_prefix: prefix } }
+    state.lastProcessingDebug = {
+      ...(state.lastProcessingDebug || {}),
+      qwenInpaint: {
+        unet: unetName,
+        weightDtype: unetWeightDtype,
+        clip: clipName,
+        vae: vaeName,
+        loras: [eigenLora, lightningLora].filter((item) => item && item !== editV5NoLightningLora),
+        model: qwenInpaintUses2511 ? '2511' : '2509',
+        textNode: textNodeName,
+        provider: route.provider,
+        controlMode: route.qwenControlMode || 2,
+        editV5: isEditV5 ? {
+          model: '2511',
+          lightningOptional: true,
+          lightningApplied: lightningLora && lightningLora !== editV5NoLightningLora ? lightningLora : '',
+          steps: 6
+        } : null,
+        seed,
+        seedMode: fixedSeed == null ? 'stable-default' : 'explicit'
+      }
+    }
+    return workflow
   }
 
   async function defaultRapidAioNsfwInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
@@ -17661,6 +18215,8 @@
     const data = info && info.data || {}
     const missing = ['SeeThrough_LoadLayerDiffModel', 'SeeThrough_LoadDepthModel', 'SeeThrough_GenerateLayers', 'SeeThrough_GenerateDepth', 'SeeThrough_PostProcess', 'SeeThrough_SavePSD'].filter((key) => !data[key])
     if (!info || !info.ok || missing.length) throw seeThroughRepairableError(`See-through 节点未加载：${missing.join(', ')}`, baseUrl, missing)
+    // NovaFlow's own helper node (shipped with the desktop app) paints the whole head as one layer.
+    state.seeThroughHeadLayerNodeAvailable = !!data.NovaFlowSeeThroughHeadLayer
   }
 
   async function transformSeeThroughLayer(dataUrl, layer, frame, size) {
@@ -18159,6 +18715,520 @@
     return /^(ears_l|ears_r|earwear|eyewear|eyewhite_l|eyewhite_r|irides_l|irides_r|eyelash_l|eyelash_r|eyebrow_l|eyebrow_r|mouth|nose)$/.test(normalizeId(partId))
   }
 
+  function facialEarId(partId) {
+    return /^(ears|ears_l|ears_r|earl|earr)$/.test(normalizeId(partId))
+  }
+
+  function pixelLuma(data, offset) {
+    return 0.299 * data[offset] + 0.587 * data[offset + 1] + 0.114 * data[offset + 2]
+  }
+
+  // Colour of the layer's solid core propagated outward into its soft edge (8-neighbourhood flood, `radius` passes).
+  function extendLayerCoreColors(rgba, width, height, radius) {
+    const total = width * height
+    const color = new Float32Array(total * 3)
+    const assigned = new Uint8Array(total)
+    let maxAlpha = 0
+    let visible = 0
+    let solid = 0
+    for (let i = 0, p = 3; i < total; i += 1, p += 4) {
+      const a = rgba[p]
+      if (a > 0) visible += 1
+      if (a > maxAlpha) maxAlpha = a
+      if (a >= 250) solid += 1
+    }
+    if (!visible) return { color, assigned }
+    const coreThreshold = solid >= Math.max(30, visible * 0.05) ? 250 : Math.max(1, maxAlpha * 0.85)
+    for (let i = 0, p = 0; i < total; i += 1, p += 4) {
+      if (rgba[p + 3] < coreThreshold) continue
+      assigned[i] = 1
+      color[i * 3] = rgba[p]
+      color[i * 3 + 1] = rgba[p + 1]
+      color[i * 3 + 2] = rgba[p + 2]
+    }
+    const passes = Math.max(1, radius || 8)
+    for (let pass = 0; pass < passes; pass += 1) {
+      const fresh = []
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const i = y * width + x
+          if (assigned[i] || rgba[i * 4 + 3] <= 0) continue
+          let r = 0
+          let g = 0
+          let b = 0
+          let n = 0
+          for (let dy = -1; dy <= 1; dy += 1) {
+            const yy = y + dy
+            if (yy < 0 || yy >= height) continue
+            for (let dx = -1; dx <= 1; dx += 1) {
+              if (!dx && !dy) continue
+              const xx = x + dx
+              if (xx < 0 || xx >= width) continue
+              const j = yy * width + xx
+              if (!assigned[j]) continue
+              r += color[j * 3]
+              g += color[j * 3 + 1]
+              b += color[j * 3 + 2]
+              n += 1
+            }
+          }
+          if (n) fresh.push(i, r / n, g / n, b / n)
+        }
+      }
+      if (!fresh.length) break
+      for (let k = 0; k < fresh.length; k += 4) {
+        const i = fresh[k]
+        assigned[i] = 1
+        color[i * 3] = fresh[k + 1]
+        color[i * 3 + 1] = fresh[k + 2]
+        color[i * 3 + 2] = fresh[k + 3]
+      }
+    }
+    return { color, assigned }
+  }
+
+  // See-through paints a dark halo along the soft edge of every layer (brows, eye whites, skin all fade to
+  // black before they fade to transparent). Recolour only those halo pixels: semi-transparent, darker than
+  // the layer's own interior AND darker than the source pixel underneath. Line art that exists in the source
+  // is dark in the source too, so it is left exactly as the model drew it; opaque pixels are never touched.
+  function removeForeignDarkHalo(rgba, source, width, height, options) {
+    const darkGap = options && Number.isFinite(options.darkGap) ? options.darkGap : 25
+    const total = width * height
+    const { color, assigned } = extendLayerCoreColors(rgba, width, height, options && options.radius)
+    let fixed = 0
+    for (let i = 0, p = 0; i < total; i += 1, p += 4) {
+      const a = rgba[p + 3]
+      if (a <= 0 || a >= 250 || !assigned[i]) continue
+      if (source[p + 3] <= 8) continue
+      const layerLuma = pixelLuma(rgba, p)
+      const coreLuma = 0.299 * color[i * 3] + 0.587 * color[i * 3 + 1] + 0.114 * color[i * 3 + 2]
+      const sourceLuma = pixelLuma(source, p)
+      if (layerLuma >= coreLuma - darkGap || sourceLuma <= layerLuma + darkGap) continue
+      const strength = Math.max(0, Math.min(1, (sourceLuma - layerLuma - darkGap) / 60))
+      rgba[p] = rgba[p] + (color[i * 3] - rgba[p]) * strength
+      rgba[p + 1] = rgba[p + 1] + (color[i * 3 + 1] - rgba[p + 1]) * strength
+      rgba[p + 2] = rgba[p + 2] + (color[i * 3 + 2] - rgba[p + 2]) * strength
+      fixed += 1
+    }
+    return fixed
+  }
+
+  async function sourceRgbaForRect(sourceImg, rect) {
+    const canvas = document.createElement('canvas')
+    canvas.width = rect.width
+    canvas.height = rect.height
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return null
+    ctx.clearRect(0, 0, rect.width, rect.height)
+    ctx.drawImage(sourceImg, -rect.x, -rect.y)
+    return ctx.getImageData(0, 0, rect.width, rect.height).data
+  }
+
+  async function removeSeeThroughDarkHalos(parts) {
+    const list = Array.isArray(parts) ? parts : []
+    if (!list.length || !state.source || !state.source.dataUrl) return list
+    const size = await sourceSize()
+    const sourceImg = await loadImage(state.source.dataUrl)
+    const sourceCanvas = document.createElement('canvas')
+    sourceCanvas.width = size.width
+    sourceCanvas.height = size.height
+    const sctx = sourceCanvas.getContext('2d', { willReadFrequently: true })
+    if (!sctx) return list
+    sctx.drawImage(sourceImg, 0, 0, size.width, size.height)
+    const out = []
+    for (const part of list) {
+      if (!part || !part.dataUrl) {
+        out.push(part)
+        continue
+      }
+      const rect = layerRect(part)
+      const img = await loadImage(part.dataUrl)
+      const canvas = document.createElement('canvas')
+      canvas.width = rect.width
+      canvas.height = rect.height
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
+      if (!ctx) {
+        out.push(part)
+        continue
+      }
+      ctx.clearRect(0, 0, rect.width, rect.height)
+      ctx.drawImage(img, 0, 0, rect.width, rect.height)
+      const image = ctx.getImageData(0, 0, rect.width, rect.height)
+      const source = await sourceRgbaForRect(sourceCanvas, rect)
+      if (!source) {
+        out.push(part)
+        continue
+      }
+      const fixed = removeForeignDarkHalo(image.data, source, rect.width, rect.height, { radius: 8, darkGap: 25 })
+      if (!fixed) {
+        out.push(part)
+        continue
+      }
+      ctx.putImageData(image, 0, 0)
+      const dataUrl = canvas.toDataURL('image/png')
+      out.push(withLayerModelFields({ ...part, dataUrl, haloFixedPixels: fixed }, dataUrl, layerMaskDataUrl(part), {
+        kind: part.metadata && part.metadata.kind || part.cropPipeline || 'split',
+        haloRemoval: 'source-guided'
+      }))
+    }
+    return out
+  }
+
+  function facialFeatureId(partId) {
+    return /^(ears|ears_l|ears_r|earl|earr|eyes|eyel|eyer|browl|browr|eyewhite|eyewhite_l|eyewhite_r|irides|irides_l|irides_r|eyelash|eyelash_l|eyelash_r|eyebrow|eyebrow_l|eyebrow_r|mouth|nose)$/.test(normalizeId(partId))
+  }
+
+  function alphaMaskFromRgba(data, width, height) {
+    const total = width * height
+    const alpha = new Uint8ClampedArray(total)
+    for (let i = 0, p = 3; i < total; i += 1, p += 4) alpha[i] = data[p]
+    return alpha
+  }
+
+  function alphaRowRuns(alpha, width, y, minGap) {
+    const runs = []
+    const rowStart = y * width
+    let start = -1
+    let last = -1
+    for (let x = 0; x < width; x += 1) {
+      if (alpha[rowStart + x] <= 8) continue
+      if (start < 0) start = x
+      else if (x - last - 1 >= minGap) {
+        runs.push([start, last])
+        start = x
+      }
+      last = x
+    }
+    if (start >= 0) runs.push([start, last])
+    return runs
+  }
+
+  function splitAlphaLeftRight(alpha, width, height) {
+    const bounds = maskBounds(alpha, width, height)
+    if (!bounds || bounds.width < 8 || bounds.height < 8) return null
+    const mid = bounds.minX + bounds.width / 2
+    // Only 1-2 px anti-aliasing gaps are merged; a real gap between touching legs can be a few pixels even at 2K.
+    const minGap = Math.min(6, Math.max(3, Math.round(bounds.width * 0.02)))
+    const imageLeft = new Uint8Array(width * height)
+    const imageRight = new Uint8Array(width * height)
+    let rows = 0
+    let gapRows = 0
+    let leftCount = 0
+    let rightCount = 0
+    const straddleWidths = []
+    const pairWidths = []
+    const hipBand = bounds.minY + bounds.height * 0.2
+    for (let y = bounds.minY; y <= bounds.maxY; y += 1) {
+      const runs = alphaRowRuns(alpha, width, y, minGap)
+      if (!runs.length) continue
+      rows += 1
+      let gapCut = null
+      let gapDistance = Infinity
+      for (let i = 0; i + 1 < runs.length; i += 1) {
+        const gapCenter = (runs[i][1] + runs[i + 1][0] + 1) / 2
+        const distance = Math.abs(gapCenter - mid)
+        if (distance < gapDistance) {
+          gapDistance = distance
+          gapCut = gapCenter
+        }
+      }
+      let cut
+      if (gapCut != null) {
+        // Legs of different width shift the true gap away from the bounds midline; the nearest gap is still the leg boundary.
+        cut = gapCut
+        gapRows += 1
+        if (y > hipBand) pairWidths.push(runs.reduce((sum, run) => sum + run[1] - run[0] + 1, 0))
+      } else if (runs.some((run) => run[0] <= mid && run[1] >= mid)) {
+        cut = mid
+        if (y > hipBand) straddleWidths.push(runs.reduce((sum, run) => sum + run[1] - run[0] + 1, 0))
+      } else {
+        cut = (runs[0][0] + runs[runs.length - 1][1]) / 2 < mid ? Infinity : -Infinity
+      }
+      for (const run of runs) {
+        for (let x = run[0]; x <= run[1]; x += 1) {
+          const idx = y * width + x
+          if (x < cut) {
+            imageLeft[idx] = 1
+            leftCount += 1
+          } else {
+            imageRight[idx] = 1
+            rightCount += 1
+          }
+        }
+      }
+    }
+    const total = leftCount + rightCount
+    if (!rows || !total) return null
+    const minSide = Math.max(60, Math.round(total * 0.06))
+    if (leftCount < minSide || rightCount < minSide) return null
+    // Column density around the midline versus the flanks: two legs pressed together still leave a valley, one wide leg does not.
+    const columnDensity = (x0, x1) => {
+      let sum = 0
+      let cols = 0
+      for (let x = Math.max(bounds.minX, Math.round(x0)); x <= Math.min(bounds.maxX, Math.round(x1)); x += 1) {
+        cols += 1
+        for (let y = bounds.minY; y <= bounds.maxY; y += 1) if (alpha[y * width + x] > 8) sum += 1
+      }
+      return cols ? sum / cols : 0
+    }
+    const w = bounds.width
+    const midDensity = columnDensity(mid - w * 0.05, mid + w * 0.05)
+    const flankDensity = (columnDensity(bounds.minX + w * 0.15, bounds.minX + w * 0.35) + columnDensity(bounds.maxX - w * 0.35, bounds.maxX - w * 0.15)) / 2
+    const valleyRatio = flankDensity > 0 ? midDensity / flankDensity : 1
+    // Rows below the hips where one run crosses the midline versus rows where two runs are separated: a thigh lying
+    // across the picture (seated, crossed legs) is several times wider than the pair of shins under it.
+    const straddleRatio = straddleWidths.length && pairWidths.length ? medianValue(straddleWidths) / Math.max(1, medianValue(pairWidths)) : null
+    return { imageLeft, imageRight, leftCount, rightCount, bounds, rows, gapRows, gapRatio: gapRows / rows, aspect: bounds.width / bounds.height, valleyRatio, straddleRatio }
+  }
+
+  function sideLooksLikeStandingLeg(mask, width, height) {
+    const widths = []
+    let minY = height
+    let maxY = -1
+    let minX = width
+    let maxX = -1
+    for (let y = 0; y < height; y += 1) {
+      let w = 0
+      const rowStart = y * width
+      for (let x = 0; x < width; x += 1) {
+        if (!mask[rowStart + x]) continue
+        w += 1
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+      }
+      if (!w) continue
+      widths.push([y, w])
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+    if (maxY < 0) return false
+    const h = maxY - minY + 1
+    const w = maxX - minX + 1
+    if (h < w * 1.2) return false
+    const body = widths.filter(([y]) => y > minY + h * 0.15).map(([, rowWidth]) => rowWidth)
+    if (body.length < 8) return false
+    const widest = Math.max(...body)
+    return widest <= medianValue(body) * 2.3
+  }
+
+  function splitMaskAtKnee(mask, width, height, kneeHint) {
+    const rowWidth = new Float64Array(height)
+    let minY = height
+    let maxY = -1
+    let count = 0
+    for (let y = 0; y < height; y += 1) {
+      const rowStart = y * width
+      let w = 0
+      for (let x = 0; x < width; x += 1) if (mask[rowStart + x]) w += 1
+      if (!w) continue
+      rowWidth[y] = w
+      count += w
+      if (y < minY) minY = y
+      if (y > maxY) maxY = y
+    }
+    const h = maxY - minY + 1
+    if (maxY < 0 || h < 32 || count < 200) return null
+    if (Number.isFinite(kneeHint)) {
+      // Socks/stockings or legs showing below a skirt hem: the knee is above the layer, so there is no thigh to cut.
+      if (kneeHint < minY + h * 0.12) return { belowKnee: true, kneeY: kneeHint }
+      // Layer ends above the knee: it is thigh only.
+      if (kneeHint > maxY - h * 0.12) return { aboveKnee: true, kneeY: kneeHint }
+    }
+    const smoothing = Math.max(1, Math.round(h * 0.03))
+    const smoothWidth = (y) => {
+      let sum = 0
+      let n = 0
+      for (let yy = Math.max(minY, y - smoothing); yy <= Math.min(maxY, y + smoothing); yy += 1) {
+        sum += rowWidth[yy]
+        n += 1
+      }
+      return n ? sum / n : 0
+    }
+    const lowest = minY + h * 0.22
+    const highest = maxY - h * 0.15
+    let kneeY = Number.isFinite(kneeHint) ? kneeHint : minY + h * 0.52
+    kneeY = Math.round(Math.max(lowest, Math.min(highest, kneeY)))
+    const reach = Math.round(h * 0.12)
+    const from = Math.max(Math.round(lowest), kneeY - reach)
+    const to = Math.min(Math.round(highest), kneeY + reach)
+    let bestY = -1
+    let bestEnd = -1
+    let bestW = Infinity
+    for (let y = from; y <= to; y += 1) {
+      const w = smoothWidth(y)
+      if (!(w > 0)) continue
+      if (w < bestW - 1e-9) {
+        bestW = w
+        bestY = y
+        bestEnd = y
+      } else if (Math.abs(w - bestW) <= 1e-9 && bestEnd === y - 1) {
+        bestEnd = y
+      }
+    }
+    if (bestY >= 0) bestY = Math.round((bestY + bestEnd) / 2)
+    if (bestY > from && bestY < to) {
+      const span = Math.max(2, Math.round(h * 0.1))
+      const gap = Math.max(1, Math.round(h * 0.03))
+      let above = 0
+      let below = 0
+      for (let y = Math.max(minY, bestY - span); y <= bestY - gap; y += 1) above = Math.max(above, smoothWidth(y))
+      for (let y = bestY + gap; y <= Math.min(maxY, bestY + span); y += 1) below = Math.max(below, smoothWidth(y))
+      // The narrowest row sits just above the kneecap; the joint line is roughly 5% of the leg length below it.
+      if (above > 0 && below > 0 && bestW <= above * 0.93 && bestW <= below * 0.97) kneeY = Math.min(Math.round(highest), bestY + Math.round(h * 0.05))
+    }
+    const overlap = Math.max(2, Math.round(h * 0.03))
+    const thigh = new Uint8Array(mask.length)
+    const shin = new Uint8Array(mask.length)
+    let thighCount = 0
+    let shinCount = 0
+    for (let y = minY; y <= maxY; y += 1) {
+      if (!rowWidth[y]) continue
+      const inThigh = y <= kneeY + overlap
+      const inShin = y >= kneeY - overlap
+      const rowStart = y * width
+      for (let x = 0; x < width; x += 1) {
+        const idx = rowStart + x
+        if (!mask[idx]) continue
+        if (inThigh) {
+          thigh[idx] = 1
+          thighCount += 1
+        }
+        if (inShin) {
+          shin[idx] = 1
+          shinCount += 1
+        }
+      }
+    }
+    if (thighCount < 60 || shinCount < 60) return null
+    return { thigh, shin, kneeY, thighCount, shinCount }
+  }
+
+  function seeThroughKneeHint(parts, legBounds) {
+    let topY = Infinity
+    let soleY = -Infinity
+    for (const part of parts || []) {
+      if (!part || !part.dataUrl) continue
+      const id = normalizeId(part.id)
+      if (/^(hair_front|hair_back|hair|head|face)$/.test(id)) topY = Math.min(topY, Number(part.y) || 0)
+      if (/^(footwear|left_foot|right_foot)$/.test(id)) soleY = Math.max(soleY, (Number(part.y) || 0) + (Number(part.height) || 0))
+    }
+    if (!Number.isFinite(topY) || !legBounds) return null
+    if (Number.isFinite(soleY) && soleY > legBounds.minY) return soleY - (soleY - topY) * 0.285
+    return legBounds.maxY - (legBounds.maxY - topY) * 0.25
+  }
+
+  function seeThroughSideName(imageSide) {
+    return imageSide === 'imageLeft' ? 'right' : 'left'
+  }
+
+  function legSplitLooksLikeTwoLegs(split) {
+    if (!split) return false
+    if (split.straddleRatio != null && split.straddleRatio > 2) return false
+    if (split.gapRatio >= 0.18) return true
+    return split.aspect >= 0.45 && split.valleyRatio <= 0.8
+  }
+
+  async function splitSeeThroughLegwear(legPart, parts, size) {
+    const data = await fullRgbaFromPart(legPart, size)
+    const alpha = alphaMaskFromRgba(data, size.width, size.height)
+    const split = splitAlphaLeftRight(alpha, size.width, size.height)
+    if (!legSplitLooksLikeTwoLegs(split)) return null
+    // Each half must still read as an upright leg; otherwise (seated, crossed, kneeling) leave the layer whole.
+    if (!sideLooksLikeStandingLeg(split.imageLeft, size.width, size.height) || !sideLooksLikeStandingLeg(split.imageRight, size.width, size.height)) return null
+    const kneeHint = seeThroughKneeHint(parts, split.bounds)
+    const knees = {
+      imageLeft: splitMaskAtKnee(split.imageLeft, size.width, size.height, kneeHint),
+      imageRight: splitMaskAtKnee(split.imageRight, size.width, size.height, kneeHint)
+    }
+    // If one side is too small to cut, keep the other side whole too so both legs rig the same way.
+    const kneeSplitOk = (knee) => !!knee && !knee.belowKnee && !knee.aboveKnee
+    if ((kneeSplitOk(knees.imageLeft) && !knees.imageRight) || (kneeSplitOk(knees.imageRight) && !knees.imageLeft)) {
+      knees.imageLeft = null
+      knees.imageRight = null
+    }
+    const outputs = []
+    for (const side of ['imageLeft', 'imageRight']) {
+      const name = seeThroughSideName(side)
+      const knee = knees[side]
+      if (!knee || knee.belowKnee || knee.aboveKnee) {
+        const wholeId = knee && knee.belowKnee ? `${name}_shin` : knee && knee.aboveKnee ? `${name}_thigh` : `${name}_leg`
+        outputs.push(await partFromSelectedPixels(legPart, wholeId, data, size, split[side]))
+        continue
+      }
+      outputs.push(await partFromSelectedPixels(legPart, `${name}_thigh`, data, size, knee.thigh))
+      outputs.push(await partFromSelectedPixels(legPart, `${name}_shin`, data, size, knee.shin))
+    }
+    return outputs
+  }
+
+  async function splitSeeThroughFootwear(footPart, size) {
+    const data = await fullRgbaFromPart(footPart, size)
+    const bounds = alphaBoundsFromRgba(data, size.width, size.height)
+    if (!bounds || bounds.count < 120) return null
+    const total = size.width * size.height
+    const components = alphaComponentsFromRgba(data, size.width, size.height, Math.max(40, Math.round(bounds.count * 0.05)))
+    let imageLeft = null
+    let imageRight = null
+    if (components.length >= 2) {
+      const sorted = components.slice().sort((a, b) => b.count - a.count)
+      const primary = sorted[0]
+      const secondary = sorted[1]
+      if (secondary.count < bounds.count * 0.12) return null
+      const leftComp = primary.cx <= secondary.cx ? primary : secondary
+      const rightComp = leftComp === primary ? secondary : primary
+      if (rightComp.minX < leftComp.cx || leftComp.maxX > rightComp.cx) return null
+      imageLeft = new Uint8Array(total)
+      imageRight = new Uint8Array(total)
+      for (const pixel of leftComp.pixels) imageLeft[pixel] = 1
+      for (const pixel of rightComp.pixels) imageRight[pixel] = 1
+      const mid = (leftComp.cx + rightComp.cx) / 2
+      for (const comp of sorted.slice(2)) {
+        const target = comp.cx <= mid ? imageLeft : imageRight
+        for (const pixel of comp.pixels) target[pixel] = 1
+      }
+      // Fragments below the component threshold still belong to a foot; assign them by side so no pixel is lost.
+      for (let pixel = 0; pixel < total; pixel += 1) {
+        if (imageLeft[pixel] || imageRight[pixel] || data[pixel * 4 + 3] <= 8) continue
+        ;((pixel % size.width) < mid ? imageLeft : imageRight)[pixel] = 1
+      }
+    } else {
+      const alpha = alphaMaskFromRgba(data, size.width, size.height)
+      const split = splitAlphaLeftRight(alpha, size.width, size.height)
+      if (!split || split.gapRatio < 0.3) return null
+      imageLeft = split.imageLeft
+      imageRight = split.imageRight
+    }
+    return [
+      await partFromSelectedPixels(footPart, seeThroughSideName('imageLeft') + '_foot', data, size, imageLeft),
+      await partFromSelectedPixels(footPart, seeThroughSideName('imageRight') + '_foot', data, size, imageRight)
+    ]
+  }
+
+  async function splitSeeThroughLegs(parts) {
+    const list = Array.isArray(parts) ? parts : []
+    if (state.splitLegs === false) return list
+    const ids = new Set(list.map((part) => normalizeId(part && part.id)))
+    const legPart = list.find((part) => part && part.dataUrl && normalizeId(part.id) === 'legwear')
+    const footPart = list.find((part) => part && part.dataUrl && normalizeId(part.id) === 'footwear')
+    if (!legPart && !footPart) return list
+    const size = await sourceSize()
+    const output = list.filter((part) => part !== legPart && part !== footPart)
+    const additions = []
+    if (footPart) {
+      const feet = ids.has('left_foot') || ids.has('right_foot') ? null : await splitSeeThroughFootwear(footPart, size)
+      if (feet) additions.push(...feet)
+      else output.push(footPart)
+    }
+    if (legPart) {
+      const alreadySplit = ['left_thigh', 'right_thigh', 'left_leg', 'right_leg'].some((id) => ids.has(id))
+      const legs = alreadySplit ? null : await splitSeeThroughLegwear(legPart, [...output, ...additions], size)
+      if (legs) additions.push(...legs)
+      else output.push(legPart)
+    }
+    if (!additions.length) return list
+    return normalizeSpineLayerOrder([...output, ...additions])
+  }
+
   function secondSplitSpec(partId) {
     const id = normalizeId(partId)
     if (/^(legwear|legs|leg)$/.test(id)) return ['left_leg', 'right_leg']
@@ -18317,34 +19387,57 @@
 
   async function mergeFaceDetailsIntoFace(parts) {
     if (state.includeFaceDetails) return normalizeSpineLayerOrder(parts)
-    const face = parts.find((part) => normalizeId(part.id) === 'face')
-    const details = parts.filter((part) => faceDetailId(part.id))
-    if (!face || !details.length) return normalizeSpineLayerOrder(parts.filter((part) => !faceDetailId(part.id)))
+    const rawId = (part) => String(part && part.id || '').trim().toLowerCase()
+    const face = parts.find((part) => rawId(part) === 'face') || parts.find((part) => rawId(part) === 'head')
+    const details = parts.filter((part) => facialFeatureId(part.id))
+    // Without a face/head layer there is nothing to merge into; keep the facial layers as they are instead of dropping pixels.
+    if (!face || !details.length) return normalizeSpineLayerOrder(parts)
+    const faceId = rawId(face)
     const size = await sourceSize()
     const canvas = document.createElement('canvas')
     canvas.width = size.width
     canvas.height = size.height
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    for (const part of normalizeSpineLayerOrder([face, ...details])) {
+    // See-through places ears behind the face (depth face + 0.001), so composite ears first, then the face, then the front features.
+    const isEar = (part) => facialEarId(part.id)
+    const drawOrder = [...normalizeSpineLayerOrder(details.filter(isEar)), face, ...normalizeSpineLayerOrder(details.filter((part) => !isEar(part)))]
+    for (const part of drawOrder) {
       if (!part.dataUrl) continue
       const img = await loadImage(part.dataUrl)
       ctx.drawImage(img, Math.round(part.x), Math.round(part.y), Math.max(1, Math.round(part.width)), Math.max(1, Math.round(part.height)))
     }
     const merged = await cropSplitLayer(canvas.toDataURL('image/png'), {
-      ...presetFor('face'),
-      id: 'face',
-      label: 'face',
+      ...presetFor(faceId),
+      id: faceId,
+      label: faceId,
       prompt: 'face with facial details merged',
-      layer: spineLayerRank({ id: 'face' }),
-      pivot: face.pivot || presetFor('face').pivot
+      layer: spineLayerRank({ id: faceId }),
+      pivot: face.pivot || presetFor(faceId).pivot
     })
-    const rest = parts.filter((part) => normalizeId(part.id) !== 'face' && !faceDetailId(part.id))
-    return normalizeSpineLayerOrder([...rest, { ...face, ...merged, id: 'face', name: 'face', prompt: 'face with facial details merged', layer: spineLayerRank({ id: 'face' }), spineReady: true, reviewIssues: [] }])
+    const rest = parts.filter((part) => part !== face && !facialFeatureId(part.id))
+    return normalizeSpineLayerOrder([...rest, { ...face, ...merged, id: faceId, name: faceId, prompt: 'face with facial details merged', layer: spineLayerRank({ id: faceId }), spineReady: true, reviewIssues: [] }])
   }
 
   async function prepareSeeThroughPsdParts(parts) {
-    const clean = useCleanSeeThroughParts(parts)
-    return await mergeFaceDetailsIntoFace(clean)
+    let clean = useCleanSeeThroughParts(parts)
+    try {
+      clean = await removeSeeThroughDarkHalos(clean)
+    } catch (error) {
+      console.warn('[NovaFlow] dark halo removal skipped:', error)
+    }
+    clean = applySeeThroughHeadLayer(clean)
+    let withLegs = clean
+    try {
+      withLegs = await splitSeeThroughLegs(clean)
+    } catch (error) {
+      console.warn('[NovaFlow] automatic leg split skipped:', error)
+    }
+    try {
+      return await mergeFaceDetailsIntoFace(withLegs)
+    } catch (error) {
+      console.warn('[NovaFlow] facial feature merge skipped:', error)
+      return normalizeSpineLayerOrder(withLegs)
+    }
   }
 
   function seeThroughModeLabel(options) {
@@ -18488,6 +19581,10 @@
       '7': { class_type: 'PreviewImage', inputs: { images: ['6', 1] } },
       '8': { class_type: 'SeeThrough_SavePSD', inputs: { parts: ['6', 0], filename_prefix: prefix } }
     }
+    const wantHeadLayer = seeThroughWantsHeadLayer()
+    if (wantHeadLayer) {
+      workflow['10'] = { class_type: 'NovaFlowSeeThroughHeadLayer', inputs: { image: ['1', 0], layers: ['4', 0], layerdiff_model: ['2', 0], seed, resolution, num_inference_steps: steps, filename_prefix: prefix } }
+    }
     const sent = await requestJson(baseUrl, '/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: `novaflow_spine_${Date.now()}`, prompt: workflow }) })
     const promptId = String(sent && sent.data && sent.data.prompt_id || '')
     if (!sent || !sent.ok || !promptId) throw new Error('\u0053\u0065\u0065\u002d\u0074\u0068\u0072\u006f\u0075\u0067\u0068 \u4e0b\u53d1\u5931\u8d25')
@@ -18525,10 +19622,63 @@
       cropped.x += normalized.x
       cropped.y += normalized.y
       cropped.needsInpaint = false
+      // layers.json lists layers back-to-front with the model's depth estimate; keep it on the record.
+      cropped.seeThroughOrder = i
+      cropped.seeThroughDepth = Number.isFinite(Number(layer.depth_median)) ? Number(layer.depth_median) : null
       parts.push(cropped)
+    }
+    if (wantHeadLayer) {
+      setSplitBusyDetail(`${seeThroughModeLabel(options)} ${resolution}px / ${steps}\u6b65\n\u6b63\u5728\u8bfb\u53d6\u6574\u8138\u56fe\u5c42`)
+      const headPart = await fetchSeeThroughHeadLayer(baseUrl, prefix, size, layers.length)
+      if (headPart) parts.push(headPart)
     }
     if (!parts.length) throw new Error('See-through 没有输出可用图层')
     return normalizeSpineLayerOrder(parts)
+  }
+
+  function seeThroughWantsHeadLayer() {
+    return !state.includeFaceDetails && state.seeThroughHeadLayerNodeAvailable === true
+  }
+
+  // The helper node writes `${prefix}_head.json` + `${prefix}_head.png` in the same outer-frame convention as the
+  // plugin's layers.json, so the layer goes through the same transform as every other See-through layer.
+  async function fetchSeeThroughHeadLayer(baseUrl, prefix, size, order) {
+    let info = null
+    try {
+      const blob = await fetchBlob(baseUrl, viewOutputPath(`${prefix}_head.json`))
+      if (!blob) return null
+      info = JSON.parse(await blob.text())
+    } catch (error) {
+      console.warn('[NovaFlow] See-through head layer manifest unreadable:', error)
+      return null
+    }
+    if (!info || info.ok !== true || !info.layer || !info.layer.filename) {
+      console.warn('[NovaFlow] See-through head layer unavailable:', info && info.reason)
+      return null
+    }
+    const blob = await fetchBlob(baseUrl, viewOutputPath(info.layer.filename))
+    if (!blob) return null
+    const raw = await blobToDataUrl(blob)
+    const normalized = await transformSeeThroughLayer(raw, info.layer, { width: info.width, height: info.height }, size)
+    const preset = presetFor('head')
+    const cropped = await cropSplitLayer(normalized.dataUrl, { ...preset, id: 'head', label: 'head', prompt: 'See-through whole head layer (face with features)', aliases: ['head'], layer: spineLayerRank({ id: 'head' }) })
+    cropped.x += normalized.x
+    cropped.y += normalized.y
+    cropped.needsInpaint = false
+    cropped.seeThroughHeadLayer = true
+    cropped.seeThroughOrder = Number(order) || 0
+    cropped.seeThroughDepth = null
+    return cropped
+  }
+
+  // With the whole-head layer present the separate face + feature layers are redundant.
+  function applySeeThroughHeadLayer(parts) {
+    const list = Array.isArray(parts) ? parts : []
+    const head = list.find((part) => part && part.seeThroughHeadLayer && part.dataUrl)
+    if (!head) return list
+    if (state.includeFaceDetails) return list.filter((part) => part !== head)
+    const rawId = (part) => String(part && part.id || '').trim().toLowerCase()
+    return list.filter((part) => part === head || (rawId(part) !== 'face' && !facialFeatureId(part.id)))
   }
 
   async function runSplit(viewMode, options) {
@@ -18545,6 +19695,7 @@
       if (!splitOptions) return
       await new Promise((resolve) => window.requestAnimationFrame(resolve))
     }
+    if (splitOptions && typeof splitOptions.faceDetails === 'boolean') state.includeFaceDetails = splitOptions.faceDetails
     resetMaskEditor()
     resetSelectionTool()
     resetPenTool()
@@ -22512,8 +23663,7 @@
     }
     state.selectionTool.inpaintNsfwEnabled = !!enabled
     setInpaintDebugAttr('nsfw-enabled', state.selectionTool.inpaintNsfwEnabled ? '1' : '0')
-    render()
-    syncSplitWorkspace()
+    refreshSelectionToolSurface() // In-place toolbar refresh, same as the paint-mode switches.
   }
 
   function toggleSelectionInpaintNsfw() { setSelectionInpaintNsfwEnabled(!(state.selectionTool && state.selectionTool.inpaintNsfwEnabled)) }
@@ -22526,6 +23676,11 @@
     patchSplitToolButtonVisual('selectionErase', paintMode === 'erase')
     const nsfwButton = document.querySelector(`[${TOOL_ACTION_ATTR}="selectionNsfw"]`)
     if (nsfwButton instanceof HTMLButtonElement) {
+      // The toolbar is patched in place, so the switch state must be re-applied here as well.
+      const nsfwEnabled = !!state.selectionTool.inpaintNsfwEnabled
+      patchSplitToolButtonVisual('selectionNsfw', nsfwEnabled)
+      nsfwButton.setAttribute('aria-checked', nsfwEnabled ? 'true' : 'false')
+      nsfwButton.setAttribute('data-novaflow-selection-inpaint-nsfw', nsfwEnabled ? 'on' : 'off')
       nsfwButton.disabled = state.busy
       nsfwButton.setAttribute('aria-disabled', state.busy ? 'true' : 'false')
       nsfwButton.style.setProperty('cursor', state.busy ? 'default' : 'pointer', 'important')
@@ -29000,6 +30155,8 @@
     const isInpaint = state.selectionTool && state.selectionTool.mode === 'inpaint'
     const inpaintPromptValue = String(state.selectionTool && state.selectionTool.inpaintPrompt || '')
     const selectedInpaintMode = normalizeSelectionInpaintMode(state.selectionTool && state.selectionTool.inpaintMode)
+    const showInpaintNsfw = isInpaint && selectionInpaintNsfwAvailable(selectedInpaintMode)
+    const inpaintNsfwEnabled = showInpaintNsfw && !!(state.selectionTool && state.selectionTool.inpaintNsfwEnabled)
     const showInpaintPrompt = isInpaint && selectionInpaintModeHasPrompt(selectedInpaintMode)
     const inpaintPromptLabel = selectionInpaintModePromptLabel(selectedInpaintMode)
     const inpaintPromptPlaceholder = selectionInpaintModePromptPlaceholder(selectedInpaintMode)
@@ -29017,6 +30174,16 @@
           h('input', { [TOOL_RANGE_ATTR]: 'selectionBrush', type: 'range', min: '1', max: '260', value: brush, oninput: (event) => { setSelectionBrushSize(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(brush, 1, 260, '92px') })
         ]),
         button('\u9000\u51fa', () => stopSelectionTool(), false, { [TOOL_ACTION_ATTR]: 'selectionExit' }),
+        showInpaintNsfw ? button('NSFW', () => toggleSelectionInpaintNsfw(), inpaintNsfwEnabled, {
+          [TOOL_ACTION_ATTR]: 'selectionNsfw',
+          'data-novaflow-selection-inpaint-nsfw': inpaintNsfwEnabled ? 'on' : 'off',
+          role: 'switch',
+          'aria-checked': inpaintNsfwEnabled ? 'true' : 'false',
+          'aria-label': `NSFW ${inpaintNsfwEnabled ? '已开启' : '已关闭'}`,
+          title: inpaintNsfwEnabled ? 'NSFW 已开启：使用 Qwen Rapid AIO NSFW V20' : 'NSFW 已关闭：使用当前默认修图模型',
+          disabled: state.busy,
+          style: { marginLeft: '2px', minWidth: '48px' }
+        }) : null
       ]),
       isInpaint && !showInpaintPrompt ? h('div', {
         'data-novaflow-split-pan-exempt': '1',
@@ -40755,6 +41922,14 @@
 
   window.NovaFlowSpineSplitDebug = {
     importSourceDataUrl,
+    splitSeeThroughLegs,
+    splitSeeThroughFootwear,
+    mergeFaceDetailsIntoFace,
+    prepareSeeThroughPsdParts,
+    removeSeeThroughDarkHalos,
+    applySeeThroughHeadLayer,
+    fetchSeeThroughHeadLayer,
+    showSeeThroughSplitModeDialog,
     addSourceDataUrlResource,
     deleteSourceResource,
     imageOutpaintSafeDimension,
@@ -40884,7 +42059,8 @@
     setOptions(options) {
       if (options && typeof options === 'object') {
         if ('secondPassSplit' in options) state.secondPassSplit = false
-        if ('includeFaceDetails' in options) state.includeFaceDetails = true
+        if ('includeFaceDetails' in options) state.includeFaceDetails = !!options.includeFaceDetails
+        if ('splitLegs' in options) state.splitLegs = options.splitLegs !== false
       }
       state.parts = []
       state.splitPreviewDataUrl = ''
@@ -40911,6 +42087,7 @@
         layerSourceName: state.layerSourceName,
         secondPassSplit: false,
         includeFaceDetails: !!state.includeFaceDetails,
+        splitLegs: state.splitLegs !== false,
         splitPreviewDataUrl: state.splitPreviewDataUrl,
         activeSplitSetId: state.activeSplitSetId,
         activePartId: state.activePartId || '',

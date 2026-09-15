@@ -1,0 +1,78 @@
+{
+  "case": "original-wan-cyber-portrait-beta-7-cfg1-shift8-low",
+  "status": "success",
+  "model": "Wan22\\Wan2.2-T2V-A14B-LowNoise-Q4_K_S.gguf",
+  "modelFamily": "original-wan",
+  "sourceSha256": "89bc170e0b97ad8a8cda70d7aaec9fecdc01e842c0ebae19f62d92668ac1fdb9",
+  "workflowSha256": "c7c4904c3d2ca2b16f9edd0430be253f022f8878731fa8be47a22e4a00fdc1dd",
+  "strength": 0.2,
+  "fixture": "cyber-portrait",
+  "baselineReused": false,
+  "baseline": null,
+  "sampling": {
+    "steps": 7,
+    "cfg": 1,
+    "scheduler": "beta",
+    "shift": 8,
+    "sampler": "euler",
+    "seed": 9122026,
+    "externalLora": {
+      "model": [
+        "3",
+        0
+      ],
+      "lora_name": "Wan21\\Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+      "strength_model": 1
+    }
+  },
+  "sourceStyleProfile": {
+    "medium": "photorealistic cinematic digital art",
+    "style": "Photorealistic cinematic portrait, natural face proportions and skin texture, fine textile grain, cool dark blue palette with cyan and magenta neon reflections, rainfall and a softly blurred urban background.",
+    "content": "An adult woman with a short silver bob and transparent cyan illuminated glasses stands facing the viewer in a rainy futuristic alley. She wears a zipped black high-neck outfit and a black technical jacket with cyan lights around the high collar, dark backpack straps and a rectangular illuminated device hanging at her hip. Wet pavement and neon signs recede behind her.",
+    "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+  },
+  "styleTrigger": "",
+  "promptFormat": "baseline",
+  "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+  "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+  "settingProvenance": "Original NovaFlow Wan recipe including its external acceleration LoRA. Matches SmoothMix source, base caption, seed, size and sampler settings; anime-only SmoothMix trigger omitted for original Wan.",
+  "outputBlend": false,
+  "productionDefaultChanged": false,
+  "startedAt": "2026-09-12T16:48:51.972Z",
+  "promptId": "0774f8af-781f-4deb-824e-b02de040aadd",
+  "seconds": 37.611,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "0774f8af-781f-4deb-824e-b02de040aadd",
+          "timestamp": 1789231733904
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [],
+          "prompt_id": "0774f8af-781f-4deb-824e-b02de040aadd",
+          "timestamp": 1789231733913
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "0774f8af-781f-4deb-824e-b02de040aadd",
+          "timestamp": 1789231769210
+        }
+      ]
+    ]
+  },
+  "output": {
+    "filename": "original-wan-cyber-portrait-beta-7-cfg1-shift8-low_00001_.png",
+    "subfolder": "NovaFlow_validation",
+    "type": "output"
+  },
+  "outputSha256": "483843b9ff39dd7a3f76b68622067a8be681920eb8c1eef0ff38665f677d0c4c"
+}

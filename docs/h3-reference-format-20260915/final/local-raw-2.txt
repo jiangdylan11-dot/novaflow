@@ -1,0 +1,25 @@
+```json
+{
+  "references": [
+    {
+      "label": "<Subject 1>",
+      "sources": ["<Picture 1>"],
+      "description": "猫脸金币外观参考图",
+      "keep": "外观",
+      "relation": "attribute_transfer"
+    },
+    {
+      "label": "<Video 1>",
+      "sources": [],
+      "description": "旋转金币视频帧",
+      "keep": "背景、运动轨迹",
+      "relation": "fully_preserved"
+    }
+  ],
+  "tasks": ["video editing"],
+  "summary": "将<Video 1>中的旋转金币样式替换成<Picture 1>的猫脸金币样式，保持背景和金币运动轨迹。",
+  "description": "从<Video 1>的0.000秒开始，将金币外观替换为<Picture 1>中的猫脸金币外观，保留金币的背景和运动轨迹。",
+  "soundscape": "N/A",
+  "music": "N/A"
+}
+```

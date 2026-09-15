@@ -1,0 +1,4 @@
+{
+  "appearance": "A golden circular emblem with a cat face design on the front, set against a green background.",
+  "motion": "In the video, the golden emblem appears from the left side of the frame, moving slowly to the right, and finally settles in the center of the frame."
+}

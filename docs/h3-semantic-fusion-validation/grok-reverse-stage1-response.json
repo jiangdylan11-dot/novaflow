@@ -1,0 +1,64 @@
+{
+  "ok": true,
+  "data": {
+    "id": "079c9805-08e8-9cc3-9f25-79baf99bd04b",
+    "object": "response",
+    "created": null,
+    "model": "grok-4.3",
+    "output_text": "参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒。\n\nintegrated_multimodal_description: [Shot 1] 赛博朋克数字渲染风格；轮廓线条锐利分明；造型采用紧身流线设计；表面质感为光滑皮革；发光金属结合；反射光泽明显；中景构图；平视视角；主体居中；透视自然；镜头感锐利；景深浅聚焦主体\n\n短银色头发带有粉色光晕；佩戴发光青色护目镜；身穿黑色战术夹克；带有蓝色发光装饰；多功能口袋；侧挂黑色矩形设备；屏幕显示数据；站立姿势面向镜头；双手自然下垂\n\n背景为夜晚雨天城市街道；两侧高楼霓虹闪烁；地面湿润反射灯光；主体位于街道中央；前景有雨滴\n\n光源来自多色霓虹灯；青蓝粉红为主；明暗对比强烈；雨中光线散射；夹克表面反射青色光晕；设备屏幕发蓝光\n\n角色原地站立，镜头固定。\n\n保持银灰色头发、蓝色护目镜、黑色夹克和雨夜街道；右手轻轻抬起再放下，镜头缓慢拉近，身体不位移。\n\noverall_soundscape: 低声、平稳的环境底声贯穿画面，轻微的动作声随可见运动同步起落。\n\nnon_diegetic_music: N/A",
+    "negative_prompt": "",
+    "has_negative_prompt": false,
+    "usage": {
+      "input_tokens": 1732,
+      "input_tokens_details": {
+        "cached_tokens": 1728
+      },
+      "output_tokens": 1256,
+      "output_tokens_details": {
+        "reasoning_tokens": 1022
+      },
+      "total_tokens": 2988,
+      "num_sources_used": 0,
+      "num_server_side_tools_used": 0,
+      "cost_in_usd_ticks": 34906000,
+      "context_details": {
+        "input_tokens": 1732,
+        "output_tokens": 1256
+      }
+    },
+    "visualSchema": "nf.h3.visual.v1"
+  },
+  "providerCallCount": 1,
+  "durationMs": 0,
+  "usage": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "totalTokens": 0
+  },
+  "h3BaselineStageCount": 1,
+  "h3ContractRepairUsed": false,
+  "h3RetryCount": 0,
+  "inputMeta": {
+    "mode": "minimax_h3_i2v_reverse",
+    "charCount": 3235,
+    "imageCount": 1,
+    "sourceImageCount": 1,
+    "scenario": "single_reference",
+    "targetIndex": -1,
+    "hasNegativePrompt": false,
+    "supportsNegativePrompt": false,
+    "visualIrSchema": "",
+    "visualSchema": "nf.h3.visual.v1",
+    "contentPolicy": {
+      "sensitiveVisualAnalysis": false,
+      "allSubjectsConfirmedAdult": false
+    },
+    "durationSeconds": 6,
+    "purpose": "minimax-h3-i2v-reverse",
+    "surface": "animation",
+    "providerCallCount": 1,
+    "h3BaselineStageCount": 1,
+    "h3ContractRepairUsed": false,
+    "h3RetryCount": 0
+  }
+}

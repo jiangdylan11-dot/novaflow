@@ -1,0 +1,8 @@
+{
+  "sources": ["<Picture 1>"],
+  "editPolicy": {
+    "preserveBackground": true,
+    "preserveMotion": true,
+    "sameShapeAppearanceOnly": true
+  }
+}

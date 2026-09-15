@@ -12,7 +12,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const syncEntries = [
   { label: 'main/h3-reference-nodes.py', sourcePath: path.join(repoRoot, 'particle-editor-desktop/main/h3-reference-nodes.py'),
     targetPaths: [path.join(repoRoot, 'particle-editor-desktop/dist/win-unpacked/resources/app/main/h3-reference-nodes.py')] },
-  ...[...spineWebpRuntimeFiles, 'main/birefnet-runner.py', 'main/cutout-raw-encoder.js', 'main/cutout-mask-stream.js'].map((file) => ({
+  ...[...spineWebpRuntimeFiles, 'main/birefnet-runner.py', 'main/novaflow-seethrough-head-node.py', 'main/cutout-raw-encoder.js', 'main/cutout-mask-stream.js'].map((file) => ({
     label: file,
     sourcePath: path.join(repoRoot, 'particle-editor-desktop', file),
     targetPaths: [path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', file)],

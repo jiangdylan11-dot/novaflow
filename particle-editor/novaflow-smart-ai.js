@@ -427,10 +427,26 @@
       .join("\n\n");
     return Object.freeze({
       prompt: preparedPrompt,
+      sourcePrompt: String(prompt || ""),
       requirements: combinedRequirements,
       context: prepared.context && typeof prepared.context === "object" ? prepared.context : prepared,
       workflow
     });
+  }
+
+  // 多参视频 has no dedicated reverse bridge: reversing means compiling the
+  // uploaded references themselves into a six-field plan, so it rides the
+  // optimize pipeline with the uploads as the brief and any text as a hint.
+  const MINIMAX_H3_REFERENCE_REVERSE_PLACEHOLDER = "根据已上传的参考图、视频和音频反推视频提示词";
+  const MINIMAX_H3_REFERENCE_REVERSE_HINT = "素材反推：没有原提示词，请以已上传素材的实际内容为依据编写完整计划；上传了什么就参考什么，不要求未上传的素材。";
+  function isMiniMaxH3ReferenceReverse(captured = state.context?.miniMaxH3) {
+    return Boolean(captured && captured.modelId === MINIMAX_H3_MODEL_ID && captured.mode === "multi_reference");
+  }
+  function miniMaxH3ReferenceReverseError(captured = state.context?.miniMaxH3) {
+    const resources = Array.isArray(captured?.resources) ? captured.resources : [];
+    return resources.some((resource) => resource?.occupied && resource.kind !== "audio")
+      ? ""
+      : "请先添加参考图或参考视频，再进行素材反推";
   }
 
   function validateMiniMaxH3PromptResult(text, prepared, textareas) {
@@ -445,7 +461,7 @@
         modelId: current.modelId,
         mode: current.mode,
         durationSeconds: current.durationSeconds,
-        prompt: String(textareas?.positive?.value || ""),
+        prompt: String(prepared.sourcePrompt || textareas?.positive?.value || ""),
         contentPolicy: miniMaxH3ContentPolicy(),
         resources: current.resources
       }
@@ -3431,7 +3447,18 @@
 
   function renderAnimationProcessingNote() {
     if (state.context?.surface === "art") return "";
-    return `<div class="novaflow-smart-ai-context-note">只设计并写入提示词，不会直接生成视频</div>`;
+    let note = "只设计并写入提示词，不会直接生成视频";
+    if (state.mode === "optimize" && isMiniMaxH3ReferenceReverse()) {
+      const labels = (state.context?.miniMaxH3?.resources || [])
+        .filter((resource) => resource?.occupied)
+        .map((resource) => String(resource.label || resource.key || ""))
+        .filter(Boolean);
+      const hasPrompt = Boolean(String(getPromptTextareasFromContext(state.context).positive?.value || "").trim());
+      note += labels.length
+        ? `。将参考已上传的 ${labels.join("、")}${hasPrompt ? "" : "；提示词为空，将直接根据素材反推"}`
+        : "";
+    }
+    return `<div class="novaflow-smart-ai-context-note">${escapeSmartAiHtml(note)}</div>`;
   }
 
   function renderMiniMaxH3SensitiveAnalysisControls() {
@@ -4122,8 +4149,13 @@
     const isOptimizeRequest = state.mode === "optimize";
     const isReverseRequest = state.mode === "reverse";
     const isMiniMaxH3Context = state.context?.miniMaxH3?.modelId === "minimax_h3_local";
+    // 多参视频 optimization already observes every upload; with an empty prompt
+    // box it becomes a pure 素材反推 through the same pipeline.
     const isMiniMaxH3OptimizeRequest = isMiniMaxH3Context && isOptimizeRequest;
     const isMiniMaxH3ReverseRequest = isMiniMaxH3Context && isReverseRequest;
+    const isMiniMaxH3ReferenceReverseRequest = isMiniMaxH3OptimizeRequest
+      && state.context?.miniMaxH3?.mode === "multi_reference"
+      && !String(getPromptTextareasFromContext(state.context).positive?.value || "").trim();
     const isMiniMaxH3Request = isMiniMaxH3OptimizeRequest || isMiniMaxH3ReverseRequest;
     const useGrok = state.engine === "grok";
     const artIntent = isArt ? syncArtAutoIntent() : null;
@@ -4190,6 +4222,17 @@
       renderDialog();
       return;
     }
+    if (isMiniMaxH3ReferenceReverseRequest) {
+      const liveCaptured = typeof readMiniMaxH3PromptSurfaceState === "function"
+        ? readMiniMaxH3PromptSurfaceState(state.context?.button, state.context?.promptTarget)
+        : state.context?.miniMaxH3;
+      const referenceError = miniMaxH3ReferenceReverseError(liveCaptured?.modelId === MINIMAX_H3_MODEL_ID ? liveCaptured : state.context?.miniMaxH3);
+      if (referenceError) {
+        state.message = referenceError;
+        renderDialog();
+        return;
+      }
+    }
     const miniMaxH3ContentPolicyAtRequest = isMiniMaxH3ReverseRequest ? miniMaxH3ContentPolicy() : null;
     if (miniMaxH3ContentPolicyAtRequest?.sensitiveVisualAnalysis) {
       const actualUserIntent = `${prompt}\n${requirements}`;
@@ -4210,7 +4253,7 @@
       renderDialog();
       return;
     }
-    if (!isArt && isOptimizeRequest && !prompt && !requirements) {
+    if (!isArt && isOptimizeRequest && !prompt && !requirements && !isMiniMaxH3ReferenceReverseRequest) {
       state.message = isArt ? "请选择预设或描述你的想法" : "请输入Prompt";
       renderDialog();
       return;
@@ -4245,7 +4288,10 @@
     try {
       const api = window.electronAPI || {};
       const miniMaxH3Prepared = isMiniMaxH3OptimizeRequest
-        ? prepareMiniMaxH3PromptRequest(prompt, requirements)
+        ? prepareMiniMaxH3PromptRequest(
+          isMiniMaxH3ReferenceReverseRequest ? (prompt || MINIMAX_H3_REFERENCE_REVERSE_PLACEHOLDER) : prompt,
+          isMiniMaxH3ReferenceReverseRequest ? [requirements, MINIMAX_H3_REFERENCE_REVERSE_HINT].filter(Boolean).join("\n") : requirements
+        )
         : null;
       const h3ReferenceFrames = isMiniMaxH3OptimizeRequest
         ? await captureH3ReferenceFrames(state.context?.miniMaxH3, miniMaxH3Prepared)
@@ -4335,6 +4381,7 @@
       } else if (isMiniMaxH3OptimizeRequest && useGrok) {
         result = await api.smartAiPromptOptimize?.({
           h3ReferenceFrames,
+          ...(isMiniMaxH3ReferenceReverseRequest ? { h3Reverse: true } : {}),
           token,
           prompt: miniMaxH3Prepared.prompt,
           negativePrompt: "",
@@ -4350,6 +4397,7 @@
       } else if (isMiniMaxH3OptimizeRequest) {
         result = await api.promptAssistantOptimizePrompt?.({
           h3ReferenceFrames,
+          ...(isMiniMaxH3ReferenceReverseRequest ? { h3Reverse: true } : {}),
           prompt: miniMaxH3Prepared.prompt,
           negativePrompt: "",
           supportsNegativePrompt: false,

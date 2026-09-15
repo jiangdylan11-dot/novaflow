@@ -1,0 +1,172 @@
+{
+  "created_at": 1789398528,
+  "completed_at": 1789398538,
+  "id": "06f359b4-df24-98ab-ade6-bd2af382f444",
+  "max_output_tokens": 4096,
+  "model": "grok-4.3",
+  "object": "response",
+  "output": [
+    {
+      "id": "rs_06f359b4-df24-98ab-ade6-bd2af382f444",
+      "summary": [
+        {
+          "text": "The task is to replace the gold coins in the reference video with the reference image 1, which is a cat-face coin.\n",
+          "type": "summary_text"
+        }
+      ],
+      "type": "reasoning",
+      "status": "completed"
+    },
+    {
+      "content": [
+        {
+          "type": "output_text",
+          "text": "{\n  \"modelPrompt\": {\n    \"subject_definitions\": \"<Subject 1>: golden coin with cat face relief, appearance from <Picture 1>\",\n    \"summary\": \"[video editing + reference generation] The target video is an edited version of <Video 1>. The original coins are replaced by <Subject 1> while retaining the original motion, timing, camera, framing and green screen background.\",\n    \"retention_analysis\": \"<Video 1>: partially_preserved - motion, timing, camera, framing and green screen background retained; original coin appearance replaced throughout.\\n<Subject 1>: attribute_transfer - cat face coin appearance applied to all coin instances.\",\n    \"detailed_description\": \"Retain the reference appearance. [Shot 1] Golden coins bearing the cat face design from <Subject 1> appear in the exact positions, sizes, trajectories and rotation phases shown in <Video 1>, flipping and turning edge-on against the solid green screen over the full 3-second duration.\",\n    \"overall_soundscape\": \"Silent, no diegetic sounds present.\",\n    \"non_diegetic_music\": \"None.\"\n  },\n  \"displayPrompt\": {\n    \"subject_definitions\": \"<Subject 1>: 带有猫脸浮雕的金币，外观来自 <Picture 1>\",\n    \"summary\": \"[video editing + reference generation] 目标视频是 <Video 1> 的编辑版本。原金币被替换为 <Subject 1>，同时保留原有运动、时序、机位、构图和绿幕背景。\",\n    \"retention_analysis\": \"<Video 1>: partially_preserved - 保留运动、时序、机位、构图和绿幕背景；全程替换原有金币外观。\\n<Subject 1>: attribute_transfer - 猫脸金币外观应用于所有金币实例。\",\n    \"detailed_description\": \"保留参考外观。[Shot 1] 带有 <Subject 1> 猫脸图案的金币以 <Video 1> 中所示的精确位置、大小、轨迹和旋转阶段出现，在纯绿幕背景下翻转并转至侧面，持续完整3秒。\",\n    \"overall_soundscape\": \"无声，无拟音存在。\",\n    \"non_diegetic_music\": \"无。\"\n  }\n}",
+          "logprobs": [],
+          "annotations": []
+        }
+      ],
+      "id": "msg_06f359b4-df24-98ab-ade6-bd2af382f444",
+      "role": "assistant",
+      "type": "message",
+      "status": "completed"
+    }
+  ],
+  "parallel_tool_calls": true,
+  "previous_response_id": null,
+  "reasoning": {
+    "effort": "low",
+    "summary": "detailed"
+  },
+  "temperature": 0.35,
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "modelPrompt": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "subject_definitions": {
+                "type": "string",
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "summary": {
+                "type": "string",
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "retention_analysis": {
+                "type": "string",
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "detailed_description": {
+                "type": "string",
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "overall_soundscape": {
+                "type": "string",
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "non_diegetic_music": {
+                "type": "string",
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              }
+            },
+            "required": [
+              "subject_definitions",
+              "summary",
+              "retention_analysis",
+              "detailed_description",
+              "overall_soundscape",
+              "non_diegetic_music"
+            ]
+          },
+          "displayPrompt": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "subject_definitions": {
+                "type": "string",
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "summary": {
+                "type": "string",
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "retention_analysis": {
+                "type": "string",
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "detailed_description": {
+                "type": "string",
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "overall_soundscape": {
+                "type": "string",
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "non_diegetic_music": {
+                "type": "string",
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              }
+            },
+            "required": [
+              "subject_definitions",
+              "summary",
+              "retention_analysis",
+              "detailed_description",
+              "overall_soundscape",
+              "non_diegetic_music"
+            ]
+          }
+        },
+        "required": [
+          "modelPrompt",
+          "displayPrompt"
+        ]
+      }
+    }
+  },
+  "tool_choice": "auto",
+  "tools": [],
+  "top_p": 0.95,
+  "usage": {
+    "input_tokens": 4487,
+    "input_tokens_details": {
+      "cached_tokens": 4480
+    },
+    "output_tokens": 1033,
+    "output_tokens_details": {
+      "reasoning_tokens": 568
+    },
+    "total_tokens": 5520,
+    "num_sources_used": 0,
+    "num_server_side_tools_used": 0,
+    "cost_in_usd_ticks": 34872500,
+    "context_details": {
+      "input_tokens": 4487,
+      "output_tokens": 1033
+    }
+  },
+  "user": null,
+  "incomplete_details": null,
+  "status": "completed",
+  "store": false,
+  "metadata": {
+    "system_fingerprint": "fp_eb3c003fc66c14ed"
+  },
+  "background": false,
+  "service_tier": "default",
+  "truncation": "disabled",
+  "top_logprobs": 0,
+  "presence_penalty": 0,
+  "frequency_penalty": 0,
+  "prompt_cache_key": null,
+  "max_tool_calls": null,
+  "safety_identifier": null,
+  "error": null,
+  "instructions": null
+}

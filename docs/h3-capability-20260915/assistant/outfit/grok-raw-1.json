@@ -1,0 +1,184 @@
+{
+  "created_at": 1789409275,
+  "completed_at": 1789409294,
+  "id": "d8f3c8b5-c50b-9f24-b2fa-809882aab5ab",
+  "max_output_tokens": 4096,
+  "model": "grok-4.3",
+  "object": "response",
+  "output": [
+    {
+      "id": "rs_d8f3c8b5-c50b-9f24-b2fa-809882aab5ab",
+      "summary": [
+        {
+          "text": "The task is to replace the character's clothing in the video with a deep blue long-sleeve denim jacket and long pants, keeping face, hair, actions, and background the same.\n{\n  \"modelPrompt\": \"[video editing + reference generation] The target video is an edited version of <Video 1>. The original target being replaced is the character's white/gold outfit. The replacement subject is a deep blue long-sleeve denim jacket and long pants. Motion, timing, camera, setting, and sound are fully retained. The character remains a woman with purple hair holding a magical staff on a green screen background.\\n\\n<Subject 1>: A woman with purple hair wearing a deep blue long-sleeve denim jacket and long pants, holding a magical staff. Appearance from <Video 1> with clothing replacement.\\ <Video 1>: partially_preserved - motion, timing, camera, setting, and sound retained; original clothing replaced.\\n\\n[Shot 1] The video opens with the woman standing in a green screen studio, holding her staff. She raises the staff, triggering purple magical effects that swirl around her.",
+          "type": "summary_text"
+        }
+      ],
+      "type": "reasoning",
+      "status": "completed"
+    },
+    {
+      "content": [
+        {
+          "type": "output_text",
+          "text": "{\n  \"modelPrompt\": {\n    \"subject_definitions\": \"<Subject 1>: Woman with long purple hair and unchanged face wearing deep blue long-sleeve denim jacket and long pants, holding ornate staff. Appearance and motion from <Video 1> with clothing replacement.\",\n    \"summary\": \"[video editing + reference generation] The target video is an edited version of <Video 1>. The character's original white and gold outfit is replaced throughout by deep blue long-sleeve denim jacket and long pants while face, hair, actions, camera, timing, magical effects and green screen background are retained.\",\n    \"retention_analysis\": \"<Subject 1>: attribute_transfer - clothing changed to deep blue long-sleeve denim jacket and long pants with face, hair and actions preserved from <Video 1>\\n<Video 1>: partially_preserved - original motion, timing, camera framing, magical sparkles and green screen background retained with clothing content replaced\",\n    \"detailed_description\": \"Retain the reference appearance with updated clothing. [Shot 1] Woman in deep blue denim jacket and pants sits on green screen holding staff, raises it high emitting sparkles, swings staff to create glowing trail, continues dynamic poses with staff and ends in lowered position at 4 seconds.\",\n    \"overall_soundscape\": \"N/A\",\n    \"non_diegetic_music\": \"N/A\"\n  },\n  \"displayPrompt\": {\n    \"subject_definitions\": \"<Subject 1>: 拥有长紫色头发、面部保持不变的女性，身穿深蓝色长袖牛仔外套和长裤，手持华丽法杖。外观与动作来自 <Video 1> 并替换服装。\",\n    \"summary\": \"[video editing + reference generation] The target video is an edited version of <Video 1>。将角色原有白色金色服装全程替换为深蓝色长袖牛仔外套和长裤，同时保留面部、头发、动作、摄像机、时间线、魔法特效和绿色背景。\",\n    \"retention_analysis\": \"<Subject 1>: attribute_transfer - 服装更换为深蓝色长袖牛仔外套和长裤，面部、头发与动作从 <Video 1> 保留\\n<Video 1>: partially_preserved - 保留原有动作、时间线、摄像机取景、魔法火花和绿色背景，仅替换服装内容\",\n    \"detailed_description\": \"保留参考外观并更新服装。[Shot 1] 身穿深蓝色牛仔外套和长裤的女性坐在绿色背景上，手持法杖，将其高举并释放火花，挥动法杖制造发光轨迹，继续动态法杖姿势，4秒时以法杖放低姿势结束。\",\n    \"overall_soundscape\": \"N/A\",\n    \"non_diegetic_music\": \"N/A\"\n  }\n}",
+          "logprobs": [],
+          "annotations": []
+        }
+      ],
+      "id": "msg_d8f3c8b5-c50b-9f24-b2fa-809882aab5ab",
+      "role": "assistant",
+      "type": "message",
+      "status": "completed"
+    }
+  ],
+  "parallel_tool_calls": true,
+  "previous_response_id": null,
+  "reasoning": {
+    "effort": "low",
+    "summary": "detailed"
+  },
+  "temperature": 0.35,
+  "text": {
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "modelPrompt": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "subject_definitions": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately."
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "retention_analysis": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. One rule per defined Subject and source Video; image attributes belong to the Subject using that picture."
+              },
+              "detailed_description": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue."
+              },
+              "overall_soundscape": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. Use N/A for absent or unrequested audio, never an empty string."
+              },
+              "non_diegetic_music": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue. Use N/A for absent or unrequested audio, never an empty string."
+              }
+            },
+            "required": [
+              "subject_definitions",
+              "summary",
+              "retention_analysis",
+              "detailed_description",
+              "overall_soundscape",
+              "non_diegetic_music"
+            ]
+          },
+          "displayPrompt": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "subject_definitions": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately."
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "retention_analysis": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 One rule per defined Subject and source Video; image attributes belong to the Subject using that picture."
+              },
+              "detailed_description": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。"
+              },
+              "overall_soundscape": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 Use N/A for absent or unrequested audio, never an empty string."
+              },
+              "non_diegetic_music": {
+                "type": "string",
+                "minLength": 1,
+                "description": "本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。 Use N/A for absent or unrequested audio, never an empty string."
+              }
+            },
+            "required": [
+              "subject_definitions",
+              "summary",
+              "retention_analysis",
+              "detailed_description",
+              "overall_soundscape",
+              "non_diegetic_music"
+            ]
+          }
+        },
+        "required": [
+          "modelPrompt",
+          "displayPrompt"
+        ]
+      }
+    }
+  },
+  "tool_choice": "auto",
+  "tools": [],
+  "top_p": 0.95,
+  "usage": {
+    "input_tokens": 4820,
+    "input_tokens_details": {
+      "cached_tokens": 192
+    },
+    "output_tokens": 1518,
+    "output_tokens_details": {
+      "reasoning_tokens": 933
+    },
+    "total_tokens": 6338,
+    "num_sources_used": 0,
+    "num_server_side_tools_used": 0,
+    "cost_in_usd_ticks": 96184000,
+    "context_details": {
+      "input_tokens": 4820,
+      "output_tokens": 1518
+    }
+  },
+  "user": null,
+  "incomplete_details": null,
+  "status": "completed",
+  "store": false,
+  "metadata": {
+    "system_fingerprint": "fp_eb3c003fc66c14ed"
+  },
+  "background": false,
+  "service_tier": "default",
+  "truncation": "disabled",
+  "top_logprobs": 0,
+  "presence_penalty": 0,
+  "frequency_penalty": 0,
+  "prompt_cache_key": null,
+  "max_tool_calls": null,
+  "safety_identifier": null,
+  "error": null,
+  "instructions": null
+}

@@ -1,0 +1,17 @@
+subject_definitions:
+<Subject 1>：Replace the coin style with a golden circular coin, featuring a cat head relief on its surface, a ring-shaped raised edge, metallic material, and no transparency. Source material: <Picture 1>.
+<Video 1>：The source video has a solid green background; the coin's rotation path: starts front-facing at 0.000 seconds, reaches the narrowest side at 1.500 seconds, and returns to front-facing at 3.000 seconds.
+
+summary: [video editing + reference generation] The target video is an edited version of <Video 1>. Replace the appearance of the rotating coin in <Video 1> with the style of <Picture 1>, while preserving the background and motion trajectory.
+
+retention_analysis:
+<Subject 1>: attribute_transfer - Solid green background; retain the original rotation path and timing: starts front-facing at 0.000 seconds, reaches the narrowest side at 1.500 seconds, and returns to front-facing at 3.000 seconds.
+<Video 1>: partially_preserved - Solid green background; fully retain the rotation path and timing. Preserve the original video shot.
+
+detailed_description: [Shot 1] <Subject 1>Rotate centrally against a solid green background: starts front-facing at 0.000 seconds, reaches the narrowest side at 1.500 seconds, and returns to front-facing at 3.000 seconds.
+
+Except for explicitly specified changes, retain all elements from <Video 1> at corresponding timestamps — including background, shot, composition, motion direction, speed, trajectory, and pose; the specified editing effects remain continuously active as per the above requirements.
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A

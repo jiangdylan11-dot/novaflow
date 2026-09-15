@@ -1,0 +1,11 @@
+{
+  "request": "把参考视频的绿色背景改成紫色，金币外观和动作都保留",
+  "sources": [
+    "<Video 1>"
+  ],
+  "editPolicy": {
+    "preserveBackground": false,
+    "preserveMotion": true,
+    "sameShapeAppearanceOnly": false
+  }
+}

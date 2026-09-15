@@ -1591,13 +1591,21 @@ function normalizeGrokVisualIrContentSafety(value, contract, diagnostics = null,
   const level = requiredEnumText(value.level);
   const bodyExposure = requiredEnumText(value.body_exposure);
   const interactionCategory = requiredEnumText(value.interaction_category);
-  const ageAssessment = requiredEnumText(value.age_assessment);
+  let ageAssessment = requiredEnumText(value.age_assessment);
   const visiblePersonCount = value.visible_person_count;
-  const signals = normalizeGrokVisualIrStringArray(value.signals, 16, 80);
+  let signals = normalizeGrokVisualIrStringArray(value.signals, 16, 80);
   const sensitiveVisibleFacts = normalizeGrokVisualIrStringArray(value.sensitive_visible_facts, 6, 160);
   if (level === null || bodyExposure === null || interactionCategory === null || ageAssessment === null) return null;
   if (!Number.isInteger(visiblePersonCount) || visiblePersonCount < 0 || visiblePersonCount > 12) return null;
   if (!signals || !sensitiveVisibleFacts) return null;
+  // A visible person whose age the provider left "not applicable" is completed
+  // fail-closed: the age becomes unverifiable (and flagged when the frame is
+  // not safe), which only tightens downstream gating. Rejecting the whole
+  // analysis here made ordinary single-person frames unusable.
+  if (visiblePersonCount > 0 && ageAssessment === "not_applicable") {
+    ageAssessment = "age_unverifiable";
+    if (level !== "safe" && !signals.includes("age_ambiguous")) signals = [...signals, "age_ambiguous"];
+  }
 
   const normalizedContentSafety = {
     level,

@@ -1,0 +1,19 @@
+subject_definitions:
+<Subject 1> : Woman with long purple hair wearing a flowing dress and golden accessories, holding a golden staff with crescent moon ornament, from <Video 1>.
+<Video 1> : Source video of the woman posing and moving the staff with magical effects on green background.
+
+summary: [video editing] The target video is an edited version of <Video 1>. The white skirt of the woman is changed to red while keeping the skirt style, the woman's appearance, actions, and green background unchanged.
+
+retention_analysis:
+<Subject 1>: partially_preserved - appearance except for the skirt color changed to red, motion and pose fully preserved from <Video 1>.
+<Video 1>: partially_preserved - original motion, camera, timing and all content except the skirt color.
+
+detailed_description: Retain the reference appearance without assigning a new style.
+
+[Shot 1] The shot shows <Subject 1>.
+
+The woman with purple hair sits on a green screen background, holding a golden staff, moving it to create magical light effects while her white skirt is now red, preserving all original poses and movements over 4 seconds.
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A

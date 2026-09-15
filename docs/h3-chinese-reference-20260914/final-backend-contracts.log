@@ -1,0 +1,22 @@
+✔ refinement includes verified facts, original intent and supplementary requirements with the same references (37.7352ms)
+✔ exports one immutable pure reverse workflow through CommonJS and the browser global (1.6702ms)
+✔ declares the confirmed four-mode optimize and reverse capability matrix (2.5302ms)
+✔ builds one strict first-frame bridge request for I2V (3.3599ms)
+✔ orders FL2V bridge images as first frame then last frame regardless of input order (1.944ms)
+✔ fails closed on wrong slots, counts, media types, data URLs, or inconsistent identities (1.5015ms)
+✔ fingerprints model, mode, duration, prompt, requirements, identity, sourceId, and image bytes (7.3016ms)
+✔ forwards fact-faithful H3 analysis without age confirmation and blocks only minor-sensitive conflicts (14.4149ms)
+✔ validates and restores I2V and FL2V through the existing H3 prompt workflow (10.324ms)
+✔ rejects generic protocol fallbacks that contain no backend-validated picture facts (4.3629ms)
+✔ disabled fallback still rejects stale state and mismatched explicit userPrompt first (2.5917ms)
+✔ discards stale responses and malformed H3 protocol output before writeback (4.5744ms)
+minimax-h3-prompt-backend-contract: passed
+✔ particle-editor-desktop\tests\minimax-h3-prompt-backend-contract.test.js (4896.8064ms)
+ℹ tests 13
+ℹ suites 0
+ℹ pass 13
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4923.4283

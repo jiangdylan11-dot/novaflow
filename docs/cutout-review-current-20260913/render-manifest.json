@@ -1,0 +1,117 @@
+{
+  "note": "Current production React cutout renderer with previously captured real AI masks; no algorithm edits in this review run.",
+  "clips": [
+    {
+      "id": "blue",
+      "file": "C:/Users/jiang/OneDrive/Desktop/新建文件夹/kling_20260908_VIDEO_藍色背景中__Ima_4120_0.mp4",
+      "width": 960,
+      "height": 960,
+      "fps": "24/1",
+      "frames": 73,
+      "duration": 3.041992,
+      "sampleFrames": [
+        0,
+        14,
+        29,
+        43,
+        58,
+        72
+      ],
+      "sha256": "8ef3aac9d303bd85c6d59057803dabc4d3af9a2e91e4b25766048ec9ce160340",
+      "label": "蓝幕金树",
+      "sourceDir": "D:\\AI_APP\\NovaFlow\\logs\\cutout-four-video-20260913\\blue\\source",
+      "maskDir": "D:\\AI_APP\\NovaFlow\\logs\\cutout-four-video-20260913\\blue\\mask",
+      "reviewCrop": [
+        0,
+        0,
+        960,
+        960
+      ]
+    },
+    {
+      "id": "minimax",
+      "file": "C:/Users/jiang/OneDrive/Desktop/新建文件夹/MiniMax_H3_fl2v_00161_.mp4",
+      "width": 736,
+      "height": 1280,
+      "fps": "24/1",
+      "frames": 73,
+      "duration": 3.041992,
+      "sampleFrames": [
+        0,
+        14,
+        29,
+        43,
+        58,
+        72
+      ],
+      "sha256": "16ee3826ba60dc7f24df72eb7697a7dd1fa732b7e737aa56c7b988129d38359c",
+      "label": "青蓝光",
+      "sourceDir": "D:\\AI_APP\\NovaFlow\\logs\\cutout-four-video-20260913\\minimax\\source",
+      "maskDir": "D:\\AI_APP\\NovaFlow\\logs\\cutout-four-video-20260913\\minimax\\mask",
+      "reviewCrop": [
+        0,
+        160,
+        736,
+        734
+      ]
+    },
+    {
+      "id": "gloweyes",
+      "file": "C:/Users/jiang/OneDrive/Desktop/新建文件夹/Gloweyes.mp4",
+      "width": 1080,
+      "height": 1920,
+      "fps": "24/1",
+      "frames": 121,
+      "duration": 5.041667,
+      "sampleFrames": [
+        0,
+        24,
+        48,
+        72,
+        96,
+        120
+      ],
+      "sha256": "137c8a7fda0c03f0a135c33c52fe8ab9f42026fb8ffeac6e7a25edb50ff33ae4",
+      "label": "Gloweyes",
+      "sourceDir": "D:\\AI_APP\\NovaFlow\\logs\\cutout-four-video-20260913\\gloweyes\\source",
+      "maskDir": "D:\\AI_APP\\NovaFlow\\logs\\cutout-four-video-20260913\\gloweyes\\mask",
+      "reviewCrop": [
+        0,
+        739,
+        1080,
+        1868
+      ]
+    },
+    {
+      "id": "scatter",
+      "file": "C:/Users/jiang/OneDrive/Desktop/新建文件夹/kling_20260513_作品_增加scatter中_3889_0.mp4",
+      "width": 960,
+      "height": 960,
+      "fps": "24/1",
+      "frames": 73,
+      "duration": 3.041992,
+      "sampleFrames": [
+        0,
+        14,
+        29,
+        43,
+        58,
+        72
+      ],
+      "sha256": "6c7c14ec7939aa544725ec4231aa78975259865f004b1cf6e06cbc1295d920d2",
+      "label": "Scatter",
+      "sourceDir": "D:\\AI_APP\\NovaFlow\\logs\\cutout-four-video-20260913\\scatter\\source",
+      "maskDir": "D:\\AI_APP\\NovaFlow\\logs\\cutout-four-video-20260913\\scatter\\mask",
+      "reviewCrop": [
+        42,
+        101,
+        960,
+        838
+      ]
+    }
+  ],
+  "hashes": {
+    "particle-editor/ai-sequence-green-screen-matting.js": "cae387f54ac37601f581a0cbe280d154ae40bf87060a48044656e94207efca94",
+    "particle-editor/assets/index-BbIa-2NM.js": "1837f717760010787a31fa671ccd23afadacabe7b7aba95a6351946a5da2a561"
+  }
+}

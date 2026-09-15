@@ -1,0 +1,324 @@
+{
+  "prompt": [
+    0,
+    "f1f8efbc-532b-4497-a95a-21f5c2aa3f38",
+    {
+      "1": {
+        "inputs": {
+          "unet_name": "Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors",
+          "weight_dtype": "default"
+        },
+        "class_type": "UNETLoader",
+        "_meta": {
+          "title": "MiniMax H3 UNet"
+        }
+      },
+      "2": {
+        "inputs": {
+          "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+          "type": "minimax",
+          "device": "default"
+        },
+        "class_type": "CLIPLoader",
+        "_meta": {
+          "title": "MiniMax H3 text encoder"
+        }
+      },
+      "3": {
+        "inputs": {
+          "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+        },
+        "class_type": "VAELoader",
+        "_meta": {
+          "title": "MiniMax H3 video VAE"
+        }
+      },
+      "4": {
+        "inputs": {
+          "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+        },
+        "class_type": "VAELoader",
+        "_meta": {
+          "title": "MiniMax H3 audio VAE"
+        }
+      },
+      "5": {
+        "inputs": {
+          "clip": [
+            "2",
+            0
+          ],
+          "vae": [
+            "3",
+            0
+          ],
+          "prompt": "subject_definitions:\n<Subject 1>：Replace the golden coin tree with an ice crystal tree, whose canopy is composed of ice crystal particles, planted in a matching circular pot adorned with swirling patterns, exhibiting an overall icy crystalline texture; the background remains pure blue unchanged. Material source: <Video 1>.\n<Video 1>：The source video for this edit.\n\nsummary: [video editing] The target video is an edited version of <Video 1>. Replace the golden coin tree and particle effects with an ice crystal theme, while preserving the original motion rhythm and background.\n\nretention_analysis:\n<Subject 1>: partially_preserved - The growth and falling motion paths and rhythm remain unchanged; the original background is preserved.\n<Video 1>: partially_preserved - Execute this modification according to the target description; when no specific modifications are specified for background, camera, composition, or motion sequence, retain the source video. Preserve original video camera.\n\ndetailed_description: [Shot 1] <Subject 1> From the start of the scene, the ice crystal tree appears, with its canopy composed of ice crystal particles, planted in a matching circular pot adorned with swirling patterns, exhibiting an overall icy crystalline texture, against a pure blue background.\n\nThe ice crystal particles continue to fall along the original gold coin falling trajectory, while the tree maintains its original growth posture.\n\nExcept for the explicitly modified elements, retain the background, camera, composition, motion direction, speed, trajectory, and posture corresponding to <Video 1> at the specified moment; the applied editing effects remain continuously effective as described above.\n\noverall_soundscape: N/A\n\nnon_diegetic_music: N/A",
+          "width": 800,
+          "height": 800,
+          "length": 73,
+          "audio_vae": [
+            "4",
+            0
+          ],
+          "ref_image_size": "match",
+          "ref_videos.ref_video_0": [
+            "22",
+            0
+          ]
+        },
+        "class_type": "MiniMaxH3ReferenceToVideo",
+        "_meta": {
+          "title": "MiniMaxH3ReferenceToVideo"
+        }
+      },
+      "6": {
+        "inputs": {
+          "scheduler": "simple",
+          "steps": 4,
+          "denoise": 1,
+          "model": [
+            "1",
+            0
+          ]
+        },
+        "class_type": "BasicScheduler",
+        "_meta": {
+          "title": "MiniMax H3 scheduler"
+        }
+      },
+      "7": {
+        "inputs": {
+          "sampler_name": "res_multistep"
+        },
+        "class_type": "KSamplerSelect",
+        "_meta": {
+          "title": "MiniMax H3 sampler"
+        }
+      },
+      "8": {
+        "inputs": {
+          "noise_seed": 1696013393
+        },
+        "class_type": "RandomNoise",
+        "_meta": {
+          "title": "MiniMax H3 seed"
+        }
+      },
+      "9": {
+        "inputs": {
+          "model": [
+            "16",
+            0
+          ],
+          "conditioning": [
+            "5",
+            0
+          ]
+        },
+        "class_type": "BasicGuider",
+        "_meta": {
+          "title": "MiniMax H3 guider"
+        }
+      },
+      "10": {
+        "inputs": {
+          "noise": [
+            "8",
+            0
+          ],
+          "guider": [
+            "9",
+            0
+          ],
+          "sampler": [
+            "7",
+            0
+          ],
+          "sigmas": [
+            "6",
+            0
+          ],
+          "latent_image": [
+            "5",
+            1
+          ]
+        },
+        "class_type": "SamplerCustomAdvanced",
+        "_meta": {
+          "title": "MiniMax H3 sampling"
+        }
+      },
+      "11": {
+        "inputs": {
+          "samples": [
+            "10",
+            0
+          ],
+          "vae": [
+            "3",
+            0
+          ]
+        },
+        "class_type": "VAEDecode",
+        "_meta": {
+          "title": "Decode MiniMax H3 video"
+        }
+      },
+      "12": {
+        "inputs": {
+          "samples": [
+            "10",
+            0
+          ],
+          "vae": [
+            "4",
+            0
+          ]
+        },
+        "class_type": "VAEDecodeAudio",
+        "_meta": {
+          "title": "Decode MiniMax H3 audio"
+        }
+      },
+      "13": {
+        "inputs": {
+          "images": [
+            "11",
+            0
+          ],
+          "audio": [
+            "12",
+            0
+          ],
+          "fps": 24,
+          "bit_depth": 8
+        },
+        "class_type": "CreateVideo",
+        "_meta": {
+          "title": "Create MiniMax H3 video"
+        }
+      },
+      "14": {
+        "inputs": {
+          "video": [
+            "13",
+            0
+          ],
+          "filename_prefix": "video/NovaFlow_H3_probe_ice_beta5_4",
+          "format": "auto",
+          "codec": "auto"
+        },
+        "class_type": "SaveVideo",
+        "_meta": {
+          "title": "Save MiniMax H3 video"
+        }
+      },
+      "16": {
+        "inputs": {
+          "model": [
+            "1",
+            0
+          ]
+        },
+        "class_type": "NovaFlowH3SageAttention",
+        "_meta": {
+          "title": "H3 SageAttention 加速"
+        }
+      },
+      "20": {
+        "inputs": {
+          "file": "novaflow_capability_ice_source.mp4"
+        },
+        "class_type": "LoadVideo",
+        "_meta": {
+          "title": "reference_video"
+        }
+      },
+      "21": {
+        "inputs": {
+          "video": [
+            "20",
+            0
+          ]
+        },
+        "class_type": "GetVideoComponents",
+        "_meta": {
+          "title": "reference_video_components"
+        }
+      },
+      "22": {
+        "inputs": {
+          "images": [
+            "21",
+            0
+          ],
+          "source_fps": [
+            "21",
+            2
+          ]
+        },
+        "class_type": "NovaFlowH3ReferenceVideoFrames",
+        "_meta": {
+          "title": "Reference video at source timestamps"
+        }
+      }
+    },
+    {
+      "client_id": "novaflow-h3-native-capability-probe",
+      "create_time": 1789438070063
+    },
+    [
+      "14"
+    ]
+  ],
+  "outputs": {
+    "14": {
+      "images": [
+        {
+          "filename": "NovaFlow_H3_probe_ice_beta5_4_00001_.mp4",
+          "subfolder": "video",
+          "type": "output"
+        }
+      ],
+      "animated": [
+        true
+      ]
+    }
+  },
+  "status": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "f1f8efbc-532b-4497-a95a-21f5c2aa3f38",
+          "timestamp": 1789438070066
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [],
+          "prompt_id": "f1f8efbc-532b-4497-a95a-21f5c2aa3f38",
+          "timestamp": 1789438070088
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "f1f8efbc-532b-4497-a95a-21f5c2aa3f38",
+          "timestamp": 1789438259934
+        }
+      ]
+    ]
+  },
+  "meta": {
+    "14": {
+      "node_id": "14",
+      "display_node": "14",
+      "parent_node": null,
+      "real_node_id": "14"
+    }
+  }
+}

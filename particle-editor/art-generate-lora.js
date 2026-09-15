@@ -117,7 +117,7 @@
   async function refresh(record) {
     if (record.loading) return
     const context = record.context
-    const request = { nsfw: record.options.state.mode === 'img2img' || !!record.options.state.nsfw }
+    const request = { nsfw: !!record.options.state.nsfw }
     record.loading = true
     record.loaded = true
     record.error = ''

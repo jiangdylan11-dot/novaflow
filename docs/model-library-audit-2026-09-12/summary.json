@@ -1,0 +1,15 @@
+{
+  "totalBytes": 399821811595,
+  "recommendedBytes": 99347961827,
+  "secondaryBytes": 0,
+  "recommendedFiles": 14,
+  "remainingBytes": 300473849768,
+  "files": 366,
+  "groups": {
+    "旧Qwen主模型": 81825429513,
+    "旧Qwen配套": 4124021126,
+    "旧H3加速LoRA": 7824771992,
+    "重复CLIP Vision": 1264219396,
+    "旧特效实验专用": 4309519800
+  }
+}

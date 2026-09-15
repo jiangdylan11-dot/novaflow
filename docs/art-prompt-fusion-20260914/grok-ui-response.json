@@ -1,0 +1,33 @@
+{
+  "id": "a348010a-e161-9894-8f4b-41b102a24cac",
+  "object": "response",
+  "created": null,
+  "model": "grok-4.3",
+  "output_text": "一只橘猫坐在木桌上，绿色眼睛看向窗外，前爪并拢，尾巴绕在身体右侧。桌上放着一只蓝色陶瓷杯，杯身呈现细腻陶瓷质感与柔和光影过渡。背景是木质窗框与窗外花园，花园中花草叶片层次分明、色彩丰富。阳光从左侧窗户照入，木桌表面可见清晰木纹与温暖光影。平视中景，猫位于画面中央。精细水彩插画，安静温暖的午后氛围。保持猫、杯子、木桌和花园，不增加其他动物。",
+  "negative_prompt": "",
+  "has_negative_prompt": false,
+  "visualSchema": "",
+  "contentSafety": null,
+  "contentWarnings": [],
+  "sensitivePromptBlocked": false,
+  "visualPrompt": "",
+  "generationRequirements": "",
+  "usage": {
+    "input_tokens": 705,
+    "input_tokens_details": {
+      "cached_tokens": 128
+    },
+    "output_tokens": 941,
+    "output_tokens_details": {
+      "reasoning_tokens": 806
+    },
+    "total_tokens": 1646,
+    "num_sources_used": 0,
+    "num_server_side_tools_used": 0,
+    "cost_in_usd_ticks": 30993500,
+    "context_details": {
+      "input_tokens": 705,
+      "output_tokens": 941
+    }
+  }
+}

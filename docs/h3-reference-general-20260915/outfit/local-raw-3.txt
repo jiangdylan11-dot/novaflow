@@ -1,0 +1,10 @@
+```json
+{
+    "0": "A woman with purple hair, wearing a white dress with a golden decoration on her waist, holding a golden staff. Material source: TOKEN_0.",
+    "1": "The source video for this edit.",
+    "2": "Replace the person in the video with a dark blue long-sleeved denim jacket and pants.",
+    "3": "Face, hair, actions, and background",
+    "4": "In the original scene, there is a woman with purple hair, wearing a white dress with a golden decoration on her waist, holding a golden staff. The background is pure green. Replace this person with a dark blue long-sleeved denim jacket and pants, keeping the face, hair, actions, and background unchanged. Keep the original video shot.",
+    "5": "TOKEN_0 appears in the scene. In the original scene, there is a woman with purple hair, wearing a white dress with a golden decoration on her waist, holding a golden staff. The background is pure green. Replace this person with a dark blue long-sleeved denim jacket and pants, keeping the face, hair, actions, and background unchanged."
+}
+```

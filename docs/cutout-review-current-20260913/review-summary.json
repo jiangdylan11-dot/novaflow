@@ -1,0 +1,54 @@
+[
+  {
+    "id": "blue",
+    "frames": 73,
+    "fps": 24,
+    "review": "blue-review.mp4",
+    "pngFolder": "blue/frames",
+    "previewCrop": [
+      0,
+      0,
+      960,
+      960
+    ]
+  },
+  {
+    "id": "minimax",
+    "frames": 73,
+    "fps": 24,
+    "review": "minimax-review.mp4",
+    "pngFolder": "minimax/frames",
+    "previewCrop": [
+      0,
+      160,
+      736,
+      734
+    ]
+  },
+  {
+    "id": "gloweyes",
+    "frames": 121,
+    "fps": 24,
+    "review": "gloweyes-review.mp4",
+    "pngFolder": "gloweyes/frames",
+    "previewCrop": [
+      0,
+      739,
+      1080,
+      1868
+    ]
+  },
+  {
+    "id": "scatter",
+    "frames": 73,
+    "fps": 24,
+    "review": "scatter-review.mp4",
+    "pngFolder": "scatter/frames",
+    "previewCrop": [
+      42,
+      101,
+      960,
+      838
+    ]
+  }
+]

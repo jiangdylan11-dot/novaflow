@@ -112,6 +112,22 @@ class H3EnhancementTest(unittest.TestCase):
         result = assistant.optimize_prompt({'purpose':'minimax-h3-prompt-enhance', 'h3Mode':'T2VA', 'durationSeconds':2, 'currentPrompt':source, 'requirements':'Source prompt:\n'+source+'\n\n'+requirement})
         self.assertIn('抬起右手', result['positivePrompt'])
 
+    def test_uploads_decide_reference_tasks_not_the_model_guess(self):
+        from prompt_assistant.h3_prompt_enhance import render_reference_plan, validate_reference
+        plan = {"references": [{"label": "<Subject 1>", "sources": ["<Picture 1>"], "description": "来自 <Picture 1> 的角色。", "keep": "面容与发型不变"}],
+                "tasks": ["video editing", "reference generation", "audio reuse"], "summary": "角色做往复动作，3秒循环。",
+                "description": "<Subject 1> 位于画面中央往复运动，结束时回到起始姿态与运动相位。", "soundscape": "N/A", "music": "N/A"}
+        inventory = "Available resource labels: <Picture 1>"
+        output = render_reference_plan(json.dumps(plan, ensure_ascii=False), inventory, 3, "往复动作，3秒循环", "")
+        self.assertIn("summary:\n[reference generation] ", output)
+        self.assertNotIn("<Video", output)
+        # The same trimming applies to a finished six-field document.
+        guessed = output.replace("[reference generation]", "[video editing + reference generation + audio reference]")
+        self.assertIn("summary:\n[reference generation] ", validate_reference(guessed, inventory, 3))
+        # With a video uploaded, editing stays available and still needs its source binding.
+        with self.assertRaises(ValueError):
+            validate_reference(guessed, "Available resource labels: <Picture 1>; <Video 1>", 3)
+
     def test_structured_copy_and_audio_only_change(self):
         source = wrap("角色随后抬手，镜头固定。")
         with self.assertRaises(ValueError):

@@ -1,0 +1,18 @@
+{
+  "modelPrompt": {
+    "subject_definitions": "<Subject 1> The purple-haired woman wearing a flowing dress and holding a magical staff, appearance and motion from <Video 1>.",
+    "summary": "[video editing + reference generation] The target video is an edited version of <Video 1>. The white skirt of the woman is replaced with a red skirt while retaining the exact same motion, timing, camera, setting and all other visual elements.",
+    "retention_analysis": "<Subject 1>: attribute_transfer - skirt color changed from white to red\n<Video 1>: partially_preserved - original motion, camera, framing, timing, background, character pose, actions and magical effects",
+    "detailed_description": "Retain reference appearance. [Shot 1] The purple-haired woman sits on a green screen background holding a golden staff. She raises the staff high, causing it to emit sparkling magical light trails, then lowers it while maintaining the same seated pose and flowing dress movement with the skirt now red throughout the 4-second sequence.",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  },
+  "displayPrompt": {
+    "subject_definitions": "<Subject 1> 紫发女子身着飘逸长裙、手持魔法权杖，外观与动作来源于<Video 1>。",
+    "summary": "[video editing + reference generation] 目标视频是<Video 1>的编辑版本。女子白色裙子替换为红色裙子，同时保留完全相同的动作、时序、机位、场景及其他所有视觉元素。",
+    "retention_analysis": "<Subject 1>: attribute_transfer - 裙子颜色由白改为红\n<Video 1>: partially_preserved - 原始动作、机位、构图、时序、背景、人物姿态、动作及魔法特效",
+    "detailed_description": "保留参考外观。[Shot 1] 紫发女子坐在绿幕背景上，手持金色权杖。她将权杖高举，权杖发出闪耀魔法光轨，随后放下，保持相同坐姿与裙摆飘动，裙子全程为红色，持续4秒。",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  }
+}

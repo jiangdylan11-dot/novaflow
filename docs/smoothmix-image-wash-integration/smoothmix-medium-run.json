@@ -1,0 +1,19 @@
+{
+  "name": "smoothmix-medium",
+  "mode": "smoothmix",
+  "denoise": 0.65,
+  "wanLoraStrength": 0,
+  "seed": 9122026,
+  "promptId": "fa84d912-4b0a-407c-a5d2-4f2e57c228d0",
+  "status": "success",
+  "sourceSha256": "25de3a8d5c48d989489926f8718e69ed2767fe35ee1d2ecca35621b6217e57c3",
+  "reverseInference": "Recorded profile reused; live Prompt Assistant not exercised.",
+  "runtimeSourceSha256": "72c35645fccec8476396474ccc4ccf1428dcaf7ef5ab3ce3e59a0d6d689550cd",
+  "seconds": 12.566,
+  "outputSha256": "38d56200817fa8fe48db42623f5be10c55b3f4fb177f3131ff63d02406436541",
+  "output": {
+    "filename": "novaflow_image_wash_smoothmix_1789234632989_84bd82_00001_.png",
+    "subfolder": "",
+    "type": "output"
+  }
+}

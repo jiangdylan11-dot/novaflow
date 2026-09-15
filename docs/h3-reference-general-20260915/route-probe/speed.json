@@ -1,0 +1,11 @@
+{
+  "request": "让参考视频里的金币转得慢一倍，金币外观和背景保持原样",
+  "sources": [
+    "<Video 1>"
+  ],
+  "editPolicy": {
+    "preserveBackground": true,
+    "preserveMotion": false,
+    "sameShapeAppearanceOnly": false
+  }
+}

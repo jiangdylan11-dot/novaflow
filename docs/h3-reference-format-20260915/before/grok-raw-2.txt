@@ -1,0 +1,18 @@
+{
+  "modelPrompt": {
+    "subject_definitions": "<Subject 1>: golden coin featuring cat-face emblem, appearance from <Picture 1>, spinning motion and trajectory from <Video 1>",
+    "summary": "[video editing + reference generation] The target video is an edited version of <Video 1>. The original coin emblem is replaced throughout by <Subject 1> while the green-screen background, spinning motion, trajectory, timing, camera framing and start/end phase are retained.",
+    "retention_analysis": "<Video 1>: partially_preserved - green background, spinning motion, trajectory, camera framing and timing retained with original coin design removed.\n<Subject 1>: attribute_transfer - cat-face emblem appearance transferred to the coin in <Video 1>.",
+    "detailed_description": "Retain reference appearance. [Shot 1] A golden coin with the cat-face emblem from <Picture 1> spins continuously against a solid green background, following the exact rotation trajectory, speed changes and orientation sequence shown in <Video 1> from 0.000s to 3.000s, ending in the same final orientation as the source video.",
+    "overall_soundscape": "",
+    "non_diegetic_music": ""
+  },
+  "displayPrompt": {
+    "subject_definitions": "<Subject 1>: 带有猫脸浮雕的金币，外观来自<Picture 1>，旋转运动和轨迹来自<Video 1>",
+    "summary": "[video editing + reference generation] 目标视频是<Video 1>的编辑版本。原金币浮雕在整个过程中被<Subject 1>替换，同时保留绿色背景、旋转运动、轨迹、时序、摄像机取景和起止相位。",
+    "retention_analysis": "<Video 1>: partially_preserved - 保留绿色背景、旋转运动、轨迹、摄像机取景和时序，原金币设计被移除。\n<Subject 1>: attribute_transfer - 猫脸浮雕外观转移到<Video 1>中的金币上。",
+    "detailed_description": "保留参考外观。[Shot 1] 一枚带有<Picture 1>中猫脸浮雕的金币在纯绿色背景下持续旋转，完全遵循<Video 1>所示的旋转轨迹、速度变化和朝向序列，从0.000s持续至3.000s，结束姿态与源视频相同。",
+    "overall_soundscape": "",
+    "non_diegetic_music": ""
+  }
+}

@@ -1,0 +1,704 @@
+[
+  {
+    "user": "a_0000.png",
+    "source": "frame_0003.png",
+    "error": 14.657004830917874,
+    "samples": 621
+  },
+  {
+    "user": "a_0001.png",
+    "source": "frame_0003.png",
+    "error": 2.613709677419355,
+    "samples": 620
+  },
+  {
+    "user": "a_0002.png",
+    "source": "frame_0005.png",
+    "error": 2.6291866028708135,
+    "samples": 627
+  },
+  {
+    "user": "a_0003.png",
+    "source": "frame_0005.png",
+    "error": 35.15311004784689,
+    "samples": 627
+  },
+  {
+    "user": "a_0004.png",
+    "source": "frame_0006.png",
+    "error": 2.8573692551505547,
+    "samples": 631
+  },
+  {
+    "user": "a_0005.png",
+    "source": "frame_0008.png",
+    "error": 3.9659270998415215,
+    "samples": 631
+  },
+  {
+    "user": "a_0006.png",
+    "source": "frame_0009.png",
+    "error": 362.00866141732286,
+    "samples": 635
+  },
+  {
+    "user": "a_0007.png",
+    "source": "frame_0009.png",
+    "error": 2.4976,
+    "samples": 625
+  },
+  {
+    "user": "a_0008.png",
+    "source": "frame_0009.png",
+    "error": 2.4976,
+    "samples": 625
+  },
+  {
+    "user": "a_0009.png",
+    "source": "frame_0012.png",
+    "error": 514.7106918238994,
+    "samples": 636
+  },
+  {
+    "user": "a_0010.png",
+    "source": "frame_0012.png",
+    "error": 2.4472868217054264,
+    "samples": 645
+  },
+  {
+    "user": "a_0011.png",
+    "source": "frame_0014.png",
+    "error": 3.628125,
+    "samples": 640
+  },
+  {
+    "user": "a_0012.png",
+    "source": "frame_0015.png",
+    "error": 592.652380952381,
+    "samples": 630
+  },
+  {
+    "user": "a_0013.png",
+    "source": "frame_0015.png",
+    "error": 3.7707667731629395,
+    "samples": 626
+  },
+  {
+    "user": "a_0014.png",
+    "source": "frame_0017.png",
+    "error": 1.79983922829582,
+    "samples": 622
+  },
+  {
+    "user": "a_0015.png",
+    "source": "frame_0018.png",
+    "error": 617.0350162866449,
+    "samples": 614
+  },
+  {
+    "user": "a_0016.png",
+    "source": "frame_0018.png",
+    "error": 2.5842696629213484,
+    "samples": 623
+  },
+  {
+    "user": "a_0017.png",
+    "source": "frame_0020.png",
+    "error": 3.662992125984252,
+    "samples": 635
+  },
+  {
+    "user": "a_0018.png",
+    "source": "frame_0021.png",
+    "error": 396.0519169329074,
+    "samples": 626
+  },
+  {
+    "user": "a_0019.png",
+    "source": "frame_0021.png",
+    "error": 2.8254716981132075,
+    "samples": 636
+  },
+  {
+    "user": "a_0020.png",
+    "source": "frame_0023.png",
+    "error": 3.109717868338558,
+    "samples": 638
+  },
+  {
+    "user": "a_0021.png",
+    "source": "frame_0023.png",
+    "error": 560.0637795275591,
+    "samples": 635
+  },
+  {
+    "user": "a_0022.png",
+    "source": "frame_0024.png",
+    "error": 1.7017684887459807,
+    "samples": 622
+  },
+  {
+    "user": "a_0023.png",
+    "source": "frame_0026.png",
+    "error": 2.992811501597444,
+    "samples": 626
+  },
+  {
+    "user": "a_0024.png",
+    "source": "frame_0026.png",
+    "error": 471.70425867507885,
+    "samples": 634
+  },
+  {
+    "user": "a_0025.png",
+    "source": "frame_0027.png",
+    "error": 3.6539657853810263,
+    "samples": 643
+  },
+  {
+    "user": "a_0026.png",
+    "source": "frame_0029.png",
+    "error": 2.766181229773463,
+    "samples": 618
+  },
+  {
+    "user": "a_0027.png",
+    "source": "frame_0030.png",
+    "error": 366.34702093397743,
+    "samples": 621
+  },
+  {
+    "user": "a_0028.png",
+    "source": "frame_0030.png",
+    "error": 1.770735524256651,
+    "samples": 639
+  },
+  {
+    "user": "a_0029.png",
+    "source": "frame_0032.png",
+    "error": 2.536290322580645,
+    "samples": 620
+  },
+  {
+    "user": "a_0030.png",
+    "source": "frame_0033.png",
+    "error": 204.4486970684039,
+    "samples": 614
+  },
+  {
+    "user": "a_0031.png",
+    "source": "frame_0033.png",
+    "error": 2.551809210526316,
+    "samples": 608
+  },
+  {
+    "user": "a_0032.png",
+    "source": "frame_0035.png",
+    "error": 2.9493464052287583,
+    "samples": 612
+  },
+  {
+    "user": "a_0033.png",
+    "source": "frame_0036.png",
+    "error": 257.03467741935486,
+    "samples": 620
+  },
+  {
+    "user": "a_0034.png",
+    "source": "frame_0036.png",
+    "error": 2.4673202614379086,
+    "samples": 612
+  },
+  {
+    "user": "a_0035.png",
+    "source": "frame_0038.png",
+    "error": 4.511532125205931,
+    "samples": 607
+  },
+  {
+    "user": "a_0036.png",
+    "source": "frame_0038.png",
+    "error": 57.168012924071085,
+    "samples": 619
+  },
+  {
+    "user": "a_0037.png",
+    "source": "frame_0039.png",
+    "error": 3.7782324058919805,
+    "samples": 611
+  },
+  {
+    "user": "a_0038.png",
+    "source": "frame_0041.png",
+    "error": 2.002463054187192,
+    "samples": 609
+  },
+  {
+    "user": "a_0039.png",
+    "source": "frame_0042.png",
+    "error": 1069.8110561056105,
+    "samples": 606
+  },
+  {
+    "user": "a_0040.png",
+    "source": "frame_0044.png",
+    "error": 1153.226430976431,
+    "samples": 594
+  },
+  {
+    "user": "a_0041.png",
+    "source": "frame_0044.png",
+    "error": 4.458544839255499,
+    "samples": 591
+  },
+  {
+    "user": "a_0042.png",
+    "source": "frame_0044.png",
+    "error": 1153.226430976431,
+    "samples": 594
+  },
+  {
+    "user": "a_0043.png",
+    "source": "frame_0045.png",
+    "error": 3.918284789644013,
+    "samples": 618
+  },
+  {
+    "user": "a_0044.png",
+    "source": "frame_0047.png",
+    "error": 3.8233024691358026,
+    "samples": 648
+  },
+  {
+    "user": "a_0045.png",
+    "source": "frame_0048.png",
+    "error": 1405.826498422713,
+    "samples": 634
+  },
+  {
+    "user": "a_0046.png",
+    "source": "frame_0048.png",
+    "error": 1.7468354430379747,
+    "samples": 632
+  },
+  {
+    "user": "a_0047.png",
+    "source": "frame_0050.png",
+    "error": 3.331460674157303,
+    "samples": 623
+  },
+  {
+    "user": "a_0048.png",
+    "source": "frame_0053.png",
+    "error": 547.3027156549521,
+    "samples": 626
+  },
+  {
+    "user": "a_0049.png",
+    "source": "frame_0051.png",
+    "error": 3.60641627543036,
+    "samples": 639
+  },
+  {
+    "user": "a_0050.png",
+    "source": "frame_0053.png",
+    "error": 2.763036809815951,
+    "samples": 652
+  },
+  {
+    "user": "a_0051.png",
+    "source": "frame_0054.png",
+    "error": 130.64580152671755,
+    "samples": 655
+  },
+  {
+    "user": "a_0052.png",
+    "source": "frame_0054.png",
+    "error": 130.64580152671755,
+    "samples": 655
+  },
+  {
+    "user": "a_0053.png",
+    "source": "frame_0056.png",
+    "error": 3.9502332814930017,
+    "samples": 643
+  },
+  {
+    "user": "a_0054.png",
+    "source": "frame_0057.png",
+    "error": 24.03153846153846,
+    "samples": 650
+  },
+  {
+    "user": "a_0055.png",
+    "source": "frame_0057.png",
+    "error": 2.958206686930091,
+    "samples": 658
+  },
+  {
+    "user": "a_0056.png",
+    "source": "frame_0059.png",
+    "error": 3.128526645768025,
+    "samples": 638
+  },
+  {
+    "user": "a_0057.png",
+    "source": "frame_0059.png",
+    "error": 238.92097026604068,
+    "samples": 639
+  },
+  {
+    "user": "a_0058.png",
+    "source": "frame_0059.png",
+    "error": 238.92097026604068,
+    "samples": 639
+  },
+  {
+    "user": "a_0059.png",
+    "source": "frame_0062.png",
+    "error": 3.4184451219512195,
+    "samples": 656
+  },
+  {
+    "user": "a_0060.png",
+    "source": "frame_0062.png",
+    "error": 3.4184451219512195,
+    "samples": 656
+  },
+  {
+    "user": "a_0061.png",
+    "source": "frame_0063.png",
+    "error": 3.8626373626373627,
+    "samples": 637
+  },
+  {
+    "user": "a_0062.png",
+    "source": "frame_0065.png",
+    "error": 1.7835463258785942,
+    "samples": 626
+  },
+  {
+    "user": "a_0063.png",
+    "source": "frame_0066.png",
+    "error": 745.8622291021671,
+    "samples": 646
+  },
+  {
+    "user": "a_0064.png",
+    "source": "frame_0066.png",
+    "error": 745.8622291021671,
+    "samples": 646
+  },
+  {
+    "user": "a_0065.png",
+    "source": "frame_0068.png",
+    "error": 3.8106180665610143,
+    "samples": 631
+  },
+  {
+    "user": "a_0066.png",
+    "source": "frame_0069.png",
+    "error": 721.2835130970724,
+    "samples": 649
+  },
+  {
+    "user": "a_0067.png",
+    "source": "frame_0069.png",
+    "error": 721.2835130970724,
+    "samples": 649
+  },
+  {
+    "user": "a_0068.png",
+    "source": "frame_0071.png",
+    "error": 1.837245696400626,
+    "samples": 639
+  },
+  {
+    "user": "a_0069.png",
+    "source": "frame_0072.png",
+    "error": 653.3734076433121,
+    "samples": 628
+  },
+  {
+    "user": "a_0070.png",
+    "source": "frame_0072.png",
+    "error": 653.3734076433121,
+    "samples": 628
+  },
+  {
+    "user": "a_0071.png",
+    "source": "frame_0074.png",
+    "error": 3.269578313253012,
+    "samples": 664
+  },
+  {
+    "user": "a_0072.png",
+    "source": "frame_0075.png",
+    "error": 437.67813455657495,
+    "samples": 654
+  },
+  {
+    "user": "a_0073.png",
+    "source": "frame_0075.png",
+    "error": 437.67813455657495,
+    "samples": 654
+  },
+  {
+    "user": "a_0074.png",
+    "source": "frame_0077.png",
+    "error": 2.9046153846153846,
+    "samples": 650
+  },
+  {
+    "user": "a_0075.png",
+    "source": "frame_0078.png",
+    "error": 3.472741433021807,
+    "samples": 642
+  },
+  {
+    "user": "a_0076.png",
+    "source": "frame_0078.png",
+    "error": 3.472741433021807,
+    "samples": 642
+  },
+  {
+    "user": "a_0077.png",
+    "source": "frame_0080.png",
+    "error": 3.884433962264151,
+    "samples": 636
+  },
+  {
+    "user": "a_0078.png",
+    "source": "frame_0081.png",
+    "error": 487.01645768025077,
+    "samples": 638
+  },
+  {
+    "user": "a_0079.png",
+    "source": "frame_0081.png",
+    "error": 487.01645768025077,
+    "samples": 638
+  },
+  {
+    "user": "a_0080.png",
+    "source": "frame_0083.png",
+    "error": 3.0990180032733226,
+    "samples": 611
+  },
+  {
+    "user": "a_0081.png",
+    "source": "frame_0083.png",
+    "error": 253.11802232854865,
+    "samples": 627
+  },
+  {
+    "user": "a_0082.png",
+    "source": "frame_0083.png",
+    "error": 253.11802232854865,
+    "samples": 627
+  },
+  {
+    "user": "a_0083.png",
+    "source": "frame_0086.png",
+    "error": 3.3628899835796386,
+    "samples": 609
+  },
+  {
+    "user": "a_0084.png",
+    "source": "frame_0086.png",
+    "error": 385.27408637873754,
+    "samples": 602
+  },
+  {
+    "user": "a_0085.png",
+    "source": "frame_0086.png",
+    "error": 385.27408637873754,
+    "samples": 602
+  },
+  {
+    "user": "a_0086.png",
+    "source": "frame_0089.png",
+    "error": 1.9053601340033501,
+    "samples": 597
+  },
+  {
+    "user": "a_0087.png",
+    "source": "frame_0089.png",
+    "error": 1548.266339869281,
+    "samples": 612
+  },
+  {
+    "user": "a_0088.png",
+    "source": "frame_0089.png",
+    "error": 1548.266339869281,
+    "samples": 612
+  },
+  {
+    "user": "a_0089.png",
+    "source": "frame_0092.png",
+    "error": 3.1857835218093697,
+    "samples": 619
+  },
+  {
+    "user": "a_0090.png",
+    "source": "frame_0000.png",
+    "error": 0.7508169934640523,
+    "samples": 612
+  },
+  {
+    "user": "a_0091.png",
+    "source": "frame_0092.png",
+    "error": 1582.17071197411,
+    "samples": 618
+  },
+  {
+    "user": "a_0092.png",
+    "source": "frame_0095.png",
+    "error": 3.1439024390243904,
+    "samples": 615
+  },
+  {
+    "user": "a_0093.png",
+    "source": "frame_0095.png",
+    "error": 514.5797342192691,
+    "samples": 602
+  },
+  {
+    "user": "a_0094.png",
+    "source": "frame_0096.png",
+    "error": 1.7390243902439024,
+    "samples": 615
+  },
+  {
+    "user": "a_0095.png",
+    "source": "frame_0098.png",
+    "error": 3.1237458193979935,
+    "samples": 598
+  },
+  {
+    "user": "a_0096.png",
+    "source": "frame_0098.png",
+    "error": 396.1004983388704,
+    "samples": 602
+  },
+  {
+    "user": "a_0097.png",
+    "source": "frame_0099.png",
+    "error": 3.1241721854304636,
+    "samples": 604
+  },
+  {
+    "user": "a_0098.png",
+    "source": "frame_0101.png",
+    "error": 1.9660596026490067,
+    "samples": 604
+  },
+  {
+    "user": "a_0099.png",
+    "source": "frame_0000.png",
+    "error": 0.7508169934640523,
+    "samples": 612
+  },
+  {
+    "user": "a_0100.png",
+    "source": "frame_0101.png",
+    "error": 214.13014827018122,
+    "samples": 607
+  },
+  {
+    "user": "a_0101.png",
+    "source": "frame_0104.png",
+    "error": 3.6167218543046356,
+    "samples": 604
+  },
+  {
+    "user": "a_0102.png",
+    "source": "frame_0105.png",
+    "error": 9.350746268656716,
+    "samples": 603
+  },
+  {
+    "user": "a_0103.png",
+    "source": "frame_0107.png",
+    "error": 3.025619834710744,
+    "samples": 605
+  },
+  {
+    "user": "a_0104.png",
+    "source": "frame_0107.png",
+    "error": 3.6087314662273475,
+    "samples": 607
+  },
+  {
+    "user": "a_0105.png",
+    "source": "frame_0108.png",
+    "error": 2.69983416252073,
+    "samples": 603
+  },
+  {
+    "user": "a_0106.png",
+    "source": "frame_0110.png",
+    "error": 3.490049751243781,
+    "samples": 603
+  },
+  {
+    "user": "a_0107.png",
+    "source": "frame_0111.png",
+    "error": 2.944810543657331,
+    "samples": 607
+  },
+  {
+    "user": "a_0108.png",
+    "source": "frame_0111.png",
+    "error": 2.449511400651466,
+    "samples": 614
+  },
+  {
+    "user": "a_0109.png",
+    "source": "frame_0111.png",
+    "error": 2.449511400651466,
+    "samples": 614
+  },
+  {
+    "user": "a_0110.png",
+    "source": "frame_0113.png",
+    "error": 2.2718446601941746,
+    "samples": 618
+  },
+  {
+    "user": "a_0111.png",
+    "source": "frame_0114.png",
+    "error": 2.1890145395799676,
+    "samples": 619
+  },
+  {
+    "user": "a_0112.png",
+    "source": "frame_0114.png",
+    "error": 2.1890145395799676,
+    "samples": 619
+  },
+  {
+    "user": "a_0113.png",
+    "source": "frame_0116.png",
+    "error": 2.773170731707317,
+    "samples": 615
+  },
+  {
+    "user": "a_0114.png",
+    "source": "frame_0000.png",
+    "error": 25.143790849673202,
+    "samples": 612
+  },
+  {
+    "user": "a_0115.png",
+    "source": "frame_0000.png",
+    "error": 0.7508169934640523,
+    "samples": 612
+  },
+  {
+    "user": "a_0116.png",
+    "source": "frame_0002.png",
+    "error": 2.417207792207792,
+    "samples": 616
+  }
+]

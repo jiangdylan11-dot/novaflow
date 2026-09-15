@@ -1,0 +1,50 @@
+✔ exports one immutable pure workflow contract through CommonJS and the browser global (3.4771ms)
+✔ declares all four H3 protocol modes with their exact field order (1.0462ms)
+✔ accepts one-second H3 prompt enhancement and rejects values below the product minimum (2.3916ms)
+✔ builds a compact resource-label catalog and restores labels to their original UI slots (1.7475ms)
+✔ prepareRequest returns separate requirements, compiled prompt, and immutable stale context (1.4988ms)
+✔ validates and restores a response for every H3 product mode (30.8051ms)
+✔ rejects wrong field order, missing fields, and illegal mode references (0.7055ms)
+✔ rejects extra top-level fields without treating ordinary body colons as fields (0.42ms)
+✔ rejects Markdown-wrapped and Chinese negative-prompt headings (0.3991ms)
+✔ rejects malformed, non-contiguous, non-increasing, and out-of-range shot times (1.2363ms)
+✔ accepts numerically equivalent first-last alignment seconds (0.4257ms)
+✔ validates Ref2VA relations and contiguous subject definitions (1.0669ms)
+✔ captures an immutable fingerprint and detects prompt, mode, duration, or resource changes (4.4614ms)
+✔ locks fact-faithful H3 analysis and rejects only minor-sensitive, alias, or shallow output (6.1086ms)
+✔ validateAndRestore can reject a response against current state before restoring it (2.6475ms)
+✔ breathing idle and explicit stillness are valid temporal intent (0.6236ms)
+✔ sensitive validation ignores ambiguous age wording and blocks only explicit minor evidence (9.4347ms)
+✔ stays a pure prompt module with no DOM, network, runtime, or filesystem dependency (0.3881ms)
+✔ clean desktop builds copy and require the H3 prompt workflow module (0.1747ms)
+AI sequence MiniMax H3 workflow tests passed
+✔ particle-editor-desktop\tests\ai-sequence-minimax-h3-workflow.test.js (228.1071ms)
+✔ video editing may preserve its camera in the source-video retention rule (33.7641ms)
+✔ reference contract preserves a silent object, video edit and separate audio reuse across JS and Python (135.6561ms)
+✔ multireference optimizer uses official fields, including explicit audio and video roles (26.2686ms)
+✔ missing media, invented speaker identities and invalid retention fail before sampling (1.2961ms)
+✔ generation compiles old/free text once and preserves valid reference prompts without another provider call (49.6018ms)
+✔ full audio reuse really connects the input track; timbre/style references use generated audio (51.9801ms)
+✔ real video frames reach Grok with labels and timestamps rather than becoming extra references (1.1664ms)
+✔ editor and generator bind translations to the same media bytes, independent of DOM IDs (1.4786ms)
+✔ local relationship rendering retains role fidelity and closes only requested loops (109.0676ms)
+✔ bilingual results reject stale roles and untranslated model prose (3.0994ms)
+✔ Chinese editor uses English generation text and recompiles changed instructions (13.5873ms)
+✔ natural-language edits preserve native source pixels and decoded output regardless of replacement wording (3.8426ms)
+✔ local source labels normalize common spellings and reject invented sources (106.8616ms)
+✔ AI edit controls survive Chinese writeback and cache, and govern preprocessing independently of prose (9.0786ms)
+✔ 16fps reference exports retain the 24fps model timeline and copied audio timing (2.8235ms)
+✔ a real wardrobe-edit response inherits source action without matching a motion keyword list (3.0799ms)
+✔ compiler merges a model subject repeated for appearance and motion without changing its meaning (1.1693ms)
+✔ blank unrequested audio and an omitted source-video row compile without inventing content (1.3684ms)
+✔ local model owns intent while Python compiles omitted relation enums and source-video bindings (104.1064ms)
+minimax-h3-prompt-backend-contract: passed
+✔ particle-editor-desktop\tests\minimax-h3-prompt-backend-contract.test.js (6553.8175ms)
+ℹ tests 40
+ℹ suites 0
+ℹ pass 40
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6609.3883

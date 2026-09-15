@@ -1,0 +1,43 @@
+✔ exports one immutable pure workflow contract through CommonJS and the browser global (3.9811ms)
+✔ declares all four H3 protocol modes with their exact field order (0.6345ms)
+✔ accepts one-second H3 prompt enhancement and rejects values below the product minimum (1.4023ms)
+✔ builds a compact resource-label catalog and restores labels to their original UI slots (1.2564ms)
+✔ prepareRequest returns separate requirements, compiled prompt, and immutable stale context (1.5023ms)
+✔ validates and restores a response for every H3 product mode (24.9429ms)
+✔ rejects wrong field order, missing fields, and illegal mode references (0.5674ms)
+✔ rejects extra top-level fields without treating ordinary body colons as fields (0.3818ms)
+✔ rejects Markdown-wrapped and Chinese negative-prompt headings (0.3609ms)
+✔ rejects malformed, non-contiguous, non-increasing, and out-of-range shot times (1.0881ms)
+✔ accepts numerically equivalent first-last alignment seconds (0.3931ms)
+✔ validates Ref2VA relations and contiguous subject definitions (0.9817ms)
+✔ captures an immutable fingerprint and detects prompt, mode, duration, or resource changes (3.8035ms)
+✔ locks fact-faithful H3 analysis and rejects only minor-sensitive, alias, or shallow output (6.6539ms)
+✔ validateAndRestore can reject a response against current state before restoring it (2.3467ms)
+✔ breathing idle and explicit stillness are valid temporal intent (0.5757ms)
+✔ sensitive validation ignores ambiguous age wording and blocks only explicit minor evidence (7.9818ms)
+✔ stays a pure prompt module with no DOM, network, runtime, or filesystem dependency (0.3791ms)
+✔ clean desktop builds copy and require the H3 prompt workflow module (0.2856ms)
+AI sequence MiniMax H3 workflow tests passed
+✔ particle-editor-desktop\tests\ai-sequence-minimax-h3-workflow.test.js (110.0836ms)
+✔ video editing may preserve its camera in the source-video retention rule (25.8054ms)
+✔ reference contract preserves a silent object, video edit and separate audio reuse across JS and Python (105.4492ms)
+✔ multireference optimizer uses official fields, including explicit audio and video roles (7.5259ms)
+✔ missing media, invented speaker identities and invalid retention fail before sampling (0.5466ms)
+✔ generation compiles old/free text once and preserves valid reference prompts without another provider call (10.4463ms)
+✔ full audio reuse really connects the input track; timbre/style references use generated audio (8.4722ms)
+✔ real video frames reach Grok with labels and timestamps rather than becoming extra references (0.8715ms)
+✔ editor and generator bind translations to the same media bytes, independent of DOM IDs (1.3642ms)
+✔ local relationship rendering accepts lists, resolves edit retention and closes only requested loops (91.8657ms)
+✔ bilingual results reject stale roles and untranslated model prose (2.3793ms)
+✔ Chinese editor uses English generation text and recompiles changed instructions (13.5212ms)
+✔ replacement syntax cannot erase direction cues from the source video (2.8289ms)
+✔ local source labels normalize common spellings and reject invented sources (88.8944ms)
+✔ explicit local replacement preserves source motion and declines ambiguous edits (88.9723ms)
+ℹ tests 34
+ℹ suites 0
+ℹ pass 34
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 566.4562

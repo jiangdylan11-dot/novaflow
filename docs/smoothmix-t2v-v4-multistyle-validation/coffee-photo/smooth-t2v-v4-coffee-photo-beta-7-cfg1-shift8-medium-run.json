@@ -1,0 +1,70 @@
+{
+  "case": "smooth-t2v-v4-coffee-photo-beta-7-cfg1-shift8-medium",
+  "status": "success",
+  "model": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+  "sourceSha256": "32029eba116c64a51e3b486cbca0e164408c5b0ae046dea96a275637829c47e0",
+  "workflowSha256": "f5953c57595b21943c31fa52a96d9c21fd6b16f149d11d8c7b41747a2f2ed679",
+  "strength": 0.65,
+  "fixture": "coffee-photo",
+  "baselineReused": false,
+  "baseline": null,
+  "sampling": {
+    "steps": 7,
+    "cfg": 1,
+    "scheduler": "beta",
+    "shift": 8,
+    "sampler": "euler",
+    "seed": 9122026,
+    "externalLora": null
+  },
+  "sourceStyleProfile": {
+    "medium": "photograph",
+    "style": "Color still-life photograph with warm directional daylight, realistic shadows and glossy ceramic highlights, reddish brown and orange tones, visible wooden grain, metallic reflections and coffee crema texture.",
+    "content": "A brown ceramic cup with a white interior contains espresso and rests on a matching brown saucer on a wooden tabletop. The handle points toward the lower left. A small silver teaspoon rests on the right side of the saucer with its handle behind the cup. The tabletop runs diagonally through the image, viewed from above at an oblique angle.",
+    "provenance": "Manually rechecked local scikit-image coffee fixture; photograph by Rachel Michetti, CC0. Not an automated Prompt Assistant response."
+  },
+  "styleTrigger": "",
+  "promptFormat": "baseline",
+  "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+  "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+  "settingProvenance": "7-step Euler/beta, CFG and shift from recorded NovaFlow baseline; author style trigger added and external acceleration LoRA removed. This is not a weights-only comparison.",
+  "outputBlend": false,
+  "productionDefaultChanged": false,
+  "startedAt": "2026-09-12T16:36:26.518Z",
+  "promptId": "0c02d946-b0d5-4909-a2a0-8012833808af",
+  "seconds": 20.077,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "0c02d946-b0d5-4909-a2a0-8012833808af",
+          "timestamp": 1789230986521
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [],
+          "prompt_id": "0c02d946-b0d5-4909-a2a0-8012833808af",
+          "timestamp": 1789230986523
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "0c02d946-b0d5-4909-a2a0-8012833808af",
+          "timestamp": 1789231005115
+        }
+      ]
+    ]
+  },
+  "output": {
+    "filename": "smooth-t2v-v4-coffee-photo-beta-7-cfg1-shift8-medium_00001_.png",
+    "subfolder": "NovaFlow_validation",
+    "type": "output"
+  },
+  "outputSha256": "02a09ba998edd66df069aee7496b57ce5e0d9eef940542d1602ca1f08f9d2972"
+}

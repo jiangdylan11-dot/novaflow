@@ -1,0 +1,18 @@
+{
+  "modelPrompt": {
+    "subject_definitions": "<Subject 1> gold coin featuring cat face emblem, appearance from <Picture 1>, motion from <Video 1>",
+    "summary": "[video editing + reference generation] The target video is an edited version of <Video 1>. The original rotating coin with emblem is replaced throughout by <Subject 1> while the solid green background, coin rotation trajectory, timing, camera framing and start/end phase are retained.",
+    "retention_analysis": "<Subject 1>: attribute_transfer - cat face appearance from <Picture 1> applied to the coin\n<Video 1>: partially_preserved - solid green background, coin rotation trajectory, timing, camera framing and start/end phase retained; original emblem replaced",
+    "detailed_description": "Retain the reference appearance. [Shot 1] <Subject 1> rotates in the center of a solid green background, following the exact motion path, speed changes and orientation sequence from <Video 1>: face-on at 0.000s, tilting through side views near 1.500s and returning to face-on by 3.000s.",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  },
+  "displayPrompt": {
+    "subject_definitions": "<Subject 1> 带有猫脸浮雕的金币，外观来自<Picture 1>，运动来自<Video 1>",
+    "summary": "[video editing + reference generation] 目标视频是<Video 1>的编辑版本。原旋转金币的浮雕图案全程替换为<Subject 1>，同时保留纯绿色背景、金币旋转轨迹、时序、摄像机取景以及起始结束相位。",
+    "retention_analysis": "<Subject 1>: attribute_transfer - 猫脸外观来自<Picture 1>并应用于金币\n<Video 1>: partially_preserved - 纯绿色背景、金币旋转轨迹、时序、摄像机取景以及起始结束相位保留；原浮雕图案被替换",
+    "detailed_description": "保留参考外观。[Shot 1] <Subject 1>在纯绿色背景中央旋转，严格遵循<Video 1>的运动路径、速度变化与朝向序列：0.000s正面朝向，接近1.500s时侧倾，3.000s恢复正面朝向。",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  }
+}

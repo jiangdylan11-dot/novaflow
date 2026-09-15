@@ -1,0 +1,78 @@
+{
+  "case": "original-wan-coffee-photo-beta-7-cfg1-shift8-high",
+  "status": "success",
+  "model": "Wan22\\Wan2.2-T2V-A14B-LowNoise-Q4_K_S.gguf",
+  "modelFamily": "original-wan",
+  "sourceSha256": "32029eba116c64a51e3b486cbca0e164408c5b0ae046dea96a275637829c47e0",
+  "workflowSha256": "fe6c68c021fadf44f9a6952a2cbce62f566f5033aafccf0c9f40d7b8f284d1f1",
+  "strength": 0.9,
+  "fixture": "coffee-photo",
+  "baselineReused": false,
+  "baseline": null,
+  "sampling": {
+    "steps": 7,
+    "cfg": 1,
+    "scheduler": "beta",
+    "shift": 8,
+    "sampler": "euler",
+    "seed": 9122026,
+    "externalLora": {
+      "model": [
+        "3",
+        0
+      ],
+      "lora_name": "Wan21\\Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+      "strength_model": 1
+    }
+  },
+  "sourceStyleProfile": {
+    "medium": "photograph",
+    "style": "Color still-life photograph with warm directional daylight, realistic shadows and glossy ceramic highlights, reddish brown and orange tones, visible wooden grain, metallic reflections and coffee crema texture.",
+    "content": "A brown ceramic cup with a white interior contains espresso and rests on a matching brown saucer on a wooden tabletop. The handle points toward the lower left. A small silver teaspoon rests on the right side of the saucer with its handle behind the cup. The tabletop runs diagonally through the image, viewed from above at an oblique angle.",
+    "provenance": "Manually rechecked local scikit-image coffee fixture; photograph by Rachel Michetti, CC0. Not an automated Prompt Assistant response."
+  },
+  "styleTrigger": "",
+  "promptFormat": "baseline",
+  "promptChange": "New fixture caption and medium manually observed from the actual source. Sampling is fixed; style trigger recorded explicitly.",
+  "authorGuide": "https://civitai.com/articles/32754/smoothmix-wan-22-t2v-v4-guide",
+  "settingProvenance": "Original NovaFlow Wan recipe including its external acceleration LoRA. Matches SmoothMix source, base caption, seed, size and sampler settings; anime-only SmoothMix trigger omitted for original Wan.",
+  "outputBlend": false,
+  "productionDefaultChanged": false,
+  "startedAt": "2026-09-12T16:54:47.528Z",
+  "promptId": "ad57dd78-b6fa-44d6-b545-803bc96ff8df",
+  "seconds": 37.675,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "ad57dd78-b6fa-44d6-b545-803bc96ff8df",
+          "timestamp": 1789232089762
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [],
+          "prompt_id": "ad57dd78-b6fa-44d6-b545-803bc96ff8df",
+          "timestamp": 1789232089763
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "ad57dd78-b6fa-44d6-b545-803bc96ff8df",
+          "timestamp": 1789232124783
+        }
+      ]
+    ]
+  },
+  "output": {
+    "filename": "original-wan-coffee-photo-beta-7-cfg1-shift8-high_00001_.png",
+    "subfolder": "NovaFlow_validation",
+    "type": "output"
+  },
+  "outputSha256": "41f4a577a9f0ce978b74ddf4776b09c61d4ea8f40c9eea37b45586f894d681cf"
+}

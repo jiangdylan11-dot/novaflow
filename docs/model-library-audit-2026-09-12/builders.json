@@ -1,0 +1,79 @@
+{
+  "removed": [
+    "qwen_image_edit_2511_bf16.safetensors",
+    "qwen_image_edit_2511_fp8mixed.safetensors",
+    "Qwen-Image-Edit-2509_fp8_e4m3fn.safetensors",
+    "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+    "Qwen-Image-Edit-2511-Lightning-8steps-V1.0-bf16.safetensors",
+    "Qwen-Image-Lightning-8steps-V2.0.safetensors",
+    "eigen-banana-qwen-image-edit-2509-fp16-lora.safetensors",
+    "qwen_image_vae.safetensors",
+    "wan2.1_vace_1.3B_fp16.safetensors",
+    "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+  ],
+  "results": {
+    "outpaint": {
+      "ok": true,
+      "models": [
+        "Qwen-Rapid-AIO-NSFW-v20.safetensors"
+      ]
+    },
+    "transfer": {
+      "ok": true,
+      "models": [
+        "Qwen-Rapid-AIO-NSFW-v20.safetensors"
+      ]
+    },
+    "angle": {
+      "ok": true,
+      "models": [
+        "Qwen-Rapid-AIO-NSFW-v20.safetensors",
+        "qwen-image-edit-2511-multiple-angles-lora.safetensors"
+      ]
+    },
+    "aifx": {
+      "ok": true,
+      "models": [
+        "Qwen-Rapid-AIO-NSFW-v20.safetensors",
+        "Qwen-Image-ControlNet-Union.safetensors"
+      ]
+    },
+    "washWan": {
+      "ok": true,
+      "models": [
+        "Wan22\\Wan2.2-T2V-A14B-LowNoise-Q4_K_S.gguf",
+        "Wan21\\Wan21_T2V_14B_lightx2v_cfg_step_distill_lora_rank64.safetensors",
+        "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+        "wan_2.1_vae_fp8_e4m3fn.safetensors"
+      ]
+    },
+    "washRapid": {
+      "ok": true,
+      "models": [
+        "Qwen-Rapid-AIO-NSFW-v20.safetensors"
+      ]
+    },
+    "removal": {
+      "ok": true,
+      "models": [
+        "fill-dev-OneReward-fp8.safetensors",
+        "clip_l.safetensors",
+        "t5xxl_fp8_e4m3fn.safetensors",
+        "ae.safetensors",
+        "removal_timestep_alpha-2-1740.safetensors"
+      ]
+    },
+    "completion": {
+      "ok": true,
+      "models": [
+        "Qwen-Rapid-AIO-NSFW-v20.safetensors"
+      ]
+    },
+    "edit": {
+      "ok": true,
+      "models": [
+        "Qwen-Rapid-AIO-NSFW-v20.safetensors"
+      ]
+    }
+  }
+}

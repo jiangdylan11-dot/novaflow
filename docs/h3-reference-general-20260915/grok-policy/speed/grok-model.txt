@@ -1,0 +1,19 @@
+subject_definitions:
+<Subject 1> : gold coin with owl emblem, appearance and motion from <Video 1>
+<Video 1> : The source video for this edit.
+
+summary: [video editing] The target video is an edited version of <Video 1>. Slow the coin rotation to half speed while keeping coin appearance and green background unchanged.
+
+retention_analysis:
+<Subject 1>: fully_preserved - coin appearance, design and material
+<Video 1>: partially_preserved - camera, framing, background and overall trajectory with halved rotation speed
+
+detailed_description: Retain reference appearance without new style.
+
+[Shot 1] The shot shows <Subject 1>.
+
+The gold coin rotates at half its original speed on solid green background, completing a slower turn while preserving exact framing and camera position throughout the 3-second duration.
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A

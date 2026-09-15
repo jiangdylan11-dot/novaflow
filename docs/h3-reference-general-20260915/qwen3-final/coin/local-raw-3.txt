@@ -1,0 +1,15 @@
+{
+  "references": [
+    {
+      "label": "<Subject 1>",
+      "sources": ["<Picture 1>"],
+      "description": "金币样式替换为金色圆形金币，表面有猫头图案浮雕，边缘有环形凸起，材质似金属，无透明度。",
+      "keep": "旋转运动轨迹、背景颜色、旋转时序与源视频一致，不改变旋转轴、速度或起止相位。"
+    }
+  ],
+  "tasks": ["video editing"],
+  "summary": "将<Video 1>中旋转金币的外观替换为<Picture 1>的样式，保留原运动轨迹与背景。",
+  "description": "<Subject 1>在绿色纯色背景的画面中央旋转，0.000秒从正面开始，1.500秒到达最窄侧面，3.000秒回到正面。",
+  "soundscape": "N/A",
+  "music": "N/A"
+}

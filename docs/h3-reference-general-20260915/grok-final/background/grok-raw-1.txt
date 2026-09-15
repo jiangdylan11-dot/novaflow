@@ -1,0 +1,23 @@
+{
+  "modelPrompt": {
+    "subject_definitions": "<Subject 1> gold coin with fox-like emblem, appearance and motion from <Video 1>\n<Video 1> source video showing the coin against green background",
+    "summary": "[video editing] The target video is an edited version of <Video 1>. Change the green background to purple while preserving the gold coin's appearance and motion.",
+    "retention_analysis": "<Subject 1>: fully_preserved - gold coin appearance and motion\n<Video 1>: partially_preserved - coin motion and replaced background",
+    "detailed_description": "Retain reference appearance. [Shot 1] The gold coin <Subject 1> rotates and flips against a solid purple background over the full 3 seconds, exactly matching the original trajectory, orientation, speed and timing from <Video 1>.",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  },
+  "displayPrompt": {
+    "subject_definitions": "<Subject 1> 金币带有狐狸状标志，外观和动作来自 <Video 1>\n<Video 1> 源视频显示金币在绿色背景前",
+    "summary": "[video editing] 目标视频是 <Video 1> 的编辑版本。将绿色背景改为紫色，同时保留金币的外观和动作。",
+    "retention_analysis": "<Subject 1>: fully_preserved - 金币外观和动作\n<Video 1>: partially_preserved - 金币动作和替换后的背景",
+    "detailed_description": "保留参考外观。[Shot 1] 金币 <Subject 1> 在纯紫色背景前旋转翻转，持续完整3秒，完全匹配 <Video 1> 中的原始轨迹、方向、速度和时序。",
+    "overall_soundscape": "N/A",
+    "non_diegetic_music": "N/A"
+  },
+  "editPolicy": {
+    "preserveBackground": false,
+    "preserveMotion": true,
+    "sameShapeAppearanceOnly": false
+  }
+}

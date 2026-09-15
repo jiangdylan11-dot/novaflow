@@ -1,0 +1,22 @@
+{
+  "frames": [
+    73,
+    73
+  ],
+  "background_median_mae_255": 0.8242008641158064,
+  "background_median_max_255": 1.9999998807907104,
+  "edge_frame_indices": [
+    36,
+    37
+  ],
+  "width_curve_correlation": 0.9988783088667035,
+  "mean_center_delta_pixels_at_800": 0.5839041095890429,
+  "source_first_last_width": [
+    0.196875,
+    0.19375
+  ],
+  "result_first_last_width": [
+    0.1975,
+    0.19625
+  ]
+}

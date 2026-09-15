@@ -1,0 +1,53 @@
+{
+  "fixtures": [
+    {
+      "id": "anime-fan",
+      "title": "古风动漫立绘",
+      "source": "C:/Users/jiang/OneDrive/Desktop/临时文件/jimeng-2025-12-11-3363-架空神国日本，神力觉醒，眯眼黑心工会女头目，折扇，全身战斗姿态.png",
+      "profile": {
+        "medium": "anime illustration",
+        "style": "Two-dimensional painted anime game illustration, delicate dark contours, broad soft painted shadows and graphic folds, subdued black, cream, red and gold palette, painterly white clouds and traditional architecture.",
+        "content": "Low-angle full-body illustration of an adult female warrior with a short black bob, closed eyes, a gold and red hair ornament, black and gold open kimono over a white fitted wrap top, a wide red waist sash and black legwear. One gloved hand raises a large black and gold folding fan and the other holds a sword. Ornate fabric and red ribbons flow around her, with layered traditional temples and bright billowing clouds behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "smoothmixanime, anime style",
+      "prompt": "A polished two-dimensional painted anime game illustration. Low-angle full-body view of an adult female warrior with a short black bob, closed eyes and a gold and red hair ornament. She wears an open black and gold kimono over a white wrap top, a wide red waist sash, black gloves and black legwear. Her raised hand holds an open black and gold folding fan, and her other hand holds a sword. Ornate fabric and red ribbons flow around her. Layered traditional temples, painted white clouds and a muted blue sky form the background. Delicate contours, broad soft painted shadow shapes, subdued black, cream, red and gold colors. Preserve the original subject, composition, pose, face identity, outfit, materials, line art, colors and lighting. Refine details, clean artifacts, improve edges and texture quality, and keep the visual medium faithful to the source."
+    },
+    {
+      "id": "cyber-portrait",
+      "title": "写实赛博人物",
+      "source": "C:/Users/jiang/OneDrive/Desktop/临时文件/c.png",
+      "profile": {
+        "medium": "photorealistic cinematic digital art",
+        "style": "Photorealistic cinematic portrait, natural face proportions and skin texture, fine textile grain, cool dark blue palette with cyan and magenta neon reflections, rainfall and a softly blurred urban background.",
+        "content": "An adult woman with a short silver bob and transparent cyan illuminated glasses stands facing the viewer in a rainy futuristic alley. She wears a zipped black high-neck outfit and a black technical jacket with cyan lights around the high collar, dark backpack straps and a rectangular illuminated device hanging at her hip. Wet pavement and neon signs recede behind her.",
+        "provenance": "Manually inspected actual local source in this test turn; not an automated Prompt Assistant response."
+      },
+      "styleTrigger": "",
+      "prompt": "A photorealistic cinematic portrait of an adult woman with a short silver bob, natural facial proportions and transparent cyan illuminated glasses, facing the viewer in a rainy futuristic alley. She wears a zipped black high-neck outfit, a black technical jacket with cyan illumination around its high collar, dark backpack straps, and a rectangular glowing device hanging at her hip. Rain, wet pavement, cyan and magenta neon signs, and blurred buildings form the background. Cool dark blue grading, realistic skin texture, fine dark textile grain, damp surfaces and neon reflections. Preserve the original subject, composition, pose, face identity, outfit, materials, colors and lighting. Refine details, clean artifacts, improve edges and texture quality, and keep the photographic visual medium faithful to the source."
+    }
+  ],
+  "cases": [
+    {
+      "id": "mid-strength",
+      "steps": 7,
+      "shift": 8,
+      "change": "New 0.35 strength reference; all other settings and prompt match the previous matrix."
+    },
+    {
+      "id": "more-steps",
+      "steps": 12,
+      "shift": 8,
+      "change": "Only step count changed from 7 to 12 against mid-strength."
+    },
+    {
+      "id": "lower-shift",
+      "steps": 12,
+      "shift": 3,
+      "change": "Only sampling shift changed from 8 to 3 against more-steps; lower starting sigma at equal denoise."
+    }
+  ],
+  "strength": 0.35,
+  "source": "Existing sources reused; only new parameter combinations generated.",
+  "productionDefaultChanged": false
+}

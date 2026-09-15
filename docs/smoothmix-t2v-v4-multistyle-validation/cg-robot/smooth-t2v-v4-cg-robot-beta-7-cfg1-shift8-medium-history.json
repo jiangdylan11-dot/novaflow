@@ -1,0 +1,194 @@
+{
+  "prompt": [
+    12,
+    "cf2d6270-1782-463e-9341-1f123e6dcc37",
+    {
+      "1": {
+        "class_type": "LoadImage",
+        "inputs": {
+          "image": "smoothmix_t2v_v4_cg-robot_source.png"
+        }
+      },
+      "2": {
+        "class_type": "ImageScaleToTotalPixels",
+        "inputs": {
+          "image": [
+            "1",
+            0
+          ],
+          "upscale_method": "lanczos",
+          "megapixels": 1,
+          "resolution_steps": 1
+        }
+      },
+      "3": {
+        "class_type": "UNETLoader",
+        "inputs": {
+          "unet_name": "Wan22\\smoothMixWan2214BI2V_t2vLowV40.safetensors",
+          "weight_dtype": "default"
+        }
+      },
+      "5": {
+        "class_type": "ModelSamplingSD3",
+        "inputs": {
+          "model": [
+            "3",
+            0
+          ],
+          "shift": 8
+        }
+      },
+      "6": {
+        "class_type": "CLIPLoader",
+        "inputs": {
+          "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+          "type": "wan",
+          "device": "default"
+        }
+      },
+      "7": {
+        "class_type": "VAELoader",
+        "inputs": {
+          "vae_name": "wan_2.1_vae_fp8_e4m3fn.safetensors"
+        }
+      },
+      "8": {
+        "class_type": "VAEEncode",
+        "inputs": {
+          "pixels": [
+            "2",
+            0
+          ],
+          "vae": [
+            "7",
+            0
+          ]
+        }
+      },
+      "9": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "text": "A stylized three-dimensional animated-film render of a small rounded copper and green robot holding a metal watering can in one hand, standing among wooden planters and lush plants inside a greenhouse. A domed head with two antennae, a dark faceplate with two round glowing amber eyes, riveted mechanical joints, a rounded torso and broad metal boots. Worn copper, green patina, physically shaded rounded shapes, soft golden sunlight through glass windows, mossy wooden planters and softly blurred foliage. Preserve the original subject, composition, pose, robot design, materials, colors and lighting. Refine details, clean artifacts, improve edges and texture quality, and keep the stylized three-dimensional visual medium faithful to the source.",
+          "clip": [
+            "6",
+            0
+          ]
+        }
+      },
+      "10": {
+        "class_type": "CLIPTextEncode",
+        "inputs": {
+          "text": "low quality, worst quality, blurry, overexposed, oversaturated, artifacts, jpeg artifacts, distorted anatomy, deformed hands, extra fingers, missing fingers, poor face, bad eyes, disfigured, watermark, text, logo, cluttered background",
+          "clip": [
+            "6",
+            0
+          ]
+        }
+      },
+      "11": {
+        "class_type": "KSampler",
+        "inputs": {
+          "model": [
+            "5",
+            0
+          ],
+          "seed": 9122026,
+          "steps": 7,
+          "cfg": 1,
+          "sampler_name": "euler",
+          "scheduler": "beta",
+          "positive": [
+            "9",
+            0
+          ],
+          "negative": [
+            "10",
+            0
+          ],
+          "latent_image": [
+            "8",
+            0
+          ],
+          "denoise": 0.65
+        }
+      },
+      "12": {
+        "class_type": "VAEDecode",
+        "inputs": {
+          "samples": [
+            "11",
+            0
+          ],
+          "vae": [
+            "7",
+            0
+          ]
+        }
+      },
+      "13": {
+        "class_type": "SaveImage",
+        "inputs": {
+          "images": [
+            "12",
+            0
+          ],
+          "filename_prefix": "NovaFlow_validation/smooth-t2v-v4-cg-robot-beta-7-cfg1-shift8-medium"
+        }
+      }
+    },
+    {
+      "client_id": "novaflow-smoothmix-t2v-v4-evaluation",
+      "create_time": 1789230920076
+    },
+    [
+      "13"
+    ]
+  ],
+  "outputs": {
+    "13": {
+      "images": [
+        {
+          "filename": "smooth-t2v-v4-cg-robot-beta-7-cfg1-shift8-medium_00001_.png",
+          "subfolder": "NovaFlow_validation",
+          "type": "output"
+        }
+      ]
+    }
+  },
+  "status": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "cf2d6270-1782-463e-9341-1f123e6dcc37",
+          "timestamp": 1789230920077
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [],
+          "prompt_id": "cf2d6270-1782-463e-9341-1f123e6dcc37",
+          "timestamp": 1789230920078
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "cf2d6270-1782-463e-9341-1f123e6dcc37",
+          "timestamp": 1789230938576
+        }
+      ]
+    ]
+  },
+  "meta": {
+    "13": {
+      "node_id": "13",
+      "display_node": "13",
+      "parent_node": null,
+      "real_node_id": "13"
+    }
+  }
+}

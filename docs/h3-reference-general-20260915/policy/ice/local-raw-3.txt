@@ -1,0 +1,8 @@
+{
+  "0": "Replace the golden coin tree with an ice crystal tree, whose canopy is composed of ice crystal particles, planted in a matching circular pot adorned with swirl patterns, exhibiting an overall icy crystal texture, against a solid blue background. Material source: TOKEN_0.",
+  "1": "The source video being edited in this session.",
+  "2": "Replace the golden coin tree and particle effects with an ice crystal theme, while preserving the original motion rhythm and background.",
+  "3": "Maintain the growth and falling motion paths and rhythm as originally designed; the background remains unchanged.",
+  "4": "Execute this modification according to the specified target description; if no specific changes are indicated for background, camera, composition, or motion sequence, retain the source video’s original settings. Preserve original video camera framing.",
+  "5": "From the start of the video, display the ice crystal tree, whose canopy consists of ice crystal particles, planted in a matching circular pot with swirl patterns, exhibiting an overall icy crystal texture, against a solid blue background. The ice crystal particles continuously grow and fall, following motion paths and rhythms exactly as in the original video. Except for the explicitly modified elements, retain the background, camera, composition, motion direction, speed, trajectory, and posture corresponding to TOKEN_0 at the specified moment; the applied editing effects remain continuously active as described above."
+}

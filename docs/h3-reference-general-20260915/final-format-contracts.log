@@ -1,0 +1,25 @@
+✔ video editing may preserve its camera in the source-video retention rule (32.2308ms)
+✔ reference contract preserves a silent object, video edit and separate audio reuse across JS and Python (123.2608ms)
+✔ multireference optimizer uses official fields, including explicit audio and video roles (8.6965ms)
+✔ missing media, invented speaker identities and invalid retention fail before sampling (0.9239ms)
+✔ generation compiles old/free text once and preserves valid reference prompts without another provider call (15.996ms)
+✔ full audio reuse really connects the input track; timbre/style references use generated audio (13.8943ms)
+✔ real video frames reach Grok with labels and timestamps rather than becoming extra references (1.5385ms)
+✔ editor and generator bind translations to the same media bytes, independent of DOM IDs (1.9124ms)
+✔ local relationship rendering retains role fidelity and closes only requested loops (122.3381ms)
+✔ bilingual results reject stale roles and untranslated model prose (3.6984ms)
+✔ Chinese editor uses English generation text and recompiles changed instructions (20.435ms)
+✔ natural-language edits preserve native source pixels and decoded output regardless of replacement wording (6.2264ms)
+✔ local source labels normalize common spellings and reject invented sources (115.0814ms)
+✔ a real wardrobe-edit response inherits source action without matching a motion keyword list (4.2047ms)
+✔ compiler merges a model subject repeated for appearance and motion without changing its meaning (1.5166ms)
+✔ blank unrequested audio and an omitted source-video row compile without inventing content (1.9591ms)
+✔ local model owns intent while Python compiles omitted relation enums and source-video bindings (114.381ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 720.4982

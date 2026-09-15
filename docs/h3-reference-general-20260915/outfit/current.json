@@ -1,0 +1,16 @@
+{
+  "modelId": "minimax_h3_local",
+  "mode": "multi_reference",
+  "durationSeconds": 4,
+  "prompt": "给视频中的人物换成深蓝色长袖牛仔外套和长裤，脸、头发、动作和背景保持原样。",
+  "resources": [
+    {
+      "key": "multi_ref_video_1",
+      "kind": "video",
+      "identity": "novaflow_capability_outfit_source.mp4",
+      "fileName": "novaflow_capability_outfit_source.mp4",
+      "occupied": true,
+      "mimeType": "video/mp4"
+    }
+  ]
+}

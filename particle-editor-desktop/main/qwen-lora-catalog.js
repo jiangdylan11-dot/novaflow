@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const QWEN_ROOT = 'E:\\NovaFlow\\models\\loras\\qwen';
 const BASE_MODELS = Object.freeze({
-  edit: 'checkpoints/Qwen-Rapid-AIO-NSFW-v20.safetensors',
+  edit: 'diffusion_models/qwen_image_edit_2511_bf16.safetensors',
   rapid: 'checkpoints/Qwen-Rapid-AIO-NSFW-v20.safetensors',
 });
 const widths = { BOOL: 1, U8: 1, I8: 1, F8_E4M3: 1, F8_E5M2: 1, F8_E4M3FN: 1, F16: 2, BF16: 2, I16: 2, U16: 2, F32: 4, I32: 4, U32: 4, F64: 8, I64: 8, U64: 8 };

@@ -1030,10 +1030,22 @@
   function validatePromptText(text, options) {
     let value = stripResponseFence(text)
     if (!value) throw new Error('MiniMax H3 enhanced prompt is empty')
-    if (UI_REFERENCE_ALIAS_EXPRESSION.test(value)) {
-      throw new Error('MiniMax H3 model output must use protocol references, not UI aliases')
-    }
     const protocol = createPromptProtocol(options)
+    if (UI_REFERENCE_ALIAS_EXPRESSION.test(value)) {
+      // In 多参视频 the editor text round-trips through display aliases
+      // (@参考图1); a translated or provider result may echo one for a bound
+      // resource. Bind it to the protocol token instead of failing. Other modes
+      // keep the strict contract, and an alias without an upload stays an error.
+      if (protocol.mode === 'multi_reference') {
+        const byDisplayToken = protocol.references.byDisplayToken || {}
+        value = value.replace(new RegExp(UI_REFERENCE_ALIAS_EXPRESSION.source, 'giu'), (match) => {
+          const alias = match.replace(/\s*\((?:image|video|audio)\)$/i, '')
+          return byDisplayToken[alias] || match
+        })
+      }
+      const remaining = UI_REFERENCE_ALIAS_EXPRESSION.exec(value)
+      if (remaining) throw new Error(`MiniMax H3 model output must use protocol references, not UI aliases (${remaining[0]})`)
+    }
     if (protocol.mode === 'multi_reference') {
       value = globalThis.NovaFlowH3PromptFormat.validateReference(value, {
         mode: protocol.mode, durationSeconds: protocol.durationSeconds,

@@ -1,0 +1,10 @@
+```json
+{
+    "0": "Replace the gold coin in the video with the appearance of the first reference image TOKEN_0. The actual visible subject is: a golden circular emblem with a cat face pattern, simple and cute. Material source: TOKEN_1.",
+    "1": "The source video for this edit. The actual scene in the source material: TOKEN_0 rotates in the center of a green solid background, following the motion path of the source video: 0.000 seconds starting from the front, 1.500 seconds reaching the narrowest side, and 3.000 seconds returning to the front.",
+    "2": "Replace the gold coin in the video with the appearance of the first reference image.",
+    "3": "The original background remains unchanged, with the direction, speed, and path of rotation following the original image.",
+    "4": "There is a gold coin in the video, which needs to be replaced with the appearance of the first reference image. The direction, speed, and path of rotation of the gold coin remain unchanged, and the original background remains stationary. Keep the original video shot.",
+    "5": "TOKEN_0 is displayed in the scene. There is a gold coin in the video, which needs to be replaced with the appearance of the first reference image. The direction, speed, and path of rotation of the gold coin remain unchanged, and the original background remains stationary."
+}
+```

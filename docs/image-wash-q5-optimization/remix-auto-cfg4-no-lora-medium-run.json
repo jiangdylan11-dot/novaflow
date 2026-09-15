@@ -1,0 +1,64 @@
+{
+  "case": "remix-auto-cfg4-no-lora-medium",
+  "promptId": "ef650220-a84b-4fea-9c8e-7f343f3c2e58",
+  "model": "Wan22\\wan22RemixT2VI2V_t2vLowV20-Q5_K_M.gguf",
+  "strength": 0.65,
+  "status": "success",
+  "baseline": "wan-medium",
+  "baselineReused": true,
+  "change": "source style profile and revised production prompt; model as recorded",
+  "reverseInference": "real image-wash-style vision profile loaded from recorded service response",
+  "styleProfile": {
+    "style": "anime drawing; soft, blended outlines around figure and background elements; smooth cel shading with gradient transitions on skin and clothing; vivid saturation with high contrast, warm orange and green tones under bright sky; smooth digital paint texture on skin and fabric, no visible brushstrokes or grain",
+    "content": "A young woman with short bobbed black hair stands on a rural road. She wears an orange collared shirt with buttoned front, short sleeves, and green shorts with belt loops. A green backpack with straps is worn over her shoulders. She faces slightly right, looking toward viewer. Background shows winding road, grassy fields, distant hills, and blue sky with clouds. Lighting is bright, casting soft shadows on road and clothing."
+  },
+  "sampling": {
+    "steps": 20,
+    "cfg": 4,
+    "sampler": "euler",
+    "scheduler": "beta",
+    "shift": 1,
+    "lora": null,
+    "negative": "low quality, worst quality, blurry, overexposed, oversaturated, artifacts, jpeg artifacts, distorted anatomy, deformed hands, extra fingers, missing fingers, poor face, bad eyes, disfigured, watermark, text, logo, cluttered background"
+  },
+  "guidanceNormalization": null,
+  "seconds": 175.844,
+  "runtimeStatus": {
+    "status_str": "success",
+    "completed": true,
+    "messages": [
+      [
+        "execution_start",
+        {
+          "prompt_id": "ef650220-a84b-4fea-9c8e-7f343f3c2e58",
+          "timestamp": 1789204878632
+        }
+      ],
+      [
+        "execution_cached",
+        {
+          "nodes": [
+            "1",
+            "2",
+            "3",
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+            "10"
+          ],
+          "prompt_id": "ef650220-a84b-4fea-9c8e-7f343f3c2e58",
+          "timestamp": 1789204878652
+        }
+      ],
+      [
+        "execution_success",
+        {
+          "prompt_id": "ef650220-a84b-4fea-9c8e-7f343f3c2e58",
+          "timestamp": 1789205052494
+        }
+      ]
+    ]
+  }
+}

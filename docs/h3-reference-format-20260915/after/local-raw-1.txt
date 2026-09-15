@@ -1,0 +1,12 @@
+```json
+{
+    "0": "A golden coin with a cat face pattern. Material source:",
+    "1": "The source video used for this edit. Actual footage of the source material:",
+    "2": "Rotating in the center of a green solid background, following the motion path of the source video: 0.000 seconds starting from the front, 1.500 seconds reaching the narrowest side, and 3.000 seconds returning to the front.",
+    "3": "the",
+    "4": "rotating gold coin style",
+    "5": "the style",
+    "6": "Keep the appearance, position, motion path, and camera",
+    "7": "from"
+}
+```

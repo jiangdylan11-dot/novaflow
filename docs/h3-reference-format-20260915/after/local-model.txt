@@ -1,0 +1,17 @@
+subject_definitions:
+<Subject 1>：A golden coin with a cat face pattern. Material source:<Picture 1>。
+<Video 1>：The source video used for this edit. Actual footage of the source material:<Subject 1>Rotating in the center of a green solid background, following the motion path of the source video: 0.000 seconds starting from the front, 1.500 seconds reaching the narrowest side, and 3.000 seconds returning to the front.
+
+summary: [video editing + reference generation] The target video is an edited version of <Video 1>. the<Video 1>rotating gold coin style<Picture 1>the style
+
+retention_analysis:
+<Subject 1>: fully_preserved - Keep the appearance, position, motion path, and camera
+<Video 1>: partially_preserved - from<Video 1>At 0.000 seconds, the gold coin will be replaced with a golden coin featuring a cat face pattern. The coin will remain in the center of the video, rotating at the same speed and direction. The background will be a green screen, and the coin's trajectory and camera angle will remain unchanged.
+
+detailed_description: [Shot 1] The scene will show<Subject 1>。 from<Video 1>At 0.000 seconds, the gold coin will be replaced with a golden coin featuring a cat face pattern.
+
+The coin will remain in the center of the video, rotating at the same speed and direction. The background will be a green screen, and the coin's trajectory and camera angle will remain unchanged.
+
+overall_soundscape: N/A
+
+non_diegetic_music: N/A

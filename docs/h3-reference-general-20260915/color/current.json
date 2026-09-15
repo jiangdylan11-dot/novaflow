@@ -1,0 +1,16 @@
+{
+  "modelId": "minimax_h3_local",
+  "mode": "multi_reference",
+  "durationSeconds": 4,
+  "prompt": "视频里这个人的白色裙子改成红色就好，裙子款式、人物、动作和背景都别变。",
+  "resources": [
+    {
+      "key": "multi_ref_video_1",
+      "kind": "video",
+      "identity": "novaflow_capability_color_source.mp4",
+      "fileName": "novaflow_capability_color_source.mp4",
+      "occupied": true,
+      "mimeType": "video/mp4"
+    }
+  ]
+}

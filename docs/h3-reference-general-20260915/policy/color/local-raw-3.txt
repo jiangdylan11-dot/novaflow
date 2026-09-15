@@ -1,0 +1,8 @@
+{
+  "0": "A female character with purple hair wears a long red skirt, made of thin, semi-transparent fabric, paired with golden waist adornments and arm rings, holding a golden staff; background is a solid green curtain. Source material: TOKEN_0.",
+  "1": "The source video being edited in this session.",
+  "2": "Replace the white skirt worn by the character in the video with a red one; all other elements remain unchanged.",
+  "3": "Character identity, actions, background, golden waist adornments and arm rings, holding a staff, solid green curtain background",
+  "4": "Execute the modification according to the target description; when no specific modifications are specified for background, camera, composition, or action sequence, retain the source video’s settings. Preserve original video framing.",
+  "5": "Seated posture, wearing a long red skirt made of thin, semi-transparent fabric, paired with golden waist adornments and arm rings, holding a golden staff, against a solid green curtain background. Except for the explicitly specified changes, retain the background, camera, composition, direction of motion, speed, trajectory, and posture from the moment corresponding to TOKEN_0; the specified editing effects remain continuously active as per the above requirements."
+}
