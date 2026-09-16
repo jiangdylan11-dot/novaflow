@@ -135,7 +135,7 @@
   const LAYER_POINTER_AUTO_SCROLL_MAX_PX = 22
   const LAYER_POINTER_NEAREST_Y_SLACK_PX = 72
   const SPLIT_BUSY_OVERLAY_Z_INDEX = '2147483647'
-  const COMFY_BUSY_ACTIONS = new Set(['split', 'cutout', 'inpaint', 'imageUpscale', 'imageOutpaint', 'imageAngleAdjust', 'objectTransfer', 'storyboard'])
+  const COMFY_BUSY_ACTIONS = new Set(['split', 'cutout', 'removeBackground', 'inpaint', 'imageUpscale', 'imageOutpaint', 'imageAngleAdjust', 'objectTransfer', 'storyboard'])
   const STORYBOARD_DIALOG_ID = 'novaflow-storyboard-dialog'
   const STORYBOARD_EDIT_DIALOG_ID = 'novaflow-storyboard-edit-dialog'
   const STORYBOARD_DEBUG_DIALOG_ID = 'novaflow-storyboard-debug-dialog'
@@ -2749,6 +2749,7 @@
       objectTransfer: '\u6b63\u5728\u6267\u884c\u4e07\u7269\u8fc1\u79fb...',
       split: '\u6b63\u5728\u62c6\u56fe...',
       cutout: '\u5bf9\u8c61\u63d0\u53d6\u5904\u7406\u4e2d...',
+      removeBackground: '\u6b63\u5728\u81ea\u52a8\u53bb\u80cc...',
       inpaint: `${selectionInpaintModeStartLabel(state.selectionTool && state.selectionTool.inpaintMode)}\u5904\u7406\u4e2d...`,
       imageUpscale: '\u6b63\u5728\u9ad8\u6e05\u653e\u5927...',
       imageOutpaint: '\u65e0\u9650\u6269\u56fe\u751f\u6210\u4e2d...',
@@ -2932,7 +2933,7 @@
     const kind = activeSplitEditToolKind()
     if (!kind) return true
     const name = String(action || '')
-    if (kind === 'cutout' || kind === 'inpaint') return name === 'selectionDraw' || name === 'selectionErase' || name === 'selectionCursor' || name === 'selectionNsfw' || name === 'selectionExit'
+    if (kind === 'cutout' || kind === 'inpaint') return name === 'selectionDraw' || name === 'selectionErase' || name === 'selectionCursor' || name === 'selectionNsfw' || name === 'selectionExit' || (kind === 'cutout' && name === 'selectionRemoveBackground')
     if (kind === 'healing') return name === 'selectionDraw' || name === 'selectionErase' || name === 'selectionUndo' || name === 'selectionRedo' || name === 'selectionApply' || name === 'selectionExit'
     if (kind === 'penCutout' || kind === 'penFill') return name === 'penClose' || name === 'penUndo' || name === 'penClear' || name === 'penExit'
     if (kind === 'mask') return name === 'maskErase' || name === 'maskRestore' || name === 'maskCursor' || name === 'maskExit'
@@ -29071,6 +29072,118 @@
     }
   }
 
+  function selectionRemoveBackgroundLayerId(cutoutSource, selected) {
+    return uniqueManualPartId(cutoutSource === 'layer' && selected && selected.id ? `${selected.id}_nobg` : 'nobg')
+  }
+
+  function gateImageAlphaBySourceAlpha(image, sourceData) {
+    // The model alpha only ever narrows the source alpha: a layer that was already partly
+    // transparent must not gain pixels back, and fully hidden pixels drop their RGB.
+    const data = image && image.data
+    const stats = { visible: 0, semi: 0 }
+    if (!data || !sourceData) return stats
+    for (let i = 0; i + 3 < data.length; i += 4) {
+      const alpha = Math.round(((data[i + 3] || 0) * (sourceData[i + 3] || 0)) / 255)
+      data[i + 3] = alpha
+      if (alpha <= 1) {
+        data[i] = 0
+        data[i + 1] = 0
+        data[i + 2] = 0
+        continue
+      }
+      stats.visible += 1
+      if (alpha < 250) stats.semi += 1
+    }
+    return stats
+  }
+
+  async function runWholeImageBackgroundRemoval(baseCanvas) {
+    const width = Math.max(1, Math.round(baseCanvas.width || 1))
+    const height = Math.max(1, Math.round(baseCanvas.height || 1))
+    const modelScale = cutoutRmbgScale(width, height)
+    const modelInputCanvas = modelScale > 1
+      ? resizeCanvasHighQuality(baseCanvas, Math.round(width * modelScale), Math.round(height * modelScale))
+      : baseCanvas
+    const modelAlphaDataUrl = await runRmbgCutout(modelInputCanvas.toDataURL('image/png'))
+    const modelAlphaStats = await assertModelAlphaDataUrl(modelAlphaDataUrl, '去背 RMBG')
+    const resultCanvas = await sourceRgbWithModelAlpha(baseCanvas, modelAlphaDataUrl, width, height, modelAlphaDataUrl)
+    const ctx = resultCanvas.getContext('2d', { willReadFrequently: true })
+    const image = ctx.getImageData(0, 0, width, height)
+    const sourceData = baseCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+    const gateStats = gateImageAlphaBySourceAlpha(image, sourceData)
+    if (gateStats.visible < 16) throw new Error('去背没有识别到可保留的主体')
+    ctx.putImageData(image, 0, 0)
+    const finalDataUrl = resultCanvas.toDataURL('image/png')
+    const finalAlpha = await alphaCanvasFromDataUrl(finalDataUrl, width, height)
+    return { provider: 'RMBG whole image', modelScale, modelInputCanvas, modelAlphaDataUrl, modelAlphaStats, gateStats, finalDataUrl, finalAlpha }
+  }
+
+  async function executeSelectionRemoveBackground() {
+    if (state.busy) return
+    if (!state.selectionTool || !state.selectionTool.active || state.selectionTool.mode !== 'cutout') return
+    if (state.selectionTool.cutoutSource === 'original' && !state.selectionTool.sourceTargetLocked && activeSplitDataPart()) {
+      // Same reclassification as executeCutoutTool: a layer picked after the tool opened is the source.
+      state.selectionTool.cutoutSource = 'layer'
+      selectionToolSession = null
+    }
+    const session = await ensureSelectionToolSession()
+    if (!session || !session.baseCanvas) {
+      setMessage('请先拖入原图', true)
+      render()
+      return
+    }
+    const cutoutSource = state.selectionTool.cutoutSource || 'original'
+    state.busy = true
+    state.busyAction = 'removeBackground'
+    state.busyStartedAt = Date.now()
+    setSplitBusyDetail('正在自动提取透明主体...')
+    setMessage('正在自动去背...')
+    render()
+    try {
+      const result = await runWholeImageBackgroundRemoval(session.baseCanvas)
+      await saveProcessingDebug('removeBackground', [
+        { name: 'model_input', dataUrl: result.modelInputCanvas.toDataURL('image/png') },
+        { name: 'rmbg_rgba', dataUrl: result.modelAlphaDataUrl },
+        { name: 'final_alpha', dataUrl: result.finalAlpha.toDataURL('image/png') },
+        { name: 'final_rgba', dataUrl: result.finalDataUrl }
+      ], { cutoutSource, provider: result.provider, modelScale: result.modelScale, modelAlphaStats: result.modelAlphaStats, gateStats: result.gateStats })
+      const selected = cutoutSource === 'layer' ? currentEditableLayerPart() : null
+      const layer = selected ? spineLayerRank(selected) + 0.01 : 80
+      const id = selectionRemoveBackgroundLayerId(cutoutSource, selected)
+      let cropped = await cropEditorLayer(result.finalDataUrl, { ...presetFor(id), id, label: id, prompt: `Background removal from ${cutoutSourceLabel(cutoutSource)}`, layer, pivot: { x: 0.5, y: 0.5 } })
+      if (!cropped || !cropped.dataUrl) throw new Error('去背结果没有可置入图层的有效像素')
+      cropped = withLayerImageAndMask(
+        cropped,
+        cropCanvasToLayerRect(session.baseCanvas, cropped),
+        layerMaskCanvasFromFullMask(result.finalAlpha, cropped),
+        {
+          kind: 'background-removal',
+          source: 'executeSelectionRemoveBackground',
+          provider: result.provider,
+          cutoutSource,
+          sourceLayerId: selected && selected.id || ''
+        }
+      )
+      cropped.name = id
+      cropped.layer = layer
+      cropped.visible = true
+      cropped.needsInpaint = false
+      if (selected) inheritCutoutSourceSemantics(cropped, selected)
+      resetSelectionTool()
+      await addManualPart(cropped)
+      setMessage(`已生成去背图层：${id}`)
+    } catch (error) {
+      setMessage(String(error && error.message || error || '去背失败，请重试'), true)
+    } finally {
+      state.busy = false
+      state.busyAction = ''
+      state.busyStartedAt = 0
+      state.busyDetail = ''
+      render()
+      syncSplitWorkspace()
+    }
+  }
+
   function localMaskCount(maskCanvas) {
     const data = maskCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, maskCanvas.width, maskCanvas.height).data
     let count = 0
@@ -29997,6 +30110,12 @@
           h('input', { [TOOL_RANGE_ATTR]: 'selectionBrush', type: 'range', min: '1', max: '260', value: brush, oninput: (event) => { setSelectionBrushSize(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(brush, 1, 260, '92px') })
         ]),
         button('\u9000\u51fa', () => stopSelectionTool(), false, { [TOOL_ACTION_ATTR]: 'selectionExit' }),
+        !isInpaint && state.selectionTool && state.selectionTool.mode === 'cutout' ? button('\u53bb\u80cc', () => executeSelectionRemoveBackground(), false, {
+          [TOOL_ACTION_ATTR]: 'selectionRemoveBackground',
+          title: '\u4e0d\u9700\u8981\u7ed8\u5236\u906e\u7f69\uff1a\u5bf9\u5f53\u524d\u62a0\u56fe\u6765\u6e90\u6574\u56fe\u81ea\u52a8\u63d0\u53d6\u900f\u660e\u4e3b\u4f53\uff0c\u5e76\u751f\u6210\u65b0\u7684\u900f\u660e\u56fe\u5c42',
+          disabled: state.busy,
+          style: { marginLeft: '2px' }
+        }) : null,
         showInpaintNsfw ? button('NSFW', () => toggleSelectionInpaintNsfw(), inpaintNsfwEnabled, {
           [TOOL_ACTION_ATTR]: 'selectionNsfw',
           'data-novaflow-selection-inpaint-nsfw': inpaintNsfwEnabled ? 'on' : 'off',
@@ -38585,6 +38704,7 @@
     if (action === 'selectionRedo') return redoSelectionTool()
     if (action === 'selectionApply') return executeHealingTool()
     if (action === 'selectionExit') return stopSelectionTool()
+    if (action === 'selectionRemoveBackground') return executeSelectionRemoveBackground()
     if (action === 'penClose') return penClosePath()
     if (action === 'penUndo') return penUndoPoint()
     if (action === 'penClear') return penClearPath()
@@ -41436,6 +41556,36 @@
     }
   }
 
+  async function runSelectionRemoveBackgroundSmokeTest(options = {}) {
+    await waitForSplitEditorPanel('remove background smoke')
+    const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms))
+    const sourceDataUrl = String(options && options.sourceDataUrl || '')
+    if (sourceDataUrl) {
+      await importSourceDataUrl(String(options && options.fileName || 'remove-bg-smoke.png'), sourceDataUrl)
+      await wait(240)
+    }
+    if (!state.source || !state.source.dataUrl) throw new Error('remove background smoke needs a source image')
+    selectSplitPart('', 'source')
+    await startSelectionTool('cutout')
+    await wait(200)
+    const actions = Array.from(document.querySelectorAll(`[${TOOL_ACTION_ATTR}]`)).filter((node) => isVisibleElement(node)).map((node) => node.getAttribute(TOOL_ACTION_ATTR))
+    const exitIndex = actions.indexOf('selectionExit')
+    if (exitIndex < 0 || actions[exitIndex + 1] !== 'selectionRemoveBackground') throw new Error(`去背 button must follow 退出: ${actions.join(',')}`)
+    const before = state.parts.length
+    await clickSplitToolActionForSmoke('selectionRemoveBackground')
+    const startedAt = Date.now()
+    while (!state.busy && Date.now() - startedAt < 5000) await wait(50)
+    while (state.busy && Date.now() - startedAt < 300000) await wait(200)
+    if (state.busy) throw new Error('remove background did not finish in time')
+    const part = state.parts.find((item) => item && item.metadata && item.metadata.kind === 'background-removal')
+    if (!part || state.parts.length !== before + 1) throw new Error(`remove background layer missing: ${String(state.message || '')}`)
+    if (state.selectionTool && state.selectionTool.active) throw new Error('selection tool still active after 去背')
+    if (state.activePartId !== part.id) throw new Error('去背 layer not selected')
+    assertNoVisibleSplitToolAction('selectionRemoveBackground', '去背 button')
+    document.body.setAttribute('data-novaflow-remove-bg-smoke', 'pass')
+    return { partId: part.id, x: part.x, y: part.y, width: part.width, height: part.height, cutoutSource: part.metadata.cutoutSource, provider: part.metadata.provider }
+  }
+
   async function runMaskStencilSmokeTest() {
     await waitForSplitEditorPanel('mask stencil smoke')
     const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -42415,6 +42565,10 @@
     maskStencilTargets,
     isMaskStencilActive,
     runMaskStencilSmokeTest,
+    executeSelectionRemoveBackground,
+    runSelectionRemoveBackgroundSmokeTest,
+    gateImageAlphaBySourceAlpha,
+    selectionRemoveBackgroundLayerId,
     splitSeeThroughFeet,
     splitSeeThroughFootwear,
     mergeFaceDetailsIntoFace,
@@ -43145,6 +43299,18 @@
         const message = String(error && error.message || error || 'mask stencil smoke failed')
         document.body.setAttribute('data-novaflow-mask-stencil-smoke', `fail:${message}`)
         setMessage(`MASK_STENCIL_SMOKE_FAIL ${message}`, true)
+        render()
+        syncSplitWorkspace()
+      })
+    }, 260)
+  }
+
+  if (new URLSearchParams(window.location.search).has('__novaflow_remove_bg_smoke')) {
+    window.setTimeout(() => {
+      runSelectionRemoveBackgroundSmokeTest().catch((error) => {
+        const message = String(error && error.message || error || 'remove background smoke failed')
+        document.body.setAttribute('data-novaflow-remove-bg-smoke', `fail:${message}`)
+        setMessage(`REMOVE_BG_SMOKE_FAIL ${message}`, true)
         render()
         syncSplitWorkspace()
       })
