@@ -235,8 +235,9 @@
   // Hiding the shell at the click therefore exposed the particle panel underneath for that long, but
   // keeping the semantic open state (body.novaflow-aifx-open) makes the runtime reject that commit.
   // So the click swaps the open class for the leaving class - the runtime no longer sees an AI特效
-  // context while the shell stays painted over the left column - and the shell hides inside the
-  // mutation batch in which the pressed primary entry leaves 特效 (before paint).
+  // context while the shell stays painted exactly as it was (side panel, shield and the secondary
+  // entries above it) - and the shell hides inside the mutation batch in which the pressed primary
+  // entry leaves 特效 (before paint).
   const beginPrimaryLeave = () => {
     cancelScheduledHostScrollFreeze()
     restoreHostScroll()
@@ -323,9 +324,9 @@
         overflow: hidden !important;
         overscroll-behavior: contain !important;
       }
-      body.novaflow-aifx-leaving #${APP_ID}.is-open::before {
-        top: 0 !important;
-      }
+      /* The leaving state must look exactly like the open state until React commits the new section:
+         the shield keeps its normal offset so the 粒子特效 / AI特效 entries above the side panel stay
+         visible (extending it to the top hid them ~300ms before the rest of the shell went away). */
       body.novaflow-aifx-open [data-novaflow-left-content-root="1"] * {
         visibility: hidden !important;
         pointer-events: none !important;

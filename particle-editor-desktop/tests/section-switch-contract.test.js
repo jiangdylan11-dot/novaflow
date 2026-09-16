@@ -158,8 +158,10 @@ test("the AI特效 shell stays up until React has left 特效 after a primary si
   assert.match(source, /const hideApp = \(options = \{\}\) => \{\n\s+stopPrimaryLeaveWatch\(\)/);
   assert.match(source, /document\.body\.classList\.remove\('novaflow-aifx-open'\)\n\s+document\.body\.classList\.remove\(LEAVING_CLASS\)/);
   assert.match(source, /document\.body\.classList\.remove\(LEAVING_CLASS\)\n\s+unfreezeShellGeometry\(\)\n\s+document\.body\.classList\.add\('novaflow-aifx-open'\)\n\s+root\.classList\.add\('is-open'\)/);
-  // The leaving state keeps the shell painted over the whole left column (shield from the top).
-  assert.match(source, /body\.novaflow-aifx-leaving #\$\{APP_ID\}\.is-open::before \{\n\s+top: 0 !important;/);
+  // The leaving state must not restyle anything: the shield keeps its normal offset so the
+  // 粒子特效 / AI特效 entries stay visible until the commit (top: 0 hid them ~300ms early).
+  assert.doesNotMatch(source, /body\.novaflow-aifx-leaving #\$\{APP_ID\}\.is-open::before/);
+  assert.match(source, /body\.novaflow-aifx-leaving \{\n\s+overflow: hidden !important;\n\s+overscroll-behavior: contain !important;\n\s+\}\n\s+\/\* The leaving state must look exactly like the open state/);
   assert.doesNotMatch(source, /body\.novaflow-aifx-leaving #\$\{APP_ID\}\.is-open \.aifx-side \{/);
   // The shell geometry pinned through body.novaflow-aifx-open is frozen inline for the leaving state.
   assert.match(watcher, /restoreHostScroll\(\)\n\s+freezeShellGeometryForLeave\(\)\n\s+document\.body\.classList\.remove\('novaflow-aifx-open'\)/);
@@ -211,7 +213,7 @@ test("the AI特效 shell stays up until React has left 特效 after a primary si
   assert.deepEqual(hides, ["primary-switch:动画"]);
   assert.equal(observerCallback, null, "the watcher disconnects after hiding");
   const html = read("particle-editor/index.html");
-  assert.match(html, /aifx-repaint-runtime\.js\?v=20260916-aifx-ui-shell-6/);
+  assert.match(html, /aifx-repaint-runtime\.js\?v=20260916-aifx-ui-shell-7/);
 
   const helper = source.match(/  const isPrimarySidebarAction = \(action\) => \{[\s\S]*?\n  \}/)?.[0];
   assert.ok(helper);
