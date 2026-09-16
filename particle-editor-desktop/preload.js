@@ -950,8 +950,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   qwenLoraCatalog: (payload) => ipcRenderer.invoke("qwen-lora-catalog", payload),
   minimaxH3LoraCatalog: (payload) => ipcRenderer.invoke("minimax-h3-lora-catalog", payload),
   minimaxH3LoraValidate: (payload) => ipcRenderer.invoke("minimax-h3-lora-validate", payload),
-  wan22LoraCatalog: (payload) => ipcRenderer.invoke("wan22-lora-catalog", payload),
-  wan22LoraValidate: (payload) => ipcRenderer.invoke("wan22-lora-validate", payload),
   runtimeGetSystemStats: (payload) => ipcRenderer.invoke("runtime-get-system-stats", payload),
   runtimeDiagnosticsSnapshot: (payload) => ipcRenderer.invoke("runtime-diagnostics-snapshot", payload),
   runtimeFreeMemory: (payload) => ipcRenderer.invoke("runtime-free-memory", payload),

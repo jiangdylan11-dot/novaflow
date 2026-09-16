@@ -1615,6 +1615,8 @@
       close();
     });
     window.setTimeout(() => {
+      // Park the caret after the text: at 0 a leading @ mention would be split by the first keystroke.
+      if (mentionHandle && typeof mentionHandle.focus === "function" && mentionHandle.focus({ caret: "end" })) return;
       const editor = mentionHandle && mentionHandle.editor;
       if (editor instanceof HTMLElement && editor.isConnected) editor.focus();
       else textarea.focus();

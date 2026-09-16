@@ -22,12 +22,10 @@ function graphs(info){
  const art=s.buildArtGenerateRunWorkflow(...args);
  const ui=s.buildArtGenerateRunWorkflow(...args,undefined,{taskProfile:'ui-design',referenceRoles:[{role:'reference',name:refs[0],autoPrimary:true},{role:'ui_layout',name:refs[1]}],layoutGuideEncoding:'soft-ui-semantic-scaffold-v2'});
  const inpaint={exports:{}};new Function('module',read('split-inpaint-nsfw.workflow.js'))(inpaint);
- const aifx={exports:{}};new Function('module',read('aifx-local.workflow.js'))(aifx);
  const out={art:art.workflow,ui:ui.workflow};
  for(const mode of ['edit','completion'])out[mode]=inpaint.exports.buildWorkflow({runtimeInfo:info,mode,imageName:refs[0],maskName:'.tmp-rapid-transfer-mask.png',prefix:'NovaFlow_validation/rapid_'+mode,prompt:mode==='edit'?'Add a small red wooden chair in the selected region.':'Fill the selected area naturally. Continue the grass and landscape.',seed:9122026});
  out['edit-roof']=inpaint.exports.buildWorkflow({runtimeInfo:info,mode:'edit',imageName:'.tmp-rapid-edit-crop.png',maskName:'.tmp-rapid-roof-mask.png',prefix:'NovaFlow_validation/rapid_edit_roof',prompt:'Change the red roof to blue. Preserve the shape of the roof, chimney, house and background.',seed:9122026});
  out['completion-roof']=inpaint.exports.buildWorkflow({runtimeInfo:info,mode:'completion',imageName:'.tmp-rapid-hole-crop.png',maskName:'.tmp-rapid-hole-mask.png',prefix:'NovaFlow_validation/rapid_completion_roof',prompt:'Repair the missing red roof. Replace the grey rectangular hole with the same continuous solid red roof.',seed:9122026});
- out['aifx-tail']=aifx.exports.buildWorkflow({objectInfo:info,sheetImageName:'.tmp-rapid-sheet.png',styleImageName:refs[1],width:512,height:512,seed:9122026,anchorRole:'dissipation',anchorFrame:{index:3,phase:'dissipation'},materialReferenceMode:'generated-peak-material-token',promptsPrecompiled:true,structurePrompt:'Create one isolated dissipation VFX frame on black with sparse small broken sparks. Preserve the motion anchors.',stylePrompt:'Golden luminous magical particles, no solid object, sparse fading sparks. Image 1 supplies material texture only.',prompt:'A sparse golden magical burst fading to tiny sparks on black.'}).workflow;
  return out;
 }
 async function json(route,options){const r=await fetch('http://127.0.0.1:8188'+route,options);const x=await r.json();if(!r.ok)throw new Error(JSON.stringify(x));return x;}

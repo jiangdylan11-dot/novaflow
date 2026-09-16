@@ -30,8 +30,6 @@
     typeof existingApi.clientAuthLogout === 'function'
   const hasAiSequenceLora =
     typeof existingApi.qwenLoraCatalog === 'function' &&
-    typeof existingApi.wan22LoraCatalog === 'function' &&
-    typeof existingApi.wan22LoraValidate === 'function' &&
     typeof existingApi.minimaxH3LoraCatalog === 'function' &&
     typeof existingApi.minimaxH3LoraValidate === 'function'
   const hasMiniMaxH3OutputWarehouse =
@@ -297,12 +295,6 @@
     }
   }
   const qwenLoraCatalog = existingApi.qwenLoraCatalog || ((payload) => aiSequenceLoraRequest('qwen-catalog', payload))
-  const wan22LoraCatalog = existingApi.wan22LoraCatalog || ((payload) => (
-    aiSequenceLoraRequest('wan22-catalog', payload)
-  ))
-  const wan22LoraValidate = existingApi.wan22LoraValidate || ((payload) => (
-    aiSequenceLoraRequest('wan22-validate', payload)
-  ))
   const minimaxH3LoraCatalog = existingApi.minimaxH3LoraCatalog || ((payload) => (
     aiSequenceLoraRequest('minimax-h3-catalog', payload)
   ))
@@ -449,8 +441,6 @@
     promptAssistantStoryboardDirectorPlan,
     promptAssistantReverseImagePrompt,
     qwenLoraCatalog,
-    wan22LoraCatalog,
-    wan22LoraValidate,
     minimaxH3LoraCatalog,
     minimaxH3LoraValidate,
     minimaxH3OutputPublish,

@@ -1,0 +1,12 @@
+{
+  "mainSha256": "cd9f722ac9e0c5a941468cb31ed2197dd34fcb92e5c53b5176bcb2fa002e0379",
+  "installed": {
+    "ready": true,
+    "pythonExe": "C:\\Users\\jiang\\AppData\\Roaming\\NovaFlow\\birefnet-env\\venv\\Scripts\\python.exe",
+    "modelId": "E:\\NovaFlow\\models\\RMBG\\RMBG-2.0",
+    "modelLocal": true,
+    "modelLabel": "runtime-rmbg-2.0",
+    "depsVersion": "2026-06-11-birefnet-pinned-local-v1",
+    "updatedAt": 1789287252330
+  }
+}

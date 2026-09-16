@@ -11,6 +11,7 @@ const packagedBundle = read(
   'particle-editor-desktop/dist/win-unpacked/resources/app/renderer/assets/index-BbIa-2NM.js',
 )
 
+// The WAN 2.2 local line was retired on 2026-09-16. MiniMax H3 is the only local model.
 const dropdownMarker = 'value:aiSeqModelValue,onChange:'
 const dropdownStart = sourceBundle.indexOf(dropdownMarker)
 assert.notEqual(dropdownStart, -1, 'active AI sequence model selector must exist')
@@ -20,31 +21,40 @@ const options = Array.from(
   (match) => ({ value: match[1], label: match[2] }),
 )
 
-assert.deepEqual(options, [
-  { value: 'local_a', label: 'Wan2_2' },
-  { value: 'minimax_h3_local', label: 'MiniMax_h3' },
-])
-assert.doesNotMatch(dropdownSource, /value:`(?:kling|jimeng)`/)
+assert.deepEqual(options, [{ value: 'minimax_h3_local', label: 'MiniMax_h3' }], 'MiniMax_h3 must be the only local model option')
+assert.doesNotMatch(dropdownSource, /value:`(?:kling|jimeng|local_a)`/)
+
+assert.match(sourceBundle, /aiSeqModelValue=`minimax_h3_local`,aiSeqWanModel=!1/, 'model selector value must be pinned to MiniMax H3')
+assert.match(
+  sourceBundle,
+  /applyAiSeqModelValue=\(\)=>\{i\(`minimax_h3_local`\),nfSetAiSeqGenType\?\.\(`text_video`\)\};/,
+  'model selector must only apply MiniMax H3',
+)
+assert.match(
+  sourceBundle,
+  /\(0,_\.useEffect\)\(\(\)=>\{r===`local`&&i\(`minimax_h3_local`\)\},\[r,i\]\);/,
+  'a leftover WAN local mode must be coerced to MiniMax H3',
+)
+assert.match(
+  sourceBundle,
+  /\[u,d\]=\(0,_\.useState\)\(\(\)=>`minimax_h3_local`\),\[f,p\]=\(0,_\.useState\)\(\(\)=>`text_video`\)/,
+  'AI sequence must start in MiniMax H3 mode',
+)
+assert.doesNotMatch(
+  sourceBundle,
+  /aiSeqModelValue=r===`minimax_h3_local`\?`minimax_h3_local`:`local_a`/,
+  'the retired WAN selector value must not return',
+)
 
 const presetStart = sourceBundle.indexOf('aiSeqModelPresets={')
-const presetEnd = sourceBundle.indexOf('(0,_.useEffect)(()=>{r===`local`', presetStart)
-assert.ok(presetStart >= 0 && presetEnd > presetStart, 'active AI sequence presets must be bounded')
-const presetSource = sourceBundle.slice(presetStart, presetEnd)
-assert.match(presetSource, /local_a:\{mode:`local`,label:`Wan2_2`/)
-assert.match(presetSource, /minimax_h3_local:\{mode:`minimax_h3_local`,label:`MiniMax_h3`/)
-assert.match(presetSource, /t===`minimax_h3_local`\?\(i\(`minimax_h3_local`\)/)
-assert.doesNotMatch(presetSource, /(?:kling|jimeng):\{mode:`cloud`/)
+assert.ok(presetStart >= 0, 'active AI sequence presets must exist')
+assert.match(sourceBundle.slice(presetStart, presetStart + 1200), /minimax_h3_local:\{mode:`minimax_h3_local`,label:`MiniMax_h3`/)
 
 const generatorStart = sourceBundle.indexOf('function Vs(e){')
 const generatorEnd = sourceBundle.indexOf('function Hs(e){', generatorStart)
 assert.ok(generatorStart >= 0 && generatorEnd > generatorStart, 'active AI sequence generator must be bounded')
 const generatorSource = sourceBundle.slice(generatorStart, generatorEnd)
 assert.match(generatorSource, /nfH3Runtime\?\[8189\]:\[8188\]/)
-assert.doesNotMatch(
-  generatorSource,
-  /nfH3Runtime\?\[8189\]:\[[^\]]*(?:8e3|8080|7860|3e3)/,
-  'Wan Runtime discovery must not probe Comfy Desktop or unrelated local ports',
-)
 assert.equal(
   Array.from(
     generatorSource.matchAll(
@@ -54,28 +64,19 @@ assert.equal(
   4,
   'all AI sequence transports must use the fixed endpoint for the selected local model',
 )
-assert.doesNotMatch(
-  generatorSource,
-  /nfAiSeqResolvedBaseRef\.current\|\|\(e\.aiSeqMode===`minimax_h3_local`/,
-  'a stale resolved URL must not override the NovaFlow-owned 8188/8189 endpoints',
-)
-assert.match(sourceBundle, /let t=await Ne\(`http:\/\/127\.0\.0\.1:8188`,`\/object_info`\)/)
-assert.match(
-  sourceBundle,
-  /nfWanVisibleModel=e=>!String\(e\|\|``\)\.toLowerCase\(\)\.replaceAll\(String\.fromCharCode\(92\),`\/`\)\.split\(`\/`\)\.includes\(`minimax_h3`\)/,
-  'Wan model choices must exclude paths inside the minimax_h3 directory',
-)
 
 assert.equal(rendererBundle, sourceBundle, 'renderer bundle mirror must match the authoritative bundle')
 assert.equal(packagedBundle, sourceBundle, 'win-unpacked bundle mirror must match the authoritative bundle')
 
-const cacheKey = 'index-BbIa-2NM.js?v=20260812-minimax-h3-assistant-1'
+const cacheKey = 'index-BbIa-2NM.js?v=20260916-retire-wan-1'
 for (const indexPath of [
   'particle-editor/index.html',
   'particle-editor-desktop/renderer/index.html',
   'particle-editor-desktop/dist/win-unpacked/resources/app/renderer/index.html',
 ]) {
-  assert.ok(read(indexPath).includes(cacheKey), `${indexPath} must publish the MiniMax H3 selector revision`)
+  const indexHtml = read(indexPath)
+  assert.ok(indexHtml.includes(cacheKey), `${indexPath} must publish the MiniMax H3-only selector revision`)
+  assert.doesNotMatch(indexHtml, /ai-sequence-wan22-lora/, `${indexPath} must not load the retired WAN LoRA modules`)
 }
 
-console.log('AI sequence Wan2_2 / MiniMax_h3 model contract passed.')
+console.log('AI sequence MiniMax_h3-only local model contract passed.')

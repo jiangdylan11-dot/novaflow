@@ -47,28 +47,15 @@ test('preview exposes only the fixed fail-closed AI-sequence LoRA adapter action
     ), { status: 200 })
   }
   const api = loadProxy({}, fetchImpl)
-  const context = { highName: 'high.safetensors', lowName: 'low.safetensors', steps: 4 }
-  const descriptor = {
-    ...context,
-    name: 'wan.safetensors',
-    role: 'high',
-    fingerprint: 'lora-fingerprint',
-    highFingerprint: 'high-fingerprint',
-    lowFingerprint: 'low-fingerprint',
-    strength: 0.75,
-  }
+  const descriptor = { mode: 'r2v', steps: 20, name: 'h3.safetensors', fingerprint: 'lora-fingerprint', strength: 0.75 }
 
-  await api.wan22LoraCatalog(context)
-  await api.wan22LoraValidate(descriptor)
   await api.minimaxH3LoraCatalog({ mode: 'r2v', steps: 20 })
-  await api.minimaxH3LoraValidate({ mode: 'r2v', steps: 20, name: 'h3.safetensors' })
+  await api.minimaxH3LoraValidate(descriptor)
 
-  assert.deepEqual(calls.map(({ url }) => url), Array(4).fill('/__ai_sequence_lora'))
-  assert.deepEqual(calls.map(({ init }) => init.method), Array(4).fill('POST'))
-  assert.deepEqual(calls.map(({ init }) => init.cache), Array(4).fill('no-store'))
+  assert.deepEqual(calls.map(({ url }) => url), Array(2).fill('/__ai_sequence_lora'))
+  assert.deepEqual(calls.map(({ init }) => init.method), Array(2).fill('POST'))
+  assert.deepEqual(calls.map(({ init }) => init.cache), Array(2).fill('no-store'))
   assert.deepEqual(calls.map(({ body }) => body.action), [
-    'wan22-catalog',
-    'wan22-validate',
     'minimax-h3-catalog',
     'minimax-h3-validate',
   ])
@@ -85,12 +72,17 @@ test('preview exposes only the fixed fail-closed AI-sequence LoRA adapter action
   )
 })
 
+test('the retired WAN 2.2 LoRA bridge is no longer exposed', () => {
+  const api = loadProxy({}, async () => new Response('{}', { status: 200 }))
+  assert.equal('wan22LoraCatalog' in api, false)
+  assert.equal('wan22LoraValidate' in api, false)
+  assert.doesNotMatch(source, /wan22/i, 'proxy-electron-api must not reference the retired WAN 2.2 bridge')
+})
+
 test('trusted preload LoRA methods always win over the preview HTTP adapter', async () => {
   const previewCalls = []
   const nativeCalls = []
   const native = {
-    wan22LoraCatalog: async (payload) => { nativeCalls.push(['wan22-catalog', payload]); return { ok: true, items: [] } },
-    wan22LoraValidate: async (payload) => { nativeCalls.push(['wan22-validate', payload]); return { ok: true } },
     minimaxH3LoraCatalog: async (payload) => { nativeCalls.push(['minimax-h3-catalog', payload]); return { ok: true, items: [] } },
     minimaxH3LoraValidate: async (payload) => { nativeCalls.push(['minimax-h3-validate', payload]); return { ok: true } },
   }
@@ -99,21 +91,17 @@ test('trusted preload LoRA methods always win over the preview HTTP adapter', as
     return new Response(JSON.stringify({ ok: false }), { status: 500 })
   })
 
-  assert.equal(api.wan22LoraCatalog, native.wan22LoraCatalog)
-  assert.equal(api.wan22LoraValidate, native.wan22LoraValidate)
   assert.equal(api.minimaxH3LoraCatalog, native.minimaxH3LoraCatalog)
   assert.equal(api.minimaxH3LoraValidate, native.minimaxH3LoraValidate)
-  await api.wan22LoraCatalog({ steps: 4 })
-  await api.wan22LoraValidate({ role: 'shared' })
   await api.minimaxH3LoraCatalog({ mode: 't2v' })
   await api.minimaxH3LoraValidate({ mode: 't2v' })
-  assert.equal(nativeCalls.length, 4)
+  assert.equal(nativeCalls.length, 2)
   assert.deepEqual(previewCalls, [])
 })
 
 test('invalid preview responses fail closed without exposing raw candidates', async () => {
   const api = loadProxy({}, async () => new Response('not-json', { status: 502 }))
-  const result = await api.wan22LoraCatalog({ highName: 'high', lowName: 'low', steps: 4 })
+  const result = await api.minimaxH3LoraCatalog({ mode: 't2v', steps: 4 })
   assert.deepEqual(JSON.parse(JSON.stringify(result)), {
     ok: false,
     status: 502,

@@ -24,16 +24,8 @@ PROJECT_ENTRY_LOCK = Path("particle-editor/PROJECT_ENTRY_LOCK.md")
 RUNTIME_SURFACE_HASH_SNAPSHOT = Path("RUNTIME_SURFACE_HASH_SNAPSHOT.json")
 DEFAULT_TIMEOUT = 3.0
 TAKEOVER_SCRIPT = "aifx-repaint-runtime.js"
-REQUIRED_AIFX_SCRIPTS = (
-    "aifx-prompt.workflow.js",
-    "aifx-local.workflow.js",
-    "aifx-generate.workflow.js",
-    "aifx-temporal-conform.workflow.js",
-    "aifx-material-identity.resource.js",
-    TAKEOVER_SCRIPT,
-    "aifx-material-reconstruct.workflow.js",
-    "aifx-export.workflow.js",
-)
+# The AIFX generation workflow modules were retired on 2026-09-16; only the UI shell is served.
+REQUIRED_AIFX_SCRIPTS = (TAKEOVER_SCRIPT,)
 
 
 def sha256_bytes(data: bytes) -> str:

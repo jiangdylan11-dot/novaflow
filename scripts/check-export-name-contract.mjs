@@ -41,15 +41,9 @@ const brandRuntimePaths = [
   "particle-editor-desktop/renderer/novaflow-brand-runtime.js",
   "particle-editor-desktop/dist/win-unpacked/resources/app/renderer/novaflow-brand-runtime.js",
 ];
-const aifxRuntimePaths = [
-  "particle-editor/aifx-repaint-runtime.js",
-  "particle-editor-desktop/renderer/aifx-repaint-runtime.js",
-  "particle-editor-desktop/dist/win-unpacked/resources/app/renderer/aifx-repaint-runtime.js",
-];
 
 const bundles = bundlePaths.map((filePath) => ({ filePath, text: read(filePath) }));
 const brandRuntimes = brandRuntimePaths.map((filePath) => ({ filePath, text: read(filePath) }));
-const aifxRuntimes = aifxRuntimePaths.map((filePath) => ({ filePath, text: read(filePath) }));
 
 for (const { filePath, text } of bundles) {
   const exportDialog = extractBetween(text, "function Ei(e){let{exportTab:t", "function Di(e)", filePath, "shared export dialog");
@@ -171,28 +165,7 @@ for (const { filePath, text } of brandRuntimes) {
   );
 }
 
-for (const { filePath, text } of aifxRuntimes) {
-  assert.ok(
-    countOccurrences(text, "const exportName = sanitizeAifxExportName(options.name, '')") >= 2,
-    `${filePath}: AIFX final and Spine exports must both sanitize the explicit export name`,
-  );
-  assert.ok(
-    text.includes("const base = exportName || 'aifx_conditioned_regen'"),
-    `${filePath}: AIFX Spine sidecars must derive from the explicit export name`,
-  );
-  assert.ok(
-    text.includes("fileName: `${base}.png`") &&
-      text.includes("writeTextAsBinary(assetDir, `${base}.atlas`, atlas)") &&
-      text.includes("writeTextAsBinary(assetDir, `${base}.json`, JSON.stringify(json, null, 2))"),
-    `${filePath}: AIFX Spine PNG/atlas/json must retain one explicit shared base name`,
-  );
-  assert.ok(
-    text.includes("const canonicalAifxFrameName = (index) => `frame_${pad(Math.max(0, Math.round(Number(index) || 0)), 3)}.png`"),
-    `${filePath}: AIFX canonical frame_### package naming must not drift`,
-  );
-}
-
-for (const group of [bundles, brandRuntimes, aifxRuntimes]) {
+for (const group of [bundles, brandRuntimes]) {
   const expectedHash = sha256(group[0].text);
   for (const { filePath, text } of group.slice(1)) {
     assert.equal(sha256(text), expectedHash, `${filePath}: shipped export-name implementation mirror drift`);

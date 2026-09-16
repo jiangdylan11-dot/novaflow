@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const RESOURCE_MENTION_TOOL_VERSION = "20260912-resource-mentions-ime-1";
+  const RESOURCE_MENTION_TOOL_VERSION = "20260916-mention-surfaces-2";
 
   const SEEDANCE_RESOURCE_CONFIG = Object.freeze([
     Object.freeze({ key: "ref_image", label: "参考图1", kind: "image" }),
@@ -18,11 +18,13 @@
   ]);
   // MiniMax H3 图生视频 / 首尾帧视频 bind their frame slots through the same display aliases the H3
   // prompt workflow already accepts (@参考图 -> <Picture 1>, @首帧 / @尾帧 -> <Picture 1> / <Picture 2>).
+  // The first frame keeps its slot key across both modes while its alias changes, so the other
+  // mode's alias is migrated to the current one when the prompt renders (@首帧 <-> @参考图).
   const MINIMAX_H3_IMAGE_VIDEO_RESOURCE_CONFIG = Object.freeze([
-    Object.freeze({ key: "first_frame", label: "参考图", kind: "image" })
+    Object.freeze({ key: "first_frame", label: "参考图", kind: "image", legacyAliases: Object.freeze(["@首帧"]) })
   ]);
   const MINIMAX_H3_FIRST_LAST_RESOURCE_CONFIG = Object.freeze([
-    Object.freeze({ key: "first_frame", label: "首帧", kind: "image" }),
+    Object.freeze({ key: "first_frame", label: "首帧", kind: "image", legacyAliases: Object.freeze(["@参考图"]) }),
     Object.freeze({ key: "last_frame", label: "尾帧", kind: "image" })
   ]);
   const UI_DESIGN_MAX_REFERENCES = 15;
@@ -103,6 +105,7 @@
         label: config.label,
         displayLabel: stringValue(source.label || config.label),
         alias: "@" + config.label,
+        legacyAliases: Array.isArray(config.legacyAliases) ? config.legacyAliases.slice() : [],
         kind: normalizedKind(source.kind, config.kind),
         occupied: source.occupied === true,
         previewUrl: stringValue(source.previewUrl || source.thumbnailUrl || ""),
@@ -283,6 +286,54 @@
       controller.surface,
       controllerResourceSnapshot(controller)
     );
+  }
+
+  function backingSelection(controller) {
+    const textarea = controller.textarea;
+    const length = stringValue(textarea.value).length;
+    const start = Number.isFinite(textarea.selectionStart) ? textarea.selectionStart : length;
+    const end = Number.isFinite(textarea.selectionEnd) ? textarea.selectionEnd : start;
+    return { start: Math.min(start, length), end: Math.min(Math.max(start, end), length) };
+  }
+
+  // A slot keeps its key across surfaces while its alias changes (图生视频 "@参考图" is 首尾帧视频
+  // "@首帧"); rewrite the previous surface's alias so the text keeps addressing the same slot and
+  // renders as a chip instead of plain text after a mode switch.
+  function migrateLegacyAliases(controller, descriptors) {
+    const text = stringValue(controller.textarea.value);
+    if (text.indexOf("@") === -1) return false;
+    const current = descriptorIndex(descriptors);
+    const byLegacyAlias = new Map();
+    descriptors.forEach(function (descriptor) {
+      (descriptor.legacyAliases || []).forEach(function (alias) {
+        if (!current.has(alias) && !byLegacyAlias.has(alias)) byLegacyAlias.set(alias, descriptor);
+      });
+    });
+    if (!byLegacyAlias.size) return false;
+    const expression = new RegExp(
+      Array.from(byLegacyAlias.keys())
+        .sort(function (left, right) { return right.length - left.length; })
+        .map(function (alias) { return escapeRegExp(alias) + "(?![0-9])"; })
+        .join("|"),
+      "g"
+    );
+    const selection = backingSelection(controller);
+    let caret = selection.end;
+    let changed = false;
+    const nextText = text.replace(expression, function (token, index) {
+      const replacement = byLegacyAlias.get(token).alias;
+      if (replacement === token) return token;
+      changed = true;
+      if (index + token.length <= selection.end) {
+        caret += replacement.length - token.length;
+      } else if (index < selection.end) {
+        caret = index + replacement.length;
+      }
+      return replacement;
+    });
+    if (!changed) return false;
+    writeBackingValue(controller, nextText, Math.max(0, Math.min(caret, nextText.length)));
+    return true;
   }
 
   function resourceMentionRenderSignature(surface, text, descriptors) {
@@ -533,6 +584,25 @@
     }
   }
 
+  // Hosts that open the editor inside a dialog focus it here; caret: "end" parks the caret after
+  // the text instead of at 0, so a leading mention is neither split nor re-offered by the menu.
+  function focusEditor(controller, options) {
+    const settings = options || {};
+    const editor = controller.editor;
+    if (!editor.isConnected) return false;
+    try {
+      editor.focus({ preventScroll: settings.preventScroll === true });
+    } catch (error) {
+      editor.focus();
+    }
+    if (settings.caret === "end") {
+      const end = stringValue(controller.textarea.value).length;
+      setEditorSelection(controller, { start: end, end: end });
+      updateMenuFromCaret(controller);
+    }
+    return controller.document.activeElement === editor;
+  }
+
   function serializeEditorNode(node) {
     if (node.nodeType === 3) return stringValue(node.nodeValue);
     if (node.nodeType !== 1) return "";
@@ -764,9 +834,13 @@
     if (controller.composing) return;
     if (!controller.editor.isConnected || !controller.textarea.isConnected) return;
     const hadFocus = controller.document.activeElement === controller.editor;
-    const selection = requestedSelection || (hadFocus ? editorSelection(controller) : null);
-    const text = stringValue(controller.textarea.value);
     const descriptors = controllerResources(controller);
+    // Migration rewrites the backing text and caret, so it must run before the selection is read.
+    const migrated = migrateLegacyAliases(controller, descriptors);
+    const selection = migrated
+      ? backingSelection(controller)
+      : requestedSelection || (hadFocus ? editorSelection(controller) : null);
+    const text = stringValue(controller.textarea.value);
     const signature = resourceMentionRenderSignature(controller.surface, text, descriptors);
     controller.descriptors = descriptors;
     if (signature === controller.renderSignature) {
@@ -785,7 +859,10 @@
   }
 
   function currentMentionTrigger(controller, text, caret) {
-    const triggerStart = text.lastIndexOf("@", Math.max(0, caret - 1));
+    // Only an "@" before the caret triggers: a freshly focused editor parks the caret at 0, and a
+    // leading "@参考图1" must not open the menu there.
+    if (!(caret > 0)) return null;
+    const triggerStart = text.lastIndexOf("@", caret - 1);
     if (triggerStart < 0) return null;
     const query = text.slice(triggerStart + 1, caret);
     if (query.length > 32 || /[\s@,，。;；!！?？]/.test(query)) return null;
@@ -928,6 +1005,10 @@
     }
     if (activeMenuState && activeMenuState.controller !== controller) closeMenu();
     const menu = ensureMenu(controller.document);
+    // Overlays at the same (clamped) z-index paint in DOM order and the prompt editor modal is
+    // appended after the menu, so the menu moves to the end of <body> whenever it opens.
+    const body = controller.document.body;
+    if (body && menu.parentNode === body && body.lastElementChild !== menu) body.appendChild(menu);
     clearElement(menu);
     const state = {
       controller: controller,
@@ -1324,6 +1405,7 @@
       textarea: textarea,
       editor: editor,
       refresh: function () { renderController(controller); },
+      focus: function (options) { return focusEditor(controller, options); },
       unmount: function () { return unmountTextarea(textarea); }
     });
 

@@ -101,7 +101,7 @@ function scriptSources(html) {
   )
 }
 
-test('AI sequence model selector exposes only Wan2_2 and local MiniMax_h3', () => {
+test('AI sequence model selector exposes only local MiniMax_h3 after the Wan2_2 retirement', () => {
   const marker = 'value:aiSeqModelValue,onChange:'
   const markerIndex = bundle.indexOf(marker)
   assert.notEqual(markerIndex, -1, 'AI sequence model select must keep an explicit selected-model value')
@@ -112,10 +112,15 @@ test('AI sequence model selector exposes only Wan2_2 and local MiniMax_h3', () =
   )
 
   assert.deepEqual(options, [
-    { value: 'local_a', label: 'Wan2_2' },
     { value: 'minimax_h3_local', label: 'MiniMax_h3' },
   ])
-  assert.doesNotMatch(selectFragment, /value:`(?:kling|jimeng)`/)
+  assert.doesNotMatch(selectFragment, /value:`(?:kling|jimeng|local_a)`/)
+  assert.match(bundle, /aiSeqModelValue=`minimax_h3_local`,aiSeqWanModel=!1/, 'the selector value must be pinned to MiniMax_h3')
+  assert.match(
+    bundle,
+    /\[u,d\]=\(0,_\.useState\)\(\(\)=>`minimax_h3_local`\)/,
+    'AI sequence must start in MiniMax_h3 mode now that the Wan2_2 local line is retired',
+  )
 })
 
 test('MiniMax_h3 owns four ordered top modes while Wan keeps its two established modes', () => {
@@ -860,8 +865,8 @@ test('MiniMax_h3 keeps 8189 out of the shared Wan Runtime URL and coordinates re
   )
   assert.match(
     bundle,
-    /r===`local`&&\(\(\)=>\{let e=`http:\/\/127\.0\.0\.1:8188`;h!==e&&g\(e\);try\{localStorage\.setItem\(`comfyui_last_connected_url`,e\)\}/,
-    'entering Wan must overwrite a stale shared 8000 URL with 8188',
+    /\(0,_\.useEffect\)\(\(\)=>\{r===`local`&&i\(`minimax_h3_local`\)\},\[r,i\]\);/,
+    'a leftover Wan local mode must be coerced to MiniMax_h3 instead of re-entering the retired Wan line',
   )
   assert.match(
     bundle,
@@ -1070,8 +1075,8 @@ test('HTML loads H3 workflow/resource modules and retires the AI sequence cloud 
   assert.ok(sources.includes(h3Resource), `${h3Resource} must be loaded`)
   assert.match(
     indexHtml,
-    /assets\/index-BbIa-2NM\.js\?v=20260912-h3-beta5-profiles-1/,
-    'the formal surface must invalidate the Wan A-only bundle cache',
+    /assets\/index-BbIa-2NM\.js\?v=20260916-retire-wan-1/,
+    'the formal surface must invalidate the bundle cache after the Wan2_2 retirement',
   )
   assert.match(indexHtml, /ai-sequence-minimax-h3-output\.resource\.js\?v=20260812-minimax-h3-timing-1/)
   assert.match(indexHtml, /novaflow-brand-runtime\.js\?v=20260817-prompt-editor-modal-1/)
@@ -1080,10 +1085,8 @@ test('HTML loads H3 workflow/resource modules and retires the AI sequence cloud 
   assert.match(indexHtml, /ai-sequence-minimax-h3\.workflow\.js\?v=20260819-minimax-h3-longfps-1/)
   assert.ok(sources.includes(h3LoraResource), `${h3LoraResource} must be loaded`)
   assert.ok(sources.includes(h3OutputResource), `${h3OutputResource} must be loaded`)
-  assert.ok(sources.includes(wanLoraResource), `${wanLoraResource} must be loaded`)
-  assert.match(indexHtml, /ai-sequence-wan22-lora\.resource\.js\?v=20260810-wan22-lora-2/)
-  assert.ok(sources.includes(wanLoraWorkflow), `${wanLoraWorkflow} must be loaded`)
-  assert.match(indexHtml, /ai-sequence-wan22-lora\.workflow\.js\?v=20260810-wan22-lora-workflow-1/)
+  assert.equal(sources.includes(wanLoraResource), false, `${wanLoraResource} was retired and must not be loaded`)
+  assert.equal(sources.includes(wanLoraWorkflow), false, `${wanLoraWorkflow} was retired and must not be loaded`)
   assert.match(indexHtml, /proxy-electron-api\.js\?v=20260812-minimax-h3-output-1/)
   assert.ok(sources.includes(h3Workflow), `${h3Workflow} must be loaded`)
   assert.equal(sources.includes(cloudWorkflow), false, `${cloudWorkflow} must no longer be loaded`)
@@ -1098,10 +1101,5 @@ test('HTML loads H3 workflow/resource modules and retires the AI sequence cloud 
   assert.ok(
     sources.indexOf(h3LoraResource) < sources.indexOf(h3Workflow),
     'H3 LoRA compatibility Resource must load before the H3 workflow module',
-  )
-  assert.ok(
-    sources.indexOf(wanLoraResource) < sources.indexOf(wanLoraWorkflow) &&
-      sources.indexOf(wanLoraWorkflow) < sources.indexOf(bundleModule),
-    'Wan LoRA Resource and role-aware Workflow must load before the active bundle',
   )
 })

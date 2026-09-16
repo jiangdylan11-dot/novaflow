@@ -61,7 +61,6 @@ Preserve these roots as runtime data and shell content:
 - `assets/**`
 - `templates/**`
 - `debug-assets/**`
-- `aifx-v3/**`
 
 ## Duplicate-Looking Paths Requiring Confirmation Before Any Deletion
 
@@ -70,26 +69,4 @@ These paths look redundant or migration-related, but should not be deleted witho
 - `assets/` contains many hashed bundles, while `index.html` currently references only `assets/index-Bqc1waVn.js` and `assets/index-g5_V6IX0.css`
 - `templates/` and `templates/templates/`
 - `debug-assets/` and `debug-assets/debug-assets/`
-- root shell files (`index.html`, `favicon.svg`, `icons.svg`, `robots.txt`) and similarly named files under `aifx-v3/`
-- root asset roots (`assets/`, `templates/`, `debug-assets/`) and parallel copies under `aifx-v3/`
-- root runtime support scripts and the nested alternate shell entry `aifx-v3/aifx-standalone.html`
-
-## Runtime Patch Ledger Tags
-
-- `novaflow-brand-runtime.js`: `KEEP`, `MIGRATE_TO_REACT`, `VERIFY_PACKAGED_FILE`.
-- `spine-split-runtime.js`: `KEEP`, `PROTECTED_ISLAND`, `VERIFY_PACKAGED_FILE`.
-- `aifx-repaint-runtime.js`: `KEEP`, `MIGRATE_TO_REACT`, `PROTECTED_ISLAND`.
-- `proxy-electron-api.js`: `KEEP`, `VERIFY_PACKAGED_FILE`.
-- `ui-render-trace.js`: `KEEP`, later `DELETE_CANDIDATE` after trace replacement.
-- `particle-sidebar-spacing.js`: not present beside this shell and not referenced by the current active `index.html`.
-
-## Active Surface Hash Snapshot
-
-- `RUNTIME_SURFACE_HASH_SNAPSHOT.json` is the machine-readable verification metadata for accepted locked-runtime-only surface hash drift.
-- Current accepted entry: `novaflow-brand-runtime.js` is owned by the dist renderer for the Runtime Collision Guard phase.
-- The snapshot does not change runtime behavior, Source runtime behavior, upload behavior, Comfy workflow, generation, cutout, or export.
-
-## Notes
-
-- This manifest is intentionally inventory-focused and does not attempt to restore the prior source app structure.
-- Runtime dist files and hashed bundle contents were not modified while creating this document.
+- root shell files (`index.html`, `favicon.svg`, `icons.svg`, `robots.txt`)

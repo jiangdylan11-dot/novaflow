@@ -98,19 +98,17 @@ test('selection toolbar exposes the NSFW switch instead of a fixed Rapid label',
   assert.match(source, /const rapidAioNsfwRequested = provider === true \|\| provider === 'qwen-rapid-aio-nsfw-v20' \|\| provider === 'rapid-aio-nsfw'/);
 });
 
-test('Art img2img, UI bridge and local AI effects use the 2511 chain; NSFW off is the default', () => {
+test('Art img2img and UI bridge use the 2511 chain; NSFW off is the default', () => {
   const built = graphs(info);
   assert2511(built.art, { weightDtype: 'default' });
   assert2511(built.ui, { weightDtype: 'default', lightning: null });
-  assert2511(built['aifx-tail'], { weightDtype: 'default' });
-  assert.equal(nodesOf(built['aifx-tail'], 'KSampler')[0].inputs.steps, 4);
   assert.ok(built.art.nf_art_lora_1, 'manual Qwen adapters still participate');
   // The dedicated NSFW module keeps Rapid for the explicit NSFW switch.
   for (const mode of ['edit', 'completion']) assert.equal(nodesOf(built[mode], 'CheckpointLoaderSimple')[0].inputs.ckpt_name, RAPID);
   const { BASE_MODELS } = require('../main/qwen-lora-catalog');
   assert.equal(BASE_MODELS.edit, 'diffusion_models/' + UNET);
   assert.equal(BASE_MODELS.rapid, 'checkpoints/' + RAPID);
-  for (const name of ['novaflow-brand-runtime.js', 'aifx-local.workflow.js', 'ui-design-local.workflow.js']) {
+  for (const name of ['novaflow-brand-runtime.js', 'ui-design-local.workflow.js']) {
     const source = fs.readFileSync(path.resolve(__dirname, '../../particle-editor', name), 'utf8');
     assert.doesNotMatch(source, /provider === "local" && mode === "img2img" \? \{ \.\.\.requestedState, nsfw: true \}/);
   }

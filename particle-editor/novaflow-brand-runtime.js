@@ -4459,6 +4459,10 @@
     DROPDOWN_CONTROLLER.panelScrollUntil = 0;
     DROPDOWN_CONTROLLER.openedAt = 0;
     DROPDOWN_CONTROLLER.clampTimer = 0;
+    // A layout pass that ran while the dropdown was open parked the 仓库 / 导出 shortcuts at the
+    // dropdown underlay z-index, which is also below the opaque left column; re-sync them now that
+    // the lifecycle is over instead of leaving them hidden until an unrelated layout pass.
+    schedulePrimaryOutputShortcutRecovery([0, 16, 80]);
   }
 
   function handleNativeDropdownPointer(event) {
@@ -28487,7 +28491,16 @@
 
   function getPrimaryOutputShortcutZIndex() {
     if (!(document.body instanceof HTMLElement)) return PRIMARY_OUTPUT_SHORTCUT_Z_INDEX;
-    if (isDropdownLayerLifecycleActive()) return DROPDOWN_UNDERLAY_Z_INDEX;
+    if (isDropdownLayerLifecycleActive()) {
+      // Clamped dropdowns pull every layer at or above their overlay (the left column included) down
+      // to the underlay, so the shortcuts follow them there. Modal-layer dropdowns (art 模型方式, the
+      // export modal) leave the column at its own z-index and raise their overlay above MODAL_LAYER,
+      // so the shortcuts keep their normal z-index; parking them at the underlay hid them behind the
+      // opaque column for as long as the dropdown stayed open.
+      return usesNovaflowModalDropdownLayer(DROPDOWN_CONTROLLER.activeTrigger)
+        ? PRIMARY_OUTPUT_SHORTCUT_Z_INDEX
+        : DROPDOWN_UNDERLAY_Z_INDEX;
+    }
     if (
       document.body.classList.contains("novaflow-skeleton-animation-layout") &&
       !isSkeletonRibbonPresetDropdownOpen()
@@ -55556,6 +55569,8 @@
       if (typeof control.focus === "function") control.focus();
     });
     window.setTimeout(() => {
+      // Park the caret after the text: at 0 a leading @ mention would be split by the first keystroke.
+      if (mentionHandle && typeof mentionHandle.focus === "function" && mentionHandle.focus({ caret: "end" })) return;
       const editor = mentionHandle?.editor;
       if (editor instanceof HTMLElement && editor.isConnected) editor.focus();
       else textarea.focus();
@@ -55589,6 +55604,32 @@
       return mountAiAnimationPromptEditorMention(frame, textarea);
     };
     window.__NovaFlowPromptEditor = promptEditorApi;
+  }
+
+  // Each AI sequence top mode (文生 / 图生 / 首尾帧 / 多参) binds its own inputs, so the positive prompt
+  // starts empty when the mode changes instead of carrying @ references the next mode cannot resolve.
+  let AI_ANIMATION_TOP_MODE_PROMPT_RESET_BOUND = false;
+
+  function resetAiAnimationPositivePromptForTopModeSwitch(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const button = target ? target.closest('[data-novaflow-ai-top-mode-tabs="1"] button') : null;
+    if (!(button instanceof HTMLButtonElement) || button.disabled || button.getAttribute("aria-pressed") === "true") return;
+    const workspace = document.querySelector('[data-novaflow-ai-bottom-workspace="1"]');
+    const textarea = workspace instanceof HTMLElement
+      ? workspace.querySelector('[data-novaflow-ai-prompt-kind="positive"] textarea')
+      : null;
+    if (!(textarea instanceof HTMLTextAreaElement) || !String(textarea.value || "")) return;
+    setAiAnimationPromptEditorControlValue(textarea, "");
+  }
+
+  function bindAiAnimationTopModeSwitchPromptReset() {
+    if (AI_ANIMATION_TOP_MODE_PROMPT_RESET_BOUND || typeof document === "undefined") return;
+    AI_ANIMATION_TOP_MODE_PROMPT_RESET_BOUND = true;
+    document.addEventListener("click", resetAiAnimationPositivePromptForTopModeSwitch, true);
+  }
+
+  if (typeof window !== "undefined") {
+    window.setTimeout(() => { bindAiAnimationTopModeSwitchPromptReset(); }, 0);
   }
 
   function ensureAiAnimationPromptEditorButtons(promptFrames) {
@@ -74323,6 +74364,15 @@
     return 18 + rowCount * 32 + Math.max(0, rowCount - 1) * 3;
   }
 
+  // Horizontal room for the history popover: the art workspace when it is mounted, else the viewport.
+  function getArtGeneratePromptHistoryPopupBounds(viewportW) {
+    const workspace = document.getElementById(ART_GENERATE_WORKSPACE_ID);
+    const rect = workspace instanceof HTMLElement ? workspace.getBoundingClientRect() : null;
+    if (!rect || !(rect.width > 360)) return { left: 0, right: viewportW };
+    const left = Math.max(0, Math.floor(rect.left));
+    return { left, right: Math.max(left + 360, Math.min(viewportW, Math.floor(rect.right))) };
+  }
+
   function setArtGeneratePromptHistoryPopupRect(source) {
     const anchor = source instanceof HTMLElement
       ? (source.closest(".novaflow-art-generate-prompt-history") || source)
@@ -74331,8 +74381,15 @@
     const viewportW = Math.max(320, Number(window.innerWidth) || 1280);
     const viewportH = Math.max(320, Number(window.innerHeight) || 720);
     const estimatedHeight = getArtGeneratePromptHistoryPopoverEstimatedHeight(ART_GENERATE_STATE.promptHistoryOpenKey);
-    const width = Math.max(320, Math.min(Math.floor(rect && rect.width || 420), viewportW - 20));
-    let left = Math.max(10, Math.min(viewportW - width - 10, Math.floor(rect && rect.left || 10)));
+    // The popover must stay inside the art workspace: the fixed right-hand host (资源和图层区域) paints
+    // above it, so a narrow anchor near the workspace edge (the negative prompt) used to open a box that
+    // ran underneath that column. When the anchor-aligned box would overflow, align it to the anchor's
+    // right edge instead, then clamp it to the workspace.
+    const bounds = getArtGeneratePromptHistoryPopupBounds(viewportW);
+    const width = Math.max(320, Math.min(Math.floor(rect && rect.width || 420), bounds.right - bounds.left - 20));
+    let left = Math.floor(rect && rect.left || 10);
+    if (rect && left + width > bounds.right - 10) left = Math.floor(rect.right) - width;
+    left = Math.max(bounds.left + 10, Math.min(bounds.right - width - 10, left));
     const anchorTop = Math.floor(rect && rect.top || 330);
     const height = Math.max(52, Math.min(estimatedHeight, Math.max(52, anchorTop - 18), Math.max(52, viewportH - 20)));
     let top = Math.max(10, anchorTop - height - 8);

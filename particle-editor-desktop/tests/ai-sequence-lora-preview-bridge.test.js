@@ -22,26 +22,14 @@ function makeBridge(calls) {
         return { ok: true, item: payload };
       },
     },
-    wanCatalog: {
-      catalog: async (payload) => {
-        calls.push(["wan-catalog", payload]);
-        return [{ name: "wan2_2/high.safetensors", role: "high" }];
-      },
-      validate: async (payload) => {
-        calls.push(["wan-validate", payload]);
-        return { ok: true, item: payload };
-      },
-    },
   });
 }
 
-test("preview bridge exposes only the five fixed LoRA actions", () => {
+test("preview bridge exposes only the three fixed LoRA actions", () => {
   assert.deepEqual([...ALLOWED_ACTIONS].sort(), [
     "minimax-h3-catalog",
     "minimax-h3-validate",
     "qwen-catalog",
-    "wan22-catalog",
-    "wan22-validate",
   ]);
 });
 
@@ -85,32 +73,25 @@ test("preview bridge routes H3 catalog and validation without arbitrary paths", 
   assert.equal(validation.ok, true);
   assert.deepEqual(calls[0], ["h3-catalog", { mode: "t2v", steps: 4 }]);
   assert.equal("modelsPath" in calls[0][1], false);
+  assert.deepEqual(calls[1], ["h3-validate", {
+    mode: "t2v",
+    steps: 4,
+    name: "minimax_h3/example.safetensors",
+    fingerprint: "proof",
+    strength: 0.5,
+  }]);
 });
 
-test("preview bridge preserves Wan role during final validation", async () => {
+test("retired WAN 2.2 actions are rejected as unsupported", async () => {
   const calls = [];
   const bridge = makeBridge(calls);
-  const context = {
-    highName: "high.safetensors",
-    lowName: "low.safetensors",
-    steps: 20,
-  };
-  const catalog = await bridge.handle({ action: "wan22-catalog", payload: context });
-  const validation = await bridge.handle({
-    action: "wan22-validate",
-    payload: {
-      ...context,
-      name: "wan2_2/high.safetensors",
-      role: "high",
-      fingerprint: "lora-proof",
-      highFingerprint: "high-proof",
-      lowFingerprint: "low-proof",
-      strength: 0.7,
-    },
-  });
-  assert.equal(catalog.items[0].role, "high");
-  assert.equal(validation.item.role, "high");
-  assert.equal(calls.at(-1)[1].role, "high");
+  for (const action of ["wan22-catalog", "wan22-validate"]) {
+    assert.deepEqual(await bridge.handle({ action, payload: { steps: 4 } }), {
+      ok: false,
+      error: "unsupported_action",
+    });
+  }
+  assert.deepEqual(calls, []);
 });
 
 test("preview bridge rejects unsupported actions and closes catalog failures", async () => {
@@ -121,7 +102,6 @@ test("preview bridge rejects unsupported actions and closes catalog failures", a
   });
   const failed = createPreviewLoraBridge({
     h3Catalog: { catalog: async () => { throw new Error("catalog offline"); } },
-    wanCatalog: {},
   });
   assert.deepEqual(await failed.handle({ action: "minimax-h3-catalog" }), {
     ok: false,
@@ -129,7 +109,6 @@ test("preview bridge rejects unsupported actions and closes catalog failures", a
     error: "catalog offline",
   });
 });
-
 
 test("Qwen preview forwards only the route, never a caller-selected directory", async () => {
   const calls = [];

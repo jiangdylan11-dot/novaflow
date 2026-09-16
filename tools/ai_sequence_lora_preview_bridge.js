@@ -7,9 +7,6 @@ const path = require("node:path");
 const {
   createMiniMaxH3LoraCatalog,
 } = require("../particle-editor-desktop/main/minimax-h3-lora-catalog");
-const {
-  createWan22LoraCatalog,
-} = require("../particle-editor-desktop/main/wan22-lora-catalog");
 
 const DEFAULT_RUNTIME_JSON = "C:\\ProgramData\\NovaFlow\\AI-Runtime\\runtime.json";
 const DEFAULT_H3_RUNTIME_JSON = "C:\\ProgramData\\NovaFlow\\AI-Runtime-H3\\runtime.json";
@@ -18,8 +15,6 @@ const ALLOWED_ACTIONS = new Set([
   "qwen-catalog",
   "minimax-h3-catalog",
   "minimax-h3-validate",
-  "wan22-catalog",
-  "wan22-validate",
 ]);
 
 function readJsonFile(filePath) {
@@ -87,11 +82,6 @@ function createPreviewLoraBridge(options = {}) {
   });
 
   const qwenCatalog = options.qwenCatalog || createQwenLoraCatalog({ listRuntimeLoraNames: getMainObjectInfo });
-  const wanCatalog = options.wanCatalog || createWan22LoraCatalog({
-    readConfig: readMainConfig,
-    expectedModelsPath: async () => String((await Promise.resolve(readMainConfig()))?.modelsPath || ""),
-    listRuntimeModelNames: getMainObjectInfo,
-  });
 
   async function handle(request = {}) {
     const action = String(request?.action || "").trim();
@@ -107,32 +97,11 @@ function createPreviewLoraBridge(options = {}) {
         const items = await h3Catalog.catalog({ mode: payload.mode, steps: payload.steps });
         return Object.freeze({ ok: true, items });
       }
-      if (action === "minimax-h3-validate") {
-        return await h3Catalog.validate({
-          mode: payload.mode,
-          steps: payload.steps,
-          name: payload.name,
-          fingerprint: payload.fingerprint,
-          strength: payload.strength,
-        });
-      }
-      if (action === "wan22-catalog") {
-        const items = await wanCatalog.catalog({
-          highName: payload.highName,
-          lowName: payload.lowName,
-          steps: payload.steps,
-        });
-        return Object.freeze({ ok: true, items });
-      }
-      return await wanCatalog.validate({
-        highName: payload.highName,
-        lowName: payload.lowName,
+      return await h3Catalog.validate({
+        mode: payload.mode,
         steps: payload.steps,
         name: payload.name,
-        role: payload.role,
         fingerprint: payload.fingerprint,
-        highFingerprint: payload.highFingerprint,
-        lowFingerprint: payload.lowFingerprint,
         strength: payload.strength,
       });
     } catch (error) {

@@ -40,7 +40,7 @@ test('catalog and validation IPC start only the H3 sidecar and delegate to narro
   assert.match(catalogBlock, /miniMaxH3LoraCatalog\.catalog\(\{\s*mode:\s*payload\?\.mode,\s*steps:\s*payload\?\.steps\s*\}\)/s)
   assert.doesNotMatch(catalogBlock, /novaFlowRuntime|runtimeRequestJson|credit|auth|8188/i)
 
-  const validateBlock = handlerBlock('minimax-h3-lora-validate', 'wan22-lora-catalog')
+  const validateBlock = handlerBlock('minimax-h3-lora-validate')
   assert.match(validateBlock, /miniMaxH3RuntimeLifecycle\.start\(/)
   assert.match(validateBlock, /miniMaxH3LoraCatalog\.validate\(/)
   for (const field of ['mode', 'steps', 'name', 'fingerprint', 'strength']) {

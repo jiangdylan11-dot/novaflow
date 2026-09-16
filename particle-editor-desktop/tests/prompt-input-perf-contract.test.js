@@ -55,8 +55,12 @@ for (const fileName of ["png-remove-black.tool.js", "spine-atlas-webp.tool.js"])
     assert.match(source, /const toolsActive = isToolsSectionActive\(\)\n\s+const png = toolsActive \? findEntry\('PNG 压缩'\) : null\n\s+const jpg = toolsActive \? findEntry\('JPG 压缩'\) : null/);
     assert.match(source, /const mutationAddsElement = \(mutation\) => Array\.from\(mutation\.addedNodes \|\| \[\]\)\.some\(\(node\) => node\.nodeType === 1\)/);
     assert.match(source, /if \(!mutations\.some\(mutationAddsElement\)\) return/);
-    assert.match(source, /if \(!state\.active && !document\.body\?\.classList\.contains\('novaflow-primary-target-tools'\) && !document\.querySelector\(`\[\$\{BUTTON_ATTR\}="1"\]`\)\) return/);
-    assert.match(source, /entrySyncTimer = window\.setTimeout\(syncEntryFromMutations, 120\)/);
+    // The entry mounts/unmounts synchronously in React's commit (no 120ms debounce) but the observer
+    // still bails cheaply outside the Tools section: body class, then the aria-pressed sidebar probe.
+    assert.match(source, /if \(!state\.active && !document\.querySelector\(`\[\$\{BUTTON_ATTR\}="1"\]`\) && !toolsSectionSelected\(\)\) return/);
+    assert.match(source, /const toolsSectionSelected = \(\) => Boolean\(document\.body\?\.classList\.contains\('novaflow-primary-target-tools'\)\) \|\| isToolsSectionActive\(\)/);
+    assert.doesNotMatch(source, /setTimeout\(syncEntryFromMutations/);
+    assert.match(source, /syncEntryFromMutations\(\)\n\s+\}\)/);
     assert.doesNotMatch(source, /new MutationObserver\(\(\) => \{ ensureEntry\(\)/);
     assert.match(source, /window\.setInterval\(ensureEntry, 1000\)/);
   });
@@ -174,10 +178,10 @@ test("index.html cache-busts every runtime file touched by the prompt input fix"
   const html = read("particle-editor/index.html");
   const expected = {
     "runtime-detect-stabilizer.js": CACHE_VERSION,
-    "png-remove-black.tool.js": CACHE_VERSION,
-    "spine-atlas-webp.tool.js": CACHE_VERSION,
+    "png-remove-black.tool.js": "20260916-section-switch-1",
+    "spine-atlas-webp.tool.js": "20260916-section-switch-1",
     "novaflow-client-auth.js": CACHE_VERSION,
-    "novaflow-brand-runtime.js": "20260916-mention-surfaces-1",
+    "novaflow-brand-runtime.js": "20260916-section-switch-2",
     "spine-split-runtime.js": CACHE_VERSION,
     "art-generate-lora.js": CACHE_VERSION,
   };

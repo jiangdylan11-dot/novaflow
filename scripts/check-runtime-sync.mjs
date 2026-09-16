@@ -254,18 +254,6 @@ const runtimeGroups = [
         path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'main', 'qwen-lora-catalog.js'),
       },
     ],
-  },  {
-    name: 'main/wan22-lora-catalog.js',
-    files: [
-      {
-        label: 'desktop Wan2.2 LoRA catalog',
-        path: path.join(repoRoot, 'particle-editor-desktop', 'main', 'wan22-lora-catalog.js'),
-      },
-      {
-        label: 'win-unpacked Wan2.2 LoRA catalog',
-        path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'main', 'wan22-lora-catalog.js'),
-      },
-    ],
   },
   {
     name: 'main/temp-session-lifecycle.js',
@@ -307,13 +295,6 @@ const runtimeGroups = [
     ],
   },
   ...[
-    'aifx-prompt.workflow.js',
-    'aifx-local.workflow.js',
-    'aifx-generate.workflow.js',
-    'aifx-temporal-conform.workflow.js',
-    'aifx-material-identity.resource.js',
-    'aifx-material-reconstruct.workflow.js',
-    'aifx-export.workflow.js',
     'aifx-repaint-runtime.js',
   ].map((fileName) => ({
     name: `renderer/${fileName}`,
@@ -581,8 +562,6 @@ const runtimeGroups = [
     'ai-sequence-minimax-h3.resource.js',
     'ai-sequence-minimax-h3-output.resource.js',
     'ai-sequence-minimax-h3-lora.resource.js',
-    'ai-sequence-wan22-lora.resource.js',
-    'ai-sequence-wan22-lora.workflow.js',
     'h3-prompt-format.js',
     'ai-sequence-minimax-h3-prompt.workflow.js',
     'ai-sequence-minimax-h3-reverse.workflow.js',
@@ -931,7 +910,46 @@ const runtimeGroups = [
   },
 ]
 
+// Retired on 2026-09-16: the WAN 2.2 local video line and the old AIFX generation pipeline.
+const retiredRendererFiles = [
+  'ai-sequence-wan22-lora.resource.js',
+  'ai-sequence-wan22-lora.workflow.js',
+  'aifx-provider.resource.js',
+  'aifx-provider.tool.js',
+  'aifx-prompt.workflow.js',
+  'aifx-template.resource.js',
+  'aifx-motion-guide.resource.js',
+  'aifx-local.workflow.js',
+  'aifx-generate.workflow.js',
+  'aifx-rmbg.workflow.js',
+  'aifx-postprocess.workflow.js',
+  'aifx-temporal-conform.workflow.js',
+  'aifx-material-identity.resource.js',
+  'aifx-material-reconstruct.workflow.js',
+  'aifx-template-materialize.workflow.js',
+  'aifx-sequence-quality.workflow.js',
+  'aifx-export.workflow.js',
+  'aifx-material-reference.resource.js'
+]
+const retiredRendererRoots = [
+  { label: 'source', root: path.join(repoRoot, 'particle-editor') },
+  { label: 'desktop renderer', root: path.join(repoRoot, 'particle-editor-desktop', 'renderer') },
+  { label: 'win-unpacked renderer', root: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer') },
+]
+
 const retiredRuntimeArtifacts = [
+  ...retiredRendererRoots.flatMap(({ label, root }) => [
+    ...retiredRendererFiles.map((fileName) => ({ label: `${label} retired ${fileName}`, path: path.join(root, fileName) })),
+    { label: `${label} retired aifx-v3 shell`, path: path.join(root, 'aifx-v3') },
+  ]),
+  {
+    label: 'desktop Wan2.2 LoRA catalog',
+    path: path.join(repoRoot, 'particle-editor-desktop', 'main', 'wan22-lora-catalog.js'),
+  },
+  {
+    label: 'win-unpacked Wan2.2 LoRA catalog',
+    path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'main', 'wan22-lora-catalog.js'),
+  },
   {
     label: 'source UI layout analysis workflow',
     path: path.join(repoRoot, 'particle-editor', 'ui-design-layout-analysis.workflow.js'),

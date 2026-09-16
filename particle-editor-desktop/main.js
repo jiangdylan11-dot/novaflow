@@ -34,7 +34,6 @@ const { createRuntimeStartCoordinator } = require("./main/runtime-lifecycle");
 const { createMiniMaxH3RuntimeLifecycle } = require("./main/minimax-h3-runtime-lifecycle");
 const { createMiniMaxH3OutputPublisher } = require("./main/minimax-h3-output-publisher");
 const { createMiniMaxH3LoraCatalog } = require("./main/minimax-h3-lora-catalog");
-const { createWan22LoraCatalog } = require("./main/wan22-lora-catalog");
 const { createTempSessionLifecycle } = require("./main/temp-session-lifecycle");
 const {
   createVideoCompositorExportService,
@@ -2396,27 +2395,6 @@ const qwenLoraCatalog = createQwenLoraCatalog({
     const response = await fetch(new URL("/object_info/LoraLoaderModelOnly", `${baseUrl}/`), { signal: AbortSignal.timeout(8000) });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     return response.json();
-  },
-});
-const wan22LoraCatalog = createWan22LoraCatalog({
-  readConfig: () => readNovaFlowRuntimeConfig(),
-  expectedModelsPath: () => readNovaFlowRuntimeConfig()?.modelsPath,
-  listRuntimeModelNames: async () => {
-    const config = readNovaFlowRuntimeConfig();
-    const baseUrl = sanitizeRuntimeBaseUrl(config?.baseUrl || "");
-    if (!baseUrl) throw new Error("novaflow_runtime_base_url_missing");
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8_000);
-    try {
-      const response = await fetch(
-        new URL("/object_info", `${baseUrl}/`).toString(),
-        { method: "GET", signal: controller.signal },
-      );
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return await response.json();
-    } finally {
-      clearTimeout(timeout);
-    }
   },
 });
 let promptAssistantProcess = null;
@@ -5771,51 +5749,6 @@ ipcMain.handle("minimax-h3-lora-validate", async (_evt, payload) => {
       steps: payload?.steps,
       name: payload?.name,
       fingerprint: payload?.fingerprint,
-      strength: payload?.strength,
-    });
-  } catch (error) {
-    return { ok: false, error: String(error?.message || error || "validation_failed") };
-  }
-});
-
-ipcMain.handle("wan22-lora-catalog", async (_evt, payload) => {
-  try {
-    const started = await ensureNovaFlowRuntimeStarted({
-      source: "wan22-lora-catalog",
-      timeoutMs: payload?.timeoutMs,
-    });
-    if (!started?.running) {
-      return { ok: false, items: [], error: String(started?.error || started?.status || "runtime_start_failed") };
-    }
-    const items = await wan22LoraCatalog.catalog({
-      highName: payload?.highName,
-      lowName: payload?.lowName,
-      steps: payload?.steps,
-    });
-    return { ok: true, items };
-  } catch (error) {
-    return { ok: false, items: [], error: String(error?.message || error || "catalog_failed") };
-  }
-});
-
-ipcMain.handle("wan22-lora-validate", async (_evt, payload) => {
-  try {
-    const started = await ensureNovaFlowRuntimeStarted({
-      source: "wan22-lora-validate",
-      timeoutMs: payload?.timeoutMs,
-    });
-    if (!started?.running) {
-      return { ok: false, error: String(started?.error || started?.status || "runtime_start_failed") };
-    }
-    return await wan22LoraCatalog.validate({
-      highName: payload?.highName,
-      lowName: payload?.lowName,
-      steps: payload?.steps,
-      name: payload?.name,
-      role: payload?.role,
-      fingerprint: payload?.fingerprint,
-      highFingerprint: payload?.highFingerprint,
-      lowFingerprint: payload?.lowFingerprint,
       strength: payload?.strength,
     });
   } catch (error) {

@@ -10,7 +10,11 @@ const vm = require("node:vm");
 const repoRoot = path.resolve(__dirname, "..", "..");
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8").replace(/\r\n?/g, "\n");
 
-const CACHE_VERSION = "20260916-mention-surfaces-1";
+const CACHE_VERSION = "20260916-mention-surfaces-2";
+// The CSS did not change in the second round; only the scripts moved to the new key.
+const CSS_CACHE_VERSION = "20260916-mention-surfaces-1";
+// The brand runtime moved on with the section-switch fixes; the mention tool and Smart AI stay on -2.
+const BRAND_CACHE_VERSION = "20260916-section-switch-2";
 
 function loadMentionTool() {
   const source = read("particle-editor/resource-mention.tool.js");
@@ -18,6 +22,19 @@ function loadMentionTool() {
   context.window = context;
   vm.runInNewContext(source, context);
   return context.NovaFlowResourceMentionTool;
+}
+
+function loadMentionInternals() {
+  const source = read("particle-editor/resource-mention.tool.js");
+  const marker = "  window.NovaFlowResourceMentionTool = Object.freeze({";
+  assert.ok(source.includes(marker));
+  const context = { console };
+  context.window = context;
+  vm.runInNewContext(
+    source.replace(marker, "  window.__mentionInternals = { currentMentionTrigger, migrateLegacyAliases, buildResourceView };\n" + marker),
+    context,
+  );
+  return context.__mentionInternals;
 }
 
 test("the global dropdown controller never adopts runtime-owned popovers such as the mention menu", () => {
@@ -114,6 +131,8 @@ test("the prompt editor modal mounts the same mention surface as the prompt it e
   assert.match(modalBody, /const mentionHandle = mountAiAnimationPromptEditorMention\(frame, textarea\);/);
   assert.match(modalBody, /const close = \(\) => \{\n\s+if \(mentionHandle && typeof mentionHandle\.unmount === "function"\) \{/);
   assert.match(modalBody, /setAiAnimationPromptEditorControlValue\(control, textarea\.value\);/);
+  // The caret is parked after the text; the plain focus path stays as the fallback.
+  assert.match(modalBody, /mentionHandle\.focus\(\{ caret: "end" \}\)\) return;\n\s+const editor = mentionHandle\?\.editor;/);
   assert.match(modalBody, /if \(editor instanceof HTMLElement && editor\.isConnected\) editor\.focus\(\);\n\s+else textarea\.focus\(\);/);
 });
 
@@ -127,12 +146,91 @@ test("the Smart AI prompt editor (art surface) mounts the same mention surface t
   assert.match(body, /mentionHandle = promptEditorBridge\.mountMentionForControl\(control, textarea\) \|\| null;/);
   assert.match(body, /const close = \(\) => \{\n\s+if \(mentionHandle && typeof mentionHandle\.unmount === "function"\) \{/);
   assert.match(body, /setTextareaValue\(control, textarea\.value\);/);
+  assert.match(body, /mentionHandle\.focus\(\{ caret: "end" \}\)\) return;\n\s+const editor = mentionHandle && mentionHandle\.editor;/);
   assert.match(body, /if \(editor instanceof HTMLElement && editor\.isConnected\) editor\.focus\(\);\n\s+else textarea\.focus\(\);/);
+});
+
+test("the mention menu never opens for an @ that sits after the caret", () => {
+  const internals = loadMentionInternals();
+  const controller = {
+    descriptors: internals.buildResourceView("art-generate", [{ key: "art_reference_1", occupied: true }]),
+  };
+  // A freshly focused editor parks the caret at 0: a leading "@参考图1" is not a trigger there.
+  assert.equal(internals.currentMentionTrigger(controller, "@参考图1 的人物", 0), null);
+  // Right after a complete alias nothing opens either.
+  assert.equal(internals.currentMentionTrigger(controller, "@参考图1", 5), null);
+  // Right after a bare "@" the menu opens with an empty query.
+  assert.deepEqual({ ...internals.currentMentionTrigger(controller, "让@", 2) }, { start: 1, end: 2, query: "" });
+  assert.deepEqual({ ...internals.currentMentionTrigger(controller, "让@参", 3) }, { start: 1, end: 3, query: "参" });
+});
+
+test("the H3 first-frame alias follows its slot across 图生视频 and 首尾帧视频", () => {
+  const internals = loadMentionInternals();
+  const events = [];
+  const documentRef = {
+    defaultView: {},
+    createEvent() { return { initEvent(type) { this.type = type; } }; },
+  };
+  const textarea = {
+    value: "让@参考图 转身",
+    selectionStart: 5,
+    selectionEnd: 5,
+    ownerDocument: documentRef,
+    setSelectionRange(start, end) { this.selectionStart = start; this.selectionEnd = end; },
+    dispatchEvent(event) { events.push(event.type); return true; },
+  };
+  const controller = { textarea, document: documentRef, writingBacking: false };
+  const firstLast = internals.buildResourceView("minimax_h3_first_last", [{ key: "first_frame", occupied: true }]);
+  const imageVideo = internals.buildResourceView("minimax_h3_image_video", [{ key: "first_frame", occupied: true }]);
+  assert.deepEqual([...firstLast[0].legacyAliases], ["@参考图"]);
+  assert.deepEqual([...imageVideo[0].legacyAliases], ["@首帧"]);
+
+  // 图生视频 -> 首尾帧视频: the caret that sat after "@参考图" now sits after "@首帧".
+  assert.equal(internals.migrateLegacyAliases(controller, firstLast), true);
+  assert.equal(textarea.value, "让@首帧 转身");
+  assert.equal(textarea.selectionStart, 4);
+  assert.deepEqual(events, ["input"]);
+  assert.equal(internals.migrateLegacyAliases(controller, firstLast), false, "migration is idempotent");
+
+  // 首尾帧视频 -> 图生视频.
+  assert.equal(internals.migrateLegacyAliases(controller, imageVideo), true);
+  assert.equal(textarea.value, "让@参考图 转身");
+
+  // Numbered aliases belong to 多参视频 and stay untouched; the legacy boundary is digit-aware.
+  textarea.value = "@参考图1 与 @参考图";
+  textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+  assert.equal(internals.migrateLegacyAliases(controller, firstLast), true);
+  assert.equal(textarea.value, "@参考图1 与 @首帧");
+  assert.equal(textarea.selectionStart, textarea.value.length);
+
+  // Surfaces without legacy aliases never rewrite.
+  assert.equal(internals.migrateLegacyAliases(controller, internals.buildResourceView("minimax_h3", [])), false);
+  assert.equal(internals.migrateLegacyAliases(controller, internals.buildResourceView("art-generate", [])), false);
+
+  // renderController migrates before it reads the selection.
+  const source = read("particle-editor/resource-mention.tool.js");
+  assert.match(source, /const descriptors = controllerResources\(controller\);\n(?:\s+\/\/[^\n]*\n)*\s+const migrated = migrateLegacyAliases\(controller, descriptors\);\n\s+const selection = migrated\n\s+\? backingSelection\(controller\)\n\s+: requestedSelection \|\| \(hadFocus \? editorSelection\(controller\) : null\);/);
+});
+
+test("the mention menu re-stacks above same-z-index overlays and hosts can park the caret at the end", () => {
+  const source = read("particle-editor/resource-mention.tool.js");
+  // The prompt editor modal (MODAL_LAYER_Z_INDEX + 8) clamps to the menu's z-index, so DOM order decides.
+  assert.match(source, /const menu = ensureMenu\(controller\.document\);\n(?:\s+\/\/[^\n]*\n)*\s+const body = controller\.document\.body;\n\s+if \(body && menu\.parentNode === body && body\.lastElementChild !== menu\) body\.appendChild\(menu\);/);
+  assert.match(source, /focus: function \(options\) \{ return focusEditor\(controller, options\); \},/);
+  assert.match(source, /if \(settings\.caret === "end"\) \{\n\s+const end = stringValue\(controller\.textarea\.value\)\.length;\n\s+setEditorSelection\(controller, \{ start: end, end: end \}\);\n\s+updateMenuFromCaret\(controller\);/);
 });
 
 test("index.html cache-busts the mention surface files", () => {
   const html = read("particle-editor/index.html");
-  for (const fileName of ["novaflow-brand-runtime.js", "resource-mention.tool.js", "resource-mention.tool.css", "novaflow-smart-ai.js"]) {
-    assert.ok(html.includes(`${fileName}?v=${CACHE_VERSION}`), `${fileName} should cache-bust with ${CACHE_VERSION}`);
+  const expected = {
+    "novaflow-brand-runtime.js": BRAND_CACHE_VERSION,
+    "resource-mention.tool.js": CACHE_VERSION,
+    "resource-mention.tool.css": CSS_CACHE_VERSION,
+    "novaflow-smart-ai.js": CACHE_VERSION,
+  };
+  for (const [fileName, version] of Object.entries(expected)) {
+    assert.ok(html.includes(`${fileName}?v=${version}`), `${fileName} should cache-bust with ${version}`);
   }
+  const tool = read("particle-editor/resource-mention.tool.js");
+  assert.match(tool, /const RESOURCE_MENTION_TOOL_VERSION = "20260916-mention-surfaces-2";/);
 });

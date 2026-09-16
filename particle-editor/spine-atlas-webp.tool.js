@@ -79,19 +79,38 @@
 
   function findEntry(label) {
     return Array.from(document.querySelectorAll('button,[role="button"]')).find((node) => {
-      if (!(node instanceof HTMLElement) || node.hasAttribute(BUTTON_ATTR)) return false
+      if (!(node instanceof HTMLElement) || node.hasAttribute(BUTTON_ATTR) || !textOf(node).includes(label)) return false
       const rect = node.getBoundingClientRect()
-      return textOf(node).includes(label) && rect.width > 100 && rect.left >= 0 && rect.left < 360 && rect.top > 40
+      return rect.width > 100 && rect.left >= 0 && rect.left < 360 && rect.top > 40
     }) || null
   }
 
+  const PRIMARY_SECTION_LABELS = ['特效', '动画', '美工', '工具']
+
   function isToolsSectionActive() {
-    return Array.from(document.querySelectorAll('button,[role="button"]')).some((node) => {
-      if (!(node instanceof HTMLElement)) return false
-      const rect = node.getBoundingClientRect()
-      const selected = node.getAttribute('aria-pressed') === 'true' || node.hasAttribute('data-state') && node.getAttribute('data-state') === 'active'
-      return textOf(node) === '工具' && rect.left < 110 && selected
-    })
+    // Pressed buttons are few (sidebar, tabs), so the attribute pre-filter keeps this cheap enough to
+    // run on every element-adding mutation batch.
+    return Array.from(document.querySelectorAll('button[aria-pressed="true"], [role="button"][aria-pressed="true"], button[data-state="active"], [role="button"][data-state="active"]')).some((node) => (
+      node instanceof HTMLElement && textOf(node) === '工具' && node.getBoundingClientRect().left < 110
+    ))
+  }
+
+  // Primary sidebar button (特效 / 动画 / 美工 / 工具) hit by a click; 仓库 / 导出 are runtime shortcuts.
+  function primarySectionButtonFromEvent(event) {
+    const target = event.target instanceof Element ? event.target : null
+    const button = target ? target.closest('button,[role="button"]') : null
+    if (!(button instanceof HTMLElement) || !PRIMARY_SECTION_LABELS.includes(textOf(button))) return null
+    const rect = button.getBoundingClientRect()
+    return rect.left < 110 && rect.top > 40 && rect.width > 0 ? button : null
+  }
+
+  // Leaving the primary Tools section: drop the injected entry before React re-renders the secondary
+  // list, otherwise the clone lingers inside the next section's list for a frame and visibly jumps.
+  function handlePrimarySectionClick(event) {
+    const button = primarySectionButtonFromEvent(event)
+    if (!button || textOf(button) === '工具') return
+    deactivate()
+    document.querySelector(`[${BUTTON_ATTR}="1"]`)?.remove()
   }
 
   function findWorkspaces() {
@@ -471,20 +490,23 @@
 
   installStyle()
   document.addEventListener('click', handleToolEntryClick, true)
-  let entrySyncTimer = 0
+  document.addEventListener('click', handlePrimarySectionClick, true)
   const syncEntryFromMutations = () => {
-    entrySyncTimer = 0
     ensureEntry()
     if (state.active && !document.getElementById(ROOT_ID)) render()
   }
   const mutationAddsElement = (mutation) => Array.from(mutation.addedNodes || []).some((node) => node.nodeType === 1)
+  // body.novaflow-primary-target-tools is set by the brand runtime after React's commit, so the pressed
+  // sidebar button (already updated in the commit) is checked as well.
+  const toolsSectionSelected = () => Boolean(document.body?.classList.contains('novaflow-primary-target-tools')) || isToolsSectionActive()
   const observer = new MutationObserver((mutations) => {
     // Only newly added elements can mount the Tools entry host; text edits and attribute churn cannot.
     if (!mutations.some(mutationAddsElement)) return
     // Outside the primary Tools section with nothing mounted, ensureEntry() is a no-op; the 1s interval still covers section switches.
-    if (!state.active && !document.body?.classList.contains('novaflow-primary-target-tools') && !document.querySelector(`[${BUTTON_ATTR}="1"]`)) return
-    if (entrySyncTimer) return
-    entrySyncTimer = window.setTimeout(syncEntryFromMutations, 120)
+    if (!state.active && !document.querySelector(`[${BUTTON_ATTR}="1"]`) && !toolsSectionSelected()) return
+    // Synchronous: the entry mounts (and unmounts) in the same task as React's commit, so it paints
+    // together with PNG 压缩 / JPG 压缩 instead of 120ms or more later.
+    syncEntryFromMutations()
   })
   observer.observe(document.documentElement, { childList: true, subtree: true })
   window.addEventListener('resize', syncBounds)
