@@ -1075,8 +1075,8 @@ test('HTML loads H3 workflow/resource modules and retires the AI sequence cloud 
   assert.ok(sources.includes(h3Resource), `${h3Resource} must be loaded`)
   assert.match(
     indexHtml,
-    /assets\/index-BbIa-2NM\.js\?v=20260916-retire-wan-1/,
-    'the formal surface must invalidate the bundle cache after the Wan2_2 retirement',
+    /assets\/index-BbIa-2NM\.js\?v=20260916-template-preview-2/,
+    'the formal surface must invalidate the bundle cache after the template preview scheduler',
   )
   assert.match(indexHtml, /ai-sequence-minimax-h3-output\.resource\.js\?v=20260812-minimax-h3-timing-1/)
   assert.match(indexHtml, /novaflow-brand-runtime\.js\?v=20260817-prompt-editor-modal-1/)
