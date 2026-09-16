@@ -13,8 +13,8 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 const CACHE_VERSION = "20260916-mention-surfaces-2";
 // The CSS did not change in the second round; only the scripts moved to the new key.
 const CSS_CACHE_VERSION = "20260916-mention-surfaces-1";
-// The brand runtime moved on with the section-switch fixes; the mention tool and Smart AI stay on -2.
-const BRAND_CACHE_VERSION = "20260916-section-switch-2";
+// The brand runtime moved on again (unauthorized 仓库 / 导出 shortcuts); the mention tool and Smart AI stay on -2.
+const BRAND_CACHE_VERSION = "20260916-shortcut-auth-1";
 
 function loadMentionTool() {
   const source = read("particle-editor/resource-mention.tool.js");

@@ -52,6 +52,9 @@
   const PRIMARY_EXPORT_SHORTCUT_LABEL = "\u5bfc\u51fa";
   const PRIMARY_EXPORT_SHORTCUT_CELL_ID = "novaflow-primary-export-shortcut-cell";
   const PRIMARY_EXPORT_SHORTCUT_ICON_MASK = "url(\"data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M12%203v12%27%2F%3E%3Cpath%20d%3D%27m7%208%205-5%205%205%27%2F%3E%3Cpath%20d%3D%27M5%2021h14%27%2F%3E%3Cpath%20d%3D%27M5%2017v4h14v-4%27%2F%3E%3C%2Fsvg%3E\")";
+  const PRIMARY_SHORTCUT_LOCKED_ATTR = "data-novaflow-primary-shortcut-locked";
+  // 未授权：仓库和导出需要导入授权文件
+  const PRIMARY_SHORTCUT_UNAUTHORIZED_TITLE = "\u672a\u6388\u6743\uff1a\u4ed3\u5e93\u548c\u5bfc\u51fa\u9700\u8981\u5bfc\u5165\u6388\u6743\u6587\u4ef6";
   const ART_EXPORT_STYLE_ID = "novaflow-art-export-style";
   const ART_EXPORT_MODAL_ROOT_ID = "novaflow-art-export-modal-root";
   const SKELETON_EXPORT_MODAL_ROOT_ID = "novaflow-skeleton-export-modal-root";
@@ -20935,6 +20938,20 @@
         background-color: ${SECONDARY_ENTRY_HOVER_BACKGROUND} !important;
         color: #ffffff !important;
       }
+      [data-novaflow-primary-output-entry="1"][data-novaflow-primary-shortcut-locked="1"],
+      [data-novaflow-primary-export-entry="1"][data-novaflow-primary-shortcut-locked="1"] {
+        opacity: 0.48 !important;
+        cursor: not-allowed !important;
+        filter: grayscale(0.35) !important;
+      }
+      [data-novaflow-primary-output-entry="1"][data-novaflow-primary-shortcut-locked="1"]:hover,
+      [data-novaflow-primary-export-entry="1"][data-novaflow-primary-shortcut-locked="1"]:hover,
+      [data-novaflow-primary-output-entry="1"][data-novaflow-primary-shortcut-locked="1"][data-novaflow-primary-output-hover="1"],
+      [data-novaflow-primary-export-entry="1"][data-novaflow-primary-shortcut-locked="1"][data-novaflow-primary-export-hover="1"] {
+        background: ${PRIMARY_INACTIVE_BACKGROUND} !important;
+        background-color: ${PRIMARY_INACTIVE_BACKGROUND} !important;
+        color: rgba(244, 247, 251, 0.88) !important;
+      }
       [data-novaflow-secondary-group="1"]:not([data-novaflow-source-layout="1"]),
       [data-novaflow-secondary-surface="1"]:not([data-novaflow-source-layout="1"]) {
         border-radius: 0 !important;
@@ -28089,6 +28106,12 @@
   }
 
   async function openPrimaryOutputShortcut() {
+    // 仓库 opens the runtime output folder, which is file access the license reserves for
+    // authorized installs; route the click to the license dialog exactly like 导出 does.
+    if (!isPrimaryShortcutAuthorized()) {
+      openLicenseAuthorizationDialogFromTopbar();
+      return;
+    }
     const api = window.electronAPI || {};
     if (typeof api.runtimeOpenOutputFolder !== "function") {
       try { console.warn("[NovaFlow] runtimeOpenOutputFolder unavailable"); } catch {}
@@ -28424,10 +28447,48 @@
       "white-space": "normal",
       "background-image": "none",
       overflow: "hidden",
-      opacity: "1",
       visibility: "visible",
       "pointer-events": "auto"
     });
+  }
+
+  function isPrimaryShortcutAuthorized() {
+    // 仓库 (runtime output folder) and 导出 both touch files on disk, which the license text
+    // reserves for authorized installs, so they share the topbar 导出 authorization probe.
+    return isTopbarExportAuthorized();
+  }
+
+  function syncPrimaryShortcutAuthorizationState(button, label) {
+    if (!(button instanceof HTMLButtonElement)) return;
+    const locked = !isPrimaryShortcutAuthorized();
+    setAttributeIfChanged(button, "title", locked ? PRIMARY_SHORTCUT_UNAUTHORIZED_TITLE : label);
+    if (!locked) {
+      if (button.getAttribute(PRIMARY_SHORTCUT_LOCKED_ATTR) !== "1") return;
+      button.removeAttribute(PRIMARY_SHORTCUT_LOCKED_ATTR);
+      button.removeAttribute("aria-disabled");
+      ["opacity", "cursor", "filter"].forEach((property) => button.style.removeProperty(property));
+      return;
+    }
+    setAttributeIfChanged(button, PRIMARY_SHORTCUT_LOCKED_ATTR, "1");
+    setAttributeIfChanged(button, "aria-disabled", "true");
+    // pointer-events stay on so the click still reaches the license dialog, the same way the
+    // topbar 文件 → 导出 item behaves while unauthorized.
+    setImportantStyles(button, {
+      opacity: "0.48",
+      cursor: "not-allowed",
+      filter: "grayscale(0.35)"
+    });
+  }
+
+  function syncPrimaryShortcutAuthorization() {
+    syncPrimaryShortcutAuthorizationState(
+      document.querySelector('[data-novaflow-primary-output-entry="1"]'),
+      PRIMARY_OUTPUT_SHORTCUT_LABEL
+    );
+    syncPrimaryShortcutAuthorizationState(
+      document.querySelector('[data-novaflow-primary-export-entry="1"]'),
+      PRIMARY_EXPORT_SHORTCUT_LABEL
+    );
   }
 
   function hidePrimaryOutputShortcutUntilReady() {
@@ -28583,8 +28644,8 @@
     button.setAttribute("data-novaflow-primary-label", PRIMARY_OUTPUT_SHORTCUT_LABEL);
     button.setAttribute("aria-label", PRIMARY_OUTPUT_SHORTCUT_LABEL);
     button.setAttribute("aria-pressed", "false");
-    button.setAttribute("title", PRIMARY_OUTPUT_SHORTCUT_LABEL);
     applyPrimaryOutputShortcutButtonStyles(button);
+    syncPrimaryShortcutAuthorizationState(button, PRIMARY_OUTPUT_SHORTCUT_LABEL);
     bindPrimaryOutputShortcutButton(button);
     setPrimaryOutputShortcutHover(button, button.matches(":hover") || document.activeElement === button);
 
@@ -28629,8 +28690,8 @@
     exportButton.setAttribute("data-novaflow-primary-label", PRIMARY_EXPORT_SHORTCUT_LABEL);
     exportButton.setAttribute("aria-label", PRIMARY_EXPORT_SHORTCUT_LABEL);
     exportButton.setAttribute("aria-pressed", "false");
-    exportButton.setAttribute("title", PRIMARY_EXPORT_SHORTCUT_LABEL);
     applyPrimaryOutputShortcutButtonStyles(exportButton);
+    syncPrimaryShortcutAuthorizationState(exportButton, PRIMARY_EXPORT_SHORTCUT_LABEL);
     bindPrimaryExportShortcutButton(exportButton);
     setPrimaryExportShortcutHover(exportButton, exportButton.matches(":hover") || document.activeElement === exportButton);
   }
@@ -69190,6 +69251,9 @@
     nfAnimationPerfRunLayoutStep("applyPreviewRuntimeLayout", "exportLayering", () => {
       nfAnimationPerfRunLayoutStep("applyPreviewRuntimeLayout", "exportMenuProxy", () => {
         syncUnauthorizedExportMenuProxy();
+      });
+      nfAnimationPerfRunLayoutStep("applyPreviewRuntimeLayout", "primaryShortcutAuthorization", () => {
+        syncPrimaryShortcutAuthorization();
       });
       nfAnimationPerfRunLayoutStep("applyPreviewRuntimeLayout", "licenseDialogActions", () => {
         syncLicenseAuthorizationDialogActions();
