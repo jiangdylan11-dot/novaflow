@@ -2794,6 +2794,26 @@
     nfAnimationPerfMeasureVisualRhythmStep("writeStyle", __nfPerfStartedAt);
   }
 
+  // 幂等写入原语：对任意 Element 生效（含 SVG），仅在值真正变化时才写 DOM。
+  // 与 setStylePropertyIfChanged 的区别：不做 runtime-ignore 早退，纯粹消除空写，语义与裸写入等价。
+  function nfSetStyleIfChanged(element, property, value, priority = "") {
+    if (!(element instanceof Element) || !element.style) return;
+    const nextValue = String(value);
+    const nextPriority = priority || "";
+    if (element.style.getPropertyPriority(property) === nextPriority) {
+      const current = element.style.getPropertyValue(property);
+      if (current === nextValue) return;
+    }
+    element.style.setProperty(property, nextValue, nextPriority);
+  }
+
+  function nfSetAttrIfChanged(element, name, value) {
+    if (!(element instanceof Element)) return;
+    const nextValue = String(value);
+    if (element.getAttribute(name) === nextValue) return;
+    element.setAttribute(name, nextValue);
+  }
+
   function setRawStylePropertyIfChanged(element, property, value, priority = "") {
     if (!(element instanceof HTMLElement)) return;
     const __nfPerfStartedAt = nfAnimationPerfVisualRhythmMark();
@@ -4712,40 +4732,40 @@
   function hideAutoFitPercentNode(node) {
     if (!(node instanceof HTMLElement)) return;
     setAttributeIfChanged(node, "data-novaflow-autofit-percent-hidden", "1");
-    node.setAttribute("aria-hidden", "true");
+    nfSetAttrIfChanged(node, "aria-hidden", "true");
     removeAttributeIfPresent(node, "data-novaflow-skeleton-zoom-percent");
     removeAttributeIfPresent(node, "data-novaflow-skeleton-wheel-zoom-percent");
-    node.style.setProperty("display", "none", "important");
-    node.style.setProperty("width", "0", "important");
-    node.style.setProperty("min-width", "0", "important");
-    node.style.setProperty("max-width", "0", "important");
-    node.style.setProperty("height", "0", "important");
-    node.style.setProperty("padding", "0", "important");
-    node.style.setProperty("margin", "0", "important");
-    node.style.setProperty("overflow", "hidden", "important");
+    nfSetStyleIfChanged(node, "display", "none", "important");
+    nfSetStyleIfChanged(node, "width", "0", "important");
+    nfSetStyleIfChanged(node, "min-width", "0", "important");
+    nfSetStyleIfChanged(node, "max-width", "0", "important");
+    nfSetStyleIfChanged(node, "height", "0", "important");
+    nfSetStyleIfChanged(node, "padding", "0", "important");
+    nfSetStyleIfChanged(node, "margin", "0", "important");
+    nfSetStyleIfChanged(node, "overflow", "hidden", "important");
   }
 
   function stylePreviewButtonSurface(element) {
     if (!(element instanceof HTMLElement)) return;
-    element.style.setProperty("background", PRIMARY_PANEL_BACKGROUND, "important");
-    element.style.setProperty("background-color", PRIMARY_PANEL_BACKGROUND, "important");
-    element.style.setProperty("background-image", "none", "important");
-    element.style.setProperty("border", "0", "important");
-    element.style.setProperty("border-color", "transparent", "important");
-    element.style.setProperty("border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
-    element.style.setProperty("box-shadow", "none", "important");
-    element.style.setProperty("height", "34px", "important");
-    element.style.setProperty("min-height", "34px", "important");
-    element.style.setProperty("max-height", "34px", "important");
-    element.style.setProperty("display", "inline-flex", "important");
-    element.style.setProperty("align-items", "center", "important");
-    element.style.setProperty("justify-content", "center", "important");
-    element.style.setProperty("box-sizing", "border-box", "important");
-    element.style.setProperty("color", "#ffffff", "important");
-    element.style.setProperty("font-size", "13px", "important");
-    element.style.setProperty("font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
-    element.style.setProperty("line-height", "34px", "important");
-    element.style.setProperty("-webkit-app-region", "no-drag", "important");
+    nfSetStyleIfChanged(element, "background", PRIMARY_PANEL_BACKGROUND, "important");
+    nfSetStyleIfChanged(element, "background-color", PRIMARY_PANEL_BACKGROUND, "important");
+    nfSetStyleIfChanged(element, "background-image", "none", "important");
+    nfSetStyleIfChanged(element, "border", "0", "important");
+    nfSetStyleIfChanged(element, "border-color", "transparent", "important");
+    nfSetStyleIfChanged(element, "border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
+    nfSetStyleIfChanged(element, "box-shadow", "none", "important");
+    nfSetStyleIfChanged(element, "height", "34px", "important");
+    nfSetStyleIfChanged(element, "min-height", "34px", "important");
+    nfSetStyleIfChanged(element, "max-height", "34px", "important");
+    nfSetStyleIfChanged(element, "display", "inline-flex", "important");
+    nfSetStyleIfChanged(element, "align-items", "center", "important");
+    nfSetStyleIfChanged(element, "justify-content", "center", "important");
+    nfSetStyleIfChanged(element, "box-sizing", "border-box", "important");
+    nfSetStyleIfChanged(element, "color", "#ffffff", "important");
+    nfSetStyleIfChanged(element, "font-size", "13px", "important");
+    nfSetStyleIfChanged(element, "font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
+    nfSetStyleIfChanged(element, "line-height", "34px", "important");
+    nfSetStyleIfChanged(element, "-webkit-app-region", "no-drag", "important");
   }
 
   function styleTemplateControlSurface(element) {
@@ -4780,10 +4800,10 @@
     if (isVideoMergeOwnedAutoFitControl(controls)) return;
     if (isAiSequenceVideoMergeAutoFitHidden()) {
       setAttributeIfChanged(controls, "data-novaflow-video-merge-autofit-hidden", "1");
-      controls.style.setProperty("display", "none", "important");
-      controls.style.setProperty("visibility", "hidden", "important");
-      controls.style.setProperty("opacity", "0", "important");
-      controls.style.setProperty("pointer-events", "none", "important");
+      nfSetStyleIfChanged(controls, "display", "none", "important");
+      nfSetStyleIfChanged(controls, "visibility", "hidden", "important");
+      nfSetStyleIfChanged(controls, "opacity", "0", "important");
+      nfSetStyleIfChanged(controls, "pointer-events", "none", "important");
       return;
     }
     if (controls.getAttribute("data-novaflow-video-merge-autofit-hidden") === "1") {
@@ -4798,19 +4818,19 @@
       .filter((child) => child.nodeType === Node.TEXT_NODE)
       .map((child) => child.textContent || "")
       .join(""));
-    controls.style.setProperty("width", "auto", "important");
-    controls.style.setProperty("min-width", "0", "important");
-    controls.style.setProperty("max-width", "none", "important");
-    controls.style.setProperty("display", "inline-flex", "important");
-    controls.style.setProperty("align-items", "center", "important");
-    controls.style.setProperty("justify-content", "center", "important");
-    controls.style.setProperty("gap", "0", "important");
-    controls.style.setProperty("padding", "0", "important");
-    controls.style.setProperty("background", "transparent", "important");
-    controls.style.setProperty("background-color", "transparent", "important");
-    controls.style.setProperty("background-image", "none", "important");
-    controls.style.setProperty("border", "0", "important");
-    controls.style.setProperty("box-shadow", "none", "important");
+    nfSetStyleIfChanged(controls, "width", "auto", "important");
+    nfSetStyleIfChanged(controls, "min-width", "0", "important");
+    nfSetStyleIfChanged(controls, "max-width", "none", "important");
+    nfSetStyleIfChanged(controls, "display", "inline-flex", "important");
+    nfSetStyleIfChanged(controls, "align-items", "center", "important");
+    nfSetStyleIfChanged(controls, "justify-content", "center", "important");
+    nfSetStyleIfChanged(controls, "gap", "0", "important");
+    nfSetStyleIfChanged(controls, "padding", "0", "important");
+    nfSetStyleIfChanged(controls, "background", "transparent", "important");
+    nfSetStyleIfChanged(controls, "background-color", "transparent", "important");
+    nfSetStyleIfChanged(controls, "background-image", "none", "important");
+    nfSetStyleIfChanged(controls, "border", "0", "important");
+    nfSetStyleIfChanged(controls, "box-shadow", "none", "important");
     const children = Array.from(controls.children).filter((child) => child instanceof HTMLElement);
     const autoFitChildren = children.filter((child) => normalizeText(child.textContent || "").includes("\u81ea\u52a8\u9002\u914d"));
     children.forEach((child) => {
@@ -4820,35 +4840,35 @@
         return;
       }
       if (text.includes("\u81ea\u52a8\u9002\u914d")) {
-        child.setAttribute("data-novaflow-autofit-button", "1");
+        nfSetAttrIfChanged(child, "data-novaflow-autofit-button", "1");
         stylePreviewButtonSurface(child);
-        child.style.setProperty("position", "static", "important");
-        child.style.setProperty("left", "auto", "important");
-        child.style.setProperty("right", "auto", "important");
-        child.style.setProperty("top", "auto", "important");
-        child.style.setProperty("bottom", "auto", "important");
-        child.style.setProperty("transform", "none", "important");
-        child.style.setProperty("padding", "0 18px", "important");
-        child.style.setProperty("min-width", "92px", "important");
-        child.style.setProperty("width", "auto", "important");
-        child.style.setProperty("white-space", "nowrap", "important");
-        child.style.setProperty("flex", "0 0 auto", "important");
+        nfSetStyleIfChanged(child, "position", "static", "important");
+        nfSetStyleIfChanged(child, "left", "auto", "important");
+        nfSetStyleIfChanged(child, "right", "auto", "important");
+        nfSetStyleIfChanged(child, "top", "auto", "important");
+        nfSetStyleIfChanged(child, "bottom", "auto", "important");
+        nfSetStyleIfChanged(child, "transform", "none", "important");
+        nfSetStyleIfChanged(child, "padding", "0 18px", "important");
+        nfSetStyleIfChanged(child, "min-width", "92px", "important");
+        nfSetStyleIfChanged(child, "width", "auto", "important");
+        nfSetStyleIfChanged(child, "white-space", "nowrap", "important");
+        nfSetStyleIfChanged(child, "flex", "0 0 auto", "important");
       }
     });
     if (autoFitChildren.length > 0) {
-      controls.style.setProperty("font-size", "0", "important");
-      controls.style.setProperty("line-height", "0", "important");
-      controls.style.setProperty("color", "transparent", "important");
-      controls.style.setProperty("text-indent", "0", "important");
+      nfSetStyleIfChanged(controls, "font-size", "0", "important");
+      nfSetStyleIfChanged(controls, "line-height", "0", "important");
+      nfSetStyleIfChanged(controls, "color", "transparent", "important");
+      nfSetStyleIfChanged(controls, "text-indent", "0", "important");
     } else if (directText.includes("\u81ea\u52a8\u9002\u914d")) {
       controls.textContent = "\u81ea\u52a8\u9002\u914d";
-      controls.setAttribute("data-novaflow-autofit-button", "1");
+      nfSetAttrIfChanged(controls, "data-novaflow-autofit-button", "1");
       stylePreviewButtonSurface(controls);
-      controls.style.setProperty("padding", "0 18px", "important");
-      controls.style.setProperty("min-width", "92px", "important");
-      controls.style.setProperty("width", "auto", "important");
-      controls.style.setProperty("white-space", "nowrap", "important");
-      controls.style.setProperty("flex", "0 0 auto", "important");
+      nfSetStyleIfChanged(controls, "padding", "0 18px", "important");
+      nfSetStyleIfChanged(controls, "min-width", "92px", "important");
+      nfSetStyleIfChanged(controls, "width", "auto", "important");
+      nfSetStyleIfChanged(controls, "white-space", "nowrap", "important");
+      nfSetStyleIfChanged(controls, "flex", "0 0 auto", "important");
     }
   }
 
@@ -4888,11 +4908,11 @@
       : [];
     if (markedFirstFrameControls.length) {
       markedFirstFrameControls.forEach((node) => {
-        node.setAttribute("data-novaflow-ai-zoom-controls", "1");
-        node.setAttribute("data-novaflow-zoom-controls", "1");
+        nfSetAttrIfChanged(node, "data-novaflow-ai-zoom-controls", "1");
+        nfSetAttrIfChanged(node, "data-novaflow-zoom-controls", "1");
         if (isSourceOwnedLayout(node) || isInsideSourceOwnedLayout(node)) {
-          node.style.setProperty("top", `${AI_ANIMATION_PREVIEW_UI_GAP}px`, "important");
-          node.style.setProperty("right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
+          nfSetStyleIfChanged(node, "top", `${AI_ANIMATION_PREVIEW_UI_GAP}px`, "important");
+          nfSetStyleIfChanged(node, "right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
         }
         styleAutoFitOnlyControl(node);
       });
@@ -4911,8 +4931,8 @@
         setAttributeIfChanged(node, "data-novaflow-ai-zoom-controls", "1");
         setAttributeIfChanged(node, "data-novaflow-zoom-controls", "1");
         if (isSourceOwnedLayout(node) || isInsideSourceOwnedLayout(node)) {
-          node.style.setProperty("top", `${AI_ANIMATION_PREVIEW_UI_GAP}px`, "important");
-          node.style.setProperty("right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
+          nfSetStyleIfChanged(node, "top", `${AI_ANIMATION_PREVIEW_UI_GAP}px`, "important");
+          nfSetStyleIfChanged(node, "right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
           styleAutoFitOnlyControl(node);
           return;
         }
@@ -13732,8 +13752,8 @@
       const label = tool === 'color-correct' ? '颜色校正' : tool === 'video-merge' ? '视频合并' : '视频抠图';
       const leaf = node.firstElementChild || node;
       if (leaf.textContent !== label) leaf.textContent = label;
-      node.setAttribute('aria-disabled', String(disabled));
-      node.setAttribute('tabindex', disabled ? '-1' : '0');
+      nfSetAttrIfChanged(node, 'aria-disabled', String(disabled));
+      nfSetAttrIfChanged(node, 'tabindex', disabled ? '-1' : '0');
       setImportantStyles(node, { background: UI_BUTTON_BACKGROUND, 'background-color': UI_BUTTON_BACKGROUND, color: '#f0f0f0', opacity: disabled ? '0.55' : '1', 'pointer-events': disabled ? 'none' : 'auto', cursor: disabled ? 'not-allowed' : 'pointer' });
     }
   }
@@ -28029,71 +28049,71 @@
     removeRuntimeNode(LEFT_SEAM_BACKDROP_ID);
     const leftColumn = findLeftWorkspaceColumn();
     if (leftColumn instanceof HTMLElement) {
-      leftColumn.setAttribute("data-novaflow-left-column", "1");
-      leftColumn.style.setProperty("background", LEFT_COLUMN_BACKGROUND_IMAGE, "important");
-      leftColumn.style.setProperty("background-color", LEFT_LAYOUT_BACKGROUND, "important");
-      leftColumn.style.setProperty("background-image", LEFT_COLUMN_BACKGROUND_IMAGE, "important");
-      leftColumn.style.setProperty("background-repeat", "no-repeat", "important");
-      leftColumn.style.setProperty("border", "0", "important");
-      leftColumn.style.setProperty("box-shadow", "none", "important");
-      leftColumn.style.setProperty("height", `calc(100vh - ${TOPBAR_HEIGHT}px)`, "important");
-      leftColumn.style.setProperty("min-height", `calc(100vh - ${TOPBAR_HEIGHT}px)`, "important");
+      nfSetAttrIfChanged(leftColumn, "data-novaflow-left-column", "1");
+      nfSetStyleIfChanged(leftColumn, "background", LEFT_COLUMN_BACKGROUND_IMAGE, "important");
+      nfSetStyleIfChanged(leftColumn, "background-color", LEFT_LAYOUT_BACKGROUND, "important");
+      nfSetStyleIfChanged(leftColumn, "background-image", LEFT_COLUMN_BACKGROUND_IMAGE, "important");
+      nfSetStyleIfChanged(leftColumn, "background-repeat", "no-repeat", "important");
+      nfSetStyleIfChanged(leftColumn, "border", "0", "important");
+      nfSetStyleIfChanged(leftColumn, "box-shadow", "none", "important");
+      nfSetStyleIfChanged(leftColumn, "height", `calc(100vh - ${TOPBAR_HEIGHT}px)`, "important");
+      nfSetStyleIfChanged(leftColumn, "min-height", `calc(100vh - ${TOPBAR_HEIGHT}px)`, "important");
       if (!isSourceOwnedLayout(leftColumn) && !isInsideSourceOwnedLayout(leftColumn)) {
-        leftColumn.style.setProperty("width", `${PRIMARY_COLUMN_WIDTH}px`, "important");
-        leftColumn.style.setProperty("min-width", `${PRIMARY_COLUMN_WIDTH}px`, "important");
-        leftColumn.style.setProperty("max-width", `${PRIMARY_COLUMN_WIDTH}px`, "important");
-        leftColumn.style.setProperty("padding-left", `${PRIMARY_CONTENT_LEFT}px`, "important");
-        leftColumn.style.setProperty("box-sizing", "border-box", "important");
-        leftColumn.style.setProperty("position", "relative", "important");
+        nfSetStyleIfChanged(leftColumn, "width", `${PRIMARY_COLUMN_WIDTH}px`, "important");
+        nfSetStyleIfChanged(leftColumn, "min-width", `${PRIMARY_COLUMN_WIDTH}px`, "important");
+        nfSetStyleIfChanged(leftColumn, "max-width", `${PRIMARY_COLUMN_WIDTH}px`, "important");
+        nfSetStyleIfChanged(leftColumn, "padding-left", `${PRIMARY_CONTENT_LEFT}px`, "important");
+        nfSetStyleIfChanged(leftColumn, "box-sizing", "border-box", "important");
+        nfSetStyleIfChanged(leftColumn, "position", "relative", "important");
       }
     }
     if (rail instanceof HTMLElement) {
-      rail.setAttribute("data-novaflow-primary-rail", "1");
-      rail.style.setProperty("height", "0", "important");
-      rail.style.setProperty("min-height", "0", "important");
-      rail.style.setProperty("max-height", "0", "important");
-      rail.style.setProperty("margin", "0", "important");
-      rail.style.setProperty("padding", "0", "important");
-      rail.style.setProperty("overflow", "visible", "important");
-      rail.style.setProperty("background", "transparent", "important");
-      rail.style.setProperty("border", "0", "important");
-      rail.style.setProperty("box-shadow", "none", "important");
+      nfSetAttrIfChanged(rail, "data-novaflow-primary-rail", "1");
+      nfSetStyleIfChanged(rail, "height", "0", "important");
+      nfSetStyleIfChanged(rail, "min-height", "0", "important");
+      nfSetStyleIfChanged(rail, "max-height", "0", "important");
+      nfSetStyleIfChanged(rail, "margin", "0", "important");
+      nfSetStyleIfChanged(rail, "padding", "0", "important");
+      nfSetStyleIfChanged(rail, "overflow", "visible", "important");
+      nfSetStyleIfChanged(rail, "background", "transparent", "important");
+      nfSetStyleIfChanged(rail, "border", "0", "important");
+      nfSetStyleIfChanged(rail, "box-shadow", "none", "important");
     }
     const top = getTopbarBottom();
     buttons.forEach((button, index) => {
       const parent = button.parentElement instanceof HTMLElement ? button.parentElement : null;
       const cell = parent && parent !== rail && isPrimaryEntryCellCandidate(parent, button) ? parent : button;
-      cell.setAttribute("data-novaflow-primary-cell", "1");
-      cell.style.setProperty("position", "fixed", "important");
-      cell.style.setProperty("left", "0", "important");
-      cell.style.setProperty("top", `${top + index * PRIMARY_SIDEBAR_ITEM_HEIGHT}px`, "important");
-      cell.style.setProperty("width", `${PRIMARY_SIDEBAR_WIDTH}px`, "important");
-      cell.style.setProperty("height", `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`, "important");
-      cell.style.setProperty("min-width", `${PRIMARY_SIDEBAR_WIDTH}px`, "important");
-      cell.style.setProperty("max-width", `${PRIMARY_SIDEBAR_WIDTH}px`, "important");
-      cell.style.setProperty("flex", "none", "important");
-      cell.style.setProperty("z-index", DROPDOWN_UNDERLAY_Z_INDEX, "important");
-      cell.style.setProperty("overflow", "hidden", "important");
-      cell.style.setProperty("opacity", "1", "important");
-      cell.style.setProperty("visibility", "visible", "important");
-      cell.style.setProperty("pointer-events", "auto", "important");
-      button.style.setProperty("width", "100%", "important");
-      button.style.setProperty("height", `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`, "important");
-      button.style.setProperty("min-width", "0", "important");
-      button.style.setProperty("border-radius", "0", "important");
-      button.style.setProperty("box-shadow", "none", "important");
-      button.style.setProperty("display", "flex", "important");
-      button.style.setProperty("align-items", "center", "important");
-      button.style.setProperty("justify-content", "center", "important");
-      button.style.setProperty("padding", "0 6px", "important");
-      button.style.setProperty("font-size", "13px", "important");
-      button.style.setProperty("font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
-      button.style.setProperty("line-height", "1.2", "important");
-      button.style.setProperty("text-align", "center", "important");
-      button.style.setProperty("white-space", "normal", "important");
-      button.style.setProperty("opacity", "1", "important");
-      button.style.setProperty("visibility", "visible", "important");
-      button.style.setProperty("pointer-events", "auto", "important");
+      nfSetAttrIfChanged(cell, "data-novaflow-primary-cell", "1");
+      nfSetStyleIfChanged(cell, "position", "fixed", "important");
+      nfSetStyleIfChanged(cell, "left", "0", "important");
+      nfSetStyleIfChanged(cell, "top", `${top + index * PRIMARY_SIDEBAR_ITEM_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(cell, "width", `${PRIMARY_SIDEBAR_WIDTH}px`, "important");
+      nfSetStyleIfChanged(cell, "height", `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(cell, "min-width", `${PRIMARY_SIDEBAR_WIDTH}px`, "important");
+      nfSetStyleIfChanged(cell, "max-width", `${PRIMARY_SIDEBAR_WIDTH}px`, "important");
+      nfSetStyleIfChanged(cell, "flex", "none", "important");
+      nfSetStyleIfChanged(cell, "z-index", DROPDOWN_UNDERLAY_Z_INDEX, "important");
+      nfSetStyleIfChanged(cell, "overflow", "hidden", "important");
+      nfSetStyleIfChanged(cell, "opacity", "1", "important");
+      nfSetStyleIfChanged(cell, "visibility", "visible", "important");
+      nfSetStyleIfChanged(cell, "pointer-events", "auto", "important");
+      nfSetStyleIfChanged(button, "width", "100%", "important");
+      nfSetStyleIfChanged(button, "height", `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(button, "min-width", "0", "important");
+      nfSetStyleIfChanged(button, "border-radius", "0", "important");
+      nfSetStyleIfChanged(button, "box-shadow", "none", "important");
+      nfSetStyleIfChanged(button, "display", "flex", "important");
+      nfSetStyleIfChanged(button, "align-items", "center", "important");
+      nfSetStyleIfChanged(button, "justify-content", "center", "important");
+      nfSetStyleIfChanged(button, "padding", "0 6px", "important");
+      nfSetStyleIfChanged(button, "font-size", "13px", "important");
+      nfSetStyleIfChanged(button, "font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
+      nfSetStyleIfChanged(button, "line-height", "1.2", "important");
+      nfSetStyleIfChanged(button, "text-align", "center", "important");
+      nfSetStyleIfChanged(button, "white-space", "normal", "important");
+      nfSetStyleIfChanged(button, "opacity", "1", "important");
+      nfSetStyleIfChanged(button, "visibility", "visible", "important");
+      nfSetStyleIfChanged(button, "pointer-events", "auto", "important");
     });
     ensurePrimaryOutputShortcut();
   }
@@ -28586,7 +28606,7 @@
     if (!(divider instanceof HTMLElement)) {
       divider = document.createElement("div");
       divider.id = PRIMARY_OUTPUT_SHORTCUT_DIVIDER_ID;
-      divider.setAttribute("data-novaflow-primary-output-divider", "1");
+      nfSetAttrIfChanged(divider, "data-novaflow-primary-output-divider", "1");
       document.body.appendChild(divider);
     }
     setImportantStyles(divider, {
@@ -28607,11 +28627,11 @@
     if (!(cell instanceof HTMLElement)) {
       cell = document.createElement("div");
       cell.id = PRIMARY_OUTPUT_SHORTCUT_CELL_ID;
-      cell.setAttribute("data-novaflow-primary-cell", "1");
-      cell.setAttribute("data-novaflow-primary-output-cell", "1");
+      nfSetAttrIfChanged(cell, "data-novaflow-primary-cell", "1");
+      nfSetAttrIfChanged(cell, "data-novaflow-primary-output-cell", "1");
       document.body.appendChild(cell);
     }
-    cell.setAttribute("data-novaflow-primary-cell-active", "0");
+    nfSetAttrIfChanged(cell, "data-novaflow-primary-cell-active", "0");
     setImportantStyles(cell, {
       display: "block",
       position: "fixed",
@@ -28636,14 +28656,14 @@
     if (!(button instanceof HTMLButtonElement)) {
       button = document.createElement("button");
       button.type = "button";
-      button.setAttribute("data-novaflow-primary-output-entry", "1");
+      nfSetAttrIfChanged(button, "data-novaflow-primary-output-entry", "1");
       cell.textContent = "";
       cell.appendChild(button);
     }
     button.textContent = "";
-    button.setAttribute("data-novaflow-primary-label", PRIMARY_OUTPUT_SHORTCUT_LABEL);
-    button.setAttribute("aria-label", PRIMARY_OUTPUT_SHORTCUT_LABEL);
-    button.setAttribute("aria-pressed", "false");
+    nfSetAttrIfChanged(button, "data-novaflow-primary-label", PRIMARY_OUTPUT_SHORTCUT_LABEL);
+    nfSetAttrIfChanged(button, "aria-label", PRIMARY_OUTPUT_SHORTCUT_LABEL);
+    nfSetAttrIfChanged(button, "aria-pressed", "false");
     applyPrimaryOutputShortcutButtonStyles(button);
     syncPrimaryShortcutAuthorizationState(button, PRIMARY_OUTPUT_SHORTCUT_LABEL);
     bindPrimaryOutputShortcutButton(button);
@@ -28653,11 +28673,11 @@
     if (!(exportCell instanceof HTMLElement)) {
       exportCell = document.createElement("div");
       exportCell.id = PRIMARY_EXPORT_SHORTCUT_CELL_ID;
-      exportCell.setAttribute("data-novaflow-primary-cell", "1");
-      exportCell.setAttribute("data-novaflow-primary-export-cell", "1");
+      nfSetAttrIfChanged(exportCell, "data-novaflow-primary-cell", "1");
+      nfSetAttrIfChanged(exportCell, "data-novaflow-primary-export-cell", "1");
       document.body.appendChild(exportCell);
     }
-    exportCell.setAttribute("data-novaflow-primary-cell-active", "0");
+    nfSetAttrIfChanged(exportCell, "data-novaflow-primary-cell-active", "0");
     setImportantStyles(exportCell, {
       display: "block",
       position: "fixed",
@@ -28682,14 +28702,14 @@
     if (!(exportButton instanceof HTMLButtonElement)) {
       exportButton = document.createElement("button");
       exportButton.type = "button";
-      exportButton.setAttribute("data-novaflow-primary-export-entry", "1");
+      nfSetAttrIfChanged(exportButton, "data-novaflow-primary-export-entry", "1");
       exportCell.textContent = "";
       exportCell.appendChild(exportButton);
     }
     exportButton.textContent = "";
-    exportButton.setAttribute("data-novaflow-primary-label", PRIMARY_EXPORT_SHORTCUT_LABEL);
-    exportButton.setAttribute("aria-label", PRIMARY_EXPORT_SHORTCUT_LABEL);
-    exportButton.setAttribute("aria-pressed", "false");
+    nfSetAttrIfChanged(exportButton, "data-novaflow-primary-label", PRIMARY_EXPORT_SHORTCUT_LABEL);
+    nfSetAttrIfChanged(exportButton, "aria-label", PRIMARY_EXPORT_SHORTCUT_LABEL);
+    nfSetAttrIfChanged(exportButton, "aria-pressed", "false");
     applyPrimaryOutputShortcutButtonStyles(exportButton);
     syncPrimaryShortcutAuthorizationState(exportButton, PRIMARY_EXPORT_SHORTCUT_LABEL);
     bindPrimaryExportShortcutButton(exportButton);
@@ -28809,27 +28829,27 @@
     if (!(field instanceof HTMLElement)) return;
     const width = `${NOVAFLOW_NUMBER_INPUT_WIDTH}px`;
     const particleDensity = isInsideParticleDensityPanel(field);
-    field.style.setProperty("width", width, "important");
-    field.style.setProperty("min-width", width, "important");
-    field.style.setProperty("max-width", width, "important");
-    field.style.setProperty("box-sizing", "border-box", "important");
-    field.style.setProperty("text-align", "center", "important");
-    field.style.setProperty("overflow", "hidden", "important");
-    field.style.setProperty("text-overflow", "ellipsis", "important");
+    setRawStylePropertyIfChanged(field, "width", width, "important");
+    setRawStylePropertyIfChanged(field, "min-width", width, "important");
+    setRawStylePropertyIfChanged(field, "max-width", width, "important");
+    setRawStylePropertyIfChanged(field, "box-sizing", "border-box", "important");
+    setRawStylePropertyIfChanged(field, "text-align", "center", "important");
+    setRawStylePropertyIfChanged(field, "overflow", "hidden", "important");
+    setRawStylePropertyIfChanged(field, "text-overflow", "ellipsis", "important");
     if (particleDensity) {
-      field.style.setProperty("height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`, "important");
-      field.style.setProperty("min-height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`, "important");
-      field.style.setProperty("max-height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`, "important");
-      field.style.setProperty("font-size", "11px", "important");
-      field.style.setProperty("line-height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT - 2}px`, "important");
-      field.style.setProperty("border-radius", "8px", "important");
+      setRawStylePropertyIfChanged(field, "height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`, "important");
+      setRawStylePropertyIfChanged(field, "min-height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`, "important");
+      setRawStylePropertyIfChanged(field, "max-height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`, "important");
+      setRawStylePropertyIfChanged(field, "font-size", "11px", "important");
+      setRawStylePropertyIfChanged(field, "line-height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT - 2}px`, "important");
+      setRawStylePropertyIfChanged(field, "border-radius", "8px", "important");
     }
     if (field instanceof HTMLInputElement) {
-      field.style.setProperty("appearance", "textfield", "important");
-      field.style.setProperty("-webkit-appearance", "none", "important");
-      field.style.setProperty("-moz-appearance", "textfield", "important");
-      field.style.setProperty("padding-left", particleDensity ? "8px" : "6px", "important");
-      field.style.setProperty("padding-right", particleDensity ? "8px" : "6px", "important");
+      setRawStylePropertyIfChanged(field, "appearance", "textfield", "important");
+      setRawStylePropertyIfChanged(field, "-webkit-appearance", "none", "important");
+      setRawStylePropertyIfChanged(field, "-moz-appearance", "textfield", "important");
+      setRawStylePropertyIfChanged(field, "padding-left", particleDensity ? "8px" : "6px", "important");
+      setRawStylePropertyIfChanged(field, "padding-right", particleDensity ? "8px" : "6px", "important");
     }
   }
 
@@ -29235,8 +29255,8 @@
     if (!(input instanceof HTMLInputElement)) return;
     const formatted = formatNovaflowTimelineTimeValue(input.value);
     if (formatted === null) return;
-    input.setAttribute("data-novaflow-timeline-time-display", "1");
-    input.setAttribute("data-novaflow-timeline-time-display-text", formatted);
+    setAttributeIfChanged(input, "data-novaflow-timeline-time-display", "1");
+    setAttributeIfChanged(input, "data-novaflow-timeline-time-display-text", formatted);
   }
 
   function syncNovaflowNumberInputOverlaysAfterScroll() {
@@ -29318,7 +29338,7 @@
         const formatted = formatNovaflowTimelineTimeValue(text);
         if (formatted === null || text === formatted) return;
         field.textContent = formatted;
-        field.setAttribute("data-novaflow-timeline-time-display", "1");
+        setAttributeIfChanged(field, "data-novaflow-timeline-time-display", "1");
       });
     });
   }
@@ -31352,18 +31372,18 @@
     getPrimaryEntryShells(button).forEach((shell) => {
       const directCell = shell === button.parentElement;
       if (directCell) {
-        shell.setAttribute("data-novaflow-primary-cell", "1");
-        shell.setAttribute("data-novaflow-primary-cell-active", active ? "1" : "0");
+        nfSetAttrIfChanged(shell, "data-novaflow-primary-cell", "1");
+        nfSetAttrIfChanged(shell, "data-novaflow-primary-cell-active", active ? "1" : "0");
       } else {
-        shell.setAttribute("data-novaflow-primary-shell", "1");
-        shell.setAttribute("data-novaflow-primary-shell-active", active ? "1" : "0");
+        nfSetAttrIfChanged(shell, "data-novaflow-primary-shell", "1");
+        nfSetAttrIfChanged(shell, "data-novaflow-primary-shell-active", active ? "1" : "0");
         shell.removeAttribute("data-novaflow-primary-cell");
         shell.removeAttribute("data-novaflow-primary-cell-active");
       }
-      shell.style.setProperty("background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
-      shell.style.setProperty("background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
-      shell.style.setProperty("background-image", "none", "important");
-      shell.style.setProperty("box-shadow", "none", "important");
+      nfSetStyleIfChanged(shell, "background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
+      nfSetStyleIfChanged(shell, "background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
+      nfSetStyleIfChanged(shell, "background-image", "none", "important");
+      nfSetStyleIfChanged(shell, "box-shadow", "none", "important");
     });
   }
 
@@ -37168,23 +37188,23 @@
       const parent = button.parentElement instanceof HTMLElement ? button.parentElement : null;
       const cell = parent && isPrimaryEntryCellCandidate(parent, button) ? parent : button;
       if (cell) {
-        cell.setAttribute("data-novaflow-primary-cell-active", active ? "1" : "0");
-        cell.style.setProperty("background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
-        cell.style.setProperty("background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
+        nfSetAttrIfChanged(cell, "data-novaflow-primary-cell-active", active ? "1" : "0");
+        nfSetStyleIfChanged(cell, "background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
+        nfSetStyleIfChanged(cell, "background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       }
       paintPrimaryEntryShells(button, active);
-      button.setAttribute("data-novaflow-primary-entry", "1");
-      button.setAttribute("data-novaflow-primary-active", active ? "1" : "0");
-      button.setAttribute("data-novaflow-primary-icon", PRIMARY_ENTRY_ICONS[index] || "");
-      button.setAttribute("data-novaflow-primary-label", displayLabel);
-      button.setAttribute("aria-label", displayLabel);
-      button.setAttribute("aria-pressed", active ? "true" : "false");
+      nfSetAttrIfChanged(button, "data-novaflow-primary-entry", "1");
+      nfSetAttrIfChanged(button, "data-novaflow-primary-active", active ? "1" : "0");
+      nfSetAttrIfChanged(button, "data-novaflow-primary-icon", PRIMARY_ENTRY_ICONS[index] || "");
+      nfSetAttrIfChanged(button, "data-novaflow-primary-label", displayLabel);
+      nfSetAttrIfChanged(button, "aria-label", displayLabel);
+      nfSetAttrIfChanged(button, "aria-pressed", active ? "true" : "false");
       if (normalizeText(button.textContent) !== normalizeText(displayLabel)) button.textContent = displayLabel;
-      button.style.setProperty("background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
-      button.style.setProperty("background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
-      button.style.setProperty("background-image", "none", "important");
-      button.style.setProperty("color", active ? "#ffffff" : "rgba(244, 247, 251, 0.88)", "important");
-      button.style.setProperty("opacity", "1", "important");
+      nfSetStyleIfChanged(button, "background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
+      nfSetStyleIfChanged(button, "background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
+      nfSetStyleIfChanged(button, "background-image", "none", "important");
+      nfSetStyleIfChanged(button, "color", active ? "#ffffff" : "rgba(244, 247, 251, 0.88)", "important");
+      nfSetStyleIfChanged(button, "opacity", "1", "important");
     });
   }
 
@@ -49168,74 +49188,74 @@
       if (wrapper instanceof HTMLElement && wrapper !== panel && wrapper.getAttribute("data-novaflow-secondary-group") !== "1") {
         wrappers.add(wrapper);
       }
-      panel.setAttribute("data-novaflow-editor-panel", "1");
-      panel.setAttribute("data-novaflow-source-layout", "1");
-      panel.style.setProperty("width", panelWidth, "important");
-      panel.style.setProperty("min-width", panelWidth, "important");
-      panel.style.setProperty("max-width", panelWidth, "important");
-      panel.style.setProperty("align-self", "flex-start", "important");
-      panel.style.setProperty("box-sizing", "border-box", "important");
-      panel.style.setProperty("display", "flex", "important");
-      panel.style.setProperty("flex-direction", "column", "important");
-      panel.style.setProperty("align-items", "stretch", "important");
-      panel.style.setProperty("justify-content", "flex-start", "important");
-      panel.style.setProperty("gap", `${panelInnerGap}px`, "important");
-      panel.style.setProperty("row-gap", `${panelInnerGap}px`, "important");
-      panel.style.setProperty("column-gap", "0", "important");
+      nfSetAttrIfChanged(panel, "data-novaflow-editor-panel", "1");
+      nfSetAttrIfChanged(panel, "data-novaflow-source-layout", "1");
+      nfSetStyleIfChanged(panel, "width", panelWidth, "important");
+      nfSetStyleIfChanged(panel, "min-width", panelWidth, "important");
+      nfSetStyleIfChanged(panel, "max-width", panelWidth, "important");
+      nfSetStyleIfChanged(panel, "align-self", "flex-start", "important");
+      nfSetStyleIfChanged(panel, "box-sizing", "border-box", "important");
+      nfSetStyleIfChanged(panel, "display", "flex", "important");
+      nfSetStyleIfChanged(panel, "flex-direction", "column", "important");
+      nfSetStyleIfChanged(panel, "align-items", "stretch", "important");
+      nfSetStyleIfChanged(panel, "justify-content", "flex-start", "important");
+      nfSetStyleIfChanged(panel, "gap", `${panelInnerGap}px`, "important");
+      nfSetStyleIfChanged(panel, "row-gap", `${panelInnerGap}px`, "important");
+      nfSetStyleIfChanged(panel, "column-gap", "0", "important");
       const header = panel.querySelector(":scope > .nf-panel-header");
       if (header instanceof HTMLElement) {
-        header.style.setProperty("width", "100%", "important");
-        header.style.setProperty("min-width", "0", "important");
-        header.style.setProperty("max-width", "100%", "important");
-        header.style.setProperty("height", `${panelHeaderHeight}px`, "important");
-        header.style.setProperty("min-height", `${panelHeaderHeight}px`, "important");
-        header.style.setProperty("max-height", `${panelHeaderHeight}px`, "important");
+        nfSetStyleIfChanged(header, "width", "100%", "important");
+        nfSetStyleIfChanged(header, "min-width", "0", "important");
+        nfSetStyleIfChanged(header, "max-width", "100%", "important");
+        nfSetStyleIfChanged(header, "height", `${panelHeaderHeight}px`, "important");
+        nfSetStyleIfChanged(header, "min-height", `${panelHeaderHeight}px`, "important");
+        nfSetStyleIfChanged(header, "max-height", `${panelHeaderHeight}px`, "important");
         if (particleDensity) {
-          header.style.setProperty("padding", `0 ${PARTICLE_DENSITY_PANEL_BODY_PADDING_X}px`, "important");
+          nfSetStyleIfChanged(header, "padding", `0 ${PARTICLE_DENSITY_PANEL_BODY_PADDING_X}px`, "important");
         }
-        header.style.setProperty("font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
-        header.style.setProperty("box-sizing", "border-box", "important");
+        nfSetStyleIfChanged(header, "font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
+        nfSetStyleIfChanged(header, "box-sizing", "border-box", "important");
       }
       const body = panel.querySelector(":scope > .nf-panel-body");
       if (body instanceof HTMLElement) {
-        body.style.setProperty("width", "100%", "important");
-        body.style.setProperty("min-width", "0", "important");
-        body.style.setProperty("max-width", "100%", "important");
-        body.style.setProperty("box-sizing", "border-box", "important");
-        body.style.setProperty("margin-top", artDrawingTarget && !isSplitControlPanel ? `${SECONDARY_CONTENT_GAP}px` : "0", "important");
-        body.style.setProperty("margin-bottom", "0", "important");
+        nfSetStyleIfChanged(body, "width", "100%", "important");
+        nfSetStyleIfChanged(body, "min-width", "0", "important");
+        nfSetStyleIfChanged(body, "max-width", "100%", "important");
+        nfSetStyleIfChanged(body, "box-sizing", "border-box", "important");
+        nfSetStyleIfChanged(body, "margin-top", artDrawingTarget && !isSplitControlPanel ? `${SECONDARY_CONTENT_GAP}px` : "0", "important");
+        nfSetStyleIfChanged(body, "margin-bottom", "0", "important");
         if (particleDensity) {
-          body.style.setProperty("padding", panelBodyPadding, "important");
-          body.style.setProperty("gap", `${PARTICLE_DENSITY_SECTION_GAP}px`, "important");
-          body.style.setProperty("row-gap", `${PARTICLE_DENSITY_SECTION_GAP}px`, "important");
-          body.style.setProperty("column-gap", `${PARTICLE_DENSITY_SECTION_GAP}px`, "important");
+          nfSetStyleIfChanged(body, "padding", panelBodyPadding, "important");
+          nfSetStyleIfChanged(body, "gap", `${PARTICLE_DENSITY_SECTION_GAP}px`, "important");
+          nfSetStyleIfChanged(body, "row-gap", `${PARTICLE_DENSITY_SECTION_GAP}px`, "important");
+          nfSetStyleIfChanged(body, "column-gap", `${PARTICLE_DENSITY_SECTION_GAP}px`, "important");
         }
       }
       normalizeExpandedPanelBodyOverflow(panel);
       normalizeRibbonPanelRuntimeOwner(panel);
       if (artDrawingTarget) {
-        panel.style.setProperty("gap", `${panelInnerGap}px`, "important");
-        panel.style.setProperty("row-gap", `${panelInnerGap}px`, "important");
-        panel.style.setProperty("column-gap", "0", "important");
+        nfSetStyleIfChanged(panel, "gap", `${panelInnerGap}px`, "important");
+        nfSetStyleIfChanged(panel, "row-gap", `${panelInnerGap}px`, "important");
+        nfSetStyleIfChanged(panel, "column-gap", "0", "important");
         if (body instanceof HTMLElement && !isSplitControlPanel) {
-          body.style.setProperty("margin-top", `${SECONDARY_CONTENT_GAP}px`, "important");
-          body.style.setProperty("margin-bottom", "0", "important");
+          nfSetStyleIfChanged(body, "margin-top", `${SECONDARY_CONTENT_GAP}px`, "important");
+          nfSetStyleIfChanged(body, "margin-bottom", "0", "important");
         }
       }
     });
     wrappers.forEach((wrapper) => {
       if (!(wrapper instanceof HTMLElement)) return;
-      wrapper.style.setProperty("display", "flex", "important");
-      wrapper.style.setProperty("flex-direction", "column", "important");
-      wrapper.style.setProperty("align-items", "stretch", "important");
-      wrapper.style.setProperty("gap", `${panelGap}px`, "important");
-      wrapper.style.setProperty("row-gap", `${panelGap}px`, "important");
-      wrapper.style.setProperty("column-gap", particleDensity ? `${panelColumnGap}px` : "0", "important");
-      wrapper.style.setProperty("width", panelWidth, "important");
-      wrapper.style.setProperty("min-width", panelWidth, "important");
-      wrapper.style.setProperty("max-width", panelWidth, "important");
-      wrapper.style.setProperty("margin", "0", "important");
-      wrapper.style.setProperty("box-sizing", "border-box", "important");
+      nfSetStyleIfChanged(wrapper, "display", "flex", "important");
+      nfSetStyleIfChanged(wrapper, "flex-direction", "column", "important");
+      nfSetStyleIfChanged(wrapper, "align-items", "stretch", "important");
+      nfSetStyleIfChanged(wrapper, "gap", `${panelGap}px`, "important");
+      nfSetStyleIfChanged(wrapper, "row-gap", `${panelGap}px`, "important");
+      nfSetStyleIfChanged(wrapper, "column-gap", particleDensity ? `${panelColumnGap}px` : "0", "important");
+      nfSetStyleIfChanged(wrapper, "width", panelWidth, "important");
+      nfSetStyleIfChanged(wrapper, "min-width", panelWidth, "important");
+      nfSetStyleIfChanged(wrapper, "max-width", panelWidth, "important");
+      nfSetStyleIfChanged(wrapper, "margin", "0", "important");
+      nfSetStyleIfChanged(wrapper, "box-sizing", "border-box", "important");
     });
   }
 
@@ -50668,24 +50688,24 @@
     const top = upperRail ? Math.round(upperRail.bottom + PRIMARY_SECONDARY_GAP) : Math.max(88, Math.round(groupRect.top - 10));
     const shieldTop = upperRail ? Math.round(upperRail.bottom) : top;
     const desiredContentTop = Math.round(top + shellHeight + SECONDARY_CONTENT_GAP);
-    group.style.setProperty("--novaflow-secondary-top", `${top}px`);
-    group.style.setProperty("--novaflow-secondary-left", `${left}px`);
-    group.style.setProperty("--novaflow-secondary-width", `${secondaryWidth}px`);
-    group.style.setProperty("position", "fixed", "important");
-    group.style.setProperty("top", `${top}px`, "important");
-    group.style.setProperty("left", `${left}px`, "important");
-    group.style.setProperty("right", "auto", "important");
-    group.style.setProperty("z-index", DROPDOWN_UNDERLAY_Z_INDEX, "important");
-    group.style.setProperty("margin-left", "0", "important");
-    group.style.setProperty("margin-right", "0", "important");
-    group.style.setProperty("margin-top", "0", "important");
-    group.style.setProperty("width", `${secondaryWidth}px`, "important");
-    group.style.setProperty("min-width", `${secondaryWidth}px`, "important");
-    group.style.setProperty("max-width", `${secondaryWidth}px`, "important");
-    group.style.setProperty("height", `${shellHeight}px`, "important");
-    group.style.setProperty("padding", "0", "important");
-    group.style.setProperty("box-sizing", "border-box", "important");
-    group.style.setProperty("align-items", "start", "important");
+    nfSetStyleIfChanged(group, "--novaflow-secondary-top", `${top}px`);
+    nfSetStyleIfChanged(group, "--novaflow-secondary-left", `${left}px`);
+    nfSetStyleIfChanged(group, "--novaflow-secondary-width", `${secondaryWidth}px`);
+    nfSetStyleIfChanged(group, "position", "fixed", "important");
+    nfSetStyleIfChanged(group, "top", `${top}px`, "important");
+    nfSetStyleIfChanged(group, "left", `${left}px`, "important");
+    nfSetStyleIfChanged(group, "right", "auto", "important");
+    nfSetStyleIfChanged(group, "z-index", DROPDOWN_UNDERLAY_Z_INDEX, "important");
+    nfSetStyleIfChanged(group, "margin-left", "0", "important");
+    nfSetStyleIfChanged(group, "margin-right", "0", "important");
+    nfSetStyleIfChanged(group, "margin-top", "0", "important");
+    nfSetStyleIfChanged(group, "width", `${secondaryWidth}px`, "important");
+    nfSetStyleIfChanged(group, "min-width", `${secondaryWidth}px`, "important");
+    nfSetStyleIfChanged(group, "max-width", `${secondaryWidth}px`, "important");
+    nfSetStyleIfChanged(group, "height", `${shellHeight}px`, "important");
+    nfSetStyleIfChanged(group, "padding", "0", "important");
+    nfSetStyleIfChanged(group, "box-sizing", "border-box", "important");
+    nfSetStyleIfChanged(group, "align-items", "start", "important");
     const next = group.nextElementSibling;
     const parent = group.parentElement;
     if (parent instanceof HTMLElement) {
@@ -50701,76 +50721,76 @@
           const shellWidth = PRIMARY_VISIBLE_CONTENT_WIDTH;
           const shellTop = desiredContentTop;
           const shellBottom = contentBottomOffset > 0 ? contentBottomOffset : -PRIMARY_CONTENT_OUTER_GAP;
-          shell.setAttribute("data-novaflow-left-content-shell", "1");
+          nfSetAttrIfChanged(shell, "data-novaflow-left-content-shell", "1");
           shell.removeAttribute("data-novaflow-left-content-clamped");
-          shell.style.setProperty("--novaflow-left-shell-left", `${shellLeft}px`);
-          shell.style.setProperty("--novaflow-left-shell-top", `${shellTop}px`);
-          shell.style.setProperty("--novaflow-left-shell-bottom", `${shellBottom}px`);
-          shell.style.setProperty("--novaflow-left-shell-width", `${shellWidth}px`);
-          shell.style.setProperty("position", "fixed", "important");
-          shell.style.setProperty("left", `${shellLeft}px`, "important");
-          shell.style.setProperty("top", `${shellTop}px`, "important");
-          shell.style.setProperty("right", "auto", "important");
-          shell.style.setProperty("bottom", `${shellBottom}px`, "important");
-          shell.style.setProperty("width", `${shellWidth}px`, "important");
-          shell.style.setProperty("min-width", `${shellWidth}px`, "important");
-          shell.style.setProperty("max-width", `${shellWidth}px`, "important");
-          shell.style.setProperty("background", "transparent", "important");
-          shell.style.setProperty("background-color", "transparent", "important");
-          shell.style.setProperty("background-image", "none", "important");
+          nfSetStyleIfChanged(shell, "--novaflow-left-shell-left", `${shellLeft}px`);
+          nfSetStyleIfChanged(shell, "--novaflow-left-shell-top", `${shellTop}px`);
+          nfSetStyleIfChanged(shell, "--novaflow-left-shell-bottom", `${shellBottom}px`);
+          nfSetStyleIfChanged(shell, "--novaflow-left-shell-width", `${shellWidth}px`);
+          nfSetStyleIfChanged(shell, "position", "fixed", "important");
+          nfSetStyleIfChanged(shell, "left", `${shellLeft}px`, "important");
+          nfSetStyleIfChanged(shell, "top", `${shellTop}px`, "important");
+          nfSetStyleIfChanged(shell, "right", "auto", "important");
+          nfSetStyleIfChanged(shell, "bottom", `${shellBottom}px`, "important");
+          nfSetStyleIfChanged(shell, "width", `${shellWidth}px`, "important");
+          nfSetStyleIfChanged(shell, "min-width", `${shellWidth}px`, "important");
+          nfSetStyleIfChanged(shell, "max-width", `${shellWidth}px`, "important");
+          nfSetStyleIfChanged(shell, "background", "transparent", "important");
+          nfSetStyleIfChanged(shell, "background-color", "transparent", "important");
+          nfSetStyleIfChanged(shell, "background-image", "none", "important");
         }
-        parent.setAttribute("data-novaflow-left-content-root", "1");
-        parent.style.setProperty("position", "fixed", "important");
-        parent.style.setProperty("left", `${left}px`, "important");
-        parent.style.setProperty("top", `${desiredContentTop}px`, "important");
-        parent.style.setProperty("right", "auto", "important");
-        parent.style.setProperty("bottom", `${contentBottomOffset}px`, "important");
-        parent.style.setProperty("width", `${rootWidth}px`, "important");
-        parent.style.setProperty("min-width", `${rootWidth}px`, "important");
-        parent.style.setProperty("max-width", `${rootWidth}px`, "important");
+        nfSetAttrIfChanged(parent, "data-novaflow-left-content-root", "1");
+        nfSetStyleIfChanged(parent, "position", "fixed", "important");
+        nfSetStyleIfChanged(parent, "left", `${left}px`, "important");
+        nfSetStyleIfChanged(parent, "top", `${desiredContentTop}px`, "important");
+        nfSetStyleIfChanged(parent, "right", "auto", "important");
+        nfSetStyleIfChanged(parent, "bottom", `${contentBottomOffset}px`, "important");
+        nfSetStyleIfChanged(parent, "width", `${rootWidth}px`, "important");
+        nfSetStyleIfChanged(parent, "min-width", `${rootWidth}px`, "important");
+        nfSetStyleIfChanged(parent, "max-width", `${rootWidth}px`, "important");
         const contentHeightOffset = Math.max(0, Math.round(desiredContentTop + contentBottomOffset));
         const contentHeightValue = `max(160px, calc(100vh - ${contentHeightOffset}px))`;
-        parent.style.setProperty("--novaflow-left-content-height", contentHeightValue);
-        parent.style.setProperty("height", contentHeightValue, "important");
-        parent.style.setProperty("max-height", contentHeightValue, "important");
-        parent.style.setProperty("display", "flex", "important");
-        parent.style.setProperty("flex-direction", "column", "important");
-        parent.style.setProperty("align-items", "stretch", "important");
-        parent.style.setProperty("justify-content", "flex-start", "important");
-        parent.style.setProperty("padding", "0", "important");
-        parent.style.setProperty("margin", "0", "important");
+        nfSetStyleIfChanged(parent, "--novaflow-left-content-height", contentHeightValue);
+        nfSetStyleIfChanged(parent, "height", contentHeightValue, "important");
+        nfSetStyleIfChanged(parent, "max-height", contentHeightValue, "important");
+        nfSetStyleIfChanged(parent, "display", "flex", "important");
+        nfSetStyleIfChanged(parent, "flex-direction", "column", "important");
+        nfSetStyleIfChanged(parent, "align-items", "stretch", "important");
+        nfSetStyleIfChanged(parent, "justify-content", "flex-start", "important");
+        nfSetStyleIfChanged(parent, "padding", "0", "important");
+        nfSetStyleIfChanged(parent, "margin", "0", "important");
         const particleDensity = isParticleDensityTarget();
         const contentGap = particleDensity ? PARTICLE_DENSITY_PANEL_STACK_GAP : SECONDARY_CONTENT_GAP;
-        parent.style.setProperty("gap", `${contentGap}px`, "important");
-        parent.style.setProperty("row-gap", `${contentGap}px`, "important");
-        parent.style.setProperty("column-gap", particleDensity ? `${contentGap}px` : "0", "important");
-        parent.style.setProperty("background", "transparent", "important");
-        parent.style.setProperty("background-color", "transparent", "important");
-        parent.style.setProperty("background-image", "none", "important");
-        parent.style.setProperty("border", "0", "important");
-        parent.style.setProperty("box-shadow", "none", "important");
-        parent.style.setProperty("overflow-x", "clip", "important");
-        parent.style.setProperty("overflow-y", "auto", "important");
-        parent.style.setProperty("overscroll-behavior", "contain", "important");
-        parent.style.setProperty("scrollbar-width", "thin", "important");
-        parent.style.setProperty("scrollbar-color", "rgba(150, 156, 164, 0.16) transparent", "important");
-        parent.style.setProperty("pointer-events", "auto", "important");
-        parent.style.setProperty("touch-action", "pan-y", "important");
-        parent.style.setProperty("z-index", "30", "important");
+        nfSetStyleIfChanged(parent, "gap", `${contentGap}px`, "important");
+        nfSetStyleIfChanged(parent, "row-gap", `${contentGap}px`, "important");
+        nfSetStyleIfChanged(parent, "column-gap", particleDensity ? `${contentGap}px` : "0", "important");
+        nfSetStyleIfChanged(parent, "background", "transparent", "important");
+        nfSetStyleIfChanged(parent, "background-color", "transparent", "important");
+        nfSetStyleIfChanged(parent, "background-image", "none", "important");
+        nfSetStyleIfChanged(parent, "border", "0", "important");
+        nfSetStyleIfChanged(parent, "box-shadow", "none", "important");
+        nfSetStyleIfChanged(parent, "overflow-x", "clip", "important");
+        nfSetStyleIfChanged(parent, "overflow-y", "auto", "important");
+        nfSetStyleIfChanged(parent, "overscroll-behavior", "contain", "important");
+        nfSetStyleIfChanged(parent, "scrollbar-width", "thin", "important");
+        nfSetStyleIfChanged(parent, "scrollbar-color", "rgba(150, 156, 164, 0.16) transparent", "important");
+        nfSetStyleIfChanged(parent, "pointer-events", "auto", "important");
+        nfSetStyleIfChanged(parent, "touch-action", "pan-y", "important");
+        nfSetStyleIfChanged(parent, "z-index", "30", "important");
         Array.from(parent.children).forEach((child) => {
           if (!(child instanceof HTMLElement) || child === group) return;
-          child.style.setProperty("flex", "0 0 auto", "important");
-          child.style.setProperty("flex-shrink", "0", "important");
-          child.style.setProperty("align-self", "flex-start", "important");
-          child.style.setProperty("width", `${PRIMARY_LEFT_PANEL_WIDTH}px`, "important");
-          child.style.setProperty("min-width", `${PRIMARY_LEFT_PANEL_WIDTH}px`, "important");
-          child.style.setProperty("max-width", `${PRIMARY_LEFT_PANEL_WIDTH}px`, "important");
-          child.style.setProperty("margin-top", "0", "important");
-          child.style.setProperty("margin-bottom", "0", "important");
-          child.style.setProperty("margin-left", "0", "important");
-          child.style.setProperty("margin-right", "0", "important");
-          child.style.setProperty("box-sizing", "border-box", "important");
-          child.style.setProperty("min-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
+          nfSetStyleIfChanged(child, "flex", "0 0 auto", "important");
+          nfSetStyleIfChanged(child, "flex-shrink", "0", "important");
+          nfSetStyleIfChanged(child, "align-self", "flex-start", "important");
+          nfSetStyleIfChanged(child, "width", `${PRIMARY_LEFT_PANEL_WIDTH}px`, "important");
+          nfSetStyleIfChanged(child, "min-width", `${PRIMARY_LEFT_PANEL_WIDTH}px`, "important");
+          nfSetStyleIfChanged(child, "max-width", `${PRIMARY_LEFT_PANEL_WIDTH}px`, "important");
+          nfSetStyleIfChanged(child, "margin-top", "0", "important");
+          nfSetStyleIfChanged(child, "margin-bottom", "0", "important");
+          nfSetStyleIfChanged(child, "margin-left", "0", "important");
+          nfSetStyleIfChanged(child, "margin-right", "0", "important");
+          nfSetStyleIfChanged(child, "box-sizing", "border-box", "important");
+          nfSetStyleIfChanged(child, "min-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
         });
         normalizeLeftContentEntryGroups(parent, PRIMARY_LEFT_PANEL_WIDTH);
         normalizeLeftPanelEdgeRows(parent);
@@ -50778,17 +50798,17 @@
       }
     }
     if (next instanceof HTMLElement) {
-      next.style.setProperty("margin-top", "0", "important");
+      nfSetStyleIfChanged(next, "margin-top", "0", "important");
     }
     buttons.forEach((button) => {
-      button.style.setProperty("position", "relative", "important");
-      button.style.setProperty("top", "auto", "important");
-      button.style.setProperty("left", "auto", "important");
-      button.style.setProperty("right", "auto", "important");
-      button.style.setProperty("width", "100%", "important");
-      button.style.setProperty("min-width", "0", "important");
-      button.style.setProperty("height", `${Math.round(buttonHeight)}px`, "important");
-      button.style.setProperty("z-index", DROPDOWN_UNDERLAY_Z_INDEX, "important");
+      nfSetStyleIfChanged(button, "position", "relative", "important");
+      nfSetStyleIfChanged(button, "top", "auto", "important");
+      nfSetStyleIfChanged(button, "left", "auto", "important");
+      nfSetStyleIfChanged(button, "right", "auto", "important");
+      nfSetStyleIfChanged(button, "width", "100%", "important");
+      nfSetStyleIfChanged(button, "min-width", "0", "important");
+      nfSetStyleIfChanged(button, "height", `${Math.round(buttonHeight)}px`, "important");
+      nfSetStyleIfChanged(button, "z-index", DROPDOWN_UNDERLAY_Z_INDEX, "important");
     });
     hideSecondaryProxyBar();
     updateSecondaryScrollShield(left, shieldTop, secondaryWidth, desiredContentTop - shieldTop);
@@ -50951,39 +50971,39 @@
           ? rememberedActiveIndex
           : (defaultActiveIndex >= 0 ? defaultActiveIndex : (explicitActiveIndex >= 0 ? explicitActiveIndex : (rememberedActiveIndex >= 0 ? rememberedActiveIndex : 0))));
       if (labels[activeIndex]) setRememberedSecondaryActive(labels, labels[activeIndex]);
-      group.setAttribute("data-novaflow-secondary-group", "1");
+      nfSetAttrIfChanged(group, "data-novaflow-secondary-group", "1");
       buttons.forEach((button, index) => {
         const active = index === activeIndex;
-        button.setAttribute("data-novaflow-secondary-entry", "1");
-        button.setAttribute("data-novaflow-secondary-active", active ? "1" : "0");
-        button.setAttribute("aria-pressed", active ? "true" : "false");
+        nfSetAttrIfChanged(button, "data-novaflow-secondary-entry", "1");
+        nfSetAttrIfChanged(button, "data-novaflow-secondary-active", active ? "1" : "0");
+        nfSetAttrIfChanged(button, "aria-pressed", active ? "true" : "false");
       });
     }
-    group.setAttribute("data-novaflow-secondary-group", "1");
-    group.style.setProperty("--novaflow-secondary-count", String(buttons.length));
-    group.style.setProperty("display", "grid", "important");
-    group.style.setProperty("grid-template-columns", `repeat(${buttons.length}, minmax(0, 1fr))`, "important");
-    group.style.setProperty("gap", `${SECONDARY_ENTRY_GAP}px`, "important");
-    group.style.setProperty("column-gap", `${SECONDARY_ENTRY_GAP}px`, "important");
-    group.style.setProperty("row-gap", "0", "important");
-    group.style.setProperty("padding-left", "0", "important");
-    group.style.setProperty("padding-right", "0", "important");
-    group.style.setProperty("border", "0", "important");
-    group.style.setProperty("border-radius", "0", "important");
-    group.style.setProperty("box-shadow", "none", "important");
-    group.style.setProperty("background", "transparent", "important");
-    group.style.setProperty("overflow", "hidden", "important");
-    group.style.setProperty("position", "fixed", "important");
-    group.style.setProperty("z-index", DROPDOWN_UNDERLAY_Z_INDEX, "important");
-    group.style.setProperty("margin-top", "0", "important");
+    nfSetAttrIfChanged(group, "data-novaflow-secondary-group", "1");
+    nfSetStyleIfChanged(group, "--novaflow-secondary-count", String(buttons.length));
+    nfSetStyleIfChanged(group, "display", "grid", "important");
+    nfSetStyleIfChanged(group, "grid-template-columns", `repeat(${buttons.length}, minmax(0, 1fr))`, "important");
+    nfSetStyleIfChanged(group, "gap", `${SECONDARY_ENTRY_GAP}px`, "important");
+    nfSetStyleIfChanged(group, "column-gap", `${SECONDARY_ENTRY_GAP}px`, "important");
+    nfSetStyleIfChanged(group, "row-gap", "0", "important");
+    nfSetStyleIfChanged(group, "padding-left", "0", "important");
+    nfSetStyleIfChanged(group, "padding-right", "0", "important");
+    nfSetStyleIfChanged(group, "border", "0", "important");
+    nfSetStyleIfChanged(group, "border-radius", "0", "important");
+    nfSetStyleIfChanged(group, "box-shadow", "none", "important");
+    nfSetStyleIfChanged(group, "background", "transparent", "important");
+    nfSetStyleIfChanged(group, "overflow", "hidden", "important");
+    nfSetStyleIfChanged(group, "position", "fixed", "important");
+    nfSetStyleIfChanged(group, "z-index", DROPDOWN_UNDERLAY_Z_INDEX, "important");
+    nfSetStyleIfChanged(group, "margin-top", "0", "important");
     group.style.removeProperty("--novaflow-secondary-outset-left");
     group.style.removeProperty("--novaflow-secondary-outset-right");
     group.style.removeProperty("--novaflow-secondary-width");
-    group.style.setProperty("margin-left", "0", "important");
-    group.style.setProperty("margin-right", "0", "important");
-    group.style.setProperty("width", "100%", "important");
-    group.style.setProperty("min-width", "0", "important");
-    group.style.setProperty("transform", "none", "important");
+    nfSetStyleIfChanged(group, "margin-left", "0", "important");
+    nfSetStyleIfChanged(group, "margin-right", "0", "important");
+    nfSetStyleIfChanged(group, "width", "100%", "important");
+    nfSetStyleIfChanged(group, "min-width", "0", "important");
+    nfSetStyleIfChanged(group, "transform", "none", "important");
 
     markCompactSurfaces(group, buttons);
 
@@ -51015,33 +51035,33 @@
     buttons.forEach((button, index) => {
       const label = labels[index];
       const active = index === activeIndex;
-      button.setAttribute("data-novaflow-secondary-entry", "1");
-      button.setAttribute("data-novaflow-secondary-active", active ? "1" : "0");
-      button.setAttribute("aria-pressed", active ? "true" : "false");
-      button.style.setProperty("width", "100%", "important");
-      button.style.setProperty("min-width", "0", "important");
-      button.style.setProperty("max-width", "100%", "important");
-      button.style.setProperty("order", String(index), "important");
-      button.style.setProperty("margin", "0", "important");
-      button.style.setProperty("height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
-      button.style.setProperty("min-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
-      button.style.setProperty("max-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
-      button.style.setProperty("font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
-      button.style.setProperty("display", "flex", "important");
-      button.style.setProperty("align-items", "center", "important");
-      button.style.setProperty("justify-content", "center", "important");
-      button.style.setProperty("padding", "0 6px", "important");
-      button.style.setProperty("border", "0", "important");
-      button.style.setProperty("border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
-      button.style.setProperty("background", SECONDARY_ENTRY_BACKGROUND, "important");
-      button.style.setProperty("background-color", SECONDARY_ENTRY_BACKGROUND, "important");
-      button.style.setProperty("background-image", "none", "important");
-      button.style.setProperty("color", active ? UI_ACCENT_TEXT : "rgba(244, 247, 251, 0.92)", "important");
-      button.style.setProperty("box-shadow", active ? `inset 0 -2px 0 ${UI_ACCENT}` : "none", "important");
-      button.style.setProperty("outline", "0", "important");
-      button.style.setProperty("box-sizing", "border-box", "important");
-      button.style.setProperty("overflow", "hidden", "important");
-      button.style.setProperty("transition", "none", "important");
+      nfSetAttrIfChanged(button, "data-novaflow-secondary-entry", "1");
+      nfSetAttrIfChanged(button, "data-novaflow-secondary-active", active ? "1" : "0");
+      nfSetAttrIfChanged(button, "aria-pressed", active ? "true" : "false");
+      nfSetStyleIfChanged(button, "width", "100%", "important");
+      nfSetStyleIfChanged(button, "min-width", "0", "important");
+      nfSetStyleIfChanged(button, "max-width", "100%", "important");
+      nfSetStyleIfChanged(button, "order", String(index), "important");
+      nfSetStyleIfChanged(button, "margin", "0", "important");
+      nfSetStyleIfChanged(button, "height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(button, "min-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(button, "max-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(button, "font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
+      nfSetStyleIfChanged(button, "display", "flex", "important");
+      nfSetStyleIfChanged(button, "align-items", "center", "important");
+      nfSetStyleIfChanged(button, "justify-content", "center", "important");
+      nfSetStyleIfChanged(button, "padding", "0 6px", "important");
+      nfSetStyleIfChanged(button, "border", "0", "important");
+      nfSetStyleIfChanged(button, "border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
+      nfSetStyleIfChanged(button, "background", SECONDARY_ENTRY_BACKGROUND, "important");
+      nfSetStyleIfChanged(button, "background-color", SECONDARY_ENTRY_BACKGROUND, "important");
+      nfSetStyleIfChanged(button, "background-image", "none", "important");
+      nfSetStyleIfChanged(button, "color", active ? UI_ACCENT_TEXT : "rgba(244, 247, 251, 0.92)", "important");
+      nfSetStyleIfChanged(button, "box-shadow", active ? `inset 0 -2px 0 ${UI_ACCENT}` : "none", "important");
+      nfSetStyleIfChanged(button, "outline", "0", "important");
+      nfSetStyleIfChanged(button, "box-sizing", "border-box", "important");
+      nfSetStyleIfChanged(button, "overflow", "hidden", "important");
+      nfSetStyleIfChanged(button, "transition", "none", "important");
 
       if (!button.dataset.novaflowSecondaryClickBound) {
         button.dataset.novaflowSecondaryClickBound = "1";
@@ -51605,14 +51625,14 @@
     if (normalizeText(heading.textContent || "") !== normalizeText(label)) {
       heading.textContent = label;
     }
-    heading.setAttribute("data-novaflow-ai-collapse-heading", kind);
-    heading.setAttribute("role", "button");
-    heading.setAttribute("tabindex", "0");
-    heading.setAttribute("aria-label", label);
-    heading.setAttribute("aria-expanded", collapsed ? "false" : "true");
-    heading.setAttribute("data-collapsed", collapsed ? "1" : "0");
-    heading.setAttribute("aria-disabled", disabled ? "true" : "false");
-    heading.setAttribute("data-novaflow-ai-collapse-disabled", disabled ? "1" : "0");
+    nfSetAttrIfChanged(heading, "data-novaflow-ai-collapse-heading", kind);
+    nfSetAttrIfChanged(heading, "role", "button");
+    nfSetAttrIfChanged(heading, "tabindex", "0");
+    nfSetAttrIfChanged(heading, "aria-label", label);
+    nfSetAttrIfChanged(heading, "aria-expanded", collapsed ? "false" : "true");
+    nfSetAttrIfChanged(heading, "data-collapsed", collapsed ? "1" : "0");
+    nfSetAttrIfChanged(heading, "aria-disabled", disabled ? "true" : "false");
+    nfSetAttrIfChanged(heading, "data-novaflow-ai-collapse-disabled", disabled ? "1" : "0");
     setAiAnimationHeadingRadius(heading, collapsed);
     if (!heading.dataset.novaflowAiCollapseBound) {
       heading.dataset.novaflowAiCollapseBound = "1";
@@ -64809,19 +64829,19 @@
       if (!(wrap instanceof HTMLElement) || getTopbarFileHelpMenuKeyFromWrap(wrap) !== "file") return;
       setAttributeIfChanged(wrap, "data-novaflow-topbar-file-hidden", "1");
       setAttributeIfChanged(wrap, "aria-hidden", "true");
-      wrap.style.setProperty("display", "none", "important");
-      wrap.style.setProperty("visibility", "hidden", "important");
-      wrap.style.setProperty("opacity", "0", "important");
-      wrap.style.setProperty("pointer-events", "none", "important");
-      wrap.style.setProperty("width", "0", "important");
-      wrap.style.setProperty("min-width", "0", "important");
-      wrap.style.setProperty("margin", "0", "important");
-      wrap.style.setProperty("padding", "0", "important");
+      nfSetStyleIfChanged(wrap, "display", "none", "important");
+      nfSetStyleIfChanged(wrap, "visibility", "hidden", "important");
+      nfSetStyleIfChanged(wrap, "opacity", "0", "important");
+      nfSetStyleIfChanged(wrap, "pointer-events", "none", "important");
+      nfSetStyleIfChanged(wrap, "width", "0", "important");
+      nfSetStyleIfChanged(wrap, "min-width", "0", "important");
+      nfSetStyleIfChanged(wrap, "margin", "0", "important");
+      nfSetStyleIfChanged(wrap, "padding", "0", "important");
       const button = getTopbarFileHelpRootButton(wrap);
       if (button instanceof HTMLElement) {
         setAttributeIfChanged(button, "tabindex", "-1");
         setAttributeIfChanged(button, "aria-hidden", "true");
-        button.style.setProperty("pointer-events", "none", "important");
+        nfSetStyleIfChanged(button, "pointer-events", "none", "important");
       }
     });
   }
@@ -64835,29 +64855,29 @@
     const topbarLayerZIndex = splitSurfaceOpen ? SPLIT_TOPBAR_LAYER_Z_INDEX : (aifxOpen ? AIFX_TOPBAR_LAYER_Z_INDEX : TOPBAR_LAYER_Z_INDEX);
     const topbarMenuLayerZIndex = splitSurfaceOpen ? SPLIT_TOPBAR_MENU_LAYER_Z_INDEX : (aifxOpen ? AIFX_TOPBAR_MENU_LAYER_Z_INDEX : TOPBAR_MENU_LAYER_Z_INDEX);
     const topbarDropdownLayerZIndex = splitSurfaceOpen ? SPLIT_TOPBAR_DROPDOWN_LAYER_Z_INDEX : (aifxOpen ? AIFX_TOPBAR_DROPDOWN_LAYER_Z_INDEX : TOPBAR_DROPDOWN_LAYER_Z_INDEX);
-    topbar.setAttribute("data-novaflow-topbar-layer", "1");
-    topbar.style.setProperty("z-index", topbarLayerZIndex, "important");
-    topbar.style.setProperty("overflow", "visible", "important");
+    nfSetAttrIfChanged(topbar, "data-novaflow-topbar-layer", "1");
+    nfSetStyleIfChanged(topbar, "z-index", topbarLayerZIndex, "important");
+    nfSetStyleIfChanged(topbar, "overflow", "visible", "important");
 
     topbar.querySelectorAll(".nf-topbar-left, .nf-menubar, .nf-menu-wrap").forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
-      node.setAttribute("data-novaflow-topbar-menu-layer", "1");
-      node.style.setProperty("position", "relative", "important");
-      node.style.setProperty("z-index", topbarMenuLayerZIndex, "important");
-      node.style.setProperty("overflow", "visible", "important");
+      nfSetAttrIfChanged(node, "data-novaflow-topbar-menu-layer", "1");
+      nfSetStyleIfChanged(node, "position", "relative", "important");
+      nfSetStyleIfChanged(node, "z-index", topbarMenuLayerZIndex, "important");
+      nfSetStyleIfChanged(node, "overflow", "visible", "important");
     });
 
     topbar.querySelectorAll(".nf-menu-wrap").forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
-      node.setAttribute("data-novaflow-topbar-hover-wrap", "1");
-      node.style.setProperty("-webkit-app-region", "no-drag", "important");
+      nfSetAttrIfChanged(node, "data-novaflow-topbar-hover-wrap", "1");
+      nfSetStyleIfChanged(node, "-webkit-app-region", "no-drag", "important");
       const button = node.querySelector(".nf-menu-btn, button");
       if (button instanceof HTMLElement && !button.closest(".nf-dropdown, .nf-menu")) {
-        button.setAttribute("data-novaflow-topbar-root-menu-button", "1");
+        nfSetAttrIfChanged(button, "data-novaflow-topbar-root-menu-button", "1");
       }
       if (isFileHelpTopbarMenuWrap(node)) {
         const key = getTopbarFileHelpMenuKeyFromWrap(node);
-        node.setAttribute("data-novaflow-topbar-file-help-wrap", "1");
+        nfSetAttrIfChanged(node, "data-novaflow-topbar-file-help-wrap", "1");
         if (key) node.setAttribute("data-novaflow-topbar-file-help-key", key);
         bindTopbarFileHelpHoverSurface(node);
       } else {
@@ -64870,29 +64890,29 @@
 
     topbar.querySelectorAll(".nf-dropdown, .nf-menu").forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
-      node.setAttribute("data-novaflow-topbar-dropdown-layer", "1");
-      node.setAttribute("data-novaflow-topbar-hover-menu", "1");
+      nfSetAttrIfChanged(node, "data-novaflow-topbar-dropdown-layer", "1");
+      nfSetAttrIfChanged(node, "data-novaflow-topbar-hover-menu", "1");
       if (getTopbarFileHelpMenuWrapFromTarget(node)) {
         const wrap = getTopbarFileHelpMenuWrapFromTarget(node);
         const key = getTopbarFileHelpMenuKeyFromWrap(wrap);
-        node.setAttribute("data-novaflow-topbar-file-help-dropdown", "1");
+        nfSetAttrIfChanged(node, "data-novaflow-topbar-file-help-dropdown", "1");
         if (key) node.setAttribute("data-novaflow-topbar-file-help-key", key);
         bindTopbarFileHelpHoverSurface(node);
       } else {
         node.removeAttribute("data-novaflow-topbar-file-help-dropdown");
         node.removeAttribute("data-novaflow-topbar-file-help-key");
       }
-      node.style.setProperty("position", "absolute", "important");
-      node.style.setProperty("z-index", topbarDropdownLayerZIndex, "important");
-      node.style.setProperty("overflow", "hidden", "important");
-      node.style.setProperty("pointer-events", "auto", "important");
-      node.style.setProperty("-webkit-app-region", "no-drag", "important");
-      node.style.setProperty("background", "#212121", "important");
-      node.style.setProperty("background-color", "#212121", "important");
-      node.style.setProperty("border", "1px solid rgba(255, 255, 255, 0.10)", "important");
-      node.style.setProperty("border-color", "rgba(255, 255, 255, 0.10)", "important");
-      node.style.setProperty("border-radius", "10px", "important");
-      node.style.setProperty("box-shadow", "none", "important");
+      nfSetStyleIfChanged(node, "position", "absolute", "important");
+      nfSetStyleIfChanged(node, "z-index", topbarDropdownLayerZIndex, "important");
+      nfSetStyleIfChanged(node, "overflow", "hidden", "important");
+      nfSetStyleIfChanged(node, "pointer-events", "auto", "important");
+      nfSetStyleIfChanged(node, "-webkit-app-region", "no-drag", "important");
+      nfSetStyleIfChanged(node, "background", "#212121", "important");
+      nfSetStyleIfChanged(node, "background-color", "#212121", "important");
+      nfSetStyleIfChanged(node, "border", "1px solid rgba(255, 255, 255, 0.10)", "important");
+      nfSetStyleIfChanged(node, "border-color", "rgba(255, 255, 255, 0.10)", "important");
+      nfSetStyleIfChanged(node, "border-radius", "10px", "important");
+      nfSetStyleIfChanged(node, "box-shadow", "none", "important");
     });
     syncSpineImportTopbarMenuState(topbar);
     syncTopbarExportMenuState(topbar);
@@ -69056,13 +69076,13 @@
       rect.top >= viewportHeight * 0.52
     ));
     if (bottomControls instanceof HTMLElement) {
-      bottomControls.setAttribute("data-novaflow-bottom-controls", "1");
-      bottomControls.style.setProperty("background", LEFT_PANEL_BACKGROUND, "important");
-      bottomControls.style.setProperty("background-color", LEFT_PANEL_BACKGROUND, "important");
-      bottomControls.style.setProperty("border", "0", "important");
-      bottomControls.style.setProperty("border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
-      bottomControls.style.setProperty("box-shadow", "none", "important");
-      bottomControls.style.setProperty("overflow", "hidden", "important");
+      nfSetAttrIfChanged(bottomControls, "data-novaflow-bottom-controls", "1");
+      nfSetStyleIfChanged(bottomControls, "background", LEFT_PANEL_BACKGROUND, "important");
+      nfSetStyleIfChanged(bottomControls, "background-color", LEFT_PANEL_BACKGROUND, "important");
+      nfSetStyleIfChanged(bottomControls, "border", "0", "important");
+      nfSetStyleIfChanged(bottomControls, "border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
+      nfSetStyleIfChanged(bottomControls, "box-shadow", "none", "important");
+      nfSetStyleIfChanged(bottomControls, "overflow", "hidden", "important");
       styleBottomControlRanges(bottomControls);
     }
 
@@ -69096,7 +69116,7 @@
     if (templateControl instanceof HTMLElement) {
       const templateControlSourceOwned = isSourceOwnedLayout(templateControl) || isInsideSourceOwnedLayout(templateControl);
       if (!templateControlSourceOwned) {
-        templateControl.setAttribute("data-novaflow-single-control", "1");
+        nfSetAttrIfChanged(templateControl, "data-novaflow-single-control", "1");
       }
       const templateButton = templateControl.matches("button")
         ? templateControl
@@ -69104,59 +69124,59 @@
       if (templateControlSourceOwned) {
         styleTemplateControlSurface(templateControl);
       } else {
-        templateControl.style.setProperty("background", "transparent", "important");
-        templateControl.style.setProperty("background-color", "transparent", "important");
-        templateControl.style.setProperty("border-radius", "0", "important");
+        nfSetStyleIfChanged(templateControl, "background", "transparent", "important");
+        nfSetStyleIfChanged(templateControl, "background-color", "transparent", "important");
+        nfSetStyleIfChanged(templateControl, "border-radius", "0", "important");
       }
-      templateControl.style.setProperty("border", "0", "important");
-      templateControl.style.setProperty("box-shadow", "none", "important");
-      templateControl.style.setProperty("height", "34px", "important");
-      templateControl.style.setProperty("min-height", "34px", "important");
-      templateControl.style.setProperty("max-height", "34px", "important");
+      nfSetStyleIfChanged(templateControl, "border", "0", "important");
+      nfSetStyleIfChanged(templateControl, "box-shadow", "none", "important");
+      nfSetStyleIfChanged(templateControl, "height", "34px", "important");
+      nfSetStyleIfChanged(templateControl, "min-height", "34px", "important");
+      nfSetStyleIfChanged(templateControl, "max-height", "34px", "important");
       if (templateButton instanceof HTMLElement) {
-        templateButton.setAttribute("data-novaflow-template-button", "1");
+        nfSetAttrIfChanged(templateButton, "data-novaflow-template-button", "1");
         const templateButtonSourceOwned = isSourceOwnedLayout(templateButton) || isInsideSourceOwnedLayout(templateButton);
         if (!templateButtonSourceOwned) {
-          templateButton.setAttribute("data-novaflow-single-button", "1");
+          nfSetAttrIfChanged(templateButton, "data-novaflow-single-button", "1");
         }
         stylePreviewButtonSurface(templateButton);
-        templateButton.style.setProperty("padding", "0 18px", "important");
-        templateButton.style.setProperty("min-width", "92px", "important");
+        nfSetStyleIfChanged(templateButton, "padding", "0 18px", "important");
+        nfSetStyleIfChanged(templateButton, "min-width", "92px", "important");
       }
     }
     if (zoomControls instanceof HTMLElement) {
       const targetHeight = 34;
-      zoomControls.setAttribute("data-novaflow-zoom-controls", "1");
-      zoomControls.style.setProperty("--novaflow-top-control-height", `${targetHeight}px`);
-      zoomControls.style.setProperty("height", `${targetHeight}px`, "important");
-      zoomControls.style.setProperty("min-height", `${targetHeight}px`, "important");
-      zoomControls.style.setProperty("max-height", `${targetHeight}px`, "important");
-      zoomControls.style.setProperty("display", "flex", "important");
-      zoomControls.style.setProperty("align-items", "center", "important");
-      zoomControls.style.setProperty("justify-content", "center", "important");
-      zoomControls.style.setProperty("gap", "4px", "important");
-      zoomControls.style.setProperty("background", PRIMARY_PANEL_BACKGROUND, "important");
-      zoomControls.style.setProperty("border", "0", "important");
-      zoomControls.style.setProperty("border-radius", "8px", "important");
-      zoomControls.style.setProperty("padding", "0 4px", "important");
+      nfSetAttrIfChanged(zoomControls, "data-novaflow-zoom-controls", "1");
+      nfSetStyleIfChanged(zoomControls, "--novaflow-top-control-height", `${targetHeight}px`);
+      nfSetStyleIfChanged(zoomControls, "height", `${targetHeight}px`, "important");
+      nfSetStyleIfChanged(zoomControls, "min-height", `${targetHeight}px`, "important");
+      nfSetStyleIfChanged(zoomControls, "max-height", `${targetHeight}px`, "important");
+      nfSetStyleIfChanged(zoomControls, "display", "flex", "important");
+      nfSetStyleIfChanged(zoomControls, "align-items", "center", "important");
+      nfSetStyleIfChanged(zoomControls, "justify-content", "center", "important");
+      nfSetStyleIfChanged(zoomControls, "gap", "4px", "important");
+      nfSetStyleIfChanged(zoomControls, "background", PRIMARY_PANEL_BACKGROUND, "important");
+      nfSetStyleIfChanged(zoomControls, "border", "0", "important");
+      nfSetStyleIfChanged(zoomControls, "border-radius", "8px", "important");
+      nfSetStyleIfChanged(zoomControls, "padding", "0 4px", "important");
       styleAutoFitOnlyControl(zoomControls);
       Array.from(zoomControls.children).forEach((child) => {
         if (!(child instanceof HTMLElement)) return;
         if (child.getAttribute("data-novaflow-autofit-percent-hidden") === "1") return;
-        child.style.setProperty("height", "30px", "important");
-        child.style.setProperty("min-height", "30px", "important");
-        child.style.setProperty("padding", child.getAttribute("data-novaflow-autofit-button") === "1" ? "0 18px" : "0 10px", "important");
-        child.style.setProperty("border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
+        nfSetStyleIfChanged(child, "height", "30px", "important");
+        nfSetStyleIfChanged(child, "min-height", "30px", "important");
+        nfSetStyleIfChanged(child, "padding", child.getAttribute("data-novaflow-autofit-button") === "1" ? "0 18px" : "0 10px", "important");
+        nfSetStyleIfChanged(child, "border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
         if (child.getAttribute("data-novaflow-autofit-button") !== "1") {
-          child.style.setProperty("background", "transparent", "important");
-          child.style.setProperty("background-color", "transparent", "important");
+          nfSetStyleIfChanged(child, "background", "transparent", "important");
+          nfSetStyleIfChanged(child, "background-color", "transparent", "important");
         }
-        child.style.setProperty("border-color", "transparent", "important");
-        child.style.setProperty("box-shadow", "none", "important");
-        child.style.setProperty("display", "inline-flex", "important");
-        child.style.setProperty("align-items", "center", "important");
-        child.style.setProperty("justify-content", "center", "important");
-        child.style.setProperty("line-height", "30px", "important");
+        nfSetStyleIfChanged(child, "border-color", "transparent", "important");
+        nfSetStyleIfChanged(child, "box-shadow", "none", "important");
+        nfSetStyleIfChanged(child, "display", "inline-flex", "important");
+        nfSetStyleIfChanged(child, "align-items", "center", "important");
+        nfSetStyleIfChanged(child, "justify-content", "center", "important");
+        nfSetStyleIfChanged(child, "line-height", "30px", "important");
       });
     }
     applyPreviewPanel(active, bottomControls);
