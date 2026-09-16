@@ -108,47 +108,106 @@ const PROBE = String.raw`(() => {
   };
 })();`;
 
+// A scenario either measures a steady state - report the median per-second delta, which a
+// periodic burst cannot skew - or a one-off transition, where the total work is the point.
 const SCENARIOS = [
   {
-    name: "particle-idle-5s",
-    title: "特效区空闲 5 秒",
-    // Nobody is touching the app. Any write here is the runtime talking to itself.
-    metrics: ["style", "styleNoop", "attr", "attrNoop", "gcs", "qsa"],
+    name: "particle-idle-rate",
+    title: "特效区空闲（每秒中位数）",
+    // Nobody is touching the app. The rAF render loop keeps a steady floor of real writes,
+    // but every no-op write here is the runtime talking to itself for nothing.
+    metrics: ["style", "styleNoop", "attr", "attrNoop", "gbcr", "gcs", "qsa"],
     async run(page) {
       await page.settle("particle");
-      await page.eval("window.__nfResetBudget()");
-      await page.sleep(5000);
+      return median(await page.sample(1000, 15));
     }
   },
   {
     name: "switch-particle-to-animation",
-    title: "分区切换 特效 -> 动画",
+    // The runtime fires a full-sync burst roughly every 15s. It is additive noise that can
+    // land inside the measured window, so run twice and keep the lower, burst-free run.
+    repeat: 2,
+    title: "分区切换 特效 -> 动画（总量）",
     metrics: ["style", "styleNoop", "attr", "attrNoop", "gbcr", "gcs", "qsa", "qsaNodes"],
     async run(page) {
       await page.settle("particle");
       await page.eval("window.__nfResetBudget()");
-      await page.eval("window.__nfSwitch('\u52a8\u753b')");
-      await page.sleep(3000);
+      await page.runUntilSettled("window.__nfSwitch('动画')");
       const landed = await page.eval("window.__nfSection()");
       if (landed !== "animation") throw new Error("switch did not land on animation (got " + landed + ")");
+      return page.read();
     }
   },
   {
     name: "switch-animation-to-art",
-    title: "分区切换 动画 -> 美工",
+    // The runtime fires a full-sync burst roughly every 15s. It is additive noise that can
+    // land inside the measured window, so run twice and keep the lower, burst-free run.
+    repeat: 2,
+    title: "分区切换 动画 -> 美工（总量）",
     metrics: ["style", "styleNoop", "attr", "attrNoop", "gbcr", "gcs", "qsa", "qsaNodes"],
     async run(page) {
       await page.settle("particle");
-      await page.eval("window.__nfSwitch('\u52a8\u753b')");
-      await page.sleep(3000);
+      await page.runUntilSettled("window.__nfSwitch('动画')");
       await page.eval("window.__nfResetBudget()");
-      await page.eval("window.__nfSwitch('\u7f8e\u5de5')");
-      await page.sleep(3000);
+      await page.runUntilSettled("window.__nfSwitch('美工')");
       const landed = await page.eval("window.__nfSection()");
       if (landed !== "art") throw new Error("switch did not land on art (got " + landed + ")");
+      return page.read();
     }
   }
 ];
+
+// Median per key across samples. Immune to the periodic full-sync burst the runtime fires
+// roughly every 15 seconds, which a mean would smear differently across every run.
+// Keep the lowest value seen per metric. The periodic burst only ever adds work, so the
+// lowest run is the one it missed.
+function lowestPerKey(runs) {
+  const out = {};
+  for (const run of runs) {
+    for (const k of Object.keys(run)) {
+      if (typeof run[k] !== "number") continue;
+      out[k] = out[k] === undefined ? run[k] : Math.min(out[k], run[k]);
+    }
+  }
+  return out;
+}
+
+function median(deltas) {
+  const out = {};
+  const keys = new Set();
+  for (const d of deltas) for (const k of Object.keys(d)) keys.add(k);
+  for (const k of keys) {
+    const values = deltas.map((d) => d[k] || 0).sort((x, y) => x - y);
+    const mid = Math.floor(values.length / 2);
+    out[k] = values.length % 2 ? values[mid] : Math.round((values[mid - 1] + values[mid]) / 2);
+  }
+  return out;
+}
+
+// child.kill() only reaps the launcher on Windows; the renderer and GPU processes survive,
+// keep the profile directory locked, and steal CPU from whatever runs next.
+async function killTree(child) {
+  if (!child) return;
+  const pid = child.pid;
+  if (process.platform === "win32" && pid) {
+    await new Promise((resolve) => {
+      const killer = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], { stdio: "ignore" });
+      killer.on("exit", resolve);
+      killer.on("error", resolve);
+    });
+  }
+  try { child.kill("SIGKILL"); } catch {}
+  // Give the OS a moment to release the profile files before anyone deletes them.
+  await sleep(600);
+}
+
+async function removeDirWithRetry(dir) {
+  for (let i = 0; i < 5; i++) {
+    try { fs.rmSync(dir, { recursive: true, force: true }); return true; }
+    catch { await sleep(400); }
+  }
+  return false;
+}
 
 function findChrome() {
   for (const candidate of CHROME_CANDIDATES) if (fs.existsSync(candidate)) return candidate;
@@ -208,7 +267,7 @@ async function launchChrome() {
     } catch {}
     await sleep(250);
   }
-  try { child.kill(); } catch {}
+  await killTree(child);
   throw new Error("Chrome did not expose a DevTools endpoint in time");
 }
 
@@ -275,8 +334,9 @@ async function openPage(cdp) {
         if (ready) break;
         await sleep(250);
       }
-      // Let the boot-time sync storm drain before any scenario resets the counters.
-      await sleep(3500);
+      // Wait for the boot storm to actually drain. A fixed sleep is not enough: under
+      // machine load the tail of boot bleeds into the scenario and inflates every metric.
+      await page.waitSettled({ maxMs: 30000 });
     },
     // Each scenario starts from a fresh load so earlier scenarios cannot warm state.
     async settle(expectSection) {
@@ -285,6 +345,50 @@ async function openPage(cdp) {
       if (expectSection && section !== expectSection) {
         throw new Error("runtime did not land on " + expectSection + " after load (got " + section + ")");
       }
+    },
+    // Sample the counters on a fixed cadence and return the per-interval deltas.
+    async sample(intervalMs, count) {
+      const deltas = [];
+      let prev = await page.eval("window.__nfReadBudget()");
+      for (let i = 0; i < count; i++) {
+        await sleep(intervalMs);
+        const now = await page.eval("window.__nfReadBudget()");
+        const delta = {};
+        for (const k of Object.keys(now)) if (typeof now[k] === "number") delta[k] = now[k] - prev[k];
+        deltas.push(delta);
+        prev = now;
+      }
+      return deltas;
+    },
+    // The runtime never goes quiet: a rAF render loop keeps a steady ~100 style writes/s
+    // going forever. What does end is the boot storm, which runs thousands of writes/s for
+    // a few seconds. So wait for the rate to fall back to that steady floor, not for zero.
+    async waitSettled(opts) {
+      const maxMs = (opts && opts.maxMs) || 30000;
+      const floor = (opts && opts.floor) || 1500;
+      const needed = 4;
+      const began = Date.now();
+      let calm = 0;
+      let prev = await page.eval("window.__nfReadBudget()");
+      while (Date.now() - began < maxMs) {
+        await sleep(250);
+        const now = await page.eval("window.__nfReadBudget()");
+        // Watch every counter, not just style: the art section settles its writes long
+        // before it stops measuring layout, and gating on style alone let gbcr drift.
+        const busy = (now.style - prev.style) + (now.attr - prev.attr)
+          + (now.gbcr - prev.gbcr) + (now.gcs - prev.gcs) + (now.qsa - prev.qsa);
+        prev = now;
+        calm = busy * 4 <= floor ? calm + 1 : 0;
+        if (calm >= needed) return Date.now() - began;
+      }
+      return Date.now() - began;
+    },
+    // A section switch is a burst by nature. Run it, then wait for the rate to drop back to
+    // the steady floor, so the measurement is the work it took to finish the switch rather
+    // than whatever fitted inside an arbitrary window - the latter moves with machine load.
+    async runUntilSettled(expression) {
+      await page.eval(expression);
+      await page.waitSettled();
     },
     read: () => page.eval("window.__nfReadBudget()"),
     close: () => cdp.send("Target.closeTarget", { targetId })
@@ -311,15 +415,19 @@ async function main() {
     cdp = await connect(chrome.wsUrl);
     page = await openPage(cdp);
     for (const scenario of SCENARIOS) {
-      await scenario.run(page);
-      const counts = await page.read();
-      results.push({ name: scenario.name, title: scenario.title, metrics: scenario.metrics, counts });
+      const began = Date.now();
+      const runs = [];
+      for (let attempt = 0; attempt < (scenario.repeat || 1); attempt++) runs.push(await scenario.run(page));
+      const counts = runs.length === 1 ? runs[0] : lowestPerKey(runs);
+      // Duration is diagnostic only, never budgeted. A scenario that suddenly takes much
+      // longer usually means the machine was busy, not that the runtime regressed.
+      results.push({ name: scenario.name, title: scenario.title, metrics: scenario.metrics, counts, ms: Date.now() - began });
     }
   } finally {
     if (page) { try { await page.close(); } catch {} }
     if (cdp) { try { cdp.close(); } catch {} }
-    try { chrome.child.kill(); } catch {}
-    try { fs.rmSync(chrome.profile, { recursive: true, force: true }); } catch {}
+    await killTree(chrome.child);
+    await removeDirWithRetry(chrome.profile);
   }
 
   const measured = {};
@@ -338,7 +446,7 @@ async function main() {
     fs.writeFileSync(SNAPSHOT_PATH, JSON.stringify(snapshot, null, 2) + "\n");
     console.log("recorded budgets -> " + path.relative(repoRoot, SNAPSHOT_PATH));
     for (const r of results) {
-      console.log("  " + r.title);
+      console.log("  " + r.title + "   [" + (r.ms / 1000).toFixed(1) + "s]");
       for (const m of r.metrics) console.log("    " + m.padEnd(12) + " " + measured[r.name][m]);
     }
     return;
@@ -372,7 +480,12 @@ async function main() {
   } else {
     let current = null;
     for (const row of report) {
-      if (row.title !== current) { current = row.title; console.log("\n" + current); }
+      if (row.title !== current) {
+        current = row.title;
+        const scenarioRow = results.find((x) => x.title === current);
+        console.log("");
+        console.log(current + (scenarioRow ? "   [" + (scenarioRow.ms / 1000).toFixed(1) + "s]" : ""));
+      }
       const mark = row.ok ? "ok  " : "FAIL";
       const delta = row.recorded
         ? (row.actual >= row.recorded ? "+" : "") + (((row.actual - row.recorded) / row.recorded) * 100).toFixed(1) + "%"
