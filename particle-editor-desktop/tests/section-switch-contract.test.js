@@ -10,8 +10,8 @@ const vm = require("node:vm");
 const repoRoot = path.resolve(__dirname, "..", "..");
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8").replace(/\r\n?/g, "\n");
 const TOOL_CACHE_VERSION = "20260916-section-switch-1";
-// The brand runtime moved on once more for the modal-dropdown shortcut z-index fix.
-const BRAND_CACHE_VERSION = "20260916-section-switch-2";
+// The brand runtime moved on once more: unauthorized installs now see 仓库 / 导出 disabled.
+const BRAND_CACHE_VERSION = "20260916-shortcut-auth-1";
 
 test("switching the AI sequence top mode clears the positive prompt before React handles the click", () => {
   const source = read("particle-editor/novaflow-brand-runtime.js");
@@ -139,6 +139,90 @@ test("the art prompt history popover stays inside the art workspace", () => {
   context.setRect(new HTMLElement({ left: 1200, right: 1354, width: 154, top: 541, height: 30 }));
   // Right-aligned to the anchor (1354 - 320), which already sits inside the viewport bound.
   assert.equal(state.promptHistoryPopupRect.left, 1354 - 320);
+});
+
+test("the AI特效 shell stays up until React has left 特效 after a primary sidebar click", () => {
+  const source = read("particle-editor/aifx-repaint-runtime.js");
+  assert.match(source, /if \(isPrimarySidebarAction\(action\)\) \{\n(?:\s+\/\/[^\n]*\n)*\s+if \(normalize\(action\.textContent\) !== '特效'\) beginPrimaryLeave\(\)\n\s+return\n\s+\}/);
+  // React commits the section asynchronously (~230ms behind the entry-preview transaction) and the
+  // runtime rejects that commit while body.novaflow-aifx-open is set, so the click swaps the open class
+  // for the leaving class (shell still painted) and the shell hides inside the mutation batch that
+  // moves the pressed primary entry away from 特效.
+  const watcher = source.match(/  const beginPrimaryLeave = \(\) => \{[\s\S]*?\n  \}/)?.[0];
+  assert.ok(watcher);
+  assert.match(watcher, /cancelScheduledHostScrollFreeze\(\)\n\s+restoreHostScroll\(\)\n\s+document\.body\.classList\.remove\('novaflow-aifx-open'\)\n\s+document\.body\.classList\.add\(LEAVING_CLASS\)\n\s+if \(primaryLeaveWatch\) return/);
+  assert.match(watcher, /if \(!label \|\| label === '特效'\) return\n\s+stopPrimaryLeaveWatch\(\)\n\s+hideApp\(\{ reason: 'primary-switch:' \+ label \}\)/);
+  assert.match(watcher, /observer\.observe\(document\.documentElement, \{ subtree: true, attributes: true, attributeFilter: \['aria-pressed', 'class'\] \}\)/);
+  assert.match(watcher, /document\.body\.classList\.remove\(LEAVING_CLASS\)\n\s+document\.body\.classList\.add\('novaflow-aifx-open'\)\n\s+freezeHostLeftScroll\(\)/);
+  assert.match(source, /const LEAVING_CLASS = 'novaflow-aifx-leaving'/);
+  assert.match(source, /const hideApp = \(options = \{\}\) => \{\n\s+stopPrimaryLeaveWatch\(\)/);
+  assert.match(source, /document\.body\.classList\.remove\('novaflow-aifx-open'\)\n\s+document\.body\.classList\.remove\(LEAVING_CLASS\)/);
+  assert.match(source, /document\.body\.classList\.remove\(LEAVING_CLASS\)\n\s+document\.body\.classList\.add\('novaflow-aifx-open'\)\n\s+root\.classList\.add\('is-open'\)/);
+  // The leaving state keeps the shell painted over the whole left column (shield from the top).
+  assert.match(source, /body\.novaflow-aifx-leaving #\$\{APP_ID\}\.is-open::before \{\n\s+top: 0 !important;/);
+  assert.match(source, /body\.novaflow-aifx-leaving #\$\{APP_ID\}\.is-open \.aifx-side \{\n\s+margin-top: 0 !important;\n\s+height: 100% !important;/);
+  assert.doesNotMatch(source, /hideAppWhenPrimaryLeaves|hideAppAfterPrimarySwitch|hideAppWhenHostLeaves/);
+
+  // Functional: the watcher only hides once the pressed primary entry is no longer 特效.
+  const hides = [];
+  let pressedLabel = "特效";
+  let observerCallback = null;
+  class MutationObserver {
+    constructor(callback) { observerCallback = callback; }
+    observe() {}
+    disconnect() { observerCallback = null; }
+  }
+  const bodyClasses = new Set(["novaflow-aifx-open"]);
+  const watchContext = {
+    MutationObserver,
+    window: { setTimeout: () => 1, clearTimeout: () => {} },
+    document: {
+      documentElement: {},
+      body: { classList: { add: (c) => bodyClasses.add(c), remove: (c) => bodyClasses.delete(c), contains: (c) => bodyClasses.has(c) } },
+      querySelectorAll: () => [{ textContent: pressedLabel, getBoundingClientRect: () => ({ left: 20 }) }],
+    },
+    LEAVING_CLASS: "novaflow-aifx-leaving",
+    state: { refs: { root: { classList: { contains: () => true } } } },
+    PRIMARY_SIDEBAR_LABELS: ["特效", "动画", "美工", "工具"],
+    normalize: (value) => String(value || "").replace(/\s+/g, "").trim(),
+    cancelScheduledHostScrollFreeze: () => {},
+    restoreHostScroll: () => {},
+    freezeHostLeftScroll: () => {},
+    hideApp: (options) => hides.push(options.reason),
+  };
+  const activeLabel = source.match(/  const activePrimaryLabel = \(\) => \{[\s\S]*?\n  \}/)?.[0];
+  const stopWatch = source.match(/  const stopPrimaryLeaveWatch = \(\) => \{[\s\S]*?\n  \}/)?.[0];
+  assert.ok(activeLabel && stopWatch);
+  vm.runInNewContext(`let primaryLeaveWatch = null\n${activeLabel}\n${stopWatch}\n${watcher}\nthis.run = beginPrimaryLeave`, watchContext);
+  watchContext.run();
+  assert.ok(observerCallback, "a mutation observer is armed");
+  assert.deepEqual([...bodyClasses], ["novaflow-aifx-leaving"], "open class swapped for the leaving class at the click");
+  observerCallback();
+  assert.equal(hides.length, 0, "still in 特效: the shell stays");
+  pressedLabel = "动画";
+  watchContext.document.querySelectorAll = () => [{ textContent: pressedLabel, getBoundingClientRect: () => ({ left: 20 }) }];
+  observerCallback();
+  assert.deepEqual(hides, ["primary-switch:动画"]);
+  assert.equal(observerCallback, null, "the watcher disconnects after hiding");
+  const html = read("particle-editor/index.html");
+  assert.match(html, /aifx-repaint-runtime\.js\?v=20260916-aifx-ui-shell-5/);
+
+  const helper = source.match(/  const isPrimarySidebarAction = \(action\) => \{[\s\S]*?\n  \}/)?.[0];
+  assert.ok(helper);
+  class HTMLElement {
+    constructor(text, left, width = 60) { this.textContent = text; this.left = left; this.width = width; }
+    getBoundingClientRect() { return { left: this.left, top: 90, width: this.width }; }
+  }
+  const context = {
+    HTMLElement,
+    PRIMARY_SIDEBAR_LABELS: ["特效", "动画", "美工", "工具"],
+    normalize: (value) => String(value || "").replace(/\s+/g, "").trim(),
+  };
+  vm.runInNewContext(`${helper}\nthis.isPrimarySidebarAction = isPrimarySidebarAction`, context);
+  assert.equal(context.isPrimarySidebarAction(new HTMLElement(" 动画 ", 20)), true);
+  assert.equal(context.isPrimarySidebarAction(new HTMLElement("动画", 400)), false, "a secondary tab is not the sidebar");
+  assert.equal(context.isPrimarySidebarAction(new HTMLElement("仓库", 20)), false, "runtime shortcuts do not switch sections");
+  assert.equal(context.isPrimarySidebarAction(null), false);
 });
 
 test("index.html cache-busts the section-switch files", () => {

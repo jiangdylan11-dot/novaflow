@@ -171,6 +171,64 @@
     })
   }
 
+  const PRIMARY_SIDEBAR_LABELS = ['特效', '动画', '美工', '工具']
+
+  const isPrimarySidebarAction = (action) => {
+    if (!(action instanceof HTMLElement) || !PRIMARY_SIDEBAR_LABELS.includes(normalize(action.textContent))) return false
+    const rect = action.getBoundingClientRect()
+    return rect.left < 110 && rect.top > 40 && rect.width > 0
+  }
+
+  const activePrimaryLabel = () => {
+    const pressed = Array.from(document.querySelectorAll('button[aria-pressed="true"]')).find((node) =>
+      PRIMARY_SIDEBAR_LABELS.includes(normalize(node.textContent)) && node.getBoundingClientRect().left < 110,
+    )
+    return pressed ? normalize(pressed.textContent) : ''
+  }
+
+  const LEAVING_CLASS = 'novaflow-aifx-leaving'
+  let primaryLeaveWatch = null
+
+  const stopPrimaryLeaveWatch = () => {
+    if (!primaryLeaveWatch) return
+    primaryLeaveWatch.observer.disconnect()
+    window.clearTimeout(primaryLeaveWatch.timer)
+    primaryLeaveWatch = null
+  }
+
+  // A primary sidebar click does not switch sections inside its own dispatch: React commits the new
+  // section asynchronously (about 230ms later, behind the brand runtime's entry-preview transaction).
+  // Hiding the shell at the click therefore exposed the particle panel underneath for that long, but
+  // keeping the semantic open state (body.novaflow-aifx-open) makes the runtime reject that commit.
+  // So the click swaps the open class for the leaving class - the runtime no longer sees an AI特效
+  // context while the shell stays painted over the left column - and the shell hides inside the
+  // mutation batch in which the pressed primary entry leaves 特效 (before paint).
+  const beginPrimaryLeave = () => {
+    cancelScheduledHostScrollFreeze()
+    restoreHostScroll()
+    document.body.classList.remove('novaflow-aifx-open')
+    document.body.classList.add(LEAVING_CLASS)
+    if (primaryLeaveWatch) return
+    const check = () => {
+      if (!state.refs.root?.classList.contains('is-open')) { stopPrimaryLeaveWatch(); return }
+      const label = activePrimaryLabel()
+      if (!label || label === '特效') return
+      stopPrimaryLeaveWatch()
+      hideApp({ reason: 'primary-switch:' + label })
+    }
+    const observer = new MutationObserver(check)
+    observer.observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['aria-pressed', 'class'] })
+    const timer = window.setTimeout(() => {
+      // The switch never happened (rolled back): back to the fully open shell.
+      stopPrimaryLeaveWatch()
+      if (!state.refs.root?.classList.contains('is-open')) return
+      document.body.classList.remove(LEAVING_CLASS)
+      document.body.classList.add('novaflow-aifx-open')
+      freezeHostLeftScroll()
+    }, 3000)
+    primaryLeaveWatch = { observer, timer }
+  }
+
   const setHostTabState = (activeLabel, aiAction) => {
     const aiEntry = aiAction instanceof HTMLElement ? aiAction : findButtonsByText(isAiEffectLabel)[0]
     const particleEntry = findButtonsByText(isParticleEffectLabel)[0]
@@ -224,6 +282,17 @@
       body.novaflow-aifx-open [data-novaflow-secondary-group="1"] {
         position: relative !important;
         z-index: ${HOST_ENTRY_STACK_Z} !important;
+      }
+      body.novaflow-aifx-leaving {
+        overflow: hidden !important;
+        overscroll-behavior: contain !important;
+      }
+      body.novaflow-aifx-leaving #${APP_ID}.is-open::before {
+        top: 0 !important;
+      }
+      body.novaflow-aifx-leaving #${APP_ID}.is-open .aifx-side {
+        margin-top: 0 !important;
+        height: 100% !important;
       }
       body.novaflow-aifx-open [data-novaflow-left-content-root="1"] * {
         visibility: hidden !important;
@@ -1252,6 +1321,7 @@
     updateShellInset(trigger)
     freezeHostLeftScroll()
     applyHostTabVisuals(trigger)
+    document.body.classList.remove(LEAVING_CLASS)
     document.body.classList.add('novaflow-aifx-open')
     root.classList.add('is-open')
     scheduleHostScrollFreeze(root)
@@ -1260,11 +1330,14 @@
   }
 
   const hideApp = (options = {}) => {
+    stopPrimaryLeaveWatch()
+    window.__NovaFlowAifxLastHide = { reason: String(options.reason || 'unspecified'), at: Math.round(performance.now()) }
     window.__NovaFlowAifxExportIntentUntil = 0
     cancelScheduledHostScrollFreeze()
     state.previewMode = 'result'
     state.refs.root?.classList.remove('is-open')
     document.body.classList.remove('novaflow-aifx-open')
+    document.body.classList.remove(LEAVING_CLASS)
     restoreHostScroll()
     if (options.activateParticle) setHostTabState('particle')
     refreshUi()
@@ -1332,6 +1405,12 @@
       if (root?.classList.contains('is-open') && !root.contains(event.target)) {
         if (action && isParticleEffectLabel(action.textContent)) {
           hideApp({ activateParticle: true })
+          return
+        }
+        if (isPrimarySidebarAction(action)) {
+          // Leaving 特效 through the primary sidebar: hiding here, before React switches, exposed the
+          // particle panel for the whole ~230ms transition; hide when the switch commits instead.
+          if (normalize(action.textContent) !== '特效') beginPrimaryLeave()
           return
         }
         if (!action || !isAiEffectLabel(action.textContent)) hideApp()
