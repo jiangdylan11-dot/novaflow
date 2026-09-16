@@ -135,7 +135,7 @@
   const LAYER_POINTER_AUTO_SCROLL_MAX_PX = 22
   const LAYER_POINTER_NEAREST_Y_SLACK_PX = 72
   const SPLIT_BUSY_OVERLAY_Z_INDEX = '2147483647'
-  const COMFY_BUSY_ACTIONS = new Set(['split', 'cutout', 'removeBackground', 'inpaint', 'imageUpscale', 'imageOutpaint', 'imageAngleAdjust', 'objectTransfer', 'storyboard'])
+  const COMFY_BUSY_ACTIONS = new Set(['split', 'cutout', 'removeBackground', 'effectExtract', 'inpaint', 'imageUpscale', 'imageOutpaint', 'imageAngleAdjust', 'objectTransfer', 'storyboard'])
   const STORYBOARD_DIALOG_ID = 'novaflow-storyboard-dialog'
   const STORYBOARD_EDIT_DIALOG_ID = 'novaflow-storyboard-edit-dialog'
   const STORYBOARD_DEBUG_DIALOG_ID = 'novaflow-storyboard-debug-dialog'
@@ -266,6 +266,10 @@
     'Qwen-Image-Lightning-8steps-V2.0.safetensors',
     'Qwen-Image-Lightning-8steps-V1.0.safetensors'
   ]
+  const EFFECT_EXTRACT_TIMEOUT_MS = 10 * 60 * 1000
+  const EFFECT_EXTRACT_FILENAME_PREFIX = 'NovaFlow_effect_extract'
+  const EFFECT_EXTRACT_SEED = 916202601
+  const EFFECT_EXTRACT_REFILL_TOLERANCE = 26
   const STORYBOARD_MODEL_MODE_DEFAULT = 'default'
   const STORYBOARD_MODEL_MODE_NSFW = 'qwenNsfw'
   const STORYBOARD_QWEN_NSFW_CHECKPOINT = QWEN_RAPID_CHECKPOINT
@@ -2750,6 +2754,7 @@
       split: '\u6b63\u5728\u62c6\u56fe...',
       cutout: '\u5bf9\u8c61\u63d0\u53d6\u5904\u7406\u4e2d...',
       removeBackground: '\u6b63\u5728\u81ea\u52a8\u53bb\u80cc...',
+      effectExtract: '\u6b63\u5728\u63d0\u53d6\u7279\u6548...',
       inpaint: `${selectionInpaintModeStartLabel(state.selectionTool && state.selectionTool.inpaintMode)}\u5904\u7406\u4e2d...`,
       imageUpscale: '\u6b63\u5728\u9ad8\u6e05\u653e\u5927...',
       imageOutpaint: '\u65e0\u9650\u6269\u56fe\u751f\u6210\u4e2d...',
@@ -2933,7 +2938,7 @@
     const kind = activeSplitEditToolKind()
     if (!kind) return true
     const name = String(action || '')
-    if (kind === 'cutout' || kind === 'inpaint') return name === 'selectionDraw' || name === 'selectionErase' || name === 'selectionCursor' || name === 'selectionNsfw' || name === 'selectionExit' || (kind === 'cutout' && name === 'selectionRemoveBackground')
+    if (kind === 'cutout' || kind === 'inpaint') return name === 'selectionDraw' || name === 'selectionErase' || name === 'selectionCursor' || name === 'selectionNsfw' || name === 'selectionExit' || (kind === 'cutout' && (name === 'selectionRemoveBackground' || name === 'selectionEffect'))
     if (kind === 'healing') return name === 'selectionDraw' || name === 'selectionErase' || name === 'selectionUndo' || name === 'selectionRedo' || name === 'selectionApply' || name === 'selectionExit'
     if (kind === 'penCutout' || kind === 'penFill') return name === 'penClose' || name === 'penUndo' || name === 'penClear' || name === 'penExit'
     if (kind === 'mask') return name === 'maskErase' || name === 'maskRestore' || name === 'maskCursor' || name === 'maskExit'
@@ -21195,9 +21200,11 @@
     const isSplitting = state.busy && state.busyAction === 'split'
     const isMerging = state.busy && state.busyAction === 'merge'
     const isCutting = state.busy && state.busyAction === 'cutout'
+    const isEffectExtracting = state.busy && state.busyAction === 'effectExtract'
     const isInpainting = state.busy && state.busyAction === 'inpaint'
     const isExporting = state.busy && state.busyAction === 'export'
     const cutoutActive = state.selectionTool && state.selectionTool.active && state.selectionTool.mode === 'cutout'
+    const effectModeActive = !!(cutoutActive && state.selectionTool.effectMode)
     const inpaintActive = state.selectionTool && state.selectionTool.active && state.selectionTool.mode === 'inpaint'
     const healingActive = state.selectionTool && state.selectionTool.active && state.selectionTool.mode === 'healing'
     const selectedInpaintMode = normalizeSelectionInpaintMode(state.selectionTool && state.selectionTool.inpaintMode)
@@ -21227,7 +21234,7 @@
       objectTransfer: state.busy && state.busyAction === 'objectTransfer' ? '\u8fc1\u79fb\u4e2d\u2026' : (objectTransferActive ? '\u6267\u884c\u8fc1\u79fb' : '\u4e07\u7269\u8fc1\u79fb'),
       imageOutpaint: state.busy && state.busyAction === 'imageOutpaint' ? '无限扩图中…' : '无限扩图',
       imageAngleAdjust: state.busy && state.busyAction === 'imageAngleAdjust' ? '角度调整中…' : '角度调整',
-      cutout: isCutting ? '智能抠图中…' : (cutoutActive ? '执行抠图' : '智能抠图'),
+      cutout: isCutting ? '智能抠图中…' : (isEffectExtracting ? '特效提取中…' : (cutoutActive ? (effectModeActive ? '执行特效提取' : '执行抠图') : '智能抠图')),
       storyboard: state.busy && state.busyAction === 'storyboard' ? '分镜生成中…' : '一键分镜',
       inpaint: isInpainting ? selectionInpaintModeBusyLabel(selectedInpaintMode) : (inpaintActive ? selectionInpaintModeExecuteLabel(selectedInpaintMode) : '\u667a\u80fd\u8865\u56fe'),
       inpaintCompletion: isInpainting && selectedInpaintMode === 'completion' ? selectionInpaintModeBusyLabel('completion') : (inpaintActive && selectedInpaintMode === 'completion' ? selectionInpaintModeExecuteLabel('completion') : selectionInpaintModeStartLabel('completion')),
@@ -23254,7 +23261,8 @@
       maskDataUrl: '',
       inpaintPrompt: String(current.inpaintPrompt || ''),
       inpaintMode: normalizeSelectionInpaintMode(current.inpaintMode),
-      inpaintNsfwEnabled: false
+      inpaintNsfwEnabled: false,
+      effectMode: false
     }
     selectionToolSession = null
     selectionToolUndoStack = []
@@ -23406,6 +23414,7 @@
       inpaintPrompt: nextInpaintPrompt,
       inpaintMode: nextInpaintMode,
       inpaintNsfwEnabled: false,
+      effectMode: false,
       sourceTargetLocked: mode === 'cutout' && sourceTarget
     }
     selectionToolSession = null
@@ -23507,6 +23516,16 @@
       nsfwButton.disabled = state.busy
       nsfwButton.setAttribute('aria-disabled', state.busy ? 'true' : 'false')
       nsfwButton.style.setProperty('cursor', state.busy ? 'default' : 'pointer', 'important')
+    }
+    const effectButton = document.querySelector(`[${TOOL_ACTION_ATTR}="selectionEffect"]`)
+    if (effectButton instanceof HTMLButtonElement) {
+      const effectEnabled = state.selectionTool.mode === 'cutout' && !!state.selectionTool.effectMode
+      patchSplitToolButtonVisual('selectionEffect', effectEnabled)
+      effectButton.setAttribute('aria-checked', effectEnabled ? 'true' : 'false')
+      effectButton.setAttribute('data-novaflow-selection-effect', effectEnabled ? 'on' : 'off')
+      effectButton.disabled = state.busy
+      effectButton.setAttribute('aria-disabled', state.busy ? 'true' : 'false')
+      effectButton.style.setProperty('cursor', state.busy ? 'default' : 'pointer', 'important')
     }
     patchSplitToolValue('selectionBrush', `画笔 ${brush}`, brush)
     return true
@@ -28967,6 +28986,7 @@
   async function executeCutoutTool() {
     if (state.busy) return
     if (!state.selectionTool || !state.selectionTool.active || state.selectionTool.mode !== 'cutout') return startSelectionTool('cutout')
+    if (state.selectionTool.effectMode) return executeEffectExtractTool()
     if (state.selectionTool.cutoutSource === 'original' && !state.selectionTool.sourceTargetLocked) {
       const activePart = activeSplitDataPart()
       if (activePart) {
@@ -29174,6 +29194,295 @@
       setMessage(`已生成去背图层：${id}`)
     } catch (error) {
       setMessage(String(error && error.message || error || '去背失败，请重试'), true)
+    } finally {
+      state.busy = false
+      state.busyAction = ''
+      state.busyStartedAt = 0
+      state.busyDetail = ''
+      render()
+      syncSplitWorkspace()
+    }
+  }
+
+  function setSelectionEffectMode(enabled) {
+    if (state.busy) return
+    if (!state.selectionTool || !state.selectionTool.active || state.selectionTool.mode !== 'cutout') return
+    state.selectionTool.effectMode = !!enabled
+    refreshSelectionToolSurface() // In-place toolbar refresh, same as the paint-mode switches.
+    patchSplitControlActionButtons() // The left 执行抠图 button relabels to 执行特效提取.
+  }
+
+  function toggleSelectionEffectMode() { setSelectionEffectMode(!(state.selectionTool && state.selectionTool.effectMode)) }
+
+  function effectExtractPromptText() {
+    // Tuned 2026-09-16 on the 4-step Lightning LoRA: a concise English instruction removes the
+    // subject and keeps the existing light effects in place. Listing effect kinds (fire, lightning,
+    // magic circle...) made the model paint every one of them, and the Chinese wording kept the
+    // character; denoise below 1 kept the whole picture.
+    return [
+      'Remove the person, all objects, the stairs and the whole background, and fill them with pure black (#000000).',
+      'Keep only the glowing light effects and sparkle particles that are already in the image, exactly in their original positions, shapes, sizes, colors and brightness.',
+      'Do not add new effects, do not move or redraw them.',
+      'Output: the original light effects on a pure black background.'
+    ].join(' ')
+  }
+
+  function buildEffectExtractQwenWorkflow(info, imageName, prefix, resolved) {
+    const lora = info.LoraLoaderModelOnly || null
+    const aura = info.ModelSamplingAuraFlow || null
+    const cfgNorm = info.CFGNorm || null
+    const workflow = {
+      '1': { class_type: 'LoadImage', inputs: { image: imageName } },
+      '3': { class_type: 'FluxKontextImageScale', inputs: buildComfyNodeInputs(info.FluxKontextImageScale, { image: ['1', 0] }) },
+      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: resolved.unetName, weight_dtype: 'fp8_e4m3fn' }) },
+      '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
+      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: resolved.vaeName }) }
+    }
+    let modelRef = ['4', 0]
+    let nextId = 7
+    if (lora && resolved.loraName) {
+      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: resolved.loraName, strength_model: 1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (aura) {
+      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 1.5 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (cfgNorm) {
+      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(info.VAEEncode, { pixels: ['3', 0], vae: ['6', 0] }) }
+    const latentRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(info.TextEncodeQwenImageEditPlus, { prompt: effectExtractPromptText(), clip: ['5', 0], vae: ['6', 0], image1: ['3', 0] }) }
+    const positiveRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'ConditioningZeroOut', inputs: { conditioning: positiveRef } }
+    const negativeRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = {
+      class_type: 'KSampler',
+      inputs: buildComfyNodeInputs(info.KSampler, {
+        seed: EFFECT_EXTRACT_SEED,
+        steps: resolved.loraName ? 6 : 30,
+        cfg: 1,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        denoise: 1,
+        model: modelRef,
+        positive: positiveRef,
+        negative: negativeRef,
+        latent_image: latentRef
+      })
+    }
+    const samplerRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(info.VAEDecode, { samples: samplerRef, vae: ['6', 0] }) }
+    const decodedRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: decodedRef }) }
+    return workflow
+  }
+
+  function effectExtractCropOptions(bounds) {
+    // Wider than the object-extract crop: the model needs the surrounding scene to know what
+    // to remove. Blacking out everything outside the stroke made it keep the window as-is.
+    const longest = Math.max(Number(bounds && bounds.width) || 1, Number(bounds && bounds.height) || 1)
+    const padding = Math.round(clampNumber(Math.max(96, longest * 0.5), 96, 320))
+    const minSize = Math.round(clampNumber(Math.max(512, longest + padding * 2), 384, 1024))
+    return { padding, minSize, align: 16 }
+  }
+
+  function effectExtractModelInput(session, bounds) {
+    const base = session.baseCanvas
+    const originalSize = { width: Math.max(1, Math.round(base.width || 1)), height: Math.max(1, Math.round(base.height || 1)) }
+    let cropBox = { x: 0, y: 0, width: originalSize.width, height: originalSize.height }
+    let cropImage = base
+    let masks = null
+    if (bounds) {
+      const crop = cropPadEngine(base, session.maskCanvas, bounds, effectExtractCropOptions(bounds))
+      cropBox = crop.cropBox
+      cropImage = crop.cropImage
+      masks = buildObjectExtractMasks(crop)
+    }
+    // The model sees the crop composited on black (layer sources may be transparent); the
+    // painted stroke only gates the result afterwards.
+    const inputCanvas = canvasOfSize(cropBox.width, cropBox.height)
+    const ctx = inputCanvas.getContext('2d', { willReadFrequently: true })
+    ctx.fillStyle = '#000'
+    ctx.fillRect(0, 0, cropBox.width, cropBox.height)
+    ctx.drawImage(cropImage, 0, 0, cropBox.width, cropBox.height)
+    return { cropBox, cropImage, inputCanvas, originalSize, softMask: masks ? masks.softRoiMask : null, hardMask: masks ? masks.hardRoiMask : null, gateGrow: masks ? masks.softGrow : 0 }
+  }
+
+  function refillEffectRgbFromSource(effectData, sourceData, generatedData, tolerance) {
+    // Where the model left a pixel untouched the source already shows the effect over a
+    // near-black ground, so its colour is trusted verbatim (un-multiplied by the same alpha
+    // the unmult step used); elsewhere the generated colour stays.
+    const limit = clampNumber(Number(tolerance) || EFFECT_EXTRACT_REFILL_TOLERANCE, 4, 96)
+    const stats = { visible: 0, refilled: 0 }
+    if (!effectData || !sourceData || !generatedData) return stats
+    for (let i = 0; i + 3 < effectData.length && i + 3 < sourceData.length && i + 3 < generatedData.length; i += 4) {
+      const alpha = effectData[i + 3] || 0
+      if (alpha <= 1) continue
+      stats.visible += 1
+      const diff = Math.max(
+        Math.abs((sourceData[i] || 0) - (generatedData[i] || 0)),
+        Math.abs((sourceData[i + 1] || 0) - (generatedData[i + 1] || 0)),
+        Math.abs((sourceData[i + 2] || 0) - (generatedData[i + 2] || 0))
+      )
+      if (diff > limit) continue
+      const divisor = clampNumber(alpha / 255, 0.14, 1)
+      effectData[i] = clampNumber(Math.round((sourceData[i] || 0) / divisor), 0, 255)
+      effectData[i + 1] = clampNumber(Math.round((sourceData[i + 1] || 0) / divisor), 0, 255)
+      effectData[i + 2] = clampNumber(Math.round((sourceData[i + 2] || 0) / divisor), 0, 255)
+      stats.refilled += 1
+    }
+    return stats
+  }
+
+  function gateEffectAlphaBySoftMask(effectData, maskData) {
+    const stats = { visible: 0, gated: 0 }
+    if (!effectData || !maskData) return stats
+    for (let i = 0; i + 3 < effectData.length && i + 3 < maskData.length; i += 4) {
+      const alpha = effectData[i + 3] || 0
+      if (alpha <= 1) continue
+      const gate = maskPixelValue(maskData, i)
+      const next = Math.round(alpha * gate / 255)
+      if (next !== alpha) stats.gated += 1
+      effectData[i + 3] = next
+      if (next <= 1) {
+        effectData[i] = 0
+        effectData[i + 1] = 0
+        effectData[i + 2] = 0
+        continue
+      }
+      stats.visible += 1
+    }
+    return stats
+  }
+
+  async function runEffectExtractPipeline(session, bounds) {
+    const baseUrl = await detectComfyBaseUrl()
+    setSplitBusyDetail('正在检查特效提取 Runtime 组件...')
+    const info = await comfyAllObjectInfo(baseUrl)
+    const resolved = resolveObjectTransferQwenRuntime(info)
+    const api = window.NovaFlowBackgroundRemoval
+    if (!api || typeof api.removeBlackBackgroundFromImageData !== 'function') throw new Error('去黑能力未加载，请重启 NovaFlow 后重试')
+    const input = effectExtractModelInput(session, bounds)
+    const width = input.cropBox.width
+    const height = input.cropBox.height
+    const runId = `${EFFECT_EXTRACT_FILENAME_PREFIX}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
+    setSplitBusyDetail('正在上传特效提取输入...')
+    const imageName = await uploadDataUrl(baseUrl, `${runId}_input.png`, input.inputCanvas.toDataURL('image/png'))
+    const workflow = buildEffectExtractQwenWorkflow(info, imageName, runId, resolved)
+    setSplitBusyDetail(`Qwen Image Edit 2511 黑底化\n${width} x ${height} px`)
+    const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, runId, EFFECT_EXTRACT_TIMEOUT_MS)
+    setSplitBusyDetail('正在去黑并回填原图像素...')
+    const generatedCanvas = await canvasFromDataUrl(resultDataUrl, width, height)
+    const generatedCtx = generatedCanvas.getContext('2d', { willReadFrequently: true })
+    const generatedImage = generatedCtx.getImageData(0, 0, width, height)
+    const generatedData = new Uint8ClampedArray(generatedImage.data)
+    const sourceData = input.inputCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+    const unmult = api.removeBlackBackgroundFromImageData(generatedImage, {})
+    const effectImage = unmult && unmult.imageData || generatedImage
+    const refillStats = refillEffectRgbFromSource(effectImage.data, sourceData, generatedData, EFFECT_EXTRACT_REFILL_TOLERANCE)
+    let gateStats = null
+    if (input.softMask) {
+      const maskData = input.softMask.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+      gateStats = gateEffectAlphaBySoftMask(effectImage.data, maskData)
+    }
+    const visible = gateStats ? gateStats.visible : refillStats.visible
+    if (visible < 16) throw new Error('没有识别到可提取的特效，请涂抹更靠近特效的区域后重试')
+    const resultCropCanvas = canvasOfSize(width, height)
+    resultCropCanvas.getContext('2d', { willReadFrequently: true }).putImageData(effectImage, 0, 0)
+    const finalCanvas = pasteCutoutToTransparent(resultCropCanvas, input.cropBox, input.originalSize)
+    const finalDataUrl = finalCanvas.toDataURL('image/png')
+    const finalAlpha = await alphaCanvasFromDataUrl(finalDataUrl, input.originalSize.width, input.originalSize.height)
+    return {
+      provider: 'Qwen Image Edit 2511 + unmult',
+      runtime: resolved,
+      input,
+      resultDataUrl,
+      unmultStats: unmult && unmult.stats || null,
+      refillStats,
+      gateStats,
+      visible,
+      finalCanvas,
+      finalDataUrl,
+      finalAlpha
+    }
+  }
+
+  async function executeEffectExtractTool() {
+    if (state.busy) return
+    if (!state.selectionTool || !state.selectionTool.active || state.selectionTool.mode !== 'cutout' || !state.selectionTool.effectMode) return
+    if (state.selectionTool.cutoutSource === 'original' && !state.selectionTool.sourceTargetLocked && activeSplitDataPart()) {
+      // Same reclassification as executeCutoutTool: a layer picked after the tool opened is the source.
+      state.selectionTool.cutoutSource = 'layer'
+      selectionToolSession = null
+    }
+    const session = await ensureSelectionToolSession()
+    if (!session || !session.baseCanvas) {
+      setMessage('请先拖入原图', true)
+      render()
+      return
+    }
+    const cutoutSource = state.selectionTool.cutoutSource || 'original'
+    let bounds = null
+    try {
+      bounds = maskBBoxEngine(cloneCanvas(session.maskCanvas), 8)
+    } catch {
+      bounds = null
+    }
+    if (!bounds || bounds.count < 16) bounds = null // 不涂抹 = 整图
+    state.busy = true
+    state.busyAction = 'effectExtract'
+    state.busyStartedAt = Date.now()
+    setSplitBusyDetail('正在准备特效提取...')
+    setMessage('正在提取特效...')
+    render()
+    try {
+      const result = await runEffectExtractPipeline(session, bounds)
+      await saveProcessingDebug('effectExtract', [
+        { name: 'model_input', dataUrl: result.input.inputCanvas.toDataURL('image/png') },
+        { name: 'qwen_black_background', dataUrl: result.resultDataUrl },
+        { name: 'final_alpha', dataUrl: result.finalAlpha.toDataURL('image/png') },
+        { name: 'final_rgba', dataUrl: result.finalDataUrl }
+      ], { cutoutSource, provider: result.provider, cropBox: result.input.cropBox, region: bounds ? 'mask' : 'whole', runtime: result.runtime, unmultStats: result.unmultStats, refillStats: result.refillStats, gateStats: result.gateStats })
+      const selected = cutoutSource === 'layer' ? currentEditableLayerPart() : null
+      const id = uniqueManualPartId(cutoutSource === 'layer' && selected ? `${selected.id}_effect` : 'effect')
+      const layer = spineLayerRank({ id: 'effect_front' })
+      let cropped = await cropEditorLayer(result.finalDataUrl, { ...presetFor(id), id, label: id, prompt: `Effect extract from ${cutoutSourceLabel(cutoutSource)}`, layer, pivot: { x: 0.5, y: 0.5 } })
+      if (!cropped || !cropped.dataUrl) throw new Error('特效提取结果没有可置入图层的有效像素')
+      cropped = withLayerImageAndMask(
+        cropped,
+        cropCanvasToLayerRect(result.finalCanvas, cropped),
+        layerMaskCanvasFromFullMask(result.finalAlpha, cropped),
+        {
+          kind: 'effect-extract',
+          source: 'executeEffectExtractTool',
+          provider: result.provider,
+          blend: 'additive',
+          region: bounds ? 'mask' : 'whole',
+          cutoutSource,
+          sourceLayerId: selected && selected.id || ''
+        }
+      )
+      cropped.name = id
+      cropped.layer = layer
+      cropped.manualLayer = true
+      cropped.visible = true
+      cropped.needsInpaint = false
+      resetSelectionTool()
+      await addManualPart(cropped)
+      setMessage(`已生成特效图层：${id}`)
+    } catch (error) {
+      setMessage(String(error && error.message || error || '特效提取失败，请重试'), true)
     } finally {
       state.busy = false
       state.busyAction = ''
@@ -30089,6 +30398,8 @@
     const brush = Number(state.selectionTool && state.selectionTool.brushSize) || 72
     const paintMode = state.selectionTool && state.selectionTool.paintMode === 'erase' ? 'erase' : 'draw'
     const isInpaint = state.selectionTool && state.selectionTool.mode === 'inpaint'
+    const isCutoutTool = !!(state.selectionTool && state.selectionTool.mode === 'cutout')
+    const effectModeEnabled = isCutoutTool && !!state.selectionTool.effectMode
     const inpaintPromptValue = String(state.selectionTool && state.selectionTool.inpaintPrompt || '')
     const selectedInpaintMode = normalizeSelectionInpaintMode(state.selectionTool && state.selectionTool.inpaintMode)
     const showInpaintNsfw = isInpaint && selectionInpaintNsfwAvailable(selectedInpaintMode)
@@ -30103,6 +30414,16 @@
     }
     return h('div', { style: { width: '100%', height: '100%', minHeight: 0, display: 'grid', gridTemplateRows: isInpaint ? 'auto auto minmax(0, 1fr)' : 'auto minmax(0, 1fr)', gap: '10px', alignItems: 'center', justifyItems: 'center', padding: '12px', boxSizing: 'border-box' } }, [
       h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'center', maxWidth: '96%' } }, [
+        isCutoutTool ? button('\u7279\u6548', () => toggleSelectionEffectMode(), effectModeEnabled, {
+          [TOOL_ACTION_ATTR]: 'selectionEffect',
+          'data-novaflow-selection-effect': effectModeEnabled ? 'on' : 'off',
+          role: 'switch',
+          'aria-checked': effectModeEnabled ? 'true' : 'false',
+          'aria-label': `\u7279\u6548\u63d0\u53d6 ${effectModeEnabled ? '\u5df2\u5f00\u542f' : '\u5df2\u5173\u95ed'}`,
+          title: '\u7279\u6548\u63d0\u53d6\uff1a\u5f00\u542f\u540e\u6267\u884c\u62a0\u56fe\u6539\u4e3a\u63d0\u53d6\u753b\u9762\u4e2d\u7684\u7279\u6548\uff08\u5149\u6548\u3001\u7c92\u5b50\u3001\u706b\u7130\u7b49\uff09\uff1b\u53ef\u6d82\u62b9\u9650\u5b9a\u533a\u57df\uff0c\u4e0d\u6d82\u62b9\u5219\u5904\u7406\u6574\u56fe',
+          disabled: state.busy,
+          style: { marginRight: '2px' }
+        }) : null,
         button('\u7ed8\u5236', () => setSelectionPaintMode('draw'), paintMode === 'draw', { [TOOL_ACTION_ATTR]: 'selectionDraw' }),
         button('\u64e6\u9664', () => setSelectionPaintMode('erase'), paintMode === 'erase', { [TOOL_ACTION_ATTR]: 'selectionErase' }),
         h('label', { style: { height: '28px', borderRadius: '8px', background: SPLIT_PANEL_BACKGROUND, border: '0', color: '#fff', display: 'flex', alignItems: 'center', gap: '7px', padding: '0 8px', fontSize: '11px', fontWeight: SPLIT_TOOL_FONT_WEIGHT, boxShadow: 'none' } }, [
@@ -30110,7 +30431,7 @@
           h('input', { [TOOL_RANGE_ATTR]: 'selectionBrush', type: 'range', min: '1', max: '260', value: brush, oninput: (event) => { setSelectionBrushSize(event.currentTarget.value, true); applySplitToolRangeVisual(event.currentTarget) }, style: splitToolRangeStyle(brush, 1, 260, '92px') })
         ]),
         button('\u9000\u51fa', () => stopSelectionTool(), false, { [TOOL_ACTION_ATTR]: 'selectionExit' }),
-        !isInpaint && state.selectionTool && state.selectionTool.mode === 'cutout' ? button('\u53bb\u80cc', () => executeSelectionRemoveBackground(), false, {
+        isCutoutTool ? button('\u53bb\u80cc', () => executeSelectionRemoveBackground(), false, {
           [TOOL_ACTION_ATTR]: 'selectionRemoveBackground',
           title: '\u4e0d\u9700\u8981\u7ed8\u5236\u906e\u7f69\uff1a\u5bf9\u5f53\u524d\u62a0\u56fe\u6765\u6e90\u6574\u56fe\u81ea\u52a8\u63d0\u53d6\u900f\u660e\u4e3b\u4f53\uff0c\u5e76\u751f\u6210\u65b0\u7684\u900f\u660e\u56fe\u5c42',
           disabled: state.busy,
@@ -38705,6 +39026,7 @@
     if (action === 'selectionApply') return executeHealingTool()
     if (action === 'selectionExit') return stopSelectionTool()
     if (action === 'selectionRemoveBackground') return executeSelectionRemoveBackground()
+    if (action === 'selectionEffect') return toggleSelectionEffectMode()
     if (action === 'penClose') return penClosePath()
     if (action === 'penUndo') return penUndoPoint()
     if (action === 'penClear') return penClearPath()
@@ -41556,6 +41878,104 @@
     }
   }
 
+  async function runEffectExtractSmokeTest(options = {}) {
+    await waitForSplitEditorPanel('effect extract smoke')
+    const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms))
+    const sourceDataUrl = String(options && options.sourceDataUrl || '')
+    if (sourceDataUrl) {
+      await importSourceDataUrl(String(options && options.fileName || 'effect-smoke.png'), sourceDataUrl)
+      await wait(1200) // the host re-renders after an import; a tool started before that settles is reset
+    }
+    if (!state.source || !state.source.dataUrl) throw new Error('effect extract smoke needs a source image')
+    const leftButton = () => document.querySelector(`[${CONTROL_ACTION_ATTR}="cutout"]`)
+    const effectButton = () => document.querySelector(`[${TOOL_ACTION_ATTR}="selectionEffect"]`)
+    const visibleActions = () => Array.from(document.querySelectorAll(`[${TOOL_ACTION_ATTR}]`)).filter((node) => isVisibleElement(node)).map((node) => node.getAttribute(TOOL_ACTION_ATTR))
+    const workspaceReady = () => {
+      const overlay = document.getElementById(WORKSPACE_OVERLAY_ID)
+      return !!(overlay && overlay.isConnected && overlay.getBoundingClientRect().width > 0 && state.sourceSize && !state.sourceDataUrlPending && !state.busy)
+    }
+    const readyStartedAt = Date.now()
+    while (!workspaceReady() && Date.now() - readyStartedAt < 10000) await wait(120) // a fresh page mounts the workspace a while after the import
+    let lastFailure = ''
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (attempt) await wait(900)
+      if (state.selectionTool && state.selectionTool.active) stopSelectionTool()
+      selectSplitPart('', 'source')
+      if (!leftButton()) {
+        // The 拆图 accordion may be collapsed; the left button only exists while it is open.
+        const toggle = document.querySelector(`[${CONTROL_CATEGORY_TOGGLE_ATTR}="split"]`)
+        if (toggle) toggle.click()
+        await wait(400)
+      }
+      if (!leftButton()) {
+        lastFailure = '智能抠图 control missing'
+        continue
+      }
+      leftButton().click() // The user's path: 智能抠图 starts the brush tool, 执行抠图 runs it.
+      await wait(500)
+      const actions = visibleActions()
+      if (actions[0] !== 'selectionEffect' || actions[1] !== 'selectionDraw') {
+        lastFailure = `特效 toggle must lead the toolbar: ${actions.join(',')} (workspaceReady=${workspaceReady()} active=${!!(state.selectionTool && state.selectionTool.active)})`
+        continue
+      }
+      if (state.selectionTool.effectMode || effectButton().getAttribute('aria-checked') !== 'false') throw new Error('特效 must default to off')
+      if (!leftButton() || textOf(leftButton()) !== '执行抠图') throw new Error(`left button before toggle: ${leftButton() && textOf(leftButton())}`)
+      const busyStartedAt = Date.now()
+      while (state.busy && Date.now() - busyStartedAt < 8000) await wait(80)
+      await clickSplitToolActionForSmoke('selectionEffect')
+      await wait(160)
+      if (state.selectionTool.active && state.selectionTool.effectMode && effectButton() && effectButton().getAttribute('aria-checked') === 'true') {
+        lastFailure = ''
+        break
+      }
+      lastFailure = `特效 toggle did not turn on: busy=${state.busy} action=${state.busyAction} mode=${state.selectionTool.mode} active=${state.selectionTool.active} effectMode=${state.selectionTool.effectMode} aria=${effectButton() && effectButton().getAttribute('aria-checked')}`
+    }
+    if (lastFailure) throw new Error(lastFailure)
+    if (textOf(leftButton()) !== '执行特效提取') throw new Error(`left button after toggle: ${textOf(leftButton())}`)
+    if (options.paint !== false) {
+      // The paint canvas is hydrated a frame after the workspace sync.
+      const canvasStartedAt = Date.now()
+      while (!activeSelectionToolCanvas() && Date.now() - canvasStartedAt < 4000) await wait(100)
+      if (!activeSelectionToolCanvas()) throw new Error(`selection canvas never mounted: active=${state.selectionTool.active} viewMode=${state.viewMode}`)
+      await ensureSelectionToolSession() // strokes are dropped until the base/mask canvases exist
+      const sessionStartedAt = Date.now()
+      while (!selectionToolSession && Date.now() - sessionStartedAt < 4000) await wait(100)
+      if (!selectionToolSession) throw new Error('selection session never became ready')
+      await wait(200)
+      // A diagonal stroke through the left third of the picture; mouse pointer events like a real drag.
+      const canvas = activeSelectionToolCanvas()
+      const rect = canvas.getBoundingClientRect()
+      const PointerCtor = typeof PointerEvent === 'function' ? PointerEvent : MouseEvent
+      const strokePoints = [[0.16, 0.30], [0.20, 0.42], [0.26, 0.52], [0.34, 0.56], [0.42, 0.55]].map(([fx, fy]) => ({ clientX: rect.left + rect.width * fx, clientY: rect.top + rect.height * fy }))
+      const fire = (type, point, buttons) => canvas.dispatchEvent(new PointerCtor(type, { bubbles: true, cancelable: true, clientX: point.clientX, clientY: point.clientY, button: 0, buttons, pointerId: 77, pointerType: 'mouse', isPrimary: true }))
+      fire('pointerdown', strokePoints[0], 1)
+      for (let i = 1; i < strokePoints.length; i += 1) {
+        await wait(40)
+        fire('pointermove', strokePoints[i], 1)
+      }
+      await wait(40)
+      fire('pointerup', strokePoints[strokePoints.length - 1], 0)
+      await wait(300)
+      const painted = selectionToolSession && selectionBounds(selectionToolSession.maskCanvas, 8)
+      if (!painted || painted.count < 16) throw new Error(`effect smoke stroke did not record: ${JSON.stringify(painted)}`)
+    }
+    const before = state.parts.length
+    leftButton().click() // Same direct click the mask smoke uses on its left-panel control.
+    const startedAt = Date.now()
+    while (!state.busy && Date.now() - startedAt < 5000) await wait(50)
+    if (!state.busy || state.busyAction !== 'effectExtract') throw new Error(`effect extract did not start: busy=${state.busy} action=${state.busyAction} message=${String(state.message || '')}`)
+    while (state.busy && Date.now() - startedAt < EFFECT_EXTRACT_TIMEOUT_MS) await wait(250)
+    if (state.busy) throw new Error('effect extract did not finish in time')
+    const part = state.parts.find((item) => item && item.metadata && item.metadata.kind === 'effect-extract')
+    if (!part || state.parts.length !== before + 1) throw new Error(`effect layer missing: ${String(state.message || '')}`)
+    if (state.selectionTool && state.selectionTool.active) throw new Error('selection tool still active after effect extract')
+    if (state.activePartId !== part.id) throw new Error('effect layer not selected')
+    if (part.metadata.blend !== 'additive') throw new Error('effect layer must be tagged additive')
+    if (part.metadata.region !== (options.paint !== false ? 'mask' : 'whole')) throw new Error(`effect layer region ${part.metadata.region}`)
+    document.body.setAttribute('data-novaflow-effect-extract-smoke', 'pass')
+    return { partId: part.id, x: part.x, y: part.y, width: part.width, height: part.height, region: part.metadata.region, provider: part.metadata.provider, elapsedMs: Date.now() - startedAt }
+  }
+
   async function runSelectionRemoveBackgroundSmokeTest(options = {}) {
     await waitForSplitEditorPanel('remove background smoke')
     const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -42568,6 +42988,14 @@
     executeSelectionRemoveBackground,
     runSelectionRemoveBackgroundSmokeTest,
     gateImageAlphaBySourceAlpha,
+    setSelectionEffectMode,
+    toggleSelectionEffectMode,
+    executeEffectExtractTool,
+    runEffectExtractSmokeTest,
+    buildEffectExtractQwenWorkflow,
+    effectExtractPromptText,
+    refillEffectRgbFromSource,
+    gateEffectAlphaBySoftMask,
     selectionRemoveBackgroundLayerId,
     splitSeeThroughFeet,
     splitSeeThroughFootwear,
@@ -43299,6 +43727,18 @@
         const message = String(error && error.message || error || 'mask stencil smoke failed')
         document.body.setAttribute('data-novaflow-mask-stencil-smoke', `fail:${message}`)
         setMessage(`MASK_STENCIL_SMOKE_FAIL ${message}`, true)
+        render()
+        syncSplitWorkspace()
+      })
+    }, 260)
+  }
+
+  if (new URLSearchParams(window.location.search).has('__novaflow_effect_extract_smoke')) {
+    window.setTimeout(() => {
+      runEffectExtractSmokeTest().catch((error) => {
+        const message = String(error && error.message || error || 'effect extract smoke failed')
+        document.body.setAttribute('data-novaflow-effect-extract-smoke', `fail:${message}`)
+        setMessage(`EFFECT_EXTRACT_SMOKE_FAIL ${message}`, true)
         render()
         syncSplitWorkspace()
       })

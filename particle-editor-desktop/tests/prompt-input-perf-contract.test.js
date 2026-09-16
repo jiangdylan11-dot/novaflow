@@ -182,7 +182,7 @@ test("index.html cache-busts every runtime file touched by the prompt input fix"
     "spine-atlas-webp.tool.js": "20260916-section-switch-1",
     "novaflow-client-auth.js": CACHE_VERSION,
     "novaflow-brand-runtime.js": "20260916-shortcut-auth-1",
-    "spine-split-runtime.js": "20260916-remove-bg-1",
+    "spine-split-runtime.js": "20260916-effect-extract-1",
     "art-generate-lora.js": CACHE_VERSION,
   };
   for (const [fileName, version] of Object.entries(expected)) {

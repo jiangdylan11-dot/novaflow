@@ -7,7 +7,7 @@ const { loadSpine } = require('../../tools/qwen-rapid-migration-smoke.cjs')
 const root = path.resolve(__dirname, '../..')
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
 const RUNTIME = 'particle-editor/spine-split-runtime.js'
-const CACHE_VERSION = '20260916-remove-bg-1'
+const CACHE_VERSION = '20260916-effect-extract-1'
 
 function loadRuntime() {
   const s = loadSpine(RUNTIME)
@@ -19,8 +19,8 @@ test('the smart cutout toolbar ships a one-click 去背 button after 退出 and 
   const html = read('particle-editor/index.html')
   assert.ok(html.includes(`spine-split-runtime.js?v=${CACHE_VERSION}`), 'index.html must load the remove-background build of the split runtime')
   const source = read(RUNTIME)
-  assert.match(source, /button\('\\u9000\\u51fa', \(\) => stopSelectionTool\(\), false, \{ \[TOOL_ACTION_ATTR\]: 'selectionExit' \}\),\n\s+!isInpaint && state\.selectionTool && state\.selectionTool\.mode === 'cutout' \? button\('\\u53bb\\u80cc', \(\) => executeSelectionRemoveBackground\(\), false, \{\n\s+\[TOOL_ACTION_ATTR\]: 'selectionRemoveBackground'/, 'the 去背 button follows 退出 and only renders in cutout mode')
-  assert.match(source, /\(kind === 'cutout' && name === 'selectionRemoveBackground'\)/, 'the action is allowed only while the cutout tool is active')
+  assert.match(source, /button\('\\u9000\\u51fa', \(\) => stopSelectionTool\(\), false, \{ \[TOOL_ACTION_ATTR\]: 'selectionExit' \}\),\n\s+isCutoutTool \? button\('\\u53bb\\u80cc', \(\) => executeSelectionRemoveBackground\(\), false, \{\n\s+\[TOOL_ACTION_ATTR\]: 'selectionRemoveBackground'/, 'the 去背 button follows 退出 and only renders in cutout mode')
+  assert.match(source, /\(kind === 'cutout' && \(name === 'selectionRemoveBackground' \|\| name === 'selectionEffect'\)\)/, 'the action is allowed only while the cutout tool is active')
   assert.match(source, /if \(action === 'selectionRemoveBackground'\) return executeSelectionRemoveBackground\(\)/, 'the tool action dispatcher runs the removal')
   assert.match(source, /const COMFY_BUSY_ACTIONS = new Set\(\['split', 'cutout', 'removeBackground'/, 'the removal shows the ComfyUI busy overlay with elapsed time')
   assert.match(source, /removeBackground: '\\u6b63\\u5728\\u81ea\\u52a8\\u53bb\\u80cc\.\.\.'/, 'the busy overlay names the removal')

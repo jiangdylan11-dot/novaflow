@@ -1,0 +1,145 @@
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+const test = require('node:test')
+const { loadSpine } = require('../../tools/qwen-rapid-migration-smoke.cjs')
+
+const root = path.resolve(__dirname, '../..')
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
+const RUNTIME = 'particle-editor/spine-split-runtime.js'
+const CACHE_VERSION = '20260916-effect-extract-1'
+const plain = (value) => JSON.parse(JSON.stringify(value))
+
+function loadRuntime() {
+  const s = loadSpine(RUNTIME)
+  s.state = { parts: [] }
+  return s
+}
+
+// Minimal object_info shapes: buildComfyNodeInputs walks required/optional specs and fills defaults.
+const combo = (options) => [options, {}]
+const fakeInfo = (withLora) => ({
+  FluxKontextImageScale: { input: { required: { image: ['IMAGE', {}] } } },
+  UNETLoader: { input: { required: { unet_name: combo(['qwen_image_edit_2511_bf16.safetensors']), weight_dtype: combo(['default', 'fp8_e4m3fn']) } } },
+  CLIPLoader: { input: { required: { clip_name: combo(['qwen_2.5_vl_7b_fp8_scaled.safetensors']), type: combo(['qwen_image']) }, optional: { device: combo(['default']) } } },
+  VAELoader: { input: { required: { vae_name: combo(['qwen_image_vae.safetensors']) } } },
+  VAEEncode: { input: { required: { pixels: ['IMAGE', {}], vae: ['VAE', {}] } } },
+  TextEncodeQwenImageEditPlus: { input: { required: { clip: ['CLIP', {}], prompt: ['STRING', { default: '' }] }, optional: { vae: ['VAE', {}], image1: ['IMAGE', {}], image2: ['IMAGE', {}], image3: ['IMAGE', {}] } } },
+  ConditioningZeroOut: { input: { required: { conditioning: ['CONDITIONING', {}] } } },
+  KSampler: { input: { required: { model: ['MODEL', {}], seed: ['INT', { default: 0 }], steps: ['INT', { default: 20 }], cfg: ['FLOAT', { default: 8 }], sampler_name: combo(['euler']), scheduler: combo(['simple']), positive: ['CONDITIONING', {}], negative: ['CONDITIONING', {}], latent_image: ['LATENT', {}], denoise: ['FLOAT', { default: 1 }] } } },
+  VAEDecode: { input: { required: { samples: ['LATENT', {}], vae: ['VAE', {}] } } },
+  SaveImage: { input: { required: { images: ['IMAGE', {}], filename_prefix: ['STRING', { default: 'ComfyUI' }] } } },
+  ModelSamplingAuraFlow: { input: { required: { model: ['MODEL', {}], shift: ['FLOAT', { default: 3 }] } } },
+  CFGNorm: { input: { required: { model: ['MODEL', {}], strength: ['FLOAT', { default: 1 }] } } },
+  ...(withLora ? { LoraLoaderModelOnly: { input: { required: { model: ['MODEL', {}], lora_name: combo(['Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors']), strength_model: ['FLOAT', { default: 1 }] } } } } : {})
+})
+
+test('the smart cutout toolbar leads with a default-off 特效 switch and routes 执行抠图 to the effect pipeline', () => {
+  const html = read('particle-editor/index.html')
+  assert.ok(html.includes(`spine-split-runtime.js?v=${CACHE_VERSION}`), 'index.html must load the effect-extract build of the split runtime')
+  const source = read(RUNTIME)
+  assert.match(source, /isCutoutTool \? button\('\\u7279\\u6548', \(\) => toggleSelectionEffectMode\(\), effectModeEnabled, \{\n\s+\[TOOL_ACTION_ATTR\]: 'selectionEffect',\n\s+'data-novaflow-selection-effect': effectModeEnabled \? 'on' : 'off',\n\s+role: 'switch',[\s\S]{0,700}?\}\) : null,\n\s+button\('\\u7ed8\\u5236', \(\) => setSelectionPaintMode\('draw'\)/, 'the 特效 switch sits before 绘制 and only renders in cutout mode')
+  assert.match(source, /inpaintNsfwEnabled: false,\n\s+effectMode: false,\n\s+sourceTargetLocked: mode === 'cutout' && sourceTarget/, 'starting the tool resets the switch to off')
+  assert.match(source, /inpaintNsfwEnabled: false,\n\s+effectMode: false\n\s+\}\n\s+selectionToolSession = null/, 'resetting the tool clears the switch')
+  assert.match(source, /if \(action === 'selectionEffect'\) return toggleSelectionEffectMode\(\)/, 'the tool action dispatcher toggles the switch')
+  assert.match(source, /return startSelectionTool\('cutout'\)\n\s+if \(state\.selectionTool\.effectMode\) return executeEffectExtractTool\(\)/, '执行抠图 runs the effect pipeline while the switch is on')
+  assert.match(source, /cutout: isCutting \? '智能抠图中…' : \(isEffectExtracting \? '特效提取中…' : \(cutoutActive \? \(effectModeActive \? '执行特效提取' : '执行抠图'\) : '智能抠图'\)\)/, 'the left button relabels while the switch is on')
+  assert.match(source, /const COMFY_BUSY_ACTIONS = new Set\(\['split', 'cutout', 'removeBackground', 'effectExtract'/, 'the extraction shows the ComfyUI busy overlay with elapsed time')
+  assert.match(source, /effectExtract: '\\u6b63\\u5728\\u63d0\\u53d6\\u7279\\u6548\.\.\.'/, 'the busy overlay names the extraction')
+  assert.match(source, /patchSplitToolButtonVisual\('selectionEffect', effectEnabled\)/, 'the in-place toolbar patch re-applies the switch state')
+  assert.match(source, /if \(!bounds \|\| bounds\.count < 16\) bounds = null \/\/ 不涂抹 = 整图/, 'no mask means the whole image')
+  assert.match(source, /const unmult = api\.removeBlackBackgroundFromImageData\(generatedImage, \{\}\)\n\s+const effectImage = unmult && unmult\.imageData \|\| generatedImage\n\s+const refillStats = refillEffectRgbFromSource\(effectImage\.data, sourceData, generatedData, EFFECT_EXTRACT_REFILL_TOLERANCE\)/, 'the black-background render is un-multiplied and then refilled from the source')
+  assert.match(source, /kind: 'effect-extract',\n\s+source: 'executeEffectExtractTool',\n\s+provider: result\.provider,\n\s+blend: 'additive',/, 'the layer is tagged as an additive effect')
+  assert.match(source, /const layer = spineLayerRank\(\{ id: 'effect_front' \}\)/, 'the effect layer takes the effect_front rank')
+  assert.match(source, /has\('__novaflow_effect_extract_smoke'\)/, 'the in-page smoke is wired to a query flag')
+  assert.match(source, /setSelectionEffectMode,\n\s+toggleSelectionEffectMode,\n\s+executeEffectExtractTool,\n\s+runEffectExtractSmokeTest,/, 'the debug hooks expose the extraction')
+})
+
+test('the effect workflow is a single-image Qwen 2511 edit with a fixed seed and the black-background prompt', () => {
+  const s = loadRuntime()
+  const resolved = { unetName: 'qwen_image_edit_2511_bf16.safetensors', clipName: 'qwen_2.5_vl_7b_fp8_scaled.safetensors', vaeName: 'qwen_image_vae.safetensors', loraName: 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors' }
+  const workflow = plain(s.buildEffectExtractQwenWorkflow(fakeInfo(true), 'effect_input.png', 'NovaFlow_effect_extract_x', resolved))
+  const byType = (type) => Object.entries(workflow).filter(([, node]) => node.class_type === type)
+  assert.equal(byType('LoadImage').length, 1, 'one input image only')
+  assert.equal(workflow['1'].inputs.image, 'effect_input.png')
+  assert.deepEqual(workflow['3'].inputs.image, ['1', 0])
+  const [textId, text] = byType('TextEncodeQwenImageEditPlus')[0]
+  assert.deepEqual(text.inputs.image1, ['3', 0])
+  assert.equal(text.inputs.image2, undefined, 'no reference image')
+  assert.equal(text.inputs.prompt, s.effectExtractPromptText())
+  assert.match(text.inputs.prompt, /pure black \(#000000\)/)
+  assert.match(text.inputs.prompt, /Keep only the glowing light effects and sparkle particles that are already in the image/)
+  assert.match(text.inputs.prompt, /Do not add new effects, do not move or redraw them\./)
+  assert.doesNotMatch(text.inputs.prompt, /fire|lightning|magic|smoke/i, 'naming effect kinds makes the model paint them')
+  const [, zero] = byType('ConditioningZeroOut')[0]
+  assert.deepEqual(zero.inputs.conditioning, [textId, 0])
+  const [, sampler] = byType('KSampler')[0]
+  assert.equal(sampler.inputs.seed, 916202601)
+  assert.equal(sampler.inputs.steps, 6)
+  assert.equal(sampler.inputs.cfg, 1)
+  assert.equal(sampler.inputs.denoise, 1)
+  const [loraId, lora] = byType('LoraLoaderModelOnly')[0]
+  assert.deepEqual(lora.inputs.model, ['4', 0])
+  assert.equal(lora.inputs.lora_name, resolved.loraName)
+  const [auraId, aura] = byType('ModelSamplingAuraFlow')[0]
+  assert.deepEqual(aura.inputs.model, [loraId, 0])
+  const [cfgId, cfg] = byType('CFGNorm')[0]
+  assert.deepEqual(cfg.inputs.model, [auraId, 0])
+  assert.deepEqual(sampler.inputs.model, [cfgId, 0])
+  const [, save] = byType('SaveImage')[0]
+  assert.equal(save.inputs.filename_prefix, 'NovaFlow_effect_extract_x')
+
+  const plainRun = plain(s.buildEffectExtractQwenWorkflow(fakeInfo(false), 'in.png', 'p', { ...resolved, loraName: '' }))
+  assert.equal(Object.values(plainRun).some((node) => node.class_type === 'LoraLoaderModelOnly'), false)
+  assert.equal(Object.values(plainRun).find((node) => node.class_type === 'KSampler').inputs.steps, 30)
+})
+
+test('pixel refill trusts the source only where the model kept the pixel, un-multiplied by the same alpha', () => {
+  const s = loadRuntime()
+  // px0: hidden (alpha 0) untouched; px1: kept pixel (diff 4) → source/divisor; px2: repainted pixel (diff 90) → generated colour stays; px3: kept but low alpha → divisor floor 0.14
+  const effect = new Uint8ClampedArray([
+    9, 9, 9, 0,
+    250, 200, 100, 128,
+    250, 200, 100, 255,
+    30, 20, 10, 20
+  ])
+  const source = new Uint8ClampedArray([
+    120, 120, 120, 255,
+    124, 100, 52, 255,
+    30, 30, 30, 255,
+    20, 10, 5, 255
+  ])
+  const generated = new Uint8ClampedArray([
+    0, 0, 0, 255,
+    120, 100, 50, 255,
+    120, 100, 50, 255,
+    22, 12, 6, 255
+  ])
+  const stats = plain(s.refillEffectRgbFromSource(effect, source, generated, 26))
+  assert.deepEqual(stats, { visible: 3, refilled: 2 })
+  assert.deepEqual(Array.from(effect.slice(0, 4)), [9, 9, 9, 0], 'hidden pixels are left alone')
+  assert.deepEqual(Array.from(effect.slice(4, 8)), [247, 199, 104, 128], 'kept pixel = source / (128/255)')
+  assert.deepEqual(Array.from(effect.slice(8, 12)), [250, 200, 100, 255], 'repainted pixel keeps the generated colour')
+  assert.deepEqual(Array.from(effect.slice(12, 16)), [143, 71, 36, 20], 'low alpha uses the 0.14 divisor floor')
+  assert.deepEqual(plain(s.refillEffectRgbFromSource(null, source, generated, 26)), { visible: 0, refilled: 0 })
+})
+
+test('the soft mask only attenuates alpha and clears fully gated RGB', () => {
+  const s = loadRuntime()
+  const effect = new Uint8ClampedArray([
+    200, 100, 50, 255,
+    200, 100, 50, 200,
+    200, 100, 50, 100,
+    200, 100, 50, 0
+  ])
+  const mask = new Uint8ClampedArray([
+    255, 255, 255, 255,
+    128, 128, 128, 255,
+    0, 0, 0, 255,
+    255, 255, 255, 255
+  ])
+  const stats = plain(s.gateEffectAlphaBySoftMask(effect, mask))
+  assert.deepEqual(stats, { visible: 2, gated: 2 })
+  assert.deepEqual(Array.from(effect), [200, 100, 50, 255, 200, 100, 50, 100, 0, 0, 0, 0, 200, 100, 50, 0])
+  assert.deepEqual(plain(s.gateEffectAlphaBySoftMask(effect, null)), { visible: 0, gated: 0 })
+})
