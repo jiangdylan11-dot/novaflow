@@ -45,6 +45,15 @@
   ];
   const PRIMARY_ENTRY_LABELS = ["\u7279\u6548", "\u52a8\u753b", "\u7f8e\u5de5", "\u5de5\u5177"];
   const PRIMARY_ENTRY_DISPLAY_LABELS = ["\u7279\u6548", "\u52a8\u753b", "\u7f8e\u5de5", "\u5de5\u5177"];
+  // The spine-split editor paints its own toolbars into the canvas and the left control column
+  // (智能抠图的 特效 / 去背 等); those labels collide with the primary rail entries, so a click
+  // there must never read as a section switch.
+  const SPINE_SPLIT_SURFACE_SELECTOR = [
+    "#novaflow-spine-split-workspace-overlay",
+    "#novaflow-spine-split-right-workspace-host",
+    "[data-novaflow-spine-split-tool-action]",
+    "[data-novaflow-spine-split-control-action]"
+  ].join(", ");
   const PRIMARY_OUTPUT_SHORTCUT_LABEL = "\u4ed3\u5e93";
   const PRIMARY_OUTPUT_SHORTCUT_CELL_ID = "novaflow-primary-output-shortcut-cell";
   const PRIMARY_OUTPUT_SHORTCUT_DIVIDER_ID = "novaflow-primary-output-shortcut-divider";
@@ -31396,9 +31405,26 @@
     return index >= 0 ? PRIMARY_ENTRY_LABELS[index] : null;
   }
 
+  function isSpineSplitSurfaceElement(element) {
+    return element instanceof Element && Boolean(element.closest(SPINE_SPLIT_SURFACE_SELECTOR));
+  }
+
+  function isPrimaryEntryIntentButton(button) {
+    if (!(button instanceof HTMLElement)) return false;
+    if (button.getAttribute("data-novaflow-primary-entry") === "1") return true;
+    if (button.closest("#" + PRIMARY_SIDEBAR_ID + ', [data-novaflow-primary-rail="1"], [data-novaflow-primary-cell="1"]')) return true;
+    if (isSpineSplitSurfaceElement(button)) return false;
+    // The same geometry gate findPrimaryEntryButton uses: the rail always sits in the left column,
+    // so a button that only shares an entry name (a canvas toolbar switch) is not an entry.
+    const rect = getRafCachedClientRect(button);
+    return rect.left < PRIMARY_COLUMN_WIDTH + 24 && rect.right > -4;
+  }
+
   function getPrimaryLabelForButton(button) {
     if (!(button instanceof HTMLElement)) return null;
-    return buttonTextCandidates(button).map(resolvePrimaryEntryLabel).find(Boolean) || null;
+    const label = buttonTextCandidates(button).map(resolvePrimaryEntryLabel).find(Boolean) || null;
+    if (!label) return null;
+    return isPrimaryEntryIntentButton(button) ? label : null;
   }
 
   function getPrimaryLabelFromRailPointerEvent(event) {
@@ -69526,7 +69552,7 @@
         if (isAnimationLocalRuntimeButton(button)) return;
         if (isPrimaryRailOriginEvent(event)) return;
         const buttonLabel = normalizeText(button.getAttribute("aria-label") || button.textContent || "");
-        if (buttonLabel.includes("\u7279\u6548") || buttonLabel.includes("\u52a8\u753b")) {
+        if (!isSpineSplitSurfaceElement(button) && (buttonLabel.includes("\u7279\u6548") || buttonLabel.includes("\u52a8\u753b"))) {
           nfDesktopPerfRecordSwitch(nfDesktopPerfSwitchLabelForButtonText(buttonLabel), {
             phase: "click",
             buttonLabel

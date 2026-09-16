@@ -130,3 +130,14 @@ test('the soft mask only attenuates alpha and clears fully gated RGB', () => {
   assert.deepEqual(Array.from(effect), [200, 100, 50, 255, 200, 100, 50, 100, 0, 0, 0, 0, 200, 100, 50, 0])
   assert.deepEqual(plain(s.gateEffectAlphaBySoftMask(effect, null)), { visible: 0, gated: 0 })
 })
+
+// The primary rail entries are 特效/动画/美工/工具 and the cutout toolbar's 特效 switch shares the first
+// name. The brand runtime resolves a section switch from a button's text, so without a scope guard a
+// click on the switch repainted the rail and tore the split workspace down (2026-09-16).
+test('the brand runtime never reads a split-editor toolbar button as a primary section entry', () => {
+  const brand = read('particle-editor/novaflow-brand-runtime.js')
+  assert.match(brand, /const SPINE_SPLIT_SURFACE_SELECTOR = \[\n\s+"#novaflow-spine-split-workspace-overlay",\n\s+"#novaflow-spine-split-right-workspace-host",\n\s+"\[data-novaflow-spine-split-tool-action\]",\n\s+"\[data-novaflow-spine-split-control-action\]"\n\s+\]\.join\(", "\);/, 'the split editor surfaces are listed in one selector')
+  assert.match(brand, /function isPrimaryEntryIntentButton\(button\) \{[\s\S]{0,700}?if \(isSpineSplitSurfaceElement\(button\)\) return false;/, 'a split editor surface is never a primary entry')
+  assert.match(brand, /function getPrimaryLabelForButton\(button\) \{\n\s+if \(!\(button instanceof HTMLElement\)\) return null;\n\s+const label = buttonTextCandidates\(button\)\.map\(resolvePrimaryEntryLabel\)\.find\(Boolean\) \|\| null;\n\s+if \(!label\) return null;\n\s+return isPrimaryEntryIntentButton\(button\) \? label : null;\n\s+\}/, 'a matching label only counts when the button really is a rail entry')
+  assert.match(brand, /if \(!isSpineSplitSurfaceElement\(button\) && \(buttonLabel\.includes\("\\u7279\\u6548"\) \|\| buttonLabel\.includes\("\\u52a8\\u753b"\)\)\) \{/, 'the segment refresh ignores the split toolbars too')
+})
