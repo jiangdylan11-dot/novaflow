@@ -260,11 +260,14 @@
   const OBJECT_TRANSFER_NOISE_GROW_MIN = 6
   const OBJECT_TRANSFER_NOISE_GROW_MAX = 24
   const OBJECT_TRANSFER_OBJECT_GROW = 4
+  const OBJECT_TRANSFER_CONTACT_HINT = 0.25
   const OBJECT_TRANSFER_SCENE_SUBJECT_ALPHA = 24
   const OBJECT_TRANSFER_SCENE_SUBJECT_GROW = 6
   const OBJECT_TRANSFER_HARMONIZE_STRENGTH = 0.7
   const OBJECT_TRANSFER_HARMONIZE_GAIN_MIN = 0.85
   const OBJECT_TRANSFER_HARMONIZE_GAIN_MAX = 1.2
+  const OBJECT_TRANSFER_AMBIENT_FILL = 0.6
+  const OBJECT_TRANSFER_AMBIENT_MIN_SCALE = 0.6
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
   const OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE = '\u53c2\u8003\u7269\u4e3b\u4f53\u4e0d\u6e05\u6670\uff0c\u8bf7\u6362\u4e00\u5f20\u80cc\u666f\u66f4\u7b80\u5355\u7684\u56fe\u7247\u3002'
@@ -15412,25 +15415,35 @@
     return canvas
   }
 
-  function objectTransferBlueGuideCanvas(baseCanvas, maskCanvas) {
-    const width = Math.max(1, Math.round(baseCanvas && baseCanvas.width || maskCanvas && maskCanvas.width || 1))
-    const height = Math.max(1, Math.round(baseCanvas && baseCanvas.height || maskCanvas && maskCanvas.height || 1))
+  function objectTransferCompGuideCanvas(baseCanvas, subjectCanvas, contactMaskCanvas) {
+    // A blue silhouette turns the job into "fill this hole", and the model fills it by copying the
+    // reference's own rendering — a 3D render dropped into a painted scene. Giving it a rough composite
+    // instead makes the job what it should be: repaint this object so it belongs here. The model then
+    // takes the picture's brushwork, palette and light, which is the whole point of an edit model.
+    const width = Math.max(1, Math.round(baseCanvas && baseCanvas.width || 1))
+    const height = Math.max(1, Math.round(baseCanvas && baseCanvas.height || 1))
     const canvas = canvasOfSize(width, height)
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    if (baseCanvas) ctx.drawImage(baseCanvas, 0, 0, width, height)
-    const image = ctx.getImageData(0, 0, width, height)
-    const maskCanvasSized = canvasOfSize(width, height)
-    const maskCtx = maskCanvasSized.getContext('2d', { willReadFrequently: true })
-    if (maskCanvas) maskCtx.drawImage(maskCanvas, 0, 0, width, height)
-    const mask = maskCtx.getImageData(0, 0, width, height).data
-    for (let i = 0; i < image.data.length; i += 4) {
-      if (maskPixelValue(mask, i) <= 8) continue
-      image.data[i] = 0
-      image.data[i + 1] = 0
-      image.data[i + 2] = 255
-      image.data[i + 3] = 255
+    ctx.drawImage(baseCanvas, 0, 0, width, height)
+    if (contactMaskCanvas) {
+      // A faint ground patch under the object: it tells the model where the contact shadow goes without
+      // painting a colour it would have to invent around.
+      const contact = canvasOfSize(width, height)
+      const contactCtx = contact.getContext('2d', { willReadFrequently: true })
+      contactCtx.drawImage(contactMaskCanvas, 0, 0, width, height)
+      const contactData = contactCtx.getImageData(0, 0, width, height).data
+      const image = ctx.getImageData(0, 0, width, height)
+      for (let i = 0; i + 3 < image.data.length; i += 4) {
+        const value = maskPixelValue(contactData, i)
+        if (value <= 8) continue
+        const weight = clampNumber(value / 255, 0, 1) * OBJECT_TRANSFER_CONTACT_HINT
+        for (let channel = 0; channel < 3; channel += 1) {
+          image.data[i + channel] = Math.round(image.data[i + channel] * (1 - weight))
+        }
+      }
+      ctx.putImageData(image, 0, 0)
     }
-    ctx.putImageData(image, 0, 0)
+    ctx.drawImage(subjectCanvas, 0, 0, width, height)
     return canvas
   }
 
@@ -15448,7 +15461,8 @@
     const transferMaskCanvas = thresholdMaskCanvas(combinedMask, 8)
     const stats = objectTransferMaskStats(transferMaskCanvas)
     if (stats.max <= 8 || stats.pixels < 16) throw new Error(OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE)
-    const placementGuideCanvas = objectTransferBlueGuideCanvas(baseCanvas, transferMaskCanvas)
+    const contactMaskCanvas = objectTransferContactMaskCanvas(size, bounds)
+    const placementGuideCanvas = objectTransferCompGuideCanvas(baseCanvas, transferSubjectCanvas, contactMaskCanvas)
     // Everything the model is allowed to repaint: the placement silhouette plus room for the object's
     // edge and its cast shadow. Outside this the latent is frozen, so the scene cannot drift.
     const noiseGrow = Math.round(clampNumber(Math.min(bounds.width, bounds.height) * OBJECT_TRANSFER_NOISE_GROW_RATIO, OBJECT_TRANSFER_NOISE_GROW_MIN, OBJECT_TRANSFER_NOISE_GROW_MAX))
@@ -15486,7 +15500,7 @@
       placementGuideDataUrl: placementGuideCanvas.toDataURL('image/png'),
       referenceDataUrl: tool.referenceOriginalDataUrl,
       maskStats: stats,
-      guideMode: 'blue-mask-qwen-noise-latent'
+      guideMode: 'rough-comp-qwen-noise-latent'
     }
   }
 
@@ -15527,16 +15541,18 @@
   }
 
   function objectTransferPromptText() {
+    // Concise English: the same lesson as the effect prompts — this model follows short English
+    // instructions and drifts on long Chinese ones. The object is already composited into image 1, so the
+    // instruction is a repaint, not an insertion.
     return [
-      '最终画面必须是图1。将图2所示物体重新绘制到图1的蓝色定位区域，蓝色轮廓只指定物体的位置、大小和姿态，不是裁切边界。',
-      '图1是唯一的画风、光照和摄影机标准。图2只提供物体身份、造型结构、关键部件和固有颜色；舍弃图2的背景、打光、投影、描边、渲染风格与表面细节密度。',
-      '像图1的原作者亲手画出新物体：严格沿用图1邻近主体的笔触、轮廓线粗细、边缘软硬、明暗分块、材质概括程度、对比度、饱和度和细节密度。插画场景中的物体也要用同样的插画语言重新画，写实场景中的物体则保持同样的写实程度，不要把参考图的渲染质感带进来。',
-      '重新计算新物体在图1环境中的受光面、背光面、反光和环境色。高光方向、亮度、色温、阴影颜色与图1已有主体和地面阴影一致，不保留图2原有高光，不出现独立的一套灯光。',
-      '新物体的透视、体积、尺度、清晰度、景深和空气透视必须符合图1中同一位置。主体结构和细小部件完整、不透明，轮廓完整且自然，与已有物体的前后遮挡正确。',
-      '沿图1已有投影的方向、深浅、色偏和软硬程度，在接触面生成完整自然的接触阴影和投影。投影可以超出蓝色定位区域；落地处贴合、远端自然变软，与地面纹理融合。',
-      '仅新增该物体及其必要的接触、投影和遮挡关系，图1已有的人物、背景和其他物体保持原样，尤其不能把原人物改成参考图的画风。',
-      '去掉全部蓝色定位标记。最终是一张统一画风、统一光照的完整画面，没有贴纸感、拼接边缘、半透明部件或独立渲染物体的感觉。'
-    ].join('\n')
+      'Image 1 already contains the new object, pasted in flat and unlit.',
+      'Repaint that object so it belongs to image 1: the same brush work, edge softness, line weight, contrast, colour temperature, level of detail and rendering language as everything else in image 1.',
+      'If image 1 is an illustration, the object must become an illustration too; do not keep the reference photo or 3D render look.',
+      'Relight it with image 1 own light: same direction, same warmth, the same soft ambient fill in its shadows, and no separate light source of its own.',
+      'Image 2 is only the object identity, shape, parts and base colours.',
+      'Add a soft contact shadow and ground occlusion in the same direction, softness and depth as the shadows already in image 1.',
+      'Keep its position, size and pose exactly as pasted, and keep everything else in image 1 unchanged.'
+    ].join(' ')
   }
 
   function buildObjectTransferQwenWorkflow(info, uploads, prefix, resolved) {
@@ -15726,13 +15742,50 @@
       }
       harmonized += 1
     }
+    // Ambient fill: lift the object's black point toward the floor of the surrounding scene and keep its
+    // highlights where they are. A linear map on luminance only, so hue and saturation survive.
+    const percentile = (indices, data, q) => {
+      const values = indices.map((i) => luminance(data, i)).sort((a, b) => a - b)
+      return values[clampNumber(Math.round((values.length - 1) * q), 0, values.length - 1)]
+    }
+    const objectFloor = percentile(objectSamples, image.data, 0.1)
+    const objectCeil = percentile(objectSamples, image.data, 0.9)
+    const sceneFloor = percentile(sceneSamples, base, 0.1)
+    const targetFloor = Math.min(objectCeil - 8, Math.max(objectFloor, sceneFloor * OBJECT_TRANSFER_AMBIENT_FILL))
+    let filled = 0
+    let fillScale = 1
+    let fillOffset = 0
+    if (targetFloor > objectFloor + 1 && objectCeil > objectFloor + 8) {
+      fillScale = clampNumber((objectCeil - targetFloor) / (objectCeil - objectFloor), OBJECT_TRANSFER_AMBIENT_MIN_SCALE, 1)
+      fillOffset = objectCeil - fillScale * objectCeil
+      for (const i of objectSamples) {
+        const before = luminance(image.data, i)
+        if (before <= 0.5) continue
+        const after = clampNumber(before * fillScale + fillOffset, 0, 255)
+        const ratio = after / before
+        if (Math.abs(ratio - 1) < 0.002) continue
+        for (let c = 0; c < 3; c += 1) {
+          image.data[i + c] = Math.round(clampNumber(image.data[i + c] * ratio, 0, 255))
+        }
+        filled += 1
+      }
+    }
     ctx.putImageData(image, 0, 0)
     output.__objectTransferHarmonizeStats = {
       gain: gain.map((value) => Math.round(value * 1000) / 1000),
       objectHighlight: objectHighlight.map(Math.round),
       sceneHighlight: sceneHighlight.map(Math.round),
       harmonizedPixels: harmonized,
-      strength: amount
+      strength: amount,
+      ambientFill: {
+        objectFloor: Math.round(objectFloor),
+        objectCeil: Math.round(objectCeil),
+        sceneFloor: Math.round(sceneFloor),
+        targetFloor: Math.round(targetFloor),
+        scale: Math.round(fillScale * 1000) / 1000,
+        offset: Math.round(fillOffset * 10) / 10,
+        filledPixels: filled
+      }
     }
     return output
   }

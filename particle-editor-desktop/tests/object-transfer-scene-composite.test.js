@@ -65,6 +65,12 @@ test('the scene subject is protected in the latent and the model region is paste
   // Rebuilding the object, its shadow and its light wrap from per-pixel rules after the fact is what made
   // the result look like a sticker. The model renders them as one thing, against the frozen pixels around
   // them, and that whole region is kept as one.
+  // A blue silhouette turns the job into "fill this hole" and the model fills it by copying the
+  // reference's own rendering. A rough composite makes it a repaint, which is what an edit model is for.
+  assert.match(source, /const placementGuideCanvas = objectTransferCompGuideCanvas\(baseCanvas, transferSubjectCanvas, contactMaskCanvas\)/, 'the object is composited into the plate, not stamped as a blue shape')
+  assert.doesNotMatch(source, /objectTransferBlueGuideCanvas/, 'the blue silhouette guide is gone')
+  assert.match(source, /guideMode: 'rough-comp-qwen-noise-latent'/, 'the debug record names the guide')
+  assert.match(source, /'Image 1 already contains the new object, pasted in flat and unlit\.',/, 'the prompt asks for a repaint, in the concise English this model follows')
   assert.match(source, /const roomMaskCanvas = expandedMaskCanvas\(paintableMaskCanvas\(transferMaskCanvas, 8, false\), noiseGrow, 0\)/, 'the mask must be white-on-transparent or expandedMaskCanvas paints its own black over it')
   assert.match(source, /const sceneSubjectMask = expandedMaskCanvas\(paintableMaskCanvas\(sceneSubjectCanvas, OBJECT_TRANSFER_SCENE_SUBJECT_ALPHA, true\), OBJECT_TRANSFER_SCENE_SUBJECT_GROW, 0\)/, 'the scene subject comes from the same RMBG the rest of the app uses')
   assert.match(source, /const protectionCanvas = maskSubtractCanvas\(sceneSubjectMask, objectMaskCanvas, 8\)/, 'the object may occlude the subject; nothing else may touch it')
