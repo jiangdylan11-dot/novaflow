@@ -1,62 +1,85 @@
-const {test}=require('node:test');
-const assert=require('node:assert/strict');
-const {loadSpine}=require('../../tools/qwen-rapid-migration-smoke.cjs');
-const s=loadSpine('particle-editor/spine-split-runtime.js');
-function solid(w,h,rgb,a=255){const d=new Uint8ClampedArray(w*h*4);for(let i=0;i<d.length;i+=4)d.set([...rgb,a],i);return d;}
-function rect(d,w,x,y,bw,bh,rgba){for(let yy=y;yy<y+bh;yy++)for(let xx=x;xx<x+bw;xx++)d.set(rgba,(yy*w+xx)*4);}
-function fixture(){
- const w=160,h=100,box={x:80,y:20,width:30,height:50};
- const base=solid(w,h,[200,180,160]),generated=new Uint8ClampedArray(base),mask=solid(w,h,[0,0,0]);
- const source=solid(w,h,[0,0,0],0),foreground=solid(w,h,[0,0,0],0);
- rect(mask,w,85,25,20,45,[255,255,255,255]);
- rect(generated,w,80,23,33,47,[30,150,80,255]);
- rect(foreground,w,80,23,33,47,[30,150,80,255]);
- // Cast shadow extends much farther left than the reference footprint.
- rect(generated,w,32,70,78,7,[30,65,110,255]);
- return {w,h,box,base,generated,mask,source,foreground};
-}
-function run(f){return s.objectTransferScenePixels(f.base,f.generated,f.mask,f.source,f.foreground,f.w,f.h,f.box);}
-test('complete generated edges are opaque beyond the reference silhouette',()=>{
- const f=fixture(),r=run(f);
- const i=(40*f.w+111)*4;
- assert.deepEqual(Array.from(r.pixels.slice(i,i+4)),[30,150,80,255]);
- assert.deepEqual(Array.from(f.base.slice(i,i+4)),[200,180,160,255]);
-});
-test('connected long shadow is retained and uses the receiving surface colour',()=>{
- const f=fixture(),r=run(f),i=(73*f.w+40)*4;
- assert.ok(r.stats.shadowPixels>300);
- assert.ok(r.pixels[i]<f.base[i]-30,'shadow survives beyond small contact ellipse');
- assert.ok(r.pixels[i]>r.pixels[i+1]&&r.pixels[i+1]>r.pixels[i+2],'blue model RGB does not replace warm surface colour');
- assert.ok(Math.abs(r.pixels[i]/r.pixels[i+2]-200/160)<0.025);
- assert.equal(r.pixels[i+3],255);
-});
-test('existing foreground and unrelated distant dark changes are protected',()=>{
- const f=fixture();
- rect(f.source,f.w,45,65,8,20,[255,255,255,255]);
- rect(f.generated,f.w,18,80,6,5,[0,0,0,255]);
- const r=run(f);
- for(const [x,y]of [[48,73],[20,82],[0,0],[150,10]]){
-  const i=(y*f.w+x)*4;
-  assert.deepEqual(Array.from(r.pixels.slice(i,i+4)),Array.from(f.base.slice(i,i+4)));
- }
-});
-test('modest background colour drift alone creates no cast shadow',()=>{
- const f=fixture();f.generated=solid(f.w,f.h,[190,173,158]);f.foreground=solid(f.w,f.h,[0,0,0],0);
- const r=run(f);
- assert.equal(r.stats.shadowPixels,0);
- const i=(75*f.w+95)*4;
- assert.deepEqual(Array.from(r.pixels.slice(i,i+4)),[200,180,160,255]);
-});
+const { test } = require('node:test')
+const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const path = require('node:path')
+const { loadSpine } = require('../../tools/qwen-rapid-migration-smoke.cjs')
 
-test('shadow tint follows existing cool scene shadows instead of a fixed neutral colour',()=>{
- const f=fixture();
- rect(f.base,f.w,114,78,12,20,[105,120,130,255]);
- rect(f.generated,f.w,114,78,12,20,[105,120,130,255]);
- const r=run(f);
- assert.ok(r.stats.ambientTint[0]<1,'ambient red is reduced in the cool original shadow');
- assert.ok(r.stats.ambientTint[2]>1,'ambient blue is learned from the original scene');
- assert.ok(r.stats.shadowLimit<0.6);
- const outsideEdge=(69*f.w+40)*4,interior=(73*f.w+40)*4;
- assert.ok(r.pixels[outsideEdge]<f.base[outsideEdge],'shadow edges soften onto adjacent ground');
- assert.ok(r.pixels[outsideEdge]>r.pixels[interior],'penumbra remains lighter than the shadow interior');
-});
+const root = path.resolve(__dirname, '../..')
+const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
+const RUNTIME = 'particle-editor/spine-split-runtime.js'
+const plain = (value) => JSON.parse(JSON.stringify(value))
+
+const combo = (options) => [options, {}]
+const fakeInfo = () => ({
+  UNETLoader: { input: { required: { unet_name: combo(['qwen_image_edit_2511_bf16.safetensors']), weight_dtype: combo(['default', 'fp8_e4m3fn']) } } },
+  CLIPLoader: { input: { required: { clip_name: combo(['qwen_2.5_vl_7b_fp8_scaled.safetensors']), type: combo(['qwen_image']) }, optional: { device: combo(['default']) } } },
+  VAELoader: { input: { required: { vae_name: combo(['qwen_image_vae.safetensors']) } } },
+  VAEEncode: { input: { required: { pixels: ['IMAGE', {}], vae: ['VAE', {}] } } },
+  TextEncodeQwenImageEditPlus: { input: { required: { clip: ['CLIP', {}], prompt: ['STRING', { default: '' }] }, optional: { vae: ['VAE', {}], image1: ['IMAGE', {}], image2: ['IMAGE', {}] } } },
+  KSampler: { input: { required: { model: ['MODEL', {}], seed: ['INT', { default: 0 }], steps: ['INT', { default: 20 }], cfg: ['FLOAT', { default: 8 }], sampler_name: combo(['euler']), scheduler: combo(['simple']), positive: ['CONDITIONING', {}], negative: ['CONDITIONING', {}], latent_image: ['LATENT', {}], denoise: ['FLOAT', { default: 1 }] } } },
+  VAEDecode: { input: { required: { samples: ['LATENT', {}], vae: ['VAE', {}] } } },
+  SaveImage: { input: { required: { images: ['IMAGE', {}], filename_prefix: ['STRING', { default: 'ComfyUI' }] } } },
+  ModelSamplingAuraFlow: { input: { required: { model: ['MODEL', {}], shift: ['FLOAT', { default: 3 }] } } },
+  CFGNorm: { input: { required: { model: ['MODEL', {}], strength: ['FLOAT', { default: 1 }] } } },
+  LoraLoaderModelOnly: { input: { required: { model: ['MODEL', {}], lora_name: combo(['Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors']), strength_model: ['FLOAT', { default: 1 }] } } },
+  FluxKontextImageScale: { input: { required: { image: ['IMAGE', {}] } } }
+})
+
+// 万物迁移 used to send the placement through FluxKontextImageScale and sample the whole frame, so the
+// model re-rendered the entire picture and the app pasted a patch of a DIFFERENT picture back: wrong
+// style, wrong colour, wrong shadow and a visible block at the join (the user's 2026-09-17 report).
+// Measured on that scene: 20.3/255 outside the placement with the stair edges 5px off; with the latent
+// noise mask, 1.22/255 and 0px.
+test('the transfer graph sends an unscaled plate and only denoises the placement region', () => {
+  const s = loadSpine(RUNTIME)
+  const resolved = { unetName: 'qwen_image_edit_2511_bf16.safetensors', clipName: 'qwen_2.5_vl_7b_fp8_scaled.safetensors', vaeName: 'qwen_image_vae.safetensors', loraName: 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors' }
+  const workflow = plain(s.buildObjectTransferQwenWorkflow(fakeInfo(), { placementName: 'plate.png', referenceName: 'ref.png', maskName: 'mask.png' }, 'NovaFlow_object_transfer_x', resolved))
+  const byType = (type) => Object.entries(workflow).filter(([, node]) => node.class_type === type)
+
+  assert.equal(byType('FluxKontextImageScale').length, 0, 'the rescale node center-crops one axis and cannot be inverted')
+  assert.equal(workflow['1'].inputs.image, 'plate.png')
+  assert.equal(workflow['2'].inputs.image, 'ref.png')
+  assert.equal(workflow['3'].inputs.image, 'mask.png', 'the placement mask is loaded as an image')
+
+  const [, encode] = byType('VAEEncode')[0]
+  assert.deepEqual(encode.inputs.pixels, ['1', 0], 'the plate is encoded at its own resolution')
+  const [maskId, toMask] = byType('ImageToMask')[0]
+  assert.deepEqual(toMask.inputs.image, ['3', 0])
+  assert.equal(toMask.inputs.channel, 'red')
+  const [noiseId, noiseMask] = byType('SetLatentNoiseMask')[0]
+  assert.deepEqual(noiseMask.inputs.mask, [maskId, 0])
+  const [, sampler] = byType('KSampler')[0]
+  assert.deepEqual(sampler.inputs.latent_image, [noiseId, 0], 'the sampler runs on the masked latent')
+  assert.equal(sampler.inputs.denoise, 1)
+
+  const [, text] = byType('TextEncodeQwenImageEditPlus')[0]
+  assert.deepEqual(text.inputs.image1, ['1', 0], 'the scene reference is the plate, not a rescale of it')
+  assert.deepEqual(text.inputs.image2, ['2', 0], 'the object reference stays image2')
+})
+
+test('the placement mask is grown for the object edge and its shadow, and it drives the paste back', () => {
+  const source = read(RUNTIME)
+  // The blue guide already carries the contact-shadow ellipse, so the grow only has to let the object's
+  // own edge blend. At 0.06 it reached 23px and swallowed the character's foot, and the model drew a shoe.
+  assert.match(source, /const OBJECT_TRANSFER_NOISE_GROW_RATIO = 0\.02\n\s+const OBJECT_TRANSFER_NOISE_GROW_MIN = 6\n\s+const OBJECT_TRANSFER_NOISE_GROW_MAX = 24/, 'the growth stays close to the placement guide')
+  assert.match(source, /const plateSize = qwenEditPlateSize\(size\.width, size\.height\)\n\s+const plateCanvas = qwenEditPlateCanvas\(placementGuideCanvas, plateSize\)/, 'the placement goes out on a plate Qwen does not reframe')
+  assert.match(source, /const resultCanvas = await qwenEditPlateResultCanvas\(dataUrl, assets\.plateSize, assets\.plateContent, width, height, '万物迁移'\)/, 'the decode size is asserted before it is mapped back')
+  assert.match(source, /const noiseMaskCanvas = expandedMaskCanvas\(paintableMaskCanvas\(transferMaskCanvas, 8, false\), noiseGrow, 0\)/, 'the mask must be white-on-transparent or expandedMaskCanvas paints its own black over it')
+  assert.match(source, /const pastedCanvas = objectTransferCompositeCanvas\(baseCanvas, resultCanvas, assets\.objectMaskCanvas, assets\.noiseMaskCanvas, OBJECT_TRANSFER_COMPOSITE_FEATHER\)/, 'the object silhouette and the shadow ring are composited by different rules')
+  // Inside the object silhouette the model wins; in the ring only darkening is kept. With the placement
+  // over the character's foot the model drew a high-heeled shoe on her bare foot, and a shoe is not a shadow.
+  const compositeBlock = source.slice(source.indexOf('function objectTransferCompositeCanvas('), source.indexOf('async function objectTransferProtectedResultDataUrl('))
+  assert.match(compositeBlock, /if \(resultLuma >= baseLuma - 2 \|\| baseLuma < 8\) \{\n\s+stats\.rejectedPixels \+= 1/, 'the ring accepts a pixel only when the model darkened it')
+  assert.match(compositeBlock, /const shade = clampNumber\(resultLuma \/ baseLuma, 1 - OBJECT_TRANSFER_SHADOW_MAX_DARKEN, 1\)/, 'only HOW MUCH darker is taken, and the depth is capped')
+  assert.match(compositeBlock, /image\.data\[i \+ channel\] = Math\.round\(image\.data\[i \+ channel\] \* shade\)/, 'the shadow multiplies the surface, so the marble keeps its own hue instead of turning blue')
+  assert.match(source, /const OBJECT_TRANSFER_SHADOW_MAX_DARKEN = 0\.45/, 'a cast shadow cannot go darker than the scene ever does')
+
+  // The model lights the object with its own lamp: on the user's dusk scene the robot came back at
+  // highlight R/B 1.25 against the marble's 1.08. The grade matches the light, not the object's paint.
+  assert.match(source, /const finalCanvas = objectTransferHarmonizeCanvas\(pastedCanvas, baseCanvas, assets\.objectMaskCanvas, OBJECT_TRANSFER_HARMONIZE_STRENGTH\)/, 'the object is graded toward the scene light')
+  const harmonizeBlock = source.slice(source.indexOf('function objectTransferHarmonizeCanvas('), source.indexOf('async function objectTransferProtectedResultDataUrl('))
+  assert.match(harmonizeBlock, /const gainLuma = rawGain\[0\] \* 0\.2126 \+ rawGain\[1\] \* 0\.7152 \+ rawGain\[2\] \* 0\.0722/, 'the grade is luminance neutral: it shifts colour, not brightness')
+  assert.match(harmonizeBlock, /const weight = amount \* Math\.sqrt\(clampNumber\(luminance\(image\.data, i\) \/ 255, 0, 1\)\)/, 'lit pixels take more of the shift than pixels in shadow')
+  assert.match(source, /const OBJECT_TRANSFER_HARMONIZE_STRENGTH = 0\.7\n\s+const OBJECT_TRANSFER_HARMONIZE_GAIN_MIN = 0\.85\n\s+const OBJECT_TRANSFER_HARMONIZE_GAIN_MAX = 1\.2/, 'the grade is partial and clamped, so the object keeps its identity colours')
+  assert.match(source, /pasteBack: 'object-replaces-shadow-darkens'/, 'the debug record names the new path')
+})

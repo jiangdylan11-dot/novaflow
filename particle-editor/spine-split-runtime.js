@@ -254,6 +254,17 @@
   const IMAGE_ANGLE_ADJUST_ZOOM_STEP = 0.1
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_SCREEN_OFFSET = 141
   const OBJECT_TRANSFER_TIMEOUT_MS = 30 * 60 * 1000
+  // How far past the blue placement guide the model may repaint: enough for the object's own edge
+  // and its cast shadow, and no further — everything outside stays frozen in the latent.
+  const OBJECT_TRANSFER_NOISE_GROW_RATIO = 0.02
+  const OBJECT_TRANSFER_NOISE_GROW_MIN = 6
+  const OBJECT_TRANSFER_NOISE_GROW_MAX = 24
+  const OBJECT_TRANSFER_OBJECT_GROW = 4
+  const OBJECT_TRANSFER_COMPOSITE_FEATHER = 3
+  const OBJECT_TRANSFER_SHADOW_MAX_DARKEN = 0.45
+  const OBJECT_TRANSFER_HARMONIZE_STRENGTH = 0.7
+  const OBJECT_TRANSFER_HARMONIZE_GAIN_MIN = 0.85
+  const OBJECT_TRANSFER_HARMONIZE_GAIN_MAX = 1.2
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
   const OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE = '\u53c2\u8003\u7269\u4e3b\u4f53\u4e0d\u6e05\u6670\uff0c\u8bf7\u6362\u4e00\u5f20\u80cc\u666f\u66f4\u7b80\u5355\u7684\u56fe\u7247\u3002'
@@ -15438,16 +15449,33 @@
     const stats = objectTransferMaskStats(transferMaskCanvas)
     if (stats.max <= 8 || stats.pixels < 16) throw new Error(OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE)
     const placementGuideCanvas = objectTransferBlueGuideCanvas(baseCanvas, transferMaskCanvas)
+    // Everything the model is allowed to repaint: the placement silhouette plus room for the object's
+    // edge and its cast shadow. Outside this the latent is frozen, so the scene cannot drift.
+    const noiseGrow = Math.round(clampNumber(Math.min(bounds.width, bounds.height) * OBJECT_TRANSFER_NOISE_GROW_RATIO, OBJECT_TRANSFER_NOISE_GROW_MIN, OBJECT_TRANSFER_NOISE_GROW_MAX))
+    const noiseMaskCanvas = expandedMaskCanvas(paintableMaskCanvas(transferMaskCanvas, 8, false), noiseGrow, 0)
+    // Where the object itself stands, as opposed to the contact-shadow ellipse around it.
+    const objectMaskCanvas = expandedMaskCanvas(paintableMaskCanvas(hardAlphaMask, 8, false), OBJECT_TRANSFER_OBJECT_GROW, 0)
+    const plateSize = qwenEditPlateSize(size.width, size.height)
+    const plateCanvas = qwenEditPlateCanvas(placementGuideCanvas, plateSize)
+    const plateContent = plateCanvas.__plateContent
+    const noiseMaskPlateCanvas = qwenEditPlateCanvas(thresholdMaskCanvas(noiseMaskCanvas, 8), plateSize)
     return {
       size,
       bounds,
       baseCanvas,
       subjectMaskCanvas: hardAlphaMask,
       transferMaskCanvas,
+      noiseMaskCanvas,
+      objectMaskCanvas,
+      noiseGrow,
+      plateSize,
+      plateContent,
+      plateDataUrl: plateCanvas.toDataURL('image/png'),
+      noiseMaskPlateDataUrl: noiseMaskPlateCanvas.toDataURL('image/png'),
       placementGuideDataUrl: placementGuideCanvas.toDataURL('image/png'),
       referenceDataUrl: tool.referenceOriginalDataUrl,
       maskStats: stats,
-      guideMode: 'blue-mask-qwen'
+      guideMode: 'blue-mask-qwen-noise-latent'
     }
   }
 
@@ -15512,9 +15540,11 @@
     const aura = info.ModelSamplingAuraFlow || null
     const cfgNorm = info.CFGNorm || null
     const workflow = {
+      // No FluxKontextImageScale: it center-crops one axis and that crop has no inverse. The caller
+      // sends a plate at a size Qwen does not reframe (qwenEditPlateSize), so the graph rescales nothing.
       '1': { class_type: 'LoadImage', inputs: { image: uploads.placementName } },
       '2': { class_type: 'LoadImage', inputs: { image: uploads.referenceName } },
-      '3': { class_type: 'FluxKontextImageScale', inputs: buildComfyNodeInputs(fluxScale, { image: ['1', 0] }) },
+      '3': { class_type: 'LoadImage', inputs: { image: uploads.maskName } },
       '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: resolved.unetName, weight_dtype: 'fp8_e4m3fn' }) },
       '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
       '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vaeLoader, { vae_name: resolved.vaeName }) }
@@ -15536,10 +15566,20 @@
       modelRef = [String(nextId), 0]
       nextId += 1
     }
-    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['3', 0], vae: ['6', 0] }) }
-    const latentRef = [String(nextId), 0]
+    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['1', 0], vae: ['6', 0] }) }
+    let latentRef = [String(nextId), 0]
     nextId += 1
-    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: objectTransferPromptText(), clip: ['5', 0], vae: ['6', 0], image1: ['3', 0], image2: ['2', 0] }) }
+    // Only the placement region is denoised. Without this the model re-renders the whole picture —
+    // measured 2026-09-17 on the user's own scene: 20.3/255 outside the placement and the stair edges
+    // 5px off, versus 1.22/255 and 0px with the mask. That re-render is what made the pasted object
+    // look like another picture's style, colour and shadow, with a visible block at the join.
+    workflow[String(nextId)] = { class_type: 'ImageToMask', inputs: { image: ['3', 0], channel: 'red' } }
+    const maskRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'SetLatentNoiseMask', inputs: { samples: latentRef, mask: maskRef } }
+    latentRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: objectTransferPromptText(), clip: ['5', 0], vae: ['6', 0], image1: ['1', 0], image2: ['2', 0] }) }
     const positiveRef = [String(nextId), 0]
     nextId += 1
     workflow[String(nextId)] = { class_type: 'ConditioningZeroOut', inputs: { conditioning: positiveRef } }
@@ -15580,222 +15620,165 @@
     return workflow
   }
 
-  async function objectTransferNormalizeResultDataUrl(dataUrl, size) {
-    const targetWidth = Math.max(1, Math.round(Number(size && size.width) || 1))
-    const targetHeight = Math.max(1, Math.round(Number(size && size.height) || 1))
-    const img = await loadImage(dataUrl)
-    const width = Math.max(1, Math.round(img.naturalWidth || img.width || targetWidth))
-    const height = Math.max(1, Math.round(img.naturalHeight || img.height || targetHeight))
-    if (width === targetWidth && height === targetHeight) return dataUrl
-    const canvas = canvasOfSize(targetWidth, targetHeight)
-    canvas.getContext('2d', { willReadFrequently: true }).drawImage(img, 0, 0, targetWidth, targetHeight)
-    return canvas.toDataURL('image/png')
+  function paintableMaskCanvas(sourceCanvas, threshold, readAlpha) {
+    // White where the predicate holds, transparent elsewhere — the only form expandedMaskCanvas can grow.
+    const width = Math.max(1, Math.round(sourceCanvas && sourceCanvas.width || 1))
+    const height = Math.max(1, Math.round(sourceCanvas && sourceCanvas.height || 1))
+    const limit = clampNumber(Number(threshold) || 0, 1, 255)
+    const source = sourceCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+    const canvas = canvasOfSize(width, height)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    const image = ctx.getImageData(0, 0, width, height)
+    for (let i = 0; i + 3 < image.data.length; i += 4) {
+      const value = readAlpha ? (source[i + 3] || 0) : maskPixelValue(source, i)
+      image.data[i] = 255
+      image.data[i + 1] = 255
+      image.data[i + 2] = 255
+      image.data[i + 3] = value >= limit ? 255 : 0
+    }
+    ctx.putImageData(image, 0, 0)
+    return canvas
   }
 
-  function objectTransferPasteMaskCanvas(maskCanvas, bounds) {
-    const minEdge = Math.max(1, Math.min(Number(bounds && bounds.width) || 1, Number(bounds && bounds.height) || 1))
-    const grow = Math.max(8, Math.min(36, Math.round(minEdge * 0.045)))
-    const feather = Math.max(4, Math.min(18, Math.round(minEdge * 0.02)))
-    const hardMask = thresholdMaskCanvas(maskCanvas, 8)
-    const pasteMask = expandedMaskCanvas(hardMask, grow, feather)
-    pasteMask.__novaflowObjectTransferPaste = { grow, feather }
-    return pasteMask
-  }
-
-  function objectTransferScenePixels(base, generated, mask, sourceForeground, generatedForeground, width, height, box, subjectMask) {
-    const out = new Uint8ClampedArray(base)
-    const luminance = (d, i) => d[i] * 0.2126 + d[i + 1] * 0.7152 + d[i + 2] * 0.0722
-    const bw = Math.max(1, box.width), bh = Math.max(1, box.height)
-    const grow = Math.round(clampNumber(Math.min(bw, bh) * 0.06, 12, 48))
-    const feather = Math.round(clampNumber(grow * 0.6, 6, 24))
-    const left = Math.max(0, Math.floor(box.x - bh * 1.25))
-    const right = Math.min(width - 1, Math.ceil(box.x + bw + bh * 1.25))
-    const top = Math.max(0, Math.floor(box.y - grow - feather))
-    const bottom = Math.min(height - 1, Math.ceil(box.y + bh * 1.5))
-    const roiWidth = right - left + 1, roiHeight = bottom - top + 1
-    const shadowCandidate = new Uint8Array(roiWidth * roiHeight)
-    const shadowConnected = new Uint8Array(roiWidth * roiHeight)
-    const queue = new Int32Array(roiWidth * roiHeight)
-    const histogram = [new Uint32Array(511), new Uint32Array(511), new Uint32Array(511)]
-    let samples = 0
-    // Estimate modest global background drift from unchanged, non-shadow context.
-    for (let y = top; y <= bottom; y += 3) for (let x = left; x <= right; x += 3) {
-      const i = (y * width + x) * 4
-      if (maskPixelValue(mask, i) > 8 || sourceForeground[i + 3] > 32 || generatedForeground[i + 3] > 32) continue
-      if (Math.abs(luminance(base, i) - luminance(generated, i)) > 24) continue
-      for (let c = 0; c < 3; c++) histogram[c][generated[i + c] - base[i + c] + 255]++
-      samples++
-    }
-    const drift = histogram.map(h => {
-      if (!samples) return 0
-      let count = 0
-      for (let j = 0; j < h.length; j++) {
-        count += h[j]
-        if (count >= Math.ceil(samples / 2)) return clampNumber(j - 255, -20, 20)
-      }
-      return 0
-    })
-    const driftLuma = drift[0] * 0.2126 + drift[1] * 0.7152 + drift[2] * 0.0722
-    // Learn ambient shadow tint from the original receiving surface, excluding
-    // foreground and strongly coloured vegetation/materials.
-    const surface = []
-    for (let y = Math.max(top, Math.floor(box.y + bh * 0.6)); y <= bottom; y += 4) {
-      for (let x = Math.max(left, Math.floor(box.x - bw * 0.5)); x <= Math.min(right, box.x + bw * 1.5); x += 4) {
-        const i = (y * width + x) * 4
-        if (sourceForeground[i + 3] > 32 || base[i + 3] < 250) continue
-        const rgb = [base[i], base[i + 1], base[i + 2]], hi = Math.max(...rgb), lo = Math.min(...rgb)
-        const luma = luminance(base, i)
-        if (luma < 40 || hi - lo > hi * 0.38) continue
-        surface.push({ rgb, luma })
-      }
-    }
-    surface.sort((a, b) => a.luma - b.luma)
-    let ambientTint = [1, 1, 1], shadowLimit = 0.55
-    if (surface.length >= 32) {
-      const dark = surface.slice(Math.floor(surface.length * 0.02), Math.ceil(surface.length * 0.1))
-      const light = surface.slice(Math.floor(surface.length * 0.65), Math.ceil(surface.length * 0.8))
-      const mean = rows => [0, 1, 2].map(c => rows.reduce((n, p) => n + p.rgb[c], 0) / rows.length)
-      const darkRgb = mean(dark), lightRgb = mean(light)
-      const dl = luminance(darkRgb, 0), ll = luminance(lightRgb, 0)
-      if (dl < ll * 0.8) {
-        ambientTint = darkRgb.map((v, c) => clampNumber((v / dl) / Math.max(0.1, lightRgb[c] / ll), 0.7, 1.3))
-        shadowLimit = clampNumber(1 - dl / ll, 0.25, 0.6)
-      }
-    }
-    let tail = 0
-    for (let y = Math.max(top, Math.floor(box.y + bh * 0.55)); y <= bottom; y++) {
-      for (let x = left; x <= right; x++) {
-        const i = (y * width + x) * 4
-        // A cast shadow lives on the receiving surface, not on either foreground.
-        if (sourceForeground[i + 3] > 32 || generatedForeground[i + 3] > 32 || base[i + 3] < 250 || generated[i + 3] < 250) continue
-        const delta = luminance(base, i) - luminance(generated, i) + driftLuma
-        if (delta <= 8 || luminance(base, i) < 32) continue
-        const p = (y - top) * roiWidth + x - left
-        shadowCandidate[p] = 1
-        if (x >= box.x - grow && x <= box.x + bw + grow && y >= box.y + bh * 0.75 && y <= box.y + bh + grow) {
-          shadowConnected[p] = 1
-          queue[tail++] = p
+  function objectTransferCompositeCanvas(baseCanvas, resultCanvas, objectMaskCanvas, noiseMaskCanvas, feather) {
+    // Inside the object's own silhouette the model's pixels win: that is the transferred object, and it
+    // is allowed to occlude whatever was there. Everywhere else the sampler could touch — the contact
+    // ellipse and the few px around the object — only DARKENING is accepted, i.e. its cast shadow.
+    // Anything else it invents there is thrown away; with the placement over the character's foot it drew
+    // a high-heeled shoe onto her bare foot (2026-09-17), and a shoe is not a shadow.
+    const width = Math.max(1, Math.round(baseCanvas.width || 1))
+    const height = Math.max(1, Math.round(baseCanvas.height || 1))
+    const output = cloneCanvas(baseCanvas)
+    const ctx = output.getContext('2d', { willReadFrequently: true })
+    const image = ctx.getImageData(0, 0, width, height)
+    const result = resultCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+    const band = Math.max(0, Math.round(feather || 0))
+    const objectHard = thresholdMaskCanvas(objectMaskCanvas, 8)
+    const objectSoft = band > 0 ? featherMaskCanvas(objectHard, band) : objectHard
+    const objectData = objectSoft.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+    const shadowData = thresholdMaskCanvas(noiseMaskCanvas, 8).getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+    const stats = { objectPixels: 0, shadowPixels: 0, rejectedPixels: 0, feather: band }
+    for (let i = 0; i + 3 < image.data.length; i += 4) {
+      const objectWeight = clampNumber(maskPixelValue(objectData, i) / 255, 0, 1)
+      if (objectWeight > 0.002) {
+        for (let channel = 0; channel < 3; channel += 1) {
+          image.data[i + channel] = Math.round(result[i + channel] * objectWeight + image.data[i + channel] * (1 - objectWeight))
         }
-      }
-    }
-    for (let head = 0; head < tail; head++) {
-      const p = queue[head], x = p % roiWidth, y = Math.floor(p / roiWidth)
-      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
-        const nx = x + dx, ny = y + dy
-        if (nx < 0 || nx >= roiWidth || ny < 0 || ny >= roiHeight) continue
-        const n = ny * roiWidth + nx
-        if (!shadowCandidate[n] || shadowConnected[n]) continue
-        shadowConnected[n] = 1
-        queue[tail++] = n
-      }
-    }
-    const shadowStrength = new Float32Array(roiWidth * roiHeight)
-    const shadowHorizontal = new Float32Array(roiWidth * roiHeight)
-    for (let p = 0; p < shadowStrength.length; p++) {
-      if (!shadowConnected[p]) continue
-      const i = ((Math.floor(p / roiWidth) + top) * width + p % roiWidth + left) * 4
-      const baseLuma = luminance(base, i)
-      shadowStrength[p] = Math.min(shadowLimit, Math.max(0, baseLuma - luminance(generated, i) + driftLuma - 8) / Math.max(32, baseLuma))
-    }
-    const shadowSoftness = Math.round(clampNumber(Math.min(width, height) * 0.004, 1, 6))
-    const kernel = shadowSoftness * 2 + 1
-    for (let y = 0; y < roiHeight; y++) {
-      let sum = 0
-      const at = x => shadowStrength[y * roiWidth + clampNumber(x, 0, roiWidth - 1)]
-      for (let d = -shadowSoftness; d <= shadowSoftness; d++) sum += at(d)
-      for (let x = 0; x < roiWidth; x++) {
-        shadowHorizontal[y * roiWidth + x] = Math.max(0, sum / kernel)
-        sum += at(x + shadowSoftness + 1) - at(x - shadowSoftness)
-      }
-    }
-    for (let x = 0; x < roiWidth; x++) {
-      let sum = 0
-      const at = y => shadowHorizontal[clampNumber(y, 0, roiHeight - 1) * roiWidth + x]
-      for (let d = -shadowSoftness; d <= shadowSoftness; d++) sum += at(d)
-      for (let y = 0; y < roiHeight; y++) {
-        shadowStrength[y * roiWidth + x] = Math.max(0, sum / kernel)
-        sum += at(y + shadowSoftness + 1) - at(y - shadowSoftness)
-      }
-    }
-    let shadowPixels = 0, subjectPixels = 0, protectedPixels = 0
-    for (let y = top; y <= bottom; y++) for (let x = left; x <= right; x++) {
-      const i = (y * width + x) * 4
-      const explicitlyPlaced = maskPixelValue(subjectMask || mask, i) > 8
-      if (sourceForeground[i + 3] > 32 && !explicitlyPlaced) { protectedPixels++; continue }
-      const shadowAmount = shadowStrength[(y - top) * roiWidth + x - left]
-      if (shadowAmount > 0.002 && generatedForeground[i + 3] <= 32 && base[i + 3] >= 250) {
-        // Preserve surface texture and use the scene's ambient shade colour.
-        let amount = shadowAmount
-        // Keep contact occlusion crisp at the feet while the distant cast
-        // shadow softens. Blurring this join equally makes the subject float.
-        if (y >= box.y + bh * 0.75) {
-          let nearContact = false
-          for (let dy = -4; dy <= 4 && !nearContact; dy += 2) for (let dx = -4; dx <= 4; dx += 2) {
-            const nx = x + dx, ny = y + dy
-            if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue
-            if (generatedForeground[(ny * width + nx) * 4 + 3] > 128) { nearContact = true; break }
-          }
-          if (nearContact) {
-            const baseLuma = luminance(base, i)
-            const contactAmount = Math.max(0, baseLuma - luminance(generated, i) + driftLuma - 8) / Math.max(32, baseLuma)
-            amount = Math.max(amount, Math.min(0.55, contactAmount))
-          }
-        }
-        const boundary = Math.min(x - left, right - x, y - top, bottom - y)
-        const edge = (x === 0 || y === 0 || x === width - 1 || y === height - 1) ? 1 : clampNumber(boundary / feather, 0, 1)
-        for (let c = 0; c < 3; c++) out[i + c] = Math.round(clampNumber(base[i + c] * (1 - amount * edge) * (1 + amount * edge * (ambientTint[c] - 1) * 2), 0, 255))
-        shadowPixels++
+        image.data[i + 3] = Math.max(image.data[i + 3], Math.round(255 * objectWeight))
+        stats.objectPixels += 1
         continue
       }
-      const distance = Math.max(box.x - x, x - (box.x + bw - 1), box.y - y, y - (box.y + bh - 1), 0)
-      if (distance >= grow + feather) continue
-      const isSubject = generatedForeground[i + 3] > 32
-      const t = clampNumber((grow + feather - distance) / feather, 0, 1)
-      // Fade background context only. Opaque generated edges within the allowed
-      // region must not inherit the shape or alpha of the reference cutout.
-      const alpha = isSubject ? 1 : t * t * (3 - 2 * t)
-      for (let c = 0; c < 3; c++) {
-        const value = isSubject ? generated[i + c] : clampNumber(generated[i + c] - drift[c], 0, 255)
-        out[i + c] = Math.round(base[i + c] * (1 - alpha) + value * alpha)
+      if (maskPixelValue(shadowData, i) <= 8) continue
+      // Take only HOW MUCH darker the model made this pixel, never its colour: a cast shadow keeps the
+      // receiving surface's own hue. Taking the model's RGB straight made a dark blue-purple blob on the
+      // marble. The depth is capped so the shadow cannot be darker than the scene's own shadows.
+      const baseLuma = image.data[i] * 0.2126 + image.data[i + 1] * 0.7152 + image.data[i + 2] * 0.0722
+      const resultLuma = result[i] * 0.2126 + result[i + 1] * 0.7152 + result[i + 2] * 0.0722
+      if (resultLuma >= baseLuma - 2 || baseLuma < 8) {
+        stats.rejectedPixels += 1
+        continue
       }
-      out[i + 3] = Math.max(base[i + 3], generated[i + 3])
-      subjectPixels++
+      const shade = clampNumber(resultLuma / baseLuma, 1 - OBJECT_TRANSFER_SHADOW_MAX_DARKEN, 1)
+      for (let channel = 0; channel < 3; channel += 1) {
+        image.data[i + channel] = Math.round(image.data[i + channel] * shade)
+      }
+      stats.shadowPixels += 1
     }
-    return { pixels: out, stats: { shadowPixels, subjectPixels, protectedPixels, drift, ambientTint, shadowLimit, shadowSoftness, region: { left, top, right, bottom }, grow, feather } }
+    ctx.putImageData(image, 0, 0)
+    output.__objectTransferCompositeStats = stats
+    return output
+  }
+
+  function objectTransferHarmonizeCanvas(compositeCanvas, baseCanvas, objectMaskCanvas, strength) {
+    // The model lights the object with its own lamp: measured on the user's scene the transferred robot's
+    // highlights sat at R/B 1.25 while the dusk marble around it sat at 1.08. Match the colour of the
+    // LIGHT, not the object's own paint: derive a white balance from the brightest tenth of each, keep it
+    // luminance neutral so nothing gets brighter or darker, and weight it by how lit each pixel is.
+    const width = Math.max(1, Math.round(compositeCanvas.width || 1))
+    const height = Math.max(1, Math.round(compositeCanvas.height || 1))
+    const output = cloneCanvas(compositeCanvas)
+    const ctx = output.getContext('2d', { willReadFrequently: true })
+    const image = ctx.getImageData(0, 0, width, height)
+    const base = baseCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+    const maskData = thresholdMaskCanvas(objectMaskCanvas, 8).getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+    const bounds = maskBBoxEngine(objectMaskCanvas, 8)
+    if (!bounds || bounds.count < 256) return output
+    const pad = Math.round(clampNumber(Math.max(bounds.width, bounds.height) * 0.35, 40, 240))
+    const left = Math.max(0, bounds.minX - pad)
+    const right = Math.min(width - 1, bounds.maxX + pad)
+    const top = Math.max(0, bounds.minY - pad)
+    const bottom = Math.min(height - 1, bounds.maxY + pad)
+    const luminance = (data, i) => data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722
+    const objectSamples = []
+    const sceneSamples = []
+    for (let y = top; y <= bottom; y += 1) {
+      for (let x = left; x <= right; x += 1) {
+        const i = (y * width + x) * 4
+        if (maskPixelValue(maskData, i) > 8) objectSamples.push(i)
+        else if (base[i + 3] > 250) sceneSamples.push(i)
+      }
+    }
+    if (objectSamples.length < 256 || sceneSamples.length < 256) return output
+    const highlightMean = (indices, data) => {
+      const sorted = indices.slice().sort((a, b) => luminance(data, b) - luminance(data, a))
+      const take = Math.max(64, Math.round(sorted.length * 0.1))
+      const sum = [0, 0, 0]
+      for (let n = 0; n < take; n += 1) {
+        const i = sorted[n]
+        sum[0] += data[i]; sum[1] += data[i + 1]; sum[2] += data[i + 2]
+      }
+      return sum.map((value) => value / take)
+    }
+    const objectHighlight = highlightMean(objectSamples, image.data)
+    const sceneHighlight = highlightMean(sceneSamples, base)
+    const rawGain = [0, 1, 2].map((c) => (sceneHighlight[c] + 1) / (objectHighlight[c] + 1))
+    const gainLuma = rawGain[0] * 0.2126 + rawGain[1] * 0.7152 + rawGain[2] * 0.0722
+    const gain = rawGain.map((value) => clampNumber(value / (gainLuma || 1), OBJECT_TRANSFER_HARMONIZE_GAIN_MIN, OBJECT_TRANSFER_HARMONIZE_GAIN_MAX))
+    const amount = clampNumber(Number(strength) || 0, 0, 1)
+    let harmonized = 0
+    for (const i of objectSamples) {
+      const weight = amount * Math.sqrt(clampNumber(luminance(image.data, i) / 255, 0, 1))
+      if (weight <= 0.002) continue
+      for (let c = 0; c < 3; c += 1) {
+        image.data[i + c] = Math.round(clampNumber(image.data[i + c] * (1 + (gain[c] - 1) * weight), 0, 255))
+      }
+      harmonized += 1
+    }
+    ctx.putImageData(image, 0, 0)
+    output.__objectTransferHarmonizeStats = {
+      gain: gain.map((value) => Math.round(value * 1000) / 1000),
+      objectHighlight: objectHighlight.map(Math.round),
+      sceneHighlight: sceneHighlight.map(Math.round),
+      harmonizedPixels: harmonized,
+      strength: amount
+    }
+    return output
   }
 
   async function objectTransferProtectedResultDataUrl(dataUrl, assets) {
+    // The plate came back on the scene's own grid and only the placement region was denoised, so the
+    // result needs no drift correction and no shadow reconstruction: paste it through the same mask the
+    // sampler used. Everything outside it is the original scene, byte for byte.
     const size = assets && assets.size || await sourceSize()
-    const normalizedDataUrl = await objectTransferNormalizeResultDataUrl(dataUrl, size)
-    const resultCanvas = await canvasFromDataUrl(normalizedDataUrl, size.width, size.height)
+    const width = Math.max(1, Math.round(size.width || 1))
+    const height = Math.max(1, Math.round(size.height || 1))
     const baseCanvas = assets && assets.baseCanvas || await sourceFullCanvas(size)
-    const width = Math.max(1, Math.round(size.width || baseCanvas.width || resultCanvas.width || 1))
-    const height = Math.max(1, Math.round(size.height || baseCanvas.height || resultCanvas.height || 1))
-    setSplitBusyDetail('正在融合物体边缘与场景投影...')
-    const sourceForeground = assets.sourceForegroundCanvas || await canvasFromDataUrl(await runRmbgCutout(baseCanvas.toDataURL('image/png')), width, height)
-    const generatedForeground = assets.generatedForegroundCanvas || await canvasFromDataUrl(await runRmbgCutout(normalizedDataUrl), width, height)
-    const out = canvasOfSize(width, height)
-    const outCtx = out.getContext('2d', { willReadFrequently: true })
-    outCtx.drawImage(baseCanvas, 0, 0, width, height)
-    const resultCtx = resultCanvas.getContext('2d', { willReadFrequently: true })
-    const baseImage = outCtx.getImageData(0, 0, width, height)
-    const resultImage = resultCtx.getImageData(0, 0, width, height)
-    const readPixels = canvas => canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const sourceProtection = readPixels(expandedMaskCanvas(sourceForeground, Math.round(clampNumber(Math.min(width, height) * 0.008, 2, 12)), 0))
-    const maskCanvas = assets.transferMaskCanvas
-    const box = maskBBoxEngine(maskCanvas, 8)
-    const composite = objectTransferScenePixels(baseImage.data, resultImage.data, readPixels(maskCanvas), sourceProtection, readPixels(generatedForeground), width, height, { x: box.minX, y: box.minY, width: box.width, height: box.height }, assets.subjectMaskCanvas ? readPixels(assets.subjectMaskCanvas) : null)
-    baseImage.data.set(composite.pixels)
-    outCtx.putImageData(baseImage, 0, 0)
+    setSplitBusyDetail('正在写回场景...')
+    const resultCanvas = await qwenEditPlateResultCanvas(dataUrl, assets.plateSize, assets.plateContent, width, height, '万物迁移')
+    const pastedCanvas = objectTransferCompositeCanvas(baseCanvas, resultCanvas, assets.objectMaskCanvas, assets.noiseMaskCanvas, OBJECT_TRANSFER_COMPOSITE_FEATHER)
+    setSplitBusyDetail('正在对齐物体与场景的光色...')
+    const finalCanvas = objectTransferHarmonizeCanvas(pastedCanvas, baseCanvas, assets.objectMaskCanvas, OBJECT_TRANSFER_HARMONIZE_STRENGTH)
+    const stats = { ...(pastedCanvas.__objectTransferCompositeStats || {}), harmonize: finalCanvas.__objectTransferHarmonizeStats || null }
+    const changedOutside = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(assets.noiseMaskCanvas)), 8)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
         ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}),
-        pasteBack: 'subject-and-scene-shadow-composite',
-        pasteMask: composite.stats
+        pasteBack: 'object-replaces-shadow-darkens',
+        pasteMask: { ...stats, noiseGrow: assets.noiseGrow, nonMaskChangedPixels: changedOutside }
       }
     }
-    return out.toDataURL('image/png')
+    return finalCanvas.toDataURL('image/png')
   }
 
   async function runObjectTransferQwen() {
@@ -15807,9 +15790,10 @@
     const stamp = Date.now()
     const runId = `${OBJECT_TRANSFER_FILENAME_PREFIX}_${stamp}_${Math.random().toString(16).slice(2, 8)}`
     setSplitBusyDetail('\u6b63\u5728\u4e0a\u4f20\u4e07\u7269\u8fc1\u79fb\u4e34\u65f6\u8f93\u5165...')
-    const placementName = await uploadDataUrl(baseUrl, `${runId}_placement.png`, assets.placementGuideDataUrl)
+    const placementName = await uploadDataUrl(baseUrl, `${runId}_placement.png`, assets.plateDataUrl)
     const referenceName = await uploadDataUrl(baseUrl, safeDownloadFileName(`${runId}_${objectTransferState().referenceFileName || 'reference.png'}`, `${runId}_reference.png`), assets.referenceDataUrl)
-    const workflow = buildObjectTransferQwenWorkflow(info, { placementName, referenceName }, runId, resolved)
+    const maskName = await uploadDataUrl(baseUrl, `${runId}_mask.png`, assets.noiseMaskPlateDataUrl)
+    const workflow = buildObjectTransferQwenWorkflow(info, { placementName, referenceName, maskName }, runId, resolved)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
@@ -15818,10 +15802,12 @@
         placement: assets.bounds,
         maskStats: assets.maskStats,
         guideMode: assets.guideMode,
-        runtimeInputs: { placementName, referenceName }
+        runtimeInputs: { placementName, referenceName, maskName },
+        plateSize: assets.plateSize,
+        noiseGrow: assets.noiseGrow
       }
     }
-    setSplitBusyDetail(`Qwen Image Edit 2511\n${assets.size.width} x ${assets.size.height} px`)
+    setSplitBusyDetail(`Qwen Image Edit 2511\n${assets.plateSize.width} x ${assets.plateSize.height} px`)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, runId, OBJECT_TRANSFER_TIMEOUT_MS)
     return await objectTransferProtectedResultDataUrl(resultDataUrl, assets)
   }
@@ -29270,6 +29256,12 @@
     // and 2.97/255 mean difference; a mismatched 736x800 plate (reference 1.34x bigger) drifts 4px with
     // correlation 0.38 and 24.65/255. FluxKontextImageScale is NOT used for this: it center-crops one
     // axis (measured: 29 columns off each side of a 756px crop) and that crop has no inverse.
+    const direct = qwenEditReferenceSize(width, height)
+    const directCheck = qwenEditReferenceSize(direct.width, direct.height)
+    if (directCheck.width === direct.width && directCheck.height === direct.height && direct.margin >= QWEN_EDIT_PLATE_ROUNDING_MARGIN) {
+      // The rescale is idempotent for most sizes, and its own output keeps the source aspect best.
+      return { width: direct.width, height: direct.height, aspectError: 0 }
+    }
     const aspect = Math.max(1, Math.round(width || 1)) / Math.max(1, Math.round(height || 1))
     let best = null
     for (let plateWidth = QWEN_EDIT_PLATE_MIN; plateWidth <= QWEN_EDIT_PLATE_MAX; plateWidth += QWEN_EDIT_PLATE_ALIGN) {
@@ -42438,6 +42430,58 @@
     return { partId: part.id, sourceLayerId: part.sourceLayerId, region: part.metadata.region, effectMaskPixels: part.metadata.effectMaskPixels, replacedPixels: part.metadata.replacedPixels, nonMaskChangedPixels: part.metadata.nonMaskChangedPixels, elapsedMs: Date.now() - startedAt }
   }
 
+  async function runObjectTransferSmokeTest(options = {}) {
+    await waitForSplitEditorPanel('object transfer smoke')
+    const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms))
+    const sourceDataUrl = String(options && options.sourceDataUrl || '')
+    if (sourceDataUrl) {
+      await importSourceDataUrl(String(options && options.fileName || 'object-transfer-smoke.png'), sourceDataUrl)
+      await wait(1200) // the host re-renders after an import
+    }
+    if (!state.source || !state.source.dataUrl) throw new Error('object transfer smoke needs a source image')
+    const referenceDataUrl = String(options && options.referenceDataUrl || '')
+    if (!referenceDataUrl) throw new Error('object transfer smoke needs a reference image')
+    // The upload path runs RMBG to get the object's silhouette; without it the "cutout" is a rectangle
+    // and the composite treats the whole placement box as object.
+    const referenceCutoutDataUrl = String(options && options.referenceCutoutDataUrl || '') || await runRmbgCutout(referenceDataUrl)
+    const reference = await loadImage(referenceCutoutDataUrl)
+    const size = await sourceSize()
+    const tool = objectTransferState()
+    tool.active = true
+    tool.referenceOriginalDataUrl = referenceDataUrl
+    tool.referenceCutoutDataUrl = referenceCutoutDataUrl
+    tool.referenceFileName = String(options && options.referenceFileName || 'reference.png')
+    tool.referenceWidth = Math.max(1, Math.round(reference.naturalWidth || reference.width || 1))
+    tool.referenceHeight = Math.max(1, Math.round(reference.naturalHeight || reference.height || 1))
+    tool.scale = Number(options && options.scale) > 0 ? Number(options.scale) : objectTransferInitialScale({ width: tool.referenceWidth, height: tool.referenceHeight }, size)
+    const placed = objectTransferPlacementBounds(size)
+    tool.x = Number.isFinite(Number(options && options.x)) ? Number(options.x) : Math.round((size.width - placed.width) / 2)
+    tool.y = Number.isFinite(Number(options && options.y)) ? Number(options.y) : Math.round(size.height - placed.height - Math.round(size.height * 0.08))
+    render()
+    syncSplitWorkspace()
+    await wait(200)
+    if (!objectTransferReady()) throw new Error('object transfer state is not ready')
+    if (options.execute === false) {
+      const assets = await objectTransferBuildInputCanvases()
+      return { prepared: true, plateSize: assets.plateSize, noiseGrow: assets.noiseGrow, bounds: assets.bounds, guideMode: assets.guideMode }
+    }
+    const startedAt = Date.now()
+    const before = String(state.source && state.source.dataUrl || '')
+    await executeObjectTransferRun()
+    if (state.busy) throw new Error('object transfer did not finish')
+    const debug = (state.lastProcessingDebug || {}).objectTransfer || {}
+    if (String(state.source && state.source.dataUrl || '') === before) throw new Error(`object transfer produced no new source: ${String(state.message || '')}`)
+    document.body.setAttribute('data-novaflow-object-transfer-smoke', 'pass')
+    return {
+      plateSize: debug.plateSize,
+      noiseGrow: debug.noiseGrow,
+      pasteBack: debug.pasteBack,
+      pasteMask: debug.pasteMask,
+      runtimeInputs: debug.runtimeInputs,
+      elapsedMs: Date.now() - startedAt
+    }
+  }
+
   async function runSelectionRemoveBackgroundSmokeTest(options = {}) {
     await waitForSplitEditorPanel('remove background smoke')
     const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms))
@@ -43456,6 +43500,9 @@
     runEffectExtractSmokeTest,
     executeEffectRemoveTool,
     runEffectRemoveSmokeTest,
+    runObjectTransferSmokeTest,
+    objectTransferBuildInputCanvases,
+    buildObjectTransferQwenWorkflow,
     selectionEffectModeAvailable,
     selectionEffectRemovalActive,
     effectRemovalMaskCanvas,

@@ -6,7 +6,7 @@ const test = require('node:test')
 const root = path.resolve(__dirname, '../..')
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
 const RUNTIME = 'particle-editor/spine-split-runtime.js'
-const CACHE_VERSION = '20260916-effect-remove-1'
+const CACHE_VERSION = '20260917-object-transfer-1'
 
 // 去除物体 repaints everything the stroke covers, so a stroke over a glow changed the rest of the
 // picture too (the user's 2026-09-16 report). The 特效 switch keys the effect the way 智能抠图 does
@@ -27,7 +27,7 @@ test('去除物体 carries the same 特效 switch as 智能抠图 and relabels �
   assert.match(source, /effectRemove: '\\u6b63\\u5728\\u53bb\\u9664\\u7279\\u6548\.\.\.'/, 'the busy overlay names the removal')
   assert.match(source, /name === 'selectionExit' \|\| name === 'selectionEffect' \|\| \(kind === 'cutout' && name === 'selectionRemoveBackground'\)/, 'the switch stays clickable while the inpaint tool holds the workspace')
   assert.match(source, /has\('__novaflow_effect_remove_smoke'\)/, 'the in-page smoke is wired to a query flag')
-  assert.match(source, /executeEffectRemoveTool,\n\s+runEffectRemoveSmokeTest,\n\s+selectionEffectModeAvailable,\n\s+selectionEffectRemovalActive,\n\s+effectRemovalMaskCanvas,\n\s+effectRemovalMaskGrowPx,\n\s+effectDeeffectPromptText,\n\s+buildEffectDeeffectQwenWorkflow,\n\s+qwenEditReferenceSize,\n\s+qwenEditPlateSize,/, 'the debug hooks expose the plate sizing and the de-effect pass')
+  assert.match(source, /executeEffectRemoveTool,\n\s+runEffectRemoveSmokeTest,\n\s+runObjectTransferSmokeTest,\n\s+objectTransferBuildInputCanvases,\n\s+buildObjectTransferQwenWorkflow,\n\s+selectionEffectModeAvailable,\n\s+selectionEffectRemovalActive,\n\s+effectRemovalMaskCanvas,\n\s+effectRemovalMaskGrowPx,\n\s+effectDeeffectPromptText,\n\s+buildEffectDeeffectQwenWorkflow,\n\s+qwenEditReferenceSize,\n\s+qwenEditPlateSize,/, 'the debug hooks expose the plate sizing and the de-effect pass')
 })
 
 test('the removal keys the effect with the extraction pipeline and uses that key as the removal mask', () => {
