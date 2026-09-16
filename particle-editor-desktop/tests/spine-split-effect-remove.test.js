@@ -41,7 +41,10 @@ test('the removal keys the effect with the extraction pipeline and uses that key
   assert.match(source, /const finalCanvas = compositeRemovalRgbResult\(layerOriginalCanvas, resultCropCanvas, crop\.cropMask, crop\.cropBox\)/, 'the composite is mask limited: pixels outside the keyed effect are never written')
   assert.match(source, /kind: 'effect-removal',\n\s+source: 'executeEffectRemoveTool',/, 'the result layer is tagged')
   assert.match(source, /replacementForPartId: part\.id \}\n\s+const nextParts = state\.parts\.map\(\(item\) => String\(item && item\.id \|\| ''\) === String\(part\.id\) \? \{ \.\.\.item, visible: false \} : item\)/, 'the cleaned layer replaces the source layer, same as 执行删除')
-  assert.match(source, /const EFFECT_REMOVE_MASK_FLOOR = 8/, 'the faint halo counts as effect too')
+  assert.match(source, /const EFFECT_REMOVE_MASK_FLOOR = EFFECT_EXTRACT_ALPHA_FLOOR/, 'everything the extraction kept counts as effect; a higher floor left glitter behind')
+  // A full Qwen 2511 de-effect pass erases the effects but re-renders the whole crop, so its plate
+  // cannot be pasted back through the key — the fill model is what keeps unmasked pixels intact.
+  assert.match(source, /const resultCropCanvas = await canvasFromDataUrl\(removalDataUrl, crop\.cropBox\.width, crop\.cropBox\.height\)/, 'the plate comes from the fill model, at the crop resolution')
   // A tight key is a speckle field and the fill model paints the sparkles straight back; grown to ~12px
   // on a 756px picture the glow becomes one solid hole and comes out clean (tuned live 2026-09-16).
   assert.match(source, /const EFFECT_REMOVE_MASK_GROW_RATIO = 0\.016\n\s+const EFFECT_REMOVE_MASK_GROW_MIN = 8\n\s+const EFFECT_REMOVE_MASK_GROW_MAX = 28/, 'the key is grown proportionally to the picture')

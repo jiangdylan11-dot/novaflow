@@ -271,11 +271,15 @@
   const EFFECT_EXTRACT_SEED = 916202601
   const EFFECT_EXTRACT_ALPHA_FLOOR = 3
   const EFFECT_REMOVE_FILENAME_PREFIX = 'NovaFlow_effect_remove'
-  const EFFECT_REMOVE_MASK_FLOOR = 8
-  // Tuned 2026-09-16 against the live Removal V4: a tight key leaves a speckle field and the fill model
+  // Everything the extraction kept is effect (it already floors VAE noise at EFFECT_EXTRACT_ALPHA_FLOOR);
+  // a higher floor left the faint glitter on the skin behind.
+  const EFFECT_REMOVE_MASK_FLOOR = EFFECT_EXTRACT_ALPHA_FLOOR
+  // Tuned 2026-09-16/17 against the live Removal V4: a tight key leaves a speckle field and the fill model
   // simply paints the sparkles back; grown to ~12px on a 756px image the glow becomes one solid hole and
   // comes out clean. Naming the effect in the prompt made it paint a glow streak again, so the removal
-  // keeps the ordinary 去除物体 repair prompt.
+  // keeps the ordinary 去除物体 repair prompt. A full Qwen 2511 de-effect pass was tried instead of the
+  // fill and rejected: it re-renders the whole crop (best global alignment 33.1 vs 33.7 mean abs diff,
+  // i.e. not a shift but a redraw), so its plate cannot be pasted back through the key without seams.
   const EFFECT_REMOVE_MASK_GROW_RATIO = 0.016
   const EFFECT_REMOVE_MASK_GROW_MIN = 8
   const EFFECT_REMOVE_MASK_GROW_MAX = 28
