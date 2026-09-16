@@ -150,17 +150,21 @@ test("the AI特效 shell stays up until React has left 特效 after a primary si
   // moves the pressed primary entry away from 特效.
   const watcher = source.match(/  const beginPrimaryLeave = \(\) => \{[\s\S]*?\n  \}/)?.[0];
   assert.ok(watcher);
-  assert.match(watcher, /cancelScheduledHostScrollFreeze\(\)\n\s+restoreHostScroll\(\)\n\s+document\.body\.classList\.remove\('novaflow-aifx-open'\)\n\s+document\.body\.classList\.add\(LEAVING_CLASS\)\n\s+if \(primaryLeaveWatch\) return/);
+  assert.match(watcher, /cancelScheduledHostScrollFreeze\(\)\n\s+restoreHostScroll\(\)\n\s+freezeShellGeometryForLeave\(\)\n\s+document\.body\.classList\.remove\('novaflow-aifx-open'\)\n\s+document\.body\.classList\.add\(LEAVING_CLASS\)\n\s+if \(primaryLeaveWatch\) return/);
   assert.match(watcher, /if \(!label \|\| label === '特效'\) return\n\s+stopPrimaryLeaveWatch\(\)\n\s+hideApp\(\{ reason: 'primary-switch:' \+ label \}\)/);
   assert.match(watcher, /observer\.observe\(document\.documentElement, \{ subtree: true, attributes: true, attributeFilter: \['aria-pressed', 'class'\] \}\)/);
-  assert.match(watcher, /document\.body\.classList\.remove\(LEAVING_CLASS\)\n\s+document\.body\.classList\.add\('novaflow-aifx-open'\)\n\s+freezeHostLeftScroll\(\)/);
+  assert.match(watcher, /document\.body\.classList\.remove\(LEAVING_CLASS\)\n\s+document\.body\.classList\.add\('novaflow-aifx-open'\)\n\s+unfreezeShellGeometry\(\)\n\s+freezeHostLeftScroll\(\)/);
   assert.match(source, /const LEAVING_CLASS = 'novaflow-aifx-leaving'/);
   assert.match(source, /const hideApp = \(options = \{\}\) => \{\n\s+stopPrimaryLeaveWatch\(\)/);
   assert.match(source, /document\.body\.classList\.remove\('novaflow-aifx-open'\)\n\s+document\.body\.classList\.remove\(LEAVING_CLASS\)/);
-  assert.match(source, /document\.body\.classList\.remove\(LEAVING_CLASS\)\n\s+document\.body\.classList\.add\('novaflow-aifx-open'\)\n\s+root\.classList\.add\('is-open'\)/);
+  assert.match(source, /document\.body\.classList\.remove\(LEAVING_CLASS\)\n\s+unfreezeShellGeometry\(\)\n\s+document\.body\.classList\.add\('novaflow-aifx-open'\)\n\s+root\.classList\.add\('is-open'\)/);
   // The leaving state keeps the shell painted over the whole left column (shield from the top).
   assert.match(source, /body\.novaflow-aifx-leaving #\$\{APP_ID\}\.is-open::before \{\n\s+top: 0 !important;/);
-  assert.match(source, /body\.novaflow-aifx-leaving #\$\{APP_ID\}\.is-open \.aifx-side \{\n\s+margin-top: 0 !important;\n\s+height: 100% !important;/);
+  assert.doesNotMatch(source, /body\.novaflow-aifx-leaving #\$\{APP_ID\}\.is-open \.aifx-side \{/);
+  // The shell geometry pinned through body.novaflow-aifx-open is frozen inline for the leaving state.
+  assert.match(watcher, /restoreHostScroll\(\)\n\s+freezeShellGeometryForLeave\(\)\n\s+document\.body\.classList\.remove\('novaflow-aifx-open'\)/);
+  assert.match(source, /const freezeShellGeometryForLeave = \(\) => \{[\s\S]*?root\.style\.setProperty\('left', rootStyle\.left, 'important'\)\n\s+root\.style\.setProperty\('grid-template-columns', rootStyle\.gridTemplateColumns, 'important'\)/);
+  assert.equal((source.match(/unfreezeShellGeometry\(\)/g) || []).length, 3, "unfrozen on hide, on the 3s fallback and on open");
   assert.doesNotMatch(source, /hideAppWhenPrimaryLeaves|hideAppAfterPrimarySwitch|hideAppWhenHostLeaves/);
 
   // Functional: the watcher only hides once the pressed primary entry is no longer 特效.
@@ -187,6 +191,8 @@ test("the AI特效 shell stays up until React has left 特效 after a primary si
     normalize: (value) => String(value || "").replace(/\s+/g, "").trim(),
     cancelScheduledHostScrollFreeze: () => {},
     restoreHostScroll: () => {},
+    freezeShellGeometryForLeave: () => {},
+    unfreezeShellGeometry: () => {},
     freezeHostLeftScroll: () => {},
     hideApp: (options) => hides.push(options.reason),
   };
@@ -205,7 +211,7 @@ test("the AI特效 shell stays up until React has left 特效 after a primary si
   assert.deepEqual(hides, ["primary-switch:动画"]);
   assert.equal(observerCallback, null, "the watcher disconnects after hiding");
   const html = read("particle-editor/index.html");
-  assert.match(html, /aifx-repaint-runtime\.js\?v=20260916-aifx-ui-shell-5/);
+  assert.match(html, /aifx-repaint-runtime\.js\?v=20260916-aifx-ui-shell-6/);
 
   const helper = source.match(/  const isPrimarySidebarAction = \(action\) => \{[\s\S]*?\n  \}/)?.[0];
   assert.ok(helper);

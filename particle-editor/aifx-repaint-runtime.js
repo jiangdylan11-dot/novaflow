@@ -189,6 +189,40 @@
   const LEAVING_CLASS = 'novaflow-aifx-leaving'
   let primaryLeaveWatch = null
 
+  // The brand runtime pins the shell's left edge, column split and side widths through
+  // body.novaflow-aifx-open; copy the computed values inline before that class goes away so the shell
+  // does not move during the leaving state.
+  const LEAVE_FROZEN_BOX_PROPS = ['width', 'min-width', 'max-width']
+  const freezeShellGeometryForLeave = () => {
+    const root = state.refs.root
+    if (!(root instanceof HTMLElement)) return
+    const rootStyle = getComputedStyle(root)
+    root.style.setProperty('left', rootStyle.left, 'important')
+    root.style.setProperty('grid-template-columns', rootStyle.gridTemplateColumns, 'important')
+    const side = root.querySelector('.aifx-side')
+    if (!(side instanceof HTMLElement)) return
+    const sideWidth = getComputedStyle(side).width
+    LEAVE_FROZEN_BOX_PROPS.forEach((property) => side.style.setProperty(property, sideWidth, 'important'))
+    const panel = side.querySelector(':scope > .aifx-panel')
+    if (!(panel instanceof HTMLElement)) return
+    const panelStyle = getComputedStyle(panel)
+    LEAVE_FROZEN_BOX_PROPS.forEach((property) => panel.style.setProperty(property, panelStyle.width, 'important'))
+    panel.style.setProperty('margin-left', panelStyle.marginLeft, 'important')
+  }
+  const unfreezeShellGeometry = () => {
+    const root = state.refs.root
+    if (!(root instanceof HTMLElement)) return
+    root.style.removeProperty('left')
+    root.style.removeProperty('grid-template-columns')
+    const side = root.querySelector('.aifx-side')
+    if (!(side instanceof HTMLElement)) return
+    LEAVE_FROZEN_BOX_PROPS.forEach((property) => side.style.removeProperty(property))
+    const panel = side.querySelector(':scope > .aifx-panel')
+    if (!(panel instanceof HTMLElement)) return
+    LEAVE_FROZEN_BOX_PROPS.forEach((property) => panel.style.removeProperty(property))
+    panel.style.removeProperty('margin-left')
+  }
+
   const stopPrimaryLeaveWatch = () => {
     if (!primaryLeaveWatch) return
     primaryLeaveWatch.observer.disconnect()
@@ -206,6 +240,7 @@
   const beginPrimaryLeave = () => {
     cancelScheduledHostScrollFreeze()
     restoreHostScroll()
+    freezeShellGeometryForLeave()
     document.body.classList.remove('novaflow-aifx-open')
     document.body.classList.add(LEAVING_CLASS)
     if (primaryLeaveWatch) return
@@ -224,6 +259,7 @@
       if (!state.refs.root?.classList.contains('is-open')) return
       document.body.classList.remove(LEAVING_CLASS)
       document.body.classList.add('novaflow-aifx-open')
+      unfreezeShellGeometry()
       freezeHostLeftScroll()
     }, 3000)
     primaryLeaveWatch = { observer, timer }
@@ -289,10 +325,6 @@
       }
       body.novaflow-aifx-leaving #${APP_ID}.is-open::before {
         top: 0 !important;
-      }
-      body.novaflow-aifx-leaving #${APP_ID}.is-open .aifx-side {
-        margin-top: 0 !important;
-        height: 100% !important;
       }
       body.novaflow-aifx-open [data-novaflow-left-content-root="1"] * {
         visibility: hidden !important;
@@ -1322,6 +1354,7 @@
     freezeHostLeftScroll()
     applyHostTabVisuals(trigger)
     document.body.classList.remove(LEAVING_CLASS)
+    unfreezeShellGeometry()
     document.body.classList.add('novaflow-aifx-open')
     root.classList.add('is-open')
     scheduleHostScrollFreeze(root)
@@ -1338,6 +1371,7 @@
     state.refs.root?.classList.remove('is-open')
     document.body.classList.remove('novaflow-aifx-open')
     document.body.classList.remove(LEAVING_CLASS)
+    unfreezeShellGeometry()
     restoreHostScroll()
     if (options.activateParticle) setHostTabState('particle')
     refreshUi()
