@@ -11,6 +11,8 @@
     "check:runtime": "node scripts/check-runtime-sync.mjs",
     "dev:desktop": "npm --prefix particle-editor-desktop run dev",
     "check:entry": "python tools/check_4783_runtime.py",
+    "check:write-budget": "node scripts/check-runtime-write-budget.mjs",
+    "check:write-budget:update": "node scripts/check-runtime-write-budget.mjs --update",
     "check:split-removal": "node scripts/check-split-removal-result-contract.mjs",
     "check:ai-seq-local-model": "node scripts/check-ai-seq-local-model-option.mjs",
     "check:ai-seq-bottom-spacing": "node scripts/check-ai-seq-bottom-spacing-contract.mjs",

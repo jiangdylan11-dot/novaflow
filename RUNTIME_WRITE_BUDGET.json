@@ -1,0 +1,35 @@
+{
+  "note": "DOM write budgets for the locked 4783 runtime. Re-record with: node scripts/check-runtime-write-budget.mjs --update",
+  "tolerance": 0.15,
+  "recordedAt": "2026-09-16",
+  "scenarios": {
+    "particle-idle-5s": {
+      "style": 536,
+      "styleNoop": 0,
+      "attr": 12,
+      "attrNoop": 0,
+      "gcs": 462,
+      "qsa": 1317
+    },
+    "switch-particle-to-animation": {
+      "style": 13968,
+      "styleNoop": 513,
+      "attr": 1166,
+      "attrNoop": 603,
+      "gbcr": 3668,
+      "gcs": 2539,
+      "qsa": 6411,
+      "qsaNodes": 46760
+    },
+    "switch-animation-to-art": {
+      "style": 2751,
+      "styleNoop": 558,
+      "attr": 238,
+      "attrNoop": 137,
+      "gbcr": 30108,
+      "gcs": 30743,
+      "qsa": 2707,
+      "qsaNodes": 30302
+    }
+  }
+}
