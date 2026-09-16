@@ -85,5 +85,8 @@ test('the scene subject is protected in the latent and the model region is paste
   const harmonizeBlock = source.slice(source.indexOf('function objectTransferHarmonizeCanvas('), source.indexOf('async function objectTransferProtectedResultDataUrl('))
   assert.match(harmonizeBlock, /const gainLuma = rawGain\[0\] \* 0\.2126 \+ rawGain\[1\] \* 0\.7152 \+ rawGain\[2\] \* 0\.0722/, 'the grade is luminance neutral: it shifts colour, not brightness')
   assert.match(harmonizeBlock, /const weight = amount \* Math\.sqrt\(clampNumber\(luminance\(image\.data, i\) \/ 255, 0, 1\)\)/, 'lit pixels take more of the shift than pixels in shadow')
+  // An ambient fill that lifted the object's black point was tried and removed: it also lifted the cast
+  // shadow inside the mask and, with the blue gain on top, turned it into a washed blue-purple smear.
+  assert.doesNotMatch(source, /OBJECT_TRANSFER_AMBIENT_FILL|ambientFill/, 'the object keeps its own contrast; only the colour of the light is matched')
   assert.match(source, /const OBJECT_TRANSFER_HARMONIZE_STRENGTH = 0\.7\n\s+const OBJECT_TRANSFER_HARMONIZE_GAIN_MIN = 0\.85\n\s+const OBJECT_TRANSFER_HARMONIZE_GAIN_MAX = 1\.2/, 'the grade is partial and clamped, so the object keeps its identity colours')
 })

@@ -266,8 +266,6 @@
   const OBJECT_TRANSFER_HARMONIZE_STRENGTH = 0.7
   const OBJECT_TRANSFER_HARMONIZE_GAIN_MIN = 0.85
   const OBJECT_TRANSFER_HARMONIZE_GAIN_MAX = 1.2
-  const OBJECT_TRANSFER_AMBIENT_FILL = 0.6
-  const OBJECT_TRANSFER_AMBIENT_MIN_SCALE = 0.6
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
   const OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE = '\u53c2\u8003\u7269\u4e3b\u4f53\u4e0d\u6e05\u6670\uff0c\u8bf7\u6362\u4e00\u5f20\u80cc\u666f\u66f4\u7b80\u5355\u7684\u56fe\u7247\u3002'
@@ -15742,50 +15740,13 @@
       }
       harmonized += 1
     }
-    // Ambient fill: lift the object's black point toward the floor of the surrounding scene and keep its
-    // highlights where they are. A linear map on luminance only, so hue and saturation survive.
-    const percentile = (indices, data, q) => {
-      const values = indices.map((i) => luminance(data, i)).sort((a, b) => a - b)
-      return values[clampNumber(Math.round((values.length - 1) * q), 0, values.length - 1)]
-    }
-    const objectFloor = percentile(objectSamples, image.data, 0.1)
-    const objectCeil = percentile(objectSamples, image.data, 0.9)
-    const sceneFloor = percentile(sceneSamples, base, 0.1)
-    const targetFloor = Math.min(objectCeil - 8, Math.max(objectFloor, sceneFloor * OBJECT_TRANSFER_AMBIENT_FILL))
-    let filled = 0
-    let fillScale = 1
-    let fillOffset = 0
-    if (targetFloor > objectFloor + 1 && objectCeil > objectFloor + 8) {
-      fillScale = clampNumber((objectCeil - targetFloor) / (objectCeil - objectFloor), OBJECT_TRANSFER_AMBIENT_MIN_SCALE, 1)
-      fillOffset = objectCeil - fillScale * objectCeil
-      for (const i of objectSamples) {
-        const before = luminance(image.data, i)
-        if (before <= 0.5) continue
-        const after = clampNumber(before * fillScale + fillOffset, 0, 255)
-        const ratio = after / before
-        if (Math.abs(ratio - 1) < 0.002) continue
-        for (let c = 0; c < 3; c += 1) {
-          image.data[i + c] = Math.round(clampNumber(image.data[i + c] * ratio, 0, 255))
-        }
-        filled += 1
-      }
-    }
     ctx.putImageData(image, 0, 0)
     output.__objectTransferHarmonizeStats = {
       gain: gain.map((value) => Math.round(value * 1000) / 1000),
       objectHighlight: objectHighlight.map(Math.round),
       sceneHighlight: sceneHighlight.map(Math.round),
       harmonizedPixels: harmonized,
-      strength: amount,
-      ambientFill: {
-        objectFloor: Math.round(objectFloor),
-        objectCeil: Math.round(objectCeil),
-        sceneFloor: Math.round(sceneFloor),
-        targetFloor: Math.round(targetFloor),
-        scale: Math.round(fillScale * 1000) / 1000,
-        offset: Math.round(fillOffset * 10) / 10,
-        filledPixels: filled
-      }
+      strength: amount
     }
     return output
   }
