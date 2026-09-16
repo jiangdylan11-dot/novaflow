@@ -256,16 +256,16 @@
   const OBJECT_TRANSFER_TIMEOUT_MS = 30 * 60 * 1000
   // How far past the blue placement guide the model may repaint: enough for the object's own edge
   // and its cast shadow, and no further — everything outside stays frozen in the latent.
-  const OBJECT_TRANSFER_NOISE_GROW_RATIO = 0.02
-  const OBJECT_TRANSFER_NOISE_GROW_MIN = 6
-  const OBJECT_TRANSFER_NOISE_GROW_MAX = 24
+  const OBJECT_TRANSFER_NOISE_GROW_RATIO = 0.055
+  const OBJECT_TRANSFER_NOISE_GROW_MIN = 8
+  const OBJECT_TRANSFER_NOISE_GROW_MAX = 32
+  const OBJECT_TRANSFER_GROUND_DROP_RATIO = 0.015
+  const OBJECT_TRANSFER_GROUND_DROP_MIN = 2
+  const OBJECT_TRANSFER_GROUND_DROP_MAX = 10
   const OBJECT_TRANSFER_OBJECT_GROW = 4
-  const OBJECT_TRANSFER_CONTACT_HINT = 0.25
+  const OBJECT_TRANSFER_RESTYLE_BACKGROUND = '#808080'
   const OBJECT_TRANSFER_SCENE_SUBJECT_ALPHA = 24
   const OBJECT_TRANSFER_SCENE_SUBJECT_GROW = 6
-  const OBJECT_TRANSFER_HARMONIZE_STRENGTH = 0.7
-  const OBJECT_TRANSFER_HARMONIZE_GAIN_MIN = 0.85
-  const OBJECT_TRANSFER_HARMONIZE_GAIN_MAX = 1.2
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
   const OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE = '\u53c2\u8003\u7269\u4e3b\u4f53\u4e0d\u6e05\u6670\uff0c\u8bf7\u6362\u4e00\u5f20\u80cc\u666f\u66f4\u7b80\u5355\u7684\u56fe\u7247\u3002'
@@ -14983,6 +14983,8 @@
       active: false,
       referenceOriginalDataUrl: '',
       referenceCutoutDataUrl: '',
+      referenceStyledDataUrl: '',
+      referenceStyledKey: '',
       referenceFileName: '',
       referenceWidth: 0,
       referenceHeight: 0,
@@ -15381,66 +15383,32 @@
     return { width, height, pixels, max }
   }
 
-  function objectTransferContactMaskCanvas(size, bounds) {
-    const width = Math.max(1, Math.round(Number(size && size.width) || 1))
-    const height = Math.max(1, Math.round(Number(size && size.height) || 1))
+  function objectTransferGroundRoomCanvas(maskCanvas, drop) {
+    // The same room, nudged downwards. Without it the band around the silhouette is symmetric and the
+    // model skipped the contact shadow on a third of the seeds; with it, it painted one every time. This
+    // is room, not a hint: nothing is pre-painted, the mask just reaches where a shadow would fall.
+    const width = Math.max(1, Math.round(maskCanvas && maskCanvas.width || 1))
+    const height = Math.max(1, Math.round(maskCanvas && maskCanvas.height || 1))
     const canvas = canvasOfSize(width, height)
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    const bw = Math.max(1, Math.round(Number(bounds && bounds.width) || 1))
-    const bh = Math.max(1, Math.round(Number(bounds && bounds.height) || 1))
-    const bx = Math.round(Number(bounds && bounds.x) || 0)
-    const by = Math.round(Number(bounds && bounds.y) || 0)
-    const cx = clampNumber(bx + bw * 0.5, 0, width)
-    const cy = clampNumber(by + bh * 0.97, 0, height)
-    const rx = Math.max(10, Math.min(width, bw * 0.38))
-    const ry = Math.max(5, Math.min(height, bh * 0.075))
-    ctx.fillStyle = '#ffffff'
-    ctx.beginPath()
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2)
-    ctx.fill()
+    const steps = Math.max(0, Math.round(Number(drop) || 0))
+    for (let dy = 0; dy <= steps; dy += 1) ctx.drawImage(maskCanvas, 0, dy, width, height)
     return canvas
   }
 
-  function objectTransferCombinedMaskCanvas(alphaMask, size, bounds) {
-    const width = Math.max(1, Math.round(alphaMask && alphaMask.width || size && size.width || 1))
-    const height = Math.max(1, Math.round(alphaMask && alphaMask.height || size && size.height || 1))
-    const canvas = canvasOfSize(width, height)
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    ctx.drawImage(alphaMask, 0, 0, width, height)
-    ctx.globalCompositeOperation = 'lighter'
-    ctx.drawImage(objectTransferContactMaskCanvas(size, bounds), 0, 0, width, height)
-    ctx.globalCompositeOperation = 'source-over'
-    return canvas
-  }
-
-  function objectTransferCompGuideCanvas(baseCanvas, subjectCanvas, contactMaskCanvas) {
+  function objectTransferCompGuideCanvas(baseCanvas, subjectCanvas) {
     // A blue silhouette turns the job into "fill this hole", and the model fills it by copying the
     // reference's own rendering — a 3D render dropped into a painted scene. Giving it a rough composite
     // instead makes the job what it should be: repaint this object so it belongs here. The model then
     // takes the picture's brushwork, palette and light, which is the whole point of an edit model.
+    // Nothing else is pre-painted. A faint ground patch used to be drawn here to say where the contact
+    // shadow went, and the model came back with a glowing pool of light exactly on it: it explains any
+    // patch it is handed, so the only hint it gets now is the object itself.
     const width = Math.max(1, Math.round(baseCanvas && baseCanvas.width || 1))
     const height = Math.max(1, Math.round(baseCanvas && baseCanvas.height || 1))
     const canvas = canvasOfSize(width, height)
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     ctx.drawImage(baseCanvas, 0, 0, width, height)
-    if (contactMaskCanvas) {
-      // A faint ground patch under the object: it tells the model where the contact shadow goes without
-      // painting a colour it would have to invent around.
-      const contact = canvasOfSize(width, height)
-      const contactCtx = contact.getContext('2d', { willReadFrequently: true })
-      contactCtx.drawImage(contactMaskCanvas, 0, 0, width, height)
-      const contactData = contactCtx.getImageData(0, 0, width, height).data
-      const image = ctx.getImageData(0, 0, width, height)
-      for (let i = 0; i + 3 < image.data.length; i += 4) {
-        const value = maskPixelValue(contactData, i)
-        if (value <= 8) continue
-        const weight = clampNumber(value / 255, 0, 1) * OBJECT_TRANSFER_CONTACT_HINT
-        for (let channel = 0; channel < 3; channel += 1) {
-          image.data[i + channel] = Math.round(image.data[i + channel] * (1 - weight))
-        }
-      }
-      ctx.putImageData(image, 0, 0)
-    }
     ctx.drawImage(subjectCanvas, 0, 0, width, height)
     return canvas
   }
@@ -15450,28 +15418,29 @@
     const size = await sourceSize()
     const bounds = clampObjectTransferPlacement(size)
     const baseCanvas = await sourceFullCanvas(size)
-    const cutoutCanvas = await canvasFromDataUrl(tool.referenceCutoutDataUrl, tool.referenceWidth, tool.referenceHeight)
+    const cutoutCanvas = await canvasFromDataUrl(tool.referenceStyledDataUrl || tool.referenceCutoutDataUrl, tool.referenceWidth, tool.referenceHeight)
     const transferSubjectCanvas = canvasOfSize(size.width, size.height)
     transferSubjectCanvas.getContext('2d', { willReadFrequently: true }).drawImage(cutoutCanvas, bounds.x, bounds.y, bounds.width, bounds.height)
     const alphaMask = alphaMaskFromCanvas(transferSubjectCanvas)
     const hardAlphaMask = thresholdMaskCanvas(alphaMask, 12)
-    const combinedMask = objectTransferCombinedMaskCanvas(hardAlphaMask, size, bounds)
-    const transferMaskCanvas = thresholdMaskCanvas(combinedMask, 8)
+    const transferMaskCanvas = hardAlphaMask
     const stats = objectTransferMaskStats(transferMaskCanvas)
     if (stats.max <= 8 || stats.pixels < 16) throw new Error(OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE)
-    const contactMaskCanvas = objectTransferContactMaskCanvas(size, bounds)
-    const placementGuideCanvas = objectTransferCompGuideCanvas(baseCanvas, transferSubjectCanvas, contactMaskCanvas)
+    const placementGuideCanvas = objectTransferCompGuideCanvas(baseCanvas, transferSubjectCanvas)
     // Everything the model is allowed to repaint: the placement silhouette plus room for the object's
     // edge and its cast shadow. Outside this the latent is frozen, so the scene cannot drift.
     const noiseGrow = Math.round(clampNumber(Math.min(bounds.width, bounds.height) * OBJECT_TRANSFER_NOISE_GROW_RATIO, OBJECT_TRANSFER_NOISE_GROW_MIN, OBJECT_TRANSFER_NOISE_GROW_MAX))
     const objectMaskCanvas = expandedMaskCanvas(paintableMaskCanvas(hardAlphaMask, 8, false), OBJECT_TRANSFER_OBJECT_GROW, 0)
     // The model has to render the object, its contact shadow and the light wrap around it as one thing —
     // that integration is the whole point, and rebuilding it from rules afterwards is what made the
-    // result look like a sticker. So it gets a generous region and its output is pasted verbatim. The
+    // result look like a sticker. So it gets a band around the silhouette, wide enough for a contact
+    // shadow and no wider: the model fills whatever room it is given, and an extra oval of ground came
+    // back first as a black puddle and then as a grey decal. Its output is pasted verbatim. The
     // one thing it must not touch is the scene's existing subject where the object does not cover it
     // (it drew a high-heeled shoe onto the character's bare foot), and that is excluded HERE, in the
     // latent: the sampler then composes against those frozen pixels instead of us patching them back.
-    const roomMaskCanvas = expandedMaskCanvas(paintableMaskCanvas(transferMaskCanvas, 8, false), noiseGrow, 0)
+    const groundDrop = Math.round(clampNumber(Math.min(bounds.width, bounds.height) * OBJECT_TRANSFER_GROUND_DROP_RATIO, OBJECT_TRANSFER_GROUND_DROP_MIN, OBJECT_TRANSFER_GROUND_DROP_MAX))
+    const roomMaskCanvas = expandedMaskCanvas(objectTransferGroundRoomCanvas(paintableMaskCanvas(transferMaskCanvas, 8, false), groundDrop), noiseGrow, 0)
     setSplitBusyDetail('正在识别画面中已有的主体...')
     const sceneSubjectCanvas = await canvasFromDataUrl(await runRmbgCutout(baseCanvas.toDataURL('image/png')), size.width, size.height)
     const sceneSubjectMask = expandedMaskCanvas(paintableMaskCanvas(sceneSubjectCanvas, OBJECT_TRANSFER_SCENE_SUBJECT_ALPHA, true), OBJECT_TRANSFER_SCENE_SUBJECT_GROW, 0)
@@ -15491,6 +15460,7 @@
       objectMaskCanvas,
       protectionCanvas,
       noiseGrow,
+      groundDrop,
       plateSize,
       plateContent,
       plateDataUrl: plateCanvas.toDataURL('image/png'),
@@ -15538,73 +15508,111 @@
     return { unetName, clipName, vaeName, loraName }
   }
 
-  function objectTransferPromptText() {
-    // Concise English: the same lesson as the effect prompts — this model follows short English
-    // instructions and drifts on long Chinese ones. The object is already composited into image 1, so the
-    // instruction is a repaint, not an insertion.
+  function objectTransferRestylePromptText() {
+    // Stage 1, tuned live 2026-09-17. Naming the style ("art style of image 2") gave a flat vector
+    // sticker. Asking for the artist's rendering language fixed that but the model read "same palette as
+    // image 2" as permission to recolour the object into the scene's palette: the robot came back pale
+    // and thinner. So the colours and proportions are pinned and only the paint job is up for change.
+    // Banning highlights outright then switched the robot's glowing eyes off, so lit parts are pinned too.
     return [
-      'Image 1 already contains the new object, pasted in flat and unlit.',
-      'Repaint that object so it belongs to image 1: the same brush work, edge softness, line weight, contrast, colour temperature, level of detail and rendering language as everything else in image 1.',
-      'If image 1 is an illustration, the object must become an illustration too; do not keep the reference photo or 3D render look.',
-      'Relight it with image 1 own light: same direction, same warmth, the same soft ambient fill in its shadows, and no separate light source of its own.',
-      'Image 2 is only the object identity, shape, parts and base colours.',
-      'Add a soft contact shadow and ground occlusion in the same direction, softness and depth as the shadows already in image 1.',
-      'Keep its position, size and pose exactly as pasted, and keep everything else in image 1 unchanged.'
+      'Redraw the object from image 1 as if the artist of image 2 had drawn it.',
+      'Keep the object own colours, materials, markings and proportions exactly the same; do not recolour it and do not redesign it.',
+      'Every lit or glowing part of the object stays lit and glowing exactly as in image 1, same colour and same brightness.',
+      'Change only how it is painted: image 2 soft painted shading, its edge treatment, its brush work and its level of surface detail.',
+      'Drop image 1 photographic look: no blown out specular hotspots on its shell, no mirror reflections.',
+      'Same object, same shape, same parts, same pose. Plain flat grey background, no shadow.'
     ].join(' ')
   }
 
-  function buildObjectTransferQwenWorkflow(info, uploads, prefix, resolved) {
+  function buildObjectTransferRestyleWorkflow(info, uploads, prefix, resolved) {
+    return buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferRestylePromptText())
+  }
+
+  async function objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, cutoutDataUrl, sceneCanvas, runId) {
+    // The object is repainted on its own, on flat grey, so the model has nothing to do but change how it
+    // is drawn. Placing an already in-style object is what makes the integration pass an integration
+    // instead of a rescue: no colour grade afterwards can do this, it is a rendering change.
+    const cutout = await loadImage(cutoutDataUrl)
+    const width = Math.max(1, Math.round(cutout.naturalWidth || cutout.width || 1))
+    const height = Math.max(1, Math.round(cutout.naturalHeight || cutout.height || 1))
+    const plateSize = qwenEditPlateSize(width, height)
+    const content = qwenEditPlateContent(width, height, plateSize)
+    const plate = canvasOfSize(plateSize.width, plateSize.height)
+    const ctx = plate.getContext('2d', { willReadFrequently: true })
+    ctx.fillStyle = OBJECT_TRANSFER_RESTYLE_BACKGROUND
+    ctx.fillRect(0, 0, plateSize.width, plateSize.height)
+    ctx.drawImage(cutout, 0, 0, content.width, content.height)
+    setSplitBusyDetail('正在把参考物体转成画面的画风...')
+    const objectName = await uploadDataUrl(baseUrl, `${runId}_restyle_object.png`, plate.toDataURL('image/png'))
+    const sceneName = await uploadDataUrl(baseUrl, `${runId}_restyle_scene.png`, sceneCanvas.toDataURL('image/png'))
+    const workflow = buildObjectTransferRestyleWorkflow(info, { placementName: objectName, referenceName: sceneName }, `${runId}_restyle`, resolved)
+    const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, `${runId}_restyle`, OBJECT_TRANSFER_TIMEOUT_MS)
+    const decoded = await qwenEditPlateResultCanvas(resultDataUrl, plateSize, content, width, height, '画风转换')
+    setSplitBusyDetail('正在抠出转换后的物体...')
+    const styledCutout = await runRmbgCutout(decoded.toDataURL('image/png'))
+    await assertModelAlphaDataUrl(styledCutout, '画风转换 RMBG')
+    return { styledCutout, plateDataUrl: plate.toDataURL('image/png'), resultDataUrl, plateSize }
+  }
+
+  function objectTransferPromptText() {
+    // Stage 2. The object was already repainted into this picture's style, so this pass only makes it
+    // belong physically. Every clause here is a live failure that was fixed: the glow ban (the model lit
+    // the ground like a spotlight), scoped to the SCENE because banning light outright switched the
+    // robot's own glowing eyes off, and a contact shadow described as light grey and soft edged, because
+    // "as dark as the other shadows" produced a black puddle and "barely visible" produced nothing.
+    return [
+      'Image 1 already contains the new object, pasted in flat and unlit.',
+      'Keep its position, size, pose, design and colours exactly as pasted.',
+      'Light it with the light already in image 1: same direction, same warmth, same softness, same low contrast.',
+      'It does not light the scene around it: no glow, halo, light pool, spotlight or bright patch on the ground or on nearby surfaces. Lit parts of the object itself stay exactly as they are.',
+      'Under its feet paint a soft light grey contact shadow on the ground: soft blurred edges, low contrast, only a little darker than the surface around it, never black and never hard edged, hugging the feet and fading out quickly.',
+      'Paint the object with the same brush work, edge softness and level of detail as image 1.',
+      'Image 2 is only the object identity and its parts.',
+      'Everything else in image 1 stays exactly as it is.'
+    ].join(' ')
+  }
+
+  function buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, prompt, maskName) {
+    // The 万物迁移 graph, shared by both passes: an unscaled plate, an optional latent noise mask, and a
+    // second image as the reference. No FluxKontextImageScale — it center-crops and cannot be inverted.
     const ksampler = info.KSampler
-    const vaeLoader = info.VAELoader
-    const qwenText = info.TextEncodeQwenImageEditPlus
-    const unet = info.UNETLoader
-    const clip = info.CLIPLoader
-    const fluxScale = info.FluxKontextImageScale
-    const vaeEncode = info.VAEEncode
-    const lora = info.LoraLoaderModelOnly || null
-    const aura = info.ModelSamplingAuraFlow || null
-    const cfgNorm = info.CFGNorm || null
     const workflow = {
-      // No FluxKontextImageScale: it center-crops one axis and that crop has no inverse. The caller
-      // sends a plate at a size Qwen does not reframe (qwenEditPlateSize), so the graph rescales nothing.
       '1': { class_type: 'LoadImage', inputs: { image: uploads.placementName } },
       '2': { class_type: 'LoadImage', inputs: { image: uploads.referenceName } },
-      '3': { class_type: 'LoadImage', inputs: { image: uploads.maskName } },
-      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: resolved.unetName, weight_dtype: 'fp8_e4m3fn' }) },
-      '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
-      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vaeLoader, { vae_name: resolved.vaeName }) }
+      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: resolved.unetName, weight_dtype: 'fp8_e4m3fn' }) },
+      '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
+      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: resolved.vaeName }) }
     }
+    if (maskName) workflow['3'] = { class_type: 'LoadImage', inputs: { image: maskName } }
     let modelRef = ['4', 0]
     let nextId = 7
-    if (lora && resolved.loraName) {
-      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: resolved.loraName, strength_model: 1 }) }
+    if (info.LoraLoaderModelOnly && resolved.loraName) {
+      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(info.LoraLoaderModelOnly, { model: modelRef, lora_name: resolved.loraName, strength_model: 1 }) }
       modelRef = [String(nextId), 0]
       nextId += 1
     }
-    if (aura) {
-      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 1.5 }) }
+    if (info.ModelSamplingAuraFlow) {
+      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(info.ModelSamplingAuraFlow, { model: modelRef, shift: 1.5 }) }
       modelRef = [String(nextId), 0]
       nextId += 1
     }
-    if (cfgNorm) {
-      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
+    if (info.CFGNorm) {
+      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(info.CFGNorm, { model: modelRef, strength: 1 }) }
       modelRef = [String(nextId), 0]
       nextId += 1
     }
-    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['1', 0], vae: ['6', 0] }) }
+    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(info.VAEEncode, { pixels: ['1', 0], vae: ['6', 0] }) }
     let latentRef = [String(nextId), 0]
     nextId += 1
-    // Only the placement region is denoised. Without this the model re-renders the whole picture —
-    // measured 2026-09-17 on the user's own scene: 20.3/255 outside the placement and the stair edges
-    // 5px off, versus 1.22/255 and 0px with the mask. That re-render is what made the pasted object
-    // look like another picture's style, colour and shadow, with a visible block at the join.
-    workflow[String(nextId)] = { class_type: 'ImageToMask', inputs: { image: ['3', 0], channel: 'red' } }
-    const maskRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'SetLatentNoiseMask', inputs: { samples: latentRef, mask: maskRef } }
-    latentRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: objectTransferPromptText(), clip: ['5', 0], vae: ['6', 0], image1: ['1', 0], image2: ['2', 0] }) }
+    if (maskName) {
+      workflow[String(nextId)] = { class_type: 'ImageToMask', inputs: { image: ['3', 0], channel: 'red' } }
+      const maskRef = [String(nextId), 0]
+      nextId += 1
+      workflow[String(nextId)] = { class_type: 'SetLatentNoiseMask', inputs: { samples: latentRef, mask: maskRef } }
+      latentRef = [String(nextId), 0]
+      nextId += 1
+    }
+    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(info.TextEncodeQwenImageEditPlus, { prompt, clip: ['5', 0], vae: ['6', 0], image1: ['1', 0], image2: ['2', 0] }) }
     const positiveRef = [String(nextId), 0]
     nextId += 1
     workflow[String(nextId)] = { class_type: 'ConditioningZeroOut', inputs: { conditioning: positiveRef } }
@@ -15631,6 +15639,11 @@
     const decodedRef = [String(nextId), 0]
     nextId += 1
     workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: decodedRef }) }
+    return workflow
+  }
+
+  function buildObjectTransferQwenWorkflow(info, uploads, prefix, resolved) {
+    const workflow = buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferPromptText(), uploads.maskName)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
@@ -15646,7 +15659,8 @@
   }
 
   function paintableMaskCanvas(sourceCanvas, threshold, readAlpha) {
-    // White where the predicate holds, transparent elsewhere — the only form expandedMaskCanvas can grow.
+    // White where the predicate holds, transparent elsewhere — the only form expandedMaskCanvas can grow,
+    // because it grows by redrawing the canvas at offsets and an opaque mask paints its own black over it.
     const width = Math.max(1, Math.round(sourceCanvas && sourceCanvas.width || 1))
     const height = Math.max(1, Math.round(sourceCanvas && sourceCanvas.height || 1))
     const limit = clampNumber(Number(threshold) || 0, 1, 255)
@@ -15685,72 +15699,6 @@
     return canvas
   }
 
-  function objectTransferHarmonizeCanvas(compositeCanvas, baseCanvas, objectMaskCanvas, strength) {
-    // The model lights the object with its own lamp: measured on the user's scene the transferred robot's
-    // highlights sat at R/B 1.25 while the dusk marble around it sat at 1.08. Match the colour of the
-    // LIGHT, not the object's own paint: derive a white balance from the brightest tenth of each, keep it
-    // luminance neutral so nothing gets brighter or darker, and weight it by how lit each pixel is.
-    const width = Math.max(1, Math.round(compositeCanvas.width || 1))
-    const height = Math.max(1, Math.round(compositeCanvas.height || 1))
-    const output = cloneCanvas(compositeCanvas)
-    const ctx = output.getContext('2d', { willReadFrequently: true })
-    const image = ctx.getImageData(0, 0, width, height)
-    const base = baseCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const maskData = thresholdMaskCanvas(objectMaskCanvas, 8).getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const bounds = maskBBoxEngine(objectMaskCanvas, 8)
-    if (!bounds || bounds.count < 256) return output
-    const pad = Math.round(clampNumber(Math.max(bounds.width, bounds.height) * 0.35, 40, 240))
-    const left = Math.max(0, bounds.minX - pad)
-    const right = Math.min(width - 1, bounds.maxX + pad)
-    const top = Math.max(0, bounds.minY - pad)
-    const bottom = Math.min(height - 1, bounds.maxY + pad)
-    const luminance = (data, i) => data[i] * 0.2126 + data[i + 1] * 0.7152 + data[i + 2] * 0.0722
-    const objectSamples = []
-    const sceneSamples = []
-    for (let y = top; y <= bottom; y += 1) {
-      for (let x = left; x <= right; x += 1) {
-        const i = (y * width + x) * 4
-        if (maskPixelValue(maskData, i) > 8) objectSamples.push(i)
-        else if (base[i + 3] > 250) sceneSamples.push(i)
-      }
-    }
-    if (objectSamples.length < 256 || sceneSamples.length < 256) return output
-    const highlightMean = (indices, data) => {
-      const sorted = indices.slice().sort((a, b) => luminance(data, b) - luminance(data, a))
-      const take = Math.max(64, Math.round(sorted.length * 0.1))
-      const sum = [0, 0, 0]
-      for (let n = 0; n < take; n += 1) {
-        const i = sorted[n]
-        sum[0] += data[i]; sum[1] += data[i + 1]; sum[2] += data[i + 2]
-      }
-      return sum.map((value) => value / take)
-    }
-    const objectHighlight = highlightMean(objectSamples, image.data)
-    const sceneHighlight = highlightMean(sceneSamples, base)
-    const rawGain = [0, 1, 2].map((c) => (sceneHighlight[c] + 1) / (objectHighlight[c] + 1))
-    const gainLuma = rawGain[0] * 0.2126 + rawGain[1] * 0.7152 + rawGain[2] * 0.0722
-    const gain = rawGain.map((value) => clampNumber(value / (gainLuma || 1), OBJECT_TRANSFER_HARMONIZE_GAIN_MIN, OBJECT_TRANSFER_HARMONIZE_GAIN_MAX))
-    const amount = clampNumber(Number(strength) || 0, 0, 1)
-    let harmonized = 0
-    for (const i of objectSamples) {
-      const weight = amount * Math.sqrt(clampNumber(luminance(image.data, i) / 255, 0, 1))
-      if (weight <= 0.002) continue
-      for (let c = 0; c < 3; c += 1) {
-        image.data[i + c] = Math.round(clampNumber(image.data[i + c] * (1 + (gain[c] - 1) * weight), 0, 255))
-      }
-      harmonized += 1
-    }
-    ctx.putImageData(image, 0, 0)
-    output.__objectTransferHarmonizeStats = {
-      gain: gain.map((value) => Math.round(value * 1000) / 1000),
-      objectHighlight: objectHighlight.map(Math.round),
-      sceneHighlight: sceneHighlight.map(Math.round),
-      harmonizedPixels: harmonized,
-      strength: amount
-    }
-    return output
-  }
-
   async function objectTransferProtectedResultDataUrl(dataUrl, assets) {
     // The plate came back on the scene's own grid and only the placement region was denoised, so the
     // result needs no drift correction and no shadow reconstruction: paste it through the same mask the
@@ -15764,9 +15712,10 @@
     // Verbatim: whatever the model rendered inside the mask — object, contact shadow, light wrap,
     // occlusion — is one coherent piece and is kept as one. Outside it the picture never moved.
     const pastedCanvas = compositeRemovalRgbResult(baseCanvas, resultCanvas, assets.noiseMaskCanvas, { x: 0, y: 0, width, height })
-    setSplitBusyDetail('正在对齐物体与场景的光色...')
-    const finalCanvas = objectTransferHarmonizeCanvas(pastedCanvas, baseCanvas, assets.noiseMaskCanvas, OBJECT_TRANSFER_HARMONIZE_STRENGTH)
-    const stats = { ...(pastedCanvas.__removalCompositeStats || {}), harmonize: finalCanvas.__objectTransferHarmonizeStats || null }
+    // No post grade of any kind: a curve applied afterwards can only ever be a patch. Whatever the model
+    // rendered is the result; the paste exists to keep the untouched pixels exact, not to fix the render.
+    const finalCanvas = pastedCanvas
+    const stats = pastedCanvas.__removalCompositeStats || {}
     const changedOutside = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(assets.noiseMaskCanvas)), 8)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
@@ -15784,9 +15733,24 @@
     setSplitBusyDetail('\u6b63\u5728\u68c0\u67e5\u4e07\u7269\u8fc1\u79fb Runtime \u7ec4\u4ef6...')
     const info = await comfyAllObjectInfo(baseUrl)
     const resolved = resolveObjectTransferQwenRuntime(info)
-    const assets = await objectTransferBuildInputCanvases()
     const stamp = Date.now()
     const runId = `${OBJECT_TRANSFER_FILENAME_PREFIX}_${stamp}_${Math.random().toString(16).slice(2, 8)}`
+    const tool = objectTransferState()
+    const sceneCanvas = await sourceFullCanvas(await sourceSize())
+    const styleKey = `${String(state.activeSourceResourceId || state.source && state.source.id || '')}:${String(tool.referenceCutoutDataUrl || '').length}`
+    if (!tool.referenceStyledDataUrl || tool.referenceStyledKey !== styleKey) {
+      const styled = await objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, tool.referenceCutoutDataUrl, sceneCanvas, runId)
+      tool.referenceStyledDataUrl = styled.styledCutout
+      tool.referenceStyledKey = styleKey
+      state.lastProcessingDebug = {
+        ...(state.lastProcessingDebug || {}),
+        objectTransfer: {
+          ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}),
+          restyle: { plateSize: styled.plateSize, cached: false }
+        }
+      }
+    }
+    const assets = await objectTransferBuildInputCanvases()
     setSplitBusyDetail('\u6b63\u5728\u4e0a\u4f20\u4e07\u7269\u8fc1\u79fb\u4e34\u65f6\u8f93\u5165...')
     const placementName = await uploadDataUrl(baseUrl, `${runId}_placement.png`, assets.plateDataUrl)
     const referenceName = await uploadDataUrl(baseUrl, safeDownloadFileName(`${runId}_${objectTransferState().referenceFileName || 'reference.png'}`, `${runId}_reference.png`), assets.referenceDataUrl)
@@ -15802,7 +15766,8 @@
         guideMode: assets.guideMode,
         runtimeInputs: { placementName, referenceName, maskName },
         plateSize: assets.plateSize,
-        noiseGrow: assets.noiseGrow
+        noiseGrow: assets.noiseGrow,
+        groundDrop: assets.groundDrop
       }
     }
     setSplitBusyDetail(`Qwen Image Edit 2511\n${assets.plateSize.width} x ${assets.plateSize.height} px`)
