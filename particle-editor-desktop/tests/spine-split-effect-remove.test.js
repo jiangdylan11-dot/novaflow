@@ -27,7 +27,7 @@ test('去除物体 carries the same 特效 switch as 智能抠图 and relabels �
   assert.match(source, /effectRemove: '\\u6b63\\u5728\\u53bb\\u9664\\u7279\\u6548\.\.\.'/, 'the busy overlay names the removal')
   assert.match(source, /name === 'selectionExit' \|\| name === 'selectionEffect' \|\| \(kind === 'cutout' && name === 'selectionRemoveBackground'\)/, 'the switch stays clickable while the inpaint tool holds the workspace')
   assert.match(source, /has\('__novaflow_effect_remove_smoke'\)/, 'the in-page smoke is wired to a query flag')
-  assert.match(source, /executeEffectRemoveTool,\n\s+runEffectRemoveSmokeTest,\n\s+selectionEffectModeAvailable,\n\s+selectionEffectRemovalActive,\n\s+effectRemovalMaskCanvas,\n\s+effectRemovalMaskGrowPx,/, 'the debug hooks expose the removal')
+  assert.match(source, /executeEffectRemoveTool,\n\s+runEffectRemoveSmokeTest,\n\s+selectionEffectModeAvailable,\n\s+selectionEffectRemovalActive,\n\s+effectRemovalMaskCanvas,\n\s+effectRemovalMaskGrowPx,\n\s+effectDeeffectPromptText,\n\s+buildEffectDeeffectQwenWorkflow,\n\s+qwenEditReferenceSize,\n\s+qwenEditPlateSize,/, 'the debug hooks expose the plate sizing and the de-effect pass')
 })
 
 test('the removal keys the effect with the extraction pipeline and uses that key as the removal mask', () => {
@@ -36,20 +36,22 @@ test('the removal keys the effect with the extraction pipeline and uses that key
   assert.match(source, /const extraction = await runEffectExtractPipeline\(\{ baseCanvas: layerOriginalCanvas, maskCanvas: processingMaskCanvas \}, bounds, \{\n\s+prefix: EFFECT_REMOVE_FILENAME_PREFIX,\n\s+stageLabel: '特效识别',\n\s+emptyMessage: '没有识别到可去除的特效，请涂抹更靠近特效的区域后重试'\n\s+\}\)/, 'the layer being edited is both the model input and the removal base, so they stay pixel aligned')
   assert.match(source, /if \(!bounds \|\| bounds\.count < 16\) bounds = null \/\/ 不涂抹 = 整图，和智能抠图的特效模式一致/, 'no stroke means the whole image, same as 智能抠图')
   assert.match(source, /const effectMask = effectRemovalMaskCanvas\(extraction\.finalCanvas, EFFECT_REMOVE_MASK_FLOOR, effectRemovalMaskGrowPx\(layerOriginalCanvas\)\)/, 'the keyed effect becomes the mask')
-  assert.match(source, /const crop = cropPadEngine\(layerOriginalCanvas, effectMask, maskBounds, \{ padding: EFFECT_REMOVE_CONTEXT_PAD, minSize: 512, align: 64 \}\)/, 'the removal crop follows the keyed mask, not the painted stroke')
-  assert.match(source, /const route = resolveInpaintWorkflowRoute\('repair', false\)/, 'the same Removal V4 route 执行删除 uses')
-  assert.match(source, /const finalCanvas = compositeRemovalRgbResult\(layerOriginalCanvas, resultCropCanvas, crop\.cropMask, crop\.cropBox\)/, 'the composite is mask limited: pixels outside the keyed effect are never written')
+  assert.match(source, /const plate = await runEffectDeeffectPass\(extraction, runId\)/, 'pass 2 de-effects the very same plate the key came from')
+  assert.match(source, /const cropBox = extraction\.input\.cropBox\n\s+const cropMask = cropMaskToBlackWhite\(effectMask, cropBox\)\n\s+\/\/ Mask-limited composite[^\n]*\n\s+const finalCanvas = compositeRemovalRgbResult\(layerOriginalCanvas, plate\.plate, cropMask, cropBox\)/, 'one crop for both passes, and only keyed pixels are written back')
+  assert.match(source, /function effectDeeffectPromptText\(\) \{[\s\S]{0,700}?'Remove all the glowing light effects and sparkle particles from the image\.',/, 'the de-effect prompt mirrors the extraction prompt')
+  // The FLUX fill it replaces kept repainting the sparkles from the surrounding context.
+  assert.doesNotMatch(source.slice(source.indexOf('async function executeEffectRemoveTool('), source.indexOf('function localMaskCount(')), /runLayerInpaintValidated|resolveInpaintWorkflowRoute/, 'the removal no longer goes through the inpaint fill')
   assert.match(source, /kind: 'effect-removal',\n\s+source: 'executeEffectRemoveTool',/, 'the result layer is tagged')
   assert.match(source, /replacementForPartId: part\.id \}\n\s+const nextParts = state\.parts\.map\(\(item\) => String\(item && item\.id \|\| ''\) === String\(part\.id\) \? \{ \.\.\.item, visible: false \} : item\)/, 'the cleaned layer replaces the source layer, same as 执行删除')
   assert.match(source, /const EFFECT_REMOVE_MASK_FLOOR = EFFECT_EXTRACT_ALPHA_FLOOR/, 'everything the extraction kept counts as effect; a higher floor left glitter behind')
   // A full Qwen 2511 de-effect pass erases the effects but re-renders the whole crop, so its plate
   // cannot be pasted back through the key — the fill model is what keeps unmasked pixels intact.
-  assert.match(source, /const resultCropCanvas = await canvasFromDataUrl\(removalDataUrl, crop\.cropBox\.width, crop\.cropBox\.height\)/, 'the plate comes from the fill model, at the crop resolution')
+  assert.match(source, /const plate = await qwenEditPlateResultCanvas\(dataUrl, plateSize, extraction\.input\.plateContent, extraction\.input\.cropBox\.width, extraction\.input\.cropBox\.height, '去特效化'\)/, 'the plate is asserted to come back at the size we sent and is mapped onto the crop')
   // A tight key is a speckle field and the fill model paints the sparkles straight back; grown to ~12px
   // on a 756px picture the glow becomes one solid hole and comes out clean (tuned live 2026-09-16).
-  assert.match(source, /const EFFECT_REMOVE_MASK_GROW_RATIO = 0\.016\n\s+const EFFECT_REMOVE_MASK_GROW_MIN = 8\n\s+const EFFECT_REMOVE_MASK_GROW_MAX = 28/, 'the key is grown proportionally to the picture')
+  assert.match(source, /const EFFECT_REMOVE_MASK_GROW_RATIO = 0\.008\n\s+const EFFECT_REMOVE_MASK_GROW_MIN = 4\n\s+const EFFECT_REMOVE_MASK_GROW_MAX = 16/, 'an aligned plate only needs the key grown over the glow edge, not over a misregistration')
   assert.match(source, /function effectRemovalMaskGrowPx\(canvas\) \{[\s\S]{0,320}?clampNumber\(shortest \* EFFECT_REMOVE_MASK_GROW_RATIO, EFFECT_REMOVE_MASK_GROW_MIN, EFFECT_REMOVE_MASK_GROW_MAX\)/, 'the growth scales with the shortest side')
-  assert.match(source, /const removalPrompt = buildInpaintPrompt\(inpaintPromptForPart\(part\), '', 'repair'\)/, 'the ordinary 去除物体 prompt: naming the glow made the model paint it back')
+  assert.match(source, /function effectDeeffectPromptText\(\) \{[\s\S]{0,700}?'Remove all the glowing light effects and sparkle particles from the image\.',/, 'the de-effect prompt mirrors the extraction prompt')
 })
 
 test('the keyed mask is white-on-transparent so the stroke helpers can read and grow it', () => {

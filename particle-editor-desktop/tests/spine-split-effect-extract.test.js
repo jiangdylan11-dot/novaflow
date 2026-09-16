@@ -49,7 +49,11 @@ test('the smart cutout toolbar leads with a default-off 特效 switch and routes
   assert.match(source, /effectExtract: '\\u6b63\\u5728\\u63d0\\u53d6\\u7279\\u6548\.\.\.'/, 'the busy overlay names the extraction')
   assert.match(source, /patchSplitToolButtonVisual\('selectionEffect', effectEnabled\)/, 'the in-place toolbar patch re-applies the switch state')
   assert.match(source, /if \(!bounds \|\| bounds\.count < 16\) bounds = null \/\/ 不涂抹 = 整图/, 'no mask means the whole image')
-  assert.match(source, /const unmult = await api\.unmultBlackBackgroundDataUrl\(resultDataUrl\)\n\s+const effectCanvas = await canvasFromDataUrl\(unmult\.dataUrl, width, height\)/, 'the black-background render goes through the same pure unmult as the 工具 PNG 去黑, at native resolution')
+  assert.match(source, /const unmult = await api\.unmultBlackBackgroundDataUrl\(resultDataUrl\)\n\s+const effectCanvas = await qwenEditPlateResultCanvas\(unmult\.dataUrl, input\.plateSize, input\.plateContent, width, height, stageLabel\)/, 'the black-background render goes through the same pure unmult as the 工具 PNG 去黑, then maps back from the plate with a size assert')
+  // FluxKontextImageScale center-crops one axis — measured 2026-09-17 with a grid probe: 29 columns off
+  // each side of a 756x816 crop, and that crop has no inverse, so the key came back stretched 8.3%.
+  assert.doesNotMatch(source.slice(source.indexOf('function buildEffectExtractQwenWorkflow('), source.indexOf('function effectExtractCropOptions(')), /class_type: 'FluxKontextImageScale'/, 'the extraction graph no longer rescales behind our back')
+  assert.match(source, /const plateSize = qwenEditPlateSize\(cropBox\.width, cropBox\.height\)\n\s+const plateCanvas = qwenEditPlateCanvas\(inputCanvas, plateSize\)/, 'the crop is sent at a size whose reference rescale is a no-op')
   assert.doesNotMatch(source, /removeBlackBackgroundFromImageData\(generatedImage|refillEffectRgbFromSource/, 'no glow-expanding remover and no source refill: the model output shape is kept as-is')
   assert.match(source, /typeof api\.unmultBlackBackgroundDataUrl !== 'function'\) throw new Error\('去黑能力未加载/, 'the pipeline refuses to run without the unmult API')
   assert.match(source, /kind: 'effect-extract',\n\s+source: 'executeEffectExtractTool',\n\s+provider: result\.provider,\n\s+blend: 'additive',/, 'the layer is tagged as an additive effect')
@@ -65,9 +69,9 @@ test('the effect workflow is a single-image Qwen 2511 edit with a fixed seed and
   const byType = (type) => Object.entries(workflow).filter(([, node]) => node.class_type === type)
   assert.equal(byType('LoadImage').length, 1, 'one input image only')
   assert.equal(workflow['1'].inputs.image, 'effect_input.png')
-  assert.deepEqual(workflow['3'].inputs.image, ['1', 0])
+  assert.equal(byType('FluxKontextImageScale').length, 0, 'the rescale node is gone: it center-crops and cannot be inverted')
   const [textId, text] = byType('TextEncodeQwenImageEditPlus')[0]
-  assert.deepEqual(text.inputs.image1, ['3', 0])
+  assert.deepEqual(text.inputs.image1, ['1', 0], 'the plate goes to the model as uploaded')
   assert.equal(text.inputs.image2, undefined, 'no reference image')
   assert.equal(text.inputs.prompt, s.effectExtractPromptText())
   assert.match(text.inputs.prompt, /pure black \(#000000\)/)

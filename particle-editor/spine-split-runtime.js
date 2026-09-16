@@ -270,20 +270,21 @@
   const EFFECT_EXTRACT_FILENAME_PREFIX = 'NovaFlow_effect_extract'
   const EFFECT_EXTRACT_SEED = 916202601
   const EFFECT_EXTRACT_ALPHA_FLOOR = 3
+  const EFFECT_REMOVE_PROVIDER = 'Qwen Image Edit 2511 key + de-effect'
+  const QWEN_EDIT_REFERENCE_PIXELS = 1024 * 1024
+  const QWEN_EDIT_PLATE_ALIGN = 8
+  const QWEN_EDIT_PLATE_MIN = 320
+  const QWEN_EDIT_PLATE_MAX = 1600
+  const QWEN_EDIT_PLATE_ROUNDING_MARGIN = 0.1
   const EFFECT_REMOVE_FILENAME_PREFIX = 'NovaFlow_effect_remove'
   // Everything the extraction kept is effect (it already floors VAE noise at EFFECT_EXTRACT_ALPHA_FLOOR);
   // a higher floor left the faint glitter on the skin behind.
   const EFFECT_REMOVE_MASK_FLOOR = EFFECT_EXTRACT_ALPHA_FLOOR
-  // Tuned 2026-09-16/17 against the live Removal V4: a tight key leaves a speckle field and the fill model
-  // simply paints the sparkles back; grown to ~12px on a 756px image the glow becomes one solid hole and
-  // comes out clean. Naming the effect in the prompt made it paint a glow streak again, so the removal
-  // keeps the ordinary 去除物体 repair prompt. A full Qwen 2511 de-effect pass was tried instead of the
-  // fill and rejected: it re-renders the whole crop (best global alignment 33.1 vs 33.7 mean abs diff,
-  // i.e. not a shift but a redraw), so its plate cannot be pasted back through the key without seams.
-  const EFFECT_REMOVE_MASK_GROW_RATIO = 0.016
-  const EFFECT_REMOVE_MASK_GROW_MIN = 8
-  const EFFECT_REMOVE_MASK_GROW_MAX = 28
-  const EFFECT_REMOVE_CONTEXT_PAD = 128
+  // The de-effect plate is pixel aligned with the crop (see qwenEditPlateSize), so the key only has to
+  // grow far enough to cover the glow's own soft edge. It used to be ~12px because the plate was not.
+  const EFFECT_REMOVE_MASK_GROW_RATIO = 0.008
+  const EFFECT_REMOVE_MASK_GROW_MIN = 4
+  const EFFECT_REMOVE_MASK_GROW_MAX = 16
   const STORYBOARD_MODEL_MODE_DEFAULT = 'default'
   const STORYBOARD_MODEL_MODE_NSFW = 'qwenNsfw'
   const STORYBOARD_QWEN_NSFW_CHECKPOINT = QWEN_RAPID_CHECKPOINT
@@ -29245,6 +29246,86 @@
 
   function toggleSelectionEffectMode() { setSelectionEffectMode(!(state.selectionTool && state.selectionTool.effectMode)) }
 
+  function qwenEditReferenceSize(width, height) {
+    // Mirrors TextEncodeQwenImageEditPlus (ComfyUI comfy_extras/nodes_qwen.py): the reference latent is
+    // the input area-resized to ~1 MP and snapped to /8, and the model draws on that grid.
+    const safeWidth = Math.max(1, Math.round(width || 1))
+    const safeHeight = Math.max(1, Math.round(height || 1))
+    const scale = Math.sqrt(QWEN_EDIT_REFERENCE_PIXELS / (safeWidth * safeHeight))
+    const rawWidth = safeWidth * scale / QWEN_EDIT_PLATE_ALIGN
+    const rawHeight = safeHeight * scale / QWEN_EDIT_PLATE_ALIGN
+    return {
+      width: Math.round(rawWidth) * QWEN_EDIT_PLATE_ALIGN,
+      height: Math.round(rawHeight) * QWEN_EDIT_PLATE_ALIGN,
+      // distance from a .5 boundary: ComfyUI rounds half-to-even and we round half-up, so only a value
+      // sitting on the boundary could disagree.
+      margin: Math.min(Math.abs(rawWidth - Math.round(rawWidth)), Math.abs(rawHeight - Math.round(rawHeight)))
+    }
+  }
+
+  function qwenEditPlateSize(width, height) {
+    // The size to hand Qwen so its own reference rescale is a no-op: the reference latent then shares the
+    // sampled latent's grid and the edit lands back on the pixels it came from. Measured 2026-09-17 on a
+    // 756x816 crop: matched (984x1064) keeps the stair edges at correlation 0.976/0.981 with 0px offset
+    // and 2.97/255 mean difference; a mismatched 736x800 plate (reference 1.34x bigger) drifts 4px with
+    // correlation 0.38 and 24.65/255. FluxKontextImageScale is NOT used for this: it center-crops one
+    // axis (measured: 29 columns off each side of a 756px crop) and that crop has no inverse.
+    const aspect = Math.max(1, Math.round(width || 1)) / Math.max(1, Math.round(height || 1))
+    let best = null
+    for (let plateWidth = QWEN_EDIT_PLATE_MIN; plateWidth <= QWEN_EDIT_PLATE_MAX; plateWidth += QWEN_EDIT_PLATE_ALIGN) {
+      const plateHeight = Math.round(plateWidth / aspect / QWEN_EDIT_PLATE_ALIGN) * QWEN_EDIT_PLATE_ALIGN
+      if (plateHeight < QWEN_EDIT_PLATE_MIN || plateHeight > QWEN_EDIT_PLATE_MAX) continue
+      const reference = qwenEditReferenceSize(plateWidth, plateHeight)
+      if (reference.width !== plateWidth || reference.height !== plateHeight) continue
+      if (reference.margin < QWEN_EDIT_PLATE_ROUNDING_MARGIN) continue // too close to a rounding tie to trust
+      const aspectError = Math.abs((plateWidth / plateHeight) - aspect) / aspect
+      if (!best || aspectError < best.aspectError) best = { width: plateWidth, height: plateHeight, aspectError }
+    }
+    if (best) return best
+    const fallback = qwenEditReferenceSize(width, height)
+    return { width: Math.max(QWEN_EDIT_PLATE_ALIGN, fallback.width), height: Math.max(QWEN_EDIT_PLATE_ALIGN, fallback.height), aspectError: 0 }
+  }
+
+  function qwenEditPlateContent(sourceWidth, sourceHeight, plateSize) {
+    // Uniform scale, anchored top-left, black band on the right/bottom. Stretching to the plate instead
+    // would bake a sub-pixel shear into everything the model draws; the band is a few px wide because the
+    // plate aspect is chosen to match the crop.
+    const width = Math.max(1, Math.round(sourceWidth || 1))
+    const height = Math.max(1, Math.round(sourceHeight || 1))
+    const scale = Math.min(plateSize.width / width, plateSize.height / height)
+    return {
+      width: Math.max(1, Math.min(plateSize.width, Math.round(width * scale))),
+      height: Math.max(1, Math.min(plateSize.height, Math.round(height * scale))),
+      scale
+    }
+  }
+
+  function qwenEditPlateCanvas(sourceCanvas, plateSize) {
+    const content = qwenEditPlateContent(sourceCanvas.width, sourceCanvas.height, plateSize)
+    const canvas = canvasOfSize(plateSize.width, plateSize.height)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    ctx.fillStyle = '#000'
+    ctx.fillRect(0, 0, plateSize.width, plateSize.height)
+    ctx.drawImage(sourceCanvas, 0, 0, content.width, content.height)
+    canvas.__plateContent = content
+    return canvas
+  }
+
+  async function qwenEditPlateResultCanvas(dataUrl, plateSize, content, targetWidth, targetHeight, label) {
+    // The decode must come back at exactly the plate size; anything else means a node resized it behind
+    // our back and the result could no longer be mapped onto the crop.
+    const image = await loadImage(dataUrl)
+    const naturalWidth = Math.round(image.naturalWidth || image.width || 0)
+    const naturalHeight = Math.round(image.naturalHeight || image.height || 0)
+    if (naturalWidth !== plateSize.width || naturalHeight !== plateSize.height) {
+      throw new Error(`${label || 'Qwen'} 返回尺寸 ${naturalWidth}x${naturalHeight} 与送入的 ${plateSize.width}x${plateSize.height} 不一致，无法对齐回原图`)
+    }
+    const box = content || { width: plateSize.width, height: plateSize.height }
+    const canvas = canvasOfSize(targetWidth, targetHeight)
+    canvas.getContext('2d', { willReadFrequently: true }).drawImage(image, 0, 0, box.width, box.height, 0, 0, targetWidth, targetHeight)
+    return canvas
+  }
+
   function effectExtractPromptText() {
     // Tuned 2026-09-16 on the 4-step Lightning LoRA: a concise English instruction removes the
     // subject and keeps the existing light effects in place. Listing effect kinds (fire, lightning,
@@ -29263,8 +29344,10 @@
     const aura = info.ModelSamplingAuraFlow || null
     const cfgNorm = info.CFGNorm || null
     const workflow = {
+      // No FluxKontextImageScale: it center-crops one axis (29 columns off each side of a 756x816 crop,
+      // measured with a grid probe on 2026-09-17) and that crop cannot be inverted. The caller sends a
+      // plate that is already at a Qwen-friendly size (qwenEditPlateSize), so the graph rescales nothing.
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '3': { class_type: 'FluxKontextImageScale', inputs: buildComfyNodeInputs(info.FluxKontextImageScale, { image: ['1', 0] }) },
       '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: resolved.unetName, weight_dtype: 'fp8_e4m3fn' }) },
       '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
       '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: resolved.vaeName }) }
@@ -29286,10 +29369,10 @@
       modelRef = [String(nextId), 0]
       nextId += 1
     }
-    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(info.VAEEncode, { pixels: ['3', 0], vae: ['6', 0] }) }
+    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(info.VAEEncode, { pixels: ['1', 0], vae: ['6', 0] }) }
     const latentRef = [String(nextId), 0]
     nextId += 1
-    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(info.TextEncodeQwenImageEditPlus, { prompt: effectExtractPromptText(), clip: ['5', 0], vae: ['6', 0], image1: ['3', 0] }) }
+    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(info.TextEncodeQwenImageEditPlus, { prompt: effectExtractPromptText(), clip: ['5', 0], vae: ['6', 0], image1: ['1', 0] }) }
     const positiveRef = [String(nextId), 0]
     nextId += 1
     workflow[String(nextId)] = { class_type: 'ConditioningZeroOut', inputs: { conditioning: positiveRef } }
@@ -29347,7 +29430,11 @@
     ctx.fillStyle = '#000'
     ctx.fillRect(0, 0, cropBox.width, cropBox.height)
     ctx.drawImage(cropImage, 0, 0, cropBox.width, cropBox.height)
-    return { cropBox, cropImage, inputCanvas, originalSize, softMask: masks ? masks.softRoiMask : null, hardMask: masks ? masks.hardRoiMask : null, gateGrow: masks ? masks.softGrow : 0 }
+    // What actually goes to the model: the same crop at a size whose reference rescale is a no-op.
+    const plateSize = qwenEditPlateSize(cropBox.width, cropBox.height)
+    const plateCanvas = qwenEditPlateCanvas(inputCanvas, plateSize)
+    const plateContent = plateCanvas.__plateContent
+    return { cropBox, cropImage, inputCanvas, plateCanvas, plateSize, plateContent, originalSize, softMask: masks ? masks.softRoiMask : null, hardMask: masks ? masks.hardRoiMask : null, gateGrow: masks ? masks.softGrow : 0 }
   }
 
   function floorEffectAlpha(effectData, floor) {
@@ -29409,16 +29496,16 @@
     const height = input.cropBox.height
     const runId = `${filenamePrefix}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
     setSplitBusyDetail(`正在上传${stageLabel}输入...`)
-    const imageName = await uploadDataUrl(baseUrl, `${runId}_input.png`, input.inputCanvas.toDataURL('image/png'))
+    const imageName = await uploadDataUrl(baseUrl, `${runId}_input.png`, input.plateCanvas.toDataURL('image/png'))
     const workflow = buildEffectExtractQwenWorkflow(info, imageName, runId, resolved)
-    setSplitBusyDetail(`Qwen Image Edit 2511 黑底化\n${width} x ${height} px`)
+    setSplitBusyDetail(`Qwen Image Edit 2511 黑底化\n${input.plateSize.width} x ${input.plateSize.height} px`)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, runId, EFFECT_EXTRACT_TIMEOUT_MS)
     setSplitBusyDetail('正在去黑（与工具版 PNG 去黑相同）...')
     // The same pure unmult the 工具 → PNG 去黑 tool uses (alpha = max(R,G,B), RGB / alpha), run at
     // the model's native resolution so the shapes come through untouched; only then resampled
     // to the crop size. No blur, no glow growth, no source refill.
     const unmult = await api.unmultBlackBackgroundDataUrl(resultDataUrl)
-    const effectCanvas = await canvasFromDataUrl(unmult.dataUrl, width, height)
+    const effectCanvas = await qwenEditPlateResultCanvas(unmult.dataUrl, input.plateSize, input.plateContent, width, height, stageLabel)
     const effectCtx = effectCanvas.getContext('2d', { willReadFrequently: true })
     const effectImage = effectCtx.getImageData(0, 0, width, height)
     const floorStats = floorEffectAlpha(effectImage.data, EFFECT_EXTRACT_ALPHA_FLOOR)
@@ -29436,6 +29523,8 @@
     const finalAlpha = await alphaCanvasFromDataUrl(finalDataUrl, input.originalSize.width, input.originalSize.height)
     return {
       provider: 'Qwen Image Edit 2511 + unmult',
+      baseUrl,
+      info,
       runtime: resolved,
       input,
       resultDataUrl,
@@ -29524,6 +29613,92 @@
     }
   }
 
+  function effectDeeffectPromptText() {
+    // The mirror of effectExtractPromptText: same words for the effects, opposite intent. Tuned live on
+    // 2026-09-17 — at a plate whose reference rescale is a no-op this erases the glow and leaves the
+    // scene in place; the FLUX removal fill it replaces kept painting a golden haze back from context.
+    return [
+      'Remove all the glowing light effects and sparkle particles from the image.',
+      'Keep the person, the objects, the stairs and the background exactly as they are, in their original positions, shapes, sizes, colors and brightness.',
+      'Do not add anything new, do not move or redraw anything.',
+      'Output: the same image with the light effects erased and the plain surfaces behind them restored.'
+    ].join(' ')
+  }
+
+  function buildEffectDeeffectQwenWorkflow(info, imageName, prefix, resolved) {
+    // Identical graph to the extraction, one prompt apart, so both passes see the same plate geometry.
+    const lora = info.LoraLoaderModelOnly || null
+    const aura = info.ModelSamplingAuraFlow || null
+    const cfgNorm = info.CFGNorm || null
+    const workflow = {
+      '1': { class_type: 'LoadImage', inputs: { image: imageName } },
+      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: resolved.unetName, weight_dtype: 'fp8_e4m3fn' }) },
+      '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
+      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: resolved.vaeName }) }
+    }
+    let modelRef = ['4', 0]
+    let nextId = 7
+    if (lora && resolved.loraName) {
+      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: resolved.loraName, strength_model: 1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (aura) {
+      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 1.5 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (cfgNorm) {
+      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(info.VAEEncode, { pixels: ['1', 0], vae: ['6', 0] }) }
+    const latentRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(info.TextEncodeQwenImageEditPlus, { prompt: effectDeeffectPromptText(), clip: ['5', 0], vae: ['6', 0], image1: ['1', 0] }) }
+    const positiveRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'ConditioningZeroOut', inputs: { conditioning: positiveRef } }
+    const negativeRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = {
+      class_type: 'KSampler',
+      inputs: buildComfyNodeInputs(info.KSampler, {
+        seed: EFFECT_EXTRACT_SEED,
+        steps: resolved.loraName ? 6 : 30,
+        cfg: 1,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        denoise: 1,
+        model: modelRef,
+        positive: positiveRef,
+        negative: negativeRef,
+        latent_image: latentRef
+      })
+    }
+    const samplerRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(info.VAEDecode, { samples: samplerRef, vae: ['6', 0] }) }
+    const decodedRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: decodedRef }) }
+    return workflow
+  }
+
+  async function runEffectDeeffectPass(extraction, runId) {
+    // Same plate, same geometry as the key: only the masked pixels of this are kept, so the rest of the
+    // layer stays byte for byte even though the model repainted the whole plate.
+    const plateSize = extraction.input.plateSize
+    setSplitBusyDetail('正在上传去特效化输入...')
+    const imageName = await uploadDataUrl(extraction.baseUrl, `${runId}_plate_input.png`, extraction.input.plateCanvas.toDataURL('image/png'))
+    const workflow = buildEffectDeeffectQwenWorkflow(extraction.info, imageName, runId, extraction.runtime)
+    setSplitBusyDetail(`Qwen Image Edit 2511 去特效化\n${plateSize.width} x ${plateSize.height} px`)
+    const dataUrl = await runPromptForFirstImage(extraction.baseUrl, workflow, runId, EFFECT_EXTRACT_TIMEOUT_MS)
+    const plate = await qwenEditPlateResultCanvas(dataUrl, plateSize, extraction.input.plateContent, extraction.input.cropBox.width, extraction.input.cropBox.height, '去特效化')
+    return { plate, dataUrl, plateSize }
+  }
+
   function effectRemovalMaskGrowPx(canvas) {
     const shortest = Math.max(1, Math.min(Math.round(canvas && canvas.width || 1), Math.round(canvas && canvas.height || 1)))
     return Math.round(clampNumber(shortest * EFFECT_REMOVE_MASK_GROW_RATIO, EFFECT_REMOVE_MASK_GROW_MIN, EFFECT_REMOVE_MASK_GROW_MAX))
@@ -29594,9 +29769,10 @@
         stageLabel: '特效识别',
         emptyMessage: '没有识别到可去除的特效，请涂抹更靠近特效的区域后重试'
       })
-      // Step 2 is the ordinary 去除物体 removal, but masked by the keyed effect instead of the painted
-      // region. Subtracting the effect instead leaves black holes wherever it covered the plate, and
-      // running the removal on the raw stroke repaints everything the stroke touched (the 图2 report).
+      // The key says WHERE the effect is. Pass 2 says what belongs there: the same Qwen 2511 edit with the
+      // prompt inverted, on the very same plate, so its result is pixel aligned with the crop and only the
+      // keyed pixels have to be taken from it. Subtracting the key instead leaves black holes wherever the
+      // glow covered something, and running any pass on the raw stroke repaints everything it touched.
       const effectMask = effectRemovalMaskCanvas(extraction.finalCanvas, EFFECT_REMOVE_MASK_FLOOR, effectRemovalMaskGrowPx(layerOriginalCanvas))
       let maskBounds = null
       try {
@@ -29605,23 +29781,12 @@
         maskBounds = null
       }
       if (!maskBounds || maskBounds.count < 16) throw new Error('没有识别到可去除的特效，请涂抹更靠近特效的区域后重试')
-      setSplitBusyDetail('正在重建特效下方的画面...')
-      const route = resolveInpaintWorkflowRoute('repair', false)
-      const crop = cropPadEngine(layerOriginalCanvas, effectMask, maskBounds, { padding: EFFECT_REMOVE_CONTEXT_PAD, minSize: 512, align: 64 })
-      crop.bbox = maskBounds
-      const inputCanvases = inpaintInputCanvasesForRoute(crop.cropImage, crop.cropMask, route)
-      const removalPrompt = buildInpaintPrompt(inpaintPromptForPart(part), '', 'repair')
-      const removalDataUrl = await runLayerInpaintValidated(
-        inputCanvases.modelInput.toDataURL('image/png'),
-        (inputCanvases.maskForModel || crop.cropMask).toDataURL('image/png'),
-        removalPrompt,
-        crop,
-        part,
-        { inpaintMode: 'repair', route }
-      )
-      const resultCropCanvas = await canvasFromDataUrl(removalDataUrl, crop.cropBox.width, crop.cropBox.height)
+      const runId = `${EFFECT_REMOVE_FILENAME_PREFIX}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
+      const plate = await runEffectDeeffectPass(extraction, runId)
+      const cropBox = extraction.input.cropBox
+      const cropMask = cropMaskToBlackWhite(effectMask, cropBox)
       // Mask-limited composite: only pixels inside the keyed effect are written back.
-      const finalCanvas = compositeRemovalRgbResult(layerOriginalCanvas, resultCropCanvas, crop.cropMask, crop.cropBox)
+      const finalCanvas = compositeRemovalRgbResult(layerOriginalCanvas, plate.plate, cropMask, cropBox)
       const removalStats = finalCanvas.__removalCompositeStats || {}
       const changedOutsideMask = countUnmaskedPixelChanges(layerOriginalCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(effectMask)), 8)
       const finalDataUrl = finalCanvas.toDataURL('image/png')
@@ -29630,14 +29795,14 @@
         { name: '02_effect_black_background', dataUrl: extraction.resultDataUrl },
         { name: '03_effect_rgba', dataUrl: extraction.finalDataUrl },
         { name: '04_effect_mask', dataUrl: effectMask.toDataURL('image/png') },
-        { name: '05_removal_model_input', dataUrl: inputCanvases.modelInput.toDataURL('image/png') },
-        { name: '06_removal_result_crop', dataUrl: removalDataUrl },
+        { name: '05_deeffect_plate_input', dataUrl: extraction.input.plateCanvas.toDataURL('image/png') },
+        { name: '06_deeffect_plate', dataUrl: plate.dataUrl },
         { name: '07_effect_removed', dataUrl: finalDataUrl }
       ], {
-        provider: `${extraction.provider} + ${route.label}`,
+        provider: EFFECT_REMOVE_PROVIDER,
         region: bounds ? 'mask' : 'whole',
-        effectCropBox: extraction.input.cropBox,
-        removalCropBox: crop.cropBox,
+        cropBox,
+        plateSize: plate.plateSize,
         effectMaskPixels: effectMask.__effectMaskPixels || 0,
         gateStats: extraction.gateStats,
         unmultStats: extraction.unmultStats,
@@ -29658,7 +29823,7 @@
         {
           kind: 'effect-removal',
           source: 'executeEffectRemoveTool',
-          provider: `${extraction.provider} + ${route.label}`,
+          provider: EFFECT_REMOVE_PROVIDER,
           region: bounds ? 'mask' : 'whole',
           sourceLayerId: part.id,
           effectMaskPixels: effectMask.__effectMaskPixels || 0,
@@ -43291,6 +43456,10 @@
     selectionEffectRemovalActive,
     effectRemovalMaskCanvas,
     effectRemovalMaskGrowPx,
+    effectDeeffectPromptText,
+    buildEffectDeeffectQwenWorkflow,
+    qwenEditReferenceSize,
+    qwenEditPlateSize,
     buildEffectExtractQwenWorkflow,
     effectExtractPromptText,
     floorEffectAlpha,
