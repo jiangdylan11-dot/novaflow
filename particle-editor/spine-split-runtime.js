@@ -32,6 +32,8 @@
   const LAYER_COMMAND_ATTR = 'data-novaflow-spine-split-layer-command'
   const LAYER_COMMAND_TARGET_ATTR = 'data-novaflow-spine-split-layer-command-target'
   const LAYER_THUMB_ATTR = 'data-novaflow-spine-split-layer-thumb'
+  const LAYER_STENCIL_ATTR = 'data-novaflow-spine-split-layer-stencil'
+  const MASK_STENCIL_OVERLAY_ID = 'novaflow-spine-split-mask-stencil-overlay'
   const LAYER_NAME_SLOT_ATTR = 'data-novaflow-spine-split-layer-name-slot'
   const LAYER_RENAME_INPUT_ATTR = 'data-novaflow-spine-split-layer-rename-input'
   const LAYER_SELECTED_ATTR = 'data-novaflow-spine-split-layer-selected'
@@ -546,6 +548,11 @@
       paintPointerId: null,
       cursor: null,
       showCursor: true
+    },
+    maskStencil: {
+      active: false,
+      fromPartId: '',
+      setId: ''
     },
     selectionTool: {
       active: false,
@@ -4066,7 +4073,7 @@
     }
     splitLayerRedoStack.push(splitLayerHistorySnapshot(snapshot.label === 'healing' ? 'redo healing' : 'redo layer edit', snapshot.targetPartId))
     trimSplitLayerHistoryStack(splitLayerRedoStack)
-    const message = snapshot.label === 'healing' ? '\u5df2\u64a4\u9500\u4fee\u8865' : '已撤销智能补全'
+    const message = snapshot.label === 'healing' ? '\u5df2\u64a4\u9500\u4fee\u8865' : snapshot.label === 'mask stencil' ? '已撤销遮罩复制' : '已撤销智能补全'
     const fallbackMessage = snapshot.label === 'healing' ? '\u4fee\u8865\u64a4\u9500\u5931\u8d25' : '智能补全撤销失败'
     restoreSplitLayerHistorySnapshot(snapshot, message).catch((error) => {
       setMessage(String(error && error.message || error || fallbackMessage), true)
@@ -4594,6 +4601,7 @@
   }
 
   function activateSourceResource(id, options = {}) {
+    if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const resource = sourceResourceList().find((item) => item && item.id === id)
     if (!resource || !resource.dataUrl) return false
     const previousSet = splitSetById(state.activeSplitSetId)
@@ -19821,7 +19829,7 @@
     const locked = isSplitEditToolActive()
     return {
       display: 'grid',
-      gridTemplateColumns: '28px 30px minmax(0, 1fr) 20px',
+      gridTemplateColumns: '28px 30px 22px minmax(0, 1fr) 20px',
       gap: '7px',
       alignItems: 'center',
       minHeight: '42px',
@@ -20081,6 +20089,7 @@
 
   function toggleSplitSet(id) {
     if (isSplitEditToolActive()) return
+    if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const set = state.splitSets.find((item) => item.id === id)
     if (!set) return
     const sourceChanged = !!(set.sourceResourceId && set.sourceResourceId !== state.activeSourceResourceId)
@@ -23997,6 +24006,7 @@
   }
 
   function resetSplitWorkspaceToolsForUnmount() {
+    resetMaskStencil({ silent: true, render: false })
     resetSelectionTool()
     resetMaskEditor()
     resetPenTool()
@@ -33791,6 +33801,7 @@
   async function startMaskEditor() {
     if (maskEditorApplyPromise) return maskEditorApplyPromise
     if (state.busy) return
+    if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const entrySnapshot = splitLayerHistorySnapshot('mask edit entry', state.activePartId || '')
     resetSelectionTool()
     resetPenTool()
@@ -35398,6 +35409,7 @@
       selected: splitPartPanelRenderSignature(selected),
       renamingPartId: String(state.renamingPartId || ''),
       renameDraft: String(state.renameDraft || ''),
+      maskStencil: maskStencilRenderSignature(),
       mergeControl: {
         busy: !!state.busy,
         busyAction: String(state.busyAction || ''),
@@ -35978,6 +35990,7 @@
 
   function selectSplitPart(id, viewMode) {
     if (isSplitEditToolActive()) return
+    if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     if (state.maskEditor && state.maskEditor.active && viewMode !== 'maskEdit') resetMaskEditor()
     if (state.penTool && state.penTool.active && viewMode !== 'penTool') resetPenTool()
     if (state.selectionTool && state.selectionTool.active && viewMode !== 'selectionTool') resetSelectionTool()
@@ -35991,6 +36004,7 @@
 
   function togglePartVisibility(id) {
     if (isSplitEditToolActive()) return
+    if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const partId = String(id || '')
     state.parts = state.parts.map((part) => part.id === partId ? { ...part, visible: part.visible === false } : part)
     markSplitPreviewStale(activeSplitSet())
@@ -36008,8 +36022,526 @@
     return normalizeSpineLayerOrder(state.parts).filter((part) => ids.has(part.id))
   }
 
+  let maskStencilOverlaySyncRaf = 0
+  let maskStencilApplyPromise = null
+  let maskStencilSwallowUntil = 0
+  let maskStencilPointerUpStamp = 0
+  let maskStencilConsumedStamp = -1
+
+  function isMaskStencilActive() {
+    return !!(state.maskStencil && state.maskStencil.active && state.maskStencil.fromPartId)
+  }
+
+  function maskStencilRenderSignature() {
+    const active = isMaskStencilActive()
+    return {
+      active,
+      fromPartId: active ? String(state.maskStencil.fromPartId || '') : ''
+    }
+  }
+
+  function maskStencilOriginPart() {
+    if (!isMaskStencilActive()) return null
+    return splitPartForRightWorkspaceId(state.maskStencil.fromPartId, state.maskStencil.setId || state.activeSplitSetId)
+  }
+
+  function maskStencilTargetsFor(originId, parts, resources) {
+    const origin = String(originId || '')
+    const targets = []
+    ;(resources || []).forEach((resource) => {
+      if (resource && resource.dataUrl && !resource.pendingDataUrl) targets.push({ type: 'source', id: String(resource.id || '') })
+    })
+    ;(parts || []).forEach((part) => {
+      const id = String(part && part.id || '')
+      if (part && part.dataUrl && id && id !== origin) targets.push({ type: 'part', id })
+    })
+    return targets
+  }
+
+  function maskStencilTargets() {
+    const origin = maskStencilOriginPart()
+    if (!origin) return []
+    return maskStencilTargetsFor(origin.id, state.parts, sourceResourceList())
+  }
+
+  function isMaskStencilTarget(type, id) {
+    const key = String(id || '')
+    return maskStencilTargets().some((target) => target.type === type && target.id === key)
+  }
+
+  function resetMaskStencil(options = {}) {
+    const wasActive = isMaskStencilActive()
+    state.maskStencil = { active: false, fromPartId: '', setId: '' }
+    removeMaskStencilOverlay()
+    if (!wasActive) return false
+    if (options.silent !== true) setMessage(String(options.message || '已取消遮罩指向'))
+    if (options.render !== false) {
+      render()
+      syncSplitWorkspace()
+    }
+    return true
+  }
+
+  function startMaskStencil(partId, setId) {
+    const id = String(partId || '')
+    if (!id || state.busy || isSplitEditToolActive() || maskStencilApplyPromise) return false
+    if (isMaskStencilActive() && String(state.maskStencil.fromPartId || '') === id) {
+      resetMaskStencil()
+      return false
+    }
+    const targetSetId = String(setId || state.activeSplitSetId || '')
+    if (targetSetId && state.activeSplitSetId && targetSetId !== state.activeSplitSetId) {
+      setMessage('请先展开该拆图集，再使用遮罩指向', true)
+      render()
+      return false
+    }
+    const part = splitPartForRightWorkspaceId(id, targetSetId)
+    if (!part || !part.dataUrl) return false
+    if (state.renamingPartId) {
+      state.renamingPartId = ''
+      state.renameDraft = ''
+    }
+    state.maskStencil = { active: true, fromPartId: id, setId: targetSetId }
+    maskStencilConsumedStamp = maskStencilPointerUpStamp
+    const label = part.name || part.id
+    setMessage(`遮罩指向：点击要复制的图层或原图，会按「${label}」的遮罩复制为新图层叠在其上；Esc 取消`)
+    render()
+    syncSplitWorkspace()
+    syncMaskStencilOverlay()
+    maskStencilSwallowUntil = Date.now() + 150
+    return true
+  }
+
+  async function maskStencilTargetCanvas(target, size) {
+    if (!target) throw new Error('缺少复制目标')
+    if (target.type === 'part') {
+      const part = state.parts.find((item) => item && String(item.id || '') === String(target.id || ''))
+      if (!part || !part.dataUrl) throw new Error('目标图层不存在')
+      return { canvas: await fullCanvasFromPart(part, size), label: part.name || part.id }
+    }
+    const resource = sourceResourceList().find((item) => item && String(item.id || '') === String(target.id || ''))
+    if (!resource || !resource.dataUrl) throw new Error('原图资源不可用')
+    if (resource.pendingDataUrl) throw new Error('原图数据还在准备中，请稍后再试')
+    const img = await loadImage(resource.dataUrl)
+    const canvas = canvasOfSize(size.width, size.height)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    const naturalWidth = Math.max(1, img.naturalWidth || img.width || 1)
+    const naturalHeight = Math.max(1, img.naturalHeight || img.height || 1)
+    const sceneWidth = Math.max(1, Math.round(Number(resource.width) || naturalWidth))
+    const sceneHeight = Math.max(1, Math.round(Number(resource.height) || naturalHeight))
+    if (naturalWidth === sceneWidth && naturalHeight === sceneHeight) {
+      ctx.drawImage(img, 0, 0, size.width, size.height)
+    } else {
+      const scaleX = size.width / sceneWidth
+      const scaleY = size.height / sceneHeight
+      const imageWidth = Math.max(1, Math.round(Number(resource.sourceImageSize && resource.sourceImageSize.width) || naturalWidth))
+      const imageHeight = Math.max(1, Math.round(Number(resource.sourceImageSize && resource.sourceImageSize.height) || naturalHeight))
+      const offset = resource.sourceOffset || { x: 0, y: 0 }
+      ctx.drawImage(
+        img,
+        Math.round((Number(offset.x) || 0) * scaleX),
+        Math.round((Number(offset.y) || 0) * scaleY),
+        Math.max(1, Math.round(imageWidth * scaleX)),
+        Math.max(1, Math.round(imageHeight * scaleY))
+      )
+    }
+    return { canvas, label: resource.storyboardEditCopy ? '分镜编辑副本' : '原图' }
+  }
+
+  async function maskStencilMaskCanvas(part, width, height) {
+    const maskDataUrl = layerMaskDataUrl(part)
+    if (maskDataUrl) {
+      try {
+        const mask = await loadImage(maskDataUrl)
+        const canvas = canvasOfSize(width, height)
+        canvas.getContext('2d', { willReadFrequently: true }).drawImage(mask, 0, 0, width, height)
+        return { canvas: normalizeMaskCanvas(canvas), dataUrl: maskDataUrl }
+      } catch {}
+    }
+    const source = await loadImage(part.dataUrl)
+    const sourceCanvas = canvasOfSize(width, height)
+    const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true })
+    sourceCtx.drawImage(source, 0, 0, width, height)
+    const image = sourceCtx.getImageData(0, 0, width, height)
+    const canvas = canvasOfSize(width, height)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    const maskImage = ctx.createImageData(width, height)
+    for (let i = 0; i < image.data.length; i += 4) {
+      const alpha = image.data[i + 3]
+      maskImage.data[i] = alpha
+      maskImage.data[i + 1] = alpha
+      maskImage.data[i + 2] = alpha
+      maskImage.data[i + 3] = 255
+    }
+    ctx.putImageData(maskImage, 0, 0)
+    return { canvas, dataUrl: canvas.toDataURL('image/png') }
+  }
+
+  function maskStencilLayerRecord(origin, target, targetLabel, crops) {
+    const rect = layerRect(origin)
+    const id = String(crops && crops.id || '')
+    const originLabel = String(origin && (origin.name || origin.id) || '')
+    const name = `${originLabel} ← ${String(targetLabel || '')}`
+    return withLayerModelFields({
+      id,
+      name,
+      prompt: `Mask stencil copy of ${String(targetLabel || '')} through ${originLabel}`,
+      file: `images/${id}.png`,
+      maskFile: `masks/${id}_mask.png`,
+      x: rect.x,
+      y: rect.y,
+      width: rect.width,
+      height: rect.height,
+      pivot: origin && origin.pivot ? { ...origin.pivot } : { x: 0.5, y: 0.5 },
+      layer: spineLayerRank(origin) + 0.01,
+      manualLayer: true,
+      visible: true,
+      needsInpaint: false,
+      spineReady: true,
+      reviewIssues: [],
+      dataUrl: String(crops && crops.dataUrl || ''),
+      maskDataUrl: String(crops && crops.maskDataUrl || ''),
+      cropPipeline: 'editor',
+      cropEdgeCleanup: 'none',
+      originalWidth: Math.max(1, Math.round(Number(crops && crops.sceneWidth) || 1)),
+      originalHeight: Math.max(1, Math.round(Number(crops && crops.sceneHeight) || 1)),
+      sourcePartId: String(origin && origin.id || ''),
+      sourcePartName: originLabel,
+      layerName: name,
+      displayName: name
+    }, String(crops && crops.imageDataUrl || ''), String(crops && crops.maskDataUrl || ''), {
+      kind: 'mask-stencil',
+      source: 'maskStencil',
+      fromPartId: String(origin && origin.id || ''),
+      target: { type: String(target && target.type || ''), id: String(target && target.id || '') }
+    })
+  }
+
+  async function applyMaskStencil(target) {
+    if (maskStencilApplyPromise) return maskStencilApplyPromise
+    const origin = maskStencilOriginPart()
+    if (!origin || !target || !isMaskStencilTarget(target.type, target.id)) return null
+    const run = (async () => {
+      resetMaskStencil({ silent: true, render: false })
+      const originLabel = origin.name || origin.id
+      setMessage(`正在按「${originLabel}」的遮罩复制…`)
+      render()
+      const size = sourceCanvasSizeSync(origin)
+      const rect = layerRect(origin)
+      const source = await maskStencilTargetCanvas(target, size)
+      const image = canvasOfSize(rect.width, rect.height)
+      image.getContext('2d', { willReadFrequently: true }).drawImage(source.canvas, rect.x, rect.y, rect.width, rect.height, 0, 0, rect.width, rect.height)
+      const mask = await maskStencilMaskCanvas(origin, rect.width, rect.height)
+      const rendered = maskedLayerCanvas({ width: rect.width, height: rect.height, sourceCanvas: image, maskCanvas: mask.canvas })
+      if (countCanvasVisiblePixels(rendered, 8) < 1) throw new Error(`「${source.label}」在「${originLabel}」的遮罩范围内没有可见像素`)
+      const id = uniqueManualPartId(`${origin.id}_copy`)
+      const record = maskStencilLayerRecord(origin, target, source.label, {
+        id,
+        imageDataUrl: image.toDataURL('image/png'),
+        maskDataUrl: mask.dataUrl,
+        dataUrl: rendered.toDataURL('image/png'),
+        sceneWidth: size.width,
+        sceneHeight: size.height
+      })
+      pushSplitLayerUndoSnapshot('mask stencil', origin.id)
+      await addManualPart(record)
+      setMessage(`已按「${originLabel}」的遮罩从「${source.label}」复制为新图层：${record.name}`)
+      render()
+      syncSplitWorkspace()
+      return record
+    })()
+    maskStencilApplyPromise = run
+    try {
+      return await run
+    } catch (error) {
+      setMessage(String(error && error.message || error || '遮罩复制失败'), true)
+      render()
+      syncSplitWorkspace()
+      return null
+    } finally {
+      if (maskStencilApplyPromise === run) maskStencilApplyPromise = null
+    }
+  }
+
+  function splitLayerStencilButtonStyle(active) {
+    return {
+      width: '22px',
+      height: '22px',
+      minWidth: '22px',
+      borderRadius: '5px',
+      padding: '1px',
+      boxSizing: 'border-box',
+      overflow: 'hidden',
+      border: active ? '1px solid rgba(250,204,21,0.95)' : '1px solid rgba(255,255,255,0.16)',
+      background: active ? 'rgba(250,204,21,0.22)' : '#0b1220',
+      boxShadow: active ? '0 0 0 2px rgba(250,204,21,0.35)' : 'none',
+      color: 'rgba(255,255,255,0.82)',
+      cursor: 'pointer',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      lineHeight: '1',
+      fontSize: '10px'
+    }
+  }
+
+  function splitLayerStencilButtonNode(part, setId, editToolLocked, commandButtonStyle) {
+    const partId = String(part && part.id || '')
+    const originActive = isMaskStencilActive() && String(state.maskStencil.fromPartId || '') === partId
+    const maskSrc = layerMaskDataUrl(part)
+    const styleFor = typeof commandButtonStyle === 'function' ? commandButtonStyle : (style) => style
+    return h('button', {
+      type: 'button',
+      disabled: editToolLocked,
+      'aria-disabled': editToolLocked ? 'true' : 'false',
+      draggable: 'false',
+      [LAYER_COMMAND_ATTR]: 'stencil',
+      [LAYER_COMMAND_TARGET_ATTR]: partId,
+      [LAYER_STENCIL_ATTR]: originActive ? 'active' : '1',
+      title: originActive ? '取消遮罩指向' : '遮罩：点击后选择要复制的图层或原图，按此遮罩复制为新图层叠在上方',
+      ondragstart: (event) => { event.preventDefault(); event.stopPropagation() },
+      onclick: (event) => {
+        event.preventDefault()
+        event.stopPropagation()
+        if (editToolLocked || wasLayerCommandHandledRecently('stencil', partId)) return
+        startMaskStencil(partId, setId)
+      },
+      style: styleFor(splitLayerStencilButtonStyle(originActive))
+    }, maskSrc
+      ? h('img', { src: maskSrc, alt: '', draggable: 'false', style: { width: '100%', height: '100%', objectFit: 'contain', display: 'block', pointerEvents: 'none', userSelect: 'none' } })
+      : h('i', { className: 'fas fa-mask', style: { pointerEvents: 'none' } }))
+  }
+
+  function scheduleMaskStencilOverlaySync() {
+    if (!isMaskStencilActive() || maskStencilOverlaySyncRaf) return
+    maskStencilOverlaySyncRaf = window.requestAnimationFrame(() => {
+      maskStencilOverlaySyncRaf = 0
+      syncMaskStencilOverlay()
+    })
+  }
+
+  function maskStencilPanelScroller() {
+    const panel = document.getElementById(RIGHT_WORKSPACE_ID)
+    return panel ? panel.querySelector('[data-novaflow-layer-scroll="1"]') : null
+  }
+
+  function maskStencilOriginButtonNode() {
+    const panel = document.getElementById(RIGHT_WORKSPACE_ID)
+    if (!panel || !isMaskStencilActive()) return null
+    const id = String(state.maskStencil.fromPartId || '')
+    return Array.from(panel.querySelectorAll(`[${LAYER_COMMAND_ATTR}="stencil"]`)).find((node) => node.getAttribute(LAYER_COMMAND_TARGET_ATTR) === id) || null
+  }
+
+  function maskStencilTargetNodes() {
+    const panel = document.getElementById(RIGHT_WORKSPACE_ID)
+    if (!panel || !isMaskStencilActive()) return []
+    const rows = Array.from(panel.querySelectorAll(`[${LAYER_ROW_ATTR}]`))
+    const cards = Array.from(panel.querySelectorAll('[data-novaflow-source-resource-card="1"]'))
+    return maskStencilTargets().map((target) => {
+      const node = target.type === 'source'
+        ? cards.find((card) => card.getAttribute('data-novaflow-source-resource-id') === target.id)
+        : rows.find((row) => row.getAttribute(LAYER_ROW_ATTR) === target.id)
+      return node && isVisibleElement(node) ? { target, node } : null
+    }).filter(Boolean)
+  }
+
+  function maskStencilOverlayItems() {
+    const scroller = maskStencilPanelScroller()
+    const clip = scroller ? scroller.getBoundingClientRect() : null
+    const items = []
+    const push = (kind, node) => {
+      if (!node) return
+      const rect = node.getBoundingClientRect()
+      if (!rect || rect.width <= 0 || rect.height <= 0) return
+      let left = rect.left
+      let top = rect.top
+      let right = rect.right
+      let bottom = rect.bottom
+      if (clip) {
+        left = Math.max(left, clip.left)
+        top = Math.max(top, clip.top)
+        right = Math.min(right, clip.right)
+        bottom = Math.min(bottom, clip.bottom)
+      }
+      if (right - left < 2 || bottom - top < 2) return
+      items.push({ kind, left: Math.round(left), top: Math.round(top), width: Math.round(right - left), height: Math.round(bottom - top) })
+    }
+    maskStencilTargetNodes().forEach((entry) => push('target', entry.node))
+    push('origin', maskStencilOriginButtonNode())
+    return items
+  }
+
+  function maskStencilOverlayPath(width, height, items) {
+    let d = `M0 0H${width}V${height}H0Z`
+    ;(items || []).forEach((item) => { d += ` M${item.left} ${item.top}h${item.width}v${item.height}h${-item.width}Z` })
+    return d
+  }
+
+  function removeMaskStencilOverlay() {
+    const overlay = document.getElementById(MASK_STENCIL_OVERLAY_ID)
+    if (overlay) overlay.remove()
+    if (maskStencilOverlaySyncRaf) {
+      window.cancelAnimationFrame(maskStencilOverlaySyncRaf)
+      maskStencilOverlaySyncRaf = 0
+    }
+  }
+
+  function syncMaskStencilOverlay() {
+    if (!isMaskStencilActive() || !isMountedCardVisible() || !document.body) {
+      removeMaskStencilOverlay()
+      return
+    }
+    const svgNs = 'http://www.w3.org/2000/svg'
+    let overlay = document.getElementById(MASK_STENCIL_OVERLAY_ID)
+    if (!overlay) {
+      overlay = document.createElementNS(svgNs, 'svg')
+      overlay.id = MASK_STENCIL_OVERLAY_ID
+      overlay.setAttribute('aria-hidden', 'true')
+      overlay.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:2147483300;pointer-events:none;overflow:visible'
+      const dim = document.createElementNS(svgNs, 'path')
+      dim.setAttribute('data-novaflow-stencil-dim', '1')
+      dim.setAttribute('fill', 'rgba(2,6,23,0.66)')
+      dim.setAttribute('fill-rule', 'evenodd')
+      dim.style.pointerEvents = 'auto'
+      dim.style.cursor = 'not-allowed'
+      dim.addEventListener('wheel', handleMaskStencilOverlayWheel, { passive: false })
+      overlay.appendChild(dim)
+      const frames = document.createElementNS(svgNs, 'g')
+      frames.setAttribute('data-novaflow-stencil-frames', '1')
+      frames.style.pointerEvents = 'none'
+      overlay.appendChild(frames)
+      document.body.appendChild(overlay)
+    }
+    const width = Math.max(1, window.innerWidth || 1)
+    const height = Math.max(1, window.innerHeight || 1)
+    overlay.setAttribute('viewBox', `0 0 ${width} ${height}`)
+    overlay.setAttribute('width', String(width))
+    overlay.setAttribute('height', String(height))
+    const items = maskStencilOverlayItems()
+    const dim = overlay.querySelector('[data-novaflow-stencil-dim="1"]')
+    if (dim) dim.setAttribute('d', maskStencilOverlayPath(width, height, items))
+    const frames = overlay.querySelector('[data-novaflow-stencil-frames="1"]')
+    if (frames) {
+      while (frames.firstChild) frames.removeChild(frames.firstChild)
+      items.forEach((item) => {
+        const frame = document.createElementNS(svgNs, 'rect')
+        frame.setAttribute('x', String(item.left + 1))
+        frame.setAttribute('y', String(item.top + 1))
+        frame.setAttribute('width', String(Math.max(1, item.width - 2)))
+        frame.setAttribute('height', String(Math.max(1, item.height - 2)))
+        frame.setAttribute('rx', '7')
+        frame.setAttribute('fill', 'none')
+        frame.setAttribute('stroke', item.kind === 'origin' ? 'rgba(250,204,21,0.98)' : 'rgba(37,184,127,0.98)')
+        frame.setAttribute('stroke-width', '2')
+        frames.appendChild(frame)
+      })
+    }
+  }
+
+  function handleMaskStencilOverlayWheel(event) {
+    const scroller = maskStencilPanelScroller()
+    if (!scroller) return
+    const rect = scroller.getBoundingClientRect()
+    const x = Number(event.clientX)
+    const y = Number(event.clientY)
+    if (!(x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)) return
+    event.preventDefault()
+    event.stopPropagation()
+    const maxScroll = Math.max(0, scroller.scrollHeight - scroller.clientHeight)
+    if (maxScroll <= 0 || !event.deltaY) return
+    const unit = event.deltaMode === 1 ? 32 : event.deltaMode === 2 ? Math.max(1, scroller.clientHeight) : 1
+    scroller.scrollTop = Math.max(0, Math.min(maxScroll, scroller.scrollTop + event.deltaY * unit))
+    rememberLayerScroll(scroller)
+    scheduleMaskStencilOverlaySync()
+  }
+
+  function maskStencilElementFromEvent(event) {
+    const direct = event && event.target instanceof Element ? event.target : null
+    if (direct && direct !== document.documentElement && direct !== document.body) return direct
+    const x = Number(event && event.clientX)
+    const y = Number(event && event.clientY)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+    return document.elementFromPoint(x, y)
+  }
+
+  function maskStencilResolveFromElement(element) {
+    if (!element || typeof element.closest !== 'function') return null
+    const overlay = document.getElementById(MASK_STENCIL_OVERLAY_ID)
+    if (overlay && overlay.contains(element)) return { kind: 'dim' }
+    const panel = document.getElementById(RIGHT_WORKSPACE_ID)
+    if (!panel || !panel.contains(element)) return null
+    const command = element.closest(`[${LAYER_COMMAND_ATTR}="stencil"]`)
+    if (command && command.getAttribute(LAYER_COMMAND_TARGET_ATTR) === String(state.maskStencil.fromPartId || '')) return { kind: 'origin' }
+    const card = element.closest('[data-novaflow-source-resource-card="1"]')
+    if (card) return { kind: 'target', target: { type: 'source', id: String(card.getAttribute('data-novaflow-source-resource-id') || '') } }
+    const row = element.closest(`[${LAYER_ROW_ATTR}]`)
+    if (row) return { kind: 'target', target: { type: 'part', id: String(row.getAttribute(LAYER_ROW_ATTR) || '') } }
+    return { kind: 'panel' }
+  }
+
+  function maskStencilResolveFromPoint(x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+    const inside = (node) => {
+      const rect = node && node.getBoundingClientRect()
+      return !!rect && rect.width > 0 && rect.height > 0 && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
+    }
+    if (inside(maskStencilOriginButtonNode())) return { kind: 'origin' }
+    const hit = maskStencilTargetNodes().find((entry) => inside(entry.node))
+    return hit ? { kind: 'target', target: hit.target } : null
+  }
+
+  function maskStencilResolveEventTarget(event) {
+    const direct = event && event.target instanceof Element && event.target !== document.documentElement && event.target !== document.body ? event.target : null
+    if (direct) return maskStencilResolveFromElement(direct) || { kind: 'outside' }
+    const x = Number(event && event.clientX)
+    const y = Number(event && event.clientY)
+    const fromPoint = maskStencilResolveFromPoint(x, y)
+    if (fromPoint) return fromPoint
+    const element = Number.isFinite(x) && Number.isFinite(y) ? document.elementFromPoint(x, y) : null
+    return maskStencilResolveFromElement(element) || { kind: 'outside' }
+  }
+
+  function handleMaskStencilPointerCapture(event) {
+    if (!event) return
+    const type = String(event.type || '')
+    const stopAll = () => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation()
+    }
+    if (type === 'pointerup') maskStencilPointerUpStamp = Number(event.timeStamp) || 0
+    if ((type === 'click' || type === 'pointerup') && Date.now() < maskStencilSwallowUntil) {
+      stopAll()
+      return
+    }
+    if (type === 'click' && maskStencilConsumedStamp >= 0 && Math.abs((Number(event.timeStamp) || 0) - maskStencilConsumedStamp) < 80) {
+      stopAll()
+      return
+    }
+    if (!isMaskStencilActive()) return
+    if (type === 'pointerdown' || type === 'mousedown' || type === 'dblclick') {
+      const kind = maskStencilResolveEventTarget(event).kind
+      if (kind === 'panel' || kind === 'outside') return
+      stopAll()
+      return
+    }
+    if (type !== 'pointerup' && type !== 'click') return
+    if (type === 'pointerup' && event.button != null && event.button !== 0) {
+      stopAll()
+      return
+    }
+    const resolved = maskStencilResolveEventTarget(event)
+    if (resolved.kind === 'panel' || resolved.kind === 'outside') return
+    stopAll()
+    maskStencilConsumedStamp = Number(event.timeStamp) || 0
+    if (resolved.kind === 'target') applyMaskStencil(resolved.target)
+    else resetMaskStencil()
+    maskStencilSwallowUntil = Date.now() + 200
+  }
+
   async function mergeSelectedParts() {
     if (state.busy) return
+    if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const selected = selectedParts()
     if (selected.length < 2) {
       setMessage('请先 Ctrl+左键选择至少 2 个图层', true)
@@ -36079,6 +36611,7 @@
 
   async function deleteSelectedParts() {
     if (isSplitEditToolActive()) return
+    if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const selected = selectedParts()
     if (!selected.length) return
     const removeIds = new Set(selected.map((part) => part.id))
@@ -36101,6 +36634,7 @@
 
   async function deleteSinglePart(partId, setId) {
     if (isSplitEditToolActive()) return
+    if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const id = String(partId || '')
     if (!id || state.busy) return
     const targetSet = splitSetForPart(id, setId)
@@ -36816,6 +37350,10 @@
           }
           if (event.key !== 'Enter' && event.key !== ' ') return
           event.preventDefault()
+          if (isMaskStencilActive()) {
+            applyMaskStencil({ type: 'part', id: part.id })
+            return
+          }
           setLayerSelection(part.id, event)
         },
         style: splitLayerRowStyle(part)
@@ -36824,6 +37362,7 @@
           h('i', { className: visible ? 'fas fa-eye' : 'fas fa-eye-slash', style: { pointerEvents: 'none' } })
         ]),
         splitLayerThumbNode(part),
+        splitLayerStencilButtonNode(part, setId, editToolLocked, commandButtonStyle),
         splitLayerNameSlotNode(part, isRenaming),
         h('button', { type: 'button', disabled: editToolLocked, 'aria-disabled': editToolLocked ? 'true' : 'false', draggable: 'false', [LAYER_COMMAND_ATTR]: 'delete', [LAYER_COMMAND_TARGET_ATTR]: part.id, title: '删除当前图层', ondragstart: (event) => { event.preventDefault(); event.stopPropagation() }, onclick: (event) => { event.preventDefault(); event.stopPropagation(); if (editToolLocked || wasLayerCommandHandledRecently('delete', part.id)) return; deleteSinglePart(part.id, setId) }, style: commandButtonStyle({ width: '20px', height: '20px', minWidth: '20px', borderRadius: '5px', border: '0', background: 'transparent', color: 'rgba(255,255,255,0.50)', cursor: 'pointer', fontWeight: '900', lineHeight: '1', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', padding: '0', boxSizing: 'border-box' }) }, '×')
       ])
@@ -36890,6 +37429,10 @@
           event.preventDefault()
           event.stopPropagation()
           if (resourceLocked) return
+          if (isMaskStencilActive()) {
+            applyMaskStencil({ type: 'source', id: resource.id })
+            return
+          }
           activateSourceResourceWithLinkedSplitSet(resource.id, { sourceView: true })
         },
         onkeydown: (event) => {
@@ -36897,6 +37440,10 @@
           event.preventDefault()
           event.stopPropagation()
           if (resourceLocked) return
+          if (isMaskStencilActive()) {
+            applyMaskStencil({ type: 'source', id: resource.id })
+            return
+          }
           activateSourceResourceWithLinkedSplitSet(resource.id, { sourceView: true })
         },
         style: { width: '100%', minHeight: SPLIT_RIGHT_SET_CARD_HEIGHT, height: SPLIT_RIGHT_SET_CARD_HEIGHT, display: 'grid', gridTemplateColumns: '34px minmax(0, 1fr) 22px', gap: '8px', alignItems: 'center', padding: '5px 8px', border: SPLIT_LAYOUT_BORDER, borderRadius: '7px', background: isActive ? '#123126' : '#2f2f2f', color: '#fff', cursor: resourceLocked ? 'default' : (resourceDraggable ? 'grab' : 'pointer'), opacity: resourceLocked ? '0.62' : '1', textAlign: 'left', boxSizing: 'border-box', appearance: 'none', outline: '0', boxShadow: isActive ? 'inset 3px 0 0 rgba(37,184,127,0.98)' : 'none', transform: 'none', transition: 'background-color 120ms ease-out, background 120ms ease-out', WebkitTapHighlightColor: 'transparent' }
@@ -37249,6 +37796,7 @@
     hideUnderlyingPreviewControlsForSplitWorkspace()
     renderSplitCanvasOverlay()
     renderRightWorkspacePanel()
+    syncMaskStencilOverlay()
   }
 
   function updateRightPanel() {
@@ -37278,6 +37826,7 @@
   }
 
   function runSplitControlAction(action, options = {}) {
+    if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const storyboardEditSource = state.viewMode === 'storyboard' || isStoryboardEditSourceResource()
     if (!options.storyboardEditPrepared && storyboardEditSource && isStoryboardEditSourceAction(action)) {
       return prepareStoryboardSceneEditableCopy().then((ready) => ready
@@ -37341,7 +37890,7 @@
     const x = Number(event.clientX)
     const y = Number(event.clientY)
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null
-    return Array.from(panel.querySelectorAll(`[${LAYER_COMMAND_ATTR}="visibility"],[${LAYER_COMMAND_ATTR}="delete"]`)).find((node) => {
+    return Array.from(panel.querySelectorAll(`[${LAYER_COMMAND_ATTR}="visibility"],[${LAYER_COMMAND_ATTR}="delete"],[${LAYER_COMMAND_ATTR}="stencil"]`)).find((node) => {
       const rect = node.getBoundingClientRect()
       if (!rect || rect.width <= 0 || rect.height <= 0) return false
       return x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom
@@ -37363,7 +37912,7 @@
       return
     }
     const command = commandNode.getAttribute(LAYER_COMMAND_ATTR) || ''
-    if (command !== 'visibility' && command !== 'delete') return
+    if (command !== 'visibility' && command !== 'delete' && command !== 'stencil') return
     const row = commandNode.closest(`[${LAYER_ROW_ATTR}]`)
     const partId = commandNode.getAttribute(LAYER_COMMAND_TARGET_ATTR) || (row && row.getAttribute(LAYER_ROW_ATTR)) || ''
     if (!partId) return
@@ -37380,6 +37929,7 @@
     event.stopPropagation()
     if (typeof event.stopImmediatePropagation === 'function') event.stopImmediatePropagation()
     if (command === 'delete') deleteSinglePart(partId, row && row.getAttribute('data-novaflow-spine-split-layer-set') || '')
+    else if (command === 'stencil') startMaskStencil(partId, row && row.getAttribute('data-novaflow-spine-split-layer-set') || '')
     else togglePartVisibility(partId)
   }
 
@@ -38204,6 +38754,19 @@
     }
     if ((event.ctrlKey || event.metaKey) && !event.shiftKey && key === 'z') {
       if (handleSplitToolUndo()) {
+        event.preventDefault()
+        event.stopPropagation()
+        return
+      }
+    }
+    if (isMaskStencilActive()) {
+      if (key === 'escape') {
+        event.preventDefault()
+        event.stopPropagation()
+        resetMaskStencil()
+        return
+      }
+      if (((event.ctrlKey || event.metaKey) && key === 'e') || key === 'delete' || key === 'del') {
         event.preventDefault()
         event.stopPropagation()
         return
@@ -40873,6 +41436,117 @@
     }
   }
 
+  async function runMaskStencilSmokeTest() {
+    await waitForSplitEditorPanel('mask stencil smoke')
+    const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms))
+    const fixture = await prepareSplitEditorRegressionFixture()
+    const origin = fixture.partB
+    const other = fixture.partA
+    if (!origin || !other) throw new Error('mask stencil fixture parts missing')
+    const before = state.parts.length
+    const findStencilButton = (id) => Array.from(document.querySelectorAll(`[${LAYER_COMMAND_ATTR}="stencil"]`)).find((node) => node.getAttribute(LAYER_COMMAND_TARGET_ATTR) === id && isVisibleElement(node))
+    const clickAt = (clientX, clientY) => {
+      const init = { bubbles: true, cancelable: true, clientX, clientY, button: 0, buttons: 0, detail: 1 }
+      const PointerCtor = typeof PointerEvent === 'function' ? PointerEvent : MouseEvent
+      window.dispatchEvent(new PointerCtor('pointerup', init))
+      window.dispatchEvent(new MouseEvent('click', init))
+    }
+    const waitForParts = async (count) => {
+      const startedAt = Date.now()
+      while (state.parts.length !== count && Date.now() - startedAt < 6000) await wait(80)
+      if (state.parts.length !== count) throw new Error(`stencil copy layer count ${state.parts.length}, expected ${count}`)
+      if (maskStencilApplyPromise) await maskStencilApplyPromise.catch(() => null)
+      await wait(120)
+    }
+    const button = findStencilButton(origin.id)
+    if (!button) throw new Error(`stencil button missing: ${origin.id}`)
+    if (!button.querySelector('img')) throw new Error('stencil button has no mask thumbnail')
+    dispatchWindowClickAtNode(button)
+    await wait(320)
+    if (!isMaskStencilActive() || state.maskStencil.fromPartId !== origin.id) throw new Error(`stencil mode did not start: ${JSON.stringify(state.maskStencil)}`)
+    const overlay = document.getElementById(MASK_STENCIL_OVERLAY_ID)
+    if (!overlay || !overlay.isConnected || overlay.getBoundingClientRect().width <= 0) throw new Error('stencil overlay missing')
+    const items = maskStencilOverlayItems()
+    if (!items.some((item) => item.kind === 'origin') || items.filter((item) => item.kind === 'target').length < 2) throw new Error(`stencil overlay holes wrong: ${JSON.stringify(items)}`)
+    const targets = maskStencilTargets()
+    if (!targets.some((target) => target.type === 'source') || !targets.some((target) => target.type === 'part' && target.id === other.id) || targets.some((target) => target.id === origin.id)) throw new Error(`stencil targets wrong: ${JSON.stringify(targets)}`)
+    const activeButton = findStencilButton(origin.id)
+    if (!activeButton || activeButton.getAttribute(LAYER_STENCIL_ATTR) !== 'active') throw new Error('origin stencil button not highlighted')
+    const originRow = Array.from(document.querySelectorAll(`[${LAYER_ROW_ATTR}]`)).find((node) => node.getAttribute(LAYER_ROW_ATTR) === origin.id && isVisibleElement(node))
+    if (!originRow) throw new Error('origin row missing')
+    const originRect = originRow.getBoundingClientRect()
+    const dimPoint = { x: originRect.right - 60, y: originRect.top + originRect.height / 2 }
+    const dimHit = document.elementFromPoint(dimPoint.x, dimPoint.y)
+    if (!dimHit || !overlay.contains(dimHit)) throw new Error('origin row is not dimmed by the stencil overlay')
+    const selectionBefore = (state.selectedPartIds || []).join(',')
+    clickAt(dimPoint.x, dimPoint.y)
+    await wait(320)
+    if (isMaskStencilActive() || document.getElementById(MASK_STENCIL_OVERLAY_ID)) throw new Error('dim click did not cancel stencil')
+    if ((state.selectedPartIds || []).join(',') !== selectionBefore || state.parts.length !== before) throw new Error('dim click leaked into the layer list')
+    dispatchWindowClickAtNode(findStencilButton(origin.id))
+    await wait(320)
+    if (!isMaskStencilActive()) throw new Error('stencil mode did not restart')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
+    await wait(320)
+    if (isMaskStencilActive() || document.getElementById(MASK_STENCIL_OVERLAY_ID)) throw new Error('Escape did not cancel stencil')
+    dispatchWindowClickAtNode(findStencilButton(origin.id))
+    await wait(320)
+    if (!isMaskStencilActive()) throw new Error('stencil mode did not restart for the source copy')
+    const card = Array.from(document.querySelectorAll('[data-novaflow-source-resource-card="1"]')).find((node) => isVisibleElement(node))
+    if (!card) throw new Error('source resource card missing')
+    const cardHit = document.elementFromPoint(card.getBoundingClientRect().left + card.getBoundingClientRect().width / 2, card.getBoundingClientRect().top + card.getBoundingClientRect().height / 2)
+    if (!cardHit || !card.contains(cardHit)) throw new Error('source card is not exposed through the stencil overlay')
+    dispatchWindowClickAtNode(card)
+    await waitForParts(before + 1)
+    const copy = state.parts.find((part) => part && part.metadata && part.metadata.kind === 'mask-stencil')
+    if (!copy) throw new Error('stencil copy layer missing')
+    const originNow = state.parts.find((part) => part.id === origin.id)
+    if (copy.x !== originNow.x || copy.y !== originNow.y || copy.width !== originNow.width || copy.height !== originNow.height) throw new Error('stencil copy rect mismatch')
+    if (!layerMaskDataUrl(copy) || layerMaskDataUrl(copy) !== layerMaskDataUrl(originNow)) throw new Error('stencil copy mask not synced')
+    if (!(spineLayerRank(copy) > spineLayerRank(originNow))) throw new Error('stencil copy not above origin')
+    const ordered = normalizeSpineLayerOrder(state.parts)
+    const originIndex = ordered.findIndex((part) => part.id === origin.id)
+    if (!ordered[originIndex + 1] || ordered[originIndex + 1].id !== copy.id) throw new Error('stencil copy not directly above origin')
+    if (state.activePartId !== copy.id) throw new Error(`stencil copy not selected: ${state.activePartId}`)
+    if (isMaskStencilActive() || document.getElementById(MASK_STENCIL_OVERLAY_ID)) throw new Error('stencil mode not cleared after copy')
+    if (!copy.metadata.target || copy.metadata.target.type !== 'source' || copy.sourcePartId !== origin.id) throw new Error('stencil copy metadata wrong')
+    const sourceImg = await loadImage(state.source.dataUrl)
+    const sourceCanvas = canvasOfSize(fixture.width, fixture.height)
+    const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true })
+    sourceCtx.drawImage(sourceImg, 0, 0)
+    const sourceData = sourceCtx.getImageData(copy.x, copy.y, copy.width, copy.height).data
+    const copyImg = await loadImage(copy.dataUrl)
+    const copyCanvas = canvasOfSize(copy.width, copy.height)
+    const copyCtx = copyCanvas.getContext('2d', { willReadFrequently: true })
+    copyCtx.drawImage(copyImg, 0, 0)
+    const copyData = copyCtx.getImageData(0, 0, copy.width, copy.height).data
+    let opaque = 0
+    let mismatched = 0
+    for (let i = 0; i < copyData.length; i += 4) {
+      if (copyData[i + 3] < 200) continue
+      opaque += 1
+      if (Math.abs(copyData[i] - sourceData[i]) > 3 || Math.abs(copyData[i + 1] - sourceData[i + 1]) > 3 || Math.abs(copyData[i + 2] - sourceData[i + 2]) > 3) mismatched += 1
+    }
+    if (opaque < 100 || mismatched > opaque * 0.02) throw new Error(`stencil copy pixels differ from source: ${mismatched}/${opaque}`)
+    dispatchWindowClickAtNode(findStencilButton(copy.id))
+    await wait(320)
+    if (!isMaskStencilActive() || state.maskStencil.fromPartId !== copy.id) throw new Error('stencil mode did not start from the copy layer')
+    await clickLayerRowForSmoke(origin.id)
+    await waitForParts(before + 2)
+    const copy2 = state.parts.find((part) => part && part.metadata && part.metadata.kind === 'mask-stencil' && part.metadata.target && part.metadata.target.type === 'part')
+    if (!copy2 || copy2.metadata.target.id !== origin.id || copy2.sourcePartId !== copy.id) throw new Error('layer-target stencil copy missing or mislabeled')
+    if (!(spineLayerRank(copy2) > spineLayerRank(copy))) throw new Error('layer-target stencil copy not above its origin')
+    if (!undoSplitLayerEdit()) throw new Error('undo unavailable after stencil copy')
+    await waitForParts(before + 1)
+    if (state.parts.some((part) => part.id === copy2.id)) throw new Error('undo did not remove the last stencil copy')
+    const value = `ok:${copy.id}:${copy2.id}`
+    document.body.setAttribute('data-novaflow-mask-stencil-smoke', value)
+    setMessage(`MASK_STENCIL_SMOKE_OK ${value}`)
+    render()
+    syncSplitWorkspace()
+    return { ok: true, value }
+  }
+
   async function runPenSourceSplitSmokeTest() {
     const fixture = await prepareSplitEditorRegressionFixture()
     const size = { width: fixture.width, height: fixture.height }
@@ -41735,6 +42409,12 @@
 
   window.NovaFlowSpineSplitDebug = {
     importSourceDataUrl,
+    startMaskStencil,
+    applyMaskStencil,
+    resetMaskStencil,
+    maskStencilTargets,
+    isMaskStencilActive,
+    runMaskStencilSmokeTest,
     splitSeeThroughFeet,
     splitSeeThroughFootwear,
     mergeFaceDetailsIntoFace,
@@ -42459,6 +43139,18 @@
       syncSplitWorkspace()
     }), 240)
   }
+  if (new URLSearchParams(window.location.search).has('__novaflow_mask_stencil_smoke')) {
+    window.setTimeout(() => {
+      runMaskStencilSmokeTest().catch((error) => {
+        const message = String(error && error.message || error || 'mask stencil smoke failed')
+        document.body.setAttribute('data-novaflow-mask-stencil-smoke', `fail:${message}`)
+        setMessage(`MASK_STENCIL_SMOKE_FAIL ${message}`, true)
+        render()
+        syncSplitWorkspace()
+      })
+    }, 260)
+  }
+
   if (new URLSearchParams(window.location.search).has('__novaflow_pen_source_split_smoke')) {
     window.setTimeout(() => {
       runPenSourceSplitSmokeTest().catch((error) => {
@@ -42707,6 +43399,13 @@
       window.requestAnimationFrame(() => syncSplitWorkspace())
     }
   }, true)
+  window.addEventListener('pointerdown', handleMaskStencilPointerCapture, true)
+  window.addEventListener('mousedown', handleMaskStencilPointerCapture, true)
+  window.addEventListener('dblclick', handleMaskStencilPointerCapture, true)
+  window.addEventListener('pointerup', handleMaskStencilPointerCapture, true)
+  window.addEventListener('click', handleMaskStencilPointerCapture, true)
+  window.addEventListener('resize', scheduleMaskStencilOverlaySync)
+  window.addEventListener('scroll', scheduleMaskStencilOverlaySync, true)
   window.addEventListener('click', handleSplitControlClickFallback, true)
   window.addEventListener('pointerup', handleSplitControlClickFallback, true)
   document.addEventListener('pointerup', handleSplitControlClickFallback, true)
