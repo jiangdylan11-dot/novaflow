@@ -7,7 +7,7 @@ const { loadSpine } = require('../../tools/qwen-rapid-migration-smoke.cjs')
 const root = path.resolve(__dirname, '../..')
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
 const RUNTIME = 'particle-editor/spine-split-runtime.js'
-const CACHE_VERSION = '20260916-effect-extract-1'
+const CACHE_VERSION = '20260916-effect-extract-2'
 const plain = (value) => JSON.parse(JSON.stringify(value))
 
 function loadRuntime() {
@@ -48,7 +48,9 @@ test('the smart cutout toolbar leads with a default-off 特效 switch and routes
   assert.match(source, /effectExtract: '\\u6b63\\u5728\\u63d0\\u53d6\\u7279\\u6548\.\.\.'/, 'the busy overlay names the extraction')
   assert.match(source, /patchSplitToolButtonVisual\('selectionEffect', effectEnabled\)/, 'the in-place toolbar patch re-applies the switch state')
   assert.match(source, /if \(!bounds \|\| bounds\.count < 16\) bounds = null \/\/ 不涂抹 = 整图/, 'no mask means the whole image')
-  assert.match(source, /const unmult = api\.removeBlackBackgroundFromImageData\(generatedImage, \{\}\)\n\s+const effectImage = unmult && unmult\.imageData \|\| generatedImage\n\s+const refillStats = refillEffectRgbFromSource\(effectImage\.data, sourceData, generatedData, EFFECT_EXTRACT_REFILL_TOLERANCE\)/, 'the black-background render is un-multiplied and then refilled from the source')
+  assert.match(source, /const unmult = await api\.unmultBlackBackgroundDataUrl\(resultDataUrl\)\n\s+const effectCanvas = await canvasFromDataUrl\(unmult\.dataUrl, width, height\)/, 'the black-background render goes through the same pure unmult as the 工具 PNG 去黑, at native resolution')
+  assert.doesNotMatch(source, /removeBlackBackgroundFromImageData\(generatedImage|refillEffectRgbFromSource/, 'no glow-expanding remover and no source refill: the model output shape is kept as-is')
+  assert.match(source, /typeof api\.unmultBlackBackgroundDataUrl !== 'function'\) throw new Error\('去黑能力未加载/, 'the pipeline refuses to run without the unmult API')
   assert.match(source, /kind: 'effect-extract',\n\s+source: 'executeEffectExtractTool',\n\s+provider: result\.provider,\n\s+blend: 'additive',/, 'the layer is tagged as an additive effect')
   assert.match(source, /const layer = spineLayerRank\(\{ id: 'effect_front' \}\)/, 'the effect layer takes the effect_front rank')
   assert.match(source, /has\('__novaflow_effect_extract_smoke'\)/, 'the in-page smoke is wired to a query flag')
@@ -94,34 +96,19 @@ test('the effect workflow is a single-image Qwen 2511 edit with a fixed seed and
   assert.equal(Object.values(plainRun).find((node) => node.class_type === 'KSampler').inputs.steps, 30)
 })
 
-test('pixel refill trusts the source only where the model kept the pixel, un-multiplied by the same alpha', () => {
+test('the alpha floor only drops VAE noise below 3/255 and leaves every visible pixel untouched', () => {
   const s = loadRuntime()
-  // px0: hidden (alpha 0) untouched; px1: kept pixel (diff 4) → source/divisor; px2: repainted pixel (diff 90) → generated colour stays; px3: kept but low alpha → divisor floor 0.14
+  // px0: already transparent; px1: 2/255 noise → cleared; px2: exactly the floor → kept; px3: bright → kept verbatim
   const effect = new Uint8ClampedArray([
     9, 9, 9, 0,
-    250, 200, 100, 128,
-    250, 200, 100, 255,
-    30, 20, 10, 20
+    40, 30, 20, 2,
+    40, 30, 20, 3,
+    250, 200, 100, 128
   ])
-  const source = new Uint8ClampedArray([
-    120, 120, 120, 255,
-    124, 100, 52, 255,
-    30, 30, 30, 255,
-    20, 10, 5, 255
-  ])
-  const generated = new Uint8ClampedArray([
-    0, 0, 0, 255,
-    120, 100, 50, 255,
-    120, 100, 50, 255,
-    22, 12, 6, 255
-  ])
-  const stats = plain(s.refillEffectRgbFromSource(effect, source, generated, 26))
-  assert.deepEqual(stats, { visible: 3, refilled: 2 })
-  assert.deepEqual(Array.from(effect.slice(0, 4)), [9, 9, 9, 0], 'hidden pixels are left alone')
-  assert.deepEqual(Array.from(effect.slice(4, 8)), [247, 199, 104, 128], 'kept pixel = source / (128/255)')
-  assert.deepEqual(Array.from(effect.slice(8, 12)), [250, 200, 100, 255], 'repainted pixel keeps the generated colour')
-  assert.deepEqual(Array.from(effect.slice(12, 16)), [143, 71, 36, 20], 'low alpha uses the 0.14 divisor floor')
-  assert.deepEqual(plain(s.refillEffectRgbFromSource(null, source, generated, 26)), { visible: 0, refilled: 0 })
+  const stats = plain(s.floorEffectAlpha(effect, 3))
+  assert.deepEqual(stats, { visible: 2, floored: 1 })
+  assert.deepEqual(Array.from(effect), [9, 9, 9, 0, 0, 0, 0, 0, 40, 30, 20, 3, 250, 200, 100, 128])
+  assert.deepEqual(plain(s.floorEffectAlpha(null, 3)), { visible: 0, floored: 0 })
 })
 
 test('the soft mask only attenuates alpha and clears fully gated RGB', () => {

@@ -269,7 +269,7 @@
   const EFFECT_EXTRACT_TIMEOUT_MS = 10 * 60 * 1000
   const EFFECT_EXTRACT_FILENAME_PREFIX = 'NovaFlow_effect_extract'
   const EFFECT_EXTRACT_SEED = 916202601
-  const EFFECT_EXTRACT_REFILL_TOLERANCE = 26
+  const EFFECT_EXTRACT_ALPHA_FLOOR = 3
   const STORYBOARD_MODEL_MODE_DEFAULT = 'default'
   const STORYBOARD_MODEL_MODE_NSFW = 'qwenNsfw'
   const STORYBOARD_QWEN_NSFW_CHECKPOINT = QWEN_RAPID_CHECKPOINT
@@ -29319,28 +29319,24 @@
     return { cropBox, cropImage, inputCanvas, originalSize, softMask: masks ? masks.softRoiMask : null, hardMask: masks ? masks.hardRoiMask : null, gateGrow: masks ? masks.softGrow : 0 }
   }
 
-  function refillEffectRgbFromSource(effectData, sourceData, generatedData, tolerance) {
-    // Where the model left a pixel untouched the source already shows the effect over a
-    // near-black ground, so its colour is trusted verbatim (un-multiplied by the same alpha
-    // the unmult step used); elsewhere the generated colour stays.
-    const limit = clampNumber(Number(tolerance) || EFFECT_EXTRACT_REFILL_TOLERANCE, 4, 96)
-    const stats = { visible: 0, refilled: 0 }
-    if (!effectData || !sourceData || !generatedData) return stats
-    for (let i = 0; i + 3 < effectData.length && i + 3 < sourceData.length && i + 3 < generatedData.length; i += 4) {
+  function floorEffectAlpha(effectData, floor) {
+    // The VAE leaves 1-2/255 of noise on the black ground; dropping it keeps the layer's
+    // bounding box tight without touching anything visible.
+    const limit = clampNumber(Number(floor) || 0, 0, 16)
+    const stats = { visible: 0, floored: 0 }
+    if (!effectData) return stats
+    for (let i = 0; i + 3 < effectData.length; i += 4) {
       const alpha = effectData[i + 3] || 0
-      if (alpha <= 1) continue
+      if (alpha <= 0) continue
+      if (alpha < limit) {
+        effectData[i] = 0
+        effectData[i + 1] = 0
+        effectData[i + 2] = 0
+        effectData[i + 3] = 0
+        stats.floored += 1
+        continue
+      }
       stats.visible += 1
-      const diff = Math.max(
-        Math.abs((sourceData[i] || 0) - (generatedData[i] || 0)),
-        Math.abs((sourceData[i + 1] || 0) - (generatedData[i + 1] || 0)),
-        Math.abs((sourceData[i + 2] || 0) - (generatedData[i + 2] || 0))
-      )
-      if (diff > limit) continue
-      const divisor = clampNumber(alpha / 255, 0.14, 1)
-      effectData[i] = clampNumber(Math.round((sourceData[i] || 0) / divisor), 0, 255)
-      effectData[i + 1] = clampNumber(Math.round((sourceData[i + 1] || 0) / divisor), 0, 255)
-      effectData[i + 2] = clampNumber(Math.round((sourceData[i + 2] || 0) / divisor), 0, 255)
-      stats.refilled += 1
     }
     return stats
   }
@@ -29372,7 +29368,7 @@
     const info = await comfyAllObjectInfo(baseUrl)
     const resolved = resolveObjectTransferQwenRuntime(info)
     const api = window.NovaFlowBackgroundRemoval
-    if (!api || typeof api.removeBlackBackgroundFromImageData !== 'function') throw new Error('去黑能力未加载，请重启 NovaFlow 后重试')
+    if (!api || typeof api.unmultBlackBackgroundDataUrl !== 'function') throw new Error('去黑能力未加载，请重启 NovaFlow 后重试')
     const input = effectExtractModelInput(session, bounds)
     const width = input.cropBox.width
     const height = input.cropBox.height
@@ -29382,21 +29378,21 @@
     const workflow = buildEffectExtractQwenWorkflow(info, imageName, runId, resolved)
     setSplitBusyDetail(`Qwen Image Edit 2511 黑底化\n${width} x ${height} px`)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, runId, EFFECT_EXTRACT_TIMEOUT_MS)
-    setSplitBusyDetail('正在去黑并回填原图像素...')
-    const generatedCanvas = await canvasFromDataUrl(resultDataUrl, width, height)
-    const generatedCtx = generatedCanvas.getContext('2d', { willReadFrequently: true })
-    const generatedImage = generatedCtx.getImageData(0, 0, width, height)
-    const generatedData = new Uint8ClampedArray(generatedImage.data)
-    const sourceData = input.inputCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const unmult = api.removeBlackBackgroundFromImageData(generatedImage, {})
-    const effectImage = unmult && unmult.imageData || generatedImage
-    const refillStats = refillEffectRgbFromSource(effectImage.data, sourceData, generatedData, EFFECT_EXTRACT_REFILL_TOLERANCE)
+    setSplitBusyDetail('正在去黑（与工具版 PNG 去黑相同）...')
+    // The same pure unmult the 工具 → PNG 去黑 tool uses (alpha = max(R,G,B), RGB / alpha), run at
+    // the model's native resolution so the shapes come through untouched; only then resampled
+    // to the crop size. No blur, no glow growth, no source refill.
+    const unmult = await api.unmultBlackBackgroundDataUrl(resultDataUrl)
+    const effectCanvas = await canvasFromDataUrl(unmult.dataUrl, width, height)
+    const effectCtx = effectCanvas.getContext('2d', { willReadFrequently: true })
+    const effectImage = effectCtx.getImageData(0, 0, width, height)
+    const floorStats = floorEffectAlpha(effectImage.data, EFFECT_EXTRACT_ALPHA_FLOOR)
     let gateStats = null
     if (input.softMask) {
       const maskData = input.softMask.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
       gateStats = gateEffectAlphaBySoftMask(effectImage.data, maskData)
     }
-    const visible = gateStats ? gateStats.visible : refillStats.visible
+    const visible = gateStats ? gateStats.visible : floorStats.visible
     if (visible < 16) throw new Error('没有识别到可提取的特效，请涂抹更靠近特效的区域后重试')
     const resultCropCanvas = canvasOfSize(width, height)
     resultCropCanvas.getContext('2d', { willReadFrequently: true }).putImageData(effectImage, 0, 0)
@@ -29409,7 +29405,7 @@
       input,
       resultDataUrl,
       unmultStats: unmult && unmult.stats || null,
-      refillStats,
+      floorStats,
       gateStats,
       visible,
       finalCanvas,
@@ -42994,7 +42990,7 @@
     runEffectExtractSmokeTest,
     buildEffectExtractQwenWorkflow,
     effectExtractPromptText,
-    refillEffectRgbFromSource,
+    floorEffectAlpha,
     gateEffectAlphaBySoftMask,
     selectionRemoveBackgroundLayerId,
     splitSeeThroughFeet,
