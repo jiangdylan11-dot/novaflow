@@ -71,15 +71,15 @@ app.whenReady().then(async () => {
       state.includeFaceDetails = false;
       out.noFace = ids(await prepareSeeThroughPsdParts(character().filter((p) => p.id !== 'face' && p.id !== 'head')));
       out.singleLeg = ids(await prepareSeeThroughPsdParts([part('head', 100, 0, 100, 90, '#f0c8a0'), part('legwear', 120, 300, 40, 240, '#333'), part('footwear', 115, 540, 60, 40, '#111')]));
-      out.sockOnly = ids(await prepareSeeThroughPsdParts([part('head', 100, 0, 100, 90, '#f0c8a0'), part('legwear', 90, 470, 120, 70, '#333', (ctx) => { ctx.fillRect(0, 0, 50, 70); ctx.fillRect(70, 0, 50, 70); }), part('footwear', 85, 540, 130, 40, '#111', (ctx) => { ctx.fillRect(0, 0, 55, 40); ctx.fillRect(75, 0, 55, 40); })]));
+      out.twoFeet = ids(await prepareSeeThroughPsdParts([part('head', 100, 0, 100, 90, '#f0c8a0'), part('legwear', 90, 470, 120, 70, '#333', (ctx) => { ctx.fillRect(0, 0, 50, 70); ctx.fillRect(70, 0, 50, 70); }), part('footwear', 85, 540, 130, 40, '#111', (ctx) => { ctx.fillRect(0, 0, 55, 40); ctx.fillRect(75, 0, 55, 40); })]));
       const wholeHead = { ...part('head', 95, 0, 110, 95, '#f0c8a0'), seeThroughHeadLayer: true };
       state.includeFaceDetails = false;
       out.wholeHeadOff = ids(await prepareSeeThroughPsdParts([...character().filter((p) => p.id !== 'head'), wholeHead]));
       state.includeFaceDetails = true;
       out.wholeHeadOn = ids(await prepareSeeThroughPsdParts([...character().filter((p) => p.id !== 'head'), wholeHead]));
       state.includeFaceDetails = false;
-      const legs = (await prepareSeeThroughPsdParts(character())).filter((p) => /thigh|shin|foot/.test(p.id));
-      out.legBoxes = Object.fromEntries(legs.map((p) => [p.id, { x: Math.round(p.x), y: Math.round(p.y), width: Math.round(p.width), height: Math.round(p.height) }]));
+      const feet = (await prepareSeeThroughPsdParts(character())).filter((p) => /foot|legwear/.test(p.id));
+      out.feetBoxes = Object.fromEntries(feet.map((p) => [p.id, { x: Math.round(p.x), y: Math.round(p.y), width: Math.round(p.width), height: Math.round(p.height) }]));
     } catch (error) {
       out.error = String(error && error.stack || error);
     }
@@ -87,16 +87,16 @@ app.whenReady().then(async () => {
   })()`);
   fs.writeFileSync(path.join(output, 'results.json'), JSON.stringify(results, null, 2));
   assert.equal(results.error, undefined, results.error);
-  assert.deepEqual(results.merged, ['body', 'face', 'head', 'left_foot', 'left_shin', 'left_thigh', 'right_foot', 'right_shin', 'right_thigh']);
+  assert.deepEqual(results.merged, ['body', 'face', 'head', 'left_foot', 'legwear', 'right_foot'], 'legs stay one legwear layer; only the feet are split');
   assert.ok(results.mergedFaceBox.width >= 88 && results.mergedFaceBox.height >= 70, 'merged face must grow to cover the ear and eyebrows');
-  assert.deepEqual(results.detailed, ['body', 'ears_l', 'eyebrow_l', 'eyebrow_r', 'face', 'head', 'left_foot', 'left_shin', 'left_thigh', 'mouth', 'nose', 'right_foot', 'right_shin', 'right_thigh']);
-  assert.deepEqual(results.noFace, ['body', 'ears_l', 'eyebrow_l', 'eyebrow_r', 'left_foot', 'left_shin', 'left_thigh', 'mouth', 'nose', 'right_foot', 'right_shin', 'right_thigh']);
-  assert.deepEqual(results.wholeHeadOff, ['body', 'head', 'left_foot', 'left_shin', 'left_thigh', 'right_foot', 'right_shin', 'right_thigh'], 'a whole-head layer replaces face and feature layers when features are not split');
-  assert.deepEqual(results.wholeHeadOn, ['body', 'ears_l', 'eyebrow_l', 'eyebrow_r', 'face', 'left_foot', 'left_shin', 'left_thigh', 'mouth', 'nose', 'right_foot', 'right_shin', 'right_thigh'], 'with features split the whole-head layer is dropped');
-  assert.deepEqual(results.singleLeg, ['footwear', 'head', 'legwear'], 'a single narrow leg must stay one legwear layer');
-  assert.deepEqual(results.sockOnly, ['head', 'left_foot', 'left_shin', 'right_foot', 'right_shin'], 'legwear below the knee becomes shins, never a fabricated thigh');
-  assert.ok(results.legBoxes.right_thigh.x < results.legBoxes.left_thigh.x, 'image-left leg is the character\'s right leg');
-  assert.ok(results.legBoxes.right_shin.y > results.legBoxes.right_thigh.y && results.legBoxes.right_foot.y > results.legBoxes.right_shin.y, 'thigh, shin and foot stack top to bottom');
+  assert.deepEqual(results.detailed, ['body', 'ears_l', 'eyebrow_l', 'eyebrow_r', 'face', 'head', 'left_foot', 'legwear', 'mouth', 'nose', 'right_foot']);
+  assert.deepEqual(results.noFace, ['body', 'ears_l', 'eyebrow_l', 'eyebrow_r', 'left_foot', 'legwear', 'mouth', 'nose', 'right_foot']);
+  assert.deepEqual(results.wholeHeadOff, ['body', 'head', 'left_foot', 'legwear', 'right_foot'], 'a whole-head layer replaces face and feature layers when features are not split');
+  assert.deepEqual(results.wholeHeadOn, ['body', 'ears_l', 'eyebrow_l', 'eyebrow_r', 'face', 'left_foot', 'legwear', 'mouth', 'nose', 'right_foot'], 'with features split the whole-head layer is dropped');
+  assert.deepEqual(results.singleLeg, ['footwear', 'head', 'legwear'], 'a single foot blob stays one footwear layer');
+  assert.deepEqual(results.twoFeet, ['head', 'left_foot', 'legwear', 'right_foot'], 'two separate feet are split left/right while the legs stay whole');
+  assert.ok(results.feetBoxes.right_foot.x < results.feetBoxes.left_foot.x, 'image-left foot is the character\'s right foot');
+  assert.ok(results.feetBoxes.legwear.width >= 120, 'the legwear layer keeps both legs');
   console.log(JSON.stringify({ pass: true, results }));
   win.destroy(); app.quit();
 }).catch(error => { console.error(error); app.exit(1); });

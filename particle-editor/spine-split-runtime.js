@@ -489,7 +489,6 @@
     fusionFeatherPx: 4,
     secondPassSplit: false,
     includeFaceDetails: false,
-    splitLegs: true,
     seeThroughHeadLayerNodeAvailable: false,
     splitPreviewDataUrl: '',
     splitPreviewRefreshToken: 0,
@@ -1549,8 +1548,7 @@
             h('div', null, '1. \u9ed8\u8ba4\u62c6\u56fe\uff1a\u901f\u5ea6\u66f4\u5feb\uff0c\u9002\u5408\u5e38\u89c4\u89d2\u8272\u62c6\u5c42\u3002'),
             h('div', null, '2. \u9ad8\u6e05\u62c6\u56fe\uff1a\u4fdd\u7559\u66f4\u591a\u7ec6\u8282\uff0c\u8017\u65f6\u660e\u663e\u589e\u52a0\u3002'),
             h('div', null, '3. \u6b65\u6570\uff1a\u8d8a\u9ad8\u8d8a\u7a33\u5b9a\uff0c\u4f46\u8017\u65f6\u8d8a\u957f\u3002'),
-            h('div', null, '4. 腿部：站姿自动拆成左右大腿、小腿和脚；坐姿、交叉腿会整块保留，用钢笔抠图手动拆。'),
-            h('div', null, '5. 五官：默认整脸一层；做眨眼、口型时打开五官单独成层。')
+            h('div', null, '4. 五官：默认整脸一层；做眨眼、口型时打开五官单独成层。腿保持整块，需要时用钢笔抠图手动拆。')
           ])
         ])
       ]))
@@ -18981,184 +18979,8 @@
     return { imageLeft, imageRight, leftCount, rightCount, bounds, rows, gapRows, gapRatio: gapRows / rows, aspect: bounds.width / bounds.height, valleyRatio, straddleRatio }
   }
 
-  function sideLooksLikeStandingLeg(mask, width, height) {
-    const widths = []
-    let minY = height
-    let maxY = -1
-    let minX = width
-    let maxX = -1
-    for (let y = 0; y < height; y += 1) {
-      let w = 0
-      const rowStart = y * width
-      for (let x = 0; x < width; x += 1) {
-        if (!mask[rowStart + x]) continue
-        w += 1
-        if (x < minX) minX = x
-        if (x > maxX) maxX = x
-      }
-      if (!w) continue
-      widths.push([y, w])
-      if (y < minY) minY = y
-      if (y > maxY) maxY = y
-    }
-    if (maxY < 0) return false
-    const h = maxY - minY + 1
-    const w = maxX - minX + 1
-    if (h < w * 1.2) return false
-    const body = widths.filter(([y]) => y > minY + h * 0.15).map(([, rowWidth]) => rowWidth)
-    if (body.length < 8) return false
-    const widest = Math.max(...body)
-    return widest <= medianValue(body) * 2.3
-  }
-
-  function splitMaskAtKnee(mask, width, height, kneeHint) {
-    const rowWidth = new Float64Array(height)
-    let minY = height
-    let maxY = -1
-    let count = 0
-    for (let y = 0; y < height; y += 1) {
-      const rowStart = y * width
-      let w = 0
-      for (let x = 0; x < width; x += 1) if (mask[rowStart + x]) w += 1
-      if (!w) continue
-      rowWidth[y] = w
-      count += w
-      if (y < minY) minY = y
-      if (y > maxY) maxY = y
-    }
-    const h = maxY - minY + 1
-    if (maxY < 0 || h < 32 || count < 200) return null
-    if (Number.isFinite(kneeHint)) {
-      // Socks/stockings or legs showing below a skirt hem: the knee is above the layer, so there is no thigh to cut.
-      if (kneeHint < minY + h * 0.12) return { belowKnee: true, kneeY: kneeHint }
-      // Layer ends above the knee: it is thigh only.
-      if (kneeHint > maxY - h * 0.12) return { aboveKnee: true, kneeY: kneeHint }
-    }
-    const smoothing = Math.max(1, Math.round(h * 0.03))
-    const smoothWidth = (y) => {
-      let sum = 0
-      let n = 0
-      for (let yy = Math.max(minY, y - smoothing); yy <= Math.min(maxY, y + smoothing); yy += 1) {
-        sum += rowWidth[yy]
-        n += 1
-      }
-      return n ? sum / n : 0
-    }
-    const lowest = minY + h * 0.22
-    const highest = maxY - h * 0.15
-    let kneeY = Number.isFinite(kneeHint) ? kneeHint : minY + h * 0.52
-    kneeY = Math.round(Math.max(lowest, Math.min(highest, kneeY)))
-    const reach = Math.round(h * 0.12)
-    const from = Math.max(Math.round(lowest), kneeY - reach)
-    const to = Math.min(Math.round(highest), kneeY + reach)
-    let bestY = -1
-    let bestEnd = -1
-    let bestW = Infinity
-    for (let y = from; y <= to; y += 1) {
-      const w = smoothWidth(y)
-      if (!(w > 0)) continue
-      if (w < bestW - 1e-9) {
-        bestW = w
-        bestY = y
-        bestEnd = y
-      } else if (Math.abs(w - bestW) <= 1e-9 && bestEnd === y - 1) {
-        bestEnd = y
-      }
-    }
-    if (bestY >= 0) bestY = Math.round((bestY + bestEnd) / 2)
-    if (bestY > from && bestY < to) {
-      const span = Math.max(2, Math.round(h * 0.1))
-      const gap = Math.max(1, Math.round(h * 0.03))
-      let above = 0
-      let below = 0
-      for (let y = Math.max(minY, bestY - span); y <= bestY - gap; y += 1) above = Math.max(above, smoothWidth(y))
-      for (let y = bestY + gap; y <= Math.min(maxY, bestY + span); y += 1) below = Math.max(below, smoothWidth(y))
-      // The narrowest row sits just above the kneecap; the joint line is roughly 5% of the leg length below it.
-      if (above > 0 && below > 0 && bestW <= above * 0.93 && bestW <= below * 0.97) kneeY = Math.min(Math.round(highest), bestY + Math.round(h * 0.05))
-    }
-    const overlap = Math.max(2, Math.round(h * 0.03))
-    const thigh = new Uint8Array(mask.length)
-    const shin = new Uint8Array(mask.length)
-    let thighCount = 0
-    let shinCount = 0
-    for (let y = minY; y <= maxY; y += 1) {
-      if (!rowWidth[y]) continue
-      const inThigh = y <= kneeY + overlap
-      const inShin = y >= kneeY - overlap
-      const rowStart = y * width
-      for (let x = 0; x < width; x += 1) {
-        const idx = rowStart + x
-        if (!mask[idx]) continue
-        if (inThigh) {
-          thigh[idx] = 1
-          thighCount += 1
-        }
-        if (inShin) {
-          shin[idx] = 1
-          shinCount += 1
-        }
-      }
-    }
-    if (thighCount < 60 || shinCount < 60) return null
-    return { thigh, shin, kneeY, thighCount, shinCount }
-  }
-
-  function seeThroughKneeHint(parts, legBounds) {
-    let topY = Infinity
-    let soleY = -Infinity
-    for (const part of parts || []) {
-      if (!part || !part.dataUrl) continue
-      const id = normalizeId(part.id)
-      if (/^(hair_front|hair_back|hair|head|face)$/.test(id)) topY = Math.min(topY, Number(part.y) || 0)
-      if (/^(footwear|left_foot|right_foot)$/.test(id)) soleY = Math.max(soleY, (Number(part.y) || 0) + (Number(part.height) || 0))
-    }
-    if (!Number.isFinite(topY) || !legBounds) return null
-    if (Number.isFinite(soleY) && soleY > legBounds.minY) return soleY - (soleY - topY) * 0.285
-    return legBounds.maxY - (legBounds.maxY - topY) * 0.25
-  }
-
   function seeThroughSideName(imageSide) {
     return imageSide === 'imageLeft' ? 'right' : 'left'
-  }
-
-  function legSplitLooksLikeTwoLegs(split) {
-    if (!split) return false
-    if (split.straddleRatio != null && split.straddleRatio > 2) return false
-    if (split.gapRatio >= 0.18) return true
-    return split.aspect >= 0.45 && split.valleyRatio <= 0.8
-  }
-
-  async function splitSeeThroughLegwear(legPart, parts, size) {
-    const data = await fullRgbaFromPart(legPart, size)
-    const alpha = alphaMaskFromRgba(data, size.width, size.height)
-    const split = splitAlphaLeftRight(alpha, size.width, size.height)
-    if (!legSplitLooksLikeTwoLegs(split)) return null
-    // Each half must still read as an upright leg; otherwise (seated, crossed, kneeling) leave the layer whole.
-    if (!sideLooksLikeStandingLeg(split.imageLeft, size.width, size.height) || !sideLooksLikeStandingLeg(split.imageRight, size.width, size.height)) return null
-    const kneeHint = seeThroughKneeHint(parts, split.bounds)
-    const knees = {
-      imageLeft: splitMaskAtKnee(split.imageLeft, size.width, size.height, kneeHint),
-      imageRight: splitMaskAtKnee(split.imageRight, size.width, size.height, kneeHint)
-    }
-    // If one side is too small to cut, keep the other side whole too so both legs rig the same way.
-    const kneeSplitOk = (knee) => !!knee && !knee.belowKnee && !knee.aboveKnee
-    if ((kneeSplitOk(knees.imageLeft) && !knees.imageRight) || (kneeSplitOk(knees.imageRight) && !knees.imageLeft)) {
-      knees.imageLeft = null
-      knees.imageRight = null
-    }
-    const outputs = []
-    for (const side of ['imageLeft', 'imageRight']) {
-      const name = seeThroughSideName(side)
-      const knee = knees[side]
-      if (!knee || knee.belowKnee || knee.aboveKnee) {
-        const wholeId = knee && knee.belowKnee ? `${name}_shin` : knee && knee.aboveKnee ? `${name}_thigh` : `${name}_leg`
-        outputs.push(await partFromSelectedPixels(legPart, wholeId, data, size, split[side]))
-        continue
-      }
-      outputs.push(await partFromSelectedPixels(legPart, `${name}_thigh`, data, size, knee.thigh))
-      outputs.push(await partFromSelectedPixels(legPart, `${name}_shin`, data, size, knee.shin))
-    }
-    return outputs
   }
 
   async function splitSeeThroughFootwear(footPart, size) {
@@ -19204,29 +19026,17 @@
     ]
   }
 
-  async function splitSeeThroughLegs(parts) {
+  // Legs stay as the single See-through `legwear` layer (users split them with the pen tool); only the feet
+  // are separated left/right, the same connected-component approach the plugin uses for hands.
+  async function splitSeeThroughFeet(parts) {
     const list = Array.isArray(parts) ? parts : []
-    if (state.splitLegs === false) return list
     const ids = new Set(list.map((part) => normalizeId(part && part.id)))
-    const legPart = list.find((part) => part && part.dataUrl && normalizeId(part.id) === 'legwear')
     const footPart = list.find((part) => part && part.dataUrl && normalizeId(part.id) === 'footwear')
-    if (!legPart && !footPart) return list
+    if (!footPart || ids.has('left_foot') || ids.has('right_foot')) return list
     const size = await sourceSize()
-    const output = list.filter((part) => part !== legPart && part !== footPart)
-    const additions = []
-    if (footPart) {
-      const feet = ids.has('left_foot') || ids.has('right_foot') ? null : await splitSeeThroughFootwear(footPart, size)
-      if (feet) additions.push(...feet)
-      else output.push(footPart)
-    }
-    if (legPart) {
-      const alreadySplit = ['left_thigh', 'right_thigh', 'left_leg', 'right_leg'].some((id) => ids.has(id))
-      const legs = alreadySplit ? null : await splitSeeThroughLegwear(legPart, [...output, ...additions], size)
-      if (legs) additions.push(...legs)
-      else output.push(legPart)
-    }
-    if (!additions.length) return list
-    return normalizeSpineLayerOrder([...output, ...additions])
+    const feet = await splitSeeThroughFootwear(footPart, size)
+    if (!feet) return list
+    return normalizeSpineLayerOrder([...list.filter((part) => part !== footPart), ...feet])
   }
 
   function secondSplitSpec(partId) {
@@ -19426,17 +19236,17 @@
       console.warn('[NovaFlow] dark halo removal skipped:', error)
     }
     clean = applySeeThroughHeadLayer(clean)
-    let withLegs = clean
+    let withFeet = clean
     try {
-      withLegs = await splitSeeThroughLegs(clean)
+      withFeet = await splitSeeThroughFeet(clean)
     } catch (error) {
-      console.warn('[NovaFlow] automatic leg split skipped:', error)
+      console.warn('[NovaFlow] automatic foot split skipped:', error)
     }
     try {
-      return await mergeFaceDetailsIntoFace(withLegs)
+      return await mergeFaceDetailsIntoFace(withFeet)
     } catch (error) {
       console.warn('[NovaFlow] facial feature merge skipped:', error)
-      return normalizeSpineLayerOrder(withLegs)
+      return normalizeSpineLayerOrder(withFeet)
     }
   }
 
@@ -41925,7 +41735,7 @@
 
   window.NovaFlowSpineSplitDebug = {
     importSourceDataUrl,
-    splitSeeThroughLegs,
+    splitSeeThroughFeet,
     splitSeeThroughFootwear,
     mergeFaceDetailsIntoFace,
     prepareSeeThroughPsdParts,
@@ -42063,7 +41873,6 @@
       if (options && typeof options === 'object') {
         if ('secondPassSplit' in options) state.secondPassSplit = false
         if ('includeFaceDetails' in options) state.includeFaceDetails = !!options.includeFaceDetails
-        if ('splitLegs' in options) state.splitLegs = options.splitLegs !== false
       }
       state.parts = []
       state.splitPreviewDataUrl = ''
@@ -42090,7 +41899,6 @@
         layerSourceName: state.layerSourceName,
         secondPassSplit: false,
         includeFaceDetails: !!state.includeFaceDetails,
-        splitLegs: state.splitLegs !== false,
         splitPreviewDataUrl: state.splitPreviewDataUrl,
         activeSplitSetId: state.activeSplitSetId,
         activePartId: state.activePartId || '',
