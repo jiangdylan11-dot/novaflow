@@ -29510,7 +29510,10 @@
     const effectImage = effectCtx.getImageData(0, 0, width, height)
     const floorStats = floorEffectAlpha(effectImage.data, EFFECT_EXTRACT_ALPHA_FLOOR)
     let gateStats = null
-    if (input.softMask) {
+    // 智能抠图 keeps the stroke gate: the user painted the effect they want extracted. 特效去除 turns it off
+    // (gateBySoftMask: false) — there the stroke only chooses the crop, and gating the key left the
+    // sparkles just outside the stroke in the picture after the de-effected plate was pasted through it.
+    if (input.softMask && options.gateBySoftMask !== false) {
       const maskData = input.softMask.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
       gateStats = gateEffectAlphaBySoftMask(effectImage.data, maskData)
     }
@@ -29767,7 +29770,8 @@
       const extraction = await runEffectExtractPipeline({ baseCanvas: layerOriginalCanvas, maskCanvas: processingMaskCanvas }, bounds, {
         prefix: EFFECT_REMOVE_FILENAME_PREFIX,
         stageLabel: '特效识别',
-        emptyMessage: '没有识别到可去除的特效，请涂抹更靠近特效的区域后重试'
+        emptyMessage: '没有识别到可去除的特效，请涂抹更靠近特效的区域后重试',
+        gateBySoftMask: false // the stroke bounds the crop, not the key
       })
       // The key says WHERE the effect is. Pass 2 says what belongs there: the same Qwen 2511 edit with the
       // prompt inverted, on the very same plate, so its result is pixel aligned with the crop and only the

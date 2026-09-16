@@ -33,7 +33,10 @@ test('去除物体 carries the same 特效 switch as 智能抠图 and relabels �
 test('the removal keys the effect with the extraction pipeline and uses that key as the removal mask', () => {
   const source = read(RUNTIME)
   assert.doesNotMatch(source, /buildEffectRemoveQwenWorkflow|effectRemovePromptText/, 'one prompt and one extraction workflow for both directions')
-  assert.match(source, /const extraction = await runEffectExtractPipeline\(\{ baseCanvas: layerOriginalCanvas, maskCanvas: processingMaskCanvas \}, bounds, \{\n\s+prefix: EFFECT_REMOVE_FILENAME_PREFIX,\n\s+stageLabel: '特效识别',\n\s+emptyMessage: '没有识别到可去除的特效，请涂抹更靠近特效的区域后重试'\n\s+\}\)/, 'the layer being edited is both the model input and the removal base, so they stay pixel aligned')
+  assert.match(source, /const extraction = await runEffectExtractPipeline\(\{ baseCanvas: layerOriginalCanvas, maskCanvas: processingMaskCanvas \}, bounds, \{\n\s+prefix: EFFECT_REMOVE_FILENAME_PREFIX,\n\s+stageLabel: '特效识别',\n\s+emptyMessage: '没有识别到可去除的特效，请涂抹更靠近特效的区域后重试',\n\s+gateBySoftMask: false \/\/ the stroke bounds the crop, not the key\n\s+\}\)/, 'pass 1 keys the whole crop: the stroke bounds the crop, not the key')
+  // Gating the key by the stroke left every sparkle just outside it in the picture (2026-09-17 report),
+  // because the de-effected plate is only pasted where the key says effect.
+  assert.match(source, /if \(input\.softMask && options\.gateBySoftMask !== false\) \{/, '智能抠图 keeps the stroke gate, 特效去除 turns it off')
   assert.match(source, /if \(!bounds \|\| bounds\.count < 16\) bounds = null \/\/ 不涂抹 = 整图，和智能抠图的特效模式一致/, 'no stroke means the whole image, same as 智能抠图')
   assert.match(source, /const effectMask = effectRemovalMaskCanvas\(extraction\.finalCanvas, EFFECT_REMOVE_MASK_FLOOR, effectRemovalMaskGrowPx\(layerOriginalCanvas\)\)/, 'the keyed effect becomes the mask')
   assert.match(source, /const plate = await runEffectDeeffectPass\(extraction, runId\)/, 'pass 2 de-effects the very same plate the key came from')
