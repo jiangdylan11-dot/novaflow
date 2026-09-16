@@ -260,8 +260,8 @@
   const OBJECT_TRANSFER_NOISE_GROW_MIN = 6
   const OBJECT_TRANSFER_NOISE_GROW_MAX = 24
   const OBJECT_TRANSFER_OBJECT_GROW = 4
-  const OBJECT_TRANSFER_COMPOSITE_FEATHER = 3
-  const OBJECT_TRANSFER_SHADOW_MAX_DARKEN = 0.45
+  const OBJECT_TRANSFER_SCENE_SUBJECT_ALPHA = 24
+  const OBJECT_TRANSFER_SCENE_SUBJECT_GROW = 6
   const OBJECT_TRANSFER_HARMONIZE_STRENGTH = 0.7
   const OBJECT_TRANSFER_HARMONIZE_GAIN_MIN = 0.85
   const OBJECT_TRANSFER_HARMONIZE_GAIN_MAX = 1.2
@@ -15452,9 +15452,19 @@
     // Everything the model is allowed to repaint: the placement silhouette plus room for the object's
     // edge and its cast shadow. Outside this the latent is frozen, so the scene cannot drift.
     const noiseGrow = Math.round(clampNumber(Math.min(bounds.width, bounds.height) * OBJECT_TRANSFER_NOISE_GROW_RATIO, OBJECT_TRANSFER_NOISE_GROW_MIN, OBJECT_TRANSFER_NOISE_GROW_MAX))
-    const noiseMaskCanvas = expandedMaskCanvas(paintableMaskCanvas(transferMaskCanvas, 8, false), noiseGrow, 0)
-    // Where the object itself stands, as opposed to the contact-shadow ellipse around it.
     const objectMaskCanvas = expandedMaskCanvas(paintableMaskCanvas(hardAlphaMask, 8, false), OBJECT_TRANSFER_OBJECT_GROW, 0)
+    // The model has to render the object, its contact shadow and the light wrap around it as one thing —
+    // that integration is the whole point, and rebuilding it from rules afterwards is what made the
+    // result look like a sticker. So it gets a generous region and its output is pasted verbatim. The
+    // one thing it must not touch is the scene's existing subject where the object does not cover it
+    // (it drew a high-heeled shoe onto the character's bare foot), and that is excluded HERE, in the
+    // latent: the sampler then composes against those frozen pixels instead of us patching them back.
+    const roomMaskCanvas = expandedMaskCanvas(paintableMaskCanvas(transferMaskCanvas, 8, false), noiseGrow, 0)
+    setSplitBusyDetail('正在识别画面中已有的主体...')
+    const sceneSubjectCanvas = await canvasFromDataUrl(await runRmbgCutout(baseCanvas.toDataURL('image/png')), size.width, size.height)
+    const sceneSubjectMask = expandedMaskCanvas(paintableMaskCanvas(sceneSubjectCanvas, OBJECT_TRANSFER_SCENE_SUBJECT_ALPHA, true), OBJECT_TRANSFER_SCENE_SUBJECT_GROW, 0)
+    const protectionCanvas = maskSubtractCanvas(sceneSubjectMask, objectMaskCanvas, 8)
+    const noiseMaskCanvas = maskSubtractCanvas(roomMaskCanvas, protectionCanvas, 8)
     const plateSize = qwenEditPlateSize(size.width, size.height)
     const plateCanvas = qwenEditPlateCanvas(placementGuideCanvas, plateSize)
     const plateContent = plateCanvas.__plateContent
@@ -15467,6 +15477,7 @@
       transferMaskCanvas,
       noiseMaskCanvas,
       objectMaskCanvas,
+      protectionCanvas,
       noiseGrow,
       plateSize,
       plateContent,
@@ -15640,53 +15651,24 @@
     return canvas
   }
 
-  function objectTransferCompositeCanvas(baseCanvas, resultCanvas, objectMaskCanvas, noiseMaskCanvas, feather) {
-    // Inside the object's own silhouette the model's pixels win: that is the transferred object, and it
-    // is allowed to occlude whatever was there. Everywhere else the sampler could touch — the contact
-    // ellipse and the few px around the object — only DARKENING is accepted, i.e. its cast shadow.
-    // Anything else it invents there is thrown away; with the placement over the character's foot it drew
-    // a high-heeled shoe onto her bare foot (2026-09-17), and a shoe is not a shadow.
-    const width = Math.max(1, Math.round(baseCanvas.width || 1))
-    const height = Math.max(1, Math.round(baseCanvas.height || 1))
-    const output = cloneCanvas(baseCanvas)
-    const ctx = output.getContext('2d', { willReadFrequently: true })
+  function maskSubtractCanvas(maskCanvas, subtractCanvas, threshold) {
+    const width = Math.max(1, Math.round(maskCanvas && maskCanvas.width || 1))
+    const height = Math.max(1, Math.round(maskCanvas && maskCanvas.height || 1))
+    const limit = clampNumber(Number(threshold) || 0, 1, 255)
+    const canvas = canvasOfSize(width, height)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    ctx.drawImage(maskCanvas, 0, 0, width, height)
     const image = ctx.getImageData(0, 0, width, height)
-    const result = resultCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const band = Math.max(0, Math.round(feather || 0))
-    const objectHard = thresholdMaskCanvas(objectMaskCanvas, 8)
-    const objectSoft = band > 0 ? featherMaskCanvas(objectHard, band) : objectHard
-    const objectData = objectSoft.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const shadowData = thresholdMaskCanvas(noiseMaskCanvas, 8).getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const stats = { objectPixels: 0, shadowPixels: 0, rejectedPixels: 0, feather: band }
+    const subtract = subtractCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
     for (let i = 0; i + 3 < image.data.length; i += 4) {
-      const objectWeight = clampNumber(maskPixelValue(objectData, i) / 255, 0, 1)
-      if (objectWeight > 0.002) {
-        for (let channel = 0; channel < 3; channel += 1) {
-          image.data[i + channel] = Math.round(result[i + channel] * objectWeight + image.data[i + channel] * (1 - objectWeight))
-        }
-        image.data[i + 3] = Math.max(image.data[i + 3], Math.round(255 * objectWeight))
-        stats.objectPixels += 1
-        continue
-      }
-      if (maskPixelValue(shadowData, i) <= 8) continue
-      // Take only HOW MUCH darker the model made this pixel, never its colour: a cast shadow keeps the
-      // receiving surface's own hue. Taking the model's RGB straight made a dark blue-purple blob on the
-      // marble. The depth is capped so the shadow cannot be darker than the scene's own shadows.
-      const baseLuma = image.data[i] * 0.2126 + image.data[i + 1] * 0.7152 + image.data[i + 2] * 0.0722
-      const resultLuma = result[i] * 0.2126 + result[i + 1] * 0.7152 + result[i + 2] * 0.0722
-      if (resultLuma >= baseLuma - 2 || baseLuma < 8) {
-        stats.rejectedPixels += 1
-        continue
-      }
-      const shade = clampNumber(resultLuma / baseLuma, 1 - OBJECT_TRANSFER_SHADOW_MAX_DARKEN, 1)
-      for (let channel = 0; channel < 3; channel += 1) {
-        image.data[i + channel] = Math.round(image.data[i + channel] * shade)
-      }
-      stats.shadowPixels += 1
+      if (maskPixelValue(subtract, i) < limit) continue
+      image.data[i] = 0
+      image.data[i + 1] = 0
+      image.data[i + 2] = 0
+      image.data[i + 3] = 0
     }
     ctx.putImageData(image, 0, 0)
-    output.__objectTransferCompositeStats = stats
-    return output
+    return canvas
   }
 
   function objectTransferHarmonizeCanvas(compositeCanvas, baseCanvas, objectMaskCanvas, strength) {
@@ -15765,16 +15747,18 @@
     const baseCanvas = assets && assets.baseCanvas || await sourceFullCanvas(size)
     setSplitBusyDetail('正在写回场景...')
     const resultCanvas = await qwenEditPlateResultCanvas(dataUrl, assets.plateSize, assets.plateContent, width, height, '万物迁移')
-    const pastedCanvas = objectTransferCompositeCanvas(baseCanvas, resultCanvas, assets.objectMaskCanvas, assets.noiseMaskCanvas, OBJECT_TRANSFER_COMPOSITE_FEATHER)
+    // Verbatim: whatever the model rendered inside the mask — object, contact shadow, light wrap,
+    // occlusion — is one coherent piece and is kept as one. Outside it the picture never moved.
+    const pastedCanvas = compositeRemovalRgbResult(baseCanvas, resultCanvas, assets.noiseMaskCanvas, { x: 0, y: 0, width, height })
     setSplitBusyDetail('正在对齐物体与场景的光色...')
-    const finalCanvas = objectTransferHarmonizeCanvas(pastedCanvas, baseCanvas, assets.objectMaskCanvas, OBJECT_TRANSFER_HARMONIZE_STRENGTH)
-    const stats = { ...(pastedCanvas.__objectTransferCompositeStats || {}), harmonize: finalCanvas.__objectTransferHarmonizeStats || null }
+    const finalCanvas = objectTransferHarmonizeCanvas(pastedCanvas, baseCanvas, assets.noiseMaskCanvas, OBJECT_TRANSFER_HARMONIZE_STRENGTH)
+    const stats = { ...(pastedCanvas.__removalCompositeStats || {}), harmonize: finalCanvas.__objectTransferHarmonizeStats || null }
     const changedOutside = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(assets.noiseMaskCanvas)), 8)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
         ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}),
-        pasteBack: 'object-replaces-shadow-darkens',
+        pasteBack: 'latent-protected-verbatim-paste',
         pasteMask: { ...stats, noiseGrow: assets.noiseGrow, nonMaskChangedPixels: changedOutside }
       }
     }

@@ -57,29 +57,27 @@ test('the transfer graph sends an unscaled plate and only denoises the placement
   assert.deepEqual(text.inputs.image2, ['2', 0], 'the object reference stays image2')
 })
 
-test('the placement mask is grown for the object edge and its shadow, and it drives the paste back', () => {
+test('the scene subject is protected in the latent and the model region is pasted verbatim', () => {
   const source = read(RUNTIME)
-  // The blue guide already carries the contact-shadow ellipse, so the grow only has to let the object's
-  // own edge blend. At 0.06 it reached 23px and swallowed the character's foot, and the model drew a shoe.
   assert.match(source, /const OBJECT_TRANSFER_NOISE_GROW_RATIO = 0\.02\n\s+const OBJECT_TRANSFER_NOISE_GROW_MIN = 6\n\s+const OBJECT_TRANSFER_NOISE_GROW_MAX = 24/, 'the growth stays close to the placement guide')
   assert.match(source, /const plateSize = qwenEditPlateSize\(size\.width, size\.height\)\n\s+const plateCanvas = qwenEditPlateCanvas\(placementGuideCanvas, plateSize\)/, 'the placement goes out on a plate Qwen does not reframe')
   assert.match(source, /const resultCanvas = await qwenEditPlateResultCanvas\(dataUrl, assets\.plateSize, assets\.plateContent, width, height, '万物迁移'\)/, 'the decode size is asserted before it is mapped back')
-  assert.match(source, /const noiseMaskCanvas = expandedMaskCanvas\(paintableMaskCanvas\(transferMaskCanvas, 8, false\), noiseGrow, 0\)/, 'the mask must be white-on-transparent or expandedMaskCanvas paints its own black over it')
-  assert.match(source, /const pastedCanvas = objectTransferCompositeCanvas\(baseCanvas, resultCanvas, assets\.objectMaskCanvas, assets\.noiseMaskCanvas, OBJECT_TRANSFER_COMPOSITE_FEATHER\)/, 'the object silhouette and the shadow ring are composited by different rules')
-  // Inside the object silhouette the model wins; in the ring only darkening is kept. With the placement
-  // over the character's foot the model drew a high-heeled shoe on her bare foot, and a shoe is not a shadow.
-  const compositeBlock = source.slice(source.indexOf('function objectTransferCompositeCanvas('), source.indexOf('async function objectTransferProtectedResultDataUrl('))
-  assert.match(compositeBlock, /if \(resultLuma >= baseLuma - 2 \|\| baseLuma < 8\) \{\n\s+stats\.rejectedPixels \+= 1/, 'the ring accepts a pixel only when the model darkened it')
-  assert.match(compositeBlock, /const shade = clampNumber\(resultLuma \/ baseLuma, 1 - OBJECT_TRANSFER_SHADOW_MAX_DARKEN, 1\)/, 'only HOW MUCH darker is taken, and the depth is capped')
-  assert.match(compositeBlock, /image\.data\[i \+ channel\] = Math\.round\(image\.data\[i \+ channel\] \* shade\)/, 'the shadow multiplies the surface, so the marble keeps its own hue instead of turning blue')
-  assert.match(source, /const OBJECT_TRANSFER_SHADOW_MAX_DARKEN = 0\.45/, 'a cast shadow cannot go darker than the scene ever does')
+  // Rebuilding the object, its shadow and its light wrap from per-pixel rules after the fact is what made
+  // the result look like a sticker. The model renders them as one thing, against the frozen pixels around
+  // them, and that whole region is kept as one.
+  assert.match(source, /const roomMaskCanvas = expandedMaskCanvas\(paintableMaskCanvas\(transferMaskCanvas, 8, false\), noiseGrow, 0\)/, 'the mask must be white-on-transparent or expandedMaskCanvas paints its own black over it')
+  assert.match(source, /const sceneSubjectMask = expandedMaskCanvas\(paintableMaskCanvas\(sceneSubjectCanvas, OBJECT_TRANSFER_SCENE_SUBJECT_ALPHA, true\), OBJECT_TRANSFER_SCENE_SUBJECT_GROW, 0\)/, 'the scene subject comes from the same RMBG the rest of the app uses')
+  assert.match(source, /const protectionCanvas = maskSubtractCanvas\(sceneSubjectMask, objectMaskCanvas, 8\)/, 'the object may occlude the subject; nothing else may touch it')
+  assert.match(source, /const noiseMaskCanvas = maskSubtractCanvas\(roomMaskCanvas, protectionCanvas, 8\)/, 'the protection is applied to the LATENT mask, before sampling')
+  assert.match(source, /const pastedCanvas = compositeRemovalRgbResult\(baseCanvas, resultCanvas, assets\.noiseMaskCanvas, \{ x: 0, y: 0, width, height \}\)/, 'the masked region is pasted verbatim')
+  assert.match(source, /pasteBack: 'latent-protected-verbatim-paste'/, 'the debug record names the path')
+  assert.doesNotMatch(source, /objectTransferScenePixels|objectTransferNormalizeResultDataUrl|objectTransferPasteMaskCanvas|objectTransferCompositeCanvas|OBJECT_TRANSFER_SHADOW_MAX_DARKEN/, 'no rule-based shadow or silhouette compositing survives')
 
   // The model lights the object with its own lamp: on the user's dusk scene the robot came back at
   // highlight R/B 1.25 against the marble's 1.08. The grade matches the light, not the object's paint.
-  assert.match(source, /const finalCanvas = objectTransferHarmonizeCanvas\(pastedCanvas, baseCanvas, assets\.objectMaskCanvas, OBJECT_TRANSFER_HARMONIZE_STRENGTH\)/, 'the object is graded toward the scene light')
+  assert.match(source, /const finalCanvas = objectTransferHarmonizeCanvas\(pastedCanvas, baseCanvas, assets\.noiseMaskCanvas, OBJECT_TRANSFER_HARMONIZE_STRENGTH\)/, 'the whole pasted region is graded together, so object and shadow stay consistent')
   const harmonizeBlock = source.slice(source.indexOf('function objectTransferHarmonizeCanvas('), source.indexOf('async function objectTransferProtectedResultDataUrl('))
   assert.match(harmonizeBlock, /const gainLuma = rawGain\[0\] \* 0\.2126 \+ rawGain\[1\] \* 0\.7152 \+ rawGain\[2\] \* 0\.0722/, 'the grade is luminance neutral: it shifts colour, not brightness')
   assert.match(harmonizeBlock, /const weight = amount \* Math\.sqrt\(clampNumber\(luminance\(image\.data, i\) \/ 255, 0, 1\)\)/, 'lit pixels take more of the shift than pixels in shadow')
   assert.match(source, /const OBJECT_TRANSFER_HARMONIZE_STRENGTH = 0\.7\n\s+const OBJECT_TRANSFER_HARMONIZE_GAIN_MIN = 0\.85\n\s+const OBJECT_TRANSFER_HARMONIZE_GAIN_MAX = 1\.2/, 'the grade is partial and clamped, so the object keeps its identity colours')
-  assert.match(source, /pasteBack: 'object-replaces-shadow-darkens'/, 'the debug record names the new path')
 })
