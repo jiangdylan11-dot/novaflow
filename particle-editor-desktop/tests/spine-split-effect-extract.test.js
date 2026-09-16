@@ -7,7 +7,7 @@ const { loadSpine } = require('../../tools/qwen-rapid-migration-smoke.cjs')
 const root = path.resolve(__dirname, '../..')
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
 const RUNTIME = 'particle-editor/spine-split-runtime.js'
-const CACHE_VERSION = '20260916-effect-extract-2'
+const CACHE_VERSION = '20260916-effect-remove-1'
 const plain = (value) => JSON.parse(JSON.stringify(value))
 
 function loadRuntime() {
@@ -38,7 +38,8 @@ test('the smart cutout toolbar leads with a default-off 特效 switch and routes
   const html = read('particle-editor/index.html')
   assert.ok(html.includes(`spine-split-runtime.js?v=${CACHE_VERSION}`), 'index.html must load the effect-extract build of the split runtime')
   const source = read(RUNTIME)
-  assert.match(source, /isCutoutTool \? button\('\\u7279\\u6548', \(\) => toggleSelectionEffectMode\(\), effectModeEnabled, \{\n\s+\[TOOL_ACTION_ATTR\]: 'selectionEffect',\n\s+'data-novaflow-selection-effect': effectModeEnabled \? 'on' : 'off',\n\s+role: 'switch',[\s\S]{0,700}?\}\) : null,\n\s+button\('\\u7ed8\\u5236', \(\) => setSelectionPaintMode\('draw'\)/, 'the 特效 switch sits before 绘制 and only renders in cutout mode')
+  assert.match(source, /effectToolAvailable \? button\('\\u7279\\u6548', \(\) => toggleSelectionEffectMode\(\), effectModeEnabled, \{\n\s+\[TOOL_ACTION_ATTR\]: 'selectionEffect',\n\s+'data-novaflow-selection-effect': effectModeEnabled \? 'on' : 'off',\n\s+'data-novaflow-selection-effect-kind': effectRemovalTool \? 'remove' : 'extract',\n\s+role: 'switch',[\s\S]{0,900}?\}\) : null,\n\s+button\('\\u7ed8\\u5236', \(\) => setSelectionPaintMode\('draw'\)/, 'the 特效 switch sits before 绘制 on both tools that have it')
+  assert.match(source, /const effectToolAvailable = isCutoutTool \|\| effectRemovalTool/, 'the switch renders for 智能抠图 and 去除物体')
   assert.match(source, /inpaintNsfwEnabled: false,\n\s+effectMode: false,\n\s+sourceTargetLocked: mode === 'cutout' && sourceTarget/, 'starting the tool resets the switch to off')
   assert.match(source, /inpaintNsfwEnabled: false,\n\s+effectMode: false\n\s+\}\n\s+selectionToolSession = null/, 'resetting the tool clears the switch')
   assert.match(source, /if \(action === 'selectionEffect'\) return toggleSelectionEffectMode\(\)/, 'the tool action dispatcher toggles the switch')
