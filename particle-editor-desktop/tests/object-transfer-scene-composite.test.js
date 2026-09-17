@@ -143,10 +143,15 @@ test('the picture is drawn in one pass from an arranged frame, and nothing is co
   const promptFn = source.slice(source.indexOf('function objectTransferRestylePromptText('))
   assert.match(promptFn.slice(0, 4000), /if \(style\) \{/, 'the style-led prompt is the one that runs when there are words')
   assert.match(promptFn.slice(0, 6000), /image 2 soft painted shading/, 'and the tuned wording is still there as the fallback')
-  // The restyle pass runs harder than the integration pass: at the plate builder's 6 steps / cfg 1 the
-  // object came back unchanged in four scenes out of five even WITH the words.
-  assert.match(source, /const OBJECT_TRANSFER_RESTYLE_STEPS = 8\b/)
-  assert.match(source, /const OBJECT_TRANSFER_RESTYLE_CFG = 2\.5\b/)
+  // The restyle pass runs at the plate builder's own numbers, and that is load-bearing. Raising it to 8
+  // steps / cfg 2.5 was measured as necessary BEFORE the scene's style was named in words; with the words,
+  // cfg 1 renders cel shading harder and cleaner than 2.5 did. What 2.5 actually bought was a
+  // high-contrast object lit for the grey plate, and the integration pass copies that lighting verbatim,
+  // so the object stops belonging to the picture — the user caught it on sight. Measured on the tuned
+  // scene, 2.5 -> 1: darkened ground 30.3 -> 20.6%, R-B -22.1 -> -22.4 against the original's -24.8,
+  // whole-frame drift 20.9 -> 17.9. Every number improved.
+  assert.match(source, /const OBJECT_TRANSFER_RESTYLE_STEPS = 6\b/)
+  assert.match(source, /const OBJECT_TRANSFER_RESTYLE_CFG = 1\b/)
 
   // Three sentences. The long repaint prompt that used to be here was the colour drift: same picture, same
   // settings, prompt swapped, and R-B went from -8.8 back to -26.4 against the original's -24.8.
