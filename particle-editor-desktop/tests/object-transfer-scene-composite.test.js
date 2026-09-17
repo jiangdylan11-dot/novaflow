@@ -22,24 +22,22 @@ const fakeInfo = () => ({
   ModelSamplingAuraFlow: { input: { required: { model: ['MODEL', {}], shift: ['FLOAT', { default: 3 }] } } },
   CFGNorm: { input: { required: { model: ['MODEL', {}], strength: ['FLOAT', { default: 1 }] } } },
   LoraLoaderModelOnly: { input: { required: { model: ['MODEL', {}], lora_name: combo(['Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors']), strength_model: ['FLOAT', { default: 1 }] } } },
+  FluxKontextMultiReferenceLatentMethod: { input: { required: { conditioning: ['CONDITIONING', {}], reference_latents_method: combo(['offset', 'index', 'uxo-uno', 'index_timestep_zero']) } } },
   FluxKontextImageScale: { input: { required: { image: ['IMAGE', {}] } } }
 })
 
-// 万物迁移 hands the model a BLUE PLACEMENT SILHOUETTE and repaints the WHOLE picture in one pass; the
-// frame it decodes is the result. That is the ORIGINAL recipe, restored after a day of trying to improve
-// on it. Handed a blue shape the model DRAWS the object in the picture’s own language; handed the object
-// composited in, it retouches a pasted 3D render, and nothing stops that reading as a sticker. Rejected,
-// in order:
-// a region pasted back over the original ("有明显的衔接方块"), a silhouette-shaped latent mask so only the
-// object's surroundings changed ("这投影完全就是后期加的...这根本不是融合"), a graded whole-frame mask that
-// still left the object's neighbourhood as the only repainted part ("你现在做的全是乱贴"), and a cast
-// shadow computed in JS and multiplied into the guide ("这投影明显是你后加进去的").
-// What survived is the earliest thing that was tried: no mask at all, one uniform denoise strength, so
-// no part of the picture is more re-rendered than any other and nothing reads as a patch.
-test('the transfer graph repaints the whole frame: no mask, no rescale, one denoise', () => {
+// 万物迁移 is the user's own 图生图 graph plus the two things 图生图 does not have: a placement and a size.
+// The user said so in as many words: "万物迁移。只是多了一个定位。和大小控制 还有就是 风格变化", and set the
+// quality bar at what that graph produced. So this graph IS that graph — shift 3.1, 4 Lightning steps, a
+// real negative branch, index_timestep_zero — and the placement is carried by the INPUT it is handed: the
+// picture with the object already arranged in it. Nothing is composited afterwards.
+// Rejected on the way here, in order: a region pasted back over the original ("有明显的衔接方块"), a
+// silhouette-shaped latent mask ("这根本不是融合"), a graded whole-frame mask ("你现在做的全是乱贴"), and a
+// cast shadow computed in JS ("这投影明显是你后加进去的").
+test('the transfer graph is the 图生图 graph: no mask, no rescale, one denoise, a real negative', () => {
   const s = loadSpine(RUNTIME)
   const resolved = { unetName: 'qwen_image_edit_2511_bf16.safetensors', clipName: 'qwen_2.5_vl_7b_fp8_scaled.safetensors', vaeName: 'qwen_image_vae.safetensors', loraName: 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors' }
-  const workflow = plain(s.buildObjectTransferQwenWorkflow(fakeInfo(), { placementName: 'plate.png', referenceName: 'ref.png' }, 'NovaFlow_object_transfer_x', resolved))
+  const workflow = plain(s.buildObjectTransferQwenWorkflow(fakeInfo(), { placementName: 'plate.png', referenceName: 'scene.png' }, 'NovaFlow_object_transfer_x', resolved))
   const byType = (type) => Object.entries(workflow).filter(([, node]) => node.class_type === type)
 
   // FluxKontextImageScale picks a preset by aspect and centre-crops one axis; there is no inverse, so the
@@ -48,32 +46,63 @@ test('the transfer graph repaints the whole frame: no mask, no rescale, one deno
   assert.equal(byType('SetLatentNoiseMask').length, 0, 'no mask: any mask makes part of the picture the repainted part')
   assert.equal(byType('ImageToMask').length, 0, 'and nothing loads one')
   assert.equal(workflow['1'].inputs.image, 'plate.png')
-  assert.equal(workflow['2'].inputs.image, 'ref.png')
+  assert.equal(workflow['2'].inputs.image, 'scene.png')
 
   const [encodeId, encode] = byType('VAEEncode')[0]
   assert.deepEqual(encode.inputs.pixels, ['1', 0], 'the plate is encoded at its own resolution')
   const [, sampler] = byType('KSampler')[0]
   assert.deepEqual(sampler.inputs.latent_image, [encodeId, 0], 'the sampler runs straight on the encoded plate')
-  assert.equal(sampler.inputs.denoise, 0.9, 'the blue shape is only replaced at 0.9 and above')
+  // Qwen's CONST flow scales the input latent by (1 - sigma) and sigma starts at 1.0 for anything at or
+  // above 0.81 on a 4-step schedule, so every "strength" below 1 was the same run under a worse name.
+  assert.equal(sampler.inputs.denoise, 1, 'denoise is not a strength dial on this sampler')
+  assert.equal(sampler.inputs.steps, 4, '4 steps, as the Lightning LoRA and the 图生图 graph both expect')
+  assert.equal(sampler.inputs.cfg, 1.2, 'above 1 so the negative branch is evaluated, and no higher: 1.5 re-lit the whole picture on two seeds in three')
 
-  const [, text] = byType('TextEncodeQwenImageEditPlus')[0]
-  assert.deepEqual(text.inputs.image1, ['1', 0], 'the scene reference is the plate, not a rescale of it')
-  assert.deepEqual(text.inputs.image2, ['2', 0], 'the object reference stays image2')
+  const [, auraflow] = byType('ModelSamplingAuraFlow')[0]
+  assert.equal(auraflow.inputs.shift, 3.1, 'the 图生图 graph shift; 1.5 was mine and it cost the quality')
+
+  // At cfg 1 ComfyUI never evaluates the negative branch and CFGNorm collapses to identity, so a real
+  // negative prompt only becomes reachable together with cfg > 1. Both, or neither.
+  assert.equal(byType('ConditioningZeroOut').length, 0, 'the zeroed negative belongs to the cfg 1 path')
+  const texts = byType('TextEncodeQwenImageEditPlus')
+  assert.equal(texts.length, 2, 'positive and negative are both encoded over the same two images')
+  const [, positive] = texts[0]
+  const [negativeId, negative] = texts[1]
+  assert.deepEqual(positive.inputs.image1, ['1', 0], 'the guide is image1, not a rescale of it')
+  assert.deepEqual(positive.inputs.image2, ['2', 0], 'the untouched picture is image2')
+  assert.deepEqual(negative.inputs.image1, ['1', 0], 'the negative sees the same frame')
+  // Naming 阴影/投影 in the negative made the model overcorrect into a spotlight on the ground.
+  // A negative term is a direction to move away from: 地面发亮 in this list came back as a black blot
+  // under the object and the whole frame gone blue. It may not describe light, tone or shadow at all.
+  assert.doesNotMatch(negative.inputs.prompt, /阴影|投影|发亮|变暗|打光|色调/, 'the negative must not describe how anything is lit')
+  assert.match(negative.inputs.prompt, /物体浮在半空/, 'it forbids the floating-sticker failure instead')
+
+  const refs = byType('FluxKontextMultiReferenceLatentMethod')
+  assert.equal(refs.length, 2, 'both conditionings pin the reference method, as the 图生图 graph does')
+  for (const [, node] of refs) assert.equal(node.inputs.reference_latents_method, 'index_timestep_zero', 'offset stacks the reference latents and moves everything')
+  const refIds = refs.map(([id]) => id)
+  assert.ok(refIds.includes(sampler.inputs.positive[0]), 'the sampler takes the pinned positive')
+  assert.ok(refIds.includes(sampler.inputs.negative[0]), 'and the pinned negative')
+  assert.ok(refs.some(([, node]) => node.inputs.conditioning[0] === negativeId), 'the negative is routed through its own')
 })
 
 
-test('the picture is drawn in one pass from a blue placement guide, and nothing is composited', () => {
+test('the picture is drawn in one pass from an arranged frame, and nothing is composited', () => {
   const source = read(RUNTIME)
-  // Swept live: 0.8 came back with the blue silhouette still sitting in the picture, untouched. 0.9 and
-  // 1.0 both replace it and both repaint the whole frame (drift ~36-43/255, sky ~16-19). There is no
-  // "change less" setting here — that is the price of the model drawing the object rather than
-  // retouching a pasted one, and it is the trade the user chose over every alternative.
-  assert.match(source, /const OBJECT_TRANSFER_DENOISE = 0\.9/, 'below 0.9 the blue guide survives into the output')
-  assert.match(source, /const placementGuideCanvas = objectTransferBlueGuideCanvas\(baseCanvas, transferMaskCanvas\)/, 'the guide is the blue silhouette, not the object composited in')
-  assert.match(source, /guideMode: 'blue-guide-aligned-plate-single-pass'/, 'the debug record names the pass')
-  assert.doesNotMatch(source, /objectTransferCompGuideCanvas\(baseCanvas, transferSubjectCanvas\)/, 'the composited-object guide is what made it a sticker')
+  assert.match(source, /const OBJECT_TRANSFER_DENOISE = 1\b/, 'anything below 1 is the same run under a worse name')
+  assert.match(source, /const OBJECT_TRANSFER_SHIFT = 3\.1\b/)
+  assert.match(source, /const OBJECT_TRANSFER_STEPS = 4\b/)
+  assert.match(source, /const OBJECT_TRANSFER_CFG = 1\.2\b/)
 
-  // The two mechanical defects of the original, and only those, are fixed.
+  // The guide is the picture with the object already placed and sized. That IS 定位 and 大小控制: the model
+  // is handed an arranged frame as an INPUT and asked to repaint it, never a result to be patched.
+  assert.match(source, /const placementGuideCanvas = objectTransferCompGuideCanvas\(baseCanvas, transferSubjectCanvas\)/, 'the guide carries the object, at the placement the user dragged')
+  assert.match(source, /guideMode: 'comp-guide-aligned-plate-single-pass'/, 'the debug record names the pass')
+  assert.doesNotMatch(source, /objectTransferBlueGuideCanvas|objectTransferContactMaskCanvas|objectTransferCombinedMaskCanvas/, 'the blue silhouette and its contact ellipse are gone')
+
+  // bf16 at the loader's default dtype, because that is what the 图生图 graph loads and the bar is its output.
+  assert.match(source, /OBJECT_TRANSFER_QWEN_UNETS = \['qwen_image_edit_2511_bf16\.safetensors'/, 'bf16 first, fp8mixed only as a fallback')
+
   const plateBuilder = source.slice(source.indexOf('function buildQwenEditPlateWorkflow('), source.indexOf('function buildObjectTransferQwenWorkflow('))
   assert.doesNotMatch(plateBuilder, /class_type: 'FluxKontextImageScale'/, 'the centre-cropping rescale is gone from the transfer graph')
   assert.match(source, /const plateSize = qwenEditPlateSize\(size\.width, size\.height\)\n\s+const plateCanvas = qwenEditPlateCanvas\(placementGuideCanvas, plateSize\)/, 'the aligned plate replaces it')
@@ -87,16 +116,25 @@ test('the picture is drawn in one pass from a blue placement guide, and nothing 
   assert.match(source, /pasteBack: 'none-single-pass-decode'/, 'the debug record names the path')
   assert.doesNotMatch(source, /objectTransferProtectedResultDataUrl|objectTransferScenePixels|objectTransferHarmonizeCanvas|objectTransferCastShadowCanvas/, 'no paste, no grade, no drawn shadow')
 
-  // The original long Chinese prompt, restored verbatim. Every English rewrite of it drifted away from
-  // what the user wanted; the concise-English lesson holds for the effect tools, not for a whole repaint.
+  // 风格变化: the object is repainted on flat grey before it is ever placed. The user's condition for
+  // dropping this pass was that fusion alone make the object match the picture, and it does not.
+  assert.match(source, /const styledCutoutDataUrl = await objectTransferStyledCutoutForRun\(baseUrl, info, resolved, runId\)/, 'the restyle pass runs before the placement')
+  assert.match(source, /objectTransferBuildInputCanvases\(styledCutoutDataUrl\)/, 'and the restyled object is what gets placed')
+
+  // Three sentences. The long repaint prompt that used to be here was the colour drift: same picture, same
+  // settings, prompt swapped, and R-B went from -8.8 back to -26.4 against the original's -24.8.
   const at = source.indexOf('function objectTransferPromptText()')
   const literal = source.slice(source.indexOf('return [', at) + 'return '.length, source.indexOf('.join(', at))
-  const prompt = eval(literal).join('\n')
-  assert.match(prompt, /蓝色轮廓只指定物体的位置、大小和姿态，不是裁切边界/, 'the blue shape is position, size and pose only')
-  assert.match(prompt, /舍弃图2的背景、打光、投影、描边、渲染风格与表面细节密度/, 'image 2 contributes identity, never its own rendering or shadow')
-  assert.match(prompt, /像图1的原作者亲手画出新物体/, 'the object is drawn by image 1 own artist')
-  assert.match(prompt, /去掉全部蓝色定位标记/, 'and the blue marks come out')
-
-  // With a blue guide the model never sees the object's own rendering, so there is nothing to restyle.
-  assert.doesNotMatch(source, /const styled = await objectTransferStyledCutoutDataUrl\(/, 'the restyle pass is not run: it was 50s of nothing on this path')
+  const lines = eval(literal)
+  const prompt = lines.join('')
+  assert.equal(lines.length, 3, 'three sentences; a prompt that describes the whole picture makes it redraw the whole picture')
+  assert.ok(prompt.length < 160, 'and short: ' + prompt.length)
+  assert.match(prompt, /按图1里的位置和大小/, 'the placement comes from the arranged frame it was handed')
+  // The one defect that survived everything else: every earlier prompt only said 保持不变, which forbids
+  // touching the ground, so the object stood on clean marble with no contact shading — "投影...好像都没了".
+  assert.match(prompt, /重新绘制物体底部周围的地面/, 'the ground is explicitly released, or the model never shades it')
+  assert.match(prompt, /一小片浅淡接触暗部/, 'without 浅淡 the same sentence returns a long hard silhouette')
+  // Asking only for 接触处 with no 投影 came back as a black ellipse under the feet, like a hole.
+  assert.match(prompt, /投影短而柔和/, 'a soft short cast shadow, not a contact patch on its own')
+  assert.doesNotMatch(prompt, /机器人|台阶|大理石/, 'it runs on whatever the user dropped in, so it may not name the object')
 })

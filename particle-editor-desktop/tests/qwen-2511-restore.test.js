@@ -43,7 +43,9 @@ test('outpaint, angle adjustment and object transfer build the 2511 chain with t
     assert.equal(sampler.scheduler, 'simple');
   }
   assert.ok(nodesOf(angle, 'LoraLoaderModelOnly').some((n) => /multiple-angles/.test(n.inputs.lora_name)));
-  assert.equal(nodesOf(transfer, 'KSampler')[0].inputs.steps, 6);
+  // 万物迁移 alone runs the 图生图 graph's numbers — 4 Lightning steps, shift 3.1, cfg 1.2 — because the
+  // user set its quality bar at what that graph produced. The rest of the 2511 chains keep 6.
+  assert.equal(nodesOf(transfer, 'KSampler')[0].inputs.steps, 4);
   const without = structuredClone(info);
   without.UNETLoader.input.required.unet_name[0] = ['other.safetensors'];
   assert.throws(() => spine.buildImageAngleAdjustWorkflow(without, 'reference.png'), /缺少/);

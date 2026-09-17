@@ -254,17 +254,35 @@
   const IMAGE_ANGLE_ADJUST_ZOOM_STEP = 0.1
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_SCREEN_OFFSET = 141
   const OBJECT_TRANSFER_TIMEOUT_MS = 30 * 60 * 1000
-  // The blue placement shape is only REPLACED at 0.9 and above. Swept live: 0.8 came back with the blue
-  // silhouette still sitting in the middle of the picture, untouched. So this is not a "change less" dial
-  // — 0.9 and 1.0 are the only two settings, and both repaint the whole picture (drift ~36/255, sky
-  // ~19). That is the price of the model drawing the object instead of retouching a pasted one, and it
-  // is the trade the user chose: "虽然有方块，起码没现在这样假".
-  const OBJECT_TRANSFER_DENOISE = 0.9
+  // Qwen's CONST flow scales the input latent by (1 - sigma), and sigma starts at 1.0 for anything at or
+  // above 0.81 on a 4-step schedule — the canvas latent is multiplied by zero either way. Denoise is not
+  // a strength dial here; it is 1, and the picture is held by the reference tokens instead.
+  const OBJECT_TRANSFER_DENOISE = 1
+  // Lifted verbatim from the 图生图 graph the user got a good result out of (novaflow-brand-runtime's
+  // ART_GENERATE_WORKFLOW_TEMPLATES.img2img): shift 3.1, 4 steps on the Lightning LoRA, euler/simple.
+  // My own 万物迁移 numbers (shift 1.5, 6 steps) were the reason its output never matched that quality.
+  const OBJECT_TRANSFER_SHIFT = 3.1
+  const OBJECT_TRANSFER_STEPS = 4
+  // cfg 1 disables the negative branch outright (ComfyUI skips it, and CFGNorm collapses to identity), so
+  // the negative prompt below only does anything above 1. Swept live over three seeds each: at 1.5 the
+  // ground repaint lands but two seeds in three re-lit the whole picture (R-B +2.9 and +6.3 against the
+  // original's -24.8, drift 54 and 47). At 1.2 all three held (-20.4, -20.4, -19.7, drift 26-29) and the
+  // contact shading still appeared. The extra push at 1.5 was buying variance, not fidelity.
+  const OBJECT_TRANSFER_CFG = 1.2
+  // Deliberately says nothing about light, tone or shadow. A negative term is a direction to move AWAY
+  // from, so every word about the ground's appearance pushed the picture the opposite way: adding
+  // 地面发亮 and 画面变暖 to this list turned all three seeds into a huge black blot under the object with
+  // the whole frame gone blue (R-B -34 to -49 against the original's -24.8). These five name only the
+  // sticker failure modes the user kept rejecting, and nothing about how anything is lit.
+  const OBJECT_TRANSFER_NEGATIVE_PROMPT = '\u7269\u4f53\u6d6e\u5728\u534a\u7a7a\uff0c\u8d34\u7eb8\uff0c\u63cf\u8fb9\uff0c\u62fc\u63a5\u8fb9\u7f18\uff0c\u5e73\u6d82\u8272\u5757'
   const OBJECT_TRANSFER_RESTYLE_BACKGROUND = '#808080'
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
   const OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE = '\u53c2\u8003\u7269\u4e3b\u4f53\u4e0d\u6e05\u6670\uff0c\u8bf7\u6362\u4e00\u5f20\u80cc\u666f\u66f4\u7b80\u5355\u7684\u56fe\u7247\u3002'
-  const OBJECT_TRANSFER_QWEN_UNETS = ['qwen_image_edit_2511_fp8mixed.safetensors', 'qwen_image_edit_2511_bf16.safetensors']
+  // bf16 first, and loaded at the loader's own default dtype — that is exactly what the 图生图 graph does,
+  // and matching its quality means matching its weights. fp8mixed stays as the fallback for a Runtime
+  // that only shipped that one.
+  const OBJECT_TRANSFER_QWEN_UNETS = ['qwen_image_edit_2511_bf16.safetensors', 'qwen_image_edit_2511_fp8mixed.safetensors']
   const OBJECT_TRANSFER_QWEN_CLIP = 'qwen_2.5_vl_7b_fp8_scaled.safetensors'
   const OBJECT_TRANSFER_QWEN_VAE = 'qwen_image_vae.safetensors'
   const OBJECT_TRANSFER_QWEN_LIGHTNING_LORAS = [
@@ -14372,7 +14390,7 @@
     const fileName = state.source.fileName || 'source.png'
     if (api && typeof api.runtimeUploadImage === 'function') {
       const result = await api.runtimeUploadImage({ baseUrl, fileName, dataBase64: dataUrlToBase64(state.source.dataUrl), type: 'input', subfolder: '' })
-      if (!result || !result.ok) throw new Error('上传失败')
+      if (!result || !result.ok) throw new Error('\u4e0a\u4f20\u5931\u8d25')
       return String(result.data && (result.data.name || result.data.filename) || fileName)
     }
     const form = new FormData()
@@ -14380,7 +14398,7 @@
     form.append('type', 'input')
     const res = await fetch(new URL('/upload/image', baseUrl).toString(), { method: 'POST', body: form })
     const data = await res.json()
-    if (!res.ok) throw new Error('上传失败')
+    if (!res.ok) throw new Error('\u4e0a\u4f20\u5931\u8d25')
     return String(data.name || data.filename || fileName)
   }
 
@@ -14394,7 +14412,7 @@
     const safeName = String(fileName || `novaflow_${Date.now()}.png`).replace(/[^\w.-]+/g, '_') || `novaflow_${Date.now()}.png`
     if (api && typeof api.runtimeUploadImage === 'function') {
       const result = await api.runtimeUploadImage({ baseUrl, fileName: safeName, dataBase64: dataUrlToBase64(dataUrl), mimeType: dataUrlMime(dataUrl), type: 'input', subfolder: '' })
-      if (!result || !result.ok) throw new Error(result && result.error || '上传失败')
+      if (!result || !result.ok) throw new Error(result && result.error || '\u4e0a\u4f20\u5931\u8d25')
       return String(result.data && (result.data.name || result.data.filename) || safeName)
     }
     const form = new FormData()
@@ -14402,7 +14420,7 @@
     form.append('type', 'input')
     const res = await fetch(new URL('/upload/image', baseUrl).toString(), { method: 'POST', body: form })
     const data = await res.json()
-    if (!res.ok) throw new Error('上传失败')
+    if (!res.ok) throw new Error('\u4e0a\u4f20\u5931\u8d25')
     return String(data.name || data.filename || safeName)
   }
 
@@ -15446,61 +15464,6 @@
     return canvas
   }
 
-  function objectTransferContactMaskCanvas(size, bounds) {
-    const width = Math.max(1, Math.round(Number(size && size.width) || 1))
-    const height = Math.max(1, Math.round(Number(size && size.height) || 1))
-    const canvas = canvasOfSize(width, height)
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    const bw = Math.max(1, Math.round(Number(bounds && bounds.width) || 1))
-    const bh = Math.max(1, Math.round(Number(bounds && bounds.height) || 1))
-    const cx = clampNumber(Math.round(Number(bounds && bounds.x) || 0) + bw * 0.5, 0, width)
-    const cy = clampNumber(Math.round(Number(bounds && bounds.y) || 0) + bh * 0.97, 0, height)
-    ctx.fillStyle = '#ffffff'
-    ctx.beginPath()
-    ctx.ellipse(cx, cy, Math.max(10, Math.min(width, bw * 0.38)), Math.max(5, Math.min(height, bh * 0.075)), 0, 0, Math.PI * 2)
-    ctx.fill()
-    return canvas
-  }
-
-  function objectTransferCombinedMaskCanvas(alphaMask, size, bounds) {
-    const width = Math.max(1, Math.round(alphaMask && alphaMask.width || size && size.width || 1))
-    const height = Math.max(1, Math.round(alphaMask && alphaMask.height || size && size.height || 1))
-    const canvas = canvasOfSize(width, height)
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    ctx.drawImage(alphaMask, 0, 0, width, height)
-    ctx.globalCompositeOperation = 'lighter'
-    ctx.drawImage(objectTransferContactMaskCanvas(size, bounds), 0, 0, width, height)
-    ctx.globalCompositeOperation = 'source-over'
-    return canvas
-  }
-
-  function objectTransferBlueGuideCanvas(baseCanvas, maskCanvas) {
-    // Solid blue: it gives the model the object's position, size and pose and NOTHING else. That is the
-    // whole reason this version fuses and every composited-object version did not — handed a blue shape
-    // the model DRAWS the object in the picture's own language; handed a pasted 3D render it retouches
-    // the render, and no amount of tuning stops that reading as a sticker. The user's verdict on the two,
-    // after a day of trying the other way: "没做优化之前是这样的，虽然有方块，起码没现在这样假".
-    const width = Math.max(1, Math.round(baseCanvas && baseCanvas.width || maskCanvas && maskCanvas.width || 1))
-    const height = Math.max(1, Math.round(baseCanvas && baseCanvas.height || maskCanvas && maskCanvas.height || 1))
-    const canvas = canvasOfSize(width, height)
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    if (baseCanvas) ctx.drawImage(baseCanvas, 0, 0, width, height)
-    const image = ctx.getImageData(0, 0, width, height)
-    const maskCanvasSized = canvasOfSize(width, height)
-    const maskCtx = maskCanvasSized.getContext('2d', { willReadFrequently: true })
-    if (maskCanvas) maskCtx.drawImage(maskCanvas, 0, 0, width, height)
-    const mask = maskCtx.getImageData(0, 0, width, height).data
-    for (let i = 0; i + 3 < image.data.length; i += 4) {
-      if (maskPixelValue(mask, i) <= 8) continue
-      image.data[i] = 0
-      image.data[i + 1] = 0
-      image.data[i + 2] = 255
-      image.data[i + 3] = 255
-    }
-    ctx.putImageData(image, 0, 0)
-    return canvas
-  }
-
   function objectTransferCompGuideCanvas(baseCanvas, subjectCanvas) {
     // A blue silhouette turns the job into "fill this hole", and the model fills it by copying the
     // reference's own rendering — a 3D render dropped into a painted scene. Giving it a rough composite
@@ -15518,19 +15481,24 @@
     return canvas
   }
 
-  async function objectTransferBuildInputCanvases() {
+  async function objectTransferBuildInputCanvases(styledCutoutDataUrl) {
+    // The guide is the picture with the object already sitting in it at the size and place the user
+    // dragged it to. That is the whole of 定位 and 大小控制: the model is not told where to put anything,
+    // it is handed a frame that is already arranged and asked to repaint it into one picture.
+    // It is NOT a paste-back — this canvas is an INPUT, it is encoded as the latent and as reference 1,
+    // and the frame that comes out is decoded, never composited over. 生成之前就约束好, not 2次加工.
     const tool = objectTransferState()
     const size = await sourceSize()
     const bounds = clampObjectTransferPlacement(size)
     const baseCanvas = await sourceFullCanvas(size)
-    const cutoutCanvas = await canvasFromDataUrl(tool.referenceCutoutDataUrl, tool.referenceWidth, tool.referenceHeight)
+    const cutoutDataUrl = String(styledCutoutDataUrl || tool.referenceCutoutDataUrl || '')
+    const cutoutCanvas = await canvasFromDataUrl(cutoutDataUrl, tool.referenceWidth, tool.referenceHeight)
     const transferSubjectCanvas = canvasOfSize(size.width, size.height)
     transferSubjectCanvas.getContext('2d', { willReadFrequently: true }).drawImage(cutoutCanvas, bounds.x, bounds.y, bounds.width, bounds.height)
     const hardAlphaMask = thresholdMaskCanvas(alphaMaskFromCanvas(transferSubjectCanvas), 12)
-    const transferMaskCanvas = thresholdMaskCanvas(objectTransferCombinedMaskCanvas(hardAlphaMask, size, bounds), 8)
-    const stats = objectTransferMaskStats(transferMaskCanvas)
+    const stats = objectTransferMaskStats(hardAlphaMask)
     if (stats.max <= 8 || stats.pixels < 16) throw new Error(OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE)
-    const placementGuideCanvas = objectTransferBlueGuideCanvas(baseCanvas, transferMaskCanvas)
+    const placementGuideCanvas = objectTransferCompGuideCanvas(baseCanvas, transferSubjectCanvas)
     const plateSize = qwenEditPlateSize(size.width, size.height)
     const plateCanvas = qwenEditPlateCanvas(placementGuideCanvas, plateSize)
     return {
@@ -15538,15 +15506,16 @@
       bounds,
       baseCanvas,
       subjectMaskCanvas: hardAlphaMask,
-      transferMaskCanvas,
+      transferMaskCanvas: hardAlphaMask,
       denoise: OBJECT_TRANSFER_DENOISE,
       plateSize,
       plateContent: plateCanvas.__plateContent,
       plateDataUrl: plateCanvas.toDataURL('image/png'),
       placementGuideDataUrl: placementGuideCanvas.toDataURL('image/png'),
-      referenceDataUrl: tool.referenceOriginalDataUrl,
+      sceneDataUrl: baseCanvas.toDataURL('image/png'),
+      restyled: Boolean(styledCutoutDataUrl),
       maskStats: stats,
-      guideMode: 'blue-guide-aligned-plate-single-pass'
+      guideMode: 'comp-guide-aligned-plate-single-pass'
     }
   }
 
@@ -15635,26 +15604,44 @@
     return { styledCutout, plateDataUrl: plate.toDataURL('image/png'), resultDataUrl, plateSize }
   }
 
-  function objectTransferPromptText() {
-    // The original prompt, restored verbatim. Every English rewrite of it was a step away from what the
-    // user actually wanted: the concise-English lesson holds for the effect tools, but this one is
-    // describing a whole repaint and the long Chinese version is the one that produced it.
-    return [
-      '\u6700\u7ec8\u753b\u9762\u5fc5\u987b\u662f\u56fe1\u3002\u5c06\u56fe2\u6240\u793a\u7269\u4f53\u91cd\u65b0\u7ed8\u5236\u5230\u56fe1\u7684\u84dd\u8272\u5b9a\u4f4d\u533a\u57df\uff0c\u84dd\u8272\u8f6e\u5ed3\u53ea\u6307\u5b9a\u7269\u4f53\u7684\u4f4d\u7f6e\u3001\u5927\u5c0f\u548c\u59ff\u6001\uff0c\u4e0d\u662f\u88c1\u5207\u8fb9\u754c\u3002',
-      '\u56fe1\u662f\u552f\u4e00\u7684\u753b\u98ce\u3001\u5149\u7167\u548c\u6444\u5f71\u673a\u6807\u51c6\u3002\u56fe2\u53ea\u63d0\u4f9b\u7269\u4f53\u8eab\u4efd\u3001\u9020\u578b\u7ed3\u6784\u3001\u5173\u952e\u90e8\u4ef6\u548c\u56fa\u6709\u989c\u8272\uff1b\u820d\u5f03\u56fe2\u7684\u80cc\u666f\u3001\u6253\u5149\u3001\u6295\u5f71\u3001\u63cf\u8fb9\u3001\u6e32\u67d3\u98ce\u683c\u4e0e\u8868\u9762\u7ec6\u8282\u5bc6\u5ea6\u3002',
-      '\u50cf\u56fe1\u7684\u539f\u4f5c\u8005\u4eb2\u624b\u753b\u51fa\u65b0\u7269\u4f53\uff1a\u4e25\u683c\u6cbf\u7528\u56fe1\u90bb\u8fd1\u4e3b\u4f53\u7684\u7b14\u89e6\u3001\u8f6e\u5ed3\u7ebf\u7c97\u7ec6\u3001\u8fb9\u7f18\u8f6f\u786c\u3001\u660e\u6697\u5206\u5757\u3001\u6750\u8d28\u6982\u62ec\u7a0b\u5ea6\u3001\u5bf9\u6bd4\u5ea6\u3001\u9971\u548c\u5ea6\u548c\u7ec6\u8282\u5bc6\u5ea6\u3002\u63d2\u753b\u573a\u666f\u4e2d\u7684\u7269\u4f53\u4e5f\u8981\u7528\u540c\u6837\u7684\u63d2\u753b\u8bed\u8a00\u91cd\u65b0\u753b\uff0c\u5199\u5b9e\u573a\u666f\u4e2d\u7684\u7269\u4f53\u5219\u4fdd\u6301\u540c\u6837\u7684\u5199\u5b9e\u7a0b\u5ea6\uff0c\u4e0d\u8981\u628a\u53c2\u8003\u56fe\u7684\u6e32\u67d3\u8d28\u611f\u5e26\u8fdb\u6765\u3002',
-      '\u91cd\u65b0\u8ba1\u7b97\u65b0\u7269\u4f53\u5728\u56fe1\u73af\u5883\u4e2d\u7684\u53d7\u5149\u9762\u3001\u80cc\u5149\u9762\u3001\u53cd\u5149\u548c\u73af\u5883\u8272\u3002\u9ad8\u5149\u65b9\u5411\u3001\u4eae\u5ea6\u3001\u8272\u6e29\u3001\u9634\u5f71\u989c\u8272\u4e0e\u56fe1\u5df2\u6709\u4e3b\u4f53\u548c\u5730\u9762\u9634\u5f71\u4e00\u81f4\uff0c\u4e0d\u4fdd\u7559\u56fe2\u539f\u6709\u9ad8\u5149\uff0c\u4e0d\u51fa\u73b0\u72ec\u7acb\u7684\u4e00\u5957\u706f\u5149\u3002',
-      '\u65b0\u7269\u4f53\u7684\u900f\u89c6\u3001\u4f53\u79ef\u3001\u5c3a\u5ea6\u3001\u6e05\u6670\u5ea6\u3001\u666f\u6df1\u548c\u7a7a\u6c14\u900f\u89c6\u5fc5\u987b\u7b26\u5408\u56fe1\u4e2d\u540c\u4e00\u4f4d\u7f6e\u3002\u4e3b\u4f53\u7ed3\u6784\u548c\u7ec6\u5c0f\u90e8\u4ef6\u5b8c\u6574\u3001\u4e0d\u900f\u660e\uff0c\u8f6e\u5ed3\u5b8c\u6574\u4e14\u81ea\u7136\uff0c\u4e0e\u5df2\u6709\u7269\u4f53\u7684\u524d\u540e\u906e\u6321\u6b63\u786e\u3002',
-      '\u6cbf\u56fe1\u5df2\u6709\u6295\u5f71\u7684\u65b9\u5411\u3001\u6df1\u6d45\u3001\u8272\u504f\u548c\u8f6f\u786c\u7a0b\u5ea6\uff0c\u5728\u63a5\u89e6\u9762\u751f\u6210\u5b8c\u6574\u81ea\u7136\u7684\u63a5\u89e6\u9634\u5f71\u548c\u6295\u5f71\u3002\u6295\u5f71\u53ef\u4ee5\u8d85\u51fa\u84dd\u8272\u5b9a\u4f4d\u533a\u57df\uff1b\u843d\u5730\u5904\u8d34\u5408\u3001\u8fdc\u7aef\u81ea\u7136\u53d8\u8f6f\uff0c\u4e0e\u5730\u9762\u7eb9\u7406\u878d\u5408\u3002',
-      '\u4ec5\u65b0\u589e\u8be5\u7269\u4f53\u53ca\u5176\u5fc5\u8981\u7684\u63a5\u89e6\u3001\u6295\u5f71\u548c\u906e\u6321\u5173\u7cfb\uff0c\u56fe1\u5df2\u6709\u7684\u4eba\u7269\u3001\u80cc\u666f\u548c\u5176\u4ed6\u7269\u4f53\u4fdd\u6301\u539f\u6837\uff0c\u5c24\u5176\u4e0d\u80fd\u628a\u539f\u4eba\u7269\u6539\u6210\u53c2\u8003\u56fe\u7684\u753b\u98ce\u3002',
-      '\u53bb\u6389\u5168\u90e8\u84dd\u8272\u5b9a\u4f4d\u6807\u8bb0\u3002\u6700\u7ec8\u662f\u4e00\u5f20\u7edf\u4e00\u753b\u98ce\u3001\u7edf\u4e00\u5149\u7167\u7684\u5b8c\u6574\u753b\u9762\uff0c\u6ca1\u6709\u8d34\u7eb8\u611f\u3001\u62fc\u63a5\u8fb9\u7f18\u3001\u534a\u900f\u660e\u90e8\u4ef6\u6216\u72ec\u7acb\u6e32\u67d3\u7269\u4f53\u7684\u611f\u89c9\u3002'
-    ].join('\n')
+  async function objectTransferStyledCutoutForRun(baseUrl, info, resolved, runId) {
+    // Cached on the cutout it was made from: dragging the object around or resizing it does not change how
+    // it is painted, so a second run on the same reference skips this pass entirely.
+    const tool = objectTransferState()
+    const key = String(tool.referenceCutoutDataUrl || '').slice(-96)
+    if (tool.referenceStyledDataUrl && tool.referenceStyledKey === key) return tool.referenceStyledDataUrl
+    const sceneCanvas = await sourceFullCanvas(await sourceSize())
+    const restyled = await objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, tool.referenceCutoutDataUrl, sceneCanvas, runId)
+    tool.referenceStyledDataUrl = restyled.styledCutout
+    tool.referenceStyledKey = key
+    return restyled.styledCutout
   }
 
-  function buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, prompt, maskName, denoise) {
-    // The 万物迁移 graph: the blue placement guide on an unscaled plate, the reference object as the
+  function objectTransferPromptText() {
+    // Three sentences, and every word of them was measured.
+    //  * The long Chinese repaint prompt that used to be here was the reason the colour drifted: same
+    //    picture, same settings, only the prompt swapped, and R-B went from -8.8 back to -26.4 against
+    //    the original's -24.8. A prompt that describes the whole picture makes the model redraw it.
+    //  * Sentence 2 is the fix for the one defect that survived everything else. Every earlier prompt
+    //    only ever said 保持不变, which forbids touching the ground — so the object stood on clean marble
+    //    with no contact shading at all, and the user called it: "投影不对啊，好像都没了". Asking for the
+    //    ground itself to be repainted is what finally produced a cast shadow the model drew for itself.
+    //  * "一小片浅淡" and "短而柔和" are load-bearing. Without them the same sentence returns a long hard
+    //    silhouette stretched across the ground; asking only for 接触处 returns a black ellipse like a hole.
+    // Never name the object or the surface here — this runs on whatever the user dropped in.
+    return [
+      '\u628a\u56fe1\u4e2d\u7684\u7269\u4f53\u6309\u56fe1\u91cc\u7684\u4f4d\u7f6e\u548c\u5927\u5c0f\u653e\u8fdb\u56fe2\u7684\u753b\u9762\u91cc\u3002',
+      '\u91cd\u65b0\u7ed8\u5236\u7269\u4f53\u5e95\u90e8\u5468\u56f4\u7684\u5730\u9762\uff0c\u753b\u51fa\u5b83\u538b\u5728\u5730\u9762\u4e0a\u7684\u4e00\u5c0f\u7247\u6d45\u6de1\u63a5\u89e6\u6697\u90e8\uff0c\u6295\u5f71\u77ed\u800c\u67d4\u548c\u3001\u7d27\u8d34\u5e95\u90e8\u8fb9\u7f18\uff0c\u5730\u9762\u539f\u6709\u7684\u7eb9\u7406\u548c\u4eae\u5ea6\u4fdd\u6301\u4e0d\u53d8\u3002',
+      '\u753b\u9762\u5176\u4f59\u90e8\u5206\u4fdd\u6301\u4e0d\u53d8\u3002'
+    ].join('')
+  }
+
+  function buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, prompt, maskName, denoise, options) {
+    // The 万物迁移 graph: the composite placement guide on an unscaled plate, the untouched picture as the
     // second image, and one denoise for the whole frame. The centre-cropping rescale node is not here —
     // it picked a preset by aspect and cropped one axis, and there is no inverse.
+    // Anything the caller does not override keeps the 画风转换 pass's settings, which are already tuned.
+    const settings = options || {}
     const ksampler = info.KSampler
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: uploads.placementName } },
@@ -15672,7 +15659,7 @@
       nextId += 1
     }
     if (info.ModelSamplingAuraFlow) {
-      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(info.ModelSamplingAuraFlow, { model: modelRef, shift: 1.5 }) }
+      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(info.ModelSamplingAuraFlow, { model: modelRef, shift: settings.shift == null ? 1.5 : settings.shift }) }
       modelRef = [String(nextId), 0]
       nextId += 1
     }
@@ -15693,17 +15680,38 @@
       nextId += 1
     }
     workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(info.TextEncodeQwenImageEditPlus, { prompt, clip: ['5', 0], vae: ['6', 0], image1: ['1', 0], image2: ['2', 0] }) }
-    const positiveRef = [String(nextId), 0]
+    let positiveRef = [String(nextId), 0]
     nextId += 1
-    workflow[String(nextId)] = { class_type: 'ConditioningZeroOut', inputs: { conditioning: positiveRef } }
-    const negativeRef = [String(nextId), 0]
-    nextId += 1
+    let negativeRef
+    if (settings.negativePrompt) {
+      // A real negative branch, encoded over the same two images, exactly as the 图生图 graph does. It is
+      // only reachable because cfg is above 1; at cfg 1 ComfyUI never evaluates it and ConditioningZeroOut
+      // is the cheaper equivalent.
+      workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(info.TextEncodeQwenImageEditPlus, { prompt: settings.negativePrompt, clip: ['5', 0], vae: ['6', 0], image1: ['1', 0], image2: ['2', 0] }) }
+      negativeRef = [String(nextId), 0]
+      nextId += 1
+    } else {
+      workflow[String(nextId)] = { class_type: 'ConditioningZeroOut', inputs: { conditioning: positiveRef } }
+      negativeRef = [String(nextId), 0]
+      nextId += 1
+    }
+    if (settings.referenceLatentsMethod && info.FluxKontextMultiReferenceLatentMethod) {
+      // 2511 already defaults to index_timestep_zero, so this node is a no-op on this model — it is here
+      // because the 图生图 graph has it, and pinning the method means an older Runtime cannot silently
+      // fall back to offset, which stacks the reference latents and moves everything.
+      workflow[String(nextId)] = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: buildComfyNodeInputs(info.FluxKontextMultiReferenceLatentMethod, { conditioning: positiveRef, reference_latents_method: settings.referenceLatentsMethod }) }
+      positiveRef = [String(nextId), 0]
+      nextId += 1
+      workflow[String(nextId)] = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: buildComfyNodeInputs(info.FluxKontextMultiReferenceLatentMethod, { conditioning: negativeRef, reference_latents_method: settings.referenceLatentsMethod }) }
+      negativeRef = [String(nextId), 0]
+      nextId += 1
+    }
     workflow[String(nextId)] = {
       class_type: 'KSampler',
       inputs: buildComfyNodeInputs(ksampler, {
         seed: Math.floor(Math.random() * 1000000000),
-        steps: resolved.loraName ? 6 : 30,
-        cfg: 1,
+        steps: resolved.loraName ? (settings.steps || 6) : 30,
+        cfg: settings.cfg == null ? 1 : settings.cfg,
         sampler_name: 'euler',
         scheduler: 'simple',
         denoise: denoise == null ? 1 : denoise,
@@ -15723,7 +15731,13 @@
   }
 
   function buildObjectTransferQwenWorkflow(info, uploads, prefix, resolved) {
-    const workflow = buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferPromptText(), null, OBJECT_TRANSFER_DENOISE)
+    const workflow = buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferPromptText(), null, OBJECT_TRANSFER_DENOISE, {
+      shift: OBJECT_TRANSFER_SHIFT,
+      steps: OBJECT_TRANSFER_STEPS,
+      cfg: OBJECT_TRANSFER_CFG,
+      negativePrompt: OBJECT_TRANSFER_NEGATIVE_PROMPT,
+      referenceLatentsMethod: 'index_timestep_zero'
+    })
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
@@ -15732,6 +15746,9 @@
         lora: resolved.loraName,
         clip: resolved.clipName,
         vae: resolved.vaeName,
+        shift: OBJECT_TRANSFER_SHIFT,
+        steps: OBJECT_TRANSFER_STEPS,
+        cfg: OBJECT_TRANSFER_CFG,
         promptHead: objectTransferPromptText().slice(0, 1000)
       }
     }
@@ -15813,12 +15830,16 @@
     const resolved = resolveObjectTransferQwenRuntime(info)
     const stamp = Date.now()
     const runId = `${OBJECT_TRANSFER_FILENAME_PREFIX}_${stamp}_${Math.random().toString(16).slice(2, 8)}`
-    // No restyle pass: the blue guide never shows the model the object's own rendering, so there is
-    // nothing to restyle — the prompt already tells it to draw the object as image 1's artist would.
-    const assets = await objectTransferBuildInputCanvases()
+    // 画风转换 first, on its own, against flat grey. The integration pass is handed an object already
+    // painted in the picture's language, so it only has to place and light it. That is why the user's rule
+    // holds here: the restyle can only be dropped if fusion alone made the object match, and it does not.
+    const styledCutoutDataUrl = await objectTransferStyledCutoutForRun(baseUrl, info, resolved, runId)
+    const assets = await objectTransferBuildInputCanvases(styledCutoutDataUrl)
     setSplitBusyDetail('\u6b63\u5728\u4e0a\u4f20\u4e07\u7269\u8fc1\u79fb\u4e34\u65f6\u8f93\u5165...')
-    const placementName = await uploadDataUrl(baseUrl, `${runId}_placement.png`, assets.plateDataUrl)
-    const referenceName = await uploadDataUrl(baseUrl, safeDownloadFileName(`${runId}_${objectTransferState().referenceFileName || 'reference.png'}`, `${runId}_reference.png`), assets.referenceDataUrl)
+    const placementName = await uploadDataUrl(baseUrl, runId + '_placement.png', assets.plateDataUrl)
+    // Reference 2 is the UNTOUCHED picture, not the reference photo. The guide already carries the object,
+    // so what the model still needs is an un-arranged copy of the scene to hold everything else to.
+    const referenceName = await uploadDataUrl(baseUrl, runId + '_scene.png', assets.sceneDataUrl)
     const workflow = buildObjectTransferQwenWorkflow(info, { placementName, referenceName }, runId, resolved)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
@@ -15830,6 +15851,7 @@
         guideMode: assets.guideMode,
         runtimeInputs: { placementName, referenceName },
         plateSize: assets.plateSize,
+        restyled: assets.restyled,
         denoise: assets.denoise
       }
     }
@@ -21800,6 +21822,37 @@
     if (state.splitPreviewDataUrl) return { src: state.splitPreviewDataUrl, label: `拆图预览图 / ${state.parts.length} 层`, mode: 'parts' }
     if (state.source) return { src: state.source.dataUrl, label: '原图画布', mode: 'source' }
     return { src: '', label: '拖入原图后一键拆图', mode: 'empty' }
+  }
+
+  // 导出跟着画板走：画板此刻渲染的是哪一张，导出的就是哪一张。
+  async function currentSplitCanvasExportSource() {
+    let current = splitCanvasSource() || {}
+    const showsComposite = !!state.splitPreviewDataUrl && String(current.src || '') === String(state.splitPreviewDataUrl)
+    if (showsComposite && state.parts.length && (state.splitPreviewStale || state.splitPreviewRefreshPending)) {
+      try {
+        await flushSplitPreviewRefresh()
+        current = splitCanvasSource() || {}
+      } catch {}
+    }
+    const selected = state.maskEditor && state.maskEditor.active ? maskEditorPart() : selectedSplitPart()
+    const dataUrl = [
+      current.src,
+      current.part && current.part.dataUrl,
+      selected && selected.dataUrl,
+      state.splitPreviewDataUrl,
+      state.source && state.source.dataUrl
+    ].find((value) => /^data:image\//i.test(String(value || '')))
+    if (!dataUrl) return null
+    const label = String(current.label || '当前画布')
+    const fileName = current.mode === 'source'
+      ? (state.source && (state.source.fileName || state.source.name)) || 'source.png'
+      : `${label}.png`
+    return {
+      dataUrl,
+      name: safeDownloadFileName(fileName, 'novaflow-canvas.png'),
+      label,
+      mode: String(current.mode || state.viewMode || '')
+    }
   }
 
   function isSplitCanvasViewportInteractive() {
@@ -29716,7 +29769,7 @@
     // Same plate, same geometry as the key: only the masked pixels of this are kept, so the rest of the
     // layer stays byte for byte even though the model repainted the whole plate.
     const plateSize = extraction.input.plateSize
-    setSplitBusyDetail('正在上传去特效化输入...')
+    setSplitBusyDetail('\u6b63\u5728\u4e0a\u4f20\u53bb\u7279\u6548\u5316\u8f93\u5165...')
     const imageName = await uploadDataUrl(extraction.baseUrl, `${runId}_plate_input.png`, extraction.input.plateCanvas.toDataURL('image/png'))
     const workflow = buildEffectDeeffectQwenWorkflow(extraction.info, imageName, runId, extraction.runtime)
     setSplitBusyDetail(`Qwen Image Edit 2511 去特效化\n${plateSize.width} x ${plateSize.height} px`)
@@ -43510,6 +43563,7 @@
     outpaintImageDataUrl,
     getResourceStoreSnapshot,
     getPreviewStateSnapshot,
+    getCanvasExportSource: currentSplitCanvasExportSource,
     getState() {
       return state
     }
@@ -43574,6 +43628,7 @@
     normalizeImageAngleZoom,
     showImageAngleAdjustDialog,
     restoreOriginalRegionToOutpaintResult,
+    getCanvasExportSource: currentSplitCanvasExportSource,
     setSource(fileName, dataUrl) {
       state.source = { fileName: fileName || 'source.png', dataUrl }
       state.sourceResources = []
