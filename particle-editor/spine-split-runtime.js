@@ -15876,75 +15876,123 @@
     return canvas
   }
 
-  // How far past the placement box the pass is allowed to have changed things, as a fraction of the
-  // object's own size. Sideways and downwards is where a cast shadow goes; upwards almost nothing does.
-  const OBJECT_TRANSFER_RESTORE_REACH_SIDE = 0.85
-  const OBJECT_TRANSFER_RESTORE_REACH_DOWN = 0.55
-  const OBJECT_TRANSFER_RESTORE_REACH_UP = 0.18
-  // Below this much change a pixel is treated as untouched and restored outright; the ramp above it is
+  // How far past the object a cast shadow may reach, as a fraction of the object's own size.
+  const OBJECT_TRANSFER_RESTORE_GROUND_DOWN = 0.42
+  const OBJECT_TRANSFER_RESTORE_GROUND_SIDE = 0.55
+  const OBJECT_TRANSFER_RESTORE_FEATHER = 14
+  // Below this much change a pixel counts as untouched and is restored outright; the ramp above it is
   // what keeps the blend continuous.
   const OBJECT_TRANSFER_RESTORE_KEEP_FROM = 26
   const OBJECT_TRANSFER_RESTORE_KEEP_RAMP = 34
 
-  function objectTransferRestoredCanvas(baseCanvas, resultCanvas, bounds) {
+  function objectTransferRestoreWeightCanvas(subjectMaskCanvas) {
+    // Where the pass was allowed to change things: the object itself, and the ground it stands on.
+    //
+    // Keyed on the object's SILHOUETTE, not its placement box. The box is much larger than the object —
+    // on the picture this was tuned against it covers the woman's lower half — and an earlier version
+    // that kept everything inside the box kept the model's edits to her along with it.
+    //
+    // Both parts are feathered, so the weight has no edge anywhere. That is the whole difference from
+    // the region paste-backs the user rejected four times: those cut a rectangle and it showed.
+    const width = Math.max(1, Math.round(subjectMaskCanvas.width || 1))
+    const height = Math.max(1, Math.round(subjectMaskCanvas.height || 1))
+    const mask = subjectMaskCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+
+    let top = height, bottom = -1, left = width, right = -1
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        if (maskPixelValue(mask, (y * width + x) * 4) <= 8) continue
+        if (y < top) top = y
+        if (y > bottom) bottom = y
+        if (x < left) left = x
+        if (x > right) right = x
+      }
+    }
+    if (bottom < 0) return null
+    const objectHeight = Math.max(1, bottom - top)
+    const objectWidth = Math.max(1, right - left)
+
+    // the object, dilated a little and feathered
+    const subject = canvasOfSize(width, height)
+    const subjectCtx = subject.getContext('2d', { willReadFrequently: true })
+    subjectCtx.filter = `blur(${OBJECT_TRANSFER_RESTORE_FEATHER}px)`
+    subjectCtx.drawImage(expandedMaskCanvas(paintableMaskCanvas(subjectMaskCanvas, 8, false), 4), 0, 0)
+    subjectCtx.filter = 'none'
+    const subjectData = subjectCtx.getImageData(0, 0, width, height).data
+
+    const reachDown = Math.max(1, objectHeight * OBJECT_TRANSFER_RESTORE_GROUND_DOWN)
+    const reachUp = Math.max(1, objectHeight * 0.10)
+    const reachSide = Math.max(1, objectWidth * OBJECT_TRANSFER_RESTORE_GROUND_SIDE)
+
+    const out = canvasOfSize(width, height)
+    const ctx = out.getContext('2d', { willReadFrequently: true })
+    const image = ctx.createImageData(width, height)
+    for (let y = 0; y < height; y += 1) {
+      const groundY = Math.max(0, 1 - Math.max(y - bottom, 0) / reachDown) * Math.max(0, 1 - Math.max(bottom - y, 0) / reachUp)
+      for (let x = 0; x < width; x += 1) {
+        const i = (y * width + x) * 4
+        let near = maskPixelValue(subjectData, i) / 255
+        if (groundY > 0) {
+          const dx = Math.max(Math.max(left - x, x - right), 0)
+          const ground = groundY * Math.max(0, 1 - dx / reachSide)
+          if (ground > near) near = ground
+        }
+        const value = Math.round(near * 255)
+        image.data[i] = value
+        image.data[i + 1] = value
+        image.data[i + 2] = value
+        image.data[i + 3] = 255
+      }
+    }
+    ctx.putImageData(image, 0, 0)
+    const soft = canvasOfSize(width, height)
+    const softCtx = soft.getContext('2d', { willReadFrequently: true })
+    softCtx.filter = 'blur(10px)'
+    softCtx.drawImage(out, 0, 0)
+    softCtx.filter = 'none'
+    soft.__objectBottom = bottom
+    return soft
+  }
+
+  function objectTransferRestoredCanvas(baseCanvas, resultCanvas, subjectMaskCanvas) {
     // Put the untouched picture back everywhere the pass had no business changing it.
     //
     // The integration pass runs at denoise 1, so it repaints the whole frame and relights it on the way.
     // The object and its cast shadow are what was asked for; the sky going darker and the steps picking
-    // up a new highlight are not — measured on the tuned picture, 227k pixels outside the placement box
-    // came back changed. The user asked for this directly after seeing that: "可以用A..然后回贴不就好了，
-    // 尽量去掉影响".
+    // up a new highlight are not — measured, 227k pixels outside the object came back changed. The user
+    // asked for this directly: "可以用A..然后回贴不就好了。尽量去掉影响".
     //
-    // It is NOT the paste-back that was rejected four times earlier. Those cut a REGION out and dropped
-    // it in, and the cut showed as a rectangle every time — "有明显的衔接方块". This has no region and no
-    // edge anywhere. Two continuous factors multiply:
-    //   distance   — 1 inside the placement box, falling off linearly outwards, and falling off more
-    //                slowly downwards and sideways because that is where a cast shadow reaches.
-    //   difference — how much the pixel actually changed. Barely touched restores fully; repainted (the
-    //                object, its shadow) keeps the new value, with a ramp between.
-    // Neither factor has a boundary, so neither does the result.
+    // Two continuous factors multiply per pixel, and neither has a boundary:
+    //   where — the object's feathered silhouette, or the feathered ground under it.
+    //   how much — how far that pixel actually moved, ramped, so a pixel the pass barely touched
+    //              restores fully and one it repainted keeps its new value.
     const width = Math.max(1, Math.round(baseCanvas.width || 1))
     const height = Math.max(1, Math.round(baseCanvas.height || 1))
-    const bx = Math.round(Number(bounds && bounds.x) || 0)
-    const by = Math.round(Number(bounds && bounds.y) || 0)
-    const bw = Math.max(1, Math.round(Number(bounds && bounds.width) || 1))
-    const bh = Math.max(1, Math.round(Number(bounds && bounds.height) || 1))
-    const reachSide = Math.max(1, bw * OBJECT_TRANSFER_RESTORE_REACH_SIDE)
-    const reachDown = Math.max(1, bh * OBJECT_TRANSFER_RESTORE_REACH_DOWN)
-    const reachUp = Math.max(1, bh * OBJECT_TRANSFER_RESTORE_REACH_UP)
-
-    const out = canvasOfSize(width, height)
-    const ctx = out.getContext('2d', { willReadFrequently: true })
+    const weightCanvas = objectTransferRestoreWeightCanvas(subjectMaskCanvas)
+    if (!weightCanvas) return resultCanvas
+    const weight = weightCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
     const base = baseCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height)
     const res = resultCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height)
+    const out = canvasOfSize(width, height)
+    const ctx = out.getContext('2d', { willReadFrequently: true })
     const image = ctx.createImageData(width, height)
     let restored = 0
-    for (let y = 0; y < height; y += 1) {
-      const dyUp = Math.max(by - y, 0)
-      const dyDown = Math.max(y - (by + bh), 0)
-      const nearY = Math.max(0, 1 - dyUp / reachUp) * Math.max(0, 1 - dyDown / reachDown)
-      for (let x = 0; x < width; x += 1) {
-        const i = (y * width + x) * 4
-        let weight = 0
-        if (nearY > 0) {
-          const dx = Math.max(Math.max(bx - x, x - (bx + bw)), 0)
-          const near = nearY * Math.max(0, 1 - dx / reachSide)
-          if (near > 0) {
-            const diff = Math.max(
-              Math.abs(res.data[i] - base.data[i]),
-              Math.abs(res.data[i + 1] - base.data[i + 1]),
-              Math.abs(res.data[i + 2] - base.data[i + 2])
-            )
-            const strength = Math.min(1, Math.max(0, (diff - OBJECT_TRANSFER_RESTORE_KEEP_FROM) / OBJECT_TRANSFER_RESTORE_KEEP_RAMP))
-            weight = near * strength
-          }
-        }
-        if (weight < 1) restored += 1
-        image.data[i] = base.data[i] + (res.data[i] - base.data[i]) * weight
-        image.data[i + 1] = base.data[i + 1] + (res.data[i + 1] - base.data[i + 1]) * weight
-        image.data[i + 2] = base.data[i + 2] + (res.data[i + 2] - base.data[i + 2]) * weight
-        image.data[i + 3] = 255
+    for (let i = 0; i + 3 < image.data.length; i += 4) {
+      const near = maskPixelValue(weight, i) / 255
+      let w = 0
+      if (near > 0) {
+        const diff = Math.max(
+          Math.abs(res.data[i] - base.data[i]),
+          Math.abs(res.data[i + 1] - base.data[i + 1]),
+          Math.abs(res.data[i + 2] - base.data[i + 2])
+        )
+        w = near * Math.min(1, Math.max(0, (diff - OBJECT_TRANSFER_RESTORE_KEEP_FROM) / OBJECT_TRANSFER_RESTORE_KEEP_RAMP))
       }
+      if (w < 1) restored += 1
+      image.data[i] = base.data[i] + (res.data[i] - base.data[i]) * w
+      image.data[i + 1] = base.data[i + 1] + (res.data[i + 1] - base.data[i + 1]) * w
+      image.data[i + 2] = base.data[i + 2] + (res.data[i + 2] - base.data[i + 2]) * w
+      image.data[i + 3] = 255
     }
     ctx.putImageData(image, 0, 0)
     out.__restoredPixels = restored
@@ -15964,7 +16012,7 @@
     setSplitBusyDetail('\u6b63\u5728\u89e3\u7801\u751f\u6210\u7ed3\u679c...')
     const decodedCanvas = await qwenEditPlateResultCanvas(dataUrl, assets.plateSize, assets.plateContent, width, height, '\u4e07\u7269\u8fc1\u79fb')
     const driftBefore = countUnmaskedPixelChanges(baseCanvas, decodedCanvas, normalizeMaskCanvas(cloneCanvas(assets.transferMaskCanvas)), 8)
-    const finalCanvas = objectTransferRestoredCanvas(baseCanvas, decodedCanvas, assets.bounds)
+    const finalCanvas = objectTransferRestoredCanvas(baseCanvas, decodedCanvas, assets.subjectMaskCanvas)
     const driftAfter = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(assets.transferMaskCanvas)), 8)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),

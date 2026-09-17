@@ -117,16 +117,22 @@ test('the picture is drawn in one pass from an arranged frame, and nothing is co
   const resultFn = source.slice(source.indexOf('async function objectTransferDecodedResultDataUrl('))
   const resultBody = resultFn.slice(0, resultFn.indexOf('\n  }\n'))
   assert.ok(resultBody.includes("const decodedCanvas = await qwenEditPlateResultCanvas(dataUrl, assets.plateSize, assets.plateContent, width, height, '"), 'the frame is still decoded whole')
-  assert.ok(resultBody.includes('objectTransferRestoredCanvas(baseCanvas, decodedCanvas, assets.bounds)'), 'and the picture is restored around it')
+  assert.ok(resultBody.includes('objectTransferRestoredCanvas(baseCanvas, decodedCanvas, assets.subjectMaskCanvas)'), 'and the picture is restored around it')
   assert.match(source, /pasteBack: 'continuous-restore-outside-object'/, 'the debug record names the path')
   // It must stay CONTINUOUS. Four earlier attempts cut a region out and dropped it back in, and the cut
   // showed as a rectangle every time — "有明显的衔接方块". Two smooth factors multiply and neither has an
-  // edge: distance from the placement box, and how much the pixel actually changed.
+  // edge: the object's own feathered silhouette, and how much the pixel actually changed.
   const restoreFn = source.slice(source.indexOf('function objectTransferRestoredCanvas('))
   const restoreBody = restoreFn.slice(0, restoreFn.indexOf('\n  }\n'))
-  assert.ok(restoreBody.includes('const near = nearY * Math.max(0, 1 - dx / reachSide)'), 'distance falls off linearly, it is not a cut-out')
-  assert.ok(restoreBody.includes('const strength = Math.min(1, Math.max(0, (diff - OBJECT_TRANSFER_RESTORE_KEEP_FROM) / OBJECT_TRANSFER_RESTORE_KEEP_RAMP))'), 'and the difference ramps, it does not threshold')
-  assert.ok(restoreBody.includes('weight = near * strength'), 'both factors multiply, so the blend has no boundary')
+  const weightFn = source.slice(source.indexOf('function objectTransferRestoreWeightCanvas('))
+  const weightBody = weightFn.slice(0, weightFn.indexOf('\n  }\n'))
+  // Keyed on the object's SILHOUETTE, not its placement box. The box is far larger than the object —
+  // on the tuned picture it covers the woman's lower half and her dress — so keying on it kept the
+  // model's edits to her along with the object's own.
+  assert.ok(weightBody.includes('expandedMaskCanvas(paintableMaskCanvas(subjectMaskCanvas, 8, false), 4)'), 'the object silhouette is what is kept')
+  assert.ok(weightBody.includes('OBJECT_TRANSFER_RESTORE_FEATHER}px)'), 'and it is feathered, so it has no edge')
+  assert.ok(weightBody.includes('const ground = groundY * Math.max(0, 1 - dx / reachSide)'), 'the ground under it falls off linearly')
+  assert.ok(restoreBody.includes('w = near * Math.min(1, Math.max(0, (diff - OBJECT_TRANSFER_RESTORE_KEEP_FROM) / OBJECT_TRANSFER_RESTORE_KEEP_RAMP))'), 'the difference ramps, it does not threshold, and it multiplies the position weight')
   assert.doesNotMatch(restoreBody, /fillRect|drawImage/, 'nothing is drawn: every pixel is a weighted mix')
   assert.doesNotMatch(source, /objectTransferProtectedResultDataUrl|objectTransferScenePixels|objectTransferHarmonizeCanvas|objectTransferCastShadowCanvas/, 'no region paste, no colour grade, no drawn shadow')
 
