@@ -59,9 +59,18 @@ test('the transfer graph sends an unscaled plate and only denoises the placement
 
 test('the scene subject is protected in the latent and the model region is pasted verbatim', () => {
   const source = read(RUNTIME)
-  // The band around the silhouette IS the shadow room now, so it has to be wide enough to hold a contact
-  // shadow: 0.02 gave 6px on a 223px object and the shadow had nowhere to go.
-  assert.match(source, /const OBJECT_TRANSFER_NOISE_GROW_RATIO = 0\.055\n\s+const OBJECT_TRANSFER_NOISE_GROW_MIN = 8\n\s+const OBJECT_TRANSFER_NOISE_GROW_MAX = 32/, 'the band is wide enough for a contact shadow and no wider')
+  // A mask made by dilating the silhouette can only contain shapes that are a function of the distance
+  // to it — an aura. A cast shadow is the silhouette projected onto the ground and is not a subset of any
+  // dilation, which is why every band, ellipse and drop attempt came back stamped-on. The region is an
+  // apron whose shape has nothing to do with the silhouette, and it is much larger than any shadow so the
+  // shadow's falloff ends inside it instead of being cut off at its edge.
+  assert.match(source, /const OBJECT_TRANSFER_REGION_PAD_X = 0\.4\n\s+const OBJECT_TRANSFER_REGION_PAD_UP = 0\.08\n\s+const OBJECT_TRANSFER_REGION_PAD_DOWN = 0\.3/, 'the region reaches much further down than up, where a shadow lands')
+  // A latent noise mask is a per-pixel denoise strength, not a stencil (KSamplerX0Inpaint blends the
+  // prediction with the frozen latent by the mask VALUE at every step). Measured live at this placement:
+  // 110 -> no shadow, 170 -> a soft shadow lying on the steps, 210 -> heavy, binary 255 -> the model
+  // rebuilt the floor and painted a black silhouette.
+  assert.match(source, /const OBJECT_TRANSFER_REGION_STRENGTH = 170/, 'the region is partly denoised, which is what anchors the ground and sets the shadow density')
+  assert.doesNotMatch(source, /OBJECT_TRANSFER_NOISE_GROW|OBJECT_TRANSFER_GROUND_DROP|objectTransferGroundRoomCanvas/, 'the silhouette band and its downward drop are gone')
   assert.match(source, /const plateSize = qwenEditPlateSize\(size\.width, size\.height\)\n\s+const plateCanvas = qwenEditPlateCanvas\(placementGuideCanvas, plateSize\)/, 'the placement goes out on a plate Qwen does not reframe')
   assert.match(source, /const resultCanvas = await qwenEditPlateResultCanvas\(dataUrl, assets\.plateSize, assets\.plateContent, width, height, '万物迁移'\)/, 'the decode size is asserted before it is mapped back')
   // Rebuilding the object, its shadow and its light wrap from per-pixel rules after the fact is what made
@@ -74,17 +83,22 @@ test('the scene subject is protected in the latent and the model region is paste
   // A faint ground patch under the object used to mark where the contact shadow went. The model came back
   // with a glowing pool of light dead centre on it: it explains any patch it is handed.
   assert.doesNotMatch(source, /objectTransferContactMaskCanvas|objectTransferCombinedMaskCanvas|OBJECT_TRANSFER_CONTACT_HINT/, 'nothing but the object is pre-painted into the guide')
-  assert.match(source, /const transferMaskCanvas = hardAlphaMask\n/, 'the mask is the silhouette; an extra oval of room came back as a puddle, then as a decal')
-  assert.match(source, /guideMode: 'rough-comp-qwen-noise-latent'/, 'the debug record names the guide')
+  assert.match(source, /const transferMaskCanvas = hardAlphaMask\n/, 'nothing but the object is pre-painted into the guide')
+  assert.match(source, /guideMode: 'rough-comp-graded-region-latent'/, 'the debug record names the guide')
   assert.match(source, /'Image 1 already contains the new object, pasted in flat and unlit\.',/, 'the prompt asks for a repaint, in the concise English this model follows')
-  assert.match(source, /const roomMaskCanvas = expandedMaskCanvas\(objectTransferGroundRoomCanvas\(paintableMaskCanvas\(transferMaskCanvas, 8, false\), groundDrop\), noiseGrow, 0\)/, 'the mask must be white-on-transparent or expandedMaskCanvas paints its own black over it')
-  // A symmetric band around the silhouette left the shadow to chance: one seed in three came back with no
-  // contact shadow at all. Dropping the room a few pixels made it three in three.
-  assert.match(source, /const OBJECT_TRANSFER_GROUND_DROP_RATIO = 0\.015\n\s+const OBJECT_TRANSFER_GROUND_DROP_MIN = 2\n\s+const OBJECT_TRANSFER_GROUND_DROP_MAX = 10/, 'the room reaches a little below the object, where a shadow falls')
+  assert.match(source, /const regionMaskCanvas = objectTransferRegionMaskCanvas\(size, bounds\)\n\s+const roomMaskCanvas = maskMaxCanvas\(regionMaskCanvas, objectBandCanvas\)/, 'full strength on the object, part strength over the ground around it')
+  // The mask is point-sampled down to the latent grid (bilinear, ~7.3 scene px per cell), so a ramp only
+  // survives as a ramp if it is tens of pixels wide.
+  assert.match(source, /const OBJECT_TRANSFER_REGION_FEATHER_RATIO = 0\.09\n\s+const OBJECT_TRANSFER_REGION_FEATHER_MIN = 24/, 'the region edge is a wide ramp, not a cliff')
   assert.match(source, /const sceneSubjectMask = expandedMaskCanvas\(paintableMaskCanvas\(sceneSubjectCanvas, OBJECT_TRANSFER_SCENE_SUBJECT_ALPHA, true\), OBJECT_TRANSFER_SCENE_SUBJECT_GROW, 0\)/, 'the scene subject comes from the same RMBG the rest of the app uses')
   assert.match(source, /const protectionCanvas = maskSubtractCanvas\(sceneSubjectMask, objectMaskCanvas, 8\)/, 'the object may occlude the subject; nothing else may touch it')
-  assert.match(source, /const noiseMaskCanvas = maskSubtractCanvas\(roomMaskCanvas, protectionCanvas, 8\)/, 'the protection is applied to the LATENT mask, before sampling')
-  assert.match(source, /const pastedCanvas = compositeRemovalRgbResult\(baseCanvas, resultCanvas, assets\.noiseMaskCanvas, \{ x: 0, y: 0, width, height \}\)/, 'the masked region is pasted verbatim')
+  assert.match(source, /const noiseMaskCanvas = maskAttenuateCanvas\(roomMaskCanvas, featherMaskCanvas\(thresholdMaskCanvas\(protectionCanvas, 8\), OBJECT_TRANSFER_PROTECTION_FEATHER\)\)/, 'the protection fades the region out instead of punching a cliff in it')
+  // The mask the sampler gets keeps its grading; re-binarising it here was what turned the ramp back into
+  // a cliff. The paste, by contrast, takes everything the sampler could move at all — grading it a second
+  // time would fade out the shadow's tail, the part that makes it read as cast rather than stuck on.
+  assert.match(source, /const noiseMaskPlateCanvas = qwenEditPlateCanvas\(noiseMaskCanvas, plateSize\)/, 'the sampler gets the graded mask, not a re-binarised one')
+  assert.match(source, /const pasteMaskCanvas = thresholdMaskCanvas\(noiseMaskCanvas, OBJECT_TRANSFER_PASTE_FLOOR\)/, 'the paste covers everything the sampler was allowed to move')
+  assert.match(source, /const pastedCanvas = compositeRemovalRgbResult\(baseCanvas, resultCanvas, pasteMaskCanvas, \{ x: 0, y: 0, width, height \}\)/, 'the masked region is pasted verbatim')
   assert.match(source, /pasteBack: 'latent-protected-verbatim-paste'/, 'the debug record names the path')
   assert.doesNotMatch(source, /objectTransferScenePixels|objectTransferNormalizeResultDataUrl|objectTransferPasteMaskCanvas|objectTransferCompositeCanvas|OBJECT_TRANSFER_SHADOW_MAX_DARKEN/, 'no rule-based shadow or silhouette compositing survives')
 
@@ -92,6 +106,8 @@ test('the scene subject is protected in the latent and the model region is paste
   // cast shadow inside the mask into a blue-purple smear, and a curve after the fact cannot do what the
   // model does during the render anyway. The style is fixed BEFORE the object is placed instead.
   assert.match(source, /const finalCanvas = pastedCanvas/, 'what the model rendered is the result')
+  assert.match(source, /function qwenEditPlateCanvas\([\s\S]{0,600}?ctx\.imageSmoothingQuality = 'high'/, 'the plate is scaled at high quality or the region comes back softer than the picture around it')
+  assert.match(source, /async function qwenEditPlateResultCanvas\([\s\S]{0,1200}?ctx\.imageSmoothingQuality = 'high'/, 'and scaled back the same way')
   assert.doesNotMatch(source, /objectTransferHarmonizeCanvas|OBJECT_TRANSFER_HARMONIZE|ambientFill/, 'no colour grade, no ambient fill')
 
   // Stage 1: the reference object is repainted into the picture's style on its own, on flat grey, and
@@ -101,14 +117,23 @@ test('the scene subject is protected in the latent and the model region is paste
   // "same palette as image 2" recoloured the robot into the scene's pale marble; banning highlights
   // switched its glowing eyes off. Colour, proportion and lit parts are all pinned now.
   assert.match(source, /'Keep the object own colours, materials, markings and proportions exactly the same; do not recolour it and do not redesign it\.',/, 'stage 1 may repaint the object, not recolour or redesign it')
-  assert.match(source, /'Every lit or glowing part of the object stays lit and glowing exactly as in image 1, same colour and same brightness\.',/, 'stage 1 keeps the object own lights on')
+  // Saying only "lit parts stay lit" switched the eyes to blazing AND invented a glowing lamp on the
+  // robot's chest that the reference never had, which is what made stage 2 light the marble like a
+  // spotlight. Lit parts are pinned in both directions now.
+  assert.match(source, /'Copy image 1 exactly on which parts are lit: the parts that glow in image 1 keep glowing in the same colour and no brighter, with no extra bloom around them, and every part that is not lit in image 1 stays unlit\. Do not add any new lamp, light or glowing panel anywhere on it\.',/, 'stage 1 keeps the object own lights on, and adds none')
   assert.match(source, /const styled = await objectTransferStyledCutoutDataUrl\(baseUrl, info, resolved, tool\.referenceCutoutDataUrl, sceneCanvas, runId\)/, 'stage 1 runs before the placement is built')
   assert.match(source, /if \(!tool\.referenceStyledDataUrl \|\| tool\.referenceStyledKey !== styleKey\) \{/, 'the restyled object is cached per scene and reference')
   assert.match(source, /const cutoutCanvas = await canvasFromDataUrl\(tool\.referenceStyledDataUrl \|\| tool\.referenceCutoutDataUrl, tool\.referenceWidth, tool\.referenceHeight\)/, 'the placed object is the restyled one')
   assert.match(source, /function objectTransferPromptText\(\) \{[\s\S]{0,1400}?'Keep its position, size, pose, design and colours exactly as pasted\.',/, 'stage 2 no longer has to fix the style, only the light and the contact')
-  // Both of these are live failures the wording had to fix: the model lit the marble like a spotlight,
-  // and a shadow described as "matching image 1" came back as a black puddle while "barely visible" came
-  // back as nothing at all.
-  assert.match(source, /'It does not light the scene around it: no glow, halo, light pool, spotlight or bright patch on the ground or on nearby surfaces\. Lit parts of the object itself stay exactly as they are\.',/, 'the invented light source is banned, but only outside the object: banning it outright switched the robot eyes off')
-  assert.match(source, /'Under its feet paint a soft light grey contact shadow on the ground[^']*never black and never hard edged[^']*',/, 'the contact shadow is described as light grey and soft, not as matching')
+  // Banning the glow by name painted a warm spotlight on the marble in six runs out of six, across three
+  // wordings and two placements; dropping the word entirely removed it in both seeds on the same plate.
+  // Negating a concept raises it for this model — the same lesson as naming the effect in 特效去除.
+  const stage2Body = source.slice(source.indexOf('return [', source.indexOf('function objectTransferPromptText()')))
+  const stage2Prompt = stage2Body.slice(0, stage2Body.indexOf("].join(' ')"))
+  assert.doesNotMatch(stage2Prompt, /glow|halo|light pool|spotlight|bloom|bright patch/, 'stage 2 never says glow: saying it is what summons the spotlight')
+  // With a region of ground to work in, the shadow is described by what it physically does instead of
+  // what it should look like; its density is set by the region's denoise strength.
+  assert.match(source, /'It stands on the surface below it and casts its shadow across that surface: the shadow lies flat on the ground, bends over any edges it crosses, falls away from the key[^']*',/, 'the shadow is asked for as a cast shadow on the surface')
+  // "这个光影效果也没重绘": the picture's own effects have to be repainted across the object too.
+  assert.match(source, /'Whatever sparkles, motes and streaks image 1 already has near the object carry across it and in front of it, wrapping around its silhouette, exactly in image 1 own style\.',/, 'the picture own effects carry across the object')
 })

@@ -256,16 +256,33 @@
   const OBJECT_TRANSFER_TIMEOUT_MS = 30 * 60 * 1000
   // How far past the blue placement guide the model may repaint: enough for the object's own edge
   // and its cast shadow, and no further — everything outside stays frozen in the latent.
-  const OBJECT_TRANSFER_NOISE_GROW_RATIO = 0.055
-  const OBJECT_TRANSFER_NOISE_GROW_MIN = 8
-  const OBJECT_TRANSFER_NOISE_GROW_MAX = 32
-  const OBJECT_TRANSFER_GROUND_DROP_RATIO = 0.015
-  const OBJECT_TRANSFER_GROUND_DROP_MIN = 2
-  const OBJECT_TRANSFER_GROUND_DROP_MAX = 10
+  // The region the model may repaint, as fractions of the placement box. It has to be much larger than
+  // any shadow it might draw, or the shadow's falloff is cut off at the region's edge and reads as a
+  // stamped-on shape — which is exactly what the user rejected ("这投影完全就是后期加的").
+  const OBJECT_TRANSFER_REGION_PAD_X = 0.4
+  const OBJECT_TRANSFER_REGION_PAD_UP = 0.08
+  const OBJECT_TRANSFER_REGION_PAD_DOWN = 0.3
+  const OBJECT_TRANSFER_REGION_RADIUS = 0.18
+  const OBJECT_TRANSFER_REGION_FEATHER_RATIO = 0.09
+  const OBJECT_TRANSFER_REGION_FEATHER_MIN = 24
+  const OBJECT_TRANSFER_REGION_FEATHER_MAX = 72
+  // 0..255. A latent noise mask is not a stencil: ComfyUI blends the model's prediction with the frozen
+  // latent by the mask VALUE at every step (KSamplerX0Inpaint in comfy/samplers.py), so this is a
+  // per-pixel denoise strength. Full strength on the object; part strength over the ground, which both
+  // keeps the marble's own veining and nosings anchored and sets how dark the cast shadow comes out.
+  // Measured live: 110 -> no shadow at all, 170 -> a soft shadow lying on the steps, 210 -> heavy,
+  // a binary 255 region -> the model rebuilt the floor and painted a black silhouette.
+  const OBJECT_TRANSFER_REGION_STRENGTH = 170
+  const OBJECT_TRANSFER_OBJECT_BAND = 12
+  const OBJECT_TRANSFER_OBJECT_FEATHER = 6
+  // Anything the sampler was allowed to move at all is pasted back whole. The grading already happened
+  // in the latent; re-applying it at paste time would fade out the shadow's tail a second time.
+  const OBJECT_TRANSFER_PASTE_FLOOR = 6
   const OBJECT_TRANSFER_OBJECT_GROW = 4
   const OBJECT_TRANSFER_RESTYLE_BACKGROUND = '#808080'
   const OBJECT_TRANSFER_SCENE_SUBJECT_ALPHA = 24
   const OBJECT_TRANSFER_SCENE_SUBJECT_GROW = 6
+  const OBJECT_TRANSFER_PROTECTION_FEATHER = 4
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
   const OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE = '\u53c2\u8003\u7269\u4e3b\u4f53\u4e0d\u6e05\u6670\uff0c\u8bf7\u6362\u4e00\u5f20\u80cc\u666f\u66f4\u7b80\u5355\u7684\u56fe\u7247\u3002'
@@ -15383,17 +15400,106 @@
     return { width, height, pixels, max }
   }
 
-  function objectTransferGroundRoomCanvas(maskCanvas, drop) {
-    // The same room, nudged downwards. Without it the band around the silhouette is symmetric and the
-    // model skipped the contact shadow on a third of the seeds; with it, it painted one every time. This
-    // is room, not a hint: nothing is pre-painted, the mask just reaches where a shadow would fall.
+  function maskMaxCanvas(aCanvas, bCanvas) {
+    const width = Math.max(1, Math.round(aCanvas && aCanvas.width || 1))
+    const height = Math.max(1, Math.round(aCanvas && aCanvas.height || 1))
+    const canvas = canvasOfSize(width, height)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    ctx.drawImage(aCanvas, 0, 0, width, height)
+    const image = ctx.getImageData(0, 0, width, height)
+    const other = bCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+    for (let i = 0; i + 3 < image.data.length; i += 4) {
+      const value = Math.max(maskPixelValue(image.data, i), maskPixelValue(other, i))
+      image.data[i] = value
+      image.data[i + 1] = value
+      image.data[i + 2] = value
+      image.data[i + 3] = 255
+    }
+    ctx.putImageData(image, 0, 0)
+    return canvas
+  }
+
+  function maskScaleCanvas(maskCanvas, factor) {
     const width = Math.max(1, Math.round(maskCanvas && maskCanvas.width || 1))
     const height = Math.max(1, Math.round(maskCanvas && maskCanvas.height || 1))
     const canvas = canvasOfSize(width, height)
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    const steps = Math.max(0, Math.round(Number(drop) || 0))
-    for (let dy = 0; dy <= steps; dy += 1) ctx.drawImage(maskCanvas, 0, dy, width, height)
+    ctx.drawImage(maskCanvas, 0, 0, width, height)
+    const image = ctx.getImageData(0, 0, width, height)
+    const gain = clampNumber(Number(factor) || 0, 0, 1)
+    for (let i = 0; i + 3 < image.data.length; i += 4) {
+      const value = Math.round(maskPixelValue(image.data, i) * gain)
+      image.data[i] = value
+      image.data[i + 1] = value
+      image.data[i + 2] = value
+      image.data[i + 3] = 255
+    }
+    ctx.putImageData(image, 0, 0)
     return canvas
+  }
+
+  function maskAttenuateCanvas(maskCanvas, attenuationCanvas) {
+    // Soft subtract: the protection fades the region out instead of punching a hole in it, because a
+    // hole is a cliff in the latent mask and the model composes a visible edge against a cliff.
+    const width = Math.max(1, Math.round(maskCanvas && maskCanvas.width || 1))
+    const height = Math.max(1, Math.round(maskCanvas && maskCanvas.height || 1))
+    const canvas = canvasOfSize(width, height)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    ctx.drawImage(maskCanvas, 0, 0, width, height)
+    const image = ctx.getImageData(0, 0, width, height)
+    const attenuation = attenuationCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+    for (let i = 0; i + 3 < image.data.length; i += 4) {
+      const keep = 1 - clampNumber(maskPixelValue(attenuation, i) / 255, 0, 1)
+      const value = Math.round(maskPixelValue(image.data, i) * keep)
+      image.data[i] = value
+      image.data[i + 1] = value
+      image.data[i + 2] = value
+      image.data[i + 3] = 255
+    }
+    ctx.putImageData(image, 0, 0)
+    return canvas
+  }
+
+  function objectTransferRegionRect(size, bounds) {
+    const width = Math.max(1, Math.round(Number(size && size.width) || 1))
+    const height = Math.max(1, Math.round(Number(size && size.height) || 1))
+    const padX = Math.round(bounds.width * OBJECT_TRANSFER_REGION_PAD_X)
+    const padUp = Math.round(bounds.height * OBJECT_TRANSFER_REGION_PAD_UP)
+    const padDown = Math.round(bounds.height * OBJECT_TRANSFER_REGION_PAD_DOWN)
+    const x0 = clampNumber(bounds.x - padX, -width, width * 2)
+    const y0 = clampNumber(bounds.y - padUp, -height, height * 2)
+    const x1 = clampNumber(bounds.x + bounds.width + padX, -width, width * 2)
+    const y1 = clampNumber(bounds.y + bounds.height + padDown, -height, height * 2)
+    return { x0, y0, x1, y1 }
+  }
+
+  function objectTransferRegionMaskCanvas(size, bounds) {
+    // A rounded apron around the placement, reaching much further down than up: that is where a shadow
+    // on a horizontal surface lands. Its shape is deliberately NOT derived from the object's silhouette
+    // — a mask built by dilating the silhouette can only ever contain shapes that are a function of the
+    // distance to it, which is an aura. A cast shadow is the silhouette projected onto the ground, and
+    // it is not a subset of any dilation.
+    const width = Math.max(1, Math.round(Number(size && size.width) || 1))
+    const height = Math.max(1, Math.round(Number(size && size.height) || 1))
+    const rect = objectTransferRegionRect(size, bounds)
+    const canvas = canvasOfSize(width, height)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    ctx.fillStyle = '#000000'
+    ctx.fillRect(0, 0, width, height)
+    const radius = Math.max(0, Math.round(Math.min(rect.x1 - rect.x0, rect.y1 - rect.y0) * OBJECT_TRANSFER_REGION_RADIUS))
+    ctx.fillStyle = '#ffffff'
+    ctx.beginPath()
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0, radius)
+    else ctx.rect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0)
+    ctx.fill()
+    const feather = Math.round(clampNumber(
+      Math.min(bounds.width, bounds.height) * OBJECT_TRANSFER_REGION_FEATHER_RATIO,
+      OBJECT_TRANSFER_REGION_FEATHER_MIN,
+      OBJECT_TRANSFER_REGION_FEATHER_MAX
+    ))
+    // The mask is point-sampled down to the latent grid (bilinear, ~7.3 scene px per cell), so the ramp
+    // has to be tens of pixels wide to survive as a ramp at all.
+    return maskScaleCanvas(featherMaskCanvas(canvas, feather), OBJECT_TRANSFER_REGION_STRENGTH / 255)
   }
 
   function objectTransferCompGuideCanvas(baseCanvas, subjectCanvas) {
@@ -15429,7 +15535,6 @@
     const placementGuideCanvas = objectTransferCompGuideCanvas(baseCanvas, transferSubjectCanvas)
     // Everything the model is allowed to repaint: the placement silhouette plus room for the object's
     // edge and its cast shadow. Outside this the latent is frozen, so the scene cannot drift.
-    const noiseGrow = Math.round(clampNumber(Math.min(bounds.width, bounds.height) * OBJECT_TRANSFER_NOISE_GROW_RATIO, OBJECT_TRANSFER_NOISE_GROW_MIN, OBJECT_TRANSFER_NOISE_GROW_MAX))
     const objectMaskCanvas = expandedMaskCanvas(paintableMaskCanvas(hardAlphaMask, 8, false), OBJECT_TRANSFER_OBJECT_GROW, 0)
     // The model has to render the object, its contact shadow and the light wrap around it as one thing —
     // that integration is the whole point, and rebuilding it from rules afterwards is what made the
@@ -15439,17 +15544,22 @@
     // one thing it must not touch is the scene's existing subject where the object does not cover it
     // (it drew a high-heeled shoe onto the character's bare foot), and that is excluded HERE, in the
     // latent: the sampler then composes against those frozen pixels instead of us patching them back.
-    const groundDrop = Math.round(clampNumber(Math.min(bounds.width, bounds.height) * OBJECT_TRANSFER_GROUND_DROP_RATIO, OBJECT_TRANSFER_GROUND_DROP_MIN, OBJECT_TRANSFER_GROUND_DROP_MAX))
-    const roomMaskCanvas = expandedMaskCanvas(objectTransferGroundRoomCanvas(paintableMaskCanvas(transferMaskCanvas, 8, false), groundDrop), noiseGrow, 0)
+    const objectBandCanvas = featherMaskCanvas(
+      expandedMaskCanvas(paintableMaskCanvas(transferMaskCanvas, 8, false), OBJECT_TRANSFER_OBJECT_BAND, 0),
+      OBJECT_TRANSFER_OBJECT_FEATHER
+    )
+    const regionMaskCanvas = objectTransferRegionMaskCanvas(size, bounds)
+    const roomMaskCanvas = maskMaxCanvas(regionMaskCanvas, objectBandCanvas)
     setSplitBusyDetail('正在识别画面中已有的主体...')
     const sceneSubjectCanvas = await canvasFromDataUrl(await runRmbgCutout(baseCanvas.toDataURL('image/png')), size.width, size.height)
     const sceneSubjectMask = expandedMaskCanvas(paintableMaskCanvas(sceneSubjectCanvas, OBJECT_TRANSFER_SCENE_SUBJECT_ALPHA, true), OBJECT_TRANSFER_SCENE_SUBJECT_GROW, 0)
     const protectionCanvas = maskSubtractCanvas(sceneSubjectMask, objectMaskCanvas, 8)
-    const noiseMaskCanvas = maskSubtractCanvas(roomMaskCanvas, protectionCanvas, 8)
+    const noiseMaskCanvas = maskAttenuateCanvas(roomMaskCanvas, featherMaskCanvas(thresholdMaskCanvas(protectionCanvas, 8), OBJECT_TRANSFER_PROTECTION_FEATHER))
+    const pasteMaskCanvas = thresholdMaskCanvas(noiseMaskCanvas, OBJECT_TRANSFER_PASTE_FLOOR)
     const plateSize = qwenEditPlateSize(size.width, size.height)
     const plateCanvas = qwenEditPlateCanvas(placementGuideCanvas, plateSize)
     const plateContent = plateCanvas.__plateContent
-    const noiseMaskPlateCanvas = qwenEditPlateCanvas(thresholdMaskCanvas(noiseMaskCanvas, 8), plateSize)
+    const noiseMaskPlateCanvas = qwenEditPlateCanvas(noiseMaskCanvas, plateSize)
     return {
       size,
       bounds,
@@ -15457,10 +15567,11 @@
       subjectMaskCanvas: hardAlphaMask,
       transferMaskCanvas,
       noiseMaskCanvas,
+      pasteMaskCanvas,
       objectMaskCanvas,
       protectionCanvas,
-      noiseGrow,
-      groundDrop,
+      regionRect: objectTransferRegionRect(size, bounds),
+      regionStrength: OBJECT_TRANSFER_REGION_STRENGTH,
       plateSize,
       plateContent,
       plateDataUrl: plateCanvas.toDataURL('image/png'),
@@ -15468,7 +15579,7 @@
       placementGuideDataUrl: placementGuideCanvas.toDataURL('image/png'),
       referenceDataUrl: tool.referenceOriginalDataUrl,
       maskStats: stats,
-      guideMode: 'rough-comp-qwen-noise-latent'
+      guideMode: 'rough-comp-graded-region-latent'
     }
   }
 
@@ -15513,11 +15624,14 @@
     // sticker. Asking for the artist's rendering language fixed that but the model read "same palette as
     // image 2" as permission to recolour the object into the scene's palette: the robot came back pale
     // and thinner. So the colours and proportions are pinned and only the paint job is up for change.
-    // Banning highlights outright then switched the robot's glowing eyes off, so lit parts are pinned too.
+    // Banning highlights outright then switched the robot's glowing eyes off; saying the lit parts stay
+    // lit switched them to blazing AND invented a glowing lamp on its chest that the reference never had,
+    // which in turn made stage 2 light the marble like a spotlight. So the lit parts are pinned in BOTH
+    // directions: as lit as image 1, no brighter, and nothing new lit up.
     return [
       'Redraw the object from image 1 as if the artist of image 2 had drawn it.',
       'Keep the object own colours, materials, markings and proportions exactly the same; do not recolour it and do not redesign it.',
-      'Every lit or glowing part of the object stays lit and glowing exactly as in image 1, same colour and same brightness.',
+      'Copy image 1 exactly on which parts are lit: the parts that glow in image 1 keep glowing in the same colour and no brighter, with no extra bloom around them, and every part that is not lit in image 1 stays unlit. Do not add any new lamp, light or glowing panel anywhere on it.',
       'Change only how it is painted: image 2 soft painted shading, its edge treatment, its brush work and its level of surface detail.',
       'Drop image 1 photographic look: no blown out specular hotspots on its shell, no mirror reflections.',
       'Same object, same shape, same parts, same pose. Plain flat grey background, no shadow.'
@@ -15555,18 +15669,25 @@
   }
 
   function objectTransferPromptText() {
-    // Stage 2. The object was already repainted into this picture's style, so this pass only makes it
-    // belong physically. Every clause here is a live failure that was fixed: the glow ban (the model lit
-    // the ground like a spotlight), scoped to the SCENE because banning light outright switched the
-    // robot's own glowing eyes off, and a contact shadow described as light grey and soft edged, because
-    // "as dark as the other shadows" produced a black puddle and "barely visible" produced nothing.
+    // Stage 2. The object was already repainted into this picture's style, so this pass renders it into
+    // the picture: its shading, its shadow on the ground, and the picture's own effects over it.
+    // Rewritten 2026-09-17 after the user rejected the previous result — "这投影完全就是后期加的" (that
+    // shadow is purely added in post) and "这个光影效果也没重绘" (the light effects were never repainted
+    // either). With a narrow mask the model could only paint an aura hugging the silhouette, so it had to
+    // be described as a contact shadow; with a region of ground to work in, the instruction is simply
+    // what a shadow physically does, and the region's denoise strength sets how dark it comes out.
+    // Every mention of glow is gone on purpose. Banning it by name ("no glow, halo, light pool") made the
+    // model paint a warm spotlight on the marble in six runs out of six across three wordings and two
+    // placements; dropping the word entirely removed it in both seeds tested on the same plate. Negating
+    // a concept raises it for this model — the same lesson as naming the effect in 去除物体特效去除.
     return [
       'Image 1 already contains the new object, pasted in flat and unlit.',
       'Keep its position, size, pose, design and colours exactly as pasted.',
-      'Light it with the light already in image 1: same direction, same warmth, same softness, same low contrast.',
-      'It does not light the scene around it: no glow, halo, light pool, spotlight or bright patch on the ground or on nearby surfaces. Lit parts of the object itself stay exactly as they are.',
-      'Under its feet paint a soft light grey contact shadow on the ground: soft blurred edges, low contrast, only a little darker than the surface around it, never black and never hard edged, hugging the feet and fading out quickly.',
-      'Paint the object with the same brush work, edge softness and level of detail as image 1.',
+      'Repaint the object and everything around it as one piece of the same painting, so the object was always there.',
+      'Shade the object the way everything else in image 1 is shaded: same key direction, same softness, same low contrast, same colour temperature.',
+      'It stands on the surface below it and casts its shadow across that surface: the shadow lies flat on the ground, bends over any edges it crosses, falls away from the key, is darkest where the object touches the ground and fades out softly, and the surface texture stays visible through it.',
+      'Whatever sparkles, motes and streaks image 1 already has near the object carry across it and in front of it, wrapping around its silhouette, exactly in image 1 own style.',
+      'Paint everything with the same brush work, edge softness and level of detail as image 1.',
       'Image 2 is only the object identity and its parts.',
       'Everything else in image 1 stays exactly as it is.'
     ].join(' ')
@@ -15711,18 +15832,19 @@
     const resultCanvas = await qwenEditPlateResultCanvas(dataUrl, assets.plateSize, assets.plateContent, width, height, '万物迁移')
     // Verbatim: whatever the model rendered inside the mask — object, contact shadow, light wrap,
     // occlusion — is one coherent piece and is kept as one. Outside it the picture never moved.
-    const pastedCanvas = compositeRemovalRgbResult(baseCanvas, resultCanvas, assets.noiseMaskCanvas, { x: 0, y: 0, width, height })
+    const pasteMaskCanvas = assets.pasteMaskCanvas || thresholdMaskCanvas(assets.noiseMaskCanvas, OBJECT_TRANSFER_PASTE_FLOOR)
+    const pastedCanvas = compositeRemovalRgbResult(baseCanvas, resultCanvas, pasteMaskCanvas, { x: 0, y: 0, width, height })
     // No post grade of any kind: a curve applied afterwards can only ever be a patch. Whatever the model
     // rendered is the result; the paste exists to keep the untouched pixels exact, not to fix the render.
     const finalCanvas = pastedCanvas
     const stats = pastedCanvas.__removalCompositeStats || {}
-    const changedOutside = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(assets.noiseMaskCanvas)), 8)
+    const changedOutside = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(pasteMaskCanvas)), 8)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
         ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}),
         pasteBack: 'latent-protected-verbatim-paste',
-        pasteMask: { ...stats, noiseGrow: assets.noiseGrow, nonMaskChangedPixels: changedOutside }
+        pasteMask: { ...stats, regionStrength: assets.regionStrength, nonMaskChangedPixels: changedOutside }
       }
     }
     return finalCanvas.toDataURL('image/png')
@@ -15766,8 +15888,8 @@
         guideMode: assets.guideMode,
         runtimeInputs: { placementName, referenceName, maskName },
         plateSize: assets.plateSize,
-        noiseGrow: assets.noiseGrow,
-        groundDrop: assets.groundDrop
+        regionRect: assets.regionRect,
+        regionStrength: assets.regionStrength
       }
     }
     setSplitBusyDetail(`Qwen Image Edit 2511\n${assets.plateSize.width} x ${assets.plateSize.height} px`)
@@ -29261,6 +29383,8 @@
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     ctx.fillStyle = '#000'
     ctx.fillRect(0, 0, plateSize.width, plateSize.height)
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
     ctx.drawImage(sourceCanvas, 0, 0, content.width, content.height)
     canvas.__plateContent = content
     return canvas
@@ -29277,7 +29401,10 @@
     }
     const box = content || { width: plateSize.width, height: plateSize.height }
     const canvas = canvasOfSize(targetWidth, targetHeight)
-    canvas.getContext('2d', { willReadFrequently: true }).drawImage(image, 0, 0, box.width, box.height, 0, 0, targetWidth, targetHeight)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(image, 0, 0, box.width, box.height, 0, 0, targetWidth, targetHeight)
     return canvas
   }
 
@@ -42426,7 +42553,7 @@
     if (!objectTransferReady()) throw new Error('object transfer state is not ready')
     if (options.execute === false) {
       const assets = await objectTransferBuildInputCanvases()
-      return { prepared: true, plateSize: assets.plateSize, noiseGrow: assets.noiseGrow, bounds: assets.bounds, guideMode: assets.guideMode }
+      return { prepared: true, plateSize: assets.plateSize, regionRect: assets.regionRect, regionStrength: assets.regionStrength, bounds: assets.bounds, guideMode: assets.guideMode }
     }
     const startedAt = Date.now()
     const before = String(state.source && state.source.dataUrl || '')
@@ -42437,7 +42564,8 @@
     document.body.setAttribute('data-novaflow-object-transfer-smoke', 'pass')
     return {
       plateSize: debug.plateSize,
-      noiseGrow: debug.noiseGrow,
+      regionRect: debug.regionRect,
+      regionStrength: debug.regionStrength,
       pasteBack: debug.pasteBack,
       pasteMask: debug.pasteMask,
       runtimeInputs: debug.runtimeInputs,
