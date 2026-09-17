@@ -275,15 +275,23 @@
   // the whole frame gone blue (R-B -34 to -49 against the original's -24.8). These five name only the
   // sticker failure modes the user kept rejecting, and nothing about how anything is lit.
   const OBJECT_TRANSFER_NEGATIVE_PROMPT = '\u7269\u4f53\u6d6e\u5728\u534a\u7a7a\uff0c\u8d34\u7eb8\uff0c\u63cf\u8fb9\uff0c\u62fc\u63a5\u8fb9\u7f18\uff0c\u5e73\u6d82\u8272\u5757'
-  // The plate builder's own numbers, and they are the right ones — but only once the scene's style is
-  // named in words. The sweep that said otherwise ("at 6 steps / cfg 1 the object came back unchanged in
-  // four scenes out of five") was run WITHOUT the words; with them, cfg 1 renders cel shading harder and
-  // cleaner than cfg 2.5 did. Raising it bought nothing and cost the thing the feature is for: at 2.5 the
-  // object comes back as a high-contrast finished piece lit for the grey plate, the integration pass
-  // copies that lighting verbatim, and the object stops belonging to the picture. The user caught it
-  // immediately — "风格变化没错，但本质上的画面融合给你弄没了".
+  // 1.4, and the value is a three-way balance that was found by sweeping it against the finished picture,
+  // not against this pass's own output. What this pass paints under the object matters more than how it
+  // looks on the plate, because RMBG-2.0 keeps a ground shadow as part of the subject and the composite
+  // guide carries it into the integration pass:
+  //   cfg 2.5 paints a HARD ellipse. It survives the cutout and shows through the finished picture as a
+  //     stray grey blot, and the object itself comes back dark and high-contrast, lit for the grey plate.
+  //   cfg 1 paints nothing the cutout keeps. The object is bright and correct, but the integration pass
+  //     has no anchor and draws an isolated ellipse at the feet instead of a shadow that extends.
+  //   cfg 1.4 paints a FAINT contact darkening: light enough that it never shows through, strong enough
+  //     to survive RMBG and tell the integration pass where the object meets the ground.
+  // Measured on the tuned picture across three seeds at 1.4: darkened ground 52.6 / 50.5 / 37.5%, R-B
+  // -25.4 / -21.5 / -20.9 against the original's -24.8. The cfg 2.5 run it replaces drew 42.4% at -19.4.
+  // Asking the integration pass for an extending shadow directly does not work and never will on this
+  // graph: naming the picture's light relights the whole frame, and "extend and fade" returns a hard
+  // black silhouette. The anchor is the only lever.
   const OBJECT_TRANSFER_RESTYLE_STEPS = 6
-  const OBJECT_TRANSFER_RESTYLE_CFG = 1
+  const OBJECT_TRANSFER_RESTYLE_CFG = 1.4
   const OBJECT_TRANSFER_RESTYLE_BACKGROUND = '#808080'
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
