@@ -15595,53 +15595,40 @@
   }
 
   function objectTransferRestylePromptText(sceneArtStyle) {
-    // Two prompts, and which one runs depends on whether the scene's style could be read out as words.
+    // ONE prompt, tuned live 2026-09-17, with exactly one slot in it.
     //
-    // WITH the words. Measured 2026-09-17 on four scenes rebuilt from one picture — cel-shaded with black
-    // linework, Chinese ink wash, 8-bit pixel art, photographic. Naming the style is the only thing that
-    // made the object follow it; the scene image alone never did, at any cfg, any step count, either
-    // reference order and every rewrite of the wording. The scene image still goes in beside the words,
-    // because the words alone let the style bleed where it should not: asked for ink wash by text only,
-    // the model painted paper grain over the flat grey plate and broke the RMBG that runs next. Words for
-    // whether it changes, picture for whether it changes into THIS scene.
+    // Every sentence here was bought with a visible failure. Naming the style ("art style of image 2")
+    // gave a flat vector sticker; pointing at the ARTIST and their rendering language fixed that. Any
+    // permission to match image 2's palette made the model recolour the object into the scene's: it came
+    // back pale and thinner. Banning highlights switched the robot's glowing eyes off; saying the lit
+    // parts stay lit switched them to blazing AND invented a chest lamp, which made the integration pass
+    // light the ground like a spotlight — so emissive parts are pinned in BOTH directions.
     //
-    // WITHOUT them — no prompt assistant, no model, a VLM that failed — the original six sentences run
-    // unchanged. They name a soft painted target outright, which is wrong for a cel or pixel scene but
-    // exactly right for the kind of picture this feature was tuned on, and it is what shipped.
+    // The slot is sentence 4, and only sentence 4. It used to name a target style outright ("image 2 soft
+    // painted shading, its brush work"), which is right for the pictures this was tuned on and wrong for
+    // a cel, pixel, ink or photographic one — measured across four such scenes, the object came back
+    // unrendered in four cases out of five, because this model will not infer image 2's style and apply
+    // it to image 1 at any cfg, step count or reference order. Named as TEXT it renders all four.
+    //
+    // Rewriting the whole prompt around the text was a mistake and the user caught it on sight: the
+    // rewrite pinned the object so hard ("keep its own colours, do not recolour") that it also stopped
+    // absorbing the scene's light, and the object came back in its own cold green instead of picking up
+    // the picture's warmth. So the text goes INTO the sentence that was already there, and nothing else
+    // moves.
     const style = String(sceneArtStyle || '').trim()
-    if (style) {
-      return [
-        'Redraw the object from image 1 so it is rendered exactly the way image 2 is rendered.',
-        style,
-        // Same four pins as below. They are what the whole pass is worth: the object's identity, its
-        // emissive parts in BOTH directions, its pose, and a plate the cutout can still be keyed from.
-        'Keep the object own colours, materials, markings, parts and proportions exactly the same; do not recolour it and do not add or remove any part.',
-        'The parts that glow in image 1 keep glowing in the same colour and no brighter, with no extra bloom; every part that does not glow in image 1 stays unlit; do not add any new lamp, light or glowing panel.',
-        'Same parts in the same places, same pose.',
-        // Saying "no shadow" is not enough once this pass runs at cfg 2.5: swept three seeds, the model
-        // painted a ground shadow under the object in two of them, RMBG-2.0 kept that shadow as part of
-        // the subject (measured: it survives into the alpha), the composite guide carried it in, and the
-        // integration pass then rendered it as a real cast shadow four times too big. Denying the GROUND
-        // instead of the shadow fixed all three seeds.
-        'The object is floating in empty space with nothing underneath it and nothing behind it. It is not standing on anything and it is not resting on anything. Fill the whole background with one even flat colour, edge to edge, and put no shadow, no dark patch, no ground, no floor and no reflection anywhere in it.'
-      ].join(' ')
-    }
-    // Stage 1, tuned live 2026-09-17. Naming the style ("art style of image 2") gave a flat vector
-    // sticker. Asking for the artist's rendering language fixed that but the model read "same palette as
-    // image 2" as permission to recolour the object into the scene's palette: the robot came back pale
-    // and thinner. So the colours and proportions are pinned and only the paint job is up for change.
-    // Banning highlights outright then switched the robot's glowing eyes off; saying the lit parts stay
-    // lit switched them to blazing AND invented a glowing lamp on its chest that the reference never had,
-    // which in turn made stage 2 light the marble like a spotlight. So the lit parts are pinned in BOTH
-    // directions: as lit as image 1, no brighter, and nothing new lit up.
+    const painted = style
+      ? 'Change only how it is painted: ' + style + ' Take its edge treatment and its level of surface detail from image 2 as well.'
+      : 'Change only how it is painted: image 2 soft painted shading, its edge treatment, its brush work and its level of surface detail.'
     return [
       'Redraw the object from image 1 as if the artist of image 2 had drawn it.',
       'Keep the object own colours, materials, markings and proportions exactly the same; do not recolour it and do not redesign it.',
       'Copy image 1 exactly on which parts are lit: the parts that glow in image 1 keep glowing in the same colour and no brighter, with no extra bloom around them, and every part that is not lit in image 1 stays unlit. Do not add any new lamp, light or glowing panel anywhere on it.',
-      'Change only how it is painted: image 2 soft painted shading, its edge treatment, its brush work and its level of surface detail.',
+      painted,
       'Drop image 1 photographic look: no blown out specular hotspots on its shell, no mirror reflections.',
-      'Same object, same shape, same parts, same pose.',
-      'The object is floating in empty space with nothing underneath it and nothing behind it. It is not standing on anything and it is not resting on anything. Fill the whole background with one even flat colour, edge to edge, and put no shadow, no dark patch, no ground, no floor and no reflection anywhere in it.'
+      // Denying the GROUND, not the shadow. At any cfg this pass sometimes paints one, RMBG-2.0 keeps it
+      // as part of the subject, and the composite guide then carries it into the integration pass, which
+      // renders it as a cast shadow four times too big. "No shadow" fixed 1 seed in 3; this fixed 3 of 3.
+      'Same object, same shape, same parts, same pose. Put it alone on an empty flat grey field. It is not standing on anything and there is no ground under it, so nothing falls onto the field: keep the field one even tone edge to edge, with no shadow and no dark patch anywhere on it.'
     ].join(' ')
   }
 
@@ -15707,7 +15694,7 @@
     // Never name the object or the surface here — this runs on whatever the user dropped in.
     return [
       '\u628a\u56fe1\u4e2d\u7684\u7269\u4f53\u6309\u56fe1\u91cc\u7684\u4f4d\u7f6e\u548c\u5927\u5c0f\u653e\u8fdb\u56fe2\u7684\u753b\u9762\u91cc\u3002',
-      '\u91cd\u65b0\u7ed8\u5236\u7269\u4f53\u5e95\u90e8\u5468\u56f4\u7684\u5730\u9762\uff0c\u753b\u51fa\u5b83\u538b\u5728\u5730\u9762\u4e0a\u7684\u4e00\u5c0f\u7247\u6d45\u6de1\u63a5\u89e6\u6697\u90e8\uff1b\u8fd9\u7247\u6697\u90e8\u5f88\u5c0f\uff0c\u5bbd\u5ea6\u4e0d\u8d85\u8fc7\u7269\u4f53\u672c\u8eab\uff0c\u7d27\u8d34\u5e95\u90e8\u8fb9\u7f18\uff0c\u4e0d\u8981\u62c9\u957f\u3001\u4e0d\u8981\u5927\u7247\u3001\u4e0d\u8981\u76d6\u4f4f\u5927\u7247\u5730\u9762\u3002',
+      '\u91cd\u65b0\u7ed8\u5236\u7269\u4f53\u5e95\u90e8\u5468\u56f4\u7684\u5730\u9762\uff0c\u753b\u51fa\u5b83\u538b\u5728\u5730\u9762\u4e0a\u7684\u4e00\u5c0f\u7247\u6d45\u6de1\u63a5\u89e6\u6697\u90e8\uff0c\u6295\u5f71\u77ed\u800c\u67d4\u548c\u3001\u7d27\u8d34\u5e95\u90e8\u8fb9\u7f18\u3002',
       '\u5730\u9762\u539f\u6709\u7684\u7eb9\u7406\u548c\u4eae\u5ea6\u4fdd\u6301\u4e0d\u53d8\u3002\u753b\u9762\u5176\u4f59\u90e8\u5206\u4fdd\u6301\u4e0d\u53d8\u3002'
     ].join('')
   }

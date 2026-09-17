@@ -138,11 +138,16 @@ test('the picture is drawn in one pass from an arranged frame, and nothing is co
   assert.match(source, /referenceStyledKey === key/, 'the restyle is cached')
   assert.match(source, /sceneArtStyle\.slice\(0, 200\)/, 'and the cache key carries the scene style')
 
-  // Without the words the pass falls back to the wording that shipped, which names a soft painted target
-  // outright: wrong for a cel or pixel scene, exactly right for the pictures this was tuned on.
+  // The scene's style goes INTO the prompt that shipped, as one slot in sentence 4, and nothing else
+  // moves. Rewriting the whole prompt around the style text pinned the object so hard that it stopped
+  // absorbing the scene's light: it came back in its own cold green instead of picking up the picture's
+  // warmth, and the user called it immediately — "本质上的画面融合给你弄没了". The five sentences around
+  // the slot are the ones that were bought with measured failures; they stay verbatim.
   const promptFn = source.slice(source.indexOf('function objectTransferRestylePromptText('))
-  assert.match(promptFn.slice(0, 4000), /if \(style\) \{/, 'the style-led prompt is the one that runs when there are words')
-  assert.match(promptFn.slice(0, 6000), /image 2 soft painted shading/, 'and the tuned wording is still there as the fallback')
+  assert.match(promptFn.slice(0, 5000), /const painted = style\s*\n?\s*\? 'Change only how it is painted: ' \+ style/, 'the style text fills sentence 4, it does not replace the prompt')
+  assert.match(promptFn.slice(0, 5000), /: 'Change only how it is painted: image 2 soft painted shading/, 'and without it that sentence keeps its tuned wording')
+  assert.match(promptFn.slice(0, 5000), /as if the artist of image 2 had drawn it/, 'pointing at the artist is what stops it coming back a flat vector sticker')
+  assert.equal(promptFn.slice(0, 5000).split("'Redraw the object from image 1").length - 1, 1, 'one prompt, not two branches that can drift apart')
   // The restyle pass runs at the plate builder's own numbers, and that is load-bearing. Raising it to 8
   // steps / cfg 2.5 was measured as necessary BEFORE the scene's style was named in words; with the words,
   // cfg 1 renders cel shading harder and cleaner than 2.5 did. What 2.5 actually bought was a
@@ -167,10 +172,10 @@ test('the picture is drawn in one pass from an arranged frame, and nothing is co
   assert.match(prompt, /重新绘制物体底部周围的地面/, 'the ground is explicitly released, or the model never shades it')
   assert.match(prompt, /一小片浅淡接触暗部/, 'without 浅淡 the same sentence returns a long hard silhouette')
   // Asking only for 接触处 with no 投影 came back as a black ellipse under the feet, like a hole.
-  // The cap is load-bearing on top of that: without it the same sentence came back at 16.1/17.3/35.2%
-  // darkened ground across three seeds and a live run hit 51.7 — a shadow four times too big, spread
-  // across two steps. With it: 15.6/12.1/30.2.
-  assert.match(prompt, /宽度不超过物体本身/, 'the shadow is capped to the object width')
-  assert.match(prompt, /不要拉长|不要大片/, 'and told not to stretch or spread')
+  assert.match(prompt, /投影短而柔和/, 'a soft short cast shadow, not a contact patch on its own')
+  // And NO size cap. I added one because 51.7% darkened ground looked wrong to me; the version the user
+  // rates highest draws 47.7%, and capping it to 20.6% is what made the shadow read as fake — "投影真实"
+  // was their word for the uncapped one. That cap was my judgement overriding the measurement.
+  assert.doesNotMatch(prompt, /宽度不超过|不要拉长|不要大片|不要盖住/, 'the shadow is not capped: a capped one reads as fake')
   assert.doesNotMatch(prompt, /机器人|台阶|大理石/, 'it runs on whatever the user dropped in, so it may not name the object')
 })
