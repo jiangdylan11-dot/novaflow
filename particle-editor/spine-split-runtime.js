@@ -254,13 +254,12 @@
   const IMAGE_ANGLE_ADJUST_ZOOM_STEP = 0.1
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_SCREEN_OFFSET = 141
   const OBJECT_TRANSFER_TIMEOUT_MS = 30 * 60 * 1000
-  // The one constraint on the pass. The whole frame is repainted at this strength — uniformly, so no
-  // part of the picture reads as "the re-rendered patch". Swept live on the user's scene with the object
-  // composited in: 1.0 rebuilt the sky, the floor and her dress (drift 87/255); 0.85 held the picture and
-  // fused the object (20.4); 0.70 is the closest to the original that still repaints the object into it
-  // (17.2). Every masked variant scored better on drift and worse on the only thing that matters — the
-  // user called all of them 乱贴.
-  const OBJECT_TRANSFER_DENOISE = 0.7
+  // The blue placement shape is only REPLACED at 0.9 and above. Swept live: 0.8 came back with the blue
+  // silhouette still sitting in the middle of the picture, untouched. So this is not a "change less" dial
+  // — 0.9 and 1.0 are the only two settings, and both repaint the whole picture (drift ~36/255, sky
+  // ~19). That is the price of the model drawing the object instead of retouching a pasted one, and it
+  // is the trade the user chose: "虽然有方块，起码没现在这样假".
+  const OBJECT_TRANSFER_DENOISE = 0.9
   const OBJECT_TRANSFER_RESTYLE_BACKGROUND = '#808080'
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
@@ -15447,6 +15446,61 @@
     return canvas
   }
 
+  function objectTransferContactMaskCanvas(size, bounds) {
+    const width = Math.max(1, Math.round(Number(size && size.width) || 1))
+    const height = Math.max(1, Math.round(Number(size && size.height) || 1))
+    const canvas = canvasOfSize(width, height)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    const bw = Math.max(1, Math.round(Number(bounds && bounds.width) || 1))
+    const bh = Math.max(1, Math.round(Number(bounds && bounds.height) || 1))
+    const cx = clampNumber(Math.round(Number(bounds && bounds.x) || 0) + bw * 0.5, 0, width)
+    const cy = clampNumber(Math.round(Number(bounds && bounds.y) || 0) + bh * 0.97, 0, height)
+    ctx.fillStyle = '#ffffff'
+    ctx.beginPath()
+    ctx.ellipse(cx, cy, Math.max(10, Math.min(width, bw * 0.38)), Math.max(5, Math.min(height, bh * 0.075)), 0, 0, Math.PI * 2)
+    ctx.fill()
+    return canvas
+  }
+
+  function objectTransferCombinedMaskCanvas(alphaMask, size, bounds) {
+    const width = Math.max(1, Math.round(alphaMask && alphaMask.width || size && size.width || 1))
+    const height = Math.max(1, Math.round(alphaMask && alphaMask.height || size && size.height || 1))
+    const canvas = canvasOfSize(width, height)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    ctx.drawImage(alphaMask, 0, 0, width, height)
+    ctx.globalCompositeOperation = 'lighter'
+    ctx.drawImage(objectTransferContactMaskCanvas(size, bounds), 0, 0, width, height)
+    ctx.globalCompositeOperation = 'source-over'
+    return canvas
+  }
+
+  function objectTransferBlueGuideCanvas(baseCanvas, maskCanvas) {
+    // Solid blue: it gives the model the object's position, size and pose and NOTHING else. That is the
+    // whole reason this version fuses and every composited-object version did not — handed a blue shape
+    // the model DRAWS the object in the picture's own language; handed a pasted 3D render it retouches
+    // the render, and no amount of tuning stops that reading as a sticker. The user's verdict on the two,
+    // after a day of trying the other way: "没做优化之前是这样的，虽然有方块，起码没现在这样假".
+    const width = Math.max(1, Math.round(baseCanvas && baseCanvas.width || maskCanvas && maskCanvas.width || 1))
+    const height = Math.max(1, Math.round(baseCanvas && baseCanvas.height || maskCanvas && maskCanvas.height || 1))
+    const canvas = canvasOfSize(width, height)
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (baseCanvas) ctx.drawImage(baseCanvas, 0, 0, width, height)
+    const image = ctx.getImageData(0, 0, width, height)
+    const maskCanvasSized = canvasOfSize(width, height)
+    const maskCtx = maskCanvasSized.getContext('2d', { willReadFrequently: true })
+    if (maskCanvas) maskCtx.drawImage(maskCanvas, 0, 0, width, height)
+    const mask = maskCtx.getImageData(0, 0, width, height).data
+    for (let i = 0; i + 3 < image.data.length; i += 4) {
+      if (maskPixelValue(mask, i) <= 8) continue
+      image.data[i] = 0
+      image.data[i + 1] = 0
+      image.data[i + 2] = 255
+      image.data[i + 3] = 255
+    }
+    ctx.putImageData(image, 0, 0)
+    return canvas
+  }
+
   function objectTransferCompGuideCanvas(baseCanvas, subjectCanvas) {
     // A blue silhouette turns the job into "fill this hole", and the model fills it by copying the
     // reference's own rendering — a 3D render dropped into a painted scene. Giving it a rough composite
@@ -15469,22 +15523,21 @@
     const size = await sourceSize()
     const bounds = clampObjectTransferPlacement(size)
     const baseCanvas = await sourceFullCanvas(size)
-    const cutoutCanvas = await canvasFromDataUrl(tool.referenceStyledDataUrl || tool.referenceCutoutDataUrl, tool.referenceWidth, tool.referenceHeight)
+    const cutoutCanvas = await canvasFromDataUrl(tool.referenceCutoutDataUrl, tool.referenceWidth, tool.referenceHeight)
     const transferSubjectCanvas = canvasOfSize(size.width, size.height)
     transferSubjectCanvas.getContext('2d', { willReadFrequently: true }).drawImage(cutoutCanvas, bounds.x, bounds.y, bounds.width, bounds.height)
-    const alphaMask = alphaMaskFromCanvas(transferSubjectCanvas)
-    const transferMaskCanvas = thresholdMaskCanvas(alphaMask, 12)
+    const hardAlphaMask = thresholdMaskCanvas(alphaMaskFromCanvas(transferSubjectCanvas), 12)
+    const transferMaskCanvas = thresholdMaskCanvas(objectTransferCombinedMaskCanvas(hardAlphaMask, size, bounds), 8)
     const stats = objectTransferMaskStats(transferMaskCanvas)
     if (stats.max <= 8 || stats.pixels < 16) throw new Error(OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE)
-    // The object composited into the picture: that, and the denoise strength, are the whole constraint.
-    const placementGuideCanvas = objectTransferCompGuideCanvas(baseCanvas, transferSubjectCanvas)
+    const placementGuideCanvas = objectTransferBlueGuideCanvas(baseCanvas, transferMaskCanvas)
     const plateSize = qwenEditPlateSize(size.width, size.height)
     const plateCanvas = qwenEditPlateCanvas(placementGuideCanvas, plateSize)
     return {
       size,
       bounds,
       baseCanvas,
-      subjectMaskCanvas: transferMaskCanvas,
+      subjectMaskCanvas: hardAlphaMask,
       transferMaskCanvas,
       denoise: OBJECT_TRANSFER_DENOISE,
       plateSize,
@@ -15493,7 +15546,7 @@
       placementGuideDataUrl: placementGuideCanvas.toDataURL('image/png'),
       referenceDataUrl: tool.referenceOriginalDataUrl,
       maskStats: stats,
-      guideMode: 'single-pass-whole-frame-repaint'
+      guideMode: 'blue-guide-aligned-plate-single-pass'
     }
   }
 
@@ -15583,33 +15636,25 @@
   }
 
   function objectTransferPromptText() {
-    // Stage 2. The object was already repainted into this picture's style, so this pass renders it into
-    // the picture: its shading, its shadow on the ground, and the picture's own effects over it.
-    // Rewritten 2026-09-17 after the user rejected the previous result — "这投影完全就是后期加的" (that
-    // shadow is purely added in post) and "这个光影效果也没重绘" (the light effects were never repainted
-    // either). With a narrow mask the model could only paint an aura hugging the silhouette, so it had to
-    // be described as a contact shadow; with a region of ground to work in, the instruction is simply
-    // what a shadow physically does, and the region's denoise strength sets how dark it comes out.
-    // Every mention of glow is gone on purpose. Banning it by name ("no glow, halo, light pool") made the
-    // model paint a warm spotlight on the marble in six runs out of six across three wordings and two
-    // placements; dropping the word entirely removed it in both seeds tested on the same plate. Negating
-    // a concept raises it for this model — the same lesson as naming the effect in 去除物体特效去除.
+    // The original prompt, restored verbatim. Every English rewrite of it was a step away from what the
+    // user actually wanted: the concise-English lesson holds for the effect tools, but this one is
+    // describing a whole repaint and the long Chinese version is the one that produced it.
     return [
-      'Image 1 already contains the new object, pasted in flat and unlit.',
-      'Keep its position, size, pose, design and colours exactly as pasted.',
-      'Repaint the object and everything around it as one piece of the same painting, so the object was always there.',
-      'Shade the object the way everything else in image 1 is shaded: same key direction, same softness, same low contrast, same colour temperature.',
-      'It stands on the surface below it and casts its shadow across that surface: the shadow lies flat on the ground, bends over any edges it crosses, falls away from the key, is darkest where the object touches the ground and fades out softly, and the surface texture stays visible through it.',
-      'Whatever sparkles, motes and streaks image 1 already has near the object carry across it and in front of it, wrapping around its silhouette, exactly in image 1 own style.',
-      'Paint everything with the same brush work, edge softness and level of detail as image 1.',
-      'Image 2 is only the object identity and its parts.',
-      'Everything else in image 1 stays exactly as it is.'
-    ].join(' ')
+      '\u6700\u7ec8\u753b\u9762\u5fc5\u987b\u662f\u56fe1\u3002\u5c06\u56fe2\u6240\u793a\u7269\u4f53\u91cd\u65b0\u7ed8\u5236\u5230\u56fe1\u7684\u84dd\u8272\u5b9a\u4f4d\u533a\u57df\uff0c\u84dd\u8272\u8f6e\u5ed3\u53ea\u6307\u5b9a\u7269\u4f53\u7684\u4f4d\u7f6e\u3001\u5927\u5c0f\u548c\u59ff\u6001\uff0c\u4e0d\u662f\u88c1\u5207\u8fb9\u754c\u3002',
+      '\u56fe1\u662f\u552f\u4e00\u7684\u753b\u98ce\u3001\u5149\u7167\u548c\u6444\u5f71\u673a\u6807\u51c6\u3002\u56fe2\u53ea\u63d0\u4f9b\u7269\u4f53\u8eab\u4efd\u3001\u9020\u578b\u7ed3\u6784\u3001\u5173\u952e\u90e8\u4ef6\u548c\u56fa\u6709\u989c\u8272\uff1b\u820d\u5f03\u56fe2\u7684\u80cc\u666f\u3001\u6253\u5149\u3001\u6295\u5f71\u3001\u63cf\u8fb9\u3001\u6e32\u67d3\u98ce\u683c\u4e0e\u8868\u9762\u7ec6\u8282\u5bc6\u5ea6\u3002',
+      '\u50cf\u56fe1\u7684\u539f\u4f5c\u8005\u4eb2\u624b\u753b\u51fa\u65b0\u7269\u4f53\uff1a\u4e25\u683c\u6cbf\u7528\u56fe1\u90bb\u8fd1\u4e3b\u4f53\u7684\u7b14\u89e6\u3001\u8f6e\u5ed3\u7ebf\u7c97\u7ec6\u3001\u8fb9\u7f18\u8f6f\u786c\u3001\u660e\u6697\u5206\u5757\u3001\u6750\u8d28\u6982\u62ec\u7a0b\u5ea6\u3001\u5bf9\u6bd4\u5ea6\u3001\u9971\u548c\u5ea6\u548c\u7ec6\u8282\u5bc6\u5ea6\u3002\u63d2\u753b\u573a\u666f\u4e2d\u7684\u7269\u4f53\u4e5f\u8981\u7528\u540c\u6837\u7684\u63d2\u753b\u8bed\u8a00\u91cd\u65b0\u753b\uff0c\u5199\u5b9e\u573a\u666f\u4e2d\u7684\u7269\u4f53\u5219\u4fdd\u6301\u540c\u6837\u7684\u5199\u5b9e\u7a0b\u5ea6\uff0c\u4e0d\u8981\u628a\u53c2\u8003\u56fe\u7684\u6e32\u67d3\u8d28\u611f\u5e26\u8fdb\u6765\u3002',
+      '\u91cd\u65b0\u8ba1\u7b97\u65b0\u7269\u4f53\u5728\u56fe1\u73af\u5883\u4e2d\u7684\u53d7\u5149\u9762\u3001\u80cc\u5149\u9762\u3001\u53cd\u5149\u548c\u73af\u5883\u8272\u3002\u9ad8\u5149\u65b9\u5411\u3001\u4eae\u5ea6\u3001\u8272\u6e29\u3001\u9634\u5f71\u989c\u8272\u4e0e\u56fe1\u5df2\u6709\u4e3b\u4f53\u548c\u5730\u9762\u9634\u5f71\u4e00\u81f4\uff0c\u4e0d\u4fdd\u7559\u56fe2\u539f\u6709\u9ad8\u5149\uff0c\u4e0d\u51fa\u73b0\u72ec\u7acb\u7684\u4e00\u5957\u706f\u5149\u3002',
+      '\u65b0\u7269\u4f53\u7684\u900f\u89c6\u3001\u4f53\u79ef\u3001\u5c3a\u5ea6\u3001\u6e05\u6670\u5ea6\u3001\u666f\u6df1\u548c\u7a7a\u6c14\u900f\u89c6\u5fc5\u987b\u7b26\u5408\u56fe1\u4e2d\u540c\u4e00\u4f4d\u7f6e\u3002\u4e3b\u4f53\u7ed3\u6784\u548c\u7ec6\u5c0f\u90e8\u4ef6\u5b8c\u6574\u3001\u4e0d\u900f\u660e\uff0c\u8f6e\u5ed3\u5b8c\u6574\u4e14\u81ea\u7136\uff0c\u4e0e\u5df2\u6709\u7269\u4f53\u7684\u524d\u540e\u906e\u6321\u6b63\u786e\u3002',
+      '\u6cbf\u56fe1\u5df2\u6709\u6295\u5f71\u7684\u65b9\u5411\u3001\u6df1\u6d45\u3001\u8272\u504f\u548c\u8f6f\u786c\u7a0b\u5ea6\uff0c\u5728\u63a5\u89e6\u9762\u751f\u6210\u5b8c\u6574\u81ea\u7136\u7684\u63a5\u89e6\u9634\u5f71\u548c\u6295\u5f71\u3002\u6295\u5f71\u53ef\u4ee5\u8d85\u51fa\u84dd\u8272\u5b9a\u4f4d\u533a\u57df\uff1b\u843d\u5730\u5904\u8d34\u5408\u3001\u8fdc\u7aef\u81ea\u7136\u53d8\u8f6f\uff0c\u4e0e\u5730\u9762\u7eb9\u7406\u878d\u5408\u3002',
+      '\u4ec5\u65b0\u589e\u8be5\u7269\u4f53\u53ca\u5176\u5fc5\u8981\u7684\u63a5\u89e6\u3001\u6295\u5f71\u548c\u906e\u6321\u5173\u7cfb\uff0c\u56fe1\u5df2\u6709\u7684\u4eba\u7269\u3001\u80cc\u666f\u548c\u5176\u4ed6\u7269\u4f53\u4fdd\u6301\u539f\u6837\uff0c\u5c24\u5176\u4e0d\u80fd\u628a\u539f\u4eba\u7269\u6539\u6210\u53c2\u8003\u56fe\u7684\u753b\u98ce\u3002',
+      '\u53bb\u6389\u5168\u90e8\u84dd\u8272\u5b9a\u4f4d\u6807\u8bb0\u3002\u6700\u7ec8\u662f\u4e00\u5f20\u7edf\u4e00\u753b\u98ce\u3001\u7edf\u4e00\u5149\u7167\u7684\u5b8c\u6574\u753b\u9762\uff0c\u6ca1\u6709\u8d34\u7eb8\u611f\u3001\u62fc\u63a5\u8fb9\u7f18\u3001\u534a\u900f\u660e\u90e8\u4ef6\u6216\u72ec\u7acb\u6e32\u67d3\u7269\u4f53\u7684\u611f\u89c9\u3002'
+    ].join('\n')
   }
 
   function buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, prompt, maskName, denoise) {
-    // The 万物迁移 graph, shared by both passes: an unscaled plate, an optional latent noise mask, and a
-    // second image as the reference. No FluxKontextImageScale — it center-crops and cannot be inverted.
+    // The 万物迁移 graph: the blue placement guide on an unscaled plate, the reference object as the
+    // second image, and one denoise for the whole frame. The centre-cropping rescale node is not here —
+    // it picked a preset by aspect and cropped one axis, and there is no inverse.
     const ksampler = info.KSampler
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: uploads.placementName } },
@@ -15768,21 +15813,8 @@
     const resolved = resolveObjectTransferQwenRuntime(info)
     const stamp = Date.now()
     const runId = `${OBJECT_TRANSFER_FILENAME_PREFIX}_${stamp}_${Math.random().toString(16).slice(2, 8)}`
-    const tool = objectTransferState()
-    const sceneCanvas = await sourceFullCanvas(await sourceSize())
-    const styleKey = `${String(state.activeSourceResourceId || state.source && state.source.id || '')}:${String(tool.referenceCutoutDataUrl || '').length}`
-    if (!tool.referenceStyledDataUrl || tool.referenceStyledKey !== styleKey) {
-      const styled = await objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, tool.referenceCutoutDataUrl, sceneCanvas, runId)
-      tool.referenceStyledDataUrl = styled.styledCutout
-      tool.referenceStyledKey = styleKey
-      state.lastProcessingDebug = {
-        ...(state.lastProcessingDebug || {}),
-        objectTransfer: {
-          ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}),
-          restyle: { plateSize: styled.plateSize, cached: false }
-        }
-      }
-    }
+    // No restyle pass: the blue guide never shows the model the object's own rendering, so there is
+    // nothing to restyle — the prompt already tells it to draw the object as image 1's artist would.
     const assets = await objectTransferBuildInputCanvases()
     setSplitBusyDetail('\u6b63\u5728\u4e0a\u4f20\u4e07\u7269\u8fc1\u79fb\u4e34\u65f6\u8f93\u5165...')
     const placementName = await uploadDataUrl(baseUrl, `${runId}_placement.png`, assets.plateDataUrl)
