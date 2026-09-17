@@ -254,43 +254,14 @@
   const IMAGE_ANGLE_ADJUST_ZOOM_STEP = 0.1
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_SCREEN_OFFSET = 141
   const OBJECT_TRANSFER_TIMEOUT_MS = 30 * 60 * 1000
-  // How far past the blue placement guide the model may repaint: enough for the object's own edge
-  // and its cast shadow, and no further — everything outside stays frozen in the latent.
-  // The region the model may repaint, as fractions of the placement box. It has to be much larger than
-  // any shadow it might draw, or the shadow's falloff is cut off at the region's edge and reads as a
-  // stamped-on shape — which is exactly what the user rejected ("这投影完全就是后期加的").
-  const OBJECT_TRANSFER_REGION_PAD_X = 0.4
-  const OBJECT_TRANSFER_REGION_PAD_UP = 0.08
-  const OBJECT_TRANSFER_REGION_PAD_DOWN = 0.3
-  const OBJECT_TRANSFER_REGION_RADIUS = 0.18
-  const OBJECT_TRANSFER_REGION_FEATHER_RATIO = 0.09
-  const OBJECT_TRANSFER_REGION_FEATHER_MIN = 24
-  const OBJECT_TRANSFER_REGION_FEATHER_MAX = 72
-  // 0..255. A latent noise mask is not a stencil: ComfyUI blends the model's prediction with the frozen
-  // latent by the mask VALUE at every step (KSamplerX0Inpaint in comfy/samplers.py), so this is a
-  // per-pixel denoise strength. Full strength on the object; part strength over the ground, which both
-  // keeps the marble's own veining and nosings anchored and sets how dark the cast shadow comes out.
-  // Measured live: 110 -> no shadow at all, 170 -> a soft shadow lying on the steps, 210 -> heavy,
-  // a binary 255 region -> the model rebuilt the floor and painted a black silhouette.
-  const OBJECT_TRANSFER_REGION_STRENGTH = 170
-  // Everywhere outside the region. Non-zero so the whole frame really is sampled as one picture; low
-  // enough that the parts of the painting nobody asked to change keep their detail.
-  const OBJECT_TRANSFER_FRAME_FLOOR = 24
-  // The object's own strength. At full 255 the sampler rebuilds it from noise and its value drifts — it
-  // came back darker than the picture, and the model then painted a warm halo around it to explain the
-  // dark silhouette. At 205 the placed object keeps pulling its own colours back while its shading, its
-  // edges and its contact with the ground are still repainted (measured live 2026-09-17).
-  const OBJECT_TRANSFER_OBJECT_STRENGTH = 205
-  const OBJECT_TRANSFER_OBJECT_BAND = 12
-  const OBJECT_TRANSFER_OBJECT_FEATHER = 6
-  // Anything the sampler was allowed to move at all is pasted back whole. The grading already happened
-  // in the latent; re-applying it at paste time would fade out the shadow's tail a second time.
-  const OBJECT_TRANSFER_PASTE_FLOOR = 6
-  const OBJECT_TRANSFER_OBJECT_GROW = 4
+  // The one constraint on the pass. The whole frame is repainted at this strength — uniformly, so no
+  // part of the picture reads as "the re-rendered patch". Swept live on the user's scene with the object
+  // composited in: 1.0 rebuilt the sky, the floor and her dress (drift 87/255); 0.85 held the picture and
+  // fused the object (20.4); 0.70 is the closest to the original that still repaints the object into it
+  // (17.2). Every masked variant scored better on drift and worse on the only thing that matters — the
+  // user called all of them 乱贴.
+  const OBJECT_TRANSFER_DENOISE = 0.7
   const OBJECT_TRANSFER_RESTYLE_BACKGROUND = '#808080'
-  const OBJECT_TRANSFER_SCENE_SUBJECT_ALPHA = 24
-  const OBJECT_TRANSFER_SCENE_SUBJECT_GROW = 6
-  const OBJECT_TRANSFER_PROTECTION_FEATHER = 4
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
   const OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE = '\u53c2\u8003\u7269\u4e3b\u4f53\u4e0d\u6e05\u6670\uff0c\u8bf7\u6362\u4e00\u5f20\u80cc\u666f\u66f4\u7b80\u5355\u7684\u56fe\u7247\u3002'
@@ -15476,48 +15447,6 @@
     return canvas
   }
 
-  function objectTransferRegionRect(size, bounds) {
-    const width = Math.max(1, Math.round(Number(size && size.width) || 1))
-    const height = Math.max(1, Math.round(Number(size && size.height) || 1))
-    const padX = Math.round(bounds.width * OBJECT_TRANSFER_REGION_PAD_X)
-    const padUp = Math.round(bounds.height * OBJECT_TRANSFER_REGION_PAD_UP)
-    const padDown = Math.round(bounds.height * OBJECT_TRANSFER_REGION_PAD_DOWN)
-    const x0 = clampNumber(bounds.x - padX, -width, width * 2)
-    const y0 = clampNumber(bounds.y - padUp, -height, height * 2)
-    const x1 = clampNumber(bounds.x + bounds.width + padX, -width, width * 2)
-    const y1 = clampNumber(bounds.y + bounds.height + padDown, -height, height * 2)
-    return { x0, y0, x1, y1 }
-  }
-
-  function objectTransferRegionMaskCanvas(size, bounds) {
-    // A rounded apron around the placement, reaching much further down than up: that is where a shadow
-    // on a horizontal surface lands. Its shape is deliberately NOT derived from the object's silhouette
-    // — a mask built by dilating the silhouette can only ever contain shapes that are a function of the
-    // distance to it, which is an aura. A cast shadow is the silhouette projected onto the ground, and
-    // it is not a subset of any dilation.
-    const width = Math.max(1, Math.round(Number(size && size.width) || 1))
-    const height = Math.max(1, Math.round(Number(size && size.height) || 1))
-    const rect = objectTransferRegionRect(size, bounds)
-    const canvas = canvasOfSize(width, height)
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    ctx.fillStyle = '#000000'
-    ctx.fillRect(0, 0, width, height)
-    const radius = Math.max(0, Math.round(Math.min(rect.x1 - rect.x0, rect.y1 - rect.y0) * OBJECT_TRANSFER_REGION_RADIUS))
-    ctx.fillStyle = '#ffffff'
-    ctx.beginPath()
-    if (typeof ctx.roundRect === 'function') ctx.roundRect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0, radius)
-    else ctx.rect(rect.x0, rect.y0, rect.x1 - rect.x0, rect.y1 - rect.y0)
-    ctx.fill()
-    const feather = Math.round(clampNumber(
-      Math.min(bounds.width, bounds.height) * OBJECT_TRANSFER_REGION_FEATHER_RATIO,
-      OBJECT_TRANSFER_REGION_FEATHER_MIN,
-      OBJECT_TRANSFER_REGION_FEATHER_MAX
-    ))
-    // The mask is point-sampled down to the latent grid (bilinear, ~7.3 scene px per cell), so the ramp
-    // has to be tens of pixels wide to survive as a ramp at all.
-    return maskScaleCanvas(featherMaskCanvas(canvas, feather), OBJECT_TRANSFER_REGION_STRENGTH / 255)
-  }
-
   function objectTransferCompGuideCanvas(baseCanvas, subjectCanvas) {
     // A blue silhouette turns the job into "fill this hole", and the model fills it by copying the
     // reference's own rendering — a 3D render dropped into a painted scene. Giving it a rough composite
@@ -15544,57 +15473,27 @@
     const transferSubjectCanvas = canvasOfSize(size.width, size.height)
     transferSubjectCanvas.getContext('2d', { willReadFrequently: true }).drawImage(cutoutCanvas, bounds.x, bounds.y, bounds.width, bounds.height)
     const alphaMask = alphaMaskFromCanvas(transferSubjectCanvas)
-    const hardAlphaMask = thresholdMaskCanvas(alphaMask, 12)
-    const transferMaskCanvas = hardAlphaMask
+    const transferMaskCanvas = thresholdMaskCanvas(alphaMask, 12)
     const stats = objectTransferMaskStats(transferMaskCanvas)
     if (stats.max <= 8 || stats.pixels < 16) throw new Error(OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE)
+    // The object composited into the picture: that, and the denoise strength, are the whole constraint.
     const placementGuideCanvas = objectTransferCompGuideCanvas(baseCanvas, transferSubjectCanvas)
-    // Everything the model is allowed to repaint: the placement silhouette plus room for the object's
-    // edge and its cast shadow. Outside this the latent is frozen, so the scene cannot drift.
-    const objectMaskCanvas = expandedMaskCanvas(paintableMaskCanvas(hardAlphaMask, 8, false), OBJECT_TRANSFER_OBJECT_GROW, 0)
-    // The model has to render the object, its contact shadow and the light wrap around it as one thing —
-    // that integration is the whole point, and rebuilding it from rules afterwards is what made the
-    // result look like a sticker. So it gets a band around the silhouette, wide enough for a contact
-    // shadow and no wider: the model fills whatever room it is given, and an extra oval of ground came
-    // back first as a black puddle and then as a grey decal. Its output is pasted verbatim. The
-    // one thing it must not touch is the scene's existing subject where the object does not cover it
-    // (it drew a high-heeled shoe onto the character's bare foot), and that is excluded HERE, in the
-    // latent: the sampler then composes against those frozen pixels instead of us patching them back.
-    const objectBandCanvas = maskScaleCanvas(featherMaskCanvas(
-      expandedMaskCanvas(paintableMaskCanvas(transferMaskCanvas, 8, false), OBJECT_TRANSFER_OBJECT_BAND, 0),
-      OBJECT_TRANSFER_OBJECT_FEATHER
-    ), OBJECT_TRANSFER_OBJECT_STRENGTH / 255)
-    const regionMaskCanvas = objectTransferRegionMaskCanvas(size, bounds)
-    const frameFloorCanvas = maskScaleCanvas(solidMaskCanvas(size.width, size.height), OBJECT_TRANSFER_FRAME_FLOOR / 255)
-    const roomMaskCanvas = maskMaxCanvas(maskMaxCanvas(regionMaskCanvas, objectBandCanvas), frameFloorCanvas)
-    setSplitBusyDetail('正在识别画面中已有的主体...')
-    const sceneSubjectCanvas = await canvasFromDataUrl(await runRmbgCutout(baseCanvas.toDataURL('image/png')), size.width, size.height)
-    const sceneSubjectMask = expandedMaskCanvas(paintableMaskCanvas(sceneSubjectCanvas, OBJECT_TRANSFER_SCENE_SUBJECT_ALPHA, true), OBJECT_TRANSFER_SCENE_SUBJECT_GROW, 0)
-    const protectionCanvas = maskSubtractCanvas(sceneSubjectMask, objectMaskCanvas, 8)
-    const noiseMaskCanvas = maskAttenuateCanvas(roomMaskCanvas, featherMaskCanvas(thresholdMaskCanvas(protectionCanvas, 8), OBJECT_TRANSFER_PROTECTION_FEATHER))
     const plateSize = qwenEditPlateSize(size.width, size.height)
     const plateCanvas = qwenEditPlateCanvas(placementGuideCanvas, plateSize)
-    const plateContent = plateCanvas.__plateContent
-    const noiseMaskPlateCanvas = qwenEditPlateCanvas(noiseMaskCanvas, plateSize)
     return {
       size,
       bounds,
       baseCanvas,
-      subjectMaskCanvas: hardAlphaMask,
+      subjectMaskCanvas: transferMaskCanvas,
       transferMaskCanvas,
-      noiseMaskCanvas,
-      objectMaskCanvas,
-      protectionCanvas,
-      regionRect: objectTransferRegionRect(size, bounds),
-      regionStrength: OBJECT_TRANSFER_REGION_STRENGTH,
+      denoise: OBJECT_TRANSFER_DENOISE,
       plateSize,
-      plateContent,
+      plateContent: plateCanvas.__plateContent,
       plateDataUrl: plateCanvas.toDataURL('image/png'),
-      noiseMaskPlateDataUrl: noiseMaskPlateCanvas.toDataURL('image/png'),
       placementGuideDataUrl: placementGuideCanvas.toDataURL('image/png'),
       referenceDataUrl: tool.referenceOriginalDataUrl,
       maskStats: stats,
-      guideMode: 'single-pass-graded-frame-latent'
+      guideMode: 'single-pass-whole-frame-repaint'
     }
   }
 
@@ -15708,7 +15607,7 @@
     ].join(' ')
   }
 
-  function buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, prompt, maskName) {
+  function buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, prompt, maskName, denoise) {
     // The 万物迁移 graph, shared by both passes: an unscaled plate, an optional latent noise mask, and a
     // second image as the reference. No FluxKontextImageScale — it center-crops and cannot be inverted.
     const ksampler = info.KSampler
@@ -15762,7 +15661,7 @@
         cfg: 1,
         sampler_name: 'euler',
         scheduler: 'simple',
-        denoise: 1,
+        denoise: denoise == null ? 1 : denoise,
         model: modelRef,
         positive: positiveRef,
         negative: negativeRef,
@@ -15779,7 +15678,7 @@
   }
 
   function buildObjectTransferQwenWorkflow(info, uploads, prefix, resolved) {
-    const workflow = buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferPromptText(), uploads.maskName)
+    const workflow = buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferPromptText(), null, OBJECT_TRANSFER_DENOISE)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
@@ -15848,17 +15747,15 @@
     const baseCanvas = assets && assets.baseCanvas || await sourceFullCanvas(size)
     setSplitBusyDetail('\u6b63\u5728\u89e3\u7801\u751f\u6210\u7ed3\u679c...')
     const finalCanvas = await qwenEditPlateResultCanvas(dataUrl, assets.plateSize, assets.plateContent, width, height, '\u4e07\u7269\u8fc1\u79fb')
-    // Diagnostics only — nothing below changes a pixel. Outside the region the latent was held at the
-    // encoded original, so what is measured here is the VAE round trip, and it is worth watching: it is
-    // the price of generating the whole picture in one pass instead of patching a hole in it.
-    const outsideCanvas = thresholdMaskCanvas(assets.noiseMaskCanvas, OBJECT_TRANSFER_PASTE_FLOOR)
-    const changedOutside = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(outsideCanvas)), 8)
+    // Diagnostics only — nothing below changes a pixel. How far the repaint moved the rest of the
+    // picture is the one number worth watching, because it is the whole cost of painting it all at once.
+    const drift = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(assets.transferMaskCanvas)), 8)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
         ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}),
         pasteBack: 'none-single-pass-decode',
-        pasteMask: { postprocess: 'none', regionStrength: assets.regionStrength, outsideRegionChangedPixels: changedOutside }
+        pasteMask: { postprocess: 'none', denoise: assets.denoise, pixelsChangedOutsideTheObject: drift }
       }
     }
     return finalCanvas.toDataURL('image/png')
@@ -15890,8 +15787,7 @@
     setSplitBusyDetail('\u6b63\u5728\u4e0a\u4f20\u4e07\u7269\u8fc1\u79fb\u4e34\u65f6\u8f93\u5165...')
     const placementName = await uploadDataUrl(baseUrl, `${runId}_placement.png`, assets.plateDataUrl)
     const referenceName = await uploadDataUrl(baseUrl, safeDownloadFileName(`${runId}_${objectTransferState().referenceFileName || 'reference.png'}`, `${runId}_reference.png`), assets.referenceDataUrl)
-    const maskName = await uploadDataUrl(baseUrl, `${runId}_mask.png`, assets.noiseMaskPlateDataUrl)
-    const workflow = buildObjectTransferQwenWorkflow(info, { placementName, referenceName, maskName }, runId, resolved)
+    const workflow = buildObjectTransferQwenWorkflow(info, { placementName, referenceName }, runId, resolved)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
@@ -15900,10 +15796,9 @@
         placement: assets.bounds,
         maskStats: assets.maskStats,
         guideMode: assets.guideMode,
-        runtimeInputs: { placementName, referenceName, maskName },
+        runtimeInputs: { placementName, referenceName },
         plateSize: assets.plateSize,
-        regionRect: assets.regionRect,
-        regionStrength: assets.regionStrength
+        denoise: assets.denoise
       }
     }
     setSplitBusyDetail(`Qwen Image Edit 2511\n${assets.plateSize.width} x ${assets.plateSize.height} px`)
