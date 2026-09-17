@@ -15875,28 +15875,102 @@
     return canvas
   }
 
+  // How far past the placement box the pass is allowed to have changed things, as a fraction of the
+  // object's own size. Sideways and downwards is where a cast shadow goes; upwards almost nothing does.
+  const OBJECT_TRANSFER_RESTORE_REACH_SIDE = 0.85
+  const OBJECT_TRANSFER_RESTORE_REACH_DOWN = 0.55
+  const OBJECT_TRANSFER_RESTORE_REACH_UP = 0.18
+  // Below this much change a pixel is treated as untouched and restored outright; the ramp above it is
+  // what keeps the blend continuous.
+  const OBJECT_TRANSFER_RESTORE_KEEP_FROM = 26
+  const OBJECT_TRANSFER_RESTORE_KEEP_RAMP = 34
+
+  function objectTransferRestoredCanvas(baseCanvas, resultCanvas, bounds) {
+    // Put the untouched picture back everywhere the pass had no business changing it.
+    //
+    // The integration pass runs at denoise 1, so it repaints the whole frame and relights it on the way.
+    // The object and its cast shadow are what was asked for; the sky going darker and the steps picking
+    // up a new highlight are not — measured on the tuned picture, 227k pixels outside the placement box
+    // came back changed. The user asked for this directly after seeing that: "可以用A..然后回贴不就好了，
+    // 尽量去掉影响".
+    //
+    // It is NOT the paste-back that was rejected four times earlier. Those cut a REGION out and dropped
+    // it in, and the cut showed as a rectangle every time — "有明显的衔接方块". This has no region and no
+    // edge anywhere. Two continuous factors multiply:
+    //   distance   — 1 inside the placement box, falling off linearly outwards, and falling off more
+    //                slowly downwards and sideways because that is where a cast shadow reaches.
+    //   difference — how much the pixel actually changed. Barely touched restores fully; repainted (the
+    //                object, its shadow) keeps the new value, with a ramp between.
+    // Neither factor has a boundary, so neither does the result.
+    const width = Math.max(1, Math.round(baseCanvas.width || 1))
+    const height = Math.max(1, Math.round(baseCanvas.height || 1))
+    const bx = Math.round(Number(bounds && bounds.x) || 0)
+    const by = Math.round(Number(bounds && bounds.y) || 0)
+    const bw = Math.max(1, Math.round(Number(bounds && bounds.width) || 1))
+    const bh = Math.max(1, Math.round(Number(bounds && bounds.height) || 1))
+    const reachSide = Math.max(1, bw * OBJECT_TRANSFER_RESTORE_REACH_SIDE)
+    const reachDown = Math.max(1, bh * OBJECT_TRANSFER_RESTORE_REACH_DOWN)
+    const reachUp = Math.max(1, bh * OBJECT_TRANSFER_RESTORE_REACH_UP)
+
+    const out = canvasOfSize(width, height)
+    const ctx = out.getContext('2d', { willReadFrequently: true })
+    const base = baseCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height)
+    const res = resultCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height)
+    const image = ctx.createImageData(width, height)
+    let restored = 0
+    for (let y = 0; y < height; y += 1) {
+      const dyUp = Math.max(by - y, 0)
+      const dyDown = Math.max(y - (by + bh), 0)
+      const nearY = Math.max(0, 1 - dyUp / reachUp) * Math.max(0, 1 - dyDown / reachDown)
+      for (let x = 0; x < width; x += 1) {
+        const i = (y * width + x) * 4
+        let weight = 0
+        if (nearY > 0) {
+          const dx = Math.max(Math.max(bx - x, x - (bx + bw)), 0)
+          const near = nearY * Math.max(0, 1 - dx / reachSide)
+          if (near > 0) {
+            const diff = Math.max(
+              Math.abs(res.data[i] - base.data[i]),
+              Math.abs(res.data[i + 1] - base.data[i + 1]),
+              Math.abs(res.data[i + 2] - base.data[i + 2])
+            )
+            const strength = Math.min(1, Math.max(0, (diff - OBJECT_TRANSFER_RESTORE_KEEP_FROM) / OBJECT_TRANSFER_RESTORE_KEEP_RAMP))
+            weight = near * strength
+          }
+        }
+        if (weight < 1) restored += 1
+        image.data[i] = base.data[i] + (res.data[i] - base.data[i]) * weight
+        image.data[i + 1] = base.data[i + 1] + (res.data[i + 1] - base.data[i + 1]) * weight
+        image.data[i + 2] = base.data[i + 2] + (res.data[i + 2] - base.data[i + 2]) * weight
+        image.data[i + 3] = 255
+      }
+    }
+    ctx.putImageData(image, 0, 0)
+    out.__restoredPixels = restored
+    return out
+  }
+
   async function objectTransferDecodedResultDataUrl(dataUrl, assets) {
-    // NOTHING is composited here. The model was handed the whole frame and a per-pixel denoise strength,
-    // and the frame it decoded is the result — the picture and the object were rendered together, in one
-    // pass, which is the only way the object's shading, its cast shadow and the picture's own effects
-    // over it can be the same brush strokes. The user rejected every version that stitched a region back
-    // afterwards: "不要2次加工，应该是生成之前就约束好。直接生成成品才对。你现在做的全是乱贴".
-    // All this function does is undo the plate scaling, which is the inverse of how the frame was sent.
+    // The picture and the object are still RENDERED together, in one pass, at one strength — that part
+    // never changed and is the only way the object's shading, its cast shadow and the picture's own
+    // effects over it can be the same brush strokes. What happens after the decode is that the untouched
+    // picture is faded back in wherever the pass changed something it was not asked to change. See
+    // objectTransferRestoredCanvas for why that is not the region paste-back the user rejected.
     const size = assets && assets.size || await sourceSize()
     const width = Math.max(1, Math.round(size.width || 1))
     const height = Math.max(1, Math.round(size.height || 1))
     const baseCanvas = assets && assets.baseCanvas || await sourceFullCanvas(size)
     setSplitBusyDetail('\u6b63\u5728\u89e3\u7801\u751f\u6210\u7ed3\u679c...')
-    const finalCanvas = await qwenEditPlateResultCanvas(dataUrl, assets.plateSize, assets.plateContent, width, height, '\u4e07\u7269\u8fc1\u79fb')
-    // Diagnostics only — nothing below changes a pixel. How far the repaint moved the rest of the
-    // picture is the one number worth watching, because it is the whole cost of painting it all at once.
-    const drift = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(assets.transferMaskCanvas)), 8)
+    const decodedCanvas = await qwenEditPlateResultCanvas(dataUrl, assets.plateSize, assets.plateContent, width, height, '\u4e07\u7269\u8fc1\u79fb')
+    const driftBefore = countUnmaskedPixelChanges(baseCanvas, decodedCanvas, normalizeMaskCanvas(cloneCanvas(assets.transferMaskCanvas)), 8)
+    const finalCanvas = objectTransferRestoredCanvas(baseCanvas, decodedCanvas, assets.bounds)
+    const driftAfter = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(assets.transferMaskCanvas)), 8)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
         ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}),
-        pasteBack: 'none-single-pass-decode',
-        pasteMask: { postprocess: 'none', denoise: assets.denoise, pixelsChangedOutsideTheObject: drift }
+        pasteBack: 'continuous-restore-outside-object',
+        pasteMask: { postprocess: 'restore', denoise: assets.denoise, pixelsChangedOutsideTheObject: driftAfter, beforeRestore: driftBefore }
       }
     }
     return finalCanvas.toDataURL('image/png')
