@@ -15614,7 +15614,12 @@
         'Keep the object own colours, materials, markings, parts and proportions exactly the same; do not recolour it and do not add or remove any part.',
         'The parts that glow in image 1 keep glowing in the same colour and no brighter, with no extra bloom; every part that does not glow in image 1 stays unlit; do not add any new lamp, light or glowing panel.',
         'Same parts in the same places, same pose.',
-        'Put it alone on a plain flat grey background with no shadow.'
+        // Saying "no shadow" is not enough once this pass runs at cfg 2.5: swept three seeds, the model
+        // painted a ground shadow under the object in two of them, RMBG-2.0 kept that shadow as part of
+        // the subject (measured: it survives into the alpha), the composite guide carried it in, and the
+        // integration pass then rendered it as a real cast shadow four times too big. Denying the GROUND
+        // instead of the shadow fixed all three seeds.
+        'The object is floating in empty space with nothing underneath it and nothing behind it. It is not standing on anything and it is not resting on anything. Fill the whole background with one even flat colour, edge to edge, and put no shadow, no dark patch, no ground, no floor and no reflection anywhere in it.'
       ].join(' ')
     }
     // Stage 1, tuned live 2026-09-17. Naming the style ("art style of image 2") gave a flat vector
@@ -15631,7 +15636,8 @@
       'Copy image 1 exactly on which parts are lit: the parts that glow in image 1 keep glowing in the same colour and no brighter, with no extra bloom around them, and every part that is not lit in image 1 stays unlit. Do not add any new lamp, light or glowing panel anywhere on it.',
       'Change only how it is painted: image 2 soft painted shading, its edge treatment, its brush work and its level of surface detail.',
       'Drop image 1 photographic look: no blown out specular hotspots on its shell, no mirror reflections.',
-      'Same object, same shape, same parts, same pose. Plain flat grey background, no shadow.'
+      'Same object, same shape, same parts, same pose.',
+      'The object is floating in empty space with nothing underneath it and nothing behind it. It is not standing on anything and it is not resting on anything. Fill the whole background with one even flat colour, edge to edge, and put no shadow, no dark patch, no ground, no floor and no reflection anywhere in it.'
     ].join(' ')
   }
 
@@ -15697,8 +15703,8 @@
     // Never name the object or the surface here — this runs on whatever the user dropped in.
     return [
       '\u628a\u56fe1\u4e2d\u7684\u7269\u4f53\u6309\u56fe1\u91cc\u7684\u4f4d\u7f6e\u548c\u5927\u5c0f\u653e\u8fdb\u56fe2\u7684\u753b\u9762\u91cc\u3002',
-      '\u91cd\u65b0\u7ed8\u5236\u7269\u4f53\u5e95\u90e8\u5468\u56f4\u7684\u5730\u9762\uff0c\u753b\u51fa\u5b83\u538b\u5728\u5730\u9762\u4e0a\u7684\u4e00\u5c0f\u7247\u6d45\u6de1\u63a5\u89e6\u6697\u90e8\uff0c\u6295\u5f71\u77ed\u800c\u67d4\u548c\u3001\u7d27\u8d34\u5e95\u90e8\u8fb9\u7f18\uff0c\u5730\u9762\u539f\u6709\u7684\u7eb9\u7406\u548c\u4eae\u5ea6\u4fdd\u6301\u4e0d\u53d8\u3002',
-      '\u753b\u9762\u5176\u4f59\u90e8\u5206\u4fdd\u6301\u4e0d\u53d8\u3002'
+      '\u91cd\u65b0\u7ed8\u5236\u7269\u4f53\u5e95\u90e8\u5468\u56f4\u7684\u5730\u9762\uff0c\u753b\u51fa\u5b83\u538b\u5728\u5730\u9762\u4e0a\u7684\u4e00\u5c0f\u7247\u6d45\u6de1\u63a5\u89e6\u6697\u90e8\uff1b\u8fd9\u7247\u6697\u90e8\u5f88\u5c0f\uff0c\u5bbd\u5ea6\u4e0d\u8d85\u8fc7\u7269\u4f53\u672c\u8eab\uff0c\u7d27\u8d34\u5e95\u90e8\u8fb9\u7f18\uff0c\u4e0d\u8981\u62c9\u957f\u3001\u4e0d\u8981\u5927\u7247\u3001\u4e0d\u8981\u76d6\u4f4f\u5927\u7247\u5730\u9762\u3002',
+      '\u5730\u9762\u539f\u6709\u7684\u7eb9\u7406\u548c\u4eae\u5ea6\u4fdd\u6301\u4e0d\u53d8\u3002\u753b\u9762\u5176\u4f59\u90e8\u5206\u4fdd\u6301\u4e0d\u53d8\u3002'
     ].join('')
   }
 

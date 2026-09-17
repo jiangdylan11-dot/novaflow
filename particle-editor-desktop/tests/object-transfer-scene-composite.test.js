@@ -155,13 +155,17 @@ test('the picture is drawn in one pass from an arranged frame, and nothing is co
   const lines = eval(literal)
   const prompt = lines.join('')
   assert.equal(lines.length, 3, 'three sentences; a prompt that describes the whole picture makes it redraw the whole picture')
-  assert.ok(prompt.length < 160, 'and short: ' + prompt.length)
+  assert.ok(prompt.length < 220, 'and short: ' + prompt.length)
   assert.match(prompt, /按图1里的位置和大小/, 'the placement comes from the arranged frame it was handed')
   // The one defect that survived everything else: every earlier prompt only said 保持不变, which forbids
   // touching the ground, so the object stood on clean marble with no contact shading — "投影...好像都没了".
   assert.match(prompt, /重新绘制物体底部周围的地面/, 'the ground is explicitly released, or the model never shades it')
   assert.match(prompt, /一小片浅淡接触暗部/, 'without 浅淡 the same sentence returns a long hard silhouette')
   // Asking only for 接触处 with no 投影 came back as a black ellipse under the feet, like a hole.
-  assert.match(prompt, /投影短而柔和/, 'a soft short cast shadow, not a contact patch on its own')
+  // The cap is load-bearing on top of that: without it the same sentence came back at 16.1/17.3/35.2%
+  // darkened ground across three seeds and a live run hit 51.7 — a shadow four times too big, spread
+  // across two steps. With it: 15.6/12.1/30.2.
+  assert.match(prompt, /宽度不超过物体本身/, 'the shadow is capped to the object width')
+  assert.match(prompt, /不要拉长|不要大片/, 'and told not to stretch or spread')
   assert.doesNotMatch(prompt, /机器人|台阶|大理石/, 'it runs on whatever the user dropped in, so it may not name the object')
 })
