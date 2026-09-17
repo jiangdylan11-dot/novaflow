@@ -964,6 +964,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   promptAssistantStoryboardFinalShotPrompts: (payload) => ipcRenderer.invoke("prompt-assistant-storyboard-final-shot-prompts", payload),
   promptAssistantStoryboardUnifiedNineShots: (payload) => ipcRenderer.invoke("prompt-assistant-storyboard-unified-nine-shots", payload),
   promptAssistantStoryboardDirectorPlan: (payload) => ipcRenderer.invoke("prompt-assistant-storyboard-director-plan", payload),
+  promptAssistantDescribeArtStyle: (payload) => ipcRenderer.invoke("prompt-assistant-describe-art-style", payload),
   promptAssistantReverseImagePrompt: (payload) => ipcRenderer.invoke("prompt-assistant-reverse-image-prompt", payload),
   runtimeOpenAssetsFolder: () => ipcRenderer.invoke("runtime-open-assets-folder"),
   runtimeOpenOutputFolder: () => ipcRenderer.invoke("runtime-open-output-folder"),

@@ -275,6 +275,11 @@
   // the whole frame gone blue (R-B -34 to -49 against the original's -24.8). These five name only the
   // sticker failure modes the user kept rejecting, and nothing about how anything is lit.
   const OBJECT_TRANSFER_NEGATIVE_PROMPT = '\u7269\u4f53\u6d6e\u5728\u534a\u7a7a\uff0c\u8d34\u7eb8\uff0c\u63cf\u8fb9\uff0c\u62fc\u63a5\u8fb9\u7f18\uff0c\u5e73\u6d82\u8272\u5757'
+  // The 画风转换 pass runs harder than the integration pass, and it has to. Measured live against four
+  // scenes rebuilt from one picture (cel-shaded, ink wash, pixel art, photographic): at the plate
+  // builder's default 6 steps / cfg 1 the object came back unchanged in four cases out of five.
+  const OBJECT_TRANSFER_RESTYLE_STEPS = 8
+  const OBJECT_TRANSFER_RESTYLE_CFG = 2.5
   const OBJECT_TRANSFER_RESTYLE_BACKGROUND = '#808080'
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
@@ -15555,7 +15560,63 @@
     return { unetName, clipName, vaeName, loraName }
   }
 
-  function objectTransferRestylePromptText() {
+  async function objectTransferSceneArtStyleText(sceneCanvas) {
+    // Qwen Image Edit does not infer image 2's style and apply it to image 1. Measured 2026-09-17 on four
+    // scenes rebuilt from one picture: handed the scene as a reference the object came back unrendered in
+    // four cases out of five, and nothing in the graph fixed it — not the prompt wording, not swapping
+    // which reference the scene is, not cfg 1 -> 2.5, not 6 -> 8 steps. Handed the SAME style as text it
+    // rendered all four correctly. So the style is read out as words here, by the local Qwen3-VL the
+    // prompt assistant already ships, and passed into the prompt alongside the picture itself: the words
+    // are what makes it change at all, the picture is what keeps it faithful to this particular scene.
+    // Best effort on purpose. Without the words the pass still runs and still matches a scene that is
+    // already close to the object's own rendering, which is every result this feature was tuned on.
+    const api = window.electronAPI
+    if (!api || typeof api.promptAssistantDescribeArtStyle !== 'function') return ''
+    try {
+      setSplitBusyDetail('正在读取画面的画风...')
+      const result = await api.promptAssistantDescribeArtStyle({ name: 'scene.png', dataUrl: sceneCanvas.toDataURL('image/png') })
+      const style = String(result && result.style || '').trim()
+      state.lastProcessingDebug = {
+        ...(state.lastProcessingDebug || {}),
+        objectTransfer: { ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}), sceneArtStyle: style.slice(0, 400) }
+      }
+      return style
+    } catch (error) {
+      state.lastProcessingDebug = {
+        ...(state.lastProcessingDebug || {}),
+        objectTransfer: { ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}), sceneArtStyleError: String(error && error.message || error).slice(0, 300) }
+      }
+      return ''
+    }
+  }
+
+  function objectTransferRestylePromptText(sceneArtStyle) {
+    // Two prompts, and which one runs depends on whether the scene's style could be read out as words.
+    //
+    // WITH the words. Measured 2026-09-17 on four scenes rebuilt from one picture — cel-shaded with black
+    // linework, Chinese ink wash, 8-bit pixel art, photographic. Naming the style is the only thing that
+    // made the object follow it; the scene image alone never did, at any cfg, any step count, either
+    // reference order and every rewrite of the wording. The scene image still goes in beside the words,
+    // because the words alone let the style bleed where it should not: asked for ink wash by text only,
+    // the model painted paper grain over the flat grey plate and broke the RMBG that runs next. Words for
+    // whether it changes, picture for whether it changes into THIS scene.
+    //
+    // WITHOUT them — no prompt assistant, no model, a VLM that failed — the original six sentences run
+    // unchanged. They name a soft painted target outright, which is wrong for a cel or pixel scene but
+    // exactly right for the kind of picture this feature was tuned on, and it is what shipped.
+    const style = String(sceneArtStyle || '').trim()
+    if (style) {
+      return [
+        'Redraw the object from image 1 so it is rendered exactly the way image 2 is rendered.',
+        style,
+        // Same four pins as below. They are what the whole pass is worth: the object's identity, its
+        // emissive parts in BOTH directions, its pose, and a plate the cutout can still be keyed from.
+        'Keep the object own colours, materials, markings, parts and proportions exactly the same; do not recolour it and do not add or remove any part.',
+        'The parts that glow in image 1 keep glowing in the same colour and no brighter, with no extra bloom; every part that does not glow in image 1 stays unlit; do not add any new lamp, light or glowing panel.',
+        'Same parts in the same places, same pose.',
+        'Put it alone on a plain flat grey background with no shadow.'
+      ].join(' ')
+    }
     // Stage 1, tuned live 2026-09-17. Naming the style ("art style of image 2") gave a flat vector
     // sticker. Asking for the artist's rendering language fixed that but the model read "same palette as
     // image 2" as permission to recolour the object into the scene's palette: the robot came back pale
@@ -15574,11 +15635,14 @@
     ].join(' ')
   }
 
-  function buildObjectTransferRestyleWorkflow(info, uploads, prefix, resolved) {
-    return buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferRestylePromptText())
+  function buildObjectTransferRestyleWorkflow(info, uploads, prefix, resolved, sceneArtStyle) {
+    return buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferRestylePromptText(sceneArtStyle), null, 1, {
+      steps: OBJECT_TRANSFER_RESTYLE_STEPS,
+      cfg: OBJECT_TRANSFER_RESTYLE_CFG
+    })
   }
 
-  async function objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, cutoutDataUrl, sceneCanvas, runId) {
+  async function objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, cutoutDataUrl, sceneCanvas, runId, sceneArtStyle) {
     // The object is repainted on its own, on flat grey, so the model has nothing to do but change how it
     // is drawn. Placing an already in-style object is what makes the integration pass an integration
     // instead of a rescue: no colour grade afterwards can do this, it is a rendering change.
@@ -15595,7 +15659,7 @@
     setSplitBusyDetail('正在把参考物体转成画面的画风...')
     const objectName = await uploadDataUrl(baseUrl, `${runId}_restyle_object.png`, plate.toDataURL('image/png'))
     const sceneName = await uploadDataUrl(baseUrl, `${runId}_restyle_scene.png`, sceneCanvas.toDataURL('image/png'))
-    const workflow = buildObjectTransferRestyleWorkflow(info, { placementName: objectName, referenceName: sceneName }, `${runId}_restyle`, resolved)
+    const workflow = buildObjectTransferRestyleWorkflow(info, { placementName: objectName, referenceName: sceneName }, `${runId}_restyle`, resolved, sceneArtStyle)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, `${runId}_restyle`, OBJECT_TRANSFER_TIMEOUT_MS)
     const decoded = await qwenEditPlateResultCanvas(resultDataUrl, plateSize, content, width, height, '画风转换')
     setSplitBusyDetail('正在抠出转换后的物体...')
@@ -15608,10 +15672,12 @@
     // Cached on the cutout it was made from: dragging the object around or resizing it does not change how
     // it is painted, so a second run on the same reference skips this pass entirely.
     const tool = objectTransferState()
-    const key = String(tool.referenceCutoutDataUrl || '').slice(-96)
-    if (tool.referenceStyledDataUrl && tool.referenceStyledKey === key) return tool.referenceStyledDataUrl
     const sceneCanvas = await sourceFullCanvas(await sourceSize())
-    const restyled = await objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, tool.referenceCutoutDataUrl, sceneCanvas, runId)
+    const sceneArtStyle = await objectTransferSceneArtStyleText(sceneCanvas)
+    // Keyed on the style too: the same object dropped onto a different picture has to be repainted again.
+    const key = `${String(tool.referenceCutoutDataUrl || '').slice(-96)}|${sceneArtStyle.slice(0, 200)}`
+    if (tool.referenceStyledDataUrl && tool.referenceStyledKey === key) return tool.referenceStyledDataUrl
+    const restyled = await objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, tool.referenceCutoutDataUrl, sceneCanvas, runId, sceneArtStyle)
     tool.referenceStyledDataUrl = restyled.styledCutout
     tool.referenceStyledKey = key
     return restyled.styledCutout

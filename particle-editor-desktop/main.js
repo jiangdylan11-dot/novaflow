@@ -6258,6 +6258,17 @@ ipcMain.handle("prompt-assistant-storyboard-unified-nine-shots", async (_evt, pa
   return await requestPromptAssistant("storyboardUnifiedNineShots", { storyText, sourceAnalysis, visualCuePack, unifiedSeed }, 300_000);
 });
 
+// 万物迁移 needs the scene's style as WORDS before it can repaint an object into it: measured live,
+// Qwen Image Edit never infers image 2's style and applies it to image 1, but renders any style that is
+// named in the prompt. This is the one call that turns a picture into that sentence, and it is separate
+// from reverse-image-prompt because that path carries the animation and UI-design contracts.
+ipcMain.handle("prompt-assistant-describe-art-style", async (_evt, payload) => {
+  const dataUrl = String(payload?.dataUrl || "");
+  if (!dataUrl.startsWith("data:image/")) throw new Error("请先选择可分析的图片");
+  const name = sanitizeFileName(payload?.name || "scene.png");
+  const result = await requestPromptAssistant("describeArtStyle", { images: [{ name, dataUrl }] }, 240_000);
+  return { style: String(result?.style || "").slice(0, 400), model: String(result?.model || "") };
+});
 ipcMain.handle("prompt-assistant-reverse-image-prompt", async (_evt, payload) => {
   const surface = String(payload?.surface || "").trim().slice(0, 80);
   const purpose = String(payload?.purpose || "").trim().slice(0, 80);

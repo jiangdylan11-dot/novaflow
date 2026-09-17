@@ -121,6 +121,33 @@ test('the picture is drawn in one pass from an arranged frame, and nothing is co
   assert.match(source, /const styledCutoutDataUrl = await objectTransferStyledCutoutForRun\(baseUrl, info, resolved, runId\)/, 'the restyle pass runs before the placement')
   assert.match(source, /objectTransferBuildInputCanvases\(styledCutoutDataUrl\)/, 'and the restyled object is what gets placed')
 
+  // And that pass reads the scene's style out as WORDS first. Measured on four scenes rebuilt from one
+  // picture (cel-shaded, ink wash, pixel art, photographic): handed only the scene as a reference image
+  // the object came back unrendered in four cases out of five, at every cfg, step count and reference
+  // order tried. Handed the same style as text it rendered all four. The scene image still goes in with
+  // the words — asked for ink wash by text alone the model painted paper grain over the grey plate and
+  // broke the RMBG that runs next.
+  assert.match(source, /const sceneArtStyle = await objectTransferSceneArtStyleText\(sceneCanvas\)/, 'the scene style is read before the object is repainted')
+  assert.match(source, /promptAssistantDescribeArtStyle/, 'via the local VLM the prompt assistant already ships')
+  const reader = source.slice(source.indexOf('async function objectTransferSceneArtStyleText('))
+  const readerBody = reader.slice(0, reader.indexOf("\n  }\n"))
+  assert.match(readerBody, /if \(!api \|\| typeof api\.promptAssistantDescribeArtStyle !== 'function'\) return ''/, 'best effort: no bridge, no words, the pass still runs')
+  assert.match(readerBody, /catch \(error\)[\s\S]{0,400}?return ''/, 'and a failed VLM never fails the transfer')
+  // The cache has to see the scene too, or the same object dropped on a second picture reuses the first
+  // picture's paint job.
+  assert.match(source, /referenceStyledKey === key/, 'the restyle is cached')
+  assert.match(source, /sceneArtStyle\.slice\(0, 200\)/, 'and the cache key carries the scene style')
+
+  // Without the words the pass falls back to the wording that shipped, which names a soft painted target
+  // outright: wrong for a cel or pixel scene, exactly right for the pictures this was tuned on.
+  const promptFn = source.slice(source.indexOf('function objectTransferRestylePromptText('))
+  assert.match(promptFn.slice(0, 4000), /if \(style\) \{/, 'the style-led prompt is the one that runs when there are words')
+  assert.match(promptFn.slice(0, 6000), /image 2 soft painted shading/, 'and the tuned wording is still there as the fallback')
+  // The restyle pass runs harder than the integration pass: at the plate builder's 6 steps / cfg 1 the
+  // object came back unchanged in four scenes out of five even WITH the words.
+  assert.match(source, /const OBJECT_TRANSFER_RESTYLE_STEPS = 8\b/)
+  assert.match(source, /const OBJECT_TRANSFER_RESTYLE_CFG = 2\.5\b/)
+
   // Three sentences. The long repaint prompt that used to be here was the colour drift: same picture, same
   // settings, prompt swapped, and R-B went from -8.8 back to -26.4 against the original's -24.8.
   const at = source.indexOf('function objectTransferPromptText()')

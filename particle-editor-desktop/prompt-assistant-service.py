@@ -78,6 +78,27 @@ DEFAULT_MODEL_NAME = "qwen_2.5_vl_7b_fp8_scaled.safetensors"
 DEFAULT_REVERSE_QWEN3_MODEL_PATH = Path(
     r"E:\BaiduNetdiskDownload\prompt_generator\Huihui-Qwen3-VL-8B-Instruct-Abliterated"
 )
+# 万物迁移 asks the local VLM for a style description it can hand straight to Qwen Image Edit, so every
+# clause here was bought with a measured failure. "Be concrete and executable" is there because the first
+# wording returned "soft outlines, continuous blends" for an ink wash and the edit model rendered nothing
+# at all; rewritten to name what the strokes LOOK like it returned "ink that bleeds into the paper and
+# pools at the edges" and the object came back as ink. The ban on naming materials is there because the
+# concrete wording then started describing the picture's own contents - "luminous skin gradients, glowing
+# particle effects" - and a description that says "glowing" makes the edit model light the object up,
+# which is exactly the defect 画风转换 pins against.
+ART_STYLE_MAX_NEW_TOKENS = 120
+ART_STYLE_MAX_CHARS = 400
+ART_STYLE_QUESTION = (
+    "Look at this picture and write ONE English instruction, at most 40 words, telling an artist how to "
+    "render ANY object in exactly this picture's style. Name the medium or technique, then the two or "
+    "three marks that make it recognisable at a glance: what the strokes, blocks, pixels, lines or edges "
+    "actually look like. Be concrete and executable: write \"ink that bleeds into the paper and pools at "
+    "the edges, large areas left bare\" rather than \"soft outlines, continuous blends\". CRITICAL: "
+    "describe only how marks are made, never what carries them. Do not write skin, hair, fabric, cloth, "
+    "metal, marble, stone, sky, water, particles, sparkles, glow, light effects, or any other thing that "
+    "appears in this picture. Do not mention the subject, the people, the place, the colours or the mood."
+)
+
 STOP_TOKENS = [151645, 151643]
 NEGATIVE_COMMON_PREFIX = ["低质量", "模糊"]
 NEGATIVE_SUFFIX = ["水印", "Logo"]
@@ -21350,6 +21371,38 @@ class PromptAssistant:
             } if use_h3_visual_contract else {}),
         }
 
+    def describe_art_style(self, payload: dict) -> dict:
+        """Name how a picture is rendered, in one executable English sentence.
+
+        万物迁移's 画风转换 pass needs this because Qwen Image Edit will not infer image 2's style and
+        apply it to image 1. Measured live 2026-09-17 against four scenes (cel-shaded, ink wash, pixel
+        art, photographic) built from the same picture: handed only the scene as a reference the object
+        came back unchanged in four cases out of five, and no prompt wording, reference ordering, cfg
+        (1 -> 2.5) or step count (6 -> 8) changed that. Handed the same style as TEXT it rendered every
+        one correctly. So the style has to be read out as words first, and this is what reads it.
+        """
+
+        images = payload.get("images")
+        if not isinstance(images, list) or not images:
+            raise ValueError("\u8bf7\u5148\u9009\u62e9\u53ef\u5206\u6790\u7684\u56fe\u7247")
+        first = images[0] if isinstance(images[0], dict) else {}
+        tensor = data_url_to_tensor(str(first.get("dataUrl") or ""))
+        if tensor is None:
+            raise ValueError("\u8bf7\u5148\u9009\u62e9\u53ef\u5206\u6790\u7684\u56fe\u7247")
+        adapter = Qwen3VLAbliteratedAdapter(
+            self.reverse_model_path(),
+            max_side=768,
+            max_new_tokens=ART_STYLE_MAX_NEW_TOKENS,
+        )
+        raw = adapter.generate(
+            ART_STYLE_QUESTION,
+            tensor,
+            unload_after=True,
+            max_new_tokens=ART_STYLE_MAX_NEW_TOKENS,
+        )
+        style = " ".join(clean_text(str(raw or "")).split())[:ART_STYLE_MAX_CHARS]
+        return {"style": style, "model": self.reverse_model_path().name[:160]}
+
     def reverse_image_prompt(self, payload: dict) -> dict:
         images = payload.get("images")
         purpose = str(payload.get("purpose") or "").strip()
@@ -22843,6 +22896,8 @@ def handle_request(payload: dict) -> dict:
         return assistant.storyboard_unified_nine_shots(payload)
     if command == "storyboardDirectorPlan":
         return assistant.storyboard_director_plan(payload)
+    if command == "describeArtStyle":
+        return assistant.describe_art_style(payload)
     if command == "reverseImagePrompt":
         return assistant.reverse_image_prompt(payload)
     if command == "prepareReverseCache":
