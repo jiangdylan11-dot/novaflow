@@ -273,6 +273,14 @@
   // Measured live: 110 -> no shadow at all, 170 -> a soft shadow lying on the steps, 210 -> heavy,
   // a binary 255 region -> the model rebuilt the floor and painted a black silhouette.
   const OBJECT_TRANSFER_REGION_STRENGTH = 170
+  // Everywhere outside the region. Non-zero so the whole frame really is sampled as one picture; low
+  // enough that the parts of the painting nobody asked to change keep their detail.
+  const OBJECT_TRANSFER_FRAME_FLOOR = 24
+  // The object's own strength. At full 255 the sampler rebuilds it from noise and its value drifts — it
+  // came back darker than the picture, and the model then painted a warm halo around it to explain the
+  // dark silhouette. At 205 the placed object keeps pulling its own colours back while its shading, its
+  // edges and its contact with the ground are still repainted (measured live 2026-09-17).
+  const OBJECT_TRANSFER_OBJECT_STRENGTH = 205
   const OBJECT_TRANSFER_OBJECT_BAND = 12
   const OBJECT_TRANSFER_OBJECT_FEATHER = 6
   // Anything the sampler was allowed to move at all is pasted back whole. The grading already happened
@@ -15400,6 +15408,14 @@
     return { width, height, pixels, max }
   }
 
+  function solidMaskCanvas(width, height) {
+    const canvas = canvasOfSize(Math.max(1, Math.round(width || 1)), Math.max(1, Math.round(height || 1)))
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    return canvas
+  }
+
   function maskMaxCanvas(aCanvas, bCanvas) {
     const width = Math.max(1, Math.round(aCanvas && aCanvas.width || 1))
     const height = Math.max(1, Math.round(aCanvas && aCanvas.height || 1))
@@ -15544,18 +15560,18 @@
     // one thing it must not touch is the scene's existing subject where the object does not cover it
     // (it drew a high-heeled shoe onto the character's bare foot), and that is excluded HERE, in the
     // latent: the sampler then composes against those frozen pixels instead of us patching them back.
-    const objectBandCanvas = featherMaskCanvas(
+    const objectBandCanvas = maskScaleCanvas(featherMaskCanvas(
       expandedMaskCanvas(paintableMaskCanvas(transferMaskCanvas, 8, false), OBJECT_TRANSFER_OBJECT_BAND, 0),
       OBJECT_TRANSFER_OBJECT_FEATHER
-    )
+    ), OBJECT_TRANSFER_OBJECT_STRENGTH / 255)
     const regionMaskCanvas = objectTransferRegionMaskCanvas(size, bounds)
-    const roomMaskCanvas = maskMaxCanvas(regionMaskCanvas, objectBandCanvas)
+    const frameFloorCanvas = maskScaleCanvas(solidMaskCanvas(size.width, size.height), OBJECT_TRANSFER_FRAME_FLOOR / 255)
+    const roomMaskCanvas = maskMaxCanvas(maskMaxCanvas(regionMaskCanvas, objectBandCanvas), frameFloorCanvas)
     setSplitBusyDetail('正在识别画面中已有的主体...')
     const sceneSubjectCanvas = await canvasFromDataUrl(await runRmbgCutout(baseCanvas.toDataURL('image/png')), size.width, size.height)
     const sceneSubjectMask = expandedMaskCanvas(paintableMaskCanvas(sceneSubjectCanvas, OBJECT_TRANSFER_SCENE_SUBJECT_ALPHA, true), OBJECT_TRANSFER_SCENE_SUBJECT_GROW, 0)
     const protectionCanvas = maskSubtractCanvas(sceneSubjectMask, objectMaskCanvas, 8)
     const noiseMaskCanvas = maskAttenuateCanvas(roomMaskCanvas, featherMaskCanvas(thresholdMaskCanvas(protectionCanvas, 8), OBJECT_TRANSFER_PROTECTION_FEATHER))
-    const pasteMaskCanvas = thresholdMaskCanvas(noiseMaskCanvas, OBJECT_TRANSFER_PASTE_FLOOR)
     const plateSize = qwenEditPlateSize(size.width, size.height)
     const plateCanvas = qwenEditPlateCanvas(placementGuideCanvas, plateSize)
     const plateContent = plateCanvas.__plateContent
@@ -15567,7 +15583,6 @@
       subjectMaskCanvas: hardAlphaMask,
       transferMaskCanvas,
       noiseMaskCanvas,
-      pasteMaskCanvas,
       objectMaskCanvas,
       protectionCanvas,
       regionRect: objectTransferRegionRect(size, bounds),
@@ -15579,7 +15594,7 @@
       placementGuideDataUrl: placementGuideCanvas.toDataURL('image/png'),
       referenceDataUrl: tool.referenceOriginalDataUrl,
       maskStats: stats,
-      guideMode: 'rough-comp-graded-region-latent'
+      guideMode: 'single-pass-graded-frame-latent'
     }
   }
 
@@ -15820,31 +15835,30 @@
     return canvas
   }
 
-  async function objectTransferProtectedResultDataUrl(dataUrl, assets) {
-    // The plate came back on the scene's own grid and only the placement region was denoised, so the
-    // result needs no drift correction and no shadow reconstruction: paste it through the same mask the
-    // sampler used. Everything outside it is the original scene, byte for byte.
+  async function objectTransferDecodedResultDataUrl(dataUrl, assets) {
+    // NOTHING is composited here. The model was handed the whole frame and a per-pixel denoise strength,
+    // and the frame it decoded is the result — the picture and the object were rendered together, in one
+    // pass, which is the only way the object's shading, its cast shadow and the picture's own effects
+    // over it can be the same brush strokes. The user rejected every version that stitched a region back
+    // afterwards: "不要2次加工，应该是生成之前就约束好。直接生成成品才对。你现在做的全是乱贴".
+    // All this function does is undo the plate scaling, which is the inverse of how the frame was sent.
     const size = assets && assets.size || await sourceSize()
     const width = Math.max(1, Math.round(size.width || 1))
     const height = Math.max(1, Math.round(size.height || 1))
     const baseCanvas = assets && assets.baseCanvas || await sourceFullCanvas(size)
-    setSplitBusyDetail('正在写回场景...')
-    const resultCanvas = await qwenEditPlateResultCanvas(dataUrl, assets.plateSize, assets.plateContent, width, height, '万物迁移')
-    // Verbatim: whatever the model rendered inside the mask — object, contact shadow, light wrap,
-    // occlusion — is one coherent piece and is kept as one. Outside it the picture never moved.
-    const pasteMaskCanvas = assets.pasteMaskCanvas || thresholdMaskCanvas(assets.noiseMaskCanvas, OBJECT_TRANSFER_PASTE_FLOOR)
-    const pastedCanvas = compositeRemovalRgbResult(baseCanvas, resultCanvas, pasteMaskCanvas, { x: 0, y: 0, width, height })
-    // No post grade of any kind: a curve applied afterwards can only ever be a patch. Whatever the model
-    // rendered is the result; the paste exists to keep the untouched pixels exact, not to fix the render.
-    const finalCanvas = pastedCanvas
-    const stats = pastedCanvas.__removalCompositeStats || {}
-    const changedOutside = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(pasteMaskCanvas)), 8)
+    setSplitBusyDetail('\u6b63\u5728\u89e3\u7801\u751f\u6210\u7ed3\u679c...')
+    const finalCanvas = await qwenEditPlateResultCanvas(dataUrl, assets.plateSize, assets.plateContent, width, height, '\u4e07\u7269\u8fc1\u79fb')
+    // Diagnostics only — nothing below changes a pixel. Outside the region the latent was held at the
+    // encoded original, so what is measured here is the VAE round trip, and it is worth watching: it is
+    // the price of generating the whole picture in one pass instead of patching a hole in it.
+    const outsideCanvas = thresholdMaskCanvas(assets.noiseMaskCanvas, OBJECT_TRANSFER_PASTE_FLOOR)
+    const changedOutside = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(outsideCanvas)), 8)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
         ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}),
-        pasteBack: 'latent-protected-verbatim-paste',
-        pasteMask: { ...stats, regionStrength: assets.regionStrength, nonMaskChangedPixels: changedOutside }
+        pasteBack: 'none-single-pass-decode',
+        pasteMask: { postprocess: 'none', regionStrength: assets.regionStrength, outsideRegionChangedPixels: changedOutside }
       }
     }
     return finalCanvas.toDataURL('image/png')
@@ -15894,7 +15908,7 @@
     }
     setSplitBusyDetail(`Qwen Image Edit 2511\n${assets.plateSize.width} x ${assets.plateSize.height} px`)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, runId, OBJECT_TRANSFER_TIMEOUT_MS)
-    return await objectTransferProtectedResultDataUrl(resultDataUrl, assets)
+    return await objectTransferDecodedResultDataUrl(resultDataUrl, assets)
   }
 
   async function executeObjectTransferRun() {

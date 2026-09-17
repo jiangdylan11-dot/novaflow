@@ -57,7 +57,7 @@ test('the transfer graph sends an unscaled plate and only denoises the placement
   assert.deepEqual(text.inputs.image2, ['2', 0], 'the object reference stays image2')
 })
 
-test('the scene subject is protected in the latent and the model region is pasted verbatim', () => {
+test('the picture is generated in one pass and nothing is composited afterwards', () => {
   const source = read(RUNTIME)
   // A mask made by dilating the silhouette can only contain shapes that are a function of the distance
   // to it — an aura. A cast shadow is the silhouette projected onto the ground and is not a subset of any
@@ -70,9 +70,15 @@ test('the scene subject is protected in the latent and the model region is paste
   // 110 -> no shadow, 170 -> a soft shadow lying on the steps, 210 -> heavy, binary 255 -> the model
   // rebuilt the floor and painted a black silhouette.
   assert.match(source, /const OBJECT_TRANSFER_REGION_STRENGTH = 170/, 'the region is partly denoised, which is what anchors the ground and sets the shadow density')
+  // Non-zero everywhere, so the frame really is sampled as one picture rather than a hole being filled.
+  // Measured: a floor of 40 moved the far edges no more than a floor of 0 (3.4 vs 3.2 / 255).
+  assert.match(source, /const OBJECT_TRANSFER_FRAME_FLOOR = 24/, 'the whole frame is sampled, at a strength low enough to keep its detail')
+  // At full strength the sampler rebuilds the object from noise and its value drifts: it came back darker
+  // than the picture and the model painted a warm halo around it to explain the dark silhouette.
+  assert.match(source, /const OBJECT_TRANSFER_OBJECT_STRENGTH = 205/, 'the placed object keeps pulling its own colours back while its shading is repainted')
   assert.doesNotMatch(source, /OBJECT_TRANSFER_NOISE_GROW|OBJECT_TRANSFER_GROUND_DROP|objectTransferGroundRoomCanvas/, 'the silhouette band and its downward drop are gone')
   assert.match(source, /const plateSize = qwenEditPlateSize\(size\.width, size\.height\)\n\s+const plateCanvas = qwenEditPlateCanvas\(placementGuideCanvas, plateSize\)/, 'the placement goes out on a plate Qwen does not reframe')
-  assert.match(source, /const resultCanvas = await qwenEditPlateResultCanvas\(dataUrl, assets\.plateSize, assets\.plateContent, width, height, '万物迁移'\)/, 'the decode size is asserted before it is mapped back')
+  assert.match(source, /const finalCanvas = await qwenEditPlateResultCanvas\(dataUrl, assets\.plateSize, assets\.plateContent, width, height, '[^']+'\)/, 'the decode size is asserted before it is mapped back')
   // Rebuilding the object, its shadow and its light wrap from per-pixel rules after the fact is what made
   // the result look like a sticker. The model renders them as one thing, against the frozen pixels around
   // them, and that whole region is kept as one.
@@ -84,9 +90,10 @@ test('the scene subject is protected in the latent and the model region is paste
   // with a glowing pool of light dead centre on it: it explains any patch it is handed.
   assert.doesNotMatch(source, /objectTransferContactMaskCanvas|objectTransferCombinedMaskCanvas|OBJECT_TRANSFER_CONTACT_HINT/, 'nothing but the object is pre-painted into the guide')
   assert.match(source, /const transferMaskCanvas = hardAlphaMask\n/, 'nothing but the object is pre-painted into the guide')
-  assert.match(source, /guideMode: 'rough-comp-graded-region-latent'/, 'the debug record names the guide')
+  assert.match(source, /guideMode: 'single-pass-graded-frame-latent'/, 'the debug record names the pass')
   assert.match(source, /'Image 1 already contains the new object, pasted in flat and unlit\.',/, 'the prompt asks for a repaint, in the concise English this model follows')
-  assert.match(source, /const regionMaskCanvas = objectTransferRegionMaskCanvas\(size, bounds\)\n\s+const roomMaskCanvas = maskMaxCanvas\(regionMaskCanvas, objectBandCanvas\)/, 'full strength on the object, part strength over the ground around it')
+  assert.match(source, /const roomMaskCanvas = maskMaxCanvas\(maskMaxCanvas\(regionMaskCanvas, objectBandCanvas\), frameFloorCanvas\)/, 'object, ground and the rest of the frame each get their own denoise strength')
+  assert.match(source, /const objectBandCanvas = maskScaleCanvas\(featherMaskCanvas\([\s\S]{0,260}?OBJECT_TRANSFER_OBJECT_STRENGTH \/ 255\)/, 'the object band carries the object strength')
   // The mask is point-sampled down to the latent grid (bilinear, ~7.3 scene px per cell), so a ramp only
   // survives as a ramp if it is tens of pixels wide.
   assert.match(source, /const OBJECT_TRANSFER_REGION_FEATHER_RATIO = 0\.09\n\s+const OBJECT_TRANSFER_REGION_FEATHER_MIN = 24/, 'the region edge is a wide ramp, not a cliff')
@@ -97,15 +104,23 @@ test('the scene subject is protected in the latent and the model region is paste
   // a cliff. The paste, by contrast, takes everything the sampler could move at all — grading it a second
   // time would fade out the shadow's tail, the part that makes it read as cast rather than stuck on.
   assert.match(source, /const noiseMaskPlateCanvas = qwenEditPlateCanvas\(noiseMaskCanvas, plateSize\)/, 'the sampler gets the graded mask, not a re-binarised one')
-  assert.match(source, /const pasteMaskCanvas = thresholdMaskCanvas\(noiseMaskCanvas, OBJECT_TRANSFER_PASTE_FLOOR\)/, 'the paste covers everything the sampler was allowed to move')
-  assert.match(source, /const pastedCanvas = compositeRemovalRgbResult\(baseCanvas, resultCanvas, pasteMaskCanvas, \{ x: 0, y: 0, width, height \}\)/, 'the masked region is pasted verbatim')
-  assert.match(source, /pasteBack: 'latent-protected-verbatim-paste'/, 'the debug record names the path')
+  // THE POINT OF THIS TEST. The user rejected every version that stitched a region back over the
+  // original: "不要2次加工，应该是生成之前就约束好。直接生成成品才对。你现在做的全是乱贴". The model is
+  // handed the whole frame plus a per-pixel denoise strength decided before the pass, and the frame it
+  // decodes IS the result — so the object's shading, its cast shadow and the picture's own light over it
+  // are the same brush strokes as the rest of the painting.
+  const resultFn = source.slice(source.indexOf('async function objectTransferDecodedResultDataUrl('))
+  const resultBody = resultFn.slice(0, resultFn.indexOf('\n  }\n'))
+  assert.match(resultBody, /const finalCanvas = await qwenEditPlateResultCanvas\(dataUrl, assets\.plateSize, assets\.plateContent, width, height, '[^']+'\)/, 'the decoded frame is the result')
+  assert.doesNotMatch(resultBody, /compositeRemovalRgbResult|pasteBackEngine|featherMaskCanvas|drawImage/, 'nothing is composited, feathered or drawn over the decode')
+  assert.match(source, /pasteBack: 'none-single-pass-decode'/, 'the debug record names the path')
+  assert.doesNotMatch(source, /objectTransferProtectedResultDataUrl/, 'the paste-back path is gone')
   assert.doesNotMatch(source, /objectTransferScenePixels|objectTransferNormalizeResultDataUrl|objectTransferPasteMaskCanvas|objectTransferCompositeCanvas|OBJECT_TRANSFER_SHADOW_MAX_DARKEN/, 'no rule-based shadow or silhouette compositing survives')
 
   // No post grade of any kind. A white balance was tried and an ambient fill after it; the fill lifted the
   // cast shadow inside the mask into a blue-purple smear, and a curve after the fact cannot do what the
   // model does during the render anyway. The style is fixed BEFORE the object is placed instead.
-  assert.match(source, /const finalCanvas = pastedCanvas/, 'what the model rendered is the result')
+  assert.doesNotMatch(source, /const finalCanvas = pastedCanvas/, 'there is no pasted canvas any more')
   assert.match(source, /function qwenEditPlateCanvas\([\s\S]{0,600}?ctx\.imageSmoothingQuality = 'high'/, 'the plate is scaled at high quality or the region comes back softer than the picture around it')
   assert.match(source, /async function qwenEditPlateResultCanvas\([\s\S]{0,1200}?ctx\.imageSmoothingQuality = 'high'/, 'and scaled back the same way')
   assert.doesNotMatch(source, /objectTransferHarmonizeCanvas|OBJECT_TRANSFER_HARMONIZE|ambientFill/, 'no colour grade, no ambient fill')
