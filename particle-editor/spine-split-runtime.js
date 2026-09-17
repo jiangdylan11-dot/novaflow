@@ -15594,29 +15594,35 @@
     }
   }
 
+  // Scene styles that the shipped sentence 4 already describes correctly. 画风转换's sentence 4 names a
+  // soft painted target outright, and for a picture that IS soft painting that is the best wording there
+  // is — it is what the user rates highest, because "as if the artist of image 2 had drawn it" plus a
+  // painterly target lets the object absorb the scene's warmth. Swapping in a读-out description instead
+  // pins the object harder and it comes back in its own colder colour. So the description only replaces
+  // that sentence when the scene is NOT soft painting, which is exactly when the shipped wording is wrong.
+  // Checked against the five descriptions the local VLM produced for the four probe scenes plus the tuned
+  // one: 5/5 classified correctly.
+  const OBJECT_TRANSFER_NON_PAINTERLY_STYLE = /pixel|cel[- ]?shad|flat colou?r|flat block|\bink\b|ink wash|woodcut|halftone|comic|line ?art|blueprint|photo|rasteriz|vector|sketch|charcoal|engrav|outline/i
+
   function objectTransferRestylePromptText(sceneArtStyle) {
-    // ONE prompt, tuned live 2026-09-17, with exactly one slot in it.
+    // Stage 1, tuned live 2026-09-17, and the wording is worth more than it looks.
     //
-    // Every sentence here was bought with a visible failure. Naming the style ("art style of image 2")
-    // gave a flat vector sticker; pointing at the ARTIST and their rendering language fixed that. Any
-    // permission to match image 2's palette made the model recolour the object into the scene's: it came
-    // back pale and thinner. Banning highlights switched the robot's glowing eyes off; saying the lit
-    // parts stay lit switched them to blazing AND invented a chest lamp, which made the integration pass
-    // light the ground like a spotlight — so emissive parts are pinned in BOTH directions.
+    // Naming the style ("art style of image 2") gave a flat vector sticker. Pointing at the ARTIST and
+    // their rendering language fixed that. Any permission to match image 2's palette made the model
+    // recolour the object into the scene's: it came back pale and thinner. Banning highlights switched
+    // the robot's glowing eyes off; saying the lit parts stay lit switched them to blazing AND invented a
+    // chest lamp, which made the integration pass light the ground like a spotlight — so emissive parts
+    // are pinned in BOTH directions.
     //
-    // The slot is sentence 4, and only sentence 4. It used to name a target style outright ("image 2 soft
-    // painted shading, its brush work"), which is right for the pictures this was tuned on and wrong for
-    // a cel, pixel, ink or photographic one — measured across four such scenes, the object came back
-    // unrendered in four cases out of five, because this model will not infer image 2's style and apply
-    // it to image 1 at any cfg, step count or reference order. Named as TEXT it renders all four.
-    //
-    // Rewriting the whole prompt around the text was a mistake and the user caught it on sight: the
-    // rewrite pinned the object so hard ("keep its own colours, do not recolour") that it also stopped
-    // absorbing the scene's light, and the object came back in its own cold green instead of picking up
-    // the picture's warmth. So the text goes INTO the sentence that was already there, and nothing else
-    // moves.
+    // Sentence 4 is the only thing the scene's style can change, and only when the scene is not soft
+    // painting. This model will not infer image 2's style and apply it to image 1 — measured across four
+    // scenes at every cfg, step count and reference order — so a cel, pixel, ink or photographic scene
+    // needs its style spelled out or the object comes back unrendered. But a scene that IS soft painting
+    // is better served by the sentence that was already here: swapping a description in pins the object
+    // so hard it stops absorbing the scene's light, and the user saw it at a glance —
+    // "风格变化没错，但本质上的画面融合给你弄没了". Default to what works; substitute only where it does not.
     const style = String(sceneArtStyle || '').trim()
-    const painted = style
+    const painted = style && OBJECT_TRANSFER_NON_PAINTERLY_STYLE.test(style)
       ? 'Change only how it is painted: ' + style + ' Take its edge treatment and its level of surface detail from image 2 as well.'
       : 'Change only how it is painted: image 2 soft painted shading, its edge treatment, its brush work and its level of surface detail.'
     return [
@@ -15625,10 +15631,12 @@
       'Copy image 1 exactly on which parts are lit: the parts that glow in image 1 keep glowing in the same colour and no brighter, with no extra bloom around them, and every part that is not lit in image 1 stays unlit. Do not add any new lamp, light or glowing panel anywhere on it.',
       painted,
       'Drop image 1 photographic look: no blown out specular hotspots on its shell, no mirror reflections.',
-      // Denying the GROUND, not the shadow. At any cfg this pass sometimes paints one, RMBG-2.0 keeps it
-      // as part of the subject, and the composite guide then carries it into the integration pass, which
-      // renders it as a cast shadow four times too big. "No shadow" fixed 1 seed in 3; this fixed 3 of 3.
-      'Same object, same shape, same parts, same pose. Put it alone on an empty flat grey field. It is not standing on anything and there is no ground under it, so nothing falls onto the field: keep the field one even tone edge to edge, with no shadow and no dark patch anywhere on it.'
+      // NOT "floating in empty space, no ground under it". That wording does stop this pass painting a
+      // ground shadow, and at cfg 2.5 it had to, because the shadow came back as a hard ellipse that
+      // RMBG-2.0 keeps as part of the subject and the integration pass blows up four times too big. At
+      // cfg 1 the pass leaves a faint contact darkening instead, and that appears to be what the
+      // integration pass anchors a believable shadow on — the version the user calls a real shadow has it.
+      'Same object, same shape, same parts, same pose. Plain flat grey background, no shadow.'
     ].join(' ')
   }
 

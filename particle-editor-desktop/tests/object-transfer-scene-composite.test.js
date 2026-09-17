@@ -144,7 +144,22 @@ test('the picture is drawn in one pass from an arranged frame, and nothing is co
   // warmth, and the user called it immediately — "本质上的画面融合给你弄没了". The five sentences around
   // the slot are the ones that were bought with measured failures; they stay verbatim.
   const promptFn = source.slice(source.indexOf('function objectTransferRestylePromptText('))
-  assert.match(promptFn.slice(0, 5000), /const painted = style\s*\n?\s*\? 'Change only how it is painted: ' \+ style/, 'the style text fills sentence 4, it does not replace the prompt')
+  assert.match(promptFn.slice(0, 5000), /const painted = style && OBJECT_TRANSFER_NON_PAINTERLY_STYLE\.test\(style\)/, 'the style text fills sentence 4, and only when the tuned wording would be wrong for the scene')
+  // The classifier, checked against the five descriptions the local VLM actually produced plus one
+  // paraphrase. A soft painted scene keeps the shipped sentence, because substituting a read-out
+  // description there pins the object hard enough that it stops absorbing the scene's light.
+  const classifierLine = source.split('\n').find((l) => l.includes('OBJECT_TRANSFER_NON_PAINTERLY_STYLE = '))
+  const classifier = eval(classifierLine.slice(classifierLine.indexOf('/')))
+  for (const painterly of [
+    'Render with digital brush strokes mimicking soft, blended gradients and subtle texture overlays, creating smooth transitions without harsh edges or defined contours.',
+    'Soft digital painting with blended gradients, gentle edges, layered glazes and no visible linework.'
+  ]) assert.equal(classifier.test(painterly), false, 'soft painting keeps the tuned wording: ' + painterly.slice(0, 40))
+  for (const other of [
+    'Flat cel shading with bold, clean black outlines, solid color blocks, minimal gradients, sharp edges, no blending.',
+    'Apply ink with broad, wet brushstrokes that bleed into paper, pooling at edges; leave large bare areas unpainted.',
+    'Render in 8-bit pixel art: square pixels, uniform size, sharp edges, blocky forms, no anti-aliasing, flat color fills.',
+    'Render with photorealistic 3D rasterization: smooth continuous shading with soft ambient occlusion and crisp silhouette edges.'
+  ]) assert.equal(classifier.test(other), true, 'a scene the tuned wording gets wrong needs the description: ' + other.slice(0, 40))
   assert.match(promptFn.slice(0, 5000), /: 'Change only how it is painted: image 2 soft painted shading/, 'and without it that sentence keeps its tuned wording')
   assert.match(promptFn.slice(0, 5000), /as if the artist of image 2 had drawn it/, 'pointing at the artist is what stops it coming back a flat vector sticker')
   assert.equal(promptFn.slice(0, 5000).split("'Redraw the object from image 1").length - 1, 1, 'one prompt, not two branches that can drift apart')
