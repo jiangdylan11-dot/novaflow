@@ -108,33 +108,13 @@ test('the picture is drawn in one pass from an arranged frame, and nothing is co
   assert.match(source, /const plateSize = qwenEditPlateSize\(size\.width, size\.height\)\n\s+const plateCanvas = qwenEditPlateCanvas\(placementGuideCanvas, plateSize\)/, 'the aligned plate replaces it')
   assert.match(source, /function qwenEditPlateCanvas\([\s\S]{0,600}?ctx\.imageSmoothingQuality = 'high'/, 'scaled at high quality')
 
-  // The picture and the object are still RENDERED together in one pass — that is what makes the
-  // object's shading, its cast shadow and the picture's effects over it the same brush strokes.
-  // After the decode the untouched picture is faded back in wherever the pass changed something it was
-  // not asked to change: at denoise 1 it relights the whole frame, and 227k pixels outside the
-  // placement box came back changed on the tuned picture. The user asked for exactly this once they
-  // saw it — "可以用A..然后回贴不就好了。尽量去掉影响".
+  // No paste-back, so no seam: the decoded frame IS the result.
   const resultFn = source.slice(source.indexOf('async function objectTransferDecodedResultDataUrl('))
   const resultBody = resultFn.slice(0, resultFn.indexOf('\n  }\n'))
-  assert.ok(resultBody.includes("const decodedCanvas = await qwenEditPlateResultCanvas(dataUrl, assets.plateSize, assets.plateContent, width, height, '"), 'the frame is still decoded whole')
-  assert.ok(resultBody.includes('objectTransferRestoredCanvas(baseCanvas, decodedCanvas, assets.subjectMaskCanvas)'), 'and the picture is restored around it')
-  assert.match(source, /pasteBack: 'continuous-restore-outside-object'/, 'the debug record names the path')
-  // It must stay CONTINUOUS. Four earlier attempts cut a region out and dropped it back in, and the cut
-  // showed as a rectangle every time — "有明显的衔接方块". Two smooth factors multiply and neither has an
-  // edge: the object's own feathered silhouette, and how much the pixel actually changed.
-  const restoreFn = source.slice(source.indexOf('function objectTransferRestoredCanvas('))
-  const restoreBody = restoreFn.slice(0, restoreFn.indexOf('\n  }\n'))
-  const weightFn = source.slice(source.indexOf('function objectTransferRestoreWeightCanvas('))
-  const weightBody = weightFn.slice(0, weightFn.indexOf('\n  }\n'))
-  // Keyed on the object's SILHOUETTE, not its placement box. The box is far larger than the object —
-  // on the tuned picture it covers the woman's lower half and her dress — so keying on it kept the
-  // model's edits to her along with the object's own.
-  assert.ok(weightBody.includes('expandedMaskCanvas(paintableMaskCanvas(subjectMaskCanvas, 8, false), 4)'), 'the object silhouette is what is kept')
-  assert.ok(weightBody.includes('OBJECT_TRANSFER_RESTORE_FEATHER}px)'), 'and it is feathered, so it has no edge')
-  assert.ok(weightBody.includes('const ground = groundY * Math.max(0, 1 - dx / reachSide)'), 'the ground under it falls off linearly')
-  assert.ok(restoreBody.includes('w = near * Math.min(1, Math.max(0, (diff - OBJECT_TRANSFER_RESTORE_KEEP_FROM) / OBJECT_TRANSFER_RESTORE_KEEP_RAMP))'), 'the difference ramps, it does not threshold, and it multiplies the position weight')
-  assert.doesNotMatch(restoreBody, /fillRect|drawImage/, 'nothing is drawn: every pixel is a weighted mix')
-  assert.doesNotMatch(source, /objectTransferProtectedResultDataUrl|objectTransferScenePixels|objectTransferHarmonizeCanvas|objectTransferCastShadowCanvas/, 'no region paste, no colour grade, no drawn shadow')
+  assert.match(resultBody, /const finalCanvas = await qwenEditPlateResultCanvas\(dataUrl, assets\.plateSize, assets\.plateContent, width, height, '[^']+'\)/, 'the decoded frame is the result')
+  assert.doesNotMatch(resultBody, /compositeRemovalRgbResult|pasteBackEngine|featherMaskCanvas|drawImage/, 'nothing is composited over the decode')
+  assert.match(source, /pasteBack: 'none-single-pass-decode'/, 'the debug record names the path')
+  assert.doesNotMatch(source, /objectTransferProtectedResultDataUrl|objectTransferScenePixels|objectTransferHarmonizeCanvas|objectTransferCastShadowCanvas/, 'no paste, no grade, no drawn shadow')
 
   // 风格变化: the object is repainted on flat grey before it is ever placed. The user's condition for
   // dropping this pass was that fusion alone make the object match the picture, and it does not.

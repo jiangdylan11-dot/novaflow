@@ -275,14 +275,23 @@
   // the whole frame gone blue (R-B -34 to -49 against the original's -24.8). These five name only the
   // sticker failure modes the user kept rejecting, and nothing about how anything is lit.
   const OBJECT_TRANSFER_NEGATIVE_PROMPT = '\u7269\u4f53\u6d6e\u5728\u534a\u7a7a\uff0c\u8d34\u7eb8\uff0c\u63cf\u8fb9\uff0c\u62fc\u63a5\u8fb9\u7f18\uff0c\u5e73\u6d82\u8272\u5757'
-  // The plate builder's own numbers. 2.5 was tried and is wrong twice over: it renders the object dark
-  // and high-contrast, lit for the grey plate, and it paints a HARD ground shadow that RMBG-2.0 keeps as
-  // part of the subject, so it rides into the composite guide and shows through the finished picture as
-  // a stray grey blot. The user reported both on sight. 1.4 was tried next on the theory that a faint
-  // contact darkening would anchor a better cast shadow; the run that suggested it turned out to be a
-  // lucky seed, not the cfg — see the note on shadow shape in buildObjectTransferQwenWorkflow.
+  // 1.4, and the value is a three-way balance that was found by sweeping it against the finished picture,
+  // not against this pass's own output. What this pass paints under the object matters more than how it
+  // looks on the plate, because RMBG-2.0 keeps a ground shadow as part of the subject and the composite
+  // guide carries it into the integration pass:
+  //   cfg 2.5 paints a HARD ellipse. It survives the cutout and shows through the finished picture as a
+  //     stray grey blot, and the object itself comes back dark and high-contrast, lit for the grey plate.
+  //   cfg 1 paints nothing the cutout keeps. The object is bright and correct, but the integration pass
+  //     has no anchor and draws an isolated ellipse at the feet instead of a shadow that extends.
+  //   cfg 1.4 paints a FAINT contact darkening: light enough that it never shows through, strong enough
+  //     to survive RMBG and tell the integration pass where the object meets the ground.
+  // Measured on the tuned picture across three seeds at 1.4: darkened ground 52.6 / 50.5 / 37.5%, R-B
+  // -25.4 / -21.5 / -20.9 against the original's -24.8. The cfg 2.5 run it replaces drew 42.4% at -19.4.
+  // Asking the integration pass for an extending shadow directly does not work and never will on this
+  // graph: naming the picture's light relights the whole frame, and "extend and fade" returns a hard
+  // black silhouette. The anchor is the only lever.
   const OBJECT_TRANSFER_RESTYLE_STEPS = 6
-  const OBJECT_TRANSFER_RESTYLE_CFG = 1
+  const OBJECT_TRANSFER_RESTYLE_CFG = 1.4
   const OBJECT_TRANSFER_RESTYLE_BACKGROUND = '#808080'
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
@@ -15800,16 +15809,6 @@
     return workflow
   }
 
-  // Known and unsolved: whether the cast shadow this pass draws reaches out across the ground or lands
-  // as an isolated blob at the feet is decided by the SEED, not by anything in this graph. The same
-  // recipe produces both, roughly half and half. Ruled out as causes, each over three seeds: the
-  // restyle cfg (1, 1.4 and 2.5 all produce both), the shadow wording in the prompt (capping its size
-  // gives a smaller blob, not a reach), naming the picture's light (relights the whole frame, three
-  // times out of three) and asking it to "extend and fade" (returns a hard black silhouette).
-  // Re-rolling the seed automatically was attempted and abandoned: the two shapes cannot be told apart
-  // from pixels reliably enough to act on. Measured over nine runs already judged by eye, horizontal
-  // spread saturates at the same value for both and the centre-of-mass offset differs by 0.04 of an
-  // object width, which is inside the noise from the steps' own shading.
   function buildObjectTransferQwenWorkflow(info, uploads, prefix, resolved) {
     const workflow = buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferPromptText(), null, OBJECT_TRANSFER_DENOISE, {
       shift: OBJECT_TRANSFER_SHIFT,
@@ -15876,150 +15875,28 @@
     return canvas
   }
 
-  // How far past the object a cast shadow may reach, as a fraction of the object's own size.
-  const OBJECT_TRANSFER_RESTORE_GROUND_DOWN = 0.42
-  const OBJECT_TRANSFER_RESTORE_GROUND_SIDE = 0.55
-  const OBJECT_TRANSFER_RESTORE_FEATHER = 14
-  // Below this much change a pixel counts as untouched and is restored outright; the ramp above it is
-  // what keeps the blend continuous.
-  const OBJECT_TRANSFER_RESTORE_KEEP_FROM = 26
-  const OBJECT_TRANSFER_RESTORE_KEEP_RAMP = 34
-
-  function objectTransferRestoreWeightCanvas(subjectMaskCanvas) {
-    // Where the pass was allowed to change things: the object itself, and the ground it stands on.
-    //
-    // Keyed on the object's SILHOUETTE, not its placement box. The box is much larger than the object —
-    // on the picture this was tuned against it covers the woman's lower half — and an earlier version
-    // that kept everything inside the box kept the model's edits to her along with it.
-    //
-    // Both parts are feathered, so the weight has no edge anywhere. That is the whole difference from
-    // the region paste-backs the user rejected four times: those cut a rectangle and it showed.
-    const width = Math.max(1, Math.round(subjectMaskCanvas.width || 1))
-    const height = Math.max(1, Math.round(subjectMaskCanvas.height || 1))
-    const mask = subjectMaskCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-
-    let top = height, bottom = -1, left = width, right = -1
-    for (let y = 0; y < height; y += 1) {
-      for (let x = 0; x < width; x += 1) {
-        if (maskPixelValue(mask, (y * width + x) * 4) <= 8) continue
-        if (y < top) top = y
-        if (y > bottom) bottom = y
-        if (x < left) left = x
-        if (x > right) right = x
-      }
-    }
-    if (bottom < 0) return null
-    const objectHeight = Math.max(1, bottom - top)
-    const objectWidth = Math.max(1, right - left)
-
-    // the object, dilated a little and feathered
-    const subject = canvasOfSize(width, height)
-    const subjectCtx = subject.getContext('2d', { willReadFrequently: true })
-    subjectCtx.filter = `blur(${OBJECT_TRANSFER_RESTORE_FEATHER}px)`
-    subjectCtx.drawImage(expandedMaskCanvas(paintableMaskCanvas(subjectMaskCanvas, 8, false), 4), 0, 0)
-    subjectCtx.filter = 'none'
-    const subjectData = subjectCtx.getImageData(0, 0, width, height).data
-
-    const reachDown = Math.max(1, objectHeight * OBJECT_TRANSFER_RESTORE_GROUND_DOWN)
-    const reachUp = Math.max(1, objectHeight * 0.10)
-    const reachSide = Math.max(1, objectWidth * OBJECT_TRANSFER_RESTORE_GROUND_SIDE)
-
-    const out = canvasOfSize(width, height)
-    const ctx = out.getContext('2d', { willReadFrequently: true })
-    const image = ctx.createImageData(width, height)
-    for (let y = 0; y < height; y += 1) {
-      const groundY = Math.max(0, 1 - Math.max(y - bottom, 0) / reachDown) * Math.max(0, 1 - Math.max(bottom - y, 0) / reachUp)
-      for (let x = 0; x < width; x += 1) {
-        const i = (y * width + x) * 4
-        let near = maskPixelValue(subjectData, i) / 255
-        if (groundY > 0) {
-          const dx = Math.max(Math.max(left - x, x - right), 0)
-          const ground = groundY * Math.max(0, 1 - dx / reachSide)
-          if (ground > near) near = ground
-        }
-        const value = Math.round(near * 255)
-        image.data[i] = value
-        image.data[i + 1] = value
-        image.data[i + 2] = value
-        image.data[i + 3] = 255
-      }
-    }
-    ctx.putImageData(image, 0, 0)
-    const soft = canvasOfSize(width, height)
-    const softCtx = soft.getContext('2d', { willReadFrequently: true })
-    softCtx.filter = 'blur(10px)'
-    softCtx.drawImage(out, 0, 0)
-    softCtx.filter = 'none'
-    soft.__objectBottom = bottom
-    return soft
-  }
-
-  function objectTransferRestoredCanvas(baseCanvas, resultCanvas, subjectMaskCanvas) {
-    // Put the untouched picture back everywhere the pass had no business changing it.
-    //
-    // The integration pass runs at denoise 1, so it repaints the whole frame and relights it on the way.
-    // The object and its cast shadow are what was asked for; the sky going darker and the steps picking
-    // up a new highlight are not — measured, 227k pixels outside the object came back changed. The user
-    // asked for this directly: "可以用A..然后回贴不就好了。尽量去掉影响".
-    //
-    // Two continuous factors multiply per pixel, and neither has a boundary:
-    //   where — the object's feathered silhouette, or the feathered ground under it.
-    //   how much — how far that pixel actually moved, ramped, so a pixel the pass barely touched
-    //              restores fully and one it repainted keeps its new value.
-    const width = Math.max(1, Math.round(baseCanvas.width || 1))
-    const height = Math.max(1, Math.round(baseCanvas.height || 1))
-    const weightCanvas = objectTransferRestoreWeightCanvas(subjectMaskCanvas)
-    if (!weightCanvas) return resultCanvas
-    const weight = weightCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const base = baseCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height)
-    const res = resultCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height)
-    const out = canvasOfSize(width, height)
-    const ctx = out.getContext('2d', { willReadFrequently: true })
-    const image = ctx.createImageData(width, height)
-    let restored = 0
-    for (let i = 0; i + 3 < image.data.length; i += 4) {
-      const near = maskPixelValue(weight, i) / 255
-      let w = 0
-      if (near > 0) {
-        const diff = Math.max(
-          Math.abs(res.data[i] - base.data[i]),
-          Math.abs(res.data[i + 1] - base.data[i + 1]),
-          Math.abs(res.data[i + 2] - base.data[i + 2])
-        )
-        w = near * Math.min(1, Math.max(0, (diff - OBJECT_TRANSFER_RESTORE_KEEP_FROM) / OBJECT_TRANSFER_RESTORE_KEEP_RAMP))
-      }
-      if (w < 1) restored += 1
-      image.data[i] = base.data[i] + (res.data[i] - base.data[i]) * w
-      image.data[i + 1] = base.data[i + 1] + (res.data[i + 1] - base.data[i + 1]) * w
-      image.data[i + 2] = base.data[i + 2] + (res.data[i + 2] - base.data[i + 2]) * w
-      image.data[i + 3] = 255
-    }
-    ctx.putImageData(image, 0, 0)
-    out.__restoredPixels = restored
-    return out
-  }
-
   async function objectTransferDecodedResultDataUrl(dataUrl, assets) {
-    // The picture and the object are still RENDERED together, in one pass, at one strength — that part
-    // never changed and is the only way the object's shading, its cast shadow and the picture's own
-    // effects over it can be the same brush strokes. What happens after the decode is that the untouched
-    // picture is faded back in wherever the pass changed something it was not asked to change. See
-    // objectTransferRestoredCanvas for why that is not the region paste-back the user rejected.
+    // NOTHING is composited here. The model was handed the whole frame and a per-pixel denoise strength,
+    // and the frame it decoded is the result — the picture and the object were rendered together, in one
+    // pass, which is the only way the object's shading, its cast shadow and the picture's own effects
+    // over it can be the same brush strokes. The user rejected every version that stitched a region back
+    // afterwards: "不要2次加工，应该是生成之前就约束好。直接生成成品才对。你现在做的全是乱贴".
+    // All this function does is undo the plate scaling, which is the inverse of how the frame was sent.
     const size = assets && assets.size || await sourceSize()
     const width = Math.max(1, Math.round(size.width || 1))
     const height = Math.max(1, Math.round(size.height || 1))
     const baseCanvas = assets && assets.baseCanvas || await sourceFullCanvas(size)
     setSplitBusyDetail('\u6b63\u5728\u89e3\u7801\u751f\u6210\u7ed3\u679c...')
-    const decodedCanvas = await qwenEditPlateResultCanvas(dataUrl, assets.plateSize, assets.plateContent, width, height, '\u4e07\u7269\u8fc1\u79fb')
-    const driftBefore = countUnmaskedPixelChanges(baseCanvas, decodedCanvas, normalizeMaskCanvas(cloneCanvas(assets.transferMaskCanvas)), 8)
-    const finalCanvas = objectTransferRestoredCanvas(baseCanvas, decodedCanvas, assets.subjectMaskCanvas)
-    const driftAfter = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(assets.transferMaskCanvas)), 8)
+    const finalCanvas = await qwenEditPlateResultCanvas(dataUrl, assets.plateSize, assets.plateContent, width, height, '\u4e07\u7269\u8fc1\u79fb')
+    // Diagnostics only — nothing below changes a pixel. How far the repaint moved the rest of the
+    // picture is the one number worth watching, because it is the whole cost of painting it all at once.
+    const drift = countUnmaskedPixelChanges(baseCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(assets.transferMaskCanvas)), 8)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
         ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}),
-        pasteBack: 'continuous-restore-outside-object',
-        pasteMask: { postprocess: 'restore', denoise: assets.denoise, pixelsChangedOutsideTheObject: driftAfter, beforeRestore: driftBefore }
+        pasteBack: 'none-single-pass-decode',
+        pasteMask: { postprocess: 'none', denoise: assets.denoise, pixelsChangedOutsideTheObject: drift }
       }
     }
     return finalCanvas.toDataURL('image/png')
