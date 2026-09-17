@@ -272,7 +272,7 @@
   // keeps the marble's own veining and nosings anchored and sets how dark the cast shadow comes out.
   // Measured live: 110 -> no shadow at all, 170 -> a soft shadow lying on the steps, 210 -> heavy,
   // a binary 255 region -> the model rebuilt the floor and painted a black silhouette.
-  const OBJECT_TRANSFER_REGION_STRENGTH = 120
+  const OBJECT_TRANSFER_REGION_STRENGTH = 170
   // Everywhere outside the region. Non-zero so the whole frame really is sampled as one picture; low
   // enough that the parts of the painting nobody asked to change keep their detail.
   const OBJECT_TRANSFER_FRAME_FLOOR = 24
@@ -281,17 +281,6 @@
   // dark silhouette. At 205 the placed object keeps pulling its own colours back while its shading, its
   // edges and its contact with the ground are still repainted (measured live 2026-09-17).
   const OBJECT_TRANSFER_OBJECT_STRENGTH = 205
-  // Cast-shadow geometry, all as fractions of the placement so they hold at any size.
-  const OBJECT_TRANSFER_LIGHT_PERCENTILE = 0.03
-  const OBJECT_TRANSFER_SHADOW_SHEAR_MAX = 1.6
-  const OBJECT_TRANSFER_SHADOW_SQUASH = 0.2
-  const OBJECT_TRANSFER_SHADOW_FALLOFF = 0.55
-  const OBJECT_TRANSFER_SHADOW_BLUR = 4
-  const OBJECT_TRANSFER_SHADOW_DARKNESS = 0.38
-  const OBJECT_TRANSFER_NOSING_KEEP = 6
-  const OBJECT_TRANSFER_NOSING_MIN_GAP = 12
-  const OBJECT_TRANSFER_NOSING_SEARCH = 0.7
-  const OBJECT_TRANSFER_RISER_DROP = 0.06
   const OBJECT_TRANSFER_OBJECT_BAND = 12
   const OBJECT_TRANSFER_OBJECT_FEATHER = 6
   // Anything the sampler was allowed to move at all is pasted back whole. The grading already happened
@@ -15529,137 +15518,7 @@
     return maskScaleCanvas(featherMaskCanvas(canvas, feather), OBJECT_TRANSFER_REGION_STRENGTH / 255)
   }
 
-  function objectTransferLightDirection(baseCanvas) {
-    // Where the picture's key light is, taken from the picture: the centroid of its brightest pixels.
-    const width = Math.max(1, Math.round(baseCanvas.width || 1))
-    const height = Math.max(1, Math.round(baseCanvas.height || 1))
-    const data = baseCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const histogram = new Uint32Array(256)
-    for (let i = 0; i + 3 < data.length; i += 4) {
-      histogram[Math.min(255, Math.round(0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2]))] += 1
-    }
-    const total = width * height
-    let seen = 0
-    let cut = 255
-    for (let value = 255; value >= 0; value -= 1) {
-      seen += histogram[value]
-      if (seen >= total * OBJECT_TRANSFER_LIGHT_PERCENTILE) { cut = value; break }
-    }
-    let sumX = 0
-    let sumY = 0
-    let count = 0
-    for (let y = 0; y < height; y += 1) {
-      for (let x = 0; x < width; x += 1) {
-        const i = (y * width + x) * 4
-        if (0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2] < cut) continue
-        sumX += x
-        sumY += y
-        count += 1
-      }
-    }
-    if (!count) return { x: width * 0.5, y: -height }
-    return { x: sumX / count, y: sumY / count }
-  }
-
-  function objectTransferNosingRows(baseCanvas, x0, x1, yFrom, yTo) {
-    // The front edges of whatever the object stands on. A cast shadow kinks at every one of them, and
-    // that kink is most of what makes it read as cast rather than airbrushed on.
-    const width = Math.max(1, Math.round(baseCanvas.width || 1))
-    const height = Math.max(1, Math.round(baseCanvas.height || 1))
-    const left = Math.max(0, Math.round(x0))
-    const right = Math.min(width, Math.round(x1))
-    const top = Math.max(0, Math.round(yFrom))
-    const bottom = Math.min(height, Math.round(yTo))
-    if (right - left < 8 || bottom - top < 8) return []
-    const data = baseCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const rows = []
-    for (let y = top + 1; y < bottom; y += 1) {
-      let sum = 0
-      for (let x = left; x < right; x += 1) {
-        const a = (y * width + x) * 4
-        const b = ((y - 1) * width + x) * 4
-        sum += Math.abs((0.2126 * data[a] + 0.7152 * data[a + 1] + 0.0722 * data[a + 2]) - (0.2126 * data[b] + 0.7152 * data[b + 1] + 0.0722 * data[b + 2]))
-      }
-      rows.push({ y, strength: sum / (right - left) })
-    }
-    rows.sort((a, b) => b.strength - a.strength)
-    const kept = []
-    for (const row of rows) {
-      if (kept.length >= OBJECT_TRANSFER_NOSING_KEEP) break
-      if (kept.some((other) => Math.abs(other - row.y) <= OBJECT_TRANSFER_NOSING_MIN_GAP)) continue
-      kept.push(row.y)
-    }
-    return kept.sort((a, b) => a - b)
-  }
-
-  function objectTransferCastShadowCanvas(subjectCanvas, baseCanvas) {
-    // The object's own silhouette projected onto the ground it stands on, stepping down at each nosing.
-    // This is a constraint handed to the pass, not a patch after it: the model repaints it at the ground's
-    // denoise strength. It exists because the model does not invent one — given freedom around the object
-    // it paints LIGHT there, measured across six wordings, two placements and both quality settings.
-    const width = Math.max(1, Math.round(subjectCanvas.width || 1))
-    const height = Math.max(1, Math.round(subjectCanvas.height || 1))
-    const alpha = subjectCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const contact = new Int32Array(width).fill(-1)
-    const topRow = new Int32Array(width).fill(-1)
-    let minX = width
-    let maxX = -1
-    let footY = -1
-    for (let x = 0; x < width; x += 1) {
-      for (let y = height - 1; y >= 0; y -= 1) {
-        if (alpha[(y * width + x) * 4 + 3] < 128) continue
-        if (contact[x] < 0) contact[x] = y
-        topRow[x] = y
-      }
-      if (contact[x] >= 0) {
-        if (x < minX) minX = x
-        if (x > maxX) maxX = x
-        if (contact[x] > footY) footY = contact[x]
-      }
-    }
-    const canvas = canvasOfSize(width, height)
-    if (maxX < minX || footY < 0) return canvas
-    const centreX = (minX + maxX) / 2
-    const light = objectTransferLightDirection(baseCanvas)
-    const rise = Math.max(1, Math.abs(footY - light.y))
-    const shear = clampNumber((centreX - light.x) / rise, -OBJECT_TRANSFER_SHADOW_SHEAR_MAX, OBJECT_TRANSFER_SHADOW_SHEAR_MAX)
-    const noses = objectTransferNosingRows(
-      baseCanvas,
-      minX - (maxX - minX) * 0.3,
-      maxX + (maxX - minX) * 0.3,
-      footY + 4,
-      footY + (maxX - minX) * OBJECT_TRANSFER_NOSING_SEARCH
-    )
-    const riserDrop = Math.max(6, Math.round((maxX - minX) * OBJECT_TRANSFER_RISER_DROP))
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    const image = ctx.getImageData(0, 0, width, height)
-    for (let x = 0; x < width; x += 1) {
-      const yc = contact[x]
-      if (yc < 0) continue
-      const span = Math.max(1, yc - topRow[x])
-      for (let y = topRow[x]; y <= yc; y += 1) {
-        if (alpha[(y * width + x) * 4 + 3] < 128) continue
-        const above = yc - y
-        const sx = Math.round(x + above * shear)
-        let sy = yc + above * OBJECT_TRANSFER_SHADOW_SQUASH
-        for (const nose of noses) if (sy > nose) sy += riserDrop
-        sy = Math.round(sy)
-        if (sx < 0 || sx >= width || sy < 0 || sy >= height) continue
-        // darkest where the object touches the ground: what lands furthest away came from highest up
-        const value = Math.round(255 * (1 - OBJECT_TRANSFER_SHADOW_FALLOFF * Math.min(1, above / span)))
-        const i = (sy * width + sx) * 4
-        if (value <= image.data[i]) continue
-        image.data[i] = value
-        image.data[i + 1] = value
-        image.data[i + 2] = value
-        image.data[i + 3] = 255
-      }
-    }
-    ctx.putImageData(image, 0, 0)
-    return featherMaskCanvas(expandedMaskCanvas(paintableMaskCanvas(canvas, 8, false), 2, 0), OBJECT_TRANSFER_SHADOW_BLUR)
-  }
-
-  function objectTransferCompGuideCanvas(baseCanvas, subjectCanvas, shadowCanvas) {
+  function objectTransferCompGuideCanvas(baseCanvas, subjectCanvas) {
     // A blue silhouette turns the job into "fill this hole", and the model fills it by copying the
     // reference's own rendering — a 3D render dropped into a painted scene. Giving it a rough composite
     // instead makes the job what it should be: repaint this object so it belongs here. The model then
@@ -15672,20 +15531,6 @@
     const canvas = canvasOfSize(width, height)
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     ctx.drawImage(baseCanvas, 0, 0, width, height)
-    if (shadowCanvas) {
-      // multiplied into the ground, so the marble's veining still reads through it
-      const image = ctx.getImageData(0, 0, width, height)
-      const shadow = shadowCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-      for (let i = 0; i + 3 < image.data.length; i += 4) {
-        const value = maskPixelValue(shadow, i)
-        if (value <= 4) continue
-        const weight = clampNumber(value / 255, 0, 1) * OBJECT_TRANSFER_SHADOW_DARKNESS
-        for (let channel = 0; channel < 3; channel += 1) {
-          image.data[i + channel] = Math.round(image.data[i + channel] * (1 - weight))
-        }
-      }
-      ctx.putImageData(image, 0, 0)
-    }
     ctx.drawImage(subjectCanvas, 0, 0, width, height)
     return canvas
   }
@@ -15703,8 +15548,7 @@
     const transferMaskCanvas = hardAlphaMask
     const stats = objectTransferMaskStats(transferMaskCanvas)
     if (stats.max <= 8 || stats.pixels < 16) throw new Error(OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE)
-    const castShadowCanvas = objectTransferCastShadowCanvas(transferSubjectCanvas, baseCanvas)
-    const placementGuideCanvas = objectTransferCompGuideCanvas(baseCanvas, transferSubjectCanvas, castShadowCanvas)
+    const placementGuideCanvas = objectTransferCompGuideCanvas(baseCanvas, transferSubjectCanvas)
     // Everything the model is allowed to repaint: the placement silhouette plus room for the object's
     // edge and its cast shadow. Outside this the latent is frozen, so the scene cannot drift.
     const objectMaskCanvas = expandedMaskCanvas(paintableMaskCanvas(hardAlphaMask, 8, false), OBJECT_TRANSFER_OBJECT_GROW, 0)
@@ -15741,7 +15585,6 @@
       noiseMaskCanvas,
       objectMaskCanvas,
       protectionCanvas,
-      castShadowCanvas,
       regionRect: objectTransferRegionRect(size, bounds),
       regionStrength: OBJECT_TRANSFER_REGION_STRENGTH,
       plateSize,

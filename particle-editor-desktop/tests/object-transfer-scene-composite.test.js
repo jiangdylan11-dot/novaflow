@@ -69,7 +69,7 @@ test('the picture is generated in one pass and nothing is composited afterwards'
   // prediction with the frozen latent by the mask VALUE at every step). Measured live at this placement:
   // 110 -> no shadow, 170 -> a soft shadow lying on the steps, 210 -> heavy, binary 255 -> the model
   // rebuilt the floor and painted a black silhouette.
-  assert.match(source, /const OBJECT_TRANSFER_REGION_STRENGTH = 120/, 'the ground only repaints the shadow it is handed; at 170 it had room to invent extra rose petals too')
+  assert.match(source, /const OBJECT_TRANSFER_REGION_STRENGTH = 170/, 'the region is partly denoised, which is what anchors the ground and sets the shadow density')
   // Non-zero everywhere, so the frame really is sampled as one picture rather than a hole being filled.
   // Measured: a floor of 40 moved the far edges no more than a floor of 0 (3.4 vs 3.2 / 255).
   assert.match(source, /const OBJECT_TRANSFER_FRAME_FLOOR = 24/, 'the whole frame is sampled, at a strength low enough to keep its detail')
@@ -84,15 +84,7 @@ test('the picture is generated in one pass and nothing is composited afterwards'
   // them, and that whole region is kept as one.
   // A blue silhouette turns the job into "fill this hole" and the model fills it by copying the
   // reference's own rendering. A rough composite makes it a repaint, which is what an edit model is for.
-  assert.match(source, /const castShadowCanvas = objectTransferCastShadowCanvas\(transferSubjectCanvas, baseCanvas\)\n\s+const placementGuideCanvas = objectTransferCompGuideCanvas\(baseCanvas, transferSubjectCanvas, castShadowCanvas\)/, 'the cast shadow is geometry handed to the pass, not something the model is asked to invent')
-  // Measured across six prompt wordings, two placements and both quality settings: given freedom around
-  // the object this model paints LIGHT there, never a cast shadow. At 6 steps it smeared one soft blob
-  // across the steps without kinking at a single nosing; at 24 steps it painted almost nothing. So the
-  // shadow is projected from the object's own silhouette onto the steps it stands on, stepping down at
-  // each nosing, multiplied into the guide BEFORE the pass, and repainted by the model at ground strength.
-  assert.match(source, /function objectTransferLightDirection\(baseCanvas\)/, 'the light direction comes from the picture, not from a constant')
-  assert.match(source, /function objectTransferNosingRows\(baseCanvas, x0, x1, yFrom, yTo\)/, 'the steps the shadow has to kink over are detected in the picture')
-  assert.match(source, /for \(const nose of noses\) if \(sy > nose\) sy \+= riserDrop/, 'every nosing the shadow passes drops it onto the next step')
+  assert.match(source, /const placementGuideCanvas = objectTransferCompGuideCanvas\(baseCanvas, transferSubjectCanvas\)/, 'the object is composited into the plate, not stamped as a blue shape')
   assert.doesNotMatch(source, /objectTransferBlueGuideCanvas/, 'the blue silhouette guide is gone')
   // A faint ground patch under the object used to mark where the contact shadow went. The model came back
   // with a glowing pool of light dead centre on it: it explains any patch it is handed.
