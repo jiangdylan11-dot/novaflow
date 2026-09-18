@@ -5,7 +5,6 @@
   const ROOT_ID = 'novaflow-video-format-convert-root'
   const STYLE_ID = 'novaflow-video-format-convert-style'
   const BUTTON_ATTR = 'data-novaflow-video-format-convert-entry'
-  const MP4_ENTRY_ATTR = 'data-novaflow-mp4-compress-entry'
   const FORMATS = [
     { id: 'mp4', label: 'MP4', note: 'H.264 + AAC，通用播放和引擎导入都认。' },
     { id: 'webm', label: 'WEBM', note: 'VP9，同画质下体积更小，网页内嵌常用。' },
@@ -24,6 +23,18 @@
   const fileStem = (name) => String(name || 'video').replace(/\.[^.]+$/, '') || 'video'
   const outputName = (name, format) => `${fileStem(name)}.${format}`
   const isVideoFile = (file) => /^video\//.test(file?.type || '') || INPUT_EXTENSIONS.some((ext) => String(file?.name || '').toLowerCase().endsWith(ext))
+
+  // The tools sliders are the runtime's own: a 2px track filled to the value, a 12px round thumb,
+  // no border. The fill is a background gradient driven by --nf-range-pct, so the percentage has to
+  // be written back on every value change the way novaflow-brand-runtime's syncRangeFillVisual does.
+  const syncRangeFill = (input) => {
+    if (!(input instanceof HTMLInputElement)) return
+    const min = Number(input.min || 0)
+    const max = Number(input.max || 100)
+    const pct = max > min ? clamp(((Number(input.value || 0) - min) / (max - min)) * 100, 0, 100) : 0
+    input.setAttribute('data-novaflow-tools-range', '1')
+    input.style.setProperty('--nf-range-pct', `${pct}%`)
+  }
 
   const formatBytes = (bytes) => {
     const value = Number(bytes) || 0
@@ -49,7 +60,10 @@
       .nf-vfc-formats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;width:220px}.nf-vfc-format{height:44px;border:0;border-radius:8px;background:rgba(255,255,255,.043);color:rgba(232,239,246,.78);cursor:pointer;font-size:12px;font-weight:400;padding:0}.nf-vfc-format.active{background:#1ea672;color:#effcf5}
       .nf-vfc-upload{width:220px;height:44px;border:1px dashed rgba(255,255,255,.16);border-radius:8px;background:#1b1b1b;color:#f3f3f3;cursor:pointer;font-size:12px;font-weight:400;padding:0}
       .nf-vfc-controls{display:grid;gap:8px}.nf-vfc-count,.nf-vfc-status{font-size:11px;line-height:1.6;color:#929292}.nf-vfc-status{min-height:16px;color:#bfe8d7}
-      .nf-vfc-scale{display:grid;gap:6px}.nf-vfc-scale span{color:#bfe8d7;font-size:11px;font-weight:400}.nf-vfc-scale input{width:220px;margin:0;accent-color:#1ea672}
+      .nf-vfc-scale{display:grid;gap:6px}.nf-vfc-scale span{color:#bfe8d7;font-size:11px;font-weight:400}
+      #${ROOT_ID} input[type=range]{-webkit-appearance:none;appearance:none;width:220px;height:12px;min-height:12px;max-height:12px;padding:0;margin:0;border:0;accent-color:#20c997;background:linear-gradient(90deg,#20c997 0%,#20c997 var(--nf-range-pct,0%),#303030 var(--nf-range-pct,0%),#303030 100%) center / 100% 2px no-repeat;background-color:transparent;cursor:pointer;box-sizing:border-box}
+      #${ROOT_ID} input[type=range]::-webkit-slider-runnable-track{height:2px;border:0;background:transparent}
+      #${ROOT_ID} input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;margin-top:-5px;border:0;border-radius:999px;background:#dfe7ee;box-shadow:0 0 0 1px rgba(255,255,255,0.20),0 1px 4px rgba(0,0,0,0.35)}
       .nf-vfc-hint{font-size:10px;line-height:1.7;color:#9a9a9a}
       .nf-vfc-actions{display:grid;grid-template-columns:220px;gap:6px}.nf-vfc-btn{width:220px;height:40px;border:0;border-radius:8px;background:#1ea672;color:#effcf5;cursor:pointer;font-size:12px;font-weight:400;padding:0 12px}.nf-vfc-btn.alt{height:34px;background:rgba(255,255,255,.043);color:rgba(232,239,246,.78);padding:0 10px}.nf-vfc-btn:disabled{opacity:.45;cursor:default;filter:none}
       .nf-vfc-list{min-height:0;overflow-y:auto;padding:0 12px 12px;display:grid;align-content:start;gap:6px}.nf-vfc-item{position:relative;width:100%;min-width:0;max-width:100%;min-height:52px;height:52px;max-height:52px;display:grid;grid-template-columns:42px minmax(0,1fr);column-gap:8px;align-items:center;padding:6px 30px 6px 8px;border:0;border-radius:6px;background:transparent;color:#eee;text-align:left;cursor:pointer;overflow:hidden}.nf-vfc-item.active{background:linear-gradient(90deg,rgba(30,166,114,.12),rgba(30,166,114,.02) 68%,rgba(30,166,114,0));box-shadow:inset 2px 0 0 rgba(37,188,132,.92)}
@@ -189,7 +203,16 @@
       existing?.remove()
       return
     }
-    if (existing instanceof HTMLElement) { if (state.active) setEntryVisual(true); return }
+    if (existing instanceof HTMLElement) {
+      // The other patch modules append, so an entry that mounts after this one lands behind it.
+      // Only touch the DOM when the position is actually wrong, or the nudge feeds the runtime's
+      // own mutation observer every second.
+      if (existing.parentElement === jpg.parentElement && existing.parentElement.lastElementChild !== existing) {
+        existing.parentElement.appendChild(existing)
+      }
+      if (state.active) setEntryVisual(true)
+      return
+    }
     const button = jpg.cloneNode(true)
     button.setAttribute(BUTTON_ATTR, '1')
     button.setAttribute('data-novaflow-tools-entry', TOOL_ID)
@@ -197,11 +220,8 @@
     button.removeAttribute('data-novaflow-tools-entry-active')
     button.textContent = '视频格式转换'
     button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); activate() })
-    // Behind MP4 压缩 when that entry is already mounted, so the two video tools stay adjacent and
-    // in a fixed order no matter which patch module's interval fires first.
-    const mp4Entry = document.querySelector(`[${MP4_ENTRY_ATTR}="1"]`)
-    const anchor = mp4Entry instanceof HTMLElement && mp4Entry.parentElement === jpg.parentElement ? mp4Entry : jpg
-    jpg.parentElement.insertBefore(button, anchor.nextSibling)
+    // Last in the list; the guard above puts it back if another module appends after it.
+    jpg.parentElement.appendChild(button)
     setEntryVisual(false)
     ;['PNG 压缩', 'JPG 压缩'].forEach((label) => {
       const nativeButton = findEntry(label)
@@ -432,7 +452,7 @@
         <div class="nf-vfc-formats">${FORMATS.map((format) => `<button class="nf-vfc-format ${format.id === state.format ? 'active' : ''}" data-vfc-format="${format.id}" ${state.processing ? 'disabled' : ''}>${format.label}</button>`).join('')}</div>
         <button class="nf-vfc-upload" data-vfc-pick>＋　选择视频</button>
         <div class="nf-vfc-controls">
-          <label class="nf-vfc-scale"><span>输出尺寸 ${state.scalePct}%</span><input data-vfc-scale type="range" min="10" max="200" value="${state.scalePct}" ${state.processing ? 'disabled' : ''}></label>
+          <label class="nf-vfc-scale"><span>输出尺寸 ${state.scalePct}%</span><input data-vfc-scale data-novaflow-tools-range="1" type="range" min="10" max="200" value="${state.scalePct}" ${state.processing ? 'disabled' : ''}></label>
           <div class="nf-vfc-hint">${escapeHtml(active.note)}</div>
           <div class="nf-vfc-actions"><button class="nf-vfc-btn" data-vfc-run ${state.processing || !state.items.length ? 'disabled' : ''}>${state.processing ? '转换中…' : `转换为 ${active.label}`}</button><button class="nf-vfc-btn alt" data-vfc-clear ${state.processing || !state.items.length ? 'disabled' : ''}>清空</button></div>
           <div class="nf-vfc-count">已选 ${state.items.length} 个｜完成 ${done} 个｜可导出 ${done} 个</div>
@@ -452,8 +472,10 @@
       state.format = button.getAttribute('data-vfc-format') || 'mp4'
       render()
     }))
+    syncRangeFill(root.querySelector('[data-vfc-scale]'))
     root.querySelector('[data-vfc-scale]')?.addEventListener('input', (event) => {
       state.scalePct = clamp(Math.round(Number(event.target.value) || DEFAULT_SCALE_PCT), 10, 200)
+      syncRangeFill(event.target)
       const label = root.querySelector('.nf-vfc-scale span')
       if (label instanceof HTMLElement) label.textContent = `输出尺寸 ${state.scalePct}%`
     })

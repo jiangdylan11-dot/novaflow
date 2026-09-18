@@ -18,7 +18,7 @@ for (const tool of TOOLS) {
   test(`${tool.file} is loaded and packaged as a required runtime helper`, () => {
     const html = read('particle-editor', 'index.html')
     const buildScript = read('particle-editor-desktop', 'scripts', 'build-renderer.mjs')
-    assert.match(html, new RegExp(`${tool.file.replace(/\./g, '\\.')}\\?v=20260919-video-tools-1`))
+    assert.match(html, new RegExp(`${tool.file.replace(/\./g, '\\.')}\\?v=20260919-video-tools-2`))
     // Once in the shell file list and once in the required set, like every other tool module.
     assert.equal((buildScript.match(new RegExp(`"${tool.file.replace(/\./g, '\\.')}"`, 'g')) || []).length, 2)
   })
@@ -96,15 +96,46 @@ for (const tool of TOOLS) {
   })
 }
 
-test('the two video entries sit behind JPG 压缩 in a fixed order', () => {
-  // appendChild would leave the order up to whichever patch module's interval fires first.
-  assert.match(mp4Tool, /jpg\.parentElement\.insertBefore\(button, jpg\.nextSibling\)/)
-  assert.match(convertTool, /const mp4Entry = document\.querySelector\(`\[\$\{MP4_ENTRY_ATTR\}="1"\]`\)/)
-  assert.match(convertTool, /jpg\.parentElement\.insertBefore\(button, anchor\.nextSibling\)/)
+test('MP4 压缩 sits above SPINE 图集转换 and 视频格式转换 stays last', () => {
+  // The other patch modules append, so a bare appendChild here would leave the order up to
+  // whichever module's interval fires first.
+  const spineTool = read('particle-editor', 'spine-atlas-webp.tool.js')
   assert.equal(
-    convertTool.match(/const MP4_ENTRY_ATTR = '(.+?)'/)[1],
-    mp4Tool.match(/const BUTTON_ATTR = '(.+?)'/)[1]
+    mp4Tool.match(/const SPINE_ENTRY_ATTR = '(.+?)'/)[1],
+    spineTool.match(/const BUTTON_ATTR = '(.+?)'/)[1]
   )
+  assert.match(mp4Tool, /const anchor = spineEntry instanceof HTMLElement && spineEntry\.parentElement === jpg\.parentElement \? spineEntry : null/)
+  assert.match(mp4Tool, /jpg\.parentElement\.insertBefore\(button, anchor\)/)
+
+  assert.match(convertTool, /jpg\.parentElement\.appendChild\(button\)/)
+  assert.doesNotMatch(convertTool, /insertBefore/)
+  // Re-assert last place, but only when it is actually wrong: an unconditional move would feed the
+  // brand runtime's mutation observer once a second.
+  const lastGuard = convertTool.match(/if \(existing\.parentElement === jpg\.parentElement[\s\S]{0,200}?appendChild\(existing\)/)?.[0] || ''
+  assert.match(lastGuard, /lastElementChild !== existing/)
+  assert.match(lastGuard, /existing\.parentElement\.appendChild\(existing\)/)
+})
+
+test('the sliders are the runtime own 2px track, not a browser default', () => {
+  const brandRuntime = read('particle-editor', 'novaflow-brand-runtime.js')
+  assert.match(brandRuntime, /const PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT = 2;/)
+  assert.match(brandRuntime, /const PARTICLE_DENSITY_SLIDER_THUMB_SIZE = 12;/)
+  assert.match(brandRuntime, /const UI_RANGE_ACCENT = "#20c997";/)
+  for (const tool of TOOLS) {
+    // The same declarations the brand runtime puts on a native tools slider, so the overlay does
+    // not depend on that stylesheet reaching a root it appends to <body>.
+    assert.match(tool.source, /#\$\{ROOT_ID\} input\[type=range\]\{[^}]*appearance:none/, tool.file)
+    assert.match(tool.source, /#\$\{ROOT_ID\} input\[type=range\]\{[^}]*border:0/, tool.file)
+    assert.match(tool.source, /#\$\{ROOT_ID\} input\[type=range\]\{[^}]*height:12px;min-height:12px;max-height:12px/, tool.file)
+    assert.match(tool.source, /#\$\{ROOT_ID\} input\[type=range\]\{[^}]*#20c997 var\(--nf-range-pct,0%\),#303030 var\(--nf-range-pct,0%\),#303030 100%\) center \/ 100% 2px no-repeat/, tool.file)
+    assert.match(tool.source, /::-webkit-slider-runnable-track\{height:2px;border:0;background:transparent\}/, tool.file)
+    assert.match(tool.source, /::-webkit-slider-thumb\{[^}]*width:12px;height:12px;margin-top:-5px;border:0;border-radius:999px;background:#dfe7ee/, tool.file)
+    assert.doesNotMatch(tool.source, /accent-color:#1ea672/, tool.file)
+    // The fill is a gradient stop, so the percentage has to be written back on every change.
+    assert.match(tool.source, /input\.style\.setProperty\('--nf-range-pct', `\$\{pct\}%`\)/, tool.file)
+    assert.match(tool.source, /syncRangeFill\(event\.target\)/, tool.file)
+    assert.match(tool.source, /data-novaflow-tools-range="1"/, tool.file)
+  }
 })
 
 test('the strength label promises what the encoder delivers', () => {

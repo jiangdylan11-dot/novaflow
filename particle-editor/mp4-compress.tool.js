@@ -5,6 +5,7 @@
   const ROOT_ID = 'novaflow-mp4-compress-root'
   const STYLE_ID = 'novaflow-mp4-compress-style'
   const BUTTON_ATTR = 'data-novaflow-mp4-compress-entry'
+  const SPINE_ENTRY_ATTR = 'data-novaflow-spine-atlas-webp-entry'
   const DEFAULT_STRENGTH = 32
   const state = { active: false, items: [], selectedId: '', strength: DEFAULT_STRENGTH, processing: false, exporting: false }
   let nativeWorkspace = null
@@ -21,6 +22,18 @@
   const compressionPlan = (strength) => {
     const level = clamp(Math.round(Number(strength) || 0), 0, 100)
     return { strength: level, quality: clamp(Math.round(95 - level * 0.6), 35, 95), zone: level >= 78 ? 'danger' : level >= 56 ? 'warning' : 'safe' }
+  }
+
+  // The tools sliders are the runtime's own: a 2px track filled to the value, a 12px round thumb,
+  // no border. The fill is a background gradient driven by --nf-range-pct, so the percentage has to
+  // be written back on every value change the way novaflow-brand-runtime's syncRangeFillVisual does.
+  const syncRangeFill = (input) => {
+    if (!(input instanceof HTMLInputElement)) return
+    const min = Number(input.min || 0)
+    const max = Number(input.max || 100)
+    const pct = max > min ? clamp(((Number(input.value || 0) - min) / (max - min)) * 100, 0, 100) : 0
+    input.setAttribute('data-novaflow-tools-range', '1')
+    input.style.setProperty('--nf-range-pct', `${pct}%`)
   }
 
   const formatBytes = (bytes) => {
@@ -46,7 +59,10 @@
       .nf-mp4-side{min-width:0;display:grid;grid-template-rows:44px auto minmax(0,1fr);gap:8px;overflow:hidden}
       .nf-mp4-upload{width:220px;height:44px;border:1px dashed rgba(255,255,255,.16);border-radius:8px;background:#1b1b1b;color:#f3f3f3;cursor:pointer;font-size:12px;font-weight:400;padding:0}
       .nf-mp4-controls{display:grid;gap:8px}.nf-mp4-count,.nf-mp4-status{font-size:11px;line-height:1.6;color:#929292}.nf-mp4-status{min-height:16px;color:#bfe8d7}
-      .nf-mp4-strength{display:grid;gap:6px}.nf-mp4-strength span{color:#bfe8d7;font-size:11px;font-weight:400}.nf-mp4-strength input{width:220px;margin:0;accent-color:#1ea672}
+      .nf-mp4-strength{display:grid;gap:6px}.nf-mp4-strength span{color:#bfe8d7;font-size:11px;font-weight:400}
+      #${ROOT_ID} input[type=range]{-webkit-appearance:none;appearance:none;width:220px;height:12px;min-height:12px;max-height:12px;padding:0;margin:0;border:0;accent-color:#20c997;background:linear-gradient(90deg,#20c997 0%,#20c997 var(--nf-range-pct,0%),#303030 var(--nf-range-pct,0%),#303030 100%) center / 100% 2px no-repeat;background-color:transparent;cursor:pointer;box-sizing:border-box}
+      #${ROOT_ID} input[type=range]::-webkit-slider-runnable-track{height:2px;border:0;background:transparent}
+      #${ROOT_ID} input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;margin-top:-5px;border:0;border-radius:999px;background:#dfe7ee;box-shadow:0 0 0 1px rgba(255,255,255,0.20),0 1px 4px rgba(0,0,0,0.35)}
       .nf-mp4-hint{font-size:10px;line-height:1.7;color:#9a9a9a}.nf-mp4-hint.warning{color:#1ea672}.nf-mp4-hint.danger{color:#fca5a5}
       .nf-mp4-actions{display:grid;grid-template-columns:220px;gap:6px}.nf-mp4-btn{width:220px;height:40px;border:0;border-radius:8px;background:#1ea672;color:#effcf5;cursor:pointer;font-size:12px;font-weight:400;padding:0 12px}.nf-mp4-btn.alt{height:34px;background:rgba(255,255,255,.043);color:rgba(232,239,246,.78);padding:0 10px}.nf-mp4-btn:disabled{opacity:.45;cursor:default;filter:none}
       .nf-mp4-list{min-height:0;overflow-y:auto;padding:0 12px 12px;display:grid;align-content:start;gap:6px}.nf-mp4-item{position:relative;width:100%;min-width:0;max-width:100%;min-height:52px;height:52px;max-height:52px;display:grid;grid-template-columns:42px minmax(0,1fr);column-gap:8px;align-items:center;padding:6px 30px 6px 8px;border:0;border-radius:6px;background:transparent;color:#eee;text-align:left;cursor:pointer;overflow:hidden}.nf-mp4-item.active{background:linear-gradient(90deg,rgba(30,166,114,.12),rgba(30,166,114,.02) 68%,rgba(30,166,114,0));box-shadow:inset 2px 0 0 rgba(37,188,132,.92)}
@@ -194,9 +210,12 @@
     button.removeAttribute('data-novaflow-tools-entry-active')
     button.textContent = 'MP4 压缩'
     button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); activate() })
-    // Right after JPG 压缩 rather than at the end of the list: the three compression entries are
-    // one group, and the tools appended by the other patch modules keep their own order below.
-    jpg.parentElement.insertBefore(button, jpg.nextSibling)
+    // Directly above SPINE 图集转换. The other patch modules append, so anchoring on that entry
+    // fixes the order whichever module's interval fires first: if SPINE is not mounted yet this
+    // appends, and SPINE's own append then lands behind it.
+    const spineEntry = document.querySelector(`[${SPINE_ENTRY_ATTR}="1"]`)
+    const anchor = spineEntry instanceof HTMLElement && spineEntry.parentElement === jpg.parentElement ? spineEntry : null
+    jpg.parentElement.insertBefore(button, anchor)
     setEntryVisual(false)
     ;['PNG 压缩', 'JPG 压缩'].forEach((label) => {
       const nativeButton = findEntry(label)
@@ -449,7 +468,7 @@
       <div class="nf-mp4-side">
         <button class="nf-mp4-upload" data-mp4-pick>＋　选择 MP4</button>
         <div class="nf-mp4-controls">
-          <label class="nf-mp4-strength"><span>压缩强度 ${plan.strength}</span><input data-mp4-strength type="range" min="0" max="100" value="${plan.strength}" ${state.processing ? 'disabled' : ''}></label>
+          <label class="nf-mp4-strength"><span>压缩强度 ${plan.strength}</span><input data-mp4-strength data-novaflow-tools-range="1" type="range" min="0" max="100" value="${plan.strength}" ${state.processing ? 'disabled' : ''}></label>
           <div class="nf-mp4-hint ${plan.zone === 'safe' ? '' : plan.zone}">当前输出质量约 ${plan.quality}%。${planNote}分辨率、帧率和时长保持不变。</div>
           <div class="nf-mp4-actions"><button class="nf-mp4-btn" data-mp4-run ${state.processing || !state.items.length ? 'disabled' : ''}>${state.processing ? '压缩中…' : '开始压缩'}</button><button class="nf-mp4-btn alt" data-mp4-clear ${state.processing || !state.items.length ? 'disabled' : ''}>清空</button></div>
           <div class="nf-mp4-count">已选 ${state.items.length} 个｜完成 ${done} 个｜可导出 ${done} 个</div>
@@ -464,8 +483,10 @@
       <div class="nf-mp4-top-actions"><button data-mp4-export ${state.exporting || !done ? 'disabled' : ''}>${state.exporting ? '导出中…' : '导出到文件夹'}</button><button data-mp4-overwrite ${state.exporting || !overwriteReady ? 'disabled' : ''}>直接覆盖</button></div>`
     root.querySelector('[data-mp4-pick]')?.addEventListener('click', () => root.querySelector('[data-mp4-file]')?.click())
     root.querySelector('[data-mp4-file]')?.addEventListener('change', (event) => { addFiles(event.target.files); event.target.value = '' })
+    syncRangeFill(root.querySelector('[data-mp4-strength]'))
     root.querySelector('[data-mp4-strength]')?.addEventListener('input', (event) => {
       state.strength = clamp(Math.round(Number(event.target.value) || 0), 0, 100)
+      syncRangeFill(event.target)
       const next = compressionPlan(state.strength)
       const label = root.querySelector('.nf-mp4-strength span')
       const hint = root.querySelector('.nf-mp4-hint')
