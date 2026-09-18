@@ -6,10 +6,13 @@ const VIDEO_RESOURCE_MEDIA_IPC = Object.freeze({
   register: "video-resource-media-register",
   release: "video-resource-media-release"
 });
-const SUPPORTED_EXTENSIONS = new Set([".mp4", ".webm"]);
+// .gif is here because 视频格式转换 writes one: it is an animation the renderer has to play back
+// from a temp path like any other conversion result, and it goes through the same streaming route.
+const SUPPORTED_EXTENSIONS = new Set([".mp4", ".webm", ".gif"]);
+const MIME_TYPES = new Map([[".webm", "video/webm"], [".gif", "image/gif"]]);
 
 function mimeTypeForPath(filePath, pathApi) {
-  return String(pathApi.extname(filePath || "")).toLowerCase() === ".webm" ? "video/webm" : "video/mp4";
+  return MIME_TYPES.get(String(pathApi.extname(filePath || "")).toLowerCase()) || "video/mp4";
 }
 
 function registerVideoResourceMediaScheme(protocolApi) {

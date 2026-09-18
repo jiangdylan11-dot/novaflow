@@ -21,6 +21,8 @@ const { renderLicenseLockScreenHtml } = require("./license/licenseLockScreen");
 const { dataUrlToBuffer, clampManifestNumber } = require("./main/buffer-helpers");
 const { createPngCompressor } = require("./main/compression-helpers");
 const { convertSpineAtlasWebp, overwriteSpineAtlasWebpOutput, writeSpineAtlasWebpOutput } = require("./main/spine-atlas-webp-converter");
+const { compressMp4 } = require("./main/mp4-compressor");
+const { convertVideoFormat } = require("./main/video-format-converter");
 const {
   sanitizeFileName,
   sanitizeFileStem,
@@ -9439,6 +9441,128 @@ ipcMain.handle("overwrite-spine-atlas-webp-output", async (_evt, payload) => {
     return overwriteSpineAtlasWebpOutput(payload, { fs });
   } catch (err) {
     return toIpcErrorResult(err, "overwrite_spine_atlas_webp_output_failed");
+  }
+});
+
+// One work dir per 工具 video entry: a result has to outlive the call that made it, because the
+// user runs a batch first and only then picks where it goes -- and clearing one tool's list must
+// not take the other tool's results with it.
+const novaFlowVideoToolWorkDirs = new Map();
+
+function getNovaFlowVideoToolWorkDir(tool) {
+  const key = String(tool || "").trim() || "video-tool";
+  const existing = novaFlowVideoToolWorkDirs.get(key);
+  if (existing && fs.existsSync(existing)) return existing;
+  const dir = createNovaFlowTempWorkDir(`video-tool-${key}`, key);
+  novaFlowVideoToolWorkDirs.set(key, dir);
+  return dir;
+}
+
+function novaFlowVideoToolJobId(payload, prefix) {
+  return typeof payload?.jobId === "string" && payload.jobId.trim()
+    ? payload.jobId.trim()
+    : `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+function novaFlowVideoToolDeps(evt, jobId) {
+  return {
+    fs,
+    path,
+    spawn,
+    runCmd,
+    ffmpegPath,
+    ffprobePath,
+    trackChild: (child) => trackNovaFlowCommandChild(child),
+    onProgress: (ratio) => {
+      try { evt.sender.send("video-tool-progress", { jobId, progress01: ratio }); } catch {}
+    }
+  };
+}
+
+handleNovaFlowTempIpc("compress-mp4", async (evt, payload) => {
+  const jobId = novaFlowVideoToolJobId(payload, "mp4");
+  try {
+    const result = await compressMp4(
+      { ...payload, outDir: getNovaFlowVideoToolWorkDir("mp4-compress") },
+      novaFlowVideoToolDeps(evt, jobId)
+    );
+    return { ...result, jobId };
+  } catch (err) {
+    return toIpcErrorResult(err, "compress_mp4_failed");
+  }
+});
+
+handleNovaFlowTempIpc("convert-video-format", async (evt, payload) => {
+  const jobId = novaFlowVideoToolJobId(payload, "convert");
+  try {
+    const result = await convertVideoFormat(
+      { ...payload, outDir: getNovaFlowVideoToolWorkDir("video-convert") },
+      novaFlowVideoToolDeps(evt, jobId)
+    );
+    return { ...result, jobId };
+  } catch (err) {
+    return toIpcErrorResult(err, "convert_video_format_failed");
+  }
+});
+
+handleNovaFlowTempIpc("save-video-tool-output", async (_evt, payload) => {
+  try {
+    await assertOnlineEntitled("export", "save-video-tool-output");
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    if (!items.length) return { ok: false, error: "没有可导出的视频" };
+    const dir = String(payload?.dir || "").trim() || await (async () => {
+      const pick = await dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] });
+      return pick.canceled ? "" : String(pick.filePaths?.[0] || "");
+    })();
+    if (!dir) return { ok: true, canceled: true };
+    const saved = [];
+    for (const item of items) {
+      const srcPath = String(item?.srcPath || "").trim();
+      const fileName = sanitizeFileName(item?.fileName) || "video-output.mp4";
+      if (!srcPath || !fs.existsSync(srcPath)) throw new Error(`找不到结果文件：${fileName}`);
+      const target = path.join(dir, fileName);
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(srcPath, target);
+      saved.push(target);
+    }
+    return { ok: true, canceled: false, dir, saved };
+  } catch (err) {
+    return toIpcErrorResult(err, "save_video_tool_output_failed");
+  }
+});
+
+handleNovaFlowTempIpc("overwrite-video-tool-output", async (_evt, payload) => {
+  try {
+    await assertOnlineEntitled("export", "overwrite-video-tool-output");
+    const items = Array.isArray(payload?.items) ? payload.items : [];
+    if (!items.length) return { ok: false, error: "没有可覆盖的视频" };
+    const written = [];
+    for (const item of items) {
+      const srcPath = String(item?.srcPath || "").trim();
+      const targetPath = String(item?.targetPath || "").trim();
+      if (!srcPath || !fs.existsSync(srcPath)) throw new Error("找不到结果文件");
+      if (!targetPath || !fs.existsSync(targetPath)) throw new Error("找不到原始视频文件");
+      // A kept-original result points at the source: copying it onto itself would truncate the
+      // file on some filesystems, and there is nothing to write anyway.
+      if (path.resolve(srcPath) === path.resolve(targetPath)) continue;
+      fs.copyFileSync(srcPath, targetPath);
+      written.push(targetPath);
+    }
+    return { ok: true, written };
+  } catch (err) {
+    return toIpcErrorResult(err, "overwrite_video_tool_output_failed");
+  }
+});
+
+handleNovaFlowTempIpc("clear-video-tool-output", async (_evt, payload) => {
+  try {
+    const key = String(payload?.tool || "").trim();
+    const dir = key ? novaFlowVideoToolWorkDirs.get(key) : "";
+    if (key) novaFlowVideoToolWorkDirs.delete(key);
+    if (dir) await cleanupNovaFlowTempWorkDir(dir, "clear-video-tool-output");
+    return { ok: true };
+  } catch (err) {
+    return toIpcErrorResult(err, "clear_video_tool_output_failed");
   }
 });
 

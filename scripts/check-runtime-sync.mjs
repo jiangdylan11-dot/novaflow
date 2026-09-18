@@ -8,7 +8,7 @@ import { spineWebpRuntimeFiles } from './spine-webp-runtime-files.mjs'
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 const runtimeGroups = [
-  ...[...spineWebpRuntimeFiles, 'main/h3-reference-nodes.py', 'main/birefnet-runner.py', 'main/novaflow-seethrough-head-node.py', 'main/cutout-raw-encoder.js', 'main/cutout-mask-stream.js'].map((file) => ({
+  ...[...spineWebpRuntimeFiles, 'main/h3-reference-nodes.py', 'main/birefnet-runner.py', 'main/novaflow-seethrough-head-node.py', 'main/cutout-raw-encoder.js', 'main/cutout-mask-stream.js', 'main/mp4-compressor.js', 'main/video-format-converter.js'].map((file) => ({
     name: file,
     files: [
       { label: 'desktop runtime file', path: path.join(repoRoot, 'particle-editor-desktop', file), dependencyManifest: file.endsWith('/package.json') },
@@ -283,6 +283,8 @@ const runtimeGroups = [
   },
   ...[
     'aifx-repaint-runtime.js',
+    'mp4-compress.tool.js',
+    'video-format-convert.tool.js',
   ].map((fileName) => ({
     name: `renderer/${fileName}`,
     files: [

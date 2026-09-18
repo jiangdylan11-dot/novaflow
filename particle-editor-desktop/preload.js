@@ -892,6 +892,20 @@ contextBridge.exposeInMainWorld("electronAPI", {
   convertSpineAtlasWebp: (payload) => ipcRenderer.invoke("convert-spine-atlas-webp", payload),
   saveSpineAtlasWebpOutput: (payload) => ipcRenderer.invoke("save-spine-atlas-webp-output", payload),
   overwriteSpineAtlasWebpOutput: (payload) => ipcRenderer.invoke("overwrite-spine-atlas-webp-output", payload),
+  compressMp4: (payload) => ipcRenderer.invoke("compress-mp4", payload),
+  convertVideoFormat: (payload) => ipcRenderer.invoke("convert-video-format", payload),
+  saveVideoToolOutput: (payload) => ipcRenderer.invoke("save-video-tool-output", payload),
+  overwriteVideoToolOutput: (payload) => ipcRenderer.invoke("overwrite-video-tool-output", payload),
+  clearVideoToolOutput: (payload) => ipcRenderer.invoke("clear-video-tool-output", payload),
+  onVideoToolProgress: (cb) => {
+    const fn = typeof cb === "function" ? cb : null;
+    if (!fn) return () => void 0;
+    const handler = (_evt, data) => { try { fn(data); } catch {} };
+    ipcRenderer.on("video-tool-progress", handler);
+    return () => {
+      try { ipcRenderer.removeListener("video-tool-progress", handler); } catch {}
+    };
+  },
   getPathForFile: (file) => getFileSystemPath(file),
   saveTextFile: (payload) => ipcRenderer.invoke("save-text-file", payload),
   windowMinimize: () => ipcRenderer.invoke("window-minimize"),
