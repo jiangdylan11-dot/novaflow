@@ -11,7 +11,7 @@ const vm = require("node:vm");
 const repoRoot = path.resolve(__dirname, "..", "..");
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8").replace(/\r\n?/g, "\n");
 
-const BUNDLE_CACHE_VERSION = "20260916-template-preview-2";
+const BUNDLE_CACHE_VERSION = "20260919-video-format-convert-1";
 const STEP = 1 / 60;
 
 test("template previews share one budgeted scheduler instead of a rAF loop per card", () => {

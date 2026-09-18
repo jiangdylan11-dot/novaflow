@@ -1075,7 +1075,7 @@ test('HTML loads H3 workflow/resource modules and retires the AI sequence cloud 
   assert.ok(sources.includes(h3Resource), `${h3Resource} must be loaded`)
   assert.match(
     indexHtml,
-    /assets\/index-BbIa-2NM\.js\?v=20260916-template-preview-2/,
+    /assets\/index-BbIa-2NM\.js\?v=20260919-video-format-convert-1/,
     'the formal surface must invalidate the bundle cache after the template preview scheduler',
   )
   assert.match(indexHtml, /ai-sequence-minimax-h3-output\.resource\.js\?v=20260812-minimax-h3-timing-1/)

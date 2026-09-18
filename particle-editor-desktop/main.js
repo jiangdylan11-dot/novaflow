@@ -9976,6 +9976,10 @@ handleNovaFlowTempIpc("export-encode-video-to-video", async (_evt, payload) => {
     const outPath = String(payload?.outPath || "");
     const format = String(payload?.format || "mp4").toLowerCase();
     const keepAlpha = !!payload?.keepAlpha;
+    // sourceConvert means "the user dropped a video in and picked a format": keep the source
+    // resolution and frame rate instead of squeezing the picture into the board's canvas.
+    const sourceConvert = !!payload?.sourceConvert;
+    const scalePct = Math.max(10, Math.min(400, Math.round(Number(payload?.scalePct) || 100)));
     const fps = Math.max(1, Math.min(120, Math.round(Number(payload?.fps) || 30)));
     let w = Math.max(16, Math.min(8192, Math.round(Number(payload?.width) || 0)));
     let h = Math.max(16, Math.min(8192, Math.round(Number(payload?.height) || 0)));
@@ -9994,7 +9998,12 @@ handleNovaFlowTempIpc("export-encode-video-to-video", async (_evt, payload) => {
       return buildEncodeResult();
     };
     const dir = path.dirname(inPath);
-    const vf = `fps=${fps},scale=${w}:${h}:flags=lanczos`;
+    // A percentage off the decoded frame, rounded down to an even size, so the aspect ratio is
+    // whatever the file already had -- including phone clips ffmpeg auto-rotates on the way in.
+    const scaleFilter = sourceConvert
+      ? `scale=max(2\\,trunc(iw*${scalePct}/200)*2):max(2\\,trunc(ih*${scalePct}/200)*2):flags=lanczos`
+      : `scale=${w}:${h}:flags=lanczos`;
+    const vf = sourceConvert ? scaleFilter : `fps=${fps},${scaleFilter}`;
     // Keep straight RGB through the alpha encode path (no second alpha multiply).
     const vfAlpha = keepAlpha ? `${vf},format=yuva420p` : vf;
 
@@ -10021,6 +10030,8 @@ handleNovaFlowTempIpc("export-encode-video-to-video", async (_evt, payload) => {
         "-i", inPath,
         "-vf", vfAlpha,
         "-c:v", "libvpx-vp9",
+        // VP9 at its default speed turns a plain format change into a multi-minute wait.
+        ...(sourceConvert ? ["-row-mt", "1", "-deadline", "good", "-cpu-used", "2"] : []),
         ...(keepAlpha ? ["-auto-alt-ref", "0"] : []),
         "-pix_fmt", keepAlpha ? "yuva420p" : "yuv420p",
         ...(keepAlpha ? ["-metadata:s:v:0", "alpha_mode=1"] : []),
