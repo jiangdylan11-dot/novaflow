@@ -145,9 +145,6 @@ const animationReverseBlock = brandRuntimeSource.match(
 const artReverseBlock = brandRuntimeSource.match(
   /async function runArtGenerateReverseImagePrompt\(sources\)[\s\S]*?\n\s*function handleArtGenerateReverseButton/
 )?.[0] || "";
-const storyboardReferenceReverseBlock = spineSplitRuntimeSource.match(
-  /async function runStoryboardReferenceReversePrompt\(dataUrl, fileName\)[\s\S]*?\n\s*function storyboardFastStringHash/
-)?.[0] || "";
 assert.doesNotMatch(animationReverseBlock, /static-image-reverse/);
 assert.doesNotMatch(animationReverseBlock, /result\.warning|prompt-assistant-warning|showTopbarExportAvailabilityNotice/);
 assert.match(artReverseBlock, /purpose: "static-image-reverse"/);
@@ -172,7 +169,6 @@ assert.match(
 );
 assert.match(artReverseBlock, /const warning = String\(result\.warning \|\| ""\)\.trim\(\)/);
 assert.match(artReverseBlock, /if \(warning\) showTopbarExportAvailabilityNotice\(warning\)/);
-assert.doesNotMatch(storyboardReferenceReverseBlock, /static-image-reverse/);
 assert.match(
   mainSource,
   /NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH: config\.reverseModelPath/,

@@ -44,9 +44,6 @@ async function main() {
     if (pathname === "/api/ai/tasks/usage") {
       return new Response(JSON.stringify({ ok: true, settlement: { status: "settled" } }), { status: 200 });
     }
-    if (pathname === "/api/client/grok/storyboard-unified-nine-shots") {
-      return new Response(JSON.stringify({ ok: true, data: { shots: [] } }), { status: 200 });
-    }
     if (pathname === "/api/client/grok/image-reverse") {
       return new Response(JSON.stringify({ ok: true, provider: "grok", prompt: "visual analysis" }), { status: 200 });
     }
@@ -99,8 +96,6 @@ async function main() {
   storage.set("novaflow.client.auth.session.v1", JSON.stringify({ session: { token: "owner-token" } }));
   const reverse = await api.smartAiImageReverse({ images: [{ dataUrl: "data:image/png;base64,AA==" }] });
   assert.equal(reverse.ok, true, "preview AI director Grok image reverse bridge should remain available");
-  const storyboard = await api.smartAiStoryboardUnifiedNineShots({ storyText: "test story" });
-  assert.equal(storyboard.ok, true, "preview storyboard AI director bridge should remain available");
   const h3TechnicalFailure = await api.promptAssistantReverseImagePrompt({
     purpose: "minimax-h3-i2v-reverse",
     visualSchema: "nf.h3.visual.v1",
@@ -138,10 +133,6 @@ async function main() {
     providerKey: "comfyui",
     promptId: "preview-provider-prompt",
     creditCost: 7,
-  });
-  assert.equal(byPath["/api/client/grok/storyboard-unified-nine-shots"].init.headers.Authorization, "Bearer owner-token");
-  assert.deepEqual(JSON.parse(byPath["/api/client/grok/storyboard-unified-nine-shots"].init.body), {
-    storyText: "test story",
   });
   assert.equal(byPath["/api/client/grok/image-reverse"].init.headers.Authorization, "Bearer owner-token");
   assert.deepEqual(JSON.parse(byPath["/api/client/grok/image-reverse"].init.body), {

@@ -9,8 +9,8 @@ const checkpoint = 'Qwen-Rapid-AIO-NSFW-v20.safetensors';
 function loadSpine(file) {
   const source = fs.readFileSync(path.join(root, file), 'utf8');
   const declarations = [...source.matchAll(/^  (?:async )?function \w+\([^\n]*\) \{[\s\S]*?^  \}/gm)].map(m => m[0]).join('\n');
-  const constants = source.slice(source.indexOf('  const IMAGE_ANGLE_ADJUST_TIMEOUT_MS'), source.indexOf('  const STORYBOARD_MODEL_MODE_DEFAULT'));
-  const routeConstants = [...source.matchAll(/^  const ((?:STORYBOARD_|SELECTION_INPAINT_MODE_)[A-Z_]+) = [\s\S]*?(?=^  (?:const |let |(?:async )?function ))/gm)].map(m=>m[0]).join('\n');
+  const constants = source.slice(source.indexOf('  const IMAGE_ANGLE_ADJUST_TIMEOUT_MS'), source.indexOf('  const SPLIT_MODE_DIALOG_ID'));
+  const routeConstants = [...source.matchAll(/^  const ((?:SELECTION_INPAINT_MODE_)[A-Z_]+) = [\s\S]*?(?=^  (?:const |let |(?:async )?function ))/gm)].map(m=>m[0]).join('\n');
   const sandbox = { state: {}, console };
   vm.createContext(sandbox);
   const checkpointConstant = source.includes('const QWEN_RAPID_CHECKPOINT =') ? 'QWEN_RAPID_CHECKPOINT' : 'IMAGE_WASH_QWEN_CHECKPOINT';

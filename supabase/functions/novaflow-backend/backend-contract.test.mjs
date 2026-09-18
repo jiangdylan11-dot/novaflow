@@ -14,10 +14,6 @@ import {
   parseGrokVisualIr
 } from "./smart-ai-grok.workflow.mjs";
 import {
-  buildStoryboardGrokPayload,
-  parseStoryboardGrokResult
-} from "./storyboard-grok.workflow.mjs";
-import {
   licenseVerificationRejected,
   normalizeLicenseVerificationInput,
   validateLicenseVerificationRecord
@@ -440,17 +436,6 @@ function assertUiCompatibleVisualDegradedResult(data) {
   }
 }
 
-test("cloud storyboard workflow stays mechanically equivalent to desktop source", () => {
-  const desktopSource = readFileSync(
-    new URL("../../../particle-editor-desktop/admin-server/storyboard-grok.workflow.js", import.meta.url),
-    "utf8"
-  ).replaceAll("\r\n", "\n");
-  const cloudSource = readFileSync(new URL("./storyboard-grok.workflow.mjs", import.meta.url), "utf8")
-    .replaceAll("\r\n", "\n")
-    .replace("export {", "module.exports = {");
-  assert.equal(cloudSource, desktopSource);
-  assert.doesNotMatch(cloudSource, /tokens truncated/);
-});
 
 test("smart AI request builders preserve Responses API contracts", () => {
   const promptRequest = buildGrokPromptOptimizeRequest({
@@ -3918,14 +3903,14 @@ test("ordinary Grok image reverse uses strict nf.visual.v1 while other image mod
   assert.equal(animation.body.max_output_tokens, 2048);
   assert.doesNotMatch(animation.body.input[0].content.at(-1).text, /nf\.visual\.v1/);
 
-  const storyboardReference = buildGrokImageReverseRequest({
+  const genericReference = buildGrokImageReverseRequest({
     images: [image],
-    purpose: "storyboardReference"
+    purpose: "genericReference"
   }, "grok-contract-test");
-  assert.equal(storyboardReference.inputMeta.visualIrSchema, "");
-  assert.equal(storyboardReference.body.max_output_tokens, 2048);
-  assert.deepEqual(storyboardReference.resultOptions, {});
-  assert.doesNotMatch(storyboardReference.body.input[0].content.at(-1).text, /nf\.visual\.v1/);
+  assert.equal(genericReference.inputMeta.visualIrSchema, "");
+  assert.equal(genericReference.body.max_output_tokens, 2048);
+  assert.deepEqual(genericReference.resultOptions, {});
+  assert.doesNotMatch(genericReference.body.input[0].content.at(-1).text, /nf\.visual\.v1/);
 });
 
 test("nf.visual.v2 is explicit opt-in for one static reference and never widens legacy routes", () => {
@@ -4018,7 +4003,7 @@ test("nf.visual.v2 is explicit opt-in for one static reference and never widens 
   for (const payload of [
     { images: [image], visualSchema: "nf.visual.v2" },
     { images: [image], visualSchema: "nf.visual.v2", surface: "animation" },
-    { images: [image], visualSchema: "nf.visual.v2", purpose: "storyboardReference" },
+    { images: [image], visualSchema: "nf.visual.v2", purpose: "genericReference" },
     {
       images: [
         { ...image, role: "subject" },
@@ -6301,11 +6286,11 @@ test("desktop and Edge keep the visual IR validator, compiler, and routing guard
 
   const edgeImageHandler = edgeIndexSource.slice(
     edgeIndexSource.indexOf("async function handleGrokImageReverse("),
-    edgeIndexSource.indexOf("async function handleGrokStoryboard", edgeIndexSource.indexOf("async function handleGrokImageReverse("))
+    edgeIndexSource.indexOf("async function handleGrokChat(", edgeIndexSource.indexOf("async function handleGrokImageReverse("))
   );
   const desktopImageHandler = desktopSource.slice(
     desktopSource.indexOf("async function handleGrokImageReverseRequest("),
-    desktopSource.indexOf("async function handleGrokStoryboard", desktopSource.indexOf("async function handleGrokImageReverseRequest("))
+    desktopSource.indexOf("async function handleGrokChatRequest(", desktopSource.indexOf("async function handleGrokImageReverseRequest("))
   );
   for (const handlerSource of [edgeImageHandler, desktopImageHandler]) {
     assert.match(handlerSource, /visualRetryAllowed:\s*(?:providerCallBudget|reservation\.budget)\s*>=\s*2/);
@@ -6342,50 +6327,6 @@ test("desktop and Edge keep the visual IR validator, compiler, and routing guard
   assert.match(desktopImageHandler, /settleGrokCalls\(session, reservation, providerCallCount/);
 });
 
-test("storyboard parser accepts exactly nine structured shots and rejects eight", () => {
-  const cameras = [
-    "extreme wide shot, high-angle view, subject on left third, static frame",
-    "medium shot, eye-level view, subject on right third, tracking shot",
-    "close-up, high-angle view, subject centered, push-in",
-    "full shot, low-angle view, subject on left third, handheld frame",
-    "medium close-up, eye-level view, subject on right third, static frame",
-    "wide shot, top-down view, subject centered, tracking shot",
-    "extreme close-up, dutch angle, subject on left third, push-in",
-    "medium wide shot, low-angle view, subject on right third, handheld frame",
-    "establishing wide shot, eye-level view, subject centered, pull-out"
-  ];
-  const shots = cameras.map((camera, index) => ({
-    scene: index + 1,
-    title: `剧情节点${index + 1}`,
-    displayCaption: `主角完成第${index + 1}个动作`,
-    visualEvent: `The named protagonist visibly moves object ${index + 1} and changes its position in the room.`,
-    prompt: `The named protagonist visibly moves object ${index + 1}, cinematic illustration, no readable text`,
-    sceneAnchor: `room position ${index + 1}`,
-    camera,
-    subjectState: {
-      id: "named_protagonist",
-      appearance: "short black hair and a dark coat",
-      state: "uninjured and alert",
-      changeEvent: ""
-    },
-    keyProps: [{
-      id: "story_object",
-      name: "story object",
-      appearance: "small weathered metal object",
-      state: "intact",
-      location: "held by the protagonist",
-      changeEvent: ""
-    }],
-    storyUnitIds: []
-  }));
-  const parse = (items) => parseStoryboardGrokResult({
-    model: "grok-contract-test",
-    durationMs: 10,
-    data: { choices: [{ message: { content: JSON.stringify(items) } }] }
-  }, "contract-seed");
-  assert.equal(parse(shots).shots.length, 9);
-  assert.throws(() => parse(shots.slice(0, 8)), /Grok分镜数量异常：8\/9/);
-});
 
 test("Edge router accepts desktop Supabase JWTs and exposes all product Grok routes", () => {
   const indexSource = readFileSync(new URL("./index.ts", import.meta.url), "utf8");
@@ -6398,14 +6339,12 @@ test("Edge router accepts desktop Supabase JWTs and exposes all product Grok rou
   assert.match(indexSource, /startsWith\("nfs_"\)[\s\S]*verifySessionToken\(token\)[\s\S]*verifySupabaseClientSessionToken\(token\)/);
   for (const route of [
     "/api/client/grok/prompt-optimize",
-    "/api/client/grok/image-reverse",
-    "/api/client/grok/storyboard-unified-nine-shots"
+    "/api/client/grok/image-reverse"
   ]) {
     assert.ok(indexSource.includes(route), `${route} must be registered`);
   }
   assert.match(indexSource, /const timer = setTimeout\(\(\) => controller\.abort\(\), 45000\)/);
   assert.match(indexSource, /const timer = setTimeout\(\(\) => controller\.abort\(\), 50000\)/);
-  assert.match(indexSource, /directorQuality: result\?\.directorQuality \|\| data\.directorQuality \|\| null/);
   assert.match(indexSource, /\.rpc\("reserve_grok_quota"/);
   assert.match(indexSource, /\.rpc\("settle_grok_quota"/);
   assert.match(indexSource, /\.rpc\("release_grok_quota"/);

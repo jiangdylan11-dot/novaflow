@@ -6,12 +6,6 @@ const { createClient } = require("@supabase/supabase-js");
 const WebSocket = require("ws");
 const adminData = require("../license-admin-gui/admin-data");
 const h3PromptEnhance = require("./h3-prompt-enhance");
-const {
-  buildStoryboardGrokPayload,
-  buildStoryboardGrokRepairPayload,
-  parseStoryboardGrokResult,
-  reconcileStoryboardGrokContinuity
-} = require("./storyboard-grok.workflow");
 
 if (typeof globalThis.WebSocket !== "function") {
   globalThis.WebSocket = WebSocket;
@@ -10476,139 +10470,9 @@ async function handleGrokChatRequest(req, res) {
   });
 }
 
-function storyboardDirectorQualityNeedsRepair(quality) {
-  if (!quality || typeof quality !== "object") return false;
-  if (quality.repairRequired === true || quality.needsRepair === true) return true;
-  const issues = Array.isArray(quality.issues) ? quality.issues : [];
-  return issues.length > 0 && (quality.ok === false || String(quality.status || "").toUpperCase() === "FAIL");
-}
 
-function applyStoryboardContinuityFallback(data, reconcile = reconcileStoryboardGrokContinuity) {
-  if (!data || !Array.isArray(data.shots) || typeof reconcile !== "function") return data;
-  const result = reconcile(data.shots);
-  const actions = Array.isArray(result?.actions) ? result.actions : [];
-  return {
-    ...data,
-    shots: Array.isArray(result?.shots) ? result.shots : data.shots,
-    directorQuality: result?.directorQuality || data.directorQuality || null,
-    continuityFallbackUsed: actions.length > 0,
-    continuityFallbackActions: actions
-  };
-}
 
-async function runGrokStoryboardUnifiedNineShots(payload, remaining, dependencies = {}) {
-  const callProvider = dependencies.callGrokChat || callGrokChat;
-  const parseResult = dependencies.parseStoryboardGrokResult || parseStoryboardGrokResult;
-  const buildInitialPayload = dependencies.buildStoryboardGrokPayload || buildStoryboardGrokPayload;
-  const buildRepairPayload = dependencies.buildStoryboardGrokRepairPayload || buildStoryboardGrokRepairPayload;
-  const reconcileContinuity = dependencies.reconcileStoryboardGrokContinuity || reconcileStoryboardGrokContinuity;
-  let providerCallCount = 0;
-  let firstData;
 
-  try {
-    const firstGrok = await callProvider(buildInitialPayload(payload));
-    providerCallCount += 1;
-    firstData = parseResult(firstGrok, payload?.unifiedSeed, payload?.storyText);
-  } catch (err) {
-    err.grokProviderCallCount = providerCallCount;
-    throw err;
-  }
-
-  const firstPassDirectorQuality = firstData?.directorQuality || null;
-  let data = {
-    ...firstData,
-    repairUsed: false,
-    firstPassDirectorQuality,
-    grokCallCount: providerCallCount
-  };
-  if (!storyboardDirectorQualityNeedsRepair(firstPassDirectorQuality)) {
-    return { data, providerCallCount };
-  }
-  if (Number(remaining || 0) < 2) {
-    data = {
-      ...applyStoryboardContinuityFallback(data, reconcileContinuity),
-      repairSkippedReason: "quota"
-    };
-    return { data, providerCallCount };
-  }
-
-  try {
-    const repairRequest = buildRepairPayload(payload, firstData, firstPassDirectorQuality);
-    const repairedGrok = await callProvider(repairRequest);
-    providerCallCount += 1;
-    let repairedData = parseResult(repairedGrok, payload?.unifiedSeed, payload?.storyText);
-    if (storyboardDirectorQualityNeedsRepair(repairedData?.directorQuality)) {
-      repairedData = applyStoryboardContinuityFallback(repairedData, reconcileContinuity);
-    }
-    data = {
-      ...repairedData,
-      repairUsed: true,
-      firstPassDirectorQuality,
-      firstPassGenerateProfile: firstData?.generateProfile || null,
-      grokCallCount: providerCallCount
-    };
-  } catch (err) {
-    data = {
-      ...applyStoryboardContinuityFallback(data, reconcileContinuity),
-      repairError: sanitizeError(err),
-      grokCallCount: providerCallCount
-    };
-  }
-  return { data, providerCallCount };
-}
-
-async function handleGrokStoryboardUnifiedNineShotsRequest(req, res) {
-  const session = await requireClientSession(req, res);
-  if (!session) return;
-  let payload;
-  try {
-    payload = await parseBody(req, { maxBytes: MAX_GROK_BODY_BYTES });
-  } catch (err) {
-    sendErrorJson(res, err, 400);
-    return;
-  }
-  const reservation = await reserveGrokCalls(session, "storyboard_unified_nine_shots", 1, 2);
-  if (!reservation.result?.ok || reservation.result.status === "error") {
-    sendJson(res, 402, { ok: false, provider: "grok", error: reservation.result?.error || "Grok调用次数不足" });
-    return;
-  }
-  let data;
-  let providerCallCount = 0;
-  try {
-    const result = await runGrokStoryboardUnifiedNineShots(payload, reservation.budget);
-    data = result.data;
-    providerCallCount = result.providerCallCount;
-  } catch (err) {
-    providerCallCount = Number(err?.grokProviderCallCount || 0);
-    if (providerCallCount > 0) {
-      await settleGrokCalls(session, reservation, providerCallCount, false, { mode: "storyboard_unified_nine_shots", error: sanitizeError(err) });
-    } else {
-      await releaseGrokCalls(session, reservation, sanitizeError(err));
-    }
-    const statusCode = Number(err?.statusCode || 502);
-    sendJson(res, statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
-      ok: false,
-      provider: "grok",
-      error: `Grok分镜导演失败：${sanitizeError(err)}`
-    });
-    return;
-  }
-  const usage = await settleGrokCalls(session, reservation, providerCallCount, true, { mode: "storyboard_unified_nine_shots" });
-  if (!usage?.ok || usage.status === "error") {
-    sendJson(res, 500, { ok: false, provider: "grok", error: usage?.error || "Grok调用次数记录失败" });
-    return;
-  }
-  sendJson(res, 200, {
-    ok: true,
-    provider: "grok",
-    data,
-    quota: {
-      allocated_count: usage.record.allocated_count,
-      used_count: usage.record.used_count,
-      remaining_count: usage.record.remaining_count
-    }
-  });
-}
 
 async function handleAdminRoute(req, res, pathName) {
   if (!requireAdminToken(req, res)) return;
@@ -10881,11 +10745,6 @@ function createAdminServer() {
         return;
       }
 
-      if (req.method === "POST" && pathName === "/api/client/grok/storyboard-unified-nine-shots") {
-        await handleGrokStoryboardUnifiedNineShotsRequest(req, res);
-        return;
-      }
-
       if (req.method === "POST" && pathName === "/api/ai/tasks") {
         await handleAiTaskRequest(req, res);
         return;
@@ -10936,8 +10795,6 @@ if (require.main === module) {
 module.exports = {
   createAdminServer,
   startServer,
-  storyboardDirectorQualityNeedsRepair,
-  runGrokStoryboardUnifiedNineShots,
   redactedConfig,
   ENV_HOST,
   ENV_PORT,

@@ -10,12 +10,6 @@ import {
   normalizeGrokResponseUsage
 } from "./smart-ai-grok.workflow.mjs";
 import {
-  buildStoryboardGrokPayload,
-  buildStoryboardGrokRepairPayload,
-  parseStoryboardGrokResult,
-  reconcileStoryboardGrokContinuity
-} from "./storyboard-grok.workflow.mjs";
-import {
   licenseVerificationRejected,
   normalizeLicenseVerificationInput,
   validateLicenseVerificationRecord
@@ -762,7 +756,6 @@ async function handleBootstrap(req: Request, session: { user: PublicUser }): Pro
       grokEndpoint: "POST /api/provider/grok/chat",
       smartAiPromptOptimizeEndpoint: "POST /api/client/grok/prompt-optimize",
       smartAiImageReverseEndpoint: "POST /api/client/grok/image-reverse",
-      smartAiStoryboardEndpoint: "POST /api/client/grok/storyboard-unified-nine-shots",
       mode: "gateway_lite_check",
       calculatesCreditCost: true,
       deductsCredits: false,
@@ -1589,146 +1582,9 @@ async function handleGrokImageReverse(
   });
 }
 
-function storyboardDirectorQualityNeedsRepair(quality: AnyRecord | null): boolean {
-  if (!quality || typeof quality !== "object") return false;
-  if (quality.repairRequired === true || quality.needsRepair === true) return true;
-  const issues = Array.isArray(quality.issues) ? quality.issues : [];
-  return issues.length > 0 && (quality.ok === false || String(quality.status || "").toUpperCase() === "FAIL");
-}
 
-function applyStoryboardContinuityFallback(data: AnyRecord): AnyRecord {
-  if (!data || !Array.isArray(data.shots)) return data;
-  const result = reconcileStoryboardGrokContinuity(data.shots) as AnyRecord;
-  const actions = Array.isArray(result?.actions) ? result.actions : [];
-  return {
-    ...data,
-    shots: Array.isArray(result?.shots) ? result.shots : data.shots,
-    directorQuality: result?.directorQuality || data.directorQuality || null,
-    continuityFallbackUsed: actions.length > 0,
-    continuityFallbackActions: actions
-  };
-}
 
-async function runGrokStoryboardUnifiedNineShots(
-  payload: AnyRecord,
-  remaining: number
-): Promise<{ data: AnyRecord; providerCallCount: number }> {
-  let providerCallCount = 0;
-  let firstData: AnyRecord;
-  try {
-    const firstGrok = await callGrok(buildStoryboardGrokPayload(payload) as AnyRecord);
-    providerCallCount += 1;
-    firstData = parseStoryboardGrokResult(firstGrok, payload.unifiedSeed, payload.storyText) as AnyRecord;
-  } catch (error) {
-    const trackedError = error as Error & { grokProviderCallCount?: number };
-    providerCallCount += Math.max(0, Math.round(Number(trackedError.grokProviderCallCount || 0)));
-    trackedError.grokProviderCallCount = providerCallCount;
-    throw trackedError;
-  }
 
-  const firstPassDirectorQuality = firstData.directorQuality as AnyRecord | null;
-  let data: AnyRecord = {
-    ...firstData,
-    repairUsed: false,
-    firstPassDirectorQuality,
-    grokCallCount: providerCallCount
-  };
-  if (!storyboardDirectorQualityNeedsRepair(firstPassDirectorQuality)) {
-    return { data, providerCallCount };
-  }
-  if (remaining < 2) {
-    data = {
-      ...applyStoryboardContinuityFallback(data),
-      repairSkippedReason: "quota"
-    };
-    return { data, providerCallCount };
-  }
-
-  try {
-    const repairRequest = buildStoryboardGrokRepairPayload(payload, firstData, firstPassDirectorQuality) as AnyRecord;
-    const repairedGrok = await callGrok(repairRequest);
-    providerCallCount += 1;
-    let repairedData = parseStoryboardGrokResult(repairedGrok, payload.unifiedSeed, payload.storyText) as AnyRecord;
-    if (storyboardDirectorQualityNeedsRepair(repairedData.directorQuality as AnyRecord | null)) {
-      repairedData = applyStoryboardContinuityFallback(repairedData);
-    }
-    data = {
-      ...repairedData,
-      repairUsed: true,
-      firstPassDirectorQuality,
-      firstPassGenerateProfile: firstData.generateProfile || null,
-      grokCallCount: providerCallCount
-    };
-  } catch (error) {
-    providerCallCount += Math.max(
-      0,
-      Math.round(Number((error as Error & { grokProviderCallCount?: number }).grokProviderCallCount || 0))
-    );
-    data = {
-      ...applyStoryboardContinuityFallback(data),
-      repairError: sanitizeError(error),
-      grokCallCount: providerCallCount
-    };
-  }
-  return { data, providerCallCount };
-}
-
-async function handleGrokStoryboardUnifiedNineShots(
-  req: Request,
-  session: { user: PublicUser }
-): Promise<Response> {
-  let payload: AnyRecord;
-  try {
-    payload = await parseJsonBody(req, MAX_GROK_BODY_BYTES);
-  } catch (error) {
-    return jsonResponse(req, errorHttpStatus(error, 400), { ok: false, error: sanitizeError(error) });
-  }
-  let reservation: AnyRecord;
-  try {
-    reservation = await reserveGrokQuota(session.user, "storyboard_unified_nine_shots", 1, 2);
-  } catch (error) {
-    return jsonResponse(req, 402, {
-      ok: false,
-      provider: "grok",
-      error: sanitizeError(error),
-      quota: providerQuotaPayload(await readProviderQuota(session.user, "grok"))
-    });
-  }
-  const budget = Math.max(0, Number(reservation.provider_call_budget || reservation.reserved_calls || 0));
-  let data: AnyRecord;
-  let providerCallCount = 0;
-  try {
-    const result = await runGrokStoryboardUnifiedNineShots(payload, budget);
-    data = result.data;
-    providerCallCount = result.providerCallCount;
-  } catch (error) {
-    providerCallCount = Number((error as Error & { grokProviderCallCount?: number }).grokProviderCallCount || 0);
-    if (providerCallCount > 0) {
-      try {
-        await settleGrokQuota(session.user, reservation, providerCallCount, false, { mode: "storyboard_unified_nine_shots", error: sanitizeError(error) });
-      } catch (usageError) {
-        logInfo("storyboard failed usage record failed", {
-          userId: session.user.id,
-          providerCallCount,
-          error: sanitizeError(usageError)
-        });
-      }
-    } else await releaseGrokQuota(session.user, reservation, sanitizeError(error));
-    const statusCode = Number((error as Error & { statusCode?: number }).statusCode || 502);
-    return jsonResponse(req, statusCode >= 400 && statusCode < 600 ? statusCode : 502, {
-      ok: false,
-      provider: "grok",
-      error: `Grok分镜导演失败：${sanitizeError(error)}`
-    });
-  }
-  const usage = await settleGrokQuota(session.user, reservation, providerCallCount, true, { mode: "storyboard_unified_nine_shots" });
-  return jsonResponse(req, 200, {
-    ok: true,
-    provider: "grok",
-    data,
-    quota: providerQuotaPayload(usage)
-  });
-}
 
 async function handleGrokChat(req: Request, session: { user: PublicUser }): Promise<Response> {
   const payload = await parseJsonBody(req, MAX_GROK_BODY_BYTES);
@@ -1901,7 +1757,6 @@ Deno.serve(async (req: Request) => {
       "/api/ai/tasks/usage",
       "/api/client/grok/prompt-optimize",
       "/api/client/grok/image-reverse",
-      "/api/client/grok/storyboard-unified-nine-shots",
       "/api/provider/grok/chat"
     ]);
     if (sessionRoutes.has(path)) {
@@ -1930,9 +1785,6 @@ Deno.serve(async (req: Request) => {
       if (req.method === "POST" && path === "/api/ai/tasks/usage") return await handleAiTaskUsage(req, session);
       if (req.method === "POST" && path === "/api/client/grok/prompt-optimize") return await handleGrokPromptOptimize(req, session);
       if (req.method === "POST" && path === "/api/client/grok/image-reverse") return await handleGrokImageReverse(req, session);
-      if (req.method === "POST" && path === "/api/client/grok/storyboard-unified-nine-shots") {
-        return await handleGrokStoryboardUnifiedNineShots(req, session);
-      }
       if (req.method === "POST" && path === "/api/provider/grok/chat") return await handleGrokChat(req, session);
     }
 

@@ -929,10 +929,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ...(payload && typeof payload === "object" ? payload : {}),
     token: String(clientAuthSessionToken || payload?.token || payload?.sessionToken || payload?.accessToken || "").trim()
   }),
-  smartAiStoryboardUnifiedNineShots: (payload) => ipcRenderer.invoke("smart-ai-storyboard-unified-nine-shots", {
-    ...(payload && typeof payload === "object" ? payload : {}),
-    token: String(clientAuthSessionToken || "").trim()
-  }),
   getUserDataPath: () => ipcRenderer.invoke("get-user-data-path"),
   openUserDataFolder: () => ipcRenderer.invoke("open-user-data-folder"),
   templatesResetToBundled: () => ipcRenderer.invoke("templates-reset-to-bundled"),
@@ -959,11 +955,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   runtimeUploadImage: (payload) => ipcRenderer.invoke("runtime-upload-image", payload),
   promptAssistantGetStatus: () => ipcRenderer.invoke("prompt-assistant-get-status"),
   promptAssistantOptimizePrompt: (payload) => ipcRenderer.invoke("prompt-assistant-optimize-prompt", payload),
-  promptAssistantStoryboardStoryDirections: (payload) => ipcRenderer.invoke("prompt-assistant-storyboard-story-directions", payload),
-  promptAssistantStoryboardVisualEventChain: (payload) => ipcRenderer.invoke("prompt-assistant-storyboard-visual-event-chain", payload),
-  promptAssistantStoryboardFinalShotPrompts: (payload) => ipcRenderer.invoke("prompt-assistant-storyboard-final-shot-prompts", payload),
-  promptAssistantStoryboardUnifiedNineShots: (payload) => ipcRenderer.invoke("prompt-assistant-storyboard-unified-nine-shots", payload),
-  promptAssistantStoryboardDirectorPlan: (payload) => ipcRenderer.invoke("prompt-assistant-storyboard-director-plan", payload),
   promptAssistantDescribeArtStyle: (payload) => ipcRenderer.invoke("prompt-assistant-describe-art-style", payload),
   promptAssistantReverseImagePrompt: (payload) => ipcRenderer.invoke("prompt-assistant-reverse-image-prompt", payload),
   runtimeOpenAssetsFolder: () => ipcRenderer.invoke("runtime-open-assets-folder"),

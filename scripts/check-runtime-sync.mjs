@@ -148,19 +148,6 @@ const runtimeGroups = [
     ],
   },
   {
-    name: 'admin-server/storyboard-grok.workflow.js',
-    files: [
-      {
-        label: 'desktop Grok storyboard workflow',
-        path: path.join(repoRoot, 'particle-editor-desktop', 'admin-server', 'storyboard-grok.workflow.js'),
-      },
-      {
-        label: 'win-unpacked Grok storyboard workflow',
-        path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'admin-server', 'storyboard-grok.workflow.js'),
-      },
-    ],
-  },
-  {
     name: 'license-admin-gui/admin-data.js',
     files: [
       {
@@ -780,22 +767,6 @@ const runtimeGroups = [
       { label: 'source', path: path.join(repoRoot, 'particle-editor', 'split-inpaint-nsfw.workflow.js') },
       { label: 'desktop renderer', path: path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'split-inpaint-nsfw.workflow.js') },
       { label: 'win-unpacked renderer', path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'split-inpaint-nsfw.workflow.js') },
-    ],
-  },
-  {
-    name: 'storyboard-director-quality.workflow.js',
-    files: [
-      { label: 'source', path: path.join(repoRoot, 'particle-editor', 'storyboard-director-quality.workflow.js') },
-      { label: 'desktop renderer', path: path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'storyboard-director-quality.workflow.js') },
-      { label: 'win-unpacked renderer', path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'storyboard-director-quality.workflow.js') },
-    ],
-  },
-  {
-    name: 'storyboard-resource.workflow.js',
-    files: [
-      { label: 'source', path: path.join(repoRoot, 'particle-editor', 'storyboard-resource.workflow.js') },
-      { label: 'desktop renderer', path: path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'storyboard-resource.workflow.js') },
-      { label: 'win-unpacked renderer', path: path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'storyboard-resource.workflow.js') },
     ],
   },
   {

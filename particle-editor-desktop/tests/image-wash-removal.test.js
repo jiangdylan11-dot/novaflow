@@ -17,19 +17,3 @@ test('retired wash has no UI action, workflow, debug entry or dedicated service 
   for (const name of ['showImageWashDialog','runImageWash','executeImageWashTool','buildWanImageWashWorkflow','buildWanSourceRedrawWorkflow']) assert.equal(s[name], undefined);
 });
 
-test('local storyboard reference analysis retains its own payload and usable prompt', async () => {
-  const s = loadSpine('particle-editor/spine-split-runtime.js');
-  let calls = 0;
-  s.window = { electronAPI: { promptAssistantReverseImagePrompt: async payload => {
-    calls++;
-    assert.equal(payload.purpose, 'storyboardReference');
-    assert.equal(payload.images.length, 1);
-    assert.equal(payload.images[0].dataUrl, 'source');
-    assert.equal(payload.images[0].label, 'storyboard-reference');
-    return { ok: true, data: { prompt: '  A watercolor cottage by a river.  ' } };
-  } } };
-  assert.equal(await s.runStoryboardReferenceReversePrompt('source', 'source.png'), 'A watercolor cottage by a river.');
-  assert.equal(calls, 1);
-  s.window.electronAPI.promptAssistantReverseImagePrompt = async () => ({ ok: false, error: 'analysis unavailable' });
-  await assert.rejects(s.runStoryboardReferenceReversePrompt('source', 'source.png'), /analysis unavailable/);
-});

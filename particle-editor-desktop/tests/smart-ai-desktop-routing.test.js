@@ -52,7 +52,6 @@ function createRoutingHarness() {
     NOVAFLOW_GROK_CLOUD_DEFAULT_PATHS: new Set([
       "/api/client/grok/prompt-optimize",
       "/api/client/grok/image-reverse",
-      "/api/client/grok/storyboard-unified-nine-shots",
     ]),
     NF_ELECTRON_AB_NO_ADMIN_SERVER_AUTOSTART: false,
     isTruthyEnv(value) {
@@ -118,7 +117,7 @@ test("an explicit loopback backend uses its configured local endpoint", () => {
 test("the explicit admin-server development switch opts Smart AI into local 4761", () => {
   const { context, resolveTarget } = createRoutingHarness();
   context.process.env.NOVAFLOW_ADMIN_SERVER_AUTOSTART = "true";
-  assertTarget(resolveTarget("/api/client/grok/storyboard-unified-nine-shots"), {
+  assertTarget(resolveTarget("/api/client/grok/image-reverse"), {
     baseUrl: "http://127.0.0.1:4761",
     useLocal: true,
     forceLocal: true,
@@ -194,10 +193,9 @@ test("client API URL joining preserves cloud and explicit remote path prefixes",
   );
 });
 
-test("storyboard receives 120 seconds while image reverse preserves v2 metadata at 60 seconds", async () => {
+test("image reverse preserves v2 metadata at 60 seconds", async () => {
   const calls = [];
   const context = vm.createContext({
-    NOVAFLOW_GROK_STORYBOARD_PATH: "/api/client/grok/storyboard-unified-nine-shots",
     resolveNovaFlowSmartAiApiTarget() {
       return { baseUrl: "https://cloud.example.test", useLocal: false, forceLocal: false };
     },
@@ -213,7 +211,6 @@ test("storyboard receives 120 seconds while image reverse preserves v2 metadata 
   vm.runInContext(extractNamedFunction(source, "novaFlowClientApiTimeoutLimit"), context);
   const requestSmartAi = vm.runInContext(`(${functionSource})`, context);
 
-  await requestSmartAi("/api/client/grok/storyboard-unified-nine-shots", { token: "story-token" });
   await requestSmartAi("/api/client/grok/prompt-optimize", { token: "prompt-token" });
   await requestSmartAi("/api/client/grok/image-reverse", {
     token: "image-token",
@@ -223,22 +220,20 @@ test("storyboard receives 120 seconds while image reverse preserves v2 metadata 
     images: [{ imageUrl: "data:image/png;base64,ONE" }],
   });
 
-  assert.equal(calls[0].options.timeoutMs, 120_000);
+  assert.equal(calls[0].options.timeoutMs, 60_000);
   assert.equal(calls[1].options.timeoutMs, 60_000);
-  assert.equal(calls[2].options.timeoutMs, 60_000);
   assert.equal(calls[0].options.baseUrl, "https://cloud.example.test");
   assert.equal(calls[0].options.body.token, undefined, "bearer tokens must stay out of request bodies");
-  assert.equal(calls[2].options.body.token, undefined);
-  assert.equal(calls[2].options.body.visualSchema, "nf.visual.v2");
-  assert.equal(calls[2].options.body.nsfw, true);
-  assert.equal(calls[2].options.body.purpose, "static-image-reverse");
+  assert.equal(calls[1].options.body.token, undefined);
+  assert.equal(calls[1].options.body.visualSchema, "nf.visual.v2");
+  assert.equal(calls[1].options.body.nsfw, true);
+  assert.equal(calls[1].options.body.purpose, "static-image-reverse");
 });
 
 test("H3 waits for both provider calls and the transport does not clamp it to 60 seconds", async () => {
   const timers = [];
   let elapsedMs = 100_000;
   const context = vm.createContext({
-    NOVAFLOW_GROK_STORYBOARD_PATH: "/api/client/grok/storyboard-unified-nine-shots",
     NOVAFLOW_CLIENT_API_ALLOWED_PATHS: new Set(["/api/client/grok/image-reverse", "/api/client/grok/prompt-optimize"]),
     AbortController,
     URL,

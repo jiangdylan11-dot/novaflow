@@ -45,7 +45,6 @@ test('desktop and Edge handlers reserve before provider work and settle actual c
     assert.match(source, /settleGrok(?:Calls|Quota)\([\s\S]{0,180}providerCallCount/);
     assert.match(source, /releaseGrok(?:Calls|Quota)\(/);
     assert.match(source, /"provider_gateway", 1, 1/);
-    assert.match(source, /"storyboard_unified_nine_shots", 1, 2/);
   }
   assert.match(adminData, /\.rpc\("reserve_grok_quota"/);
   assert.match(adminData, /\.rpc\("settle_grok_quota"/);
@@ -73,7 +72,7 @@ test('mock concurrent reservations cannot oversubscribe the allocation', async (
   assert.ok(state.used + state.reserved <= state.allocated);
 });
 
-test('Edge counts every started Grok provider request on chat and storyboard failures', () => {
+test('Edge counts every started Grok provider request on chat failures', () => {
   const callGrok = edge.slice(
     edge.indexOf('async function callGrok(payload'),
     edge.indexOf('async function callGrokResponseAttempt')
@@ -81,14 +80,6 @@ test('Edge counts every started Grok provider request on chat and storyboard fai
   assert.match(callGrok, /let providerCallStarted = false;/);
   assert.match(callGrok, /providerCallStarted = true;\s*const response = await fetch/);
   assert.match(callGrok, /trackedError\.grokProviderCallCount = Math\.max\([\s\S]{0,180}providerCallStarted \? 1 : 0/);
-
-  const storyboard = edge.slice(
-    edge.indexOf('async function runGrokStoryboardUnifiedNineShots'),
-    edge.indexOf('async function handleGrokStoryboardUnifiedNineShots')
-  );
-  const propagatedCounts = storyboard.match(/providerCallCount \+= Math\.max\(/g) || [];
-  assert.equal(propagatedCounts.length, 2);
-  assert.match(storyboard, /trackedError\.grokProviderCallCount = providerCallCount;/);
 
   const chat = edge.slice(
     edge.indexOf('async function handleGrokChat'),

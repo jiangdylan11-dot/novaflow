@@ -146,13 +146,6 @@ const syncEntries = [
     ],
   },
   {
-    label: 'admin-server/storyboard-grok.workflow.js',
-    sourcePath: path.join(repoRoot, 'particle-editor-desktop', 'admin-server', 'storyboard-grok.workflow.js'),
-    targetPaths: [
-      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'admin-server', 'storyboard-grok.workflow.js'),
-    ],
-  },
-  {
     label: 'license-admin-gui/admin-data.js',
     sourcePath: path.join(repoRoot, 'particle-editor-desktop', 'license-admin-gui', 'admin-data.js'),
     targetPaths: [
@@ -603,22 +596,6 @@ const syncEntries = [
     targetPaths: [
       path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'split-inpaint-nsfw.workflow.js'),
       path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'split-inpaint-nsfw.workflow.js'),
-    ],
-  },
-  {
-    label: 'storyboard-director-quality.workflow.js',
-    sourcePath: path.join(repoRoot, 'particle-editor', 'storyboard-director-quality.workflow.js'),
-    targetPaths: [
-      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'storyboard-director-quality.workflow.js'),
-      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'storyboard-director-quality.workflow.js'),
-    ],
-  },
-  {
-    label: 'storyboard-resource.workflow.js',
-    sourcePath: path.join(repoRoot, 'particle-editor', 'storyboard-resource.workflow.js'),
-    targetPaths: [
-      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'storyboard-resource.workflow.js'),
-      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'storyboard-resource.workflow.js'),
     ],
   },
   {

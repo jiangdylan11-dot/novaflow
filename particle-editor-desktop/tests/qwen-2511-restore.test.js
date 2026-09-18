@@ -51,16 +51,6 @@ test('outpaint, angle adjustment and object transfer build the 2511 chain with t
   assert.throws(() => spine.buildImageAngleAdjustWorkflow(without, 'reference.png'), /缺少/);
 });
 
-test('storyboard defaults to the ordinary 2511 scene chain and only NSFW mode uses Rapid', () => {
-  assert.equal(spine.normalizeStoryboardModelMode('default'), 'default');
-  assert.equal(spine.normalizeStoryboardModelMode(undefined), 'default');
-  assert.equal(spine.normalizeStoryboardModelMode('qwenNsfw'), 'qwenNsfw');
-  const ordinary = spine.buildStoryboardSceneWorkflow(info, 'scene.png', 'test', 'A cottage by a lake.', { id: 'landscape' }, 'default', { disablePromptExpansion: true });
-  assert2511(ordinary);
-  const nsfw = spine.buildStoryboardSceneWorkflow(info, 'scene.png', 'test', 'A cottage by a lake.', { id: 'landscape' }, 'qwenNsfw', { disablePromptExpansion: true });
-  assert.equal(nodesOf(nsfw, 'CheckpointLoaderSimple')[0].inputs.ckpt_name, RAPID);
-  assert.equal(nodesOf(nsfw, 'UNETLoader').length, 0);
-});
 
 test('local edit and completion route to the 2511 chain unless the NSFW switch is on', async () => {
   for (const mode of ['edit', 'completion']) {

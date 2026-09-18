@@ -47,9 +47,9 @@
   const SPLIT_SET_SOURCE_ATTR = 'data-novaflow-spine-split-set-source'
   const SPLIT_SET_CHEVRON_ATTR = 'data-novaflow-spine-split-set-chevron'
   const SPLIT_SET_CHEVRON_MARK_ATTR = 'data-novaflow-spine-split-set-chevron-mark'
-  const STORYBOARD_GROUP_TOGGLE_ATTR = 'data-novaflow-storyboard-group-toggle'
-  const STORYBOARD_ITEM_ATTR = 'data-novaflow-storyboard-item'
-  const STORYBOARD_GROUP_DELETE_ATTR = 'data-novaflow-storyboard-group-delete'
+  
+  
+  
   const SPLIT_HEADER_HOVER_ATTR = 'data-novaflow-spine-split-header-hover'
   const TOOL_ACTION_ATTR = 'data-novaflow-spine-split-tool-action'
   const INPAINT_MODE_ATTR = 'data-novaflow-selection-inpaint-mode'
@@ -135,89 +135,60 @@
   const LAYER_POINTER_AUTO_SCROLL_MAX_PX = 22
   const LAYER_POINTER_NEAREST_Y_SLACK_PX = 72
   const SPLIT_BUSY_OVERLAY_Z_INDEX = '2147483647'
-  const COMFY_BUSY_ACTIONS = new Set(['split', 'cutout', 'removeBackground', 'effectExtract', 'effectRemove', 'inpaint', 'imageUpscale', 'imageOutpaint', 'imageAngleAdjust', 'objectTransfer', 'storyboard'])
-  const STORYBOARD_DIALOG_ID = 'novaflow-storyboard-dialog'
-  const STORYBOARD_EDIT_DIALOG_ID = 'novaflow-storyboard-edit-dialog'
-  const STORYBOARD_DEBUG_DIALOG_ID = 'novaflow-storyboard-debug-dialog'
-  const STORYBOARD_DIRECTOR_PLAN_DIALOG_ID = 'novaflow-storyboard-director-plan-dialog'
-  const STORYBOARD_DIRECTION_DIALOG_ID = 'novaflow-storyboard-direction-dialog'
-  const STORYBOARD_V5_DIRECTOR_DEBUG_ONLY = false
-  const STORYBOARD_DIRECTOR_PLANNER_TIMEOUT_MS = 240_000
-  const STORYBOARD_DIRECTION_CHOOSER_TIMEOUT_MS = 20_000
-  const STORYBOARD_REFERENCE_ANALYSIS_TIMEOUT_MS = 90_000
-  const STORYBOARD_VISUAL_EVENT_CHAIN_TIMEOUT_MS = 300_000
-  const STORYBOARD_FINAL_SHOT_PROMPTS_TIMEOUT_MS = 180_000
-  const STORYBOARD_FINAL_SHOT_PROMPT_MAX_CHARS = 12000
-  const STORYBOARD_UNIFIED_NINE_SHOTS_TIMEOUT_MS = 360_000
-  const STORYBOARD_REFERENCE_ANALYSIS_CACHE_MAX = 8
-  const STORYBOARD_SCENE_COUNT = 9
-  const STORYBOARD_FALLBACK_V2_PURPOSES = ['建立', '进入', '变化', '冲突', '升级', '推进', '高潮', '结果', '收束']
-  const STORYBOARD_FALLBACK_V2_CAMERAS = ['远景固定', '中景推进', '近景推近', '中景推进', '全景环绕', '中景跟拍', '低机仰拍', '背影拉远', '远景拉远']
-  const STORYBOARD_COLUMNS = 3
-  const STORYBOARD_FRAME_WIDTH = 1216
-  const STORYBOARD_FRAME_HEIGHT = 704
-  const STORYBOARD_FRAME_PRESETS = Object.freeze([
-    Object.freeze({ id: 'landscape_fast', label: '快速测试 16:9', width: 640, height: 360 }),
-    Object.freeze({ id: 'landscape', label: '横版 16:9', width: STORYBOARD_FRAME_WIDTH, height: STORYBOARD_FRAME_HEIGHT }),
-    Object.freeze({ id: 'portrait', label: '竖版 9:16', width: 704, height: 1216 }),
-    Object.freeze({ id: 'square', label: '方图 1:1', width: 1024, height: 1024 })
-  ])
-  const STORYBOARD_DEFAULT_FRAME_PRESET_ID = 'landscape'
-  const STORYBOARD_OVERVIEW_CELL_WIDTH = 512
-  const STORYBOARD_OVERVIEW_CELL_HEIGHT = 288
-  const STORYBOARD_OVERVIEW_LABEL_HEIGHT = 58
-  const STORYBOARD_OVERVIEW_GAP = 8
-  const STORYBOARD_GENERATION_TIMEOUT_MS = 30 * 60 * 1000
-  const STORYBOARD_REFERENCE_STRENGTH_DEFAULT = 0.35
-  const STORYBOARD_REFERENCE_STRENGTH_MIN = 0.1
-  const STORYBOARD_REFERENCE_STRENGTH_MAX = 0.8
-  const STORYBOARD_REFERENCE_IMAGE_STRENGTH_THRESHOLD = 0.55
-  const STORYBOARD_REFERENCE_LATENT_STRENGTH_THRESHOLD = 0.75
-  const STORYBOARD_SUBJECT_REFERENCE_CANVAS_SIZE = 1024
-  const STORYBOARD_POSE_SAFE_SUBJECT_REFERENCE_MODE = 'local_subject_pose_safe_upper_body_reference'
+  const COMFY_BUSY_ACTIONS = new Set(['split', 'cutout', 'removeBackground', 'effectExtract', 'effectRemove', 'inpaint', 'imageUpscale', 'imageOutpaint', 'imageAngleAdjust', 'objectTransfer'])
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   const SPLIT_PREVIEW_IMAGE_CACHE_MAX = 96
-  const STORYBOARD_RULES = [
-    'Follow the storyboard formula extracted from the reference docs: subject reference, scene description, motion description, aesthetic control, stylization.',
-    'For image-to-storyboard, the reference image guides the main subject identity, face or head impression, hairstyle or head shape, outfit or equipment, material rendering, palette, and art style.',
-    'Each scene prompt describes one single finished cinematic frame. It must specify shot size, camera angle, lens feeling, composition, camera movement, motion rhythm, lighting, color tone, and spatial depth.',
-    'Characters remain visually consistent between scenes through stable hair or head shape, body or silhouette, costume or equipment structure, visible accessory/equipment design, and rendering style.',
-    'Scene action must progress naturally from the previous scene. Expression, posture, effects, debris, and environment must evolve instead of resetting.',
-    'Use varied film language across the 9 scenes and choose shot size, camera angle, crop, and motion from the current event.',
-    'Create a fresh action pose, camera composition, and dominant background structure for each scene.'
-  ]
-  const STORYBOARD_REFERENCE_LOCK = 'Reference image policy: use the uploaded image as subject identity and rendering-style guidance. Preserve the main subject type, face or head impression, silhouette, baseline outfit or equipment, color palette, rendering finish, and art style while the scene prompt decides action, camera, location, and composition. If the user story explicitly requires a role, time, or status change, outer clothing or equipment may evolve at that story beat while the same subject identity remains clear. Do not copy the reference pose, body angle, camera angle, crop, subject scale, or centered standing composition.'
-  const STORYBOARD_REFERENCE_BACKGROUND_DECOUPLE_RULE = 'Reference image rule: use the uploaded image as subject identity and rendering-style guidance. Preserve the main subject type, face or head impression, silhouette, baseline outfit or equipment design, important accessories or equipment design language, color palette, rendering finish, and art style. Let the current scene prompt choose the action, emotion, location, background, camera, and composition. Do not change outfit or equipment unless the user story or current scene explicitly requires a visible role, time, or status change. The reference image is not a pose or prop-display reference: do not copy its stance, body direction, hand position, camera angle, crop, subject scale, centered full-body layout, or repeated hand-held hero prop pose.'
-  const STORYBOARD_REFERENCE_POSE_DECOUPLE_RULE = 'Reference-pose decoupling rule: keep identity, costume/equipment design, palette, rendering finish, and art style from the reference, but invent a fresh pose, gesture, body direction, camera angle, crop, subject scale, foreground action, and background for this exact scene. Reference-visible accessories, equipment, or carried items are identity design anchors, not visibility requirements; show them only when the scene action naturally needs them, and allow them to be folded, carried low, partly visible, cropped, placed nearby, or hidden by perspective.'
-  const STORYBOARD_CHARACTER_CONTINUITY_RULE = 'Storyboard continuity rule: keep the same main subject identity, age or species range, face or head impression, hair or head shape, silhouette, baseline outfit or equipment design, important accessories or equipment design language, color palette, and rendering style across all scenes. Explicit story-driven role, time, or status changes may update outer clothing or equipment only at the relevant beat; the character must still read as the same protagonist. Do not replace the reference outfit with a genre-default costume from the new location, era, job, festival, battle, school, city, temple, palace, office, or environment unless the user story explicitly says the protagonist changes clothes or identity. Continuity means design and style continuity, not repeating the same pose, prop display, crop, camera angle, subject scale, or centered composition. Each scene prompt decides the action, emotion, location, camera, and story state.'
-  const STORYBOARD_KEY_PROP_CONTINUITY_RULE = '关键身份设计规则：参考图里可见的配饰、装备、随身物和大轮廓元素只用于保持角色设计语言；当前事件、动作和镜头优先。大型轮廓元素可以折叠、携带、局部入镜、被前景遮挡、侧背面出现或被镜头裁切；不要为了完整展示身份元素而变成居中角色设定图。'
-  const STORYBOARD_CHARACTER_IDENTITY_CARD_MAX_CHARS = 1200
-  const STORYBOARD_SINGLE_FRAME_PROMPT_RULE = 'Single-frame rule: create one uninterrupted full-frame cinematic illustration for this scene, with one coherent composition, one continuous camera view, readable foreground action, clear spatial depth, and clean full-bleed artwork.'
-  const STORYBOARD_RENDER_STYLE_LOCK = 'Rendering style lock: preserve the uploaded reference image visual language across the full 9-image sequence. If the reference is illustrated, keep the same illustration medium, palette, line or brush detail, lighting mood, and visual finish. If the reference is photographic or realistic, keep that same realistic visual language consistently. If the reference is 3D, clay, ink, watercolor, pixel, or another specific medium, keep that medium instead of converting it to anime, live-action, stock-photo, or unrelated 3D.'
-  const STORYBOARD_REFERENCE_PIXEL_AUTHORITY_RULE = 'Reference visual authority: when an uploaded reference image or derived subject reference is provided, its visible subject appearance is the authority for protagonist hair, outfit or equipment design, important accessory design, color palette, and rendering style. If text analysis or scene wording conflicts with the image-visible appearance, follow the image reference. Do not recolor the protagonist hair, outfit, equipment, visible accessories, or carried items to match the new background, location, lighting, or a possibly wrong text cue; only adapt shading and light direction. This authority does not mean the exact prop pose must appear in every scene.'
-  const STORYBOARD_REFERENCE_ANALYSIS_COLOR_CAUTION_RULE = 'Reference analysis color caution: extracted color words from image analysis are secondary because small subjects, occlusion, grass, sky, shadow, fire, or city lighting can contaminate them. Use extracted text for subject type, outfit silhouette, prop type, and art style only; use the visible uploaded subject or subject/style reference appearance for actual protagonist colors.'
-  const STORYBOARD_ABSTRACT_GOAL_GROUNDING_RULE = 'Abstract goal grounding rule: words such as dream, hope, future, growth, self, courage, opportunity, success, or destiny must be shown through real visible actions, objects, relationships, work, study, travel, feedback, or new-life states. Unless the user story explicitly says fantasy, magic, sci-fi, cosmos, dreamworld, portal, galaxy, or supernatural power, do not turn abstract goals into galaxies, star fields, magic orbs, portals, holograms, floating symbols, or alternate worlds.'
-  const STORYBOARD_REFERENCE_BACKGROUND_FIGURE_RULE = 'Reference background figure rule: distant, tiny, blurred, cropped, or background figures in the uploaded reference are environment evidence only, not identity anchors. Do not copy a background figure into the new scene unless the current scene explicitly needs a secondary character. When secondary characters are needed, they must have different hair, face, outfit, silhouette, and props from the protagonist, and must not reuse the protagonist outfit, hairstyle, face, or reference-visible carried item.'
-  const STORYBOARD_SUBJECT_STYLE_REFERENCE_PROMPT = [
-    'Create one visual identity continuity reference for this storyboard, based ONLY on the uploaded reference image.',
-    'The uploaded image is the authority. Isolate, enlarge, and faithfully redraw the same visible main protagonist from that image; do not redesign the character.',
-    'This output is an identity, costume, prop, palette, and rendering-style reference only; it must not become a reusable action pose or composition template.',
-    'Do not infer any new clothing category, profession category, destination category, era, role, age, gender, or species from the user story.',
-    'Preserve the visible hair shape and color, head/face impression, age impression, upper garment type and color, lower garment type and color, shoes if visible, visible accessory/equipment type/color/shape, body silhouette, color palette, lighting, material finish, line/brush detail when present, photographic or realistic finish when present, and the same rendering style as the uploaded image.',
-    'Visible appearance authority: if text analysis or story words conflict with the uploaded image, follow the uploaded subject appearance. Do not borrow grass, sky, fire, building, shadow, or background colors as clothing colors. Do not recolor the subject outfit, hair, visible equipment, accessories, or carried items.',
-    'If a detail is small or unclear, keep the closest simple version of what is visible in the uploaded image instead of inventing a new costume or new character design.',
-    'Output a neutral identity bust reference only: head, hair, face impression, shoulders, upper torso costume/material details, and small cropped accessory hints if needed. Crop below the chest. No full body, no legs, no action scene, no walking, no fighting, no dancing, no hand-held prop display, no dramatic pose.',
-    'A back view, side view, or three-quarter bust view is acceptable when that is what the uploaded image supports; do not force a new front-facing character sheet if it changes the outfit or style. If large accessories, equipment, or carried items are important, show only a cropped shoulder/back/edge hint or leave them out; never show hands presenting the item.',
-    'Use a plain light neutral background only after isolating the same protagonist. No roads, mountains, buildings, panels, text, logos, extra characters, background figures, or story action.',
-    'Forbidden unless clearly visible in the uploaded image: a new role outfit, new costume category, new headwear, new large equipment, different carried item, different hair length, gender swap, 3D toy style, flat vector style, or any style change. Also forbidden: full-body reference, hand-held hero prop pose, prop-display pose, symmetrical standing pose, story action, or reusable scene composition.'
-  ].join('\n')
-  const STORYBOARD_OPEN_HIGHLIGHT_RULE = 'Open highlight rule: choose one visible highlight from the current event itself. The highlight can be an action instant, object change, character state change, spatial turn, conflict moment, or result trace, and it should stay inside the current plot beat.'
-  const STORYBOARD_SINGLE_FRAME_NEGATIVE_PROMPT = 'picture-in-picture, inset image, inset frame, split screen, collage, comic panel, manga panel, thumbnail grid, contact sheet, storyboard sheet, multiple panels, multiple frames, frame inside frame, inner border, border boxes, extra small preview images, mini storyboard'
-  const STORYBOARD_NEGATIVE_PROMPT = `low quality, worst quality, blurry, jpeg artifacts, pixel art, 8-bit, 16-bit, blocky pixels, pixelated mosaic, retro game sprite, voxel, watermark, mixed media, style mismatch, character pasted onto background, foreground and background different art styles, inconsistent rendering medium, text, readable text, pseudo text, gibberish letters, random letters, fake words, numbers, captions, subtitles, UI text, logo, text-heavy screen, presentation slide text, poster text, readable signage, map close-up, clipboard close-up, readable map, readable form, readable document, readable wall poster, large readable sign, pointing at sign, pointing at poster, pointing at map, paper held toward camera, phone screen facing camera, panel border inside the image, duplicated character, cloned protagonist, identical companion, second copy of protagonist, secondary character copying protagonist key prop or outfit, protagonist outfit replaced by generic local costume, changed hairstyle without story reason, changed outfit color without story reason, extra limbs, bad hands, deformed fingers, distorted face, static front-facing full-body standing pose, straight-arm pointing, straight arm toward camera, open palm toward camera, extended arm display, repeated pointing pose, static smile portrait, arms-spread display, centered posed portrait, holding readable document toward camera, repeated original composition, same background in every scene, flat lighting, weak visual effects, magic sparks, star bursts, glow bursts, energy blast, floating symbols, glowing particles, cluttered unreadable composition, ${STORYBOARD_SINGLE_FRAME_NEGATIVE_PROMPT}`
-  const STORYBOARD_SHOT_POOL = {
-    shotTypes: ['extreme wide shot', 'wide shot', 'full shot', 'medium shot', 'medium close-up', 'close-up', 'extreme close-up', 'over-the-shoulder shot', 'back view shot', 'detail close-up', 'environment shot', 'hero shot'],
-    cameras: ['high-angle overhead', 'low-angle heroic', 'eye-level', 'side profile', 'three-quarter view', 'over-the-shoulder', 'top-down', 'pull-back'],
-    movements: ['static establishing', 'push-in', 'pull-back', 'follow shot', 'handheld tracking', 'orbit', 'crane down', 'freeze frame']
-  }
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   const IMAGE_UPSCALE_DIT_MODEL = 'seedvr2_ema_3b_fp8_e4m3fn.safetensors'
   const IMAGE_UPSCALE_VAE_MODEL = 'ema_vae_fp16.safetensors'
   const IMAGE_UPSCALE_MAX_LONG_EDGE = 4096
@@ -227,7 +198,7 @@
   const IMAGE_OUTPAINT_TIMEOUT_MS = 600000
   const IMAGE_OUTPAINT_SAFE_DIMENSION_STEP = 8
   const IMAGE_OUTPAINT_ORIGINAL_EDGE_FEATHER_PX = 24
-  // NSFW option for storyboard, local editing and completion; the default chains use Qwen Image Edit 2511.
+  // NSFW option for local editing and completion; the default chains use Qwen Image Edit 2511.
   const QWEN_RAPID_CHECKPOINT = 'Qwen-Rapid-AIO-NSFW-v20.safetensors'
   const IMAGE_ANGLE_ADJUST_TIMEOUT_MS = 600000
   const IMAGE_ANGLE_ADJUST_FILENAME_PREFIX = 'NovaFlow_angle_adjust'
@@ -327,9 +298,9 @@
   const EFFECT_REMOVE_MASK_GROW_RATIO = 0.008
   const EFFECT_REMOVE_MASK_GROW_MIN = 4
   const EFFECT_REMOVE_MASK_GROW_MAX = 16
-  const STORYBOARD_MODEL_MODE_DEFAULT = 'default'
-  const STORYBOARD_MODEL_MODE_NSFW = 'qwenNsfw'
-  const STORYBOARD_QWEN_NSFW_CHECKPOINT = QWEN_RAPID_CHECKPOINT
+  
+  
+  
   const SPLIT_MODE_DIALOG_ID = 'novaflow-spine-split-mode-dialog'
   const SPLIT_MODE_DIALOG_STYLE_ID = 'novaflow-spine-split-mode-dialog-style'
   const SEE_THROUGH_DEFAULT_STEPS = 30
@@ -435,7 +406,7 @@
   const CN_UI_PANEL_PENDING = '\u0055\u0049 \u677f\u5757\u5f00\u53d1\u4e2d'
   const ART_DRAWING_HOST_SELECTOR = '[data-novaflow-art-drawing-host="1"]'
   const ART_UI_HOST_SELECTOR = '[data-novaflow-art-ui-host="1"]'
-  const storyboardReferenceAnalysisCache = new Map()
+  
   const splitPreviewImageCache = new Map()
   const DEFAULT_WORKFLOW = String.raw`{
   "60": {"inputs": {"filename_prefix": "Qwen-image-layers", "images": ["83:8", 0]}, "class_type": "SaveImage", "_meta": {"title": "保存图像"}},
@@ -560,11 +531,6 @@
     splitPreviewStale: false,
     splitSets: [],
     activeSplitSetId: '',
-    storyboardGroups: [],
-    activeStoryboardGroupId: '',
-    activeStoryboardItemId: '',
-    storyboardRunToken: '',
-    storyboardWorkspaceSyncToken: 0,
     splitRunCounter: 0,
     sourceSize: null,
     sourceImageSize: null,
@@ -724,8 +690,8 @@
   let sourceImportToken = 0
   let splitMountRetryTimer = null
   let splitMountRetryCount = 0
-  let storyboardWorkspaceRestoreRunning = false
-  let storyboardWorkspaceRestoreQuietUntil = 0
+  
+  
   let splitActionHoverButton = null
   let splitActionHoverOverlayButton = null
   const splitActionHoverOriginalStyles = new WeakMap()
@@ -914,35 +880,9 @@
     return !!(artButton && primaryEntryButtonLooksActive(artButton))
   }
 
-  function dispatchStoryboardPrimaryActivationEvent(button, type) {
-    if (!(button instanceof HTMLElement)) return false
-    const EventCtor = type === 'pointerdown' && typeof window.PointerEvent === 'function'
-      ? window.PointerEvent
-      : window.MouseEvent
-    try {
-      button.dispatchEvent(new EventCtor(type, {
-        bubbles: true,
-        cancelable: true,
-        button: 0,
-        buttons: type === 'pointerdown' || type === 'mousedown' ? 1 : 0,
-        view: window
-      }))
-      return true
-    } catch {
-      return false
-    }
-  }
+  
 
-  function requestArtPrimaryForStoryboardWorkspace() {
-    if (isArtPrimaryEntryConfirmed()) return false
-    const artButton = primaryEntryButtonByLabel(CN_ART_SECTION)
-    if (!(artButton instanceof HTMLElement)) return false
-    dispatchStoryboardPrimaryActivationEvent(artButton, 'pointerdown')
-    dispatchStoryboardPrimaryActivationEvent(artButton, 'mousedown')
-    dispatchStoryboardPrimaryActivationEvent(artButton, 'mouseup')
-    dispatchStoryboardPrimaryActivationEvent(artButton, 'click')
-    return true
-  }
+  
 
   function isArtDrawingSplitPanelHost(node) {
     if (!(node instanceof HTMLElement)) return false
@@ -1072,7 +1012,6 @@
     if (!button) return false
     const label = textOf(button)
     if (label === CN_UI_TAB) {
-      cancelStoryboardWorkspaceSync()
       removeSplitWorkspaceSurface()
       return true
     }
@@ -1080,19 +1019,13 @@
       const alreadyDrawing = button.getAttribute('data-novaflow-secondary-active') === '1' || button.getAttribute('aria-pressed') === 'true'
       if (alreadyDrawing && isMountedCardVisible()) {
         startSplitMountRetry()
-        if (hasActiveStoryboardPreview()) scheduleStoryboardWorkspaceSync()
-        else syncSplitWorkspace()
+        syncSplitWorkspace()
         return true
       }
       resetSplitDrawingCategoriesForEntry()
       removeSplitWorkspaceSurface()
       const remount = () => {
         if (!isSplitCanvasRouteActive()) return
-        if (hasActiveStoryboardPreview()) {
-          restoreStoryboardWorkspaceSurface()
-          scheduleStoryboardWorkspaceSync()
-          return
-        }
         mount()
         startSplitMountRetry()
         syncSplitWorkspace()
@@ -1119,7 +1052,6 @@
     if (!button) return false
     const label = primarySectionLabelFromNode(button)
     if (label && label !== CN_ART_SECTION) {
-      cancelStoryboardWorkspaceSync(1400)
       removeSplitWorkspaceSurface()
       return true
     }
@@ -1131,11 +1063,6 @@
     if (!isArtPrimaryEntryConfirmed()) resetSplitDrawingCategoriesForEntry()
     const remount = () => {
       if (!isSplitCanvasRouteActive()) return
-      if (hasActiveStoryboardPreview()) {
-        restoreStoryboardWorkspaceSurface()
-        scheduleStoryboardWorkspaceSync()
-        return
-      }
       mount()
       startSplitMountRetry()
       syncSplitWorkspace()
@@ -2816,7 +2743,6 @@
       inpaint: `${selectionInpaintModeStartLabel(state.selectionTool && state.selectionTool.inpaintMode)}\u5904\u7406\u4e2d...`,
       imageUpscale: '\u6b63\u5728\u9ad8\u6e05\u653e\u5927...',
       imageOutpaint: '\u65e0\u9650\u6269\u56fe\u751f\u6210\u4e2d...',
-      storyboard: '正在生成 Storyboard...',
       imageAngleAdjust: '正在角度调整...',
       healing: '\u4fee\u8865\u4e2d...',
       penCutout: '图层分割中...',
@@ -2853,19 +2779,9 @@
     return !!(overlay && overlay.isConnected)
   }
 
-  function storyboardDirectionDialogNode() {
-    const dialog = document.getElementById(STORYBOARD_DIRECTION_DIALOG_ID)
-    return dialog instanceof HTMLElement && dialog.isConnected ? dialog : null
-  }
+  
 
-  function eventTargetsStoryboardDirectionDialog(event) {
-    const dialog = storyboardDirectionDialogNode()
-    if (!dialog || !event) return false
-    const target = event.target
-    if (target instanceof Node && dialog.contains(target)) return true
-    const path = typeof event.composedPath === 'function' ? event.composedPath() : null
-    return Array.isArray(path) && path.includes(dialog)
-  }
+  
 
   function stopSplitActionDuplicateEvent(event) {
     blockSplitBusyOverlayEvent(event)
@@ -2945,7 +2861,6 @@
 
   function handleSplitGlobalBusyGuardEvent(event) {
     if (!splitGlobalBusyInteractionLocked()) return
-    if (eventTargetsStoryboardDirectionDialog(event)) return
     clearActiveSplitActionButtonHover()
     blockSplitBusyOverlayEvent(event)
   }
@@ -3072,8 +2987,7 @@
     syncSplitBusyOverlayTimer(visible ? busy : null)
     const signature = visible ? `${busy.action}|${busy.message}|${busy.elapsedText || ''}|${busy.detail || ''}` : ''
     const existing = document.getElementById(SPLIT_BUSY_OVERLAY_ID)
-    const directionDialog = storyboardDirectionDialogNode()
-    if (!visible || !document.body || directionDialog) {
+    if (!visible || !document.body) {
       if (existing) removeSplitGlobalBusyOverlay()
       else clearSplitBusyOverlayTimer()
       return
@@ -4342,7 +4256,6 @@
       || name === 'imageOutpaint'
       || name === 'imageAngleAdjust'
       || name === 'objectTransfer'
-      || name === 'storyboard'
       || name === 'cutout'
       || name === 'inpaint'
       || name === 'inpaintCompletion'
@@ -4454,10 +4367,6 @@
       state.splitPreviewDataUrl = ''
       state.splitSets = []
       state.activeSplitSetId = ''
-      state.storyboardGroups = []
-      state.activeStoryboardGroupId = ''
-      state.activeStoryboardItemId = ''
-      state.storyboardRunToken = ''
       state.tempDir = ''
       state.tempError = ''
       state.activePartId = ''
@@ -4660,28 +4569,14 @@
     return sourceResourceList().find((item) => item && String(item.id || '') === id) || null
   }
 
-  function isStoryboardEditSourceResource(resource = activeSourceResourceRecord()) {
-    return !!(resource && resource.storyboardEditCopy)
-  }
+  
 
   function activateSourceResource(id, options = {}) {
     if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
     const resource = sourceResourceList().find((item) => item && item.id === id)
     if (!resource || !resource.dataUrl) return false
     const previousSet = splitSetById(state.activeSplitSetId)
-    const leavingStoryboardWorkspace = !!(previousSet
-      && previousSet.storyboardGroupId
-      && previousSet.sourceResourceId
-      && previousSet.sourceResourceId !== resource.id)
-    if (leavingStoryboardWorkspace) {
-      syncActiveSplitSet()
-      const matchingSet = state.splitSets.find((set) => set
-        && !set.storyboardGroupId
-        && set.sourceResourceId === resource.id) || null
-      state.activeSplitSetId = matchingSet && matchingSet.id || ''
-      state.parts = matchingSet ? (matchingSet.parts || []).map(normalizeLayerRecord) : []
-      state.splitPreviewDataUrl = matchingSet && matchingSet.previewDataUrl || ''
-    }
+    
     state.activeSourceResourceId = resource.id
     state.source = {
       id: resource.id,
@@ -4722,28 +4617,11 @@
     return true
   }
 
-  function linkedStoryboardSplitSetForResource(resource) {
-    if (!resource || !resource.storyboardEditCopy) return null
-    const set = splitSetById(resource.storyboardSplitSetId)
-    return set && String(set.sourceResourceId || '') === String(resource.id || '') ? set : null
-  }
+  
 
   function activateSourceResourceWithLinkedSplitSet(id, options = {}) {
     const resource = sourceResourceList().find((item) => item && String(item.id || '') === String(id || ''))
     if (!resource || !activateSourceResource(resource.id, { resetViewport: options.resetViewport })) return false
-    if (resource.storyboardEditCopy) {
-      const linkedSet = linkedStoryboardSplitSetForResource(resource)
-      if (linkedSet) {
-        activateSplitSet(linkedSet.id)
-      } else {
-        state.activeSplitSetId = ''
-        state.parts = []
-        state.splitPreviewDataUrl = ''
-        state.activePartId = ''
-        state.selectedPartIds = []
-      }
-      if (options.sourceView !== false) state.viewMode = 'source'
-    }
     if (options.render !== false) {
       render()
       updatePreviewOverlay()
@@ -4759,17 +4637,6 @@
     if (index < 0) return false
     const [removed] = list.splice(index, 1)
     revokeSourceObjectUrl(removed)
-    const linkedSetId = removed && removed.storyboardEditCopy ? String(removed.storyboardSplitSetId || '') : ''
-    if (linkedSetId) {
-      state.splitSets = state.splitSets.filter((set) => set && String(set.id || '') !== linkedSetId)
-      if (state.activeSplitSetId === linkedSetId) {
-        state.activeSplitSetId = ''
-        state.parts = []
-        state.splitPreviewDataUrl = ''
-        state.activePartId = ''
-        state.selectedPartIds = []
-      }
-    }
     const wasActive = targetId === state.activeSourceResourceId
     if (wasActive) {
       const next = list[Math.min(index, list.length - 1)] || list[index - 1] || list[0] || null
@@ -4790,7 +4657,7 @@
     state.dragLayerId = ''
     state.dragLayerSetId = ''
     notifySourceResourceChange('delete', removed)
-    setMessage(`已删除${removed && removed.storyboardEditCopy ? '分镜编辑副本' : '原图资源'}：${removed && (removed.fileName || removed.name) || 'source.png'}`)
+    setMessage(`已删除原图资源：${removed && (removed.fileName || removed.name) || 'source.png'}`)
     render()
     updatePreviewOverlay()
     updateRightPanel()
@@ -5399,12 +5266,10 @@
       syncActiveSourceResourceFromState()
       const shift = (part) => shiftPartForCanvasResize(part, delta, nextSize)
       state.parts = normalizeSpineLayerOrder(state.parts.map(shift))
-      const isolateStoryboardEditWorkspace = isStoryboardEditSourceResource()
+      
       const activeSourceResourceId = String(state.activeSourceResourceId || '')
       state.splitSets.forEach((set) => {
         if (!set || set.id === state.activeSplitSetId) return
-        if (isolateStoryboardEditWorkspace) return
-        if (set.storyboardGroupId && set.sourceResourceId !== activeSourceResourceId) return
         set.parts = (set.parts || []).map(shift)
         set.previewDataUrl = ''
         set.updatedAt = new Date().toISOString()
@@ -5826,9 +5691,6 @@
       sourceOffset: state.sourceOffset ? { ...state.sourceOffset } : state.sourceOffset,
       sourceResources: cloneSplitLayerHistoryValue(state.sourceResources || []),
       activeSourceResourceId: state.activeSourceResourceId,
-      storyboardGroups: cloneSplitLayerHistoryValue(state.storyboardGroups || []),
-      activeStoryboardGroupId: state.activeStoryboardGroupId,
-      activeStoryboardItemId: state.activeStoryboardItemId,
       sourceDataUrlPending: state.sourceDataUrlPending,
       parts: cloneSplitLayerHistoryValue(state.parts || []),
       splitSets: cloneSplitLayerHistoryValue(state.splitSets || []),
@@ -5847,9 +5709,6 @@
     state.sourceOffset = snapshot.sourceOffset ? { ...snapshot.sourceOffset } : snapshot.sourceOffset
     state.sourceResources = cloneSplitLayerHistoryValue(snapshot.sourceResources || [])
     state.activeSourceResourceId = snapshot.activeSourceResourceId
-    state.storyboardGroups = cloneSplitLayerHistoryValue(snapshot.storyboardGroups || [])
-    state.activeStoryboardGroupId = snapshot.activeStoryboardGroupId || ''
-    state.activeStoryboardItemId = snapshot.activeStoryboardItemId || ''
     state.sourceDataUrlPending = snapshot.sourceDataUrlPending
     state.parts = cloneSplitLayerHistoryValue(snapshot.parts || [])
     state.splitSets = cloneSplitLayerHistoryValue(snapshot.splitSets || [])
@@ -5976,231 +5835,19 @@
   }
 
 
-  async function runStoryboardReferenceReversePrompt(dataUrl, fileName) {
-    const api = window.electronAPI
-    if (!api || typeof api.promptAssistantReverseImagePrompt !== 'function') throw new Error('Prompt Assistant IPC 未就绪，无法分析分镜参考图。')
-    const result = await api.promptAssistantReverseImagePrompt({
-      purpose: 'storyboardReference',
-      images: [{
-        name: safeDownloadFileName(fileName || 'source.png', 'source.png'),
-        role: 'source',
-        slotType: 'source',
-        label: 'storyboard-reference',
-        dataUrl
-      }]
-    })
-    if (!result || !result.ok) throw new Error(result && result.error || 'AI 反推失败')
-    const prompt = String(result.data && result.data.prompt || '').trim()
-    if (!prompt) throw new Error('AI 反推未生成可用提示词')
-    return prompt
-  }
+  
 
-  function storyboardFastStringHash(value) {
-    const text = String(value || '')
-    let hash = 2166136261
-    for (let i = 0; i < text.length; i += 1) {
-      hash ^= text.charCodeAt(i)
-      hash = Math.imul(hash, 16777619)
-    }
-    return `fallback:${text.length}:${(hash >>> 0).toString(16).padStart(8, '0')}`
-  }
+  
 
-  async function storyboardReferenceAnalysisCacheKey(dataUrl) {
-    const text = String(dataUrl || '')
-    if (!text) return ''
-    try {
-      const cryptoApi = window.crypto || window.msCrypto
-      if (cryptoApi && cryptoApi.subtle && typeof TextEncoder !== 'undefined') {
-        const encoded = new TextEncoder().encode(text)
-        const digest = await cryptoApi.subtle.digest('SHA-256', encoded)
-        const bytes = Array.from(new Uint8Array(digest))
-        return `sha256:${bytes.map((byte) => byte.toString(16).padStart(2, '0')).join('')}`
-      }
-    } catch (_) {}
-    return storyboardFastStringHash(text)
-  }
+  
 
-  function storyboardTrimReferenceAnalysisCache() {
-    while (storyboardReferenceAnalysisCache.size > STORYBOARD_REFERENCE_ANALYSIS_CACHE_MAX) {
-      const firstKey = storyboardReferenceAnalysisCache.keys().next().value
-      if (!firstKey) break
-      storyboardReferenceAnalysisCache.delete(firstKey)
-    }
-  }
+  
 
-  function storyboardNormalizeReferenceAnalysisForStoryboard(value) {
-    const text = String(value || '').replace(/\r/g, '\n')
-    if (!text.trim()) return ''
-    const fixedDecoupleLine = '禁止复制：不要复制参考图的姿势、主体朝向、镜头、构图、主体大小、背景和地点；背景只作为可用视觉素材，不能作为固定剧情模板。'
-    let hasDecoupleLine = false
-    const lines = text.split(/\n+/).map((line) => {
-      let item = storyboardCompactVisibleCueText(line)
-      if (!item) return ''
-      const isPoseBackgroundLine = /(姿势|构图|背景|镜头|主体大小|主体朝向|朝向|背影|背对|正面|站立|居中|地点)/.test(item) &&
-        /(保持|复制|固定|禁止|不要|背景|构图|姿势|朝向|镜头)/.test(item)
-      if (isPoseBackgroundLine) {
-        hasDecoupleLine = true
-        return fixedDecoupleLine
-      }
-      item = item.replace(/(脸部印象|面部印象)[:：]\s*(背对镜头|背影|看不清|未清晰可见)/g, '$1：未清晰可见')
-      item = item.replace(/(保持|复制)(参考图)?(的)?(背影|背对镜头|姿势|主体朝向|镜头|构图|背景|地点|自然环境)/g, '')
-      return storyboardCompactVisibleCueText(item)
-    }).filter(Boolean)
-    if (!hasDecoupleLine) lines.push(fixedDecoupleLine)
-    const seen = new Set()
-    return lines.filter((line) => {
-      const key = line.replace(/\s+/g, '')
-      if (!key || seen.has(key)) return false
-      seen.add(key)
-      return true
-    }).join('\n').trim()
-  }
+  
 
-  async function runStoryboardGrokReferencePrompt(dataUrl, fileName) {
-    const api = window.electronAPI
-    if (!api || typeof api.smartAiImageReverse !== 'function') {
-      throw new Error('AI导演 Grok 图片反推接口未就绪。')
-    }
-    const result = await api.smartAiImageReverse({
-      purpose: 'storyboardReference',
-      requirements: [
-        '这是 AI导演 一键分镜的参考图视觉反推。',
-        '只提取后续分镜需要的视觉锚点，并按清楚字段输出：主体数量与身份、脸部与年龄特征、发型发色、上衣、下装、鞋、背包与随身物、手持道具、装备、特殊身体特征、主体配色与材质、时代与世界观线索、画风、光影和色彩氛围。',
-        '服装必须分别写明上衣与下装的品类、颜色、袖长或裤长以及可见材质；背包、装备和特殊身体特征如果不存在就明确写“无”。只描述图片中可见内容，不确定时写“不确定”，禁止按旅行、战斗、奇幻、职业或地点类型自行补全。',
-        '必须区分物体固有颜色与霓虹灯、环境光、反射或轮廓光造成的受光颜色；粉色或青色边光不等于头发、皮肤、服装或装备本身具有粉色或青色渐变。只有大面积连续表面与中性受光区域共同支持时才写成固有颜色；不确定时写“受某色环境光影响”，不要改写材质本色。',
-        '发长按发梢实际最低位置只选一个不冲突的标签：耳上、下颌、齐肩、过肩或长发；不要同时写“短发”和“齐肩”等互相冲突的长度。发梢停在下颌附近的波波头应写“下颌长度短波波头”，不能写成齐肩发。',
-        '参考图中的背景、地点、姿势、构图和镜头不得被当成固定剧情，也不得覆盖用户输入的故事大纲。',
-        '输出紧凑、明确、可供后续模型识别的中文视觉分析；不要续写故事，不要生成分镜。'
-      ].join('\n'),
-      scenario: 'single_reference',
-      sourceCount: 1,
-      targetIndex: 0,
-      images: [{
-        name: safeDownloadFileName(fileName || 'source.png', 'source.png'),
-        label: 'storyboard-reference',
-        role: 'source',
-        slotType: 'source',
-        dataUrl
-      }]
-    })
-    if (!result || result.ok === false) {
-      throw new Error(String(result && result.error || 'AI导演 Grok 图片反推失败'))
-    }
-    const payload = result.data && typeof result.data === 'object' ? result.data : result
-    const grokMeta = result.grok && typeof result.grok === 'object' ? result.grok : {}
-    const prompt = String(payload.prompt || payload.output_text || '').trim()
-    if (!prompt) throw new Error('AI导演 Grok 图片反推未返回可用的视觉分析。')
-    return {
-      text: prompt,
-      provider: String(result.provider || payload.provider || 'grok').trim() || 'grok',
-      model: String(grokMeta.model || result.model || payload.model || payload.providerModel || '').trim(),
-      requestId: String(grokMeta.requestId || grokMeta.request_id || result.requestId || result.request_id || payload.requestId || payload.request_id || '').trim(),
-      durationMs: Number(grokMeta.durationMs || result.durationMs || payload.durationMs || 0) || 0
-    }
-  }
+  
 
-  async function runStoryboardReferenceAnalysis(dataUrl, fileName, directorProvider = 'local') {
-    const startedAt = Date.now()
-    const provider = String(directorProvider || '') === 'grok' ? 'grok' : 'local'
-    const hashStartedAt = Date.now()
-    const contentCacheKey = await storyboardReferenceAnalysisCacheKey(dataUrl)
-    const cacheKey = contentCacheKey ? `${provider}:${contentCacheKey}` : ''
-    const hashElapsedMs = Date.now() - hashStartedAt
-    const paletteStartedAt = Date.now()
-    const paletteHint = await storyboardSubjectPixelPaletteHintFromDataUrl(dataUrl).catch(() => '')
-    const paletteElapsedMs = Date.now() - paletteStartedAt
-    if (cacheKey && storyboardReferenceAnalysisCache.has(cacheKey)) {
-      const cached = storyboardReferenceAnalysisCache.get(cacheKey) || {}
-      storyboardReferenceAnalysisCache.delete(cacheKey)
-      storyboardReferenceAnalysisCache.set(cacheKey, cached)
-      const sourceAnalysis = String(cached.sourceAnalysis || '').trim()
-      return {
-        sourceAnalysis,
-        provider: String(cached.provider || provider).trim() || provider,
-        model: String(cached.model || '').trim(),
-        requestId: String(cached.requestId || '').trim(),
-        providerDurationMs: 0,
-        cacheHit: true,
-        cacheKey,
-        hashElapsedMs,
-        paletteHint,
-        paletteElapsedMs,
-        modelElapsedMs: 0,
-        elapsedMs: Date.now() - startedAt
-      }
-    }
-    const modelStartedAt = Date.now()
-    let rawSourceAnalysis = ''
-    let referenceModel = ''
-    let referenceRequestId = ''
-    let referenceProvider = provider
-    let referenceProviderDurationMs = 0
-    let fallbackReason = ''
-    try {
-      const analysisResult = await Promise.race([
-        provider === 'grok'
-          ? runStoryboardGrokReferencePrompt(dataUrl, fileName)
-          : runStoryboardReferenceReversePrompt(dataUrl, fileName),
-        new Promise((_, reject) => {
-          window.setTimeout(() => reject(new Error(`参考图分析超过 ${Math.round(STORYBOARD_REFERENCE_ANALYSIS_TIMEOUT_MS / 1000)} 秒，已跳过分析继续生成`)), STORYBOARD_REFERENCE_ANALYSIS_TIMEOUT_MS)
-        })
-      ])
-      if (analysisResult && typeof analysisResult === 'object') {
-        rawSourceAnalysis = String(analysisResult.text || analysisResult.prompt || analysisResult.output_text || '').trim()
-        referenceProvider = String(analysisResult.provider || provider).trim() || provider
-        referenceModel = String(analysisResult.model || '').trim()
-        referenceRequestId = String(analysisResult.requestId || analysisResult.request_id || '').trim()
-        referenceProviderDurationMs = Number(analysisResult.durationMs || 0) || 0
-      } else {
-        rawSourceAnalysis = String(analysisResult || '').trim()
-      }
-    } catch (error) {
-      fallbackReason = String(error && error.message || error || 'reference analysis failed')
-      if (provider === 'grok') {
-        throw new Error(`AI导演 Grok 图片反推失败：${fallbackReason}。本次不会切换到本地反推。`)
-      }
-      try {
-        console.warn('[NovaFlow Storyboard] reference analysis failed, continuing with image reference only', {
-          reason: fallbackReason,
-          elapsedMs: Date.now() - modelStartedAt
-        })
-      } catch (_) {}
-    }
-    const normalizedSourceAnalysis = storyboardNormalizeReferenceAnalysisForStoryboard(rawSourceAnalysis)
-    const fallbackSourceAnalysis = fallbackReason ? 'Reference analysis unavailable. Continue storyboard generation using the uploaded subject appearance as the authority for protagonist identity, outfit silhouette, visible accessory/equipment design, colors, rendering style, and visual atmosphere. Do not infer story, destination, or plot from the reference background.' : ''
-    const sourceAnalysis = [
-      normalizedSourceAnalysis || fallbackSourceAnalysis
-    ].filter(Boolean).join(' ').trim()
-    const modelElapsedMs = Date.now() - modelStartedAt
-    if (cacheKey && sourceAnalysis) {
-      storyboardReferenceAnalysisCache.set(cacheKey, {
-        sourceAnalysis,
-        provider: referenceProvider,
-        model: referenceModel,
-        requestId: referenceRequestId,
-        providerDurationMs: referenceProviderDurationMs,
-        paletteHint,
-        fileName: String(fileName || ''),
-        cachedAt: Date.now()
-      })
-      storyboardTrimReferenceAnalysisCache()
-    }
-    return {
-      sourceAnalysis,
-      provider: referenceProvider,
-      model: referenceModel,
-      requestId: referenceRequestId,
-      providerDurationMs: referenceProviderDurationMs,
-      cacheHit: false,
-      cacheKey,
-      fallbackReason,
-      hashElapsedMs,
-      paletteHint,
-      paletteElapsedMs,
-      modelElapsedMs,
-      elapsedMs: Date.now() - startedAt
-    }
-  }
+  
 
 
   function requiredImageAngleChoice(nodeInfo, key, candidates, label) {
@@ -6365,7930 +6012,576 @@
     }
   }
 
-  function removeStoryboardDialog(id = STORYBOARD_DIALOG_ID) {
-    const node = document.getElementById(id)
-    if (node && node.parentNode) node.parentNode.removeChild(node)
-  }
-
-  function stopStoryboardDialogEvent(event) {
-    if (!event) return
-    event.stopPropagation()
-  }
-
-  function storyboardFramePresetById(id) {
-    const target = String(id || STORYBOARD_DEFAULT_FRAME_PRESET_ID)
-    return STORYBOARD_FRAME_PRESETS.find((preset) => preset.id === target) || STORYBOARD_FRAME_PRESETS[0]
-  }
-
-  function normalizeStoryboardFrameSize(value) {
-    const presetById = value && value.id ? storyboardFramePresetById(value.id) : null
-    const width = Math.max(1, Math.round(Number(value && value.width) || 0))
-    const height = Math.max(1, Math.round(Number(value && value.height) || 0))
-    const presetBySize = STORYBOARD_FRAME_PRESETS.find((preset) => preset.width === width && preset.height === height) || null
-    const preset = presetById || presetBySize || storyboardFramePresetById(STORYBOARD_DEFAULT_FRAME_PRESET_ID)
-    return { ...preset }
-  }
-
-  function storyboardFrameSizeLabel(frameSize) {
-    const frame = normalizeStoryboardFrameSize(frameSize)
-    return `${frame.label} ${frame.width}×${frame.height}`
-  }
-
-  function normalizeStoryboardModelMode(value) {
-    return String(value || '') === STORYBOARD_MODEL_MODE_NSFW ? STORYBOARD_MODEL_MODE_NSFW : STORYBOARD_MODEL_MODE_DEFAULT
-  }
-
-  function storyboardUsesNsfwModel(value) {
-    return normalizeStoryboardModelMode(value) === STORYBOARD_MODEL_MODE_NSFW
-  }
-
-  function storyboardModelModeLabel(value) {
-    return storyboardUsesNsfwModel(value) ? 'Qwen NSFW' : 'Qwen Edit'
-  }
-
-  function normalizeStoryboardReferenceStrength(value) {
-    const number = Number(value)
-    if (!Number.isFinite(number)) return STORYBOARD_REFERENCE_STRENGTH_DEFAULT
-    return Math.max(STORYBOARD_REFERENCE_STRENGTH_MIN, Math.min(STORYBOARD_REFERENCE_STRENGTH_MAX, number))
-  }
-
-  function storyboardReferenceDenoiseFromStrength(value) {
-    const strength = normalizeStoryboardReferenceStrength(value)
-    return Math.max(0.82, Math.min(0.98, Number((1 - strength * 0.22).toFixed(2))))
-  }
-
-  function storyboardUsesSceneImageReference(value) {
-    return normalizeStoryboardReferenceStrength(value) >= STORYBOARD_REFERENCE_IMAGE_STRENGTH_THRESHOLD
-  }
-
-  function storyboardReferenceConditionMode(value, hasSubjectReference = false) {
-    const strength = normalizeStoryboardReferenceStrength(value)
-    if (strength < 0.2) return 'text_identity'
-    if (hasSubjectReference && strength < STORYBOARD_REFERENCE_IMAGE_STRENGTH_THRESHOLD) return 'subject_identity'
-    return 'original_reference'
-  }
-
-  function storyboardUsesReferenceLatent(value) {
-    return false
-  }
-
-  function showStoryboardPromptDialog() {
-    removeStoryboardDialog()
-    return new Promise((resolve) => {
-      let done = false
-      const close = (value) => {
-        if (done) return
-        done = true
-        removeStoryboardDialog()
-        resolve(value)
-      }
-      let selectedPresetId = STORYBOARD_DEFAULT_FRAME_PRESET_ID
-      let nsfwEnabled = false
-      let grokEnabled = false
-      const referenceStrength = STORYBOARD_REFERENCE_STRENGTH_DEFAULT
-      const resolutionButtons = []
-      const loginHint = h('div', {
-        role: 'alert',
-        style: {
-          display: 'none',
-          minHeight: '18px',
-          color: '#ff6b6b',
-          fontSize: '12px',
-          lineHeight: '1.5',
-          textAlign: 'center'
-        }
-      })
-      const submitPrompt = () => {
-        const storyText = String(textarea.value || '').trim()
-        if (!storyText) return close(null)
-        const clientAuthState = window.NovaFlowClientAuth && typeof window.NovaFlowClientAuth.state === 'function'
-          ? window.NovaFlowClientAuth.state()
-          : null
-        if (grokEnabled && !(clientAuthState && clientAuthState.loggedIn)) {
-          loginHint.textContent = 'AI导演需要登录 NovaFlow 账号，请先前往账号区域登录后再生成'
-          loginHint.style.display = 'block'
-          return
-        }
-        close({
-          storyText,
-          frameSize: normalizeStoryboardFrameSize(storyboardFramePresetById(selectedPresetId)),
-          modelMode: nsfwEnabled ? STORYBOARD_MODEL_MODE_NSFW : STORYBOARD_MODEL_MODE_DEFAULT,
-          directorProvider: grokEnabled ? 'grok' : 'local',
-          referenceStrength: normalizeStoryboardReferenceStrength(referenceStrength)
-        })
-      }
-      const updateResolutionButtons = () => {
-        resolutionButtons.forEach(({ button, preset }) => {
-          const active = preset.id === selectedPresetId
-          button.setAttribute('aria-pressed', active ? 'true' : 'false')
-          button.style.border = '0'
-          button.style.background = active ? SPLIT_ACTIVE_BACKGROUND : '#2f2f2f'
-          button.style.color = '#fff'
-          button.style.boxShadow = 'none'
-        })
-      }
-      const makeResolutionButton = (preset) => {
-        const button = h('button', {
-          type: 'button',
-          'aria-pressed': preset.id === selectedPresetId ? 'true' : 'false',
-          title: `${preset.label} ${preset.width}×${preset.height}`,
-          onclick: () => {
-            selectedPresetId = preset.id
-            updateResolutionButtons()
-          },
-          style: {
-            height: '44px',
-            minWidth: '0',
-            borderRadius: '8px',
-            border: '0',
-            background: '#2f2f2f',
-            color: '#fff',
-            cursor: 'pointer',
-            display: 'grid',
-            gridTemplateRows: 'auto auto',
-            alignContent: 'center',
-            alignItems: 'center',
-            justifyItems: 'center',
-            gap: '1px',
-            padding: '5px 4px',
-            boxSizing: 'border-box',
-            lineHeight: '1',
-            textAlign: 'center'
-          }
-        }, [
-          h('span', { style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '12px', fontWeight: '700' } }, preset.label),
-          h('span', { style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '10px', color: 'rgba(255,255,255,0.78)' } }, `${preset.width}×${preset.height}`)
-        ])
-        resolutionButtons.push({ button, preset })
-        return button
-      }
-      const textarea = h('textarea', {
-        placeholder: '例如：少女发现遗迹并进入其中寻找神器',
-        rows: '4',
-        onkeydown: (event) => {
-          if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') submitPrompt()
-          if (event.key === 'Escape') close(null)
-        },
-        style: {
-          width: '100%',
-          minHeight: '96px',
-          resize: 'vertical',
-          borderRadius: '8px',
-          border: '1px solid rgba(255,255,255,0.16)',
-          background: '#111',
-          color: '#fff',
-          outline: '0',
-          padding: '10px',
-          fontSize: '13px',
-          lineHeight: '1.5',
-          boxSizing: 'border-box'
-        }
-      })
-      let nsfwToggleTrack = null
-      let nsfwToggleKnob = null
-      const updateNsfwToggle = () => {
-        if (!nsfwToggleTrack || !nsfwToggleKnob) return
-        nsfwToggleButton.setAttribute('aria-pressed', nsfwEnabled ? 'true' : 'false')
-        nsfwToggleTrack.style.background = nsfwEnabled ? SPLIT_ACTIVE_BACKGROUND : '#303337'
-        nsfwToggleKnob.style.transform = nsfwEnabled ? 'translateX(14px)' : 'translateX(0)'
-        nsfwToggleKnob.style.background = nsfwEnabled ? '#fff' : 'rgba(178,188,198,0.78)'
-      }
-      nsfwToggleKnob = h('span', {
-        style: {
-          width: '10px',
-          height: '10px',
-          borderRadius: '999px',
-          background: 'rgba(178,188,198,0.78)',
-          transition: 'transform 120ms ease, background 120ms ease',
-          display: 'block'
-        }
-      })
-      nsfwToggleTrack = h('span', {
-        style: {
-          width: '30px',
-          height: '16px',
-          borderRadius: '999px',
-          border: '0',
-          background: '#303337',
-          padding: '3px',
-          boxSizing: 'border-box',
-          display: 'flex',
-          alignItems: 'center',
-          flex: '0 0 auto'
-        }
-      }, nsfwToggleKnob)
-      const nsfwToggleButton = h('button', {
-        type: 'button',
-        'aria-pressed': 'false',
-        'aria-label': 'NSFW',
-        onclick: () => {
-          nsfwEnabled = !nsfwEnabled
-          updateNsfwToggle()
-        },
-        style: {
-          width: 'fit-content',
-          height: '24px',
-          padding: '0',
-          border: '0',
-          background: 'transparent',
-          color: '#fff',
-          cursor: 'pointer',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '8px',
-          fontSize: '12px',
-          fontWeight: '400',
-          lineHeight: '1',
-          justifySelf: 'start'
-        }
-      }, [
-        h('span', { style: { fontSize: '12px', fontWeight: '400', lineHeight: '1', color: '#fff' } }, 'NSFW'),
-        nsfwToggleTrack
-      ])
-      updateNsfwToggle()
-      let grokToggleTrack = null
-      let grokToggleKnob = null
-      const updateGrokToggle = () => {
-        if (!grokToggleTrack || !grokToggleKnob) return
-        grokToggleButton.setAttribute('aria-pressed', grokEnabled ? 'true' : 'false')
-        grokToggleTrack.style.background = grokEnabled ? SPLIT_ACTIVE_BACKGROUND : '#303337'
-        grokToggleKnob.style.transform = grokEnabled ? 'translateX(14px)' : 'translateX(0)'
-        grokToggleKnob.style.background = grokEnabled ? '#fff' : 'rgba(178,188,198,0.78)'
-      }
-      grokToggleKnob = h('span', {
-        style: {
-          width: '10px', height: '10px', borderRadius: '999px',
-          background: 'rgba(178,188,198,0.78)',
-          transition: 'transform 120ms ease, background 120ms ease', display: 'block'
-        }
-      })
-      grokToggleTrack = h('span', {
-        style: {
-          width: '30px', height: '16px', borderRadius: '999px', border: '0',
-          background: '#303337', padding: '3px', boxSizing: 'border-box',
-          display: 'flex', alignItems: 'center', flex: '0 0 auto'
-        }
-      }, grokToggleKnob)
-      const grokToggleButton = h('button', {
-        type: 'button',
-        'aria-pressed': 'false',
-        'aria-label': 'AI导演（Grok 图片反推与九段分镜）',
-        title: '开启后，参考图反推与九段分镜均使用 Grok，按实际 Grok 调用次数计数；同图 Grok 反推缓存命中时不重复调用',
-        onclick: () => {
-          grokEnabled = !grokEnabled
-          updateGrokToggle()
-        },
-        style: {
-          width: 'fit-content', height: '24px', padding: '0', border: '0',
-          background: 'transparent', color: '#fff', cursor: 'pointer',
-          display: 'inline-flex', alignItems: 'center', gap: '8px',
-          fontSize: '12px', fontWeight: '400', lineHeight: '1'
-        }
-      }, [
-        h('span', { style: { fontSize: '12px', fontWeight: '400', lineHeight: '1', color: '#fff' } }, 'AI导演'),
-        grokToggleTrack,
-        h('span', { style: { fontSize: '10px', color: 'rgba(255,255,255,0.52)' } }, '按实际调用计数')
-      ])
-      updateGrokToggle()
-      const overlay = h('div', {
-        id: STORYBOARD_DIALOG_ID,
-        role: 'dialog',
-        'aria-modal': 'true',
-        'aria-label': '一键分镜',
-        onpointerdown: stopStoryboardDialogEvent,
-        onclick: stopStoryboardDialogEvent,
-        onwheel: stopStoryboardDialogEvent,
-        style: {
-          position: 'fixed',
-          inset: '0',
-          zIndex: String(Number(SPLIT_BUSY_OVERLAY_Z_INDEX) - 1),
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'rgba(0,0,0,0.48)',
-          pointerEvents: 'auto',
-          boxSizing: 'border-box',
-          webkitAppRegion: 'no-drag'
-        }
-      }, h('div', {
-        style: {
-          width: 'min(430px, calc(100vw - 44px))',
-          maxHeight: 'calc(100vh - 52px)',
-          overflow: 'auto',
-          borderRadius: '10px',
-          border: '1px solid rgba(255,255,255,0.14)',
-          background: '#202020',
-          boxShadow: '0 22px 60px rgba(0,0,0,0.42)',
-          color: '#fff'
-        }
-      }, [
-        h('div', { style: { minHeight: '48px', padding: '14px', borderBottom: '1px solid rgba(255,255,255,0.10)', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', boxSizing: 'border-box' } }, [
-          h('div', { style: { fontSize: '15px', fontWeight: '400', lineHeight: '1.2' } }, '一键分镜'),
-          h('button', { type: 'button', onclick: () => close(null), 'aria-label': '关闭', style: { width: '26px', height: '26px', borderRadius: '6px', border: '0', background: 'transparent', color: 'rgba(255,255,255,0.68)', cursor: 'pointer', fontSize: '18px', lineHeight: '1', padding: '0' } }, 'x')
-        ]),
-        h('div', { style: { padding: '15px 14px', display: 'grid', gap: '10px', background: '#242424' } }, [
-          h('div', { style: { display: 'grid', gap: '7px', fontSize: '12px', color: 'rgba(226,232,240,0.94)' } }, [
-            h('span', {}, '生成尺寸'),
-            h('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '6px' } },
-              STORYBOARD_FRAME_PRESETS.map((preset) => makeResolutionButton(preset)))
-          ]),
-          h('div', { style: { display: 'flex', alignItems: 'center', gap: '18px', flexWrap: 'wrap' } }, [
-            nsfwToggleButton,
-            grokToggleButton
-          ]),
-          loginHint,
-          h('label', { style: { display: 'grid', gap: '7px', fontSize: '12px', color: 'rgba(226,232,240,0.94)' } }, [
-            h('span', {}, '剧情描述'),
-            textarea
-          ]),
-          h('button', {
-            type: 'button',
-            onclick: submitPrompt,
-            style: {
-              height: '34px',
-              borderRadius: '8px',
-              border: '0',
-              background: SPLIT_ACTIVE_BACKGROUND,
-              color: '#fff',
-              cursor: 'pointer',
-              fontSize: '13px',
-              fontWeight: '700',
-              width: '128px',
-              justifySelf: 'center'
-            }
-          }, '开始生成')
-        ])
-      ]))
-      updateResolutionButtons()
-      document.body.appendChild(overlay)
-      window.setTimeout(() => textarea.focus(), 0)
-    })
-  }
-
-  function normalizeStoryboardStoryDirection(value, index = 0) {
-    const source = value && typeof value === 'object' ? value : {}
-    return {
-      index: Number.isFinite(Number(source.index)) ? Number(source.index) : index,
-      title: storyboardNormalizePlannerField(source.title || source.name || `方向${index + 1}`),
-      direction: storyboardNormalizePlannerField(source.direction || source.summary || ''),
-      elements: storyboardNormalizePlannerField(source.elements || source.allowedElements || ''),
-      worldStyle: storyboardNormalizePlannerField(source.worldStyle || source.world || '')
-    }
-  }
-
-  function storyboardStoryDirectionText(direction) {
-    const item = normalizeStoryboardStoryDirection(direction)
-    return [
-      item.title ? `标题:${item.title}` : '',
-      item.direction ? `方向:${item.direction}` : '',
-      item.elements ? `允许元素:${item.elements}` : '',
-      item.worldStyle ? `世界倾向:${item.worldStyle}` : ''
-    ].filter(Boolean).join('；')
-  }
-
-  function storyboardDirectCreativeExpansion(storyText, sourceAnalysis) {
-    const world = storyboardWorldContinuityFromSourceAnalysis(sourceAnalysis)
-    return {
-      selectedStoryDirection: {
-        index: 0,
-        title: 'Direct VEC',
-        direction: 'Direct visual event expansion from user story and reference image',
-        elements: String(storyText || '').slice(0, 80),
-        worldStyle: world ? 'Reference world' : ''
-      },
-      storyDirectionSelectionMode: 'direct_vec_expansion',
-      storyDirectionCandidateCount: 0,
-      storyDirectionCountdownMs: 0,
-      storyDirectionDecisionMs: 0,
-      storyDirectionElapsedMs: 0,
-      storyDirectionSeed: '',
-      storyDirectionRawOutput: '',
-      storyDirectionPromptPreview: '',
-      storyDirectionGenerateProfile: null
-    }
-  }
-
-  const STORYBOARD_VISUAL_CUE_PACK_MAX_CHARS = 900
-
-  function storyboardCompactVisibleCueText(value) {
-    return String(value || '')
-      .replace(/\s+/g, ' ')
-      .replace(/[|]+/g, ' ')
-      .trim()
-  }
-
-  function storyboardVisualCuePackFromSourceAnalysis(storyText, sourceAnalysis) {
-    const story = storyboardCompactVisibleCueText(storyText).slice(0, 260)
-    const source = storyboardCompactVisibleCueText(sourceAnalysis)
-    if (!story && !source) return ''
-    const cueSentences = []
-    const seen = new Set()
-    const visiblePattern = /(角色|人物|主体|外观|服装|穿着|发型|头发|翅膀|角|表情|姿态|动作|道具|物件|武器|长剑|盾牌|王冠|圣徽|背包|地图|路牌|木牌|房屋|木屋|村|森林|树林|山|山路|小路|溪|河|浅滩|桥|断桥|倒木|石堆|战场|废墟|教堂|王座|城|街|天台|空间站|温室|海底|珊瑚|沙丘|枯井|绿洲|敌人|怪物|巨兽|魔王|动物|小鹿|机器人|仿生人|障碍|阻挡|裂缝|火焰|黑暗|污染|风暴|霓虹|光线|环境|场景|背景|地点)/i
-    String(source || '')
-      .split(/[。；;.!?\n\r]+/)
-      .map((item) => storyboardCompactVisibleCueText(item))
-      .filter((item) => item.length >= 4 && item.length <= 140 && visiblePattern.test(item))
-      .forEach((item) => {
-        const key = item.replace(/\s+/g, '')
-        if (!seen.has(key) && cueSentences.length < 10) {
-          seen.add(key)
-          cueSentences.push(item)
-        }
-      })
-    const visible = cueSentences.length
-      ? cueSentences.join('；')
-      : source.slice(0, 620)
-    return [
-      story ? `用户剧情:${story}` : '',
-      visible ? `参考图可见素材:${visible}` : '',
-      '使用方式:只作为人物、道具、地点、敌人、障碍、视觉细节来源；不要当固定剧情模板'
-    ].filter(Boolean).join('；').slice(0, STORYBOARD_VISUAL_CUE_PACK_MAX_CHARS)
-  }
-
-  function storyboardStoryDirectionSelectionLabel(value) {
-    const text = String(value || '').trim()
-    if (text === 'user') return '用户选择'
-    if (text === 'user_confirm') return '手动确认'
-    if (text === 'confirm_default') return '确认默认推荐'
-    if (text === 'auto_timeout') return '20秒自动选择'
-    if (text === 'auto_button') return '手动自动继续'
-    if (text === 'auto') return 'AI自动选择'
-    return text || '未记录'
-  }
-
-  function storyboardStoryDirectionsFromResult(result) {
-    const list = Array.isArray(result && result.directions) ? result.directions : []
-    return list.slice(0, 3).map((item, index) => normalizeStoryboardStoryDirection(item, index)).filter((item) => item.title && item.direction)
-  }
-
-  function normalizeStoryboardVisualEvent(value, index = 0) {
-    const source = value && typeof value === 'object' ? value : {}
-    if (Array.isArray(value)) {
-      const hasSceneAnchor = value.length >= 4
-      return {
-        index,
-        title: storyboardNormalizePlannerField(value[0] || `事件${index + 1}`),
-        action: storyboardNormalizePlannerField(value[1] || ''),
-        sceneAnchor: storyboardNormalizePlannerField(value.length >= 3 ? value[2] || '' : ''),
-        cause: storyboardNormalizePlannerField(hasSceneAnchor ? value[3] || '' : ''),
-        atmosphereAction: false,
-        atmosphereHint: '',
-        abstractAction: false,
-        needsDirectorConcrete: false,
-        duplicateEventRisk: false
-      }
-    }
-    return {
-      index: Number.isFinite(Number(source.index)) ? Number(source.index) : index,
-      title: storyboardNormalizePlannerField(source.title || source.event || `事件${index + 1}`),
-      action: storyboardNormalizePlannerField(source.action || source.visibleAction || ''),
-      sceneAnchor: storyboardNormalizePlannerField(source.sceneAnchor || source.currentSpace || source.space || source.location || ''),
-      cause: storyboardNormalizePlannerField(source.cause || source.causalRole || source.causalLink || ''),
-      atmosphereAction: !!(source.atmosphereAction || source.softAction || source.isAtmosphereAction),
-      atmosphereHint: storyboardNormalizePlannerField(source.atmosphereHint || source.softActionHint || ''),
-      abstractAction: !!(source.abstractAction || source.isAbstractAction),
-      needsDirectorConcrete: !!(source.needsDirectorConcrete || source.abstractAction || source.duplicateEventRisk),
-      abstractActionReason: storyboardNormalizePlannerField(source.abstractActionReason || ''),
-      duplicateEventRisk: !!source.duplicateEventRisk,
-      duplicateEventReason: storyboardNormalizePlannerField(source.duplicateEventReason || '')
-    }
-  }
-
-  function storyboardSceneAnchorKey(value) {
-    return storyboardNormalizePlannerField(value).replace(/[，,。；;、\s]/g, '')
-  }
-
-  function storyboardSceneAnchorIsBroad(value) {
-    const text = storyboardSceneAnchorKey(value)
-    if (!text) return true
-    return /^(自然环境|森林自然环境|山野旅途环境|山野环境|森林环境|山野|森林|旅途|户外|远方|起点附近|黑暗|暗处|未知地点|某处|路上|途中)$/.test(text)
-  }
-
-  function storyboardSceneAnchorRole(event) {
-    const title = storyboardNormalizePlannerField(event && event.title || '').replace(/[0-9０-９一二三四五六七八九十]+$/g, '')
-    if (title && !/^(事件|场景|阶段|继续|前行|行走|旅途|探索|探险)$/.test(title)) return title.slice(0, 4)
-    const action = storyboardNormalizePlannerField(event && event.action || '')
-    const match = action.match(/(初遇|发现|找到|看见|指引|迷路|迷失|告别|离开|交换|赠送|获得|收下|阻挡|阻碍|断桥|堕落|侵蚀|觉醒|变身|登上|跨过|埋下|拾起|救助|迎战|击中|倒下)/)
-    return match ? match[1] : ''
-  }
-
-  function storyboardSceneAnchorFromEvent(event, index) {
-    const original = storyboardNormalizePlannerField(event && event.sceneAnchor || '')
-    const title = storyboardNormalizePlannerField(event && event.title || '').replace(/[0-9０-９一二三四五六七八九十]+$/g, '')
-    const role = storyboardSceneAnchorRole(event)
-    const base = original || title || `事件${Math.max(1, Number(index) + 1 || 1)}`
-    if (!role || base.includes(role)) return base.slice(0, 12)
-    const suffix = role.endsWith('处') ? role : `${role}处`
-    const merged = `${base}${suffix}`
-    if (merged.length <= 12) return merged
-    const trimmedBase = base.slice(0, Math.max(2, 12 - suffix.length))
-    return `${trimmedBase}${suffix}`.slice(0, 12)
-  }
-
-  function storyboardSceneAnchorVisualDetails(space, action = '', visualEvent = '') {
-    const text = storyboardNormalizePlannerField(`${space || ''} ${action || ''} ${visualEvent || ''}`)
-    if (!text) return ''
-    if (/溪边浅滩|浅滩|溪流|小溪|溪边|河边|水边/.test(text)) return '必须清楚出现浅水、水面反光、湿石头、溪岸湿地，避免画成普通山路'
-    if (/旧照片|照片|旧物/.test(text) && /背包|取出|拿出|掏出|近处/.test(text)) return '必须清楚出现打开的背包、手中取出的旧照片或旧物、近处花草，避免画成远景赶路'
-    if (/石头|压在|松开|留下旧物|旧物处/.test(text)) return '必须清楚出现路边石头、被压住的旧照片或旧物、松开手的动作，避免画成普通走路'
-    if (/背包野花|侧袋|插在|收起/.test(text)) return '必须清楚出现背包侧袋和插入的野花，动作焦点在背包与手，不要只画远山背景'
-    if (/小人影|回望|回头/.test(text)) return '必须清楚出现主角回头、远处小人影或来路方向，避免画成正向赶路'
-    if (/石头箭头|路线标记|地面标记|指向/.test(text) && /岔路|雪山|小路|路线/.test(text)) return '必须清楚出现分叉道路和地面石头箭头或路线标记，角色正在确认标记指向，避免画成普通远山小路'
-    if (/山丘缺口|高处缺口|森林落在身后|山丘回望森林/.test(text)) return '必须清楚出现山丘缺口或坡顶边缘，前方空间变开阔，身后森林被拉开距离，避免画成重复山谷背影'
-    if (/路边花坡|花坡|花丛|野花|开阔坡/.test(text)) return '必须清楚出现花坡、开阔坡面、成片野花和坡线，避免画成普通森林小路'
-    if (/林中石堆|石堆|埋下|埋进|埋物/.test(text)) return '必须清楚出现林中石堆、可埋物位置、土痕或手部埋物动作，避免画成普通林地'
-    if (/远山岔路|岔路|分叉|路牌|远山/.test(text)) return '必须清楚出现分叉道路、路牌或指示物、远山轮廓，避免画成单一路径背影'
-    if (/林间灌木丛|藤蔓|荆棘|灌木|低垂树枝|枝叶/.test(text)) return '必须清楚出现藤蔓、荆棘或低垂树枝遮挡路径，角色与遮挡物发生可见关系'
-    if (/临时营地|伤口|包扎|救助/.test(text)) return '必须清楚出现临时停留点、包扎道具或伤口处理动作'
-    if (/村口|故乡|牌楼/.test(text)) return '必须清楚出现村口边界、出发方向和告别对象或故乡标识'
-    return ''
-  }
-
-  function storyboardNormalizeVisualEventSceneAnchors(events) {
-    const list = Array.isArray(events) ? events.map((item, index) => normalizeStoryboardVisualEvent(item, index)).filter((item) => item.title && item.action) : []
-    let changedCount = 0
-    let previousKey = ''
-    const seenKeys = new Set()
-    const normalized = list.map((event, index) => {
-      const originalAnchor = storyboardNormalizePlannerField(event.sceneAnchor || '')
-      let nextAnchor = originalAnchor
-      const currentKey = storyboardSceneAnchorKey(nextAnchor)
-      if (storyboardSceneAnchorIsBroad(nextAnchor) || (currentKey && (currentKey === previousKey || seenKeys.has(currentKey)))) {
-        nextAnchor = storyboardSceneAnchorFromEvent(event, index)
-      }
-      if (!nextAnchor || (previousKey && storyboardSceneAnchorKey(nextAnchor) === previousKey) || seenKeys.has(storyboardSceneAnchorKey(nextAnchor))) {
-        nextAnchor = storyboardSceneAnchorFromEvent({ ...event, sceneAnchor: nextAnchor || originalAnchor || event.title }, index)
-      }
-      if (storyboardSceneAnchorKey(nextAnchor) !== currentKey) changedCount += 1
-      previousKey = storyboardSceneAnchorKey(nextAnchor)
-      if (previousKey) seenKeys.add(previousKey)
-      return { ...event, sceneAnchor: nextAnchor, originalSceneAnchor: originalAnchor }
-    })
-    return {
-      events: normalized,
-      changed: changedCount > 0,
-      changedCount,
-      originalSceneAnchorText: normalized.map((event, index) => (
-        `${String(index + 1).padStart(2, '0')}. ${event.originalSceneAnchor || '无场景锚点'}`
-      )).join('\n')
-    }
-  }
-
-  function storyboardVisualEventChainFromResult(result) {
-    const payload = storyboardVisualEventPayloadFromResult(result)
-    const list = Array.isArray(payload && payload.events) ? payload.events : []
-    return list.slice(0, STORYBOARD_SCENE_COUNT).map((item, index) => normalizeStoryboardVisualEvent(item, index)).filter((item) => item.title && item.action)
-  }
-
-  function storyboardVisualEventPayloadFromResult(result) {
-    if (result && typeof result === 'object' && Array.isArray(result.events)) return result
-    const data = result && result.data
-    if (data && typeof data === 'object' && Array.isArray(data.events)) return data
-    const nested = data && data.data
-    if (nested && typeof nested === 'object' && Array.isArray(nested.events)) return nested
-    const resultPayload = result && result.result
-    if (resultPayload && typeof resultPayload === 'object' && Array.isArray(resultPayload.events)) return resultPayload
-    const resultData = resultPayload && resultPayload.data
-    if (resultData && typeof resultData === 'object' && Array.isArray(resultData.events)) return resultData
-    const candidates = [
-      result,
-      data,
-      nested,
-      resultPayload,
-      resultData
-    ]
-    return candidates.find((item) => item && typeof item === 'object' && Array.isArray(item.events)) || {}
-  }
-
-  function storyboardVisualEventResultShape(result) {
-    const keys = (value) => value && typeof value === 'object' ? Object.keys(value).slice(0, 8).join(',') : ''
-    const data = result && result.data
-    const nested = data && data.data
-    return `root:${keys(result) || '-'} data:${keys(data) || '-'} nested:${keys(nested) || '-'}`
-  }
-
-  function storyboardVisualEventStatusPayloadFromResult(result) {
-    const resultPayload = result && result.result
-    const data = result && result.data
-    const nested = data && data.data
-    const resultData = resultPayload && resultPayload.data
-    const hasEventPayload = (value) => {
-      if (!value || typeof value !== 'object') return false
-      if (Array.isArray(value.events)) return true
-      const valueData = value.data
-      if (valueData && typeof valueData === 'object' && Array.isArray(valueData.events)) return true
-      const valueNested = valueData && valueData.data
-      if (valueNested && typeof valueNested === 'object' && Array.isArray(valueNested.events)) return true
-      const valueResult = value.result
-      if (valueResult && typeof valueResult === 'object' && Array.isArray(valueResult.events)) return true
-      const valueResultData = valueResult && valueResult.data
-      return !!(valueResultData && typeof valueResultData === 'object' && Array.isArray(valueResultData.events))
-    }
-    const looksLikeStatus = (value) => {
-      if (!value || typeof value !== 'object' || hasEventPayload(value)) return false
-      const keys = ['modelType', 'modelPath', 'enabled', 'runtimeStatus', 'runtimeConfig', 'serviceScript', 'pythonPath']
-      return keys.filter((key) => Object.prototype.hasOwnProperty.call(value, key)).length >= 3
-    }
-    return [result, data, nested, resultPayload, resultData].find(looksLikeStatus) || null
-  }
-
-  function storyboardFinalShotPayloadFromResult(result) {
-    if (result && typeof result === 'object' && Array.isArray(result.shots)) return result
-    const data = result && result.data
-    if (data && typeof data === 'object' && Array.isArray(data.shots)) return data
-    const nested = data && data.data
-    if (nested && typeof nested === 'object' && Array.isArray(nested.shots)) return nested
-    const resultPayload = result && result.result
-    if (resultPayload && typeof resultPayload === 'object' && Array.isArray(resultPayload.shots)) return resultPayload
-    const resultData = resultPayload && resultPayload.data
-    if (resultData && typeof resultData === 'object' && Array.isArray(resultData.shots)) return resultData
-    const candidates = [result, data, nested, resultPayload, resultData]
-    return candidates.find((item) => item && typeof item === 'object' && Array.isArray(item.shots)) || {}
-  }
-
-  function normalizeStoryboardFinalShot(value, index = 0) {
-    const source = value && typeof value === 'object' ? value : {}
-    const subjectStateSource = source.subjectState && typeof source.subjectState === 'object'
-      ? source.subjectState
-      : (source.subject_state && typeof source.subject_state === 'object' ? source.subject_state : null)
-    const keyPropsSource = Array.isArray(source.keyProps)
-      ? source.keyProps
-      : (Array.isArray(source.key_props) ? source.key_props : [])
-    const prompt = Array.isArray(value)
-      ? String(value[value.length - 1] || '').trim()
-      : typeof value === 'string'
-        ? String(value || '').trim()
-        : String(source.prompt || source.positivePrompt || source.shotPrompt || source.description || source.text || '').trim()
-    const title = Array.isArray(value)
-      ? String(value.length >= 2 ? value[0] || '' : '').trim()
-      : typeof value === 'string'
-        ? `Scene ${index + 1}`
-        : String(source.title || source.name || source.event || source.sceneTitle || '').trim()
-    const displayCaption = Array.isArray(value) || typeof value === 'string'
-      ? ''
-      : String(source.displayCaption || source.display_caption || source.caption || '').trim()
-    return {
-      scene: index + 1,
-      title: storyboardNormalizePlannerField(title || `Scene ${index + 1}`),
-      displayCaption: storyboardNormalizePlannerField(displayCaption),
-      visualEvent: storyboardNormalizePlannerField(source.visualEvent || source.visual_event || source.visibleEvent || source.visible_event || ''),
-      prompt,
-      sceneAnchor: storyboardNormalizePlannerField(source.sceneAnchor || source.currentSpace || source.space || source.location || ''),
-      camera: storyboardNormalizePlannerField(source.camera || source.shot || source.lens || ''),
-      subjectState: subjectStateSource ? { ...subjectStateSource } : null,
-      keyProps: keyPropsSource.filter((item) => item && typeof item === 'object').map((item) => ({ ...item })),
-      storyUnitIds: Array.isArray(source.storyUnitIds) ? source.storyUnitIds.slice() : []
-    }
-  }
-
-  function storyboardFinalShotsFromResult(result) {
-    const payload = storyboardFinalShotPayloadFromResult(result)
-    const list = Array.isArray(payload && payload.shots) ? payload.shots : []
-    return list.slice(0, STORYBOARD_SCENE_COUNT).map((item, index) => normalizeStoryboardFinalShot(item, index)).filter((item) => item.prompt)
-  }
-
-  function storyboardFinalShotResultShape(result) {
-    const keys = (value) => value && typeof value === 'object' ? Object.keys(value).slice(0, 8).join(',') : ''
-    const data = result && result.data
-    const nested = data && data.data
-    return `root:${keys(result) || '-'} data:${keys(data) || '-'} nested:${keys(nested) || '-'}`
-  }
-
-  function storyboardVisualEventChainText(events) {
-    const list = Array.isArray(events) ? events : []
-    return list.map((item, index) => {
-      const event = normalizeStoryboardVisualEvent(item, index)
-      if (!event.title || !event.action) return ''
-      const sceneAnchor = event.sceneAnchor ? ` / ${event.sceneAnchor}` : ''
-      const cause = event.cause ? ` / ${event.cause}` : ''
-      return `${String(index + 1).padStart(2, '0')}. ${event.title} / ${event.action}${sceneAnchor}${cause}`
-    }).filter(Boolean).join('\n')
-  }
-
-  function storyboardVisualEventSceneAnchorCoverage(events) {
-    const list = Array.isArray(events) ? events : []
-    return list.reduce((count, item, index) => {
-      const event = normalizeStoryboardVisualEvent(item, index)
-      return count + (event.sceneAnchor ? 1 : 0)
-    }, 0)
-  }
-
-  function storyboardVisualEventProtocol(events, explicitProtocol = '') {
-    const explicit = storyboardNormalizePlannerField(explicitProtocol)
-    if (explicit) return explicit
-    const list = Array.isArray(events) ? events : []
-    return storyboardVisualEventSceneAnchorCoverage(list) > 0 ? 'V2-SceneAnchor' : 'V1-Legacy'
-  }
-
-  function storyboardVisualEventSceneAnchorText(events) {
-    const list = Array.isArray(events) ? events : []
-    return list.map((item, index) => {
-      const event = normalizeStoryboardVisualEvent(item, index)
-      if (!event.title || !event.action) return ''
-      return `${String(index + 1).padStart(2, '0')}. ${event.sceneAnchor || '无场景锚点'}`
-    }).filter(Boolean).join('\n')
-  }
-
-  function storyboardVisualEventCausalChainText(events) {
-    const list = Array.isArray(events) ? events : []
-    return list.map((item, index) => {
-      const event = normalizeStoryboardVisualEvent(item, index)
-      if (!event.title || !event.action) return ''
-      const prefix = index === 0 ? '起因' : `${String(index).padStart(2, '0')}->${String(index + 1).padStart(2, '0')}`
-      if (event.cause) return `${prefix}: ${event.cause}`
-      if (index > 0) {
-        const previous = normalizeStoryboardVisualEvent(list[index - 1], index - 1)
-        const previousTitle = previous && previous.title ? previous.title : `事件${index}`
-        return `${prefix}: ${previousTitle} 后进入 ${event.title}`
-      }
-      return `${prefix}: ${event.title}`
-    }).filter(Boolean).join('\n')
-  }
-
-  function normalizeStoryboardPromptAssistantProfile(value) {
-    const source = value && typeof value === 'object' ? value : {}
-    const number = (key) => Math.max(0, Math.round(Number(source[key] || 0) || 0))
-    return {
-      promptChars: number('promptChars'),
-      safePromptChars: number('safePromptChars'),
-      outputChars: number('outputChars'),
-      maxLength: number('maxLength'),
-      loadMs: number('loadMs'),
-      tokenizeMs: number('tokenizeMs'),
-      generateMs: number('generateMs'),
-      decodeMs: number('decodeMs'),
-      totalMs: number('totalMs'),
-      tokenizeRetry: !!source.tokenizeRetry
-    }
-  }
-
-  function storyboardPromptAssistantProfileText(value) {
-    const profile = normalizeStoryboardPromptAssistantProfile(value)
-    if (!profile.promptChars && !profile.totalMs && !profile.generateMs) return '未记录'
-    return [
-      `prompt ${profile.promptChars}`,
-      profile.safePromptChars && profile.safePromptChars !== profile.promptChars ? `safe ${profile.safePromptChars}` : '',
-      `max ${profile.maxLength}`,
-      `load ${profile.loadMs}ms`,
-      `tokenize ${profile.tokenizeMs}ms`,
-      `generate ${profile.generateMs}ms`,
-      `decode ${profile.decodeMs}ms`,
-      `total ${profile.totalMs}ms`,
-      `output ${profile.outputChars}`,
-      profile.tokenizeRetry ? 'tokenize retry' : ''
-    ].filter(Boolean).join(' / ')
-  }
-
-  function storyboardPromptAssistantProfileLines(label, value) {
-    const text = storyboardPromptAssistantProfileText(value)
-    return text === '未记录' ? [] : [label, text, '']
-  }
-
-  function storyboardPromptAssistantPatchProfileLines(value) {
-    const list = Array.isArray(value) ? value : []
-    const lines = list.slice(0, 8).map((item, index) => {
-      const profile = normalizeStoryboardPromptAssistantProfile(item)
-      const scene = Math.max(0, Math.round(Number(item && item.scene || 0) || 0))
-      const label = scene ? `Scene${String(scene).padStart(2, '0')}` : `Patch${index + 1}`
-      return `${label}: generate ${profile.generateMs}ms / total ${profile.totalMs}ms / output ${profile.outputChars} / ${item && item.patchOk ? 'ok' : 'fail'}`
-    }).filter(Boolean)
-    return lines.length ? ['Patch性能：', lines.join('\n'), ''] : []
-  }
-
-  function storyboardStoryDirectionScore(direction, storyText, sourceAnalysis) {
-    const item = normalizeStoryboardStoryDirection(direction)
-    const haystack = `${item.title} ${item.direction} ${item.elements} ${item.worldStyle}`
-    const story = String(storyText || '')
-    const world = String(sourceAnalysis || '')
-    let score = item.direction.length + item.elements.length * 0.5
-    ;['魔法', '现代', '森林', '山', '旅途', '日记', '旧物', '小鹿', '老者', '花', '地图', '故乡', '自我'].forEach((word) => {
-      if (story.includes(word) && haystack.includes(word)) score += 12
-      if (world.includes(word) && haystack.includes(word)) score += 6
-    })
-    if (/成长|自我|失去|寻找|告别|选择/.test(story) && /寻找|告别|失去|选择|放下|理解/.test(haystack)) score += 10
-    if (/魔法|童话|科幻|机械|怪物/.test(haystack) && !/魔法|童话|科幻|机械|怪物/.test(`${story} ${world}`)) score -= 18
-    return score
-  }
-
-  function storyboardAutoSelectStoryDirection(directions, storyText, sourceAnalysis) {
-    const list = Array.isArray(directions) ? directions : []
-    if (!list.length) return null
-    return list.slice().sort((a, b) => storyboardStoryDirectionScore(b, storyText, sourceAnalysis) - storyboardStoryDirectionScore(a, storyText, sourceAnalysis))[0]
-  }
-
-  function showStoryboardStoryDirectionDialog(directions, storyText, sourceAnalysis) {
-    removeStoryboardDialog(STORYBOARD_DIRECTION_DIALOG_ID)
-    const items = (Array.isArray(directions) ? directions : []).slice(0, 3).map((item, index) => normalizeStoryboardStoryDirection(item, index))
-    return new Promise((resolve) => {
-      if (!items.length) {
-        resolve(null)
-        return
-      }
-      let done = false
-      const startedAt = Date.now()
-      const autoDirection = storyboardAutoSelectStoryDirection(items, storyText, sourceAnalysis) || items[0]
-      let selectedIndex = Math.max(0, items.findIndex((item) => item.index === autoDirection.index))
-      let timer = null
-      let interval = null
-      let userSelected = false
-      let hoveredIndex = -1
-      let focusedIndex = -1
-      let pressedIndex = -1
-      const cardButtons = []
-      const countdownText = h('span', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.72)' } }, '')
-      const stopAutoCountdown = () => {
-        if (timer) window.clearTimeout(timer)
-        if (interval) window.clearInterval(interval)
-        timer = null
-        interval = null
-      }
-      const close = (direction, mode) => {
-        if (done) return
-        done = true
-        stopAutoCountdown()
-        removeStoryboardDialog(STORYBOARD_DIRECTION_DIALOG_ID)
-        const normalized = normalizeStoryboardStoryDirection(direction || items[selectedIndex] || autoDirection, selectedIndex)
-        resolve({
-          selectedStoryDirection: normalized,
-          storyDirectionSelectionMode: mode || 'auto',
-          storyDirectionCountdownMs: STORYBOARD_DIRECTION_CHOOSER_TIMEOUT_MS,
-          storyDirectionDecisionMs: Math.max(0, Date.now() - startedAt),
-          storyDirectionCandidateCount: items.length
-        })
-      }
-      const updateCards = () => {
-        cardButtons.forEach(({ button, index }) => {
-          const active = index === selectedIndex
-          const hovered = index === hoveredIndex
-          const focused = index === focusedIndex
-          const pressed = index === pressedIndex
-          const interactive = hovered || focused
-          button.setAttribute('aria-pressed', active ? 'true' : 'false')
-          button.style.border = active
-            ? '1px solid rgba(37,184,127,0.95)'
-            : interactive ? '1px solid rgba(255,255,255,0.28)' : '1px solid rgba(255,255,255,0.14)'
-          button.style.background = active
-            ? (pressed ? '#1f332d' : interactive ? '#2f4a40' : '#263c34')
-            : (pressed ? '#303030' : interactive ? '#2d2d2d' : '#242424')
-          button.style.boxShadow = active
-            ? (interactive ? '0 0 0 1px rgba(37,184,127,0.28), inset 0 0 0 1px rgba(255,255,255,0.12)' : 'inset 0 0 0 1px rgba(255,255,255,0.10)')
-            : (interactive ? '0 0 0 1px rgba(255,255,255,0.08)' : 'none')
-          button.style.transform = pressed ? 'translateY(1px)' : interactive ? 'translateY(-1px)' : 'none'
-        })
-      }
-      const updateCountdown = () => {
-        if (userSelected) {
-          countdownText.textContent = '已选择，点击确定继续'
-          return
-        }
-        const remaining = Math.max(0, Math.ceil((STORYBOARD_DIRECTION_CHOOSER_TIMEOUT_MS - (Date.now() - startedAt)) / 1000))
-        countdownText.textContent = `${remaining} 秒后自动选择`
-      }
-      const selectDirection = (index) => {
-        selectedIndex = Math.max(0, Math.min(items.length - 1, Number(index) || 0))
-        userSelected = true
-        stopAutoCountdown()
-        updateCountdown()
-        updateCards()
-      }
-      const makeCard = (item, index) => {
-        const button = h('button', {
-          type: 'button',
-          'aria-pressed': index === selectedIndex ? 'true' : 'false',
-          onclick: () => selectDirection(index),
-          onmouseenter: () => { hoveredIndex = index; updateCards() },
-          onmouseleave: () => {
-            if (hoveredIndex === index) hoveredIndex = -1
-            if (pressedIndex === index) pressedIndex = -1
-            updateCards()
-          },
-          onfocus: () => { focusedIndex = index; updateCards() },
-          onblur: () => {
-            if (focusedIndex === index) focusedIndex = -1
-            if (pressedIndex === index) pressedIndex = -1
-            updateCards()
-          },
-          onpointerdown: () => { pressedIndex = index; updateCards() },
-          onpointerup: () => {
-            if (pressedIndex === index) pressedIndex = -1
-            updateCards()
-          },
-          onpointercancel: () => {
-            if (pressedIndex === index) pressedIndex = -1
-            updateCards()
-          },
-          style: {
-            display: 'grid',
-            gap: '6px',
-            width: '100%',
-            minHeight: '92px',
-            padding: '10px',
-            borderRadius: '8px',
-            border: index === selectedIndex ? '1px solid rgba(37,184,127,0.95)' : '1px solid rgba(255,255,255,0.14)',
-            background: index === selectedIndex ? '#263c34' : '#242424',
-            color: '#fff',
-            cursor: 'pointer',
-            textAlign: 'left',
-            boxSizing: 'border-box',
-            outline: 'none',
-            transition: 'background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease'
-          }
-        }, [
-          h('div', { style: { fontSize: '13px', fontWeight: '800', lineHeight: '16px' } }, item.title),
-          h('div', { style: { fontSize: '12px', lineHeight: '17px', color: 'rgba(255,255,255,0.86)' } }, item.direction),
-          h('div', { style: { display: 'flex', gap: '6px', flexWrap: 'wrap', fontSize: '10px', color: 'rgba(255,255,255,0.62)' } }, [
-            item.elements ? h('span', {}, item.elements) : null,
-            item.worldStyle ? h('span', {}, item.worldStyle) : null
-          ])
-        ])
-        cardButtons.push({ button, index })
-        return button
-      }
-      const footerButtonVisual = (tone, state) => {
-        const primary = tone === 'primary'
-        if (primary) {
-          return {
-            background: state === 'down' ? '#17845f' : state === 'hover' ? '#25b87f' : '#1ea672',
-            border: state === 'hover' ? '1px solid rgba(96,165,250,0.46)' : '1px solid rgba(37,184,127,0.80)',
-            color: '#fff',
-            boxShadow: state === 'hover' ? '0 0 0 1px rgba(37,184,127,0.22)' : 'none'
-          }
-        }
-        return {
-          background: state === 'down' ? '#252525' : state === 'hover' ? '#383838' : '#2f2f2f',
-          border: state === 'hover' ? '1px solid rgba(255,255,255,0.28)' : '1px solid rgba(255,255,255,0.14)',
-          color: '#fff',
-          boxShadow: state === 'hover' ? '0 0 0 1px rgba(255,255,255,0.06)' : 'none'
-        }
-      }
-      const applyFooterButtonState = (button, tone, state) => {
-        if (!button || !button.style) return
-        const visual = footerButtonVisual(tone, state)
-        button.style.background = visual.background
-        button.style.border = visual.border
-        button.style.color = visual.color
-        button.style.boxShadow = visual.boxShadow
-        button.style.transform = state === 'down' ? 'translateY(1px)' : state === 'hover' ? 'translateY(-1px)' : 'none'
-      }
-      const makeFooterButton = (label, tone, onclick) => h('button', {
-        type: 'button',
-        onclick,
-        onmouseenter: (event) => applyFooterButtonState(event.currentTarget, tone, 'hover'),
-        onmouseleave: (event) => applyFooterButtonState(event.currentTarget, tone, 'normal'),
-        onfocus: (event) => applyFooterButtonState(event.currentTarget, tone, 'hover'),
-        onblur: (event) => applyFooterButtonState(event.currentTarget, tone, 'normal'),
-        onpointerdown: (event) => applyFooterButtonState(event.currentTarget, tone, 'down'),
-        onpointerup: (event) => applyFooterButtonState(event.currentTarget, tone, 'hover'),
-        onpointercancel: (event) => applyFooterButtonState(event.currentTarget, tone, 'normal'),
-        style: Object.assign({
-          height: '32px',
-          minWidth: tone === 'primary' ? '92px' : '82px',
-          padding: '0 14px',
-          borderRadius: '7px',
-          cursor: 'pointer',
-          fontSize: '12px',
-          fontWeight: tone === 'primary' ? '800' : '700',
-          outline: 'none',
-          transition: 'background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease'
-        }, footerButtonVisual(tone, 'normal'))
-      }, label)
-      const overlay = h('div', {
-        id: STORYBOARD_DIRECTION_DIALOG_ID,
-        role: 'dialog',
-        'aria-modal': 'true',
-        'aria-label': '故事方向选择',
-        onpointerdown: stopStoryboardDialogEvent,
-        onclick: stopStoryboardDialogEvent,
-        onwheel: stopStoryboardDialogEvent,
-        style: {
-          position: 'fixed',
-          inset: '0',
-          zIndex: String(Number(SPLIT_BUSY_OVERLAY_Z_INDEX)),
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'rgba(0,0,0,0.52)',
-          pointerEvents: 'auto',
-          boxSizing: 'border-box',
-          webkitAppRegion: 'no-drag'
-        }
-      }, h('div', {
-        style: {
-          width: 'min(560px, calc(100vw - 44px))',
-          maxHeight: 'calc(100vh - 52px)',
-          overflow: 'auto',
-          borderRadius: '10px',
-          border: '1px solid rgba(255,255,255,0.14)',
-          background: '#202020',
-          boxShadow: '0 22px 60px rgba(0,0,0,0.42)',
-          color: '#fff'
-        }
-      }, [
-        h('div', { style: { minHeight: '48px', padding: '14px', borderBottom: '1px solid rgba(255,255,255,0.10)', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', boxSizing: 'border-box' } }, [
-          h('div', { style: { display: 'grid', gap: '3px' } }, [
-            h('div', { style: { fontSize: '15px', fontWeight: '800', lineHeight: '1.2' } }, '选择故事方向'),
-            countdownText
-          ])
-        ]),
-        h('div', { style: { padding: '14px', display: 'grid', gap: '8px', background: '#242424' } },
-          items.map((item, index) => makeCard(item, index))),
-        h('div', { style: { position: 'sticky', bottom: '0', padding: '12px 14px', borderTop: '1px solid rgba(255,255,255,0.10)', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', boxSizing: 'border-box' } }, [
-          makeFooterButton('自动继续', 'secondary', () => close(items[selectedIndex] || autoDirection, 'auto_button')),
-          makeFooterButton('确定', 'primary', () => close(items[selectedIndex] || autoDirection, userSelected ? 'user_confirm' : 'confirm_default'))
-        ])
-      ]))
-      document.body.appendChild(overlay)
-      updateCards()
-      updateCountdown()
-      interval = window.setInterval(updateCountdown, 250)
-      timer = window.setTimeout(() => close(autoDirection, 'auto_timeout'), STORYBOARD_DIRECTION_CHOOSER_TIMEOUT_MS)
-    })
-  }
-
-  function showStoryboardDebugDialog(text) {
-    removeStoryboardDialog(STORYBOARD_DEBUG_DIALOG_ID)
-    const debugText = String(text || '').trim() || '导演规划内容为空：未拿到导演规划输出，也未生成兜底内容。'
-    const close = () => removeStoryboardDialog(STORYBOARD_DEBUG_DIALOG_ID)
-    const overlay = h('div', {
-      id: STORYBOARD_DEBUG_DIALOG_ID,
-      role: 'dialog',
-      'aria-modal': 'true',
-      'aria-label': '导演规划',
-      onpointerdown: stopStoryboardDialogEvent,
-      onclick: stopStoryboardDialogEvent,
-      onwheel: stopStoryboardDialogEvent,
-      style: {
-        position: 'fixed',
-        inset: '0',
-        zIndex: String(Number(SPLIT_BUSY_OVERLAY_Z_INDEX) - 1),
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'rgba(0,0,0,0.52)',
-        pointerEvents: 'auto',
-        boxSizing: 'border-box',
-        webkitAppRegion: 'no-drag'
-      }
-    }, h('div', {
-      style: {
-        width: 'min(920px, calc(100vw - 44px))',
-        maxHeight: 'calc(100vh - 52px)',
-        overflow: 'hidden',
-        borderRadius: '10px',
-        border: '1px solid rgba(255,255,255,0.14)',
-        background: '#202020',
-        boxShadow: '0 22px 60px rgba(0,0,0,0.42)',
-        color: '#fff',
-        display: 'grid',
-        gridTemplateRows: 'auto minmax(0, 1fr) auto'
-      }
-    }, [
-      h('div', { style: { minHeight: '48px', padding: '14px', borderBottom: '1px solid rgba(255,255,255,0.10)', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', boxSizing: 'border-box' } }, [
-        h('div', { style: { fontSize: '15px', fontWeight: '700', lineHeight: '1.2' } }, '导演规划'),
-        h('button', { type: 'button', onclick: close, 'aria-label': '关闭', style: { width: '26px', height: '26px', borderRadius: '6px', border: '0', background: 'transparent', color: 'rgba(255,255,255,0.68)', cursor: 'pointer', fontSize: '18px', lineHeight: '1', padding: '0' } }, 'x')
-      ]),
-      h('pre', {
-        style: {
-          width: '100%',
-          minHeight: '520px',
-          height: 'min(620px, calc(100vh - 170px))',
-          margin: '0',
-          overflow: 'auto',
-          border: '0',
-          outline: '0',
-          background: '#101010',
-          color: 'rgba(226,232,240,0.96)',
-          padding: '14px',
-          fontSize: '12px',
-          lineHeight: '1.55',
-          fontFamily: 'Consolas, "Microsoft YaHei", monospace',
-          boxSizing: 'border-box',
-          whiteSpace: 'pre-wrap',
-          userSelect: 'text'
-        }
-      }, debugText),
-      h('div', { style: { padding: '10px 14px', borderTop: '1px solid rgba(255,255,255,0.10)', background: '#1a1a1a', display: 'flex', justifyContent: 'flex-end' } },
-        h('button', {
-          type: 'button',
-          onclick: close,
-          style: {
-            height: '32px',
-            minWidth: '86px',
-            borderRadius: '8px',
-            border: '0',
-            background: SPLIT_ACTIVE_BACKGROUND,
-            color: '#fff',
-            cursor: 'pointer',
-            fontSize: '13px',
-            fontWeight: '700'
-          }
-        }, '关闭'))
-    ]))
-    document.body.appendChild(overlay)
-  }
-
-  function storyboardDirectorPlanDisplayText(group) {
-    const scenes = group && Array.isArray(group.scenes) ? group.scenes : []
-    const firstScene = scenes.find((scene) => scene && scene.directorSource) || {}
-    const directorSource = String(group && group.directorSource || firstScene.directorSource || 'AI Director').trim()
-    const fallbackReason = String(group && group.fallbackReason || firstScene.fallbackReasonCode || '').trim()
-    const worldContext = String(group && group.worldContext || storyboardWorldContextFromSourceAnalysis(group && group.sourceAnalysis || '') || '').trim()
-    const lines = [
-      '导演规划',
-      '',
-      '导演来源：',
-      directorSource || '无',
-      '',
-      '兜底原因：',
-      fallbackReason ? storyboardDirectorPlannerMessageLabel(fallbackReason) : '无',
-      '',
-      '世界设定：',
-      worldContext || '无',
-      ''
-    ]
-    scenes.slice(0, STORYBOARD_SCENE_COUNT).forEach((scene, index) => {
-      const director = scene && (scene.directorPlan || scene) || {}
-      const beat = String(scene && (scene.title || director.title) || director.purpose || '').trim()
-      lines.push(
-        `Scene${String(index + 1).padStart(2, '0')}`,
-        '',
-        '剧情节点：',
-        beat || '无',
-        '',
-        '中文画面说明：',
-        String(scene && scene.caption || beat || '').trim() || '无',
-        '',
-        '当前空间：',
-        String(director.currentSpace || scene && scene.currentSpace || '').trim() || '无',
-        '',
-        '镜头：',
-        String(director.camera || scene && scene.angle || '').trim() || '无',
-        '',
-        '生图提示词（英文）：',
-        String(director.action || scene && scene.action || '').trim() || '无',
-        '',
-        '视觉焦点：',
-        String(scene && scene.sceneFocus || storyboardSceneFocusFromAction(scene) || '').trim() || '无',
-        '',
-        '可画事件：',
-        String(scene && scene.visualEvent || storyboardDeriveVisualEvent(scene) || '').trim() || '无',
-        '',
-        'Event Realization:',
-        String(scene && scene.eventRealization || director.eventRealization || '').trim() || '无',
-        '------------------------------------------------'
-      )
-    })
-    if (!scenes.length) lines.push('暂无可用导演规划')
-    return lines.join('\n')
-  }
-
-  function storyboardDirectorPlanFullDebugText(group) {
-    const savedText = String(group && (group.directorDebugText || group.directorPlannerDebugText) || '').trim()
-    if (savedText) return savedText
-    const liveDebug = state.lastProcessingDebug && state.lastProcessingDebug.storyboardDirectorV5
-    if (group && state.activeStoryboardGroupId === group.id && liveDebug && liveDebug.text) {
-      return String(liveDebug.text || '').trim()
-    }
-    return ''
-  }
-
-  function storyboardDirectorPlanCompactDebugText(group) {
-    const scenes = group && Array.isArray(group.scenes) ? group.scenes : []
-    const fullDebugText = storyboardDirectorPlanFullDebugText(group)
-    const debugLines = String(fullDebugText || '').split(/\r?\n/)
-    const fieldValue = (label, fallback = '未记录') => {
-      const target = String(label || '').replace(/：$/, '')
-      for (let index = 0; index < debugLines.length; index++) {
-        if (String(debugLines[index] || '').trim().replace(/：$/, '') !== target) continue
-        for (let next = index + 1; next < debugLines.length; next++) {
-          const value = String(debugLines[next] || '').trim()
-          if (value) return value
-        }
-      }
-      return fallback
-    }
-    const compactText = (value, maxLength = 360) => {
-      const text = String(value || '').replace(/\s+/g, ' ').trim()
-      if (!text) return '无'
-      return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text
-    }
-    const firstScene = scenes.find((scene) => scene && scene.directorSource) || {}
-    const fallbackReason = String(group && group.fallbackReason || firstScene.fallbackReasonCode || '').trim()
-    const directorSource = String(group && group.directorSource || firstScene.directorSource || fieldValue('Director Source', 'AI Director')).trim()
-    const worldContinuity = String(group && group.worldContinuity || group && group.worldContext || fieldValue('发送给DirectorPlanner的World Continuity', '')).trim()
-    const visualCuePack = String(group && group.visualCuePack || fieldValue('发送给VEC的Visual Cue Pack', '')).trim()
-    const characterIdentityCard = String(group && group.characterIdentityCard || fieldValue('Character Identity Card', '')).trim()
-    const storyText = String(group && group.storyText || '').trim()
-    const sourceAnalysis = String(group && group.sourceAnalysis || '').trim()
-    const sceneLines = scenes.slice(0, STORYBOARD_SCENE_COUNT).map((scene, index) => {
-      const director = scene && (scene.directorPlan || scene) || {}
-      const number = String(scene && scene.number || index + 1).padStart(2, '0')
-      const title = String(scene && (scene.title || director.title) || director.purpose || '').trim() || '无'
-      const space = String(director.currentSpace || scene && scene.currentSpace || '').trim() || '无'
-      const camera = String(director.camera || scene && scene.angle || '').trim() || '无'
-      const action = String(director.action || scene && scene.action || '').trim() || '无'
-      const displayCaption = String(scene && scene.caption || title).trim() || title
-      const visualEvent = String(scene && scene.visualEvent || storyboardDeriveVisualEvent(scene) || '').trim() || '无'
-      return [
-        `Scene${number}`,
-        `剧情节点：${title}`,
-        `中文画面说明：${displayCaption}`,
-        `当前空间：${space}`,
-        `镜头：${camera}`,
-        `生图提示词（英文）：${action}`,
-        `可画事件：${visualEvent}`
-      ].join('\n')
-    })
-    if (!sceneLines.length) sceneLines.push('暂无可用导演规划')
-    return [
-      '分镜导演规划 Debug',
-      '',
-      '运行模式：',
-      fieldValue('运行模式', '正式生成链路记录'),
-      '',
-      '分镜类型：',
-      fieldValue('分镜类型', storyboardDirectorPlannerTypeLabel(detectStoryboardType(storyText, sourceAnalysis))),
-      '',
-      'DirectorPlanner输入模式：',
-      fieldValue('DirectorPlanner输入模式', '未记录'),
-      '',
-      '解析状态：',
-      fieldValue('解析状态', scenes.length ? '已生成' : '未记录'),
-      '',
-      'Director Source：',
-      directorSource || '无',
-      '',
-      'Fallback Reason：',
-      fallbackReason ? storyboardDirectorPlannerMessageLabel(fallbackReason) : fieldValue('Fallback Reason', '无'),
-      '',
-      'Validator Result：',
-      fieldValue('Validator Result', '未记录'),
-      '',
-      '核心耗时：',
-      `生图前累计 ${fieldValue('生图前累计耗时', '未记录')} / 参考图分析 ${fieldValue('参考图分析总耗时', '未记录')} / DirectorPlanner ${fieldValue('DirectorPlanner耗时', '未记录')}`,
-      '',
-      '参考图分析缓存：',
-      fieldValue('参考图分析缓存', '未记录'),
-      '',
-      'World Continuity：',
-      compactText(worldContinuity),
-      '',
-      'Visual Cue Pack：',
-      compactText(visualCuePack),
-      '',
-      'Character Identity Card：',
-      compactText(characterIdentityCard),
-      '',
-      '镜头规划：',
-      sceneLines.join('\n\n')
-    ].join('\n')
-  }
-
-  function showStoryboardDirectorPlanDialog(group) {
-    removeStoryboardDialog(STORYBOARD_DIRECTOR_PLAN_DIALOG_ID)
-    const debugText = storyboardDirectorPlanCompactDebugText(group)
-    const close = () => removeStoryboardDialog(STORYBOARD_DIRECTOR_PLAN_DIALOG_ID)
-    const overlay = h('div', {
-      id: STORYBOARD_DIRECTOR_PLAN_DIALOG_ID,
-      role: 'dialog',
-      'aria-modal': 'true',
-      'aria-label': '导演规划',
-      onpointerdown: stopStoryboardDialogEvent,
-      onclick: stopStoryboardDialogEvent,
-      onwheel: stopStoryboardDialogEvent,
-      style: {
-        position: 'fixed',
-        inset: '0',
-        zIndex: String(Number(SPLIT_BUSY_OVERLAY_Z_INDEX) - 1),
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'rgba(0,0,0,0.52)',
-        pointerEvents: 'auto',
-        boxSizing: 'border-box',
-        webkitAppRegion: 'no-drag'
-      }
-    }, h('div', {
-      style: {
-        width: 'min(860px, calc(100vw - 44px))',
-        maxHeight: 'calc(100vh - 52px)',
-        overflow: 'hidden',
-        borderRadius: '10px',
-        border: '1px solid rgba(255,255,255,0.14)',
-        background: '#202020',
-        boxShadow: '0 22px 60px rgba(0,0,0,0.42)',
-        color: '#fff',
-        display: 'grid',
-        gridTemplateRows: 'auto minmax(0, 1fr)'
-      }
-    }, [
-      h('div', { style: { minHeight: '48px', padding: '14px', borderBottom: '1px solid rgba(255,255,255,0.10)', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', boxSizing: 'border-box' } }, [
-        h('div', { style: { fontSize: '15px', fontWeight: '700', lineHeight: '1.2' } }, '导演规划'),
-        h('button', { type: 'button', onclick: close, 'aria-label': '关闭', style: { width: '26px', height: '26px', borderRadius: '6px', border: '0', background: 'transparent', color: 'rgba(255,255,255,0.68)', cursor: 'pointer', fontSize: '18px', lineHeight: '1', padding: '0' } }, 'x')
-      ]),
-      h('pre', {
-        style: {
-          width: '100%',
-          minHeight: '480px',
-          height: 'min(650px, calc(100vh - 120px))',
-          margin: '0',
-          overflow: 'auto',
-          border: '0',
-          outline: '0',
-          background: '#101010',
-          color: 'rgba(226,232,240,0.96)',
-          padding: '14px',
-          fontSize: '12px',
-          lineHeight: '1.55',
-          fontFamily: 'Consolas, "Microsoft YaHei", monospace',
-          boxSizing: 'border-box',
-          whiteSpace: 'pre-wrap',
-          userSelect: 'text'
-        }
-      }, debugText)
-    ]))
-    document.body.appendChild(overlay)
-  }
-
-  function showStoryboardSceneEditDialog(scene) {
-    removeStoryboardDialog(STORYBOARD_EDIT_DIALOG_ID)
-    return new Promise((resolve) => {
-      let done = false
-      const close = (value) => {
-        if (done) return
-        done = true
-        removeStoryboardDialog(STORYBOARD_EDIT_DIALOG_ID)
-        resolve(value)
-      }
-      const textarea = h('textarea', {
-        rows: '7',
-        value: String(scene && scene.description || ''),
-        onkeydown: (event) => {
-          if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') close(String(textarea.value || '').trim())
-          if (event.key === 'Escape') close(null)
-        },
-        style: {
-          width: '100%',
-          minHeight: '150px',
-          resize: 'vertical',
-          borderRadius: '8px',
-          border: '1px solid rgba(255,255,255,0.16)',
-          background: '#111',
-          color: '#fff',
-          outline: '0',
-          padding: '10px',
-          fontSize: '13px',
-          lineHeight: '1.5',
-          boxSizing: 'border-box'
-        }
-      })
-      textarea.value = String(scene && scene.description || '')
-      const overlay = h('div', {
-        id: STORYBOARD_EDIT_DIALOG_ID,
-        role: 'dialog',
-        'aria-modal': 'true',
-        'aria-label': '镜头描述',
-        onpointerdown: stopStoryboardDialogEvent,
-        onclick: stopStoryboardDialogEvent,
-        onwheel: stopStoryboardDialogEvent,
-        style: {
-          position: 'fixed',
-          inset: '0',
-          zIndex: String(Number(SPLIT_BUSY_OVERLAY_Z_INDEX) - 1),
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'rgba(0,0,0,0.48)',
-          pointerEvents: 'auto',
-          boxSizing: 'border-box',
-          webkitAppRegion: 'no-drag'
-        }
-      }, h('div', { style: { width: 'min(460px, calc(100vw - 44px))', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.14)', background: '#202020', boxShadow: '0 22px 60px rgba(0,0,0,0.42)', color: '#fff', overflow: 'hidden' } }, [
-        h('div', { style: { minHeight: '48px', padding: '14px', borderBottom: '1px solid rgba(255,255,255,0.10)', background: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', boxSizing: 'border-box' } }, [
-          h('div', { style: { fontSize: '15px', fontWeight: '400', lineHeight: '1.2' } }, `镜头${String(scene && scene.number || '').padStart(2, '0')}描述`),
-          h('button', { type: 'button', onclick: () => close(null), 'aria-label': '关闭', style: { width: '26px', height: '26px', borderRadius: '6px', border: '0', background: 'transparent', color: 'rgba(255,255,255,0.68)', cursor: 'pointer', fontSize: '18px', lineHeight: '1', padding: '0' } }, 'x')
-        ]),
-        h('div', { style: { padding: '14px', display: 'grid', gap: '10px', background: '#242424' } }, [
-          textarea,
-          h('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
-            h('button', { type: 'button', onclick: () => close(String(textarea.value || '').trim()), style: { height: '32px', minWidth: '150px', borderRadius: '8px', border: '0', background: SPLIT_ACTIVE_BACKGROUND, color: '#fff', cursor: 'pointer', fontWeight: '700' } }, '重新生成'))
-        ])
-      ]))
-      document.body.appendChild(overlay)
-      window.setTimeout(() => textarea.focus(), 0)
-    })
-  }
-
-  function storyboardGroups() {
-    if (!Array.isArray(state.storyboardGroups)) state.storyboardGroups = []
-    return state.storyboardGroups
-  }
-
-  function activeStoryboardGroup() {
-    const groups = storyboardGroups()
-    const id = String(state.activeStoryboardGroupId || '')
-    return groups.find((group) => group && group.id === id) || groups[0] || null
-  }
-
-  function storyboardGroupById(id) {
-    return storyboardGroups().find((group) => group && group.id === id) || null
-  }
-
-  function storyboardGroupItems(group) {
-    if (!group) return []
-    return [group.overview].concat(Array.isArray(group.scenes) ? group.scenes : []).filter((item) => item && item.dataUrl)
-  }
-
-  function storyboardItemById(group, itemId) {
-    if (!group) return null
-    const id = String(itemId || group.activeItemId || state.activeStoryboardItemId || 'overview')
-    if (id === 'overview') return group.overview || null
-    return (Array.isArray(group.scenes) ? group.scenes : []).find((scene) => scene && scene.id === id) || group.overview || null
-  }
-
-  function activeStoryboardItem() {
-    return storyboardItemById(activeStoryboardGroup(), state.activeStoryboardItemId)
-  }
-
-  function hasActiveStoryboardPreview() {
-    const item = activeStoryboardItem()
-    return !!(state.viewMode === 'storyboard' && item && item.dataUrl)
-  }
-
-  function cancelStoryboardWorkspaceSync(suppressMs = 0) {
-    state.storyboardWorkspaceSyncToken = (Number(state.storyboardWorkspaceSyncToken) || 0) + 1
-    const quietMs = Math.max(0, Number(suppressMs) || 0)
-    if (quietMs > 0) storyboardWorkspaceRestoreQuietUntil = Date.now() + quietMs
-  }
-
-  function canRestoreStoryboardWorkspace() {
-    if (!hasActiveStoryboardPreview()) return false
-    if (Date.now() < storyboardWorkspaceRestoreQuietUntil) return false
-    if (!isArtPrimaryEntryConfirmed()) return false
-    if (!isSplitCanvasRouteActive()) return false
-    if (hasVisibleArtUiPlaceholder()) return false
-    return true
-  }
-
-  function restoreStoryboardWorkspaceSurface() {
-    if (!canRestoreStoryboardWorkspace()) return false
-    if (storyboardWorkspaceRestoreRunning) return false
-    storyboardWorkspaceRestoreRunning = true
-    try {
-      if (!isMountedCardVisible()) {
-        mount()
-        startSplitMountRetry()
-      }
-      if (!isMountedCardVisible()) return false
-      updatePreviewOverlay()
-      syncSplitWorkspace()
-      return true
-    } finally {
-      storyboardWorkspaceRestoreRunning = false
-    }
-  }
-
-  function scheduleStoryboardWorkspaceSync() {
-    const token = (Number(state.storyboardWorkspaceSyncToken) || 0) + 1
-    state.storyboardWorkspaceSyncToken = token
-    const run = () => {
-      if (state.storyboardWorkspaceSyncToken !== token) return
-      if (!hasActiveStoryboardPreview()) return
-      if (restoreStoryboardWorkspaceSurface()) return
-      if (canRestoreStoryboardWorkspace()) scheduleSurfaceSync()
-    }
-    if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(run)
-    else window.setTimeout(run, 0)
-    ;[80, 220, 420, 720, 1200].forEach((delay) => window.setTimeout(run, delay))
-  }
-
-  function activateStoryboardItem(groupId, itemId, options = {}) {
-    const group = storyboardGroupById(groupId)
-    if (!group) return false
-    const item = storyboardItemById(group, itemId)
-    if (!item || !item.dataUrl) return false
-    if (options.ensureArtPrimary !== false) requestArtPrimaryForStoryboardWorkspace()
-    state.activeStoryboardGroupId = group.id
-    state.activeStoryboardItemId = item.id || 'overview'
-    group.activeItemId = state.activeStoryboardItemId
-    state.viewMode = 'storyboard'
-    if (options.expand !== false) {
-      storyboardGroups().forEach((candidate) => { candidate.expanded = candidate.id === group.id })
-    }
-    resetSplitCanvasViewport()
-    render()
-    updatePreviewOverlay()
-    updateRightPanel()
-    syncSplitWorkspace()
-    scheduleStoryboardWorkspaceSync()
-    return true
-  }
-
-  function toggleStoryboardGroup(id) {
-    const group = storyboardGroupById(id)
-    if (!group) return false
-    const next = !group.expanded
-    storyboardGroups().forEach((candidate) => { candidate.expanded = candidate.id === id ? next : false })
-    if (next) {
-      state.activeStoryboardGroupId = group.id
-      if (!state.activeStoryboardItemId) state.activeStoryboardItemId = group.activeItemId || 'overview'
-    }
-    render()
-    updateRightPanel()
-    syncSplitWorkspace()
-    if (state.viewMode === 'storyboard') scheduleStoryboardWorkspaceSync()
-    return true
-  }
-
-  function storyboardResourceWorkflow() {
-    return window.NovaFlowStoryboardResourceWorkflow || null
-  }
-
-  function storyboardResourceWorkflowBridge() {
-    return {
-      isEditToolActive: isSplitEditToolActive,
-      storyboardGroups,
-      storyboardItemById,
-      cancelWorkspaceSync: cancelStoryboardWorkspaceSync,
-      sourceResources: sourceResourceList,
-      activeSourceResource: activeSourceResourceRecord,
-      linkedSplitSetForResource: linkedStoryboardSplitSetForResource,
-      splitSetById,
-      activateSourceWithWorkspace: activateSourceResourceWithLinkedSplitSet,
-      appendSourceResource,
-      updateSourceResource,
-      imageSizeFromDataUrl,
-      ensureSourceAsEditableLayer,
-      preserveCurrentWorkspace: preserveCurrentSplitWorkspaceForStoryboardEdit,
-      resetViewport: resetSplitCanvasViewport,
-      setMessage,
-      renderWorkspace: () => { render(); syncSplitWorkspace() },
-      renderBusy: () => { render(); syncSplitGlobalBusyOverlay() },
-      renderAll: () => { render(); updatePreviewOverlay(); updateRightPanel(); syncSplitWorkspace() },
-      syncBusy: syncSplitGlobalBusyOverlay,
-      scheduleWorkspaceSync: scheduleStoryboardWorkspaceSync
-    }
-  }
-
-  function deleteStoryboardGroup(groupId) {
-    const workflow = storyboardResourceWorkflow()
-    return workflow ? workflow.deleteGroup({ state, groupId, bridge: storyboardResourceWorkflowBridge() }) : false
-  }
-
-  function isStoryboardEditSourceAction(action) {
-    const workflow = storyboardResourceWorkflow()
-    return !!(workflow && workflow.isEditSourceAction(action))
-  }
-
-  function preserveCurrentSplitWorkspaceForStoryboardEdit() {
-    if (!state.parts.length && !state.splitPreviewDataUrl) return null
-    const active = splitSetById(state.activeSplitSetId)
-    if (active) {
-      syncActiveSplitSet()
-      return active
-    }
-    return registerSplitSet()
-  }
-
-  function prepareStoryboardSceneEditableCopy() {
-    const workflow = storyboardResourceWorkflow()
-    if (!workflow) {
-      setMessage('分镜编辑工作流未加载，请重启 NovaFlow 后重试', true)
-      render()
-      return Promise.resolve(false)
-    }
-    return workflow.prepareSceneEditableCopy({
-      state,
-      group: activeStoryboardGroup(),
-      item: activeStoryboardItem(),
-      resource: activeSourceResourceRecord(),
-      bridge: storyboardResourceWorkflowBridge()
-    })
-  }
-
-  function storyboardReferenceSource() {
-    const current = splitCanvasSource()
-    if (current && /^data:image\//i.test(String(current.src || ''))) {
-      return {
-        dataUrl: current.src,
-        fileName: safeDownloadFileName(`${String(current.label || 'preview').replace(/\.[^/.]+$/, '') || 'preview'}.png`, 'preview.png'),
-        label: current.label || '当前预览图'
-      }
-    }
-    if (state.source && /^data:image\//i.test(String(state.source.dataUrl || ''))) {
-      return {
-        dataUrl: state.source.dataUrl,
-        fileName: safeDownloadFileName(state.source.fileName || state.source.name || 'source.png', 'source.png'),
-        label: state.source.fileName || state.source.name || '原图'
-      }
-    }
-    return null
-  }
-
-  function storyboardSceneBlueprints(storyText) {
-    const story = String(storyText || '').trim()
-    const wantsBattle = /武力|战斗|打斗|动作|特效|能量|爆发|高逼格|电影|史诗|冲击|必杀|技能|weapon|battle|fight|cinematic|power|effect/i.test(story)
-    const wantsRelic = /遗迹|神殿|古城|神器|宝物|圣物|ruins?|temple|artifact|relic/i.test(story)
-    const premise = story || (wantsRelic ? '少女进入古代遗迹寻找神器' : '少女展示个人武力和华丽特效，高规格电影感')
-    const battle = [
-      {
-        title: '建立气场',
-        caption: '远景，环境压迫，角色登场',
-        shotSize: '极远景',
-        angle: '平视略低角度',
-        lens: '广角电影镜头',
-        composition: '角色位于画面下方三分之一，山体与建筑形成宏大纵深',
-        movement: '定场镜头',
-        rhythm: '缓慢蓄势',
-        action: '少女背向镜头站在高处废墟边缘，武器垂落，衣摆随风摆动',
-        effects: '远处只有少量能量微光和风沙粒子',
-        environment: '雪山，古建筑，山谷，云层，战斗前的寂静',
-        light: '黄昏侧光，边缘光，低饱和冷暖对比',
-        beat: '先建立环境和人物气场，不急于展示攻击'
-      },
-      {
-        title: '能量蓄势',
-        caption: '中景，低角度，能量开始环绕',
-        shotSize: '中全景',
-        angle: '低角度仰拍',
-        lens: '中焦距',
-        composition: '角色占据画面中心偏右，能量弧线从背景绕向前景',
-        movement: '镜头缓慢推进',
-        rhythm: '力量逐步积累',
-        action: '少女转身面向威胁，抬起武器，身体重心下沉准备出手',
-        effects: '蓝白能量旋涡从武器和手臂周围升起',
-        environment: '山风卷起碎石与尘埃，远处建筑被能量照亮',
-        light: '冷色能量光与暖色天光交织，高对比轮廓光',
-        beat: '从静态气场推进到战斗准备'
-      },
-      {
-        title: '眼神特写',
-        caption: '特写，眼神坚定，身份锁定',
-        shotSize: '脸部特写',
-        angle: '平拍微侧脸',
-        lens: '长焦浅景深',
-        composition: '眼睛与面部占据画面主体，肩甲和发饰形成前景层次',
-        movement: '镜头推近',
-        rhythm: '短暂停顿',
-        action: '少女目光锁定敌人，发丝和饰物被能量风吹起',
-        effects: '瞳孔反射蓝红能量光，背景火星和光尘虚化',
-        environment: '背景只保留模糊山影和飞散火星',
-        light: '强边缘光，柔和面部补光，电影级皮肤与金属材质',
-        beat: '用特写确认角色情绪和战斗决心'
-      },
-      {
-        title: '突进开战',
-        caption: '中近景，向前冲刺，动态足够强',
-        shotSize: '中近景',
-        angle: '低角度斜向构图',
-        lens: '广角动态镜头',
-        composition: '身体沿对角线冲出画面，前景有模糊碎石和能量轨迹',
-        movement: '手持感跟拍',
-        rhythm: '快速突进',
-        action: '少女单脚踏碎地面向前冲刺，武器拖出红蓝能量弧线',
-        effects: '地面裂开，碎石飞散，速度线和能量火花爆发',
-        environment: '战场地面从安静废墟转为破碎冲击区',
-        light: '硬光与能量光形成强烈明暗切割',
-        beat: '动作从蓄势进入第一轮攻击'
-      },
-      {
-        title: '领域爆发',
-        caption: '远景俯拍，能量场覆盖全局',
-        shotSize: '大全景',
-        angle: '高角度俯拍',
-        lens: '广角俯视',
-        composition: '角色位于能量旋涡中心，圆形冲击波占满画面',
-        movement: '环绕运镜感',
-        rhythm: '大幅度爆发',
-        action: '少女释放范围技能，双臂和武器带动环形能量场扩散',
-        effects: '蓝红双重能量环，地面裂纹，石块悬浮，尘浪向外扩散',
-        environment: '山谷战场被能量照亮，背景建筑变成剪影',
-        light: '高对比混合光，中心强光，边缘暗部压低',
-        beat: '用俯拍展示个人武力的规模'
-      },
-      {
-        title: '能量对冲',
-        caption: '中景，侧向对抗，光效压迫',
-        shotSize: '中景',
-        angle: '侧面平拍',
-        lens: '中焦距',
-        composition: '角色位于画面右侧，能量束从武器冲向画面左侧',
-        movement: '镜头侧移',
-        rhythm: '持续压制',
-        action: '少女挥出武器与外部能量正面对冲，肩甲和手臂受力明显',
-        effects: '红蓝光束碰撞，火星飞散，空气扭曲，冲击波切过画面',
-        environment: '背景碎石和旗帜被冲击波吹向同一方向',
-        light: '强烈蓝红对比光，金属高光清晰',
-        beat: '展示力量对抗和战斗压迫感'
-      },
-      {
-        title: '终结震荡',
-        caption: '全景，低角度，破坏力展示',
-        shotSize: '全景',
-        angle: '低角度仰拍',
-        lens: '广角',
-        composition: '少女站在爆炸中心，碎石向四周和天空飞散',
-        movement: '冲击后定格',
-        rhythm: '爆发后瞬间凝固',
-        action: '少女完成终结一击，武器落地或指向前方，姿态稳定',
-        effects: '地面塌陷，岩石雨，尘浪，能量残光从脚下扩散',
-        environment: '战场形成巨大圆形破坏坑，远处山体被烟尘遮挡',
-        light: '逆光剪影，能量底光，高反差电影感',
-        beat: '用环境破坏证明个人武力'
-      },
-      {
-        title: '战后静默',
-        caption: '中远景，侧逆光，情绪收住',
-        shotSize: '中远景',
-        angle: '侧背面平拍',
-        lens: '中长焦',
-        composition: '角色侧身站立，发丝和衣带在余风中飘动，背景留出夕阳天空',
-        movement: '缓慢拉远',
-        rhythm: '从激烈转为安静',
-        action: '少女收起武器或低头凝视战场，表情冷静',
-        effects: '残余能量像火星一样逐渐消散',
-        environment: '破碎战场与远处建筑在暮色中恢复安静',
-        light: '夕阳逆光，暖色边缘光，低饱和阴影',
-        beat: '战斗结束后的静默瞬间'
-      },
-      {
-        title: '远景收束',
-        caption: '远景，背影收尾，世界观余韵',
-        shotSize: '极远景',
-        angle: '高处远望',
-        lens: '广角',
-        composition: '角色成为画面前景小剪影，雪山和城镇占据大面积背景',
-        movement: '镜头拉远',
-        rhythm: '最终定格',
-        action: '少女背对镜头站在废墟边缘，武器安静垂下，准备离开',
-        effects: '天空残留淡淡能量光环，战场烟尘缓慢散去',
-        environment: '雪山，古建筑，山谷，破碎战场形成完整结尾',
-        light: '黄昏余晖，柔光，空间层次清晰',
-        beat: '以宏大远景收束故事'
-      }
-    ]
-    const relic = [
-      ['发现遗迹', '极远景', '定场镜头', '少女在雪山脚下发现远处古代遗迹，环境宏大而安静'],
-      ['靠近入口', '中全景', '跟随镜头', '少女沿石阶靠近遗迹入口，符文微光逐渐出现'],
-      ['进入遗迹', '过肩中景', '镜头推进', '少女推开石门进入幽暗走廊，门缝透出蓝白光'],
-      ['发现机关', '近景特写', '俯拍', '少女手指触碰墙面机关，符文和金属细节清晰'],
-      ['深入探索', '中景', '手持感跟拍', '少女快速穿过长廊，地面机关和尘埃被带起'],
-      ['发现神器', '中近景', '慢推', '少女在核心大厅发现悬浮神器，脸被光照亮'],
-      ['触发异象', '广角全景', '环绕运镜', '神器引发能量风暴，碎石悬浮，符文环绕'],
-      ['获得神器', '低角度中近景', '镜头推进', '少女握住神器，力量汇入武器，姿态坚定'],
-      ['离开遗迹', '远景', '镜头拉远', '少女带着神器从遗迹离开，回望雪山和石门']
-    ].map((item) => ({
-      title: item[0],
-      caption: `${item[1]}，${item[2]}`,
-      shotSize: item[1],
-      angle: item[1].includes('低角度') ? '低角度拍摄' : item[1].includes('俯') ? '俯视角度' : '电影平拍',
-      lens: item[1].includes('远') ? '广角' : item[1].includes('特写') ? '长焦浅景深' : '中焦距',
-      composition: '保持空间纵深和电影构图，主体与环境层次清楚',
-      movement: item[2],
-      rhythm: '自然递进',
-      action: item[3],
-      effects: '符文光，尘埃，能量粒子按剧情逐步增强',
-      environment: '雪山遗迹，石门，走廊，核心大厅按镜头顺序递进',
-      light: '冷色遗迹光与自然天光统一',
-      beat: item[3]
-    }))
-    const template = wantsBattle || !wantsRelic ? battle : relic
-    return template.slice(0, STORYBOARD_SCENE_COUNT).map((scene, index) => {
-      const number = index + 1
-      return {
-        ...scene,
-        id: `scene${String(number).padStart(2, '0')}`,
-        number,
-        storyPremise: premise,
-        description: `Scene${String(number).padStart(2, '0')}：${scene.title}。剧情基础：${premise}。${scene.beat}。景别：${scene.shotSize}。运镜：${scene.movement}。`
-      }
-    })
-  }
-
-  function storyboardCollectKeywordLabels(text, entries, limit = 4) {
-    const value = String(text || '')
-    const labels = []
-    entries.forEach((entry) => {
-      if (!entry || !entry.label || !Array.isArray(entry.keywords)) return
-      if (labels.includes(entry.label)) return
-      if (entry.keywords.some((keyword) => value.includes(keyword))) labels.push(entry.label)
-    })
-    return labels.slice(0, limit)
-  }
-
-  const STORYBOARD_WORLD_CONTEXT_MAX_CHARS = 200
-  const STORYBOARD_RAW_WORLD_CONTEXT_DEBUG_MAX_CHARS = 1200
-
-  function storyboardRawWorldContextFromSourceAnalysis(sourceAnalysis) {
-    return String(sourceAnalysis || '').trim().slice(0, STORYBOARD_RAW_WORLD_CONTEXT_DEBUG_MAX_CHARS)
-  }
-
-  function storyboardCompactWorldContextFields(sourceAnalysis) {
-    const value = String(sourceAnalysis || '').trim()
-    if (!value) {
-      return {
-        time: '沿用参考图时间与光线',
-        place: '沿用参考图地点类型',
-        era: '沿用参考图时代与美术风格',
-        mood: '沿用参考图整体氛围'
-      }
-    }
-    const timeLabels = storyboardCollectKeywordLabels(value, [
-      { label: '明亮夏日白天', keywords: ['夏日', '夏天', '阳光明媚', '蓝天白云', '晴朗', '阳光'] },
-      { label: '清晨或黎明', keywords: ['清晨', '黎明', '早晨', '晨光'] },
-      { label: '黄昏或傍晚', keywords: ['黄昏', '傍晚', '夕阳', '落日', '晚霞'] },
-      { label: '夜晚', keywords: ['夜晚', '夜色', '深夜', '月光', '星空'] },
-      { label: '冬季寒冷', keywords: ['冬季', '冬天', '雪地', '冰雪', '寒冷'] },
-      { label: '阴暗低光', keywords: ['阴暗', '黑暗', '暗红', '低光'] },
-      { label: '阴雨或压抑天气', keywords: ['雨天', '阴雨', '暴雨', '乌云', '阴沉'] }
-    ], 2)
-    const placeLabels = storyboardCollectKeywordLabels(value, [
-      { label: '山野旅途环境', keywords: ['雪山', '山丘', '山脉', '远山', '山野', '小路', '小径', '道路'] },
-      { label: '森林自然环境', keywords: ['森林', '树林', '树木', '绿植', '草地', '野花'] },
-      { label: '古镇或建筑环境', keywords: ['古镇', '建筑', '屋檐', '城镇', '村庄', '房屋'] },
-      { label: '废墟或战场环境', keywords: ['废墟', '战场', '破碎', '遗迹', '残垣'] },
-      { label: '地狱或黑暗王座', keywords: ['地狱', '恶魔之王', '魔王', '王座', '火焰背景', '火焰'] },
-      { label: '城市环境', keywords: ['城市', '街道', '高楼', '霓虹', '街区'] },
-      { label: '室内空间', keywords: ['室内', '房间', '大厅', '走廊'] }
-    ], 3)
-    const eraLabels = storyboardCollectKeywordLabels(value, [
-      { label: '黑暗奇幻', keywords: ['恶魔', '魔王', '地狱', '黑暗', '权杖', '角', '翅膀', '堕落'] },
-      { label: '轻奇幻', keywords: ['奇幻', '魔法', '翅膀', '精灵', '女武神', '圣女'] },
-      { label: '古代或中世纪', keywords: ['古代', '中世纪', '盔甲', '长剑', '城堡'] },
-      { label: '现代', keywords: ['现代', '都市', '背包', '校服'] },
-      { label: '科幻', keywords: ['科幻', '机甲', '未来', '赛博'] },
-      { label: '末世', keywords: ['末世', '荒原', '灾难'] }
-    ], 2)
-    const moodLabels = storyboardCollectKeywordLabels(value, [
-      { label: '清澈明亮', keywords: ['阳光明媚', '蓝天白云', '明亮', '清澈'] },
-      { label: '治愈旅途感', keywords: ['小路', '小径', '野花', '背包', '缓缓前行', '远方'] },
-      { label: '史诗厚重', keywords: ['战场', '乌云', '巨大的', '史诗', '远古'] },
-      { label: '压抑堕落', keywords: ['堕落', '侵蚀', '恶魔', '魔王', '黑暗', '地狱'] },
-      { label: '赤红火焰', keywords: ['红色', '暗红', '火焰', '血色'] },
-      { label: '阴冷压抑', keywords: ['阴沉', '黑暗', '乌云', '寒冷'] }
-    ], 2)
-    return {
-      time: timeLabels.join('、') || '沿用参考图时间与光线',
-      place: placeLabels.join('、') || '沿用参考图地点类型',
-      era: eraLabels.join('、') || '沿用参考图时代与美术风格',
-      mood: moodLabels.join('、') || '沿用参考图整体氛围'
-    }
-  }
-
-  function normalizeWorldContext(sourceAnalysis) {
-    const fields = storyboardCompactWorldContextFields(sourceAnalysis)
-    const parts = [
-      `时间：${fields.time}`,
-      `地点：${fields.place}`,
-      `时代/风格：${fields.era}`,
-      `视觉气候：${fields.mood}`
-    ]
-    return parts.join('；').slice(0, STORYBOARD_WORLD_CONTEXT_MAX_CHARS)
-  }
-
-  function storyboardWorldContextFromSourceAnalysis(sourceAnalysis) {
-    return normalizeWorldContext(sourceAnalysis)
-  }
-
-  function storyboardWorldContinuityFromSourceAnalysis(sourceAnalysis) {
-    return normalizeWorldContext(sourceAnalysis)
-  }
-
-  function storyboardPromptForScene(scene, sourceAnalysis, storyText) {
-    const premise = String(storyText || scene.storyPremise || '').trim() || '角色展示个人武力和华丽特效，高规格电影感'
-    const worldContext = storyboardWorldContextFromSourceAnalysis(sourceAnalysis)
-    const rules = STORYBOARD_RULES.join(' ')
-    return [
-      `Next Scene: ${String(scene.number || 1).padStart(2, '0')} ${scene.title}.`,
-      `Story premise: ${premise}.`,
-      `${STORYBOARD_REFERENCE_LOCK} ${worldContext ? `World Context: ${worldContext}. Use it as continuous background, location, era, atmosphere, and visual style support. The current scene beat, title, purpose, and action are the story source.` : ''}`,
-      STORYBOARD_SINGLE_FRAME_PROMPT_RULE,
-      `Scene beat: ${scene.beat || scene.description || scene.title}.`,
-      `Subject and motion: ${scene.action}. Motion rhythm: ${scene.rhythm}.`,
-      STORYBOARD_OPEN_HIGHLIGHT_RULE,
-      `Scene and environment progression: ${scene.environment}.`,
-      `Aesthetic control: ${scene.shotSize}, ${scene.angle}, ${scene.lens}, ${scene.composition}, ${scene.movement}. ${scene.light}.`,
-      `Visual effects: ${scene.effects}.`,
-      'Style: preserve the reference visual language; use coherent cinematic illustration or matching realistic rendering according to the uploaded reference, clear spatial depth, sharp details, and consistent series-level visual finish.',
-      'Continuity: keep the same character identity, hair color, body shape, costume structure, weapon design, palette, lighting logic, and art style across all scenes. Give this scene its own pose, action, crop, background, camera angle, and composition.',
-      rules
-    ].filter(Boolean).join('\n')
-  }
-
-  function storyboardKeywordHit(text, keywords) {
-    const value = String(text || '').toLowerCase()
-    return keywords.some((keyword) => value.includes(String(keyword || '').toLowerCase()))
-  }
-
-  function detectStoryboardType(storyText, sourceAnalysis = '') {
-    const storyOnly = String(storyText || '')
-    const text = `${String(storyText || '')} ${String(sourceAnalysis || '')}`
-    if (storyboardKeywordHit(storyOnly, ['\u6218\u6597', '\u6253\u6597', '\u53cd\u51fb', '\u51fb\u8d25', 'boss', 'BOSS', 'combat', 'battle', 'fight'])) return 'battle'
-    if (storyboardKeywordHit(storyOnly, ['\u79bb\u5f00\u6545\u4e61', '\u6545\u4e61', '\u65c5\u9014', '\u65c5\u7a0b', '\u6210\u957f', '\u5931\u53bb', '\u5bfb\u627e\u81ea\u6211', '\u771f\u6b63\u7684\u81ea\u6211', '\u5927\u57ce\u5e02', '\u53bb\u5f80', '\u524d\u5f80'])) return 'adventure'
-    if (storyboardKeywordHit(text, ['武力', '战斗', '打斗', '技能', '爆发', '特效', 'boss', 'BOSS', 'combat', 'battle', 'fight', 'power', 'cinematic action'])) return 'battle'
-    if (storyboardKeywordHit(text, ['探索', '遗迹', '神器', '旅程', '寻找', '神殿', 'relic', 'ruins', 'temple', 'artifact', 'journey', 'explore'])) return 'adventure'
-    if (storyboardKeywordHit(text, ['展示', '界面', 'UI', '功能', '产品', '交互', 'dashboard', 'interface', 'product', 'feature'])) return 'product'
-    if (storyboardKeywordHit(text, ['角色', '人物展示', '宣传图', 'PV', '角色PV', 'character', 'hero reveal', 'promo'])) return 'character'
-    return 'story'
-  }
-
-  function storyboardDirectorTemplate(type) {
-    const battle = [
-      { title: '建立世界', purpose: '建立世界观', shot_type: 'extreme wide shot', camera: 'high-angle overhead', composition: 'environment-dominant silhouette composition', movement: 'static establishing', lens: 'wide cinematic lens', subject_ratio: 0.15, effect_ratio: 0.12, emotion: 'mysterious pressure', rhythm: 'slow tension', action: 'the heroine appears as a small silhouette on a high battlefield edge, weapon lowered, costume ribbons moving in the wind', effects: 'small distant energy glows, drifting dust and wind particles only', environment: 'snow mountain, ancient buildings, broken battlefield, deep atmospheric layers', light: 'dusk rim light, low saturation, strong depth haze', beat: 'Open with scale and pressure before showing combat power.', reason: 'The first panel must prove this is a film sequence, not a portrait.' },
-      { title: '角色登场', purpose: '角色登场', shot_type: 'medium full shot', camera: 'low-angle heroic', composition: 'hero enters frame with diagonal foreground rocks', movement: 'slow push-in', lens: 'medium lens', subject_ratio: 0.55, effect_ratio: 0.25, emotion: 'controlled confidence', rhythm: 'power gathering', action: 'the heroine turns toward the threat, raises the weapon, lowers her center of gravity, and prepares to strike', effects: 'blue-white energy starts wrapping around hands and weapon', environment: 'wind lifts dust and broken stones, distant buildings catch reflected energy light', light: 'cool energy light mixed with warm sky rim light', beat: 'Move from static world scale into active combat preparation.', reason: 'The character enters the story with intent and power.' },
-      { title: '眼神特写', purpose: '人物特写', shot_type: 'close-up', camera: 'eye-level three-quarter', composition: 'face and eyes dominate the frame, armor edges form foreground depth', movement: 'push-in', lens: 'long lens shallow depth of field', subject_ratio: 0.9, effect_ratio: 0.18, emotion: 'focused resolve', rhythm: 'short dramatic pause', action: 'the heroine locks eyes on the enemy, hair ornaments and loose strands lifted by energy wind', effects: 'red-blue energy reflections in the pupils, sparks and light dust in blurred background', environment: 'only soft mountain shadows and flying sparks remain behind her', light: 'strong rim light, soft facial fill, polished metal highlights', beat: 'Confirm identity, emotion, and battle decision.', reason: 'A close-up gives the audience emotional attachment before the action escalates.' },
-      { title: '武器展示', purpose: '武器展示', shot_type: 'weapon close-up', camera: 'low-angle diagonal', composition: 'weapon dominates foreground, character partially cropped behind it', movement: 'handheld tracking', lens: 'wide dynamic lens', subject_ratio: 0.62, effect_ratio: 0.38, emotion: 'danger rising', rhythm: 'fast ignition', action: 'the weapon sweeps across the foreground as the heroine starts her first strike', effects: 'red-blue energy trails, sparks, motion blur, cracked ground fragments', environment: 'battlefield floor breaks under the first acceleration', light: 'hard contrast from weapon energy and backlight', beat: 'Show the tool of power before the full attack.', reason: 'This panel prevents the sequence from becoming only face and body shots.' },
-      { title: '蓄力领域', purpose: '蓄力', shot_type: 'wide shot', camera: 'top-down', composition: 'circular energy field around the heroine, environment organized as rings', movement: 'orbit', lens: 'wide overhead lens', subject_ratio: 0.35, effect_ratio: 0.6, emotion: 'awe', rhythm: 'expanding pressure', action: 'the heroine stands at the center of a growing energy domain, arms and weapon pulling energy inward', effects: 'dual red-blue energy rings, levitating rocks, cracked ground, dust wave moving outward', environment: 'mountain battlefield becomes a readable arena with the character at its center', light: 'bright energy center, darkened edges, cinematic contrast', beat: 'Show the scale of personal power from above.', reason: 'A top-down field view breaks portrait repetition and explains power radius.' },
-      { title: '技能释放', purpose: '技能释放', shot_type: 'medium shot', camera: 'side profile', composition: 'character on one side, energy beam crossing the frame', movement: 'side tracking', lens: 'medium action lens', subject_ratio: 0.45, effect_ratio: 0.65, emotion: 'impact', rhythm: 'sustained pressure', action: 'the heroine drives the weapon forward, shoulders and arms under clear force, body angled into the blast', effects: 'colliding light beams, air distortion, sparks, shockwave slicing through the frame', environment: 'flags, debris, and dust all pushed in the same direction by the blast', light: 'strong red-blue contrast, clear metal highlights, compressed shadows', beat: 'Turn stored energy into a visible attack.', reason: 'The sixth panel must deliver action direction and kinetic force.' },
-      { title: '大招爆发', purpose: '大招爆发', shot_type: 'full shot', camera: 'low-angle heroic', composition: 'hero at blast center with debris exploding upward around her', movement: 'freeze frame after impact', lens: 'wide heroic lens', subject_ratio: 0.42, effect_ratio: 0.72, emotion: 'overwhelming power', rhythm: 'peak explosion', action: 'the heroine completes a finishing strike, weapon grounded or extended, stance stable in the center of destruction', effects: 'huge crater, rock rain, dust wall, radial energy burst, bright core light', environment: 'battlefield collapses into a circular impact zone with mountain silhouettes behind', light: 'backlit silhouette plus energy underlight, high-contrast film lighting', beat: 'Peak spectacle and proof of destructive power.', reason: 'This is the trailer-money shot and must feel larger than the previous scenes.' },
-      { title: '余波静默', purpose: '余波', shot_type: 'medium wide shot', camera: 'back view three-quarter', composition: 'character in foreground, damaged world breathing behind her', movement: 'slow pull-back', lens: 'medium-long lens', subject_ratio: 0.5, effect_ratio: 0.25, emotion: 'calm after violence', rhythm: 'release', action: 'the heroine lowers the weapon and looks across the damaged battlefield, hair and ribbons still moving in residual wind', effects: 'dying sparks, fading energy motes, smoke drifting through sunset light', environment: 'broken stones and ancient buildings settle into quiet after the strike', light: 'warm sunset rim light, low saturation shadows', beat: 'Let the audience feel the aftermath.', reason: 'A quiet panel makes the explosion feel heavier by contrast.' },
-      { title: '英雄定格', purpose: '英雄定格', shot_type: 'wide hero shot', camera: 'pull-back', composition: 'small heroic figure framed against mountain and ruins, clear final silhouette', movement: 'pull-back ending', lens: 'wide cinematic lens', subject_ratio: 0.28, effect_ratio: 0.12, emotion: 'epic closure', rhythm: 'final hold', action: 'the heroine stands at the ruined edge with weapon at rest, ready to leave the battlefield', effects: 'faint energy halo in the sky, smoke and dust slowly dispersing', environment: 'snow mountain, ancient town, cratered battlefield, wide negative space for ending mood', light: 'soft dusk glow, atmospheric depth, clean silhouette', beat: 'Close with world scale and heroic solitude.', reason: 'The ending returns to a cinematic wide frame instead of another portrait.' }
-    ]
-    const adventure = [
-      { title: '发现遗迹', purpose: '建立场景', shot_type: 'extreme wide shot', camera: 'high-angle overhead', composition: 'environment first, tiny character in foreground', movement: 'static establishing', lens: 'wide cinematic lens', subject_ratio: 0.12, effect_ratio: 0.08, emotion: 'mystery', rhythm: 'slow reveal', action: 'the heroine sees ancient ruins in the distance and pauses at the mountain path', effects: 'faint rune glow, drifting snow and dust', environment: 'snow mountain, ancient gate, broken stairs, deep valley layers', light: 'cold sky light with warm rim light', beat: 'Reveal the destination and scale of the journey.', reason: 'Start by locating the story in a readable world.' },
-      { title: '靠近入口', purpose: '角色接近目标', shot_type: 'wide shot', camera: 'eye-level follow', composition: 'stairs lead toward a large gate, character moving through foreground', movement: 'follow shot', lens: 'medium-wide lens', subject_ratio: 0.32, effect_ratio: 0.12, emotion: 'anticipation', rhythm: 'steady approach', action: 'the heroine climbs broken stone steps toward the glowing entrance', effects: 'small runes lighting one by one', environment: 'stone stairs, ancient gate, moss, snow, carved walls', light: 'gate glow mixed with cold outdoor light', beat: 'Move from discovery to commitment.', reason: 'The second panel must show travel, not another pose.' },
-      { title: '进入遗迹', purpose: '进入事件', shot_type: 'over-the-shoulder shot', camera: 'push-in', composition: 'door frame surrounds the heroine and dark corridor', movement: 'push-in', lens: 'medium lens', subject_ratio: 0.42, effect_ratio: 0.16, emotion: 'suspense', rhythm: 'threshold moment', action: 'the heroine pushes open the stone door and steps into the dark corridor', effects: 'blue-white light spills through the door crack, dust floats in the beam', environment: 'massive stone door, dark hallway, ancient carvings', light: 'thin volumetric gate light', beat: 'Cross the threshold into the unknown.', reason: 'This panel changes the story space.' },
-      { title: '发现机关', purpose: '发现线索', shot_type: 'close-up', camera: 'low-angle detail', composition: 'hand, mechanism, and rune details fill the frame', movement: 'static detail', lens: 'macro detail lens', subject_ratio: 0.78, effect_ratio: 0.22, emotion: 'alertness', rhythm: 'brief pause', action: 'the heroine touches an ancient mechanism with cautious fingers', effects: 'runes ignite under her hand, tiny particles rise', environment: 'carved wall, metal mechanism, dust, cracked stone', light: 'local rune glow on hand and armor', beat: 'Introduce the puzzle and danger.', reason: 'A detail shot breaks the exploration rhythm and adds information.' },
-      { title: '深入探索', purpose: '深入推进', shot_type: 'medium shot', camera: 'handheld tracking', composition: 'diagonal corridor depth, moving character in mid-frame', movement: 'handheld tracking', lens: 'medium lens', subject_ratio: 0.5, effect_ratio: 0.2, emotion: 'urgency', rhythm: 'quick movement', action: 'the heroine moves through a long corridor as traps and dust activate around her', effects: 'falling debris, rune lines racing along the floor', environment: 'long corridor, stone pillars, trap slots, dust clouds', light: 'alternating shadow and rune light', beat: 'Exploration becomes active danger.', reason: 'The middle must create momentum and risk.' },
-      { title: '发现神器', purpose: '目标揭示', shot_type: 'medium close-up', camera: 'slow push-in', composition: 'artifact glow illuminates face and weapon', movement: 'push-in', lens: 'medium-long lens', subject_ratio: 0.62, effect_ratio: 0.35, emotion: 'wonder', rhythm: 'held reveal', action: 'the heroine sees the floating artifact in the core chamber and reaches toward it', effects: 'gold-blue light streams from the artifact, dust suspended in air', environment: 'core chamber, circular altar, floating artifact, tall ancient walls', light: 'artifact key light on face and armor', beat: 'Reveal the object that drives the story.', reason: 'The target must become emotionally and visually important.' },
-      { title: '触发异象', purpose: '危机爆发', shot_type: 'wide shot', camera: 'orbit', composition: 'artifact and heroine inside a storm of floating stones', movement: 'orbit', lens: 'wide lens', subject_ratio: 0.34, effect_ratio: 0.68, emotion: 'awe and danger', rhythm: 'sudden expansion', action: 'the artifact triggers an energy storm around the heroine', effects: 'levitating stones, circular runes, shockwave, blue-gold vortex', environment: 'core chamber breaks apart under rising energy', light: 'bright artifact center, dark outer chamber', beat: 'Turn discovery into supernatural crisis.', reason: 'This is the adventure version of the spectacle peak.' },
-      { title: '获得神器', purpose: '获得力量', shot_type: 'low-angle hero shot', camera: 'low-angle heroic', composition: 'heroine holding artifact high with vertical light beam', movement: 'crane down', lens: 'heroic wide lens', subject_ratio: 0.68, effect_ratio: 0.45, emotion: 'triumph', rhythm: 'power lock', action: 'the heroine grips the artifact and absorbs its power into weapon and armor', effects: 'light beam, energy ribbons, glowing runes around body', environment: 'altar fragments and floating stones frame the hero pose', light: 'strong upward glow and rim light', beat: 'The character claims the story reward.', reason: 'The eighth panel turns the goal into character power.' },
-      { title: '离开遗迹', purpose: '收束结尾', shot_type: 'wide shot', camera: 'pull-back', composition: 'heroine exits ruins into open mountain light', movement: 'pull-back ending', lens: 'wide cinematic lens', subject_ratio: 0.24, effect_ratio: 0.12, emotion: 'quiet victory', rhythm: 'final hold', action: 'the heroine leaves the ruins with the artifact, looking back once before walking away', effects: 'faint artifact glow, settling dust, distant rune light fading', environment: 'ruin entrance, snow mountain, broken gate, dawn sky', light: 'soft dawn light with artifact glow', beat: 'Close the adventure with a clear before-and-after feeling.', reason: 'The ending restores world scale and story resolution.' }
-    ]
-    const character = [
-      { title: '世界开场', purpose: '建立角色气场', shot_type: 'wide shot', camera: 'low-angle heroic', composition: 'hero silhouette against signature environment', movement: 'static establishing', lens: 'wide lens', subject_ratio: 0.35, effect_ratio: 0.18, emotion: 'iconic', rhythm: 'slow reveal', action: 'the character stands in their signature world with costume silhouette readable', effects: 'subtle aura and atmospheric particles', environment: 'signature environment matching the reference art style', light: 'dramatic rim light', beat: 'Create an iconic first impression.', reason: 'A PV needs instant identity and world tone.' },
-      { title: '服装细节', purpose: '服装展示', shot_type: 'medium shot', camera: 'eye-level', composition: 'costume materials and silhouette clearly visible', movement: 'push-in', lens: 'medium lens', subject_ratio: 0.72, effect_ratio: 0.1, emotion: 'premium', rhythm: 'clean display', action: 'the character turns slightly to reveal costume layers and materials', effects: 'small material highlights and particles', environment: 'simple depth background', light: 'soft key light and rim highlights', beat: 'Show costume quality.', reason: 'Character PV must sell design details.' },
-      { title: '表情特写', purpose: '人物特写', shot_type: 'close-up', camera: 'eye-level three-quarter', composition: 'face dominates frame with clear eyes', movement: 'push-in', lens: 'long lens shallow depth', subject_ratio: 0.9, effect_ratio: 0.08, emotion: 'confidence', rhythm: 'pause', action: 'the character looks toward camera with controlled expression', effects: 'eye highlights and small floating particles', environment: 'blurred signature background', light: 'soft face light plus rim', beat: 'Lock emotional identity.', reason: 'The audience must remember the face.' },
-      { title: '武器亮相', purpose: '道具展示', shot_type: 'weapon close-up', camera: 'diagonal low-angle', composition: 'weapon foreground, character cropped behind', movement: 'handheld tracking', lens: 'wide dynamic lens', subject_ratio: 0.58, effect_ratio: 0.28, emotion: 'threat', rhythm: 'fast reveal', action: 'the character brings the weapon into frame', effects: 'energy glints along weapon edges', environment: 'foreground motion blur and readable background depth', light: 'hard edge light on weapon', beat: 'Show the visual hook.', reason: 'The weapon creates a stronger PV memory point.' },
-      { title: '能力蓄力', purpose: '能力展示', shot_type: 'full shot', camera: 'top-down', composition: 'energy pattern expands under character feet', movement: 'orbit', lens: 'wide lens', subject_ratio: 0.42, effect_ratio: 0.58, emotion: 'awe', rhythm: 'build-up', action: 'the character gathers signature energy while costume and hair react to force', effects: 'energy circles, particles, rising debris', environment: 'ground pattern and space react to power', light: 'center glow and darkened edges', beat: 'Connect character design to power fantasy.', reason: 'PV needs a powerset panel, not just poses.' },
-      { title: '技能瞬间', purpose: '动作展示', shot_type: 'medium shot', camera: 'side profile', composition: 'action line cuts across frame', movement: 'follow shot', lens: 'medium action lens', subject_ratio: 0.48, effect_ratio: 0.62, emotion: 'speed', rhythm: 'impact', action: 'the character releases a signature skill across the frame', effects: 'motion trails, sparks, shockwave, bright arc', environment: 'background streaks and debris show speed', light: 'skill light dominates frame', beat: 'Deliver the kinetic promise.', reason: 'This panel separates a PV from a static card.' },
-      { title: '压轴爆发', purpose: '高光镜头', shot_type: 'wide hero shot', camera: 'low-angle heroic', composition: 'character framed by full power effect', movement: 'freeze frame after impact', lens: 'wide heroic lens', subject_ratio: 0.5, effect_ratio: 0.72, emotion: 'overwhelming', rhythm: 'peak', action: 'the character reaches full power with a decisive pose', effects: 'large signature VFX, debris, light burst, atmospheric distortion', environment: 'world bends around the power effect', light: 'high contrast cinematic lighting', beat: 'The biggest PV shot.', reason: 'This is the commercial key frame.' },
-      { title: '静默回收', purpose: '情绪收束', shot_type: 'medium close-up', camera: 'back view three-quarter', composition: 'profile and costume edges against fading light', movement: 'slow pull-back', lens: 'medium-long lens', subject_ratio: 0.68, effect_ratio: 0.18, emotion: 'calm', rhythm: 'release', action: 'the character relaxes after the power display, looking away from camera', effects: 'fading particles and residual glow', environment: 'settling atmosphere', light: 'warm rim light', beat: 'Give breathing room after spectacle.', reason: 'Contrast makes the previous peak feel stronger.' },
-      { title: '最终定格', purpose: '英雄定格', shot_type: 'hero shot', camera: 'eye-level', composition: 'clean final pose with readable silhouette and negative space', movement: 'final hold', lens: 'medium-wide lens', subject_ratio: 0.62, effect_ratio: 0.2, emotion: 'iconic closure', rhythm: 'hold', action: 'the character holds a final confident pose with weapon and costume clearly readable', effects: 'controlled aura and signature particles', environment: 'clean signature background', light: 'polished key light and rim light', beat: 'End on a marketable character image.', reason: 'The last frame must be usable as a PV ending.' }
-    ]
-    const product = [
-      { title: '场景建立', purpose: '建立使用场景', shot_type: 'wide shot', camera: 'eye-level', composition: 'product or interface in real work context', movement: 'static establishing', lens: 'clean wide lens', subject_ratio: 0.28, effect_ratio: 0.02, emotion: 'clarity', rhythm: 'calm', action: 'show the product inside its practical environment', effects: 'minimal UI glow only', environment: 'organized workspace with clean depth', light: 'neutral studio lighting', beat: 'Explain where this product lives.', reason: 'Product storyboard starts with context.' },
-      { title: '问题出现', purpose: '展示痛点', shot_type: 'medium shot', camera: 'eye-level', composition: 'user or asset problem visible beside interface', movement: 'push-in', lens: 'medium lens', subject_ratio: 0.45, effect_ratio: 0.02, emotion: 'problem awareness', rhythm: 'setup', action: 'show the pain point that the product will solve', effects: 'subtle highlight on problem area', environment: 'same workspace, more focused', light: 'soft practical lighting', beat: 'Make the user need clear.', reason: 'Without a pain point the feature demo has no story.' },
-      { title: '功能入口', purpose: '入口展示', shot_type: 'close-up', camera: 'eye-level', composition: 'button or control is the visual focus', movement: 'push-in', lens: 'detail lens', subject_ratio: 0.82, effect_ratio: 0.02, emotion: 'precision', rhythm: 'short pause', action: 'highlight the feature entry point', effects: 'clean focus ring or light accent', environment: 'interface surrounding stays readable', light: 'flat readable UI light', beat: 'Show exactly what starts the workflow.', reason: 'Product stories need actionable clarity.' },
-      { title: '输入意图', purpose: '用户意图', shot_type: 'medium close-up', camera: 'over-the-shoulder', composition: 'prompt field and preview visible together', movement: 'static detail', lens: 'medium lens', subject_ratio: 0.68, effect_ratio: 0.02, emotion: 'control', rhythm: 'input', action: 'show the user entering one short instruction', effects: 'minimal cursor or field highlight', environment: 'same interface', light: 'clean UI light', beat: 'Reduce perceived operation cost.', reason: 'This panel proves the workflow is simple.' },
-      { title: '系统分析', purpose: '处理过程', shot_type: 'wide shot', camera: 'top-down', composition: 'workflow states arranged as a clear process', movement: 'orbit', lens: 'clean wide lens', subject_ratio: 0.35, effect_ratio: 0.12, emotion: 'capable', rhythm: 'progress', action: 'show analysis and planning happening inside the system', effects: 'controlled data light and progress motion', environment: 'interface plus generated visual modules', light: 'cool technical lighting', beat: 'Make invisible AI work visible.', reason: 'A process panel builds trust.' },
-      { title: '结果生成', purpose: '生成结果', shot_type: 'medium shot', camera: 'eye-level', composition: 'main output appears large with secondary items around it', movement: 'push-in', lens: 'medium lens', subject_ratio: 0.58, effect_ratio: 0.1, emotion: 'reveal', rhythm: 'payoff', action: 'show the first successful output forming', effects: 'subtle reveal glow', environment: 'same interface, output area dominant', light: 'output glow plus neutral UI', beat: 'Deliver the result.', reason: 'The viewer must see value, not just process.' },
-      { title: '对比提升', purpose: '价值证明', shot_type: 'split composition wide shot', camera: 'eye-level', composition: 'before and after clearly compared', movement: 'static comparison', lens: 'neutral lens', subject_ratio: 0.5, effect_ratio: 0.04, emotion: 'confidence', rhythm: 'comparison', action: 'show improvement against the original state', effects: 'simple highlight on improved result', environment: 'clean comparison layout', light: 'balanced readable light', beat: 'Prove quality improvement.', reason: 'Product storytelling needs evidence.' },
-      { title: '编辑控制', purpose: '可控性展示', shot_type: 'close-up', camera: 'over-the-shoulder', composition: 'selected result and edit control in same frame', movement: 'handheld tracking', lens: 'detail lens', subject_ratio: 0.74, effect_ratio: 0.02, emotion: 'agency', rhythm: 'fine-tune', action: 'show one result being selected and edited', effects: 'minimal selection highlight', environment: 'interface stays restrained', light: 'neutral interface lighting', beat: 'Show that users can adjust the result.', reason: 'Control matters more than a magic demo.' },
-      { title: '完成交付', purpose: '最终交付', shot_type: 'wide shot', camera: 'pull-back', composition: 'finished output centered with export affordance visible', movement: 'pull-back ending', lens: 'clean wide lens', subject_ratio: 0.42, effect_ratio: 0.02, emotion: 'completion', rhythm: 'hold', action: 'show the final exported result ready for use', effects: 'subtle completion glow', environment: 'organized final workspace', light: 'clean professional lighting', beat: 'Close on the usable deliverable.', reason: 'The final panel must show outcome, not decoration.' }
-    ]
-    if (type === 'adventure') return adventure
-    if (type === 'product') return product
-    if (type === 'character') return character
-    return battle
-  }
-
-  function storyboardNormalizedRatio(value, fallback) {
-    const text = String(value || '').trim()
-    const number = /%$/.test(text) ? Number(text.replace(/%$/, '')) / 100 : Number(value)
-    const normalized = Number.isFinite(number) && number > 1 ? number / 100 : number
-    const base = Number.isFinite(normalized) ? normalized : fallback
-    return Math.max(0.08, Math.min(0.95, base))
-  }
-
-  function storyboardNormalizePlannerField(value) {
-    return String(value || '').replace(/\s+/g, ' ').trim()
-  }
-
-  const STORYBOARD_DIRECTOR_SIMPLE_CAMERA_LABELS = new Set(['远景', '中景', '近景', '特写', '全景'])
-
-  function storyboardDirectorCameraIsSimpleLabel(camera) {
-    return STORYBOARD_DIRECTOR_SIMPLE_CAMERA_LABELS.has(storyboardNormalizePlannerField(camera))
-  }
-
-  function storyboardDirectorCameraKind(camera) {
-    const text = storyboardNormalizePlannerField(camera)
-    if (!text) return 'empty'
-    if (/(特写|近景|中近|近距|细节|手部|面部|眼神)/.test(text)) return 'close'
-    if (/(过肩|跟拍|推进|推近|侧面|背影)/.test(text)) return 'motion'
-    if (/(远景|全景|拉远|高机|低机|俯拍|仰拍|广角)/.test(text)) return 'wide'
-    if (/(中景|平视)/.test(text)) return 'medium'
-    return storyboardNormalizePlannerField(text).slice(0, 12) || 'other'
-  }
-
-  function storyboardDirectorVisualBackgroundSignature(plan) {
-    const text = [
-      plan && (plan.title || plan.beat),
-      plan && plan.currentSpace,
-      plan && plan.action
-    ].map(storyboardNormalizePlannerField).filter(Boolean).join(' ')
-    if (!text) return { key: '', label: '' }
-    if (/(家中|庭院|书房|客厅|卧室|房间)/.test(text)) return { key: 'origin_home', label: '家中庭院室内' }
-    if (/(溪边|河边|水边|浅滩|石岸|溪流|河水|湖水|水面)/.test(text)) return { key: 'water_stream', label: '溪边水岸' }
-    if (/(山顶|山巅|高处|山路|山间|山谷|村口|远方|远山|新旅程|新环境|小路|背影)/.test(text)) return { key: 'open_mountain_path', label: '远山山谷背影构图' }
-    return { key: '', label: '' }
-  }
-
-  function storyboardDirectorActionFocusSignature(plan) {
-    const action = storyboardNormalizePlannerField(plan && plan.action)
-    const beat = storyboardNormalizePlannerField(plan && (plan.title || plan.beat))
-    const texts = [action, beat].filter(Boolean)
-    if (!texts.length) return { key: 'unknown', label: '未知焦点' }
-    for (const text of texts) {
-      if (/(日记|本子|书(?!房|屋|店|馆)|地图|信件|纸张|照片)/.test(text)) return { key: 'record_prop', label: '记录道具' }
-      if (/(旧物|遗物|行李|箱子|背包|包裹)/.test(text)) return { key: 'memory_prop', label: '旧物行李' }
-      if (/(小鹿|小狗|动物|野兽)/.test(text)) return { key: 'animal', label: '动物互动' }
-      if (/(老者|老人|旅伴|同伴|伙伴|家人|村民)/.test(text)) return { key: 'person_interaction', label: '人物互动' }
-      if (/(倒木|断桥|溪流|障碍|险路|岔路|两条路|道路)/.test(text)) return { key: 'route_obstacle', label: '道路阻碍' }
-      if (/(翻开|翻阅|阅读|记录|写下|递给|接过|包扎|救助|扶起|放下|拾起|捡起|握住|整理|放入|埋下|埋进|拨开|种下|追赶)/.test(text)) return { key: 'visible_hand_action', label: '手部动作' }
-      if (/(背影|前行|踏上|离开|出发|启程|山路|小路)/.test(text)) return { key: 'journey_body', label: '旅途身体动线' }
-      if (/(站在|远望|回望|面对|选择|决定)/.test(text)) return { key: 'standing_choice', label: '站立选择' }
-    }
-    const semantic = storyboardDirectorSemanticEvent(plan)
-    if (semantic && semantic.key) return { key: semantic.key, label: semantic.label || semantic.key }
-    return { key: storyboardNormalizePlannerField(plan && plan.action || plan && plan.title || '').slice(0, 12) || 'event', label: '剧情动作' }
-  }
-
-  function storyboardDirectorRealCameraSignature(plan) {
-    const cameraKind = storyboardDirectorCameraKind(plan && plan.camera)
-    const focus = storyboardDirectorActionFocusSignature(plan)
-    const background = storyboardDirectorVisualBackgroundSignature(plan)
-    return {
-      key: [cameraKind, focus.key, background.key || 'space'].join('|'),
-      label: [cameraKind, focus.label, background.label].filter(Boolean).join('/')
-    }
-  }
-
-  function storyboardDirectorCameraDiversityStats(plans) {
-    const list = Array.isArray(plans) ? plans : []
-    const signatures = []
-    const simpleIndexes = []
-    const repeatPairs = []
-    const seen = new Map()
-    list.forEach((plan, index) => {
-      const signature = storyboardDirectorRealCameraSignature(plan || {})
-      if (signature.key) {
-        signatures.push(signature.key)
-        if (seen.has(signature.key) && index < 8) {
-          const previous = seen.get(signature.key)
-          repeatPairs.push({ first: previous.index, index, label: signature.label || previous.label })
-        } else {
-          seen.set(signature.key, { index, label: signature.label })
-        }
-      }
-      if (storyboardDirectorCameraIsSimpleLabel(plan && plan.camera)) simpleIndexes.push(index)
-    })
-    const count = Math.max(1, list.length)
-    let score = Math.round((new Set(signatures).size / count) * 100)
-    if (simpleIndexes.length >= 6) score = Math.min(score, 58)
-    if (repeatPairs.length) score = Math.min(score, 64)
-    return {
-      score: Math.max(0, Math.min(100, score)),
-      simpleCount: simpleIndexes.length,
-      repeatPairs
-    }
-  }
-
-  function storyboardSceneFocusText(value) {
-    return storyboardNormalizePlannerField(value)
-      .replace(/^[,，.。;；:：、\s]+|[,，.。;；:：、\s]+$/g, '')
-      .slice(0, 24)
-  }
-
-  function storyboardSceneFocusLooksEnvironmentOnly(value) {
-    const text = storyboardNormalizePlannerField(value)
-    if (!text) return true
-    const environmentWords = ['雪山', '野花', '道路', '树林', '森林', '建筑', '古镇', '天空', '背景', '光影', '乌云', '山丘', '小路', '废墟', '战场', '地狱', '黄昏', '远方', '风景', '环境']
-    const storyWords = ['离开', '踏上', '发现', '遭遇', '失去', '继续', '获得', '理解', '回望', '迎战', '逼近', '出现', '苏醒', '侵蚀', '扩散', '觉醒', '释放', '终结', '堕落', '降临', '诞生', '倒下', '崩塌', '揭露', '显现', '选择', '接受', '失控', '挣扎', '前行', '冲锋', '攻击', '斩击', '站定', '守住', '望向', '看向', '凝视', '吞噬']
-    return environmentWords.some((word) => text.includes(word)) && !storyWords.some((word) => text.includes(word))
-  }
-
-  function storyboardSceneFocusFromAction(scene) {
-    const director = scene && (scene.directorPlan || scene) || {}
-    const action = storyboardNormalizePlannerField(director.action || scene && scene.action || '')
-    const candidates = [
-      action,
-      `${action} ${scene && scene.title || director.title || ''}`,
-      `${action} ${director.purpose || scene && scene.purpose || ''}`,
-      scene && scene.description,
-      scene && scene.beat
-    ]
-    const focusPatterns = [
-      /(少女|女武神|圣女|战士|主角|巨兽|怪物|敌军|黑暗|力量|真相|目标|同伴|世界|环境|魔王)[^，。；,.!?！？]{0,16}(离开|踏上|发现|遭遇|失去|继续|获得|理解|回望|迎战|逼近|出现|苏醒|侵蚀|扩散|觉醒|释放|终结|堕落|降临|诞生|倒下|崩塌|揭露|显现|选择|接受|失控|挣扎|前行|冲锋|攻击|斩击|站定|守住|望向|看向|凝视|吞噬)/,
-      /(离开|踏上|发现|遭遇|失去|继续|获得|理解|回望|迎战|逼近|出现|苏醒|侵蚀|扩散|觉醒|释放|终结|堕落|降临|诞生|倒下|崩塌|揭露|显现|选择|接受|失控|挣扎|前行|冲锋|攻击|斩击|站定|守住|望向|看向|凝视|吞噬)[^，。；,.!?！？]{0,16}/
-    ]
-    for (const value of candidates) {
-      const text = storyboardNormalizePlannerField(value)
-      if (!text) continue
-      for (const pattern of focusPatterns) {
-        const match = text.match(pattern)
-        const focus = storyboardSceneFocusText(match && match[0])
-        if (focus && !storyboardSceneFocusLooksEnvironmentOnly(focus)) return focus
-      }
-      const parts = text.split(/[，。；,.!?！？、]+/).map(storyboardSceneFocusText).filter(Boolean)
-      const focus = parts.find((part) => part.length >= 4 && !storyboardSceneFocusLooksEnvironmentOnly(part))
-      if (focus) return focus
-    }
-    const fallbackCandidates = [action, scene && scene.title, director.purpose, '本格剧情变化']
-    for (const value of fallbackCandidates) {
-      const focus = storyboardSceneFocusText(value)
-      if (focus && !storyboardSceneFocusLooksEnvironmentOnly(focus)) return focus
-    }
-    return '本格剧情变化'
-  }
-
-  function storyboardSceneFocusKey(value) {
-    return storyboardNormalizePlannerField(value).replace(/[，,。.!！?？；;、:\s]/g, '')
-  }
-
-  function storyboardDifferentSceneFocus(scene, index, previousFocus) {
-    const director = scene && (scene.directorPlan || scene) || {}
-    const action = storyboardNormalizePlannerField(director.action || scene && scene.action || '')
-    const variants = [
-      action,
-      `${action} ${scene && scene.title || director.title || ''}`,
-      `${action} ${director.purpose || scene && scene.purpose || ''}`,
-      `${scene && scene.title || director.title || ''} ${director.purpose || scene && scene.purpose || ''}`,
-      `第${String(index + 1).padStart(2, '0')}格 ${scene && scene.title || director.title || director.purpose || '剧情变化'}`
-    ]
-    const previousKey = storyboardSceneFocusKey(previousFocus)
-    for (const value of variants) {
-      const focus = storyboardSceneFocusText(value)
-      if (focus && storyboardSceneFocusKey(focus) !== previousKey && !storyboardSceneFocusLooksEnvironmentOnly(focus)) return focus
-    }
-    return `第${String(index + 1).padStart(2, '0')}格剧情变化`
-  }
-
-  function storyboardApplySceneFocuses(scenes) {
-    if (!Array.isArray(scenes)) return []
-    let previousFocus = ''
-    return scenes.map((scene, index) => {
-      let sceneFocus = storyboardSceneFocusFromAction(scene)
-      if (storyboardSceneFocusKey(sceneFocus) && storyboardSceneFocusKey(sceneFocus) === storyboardSceneFocusKey(previousFocus)) {
-        sceneFocus = storyboardDifferentSceneFocus(scene, index, previousFocus)
-      }
-      previousFocus = sceneFocus
-      return { ...scene, sceneFocus }
-    })
-  }
-
-  function storyboardVisualEventText(value) {
-    const text = storyboardSceneFocusText(value)
-    if (!text) return '通过行动推动变化'
-    if (text.length >= 8) return text
-    return storyboardSceneFocusText(`${text}推动变化`)
-  }
-
-  function storyboardShotFocusForScene(scene, cameraText, sceneFocus, visualEvent) {
-    const director = scene && (scene.directorPlan || scene) || {}
-    const camera = storyboardNormalizePlannerField(cameraText || director.camera || scene && scene.angle || '')
-    const action = storyboardNormalizePlannerField(director.action || scene && scene.action || '')
-    const focus = storyboardNormalizePlannerField(sceneFocus || visualEvent || action || director.title || scene && scene.title || 'the visible story action')
-    if (/(特写|近景|中近|close|detail|手部|面部|眼神)/i.test(camera)) {
-      return `close framing focuses on the protagonist's visible action and action object: ${focus}; crop around hands, face, prop, animal, or interaction as the action requires, not a generic half-body portrait`
-    }
-    if (/(过肩|over.?shoulder)/i.test(camera)) {
-      return `over-shoulder framing keeps the protagonist and the action object or interaction partner readable: ${focus}`
-    }
-    if (/(跟拍|推进|推近|tracking|push)/i.test(camera)) {
-      return `moving framing follows the protagonist's action direction and makes the story change readable: ${focus}`
-    }
-    if (/(远景|全景|拉远|wide|long|establishing)/i.test(camera)) {
-      return `wide framing shows the protagonist's body scale, path, and changed space while keeping the action legible: ${focus}`
-    }
-    return `frame the protagonist's visible action and action object clearly: ${focus}`
-  }
-
-  function storyboardPushUniqueRealizationRule(rules, rule) {
-    const text = storyboardNormalizePlannerField(rule)
-    if (text && !rules.includes(text)) rules.push(text)
-  }
-
-  function storyboardInvisibleEventCarrierRule(scene) {
-    const director = scene && (scene.directorPlan || scene) || {}
-    const title = storyboardNormalizePlannerField(scene && scene.title || director.title || '')
-    const action = storyboardNormalizePlannerField(director.action || scene && scene.action || '')
-    const visualEvent = storyboardNormalizePlannerField(scene && scene.visualEvent || director.visualEvent || '')
-    const currentSpace = storyboardNormalizePlannerField(director.currentSpace || scene && scene.currentSpace || scene && scene.sceneAnchor || '')
-    const text = `${title} ${action} ${visualEvent} ${currentSpace}`
-    if (!/(风|光|阳光|聆听|感受|对话|指引|迷路|迷失|探索|探险|远望|回望|未来|成长|自我)/.test(text)) return ''
-    return 'if the event uses an invisible or weak force such as wind, light, feeling, exploration, guidance, or being lost, translate it into one visible carrier chosen from the current scene: an object movement, trace, route clue, changed sign, body reaction, map state, partner gesture, obstacle state, or spatial change. The carrier must explain what changed and where the next action comes from; do not render only wind, sunlight, mood, standing, or generic walking'
-  }
-
-  function storyboardEventRealizationRule(scene) {
-    const director = scene && (scene.directorPlan || scene) || {}
-    const title = storyboardNormalizePlannerField(scene && scene.title || director.title || '')
-    const action = storyboardNormalizePlannerField(director.action || scene && scene.action || '')
-    const visualEvent = storyboardNormalizePlannerField(scene && scene.visualEvent || director.visualEvent || '')
-    const currentSpace = storyboardNormalizePlannerField(director.currentSpace || scene && scene.currentSpace || scene && scene.sceneAnchor || '')
-    const text = `${title} ${action} ${visualEvent} ${currentSpace}`
-    const rules = []
-    if (!text.trim()) return ''
-    const carrierRule = storyboardInvisibleEventCarrierRule(scene)
-    if (carrierRule) storyboardPushUniqueRealizationRule(rules, carrierRule)
-    if (/发现|找到|看见|看到|注意到|察觉|翻到|拾到|捡到/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'discovery must show the discovered object, clue, broken route, footprint, sign, or target clearly inside the frame; the protagonist attention must point to it')
-    }
-    if (/回头|回望/.test(text) && /小人影|来路|故乡|身后/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'looking-back event must show the protagonist turned against the walking direction, with the old route, distant figure, or origin clearly visible; do not render only a forward walking pose')
-    }
-    if (/取出|拿出|掏出/.test(text) && /(背包|旧照片|照片|旧物|信件|日记)/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'take-out event must show the object leaving the bag or container, with hands, bag opening, and the object readable as the main action')
-    }
-    if (/压在|松开手|石头下|放下旧物|留下旧物/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'leave-behind event must show the object placed under stone, on ground, or at a clear marker, with the protagonist hand releasing it and the route continuing away')
-    }
-    if (/插在|侧袋|收起.{0,8}野花|野花.{0,8}背包/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'bag-stow event must show the flower or object visibly tucked into the backpack side pocket, not only generic walking or a landscape')
-    }
-    if (/断桥|桥断|阻路|挡路|拦住|堵住|被.{0,6}阻挡|路断|倒木|塌方/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'blocked-route event must show the blocker occupying the path, with the protagonist stopped, rerouting, or physically reacting to the blocked passage')
-    }
-    if (/移除|搬开|推开|拨开|清理|挪开|砍开|打开通路|清出/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'removal event must show hands, body, tool, or partner moving the obstacle, or the obstacle visibly shifted so the route becomes open')
-    }
-    if (/获得|得到|接过|收下|拿到|取回|拾起|捡起|收到|保存/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'gain event must show the acquired object in hand, bag, container, or being accepted from another character')
-    }
-    if (/交换|递给|交给|传递|分享|归还/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'handoff event must show both sides of the exchange, the shared object between hands, and clear giver-receiver direction')
-    }
-    if (/指引|指路|路牌|地图|标记|箭头|岔路|路线/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'guidance event must show a visible clue that belongs to the current world and explains why the next route is chosen; do not force a fixed prop type')
-    }
-    if (/告别|离开|分开|挥手|放下|埋下|丢弃|舍弃/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'farewell or release event must show separation, left-behind object, buried object, or opposite movement directions; avoid a static standing pose')
-    }
-    if (/受伤|伤口|包扎|治疗|救助|扶起|照顾/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'injury or help event must show wound, bandage, support gesture, treatment tool, or the helped character visibly changing state')
-    }
-    if (/跨过|越过|涉水|过溪|过河|小溪|浅滩|溪边|水面/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'crossing event must show water, stones, wet ground, or the body step crossing the obstacle, not just a generic path walk')
-    }
-    if (/种下|埋下|栽下|土坑|石堆/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'planting or burying event must show hand-to-ground action, soil mark, stone pile, seed, or object being placed into the ground')
-    }
-    if (/遇见|遇到|新朋友|老者|陌生人|伙伴|动物|小鹿|小狗|同伴/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'meeting event must show a visible interaction cue such as approach, handoff, pointing, helping, blocking, or shared attention; avoid two characters only standing and talking')
-    }
-    if (/聆听|感受|沐浴|面对|回望|眺望|看向|停下|风声|阳光|未来|挑战|成长|自我/.test(text)) {
-      storyboardPushUniqueRealizationRule(rules, 'weak or atmospheric event must keep light, wind, and mood as atmosphere only; add visible evidence of what it reveals or changes, such as a clue, route, object, partner gesture, or body decision')
-    }
-    if (!rules.length) {
-      storyboardPushUniqueRealizationRule(rules, 'show a visible state change from this event: object position, route choice, obstacle state, handoff, injury/help state, or relationship distance')
-    }
-    return `${rules.slice(0, 3).join(' ')} Grounding only: keep the original event title, action, and scene anchor; do not add a new plot beat or replace the story with generic walking.`
-  }
-
-  function storyboardEventChainCameraForEvent(event, index, currentSpace = '', previousCamera = '') {
-    const text = storyboardNormalizePlannerField(`${event && event.title || ''} ${event && event.action || ''} ${currentSpace || ''}`)
-    const candidates = []
-    const push = (value) => {
-      const camera = storyboardNormalizePlannerField(value)
-      if (camera && !candidates.includes(camera)) candidates.push(camera)
-    }
-    if (/离开故乡|背起.{0,8}背包.{0,8}离开/.test(text)) push('背影离乡')
-    if (/回望故乡|回头看见|小人影/.test(text)) push('回望近景')
-    if (/取出|拿出|掏出|旧照片|旧物/.test(text) && /背包|照片|旧物/.test(text)) push('手部取物')
-    if (/压在|松开手|石头下|放下旧物|留下旧物/.test(text)) push('低角留物')
-    if (/拨开|低垂树枝|树枝|枝叶/.test(text)) push('前景枝叶')
-    if (/选择.{0,8}雪山|通向.{0,8}雪山|岔路|分叉/.test(text)) push('俯拍岔路')
-    if (/插在|侧袋|收起.{0,8}野花|野花.{0,8}背包/.test(text)) push('背包特写')
-    if (/登上.{0,8}(山丘|高处)|回望身后|山丘森林/.test(text)) push('高处回望')
-    if (/走向远山|走向雪山|沿.{0,8}小路.{0,8}雪山/.test(text)) push('背影远山')
-    if (/发现|找到|看见|注意|线索|脚印|地图|标记|残页|王冠|圣徽|武器|道具/.test(text)) push('近景发现')
-    if (/递给|接过|交换|交给|告别|握手|指路|指引|同伴|老者|朋友|旅伴/.test(text)) push('过肩互动')
-    if (/战斗|迎战|斩|击|撞|爆发|释放|压住|倒下|逼近|攻击|冲锋/.test(text)) push(index % 2 ? '侧面冲突' : '低角冲击')
-    if (/跨过|越过|穿过|绕过|奔跑|追赶|踏上|离开|前行|进入|走向/.test(text)) push(index % 2 ? '跟拍推进' : '广角路径')
-    if (/觉醒|侵蚀|堕落|坐上|王座|掌控|变成|变为|身份/.test(text)) push(index % 2 ? '仰拍压迫' : '近景变化')
-    if (/埋下|种下|包扎|修复|清理|推开|拨开|打开/.test(text)) push('手部动作')
-    if (/山顶|高处|终点|胜利|失败|倒下|离别|远方/.test(text)) push('拉远收束')
-    const pool = ['远景建立', '中景动作', '近景物件', '低角推进', '侧面运动', '过肩视角', '俯拍空间', '背影拉远', '特写转折']
-    for (let offset = 0; offset < pool.length; offset += 1) push(pool[(index + offset) % pool.length])
-    const previousKey = storyboardNormalizePlannerField(previousCamera)
-    return candidates.find((item) => item && item !== previousKey) || candidates[0] || '中景动作'
-  }
-
-  function storyboardEventChainFocusedSpace(event, index, fallbackSpace = '') {
-    const title = storyboardNormalizePlannerField(event && event.title || '')
-    const action = storyboardNormalizePlannerField(event && event.action || '')
-    const anchor = storyboardNormalizePlannerField(fallbackSpace || event && event.sceneAnchor || '')
-    const text = `${title} ${action} ${anchor}`
-    if (/离开故乡|背起.{0,8}背包.{0,8}离开/.test(text)) return '故乡小路背包'
-    if (/回望故乡|回头看见|小人影/.test(text)) return '山路回望小人影'
-    if (/取出|拿出|掏出/.test(text) && /旧照片|旧物|照片/.test(text)) return '花坡旧照片近处'
-    if (/压在|松开手|石头下|放下旧物/.test(text)) return '路边石头旧物处'
-    if (/拨开|低垂树枝|树枝|枝叶/.test(text)) return '森林枝叶入口'
-    if (/选择.{0,8}雪山|通向.{0,8}雪山|岔路|分叉/.test(text)) return '雪山岔路口'
-    if (/插在|侧袋|收起.{0,8}野花|野花.{0,8}背包/.test(text)) return '背包野花近处'
-    if (/登上.{0,8}(山丘|高处)|回望身后|山丘森林/.test(text)) return '山丘回望森林'
-    if (/走向远山|走向雪山|沿.{0,8}小路.{0,8}雪山/.test(text)) return '远山开阔小路'
-    return anchor || fallbackSpace || `场景${String(index + 1).padStart(2, '0')}`
-  }
-
-  function storyboardVisualEventHasAny(text, pattern) {
-    return pattern.test(storyboardNormalizePlannerField(text))
-  }
-
-  function storyboardActionLooksConcreteVisualEvent(action) {
-    const text = storyboardNormalizePlannerField(action)
-    if (!text || storyboardSceneFocusLooksEnvironmentOnly(text)) return false
-    const hasSubject = /(少女|女武神|圣女|战士|主角|女孩|少年|家人|村民|老者|老人|旅伴|同伴|伙伴|小鹿|小狗|野兽|巨兽|怪物|敌人|魔王|旧物|信件|日记|武器|花朵|河水|水面)/.test(text)
-    const hasVerb = /(挥手|拥抱|告别|背起|踏上|踏入|走入|走进|停步|蹲下|坐下|起身|奔跑|驾驶|开车|攀过|翻过|翻越|越过|穿过|抓住|扶起|抱起|推开|翻开|翻阅|阅读|记录|打包|放下|丢弃|投入|落入|握紧|抚摸|触摸|触碰|拾起|捡起|找到|递给|接过|交谈|对话|传授|分享|指引|遇见|遇到|偶遇|发现|观察|靠近|迷路|迷失|登上|回望|转身|离开|前行|拔剑|迎战|斩向|击中|倒下|裂开|爬上|逼近|苏醒|扩散|接受|拒绝)/.test(text)
-    const hasInteraction = /(向|与|和|同|拥抱|扶起|抱起|递给|接过|告别|交谈|对话|传授|分享|指引|挥手|斩向|迎战|面对|直面|抚摸|触摸|触碰|握紧|投入|丢弃|放下|翻开|翻阅|观察|抓住|攀过|翻越|越过|穿过|踏入|走入|走进|遇见|遇到|偶遇)/.test(text)
-    return (hasSubject && hasVerb) || hasInteraction
-  }
-
-  function storyboardDeriveVisualEvent(scene) {
-    const director = scene && (scene.directorPlan || scene) || {}
-    const title = storyboardNormalizePlannerField(scene && scene.title || director.title || '')
-    const purpose = storyboardNormalizePlannerField(director.purpose || scene && scene.purpose || '')
-    const action = storyboardNormalizePlannerField(director.action || scene && scene.action || '')
-    if (storyboardActionLooksConcreteVisualEvent(action)) {
-      const actionEvent = storyboardVisualEventText(action)
-      if (actionEvent && !storyboardSceneFocusLooksEnvironmentOnly(actionEvent)) return actionEvent
-    }
-    const text = `${action} ${title} ${purpose}`
-    const has = (pattern, scope = text) => storyboardVisualEventHasAny(scope, pattern)
-    const actionHas = (pattern) => has(pattern, action)
-    const titleHas = (pattern) => has(pattern, title)
-    const phaseText = `${purpose} ${title}`
-    const pickByPurpose = (items) => {
-      for (const item of items) {
-        if (item && item.pattern && has(item.pattern, purpose)) return item.event
-      }
-      return ''
-    }
-    const pickByPhase = (items) => {
-      const fromPurpose = pickByPurpose(items)
-      if (fromPurpose) return fromPurpose
-      for (const item of items) {
-        if (item && item.pattern && has(item.pattern, phaseText)) return item.event
-      }
-      return ''
-    }
-    const actionSpecificEvents = [
-      { pattern: /村民|挥手|告别故乡|告别村|村口/, event: '与村民互相挥手告别' },
-      { pattern: /小狗|狗|宠物/, event: has(/告别|离开/, action) ? '与小狗互相告别' : '停步靠近小狗' },
-      { pattern: /小鹿|鹿/, event: '停步靠近小鹿' },
-      { pattern: /老者|老人|交谈|对话/, event: '与老者交谈' },
-      { pattern: /旅伴|伙伴|同伴|结伴/, event: '与旅伴同行' },
-      { pattern: /花朵|花|仔细观察|观察/, event: has(/花朵|花/, action) ? '观察花朵细节' : '观察关键细节' },
-      { pattern: /旧物.*(河水|水中)|投入.*(河水|水中)|丢入.*(河水|水中)|河水.*旧物/, event: '旧物落入水中' },
-      { pattern: /倒木|断桥|溪流|障碍/, event: '面对路上障碍' },
-      { pattern: /日记|树洞|回忆|过去/, event: '翻开日记回忆过去' },
-      { pattern: /信件.*投入|投入.*信件|投入水中|信件.*水中/, event: '将信件投入水中' },
-      { pattern: /湖边.*坐下|坐下.*湖边|凝视水面|水面/, event: '坐在湖边凝视水面' },
-      { pattern: /发现.*旧物|旧物.*发现|决定丢弃/, event: '发现旧物后握在手中' },
-      { pattern: /河边.*放下|放下.*河边/, event: '在河边放下旧物' },
-      { pattern: /旧物|丢弃|放下|遗物/, event: '放下旧物后继续前行' },
-      { pattern: /迷路|迷失方向|寂静|辨认方向|找不到方向/, event: '停在森林深处辨认方向' },
-      { pattern: /树下|思考/, event: '在树下停步整理思绪' },
-      { pattern: /山巅|山顶|高处|眺望|希望|新程/, event: '登上山巅望向新路' },
-      { pattern: /行囊|背包|山间小路|小路|踏上/, event: '背起行囊踏上小路' },
-      { pattern: /岔路|道路|方向|选择/, event: '停在岔路前选择方向' },
-      { pattern: /河边|溪边|河岸/, event: actionHas(/旧物|丢弃|放下|遗物/) ? '放下旧物后继续前行' : '停在河边整理思绪' }
-    ]
-    for (const item of actionSpecificEvents) {
-      if (item && item.pattern && actionHas(item.pattern)) return item.event
-    }
-    if (has(/黑暗|侵蚀|堕落|魔王|失控|暗纹|暗影|圣女/)) {
-      if (has(/接受/, action)) return '主角伸手接受黑暗'
-      const event = pickByPhase([
-        { pattern: /建立/, event: '黑暗低语逼近主角' },
-        { pattern: /进入/, event: '圣光出现黑色裂痕' },
-        { pattern: /推进|变化/, event: '黑暗纹路爬上手臂' },
-        { pattern: /情绪/, event: '主角按住手臂挣扎' },
-        { pattern: /冲突/, event: '影子开始脱离身体' },
-        { pattern: /升级/, event: '黑色羽毛开始出现' },
-        { pattern: /揭示|最高|高潮/, event: '黑色王冠逐渐形成' },
-        { pattern: /改变|结果|余波/, event: '黑暗沿地面快速扩散' },
-        { pattern: /收束|告别/, event: '主角走向黑暗深处' }
-      ])
-      if (event) return event
-      if (has(/接受|堕落|魔王/)) return '主角伸手接受黑暗'
-      if (has(/挣扎|拒绝|抗拒/)) return '主角按住手臂挣扎'
-      return '黑暗纹路爬上手臂'
-    }
-    if (has(/女武神|巨兽|怪物|敌人|迎战|战斗|终结|毁灭|攻击|冲锋|斩击|战场|威胁|追赶|袭击/)) {
-      const event = pickByPhase([
-        { pattern: /建立/, event: '主角进入战场面对威胁' },
-        { pattern: /进入/, event: '巨兽逼近主角防线' },
-        { pattern: /变化/, event: '主角压低身体准备迎战' },
-        { pattern: /冲突/, event: '主角与威胁正面交锋' },
-        { pattern: /升级/, event: '主角力量在战场增强' },
-        { pattern: /推进/, event: '主角压迫威胁后退' },
-        { pattern: /高潮|最高|终结/, event: has(/力量|释放|毁灭|能量/, action) ? '主角释放力量终结战斗' : '主角完成最后一击' },
-        { pattern: /结果|余波/, event: '威胁倒下结果显现' },
-        { pattern: /收束|告别/, event: '主角在余波中站定' }
-      ])
-      if (event) return event
-      if (has(/终结|毁灭|释放/)) {
-        return has(/力量|释放|毁灭|能量/, action) ? '主角释放力量终结战斗' : '主角完成最后一击'
-      }
-      if (has(/剑|刀|斧|枪|弓|武器|拔剑|挥剑/)) return '主角拔剑迎击巨兽'
-      return has(/巨兽|怪物/) ? '主角迎击逼近巨兽' : '主角冲入冲突中心'
-    }
-    if (has(/选择|道路|岔路|方向|决定|抉择|关键/)) {
-      if (actionHas(/小鹿|鹿/)) return '停步靠近小鹿'
-      if (actionHas(/旧物|丢弃|放下|遗物/)) return '放下旧物后继续前行'
-      const event = pickByPhase([
-        { pattern: /建立|进入/, event: '走到岔路前停下脚步' },
-        { pattern: /情绪/, event: '停步回望不同道路' },
-        { pattern: /冲突|选择|关键|最高/, event: '停在岔路前选择方向' },
-        { pattern: /改变|结果|推进/, event: '选定方向迈步离开' },
-        { pattern: /收束|告别/, event: '沿新道路继续前行' }
-      ])
-      if (event) return event
-      return '停在岔路前选择方向'
-    }
-    if (has(/代价|失去|放下|改变|结果|余波|牺牲/)) {
-      if (actionHas(/河边|溪边|河岸/) && actionHas(/旧物|丢弃|放下|遗物/)) return '在河边放下旧物'
-      const event = pickByPhase([
-        { pattern: /情绪|冲突/, event: '主角握住旧物犹豫' },
-        { pattern: /改变|结果|余波/, event: '放下旧物后继续前行' },
-        { pattern: /收束|告别/, event: '旧物留在身后远去' }
-      ])
-      if (event) return event
-      return '放下旧物后继续前行'
-    }
-    if (has(/告别|离开|远行|启程|踏上|到达/)) {
-      if (actionHas(/村民|挥手|村口/)) return '向村民挥手告别'
-      if (actionHas(/山巅|山顶|高处|眺望|希望|新程/)) return '登上山巅望向新路'
-      const event = pickByPhase([
-        { pattern: /建立|进入/, event: '挥手告别后转身离开' },
-        { pattern: /情绪/, event: '回头望向来时方向' },
-        { pattern: /推进|升级/, event: '沿着道路继续前行' },
-        { pattern: /改变|结果/, event: '放下旧物后继续前行' },
-        { pattern: /收束|告别/, event: '背影逐渐消失在远方' }
-      ])
-      if (event) return event
-      if (has(/告别|离开|启程/)) return '挥手告别后转身离开'
-      return '转身离开并继续远行'
-    }
-    if (has(/探索|寻找|发现|自然|痕迹|调查/)) {
-      if (actionHas(/小鹿|鹿/)) return '停步靠近小鹿'
-      if (actionHas(/日记|树洞|回忆|过去/)) return '翻开日记回忆过去'
-      if (actionHas(/旧物|丢弃|放下|遗物/)) return '放下旧物后继续前行'
-      const event = pickByPhase([
-        { pattern: /进入|建立/, event: '走入陌生小路探索' },
-        { pattern: /情绪/, event: '停步观察路线后继续前进' },
-        { pattern: /变化|冲突/, event: '发现前方新的痕迹' },
-        { pattern: /推进|升级/, event: has(/森林|树林|枝叶/) ? '拨开枝叶继续探索' : '沿着道路继续探索' },
-        { pattern: /结果|收束|告别/, event: '带着发现继续前行' }
-      ])
-      if (event) return event
-      if (has(/森林|树林|枝叶/)) return '拨开枝叶继续探索'
-      return '停步观察路线后前进'
-    }
-    if (has(/推进|继续|前行|行走|赶路|旅途|穿过|通过/)) {
-      if (actionHas(/行囊|背包|山间小路|小路|踏上/)) return '背起行囊踏上小路'
-      if (actionHas(/旧物|丢弃|放下|遗物/)) return '放下旧物后继续前行'
-      const event = pickByPhase([
-        { pattern: /进入|建立/, event: '背起行囊踏上道路' },
-        { pattern: /情绪/, event: '停步观察路线后继续前进' },
-        { pattern: /升级/, event: '翻越障碍继续前进' },
-        { pattern: /改变|结果/, event: '穿过峡谷继续前行' },
-        { pattern: /收束|告别/, event: '踏上新的道路继续远行' },
-        { pattern: /推进/, event: has(/森林|树林/) ? '加快脚步穿过树林' : has(/道路|旅途|赶路|前行|行走/) ? '沿着道路继续前行' : '主角向镜头前方推进' }
-      ])
-      if (event) return event
-      if (has(/森林|树林/)) return '加快脚步穿过树林'
-      return '加快脚步继续赶路'
-    }
-    if (has(/最高点|高处|山顶|揭示|真相|内心变化|顶点/)) {
-      if (actionHas(/山巅|山顶|高处|眺望|希望|新程/)) return '登上山巅望向新路'
-      if (actionHas(/日记|树洞|回忆|过去/)) return '翻开日记回忆过去'
-      if (titleHas(/山顶|最高点/) || actionHas(/山顶|最高点/)) return '登上山顶俯瞰远方'
-      if (titleHas(/高台/) || actionHas(/高台/)) return '站在高台注视世界'
-      if (titleHas(/终点|旅程/) || actionHas(/终点|旅程/)) return '抵达终点回顾旅程'
-      return '走上高处回望来路'
-    }
-    if (has(/成长|理解|自我|收获|领悟|反思|提升|升级|训练|练习|明白|技能/)) {
-      if (actionHas(/日记|树洞|回忆|过去/)) return '翻开日记回忆过去'
-      if (actionHas(/树下|思考/)) return '在树下停步整理思绪'
-      if (has(/魔法|力量|释放|能量|觉醒/, action)) return '力量在动作中显现'
-      if (has(/技能|提升|升级|训练|练习/)) {
-        if (has(/气场|压迫感|展示|动作/, text) && !has(/技能|训练|练习/, text)) return '主角动作压迫感增强'
-        if (has(/剑|刀|斧|枪|弓|武器|拔剑|挥剑/, action)) return '挥动武器反复训练'
-        if (has(/书|古籍|阅读/, action)) return '阅读书页获得启发'
-        return '练习奔跑攀爬获得成长'
-      }
-      const actionFallback = storyboardVisualEventText(action)
-      if (actionFallback && !storyboardSceneFocusLooksEnvironmentOnly(actionFallback)) return actionFallback
-      return '停步整理情绪获得理解'
-    }
-    const fallback = storyboardVisualEventText(action || title || purpose || '通过行动推动变化')
-    if (storyboardSceneFocusLooksEnvironmentOnly(fallback)) return '通过行动推动变化'
-    return fallback
-  }
-
-  function storyboardApplyVisualEvents(scenes) {
-    if (!Array.isArray(scenes)) return []
-    return scenes.map((scene) => ({
-      ...scene,
-      visualEvent: storyboardVisualEventText(scene && scene.visualEvent || storyboardDeriveVisualEvent(scene))
-    }))
-  }
-
-  function deriveStoryboardSpatialRole(scene, previousScene) {
-    const current = scene && (scene.directorPlan || scene) || {}
-    const previous = previousScene && (previousScene.directorPlan || previousScene) || {}
-    const fieldText = (value) => storyboardNormalizePlannerField(value)
-    const currentText = [
-      scene && scene.title,
-      current.title,
-      current.purpose,
-      current.camera,
-      current.action,
-      scene && scene.action,
-      scene && scene.sceneFocus,
-      scene && scene.visualEvent
-    ].map(fieldText).filter(Boolean).join(' ')
-    const previousText = [
-      previousScene && previousScene.title,
-      previous.title,
-      previous.purpose,
-      previous.camera,
-      previous.action,
-      previousScene && previousScene.action,
-      previousScene && previousScene.sceneFocus,
-      previousScene && previousScene.visualEvent
-    ].map(fieldText).filter(Boolean).join(' ')
-    const has = (pattern, scope = currentText) => pattern.test(scope)
-    const previousHas = (pattern) => pattern.test(previousText)
-    const roadLike = /山路|小路|道路|远山|前行|背影|出发|旅途|踏上/
-    if (has(/告别|故乡|村口|村民|挥手/)) {
-      return '起点告别空间，面向村民或来处挥手，远方道路仅作背景。'
-    }
-    if (has(/山巅|山顶|高处|新程|希望|眺望/)) {
-      return previousHas(/河边|溪边|河岸|水面/) ?
-        '离开河边抵达高处，站在山巅面向未来道路。' :
-        '高处远望空间，站在山巅边缘面向未来方向。'
-    }
-    if (has(/踏上|旅途|小路|行囊|背包|出发/)) {
-      return previousHas(/告别|故乡|村口|村民|挥手/) ?
-        '离开起点进入路上，背向来处沿道路前进，区别告别镜头。' :
-        '前进空间，沿道路朝远方移动，表现已离开起点。'
-    }
-    if (has(/森林|探索|迷路|树下|树洞|日记|小鹿/)) {
-      return previousHas(roadLike) ?
-        '森林内部空间，树木包围主角，弱化开阔山谷和远山。' :
-        '森林内部空间，前后景树木形成包围感。'
-    }
-    if (has(/河边|溪边|河岸|水面|旧物|放下|丢弃/)) {
-      return '河边停留空间，靠近水面和旧物完成动作，不表现成赶路。'
-    }
-    if (previousHas(roadLike) && has(/森林|树林/)) {
-      return '从开阔山路转入森林内部，画面空间明显收窄。'
-    }
-    return ''
-  }
-
-  function storyboardSceneSpatialGroundingRule(scene) {
-    const director = scene && (scene.directorPlan || scene) || {}
-    const previousScene = scene && scene.previousScene || null
-    const previous = previousScene && (previousScene.directorPlan || previousScene) || {}
-    const nextScene = scene && scene.nextScene || null
-    const next = nextScene && (nextScene.directorPlan || nextScene) || {}
-    const currentSpace = storyboardNormalizePlannerField(director.currentSpace || scene && scene.currentSpace || '')
-    const currentAction = storyboardNormalizePlannerField(director.action || scene && scene.action || '')
-    const previousSpace = storyboardNormalizePlannerField(previous.currentSpace || previousScene && previousScene.currentSpace || '')
-    const previousAction = storyboardNormalizePlannerField(previous.action || previousScene && previousScene.action || '')
-    const previousCamera = storyboardNormalizePlannerField(previous.camera || previousScene && previousScene.angle || '')
-    const nextSpace = storyboardNormalizePlannerField(next.currentSpace || nextScene && nextScene.currentSpace || '')
-    const parts = []
-    if (currentSpace) {
-      parts.push(`make currentSpace="${currentSpace}" the dominant readable setting and spatial function of this frame; it must control background layout, walking surface, obstacle placement, foreground objects, and depth`)
-      parts.push('use the reference image for character identity, visual style, time, and atmosphere only; do not copy the reference background composition when it conflicts with currentSpace')
-    }
-    if (previousScene) {
-      const previousContext = [
-        previousSpace ? `space="${previousSpace}"` : '',
-        previousCamera ? `camera="${previousCamera}"` : '',
-        previousAction ? `action="${previousAction}"` : ''
-      ].filter(Boolean).join(', ')
-      parts.push(`avoid repeating the previous scene${previousContext ? ` (${previousContext})` : ''}: change the main background silhouette, path shape, horizon placement, character scale, action direction, and foreground/background balance`)
-    }
-    if (nextScene && nextSpace && nextSpace !== currentSpace) {
-      parts.push(`do not pre-use the next scene's space "${nextSpace}"; this frame should feel like its own step in the route`)
-    }
-    if (currentAction) {
-      parts.push('choose concrete environmental details from this scene action and currentSpace; keep it naturally connected, not a fixed storyboard template')
-    }
-    return parts.join('. ')
-  }
-
-  function storyboardPanelDifferenceRule(scene) {
-    const director = scene && (scene.directorPlan || scene) || {}
-    const previousScene = scene && scene.previousScene || null
-    const previous = previousScene && (previousScene.directorPlan || previousScene) || {}
-    const nextScene = scene && scene.nextScene || null
-    const next = nextScene && (nextScene.directorPlan || nextScene) || {}
-    const currentSpace = storyboardNormalizePlannerField(director.currentSpace || scene && scene.currentSpace || '')
-    const currentAction = storyboardNormalizePlannerField(director.action || scene && scene.action || '')
-    const currentCamera = storyboardNormalizePlannerField(director.camera || scene && scene.angle || '')
-    const previousSpace = storyboardNormalizePlannerField(previous.currentSpace || previousScene && previousScene.currentSpace || '')
-    const previousAction = storyboardNormalizePlannerField(previous.action || previousScene && previousScene.action || '')
-    const previousCamera = storyboardNormalizePlannerField(previous.camera || previousScene && previousScene.angle || '')
-    const nextSpace = storyboardNormalizePlannerField(next.currentSpace || nextScene && nextScene.currentSpace || '')
-    const parts = []
-    const thisEvent = [currentAction, currentSpace, currentCamera].filter(Boolean).join(' / ')
-    if (thisEvent) {
-      parts.push(`this frame's readable difference must be built from: ${thisEvent}`)
-    }
-    if (previousScene) {
-      const previousEvent = [previousAction, previousSpace, previousCamera].filter(Boolean).join(' / ')
-      parts.push(`do not reuse the previous scene's dominant visual center${previousEvent ? ` (${previousEvent})` : ''}; change the main action object, background silhouette, character scale, movement direction, or foreground/background structure`)
-      if (currentSpace && previousSpace && currentSpace === previousSpace) {
-        parts.push('same broad location is allowed only if the spatial function visibly changes: entrance vs path vs obstacle vs handoff point vs high/low level vs exit; one of these differences must be readable')
-      }
-    }
-    if (nextScene && nextSpace && currentSpace && nextSpace === currentSpace) {
-      parts.push('reserve a different visual center for the next scene; this frame must not already look like the next step')
-    }
-    return parts.join('. ')
-  }
-
-  function storyboardFallbackV2Includes(storyText, pattern) {
-    return pattern.test(String(storyText || ''))
-  }
-
-  function storyboardFallbackV2Subject(storyText) {
-    const text = String(storyText || '')
-    if (/女武神/.test(text)) return '女武神'
-    if (/圣女/.test(text)) return '圣女'
-    if (/少女/.test(text)) return '少女'
-    if (/少年/.test(text)) return '少年'
-    if (/女孩/.test(text)) return '女孩'
-    if (/男孩/.test(text)) return '男孩'
-    if (/魔王/.test(text)) return '魔王'
-    return '主角'
-  }
-
-  function storyboardFallbackV2Kind(storyText) {
-    const text = String(storyText || '')
-    if (/圣女|黑暗|侵蚀|堕落|魔王/.test(text)) return 'corruption'
-    if (/离开|故乡|旅途|成长|失去|自我|寻找|远行/.test(text)) return 'journey'
-    if (/迎战|对战|决斗|战斗|反击|受伤|释放|毁灭|终结|追捕|阻止|敌军|敌人|巨兽|怪兽|怪物|黑龙|龙|机甲|竞技场/.test(text)) return 'battle'
-    return 'generic'
-  }
-
-  function storyboardFallbackV2Beats(storyText) {
-    const subject = storyboardFallbackV2Subject(storyText)
-    const kind = storyboardFallbackV2Kind(storyText)
-    const has = (pattern) => storyboardFallbackV2Includes(storyText, pattern)
-    if (kind === 'journey') {
-      return [
-        { title: has(/故乡/) ? '离开故乡' : '离开起点', action: `${subject}离开熟悉的起点，回望过去` },
-        { title: has(/旅途/) ? '踏上旅途' : '踏上新路', action: `${subject}踏上旅途，沿未知道路前行` },
-        { title: '发现世界', action: `${subject}发现更大的世界，目标变得清晰` },
-        { title: '遭遇困难', action: `${subject}遭遇困难，前进方向受到阻挡` },
-        { title: has(/失去/) ? '经历失去' : '迷失方向', action: `${subject}经历失去与迷失，内心开始改变` },
-        { title: '继续寻找', action: `${subject}继续寻找答案，重新选择前行` },
-        { title: has(/成长/) ? '获得成长' : '完成转变', action: `${subject}获得成长，理解痛苦带来的改变` },
-        { title: has(/自我/) ? '理解自我' : '看见答案', action: `${subject}理解真正的自我，放下旧执念` },
-        { title: '继续前行', action: `${subject}继续前行，旅途向远方延伸` }
-      ]
-    }
-    if (kind === 'corruption') {
-      return [
-        { title: has(/圣女/) ? '圣女祈祷' : '信念建立', action: `${subject}在旧信念中祈祷，仍保持平静` },
-        { title: '异常出现', action: `异常黑暗出现，打破${subject}身边的平静` },
-        { title: '信念动摇', action: `${subject}看见真相裂缝，信念开始动摇` },
-        { title: has(/黑暗|侵蚀/) ? '黑暗侵蚀' : '阴影侵蚀', action: `黑暗逐渐侵蚀${subject}，内心挣扎加剧` },
-        { title: '力量诱惑', action: `新的力量显现，诱惑${subject}放弃旧身份` },
-        { title: '主动接受', action: `${subject}主动接受黑暗力量，选择不再回头` },
-        { title: has(/堕落/) ? '堕落完成' : '转变完成', action: `${subject}堕落完成，原本的光辉彻底改变` },
-        { title: has(/魔王/) ? '魔王降临' : '新王降临', action: `新的魔王降临，世界秩序发生变化` },
-        { title: '新王诞生', action: `${subject}以新王身份站定，故事完成收束` }
-      ]
-    }
-    if (kind === 'battle') {
-      return [
-        { title: '战场建立', action: `战场危机建立，${subject}面对远方威胁` },
-        { title: has(/巨兽/) ? '巨兽出现' : '威胁出现', action: `巨兽出现并缓缓逼近，威胁感持续升级` },
-        { title: has(/迎战/) ? '准备迎战' : '准备面对', action: `${subject}准备迎战，身体压低进入战斗状态` },
-        { title: '首次交锋', action: `${subject}与威胁首次交锋，冲突正面展开` },
-        { title: has(/释放|毁灭|力量/) ? '力量升级' : '局势升级', action: `${subject}的力量升级，局势进一步扩大` },
-        { title: '持续推进', action: `${subject}持续推进战斗，压迫威胁向后退去` },
-        { title: has(/毁灭|释放/) ? '终极爆发' : '高潮爆发', action: `${subject}释放毁灭级力量，高潮全面爆发` },
-        { title: has(/终结|结束/) ? '战斗结束' : '结果显现', action: `威胁倒下，战斗结果清晰显现` },
-        { title: '英雄收束', action: `${subject}在余波中站定，故事完成英雄收束` }
-      ]
-    }
-    return [
-      { title: '故事建立', action: `${subject}进入故事起点，主要目标开始显现` },
-      { title: '角色进入', action: `${subject}进入关键情境，行动方向逐渐清楚` },
-      { title: '变化出现', action: `新的变化出现，打破${subject}原有状态` },
-      { title: '冲突展开', action: `${subject}面对冲突，必须做出回应` },
-      { title: '局势升级', action: `局势持续升级，压力向${subject}聚拢` },
-      { title: '主动推进', action: `${subject}主动推进事件，选择继续前行` },
-      { title: '高潮到来', action: `核心矛盾到达高潮，${subject}完成关键选择` },
-      { title: '结果显现', action: `选择带来的结果显现，世界状态发生变化` },
-      { title: '故事收束', action: `${subject}在变化后的世界中完成收束` }
-    ]
-  }
-
-  function storyboardVisualEventIsAtmosphereAction(event) {
-    const text = storyboardNormalizePlannerField([
-      event && event.action,
-      event && event.title,
-      event && event.sceneAnchor
-    ].filter(Boolean).join(' '))
-    if (!text) return false
-    if (event && event.atmosphereAction) return true
-    if (/(未来|成长|自我|希望|勇气|命运|内心|领悟|真谛|挑战)/.test(text) && !/(阳光|晨光|月光|光线|风|雨|雪|雾|黄昏|黎明|夜色|远方|来路|山路|天空|云|水面)/.test(text)) return false
-    return /(沐浴|感受|站在|停在|静立|看向|望向|凝望|回望|迎着|背对|停步).{0,12}(阳光|晨光|月光|光线|风|雨|雪|雾|黄昏|黎明|夜色|远方|来路|山路|天空|云|水面)|(阳光|晨光|月光|风|雨|雪|雾).{0,10}(笼罩|包围|照在|落在|穿过)/.test(text)
-  }
-
-  function storyboardAtmospherePlace(space, index) {
-    const text = storyboardNormalizePlannerField(space)
-    if (/溪|河|水|岸/.test(text)) return '溪边'
-    if (/山顶|高处|山坡/.test(text)) return '高处坡地'
-    if (/山路|小路|岔路/.test(text)) return '山路旁'
-    if (/村口|故乡|起点/.test(text)) return '村口边缘'
-    if (/森林|树林|林间/.test(text)) return '林间空地'
-    return text || '当前空间'
-  }
-
-  function storyboardAtmosphereDirectorFields(event, index, space) {
-    if (!storyboardVisualEventIsAtmosphereAction(event)) return null
-    const action = storyboardNormalizePlannerField(event && event.action)
-    const hint = storyboardNormalizePlannerField(event && event.atmosphereHint)
-    const place = storyboardAtmospherePlace(space || event && event.sceneAnchor, index)
-    const text = `${action} ${hint} ${space || ''}`
-    const actor = storyboardAtmosphereActorFromEvent(event)
-    let sceneAction = `${actor}停在${place}`
-    if (/回望|来路/.test(text)) sceneAction = `${actor}停步回望来路`
-    else if (/看向|望向|凝望|远方|天空|云/.test(text)) sceneAction = `${actor}停步望向远方`
-    else if (/风/.test(text)) sceneAction = `${actor}停在${place}扶住衣摆`
-    else if (/雨/.test(text)) sceneAction = `${actor}停在${place}避雨`
-    else if (/雪/.test(text)) sceneAction = `${actor}停在${place}看向落雪`
-    const environment = /雨/.test(text)
-      ? `${place}被细雨和湿润地面包围，原始氛围事件保留为环境变化：${action}`
-      : /雪/.test(text)
-        ? `${place}有落雪和冷空气层次，原始氛围事件保留为环境变化：${action}`
-        : /风/.test(text)
-          ? `${place}的风吹动发丝、衣摆和草叶，原始氛围事件保留为环境变化：${action}`
-          : /月光|夜色/.test(text)
-            ? `${place}被月光和夜色分层包围，原始氛围事件保留为环境变化：${action}`
-            : `${place}被阳光、空气尘埃和树影包围，原始氛围事件保留为环境变化：${action}`
-    const light = /雨/.test(text)
-      ? '阴雨柔光，湿润反光，低饱和自然光'
-      : /雪/.test(text)
-        ? '冷色散射光，雪面反光，柔和轮廓'
-        : /月光|夜色/.test(text)
-          ? '冷色月光，低照度轮廓光，深色背景层次'
-          : '暖色自然光，柔和逆光，树叶光斑和空气尘埃'
-    return { action: sceneAction, environment, light }
-  }
-
-  function storyboardVisualEventSoftActionPolicy(events) {
-    const list = Array.isArray(events) ? events : []
-    const indexes = []
-    list.forEach((event, index) => {
-      if (storyboardVisualEventIsAtmosphereAction(event)) indexes.push(index)
-    })
-    const adjacentIndexes = []
-    for (let i = 1; i < indexes.length; i += 1) {
-      if (indexes[i] === indexes[i - 1] + 1) adjacentIndexes.push(indexes[i])
-    }
-    const middleIndexes = indexes.filter((index) => index >= 3 && index <= 6)
-    const reasons = []
-    if (indexes.length > 2) reasons.push(`softActionCount>2:${indexes.length}`)
-    if (adjacentIndexes.length) reasons.push(`adjacentSoftActions:${adjacentIndexes.map((index) => `Scene${String(index + 1).padStart(2, '0')}`).join(',')}`)
-    if (middleIndexes.length > 1) reasons.push(`middleSoftActionCount>1:${middleIndexes.length}`)
-    return {
-      softActionCount: indexes.length,
-      softActionOverLimit: reasons.length > 0,
-      softActionOverLimitReasons: reasons,
-      softActionIndexes: indexes.map((index) => index + 1),
-      softActionMiddleCount: middleIndexes.length,
-      softActionAdjacentIndexes: adjacentIndexes.map((index) => index + 1)
-    }
-  }
-
-  function storyboardSoftActionPolicyFromOptions(events, options = {}) {
-    const computed = storyboardVisualEventSoftActionPolicy(events)
-    const incoming = options && options.softActionPolicy && typeof options.softActionPolicy === 'object'
-      ? options.softActionPolicy
-      : null
-    const incomingReasons = Array.isArray(incoming && incoming.softActionOverLimitReasons)
-      ? incoming.softActionOverLimitReasons.map((item) => String(item || '')).filter(Boolean)
-      : []
-    const reasons = Array.from(new Set([
-      ...computed.softActionOverLimitReasons,
-      ...incomingReasons,
-      ...(Array.isArray(options && options.softActionOverLimitReasons) ? options.softActionOverLimitReasons.map((item) => String(item || '')).filter(Boolean) : [])
-    ]))
-    const overLimit = !!(computed.softActionOverLimit || options && options.softActionOverLimit || incoming && incoming.softActionOverLimit || reasons.length)
-    return {
-      ...computed,
-      softActionOverLimit: overLimit,
-      softActionOverLimitReasons: reasons,
-      sourcePolicy: incoming || null
-    }
-  }
-
-  function storyboardForcedSoftActionIndexes(events, policy) {
-    const forced = new Set()
-    const overLimit = !!(policy && policy.softActionOverLimit)
-    if (!overLimit) return forced
-    let acceptedCount = 0
-    let acceptedMiddleCount = 0
-    let previousWasSoft = false
-    ;(Array.isArray(events) ? events : []).forEach((event, index) => {
-      const isSoft = storyboardVisualEventIsAtmosphereAction(event)
-      if (!isSoft) {
-        previousWasSoft = false
-        return
-      }
-      const inMiddle = index >= 3 && index <= 6
-      const allowed = acceptedCount < 2 && !previousWasSoft && (!inMiddle || acceptedMiddleCount < 1)
-      if (!allowed) {
-        forced.add(index)
-      } else {
-        acceptedCount += 1
-        if (inMiddle) acceptedMiddleCount += 1
-      }
-      previousWasSoft = true
-    })
-    return forced
-  }
-
-  function storyboardAtmosphereActorFromEvent(event) {
-    const text = storyboardNormalizePlannerField(event && event.action)
-    const actorHit = text.match(/(主角|少女|少年|女孩|男孩|圣女|女武神|战士|魔王|旅人|角色|她|他|人物)/)
-    if (actorHit && actorHit[1]) return actorHit[1]
-    const match = text.match(/^([^，,。；;\s]{1,10})(?:在|停在|站在|静立|看向|望向|凝望|回望|沐浴|感受|迎着|背对)/)
-    return match && match[1] ? match[1] : '主角'
-  }
-
-  function storyboardForcedAtmosphereDirectorFields(event, index, space) {
-    const base = storyboardAtmosphereDirectorFields(event, index, space)
-    if (!base) return null
-    const actor = storyboardAtmosphereActorFromEvent(event)
-    const action = storyboardNormalizePlannerField(event && event.action)
-    const hint = storyboardNormalizePlannerField(event && event.atmosphereHint)
-    const place = storyboardAtmospherePlace(space || event && event.sceneAnchor, index)
-    const text = `${action} ${hint} ${space || ''}`
-    let forcedAction = `前方路线被光线照出，${actor}沿着路线继续前行`
-    if (/风/.test(text)) forcedAction = `风吹开前方遮挡物，${actor}按住随身物确认方向`
-    else if (/雨/.test(text)) forcedAction = `雨水显出地面痕迹，${actor}沿痕迹绕过阻碍`
-    else if (/雪/.test(text)) forcedAction = `雪地留下新的脚印，${actor}跟随脚印继续前行`
-    else if (/回望|来路/.test(text)) forcedAction = `${actor}回望来路后转身迈向新的路线`
-    else if (/看向|望向|凝望|远方|山路|天空|海/.test(text)) forcedAction = `${actor}确认远处目标，沿${place}继续前行`
-    else if (/阳光|晨光|月光|光线|黄昏|黎明|夜色/.test(text)) forcedAction = `光线照出前方线索，${actor}靠近线索继续行动`
-    return {
-      ...base,
-      action: forcedAction,
-      forcedProgression: true
-    }
-  }
-
-  function storyboardFallbackDirectorV2Plans(storyText, selectedStoryDirection = null, visualEventChain = [], options = {}) {
-    const visualEvents = Array.isArray(visualEventChain)
-      ? visualEventChain.map((item, index) => normalizeStoryboardVisualEvent(item, index)).filter((item) => item.title && item.action)
-      : []
-    if (visualEvents.length >= 6) {
-      const direction = normalizeStoryboardStoryDirection(selectedStoryDirection)
-      const spaces = ['起点附近', '山路途中', '林间小径', '溪边石岸', '林间空地', '山道岔路', '高处坡地', '开阔山谷', '山顶高处']
-      const picked = Array.from({ length: STORYBOARD_SCENE_COUNT }, (_, index) => {
-        if (index === 0) return visualEvents[0]
-        if (index === STORYBOARD_SCENE_COUNT - 1) return visualEvents[visualEvents.length - 1]
-        const sourceIndex = Math.min(visualEvents.length - 1, Math.round((index / (STORYBOARD_SCENE_COUNT - 1)) * (visualEvents.length - 1)))
-        return visualEvents[sourceIndex]
-      })
-      const softActionPolicy = storyboardSoftActionPolicyFromOptions(picked, options)
-      const forcedSoftIndexes = storyboardForcedSoftActionIndexes(picked, softActionPolicy)
-      let previousCamera = ''
-      return picked.map((event, index) => {
-        const currentSpace = storyboardEventChainFocusedSpace(event, index, event.sceneAnchor || spaces[index] || '')
-        const forceSoftProgression = forcedSoftIndexes.has(index)
-        const atmosphere = forceSoftProgression
-          ? storyboardForcedAtmosphereDirectorFields(event, index, currentSpace)
-          : storyboardAtmosphereDirectorFields(event, index, currentSpace)
-        const spaceVisualDetails = storyboardSceneAnchorVisualDetails(currentSpace, event.action, event.title)
-        const directorAction = event.action
-        const camera = storyboardEventChainCameraForEvent({ ...event, action: directorAction }, index, currentSpace, previousCamera)
-        previousCamera = camera
-        const eventRealization = storyboardEventRealizationRule({
-          title: event.title,
-          action: directorAction,
-          visualEvent: event.action,
-          currentSpace
-        })
-        return {
-          scene: index + 1,
-          title: storyboardDirectorTitleFromBeat(event.title || `事件${index + 1}`, `事件${index + 1}`),
-          purpose: event.cause || direction.title || '视觉事件推进',
-          currentSpace,
-          camera,
-          action: directorAction,
-          visualEvent: event.action,
-          eventRealization,
-          environment: atmosphere && atmosphere.environment || spaceVisualDetails,
-          light: atmosphere && atmosphere.light || '',
-          atmosphereAction: !!atmosphere,
-          abstractAction: !!event.abstractAction,
-          needsDirectorConcrete: !!event.needsDirectorConcrete,
-          abstractActionReason: event.abstractActionReason || '',
-          duplicateEventRisk: !!event.duplicateEventRisk,
-          duplicateEventReason: event.duplicateEventReason || '',
-          directorForcedProgression: false,
-          softActionOverLimit: !!(softActionPolicy && softActionPolicy.softActionOverLimit),
-          softActionOverLimitReasons: softActionPolicy && Array.isArray(softActionPolicy.softActionOverLimitReasons) ? softActionPolicy.softActionOverLimitReasons : []
-        }
-      })
-    }
-    const direction = normalizeStoryboardStoryDirection(selectedStoryDirection)
-    if (direction && direction.title && direction.direction) {
-      const subject = storyboardFallbackV2Subject(storyText)
-      const elements = String(direction.elements || '').split(/[、\/,，\s]+/).map((item) => item.trim()).filter(Boolean)
-      const primary = elements[0] || direction.title || '线索'
-      const secondary = elements[1] || '旅途'
-      const third = elements[2] || '倒木'
-      const spaces = ['起点附近', '山路途中', '林间小径', '溪边石岸', '林间空地', '山道岔路', '高处坡地', '开阔山谷', '山顶高处']
-      const beats = [
-        { title: '方向开启', action: `${subject}告别起点带着${primary}离开` },
-        { title: '进入旅途', action: `${subject}背起行囊踏上山路` },
-        { title: '发现线索', action: `${subject}发现${primary}留下的线索` },
-        { title: '遭遇阻碍', action: `${subject}越过${third}继续寻找${secondary}` },
-        { title: '确认方向', action: `${subject}翻开${primary}确认下一步` },
-        { title: '做出选择', action: `${subject}握紧${primary}走进岔路` },
-        { title: '付出代价', action: `${subject}放下${secondary}继续前行` },
-        { title: '结果显现', action: `${subject}发现${direction.title}带来的变化` },
-        { title: '旅途收束', action: `${subject}登上山顶回望旅途` }
-      ]
-      return beats.map((beat, index) => ({
-        scene: index + 1,
-        title: beat.title,
-        purpose: direction.title,
-        currentSpace: spaces[index] || '',
-        camera: STORYBOARD_FALLBACK_V2_CAMERAS[index] || '中景推进',
-        action: beat.action
-      }))
-    }
-    const beats = storyboardFallbackV2Beats(storyText)
-    return Array.from({ length: STORYBOARD_SCENE_COUNT }, (_, index) => {
-      const beat = beats[index] || beats[beats.length - 1] || {}
-      return {
-        scene: index + 1,
-        title: storyboardNormalizePlannerField(beat.title || STORYBOARD_FALLBACK_V2_PURPOSES[index] || '故事推进'),
-        purpose: STORYBOARD_FALLBACK_V2_PURPOSES[index] || '推进',
-        camera: STORYBOARD_FALLBACK_V2_CAMERAS[index] || '中景推进',
-        action: storyboardNormalizePlannerField(beat.action || `${storyboardFallbackV2Subject(storyText)}继续推进剧情`)
-      }
-    })
-  }
-
-  function storyboardDirectorSceneDefaults(index, camera) {
-    const shotTypes = ['远景', '中景', '近景', '中景', '全景', '中景', '低机位全景', '背影中远景', '远景']
-    const compositions = ['环境建立构图', '主体进入构图', '变化聚焦构图', '冲突对峙构图', '局势扩张构图', '行动推进构图', '高潮压迫构图', '结果留白构图', '远景收束构图']
-    const movements = ['固定建立', '缓慢推进', '轻微推近', '推进跟随', '环绕展示', '跟拍推进', '低机位上扬', '背影拉远', '远景拉远']
-    const lenses = ['电影广角镜头', '中焦镜头', '中长焦镜头', '中焦镜头', '广角环绕镜头', '中焦跟拍镜头', '低机位广角镜头', '中长焦背影镜头', '电影广角镜头']
-    const emotions = ['铺垫', '进入', '不安', '压力', '升级', '决心', '高峰', '回落', '收束']
-    const rhythms = ['建立', '进入', '变化', '冲突', '升级', '推进', '高潮', '结果', '收束']
-    const subjectRatios = [0.28, 0.45, 0.58, 0.5, 0.38, 0.52, 0.62, 0.4, 0.3]
-    const effectRatios = [0.08, 0.1, 0.12, 0.16, 0.2, 0.18, 0.28, 0.12, 0.08]
-    return {
-      shot_type: shotTypes[index] || '中景',
-      camera: camera || STORYBOARD_FALLBACK_V2_CAMERAS[index] || '中景推进',
-      composition: compositions[index] || '剧情推进构图',
-      movement: movements[index] || '稳定推进',
-      lens: lenses[index] || '中焦镜头',
-      subject_ratio: subjectRatios[index] || 0.5,
-      effect_ratio: effectRatios[index] || 0.15,
-      emotion: emotions[index] || '剧情推进',
-      rhythm: rhythms[index] || '推进',
-      effects: '只保留服务剧情的环境粒子、光影变化和必要力量表现',
-      environment: '使用 World Context 作为连续背景，不把环境元素改写成剧情节点',
-      light: '电影化自然光影，保持与世界观一致',
-      reason: '本格用于推进九段式剧情结构，保证故事不断链'
-    }
-  }
-
-  const STORYBOARD_V511_PURPOSES = ['建立世界观', '角色登场', '情绪建立', '战斗前奏', '局势升级', '主动进攻', '高潮爆发', '战后余波', '故事收束']
-  const STORYBOARD_V511_SHOT_TYPES = ['远景', '全景', '中景', '中近景', '近景', '特写', '超特写', '武器特写', '环境镜头', '英雄镜头']
-  const STORYBOARD_V511_CAMERAS = ['高机位俯拍', '低机位仰拍', '平视', '侧面跟拍', '过肩镜头', '背影镜头', '推进', '拉远', '环绕', '固定']
-
-  function storyboardV511PurposeForIndex(index) {
-    return STORYBOARD_V511_PURPOSES[index] || STORYBOARD_V511_PURPOSES[STORYBOARD_V511_PURPOSES.length - 1] || ''
-  }
-
-  function storyboardV511StructureTemplate(type) {
-    const battle = [
-      { title: '远景建立战场', camera: '高机位俯拍', action: '主角站上废墟边缘，面对远处威胁' },
-      { title: '低机位战士登场', camera: '低机位仰拍', action: '主角拖动武器向前迈步，披风和发丝被风掀起' },
-      { title: '眼神锁敌', camera: '超特写', action: '主角抬眼锁定目标，手指收紧准备出手' },
-      { title: '拖斧蓄力', camera: '低机位近景', action: '主角压低重心拖动武器蓄力，地面被划出火花' },
-      { title: '能量场展开', camera: '高机位俯拍', action: '主角站在能量场中心举起武器，碎石开始悬浮' },
-      { title: '冲锋突进', camera: '侧面跟拍', action: '主角高速冲刺挥出武器，冲击波撕裂前方' },
-      { title: '终结爆发', camera: '低机位仰拍', action: '主角完成终结一击，巨型光爆和碎石炸开' },
-      { title: '烟尘回身', camera: '背影镜头', action: '主角在烟尘中回身收起武器，残余能量消散' },
-      { title: '英雄收束', camera: '拉远', action: '主角凝视远方准备离开，武器安静垂下' }
-    ]
-    const adventure = [
-      { title: '远景发现遗迹', camera: '远景俯视', action: '主角停在山路上望向远处遗迹，握紧武器准备前进' },
-      { title: '靠近遗迹入口', camera: '跟拍中景', action: '主角沿破碎石阶前进，符文光从脚边逐步亮起' },
-      { title: '过肩进入石门', camera: '过肩推进', action: '主角推开沉重石门，侧身进入幽暗走廊' },
-      { title: '触摸机关蓄势', camera: '低机位近景', action: '主角伸手触碰机关，另一只手护住武器准备应变' },
-      { title: '陷阱中穿行', camera: '手持跟拍', action: '主角快速穿过长廊，躲开落石和亮起的符文线' },
-      { title: '神器光照面庞', camera: '中近景推进', action: '主角靠近悬浮神器，抬手挡住刺眼光芒' },
-      { title: '能量风暴爆发', camera: '俯视环绕', action: '主角站在风暴中心稳住身体，碎石围绕她升起' },
-      { title: '握住神器承力', camera: '低机位英雄镜头', action: '主角握住神器，力量沿手臂汇入武器和铠甲' },
-      { title: '带着神器离开', camera: '远景拉远', action: '主角回望崩塌遗迹后转身离开，神器余光逐渐收束' }
-    ]
-    const character = [
-      { title: '远景角色入场', camera: '远景低机位', action: '主角走入标志性场景，轮廓和武器先被光勾出' },
-      { title: '服装动作展示', camera: '中景推进', action: '主角转身迈步，服装层次和装饰随动作展开' },
-      { title: '眼神特写定调', camera: '面部特写', action: '主角抬眼看向镜头，表情从平静转为压迫' },
-      { title: '武器进入画面', camera: '低机位近景', action: '主角将武器拖入前景，手腕发力带出能量火花' },
-      { title: '能力场展开', camera: '俯视全景', action: '主角站在能量纹路中心，衣摆和发丝被力量托起' },
-      { title: '技能瞬间释放', camera: '侧向跟拍', action: '主角向前释放代表性技能，光轨切过画面' },
-      { title: '压轴特效爆发', camera: '低机位广角', action: '主角在完整特效中完成高光动作，背景被冲击波推开' },
-      { title: '余波中回身', camera: '背身中近景', action: '主角在残光中回身收势，武器缓慢落下' },
-      { title: '最终英雄定格', camera: '中远景定格', action: '主角保持最终姿态面对镜头，标志性轮廓清晰收束' }
-    ]
-    const product = [
-      { title: '场景建立', camera: '远景平视', action: '用户打开工作区并把目标素材放入画面中心' },
-      { title: '问题显现', camera: '中景推进', action: '用户选中需要处理的素材，界面突出当前痛点' },
-      { title: '入口触发', camera: '近景平视', action: '用户点击核心入口，系统准备进入处理流程' },
-      { title: '输入意图', camera: '过肩中景', action: '用户输入一句短指令，预览区保持可见' },
-      { title: '系统规划', camera: '俯视全景', action: '系统把素材、指令和结果位组织成连续流程' },
-      { title: '结果生成', camera: '中景推进', action: '用户观察主结果出现，并与原始素材保持关联' },
-      { title: '对比确认', camera: '平视宽景', action: '用户在前后对比中确认质量提升' },
-      { title: '局部调整', camera: '近景跟随', action: '用户选中结果细节并进行一次微调' },
-      { title: '完成交付', camera: '远景拉远', action: '用户停在最终结果前，准备导出交付物' }
-    ]
-    if (type === 'adventure') return adventure
-    if (type === 'product') return product
-    if (type === 'character') return character
-    return battle
-  }
-
-  function storyboardV511HasLatinText(value) {
-    return /[A-Za-z]/.test(String(value || ''))
-  }
-
-  function storyboardV511EnglishFieldLabel(value) {
-    const key = storyboardNormalizePlannerField(value).toLowerCase().replace(/[.。]$/, '')
-    const labels = {
-      'extreme wide shot': '超远景',
-      'wide shot': '远景',
-      'wide hero shot': '英雄远景',
-      'full shot': '全景',
-      'medium full shot': '中景全身',
-      'medium wide shot': '中远景',
-      'medium shot': '中景',
-      'medium close-up': '中近景',
-      'close-up': '近景特写',
-      'weapon close-up': '武器特写',
-      'hero shot': '英雄镜头',
-      'low-angle hero shot': '低机位英雄镜头',
-      'over-the-shoulder shot': '过肩镜头',
-      'high-angle overhead': '高机位俯拍',
-      'low-angle heroic': '低机位英雄镜头',
-      'low-angle diagonal': '低机位斜向镜头',
-      'eye-level': '平视',
-      'eye-level three-quarter': '平视三分之二机位',
-      'eye-level follow': '平视跟拍',
-      'back view three-quarter': '背影三分之二机位',
-      'side profile': '侧面机位',
-      'top-down': '俯视',
-      'pull-back': '拉远',
-      'slow push-in': '缓慢推进',
-      'push-in': '推进',
-      'side tracking': '侧向跟拍',
-      'handheld tracking': '手持跟拍',
-      'static establishing': '静态建立镜头',
-      'static detail': '静态细节镜头',
-      'slow pull-back': '缓慢拉远',
-      'pull-back ending': '拉远收束',
-      'orbit': '环绕',
-      'freeze frame after impact': '冲击后定格',
-      'wide cinematic lens': '电影广角镜头',
-      'medium lens': '中焦镜头',
-      'medium-long lens': '中长焦镜头',
-      'wide dynamic lens': '动态广角镜头',
-      'wide overhead lens': '俯视广角镜头',
-      'medium action lens': '动作中焦镜头',
-      'wide heroic lens': '英雄广角镜头',
-      'long lens shallow depth of field': '长焦浅景深镜头',
-      'macro detail lens': '微距细节镜头',
-      'mysterious pressure': '神秘压迫',
-      'controlled confidence': '冷静自信',
-      'focused resolve': '专注坚定',
-      'danger rising': '危险逼近',
-      'awe': '震撼敬畏',
-      'impact': '冲击感',
-      'overwhelming power': '压倒性力量',
-      'calm after violence': '战后平静',
-      'epic closure': '史诗收束',
-      'slow tension': '缓慢蓄压',
-      'power gathering': '力量聚集',
-      'short dramatic pause': '短暂停顿',
-      'fast ignition': '快速点燃',
-      'expanding pressure': '压力扩张',
-      'sustained pressure': '持续压迫',
-      'peak explosion': '爆发峰值',
-      'release': '释放回落',
-      'final hold': '最终停顿',
-      'broken stones and ancient buildings settle into quiet after the strike': '破碎石块和古建筑在攻击后逐渐安静',
-      'warm sunset rim light, low saturation shadows': '暖色夕阳轮廓光，低饱和阴影',
-      'a quiet panel makes the explosion feel heavier by contrast': '安静镜头通过反差让爆发更有重量'
-    }
-    return labels[key] || ''
-  }
-
-  function storyboardV511ChineseFieldFallback(field, index, type) {
-    const battle = {
-      title: ['远景建立战场', '低机位战士登场', '眼神锁敌', '拖斧蓄力', '能量场展开', '冲锋突进', '终结爆发', '烟尘回身', '英雄收束'],
-      purpose: STORYBOARD_V511_PURPOSES,
-      shot_type: ['超远景', '中景全身', '近景特写', '武器特写', '俯视远景', '中景', '低机位全景', '中远景', '英雄远景'],
-      camera: ['高机位俯拍', '低机位英雄镜头', '平视三分之二机位', '低机位斜向镜头', '俯视', '侧面机位', '低机位英雄镜头', '背影三分之二机位', '拉远'],
-      composition: ['环境压迫剪影构图', '斜线前景英雄登场构图', '面部与眼神主导构图', '武器前景压迫构图', '环形能量场俯视构图', '侧向冲击线构图', '爆发中心英雄构图', '角色前景与战场余波构图', '远景英雄剪影收束构图'],
-      movement: ['静态建立', '缓慢推进', '镜头推进', '手持跟拍', '环绕', '侧向跟拍', '冲击后定格', '缓慢拉远', '拉远收束'],
-      lens: ['电影广角镜头', '中焦镜头', '长焦浅景深镜头', '动态广角镜头', '俯视广角镜头', '动作中焦镜头', '英雄广角镜头', '中长焦镜头', '电影广角镜头'],
-      emotion: ['神秘压迫', '冷静自信', '专注坚定', '危险逼近', '震撼敬畏', '冲击感', '压倒性力量', '战后平静', '史诗收束'],
-      rhythm: ['缓慢蓄压', '力量聚集', '短暂停顿', '快速点燃', '压力扩张', '持续压迫', '爆发峰值', '释放回落', '最终停顿'],
-      action: ['主角站上废墟边缘，面对远处威胁', '主角拖动武器向前迈步，披风和发丝被风掀起', '主角抬眼锁定目标，手指收紧准备出手', '主角压低重心拖动武器蓄力，地面被划出火花', '主角站在能量场中心举起武器，碎石开始悬浮', '主角高速冲刺挥出武器，冲击波撕裂前方', '主角完成终结一击，巨型光爆和碎石炸开', '主角在烟尘中回身收起武器，残余能量消散', '主角凝视远方准备离开，武器安静垂下'],
-      effect: ['远处能量微光、风沙与尘粒轻微漂浮', '蓝白能量缠绕手臂与武器', '瞳孔反射红蓝能量，背景火星虚化', '红蓝光轨、火星、运动模糊和裂地碎片', '双环能量、悬浮碎石、地裂与外扩尘浪', '光束碰撞、空气扭曲、火花与冲击波', '巨型爆坑、岩石雨、尘墙、放射能量爆发', '残余火星、能量微粒和烟尘在夕光中消散', '天空残留淡淡能量光环，烟尘缓慢散开'],
-      environment: ['雪山、古建筑、破碎战场形成深远空间层次', '风扬起尘土和碎石，远处建筑反射能量光', '柔化的山影和飞散火星留在人物背后', '战场地面在第一次加速下开裂', '山地战场被组织成清晰可读的环形竞技场', '旗帜、碎片和尘土被冲击统一推向同一方向', '战场塌陷成圆形冲击区，远处山体形成剪影', '破碎石块和古建筑在攻击后逐渐安静', '雪山、古镇与破碎战场形成收束远景'],
-      lighting: ['黄昏轮廓光，低饱和色调，强空间雾深', '冷色能量光混合暖色天空轮廓光', '强轮廓光、柔和面光和金属高光', '武器能量与逆光形成硬对比', '明亮能量中心、暗边和电影反差', '强红蓝对比、清晰金属高光和压缩阴影', '逆光剪影叠加能量底光，高反差电影光', '暖色夕阳轮廓光，低饱和阴影', '柔和黄昏辉光、空气透视和清晰剪影'],
-      reason: ['第一格先证明这是电影序列，而不是单张角色图', '角色带着意图和力量进入故事', '动作升级前先建立观众对角色的情绪连接', '武器镜头避免序列只停留在人脸和身体展示', '俯视能量场打破肖像重复，并说明力量范围', '第六格必须交代攻击方向和运动力量', '这是整组镜头的商业高光，必须大于前面所有镜头', '安静镜头通过反差让爆发更有重量', '结尾回到电影远景，避免再次变成单人肖像']
-    }
-    const generic = {
-      title: ['远景定场', '主体入场', '情绪确认', '关键物展示', '能量展开', '动作推进', '高光爆发', '余波回收', '故事收束'],
-      purpose: STORYBOARD_V511_PURPOSES,
-      shot_type: ['超远景', '全景', '近景特写', '细节特写', '俯视远景', '中景', '英雄全景', '中近景', '远景'],
-      camera: ['高机位俯拍', '平视跟拍', '平视三分之二机位', '低机位细节镜头', '俯视环绕', '侧面跟拍', '低机位英雄镜头', '背影三分之二机位', '拉远'],
-      composition: ['环境定场构图', '主体引导构图', '面部情绪构图', '前景细节构图', '俯视结构构图', '动作线构图', '高光中心构图', '余波留白构图', '远景收束构图'],
-      movement: ['静态建立', '跟随推进', '镜头推进', '静态细节', '环绕', '侧向跟拍', '冲击后定格', '缓慢拉远', '拉远收束'],
-      lens: ['电影广角镜头', '中焦镜头', '长焦浅景深镜头', '微距细节镜头', '俯视广角镜头', '动作中焦镜头', '英雄广角镜头', '中长焦镜头', '电影广角镜头'],
-      emotion: ['神秘', '期待', '警觉', '紧张', '震撼', '推进感', '高光感', '平静', '收束感'],
-      rhythm: ['缓慢揭示', '稳定推进', '短暂停顿', '信息聚焦', '突然扩张', '快速推进', '峰值爆发', '释放回落', '最终停顿'],
-      action: ['主角进入场景并确认目标方向', '主角向目标前进，身体动作带出明确意图', '主角抬眼确认目标，情绪发生变化', '主角触碰或举起关键物，画面聚焦细节', '主角站在力量中心，周围空间开始变化', '主角主动推进事件，动作线贯穿画面', '主角完成高光动作，画面进入最大视觉强度', '主角在余波中回身，动作逐渐收住', '主角停在结尾画面中，故事完成收束'],
-      effect: ['少量环境粒子和远处微光', '局部光效开始响应角色动作', '眼部高光和背景粒子强化情绪', '关键物表面出现光痕和火星', '环形能量、悬浮碎片和外扩尘浪', '冲击波、光轨和运动模糊推动节奏', '大范围光爆、碎片和高反差烟尘', '残余粒子和烟尘缓慢消散', '淡淡余光与空气层次保留尾韵'],
-      environment: ['场景空间被清楚建立，主体处在可读位置', '前景和背景随主体动作形成层次', '背景被压暗或虚化以突出情绪', '局部环境围绕关键物形成视觉聚焦', '空间被能量或事件组织成清晰结构', '环境元素被动作方向统一推动', '场景在高光冲击下产生明确变化', '受影响的环境逐渐安静下来', '世界尺度重新打开，故事完成收束'],
-      lighting: ['自然环境光与轮廓光建立空间', '主体边缘光增强登场感', '柔和面光与眼部高光突出情绪', '局部高光强调材质和细节', '中心光源压暗画面边缘', '动作光效形成方向性明暗', '高反差光爆制造峰值视觉', '暖色余光和低饱和阴影收住节奏', '柔和远景光保持清晰剪影'],
-      reason: ['开场先建立世界和镜头尺度', '第二格让主体进入剧情而不是停留展示', '特写负责建立情绪连接', '细节镜头提供信息变化', '俯视结构解释事件范围', '动作镜头推动故事进入主动阶段', '高光镜头承担商业视觉峰值', '余波镜头用反差放大前一格冲击', '结尾用远景完成电影式收束']
-    }
-    const source = type === 'battle' ? battle : generic
-    const values = source[field] || generic[field] || []
-    return values[index % Math.max(1, values.length)] || ''
-  }
-
-  function storyboardV511ChineseDirectorField(value, field, index, type) {
-    const text = storyboardNormalizePlannerField(value)
-    if (text && !storyboardV511HasLatinText(text)) return text
-    const mapped = text ? storyboardV511EnglishFieldLabel(text) : ''
-    if (mapped) return mapped
-    return storyboardV511ChineseFieldFallback(field, index, type) || text
-  }
-
-  function storyboardV511LooksEnvironmentOnly(text) {
-    const value = storyboardNormalizePlannerField(text)
-    if (!value) return true
-    if (/雪山静止|雪山背景|建筑静止|光晕闪烁|背景展示|环境展示|物体清单|独立环境|still snow mountain|static building|halo flicker|background display|object list|environment-only/i.test(value)) return true
-    return /^(雪山|建筑|光晕|背景|环境|山脉|天空|云层)(静止|闪烁|展示|独立|空镜)?$/i.test(value) ||
-      /^(mountain|building|halo|background|environment|ruins|artifact)\s*(still|static|display|alone|only)?$/i.test(value)
-  }
-
-  function storyboardV511LooksObjectListTitle(text) {
-    const value = storyboardNormalizePlannerField(text)
-    if (!value) return true
-    if (storyboardV511LooksEnvironmentOnly(value)) return true
-    return /^(雪山|大斧|少女|华丽盔甲|神秘光晕|建筑|光环|背景|武器|盔甲|特效|爆炸|升级|攻击|效果|展示|定格|技能|光效|展示技能|展示效果|展示动作|展示攻击|展示爆炸)$/i.test(value)
-  }
-
-  function storyboardV511LooksWeakAction(text) {
-    const value = storyboardNormalizePlannerField(text)
-    if (!value) return true
-    return /^(少女)?站立$|^展示$|^握紧$|展示技能|展示效果|展示动作|展示攻击|展示爆炸|展示光效|展示特效|光晕闪烁|背景静止|建筑静止|环境展示|物体展示/i.test(value)
-  }
-
-  function storyboardV53LooksObviousOffTopic(text) {
-    const value = storyboardNormalizePlannerField(text)
-    if (!value) return false
-    if (storyboardV511LooksEnvironmentOnly(value)) return true
-    return /^(雪山|山脉|山峰|野花|道路|树林|森林|建筑|天空|云层|背景|风景|场景|环境|光影|光效|光晕|特效|展示|效果)$/i.test(value)
-  }
-
-  function storyboardV511ContainsEnvironmentSubject(text) {
-    const value = storyboardNormalizePlannerField(text)
-    if (!value) return false
-    return /雪山|山脉|山峰|建筑|屋檐|宫殿|神社|寺庙|楼阁|遗迹|废墟|风景|天空|云层|背景|光效|光晕|光环|特效|日式建筑|scene|background|mountain|building|sky|landscape|ruins/i.test(value)
-  }
-
-  function storyboardV511LooksWeakPurpose(text) {
-    const value = storyboardNormalizePlannerField(text)
-    if (!value) return true
-    return /^(展示|效果|技能|动作|攻击|升级|定格|光效|爆炸|展示技能|展示效果|展示动作|展示攻击|展示爆炸)$/i.test(value)
-  }
-
-  function storyboardV511HasProtagonistAction(text) {
-    const value = storyboardNormalizePlannerField(text)
-    if (!value || storyboardV511LooksEnvironmentOnly(value) || storyboardV511LooksWeakAction(value)) return false
-    const hasActor = /主角|少女|女战士|女武士|战士|角色|她|他|人物|heroine|hero|protagonist|character|warrior|fighter|user/i.test(value)
-    const hasMotion = /站|走|迈|拖|抬|举|握|持|手持|看|凝视|盯|锁定|登场|转身|回身|回望|冲刺|突进|挥|挥斧|斩|劈|击|攻击|释放|爆发|展开|蓄力|发力|跃|跃起|跳|落|收起|离开|进入|靠近|推动|触摸|抓住|吸收|打开|点击|输入|选中|确认|调整|导出|眼神|变冷|压迫|愤怒|坚定|警觉|准备|step|drag|raise|hold|look|turn|dash|strike|swing|release|charge|enter|walk|touch|grip|select|click|type|export/i.test(value)
-    if (storyboardV511ContainsEnvironmentSubject(value) && (!hasActor || !hasMotion)) return false
-    return hasActor && hasMotion
-  }
-
-  function storyboardV52HasStoryAction(text) {
-    const value = storyboardNormalizePlannerField(text)
-    if (!value || storyboardV511LooksEnvironmentOnly(value) || storyboardV511LooksWeakAction(value)) return false
-    const hasActor = /主角|少女|少年|女孩|男孩|圣女|女武神|旅人|母亲|父亲|孩子|恋人|战士|角色|她|他|人物|魔王|heroine|hero|protagonist|character|traveler|saint|queen|king|user/i.test(value)
-    const hasStoryVerb = /离开|启程|出发|踏上|寻找|发现|看见|遇见|遭遇|失去|继续|前行|选择|领悟|理解|告别|远行|成长|改变|回望|停下|哭|笑|沉默|挣扎|侵蚀|失控|堕落|成为|面对|进入|穿过|靠近|远离|守护|放弃|接受|拥抱|等待|醒来|迎战|对抗|觉醒|释放|终结|走|站|看|凝视|转身|回身|握|放下|抬头|低头|step|leave|start|travel|find|discover|lose|choose|realize|farewell|change|fall|become|face|fight|release|end/i.test(value)
-    if (storyboardV511ContainsEnvironmentSubject(value) && !hasActor && !hasStoryVerb) return false
-    return hasStoryVerb || (hasActor && value.length >= 4)
-  }
-
-  function storyboardV53HasStoryProgression(text) {
-    const value = storyboardNormalizePlannerField(text)
-    if (!value || storyboardV511LooksEnvironmentOnly(value) || storyboardV511LooksWeakAction(value)) return false
-    const progressionTerms = /离开|启程|出发|踏上|寻找|发现|看见|遇见|遭遇|失去|继续|前行|选择|领悟|理解|告别|远行|成长|改变|回望|停下|沉默|挣扎|侵蚀|失控|堕落|成为|面对|进入|穿过|靠近|远离|守护|放弃|接受|拥抱|迎战|对抗|觉醒|释放|终结|敌人|巨兽|怪物|敌军|危险|逼近|出现|抵达|苏醒|倒下|真相|揭露|目标|同伴|世界|变化|环境|崩塌|黑暗|扩散|力量|代价|显现|观察|等待|警惕|准备|犹豫|思考|approach|arrive|reveal|collapse|awaken|spread|appear|threat|enemy|monster/i
-    if (progressionTerms.test(value)) return true
-    return value.length >= 8 && !/^(站立|静止|展示|效果|收场|结束)$/i.test(value)
-  }
-
-  function storyboardV53IsPassiveStoryWarning(text) {
-    const value = String(text || '')
-    return /观察|等待|警惕|准备|犹豫|思考|逼近|危险出现|敌人出现/.test(value)
-  }
-
-  function storyboardV52NonStoryFallback(field, index) {
-    const pools = {
-      shot_type: ['远景', '中景', '特写', '中近景', '全景', '近景', '中景', '背影镜头', '远景'],
-      camera: ['平视', '推进', '特写', '侧面跟拍', '高机位俯拍', '过肩镜头', '低机位仰拍', '拉远', '固定'],
-      composition: ['环境与主体关系清晰', '主体动线引导构图', '情绪特写构图', '前景压迫与空间纵深', '转折中心构图', '选择对比构图', '高光留白构图', '告别背影构图', '远景收束构图'],
-      movement: ['静态建立', '缓慢推进', '镜头推进', '跟随移动', '环绕观察', '侧向跟拍', '轻微上摇', '缓慢拉远', '固定停顿'],
-      lens: ['电影广角镜头', '中焦镜头', '长焦浅景深镜头', '中焦镜头', '广角镜头', '中长焦镜头', '英雄广角镜头', '中长焦镜头', '电影广角镜头'],
-      emotion: ['铺垫', '期待', '触动', '压力', '转折', '选择', '领悟', '告别', '余韵'],
-      rhythm: ['缓慢建立', '稳定推进', '短暂停顿', '压力累积', '情绪转折', '主动选择', '高光确认', '释放回落', '最终停顿'],
-      effect: ['少量环境粒子和空气层次', '细微光影随动作变化', '背景虚化突出情绪', '环境细节强化处境', '光影对比提示转折', '局部高光强调选择', '柔和光效突出领悟', '余光和尘埃慢慢沉降', '远处光线保留尾韵'],
-      environment: ['故事发生地被清楚建立', '路径和远方目标保持可读', '背景退后突出人物情绪', '环境压力围绕角色增强', '空间变化呼应剧情转折', '前后景形成选择对比', '环境为人物领悟留出空间', '场景进入安静的告别状态', '世界尺度重新打开并收束'],
-      lighting: ['自然环境光与空间层次', '柔和侧光和轮廓光', '浅景深面光突出情绪', '压低环境光形成压力', '明暗分界提示转折', '方向性光线强调选择', '柔和高光突出领悟', '暖色余光和低饱和阴影', '远景柔光和清晰剪影'],
-      reason: ['开场先建立人物所处世界', '第二格让人物真正进入旅程', '特写承接人物内心变化', '中段用空间压力推动冲突', '第五格承担剧情转折', '第六格表现人物主动选择', '第七格呈现情绪或主题高光', '第八格让事件余波沉淀', '结尾用远景留下故事余韵']
-    }
-    const values = pools[field] || []
-    return values[index % Math.max(1, values.length)] || ''
-  }
-
-  function storyboardV52DirectorField(value, field, index) {
-    const text = storyboardNormalizePlannerField(value)
-    if (text && !storyboardV511HasLatinText(text)) return text
-    const mapped = text ? storyboardV511EnglishFieldLabel(text) : ''
-    if (mapped) return mapped
-    return storyboardV52NonStoryFallback(field, index) || text
-  }
-
-  function storyboardV511RepairPlannerFields(plan, fallbackPlan, index, type, previousPlan) {
-    const structure = storyboardV511StructureTemplate(type)
-    const structurePlan = structure[index] || structure[structure.length - 1] || {}
-    const next = { ...fallbackPlan, ...plan }
-    const previous = previousPlan || {}
-    const rawTitle = storyboardNormalizePlannerField(plan && plan.title)
-    const rawPurpose = storyboardNormalizePlannerField(plan && plan.purpose)
-    const rawShot = storyboardNormalizePlannerField(plan && (plan.shot_type || plan.shot))
-    const rawCamera = storyboardNormalizePlannerField(plan && plan.camera)
-    const rawAction = storyboardNormalizePlannerField(plan && plan.action)
-    next.title = (!rawTitle || storyboardV511LooksObjectListTitle(rawTitle) || rawTitle === storyboardNormalizePlannerField(previous.title)) ? structurePlan.title : rawTitle
-    next.purpose = (!rawPurpose || storyboardV511LooksWeakPurpose(rawPurpose) || rawPurpose === storyboardNormalizePlannerField(previous.purpose)) ? storyboardV511PurposeForIndex(index) : rawPurpose
-    next.shot_type = rawShot || STORYBOARD_V511_SHOT_TYPES[index % STORYBOARD_V511_SHOT_TYPES.length] || next.shot_type
-    next.camera = (!rawCamera || rawCamera === storyboardNormalizePlannerField(previous.camera)) ? structurePlan.camera : rawCamera
-    next.action = (!storyboardV511HasProtagonistAction(rawAction) || rawAction === storyboardNormalizePlannerField(previous.action)) ? structurePlan.action : rawAction
-    return next
-  }
-
-  function storyboardRepairDirectorPlan(rawPlans, type = 'battle') {
-    const plans = (Array.isArray(rawPlans) ? rawPlans : []).map((plan) => ({ ...plan }))
-    for (let index = 0; index < plans.length; index += 1) {
-      plans[index] = storyboardV511RepairPlannerFields(plans[index], plans[index], index, type, plans[index - 1])
-    }
-    const replacements = {
-      shot_type: STORYBOARD_V511_SHOT_TYPES,
-      camera: STORYBOARD_V511_CAMERAS,
-      composition: ['环境压迫构图', '主体英雄构图', '斜线动作构图', '前景细节构图', '俯视能量场构图', '侧向冲击构图', '剪影收束构图']
-    }
-    ;['shot_type', 'camera', 'composition'].forEach((key) => {
-      for (let index = 2; index < plans.length; index += 1) {
-        const prevA = String(plans[index - 1] && plans[index - 1][key] || '')
-        const prevB = String(plans[index - 2] && plans[index - 2][key] || '')
-        const current = String(plans[index] && plans[index][key] || '')
-        if (!current || current !== prevA || current !== prevB) continue
-        const pool = replacements[key] || []
-        const next = pool.find((item) => item !== current && item !== prevA) || pool[index % Math.max(1, pool.length)] || current
-        plans[index][key] = next
-      }
-    })
-    const highSubjectCount = plans.filter((plan) => storyboardNormalizedRatio(plan.subject_ratio, 0.5) >= 0.68).length
-    if (highSubjectCount >= plans.length - 1 && plans.length >= 3) {
-      plans[0].subject_ratio = 0.15
-      plans[Math.floor(plans.length / 2)].subject_ratio = 0.35
-      plans[plans.length - 1].subject_ratio = 0.28
-    }
-    return plans
-  }
-
-  function storyboardDirectorSceneBlueprints(storyText, sourceAnalysis = '') {
-    const premise = String(storyText || '').trim() || 'A cinematic nine-scene sequence showing character power, story progression, and high-end visual effects.'
-    const storyboardType = detectStoryboardType(storyText, sourceAnalysis)
-    const plans = storyboardRepairDirectorPlan(storyboardDirectorTemplate(storyboardType), storyboardType).slice(0, STORYBOARD_SCENE_COUNT)
-    return plans.map((plan, index) => {
-      const number = index + 1
-      const subjectRatio = storyboardNormalizedRatio(plan.subject_ratio, 0.5)
-      const effectRatio = storyboardNormalizedRatio(plan.effect_ratio, 0.2)
-      const directorPlan = {
-        scene: number,
-        purpose: plan.purpose,
-        shot_type: plan.shot_type,
-        camera: plan.camera,
-        composition: plan.composition,
-        movement: plan.movement,
-        lens: plan.lens,
-        subject_ratio: subjectRatio,
-        effect_ratio: effectRatio,
-        emotion: plan.emotion,
-        rhythm: plan.rhythm,
-        reason: plan.reason
-      }
-      return {
-        ...plan,
-        id: `scene${String(number).padStart(2, '0')}`,
-        number,
-        storyboardType,
-        storyPremise: premise,
-        directorPlan,
-        caption: `${plan.purpose} · ${plan.shot_type} · ${plan.camera}`,
-        shotSize: plan.shot_type,
-        angle: plan.camera,
-        description: `Scene${String(number).padStart(2, '0')}: ${plan.title}. Purpose: ${plan.purpose}. Shot: ${plan.shot_type}. Camera: ${plan.camera}. Subject ratio: ${Math.round(subjectRatio * 100)}%. Beat: ${plan.beat}`
-      }
-    })
-  }
-
-  function storyboardCountSceneMarkers(text) {
-    const matches = String(text || '').match(/"scene"\s*:\s*\d+/g)
-    if (matches) return matches.length
-    const value = String(text || '').trim()
-    const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i)
-    const candidate = fenced ? fenced[1].trim() : value
-    const start = candidate.indexOf('[')
-    const end = candidate.lastIndexOf(']')
-    if (start < 0 || end <= start) return 0
-    try {
-      const parsed = JSON.parse(candidate.slice(start, end + 1))
-      return Array.isArray(parsed) ? parsed.length : 0
-    } catch (_) {
-      return 0
-    }
-  }
-
-  function storyboardJsonArrayBracketsClosed(text) {
-    const value = String(text || '')
-    let depth = 0
-    let inString = false
-    let escaped = false
-    for (let index = 0; index < value.length; index += 1) {
-      const char = value[index]
-      if (inString) {
-        if (escaped) escaped = false
-        else if (char === '\\') escaped = true
-        else if (char === '"') inString = false
-        continue
-      }
-      if (char === '"') inString = true
-      else if (char === '[') depth += 1
-      else if (char === ']') {
-        depth -= 1
-        if (depth < 0) return false
-      }
-    }
-    return depth === 0 && !inString
-  }
-
-  function storyboardExtractJsonArrayDetails(text) {
-    const value = String(text || '').trim()
-    const rawStartsWithArray = value.startsWith('[')
-    const rawEndsWithArray = value.endsWith(']')
-    const rawArrayBalanced = storyboardJsonArrayBracketsClosed(value)
-    const base = {
-      jsonText: '',
-      rawStartsWithArray,
-      rawEndsWithArray,
-      jsonClosed: false,
-      errorCode: '',
-      message: ''
-    }
-    if (!value) {
-      return {
-        ...base,
-        errorCode: 'JSON_NOT_FOUND',
-        message: '解析前未找到数据数组'
-      }
-    }
-    if (rawStartsWithArray) {
-      if (!rawEndsWithArray || !rawArrayBalanced) {
-        return {
-          ...base,
-          jsonText: value,
-          errorCode: 'JSON_TRUNCATED',
-          message: '模型输出截断'
-        }
-      }
-      return {
-        ...base,
-        jsonText: value,
-        jsonClosed: true
-      }
-    }
-    const fenced = value.match(/```(?:json)?\s*([\s\S]*?)```/i)
-    const candidate = fenced ? fenced[1].trim() : value
-    const start = candidate.indexOf('[')
-    if (start < 0) {
-      return {
-        ...base,
-        errorCode: 'JSON_NOT_FOUND',
-        message: '解析前未找到数据数组'
-      }
-    }
-    const end = candidate.lastIndexOf(']')
-    if (end <= start) {
-      return {
-        ...base,
-        jsonText: candidate.slice(start).trim(),
-        errorCode: 'JSON_TRUNCATED',
-        message: '模型输出截断'
-      }
-    }
-    const jsonText = candidate.slice(start, end + 1).trim()
-    if (!storyboardJsonArrayBracketsClosed(jsonText)) {
-      return {
-        ...base,
-        jsonText,
-        errorCode: 'JSON_TRUNCATED',
-        message: '模型输出截断'
-      }
-    }
-    return {
-      ...base,
-      jsonText,
-      jsonClosed: true
-    }
-  }
-
-  function storyboardExtractJsonArray(text) {
-    return storyboardExtractJsonArrayDetails(text).jsonText
-  }
-
-  function validateStoryboardCompleteness(plans, jsonInfo = {}) {
-    const expectedScenes = STORYBOARD_SCENE_COUNT
-    const actualScenes = Array.isArray(plans) ? plans.length : storyboardCountSceneMarkers(jsonInfo.rawOutput || jsonInfo.jsonText || '')
-    const jsonClosed = !!(jsonInfo && jsonInfo.jsonClosed)
-    if (jsonInfo && jsonInfo.errorCode === 'JSON_NOT_FOUND') {
-      return {
-        ok: false,
-        errorCode: 'JSON_NOT_FOUND',
-        message: '解析前未找到数据数组',
-        expectedScenes,
-        actualScenes,
-        jsonClosed
-      }
-    }
-    if (jsonInfo && jsonInfo.errorCode === 'JSON_TRUNCATED') {
-      return {
-        ok: false,
-        errorCode: 'JSON_TRUNCATED',
-        message: '模型输出截断',
-        expectedScenes,
-        actualScenes,
-        jsonClosed
-      }
-    }
-    if (!Array.isArray(plans)) {
-      return {
-        ok: false,
-        errorCode: 'JSON_PARSE_FAILED',
-        message: 'JSON 解析失败',
-        expectedScenes,
-        actualScenes,
-        jsonClosed
-      }
-    }
-    if (actualScenes !== expectedScenes) {
-      return {
-        ok: false,
-        errorCode: 'SCENE_COUNT_INVALID',
-        message: `应返回 ${expectedScenes} 个场景，实际返回 ${actualScenes} 个`,
-        expectedScenes,
-        actualScenes,
-        jsonClosed
-      }
-    }
-    for (let index = 0; index < expectedScenes; index += 1) {
-      const sceneNumber = Number(plans[index] && plans[index].scene)
-      if (sceneNumber !== index + 1) {
-        return {
-          ok: false,
-          errorCode: 'SCENE_COUNT_INVALID',
-          message: `场景编号必须 1~9 连续，第 ${index + 1} 项实际为 ${plans[index] && plans[index].scene}`,
-          expectedScenes,
-          actualScenes,
-          jsonClosed
-        }
-      }
-    }
-    return {
-      ok: true,
-      errorCode: '',
-      message: '',
-      expectedScenes,
-      actualScenes,
-      jsonClosed
-    }
-  }
-
-  function storyboardPlannerSimilarity(left, right) {
-    const a = storyboardNormalizePlannerField(left)
-    const b = storyboardNormalizePlannerField(right)
-    if (!a || !b) return 0
-    if (a === b) return 1
-    const maxLength = Math.max(a.length, b.length)
-    if (!maxLength) return 0
-    const previous = Array.from({ length: b.length + 1 }, (_, index) => index)
-    let current = []
-    for (let i = 1; i <= a.length; i += 1) {
-      current = [i]
-      for (let j = 1; j <= b.length; j += 1) {
-        const cost = a[i - 1] === b[j - 1] ? 0 : 1
-        current[j] = Math.min(
-          current[j - 1] + 1,
-          previous[j] + 1,
-          previous[j - 1] + cost
-        )
-      }
-      for (let j = 0; j < current.length; j += 1) previous[j] = current[j]
-    }
-    return 1 - (previous[b.length] / maxLength)
-  }
-
-  const STORYBOARD_DIRECTOR_SEMANTIC_EVENT_RULES = [
-    ['farewell_origin', '告别起点', /(告别|挥手|离开).{0,8}(家人|家中|故乡|村民|村口)|离开家|离开故乡|告别家人|告别村/],
-    ['journey_start', '启程旅途', /(踏上|开始|启程|出发|背起).{0,8}(旅途|旅程|小路|山路|道路|行囊|背包)|踏上旅途|踏上旅程/],
-    ['elder_meeting', '遇见老者', /(遇见|遇到|再次遇到|偶遇|交谈|对话|赠予|告诉|指引).{0,10}(老者|老人)|老者.{0,10}(赠予|告诉|指引|交谈|对话|地图)/],
-    ['companion_meeting', '遇见旅伴', /(旅伴|同伴|伙伴|朋友).{0,10}(同行|结伴|遇见|遇到|加入)|遇见.{0,8}(旅伴|同伴|伙伴)/],
-    ['animal_meeting', '遇见动物', /(小鹿|小狗|动物|野兽).{0,10}(出现|靠近|遇见|遇到|停步|跟随)|遇见.{0,8}(小鹿|小狗|动物)/],
-    ['diary_reading', '翻阅日记', /(日记|本子).{0,10}(翻开|翻阅|阅读|记录|写下)|翻开日记|翻阅日记|记录旅途/],
-    ['old_object_discovery', '发现旧物', /(发现|找到|拾起|看见|握住).{0,10}(旧物|遗物|信件|照片)|旧物.{0,8}(出现|发现|握在手中)/],
-    ['old_object_release', '放下旧物', /(放下|丢弃|投入|丢入|落入|整理|收起|放入).{0,10}(旧物|遗物|信件|日记|照片|行李箱)|放下旧物|旧物.{0,10}(落入|放下|丢弃)/],
-    ['flower_observation', '观察花朵', /(花朵|野花|花).{0,10}(观察|发现|拾起|盛开)|观察.{0,8}(花朵|野花|花)/],
-    ['route_obstacle', '面对阻碍', /(倒木|断桥|溪流|障碍|险路|山崖).{0,10}(挡住|穿过|跨过|越过|面对)|面对.{0,8}(阻碍|障碍|断桥|溪流)/],
-    ['lost_direction', '迷失方向', /(迷路|迷失|辨认方向|找不到方向|岔路|选择方向|选择道路)/],
-    ['self_realization', '找到自我', /(找到|理解|看见|接受).{0,8}(自我|自己|答案|内心)|真正的自我|找到自我/],
-    ['summit_resolution', '山顶收束', /(山顶|山巅|高处).{0,12}(远望|眺望|望向|站在|抵达|到达)|登上山/]
-  ]
-
-  function storyboardDirectorSemanticEvent(plan) {
-    const text = storyboardNormalizePlannerField(`${plan && plan.title || ''} ${plan && plan.action || ''}`)
-    if (!text) return null
-    for (const rule of STORYBOARD_DIRECTOR_SEMANTIC_EVENT_RULES) {
-      if (rule && rule[2] && rule[2].test(text)) return { key: rule[0], label: rule[1] }
-    }
-    return null
-  }
-
-  function storyboardEvaluateAiDirectorPlanQuality(plans) {
-    const result = {
-      hardError: '',
-      warnings: [],
-      warningText: '',
-      storyProgression: 'PASS',
-      cameraDiversity: 'PASS',
-      endingQuality: 'PASS'
-    }
-    if (!Array.isArray(plans)) return result
-    const offTopicWarnings = []
-    for (let index = 0; index < plans.length; index += 1) {
-      const plan = plans[index] || {}
-      if (storyboardV53LooksObviousOffTopic(plan.action)) offTopicWarnings.push(`ACTION_OBVIOUS_OFF_TOPIC:Scene${String(index + 1).padStart(2, '0')}:${plan.action}`)
-      if (storyboardDirectorActionIsWeakEvent(plan.action)) {
-        result.storyProgression = 'WARNING'
-        result.warnings.push(`WEAK_ACTION_EVENT:Scene${String(index + 1).padStart(2, '0')}:${plan.action}`)
-      }
-    }
-    result.warnings.push(...offTopicWarnings)
-    if (offTopicWarnings.length >= 5) {
-      return { ...result, storyProgression: 'FAIL', hardError: offTopicWarnings[0], warningText: result.warnings.join('; ') }
-    }
-    const normalizedCameras = plans.map((plan) => storyboardNormalizePlannerField(plan && plan.camera))
-    for (let index = 2; index < normalizedCameras.length; index += 1) {
-      if (normalizedCameras[index] && normalizedCameras[index] === normalizedCameras[index - 1] && normalizedCameras[index] === normalizedCameras[index - 2]) {
-        result.cameraDiversity = 'WARNING'
-        result.warnings.push(`CAMERA_THREE_REPEAT:Scene${String(index - 1).padStart(2, '0')}-Scene${String(index + 1).padStart(2, '0')}:${plans[index] && plans[index].camera}`)
-        break
-      }
-    }
-    const fixedWideCount = normalizedCameras.filter((value) => value.includes('远景固定') || (value.includes('远景') && value.includes('固定'))).length
-    if (fixedWideCount > 3) {
-      result.cameraDiversity = 'WARNING'
-      result.warnings.push(`FAR_FIXED_OVER_LIMIT:${fixedWideCount}`)
-    }
-    let adjacentCameraRepeats = 0
-    for (let index = 1; index < normalizedCameras.length; index += 1) {
-      if (normalizedCameras[index] && normalizedCameras[index] === normalizedCameras[index - 1]) {
-        adjacentCameraRepeats += 1
-      }
-    }
-    if (adjacentCameraRepeats) {
-      result.cameraDiversity = 'WARNING'
-      result.warnings.push(`ADJACENT_CAMERA_REPEAT:${adjacentCameraRepeats}`)
-    }
-    const realCameraStats = storyboardDirectorCameraDiversityStats(plans)
-    if (realCameraStats.simpleCount >= 6) {
-      result.cameraDiversity = 'WARNING'
-      result.warnings.push(`CAMERA_SIMPLE_LABEL_OVER_LIMIT:${realCameraStats.simpleCount}`)
-    }
-    if (realCameraStats.repeatPairs.length) {
-      const repeat = realCameraStats.repeatPairs[0]
-      result.cameraDiversity = 'WARNING'
-      result.warnings.push(`CAMERA_VISUAL_SIGNATURE_REPEAT:Scene${String(repeat.first + 1).padStart(2, '0')}-Scene${String(repeat.index + 1).padStart(2, '0')}:${repeat.label}`)
-    }
-    const seenBeatKeys = new Map()
-    for (let index = 0; index < plans.length; index += 1) {
-      const beatKey = storyboardNormalizePlannerField(plans[index] && plans[index].title)
-      if (!beatKey) continue
-      if (seenBeatKeys.has(beatKey)) {
-        const previousIndex = seenBeatKeys.get(beatKey)
-        result.warnings.push(`BEAT_REPEAT:Scene${String(previousIndex + 1).padStart(2, '0')}-Scene${String(index + 1).padStart(2, '0')}:${plans[index] && plans[index].title}`)
-        break
-      }
-      seenBeatKeys.set(beatKey, index)
-    }
-    const seenSemanticEvents = new Map()
-    for (let index = 0; index < plans.length; index += 1) {
-      const semantic = storyboardDirectorSemanticEvent(plans[index])
-      if (!semantic || !semantic.key) continue
-      if (seenSemanticEvents.has(semantic.key)) {
-        const previous = seenSemanticEvents.get(semantic.key)
-        result.warnings.push(`BEAT_SEMANTIC_REPEAT:Scene${String(previous.index + 1).padStart(2, '0')}-Scene${String(index + 1).padStart(2, '0')}:${semantic.label || previous.label || semantic.key}`)
-        break
-      }
-      seenSemanticEvents.set(semantic.key, { index, label: semantic.label })
-    }
-    const normalizedSpaces = plans.map((plan) => storyboardNormalizePlannerField(plan && plan.currentSpace))
-    let adjacentSpaceRepeats = 0
-    for (let index = 1; index < normalizedSpaces.length; index += 1) {
-      if (normalizedSpaces[index] && normalizedSpaces[index] === normalizedSpaces[index - 1]) adjacentSpaceRepeats += 1
-    }
-    if (adjacentSpaceRepeats) {
-      result.warnings.push(`ADJACENT_SPACE_REPEAT:${adjacentSpaceRepeats}`)
-    }
-    const actions = plans.map((plan) => String(plan && plan.action || ''))
-    const seenSceneKeys = new Map()
-    const sceneRepeatPairs = []
-    for (let index = 0; index < plans.length; index += 1) {
-      const plan = plans[index] || {}
-      const key = [plan.title, plan.currentSpace, plan.camera, plan.action].map(storyboardNormalizePlannerField).join('|')
-      if (!key) continue
-      if (seenSceneKeys.has(key)) {
-        const previousIndex = seenSceneKeys.get(key)
-        const repeatText = `SCENE_EXACT_REPEAT:Scene${String(previousIndex + 1).padStart(2, '0')}-Scene${String(index + 1).padStart(2, '0')}`
-        if (previousIndex >= 6 && index >= 6) {
-          result.warnings.push(repeatText)
-        } else {
-          sceneRepeatPairs.push(repeatText)
-        }
-      } else {
-        seenSceneKeys.set(key, index)
-      }
-    }
-    if (sceneRepeatPairs.length >= 2) {
-      return { ...result, hardError: sceneRepeatPairs[0], warningText: result.warnings.join('; ') }
-    }
-    if (sceneRepeatPairs.length) {
-      result.warnings.push(sceneRepeatPairs[0])
-    }
-    const seenActionKeys = new Map()
-    const actionRepeatPairs = []
-    for (let index = 0; index < actions.length; index += 1) {
-      const actionKey = storyboardNormalizePlannerField(actions[index])
-      if (!actionKey) continue
-      if (seenActionKeys.has(actionKey)) {
-        const previousIndex = seenActionKeys.get(actionKey)
-        const repeatText = `ACTION_EXACT_REPEAT:Scene${String(previousIndex + 1).padStart(2, '0')}-Scene${String(index + 1).padStart(2, '0')}:${actions[index]}`
-        if (previousIndex >= 6 && index >= 6) {
-          result.warnings.push(repeatText)
-        } else {
-          actionRepeatPairs.push(repeatText)
-        }
-      } else {
-        seenActionKeys.set(actionKey, index)
-      }
-    }
-    if (actionRepeatPairs.length >= 2) {
-      return { ...result, hardError: actionRepeatPairs[0], warningText: result.warnings.join('; ') }
-    }
-    if (actionRepeatPairs.length) {
-      result.warnings.push(actionRepeatPairs[0])
-    }
-    for (let index = 2; index < actions.length; index += 1) {
-      if (index >= 8) continue
-      if (storyboardPlannerSimilarity(actions[index], actions[index - 1]) >= 0.92 && storyboardPlannerSimilarity(actions[index - 1], actions[index - 2]) >= 0.92) {
-        return { ...result, hardError: `ACTION_HIGH_REPEAT:Scene${String(index - 1).padStart(2, '0')}-Scene${String(index + 1).padStart(2, '0')}:${actions[index]}`, warningText: result.warnings.join('; ') }
-      }
-    }
-    if (plans.length >= STORYBOARD_SCENE_COUNT) {
-      const last = plans.slice(6, 9)
-      const lastActions = last.map((plan) => String(plan && plan.action || ''))
-      const lastActionNorms = lastActions.map((value) => storyboardNormalizePlannerField(value)).filter(Boolean)
-      const lastAllEmpty = !lastActionNorms.length
-      const lastRepeated = new Set(lastActionNorms).size <= 1
-      const lastAllPassive = lastActions.every((text) => storyboardDirectorActionIsPassiveEnding(text))
-      const lastHasConcreteEvent = lastActions.some((text) => storyboardDirectorActionHasConcreteObjectOrEvent(text))
-      const lastHighlySimilar = storyboardPlannerSimilarity(lastActions[0], lastActions[1]) >= 0.88 && storyboardPlannerSimilarity(lastActions[1], lastActions[2]) >= 0.88
-      if (lastAllEmpty || ((lastRepeated || lastAllPassive) && !lastHasConcreteEvent)) {
-        return { ...result, endingQuality: 'FAIL', hardError: 'ENDING_EMPTY_LOOP:Scene7-9 action repeats', warningText: result.warnings.join('; ') }
-      }
-      if (lastAllPassive || lastRepeated) {
-        result.endingQuality = 'WARNING'
-        result.warnings.push('ENDING_WEAK_WARNING:Scene7-9 repeated closing action')
-      }
-      if (lastHighlySimilar) {
-        result.endingQuality = 'WARNING'
-        result.warnings.push('ENDING_WEAK_WARNING:Scene7-9 highly similar actions')
-      }
-    }
-    result.warningText = result.warnings.join('; ')
-    return result
-  }
-
-  function storyboardValidateAiDirectorPlanQuality(plans) {
-    const quality = storyboardEvaluateAiDirectorPlanQuality(plans)
-    return quality.hardError || ''
-  }
-
-  const STORYBOARD_DIRECTOR_EVENT_SUBJECT_PATTERN = /(少女|女武神|圣女|战士|主角|女孩|少年|家人|村民|老者|旅伴|同伴|伙伴|朋友|新朋友|小鹿|小狗|巨兽|怪物|敌人|魔王|黑暗|背包|旧物|旧照片|照片|信件|日记|地图|圣徽|王冠|武器|倒木|断桥|溪流|河水|水面|野花|花朵|石头|树枝|小人影|雪山|岔路)/
-  const STORYBOARD_DIRECTOR_EVENT_VERB_PATTERN = /(挥手|拥抱|告别|背起|踏上|踏入|走入|走进|停步|蹲下|坐下|起身|奔跑|驾驶|开车|攀过|翻过|翻越|越过|跨过|穿过|跟随|同行|结伴|带领|抓住|扶起|抱起|推开|拨开|翻开|翻阅|阅读|记录|取出|拿出|掏出|放下|压在|松开|收起|插在|选择|丢弃|投入|落入|滑入|掉入|漂走|握紧|抚摸|触摸|触碰|拾起|捡起|找到|交换|递给|接过|交谈|对话|分享|指引|包扎|救助|埋下|埋进|种下|追赶|挡住|遇见|发现|看见|观察|靠近|迷路|迷失|登上|回望|转身|离开|拔剑|迎战|斩向|击中|倒下|裂开|爬上|逼近|苏醒|扩散|接受|拒绝)/
-  const STORYBOARD_DIRECTOR_INTERACTION_PATTERN = /(向|与|和|同|拥抱|扶起|抱起|跟随|同行|结伴|带领|交换|递给|接过|告别|交谈|对话|分享|指引|挥手|斩向|迎战|面对|直面|抚摸|触摸|触碰|握紧|取出|拿出|掏出|投入|丢弃|放下|压在|松开|收起|插在|选择|看见|翻开|翻阅|观察|抓住|攀过|翻越|越过|跨过|穿过|踏入|走入|走进|拨开|拾起|捡起|包扎|救助|埋下|埋进|种下|追赶|挡住)/
-  const STORYBOARD_DIRECTOR_CONCRETE_OBJECT_PATTERN = /(家人|村民|老者|旅伴|同伴|伙伴|朋友|新朋友|小鹿|小狗|背包|日记|旧物|旧照片|照片|信件|地图|圣徽|王冠|武器|雨伞|伞|汽车|车辆|出口|野花|花朵|花种|种子|石头|树枝|藤蔓|荆棘|河水|湖水|水面|溪流|浅滩|倒木|断桥|石堆|残页|山顶|村口|森林|山路|小路|雪山|岔路|小人影|巨兽|怪物|黑暗|纹路)/
-
-  function storyboardDirectorActionHasVisibleEvent(action) {
-    const text = String(action || '').trim()
-    if (!text) return false
-    const hasSubject = STORYBOARD_DIRECTOR_EVENT_SUBJECT_PATTERN.test(text)
-    const hasVerb = STORYBOARD_DIRECTOR_EVENT_VERB_PATTERN.test(text)
-    const hasInteraction = STORYBOARD_DIRECTOR_INTERACTION_PATTERN.test(text) && STORYBOARD_DIRECTOR_CONCRETE_OBJECT_PATTERN.test(text)
-    return (hasSubject && hasVerb) || hasInteraction
-  }
-
-  function storyboardDirectorActionIsWeakEvent(action) {
-    const text = String(action || '').trim()
-    if (!text) return true
-    if (!storyboardDirectorActionHasVisibleEvent(text)) return true
-    if (/(决定|打算|准备).{0,8}(救助|留下|继续|前行|放下|选择|面对|治疗)/.test(text)) return true
-    if (/(面对).{0,8}(新环境|未知|挑战|两条路|选择)/.test(text)) return true
-    if (/(决定|做出选择|面对新环境|面对未知|内心|心中|领悟|真谛|成长|收获|探索自然|面临困难|耗费|精力|更加坚定)/.test(text)) {
-      return !/(告别|背起|踏上|踏入|走入|走进|蹲下|奔跑|攀过|翻过|翻越|越过|穿过|抓住|扶起|抱起|推开|拨开|翻开|翻阅|阅读|记录|写下|整理|放入|放下|丢弃|投入|握紧|抚摸|触摸|触碰|递给|接过|赠予|包扎|救助|拾起|捡起|找到|埋下|埋进|种下|遇见|遇到|发现|靠近|登上|转身|离开)/.test(text)
-    }
-    return false
-  }
-
-  function storyboardDirectorActionHasConcreteObjectOrEvent(action) {
-    const text = String(action || '').trim()
-    return !!(text && ((storyboardDirectorActionHasVisibleEvent(text) && !storyboardDirectorActionIsWeakEvent(text)) || STORYBOARD_DIRECTOR_CONCRETE_OBJECT_PATTERN.test(text)))
-  }
-
-  function storyboardDirectorActionIsPassiveEnding(action) {
-    const text = String(action || '').trim()
-    if (!text) return true
-    return /(站立|静立|远望|凝视|观察|背影|等待|停下|回望|收束|结束|收场|准备结束|准备收场)/.test(text)
-  }
-
-  function storyboardValidateAiDirectorPlanSchema(plans) {
-    if (!Array.isArray(plans)) return 'Parsed JSON is not an array.'
-    for (let index = 0; index < plans.length; index += 1) {
-      const plan = plans[index] || {}
-      const missing = STORYBOARD_DIRECTOR_PLAN_REQUIRED_KEYS.filter((key) => {
-        if (!(key in plan)) return true
-        if (key === 'subject_ratio' || key === 'effect_ratio') return !Number.isFinite(Number(plan[key]))
-        return !storyboardNormalizePlannerField(plan[key])
-      })
-      if (missing.length) return `Scene${String(index + 1).padStart(2, '0')} missing required fields: ${missing.join(', ')}.`
-      const extra = Object.keys(plan).filter((key) => !STORYBOARD_DIRECTOR_PLAN_REQUIRED_KEYS.includes(key))
-      if (extra.length) return `Scene${String(index + 1).padStart(2, '0')} has extra fields: ${extra.join(', ')}.`
-      if (Number(plan.scene) !== index + 1) return `Scene${String(index + 1).padStart(2, '0')} has invalid scene index: ${plan.scene}.`
-    }
-    return ''
-  }
-
-  const STORYBOARD_DIRECTOR_PLAN_REQUIRED_KEYS = [
-    'scene',
-    'title',
-    'purpose',
-    'currentSpace',
-    'camera',
-    'action'
-  ]
-
-  function storyboardDirectorTitleFromBeat(beat, fallback = '') {
-    const text = storyboardNormalizePlannerField(beat)
-    if (!text) return storyboardNormalizePlannerField(fallback) || '剧情推进'
-    const firstClause = text.split(/[，,。.;；:：]/).map((item) => item.trim()).find(Boolean) || text
-    return firstClause.length > 10 ? firstClause.slice(0, 10) : firstClause
-  }
-
-  function storyboardCompactDirectorItemToPlan(item, index) {
-    const beat = storyboardNormalizePlannerField(item && item[0])
-    const camera = storyboardNormalizePlannerField(item && item[1])
-    const currentSpace = storyboardNormalizePlannerField(item && item[2])
-    const action = storyboardNormalizePlannerField(item && item[3])
-    return {
-      scene: index + 1,
-      title: storyboardDirectorTitleFromBeat(beat, `场景${String(index + 1).padStart(2, '0')}`),
-      purpose: beat,
-      currentSpace,
-      camera,
-      action
-    }
-  }
-
-  function storyboardDirectorFieldLooksLikeCamera(value) {
-    const text = storyboardNormalizePlannerField(value)
-    return !!(text && /(远景|中景|近景|特写|全景|过肩|低机|高机|俯拍|仰拍|跟拍|拉远|推近|推进|固定|环绕|侧面|背影|手部|道具|广角)/.test(text))
-  }
-
-  function storyboardNormalizeCompactDirectorItem(item) {
-    if (!Array.isArray(item)) return null
-    let values = item.map((value) => storyboardNormalizePlannerField(value))
-    if (values.length === 5 && /^(?:scene)?\s*\d{1,2}$/i.test(values[0])) {
-      values = values.slice(1, 5)
-    } else if (values.length !== 4) {
-      return null
-    }
-    if (values.some((value) => !value)) return null
-    const beat = values[0]
-    const candidateIndexes = [1, 2, 3]
-    const cameraIndex = candidateIndexes.find((index) => storyboardDirectorFieldLooksLikeCamera(values[index]))
-    const actionIndex = candidateIndexes.find((index) => index !== cameraIndex && storyboardDirectorActionHasVisibleEvent(values[index]))
-    if (cameraIndex !== undefined && actionIndex !== undefined) {
-      const spaceIndex = candidateIndexes.find((index) => index !== cameraIndex && index !== actionIndex)
-      if (spaceIndex !== undefined) return [beat, values[cameraIndex], values[spaceIndex], values[actionIndex]]
-    }
-    const [, second, third, action] = values
-    const secondIsCamera = storyboardDirectorFieldLooksLikeCamera(second)
-    const thirdIsCamera = storyboardDirectorFieldLooksLikeCamera(third)
-    if (thirdIsCamera && !secondIsCamera) return [beat, third, second, action]
-    return [beat, second, third, action]
-  }
-
-  function storyboardNormalizeCompactDirectorArray(parsed) {
-    if (!Array.isArray(parsed)) return null
-    const normalized = []
-    for (const item of parsed) {
-      const normalizedItem = storyboardNormalizeCompactDirectorItem(item)
-      if (!normalizedItem) return null
-      normalized.push(normalizedItem)
-    }
-    return normalized
-  }
-
-  function storyboardCompactDirectorArrayError(parsed) {
-    if (!Array.isArray(parsed)) return 'Parsed JSON is not an array.'
-    for (let index = 0; index < parsed.length; index += 1) {
-      const item = parsed[index]
-      const normalized = storyboardNormalizeCompactDirectorItem(item)
-      if (!normalized) return `Scene${String(index + 1).padStart(2, '0')} compact item must contain exactly 4 strings.`
-      for (let fieldIndex = 0; fieldIndex < 4; fieldIndex += 1) {
-        if (!storyboardNormalizePlannerField(normalized[fieldIndex])) {
-          return `Scene${String(index + 1).padStart(2, '0')} compact field ${fieldIndex + 1} must be a non-empty string.`
-        }
-      }
-    }
-    return ''
-  }
-
-  function storyboardTryRepairCompactDirectorOuterArray(jsonText, rawOutput) {
-    const text = String(jsonText || '').trim()
-    const raw = String(rawOutput || '').trim()
-    if (!text || !text.startsWith('[') || !text.endsWith(']')) return null
-    if (raw !== text) return null
-    if (text.includes('```')) return null
-    const wrappedText = `[${text}]`
-    let parsed = null
-    try {
-      parsed = JSON.parse(wrappedText)
-    } catch (_) {
-      return null
-    }
-    if (!Array.isArray(parsed) || parsed.length !== STORYBOARD_SCENE_COUNT) return null
-    const normalized = storyboardNormalizeCompactDirectorArray(parsed)
-    if (!normalized || storyboardCompactDirectorArrayError(normalized)) return null
-    return {
-      parsed: normalized,
-      jsonText: wrappedText,
-      jsonWrapperRepaired: true
-    }
-  }
-
-  function storyboardAppendDirectorWarning(warningText, warning) {
-    const parts = []
-    const first = String(warning || '').trim()
-    const existing = String(warningText || '').trim()
-    if (first) parts.push(first)
-    if (existing) parts.push(existing)
-    return parts.join('; ')
-  }
-
-  function storyboardParseAiDirectorPlans(rawOutput) {
-    const extract = storyboardExtractJsonArrayDetails(rawOutput)
-    const base = {
-      rawStartsWithArray: extract.rawStartsWithArray,
-      rawEndsWithArray: extract.rawEndsWithArray,
-      jsonClosed: extract.jsonClosed,
-      expectedScenes: STORYBOARD_SCENE_COUNT,
-      actualScenes: storyboardCountSceneMarkers(rawOutput),
-      errorCode: extract.errorCode || '',
-      qualityWarning: '',
-      qualityHardError: '',
-      jsonWrapperRepaired: false,
-      storyProgression: 'PASS',
-      cameraDiversity: 'PASS',
-      endingQuality: 'PASS'
-    }
-    const jsonText = extract.jsonText
-    if (extract.errorCode === 'JSON_NOT_FOUND') {
-      return { ...base, plans: [], jsonTextLength: 0, parseError: extract.message, errorCode: 'JSON_NOT_FOUND' }
-    }
-    if (extract.errorCode === 'JSON_TRUNCATED') {
-      return { ...base, plans: [], jsonTextLength: jsonText.length, parseError: extract.message, errorCode: 'JSON_TRUNCATED' }
-    }
-    if (!jsonText) return { ...base, plans: [], jsonTextLength: 0, parseError: '解析前未找到数据数组', errorCode: 'JSON_NOT_FOUND' }
-    let parsed = null
-    let parseJsonText = jsonText
-    let jsonWrapperRepaired = false
-    try {
-      parsed = JSON.parse(jsonText)
-    } catch (error) {
-      const repair = storyboardTryRepairCompactDirectorOuterArray(jsonText, rawOutput)
-      if (!repair) {
-        const completeness = validateStoryboardCompleteness(null, { ...extract, rawOutput, errorCode: extract.jsonClosed ? 'JSON_PARSE_FAILED' : 'JSON_TRUNCATED' })
-        const message = extract.jsonClosed ? 'JSON 解析失败' : '模型输出截断'
-        return {
-          ...base,
-          ...completeness,
-          plans: [],
-          jsonTextLength: jsonText.length,
-          parseError: message,
-          errorCode: extract.jsonClosed ? 'JSON_PARSE_FAILED' : 'JSON_TRUNCATED',
-          parseDetail: String(error && error.message || error || 'JSON parse failed')
-        }
-      }
-      parsed = repair.parsed
-      parseJsonText = repair.jsonText
-      jsonWrapperRepaired = true
-    }
-    if (!Array.isArray(parsed)) {
-      const completeness = validateStoryboardCompleteness(parsed, { ...extract, rawOutput })
-      return { ...base, ...completeness, plans: [], jsonTextLength: parseJsonText.length, parseError: '解析结果不是数组', errorCode: 'JSON_PARSE_FAILED', jsonWrapperRepaired }
-    }
-    const normalizedParsed = storyboardNormalizeCompactDirectorArray(parsed)
-    if (!normalizedParsed) {
-      return {
-        ...base,
-        plans: [],
-        jsonTextLength: parseJsonText.length,
-        parseError: 'COMPACT_SCHEMA_INVALID:scene1',
-        errorCode: 'JSON_PARSE_FAILED',
-        expectedScenes: STORYBOARD_SCENE_COUNT,
-        actualScenes: Array.isArray(parsed) ? parsed.length : 0,
-        jsonClosed: extract.jsonClosed,
-        jsonWrapperRepaired
-      }
-    }
-    parsed = normalizedParsed
-    const compactError = storyboardCompactDirectorArrayError(parsed)
-    if (compactError) {
-      return {
-        ...base,
-        plans: [],
-        jsonTextLength: parseJsonText.length,
-        parseError: compactError,
-        errorCode: 'JSON_PARSE_FAILED',
-        expectedScenes: STORYBOARD_SCENE_COUNT,
-        actualScenes: parsed.length,
-        jsonClosed: extract.jsonClosed,
-        jsonWrapperRepaired
-      }
-    }
-    const plans = parsed.map((item, index) => storyboardCompactDirectorItemToPlan(item, index))
-    const completeness = validateStoryboardCompleteness(plans, { ...extract, rawOutput })
-    const schemaError = completeness.ok ? storyboardValidateAiDirectorPlanSchema(plans) : ''
-    const quality = completeness.ok && !schemaError ? storyboardEvaluateAiDirectorPlanQuality(plans) : { hardError: '', warningText: '' }
-    const qualityWarning = storyboardAppendDirectorWarning(quality.warningText || '', jsonWrapperRepaired ? 'JSON_WRAPPER_REPAIRED' : '')
-    const qualityHardError = quality.hardError || ''
-    return {
-      ...base,
-      ...completeness,
-      plans,
-      jsonTextLength: parseJsonText.length,
-      parseError: completeness.message || schemaError || qualityHardError,
-      errorCode: completeness.errorCode || (schemaError ? 'JSON_PARSE_FAILED' : (qualityHardError ? 'QUALITY_HARD_FAIL' : '')),
-      qualityWarning,
-      qualityHardError,
-      jsonWrapperRepaired,
-      storyProgression: quality.storyProgression || 'PASS',
-      cameraDiversity: quality.cameraDiversity || 'PASS',
-      endingQuality: quality.endingQuality || 'PASS'
-    }
-  }
-
-  function storyboardDirectorScenesFromPlans(storyText, sourceAnalysis, rawPlans, storyboardType) {
-    const type = storyboardType || detectStoryboardType(storyText, sourceAnalysis)
-    const premise = String(storyText || '').trim() || '一组根据剧情动态推理的九格电影分镜。'
-    const merged = Array.from({ length: STORYBOARD_SCENE_COUNT }, (_, index) => {
-      const rawPlan = (Array.isArray(rawPlans) && rawPlans[index] && typeof rawPlans[index] === 'object') ? rawPlans[index] : {}
-      return {
-        ...rawPlan,
-        scene: index + 1,
-        title: rawPlan.title || '',
-        purpose: rawPlan.purpose || '',
-        currentSpace: rawPlan.currentSpace || '',
-        camera: rawPlan.camera || '',
-        action: rawPlan.action || ''
-      }
-    })
-    return merged.slice(0, STORYBOARD_SCENE_COUNT).map((plan, index) => {
-      const number = index + 1
-      const localized = (value, field) => storyboardV52DirectorField(value, field, index)
-      const action = storyboardNormalizePlannerField(plan.action || '')
-      const title = storyboardNormalizePlannerField(plan.title || plan.purpose || `场景${String(number).padStart(2, '0')}`)
-      const beat = storyboardNormalizePlannerField(plan.beat || title || plan.purpose || action)
-      const currentSpace = storyboardNormalizePlannerField(plan.currentSpace || '')
-      const eventRealization = storyboardNormalizePlannerField(plan.eventRealization || storyboardEventRealizationRule({
-        title,
-        action,
-        visualEvent: plan.visualEvent || action,
-        currentSpace
-      }))
-      const defaults = storyboardDirectorSceneDefaults(index, localized(plan.camera || '', 'camera'))
-      const directorPlan = {
-        scene: number,
-        purpose: storyboardNormalizePlannerField(plan.purpose || ''),
-        currentSpace,
-        shot_type: localized(plan.shot_type || defaults.shot_type, 'shot_type'),
-        camera: defaults.camera,
-        composition: storyboardNormalizePlannerField(plan.composition || defaults.composition),
-        movement: storyboardNormalizePlannerField(plan.movement || defaults.movement),
-        lens: storyboardNormalizePlannerField(plan.lens || defaults.lens),
-        subject_ratio: storyboardNormalizedRatio(plan.subject_ratio, defaults.subject_ratio),
-        effect_ratio: storyboardNormalizedRatio(plan.effect_ratio, defaults.effect_ratio),
-        emotion: storyboardNormalizePlannerField(plan.emotion || defaults.emotion),
-        rhythm: storyboardNormalizePlannerField(plan.rhythm || defaults.rhythm),
-        reason: storyboardNormalizePlannerField(plan.reason || defaults.reason),
-        action,
-        eventRealization
-      }
-      return {
-        ...plan,
-        title,
-        beat,
-        currentSpace,
-        action,
-        eventRealization,
-        effects: storyboardNormalizePlannerField(plan.effects || defaults.effects),
-        environment: storyboardNormalizePlannerField(plan.environment || defaults.environment),
-        light: storyboardNormalizePlannerField(plan.light || defaults.light),
-        rhythm: directorPlan.rhythm,
-        lens: directorPlan.lens,
-        id: `scene${String(number).padStart(2, '0')}`,
-        number,
-        storyboardType: type,
-        storyPremise: premise,
-        directorPlan,
-        caption: `${currentSpace || title} / ${directorPlan.camera}`,
-        shotSize: directorPlan.camera,
-        angle: directorPlan.camera,
-        description: `场景${String(number).padStart(2, '0')}。剧情节点：${beat}。当前空间：${currentSpace}。镜头：${directorPlan.camera}。动作：${action}`
-      }
-    })
-  }
-
-  function storyboardDirectorPlannerRepairStatus(rawPlans, scenes, parsed = {}) {
-    if (!Array.isArray(rawPlans) || rawPlans.length === 0) return 'Hard fail: AI returned 0 scenes; no fallback scenes generated.'
-    if (rawPlans.length !== STORYBOARD_SCENE_COUNT) {
-      return `Hard fail: AI returned ${rawPlans.length} scenes; no fallback scenes generated.`
-    }
-    if (parsed && parsed.qualityHardError) {
-      return `Hard fail: ${parsed.qualityHardError}; no fallback scenes generated.`
-    }
-    if (parsed && parsed.qualityWarning) {
-      return `Quality warning: ${parsed.qualityWarning}; no template repair applied.`
-    }
-    return 'No repair needed.'
-  }
-
-  function storyboardDirectorPlannerFallbackReasonCode(warning, parsed = {}) {
-    const errorCode = String(parsed && parsed.errorCode || '').trim()
-    const message = String(warning || parsed && parsed.parseError || '').trim()
-    if (/TIMEOUT_EMPTY/i.test(message)) return 'TIMEOUT_EMPTY'
-    if (/超时|timeout/i.test(message)) return 'TIMEOUT_EMPTY'
-    if (/empty output|空输出|空内容|未返回调试内容|returned empty/i.test(message)) return 'EMPTY_OUTPUT'
-    if (errorCode === 'QUALITY_HARD_FAIL' || /QUALITY_HARD_FAIL|WEAK_ACTION_EVENT|ACTION_EXACT_REPEAT|ACTION_HIGH_REPEAT|SCENE_EXACT_REPEAT|ENDING_EMPTY_LOOP/i.test(message)) return 'QUALITY_HARD_FAIL'
-    if (errorCode === 'SCENE_COUNT_INVALID' || /应返回\s*9|Expected\s+9|SCENE_COUNT_INVALID/i.test(message)) return 'SCENE_COUNT_INVALID'
-    if (/^JSON_|JSON_PARSE_FAILED|JSON_NOT_FOUND|JSON_TRUNCATED|MODEL_OUTPUT_TRUNCATED|COMPACT_SCHEMA_INVALID|解析|截断|非法/i.test(errorCode) || /JSON|解析|截断|数据数组/i.test(message)) return 'INVALID_JSON'
-    if (/no response|无响应|IPC|失败/i.test(message)) return 'MODEL_NO_RESPONSE'
-    return 'MODEL_NO_RESPONSE'
-  }
-
-  function storyboardDirectorPlannerFallbackResult(storyText, sourceAnalysis, warning, rawOutput = '', options = {}) {
-    const rawWorldContext = storyboardRawWorldContextFromSourceAnalysis(sourceAnalysis)
-    const worldContext = storyboardWorldContextFromSourceAnalysis(sourceAnalysis)
-    const worldContinuity = storyboardWorldContinuityFromSourceAnalysis(sourceAnalysis)
-    const storyboardType = detectStoryboardType(storyText, '')
-    const reasonCode = options.reasonCode || storyboardDirectorPlannerFallbackReasonCode(warning, options.parsed)
-    const selectedStoryDirection = normalizeStoryboardStoryDirection(options.selectedStoryDirection)
-    const hasStoryDirection = !!(selectedStoryDirection && selectedStoryDirection.title && selectedStoryDirection.direction)
-    const fallbackSource = hasStoryDirection ? 'Direction-aware Fallback' : 'Fallback Director V2'
-    const visualEventChain = Array.isArray(options.visualEventChain) ? options.visualEventChain : []
-    const fallbackPlans = storyboardFallbackDirectorV2Plans(storyText, selectedStoryDirection, visualEventChain, {
-      softActionPolicy: options.visualEventSoftActionPolicy,
-      softActionOverLimit: options.visualEventSoftActionOverLimit,
-      softActionOverLimitReasons: options.visualEventSoftActionOverLimitReasons
-    })
-    const fallbackQuality = storyboardEvaluateAiDirectorPlanQuality(fallbackPlans)
-    const scenes = storyboardDirectorScenesFromPlans(storyText, worldContext, fallbackPlans, storyboardType).map((scene) => ({
-      ...scene,
-      directorSource: fallbackSource,
-      fallbackReasonCode: reasonCode
-    }))
-    return {
-      rawOutput: String(rawOutput || `模型分镜导演规划未返回可用数据。\n告警：${warning || '空输出'}\n已启用 Fallback Director V2。`),
-      promptPreview: String(options.promptPreview || ''),
-      rawOutputLength: String(rawOutput || '').length,
-      jsonTextLength: 0,
-      parseOk: false,
-      parseError: String(warning || '未生成兜底场景'),
-      warning: String(warning || '模型分镜导演规划未返回可用数据。'),
-      errorCode: options.errorCode || '',
-      qualityWarning: fallbackQuality.warningText || '',
-      qualityHardError: fallbackQuality.hardError || '',
-      storyProgression: fallbackQuality.storyProgression || 'PASS',
-      cameraDiversity: fallbackQuality.cameraDiversity || 'PASS',
-      endingQuality: fallbackQuality.endingQuality || 'PASS',
-      selectedStoryDirection: hasStoryDirection ? selectedStoryDirection : null,
-      selectedStoryDirectionText: hasStoryDirection ? storyboardStoryDirectionText(selectedStoryDirection) : '',
-      visualEventChain,
-      visualEventChainText: storyboardVisualEventChainText(visualEventChain),
-      visualEventProtocol: storyboardVisualEventProtocol(visualEventChain, options.visualEventProtocol),
-      visualEventSceneAnchorCoverage: storyboardVisualEventSceneAnchorCoverage(visualEventChain),
-      visualEventSceneAnchorText: storyboardVisualEventSceneAnchorText(visualEventChain),
-      visualEventCausalChainText: storyboardVisualEventCausalChainText(visualEventChain),
-      visualEventCount: visualEventChain.length,
-      visualEventElapsedMs: Number(options.visualEventElapsedMs || 0) || 0,
-      visualEventGenerateProfile: options.visualEventGenerateProfile || null,
-      storyDirectionGenerateProfile: options.storyDirectionGenerateProfile || null,
-      directorGenerateProfile: options.directorGenerateProfile || options.generateProfile || null,
-      directorFirstGenerateProfile: options.firstGenerateProfile || null,
-      directorPatchGenerateProfiles: Array.isArray(options.patchGenerateProfiles) ? options.patchGenerateProfiles : [],
-      storyDirectionSelectionMode: String(options.storyDirectionSelectionMode || ''),
-      storyDirectionCandidateCount: Number(options.storyDirectionCandidateCount || 0) || 0,
-      storyDirectionCountdownMs: Number(options.storyDirectionCountdownMs || 0) || 0,
-      storyDirectionDecisionMs: Number(options.storyDirectionDecisionMs || 0) || 0,
-      fallbackReason: reasonCode,
-      fallbackReasonDetail: String(warning || ''),
-      fallbackUsed: true,
-      directorSource: fallbackSource,
-      repairStatus: `${fallbackSource}: ${reasonCode}; generated 9 scenes.`,
-      rawWorldContext,
-      worldContext,
-      worldContinuity,
-      directorInputIsolated: true,
-      directorInputMode: 'controlled_world_continuity',
-      storyboardType,
-      retryUsed: !!options.retryUsed,
-      attemptCount: Number(options.attemptCount || 1) || 1,
-      retryReason: String(options.retryReason || ''),
-      retryOk: !!options.retryOk,
-      firstRawOutputLength: Number(options.firstRawOutputLength || 0) || 0,
-      expectedScenes: STORYBOARD_SCENE_COUNT,
-      actualScenes: scenes.length,
-      rawStartsWithArray: !!(options.parsed && options.parsed.rawStartsWithArray),
-      rawEndsWithArray: !!(options.parsed && options.parsed.rawEndsWithArray),
-      jsonClosed: !!(options.parsed && options.parsed.jsonClosed),
-      jsonWrapperRepaired: !!(options.parsed && options.parsed.jsonWrapperRepaired),
-      scenes
-    }
-  }
-
-  function storyboardEventChainDirectorResult(storyText, sourceAnalysis, directionContext = {}) {
-    const rawWorldContext = storyboardRawWorldContextFromSourceAnalysis(sourceAnalysis)
-    const worldContext = storyboardWorldContextFromSourceAnalysis(sourceAnalysis)
-    const worldContinuity = storyboardWorldContinuityFromSourceAnalysis(sourceAnalysis)
-    const storyboardType = detectStoryboardType(storyText, '')
-    const selectedStoryDirection = normalizeStoryboardStoryDirection(directionContext.selectedStoryDirection)
-    const visualEventChain = Array.isArray(directionContext.visualEventChain) ? directionContext.visualEventChain : []
-    const visualEventSoftActionPolicy = storyboardSoftActionPolicyFromOptions(visualEventChain, {
-      softActionPolicy: directionContext.visualEventSoftActionPolicy,
-      softActionOverLimit: directionContext.visualEventSoftActionOverLimit,
-      softActionOverLimitReasons: directionContext.visualEventSoftActionOverLimitReasons
-    })
-    const plans = storyboardFallbackDirectorV2Plans(storyText, selectedStoryDirection, visualEventChain, {
-      softActionPolicy: visualEventSoftActionPolicy,
-      softActionOverLimit: visualEventSoftActionPolicy.softActionOverLimit,
-      softActionOverLimitReasons: visualEventSoftActionPolicy.softActionOverLimitReasons
-    })
-    const directorForcedProgressionIndexes = plans
-      .filter((plan) => plan && plan.directorForcedProgression)
-      .map((plan) => Number(plan.scene || 0) || 0)
-      .filter(Boolean)
-    const rawOutput = JSON.stringify(plans.map((plan) => [
-      storyboardNormalizePlannerField(plan.title || plan.purpose || ''),
-      storyboardNormalizePlannerField(plan.camera || ''),
-      storyboardNormalizePlannerField(plan.currentSpace || ''),
-      storyboardNormalizePlannerField(plan.action || '')
-    ]))
-    const parsed = storyboardParseAiDirectorPlans(rawOutput)
-    const quality = storyboardEvaluateAiDirectorPlanQuality(plans)
-    const scenes = storyboardDirectorScenesFromPlans(storyText, worldContext, plans, storyboardType).map((scene) => ({
-      ...scene,
-      directorSource: 'Event Chain Director'
-    }))
-    return {
-      rawOutput,
-      promptPreview: '',
-      rawOutputLength: rawOutput.length,
-      jsonTextLength: parsed.jsonTextLength || rawOutput.length,
-      parseOk: true,
-      parseError: parsed.parseError || '',
-      parseDetail: parsed.parseDetail || '',
-      errorCode: parsed.errorCode || '',
-      qualityWarning: quality.warningText || parsed.qualityWarning || '',
-      qualityHardError: quality.hardError || parsed.qualityHardError || '',
-      storyProgression: quality.storyProgression || parsed.storyProgression || 'PASS',
-      cameraDiversity: quality.cameraDiversity || parsed.cameraDiversity || 'PASS',
-      endingQuality: quality.endingQuality || parsed.endingQuality || 'PASS',
-      ...directionContext,
-      visualEventSoftActionPolicy,
-      visualEventSoftActionOverLimit: !!visualEventSoftActionPolicy.softActionOverLimit,
-      visualEventSoftActionOverLimitReasons: Array.isArray(visualEventSoftActionPolicy.softActionOverLimitReasons) ? visualEventSoftActionPolicy.softActionOverLimitReasons : [],
-      visualEventDirectorForcedProgression: directorForcedProgressionIndexes.length > 0,
-      visualEventDirectorForcedProgressionIndexes: directorForcedProgressionIndexes,
-      retryUsed: false,
-      patchUsed: false,
-      patchSceneIndexes: [],
-      patchReason: '',
-      patchOk: false,
-      patchFullyResolved: false,
-      cameraEnhanced: false,
-      cameraEnhancedSceneIndexes: [],
-      directorGenerateProfile: null,
-      directorFirstGenerateProfile: null,
-      directorPatchGenerateProfiles: [],
-      attemptCount: 0,
-      retryReason: '',
-      retryOk: false,
-      firstRawOutputLength: 0,
-      fallbackUsed: false,
-      directorSource: 'Event Chain Director',
-      fallbackReasonDetail: '',
-      fallbackReason: '',
-      rawStartsWithArray: true,
-      rawEndsWithArray: true,
-      jsonClosed: true,
-      jsonWrapperRepaired: false,
-      expectedScenes: STORYBOARD_SCENE_COUNT,
-      actualScenes: scenes.length,
-      repairStatus: quality.hardError ? `Quality hard fail: ${quality.hardError}` : (quality.warningText ? `Quality warning: ${quality.warningText}` : 'Event Chain Director: generated 9 scenes.'),
-      rawWorldContext,
-      worldContext,
-      worldContinuity,
-      directorInputIsolated: true,
-      directorInputMode: 'visual_event_chain_director',
-      storyboardType,
-      scenes
-    }
-  }
-
-  async function runStoryboardStoryDirections(storyText, sourceAnalysis) {
-    const api = window.electronAPI
-    if (!api || typeof api.promptAssistantStoryboardStoryDirections !== 'function') {
-      throw new Error('提示词助手 IPC 未就绪，无法生成故事方向。')
-    }
-    const worldContinuity = storyboardWorldContinuityFromSourceAnalysis(sourceAnalysis)
-    const storyDirectionSeed = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
-    const payload = {
-      storyText: String(storyText || ''),
-      sourceAnalysis: worldContinuity,
-      storyDirectionSeed
-    }
-    const startedAt = Date.now()
-    const result = await new Promise((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        reject(new Error('故事方向生成超时，请稍后重试。'))
-      }, 120_000)
-      api.promptAssistantStoryboardStoryDirections(payload).then(resolve, reject).finally(() => {
-        window.clearTimeout(timer)
-      })
-    })
-    if (!result || !result.ok) {
-      throw new Error(String(result && result.error || '故事方向生成失败'))
-    }
-    const directions = storyboardStoryDirectionsFromResult(result.data || {})
-    if (directions.length !== 3) {
-      throw new Error(`故事方向数量异常：${directions.length || 0}`)
-    }
-    return {
-      directions,
-      storyDirectionSeed: String(result.data && result.data.storyDirectionSeed || storyDirectionSeed),
-      storyDirectionRawOutput: String(result.data && result.data.rawOutput || ''),
-      storyDirectionPromptPreview: String(result.data && result.data.promptPreview || ''),
-      storyDirectionGenerateProfile: result.data && result.data.generateProfile || null,
-      storyDirectionElapsedMs: Date.now() - startedAt
-    }
-  }
-
-  async function runStoryboardVisualEventChain(storyText, sourceAnalysis, selectedStoryDirection, visualCuePack = '') {
-    const api = window.electronAPI
-    if (!api || typeof api.promptAssistantStoryboardVisualEventChain !== 'function') {
-      throw new Error('提示词助手 IPC 未就绪，无法生成视觉事件链。')
-    }
-    const direction = selectedStoryDirection ? normalizeStoryboardStoryDirection(selectedStoryDirection) : null
-    const worldContinuity = storyboardWorldContinuityFromSourceAnalysis(sourceAnalysis)
-    const visualEventSeed = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
-    const payload = {
-      storyText: String(storyText || ''),
-      sourceAnalysis: worldContinuity,
-      visualCuePack: String(visualCuePack || ''),
-      selectedStoryDirection: direction,
-      visualEventSeed
-    }
-    const startedAt = Date.now()
-    const fail = (code, reason, rawResult = null) => {
-      const shape = rawResult ? `；返回结构 ${storyboardVisualEventResultShape(rawResult)}` : ''
-      const message = `${code}：${reason}${shape}。已停止生成，避免使用低质量本地兜底。`
-      try {
-        console.warn('[NovaFlow Storyboard V5] 视觉事件链失败，已停止生成', {
-          code,
-          reason,
-          shape: rawResult ? storyboardVisualEventResultShape(rawResult) : '',
-          elapsedMs: Date.now() - startedAt
-        })
-      } catch (_) {}
-      throw new Error(message)
-    }
-    let result
-    try {
-      result = await new Promise((resolve, reject) => {
-        const timer = window.setTimeout(() => {
-          reject(new Error(`视觉事件链生成超过 ${Math.round(STORYBOARD_VISUAL_EVENT_CHAIN_TIMEOUT_MS / 1000)} 秒`))
-        }, STORYBOARD_VISUAL_EVENT_CHAIN_TIMEOUT_MS)
-        api.promptAssistantStoryboardVisualEventChain(payload).then(resolve, reject).finally(() => {
-          window.clearTimeout(timer)
-        })
-      })
-    } catch (error) {
-      fail('VEC_TIMEOUT', String(error && error.message || error || 'unknown_error'))
-    }
-    if (!result || !result.ok) {
-      const reason = String(result && result.error || '视觉事件链生成失败')
-      const code = /超时|timeout/i.test(reason)
-        ? 'VEC_TIMEOUT'
-        : /VEC_PARSE_FAILED|动作不是可画事件|解析失败|JSON|事件链必须|字段不能为空|场景锚点/.test(reason) ? 'VEC_PARSE_FAILED' : 'VEC_REQUEST_FAILED'
-      fail(code, reason, result)
-    }
-    const statusPayload = storyboardVisualEventStatusPayloadFromResult(result)
-    if (statusPayload) {
-      const statusText = String(statusPayload && (statusPayload.error || statusPayload.runtimeStatus) || '')
-      const code = /超时|timeout/i.test(statusText) || Date.now() - startedAt >= STORYBOARD_VISUAL_EVENT_CHAIN_TIMEOUT_MS - 1500
-        ? 'VEC_TIMEOUT'
-        : /VEC_PARSE_FAILED|动作不是可画事件|解析失败|JSON|事件链必须|字段不能为空|场景锚点/.test(statusText) ? 'VEC_PARSE_FAILED'
-        : 'VEC_STATUS_PAYLOAD'
-      fail(code, statusText || '视觉事件链接口返回 Prompt Assistant 状态对象，未拿到 events', result)
-    }
-    const visualEventPayload = storyboardVisualEventPayloadFromResult(result)
-    const events = storyboardVisualEventChainFromResult(result)
-    if (events.length !== STORYBOARD_SCENE_COUNT) {
-      fail('VEC_EMPTY_EVENTS', `视觉事件链数量异常：${events.length || 0}`, result)
-    }
-    return {
-      events,
-      visualEventSeed: String(visualEventPayload.visualEventSeed || visualEventSeed),
-      visualEventRawOutput: String(visualEventPayload.rawOutput || ''),
-      visualEventPromptPreview: String(visualEventPayload.promptPreview || ''),
-      visualCuePack: String(visualCuePack || ''),
-      visualEventProtocol: storyboardVisualEventProtocol(events, visualEventPayload.visualEventProtocol || ''),
-      visualEventGenerateProfile: visualEventPayload.generateProfile || null,
-      visualEventRetryGenerateProfile: visualEventPayload.retryGenerateProfile || null,
-      visualEventElapsedMs: Date.now() - startedAt,
-      visualEventParseError: String(visualEventPayload.parseError || ''),
-      visualEventRepairUsed: !!visualEventPayload.repairUsed,
-      visualEventRepairDetails: Array.isArray(visualEventPayload.repairDetails) ? visualEventPayload.repairDetails.slice(0, 8).map((item) => String(item || '')) : [],
-      visualEventDrawableRealizerUsed: !!visualEventPayload.drawableRealizerUsed,
-      visualEventDrawableRealizerDetails: Array.isArray(visualEventPayload.drawableRealizerDetails) ? visualEventPayload.drawableRealizerDetails.slice(0, 8).map((item) => String(item || '')) : [],
-      visualEventDrawableRealizerGenerateProfiles: Array.isArray(visualEventPayload.drawableRealizerGenerateProfiles) ? visualEventPayload.drawableRealizerGenerateProfiles : [],
-      visualEventSingleActionRepairUsed: !!visualEventPayload.singleActionRepairUsed,
-      visualEventSingleActionRepairDetails: Array.isArray(visualEventPayload.singleActionRepairDetails) ? visualEventPayload.singleActionRepairDetails.slice(0, 8).map((item) => String(item || '')) : [],
-      visualEventLocalFallbackActionUsed: !!visualEventPayload.localFallbackActionUsed,
-      visualEventAbstractActionDetails: Array.isArray(visualEventPayload.abstractActionDetails) ? visualEventPayload.abstractActionDetails.slice(0, 8).map((item) => String(item || '')) : [],
-      visualEventDuplicateRiskDetails: Array.isArray(visualEventPayload.duplicateRiskDetails) ? visualEventPayload.duplicateRiskDetails.slice(0, 8).map((item) => String(item || '')) : [],
-      visualEventSoftActionDetails: Array.isArray(visualEventPayload.softActionDetails) ? visualEventPayload.softActionDetails.slice(0, 8).map((item) => String(item || '')) : [],
-      visualEventSoftActionPolicy: visualEventPayload.softActionPolicy && typeof visualEventPayload.softActionPolicy === 'object' ? visualEventPayload.softActionPolicy : null,
-      visualEventSoftActionOverLimit: !!visualEventPayload.softActionOverLimit,
-      visualEventSoftActionOverLimitReasons: Array.isArray(visualEventPayload.softActionOverLimitReasons) ? visualEventPayload.softActionOverLimitReasons.slice(0, 8).map((item) => String(item || '')) : [],
-      visualEventLocalStoryChainUsed: !!visualEventPayload.localStoryChainUsed,
-      visualEventRetryUsed: !!visualEventPayload.retryUsed,
-      visualEventFallbackUsed: false,
-      visualEventFallbackReason: '',
-      visualEventResultShape: storyboardVisualEventResultShape(result)
-    }
-  }
-
-  async function runStoryboardFinalShotPrompts(storyText, sourceAnalysis, storyDirectionSelection) {
-    const api = window.electronAPI
-    if (!api || typeof api.promptAssistantStoryboardFinalShotPrompts !== 'function') {
-      throw new Error('提示词助手 IPC 未就绪，无法生成最终分镜提示词。')
-    }
-    const selectedStoryDirection = normalizeStoryboardStoryDirection(storyDirectionSelection && storyDirectionSelection.selectedStoryDirection)
-    const visualEventChain = Array.isArray(storyDirectionSelection && storyDirectionSelection.visualEventChain)
-      ? storyDirectionSelection.visualEventChain.map((item, index) => normalizeStoryboardVisualEvent(item, index)).filter((item) => item.title && item.action)
-      : []
-    if (visualEventChain.length !== STORYBOARD_SCENE_COUNT) {
-      throw new Error(`最终分镜提示词缺少完整 Story Chain：${visualEventChain.length || 0}/9`)
-    }
-    const worldContinuity = storyboardWorldContinuityFromSourceAnalysis(sourceAnalysis)
-    const finalShotSeed = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
-    const payload = {
-      storyText: String(storyText || ''),
-      sourceAnalysis: worldContinuity,
-      visualCuePack: String(storyDirectionSelection && storyDirectionSelection.visualCuePack || ''),
-      selectedStoryDirection,
-      visualEventChain,
-      finalShotSeed
-    }
-    const startedAt = Date.now()
-    let result
-    try {
-      result = await new Promise((resolve, reject) => {
-        const timer = window.setTimeout(() => {
-          reject(new Error(`最终分镜提示词生成超过 ${Math.round(STORYBOARD_FINAL_SHOT_PROMPTS_TIMEOUT_MS / 1000)} 秒`))
-        }, STORYBOARD_FINAL_SHOT_PROMPTS_TIMEOUT_MS)
-        api.promptAssistantStoryboardFinalShotPrompts(payload).then(resolve, reject).finally(() => {
-          window.clearTimeout(timer)
-        })
-      })
-    } catch (error) {
-      throw new Error(`FINAL_SHOT_PROMPT_FAILED：${String(error && error.message || error || 'unknown_error')}`)
-    }
-    if (!result || !result.ok) {
-      throw new Error(`FINAL_SHOT_PROMPT_FAILED：${String(result && result.error || '最终分镜提示词生成失败')}；返回结构 ${storyboardFinalShotResultShape(result)}`)
-    }
-    const payloadData = storyboardFinalShotPayloadFromResult(result)
-    const shots = storyboardFinalShotsFromResult(result)
-    if (shots.length !== STORYBOARD_SCENE_COUNT) {
-      throw new Error(`FINAL_SHOT_PROMPT_FAILED：最终分镜提示词数量异常 ${shots.length || 0}/9；返回结构 ${storyboardFinalShotResultShape(result)}`)
-    }
-    return {
-      shots,
-      finalShotSeed: String(payloadData.finalShotSeed || finalShotSeed),
-      finalShotRawOutput: String(payloadData.rawOutput || ''),
-      finalShotPromptPreview: String(payloadData.promptPreview || ''),
-      finalShotGenerateProfile: payloadData.generateProfile || null,
-      finalShotElapsedMs: Date.now() - startedAt,
-      finalShotResultShape: storyboardFinalShotResultShape(result)
-    }
-  }
-
-  async function runStoryboardUnifiedNineShots(storyText, sourceAnalysis, visualCuePack = '', directorProvider = 'local') {
-    const api = window.electronAPI
-    const useGrok = String(directorProvider || '') === 'grok'
-    const requestUnifiedNineShots = useGrok
-      ? api && api.smartAiStoryboardUnifiedNineShots
-      : api && api.promptAssistantStoryboardUnifiedNineShots
-    if (typeof requestUnifiedNineShots !== 'function') {
-      throw new Error(useGrok ? 'AI导演接口未就绪。' : '提示词助手 IPC 未就绪，无法生成统一9段分镜。')
-    }
-    const worldContinuity = storyboardWorldContinuityFromSourceAnalysis(sourceAnalysis)
-    const directorSourceAnalysis = useGrok
-      ? String(sourceAnalysis || '').trim().slice(0, 6000)
-      : worldContinuity
-    const unifiedSeed = `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`
-    const payload = {
-      storyText: String(storyText || ''),
-      sourceAnalysis: directorSourceAnalysis,
-      visualCuePack: String(visualCuePack || ''),
-      unifiedSeed
-    }
-    const startedAt = Date.now()
-    let result
-    try {
-      result = await new Promise((resolve, reject) => {
-        const timer = window.setTimeout(() => {
-          reject(new Error(`统一9段分镜生成超过 ${Math.round(STORYBOARD_FINAL_SHOT_PROMPTS_TIMEOUT_MS / 1000)} 秒`))
-        }, STORYBOARD_UNIFIED_NINE_SHOTS_TIMEOUT_MS)
-        requestUnifiedNineShots(payload).then(resolve, reject).finally(() => {
-          window.clearTimeout(timer)
-        })
-      })
-    } catch (error) {
-      throw new Error(`UNIFIED_NINE_SHOTS_FAILED：${String(error && error.message || error || 'unknown_error')}`)
-    }
-    if (!result || !result.ok) {
-      throw new Error(`UNIFIED_NINE_SHOTS_FAILED：${String(result && result.error || '统一9段分镜生成失败')}；返回结构 ${storyboardFinalShotResultShape(result)}`)
-    }
-    const payloadData = storyboardFinalShotPayloadFromResult(result)
-    const shots = storyboardFinalShotsFromResult(result)
-    if (shots.length !== STORYBOARD_SCENE_COUNT) {
-      throw new Error(`UNIFIED_NINE_SHOTS_FAILED：统一分镜数量异常 ${shots.length || 0}/9；返回结构 ${storyboardFinalShotResultShape(result)}`)
-    }
-    return {
-      shots,
-      unifiedSeed: String(payloadData.unifiedSeed || unifiedSeed),
-      unifiedRawOutput: String(payloadData.rawOutput || ''),
-      unifiedPromptPreview: String(payloadData.promptPreview || ''),
-      unifiedGenerateProfile: payloadData.generateProfile || null,
-      unifiedRetryUsed: !!(payloadData.retryUsed || payloadData.repairUsed),
-      unifiedRetryGenerateProfile: payloadData.retryGenerateProfile || null,
-      unifiedFirstError: String(payloadData.firstError || ''),
-      unifiedDirectorQuality: payloadData.directorQuality || null,
-      unifiedFirstPassDirectorQuality: payloadData.firstPassDirectorQuality || null,
-      unifiedRepairUsed: !!payloadData.repairUsed,
-      unifiedRepairError: String(payloadData.repairError || ''),
-      unifiedRepairSkippedReason: String(payloadData.repairSkippedReason || ''),
-      unifiedElapsedMs: Date.now() - startedAt,
-      unifiedResultShape: storyboardFinalShotResultShape(result),
-      unifiedProvider: useGrok ? 'grok' : 'local'
-    }
-  }
-
-  function storyboardScenesFromUnifiedShots(storyText, sourceAnalysis, shots) {
-    const storyboardType = detectStoryboardType(storyText, sourceAnalysis)
-    const premise = String(storyText || '').trim() || 'A continuous nine-scene storyboard.'
-    return shots.slice(0, STORYBOARD_SCENE_COUNT).map((shot, index) => {
-      const number = index + 1
-      const defaults = storyboardDirectorSceneDefaults(index, shot && shot.camera)
-      const title = storyboardNormalizePlannerField(shot && shot.title || `Scene ${number}`)
-      const displayCaption = storyboardNormalizePlannerField(shot && shot.displayCaption || title)
-      const prompt = String(shot && shot.prompt || '').trim()
-      const visualEvent = storyboardNormalizePlannerField(shot && (shot.visualEvent || shot.visibleEvent) || '')
-      const currentSpace = storyboardNormalizePlannerField(shot && shot.sceneAnchor || title)
-      const camera = storyboardNormalizePlannerField(shot && shot.camera || defaults.camera)
-      const subjectState = shot && shot.subjectState && typeof shot.subjectState === 'object' ? { ...shot.subjectState } : null
-      const keyProps = Array.isArray(shot && shot.keyProps) ? shot.keyProps.map((item) => ({ ...item })) : []
-      const directorPlan = {
-        scene: number,
-        purpose: title,
-        currentSpace,
-        shot_type: defaults.shot_type,
-        camera,
-        composition: defaults.composition,
-        movement: defaults.movement,
-        lens: defaults.lens,
-        subject_ratio: defaults.subject_ratio,
-        effect_ratio: defaults.effect_ratio,
-        emotion: defaults.emotion,
-        rhythm: defaults.rhythm,
-        reason: 'Unified one-pass storyboard',
-        action: prompt,
-        eventRealization: visualEvent || prompt,
-        visualEvent: visualEvent || prompt
-      }
-      return {
-        id: `scene${String(number).padStart(2, '0')}`,
-        number,
-        scene: number,
-        title,
-        beat: title,
-        currentSpace,
-        action: prompt,
-        eventRealization: prompt,
-        visualEvent: visualEvent || prompt,
-        effects: '',
-        environment: currentSpace,
-        light: '',
-        rhythm: defaults.rhythm,
-        lens: defaults.lens,
-        storyboardType,
-        storyPremise: premise,
-        directorSource: 'Unified 9-Shot AI',
-        directorPlan,
-        caption: displayCaption,
-        shotSize: camera,
-        angle: camera,
-        description: prompt,
-        subjectState,
-        keyProps,
-        storyUnitIds: Array.isArray(shot && shot.storyUnitIds) ? shot.storyUnitIds.slice() : []
-      }
-    })
-  }
-
-  function storyboardDirectorQualityWorkflow() {
-    const api = window && window.NovaFlowStoryboardDirectorQuality
-    return api && typeof api.evaluateShots === 'function' ? api : null
-  }
-
-  function storyboardTerminalKeyPropPriorityRule(promptText) {
-    const workflow = storyboardDirectorQualityWorkflow()
-    if (!workflow || typeof workflow.terminalKeyPropPriorityRule !== 'function') return ''
-    try {
-      return String(workflow.terminalKeyPropPriorityRule(promptText) || '').trim()
-    } catch (_) {
-      return ''
-    }
-  }
-
-  function storyboardEvaluateDirectorQuality(shots, options = {}) {
-    const workflow = storyboardDirectorQualityWorkflow()
-    if (!workflow) return null
-    try {
-      return workflow.evaluateShots(Array.isArray(shots) ? shots : [], options)
-    } catch (error) {
-      return {
-        status: 'WARNING',
-        storyProgression: 'WARNING',
-        cameraDiversity: 'WARNING',
-        endingQuality: 'WARNING',
-        warnings: [`QUALITY_WORKFLOW_FAILED:${String(error && error.message || error || 'unknown_error')}`],
-        warningText: String(error && error.message || error || 'quality workflow failed'),
-        hardError: '',
-        hardErrors: [],
-        issues: []
-      }
-    }
-  }
-
-  function storyboardDirectorQualityIssueText(report) {
-    const issues = report && Array.isArray(report.issues) ? report.issues : []
-    return issues.map((issue) => {
-      const code = String(issue && issue.code || 'UNKNOWN').trim()
-      const scenes = Array.isArray(issue && issue.scenes)
-        ? issue.scenes
-        : (Number(issue && issue.scene) > 0 ? [Number(issue.scene)] : [])
-      const sceneText = scenes.length ? `@${scenes.map((scene) => String(scene).padStart(2, '0')).join(',')}` : ''
-      return `${code}${sceneText}`
-    }).filter(Boolean).join('；')
-  }
-
-  function storyboardUnifiedDirectorResult(storyText, sourceAnalysis, visualCuePack, unifiedResult, referenceAnalysis, preImagePlanningStartedAt) {
-    const rawWorldContext = storyboardRawWorldContextFromSourceAnalysis(sourceAnalysis)
-    const worldContext = storyboardWorldContextFromSourceAnalysis(sourceAnalysis)
-    const worldContinuity = storyboardWorldContinuityFromSourceAnalysis(sourceAnalysis)
-    const shots = Array.isArray(unifiedResult && unifiedResult.shots) ? unifiedResult.shots : []
-    const scenes = storyboardScenesFromUnifiedShots(storyText, sourceAnalysis, shots)
-    const providerQuality = unifiedResult && unifiedResult.unifiedDirectorQuality || null
-    const planningQuality = storyboardEvaluateDirectorQuality(shots, {
-      validationStage: 'planning',
-      identityCues: storyboardCharacterIdentityCard(storyText, sourceAnalysis, visualCuePack),
-      sourceCues: sourceAnalysis
-    })
-    const providerIssueText = storyboardDirectorQualityIssueText(providerQuality)
-    const planningWarningText = String(planningQuality && planningQuality.warningText || '').trim()
-    const qualityWarning = [providerIssueText, planningWarningText].filter(Boolean).join('；')
-    const providerQualityHardError = String(providerQuality && providerQuality.status || '').toUpperCase() === 'FAIL'
-      ? `PROVIDER_DIRECTOR_QUALITY_FAIL:${providerIssueText || 'UNKNOWN_QUALITY_ISSUE'}`
-      : ''
-    const qualityHardError = String(planningQuality && planningQuality.hardError || providerQualityHardError || '').trim()
-    return {
-      rawOutput: String(unifiedResult && unifiedResult.unifiedRawOutput || ''),
-      promptPreview: String(unifiedResult && unifiedResult.unifiedPromptPreview || ''),
-      rawOutputLength: String(unifiedResult && unifiedResult.unifiedRawOutput || '').length,
-      elapsedMs: Number(unifiedResult && unifiedResult.unifiedElapsedMs || 0) || 0,
-      retryUsed: !!(unifiedResult && unifiedResult.unifiedRetryUsed),
-      patchUsed: false,
-      attemptCount: unifiedResult && unifiedResult.unifiedRetryUsed ? 2 : 1,
-      fallbackUsed: false,
-      parseOk: scenes.length === STORYBOARD_SCENE_COUNT,
-      parseError: '',
-      parseDetail: '',
-      errorCode: '',
-      jsonTextLength: String(unifiedResult && unifiedResult.unifiedRawOutput || '').length,
-      rawStartsWithArray: true,
-      rawEndsWithArray: true,
-      jsonClosed: true,
-      jsonWrapperRepaired: false,
-      expectedScenes: STORYBOARD_SCENE_COUNT,
-      actualScenes: scenes.length,
-      referenceAnalysisFallbackReason: String(referenceAnalysis && referenceAnalysis.fallbackReason || ''),
-      storyProgression: String(planningQuality && planningQuality.storyProgression || (providerQuality && providerQuality.status === 'PASS' ? 'PASS' : 'UNKNOWN')),
-      cameraDiversity: String(planningQuality && planningQuality.cameraDiversity || (providerQuality && providerQuality.status === 'PASS' ? 'PASS' : 'UNKNOWN')),
-      endingQuality: String(planningQuality && planningQuality.endingQuality || (providerQuality && providerQuality.status === 'PASS' ? 'PASS' : 'UNKNOWN')),
-      qualityWarning,
-      qualityHardError,
-      directorQuality: planningQuality,
-      providerDirectorQuality: providerQuality,
-      firstPassDirectorQuality: unifiedResult && unifiedResult.unifiedFirstPassDirectorQuality || null,
-      directorSource: 'Unified 9-Shot AI',
-      repairStatus: unifiedResult && unifiedResult.unifiedRepairUsed
-        ? 'Grok targeted quality repair completed once.'
-        : unifiedResult && unifiedResult.unifiedRepairSkippedReason
-          ? `Grok targeted quality repair skipped: ${unifiedResult.unifiedRepairSkippedReason}.`
-          : unifiedResult && unifiedResult.unifiedRepairError
-            ? `Grok targeted quality repair failed; first pass retained: ${unifiedResult.unifiedRepairError}.`
-            : 'Unified 9-Shot AI: generated 9 scene prompts in one pass.',
-      directorInputIsolated: true,
-      directorInputMode: 'unified_one_pass_storyboard',
-      storyboardType: detectStoryboardType(storyText, sourceAnalysis),
-      rawWorldContext,
-      worldContext,
-      worldContinuity,
-      visualCuePack: String(visualCuePack || ''),
-      visualEventChain: [],
-      visualEventChainText: '',
-      visualEventCount: 0,
-      visualEventElapsedMs: 0,
-      visualEventGenerateProfile: null,
-      visualEventRetryGenerateProfile: null,
-      visualEventParseError: '',
-      visualEventRepairUsed: false,
-      visualEventRepairDetails: [],
-      visualEventDrawableRealizerUsed: false,
-      visualEventDrawableRealizerDetails: [],
-      visualEventDrawableRealizerGenerateProfiles: [],
-      visualEventSingleActionRepairUsed: false,
-      visualEventSingleActionRepairDetails: [],
-      visualEventLocalFallbackActionUsed: false,
-      visualEventAbstractActionDetails: [],
-      visualEventDuplicateRiskDetails: [],
-      visualEventSoftActionDetails: [],
-      visualEventSoftActionPolicy: null,
-      visualEventSoftActionOverLimit: false,
-      visualEventSoftActionOverLimitReasons: [],
-      visualEventLocalStoryChainUsed: false,
-      visualEventRetryUsed: false,
-      visualEventFallbackUsed: false,
-      visualEventFallbackReason: '',
-      visualEventResultShape: '',
-      finalShots: shots,
-      finalShotSeed: String(unifiedResult && unifiedResult.unifiedSeed || ''),
-      finalShotRawOutput: String(unifiedResult && unifiedResult.unifiedRawOutput || ''),
-      finalShotPromptPreview: String(unifiedResult && unifiedResult.unifiedPromptPreview || ''),
-      finalShotGenerateProfile: unifiedResult && unifiedResult.unifiedGenerateProfile || null,
-      finalShotRetryGenerateProfile: unifiedResult && unifiedResult.unifiedRetryGenerateProfile || null,
-      finalShotElapsedMs: Number(unifiedResult && unifiedResult.unifiedElapsedMs || 0) || 0,
-      finalShotResultShape: String(unifiedResult && unifiedResult.unifiedResultShape || ''),
-      unifiedSeed: String(unifiedResult && unifiedResult.unifiedSeed || ''),
-      unifiedRawOutput: String(unifiedResult && unifiedResult.unifiedRawOutput || ''),
-      unifiedPromptPreview: String(unifiedResult && unifiedResult.unifiedPromptPreview || ''),
-      unifiedGenerateProfile: unifiedResult && unifiedResult.unifiedGenerateProfile || null,
-      unifiedRetryUsed: !!(unifiedResult && unifiedResult.unifiedRetryUsed),
-      unifiedRetryGenerateProfile: unifiedResult && unifiedResult.unifiedRetryGenerateProfile || null,
-      unifiedFirstError: String(unifiedResult && unifiedResult.unifiedFirstError || ''),
-      unifiedRepairUsed: !!(unifiedResult && unifiedResult.unifiedRepairUsed),
-      unifiedRepairError: String(unifiedResult && unifiedResult.unifiedRepairError || ''),
-      unifiedRepairSkippedReason: String(unifiedResult && unifiedResult.unifiedRepairSkippedReason || ''),
-      unifiedElapsedMs: Number(unifiedResult && unifiedResult.unifiedElapsedMs || 0) || 0,
-      referenceAnalysisProvider: String(referenceAnalysis && referenceAnalysis.provider || '').trim(),
-      referenceAnalysisModel: String(referenceAnalysis && referenceAnalysis.model || '').trim(),
-      referenceAnalysisRequestId: String(referenceAnalysis && referenceAnalysis.requestId || '').trim(),
-      referenceAnalysisProviderDurationMs: Number(referenceAnalysis && referenceAnalysis.providerDurationMs || 0) || 0,
-      referenceAnalysisCacheHit: !!(referenceAnalysis && referenceAnalysis.cacheHit),
-      referenceAnalysisElapsedMs: Number(referenceAnalysis && referenceAnalysis.elapsedMs || 0) || 0,
-      referenceAnalysisModelElapsedMs: Number(referenceAnalysis && referenceAnalysis.modelElapsedMs || 0) || 0,
-      referenceAnalysisHashElapsedMs: Number(referenceAnalysis && referenceAnalysis.hashElapsedMs || 0) || 0,
-      referenceAnalysisCacheKey: String(referenceAnalysis && referenceAnalysis.cacheKey || '').slice(0, 24),
-      preImagePlanningElapsedMs: Date.now() - preImagePlanningStartedAt,
-      expectedScenes: STORYBOARD_SCENE_COUNT,
-      actualScenes: scenes.length,
-      scenes
-    }
-  }
-
-  async function runStoryboardAiDirectorPlanner(storyText, sourceAnalysis, storyDirectionSelection) {
-    const api = window.electronAPI
-    if (!api || typeof api.promptAssistantStoryboardDirectorPlan !== 'function') {
-      throw new Error('提示词助手 IPC 未就绪，无法执行分镜导演规划。')
-    }
-    const selectedStoryDirection = normalizeStoryboardStoryDirection(storyDirectionSelection && storyDirectionSelection.selectedStoryDirection)
-    if (!selectedStoryDirection || !selectedStoryDirection.title || !selectedStoryDirection.direction) {
-      throw new Error('分镜导演规划缺少已选故事方向。')
-    }
-    const rawVisualEventChain = Array.isArray(storyDirectionSelection && storyDirectionSelection.visualEventChain)
-      ? storyDirectionSelection.visualEventChain.map((item, index) => normalizeStoryboardVisualEvent(item, index)).filter((item) => item.title && item.action)
-      : []
-    const visualEventAnchorNormalization = storyboardNormalizeVisualEventSceneAnchors(rawVisualEventChain)
-    const visualEventChain = visualEventAnchorNormalization.events
-    if (visualEventChain.length < 6) {
-      throw new Error('分镜导演规划缺少视觉事件链。')
-    }
-    const rawWorldContext = storyboardRawWorldContextFromSourceAnalysis(sourceAnalysis)
-    const worldContext = storyboardWorldContextFromSourceAnalysis(sourceAnalysis)
-    const worldContinuity = storyboardWorldContinuityFromSourceAnalysis(sourceAnalysis)
-    const visualCuePack = String(storyDirectionSelection && storyDirectionSelection.visualCuePack || '')
-    const payload = {
-      storyText: String(storyText || ''),
-      sourceAnalysis: worldContinuity,
-      visualCuePack,
-      rules: '输出正好9项紧凑数组，每项[剧情节点,镜头,当前空间,动作]。',
-      selectedStoryDirection,
-      visualEventChain
-    }
-    const directionContext = {
-      selectedStoryDirection,
-      selectedStoryDirectionText: storyboardStoryDirectionText(selectedStoryDirection),
-      visualEventChain,
-      visualEventChainText: storyboardVisualEventChainText(visualEventChain),
-      visualEventProtocol: storyboardVisualEventProtocol(visualEventChain, storyDirectionSelection && storyDirectionSelection.visualEventProtocol),
-      visualEventSceneAnchorNormalized: !!visualEventAnchorNormalization.changed,
-      visualEventSceneAnchorNormalizedCount: Number(visualEventAnchorNormalization.changedCount || 0) || 0,
-      visualEventOriginalSceneAnchorText: visualEventAnchorNormalization.originalSceneAnchorText || '',
-      visualEventSceneAnchorCoverage: storyboardVisualEventSceneAnchorCoverage(visualEventChain),
-      visualEventSceneAnchorText: storyboardVisualEventSceneAnchorText(visualEventChain),
-      visualEventCausalChainText: storyboardVisualEventCausalChainText(visualEventChain),
-      visualEventCount: visualEventChain.length,
-      visualEventElapsedMs: Number(storyDirectionSelection && storyDirectionSelection.visualEventElapsedMs || 0) || 0,
-      visualEventGenerateProfile: storyDirectionSelection && storyDirectionSelection.visualEventGenerateProfile || null,
-      visualEventRetryGenerateProfile: storyDirectionSelection && storyDirectionSelection.visualEventRetryGenerateProfile || null,
-      visualEventParseError: String(storyDirectionSelection && storyDirectionSelection.visualEventParseError || ''),
-      visualEventRepairUsed: !!(storyDirectionSelection && storyDirectionSelection.visualEventRepairUsed),
-      visualEventRepairDetails: Array.isArray(storyDirectionSelection && storyDirectionSelection.visualEventRepairDetails) ? storyDirectionSelection.visualEventRepairDetails : [],
-      visualEventSingleActionRepairUsed: !!(storyDirectionSelection && storyDirectionSelection.visualEventSingleActionRepairUsed),
-      visualEventSingleActionRepairDetails: Array.isArray(storyDirectionSelection && storyDirectionSelection.visualEventSingleActionRepairDetails) ? storyDirectionSelection.visualEventSingleActionRepairDetails : [],
-      visualEventLocalFallbackActionUsed: !!(storyDirectionSelection && storyDirectionSelection.visualEventLocalFallbackActionUsed),
-      visualEventAbstractActionDetails: Array.isArray(storyDirectionSelection && storyDirectionSelection.visualEventAbstractActionDetails) ? storyDirectionSelection.visualEventAbstractActionDetails : [],
-      visualEventDuplicateRiskDetails: Array.isArray(storyDirectionSelection && storyDirectionSelection.visualEventDuplicateRiskDetails) ? storyDirectionSelection.visualEventDuplicateRiskDetails : [],
-      visualEventSoftActionDetails: Array.isArray(storyDirectionSelection && storyDirectionSelection.visualEventSoftActionDetails) ? storyDirectionSelection.visualEventSoftActionDetails : [],
-      visualEventSoftActionPolicy: storyDirectionSelection && storyDirectionSelection.visualEventSoftActionPolicy && typeof storyDirectionSelection.visualEventSoftActionPolicy === 'object' ? storyDirectionSelection.visualEventSoftActionPolicy : null,
-      visualEventSoftActionOverLimit: !!(storyDirectionSelection && storyDirectionSelection.visualEventSoftActionOverLimit),
-      visualEventSoftActionOverLimitReasons: Array.isArray(storyDirectionSelection && storyDirectionSelection.visualEventSoftActionOverLimitReasons) ? storyDirectionSelection.visualEventSoftActionOverLimitReasons : [],
-      visualEventRetryUsed: !!(storyDirectionSelection && storyDirectionSelection.visualEventRetryUsed),
-      visualEventFallbackUsed: !!(storyDirectionSelection && storyDirectionSelection.visualEventFallbackUsed),
-      visualEventFallbackReason: String(storyDirectionSelection && storyDirectionSelection.visualEventFallbackReason || ''),
-      visualEventResultShape: String(storyDirectionSelection && storyDirectionSelection.visualEventResultShape || ''),
-      visualCuePack,
-      storyDirectionGenerateProfile: storyDirectionSelection && storyDirectionSelection.storyDirectionGenerateProfile || null,
-      storyDirectionSelectionMode: String(storyDirectionSelection && storyDirectionSelection.storyDirectionSelectionMode || ''),
-      storyDirectionCandidateCount: Number(storyDirectionSelection && storyDirectionSelection.storyDirectionCandidateCount || 0) || 0,
-      storyDirectionCountdownMs: Number(storyDirectionSelection && storyDirectionSelection.storyDirectionCountdownMs || 0) || 0,
-      storyDirectionDecisionMs: Number(storyDirectionSelection && storyDirectionSelection.storyDirectionDecisionMs || 0) || 0
-    }
-    const startedAt = Date.now()
-    try {
-      console.info('[NovaFlow 分镜 V5] 导演规划开始', {
-        storyChars: payload.storyText.length,
-        directorContextChars: payload.sourceAnalysis.length,
-        rawWorldContextChars: rawWorldContext.length,
-        worldContextChars: worldContext.length,
-        worldContinuityChars: worldContinuity.length,
-        directorInputMode: 'controlled_world_continuity',
-        selectedStoryDirection: directionContext.selectedStoryDirectionText,
-        visualEventCount: directionContext.visualEventCount,
-        rulesChars: payload.rules.length,
-        timeoutMs: STORYBOARD_DIRECTOR_PLANNER_TIMEOUT_MS
-      })
-    } catch (_) {}
-    let result
-    try {
-      result = await new Promise((resolve, reject) => {
-      const timer = window.setTimeout(() => {
-        reject(new Error(`分镜导演规划超时（${Math.round(STORYBOARD_DIRECTOR_PLANNER_TIMEOUT_MS / 1000)} 秒），已停止等待，请稍后重试。`))
-      }, STORYBOARD_DIRECTOR_PLANNER_TIMEOUT_MS)
-      api.promptAssistantStoryboardDirectorPlan(payload).then(resolve, reject).finally(() => {
-        window.clearTimeout(timer)
-      })
-      })
-    } catch (error) {
-      try {
-        console.error('[NovaFlow 分镜 V5] 导演规划失败', {
-          elapsedMs: Date.now() - startedAt,
-          error: String(error && error.message || error)
-        })
-      } catch (_) {}
-      const errorMessage = String(error && error.message || error || '分镜导演规划失败')
-      throw new Error(`DIRECTOR_PLANNER_AI_FAILED: ${errorMessage}`)
-    }
-    try {
-      console.info('[NovaFlow 分镜 V5] 导演规划完成', {
-        elapsedMs: Date.now() - startedAt,
-        ok: !!(result && result.ok)
-      })
-    } catch (_) {}
-    if (!result || !result.ok) {
-      const errorMessage = String(result && result.error || '分镜导演规划失败')
-      throw new Error(`DIRECTOR_PLANNER_AI_FAILED: ${errorMessage}`)
-    }
-    const rawOutput = String(result.data && result.data.rawOutput || '').trim()
-    if (!rawOutput) {
-      throw new Error('DIRECTOR_PLANNER_AI_EMPTY_OUTPUT')
-    }
-    const promptPreview = String(result.data && result.data.promptPreview || '')
-    const retryUsed = !!(result.data && result.data.retryUsed)
-    const patchUsed = !!(result.data && result.data.patchUsed)
-    const patchSceneIndexes = Array.isArray(result.data && result.data.patchSceneIndexes) ? result.data.patchSceneIndexes : []
-    const cameraEnhanced = !!(result.data && result.data.cameraEnhanced)
-    const cameraEnhancedSceneIndexes = Array.isArray(result.data && result.data.cameraEnhancedSceneIndexes) ? result.data.cameraEnhancedSceneIndexes : []
-    const attemptCount = Number(result.data && result.data.attemptCount || (retryUsed ? 2 : 1)) || 1
-    const storyboardType = detectStoryboardType(storyText, '')
-    const parsed = storyboardParseAiDirectorPlans(rawOutput)
-    const hasNineRawScenes = parsed && parsed.jsonClosed && Array.isArray(parsed.plans) && parsed.plans.length === STORYBOARD_SCENE_COUNT && !parsed.parseError
-    if (!hasNineRawScenes) {
-      const plannerError = parsed && (parsed.parseError || parsed.errorCode)
-        ? `${parsed.parseError || ''}${parsed.parseError && parsed.errorCode ? '; ' : ''}${parsed.errorCode || ''}`
-        : 'AI DirectorPlanner did not return usable 9-scene JSON'
-      throw new Error(`DIRECTOR_PLANNER_AI_INVALID_OUTPUT: ${plannerError}`)
-    }
-    const scenes = storyboardDirectorScenesFromPlans(storyText, worldContext, parsed.plans, storyboardType).map((scene) => ({
-      ...scene,
-      directorSource: patchUsed ? 'AI Patch' : retryUsed ? 'AI Retry' : 'AI Director'
-    }))
-    return {
-      rawOutput,
-      promptPreview,
-      rawOutputLength: rawOutput.length,
-      elapsedMs: Date.now() - startedAt,
-      ...directionContext,
-      retryUsed,
-      patchUsed,
-      patchSceneIndexes,
-      cameraEnhanced,
-      cameraEnhancedSceneIndexes,
-      patchReason: String(result.data && result.data.patchReason || ''),
-      patchOk: !!(result.data && result.data.patchOk),
-      directorGenerateProfile: result.data && result.data.generateProfile || null,
-      directorFirstGenerateProfile: result.data && result.data.firstGenerateProfile || null,
-      directorPatchGenerateProfiles: Array.isArray(result.data && result.data.patchGenerateProfiles) ? result.data.patchGenerateProfiles : [],
-      attemptCount,
-      retryReason: String(result.data && result.data.retryReason || ''),
-      retryOk: !!(result.data && result.data.retryOk),
-      firstRawOutputLength: Number(result.data && result.data.firstRawOutputLength || 0) || 0,
-      jsonTextLength: parsed.jsonTextLength,
-      parseOk: hasNineRawScenes,
-      parseError: parsed.parseError,
-      parseDetail: parsed.parseDetail || '',
-      errorCode: parsed.errorCode || '',
-      qualityWarning: parsed.qualityWarning || '',
-      qualityHardError: parsed.qualityHardError || '',
-      storyProgression: parsed.storyProgression || 'PASS',
-      cameraDiversity: parsed.cameraDiversity || 'PASS',
-      endingQuality: parsed.endingQuality || 'PASS',
-      fallbackUsed: false,
-      directorSource: patchUsed ? 'AI Patch' : retryUsed ? 'AI Retry' : 'AI Director',
-      fallbackReasonDetail: '',
-      fallbackReason: parsed.parseError || '',
-      rawStartsWithArray: !!parsed.rawStartsWithArray,
-      rawEndsWithArray: !!parsed.rawEndsWithArray,
-      jsonClosed: !!parsed.jsonClosed,
-      jsonWrapperRepaired: !!parsed.jsonWrapperRepaired,
-      expectedScenes: parsed.expectedScenes || STORYBOARD_SCENE_COUNT,
-      actualScenes: Number.isFinite(Number(parsed.actualScenes)) ? Number(parsed.actualScenes) : 0,
-      repairStatus: storyboardDirectorPlannerRepairStatus(parsed.plans, scenes, parsed),
-      rawWorldContext,
-      worldContext,
-      worldContinuity,
-      directorInputIsolated: true,
-      directorInputMode: 'controlled_world_continuity',
-      storyboardType,
-      scenes
-    }
-  }
-
-  function storyboardDirectorPromptForScene(scene, sourceAnalysis, storyText) {
-    const premise = String(storyText || scene.storyPremise || '').trim() || 'A cinematic nine-scene sequence with clear story progression.'
-    const worldContext = storyboardWorldContextFromSourceAnalysis(sourceAnalysis)
-    const director = scene.directorPlan || scene
-    const rules = STORYBOARD_RULES.join(' ')
-    const beatText = String(scene.title || director.title || director.purpose || scene.beat || '').trim()
-    const currentSpace = String(director.currentSpace || scene.currentSpace || '').trim()
-    const sceneBeat = String(scene.action || scene.beat || scene.description || '').trim()
-    const sceneFocus = storyboardSceneFocusText(scene.sceneFocus || storyboardSceneFocusFromAction(scene))
-    const visualEvent = storyboardVisualEventText(scene.visualEvent || storyboardDeriveVisualEvent(scene))
-    const eventRealization = storyboardNormalizePlannerField(scene.eventRealization || director.eventRealization || storyboardEventRealizationRule(scene))
-    const environmentText = String(scene.environment || director.environment || '').trim()
-    const lightText = String(scene.light || director.light || '').trim()
-    const cameraText = [director.shot_type, director.camera].map((item) => String(item || '').trim()).filter(Boolean).join(', ') || String(scene.angle || '').trim()
-    const shotFocus = storyboardShotFocusForScene(scene, cameraText, sceneFocus, visualEvent)
-    const spaceVisualDetails = storyboardSceneAnchorVisualDetails(currentSpace, sceneBeat, visualEvent)
-    const spatialGrounding = storyboardSceneSpatialGroundingRule(scene)
-    const panelDifference = storyboardPanelDifferenceRule(scene)
-    const abstractAction = !!(scene.abstractAction || director.abstractAction || scene.needsDirectorConcrete || director.needsDirectorConcrete)
-    return [
-      `Next Scene: ${String(scene.number || 1).padStart(2, '0')}.`,
-      `Story premise: ${premise}.`,
-      `${STORYBOARD_REFERENCE_LOCK} ${worldContext ? `World Context: ${worldContext}. Use it as continuous background, location, era, atmosphere, and visual style support. The current scene beat and action are the story source.` : ''}`,
-      `Director Plan: beat="${beatText}", currentSpace="${currentSpace}", camera="${cameraText}", action="${scene.action}". Action is the visual fact source.`,
-      STORYBOARD_SINGLE_FRAME_PROMPT_RULE,
-      `Scene Action: ${sceneBeat}. This frame must show a new story state compared with adjacent scenes.`,
-      `Scene Focus（本格视觉焦点）: ${sceneFocus}.`,
-      `Visual Event: ${visualEvent}.`,
-      STORYBOARD_OPEN_HIGHLIGHT_RULE,
-      eventRealization ? `Event Realization: ${eventRealization}.` : '',
-      currentSpace ? `Current Space: ${currentSpace}. Use this as the concrete frame background and spatial function; World Context only controls continuity of style, time, era, and atmosphere.` : '',
-      spatialGrounding ? `Spatial Grounding: ${spatialGrounding}.` : '',
-      panelDifference ? `Frame Difference: ${panelDifference}.` : '',
-      spaceVisualDetails ? `Scene Anchor Visual Difference: ${spaceVisualDetails}.` : '',
-      environmentText ? `Scene Environment: ${environmentText}.` : '',
-      lightText ? `Scene Lighting: ${lightText}.` : '',
-      abstractAction ? 'Abstract Event Handling: keep the original story intent and express it through visible interaction, object use, body action, or spatial change inside this exact Current Space.' : '',
-      `Priority: make the Visual Event and Scene Focus the clearest readable event in this frame; action beats World Context when they conflict.`,
-      `Camera language: ${cameraText}. Use the camera to express this exact action, with framing visibly different from adjacent scenes.`,
-      `Shot Focus: ${shotFocus}.`,
-      'Character hierarchy: one clear protagonist matches the reference identity. Supporting characters may appear when the scene needs villagers, friends, mentors, enemies, animals, or crowds; they stay secondary, visually distinct, and separated from the protagonist identity. Camera focus stays on the protagonist.',
-      'Creative boundary: minor visual details, ordinary props, environment details, and background/supporting figures are allowed when they support this scene. Keep the original main goal, main conflict, protagonist identity, power logic, and ending direction.',
-      'Style: preserve the reference visual language in this single cinematic scene frame; use painterly anime or illustrated film rendering when the reference is illustrated, or matching realistic rendering when the reference is photographic; keep clear spatial depth, sharp details, and series-level visual consistency. Use visual effects only when the story action calls for them.',
-      'Scene-series constraint: this is one individual full-frame image from a sequence. Vary shot size, camera angle, crop, body scale, background depth, action direction, and emotional intensity from the previous scenes.',
-      'Continuity: keep the same character identity, face, hairstyle, body shape, costume structure, palette, lighting logic, art style, and weapon design if present across all scenes.',
-      rules
-    ].filter(Boolean).join('\n')
-  }
-
-  function storyboardDebugText(storyText, sourceAnalysis, scenes) {
-    const storyboardType = scenes && scenes[0] && scenes[0].storyboardType || detectStoryboardType(storyText, sourceAnalysis)
-    return [
-      'Storyboard 生成记录',
-      `Type: ${storyboardType}`,
-      `Story: ${String(storyText || '').trim()}`,
-      ''
-    ].concat((Array.isArray(scenes) ? scenes : []).map((scene) => {
-      const director = scene.directorPlan || scene
-      return [
-        `Scene${String(scene.number || 1).padStart(2, '0')}`,
-        `Purpose: ${director.purpose || ''}`,
-        `Shot: ${director.shot_type || scene.shotSize || ''}`,
-        `Camera: ${director.camera || scene.angle || ''}`,
-        `Composition: ${director.composition || ''}`,
-        `Subject ratio: ${Math.round(storyboardNormalizedRatio(director.subject_ratio, 0.5) * 100)}%`,
-        `Emotion: ${director.emotion || ''}`,
-        'Final Prompt:',
-        String(scene.prompt || ''),
-        '------------------------------------------------'
-      ].join('\n')
-    })).join('\n')
-  }
-
-  function storyboardDirectorPlannerTypeLabel(type) {
-    const value = String(type || '').trim()
-    if (value === 'story' || value === 'general') return '\u5267\u60c5\u5206\u955c'
-    if (value === 'battle') return '战斗预告片'
-    if (value === 'adventure') return '冒险剧情'
-    if (value === 'product') return '产品展示'
-    if (value === 'character') return '角色PV'
-    return value || '未识别'
-  }
-
-  function storyboardDirectorPlannerRepairStatusLabel(status) {
-    const value = String(status || '').trim()
-    if (!value || value === '<none>') return '无'
-    if (/No repair needed/i.test(value)) return '无需修正'
-    if (/Fallback Director V2/i.test(value)) {
-      return value
-        .replace(/^Fallback Director V2:\s*/i, 'Fallback Director V2：')
-        .replace(/;\s*generated\s+9\s+scenes\.?/i, '；已生成 9 格通用剧情结构')
-        .replace(/TIMEOUT/g, 'TIMEOUT')
-        .replace(/EMPTY_OUTPUT/g, 'EMPTY_OUTPUT')
-        .replace(/INVALID_JSON/g, 'INVALID_JSON')
-        .replace(/SCENE_COUNT_INVALID/g, 'SCENE_COUNT_INVALID')
-        .replace(/QUALITY_HARD_FAIL/g, 'QUALITY_HARD_FAIL')
-        .replace(/MODEL_NO_RESPONSE/g, 'MODEL_NO_RESPONSE')
-    }
-    if (/Hard fail/i.test(value)) {
-      return value
-        .replace(/^Hard fail:\s*/i, '硬失败：')
-        .replace(/AI returned\s+(\d+)\s+scenes; no fallback scenes generated\.?/i, '模型只返回 $1 个场景，未生成兜底场景')
-        .replace(/AI DirectorPlanner did not return usable 9-scene JSON; no fallback scenes generated\.?/i, '模型未返回可用 9 场景数据，未生成兜底场景')
-        .replace(/ENDING_EMPTY_LOOP:Scene7-9 action repeats/i, 'Scene7~9 动作重复空转')
-        .replace(/ENDING_EMPTY_LOOP:Scene7-9 repeated closing action/i, 'Scene7~9 连续收束空转')
-        .replace(/ENDING_EMPTY_LOOP:Scene7-9 highly similar actions/i, 'Scene7~9 动作高度相似')
-        .replace(/CAMERA_THREE_REPEAT:Scene(\d{2})-Scene(\d{2}):/i, '场景$1-$2 连续三格镜头重复：')
-        .replace(/ADJACENT_CAMERA_REPEAT:Scene(\d{2})-Scene(\d{2}):/i, '场景$1-$2 相邻镜头重复：')
-        .replace(/FAR_FIXED_OVER_LIMIT:(\d+)/i, '远景固定出现 $1 次，超过上限 3 次')
-        .replace(/CAMERA_SIMPLE_LABEL_OVER_LIMIT:(\d+)/i, '镜头只有粗景别标签 $1 次，真实镜头变化不足')
-        .replace(/CAMERA_VISUAL_SIGNATURE_REPEAT:Scene(\d{2})-Scene(\d{2}):/i, '场景$1-$2 镜头视觉签名重复：')
-        .replace(/WEAK_ACTION_EVENT:Scene(\d{2}):/i, '场景$1 动作缺少可画事件：')
-        .replace(/BEAT_REPEAT:Scene(\d{2})-Scene(\d{2}):/i, '场景$1-$2 剧情节点重复：')
-        .replace(/ADJACENT_SPACE_REPEAT:(\d+)/i, '相邻当前空间重复 $1 次')
-        .replace(/ACTION_EXACT_REPEAT:Scene(\d{2})-Scene(\d{2}):/i, '场景$1-$2 动作完全重复：')
-        .replace(/ACTION_HIGH_REPEAT:3_OR_MORE:([^\s;]+)/i, '动作高度重复：$1')
-        .replace(/ACTION_HIGH_REPEAT:Scene(\d{2})-Scene(\d{2}):/i, '场景$1-$2 动作连续大量重复：')
-        .replace(/SCENE_EXACT_REPEAT:Scene(\d{2})-Scene(\d{2})/i, '场景$1 与场景$2 完全重复')
-        .replace(/;\s*no fallback scenes generated\.?/i, '，未生成兜底场景')
-    }
-    if (/Fallback template used/i.test(value)) return '已使用规则兜底模板'
-    if (/Quality warning/i.test(value)) {
-      return value
-        .replace(/^Quality warning:\s*/i, '质量告警：')
-        .replace(/;\s*no template repair applied\.?/i, '；未应用模板修正')
-        .replace(/ACTION_OBVIOUS_OFF_TOPIC:Scene(\d{2}):/gi, '场景$1 动作明显跑题：')
-        .replace(/ENDING_WEAK_WARNING:Scene7-9 repeated closing action/gi, 'Scene7~9 收束动作偏弱')
-        .replace(/ENDING_WEAK_WARNING:Scene7-9 highly similar actions/gi, 'Scene7~9 收束动作相似')
-        .replace(/FAR_FIXED_OVER_LIMIT:(\d+)/gi, '远景固定出现 $1 次，超过上限 3 次')
-        .replace(/CAMERA_SIMPLE_LABEL_OVER_LIMIT:(\d+)/gi, '镜头只有粗景别标签 $1 次，真实镜头变化不足')
-        .replace(/CAMERA_VISUAL_SIGNATURE_REPEAT:Scene(\d{2})-Scene(\d{2}):/gi, '场景$1-$2 镜头视觉签名重复：')
-        .replace(/ADJACENT_CAMERA_REPEAT:(\d+)/gi, '相邻镜头重复 $1 次')
-        .replace(/ADJACENT_SPACE_REPEAT:(\d+)/gi, '相邻当前空间重复 $1 次')
-        .replace(/BEAT_REPEAT:Scene(\d{2})-Scene(\d{2}):/gi, '场景$1-$2 剧情节点重复：')
-        .replace(/CAMERA_THREE_REPEAT:Scene(\d{2})-Scene(\d{2}):/gi, '场景$1-$2 连续三格镜头重复：')
-        .replace(/Scene(\d{2})/g, '场景$1')
-        .replace(/\btitle\b/gi, '标题')
-        .replace(/\bpurpose\b/gi, '作用')
-        .replace(/\bcamera\b/gi, '机位')
-        .replace(/\baction\b/gi, '动作')
-        .replace(/\bmood\b/gi, '情绪')
-    }
-    if (/Rule repair applied/i.test(value)) {
-      return value
-        .replace(/^Rule repair applied:\s*/i, '已应用规则修正：')
-        .replace(/Scene(\d{2})/g, '场景$1')
-        .replace(/\bscene count\s+(\d+)->(\d+)/gi, '场景数量 $1->$2')
-        .replace(/\btitle\b/gi, '标题')
-        .replace(/\bpurpose\b/gi, '作用')
-        .replace(/\bcamera\b/gi, '机位')
-        .replace(/\baction\b/gi, '动作')
-        .replace(/\bmood\b/gi, '情绪')
-        .replace(/,\s*\+(\d+)\s+more\.?/gi, '，另有 $1 项')
-        .replace(/,\s*/g, '、')
-        .replace(/\.$/, '')
-    }
-    if (/Non-story field fill applied/i.test(value)) {
-      return value
-        .replace(/^Non-story field fill applied:\s*/i, '已补全非剧情字段：')
-        .replace(/Scene(\d{2})/g, '场景$1')
-        .replace(/\bshot_type\b/gi, '景别')
-        .replace(/\bcamera\b/gi, '机位')
-        .replace(/,\s*\+(\d+)\s+more\.?/gi, '，另有 $1 项')
-        .replace(/,\s*/g, '、')
-        .replace(/\.$/, '')
-    }
-    return value
-      .replace(/Scene(\d{2})/g, '场景$1')
-      .replace(/\btitle\b/gi, '标题')
-      .replace(/\bpurpose\b/gi, '作用')
-      .replace(/\bcamera\b/gi, '机位')
-      .replace(/\baction\b/gi, '动作')
-      .replace(/\bmood\b/gi, '情绪')
-      .replace(/\bfallback\b/gi, '兜底')
-      .replace(/\bAI\b/gi, '模型')
-  }
-
-  function storyboardDirectorPlannerMessageLabel(message) {
-    const value = String(message || '').trim()
-    if (!value) return '无'
-    if (value === 'JSON_NOT_FOUND') return 'JSON_NOT_FOUND：未找到 JSON 数组'
-    if (value === 'JSON_TRUNCATED') return 'JSON_TRUNCATED：模型输出截断'
-    if (value === 'JSON_PARSE_FAILED') return 'JSON_PARSE_FAILED：JSON 解析失败'
-    if (value === 'JSON_WRAPPER_REPAIRED') return 'JSON_WRAPPER_REPAIRED：已自动补全最外层数组壳'
-    if (value === 'SCENE_COUNT_INVALID') return 'SCENE_COUNT_INVALID：场景数量或编号异常'
-    if (value === 'QUALITY_HARD_FAIL') return 'QUALITY_HARD_FAIL：导演质量硬失败'
-    if (value === 'TIMEOUT_EMPTY') return 'TIMEOUT_EMPTY：DirectorPlanner 超时且无可用输出'
-    if (value === 'TIMEOUT') return 'TIMEOUT：DirectorPlanner 超时'
-    if (value === 'EMPTY_OUTPUT') return 'EMPTY_OUTPUT：模型返回空内容'
-    if (value === 'INVALID_JSON') return 'INVALID_JSON：模型返回 JSON 不可用'
-    if (value === 'MODEL_NO_RESPONSE') return 'MODEL_NO_RESPONSE：模型无响应'
-    return value
-      .replace(/Expected\s+9\s+scenes,\s+got\s+(\d+)\.?/gi, '应返回 9 个场景，实际返回 $1 个')
-      .replace(/No JSON array found before parse\.?/gi, '解析前未找到数据数组')
-      .replace(/Parsed JSON is not an array\.?/gi, '解析结果不是数组')
-      .replace(/Parsed JSON is not a compact scene array\.?/gi, '解析结果不是紧凑二维数组')
-      .replace(/JSON parse failed/gi, '数据解析失败')
-      .replace(/JSON_WRAPPER_REPAIRED/gi, '已自动补全最外层数组壳')
-      .replace(/Scene(\d{2}) is not a compact array item\.?/gi, '场景$1 不是紧凑数组项')
-      .replace(/Scene(\d{2}) compact item must contain exactly 4 strings\.?/gi, '场景$1 必须正好包含 4 个字符串')
-      .replace(/Scene(\d{2}) compact field (\d+) must be a non-empty string\.?/gi, '场景$1 第 $2 个字段必须是非空字符串')
-      .replace(/Scene(\d{2}) missing required fields:\s*/gi, '场景$1 缺少必填字段：')
-      .replace(/Scene(\d{2}) has extra fields:\s*/gi, '场景$1 包含多余字段：')
-      .replace(/Scene(\d{2}) has invalid scene index:\s*/gi, '场景$1 场景序号无效：')
-      .replace(/ACTION_OBVIOUS_OFF_TOPIC:Scene(\d{2}):/gi, '场景$1 动作明显跑题：')
-      .replace(/WEAK_ACTION_EVENT:Scene(\d{2}):/gi, '场景$1 动作缺少可画事件：')
-      .replace(/Scene(\d{2}) repeats previous camera\.?/gi, '场景$1 重复上一格机位')
-      .replace(/Scene(\d{2}) repeats previous action\.?/gi, '场景$1 重复上一格动作')
-      .replace(/FAR_FIXED_OVER_LIMIT:(\d+)/gi, '远景固定出现 $1 次，超过上限 3 次')
-      .replace(/CAMERA_SIMPLE_LABEL_OVER_LIMIT:(\d+)/gi, '镜头只有粗景别标签 $1 次，真实镜头变化不足')
-      .replace(/CAMERA_VISUAL_SIGNATURE_REPEAT:Scene(\d{2})-Scene(\d{2}):/gi, '场景$1-$2 镜头视觉签名重复：')
-      .replace(/ADJACENT_CAMERA_REPEAT:(\d+)/gi, '相邻镜头重复 $1 次')
-      .replace(/ADJACENT_SPACE_REPEAT:(\d+)/gi, '相邻当前空间重复 $1 次')
-      .replace(/ADJACENT_CAMERA_REPEAT:Scene(\d{2})-Scene(\d{2}):/gi, '场景$1-$2 相邻镜头重复：')
-      .replace(/CAMERA_THREE_REPEAT:Scene(\d{2})-Scene(\d{2}):/gi, '场景$1-$2 连续三格镜头重复：')
-      .replace(/BEAT_REPEAT:Scene(\d{2})-Scene(\d{2}):/gi, '场景$1-$2 剧情节点重复：')
-      .replace(/ACTION_EXACT_REPEAT:Scene(\d{2})-Scene(\d{2}):/gi, '场景$1-$2 动作完全重复：')
-      .replace(/ACTION_HIGH_REPEAT:3_OR_MORE:([^\s;]+)/gi, '动作高度重复：$1')
-      .replace(/ACTION_HIGH_REPEAT:Scene(\d{2})-Scene(\d{2}):/gi, '场景$1-$2 动作连续大量重复：')
-      .replace(/SCENE_EXACT_REPEAT:Scene(\d{2})-Scene(\d{2})/gi, '场景$1 与场景$2 完全重复')
-      .replace(/ENDING_EMPTY_LOOP:Scene7-9 action repeats/gi, 'Scene7~9 动作重复空转')
-      .replace(/ENDING_EMPTY_LOOP:Scene7-9 repeated closing action/gi, 'Scene7~9 连续收束空转')
-      .replace(/ENDING_EMPTY_LOOP:Scene7-9 highly similar actions/gi, 'Scene7~9 动作高度相似')
-      .replace(/ENDING_WEAK_WARNING:Scene7-9 repeated closing action/gi, 'Scene7~9 收束动作偏弱')
-      .replace(/ENDING_WEAK_WARNING:Scene7-9 highly similar actions/gi, 'Scene7~9 收束动作相似')
-      .replace(/\bscene\b/gi, '场景序号')
-      .replace(/\btitle\b/gi, '标题')
-      .replace(/\bpurpose\b/gi, '作用')
-      .replace(/\bshot_type\b/gi, '景别')
-      .replace(/\bcamera\b/gi, '机位')
-      .replace(/\baction\b/gi, '动作')
-      .replace(/\bmood\b/gi, '情绪')
-      .replace(/AI DirectorPlanner returned no usable JSON\.?/gi, '模型未返回可用数据')
-      .replace(/Rule fallback was used for V5-1 debug only\.?/gi, 'V5-5 已改用 Fallback Director V2')
-      .replace(/Fallback template used: AI DirectorPlanner did not return usable 9-scene JSON\.?/gi, '模型未返回可用 9 场景数据，未生成兜底场景')
-      .replace(/fallback/gi, '兜底')
-      .replace(/\bAI\b/gi, '模型')
-      .replace(/\bJSON\b/gi, '数据')
-      .replace(/empty output/gi, '空输出')
-  }
-
-  function storyboardDirectorPlannerQualityScores(scenes) {
-    const list = Array.isArray(scenes) ? scenes : []
-    const count = Math.max(1, list.length)
-    const normalized = (value) => storyboardNormalizePlannerField(value)
-    const uniqueRatio = (values) => {
-      const cleaned = values.map(normalized).filter(Boolean)
-      if (!cleaned.length) return 0
-      return new Set(cleaned).size / cleaned.length
-    }
-    const titles = list.map((scene) => scene && scene.title)
-    const cameras = list.map((scene) => {
-      const director = scene && (scene.directorPlan || scene) || {}
-      return director.camera
-    })
-    const purposes = list.map((scene) => {
-      const director = scene && (scene.directorPlan || scene) || {}
-      return director.purpose
-    })
-    const actions = list.map((scene) => {
-      const director = scene && (scene.directorPlan || scene) || {}
-      return director.action || (scene && scene.action) || ''
-    })
-    const cameraStats = storyboardDirectorCameraDiversityStats(list.map((scene) => scene && (scene.directorPlan || scene) || {}))
-    const diverseScore = cameraStats.score
-    const activeActions = actions.filter((action) => storyboardV53HasStoryProgression(action)).length
-    const actionScore = Math.round((activeActions / count) * 100)
-    const clearPurposes = purposes.filter((purpose) => !storyboardV511LooksWeakPurpose(purpose)).length
-    const clearTitles = titles.filter((title) => !storyboardV511LooksObjectListTitle(title)).length
-    const storyScore = Math.round((((clearPurposes + clearTitles) / Math.max(1, count * 2)) * 0.7 + uniqueRatio(purposes) * 0.3) * 100)
-    const duplicateTotal = (titles.length + cameras.length) || 1
-    const duplicateCount = duplicateTotal - (new Set(titles.map(normalized).filter(Boolean)).size + new Set(cameras.map(normalized).filter(Boolean)).size)
-    const repeatPercent = Math.max(0, Math.min(100, Math.round((duplicateCount / duplicateTotal) * 100)))
-    const directorScore = Math.round(
-      diverseScore * 0.35 +
-      actionScore * 0.25 +
-      storyScore * 0.25 +
-      (100 - repeatPercent) * 0.15
-    )
-    return {
-      directorScore: Math.max(0, Math.min(100, directorScore)),
-      shotDiversity: Math.max(0, Math.min(100, diverseScore)),
-      actionProgress: Math.max(0, Math.min(100, actionScore)),
-      storyProgress: Math.max(0, Math.min(100, storyScore)),
-      repetition: repeatPercent
-    }
-  }
-
-  function storyboardDirectorPlannerStoryUnderstandingText(storyText, sourceAnalysis, scenes) {
-    const actions = (Array.isArray(scenes) ? scenes : []).map((scene) => {
-      const director = scene && (scene.directorPlan || scene) || {}
-      return String(director.action || scene && scene.action || '').trim()
-    }).filter(Boolean)
-    const actorHit = actions.join(' ').match(/(主角|少女|少年|女孩|男孩|圣女|女武神|旅人|战士|角色|她|他|人物|魔王)/)
-    return [
-      '剧情理解：',
-      `剧情原文：${String(storyText || '').trim()}`,
-      `推定主体：${actorHit ? actorHit[1] : '由模型根据剧情内推'}`,
-      'World Context用途：全局环境、地点、时代、视觉风格；不决定剧情事件',
-      ''
-    ]
-  }
-
-  function storyboardDirectorPlannerArcText(scenes) {
-    const list = Array.isArray(scenes) ? scenes : []
-    return [
-      '剧情弧线：',
-      list.length ? list.map((scene) => `${String(scene.number || 1).padStart(2, '0')}. ${String(scene.title || '').trim()} / ${String(scene.action || scene.directorPlan && scene.directorPlan.action || '').trim()}`).join('\n') : '无可用 9 场景弧线',
-      ''
-    ]
-  }
-
-  function storyboardDirectorPlannerShotDesignText(scenes) {
-    const list = Array.isArray(scenes) ? scenes : []
-    return [
-      '镜头设计：',
-      list.length ? list.map((scene) => {
-        const director = scene.directorPlan || scene
-        return `${String(scene.number || 1).padStart(2, '0')}. ${String(director.camera || '').trim()}`
-      }).join('\n') : '无可用镜头设计',
-      ''
-    ]
-  }
-
-  function storyboardDiagnosticNumber(value) {
-    const next = Number(value)
-    return Number.isFinite(next) ? next : null
-  }
-
-  function storyboardFormatDiagnosticMb(value) {
-    const mb = storyboardDiagnosticNumber(value)
-    if (mb === null) return 'N/A'
-    if (Math.abs(mb) >= 1024) return `${(mb / 1024).toFixed(1)} GB`
-    return `${Math.round(mb)} MB`
-  }
-
-  function storyboardFormatDiagnosticBytes(value) {
-    const bytes = storyboardDiagnosticNumber(value)
-    if (bytes === null || bytes <= 0) return 'N/A'
-    const gb = bytes / (1024 * 1024 * 1024)
-    if (gb >= 1) return `${gb.toFixed(1)} GB`
-    return `${Math.round(bytes / (1024 * 1024))} MB`
-  }
-
-  function storyboardMaybeBytesToMb(value) {
-    const next = storyboardDiagnosticNumber(value)
-    if (next === null) return null
-    return Math.abs(next) > 1024 * 1024 ? next / (1024 * 1024) : next
-  }
-
-  function storyboardProcessMemoryText(processInfo) {
-    const source = processInfo && typeof processInfo === 'object' ? processInfo : {}
-    const pid = Math.max(0, Math.round(Number(source.pid || 0) || 0))
-    const ram = source.workingSetBytes ? storyboardFormatDiagnosticBytes(source.workingSetBytes) : 'N/A'
-    const vram = source.gpuMemoryMb === null || source.gpuMemoryMb === undefined ? 'N/A' : storyboardFormatDiagnosticMb(source.gpuMemoryMb)
-    const alive = source.alive === false ? 'stopped' : pid ? 'running' : 'unknown'
-    return `pid ${pid || 'N/A'} / ${alive} / RAM ${ram} / VRAM ${vram}`
-  }
-
-  function storyboardPrimaryNvidiaGpu(snapshot) {
-    const gpus = snapshot && snapshot.nvidia && Array.isArray(snapshot.nvidia.gpus) ? snapshot.nvidia.gpus : []
-    return gpus[0] || null
-  }
-
-  function storyboardComfyDeviceSnapshot(snapshot) {
-    const stats = snapshot && snapshot.runtime && snapshot.runtime.systemStats
-    const devices = stats && Array.isArray(stats.devices) ? stats.devices : []
-    const device = devices[0] || {}
-    const total = storyboardMaybeBytesToMb(device.vram_total)
-    const free = storyboardMaybeBytesToMb(device.vram_free)
-    const torchTotal = storyboardMaybeBytesToMb(device.torch_vram_total)
-    const torchFree = storyboardMaybeBytesToMb(device.torch_vram_free)
-    return {
-      name: String(device.name || device.type || ''),
-      vramTotalMb: total,
-      vramFreeMb: free,
-      vramUsedMb: total !== null && free !== null ? Math.max(0, total - free) : null,
-      torchVramTotalMb: torchTotal,
-      torchVramFreeMb: torchFree,
-      torchVramUsedMb: torchTotal !== null && torchFree !== null ? Math.max(0, torchTotal - torchFree) : null
-    }
-  }
-
-  function storyboardSnapshotGpuUsedMb(snapshot) {
-    const gpu = storyboardPrimaryNvidiaGpu(snapshot)
-    const used = storyboardDiagnosticNumber(gpu && gpu.memoryUsedMb)
-    if (used !== null) return used
-    const comfy = storyboardComfyDeviceSnapshot(snapshot)
-    return storyboardDiagnosticNumber(comfy.vramUsedMb)
-  }
-
-  function storyboardSnapshotGpuFreeMb(snapshot) {
-    const gpu = storyboardPrimaryNvidiaGpu(snapshot)
-    const free = storyboardDiagnosticNumber(gpu && gpu.memoryFreeMb)
-    if (free !== null) return free
-    const comfy = storyboardComfyDeviceSnapshot(snapshot)
-    return storyboardDiagnosticNumber(comfy.vramFreeMb)
-  }
-
-  function storyboardSnapshotGpuTotalMb(snapshot) {
-    const gpu = storyboardPrimaryNvidiaGpu(snapshot)
-    const total = storyboardDiagnosticNumber(gpu && gpu.memoryTotalMb)
-    if (total !== null) return total
-    const comfy = storyboardComfyDeviceSnapshot(snapshot)
-    return storyboardDiagnosticNumber(comfy.vramTotalMb)
-  }
-
-  function storyboardDiagnosticsLogLines(diagnostics) {
-    const logs = diagnostics && diagnostics.firstComplete && diagnostics.firstComplete.runtimeLogs
-    const evidence = logs && Array.isArray(logs.evidence) ? logs.evidence : []
-    return evidence.map((item) => String(item && item.line || item || '').trim()).filter(Boolean)
-  }
-
-  function storyboardDiagnosticsHasLog(diagnostics, pattern) {
-    return storyboardDiagnosticsLogLines(diagnostics).some((line) => pattern.test(line))
-  }
-
-  function storyboardDiagnosticsPeakSummary(diagnostics) {
-    const samples = [
-      diagnostics && diagnostics.preImage,
-      diagnostics && diagnostics.firstStart,
-      ...(diagnostics && Array.isArray(diagnostics.samples) ? diagnostics.samples : []),
-      diagnostics && diagnostics.firstComplete
-    ].filter(Boolean)
-    const usedValues = samples.map(storyboardSnapshotGpuUsedMb).filter((value) => value !== null)
-    const freeValues = samples.map(storyboardSnapshotGpuFreeMb).filter((value) => value !== null)
-    const totalValues = samples.map(storyboardSnapshotGpuTotalMb).filter((value) => value !== null)
-    const comfyUsedValues = samples.map((item) => storyboardComfyDeviceSnapshot(item).vramUsedMb).filter((value) => value !== null)
-    return {
-      gpuPeakUsedMb: usedValues.length ? Math.max(...usedValues) : null,
-      gpuMinFreeMb: freeValues.length ? Math.min(...freeValues) : null,
-      gpuTotalMb: totalValues.length ? Math.max(...totalValues) : null,
-      comfyPeakUsedMb: comfyUsedValues.length ? Math.max(...comfyUsedValues) : null,
-      sampleCount: samples.length
-    }
-  }
-
-  function storyboardSnapshotResourceLines(title, snapshot) {
-    if (!snapshot || snapshot.ok === false) return [title, `采样失败：${String(snapshot && snapshot.error || 'N/A')}`, '']
-    const ram = snapshot.systemRam || {}
-    const runtimeProcess = snapshot.runtime && snapshot.runtime.process || {}
-    const promptAssistantProcess = snapshot.promptAssistant && snapshot.promptAssistant.process || {}
-    const gpu = storyboardPrimaryNvidiaGpu(snapshot)
-    const comfy = storyboardComfyDeviceSnapshot(snapshot)
-    const gpuText = gpu
-      ? `${gpu.name || 'GPU'} used ${storyboardFormatDiagnosticMb(gpu.memoryUsedMb)} / total ${storyboardFormatDiagnosticMb(gpu.memoryTotalMb)} / free ${storyboardFormatDiagnosticMb(gpu.memoryFreeMb)}`
-      : 'N/A'
-    const comfyText = [
-      comfy.name ? `${comfy.name}` : 'Comfy device',
-      `VRAM used ${storyboardFormatDiagnosticMb(comfy.vramUsedMb)} / total ${storyboardFormatDiagnosticMb(comfy.vramTotalMb)} / free ${storyboardFormatDiagnosticMb(comfy.vramFreeMb)}`,
-      comfy.torchVramTotalMb !== null ? `torch used ${storyboardFormatDiagnosticMb(comfy.torchVramUsedMb)} / total ${storyboardFormatDiagnosticMb(comfy.torchVramTotalMb)}` : ''
-    ].filter(Boolean).join(' / ')
-    return [
-      title,
-      `System RAM：used ${storyboardFormatDiagnosticBytes(ram.usedBytes)} / total ${storyboardFormatDiagnosticBytes(ram.totalBytes)} / free ${storyboardFormatDiagnosticBytes(ram.freeBytes)}`,
-      `GPU 总显存：${gpuText}`,
-      `Comfy：${storyboardProcessMemoryText(runtimeProcess)}；${comfyText}`,
-      `Prompt Assistant：${storyboardProcessMemoryText(promptAssistantProcess)}；status ${String(snapshot.promptAssistant && snapshot.promptAssistant.runtimeStatus || 'N/A')}`,
-      ''
-    ]
-  }
-
-  function storyboardImageDiagnosticsModelLoadText(diagnostics) {
-    const logs = storyboardDiagnosticsLogLines(diagnostics)
-    if (logs.some((line) => /(Requested to load|Model Initializing|loading .*model|model loaded|loaded completely)/i.test(line))) return '是（运行时日志出现模型加载证据）'
-    const startUsed = storyboardSnapshotGpuUsedMb(diagnostics && diagnostics.firstStart)
-    const peak = storyboardDiagnosticsPeakSummary(diagnostics).gpuPeakUsedMb
-    if (startUsed !== null && peak !== null && peak - startUsed > 1024) return `疑似（第一张期间 GPU VRAM 增加 ${storyboardFormatDiagnosticMb(peak - startUsed)}）`
-    return '未发现明确证据'
-  }
-
-  function storyboardImageDiagnosticsDebugLines(diagnostics) {
-    if (!diagnostics || typeof diagnostics !== 'object') return []
-    const peak = storyboardDiagnosticsPeakSummary(diagnostics)
-    const lowVram = storyboardDiagnosticsHasLog(diagnostics, /(lowvram|low_vram)/i)
-    const normalVram = storyboardDiagnosticsHasLog(diagnostics, /normal_vram/i)
-    const offload = storyboardDiagnosticsHasLog(diagnostics, /(offload|offloading|DynamicVRAM)/i)
-    const logLines = storyboardDiagnosticsLogLines(diagnostics).slice(-10)
-    const subjectStyleReference = diagnostics && diagnostics.subjectStyleReference && typeof diagnostics.subjectStyleReference === 'object'
-      ? diagnostics.subjectStyleReference
-      : null
-    const subjectStyleReferenceLine = subjectStyleReference
-      ? `Subject/style reference: ${String(subjectStyleReference.status || 'unknown')} / elapsed ${Number(subjectStyleReference.elapsedMs || 0) || 0} ms${subjectStyleReference.error ? ` / ${String(subjectStyleReference.error).slice(0, 180)}` : ''}`
-      : ''
-    return [
-      'Storyboard reference route:',
-      String(diagnostics.storyboardReferenceMode || 'unknown'),
-      `Reference strength: ${Number(diagnostics.referenceStrength || 0) || 0}`,
-      `Reference denoise: ${Number(diagnostics.referenceDenoise || 0) || 0}`,
-      `Scene image reference: ${diagnostics.sceneImageReferenceEnabled ? 'enabled' : 'disabled'}`,
-      diagnostics.referenceImageName ? `Reference image: ${String(diagnostics.referenceImageName || '').slice(0, 180)}` : '',
-      subjectStyleReferenceLine,
-      '',
-      '生图资源诊断：',
-      '',
-      ...storyboardSnapshotResourceLines('生图开始前：', diagnostics.preImage),
-      ...storyboardSnapshotResourceLines('第一张开始：', diagnostics.firstStart),
-      '第一张开始模型加载：',
-      storyboardImageDiagnosticsModelLoadText(diagnostics),
-      '',
-      '第一张完成：',
-      `耗时：${Number(diagnostics.firstImageElapsedMs || 0) || 0} 毫秒`,
-      `采样数：${Number(peak.sampleCount || 0) || 0}`,
-      `GPU VRAM 峰值：used ${storyboardFormatDiagnosticMb(peak.gpuPeakUsedMb)} / total ${storyboardFormatDiagnosticMb(peak.gpuTotalMb)} / min free ${storyboardFormatDiagnosticMb(peak.gpuMinFreeMb)}`,
-      `Comfy VRAM 峰值：used ${storyboardFormatDiagnosticMb(peak.comfyPeakUsedMb)}`,
-      `lowvram：${lowVram ? '是（日志证据）' : normalVram ? '否（NORMAL_VRAM）' : '未发现明确证据'}`,
-      `offload / DynamicVRAM：${offload ? '是（日志证据）' : '未发现明确证据'}`,
-      '',
-      ...storyboardSnapshotResourceLines('第一张完成资源：', diagnostics.firstComplete),
-      logLines.length ? '第一张期间运行时日志证据：' : '',
-      logLines.length ? logLines.join('\n') : '',
-      logLines.length ? '' : ''
-    ].filter((line) => line !== undefined && line !== null)
-  }
-
-  async function storyboardRuntimeDiagnosticsSnapshot(label, baseUrl, options = {}) {
-    const api = window.electronAPI
-    if (!api || typeof api.runtimeDiagnosticsSnapshot !== 'function') {
-      return { ok: false, label, error: 'runtimeDiagnosticsSnapshot unavailable' }
-    }
-    try {
-      const result = await api.runtimeDiagnosticsSnapshot({
-        baseUrl,
-        label,
-        includeComfyStats: options.includeComfyStats !== false,
-        includeNvidia: options.includeNvidia !== false,
-        includeProcessMemory: options.includeProcessMemory !== false,
-        includeRuntimeLogs: options.includeRuntimeLogs !== false,
-        runtimeLogCursors: options.runtimeLogCursors || null,
-        timeoutMs: options.timeoutMs || 1800
-      })
-      return result && typeof result === 'object' ? { ...result, label } : { ok: false, label, error: 'empty diagnostics result' }
-    } catch (error) {
-      return { ok: false, label, error: String(error && error.message || error || 'diagnostics failed') }
-    }
-  }
-
-  function storyboardStartFirstImageDiagnosticsSampler(baseUrl, diagnostics) {
-    const samples = []
-    let stopped = false
-    let inFlight = false
-    const sample = async (force = false) => {
-      if ((stopped && !force) || inFlight) return
-      inFlight = true
-      try {
-        const snapshot = await storyboardRuntimeDiagnosticsSnapshot('first_image_sample', baseUrl, {
-          includeProcessMemory: false,
-          includeRuntimeLogs: false,
-          timeoutMs: 1600
-        })
-        samples.push(snapshot)
-        if (diagnostics) diagnostics.samples = samples
-      } catch (_) {
-      } finally {
-        inFlight = false
-      }
-    }
-    const timer = setInterval(() => { sample(false) }, 1800)
-    sample(false)
-    return {
-      stop: async () => {
-        stopped = true
-        clearInterval(timer)
-        await sample(true)
-        return samples
-      }
-    }
-  }
-
-  function storyboardDirectorPlannerDebugText(storyText, sourceAnalysis, result) {
-    const scenes = result && Array.isArray(result.scenes) ? result.scenes : []
-    const storyboardType = result && result.storyboardType || detectStoryboardType(storyText, '')
-    const rawWorldContext = String(result && result.rawWorldContext || storyboardRawWorldContextFromSourceAnalysis(sourceAnalysis) || '').trim()
-    const worldContext = String(result && result.worldContext || storyboardWorldContextFromSourceAnalysis(sourceAnalysis) || '').trim()
-    const worldContinuity = String(result && result.worldContinuity || storyboardWorldContinuityFromSourceAnalysis(sourceAnalysis) || '').trim()
-    const characterIdentityCard = String(result && result.characterIdentityCard || '').trim()
-    const canScoreDirectorPlanner = scenes.length === STORYBOARD_SCENE_COUNT
-    const scores = canScoreDirectorPlanner ? storyboardDirectorPlannerQualityScores(scenes) : null
-    const yesNo = (value) => value ? '是' : '否'
-    const errorCode = String(result && result.errorCode || '').trim()
-    const validatorResult = result && result.qualityHardError ? 'FAIL' : result && result.qualityWarning ? 'WARNING' : 'PASS'
-    const validatorStatus = (value) => String(value || 'UNKNOWN').trim() || 'UNKNOWN'
-    const directorSource = String(result && result.directorSource || (result && result.fallbackUsed ? 'Fallback Director V2' : 'AI Director')).trim()
-    const fallbackReasonCode = String(result && result.fallbackReason || '').trim()
-    const finalShotPromptText = Array.isArray(result && result.finalShots)
-      ? result.finalShots.map((item, index) => {
-        const shot = normalizeStoryboardFinalShot(item, index)
-        return `${String(index + 1).padStart(2, '0')}. ${shot.title} / ${shot.prompt}`
-      }).join('\n')
-      : ''
-    const compiledScenePromptText = Array.isArray(result && result.compiledScenePrompts)
-      ? result.compiledScenePrompts.map((item, index) => `${String(index + 1).padStart(2, '0')}. ${String(item || '').trim()}`).join('\n\n')
-      : ''
-    const providerQualityIssueText = storyboardDirectorQualityIssueText(result && result.providerDirectorQuality)
-    const compiledQualityIssueText = storyboardDirectorQualityIssueText(result && result.compiledDirectorQuality)
-    const directorInputModeLabel = (mode) => {
-      if (mode === 'controlled_world_continuity') return '受控 World Continuity'
-      if (mode === 'visual_event_chain_director') return 'Event Chain Director'
-      if (mode === 'unified_one_pass_storyboard') return '统一导演规划：剧情＋参考图视觉合同'
-      return '仅剧情'
-    }
-    const parseStatus = result && result.parseOk
-      ? (result.qualityWarning ? '模型返回 9 个场景，字段质量待修正' : '模型返回成功')
-      : result && result.fallbackUsed
-        ? '模型返回失败，已启用 Fallback Director V2'
-        : errorCode === 'JSON_TRUNCATED'
-          ? '模型输出截断，未生成兜底场景'
-          : errorCode === 'SCENE_COUNT_INVALID'
-            ? '场景数量异常，未生成兜底场景'
-            : '模型返回失败，未生成兜底场景'
-    const scoreLines = canScoreDirectorPlanner ? [
-      '导演评分：',
-      '综合导演评分：',
-      String(scores.directorScore),
-      '',
-      '镜头多样性：',
-      String(scores.shotDiversity),
-      '',
-      '动作推进：',
-      String(scores.actionProgress),
-      '',
-      '剧情推进：',
-      String(scores.storyProgress),
-      '',
-      '重复度：',
-      `${scores.repetition}%`,
-      ''
-    ] : [
-      '导演评分：',
-      '未评分：模型未返回完整 9 个场景，禁止使用兜底结果评分',
-      ''
-    ]
-    return [
-      '分镜导演规划 V5-5',
-      '运行模式：',
-      '正式生成链路记录；最终提示词硬失败会在本地生图前阻断',
-      '',
-      '分镜类型：',
-      storyboardDirectorPlannerTypeLabel(storyboardType),
-      '',
-      '完整参考图分析已隔离：',
-      yesNo(result && result.directorInputIsolated),
-      '',
-      'DirectorPlanner输入模式：',
-      directorInputModeLabel(result && result.directorInputMode),
-      '',
-      '发送给DirectorPlanner的World Continuity：',
-      worldContinuity || '无',
-      '',
-      '发送给VEC的Visual Cue Pack：',
-      String(result && result.visualCuePack || '').trim() || '无',
-      '',
-      'Character Identity Card：',
-      characterIdentityCard || '无',
-      '',
-      '故事方向候选数量：',
-      `${Number(result && result.storyDirectionCandidateCount || 0) || 0}`,
-      '',
-      '故事方向倒计时：',
-      result && result.storyDirectionCountdownMs ? `${Math.round(Number(result.storyDirectionCountdownMs || 0) / 1000)} 秒` : '未记录',
-      '',
-      '故事方向选择方式：',
-      storyboardStoryDirectionSelectionLabel(result && result.storyDirectionSelectionMode),
-      '',
-      '故事方向耗时：',
-      `${Number(result && result.storyDirectionElapsedMs || 0) || 0} 毫秒`,
-      '',
-      ...storyboardPromptAssistantProfileLines('故事方向性能：', result && result.storyDirectionGenerateProfile),
-      '选中故事方向：',
-      result && result.selectedStoryDirectionText ? result.selectedStoryDirectionText : storyboardStoryDirectionText(result && result.selectedStoryDirection),
-      '',
-      '视觉事件链数量：',
-      `${Number(result && result.visualEventCount || (Array.isArray(result && result.visualEventChain) ? result.visualEventChain.length : 0)) || 0}`,
-      '',
-      '视觉事件链耗时：',
-      `${Number(result && result.visualEventElapsedMs || 0) || 0} 毫秒`,
-      '',
-      ...storyboardPromptAssistantProfileLines('视觉事件链性能：', result && result.visualEventGenerateProfile),
-      result && result.visualEventRetryGenerateProfile ? storyboardPromptAssistantProfileLines('视觉事件链重生性能：', result && result.visualEventRetryGenerateProfile).join('\n') : '',
-      '视觉事件链轻修：',
-      yesNo(result && result.visualEventRepairUsed),
-      '',
-      'Drawable Realizer used:',
-      yesNo(result && result.visualEventDrawableRealizerUsed),
-      '',
-      result && result.visualEventDrawableRealizerDetails && result.visualEventDrawableRealizerDetails.length ? ['Drawable Realizer details:', result.visualEventDrawableRealizerDetails.join('\n'), ''].join('\n') : '',
-      result && result.visualEventRepairDetails && result.visualEventRepairDetails.length ? ['视觉事件链轻修明细：', result.visualEventRepairDetails.join('\n'), ''].join('\n') : '',
-      '视觉事件链单格微修：',
-      yesNo(result && result.visualEventSingleActionRepairUsed),
-      '',
-      result && result.visualEventSingleActionRepairDetails && result.visualEventSingleActionRepairDetails.length ? ['视觉事件链单格微修明细：', result.visualEventSingleActionRepairDetails.join('\n'), ''].join('\n') : '',
-      '视觉事件链极简保底动作：',
-      yesNo(result && result.visualEventLocalFallbackActionUsed),
-      '',
-      result && result.visualEventAbstractActionDetails && result.visualEventAbstractActionDetails.length ? ['视觉事件链抽象动作保留：', result.visualEventAbstractActionDetails.join('\n'), ''].join('\n') : '',
-      result && result.visualEventDuplicateRiskDetails && result.visualEventDuplicateRiskDetails.length ? ['视觉事件链重复风险保留：', result.visualEventDuplicateRiskDetails.join('\n'), ''].join('\n') : '',
-      result && result.visualEventSoftActionDetails && result.visualEventSoftActionDetails.length ? ['视觉事件链软动作：', result.visualEventSoftActionDetails.join('\n'), ''].join('\n') : '',
-      '视觉事件链软动作超限：',
-      yesNo(result && result.visualEventSoftActionOverLimit),
-      '',
-      result && result.visualEventSoftActionOverLimitReasons && result.visualEventSoftActionOverLimitReasons.length ? ['视觉事件链软动作超限原因：', result.visualEventSoftActionOverLimitReasons.join('\n'), ''].join('\n') : '',
-      'Director强制推进：',
-      yesNo(result && result.visualEventDirectorForcedProgression),
-      '',
-      result && result.visualEventDirectorForcedProgressionIndexes && result.visualEventDirectorForcedProgressionIndexes.length ? ['Director强制推进场景：', result.visualEventDirectorForcedProgressionIndexes.map((index) => `Scene${String(index).padStart(2, '0')}`).join('\n'), ''].join('\n') : '',
-      '视觉事件链重生：',
-      yesNo(result && result.visualEventRetryUsed),
-      '',
-      result && result.visualEventParseError ? ['视觉事件链初次错误：', String(result.visualEventParseError || ''), ''].join('\n') : '',
-      '视觉事件链协议：',
-      storyboardVisualEventProtocol(result && result.visualEventChain, result && result.visualEventProtocol),
-      '',
-      '场景锚点归一化：',
-      yesNo(result && result.visualEventSceneAnchorNormalized),
-      '',
-      result && result.visualEventSceneAnchorNormalizedCount ? ['场景锚点归一化数量：', `${Number(result.visualEventSceneAnchorNormalizedCount || 0) || 0}`, ''].join('\n') : '',
-      result && result.visualEventSceneAnchorNormalized && result.visualEventOriginalSceneAnchorText ? ['原始场景锚点：', result.visualEventOriginalSceneAnchorText, ''].join('\n') : '',
-      '场景锚点覆盖：',
-      `${Number(result && result.visualEventSceneAnchorCoverage || storyboardVisualEventSceneAnchorCoverage(result && result.visualEventChain)) || 0} / ${STORYBOARD_SCENE_COUNT}`,
-      '',
-      '场景锚点：',
-      result && result.visualEventSceneAnchorText ? result.visualEventSceneAnchorText : storyboardVisualEventSceneAnchorText(result && result.visualEventChain),
-      '',
-      '因果承接链：',
-      result && result.visualEventCausalChainText ? result.visualEventCausalChainText : storyboardVisualEventCausalChainText(result && result.visualEventChain),
-      '',
-      '视觉事件链本地兜底：',
-      yesNo(result && result.visualEventFallbackUsed),
-      '',
-      result && result.visualEventFallbackReason ? ['视觉事件链兜底原因：', String(result.visualEventFallbackReason || ''), ''].join('\n') : '',
-      result && result.visualEventResultShape ? ['视觉事件链返回结构：', String(result.visualEventResultShape || ''), ''].join('\n') : '',
-      '视觉事件链：',
-      result && result.visualEventChainText ? result.visualEventChainText : storyboardVisualEventChainText(result && result.visualEventChain),
-      '',
-      '解析状态：',
-      parseStatus,
-      '',
-      'Director Source：',
-      directorSource,
-      '',
-      'Fallback Reason：',
-      result && result.fallbackUsed ? storyboardDirectorPlannerMessageLabel(fallbackReasonCode) : '无',
-      '',
-      'Validator Result：',
-      validatorResult,
-      '',
-      'Story Progression：',
-      validatorStatus(result && result.storyProgression),
-      '',
-      'Camera Diversity：',
-      validatorStatus(result && result.cameraDiversity),
-      '',
-      'Ending Quality：',
-      validatorStatus(result && result.endingQuality),
-      '',
-      result && result.warning ? ['告警：', storyboardDirectorPlannerMessageLabel(result.warning), ''].join('\n') : '',
-      '生图前累计耗时：',
-      `${Number(result && result.preImagePlanningElapsedMs || 0) || 0} 毫秒`,
-      '',
-      '参考图分析缓存：',
-      result && result.referenceAnalysisCacheHit ? '命中' : '未命中',
-      '',
-      '参考图反推 Provider：',
-      String(result && result.referenceAnalysisProvider || '未记录'),
-      '',
-      '参考图反推 Model：',
-      String(result && result.referenceAnalysisModel || '未记录'),
-      '',
-      '参考图反推 Request ID：',
-      String(result && result.referenceAnalysisRequestId || '未记录'),
-      '',
-      '参考图 Provider 耗时：',
-      `${Number(result && result.referenceAnalysisProviderDurationMs || 0) || 0} 毫秒`,
-      '',
-      '参考图分析总耗时：',
-      `${Number(result && result.referenceAnalysisElapsedMs || 0) || 0} 毫秒`,
-      '',
-      '参考图模型反推耗时：',
-      `${Number(result && result.referenceAnalysisModelElapsedMs || 0) || 0} 毫秒`,
-      '',
-      '参考图Hash耗时：',
-      `${Number(result && result.referenceAnalysisHashElapsedMs || 0) || 0} 毫秒`,
-      '',
-      'DirectorPlanner耗时：',
-      `${Number(result && result.elapsedMs || 0) || 0} 毫秒`,
-      '',
-      ...storyboardPromptAssistantProfileLines('DirectorPlanner性能：', result && (result.directorGenerateProfile || result.directorFirstGenerateProfile)),
-      ...storyboardPromptAssistantPatchProfileLines(result && result.directorPatchGenerateProfiles),
-      ...storyboardImageDiagnosticsDebugLines(result && result.storyboardImageDiagnostics),
-      '尝试次数：',
-      `${Number(result && result.attemptCount || 1) || 1}`,
-      '',
-      '自动重试：',
-      yesNo(result && result.retryUsed),
-      '',
-      '局部修正：',
-      yesNo(result && result.patchUsed),
-      '',
-      '镜头增强：',
-      yesNo(result && result.cameraEnhanced),
-      '',
-      result && result.cameraEnhancedSceneIndexes && result.cameraEnhancedSceneIndexes.length ? ['镜头增强场景：', result.cameraEnhancedSceneIndexes.map((item) => `Scene${String(item).padStart(2, '0')}`).join('，'), ''].join('\n') : '',
-      result && result.patchSceneIndexes && result.patchSceneIndexes.length ? ['修正场景：', result.patchSceneIndexes.map((item) => `Scene${String(item).padStart(2, '0')}`).join('，'), ''].join('\n') : '',
-      result && result.patchReason ? ['修正原因：', storyboardDirectorPlannerMessageLabel(result.patchReason), ''].join('\n') : '',
-      result && result.retryReason ? ['首次失败原因：', storyboardDirectorPlannerMessageLabel(result.retryReason), ''].join('\n') : '',
-      '原始输出长度：',
-      `${Number(result && result.rawOutputLength || String(result && result.rawOutput || '').length) || 0}`,
-      '',
-      '提取数据长度：',
-      `${Number(result && result.jsonTextLength || 0) || 0}`,
-      '',
-      '错误分类：',
-      errorCode ? storyboardDirectorPlannerMessageLabel(errorCode) : '无',
-      '',
-      '原始以数组开头：',
-      yesNo(result && result.rawStartsWithArray),
-      '',
-      '原始以数组结尾：',
-      yesNo(result && result.rawEndsWithArray),
-      '',
-      'JSON闭合：',
-      yesNo(result && result.jsonClosed),
-      '',
-      'JSON外层数组壳修复：',
-      yesNo(result && result.jsonWrapperRepaired),
-      '',
-      '期望场景数：',
-      `${Number(result && result.expectedScenes || STORYBOARD_SCENE_COUNT) || STORYBOARD_SCENE_COUNT}`,
-      '',
-      '实际场景数：',
-      `${Number(result && result.actualScenes || 0) || 0}`,
-      '',
-      '解析错误：',
-      result && result.parseError ? storyboardDirectorPlannerMessageLabel(result.parseError) : '无',
-      '',
-      result && result.parseDetail ? ['解析细节：', String(result.parseDetail || ''), ''].join('\n') : '',
-      result && result.qualityHardError ? ['导演质量硬失败：', storyboardDirectorPlannerMessageLabel(result.qualityHardError), ''].join('\n') : '',
-      result && result.qualityWarning ? ['字段质量告警：', storyboardDirectorPlannerMessageLabel(result.qualityWarning), ''].join('\n') : '',
-      providerQualityIssueText ? ['Grok 导演质量问题：', providerQualityIssueText, ''].join('\n') : '',
-      compiledQualityIssueText ? ['最终提示词质量问题：', compiledQualityIssueText, ''].join('\n') : '',
-      '失败原因：',
-      result && result.fallbackReason ? storyboardDirectorPlannerMessageLabel(result.fallbackReason) : '无',
-      '',
-      '修正状态：',
-      result && result.repairStatus ? storyboardDirectorPlannerRepairStatusLabel(result.repairStatus) : '无',
-      '',
-      ...scoreLines,
-      '剧情描述：',
-      String(storyText || '').trim(),
-      '',
-      'Raw World Context：',
-      rawWorldContext || '无',
-      '',
-      'Cleaned World Context：',
-      worldContext || '无',
-      '',
-      'World Context Length：',
-      `${worldContext.length} chars`,
-      '',
-      ...storyboardDirectorPlannerStoryUnderstandingText(storyText, sourceAnalysis, scenes),
-      ...storyboardDirectorPlannerArcText(scenes),
-      ...storyboardDirectorPlannerShotDesignText(scenes)
-    ].concat(scenes.map((scene) => {
-      const director = scene.directorPlan || scene
-      const beat = String(scene.title || director.title || director.purpose || '').trim()
-      return [
-        `场景${String(scene.number || 1).padStart(2, '0')}`,
-        '',
-        '剧情节点：',
-        beat,
-        '',
-        '当前空间：',
-        String(director.currentSpace || scene.currentSpace || ''),
-        '',
-        '镜头：',
-        String(director.camera || ''),
-        '',
-        '动作：',
-        String(director.action || scene.action || ''),
-        '------------------------------------------------'
-      ].join('\n')
-    })).concat([
-      '',
-      '最终发送给模型的完整提示词：',
-      compiledScenePromptText || result && result.promptPreview || '',
-      '',
-      '原始 JSON：',
-      result && result.rawOutput || ''
-    ]).join('\n')
-  }
-
-  function recordStoryboardDebug(storyText, sourceAnalysis, scenes) {
-    const text = storyboardDebugText(storyText, sourceAnalysis, scenes)
-    state.lastProcessingDebug = {
-      ...(state.lastProcessingDebug || {}),
-      storyboardDirector: {
-        type: scenes && scenes[0] && scenes[0].storyboardType || detectStoryboardType(storyText, sourceAnalysis),
-        sceneCount: Array.isArray(scenes) ? scenes.length : 0,
-        text
-      }
-    }
-    try {
-      console.info(`[NovaFlow Storyboard 生成记录]\n${text}`)
-    } catch (_) {}
-  }
-
-  function recordStoryboardDirectorPlannerDebug(storyText, sourceAnalysis, result) {
-    const text = storyboardDirectorPlannerDebugText(storyText, sourceAnalysis, result)
-    state.lastProcessingDebug = {
-      ...(state.lastProcessingDebug || {}),
-      storyboardDirectorV5: {
-        type: result && result.storyboardType || detectStoryboardType(storyText, ''),
-        sceneCount: result && Array.isArray(result.scenes) ? result.scenes.length : 0,
-        parseOk: !!(result && result.parseOk),
-        directorSource: result && result.directorSource || '',
-        fallbackReason: result && result.fallbackReason || '',
-        promptPreview: result && result.promptPreview || '',
-        text
-      }
-    }
-    try {
-      console.info(`[NovaFlow 分镜导演规划 V5-5]\n${text}`)
-    } catch (_) {}
-    return text
-  }
-
-  function storyboardEmptyLatentNode(info) {
-    if (info && info.EmptySD3LatentImage) return { name: 'EmptySD3LatentImage', info: info.EmptySD3LatentImage }
-    if (info && info.EmptyLatentImage) return { name: 'EmptyLatentImage', info: info.EmptyLatentImage }
-    if (info && info.EmptyQwenImageLayeredLatentImage) return { name: 'EmptyQwenImageLayeredLatentImage', info: info.EmptyQwenImageLayeredLatentImage }
-    throw new Error('NovaFlow AI Runtime 缺少空 Latent 节点，无法生成电影分镜新构图')
-  }
-
-  function storyboardEmptyLatentInputs(nodeName, nodeInfo, frameSize) {
-    const frame = normalizeStoryboardFrameSize(frameSize)
-    const overrides = { width: frame.width, height: frame.height, batch_size: 1 }
-    if (nodeName === 'EmptyQwenImageLayeredLatentImage') overrides.layers = 1
-    return buildComfyNodeInputs(nodeInfo, overrides)
-  }
-
-  function storyboardReferenceWorkflowOptions(options = {}) {
-    const referenceStrength = normalizeStoryboardReferenceStrength(options && options.referenceStrength)
-    return {
-      referenceStrength,
-      referenceDenoise: storyboardReferenceDenoiseFromStrength(referenceStrength)
-    }
-  }
-
-  function storyboardIdentityCueSentences(sourceAnalysis, visualCuePack) {
-    const text = storyboardCompactVisibleCueText(`${visualCuePack || ''} ${sourceAnalysis || ''}`)
-    if (!text) return []
-    const identityPattern = /(character|protagonist|person|people|subject|appearance|outfit|clothing|wearing|hair|hairstyle|face|body|prop|weapon|bag|backpack|armor|crown|cape|robe|dress|staff|sword|shield|wing|horn|palette|style|rendering|illustration|anime|cartoon|主角|人物|角色|主体|外观|服装|穿着|衣服|上衣|短裤|长裤|裙|长裙|鞋|帽|发型|头发|短发|长发|脸|表情|体型|背包|行李|道具|武器|盔甲|铠甲|皇冠|王冠|头冠|披风|斗篷|长袍|法杖|剑|盾|翅膀|角|黑色|金色|红色|白色|银色|色彩|配色|画风|风格|渲染|插画|动画)/i
-    const protectedIdentityPattern = /(outfit|clothing|wearing|hair|hairstyle|face|body|prop|weapon|bag|backpack|armor|crown|cape|robe|dress|staff|sword|shield|wing|wings|horn|palette|style|rendering|服装|穿着|衣服|上衣|短裤|长裤|裙|长裙|鞋|帽|发型|头发|短发|长发|脸|表情|体型|背包|行李|道具|武器|盔甲|铠甲|皇冠|王冠|头冠|披风|斗篷|长袍|法杖|剑|长剑|盾|翅膀|羽翼|角|黑色|金色|红色|白色|银色|色彩|配色|画风|风格|渲染|插画|动画)/i
-    const environmentOnlyPattern = /(mountain|forest|road|sky|cloud|sun|hill|tree|grass|river|building|street|city|background|environment|scene|山|森林|树林|小路|道路|天空|白云|阳光|山丘|草地|河|城市|街道|高楼|背景|环境|场景)$/
-    const backgroundFigurePattern = /(身后|远处|背景|周围|路边|旁边|人影|小人影|陪衬|行人|群众|建筑|小路|道路|山|森林|天空|云|火焰效果|沿着|走在|站在|前行|缓缓|望向|看向)/
-    const instructionPattern = /(usage|use only|do not|must not|fixed template|\u4f7f\u7528\u65b9\u5f0f|\u53ea\u4f5c\u4e3a|\u4e0d\u8981\u5f53|\u56fa\u5b9a\u5267\u60c5\u6a21\u677f)/i
-    const sentences = text
-      .split(/[，,。！？；;.!?\n\r]+/)
-      .map((item) => storyboardCompactVisibleCueText(item))
-      .filter((item) => item.length >= 4 && item.length <= 180 && identityPattern.test(item))
-      .filter((item) => !environmentOnlyPattern.test(item))
-      .filter((item) => !backgroundFigurePattern.test(item) || protectedIdentityPattern.test(item))
-      .filter((item) => !instructionPattern.test(item))
-    const seen = new Set()
-    const cues = []
-    sentences.forEach((item) => {
-      const normalized = storyboardSanitizeReferenceIdentityCue(item)
-      if (!normalized) return
-      const key = normalized.replace(/\s+/g, '').toLowerCase()
-      if (!key || seen.has(key)) return
-      seen.add(key)
-      cues.push(normalized)
-    })
-    return cues.slice(0, 5)
-  }
-
-  function storyboardReferenceCueCompatibleWithStory(cue, storyText) {
-    const cueText = storyboardCompactVisibleCueText(cue)
-    return !!cueText
-  }
-
-  function storyboardIdentityCueSentencesForStory(sourceAnalysis, visualCuePack, storyText) {
-    return storyboardIdentityCueSentences(sourceAnalysis, visualCuePack)
-      .filter((cue) => storyboardReferenceCueCompatibleWithStory(cue, storyText))
-  }
-
-  function storyboardStripExtractedReferenceColorWords(value) {
-    let text = String(value || '')
-    if (!text) return ''
-    const appearanceCuePattern = /(服装|衣服|上衣|下装|外套|盔甲|裙|鞋|帽|发型|头发|随身道具|背包|包|武器|道具|颜色|outfit|clothing|wearing|shirt|pants|shorts|dress|armor|hair|backpack|bag|prop|weapon|color)/i
-    if (!appearanceCuePattern.test(text)) return text
-    text = text.replace(/服装轮廓和颜色/g, '服装轮廓')
-    text = text.replace(/类型和颜色/g, '类型')
-    text = text.replace(/色彩光线/g, '光线')
-    text = text.replace(/(?:浅|深|亮|暗|偏)?(?:红|橙|黄|绿|蓝|青|紫|粉|棕|褐|黑|白|灰|金|银|米|卡其|藏青|墨绿)(?:色)?/g, '')
-    text = text.replace(/\b(?:light|dark|bright|pale|deep)?\s*(?:red|orange|yellow|green|blue|cyan|purple|pink|brown|black|white|gray|grey|gold|silver|beige|khaki)\b/gi, '')
-    text = text.replace(/[，,；;、]\s*([，,；;、])/g, '$1')
-    text = text.replace(/[:：]\s*[，,；;、]/g, ': ')
-    return text.replace(/\s{2,}/g, ' ').trim()
-  }
-
-  function storyboardSanitizeReferenceIdentityCue(value) {
-    let text = storyboardCompactVisibleCueText(value)
-    if (!text) return ''
-    text = text.replace(/^(一个|一位|一名|这名|这个|那个)/, '').trim()
-    text = text.replace(/(背对镜头|背影|正面|侧身|站立|居中|全身|远景|近景|中景|镜头|构图|背景|保持背景|保持姿势|自然环境|山间小路|小路尽头)/g, '').trim()
-    text = text.replace(/^(的|，|,|和|与|以及)+/, '').trim()
-    text = text.replace(/^(背着|拿着|穿着|身穿|头戴|佩戴|带着)/, (match) => match)
-    if (/^(背着|拿着|穿着|身穿|头戴|佩戴|带着)$/.test(text)) return ''
-    return text.slice(0, 60)
-  }
-
-  function storyboardReferenceRenderingStyleCue(sourceAnalysis, visualCuePack) {
-    const text = storyboardCompactVisibleCueText(`${visualCuePack || ''} ${sourceAnalysis || ''}`)
-    if (!text) return ''
-    if (/(photo|photographic|realistic|realism|live action|cinematic realistic|写实|摄影|照片|真人|实拍)/i.test(text)) {
-      return 'Reference rendering style: realistic cinematic image, photographic or semi-real material rendering, natural lens depth, consistent with the uploaded reference visual finish.'
-    }
-    if (/(3d|clay|storybook|toy|stop.?motion|whimsical|粘土|定格|玩具|童话|三维|3D)/i.test(text)) {
-      return 'Reference rendering style: whimsical 3D storybook or clay-rendered illustration, soft tactile materials, consistent with the uploaded reference visual finish.'
-    }
-    if (/(cyber|neon|sci.?fi|mecha|赛博|霓虹|科幻|义体|机甲)/i.test(text)) {
-      return 'Reference rendering style: cinematic semi-real concept art with controlled neon lighting and polished game-art finish, consistent with the uploaded reference visual finish.'
-    }
-    if (/(ink|eastern|wuxia|oriental|国风|东方|水墨|古风|武侠)/i.test(text)) {
-      return 'Reference rendering style: painterly eastern game illustration, ornate brush detail and controlled palette, consistent with the uploaded reference visual finish.'
-    }
-    if (/(anime|manga|illustration|illustrated|painterly|painted|animation|cartoon|动漫|动画|二次元|插画|原画|手绘)/i.test(text)) {
-      return 'Reference rendering style: painterly anime or illustrated film artwork, consistent with the uploaded reference visual finish.'
-    }
-    return ''
-  }
-
-  function storyboardCharacterIdentityCard(storyText, sourceAnalysis, visualCuePack) {
-    const cues = storyboardIdentityCueSentencesForStory(sourceAnalysis, visualCuePack, storyText)
-    const styleCue = storyboardReferenceRenderingStyleCue(sourceAnalysis, visualCuePack)
-    const lines = [
-      'Character Identity Card:',
-      cues.length ? `Reference-visible subject/style cues: ${cues.join('; ')}.` : '',
-      styleCue,
-      'This card contains appearance and rendering continuity only. The user story and each current scene remain authoritative for role, action, location, camera, and plot.',
-      'Reference-visible text cues describe the subject silhouette, clothing structure, hair impression, important accessory/equipment design, palette, and rendering style; use them as continuity anchors when later frames do not receive image conditions.',
-      'Apply this card to every storyboard frame. Preserve the same main subject identity, age or species range, face or head impression, hair or head shape, silhouette, baseline outfit or equipment design, important accessory/equipment design language, color palette, and rendering style. Reference-visible accessories, equipment, or carried items do not have to appear fully in every frame unless the current story event needs them. If the user story explicitly requires a visible role, time, or status change, outer clothing or equipment may evolve only at that story beat while the protagonist remains visually recognizable. Do not replace the reference outfit, equipment, hairstyle, or main color distribution with a genre-default local costume just because the scene moves to a new location, era, profession, or genre. Current scene prompt controls action, emotion, location, camera, composition, and story state.'
-    ].filter(Boolean).join('\n')
-    return lines.slice(0, STORYBOARD_CHARACTER_IDENTITY_CARD_MAX_CHARS).trim()
-  }
-
-  function storyboardIdentityCardVisibleCueLine(identityCard) {
-    const text = String(identityCard || '')
-    const match = text.match(/Reference-visible subject\/style cues:\s*([^\n]+)/i)
-    return match && match[1] ? storyboardNormalizeVisibleIdentityCueLine(match[1]) : ''
-  }
-
-  function storyboardNormalizeVisibleIdentityCueLine(value) {
-    let text = storyboardCompactVisibleCueText(value).replace(/\.$/, '')
-    if (!text) return ''
-    text = text.replace(/背后(?:长着|有|拥有)?(?:巨大|大型|展开|张开)?的?([^，。；;、]{0,14}(?:翅膀|羽翼))/g, '$1设计（可折叠或局部入镜）')
-    text = text.replace(/(?:周围|四周|身后)?(?:环绕着|围绕着|燃烧着)([^，。；;、]{0,16}(?:火焰|光焰|能量|烟雾|光环|光效))/g, '$1视觉元素')
-    text = text.replace(/(?:手持|拿着|握着)([^，。；;、]{1,18}(?:长剑|剑|刀|枪|法杖|权杖|盾|折扇|背包|行李|手提箱|工具))/g, '随身道具为$1')
-    text = text.replace(/(?:居中|正面|背影|背对镜头|主体朝向|镜头|构图|背景|全身|站立|英雄姿态|战斗姿态|摆拍)[^，。；;、]{0,16}/g, '')
-    text = text.replace(/\s+/g, ' ').replace(/；{2,}/g, '；').replace(/、{2,}/g, '、').trim()
-    return text.slice(0, 320)
-  }
-
-  function storyboardChineseIdentityContinuity(identityCard, storyText) {
-    const story = storyboardCompactVisibleCueText(storyText).slice(0, 140)
-    const cues = storyboardIdentityCueSentences(identityCard, '').slice(0, 4)
-    const visibleCueLine = storyboardIdentityCardVisibleCueLine(identityCard)
-    const cueText = visibleCueLine
-      ? `参考图可见造型锚点：${visibleCueLine}；`
-      : cues.length
-        ? `可兼容参考造型线索：${cues.join('、')}；`
-        : ''
-    const storyTextRule = story ? `主角身份以用户剧情为准：${story}；` : '主角身份以用户剧情为准；'
-    return `${storyTextRule}参考图不能改变主角性别、年龄段、物种、职业身份或阵营；${cueText}全系列保持同一主角身份、年龄气质、脸型/头发印象、服装轮廓、关键随身道具、色彩和画风；参考图里的背景人物或远处陪衬人物不要变成固定同伴，除非当前剧情明确需要。`
-  }
-
-  function storyboardNoImageAppearanceLock(identityCard) {
-    const visibleCueLine = storyboardIdentityCardVisibleCueLine(identityCard)
-    const cues = storyboardIdentityCueSentences(identityCard, '').slice(0, 4)
-    const cueText = visibleCueLine || cues.join('；')
-    if (!cueText) return ''
-    return [
-      `无图后续帧外观硬约束：后续镜头没有图像条件时，必须把这些参考外观锚点当作主角设计基准：${cueText}。`,
-      '除非用户剧情或当前镜头明确写出换装、转职、伪装、身份变化、时间跨度变化，否则主角不能整体换成当地服装、职业服、节庆服、战斗服、长袍、礼服、制服、盔甲或新配色。',
-      '如果当前事件需要表演、面试、战斗、工作、旅行、仪式或社交，只允许在原有主角造型上增加必要的小道具、外搭或局部状态痕迹；发型、脸部印象、主体服装结构、主要颜色比例、关键装备/配饰设计和画风必须保持可识别连续。'
-    ].join('\n')
-  }
-
-  function storyboardNoImageMediumLock(identityCard) {
-    const text = String(identityCard || '')
-    const medium = storyboardDualReferenceMediumCue(identityCard)
-    const isPhotographic = /(photo|photographic|realistic|realism|live action|写实|摄影|照片|真人)/i.test(text)
-    const nonPhotoRule = isPhotographic
-      ? '参考图是照片或写实图时，保持同一写实摄影/电影质感，不要漂成二次元、漫画、像素风或低清游戏画面。'
-      : '参考图不是照片/真人时，禁止漂成写实摄影、真人照片、纪录片、实拍背景、写实3D模型、像素风、低清游戏像素或马赛克风格。'
-    return `无图后续帧媒介硬约束：第2-9格即使不传入参考图，也必须延续第1格和参考图建立的视觉媒介，输出为 ${medium.output}；保持 ${medium.style}。${nonPhotoRule}`
-  }
-
-  function storyboardWeakActionImageHint(title, action, currentSpace) {
-    const text = storyboardCompactVisibleCueText(`${title || ''} ${action || ''} ${currentSpace || ''}`)
-    const weakPattern = /(风景|远望|思考|期待|适应|寻找|机会|新生活|新起点|前行|旅途|探索|站在|望向|看着|感到|充满|决定|初见)/
-    if (text.length > 70 && !weakPattern.test(text)) return ''
-    return '弱动作补强：如果原描述偏抽象，必须把它画成一个具体互动瞬间；主角正在查看、递交、打开、操作、记录、修复、交流、奔跑、攀爬、整理、展示或触碰某个符合当前场景的对象，并让画面显示这个动作造成的即时结果。'
-  }
-
-  function storyboardSceneCompositionHint(sceneNumber) {
-    const index = Math.max(0, (Number(sceneNumber) || 1) - 1) % STORYBOARD_SCENE_COUNT
-    const hints = [
-      '构图差异：建立故事空间，主角可以是背面、侧面或画面一侧的中远景，不要做正面角色设定图。',
-      '构图差异：用过肩、侧面或群像关系表现交流/集结，让主角和其他角色或目标物产生明确空间关系。',
-      '构图差异：优先中近景或细节镜头，突出手部、道具、设备、线索或角色表情，不必完整展示全身。',
-      '构图差异：使用斜向构图或俯仰角，画出主角弯腰、转身、操作、递交、修复、攀爬或移动中的身体姿态。',
-      '构图差异：用半身三分之二视角或环境纵深表现状态变化，避免居中正面站立。',
-      '构图差异：用横向调度、侧向跟拍或前景遮挡表现准备/冲突升级，让环境和人物动作共同推动画面。',
-      '构图差异：用低机位、远近层次或局部裁切表现压力和选择，不要把主角放成静止立绘。',
-      '构图差异：使用最动态的一格，主角应处在奔跑、冲刺、攻击、救援、展示成果或强动作进行时。',
-      '构图差异：收束故事结果，可以用远景、背影、侧影或高处俯视，让世界尺度打开，不要重复前面姿势。'
-    ]
-    return hints[index]
-  }
-
-  function storyboardQwenNaturalPromptForScene(scene, storyText, identityCard, hasReferenceImage = false) {
-    const premise = storyboardCompactVisibleCueText(storyText || scene.storyPremise || '').slice(0, 180)
-    const director = scene.directorPlan || scene
-    const title = storyboardCompactVisibleCueText(scene.title || director.title || scene.beat || '').slice(0, 32)
-    const action = storyboardCompactVisibleCueText(scene.finalShotPrompt || scene.action || scene.beat || scene.description || '').slice(0, STORYBOARD_FINAL_SHOT_PROMPT_MAX_CHARS)
-    const terminalKeyPropPriority = storyboardTerminalKeyPropPriorityRule(action)
-    const currentSpace = storyboardCompactVisibleCueText(scene.finalShotSceneAnchor || director.currentSpace || scene.currentSpace || scene.sceneAnchor || '').slice(0, 160)
-    const camera = storyboardCompactVisibleCueText(scene.finalShotCamera || director.shot_type || director.camera || scene.angle || '').slice(0, 240)
-    const identity = storyboardChineseIdentityContinuity(identityCard, storyText)
-    const noImageAppearanceLock = hasReferenceImage ? '' : storyboardNoImageAppearanceLock(identityCard)
-    const noImageMediumLock = hasReferenceImage ? '' : storyboardNoImageMediumLock(identityCard)
-    const weakActionHint = storyboardWeakActionImageHint(title, action, currentSpace)
-    const panelDifferenceRule = storyboardPanelDifferenceRule(scene)
-    const spatialGroundingRule = storyboardSceneSpatialGroundingRule(scene)
-    const refRule = hasReferenceImage
-      ? '参考图只用于主角身份、服装轮廓、色彩和画风；当前文字描述决定动作、地点、背景、镜头和构图。严禁把参考主体当作贴纸粘到新背景，严禁反复使用同一正面站姿或居中立绘构图；主角的身体姿态、手部动作、视线方向和场景互动必须符合当前事件。'
-      : '当前画面不传入参考图像，依据参考图反推出的文字锚点和本段分镜描述生成；保持角色与画风连续，但不要复用固定姿势、背景或构图。除非本段剧情明确换装、换身份或时间跨度变化，否则必须继承第1格和身份卡建立的发型、脸部印象、服装/装备设计、主配色和渲染风格；不能因为场景进入皇城、城市、神殿、办公室、学校、战场、节庆、咖啡馆、乡村或幻想地点，就把主角替换成该场景的默认服装或默认职业造型；大型道具、武器、翅膀、背包、皇冠、扇子或工具只作为设计锚点，当前动作不需要时可以局部、收起、放置、裁切或不完整展示，禁止无理由换成新长裙、制服、礼服、盔甲、发型或年龄。'
-    return [
-      camera
-        ? `Camera and composition: ${camera}. This camera, subject placement, crop, angle, foreground/background relationship, and movement direction are mandatory.`
-        : 'Camera and composition: choose a scene-specific cinematic framing that makes the current event immediately readable.',
-      `单张完整电影画面：${action || title}。`,
-      terminalKeyPropPriority,
-      currentSpace ? `当前场景：${currentSpace}。` : '',
-      premise ? `故事主线：${premise}。` : '',
-      title && !action ? `剧情事件：${title}；画面必须出现清楚的可见行动、状态变化或结果。` : '',
-      `角色连续性：${identity}`,
-      `Current scene to draw: ${action || title || 'a clear visible story event'}.`,
-      currentSpace ? `Location/background: ${currentSpace}.` : '',
-      premise ? `Main story line: ${premise}.` : '',
-      'Generate one complete image for this scene only; current scene action, body pose, facing direction, camera distance, and background must follow this scene, not a fixed reference pose.',
-      storyboardDualReferenceFrameStyleRule(identityCard),
-      'Visible text rule: any paper, document, map, book page, screen, sign, poster, badge, label, board, or UI surface must be blank, icon-only, or abstract unreadable marks; no readable letters, words, numbers, captions, subtitles, logos, or pseudo text.',
-      'If the scene needs a document, phone, screen, sign, map, certificate, form, book, poster, or board, compose it from the back, edge, distance, reflection, motion blur, blank side, or icon-only side; focus on the character action and reaction, never on readable content.',
-      noImageAppearanceLock,
-      noImageMediumLock,
-      refRule,
-      hasReferenceImage ? STORYBOARD_REFERENCE_POSE_DECOUPLE_RULE : '',
-      panelDifferenceRule,
-      spatialGroundingRule,
-      STORYBOARD_RENDER_STYLE_LOCK,
-      STORYBOARD_REFERENCE_PIXEL_AUTHORITY_RULE,
-      STORYBOARD_REFERENCE_ANALYSIS_COLOR_CAUTION_RULE,
-      STORYBOARD_ABSTRACT_GOAL_GROUNDING_RULE,
-      STORYBOARD_REFERENCE_BACKGROUND_FIGURE_RULE,
-      STORYBOARD_KEY_PROP_CONTINUITY_RULE,
-      'Protagonist uniqueness rule: the uploaded reference anchors only the main protagonist. Draw only one copy of that protagonist unless the story explicitly requires a mirror, twin, clone, or memory version. Secondary characters, family, friends, interviewers, helpers, crowds, enemies, patients, or coworkers must have clearly different hair, face, outfit, silhouette, and props; do not give them the protagonist outfit, hairstyle, face, or reference-visible carried item.',
-      'Narrative outfit rule: by default keep the uploaded-reference baseline outfit/equipment design, hair, palette, and rendering style across the whole 9-frame sequence. Reference-visible accessories, equipment, or carried items are design anchors, not mandatory full-frame objects. Do not replace the protagonist with a genre-default or location-default costume just because the scene location changes. If and only if the user story or this exact scene explicitly shows a role, time, or status transformation, outer clothing or equipment may change from that beat onward; preserve the same face/head impression, hair shape, body silhouette, age range, color harmony, and art style so the protagonist remains the same person.',
-      weakActionHint,
-      '动作优先：除非当前剧情明确要求，主角不能只是站立、远望或摆拍；必须与人物、道具、建筑、设备、自然物或事件痕迹发生可见互动。',
-      '画面要求：完整全幅构图，清晰前景动作，明确空间层次，电影光影，高级动画电影/游戏概念美术质感；纯净单幅画面，无文字、无logo、无水印、无边框、无小窗、无拼贴、无多个画面。'
-    ].filter(Boolean).join('\n')
-  }
-
-  function storyboardDualReferenceSubjectName(storyText, identityCard) {
-    const storyOnly = String(storyText || '')
-    const text = `${storyOnly} ${identityCard || ''}`
-    if (/(少女|女孩|小女孩|女童|女学生)/.test(storyOnly)) return 'youthful girl'
-    if (/(女武神|女战士|女骑士|圣女|女王|公主|魔女|女巫|女人|女性|女子|女主)/.test(storyOnly)) return 'female protagonist'
-    if (/(少年|男孩|小男孩|男童|男学生)/.test(storyOnly)) return 'youthful boy'
-    if (/(男人|男性|男子|男主|国王)/.test(storyOnly)) return 'male protagonist'
-    if (/(少女|女孩|小女孩|女童|女学生)/.test(text)) return 'youthful girl'
-    if (/(女武神|女战士|女骑士|圣女|女王|公主|魔女|女巫|女人|女性|女子|女主)/.test(text)) return 'female protagonist'
-    if (/(少年|男孩|小男孩|男童|男学生)/.test(text)) return 'youthful boy'
-    if (/(男人|男性|男子|男主|骑士|国王)/.test(text)) return 'male protagonist'
-    if (/(机器人|机甲|机械)/.test(text)) return 'robotic protagonist'
-    if (/(动物|猫|狗|鸟|龙|兽)/.test(text)) return 'same creature protagonist'
-    return 'visible protagonist'
-  }
-
-  function storyboardDualReferenceMediumCue(identityCard) {
-    const text = String(identityCard || '').toLowerCase()
-    if (/(photo|photographic|realistic|realism|live action|cinematic realistic|写实|摄影|照片|真人|实拍)/i.test(text)) {
-      return {
-        style: 'realistic cinematic visual style, photographic or semi-real material rendering, natural lens depth, lighting mood, and reference-matched visual finish',
-        output: 'cinematic realistic image'
-      }
-    }
-    if (/(3d|clay|storybook|toy|stop.?motion|whimsical|粘土|定格|玩具|童话|三维)/i.test(text)) {
-      return {
-        style: 'whimsical 3D storybook or clay-rendered visual style, soft tactile materials, consistent lighting, and reference-matched visual finish',
-        output: 'cinematic 3D storybook illustration'
-      }
-    }
-    if (/(cyber|neon|sci.?fi|mecha|semi-real concept art|赛博|霓虹|科幻|义体|机甲)/i.test(text)) {
-      return {
-        style: 'cinematic semi-real concept-art style, controlled neon lighting, polished game-art finish, and reference-matched visual language',
-        output: 'cinematic semi-real concept art image'
-      }
-    }
-    if (/(ink|eastern|wuxia|oriental|painterly eastern|国风|东方|水墨|古风|武侠)/i.test(text)) {
-      return {
-        style: 'painterly eastern game illustration style, ornate brush detail, controlled palette, and reference-matched visual finish',
-        output: 'cinematic eastern fantasy illustration'
-      }
-    }
-    if (/(anime|manga|cartoon|illustration|illustrated|painterly|painted|animation|动画|动漫|漫画|插画|绘画|原画|手绘)/i.test(text)) {
-      return {
-        style: 'painterly anime film rendering style, bright color palette, soft sunlight, atmospheric depth, and visual finish',
-        output: 'cinematic anime illustration'
-      }
-    }
-    if (/(photo|photographic|realistic|realism|live action|写实|摄影|照片|真人)/i.test(text)) {
-      return {
-        style: 'realistic photographic visual style, natural color palette, lighting mood, atmospheric depth, and visual finish',
-        output: 'cinematic realistic image'
-      }
-    }
-    return {
-      style: 'the same visual language established by the uploaded reference and scene 1, with consistent medium, palette, lighting mood, material rendering, and finish',
-      output: 'a cinematic image in the reference-matched style'
-    }
-  }
-
-  function storyboardDualReferenceFrameStyleRule(identityCard) {
-    const medium = storyboardDualReferenceMediumCue(identityCard)
-    return [
-      `Whole-frame style lock: render the protagonist, every secondary character, crowd, vehicle, architecture, furniture, props, sky, lighting, depth of field, and background in one unified reference-matched medium: ${medium.style}.`,
-      `The output must read as ${medium.output} from edge to edge, not a character pasted onto a differently rendered background.`,
-      'Do not mix media inside the same frame. If image1 is illustrated or anime, the city, rooms, vehicles, crowds, and landscape must also be illustrated in that same finish, never live-action, stock-photo, documentary, or photographic background. If image1 is realistic or photographic, keep the whole frame realistic and do not convert it to anime.'
-    ].join(' ')
-  }
-
-  function storyboardDualReferenceIdentityCue(identityCard, storyText, paletteHint = '') {
-    const visibleCueLine = storyboardIdentityCardVisibleCueLine(identityCard)
-    const subject = storyboardDualReferenceSubjectName(storyText, identityCard)
-    const cleanVisibleCue = (cue) => {
-      const text = storyboardCompactVisibleCueText(cue).slice(0, 180)
-      if (!text) return ''
-      if (/Reference-visible subject\/style cues|Reference appearance|Reference subject color anchors|Character Identity Card|User story main subject anchor|uploaded image central subject|semantic reference analysis|use these as|current scene prompt|do not treat|do not copy/i.test(text)) return ''
-      return text
-    }
-    const cueParts = []
-    const visibleCue = cleanVisibleCue(visibleCueLine)
-    if (visibleCue) cueParts.push(visibleCue)
-    storyboardIdentityCueSentences(identityCard, '').slice(0, 2).forEach((cue) => {
-      const cleaned = cleanVisibleCue(cue)
-      if (cleaned && !cueParts.includes(cleaned)) cueParts.push(cleaned)
-    })
-    const visibleTraits = storyboardCompactVisibleCueText(cueParts.join('; ')).slice(0, 220)
-    if (visibleTraits) {
-      return `the same ${subject}, ${visibleTraits}; preserve stable identity anchors and rendering design language from image1; treat its outfit, equipment, accessories, materials, and visible colors as the initial appearance baseline, not an immutable costume`
-    }
-    return `the same ${subject} from image1; preserve stable identity anchors and rendering design language; treat its outfit, equipment, accessories, materials, and visible colors as the initial appearance baseline, not an immutable costume`
-  }
-
-  function storyboardIsCompactDualReferencePrompt(promptText) {
-    return /Use image1 only for protagonist identity/i.test(String(promptText || ''))
-  }
-
-  function storyboardScenePoseVariationHint(sceneNumber) {
-    const variants = [
-      'Pose variation: use an off-center establishing composition; avoid a centered full-body display pose.',
-      'Pose variation: use a three-quarter or side angle with one clear physical interaction, not a frontal standing pose.',
-      'Pose variation: use a close-up or medium close-up focused on hands, face, object, wound, tool, or contact point; do not repeat full-body stance.',
-      'Pose variation: show movement across the frame, a turn, step, object handling, dodge, or transition; avoid static gaze-only staging.',
-      'Pose variation: use a wider action composition where body direction, limbs, props, effects, or surrounding objects show force and change.',
-      'Pose variation: use a low, high, over-shoulder, kneeling, crouching, defensive, or partial-body angle only if it fits the event; do not repeat a previous prayer/display pose.',
-      'Pose variation: make the turning point visible through a new body orientation, impact, release, or environmental reaction.',
-      'Pose variation: show follow-through or consequence with the subject moving, handling an object, crossing space, or interacting with another subject.',
-      'Pose variation: final frame must show the result state with a different silhouette from scene 1 and nearby scenes; avoid repeating a centered hero stance.'
-    ]
-    const index = Math.max(0, Math.min(variants.length - 1, Math.round(Number(sceneNumber || 1)) - 1))
-    return variants[index]
-  }
-
-  function storyboardSceneActionNeedsExternalization(actionText) {
-    const text = String(actionText || '')
-    if (!text.trim()) return false
-    return /(inner|emotion|symbolic|thought|memory|hope|fear|hesitat|determination|willpower|心中|内心|意识|意志|灵魂|情绪|象征|似乎|感到|充满|坚定|犹豫|挣扎|诱惑|回忆|希望|绝望|净化|消散|睁开|闭上|看向|望向|眺望|眼神|目光|站在|站立|站定|双手合十|祈祷|宣誓|双臂展开|张开双臂|抬起.*臂|深呼吸|圣光|光中|发光|光芒|气氛|氛围)/i.test(text)
-  }
-
-  function storyboardExternalizedActionRule(actionText) {
-    if (!storyboardSceneActionNeedsExternalization(actionText)) return ''
-    return 'Required action externalization: this story beat is too static or symbolic. Do not draw it as a posed portrait, closed-eye portrait, gaze-only shot, prayer pose, arms-spread display, or centered standing hero pose. Convert the beat into visible physical action: the subject must change body position or facing direction and interact with a concrete force, object, tool, opponent, environment, or another character; show contact, impact, motion, resistance, handling, crossing space, or a visible consequence.'
-  }
-
-  function storyboardExternalizedSceneInstruction(actionText, locationText) {
-    const beat = storyboardCompactVisibleCueText(actionText).slice(0, 180)
-    const place = storyboardCompactVisibleCueText(locationText).slice(0, 80) || 'the current scene'
-    if (!storyboardSceneActionNeedsExternalization(beat)) return beat
-    return `Externalized active version of this story beat at ${place}: preserve the meaning of "${beat}", but draw the protagonist physically doing something visible with the main force, task, object, opponent, environment, or another character in this beat. Show a changed body direction and active contact, movement, impact, handling, resistance, or consequence; do not draw the literal static pose from the wording.`
-  }
-
-  function storyboardSemanticActionReplacement(actionText) {
-    const text = storyboardCompactVisibleCueText(actionText).slice(0, 220)
-    if (!text) return ''
-    const jobOrOpportunity = /(\u6c42\u804c|\u9762\u8bd5|\u5de5\u4f5c|\u62db\u8058|\u673a\u4f1a|\u65b0\u516c\u53f8|\u65b0\u751f\u6d3b|\u627e\u65b9\u5411|\u5bfb\u627e|job|work|interview|opportunity|recruit|career|new life)/i
-    const writtenObject = /(\u5e7f\u544a|\u544a\u793a|\u901a\u77e5|\u901a\u77e5\u4e66|\u5730\u56fe|\u8def\u7ebf|\u7b80\u5386|\u8868\u683c|\u6587\u4ef6|\u7eb8|\u4e66|\u724c|\u5c4f\u5e55|\u624b\u673a|advertisement|notice|map|route|resume|form|document|paper|book|sign|poster|screen|phone|clipboard)/i
-    const technologyState = /(上传|下载|传输|连接|断开|失败|成功|完成|进度|百分比|代码|程序|终端|接口|节点|网络|数据|干扰|入侵|解锁|破解|upload|download|transmission|transfer|connect|disconnect|failed|failure|success|complete|progress|percent|code|program|terminal|interface|node|network|data|interference|hack)/i
-    const staticDecision = /(\u51b3\u5b9a|\u51b3\u5fc3|\u9009\u62e9|\u51c6\u5907|\u671f\u5f85|\u61a7\u61ac|\u773c\u795e|\u76ee\u5149|\u56db\u5904\u5f20\u671b|\u7ad9\u5728|\u7ad9\u7acb|\u5fae\u7b11|decide|decision|resolve|prepare|expect|gaze|look around|stand|smile)/i
-    const exploration = /(\u521d\u63a2|\u63a2\u7d22|\u6f2b\u6b65|\u6253\u91cf|\u597d\u5947|\u8def\u8fc7|explore|wander|observe|curious)/i
-    const doorwayAction = /(\u95e8|\u6572|\u63a8\u5f00|\u62c9\u5f00|\u8d70\u8fdb|\u8fdb\u5165|door|knock|open|enter)/i
-    const farewellOrArrival = /(\u544a\u522b|\u62b5\u8fbe|\u5230\u8fbe|\u8fdb\u5165|\u8d70\u8fdb|\u79bb\u5f00|\u51fa\u53d1|\u8fdc\u884c|\u65c5\u9014|farewell|arrive|enter|leave|depart|journey)/i
-    const confrontation = /(\u5bf9\u6218|\u51b3\u6597|\u6218\u6597|\u8fdb\u653b|\u9632\u5b88|\u683c\u6321|\u8eb2\u95ea|\u51b2\u7a81|duel|battle|fight|attack|defend|block|dodge|clash)/i
-    if (confrontation.test(text)) {
-      return 'draw a concrete combat beat with changed distance, body angle, contact, dodge, block, strike, recoil, force, contact, or interaction direction, and visible consequence; show a weapon only when it is explicitly present in image1 or required by the current story event; avoid static face-off, arms-spread display, or repeated standing hero pose'
-    }
-    if (doorwayAction.test(text)) {
-      return 'draw a doorway or threshold action from a side or over-shoulder angle: the protagonist steps through, turns the handle, pushes or pulls the door, or crosses into the next space with bent arms and visible movement; avoid straight-arm display, front-facing portrait, readable signs, or text surfaces'
-    }
-    if (technologyState.test(text)) {
-      return 'make the technology state readable through physical evidence at thumbnail scale: cable pulses, indicator-color change, interrupted light flow, sparks, hardware movement, device shutdown, environmental response, or opponent reaction; preserve the exact story event and do not rely on readable UI text, error words, code, numbers, or percentage bars'
-    }
-    if (writtenObject.test(text)) {
-      return 'preserve the exact story action while making the written surface visually nonverbal: use blank, back-facing, edge-on, distant, blurred, icon-only, reflected, or abstract luminous surfaces, and show meaning through the character action, object handling, environment, or visible consequence instead of readable words or numbers'
-    }
-    if (jobOrOpportunity.test(text)) {
-      return 'draw a concrete non-text task or opportunity moment: the protagonist moves through the place, speaks with a clearly different person, exchanges a blank back-facing object, operates tools or a workstation, receives feedback by gesture, or starts doing the actual task; do not make a map, paper, document, phone, screen, sign, poster, or written object the main prop; avoid straight-arm pointing and open palm display'
-    }
-    if (exploration.test(text)) {
-      return 'draw exploration as physical movement through the environment: the protagonist crosses the frame, turns a corner, passes people, leans toward a shop window or object, steps over an obstacle, or follows a path through the space; avoid static front-facing portrait, pointing, readable signs, or map/paper props'
-    }
-    if (farewellOrArrival.test(text)) {
-      return 'draw the transition as physical motion or interaction: stepping across a threshold, boarding or exiting, passing through a doorway or crowd, carrying belongings, hugging from a side angle, or turning away mid-step; avoid front-facing standing, waving toward camera, or repeated outstretched arms'
-    }
-    if (staticDecision.test(text) || storyboardSceneActionNeedsExternalization(text)) {
-      return 'draw the inner or abstract beat as a visible action: changed body direction, walking, opening, arranging, picking up, putting down, handing, receiving, repairing, blocking, leaning, crouching, or interacting with another subject or environment; avoid centered portrait, straight-arm pointing, open palm display, and readable text surfaces'
-    }
-    return ''
-  }
-
-  function storyboardImageSafeActionText(actionText) {
-    const text = storyboardCompactVisibleCueText(actionText).slice(0, STORYBOARD_FINAL_SHOT_PROMPT_MAX_CHARS)
-    if (!text) return text
-    const semanticReplacement = storyboardSemanticActionReplacement(text)
-    const additions = []
-    if (semanticReplacement) {
-      additions.push(semanticReplacement)
-      additions.push('preserve the original event meaning and story domain')
-    }
-    if (/(document|paper|map|book|screen|sign|poster|badge|label|board|notice|contract|resume|form|certificate|phone|computer|tablet|绠€鍘|鍦板浘|骞垮憡|鎷涚墝|鐗屽瓙|灞忓箷|閫氱煡|鍚堝悓|鏂囦欢|璧勬枡|绾稿紶|琛ㄦ牸|璇佷功|璇佷欢|鎵嬫満|鐢佃剳|骞虫澘|涔︽湰)/i.test(text)) {
-      additions.push('all paper, screens, signs, maps, books, labels, badges, posters, forms, or documents are blank surfaces, icon-only shapes, edge-on, back-facing, distant, or blurred; keep the visual focus on the character action and relationship, not on surface content')
-    }
-    if (/(point|pointing|finger|reach toward|伸手|鎸囧悜|鎵嬫寚|鎸囩潃|鎸囧埌|鎸囩ず|鎸囪矾|浼稿嚭|寮犲紑鍙岃噦|鍙岃噦灞曞紑)/i.test(text)) {
-      additions.push('use a side angle, turned torso, naturally bent arms, partial hand action, object handling, stepping motion, passing, receiving, opening, carrying, crouching, or over-shoulder composition')
-    }
-    if (/(stand|standing|pose|gaze|look at|watch|wait|smile|绔欏湪|绔欑珛|绔欏畾|鐪嬪悜|鏈涘悜|鐪烘湜|绛夊緟|寰瑧|绗戝|鐪肩|闈㈠)/i.test(text)) {
-      additions.push('do not solve the scene as a centered posed portrait; show the character interacting with a physical object, another subject, an obstacle, a doorway, a tool, or the environment')
-    }
-    if (/(寻找机会|找工作|求职|找方向|四处张望|遇到挫折|找到自己的位置|生活逐渐稳定|准备踏上|searching for opportunity|looking for work|setback|new life)/i.test(text)) {
-      additions.push('turn the abstract beat into one concrete non-text action: entering or leaving a place, speaking with a visually different person, receiving feedback through gesture, arranging tools, handling a blank back-facing object, or completing a small task; do not use pointing, map close-up, readable sign, readable form, or open palm toward camera')
-    }
-    if (!additions.length) return text
-    return `${text}. ${additions.join('. ')}.`
-  }
-
-  function storyboardQwenDualReferencePromptForScene(scene, storyText, identityCard, options = {}) {
-    const hasReferenceImage = options && options.hasReferenceImage !== false
-    if (!hasReferenceImage) {
-      return [
-        storyboardQwenNaturalPromptForScene(scene, storyText, identityCard, false),
-        storyboardSubjectPixelPaletteRule(options && options.subjectPixelPaletteHint)
-      ].filter(Boolean).join('\n')
-    }
-    const director = scene.directorPlan || scene
-    const title = storyboardCompactVisibleCueText(scene.title || director.title || scene.beat || '').slice(0, 40)
-    const action = storyboardCompactVisibleCueText(scene.finalShotPrompt || scene.action || scene.beat || scene.description || '').slice(0, STORYBOARD_FINAL_SHOT_PROMPT_MAX_CHARS)
-    const currentSpace = storyboardCompactVisibleCueText(scene.finalShotSceneAnchor || director.currentSpace || scene.currentSpace || scene.sceneAnchor || '').slice(0, 160)
-    const cameraText = storyboardCompactVisibleCueText(scene.finalShotCamera || director.camera || scene.camera || '').slice(0, 240)
-    const actionText = action || title || '呈现当前剧情事件的一个清晰画面'
-    const terminalKeyPropPriority = storyboardTerminalKeyPropPriorityRule(actionText)
-    const locationText = currentSpace || '按当前剧情确定地点'
-    const imageSafeActionText = storyboardImageSafeActionText(actionText)
-    const externalizedSceneInstruction = storyboardExternalizedSceneInstruction(imageSafeActionText, locationText)
-    const frameStyleRule = storyboardDualReferenceFrameStyleRule(identityCard)
-    const styleReferenceRule = options && options.hasStyleReferenceImage
-      ? 'Use image2 only as whole-frame rendering-style reference: borrow its medium, line or brush detail, color harmony, light quality, atmosphere, and background art finish for the entire new frame. Do not copy image2 pose, exact background, location, camera, or composition.'
-      : ''
-    const dynamicActionOriginalReference = !!(options && options.dynamicActionOriginalReference)
-    const sceneLine = storyboardSceneActionNeedsExternalization(actionText)
-      ? `画面中，在${locationText}，把“${actionText}”外化为可见身体动作、接触、运动、阻挡、处理物件或环境反应，不画静态肖像姿势。`
-      : `画面中，在${locationText}，${actionText}`
-    const safeSceneLine = storyboardSceneActionNeedsExternalization(actionText)
-      ? `Final scene image instruction at ${locationText}: draw the concrete image-safe action, not the literal static wording. ${imageSafeActionText}.`
-      : `Final scene image event at ${locationText}: ${imageSafeActionText}.`
-    const panelDifferenceRule = storyboardPanelDifferenceRule(scene)
-    const spatialGroundingRule = storyboardSceneSpatialGroundingRule(scene)
-    const externalizedActionRule = storyboardExternalizedActionRule(actionText)
-    if (dynamicActionOriginalReference) {
-      return [
-        `Use image1 as the uploaded reference for the same protagonist identity, outfit or equipment design, important accessories, color palette, material quality, and rendering style.`,
-        `Draw one new single cinematic frame for this scene: ${imageSafeActionText}.`,
-        terminalKeyPropPriority,
-        `Location/background: ${locationText}.`,
-        cameraText ? `Camera/composition: ${cameraText}; change the pose and framing to match this scene, not image1.` : 'Change the pose, body angle, camera distance, and framing to match this scene, not image1.',
-        frameStyleRule,
-        'Current scene action has highest priority: show visible motion, contact, impact, object handling, opponent interaction, environmental reaction, or clear consequence. Do not copy the uploaded pose, frontal stance, dominant accessory display, gesture, camera angle, background, or composition.',
-        'Exactly one protagonist may match image1. Any opponent or secondary subject must look clearly different and must not copy the protagonist identity, face, outfit, equipment design, or color layout.',
-        panelDifferenceRule,
-        spatialGroundingRule,
-        externalizedActionRule,
-        'No readable text, labels, numbers, captions, panels, collage, inset frames, storyboard grid, logo, or watermark.'
-      ].filter(Boolean).join('\n')
-    }
-    return [
-      `Current scene to draw: ${externalizedSceneInstruction}`,
-      terminalKeyPropPriority,
-      `Location/background: ${locationText}`,
-      cameraText ? `Camera/composition: ${cameraText}; follow this scene camera, not image1 camera.` : '',
-      'Use image1 only as character identity and rendering style reference: same face/head impression, hair, outfit/equipment design, visible accessory/equipment design, color palette, material quality, and art style.',
-      styleReferenceRule,
-      frameStyleRule,
-      'Protagonist uniqueness rule: only one subject in this scene may use image1 identity, outfit, hair, visible accessory/equipment design, carried-item design, or color layout. All secondary people must have clearly different face, hair, clothing, silhouette, and props.',
-      'Do not copy image1 pose, dominant accessory display, full-body frontal stance, background, lighting layout, camera angle, camera distance, or composition.',
-      'Visible text rule: any paper, document, map, book page, screen, sign, poster, badge, label, board, or UI surface must be blank, icon-only, or abstract unreadable marks; no readable letters, words, numbers, captions, subtitles, logos, or pseudo text.',
-      'If the scene needs a document, phone, screen, sign, map, certificate, form, book, poster, or board, compose it from the back, edge, distance, reflection, motion blur, blank side, or icon-only side; focus on the character action and reaction, never on readable content.',
-      'Location cue rule: show the place through architecture, objects, crowd behavior, lighting, vehicles, terrain, furniture, weather, or spatial layout, not through written words on signs, boards, screens, posters, labels, or building names.',
-      'Pose diversity rule: use varied body silhouettes and scene-specific physical interaction. Prefer side/back/over-shoulder angles, turned torso, naturally bent arms, hand-object contact, passing or receiving, walking through space, crouching, leaning, opening, carrying, blocking, dodging, striking, repairing, or other action that belongs to this scene; avoid repeating an outstretched arm or open hand toward the camera.',
-      'Lighting rule: ordinary non-fantasy scenes use natural lighting, practical environment lights, and realistic props. Stylized visual effects appear only when the scene action itself clearly requires a battle, magic, fire, technology, or supernatural effect.',
-      panelDifferenceRule,
-      spatialGroundingRule,
-      externalizedActionRule,
-      'Current scene action has higher priority than the reference pose. Create a new single-frame image with a different body pose, facing direction, action silhouette, and framing. If the scene text is emotional or symbolic, externalize it through visible movement, object handling, contact, impact, or environmental reaction. No text, labels, numbers, panels, collage, inset frames, or storyboard grid.',
-      safeSceneLine
-    ].filter(Boolean).join('\n')
-    return [
-      '保持参考图中主角/主体的外观、服装装备、关键道具、画风、光影和质感一致。',
-      '参考图只用于主角身份和画风，不复制参考图背景、地点、姿势、镜头或构图；本格背景必须按“地点”和“画面”描述绘制。',
-      'Do not copy image1 pose: change body pose, facing direction, action silhouette, camera angle, and camera distance to match this scene; avoid static front-facing portrait framing.',
-      cameraText ? `Camera/composition: ${cameraText}; follow this scene camera, not the reference image camera.` : '',
-      sceneLine,
-      '生成单张完整画面，重新构图和安排动作；画面内禁止任何文字、字幕、编号、数字、招牌、乱码、九宫格、拼贴或小图。'
-    ].filter(Boolean).join('\n')
-  }
-
-  function storyboardQwenFormalReferencePromptForScene(scene, storyText, identityCard, options = {}) {
-    const hasReferenceImage = options && options.hasReferenceImage !== false
-    if (!hasReferenceImage) {
-      return [
-        storyboardQwenNaturalPromptForScene(scene, storyText, identityCard, false),
-        storyboardSubjectPixelPaletteRule(options && options.subjectPixelPaletteHint)
-      ].filter(Boolean).join('\n')
-    }
-    const director = scene.directorPlan || scene
-    const title = storyboardCompactVisibleCueText(scene.title || director.title || scene.beat || '').slice(0, 40)
-    const action = storyboardCompactVisibleCueText(scene.finalShotPrompt || scene.action || scene.beat || scene.description || '').slice(0, STORYBOARD_FINAL_SHOT_PROMPT_MAX_CHARS)
-    const currentSpace = storyboardCompactVisibleCueText(scene.finalShotSceneAnchor || director.currentSpace || scene.currentSpace || scene.sceneAnchor || '').slice(0, 160)
-    const cameraText = storyboardCompactVisibleCueText(scene.finalShotCamera || director.camera || scene.camera || '').slice(0, 240)
-    const actionText = action || title || 'draw the current visible story event'
-    const terminalKeyPropPriority = storyboardTerminalKeyPropPriorityRule(actionText)
-    const locationText = currentSpace || 'the current story location'
-    const imageSafeActionText = storyboardImageSafeActionText(actionText)
-    const frameStyleRule = storyboardDualReferenceFrameStyleRule(identityCard)
-    const identityCue = storyboardDualReferenceIdentityCue(identityCard, storyText, options && options.subjectPixelPaletteHint)
-    const panelDifferenceRule = storyboardPanelDifferenceRule(scene)
-    const spatialGroundingRule = storyboardSceneSpatialGroundingRule(scene)
-    const shotFocusRule = storyboardShotFocusForScene(scene, cameraText, scene.sceneFocus, scene.visualEvent)
-    const externalizedActionRule = storyboardExternalizedActionRule(actionText)
-    return [
-      cameraText
-        ? `New composition and camera: ${cameraText}. ${shotFocusRule}. This camera, subject placement, crop, angle, foreground/background relationship, and movement direction are mandatory.`
-        : `New composition and camera: choose a fresh cinematic framing that makes this scene event immediately readable. ${shotFocusRule}.`,
-      `Current scene to draw: ${imageSafeActionText}.`,
-      terminalKeyPropPriority,
-      `Location/background: ${locationText}.`,
-      panelDifferenceRule,
-      spatialGroundingRule,
-      `Use image1 only for protagonist identity and unified rendering style reference: ${identityCue}.`,
-      'Appearance-state priority: the current scene prompt is authoritative for every explicitly described current clothing, equipment, accessory, material, hair, body, age, species, or transformation state. If it establishes no change, inherit the most recently established appearance state, beginning with image1 as the opening baseline unless the story explicitly starts after a change. Across the nine shots, the story may contain zero, one, or multiple visible changes or restorations at any causally appropriate shot; never preassign a shot number, costume, color, prop, activity gear, or change count. Persist each new state until the current scene prompt explicitly establishes another change.',
-      frameStyleRule,
-      'Make one new complete cinematic frame. The current scene controls the action, body pose, facing direction, camera distance, background, lighting, and story result.',
-      'Do not copy image1 pose, gesture, body direction, camera angle, crop, subject scale, centered composition, exact background, or location.',
-      'Reference-visible accessories, equipment, or carried items define the initial design state, not mandatory prop-display poses; show them only when the current scene naturally needs them. A story-motivated current appearance state may add, remove, replace, or restore only the traits it actually changes. Do not invent a new anatomy trait, costume category, weapon, or large accessory that is absent from image1 and not required by the current story event.',
-      'Only one subject may match image1 identity. Any secondary person, crowd member, opponent, helper, family member, coworker, creature, or robot must look clearly different from the protagonist.',
-      'No readable text, letters, numbers, labels, captions, subtitles, logos, watermarks, panels, inset frames, storyboard grid, or collage. If a sign, screen, map, paper, book, form, poster, or document appears, make it blank, distant, back-facing, edge-on, icon-only, or abstract unreadable marks.',
-      externalizedActionRule,
-      'If the scene wording is emotional or symbolic, externalize it through visible movement, object handling, contact, impact, environmental reaction, or a concrete result.'
-    ].filter(Boolean).join('\n')
-  }
-
-  function storyboardStripReferenceImageRule(promptText) {
-    return String(promptText || '')
-      .split(/\r?\n/)
-      .filter((line) => {
-        const text = String(line || '').trim()
-        return !text.startsWith('Reference image rule:') &&
-          !text.startsWith('Reference background decoupling:') &&
-          !text.startsWith('Reference-pose decoupling rule:') &&
-          !text.startsWith('参考图只用于')
-      })
-      .join('\n')
-      .trim()
-  }
-
-  function storyboardEnsureSingleFramePrompt(promptText, options = {}) {
-    const includeReferenceRule = !options || options.referenceImage !== false
-    const identityCard = String(options && options.identityCard || '').trim()
-    const prompt = includeReferenceRule ? String(promptText || '').trim() : storyboardStripReferenceImageRule(promptText)
-    if (storyboardIsCompactDualReferencePrompt(prompt)) return prompt
-    const parts = []
-    if (prompt) parts.push(prompt)
-    if (identityCard && !prompt.includes('Character Identity Card:')) parts.push(identityCard)
-    if (!prompt.includes('Storyboard continuity rule:') && !prompt.includes('角色连续性：')) parts.push(STORYBOARD_CHARACTER_CONTINUITY_RULE)
-    if (!prompt.includes('Single-frame rule:') && !prompt.includes('单张完整电影画面') && !prompt.includes('完整全幅构图')) parts.push(STORYBOARD_SINGLE_FRAME_PROMPT_RULE)
-    if (!prompt.includes('Rendering style lock:')) parts.push(STORYBOARD_RENDER_STYLE_LOCK)
-    if (!prompt.includes('Reference visual authority:')) parts.push(STORYBOARD_REFERENCE_PIXEL_AUTHORITY_RULE)
-    if (!prompt.includes('Reference analysis color caution:')) parts.push(STORYBOARD_REFERENCE_ANALYSIS_COLOR_CAUTION_RULE)
-    if (!prompt.includes('Abstract goal grounding rule:')) parts.push(STORYBOARD_ABSTRACT_GOAL_GROUNDING_RULE)
-    if (!prompt.includes('Reference background figure rule:')) parts.push(STORYBOARD_REFERENCE_BACKGROUND_FIGURE_RULE)
-    if (includeReferenceRule && !prompt.includes('Reference image rule:') && !prompt.includes('Reference background decoupling:') && !prompt.includes('参考图只用于')) parts.push(STORYBOARD_REFERENCE_BACKGROUND_DECOUPLE_RULE)
-    if (includeReferenceRule && !prompt.includes('Reference-pose decoupling rule:')) parts.push(STORYBOARD_REFERENCE_POSE_DECOUPLE_RULE)
-    return parts.join('\n')
-  }
-
-  function buildStoryboardNsfwSceneWorkflow(info, imageName, prefix, promptText, frameSize, options = {}) {
-    const frame = normalizeStoryboardFrameSize(frameSize)
-    const hasReferenceImage = !!String(imageName || '').trim()
-    const styleReferenceImageName = String(options && options.styleReferenceImageName || '').trim()
-    const hasStyleReferenceImage = hasReferenceImage && !!styleReferenceImageName && styleReferenceImageName !== String(imageName || '').trim()
-    const referenceOptions = storyboardReferenceWorkflowOptions(options)
-    const shouldUseReferenceLatent = hasReferenceImage && storyboardUsesReferenceLatent(referenceOptions.referenceStrength)
-    const prompt = options && options.disablePromptExpansion
-      ? String(promptText || '').trim()
-      : storyboardEnsureSingleFramePrompt(promptText, { referenceImage: hasReferenceImage })
-    if (!prompt) throw new Error('Storyboard prompt is empty')
-    const loadImage = hasReferenceImage ? requiredComfyNode(info, 'LoadImage') : null
-    const checkpoint = requiredComfyNode(info, 'CheckpointLoaderSimple')
-    const emptyLatent = storyboardEmptyLatentNode(info)
-    const qwenText = requiredComfyNode(info, 'TextEncodeQwenImageEditPlus')
-    const ksampler = requiredComfyNode(info, 'KSampler')
-    const vaeDecode = requiredComfyNode(info, 'VAEDecode')
-    const saveImage = requiredComfyNode(info, 'SaveImage')
-    const imageScale = info.ImageScale || null
-    const vaeEncode = info.VAEEncode || null
-    requiredComfyNode(info, emptyLatent.name)
-    const checkpointName = requireComfyChoice(checkpoint, 'ckpt_name', STORYBOARD_QWEN_NSFW_CHECKPOINT, 'Storyboard Qwen NSFW checkpoint')
-    let latentRef = ['3', 0]
-    let usesReferenceLatent = false
-    let styleReferenceImageRef = null
-    const workflow = {
-      '2': { class_type: 'CheckpointLoaderSimple', inputs: buildComfyNodeInputs(checkpoint, { ckpt_name: checkpointName }) },
-      '3': { class_type: emptyLatent.name, inputs: storyboardEmptyLatentInputs(emptyLatent.name, emptyLatent.info, frame) },
-      '5': { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: STORYBOARD_NEGATIVE_PROMPT, clip: ['2', 1], vae: ['2', 2] }) },
-      '6': {
-        class_type: 'KSampler',
-        inputs: buildComfyNodeInputs(ksampler, {
-          model: ['2', 0],
-          positive: ['4', 0],
-          negative: ['5', 0],
-          latent_image: latentRef,
-          seed: Math.floor(Math.random() * 1000000000),
-          steps: 8,
-          cfg: 1,
-          sampler_name: 'euler',
-          scheduler: 'simple',
-          denoise: hasReferenceImage && usesReferenceLatent ? referenceOptions.referenceDenoise : 1
-        })
-      },
-      '7': { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(vaeDecode, { samples: ['6', 0], vae: ['2', 2] }) },
-      '8': { class_type: 'SaveImage', inputs: buildComfyNodeInputs(saveImage, { images: ['7', 0], filename_prefix: prefix }) }
-    }
-    if (hasReferenceImage) workflow['1'] = { class_type: 'LoadImage', inputs: buildComfyNodeInputs(loadImage, { image: imageName }) }
-    let nextId = 9
-    if (hasStyleReferenceImage) {
-      workflow[String(nextId)] = { class_type: 'LoadImage', inputs: buildComfyNodeInputs(loadImage, { image: styleReferenceImageName }) }
-      styleReferenceImageRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (shouldUseReferenceLatent && imageScale && vaeEncode) {
-      workflow[String(nextId)] = { class_type: 'ImageScale', inputs: buildComfyNodeInputs(imageScale, { image: ['1', 0], upscale_method: 'lanczos', width: frame.width, height: frame.height, crop: 'center' }) }
-      const scaledImageRef = [String(nextId), 0]
-      nextId += 1
-      workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: scaledImageRef, vae: ['2', 2] }) }
-      latentRef = [String(nextId), 0]
-      usesReferenceLatent = true
-      workflow['6'].inputs.latent_image = latentRef
-      workflow['6'].inputs.denoise = referenceOptions.referenceDenoise
-      nextId += 1
-    }
-    const positiveInputs = { prompt, clip: ['2', 1], vae: ['2', 2] }
-    if (hasReferenceImage) positiveInputs.image1 = ['1', 0]
-    if (styleReferenceImageRef) positiveInputs.image2 = styleReferenceImageRef
-    workflow['4'] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, positiveInputs) }
-    state.lastProcessingDebug = {
-      ...(state.lastProcessingDebug || {}),
-      storyboard: {
-        mode: STORYBOARD_MODEL_MODE_NSFW,
-        checkpoint: checkpointName,
-        latent: usesReferenceLatent ? 'reference_scaled_vae_latent' : emptyLatent.name,
-        referenceWorkflowMode: usesReferenceLatent ? 'qwen_nsfw_reference_controlled_img2img' : (hasReferenceImage ? 'qwen_nsfw_reference_condition_only_no_latent' : 'qwen_nsfw_text_to_image'),
-        referenceStrength: referenceOptions.referenceStrength,
-        denoise: usesReferenceLatent ? referenceOptions.referenceDenoise : 1,
-        hasReferenceImage,
-        hasStyleReferenceImage,
-        size: `${frame.width}x${frame.height}`,
-        promptHead: prompt.slice(0, 500)
-      }
-    }
-    return workflow
-  }
-
-  function buildStoryboardSceneWorkflow(info, imageName, prefix, promptText, frameSize, modelMode, options = {}) {
-    const frame = normalizeStoryboardFrameSize(frameSize)
-    const mode = normalizeStoryboardModelMode(modelMode)
-    if (storyboardUsesNsfwModel(mode)) return buildStoryboardNsfwSceneWorkflow(info, imageName, prefix, promptText, frame, options)
-    const hasReferenceImage = !!String(imageName || '').trim()
-    const styleReferenceImageName = String(options && options.styleReferenceImageName || '').trim()
-    const hasStyleReferenceImage = hasReferenceImage && !!styleReferenceImageName && styleReferenceImageName !== String(imageName || '').trim()
-    const referenceOptions = storyboardReferenceWorkflowOptions(options)
-    const shouldUseReferenceLatent = hasReferenceImage && storyboardUsesReferenceLatent(referenceOptions.referenceStrength)
-    const prompt = options && options.disablePromptExpansion
-      ? String(promptText || '').trim()
-      : storyboardEnsureSingleFramePrompt(promptText, { referenceImage: hasReferenceImage })
-    if (!prompt) throw new Error('Storyboard prompt is empty')
-    const emptyLatent = storyboardEmptyLatentNode(info)
-    const required = ['UNETLoader', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImageEditPlus', 'ConditioningZeroOut', 'KSampler', 'VAEDecode', 'SaveImage']
-    required.forEach((name) => requiredComfyNode(info, name))
-    requiredComfyNode(info, emptyLatent.name)
-    const unet = requiredComfyNode(info, 'UNETLoader')
-    const clip = requiredComfyNode(info, 'CLIPLoader')
-    const vae = requiredComfyNode(info, 'VAELoader')
-    const qwenText = requiredComfyNode(info, 'TextEncodeQwenImageEditPlus')
-    const ksampler = requiredComfyNode(info, 'KSampler')
-    const lora = info.LoraLoaderModelOnly || null
-    const aura = info.ModelSamplingAuraFlow || null
-    const cfgNorm = info.CFGNorm || null
-    const fluxScale = info.FluxKontextImageScale || null
-    const imageScale = info.ImageScale || null
-    const vaeEncode = info.VAEEncode || null
-    const multiReference = info.FluxKontextMultiReferenceLatentMethod || null
-    const unetName = comfyChoiceFromCandidates(unet, 'unet_name', [
-      'qwen_image_edit_2511_fp8mixed.safetensors',
-      'qwen_image_edit_2511_bf16.safetensors'
-    ], 'Qwen Edit UNET')
-    const clipName = requireComfyChoice(clip, 'clip_name', 'qwen_2.5_vl_7b_fp8_scaled.safetensors', 'Qwen CLIP')
-    const vaeName = requireComfyChoice(vae, 'vae_name', 'qwen_image_vae.safetensors', 'Qwen VAE')
-    const lightningLora = lora
-      ? comfyChoiceFromCandidates(lora, 'lora_name', [
-        'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
-        'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
-        'Qwen-Image-Lightning-8steps-V2.0.safetensors',
-        'Qwen-Image-Lightning-8steps-V1.0.safetensors'
-      ], 'Qwen Edit Lightning LoRA', { optional: true })
-      : ''
-    const workflow = {
-      '2': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' }) },
-      '3': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: clipName, type: 'qwen_image', device: 'default' }) },
-      '4': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) },
-      '5': { class_type: emptyLatent.name, inputs: storyboardEmptyLatentInputs(emptyLatent.name, emptyLatent.info, frame) }
-    }
-    let modelRef = ['2', 0]
-    let latentRef = ['5', 0]
-    let usesReferenceLatent = false
-    let referenceImageRef = hasReferenceImage ? ['1', 0] : null
-    let styleReferenceImageRef = null
-    let referenceWorkflowMode = hasReferenceImage ? 'qwen_edit_reference_condition_only_no_latent' : 'qwen_edit_text_to_image'
-    let nextId = 6
-    if (hasReferenceImage) {
-      workflow['1'] = { class_type: 'LoadImage', inputs: { image: imageName } }
-    }
-    if (hasStyleReferenceImage) {
-      workflow[String(nextId)] = { class_type: 'LoadImage', inputs: { image: styleReferenceImageName } }
-      styleReferenceImageRef = [String(nextId), 0]
-      nextId += 1
-      referenceWorkflowMode = 'qwen_edit_subject_reference_plus_style_reference'
-    }
-    if (shouldUseReferenceLatent && imageScale && vaeEncode) {
-      workflow[String(nextId)] = {
-        class_type: 'ImageScale',
-        inputs: buildComfyNodeInputs(imageScale, {
-          image: ['1', 0],
-          upscale_method: 'lanczos',
-          width: frame.width,
-          height: frame.height,
-          crop: 'center'
-        })
-      }
-      const scaledLatentImageRef = [String(nextId), 0]
-      nextId += 1
-      workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: scaledLatentImageRef, vae: ['4', 0] }) }
-      latentRef = [String(nextId), 0]
-      usesReferenceLatent = true
-      referenceWorkflowMode = multiReference ? 'qwen_edit_reference_controlled_img2img_multiref' : 'qwen_edit_reference_controlled_img2img'
-      nextId += 1
-    }
-    if (hasReferenceImage && fluxScale) {
-      workflow[String(nextId)] = { class_type: 'FluxKontextImageScale', inputs: buildComfyNodeInputs(fluxScale, { image: ['1', 0] }) }
-      referenceImageRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (hasStyleReferenceImage && fluxScale && styleReferenceImageRef) {
-      workflow[String(nextId)] = { class_type: 'FluxKontextImageScale', inputs: buildComfyNodeInputs(fluxScale, { image: styleReferenceImageRef }) }
-      styleReferenceImageRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (lora && lightningLora) {
-      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: lightningLora, strength_model: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (aura) {
-      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 3 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (cfgNorm) {
-      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    const positiveInputs = { prompt, clip: ['3', 0], vae: ['4', 0] }
-    if (referenceImageRef) positiveInputs.image1 = referenceImageRef
-    if (styleReferenceImageRef) positiveInputs.image2 = styleReferenceImageRef
-    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, positiveInputs) }
-    const positiveRef = [String(nextId), 0]
-    nextId += 1
-    let finalPositiveRef = positiveRef
-    if (hasReferenceImage && multiReference) {
-      workflow[String(nextId)] = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: buildComfyNodeInputs(multiReference, { conditioning: finalPositiveRef, reference_latents_method: 'index_timestep_zero' }) }
-      finalPositiveRef = [String(nextId), 0]
-      nextId += 1
-    }
-    let negativeRef = null
-    if (hasReferenceImage) {
-      const negativeInputs = { prompt: STORYBOARD_NEGATIVE_PROMPT, clip: ['3', 0], vae: ['4', 0] }
-      if (referenceImageRef) negativeInputs.image1 = referenceImageRef
-      if (styleReferenceImageRef) negativeInputs.image2 = styleReferenceImageRef
-      workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, negativeInputs) }
-      negativeRef = [String(nextId), 0]
-      nextId += 1
-      if (multiReference) {
-        workflow[String(nextId)] = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: buildComfyNodeInputs(multiReference, { conditioning: negativeRef, reference_latents_method: 'index_timestep_zero' }) }
-        negativeRef = [String(nextId), 0]
-        nextId += 1
-      }
-    } else {
-      workflow[String(nextId)] = {
-        class_type: 'TextEncodeQwenImageEditPlus',
-        inputs: buildComfyNodeInputs(qwenText, { prompt: STORYBOARD_NEGATIVE_PROMPT, clip: ['3', 0], vae: ['4', 0] })
-      }
-      negativeRef = [String(nextId), 0]
-      nextId += 1
-    }
-    const usesLightning = !!lightningLora
-    workflow[String(nextId)] = {
-      class_type: 'KSampler',
-      inputs: buildComfyNodeInputs(ksampler, {
-        model: modelRef,
-        positive: finalPositiveRef,
-        negative: negativeRef,
-        latent_image: latentRef,
-        seed: Math.floor(Math.random() * 1000000000),
-        steps: usesLightning ? 6 : 28,
-        cfg: usesLightning ? 1 : 4,
-        sampler_name: 'euler',
-        scheduler: 'simple',
-        denoise: hasReferenceImage && usesReferenceLatent ? referenceOptions.referenceDenoise : 1
-      })
-    }
-    const samplesRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: { samples: samplesRef, vae: ['4', 0] } }
-    const imageRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: { images: imageRef, filename_prefix: prefix } }
-    state.lastProcessingDebug = {
-      ...(state.lastProcessingDebug || {}),
-      storyboard: {
-        mode,
-        unet: unetName,
-        clip: clipName,
-        vae: vaeName,
-        lora: lightningLora,
-        latent: hasReferenceImage && usesReferenceLatent ? 'reference_scaled_vae_latent' : emptyLatent.name,
-        referenceWorkflowMode,
-        referenceStrength: referenceOptions.referenceStrength,
-        denoise: hasReferenceImage && usesReferenceLatent ? referenceOptions.referenceDenoise : 1,
-        hasReferenceImage,
-        hasStyleReferenceImage,
-        multiReference: !!(hasReferenceImage && multiReference),
-        size: `${frame.width}x${frame.height}`,
-        promptHead: prompt.slice(0, 500)
-      }
-    }
-    return workflow
-  }
-
-  async function runStoryboardSceneImage(baseUrl, info, uploadedName, scene, promptText, frameSize, modelMode, options = {}) {
-    const prefix = `novaflow_storyboard_${scene.id}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
-    const hasCompactDualReferencePrompt = storyboardIsCompactDualReferencePrompt(promptText)
-    const styleReferenceRule = String(options && options.styleReferenceImageName || '').trim() && !hasCompactDualReferencePrompt
-      ? 'Second reference image rule: use the second uploaded reference only for painterly rendering style, color palette, lighting mood, and visual finish. Do not copy its background, location, original subject scale, pose, camera angle, or composition.'
-      : ''
-    const rawPrompt = [promptText, styleReferenceRule].filter(Boolean).join('\n')
-    const workflowPrompt = options && options.disablePromptExpansion
-      ? rawPrompt.trim()
-      : storyboardEnsureSingleFramePrompt(rawPrompt)
-    const workflow = buildStoryboardSceneWorkflow(info, uploadedName, prefix, workflowPrompt, frameSize, modelMode, options)
-    return await runPromptForFirstImage(baseUrl, workflow, prefix, STORYBOARD_GENERATION_TIMEOUT_MS)
-  }
-
-  function storyboardSubjectStyleReferencePrompt(storyText, sourceAnalysis, visualCuePack, identityCard) {
-    const cues = storyboardIdentityCueSentences(sourceAnalysis, '').slice(0, 4)
-    return [
-      STORYBOARD_SUBJECT_STYLE_REFERENCE_PROMPT,
-      cues.length ? `Uploaded-reference visible subject/style cues only: ${cues.join('; ')}.` : '',
-      'Ignore user-story keywords while creating this identity reference. Story text will be used later for scene actions, not for changing this reference subject.'
-    ].filter(Boolean).join('\n')
-  }
-
-  function storyboardAlphaBoundsFromImageData(imageData, width, height) {
-    const data = imageData && imageData.data
-    if (!data || !width || !height) return null
-    let minX = width
-    let minY = height
-    let maxX = -1
-    let maxY = -1
-    let count = 0
-    for (let y = 0; y < height; y += 1) {
-      for (let x = 0; x < width; x += 1) {
-        const alpha = data[(y * width + x) * 4 + 3] || 0
-        if (alpha <= 24) continue
-        if (x < minX) minX = x
-        if (y < minY) minY = y
-        if (x > maxX) maxX = x
-        if (y > maxY) maxY = y
-        count += 1
-      }
-    }
-    if (count < Math.max(80, width * height * 0.002) || maxX < minX || maxY < minY) return null
-    const bw = maxX - minX + 1
-    const bh = maxY - minY + 1
-    return {
-      x: minX,
-      y: minY,
-      width: bw,
-      height: bh,
-      areaRatio: (bw * bh) / Math.max(1, width * height),
-      alphaRatio: count / Math.max(1, width * height)
-    }
-  }
-
-  function storyboardShouldUsePoseSafeSubjectReference(geometry, storyText, sourceAnalysis, visualCuePack) {
-    if (geometry && geometry.dominantPose) return true
-    const text = `${storyText || ''}\n${sourceAnalysis || ''}\n${visualCuePack || ''}`
-    return /(对战|决斗|战斗|搏斗|竞技|追击|追踪|潜入|逃离|奔跑|变身|觉醒|堕落|侵蚀|仪式|训练|守护|拯救|冲突|武器|盔甲|铠甲|翅膀|王座|魔法|法术|duel|battle|fight|combat|arena|chase|escape|transform|ritual|weapon|armor|wing|throne|magic)/i.test(text)
-  }
-
-  function storyboardShouldUseOriginalReferenceForDynamicAction(storyText, sourceAnalysis, visualCuePack) {
-    return storyboardShouldUsePoseSafeSubjectReference(null, storyText, sourceAnalysis, visualCuePack)
-  }
-
-  async function storyboardSubjectReferenceCardFromCutoutDataUrl(dataUrl) {
-    const img = await loadImage(dataUrl)
-    const width = Math.max(1, img.naturalWidth || img.width || 1)
-    const height = Math.max(1, img.naturalHeight || img.height || 1)
-    const sourceCanvas = canvasOfSize(width, height)
-    const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true })
-    sourceCtx.clearRect(0, 0, width, height)
-    sourceCtx.drawImage(img, 0, 0, width, height)
-    const sourceImageData = sourceCtx.getImageData(0, 0, width, height)
-    const bounds = storyboardAlphaBoundsFromImageData(sourceImageData, width, height)
-    if (!bounds || bounds.areaRatio > 0.88 || bounds.alphaRatio > 0.72) return ''
-    const tallFullBody = bounds.height > bounds.width * 1.08 && bounds.height > height * 0.36
-    const focusHeight = tallFullBody ? Math.max(1, Math.round(bounds.height * 0.34)) : bounds.height
-    const focusY = tallFullBody ? Math.max(0, bounds.y + Math.round(bounds.height * 0.03)) : bounds.y
-    let focusCenterX = bounds.x + bounds.width / 2
-    let focusWidth = bounds.width
-    if (tallFullBody) {
-      const y0 = Math.max(0, bounds.y + Math.round(bounds.height * 0.03))
-      const y1 = Math.min(height - 1, bounds.y + Math.round(bounds.height * 0.36))
-      const xs = []
-      const alphaData = sourceImageData.data
-      for (let y = y0; y <= y1; y += 1) {
-        for (let x = bounds.x; x < bounds.x + bounds.width && x < width; x += 1) {
-          if ((alphaData[(y * width + x) * 4 + 3] || 0) > 24) xs.push(x)
-        }
-      }
-      if (xs.length > 48) {
-        xs.sort((a, b) => a - b)
-        const pick = (q) => xs[Math.max(0, Math.min(xs.length - 1, Math.round((xs.length - 1) * q)))]
-        const innerMinX = pick(0.36)
-        const innerMaxX = pick(0.64)
-        const innerWidth = Math.max(1, innerMaxX - innerMinX + 1)
-        focusCenterX = (innerMinX + innerMaxX) / 2
-        focusWidth = Math.max(innerWidth * 1.62, focusHeight * 0.48, bounds.width * 0.20)
-        focusWidth = Math.min(focusWidth, bounds.width * 0.44)
-      } else {
-        focusWidth = Math.min(bounds.width * 0.48, Math.max(bounds.width * 0.34, focusHeight * 0.48))
-      }
-    }
-    const padX = Math.round(focusWidth * (tallFullBody ? 0.05 : 0.22))
-    const padY = Math.round(focusHeight * (tallFullBody ? 0.08 : 0.16))
-    const sx = Math.max(0, Math.round(focusCenterX - focusWidth / 2 - padX))
-    const sy = Math.max(0, focusY - padY)
-    const ex = Math.min(width, Math.round(focusCenterX + focusWidth / 2 + padX))
-    const ey = Math.min(height, focusY + focusHeight + padY * 2)
-    const sw = Math.max(1, ex - sx)
-    const sh = Math.max(1, ey - sy)
-    if (sw < 12 || sh < 12) return ''
-    const size = STORYBOARD_SUBJECT_REFERENCE_CANVAS_SIZE
-    const out = canvasOfSize(size, size)
-    const ctx = out.getContext('2d', { willReadFrequently: true })
-    ctx.fillStyle = '#f5f2ea'
-    ctx.fillRect(0, 0, size, size)
-    const scale = Math.min(size * 0.76 / sw, size * 0.82 / sh)
-    const dw = Math.max(1, Math.round(sw * scale))
-    const dh = Math.max(1, Math.round(sh * scale))
-    const dx = Math.round((size - dw) / 2)
-    const dy = Math.round((size - dh) / 2)
-    ctx.imageSmoothingEnabled = true
-    ctx.imageSmoothingQuality = 'high'
-    ctx.drawImage(sourceCanvas, sx, sy, sw, sh, dx, dy, dw, dh)
-    return out.toDataURL('image/png')
-  }
-
-  async function storyboardSubjectStyleSwatchReferenceFromCutoutDataUrl(dataUrl, paletteHint = '') {
-    const img = await loadImage(dataUrl)
-    const width = Math.max(1, img.naturalWidth || img.width || 1)
-    const height = Math.max(1, img.naturalHeight || img.height || 1)
-    const sourceCanvas = canvasOfSize(width, height)
-    const sourceCtx = sourceCanvas.getContext('2d', { willReadFrequently: true })
-    sourceCtx.clearRect(0, 0, width, height)
-    sourceCtx.drawImage(img, 0, 0, width, height)
-    const sourceImageData = sourceCtx.getImageData(0, 0, width, height)
-    const bounds = storyboardAlphaBoundsFromImageData(sourceImageData, width, height)
-    if (!bounds || bounds.areaRatio > 0.88 || bounds.alphaRatio > 0.72) return ''
-    const size = STORYBOARD_SUBJECT_REFERENCE_CANVAS_SIZE
-    const out = canvasOfSize(size, size)
-    const ctx = out.getContext('2d', { willReadFrequently: true })
-    ctx.fillStyle = '#f4f0e8'
-    ctx.fillRect(0, 0, size, size)
-    const padX = Math.round(bounds.width * 0.12)
-    const padY = Math.round(bounds.height * 0.08)
-    const sx = Math.max(0, bounds.x - padX)
-    const sy = Math.max(0, bounds.y - padY)
-    const sw = Math.min(width - sx, bounds.width + padX * 2)
-    const sh = Math.min(height - sy, bounds.height + padY * 2)
-    const scale = Math.max(size / sw, size / sh)
-    const dw = Math.max(1, Math.round(sw * scale))
-    const dh = Math.max(1, Math.round(sh * scale))
-    const dx = Math.round((size - dw) / 2)
-    const dy = Math.round((size - dh) / 2)
-    ctx.save()
-    ctx.globalAlpha = 0.72
-    ctx.filter = 'blur(30px) saturate(1.12)'
-    ctx.drawImage(sourceCanvas, sx, sy, sw, sh, dx, dy, dw, dh)
-    ctx.restore()
-    const colors = String(paletteHint || '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter((item) => /^#[0-9a-f]{6}$/i.test(item))
-      .slice(0, 6)
-    if (colors.length) {
-      const bandH = Math.max(28, Math.round(size * 0.075))
-      colors.forEach((color, index) => {
-        ctx.fillStyle = color
-        ctx.globalAlpha = 0.72
-        ctx.fillRect(Math.round(index * size / colors.length), size - bandH, Math.ceil(size / colors.length), bandH)
-      })
-      ctx.globalAlpha = 1
-    }
-    ctx.fillStyle = 'rgba(245,242,234,0.26)'
-    ctx.fillRect(0, 0, size, size)
-    return out.toDataURL('image/png')
-  }
-
-  async function storyboardSubjectPixelPaletteHintFromDataUrl(dataUrl) {
-    const img = await loadImage(dataUrl)
-    const width = Math.max(1, img.naturalWidth || img.width || 1)
-    const height = Math.max(1, img.naturalHeight || img.height || 1)
-    const canvas = canvasOfSize(width, height)
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    ctx.clearRect(0, 0, width, height)
-    ctx.drawImage(img, 0, 0, width, height)
-    const data = ctx.getImageData(0, 0, width, height).data
-    const buckets = new Map()
-    const step = Math.max(1, Math.floor(Math.sqrt((width * height) / 70000)))
-    const cx = width / 2
-    const cy = height / 2
-    const maxDistance = Math.max(1, Math.sqrt(cx * cx + cy * cy))
-    for (let y = 0; y < height; y += step) {
-      for (let x = 0; x < width; x += step) {
-        const i = (y * width + x) * 4
-        const a = data[i + 3] || 0
-        if (a < 48) continue
-        const r = data[i] || 0
-        const g = data[i + 1] || 0
-        const b = data[i + 2] || 0
-        if (r > 235 && g > 235 && b > 235) continue
-        const max = Math.max(r, g, b)
-        const min = Math.min(r, g, b)
-        if (max < 18 || (max - min < 10 && max > 205)) continue
-        const qr = Math.round(r / 32) * 32
-        const qg = Math.round(g / 32) * 32
-        const qb = Math.round(b / 32) * 32
-        const key = `${Math.min(255, qr)},${Math.min(255, qg)},${Math.min(255, qb)}`
-        const bucket = buckets.get(key) || { count: 0, r: 0, g: 0, b: 0 }
-        const distance = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy)) / maxDistance
-        const centerWeight = distance < 0.28 ? 5 : distance < 0.46 ? 3 : distance < 0.68 ? 1.4 : 1
-        const saturationWeight = (max - min) > 38 ? 1.25 : 1
-        const weight = centerWeight * saturationWeight
-        bucket.count += weight
-        bucket.r += r * weight
-        bucket.g += g * weight
-        bucket.b += b * weight
-        buckets.set(key, bucket)
-      }
-    }
-    const toHex = (value) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0')
-    const colors = Array.from(buckets.values())
-      .filter((bucket) => bucket.count >= 18)
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 6)
-      .map((bucket) => `#${toHex(bucket.r / bucket.count)}${toHex(bucket.g / bucket.count)}${toHex(bucket.b / bucket.count)}`)
-    return colors.join(', ')
-  }
-
-  function storyboardPaletteColorNameFromRgb(r, g, b) {
-    const max = Math.max(r, g, b)
-    const min = Math.min(r, g, b)
-    const delta = max - min
-    if (max < 42) return 'black'
-    if (min > 216 && delta < 34) return 'warm white'
-    if (delta < 18) return max > 150 ? 'silver gray' : 'dark gray'
-    if (r > 170 && g > 128 && b < 90) return 'gold'
-    if (r > 150 && g > 92 && g < 155 && b < 92) return 'brown'
-    if (r > 150 && g < 92 && b < 92) return 'deep red'
-    if (r > 160 && g > 80 && b > 120) return 'pink'
-    if (r > 150 && g > 90 && b < 60) return 'orange'
-    if (r > 145 && g > 145 && b < 80) return 'yellow'
-    if (g > r + 24 && g > b + 12) return 'green'
-    if (b > r + 24 && b > g + 12) return 'blue'
-    if (r > 110 && b > 110 && g < 110) return 'purple'
-    return 'mixed color'
-  }
-
-  function storyboardDescribePaletteHint(paletteHint) {
-    const colors = String(paletteHint || '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter((item) => /^#[0-9a-f]{6}$/i.test(item))
-      .slice(0, 6)
-    if (!colors.length) return ''
-    const names = []
-    colors.forEach((hex) => {
-      const r = Number.parseInt(hex.slice(1, 3), 16)
-      const g = Number.parseInt(hex.slice(3, 5), 16)
-      const b = Number.parseInt(hex.slice(5, 7), 16)
-      const name = storyboardPaletteColorNameFromRgb(r, g, b)
-      if (name && !names.includes(name)) names.push(name)
-    })
-    return `${names.join(', ')} (${colors.join(', ')})`
-  }
-
-  function storyboardSubjectPixelPaletteRule(paletteHint) {
-    const text = storyboardDescribePaletteHint(paletteHint) || String(paletteHint || '').trim()
-    if (!text) return ''
-    return `Reference subject color anchors: ${text}. Preserve the protagonist outfit, hair, equipment, and key accessory colors close to the uploaded subject reference across all scenes; do not replace them with genre-default local costume colors, generic grey clothing, background colors, or lighting contamination. Large reference-visible accessories, equipment, or carried items may be partial, folded, carried low, placed nearby, or absent when the current event does not need a full display.`
-  }
-
-  async function runStoryboardSubjectReferenceImage(baseUrl, info, source, uploadedName, storyText, sourceAnalysis, visualCuePack, identityCard, modelMode, options = {}) {
-    const startedAt = Date.now()
-    const attempts = []
-    let paletteHint = ''
-    let cutoutDataUrl = ''
-    try {
-      cutoutDataUrl = await runRmbgCutout(source && source.dataUrl || '')
-      attempts.push('cutout')
-      paletteHint = await storyboardSubjectPixelPaletteHintFromDataUrl(cutoutDataUrl).catch(() => '')
-      if (paletteHint) attempts.push(`palette:${paletteHint}`)
-    } catch (error) {
-      attempts.push(`cutout_failed:${String(error && error.message || error || 'unknown').slice(0, 120)}`)
-    }
-    try {
-      if (!cutoutDataUrl) throw new Error('cutout unavailable')
-      const cardDataUrl = await storyboardSubjectReferenceCardFromCutoutDataUrl(cutoutDataUrl)
-      if (cardDataUrl) {
-        attempts.push('pose_muted_cutout_reference')
-        return {
-          dataUrl: cardDataUrl,
-          prompt: 'local_pose_muted_subject_identity_reference_card',
-          mode: 'uploaded_image_pose_muted_subject_reference',
-          paletteHint,
-          elapsedMs: Date.now() - startedAt,
-          poseSafe: true,
-          attempts
-        }
-      }
-      attempts.push('cutout_no_subject_bounds')
-    } catch (error) {
-      attempts.push(`cutout_card_failed:${String(error && error.message || error || 'unknown').slice(0, 120)}`)
-    }
-    if (options && options.allowGeneratedFallback === false) {
-      return {
-        dataUrl: '',
-        prompt: 'subject_cutout_unavailable_original_reference_fallback',
-        mode: 'subject_cutout_unavailable_original_reference_fallback',
-        paletteHint,
-        elapsedMs: Date.now() - startedAt,
-        attempts
-      }
-    }
-    try {
-      const generated = await runStoryboardSubjectStyleReferenceImage(
-        baseUrl,
-        info,
-        uploadedName,
-        storyText,
-        sourceAnalysis,
-        visualCuePack,
-        identityCard,
-        modelMode
-      )
-      if (generated && generated.dataUrl) {
-        attempts.push('generated_identity_reference_fallback')
-        return {
-          dataUrl: generated.dataUrl,
-          prompt: generated.prompt || '',
-          mode: 'generated_pose_safe_identity_reference_fallback',
-          paletteHint,
-          elapsedMs: Date.now() - startedAt,
-          poseSafe: true,
-          attempts
-        }
-      }
-      attempts.push('generated_identity_reference_empty')
-    } catch (error) {
-      attempts.push(`generated_identity_reference_failed:${String(error && error.message || error || 'unknown').slice(0, 120)}`)
-    }
-    return {
-      dataUrl: '',
-      prompt: 'subject_cutout_unavailable_original_reference_fallback',
-      mode: 'subject_cutout_unavailable_original_reference_fallback',
-      paletteHint,
-      elapsedMs: Date.now() - startedAt,
-      attempts
-    }
-  }
-
-  async function runStoryboardSubjectStyleReferenceImage(baseUrl, info, uploadedName, storyText, sourceAnalysis, visualCuePack, identityCard, modelMode) {
-    const scene = { id: `subject_style_reference_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`, number: 0 }
-    const prefix = `novaflow_storyboard_subject_style_ref_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
-    const prompt = storyboardSubjectStyleReferencePrompt(storyText, sourceAnalysis, visualCuePack, identityCard)
-    const frame = normalizeStoryboardFrameSize({ id: 'square' })
-    const workflow = buildStoryboardSceneWorkflow(info, uploadedName, prefix, storyboardEnsureSingleFramePrompt(prompt, {
-      identityCard: '',
-      referenceImage: !!String(uploadedName || '').trim()
-    }), frame, modelMode)
-    const dataUrl = await runPromptForFirstImage(baseUrl, workflow, prefix, STORYBOARD_GENERATION_TIMEOUT_MS)
-    return { dataUrl, prompt, sceneId: scene.id, frame }
-  }
-
-  function storyboardOverviewCellSize(frameSize) {
-    const frame = normalizeStoryboardFrameSize(frameSize)
-    if (frame.id === 'portrait') return { cellW: STORYBOARD_OVERVIEW_CELL_HEIGHT, cellH: STORYBOARD_OVERVIEW_CELL_WIDTH }
-    if (frame.id === 'square') return { cellW: 384, cellH: 384 }
-    return { cellW: STORYBOARD_OVERVIEW_CELL_WIDTH, cellH: STORYBOARD_OVERVIEW_CELL_HEIGHT }
-  }
-
-  async function composeStoryboardOverview(scenes, frameSize) {
-    const { cellW, cellH } = storyboardOverviewCellSize(frameSize)
-    const labelH = STORYBOARD_OVERVIEW_LABEL_HEIGHT
-    const gap = STORYBOARD_OVERVIEW_GAP
-    const width = STORYBOARD_COLUMNS * cellW + (STORYBOARD_COLUMNS + 1) * gap
-    const rows = Math.ceil(STORYBOARD_SCENE_COUNT / STORYBOARD_COLUMNS)
-    const height = rows * (cellH + labelH) + (rows + 1) * gap
-    const canvas = canvasOfSize(width, height)
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    ctx.fillStyle = '#050505'
-    ctx.fillRect(0, 0, width, height)
-    ctx.textBaseline = 'top'
-    for (let i = 0; i < STORYBOARD_SCENE_COUNT; i += 1) {
-      const scene = scenes[i]
-      if (!scene || !scene.dataUrl) continue
-      const col = i % STORYBOARD_COLUMNS
-      const row = Math.floor(i / STORYBOARD_COLUMNS)
-      const x = gap + col * (cellW + gap)
-      const y = gap + row * (cellH + labelH + gap)
-      ctx.fillStyle = '#111111'
-      ctx.fillRect(x, y, cellW, cellH + labelH)
-      const img = await loadImage(scene.dataUrl)
-      const iw = Math.max(1, img.naturalWidth || img.width || 1)
-      const ih = Math.max(1, img.naturalHeight || img.height || 1)
-      const scale = Math.max(cellW / iw, cellH / ih)
-      const dw = Math.max(1, Math.round(iw * scale))
-      const dh = Math.max(1, Math.round(ih * scale))
-      const dx = x + Math.round((cellW - dw) / 2)
-      const dy = y + Math.round((cellH - dh) / 2)
-      ctx.save()
-      ctx.beginPath()
-      ctx.rect(x, y, cellW, cellH)
-      ctx.clip()
-      ctx.drawImage(img, dx, dy, dw, dh)
-      ctx.restore()
-      ctx.fillStyle = 'rgba(0,0,0,0.92)'
-      ctx.fillRect(x, y + cellH, cellW, labelH)
-      ctx.fillStyle = '#ffffff'
-      ctx.font = 'bold 15px sans-serif'
-      const title = `${String(scene.number || i + 1).padStart(2, '0')} ${scene.title || ''}`.trim()
-      ctx.fillText(title.slice(0, 18), x + 10, y + cellH + 8)
-      ctx.font = '12px sans-serif'
-      ctx.fillStyle = 'rgba(255,255,255,0.84)'
-      const caption = String(scene.caption || scene.beat || '').replace(/\s+/g, ' ')
-      ctx.fillText(caption.slice(0, 34), x + 10, y + cellH + 31)
-      ctx.strokeStyle = 'rgba(255,255,255,0.22)'
-      ctx.lineWidth = 2
-      ctx.strokeRect(x + 1, y + 1, cellW - 2, cellH + labelH - 2)
-    }
-    return {
-      dataUrl: canvas.toDataURL('image/jpeg', 0.92),
-      width,
-      height,
-      grid: { cell: cellW, cellW, cellH, labelH, gap, columns: STORYBOARD_COLUMNS, rows }
-    }
-  }
-
-  async function finalizeStoryboardGroup(storyText, source, sourceAnalysis, scenes, directorResult = {}, frameSize, modelMode) {
-    const frame = normalizeStoryboardFrameSize(frameSize)
-    const storyboardModelMode = normalizeStoryboardModelMode(modelMode)
-    const overview = await composeStoryboardOverview(scenes, frame)
-    const id = `storyboard_group_${Date.now().toString(36)}_${Math.random().toString(16).slice(2, 8)}`
-    const firstScene = Array.isArray(scenes) ? scenes.find((scene) => scene && scene.directorSource) || {} : {}
-    const directorSource = String(directorResult && directorResult.directorSource || firstScene.directorSource || 'AI Director').trim()
-    const fallbackReason = directorResult && directorResult.fallbackUsed ? String(directorResult.fallbackReason || firstScene.fallbackReasonCode || '').trim() : ''
-    const worldContext = String(directorResult && directorResult.worldContext || storyboardWorldContextFromSourceAnalysis(sourceAnalysis) || '').trim()
-    const directorDebugText = String(
-      state.lastProcessingDebug && state.lastProcessingDebug.storyboardDirectorV5 && state.lastProcessingDebug.storyboardDirectorV5.text ||
-      storyboardDirectorPlannerDebugText(storyText, sourceAnalysis, directorResult) ||
-      ''
-    ).trim()
-    const {
-      scenes: _directorDebugScenes,
-      storyboardImageDiagnostics: _directorDebugImageDiagnostics,
-      subjectStyleReferenceDataUrl: _directorDebugSubjectReferenceDataUrl,
-      subjectStyleSwatchReferenceDataUrl: _directorDebugStyleReferenceDataUrl,
-      ...directorDebugResult
-    } = directorResult && typeof directorResult === 'object' ? directorResult : {}
-    const group = {
-      id,
-      type: 'storyboard',
-      name: 'Storyboard',
-      sourceName: source && source.label || source && source.fileName || 'preview.png',
-      storyText: String(storyText || '').trim(),
-      sourceDataUrl: source && source.dataUrl || '',
-      sourceFileName: source && source.fileName || 'preview.png',
-      sourceAnalysis: sourceAnalysis || '',
-      visualCuePack: String(directorResult && directorResult.visualCuePack || '').trim(),
-      characterIdentityCard: String(directorResult && directorResult.characterIdentityCard || '').trim(),
-      subjectStyleReferenceDataUrl: String(directorResult && directorResult.subjectStyleReferenceDataUrl || '').trim(),
-      subjectStyleReferenceFileName: String(directorResult && directorResult.subjectStyleReferenceFileName || '').trim(),
-      subjectStyleReferenceMode: String(directorResult && directorResult.subjectStyleReferenceMode || '').trim(),
-      subjectStyleReferencePoseSafe: !!(directorResult && directorResult.subjectStyleReferencePoseSafe),
-      subjectStyleSwatchReferenceDataUrl: String(directorResult && directorResult.subjectStyleSwatchReferenceDataUrl || '').trim(),
-      subjectStyleSwatchReferenceFileName: String(directorResult && directorResult.subjectStyleSwatchReferenceFileName || '').trim(),
-      subjectStyleSwatchReferenceMode: String(directorResult && directorResult.subjectStyleSwatchReferenceMode || '').trim(),
-      subjectStyleReferenceError: String(directorResult && directorResult.subjectStyleReferenceError || '').trim(),
-      subjectPixelPaletteHint: String(directorResult && directorResult.subjectPixelPaletteHint || '').trim(),
-      finalShots: Array.isArray(directorResult && directorResult.finalShots) ? directorResult.finalShots : [],
-      frameSize: frame,
-      framePresetId: frame.id,
-      frameSizeLabel: storyboardFrameSizeLabel(frame),
-      storyboardModelMode,
-      storyboardModelLabel: storyboardModelModeLabel(storyboardModelMode),
-      storyboardReferenceStrength: normalizeStoryboardReferenceStrength(directorResult && directorResult.storyboardReferenceStrength),
-      storyboardReferenceDenoise: storyboardReferenceDenoiseFromStrength(directorResult && directorResult.storyboardReferenceStrength),
-      storyboardReferenceConditionMode: String(directorResult && directorResult.storyboardReferenceConditionMode || '').trim(),
-      directorSource,
-      fallbackReason,
-      fallbackUsed: !!(directorResult && directorResult.fallbackUsed),
-      worldContext,
-      worldContinuity: String(directorResult && directorResult.worldContinuity || storyboardWorldContinuityFromSourceAnalysis(sourceAnalysis) || '').trim(),
-      directorDebugText,
-      directorDebugResult,
-      createdAt: new Date().toISOString(),
-      expanded: true,
-      activeItemId: 'overview',
-      overview: {
-        id: 'overview',
-        type: 'overview',
-        name: 'Storyboard 总览图',
-        title: 'Storyboard 总览图',
-        dataUrl: overview.dataUrl,
-        width: overview.width,
-        height: overview.height,
-        grid: overview.grid
-      },
-      scenes: scenes.map((scene) => ({ ...scene, storyboardModelMode })),
-      storyboardDynamicActionOriginalReference: !!(directorResult && directorResult.storyboardDynamicActionOriginalReference),
-      directorQuality: directorResult && directorResult.compiledDirectorQuality || directorResult && directorResult.directorQuality || null
-    }
-    storyboardGroups().forEach((item) => { item.expanded = false })
-    storyboardGroups().unshift(group)
-    state.activeStoryboardGroupId = group.id
-    state.activeStoryboardItemId = 'overview'
-    state.viewMode = 'storyboard'
-    resetSplitCanvasViewport()
-    return group
-  }
-
-  function storyboardFinalShotsFromDirectorScenes(scenes) {
-    return (Array.isArray(scenes) ? scenes : []).slice(0, STORYBOARD_SCENE_COUNT).map((scene, index) => {
-      const director = scene && (scene.directorPlan || scene) || {}
-      const title = storyboardNormalizePlannerField(scene && scene.title || director.title || director.purpose || `Scene ${index + 1}`)
-      const prompt = storyboardNormalizePlannerField(scene && scene.action || director.action || scene && scene.description || title)
-      const camera = storyboardNormalizePlannerField(scene && scene.angle || director.camera || director.shot_type || '')
-      const sceneAnchor = storyboardNormalizePlannerField(scene && scene.currentSpace || director.currentSpace || scene && scene.sceneAnchor || '')
-      return {
-        title,
-        displayCaption: storyboardNormalizePlannerField(scene && scene.caption || title),
-        prompt,
-        camera,
-        sceneAnchor
-      }
-    })
-  }
-
-  async function executeStoryboardTool() {
-    if (state.busy) return
-    const source = storyboardReferenceSource()
-    if (!source || !source.dataUrl) {
-      setMessage('请先在预览区准备一张图片', true)
-      render()
-      syncSplitWorkspace()
-      return
-    }
-    const promptConfig = await showStoryboardPromptDialog()
-    const storyText = typeof promptConfig === 'string' ? String(promptConfig || '').trim() : String(promptConfig && promptConfig.storyText || '').trim()
-    if (!storyText) return
-    const storyboardFrame = normalizeStoryboardFrameSize(promptConfig && promptConfig.frameSize)
-    const storyboardModelMode = normalizeStoryboardModelMode(promptConfig && promptConfig.modelMode)
-    const storyboardDirectorProvider = String(promptConfig && promptConfig.directorProvider || '') === 'grok' ? 'grok' : 'local'
-    const storyboardReferenceStrength = normalizeStoryboardReferenceStrength(promptConfig && promptConfig.referenceStrength)
-    const storyboardReferenceDenoise = storyboardReferenceDenoiseFromStrength(storyboardReferenceStrength)
-    const initialSceneImageReference = storyboardReferenceConditionMode(storyboardReferenceStrength, false) !== 'text_identity'
-    const token = `storyboard_${Date.now()}_${Math.random().toString(16).slice(2)}`
-    state.storyboardRunToken = token
-    state.busy = true
-    state.busyAction = 'storyboard'
-    state.busyStartedAt = Date.now()
-    const preImagePlanningStartedAt = Date.now()
-    state.busyDetail = '正在分析参考图...'
-    setMessage('正在分析参考图...')
-    render()
-    syncSplitWorkspace()
-    syncSplitGlobalBusyOverlay()
-    try {
-      const referenceAnalysis = await runStoryboardReferenceAnalysis(source.dataUrl, source.fileName, storyboardDirectorProvider)
-      const sourceAnalysis = referenceAnalysis.sourceAnalysis
-      const visualCuePack = storyboardVisualCuePackFromSourceAnalysis(storyText, sourceAnalysis)
-      const characterIdentityCard = storyboardCharacterIdentityCard(storyText, sourceAnalysis, visualCuePack)
-      if (state.storyboardRunToken !== token) return
-      state.busyDetail = referenceAnalysis.cacheHit ? '参考图分析缓存命中，正在一次性生成9段连续分镜...' : '参考图分析完成，正在一次性生成9段连续分镜...'
-      setMessage(referenceAnalysis.cacheHit ? '参考图分析缓存命中，正在一次性生成9段连续分镜...' : '正在一次性生成9段连续分镜...')
-      render()
-      syncSplitGlobalBusyOverlay()
-      let finalShotResult = null
-      let directorResult = null
-      try {
-        state.busyDetail = storyboardDirectorProvider === 'grok' ? '正在使用 AI导演 生成9段分镜导演提示词...' : state.busyDetail
-        if (storyboardDirectorProvider === 'grok') {
-          setMessage('正在使用 AI导演 生成9段分镜导演提示词...')
-          render()
-          syncSplitGlobalBusyOverlay()
-        }
-        const unifiedResult = await runStoryboardUnifiedNineShots(storyText, sourceAnalysis, visualCuePack, storyboardDirectorProvider)
-        if (state.storyboardRunToken !== token) return
-        finalShotResult = {
-          shots: unifiedResult.shots,
-          finalShotSeed: unifiedResult.unifiedSeed,
-          finalShotRawOutput: unifiedResult.unifiedRawOutput,
-          finalShotPromptPreview: unifiedResult.unifiedPromptPreview,
-          finalShotGenerateProfile: unifiedResult.unifiedGenerateProfile,
-          finalShotElapsedMs: unifiedResult.unifiedElapsedMs,
-          finalShotResultShape: unifiedResult.unifiedResultShape
-        }
-        directorResult = storyboardUnifiedDirectorResult(storyText, sourceAnalysis, visualCuePack, unifiedResult, referenceAnalysis, preImagePlanningStartedAt)
-        directorResult.directorProvider = storyboardDirectorProvider
-      } catch (unifiedError) {
-        if (state.storyboardRunToken !== token) return
-        const message = String(unifiedError && unifiedError.message || unifiedError || 'Unified 9-shot planning failed')
-        if (storyboardDirectorProvider === 'grok') {
-          throw new Error(`${message}。AI导演 已开启，本次不会静默切回本地导演；请关闭 AI导演 后重试。`)
-        }
-        directorResult = storyboardDirectorPlannerFallbackResult(storyText, sourceAnalysis, message, '', {
-          reasonCode: 'UNIFIED_NINE_SHOTS_FAILED',
-          visualCuePack
-        })
-        directorResult.visualCuePack = visualCuePack
-        directorResult.referenceAnalysisElapsedMs = Number(referenceAnalysis && referenceAnalysis.elapsedMs || 0) || 0
-        directorResult.referenceAnalysisFallbackReason = String(referenceAnalysis && referenceAnalysis.fallbackReason || '')
-        directorResult.preImagePlanningElapsedMs = Date.now() - preImagePlanningStartedAt
-        finalShotResult = {
-          shots: storyboardFinalShotsFromDirectorScenes(directorResult.scenes),
-          finalShotSeed: 'fallback_after_unified_failure',
-          finalShotRawOutput: '',
-          finalShotPromptPreview: '',
-          finalShotGenerateProfile: null,
-          finalShotElapsedMs: 0,
-          finalShotResultShape: 'fallback_director_v2'
-        }
-      }
-      directorResult.characterIdentityCard = characterIdentityCard
-      recordStoryboardDirectorPlannerDebug(storyText, sourceAnalysis, directorResult)
-      const directorScenes = Array.isArray(directorResult && directorResult.scenes) ? directorResult.scenes : []
-      if (directorScenes.length !== STORYBOARD_SCENE_COUNT) {
-        throw new Error('Storyboard Director 未返回可用 9 格结构')
-      }
-      const focusedDirectorScenes = storyboardApplyVisualEvents(storyboardApplySceneFocuses(directorScenes))
-      const scenes = focusedDirectorScenes.map((scene, index) => {
-        const finalShot = finalShotResult.shots[index] || {}
-        const finalPrompt = String(finalShot.prompt || '').trim()
-        const sceneWithSpatialContext = {
-          ...scene,
-          title: finalShot.title || scene.title,
-          finalShotPrompt: finalPrompt,
-          finalShotTitle: finalShot.title || '',
-          finalShotDisplayCaption: finalShot.displayCaption || '',
-          finalShotCamera: finalShot.camera || '',
-          finalShotSceneAnchor: finalShot.sceneAnchor || '',
-          previousScene: index > 0 ? focusedDirectorScenes[index - 1] : null,
-          nextScene: index + 1 < focusedDirectorScenes.length ? focusedDirectorScenes[index + 1] : null
-        }
-        const scenePrompt = storyboardQwenNaturalPromptForScene(sceneWithSpatialContext, storyText, characterIdentityCard, initialSceneImageReference)
-        return {
-          ...sceneWithSpatialContext,
-          prompt: storyboardEnsureSingleFramePrompt(scenePrompt, { referenceImage: initialSceneImageReference }),
-          frameSize: storyboardFrame,
-          storyboardModelMode,
-          status: 'pending',
-          dataUrl: '',
-          error: ''
-        }
-      })
-      recordStoryboardDebug(storyText, sourceAnalysis, scenes)
-      const baseUrl = await detectComfyBaseUrl()
-      const info = await comfyAllObjectInfo(baseUrl)
-      const useSubjectStyleReference = storyboardReferenceStrength >= 0.2 && storyboardReferenceStrength < STORYBOARD_REFERENCE_IMAGE_STRENGTH_THRESHOLD
-      const uploadedName = await uploadDataUrl(baseUrl, source.fileName, source.dataUrl)
-      const imageDiagnostics = {
-        preImage: await storyboardRuntimeDiagnosticsSnapshot('pre_image', baseUrl, { timeoutMs: 2200 }),
-        samples: []
-      }
-      directorResult.storyboardReferenceStrength = storyboardReferenceStrength
-      directorResult.storyboardReferenceDenoise = storyboardReferenceDenoise
-      directorResult.storyboardImageDiagnostics = imageDiagnostics
-      recordStoryboardDirectorPlannerDebug(storyText, sourceAnalysis, directorResult)
-      imageDiagnostics.storyboardReferenceMode = 'pending_reference_selection'
-      imageDiagnostics.referenceStrength = storyboardReferenceStrength
-      imageDiagnostics.referenceDenoise = storyboardReferenceDenoise
-      imageDiagnostics.referenceImageName = uploadedName || ''
-      imageDiagnostics.sceneImageReferenceEnabled = initialSceneImageReference
-      imageDiagnostics.sceneImageReferencePolicy = 'strength_selected_reference_condition'
-      let subjectStyleReferenceName = ''
-      let subjectStyleReferenceDataUrl = ''
-      let subjectStyleReferenceMode = ''
-      let subjectStyleSwatchReferenceName = ''
-      let subjectStyleSwatchReferenceDataUrl = ''
-      let subjectStyleSwatchReferenceMode = ''
-      let subjectStyleReferencePoseSafe = false
-      let subjectPixelPaletteHint = String(referenceAnalysis && referenceAnalysis.paletteHint || '').trim()
-      directorResult.subjectPixelPaletteHint = subjectPixelPaletteHint
-      directorResult.referencePaletteElapsedMs = Number(referenceAnalysis && referenceAnalysis.paletteElapsedMs || 0) || 0
-      const subjectStyleReferenceStartedAt = Date.now()
-      if (useSubjectStyleReference) {
-      try {
-        if (state.storyboardRunToken !== token) return
-        state.busyDetail = '正在生成主体/画风参考...'
-        setMessage('正在生成主体/画风参考...')
-        render()
-        syncSplitGlobalBusyOverlay()
-        const subjectReference = await runStoryboardSubjectReferenceImage(
-          baseUrl,
-          info,
-          source,
-          uploadedName,
-          storyText,
-          sourceAnalysis,
-          visualCuePack,
-          characterIdentityCard,
-          storyboardModelMode,
-          { allowGeneratedFallback: false }
-        )
-        subjectStyleReferenceDataUrl = subjectReference && subjectReference.dataUrl || ''
-        subjectStyleSwatchReferenceDataUrl = subjectReference && subjectReference.styleDataUrl || ''
-        subjectPixelPaletteHint = String(subjectReference && subjectReference.paletteHint || '').trim() || subjectPixelPaletteHint
-        directorResult.subjectPixelPaletteHint = subjectPixelPaletteHint
-        subjectStyleReferencePoseSafe = !!(subjectReference && subjectReference.poseSafe)
-        if (subjectStyleReferenceDataUrl) {
-          subjectStyleReferenceName = await uploadDataUrl(baseUrl, `storyboard_subject_style_reference_${Date.now()}.png`, subjectStyleReferenceDataUrl)
-          directorResult.subjectStyleReferenceDataUrl = subjectStyleReferenceDataUrl
-          directorResult.subjectStyleReferenceFileName = subjectStyleReferenceName
-          directorResult.subjectStyleReferencePrompt = subjectReference.prompt || ''
-          directorResult.subjectStyleReferenceMode = subjectReference.mode || 'uploaded_image_subject_reference'
-          directorResult.subjectStyleReferencePoseSafe = subjectStyleReferencePoseSafe
-          subjectStyleReferenceMode = directorResult.subjectStyleReferenceMode
-          if (subjectStyleSwatchReferenceDataUrl) {
-            subjectStyleSwatchReferenceName = await uploadDataUrl(baseUrl, `storyboard_subject_style_swatch_reference_${Date.now()}.png`, subjectStyleSwatchReferenceDataUrl)
-            subjectStyleSwatchReferenceMode = subjectReference.styleMode || 'local_subject_style_swatch_reference'
-            directorResult.subjectStyleSwatchReferenceDataUrl = subjectStyleSwatchReferenceDataUrl
-            directorResult.subjectStyleSwatchReferenceFileName = subjectStyleSwatchReferenceName
-            directorResult.subjectStyleSwatchReferenceMode = subjectStyleSwatchReferenceMode
-          }
-          imageDiagnostics.storyboardReferenceMode = subjectStyleReferencePoseSafe
-            ? 'all_scenes_pose_safe_subject_identity_reference'
-            : 'all_scenes_subject_identity_reference'
-          imageDiagnostics.subjectStyleReference = {
-            status: 'ok',
-            elapsedMs: Date.now() - subjectStyleReferenceStartedAt,
-            fileName: subjectStyleReferenceName,
-            styleFileName: subjectStyleSwatchReferenceName,
-            paletteHint: subjectPixelPaletteHint,
-            mode: subjectReference.mode || '',
-            styleMode: subjectStyleSwatchReferenceMode,
-            poseSafe: subjectStyleReferencePoseSafe,
-            attempts: Array.isArray(subjectReference.attempts) ? subjectReference.attempts : []
-          }
-        } else {
-          subjectStyleReferenceName = ''
-          subjectStyleReferenceDataUrl = ''
-          directorResult.subjectStyleReferenceDataUrl = ''
-          directorResult.subjectStyleReferenceFileName = ''
-          directorResult.subjectStyleReferencePrompt = subjectReference && subjectReference.prompt || ''
-          directorResult.subjectStyleReferenceMode = subjectReference && subjectReference.mode || 'original_reference_fallback'
-          directorResult.subjectStyleReferencePoseSafe = false
-          directorResult.subjectStyleSwatchReferenceDataUrl = ''
-          directorResult.subjectStyleSwatchReferenceFileName = ''
-          directorResult.subjectStyleSwatchReferenceMode = ''
-          subjectStyleReferenceMode = directorResult.subjectStyleReferenceMode
-          directorResult.subjectStyleReferenceError = ''
-          imageDiagnostics.storyboardReferenceMode = 'original_reference_fallback_subject_cutout_unavailable'
-          imageDiagnostics.subjectStyleReference = {
-            status: 'original_reference_fallback',
-            elapsedMs: Date.now() - subjectStyleReferenceStartedAt,
-            paletteHint: subjectPixelPaletteHint,
-            mode: subjectReference && subjectReference.mode || '',
-            attempts: Array.isArray(subjectReference && subjectReference.attempts) ? subjectReference.attempts : []
-          }
-        }
-      } catch (referenceError) {
-        const message = String(referenceError && referenceError.message || referenceError || 'subject/style reference failed')
-        subjectStyleReferenceName = ''
-        subjectStyleReferenceDataUrl = ''
-        directorResult.subjectStyleReferenceDataUrl = ''
-        directorResult.subjectStyleReferenceFileName = ''
-        directorResult.subjectStyleReferenceMode = 'original_reference_fallback'
-        directorResult.subjectStyleReferencePoseSafe = false
-        directorResult.subjectStyleSwatchReferenceDataUrl = ''
-        directorResult.subjectStyleSwatchReferenceFileName = ''
-        directorResult.subjectStyleSwatchReferenceMode = ''
-        subjectStyleReferenceMode = directorResult.subjectStyleReferenceMode
-        directorResult.subjectStyleReferenceError = message
-        imageDiagnostics.storyboardReferenceMode = 'original_reference_fallback_subject_reference_failed'
-        imageDiagnostics.subjectStyleReference = {
-          status: 'original_reference_fallback',
-          elapsedMs: Date.now() - subjectStyleReferenceStartedAt,
-          error: message
-        }
-      }
-      } else {
-        directorResult.subjectStyleReferenceDataUrl = ''
-        directorResult.subjectStyleReferenceFileName = ''
-        directorResult.subjectStyleReferencePrompt = ''
-        directorResult.subjectStyleReferenceMode = storyboardReferenceStrength < 0.2 ? 'text_identity' : 'original_reference'
-        directorResult.subjectStyleReferencePoseSafe = false
-        directorResult.subjectStyleSwatchReferenceDataUrl = ''
-        directorResult.subjectStyleSwatchReferenceFileName = ''
-        directorResult.subjectStyleSwatchReferenceMode = ''
-        subjectStyleReferenceMode = directorResult.subjectStyleReferenceMode
-        directorResult.subjectStyleReferenceError = ''
-        imageDiagnostics.subjectStyleReference = {
-          status: storyboardReferenceStrength < 0.2 ? 'skipped_text_identity' : 'skipped_original_reference',
-          elapsedMs: Date.now() - subjectStyleReferenceStartedAt,
-          reason: storyboardReferenceStrength < 0.2
-            ? 'reference strength selected text-only identity continuity'
-            : 'reference strength selected the original uploaded image condition'
-        }
-      }
-      const referenceConditionMode = storyboardReferenceConditionMode(storyboardReferenceStrength, !!subjectStyleReferenceName)
-      const sceneUsesOriginalImageReference = referenceConditionMode === 'original_reference'
-      const sceneUsesSubjectImageReference = referenceConditionMode === 'subject_identity' && !!subjectStyleReferenceName
-      const sceneUsesImageReference = sceneUsesOriginalImageReference || sceneUsesSubjectImageReference
-      directorResult.storyboardDynamicActionOriginalReference = sceneUsesOriginalImageReference
-      directorResult.storyboardReferenceConditionMode = referenceConditionMode
-      imageDiagnostics.storyboardReferenceMode = referenceConditionMode
-      imageDiagnostics.sceneImageReferenceEnabled = sceneUsesImageReference
-      imageDiagnostics.sceneImageReferencePolicy = referenceConditionMode === 'subject_identity'
-        ? 'all_scenes_pose_muted_subject_identity_condition'
-        : referenceConditionMode === 'original_reference'
-          ? 'all_scenes_original_reference_condition'
-          : 'all_scenes_text_identity_no_image_condition'
-      scenes.forEach((scene) => {
-        const sceneUsesImageReference = sceneUsesOriginalImageReference || sceneUsesSubjectImageReference
-        scene.storyboardUsesImageReference = sceneUsesImageReference
-        scene.storyboardImageReferenceSource = sceneUsesSubjectImageReference ? 'subject_style_reference' : (sceneUsesOriginalImageReference ? 'original_reference' : 'none')
-        scene.storyboardReferenceConditionMode = referenceConditionMode
-        scene.storyboardUsesStyleReference = false
-        scene.storyboardUsesStyleOnlyReference = false
-        scene.storyboardUsesStyleSwatchReference = false
-        scene.storyboardUsesPoseSafeSubjectReference = subjectStyleReferencePoseSafe
-        scene.prompt = storyboardQwenFormalReferencePromptForScene(scene, storyText, characterIdentityCard, {
-          hasReferenceImage: sceneUsesImageReference,
-          hasStyleReferenceImage: false,
-          styleSwatchReference: false,
-          poseSafeSubjectReference: subjectStyleReferencePoseSafe,
-          styleOnlyReference: false,
-          dynamicActionOriginalReference: sceneUsesOriginalImageReference,
-          subjectPixelPaletteHint
-        })
-      })
-      const compiledScenePrompts = scenes.map((scene) => String(scene && scene.prompt || '').trim())
-      const compiledDirectorQuality = storyboardEvaluateDirectorQuality(finalShotResult.shots, {
-        validationStage: 'compiled',
-        requireStructuredContinuity: storyboardDirectorProvider === 'grok',
-        compiledPrompts: compiledScenePrompts,
-        identityCues: characterIdentityCard,
-        sourceCues: sourceAnalysis
-      })
-      directorResult.compiledScenePrompts = compiledScenePrompts
-      directorResult.compiledDirectorQuality = compiledDirectorQuality
-      directorResult.storyProgression = String(compiledDirectorQuality && compiledDirectorQuality.storyProgression || directorResult.storyProgression || 'UNKNOWN')
-      directorResult.cameraDiversity = String(compiledDirectorQuality && compiledDirectorQuality.cameraDiversity || directorResult.cameraDiversity || 'UNKNOWN')
-      directorResult.endingQuality = String(compiledDirectorQuality && compiledDirectorQuality.endingQuality || directorResult.endingQuality || 'UNKNOWN')
-      const compiledWarningText = String(compiledDirectorQuality && compiledDirectorQuality.warningText || '').trim()
-      directorResult.qualityWarning = [directorResult.qualityWarning, compiledWarningText].filter(Boolean).join('；')
-      directorResult.qualityHardError = String(compiledDirectorQuality && compiledDirectorQuality.hardError || directorResult.qualityHardError || '').trim()
-      directorResult.preImagePlanningElapsedMs = Date.now() - preImagePlanningStartedAt
-      recordStoryboardDirectorPlannerDebug(storyText, sourceAnalysis, directorResult)
-      if (directorResult.qualityHardError) {
-        throw new Error(`Storyboard 导演质量校验未通过：${directorResult.qualityHardError}`)
-      }
-      recordStoryboardDebug(storyText, sourceAnalysis, scenes)
-      for (let i = 0; i < scenes.length; i += 1) {
-        if (state.storyboardRunToken !== token) return
-        const scene = scenes[i]
-        scene.status = 'running'
-        state.busyDetail = `正在生成 ${i + 1} / ${STORYBOARD_SCENE_COUNT}`
-        setMessage(`正在生成 ${i + 1} / ${STORYBOARD_SCENE_COUNT}`)
-        render()
-        syncSplitGlobalBusyOverlay()
-        let firstImageSampler = null
-        let firstImageStartedAt = 0
-        if (i === 0) {
-          imageDiagnostics.firstStart = await storyboardRuntimeDiagnosticsSnapshot('first_start', baseUrl, { timeoutMs: 2200 })
-          firstImageStartedAt = Date.now()
-          imageDiagnostics.firstImageStartedAt = firstImageStartedAt
-          firstImageSampler = storyboardStartFirstImageDiagnosticsSampler(baseUrl, imageDiagnostics)
-        }
-        try {
-          const sceneUsesImageReference = !!scene.storyboardUsesImageReference
-          const sceneReferenceName = sceneUsesImageReference
-            ? (scene.storyboardImageReferenceSource === 'subject_style_reference'
-              ? subjectStyleReferenceName
-              : uploadedName)
-            : ''
-          scene.dataUrl = await runStoryboardSceneImage(baseUrl, info, sceneReferenceName, scene, scene.prompt, storyboardFrame, storyboardModelMode, {
-            referenceStrength: sceneUsesImageReference ? storyboardReferenceStrength : 0,
-            styleReferenceImageName: '',
-            disablePromptExpansion: true
-          })
-        } finally {
-          if (i === 0) {
-            if (firstImageSampler && typeof firstImageSampler.stop === 'function') {
-              imageDiagnostics.samples = await firstImageSampler.stop()
-            }
-            imageDiagnostics.firstImageElapsedMs = firstImageStartedAt ? Date.now() - firstImageStartedAt : 0
-            const logCursors = imageDiagnostics.firstStart && imageDiagnostics.firstStart.runtimeLogs && imageDiagnostics.firstStart.runtimeLogs.cursors ||
-              imageDiagnostics.preImage && imageDiagnostics.preImage.runtimeLogs && imageDiagnostics.preImage.runtimeLogs.cursors ||
-              null
-            imageDiagnostics.firstComplete = await storyboardRuntimeDiagnosticsSnapshot('first_complete', baseUrl, {
-              runtimeLogCursors: logCursors,
-              timeoutMs: 2600
-            })
-            recordStoryboardDirectorPlannerDebug(storyText, sourceAnalysis, directorResult)
-          }
-        }
-        const size = await imageSizeFromDataUrl(scene.dataUrl).catch(() => ({ width: 0, height: 0 }))
-        scene.width = Math.max(0, Math.round(Number(size.width) || 0))
-        scene.height = Math.max(0, Math.round(Number(size.height) || 0))
-        scene.status = 'done'
-      }
-      state.busyDetail = '正在合成 Storyboard...'
-      setMessage('正在合成 Storyboard...')
-      render()
-      syncSplitGlobalBusyOverlay()
-      const group = await finalizeStoryboardGroup(storyText, source, sourceAnalysis, scenes, directorResult, storyboardFrame, storyboardModelMode)
-      setMessage('Storyboard 已生成')
-      activateStoryboardItem(group.id, 'overview')
-    } catch (error) {
-      setMessage(String(error && error.message || error || 'Storyboard 生成失败'), true)
-    } finally {
-      if (state.storyboardRunToken === token) state.storyboardRunToken = ''
-      state.busy = false
-      state.busyAction = ''
-      state.busyStartedAt = 0
-      state.busyDetail = ''
-      const restoreStoryboardWorkspace = state.viewMode === 'storyboard' && !!activeStoryboardItem()
-      render()
-      updatePreviewOverlay()
-      updateRightPanel()
-      syncSplitWorkspace()
-      syncSplitGlobalBusyOverlay()
-      if (restoreStoryboardWorkspace) scheduleStoryboardWorkspaceSync()
-    }
-  }
-
-  function storyboardFinalShotFromRegeneratedScene(scene, index, previousShot = {}) {
-    const director = scene && (scene.directorPlan || scene) || {}
-    const number = Math.max(1, Number(scene && (scene.number || scene.sceneNumber) || index + 1) || index + 1)
-    return {
-      ...previousShot,
-      scene: number,
-      title: storyboardNormalizePlannerField(scene && (scene.title || scene.finalShotTitle) || previousShot.title || `Scene ${number}`),
-      displayCaption: storyboardNormalizePlannerField(scene && (scene.finalShotDisplayCaption || scene.caption || scene.beat) || previousShot.displayCaption || previousShot.caption || `Scene ${number}`),
-      visualEvent: storyboardNormalizePlannerField(scene && (scene.visualEvent || scene.visibleEvent || scene.eventRealization) || previousShot.visualEvent || previousShot.visibleEvent || ''),
-      prompt: storyboardNormalizePlannerField(scene && (scene.finalShotPrompt || scene.action || scene.description) || previousShot.prompt || ''),
-      sceneAnchor: storyboardNormalizePlannerField(scene && (scene.finalShotSceneAnchor || scene.currentSpace || scene.sceneAnchor) || director.currentSpace || previousShot.sceneAnchor || ''),
-      camera: storyboardNormalizePlannerField(scene && (scene.finalShotCamera || scene.camera || scene.angle) || director.camera || director.shot_type || previousShot.camera || '')
-    }
-  }
-
-  function storyboardRefreshRegeneratedGroupDirectorTruth(group) {
-    if (!group || !Array.isArray(group.scenes)) return null
-    const previousShots = Array.isArray(group.finalShots) ? group.finalShots : []
-    const finalShots = group.scenes.slice(0, STORYBOARD_SCENE_COUNT).map((scene, index) =>
-      storyboardFinalShotFromRegeneratedScene(scene, index, previousShots[index] || {})
-    )
-    const compiledScenePrompts = group.scenes.slice(0, STORYBOARD_SCENE_COUNT).map((scene) => String(scene && scene.prompt || '').trim())
-    const compiledDirectorQuality = storyboardEvaluateDirectorQuality(finalShots, {
-      validationStage: 'compiled',
-      compiledPrompts: compiledScenePrompts,
-      identityCues: String(group.characterIdentityCard || '').trim(),
-      sourceCues: String(group.sourceAnalysis || '').trim()
-    })
-    const baseResult = group.directorDebugResult && typeof group.directorDebugResult === 'object' ? group.directorDebugResult : {}
-    const providerIssueText = storyboardDirectorQualityIssueText(baseResult.providerDirectorQuality)
-    const compiledWarningText = String(compiledDirectorQuality && compiledDirectorQuality.warningText || '').trim()
-    const refreshedResult = {
-      ...baseResult,
-      directorSource: String(group.directorSource || baseResult.directorSource || 'AI Director').trim(),
-      finalShots,
-      scenes: group.scenes,
-      expectedScenes: STORYBOARD_SCENE_COUNT,
-      actualScenes: finalShots.length,
-      compiledScenePrompts,
-      compiledDirectorQuality,
-      directorQuality: compiledDirectorQuality,
-      storyProgression: String(compiledDirectorQuality && compiledDirectorQuality.storyProgression || 'UNKNOWN'),
-      cameraDiversity: String(compiledDirectorQuality && compiledDirectorQuality.cameraDiversity || 'UNKNOWN'),
-      endingQuality: String(compiledDirectorQuality && compiledDirectorQuality.endingQuality || 'UNKNOWN'),
-      qualityWarning: [providerIssueText, compiledWarningText].filter(Boolean).join('；'),
-      qualityHardError: String(compiledDirectorQuality && compiledDirectorQuality.hardError || '').trim()
-    }
-    group.finalShots = finalShots
-    group.directorQuality = compiledDirectorQuality
-    group.directorDebugResult = {
-      ...refreshedResult,
-      scenes: undefined
-    }
-    recordStoryboardDirectorPlannerDebug(group.storyText || '', group.sourceAnalysis || '', refreshedResult)
-    group.directorDebugText = storyboardDirectorPlannerDebugText(group.storyText || '', group.sourceAnalysis || '', refreshedResult)
-    return compiledDirectorQuality
-  }
-
-  async function regenerateStoryboardScene(groupId, sceneId, nextDescription) {
-    if (state.busy) return
-    const group = storyboardGroupById(groupId)
-    const scene = group && Array.isArray(group.scenes) ? group.scenes.find((item) => item && item.id === sceneId) : null
-    if (!group || !scene || !group.sourceDataUrl) return setMessage('Storyboard 镜头不可用', true)
-    if (typeof nextDescription === 'string' && nextDescription.trim()) {
-      scene.description = nextDescription.trim()
-      scene.prompt = nextDescription.trim()
-      scene.finalShotPrompt = nextDescription.trim()
-    }
-    const frameSize = normalizeStoryboardFrameSize(group.frameSize || scene.frameSize || (group.framePresetId ? { id: group.framePresetId } : null))
-    const storyboardModelMode = normalizeStoryboardModelMode(group.storyboardModelMode || scene.storyboardModelMode)
-    const storyboardReferenceStrength = normalizeStoryboardReferenceStrength(group.storyboardReferenceStrength)
-    const focusedScenes = storyboardApplyVisualEvents(storyboardApplySceneFocuses(group.scenes || []))
-    const focusedScene = focusedScenes.find((item) => item && item.id === scene.id) || null
-    const focusedIndex = focusedScenes.findIndex((item) => item && item.id === scene.id)
-    scene.sceneFocus = focusedScene && focusedScene.sceneFocus || storyboardSceneFocusFromAction(scene)
-    scene.visualEvent = focusedScene && focusedScene.visualEvent || storyboardDeriveVisualEvent(scene)
-    scene.previousScene = focusedIndex > 0 ? focusedScenes[focusedIndex - 1] || null : null
-    scene.nextScene = focusedIndex >= 0 && focusedIndex + 1 < focusedScenes.length ? focusedScenes[focusedIndex + 1] || null : null
-    scene.frameSize = frameSize
-    scene.storyboardModelMode = storyboardModelMode
-    const characterIdentityCard = String(group.characterIdentityCard || '').trim() ||
-      storyboardCharacterIdentityCard(group.storyText || '', group.sourceAnalysis || '', group.visualCuePack || '')
-    const hasSubjectReference = !!String(group.subjectStyleReferenceDataUrl || '').trim()
-    const referenceConditionMode = storyboardReferenceConditionMode(storyboardReferenceStrength, hasSubjectReference)
-    const sceneUsesPoseSafeSubjectReference = referenceConditionMode === 'subject_identity' && !!group.subjectStyleReferencePoseSafe
-    const sceneUsesOriginalImageReference = referenceConditionMode === 'original_reference'
-    const sceneUsesSubjectImageReference = referenceConditionMode === 'subject_identity' && hasSubjectReference
-    const sceneUsesImageReference = sceneUsesOriginalImageReference || sceneUsesSubjectImageReference
-    scene.storyboardUsesImageReference = sceneUsesImageReference
-    scene.storyboardImageReferenceSource = sceneUsesSubjectImageReference ? 'subject_style_reference' : (sceneUsesOriginalImageReference ? 'original_reference' : 'none')
-    scene.storyboardReferenceConditionMode = referenceConditionMode
-    scene.storyboardUsesStyleReference = false
-    scene.storyboardUsesStyleOnlyReference = false
-    scene.storyboardUsesStyleSwatchReference = false
-    scene.storyboardUsesPoseSafeSubjectReference = sceneUsesPoseSafeSubjectReference
-    scene.prompt = storyboardQwenFormalReferencePromptForScene(scene, group.storyText || '', characterIdentityCard, {
-      hasReferenceImage: sceneUsesImageReference,
-      hasStyleReferenceImage: false,
-      styleSwatchReference: false,
-      poseSafeSubjectReference: sceneUsesPoseSafeSubjectReference,
-      styleOnlyReference: false,
-      dynamicActionOriginalReference: sceneUsesOriginalImageReference,
-      subjectPixelPaletteHint: group.subjectPixelPaletteHint
-    })
-    const token = `storyboard_regen_${Date.now()}_${Math.random().toString(16).slice(2)}`
-    state.storyboardRunToken = token
-    state.busy = true
-    state.busyAction = 'storyboard'
-    state.busyStartedAt = Date.now()
-    state.busyDetail = `正在重新生成 ${String(scene.number || '').padStart(2, '0')}`
-    setMessage(state.busyDetail)
-    render()
-    syncSplitWorkspace()
-    syncSplitGlobalBusyOverlay()
-    try {
-      const baseUrl = await detectComfyBaseUrl()
-      const info = await comfyAllObjectInfo(baseUrl)
-      const uploadedName = sceneUsesImageReference
-        ? await uploadDataUrl(
-          baseUrl,
-          sceneUsesSubjectImageReference ? 'storyboard_subject_style_reference.png' : (group.sourceFileName || 'storyboard_reference.png'),
-          sceneUsesSubjectImageReference ? group.subjectStyleReferenceDataUrl : group.sourceDataUrl
-        )
-        : ''
-      const dataUrl = await runStoryboardSceneImage(baseUrl, info, uploadedName, scene, scene.prompt, frameSize, storyboardModelMode, {
-        referenceStrength: sceneUsesImageReference ? storyboardReferenceStrength : 0,
-        styleReferenceImageName: '',
-        disablePromptExpansion: true
-      })
-      if (state.storyboardRunToken !== token) return
-      scene.dataUrl = dataUrl
-      const size = await imageSizeFromDataUrl(dataUrl).catch(() => ({ width: 0, height: 0 }))
-      scene.width = Math.max(0, Math.round(Number(size.width) || 0))
-      scene.height = Math.max(0, Math.round(Number(size.height) || 0))
-      scene.status = 'done'
-      scene.error = ''
-      storyboardRefreshRegeneratedGroupDirectorTruth(group)
-      group.frameSize = frameSize
-      group.framePresetId = frameSize.id
-      group.frameSizeLabel = storyboardFrameSizeLabel(frameSize)
-      group.storyboardModelMode = storyboardModelMode
-      group.storyboardModelLabel = storyboardModelModeLabel(storyboardModelMode)
-      group.storyboardReferenceStrength = storyboardReferenceStrength
-      group.storyboardReferenceDenoise = storyboardReferenceDenoiseFromStrength(storyboardReferenceStrength)
-      const overview = await composeStoryboardOverview(group.scenes || [], frameSize)
-      group.overview = {
-        ...(group.overview || {}),
-        id: 'overview',
-        type: 'overview',
-        name: 'Storyboard 总览图',
-        title: 'Storyboard 总览图',
-        dataUrl: overview.dataUrl,
-        width: overview.width,
-        height: overview.height,
-        grid: overview.grid
-      }
-      group.updatedAt = new Date().toISOString()
-      activateStoryboardItem(group.id, scene.id)
-      setMessage(`镜头${String(scene.number || '').padStart(2, '0')}已重新生成`)
-    } catch (error) {
-      setMessage(String(error && error.message || error || '镜头重新生成失败'), true)
-    } finally {
-      if (state.storyboardRunToken === token) state.storyboardRunToken = ''
-      state.busy = false
-      state.busyAction = ''
-      state.busyStartedAt = 0
-      state.busyDetail = ''
-      const restoreStoryboardWorkspace = state.viewMode === 'storyboard' && !!activeStoryboardItem()
-      render()
-      updatePreviewOverlay()
-      updateRightPanel()
-      syncSplitWorkspace()
-      syncSplitGlobalBusyOverlay()
-      if (restoreStoryboardWorkspace) scheduleStoryboardWorkspaceSync()
-    }
-  }
-
-  async function editStoryboardSceneDescription(groupId, sceneId) {
-    const group = storyboardGroupById(groupId)
-    const scene = group && Array.isArray(group.scenes) ? group.scenes.find((item) => item && item.id === sceneId) : null
-    if (!scene) return
-    const next = await showStoryboardSceneEditDialog(scene)
-    if (next == null) return
-    if (!String(next || '').trim()) return setMessage('镜头描述不能为空', true)
-    await regenerateStoryboardScene(groupId, sceneId, String(next || '').trim())
-  }
-
-  function openStoryboardDirectorPlan(groupId) {
-    const group = storyboardGroupById(groupId) || activeStoryboardGroup()
-    if (!group) return setMessage('导演规划不可用', true)
-    showStoryboardDirectorPlanDialog(group)
-  }
-
-  async function exportStoryboardJpg(groupId) {
-    const group = storyboardGroupById(groupId) || activeStoryboardGroup()
-    const dataUrl = group && group.overview && group.overview.dataUrl
-    if (!dataUrl) return setMessage('没有可导出的 Storyboard', true)
-    try {
-      const fileName = safeDownloadFileName(`${group.name || 'Storyboard'}_${Date.now()}.jpg`, 'Storyboard.jpg').replace(/\.(png|webp)$/i, '.jpg')
-      const blob = await dataUrlToBlob(dataUrl)
-      const bytes = new Uint8Array(await blob.arrayBuffer())
-      const api = window.electronAPI
-      if (api && typeof api.pickDirectory === 'function' && typeof api.writeBinaryFile === 'function') {
-        const pick = await api.pickDirectory()
-        if (pick && pick.canceled) return setMessage('已取消导出')
-        if (!pick || !pick.dir) throw new Error('未选择导出目录')
-        const saved = await api.writeBinaryFile({ dir: pick.dir, fileName, bytes: Array.from(bytes) })
-        if (!saved || !saved.ok) throw new Error(saved && saved.error || '写入失败')
-        return setMessage(`已导出：${fileName}`)
-      }
-      if (typeof window.showSaveFilePicker === 'function') {
-        const handle = await window.showSaveFilePicker({ suggestedName: fileName, types: [{ description: 'JPEG', accept: { 'image/jpeg': ['.jpg', '.jpeg'] } }] })
-        const writable = await handle.createWritable()
-        await writable.write(blob)
-        await writable.close()
-        return setMessage(`已导出：${fileName}`)
-      }
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = fileName
-      a.click()
-      window.setTimeout(() => URL.revokeObjectURL(url), 1200)
-      setMessage(`已导出：${fileName}`)
-    } catch (error) {
-      setMessage(String(error && error.message || error || 'Storyboard 导出失败'), true)
-    } finally {
-      render()
-      updateRightPanel()
-    }
-  }
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+  
+
+  
+
+  
+
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+  
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+  
+  
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
+
+  
 
   function dataUrlToBase64(dataUrl) {
     const raw = String(dataUrl || '')
@@ -19769,10 +12062,6 @@
     if (next.length === before.length) return false
     state.splitSets = next
     const retainedIds = new Set(next.map((set) => String(set && set.id || '')))
-    sourceResourceList().forEach((resource) => {
-      if (!resource || !resource.storyboardEditCopy || !resource.storyboardSplitSetId) return
-      if (!retainedIds.has(String(resource.storyboardSplitSetId || ''))) resource.storyboardSplitSetId = ''
-    })
     const activeRemoved = !!previousActiveId && !next.some((set) => String(set && set.id || '') === previousActiveId)
     const active = next.find((set) => String(set && set.id || '') === preferredId)
       || next.find((set) => String(set && set.id || '') === previousActiveId)
@@ -20125,9 +12414,6 @@
       name: String(options.name || `拆图 ${labelIndex}`),
       sourceName: state.source && state.source.fileName || 'source.png',
       sourceResourceId: String(state.activeSourceResourceId || ''),
-      storyboardGroupId: String(options.storyboardGroupId || ''),
-      storyboardItemId: String(options.storyboardItemId || ''),
-      storyboardRevision: String(options.storyboardRevision || ''),
       createdAt: new Date().toISOString(),
       parts: state.parts.map(normalizeLayerRecord),
       previewDataUrl: state.splitPreviewDataUrl,
@@ -20857,7 +13143,6 @@
       label: '增强',
       icon: 'sliders-h',
       items: [
-        { action: 'storyboard', label: '一键分镜', title: '基于当前预览图和剧情描述生成 3x3 Storyboard' },
         { action: 'imageUpscale', label: '\u9ad8\u6e05\u653e\u5927', title: '\u4f7f\u7528 SeedVR2 3B FP8 \u5bf9\u5f53\u524d\u539f\u56fe\u6267\u884c\u5355\u56fe\u9ad8\u6e05\u653e\u5927' },
         { action: 'imageOutpaint', label: '无限扩图', title: '扩展画布后使用 Qwen 生成新增区域，原图区域强制保留' },
         { action: 'objectTransfer', label: '\u4e07\u7269\u8fc1\u79fb', title: '\u4e0a\u4f20\u53c2\u8003\u7269\uff0c\u81ea\u52a8\u63d0\u53d6\u4e3b\u4f53\u540e\u62d6\u653e\u5230\u753b\u5e03\u76ee\u6807\u4f4d\u7f6e\u5e76\u6267\u884c\u878d\u5408\u8fc1\u79fb' },
@@ -21366,7 +13651,6 @@
       imageOutpaint: state.busy && state.busyAction === 'imageOutpaint' ? '无限扩图中…' : '无限扩图',
       imageAngleAdjust: state.busy && state.busyAction === 'imageAngleAdjust' ? '角度调整中…' : '角度调整',
       cutout: isCutting ? '智能抠图中…' : (isEffectExtracting ? '特效提取中…' : (cutoutActive ? (effectModeActive ? '执行特效提取' : '执行抠图') : '智能抠图')),
-      storyboard: state.busy && state.busyAction === 'storyboard' ? '分镜生成中…' : '一键分镜',
       inpaint: isEffectRemoving ? '特效去除中…' : (isInpainting ? selectionInpaintModeBusyLabel(selectedInpaintMode) : (inpaintActive ? (effectRemovalActive ? '执行特效去除' : selectionInpaintModeExecuteLabel(selectedInpaintMode)) : '\u667a\u80fd\u8865\u56fe')),
       inpaintCompletion: isInpainting && selectedInpaintMode === 'completion' ? selectionInpaintModeBusyLabel('completion') : (inpaintActive && selectedInpaintMode === 'completion' ? selectionInpaintModeExecuteLabel('completion') : selectionInpaintModeStartLabel('completion')),
       inpaintEdit: isInpainting && selectedInpaintMode === 'edit' ? selectionInpaintModeBusyLabel('edit') : (inpaintActive && selectedInpaintMode === 'edit' ? selectionInpaintModeExecuteLabel('edit') : selectionInpaintModeStartLabel('edit')),
@@ -21867,7 +14151,6 @@
   function hasSplitLayerResources() {
     if (Array.isArray(state.parts) && state.parts.length) return true
     if (state.splitPreviewDataUrl) return true
-    if (Array.isArray(state.storyboardGroups) && state.storyboardGroups.some((group) => group && group.overview && group.overview.dataUrl)) return true
     return Array.isArray(state.splitSets) && state.splitSets.some((set) => {
       if (!set) return false
       return !!(set.previewDataUrl || (Array.isArray(set.parts) && set.parts.length))
@@ -21880,21 +14163,6 @@
     if (state.selectionTool && state.selectionTool.active) return { src: 'selection-tool', label: selectionToolName(state.selectionTool.mode), mode: 'selectionTool', part: selected }
     if (state.objectTransfer && state.objectTransfer.active) return { src: state.source && state.source.dataUrl, label: '\u4e07\u7269\u8fc1\u79fb', mode: 'objectTransfer' }
     if (state.maskEditor && state.maskEditor.active && selected) return { src: state.splitPreviewDataUrl || selected.dataUrl, label: `${selected.name || selected.id} / 蒙版编辑`, mode: 'maskEdit', part: selected }
-    if (state.viewMode === 'storyboard') {
-      const group = activeStoryboardGroup()
-      const item = activeStoryboardItem()
-      if (group && item && item.dataUrl) {
-        return {
-          src: item.dataUrl,
-          label: item.title || item.name || 'Storyboard',
-          mode: 'storyboard',
-          width: Math.max(1, Math.round(Number(item.width) || 1)),
-          height: Math.max(1, Math.round(Number(item.height) || 1)),
-          storyboardGroupId: group.id,
-          storyboardItemId: item.id || 'overview'
-        }
-      }
-    }
     if (state.viewMode === 'source') return { src: state.source && state.source.dataUrl, label: '原图画布', mode: 'source' }
     if (state.viewMode === 'mask') return { src: selected && selected.maskDataUrl, label: selected ? `${selected.name} / Mask` : 'Mask 画布', mode: 'mask', part: selected }
     if (selected && state.viewMode !== 'parts') return { src: selected.dataUrl, label: selected.name, mode: 'single', part: selected }
@@ -35801,41 +28069,7 @@
     ])
   }
 
-  function storyboardGridOverlayNodes(source) {
-    if (!source || source.mode !== 'storyboard' || source.storyboardItemId !== 'overview') return []
-    const group = storyboardGroupById(source.storyboardGroupId)
-    if (!group || !Array.isArray(group.scenes) || group.scenes.length < STORYBOARD_SCENE_COUNT) return []
-    return group.scenes.slice(0, STORYBOARD_SCENE_COUNT).map((scene, index) => {
-      const col = index % STORYBOARD_COLUMNS
-      const row = Math.floor(index / STORYBOARD_COLUMNS)
-      return h('button', {
-        type: 'button',
-        title: `${String(scene.number || index + 1).padStart(2, '0')} ${scene.title || ''}`.trim(),
-        onclick: (event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          activateStoryboardItem(group.id, scene.id)
-        },
-        onpointerdown: (event) => {
-          event.preventDefault()
-          event.stopPropagation()
-        },
-        style: {
-          position: 'absolute',
-          left: `${(col / STORYBOARD_COLUMNS) * 100}%`,
-          top: `${(row / STORYBOARD_COLUMNS) * 100}%`,
-          width: `${100 / STORYBOARD_COLUMNS}%`,
-          height: `${100 / STORYBOARD_COLUMNS}%`,
-          border: '0',
-          background: 'transparent',
-          cursor: 'pointer',
-          padding: '0',
-          margin: '0',
-          pointerEvents: 'auto'
-        }
-      }, '')
-    })
-  }
+  
 
   function stopObjectTransferEdit() {
     clearObjectTransferState()
@@ -36131,7 +28365,6 @@
       const sourceStyle = source.mode === 'source' ? sourceImagePlacementStyle(size) : { left: 0, top: 0, width: '100%', height: '100%' }
       return h('div', { 'data-novaflow-split-canvas-art': '1', style: artboardStyle }, [
         h('img', { src: source.src, alt: source.label, draggable: false, ondragstart: (event) => { event.preventDefault(); event.stopPropagation() }, style: Object.assign({ position: 'absolute', objectFit: 'fill', display: 'block', pointerEvents: 'none', userSelect: 'none', webkitUserDrag: 'none', filter: 'none' }, sourceStyle) }),
-        ...storyboardGridOverlayNodes(source),
         splitCanvasBoundaryNode(size)
       ])
     }
@@ -36332,44 +28565,15 @@
       Math.max(0, Math.round(Number(resource && resource.width) || 0)),
       Math.max(0, Math.round(Number(resource && resource.height) || 0)),
       resource && resource.pendingDataUrl ? '1' : '0',
-      resource && resource.storyboardEditCopy ? 'storyboard-edit' : 'source',
-      String(resource && resource.storyboardSplitSetId || ''),
-      String(resource && resource.storyboardRevision || ''),
       resource && resource.id === state.activeSourceResourceId ? '1' : '0'
     ].join('|')).join('^')
   }
 
-  function storyboardItemRenderSignature(item) {
-    if (!item) return ''
-    return [
-      String(item.id || ''),
-      String(item.title || item.name || ''),
-      splitDataUrlRenderSignature(item.dataUrl),
-      Math.max(0, Math.round(Number(item.width) || 0)),
-      Math.max(0, Math.round(Number(item.height) || 0)),
-      String(item.status || ''),
-      String(item.error || '')
-    ].join('|')
-  }
+  
 
-  function storyboardGroupRenderSignature(group) {
-    if (!group) return ''
-    return [
-      String(group.id || ''),
-      String(group.name || ''),
-      String(group.sourceName || ''),
-      group.expanded ? '1' : '0',
-      String(group.activeItemId || ''),
-      storyboardItemRenderSignature(group.overview),
-      (Array.isArray(group.scenes) ? group.scenes : []).map(storyboardItemRenderSignature).join('^')
-    ].join('|')
-  }
+  
 
-  function storyboardGroupsRenderSignature() {
-    const groups = storyboardGroups()
-    if (!groups.length) return ''
-    return groups.map(storyboardGroupRenderSignature).join('~')
-  }
+  
 
   function splitRightWorkspaceRenderSignature(sets, selected, selectedIds, layerListHeight) {
     void layerListHeight
@@ -36388,9 +28592,6 @@
         allowedInEditTool: isSplitControlActionAllowedInEditTool('merge')
       },
       source: splitSourceResourceRenderSignature(),
-      storyboard: storyboardGroupsRenderSignature(),
-      activeStoryboardGroupId: String(state.activeStoryboardGroupId || ''),
-      activeStoryboardItemId: String(state.activeStoryboardItemId || ''),
       sets: (sets || []).map(splitSetRenderSignature)
     })
   }
@@ -37116,7 +29317,7 @@
         Math.max(1, Math.round(imageHeight * scaleY))
       )
     }
-    return { canvas, label: resource.storyboardEditCopy ? '分镜编辑副本' : '原图' }
+    return { canvas, label: '原图' }
   }
 
   async function maskStencilMaskCanvas(part, width, height) {
@@ -38346,7 +30547,7 @@
         width: Math.max(0, Math.round(Number(resource.width) || 0)),
         height: Math.max(0, Math.round(Number(resource.height) || 0))
       }
-      const resourceLabel = resource.storyboardEditCopy ? '分镜编辑副本' : '原图资源'
+      const resourceLabel = '原图资源'
       const isActive = resource.id === state.activeSourceResourceId && state.viewMode === 'source'
       const resourceLocked = state.busy || isSplitEditToolActive()
       const referenceDropTool = window.NovaFlowArtGenerateReferenceDropTool
@@ -38497,178 +30698,13 @@
         }, '×')
       ])
     }
-    const renderStoryboardItemRow = (group, item) => {
-      if (!group || !item || !item.dataUrl) return null
-      const isActive = state.viewMode === 'storyboard' && state.activeStoryboardGroupId === group.id && state.activeStoryboardItemId === item.id
-      const isOverview = item.id === 'overview'
-      const locked = state.busy || isSplitEditToolActive()
-      const subtitle = isOverview ? '3x3 总览图' : `镜头${String(item.number || '').padStart(2, '0')}`
-      return h('button', {
-        type: 'button',
-        disabled: locked,
-        'aria-disabled': locked ? 'true' : 'false',
-        [STORYBOARD_ITEM_ATTR]: item.id,
-        onclick: (event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          if (locked) return
-          activateStoryboardItem(group.id, item.id)
-        },
-        style: {
-          width: '100%',
-          minHeight: '38px',
-          display: 'grid',
-          gridTemplateColumns: '30px minmax(0, 1fr)',
-          gap: '8px',
-          alignItems: 'center',
-          padding: '4px 8px',
-          border: SPLIT_LAYOUT_BORDER,
-          borderRadius: '7px',
-          background: isActive ? '#123126' : '#333333',
-          color: '#fff',
-          cursor: locked ? 'default' : 'pointer',
-          opacity: locked ? '0.62' : '1',
-          textAlign: 'left',
-          boxSizing: 'border-box',
-          boxShadow: isActive ? 'inset 3px 0 0 rgba(37,184,127,0.98)' : 'none'
-        }
-      }, [
-        h('div', { style: checkerStyle({ width: '30px', height: '30px', minWidth: '30px', borderRadius: '6px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }) },
-          splitSetPreviewImageNode(item.dataUrl, item.title || item.name || 'Storyboard')),
-        h('div', { style: { minWidth: '0', display: 'grid', gap: '2px' } }, [
-          h('div', { style: { fontSize: '12px', lineHeight: '14px', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, item.title || item.name || (isOverview ? 'Storyboard 总览图' : item.id)),
-          h('div', { style: { fontSize: '10px', lineHeight: '12px', color: 'rgba(148,163,184,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, subtitle)
-        ])
-      ])
-    }
-    const renderStoryboardSceneActions = (group) => {
-      const item = storyboardItemById(group, state.activeStoryboardItemId)
-      if (!group || !item || state.activeStoryboardGroupId !== group.id) return null
-      const isOverview = item.id === 'overview'
-      const actionLocked = state.busy || isSplitEditToolActive()
-      const actionButton = (label, onClick) => h('button', {
-        type: 'button',
-        disabled: actionLocked,
-        'aria-disabled': actionLocked ? 'true' : 'false',
-        onclick: (event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          if (!actionLocked) onClick()
-        },
-        style: {
-          height: '34px',
-          minHeight: '34px',
-          borderRadius: '7px',
-          border: '1px solid rgba(255,255,255,0.12)',
-          background: actionLocked ? '#262626' : '#2f2f2f',
-          color: actionLocked ? 'rgba(255,255,255,0.42)' : '#fff',
-          cursor: actionLocked ? 'default' : 'pointer',
-          fontSize: '12px',
-          lineHeight: '1.2',
-          padding: '5px 8px',
-          whiteSpace: 'normal',
-          boxSizing: 'border-box',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          textAlign: 'center'
-        }
-      }, label)
-      return h('div', { style: { display: 'grid', gap: '6px', padding: '0 10px 2px', boxSizing: 'border-box' } }, [
-        h('div', { style: { display: 'grid', gap: '3px', padding: '8px', borderRadius: '7px', background: '#262626', border: '1px solid rgba(255,255,255,0.06)' } }, [
-          h('div', { style: { fontSize: '12px', color: '#fff', fontWeight: '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, isOverview ? 'Storyboard 总览图' : `镜头${String(item.number || '').padStart(2, '0')}`),
-          h('div', { style: { fontSize: '11px', color: 'rgba(203,213,225,0.86)', lineHeight: '1.4', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: '3', WebkitBoxOrient: 'vertical' } }, isOverview ? '完成后默认展示的 3x3 主结果' : String(item.description || item.title || ''))
-        ]),
-        isOverview
-          ? h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' } }, [
-            actionButton('导出9宫格', () => exportStoryboardJpg(group.id)),
-            actionButton('导演规划', () => openStoryboardDirectorPlan(group.id))
-          ])
-          : h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' } }, [
-            actionButton('重新生成', () => editStoryboardSceneDescription(group.id, item.id)),
-            actionButton('导演规划', () => openStoryboardDirectorPlan(group.id))
-          ])
-      ])
-    }
-    const renderStoryboardGroupCard = (group) => {
-      if (!group || !group.overview || !group.overview.dataUrl) return null
-      const expanded = !!group.expanded
-      const active = state.viewMode === 'storyboard' && state.activeStoryboardGroupId === group.id
-      const interactionLocked = state.busy || isSplitEditToolActive()
-      const items = storyboardGroupItems(group)
-      return h('div', { style: { minHeight: '0', borderRadius: '0', border: '0', background: 'transparent', overflow: 'visible', display: 'grid', gap: expanded ? SPLIT_RIGHT_PANEL_EXPANDED_GAP : '0', padding: '0' } }, [
-        h('button', {
-          type: 'button',
-          disabled: interactionLocked,
-          'aria-disabled': interactionLocked ? 'true' : 'false',
-          [STORYBOARD_GROUP_TOGGLE_ATTR]: group.id,
-          onclick: (event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            if (interactionLocked) return
-            toggleStoryboardGroup(group.id)
-          },
-          style: {
-            width: '100%',
-            minHeight: SPLIT_RIGHT_SET_CARD_HEIGHT,
-            height: SPLIT_RIGHT_SET_CARD_HEIGHT,
-            display: 'grid',
-            gridTemplateColumns: '34px minmax(0, 1fr) 22px',
-            gap: '8px',
-            alignItems: 'center',
-            padding: '5px 8px',
-            border: SPLIT_LAYOUT_BORDER,
-            borderRadius: '7px',
-            background: active ? '#123126' : '#2f2f2f',
-            color: '#fff',
-            cursor: interactionLocked ? 'default' : 'pointer',
-            opacity: interactionLocked ? '0.62' : '1',
-            textAlign: 'left',
-            boxSizing: 'border-box',
-            boxShadow: active ? 'inset 3px 0 0 rgba(37,184,127,0.98)' : 'none'
-          }
-        }, [
-          h('div', { [SPLIT_SET_PREVIEW_ATTR]: '1', style: checkerStyle({ width: '34px', height: '34px', minWidth: '34px', borderRadius: '7px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }) },
-            splitSetPreviewImageNode(group.overview.dataUrl, group.name || 'Storyboard')),
-          h('div', { style: { minWidth: 0, display: 'grid', gap: '3px' } }, [
-            h('div', { style: { fontSize: '12px', fontWeight: '500', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, `${group.name || 'Storyboard'}  ·  9镜头`),
-            h('div', { style: { fontSize: '10px', color: 'rgba(148,163,184,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, group.sourceName || '当前预览图')
-          ]),
-          splitSetChevronNode(expanded)
-        ]),
-        expanded ? h('div', { style: { display: 'grid', gap: SPLIT_RIGHT_CHILD_LAYER_GAP, padding: `0 ${SPLIT_RIGHT_CHILD_LAYER_INSET}`, minHeight: '0', boxSizing: 'border-box' } }, items.map((item) => renderStoryboardItemRow(group, item)).filter(Boolean)) : null,
-        expanded ? renderStoryboardSceneActions(group) : null,
-        expanded ? h('div', { style: { padding: `0 ${SPLIT_RIGHT_CHILD_LAYER_INSET} 2px`, boxSizing: 'border-box' } }, h('button', {
-          type: 'button',
-          disabled: interactionLocked,
-          'aria-disabled': interactionLocked ? 'true' : 'false',
-          [STORYBOARD_GROUP_DELETE_ATTR]: group.id,
-          onclick: (event) => {
-            event.preventDefault()
-            event.stopPropagation()
-            if (interactionLocked) return
-            const fixtureAutoConfirm = new URLSearchParams(window.location.search).has('__novaflow_storyboard_resource_fixture')
-            const confirmed = fixtureAutoConfirm || typeof window.confirm !== 'function' || window.confirm('确认删除整个 Storyboard 及其 9 个镜头？\n原图和已创建的编辑副本会保留。')
-            if (confirmed) deleteStoryboardGroup(group.id)
-          },
-          style: {
-            width: '100%',
-            minHeight: '34px',
-            borderRadius: '7px',
-            border: '1px solid rgba(239,68,68,0.42)',
-            background: interactionLocked ? '#262626' : 'rgba(127,29,29,0.22)',
-            color: interactionLocked ? 'rgba(255,255,255,0.38)' : 'rgba(254,202,202,0.96)',
-            cursor: interactionLocked ? 'default' : 'pointer',
-            fontSize: '12px',
-            fontWeight: '700'
-          }
-        }, '删除整组分镜')) : null
-      ])
-    }
+    
+    
+    
     const sets = splitRightWorkspaceSetsForRender()
     const showRightWorkspaceMergeButton = sets.some((set) => normalizeSpineLayerOrder(set && set.parts || []).length > 0)
     const sourceCards = sourceResourceList().slice().reverse().map((resource) => renderSourceResourceCard(resource)).filter(Boolean)
-    const storyboardCards = storyboardGroups().map((group) => renderStoryboardGroupCard(group)).filter(Boolean)
+    
     const panelSignature = splitRightWorkspaceRenderSignature(sets, selected, selectedIds, layerListHeight)
     if (panel.__novaflowSpineSplitRightSignature === panelSignature && panel.firstChild) {
       restoreLayerScroll(panel)
@@ -38677,7 +30713,7 @@
     panel.__novaflowSpineSplitRightSignature = panelSignature
     panel.innerHTML = ''
     panel.appendChild(h('div', { style: { height: '100%', minHeight: '0', display: 'grid', gridTemplateRows: showRightWorkspaceMergeButton ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr)', gap: showRightWorkspaceMergeButton ? '8px' : '0', padding: SPLIT_RIGHT_PANEL_INSET, boxSizing: 'border-box', background: SPLIT_WORKSPACE_PANEL_BACKGROUND, color: '#e5e7eb', overflow: 'hidden' } }, [
-      (sourceCards.length || storyboardCards.length || sets.length) ? h('div', {
+      (sourceCards.length || sets.length) ? h('div', {
         'data-novaflow-layer-scroll': '1',
         onwheel: handleContainedWheel,
         onscroll: (event) => rememberLayerScroll(event.currentTarget),
@@ -38695,7 +30731,6 @@
         }
       }, h('div', { style: { display: 'grid', alignContent: 'start', gap: SPLIT_RIGHT_PANEL_GAP, minHeight: 'max-content', paddingBottom: SPLIT_RIGHT_PANEL_INSET, boxSizing: 'border-box' } }, [
         ...sourceCards,
-        ...storyboardCards,
         ...sets.slice().reverse().map((set) => {
         const expanded = !!set.expanded
         const setParts = normalizeSpineLayerOrder(set.parts || [])
@@ -38744,11 +30779,6 @@
     }
     const active = isMountedCardVisible()
     if (!active) {
-      if (canRestoreStoryboardWorkspace()) {
-        if (!storyboardWorkspaceRestoreRunning) restoreStoryboardWorkspaceSurface()
-        startSplitMountRetry()
-        return
-      }
       removeSplitWorkspaceSurface()
       return
     }
@@ -38798,12 +30828,7 @@
 
   function runSplitControlAction(action, options = {}) {
     if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
-    const storyboardEditSource = state.viewMode === 'storyboard' || isStoryboardEditSourceResource()
-    if (!options.storyboardEditPrepared && storyboardEditSource && isStoryboardEditSourceAction(action)) {
-      return prepareStoryboardSceneEditableCopy().then((ready) => ready
-        ? runSplitControlAction(action, { storyboardEditPrepared: true })
-        : null)
-    }
+    
     if (guardPendingSourceDataUrl(action)) return null
     if (action === 'split') return runSplit('parts')
     if (action === 'canvasResize') return executeCanvasResizeTool()
@@ -38811,7 +30836,6 @@
     if (action === 'imageOutpaint') return executeImageOutpaintTool()
     if (action === 'imageAngleAdjust') return executeImageAngleAdjustTool()
     if (action === 'objectTransfer') return executeObjectTransferTool()
-    if (action === 'storyboard') return executeStoryboardTool()
     if (action === 'cutout') return executeCutoutTool()
     if (action === 'inpaint') return executeInpaintTool()
     if (action === 'inpaintCompletion') return executeInpaintTool('completion')
@@ -43617,8 +35641,6 @@
       hasSplitPreview: /^data:image\//i.test(String(state.splitPreviewDataUrl || '')),
       splitPreviewStale: !!state.splitPreviewStale,
       splitPreviewRefreshPending: !!state.splitPreviewRefreshPending,
-      activeStoryboardGroupId: String(state.activeStoryboardGroupId || ''),
-      activeStoryboardItemId: String(state.activeStoryboardItemId || ''),
       canvas: {
         width: canvasSize.width,
         height: canvasSize.height,
@@ -43697,10 +35719,6 @@
     imageOutpaintNextSize,
     validateImageOutpaintPlan,
     buildQwenImageOutpaintWorkflow,
-    normalizeStoryboardModelMode,
-    buildStoryboardSceneWorkflow,
-    normalizeStoryboardReferenceStrength,
-    storyboardReferenceDenoiseFromStrength,
     buildImageAngleAdjustWorkflow,
     normalizeImageAngleHorizontal,
     normalizeImageAngleVertical,
@@ -44231,22 +36249,6 @@
     }, 200)
   }
 
-  if (new URLSearchParams(window.location.search).has('__novaflow_storyboard_resource_fixture')) {
-    window.setTimeout(() => {
-      try {
-        const workflow = storyboardResourceWorkflow()
-        if (!workflow || !workflow.installAcceptanceFixture({ state, bridge: storyboardResourceWorkflowBridge() })) {
-          throw new Error('Storyboard resource fixture unavailable')
-        }
-        document.body.setAttribute('data-novaflow-storyboard-resource-fixture', 'ready')
-      } catch (error) {
-        const message = String(error && error.message || error || 'Storyboard resource fixture failed')
-        document.body.setAttribute('data-novaflow-storyboard-resource-fixture', `fail:${message}`)
-        setMessage(`STORYBOARD_RESOURCE_FIXTURE_FAIL ${message}`, true)
-        render()
-      }
-    }, 260)
-  }
 
   if (new URLSearchParams(window.location.search).has('__novaflow_split_layer_select_smoke')) {
     window.setTimeout(() => {
@@ -44696,7 +36698,6 @@
     if (action && isTopMenuLabel(action.textContent)) {
       if (isBrandRuntimeTopbarMenuTarget(event.target) || isBrandRuntimeTopbarMenuTarget(action)) return
       const returningToArt = !!artPrimaryButtonFromTarget(event && event.target)
-      if (!returningToArt) cancelStoryboardWorkspaceSync(800)
       state.topMenuSuspended = true
       removeSplitWorkspaceSurface()
       window.requestAnimationFrame(() => syncSplitWorkspace())

@@ -57,7 +57,7 @@ assert.match(
 assert.match(source, /def is_ui_design_prompt_payload\(payload: dict\) -> bool:/)
 assert.match(source, /def ui_design_uses_negative_prompt\(payload: dict\) -> bool:/)
 
-const optimize = source.match(/def optimize_prompt\(self, payload: dict\) -> dict:[\s\S]*?[\r\n]+\s*def run_storyboard_director_patch_sequence/)?.[0] || ''
+const optimize = source.match(/def optimize_prompt\(self, payload: dict\) -> dict:[\s\S]*?[\r\n]+\s*def reverse_plain_static_image/)?.[0] || ''
 assert.match(optimize, /if is_ui_design:/)
 assert.match(optimize, /NovaFlow UI 版块专用的设计助手/)
 assert.match(optimize, /资源引用占位符/)

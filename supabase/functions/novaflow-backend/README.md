@@ -14,8 +14,8 @@ This function is the lightweight NovaFlow cloud gateway. It handles:
 - User status and credit balance reads.
 - Per-user Provider call quotas for `grok`.
 - Gateway Lite checks for `/api/ai/tasks`.
-- Grok chat, prompt optimization, image reverse-prompt, and strict nine-shot
-  Storyboard forwarding through the backend only.
+- Grok chat, prompt optimization, and image reverse-prompt forwarding through
+  the backend only.
 
 It intentionally does not store prompts, full workflow JSON, task records, consumption records, or AI logs. The NovaFlow client builds the workflow; the backend only verifies, checks quotas, and forwards approved Provider calls.
 
@@ -35,7 +35,6 @@ Client Grok routes:
 ```text
 POST /api/client/grok/prompt-optimize
 POST /api/client/grok/image-reverse
-POST /api/client/grok/storyboard-unified-nine-shots
 ```
 
 Pre-login license verification:
@@ -90,14 +89,9 @@ Quota behavior matches the desktop Node gateway:
 - Prompt/image successes and failures append metadata-only entries to the
   existing `recent_calls` history (status, mode, token counts, duration,
   model, and sanitized error). Existing quota value fields are preserved.
-- Storyboard consumes the number of successful provider responses actually
-  used: one initial call and, when quality repair is needed and quota permits,
-  one repair call. A successful provider response followed by strict nine-shot
-  parsing failure is still recorded because the provider was called.
-- Storyboard never silently falls back to the local director.
 
-The image route accepts at most 10 MiB of JSON request data; text and
-Storyboard routes accept at most 512 KiB. Oversized requests return HTTP 413.
+The image route accepts at most 10 MiB of JSON request data; text routes
+accept at most 512 KiB. Oversized requests return HTTP 413.
 Prompts, images, raw provider output, and workflows are not persisted by this
 function.
 
@@ -119,11 +113,6 @@ Local contract tests (Node 20+):
 ```bash
 node --test supabase/functions/novaflow-backend/backend-contract.test.mjs
 ```
-
-The test also enforces byte-for-byte Storyboard workflow equivalence with the
-desktop source, except for the required CommonJS-to-ESM export statement. If
-the desktop workflow changes, mechanically refresh the cloud copy and rerun
-the test before deployment.
 
 Readiness:
 

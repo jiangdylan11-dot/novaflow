@@ -88,7 +88,7 @@ NovaFlow 客户端不能直接判断或修改积分。真正 AI 调用前，未�
 
 ## 提示词服务次数分配
 
-提示词服务次数按用户手动分配，当前底层 Provider 为 Grok，用于提示词优化、反推和一键分镜提示词规划：
+提示词服务次数按用户手动分配，当前底层 Provider 为 Grok，用于提示词优化和反推：
 
 - 每个用户的次数存为 `system_settings.provider_quota_grok_<user_id>`。
 - 只记录 `allocated_count`、`used_count` 和 `remaining_count`。

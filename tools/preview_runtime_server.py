@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 import base64
@@ -1792,17 +1792,6 @@ def _request_prompt_assistant(
                     "elapsedMs": int((time.time() - started) * 1000) if isinstance(started, (int, float)) else 0,
                     "stopResult": "not-requested",
                 })
-            trace_storyboard_director = command in {"storyboardDirectorPlan", "storyboardFinalShotPrompts"}
-            if trace_storyboard_director:
-                print(json.dumps({
-                    "event": "preview_prompt_assistant_request_start",
-                    "command": command,
-                    "requestId": request_id,
-                    "timeoutSeconds": max(10, int(timeout or 300)),
-                    "storyChars": len(str(request_data.get("storyText") or "")),
-                    "sourceAnalysisChars": len(str(request_data.get("sourceAnalysis") or "")),
-                    "rulesChars": len(str(request_data.get("rules") or "")),
-                }, ensure_ascii=False), file=sys.stderr, flush=True)
             try:
                 if not proc.stdin:
                     raise RuntimeError("Prompt Assistant stdin 不可用")
@@ -1864,14 +1853,6 @@ def _request_prompt_assistant(
                         if fallback_reason else ""
                     )
                     message["warning"] = PROMPT_ASSISTANT_LAST_WARNING
-                if trace_storyboard_director:
-                    print(json.dumps({
-                        "event": "preview_prompt_assistant_request_done",
-                        "command": command,
-                        "requestId": request_id,
-                        "ok": bool(message.get("ok")),
-                        "elapsedSeconds": round(time.time() - started, 2),
-                    }, ensure_ascii=False), file=sys.stderr, flush=True)
                 if h3_trace_meta:
                     stop_result = _stop_prompt_assistant_process()
                     h3_cleanup_done = True
@@ -1884,15 +1865,6 @@ def _request_prompt_assistant(
                     })
                 return message
 
-            if trace_storyboard_director:
-                print(json.dumps({
-                    "event": "preview_prompt_assistant_request_timeout",
-                    "command": command,
-                    "requestId": request_id,
-                    "elapsedSeconds": round(time.time() - started, 2),
-                    "childMayStillBeGenerating": True,
-                    "recovery": "restart_prompt_assistant_after_timeout",
-                }, ensure_ascii=False), file=sys.stderr, flush=True)
             if h3_trace_meta:
                 stop_result = _stop_prompt_assistant_process()
                 h3_cleanup_done = True
@@ -2616,65 +2588,6 @@ class PreviewRuntimeHandler(SimpleHTTPRequestHandler):
                         "retryable": True,
                         "resourceHandoff": resource_handoff,
                     }
-            elif suffix in {"/storyboard-director-plan", "/storyboard-director"}:
-                message = _request_prompt_assistant(
-                    "storyboardDirectorPlan",
-                    {
-                        "storyText": str(request.get("storyText") or ""),
-                        "sourceAnalysis": str(request.get("sourceAnalysis") or ""),
-                        "visualCuePack": str(request.get("visualCuePack") or ""),
-                        "rules": str(request.get("rules") or ""),
-                        "selectedStoryDirection": request.get("selectedStoryDirection"),
-                        "visualEventChain": request.get("visualEventChain"),
-                    },
-                    timeout=120,
-                )
-            elif suffix in {"/storyboard-story-directions", "/storyboard-directions"}:
-                message = _request_prompt_assistant(
-                    "storyboardStoryDirections",
-                    {
-                        "storyText": str(request.get("storyText") or ""),
-                        "sourceAnalysis": str(request.get("sourceAnalysis") or ""),
-                        "storyDirectionSeed": str(request.get("storyDirectionSeed") or ""),
-                    },
-                    timeout=120,
-                )
-            elif suffix in {"/storyboard-final-shot-prompts", "/storyboard-final-shots"}:
-                message = _request_prompt_assistant(
-                    "storyboardFinalShotPrompts",
-                    {
-                        "storyText": str(request.get("storyText") or ""),
-                        "sourceAnalysis": str(request.get("sourceAnalysis") or ""),
-                        "visualCuePack": str(request.get("visualCuePack") or ""),
-                        "selectedStoryDirection": request.get("selectedStoryDirection"),
-                        "visualEventChain": request.get("visualEventChain"),
-                        "finalShotSeed": str(request.get("finalShotSeed") or ""),
-                    },
-                    timeout=300,
-                )
-            elif suffix in {"/storyboard-unified-nine-shots", "/storyboard-unified"}:
-                message = _request_prompt_assistant(
-                    "storyboardUnifiedNineShots",
-                    {
-                        "storyText": str(request.get("storyText") or ""),
-                        "sourceAnalysis": str(request.get("sourceAnalysis") or ""),
-                        "visualCuePack": str(request.get("visualCuePack") or ""),
-                        "unifiedSeed": str(request.get("unifiedSeed") or ""),
-                    },
-                    timeout=300,
-                )
-            elif suffix in {"/storyboard-visual-event-chain", "/storyboard-events"}:
-                message = _request_prompt_assistant(
-                    "storyboardVisualEventChain",
-                    {
-                        "storyText": str(request.get("storyText") or ""),
-                        "sourceAnalysis": str(request.get("sourceAnalysis") or ""),
-                        "visualCuePack": str(request.get("visualCuePack") or ""),
-                        "selectedStoryDirection": request.get("selectedStoryDirection"),
-                        "visualEventSeed": str(request.get("visualEventSeed") or ""),
-                    },
-                    timeout=300,
-                )
             elif suffix in {"/reverse", "/reverse-image-prompt"}:
                 raw_h3_reverse = _is_prompt_assistant_minimax_h3_reverse(
                     "reverseImagePrompt", request

@@ -13,16 +13,10 @@
   const hasPromptAssistant =
     typeof existingApi.promptAssistantGetStatus === 'function' &&
     typeof existingApi.promptAssistantOptimizePrompt === 'function' &&
-    typeof existingApi.promptAssistantStoryboardStoryDirections === 'function' &&
-    typeof existingApi.promptAssistantStoryboardVisualEventChain === 'function' &&
-    typeof existingApi.promptAssistantStoryboardFinalShotPrompts === 'function' &&
-    typeof existingApi.promptAssistantStoryboardUnifiedNineShots === 'function' &&
-    typeof existingApi.promptAssistantStoryboardDirectorPlan === 'function' &&
     typeof existingApi.promptAssistantReverseImagePrompt === 'function'
   const hasSmartAi =
     typeof existingApi.smartAiPromptOptimize === 'function' &&
-    typeof existingApi.smartAiImageReverse === 'function' &&
-    typeof existingApi.smartAiStoryboardUnifiedNineShots === 'function'
+    typeof existingApi.smartAiImageReverse === 'function'
   const hasClientAuth =
     typeof existingApi.clientAuthStatus === 'function' &&
     typeof existingApi.clientAuthLogin === 'function' &&
@@ -256,21 +250,6 @@
   const promptAssistantOptimizePrompt = existingApi.promptAssistantOptimizePrompt || ((payload) => (
     promptAssistantRequest('/optimize-prompt', payload)
   ))
-  const promptAssistantStoryboardDirectorPlan = existingApi.promptAssistantStoryboardDirectorPlan || ((payload) => (
-    promptAssistantRequest('/storyboard-director-plan', payload)
-  ))
-  const promptAssistantStoryboardStoryDirections = existingApi.promptAssistantStoryboardStoryDirections || ((payload) => (
-    promptAssistantRequest('/storyboard-story-directions', payload)
-  ))
-  const promptAssistantStoryboardVisualEventChain = existingApi.promptAssistantStoryboardVisualEventChain || ((payload) => (
-    promptAssistantRequest('/storyboard-visual-event-chain', payload)
-  ))
-  const promptAssistantStoryboardFinalShotPrompts = existingApi.promptAssistantStoryboardFinalShotPrompts || ((payload) => (
-    promptAssistantRequest('/storyboard-final-shot-prompts', payload)
-  ))
-  const promptAssistantStoryboardUnifiedNineShots = existingApi.promptAssistantStoryboardUnifiedNineShots || ((payload) => (
-    promptAssistantRequest('/storyboard-unified-nine-shots', payload)
-  ))
   const promptAssistantReverseImagePrompt = existingApi.promptAssistantReverseImagePrompt || ((payload) => (
     promptAssistantRequest('/reverse-image-prompt', payload)
   ))
@@ -369,20 +348,6 @@
       })()
     })
   ))
-  const smartAiStoryboardUnifiedNineShots = existingApi.smartAiStoryboardUnifiedNineShots || ((payload) => (
-    clientApiRequest('/api/client/grok/storyboard-unified-nine-shots', {
-      ...((payload && typeof payload === 'object') ? payload : {}),
-      token: (() => {
-        try {
-          const raw = localStorage.getItem(CLIENT_AUTH_STORAGE_KEY)
-          const stored = raw ? JSON.parse(raw) : null
-          return String(stored?.session?.token || '').trim()
-        } catch {
-          return ''
-        }
-      })()
-    })
-  ))
   const clientAuthAiTaskAuthorize = existingApi.clientAuthAiTaskAuthorize || ((payload) => (
     clientApiRequest('/api/ai/tasks', payload)
   ))
@@ -434,11 +399,6 @@
     ...(typeof clientAuthAiTaskCommitUsage === 'function' ? { clientAuthAiTaskCommitUsage } : {}),
     promptAssistantGetStatus,
     promptAssistantOptimizePrompt,
-    promptAssistantStoryboardStoryDirections,
-    promptAssistantStoryboardVisualEventChain,
-    promptAssistantStoryboardFinalShotPrompts,
-    promptAssistantStoryboardUnifiedNineShots,
-    promptAssistantStoryboardDirectorPlan,
     promptAssistantReverseImagePrompt,
     qwenLoraCatalog,
     minimaxH3LoraCatalog,
@@ -447,6 +407,5 @@
     minimaxH3OutputList,
     smartAiPromptOptimize,
     smartAiImageReverse,
-    smartAiStoryboardUnifiedNineShots,
   }
 })()

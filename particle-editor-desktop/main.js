@@ -1277,11 +1277,9 @@ const NOVAFLOW_CLIENT_API_DEFAULT_PORT = "4761";
 const NOVAFLOW_CLIENT_API_CLOUD_DEFAULT_URL = "https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-backend";
 const NOVAFLOW_ADMIN_SERVER_AUTOSTART_ENV = "NOVAFLOW_ADMIN_SERVER_AUTOSTART";
 const NF_ELECTRON_AB_NO_ADMIN_SERVER_AUTOSTART = hasProcessSwitch("nf-electron-ab-no-admin-server-autostart");
-const NOVAFLOW_GROK_STORYBOARD_PATH = "/api/client/grok/storyboard-unified-nine-shots";
 const NOVAFLOW_GROK_CLOUD_DEFAULT_PATHS = new Set([
   "/api/client/grok/prompt-optimize",
-  "/api/client/grok/image-reverse",
-  NOVAFLOW_GROK_STORYBOARD_PATH
+  "/api/client/grok/image-reverse"
 ]);
 const NOVAFLOW_CLIENT_API_ALLOWED_PATHS = new Set([
   "/health",
@@ -1299,7 +1297,6 @@ const NOVAFLOW_CLIENT_API_ALLOWED_PATHS = new Set([
   "/api/client/ai-config",
   "/api/client/grok/prompt-optimize",
   "/api/client/grok/image-reverse",
-  "/api/client/grok/storyboard-unified-nine-shots",
   "/api/provider/grok/chat",
   "/api/ai/tasks",
   "/api/ai/tasks/usage"
@@ -1341,7 +1338,6 @@ function joinNovaFlowClientApiUrl(baseUrl, pathName) {
 }
 
 function novaFlowClientApiTimeoutLimit(pathName, payload) {
-  if (pathName === NOVAFLOW_GROK_STORYBOARD_PATH) return 120_000;
   const purpose = String(payload?.purpose || "").trim().toLowerCase().replace(/_/g, "-");
   const isH3 = (
     pathName === "/api/client/grok/image-reverse"
@@ -3290,7 +3286,7 @@ function logPromptAssistantStderrLine(clean) {
       const commandName = String(payload.command || "");
       const ordinaryArtPromptPatch = eventName.startsWith("ordinary_art_prompt_patch")
         || commandName === "ordinaryArtPromptPatch";
-      if (eventName.includes("storyboard_") || commandName.includes("storyboard") || eventName.startsWith("reverse_") || ordinaryArtPromptPatch || eventName.startsWith("minimax_h3_") || commandName.startsWith("minimaxH3")) {
+      if (eventName.startsWith("reverse_") || ordinaryArtPromptPatch || eventName.startsWith("minimax_h3_") || commandName.startsWith("minimaxH3")) {
         appendLogLine(
           eventName.includes("error") ? "error" : "info",
           `prompt-assistant-service:${eventName}`,
@@ -3632,7 +3628,6 @@ function tracePromptAssistantH3Lifecycle(event, metadata = {}) {
 
 async function requestPromptAssistant(command, payload = {}, timeoutMs = 300_000, options = {}) {
   const config = getPromptAssistantConfig();
-  const traceStoryboardRequest = command === "storyboardDirectorPlan" || command === "storyboardVisualEventChain" || command === "storyboardUnifiedNineShots";
   const reverseCommand = command === "reverseImagePrompt";
   const staticImageReverseRequest = isPromptAssistantStaticImageReverseRequest(command, payload);
   const reverseCachePrepareRequest = isPromptAssistantReverseCachePrepareRequest(command);
@@ -3648,9 +3643,6 @@ async function requestPromptAssistant(command, payload = {}, timeoutMs = 300_000
   if (reverseCommand) promptAssistantLastWarning = "";
   const leaseRequired = command !== "status";
   if (leaseRequired && promptAssistantRequestLease) {
-    if (traceStoryboardRequest) {
-      appendLogLine("error", "prompt-assistant-request-rejected", { command, reason: "busy" });
-    }
     return {
       ...config,
       ok: false,
@@ -3724,32 +3716,9 @@ async function requestPromptAssistant(command, payload = {}, timeoutMs = 300_000
         stopResult: "not-requested"
       });
     }
-    if (traceStoryboardRequest) {
-      traceMeta = {
-        command,
-        requestId,
-        timeoutMs: effectiveTimeoutMs,
-        storyChars: String(payload?.storyText || "").length,
-        sourceAnalysisChars: String(payload?.sourceAnalysis || "").length,
-        visualCuePackChars: String(payload?.visualCuePack || "").length,
-        rulesChars: String(payload?.rules || "").length,
-        selectedDirectionChars: payload?.selectedStoryDirection ? JSON.stringify(payload.selectedStoryDirection).length : 0,
-        visualEventSeedChars: String(payload?.visualEventSeed || "").length,
-        visualEventCount: Array.isArray(payload?.visualEventChain) ? payload.visualEventChain.length : 0
-      };
-      appendLogLine("info", "prompt-assistant-request-start", traceMeta);
-    }
     const data = await new Promise((resolve, reject) => {
       const timer = setTimeout(async () => {
         promptAssistantPending.delete(requestId);
-        if (traceStoryboardRequest) {
-          appendLogLine("error", "prompt-assistant-request-timeout", {
-            ...(traceMeta || { command, requestId }),
-            elapsedMs: Date.now() - startedAt,
-            childMayStillBeGenerating: true,
-            recovery: "restart_prompt_assistant_after_timeout"
-          });
-        }
         if (h3TraceMeta) {
           const stopResult = await stopPromptAssistantServiceWithVerifiedResult();
           tracePromptAssistantH3Lifecycle("timeout", {
@@ -3849,13 +3818,6 @@ async function requestPromptAssistant(command, payload = {}, timeoutMs = 300_000
         stopResult: "not-requested",
         errorCode: String(err?.errorCode || "prompt-assistant-error"),
         ok: false
-      });
-    }
-    if (traceStoryboardRequest) {
-      appendLogLine("error", "prompt-assistant-request-error", {
-        ...(traceMeta || { command }),
-        elapsedMs: Date.now() - startedAt,
-        error: promptAssistantLastError
       });
     }
     return {
@@ -5646,9 +5608,6 @@ ipcMain.handle("smart-ai-image-reverse", async (_evt, payload) => {
   return requestNovaFlowSmartAiApi("/api/client/grok/image-reverse", payload);
 });
 
-ipcMain.handle("smart-ai-storyboard-unified-nine-shots", async (_evt, payload) => {
-  return requestNovaFlowSmartAiApi("/api/client/grok/storyboard-unified-nine-shots", payload);
-});
 
 ipcMain.handle("license-get-machine-id", async () => {
   const machineId = await licenseCore.getMachineId();
@@ -6183,84 +6142,10 @@ ipcMain.handle("prompt-assistant-optimize-prompt", async (_evt, payload) => {
   return result;
 });
 
-ipcMain.handle("prompt-assistant-storyboard-director-plan", async (_evt, payload) => {
-  const storyText = String(payload?.storyText || "").slice(0, 4000);
-  const sourceAnalysis = String(payload?.sourceAnalysis || "").slice(0, 6000);
-  const visualCuePack = String(payload?.visualCuePack || "").slice(0, 1200);
-  const rules = String(payload?.rules || "").slice(0, 4000);
-  const selectedStoryDirection = payload?.selectedStoryDirection && typeof payload.selectedStoryDirection === "object"
-    ? {
-        title: String(payload.selectedStoryDirection.title || "").slice(0, 80),
-        direction: String(payload.selectedStoryDirection.direction || "").slice(0, 240),
-        elements: String(payload.selectedStoryDirection.elements || "").slice(0, 160),
-        worldStyle: String(payload.selectedStoryDirection.worldStyle || "").slice(0, 80)
-      }
-    : null;
-  const visualEventChain = Array.isArray(payload?.visualEventChain)
-    ? payload.visualEventChain.slice(0, 9).map((item) => ({
-        title: String(item?.title || item?.event || "").slice(0, 80),
-        action: String(item?.action || item?.visibleAction || "").slice(0, 180),
-        sceneAnchor: String(item?.sceneAnchor || item?.currentSpace || item?.space || item?.location || "").slice(0, 80),
-        cause: String(item?.cause || item?.causalRole || "").slice(0, 160)
-      }))
-    : [];
-  return await requestPromptAssistant("storyboardDirectorPlan", { storyText, sourceAnalysis, visualCuePack, rules, selectedStoryDirection, visualEventChain }, 180_000);
-});
 
-ipcMain.handle("prompt-assistant-storyboard-story-directions", async (_evt, payload) => {
-  const storyText = String(payload?.storyText || "").slice(0, 4000);
-  const sourceAnalysis = String(payload?.sourceAnalysis || "").slice(0, 6000);
-  const storyDirectionSeed = String(payload?.storyDirectionSeed || "").slice(0, 80);
-  return await requestPromptAssistant("storyboardStoryDirections", { storyText, sourceAnalysis, storyDirectionSeed }, 120_000);
-});
 
-ipcMain.handle("prompt-assistant-storyboard-visual-event-chain", async (_evt, payload) => {
-  const storyText = String(payload?.storyText || "").slice(0, 4000);
-  const sourceAnalysis = String(payload?.sourceAnalysis || "").slice(0, 6000);
-  const visualCuePack = String(payload?.visualCuePack || "").slice(0, 1200);
-  const visualEventSeed = String(payload?.visualEventSeed || "").slice(0, 80);
-  const selectedStoryDirection = payload?.selectedStoryDirection && typeof payload.selectedStoryDirection === "object"
-    ? {
-        title: String(payload.selectedStoryDirection.title || "").slice(0, 80),
-        direction: String(payload.selectedStoryDirection.direction || "").slice(0, 240),
-        elements: String(payload.selectedStoryDirection.elements || "").slice(0, 160),
-        worldStyle: String(payload.selectedStoryDirection.worldStyle || "").slice(0, 80)
-      }
-    : null;
-  return await requestPromptAssistant("storyboardVisualEventChain", { storyText, sourceAnalysis, visualCuePack, selectedStoryDirection, visualEventSeed }, 300_000);
-});
 
-ipcMain.handle("prompt-assistant-storyboard-final-shot-prompts", async (_evt, payload) => {
-  const storyText = String(payload?.storyText || "").slice(0, 4000);
-  const sourceAnalysis = String(payload?.sourceAnalysis || "").slice(0, 6000);
-  const visualCuePack = String(payload?.visualCuePack || "").slice(0, 1200);
-  const finalShotSeed = String(payload?.finalShotSeed || "").slice(0, 80);
-  const selectedStoryDirection = payload?.selectedStoryDirection && typeof payload.selectedStoryDirection === "object"
-    ? {
-        title: String(payload.selectedStoryDirection.title || "").slice(0, 80),
-        direction: String(payload.selectedStoryDirection.direction || "").slice(0, 240),
-        elements: String(payload.selectedStoryDirection.elements || "").slice(0, 160),
-        worldStyle: String(payload.selectedStoryDirection.worldStyle || "").slice(0, 80)
-      }
-    : null;
-  const visualEventChain = Array.isArray(payload?.visualEventChain)
-    ? payload.visualEventChain.slice(0, 9).map((item) => ({
-        title: String(item?.title || item?.event || "").slice(0, 80),
-        action: String(item?.action || item?.visibleAction || "").slice(0, 220),
-        sceneAnchor: String(item?.sceneAnchor || item?.currentSpace || item?.space || item?.location || "").slice(0, 120),
-        cause: String(item?.cause || item?.causalRole || "").slice(0, 180)
-      }))
-    : [];
-  return await requestPromptAssistant("storyboardFinalShotPrompts", { storyText, sourceAnalysis, visualCuePack, selectedStoryDirection, visualEventChain, finalShotSeed }, 300_000);
-});
 
-ipcMain.handle("prompt-assistant-storyboard-unified-nine-shots", async (_evt, payload) => {
-  const storyText = String(payload?.storyText || "").slice(0, 4000);
-  const sourceAnalysis = String(payload?.sourceAnalysis || "").slice(0, 6000);
-  const visualCuePack = String(payload?.visualCuePack || "").slice(0, 1200);
-  const unifiedSeed = String(payload?.unifiedSeed || "").slice(0, 80);
-  return await requestPromptAssistant("storyboardUnifiedNineShots", { storyText, sourceAnalysis, visualCuePack, unifiedSeed }, 300_000);
-});
 
 // 万物迁移 needs the scene's style as WORDS before it can repaint an object into it: measured live,
 // Qwen Image Edit never infers image 2's style and applies it to image 1, but renders any style that is
