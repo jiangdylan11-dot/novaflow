@@ -5,6 +5,8 @@
   const ROOT_ID = 'novaflow-video-format-convert-root'
   const STYLE_ID = 'novaflow-video-format-convert-style'
   const BUTTON_ATTR = 'data-novaflow-video-format-convert-entry'
+  const MP4_ENTRY_ATTR = 'data-novaflow-mp4-compress-entry'
+  const SPINE_ENTRY_ATTR = 'data-novaflow-spine-atlas-webp-entry'
   const FORMATS = [
     { id: 'mp4', label: 'MP4', note: 'H.264 + AAC，通用播放和引擎导入都认。' },
     { id: 'webm', label: 'WEBM', note: 'VP9，同画质下体积更小，网页内嵌常用。' },
@@ -188,6 +190,24 @@
     syncBounds()
   }
 
+  // Directly below MP4 压缩, falling back to above SPINE 图集转换 while that entry has not mounted
+  // yet. Which patch module's interval fires first is not fixed, so the slot is re-checked on every
+  // pass instead of being trusted from the one insert -- but only written when it is actually
+  // wrong, or the nudge would feed the brand runtime's mutation observer once a second.
+  function placeEntry(list, button) {
+    const mp4Entry = document.querySelector(`[${MP4_ENTRY_ATTR}="1"]`)
+    if (mp4Entry instanceof HTMLElement && mp4Entry.parentElement === list) {
+      if (mp4Entry.nextElementSibling !== button) list.insertBefore(button, mp4Entry.nextSibling)
+      return
+    }
+    const spineEntry = document.querySelector(`[${SPINE_ENTRY_ATTR}="1"]`)
+    if (spineEntry instanceof HTMLElement && spineEntry.parentElement === list) {
+      if (spineEntry.previousElementSibling !== button) list.insertBefore(button, spineEntry)
+      return
+    }
+    if (list.lastElementChild !== button) list.appendChild(button)
+  }
+
   function ensureEntry() {
     const existing = document.querySelector(`[${BUTTON_ATTR}="1"]`)
     const toolsActive = isToolsSectionActive()
@@ -204,12 +224,7 @@
       return
     }
     if (existing instanceof HTMLElement) {
-      // The other patch modules append, so an entry that mounts after this one lands behind it.
-      // Only touch the DOM when the position is actually wrong, or the nudge feeds the runtime's
-      // own mutation observer every second.
-      if (existing.parentElement === jpg.parentElement && existing.parentElement.lastElementChild !== existing) {
-        existing.parentElement.appendChild(existing)
-      }
+      if (existing.parentElement === jpg.parentElement) placeEntry(jpg.parentElement, existing)
       if (state.active) setEntryVisual(true)
       return
     }
@@ -220,8 +235,7 @@
     button.removeAttribute('data-novaflow-tools-entry-active')
     button.textContent = '视频格式转换'
     button.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); activate() })
-    // Last in the list; the guard above puts it back if another module appends after it.
-    jpg.parentElement.appendChild(button)
+    placeEntry(jpg.parentElement, button)
     setEntryVisual(false)
     ;['PNG 压缩', 'JPG 压缩'].forEach((label) => {
       const nativeButton = findEntry(label)

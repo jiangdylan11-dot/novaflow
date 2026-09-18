@@ -18,7 +18,7 @@ for (const tool of TOOLS) {
   test(`${tool.file} is loaded and packaged as a required runtime helper`, () => {
     const html = read('particle-editor', 'index.html')
     const buildScript = read('particle-editor-desktop', 'scripts', 'build-renderer.mjs')
-    assert.match(html, new RegExp(`${tool.file.replace(/\./g, '\\.')}\\?v=20260919-video-tools-2`))
+    assert.match(html, new RegExp(`${tool.file.replace(/\./g, '\\.')}\\?v=20260919-video-tools-3`))
     // Once in the shell file list and once in the required set, like every other tool module.
     assert.equal((buildScript.match(new RegExp(`"${tool.file.replace(/\./g, '\\.')}"`, 'g')) || []).length, 2)
   })
@@ -96,24 +96,27 @@ for (const tool of TOOLS) {
   })
 }
 
-test('MP4 压缩 sits above SPINE 图集转换 and 视频格式转换 stays last', () => {
+test('MP4 压缩 then 视频格式转换 sit above SPINE 图集转换', () => {
   // The other patch modules append, so a bare appendChild here would leave the order up to
   // whichever module's interval fires first.
   const spineTool = read('particle-editor', 'spine-atlas-webp.tool.js')
-  assert.equal(
-    mp4Tool.match(/const SPINE_ENTRY_ATTR = '(.+?)'/)[1],
-    spineTool.match(/const BUTTON_ATTR = '(.+?)'/)[1]
-  )
+  const spineAttr = spineTool.match(/const BUTTON_ATTR = '(.+?)'/)[1]
+  assert.equal(mp4Tool.match(/const SPINE_ENTRY_ATTR = '(.+?)'/)[1], spineAttr)
+  assert.equal(convertTool.match(/const SPINE_ENTRY_ATTR = '(.+?)'/)[1], spineAttr)
+  assert.equal(convertTool.match(/const MP4_ENTRY_ATTR = '(.+?)'/)[1], mp4Tool.match(/const BUTTON_ATTR = '(.+?)'/)[1])
+
   assert.match(mp4Tool, /const anchor = spineEntry instanceof HTMLElement && spineEntry\.parentElement === jpg\.parentElement \? spineEntry : null/)
   assert.match(mp4Tool, /jpg\.parentElement\.insertBefore\(button, anchor\)/)
 
-  assert.match(convertTool, /jpg\.parentElement\.appendChild\(button\)/)
-  assert.doesNotMatch(convertTool, /insertBefore/)
-  // Re-assert last place, but only when it is actually wrong: an unconditional move would feed the
-  // brand runtime's mutation observer once a second.
-  const lastGuard = convertTool.match(/if \(existing\.parentElement === jpg\.parentElement[\s\S]{0,200}?appendChild\(existing\)/)?.[0] || ''
-  assert.match(lastGuard, /lastElementChild !== existing/)
-  assert.match(lastGuard, /existing\.parentElement\.appendChild\(existing\)/)
+  // 视频格式转换 goes right after the MP4 entry, and re-checks that slot every pass because the
+  // module that owns its anchor may mount later. Each branch writes only when the slot is wrong:
+  // an unconditional move would feed the brand runtime's mutation observer once a second.
+  const place = convertTool.match(/  function placeEntry\(list, button\) \{[\s\S]*?\n  \}/)?.[0] || ''
+  assert.match(place, /if \(mp4Entry\.nextElementSibling !== button\) list\.insertBefore\(button, mp4Entry\.nextSibling\)/)
+  assert.match(place, /if \(spineEntry\.previousElementSibling !== button\) list\.insertBefore\(button, spineEntry\)/)
+  assert.match(place, /if \(list\.lastElementChild !== button\) list\.appendChild\(button\)/)
+  assert.match(convertTool, /if \(existing\.parentElement === jpg\.parentElement\) placeEntry\(jpg\.parentElement, existing\)/)
+  assert.match(convertTool, /\n    placeEntry\(jpg\.parentElement, button\)\n/)
 })
 
 test('the sliders are the runtime own 2px track, not a browser default', () => {
