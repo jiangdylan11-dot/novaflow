@@ -169,8 +169,8 @@ MINIMAX_H3_CAMERA_DIRECTION_PATTERN = re.compile(
     re.I,
 )
 MINIMAX_H3_ACTION_PROGRESSION_PATTERN = re.compile(
-    r"(?:开始|随后|接着|逐渐|持续|过程|转身|移动|抬起|放下|完成|最终|过渡|动作)"
-    r"|\b(?:begin(?:s)?|then|next|gradually|progress(?:es|ion)?|continues?|turns?|moves?|raises?|lowers?|completes?|finally|resolves?|transition|motion|action)\b",
+    r"(?:开始|随后|接着|逐渐|持续|过程|转身|移动|抬起|放下|完成|最终|过渡|动作|反复|来回|往复|不断|循环|节奏|频率|加快|加速|放慢|减速|推进|进出|起伏|摆动|晃动|抽动|每次)"
+    r"|\b(?:begin(?:s)?|then|next|gradually|progress(?:es|ion)?|continues?|turns?|moves?|raises?|lowers?|completes?|finally|resolves?|transition|motion|action|repeat\w*|repetition|rhythm\w*|cycl\w*|thrust\w*|accelerat\w*|decelerat\w*|oscillat\w*|pulse\w*)\b",
     re.I,
 )
 MINIMAX_H3_USER_CAMERA_INTENT_PATTERN = re.compile(
@@ -8833,7 +8833,42 @@ def is_ui_design_prompt_payload(payload: dict) -> bool:
 
 
 
-ART_SEMANTIC_FUSION_RULES = '你是图像提示词的视觉编辑。将完整底稿和补充要求融合成唯一的最终画面。\n先理解每项修改涉及的段落，再通读全篇消除冲突。新要求覆盖冲突旧描述；未被要求改变的身份、人数、年龄、发色、服饰、姿态、物品、画风和构图完整保留。\n修改场景时同步环境段落、光线和景深。例如白底改室外，必须替换白底、无其他物体、后景无层次等旧设定，写出适合主体的具体室外环境，不能在风格段追加室外而保留旧背景。环境细节应可辨，不能又完全虚化。\n要求增加人物细节时，必须在主体段落补充与已有角色一致的五官、发丝、手部、服饰或配饰细节，不只改风格或背景。不能改变原来的动作或暴露程度。\n质量、精美度、丰富感等要求，落实为具体的纹理、材质反光、光影过渡、空间层次或色彩关系，不能照抄提升画面质量等口号。结合原画风，不能把水彩、漫画、像素画擅自改成摄影或三维渲染。\n每项补充要求都必须体现在相关正文中；保留原段落标题，未受影响的句子尽量原样保留。没有标题时保持自然段。\n完成后检查每项要求是否已落实、是否有冲突旧描述残留、是否遗漏未修改细节。只输出最终完整提示词，不输出修改建议、分析过程、用户附加要求段落或原文与新版并列。不添加未提供的图片事实。姿态可能写在环境段里；更换背景也不能丢掉站立、坐姿等原动作。人物细节要求必须在主体物品段产生至少两处具体新细节，不允许该段完全照抄。'
+ART_SEMANTIC_FUSION_RULES = '你是图像提示词的视觉编辑。将完整底稿和补充要求融合成唯一的最终画面。\n先理解每项修改涉及的段落，再通读全篇消除冲突。新要求覆盖冲突旧描述；未被要求改变的身份、人数、年龄、发色、服饰、姿态、物品、画风和构图完整保留。\n修改场景时同步环境段落、光线和景深。例如白底改室外，必须替换白底、无其他物体、后景无层次等旧设定，写出适合主体的具体室外环境，不能在风格段追加室外而保留旧背景。环境细节应可辨，不能又完全虚化。\n要求增加人物细节时，必须在主体段落补充与已有角色一致的五官、发丝、手部、服饰或配饰细节，不只改风格或背景。不能改变原来的动作或暴露程度。\n质量、精美度、丰富感等要求，落实为具体的纹理、材质反光、光影过渡、空间层次或色彩关系，不能照抄提升画面质量等口号。结合原画风，不能把水彩、漫画、像素画擅自改成摄影或三维渲染。\n每项补充要求都必须体现在相关正文中；保留原段落标题，未受影响的句子尽量原样保留。底稿没有标题时，必须按 [风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数] 五段重新组织，不保持自然段，也不得自创段名。\n完成后检查每项要求是否已落实、是否有冲突旧描述残留、是否遗漏未修改细节。只输出最终完整提示词，不输出修改建议、分析过程、用户附加要求段落或原文与新版并列。不添加未提供的图片事实。姿态可能写在环境段里；更换背景也不能丢掉站立、坐姿等原动作。人物细节要求必须在主体物品段产生至少两处具体新细节，不允许该段完全照抄。'
+
+# An empty requirement box still asks for work: enrich the draft instead of echoing it.
+ART_SEMANTIC_FUSION_AUTO_ENRICH = (
+    "没有额外修改要求：保留全部原设定、身份、人数、动作、构图与画风不变，只针对底稿已有对象补足具体视觉细节，至少覆盖材质纹理、光影过渡、空间层次、色彩关系中的两项，并修复模糊或互相矛盾的表述。禁止原样返回底稿，禁止只追加高质量、精美、丰富等空泛词，禁止新增底稿没有的人物、道具或场景。"
+)
+
+# 单图反推产出的五段结构是用户认可的版式；多图反推与提示词优化统一对齐到它。
+ART_FIVE_SECTIONS = ("[风格设定]", "[主体物品]", "[环境背景]", "[光线与色彩]", "[拍摄参数]")
+
+ART_FIVE_SECTION_OUTPUT_RULE = (
+    "最终正向提示词的版式（覆盖前面任何“写成一段自然语言”的说法）：只允许按顺序输出五个且仅五个 TOML 风格 section，每个 section 标题单独占一行——[风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数]。\n[风格设定]写媒介、绘画或渲染语言、氛围与完成质感；[主体物品]逐个写主体与物品的数量、外观、姿势、动作、材质、颜色，以及彼此的空间、遮挡与接触关系；[环境背景]写环境、前中后景、承托面与遮挡层次；[光线与色彩]写光源方向、软硬、明暗、轮廓光、主辅色与局部颜色；[拍摄参数]只写景别、视角、构图、裁切、透视与景深。\n每个 section 都必须有具体内容，不得新增、合并、重命名或省略 section，不得输出 [用户附加要求]，不得输出 Markdown 代码围栏、标题、前言、总结或解释。版式化不得改变语义：底稿里的人物、数量、身份、年龄、动作、相互关系、道具、场景、风格、色彩、构图以及全部要求项与避免项，必须逐条落进对应 section；可以换措辞和重新组织，但不得删除、弱化、合并或改变含义，也不得新增底稿没有的事实。底稿中形如 __NOVAFLOW_…__ 的资源引用占位符是 @参考图 等引用的载体，必须原样、原次数出现在对应 section 中，不得翻译、改写、拆分、合并或删除。"
+)
+
+
+def art_prompt_uses_own_sections(value: str) -> bool:
+    return bool(re.search(r"(?m)^[ \t]*\[[^\]\r\n]{1,40}\][ \t]*$", str(value or "")))
+
+
+def art_five_section_failure(candidate: str) -> str:
+    text = str(candidate or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return "未返回完整提示词"
+    if "```" in text:
+        return "输出包含代码围栏"
+    matches = list(re.finditer(r"(?m)^[ \t]*(\[[^\]\r\n]{1,40}\])[ \t]*$", text))
+    if tuple(match.group(1) for match in matches) != ART_FIVE_SECTIONS:
+        return "未按五个固定分段输出"
+    if not text.startswith(ART_FIVE_SECTIONS[0]):
+        return "五段正文前有多余内容"
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        if not re.search(r"[\u4e00-\u9fffA-Za-z0-9]", text[match.end():end]):
+            return "分段为空：" + match.group(1)
+    return ""
+
 
 def art_semantic_fusion_input(source, requirements):
     text = str(source or "").strip()
@@ -8854,9 +8889,17 @@ def art_semantic_fusion_failure(source, instruction, candidate):
     if not candidate:
         return "未返回完整提示词"
     if ordinary_art_retention_compact(source) == ordinary_art_retention_compact(candidate):
-        return "" if not instruction or ordinary_art_instruction_allows_unchanged(instruction) else "未实际融合修改要求"
+        # No instruction means "enrich the draft", not "return it"; an echo is a failure.
+        if not instruction:
+            return "未补足视觉细节"
+        return "" if ordinary_art_instruction_allows_unchanged(instruction) else "未实际融合修改要求"
     if re.search(r"用户补充要求（只作为最终提示词约束|\[用户附加要求\]|不作为图片可见事实", candidate):
         return "仍在照搬补充要求"
+    # A draft that carries no layout of its own is normalized to the five-section layout.
+    if not art_prompt_uses_own_sections(source):
+        layout_failure = art_five_section_failure(candidate)
+        if layout_failure:
+            return layout_failure
     def sections(value):
         return dict((m[0], m[1].strip()) for m in re.findall(r"(?:^|\n)\s*\[([^\]\n]+)\]\s*\n([\s\S]*?)(?=\n\s*\[|$)", value))
     before, after = sections(source), sections(candidate)
@@ -8876,7 +8919,7 @@ def art_semantic_fusion_failure(source, instruction, candidate):
     failure = ordinary_art_retention_failure(source, instruction, candidate) or ordinary_art_core_redefinition_failure(source, instruction, candidate)
     if failure:
         return failure
-    if re.search(r"质量|精美|丰富|细节", instruction) and not ordinary_art_richness_visual_change(source, candidate):
+    if (not instruction or re.search(r"质量|精美|丰富|细节", instruction)) and not ordinary_art_richness_visual_change(source, candidate):
         return "仅追加泛化质量词"
     for token in re.findall(r"__NOVAFLOW_[A-Z0-9_:-]+__|<(?:Picture|Video|Audio) [1-9]\d*>", source):
         if token not in candidate:
@@ -17188,8 +17231,10 @@ class PromptAssistant:
             if re.search(requested, instruction):
                 preserve = [word for word in preserve if not re.search(category, word)]
         request = (
-            "必须保留的原设定（除非用户明确要求替换）：" + "、".join(word for word in preserve if word not in instruction) + "\n完整底稿：\n" + source + "\n\n补充要求（最高优先级）：\n" + (instruction or "保留核心设定，修复矛盾，补足适合原画风的具体视觉细节。")
+            "必须保留的原设定（除非用户明确要求替换）：" + "、".join(word for word in preserve if word not in instruction) + "\n完整底稿：\n" + source + "\n\n补充要求（最高优先级）：\n" + (instruction or ART_SEMANTIC_FUSION_AUTO_ENRICH)
+            + ("" if instruction else "\n本次验收：最终提示词必须与底稿存在可辨的具体差异，新增细节必须落在底稿已有对象上。")
             + ("\n其他调用约束（以用户补充要求为优先，不要照抄约束文字）：\n" + requirements if requirements and requirements != instruction else "")
+            + ("" if art_prompt_uses_own_sections(source) else "\n\n" + ART_FIVE_SECTION_OUTPUT_RULE)
             + "\n\n只输出完整中文正向提示词，保留原段落标题。不要输出 JSON、负向提示词或解释。各段先保留未修改的原有细节，再融入对应修改，避免无关扩写。"
         )
         if re.search(r"(?:增加|丰富|增强|细化|完善).{0,8}(?:人物|角色|主体).{0,6}细节", instruction):
@@ -21384,11 +21429,11 @@ class PromptAssistant:
 
         images = payload.get("images")
         if not isinstance(images, list) or not images:
-            raise ValueError("\u8bf7\u5148\u9009\u62e9\u53ef\u5206\u6790\u7684\u56fe\u7247")
+            raise ValueError("请先选择可分析的图片")
         first = images[0] if isinstance(images[0], dict) else {}
         tensor = data_url_to_tensor(str(first.get("dataUrl") or ""))
         if tensor is None:
-            raise ValueError("\u8bf7\u5148\u9009\u62e9\u53ef\u5206\u6790\u7684\u56fe\u7247")
+            raise ValueError("请先选择可分析的图片")
         adapter = Qwen3VLAbliteratedAdapter(
             self.reverse_model_path(),
             max_side=768,
@@ -22095,18 +22140,45 @@ class PromptAssistant:
                         "不得输出主图/原图、风格参考、保持原风格、处理方式、模型名称等界面词。最终只描述目标画面本身。"
                         if purpose == "roleReference" else ""
                     )
+                    uses_five_sections = purpose == "roleReference"
                     prompt = (
                         f"{image_tokens}"
-                        "请联合分析这些图片，生成一段适合图像生成模型使用的中文自然语言提示词。"
+                        "请联合分析这些图片，生成适合图像生成模型使用的中文提示词。"
                         f"{role_isolation}"
                         "不要输出英文，不要输出 SD 标签，不要输出 JSON，不要写成分析报告。"
                         f"{merge_instruction}"
+                        + ("\n\n" + ART_FIVE_SECTION_OUTPUT_RULE if uses_five_sections else "")
                     )
                     llama_template = (
-                        "<|im_start|>system\n你是 NovaFlow 的 AI反推助手。请直接输出可用于生成图片的中文自然语言描述。<|im_end|>\n"
-                        "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+                        "<|im_start|>system\n"
+                        + ("你是 NovaFlow 的 AI反推助手。请按五段 TOML 版式输出可用于生成图片的中文描述。"
+                           if uses_five_sections
+                           else "你是 NovaFlow 的 AI反推助手。请直接输出可用于生成图片的中文自然语言描述。")
+                        + "<|im_end|>\n"
+                        + "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
                     )
-                    output = self.generate(prompt, images=image_tensors, llama_template=llama_template, max_length=220)
+                    layout_failure = ""
+                    for attempt in range(2 if uses_five_sections else 1):
+                        repair = (
+                            "\n上次输出未通过版式检查：" + layout_failure
+                            + "。请只重新输出正确版式的五段正文，不要解释。"
+                        ) if attempt else ""
+                        output = self.generate(
+                            prompt + repair,
+                            images=image_tensors,
+                            llama_template=llama_template,
+                            max_length=900 if uses_five_sections else 220,
+                        )
+                        layout_failure = (
+                            art_five_section_failure(clean_reverse_output(output))
+                            if uses_five_sections else ""
+                        )
+                        if not layout_failure:
+                            break
+                    if layout_failure:
+                        raise ValueError(
+                            "多图反推未按五段版式输出，原提示词未修改：" + layout_failure
+                        )
 
         if not description:
             description = clean_reverse_output(output)

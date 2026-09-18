@@ -467,6 +467,7 @@ test("smart AI request builders preserve Responses API contracts", () => {
   assert.equal(promptRequest.inputMeta.mode, "prompt_optimize");
   assert.deepEqual(promptRequest.resultOptions, {
     artSemanticFusion: true,
+    artFiveSectionPrompt: true,
     originalPrompt: "一名剑客站在雪山前",
     requirements: "电影感",
     supportsNegativePrompt: true,
@@ -3909,7 +3910,7 @@ test("ordinary Grok image reverse uses strict nf.visual.v1 while other image mod
   }, "grok-contract-test");
   assert.equal(roleReference.inputMeta.visualIrSchema, "");
   assert.equal(roleReference.body.max_output_tokens, 2048);
-  assert.deepEqual(roleReference.resultOptions, {});
+  assert.deepEqual(roleReference.resultOptions, { artFiveSectionPrompt: true });
   assert.doesNotMatch(roleReference.body.input[0].content.at(-1).text, /nf\.visual\.v1/);
 
   const animation = buildGrokImageReverseRequest({ images: [image], surface: "animation" }, "grok-contract-test");
@@ -4031,7 +4032,9 @@ test("nf.visual.v2 is explicit opt-in for one static reference and never widens 
     assert.equal(request.inputMeta.visualIrSchema, "");
     assert.equal(request.body.max_output_tokens, 2048);
     assert.equal("text" in request.body, false);
-    assert.deepEqual(request.resultOptions, {});
+    assert.deepEqual(request.resultOptions, payload.scenario === "role_reference"
+      ? { artFiveSectionPrompt: true }
+      : {});
     assert.doesNotMatch(request.body.input[0].content.at(-1).text, /nf\.visual\.v2/);
   }
 });

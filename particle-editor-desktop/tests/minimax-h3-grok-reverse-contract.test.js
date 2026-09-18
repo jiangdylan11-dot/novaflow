@@ -959,3 +959,37 @@ assert.match(previewSource, /"minimax-h3-i2v-reverse",[\s\S]*?"minimax-h3-fl2v-r
 assert.match(previewSource, /requirements_limit = 12000 if normalized_purpose/);
 
 console.log("MiniMax H3 Grok reverse contract passed");
+
+// A repeated or rhythmic motion is progression, not a still-frame caption. The gate's word list
+// had only one-way wording (开始 / 逐渐 / 持续 / 动作), so a faithful "反复进出，每次…" narrative
+// was rejected as "must describe action progression, not only a static image caption".
+{
+  const clientSource = fs.readFileSync(
+    path.join(root, "particle-editor", "ai-sequence-minimax-h3-prompt.workflow.js"),
+    "utf8",
+  );
+  const clientPattern = vm.runInNewContext(
+    clientSource.match(/const ACTION_PROGRESSION_EXPRESSION = (\/.*\/[a-z]*)/)[1],
+  );
+  const servicePattern = vm.runInNewContext(
+    extractNamedConstant(source, "MINIMAX_H3_ACTION_PROGRESSION_PATTERN"),
+  );
+  const progression = [
+    "快速有力地反复进出，每次都伴随少量液体喷出。",
+    "身体来回晃动，胸口起伏。",
+    "节奏由慢加快，幅度逐渐加大。",
+    "Repeated thrusts accelerate, pulsing rhythmically.",
+  ];
+  const stillCaptions = [
+    "固定镜头。<主体 1> 仰躺，双腿分开，全程保持同一姿势。",
+    "A still portrait of a seated figure, soft light, neutral background.",
+  ];
+  for (const pattern of [clientPattern, servicePattern]) {
+    for (const text of progression) {
+      assert.ok(pattern.test(text), `rhythmic motion must read as progression: ${text}`);
+    }
+    for (const text of stillCaptions) {
+      assert.ok(!pattern.test(text), `a still caption must stay blocked: ${text}`);
+    }
+  }
+}

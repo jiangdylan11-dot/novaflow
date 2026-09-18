@@ -54907,6 +54907,19 @@
     return true;
   }
 
+  // In 图生视频 / 首尾帧视频 / 多参视频 the visible prompt is the @ mention overlay;
+  // the textarea under it is the aria-hidden backing store, and the overlay only
+  // re-renders on the backing element's input/change events. React commits a picked
+  // history entry by writing textarea.value directly, which fires neither, so the
+  // overlay kept showing the previous prompt until some later layout pass happened
+  // to remount it. Re-render it as soon as the pick lands instead.
+  const AI_ANIMATION_PROMPT_HISTORY_PICK_REFRESH_DELAYS = [0, 32, 120, 320];
+
+  function refreshAiAnimationPromptMentionOverlay(textarea) {
+    if (!(textarea instanceof HTMLElement) || !textarea.classList.contains("nf-resource-mention-backing")) return;
+    window.NovaFlowResourceMentionTool?.refreshSurface?.();
+  }
+
   function refreshAiAnimationPromptHistoryPickTextarea(textControl) {
     if (!(textControl instanceof HTMLElement)) return false;
     const popover = textControl.closest('[data-novaflow-ai-history-positioned="1"], div[style*="position: fixed"][style*="z-index: 9999"]');
@@ -54919,11 +54932,11 @@
       if (!props || !Object.prototype.hasOwnProperty.call(props, "value")) return;
       const nextValue = String(props.value ?? "");
       if (nextValue !== textarea.value) setAiAnimationPromptTextControlDomValue(textarea, nextValue);
+      refreshAiAnimationPromptMentionOverlay(textarea);
     };
     try {
       if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(refresh);
-      window.setTimeout(refresh, 0);
-      window.setTimeout(refresh, 32);
+      AI_ANIMATION_PROMPT_HISTORY_PICK_REFRESH_DELAYS.forEach((delay) => window.setTimeout(refresh, delay));
     } catch {}
     return true;
   }
@@ -63985,9 +63998,12 @@
     return document.body?.getAttribute(ART_GENERATE_ACTIVE_ATTR) === "1";
   }
 
+  function isNovaflowArtSplitWorkspaceActive() {
+    return document.body?.getAttribute("data-novaflow-spine-split-workspace-active") === "1";
+  }
+
   function isNovaflowArtSplitExportSurfaceActive() {
-    return document.body?.getAttribute("data-novaflow-spine-split-workspace-active") === "1" &&
-      !isNovaflowArtGenerateExportSurfaceActive();
+    return isNovaflowArtSplitWorkspaceActive() && !isNovaflowArtGenerateExportSurfaceActive();
   }
 
   function novaflowUiDesignExportImageSource() {
@@ -64002,7 +64018,27 @@
     }
   }
 
+  async function novaflowArtSplitCanvasExportImageSource() {
+    if (!isNovaflowArtSplitWorkspaceActive()) return null;
+    const bridge = window.NovaFlowSpineSplitBridge;
+    if (!bridge || typeof bridge.getCanvasExportSource !== "function") return null;
+    try {
+      const source = await bridge.getCanvasExportSource();
+      if (!String(source?.dataUrl || "").startsWith("data:image/")) return null;
+      return {
+        dataUrl: source.dataUrl,
+        name: source.name || "art_canvas.png",
+        label: source.label || "\u5f53\u524d\u753b\u677f"
+      };
+    } catch {
+      return null;
+    }
+  }
+
   async function novaflowArtSplitExportImageSource(state = getNovaflowArtSplitState()) {
+    // \u5bfc\u51fa\u8ddf\u7740\u753b\u677f\u8d70\uff1a\u5148\u95ee\u62c6\u56fe\u753b\u677f\u5b83\u6b64\u523b\u6e32\u67d3\u7684\u90a3\u4e00\u5f20\u3002
+    const canvasSource = await novaflowArtSplitCanvasExportImageSource();
+    if (canvasSource) return canvasSource;
     if (hasNovaflowArtSplitLayers(state)) {
       if (String(state?.splitPreviewDataUrl || "").startsWith("data:image/")) {
         return {
@@ -64051,15 +64087,15 @@
       if (uiSource) return uiSource;
       throw new Error("\u5f53\u524d UI \u753b\u677f\u6ca1\u6709\u53ef\u5bfc\u51fa\u7684\u7ed3\u679c\u56fe");
     }
-    if (isNovaflowArtGenerateExportSurfaceActive()) {
-      const selected = selectedNovaflowArtGenerateImageSource();
-      if (selected) return selected;
-      throw new Error("\u5f53\u524d\u751f\u6210\u753b\u677f\u6ca1\u6709\u53ef\u5bfc\u51fa\u7684\u7ed3\u679c\u56fe");
-    }
+    // \u7f8e\u5de5\u751f\u6210\u9762\u677f\u5f00\u7740\u65f6\u753b\u677f\u4ecd\u7136\u662f\u62c6\u56fe\u753b\u677f\uff0c
+    // \u6240\u4ee5\u5148\u6309\u753b\u677f\u5bfc\u51fa\uff0c\u751f\u6210\u7ed3\u679c\u53ea\u505a\u5175\u5e95\u3002
     const splitSource = await novaflowArtSplitExportImageSource(state);
     if (splitSource) return splitSource;
     const selected = selectedNovaflowArtGenerateImageSource();
     if (selected) return selected;
+    if (isNovaflowArtGenerateExportSurfaceActive()) {
+      throw new Error("\u5f53\u524d\u751f\u6210\u753b\u677f\u6ca1\u6709\u53ef\u5bfc\u51fa\u7684\u7ed3\u679c\u56fe");
+    }
     throw new Error("\u5f53\u524d\u6ca1\u6709\u53ef\u5bfc\u51fa\u7684\u7f8e\u5de5\u56fe");
   }
 
@@ -64224,7 +64260,7 @@
 
   async function buildNovaflowArtExportPsdDataUrl() {
     const state = getNovaflowArtSplitState();
-    if (isNovaflowArtSplitExportSurfaceActive() && hasNovaflowArtSplitLayers(state)) {
+    if (isNovaflowArtSplitWorkspaceActive() && hasNovaflowArtSplitLayers(state)) {
       const debug = window.NovaFlowSpineSplitDebug;
       if (debug && typeof debug.buildPsdDataUrl === "function") {
         return await debug.buildPsdDataUrl();
@@ -71397,6 +71433,38 @@
         font-weight: 900;
         line-height: 1;
       }
+      .novaflow-art-generate-ref button.novaflow-art-generate-ref-size {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: auto;
+        bottom: 0;
+        width: 100%;
+        height: 20px;
+        padding: 0 6px;
+        border: 0;
+        border-top: 1px solid rgba(255,255,255,0.12);
+        border-radius: 0;
+        background: rgba(0,0,0,0.62);
+        color: #E8E8E8;
+        box-sizing: border-box;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: .2px;
+        line-height: 20px;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .novaflow-art-generate-ref button.novaflow-art-generate-ref-size:hover {
+        background: rgba(0,0,0,0.78);
+        color: #21C487;
+      }
+      .novaflow-art-generate-ref button.novaflow-art-generate-ref-size[data-novaflow-art-generate-ref-size-apply="0"] {
+        cursor: default;
+        color: rgba(232,232,232,0.72);
+      }
       .novaflow-art-generate-prompt {
         position: relative;
         min-height: 0;
@@ -72210,6 +72278,21 @@
         border-radius: 999px !important;
         font-size: 16px !important;
         line-height: 1 !important;
+      }
+      #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-ref button.novaflow-art-generate-ref-size {
+        left: 0 !important;
+        right: 0 !important;
+        top: auto !important;
+        bottom: 0 !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        height: 20px !important;
+        min-height: 20px !important;
+        max-height: 20px !important;
+        border-radius: 0 !important;
+        font-size: 11px !important;
+        line-height: 20px !important;
       }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt {
         position: relative !important;
@@ -74135,6 +74218,131 @@
     });
   }
 
+  const ART_GENERATE_REFERENCE_SIZE_PENDING = new Set();
+
+  function artGenerateReferenceSizeToken(index, dataUrl) {
+    const text = String(dataUrl || "");
+    return `${index}:${text.length}:${text.slice(0, 96)}`;
+  }
+
+  function readArtGenerateReferenceSize(ref) {
+    const width = Math.round(Number(ref?.width) || 0);
+    const height = Math.round(Number(ref?.height) || 0);
+    return width > 0 && height > 0 ? { width, height } : null;
+  }
+
+  function measureArtGenerateReferenceSize(dataUrl) {
+    return loadNovaflowArtExportImage(dataUrl).then((image) => {
+      const width = Math.round(Number(image?.naturalWidth || image?.width) || 0);
+      const height = Math.round(Number(image?.naturalHeight || image?.height) || 0);
+      return width > 0 && height > 0 ? { width, height } : null;
+    }).catch(() => null);
+  }
+
+  function ensureArtGenerateReferenceSize(index, ref) {
+    const known = readArtGenerateReferenceSize(ref);
+    if (known) return known;
+    const dataUrl = String(ref?.dataUrl || "");
+    if (!dataUrl) return null;
+    const token = artGenerateReferenceSizeToken(index, dataUrl);
+    if (ART_GENERATE_REFERENCE_SIZE_PENDING.has(token)) return null;
+    ART_GENERATE_REFERENCE_SIZE_PENDING.add(token);
+    measureArtGenerateReferenceSize(dataUrl).then((size) => {
+      // A decode failure keeps its token: a broken data URL must not re-measure on every render.
+      if (!size) return;
+      ART_GENERATE_REFERENCE_SIZE_PENDING.delete(token);
+      const current = artGenerateReferences()[index];
+      if (!current || String(current.dataUrl || "") !== dataUrl) return;
+      current.width = size.width;
+      current.height = size.height;
+      renderArtGenerateSurfaces({ forceBottom: true });
+    });
+    return null;
+  }
+
+  function artGenerateActiveCapability() {
+    const models = window.NovaFlowArtGenerateModels;
+    const provider = models?.normalizeProvider?.(ART_GENERATE_STATE.provider) || "local";
+    return models?.capabilityFor?.(provider, ART_GENERATE_STATE.mode, ART_GENERATE_STATE)
+      || models?.getCapability?.(provider, ART_GENERATE_STATE.mode)
+      || { fields: [] };
+  }
+
+  function artGenerateResolutionTarget(state, capability) {
+    // Only the numeric W/H inputs the parameter row actually renders can be filled.
+    const fields = new Set(Array.isArray(capability?.fields) ? capability.fields : []);
+    if (fields.has("width") && fields.has("height")) {
+      return { widthKey: "width", heightKey: "height", min: 256, max: 2048 };
+    }
+    if (fields.has("size") && String(state?.gptSize || "") === "Custom") {
+      return { widthKey: "gptCustomWidth", heightKey: "gptCustomHeight", min: 1024, max: 3840 };
+    }
+    return null;
+  }
+
+  function artGenerateFitResolution(rawWidth, rawHeight, min, max) {
+    const width = Math.round(Number(rawWidth) || 0);
+    const height = Math.round(Number(rawHeight) || 0);
+    const low = Math.round(Number(min) || 0);
+    const high = Math.round(Number(max) || 0);
+    if (!(width > 0) || !(height > 0) || !(low > 0) || !(high >= low)) return null;
+    const longest = Math.max(width, height);
+    const shortest = Math.min(width, height);
+    let scale = 1;
+    if (longest > high) scale = high / longest;
+    if (shortest * scale < low) scale = low / shortest;
+    const fit = (value) => Math.max(low, Math.min(high, Math.max(1, Math.round(value * scale))));
+    return { width: fit(width), height: fit(height) };
+  }
+
+  function applyArtGenerateReferenceResolution(index) {
+    const size = readArtGenerateReferenceSize(artGenerateReferences()[index]);
+    const target = artGenerateResolutionTarget(ART_GENERATE_STATE, artGenerateActiveCapability());
+    if (!size || !target) return false;
+    const fit = artGenerateFitResolution(size.width, size.height, target.min, target.max);
+    if (!fit) return false;
+    ART_GENERATE_STATE[target.widthKey] = fit.width;
+    ART_GENERATE_STATE[target.heightKey] = fit.height;
+    ART_GENERATE_STATE.status = `\u5206\u8fa8\u7387\u5df2\u586b\u5165 ${fit.width}\u00d7${fit.height}`;
+    ART_GENERATE_STATE.error = "";
+    renderArtGenerateSurfaces({ forceBottom: true });
+    return true;
+  }
+
+  function renderArtGenerateReferenceSizeBadge(index, ref) {
+    const size = ensureArtGenerateReferenceSize(index, ref);
+    if (!size) return null;
+    const label = `${size.width}\u00d7${size.height}`;
+    const target = artGenerateResolutionTarget(ART_GENERATE_STATE, artGenerateActiveCapability());
+    const fit = target ? artGenerateFitResolution(size.width, size.height, target.min, target.max) : null;
+    const fitLabel = fit ? `${fit.width}\u00d7${fit.height}` : "";
+    // The W / H range is narrower than a 4K plate, so a clamped fill says what it will write.
+    const title = !fit
+      ? `\u53c2\u8003\u56fe\u5206\u8fa8\u7387 ${label}`
+      : (fitLabel === label
+        ? `${label}\uff0c\u70b9\u51fb\u586b\u5165\u5206\u8fa8\u7387`
+        : `${label}\uff0c\u70b9\u51fb\u586b\u5165 ${fitLabel}`);
+    return createArtEl("button", {
+      type: "button",
+      className: "novaflow-art-generate-ref-size",
+      "data-novaflow-art-generate-ref-size": String(index + 1),
+      "data-novaflow-art-generate-ref-size-apply": fit ? "1" : "0",
+      title: title,
+      "aria-label": title,
+      onclick: (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        applyArtGenerateReferenceResolution(index);
+      },
+      onkeydown: (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        applyArtGenerateReferenceResolution(index);
+      }
+    }, label);
+  }
+
   function renderArtGenerateReferenceGrid() {
     return createArtEl("div", {
       className: "novaflow-art-generate-ref-grid",
@@ -74174,7 +74382,8 @@
             setArtGenerateReference(index, null);
             renderArtGenerateSurfaces({ forceBottom: true });
           }
-        }, "\u00d7")
+        }, "\u00d7"),
+        renderArtGenerateReferenceSizeBadge(index, current)
       ]
       : [
         createArtEl("span", { className: "nf-upload-dropzone__icon", text: "+" }),

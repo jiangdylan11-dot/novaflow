@@ -13,8 +13,9 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 const CACHE_VERSION = "20260916-mention-surfaces-2";
 // The CSS did not change in the second round; only the scripts moved to the new key.
 const CSS_CACHE_VERSION = "20260916-mention-surfaces-1";
-// The brand runtime moved on again (unauthorized 仓库 / 导出 shortcuts); the mention tool and Smart AI stay on -2.
-const BRAND_CACHE_VERSION = "20260916-shortcut-auth-1";
+// The brand runtime and Smart AI each moved on again; the mention tool and its CSS stay on -2.
+const BRAND_CACHE_VERSION = "20260918-ref-resolution-1";
+const SMART_AI_CACHE_VERSION = "20260918-h3-model-gate-1";
 
 function loadMentionTool() {
   const source = read("particle-editor/resource-mention.tool.js");
@@ -226,11 +227,37 @@ test("index.html cache-busts the mention surface files", () => {
     "novaflow-brand-runtime.js": BRAND_CACHE_VERSION,
     "resource-mention.tool.js": CACHE_VERSION,
     "resource-mention.tool.css": CSS_CACHE_VERSION,
-    "novaflow-smart-ai.js": CACHE_VERSION,
+    "novaflow-smart-ai.js": SMART_AI_CACHE_VERSION,
   };
   for (const [fileName, version] of Object.entries(expected)) {
     assert.ok(html.includes(`${fileName}?v=${version}`), `${fileName} should cache-bust with ${version}`);
   }
   const tool = read("particle-editor/resource-mention.tool.js");
   assert.match(tool, /const RESOURCE_MENTION_TOOL_VERSION = "20260916-mention-surfaces-2";/);
+});
+
+// The overlay is what the user reads; the textarea under it is aria-hidden. React commits a picked
+// history entry by writing textarea.value directly, which fires no input/change event, so without an
+// explicit re-render the visible prompt kept the previous text until the next layout pass remounted it.
+test("picking a prompt history entry re-renders the mention overlay right away", () => {
+  const source = read("particle-editor/novaflow-brand-runtime.js");
+  const helperStart = source.indexOf("function refreshAiAnimationPromptMentionOverlay(");
+  assert.ok(helperStart >= 0, "the mention overlay refresh helper must exist");
+  const helper = source.slice(helperStart, source.indexOf("\n  }\n", helperStart));
+  assert.match(helper, /classList\.contains\("nf-resource-mention-backing"\)/,
+    "only a mounted backing textarea should reach the mention tool");
+  assert.match(helper, /window\.NovaFlowResourceMentionTool\?\.refreshSurface\?\.\(\)/);
+
+  const pickStart = source.indexOf("function refreshAiAnimationPromptHistoryPickTextarea(");
+  assert.ok(pickStart >= 0);
+  const pick = source.slice(pickStart, source.indexOf("\n  }\n", pickStart));
+  assert.match(pick, /refreshAiAnimationPromptMentionOverlay\(textarea\)/,
+    "the history pick refresh must notify the overlay, not only the backing value");
+  assert.match(pick, /AI_ANIMATION_PROMPT_HISTORY_PICK_REFRESH_DELAYS\.forEach\(\(delay\) => window\.setTimeout\(refresh, delay\)\)/);
+  assert.match(source, /const AI_ANIMATION_PROMPT_HISTORY_PICK_REFRESH_DELAYS = \[0, 32, 120, 320\];/,
+    "the pick must keep re-checking long enough for a late React commit");
+
+  const tool = read("particle-editor/resource-mention.tool.js");
+  assert.match(tool, /textarea\.addEventListener\("input", handlers\.backingChange\);/,
+    "the overlay still only follows the backing store through its events");
 });

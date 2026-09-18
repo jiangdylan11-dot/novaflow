@@ -95,7 +95,7 @@ const MINIMAX_H3_VISUAL_IR_AGE_VALUES = new Set(["adult", "minor", "young_lookin
 const MINIMAX_H3_VISUAL_IR_SENSITIVE_LEVELS = new Set(["none", "suggestive", "nudity", "explicit"]);
 const MINIMAX_H3_EXPLICIT_YOUTH_PATTERN = /(?:未成年人?|未满\s*(?:18|十八)\s*岁?|(?:18|十八)\s*岁?\s*(?:以下|以内)|(?<![0-9])(?:1[0-7]|[0-9])\s*岁(?![0-9])|儿童|孩童|小孩|幼女|幼童|幼儿|婴幼儿|婴儿|萝莉|正太)|(?<![a-z0-9_])(?:underage|minors?|child(?:ren)?(?![-\s]?like\b)|juveniles?|loli|shota|under[-\s]*18|(?:1[0-7]|[0-9])[-\s]*years?[-\s]*old|(?:1[0-7]|[0-9])\s*y\s*\/?\s*o|aged?\s*(?:1[0-7]|[0-9]))(?![a-z0-9_])/iu;
 const MINIMAX_H3_CAMERA_DIRECTION_PATTERN = /(?:\u8fd0\u955c|\u955c\u5934(?:\u4fdd\u6301|\u56fa\u5b9a|\u9759\u6b62|\u7a33\u5b9a|\u7f13\u6162|\u8f7b\u5fae|\u5e73\u7a33|\u8ddf\u968f|\u63a8\u8fdb|\u62c9\u8fdc|\u6447\u6444|\u79fb\u52a8|\u73af\u7ed5|\u4e0a\u5347|\u4e0b\u964d|\u53d8\u7126|\u5207\u6362)|(?:\u56fa\u5b9a|\u9759\u6b62|\u624b\u6301|\u8ddf\u968f|\u63a8\u8fdb|\u62c9\u8fdc|\u6447\u6444|\u73af\u7ed5|\u5347\u964d|\u53d8\u7126|\u63a8\u8f68)[^\u3002\n]{0,10}\u955c\u5934)|\bcamera\b[^.\n]{0,36}\b(?:holds|remains|stays|static|locked|moves|pushes|pulls|pans|tilts|tracks|orbits|dollies|cranes|follows)\b|\b(?:static camera|locked[- ]off camera|handheld camera|camera (?:movement|motion)|dolly|tracking shot|push[- ]in|pull[- ]out)\b/iu;
-const MINIMAX_H3_ACTION_PROGRESSION_PATTERN = /(?:\u5f00\u59cb|\u968f\u540e|\u63a5\u7740|\u9010\u6e10|\u6301\u7eed|\u8fc7\u7a0b|\u8f6c\u8eab|\u79fb\u52a8|\u62ac\u8d77|\u653e\u4e0b|\u5b8c\u6210|\u6700\u7ec8|\u8fc7\u6e21|\u52a8\u4f5c)|\b(?:begin(?:s)?|then|next|gradually|progress(?:es|ion)?|continues?|turns?|moves?|raises?|lowers?|completes?|finally|resolves?|transition|motion|action)\b/iu;
+const MINIMAX_H3_ACTION_PROGRESSION_PATTERN = /(?:\u5f00\u59cb|\u968f\u540e|\u63a5\u7740|\u9010\u6e10|\u6301\u7eed|\u8fc7\u7a0b|\u8f6c\u8eab|\u79fb\u52a8|\u62ac\u8d77|\u653e\u4e0b|\u5b8c\u6210|\u6700\u7ec8|\u8fc7\u6e21|\u52a8\u4f5c|\u53cd\u590d|\u6765\u56de|\u5f80\u590d|\u4e0d\u65ad|\u5faa\u73af|\u8282\u594f|\u9891\u7387|\u52a0\u5feb|\u52a0\u901f|\u653e\u6162|\u51cf\u901f|\u63a8\u8fdb|\u8fdb\u51fa|\u8d77\u4f0f|\u6446\u52a8|\u6643\u52a8|\u62bd\u52a8|\u6bcf\u6b21)|\b(?:begin(?:s)?|then|next|gradually|progress(?:es|ion)?|continues?|turns?|moves?|raises?|lowers?|completes?|finally|resolves?|transition|motion|action|repeat\w*|repetition|rhythm\w*|cycl\w*|thrust\w*|accelerat\w*|decelerat\w*|oscillat\w*|pulse\w*)\b/iu;
 const MINIMAX_H3_BASE_PROMPT_FIELDS = Object.freeze([
   "integrated_multimodal_description",
   "overall_soundscape",
@@ -2045,6 +2045,21 @@ function buildMiniMaxH3VisualIrRepairBody(body, reason = "visual IR contract mis
   return next;
 }
 
+function buildArtSemanticFusionRepairBody(body, reason = "未补足视觉细节", lastPrompt = "") {
+  const next = JSON.parse(JSON.stringify(body || {}));
+  const input = Array.isArray(next.input) ? next.input : [];
+  const user = [...input].reverse().find((item) => item?.role === "user");
+  if (!user || !Array.isArray(user.content)) return next;
+  user.content.push(smartAiInputText([
+    "上一次融合未通过检查：" + String(reason || "").slice(0, 160) + "。",
+    lastPrompt ? "上次结果：\n" + String(lastPrompt).slice(0, 4000) : "",
+    "请重新输出完整提示词：保留全部未被要求修改的原设定，同时补上缺失的具体视觉改动。",
+    "不要复述这条修复说明，不要解释，只返回同一个 JSON 结构。"
+  ].filter(Boolean).join("\n")));
+  next.temperature = 0.45;
+  return next;
+}
+
 function buildMiniMaxH3CompileBody(body, visualIr, options = {}) {
   const mode = String(options.minimaxH3Mode || "");
   const durationSeconds = Number(options.durationSeconds || 0);
@@ -2700,7 +2715,17 @@ function projectMiniMaxH3PrimaryRichFactsToVisualIr(richPrompt, diagnostics = nu
     signals.push("sexual_fluid");
   }
   if (level !== "safe") signals.push("age_ambiguous");
-  const visiblePersonCount = GROK_VISUAL_IR_ZERO_PERSON_MARKER_PATTERN.test(safetyText) ? 1 : 0;
+  // The strict validator rejects a zero count whenever the safety classification is person-only, so
+  // derive the count from that same evidence rather than from a fixed subject-word list. The list
+  // only accepts 女性/男性 with a noun after it (女性角色, 女性人物), so a faithful "成年女性仰躺"
+  // projected to zero people while the exposure facts read off the very same sentence said a person
+  // was there - every explicit single-subject frame then hard-failed as h3_contract_visual_ir_semantic.
+  const personWordEvidence = GROK_VISUAL_IR_ZERO_PERSON_MARKER_PATTERN.test(safetyText)
+    || GROK_VISUAL_IR_ZERO_PERSON_GENDER_SUBJECT_PATTERN.test(safetyText);
+  // An explicit object-only frame (a prop or garment shot) keeps its zero count.
+  const objectOnlyEvidence = !personWordEvidence
+    && GROK_VISUAL_IR_ZERO_PERSON_OBJECT_PATTERN.test(safetyText);
+  const visiblePersonCount = personWordEvidence || (level !== "safe" && !objectOnlyEvidence) ? 1 : 0;
   const skeleton = {
     schema: GROK_VISUAL_IR_SCHEMA_V2,
     asset_type: visiblePersonCount > 0 ? "人物画面" : "物品画面",
@@ -3090,7 +3115,9 @@ async function callGrokResponseWithVisualRetry(body, inputMeta, resultOptions, e
   let totalDurationMs = 0;
   let providerCallCount = 0;
   let retryUsed = false;
-  const maxAttempts = retryEnabled || h3RetryEnabled ? 2 : 1;
+  const fusionRepairEnabled = resultOptions?.artSemanticFusion === true
+    || resultOptions?.artFiveSectionPrompt === true;
+  const maxAttempts = retryEnabled || h3RetryEnabled || fusionRepairEnabled ? 2 : 1;
   const finalizeResult = (result, data = result?.data, finalOptions = {}) => {
     const generationGate = String(data?.generationGate || "");
     const writableV2Candidate = resultOptions?.visualIrSchema === GROK_VISUAL_IR_SCHEMA_V2
@@ -3223,6 +3250,15 @@ async function callGrokResponseWithVisualRetry(body, inputMeta, resultOptions, e
         : error?.grokVisualIrReason === GROK_VISUAL_IR_PROJECTION_REDACTION_REASON
           ? "visual-contract-projection-redaction-required"
           : "";
+      if (attempt === 1 && fusionRepairEnabled && error?.artSemanticFusionFailed === true) {
+        currentBody = buildArtSemanticFusionRepairBody(
+          body,
+          error.artSemanticFusionReason,
+          error.artSemanticFusionPrompt
+        );
+        retryUsed = true;
+        continue;
+      }
       if (attempt === 1 && h3RetryEnabled && error?.minimaxH3ContractInvalid === true) {
         currentBody = buildMiniMaxH3RepairBody(body, error?.errorCode, error);
         retryUsed = true;
@@ -8727,9 +8763,25 @@ function grokResponsesPublicResult(data, options = {}) {
   if (options.artSemanticFusion === true) {
     parsed.prompt = finalizeArtSemanticFusion(parsed.prompt, options.requirements);
     const failure = artSemanticFusionFailure(options.originalPrompt, options.requirements, parsed.prompt);
-    if (failure) throw new Error("提示词融合未完成：" + failure + "；原提示词未修改");
+    if (failure) {
+      const fusionError = new Error("提示词融合未完成：" + failure + "；原提示词未修改");
+      fusionError.artSemanticFusionFailed = true;
+      fusionError.artSemanticFusionReason = failure;
+      fusionError.artSemanticFusionPrompt = String(parsed.prompt || "");
+      throw fusionError;
+    }
     if (options.nsfw && ordinaryArtPromptCoreAffirmativeMinorPresent(parsed.prompt)) throw new Error("提示词融合未通过内容检查");
     if (options.supportsNegativePrompt && !parsed.negative_prompt) throw new Error("提示词融合未返回反向提示词");
+  }
+  if (options.artFiveSectionPrompt === true && options.artSemanticFusion !== true) {
+    const layoutFailure = artFiveSectionFailure(parsed.prompt);
+    if (layoutFailure) {
+      const layoutError = new Error("提示词版式未通过检查：" + layoutFailure + "；原提示词未修改");
+      layoutError.artSemanticFusionFailed = true;
+      layoutError.artSemanticFusionReason = layoutFailure;
+      layoutError.artSemanticFusionPrompt = String(parsed.prompt || "");
+      throw layoutError;
+    }
   }
   const result = {
     id: data?.id || "",
@@ -8760,7 +8812,34 @@ function grokResponsesPublicResult(data, options = {}) {
 }
 
 
-const ART_SEMANTIC_FUSION_RULES = "你是图像提示词的视觉编辑。将完整底稿和补充要求融合成唯一的最终画面。\n先理解每项修改涉及的段落，再通读全篇消除冲突。新要求覆盖冲突旧描述；未被要求改变的身份、人数、年龄、发色、服饰、姿态、物品、画风和构图完整保留。\n修改场景时同步环境段落、光线和景深。例如白底改室外，必须替换白底、无其他物体、后景无层次等旧设定，写出适合主体的具体室外环境，不能在风格段追加室外而保留旧背景。环境细节应可辨，不能又完全虚化。\n要求增加人物细节时，必须在主体段落补充与已有角色一致的五官、发丝、手部、服饰或配饰细节，不只改风格或背景。不能改变原来的动作或暴露程度。\n质量、精美度、丰富感等要求，落实为具体的纹理、材质反光、光影过渡、空间层次或色彩关系，不能照抄提升画面质量等口号。结合原画风，不能把水彩、漫画、像素画擅自改成摄影或三维渲染。\n每项补充要求都必须体现在相关正文中；保留原段落标题，未受影响的句子尽量原样保留。没有标题时保持自然段。\n完成后检查每项要求是否已落实、是否有冲突旧描述残留、是否遗漏未修改细节。只输出最终完整提示词，不输出修改建议、分析过程、用户附加要求段落或原文与新版并列。不添加未提供的图片事实。姿态可能写在环境段里；更换背景也不能丢掉站立、坐姿等原动作。人物细节要求必须在主体物品段产生至少两处具体新细节，不允许该段完全照抄。";
+const ART_SEMANTIC_FUSION_RULES = "你是图像提示词的视觉编辑。将完整底稿和补充要求融合成唯一的最终画面。\n先理解每项修改涉及的段落，再通读全篇消除冲突。新要求覆盖冲突旧描述；未被要求改变的身份、人数、年龄、发色、服饰、姿态、物品、画风和构图完整保留。\n修改场景时同步环境段落、光线和景深。例如白底改室外，必须替换白底、无其他物体、后景无层次等旧设定，写出适合主体的具体室外环境，不能在风格段追加室外而保留旧背景。环境细节应可辨，不能又完全虚化。\n要求增加人物细节时，必须在主体段落补充与已有角色一致的五官、发丝、手部、服饰或配饰细节，不只改风格或背景。不能改变原来的动作或暴露程度。\n质量、精美度、丰富感等要求，落实为具体的纹理、材质反光、光影过渡、空间层次或色彩关系，不能照抄提升画面质量等口号。结合原画风，不能把水彩、漫画、像素画擅自改成摄影或三维渲染。\n每项补充要求都必须体现在相关正文中；保留原段落标题，未受影响的句子尽量原样保留。底稿没有标题时，必须按 [风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数] 五段重新组织，不保持自然段，也不得自创段名。\n完成后检查每项要求是否已落实、是否有冲突旧描述残留、是否遗漏未修改细节。只输出最终完整提示词，不输出修改建议、分析过程、用户附加要求段落或原文与新版并列。不添加未提供的图片事实。姿态可能写在环境段里；更换背景也不能丢掉站立、坐姿等原动作。人物细节要求必须在主体物品段产生至少两处具体新细节，不允许该段完全照抄。";
+
+// An empty requirement box still asks for work: enrich the draft instead of echoing it.
+const ART_SEMANTIC_FUSION_AUTO_ENRICH = "没有额外修改要求：保留全部原设定、身份、人数、动作、构图与画风不变，只针对底稿已有对象补足具体视觉细节，至少覆盖材质纹理、光影过渡、空间层次、色彩关系中的两项，并修复模糊或互相矛盾的表述。禁止原样返回底稿，禁止只追加高质量、精美、丰富等空泛词，禁止新增底稿没有的人物、道具或场景。";
+
+// 单图反推产出的五段结构是用户认可的版式；多图反推与提示词优化统一对齐到它。
+const ART_FIVE_SECTIONS = ["[风格设定]", "[主体物品]", "[环境背景]", "[光线与色彩]", "[拍摄参数]"];
+
+const ART_FIVE_SECTION_OUTPUT_RULE = "最终正向提示词的版式（覆盖前面任何“写成一段自然语言”的说法）：只允许按顺序输出五个且仅五个 TOML 风格 section，每个 section 标题单独占一行——[风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数]。\n[风格设定]写媒介、绘画或渲染语言、氛围与完成质感；[主体物品]逐个写主体与物品的数量、外观、姿势、动作、材质、颜色，以及彼此的空间、遮挡与接触关系；[环境背景]写环境、前中后景、承托面与遮挡层次；[光线与色彩]写光源方向、软硬、明暗、轮廓光、主辅色与局部颜色；[拍摄参数]只写景别、视角、构图、裁切、透视与景深。\n每个 section 都必须有具体内容，不得新增、合并、重命名或省略 section，不得输出 [用户附加要求]，不得输出 Markdown 代码围栏、标题、前言、总结或解释。版式化不得改变语义：底稿里的人物、数量、身份、年龄、动作、相互关系、道具、场景、风格、色彩、构图以及全部要求项与避免项，必须逐条落进对应 section；可以换措辞和重新组织，但不得删除、弱化、合并或改变含义，也不得新增底稿没有的事实。底稿中形如 __NOVAFLOW_…__ 的资源引用占位符是 @参考图 等引用的载体，必须原样、原次数出现在对应 section 中，不得翻译、改写、拆分、合并或删除。";
+
+function artPromptUsesOwnSections(value) {
+  return /^[ \t]*\[[^\]\r\n]{1,40}\][ \t]*$/mu.test(String(value || ""));
+}
+
+function artFiveSectionFailure(candidate) {
+  const text = String(candidate || "").replace(/\r\n?/gu, "\n").trim();
+  if (!text) return "未返回完整提示词";
+  if (text.includes("```")) return "输出包含代码围栏";
+  const matches = [...text.matchAll(/^[ \t]*(\[[^\]\r\n]{1,40}\])[ \t]*$/gmu)];
+  if (matches.map((match) => match[1]).join("") !== ART_FIVE_SECTIONS.join("")) return "未按五个固定分段输出";
+  if (!text.startsWith(ART_FIVE_SECTIONS[0])) return "五段正文前有多余内容";
+  for (let index = 0; index < matches.length; index += 1) {
+    const start = matches[index].index + matches[index][0].length;
+    const end = index + 1 < matches.length ? matches[index + 1].index : text.length;
+    if (!/[\u4e00-\u9fffA-Za-z0-9]/u.test(text.slice(start, end))) return "分段为空：" + matches[index][1];
+  }
+  return "";
+}
 
 function artSemanticFusionInput(source, requirements) {
   const text = String(source || "").trim();
@@ -8784,9 +8863,16 @@ function finalizeArtSemanticFusion(candidate, instruction) {
 function artSemanticFusionFailure(source, instruction, candidate) {
   if (!candidate) return "未返回完整提示词";
   if (ordinaryArtPromptPatchCompact(source) === ordinaryArtPromptPatchCompact(candidate)) {
-    return !instruction || /^(?:保持原样|保持不变|不做修改|无需修改|原样保留)[。.!！\s]*$/u.test(instruction) ? "" : "未实际融合修改要求";
+    // No instruction means "enrich the draft", not "return it"; an echo is a failure.
+    if (!instruction) return "未补足视觉细节";
+    return /^(?:保持原样|保持不变|不做修改|无需修改|原样保留)[。.!！\s]*$/u.test(instruction) ? "" : "未实际融合修改要求";
   }
   if (/用户补充要求（只作为最终提示词约束|\[用户附加要求\]|不作为图片可见事实/u.test(candidate)) return "仍在照搬补充要求";
+  // A draft that carries no layout of its own is normalized to the五段 layout.
+  if (!artPromptUsesOwnSections(source)) {
+    const layoutFailure = artFiveSectionFailure(candidate);
+    if (layoutFailure) return layoutFailure;
+  }
   const sections = value => new Map([...String(value).matchAll(/(?:^|\n)\s*\[([^\]\n]+)\]\s*\n([\s\S]*?)(?=\n\s*\[|$)/gu)].map(m => [m[1], m[2].trim()]));
   const before = sections(source), after = sections(candidate);
   for (const title of before.keys()) if (!after.get(title)) return "缺少原段落：" + title;
@@ -8806,7 +8892,7 @@ function artSemanticFusionFailure(source, instruction, candidate) {
     || !ordinaryArtPromptPatchNamedHardBlocksPreserved(source, candidate, instruction)) return "遗漏未要求修改的原始设定";
   const coreFailure = ordinaryArtPromptCoreRedefinitionFailure(source, instruction, candidate);
   if (coreFailure) return coreFailure;
-  if (/质量|精美|丰富|细节/u.test(instruction) && !ordinaryArtRichnessVisualChange(source, candidate)) return "仅追加泛化质量词";
+  if ((!instruction || /质量|精美|丰富|细节/u.test(instruction)) && !ordinaryArtRichnessVisualChange(source, candidate)) return "仅追加泛化质量词";
   const resources = source.match(/__NOVAFLOW_[A-Z0-9_:-]+__|<(?:Picture|Video|Audio) [1-9]\d*>/gu) || [];
   if (resources.some(token => !candidate.includes(token))) return "遗漏资源引用";
   return "";
@@ -8823,14 +8909,16 @@ function buildArtSemanticFusionRequest(payload, model) {
     if (/构图|镜头|全身|半身|特写|俯视|仰视|平视|景别/u.test(instruction) && /全身|仰视/u.test(word)) return false;
     return true;
   });
-  const userText = "必须保留的原设定（除非用户明确要求替换）：" + preserve.join("、") + "\n完整底稿：\n" + source + "\n\n补充要求（最高优先级）：\n" + (instruction || "保留核心设定，修复矛盾，补足适合原画风的具体视觉细节。")
+  const userText = "必须保留的原设定（除非用户明确要求替换）：" + preserve.join("、") + "\n完整底稿：\n" + source + "\n\n补充要求（最高优先级）：\n" + (instruction || ART_SEMANTIC_FUSION_AUTO_ENRICH)
+    + (instruction ? "" : "\n本次验收：最终提示词必须与底稿存在可辨的具体差异，新增细节必须落在底稿已有对象上。")
     + "\n\n" + (supportsNegativePrompt
       ? '严格只返回 JSON：{"prompt":"完整中文提示词，原段落标题及换行保留","negative_prompt":"与最终画面一致的中文负向关键词"}，两个字段都不能为空。'
       : '严格只返回 JSON：{"prompt":"完整中文提示词，原段落标题及换行保留"}。没有负向通道，不返回 negative_prompt。')
     + (payload.nsfw === true ? "\n成人内容上下文：用户已开启 NSFW。保持未要求修改的性别、成年身份、裸体状态、身体姿势与人物关系；任何未成年人相关内容仍然禁止。" : "")
     + (payload.requirements && payload.requirements !== instruction ? "\n其他调用约束（以用户补充要求为优先，不要照抄约束文字）：\n" + payload.requirements : "")
     + (supportsNegativePrompt ? "\n原负向提示词：" + (payload.negativePrompt || payload.negative_prompt || "无") : "")
-    + "\n输出前逐字核对这些未要求修改的原设定，每项都必须出现在最终正文中，不能遗漏：" + preserve.join("、");
+    + "\n输出前逐字核对这些未要求修改的原设定，每项都必须出现在最终正文中，不能遗漏：" + preserve.join("、")
+    + (artPromptUsesOwnSections(source) ? "" : "\n\n" + ART_FIVE_SECTION_OUTPUT_RULE);
   return {
     body: { model, store: false, temperature: 0.25, max_output_tokens: 4096,
       text: { format: { type: "json_schema", name: "novaflow_art_semantic_fusion_v1", strict: true,
@@ -8839,7 +8927,7 @@ function buildArtSemanticFusionRequest(payload, model) {
           required: supportsNegativePrompt ? ["prompt", "negative_prompt"] : ["prompt"] } } },
       input: [ { role: "system", content: [smartAiInputText(ART_SEMANTIC_FUSION_RULES)] }, { role: "user", content: [smartAiInputText(userText)] } ] },
     inputMeta: { mode: "prompt_optimize", scenario: "prompt_optimize", charCount: source.length + instruction.length, imageCount: 0, supportsNegativePrompt, hasNegativePrompt: Boolean(payload.negativePrompt || payload.negative_prompt) },
-    resultOptions: { artSemanticFusion: true, originalPrompt: source, requirements: instruction, supportsNegativePrompt, nsfw: payload.nsfw === true }
+    resultOptions: { artSemanticFusion: true, artFiveSectionPrompt: !artPromptUsesOwnSections(source), originalPrompt: source, requirements: instruction, supportsNegativePrompt, nsfw: payload.nsfw === true }
   };
 }
 
@@ -9196,6 +9284,7 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
     scenario.scenario === "role_reference" && scenario.images.length === 2 && scenarioRoles.includes("subject") && scenarioRoles.includes("style")
   );
   const isVideoTask = isAnimation || scenario.scenario === "video_frames";
+  const usesArtFiveSectionReverse = scenario.scenario === "role_reference" && !isVideoTask;
   const usesVisualIrV2 = purpose === "static-image-reverse"
     && !isVideoTask
     && scenario.scenario === "single_reference"
@@ -9274,7 +9363,7 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
     ...(effectiveCurrentPrompt ? ["最终必须把当前提示、图片可见信息和附加要求深度合并为一段提示，不能返回多个版本或机械拼接。", ""] : []),
     usesVisualIr
       ? grokVisualIrOutputRules(visualIrSchema)
-      : smartAiChinesePromptOutputRules(isVideoTask
+      : (usesArtFiveSectionReverse ? ART_FIVE_SECTION_OUTPUT_RULE + "\n" : "") + smartAiChinesePromptOutputRules(isVideoTask
         ? (scenario.scenario === "video_frames" ? "视频首尾帧反推" : "图生视频动作反推")
         : "图片反推", {
         supportsNegativePrompt,
@@ -9307,7 +9396,7 @@ function buildGrokImageReverseRequest(payload, model = "grok-4.3") {
       supportsNegativePrompt,
       visualIrSchema
     },
-    resultOptions: usesVisualIr ? {
+    resultOptions: usesArtFiveSectionReverse ? { artFiveSectionPrompt: true } : usesVisualIr ? {
       visualIrSchema,
       requirements: resultRequirements,
       existingNegativePrompt: supportsNegativePrompt ? negativePrompt : "",

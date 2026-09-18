@@ -41,20 +41,27 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
 
     @staticmethod
     def long_art_base() -> str:
+        # The五段 layout is the canonical Art draft; single newlines keep it one
+        # patch block so anchored edits still target P01.
         return (
+            "[风格设定]\n"
+            "画面为顶级中国幻想RPG游戏CG，精致东方二次元厚涂。"
+            "肌肤保持手绘质感，服装具有丝绸薄纱和精细刺绣材质。\n"
+            "[主体物品]\n"
             "两位25岁以上的成年东方女性角色亲密依偎，身份和数量必须保持。"
             "左侧女性身穿青绿色汉服与半透明披帛，佩戴翡翠首饰。"
             "右侧女性身穿象牙白与淡金色华服，佩戴金色发冠。"
             "两人坐在丝绸床榻上温柔亲吻，四只手和双腿归属明确。"
-            "背景采用明亮象牙白宫廷空间，保留丝绸帷幔和雕花屏风。"
-            "近距离双人全身构图，略微俯视，形成三角结构和S形视觉动线。"
-            "画面为顶级中国幻想RPG游戏CG，精致东方二次元厚涂。"
-            "肌肤保持手绘质感，服装具有丝绸薄纱和精细刺绣材质。"
             "两人的乌黑长发具有清晰发束、高光和细腻手绘层次，不能互相融合。"
-            "肩膀、锁骨、手臂和双腿接受柔和暖光，保留自然高光与轻微红润感。"
-            "整体以青绿色、象牙白和淡金色为主色，维持清透柔和的东方幻想氛围。"
             "要求两张脸五官不同，身体交叠合理，服装头发首饰不能错误融合。"
-            "避免真人摄影、3D渲染、塑料皮肤、错误手指、多余肢体和复制脸。"
+            "避免真人摄影、3D渲染、塑料皮肤、错误手指、多余肢体和复制脸。\n"
+            "[环境背景]\n"
+            "背景采用明亮象牙白宫廷空间，保留丝绸帷幔和雕花屏风。\n"
+            "[光线与色彩]\n"
+            "肩膀、锁骨、手臂和双腿接受柔和暖光，保留自然高光与轻微红润感。"
+            "整体以青绿色、象牙白和淡金色为主色，维持清透柔和的东方幻想氛围。\n"
+            "[拍摄参数]\n"
+            "近距离双人全身构图，略微俯视，形成三角结构和S形视觉动线。"
         )
 
     @staticmethod
@@ -118,9 +125,15 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
 
     def test_long_art_edit_uses_complete_base_and_local_edit_contract(self):
         raw_prompt = (
-            "两位明确成年的东方女性角色亲密依偎，服装、动作、手脚归属、构图、"
-            "中国幻想RPG厚涂风格、丝绸材质与避免项均需保持。"
-        ) * 30 + "唯一背景描述：象牙白宫廷高光明亮，丝绸帷幔和雕花屏风清晰可见。"
+            "[风格设定]\n中国幻想RPG厚涂风格，丝绸材质与避免项均需保持。\n[主体物品]\n"
+            + (
+                "两位明确成年的东方女性角色亲密依偎，服装、动作、手脚归属、构图、"
+                "中国幻想RPG厚涂风格、丝绸材质与避免项均需保持。"
+            ) * 30
+            + "\n[环境背景]\n唯一背景描述：象牙白宫廷高光明亮，丝绸帷幔和雕花屏风清晰可见。\n"
+            + "[光线与色彩]\n柔和暖光，象牙白与淡金为主色。\n"
+            + "[拍摄参数]\n近距离双人全身构图，略微俯视。"
+        )
         requirements = "背景过于曝光，降低背景高光，但保留人物和其余全部设定。"
         assistant = SERVICE.PromptAssistant()
         captured: dict = {}
@@ -148,11 +161,13 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
 
     def test_unified_merge_replaces_conflicting_core_people_and_action(self):
         base = (
-            "主体：两位成年东方女性身穿华服，坐在丝绸床榻上温柔亲吻。\n\n"
-            "风格：高完成度东方幻想游戏CG厚涂，细腻手绘材质。\n\n"
-            "要求：人物结构自然，肢体归属明确。"
+            "[风格设定]\n风格：高完成度东方幻想游戏CG厚涂，细腻手绘材质。\n"
+            "[主体物品]\n主体：两位成年东方女性身穿华服，坐在丝绸床榻上温柔亲吻。\n"
+            "要求：人物结构自然，肢体归属明确。\n"
+            "[环境背景]\n室内丝绸床榻，帷幔垂落。\n"
+            "[光线与色彩]\n柔和暖光，象牙白与淡金为主色。\n"
+            "[拍摄参数]\n近距离双人全身构图，略微俯视。"
         )
-        replacement = "主体：成年男人裸体躺在床上，仅呈现下半身，成年女人坐在男人身上。"
         assistant = SERVICE.PromptAssistant()
         captured = {}
 
@@ -175,10 +190,9 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             "nsfw": True,
         })
 
-        self.assertEqual(result["positivePrompt"], (
-            f"{replacement}\n\n"
-            "风格：高完成度东方幻想游戏CG厚涂，细腻手绘材质。\n\n"
-            "要求：人物结构自然，肢体归属明确。"
+        self.assertEqual(result["positivePrompt"], base.replace(
+            "两位成年东方女性身穿华服，坐在丝绸床榻上温柔亲吻",
+            "成年男人裸体躺在床上，仅呈现下半身，成年女人坐在男人身上",
         ))
         self.assertEqual(result["editContract"], "nf.art.semantic-fusion.v1")
         self.assertIn("补充要求（最高优先级）", captured["prompt"])
@@ -187,7 +201,13 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
         self.assertIn("任何未成年人相关内容仍然禁止", captured["prompt"])
 
     def test_core_redefinition_repairs_the_complete_prompt(self):
-        source = "主体：一名成年女性站立。\n\n风格：精细水彩插画。"
+        source = (
+            "[风格设定]\n风格：精细水彩插画。\n"
+            "[主体物品]\n主体：一名成年女性站立。\n"
+            "[环境背景]\n浅色背景，无其他物体。\n"
+            "[光线与色彩]\n柔和正面光，低饱和水彩色。\n"
+            "[拍摄参数]\n全身景别，平视，中心构图。"
+        )
         target = source.replace("成年女性", "成年男性")
         assistant = SERVICE.PromptAssistant()
         calls = []
@@ -201,7 +221,13 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
         self.assertIn(source, calls[1])
 
     def test_core_fusion_rejects_repeated_stale_identity(self):
-        source = "主体：一名成年女性站立。\n\n风格：精细水彩插画。"
+        source = (
+            "[风格设定]\n风格：精细水彩插画。\n"
+            "[主体物品]\n主体：一名成年女性站立。\n"
+            "[环境背景]\n浅色背景，无其他物体。\n"
+            "[光线与色彩]\n柔和正面光，低饱和水彩色。\n"
+            "[拍摄参数]\n全身景别，平视，中心构图。"
+        )
         assistant = SERVICE.PromptAssistant()
         calls = []
         def generate(prompt, **kwargs):
@@ -376,8 +402,17 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
 
     def test_full_fusion_output_budget_scales_with_source_and_is_bounded(self):
         for length in [50, 1000, 20000]:
-            source = "木纹细节清晰。" * (length // 8)
-            target = source + "暖色光影过渡自然。"
+            source = (
+                "[风格设定]\n写实木质渲染。\n[主体物品]\n"
+                + "木纹细节清晰。" * (length // 8)
+                + "\n[环境背景]\n木质台面与浅色墙面。\n"
+                + "[光线与色彩]\n暖色顶光。\n"
+                + "[拍摄参数]\n中景平视，中心构图。"
+            )
+            target = source.replace(
+                "[光线与色彩]\n暖色顶光。",
+                "[光线与色彩]\n暖色顶光，暖色光影过渡自然。",
+            )
             assistant = SERVICE.PromptAssistant()
             captured = {}
             def generate(prompt, **kwargs):
@@ -590,13 +625,15 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
 
     def test_unified_merge_extends_existing_scene_with_white_cat(self):
         base = (
-            "主体：一位成年女法师坐在窗边阅读古籍。\n\n"
-            "场景：温暖木质书房，窗外细雨朦胧。\n\n"
-            "画面目标：安静细腻的东方幻想游戏CG。"
+            "[风格设定]\n画面目标：安静细腻的东方幻想游戏CG。\n"
+            "[主体物品]\n主体：一位成年女法师坐在窗边阅读古籍。\n"
+            "[环境背景]\n场景：温暖木质书房，窗外细雨朦胧。\n"
+            "[光线与色彩]\n窗口柔和冷光，暖木色为主。\n"
+            "[拍摄参数]\n中景平视，窗边侧向构图。"
         )
         assistant = SERVICE.PromptAssistant()
         assistant.generate = lambda _prompt, **_kwargs: self.patch_output(self.patch(
-            "P02",
+            "P01",
             "温暖木质书房，窗外细雨朦胧",
             "温暖木质书房，窗外细雨朦胧，脚边补充一只安静蜷卧的白猫",
         ))
@@ -803,7 +840,13 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
         result = assistant.optimize_prompt({
             "surface": "art",
             "purpose": "optimize",
-            "prompt": "主体、背景、服装、构图和光线均已有完整描述。",
+            "prompt": (
+                "[风格设定]\n厚涂风格完整。\n"
+                "[主体物品]\n主体、背景、服装、构图和光线均已有完整描述。\n"
+                "[环境背景]\n室内背景完整。\n"
+                "[光线与色彩]\n自然光线完整。\n"
+                "[拍摄参数]\n中景构图完整。"
+            ),
             "requirements": requirements,
             "supportsNegativePrompt": False,
         })
@@ -1517,28 +1560,50 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
                     f"用户本次修改要求（最高优先级）：{instruction}"
                 ))
 
-    def test_empty_renderer_edit_instruction_allows_unchanged_result(self):
+    def test_empty_renderer_edit_instruction_still_enriches_the_draft(self):
+        # An empty requirement box means "enrich this draft", not "hand it back":
+        # an echoed base has to be repaired, and two echoes have to fail loudly.
         base = self.long_art_base()
+        enriched = base.replace(
+            '背景采用明亮象牙白宫廷空间，保留丝绸帷幔和雕花屏风。',
+            '背景采用明亮象牙白宫廷空间，保留丝绸帷幔和雕花屏风，'
+            '帷幔织纹与屏风木雕呈现清晰层次，窗光自近及远形成柔和空间纵深。',
+        )
+        requirements = (
+            '提示词编辑模式：以完整原提示词为唯一底稿，未提及信息必须保留。\n'
+            '高质量CG渲染约束：保持商业插画质量。'
+        )
+        self.assertEqual(
+            SERVICE.ordinary_art_user_change_instruction(requirements), ''
+        )
+
         assistant = SERVICE.PromptAssistant()
         calls = []
-        assistant.generate = lambda prompt, **_kwargs: calls.append(prompt) or base
-
+        outputs = [base, enriched]
+        assistant.generate = (
+            lambda prompt, **_kwargs: calls.append(prompt) or outputs[len(calls) - 1]
+        )
         result = assistant.optimize_prompt({
             "surface": "art",
             "purpose": "optimize",
             "prompt": base,
-            "requirements": (
-                "提示词编辑模式：以完整原提示词为唯一底稿，未提及信息必须保留。\n"
-                "高质量CG渲染约束：保持商业插画质量。"
-            ),
+            "requirements": requirements,
             "supportsNegativePrompt": False,
         })
+        self.assertEqual(len(calls), 2)
+        self.assertIn("没有额外修改要求", calls[0])
+        self.assertEqual(result["positivePrompt"], enriched)
 
-        self.assertEqual(SERVICE.ordinary_art_user_change_instruction(
-            "提示词编辑模式：以完整原提示词为唯一底稿。\n高质量CG渲染约束。"
-        ), "")
-        self.assertEqual(len(calls), 1)
-        self.assertEqual(result["positivePrompt"], base)
+        echoing = SERVICE.PromptAssistant()
+        echoing.generate = lambda prompt, **_kwargs: base
+        with self.assertRaises(SERVICE.OrdinaryArtPromptEditNotAppliedError):
+            echoing.optimize_prompt({
+                "surface": "art",
+                "purpose": "optimize",
+                "prompt": base,
+                "requirements": requirements,
+                "supportsNegativePrompt": False,
+            })
 
     def test_noop_patch_cannot_disguise_an_unchanged_positive_edit(self):
         base = self.long_art_base()
@@ -1923,7 +1988,12 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
 
     def test_positive_only_keeps_natural_negative_space_phrase(self):
         base = self.long_art_base()
-        candidate = f"{base}\n构图利用负向空间强化人物轮廓和视觉呼吸感。"
+        # The append patch lands after its anchor, not at the end of the draft.
+        candidate = base.replace(
+            "避免真人摄影、3D渲染、塑料皮肤、错误手指、多余肢体和复制脸。",
+            "避免真人摄影、3D渲染、塑料皮肤、错误手指、多余肢体和复制脸。\n"
+            "构图利用负向空间强化人物轮廓和视觉呼吸感。",
+        )
         assistant = SERVICE.PromptAssistant()
         anchor = "避免真人摄影、3D渲染、塑料皮肤、错误手指、多余肢体和复制脸。"
         assistant.generate = lambda _prompt, **_kwargs: self.patch_output(self.patch(

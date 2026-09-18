@@ -1,6 +1,6 @@
 {
   "note": "Tests known to fail on this baseline. They are reported as known-red and do not fail the run, so that a newly broken test stands out. Shrink this list; do not grow it.",
-  "recordedAt": "2026-09-16",
+  "recordedAt": "2026-09-18",
   "groups": [
     "unit",
     "vitest",
@@ -19,7 +19,6 @@
     "particle-editor-desktop/tests/prompt-assistant-release-contract.test.js",
     "particle-editor-desktop/tests/prompt-assistant-request-lease-contract.test.js",
     "particle-editor-desktop/tests/prompt-assistant-resource-lifecycle-contract.test.js",
-    "particle-editor-desktop/tests/resource-mention-surfaces-contract.test.js",
     "particle-editor-desktop/tests/section-switch-contract.test.js",
     "particle-editor-desktop/tests/smart-ai-simple-dialog-contract.test.js",
     "particle-editor-desktop/tests/spine-atlas-alpha-state.test.js",

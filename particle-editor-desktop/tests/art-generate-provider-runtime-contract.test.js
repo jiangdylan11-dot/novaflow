@@ -286,8 +286,8 @@ const cacheBusters = {
   "runtime-fetch-proxy.js": "20260711-art-dropdown-2",
   "art-generate-credit-pricing.tool.js": "20260712-art-credit-1",
   "art-generate-reference-drop.tool.js": "20260720-art-reference-drop-1",
-  "spine-split-runtime.js": "20260917-object-transfer-1",
-  "novaflow-brand-runtime.js": "20260916-primary-entry-scope-1",
+  "spine-split-runtime.js": "20260917-canvas-export-1",
+  "novaflow-brand-runtime.js": "20260918-ref-resolution-1",
   "novaflow-client-auth.js": "20260916-prompt-input-perf-1",
 };
 for (const [scriptName, cacheBuster] of Object.entries(cacheBusters)) {

@@ -272,7 +272,7 @@
     const input = event?.target;
     if (!(input instanceof HTMLInputElement) || String(input.type || "").toLowerCase() !== "file") return;
     const hasSelectedFile = Number(input.files?.length || 0) > 0;
-    const h3IsActive = String(document.body?.getAttribute?.("data-novaflow-ai-model-method") || "").trim() === MINIMAX_H3_MODEL_ID;
+    const h3IsActive = miniMaxH3ActiveModelMethod(null) === MINIMAX_H3_MODEL_ID;
     if (hasSelectedFile && (MINIMAX_H3_PENDING_RESOURCE_SLOT instanceof HTMLElement || h3IsActive)) {
       miniMaxH3ResourceObjectIdentity(input.files[0]);
       miniMaxH3AdvanceResourceVersion();
@@ -359,15 +359,35 @@
     });
   }
 
+  // data-novaflow-ai-model-method only mirrors the AI sequence model <select>,
+  // and the brand runtime writes that mirror from the select's change event.
+  // MiniMax H3 has been the single option since the WAN line was retired, so the
+  // change event never fires and the mirror can stay empty for a whole session.
+  // Read the select itself when the mirror is missing, or the H3 five-section
+  // protocol silently degrades into the ordinary one-paragraph prompt pipeline.
+  function miniMaxH3SelectedModelMethod() {
+    const selects = document.querySelectorAll ? document.querySelectorAll("select") : [];
+    const select = Array.from(selects).find((node) => (
+      node instanceof HTMLSelectElement &&
+      Array.from(node.options || []).some((option) => String(option?.value || "") === MINIMAX_H3_MODEL_ID)
+    ));
+    return select instanceof HTMLSelectElement ? String(select.value || "").trim() : "";
+  }
+
+  function miniMaxH3ActiveModelMethod(workspace) {
+    const mirrored = String(
+      (workspace instanceof HTMLElement ? workspace.getAttribute("data-novaflow-ai-model-method") : "") ||
+      document.body?.getAttribute?.("data-novaflow-ai-model-method") ||
+      ""
+    ).trim();
+    return mirrored && mirrored !== "unknown" ? mirrored : miniMaxH3SelectedModelMethod();
+  }
+
   function readMiniMaxH3PromptSurfaceState(button, promptTarget) {
     const workspace = promptTarget?.workspace instanceof HTMLElement
       ? promptTarget.workspace
       : button?.closest?.('[data-novaflow-ai-bottom-workspace="1"]');
-    const modelId = String(
-      workspace?.getAttribute?.("data-novaflow-ai-model-method") ||
-      document.body?.getAttribute?.("data-novaflow-ai-model-method") ||
-      ""
-    ).trim();
+    const modelId = miniMaxH3ActiveModelMethod(workspace);
     const durationInput = workspace instanceof HTMLElement
       ? workspace.querySelector('[data-novaflow-h3-duration="1"], [data-novaflow-h3-duration]')
       : null;

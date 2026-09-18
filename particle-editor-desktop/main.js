@@ -6174,7 +6174,11 @@ ipcMain.handle("prompt-assistant-optimize-prompt", async (_evt, payload) => {
     ordinaryArtPromptPatch,
     resourceHandoffState: String(resourceHandoff?.state || ""),
     ok: result?.ok !== false,
-    error: result?.ok === false ? String(result?.error || "") : ""
+    error: result?.ok === false ? String(result?.error || "") : "",
+    // The generic message hides which gate rejected the answer.
+    failureReason: result?.ok === false
+      ? String(result?.applicationReason || result?.retentionReason || result?.errorCode || "").slice(0, 160)
+      : ""
   });
   return result;
 });

@@ -1384,3 +1384,46 @@ test("H3 rich-primary blocks explicit minor plus sensitive facts after one call"
   );
   assert.equal(calls, 1);
 });
+
+// A faithful subject line does not have to use one of the listed subject nouns. "成年女性仰躺" carries
+// no 人物 / 女子 / 她, so the projection used to read zero people out of the very sentence its own
+// exposure facts came from, and the strict validator then rejected the pair as person-only safety on a
+// zero count - one provider call, no repair, nothing written.
+test("H3 rich-primary counts the subject from the safety evidence, not from a subject-word list", async () => {
+  const request = buildH3({ contentPolicy: { sensitiveVisualAnalysis: true, allSubjectsConfirmedAdult: false } });
+  const genderSubjectRich = [
+    "[风格设定]", "写实渲染。",
+    "[主体物品]", "成年女性仰躺，裸露的身体可见。",
+    "[环境背景]", "室内床铺。",
+    "[光线与色彩]", "暖色侧光。",
+    "[拍摄参数]", "固定近景。"
+  ].join("\n");
+  let calls = 0;
+  const result = await callGrokResponseWithVisualRetry(
+    request.body,
+    request.inputMeta,
+    request.resultOptions,
+    async () => {
+      calls += 1;
+      return h3AttemptFromText(genderSubjectRich, request.resultOptions, "h3-rich-primary-gender-subject");
+    }
+  );
+  assert.equal(calls, 1, "the frame must still take exactly one provider call");
+  assert.match(String(result?.data?.output_text || ""), /integrated_multimodal_description/);
+
+  // An object-only explicit frame keeps its zero count.
+  const objectRich = [
+    "[风格设定]", "产品摄影。",
+    "[主体物品]", "白色内衣产品平铺展示，无人物。",
+    "[环境背景]", "纯白背景。",
+    "[光线与色彩]", "均匀柔光。",
+    "[拍摄参数]", "俯拍平铺。"
+  ].join("\n");
+  await assert.rejects(
+    callGrokResponseWithVisualRetry(request.body, request.inputMeta, request.resultOptions, async () => (
+      h3AttemptFromText(objectRich, request.resultOptions, "h3-rich-primary-object-only")
+    )),
+    (error) => error?.h3FailureStage === "visual_facts",
+    "an object-only frame must not be projected into a person frame"
+  );
+});

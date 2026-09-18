@@ -8,9 +8,9 @@ const source = fs.readFileSync(path.join(root, "particle-editor", "novaflow-smar
 const index = fs.readFileSync(path.join(root, "particle-editor", "index.html"), "utf8");
 const bundle = fs.readFileSync(path.join(root, "particle-editor", "assets", "index-BbIa-2NM.js"), "utf8");
 
-const promptWorkflowScript = "ai-sequence-minimax-h3-prompt.workflow.js?v=20260915-h3-upload-driven-4";
+const promptWorkflowScript = "ai-sequence-minimax-h3-prompt.workflow.js?v=20260918-progression-vocab-1";
 const reverseWorkflowScript = "ai-sequence-minimax-h3-reverse.workflow.js?v=20260914-h3-history-15-1";
-const smartAiScript = "novaflow-smart-ai.js?v=20260916-mention-surfaces-2";
+const smartAiScript = "novaflow-smart-ai.js?v=20260918-h3-model-gate-1";
 assert.ok(index.includes(promptWorkflowScript), "the H3 prompt workflow must load from the authoritative entry");
 assert.ok(index.includes(reverseWorkflowScript), "the H3 reverse workflow must load from the authoritative entry");
 assert.ok(index.includes(smartAiScript), "the H3-aware Smart AI surface must use its current cache key");
@@ -288,6 +288,42 @@ class FakeHTMLImageElement extends FakeHTMLElement {
   constructor(src) { super(); this.currentSrc = src; this.src = src; }
 }
 class FakeHTMLMediaElement extends FakeHTMLElement {}
+class FakeHTMLSelectElement extends FakeHTMLElement {
+  constructor(value = "", options = []) {
+    super();
+    this.value = value;
+    this.options = options.map((option) => ({ value: option }));
+  }
+}
+
+// MiniMax H3 is the only local model option, so its <select> never fires change
+// and the brand runtime never writes data-novaflow-ai-model-method. The model
+// method must still resolve, or every H3 request falls back to the ordinary
+// single-paragraph prompt pipeline.
+const activeModelMethodSource = extractNamedFunction(source, "miniMaxH3ActiveModelMethod");
+const selectedModelMethodSource = extractNamedFunction(source, "miniMaxH3SelectedModelMethod");
+const modelMethodSelect = new FakeHTMLSelectElement("minimax_h3_local", ["minimax_h3_local"]);
+const modelMethodContext = vm.createContext({
+  Array,
+  String,
+  HTMLElement: FakeHTMLElement,
+  HTMLSelectElement: FakeHTMLSelectElement,
+  MINIMAX_H3_MODEL_ID: "minimax_h3_local",
+  document: {
+    body: new FakeHTMLElement(),
+    querySelectorAll: () => [new FakeHTMLSelectElement("mp4", ["mp4", "webm"]), modelMethodSelect]
+  }
+});
+vm.runInContext(`var miniMaxH3SelectedModelMethod = ${selectedModelMethodSource};`, modelMethodContext);
+const activeModelMethod = vm.runInContext(`(${activeModelMethodSource})`, modelMethodContext);
+assert.equal(activeModelMethod(null), "minimax_h3_local",
+  "an unwritten model-method mirror must fall back to the model selector itself");
+assert.equal(activeModelMethod(new FakeHTMLElement({ "data-novaflow-ai-model-method": "unknown" })), "minimax_h3_local",
+  "an unknown mirror is not an answer either");
+assert.equal(activeModelMethod(new FakeHTMLElement({ "data-novaflow-ai-model-method": "local_a" })), "local_a",
+  "a written mirror still wins, so other providers keep their own pipeline");
+modelMethodContext.document.querySelectorAll = () => [];
+assert.equal(activeModelMethod(null), "", "no selector and no mirror must not claim the H3 surface");
 
 const captureContextSource = extractNamedFunction(source, "captureMiniMaxH3PromptContext");
 const captureContextVm = vm.createContext({
@@ -393,6 +429,7 @@ const fileChangeContext = vm.createContext({
   MINIMAX_H3_MODEL_ID: "minimax_h3_local",
   MINIMAX_H3_PENDING_RESOURCE_SLOT: null,
   document: { body: { getAttribute: () => "minimax_h3_local" } },
+  miniMaxH3ActiveModelMethod: () => "minimax_h3_local",
   miniMaxH3ResourceObjectIdentity: () => { fileChangeCalls.identities += 1; },
   miniMaxH3AdvanceResourceVersion: () => { fileChangeCalls.versions += 1; }
 });
