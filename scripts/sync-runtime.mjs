@@ -626,64 +626,6 @@ const syncEntries = [
       ),
     ],
   },
-  {
-    label: 'vendor/opencv/index.web.mjs',
-    sourcePath: path.join(repoRoot, 'particle-editor', 'vendor', 'opencv', 'index.web.mjs'),
-    targetPaths: [
-      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'vendor', 'opencv', 'index.web.mjs'),
-      path.join(
-        repoRoot,
-        'particle-editor-desktop',
-        'dist',
-        'win-unpacked',
-        'resources',
-        'app',
-        'renderer',
-        'vendor',
-        'opencv',
-        'index.web.mjs',
-      ),
-    ],
-  },
-  {
-    label: 'vendor/opencv/opencv_js.wasm',
-    sourcePath: path.join(repoRoot, 'particle-editor', 'vendor', 'opencv', 'opencv_js.wasm'),
-    targetPaths: [
-      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'vendor', 'opencv', 'opencv_js.wasm'),
-      path.join(
-        repoRoot,
-        'particle-editor-desktop',
-        'dist',
-        'win-unpacked',
-        'resources',
-        'app',
-        'renderer',
-        'vendor',
-        'opencv',
-        'opencv_js.wasm',
-      ),
-    ],
-    binary: true,
-  },
-  {
-    label: 'vendor/opencv/LICENSE',
-    sourcePath: path.join(repoRoot, 'particle-editor', 'vendor', 'opencv', 'LICENSE'),
-    targetPaths: [
-      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'vendor', 'opencv', 'LICENSE'),
-      path.join(
-        repoRoot,
-        'particle-editor-desktop',
-        'dist',
-        'win-unpacked',
-        'resources',
-        'app',
-        'renderer',
-        'vendor',
-        'opencv',
-        'LICENSE',
-      ),
-    ],
-  },
 ]
 
 const retiredRuntimeArtifacts = [
@@ -708,6 +650,19 @@ const retiredRuntimeArtifacts = [
     'app',
     'renderer',
     'ui-design-layout-analysis.workflow.js',
+  ),
+  // Retired on 2026-09-19 with 修补工具: the browser OpenCV build existed only for its Telea inpaint.
+  path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'vendor', 'opencv'),
+  path.join(
+    repoRoot,
+    'particle-editor-desktop',
+    'dist',
+    'win-unpacked',
+    'resources',
+    'app',
+    'renderer',
+    'vendor',
+    'opencv',
   ),
 ]
 
@@ -783,7 +738,7 @@ async function main() {
   }
 
   for (const artifactPath of retiredRuntimeArtifacts) {
-    await rm(artifactPath, { force: true })
+    await rm(artifactPath, { force: true, recursive: true })
     console.log(`sync-runtime: removed retired artifact ${relativePath(artifactPath)}`)
   }
 

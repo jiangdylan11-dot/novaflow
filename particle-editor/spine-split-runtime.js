@@ -47,6 +47,7 @@
   const SPLIT_SET_SOURCE_ATTR = 'data-novaflow-spine-split-set-source'
   const SPLIT_SET_CHEVRON_ATTR = 'data-novaflow-spine-split-set-chevron'
   const SPLIT_SET_CHEVRON_MARK_ATTR = 'data-novaflow-spine-split-set-chevron-mark'
+  const SPLIT_SET_KIND_BADGE_ATTR = 'data-novaflow-spine-split-set-kind-badge'
   
   
   
@@ -265,6 +266,10 @@
   const OBJECT_TRANSFER_RESTYLE_CFG = 1.4
   const OBJECT_TRANSFER_RESTYLE_BACKGROUND = '#808080'
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
+  // The reference object may hang off the plate: half a robot at the frame edge is a real composition,
+  // so placement is only held back far enough to keep a grabbable sliver of it on the canvas.
+  const OBJECT_TRANSFER_MIN_VISIBLE_RATIO = 0.1
+  const OBJECT_TRANSFER_MIN_VISIBLE_PX = 16
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
   const OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE = '\u53c2\u8003\u7269\u4e3b\u4f53\u4e0d\u6e05\u6670\uff0c\u8bf7\u6362\u4e00\u5f20\u80cc\u666f\u66f4\u7b80\u5355\u7684\u56fe\u7247\u3002'
   // bf16 first, and loaded at the loader's own default dtype — that is exactly what the 图生图 graph does,
@@ -2744,7 +2749,6 @@
       imageUpscale: '\u6b63\u5728\u9ad8\u6e05\u653e\u5927...',
       imageOutpaint: '\u65e0\u9650\u6269\u56fe\u751f\u6210\u4e2d...',
       imageAngleAdjust: '正在角度调整...',
-      healing: '\u4fee\u8865\u4e2d...',
       penCutout: '图层分割中...',
       penFill: '智能补全中...',
       merge: '\u6b63\u5728\u5408\u5e76\u56fe\u5c42...',
@@ -2869,7 +2873,6 @@
     if (maskEditorApplyPromise) return 'mask'
     if (state.selectionTool && state.selectionTool.active) {
       if (state.selectionTool.mode === 'inpaint') return 'inpaint'
-      if (state.selectionTool.mode === 'healing') return 'healing'
       return 'cutout'
     }
     if (state.penTool && state.penTool.active) return state.penTool.mode === 'fill' ? 'penFill' : 'penCutout'
@@ -2892,7 +2895,6 @@
 
   function splitControlToolKindForAction(action) {
     const inpaintMode = inpaintModeForControlAction(action)
-    if (String(action || '') === 'healing') return 'healing'
     return inpaintMode ? 'inpaint' : String(action || '')
   }
 
@@ -2912,7 +2914,6 @@
     if (!kind) return true
     const name = String(action || '')
     if (kind === 'cutout' || kind === 'inpaint') return name === 'selectionDraw' || name === 'selectionErase' || name === 'selectionCursor' || name === 'selectionNsfw' || name === 'selectionExit' || name === 'selectionEffect' || (kind === 'cutout' && name === 'selectionRemoveBackground')
-    if (kind === 'healing') return name === 'selectionDraw' || name === 'selectionErase' || name === 'selectionUndo' || name === 'selectionRedo' || name === 'selectionApply' || name === 'selectionExit'
     if (kind === 'penCutout' || kind === 'penFill') return name === 'penClose' || name === 'penUndo' || name === 'penClear' || name === 'penExit'
     if (kind === 'mask') return name === 'maskErase' || name === 'maskRestore' || name === 'maskCursor' || name === 'maskExit'
     if (kind === 'objectTransfer') return name === 'objectTransferExit'
@@ -3672,6 +3673,14 @@
         border: 0 !important;
         border-radius: 50% !important;
         box-shadow: none !important;
+        cursor: pointer !important;
+      }
+      /* The knob is the only part of the slider that reacts — user decision. The pill behind it must
+         not, because its hover grey (#3b3b3b) swallows the empty groove (#3a3a3a); and the knob only
+         changes colour, never size, so nothing moves under the cursor. */
+      #${WORKSPACE_OVERLAY_ID} input[${TOOL_RANGE_ATTR}][type="range"]:hover::-webkit-slider-thumb,
+      #${WORKSPACE_OVERLAY_ID} input[${TOOL_RANGE_ATTR}][type="range"]:focus-visible::-webkit-slider-thumb {
+        background: ${SPLIT_ACTIVE_HOVER_BACKGROUND} !important;
       }
       #${WORKSPACE_OVERLAY_ID} input[${TOOL_RANGE_ATTR}][type="range"]::-moz-range-track,
       #${WORKSPACE_OVERLAY_ID} input[${TOOL_RANGE_ATTR}][type="range"]::-moz-range-progress {
@@ -3688,6 +3697,11 @@
         border: 0 !important;
         border-radius: 50% !important;
         box-shadow: none !important;
+        cursor: pointer !important;
+      }
+      #${WORKSPACE_OVERLAY_ID} input[${TOOL_RANGE_ATTR}][type="range"]:hover::-moz-range-thumb,
+      #${WORKSPACE_OVERLAY_ID} input[${TOOL_RANGE_ATTR}][type="range"]:focus-visible::-moz-range-thumb {
+        background: ${SPLIT_ACTIVE_HOVER_BACKGROUND} !important;
       }
       #${WORKSPACE_OVERLAY_ID} button[${TOOL_ACTION_ATTR}] {
         background: ${SPLIT_PANEL_BACKGROUND} !important;
@@ -3725,6 +3739,22 @@
     document.head.appendChild(style)
   }
 
+  // These buttons carry their colours as INLINE !important, which beats every :hover rule in the
+  // injected stylesheet — so the canvas toolbar had no hover feedback at all. The tint has to be
+  // written the same way, and read from the live active attribute, not the closure, because
+  // patchSplitToolButtonVisual flips it under us.
+  function paintSplitToolButtonHover(node, hovering) {
+    if (!(node instanceof HTMLElement)) return
+    const active = node.getAttribute('data-novaflow-spine-split-tool-active') === '1'
+    const blocked = !!node.disabled || node.getAttribute('aria-disabled') === 'true' || splitGlobalBusyInteractionLocked()
+    const lit = !!hovering && !blocked
+    const background = lit
+      ? (active ? SPLIT_ACTIVE_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND)
+      : (active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND)
+    node.style.setProperty('background', background, 'important')
+    node.style.setProperty('background-color', background, 'important')
+  }
+
   function button(label, onClick, active, extraProps) {
     const props = extraProps && typeof extraProps === 'object' ? { ...extraProps } : {}
     const extraStyle = props.style && typeof props.style === 'object' ? props.style : null
@@ -3734,6 +3764,10 @@
     const node = h('button', Object.assign({
       type: 'button',
       onclick: toolAction ? (event) => runDirectSplitToolAction(toolAction, onClick, event) : onClick,
+      onmouseenter: (event) => paintSplitToolButtonHover(event && event.currentTarget, true),
+      onmouseleave: (event) => paintSplitToolButtonHover(event && event.currentTarget, false),
+      onfocus: (event) => paintSplitToolButtonHover(event && event.currentTarget, true),
+      onblur: (event) => paintSplitToolButtonHover(event && event.currentTarget, false),
       'data-novaflow-spine-split-tool-active': active ? '1' : '0',
       style: Object.assign({
         height: '28px',
@@ -3770,10 +3804,9 @@
   function patchSplitToolButtonVisual(action, active) {
     const node = document.querySelector(`[${TOOL_ACTION_ATTR}="${String(action || '')}"]`)
     if (!node || !node.style) return false
-    const background = active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND
     node.setAttribute('data-novaflow-spine-split-tool-active', active ? '1' : '0')
-    node.style.setProperty('background', background, 'important')
-    node.style.setProperty('background-color', background, 'important')
+    // Keep the tint if the pointer is still on the button we just re-coloured.
+    paintSplitToolButtonHover(node, typeof node.matches === 'function' && node.matches(':hover'))
     node.style.setProperty('background-image', 'none', 'important')
     node.style.setProperty('border', '0', 'important')
     node.style.setProperty('font-weight', SPLIT_TOOL_FONT_WEIGHT, 'important')
@@ -4049,10 +4082,10 @@
       syncSplitWorkspace()
       return true
     }
-    splitLayerRedoStack.push(splitLayerHistorySnapshot(snapshot.label === 'healing' ? 'redo healing' : 'redo layer edit', snapshot.targetPartId))
+    splitLayerRedoStack.push(splitLayerHistorySnapshot('redo layer edit', snapshot.targetPartId))
     trimSplitLayerHistoryStack(splitLayerRedoStack)
-    const message = snapshot.label === 'healing' ? '\u5df2\u64a4\u9500\u4fee\u8865' : snapshot.label === 'mask stencil' ? '已撤销遮罩复制' : '已撤销智能补全'
-    const fallbackMessage = snapshot.label === 'healing' ? '\u4fee\u8865\u64a4\u9500\u5931\u8d25' : '智能补全撤销失败'
+    const message = snapshot.label === 'mask stencil' ? '已撤销遮罩复制' : '已撤销智能补全'
+    const fallbackMessage = '智能补全撤销失败'
     restoreSplitLayerHistorySnapshot(snapshot, message).catch((error) => {
       setMessage(String(error && error.message || error || fallbackMessage), true)
       render()
@@ -4073,10 +4106,10 @@
       syncSplitWorkspace()
       return true
     }
-    splitLayerUndoStack.push(splitLayerHistorySnapshot(snapshot.label === 'redo healing' ? 'healing' : 'undo layer edit', snapshot.targetPartId))
+    splitLayerUndoStack.push(splitLayerHistorySnapshot('undo layer edit', snapshot.targetPartId))
     trimSplitLayerHistoryStack(splitLayerUndoStack)
-    const message = snapshot.label === 'redo healing' ? '\u5df2\u91cd\u505a\u4fee\u8865' : '已重做智能补全'
-    const fallbackMessage = snapshot.label === 'redo healing' ? '\u4fee\u8865\u91cd\u505a\u5931\u8d25' : '智能补全重做失败'
+    const message = '已重做智能补全'
+    const fallbackMessage = '智能补全重做失败'
     restoreSplitLayerHistorySnapshot(snapshot, message).catch((error) => {
       setMessage(String(error && error.message || error || fallbackMessage), true)
       render()
@@ -4261,13 +4294,11 @@
       || name === 'inpaintCompletion'
       || name === 'inpaintEdit'
       || name === 'inpaintRepair'
-      || name === 'healing'
       || name === 'penCutout'
       || name === 'penFill'
       || name === 'merge'
       || name === 'mask'
       || name === 'export'
-      || name === 'selectionApply'
   }
 
   function guardPendingSourceDataUrl(action) {
@@ -7373,8 +7404,10 @@
     const bounds = objectTransferPlacementBounds(size)
     const width = Math.max(1, Math.round(Number(size && size.width) || 1))
     const height = Math.max(1, Math.round(Number(size && size.height) || 1))
-    tool.x = clampNumber(Number(tool.x) || 0, 0, Math.max(0, width - bounds.width))
-    tool.y = clampNumber(Number(tool.y) || 0, 0, Math.max(0, height - bounds.height))
+    const keepX = Math.min(bounds.width, Math.max(OBJECT_TRANSFER_MIN_VISIBLE_PX, Math.round(bounds.width * OBJECT_TRANSFER_MIN_VISIBLE_RATIO)))
+    const keepY = Math.min(bounds.height, Math.max(OBJECT_TRANSFER_MIN_VISIBLE_PX, Math.round(bounds.height * OBJECT_TRANSFER_MIN_VISIBLE_RATIO)))
+    tool.x = clampNumber(Number(tool.x) || 0, keepX - bounds.width, Math.max(keepX - bounds.width, width - keepX))
+    tool.y = clampNumber(Number(tool.y) || 0, keepY - bounds.height, Math.max(keepY - bounds.height, height - keepY))
     return objectTransferPlacementBounds(size)
   }
 
@@ -7413,14 +7446,13 @@
     let selectedDataUrl = ''
     let previewSlot = null
     let statusSlot = null
-    let confirmButton = null
-    const actionButtonStyle = (tone) => ({
+    const confirmButtonStyle = () => ({
       height: '32px',
-      minWidth: tone === 'primary' ? '148px' : '86px',
+      minWidth: '148px',
       padding: '0 14px',
       borderRadius: '8px',
       border: '0',
-      background: tone === 'primary' ? SPLIT_ACTIVE_BACKGROUND : 'rgba(255,255,255,0.08)',
+      background: SPLIT_ACTIVE_BACKGROUND,
       color: '#fff',
       cursor: 'pointer',
       fontSize: '12px',
@@ -7429,6 +7461,15 @@
       transform: 'none',
       transition: 'none'
     })
+    const applyConfirmButtonState = (event, hovering) => {
+      const buttonNode = event && event.currentTarget
+      if (!(buttonNode instanceof HTMLElement)) return
+      const background = hovering ? SPLIT_ACTIVE_HOVER_BACKGROUND : SPLIT_ACTIVE_BACKGROUND
+      buttonNode.style.background = background
+      buttonNode.style.backgroundColor = background
+      buttonNode.style.boxShadow = 'none'
+      buttonNode.style.transform = 'none'
+    }
     return new Promise((resolve) => {
       const cleanup = () => {
         document.removeEventListener('keydown', handleKeydown, true)
@@ -7455,7 +7496,6 @@
           if (statusSlot) statusSlot.textContent = '\u8bf7\u9009\u62e9 PNG / JPG / WEBP \u56fe\u7247'
           selectedFile = null
           selectedDataUrl = ''
-          if (confirmButton) confirmButton.disabled = true
           return
         }
         selectedFile = file
@@ -7476,7 +7516,6 @@
           }))
         }
         if (statusSlot) statusSlot.textContent = file.name || '\u5df2\u9009\u62e9\u53c2\u8003\u7269'
-        if (confirmButton) confirmButton.disabled = false
       }
       const openFilePicker = (event) => {
         objectTransferStopEvent(event)
@@ -7558,11 +7597,14 @@
           textAlign: 'center'
         }
       }, '\u786e\u8ba4\u540e\u4f1a\u5148\u81ea\u52a8\u63d0\u53d6\u900f\u660e\u4e3b\u4f53')
-      confirmButton = h('button', {
+      const confirmButton = h('button', {
         type: 'button',
-        disabled: true,
         onclick: finish,
-        style: Object.assign(actionButtonStyle('primary'), { opacity: '0.72' })
+        onmouseenter: (event) => applyConfirmButtonState(event, true),
+        onmouseleave: (event) => applyConfirmButtonState(event, false),
+        onfocus: (event) => applyConfirmButtonState(event, true),
+        onblur: (event) => applyConfirmButtonState(event, false),
+        style: confirmButtonStyle()
       }, '\u786e\u8ba4')
       const overlay = h('div', {
         id: SPLIT_MODE_DIALOG_ID,
@@ -7641,17 +7683,7 @@
         h('div', { style: { display: 'grid', gap: '12px', padding: '14px' } }, [
           previewSlot,
           statusSlot,
-          h('div', { style: { display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' } }, [
-            h('button', {
-              type: 'button',
-              onclick: openFilePicker,
-              style: actionButtonStyle('secondary')
-            }, '\u9009\u62e9\u56fe\u7247'),
-            h('button', {
-              type: 'button',
-              onclick: close,
-              style: actionButtonStyle('secondary')
-            }, '\u53d6\u6d88'),
+          h('div', { style: { display: 'flex', justifyContent: 'center', alignItems: 'center' } }, [
             confirmButton
           ]),
           fileInput
@@ -12404,14 +12436,60 @@
     syncSplitWorkspace()
   }
 
+  const SPLIT_SET_SOURCE_ORIGIN = 'source-tool'
+  const SPLIT_SET_DEFAULT_BASE_NAME = '拆图'
+
+  // A card is named after whatever produced it and numbered inside its own name family:
+  // 一键拆图 keeps 拆图 1/2/3, a source tool opens 去背 1, 特效提取 1, ...
+  function nextSplitSetName(baseName) {
+    const base = String(baseName || '').replace(/\s+/g, ' ').trim() || SPLIT_SET_DEFAULT_BASE_NAME
+    let used = 0
+    ;(state.splitSets || []).forEach((set) => {
+      const name = String(set && set.name || '').replace(/\s+/g, ' ').trim()
+      if (name.slice(0, base.length) !== base) return
+      const tail = name.slice(base.length).trim()
+      if (!/^\d+$/.test(tail)) return
+      used = Math.max(used, Number(tail) || 0)
+    })
+    return `${base} ${used + 1}`
+  }
+
+  // 原图 results never fall into a 拆图 group: every source resource owns a card of its own.
+  function sourceToolSplitSetForCurrentResource() {
+    const sourceId = String(state.activeSourceResourceId || state.source && state.source.id || '')
+    if (!sourceId) return null
+    const sets = state.splitSets || []
+    const tagged = sets.find((set) => set
+      && String(set.originKind || '') === SPLIT_SET_SOURCE_ORIGIN
+      && String(set.sourceResourceId || '') === sourceId)
+    if (tagged) return tagged
+    // Cards made before this rule carry no originKind: the one already holding this
+    // source's 原图 layer is that source's card, so adopt it instead of duplicating it.
+    return sets.find((set) => set
+      && String(set.originKind || '') !== 'split'
+      && (set.parts || []).some((part) => part
+        && part.autoSourceLayer
+        && String(part.sourceResourceId || '') === sourceId)) || null
+  }
+
+  function adoptSplitSetForParts(set) {
+    if (!set) return false
+    state.splitSets.forEach((item) => { item.expanded = item.id === set.id })
+    state.activeSplitSetId = set.id
+    state.parts = (set.parts || []).map(normalizeLayerRecord)
+    state.splitPreviewDataUrl = set.previewDataUrl || ''
+    state.layerScrollTop = 0
+    return true
+  }
+
   function registerSplitSet(options = {}) {
     state.splitRunCounter += 1
     const id = `split_set_${Date.now()}_${state.splitRunCounter}`
-    const labelIndex = state.splitSets.length + 1
     state.splitSets.forEach((set) => { set.expanded = false })
     const set = {
       id,
-      name: String(options.name || `拆图 ${labelIndex}`),
+      name: String(options.name || nextSplitSetName(options.baseName)),
+      originKind: String(options.originKind || 'split'),
       sourceName: state.source && state.source.fileName || 'source.png',
       sourceResourceId: String(state.activeSourceResourceId || ''),
       createdAt: new Date().toISOString(),
@@ -12470,6 +12548,16 @@
       transformOrigin: '50% 50%',
       transition: 'transform 120ms ease'
     }
+  }
+
+  // Drawn rather than an icon-font glyph, like the chevron: it has to read as a layer
+  // card next to an 原图资源 card even when the icon stylesheet never loads.
+  function splitSetKindBadgeNode() {
+    const sheet = (left, top, color, background) => h('span', { 'aria-hidden': 'true', style: { position: 'absolute', left: `${left}px`, top: `${top}px`, width: '9px', height: '9px', border: `1.2px solid ${color}`, borderRadius: '2px', background, boxSizing: 'border-box' } })
+    return h('span', { [SPLIT_SET_KIND_BADGE_ATTR]: '1', 'aria-hidden': 'true', style: { position: 'relative', justifySelf: 'center', width: '12px', height: '12px', minWidth: '12px', display: 'inline-block', color: 'rgba(255,255,255,0.78)', fontSize: '0', lineHeight: '0', pointerEvents: 'none', boxSizing: 'border-box' } }, [
+      sheet(3, 0, 'rgba(255,255,255,0.40)', 'transparent'),
+      sheet(0, 3, 'rgba(255,255,255,0.82)', '#2f2f2f')
+    ])
   }
 
   function splitSetChevronNode(expanded) {
@@ -13123,7 +13211,6 @@
         { action: 'inpaintRepair', label: '去除物体', title: '删除遮罩区域内内容并自动补全背景' },
         { action: 'inpaintCompletion', label: '智能补图', title: '补全缺失结构，保留提示词输入' },
         { action: 'penFill', label: '智能补全', title: '使用可调曲线的钢笔闭合路径标记缺失区域，并根据当前图层已有内容智能补全；仅支持当前图层' },
-        { action: 'healing', label: '修补工具', title: '局部修补小污点、小Logo、小徽章或小面积瑕疵；Enter 应用，Esc 退出' },
         { action: 'mask', label: '蒙版编辑', title: '[ ] 调整画笔，；缩小羽化，“放大羽化，E/R 切换，Esc 退出' },
         { action: 'canvasResize', label: '画布扩展', title: '扩展画布：设置新宽高和定位锚点' }
       ]
@@ -13621,7 +13708,6 @@
     const cutoutActive = state.selectionTool && state.selectionTool.active && state.selectionTool.mode === 'cutout'
     const effectModeActive = !!(cutoutActive && state.selectionTool.effectMode)
     const inpaintActive = state.selectionTool && state.selectionTool.active && state.selectionTool.mode === 'inpaint'
-    const healingActive = state.selectionTool && state.selectionTool.active && state.selectionTool.mode === 'healing'
     const selectedInpaintMode = normalizeSelectionInpaintMode(state.selectionTool && state.selectionTool.inpaintMode)
     const effectRemovalActive = !!(inpaintActive && selectedInpaintMode === 'repair' && state.selectionTool.effectMode)
     const penCutoutActive = state.penTool && state.penTool.active && state.penTool.mode === 'cutout'
@@ -13634,7 +13720,6 @@
       || (name === 'inpaintCompletion' && inpaintActive && selectedInpaintMode === 'completion')
       || (name === 'inpaintEdit' && inpaintActive && selectedInpaintMode === 'edit')
       || (name === 'inpaintRepair' && inpaintActive && selectedInpaintMode === 'repair')
-      || (name === 'healing' && healingActive)
       || (name === 'penCutout' && penCutoutActive)
       || (name === 'penFill' && penFillActive)
       || (name === 'objectTransfer' && objectTransferActive)
@@ -13655,7 +13740,6 @@
       inpaintCompletion: isInpainting && selectedInpaintMode === 'completion' ? selectionInpaintModeBusyLabel('completion') : (inpaintActive && selectedInpaintMode === 'completion' ? selectionInpaintModeExecuteLabel('completion') : selectionInpaintModeStartLabel('completion')),
       inpaintEdit: isInpainting && selectedInpaintMode === 'edit' ? selectionInpaintModeBusyLabel('edit') : (inpaintActive && selectedInpaintMode === 'edit' ? selectionInpaintModeExecuteLabel('edit') : selectionInpaintModeStartLabel('edit')),
       inpaintRepair: isEffectRemoving ? '特效去除中…' : (isInpainting && selectedInpaintMode === 'repair' ? selectionInpaintModeBusyLabel('repair') : (inpaintActive && selectedInpaintMode === 'repair' ? (effectRemovalActive ? '执行特效去除' : selectionInpaintModeExecuteLabel('repair')) : selectionInpaintModeStartLabel('repair'))),
-      healing: state.busy && state.busyAction === 'healing' ? '\u4fee\u8865\u4e2d\u2026' : (healingActive ? '\u5e94\u7528\u4fee\u8865' : '\u4fee\u8865\u5de5\u5177'),
       penCutout: state.busy && state.busyAction === 'penCutout' ? '钢笔抠图中…' : (penCutoutActive ? '执行抠图' : '钢笔抠图'),
       penFill: state.busy && state.busyAction === 'penFill' ? '智能补全中…' : (penFillActive ? '执行补全' : '智能补全'),
       merge: isMerging ? '正在合并…' : '合并图层',
@@ -14131,6 +14215,17 @@
     const sourceId = String(state.activeSourceResourceId || state.source && state.source.id || '')
     if (!sourceId) return null
     return state.parts.find((part) => part && part.dataUrl && part.autoSourceLayer && String(part.sourceResourceId || '') === sourceId) || null
+  }
+
+  // The 原图 layer may live in this source's own card rather than the one currently expanded.
+  function sourceEditableLayerTargetForCurrentResource() {
+    const inActive = sourceEditableLayerForCurrentResource()
+    if (inActive) return { set: splitSetById(state.activeSplitSetId), part: inActive }
+    const sourceId = String(state.activeSourceResourceId || state.source && state.source.id || '')
+    const set = sourceToolSplitSetForCurrentResource()
+    if (!sourceId || !set) return null
+    const part = (set.parts || []).find((item) => item && item.dataUrl && item.autoSourceLayer && String(item.sourceResourceId || '') === sourceId)
+    return part ? { set, part } : null
   }
 
   function activeSplitDataPart() {
@@ -15016,7 +15111,6 @@
 
   function hasArtDrawingRouteEvidence() {
     if (!isArtPrimaryEntryConfirmed()) return false
-    if (SPLIT_RUNTIME_QUERY.has('__novaflow_split_healing_smoke') && document.querySelector('[data-novaflow-healing-smoke-panel="1"]')) return true
     if (hasVisibleArtUiPlaceholder()) return false
     if (isArtDrawingSecondaryActive()) return true
     return hasVisibleArtDrawingPlaceholder()
@@ -15024,7 +15118,7 @@
 
   function isSplitCanvasRouteActive() {
     if (!isArtPrimaryEntryConfirmed()) return false
-    if (document.hidden && !SPLIT_RUNTIME_QUERY.has('__novaflow_split_healing_smoke')) return false
+    if (document.hidden) return false
     if (isSplitEditToolActive() && mountedCard && mountedCard.isConnected && document.body.getAttribute(WORKSPACE_ACTIVE_ATTR) === '1') return true
     return hasArtDrawingRouteEvidence()
   }
@@ -15700,7 +15794,6 @@
   }
 
   function selectionToolName(mode) {
-    if (mode === 'healing') return '\u4fee\u8865\u5de5\u5177'
     return mode === 'inpaint' ? '\u4fee\u56fe' : '\u5bf9\u8c61\u63d0\u53d6'
   }
 
@@ -15799,10 +15892,10 @@
       return
     }
     const sourceTarget = isSourceTargetSelected()
-    if ((mode === 'inpaint' || mode === 'healing') && (sourceTarget || !currentEditableLayerPart())) {
-      const inserted = await ensureSourceAsEditableLayer(mode === 'healing' ? '\u4fee\u8865\u5de5\u5177' : 'AI修图')
+    if (mode === 'inpaint' && (sourceTarget || !currentEditableLayerPart())) {
+      const inserted = await ensureSourceAsEditableLayer('AI修图')
       if (!inserted) {
-        setMessage(mode === 'healing' ? '\u8bf7\u5148\u9009\u62e9\u9700\u8981\u4fee\u8865\u7684\u56fe\u5c42' : '请先选择需要修图的图层', true)
+        setMessage('请先选择需要修图的图层', true)
         render()
         return
       }
@@ -15832,7 +15925,7 @@
       : String(state.selectionTool && state.selectionTool.inpaintPrompt || '')
     state.selectionTool = {
       active: true,
-      mode: mode === 'inpaint' ? 'inpaint' : (mode === 'healing' ? 'healing' : 'cutout'),
+      mode: mode === 'inpaint' ? 'inpaint' : 'cutout',
       cutoutSource: resolvedCutoutSource,
       brushSize: Number(state.selectionTool && state.selectionTool.brushSize) || 72,
       feather: 0,
@@ -16041,7 +16134,6 @@
       }
       return await fullCanvasFromPart(selectedSplitPart(), size)
     }
-    if (tool.mode === 'healing') return await fullCanvasFromPart(selectedSplitPart(), size)
     return await sourceFullCanvas(size)
   }
 
@@ -16057,7 +16149,7 @@
       display: 'block',
       objectFit: 'fill'
     }
-    if (((tool.mode === 'cutout' && tool.cutoutSource === 'layer') || tool.mode === 'healing') && selected && selected.dataUrl) {
+    if (tool.mode === 'cutout' && tool.cutoutSource === 'layer' && selected && selected.dataUrl) {
       const x = Math.max(0, Number(selected.x) || 0)
       const y = Math.max(0, Number(selected.y) || 0)
       const w = Math.max(1, Number(selected.width) || 1)
@@ -20580,14 +20672,34 @@
     return `${base}_${index}`
   }
 
+  // Where a result lands is decided by its input, never by whichever card happens to be expanded:
+  // a layer-born result stays in that layer's card, a 原图-born one goes to that source's own card.
+  function prepareSourceOriginSplitSet(options = {}) {
+    syncActiveSplitSet()
+    const existing = sourceToolSplitSetForCurrentResource()
+    if (existing) {
+      if (existing.id !== state.activeSplitSetId) adoptSplitSetForParts(existing)
+      return null
+    }
+    state.parts = []
+    state.splitPreviewDataUrl = ''
+    state.activeSplitSetId = ''
+    return { baseName: String(options.toolName || '').trim() || '原图操作', originKind: SPLIT_SET_SOURCE_ORIGIN }
+  }
+
+  function sourceOriginOptions(cutoutSource, toolName) {
+    return String(cutoutSource || 'original') === 'original' ? { sourceOrigin: true, toolName } : {}
+  }
+
   async function addManualPart(part, options = {}) {
     const normalizedPart = normalizeLayerRecord(part)
+    const sourceOriginSet = options.sourceOrigin ? prepareSourceOriginSplitSet(options) : null
     state.parts = normalizeSpineLayerOrder([...state.parts, normalizedPart])
     state.activePartId = normalizedPart.id
     state.selectedPartIds = [normalizedPart.id]
     state.viewMode = 'parts'
     await refreshSplitPreview()
-    if (options.registerNewSet || !splitSetById(state.activeSplitSetId)) registerSplitSet(options.splitSet || {})
+    if (sourceOriginSet || options.registerNewSet || !splitSetById(state.activeSplitSetId)) registerSplitSet({ ...(options.splitSet || {}), ...(sourceOriginSet || {}) })
     else syncActiveSplitSet()
     await cacheTempSplitPackage()
     render()
@@ -20613,11 +20725,15 @@
       return selected
     }
     if (sourceTarget) {
-      const existing = sourceEditableLayerForCurrentResource()
-      if (existing && existing.dataUrl) {
-        state.activePartId = existing.id
-        state.selectedPartIds = [existing.id]
-        return existing
+      const existing = sourceEditableLayerTargetForCurrentResource()
+      if (existing && existing.part && existing.part.dataUrl) {
+        if (existing.set && existing.set.id !== state.activeSplitSetId) {
+          syncActiveSplitSet()
+          adoptSplitSetForParts(existing.set)
+        }
+        state.activePartId = existing.part.id
+        state.selectedPartIds = [existing.part.id]
+        return existing.part
       }
     }
     if ((!sourceTarget && state.parts.length) || !state.source || !state.source.dataUrl) return null
@@ -20667,7 +20783,7 @@
         sourceResourceId,
         sourceFileName: sourceName
       }
-      await addManualPart(part, options)
+      await addManualPart(part, { ...options, sourceOrigin: true, toolName: options.toolName || toolName })
       return part
     } catch (error) {
       setMessage(String(error && error.message || error || `${toolName || '工具'}无法将原图置入图层`), true)
@@ -21507,9 +21623,10 @@
       cropped.layer = layer
       cropped.visible = true
       cropped.needsInpaint = false
-      if (state.selectionTool.cutoutSource === 'layer' && selected) inheritCutoutSourceSemantics(cropped, selected)
+      const cutoutSource = state.selectionTool.cutoutSource || 'original'
+      if (cutoutSource === 'layer' && selected) inheritCutoutSourceSemantics(cropped, selected)
       resetSelectionTool()
-      await addManualPart(cropped)
+      await addManualPart(cropped, sourceOriginOptions(cutoutSource, '智能抠图'))
       setMessage(`已生成透明对象图层：${id}`)
       return
     } catch (error) {
@@ -21621,7 +21738,7 @@
       cropped.needsInpaint = false
       if (selected) inheritCutoutSourceSemantics(cropped, selected)
       resetSelectionTool()
-      await addManualPart(cropped)
+      await addManualPart(cropped, sourceOriginOptions(cutoutSource, '去背'))
       setMessage(`已生成去背图层：${id}`)
     } catch (error) {
       setMessage(String(error && error.message || error || '去背失败，请重试'), true)
@@ -22025,7 +22142,7 @@
       cropped.visible = true
       cropped.needsInpaint = false
       resetSelectionTool()
-      await addManualPart(cropped)
+      await addManualPart(cropped, sourceOriginOptions(cutoutSource, '特效提取'))
       setMessage(`已生成特效图层：${id}`)
     } catch (error) {
       setMessage(String(error && error.message || error || '特效提取失败，请重试'), true)
@@ -22291,525 +22408,6 @@
     let count = 0
     for (let i = 0; i < data.length; i += 4) if (data[i] > 8 || data[i + 1] > 8 || data[i + 2] > 8) count += 1
     return count
-  }
-
-  function healingMaskInfo(maskCanvas, threshold, protectRadius) {
-    const width = Math.max(0, Math.round(maskCanvas && maskCanvas.width || 0))
-    const height = Math.max(0, Math.round(maskCanvas && maskCanvas.height || 0))
-    const total = width * height
-    const masked = new Uint8Array(total)
-    const protectedPixels = new Uint8Array(total)
-    if (!width || !height) return { width, height, masked, protectedPixels, maskCount: 0, protectedCount: 0 }
-    const mask = maskCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const minMask = threshold == null ? 8 : threshold
-    let maskCount = 0
-    for (let p = 0; p < total; p += 1) {
-      if (maskPixelValue(mask, p * 4) > minMask) {
-        masked[p] = 1
-        maskCount += 1
-      }
-    }
-    const radius = Math.max(0, Math.round(Number(protectRadius) || 0))
-    let protectedCount = 0
-    if (radius > 0) {
-      for (let y = 0; y < height; y += 1) {
-        for (let x = 0; x < width; x += 1) {
-          const p = y * width + x
-          if (!masked[p]) continue
-          let edge = false
-          for (let oy = -radius; oy <= radius && !edge; oy += 1) {
-            const yy = y + oy
-            for (let ox = -radius; ox <= radius; ox += 1) {
-              if (ox === 0 && oy === 0) continue
-              const xx = x + ox
-              if (xx < 0 || yy < 0 || xx >= width || yy >= height || !masked[yy * width + xx]) {
-                edge = true
-                break
-              }
-            }
-          }
-          if (edge) {
-            protectedPixels[p] = 1
-            protectedCount += 1
-          }
-        }
-      }
-    }
-    return { width, height, masked, protectedPixels, maskCount, protectedCount }
-  }
-
-  function healingMaskedRgbVarianceFromData(data, info, options) {
-    const masked = info && info.masked
-    const protectedPixels = info && info.protectedPixels
-    if (!data || !masked) return 0
-    const skipProtected = !!(options && options.skipProtected)
-    let count = 0
-    let r = 0, g = 0, b = 0
-    for (let p = 0; p < masked.length; p += 1) {
-      if (!masked[p] || (skipProtected && protectedPixels && protectedPixels[p])) continue
-      const i = p * 4
-      if (data[i + 3] <= 8) continue
-      r += data[i]
-      g += data[i + 1]
-      b += data[i + 2]
-      count += 1
-    }
-    if (!count) return 0
-    r /= count
-    g /= count
-    b /= count
-    let variance = 0
-    for (let p = 0; p < masked.length; p += 1) {
-      if (!masked[p] || (skipProtected && protectedPixels && protectedPixels[p])) continue
-      const i = p * 4
-      if (data[i + 3] <= 8) continue
-      const dr = data[i] - r
-      const dg = data[i + 1] - g
-      const db = data[i + 2] - b
-      variance += (dr * dr + dg * dg + db * db) / 3
-    }
-    return variance / count
-  }
-
-  function healingMaskedRgbVariance(canvas, maskCanvas, threshold, options) {
-    const width = Math.min(canvas && canvas.width || 0, maskCanvas && maskCanvas.width || 0)
-    const height = Math.min(canvas && canvas.height || 0, maskCanvas && maskCanvas.height || 0)
-    if (width <= 0 || height <= 0) return 0
-    const mask = cropMaskToBlackWhite(maskCanvas, { x: 0, y: 0, width, height })
-    const info = healingMaskInfo(mask, threshold, Number(options && options.protectRadius) || 0)
-    const data = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    return healingMaskedRgbVarianceFromData(data, info, options)
-  }
-
-  function healingColorDistance(a, b) {
-    if (!a || !b) return Infinity
-    const dr = Number(a.r) - Number(b.r)
-    const dg = Number(a.g) - Number(b.g)
-    const db = Number(a.b) - Number(b.b)
-    return Math.sqrt(dr * dr + dg * dg + db * db)
-  }
-
-  function directionalHealingFillCanvas(baseCanvas, maskCanvas, bounds) {
-    const width = Math.min(baseCanvas && baseCanvas.width || 0, maskCanvas && maskCanvas.width || 0)
-    const height = Math.min(baseCanvas && baseCanvas.height || 0, maskCanvas && maskCanvas.height || 0)
-    const out = cloneCanvas(baseCanvas)
-    if (width <= 0 || height <= 0) return out
-    const info = healingMaskInfo(maskCanvas, 8, 1)
-    const maskCount = info.maskCount
-    if (maskCount < 8 || maskCount > 38000 || info.width !== width || info.height !== height) return out
-    const ctx = out.getContext('2d', { willReadFrequently: true })
-    const image = ctx.getImageData(0, 0, width, height)
-    const original = new Uint8ClampedArray(image.data)
-    const maskPixels = []
-    for (let p = 0; p < info.masked.length; p += 1) if (info.masked[p]) maskPixels.push(p)
-    const longest = Math.max(1, Number(bounds && bounds.width) || 1, Number(bounds && bounds.height) || 1)
-    const maxStep = Math.round(clampNumber(longest * 2.2 + 10, 8, 72))
-    const directions = [
-      { id: 'horizontal', dx: 1, dy: 0 },
-      { id: 'vertical', dx: 0, dy: 1 },
-      { id: 'diagDown', dx: 1, dy: 1 },
-      { id: 'diagUp', dx: 1, dy: -1 }
-    ]
-    const pixelColor = (p) => {
-      const i = p * 4
-      return { r: original[i], g: original[i + 1], b: original[i + 2], a: original[i + 3] }
-    }
-    const rayHit = (x, y, dx, dy, limit) => {
-      for (let step = 1; step <= limit; step += 1) {
-        const xx = x + dx * step
-        const yy = y + dy * step
-        if (xx < 0 || yy < 0 || xx >= width || yy >= height) return null
-        const p = yy * width + xx
-        if (info.masked[p]) continue
-        const color = pixelColor(p)
-        if (color.a <= 8) continue
-        return Object.assign({ x: xx, y: yy, p, step }, color)
-      }
-      return null
-    }
-    const blendPair = (a, b) => {
-      if (a && b) {
-        const diff = healingColorDistance(a, b)
-        if (diff > 126) return a.step <= b.step ? a : b
-        const t = a.step / Math.max(1, a.step + b.step)
-        return {
-          r: a.r * (1 - t) + b.r * t,
-          g: a.g * (1 - t) + b.g * t,
-          b: a.b * (1 - t) + b.b * t,
-          a: Math.max(a.a, b.a),
-          diff
-        }
-      }
-      return a || b
-    }
-    const stripColorAt = (x, y, direction) => {
-      const px = -direction.dy
-      const py = direction.dx
-      const samples = []
-      for (const offset of [0, -1, 1]) {
-        const sx = Math.round(x + px * offset)
-        const sy = Math.round(y + py * offset)
-        if (sx < 0 || sy < 0 || sx >= width || sy >= height) continue
-        const a = rayHit(sx, sy, -direction.dx, -direction.dy, maxStep)
-        const b = rayHit(sx, sy, direction.dx, direction.dy, maxStep)
-        const mixed = blendPair(a, b)
-        if (mixed) samples.push(mixed)
-      }
-      if (!samples.length) return null
-      const anchor = samples[0]
-      let r = 0, g = 0, b = 0, weight = 0
-      samples.forEach((sample, index) => {
-        const diff = healingColorDistance(sample, anchor)
-        if (diff > 72) return
-        const w = index === 0 ? 1 : 0.48
-        r += sample.r * w
-        g += sample.g * w
-        b += sample.b * w
-        weight += w
-      })
-      if (weight <= 0) return anchor
-      return { r: r / weight, g: g / weight, b: b / weight, a: 255 }
-    }
-    const directionStats = (direction) => {
-      const stride = Math.max(1, Math.ceil(maskPixels.length / 2400))
-      let checked = 0
-      let paired = 0
-      let close = 0
-      let near = 0
-      let diffSum = 0
-      for (let index = 0; index < maskPixels.length; index += stride) {
-        const p = maskPixels[index]
-        const x = p % width
-        const y = Math.floor(p / width)
-        const a = rayHit(x, y, -direction.dx, -direction.dy, maxStep)
-        const b = rayHit(x, y, direction.dx, direction.dy, maxStep)
-        checked += 1
-        if (!a || !b) continue
-        const diff = healingColorDistance(a, b)
-        paired += 1
-        diffSum += diff
-        if (diff <= 72) close += 1
-        if (a.step <= 4) near += 1
-        if (b.step <= 4) near += 1
-      }
-      const pairCoverage = checked ? paired / checked : 0
-      const closeRatio = paired ? close / paired : 0
-      const nearRatio = paired ? near / Math.max(1, paired * 2) : 0
-      const avgDiff = paired ? diffSum / paired : Infinity
-      const confidence = clampNumber(pairCoverage * 0.52 + closeRatio * 0.36 + nearRatio * 0.12 - Math.max(0, avgDiff - 84) / 220, 0, 1)
-      return Object.assign({}, direction, { checked, paired, pairCoverage, closeRatio, nearRatio, avgDiff, confidence })
-    }
-    const stats = directions.map(directionStats).sort((a, b) => b.confidence - a.confidence)
-    const best = stats[0]
-    const minPaired = Math.max(8, Math.min(48, Math.round(maskPixels.length * 0.12)))
-    if (!best || best.confidence < 0.38 || best.paired < minPaired || best.closeRatio < 0.42) {
-      out.__healingDirectionalStats = Object.assign({ accepted: false, reason: 'low-confidence' }, best || {})
-      return out
-    }
-    let written = 0
-    let missing = 0
-    for (const p of maskPixels) {
-      const x = p % width
-      const y = Math.floor(p / width)
-      const color = stripColorAt(x, y, best)
-      if (!color) {
-        missing += 1
-        continue
-      }
-      const i = p * 4
-      image.data[i] = Math.round(clampNumber(color.r, 0, 255))
-      image.data[i + 1] = Math.round(clampNumber(color.g, 0, 255))
-      image.data[i + 2] = Math.round(clampNumber(color.b, 0, 255))
-      image.data[i + 3] = 255
-      written += 1
-    }
-    for (let p = 0; p < info.masked.length; p += 1) {
-      if (info.masked[p]) continue
-      const i = p * 4
-      image.data[i] = original[i]
-      image.data[i + 1] = original[i + 1]
-      image.data[i + 2] = original[i + 2]
-      image.data[i + 3] = original[i + 3]
-    }
-    ctx.putImageData(image, 0, 0)
-    out.__healingDirectionalStats = Object.assign({ accepted: written >= maskCount * 0.82, reason: written >= maskCount * 0.82 ? 'directional-strip' : 'partial', written, missing, maskPixels: maskCount }, best)
-    return out
-  }
-
-  const HEALING_OPENCV_MODULE_URL = './vendor/opencv/index.web.mjs'
-  const HEALING_OPENCV_WASM_URL = './vendor/opencv/opencv_js.wasm'
-  let healingOpenCvPromise = null
-
-  async function loadHealingOpenCv() {
-    if (healingOpenCvPromise) return healingOpenCvPromise
-    healingOpenCvPromise = (async () => {
-      const baseUrl = document && document.baseURI || window.location.href
-      const moduleUrl = new URL(HEALING_OPENCV_MODULE_URL, baseUrl).href
-      const wasmUrl = new URL(HEALING_OPENCV_WASM_URL, baseUrl).href
-      const module = await import(moduleUrl)
-      const cv = module && module.default
-      if (!cv || typeof cv.loadOpenCV !== 'function') throw new Error('OpenCV loader missing')
-      await cv.loadOpenCV(wasmUrl)
-      if (typeof cv.inpaint !== 'function') throw new Error('cv.inpaint missing')
-      if (typeof cv.Mat !== 'function') throw new Error('cv.Mat missing')
-      if (cv.INPAINT_TELEA == null) throw new Error('cv.INPAINT_TELEA missing')
-      return cv
-    })().catch((error) => {
-      healingOpenCvPromise = null
-      throw error
-    })
-    return healingOpenCvPromise
-  }
-
-  async function teleaHealingInpaintCanvas(baseCanvas, maskCanvas, bounds) {
-    void bounds
-    const width = Math.min(baseCanvas && baseCanvas.width || 0, maskCanvas && maskCanvas.width || 0)
-    const height = Math.min(baseCanvas && baseCanvas.height || 0, maskCanvas && maskCanvas.height || 0)
-    if (width <= 0 || height <= 0) throw new Error('telea invalid canvas')
-    const cv = await loadHealingOpenCv()
-    const baseCtx = baseCanvas.getContext('2d', { willReadFrequently: true })
-    const maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true })
-    const baseImage = baseCtx.getImageData(0, 0, width, height)
-    const maskImage = maskCtx.getImageData(0, 0, width, height)
-    const src = new cv.Mat(height, width, cv.CV_8UC3)
-    const mask = new cv.Mat(height, width, cv.CV_8UC1)
-    const dst = new cv.Mat()
-    let maskPixels = 0
-    try {
-      for (let p = 0; p < width * height; p += 1) {
-        const bi = p * 4
-        const si = p * 3
-        src.data[si] = baseImage.data[bi]
-        src.data[si + 1] = baseImage.data[bi + 1]
-        src.data[si + 2] = baseImage.data[bi + 2]
-        const mv = maskPixelValue(maskImage.data, bi) > 8 ? 255 : 0
-        mask.data[p] = mv
-        if (mv) maskPixels += 1
-      }
-      if (maskPixels < 1) throw new Error('telea empty mask')
-      cv.inpaint(src, mask, dst, 3, cv.INPAINT_TELEA)
-      if (!dst || !dst.data || dst.rows !== height || dst.cols !== width) throw new Error('telea invalid output')
-      const out = cloneCanvas(baseCanvas)
-      const outCtx = out.getContext('2d', { willReadFrequently: true })
-      const outImage = outCtx.getImageData(0, 0, width, height)
-      for (let p = 0; p < width * height; p += 1) {
-        if (!mask.data[p]) continue
-        const oi = p * 4
-        const di = p * 3
-        outImage.data[oi] = dst.data[di]
-        outImage.data[oi + 1] = dst.data[di + 1]
-        outImage.data[oi + 2] = dst.data[di + 2]
-        outImage.data[oi + 3] = baseImage.data[oi + 3]
-      }
-      outCtx.putImageData(outImage, 0, 0)
-      out.__healingTeleaStats = { algorithm: 'opencv-telea', radius: 3, maskPixels, width, height }
-      return out
-    } finally {
-      try { src.delete() } catch {}
-      try { mask.delete() } catch {}
-      try { dst.delete() } catch {}
-    }
-  }
-
-  function postprocessHealingTextureCanvas(baseCanvas, filledCanvas, maskCanvas, bounds) {
-    void baseCanvas
-    const width = Math.min(filledCanvas && filledCanvas.width || 0, maskCanvas && maskCanvas.width || 0)
-    const height = Math.min(filledCanvas && filledCanvas.height || 0, maskCanvas && maskCanvas.height || 0)
-    const out = cloneCanvas(filledCanvas)
-    if (width <= 0 || height <= 0) return out
-    const info = healingMaskInfo(maskCanvas, 8, 2)
-    if (!info.maskCount || info.width !== width || info.height !== height) return out
-    const passCount = 1
-    const radius = 2
-    const sigmaSpatial = radius * 0.75
-    const sigmaColor = 22
-    const maxColorDistanceSq = 42 * 42 * 3
-    const ctx = out.getContext('2d', { willReadFrequently: true })
-    const image = ctx.getImageData(0, 0, width, height)
-    let current = new Uint8ClampedArray(image.data)
-    const varianceBefore = healingMaskedRgbVarianceFromData(current, info, { skipProtected: true })
-    let filteredPixels = 0
-    for (let pass = 0; pass < passCount; pass += 1) {
-      const next = new Uint8ClampedArray(current)
-      let passFiltered = 0
-      for (let y = 0; y < height; y += 1) {
-        for (let x = 0; x < width; x += 1) {
-          const p = y * width + x
-          if (!info.masked[p] || info.protectedPixels[p]) continue
-          const i = p * 4
-          if (current[i + 3] <= 8) continue
-          const cr = current[i]
-          const cg = current[i + 1]
-          const cb = current[i + 2]
-          let r = cr
-          let g = cg
-          let b = cb
-          let weight = 1
-          let samples = 1
-          for (let oy = -radius; oy <= radius; oy += 1) {
-            const yy = y + oy
-            if (yy < 0 || yy >= height) continue
-            for (let ox = -radius; ox <= radius; ox += 1) {
-              if (ox === 0 && oy === 0) continue
-              const xx = x + ox
-              if (xx < 0 || xx >= width) continue
-              const np = yy * width + xx
-              if (!info.masked[np] || info.protectedPixels[np]) continue
-              const ni = np * 4
-              if (current[ni + 3] <= 8) continue
-              const dr = current[ni] - cr
-              const dg = current[ni + 1] - cg
-              const db = current[ni + 2] - cb
-              const colorDistanceSq = dr * dr + dg * dg + db * db
-              if (colorDistanceSq > maxColorDistanceSq) continue
-              const spatialDistanceSq = ox * ox + oy * oy
-              const spatialWeight = Math.exp(-spatialDistanceSq / (2 * sigmaSpatial * sigmaSpatial))
-              const colorWeight = Math.exp(-colorDistanceSq / (2 * sigmaColor * sigmaColor))
-              const w = spatialWeight * colorWeight
-              if (w <= 0.002) continue
-              r += current[ni] * w
-              g += current[ni + 1] * w
-              b += current[ni + 2] * w
-              weight += w
-              samples += 1
-            }
-          }
-          if (samples < 3 || weight <= 1.01) continue
-          next[i] = Math.round(r / weight)
-          next[i + 1] = Math.round(g / weight)
-          next[i + 2] = Math.round(b / weight)
-          next[i + 3] = current[i + 3]
-          passFiltered += 1
-        }
-      }
-      current = next
-      filteredPixels += passFiltered
-      if (!passFiltered) break
-    }
-    image.data.set(current)
-    ctx.putImageData(image, 0, 0)
-    out.__healingPostprocessStats = {
-      algorithm: 'mask-bilateral',
-      radius,
-      passCount,
-      filteredPixels,
-      protectedPixels: info.protectedCount,
-      varianceBefore,
-      varianceAfter: healingMaskedRgbVarianceFromData(current, info, { skipProtected: true })
-    }
-    return out
-  }
-
-  function localHealingFallbackInpaintCanvas(baseCanvas, maskCanvas, bounds) {
-    const maskPixels = Math.max(1, Number(bounds && bounds.count) || localMaskCount(maskCanvas) || 1)
-    const longest = Math.max(1, Number(bounds && bounds.width) || 1, Number(bounds && bounds.height) || 1)
-    try {
-      const patch = penSmartCompleteFillCanvas(baseCanvas, maskCanvas, {
-        patchRadius: 3,
-        maxIterations: Math.round(clampNumber(Math.max(18, Math.sqrt(maskPixels) * 2.2), 18, 120)),
-        maxFrontierPerPass: 3600,
-        maxCandidateChecks: 260,
-        maxSearchPixels: 520000,
-        maxMaskPixels: 70000
-      })
-      if (patch && !countMaskOutsidePixelChanges(baseCanvas, patch, maskCanvas, 8)) return patch
-    } catch {}
-    return localDiffuseInpaintCanvas(baseCanvas, maskCanvas, {
-      maxIterations: Math.round(clampNumber(Math.max(32, longest * 1.8), 32, 128))
-    })
-  }
-
-  async function localHealingInpaintCanvas(baseCanvas, maskCanvas, bounds) {
-    try {
-      const telea = await teleaHealingInpaintCanvas(baseCanvas, maskCanvas, bounds)
-      if (telea && !countMaskOutsidePixelChanges(baseCanvas, telea, maskCanvas, 8)) return telea
-      throw new Error('telea outside guard failed')
-    } catch (error) {
-      state.lastHealingTeleaError = String(error && error.message || error || 'telea failed')
-      splitRuntimeTrace('healing-telea-fallback', { reason: state.lastHealingTeleaError })
-    }
-    return localHealingFallbackInpaintCanvas(baseCanvas, maskCanvas, bounds)
-  }
-
-  async function executeHealingTool() {
-    if (state.busy) return
-    if (!state.selectionTool || !state.selectionTool.active || state.selectionTool.mode !== 'healing') return startSelectionTool('healing')
-    let part = currentEditableLayerPart()
-    if (!part || !part.dataUrl) {
-      part = await ensureSourceAsEditableLayer('\u4fee\u8865\u5de5\u5177')
-      if (!part || !part.dataUrl) {
-        setMessage('\u8bf7\u5148\u9009\u62e9\u9700\u8981\u4fee\u8865\u7684\u56fe\u5c42', true)
-        render()
-        return
-      }
-    }
-    const session = await ensureSelectionToolSession()
-    const processingMaskCanvas = session && session.maskCanvas ? cloneCanvas(session.maskCanvas) : null
-    let bounds = null
-    try {
-      bounds = maskBBoxEngine(processingMaskCanvas, 8)
-    } catch {
-      bounds = null
-    }
-    if (!bounds || bounds.count < 8) {
-      setMessage('\u8bf7\u5148\u6d82\u62b9\u9700\u8981\u4fee\u8865\u7684\u5c0f\u533a\u57df', true)
-      render()
-      return
-    }
-    state.busy = true
-    state.busyAction = 'healing'
-    state.selectionTool.painting = false
-    state.selectionTool.paintPointerId = null
-    state.selectionTool.cursor = null
-    setMessage('\u6b63\u5728\u4fee\u8865...')
-    render()
-    try {
-      const size = await sourceSize()
-      const originalFull = await fullCanvasFromPart(part, size)
-      const brush = Number(state.selectionTool && state.selectionTool.brushSize) || 72
-      const longest = Math.max(1, Number(bounds.width) || 1, Number(bounds.height) || 1)
-      const pad = Math.round(clampNumber(Math.max(18, longest * 0.72, brush * 0.65), 18, 128))
-      const left = Math.max(0, bounds.minX - pad)
-      const top = Math.max(0, bounds.minY - pad)
-      const right = Math.min(size.width - 1, bounds.maxX + pad)
-      const bottom = Math.min(size.height - 1, bounds.maxY + pad)
-      const rect = { x: left, y: top, width: Math.max(1, right - left + 1), height: Math.max(1, bottom - top + 1) }
-      const cropBase = cropCanvasByRect(originalFull, rect)
-      const cropMask = cropMaskToBlackWhite(processingMaskCanvas, rect)
-      const cropBounds = maskBBoxEngine(cropMask, 8)
-      if (localMaskCount(cropMask) < 8) throw new Error('\u4fee\u8865\u533a\u57df\u592a\u5c0f')
-      const filledCrop = await localHealingInpaintCanvas(cropBase, cropMask, cropBounds)
-      const texturedCrop = postprocessHealingTextureCanvas(cropBase, filledCrop, cropMask, cropBounds)
-      const constrainedCrop = mergeHardMaskedCrop(cropBase, texturedCrop, cropMask, 8)
-      const cropOutside = countMaskOutsidePixelChanges(cropBase, constrainedCrop, cropMask, 8)
-      if (cropOutside > 0) throw new Error(`healing mask guard failed: crop outside changed ${cropOutside}`)
-      const healedFull = pasteHardMaskedCanvasAtRect(originalFull, constrainedCrop, processingMaskCanvas, rect, 8)
-      const fullOutside = countMaskOutsidePixelChanges(originalFull, healedFull, processingMaskCanvas, 8)
-      if (fullOutside > 0) throw new Error(`healing mask guard failed: full outside changed ${fullOutside}`)
-      const updatedPart = await updatePartFromFullCanvas(part, healedFull)
-      if (!updatedPart) throw new Error('\u4fee\u8865\u540e\u56fe\u5c42\u4e3a\u7a7a')
-      pushSplitLayerUndoSnapshot('healing', part.id)
-      state.parts = normalizeSpineLayerOrder(state.parts.map((item) => item.id === part.id ? updatedPart : item))
-      state.activePartId = part.id
-      state.selectedPartIds = [part.id]
-      resetSelectionTool()
-      state.viewMode = 'parts'
-      await refreshSplitPreview()
-      if (!state.splitSets.length) registerSplitSet()
-      else syncActiveSplitSet()
-      await cacheTempSplitPackage()
-      setMessage(`\u5df2\u5e94\u7528\u4fee\u8865\uff1a${updatedPart.name || updatedPart.id}`)
-      render()
-      updatePreviewOverlay()
-      syncSplitWorkspace()
-    } catch (error) {
-      setMessage(String(error && error.message || error || '\u4fee\u8865\u5931\u8d25'), true)
-    } finally {
-      state.busy = false
-      state.busyAction = ''
-      render()
-      syncSplitWorkspace()
-    }
   }
 
   async function validateInpaintCandidateResult(resultDataUrl, crop, part) {
@@ -24218,6 +23816,7 @@
         smartCompleteGroup: ''
       }
       if (semanticSourcePart) inheritCutoutSourceSemantics(nextPart, semanticSourcePart)
+      let penSourceOriginSet = null
       if (selected) {
         const remainingCanvas = applyMaskToCanvas(baseCanvas, maskCanvas, 'destination-out')
         const remainingPart = await updatePartFromFullCanvas(selected, remainingCanvas, {
@@ -24229,6 +23828,7 @@
           nextPart
         ])
       } else {
+        penSourceOriginSet = prepareSourceOriginSplitSet({ toolName: '钢笔抠图' })
         const remainingCanvas = applyMaskToCanvas(baseCanvas, maskCanvas, 'destination-out')
         const remainingId = uniqueManualPartId('pen_remaining')
         const remainingPart = await updatePartFromFullCanvas({
@@ -24245,7 +23845,7 @@
       resetPenTool()
       state.viewMode = 'parts'
       await refreshSplitPreview()
-      if (!state.splitSets.length) registerSplitSet()
+      if (penSourceOriginSet || !state.splitSets.length) registerSplitSet(penSourceOriginSet || {})
       else syncActiveSplitSet()
       await cacheTempSplitPackage()
       setMessage(selected ? `已图层分割：${selected.name || selected.id} → ${nextPart.id}` : '已切割原图：选区内、选区外分别保存为图层（空白区域不创建图层）')
@@ -26707,50 +26307,6 @@
     return out
   }
 
-  function pasteHardMaskedCanvasAtRect(baseCanvas, patchCanvas, maskCanvas, rect, threshold) {
-    const baseWidth = Math.max(0, Math.round(baseCanvas && baseCanvas.width || 0))
-    const baseHeight = Math.max(0, Math.round(baseCanvas && baseCanvas.height || 0))
-    const patchWidth = Math.max(0, Math.round(patchCanvas && patchCanvas.width || 0))
-    const patchHeight = Math.max(0, Math.round(patchCanvas && patchCanvas.height || 0))
-    const maskWidth = Math.max(0, Math.round(maskCanvas && maskCanvas.width || 0))
-    const maskHeight = Math.max(0, Math.round(maskCanvas && maskCanvas.height || 0))
-    const out = cloneCanvas(baseCanvas)
-    if (!baseWidth || !baseHeight || !patchWidth || !patchHeight || !maskWidth || !maskHeight || !rect) return out
-    const rectX = Math.round(Number(rect.x) || 0)
-    const rectY = Math.round(Number(rect.y) || 0)
-    const dstX = Math.max(0, rectX)
-    const dstY = Math.max(0, rectY)
-    const srcX = Math.max(0, -rectX)
-    const srcY = Math.max(0, -rectY)
-    const width = Math.min(patchWidth - srcX, baseWidth - dstX, maskWidth - dstX)
-    const height = Math.min(patchHeight - srcY, baseHeight - dstY, maskHeight - dstY)
-    if (width <= 0 || height <= 0) return out
-    const outCtx = out.getContext('2d', { willReadFrequently: true })
-    const patch = patchCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, patchWidth, patchHeight).data
-    const mask = maskCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, maskWidth, maskHeight).data
-    const image = outCtx.getImageData(0, 0, baseWidth, baseHeight)
-    const data = image.data
-    const minMask = threshold == null ? 8 : threshold
-    for (let y = 0; y < height; y += 1) {
-      const py = srcY + y
-      const dy = dstY + y
-      for (let x = 0; x < width; x += 1) {
-        const px = srcX + x
-        const dx = dstX + x
-        const maskIndex = (dy * maskWidth + dx) * 4
-        if (maskPixelValue(mask, maskIndex) <= minMask) continue
-        const patchIndex = (py * patchWidth + px) * 4
-        const dataIndex = (dy * baseWidth + dx) * 4
-        data[dataIndex] = patch[patchIndex]
-        data[dataIndex + 1] = patch[patchIndex + 1]
-        data[dataIndex + 2] = patch[patchIndex + 2]
-        data[dataIndex + 3] = patch[patchIndex + 3]
-      }
-    }
-    outCtx.putImageData(image, 0, 0)
-    return out
-  }
-
   function smartCompleteStatsNumber(value) {
     const number = Number(value)
     return Number.isFinite(number) ? number : null
@@ -28094,9 +27650,11 @@
     const rect = art && art.getBoundingClientRect ? art.getBoundingClientRect() : null
     const width = Math.max(1, Number(rect && rect.width) || 1)
     const height = Math.max(1, Number(rect && rect.height) || 1)
+    // Unclamped on purpose: the cursor has to keep travelling once it leaves the plate, otherwise the
+    // drag stalls at the edge and the object can never be pushed halfway out of frame.
     return {
-      x: clampNumber(((Number(event && event.clientX) || 0) - (Number(rect && rect.left) || 0)) / width * Math.max(1, size.width), 0, Math.max(1, size.width)),
-      y: clampNumber(((Number(event && event.clientY) || 0) - (Number(rect && rect.top) || 0)) / height * Math.max(1, size.height), 0, Math.max(1, size.height))
+      x: ((Number(event && event.clientX) || 0) - (Number(rect && rect.left) || 0)) / width * Math.max(1, size.width),
+      y: ((Number(event && event.clientY) || 0) - (Number(rect && rect.top) || 0)) / height * Math.max(1, size.height)
     }
   }
 
@@ -30435,12 +29993,14 @@
             blockSplitEditToolInteraction(event)
             return
           }
+          startLayerPointerDrag(part.id, setId, event)
         },
         onmousedown: (event) => {
           if (editToolLocked) {
             blockSplitEditToolInteraction(event)
             return
           }
+          startLayerPointerDrag(part.id, setId, event)
         },
         ondblclick: (event) => {
           event.preventDefault()
@@ -30747,8 +30307,9 @@
               if (wasSplitSetToggleHandledRecently(set.id)) return
               toggleSplitSet(set.id)
             },
-            style: { width: '100%', minHeight: SPLIT_RIGHT_SET_CARD_HEIGHT, height: SPLIT_RIGHT_SET_CARD_HEIGHT, display: 'grid', gridTemplateColumns: '34px minmax(0, 1fr) 22px', gap: '8px', alignItems: 'center', padding: '5px 8px', border: SPLIT_LAYOUT_BORDER, borderRadius: '7px', background: '#2f2f2f', color: '#fff', cursor: editToolLocked ? 'default' : 'pointer', opacity: editToolLocked ? '0.72' : '1', textAlign: 'left', boxSizing: 'border-box', appearance: 'none', outline: '0', boxShadow: 'none', transform: 'none', transition: 'background-color 120ms ease-out, background 120ms ease-out', WebkitTapHighlightColor: 'transparent' }
+            style: { width: '100%', minHeight: SPLIT_RIGHT_SET_CARD_HEIGHT, height: SPLIT_RIGHT_SET_CARD_HEIGHT, display: 'grid', gridTemplateColumns: '12px 34px minmax(0, 1fr) 22px', gap: '6px', alignItems: 'center', padding: '5px 8px', border: SPLIT_LAYOUT_BORDER, borderRadius: '7px', background: '#2f2f2f', color: '#fff', cursor: editToolLocked ? 'default' : 'pointer', opacity: editToolLocked ? '0.72' : '1', textAlign: 'left', boxSizing: 'border-box', appearance: 'none', outline: '0', boxShadow: 'none', transform: 'none', transition: 'background-color 120ms ease-out, background 120ms ease-out', WebkitTapHighlightColor: 'transparent' }
           }, [
+            splitSetKindBadgeNode(),
             h('div', { [SPLIT_SET_PREVIEW_ATTR]: '1', style: checkerStyle({ width: '34px', height: '34px', minWidth: '34px', borderRadius: '7px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }) },
               splitSetPreviewImageNode(set.previewDataUrl, set.name)),
             h('div', { style: { minWidth: 0, display: 'grid', gap: '3px' } }, [
@@ -30841,7 +30402,6 @@
     if (action === 'inpaintCompletion') return executeInpaintTool('completion')
     if (action === 'inpaintEdit') return executeInpaintTool('edit')
     if (action === 'inpaintRepair') return executeInpaintTool('repair')
-    if (action === 'healing') return executeHealingTool()
     if (action === 'penCutout') return executePenCutoutTool()
     if (action === 'penFill') return executePenFillTool()
     if (action === 'merge') return mergeSelectedParts()
@@ -31383,7 +30943,10 @@
     state.layerPointerDrag = null
     if (!wasActive) {
       finishLayerPointerDragVisual(sourceRow, pointerId)
-      if (!cancelled && sourceId) setLayerSelection(sourceId, event)
+      if (!cancelled && sourceId) {
+        state.layerPointerSuppressUntil = Date.now() + 200
+        setLayerSelection(sourceId, event)
+      }
       return
     }
     state.layerPointerSuppressUntil = Date.now() + 500
@@ -31578,7 +31141,6 @@
     if (action === 'selectionNsfw') return toggleSelectionInpaintNsfw()
     if (action === 'selectionUndo') return undoSelectionTool()
     if (action === 'selectionRedo') return redoSelectionTool()
-    if (action === 'selectionApply') return executeHealingTool()
     if (action === 'selectionExit') return stopSelectionTool()
     if (action === 'selectionRemoveBackground') return executeSelectionRemoveBackground()
     if (action === 'selectionEffect') return toggleSelectionEffectMode()
@@ -31590,6 +31152,7 @@
     if (action === 'maskRestore') return setMaskEditorMode('restore')
     if (action === 'maskCursor') return toggleMaskBrushCursor()
     if (action === 'maskExit') return stopMaskEditor()
+    if (action === 'objectTransferExit') return stopObjectTransferEdit()
     return null
   }
 
@@ -31804,12 +31367,6 @@
         event.preventDefault()
         event.stopPropagation()
         stopSelectionTool()
-        return
-      }
-      if (key === 'enter' && state.selectionTool.mode === 'healing') {
-        event.preventDefault()
-        event.stopPropagation()
-        executeHealingTool()
         return
       }
       if (event.key === '[') {
@@ -32750,11 +32307,11 @@
     }
     const autoLayerId = maskPart.id
     resetMaskEditor()
-    if (!activateSourceResource(resource.id, { resetViewport: false })) throw new Error('source target smoke could not reactivate source before healing')
-    await startSelectionTool('healing')
-    const healingPart = currentEditableLayerPart()
-    if (!healingPart || healingPart.id !== autoLayerId || healingPart.id === existingLayerId) {
-      throw new Error(`source target smoke healing used wrong layer: ${healingPart && healingPart.id || 'none'}`)
+    if (!activateSourceResource(resource.id, { resetViewport: false })) throw new Error('source target smoke could not reactivate source before inpaint')
+    await startSelectionTool('inpaint')
+    const inpaintPart = currentEditableLayerPart()
+    if (!inpaintPart || inpaintPart.id !== autoLayerId || inpaintPart.id === existingLayerId) {
+      throw new Error(`source target smoke inpaint used wrong layer: ${inpaintPart && inpaintPart.id || 'none'}`)
     }
     resetSelectionTool()
     if (!activateSourceResource(resource.id, { resetViewport: false })) throw new Error('source target smoke could not reactivate source before cutout')
@@ -35060,293 +34617,6 @@
     return { ok: true, value }
   }
 
-  function assertHealingTexturePostprocessSmoke() {
-    const width = 72
-    const height = 48
-    const base = canvasOfSize(width, height)
-    const baseCtx = base.getContext('2d', { willReadFrequently: true })
-    baseCtx.fillStyle = 'rgb(218, 183, 145)'
-    baseCtx.fillRect(0, 0, width, height)
-    const filled = cloneCanvas(base)
-    const filledCtx = filled.getContext('2d', { willReadFrequently: true })
-    const image = filledCtx.getImageData(0, 0, width, height)
-    const mask = canvasOfSize(width, height)
-    const maskCtx = mask.getContext('2d', { willReadFrequently: true })
-    maskCtx.fillStyle = '#000'
-    maskCtx.fillRect(0, 0, width, height)
-    maskCtx.fillStyle = '#fff'
-    maskCtx.fillRect(8, 8, 56, 32)
-    const skinMask = canvasOfSize(width, height)
-    const skinMaskCtx = skinMask.getContext('2d', { willReadFrequently: true })
-    skinMaskCtx.fillStyle = '#000'
-    skinMaskCtx.fillRect(0, 0, width, height)
-    skinMaskCtx.fillStyle = '#fff'
-    skinMaskCtx.fillRect(15, 14, 18, 20)
-    for (let y = 8; y < 40; y += 1) {
-      for (let x = 8; x < 64; x += 1) {
-        const i = (y * width + x) * 4
-        const noise = ((((x * 17 + y * 31) % 41) - 20) * 1.25)
-        if (x <= 9) {
-          image.data[i] = 220
-          image.data[i + 1] = 24
-          image.data[i + 2] = 26
-        } else if (x < 36) {
-          image.data[i] = Math.round(clampNumber(218 + noise, 0, 255))
-          image.data[i + 1] = Math.round(clampNumber(183 + noise, 0, 255))
-          image.data[i + 2] = Math.round(clampNumber(145 + noise, 0, 255))
-        } else {
-          image.data[i] = Math.round(clampNumber(18 + noise * 0.16, 0, 255))
-          image.data[i + 1] = Math.round(clampNumber(36 + noise * 0.18, 0, 255))
-          image.data[i + 2] = Math.round(clampNumber(72 + noise * 0.24, 0, 255))
-        }
-        image.data[i + 3] = 255
-      }
-    }
-    filledCtx.putImageData(image, 0, 0)
-    const beforeVariance = healingMaskedRgbVariance(filled, skinMask, 8, { protectRadius: 1, skipProtected: false })
-    const edgeBefore = filledCtx.getImageData(8, 24, 1, 1).data
-    const smoothed = postprocessHealingTextureCanvas(base, filled, mask, { count: 56 * 32, width: 56, height: 32 })
-    const afterVariance = healingMaskedRgbVariance(smoothed, skinMask, 8, { protectRadius: 1, skipProtected: false })
-    const smoothedData = smoothed.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const edgeAfter = smoothed.getContext('2d', { willReadFrequently: true }).getImageData(8, 24, 1, 1).data
-    if (!(afterVariance < beforeVariance * 0.92)) throw new Error(`healing texture variance did not drop: ${beforeVariance.toFixed(2)} -> ${afterVariance.toFixed(2)}`)
-    if (edgeAfter[0] !== edgeBefore[0] || edgeAfter[1] !== edgeBefore[1] || edgeAfter[2] !== edgeBefore[2] || edgeAfter[3] !== edgeBefore[3]) {
-      throw new Error(`healing texture edge changed: ${edgeBefore[0]},${edgeBefore[1]},${edgeBefore[2]},${edgeBefore[3]} -> ${edgeAfter[0]},${edgeAfter[1]},${edgeAfter[2]},${edgeAfter[3]}`)
-    }
-    const darkIndex = (24 * width + 52) * 4
-    if (!(smoothedData[darkIndex] < 45 && smoothedData[darkIndex + 1] < 62 && smoothedData[darkIndex + 2] > 48)) {
-      throw new Error(`healing texture color bleed: ${smoothedData[darkIndex]},${smoothedData[darkIndex + 1]},${smoothedData[darkIndex + 2]}`)
-    }
-    return {
-      beforeVariance,
-      afterVariance,
-      edge: `${edgeAfter[0]},${edgeAfter[1]},${edgeAfter[2]},${edgeAfter[3]}`
-    }
-  }
-
-  async function assertTeleaHealingSmoke() {
-    const cv = await loadHealingOpenCv()
-    if (typeof cv.inpaint !== 'function') throw new Error('telea smoke cv.inpaint missing')
-    const width = 84
-    const height = 64
-    const base = canvasOfSize(width, height)
-    const ctx = base.getContext('2d', { willReadFrequently: true })
-    for (let y = 0; y < height; y += 1) {
-      for (let x = 0; x < width; x += 1) {
-        ctx.fillStyle = `rgb(${216 + Math.round(x * 0.18)}, ${170 + Math.round(y * 0.12)}, ${134 + Math.round((x + y) * 0.06)})`
-        ctx.fillRect(x, y, 1, 1)
-      }
-    }
-    ctx.fillStyle = 'rgb(38, 32, 28)'
-    ctx.beginPath()
-    ctx.ellipse(42, 32, 6, 5, 0, 0, Math.PI * 2)
-    ctx.fill()
-    const mask = canvasOfSize(width, height)
-    const mctx = mask.getContext('2d', { willReadFrequently: true })
-    mctx.fillStyle = '#000'
-    mctx.fillRect(0, 0, width, height)
-    mctx.fillStyle = '#fff'
-    mctx.beginPath()
-    mctx.ellipse(42, 32, 6, 5, 0, 0, Math.PI * 2)
-    mctx.fill()
-    const telea = await teleaHealingInpaintCanvas(base, mask, { count: 96, width: 12, height: 10 })
-    const outside = countMaskOutsidePixelChanges(base, telea, mask, 8)
-    if (outside !== 0) throw new Error(`telea smoke changed outside mask: ${outside}`)
-    const center = telea.getContext('2d', { willReadFrequently: true }).getImageData(42, 32, 1, 1).data
-    if (!(center[0] > 170 && center[1] > 125 && center[2] > 95)) throw new Error(`telea smoke did not repair spot: ${center[0]},${center[1]},${center[2]},${center[3]}`)
-    const fallback = localHealingFallbackInpaintCanvas(base, mask, { count: 96, width: 12, height: 10 })
-    const fallbackOutside = countMaskOutsidePixelChanges(base, fallback, mask, 8)
-    if (fallbackOutside !== 0) throw new Error(`telea smoke fallback changed outside mask: ${fallbackOutside}`)
-    const fallbackCenter = fallback.getContext('2d', { willReadFrequently: true }).getImageData(42, 32, 1, 1).data
-    if (!(fallbackCenter[0] > 80 && fallbackCenter[1] > 65 && fallbackCenter[2] > 50)) throw new Error(`telea smoke fallback failed: ${fallbackCenter[0]},${fallbackCenter[1]},${fallbackCenter[2]},${fallbackCenter[3]}`)
-    return {
-      cvInpaint: true,
-      outside,
-      center: `${center[0]},${center[1]},${center[2]}`,
-      fallback: `${fallbackCenter[0]},${fallbackCenter[1]},${fallbackCenter[2]}`
-    }
-  }
-
-  function assertDirectionalHealingFillSmoke() {
-    const colorClose = (data, expected, tolerance, label) => {
-      const diff = Math.sqrt((data[0] - expected[0]) ** 2 + (data[1] - expected[1]) ** 2 + (data[2] - expected[2]) ** 2)
-      if (diff > tolerance) throw new Error(`${label} color mismatch: ${data[0]},${data[1]},${data[2]} expected ${expected.join(',')}`)
-    }
-    const solidMask = (width, height, rect) => {
-      const mask = canvasOfSize(width, height)
-      const ctx = mask.getContext('2d', { willReadFrequently: true })
-      ctx.fillStyle = '#000'
-      ctx.fillRect(0, 0, width, height)
-      ctx.fillStyle = '#fff'
-      ctx.fillRect(rect.x, rect.y, rect.width, rect.height)
-      return mask
-    }
-    const horizontal = canvasOfSize(96, 54)
-    const hctx = horizontal.getContext('2d', { willReadFrequently: true })
-    hctx.fillStyle = 'rgb(224, 184, 144)'
-    hctx.fillRect(0, 0, 96, 54)
-    hctx.fillStyle = 'rgb(16, 36, 76)'
-    hctx.fillRect(0, 18, 96, 20)
-    hctx.fillStyle = 'rgb(218, 28, 32)'
-    hctx.fillRect(0, 22, 96, 6)
-    hctx.fillStyle = 'rgb(88, 88, 88)'
-    hctx.fillRect(40, 18, 18, 20)
-    const hMask = solidMask(96, 54, { x: 40, y: 18, width: 18, height: 20 })
-    const hOut = directionalHealingFillCanvas(horizontal, hMask, { count: 18 * 20, width: 18, height: 20 })
-    const hStats = hOut.__healingDirectionalStats || {}
-    if (!hStats.accepted || hStats.id !== 'horizontal') throw new Error(`horizontal healing direction failed: ${hStats.id || 'none'} ${hStats.confidence || 0}`)
-    if (countMaskOutsidePixelChanges(horizontal, hOut, hMask, 8) !== 0) throw new Error('horizontal healing changed outside mask')
-    const hdata = hOut.getContext('2d', { willReadFrequently: true })
-    colorClose(hdata.getImageData(49, 24, 1, 1).data, [218, 28, 32], 28, 'horizontal red strip')
-    colorClose(hdata.getImageData(49, 33, 1, 1).data, [16, 36, 76], 32, 'horizontal blue strip')
-    colorClose(hdata.getImageData(39, 24, 1, 1).data, [218, 28, 32], 1, 'horizontal outside edge')
-
-    const vertical = canvasOfSize(72, 90)
-    const vctx = vertical.getContext('2d', { willReadFrequently: true })
-    for (let x = 0; x < 72; x += 1) {
-      const tone = x % 12 < 6 ? 102 : 58
-      vctx.fillStyle = `rgb(${tone}, ${tone + 8}, ${tone + 22})`
-      vctx.fillRect(x, 0, 1, 90)
-    }
-    vctx.fillStyle = 'rgb(92, 92, 92)'
-    vctx.fillRect(26, 36, 17, 20)
-    const vMask = solidMask(72, 90, { x: 26, y: 36, width: 17, height: 20 })
-    const vOut = directionalHealingFillCanvas(vertical, vMask, { count: 17 * 20, width: 17, height: 20 })
-    const vStats = vOut.__healingDirectionalStats || {}
-    if (!vStats.accepted || vStats.id !== 'vertical') throw new Error(`vertical healing direction failed: ${vStats.id || 'none'} ${vStats.confidence || 0}`)
-    if (countMaskOutsidePixelChanges(vertical, vOut, vMask, 8) !== 0) throw new Error('vertical healing changed outside mask')
-    const vdata = vOut.getContext('2d', { willReadFrequently: true })
-    colorClose(vdata.getImageData(28, 46, 1, 1).data, [102, 110, 124], 22, 'vertical light cloth')
-    colorClose(vdata.getImageData(35, 46, 1, 1).data, [58, 66, 80], 22, 'vertical dark cloth')
-
-    const skin = canvasOfSize(80, 60)
-    const sctx = skin.getContext('2d', { willReadFrequently: true })
-    for (let y = 0; y < 60; y += 1) {
-      for (let x = 0; x < 80; x += 1) {
-        sctx.fillStyle = `rgb(${214 + Math.round(x * 0.28)}, ${170 + Math.round(y * 0.22)}, ${134 + Math.round((x + y) * 0.08)})`
-        sctx.fillRect(x, y, 1, 1)
-      }
-    }
-    sctx.fillStyle = 'rgb(54, 42, 36)'
-    sctx.beginPath()
-    sctx.ellipse(40, 30, 7, 6, 0, 0, Math.PI * 2)
-    sctx.fill()
-    const sMask = canvasOfSize(80, 60)
-    const smctx = sMask.getContext('2d', { willReadFrequently: true })
-    smctx.fillStyle = '#000'
-    smctx.fillRect(0, 0, 80, 60)
-    smctx.fillStyle = '#fff'
-    smctx.beginPath()
-    smctx.ellipse(40, 30, 7, 6, 0, 0, Math.PI * 2)
-    smctx.fill()
-    const sOut = directionalHealingFillCanvas(skin, sMask, { count: 140, width: 14, height: 12 })
-    const sStats = sOut.__healingDirectionalStats || {}
-    if (!sStats.accepted) throw new Error(`skin healing direction failed: ${sStats.id || 'none'} ${sStats.confidence || 0}`)
-    if (countMaskOutsidePixelChanges(skin, sOut, sMask, 8) !== 0) throw new Error('skin healing changed outside mask')
-    const sCenter = sOut.getContext('2d', { willReadFrequently: true }).getImageData(40, 30, 1, 1).data
-    if (!(sCenter[0] > 190 && sCenter[1] > 145 && sCenter[2] > 110)) throw new Error(`skin healing center failed: ${sCenter[0]},${sCenter[1]},${sCenter[2]}`)
-    return {
-      horizontal: `${hStats.id}:${hStats.confidence.toFixed(2)}`,
-      vertical: `${vStats.id}:${vStats.confidence.toFixed(2)}`,
-      skin: `${sStats.id}:${sStats.confidence.toFixed(2)}`
-    }
-  }
-
-  async function runHealingToolSmokeTest() {
-    if (!isMountedCardVisible()) await ensureSplitEditorPanelVisibleForSmoke()
-    if (!isMountedCardVisible() && document.body) {
-      document.body.classList.remove('novaflow-primary-target-animation')
-      document.body.classList.add('novaflow-primary-target-art')
-      const smokePanel = document.createElement('div')
-      smokePanel.setAttribute('data-novaflow-healing-smoke-panel', '1')
-      smokePanel.style.position = 'fixed'
-      smokePanel.style.left = '8px'
-      smokePanel.style.top = '88px'
-      smokePanel.style.width = '260px'
-      smokePanel.style.height = '420px'
-      smokePanel.style.zIndex = '2147483000'
-      smokePanel.style.background = '#161616'
-      smokePanel.style.overflow = 'hidden'
-      document.body.appendChild(smokePanel)
-      mountedCard = smokePanel
-      render()
-      syncSplitWorkspace()
-      await new Promise((resolve) => window.setTimeout(resolve, 120))
-    }
-    if (!isMountedCardVisible()) throw new Error('healing smoke panel not visible')
-    const width = 128
-    const height = 96
-    const source = canvasOfSize(width, height)
-    const ctx = source.getContext('2d', { willReadFrequently: true })
-    ctx.fillStyle = 'rgb(221, 185, 146)'
-    ctx.fillRect(0, 0, width, height)
-    ctx.fillStyle = 'rgba(236, 202, 162, 0.55)'
-    for (let y = 0; y < height; y += 8) ctx.fillRect(0, y, width, 2)
-    ctx.fillStyle = 'rgb(18, 18, 18)'
-    ctx.fillRect(58, 42, 12, 10)
-    const sourceDataUrl = source.toDataURL('image/png')
-    state.source = { fileName: 'healing-smoke.png', name: 'healing-smoke.png', dataUrl: sourceDataUrl }
-    state.sourceSize = { width, height }
-    state.parts = []
-    state.splitPreviewDataUrl = ''
-    state.activePartId = ''
-    state.selectedPartIds = []
-    state.viewMode = 'source'
-    splitLayerUndoStack = []
-    splitLayerRedoStack = []
-    resetSelectionTool()
-    resetPenTool()
-    resetMaskEditor()
-    render()
-    syncSplitWorkspace()
-    await startSelectionTool('healing')
-    await new Promise((resolve) => window.setTimeout(resolve, 80))
-    if (!state.selectionTool || !state.selectionTool.active || state.selectionTool.mode !== 'healing') throw new Error('healing smoke did not enter tool mode')
-    assertNoVisibleSplitToolAction('selectionCursor', 'healing brush cursor toggle')
-    const part = selectedSplitPart()
-    if (!part || !part.dataUrl) throw new Error('healing smoke did not create editable layer')
-    const session = await ensureSelectionToolSession()
-    const maskCanvas = session && session.maskCanvas
-    if (!maskCanvas) throw new Error('healing smoke mask missing')
-    const teleaStats = await assertTeleaHealingSmoke()
-    const textureStats = assertHealingTexturePostprocessSmoke()
-    const maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true })
-    maskCtx.clearRect(0, 0, width, height)
-    maskCtx.fillStyle = '#fff'
-    maskCtx.beginPath()
-    maskCtx.ellipse(64, 47, 10, 9, 0, 0, Math.PI * 2)
-    maskCtx.fill()
-    state.selectionTool.maskDataUrl = maskCanvas.toDataURL('image/png')
-    const beforeFull = await fullCanvasFromPart(part, { width, height })
-    const beforePartDataUrl = part.dataUrl
-    await executeHealingTool()
-    await new Promise((resolve) => window.setTimeout(resolve, 120))
-    if (state.selectionTool && state.selectionTool.active) throw new Error('healing smoke did not exit after apply')
-    const healedPart = state.parts.find((item) => item && item.id === part.id)
-    if (!healedPart || healedPart.dataUrl === beforePartDataUrl) throw new Error('healing smoke did not update layer')
-    if (state.source.dataUrl !== sourceDataUrl) throw new Error('healing smoke changed source image')
-    const afterFull = await fullCanvasFromPart(healedPart, { width, height })
-    const outside = countMaskOutsidePixelChanges(beforeFull, afterFull, maskCanvas, 8)
-    if (outside !== 0) throw new Error(`healing smoke changed outside mask: ${outside}`)
-    const center = afterFull.getContext('2d', { willReadFrequently: true }).getImageData(64, 47, 1, 1).data
-    if (center[0] < 120 || center[1] < 90 || center[2] < 60) throw new Error(`healing smoke did not repair center: ${center[0]},${center[1]},${center[2]},${center[3]}`)
-    if (!undoSplitLayerEdit()) throw new Error('healing smoke undo did not start')
-    await new Promise((resolve) => window.setTimeout(resolve, 140))
-    const undoPart = state.parts.find((item) => item && item.id === part.id)
-    if (!undoPart || undoPart.dataUrl !== beforePartDataUrl) throw new Error('healing smoke undo did not restore layer')
-    if (!redoSplitLayerEdit()) throw new Error('healing smoke redo did not start')
-    await new Promise((resolve) => window.setTimeout(resolve, 140))
-    const redoPart = state.parts.find((item) => item && item.id === part.id)
-    if (!redoPart || redoPart.dataUrl !== healedPart.dataUrl) throw new Error('healing smoke redo did not restore repaired layer')
-    const value = `ok:outside=${outside}:center=${center[0]},${center[1]},${center[2]}:telea=${teleaStats.center}:fallback=${teleaStats.fallback}:variance=${textureStats.beforeVariance.toFixed(1)}>${textureStats.afterVariance.toFixed(1)}:edge=${textureStats.edge}`
-    document.body.setAttribute('data-novaflow-split-healing-smoke', value)
-    setMessage(`HEALING_SMOKE_OK ${value}`)
-    render()
-    updatePreviewOverlay()
-    syncSplitWorkspace()
-    return { ok: true, value }
-  }
-
   async function runSeededAlphaSmokeTest() {
     const width = 180
     const height = 220
@@ -36497,18 +35767,6 @@
         render()
       })
     }, 220)
-  }
-
-  if (new URLSearchParams(window.location.search).has('__novaflow_split_healing_smoke')) {
-    window.setTimeout(() => {
-      runHealingToolSmokeTest().catch((error) => {
-        const message = String(error && error.message || error || 'healing smoke failed')
-        document.body.setAttribute('data-novaflow-split-healing-smoke', `fail:${message}`)
-        setMessage(`HEALING_SMOKE_FAIL ${message}`, true)
-        render()
-        syncSplitWorkspace()
-      })
-    }, 240)
   }
 
   const SURFACE_OBSERVER_OPTIONS = { childList: true, subtree: true, attributes: true, attributeFilter: ['class', 'style', 'hidden', 'aria-hidden'], characterData: true }

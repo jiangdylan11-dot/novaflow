@@ -7,7 +7,7 @@ const { loadSpine } = require('../../tools/qwen-rapid-migration-smoke.cjs')
 const root = path.resolve(__dirname, '../..')
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
 const RUNTIME = 'particle-editor/spine-split-runtime.js'
-const CACHE_VERSION = '20260917-canvas-export-1'
+const CACHE_VERSION = '20260919-layer-card-routing-1'
 
 function loadRuntime() {
   const s = loadSpine(RUNTIME)
@@ -27,7 +27,8 @@ test('the smart cutout toolbar ships a one-click 去背 button after 退出 and 
   assert.match(source, /const modelAlphaDataUrl = await runRmbgCutout\(modelInputCanvas\.toDataURL\('image\/png'\)\)\n\s+const modelAlphaStats = await assertModelAlphaDataUrl\(modelAlphaDataUrl, '去背 RMBG'\)/, 'the whole image goes through the same RMBG path as 万物迁移 and demands real alpha')
   assert.match(source, /const resultCanvas = await sourceRgbWithModelAlpha\(baseCanvas, modelAlphaDataUrl, width, height, modelAlphaDataUrl\)/, 'the layer keeps the source RGB under the model alpha')
   assert.match(source, /kind: 'background-removal',\n\s+source: 'executeSelectionRemoveBackground'/, 'the new layer is tagged as a background removal')
-  assert.match(source, /resetSelectionTool\(\)\n\s+await addManualPart\(cropped\)\n\s+setMessage\(`已生成去背图层：\$\{id\}`\)/, 'the tool exits and the result is added through the manual layer path')
+  assert.match(source, /resetSelectionTool\(\)\n\s+await addManualPart\(cropped, sourceOriginOptions\(cutoutSource, '去背'\)\)\n\s+setMessage\(`已生成去背图层：\$\{id\}`\)/, 'the tool exits and the result is added through the manual layer path, routed by whether the input was the 原图 or a layer')
+  assert.match(source, /function sourceOriginOptions\(cutoutSource, toolName\) \{\n\s+return String\(cutoutSource \|\| 'original'\) === 'original' \? \{ sourceOrigin: true, toolName \} : \{\}/, '原图 input opens that source\'s own card; a layer input stays in the layer\'s card')
   assert.match(source, /has\('__novaflow_remove_bg_smoke'\)/, 'the in-page smoke is wired to a query flag')
   assert.match(source, /runMaskStencilSmokeTest,\n\s+executeSelectionRemoveBackground,\n\s+runSelectionRemoveBackgroundSmokeTest,/, 'the debug hooks expose the removal')
 })

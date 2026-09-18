@@ -797,90 +797,6 @@ const runtimeGroups = [
       },
     ],
   },
-  {
-    name: 'vendor/opencv/index.web.mjs',
-    files: [
-      {
-        label: 'source',
-        path: path.join(repoRoot, 'particle-editor', 'vendor', 'opencv', 'index.web.mjs'),
-      },
-      {
-        label: 'desktop renderer',
-        path: path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'vendor', 'opencv', 'index.web.mjs'),
-      },
-      {
-        label: 'win-unpacked renderer',
-        path: path.join(
-          repoRoot,
-          'particle-editor-desktop',
-          'dist',
-          'win-unpacked',
-          'resources',
-          'app',
-          'renderer',
-          'vendor',
-          'opencv',
-          'index.web.mjs',
-        ),
-      },
-    ],
-  },
-  {
-    name: 'vendor/opencv/opencv_js.wasm',
-    files: [
-      {
-        label: 'source',
-        path: path.join(repoRoot, 'particle-editor', 'vendor', 'opencv', 'opencv_js.wasm'),
-      },
-      {
-        label: 'desktop renderer',
-        path: path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'vendor', 'opencv', 'opencv_js.wasm'),
-      },
-      {
-        label: 'win-unpacked renderer',
-        path: path.join(
-          repoRoot,
-          'particle-editor-desktop',
-          'dist',
-          'win-unpacked',
-          'resources',
-          'app',
-          'renderer',
-          'vendor',
-          'opencv',
-          'opencv_js.wasm',
-        ),
-      },
-    ],
-  },
-  {
-    name: 'vendor/opencv/LICENSE',
-    files: [
-      {
-        label: 'source',
-        path: path.join(repoRoot, 'particle-editor', 'vendor', 'opencv', 'LICENSE'),
-      },
-      {
-        label: 'desktop renderer',
-        path: path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'vendor', 'opencv', 'LICENSE'),
-      },
-      {
-        label: 'win-unpacked renderer',
-        path: path.join(
-          repoRoot,
-          'particle-editor-desktop',
-          'dist',
-          'win-unpacked',
-          'resources',
-          'app',
-          'renderer',
-          'vendor',
-          'opencv',
-          'LICENSE',
-        ),
-      },
-    ],
-  },
 ]
 
 // Retired on 2026-09-16: the WAN 2.2 local video line and the old AIFX generation pipeline.
@@ -914,6 +830,8 @@ const retiredRuntimeArtifacts = [
   ...retiredRendererRoots.flatMap(({ label, root }) => [
     ...retiredRendererFiles.map((fileName) => ({ label: `${label} retired ${fileName}`, path: path.join(root, fileName) })),
     { label: `${label} retired aifx-v3 shell`, path: path.join(root, 'aifx-v3') },
+    // Retired on 2026-09-19 with 修补工具: the browser OpenCV build existed only for its Telea inpaint.
+    { label: `${label} retired vendor/opencv`, path: path.join(root, 'vendor', 'opencv') },
   ]),
   {
     label: 'desktop Wan2.2 LoRA catalog',
