@@ -556,6 +556,7 @@
     parts: [],
     activePartId: '',
     selectedPartIds: [],
+    layerSelectionAnchorId: '',
     layerScrollTop: 0,
     viewMode: 'parts',
     lastSmartCompleteStats: null,
@@ -12136,6 +12137,7 @@
     state.selectedPartIds = (state.selectedPartIds || []).filter((id) => ids.has(id))
     if (state.activePartId && !ids.has(state.activePartId)) state.activePartId = state.selectedPartIds[0] || (state.parts[0] && state.parts[0].id) || ''
     if (!state.selectedPartIds.length && state.activePartId) state.selectedPartIds = [state.activePartId]
+    if (state.layerSelectionAnchorId && !ids.has(state.layerSelectionAnchorId)) state.layerSelectionAnchorId = ''
   }
 
   function layerRowFromEvent(event) {
@@ -12148,31 +12150,55 @@
     return hasExternalSourceFileDrag(event) && !!layerRowFromEvent(event)
   }
 
+  // Everything between the two rows, in the order the list shows them. Both ends are
+  // in the same card, because picking a row in another card makes that card the active one.
+  function layerSelectionRange(anchorId, targetId) {
+    const ordered = normalizeSpineLayerOrder(state.parts).map((part) => String(part && part.id || ''))
+    const anchorIndex = ordered.indexOf(String(anchorId || ''))
+    const targetIndex = ordered.indexOf(String(targetId || ''))
+    if (anchorIndex < 0 || targetIndex < 0) return []
+    return ordered.slice(Math.min(anchorIndex, targetIndex), Math.max(anchorIndex, targetIndex) + 1)
+  }
+
   function setLayerSelection(id, event) {
     if (isSplitEditToolActive()) return
     const partId = String(id || '')
     if (!partId) return
     const previousViewMode = state.viewMode || 'parts'
-    const plainSelect = !event || (!event.ctrlKey && !event.metaKey && event.button !== 2)
+    const secondaryButton = !!(event && event.button === 2)
+    const additiveSelect = !!(event && (event.ctrlKey || event.metaKey) && !secondaryButton)
+    const rangeSelect = !!(event && event.shiftKey && !secondaryButton)
+    const plainSelect = !event || (!additiveSelect && !rangeSelect && !secondaryButton)
     const selectedIds = state.selectedPartIds || []
     const alreadySingleSelected = state.activePartId === partId && selectedIds.length === 1 && selectedIds[0] === partId
     const needsToolTransition = previousViewMode === 'source' || previousViewMode === 'selectionTool' || previousViewMode === 'penTool'
       || (state.maskEditor && state.maskEditor.active && state.maskEditor.partId !== partId)
-    if (plainSelect && alreadySingleSelected && !needsToolTransition) return
+    if (plainSelect && alreadySingleSelected && !needsToolTransition) {
+      // Nothing to repaint, but this row is now the head a later shift+click ranges from.
+      state.layerSelectionAnchorId = partId
+      return
+    }
     const canPatchSelection = previousViewMode === 'parts' && !needsToolTransition
     if (state.maskEditor && state.maskEditor.active && state.maskEditor.partId !== partId) resetMaskEditor()
-    if (event && (event.ctrlKey || event.metaKey) && event.button !== 2) {
+    const range = rangeSelect ? layerSelectionRange(state.layerSelectionAnchorId || state.activePartId, partId) : []
+    if (range.length) {
+      // The anchor stays where it was, so a second shift+click re-ranges from the same head.
+      state.selectedPartIds = additiveSelect ? Array.from(new Set([...(state.selectedPartIds || []), ...range])) : range
+      state.activePartId = partId
+    } else if (additiveSelect) {
       const selected = new Set(state.selectedPartIds || [])
       if (selected.has(partId)) selected.delete(partId)
       else selected.add(partId)
       state.selectedPartIds = Array.from(selected)
       state.activePartId = partId
+      state.layerSelectionAnchorId = partId
     } else {
       state.selectedPartIds = [partId]
       state.activePartId = partId
+      state.layerSelectionAnchorId = partId
     }
     if (state.maskEditor && state.maskEditor.active) state.viewMode = 'maskEdit'
-    else if (event && (event.ctrlKey || event.metaKey) && state.selectedPartIds.length > 1) state.viewMode = 'parts'
+    else if ((additiveSelect || rangeSelect) && state.selectedPartIds.length > 1) state.viewMode = 'parts'
     else if (previousViewMode === 'source' || previousViewMode === 'selectionTool' || previousViewMode === 'penTool' || previousViewMode === 'maskEdit') state.viewMode = 'parts'
     else state.viewMode = previousViewMode
     if (state.viewMode === 'single' || state.viewMode === 'mask' || state.viewMode === 'maskEdit') resetSplitCanvasViewport()
