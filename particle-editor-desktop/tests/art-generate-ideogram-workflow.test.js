@@ -78,11 +78,27 @@ test('compiles the user text to neutral compact Ideogram 4 structured JSON', () 
   assert.deepEqual(JSON.parse(compiled), {
     high_level_description: text,
     compositional_deconstruction: {
-      background: '',
+      background: text,
       elements: [],
     },
   })
   assert.doesNotMatch(compiled, /style_description|photo|photography|breasts/i)
+})
+
+test('the structured background field is never empty: scene sentence, scene clauses, or the whole description', () => {
+  // Smart-AI style prompt: the labelled 场景 segment is the background.
+  assert.equal(
+    ideogram.extractBackground('主体包括一名猫耳少女，蓝眼睛。姿态与动作：坐姿。场景：背景为日式房间。光色与氛围：光线为自然光。'),
+    '背景为日式房间'
+  )
+  assert.equal(ideogram.extractBackground('背景：雪山脚下的木屋，黄昏'), '雪山脚下的木屋，黄昏')
+  // Free-form prompt: scene clauses are kept, clauses that also describe the subject are not
+  // (the character would otherwise be painted again as part of the background).
+  assert.equal(ideogram.extractBackground('一名少女坐在日式房间里。木地板与纸门，自然光。'), '木地板与纸门，自然光')
+  assert.equal(ideogram.extractBackground('一名少女坐在日式房间里。'), '一名少女坐在日式房间里。')
+  assert.equal(ideogram.extractBackground('A finished fantasy inventory interface'), 'A finished fantasy inventory interface')
+  const compiled = JSON.parse(ideogram.compileStructuredPrompt('少女站在樱花树下。场景：春日公园。'))
+  assert.equal(compiled.compositional_deconstruction.background, '春日公园')
 })
 
 test('build injects structured prompt, aligned dimensions, seed, and output prefix while preserving sampling', () => {
@@ -97,7 +113,7 @@ test('build injects structured prompt, aligned dimensions, seed, and output pref
   const parsedPrompt = JSON.parse(workflow['167'].inputs.text)
 
   assert.equal(parsedPrompt.high_level_description, 'A finished fantasy inventory interface\nwith readable labels.')
-  assert.deepEqual(parsedPrompt.compositional_deconstruction, { background: '', elements: [] })
+  assert.deepEqual(parsedPrompt.compositional_deconstruction, { background: 'A finished fantasy inventory interface\nwith readable labels.', elements: [] })
   assert.equal(workflow['247'].inputs.width, 1072)
   assert.equal(workflow['247'].inputs.height, 1824)
   assert.equal(workflow['235'].inputs.seed, 123456789)

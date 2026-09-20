@@ -9,6 +9,8 @@
   const UNAVAILABLE_LABEL = '开始生成 · 积分待确认'
   const UPDATE_EVENT = 'novaflow:art-generate-credit-updated'
   const CREDITS_PER_USD = 211
+  // Mirrors ART_GENERATE_MAX_COUNT in the brand Runtime (绘图 生成数量 upper bound).
+  const MAX_COUNT = 10
   const RETRY_DELAYS_MS = Object.freeze([250, 750, 1500, 3000, 6000])
   const NODE_CACHE_LIMIT = 8
   const ESTIMATE_CACHE_LIMIT = 32
@@ -58,6 +60,8 @@
       googleAspectRatioImg2img: String(input.googleAspectRatioImg2img || 'auto'),
       googleResolution: String(input.googleResolution || '1K'),
       referenceCount: Math.max(0, Array.isArray(input.references) ? input.references.filter(Boolean).length : 0),
+      // 生成数量: the priced node runs once per image, so the estimate scales with it.
+      count: Math.max(1, Math.min(MAX_COUNT, Math.round(Number(input.count)) || 1)),
     }
   }
 
@@ -76,6 +80,7 @@
       mode,
       settings,
       values.referenceCount,
+      values.count,
     ])
     return Object.freeze({
       ...values,
@@ -212,7 +217,25 @@
     })
   }
 
-  function readyEstimate(snapshot, result) {
+  function scalePricingResult(result, count) {
+    // The price badge quotes one run of the node; 生成数量 runs it once per image.
+    const times = Math.max(1, Math.min(MAX_COUNT, Math.round(Number(count)) || 1))
+    if (times === 1 || !result || typeof result !== 'object') return result
+    const scale = (value) => (finiteNumber(value) === null ? value : finiteNumber(value) * times)
+    const scaled = { ...result }
+    if (result.type === 'range_usd') {
+      scaled.min_usd = scale(result.min_usd)
+      scaled.max_usd = scale(result.max_usd)
+    } else if (result.type === 'list_usd' && Array.isArray(result.usd)) {
+      scaled.usd = result.usd.map(scale)
+    } else if (result.type === 'usd' || (!('type' in result) && 'usd' in result)) {
+      scaled.usd = scale(result.usd)
+    }
+    return scaled
+  }
+
+  function readyEstimate(snapshot, rawResult) {
+    const result = scalePricingResult(rawResult, snapshot.count)
     const formattedCredits = formatPricingResult(result)
     if (!formattedCredits) return unavailableEstimate(snapshot)
     const minCredits = result && result.type === 'range_usd' ? finiteNumber(result.min_usd) * CREDITS_PER_USD : null

@@ -229,11 +229,21 @@ def is_runtime_prompt_path(path: str) -> bool:
     return clean_path in {"/prompt", "/api/prompt"}
 
 
+REBUILT_AIFX_PROMPT_MARKER = "novaflowh3videotovideolatent"
+
+
 def is_legacy_aifx_prompt_body(body: bytes | None) -> bool:
+    """Block the retired AIFX pipeline, not the rebuilt one.
+
+    Both carry the NovaFlow_AIFX output prefix this used to key on. Only the
+    rebuild restyles from a source latent, so that node separates them.
+    """
     if not body:
         return False
     text = body.decode("utf-8", errors="ignore").lower()
-    return "novaflow_aifx" in text or "novaflow-aifx" in text
+    if "novaflow_aifx" not in text and "novaflow-aifx" not in text:
+        return False
+    return REBUILT_AIFX_PROMPT_MARKER not in text
 
 
 def read_windows_user_env_value(name: str) -> str:

@@ -17,6 +17,7 @@ import { patchPromptHistoryLimit } from './patch-prompt-history-limit.mjs';
 import { patchPromptInputPerf } from './patch-prompt-input-perf.mjs';
 import { patchPreviewWheelZoom } from './patch-preview-wheel-zoom.mjs';
 import { patchTemplatePreviewPerf } from './patch-template-preview-perf.mjs';
+import { patchAifxParticleIdle } from './patch-aifx-particle-idle.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const bundleGitPath = "particle-editor/assets/index-BbIa-2NM.js";
@@ -815,6 +816,7 @@ source = patchPromptHistoryLimit(source);
 source = patchPromptInputPerf(source);
 source = patchPreviewWheelZoom(source);
 source = patchTemplatePreviewPerf(source);
+source = patchAifxParticleIdle(source);
 
 if (verifyHeadReplay) {
   const replayComparable = source.replace(/\r\n?/g, "\n");

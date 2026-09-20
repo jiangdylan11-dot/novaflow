@@ -11,7 +11,7 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8").replace(/\r\n?/g, "\n");
 const TOOL_CACHE_VERSION = "20260916-section-switch-1";
 // The brand runtime moved on once more: unauthorized installs now see 仓库 / 导出 disabled.
-const BRAND_CACHE_VERSION = "20260916-shortcut-auth-1";
+const BRAND_CACHE_VERSION = "20260920-art-prompt-guard-1";
 
 test("switching the AI sequence top mode clears the positive prompt before React handles the click", () => {
   const source = read("particle-editor/novaflow-brand-runtime.js");
@@ -213,7 +213,7 @@ test("the AI特效 shell stays up until React has left 特效 after a primary si
   assert.deepEqual(hides, ["primary-switch:动画"]);
   assert.equal(observerCallback, null, "the watcher disconnects after hiding");
   const html = read("particle-editor/index.html");
-  assert.match(html, /aifx-repaint-runtime\.js\?v=20260916-aifx-ui-shell-7/);
+  assert.match(html, /aifx-repaint-runtime\.js\?v=20260920-aifx-sequence-2/);
 
   const helper = source.match(/  const isPrimarySidebarAction = \(action\) => \{[\s\S]*?\n  \}/)?.[0];
   assert.ok(helper);

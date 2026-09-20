@@ -68,7 +68,7 @@ assert.equal(
 assert.equal(rendererBundle, sourceBundle, 'renderer bundle mirror must match the authoritative bundle')
 assert.equal(packagedBundle, sourceBundle, 'win-unpacked bundle mirror must match the authoritative bundle')
 
-const cacheKey = 'index-BbIa-2NM.js?v=20260919-video-format-convert-1'
+const cacheKey = 'index-BbIa-2NM.js?v=20260920-aifx-particle-idle-1'
 for (const indexPath of [
   'particle-editor/index.html',
   'particle-editor-desktop/renderer/index.html',

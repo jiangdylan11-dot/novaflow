@@ -19,7 +19,6 @@
     "particle-editor-desktop/tests/prompt-assistant-release-contract.test.js",
     "particle-editor-desktop/tests/prompt-assistant-request-lease-contract.test.js",
     "particle-editor-desktop/tests/prompt-assistant-resource-lifecycle-contract.test.js",
-    "particle-editor-desktop/tests/section-switch-contract.test.js",
     "particle-editor-desktop/tests/smart-ai-simple-dialog-contract.test.js",
     "particle-editor-desktop/tests/spine-atlas-alpha-state.test.js",
     "particle-editor-desktop/tests/split-inpaint-nsfw-runtime-contract.test.js",

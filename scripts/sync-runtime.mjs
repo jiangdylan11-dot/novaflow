@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto'
+import { readdirSync } from 'node:fs'
 import { chmod, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { TextDecoder } from 'node:util'
@@ -12,6 +13,8 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const syncEntries = [
   { label: 'main/h3-reference-nodes.py', sourcePath: path.join(repoRoot, 'particle-editor-desktop/main/h3-reference-nodes.py'),
     targetPaths: [path.join(repoRoot, 'particle-editor-desktop/dist/win-unpacked/resources/app/main/h3-reference-nodes.py')] },
+  { label: 'main/h3-v2v-nodes.py', sourcePath: path.join(repoRoot, 'particle-editor-desktop/main/h3-v2v-nodes.py'),
+    targetPaths: [path.join(repoRoot, 'particle-editor-desktop/dist/win-unpacked/resources/app/main/h3-v2v-nodes.py')] },
   ...[...spineWebpRuntimeFiles, 'main/birefnet-runner.py', 'main/novaflow-seethrough-head-node.py', 'main/cutout-raw-encoder.js', 'main/cutout-mask-stream.js', 'main/mp4-compressor.js', 'main/video-format-converter.js'].map((file) => ({
     label: file,
     sourcePath: path.join(repoRoot, 'particle-editor-desktop', file),
@@ -175,6 +178,44 @@ const syncEntries = [
       path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'assets', 'index-BbIa-2NM.js'),
     ],
   },
+  ...['aifx-restyle.workflow.js', 'aifx-restyle-client.js', 'aifx-shape-detect.js'].map((fileName) => ({
+    label: fileName,
+    sourcePath: path.join(repoRoot, 'particle-editor', fileName),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', fileName),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', fileName),
+    ],
+  })),
+  // Built-in AI 特效 source clips. Binary, so they are copied rather than
+  // normalised like the text runtime files beside them.
+  ...['crescent-fire.mp4', 'explosion-burst.mp4', 'ui-levelup.mp4', 'skill-cast.mp4',
+    'slot-coin-burst.mp4', 'slot-big-win.mp4', 'slot-payline.mp4', 'slot-frame-light.mp4',
+    'slot-symbol-pop.mp4', 'slot-scatter-land.mp4', 'slot-collect.mp4', 'slot-coin-rain.mp4',
+    'slot-fireworks.mp4', 'slot-multiplier.mp4', 'slot-treasure.mp4', 'slot-sparkle-sweep.mp4',
+    'slot-reel-stop.mp4', 'slot-portal.mp4', 'slot-god-rays.mp4', 'slot-swirl.mp4'].map((fileName) => ({
+    label: 'aifx-templates/' + fileName,
+    sourcePath: path.join(repoRoot, 'particle-editor', 'aifx-templates', fileName),
+    binary: true,
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'aifx-templates', fileName),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'aifx-templates', fileName),
+    ],
+  })),
+  // Style previews for the 风格库 cards: a 240px cut of each style's own
+  // crescent render. Binary, copied like the templates; regenerate from the
+  // render harness whenever a preset's recipe changes.
+  ...readdirSync(path.join(repoRoot, 'particle-editor', 'aifx-styles'))
+    .filter((fileName) => fileName.endsWith('.mp4'))
+    .sort()
+    .map((fileName) => ({
+      label: 'aifx-styles/' + fileName,
+      sourcePath: path.join(repoRoot, 'particle-editor', 'aifx-styles', fileName),
+      binary: true,
+      targetPaths: [
+        path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'aifx-styles', fileName),
+        path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'aifx-styles', fileName),
+      ],
+    })),
   {
     label: 'runtime-fetch-proxy.js',
     sourcePath: path.join(repoRoot, 'particle-editor', 'runtime-fetch-proxy.js'),
@@ -197,6 +238,70 @@ const syncEntries = [
     targetPaths: [
       path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'png-remove-black.tool.js'),
       path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'png-remove-black.tool.js'),
+    ],
+  },
+  {
+    label: 'spine-auto-mesh-core.js',
+    sourcePath: path.join(repoRoot, 'particle-editor', 'spine-auto-mesh-core.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'spine-auto-mesh-core.js'),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'spine-auto-mesh-core.js'),
+    ],
+  },
+  {
+    label: 'spine-auto-mesh.js',
+    sourcePath: path.join(repoRoot, 'particle-editor', 'spine-auto-mesh.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'spine-auto-mesh.js'),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'spine-auto-mesh.js'),
+    ],
+  },
+  {
+    label: 'spine-auto-mesh-attach.js',
+    sourcePath: path.join(repoRoot, 'particle-editor', 'spine-auto-mesh-attach.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'spine-auto-mesh-attach.js'),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'spine-auto-mesh-attach.js'),
+    ],
+  },
+  {
+    label: 'spine-auto-weights.js',
+    sourcePath: path.join(repoRoot, 'particle-editor', 'spine-auto-weights.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'spine-auto-weights.js'),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'spine-auto-weights.js'),
+    ],
+  },
+  {
+    label: 'spine-auto-weights.editor.js',
+    sourcePath: path.join(repoRoot, 'particle-editor', 'spine-auto-weights.editor.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'spine-auto-weights.editor.js'),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'spine-auto-weights.editor.js'),
+    ],
+  },
+  {
+    label: 'spine-auto-mesh.panel.js',
+    sourcePath: path.join(repoRoot, 'particle-editor', 'spine-auto-mesh.panel.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'spine-auto-mesh.panel.js'),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'spine-auto-mesh.panel.js'),
+    ],
+  },
+  {
+    label: 'spine-auto-mesh.editor.js',
+    sourcePath: path.join(repoRoot, 'particle-editor', 'spine-auto-mesh.editor.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'spine-auto-mesh.editor.js'),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'spine-auto-mesh.editor.js'),
+    ],
+  },
+  {
+    label: 'spine-auto-mesh.picker.js',
+    sourcePath: path.join(repoRoot, 'particle-editor', 'spine-auto-mesh.picker.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'spine-auto-mesh.picker.js'),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'spine-auto-mesh.picker.js'),
     ],
   },
   {

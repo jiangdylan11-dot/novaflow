@@ -50,26 +50,53 @@
     .replace("遵循用户指定或参考图已有的光照，以自然明暗转折塑造体积", "使用柔和体积光、受控轮廓光和自然明暗转折塑造体积")
     .replace("边缘干净自然，与用户指定或原图已有的画风一致", "只允许局部细弱彩色辅助线");
 
-  function removeLegacyQualitySuffix(prompt) {
-    const suffixes = [
-      PREVIOUS_CHARACTER_INSTRUCTION + CLOTHING_DESIGN_INSTRUCTION + PURE_ARTWORK_INSTRUCTION,
-      PREVIOUS_CHARACTER_INSTRUCTION + PURE_ARTWORK_INSTRUCTION,
-      PREVIOUS_CHARACTER_INSTRUCTION + CLOTHING_DESIGN_INSTRUCTION,
-      PREVIOUS_CHARACTER_INSTRUCTION,
-      LEGACY_CHARACTER_INSTRUCTION + CLOTHING_DESIGN_INSTRUCTION + PURE_ARTWORK_INSTRUCTION,
-      LEGACY_CHARACTER_INSTRUCTION + PURE_ARTWORK_INSTRUCTION,
-      LEGACY_CHARACTER_INSTRUCTION + CLOTHING_DESIGN_INSTRUCTION,
-      LEGACY_CHARACTER_INSTRUCTION
-    ];
-    for (const suffix of suffixes) {
-      const marker = `\n\n${suffix}`;
-      if (prompt.endsWith(marker)) return prompt.slice(0, -marker.length).trim();
-    }
-    return prompt;
-  }
-
   function clean(value) {
     return String(value || "").trim();
+  }
+
+  // Every sentence this module (or the smart-AI director, see novaflow-smart-ai.js) has ever appended.
+  // They are stripped wherever they sit, so a prompt that already carries an old copy, or a prompt
+  // assistant that echoed the director text back into the prompt, never gets judged or re-sent with it.
+  const TEMPLATE_TEXTS = [
+    PREVIOUS_CHARACTER_INSTRUCTION,
+    LEGACY_CHARACTER_INSTRUCTION,
+    ...Object.values(PROFILE_INSTRUCTIONS),
+    CLOTHING_DESIGN_INSTRUCTION,
+    PURE_ARTWORK_INSTRUCTION
+  ].sort((a, b) => b.length - a.length);
+  const FLAT_STYLE_INSTRUCTION_RE = /商业资产完成度：保持用户明确指定的[^。\n]*?可直接用于游戏资产。/g;
+  const LEAKED_DIRECTOR_MARKER_RE = /用户附加要求|用户补充要求|设计控件约束|通用保留约束|基础质量由系统自动负责|只作为最终提示词约束|不作为图片可见事实|用户本次(?:修改|创作)要求|提示词(?:编辑|创作)模式/;
+  const LEAKED_DIRECTOR_SENTENCE_RE = new RegExp(`[^。\\n]*(?:${LEAKED_DIRECTOR_MARKER_RE.source})[^。\\n]*。?`, "g");
+  // Multi-sentence director paragraphs (novaflow-smart-ai.js artAutomaticQualityInstruction and the
+  // per-asset 约束 lines) are removed as whole blocks, first sentence to last.
+  const LEAKED_DIRECTOR_BLOCK_RES = [
+    /基础质量由系统自动负责[\s\S]*?不要求用户重复选择基础质量项。?/g,
+    /(?:角色资产|场景资产|游戏 UI|图标道具|特效资产|宣传海报|通用保留|从零创作|角色创作|场景创作|图标道具创作|特效创作|宣传海报创作)约束：[^。\n]*。?/g,
+    /(?:风格优先级|背景处理)：[^。\n]*。?/g
+  ];
+  // "不添加游戏界面" is a complaint, not a request: only clauses that ask for something count.
+  const NEGATED_CLAUSE_RE = /(不添加|不要(?!改动|变动)|不得(?!改动|变动)|不生成|不含|不带|没有|避免|禁止|去掉|去除|取消|without|avoid|\bno\b)/i;
+
+  function stripTemplateText(value) {
+    let text = clean(value);
+    TEMPLATE_TEXTS.forEach((snippet) => {
+      text = text.split(snippet).join(" ");
+    });
+    text = text.replace(FLAT_STYLE_INSTRUCTION_RE, " ");
+    LEAKED_DIRECTOR_BLOCK_RES.forEach((pattern) => {
+      text = text.replace(pattern, " ");
+    });
+    text = text.replace(LEAKED_DIRECTOR_SENTENCE_RE, " ");
+    return text.replace(/[ \t]+/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  function findLeakedDirectorText(value) {
+    const match = clean(value).match(LEAKED_DIRECTOR_MARKER_RE);
+    return match ? match[0] : "";
+  }
+
+  function affirmativeClauses(text) {
+    return clean(text).split(/[，,。；;！!？?\n]+/).filter((clause) => !NEGATED_CLAUSE_RE.test(clause)).join("，");
   }
 
   function normalizeAssetType(value) {
@@ -80,11 +107,12 @@
   function inferAssetType(prompt, explicitType) {
     const normalized = normalizeAssetType(explicitType);
     if (normalized) return normalized;
-    const text = clean(prompt)
-      .split(/\n{2,}(?=(?:高完成度(?:角色|场景|图标与道具|特效)|商业(?:游戏UI|宣传)))/)[0]
-      .replace(PURE_ARTWORK_INSTRUCTION, "");
-    const compiledType = text.match(/绘图质量协议（art-quality-v1\/(character|scene|game_ui|icon_prop|vfx|poster)）/i)?.[1];
+    const stripped = stripTemplateText(prompt);
+    const compiledType = stripped.match(/绘图质量协议（art-quality-v1\/(character|scene|game_ui|icon_prop|vfx|poster)）/i)?.[1];
     if (compiledType) return compiledType.toLowerCase();
+    // Judged on the user's own affirmative text: template sentences and "不要 UI" clauses cannot
+    // turn a character prompt into a game-UI prompt (which would append the UI quality paragraph).
+    const text = affirmativeClauses(stripped);
     if (/(UI|界面|HUD|按钮|面板|老虎机|slot|大厅页|登录页)/i.test(text)) return "game_ui";
     if (/(海报|KV|主视觉|美宣|banner|landing\s*page|宣传图)/i.test(text)) return "poster";
     if (/(特效|VFX|法术|爆炸|拖尾|光效|粒子)/i.test(text) && !/(角色|人物|女性|男性|少女|少年|英雄|全身|半身)/i.test(text)) return "vfx";
@@ -126,7 +154,7 @@
 
   function build(options) {
     const source = options || {};
-    const prompt = clean(source.prompt);
+    const prompt = stripTemplateText(source.prompt);
     const style = clean(source.style).toLowerCase();
     const assetType = inferAssetType(prompt, source.assetType);
     const explicitFlatStyle = hasExplicitFlatStyle(prompt, style);
@@ -136,7 +164,10 @@
     const clothingDesignInstruction = assetType === "character" && EXPLICIT_CLOTHING_DESIGN_RE.test(prompt)
       ? CLOTHING_DESIGN_INSTRUCTION
       : "";
-    const pureArtworkInstruction = PURE_ARTWORK_ASSET_TYPES.has(assetType) ? PURE_ARTWORK_INSTRUCTION : "";
+    // Both local txt2img models (Ideogram 4 Instant, Qwen Rapid) sample at cfg 1: a negated list of UI
+    // words in the positive prompt is at best ignored and at worst read as a mention, so it stays out there.
+    const localTxt2img = String(source.provider || "").toLowerCase() === "local" && String(source.mode || "").toLowerCase() === "txt2img";
+    const pureArtworkInstruction = PURE_ARTWORK_ASSET_TYPES.has(assetType) && !localTxt2img ? PURE_ARTWORK_INSTRUCTION : "";
     const positiveInstruction = [basePositiveInstruction, clothingDesignInstruction, pureArtworkInstruction].filter(Boolean).join("");
     const baseNegativeInstruction = explicitFlatStyle
       ? "错误人体，畸形手指，多余手脚，五官错位，结构粘连，轮廓脏乱，噪点，低完成度"
@@ -157,14 +188,17 @@
 
   function compileFinal(options) {
     const source = options || {};
-    const prompt = removeLegacyQualitySuffix(clean(source.prompt));
+    const input = clean(source.prompt);
+    // Old copies of our own instruction and echoed director text come out first; the current
+    // instruction for this asset type / provider goes back on the end. Re-compiling is a no-op.
+    const prompt = stripTemplateText(input);
     const profile = build({ ...source, prompt });
-    const alreadyCompiled = Boolean(profile.positiveInstruction) && prompt.includes(profile.positiveInstruction);
+    const compiled = profile.directorInstruction ? `${prompt}\n\n${profile.directorInstruction}`.trim() : prompt;
     return {
       ...profile,
-      prompt: alreadyCompiled ? prompt : `${prompt}\n\n${profile.directorInstruction}`.trim(),
+      prompt: compiled,
       negativePrompt: mergeNegativePrompt(source.negativePrompt, profile.negativeInstruction),
-      applied: !alreadyCompiled
+      applied: compiled !== input
     };
   }
 
@@ -175,6 +209,8 @@
     inferAssetType,
     hasExplicitFlatStyle,
     canApplySoftEdgeEdit,
-    mergeNegativePrompt
+    mergeNegativePrompt,
+    stripTemplateText,
+    findLeakedDirectorText
   });
 })(window);

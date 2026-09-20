@@ -1,0 +1,1 @@
+t=0.7s total 53px, most mouth_down 9.3px | t=0.967s total 85px, most mouth_down 13.1px | t=1.233s total 96px, most eyes_l_up 15.1px | t=1.5s total 79px, most eyes_l_up 13.6px

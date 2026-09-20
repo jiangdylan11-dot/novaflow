@@ -17,6 +17,9 @@ Top-level runtime helper and support files currently present beside the entry sh
 - `aifx-dom-prune.js`
 - `aifx-inline-v4.js`
 - `aifx-repaint-runtime.js`
+- `aifx-restyle.workflow.js`
+- `aifx-restyle-client.js`
+- `aifx-shape-detect.js`
 - `aifx-v3-bridge.js`
 - `spine-official-runtime.js`
 - `ai-background-removal-runtime.js`
@@ -38,9 +41,12 @@ Top-level helper scripts referenced from `index.html`:
 - `./runtime-detect-stabilizer.js?v=20260611-runtime-proxy-1`
 - `./spine-official-runtime.js?v=20260516-chain-unified-12`
 - `./ai-background-removal-runtime.js?v=20260719-unmult-1`
-- `./aifx-repaint-runtime.js?v=20260516-chain-unified-12`
+- `./aifx-shape-detect.js?v=20260920-aifx-ref-2`
+- `./aifx-restyle.workflow.js?v=20260920-aifx-styles54-3`
+- `./aifx-restyle-client.js?v=20260919-aifx-restyle-2`
+- `./aifx-repaint-runtime.js?v=20260920-aifx-sequence-2`
 - `./spine-split-runtime.js?v=20260516-chain-unified-19`
-- `./novaflow-brand-runtime.js?v=20260516-chain-unified-30`
+- `./novaflow-brand-runtime.js?v=20260920-art-prompt-guard-1`
 - `./ribbon-event-markers.js?v=20260516-chain-unified-19`
 
 Static asset bundle filenames currently referenced from `index.html`:

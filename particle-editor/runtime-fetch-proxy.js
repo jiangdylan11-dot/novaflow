@@ -192,10 +192,18 @@
     return null
   }
 
+  // The rebuilt AI 特效 chain restyles from a source latent, which the retired
+  // pipeline had no node for. That one node tells the two apart, so the guard
+  // can keep blocking the old chain without also blocking the new one - which
+  // shares the NovaFlow_AIFX output prefix the pattern below matches.
+  const REBUILT_AIFX_MARKER = 'NovaFlowH3VideoToVideoLatent'
+
   const shouldBlockLegacyAifxPrompt = async (input, init) => {
     const url = getUrl(input)
     if (!url || !isPromptPath(url) || getMethod(input, init) !== 'POST') return false
-    return /novaflow[-_]aifx/i.test(await readBodyText(input, init))
+    const body = await readBodyText(input, init)
+    if (!/novaflow[-_]aifx/i.test(body)) return false
+    return !body.includes(REBUILT_AIFX_MARKER)
   }
 
   const toProxyRequest = (input, init) => {

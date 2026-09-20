@@ -32,6 +32,8 @@
   const ART_GENERATE_LAST_RUNTIME_KEY = "novaflow_runtime_last_connected_url";
   const ART_GENERATE_PROMPT_HISTORY_STORAGE_KEY = "novaflow_art_generate_prompt_history_v1";
   const ART_GENERATE_PROMPT_HISTORY_SLOT_COUNT = 5;
+  // 绘图 生成数量 upper bound: one click runs up to this many images back to back.
+  const ART_GENERATE_MAX_COUNT = 10;
   // Art prompt history mirrors the AI sequence history: saved slots and recent entries share one 15-row budget.
   const ART_GENERATE_PROMPT_HISTORY_TOTAL_CAP = 15;
   const NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR = "data-novaflow-prompt-action-button";
@@ -5964,25 +5966,34 @@
   }
 
   function syncNovaflowAifxExportModalControls(root, context) {
+    // 2026-09-20: AI 特效 exports video the way the video board does (its
+    // result mp4 goes to ffmpeg as-is), so the video tab is no longer taken
+    // away in this context. Anything an older build hid is put back.
     const dialog = getNovaflowExportDialog(root);
     if (!(dialog instanceof HTMLElement)) return;
-    const isAifx = context === "aifx";
-    const buttons = Array.from(dialog.querySelectorAll("button")).filter((button) => button instanceof HTMLButtonElement);
-    buttons.forEach((button) => {
-      const mode = isNovaflowExportTabButton(button)
-        ? getNovaflowExportTabModeFromButton(button)
-        : getNovaflowExportActionModeFromButton(button);
-      if (mode === "video" || button.getAttribute("data-novaflow-aifx-export-control-hidden") === "1") {
-        setNovaflowAifxExportControlUnavailable(button, isAifx && mode === "video");
+    Array.from(dialog.querySelectorAll("button")).forEach((button) => {
+      if (!(button instanceof HTMLButtonElement)) return;
+      if (button.getAttribute("data-novaflow-aifx-export-control-hidden") === "1") {
+        setNovaflowAifxExportControlUnavailable(button, false);
       }
     });
-    if (!isAifx || getNovaflowExportModalActualTab(root) !== "video") return;
-    if (getNovaflowExportPendingTabMode(root) === "seq") return;
-    const sequenceTab = buttons.find((button) => isNovaflowExportTabButton(button) && getNovaflowExportTabModeFromButton(button) === "seq");
-    if (!(sequenceTab instanceof HTMLButtonElement)) return;
-    setNovaflowExportPendingTabMode(root, "seq");
-    try { sequenceTab.click(); } catch {}
-    scheduleNovaflowExportTabRuntimeSync(root);
+  }
+
+  // The dialog's scale control, when the context shows one; 100 means the
+  // result's own resolution, which is what the video board exports too.
+  function getNovaflowAifxExportScalePct(root) {
+    const dialog = getNovaflowExportDialog(root);
+    if (!(dialog instanceof HTMLElement)) return 100;
+    const inputs = Array.from(dialog.querySelectorAll('input[type="range"], input[type="number"]'));
+    for (const input of inputs) {
+      if (!(input instanceof HTMLInputElement) || !isNovaflowExportElementVisible(input)) continue;
+      const owner = input.closest("label, div");
+      const text = normalizeText(owner instanceof HTMLElement ? owner.textContent || "" : "");
+      if (!text.includes("\u7f29\u653e")) continue;
+      const value = Number(input.value);
+      if (Number.isFinite(value) && value >= 10 && value <= 200) return Math.round(value);
+    }
+    return 100;
   }
 
   function pruneNovaflowExportModalContextControls(root) {
@@ -7370,25 +7381,6 @@
     if (!(button instanceof HTMLButtonElement)) return;
     if (isNovaflowExportTabButton(button)) {
       const mode = getNovaflowExportTabModeFromButton(button);
-      if (getNovaflowExportContextKind(root) === "aifx" && mode === "video") {
-        stopNovaflowExportDialogEvent(event);
-        if (event.type === "click" || event.type === "keydown") {
-          const dialog = getNovaflowExportDialog(root);
-          const sequenceTab = dialog instanceof HTMLElement
-            ? Array.from(dialog.querySelectorAll("button")).find((candidate) => (
-                candidate instanceof HTMLButtonElement &&
-                isNovaflowExportTabButton(candidate) &&
-                getNovaflowExportTabModeFromButton(candidate) === "seq"
-              ))
-            : null;
-          if (sequenceTab instanceof HTMLButtonElement) {
-            setNovaflowExportPendingTabMode(root, "seq");
-            try { sequenceTab.click(); } catch {}
-            scheduleNovaflowExportTabRuntimeSync(root);
-          }
-        }
-        return;
-      }
       if (event.type === "click" || event.type === "keydown") {
         if (mode) {
           setNovaflowExportPendingTabMode(root, mode);
@@ -7405,20 +7397,20 @@
     if (context === "aifx") {
       stopNovaflowExportDialogEvent(event);
       if (event.type !== "click" && event.type !== "keydown") return;
-      if (mode === "video") {
-        setNovaflowExportPendingTabMode(root, "seq");
-        syncNovaflowExportModalTabRuntime(root);
-        scheduleNovaflowExportTabRuntimeSync(root);
-        showTopbarExportAvailabilityNotice("AI\u7279\u6548\u4ec5\u652f\u6301\u5e8f\u5217\u5e27\u6216 Spine \u5bfc\u51fa");
-        return;
-      }
       syncNovaflowExportModalRuntime(root);
       const state = beginNovaflowManualExportFromModal(root, mode);
       if (!state) {
         showNovaflowExportNameRequiredNotice();
         return;
       }
-      const dispatched = dispatchNovaflowAifxExport(mode === "spine" ? "spine" : "final", { name: state.name }, button);
+      // Name, format and background come from the dialog exactly as they do
+      // for the other contexts; the panel does the writing.
+      const dispatched = dispatchNovaflowAifxExport(mode, {
+        name: state.name,
+        format: state.format,
+        transparent: state.transparent,
+        scalePct: getNovaflowAifxExportScalePct(root)
+      }, button);
       if (!dispatched) showTopbarExportAvailabilityNotice("AI\u7279\u6548\u5bfc\u51fa\u5165\u53e3\u5c1a\u672a\u5c31\u7eea");
       return;
     }
@@ -63700,7 +63692,7 @@
     }
     const api = window.NovaFlowAifxMvp;
     if (!api || typeof api.dispatchExport !== "function") return false;
-    const exportMode = mode === "spine" ? "spine" : "final";
+    const exportMode = mode === "spine" ? "spine" : mode === "video" ? "video" : "final";
     if (window.__NovaFlowAifxExportDispatchInFlight) return true;
     window.__NovaFlowAifxExportDispatchInFlight = true;
     if (sourceButton instanceof HTMLElement) sourceButton.setAttribute("data-novaflow-exporting", "1");
@@ -70985,6 +70977,11 @@
     loras: [],
     seed: -1,
     randomSeed: true,
+    // 生成数量: images produced per click, 1..ART_GENERATE_MAX_COUNT, generated one after another.
+    count: 1,
+    // Set while a multi-image run is in flight so progress maps "this image" onto "the whole batch".
+    batchIndex: 0,
+    batchTotal: 0,
     running: false,
     status: "",
     error: "",
@@ -73459,9 +73456,34 @@
     return node;
   }
 
+  function normalizeArtGenerateCount(value) {
+    const numeric = Math.round(Number(value));
+    if (!Number.isFinite(numeric)) return 1;
+    return Math.max(1, Math.min(ART_GENERATE_MAX_COUNT, numeric));
+  }
+
+  function artGenerateBatchProgress(label, pct) {
+    // While a multi-image run is in flight every per-image progress call is restated for the whole batch:
+    // "\u7b2c 2/4 \u5f20 \u00b7 \u751f\u6210\u4e2d.." at (1 + pct) / 4, so the bar walks from 0 to 100% once per click, not once per image.
+    const total = Math.max(0, Math.round(Number(ART_GENERATE_STATE.batchTotal) || 0));
+    const safePct = Math.max(0, Math.min(1, Number(pct) || 0));
+    if (total <= 1) return { label: String(label || "\u7b49\u5f85\u751f\u6210"), pct: safePct };
+    const index = Math.max(0, Math.min(total - 1, Math.round(Number(ART_GENERATE_STATE.batchIndex) || 0)));
+    return {
+      label: `\u7b2c ${index + 1}/${total} \u5f20 \u00b7 ${String(label || "\u751f\u6210\u4e2d..")}`,
+      pct: (index + safePct) / total
+    };
+  }
+
+  function clearArtGenerateBatch() {
+    ART_GENERATE_STATE.batchIndex = 0;
+    ART_GENERATE_STATE.batchTotal = 0;
+  }
+
   function setArtGenerateProgress(label, pct, options = {}) {
-    ART_GENERATE_STATE.progressLabel = String(label || "\u7b49\u5f85\u751f\u6210");
-    ART_GENERATE_STATE.progressPct = Math.max(0, Math.min(1, Number(pct) || 0));
+    const mapped = artGenerateBatchProgress(label, pct);
+    ART_GENERATE_STATE.progressLabel = mapped.label;
+    ART_GENERATE_STATE.progressPct = mapped.pct;
     if ("promptId" in options) ART_GENERATE_STATE.progressPromptId = String(options.promptId || "");
     if ("queueRemaining" in options) ART_GENERATE_STATE.progressQueueRemaining = Math.max(0, Number(options.queueRemaining) || 0);
     if ("started" in options) ART_GENERATE_STATE.progressStartedAt = options.started ? Date.now() : 0;
@@ -73469,6 +73491,7 @@
   }
 
   function resetArtGenerateProgress(label = "\u7b49\u5f85\u751f\u6210", pct = 0) {
+    clearArtGenerateBatch();
     ART_GENERATE_STATE.progressLabel = label;
     ART_GENERATE_STATE.progressPct = Math.max(0, Math.min(1, Number(pct) || 0));
     ART_GENERATE_STATE.progressPromptId = "";
@@ -73513,6 +73536,8 @@
     ART_GENERATE_STATE.runToken = cancelToken;
     ART_GENERATE_STATE.cancelRequested = true;
     ART_GENERATE_STATE.running = false;
+    // pct is already batch-wide; drop the batch first so the cancel message is not mapped a second time.
+    clearArtGenerateBatch();
     setArtGenerateProgress("\u5df2\u53d6\u6d88", pct, { promptId });
     setArtGenerateStatus("\u5df2\u53d6\u6d88", false);
     if (!baseUrl) {
@@ -73939,6 +73964,14 @@
     return ART_GENERATE_STATE.nsfw === next;
   }
 
+  function renderArtGenerateCountField() {
+    ART_GENERATE_STATE.count = normalizeArtGenerateCount(ART_GENERATE_STATE.count);
+    const field = renderArtGenerateNumber("生成数量", "count", 1, ART_GENERATE_MAX_COUNT);
+    field.setAttribute("data-novaflow-art-generate-count-field", "1");
+    field.title = `每次生成的张数（1-${ART_GENERATE_MAX_COUNT}），逐张生成`;
+    return field;
+  }
+
   function renderArtGenerateParamRow() {
     const nsfwSwitch = createArtEl("div", { className: "novaflow-art-generate-param" }, [
       createArtEl("span", { text: "NSFW" }),
@@ -73969,6 +74002,8 @@
       nsfwSwitch,
       rerender: () => renderArtGenerateSurfaces({ forceBottom: true })
     }) || [];
+    // 生成数量 applies to every provider, so it sits after the provider-specific fields (after NSFW for 本地模型).
+    fieldNodes.push(renderArtGenerateCountField());
     const fields = createArtEl("div", {
       className: "novaflow-art-generate-settings-fields",
       "data-novaflow-art-generate-settings-fields": "1"
@@ -73987,7 +74022,11 @@
     let pct = Math.max(0, Math.min(1, Number(ART_GENERATE_STATE.progressPct) || 0));
     if (running && ART_GENERATE_STATE.progressStartedAt) {
       const elapsed = Math.max(0, Date.now() - Number(ART_GENERATE_STATE.progressStartedAt || 0));
-      pct = Math.max(pct, Math.min(0.94, 0.25 + elapsed / 180000));
+      const floor = Math.min(0.94, 0.25 + elapsed / 180000);
+      // The elapsed-time floor is per image; restate it for the batch the same way setArtGenerateProgress does.
+      const total = Math.max(0, Math.round(Number(ART_GENERATE_STATE.batchTotal) || 0));
+      const index = Math.max(0, Math.min(Math.max(0, total - 1), Math.round(Number(ART_GENERATE_STATE.batchIndex) || 0)));
+      pct = Math.max(pct, total > 1 ? (index + floor) / total : floor);
     }
     const label = ART_GENERATE_STATE.error
       ? ART_GENERATE_STATE.error
@@ -75319,7 +75358,18 @@
         ? restoreAiAnimationResourceMentions(negative, negativeProtection)
         : { ok: true, text: "" };
       if (!restoredPositive.ok || !restoredNegative.ok) throw new Error("\u8d44\u6e90\u5f15\u7528\u4fdd\u62a4\u5931\u8d25，\u5df2\u4fdd\u7559\u539f\u63d0\u793a\u8bcd");
-      ART_GENERATE_STATE.prompt = restoredPositive.text;
+      // The assistant was handed the director instruction as "requirements"; if it echoes that
+      // (or any of our template sentences) back into the prompt, drop it, and refuse a result that
+      // still restates it. Those sentences are for the writer, never for the image model.
+      const qualityApi = window.NovaFlowArtQualityProfile;
+      const cleanedPositive = typeof qualityApi?.stripTemplateText === "function"
+        ? (qualityApi.stripTemplateText(restoredPositive.text) || restoredPositive.text)
+        : restoredPositive.text;
+      const leakedDirectorText = typeof qualityApi?.findLeakedDirectorText === "function"
+        ? qualityApi.findLeakedDirectorText(cleanedPositive)
+        : "";
+      if (leakedDirectorText) throw new Error(`AI 把系统约束写进了提示词（${leakedDirectorText}），已保留原提示词，请重试`);
+      ART_GENERATE_STATE.prompt = cleanedPositive;
       if (restoredNegative.text) ART_GENERATE_STATE.negativePrompt = mergePromptAssistantNegativePrompt(ART_GENERATE_STATE.negativePrompt, restoredNegative.text);
       if (qualityProfile?.negativeInstruction) {
         ART_GENERATE_STATE.negativePrompt = window.NovaFlowArtQualityProfile?.mergeNegativePrompt?.(
@@ -75919,6 +75969,22 @@
     return workflow;
   }
 
+  function buildArtGenerateWorkflowWithSeed(seed, build) {
+    // Every workflow builder (local KSampler, Ideogram, the presets) reads the seed straight from
+    // ART_GENERATE_STATE, so a fixed-seed batch pins the state seed for this synchronous build only.
+    if (!Number.isFinite(seed)) return build();
+    const previousSeed = ART_GENERATE_STATE.seed;
+    const previousRandomSeed = ART_GENERATE_STATE.randomSeed;
+    ART_GENERATE_STATE.seed = Math.round(seed);
+    ART_GENERATE_STATE.randomSeed = false;
+    try {
+      return build();
+    } finally {
+      ART_GENERATE_STATE.seed = previousSeed;
+      ART_GENERATE_STATE.randomSeed = previousRandomSeed;
+    }
+  }
+
   function buildArtGenerateRunWorkflow(provider, mode, uploadedNames, outputPrefix, positivePrompt, negativePrompt, clientId, referenceSizes = []) {
     const state = arguments.length > 8 && arguments[8] && typeof arguments[8] === "object"
       ? arguments[8]
@@ -76126,7 +76192,8 @@
       negativePrompt: promptSnapshot.negativePrompt,
       assetType: ART_GENERATE_STATE.starterPreset || "",
       mode: runMode,
-      nsfw: !!ART_GENERATE_STATE.nsfw
+      nsfw: !!ART_GENERATE_STATE.nsfw,
+      provider: runProvider
     }) || {
       prompt: promptSnapshot.prompt,
       negativePrompt: promptSnapshot.negativePrompt
@@ -76205,120 +76272,145 @@
           setArtGenerateProgress(`\u53c2\u8003\u56fe${i + 1}\u5df2\u4e0a\u4f20`, Math.min(0.22, 0.12 + (i + 1) * 0.04));
         }
       }
-      const prefix = `NovaFlow_Generate_${runProvider}_${runMode}_${Date.now()}`;
-      const workflowRun = buildArtGenerateRunWorkflow(runProvider, runMode, uploadedNames, prefix, compiledPrompt.text, qualityCompiled.negativePrompt, clientId, referenceSizes);
-      const workflow = workflowRun.workflow;
-      const controlNetResult = runMode === "img2img" ? applyArtReferenceControlNet(workflow, uploadedNames, rolePlan) : { applied: 0 };
-      if (controlNetResult.applied > 0) setArtGenerateStatus(`已应用 ${controlNetResult.applied} 项强结构约束`);
-      setArtGenerateProgress("\u6b63\u5728\u68c0\u67e5\u5de5\u4f5c\u6d41...", 0.24);
-      setArtGenerateStatus("\u6b63\u5728\u68c0\u67e5\u5de5\u4f5c\u6d41...");
-      await withArtGenerateTimeout(
-        () => validateArtWorkflowNodes(baseUrl, workflow),
-        ART_GENERATE_WORKFLOW_TIMEOUT_MS,
-        "\u68c0\u67e5\u5de5\u4f5c\u6d41\u8d85\u65f6\uff0c\u8bf7\u68c0\u67e5 Runtime \u8282\u70b9\u72b6\u6001"
-      );
-      if (!isArtGenerateRunCurrent(runToken)) return;
-      setArtGenerateProgress("\u6b63\u5728\u4e0b\u53d1\u751f\u6210\u4efb\u52a1...", 0.28);
-      setArtGenerateStatus("\u6b63\u5728\u4e0b\u53d1\u751f\u6210\u4efb\u52a1...");
-      const sent = await withArtGenerateTimeout(
-        () => artRequestJson(baseUrl, "/prompt", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ client_id: clientId, prompt: workflow })
-        }),
-        ART_GENERATE_PROMPT_TIMEOUT_MS,
-        "\u4e0b\u53d1\u751f\u6210\u4efb\u52a1\u8d85\u65f6\uff0cRuntime \u672a\u8fd4\u56de prompt_id"
-      );
-      if (!isArtGenerateRunCurrent(runToken)) return;
-      const promptId = String(sent && sent.data && sent.data.prompt_id || "");
-      if (!sent || !sent.ok || !promptId) {
-        const detail = sent && (sent.error || sent.raw || JSON.stringify(sent.data || {}));
-        throw new Error(detail ? `NovaFlow AI Runtime \u4e0b\u53d1\u5931\u8d25: ${String(detail).slice(0, 500)}` : "NovaFlow AI Runtime \u4e0b\u53d1\u5931\u8d25");
-      }
-      ART_GENERATE_STATE.activePromptId = promptId;
-      setArtGenerateProgress("\u751f\u6210\u4e2d..", 0.32, { promptId, started: true });
-      setArtGenerateStatus("\u751f\u6210\u4e2d..");
-      let files = [];
-      const start = Date.now();
-      let emptyQueueHits = 0;
-      while (isArtGenerateRunCurrent(runToken) && Date.now() - start < 30 * 60 * 1000) {
-        const history = await withArtGenerateTimeout(
-          () => artRequestJson(baseUrl, `/history/${promptId}`, { method: "GET" }),
-          ART_GENERATE_HISTORY_TIMEOUT_MS,
-          "\u8bfb\u53d6\u751f\u6210\u7ed3\u679c\u8d85\u65f6"
+      const batchCount = normalizeArtGenerateCount(ART_GENERATE_STATE.count);
+      ART_GENERATE_STATE.count = batchCount;
+      // A fixed seed still has to give distinct images across the batch: image i runs seed + i.
+      const fixedSeed = !ART_GENERATE_STATE.randomSeed && Number(ART_GENERATE_STATE.seed) >= 0;
+      const baseSeed = fixedSeed ? Math.round(Number(ART_GENERATE_STATE.seed) || 0) : -1;
+      ART_GENERATE_STATE.batchIndex = 0;
+      ART_GENERATE_STATE.batchTotal = batchCount > 1 ? batchCount : 0;
+      let lastPromptId = "";
+      for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
+        ART_GENERATE_STATE.batchIndex = batchIndex;
+        const prefix = `NovaFlow_Generate_${runProvider}_${runMode}_${Date.now()}`;
+        const workflowRun = buildArtGenerateWorkflowWithSeed(
+          fixedSeed ? baseSeed + batchIndex : null,
+          () => buildArtGenerateRunWorkflow(runProvider, runMode, uploadedNames, prefix, compiledPrompt.text, qualityCompiled.negativePrompt, clientId, referenceSizes)
         );
-        if (!isArtGenerateRunCurrent(runToken)) return;
-        const item = history && history.data && (history.data[promptId] || history.data);
-        const runtimeError = artHistoryErrorMessage(item);
-        if (runtimeError) throw new Error(runtimeError);
-        files = extractArtGenerateFiles(item).filter((file) => String(file.filename || "").startsWith(prefix));
-        if (!files.length) files = extractArtGenerateFiles(item);
-        if (files.length) break;
-        const elapsed = Date.now() - start;
-        const queueState = await readArtGenerateQueueState(baseUrl);
-        if (queueState && queueState.empty) emptyQueueHits += 1;
-        else emptyQueueHits = 0;
-        if (emptyQueueHits >= ART_GENERATE_EMPTY_QUEUE_FAIL_COUNT && elapsed >= ART_GENERATE_EMPTY_QUEUE_FAIL_MS) {
-          throw new Error("\u751f\u6210\u961f\u5217\u5df2\u7ed3\u675f\uff0c\u4f46 Runtime \u672a\u8fd4\u56de\u8f93\u51fa\u56fe\u7247");
+        const workflow = workflowRun.workflow;
+        const controlNetResult = runMode === "img2img" ? applyArtReferenceControlNet(workflow, uploadedNames, rolePlan) : { applied: 0 };
+        if (controlNetResult.applied > 0) setArtGenerateStatus(`已应用 ${controlNetResult.applied} 项强结构约束`);
+        // Between images the workflow only differs by seed and output prefix; check the node set once.
+        if (batchIndex === 0) {
+          setArtGenerateProgress("\u6b63\u5728\u68c0\u67e5\u5de5\u4f5c\u6d41...", 0.24);
+          setArtGenerateStatus("\u6b63\u5728\u68c0\u67e5\u5de5\u4f5c\u6d41...");
+          await withArtGenerateTimeout(
+            () => validateArtWorkflowNodes(baseUrl, workflow),
+            ART_GENERATE_WORKFLOW_TIMEOUT_MS,
+            "\u68c0\u67e5\u5de5\u4f5c\u6d41\u8d85\u65f6\uff0c\u8bf7\u68c0\u67e5 Runtime \u8282\u70b9\u72b6\u6001"
+          );
+          if (!isArtGenerateRunCurrent(runToken)) return;
         }
-        setArtGenerateProgress("\u751f\u6210\u4e2d..", Math.min(0.94, 0.35 + elapsed / 180000), {
-          promptId,
-          queueRemaining: queueState ? queueState.pending : ART_GENERATE_STATE.progressQueueRemaining
-        });
-        await new Promise((resolve) => window.setTimeout(resolve, 1200));
-      }
-      if (!isArtGenerateRunCurrent(runToken)) return;
-      if (!files.length) throw new Error("\u751f\u6210\u8d85\u65f6\uff0c\u672a\u627e\u5230\u8f93\u51fa\u56fe\u7247");
-      const file = files[0];
-      let blob = null;
-      for (const outputFile of files) {
-        const qs = new URLSearchParams();
-        qs.set("filename", outputFile.filename);
-        if (outputFile.subfolder) qs.set("subfolder", outputFile.subfolder);
-        qs.set("type", outputFile.type || "output");
-        setArtGenerateProgress("\u6b63\u5728\u8f7d\u5165\u751f\u6210\u56fe...", 0.96, { promptId });
-        const outputBlob = await withArtGenerateTimeout(
-          () => artFetchBlob(baseUrl, `/view?${qs.toString()}`),
-          ART_GENERATE_DOWNLOAD_TIMEOUT_MS,
-          "\u4e0b\u8f7d\u751f\u6210\u56fe\u8d85\u65f6"
+        setArtGenerateProgress("\u6b63\u5728\u4e0b\u53d1\u751f\u6210\u4efb\u52a1...", 0.28);
+        setArtGenerateStatus("\u6b63\u5728\u4e0b\u53d1\u751f\u6210\u4efb\u52a1...");
+        const sent = await withArtGenerateTimeout(
+          () => artRequestJson(baseUrl, "/prompt", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ client_id: clientId, prompt: workflow })
+          }),
+          ART_GENERATE_PROMPT_TIMEOUT_MS,
+          "\u4e0b\u53d1\u751f\u6210\u4efb\u52a1\u8d85\u65f6\uff0cRuntime \u672a\u8fd4\u56de prompt_id"
         );
         if (!isArtGenerateRunCurrent(runToken)) return;
-        if (!outputBlob) throw new Error("图片下载失败");
-        if (!blob) blob = outputBlob;
+        const promptId = String(sent && sent.data && sent.data.prompt_id || "");
+        if (!sent || !sent.ok || !promptId) {
+          const detail = sent && (sent.error || sent.raw || JSON.stringify(sent.data || {}));
+          throw new Error(detail ? `NovaFlow AI Runtime \u4e0b\u53d1\u5931\u8d25: ${String(detail).slice(0, 500)}` : "NovaFlow AI Runtime \u4e0b\u53d1\u5931\u8d25");
+        }
+        ART_GENERATE_STATE.activePromptId = promptId;
+        setArtGenerateProgress("\u751f\u6210\u4e2d..", 0.32, { promptId, started: true });
+        setArtGenerateStatus("\u751f\u6210\u4e2d..");
+        let files = [];
+        const start = Date.now();
+        let emptyQueueHits = 0;
+        while (isArtGenerateRunCurrent(runToken) && Date.now() - start < 30 * 60 * 1000) {
+          const history = await withArtGenerateTimeout(
+            () => artRequestJson(baseUrl, `/history/${promptId}`, { method: "GET" }),
+            ART_GENERATE_HISTORY_TIMEOUT_MS,
+            "\u8bfb\u53d6\u751f\u6210\u7ed3\u679c\u8d85\u65f6"
+          );
+          if (!isArtGenerateRunCurrent(runToken)) return;
+          const item = history && history.data && (history.data[promptId] || history.data);
+          const runtimeError = artHistoryErrorMessage(item);
+          if (runtimeError) throw new Error(runtimeError);
+          files = extractArtGenerateFiles(item).filter((file) => String(file.filename || "").startsWith(prefix));
+          if (!files.length) files = extractArtGenerateFiles(item);
+          if (files.length) break;
+          const elapsed = Date.now() - start;
+          const queueState = await readArtGenerateQueueState(baseUrl);
+          if (queueState && queueState.empty) emptyQueueHits += 1;
+          else emptyQueueHits = 0;
+          if (emptyQueueHits >= ART_GENERATE_EMPTY_QUEUE_FAIL_COUNT && elapsed >= ART_GENERATE_EMPTY_QUEUE_FAIL_MS) {
+            throw new Error("\u751f\u6210\u961f\u5217\u5df2\u7ed3\u675f\uff0c\u4f46 Runtime \u672a\u8fd4\u56de\u8f93\u51fa\u56fe\u7247");
+          }
+          setArtGenerateProgress("\u751f\u6210\u4e2d..", Math.min(0.94, 0.35 + elapsed / 180000), {
+            promptId,
+            queueRemaining: queueState ? queueState.pending : ART_GENERATE_STATE.progressQueueRemaining
+          });
+          await new Promise((resolve) => window.setTimeout(resolve, 1200));
+        }
+        if (!isArtGenerateRunCurrent(runToken)) return;
+        if (!files.length) throw new Error("\u751f\u6210\u8d85\u65f6\uff0c\u672a\u627e\u5230\u8f93\u51fa\u56fe\u7247");
+        const file = files[0];
+        let blob = null;
+        for (const outputFile of files) {
+          const qs = new URLSearchParams();
+          qs.set("filename", outputFile.filename);
+          if (outputFile.subfolder) qs.set("subfolder", outputFile.subfolder);
+          qs.set("type", outputFile.type || "output");
+          setArtGenerateProgress("\u6b63\u5728\u8f7d\u5165\u751f\u6210\u56fe...", 0.96, { promptId });
+          const outputBlob = await withArtGenerateTimeout(
+            () => artFetchBlob(baseUrl, `/view?${qs.toString()}`),
+            ART_GENERATE_DOWNLOAD_TIMEOUT_MS,
+            "\u4e0b\u8f7d\u751f\u6210\u56fe\u8d85\u65f6"
+          );
+          if (!isArtGenerateRunCurrent(runToken)) return;
+          if (!outputBlob) throw new Error("图片下载失败");
+          if (!blob) blob = outputBlob;
+        }
+        const imageUrl = await artBlobToDataUrl(blob);
+        if (!isArtGenerateRunCurrent(runToken)) return;
+        const result = {
+          id: `artgen_${Date.now().toString(36)}`,
+          kind: "original",
+          source: "generate",
+          mode: runMode,
+          provider: runProvider,
+          nsfw: !!ART_GENERATE_STATE.nsfw,
+          name: file.filename || `${prefix}.png`,
+          imageUrl,
+          createdAt: new Date().toISOString(),
+          workflow: runProvider === "local" ? artWorkflowKey() : `${runProvider}:${workflowRun.modelKey}`
+        };
+        ART_GENERATE_STATE.results.unshift(result);
+        ART_GENERATE_STATE.selectedResultId = result.id;
+        lastPromptId = promptId;
+        if (batchIndex + 1 < batchCount) setArtGenerateProgress("已完成", 1, { promptId });
+        placeArtGenerateResultIntoSource(result).then((placed) => {
+          if (!ART_GENERATE_STATE.results.some((item) => item && item.id === result.id)) return;
+          result.placedInSource = !!placed;
+          renderArtGenerateSurfaces({ forceBottom: true });
+        }).catch((error) => {
+          console.warn("[NovaFlow] Art generate source placement failed", error);
+        });
       }
-      const imageUrl = await artBlobToDataUrl(blob);
-      if (!isArtGenerateRunCurrent(runToken)) return;
-      const result = {
-        id: `artgen_${Date.now().toString(36)}`,
-        kind: "original",
-        source: "generate",
-        mode: runMode,
-        provider: runProvider,
-        nsfw: !!ART_GENERATE_STATE.nsfw,
-        name: file.filename || `${prefix}.png`,
-        imageUrl,
-        createdAt: new Date().toISOString(),
-        workflow: runProvider === "local" ? artWorkflowKey() : `${runProvider}:${workflowRun.modelKey}`
-      };
-      ART_GENERATE_STATE.results.unshift(result);
-      ART_GENERATE_STATE.selectedResultId = result.id;
+      clearArtGenerateBatch();
       ART_GENERATE_STATE.running = false;
-      const completeMessage = runProvider === "local" ? "\u751f\u6210\u5b8c\u6210" : "\u751f\u6210\u5b8c\u6210\uff0c\u8ba1\u8d39\u540e\u53f0\u5904\u7406\u4e2d";
-      setArtGenerateProgress(completeMessage, 1, { promptId });
+      const completeMessage = batchCount > 1
+        ? (runProvider === "local" ? `已生成 ${batchCount} 张` : `已生成 ${batchCount} 张，计费后台处理中`)
+        : (runProvider === "local" ? "\u751f\u6210\u5b8c\u6210" : "\u751f\u6210\u5b8c\u6210\uff0c\u8ba1\u8d39\u540e\u53f0\u5904\u7406\u4e2d");
+      setArtGenerateProgress(completeMessage, 1, { promptId: lastPromptId });
       setArtGenerateStatus(completeMessage);
       clearArtGenerateRunIfCurrent(runToken);
-      placeArtGenerateResultIntoSource(result).then((placed) => {
-        if (!ART_GENERATE_STATE.results.some((item) => item && item.id === result.id)) return;
-        result.placedInSource = !!placed;
-        renderArtGenerateSurfaces({ forceBottom: true });
-      }).catch((error) => {
-        console.warn("[NovaFlow] Art generate source placement failed", error);
-      });
     } catch (error) {
       if (!isArtGenerateRunCurrent(runToken)) return;
       ART_GENERATE_STATE.running = false;
-      setArtGenerateProgress(String(error && error.message || error || "\u751f\u6210\u5931\u8d25"), 0);
-      setArtGenerateStatus(String(error && error.message || error || "\u751f\u6210\u5931\u8d25"), true);
+      // Name the image that failed; the batch is dropped before the message so it is not mapped twice.
+      const failure = artGenerateBatchProgress(String(error && error.message || error || "\u751f\u6210\u5931\u8d25"), 0);
+      clearArtGenerateBatch();
+      setArtGenerateProgress(failure.label, failure.pct);
+      setArtGenerateStatus(failure.label, true);
       clearArtGenerateRunIfCurrent(runToken);
     } finally {
       try {

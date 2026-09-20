@@ -796,9 +796,9 @@ test('MiniMax H3 surface changes preserve Art Generate, credit, and auth impleme
     'particle-editor/art-generate-model.resource.js': '3C015618C3029952667C0C6B83E86A47DE9DF9CB80AD7A7B34AA89A1BE2D3DD0',
     'particle-editor/art-generate-provider.workflow.js': 'C714A54AEA2A742B56A42A7FF083B10A9B838BC5C6DE9EA22B7EE36A7E571BEF',
     'particle-editor/art-generate-mode.tool.js': 'F83892AB631202670AFD4E4C42E26252E206B7ED69CEFEA71EC587CE4C636751',
-    'particle-editor/art-generate-credit-pricing.tool.js': '9C2937BD136C5EEF3962B616C6F8B80A9546A69FFE022A1B3AC64C7B734E2884',
+    'particle-editor/art-generate-credit-pricing.tool.js': '6B12AD74E4D026CA142D92A2D5FD84E6E6C2AB9AB820AF9EF4F6D4EC61C1E4A1',
     'particle-editor/art-generate-reference-drop.tool.js': '38569185D3BFA679FF315327781001AC5D6023BA25D50DE647D9CBA1251E7EA5',
-    'particle-editor/art-quality-profile.workflow.js': 'D238F08DCD6101F54EF7104BD8B3A9EF27D7974D7BADD663257C8F909B2EDBD2',
+    'particle-editor/art-quality-profile.workflow.js': '03BC50891C5A5A6CDE6D7A57F1B871B19130768F1B230AE4A523AC47AD3C7B3E',
     'particle-editor/ai-sequence-credit-pricing.js': 'B57159EE6F2C220961C634CB37CB0F4A6CB912359C9445D9DFE04B108C18ECC5',
     'particle-editor/comfyui-workflow-credit-cost.js': '02D0BC55EB9B7EA09431815A92A75DE0E41450BA4F310EF1B13FDB414AE34EF8',
     'particle-editor/runtime-fetch-proxy.js': '077061238A8F180BE634EA4A5C98E271B841126EF86C118C8C75AA6F97F58D89',
@@ -1075,7 +1075,7 @@ test('HTML loads H3 workflow/resource modules and retires the AI sequence cloud 
   assert.ok(sources.includes(h3Resource), `${h3Resource} must be loaded`)
   assert.match(
     indexHtml,
-    /assets\/index-BbIa-2NM\.js\?v=20260919-video-format-convert-1/,
+    /assets\/index-BbIa-2NM\.js\?v=20260920-aifx-particle-idle-1/,
     'the formal surface must invalidate the bundle cache after the template preview scheduler',
   )
   assert.match(indexHtml, /ai-sequence-minimax-h3-output\.resource\.js\?v=20260812-minimax-h3-timing-1/)

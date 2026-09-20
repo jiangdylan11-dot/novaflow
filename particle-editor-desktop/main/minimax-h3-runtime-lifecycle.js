@@ -7,6 +7,14 @@ const { createRuntimeStartCoordinator } = require("./runtime-lifecycle");
 const MINIMAX_H3_RUNTIME_NAME = "NovaFlow AI Runtime H3";
 const MINIMAX_H3_RUNTIME_HOST = "127.0.0.1";
 const MINIMAX_H3_RUNTIME_PORT = 8189;
+
+// Node packages the app deploys into the H3 runtime's custom_nodes on start.
+// novaflow_h3_v2v is what lets AI 特效 sample from the source clip instead of
+// from noise; without it the panel's workflow will not even validate.
+const H3_SHIPPED_NODE_PACKAGES = Object.freeze([
+  ['h3-reference-nodes.py', 'novaflow_h3_reference'],
+  ['h3-v2v-nodes.py', 'novaflow_h3_v2v'],
+]);
 const MINIMAX_H3_RUNTIME_DIR_PARTS = Object.freeze(["NovaFlow", "AI-Runtime-H3"]);
 const MINIMAX_H3_RUNTIME_GENERATED_DIR_NAME = "generated";
 
@@ -371,29 +379,35 @@ function createMiniMaxH3RuntimeLifecycle(options = {}) {
     const promise = (async () => {
       const config = readConfig();
       if (!config.ok || !config.installed) return publish({ ...config, running: false, connected: false });
-      // Ship reference preparation with the app, not as an untracked runtime
-      // patch. A running engine must reload changed node code before reuse.
-      const referenceSource = pathApi.join(__dirname, 'h3-reference-nodes.py');
-      const referenceTarget = pathApi.join(config.customNodesPath, 'novaflow_h3_reference', '__init__.py');
-      if (fsApi.existsSync(referenceSource)) {
-        const sourceCode = fsApi.readFileSync(referenceSource, 'utf8');
-        const previousCode = fsApi.existsSync(referenceTarget) ? fsApi.readFileSync(referenceTarget, 'utf8') : '';
-        if (sourceCode !== previousCode) {
-          const before = await getStatus({ timeoutMs: 1200 });
-          if (before.running) {
-            const response = await (options.fetch || fetch)(config.baseUrl + '/queue', { signal: AbortSignal.timeout(3000) });
-            if (!response.ok) throw new Error('H3 reference update could not check the active queue');
-            const queue = await response.json();
-            if (queue.queue_running?.length || queue.queue_pending?.length) {
-              return publish({ ...before, ok: false, error: 'H3 正在生成，完成后再次生成即可加载多参更新' });
-            }
-            const stopped = await stopRuntime();
-            if (!stopped.ok) return stopped;
-          } else if (before.processRunning) {
-            return publish({ ...before, ok: false, error: 'H3 正在启动，请就绪后再次生成以加载多参更新' });
+      // Ship node code with the app, not as an untracked runtime patch. A
+      // running engine must reload changed node code before reuse, so collect
+      // every stale package first and stop the runtime once for the whole set.
+      const pending = [];
+      for (const [fileName, packageName] of H3_SHIPPED_NODE_PACKAGES) {
+        const source = pathApi.join(__dirname, fileName);
+        if (!fsApi.existsSync(source)) continue;
+        const target = pathApi.join(config.customNodesPath, packageName, '__init__.py');
+        const sourceCode = fsApi.readFileSync(source, 'utf8');
+        const previousCode = fsApi.existsSync(target) ? fsApi.readFileSync(target, 'utf8') : '';
+        if (sourceCode !== previousCode) pending.push({ target, sourceCode });
+      }
+      if (pending.length) {
+        const before = await getStatus({ timeoutMs: 1200 });
+        if (before.running) {
+          const response = await (options.fetch || fetch)(config.baseUrl + '/queue', { signal: AbortSignal.timeout(3000) });
+          if (!response.ok) throw new Error('H3 node update could not check the active queue');
+          const queue = await response.json();
+          if (queue.queue_running?.length || queue.queue_pending?.length) {
+            return publish({ ...before, ok: false, error: 'H3 正在生成，完成后再次生成即可加载节点更新' });
           }
-          fsApi.mkdirSync(pathApi.dirname(referenceTarget), { recursive: true });
-          fsApi.writeFileSync(referenceTarget, sourceCode, 'utf8');
+          const stopped = await stopRuntime();
+          if (!stopped.ok) return stopped;
+        } else if (before.processRunning) {
+          return publish({ ...before, ok: false, error: 'H3 正在启动，请就绪后再次生成以加载节点更新' });
+        }
+        for (const { target, sourceCode } of pending) {
+          fsApi.mkdirSync(pathApi.dirname(target), { recursive: true });
+          fsApi.writeFileSync(target, sourceCode, 'utf8');
         }
       }
       const current = await getStatus({ timeoutMs: 1200 });

@@ -279,15 +279,15 @@ assert.ok(index.indexOf("vendor/jsonata/jsonata.min.js") < index.indexOf("art-ge
 const cacheBusters = {
   "comfyui-workflow-credit-cost.js": "20260711-art-dropdown-2",
   "art-generate-model.resource.js": "20260915-qwen-2511-restore-1",
-  "art-generate-ideogram.workflow.js": "20260813-ideogram-instant-1",
+  "art-generate-ideogram.workflow.js": "20260920-ideogram-background-1",
   "art-generate-provider.workflow.js": "20260911-gpt-image-25-1",
   "art-generate-lora.js": "20260916-prompt-input-perf-1",
   "art-generate-mode.tool.js": "20260912-rapid-ui-clean-1",
   "runtime-fetch-proxy.js": "20260711-art-dropdown-2",
-  "art-generate-credit-pricing.tool.js": "20260712-art-credit-1",
+  "art-generate-credit-pricing.tool.js": "20260920-art-credit-count-1",
   "art-generate-reference-drop.tool.js": "20260720-art-reference-drop-1",
   "spine-split-runtime.js": "20260919-layer-card-routing-2",
-  "novaflow-brand-runtime.js": "20260918-ref-resolution-1",
+  "novaflow-brand-runtime.js": "20260920-art-prompt-guard-1",
   "novaflow-client-auth.js": "20260916-prompt-input-perf-1",
 };
 for (const [scriptName, cacheBuster] of Object.entries(cacheBusters)) {

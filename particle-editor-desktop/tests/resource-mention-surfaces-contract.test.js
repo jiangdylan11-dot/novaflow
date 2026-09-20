@@ -14,8 +14,8 @@ const CACHE_VERSION = "20260916-mention-surfaces-2";
 // The CSS did not change in the second round; only the scripts moved to the new key.
 const CSS_CACHE_VERSION = "20260916-mention-surfaces-1";
 // The brand runtime and Smart AI each moved on again; the mention tool and its CSS stay on -2.
-const BRAND_CACHE_VERSION = "20260918-ref-resolution-1";
-const SMART_AI_CACHE_VERSION = "20260918-h3-model-gate-1";
+const BRAND_CACHE_VERSION = "20260920-art-prompt-guard-1";
+const SMART_AI_CACHE_VERSION = "20260920-director-leak-guard-1";
 
 function loadMentionTool() {
   const source = read("particle-editor/resource-mention.tool.js");

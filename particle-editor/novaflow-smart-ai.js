@@ -4719,8 +4719,22 @@
         );
         if (!preservation.ok) throw smartAiPromptPreservationError(preservation);
       }
-      if (isArtTextRequest && currentPrompt && !usesStructuredArtPromptContract) {
-        const preservation = validateSmartAiArtPromptPreservation(currentPrompt, nextPrompt, state.requirements);
+      let preservationBase = currentPrompt;
+      if (isArt && !usesStructuredArtPromptContract) {
+        // The prompt writer sometimes echoes the director instructions it was given ("用户附加要求：
+        // 设计控件约束…", "基础质量由系统自动负责…") into the prompt. Those are for the writer, never
+        // for the image model: strip our own template text, and refuse anything that still restates it.
+        const qualityApi = window.NovaFlowArtQualityProfile;
+        if (typeof qualityApi?.stripTemplateText === "function") {
+          const stripped = qualityApi.stripTemplateText(nextPrompt);
+          if (stripped) nextPrompt = stripped;
+          preservationBase = qualityApi.stripTemplateText(currentPrompt) || currentPrompt;
+        }
+        const leaked = typeof qualityApi?.findLeakedDirectorText === "function" ? qualityApi.findLeakedDirectorText(nextPrompt) : "";
+        if (leaked) throw new Error(`模型把系统约束写进了提示词（${leaked}），本次未写入，请重试`);
+      }
+      if (isArtTextRequest && preservationBase && !usesStructuredArtPromptContract) {
+        const preservation = validateSmartAiArtPromptPreservation(preservationBase, nextPrompt, state.requirements);
         if (!preservation.ok) throw smartAiPromptPreservationError(preservation);
       }
       if (isReverseRequest && !isMiniMaxH3Request) {

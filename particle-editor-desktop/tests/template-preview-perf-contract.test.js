@@ -11,7 +11,13 @@ const vm = require("node:vm");
 const repoRoot = path.resolve(__dirname, "..", "..");
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8").replace(/\r\n?/g, "\n");
 
-const BUNDLE_CACHE_VERSION = "20260919-video-format-convert-1";
+// 2026-09-20: the particle editor kept simulating and redrawing underneath the
+// AI 特效 shell, which is an overlay - React never leaves 特效. The render loop
+// now returns early while the shell (or its leaving state) is up, keeping the
+// frame timestamp fresh so coming back does not jump.
+const PARTICLE_IDLE_GUARD = 'if(document.body&&(document.body.classList.contains(`novaflow-aifx-open`)'
+  + '||document.body.classList.contains(`novaflow-aifx-leaving`))){F.current=t;P.current=requestAnimationFrame(e);return}';
+const BUNDLE_CACHE_VERSION = "20260920-aifx-particle-idle-1";
 const STEP = 1 / 60;
 
 test("template previews share one budgeted scheduler instead of a rAF loop per card", () => {
@@ -204,4 +210,45 @@ test("heavy stepping or slow draws never starve the draw pass (2026-09-16 blank 
   tick(5100);
   assert.equal(slow.draws, 3);
   scheduler.remove(slow);
+});
+
+test("the particle render loop idles while the AI 特效 shell covers it", () => {
+  const bundle = read("particle-editor/assets/index-BbIa-2NM.js");
+  const patch = read("scripts/patch-ai-seq-cutout-edit.mjs");
+  assert.match(patch, /import \{ patchAifxParticleIdle \} from '\.\/patch-aifx-particle-idle\.mjs';/);
+  assert.match(patch, /source = patchAifxParticleIdle\(source\);/);
+  assert.ok(bundle.includes(PARTICLE_IDLE_GUARD), "the shipped bundle carries the idle guard");
+  // It must sit before the step/draw work, right after the no-engines early-out.
+  const guardIndex = bundle.indexOf(PARTICLE_IDLE_GUARD);
+  const stepIndex = bundle.indexOf("r[e].step(a,{draw:!1})");
+  assert.ok(guardIndex > 0 && stepIndex > guardIndex, "the guard runs before the engines are stepped");
+  const between = bundle.slice(guardIndex + PARTICLE_IDLE_GUARD.length, stepIndex);
+  assert.ok(between.length < 160 && between.includes("Math.min(.15,(t-i)/1e3)"),
+    "the guard belongs to that loop, not to some other one");
+
+  // Functional: replay the loop body's shape with the guard in place.
+  let stepped = 0;
+  let scheduled = 0;
+  let lastStamp = 0;
+  const body = { classList: { list: new Set(), contains(name) { return this.list.has(name) } } };
+  const frame = (now) => {
+    if (body.classList.contains("novaflow-aifx-open") || body.classList.contains("novaflow-aifx-leaving")) {
+      lastStamp = now;
+      scheduled += 1;
+      return;
+    }
+    lastStamp = now;
+    stepped += 1;
+    scheduled += 1;
+  };
+  frame(16);
+  assert.equal(stepped, 1);
+  body.classList.list.add("novaflow-aifx-open");
+  for (let i = 2; i <= 60; i++) frame(i * 16);
+  assert.equal(stepped, 1, "nothing is simulated while the shell is open");
+  assert.equal(scheduled, 60, "the loop keeps rescheduling so it can resume");
+  assert.equal(lastStamp, 960, "the frame timestamp stays fresh, so resuming does not jump");
+  body.classList.list.delete("novaflow-aifx-open");
+  frame(61 * 16);
+  assert.equal(stepped, 2, "it resumes as soon as the shell is gone");
 });

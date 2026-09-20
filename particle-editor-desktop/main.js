@@ -6358,10 +6358,17 @@ function isRuntimePromptPath(pathPart) {
   return cleanPath === "prompt" || cleanPath === "/prompt" || cleanPath === "api/prompt" || cleanPath === "/api/prompt";
 }
 
+// The rebuilt AI 特效 chain is identified by its source-latent node; the
+// retired pipeline had nothing like it. Without this the guard also blocks the
+// rebuild, which shares the NovaFlow_AIFX output prefix.
+const REBUILT_AIFX_PROMPT_MARKER = "NovaFlowH3VideoToVideoLatent";
+
 function isLegacyAifxRuntimePrompt(pathPart, method, body) {
   if (String(method || "GET").toUpperCase() !== "POST") return false;
   if (!isRuntimePromptPath(pathPart)) return false;
-  return /novaflow[-_]aifx/i.test(String(body || ""));
+  const text = String(body || "");
+  if (!/novaflow[-_]aifx/i.test(text)) return false;
+  return !text.includes(REBUILT_AIFX_PROMPT_MARKER);
 }
 
 const NOVAFLOW_COMFYUI_API_KEY_ENV = "NOVAFLOW_COMFYUI_API_KEY";

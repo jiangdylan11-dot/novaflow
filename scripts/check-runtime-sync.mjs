@@ -283,8 +283,19 @@ const runtimeGroups = [
   },
   ...[
     'aifx-repaint-runtime.js',
+    'aifx-restyle.workflow.js',
+    'aifx-restyle-client.js',
+    'aifx-shape-detect.js',
     'mp4-compress.tool.js',
     'video-format-convert.tool.js',
+    'spine-auto-mesh-core.js',
+    'spine-auto-mesh.js',
+    'spine-auto-mesh-attach.js',
+    'spine-auto-weights.js',
+    'spine-auto-weights.editor.js',
+    'spine-auto-mesh.editor.js',
+    'spine-auto-mesh.panel.js',
+    'spine-auto-mesh.picker.js',
   ].map((fileName) => ({
     name: `renderer/${fileName}`,
     files: [

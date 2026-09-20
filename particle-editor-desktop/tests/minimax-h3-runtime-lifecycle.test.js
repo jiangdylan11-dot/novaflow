@@ -20,9 +20,17 @@ const {
 function createInstalledRuntime() {
   const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "novaflow-h3-runtime-test-"));
   const scriptsDir = path.join(runtimeRoot, "scripts");
-  const referenceDir = path.join(runtimeRoot, 'custom_nodes', 'novaflow_h3_reference');
-  fs.mkdirSync(referenceDir, { recursive: true });
-  fs.copyFileSync(path.join(root, 'particle-editor-desktop/main/h3-reference-nodes.py'), path.join(referenceDir, '__init__.py'));
+  // Seed every package the app ships, already up to date, so the reuse tests
+  // below exercise reuse rather than the stop-and-redeploy path.
+  for (const [fileName, packageName] of [
+    ['h3-reference-nodes.py', 'novaflow_h3_reference'],
+    ['h3-v2v-nodes.py', 'novaflow_h3_v2v'],
+  ]) {
+    const packageDir = path.join(runtimeRoot, 'custom_nodes', packageName);
+    fs.mkdirSync(packageDir, { recursive: true });
+    fs.copyFileSync(path.join(root, 'particle-editor-desktop/main', fileName),
+      path.join(packageDir, '__init__.py'));
+  }
   fs.mkdirSync(scriptsDir, { recursive: true });
   fs.writeFileSync(path.join(scriptsDir, "start-runtime.bat"), "@exit /b 0\n", "utf8");
   fs.writeFileSync(path.join(scriptsDir, "stop-runtime.bat"), "@exit /b 0\n", "utf8");
