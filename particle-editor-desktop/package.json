@@ -1,7 +1,7 @@
 {
   "name": "particle-editor-desktop",
   "private": true,
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Particle editor desktop wrapper (Electron)",
   "main": "main.js",
   "author": "",
