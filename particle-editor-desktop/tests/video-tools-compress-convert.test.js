@@ -245,3 +245,52 @@ test('both tools refuse a missing source instead of writing an empty result', as
     fs.rmSync(outDir, { recursive: true, force: true })
   }
 })
+
+// Everything above hands the converters an outDir of its own, which is exactly how both tools
+// could pass while the app failed: main built that directory under a temp category the session
+// manager does not allow, so every run died with temp_category_not_allowed before ffmpeg was
+// spawned. This runs main's own helper against the real manager.
+function loadVideoToolWorkDirFactory(createWorkDir) {
+  const source = fs.readFileSync(path.join(root, 'particle-editor-desktop', 'main.js'), 'utf8')
+  const start = source.indexOf('function getNovaFlowVideoToolWorkDir(')
+  assert.ok(start >= 0, 'main.js no longer defines getNovaFlowVideoToolWorkDir')
+  const body = source.slice(start, source.indexOf('\n}', start) + 2)
+  // eslint-disable-next-line no-new-func
+  return new Function('fs', 'novaFlowVideoToolWorkDirs', 'createNovaFlowTempWorkDir', `${body}\nreturn getNovaFlowVideoToolWorkDir`)(fs, new Map(), createWorkDir)
+}
+
+test('the work dir main hands the video tools is one the session manager will create', async () => {
+  const { createTempSessionLifecycle } = require('../main/temp-session-lifecycle')
+  const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nf-video-tool-workdir-'))
+  const manager = createTempSessionLifecycle({
+    storageRoot: path.join(testRoot, 'NovaFlow'),
+    sessionId: 'video-tool-session',
+    heartbeatIntervalMs: 60_000
+  })
+  try {
+    await manager.register()
+    const workDirFor = loadVideoToolWorkDirFactory((category, prefix) => manager.createWorkDir(category, prefix))
+    const convertDir = workDirFor('video-convert')
+    const compressDir = workDirFor('mp4-compress')
+
+    assert.notEqual(convertDir, compressDir, 'clearing one tool must not take the other tool results with it')
+    for (const dir of [convertDir, compressDir]) {
+      assert.equal(fs.existsSync(dir), true, dir)
+      assert.equal(manager.isRegisteredWorkDir(dir), true, `${dir} must be manager-created`)
+      assert.equal(manager.isOwnedPath(dir, 'video'), true, `${dir} must stay in the video category`)
+    }
+    // A batch converts one file at a time, so the second call has to land in the first directory.
+    assert.equal(workDirFor('video-convert'), convertDir)
+
+    if (haveFfmpeg) {
+      const src = makeSource(testRoot, { size: '320x240', rate: 24, duration: 1, withAudio: false })
+      const result = await convertVideoFormat({ inputPath: src, fileName: 'change.mov', format: 'mp4', scalePct: 100, outDir: convertDir }, deps)
+      assert.equal(result.ok, true, result.error)
+      assert.equal(path.dirname(result.outPath), convertDir)
+      assert.ok(fs.existsSync(result.outPath) && result.bytesOut > 0)
+    }
+  } finally {
+    await manager.close()
+    fs.rmSync(testRoot, { recursive: true, force: true })
+  }
+})

@@ -9460,7 +9460,10 @@ function getNovaFlowVideoToolWorkDir(tool) {
   const key = String(tool || "").trim() || "video-tool";
   const existing = novaFlowVideoToolWorkDirs.get(key);
   if (existing && fs.existsSync(existing)) return existing;
-  const dir = createNovaFlowTempWorkDir(`video-tool-${key}`, key);
+  // The category has to be one the session manager already allows -- "video", where every other
+  // video temp file lives. The tool key is the work-dir prefix instead, which is what actually
+  // keeps the two 工具 entries apart: each gets its own mkdtemp directory to fill and to clear.
+  const dir = createNovaFlowTempWorkDir("video", `video-tool-${key}`);
   novaFlowVideoToolWorkDirs.set(key, dir);
   return dir;
 }
