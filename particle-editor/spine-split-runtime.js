@@ -11397,7 +11397,103 @@
     return changed
   }
 
-  async function sealSeeThroughLayerSeams(parts) {
+  // Pixels within `reach` of the layer's own soft edge, as a square dilation run one axis at a time.
+  function softEdgeReachMask(data, width, height, reach, opaque) {
+    const total = Math.max(0, width * height)
+    const seed = new Uint8Array(total)
+    const limit = Number.isFinite(opaque) ? opaque : 250
+    for (let i = 0, p = 3; i < total; i += 1, p += 4) if (data[p] > 0 && data[p] < limit) seed[i] = 1
+    const r = Math.max(0, Math.round(reach || 0))
+    if (!r) return seed
+    const spread = (input, majorCount, minorCount, step, stride) => {
+      const out = new Uint8Array(total)
+      for (let major = 0; major < majorCount; major += 1) {
+        const base = major * stride
+        let last = -1
+        for (let minor = 0; minor < minorCount; minor += 1) {
+          const i = base + minor * step
+          if (input[i]) last = minor
+          if (last >= 0 && minor - last <= r) out[i] = 1
+        }
+        last = -1
+        for (let minor = minorCount - 1; minor >= 0; minor -= 1) {
+          const i = base + minor * step
+          if (input[i]) last = minor
+          if (last >= 0 && last - minor <= r) out[i] = 1
+        }
+      }
+      return out
+    }
+    return spread(spread(seed, height, width, 1, width), width, height, width, 1)
+  }
+
+  // See-through does not only fade a layer out at its edge, it fades the colour toward black first, and the
+  // darkening reaches a few pixels back into the still-opaque part, where the layer's own core colour cannot
+  // see it. But wherever a layer IS the surface the viewer looks at — top-most at that pixel, with the stack
+  // under it solid — the source image states exactly what that pixel has to be, so repaint the layer's own
+  // edge from the source. Only ever lighter, so line art the artist drew stays exactly as it is; and only
+  // within a few pixels of the layer's own alpha edge, so a layer the model coloured differently from what
+  // the source shows through it keeps its own body and only its rim is corrected.
+  function layerEdgeSourceRecolour(layers, source, width, height, options) {
+    const list = Array.isArray(layers) ? layers : []
+    const frameWidth = Math.max(1, Math.round(width || 0))
+    const frameHeight = Math.max(1, Math.round(height || 0))
+    const reach = options && Number.isFinite(options.reach) ? options.reach : 4
+    const gap = options && Number.isFinite(options.gap) ? options.gap : 8
+    const minAlpha = options && Number.isFinite(options.minAlpha) ? options.minAlpha : 8
+    const solid = options && Number.isFinite(options.solid) ? options.solid : 0.995
+    const changed = new Array(list.length).fill(0)
+    if (!source || list.length < 2) return changed
+    const eachRect = (layer, visit) => {
+      const rectWidth = Math.max(1, Math.round(layer.width || 0))
+      const rectHeight = Math.max(1, Math.round(layer.height || 0))
+      const offsetX = Math.round(layer.x || 0)
+      const offsetY = Math.round(layer.y || 0)
+      for (let row = 0; row < rectHeight; row += 1) {
+        const y = offsetY + row
+        if (y < 0 || y >= frameHeight) continue
+        for (let column = 0; column < rectWidth; column += 1) {
+          const x = offsetX + column
+          if (x < 0 || x >= frameWidth) continue
+          const local = row * rectWidth + column
+          const alpha = layer.data[local * 4 + 3]
+          if (alpha > minAlpha) visit(local, alpha, y * frameWidth + x)
+        }
+      }
+    }
+    const open = new Float32Array(frameWidth * frameHeight).fill(1)
+    const top = new Int32Array(frameWidth * frameHeight).fill(-1)
+    for (let index = 0; index < list.length; index += 1) {
+      const layer = list[index]
+      if (!layer || !layer.data) continue
+      eachRect(layer, (local, alpha, pixel) => {
+        open[pixel] *= 1 - alpha / 255
+        top[pixel] = index
+      })
+    }
+    for (let index = 0; index < list.length; index += 1) {
+      const layer = list[index]
+      if (!layer || !layer.data) continue
+      const rectWidth = Math.max(1, Math.round(layer.width || 0))
+      const rectHeight = Math.max(1, Math.round(layer.height || 0))
+      const near = softEdgeReachMask(layer.data, rectWidth, rectHeight, reach, 250)
+      eachRect(layer, (local, alpha, pixel) => {
+        if (!near[local] || top[pixel] !== index || 1 - open[pixel] < solid) return
+        const s = pixel * 4
+        if (source[s + 3] <= minAlpha) return
+        const p = local * 4
+        if (pixelLuma(layer.data, p) >= pixelLuma(source, s) - gap) return
+        layer.data[p] = source[s]
+        layer.data[p + 1] = source[s + 1]
+        layer.data[p + 2] = source[s + 2]
+        changed[index] += 1
+      })
+    }
+    return changed
+  }
+
+  // One pass over the finished stack: close the cuts, then repaint the edges the viewer sees from the source.
+  async function repairSeeThroughLayerEdges(parts) {
     const list = normalizeSpineLayerOrder(Array.isArray(parts) ? parts : [])
     if (list.length < 2) return list
     const size = await sourceSize()
@@ -11422,17 +11518,36 @@
       const image = ctx.getImageData(0, 0, rect.width, rect.height)
       layers.push({ data: image.data, x: rect.x, y: rect.y, width: rect.width, height: rect.height, canvas, ctx, image })
     }
-    const changed = sealLayerStackSeams(layers, size.width, size.height)
+    const sealed = sealLayerStackSeams(layers, size.width, size.height)
+    const source = await sourceRgbaForRect(await sourceFrameCanvas(size), { x: 0, y: 0, width: size.width, height: size.height })
+    const recoloured = source ? layerEdgeSourceRecolour(layers, source, size.width, size.height, {}) : list.map(() => 0)
     return list.map((part, index) => {
       const layer = layers[index]
-      if (!layer || !changed[index]) return part
+      if (!layer || (!sealed[index] && !recoloured[index])) return part
       layer.ctx.putImageData(layer.image, 0, 0)
       const dataUrl = layer.canvas.toDataURL('image/png')
-      return withLayerModelFields({ ...part, dataUrl, seamSealedPixels: changed[index] }, dataUrl, layerMaskDataUrl(part), {
+      return withLayerModelFields({
+        ...part,
+        dataUrl,
+        seamSealedPixels: sealed[index] || 0,
+        edgeRecolouredPixels: recoloured[index] || 0
+      }, dataUrl, layerMaskDataUrl(part), {
         kind: part.metadata && part.metadata.kind || part.cropPipeline || 'split',
-        seamSeal: 'additive-to-over'
+        seamSeal: 'additive-to-over',
+        edgeRecolour: 'source-surface'
       })
     })
+  }
+
+  async function sourceFrameCanvas(size) {
+    const canvas = document.createElement('canvas')
+    canvas.width = size.width
+    canvas.height = size.height
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return canvas
+    ctx.clearRect(0, 0, size.width, size.height)
+    ctx.drawImage(await loadImage(state.source.dataUrl), 0, 0, size.width, size.height)
+    return canvas
   }
 
   function facialFeatureId(partId) {
@@ -11812,7 +11927,7 @@
       console.warn('[NovaFlow] facial feature merge skipped:', error)
     }
     try {
-      return await sealSeeThroughLayerSeams(stacked)
+      return await repairSeeThroughLayerEdges(stacked)
     } catch (error) {
       console.warn('[NovaFlow] layer seam seal skipped:', error)
       return stacked
@@ -35104,8 +35219,10 @@
     mergeFaceDetailsIntoFace,
     prepareSeeThroughPsdParts,
     removeSeeThroughDarkHalos,
-    sealSeeThroughLayerSeams,
+    repairSeeThroughLayerEdges,
     sealLayerStackSeams,
+    layerEdgeSourceRecolour,
+    softEdgeReachMask,
     applySeeThroughHeadLayer,
     fetchSeeThroughHeadLayer,
     showSeeThroughSplitModeDialog,

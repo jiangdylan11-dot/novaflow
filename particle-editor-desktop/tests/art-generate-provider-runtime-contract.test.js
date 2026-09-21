@@ -286,7 +286,7 @@ const cacheBusters = {
   "runtime-fetch-proxy.js": "20260711-art-dropdown-2",
   "art-generate-credit-pricing.tool.js": "20260920-art-credit-count-1",
   "art-generate-reference-drop.tool.js": "20260720-art-reference-drop-1",
-  "spine-split-runtime.js": "20260922-layer-seam-seal",
+  "spine-split-runtime.js": "20260922-layer-edge-repair",
   "novaflow-brand-runtime.js": "20260922-img2img-reference-scale-1",
   "novaflow-client-auth.js": "20260916-prompt-input-perf-1",
 };
