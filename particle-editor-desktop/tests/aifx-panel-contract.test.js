@@ -85,6 +85,21 @@ assert.ok(source.includes('data-action="prompt-supplement"'), '提示词补充 i
 assert.ok(source.includes('写「多出什么、变成什么」才生效'),
   'the hint has to say which asks land')
 assert.ok(source.includes('只写「怎么动」'), 'and which do not')
+
+// --- the three things an artist cannot see coming -----------------------
+// H3 samples at most 73 frames however long the clip is, the generation size
+// follows the source only up to a cap, and every candidate used to get a
+// throwaway random seed.
+assert.ok(source.includes('会卡顿，建议裁短'), 'a clip too long to hold 24fps says so')
+assert.ok(source.includes('> restyle.MAX_GENERATION_SIDE'),
+  'only the cap is reported, not the 32-alignment every size gets')
+assert.ok(source.includes('notes.push(`生成 ${size.width}×${size.height}`)'),
+  'and it says what it will actually render at')
+assert.ok(source.includes('data-action="lock-seed"'), '以这版为准 is reachable')
+assert.ok(source.includes('以这版为准再生成') && source.includes('已锁定这版种子 · 点此解锁'),
+  'and it says which state it is in')
+assert.ok(source.includes('(state.lockedSeed + index) >>> 0'),
+  'a locked run reproduces candidate 1 and neighbours the rest')
 assert.ok(source.includes('supplement: state.supplement,'), 'it reaches the pipeline')
 const supplementIndex = source.indexOf('data-action="prompt-supplement"')
 assert.ok(supplementIndex > clearStyle && supplementIndex < candidates,

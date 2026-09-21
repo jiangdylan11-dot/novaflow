@@ -193,7 +193,31 @@ assert.equal(api.gridFrameCount(39), 39)
 assert.equal(api.gridFrameCount(17), 22, '17 rounds up, it does not collapse to 5')
 assert.equal(api.gridFrameCount(25), 22)
 assert.equal(api.gridFrameCount(31), 39)
-assert.equal(api.gridFrameCount(1), 5, 'five is the floor')
+// 5 is a grid point but it is not an effect, and rounding to the nearest one
+// still landed on it for anything under 0.5625s - the same bug as above, one
+// interval lower. 22 is the floor; a shorter clip gets the extra frames and
+// plays them faster.
+assert.equal(api.MIN_GRID_FRAMES, 22)
+assert.equal(api.gridFrameCount(1), 22, '22 is the floor, not 5')
+assert.equal(api.gridFrameCount(12), 22, 'a 0.5s clip used to collapse to 5')
+assert.equal(api.timingFor(0.5).length, 22)
+assert.ok(api.timingFor(0.5).fps > 40, 'and plays back fast enough to last 0.5s')
+assert.equal(api.gridFrameCount(999), api.MAX_GRID_FRAMES)
+
+// --- generation size --------------------------------------------------
+// Time goes with the pixel count: ~40s at 640x640 and ~82s at 960x960 on the
+// crescent, so an uncapped 1920x1080 source would be ~200s a candidate.
+assert.equal(api.MAX_GENERATION_SIDE, 1024)
+assert.deepEqual({ ...api.generationSize(640, 640) }, { width: 640, height: 640 })
+assert.deepEqual({ ...api.generationSize(1920, 1080) }, { width: 1024, height: 576 },
+  'the long side is capped and the aspect is kept')
+assert.deepEqual({ ...api.generationSize(1080, 1920) }, { width: 576, height: 1024 })
+{
+  const big = api.buildWorkflow({ sourceVideo: 's.mp4', attribute: 'ice', width: 1920, height: 1080 })
+  assert.equal(big[5].inputs.width, 1024)
+  assert.equal(big[33].inputs.width, 1024, 'the init latent is sized the same way')
+  assert.equal(big[33].inputs.height, 576)
+}
 assert.equal(api.gridFrameCount(400), 73, 'and 73 the ceiling')
 for (const count of [5, 22, 39, 56, 73]) assert.equal(count % 17, 5, 'the grid is 17k+5')
 const short = api.timingFor(0.7)

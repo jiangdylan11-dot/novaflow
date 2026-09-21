@@ -94,6 +94,7 @@
     libraryKind: '',
     strength: null,
     supplement: '',
+    lockedSeed: null,
     shapeArchetype: '',
     shapeAuto: '',
     lifecycle: '',
@@ -1130,6 +1131,31 @@
         align-items: center;
       }
       .aifx-candidates[hidden] { display: none; }
+      /* Sits above the candidate strip in the preview column. It has to be
+         positioned the same way the strip is: .aifx-main is a plain block
+         with an absolutely-placed preview on top, so a static child lands
+         underneath the canvas and cannot be clicked.
+         The app forces border:none on every button, so the ring is a shadow. */
+      .aifx-seed-lock[data-action="lock-seed"] {
+        position: absolute;
+        left: 18px;
+        bottom: 150px;
+        z-index: 5;
+        padding: 3px 10px;
+        border-radius: 6px;
+        background: #2a2a2a;
+        color: #cbd0d6;
+        font: inherit;
+        font-size: 11px;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+      .aifx-seed-lock[data-action="lock-seed"]:hover {
+        color: #fff;
+        box-shadow: 0 0 0 1px ${AIFX_ACCENT} inset !important;
+      }
+      .aifx-seed-lock[data-action="lock-seed"].is-on { color: ${AIFX_ACCENT}; }
+      .aifx-seed-lock[hidden] { display: none; }
       .aifx-candidate {
         width: 62px;
         height: 62px;
@@ -1246,6 +1272,7 @@
             </div>
           </section>
           <section class="aifx-candidates" data-candidates hidden></section>
+          <button class="aifx-seed-lock" data-action="lock-seed" type="button" hidden></button>
           <section class="aifx-timeline">
             <button class="aifx-button aifx-icon-button" data-action="prev" type="button" title="上一帧" aria-label="上一帧"><i class="fas fa-step-backward" aria-hidden="true"></i></button>
             <button class="aifx-button aifx-icon-button" data-action="play" type="button" title="播放" aria-label="播放"><i class="fas fa-play" aria-hidden="true"></i></button>
@@ -1878,7 +1905,9 @@
       state.candidates = []
       state.selectedCandidate = 0
       for (let index = 0; index < total; index += 1) {
-        const seed = Math.floor(Math.random() * 0xffffffff)
+        const seed = state.lockedSeed == null
+          ? Math.floor(Math.random() * 0xffffffff)
+          : (state.lockedSeed + index) >>> 0
         const workflow = restyle.buildWorkflow({
           sourceVideo: state.source.uploadedName,
           referenceImage: state.reference ? state.reference.uploadedName : '',
@@ -1925,6 +1954,22 @@
       refreshUi()
       drawPreview()
     }
+  }
+
+  // Every candidate is a fresh random seed, so a result the artist likes can
+  // never be asked for again - not the same one with another style, not a
+  // neighbour of it. Locking takes that candidate's seed and the next run
+  // starts from it, candidate N getting seed+N, so the first one reproduces
+  // exactly and the rest are its neighbours.
+  const toggleSeedLock = () => {
+    if (state.lockedSeed != null) {
+      state.lockedSeed = null
+    } else {
+      const candidate = state.candidates[state.selectedCandidate]
+      if (!candidate) return
+      state.lockedSeed = candidate.seed
+    }
+    refreshUi()
   }
 
   const selectCandidate = (index) => {
@@ -2753,6 +2798,7 @@
     refs.templateDetected = root.querySelector('[data-template-detected]')
     refs.playButton = root.querySelector('[data-action="play"]')
     refs.candidates = root.querySelector('[data-candidates]')
+    refs.seedLock = root.querySelector('[data-action="lock-seed"]')
     refs.candidateCount = root.querySelector('[data-action="candidates"]')
     refs.candidateCountValue = root.querySelector('[data-candidates-value]')
     renderCurrentStyle()
@@ -2862,6 +2908,7 @@
       // says - so the panel has to follow the keystrokes.
       refreshUi()
     })
+    refs.seedLock?.addEventListener('click', toggleSeedLock)
     refs.candidateCount?.addEventListener('input', () => {
       state.candidateCount = Number(refs.candidateCount.value) || 1
       refreshUi()
@@ -2937,8 +2984,26 @@
       const builtin = BUILTIN_TEMPLATES.find(item => item.id === state.builtinId)
       const saved = state.userTemplates.find(item => item.id === state.userTemplateId)
       const shown = builtin ? builtinLabel(builtin.id) : saved ? saved.label : state.source ? state.source.fileName : ''
+      const restyle = RESTYLE()
+      const notes = []
+      if (state.source && restyle) {
+        // H3 samples at most 73 frames however long the clip is, so past ~3s
+        // the same 73 frames get spread thinner and the result plays choppy.
+        // The artist cannot see that coming from the source's own frame rate.
+        const timing = restyle.timingFor(state.source.duration)
+        const fps = Math.min(60, timing.fps)
+        if (fps < 20) notes.push(`结果 ${timing.length} 帧 · ${fps.toFixed(0)}fps，会卡顿，建议裁短`)
+        // Generation follows the source's size, but only up to a point. Every
+        // size also gets aligned to a multiple of 32, and saying so for a
+        // 322x320 clip is noise - only the cap is worth reporting.
+        if (Math.max(state.source.width, state.source.height) > restyle.MAX_GENERATION_SIDE) {
+          const size = restyle.generationSize(state.source.width, state.source.height)
+          notes.push(`生成 ${size.width}×${size.height}`)
+        }
+      }
       refs.templateMeta.textContent = state.source
-        ? `${shown} · ${state.source.width}×${state.source.height} · ${state.sourceFrames.length} 帧`
+        ? [`${shown} · ${state.source.width}×${state.source.height} · ${state.sourceFrames.length} 帧`]
+          .concat(notes).join(' · ')
         : ''
     }
     if (refs.templateEmpty) refs.templateEmpty.textContent = state.source ? '✓' : '+'
@@ -2988,6 +3053,13 @@
         fix.addEventListener('click', guard(() => openLibrary('shape')))
         refs.templateDetected.appendChild(fix)
       }
+    }
+    if (refs.seedLock) {
+      const locked = state.lockedSeed != null
+      refs.seedLock.hidden = !state.candidates.length
+      refs.seedLock.disabled = state.isGenerating
+      refs.seedLock.classList.toggle('is-on', locked)
+      refs.seedLock.textContent = locked ? '已锁定这版种子 · 点此解锁' : '以这版为准再生成'
     }
     if (refs.candidateCount) {
       refs.candidateCount.value = String(state.candidateCount)

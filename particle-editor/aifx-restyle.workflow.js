@@ -588,12 +588,20 @@
   const FRAME_GRID = 17
   const FRAME_GRID_OFFSET = 5
   const MAX_GRID_FRAMES = 73
+  // 5 is a grid point but it is not an effect - it is a third of a second at
+  // best, and the whole reason the old rounding was a bug. Rounding to the
+  // NEAREST point still lands on it for anything under 0.5625s (13.5 frames
+  // at 24fps is the midpoint between 5 and 22), so the floor is 22. A clip
+  // short enough to want fewer than that gets the extra frames and plays them
+  // at up to 60fps; below 22/60 = 0.367s the result runs a little longer than
+  // the source, which is the smaller of the two failures by a wide margin.
+  const MIN_GRID_FRAMES = FRAME_GRID_OFFSET + FRAME_GRID
 
   function gridFrameCount(frames) {
     const wanted = Math.max(1, Math.round(Number(frames) || 0))
     const steps = Math.round((wanted - FRAME_GRID_OFFSET) / FRAME_GRID)
     const count = FRAME_GRID_OFFSET + Math.max(0, steps) * FRAME_GRID
-    return Math.min(MAX_GRID_FRAMES, Math.max(FRAME_GRID_OFFSET, count))
+    return Math.min(MAX_GRID_FRAMES, Math.max(MIN_GRID_FRAMES, count))
   }
 
   // The frame count and playback rate for a clip of `durationSec`, or the
@@ -610,6 +618,22 @@
     if (number <= 0) return fallback
     return Math.max(RESOLUTION_MULTIPLE,
       Math.round(number / RESOLUTION_MULTIPLE) * RESOLUTION_MULTIPLE)
+  }
+
+  // Generation time goes with the pixel count: the crescent takes ~40s at
+  // 640x640 and ~82s at 960x960, so a 1920x1080 source would be ~200s per
+  // candidate and four candidates would be a quarter of an hour, if it did
+  // not run out of VRAM first. The source's own size is used up to this, and
+  // scaled down past it with the aspect kept.
+  const MAX_GENERATION_SIDE = 1024
+
+  function generationSize(width, height) {
+    const w = roundToMultiple(width, 640)
+    const h = roundToMultiple(height, 640)
+    const longest = Math.max(w, h)
+    if (longest <= MAX_GENERATION_SIDE) return { width: w, height: h }
+    const scale = MAX_GENERATION_SIDE / longest
+    return { width: roundToMultiple(w * scale, 640), height: roundToMultiple(h * scale, 640) }
   }
 
   function resolvePreset(attribute) {
@@ -719,8 +743,7 @@
 
     const referenceImage = String(options.referenceImage || '').trim()
     const motionReference = String(options.motionReference || '').trim()
-    const width = roundToMultiple(options.width, 640)
-    const height = roundToMultiple(options.height, 640)
+    const { width, height } = generationSize(options.width, options.height)
     const steps = Math.max(1, Math.round(Number(options.steps) || DEFAULT_STEPS))
     const seed = Math.round(Number(options.seed) || 0)
     const timing = timingFor(options.durationSec)
@@ -863,6 +886,10 @@
     OUTPUT_FPS,
     gridFrameCount,
     timingFor,
+    generationSize,
+    MAX_GENERATION_SIDE,
+    MIN_GRID_FRAMES,
+    MAX_GRID_FRAMES,
     DEFAULT_SHAPE,
     DEFAULT_LIFECYCLE_CLAUSE,
     LOOP_MAX_STRENGTH,
