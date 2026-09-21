@@ -13,6 +13,8 @@ function extract(name) {
 const inject = new Function('ART_GENERATE_STATE', [
   'artGenerateNextWorkflowNodeKey',
   'artGenerateAspectFitPlan',
+  'artGenerateQwenReferenceGrid',
+  'injectArtWorkflowOutputSize',
   'injectArtWorkflowTargetSize',
 ].map(extract).join('\n') + '\nreturn injectArtWorkflowTargetSize;')({});
 
@@ -26,8 +28,10 @@ test('ordinary img2img fits the original image without first center-cropping it'
   assert.equal(inject(workflow, { width: 956, height: 1348 }, { width: 956, height: 1348 }), true);
   const [fitId, fit] = Object.entries(workflow).find(([, node]) => node.class_type === 'ImageScale');
   assert.deepEqual(fit.inputs.image, input, 'reference must reach aspect-fit before any fixed-ratio crop');
-  assert.equal(fit.inputs.width, 956);
-  assert.equal(fit.inputs.height, 1348);
+  // 956x1348 is the requested output; the canvas sampled is the ~1MP grid
+  // TextEncodeQwenImageEditPlus builds its reference latent on.
+  assert.equal(fit.inputs.width, 864);
+  assert.equal(fit.inputs.height, 1216);
   assert.equal(fit.inputs.crop, 'disabled');
   for (const node of consumers) {
     assert.ok(Object.values(node.inputs).some(value => Array.isArray(value) && value[0] === fitId));
@@ -67,7 +71,8 @@ test('pixel-budget preprocessing keeps its existing direct-source behavior', () 
 
 test('the ordinary workflow receives the whole multiline instruction as one prompt', () => {
   const names = ['artPromptLikeNegative', 'artPromptLikePositive', 'artGenerateNextWorkflowNodeKey',
-    'artGenerateAspectFitPlan', 'injectArtWorkflowTargetSize', 'artGenerateReferenceLoadImageKeys',
+    'artGenerateAspectFitPlan', 'artGenerateQwenReferenceGrid', 'injectArtWorkflowOutputSize',
+    'injectArtWorkflowTargetSize', 'artGenerateReferenceLoadImageKeys',
     'artGenerateReferenceTextEncodeNodes', 'artGenerateConsumedReferenceCount',
     'syncArtWorkflowReferenceImages', 'patchArtWorkflow'];
   const state = { width: 956, height: 1348, randomSeed: false, seed: 123 };

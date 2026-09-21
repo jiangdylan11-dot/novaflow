@@ -48,6 +48,21 @@
     return Array.isArray(value) && String(value[0]) === String(nodeId) && Number(value[1]) === 0
   }
 
+  // The 图生图 patch can already put its own output scale between the decode
+  // and the save. Follow that short chain so this finish lands last instead of
+  // reporting the save as disconnected.
+  function outputChainSource(workflow, node, decodeId, depth = 3) {
+    let source = node?.inputs?.images
+    for (let step = 0; step <= depth; step += 1) {
+      if (!Array.isArray(source)) return null
+      if (sameSource(source, decodeId)) return node.inputs.images
+      const upstream = workflow[String(source[0])]
+      if (!isNode(upstream, 'ImageScale') && !isNode(upstream, 'ImageSharpen')) return null
+      source = upstream.inputs.image
+    }
+    return null
+  }
+
   function nextNodeId(workflow) {
     let next = 900001
     while (Object.prototype.hasOwnProperty.call(workflow, String(next))) next += 1
@@ -162,14 +177,15 @@
     const sharpenNodeIds = []
     let saveNodeCount = 0
     decodeEntries.forEach(([decodeId]) => {
-      const connectedSaves = saveEntries.filter(([, node]) => sameSource(node.inputs.images, decodeId))
+      const connectedSaves = saveEntries.filter(([, node]) => outputChainSource(workflow, node, decodeId))
       if (!connectedSaves.length) return
-      let finishSource = [decodeId, 0]
+      const decodeSource = outputChainSource(workflow, connectedSaves[0][1], decodeId)
+      let finishSource = decodeSource
       if (scaleOutput) {
         const scaleId = nextNodeId(workflow)
         workflow[scaleId] = {
           inputs: {
-            image: [decodeId, 0],
+            image: decodeSource,
             upscale_method: 'lanczos',
             width: target.width,
             height: target.height,

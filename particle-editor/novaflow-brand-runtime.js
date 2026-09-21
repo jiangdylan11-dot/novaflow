@@ -75802,6 +75802,62 @@
     };
   }
 
+  // TextEncodeQwenImageEditPlus re-encodes its reference image at ~1MP no
+  // matter how large the sampled canvas is, so the canvas has to land on that
+  // same grid. Sampling anywhere else is what makes an edited character come
+  // back at another scale: a 715x911 reference sampled at 715x911 puts a
+  // 113x144 reference latent next to an 89x113 canvas, and the edit is redrawn
+  // 1.27x too big.
+  function artGenerateQwenReferenceGrid(width, height) {
+    const referencePixels = 1024 * 1024;
+    const round8 = (value) => Math.max(8, Math.round(value / 8) * 8);
+    const step = (w, h) => {
+      const scale = Math.sqrt(referencePixels / (w * h));
+      return { width: round8(w * scale), height: round8(h * scale) };
+    };
+    let current = step(
+      Math.max(1, Math.round(Number(width) || 1)),
+      Math.max(1, Math.round(Number(height) || 1))
+    );
+    // One pass already lands on the grid; the rest only settle the rounding.
+    for (let pass = 0; pass < 4; pass += 1) {
+      const next = step(current.width, current.height);
+      if (next.width === current.width && next.height === current.height) break;
+      current = next;
+    }
+    return current;
+  }
+
+  function injectArtWorkflowOutputSize(workflow, grid, target) {
+    if (!workflow || (grid.width === target.width && grid.height === target.height)) return false;
+    const resized = new Map();
+    let applied = false;
+    Object.values(workflow).forEach((node) => {
+      if (String(node?.class_type || "") !== "SaveImage") return;
+      const source = node?.inputs?.images;
+      if (!Array.isArray(source)) return;
+      const token = `${source[0]}:${source[1]}`;
+      if (!resized.has(token)) {
+        const key = artGenerateNextWorkflowNodeKey(workflow);
+        workflow[key] = {
+          inputs: {
+            image: [source[0], source[1]],
+            upscale_method: "lanczos",
+            width: target.width,
+            height: target.height,
+            crop: "disabled"
+          },
+          class_type: "ImageScale",
+          _meta: { title: "NovaFlow Output Size" }
+        };
+        resized.set(token, key);
+      }
+      node.inputs.images = [resized.get(token), 0];
+      applied = true;
+    });
+    return applied;
+  }
+
   function injectArtWorkflowTargetSize(workflow, sourceSize) {
     const state = arguments.length > 2 && arguments[2] && typeof arguments[2] === "object"
       ? arguments[2]
@@ -75818,10 +75874,24 @@
     const sourceImage = Array.isArray(sourceNode?.inputs?.image)
       ? sourceNode.inputs.image
       : [sourceKey, 0];
-    const plan = artGenerateAspectFitPlan(sourceSize, {
-      width: state.width,
-      height: state.height
-    });
+    const target = {
+      width: Math.max(64, Math.round(Number(state.width) || 1024)),
+      height: Math.max(64, Math.round(Number(state.height) || 1024))
+    };
+    // Compose on the reference grid, deliver at the requested resolution.
+    const grid = artGenerateQwenReferenceGrid(target.width, target.height);
+    const plan = artGenerateAspectFitPlan(sourceSize, grid);
+    // Rounding the canvas onto the /8 grid can leave a one or two pixel gap
+    // against a reference that already has the requested aspect. Filling it
+    // beats padding grey bars in for a 0.1% difference.
+    if (plan.left + plan.right < 8 && plan.top + plan.bottom < 8) {
+      plan.width = grid.width;
+      plan.height = grid.height;
+      plan.left = 0;
+      plan.right = 0;
+      plan.top = 0;
+      plan.bottom = 0;
+    }
     const scaleKey = artGenerateNextWorkflowNodeKey(workflow);
     workflow[scaleKey] = {
       inputs: {
@@ -75859,6 +75929,11 @@
         }
       });
     });
+    // The reference image itself is left where the graph put it. The sampler
+    // runs at denoise 1, so the fitted pixels only carry the canvas size, and
+    // pointing the encoder at the padded copy would hand the model
+    // ImagePadForOutpaint's grey bars as reference content.
+    injectArtWorkflowOutputSize(workflow, grid, target);
     return true;
   }
 

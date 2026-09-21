@@ -11,7 +11,7 @@ const repoRoot = path.resolve(__dirname, "..", "..");
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8").replace(/\r\n?/g, "\n");
 const TOOL_CACHE_VERSION = "20260916-section-switch-1";
 // The brand runtime moved on once more: unauthorized installs now see 仓库 / 导出 disabled.
-const BRAND_CACHE_VERSION = "20260922-spine-import-stability-1";
+const BRAND_CACHE_VERSION = "20260922-img2img-reference-scale-1";
 
 test("switching the AI sequence top mode clears the positive prompt before React handles the click", () => {
   const source = read("particle-editor/novaflow-brand-runtime.js");

@@ -155,7 +155,7 @@ assert.deepEqual(scale({ type: "text", text: "free" }, 5), { type: "text", text:
 assert.deepEqual(scale(single, 99), { type: "usd", usd: 0.2 }, "count is clamped to MAX_COUNT");
 
 // --- cache busters -----------------------------------------------------------------------------
-assert.ok(indexHtml.includes("novaflow-brand-runtime.js?v=20260922-spine-import-stability-1"));
+assert.ok(indexHtml.includes("novaflow-brand-runtime.js?v=20260922-img2img-reference-scale-1"));
 assert.ok(indexHtml.includes("art-generate-credit-pricing.tool.js?v=20260920-art-credit-count-1"));
 
 console.log("art-generate-batch-count-contract: passed");

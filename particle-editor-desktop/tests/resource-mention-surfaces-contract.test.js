@@ -14,7 +14,7 @@ const CACHE_VERSION = "20260916-mention-surfaces-2";
 // The CSS did not change in the second round; only the scripts moved to the new key.
 const CSS_CACHE_VERSION = "20260916-mention-surfaces-1";
 // The brand runtime and Smart AI each moved on again; the mention tool and its CSS stay on -2.
-const BRAND_CACHE_VERSION = "20260922-spine-import-stability-1";
+const BRAND_CACHE_VERSION = "20260922-img2img-reference-scale-1";
 const SMART_AI_CACHE_VERSION = "20260920-director-leak-guard-1";
 
 function loadMentionTool() {
