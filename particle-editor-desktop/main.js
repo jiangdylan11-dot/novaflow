@@ -5014,8 +5014,11 @@ function createWindow(initialLicenseState = null) {
     {
       label: "编辑",
       submenu: [
-        { role: "undo", label: "撤销" },
-        { role: "redo", label: "重做" },
+        // registerAccelerator false: the renderer owns Ctrl+Z / Ctrl+Y (bone rigging,
+        // mesh and weight editors, layer tools). A registered menu accelerator swallows
+        // the key before the page sees it; text fields keep their built-in undo.
+        { role: "undo", label: "撤销", registerAccelerator: false },
+        { role: "redo", label: "重做", registerAccelerator: false },
         { type: "separator" },
         { role: "cut", label: "剪切" },
         { role: "copy", label: "复制" },

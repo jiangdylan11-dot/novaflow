@@ -12,7 +12,7 @@ const ATTACH = 'spine-auto-mesh-attach.js'
 const PANEL = 'spine-auto-mesh.panel.js'
 const EDITOR = 'spine-auto-mesh.editor.js'
 const PICKER = 'spine-auto-mesh.picker.js'
-const CACHE_BUSTER = '20260920-auto-mesh-43'
+const CACHE_BUSTER = '20260921-auto-mesh-48'
 
 // The renderer modules are plain scripts that publish onto the global; particle-editor
 // is an ESM package so `require` runs them but the exports land on globalThis.
@@ -1190,8 +1190,8 @@ test('the weight editor can pose the layer under the running animation through t
 
 test('auto weights lives in a panel of its own, and each panel restores its own thing', () => {
   const src = read(`particle-editor/${PANEL}`)
-  assert.ok(src.includes("const WTITLE = '自动权重'") && src.includes('function buildWeightsBody') && src.includes('buildPanel(weightsSpec())'), 'the weights panel must be built and mounted')
-  assert.ok(src.includes("existingW.previousElementSibling !== meshPanel"), 'it must sit right under 自动蒙皮')
+  assert.ok(src.includes("const WTITLE = '自动权重'") && src.includes('function buildWeightsBody') && src.includes('{ mark: WMARK, spec: weightsSpec }'), 'the weights panel must be built and mounted')
+  assert.ok(src.indexOf('{ mark: MARK, spec: meshSpec }') < src.indexOf('{ mark: WMARK, spec: weightsSpec }'), 'it must sit right under 自动蒙皮')
   const mesh = src.slice(src.indexOf('function buildMeshBody'), src.indexOf('function buildWeightsBody'))
   assert.ok(!mesh.includes("'自动权重'") && !mesh.includes("smallButton('权重')"), 'the mesh panel must carry no weight controls')
   assert.ok(mesh.includes("'还原为导入时的图层'"), 'the mesh restore must say what it restores')

@@ -40,17 +40,20 @@
   const MARK = 'data-novaflow-auto-mesh-panel'
   const TITLE = '自动蒙皮'
   const STORAGE_DENSITY = 'novaflow.autoMesh.density'
-  const STORAGE_OPEN = 'novaflow.autoMesh.open'
   // 自动权重 is a panel of its own (user decision 2026-09-21): meshing and binding
   // are different jobs with different things to restore
   const WEIGHTS_PANEL_ID = 'bone-auto-weights'
   const WMARK = 'data-novaflow-auto-weights-panel'
   const WTITLE = '自动权重'
-  const STORAGE_OPEN_W = 'novaflow.autoWeights.panelOpen'   // not .open: an earlier build left a stale '0' there
+  // 骨骼架设 is a panel of its own as well (user decision 2026-09-21): rigging comes
+  // before meshing and binding, and its switch turns the preview into a bone editor
+  const BONES_PANEL_ID = 'bone-rigging'
+  const BMARK = 'data-novaflow-bones-panel'
+  const BTITLE = '骨骼架设'
 
   const state = {
     density: 22,
-    open: true,
+    open: false,
     busy: false,
     /** attachment name -> {slot, hasImage, selected, imageData, mesh, density, edited} */
     layers: new Map(),
@@ -79,8 +82,11 @@
   }
 
   state.density = Math.max(8, Math.min(40, Number(readStore(STORAGE_DENSITY, 22)) || 22))
-  state.open = readStore(STORAGE_OPEN, '1') !== '0'
-  state.openWeights = readStore(STORAGE_OPEN_W, '1') !== '0'
+  // every panel is collapsed when the section is first entered (用户: 首次进入应该都是闭合状态);
+  // a toggle is remembered for the session only, never across launches
+  state.open = false
+  state.openWeights = false
+  state.openBones = false
 
   /** alpha at or below this is background, same floor the mesh builder uses */
   const ALPHA_FLOOR = 8
@@ -99,8 +105,10 @@
     for (const b of busyButtons) { b.disabled = busy; b.style.opacity = busy ? '0.6' : '1'; b.style.cursor = busy ? 'default' : 'pointer' }
     for (const l of busyLists) { l.style.pointerEvents = busy ? 'none' : 'auto'; l.style.opacity = busy ? '0.6' : '1' }
   }
-  const guardWith = (setStatus) => async (fn) => {
+  const guardWith = (setStatus, forRigging) => async (fn) => {
     if (state.busy) return
+    // a rig being edited and a mesh being written would race for the same skeleton
+    if (!forRigging && bones.editing) { setStatus('先在「骨骼架设」里应用或关闭 编辑骨骼', 'error'); return }
     setBusy(true)
     try { await fn() } catch (err) {
       setStatus(String((err && err.message) || err || '操作失败'), 'error')
@@ -135,6 +143,18 @@
     if (picker && typeof picker.highlight === 'function') picker.highlight(hoverName)
   }
 
+  /**
+   * Bring a list row into view WITHOUT touching any other scroll box: `scrollIntoView`
+   * scrolls every scrollable ancestor, and in the left column that pushed the panel
+   * headers above the top edge (the 导入工程 header could no longer be clicked shut).
+   */
+  function scrollRowIntoView(row) {
+    const box = row && row.parentElement
+    if (!box || !row.isConnected) return
+    const top = row.offsetTop, bottom = top + row.offsetHeight
+    if (top < box.scrollTop) box.scrollTop = top
+    else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight
+  }
   /** Called from the picker when the pointer moves over the preview. */
   function hoverFromCanvas(name) {
     if (name === hoverName) return
@@ -142,10 +162,7 @@
     hoverName = name || null
     if (hoverName) {
       paintRow(hoverName, true)
-      const row = rowEls.get(hoverName)
-      if (row && typeof row.scrollIntoView === 'function') {
-        try { row.scrollIntoView({ block: 'nearest' }) } catch { /* older engines */ }
-      }
+      scrollRowIntoView(rowEls.get(hoverName))
     }
   }
 
@@ -1612,18 +1629,591 @@
     return body
   }
 
+  // ---------------------------------------------------------- bone rigging ---
+  // The editor itself (Spine-style tools over the preview) lives in
+  // spine-bones.editor.js; this is its panel: the switch, the tools, the bone tree,
+  // 自动架设 and the write-back.
+  const bones = {
+    ctl: null, editing: false, frozen: null, lastText: null, mechCache: null,
+    setStatus: () => {}, renderTree: () => {}, syncUi: () => {}, focusName: () => {}
+  }
+
+  function previewPlayer() {
+    const usable = (pl) => (pl && !pl.disposed && pl.skeleton && pl.renderer && pl.renderer.camera && typeof pl.renderer.camera.screenToWorld === 'function' ? pl : null)
+    const proxy = window.__NovaFlowSkeletonTimelineOfficialProxy
+    // the proxy holds the player the app is showing; the factory hook may remember an
+    // older one whose camera no longer matches the canvas (two skeletons on screen)
+    return usable(proxy && proxy.player) || usable(livePlayer)
+  }
+  function previewCanvas() {
+    // the player's own canvas first: the camera is fitted to it
+    const p = previewPlayer()
+    if (p && p.canvas instanceof HTMLCanvasElement && p.canvas.isConnected) return p.canvas
+    const marked = document.querySelector(`canvas[${PREVIEW_CANVAS_MARK}="1"]`)
+    const ours = (c) => c.hasAttribute('data-novaflow-bones-editor-overlay') || c.hasAttribute('data-novaflow-auto-mesh-pick-overlay')
+    if (marked instanceof HTMLCanvasElement && !ours(marked)) return marked
+    const stage = document.querySelector('[data-novaflow-skeleton-preview-stage="1"]')
+    if (!stage) return null
+    return Array.from(stage.querySelectorAll('canvas')).find((c) => !ours(c) && c.width > 40 && c.height > 40) || null
+  }
+  /** World → preview canvas pixels; the camera is orthographic, three probes pin it down. */
+  function bonesToScreen() {
+    const p = previewPlayer(), canvas = previewCanvas()
+    if (!p || !canvas) return null
+    const Vector3 = (p.spine && p.spine.Vector3) || (p.webgl && p.webgl.Vector3)
+    if (!Vector3) return null
+    const camera = p.renderer.camera, width = canvas.width, height = canvas.height
+    const at = (sx, sy) => { const v = camera.screenToWorld(new Vector3(sx, sy, 0), width, height); return [Number(v.x), Number(v.y)] }
+    const o = at(0, 0), px = at(width, 0), py = at(0, height)
+    if (![...o, ...px, ...py].every(Number.isFinite)) return null
+    const a = (px[0] - o[0]) / width, b = (px[1] - o[1]) / width, c = (py[0] - o[0]) / height, d = (py[1] - o[1]) / height
+    const det = a * d - b * c
+    if (!Number.isFinite(det) || Math.abs(det) < 1e-12) return null
+    const ia = d / det, ib = -b / det, ic = -c / det, id = a / det
+    return [ia, ib, ic, id, -(ia * o[0] + ic * o[1]), -(ib * o[0] + id * o[1])]
+  }
+  /** Hold the preview at the setup pose while the rig is edited: the bones are drawn over the setup artwork. */
+  function freezePreview() {
+    const p = previewPlayer()
+    if (!p || !p.animationState || (bones.frozen && bones.frozen.player === p)) return
+    const st = p.animationState
+    const tr = st.tracks && st.tracks[0]
+    bones.frozen = { player: p, timeScale: st.timeScale, anim: tr && tr.animation ? tr.animation.name : null, loop: tr ? !!tr.loop : false, time: tr ? tr.trackTime : 0 }
+    try { st.timeScale = 0; st.clearTracks(); p.skeleton.setToSetupPose(); p.skeleton.updateWorldTransform() } catch { /* the preview may be mid-rebuild */ }
+    hideAppBones(p)
+  }
+  /**
+   * The app draws its own bones (显示骨骼) from the LOADED project. While the rig is
+   * edited only the editor's skeleton may show — the app's copy cannot follow an edit,
+   * so the two would split apart on the first drag. The player's setter is wrapped so
+   * the app's own toggling (and the facade re-applying it after a reload) is remembered
+   * and put back when editing ends.
+   */
+  function hideAppBones(p) {
+    if (!p || typeof p.setDebugOverlays !== 'function' || p.__nfBonesHidden) return
+    const original = p.setDebugOverlays
+    // a player made by a reload starts with no overlay setting at all ({}): the app's
+    // toggle is still on but nothing re-applies it, so the intent carries over from
+    // the player before it and the bones come back when editing ends
+    const explicit = !!p.debugOverlays && Object.prototype.hasOwnProperty.call(p.debugOverlays, 'bones')
+    const hidden = { original, own: Object.prototype.hasOwnProperty.call(p, 'setDebugOverlays'), want: explicit ? !!p.debugOverlays.bones : !!bones.appBonesWant }
+    bones.appBonesWant = hidden.want
+    p.__nfBonesHidden = hidden
+    p.setDebugOverlays = function (overlays) {
+      hidden.want = !!(overlays && overlays.bones)
+      bones.appBonesWant = hidden.want
+      return original.call(this, Object.assign({}, overlays || {}, { bones: false }))
+    }
+    if (hidden.want) { try { original.call(p, Object.assign({}, p.debugOverlays, { bones: false })) } catch { /* mid-rebuild */ } }
+  }
+  function showAppBones(p) {
+    const hidden = p && p.__nfBonesHidden
+    if (!hidden) return
+    delete p.__nfBonesHidden
+    if (hidden.own) p.setDebugOverlays = hidden.original; else delete p.setDebugOverlays
+    if (p.disposed) return
+    try { hidden.original.call(p, Object.assign({}, p.debugOverlays, { bones: hidden.want })) } catch { /* the preview may be gone */ }
+  }
+  /**
+   * While the rig is edited the preview must stay at the setup pose: the app's playbar
+   * (or its timeline proxy after a reload) restarts the animation on its own, and then
+   * the app's bones animate away from the editor's — two skeletons on screen.
+   */
+  function holdFrozen() {
+    const p = previewPlayer()
+    if (!p || !p.animationState) return
+    if (!bones.frozen || bones.frozen.player !== p) { freezePreview(); return }
+    const st = p.animationState
+    const playing = st.timeScale !== 0 || (st.tracks && st.tracks.some(Boolean))
+    if (!playing) return
+    try { st.timeScale = 0; st.clearTracks(); p.skeleton.setToSetupPose(); p.skeleton.updateWorldTransform() } catch { /* mid-rebuild */ }
+  }
+  function thawPreview() {
+    const f = bones.frozen
+    bones.frozen = null
+    if (!f) return
+    const p = f.player
+    showAppBones(p)
+    if (!p || p.disposed || !p.animationState) return
+    try {
+      if (f.anim) { const e = p.animationState.setAnimation(0, f.anim, f.loop); if (e) e.trackTime = f.time }
+      p.animationState.timeScale = f.timeScale
+    } catch { /* the preview may be gone */ }
+  }
+  function ensureController() {
+    if (bones.ctl) return bones.ctl
+    const E = window.NovaFlowBonesEditor
+    if (!E) throw new Error('骨骼编辑器未加载')
+    bones.ctl = E.createController({
+      getCanvas: previewCanvas,
+      getToScreen: bonesToScreen,
+      getSkeleton: () => { const s = importedSource(); return s ? JSON.parse(s.skeleton.text) : null },
+      // the pose the runtime shows for the working copy (constraints applied): an IK target
+      // dragged in the editor pulls its chain on screen exactly as it will in the app
+      poseWorld: (skel) => {
+        const p = previewPlayer(), AW = window.NovaFlowAutoWeights
+        if (!p || !p.spine || !AW) return null
+        // bones + constraints are all the pose needs; slots/skins only matter for path constraints
+        const hasPath = Array.isArray(skel.path) && skel.path.length > 0
+        const bare = { skeleton: skel.skeleton, bones: skel.bones, ik: skel.ik || [], transform: skel.transform || [], path: skel.path || [], slots: hasPath ? skel.slots : [], skins: hasPath ? skel.skins : [], animations: {} }
+        return AW.matricesFromRuntime(p.spine, bare)
+      },
+      isMechanism: (i, skel) => {
+        const AW = window.NovaFlowAutoWeights
+        if (!AW || !skel || i === 0) return false
+        try {
+          if (!bones.mechCache || bones.mechCache.skel !== skel) bones.mechCache = { skel, set: AW.mechanismBones(skel) }
+          return bones.mechCache.set.has(i)
+        } catch { return false }
+      },
+      onSelect: () => bones.syncUi(),
+      onPickParent: (on) => {
+        bones.setStatus(on ? '点一根骨作为新的父骨(Esc 取消)' : '', on ? 'ok' : '')
+        tuneSkeletonSidebar()
+      },
+      onFrame: () => { if (bones.editing) holdFrozen() },
+      onChange: () => { bones.renderTree(); bones.syncUi() },
+      onTool: () => bones.syncUi(),
+      // no auto-focus on the name field: the next drag continues the chain, and a focused
+      // input would swallow the tool shortcuts (rename from the 名称 field when you want to)
+      onCreate: () => { bones.renderTree(); bones.syncUi() }
+    })
+    return bones.ctl
+  }
+  /**
+   * The app's own bone tree (right sidebar) doubles as the re-parent target: with 编辑骨骼 on,
+   * drag one row onto another and the dragged bone hangs under it. Rows are the app's DOM, so
+   * we only listen — the bone is identified by the row's text, and a plain click still selects
+   * the way the app intends (we claim the gesture only once the pointer has actually moved).
+   */
+  const BONE_ROW_SEL = '[data-novaflow-skeleton-bone-row="1"]'
+  const treeDrag = { from: null, name: '', over: null, moved: false, id: -1 }
+  const rowName = (row) => String(row && row.textContent || '').replace(/\s+/g, ' ').trim()
+  const markRow = (row, on) => { if (row) row.style.outline = on ? '2px solid rgba(34,201,138,0.9)' : '' }
+  function endTreeDrag() {
+    markRow(treeDrag.from, false); markRow(treeDrag.over, false)
+    treeDrag.from = null; treeDrag.over = null; treeDrag.moved = false; treeDrag.id = -1
+  }
+  function onTreePointerDown(ev) {
+    if (!bones.editing || ev.button !== 0) return
+    const row = ev.target instanceof Element ? ev.target.closest(BONE_ROW_SEL) : null
+    if (!row) return
+    endTreeDrag()
+    treeDrag.from = row; treeDrag.name = rowName(row); treeDrag.id = ev.pointerId
+  }
+  function onTreePointerMove(ev) {
+    if (!treeDrag.from || ev.pointerId !== treeDrag.id) return
+    if (!treeDrag.moved) {
+      treeDrag.moved = true
+      markRow(treeDrag.from, true)
+    }
+    const row = document.elementFromPoint(ev.clientX, ev.clientY)
+    const over = row instanceof Element ? row.closest(BONE_ROW_SEL) : null
+    if (over === treeDrag.over) return
+    markRow(treeDrag.over, false)
+    treeDrag.over = over && over !== treeDrag.from ? over : null
+    markRow(treeDrag.over, true)
+  }
+  function onTreePointerUp(ev) {
+    if (!treeDrag.from || ev.pointerId !== treeDrag.id) return
+    const child = treeDrag.name, parentRow = treeDrag.over
+    const moved = treeDrag.moved
+    endTreeDrag()
+    if (!moved || !parentRow) return
+    ev.preventDefault(); ev.stopImmediatePropagation()
+    const parent = rowName(parentRow)
+    const ctl = ensureController()
+    const names = new Set(ctl.peekBones().map((b) => b.name))
+    if (!names.has(child) || !names.has(parent)) { bones.setStatus(`工作副本里找不到 ${names.has(child) ? parent : child}(右侧树显示的是工程,新建的骨要先 应用到工程)`, 'error'); return }
+    if (!ctl.reparentNamed(child, parent)) { bones.setStatus(`${child} 不能挂到 ${parent} 下(不能挂到自己或自己的子骨)`, 'error'); return }
+    bones.setStatus(`${child} → 父骨 ${parent}`, 'ok')
+    bones.renderTree(); bones.syncUi()
+  }
+  /**
+   * The app's skeleton sidebar, tuned for rigging (user decisions 2026-09-21): the particle
+   * attachment block is gone and the bone tree is half again as tall. The tree's own height
+   * is set through a stylesheet so the element keeps the inline `max-height: 240px` the
+   * app's stylesheet keys on.
+   */
+  function tuneSkeletonSidebar() {
+    const sections = document.querySelectorAll('[data-novaflow-skeleton-sidebar-section="1"]')
+    if (!sections.length) return
+    for (const sec of sections) {
+      const title = sec.querySelector('[data-novaflow-skeleton-sidebar-title="1"]')
+      const text = String(title && title.textContent || '').replace(/\s+/g, '')
+      if (text.startsWith('粒子挂点') && sec.style.display !== 'none') sec.style.display = 'none'
+    }
+    if (document.getElementById('novaflow-bones-sidebar-style')) return
+    const style = document.createElement('style')
+    style.id = 'novaflow-bones-sidebar-style'
+    style.textContent = '[data-novaflow-skeleton-tree-list="1"]{max-height:360px !important}'
+    document.head.appendChild(style)
+  }
+
+  /** The working copy follows the loaded project unless there are unsaved edits. */
+  function loadBonesFromSource(force) {
+    const src = importedSource()
+    if (!src) return false
+    const text = src.skeleton.text
+    if (!force && text === bones.lastText) return false
+    const ctl = ensureController()
+    if (!force && ctl.getState().dirty) return false
+    bones.lastText = text
+    ctl.load(JSON.parse(text))
+    return true
+  }
+  let treeBound = false
+  function bindTreeDrag() {
+    if (treeBound) return
+    treeBound = true
+    document.addEventListener('pointerdown', onTreePointerDown, true)
+    document.addEventListener('pointermove', onTreePointerMove, true)
+    document.addEventListener('pointerup', onTreePointerUp, true)
+    document.addEventListener('pointercancel', endTreeDrag, true)
+  }
+  function setBonesEditing(on) {
+    bindTreeDrag()
+    tuneSkeletonSidebar()
+    const ctl = ensureController()
+    bones.editing = !!on
+    if (bones.editing) {
+      loadBonesFromSource(false)
+      freezePreview()
+      ctl.setEnabled(true)
+      // the layer picker claims the same clicks
+      try { const pk = window.NovaFlowAutoMeshPicker; if (pk && pk.isEnabled && pk.isEnabled()) pk.setEnabled(false) } catch { /* optional */ }
+    } else {
+      ctl.setEnabled(false)
+      thawPreview()
+    }
+    bones.syncUi()
+  }
+  function bonesTick() {
+    if (!bones.ctl) return
+    if (bones.editing) {
+      const p = previewPlayer()
+      if (p && (!bones.frozen || bones.frozen.player !== p)) freezePreview()
+    }
+    tuneSkeletonSidebar()
+    if (loadBonesFromSource(false)) { bones.renderTree(); bones.syncUi() }
+  }
+  const ourMeshes = () => Array.from(state.layers.values()).some((l) => l.mesh && !l.fromMesh)
+  /** Write the edited rig into the project and reload the preview. */
+  async function applyBones(setStatus) {
+    if (typeof setStatus !== 'function') setStatus = () => {}
+    const ctl = ensureController()
+    const skel = ctl.getSkeleton()
+    if (!skel) throw new Error('没有骨架可写回')
+    if (ourMeshes()) throw new Error('这里生成的网格会跟着旧骨骼:先在 自动蒙皮 里「还原为导入时的图层」,改完骨骼再蒙皮')
+    captureSource()
+    const text = JSON.stringify(skel)
+    for (const l of state.layers.values()) { l.weights = null; l.weightsEdited = false }
+    setStatus('写回骨架…')
+    await nextFrame()
+    thawPreview()
+    // reloadWithSkeleton records the text as sent; only then may it become the base, or
+    // the sync tick reads the live text as a new project and wipes the panel state
+    await reloadWithSkeleton(text)
+    state.baseSkeleton = text
+    bones.lastText = text
+    ctl.load(skel, true)
+    if (bones.editing) freezePreview()
+    renderList()
+    return skel.bones.length
+  }
+  /** Run spine-auto-bones on the loaded layers and write the result into the project. */
+  async function autoRig(setStatus) {
+    if (typeof setStatus !== 'function') setStatus = () => {}
+    const AB = window.NovaFlowAutoBones
+    if (!AB) throw new Error('自动骨架模块未加载')
+    const src = captureSource()
+    const skel = JSON.parse(src.skeleton.text)
+    const hasMesh = (attachments) => Object.keys(attachments || {}).some((slot) => Object.values(attachments[slot] || {}).some((a) => a && a.type === 'mesh'))
+    const meshed = Array.isArray(skel.skins) ? skel.skins.some((k) => hasMesh(k && k.attachments)) : Object.keys(skel.skins || {}).some((k) => hasMesh(skel.skins[k]))
+    if (meshed || ourMeshes()) throw new Error('工程里已有网格:先在 自动蒙皮 里「还原为导入时的图层」,再自动架设')
+    const AW = window.NovaFlowAutoWeights
+    const mats = AW ? AW.setupPoseMatrices(skel) : null
+    const boneIndex = new Map((skel.bones || []).map((b, i) => [b.name, i]))
+    const attachmentsOf = (slotName) => {
+      const pick = (attachments) => (attachments && attachments[slotName]) || null
+      if (Array.isArray(skel.skins)) { for (const k of skel.skins) { const a = pick(k && k.attachments); if (a) return a } return null }
+      for (const k of Object.keys(skel.skins || {})) { const a = pick(skel.skins[k]); if (a) return a }
+      return null
+    }
+    const layers = []
+    for (const slot of skel.slots || []) {
+      const atts = attachmentsOf(slot.name)
+      if (!atts) continue
+      const attName = slot.attachment || Object.keys(atts)[0]
+      const att = atts[attName]
+      if (!att || (att.type && att.type !== 'region')) continue
+      const layer = state.layers.get(attName)
+      if (!layer || !layer.hasImage) continue
+      setStatus(`读取图层 ${layers.length + 1}…`)
+      await ensurePixels(attName)
+      if (!layer.imageData) continue
+      const m = mats && boneIndex.has(slot.bone) ? mats[boneIndex.get(slot.bone)] : null
+      const ax = Number(att.x) || 0, ay = Number(att.y) || 0
+      const place = m ? { x: m.a * ax + m.b * ay + m.worldX, y: m.c * ax + m.d * ay + m.worldY } : { x: ax, y: ay }
+      layers.push({ name: slot.name, att: attName, width: layer.imageData.width, height: layer.imageData.height, rgba: layer.imageData.data, place })
+    }
+    if (!layers.length) throw new Error('没有可分析的图层(需要有贴图的 region 附件)')
+    setStatus(`分析 ${layers.length} 层的中轴并搭建骨架…`)
+    await nextFrame(); await nextFrame()
+    const built = AB.buildSkeleton(layers)
+    const next = AB.applyToSkeleton(skel, built)
+    const text = JSON.stringify(next)
+    for (const l of state.layers.values()) { l.weights = null; l.weightsEdited = false }
+    setStatus(`写回 ${built.bones.length} 根骨…`)
+    await nextFrame()
+    thawPreview()
+    await reloadWithSkeleton(text)
+    state.baseSkeleton = text
+    bones.lastText = text
+    const ctl = ensureController()
+    ctl.load(next)
+    if (bones.editing) freezePreview()
+    renderList()
+    return { bones: built.bones.length, ik: built.json.ik.length, layers: layers.length }
+  }
+
+  function buildBonesBody() {
+    const E = window.NovaFlowBonesEditor
+    const body = el('div')
+    body.className = 'nf-panel-body'
+    body.style.padding = '14px'
+    body.style.marginTop = STACK_GAP
+    body.style.display = state.openBones ? 'block' : 'none'
+
+    const status = el('div', { fontSize: '11px', color: 'rgba(255,255,255,0.55)', margin: STACK_GAP + ' 0 0', minHeight: '15px', lineHeight: '1.5' })
+    const setStatus = (text, tone) => {
+      status.textContent = text || ''
+      status.style.color = tone === 'error' ? '#ff8a7a' : (tone === 'ok' ? '#22c98a' : 'rgba(255,255,255,0.55)')
+    }
+    bones.setStatus = setStatus
+    const guard = guardWith(setStatus, true)
+
+    // the switch
+    const switchRow = el('label', { display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', color: 'rgba(255,255,255,0.85)', marginTop: STACK_GAP })
+    const sw = el('input'); sw.type = 'checkbox'; sw.style.accentColor = '#22c98a'; sw.style.flex = '0 0 auto'
+    sw.title = '打开后在预览里直接选、拖、画骨骼(预览停在设置姿势);关闭则预览恢复'
+    const swLabel = el('span', null, '编辑骨骼')
+    const swHint = el('span', { marginLeft: 'auto', fontSize: '11px', color: 'rgba(255,255,255,0.4)' }, '关')
+    switchRow.appendChild(sw); switchRow.appendChild(swLabel); switchRow.appendChild(swHint)
+    sw.addEventListener('change', () => {
+      try { setBonesEditing(sw.checked) } catch (err) { sw.checked = false; setStatus(String((err && err.message) || err), 'error') }
+    })
+
+    // tools
+    const toolsRow = el('div', { display: 'flex', gap: '4px', marginTop: STACK_GAP })
+    const toolBtns = {}
+    for (const t of (E ? E.TOOLS : [])) {
+      const b = smallButton(t.label)
+      b.title = `${t.hint}(快捷键 ${t.key.toUpperCase()})`
+      b.style.flex = '1 1 0'
+      b.addEventListener('click', () => { ensureController().setTool(t.id); bones.syncUi() })
+      toolBtns[t.id] = b
+      toolsRow.appendChild(b)
+    }
+    let showNames = false
+    const namesBtn = smallButton('名称')
+    namesBtn.title = '在预览里标出每根骨骼的名字'
+    namesBtn.addEventListener('click', () => { showNames = !showNames; ensureController().setShowNames(showNames); bones.syncUi() })
+    toolsRow.appendChild(namesBtn)
+
+    // actions
+    const autoBtn = el('button', null, '自动架设'); autoBtn.type = 'button'; styleButton(autoBtn, true); autoBtn.style.marginTop = STACK_GAP
+    autoBtn.title = '按每层的中轴自动搭一套骨架(躯干、四肢带 IK、头发、飘带);搭完打开 编辑骨骼 手动修'
+    const row2 = el('div', { display: 'flex', gap: '4px', marginTop: STACK_GAP })
+    const undoBtn = smallButton('撤销'), redoBtn = smallButton('重做'), delBtn = smallButton('删除'), resetBtn = smallButton('放弃修改')
+    undoBtn.title = 'Ctrl+Z'; redoBtn.title = 'Ctrl+Y'; delBtn.title = '删除选中的骨骼:它的子骨挂到它的父骨,图层保持原位(Delete)'; resetBtn.title = '丢掉没应用的修改,回到工程里现在的骨架'
+    for (const b of [undoBtn, redoBtn, delBtn, resetBtn]) { b.style.flex = '1 1 0'; row2.appendChild(b) }
+    const applyBtn = el('button', null, '应用到工程'); applyBtn.type = 'button'; styleButton(applyBtn, true); applyBtn.style.marginTop = STACK_GAP
+    applyBtn.title = '把编辑好的骨架写回工程并重建预览;之后再做 自动蒙皮 / 自动权重'
+
+    // the selected bone
+    const selBox = el('div', { marginTop: STACK_GAP, border: '1px solid rgba(255,255,255,0.08)', borderRadius: '6px', padding: '6px 8px', background: 'rgba(255,255,255,0.03)', display: 'none' })
+    const field = (label) => {
+      const row = el('div', { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' })
+      row.appendChild(el('span', { fontSize: '11px', color: 'rgba(255,255,255,0.5)', flex: '0 0 32px' }, label))
+      return row
+    }
+    const inputStyle = { flex: '1 1 auto', minWidth: '0', height: '22px', background: '#2a2a2a', color: 'rgba(255,255,255,0.9)', border: '0', borderRadius: '4px', fontSize: '11px', padding: '0 6px', boxSizing: 'border-box' }
+    const nameRow = field('名称'); const nameIn = el('input', inputStyle); nameIn.type = 'text'; nameIn.spellcheck = false; nameRow.appendChild(nameIn)
+    const parentRow = field('父骨'); const parentSel = el('select', inputStyle); parentRow.appendChild(parentSel)
+    const poseRow = field('角度'); const rotIn = el('input', Object.assign({}, inputStyle, { flex: '1 1 0' })); rotIn.type = 'number'; rotIn.step = '0.1'
+    poseRow.appendChild(rotIn); poseRow.appendChild(el('span', { fontSize: '11px', color: 'rgba(255,255,255,0.5)', flex: '0 0 auto' }, '长度'))
+    const lenIn = el('input', Object.assign({}, inputStyle, { flex: '1 1 0' })); lenIn.type = 'number'; lenIn.step = '1'; lenIn.min = '0'; poseRow.appendChild(lenIn)
+    const mechNote = el('div', { fontSize: '10px', color: 'rgba(255,170,90,0.85)', marginTop: '4px', display: 'none' }, '控制骨(IK/约束目标、零长度骨、枢轴):拖动或旋转=摆姿势,约束联动、图片跟着走;辅助链跟着关节走,不单独编辑')
+    selBox.appendChild(nameRow); selBox.appendChild(parentRow); selBox.appendChild(poseRow); selBox.appendChild(mechNote)
+    const commitName = () => { const ctl = ensureController(); const st = ctl.getState(); if (st.selected < 0) return; const cur = ctl.getSkeleton().bones[st.selected].name; if (nameIn.value.trim() === cur) return; if (!ctl.renameSelected(nameIn.value)) { setStatus('名字为空或已被占用', 'error'); nameIn.value = cur } else setStatus(`已改名为 ${nameIn.value.trim()}`, 'ok') }
+    nameIn.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); commitName(); nameIn.blur() } else if (ev.key === 'Escape') { ev.preventDefault(); bones.syncUi(); nameIn.blur() } ev.stopPropagation() })
+    nameIn.addEventListener('blur', commitName)
+    // a bone cannot hang under itself or its own subtree: those options are disabled when
+    // the dropdown OPENS (toggling 200 options' disabled on every selection dirtied layout,
+    // and the next layout read cost ~7 ms per click)
+    const refreshParentOptions = () => {
+      const ctl = bones.ctl
+      if (!ctl) return
+      const st = ctl.getState(), list = ctl.peekBones()
+      const key = st.selected + '|' + (parentSel.dataset.optionsKey || '')
+      if (parentSel.dataset.disabledFor === key) return
+      parentSel.dataset.disabledFor = key
+      const index = new Map(list.map((x, i) => [x.name, i]))
+      const descendants = new Set([st.selected])
+      let grew = true
+      while (grew) { grew = false; list.forEach((x, i) => { if (!descendants.has(i) && x.parent !== undefined && index.has(x.parent) && descendants.has(index.get(x.parent))) { descendants.add(i); grew = true } }) }
+      const opts = parentSel.options
+      for (let k = 1; k < opts.length; k++) { const dis = descendants.has(k - 1); if (opts[k].disabled !== dis) opts[k].disabled = dis }
+    }
+    for (const evName of ['pointerdown', 'focus', 'keydown']) parentSel.addEventListener(evName, refreshParentOptions)
+    parentSel.addEventListener('change', () => { const ctl = ensureController(); const i = Number(parentSel.value); if (!ctl.reparentSelected(i)) { setStatus('不能挂到自己或自己的子骨下', 'error'); bones.syncUi() } })
+    const commitPose = () => { const ctl = ensureController(); if (ctl.getState().selected < 0) return; ctl.setSelectedPose({ rotation: Number(rotIn.value), length: Number(lenIn.value) }) }
+    for (const inp of [rotIn, lenIn]) { inp.addEventListener('change', commitPose); inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); commitPose(); inp.blur() } ev.stopPropagation() }) }
+    bones.focusName = () => { window.setTimeout(() => { try { nameIn.focus(); nameIn.select() } catch { /* hidden */ } }, 0) }
+
+    // The project's bone tree lives in the right-hand sidebar (the app's own); a second
+    // copy here was the same list twice, so this is only the pointer to it.
+    const listWrap = el('div', { marginTop: STACK_GAP, fontSize: '11px', color: 'rgba(255,255,255,0.45)', lineHeight: '1.5' })
+    bones.renderTree = () => {
+      const ctl = bones.ctl
+      const n = ctl ? ctl.peekBones().length : 0
+      listWrap.textContent = n
+        ? `骨骼树在右侧面板(${n} 根)。换父骨:选中后按 P 再点新父骨(Shift+P 挂到 root),或在右侧树里把一根骨拖到另一根上。`
+        : (importedSource() ? '工程里还没有骨骼:点 自动架设,或打开 编辑骨骼 后用 新建 画' : '导入工程后,右侧面板会列出骨骼树')
+    }
+
+    // writes that would invalidate layout are skipped when nothing changes: the next
+    // layout read (scrollIntoView, the editor's canvas rect) would otherwise force a
+    // synchronous relayout of the whole shell on every click
+    const setText = (node, text) => { if (node.textContent !== text) node.textContent = text }
+    const setDisabled = (node, v) => { if (node.disabled !== !!v) node.disabled = !!v }
+    const setDisplay = (node, v) => { if (node.style.display !== v) node.style.display = v }
+    const setStyle = (node, prop, v) => { if (node.style[prop] !== v) node.style[prop] = v }
+    bones.syncUi = () => {
+      const ctl = bones.ctl
+      const st = ctl ? ctl.getState() : { enabled: false, tool: 'select', selected: -1, dirty: false, canUndo: false, canRedo: false, bones: 0 }
+      if (sw.checked !== !!bones.editing) sw.checked = !!bones.editing
+      const ready = !bones.editing || !!previewPlayer()
+      setText(swHint, bones.editing ? (ready ? '开' : '预览未就绪') : '关')
+      setStyle(swHint, 'color', bones.editing && !ready ? '#ff8a7a' : 'rgba(255,255,255,0.4)')
+      for (const id of Object.keys(toolBtns)) {
+        const b = toolBtns[id]
+        const on = bones.editing && st.tool === id
+        setStyle(b, 'background', on ? '#22c98a' : '#333333')
+        setStyle(b, 'color', on ? '#062a18' : 'rgba(255,255,255,0.92)')
+        setDisabled(b, !bones.editing)
+        setStyle(b, 'opacity', bones.editing ? '1' : '0.5')
+      }
+      setStyle(namesBtn, 'background', showNames ? 'rgba(30,166,114,0.18)' : '#333333')
+      setStyle(namesBtn, 'color', showNames ? '#7ce8b5' : 'rgba(255,255,255,0.92)')
+      setDisabled(undoBtn, !st.canUndo); setDisabled(redoBtn, !st.canRedo)
+      setDisabled(delBtn, st.selected < 0 || (ctl && ctl.isOwned(st.selected)))
+      setDisabled(resetBtn, !st.dirty)
+      for (const b of [undoBtn, redoBtn, delBtn, resetBtn]) setStyle(b, 'opacity', b.disabled ? '0.5' : '1')
+      setDisabled(applyBtn, !st.dirty)
+      setStyle(applyBtn, 'opacity', st.dirty ? '1' : '0.6')
+      setText(applyBtn, st.dirty ? '应用到工程(有未保存的修改)' : '应用到工程')
+      // selected bone fields
+      const skel = ctl && st.selected >= 0 ? { bones: ctl.peekBones() } : null
+      if (skel && skel.bones[st.selected]) {
+        const b = skel.bones[st.selected]
+        setDisplay(selBox, 'block')
+        if (document.activeElement !== nameIn) nameIn.value = b.name
+        const W = ctl.getWorld()
+        const m = W[st.selected]
+        if (document.activeElement !== rotIn) rotIn.value = m ? (Math.atan2(m.c, m.a) * 180 / Math.PI).toFixed(1) : '0'
+        if (document.activeElement !== lenIn) lenIn.value = m ? String(Math.round(m.length * 10) / 10) : '0'
+        const index = new Map(skel.bones.map((x, i) => [x.name, i]))
+        const optionsKey = skel.bones.map((x) => x.name + '<' + (x.parent || '')).join('\n')
+        if (parentSel.dataset.optionsKey !== optionsKey) {
+          parentSel.dataset.optionsKey = optionsKey
+          parentSel.innerHTML = ''
+          const none = el('option', null, '(无)'); none.value = '-1'; parentSel.appendChild(none)
+          const frag = document.createDocumentFragment()
+          skel.bones.forEach((x, i) => { const o = el('option', null, x.name); o.value = String(i); frag.appendChild(o) })
+          parentSel.appendChild(frag)
+          parentSel.dataset.disabledFor = ''
+        }
+        parentSel.value = b.parent !== undefined && index.has(b.parent) ? String(index.get(b.parent)) : '-1'
+        const owned = ctl.isOwned(st.selected)
+        setDisplay(mechNote, owned ? 'block' : 'none')
+        for (const inp of [nameIn, rotIn, lenIn, parentSel]) setDisabled(inp, owned || !bones.editing)
+      } else setDisplay(selBox, 'none')
+    }
+
+    // a project that already has a rig and animation keys: replacing the rig makes every
+    // animation curve point at bones that no longer exist, so it takes a second click
+    let armedUntil = 0
+    const AUTO_LABEL = '自动架设'
+    autoBtn.addEventListener('click', () => {
+      let rigged = false
+      try {
+        const src = importedSource()
+        if (src) {
+          const sk = JSON.parse(src.skeleton.text)
+          const anim = sk.animations || {}
+          rigged = (sk.bones || []).length > 1 && Object.keys(anim).some((k) => anim[k] && anim[k].bones && Object.keys(anim[k].bones).length > 0)
+        }
+      } catch { rigged = false }
+      if (rigged && Date.now() > armedUntil) {
+        armedUntil = Date.now() + 8000
+        autoBtn.textContent = '再点一次：替换现有骨架（动画会失效）'
+        setStatus('这个工程已经有骨架和动画。自动架设会整套换掉骨骼，原动画曲线会失效;只是修骨骼请打开 编辑骨骼 直接改。', 'error')
+        window.setTimeout(() => { if (Date.now() >= armedUntil) { autoBtn.textContent = AUTO_LABEL } }, 8200)
+        return
+      }
+      armedUntil = 0
+      autoBtn.textContent = AUTO_LABEL
+      guard(async () => {
+        setStatus('准备图层…')
+        const r = await autoRig((t) => setStatus(t))
+        setStatus(`自动架设完成 · ${r.bones} 根骨 · ${r.ik} 个 IK · ${r.layers} 层`, 'ok')
+      })()
+    })
+    undoBtn.addEventListener('click', () => { ensureController().undo() })
+    redoBtn.addEventListener('click', () => { ensureController().redo() })
+    delBtn.addEventListener('click', () => { const ctl = ensureController(); const st = ctl.getState(); const name = st.selected >= 0 ? ctl.getSkeleton().bones[st.selected].name : null; if (ctl.deleteSelected()) setStatus(`已删除 ${name}`, 'ok') })
+    resetBtn.addEventListener('click', () => { loadBonesFromSource(true); setStatus('已回到工程里的骨架') })
+    applyBtn.addEventListener('click', () => guard(async () => {
+      const n = await applyBones((t) => setStatus(t))
+      setStatus(`已写回 ${n} 根骨`, 'ok')
+    }))
+    busyButtons.push(autoBtn, applyBtn)
+    busyLists.push(listWrap)
+
+    body.appendChild(switchRow)
+    body.appendChild(toolsRow)
+    body.appendChild(autoBtn)
+    body.appendChild(row2)
+    body.appendChild(applyBtn)
+    body.appendChild(status)
+    body.appendChild(selBox)
+    body.appendChild(listWrap)
+    try { ensureController(); loadBonesFromSource(false) } catch { /* the editor script may be missing */ }
+    bones.renderTree(); bones.syncUi()
+    return body
+  }
+  function bonesSpec() {
+    return {
+      id: BONES_PANEL_ID, mark: BMARK, title: BTITLE, icon: 'fas fa-bone', body: buildBonesBody,
+      isOpen: () => state.openBones,
+      setOpen: (v) => { state.openBones = v; if (state.fitList) state.fitList() }
+    }
+  }
+
   function meshSpec() {
     return {
       id: PANEL_ID, mark: MARK, title: TITLE, icon: 'fas fa-vector-square', body: buildMeshBody,
       isOpen: () => state.open,
-      setOpen: (v) => { state.open = v; writeStore(STORAGE_OPEN, v ? '1' : '0') }
+      setOpen: (v) => { state.open = v }
     }
   }
   function weightsSpec() {
     return {
       id: WEIGHTS_PANEL_ID, mark: WMARK, title: WTITLE, icon: 'fas fa-project-diagram', body: buildWeightsBody,
       isOpen: () => state.openWeights,
-      setOpen: (v) => { state.openWeights = v; writeStore(STORAGE_OPEN_W, v ? '1' : '0'); if (state.fitList) state.fitList() }
+      setOpen: (v) => { state.openWeights = v; if (state.fitList) state.fitList() }
     }
   }
 
@@ -1718,36 +2308,32 @@
    */
   function mount(allowReorder) {
     const anchor = findAnchor()
-    const existing = document.querySelector(`[${MARK}="1"]`)
-    const existingW = document.querySelector(`[${WMARK}="1"]`)
+    const specs = [
+      { mark: BMARK, spec: bonesSpec },
+      { mark: MARK, spec: meshSpec },
+      { mark: WMARK, spec: weightsSpec }
+    ]
     if (!anchor) {
       // the 骨骼动画 section is gone; take our panels with it
-      for (const e of [existing, existingW]) if (e && e.parentElement) e.parentElement.removeChild(e)
+      for (const s of specs) { const e = document.querySelector(`[${s.mark}="1"]`); if (e && e.parentElement) e.parentElement.removeChild(e) }
+      if (bones.editing) { try { setBonesEditing(false) } catch { /* nothing to restore */ } }
       return
     }
-    let meshPanel = existing
-    if (existing && existing.isConnected) {
-      const misplaced = existing.previousElementSibling !== anchor
-      if (allowReorder && misplaced && anchor.parentElement) {
-        anchor.parentElement.insertBefore(existing, anchor.nextSibling)
+    // 骨骼架设 → 自动蒙皮 → 自动权重, in the order the work is done, each right after
+    // the one before; the first follows the last native panel
+    let prev = anchor
+    for (const s of specs) {
+      let panel = document.querySelector(`[${s.mark}="1"]`)
+      if (panel && panel.isConnected) {
+        const misplaced = panel.previousElementSibling !== prev
+        if (allowReorder && misplaced && prev.parentElement) prev.parentElement.insertBefore(panel, prev.nextSibling)
+        matchAnchorWidth(panel, anchor)
+      } else if (prev.parentElement) {
+        panel = buildPanel(s.spec())
+        prev.parentElement.insertBefore(panel, prev.nextSibling)
+        matchAnchorWidth(panel, anchor)
       }
-      matchAnchorWidth(existing, anchor)
-    } else {
-      meshPanel = buildPanel(meshSpec())
-      anchor.parentElement.insertBefore(meshPanel, anchor.nextSibling)
-      matchAnchorWidth(meshPanel, anchor)
-    }
-    // 自动权重 follows 自动蒙皮 the way 自动蒙皮 follows the last native panel
-    if (existingW && existingW.isConnected) {
-      const misplaced = existingW.previousElementSibling !== meshPanel
-      if (allowReorder && misplaced && meshPanel.parentElement) {
-        meshPanel.parentElement.insertBefore(existingW, meshPanel.nextSibling)
-      }
-      matchAnchorWidth(existingW, anchor)
-    } else if (meshPanel.parentElement) {
-      const wp = buildPanel(weightsSpec())
-      meshPanel.parentElement.insertBefore(wp, meshPanel.nextSibling)
-      matchAnchorWidth(wp, anchor)
+      if (panel) prev = panel
     }
   }
 
@@ -1801,6 +2387,7 @@
       try { mount(true) } catch { /* keep polling */ }
       hookPlayerFactory()
       try { syncLayersFromSource() } catch { /* keep polling */ }
+      try { bonesTick() } catch { /* keep polling */ }
       bindHover()
     }, 1000)
     try { syncLayersFromSource() } catch { /* nothing imported yet */ }
@@ -1836,6 +2423,11 @@
     restore,
     applyAll,
     mount: () => mount(true),
-    _state: state
+    autoRig,
+    applyBones,
+    setBonesEditing,
+    bonesController: () => bones.ctl,
+    _state: state,
+    _bones: bones
   }
 })()

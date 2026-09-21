@@ -67,6 +67,15 @@
         + 'edge that slams to a stop and pushes a flat wave of dust out to both sides. It stays '
         + 'low and wide, NOT a ring, NOT a ball',
     },
+    tile: {
+      label: '方形面板',
+      shape: 'square panel, one solid rounded-square plate facing the camera, its face lit and its '
+        + 'border glowing, pulsing and brightening in place. It KEEPS its square silhouette for the '
+        + 'whole shot: it is NOT a circle, NOT a ring, and it does NOT break into pieces',
+      plainShape: 'square panel, one solid rounded-square plate facing the camera, pulsing in place. '
+        + 'It KEEPS its square silhouette for the whole shot: it is NOT a circle, NOT a ring, and it '
+        + 'does NOT break into pieces',
+    },
     shatter: {
       label: '符号碎裂',
       // "Tile" on its own renders a roof tile as soon as the material is stone

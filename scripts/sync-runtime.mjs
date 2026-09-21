@@ -265,6 +265,14 @@ const syncEntries = [
     ],
   },
   {
+    label: 'spine-auto-bones.js',
+    sourcePath: path.join(repoRoot, 'particle-editor', 'spine-auto-bones.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'spine-auto-bones.js'),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'spine-auto-bones.js'),
+    ],
+  },
+  {
     label: 'spine-auto-weights.js',
     sourcePath: path.join(repoRoot, 'particle-editor', 'spine-auto-weights.js'),
     targetPaths: [
@@ -278,6 +286,14 @@ const syncEntries = [
     targetPaths: [
       path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'spine-auto-weights.editor.js'),
       path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'spine-auto-weights.editor.js'),
+    ],
+  },
+  {
+    label: 'spine-bones.editor.js',
+    sourcePath: path.join(repoRoot, 'particle-editor', 'spine-bones.editor.js'),
+    targetPaths: [
+      path.join(repoRoot, 'particle-editor-desktop', 'renderer', 'spine-bones.editor.js'),
+      path.join(repoRoot, 'particle-editor-desktop', 'dist', 'win-unpacked', 'resources', 'app', 'renderer', 'spine-bones.editor.js'),
     ],
   },
   {

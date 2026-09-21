@@ -8,9 +8,9 @@
 // playing cards with the pick shown (and cancellable) under the button, and
 // 生成 folded into the renamed 特效生成 section. Shape and lifecycle detection
 // still run, but as a reading the panel reports, not a control. The strength
-// slider, the prompt supplement and the dead 纹理细节 slider stay gone - the
-// strength is the preset's own default, which is the measured sweet spot, and
-// dragging it past 70 is exactly how the motion stopped following the source.
+// slider and the dead 纹理细节 slider stay gone - the strength is the preset's
+// own default, set low enough that the result follows the source's own
+// evolution, and dragging it up is exactly how that following came apart.
 const assert = require('node:assert/strict')
 const { readFileSync, existsSync } = require('node:fs')
 const path = require('node:path')
@@ -86,6 +86,25 @@ assert.equal((asideMarkup.match(/class="aifx-slider"/g) || []).length, 1,
   'the candidate count is the only slider left')
 assert.equal((asideMarkup.match(/data-aifx-section=/g) || []).length, 2, 'two sections, not three')
 
+// The panel has no strength control, so its fallback is a silent default and
+// has to be the module's, not a number that drifted away from it.
+{
+  const restylePath = path.join(root, 'particle-editor', 'aifx-restyle.workflow.js')
+  const sandbox = {}
+  sandbox.window = sandbox
+  sandbox.globalThis = sandbox
+  vm.runInNewContext(readFileSync(restylePath, 'utf8'), sandbox, { filename: restylePath })
+  const restyle = sandbox.NovaFlowAifxRestyleWorkflow
+  assert.ok(source.includes('if (!restyle) return ' + restyle.DEFAULT_STRENGTH),
+    'the panel fallback must be the module default')
+  assert.ok(source.includes('restyle.defaultStrengthFor(attribute, state.lifecycle,'),
+    'the panel asks the module for the default rather than carrying its own table')
+  // The box having text in it is what raises the strength, so the panel has to
+  // hand that fact over - not just the attribute and the lifecycle.
+  assert.ok(source.includes("Boolean(String(state.supplement || '').trim())"),
+    'the panel must tell the module whether 提示词补充 has anything in it')
+}
+
 assert.ok(source.includes("state.previewMode = state.resultFrames.length ? 'compare' : 'template'"),
   'one rule decides what the canvas shows')
 assert.ok(source.includes('const syncPreviewMode = () => {'))
@@ -125,7 +144,15 @@ assert.ok(source.includes('data-library-body'), 'the library panel is in the mar
 assert.ok(source.includes('data-action="close-library"'), 'the library has a 关闭 button')
 assert.ok(source.includes("openLibrary('template')") && source.includes("openLibrary('style')"),
   'both buttons open the same panel')
-assert.ok(source.includes("kind === 'style' ? '风格库' : '模板库'"), 'the panel is titled by what it lists')
+assert.ok(source.includes("kind === 'style' ? '风格库' : kind === 'shape' ? '形状' : '模板库'"),
+  'the panel is titled by what it lists')
+// The reading is automatic and can be wrong; the line that reports it is also
+// the way to correct it, which is the only way out when the detector picks a
+// round archetype for a square source.
+assert.ok(source.includes("openLibrary('shape')"), 'the detected shape can be corrected')
+assert.ok(source.includes("fix.textContent = '不对，改一下'"))
+assert.ok(source.includes("data-shape-pick"), 'the picker lists the archetypes')
+assert.ok(source.includes("state.shapeArchetype = id"), 'picking one applies it')
 assert.ok(source.includes("const STYLE_PREVIEW_URL = (id) => './aifx-styles/' + id + '.mp4'"),
   'style cards play the shipped preview clips')
 assert.ok(source.includes('new IntersectionObserver'), 'only the cards in view decode')

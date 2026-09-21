@@ -17,6 +17,12 @@
   // is the lowest-frequency content in a latent and survives a high denoise, so
   // a colour init hands the restyle the source palette - a lightning prompt on a
   // fire init comes back gold. Desaturated, the palette comes from the prompt.
+  //
+  // ...and is then painted back in the PRESET's colour. That same survival is
+  // what makes the tint worth doing: colour is the one thing a denoise low
+  // enough to follow the source cannot rebuild, so handing it over in the init
+  // pays for the denoise the following needs. Without it the two pulled against
+  // each other and 0.70 was the compromise; see 风格强度 below.
 
   const MODELS = Object.freeze({
     unet: 'Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors',
@@ -31,61 +37,74 @@
   const RESOLUTION_MULTIPLE = 32
   const MIN_STRENGTH = 0
   const MAX_STRENGTH = 100
-  // The slider's midpoint is the measured sweet spot (0.70): the source
-  // material is gone, the silhouette has rebuilt itself and the beat still
-  // holds. Below 0.45 the original material shows through; above 0.95 the
-  // element changes size and drifts off the source's timing.
-  const DEFAULT_STRENGTH = 50
+  // 风格强度 buys material at the cost of following, and 0.55 is where the
+  // source's own evolution survives. Measured as the coverage envelope
+  // against the source, averaged over the three clips an artist brought in
+  // that read as 'nothing like my effect': 0.94 at 0.55 against 0.80 at
+  // 0.70, and on the worst of them 0.92 against 0.54 - at 0.70 that clip's
+  // restyle was still growing when the source had already cleared. The
+  // built-in templates hid this because they follow at 0.70 too (0.92 for
+  // the crescent); a small element in a big black frame does not.
+  //
+  // 0.55 used to be unaffordable. The init is desaturated on purpose and a
+  // low denoise is not enough freedom to put a palette back, so the colour
+  // drained out: a looping venom fountain came out at 0.077 saturation
+  // against its source's 0.644, which is to say grey, and violet lightning
+  // at 0.087 against 0.320 at 0.70. That is what the old 0.70 default was
+  // paying for. The init now carries the preset's own accent instead of
+  // grey (see `tint`), which puts the colour in ahead of the sampler: the
+  // same fountain reads 0.569 and the same lightning 0.308, both at 0.55.
+  // Colour and following stopped competing, so the default is now set for
+  // following alone.
+  const DEFAULT_STRENGTH = 20
   const MIN_DENOISE = 0.45
   const MAX_DENOISE = 0.95
-  // A looping element's motion IS its content, so freeing the latent frees the
-  // motion with it, and a loop therefore gets capped below its preset default.
-  // A one-shot slash has a much simpler motion and survives 0.70 untouched.
-  //
-  // It takes two caps, because one could not serve both kinds of loop.
-  //
-  // The tight one is for an element whose motion is a bright point travelling
-  // along a thin path - a border light, a sweeping line. Measured on the
-  // border-light template, pulse-following went 0.944 at denoise 0.55, 0.69 at
-  // 0.70 and 0.536 at 0.85, where 0.85 turns the border into a static ornate
-  // picture frame.
-  //
-  // Everything else that loops is radially symmetric. Pulse-following is noise
-  // for those (a bright "point" on a ray fan is wherever the seed put it), and
-  // the measure that matters is how the coverage envelope tracks the source: at
-  // 0.70 that is 0.990 for a ray fan, 0.988 for a vortex and 0.974 for a
-  // fountain, all still following. Holding them at 0.55 costs the material
-  // instead - a venom fountain came out at 0.077 saturation against its
-  // source's 0.636, which is to say grey, because the init this graph samples
-  // from is desaturated on purpose and 0.55 is not enough freedom to put a
-  // colour back. At 0.70 the same shot reads 0.469. Above 0.70 the envelope
-  // breaks anyway: 0.732 for the ray fan at 0.85, and -0.03 for the vortex.
-  const LOOP_MAX_STRENGTH = 20
-  const LOOP_SOFT_STRENGTH = 50
-  // A one-shot has a simpler motion than a loop and survives far more, but not
-  // without limit. Swept on the symbol-tile template, the coverage envelope
-  // against the source reads 0.984 at denoise 0.70, 0.78 and 0.80, then 0.018
-  // at 0.82 and 0.85 - the element stops being a restyle of the source and
-  // becomes an unrelated effect. The cliff is that sharp, so no preset gets a
-  // DEFAULT above the last value that held. The slider still goes to 0.95 if
-  // that is what the artist wants.
+  // A looping element's motion IS its content, so freeing the latent frees
+  // the motion with it and a loop never gets more than the default, however
+  // much freedom its material asks for. This used to be two caps - a tight
+  // 0.55 for a travelling pulse and a loose 0.70 for anything radial - and
+  // the loose one existed only to keep the radial ones from going grey,
+  // which is the job the tint now does. One cap covers both: measured at
+  // 0.55 with a tinted init, the border light's envelope reads 0.834
+  // against 0.722 grey, and the fountain's 0.989.
+  const LOOP_MAX_STRENGTH = DEFAULT_STRENGTH
+  // A material carried by GRAIN rather than by surface needs one step more
+  // than the default, and says so in its own `strength`. Rendering all 54 on
+  // the crescent at 0.55 found exactly four: 像素 came back as a smooth gold
+  // arc with a few stray blocks, 沙尘 as a smooth sandy crescent with no dust,
+  // 星辰 as a plain white crescent with the nebula gone, and 彩虹 with its
+  // bands blurred into a haze. All four are back at 0.60 and none of them
+  // needs the 0.70-0.75 they used to carry. The cliff is the ceiling: swept on
+  // the symbol-tile template, the coverage envelope against the source
+  // reads 0.984 at denoise 0.70, 0.78 and 0.80, then 0.018 at 0.82 and
+  // 0.85 - the element stops being a restyle of the source and becomes an
+  // unrelated effect. The slider still goes to 0.95 if that is what the
+  // artist wants; this only caps the DEFAULT.
   const MAX_DEFAULT_STRENGTH = 70
-  // The archetypes whose content is a travelling pulse rather than a mass.
-  const TIGHT_LOOP_SHAPES = Object.freeze(['frame', 'trail'])
+  // 提示词补充 is the artist saying, in words, that they want something the
+  // preset does not do - so when the box has text in it the words get the
+  // freedom instead of the following. Measured on the artist's own clip with
+  // three asks they would plausibly type (the ring breaks into shards / it
+  // becomes a vortex / a flower grows in the middle), the supplement's effect
+  // on the output goes 0.0067 at 0.55 to 0.0079 at 0.60 to 0.0162 at 0.70,
+  // while the coverage envelope against the source goes 0.922 / 0.876 / 0.622.
+  // 0.60 buys almost nothing; 0.70 is where the words actually take over. It
+  // is also the top rung that exists: BasicScheduler quantises denoise to
+  // int(steps/denoise) sampling steps, so at 4 steps 0.70 and 0.80 are the
+  // same schedule and produce the same bytes.
+  const SUPPLEMENT_STRENGTH = 50
 
-  // An unnamed shape gets the tight cap: that is what shipped, and losing some
-  // colour is the smaller failure of the two.
-  function loopCapFor(archetype) {
-    return !archetype || TIGHT_LOOP_SHAPES.includes(String(archetype))
-      ? LOOP_MAX_STRENGTH
-      : LOOP_SOFT_STRENGTH
-  }
-
-  function defaultStrengthFor(id, lifecycle, archetype) {
+  // A loop is the exception, and not by choice: its motion IS its content, so
+  // the freedom a supplement wants is the same freedom that destroys it. On
+  // the border-light template the envelope against the template reads 0.834 at
+  // 0.55 and 0.289 at 0.60, while the supplement only moves the output from
+  // 0.0085 to 0.0174. A loop therefore keeps the following cap either way.
+  function defaultStrengthFor(id, lifecycle, hasSupplement) {
     const preset = PRESET_BY_ID.get(String(id || ''))
     const stored = preset && preset.strength != null ? preset.strength : DEFAULT_STRENGTH
-    const strength = Math.min(stored, MAX_DEFAULT_STRENGTH)
-    return lifecycle === 'loop' ? Math.min(strength, loopCapFor(archetype)) : strength
+    const wanted = hasSupplement ? Math.max(stored, SUPPLEMENT_STRENGTH) : stored
+    const strength = Math.min(wanted, MAX_DEFAULT_STRENGTH)
+    return lifecycle === 'loop' ? Math.min(strength, LOOP_MAX_STRENGTH) : strength
   }
 
   // Shared framing. Every preset is judged against the same shot description so
@@ -127,24 +146,29 @@
   // splashes is what makes the model rebuild the silhouette. Each preset also
   // says what it must not be, because an unconstrained material borrows its
   // neighbour's break-up.
+  //
+  // `accent` is not decoration: it is painted onto the init, so it has to be
+  // the colour the material actually reads as. `strength` is the default
+  // denoise, and only a material that has to REDRAW the element rather than
+  // resurface it is allowed above DEFAULT_STRENGTH.
   const ATTRIBUTE_PRESETS = Object.freeze([
     // 元素
     Object.freeze({
-      id: 'fire', group: '元素', strength: 50, label: '火焰', accent: '#ff7a2f', verified: true,
+      id: 'fire', group: '元素', strength: 20, label: '火焰', accent: '#ff7a2f', verified: true,
       name: 'FIRE', material: 'made of blazing orange and yellow flame with a white-hot inner edge and licking flame tongues '
         + 'along its outer edge, shedding rising sparks. Hot gas that RISES, NO dripping, NO shards, NO '
         + 'droplets.',
       breakup: 'It BURNS AWAY, thinning down to a glowing ember line and going out.',
     }),
     Object.freeze({
-      id: 'lava', group: '元素', strength: 50, label: '熔岩', accent: '#ff5a1f', verified: true,
+      id: 'lava', group: '元素', strength: 20, label: '熔岩', accent: '#ff5a1f', verified: true,
       name: 'MOLTEN LAVA', material: 'made of thick glowing molten rock, incandescent yellow-orange in its cracks and darkening to a '
         + 'crusted black skin on its surface, heavy and viscous, tearing open here and there to show the '
         + 'glow inside. Molten stone, NOT a gas flame, NO crystal facets, NO thin spray.',
       breakup: 'It SAGS apart and sheds slow fat droplets that fall and splat.',
     }),
     Object.freeze({
-      id: 'ice', group: '元素', strength: 50, label: '冰霜', accent: '#9fe3f5', verified: true,
+      id: 'ice', group: '元素', strength: 20, label: '冰霜', accent: '#9fe3f5', verified: true,
       name: 'ICE', material: 'made of hard translucent pale cyan crystal with flat polygonal facets, sharp straight edges, '
         + 'internal fracture lines and a cold glassy specular sheen, trailing cold white frost mist and '
         + 'fine snow grains. Rigid and brittle, NO dripping, NO sticky strands, NO round droplets, NO '
@@ -152,14 +176,14 @@
       breakup: 'It SHATTERS into sharp angular fragments that fly outward in straight lines.',
     }),
     Object.freeze({
-      id: 'water', group: '元素', strength: 50, label: '流水', accent: '#4fd1c5', verified: true,
+      id: 'water', group: '元素', strength: 20, label: '流水', accent: '#4fd1c5', verified: true,
       name: 'WATER', material: 'made of a clear TRANSPARENT turquoise sheet of water with visible internal swirls and caustics, '
         + 'a thick white foam edge and thin translucent membranes. Thin flowing liquid, NOT opaque, NOT '
         + 'sticky, NO stringy strands, NO crystal facets, NO shards, NO flame.',
       breakup: 'It SPLASHES into ROUND droplets and beads that arc outward and fall, trailing fine spray.',
     }),
     Object.freeze({
-      id: 'thunder', group: '元素', strength: 70, label: '雷电', accent: '#8f7bff', verified: true,
+      id: 'thunder', group: '元素', strength: 20, label: '雷电', accent: '#8f7bff', verified: true,
       name: 'LIGHTNING', material: 'built ENTIRELY from jagged zigzag bolt segments with sharp angular kinks and many FORKED '
         + 'filaments branching off along the whole arc, a searing white core with electric blue and violet '
         + 'fringe, a crackling halo and popping sparks. The forked bolts KEEP re-striking and reshaping in '
@@ -168,7 +192,7 @@
       breakup: 'It SNAPS OUT, the last filaments flickering away.',
     }),
     Object.freeze({
-      id: 'wind', group: '元素', strength: 50, label: '疾风', accent: '#cfe8d4', verified: true,
+      id: 'wind', group: '元素', strength: 20, label: '疾风', accent: '#cfe8d4', verified: true,
       name: 'WIND', material: 'made of thin translucent air blades and pale white-green vortex ribbons spiralling around it, '
         + 'with razor-sharp leading edges, swirling dust motes and torn leaves caught in the current, and '
         + 'visible pressure lines. Airy and nearly weightless, NOT solid, NO dripping, NO shards, NO '
@@ -176,7 +200,7 @@
       breakup: 'It DISPERSES by unravelling into thinning spiral wisps that spin away.',
     }),
     Object.freeze({
-      id: 'rock', group: '元素', strength: 50, label: '岩石', accent: '#a98c6b', verified: true,
+      id: 'rock', group: '元素', strength: 20, label: '岩石', accent: '#a98c6b', verified: true,
       name: 'ROCK', material: 'made of broken grey-brown stone slabs with chipped edges, visible strata and a dry matte '
         + 'surface, NOT glowing, shedding thin brown dust. Dry opaque stone, NO glow, NO liquid, NO '
         + 'droplets, NO flame.',
@@ -184,34 +208,34 @@
         + 'dust clouds.',
     }),
     Object.freeze({
-      id: 'sand', group: '元素', strength: 50, label: '沙尘', accent: '#e2c08d', verified: true,
+      id: 'sand', group: '元素', strength: 30, label: '沙尘', accent: '#e2c08d', verified: true,
       name: 'SAND', material: 'made of countless fine pale-gold grains streaming together in sheets, their edges blurring into '
         + 'drifting dust haze. Granular and dry, NO solid body, NO droplets, NO shards, NO flame.',
       breakup: 'It POURS AWAY, the grains streaming off on the air and settling.',
     }),
     Object.freeze({
-      id: 'smoke', group: '元素', strength: 50, label: '烟雾', accent: '#b8bcc2', verified: true,
+      id: 'smoke', group: '元素', strength: 20, label: '烟雾', accent: '#b8bcc2', verified: true,
       name: 'THICK SMOKE', material: 'made of dense billowing grey-white smoke with soft rolling curls, dark shaded folds and a '
         + 'lighter lit rim, tumbling slowly and thinning at its edges. Soft opaque vapour, NOT solid, NO '
         + 'glow from within, NO droplets, NO shards, NO flame.',
       breakup: 'It THINS OUT, the curls unrolling and dissolving into haze.',
     }),
     Object.freeze({
-      id: 'snow', group: '元素', strength: 50, label: '雪花', accent: '#eaf6ff', verified: true,
+      id: 'snow', group: '元素', strength: 20, label: '雪花', accent: '#eaf6ff', verified: true,
       name: 'SNOW', material: 'made of soft white snow and drifting six-pointed snowflakes packed together, with powdery edges, '
         + 'a cold blue shadow side and glittering ice dust blowing off it. Powder and flakes, NOT a solid '
         + 'crystal block, NO dripping, NO flame, NO glow.',
       breakup: 'It BLOWS AWAY as a flurry of loose flakes and powder.',
     }),
     Object.freeze({
-      id: 'bubble', group: '元素', strength: 50, label: '泡泡', accent: '#9fd8ff', verified: true,
+      id: 'bubble', group: '元素', strength: 20, label: '泡泡', accent: '#9fd8ff', verified: true,
       name: 'SOAP BUBBLES', material: 'made of clustered transparent soap bubbles of different sizes, each with a thin iridescent '
         + 'rainbow film, a bright crescent highlight and a clear see-through middle, some wobbling as they '
         + 'float. Thin round bubbles, NOT solid, NO shards, NO flame, NO smoke.',
       breakup: 'It POPS, bubble by bubble, each vanishing with a tiny spray of droplets.',
     }),
     Object.freeze({
-      id: 'moltengold', group: '元素', strength: 50, label: '熔金', accent: '#ffb028', verified: true,
+      id: 'moltengold', group: '元素', strength: 20, label: '熔金', accent: '#ffb028', verified: true,
       name: 'MOLTEN GOLD', material: 'made of thick glowing molten gold, bright yellow-white at its core and deep amber at its skin, '
         + 'heavy and syrupy, pouring and stretching in smooth mirror-glossy sheets with round gold beads '
         + 'shedding off. Liquid metal at heat, NOT a flame, NO crystal facets, NO frost.',
@@ -220,14 +244,14 @@
 
     // 能量
     Object.freeze({
-      id: 'holy', group: '能量', strength: 50, label: '圣光', accent: '#ffd98a', verified: true,
+      id: 'holy', group: '能量', strength: 20, label: '圣光', accent: '#ffd98a', verified: true,
       name: 'HOLY LIGHT', material: 'made of blazing white-gold radiance with hard-edged crisp light shards layered along it, thin '
         + 'concentric halo rings, long god-ray streaks and drifting golden feathers and motes. Pure light, '
         + 'NOT liquid, NOT crystal, NO dripping, NO droplets, NO stringy strands.',
       breakup: 'It FADES by blooming outward into soft radiance.',
     }),
     Object.freeze({
-      id: 'shadow', group: '能量', strength: 70, label: '暗影', accent: '#a05bd6', verified: true,
+      id: 'shadow', group: '能量', strength: 20, label: '暗影', accent: '#a05bd6', verified: true,
       // "Silhouette" and "unlit" both came back as a bright magenta arc. Calling
       // it a TEAR the light falls into is what finally produced a dark body.
       name: 'VOID', material: 'rendered as a TEAR IN SPACE: the body is a hole of pure black that the light falls into, framed '
@@ -237,56 +261,56 @@
       breakup: 'It DISSOLVES, fraying into wisping black tatters.',
     }),
     Object.freeze({
-      id: 'arcane', group: '能量', strength: 60, label: '秘法', accent: '#7aa2ff', verified: true,
+      id: 'arcane', group: '能量', strength: 20, label: '秘法', accent: '#7aa2ff', verified: true,
       name: 'ARCANE MAGIC', material: 'made of glowing violet-blue geometric glyphs, rune rings and thin construction lines that snap '
         + 'into place, layered over a soft magical haze with drifting sigil fragments. Drawn geometry and '
         + 'light, NOT liquid, NOT crystal, NO dripping, NO droplets.',
       breakup: 'It RESOLVES: the glyphs rotate, lock, then break apart into scattered runes.',
     }),
     Object.freeze({
-      id: 'plasma', group: '能量', strength: 70, label: '等离子', accent: '#ff6ad5', verified: true,
+      id: 'plasma', group: '能量', strength: 20, label: '等离子', accent: '#ff6ad5', verified: true,
       name: 'PLASMA', material: 'made of superheated ionised gas, a searing white core wrapped in unstable magenta and cyan '
         + 'tongues that writhe and flicker violently, ringed by a faint magnetic halo and spitting bright '
         + 'filaments. Ionised gas, NO solid body, NO droplets, NO shards.',
       breakup: 'It DESTABILISES and blows apart into flickering wisps.',
     }),
     Object.freeze({
-      id: 'soul', group: '能量', strength: 60, label: '幽魂', accent: '#8fe3c8', verified: true,
+      id: 'soul', group: '能量', strength: 20, label: '幽魂', accent: '#8fe3c8', verified: true,
       name: 'SOUL', material: 'made of pale ghostly green-blue wisps, translucent and smoke-like, with faint hollow face and '
         + 'skull shapes forming and dissolving inside it and thin tails streaming off. Translucent vapour, '
         + 'NOT solid, NOT liquid, NO droplets, NO shards, NO flame.',
       breakup: 'It DRIFTS UPWARD and thins into nothing.',
     }),
     Object.freeze({
-      id: 'star', group: '能量', strength: 60, label: '星辰', accent: '#9db4ff', verified: true,
+      id: 'star', group: '能量', strength: 30, label: '星辰', accent: '#9db4ff', verified: true,
       name: 'COSMIC STARLIGHT', material: 'made of deep indigo and magenta nebula cloud packed with pinpoint stars, with drifting cosmic '
         + 'dust and four-point star twinkles firing at random. Cosmic gas and points of light, NOT solid, '
         + 'NO droplets, NO shards, NO flame.',
       breakup: 'It DISPERSES into a slow spreading starfield.',
     }),
     Object.freeze({
-      id: 'rainbow', group: '能量', strength: 60, label: '彩虹', accent: '#ff9ad5', verified: true,
+      id: 'rainbow', group: '能量', strength: 30, label: '彩虹', accent: '#ff9ad5', verified: true,
       name: 'RAINBOW LIGHT', material: 'made of a smooth spectrum band, red through orange, yellow, green, blue to violet in clean '
         + 'parallel stripes running along its length, softly glowing with a pale mist at its edges. Banded '
         + 'coloured light, NOT a single colour, NO droplets, NO shards, NO flame.',
       breakup: 'It FADES, the stripes separating and dissolving one colour at a time.',
     }),
     Object.freeze({
-      id: 'aurora', group: '能量', strength: 60, label: '极光', accent: '#5df2b8', verified: true,
+      id: 'aurora', group: '能量', strength: 20, label: '极光', accent: '#5df2b8', verified: true,
       name: 'AURORA', material: 'made of tall rippling curtains of green and teal light with magenta and violet along their lower '
         + 'hem, folded like hanging drapery, slowly waving and shimmering with vertical streaks. Sheer '
         + 'waving light curtains, NOT solid, NO droplets, NO shards, NO flame.',
       breakup: 'It DIMS, the curtains folding thinner and fading into the dark.',
     }),
     Object.freeze({
-      id: 'glitter', group: '能量', strength: 50, label: '闪粉', accent: '#ffe27a', verified: true,
+      id: 'glitter', group: '能量', strength: 20, label: '闪粉', accent: '#ffe27a', verified: true,
       name: 'GLITTER SPARKLE', material: 'made of a dense cloud of tiny glittering particles, gold, silver and white, each flashing as a '
         + 'four-point star twinkle at random, packed thick at the core and thinning outward. Countless '
         + 'separate sparkling points, NOT one solid body, NO liquid, NO flame, NO smoke.',
       breakup: 'It SCATTERS into drifting twinkles that wink out one by one.',
     }),
     Object.freeze({
-      id: 'ghostfire', group: '能量', strength: 50, label: '鬼火', accent: '#b36bff', verified: true,
+      id: 'ghostfire', group: '能量', strength: 20, label: '鬼火', accent: '#b36bff', verified: true,
       name: 'CURSED VIOLET FLAME', material: 'made of cold violet and deep purple flame with a pale lavender core and black smoke curling off '
         + 'its tips, its tongues licking upward and flickering unnaturally slowly, shedding tiny purple '
         + 'embers. Cold eerie fire, NOT orange, NO dripping, NO shards, NO droplets.',
@@ -295,7 +319,7 @@
 
     // 物质
     Object.freeze({
-      id: 'venom', group: '物质', strength: 50, label: '毒液', accent: '#bcd42a', verified: true,
+      id: 'venom', group: '物质', strength: 20, label: '毒液', accent: '#bcd42a', verified: true,
       name: 'VENOM', material: 'made of thick OPAQUE chartreuse and acid-green slime with a wet glossy specular sheen and dark '
         + 'green shadows. Bubbles swell and pop across its surface, and it SAGS heavily under gravity, '
         + 'pulling long stringy strands, wrapped in a sickly yellow-green corrosive vapour. Sticky liquid, '
@@ -303,14 +327,14 @@
       breakup: 'It DRIPS AWAY in heavy falling globs that stretch into thin threads before they snap.',
     }),
     Object.freeze({
-      id: 'blood', group: '物质', strength: 50, label: '鲜血', accent: '#c0392b', verified: true,
+      id: 'blood', group: '物质', strength: 20, label: '鲜血', accent: '#c0392b', verified: true,
       name: 'BLOOD', material: 'made of thick opaque crimson liquid with a dark wine-red core and a wet glossy highlight, NOT '
         + 'glowing. Opaque liquid, NO glow, NO crystal facets, NO flame.',
       breakup: 'It FLICKS and SPLATTERS outward into teardrop droplets and long thin streaks, then runs downward '
         + 'leaving trails.',
     }),
     Object.freeze({
-      id: 'metal', group: '物质', strength: 60, label: '金属', accent: '#c9d1d9', verified: true,
+      id: 'metal', group: '物质', strength: 20, label: '金属', accent: '#c9d1d9', verified: true,
       name: 'METAL', material: 'made of polished steel plates and blades with hard mirror specular streaks, cold grey '
         + 'reflections and bevelled edges. Solid reflective metal, NO liquid, NO droplets, NO glow from '
         + 'within, NO flame.',
@@ -318,83 +342,83 @@
         + 'grinding sparks.',
     }),
     Object.freeze({
-      id: 'crystal', group: '物质', strength: 50, label: '水晶', accent: '#d8a7ff', verified: true,
+      id: 'crystal', group: '物质', strength: 20, label: '水晶', accent: '#d8a7ff', verified: true,
       name: 'GEM CRYSTAL', material: 'made of clear faceted gemstone with sharp flat facets that split the light into prismatic '
         + 'rainbow caustics, with bright specular glints at every edge. Hard transparent gem, NO dripping, '
         + 'NO strands, NO frost mist, NO flame.',
       breakup: 'It FRACTURES into sharp glittering shards that scatter, each one still refracting.',
     }),
     Object.freeze({
-      id: 'nature', group: '物质', strength: 50, label: '自然', accent: '#7fd18a', verified: true,
+      id: 'nature', group: '物质', strength: 20, label: '自然', accent: '#7fd18a', verified: true,
       name: 'NATURE', material: 'made of woven green vines and creepers that grow and curl, studded with fresh leaves and small '
         + 'flower petals, with soft pollen motes floating around them. Living plant matter, NO glow, NO '
         + 'liquid, NO shards, NO flame.',
       breakup: 'It WITHERS, leaves and petals peeling off and drifting down.',
     }),
     Object.freeze({
-      id: 'bone', group: '物质', strength: 50, label: '骨刺', accent: '#e8e0cd', verified: true,
+      id: 'bone', group: '物质', strength: 20, label: '骨刺', accent: '#e8e0cd', verified: true,
       name: 'BONE', material: 'made of pale ivory bone spikes and jagged plates with hairline cracks and a dry chalky surface, '
         + 'NOT glowing. Dry hard bone, NO glow, NO liquid, NO droplets, NO flame.',
       breakup: 'It SNAPS apart into splintered fragments that tumble away, shedding fine chalk dust.',
     }),
     Object.freeze({
-      id: 'jade', group: '物质', strength: 50, label: '翡翠', accent: '#3fbf8f', verified: true,
+      id: 'jade', group: '物质', strength: 20, label: '翡翠', accent: '#3fbf8f', verified: true,
       name: 'JADE', material: 'made of polished translucent green jade with soft milky veins, a smooth waxy sheen and gently '
         + 'rounded carved edges, light glowing faintly through its thinner parts. Solid carved stone, NOT a '
         + 'bright light, NO liquid, NO flame, NO sharp glass splinters.',
       breakup: 'It CRACKS and breaks into rounded polished chunks that tumble away.',
     }),
     Object.freeze({
-      id: 'diamond', group: '物质', strength: 50, label: '钻石', accent: '#e8f4ff', verified: true,
+      id: 'diamond', group: '物质', strength: 20, label: '钻石', accent: '#e8f4ff', verified: true,
       name: 'DIAMOND', material: 'made of clear brilliant-cut diamonds packed together, every facet throwing hard white flashes '
         + 'and small rainbow fire, with sharp bright edges and star-shaped specular glints. Hard clear '
         + 'gems, NOT coloured glass, NO liquid, NO flame, NO frost mist.',
       breakup: 'It SHATTERS into glittering brilliant fragments that spin away still flashing.',
     }),
     Object.freeze({
-      id: 'glass', group: '物质', strength: 50, label: '玻璃', accent: '#cfeee6', verified: true,
+      id: 'glass', group: '物质', strength: 20, label: '玻璃', accent: '#cfeee6', verified: true,
       name: 'GLASS', material: 'made of thin clear window glass panes with pale green-tinted edges, straight bright reflections '
         + 'sliding across their flat surfaces and hairline cracks spreading through them. Flat transparent '
         + 'panes, NOT faceted gems, NO liquid, NO flame, NO frost.',
       breakup: 'It SHATTERS into flat sharp splinters that fall and tumble, glinting.',
     }),
     Object.freeze({
-      id: 'bronze', group: '物质', strength: 50, label: '青铜', accent: '#a67c3d', verified: true,
+      id: 'bronze', group: '物质', strength: 20, label: '青铜', accent: '#a67c3d', verified: true,
       name: 'ANCIENT BRONZE', material: 'made of cast bronze with a dark green-brown patina, raised engraved patterns and worn golden '
         + 'highlights on its ridges, heavy and dull with only small hard glints. Dull old metal, NOT '
         + 'polished gold, NOT glowing, NO liquid, NO flame.',
       breakup: 'It CRACKS apart into heavy corroded plates that drop away with dust.',
     }),
     Object.freeze({
-      id: 'silk', group: '物质', strength: 50, label: '绸带', accent: '#e6413f', verified: true,
+      id: 'silk', group: '物质', strength: 20, label: '绸带', accent: '#e6413f', verified: true,
       name: 'SILK RIBBON', material: 'made of long flowing red and gold silk ribbons, satin-glossy with soft folds and a bright sheen '
         + 'along each curve, rippling and billowing as if in wind. Soft cloth, NOT stiff, NOT liquid, NO '
         + 'shards, NO flame, NO smoke.',
       breakup: 'It UNRAVELS, the ribbons loosening and floating away.',
     }),
     Object.freeze({
-      id: 'petal', group: '物质', strength: 50, label: '花瓣', accent: '#ffb3c6', verified: true,
+      id: 'petal', group: '物质', strength: 20, label: '花瓣', accent: '#ffb3c6', verified: true,
       name: 'FLOWER PETALS', material: 'made of hundreds of soft pink cherry-blossom petals packed together, each a small curved '
         + 'teardrop with a darker base, catching the light on their glossy faces as they flutter. Many '
         + 'separate light petals, NOT one solid body, NO liquid, NO flame, NO shards.',
       breakup: 'It DRIFTS APART, the petals fluttering and spiralling down.',
     }),
     Object.freeze({
-      id: 'feather', group: '物质', strength: 50, label: '羽毛', accent: '#f6f0dc', verified: true,
+      id: 'feather', group: '物质', strength: 20, label: '羽毛', accent: '#f6f0dc', verified: true,
       name: 'FEATHERS', material: 'made of layered soft white and gold feathers with fine barbs and downy edges, overlapping like a '
         + 'wing, with light catching their glossy shafts and small down fluff floating off. Soft plumage, '
         + 'NOT liquid, NO shards, NO flame, NO smoke.',
       breakup: 'It SHEDS its feathers, which drift and float slowly down.',
     }),
     Object.freeze({
-      id: 'chocolate', group: '物质', strength: 50, label: '巧克力', accent: '#7a4a2b', verified: true,
+      id: 'chocolate', group: '物质', strength: 20, label: '巧克力', accent: '#7a4a2b', verified: true,
       name: 'CHOCOLATE', material: 'made of thick glossy melted milk chocolate, smooth and syrupy, with soft rounded folds, a bright '
         + 'sliding highlight and darker fudge shadows, dragging into slow strands and drops. Sweet heavy '
         + 'liquid, NOT glowing, NOT transparent, NO shards, NO flame.',
       breakup: 'It DRIPS DOWN in slow thick ribbons and rounded drops.',
     }),
     Object.freeze({
-      id: 'gear', group: '物质', strength: 50, label: '机械', accent: '#c99a45', verified: true,
+      id: 'gear', group: '物质', strength: 20, label: '机械', accent: '#c99a45', verified: true,
       name: 'CLOCKWORK BRASS', material: 'made of interlocking brass gears, cogs, pistons and riveted plates, polished brass and copper '
         + 'with dark oil grooves, the cog wheels visibly turning and meshing. Hard mechanical metal parts, '
         + 'NOT liquid, NO flame, NO frost, NO smooth blob.',
@@ -403,56 +427,56 @@
 
     // 界面
     Object.freeze({
-      id: 'gold', group: '界面', strength: 50, label: '黄金', accent: '#ffc247', verified: true,
+      id: 'gold', group: '界面', strength: 20, label: '黄金', accent: '#ffc247', verified: true,
       name: 'POLISHED GOLD', material: 'made of polished yellow gold with mirror specular highlights racing across bevelled embossed '
         + 'edges, warm amber reflections and deep bronze shadows, studded with small round coins and gold '
         + 'flakes. Solid reflective metal, NO liquid, NO dripping, NO flame, NO frost.',
       breakup: 'It SCATTERS: the coins and plates tumble and spin away, each one catching a hard glint.',
     }),
     Object.freeze({
-      id: 'neon', group: '界面', strength: 50, label: '霓虹', accent: '#ff4fd8', verified: true,
+      id: 'neon', group: '界面', strength: 20, label: '霓虹', accent: '#ff4fd8', verified: true,
       name: 'NEON TUBE', material: 'made of glowing glass neon tubing with a white-hot core and a saturated magenta and cyan bloom '
         + 'halo around it, clean rounded tube ends and a faint reflected spill. Lit glass tube, NO liquid, '
         + 'NO droplets, NO shards, NO smoke.',
       breakup: 'It FLICKERS like failing neon and cuts out.',
     }),
     Object.freeze({
-      id: 'candy', group: '界面', strength: 50, label: '糖果', accent: '#ff8fb1', verified: true,
+      id: 'candy', group: '界面', strength: 20, label: '糖果', accent: '#ff8fb1', verified: true,
       name: 'CANDY JELLY', material: 'made of glossy translucent jelly in bright candy pink and mint, with soft rounded bulging edges, '
         + 'a bright white highlight blob on every surface and a warm sub-surface glow through it, dusted '
         + 'with sugar sparkle. Soft squishy jelly, NO sharp edges, NO shards, NO flame, NO smoke.',
       breakup: 'It WOBBLES and breaks into bouncy rounded blobs.',
     }),
     Object.freeze({
-      id: 'confetti', group: '界面', strength: 60, label: '彩带', accent: '#7ad6ff', verified: true,
+      id: 'confetti', group: '界面', strength: 20, label: '彩带', accent: '#7ad6ff', verified: true,
       name: 'FOIL CONFETTI', material: 'made of hundreds of small metallic foil rectangles and curled ribbon streamers in bright party '
         + 'colours, each flipping between a bright face and a dark edge as it turns. Many small separate '
         + 'pieces, NOT one connected body, NO liquid, NO flame.',
       breakup: 'It BURSTS apart, the pieces tumbling and fluttering outward and drifting down.',
     }),
     Object.freeze({
-      id: 'chrome', group: '界面', strength: 60, label: '液金', accent: '#b9c7d6', verified: true,
+      id: 'chrome', group: '界面', strength: 20, label: '液金', accent: '#b9c7d6', verified: true,
       name: 'LIQUID CHROME', material: 'made of mirror-polished liquid metal with a sharp horizon reflection line across every curve, '
         + 'cold blue-grey highlights and perfectly smooth skin. Reflective liquid metal, NO flame, NO '
         + 'frost, NO shards, NO texture or grain.',
       breakup: 'It BEADS UP and separates into rounded mercury droplets that wobble apart.',
     }),
     Object.freeze({
-      id: 'cash', group: '界面', strength: 50, label: '钞票', accent: '#7fcf7a', verified: true,
+      id: 'cash', group: '界面', strength: 20, label: '钞票', accent: '#7fcf7a', verified: true,
       name: 'BANKNOTES', material: 'made of a thick flurry of green paper banknotes and bills, each a flat rectangle with printed '
         + 'patterns, fluttering and flipping so they show bright faces and thin edges. Many flat paper '
         + 'rectangles, NOT metal coins, NO liquid, NO flame, NO glow.',
       breakup: 'It FLIES APART, the bills fluttering outward and drifting down.',
     }),
     Object.freeze({
-      id: 'firework', group: '界面', strength: 60, label: '烟花', accent: '#ffcf5a', verified: true,
+      id: 'firework', group: '界面', strength: 20, label: '烟花', accent: '#ffcf5a', verified: true,
       name: 'FIREWORK SPARKS', material: 'made of dense trails of crackling firework sparks, gold, red and white, each spark a short '
         + 'bright streak with a tiny glowing head, packed together and spitting out along its whole length. '
         + 'Countless burning sparks, NOT a smooth flame, NO liquid, NO shards.',
       breakup: 'It BURSTS into a chrysanthemum of sparks that streak outward and fade.',
     }),
     Object.freeze({
-      id: 'marquee', group: '界面', strength: 50, label: '跑马灯', accent: '#ffd27a', verified: true,
+      id: 'marquee', group: '界面', strength: 20, label: '跑马灯', accent: '#ffd27a', verified: true,
       name: 'MARQUEE BULBS', material: 'made of rows of small round warm-white and amber light bulbs set in a polished gold casing, the '
         + 'bulbs chasing on and off in sequence like a casino sign, each with a soft glow halo. Rows of '
         + 'small lit bulbs in a solid frame, NOT liquid, NO shards, NO flame, NO smoke.',
@@ -461,63 +485,63 @@
 
     // 画风
     Object.freeze({
-      id: 'ink', group: '画风', strength: 50, label: '水墨', accent: '#d7d7d7', verified: true,
+      id: 'ink', group: '画风', strength: 20, label: '水墨', accent: '#d7d7d7', verified: true,
       name: 'INK WASH', material: 'painted as traditional Chinese ink wash: a sweeping brush stroke of luminous white and grey ink '
         + 'with a dry-brush split-hair edge, bleeding wet ink blooms and flicked ink spatter on paper '
         + 'texture. Monochrome calligraphic brushwork, NO colour, NO glow.',
       breakup: 'It DRIES and the ink bleeds out and fades.',
     }),
     Object.freeze({
-      id: 'pixel', group: '画风', strength: 50, label: '像素', accent: '#f5c451', verified: true,
+      id: 'pixel', group: '画风', strength: 30, label: '像素', accent: '#f5c451', verified: true,
       name: 'PIXEL ART', material: 'drawn as retro 16-bit pixel art in chunky visible square pixels with a hard limited palette, '
         + 'stair-stepped aliased edges and dithering. Sprite-sheet pixel art, NO anti-aliasing, NO '
         + 'gradients, NO soft glow.',
       breakup: 'It BREAKS UP into individual square pixels that blink out one by one.',
     }),
     Object.freeze({
-      id: 'hologram', group: '画风', strength: 60, label: '全息', accent: '#59e0ff', verified: true,
+      id: 'hologram', group: '画风', strength: 20, label: '全息', accent: '#59e0ff', verified: true,
       name: 'HOLOGRAM', material: 'rendered as a cyan digital hologram: translucent wireframe and scanline bands with chromatic '
         + 'fringing, flickering interference glitches and blocky datamosh artefacts, drawn over a faint '
         + 'grid. Projected light and data, NOT solid, NOT liquid, NO droplets, NO shards.',
       breakup: 'It DROPS OUT, breaking into scanline slices and static before cutting to black.',
     }),
     Object.freeze({
-      id: 'cartoon', group: '画风', strength: 60, label: '卡通', accent: '#ffa640', verified: true,
+      id: 'cartoon', group: '画风', strength: 20, label: '卡通', accent: '#ffa640', verified: true,
       name: 'CARTOON', material: 'drawn as flat cel-shaded cartoon art with bold clean black outlines, two-tone flat colour fills '
         + 'with a single hard-edged shade step, and a few stylised star and swirl shapes. Flat 2D cartoon '
         + 'shading, NO gradients, NO photoreal texture, NO soft glow.',
       breakup: 'It POPS out with a cartoon puff of stylised smoke shapes.',
     }),
     Object.freeze({
-      id: 'sketch', group: '画风', strength: 60, label: '手绘', accent: '#d9d9d9', verified: true,
+      id: 'sketch', group: '画风', strength: 20, label: '手绘', accent: '#d9d9d9', verified: true,
       name: 'PENCIL SKETCH', material: 'drawn as a rough hand-drawn pencil sketch, scribbled graphite hatching and cross-hatching in '
         + 'white and grey on black, with loose overlapping construction lines and a wobbly hand-drawn '
         + 'outline. Rough linework, NO colour, NO smooth shading, NO glow.',
       breakup: 'It RUBS OUT, the lines smudging and fading away.',
     }),
     Object.freeze({
-      id: 'watercolor', group: '画风', strength: 60, label: '水彩', accent: '#f28ca0', verified: true,
+      id: 'watercolor', group: '画风', strength: 20, label: '水彩', accent: '#f28ca0', verified: true,
       name: 'WATERCOLOUR', material: 'painted as loose wet watercolour, soft bleeding washes of coral, teal and violet with darker '
         + 'pigment pooling at the edges, granular paper texture and drips running down. Translucent layered '
         + 'paint, NO hard edges, NO glow, NO 3D shading.',
       breakup: 'It BLEEDS OUT, the washes spreading thin and drying away.',
     }),
     Object.freeze({
-      id: 'papercut', group: '画风', strength: 60, label: '剪纸', accent: '#e0302f', verified: true,
+      id: 'papercut', group: '画风', strength: 20, label: '剪纸', accent: '#e0302f', verified: true,
       name: 'PAPER CUT', material: 'made as layered red paper-cut art, flat crimson card with lace-like cut-out patterns and clean '
         + 'scissor-cut edges, stacked in slightly offset layers that cast thin drop shadows. Flat cut '
         + 'paper, NO gradients, NO glow, NO liquid, NO flame.',
       breakup: 'It FOLDS AWAY, the paper layers curling and lifting off one by one.',
     }),
     Object.freeze({
-      id: 'guochao', group: '画风', strength: 60, label: '国潮', accent: '#ff4d3d', verified: true,
+      id: 'guochao', group: '画风', strength: 20, label: '国潮', accent: '#ff4d3d', verified: true,
       name: 'CHINESE AUSPICIOUS CLOUD', material: 'drawn as Chinese guochao ornament: curling stylised auspicious cloud scrolls in vermilion red '
         + 'and bright gold with thick gold outlines, spiral cloud tips and flat decorative fills. Flat '
         + 'ornamental line art, NO photoreal texture, NO liquid, NO shards, NO soft glow.',
       breakup: 'It UNCURLS, the cloud scrolls loosening and drifting apart.',
     }),
     Object.freeze({
-      id: 'lowpoly', group: '画风', strength: 60, label: '低多边形', accent: '#4fc3c8', verified: true,
+      id: 'lowpoly', group: '画风', strength: 20, label: '低多边形', accent: '#4fc3c8', verified: true,
       name: 'LOW POLY', material: 'built from flat-shaded low-polygon triangles, hard faceted geometry with crisp straight edges, '
         + 'each triangle a slightly different flat shade of teal and orange. Faceted polygon mesh, NO '
         + 'smooth curves, NO gradients, NO glow, NO liquid.',
@@ -543,6 +567,33 @@
     const value = clamp(denoise, MIN_DENOISE, MAX_DENOISE)
     const ratio = (value - MIN_DENOISE) / (MAX_DENOISE - MIN_DENOISE)
     return Math.round(MIN_STRENGTH + ratio * (MAX_STRENGTH - MIN_STRENGTH))
+  }
+
+  // H3 only samples 17k+5 frames. A clip that is not already on that grid used
+  // to be cut down to the grid point BELOW it, which threw away the tail: a
+  // 0.7s clip (17 frames at 24fps) collapsed to 5 frames, so two thirds of the
+  // effect never reached the model. The whole clip is resampled into the
+  // NEAREST grid point instead, and the output is played back at a frame rate
+  // that spans the source's own duration, so the result lasts as long as the
+  // material did.
+  const FRAME_GRID = 17
+  const FRAME_GRID_OFFSET = 5
+  const MAX_GRID_FRAMES = 73
+
+  function gridFrameCount(frames) {
+    const wanted = Math.max(1, Math.round(Number(frames) || 0))
+    const steps = Math.round((wanted - FRAME_GRID_OFFSET) / FRAME_GRID)
+    const count = FRAME_GRID_OFFSET + Math.max(0, steps) * FRAME_GRID
+    return Math.min(MAX_GRID_FRAMES, Math.max(FRAME_GRID_OFFSET, count))
+  }
+
+  // The frame count and playback rate for a clip of `durationSec`, or the
+  // 39-frame default when the caller does not know the duration.
+  function timingFor(durationSec) {
+    const duration = Number(durationSec)
+    if (!Number.isFinite(duration) || duration <= 0) return { length: 39, fps: OUTPUT_FPS }
+    const length = gridFrameCount(duration * OUTPUT_FPS)
+    return { length, fps: clamp(length / duration, 1, 60) }
   }
 
   function roundToMultiple(value, fallback) {
@@ -640,17 +691,22 @@
     const height = roundToMultiple(options.height, 640)
     const steps = Math.max(1, Math.round(Number(options.steps) || DEFAULT_STEPS))
     const seed = Math.round(Number(options.seed) || 0)
-    const outputFps = clamp(options.outputFps || OUTPUT_FPS, 1, 60)
+    const timing = timingFor(options.durationSec)
+    const length = Math.max(5, Math.round(Number(options.length) || timing.length))
+    const outputFps = clamp(options.outputFps || timing.fps, 1, 60)
     const desaturate = clamp(options.desaturate == null ? 1 : options.desaturate, 0, 1)
     const preset = referenceImage && !options.attribute
       ? null
       : resolvePreset(options.attribute == null ? 'ice' : options.attribute)
-    const presetStrength = !preset || preset.strength == null ? DEFAULT_STRENGTH : preset.strength
-    const capped = Math.min(presetStrength, MAX_DEFAULT_STRENGTH)
+    // The init is painted in the TARGET colour rather than left grey. Colour is
+    // the one thing that survives a denoise low enough to follow the source, so
+    // handing it over in the init is what buys the two at once; see the block
+    // above strengthToDenoise. With a reference image there is no preset and
+    // therefore no colour to hand over, so that path keeps the grey init.
+    const tint = options.tint == null ? (preset ? String(preset.accent || '') : '') : String(options.tint)
     const strength = options.strength == null
-      ? (options.lifecycle === 'loop'
-        ? Math.min(capped, loopCapFor(options.shapeArchetype))
-        : capped)
+      ? defaultStrengthFor(options.attribute == null ? 'ice' : options.attribute, options.lifecycle,
+        Boolean(String(options.supplement || '').trim()))
       : options.strength
     const denoise = options.denoise == null
       ? strengthToDenoise(strength)
@@ -672,7 +728,7 @@
       height,
       // The init latent decides the real frame count; this only sizes the empty
       // latent the conditioning node returns, which the sampler never sees.
-      length: 39,
+      length,
     }
     if (usesReferences) {
       conditioning.audio_vae = ['4', 0]
@@ -703,9 +759,9 @@
       31: node('GetVideoComponents', { video: ['30', 0] }, '拆解原片'),
       32: node('NovaFlowH3ReferenceVideoFrames', { images: ['31', 0], source_fps: ['31', 2] }, '原片重采样到 24fps'),
       33: node('NovaFlowH3VideoToVideoLatent', {
-        vae: ['3', 0], images: ['32', 0], width, height, desaturate,
-      }, '原片 → 初始潜变量（去色）'),
-      34: node('NovaFlowH3OutputVideoFrames', { images: ['11', 0], fps: outputFps }, '输出帧率重采样'),
+        vae: ['3', 0], images: ['32', 0], width, height, length, desaturate, tint,
+      }, '原片 → 初始潜变量（去色后上风格色）'),
+      34: node('NovaFlowH3OutputVideoFrames', { images: ['11', 0], fps: OUTPUT_FPS }, '输出帧序列'),
     }
 
     if (referenceImage) {
@@ -762,12 +818,13 @@
     MAX_DENOISE,
     DEFAULT_STEPS,
     OUTPUT_FPS,
+    gridFrameCount,
+    timingFor,
     DEFAULT_SHAPE,
     DEFAULT_LIFECYCLE_CLAUSE,
     LOOP_MAX_STRENGTH,
-    LOOP_SOFT_STRENGTH,
     MAX_DEFAULT_STRENGTH,
-    TIGHT_LOOP_SHAPES,
+    SUPPLEMENT_STRENGTH,
     strengthToDenoise,
     denoiseToStrength,
     defaultStrengthFor,

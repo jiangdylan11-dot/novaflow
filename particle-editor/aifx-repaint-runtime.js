@@ -856,6 +856,27 @@
       /* The picked style, shown under 风格库 as a playing card. Greys only:
          the first cut copied the recovered TemplateLibrary.tsx's blue-black
          tones, which read blue next to the rest of the panel. */
+      /* The reading is automatic, but it can be wrong - a square panel read as
+         a ring is described to the model as a ring, and a ring is what comes
+         back - so the line that reports it is also the way to correct it. */
+      .aifx-detected:empty { display: none; }
+      .aifx-detected button {
+        margin-left: 6px; padding: 1px 7px; border-radius: 6px;
+        background: #2a2a2a; border: 1px solid rgba(255,255,255,0.12);
+        color: #cbd0d6; font: inherit; font-size: 11px; cursor: pointer;
+      }
+      .aifx-detected button:hover { border-color: ${AIFX_ACCENT}; color: #fff; }
+      .aifx-shape-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+      .aifx-shape-pick {
+        padding: 10px 8px; border-radius: 10px; background: #161616;
+        border: 1px solid rgba(255,255,255,0.12) !important;
+        color: #d7d7d7; font: inherit; font-size: 12px; cursor: pointer; text-align: center;
+      }
+      .aifx-shape-pick:hover { border-color: ${AIFX_ACCENT} !important; color: #fff; }
+      .aifx-shape-pick.is-active {
+        border-color: ${AIFX_ACCENT} !important;
+        box-shadow: 0 0 0 1px ${AIFX_ACCENT} inset !important;
+      }
       .aifx-current-style { margin-top: 8px; }
       .aifx-current-card {
         display: flex; align-items: center; gap: 10px; padding: 8px;
@@ -1167,7 +1188,7 @@
                   <div class="nf-upload-dropzone__meta" data-template-meta></div>
                 </div>
                 <div class="aifx-help" data-template-help>黑底特效动画（mp4 / webm / mov / gif），或一整组 PNG 序列帧（按文件名排序，透明部分自动压在黑底上）。素材本身决定运动和节奏，形状和节奏会自动识别。</div>
-                <div class="aifx-help" data-template-detected style="color:#6f7479"></div>
+                <div class="aifx-help aifx-detected" data-template-detected style="color:#6f7479"></div>
                 <div class="aifx-row" style="margin-top:10px">
                   <button class="aifx-button" data-action="open-template-library" type="button" style="flex:1">模板库</button>
                   <button class="aifx-button" data-action="clear-template" type="button">清空</button>
@@ -1810,16 +1831,19 @@
 
   const currentStrength = () => {
     // An explicit drag wins; otherwise each attribute brings its own default,
-    // because they do not all rebuild at the same denoise.
+    // because they do not all rebuild at the same denoise - and typing in
+    // 提示词补充 asks for the words to win, which costs the init its grip, so
+    // the default moves up as soon as that box has anything in it.
     if (state.strength != null) return state.strength
     const restyle = RESTYLE()
-    if (!restyle) return 50
+    if (!restyle) return 20
     // A reference image takes the preset out of the prompt, so letting the
     // greyed-out preset still choose the denoise would be a hidden setting -
     // 雷电 and 冰霜 would give different results from the same picture. The
     // reference tests were all run at the plain default.
     const attribute = state.reference ? '' : state.attribute
-    return restyle.defaultStrengthFor(attribute, state.lifecycle, state.shapeArchetype)
+    return restyle.defaultStrengthFor(attribute, state.lifecycle,
+      Boolean(String(state.supplement || '').trim()))
   }
 
   const runGenerate = async () => {
@@ -1865,6 +1889,9 @@
           strength: currentStrength(),
           width: state.source.width,
           height: state.source.height,
+          // The clip's own length decides how many frames H3 samples and how
+          // fast the result plays back, so a 0.7s effect stays a 0.7s effect.
+          durationSec: state.source.duration,
           seed,
         })
         restyle.validateWorkflow(workflow)
@@ -2419,6 +2446,31 @@
         }
         body.appendChild(grid)
       }
+    } else if (kind === 'shape') {
+      const shapes = SHAPES()
+      if (!shapes) return
+      const grid = document.createElement('div')
+      grid.className = 'aifx-shape-grid'
+      for (const [id, entry] of Object.entries(shapes.ARCHETYPES)) {
+        const pick = document.createElement('button')
+        pick.type = 'button'
+        pick.className = 'aifx-shape-pick' + (id === state.shapeArchetype ? ' is-active' : '')
+        pick.textContent = entry.label
+        pick.setAttribute('data-shape-pick', id)
+        pick.addEventListener('click', guard(() => {
+          closeLibrary()
+          state.shapeArchetype = id
+          state.shapeAuto = entry.label
+          refreshUi()
+        }))
+        grid.appendChild(pick)
+      }
+      body.appendChild(grid)
+      const note = document.createElement('div')
+      note.className = 'aifx-library-group'
+      note.style.marginTop = '10px'
+      note.textContent = '形状决定提示词怎么描述这段素材。识别错了会直接影响结果的外形，改完重新生成即可。'
+      body.appendChild(note)
     } else {
       await ensureTemplateStore()
       const grid = document.createElement('div')
@@ -2467,7 +2519,9 @@
       body.appendChild(grid)
     }
     state.libraryKind = kind
-    if (refs.libraryTitle) refs.libraryTitle.textContent = kind === 'style' ? '风格库' : '模板库'
+    if (refs.libraryTitle) {
+      refs.libraryTitle.textContent = kind === 'style' ? '风格库' : kind === 'shape' ? '形状' : '模板库'
+    }
     if (refs.libraryReset) refs.libraryReset.hidden = kind !== 'template'
     refs.library.hidden = false
     watchLibraryVideos(body)
@@ -2916,9 +2970,18 @@
     // reads the clip - but what it read is still shown, so an odd result has
     // an explanation.
     if (refs.templateDetected) {
-      refs.templateDetected.textContent = state.source && state.shapeAuto
-        ? '已识别：' + state.shapeAuto + (state.lifecycleAuto ? ' · ' + state.lifecycleAuto : '')
-        : ''
+      refs.templateDetected.textContent = ''
+      if (state.source && state.shapeAuto) {
+        refs.templateDetected.appendChild(document.createTextNode(
+          '已识别：' + state.shapeAuto + (state.lifecycleAuto ? ' · ' + state.lifecycleAuto : '')))
+        const fix = document.createElement('button')
+        fix.type = 'button'
+        fix.textContent = '不对，改一下'
+        fix.setAttribute('data-action', 'open-shape-library')
+        fix.disabled = state.isGenerating
+        fix.addEventListener('click', guard(() => openLibrary('shape')))
+        refs.templateDetected.appendChild(fix)
+      }
     }
     if (refs.candidateCount) {
       refs.candidateCount.value = String(state.candidateCount)

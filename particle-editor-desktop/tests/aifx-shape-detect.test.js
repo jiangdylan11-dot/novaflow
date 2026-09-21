@@ -250,12 +250,17 @@ for (const [id, entry] of Object.entries(api.ARCHETYPES)) {
     assert.ok(entry.plainShape.length > 30, id + ' plainShape needs to stay descriptive')
   }
 }
-// The seven that mention light are the ones that need it; the rest fall back.
-assert.equal(Object.values(api.ARCHETYPES).filter(entry => entry.plainShape).length, 7)
-for (const id of ['frame', 'ring', 'band', 'shatter', 'fountain', 'rain', 'swirl', 'rays',
+// The eight that mention light are the ones that need it; the rest fall back.
+assert.equal(Object.values(api.ARCHETYPES).filter(entry => entry.plainShape).length, 8)
+for (const id of ['frame', 'ring', 'band', 'tile', 'shatter', 'fountain', 'rain', 'swirl', 'rays',
   'converge', 'burst', 'pillar', 'arc', 'trail', 'blob']) {
   assert.ok(api.ARCHETYPES[id], id + ' must stay in the library')
 }
+// A square that HOLDS, next to the square that breaks: without it a solid
+// panel is described to the model as a ring, and a ring is what comes back.
+assert.match(api.ARCHETYPES.tile.shape, /KEEPS its square silhouette/)
+assert.match(api.ARCHETYPES.tile.shape, /does NOT break into pieces/)
+assert.notEqual(api.ARCHETYPES.tile.shape, api.ARCHETYPES.shatter.shape)
 
 // Degenerate input must not throw: an empty or one-frame clip still has to
 // return something the prompt composer can use.

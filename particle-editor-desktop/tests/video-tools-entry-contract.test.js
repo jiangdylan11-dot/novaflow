@@ -18,7 +18,7 @@ for (const tool of TOOLS) {
   test(`${tool.file} is loaded and packaged as a required runtime helper`, () => {
     const html = read('particle-editor', 'index.html')
     const buildScript = read('particle-editor-desktop', 'scripts', 'build-renderer.mjs')
-    assert.match(html, new RegExp(`${tool.file.replace(/\./g, '\\.')}\\?v=20260919-video-tools-3`))
+    assert.match(html, new RegExp(`${tool.file.replace(/\./g, '\\.')}\\?v=20260921-video-tools-4`))
     // Once in the shell file list and once in the required set, like every other tool module.
     assert.equal((buildScript.match(new RegExp(`"${tool.file.replace(/\./g, '\\.')}"`, 'g')) || []).length, 2)
   })

@@ -11,7 +11,7 @@ const WEIGHTS_EDITOR = 'spine-auto-weights.editor.js'
 const ATTACH = 'spine-auto-mesh-attach.js'
 const EDITOR = 'spine-auto-mesh.editor.js'
 const PANEL = 'spine-auto-mesh.panel.js'
-const CACHE_BUSTER = '20260920-auto-mesh-43'
+const CACHE_BUSTER = '20260921-auto-mesh-48'
 
 // particle-editor is an ESM package, so `require` runs the script but its exports
 // land on globalThis -- the same way the browser <script> path publishes it.
