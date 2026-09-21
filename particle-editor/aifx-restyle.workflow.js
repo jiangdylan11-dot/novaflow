@@ -93,6 +93,15 @@
   // int(steps/denoise) sampling steps, so at 4 steps 0.70 and 0.80 are the
   // same schedule and produce the same bytes.
   const SUPPLEMENT_STRENGTH = 50
+  // There is no 参考图权重 knob, and not for want of looking. The DiT does
+  // expose one (visual_cond_noise_aug mixes noise into the condition rows and
+  // every ref2v run has silently used its 0.999 default), but a reference
+  // STILL does not reach the model only that way: MiniMaxH3ReferenceToVideo
+  // also hands the picture to the qwen3vl text encoder as vision tokens, and
+  // that path has no weight. Measured on a copper reference, the material came
+  // back the same at 0.999, 0.95, 0.9, 0.8, 0.7, 0.6, 0.3 and 0.05, and the
+  // same again with the picture itself faded 60% and 30% towards grey. What
+  // does move a reference run is 风格强度, the same slider as everywhere else.
 
   // A loop is the exception, and not by choice: its motion IS its content, so
   // the freedom a supplement wants is the same freedom that destroys it. On

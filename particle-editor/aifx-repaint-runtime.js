@@ -813,6 +813,23 @@
         color: rgba(238, 244, 252, 0.96);
         background: transparent;
       }
+      /* The app forces border:none on every button, so the outline here is a
+         box-shadow ring rather than a border. */
+      .aifx-inline-reset[data-action="strength-reset"] {
+        margin-left: 8px;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: #2a2a2a;
+        color: #cbd0d6;
+        font: inherit;
+        font-size: 11px;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+      .aifx-inline-reset[data-action="strength-reset"]:hover {
+        color: #fff;
+        box-shadow: 0 0 0 1px ${AIFX_ACCENT} inset !important;
+      }
       .aifx-primary, .aifx-button {
         height: 36px;
         border: 0;
@@ -1218,6 +1235,13 @@
                   <textarea id="novaflow-aifx-prompt-supplement" class="aifx-prompt-input" data-action="prompt-supplement" rows="3" maxlength="400" placeholder="可选。这一次还想要什么细节"></textarea>
                   <div class="aifx-prompt-hint">选了风格时，这里是<b>加东西</b>（边缘滴落 / 多一圈星星 / 结尾不碎）——风格自己的颜色和材质说了算。<br>把风格<b>取消</b>掉，这里就是材质本身，颜色也能写（例：深紫色品红晶体，内部有紫光）。</div>
                 </div>
+                <div class="aifx-row" style="margin-top:12px">
+                  <label>风格强度</label>
+                  <input class="aifx-slider" data-action="strength" type="range" min="0" max="100" value="20">
+                  <div class="aifx-value" data-strength-value>20</div>
+                  <button class="aifx-inline-reset" data-action="strength-reset" type="button" hidden>恢复自动</button>
+                </div>
+                <div class="aifx-prompt-hint" data-strength-hint></div>
                 <div class="aifx-row" style="margin-top:12px">
                   <label>候选数量</label>
                   <input class="aifx-slider" data-action="candidates" type="range" min="1" max="4" value="2">
@@ -2746,6 +2770,10 @@
     refs.styleMeta = root.querySelector('[data-style-meta]')
     refs.styleClearRow = root.querySelector('[data-style-clear-row]')
     refs.supplement = root.querySelector('[data-action="prompt-supplement"]')
+    refs.strength = root.querySelector('[data-action="strength"]')
+    refs.strengthValue = root.querySelector('[data-strength-value]')
+    refs.strengthHint = root.querySelector('[data-strength-hint]')
+    refs.strengthReset = root.querySelector('[data-action="strength-reset"]')
     refs.templateZone = root.querySelector('[data-template-zone]')
     refs.templatePreview = root.querySelector('[data-template-preview]')
     refs.styleZone = root.querySelector('[data-style-zone]')
@@ -2862,6 +2890,14 @@
       // Typing here now decides three things - whether 生成 is allowed at all
       // with no style, which denoise the run gets, and what the 材质来源 line
       // says - so the panel has to follow the keystrokes.
+      refreshUi()
+    })
+    refs.strength?.addEventListener('input', () => {
+      state.strength = Number(refs.strength.value)
+      refreshUi()
+    })
+    refs.strengthReset?.addEventListener('click', () => {
+      state.strength = null
       refreshUi()
     })
     refs.candidateCount?.addEventListener('input', () => {
@@ -2989,6 +3025,25 @@
         fix.disabled = state.isGenerating
         fix.addEventListener('click', guard(() => openLibrary('shape')))
         refs.templateDetected.appendChild(fix)
+      }
+    }
+    if (refs.strength) {
+      // The slider shows the value the run will actually use, so leaving it
+      // alone tracks the rule (0.55 to follow, 0.70 once 提示词补充 has text)
+      // and dragging it pins the number until 重置.
+      const shown = currentStrength()
+      refs.strength.value = String(shown)
+      refs.strength.disabled = state.isGenerating
+      if (refs.strengthValue) refs.strengthValue.textContent = String(shown)
+      if (refs.strengthHint) {
+        const restyle = RESTYLE()
+        const denoise = restyle ? restyle.strengthToDenoise(shown) : 0
+        refs.strengthHint.textContent = '越低越贴着素材原来的形态和节奏，越高越放开让材质自己长。denoise '
+          + denoise.toFixed(2) + (state.strength == null ? '（自动）' : '（已手动锁定）')
+      }
+      if (refs.strengthReset) {
+        refs.strengthReset.hidden = state.strength == null
+        refs.strengthReset.disabled = state.isGenerating
       }
     }
     if (refs.candidateCount) {

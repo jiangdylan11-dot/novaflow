@@ -7,10 +7,10 @@
 // 模板库 panel instead of a <select>, styles picked from a 风格库 panel of
 // playing cards with the pick shown (and cancellable) under the button, and
 // 生成 folded into the renamed 特效生成 section. Shape and lifecycle detection
-// still run, but as a reading the panel reports, not a control. The strength
-// slider and the dead 纹理细节 slider stay gone - the strength is the preset's
-// own default, set low enough that the result follows the source's own
-// evolution, and dragging it up is exactly how that following came apart.
+// still run, but as a reading the panel reports, not a control. The dead
+// 纹理细节 slider stays gone. 风格强度 came BACK on 2026-09-21 by request
+// ("应该和生图模型一样，有个权重控制滑条，越低越和原模型雷同"): it still
+// defaults to the measured rule, and dragging it pins the value until 恢复自动.
 const assert = require('node:assert/strict')
 const { readFileSync, existsSync } = require('node:fs')
 const path = require('node:path')
@@ -80,14 +80,17 @@ const supplementIndex = source.indexOf('data-action="prompt-supplement"')
 assert.ok(supplementIndex > clearStyle && supplementIndex < candidates,
   'it sits under the reference image, above the candidate count')
 
-// The panel keeps exactly one slider: how many candidates to render.
+// Two sliders, and only two: 风格强度 and how many candidates to render.
+// Everything else the panel used to ask for is a reading now, not a control.
 const asideMarkup = source.slice(aside, asideEnd)
-assert.equal((asideMarkup.match(/class="aifx-slider"/g) || []).length, 1,
-  'the candidate count is the only slider left')
+assert.equal((asideMarkup.match(/class="aifx-slider"/g) || []).length, 2,
+  '风格强度 and 候选数量 are the only sliders')
+assert.ok(asideMarkup.includes('data-action="strength"'))
+assert.ok(asideMarkup.includes('data-action="candidates"'))
 assert.equal((asideMarkup.match(/data-aifx-section=/g) || []).length, 2, 'two sections, not three')
 
-// The panel has no strength control, so its fallback is a silent default and
-// has to be the module's, not a number that drifted away from it.
+// The slider defaults to whatever the rule picks, so the fallback still has to
+// be the module's and not a number that drifted away from it.
 {
   const restylePath = path.join(root, 'particle-editor', 'aifx-restyle.workflow.js')
   const sandbox = {}
@@ -116,6 +119,17 @@ assert.equal((asideMarkup.match(/data-aifx-section=/g) || []).length, 2, 'two se
     'typing in 提示词补充 has to refresh the panel')
   assert.ok(source.includes('材质来自提示词补充'),
     'the panel has to say where the material is coming from')
+  // 风格强度 is a control again, but an optional one: it shows what the rule
+  // picked until the artist drags it, and 恢复自动 puts it back.
+  assert.ok(source.includes('<label>风格强度</label>'), '风格强度 is in the panel')
+  assert.ok(source.includes('data-action="strength"'), 'and it is a slider')
+  assert.ok(source.includes('data-action="strength-reset"'), 'with a way back to automatic')
+  assert.ok(flat.includes('const shown = currentStrength()'),
+    'the slider must show the value the run will use, not a stale number')
+  assert.ok(flat.includes('state.strength = null'), '恢复自动 must clear the pin')
+  assert.ok(!source.includes('data-action="reference-strength"'),
+    '参考图权重 must not come back: the model knob it would drive does nothing '
+    + 'for a still, because the picture also reaches qwen3vl as vision tokens')
 }
 
 assert.ok(source.includes("state.previewMode = state.resultFrames.length ? 'compare' : 'template'"),
