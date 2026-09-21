@@ -7,10 +7,12 @@
 // 模板库 panel instead of a <select>, styles picked from a 风格库 panel of
 // playing cards with the pick shown (and cancellable) under the button, and
 // 生成 folded into the renamed 特效生成 section. Shape and lifecycle detection
-// still run, but as a reading the panel reports, not a control. The dead
-// 纹理细节 slider stays gone. 风格强度 came BACK on 2026-09-21 by request
-// ("应该和生图模型一样，有个权重控制滑条，越低越和原模型雷同"): it still
-// defaults to the measured rule, and dragging it pins the value until 恢复自动.
+// still run, but as a reading the panel reports, not a control. 风格强度 was
+// tried again on 2026-09-21 and taken back out the same day: at 4 steps
+// BasicScheduler quantises denoise to int(steps/denoise), so a 0-100 slider
+// has five reachable positions, three of them the values the rule already
+// picks and one measured to break the result. The artist's verdict: "有一点
+// 需求还不如多写2个提示词，这样感觉操作更复杂".
 const assert = require('node:assert/strict')
 const { readFileSync, existsSync } = require('node:fs')
 const path = require('node:path')
@@ -80,17 +82,14 @@ const supplementIndex = source.indexOf('data-action="prompt-supplement"')
 assert.ok(supplementIndex > clearStyle && supplementIndex < candidates,
   'it sits under the reference image, above the candidate count')
 
-// Two sliders, and only two: 风格强度 and how many candidates to render.
-// Everything else the panel used to ask for is a reading now, not a control.
+// The panel keeps exactly one slider: how many candidates to render.
 const asideMarkup = source.slice(aside, asideEnd)
-assert.equal((asideMarkup.match(/class="aifx-slider"/g) || []).length, 2,
-  '风格强度 and 候选数量 are the only sliders')
-assert.ok(asideMarkup.includes('data-action="strength"'))
-assert.ok(asideMarkup.includes('data-action="candidates"'))
+assert.equal((asideMarkup.match(/class="aifx-slider"/g) || []).length, 1,
+  'the candidate count is the only slider left')
 assert.equal((asideMarkup.match(/data-aifx-section=/g) || []).length, 2, 'two sections, not three')
 
-// The slider defaults to whatever the rule picks, so the fallback still has to
-// be the module's and not a number that drifted away from it.
+// The panel has no strength control, so its fallback is a silent default and
+// has to be the module's, not a number that drifted away from it.
 {
   const restylePath = path.join(root, 'particle-editor', 'aifx-restyle.workflow.js')
   const sandbox = {}
@@ -117,19 +116,18 @@ assert.equal((asideMarkup.match(/data-aifx-section=/g) || []).length, 2, 'two se
     'the textarea still feeds state')
   assert.match(flat, /state\.supplement = String\(refs\.supplement\.value \|\| ''\).{0,320}?refreshUi\(\)/,
     'typing in 提示词补充 has to refresh the panel')
-  assert.ok(source.includes('材质来自提示词补充'),
-    'the panel has to say where the material is coming from')
-  // 风格强度 is a control again, but an optional one: it shows what the rule
-  // picked until the artist drags it, and 恢复自动 puts it back.
-  assert.ok(source.includes('<label>风格强度</label>'), '风格强度 is in the panel')
-  assert.ok(source.includes('data-action="strength"'), 'and it is a slider')
-  assert.ok(source.includes('data-action="strength-reset"'), 'with a way back to automatic')
-  assert.ok(flat.includes('const shown = currentStrength()'),
-    'the slider must show the value the run will use, not a stale number')
-  assert.ok(flat.includes('state.strength = null'), '恢复自动 must clear the pin')
-  assert.ok(!source.includes('data-action="reference-strength"'),
-    '参考图权重 must not come back: the model knob it would drive does nothing '
-    + 'for a still, because the picture also reaches qwen3vl as vision tokens')
+  // The style card is the one place that says where the material comes from;
+  // the line under 候选数量 used to repeat it and now only carries what the
+  // card cannot - that the picked style has not been render-checked.
+  assert.ok(source.includes("empty.textContent = state.reference ? '材质来自参考图' : '未选风格'"),
+    'the style card reports the material source')
+  assert.ok(!source.includes('材质来自提示词补充'), 'and nothing else repeats it')
+  // Neither weight slider belongs here. 风格强度 has five reachable positions
+  // and three of them are the rule's own values; 参考图权重 would drive a model
+  // knob that does nothing for a still, because the picture also reaches
+  // qwen3vl as vision tokens and that path has no weight.
+  assert.ok(!source.includes('data-action="strength"'), '风格强度 stays out of the panel')
+  assert.ok(!source.includes('data-action="reference-strength"'), '参考图权重 stays out too')
 }
 
 assert.ok(source.includes("state.previewMode = state.resultFrames.length ? 'compare' : 'template'"),
@@ -185,7 +183,9 @@ assert.ok(source.includes("const STYLE_PREVIEW_URL = (id) => './aifx-styles/' + 
 assert.ok(source.includes('new IntersectionObserver'), 'only the cards in view decode')
 assert.ok(source.includes("clear.setAttribute('data-action', 'clear-attribute')"), 'the picked style can be unpicked')
 assert.ok(source.includes("attribute: '',"), 'nothing is picked until the artist picks')
-assert.ok(source.includes('请先在风格库里选一种风格，或放一张参考图'), '生成 waits for a style or a reference')
+// 生成 waits for a material source, and 提示词补充 is one of the three.
+assert.ok(source.includes('选个风格，或放参考图，或在提示词补充里写材质'),
+  '生成 waits for a style, a reference or a supplement')
 
 // 2026-09-20, second look: "现在的弹框样式也完全不一样" / "颜色偏蓝" / "风格库同样存在
 // 这样的问题". Both panels are the particle 模板库 exactly - its greys, five

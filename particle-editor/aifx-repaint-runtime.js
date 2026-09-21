@@ -813,23 +813,6 @@
         color: rgba(238, 244, 252, 0.96);
         background: transparent;
       }
-      /* The app forces border:none on every button, so the outline here is a
-         box-shadow ring rather than a border. */
-      .aifx-inline-reset[data-action="strength-reset"] {
-        margin-left: 8px;
-        padding: 2px 8px;
-        border-radius: 6px;
-        background: #2a2a2a;
-        color: #cbd0d6;
-        font: inherit;
-        font-size: 11px;
-        white-space: nowrap;
-        cursor: pointer;
-      }
-      .aifx-inline-reset[data-action="strength-reset"]:hover {
-        color: #fff;
-        box-shadow: 0 0 0 1px ${AIFX_ACCENT} inset !important;
-      }
       .aifx-primary, .aifx-button {
         height: 36px;
         border: 0;
@@ -1201,10 +1184,10 @@
                   <div class="nf-upload-dropzone__preview" data-template-preview></div>
                   <span class="nf-upload-dropzone__icon" data-template-empty>+</span>
                   <div class="nf-upload-dropzone__title">上传素材</div>
-                  <div class="nf-upload-dropzone__hint">点击选择，或直接把素材拖到这里。整组序列帧也行，会自动合成黑底视频</div>
+                  <div class="nf-upload-dropzone__hint">拖进来，或点击选择。序列帧也行</div>
                   <div class="nf-upload-dropzone__meta" data-template-meta></div>
                 </div>
-                <div class="aifx-help" data-template-help>黑底特效动画（mp4 / webm / mov / gif），或一整组 PNG 序列帧（按文件名排序，透明部分自动压在黑底上）。素材本身决定运动和节奏，形状和节奏会自动识别。</div>
+                <div class="aifx-help" data-template-help>黑底特效动画，或一组 PNG 序列帧</div>
                 <div class="aifx-help aifx-detected" data-template-detected style="color:#6f7479"></div>
                 <div class="aifx-row" style="margin-top:10px">
                   <button class="aifx-button" data-action="open-template-library" type="button" style="flex:1">模板库</button>
@@ -1224,7 +1207,7 @@
                   <div class="nf-upload-dropzone__preview" data-style-preview></div>
                   <span class="nf-upload-dropzone__icon" data-style-empty>+</span>
                   <div class="nf-upload-dropzone__title">参考图</div>
-                  <div class="nf-upload-dropzone__hint">可选。给一张质感参考图，材质就从它来，上面选的风格会让位</div>
+                  <div class="nf-upload-dropzone__hint">可选。材质改从图里来，风格让位</div>
                   <div class="nf-upload-dropzone__meta" data-style-meta></div>
                 </div>
                 <div class="aifx-row" data-style-clear-row hidden>
@@ -1232,16 +1215,9 @@
                 </div>
                 <div class="aifx-prompt-field">
                   <label for="novaflow-aifx-prompt-supplement">提示词补充</label>
-                  <textarea id="novaflow-aifx-prompt-supplement" class="aifx-prompt-input" data-action="prompt-supplement" rows="3" maxlength="400" placeholder="可选。这一次还想要什么细节"></textarea>
-                  <div class="aifx-prompt-hint">选了风格时，这里是<b>加东西</b>（边缘滴落 / 多一圈星星 / 结尾不碎）——风格自己的颜色和材质说了算。<br>把风格<b>取消</b>掉，这里就是材质本身，颜色也能写（例：深紫色品红晶体，内部有紫光）。</div>
+                  <textarea id="novaflow-aifx-prompt-supplement" class="aifx-prompt-input" data-action="prompt-supplement" rows="3" maxlength="400" placeholder="可选。还想要什么"></textarea>
+                  <div class="aifx-prompt-hint">选了风格＝加东西；取消风格＝这里就是材质，颜色也能写</div>
                 </div>
-                <div class="aifx-row" style="margin-top:12px">
-                  <label>风格强度</label>
-                  <input class="aifx-slider" data-action="strength" type="range" min="0" max="100" value="20">
-                  <div class="aifx-value" data-strength-value>20</div>
-                  <button class="aifx-inline-reset" data-action="strength-reset" type="button" hidden>恢复自动</button>
-                </div>
-                <div class="aifx-prompt-hint" data-strength-hint></div>
                 <div class="aifx-row" style="margin-top:12px">
                   <label>候选数量</label>
                   <input class="aifx-slider" data-action="candidates" type="range" min="1" max="4" value="2">
@@ -1879,7 +1855,7 @@
     // case: the words become the material description. What is not allowed is
     // having neither.
     if (!state.reference && !restyle.getPreset(state.attribute) && !String(state.supplement || '').trim()) {
-      throw new Error('AI 特效：请先在风格库里选一种风格，或放一张参考图，或在提示词补充里写想要的材质')
+      throw new Error('AI 特效：选个风格，或放参考图，或在提示词补充里写材质')
     }
     state.isGenerating = true
     state.abort = new AbortController()
@@ -2582,7 +2558,7 @@
       if (state.reference) {
         const note = document.createElement('div')
         note.className = 'aifx-current-note'
-        note.textContent = '材质来自参考图，这个风格先不生效'
+        note.textContent = '已让位给参考图'
         text.appendChild(note)
       }
       card.appendChild(text)
@@ -2600,9 +2576,7 @@
     } else {
       const empty = document.createElement('div')
       empty.className = 'aifx-current-empty'
-      empty.textContent = state.reference
-        ? '材质来自参考图'
-        : '还没选风格。点「风格库」挑一个，或者放一张参考图。'
+      empty.textContent = state.reference ? '材质来自参考图' : '未选风格'
       card.appendChild(empty)
     }
     host.appendChild(card)
@@ -2770,10 +2744,6 @@
     refs.styleMeta = root.querySelector('[data-style-meta]')
     refs.styleClearRow = root.querySelector('[data-style-clear-row]')
     refs.supplement = root.querySelector('[data-action="prompt-supplement"]')
-    refs.strength = root.querySelector('[data-action="strength"]')
-    refs.strengthValue = root.querySelector('[data-strength-value]')
-    refs.strengthHint = root.querySelector('[data-strength-hint]')
-    refs.strengthReset = root.querySelector('[data-action="strength-reset"]')
     refs.templateZone = root.querySelector('[data-template-zone]')
     refs.templatePreview = root.querySelector('[data-template-preview]')
     refs.styleZone = root.querySelector('[data-style-zone]')
@@ -2890,14 +2860,6 @@
       // Typing here now decides three things - whether 生成 is allowed at all
       // with no style, which denoise the run gets, and what the 材质来源 line
       // says - so the panel has to follow the keystrokes.
-      refreshUi()
-    })
-    refs.strength?.addEventListener('input', () => {
-      state.strength = Number(refs.strength.value)
-      refreshUi()
-    })
-    refs.strengthReset?.addEventListener('click', () => {
-      state.strength = null
       refreshUi()
     })
     refs.candidateCount?.addEventListener('input', () => {
@@ -3027,39 +2989,19 @@
         refs.templateDetected.appendChild(fix)
       }
     }
-    if (refs.strength) {
-      // The slider shows the value the run will actually use, so leaving it
-      // alone tracks the rule (0.55 to follow, 0.70 once 提示词补充 has text)
-      // and dragging it pins the number until 重置.
-      const shown = currentStrength()
-      refs.strength.value = String(shown)
-      refs.strength.disabled = state.isGenerating
-      if (refs.strengthValue) refs.strengthValue.textContent = String(shown)
-      if (refs.strengthHint) {
-        const restyle = RESTYLE()
-        const denoise = restyle ? restyle.strengthToDenoise(shown) : 0
-        refs.strengthHint.textContent = '越低越贴着素材原来的形态和节奏，越高越放开让材质自己长。denoise '
-          + denoise.toFixed(2) + (state.strength == null ? '（自动）' : '（已手动锁定）')
-      }
-      if (refs.strengthReset) {
-        refs.strengthReset.hidden = state.strength == null
-        refs.strengthReset.disabled = state.isGenerating
-      }
-    }
     if (refs.candidateCount) {
       refs.candidateCount.value = String(state.candidateCount)
       if (refs.candidateCountValue) refs.candidateCountValue.textContent = String(state.candidateCount)
       refs.candidateCount.disabled = state.isGenerating
     }
     if (refs.effectType && restyle) {
+      // The style card above already says where the material comes from, so
+      // this line only carries what it cannot: that the picked style has not
+      // been render-checked.
       const preset = restyle.getPreset(state.attribute)
-      refs.effectType.textContent = state.reference
-        ? '材质来自参考图'
-        : preset
-          ? preset.label + (preset.verified ? '' : '（该风格尚未逐条验证，可能需要多出几个候选）')
-          : String(state.supplement || '').trim()
-            ? '材质来自提示词补充'
-            : '先在风格库里选一种风格，或放一张参考图，或在提示词补充里写想要的材质'
+      refs.effectType.textContent = !state.reference && preset && !preset.verified
+        ? preset.label + ' 尚未逐条验证，可多出几个候选'
+        : ''
     }
     syncAllRangeProgress()
   }

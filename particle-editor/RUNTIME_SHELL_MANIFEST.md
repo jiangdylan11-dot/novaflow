@@ -44,7 +44,7 @@ Top-level helper scripts referenced from `index.html`:
 - `./aifx-shape-detect.js?v=20260921-aifx-tile-1`
 - `./aifx-restyle.workflow.js?v=20260921-aifx-strength-1`
 - `./aifx-restyle-client.js?v=20260919-aifx-restyle-2`
-- `./aifx-repaint-runtime.js?v=20260921-aifx-strength-1`
+- `./aifx-repaint-runtime.js?v=20260921-aifx-quiet-2`
 - `./spine-split-runtime.js?v=20260516-chain-unified-19`
 - `./novaflow-brand-runtime.js?v=20260920-art-prompt-guard-1`
 - `./ribbon-event-markers.js?v=20260516-chain-unified-19`
