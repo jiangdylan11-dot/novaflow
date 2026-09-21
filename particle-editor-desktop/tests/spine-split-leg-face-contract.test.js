@@ -45,7 +45,7 @@ test('one-click split keeps legs whole, splits only the feet, and exposes a defa
   assert.match(source, /if \('includeFaceDetails' in options\) state\.includeFaceDetails = !!options\.includeFaceDetails/)
   assert.doesNotMatch(source, /data-novaflow-split-legs/, 'no leg toggle in the dialog')
   assert.doesNotMatch(source, /splitSeeThroughLegwear|splitMaskAtKnee|seeThroughKneeHint|legSplitLooksLikeTwoLegs|state\.splitLegs/, 'automatic leg splitting must be gone')
-  assert.match(source, /withFeet = await splitSeeThroughFeet\(clean\)[\s\S]{0,200}return await mergeFaceDetailsIntoFace\(withFeet\)/)
+  assert.match(source, /withFeet = await splitSeeThroughFeet\(clean\)[\s\S]{0,220}stacked = await mergeFaceDetailsIntoFace\(withFeet\)/)
   assert.match(source, /catch \(error\) \{\s*console\.warn\('\[NovaFlow\] automatic foot split skipped:'/, 'a foot-split failure must degrade to the plain See-through layers instead of failing the split')
   assert.match(source, /parts\.find\(\(part\) => rawId\(part\) === 'face'\) \|\| parts\.find\(\(part\) => rawId\(part\) === 'head'\)/, 'merge target must be matched by raw See-through id because normalizeId folds face into head')
   assert.match(source, /const faceId = rawId\(face\)/)

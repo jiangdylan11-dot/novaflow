@@ -6,7 +6,7 @@ const test = require('node:test')
 const root = path.resolve(__dirname, '../..')
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
 const RUNTIME = 'particle-editor/spine-split-runtime.js'
-const CACHE_VERSION = '20260919-layer-card-routing-2'
+const CACHE_VERSION = '20260922-layer-seam-seal'
 
 // 去除物体 repaints everything the stroke covers, so a stroke over a glow changed the rest of the
 // picture too (the user's 2026-09-16 report). The 特效 switch keys the effect the way 智能抠图 does

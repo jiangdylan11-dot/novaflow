@@ -11341,6 +11341,100 @@
     return out
   }
 
+  // See-through blends its layers by adding their alphas, so two layers that meet along a cut each carry part
+  // of the coverage and together make one. NovaFlow draws the same stack with source-over — on the canvas, in
+  // the PSD and in Spine — where that same pair only reaches 1 - (1 - a1)(1 - a2). The missing coverage lets the
+  // dark canvas through as a hairline along every cut, which is the black line across the ankle where the foot
+  // leaves the leg. Re-reading each alpha as a / (1 - the alphas stacked above it) is the exact conversion from
+  // the one blend to the other: a feathered edge with nothing above it divides by one and is left untouched, so
+  // the figure's outer silhouette keeps its softness, and only an edge shared with a layer above is asked to
+  // carry the rest of the cut. A soft edge that lies over opaque material is left alone: the stack already
+  // covers that pixel, nothing shows through it, and the layer keeps its own feather for when animation pulls
+  // the two apart.
+  function sealLayerStackSeams(layers, width, height, options) {
+    const list = Array.isArray(layers) ? layers : []
+    const frameWidth = Math.max(1, Math.round(width || 0))
+    const frameHeight = Math.max(1, Math.round(height || 0))
+    const minAlpha = options && Number.isFinite(options.minAlpha) ? options.minAlpha : 8
+    const covered = options && Number.isFinite(options.covered) ? options.covered : 0.998
+    const eachRect = (layer, visit) => {
+      const rectWidth = Math.max(1, Math.round(layer.width || 0))
+      const rectHeight = Math.max(1, Math.round(layer.height || 0))
+      const offsetX = Math.round(layer.x || 0)
+      const offsetY = Math.round(layer.y || 0)
+      for (let row = 0; row < rectHeight; row += 1) {
+        const y = offsetY + row
+        if (y < 0 || y >= frameHeight) continue
+        for (let column = 0; column < rectWidth; column += 1) {
+          const x = offsetX + column
+          if (x < 0 || x >= frameWidth) continue
+          const offset = (row * rectWidth + column) * 4
+          const alpha = layer.data[offset + 3]
+          if (alpha > minAlpha) visit(offset, alpha, y * frameWidth + x)
+        }
+      }
+    }
+    const open = new Float32Array(frameWidth * frameHeight).fill(1)
+    for (const layer of list) {
+      if (!layer || !layer.data) continue
+      eachRect(layer, (offset, alpha, pixel) => { open[pixel] *= 1 - alpha / 255 })
+    }
+    const above = new Float32Array(frameWidth * frameHeight)
+    const changed = new Array(list.length).fill(0)
+    for (let index = list.length - 1; index >= 0; index -= 1) {
+      const layer = list[index]
+      if (!layer || !layer.data) continue
+      eachRect(layer, (offset, alpha, pixel) => {
+        const stacked = above[pixel]
+        above[pixel] = stacked + alpha / 255
+        if (open[pixel] <= 1 - covered || stacked <= 0 || stacked >= covered) return
+        const sealed = Math.min(255, Math.round(alpha / (1 - stacked)))
+        if (sealed <= alpha) return
+        layer.data[offset + 3] = sealed
+        changed[index] += 1
+      })
+    }
+    return changed
+  }
+
+  async function sealSeeThroughLayerSeams(parts) {
+    const list = normalizeSpineLayerOrder(Array.isArray(parts) ? parts : [])
+    if (list.length < 2) return list
+    const size = await sourceSize()
+    const layers = []
+    for (const part of list) {
+      if (!part || !part.dataUrl) {
+        layers.push(null)
+        continue
+      }
+      const rect = layerRect(part)
+      const img = await loadImage(part.dataUrl)
+      const canvas = document.createElement('canvas')
+      canvas.width = rect.width
+      canvas.height = rect.height
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
+      if (!ctx) {
+        layers.push(null)
+        continue
+      }
+      ctx.clearRect(0, 0, rect.width, rect.height)
+      ctx.drawImage(img, 0, 0, rect.width, rect.height)
+      const image = ctx.getImageData(0, 0, rect.width, rect.height)
+      layers.push({ data: image.data, x: rect.x, y: rect.y, width: rect.width, height: rect.height, canvas, ctx, image })
+    }
+    const changed = sealLayerStackSeams(layers, size.width, size.height)
+    return list.map((part, index) => {
+      const layer = layers[index]
+      if (!layer || !changed[index]) return part
+      layer.ctx.putImageData(layer.image, 0, 0)
+      const dataUrl = layer.canvas.toDataURL('image/png')
+      return withLayerModelFields({ ...part, dataUrl, seamSealedPixels: changed[index] }, dataUrl, layerMaskDataUrl(part), {
+        kind: part.metadata && part.metadata.kind || part.cropPipeline || 'split',
+        seamSeal: 'additive-to-over'
+      })
+    })
+  }
+
   function facialFeatureId(partId) {
     return /^(ears|ears_l|ears_r|earl|earr|eyes|eyel|eyer|browl|browr|eyewhite|eyewhite_l|eyewhite_r|irides|irides_l|irides_r|eyelash|eyelash_l|eyelash_r|eyebrow|eyebrow_l|eyebrow_r|mouth|nose)$/.test(normalizeId(partId))
   }
@@ -11711,11 +11805,17 @@
     } catch (error) {
       console.warn('[NovaFlow] automatic foot split skipped:', error)
     }
+    let stacked = normalizeSpineLayerOrder(withFeet)
     try {
-      return await mergeFaceDetailsIntoFace(withFeet)
+      stacked = await mergeFaceDetailsIntoFace(withFeet)
     } catch (error) {
       console.warn('[NovaFlow] facial feature merge skipped:', error)
-      return normalizeSpineLayerOrder(withFeet)
+    }
+    try {
+      return await sealSeeThroughLayerSeams(stacked)
+    } catch (error) {
+      console.warn('[NovaFlow] layer seam seal skipped:', error)
+      return stacked
     }
   }
 
@@ -35004,6 +35104,8 @@
     mergeFaceDetailsIntoFace,
     prepareSeeThroughPsdParts,
     removeSeeThroughDarkHalos,
+    sealSeeThroughLayerSeams,
+    sealLayerStackSeams,
     applySeeThroughHeadLayer,
     fetchSeeThroughHeadLayer,
     showSeeThroughSplitModeDialog,
