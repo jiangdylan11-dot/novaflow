@@ -158,8 +158,14 @@ assert.ok(seqBody.includes("context.fillStyle = '#000000'") && seqBody.includes(
 assert.ok(seqBody.indexOf('fillRect') < seqBody.indexOf('drawImage'), 'black goes down first')
 assert.ok(source.includes('undefined, { numeric: true, sensitivity: ') && source.includes('sortSequence'),
   'frames are ordered the way an artist names them')
-assert.ok(source.includes('type="file" multiple accept="video/*,image/gif,image/apng,image/png'),
-  'the picker takes several stills')
+// The formats the panel says it takes and the ones the picker offers have to
+// be the same list: MP4, WebM, GIF, and a PNG sequence (2026-09-21, "只需支持
+// webm MP4 Gif, png 不变"). video/* used to let MOV through the picker and
+// then fail on decode.
+assert.ok(source.includes('type="file" multiple accept="video/mp4,video/webm,image/gif,image/apng,image/png"'),
+  'the picker takes several stills, and only the formats that work')
+assert.ok(source.includes('黑底特效动画 MP4 / WebM / GIF，或一组 PNG 序列帧'),
+  'and the hint names them')
 assert.ok(source.includes('序列帧至少要两张'), 'a single still is not a sequence')
 
 // --- the libraries -------------------------------------------------------

@@ -1187,7 +1187,7 @@
                   <div class="nf-upload-dropzone__hint">拖进来，或点击选择。序列帧也行</div>
                   <div class="nf-upload-dropzone__meta" data-template-meta></div>
                 </div>
-                <div class="aifx-help" data-template-help>黑底特效动画，或一组 PNG 序列帧</div>
+                <div class="aifx-help" data-template-help>黑底特效动画 MP4 / WebM / GIF，或一组 PNG 序列帧</div>
                 <div class="aifx-help aifx-detected" data-template-detected style="color:#6f7479"></div>
                 <div class="aifx-row" style="margin-top:10px">
                   <button class="aifx-button" data-action="open-template-library" type="button" style="flex:1">模板库</button>
@@ -1279,7 +1279,7 @@
             </div>
           </div>
         </div>
-        <input class="aifx-hidden" data-template-input type="file" multiple accept="video/*,image/gif,image/apng,image/png,image/jpeg,image/webp,image/bmp">
+        <input class="aifx-hidden" data-template-input type="file" multiple accept="video/mp4,video/webm,image/gif,image/apng,image/png">
         <input class="aifx-hidden" data-style-input type="file" accept="image/*">
       `
       document.body.appendChild(root)
