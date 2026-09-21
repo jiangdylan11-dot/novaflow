@@ -311,6 +311,9 @@ async function convertSpineAtlasWebp(payload, { fs, sharp, encodePma = encodePma
       try {
         const attempts = [{ quality: encodeOptions.pmaQuality, codecPreset: encodeOptions.pmaCodecPreset }];
         if (encodeOptions.pmaCodecPreset) attempts.push({ quality: 80, codecPreset: "drawing" }, { quality: 90 });
+        // A slightly higher Q can remove residual ringing without expanding
+        // chroma neutralization into visible artwork or forcing lossless output.
+        attempts.push({ quality: encodeOptions.pmaQuality === 95 ? 96 : 92 });
         for (let attempt = 0; attempt < attempts.length; attempt++) {
           try {
             compatible = await encodePma(image.input, sharp, attempts[attempt]);

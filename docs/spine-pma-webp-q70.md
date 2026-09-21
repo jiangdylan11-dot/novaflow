@@ -1,5 +1,10 @@
 # Spine Size-First WebP, 2026-09-15
 
+This is a historical validation record. The expanding chroma guard below was
+found to desaturate visible artwork and is superseded by the
+[2026-09-21 chroma guard correction](spine-pma-webp-chroma-guard.md).
+Its file sizes are not promises for the corrected encoder.
+
 ## Behavior
 
 `options.preset = "small"` now starts at Q70 rather than Q86. The user explicitly

@@ -2,7 +2,8 @@
 
 The Q86 small-preset sections below record the 2026-09-12 implementation.
 The current size-first preset is described in [spine-pma-webp-q70.md](spine-pma-webp-q70.md).
-The accepted Q90 and Q95 profiles are unchanged.
+The historical guard, retry bounds, and byte-identity claims below are superseded
+by the [2026-09-21 chroma guard correction](spine-pma-webp-chroma-guard.md).
 
 ## Contract
 

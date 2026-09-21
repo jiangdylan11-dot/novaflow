@@ -1,7 +1,7 @@
 const { spawn } = require("node:child_process");
 
 const PMA_QUALITY = 90;
-const MAX_PASSES = 4;
+const MAX_PASSES = 8;
 
 function webpChunks(bytes) {
   if (!Buffer.isBuffer(bytes) || bytes.length < 12
@@ -156,13 +156,12 @@ async function encodePmaCompatibleWebp(input, sharp, { run = runFfmpeg, quality 
       spills++;
       const x = Math.floor((i % width) / 2);
       const y = Math.floor(Math.floor(i / width) / 2);
-      const radius = compactGuard ? Math.min(4, pass + 1) : 1;
-      for (let yy = Math.max(0, y - radius); yy <= Math.min(ch - 1, y + radius); yy++) {
-        for (let xx = Math.max(0, x - radius); xx <= Math.min(cw - 1, x + radius); xx++) cells[yy * cw + xx] = 1;
-      }
+      // A YUV420 cell already covers 2x2 pixels. Expanding into neighboring
+      // cells desaturates visible artwork, especially after repeated retries.
+      cells[y * cw + x] = 1;
     }
     if (!spills) return { data, info, quality, passes: pass + 1 };
-    // Only desaturate chroma cells responsible for RGB leaking into alpha=0.
+    // Correct only the cell containing a transparent spill; never grow a halo.
     for (let cell = 0; cell < chromaCount; cell++) if (cells[cell]) {
       if (compactGuard) {
         // Low-Q ringing also needs luma headroom in nearby near-black pixels.

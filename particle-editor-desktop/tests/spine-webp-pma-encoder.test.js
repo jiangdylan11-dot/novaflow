@@ -29,7 +29,7 @@ test("PMA Q90 keeps alpha and clean transparent RGB, including odd dimensions", 
   const source = await fixture();
   const output = await encodePmaCompatibleWebp(source.png, sharp);
   assert.equal(output.quality, 90);
-  assert.ok(output.passes >= 1 && output.passes <= 4);
+  assert.ok(output.passes >= 1 && output.passes <= 8);
   assert.ok(webpChunks(output.data).has("VP8 "));
   assert.ok(webpChunks(output.data).has("ALPH"));
   const decoded = await sharp(output.data).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -203,7 +203,7 @@ test("small preset keeps exact fallback when verification fails, with bounded re
         throw Object.assign(new Error(code), { code });
       }
     });
-    assert.deepEqual(attempts, code === "PMA_TRANSPARENT_RGB" ? [70, 80, 90] : [70]);
+    assert.deepEqual(attempts, code === "PMA_TRANSPARENT_RGB" ? [70, 80, 90, 92] : [70]);
     assert.equal(result.images[0].encoding, "pma-lossless");
     assert.equal(result.images[0].quality, null);
     assert.match(result.warnings.join("\n"), /回退无损/);
@@ -226,7 +226,51 @@ test("small preset can retry Q90 without labelling it Q70", async () => {
   assert.match(result.warnings.join("\n"), /Q70.*Q90/);
 });
 
-test("low-Q luma protection is local and leaves brighter pixels and source alpha untouched", async () => {
+test("local edge protection retries slightly higher quality before lossless and reports the real Q", async () => {
+  const { png, pixels } = await fixture();
+  for (const [preset, expected] of [["compact", [90, 92]], ["clarity", [95, 96]], ["small", [70, 80, 90, 92]]]) {
+    const attempts = [];
+    const finalQuality = expected.at(-1);
+    const result = await convertSpineAtlasWebp(payload(png, { preset }), {
+      fs, sharp, encodePma: async (input, sharpInstance, options) => {
+        attempts.push(options.quality);
+        if (options.quality !== finalQuality) throw Object.assign(new Error("transparent spill"), { code: "PMA_TRANSPARENT_RGB" });
+        assert.equal(options.codecPreset, undefined);
+        return encodePmaCompatibleWebp(input, sharpInstance, options);
+      }
+    });
+    assert.deepEqual(attempts, expected);
+    assert.equal(result.images[0].encoding, "pma-compatible");
+    assert.equal(result.images[0].quality, finalQuality);
+    assert.equal(result.images[0].transparentRgbVerified, true);
+    assert.match(result.warnings.join("\n"), new RegExp(`Q${expected[0]}.*Q${finalQuality}`));
+    const decoded = await sharp(Buffer.from(result.images[0].bytes)).ensureAlpha().raw().toBuffer();
+    for (let i = 0; i < pixels.length; i += 4) {
+      assert.equal(decoded[i + 3], pixels[i + 3]);
+      if (!pixels[i + 3]) assert.deepEqual(decoded.subarray(i, i + 3), Buffer.alloc(3));
+    }
+  }
+});
+
+test("higher-quality retry stays bounded and preserves exact fallback", async () => {
+  const { png, pixels } = await fixture();
+  for (const [preset, expected] of [["compact", [90, 92]], ["clarity", [95, 96]]]) {
+    const attempts = [];
+    const result = await convertSpineAtlasWebp(payload(png, { preset }), {
+      fs, sharp, encodePma: async (_input, _sharp, options) => {
+        attempts.push(options.quality);
+        throw Object.assign(new Error("transparent spill"), { code: "PMA_TRANSPARENT_RGB" });
+      }
+    });
+    assert.deepEqual(attempts, expected);
+    assert.equal(result.images[0].encoding, "pma-lossless");
+    assert.equal(result.images[0].quality, null);
+    assert.match(result.warnings.join("\n"), /回退无损/);
+    assert.deepEqual(await sharp(Buffer.from(result.images[0].bytes)).ensureAlpha().raw().toBuffer(), pixels);
+  }
+});
+
+for (const quality of [70, 90]) test(`Q${quality} protection never spreads to neighboring chroma cells across retries`, async () => {
   const width = 65, height = 63, count = width * height;
   const raw = { width, height, channels: 4 };
   const pixels = Buffer.alloc(count * 4);
@@ -242,26 +286,37 @@ test("low-Q luma protection is local and leaves brighter pixels and source alpha
   const verifierSharp = (input, options) => {
     if (Buffer.isBuffer(input) && input.toString("ascii", 8, 12) === "WEBP") {
       const decoded = Buffer.from(pixels);
-      if (!decodes++) decoded[center * 4 + 2] = 4;
+      if (decodes++ < 4) decoded[center * 4 + 2] = 4;
       return sharp(decoded, { raw });
     }
     return sharp(input, options);
   };
   const frames = [];
   const result = await encodePmaCompatibleWebp(png, verifierSharp, {
-    quality: 70, codecPreset: "drawing", run: async (args, input) => {
+    quality, codecPreset: quality === 70 ? "drawing" : null, run: async (args, input) => {
       if (args.includes("libwebp")) { frames.push(Buffer.from(input)); return color; }
       const yuv = Buffer.alloc(count + chromaCount * 2, 140);
       yuv.fill(100, 0, count);
       return yuv;
     }
   });
-  assert.equal(result.passes, 2);
+  assert.equal(result.passes, 5);
   assert.equal(frames[0][center], 0);
   assert.equal(frames[0][near], 100);
-  assert.equal(frames[1][near], 0);
-  assert.equal(frames[1][bright], 100);
-  assert.equal(frames[1][far], 100);
+  const cell = 16 * Math.ceil(width / 2) + 16;
+  let correctedChroma = 140;
+  for (const frame of frames.slice(1)) {
+    correctedChroma = Math.round(128 + (correctedChroma - 128) * 0.35);
+    assert.equal(frame[near], quality === 70 ? 0 : 100);
+    assert.equal(frame[bright], 100);
+    assert.equal(frame[far], 100);
+    for (const start of [count, count + chromaCount]) {
+      for (let i = 0; i < chromaCount; i++) {
+        assert.equal(frame[start + i], i === cell ? correctedChroma : 140,
+          `Only the leaking cell may change, not its visible neighbors: ${i}`);
+      }
+    }
+  }
   assert.deepEqual(await sharp(png).ensureAlpha().raw().toBuffer(), pixels);
 });
 
@@ -293,7 +348,7 @@ test("persistent transparent RGB spill is bounded and rejected", async () => {
     return sharp(input, options);
   };
   await assert.rejects(encodePmaCompatibleWebp(png, corruptSharp), /透明区域/);
-  assert.equal(decodes, 4);
+  assert.equal(decodes, 8);
   decodes = 0;
   await assert.rejects(encodePmaCompatibleWebp(png, corruptSharp, { quality: 70, codecPreset: "drawing" }), { code: "PMA_TRANSPARENT_RGB" });
   assert.equal(decodes, 12);
