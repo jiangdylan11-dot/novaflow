@@ -7,7 +7,7 @@ const { loadSpine } = require('../../tools/qwen-rapid-migration-smoke.cjs')
 const root = path.resolve(__dirname, '../..')
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), 'utf8')
 const RUNTIME = 'particle-editor/spine-split-runtime.js'
-const CACHE_VERSION = '20260922-layer-edge-repair'
+const CACHE_VERSION = '20260922-layer-seam-seal'
 const plain = (value) => JSON.parse(JSON.stringify(value))
 
 function loadRuntime() {
