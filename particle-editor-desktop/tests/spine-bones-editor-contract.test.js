@@ -42,11 +42,14 @@ test('both files are shipped by the renderer build and the sync chain', () => {
   }
 })
 
-test('the panel has a 骨骼架设 panel of its own with the switch, the auto rig and the write-back', () => {
+test('the panel has a 骨骼架设 panel of its own: expanding it IS the edit mode, plus the auto rig and the write-back', () => {
   const panel = read(`particle-editor/${PANEL}`)
-  for (const needle of ["'骨骼架设'", 'NovaFlowBonesEditor', 'NovaFlowAutoBones', 'autoRig', 'applyBones', 'setBonesEditing', "'编辑骨骼'", "'自动架设'", 'freezePreview', 'data-novaflow-bones-panel']) {
+  for (const needle of ["'骨骼架设'", 'NovaFlowBonesEditor', 'NovaFlowAutoBones', 'autoRig', 'applyBones', 'setBonesEditing', "'自动架设'", 'freezePreview', 'data-novaflow-bones-panel']) {
     assert.ok(panel.includes(needle), `panel must reference ${needle}`)
   }
+  // the 编辑骨骼 checkbox is gone: open = editing, collapsed = preview back (user decision)
+  assert.ok(!/const swLabel = el\('span', null, '编辑骨骼'\)/.test(panel), 'no 编辑骨骼 checkbox')
+  assert.ok(/setOpen: \(v\) => \{\s*state\.openBones = v[\s\S]{0,160}setBonesEditing\(v\)/.test(panel), 'opening the panel turns editing on, collapsing turns it off')
   // rigging, meshing and binding are three panels, in that order
   assert.ok(panel.indexOf('{ mark: BMARK, spec: bonesSpec }') < panel.indexOf('{ mark: MARK, spec: meshSpec }'), '骨骼架设 mounts before 自动蒙皮')
   // every panel starts collapsed on entry and nothing about that is persisted across launches
@@ -139,8 +142,9 @@ test('re-parenting: P picks a parent, the project tree can be dragged, and Ctrl+
   assert.ok(src.includes('function reparentNamed'), 'the tree drag re-parents by name')
   const panel = read(`particle-editor/${PANEL}`)
   for (const needle of ['onTreePointerDown', 'onTreePointerUp', 'reparentNamed', 'BONE_ROW_SEL', 'tuneSkeletonSidebar']) assert.ok(panel.includes(needle), needle)
-  assert.ok(panel.includes("'粒子挂点'") || panel.includes("startsWith('粒子挂点')"), 'the particle attachment block is hidden')
-  assert.ok(panel.includes('max-height:360px'), 'the project bone tree is 50% taller than the app default (240px)')
+  assert.ok(panel.includes("sec.style.display = 'none'"), "the app's own sidebar blocks are replaced by the hierarchy")
+  assert.ok(panel.includes('function ensureHierarchy') && panel.includes('function hierModel'), 'one project hierarchy owns the sidebar')
+  assert.ok(panel.includes("hier.scroll.style.maxHeight = maxH + 'px'"), 'and it is sized to the sidebar')
   assert.ok(!panel.includes('state.fitBonesList'), 'the second (left) bone tree is gone')
   // the Electron menu must not eat the undo shortcut before the renderer sees it
   const main = read('particle-editor-desktop/main.js')
@@ -181,6 +185,47 @@ test('a drawn chain hangs off the selected bone, sits under it in the list, and 
   assert.ok(src.includes('toSetupFrame(d.origin, parentIndex)'), 'points drawn on the posed skeleton are written in the setup frame')
   const panel = read(`particle-editor/${PANEL}`)
   assert.ok(!panel.includes('onCreate: () => bones.focusName()'), 'creating no longer steals focus into the name field')
+})
+
+test('the hierarchy is a Spine-style tree: groups closed by default, both ways of selecting, skins and animations forwarded', () => {
+  const panel = read(`particle-editor/${PANEL}`)
+  assert.ok(panel.includes("const hier = { box: null, scroll: null, open: new Set()"), 'every group starts collapsed')
+  for (const needle of ["'骨架'", "'约束'", "'皮肤'", "'动画'", "'图层'"]) assert.ok(panel.includes(needle), `the tree needs a ${needle} group`)
+  assert.ok(panel.includes('function revealInTree'), 'the selection opens its ancestors in the tree')
+  assert.ok(panel.includes('scrollIntoBox(row, hier.scroll)'), 'and is scrolled inside the tree only')
+  assert.ok(panel.includes('revealInTree(i >= 0 && list[i] ? list[i].name : null)'), 'every selection change drives it')
+  assert.ok(panel.includes('if (i >= 0) { ctl.select(i); bones.syncUi(); return }'), 'clicking a row selects that bone in the editor')
+  assert.ok(panel.includes('function toggleHierKey') && panel.includes("chev.addEventListener('click'"), 'the arrow folds, the name selects (Spine)')
+  assert.ok(panel.includes('function appButton'), 'skins and animations stay with the app: its buttons are clicked')
+  assert.ok(panel.includes('function activeSkinName') && panel.includes('function activeAnimationName'), 'the active one is read from the runtime')
+  assert.ok(panel.includes('const btn = appButton(r.pick[0], r.pick[1])'), 'a skin / animation row forwards to that button')
+  assert.ok(panel.includes('if (sec.hasAttribute(HIER_MARK))'), "the app tags our box as one of its sections; it must never be hidden with them")
+  const editor = read(`particle-editor/${EDITOR}`)
+  assert.ok(editor.includes('peek: () => st.skel') && editor.includes('roleOf: (i) => roleOf(i)'), 'the tree reads the working copy and the colour roles')
+})
+
+test('one drawing style for 显示骨骼 and 编辑骨骼, with a colour per role', () => {
+  const skel = {
+    bones: [{ name: 'root' }, { name: 'thigh', parent: 'root', length: 60 }, { name: 'shin', parent: 'thigh', x: 60, length: 50 }, { name: 'target', parent: 'root', x: 100, y: -10 }, { name: 'plain', parent: 'root', x: -40, length: 20 }],
+    slots: [], skins: [{ name: 'default', attachments: {} }],
+    ik: [{ name: 'leg', bones: ['thigh', 'shin'], target: 'target' }],
+    animations: {}
+  }
+  const names = (set) => [...set].map((i) => skel.bones[i].name).sort()
+  assert.deepEqual(names(E.constrainedOf(skel)), ['shin', 'thigh'], 'the bones an IK drives are marked')
+  assert.deepEqual(names(E.controlsOf(skel, [])), ['root', 'target'], 'the target stays a control')
+  assert.ok(!E.constrainedOf(skel).has(4), 'a plain deform bone is neither')
+  for (const role of ['bone', 'driven', 'control', 'helper']) assert.ok(E.ROLE_COLORS[role] && E.ROLE_COLORS[role].line, `${role} has a colour`)
+  assert.notEqual(E.ROLE_COLORS.driven.line, E.ROLE_COLORS.bone.line, 'constraint-driven bones do not look like plain ones')
+  assert.notEqual(E.ROLE_COLORS.control.line, E.ROLE_COLORS.driven.line, 'controls do not look like the bones they drive')
+  const src = read(`particle-editor/${EDITOR}`)
+  assert.ok(src.includes('function setPreview'), 'the overlay can draw without taking input')
+  assert.ok(src.includes('host.liveWorld()'), 'and it follows the running animation, not the setup pose')
+  assert.ok(src.includes("if (st.preview) { recompute(); draw()"), 'every frame while previewing')
+  const panel = read(`particle-editor/${PANEL}`)
+  assert.ok(panel.includes('function syncBonePreview'), '显示骨骼 is routed through the editor overlay')
+  assert.ok(panel.includes('liveWorld: () => {'), 'the panel hands the runtime matrices over')
+  assert.ok(panel.includes("['#c79bff', '受约束驱动']"), 'the panel carries the legend')
 })
 
 test('the editor stays dependency free and exposes the tools', () => {

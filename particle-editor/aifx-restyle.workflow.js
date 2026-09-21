@@ -615,11 +615,28 @@
   // With a look reference the prompt switches to MiniMax's full-reference form,
   // because that is the only shape in which <Picture 1> is addressable. Without
   // one it stays plain prose, which is what the presets were tuned against.
+  // Clearing the 风格 and writing 提示词补充 instead is the img2img case: the
+  // words describe the material and nothing else may contradict them. That
+  // last part is the whole trick - measured on the crescent, asking for deep
+  // purple while the preset is still in the prompt comes back cyan at every
+  // denoise, off a grey init, with the preset's material sentence deleted,
+  // with the ask moved to the front, declared as an OVERRIDE, and in English.
+  // The word that wins is the preset's NAME ('a single anime-style ICE
+  // crescent slash'), so the only way to hand the words the material is to
+  // take the preset out of the sentence altogether.
+  function isPromptOnly(options) {
+    return !options.attribute && !options.hasReferenceImage
+      && Boolean(String(options.supplement || '').trim())
+  }
+
   function composePrompt(options = {}) {
-    // With a reference image the material comes from the picture, so no
-    // preset is required; without one, an unknown or missing attribute is an
-    // error rather than a silent default.
-    const preset = options.hasReferenceImage && !options.attribute ? null : resolvePreset(options.attribute)
+    // With a reference image the material comes from the picture, and in the
+    // prompt-only case it comes from the artist's own words; otherwise an
+    // unknown or missing attribute is an error rather than a silent default.
+    const promptOnly = isPromptOnly(options)
+    const preset = (options.hasReferenceImage || promptOnly) && !options.attribute
+      ? null
+      : resolvePreset(options.attribute)
     const supplement = String(options.supplement || '').trim()
     const extra = supplement ? ' ' + supplement : ''
     const shape = String(options.shape || '').trim() || DEFAULT_SHAPE
@@ -631,6 +648,12 @@
     // A looping element never disperses, so its preset's break-up sentence is
     // left out entirely rather than contradicted later in the prompt. Keeping
     // it in is what made a looping border light explode into coins.
+    if (promptOnly) {
+      // Only the silhouette and the shot framing survive; the subject is the
+      // artist's sentence. No preset name, no preset material, no preset
+      // break-up - there is nothing left for the words to argue with.
+      return `${LEAD} ${shape}, ${supplement} ${shapeSentence(shape, clause)} ${SHOT_TAIL}`
+    }
     if (!options.hasReferenceImage) {
       const dispersal = options.lifecycle === 'loop' ? '' : ' ' + preset.breakup
       // The shape sits between the material's name and its description, which
@@ -695,18 +718,29 @@
     const length = Math.max(5, Math.round(Number(options.length) || timing.length))
     const outputFps = clamp(options.outputFps || timing.fps, 1, 60)
     const desaturate = clamp(options.desaturate == null ? 1 : options.desaturate, 0, 1)
-    const preset = referenceImage && !options.attribute
+    const promptOnly = isPromptOnly({ ...options, hasReferenceImage: Boolean(referenceImage) })
+    // Clearing the style is allowed, but then something has to say what the
+    // material is - the words or a picture. Nothing at all used to fall back
+    // to 冰霜 without telling anyone.
+    if (!options.attribute && !referenceImage && !promptOnly) {
+      throw new TypeError('AI 特效 restyle needs a 风格, a 参考图 or a 提示词补充')
+    }
+    const preset = (referenceImage || promptOnly) && !options.attribute
       ? null
       : resolvePreset(options.attribute == null ? 'ice' : options.attribute)
     // The init is painted in the TARGET colour rather than left grey. Colour is
     // the one thing that survives a denoise low enough to follow the source, so
     // handing it over in the init is what buys the two at once; see the block
     // above strengthToDenoise. With a reference image there is no preset and
-    // therefore no colour to hand over, so that path keeps the grey init.
+    // therefore no colour to hand over, and in the prompt-only case painting
+    // the init in the CLEARED style's colour is exactly what would fight the
+    // words, so both of those keep the grey init.
     const tint = options.tint == null ? (preset ? String(preset.accent || '') : '') : String(options.tint)
     const strength = options.strength == null
-      ? defaultStrengthFor(options.attribute == null ? 'ice' : options.attribute, options.lifecycle,
-        Boolean(String(options.supplement || '').trim()))
+      ? (promptOnly
+        ? SUPPLEMENT_STRENGTH
+        : defaultStrengthFor(options.attribute == null ? 'ice' : options.attribute, options.lifecycle,
+          Boolean(String(options.supplement || '').trim())))
       : options.strength
     const denoise = options.denoise == null
       ? strengthToDenoise(strength)
@@ -828,6 +862,7 @@
     strengthToDenoise,
     denoiseToStrength,
     defaultStrengthFor,
+    isPromptOnly,
     composePrompt,
     buildWorkflow,
     validateWorkflow,

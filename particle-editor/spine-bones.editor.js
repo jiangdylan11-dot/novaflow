@@ -34,6 +34,17 @@
 
   const DEG = 180 / Math.PI, RAD = Math.PI / 180
   const ACCENT = '#22c98a'
+  /**
+   * One palette for every place bones are drawn (编辑骨骼 on or off), by role:
+   * plain deform bones blue, bones a constraint drives violet, controls (IK / transform
+   * targets, pivots, zero-length handles) amber, the auto rig's hidden helper chains dim.
+   */
+  const ROLE_COLORS = {
+    bone: { line: '#8fd3ff', hover: '#ffffff', fill: '#4aa8e0', fillAlpha: 0.55, label: '#fff' },
+    driven: { line: '#c79bff', hover: '#e6d4ff', fill: '#7d5cc6', fillAlpha: 0.5, label: '#e6d4ff' },
+    control: { line: '#ffb454', hover: '#ffe0a8', fill: '#ff9a3c', fillAlpha: 0.45, label: '#ffc58a' },
+    helper: { line: '#ff9a3c', hover: '#ffc58a', fill: '#ff9a3c', fillAlpha: 0.3, label: '#ffc58a' }
+  }
   const TOOLS = [
     { id: 'select', label: '选择', key: 'v', hint: '点选骨骼。普通骨:拖关节点=改关节位置(骨骼重算,画面不动),拖骨身=平移整根骨。控制骨(IK/约束目标、零长度骨、枢轴):拖=摆姿势,子骨和图片跟着走、约束联动,拖骨尖=转动。按住 Alt 拖普通骨也是摆姿势;按住 Shift 拖控制骨则改它所在的关节。P=指定父骨(再点一根骨),Shift+P=挂到 root,也可以在右侧骨骼树里拖一根骨到另一根上' },
     { id: 'rotate', label: '旋转', key: 'r', hint: '拖动旋转选中的骨骼(绕它的起点)。控制骨或按住 Alt:摆姿势,子骨/图片跟着转、约束联动(零长度的枢轴也能转);普通骨:改骨架,骨尖上的关节跟着转、画面不动' },
@@ -439,6 +450,19 @@
     }
     writeLocal(b, L)
     return { skeleton: out, changed: new Set([index]) }
+  }
+
+  /** Bones a constraint DRIVES (an IK / transform / path constraint lists them in `bones`). */
+  function constrainedOf(skel) {
+    const bones = bonesOf(skel)
+    const byName = new Map(bones.map((b, i) => [b.name, i]))
+    const out = new Set()
+    for (const key of ['ik', 'transform', 'path']) {
+      for (const c of (Array.isArray(skel[key]) ? skel[key] : [])) {
+        for (const n of (Array.isArray(c && c.bones) ? c.bones : [])) { const i = byName.get(n); if (i !== undefined) out.add(i) }
+      }
+    }
+    return out
   }
 
   /**
@@ -884,7 +908,7 @@
   function createController(host) {
     const OVERLAY_MARK = 'data-novaflow-bones-editor-overlay'
     const st = {
-      enabled: false, tool: 'select', skel: null, W: [], WF: [], mechs: [], owned: new Set(), derived: new Set(), controls: new Set(),
+      enabled: false, preview: false, tool: 'select', skel: null, W: [], WF: [], mechs: [], owned: new Set(), derived: new Set(), controls: new Set(), constrained: new Set(),
       selected: -1, hover: null, drag: null, undo: [], redo: [], dirty: false, cleanDepth: 0,
       overlay: null, box: { l: -1, t: -1, w: -1, h: -1, shown: false }, showNames: false, timer: 0, raf: 0, viewSig: '', pickParent: false, bound: false
     }
@@ -905,10 +929,26 @@
       }
       st.derived = derived
       st.controls = st.skel ? new Set([...controlsOf(st.skel, st.mechs)].filter((i) => !derived.has(i))) : new Set()
+      st.constrained = st.skel ? constrainedOf(st.skel) : new Set()
       st.owned = new Set([...derived, ...mechControls])
       // W: what is DRAWN — the pose the runtime shows (constraints applied) when the host
       // can pose the working copy through it; the FK tree otherwise
       let W = null
+      // while the rig is only being LOOKED at (显示骨骼 without 编辑骨骼) the preview plays,
+      // so the bones must be drawn where the runtime actually has them this frame
+      if (st.preview && st.skel && typeof host.liveWorld === 'function') {
+        try {
+          const live = host.liveWorld()
+          if (live && live.size) {
+            const bones = bonesOf(st.skel)
+            st.W = bones.map((b, i) => {
+              const m = live.get(b.name)
+              return m ? { a: m.a, b: m.b, c: m.c, d: m.d, worldX: m.worldX, worldY: m.worldY, length: st.WF[i].length, name: b.name, parent: st.WF[i].parent } : st.WF[i]
+            })
+            return
+          }
+        } catch { /* the preview may be mid-rebuild */ }
+      }
       if (st.skel && typeof host.poseWorld === 'function') {
         try {
           const P = host.poseWorld(st.skel)
@@ -920,6 +960,8 @@
     const isMech = (i) => st.owned.has(i) || (typeof host.isMechanism === 'function' && host.isMechanism(i, st.skel))
     const editable = (i) => !st.derived.has(i)
     const isControl = (i) => st.controls.has(i)
+    /** helper chain / control / constraint-driven / plain — one colour each, everywhere. */
+    const roleOf = (i) => (st.derived.has(i) ? 'helper' : (st.controls.has(i) ? 'control' : (isMech(i) ? 'helper' : (st.constrained.has(i) ? 'driven' : 'bone'))))
     /** A point picked off the POSED skeleton, expressed in the same place of the setup pose. */
     function toSetupFrame(pt, parentIndex) {
       const dm = st.W[parentIndex], fm = st.WF[parentIndex]
@@ -982,7 +1024,7 @@
       }
       st.overlay = ov
       const r = canvasRect()
-      const shown = !!(st.enabled && r && r.width >= 4 && r.height >= 4)
+      const shown = !!((st.enabled || st.preview) && r && r.width >= 4 && r.height >= 4)
       if (shown && (ov.width !== canvas.width || ov.height !== canvas.height)) { ov.width = canvas.width; ov.height = canvas.height }
       if (shown !== st.box.shown) { ov.style.display = shown ? 'block' : 'none'; st.box.shown = shown }
       if (!shown) return ov
@@ -1041,11 +1083,11 @@
         if (i === st.selected) continue
         const m = W[i]
         const o = toS(m.worldX, m.worldY), t = m.length > 0 ? toS(...tipOf(m)) : o
-        const mech = isMech(i), derived = st.derived.has(i), control = st.controls.has(i)
         const hov = st.hover && st.hover.index === i
-        const color = derived ? '#ff9a3c' : (control ? (hov ? '#ffe0a8' : '#ffb454') : (mech ? '#ff9a3c' : (hov ? '#ffffff' : '#8fd3ff')))
-        drawBone(g, o[0], o[1], t[0], t[1], { color, fill: derived || mech ? '#ff9a3c' : '#4aa8e0', alpha: derived ? 0.5 : 1, fillAlpha: derived || mech ? 0.3 : 0.55 })
-        if (st.showNames || hov) drawLabel(g, o[0], o[1], m.name, mech ? '#ffc58a' : '#fff')
+        const role = roleOf(i)
+        const c = ROLE_COLORS[role]
+        drawBone(g, o[0], o[1], t[0], t[1], { color: hov ? c.hover : c.line, fill: c.fill, alpha: role === 'helper' ? 0.5 : 1, fillAlpha: c.fillAlpha })
+        if (st.showNames || hov) drawLabel(g, o[0], o[1], m.name, c.label)
       }
       if (st.selected >= 0 && W[st.selected]) {
         const m = W[st.selected]
@@ -1245,23 +1287,34 @@
      * multiplications; the draw itself is ~0.3 ms and only runs when something moved).
      */
     function frameLoop() {
-      if (!st.enabled) { st.raf = 0; return }
+      if (!st.enabled && !st.preview) { st.raf = 0; return }
       st.raf = window.requestAnimationFrame(frameLoop)
       const sig = viewSignature()
+      if (st.preview) { recompute(); draw(); st.viewSig = sig; return }   // the animation moves every frame
       if (sig !== st.viewSig) { st.viewSig = sig; draw() }
+    }
+    /** Draw only (显示骨骼 without 编辑骨骼): the same picture, no input, no freeze. */
+    function setPreview(on) {
+      const next = !!on && !st.enabled
+      if (next === st.preview) { if (!next) { ensureOverlay(); draw() } return }
+      st.preview = next
+      if (next) { if (!st.raf) st.raf = window.requestAnimationFrame(frameLoop) }
+      else if (!st.enabled && st.raf) { window.cancelAnimationFrame(st.raf); st.raf = 0 }
+      recompute(); ensureOverlay(); draw()
     }
     function setEnabled(on) {
       st.enabled = !!on
       if (st.enabled) {
+        st.preview = false
         bind()
         if (!st.timer) st.timer = window.setInterval(() => { try { if (typeof host.onFrame === 'function') host.onFrame() } catch { /* the host is not ours to break */ } }, 250)
         if (!st.raf) st.raf = window.requestAnimationFrame(frameLoop)
       } else {
         unbind(); st.drag = null; st.hover = null; setPickParent(false)
         if (st.timer) { window.clearInterval(st.timer); st.timer = 0 }
-        if (st.raf) { window.cancelAnimationFrame(st.raf); st.raf = 0 }
+        if (st.raf && !st.preview) { window.cancelAnimationFrame(st.raf); st.raf = 0 }
       }
-      ensureOverlay(); draw()
+      recompute(); ensureOverlay(); draw()
     }
     function undo() { const prev = st.undo.pop(); if (!prev) return; st.redo.push(cloneRig(st.skel)); st.skel = prev; st.dirty = st.undo.length !== st.cleanDepth; recompute(); draw(); emit('onChange') }
     function redo() { const next = st.redo.pop(); if (!next) return; st.undo.push(cloneRig(st.skel)); st.skel = next; st.dirty = st.undo.length !== st.cleanDepth; recompute(); draw(); emit('onChange') }
@@ -1335,17 +1388,21 @@
     function dispose() { setEnabled(false); if (st.overlay && st.overlay.parentElement) st.overlay.parentElement.removeChild(st.overlay); st.overlay = null }
 
     return {
-      load, setEnabled, setTool, select, undo, redo, deleteSelected, renameSelected, reparentSelected, reparentNamed, setSelectedPose, draw, dispose,
+      load, setEnabled, setPreview, setTool, select, undo, redo, deleteSelected, renameSelected, reparentSelected, reparentNamed, setSelectedPose, draw, dispose,
       setPickParent, isPickingParent: () => st.pickParent,
       setShowNames: (v) => { st.showNames = !!v; draw() },
       getSkeleton: () => (st.skel ? cloneRig(st.skel) : null),
       /** The live bone list, read-only — for panels that only need names / parents / lengths. */
       peekBones: () => (st.skel ? bonesOf(st.skel) : []),
+      /** The live working copy, read-only — for panels that also need slots / skins / constraints. */
+      peek: () => st.skel,
+      /** 'bone' | 'driven' | 'control' | 'helper' — the colour the canvas draws it with. */
+      roleOf: (i) => roleOf(i),
       getWorld: () => st.WF,
       getDisplayWorld: () => st.W,
       isOwned: (i) => st.owned.has(i),
       isControl: (i) => st.controls.has(i),
-      getState: () => ({ enabled: st.enabled, tool: st.tool, selected: st.selected, dirty: st.dirty, canUndo: st.undo.length > 0, canRedo: st.redo.length > 0, bones: st.skel ? st.skel.bones.length : 0, mechanisms: st.mechs.length }),
+      getState: () => ({ enabled: st.enabled, preview: st.preview, tool: st.tool, selected: st.selected, dirty: st.dirty, canUndo: st.undo.length > 0, canRedo: st.redo.length > 0, bones: st.skel ? st.skel.bones.length : 0, mechanisms: st.mechs.length }),
       markClean: () => { st.cleanDepth = st.undo.length; st.dirty = false },
       _st: st
     }
@@ -1354,7 +1411,8 @@
   return {
     TOOLS, ACCENT,
     worldTransforms, worldMatrix, localFromWorld, tipOf, endpointsAt, setEndpoints, moveJoint, translateBone, rotateBone,
-    addBone, deleteBone, renameBone, reparentBone, nextName, parseMechanisms, mechanismOwned, rebuildMechanisms, hitTest, poseMove, poseRotate, controlsOf, cloneRig, forkAttachments,
+    addBone, deleteBone, renameBone, reparentBone, nextName, parseMechanisms, mechanismOwned, rebuildMechanisms, hitTest, poseMove, poseRotate, controlsOf, constrainedOf, cloneRig, forkAttachments,
+    ROLE_COLORS,
     compensateAttachments, attachmentList, createController,
     _internals: { toLocalPoint, deltaTransform, topoOrder, reindexWeighted, segDist, wrap180 }
   }

@@ -103,6 +103,19 @@ assert.equal((asideMarkup.match(/data-aifx-section=/g) || []).length, 2, 'two se
   // hand that fact over - not just the attribute and the lifecycle.
   assert.ok(source.includes("Boolean(String(state.supplement || '').trim())"),
     'the panel must tell the module whether 提示词补充 has anything in it')
+  // Clearing the style and writing the material instead has to be reachable:
+  // 生成 stays enabled on the supplement alone, and typing has to refresh or
+  // the button never notices.
+  const flat = source.replace(/\s+/g, ' ')
+  assert.ok(flat.includes("const chosen = Boolean(state.reference) || Boolean(restyle "
+    + "&& restyle.getPreset(state.attribute)) || Boolean(String(state.supplement || '').trim())"),
+    '生成 must be allowed on a supplement with no style')
+  assert.ok(flat.includes("state.supplement = String(refs.supplement.value || '')"),
+    'the textarea still feeds state')
+  assert.match(flat, /state\.supplement = String\(refs\.supplement\.value \|\| ''\).{0,320}?refreshUi\(\)/,
+    'typing in 提示词补充 has to refresh the panel')
+  assert.ok(source.includes('材质来自提示词补充'),
+    'the panel has to say where the material is coming from')
 }
 
 assert.ok(source.includes("state.previewMode = state.resultFrames.length ? 'compare' : 'template'"),

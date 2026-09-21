@@ -213,7 +213,7 @@ test("the AI特效 shell stays up until React has left 特效 after a primary si
   assert.deepEqual(hides, ["primary-switch:动画"]);
   assert.equal(observerCallback, null, "the watcher disconnects after hiding");
   const html = read("particle-editor/index.html");
-  assert.match(html, /aifx-repaint-runtime\.js\?v=20260921-aifx-supfirst-1/);
+  assert.match(html, /aifx-repaint-runtime\.js\?v=20260921-aifx-promptonly-1/);
 
   const helper = source.match(/  const isPrimarySidebarAction = \(action\) => \{[\s\S]*?\n  \}/)?.[0];
   assert.ok(helper);

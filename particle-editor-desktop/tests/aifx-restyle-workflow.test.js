@@ -117,6 +117,30 @@ assert.equal(api.buildWorkflow({
 assert.equal(api.buildWorkflow({
   sourceVideo: 's.mp4', attribute: 'ice', supplement: '加点星星', strength: 20,
 })[6].inputs.denoise, 0.55)
+
+// --- clearing the style hands the material to the words -----------------
+// Measured on the crescent: asking for deep purple while the preset is still
+// in the prompt comes back cyan at 0.55, 0.70 and 0.80, off a grey init, with
+// the preset's material sentence deleted, with the ask moved to the front,
+// declared as an OVERRIDE, and in English. The word that wins is the preset's
+// NAME, so prompt-only takes it out of the sentence entirely - and then the
+// same ask comes back purple.
+assert.equal(api.isPromptOnly({ supplement: '深紫色品红晶体' }), true)
+assert.equal(api.isPromptOnly({ attribute: 'ice', supplement: '深紫色品红晶体' }), false)
+assert.equal(api.isPromptOnly({ supplement: '   ' }), false)
+assert.equal(api.isPromptOnly({ hasReferenceImage: true, supplement: '深紫' }), false)
+const words = api.buildWorkflow({
+  sourceVideo: 's.mp4', shape: 'crescent slash', supplement: '深紫色品红晶体，内部有紫光。',
+})
+api.validateWorkflow(words)
+assert.ok(!/ICE|pale cyan/.test(words[5].inputs.prompt), 'the cleared style must leave the prompt')
+assert.match(words[5].inputs.prompt, /深紫色品红晶体/)
+assert.equal(words[33].inputs.tint, '',
+  'painting the init in the cleared style colour is exactly what fights the words')
+assert.equal(words[6].inputs.denoise, api.strengthToDenoise(api.SUPPLEMENT_STRENGTH))
+// A style, a picture or words - one of the three has to say what the material
+// is. Nothing at all used to fall back to 冰霜 without telling anyone.
+assert.throws(() => api.buildWorkflow({ sourceVideo: 's.mp4' }), /风格.*参考图.*提示词补充/)
 assert.equal(api.defaultStrengthFor('ice'), api.DEFAULT_STRENGTH)
 assert.equal(api.defaultStrengthFor('nope'), api.DEFAULT_STRENGTH)
 assert.ok(api.defaultStrengthFor('pixel') > api.DEFAULT_STRENGTH)
@@ -151,7 +175,12 @@ assert.equal(referenceOnly[5].class_type, 'MiniMaxH3ReferenceToVideo')
 assert.match(referenceOnly[5].inputs.prompt, /<Picture 1>/)
 assert.doesNotMatch(referenceOnly[5].inputs.prompt, /VENOM|ICE|FIRE|GOLD/)
 assert.equal(referenceOnly[6].inputs.denoise, api.strengthToDenoise(api.DEFAULT_STRENGTH))
-assert.throws(() => api.buildWorkflow({ sourceVideo: 's.mp4', attribute: '' }), /Unknown AI 特效 attribute/)
+// An empty attribute with nothing to replace it is the "you picked nothing"
+// case, not an unknown id; a wrong id still reports itself as one.
+assert.throws(() => api.buildWorkflow({ sourceVideo: 's.mp4', attribute: '' }),
+  /风格.*参考图.*提示词补充/)
+assert.throws(() => api.buildWorkflow({ sourceVideo: 's.mp4', attribute: 'nope' }),
+  /Unknown AI 特效 attribute/)
 
 // --- the clip's own length ------------------------------------------------
 // H3 samples 17k+5 frames. The v2v node used to walk DOWN to that grid, which

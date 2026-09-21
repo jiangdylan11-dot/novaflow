@@ -1216,7 +1216,7 @@
                 <div class="aifx-prompt-field">
                   <label for="novaflow-aifx-prompt-supplement">提示词补充</label>
                   <textarea id="novaflow-aifx-prompt-supplement" class="aifx-prompt-input" data-action="prompt-supplement" rows="3" maxlength="400" placeholder="可选。这一次还想要什么细节"></textarea>
-                  <div class="aifx-prompt-hint">描述材质怎么<b>动</b>（边缘滴落 / 碎成棱角 / 溅成圆珠）比描述颜色有用。留空就按所选风格走。</div>
+                  <div class="aifx-prompt-hint">选了风格时，这里是<b>加东西</b>（边缘滴落 / 多一圈星星 / 结尾不碎）——风格自己的颜色和材质说了算。<br>把风格<b>取消</b>掉，这里就是材质本身，颜色也能写（例：深紫色品红晶体，内部有紫光）。</div>
                 </div>
                 <div class="aifx-row" style="margin-top:12px">
                   <label>候选数量</label>
@@ -1851,8 +1851,11 @@
     const client = CLIENT()
     if (!restyle || !client) throw new Error('AI 特效：生成模块未加载')
     if (!state.source) throw new Error('AI 特效：请先上传素材')
-    if (!state.reference && !restyle.getPreset(state.attribute)) {
-      throw new Error('AI 特效：请先在风格库里选一种风格，或放一张参考图')
+    // Clearing the style and writing 提示词补充 instead is the prompt-only
+    // case: the words become the material description. What is not allowed is
+    // having neither.
+    if (!state.reference && !restyle.getPreset(state.attribute) && !String(state.supplement || '').trim()) {
+      throw new Error('AI 特效：请先在风格库里选一种风格，或放一张参考图，或在提示词补充里写想要的材质')
     }
     state.isGenerating = true
     state.abort = new AbortController()
@@ -2856,6 +2859,10 @@
 
     refs.supplement?.addEventListener('input', () => {
       state.supplement = String(refs.supplement.value || '')
+      // Typing here now decides three things - whether 生成 is allowed at all
+      // with no style, which denoise the run gets, and what the 材质来源 line
+      // says - so the panel has to follow the keystrokes.
+      refreshUi()
     })
     refs.candidateCount?.addEventListener('input', () => {
       state.candidateCount = Number(refs.candidateCount.value) || 1
@@ -2924,6 +2931,7 @@
     }
     if (refs.generate) {
       const chosen = Boolean(state.reference) || Boolean(restyle && restyle.getPreset(state.attribute))
+        || Boolean(String(state.supplement || '').trim())
       refs.generate.disabled = state.isGenerating || !state.source || !restyle || !chosen
       refs.generate.textContent = state.isGenerating ? '生成中…' : '生成特效'
     }
@@ -2994,7 +3002,9 @@
         ? '材质来自参考图'
         : preset
           ? preset.label + (preset.verified ? '' : '（该风格尚未逐条验证，可能需要多出几个候选）')
-          : '先在风格库里选一种风格，或放一张参考图'
+          : String(state.supplement || '').trim()
+            ? '材质来自提示词补充'
+            : '先在风格库里选一种风格，或放一张参考图，或在提示词补充里写想要的材质'
     }
     syncAllRangeProgress()
   }
