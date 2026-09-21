@@ -77,6 +77,14 @@ assert.ok(source.includes('<span class="aifx-section-title">特效生成</span>'
 // does not already say, and it reaches the prompt (2026-09-20, put back after
 // the "无感" pass removed it: "这个提示词补充可能还是有必要的").
 assert.ok(source.includes('data-action="prompt-supplement"'), '提示词补充 is in the panel')
+// The hint carries the one rule an artist cannot guess. Measured: naming a
+// THING that appears lands it with its motion (dripping meltwater, shed
+// chips, fragments becoming coins, orbiting stars), while re-choreographing
+// parts that already exist does not (tumble, pull back in, afterimage trail,
+// trembling edge) - that motion comes from the init latent, not the words.
+assert.ok(source.includes('写「多出什么、变成什么」才生效'),
+  'the hint has to say which asks land')
+assert.ok(source.includes('只写「怎么动」'), 'and which do not')
 assert.ok(source.includes('supplement: state.supplement,'), 'it reaches the pipeline')
 const supplementIndex = source.indexOf('data-action="prompt-supplement"')
 assert.ok(supplementIndex > clearStyle && supplementIndex < candidates,

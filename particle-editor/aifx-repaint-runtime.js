@@ -1215,8 +1215,8 @@
                 </div>
                 <div class="aifx-prompt-field">
                   <label for="novaflow-aifx-prompt-supplement">提示词补充</label>
-                  <textarea id="novaflow-aifx-prompt-supplement" class="aifx-prompt-input" data-action="prompt-supplement" rows="3" maxlength="400" placeholder="可选。还想要什么"></textarea>
-                  <div class="aifx-prompt-hint">选了风格＝加东西；取消风格＝这里就是材质，颜色也能写</div>
+                  <textarea id="novaflow-aifx-prompt-supplement" class="aifx-prompt-input" data-action="prompt-supplement" rows="3" maxlength="400" placeholder="可选。例：下缘不断滴落融水"></textarea>
+                  <div class="aifx-prompt-hint">选了风格＝加东西；取消风格＝这里就是材质，颜色也能写。<br>写「多出什么、变成什么」才生效（滴落融水 / 掉冰碴 / 碎片变金币 / 绕一圈星星）；只写「怎么动」（翻滚 / 吸回 / 拖影）不生效，运动跟着素材走。</div>
                 </div>
                 <div class="aifx-row" style="margin-top:12px">
                   <label>候选数量</label>
