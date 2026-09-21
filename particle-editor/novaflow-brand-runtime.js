@@ -59804,8 +59804,9 @@
 
   function isSpineInlineImportPanelBodyCanonical(body) {
     if (!(body instanceof HTMLElement)) return false;
+    // PS import owns additional controls here. Rebuilding the body for those
+    // controls detaches the buttons between pointerdown and click.
     const directChildren = Array.from(body.children).filter((child) => child instanceof HTMLElement);
-    if (directChildren.length !== SPINE_INLINE_IMPORT_ROWS.length + 2) return false;
     const rows = directChildren.filter((child) => child.getAttribute("data-novaflow-spine-inline-import-row") === "1");
     const clearButtons = directChildren.filter((child) => child.getAttribute("data-novaflow-spine-inline-import-clear-all") === "1");
     const startButtons = directChildren.filter((child) => child.getAttribute("data-novaflow-spine-inline-import-start") === "1");
@@ -59827,6 +59828,14 @@
     const snapshot = getSpineInlineImportPanelStatusSnapshot(panel) || {};
     const nextBody = buildSpineInlineImportPanelBody();
     if (body instanceof HTMLElement) {
+      Array.from(body.children).forEach((child) => {
+        if (child instanceof HTMLElement &&
+          !child.hasAttribute("data-novaflow-spine-inline-import-row") &&
+          !child.hasAttribute("data-novaflow-spine-inline-import-clear-all") &&
+          !child.hasAttribute("data-novaflow-spine-inline-import-start")) {
+          nextBody.appendChild(child);
+        }
+      });
       nextBody.hidden = body.hidden;
       body.replaceWith(nextBody);
     } else {
