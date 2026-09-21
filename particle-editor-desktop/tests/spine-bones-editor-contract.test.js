@@ -11,7 +11,7 @@ const BONES = 'spine-auto-bones.js'
 const EDITOR = 'spine-bones.editor.js'
 const PANEL = 'spine-auto-mesh.panel.js'
 const WEIGHTS = 'spine-auto-weights.js'
-const CACHE_BUSTER = '20260921-auto-mesh-48'
+const CACHE_BUSTER = '20260922-auto-mesh-58'
 
 // particle-editor is an ESM package: `require` runs the scripts and their exports land on globalThis
 require(path.join(root, 'particle-editor', CORE))
@@ -40,6 +40,12 @@ test('both files are shipped by the renderer build and the sync chain', () => {
     assert.ok(sync.includes(`label: '${file}'`), `${file} missing a sync-runtime group`)
     assert.ok(check.includes(`'${file}'`), `${file} missing from check-runtime-sync`)
   }
+})
+
+test('mesh / weight actions are refused only while the rig has unsaved edits', () => {
+  const panel = read(`particle-editor/${PANEL}`)
+  assert.ok(panel.includes('const rigDirty = !!(bones.editing && bones.ctl && bones.ctl.getState().dirty)'), 'an open 骨骼架设 alone must not block them')
+  assert.ok(panel.includes("if (!forRigging && rigDirty)"), 'unsaved rig edits still do')
 })
 
 test('the panel has a 骨骼架设 panel of its own: expanding it IS the edit mode, plus the auto rig and the write-back', () => {
@@ -142,7 +148,9 @@ test('re-parenting: P picks a parent, the project tree can be dragged, and Ctrl+
   assert.ok(src.includes('function reparentNamed'), 'the tree drag re-parents by name')
   const panel = read(`particle-editor/${PANEL}`)
   for (const needle of ['onTreePointerDown', 'onTreePointerUp', 'reparentNamed', 'BONE_ROW_SEL', 'tuneSkeletonSidebar']) assert.ok(panel.includes(needle), needle)
-  assert.ok(panel.includes("sec.style.display = 'none'"), "the app's own sidebar blocks are replaced by the hierarchy")
+  assert.ok(panel.includes('function installSidebarStyle') && panel.includes('left:-10000px !important'), "the app's own sidebar blocks never paint (no first-frame flash of the old layout)")
+  assert.ok(!panel.includes('{display:none !important}'), 'they are parked off-screen, not display:none — hidden blocks lose the markers its bone rows need')
+  assert.ok(panel.includes(":not([' + HIER_MARK + '])'"), 'our own tree is excluded from that rule')
   assert.ok(panel.includes('function ensureHierarchy') && panel.includes('function hierModel'), 'one project hierarchy owns the sidebar')
   assert.ok(panel.includes("hier.scroll.style.maxHeight = maxH + 'px'"), 'and it is sized to the sidebar')
   assert.ok(!panel.includes('state.fitBonesList'), 'the second (left) bone tree is gone')
@@ -190,16 +198,50 @@ test('a drawn chain hangs off the selected bone, sits under it in the list, and 
 test('the hierarchy is a Spine-style tree: groups closed by default, both ways of selecting, skins and animations forwarded', () => {
   const panel = read(`particle-editor/${PANEL}`)
   assert.ok(panel.includes("const hier = { box: null, scroll: null, open: new Set()"), 'every group starts collapsed')
-  for (const needle of ["'骨架'", "'约束'", "'皮肤'", "'动画'", "'图层'"]) assert.ok(panel.includes(needle), `the tree needs a ${needle} group`)
+  for (const needle of ["'骨架'", "'约束'", "'皮肤'", "'动画'", "'绘制顺序'"]) assert.ok(panel.includes(needle), `the tree needs a ${needle} group`)
+  // the slot list IS the draw order, and it mirrors what the preview points at
+  assert.ok(panel.includes('function paintHierLayer') && panel.includes('try { paintHierLayer(hoverName) }'), 'hovering a layer in the preview marks its draw-order row')
+  assert.ok(panel.includes('if (r.layer) { pickLayerRow(r.layer, ev); return }'), 'a draw-order row selects that layer')
+  // a layer row selects first; the tick (which is what 蒙皮/权重 read) needs a second click
+  assert.ok(panel.includes('const again = hier.layer === name && hier.pick.size === 1 && hier.pick.has(name)') && panel.includes('if (again) toggleLayerTick(name)'), 'the second click on the same row toggles the tick')
+  assert.ok(panel.includes('function toggleLayerTick'), 'and a third click unticks it')
+  const ed = read(`particle-editor/${EDITOR}`)
+  assert.ok(ed.includes('function onPreviewUp') && ed.includes('if (hit) select(hit.index)'), 'bones stay clickable while they are only being shown')
+  assert.ok(ed.includes('Math.hypot(s[0] - start[0], s[1] - start[1]) > 4'), 'a drag (pan / zoom) is not a selection')
+  // the draw order can be rearranged: multi-select, drag, and Spine's + / - keys
+  assert.ok(panel.includes('function pickLayerRow') && panel.includes('ev.shiftKey && hier.anchor'), 'Ctrl / Shift multi-select')
+  assert.ok(panel.includes('function dropOrder') && panel.includes('function onOrderPointerUp'), 'rows can be dragged to a new place')
+  assert.ok(panel.includes("if (k !== '+' && k !== '=' && k !== '-' && k !== '_') return"), '+ / - move the picked layers')
+  assert.ok(panel.includes('ctl.setSlotOrder(displayOrder.slice().reverse())'), 'the tree is top-down, the skeleton is bottom-up')
+  const editor2 = read(`particle-editor/${EDITOR}`)
+  assert.ok(editor2.includes('function setSlotOrder'), 'the draw order is one undo step on the working copy')
+  // clicking the art only ticks the layer: no editor may be opened from a pick
+  const picker = read('particle-editor/spine-auto-mesh.picker.js')
+  assert.ok(!/p\.editLayer\(/.test(picker), 'a click on the artwork must not open the mesh editor')
+  assert.ok(!/p\.regenerateLayer\(/.test(picker), 'nor generate a mesh behind the click')
+  assert.ok(picker.includes('p.setSelected(hit.name, true)') && picker.includes('p.focusLayer(hit.name)'), 'it ticks the layer and shows it in the draw order')
   assert.ok(panel.includes('function revealInTree'), 'the selection opens its ancestors in the tree')
   assert.ok(panel.includes('scrollIntoBox(row, hier.scroll)'), 'and is scrolled inside the tree only')
-  assert.ok(panel.includes('revealInTree(i >= 0 && list[i] ? list[i].name : null)'), 'every selection change drives it')
-  assert.ok(panel.includes('if (i >= 0) { ctl.select(i); bones.syncUi(); return }'), 'clicking a row selects that bone in the editor')
+  assert.ok(panel.includes('revealInTree(name)') && panel.includes('syncAppSelection(name)'), 'every selection change drives the tree and the app selection')
+  assert.ok(panel.includes('function syncAppSelection') && panel.includes('function expandAppAncestor'), "the app's hidden tree still sets its 当前选择骨骼")
+  assert.ok(panel.includes('if (i >= 0) { pickBoneRow(name, i, ev); return }'), 'clicking a row selects that bone in the editor')
+  // bones multi-select the way the app's own tree did: Ctrl adds, Shift takes the run
+  assert.ok(panel.includes('function pickBoneRow') && panel.includes('ev.ctrlKey || ev.metaKey'), 'Ctrl toggles a bone in the selection')
+  assert.ok(panel.includes('ev.shiftKey && hier.boneAnchor'), 'Shift selects the run')
+  assert.ok(panel.includes('ctl.setPicked([...hier.bones])') && panel.includes('function pushBonePicks'), 'the extra picks are drawn and handed to the app')
+  // the same Ctrl-click works on the preview itself, editing or not
+  const edPick = read(`particle-editor/${EDITOR}`)
+  assert.ok(edPick.includes("select(hit.index, { additive: !!(ev.ctrlKey || ev.metaKey) })"), 'Ctrl-clicking a bone in the view-only preview adds it')
+  assert.ok(edPick.includes("if (ev.ctrlKey || ev.metaKey) { select(hit.index, { additive: true }); return }"), 'and while editing it selects instead of starting a drag')
+  assert.ok(panel.includes('if (opts && opts.additive)'), 'the panel keeps the set')
+  const edSel = read(`particle-editor/${EDITOR}`)
+  assert.ok(edSel.includes('for (const i of st.picked)'), 'the overlay draws every picked bone')
   assert.ok(panel.includes('function toggleHierKey') && panel.includes("chev.addEventListener('click'"), 'the arrow folds, the name selects (Spine)')
   assert.ok(panel.includes('function appButton'), 'skins and animations stay with the app: its buttons are clicked')
   assert.ok(panel.includes('function activeSkinName') && panel.includes('function activeAnimationName'), 'the active one is read from the runtime')
   assert.ok(panel.includes('const btn = appButton(r.pick[0], r.pick[1])'), 'a skin / animation row forwards to that button')
-  assert.ok(panel.includes('if (sec.hasAttribute(HIER_MARK))'), "the app tags our box as one of its sections; it must never be hidden with them")
+  assert.ok(panel.includes('if (!sec.hasAttribute(HIER_MARK)) continue'), "the app tags our box as one of its sections; it must never be hidden with them")
+  assert.ok(panel.includes("if (body && !body.querySelector(`[${HIER_MARK}=\"1\"]`)) { try { tuneSkeletonSidebar() }"), 'the tree is built in the frame the sidebar appears')
   const editor = read(`particle-editor/${EDITOR}`)
   assert.ok(editor.includes('peek: () => st.skel') && editor.includes('roleOf: (i) => roleOf(i)'), 'the tree reads the working copy and the colour roles')
 })
@@ -225,13 +267,54 @@ test('one drawing style for 显示骨骼 and 编辑骨骼, with a colour per rol
   const panel = read(`particle-editor/${PANEL}`)
   assert.ok(panel.includes('function syncBonePreview'), '显示骨骼 is routed through the editor overlay')
   assert.ok(panel.includes('liveWorld: () => {'), 'the panel hands the runtime matrices over')
-  assert.ok(panel.includes("['#c79bff', '受约束驱动']"), 'the panel carries the legend')
+  assert.ok(panel.includes("['#c79bff', '受约束']"), 'the panel carries the legend')
+  assert.ok(panel.includes('function repaintPreview'), 'freezing / thawing repaints at once, so the art and the bones never disagree for a frame')
+})
+
+test('缩放 scales the bone the way Spine does: its own axes, children and art follow', () => {
+  const skel = {
+    bones: [{ name: 'root' }, { name: 'arm', parent: 'root', length: 50, rotation: 30 }, { name: 'hand', parent: 'arm', x: 50, length: 20 }],
+    slots: [], skins: [{ name: 'default', attachments: {} }], animations: {}
+  }
+  const W0 = E.worldTransforms(skel)
+  const res = E.poseScale(skel, 1, 2, 0.5)
+  assert.ok(res, 'a scale change is a change')
+  assert.equal(res.skeleton.bones[1].scaleX, 2)
+  assert.equal(res.skeleton.bones[1].scaleY, 0.5)
+  const W1 = E.worldTransforms(res.skeleton)
+  const tip0 = E.tipOf(W0[1]), tip1 = E.tipOf(W1[1])
+  const len = (o, t) => Math.hypot(t[0] - o.worldX, t[1] - o.worldY)
+  assert.ok(Math.abs(len(W1[1], tip1) - 2 * len(W0[1], tip0)) < 1e-6, 'the bone is twice as long along its own x')
+  const handMoved = Math.hypot(W1[2].worldX - W0[2].worldX, W1[2].worldY - W0[2].worldY)
+  assert.ok(handMoved > 1, 'the child rides along, as in Spine')
+  assert.equal(E.poseScale(skel, 1, 1, 1), null, 'a no-op scale is not an undo step')
+  const src = read(`particle-editor/${EDITOR}`)
+  assert.ok(src.includes("if (st.tool === 'scale') {") && src.includes("d.kind === 'scale'"), 'the tool drags it')
+  assert.ok(src.includes('if (uniform) {'), 'Shift keeps it uniform')
+  const panel = read(`particle-editor/${PANEL}`)
+  assert.ok(!panel.includes("smallButton('名称')"), 'the 名称 toggle is gone from the panel')
+})
+
+test('the rig panel keeps one restore button; undo / redo / delete stay on the keyboard', () => {
+  const panel = read(`particle-editor/${PANEL}`)
+  assert.ok(!panel.includes('undoBtn') && !panel.includes('redoBtn') && !panel.includes('delBtn'), 'no undo / redo / delete buttons')
+  assert.ok(panel.includes("el('button', null, '还原初始骨架')"), 'one restore button instead, full size like the other two')
+  assert.ok(panel.indexOf('body.appendChild(resetBtn)') > panel.indexOf('body.appendChild(applyBtn)'), 'and it sits last')
+  assert.ok(panel.indexOf('body.appendChild(autoBtn)') < panel.indexOf('body.appendChild(toolsRow)'), '自动架设 is the first thing in the panel')
+  assert.ok(panel.includes('loadBonesFromSource(true)'), 'which drops the edits and reloads the project rig')
+  const ed = read(`particle-editor/${EDITOR}`)
+  assert.ok(ed.includes("k === 'z'") && ed.includes("ev.key === 'Delete'"), 'the shortcuts are still there')
+  // the drawn bones are slimmer than they were
+  assert.ok(ed.includes('Math.max(1.6, Math.min(4, len * 0.055))'), 'thinner wedge')
 })
 
 test('the editor stays dependency free and exposes the tools', () => {
   const src = read(`particle-editor/${EDITOR}`).replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
   assert.ok(!/\brequire\(/.test(src), 'must not require anything')
-  assert.deepEqual(E.TOOLS.map((t) => t.id), ['select', 'rotate', 'create'])
+  assert.deepEqual(E.TOOLS.map((t) => t.id), ['move', 'rotate', 'scale', 'create'], 'move / rotate / scale / create, in that order')
+  const srcTools = read(`particle-editor/${EDITOR}`)
+  assert.ok(srcTools.includes("tool: 'move'"), 'move is the tool a session starts in')
+  assert.ok(srcTools.includes('// clicking another bone picks it up, whatever the tool is'), 'selection is free in every tool')
   for (const fn of ['worldTransforms', 'moveJoint', 'translateBone', 'rotateBone', 'addBone', 'deleteBone', 'renameBone', 'reparentBone', 'parseMechanisms', 'rebuildMechanisms', 'hitTest', 'poseMove', 'poseRotate', 'controlsOf', 'cloneRig', 'forkAttachments', 'createController']) assert.equal(typeof E[fn], 'function', fn)
 })
 
@@ -454,4 +537,26 @@ test('the real auto rig round-trips: FK matches the generator and a knee move ke
     const p1 = [m1.a * (a1.x || 0) + m1.b * (a1.y || 0) + m1.worldX, m1.c * (a1.x || 0) + m1.d * (a1.y || 0) + m1.worldY]
     near(p1, p0, 0.05, slot)
   }
+})
+
+test('the two numeric fields belong to the active tool', () => {
+  const panel = read('particle-editor/spine-auto-mesh.panel.js')
+  const editor = read('particle-editor/spine-bones.editor.js')
+  assert.ok(panel.includes('const POSE_FIELDS = {'), 'the fields are described per tool')
+  for (const [tool, a, b] of [['move', 'X', 'Y'], ['rotate', '角度', '长度'], ['scale', '缩放X', '缩放Y']]) {
+    const spec = panel.slice(panel.indexOf(tool + ': { a: {'), panel.indexOf(tool + ': { a: {') + 200)
+    assert.ok(spec.includes("label: '" + a + "'") && spec.includes("label: '" + b + "'"),
+      tool + ' must show ' + a + ' / ' + b)
+  }
+  assert.ok(panel.includes("if (tool === 'move') ctl.setSelectedPose({ x: Number(rotIn.value), y: Number(lenIn.value) })"),
+    '移动 writes the world position')
+  assert.ok(panel.includes("else if (tool === 'scale') ctl.setSelectedPose({ scaleX: Number(rotIn.value), scaleY: Number(lenIn.value) })"),
+    '缩放 writes the bone scale')
+  const pose = editor.slice(editor.indexOf('function setSelectedPose(patch)'))
+  assert.ok(pose.slice(0, 1400).includes('patch.x !== undefined') && pose.slice(0, 1400).includes('translateBone(st.skel, st.selected, dx, dy'),
+    'typing a position moves the bone the way the 移动 drag does')
+  assert.ok(pose.slice(0, 1800).includes('patch.scaleX !== undefined') && pose.slice(0, 1800).includes('poseScale(st.skel, st.selected'),
+    'typing a scale goes through poseScale, so children and art follow')
+  assert.ok(pose.slice(0, 1400).includes('poseMove(st.skel, st.selected, dx, dy)'),
+    'and a control bone poses instead of dragging its joint')
 })

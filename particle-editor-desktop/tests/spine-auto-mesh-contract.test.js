@@ -12,7 +12,7 @@ const ATTACH = 'spine-auto-mesh-attach.js'
 const PANEL = 'spine-auto-mesh.panel.js'
 const EDITOR = 'spine-auto-mesh.editor.js'
 const PICKER = 'spine-auto-mesh.picker.js'
-const CACHE_BUSTER = '20260921-auto-mesh-48'
+const CACHE_BUSTER = '20260922-auto-mesh-58'
 
 // The renderer modules are plain scripts that publish onto the global; particle-editor
 // is an ESM package so `require` runs them but the exports land on globalThis.
@@ -1207,6 +1207,46 @@ test('ticking a layer never reloads the project; only a mesh leaving it does', (
   assert.ok(fn.includes('const hadMesh = !!layer.mesh') && fn.includes('if (!selected && hadMesh && state.baseSkeleton && state.source) await applyAll()'), 'a tick must not touch the skeleton')
   assert.ok(!fn.includes('\n    if (state.baseSkeleton && state.source) await applyAll()'), 'the unconditional reload must be gone')
   assert.ok(src.includes('if (dropped && state.baseSkeleton && state.source) await applyAll()'), '清空 reloads only when a mesh actually left')
+})
+
+test('the PS import button sits in the app 导入工程 panel, not in 自动蒙皮', () => {
+  const panel = fs.readFileSync(path.join(root, 'particle-editor', 'spine-auto-mesh.panel.js'), 'utf8')
+  assert.ok(panel.includes('function homePsImport'), 'the button is re-homed')
+  assert.ok(panel.includes("startsWith('导入工程')"), 'into the app import panel')
+  assert.ok(panel.includes("api.openPhotoshopProject === 'function'"), 'the desktop app opens the folder through its own dialog')
+  const main = fs.readFileSync(path.join(root, 'particle-editor-desktop', 'main.js'), 'utf8')
+  assert.ok(main.includes('ipcMain.handle("open-photoshop-project"'), 'main exposes that dialog')
+  assert.ok(main.includes('properties: ["openDirectory"]') && main.includes('base64: buf.toString("base64")'), 'it returns the folder as bytes')
+  const preload = fs.readFileSync(path.join(root, 'particle-editor-desktop', 'preload.js'), 'utf8')
+  assert.ok(preload.includes('openPhotoshopProject: () => ipcRenderer.invoke("open-photoshop-project")'), 'and the preload bridges it')
+  assert.ok(panel.includes('document.body.appendChild(picker)'), 'the browser fallback keeps its picker on document.body')
+  assert.ok(panel.includes('if (!picker.isConnected) document.body.appendChild(picker)'), 'and is re-attached before a pick if something removed it')
+  assert.ok(panel.includes('const openPicker = (say) =>') && panel.includes('      openPicker(say)\n    })'),
+    'a click that finds no IPC still opens the browser picker')
+  assert.ok(panel.includes("say('已打开文件夹选择框;没弹出来就把文件夹直接拖到这个按钮上')"),
+    'and it never opens a picker without saying so, naming the drag fallback because a chooser that never appears cannot be detected')
+  const invoke = panel.slice(panel.indexOf('res = await api.openPhotoshopProject()'))
+  assert.ok(invoke.slice(0, 900).includes('catch (err)') && invoke.slice(0, 900).includes('openPicker(say)'),
+    'an app that was refreshed but not restarted falls back instead of dying quietly')
+  assert.ok(!panel.includes("const picker = el('input', { display: 'none' })"), 'the picker is parked off-screen, not display:none')
+  const diag = panel.slice(panel.indexOf('function diag(stage, info)'))
+  assert.ok(diag.slice(0, 200).includes('const on = diagOn()') && diag.slice(0, 200).includes('if (!on) return'),
+    'the import trace must do nothing until it is switched on')
+  const gate = panel.slice(panel.indexOf('function diagOn()'), panel.indexOf('function diagBox()'))
+  assert.ok(gate.includes('window.__NOVAFLOW_IMPORT_DIAG') && gate.includes('/[?&]diag=1/.test(location.search)'),
+    'and it is switched on by the flag or by ?diag=1, never by default')
+  assert.ok(panel.includes('homePsImport()'), 'and it is put back whenever that panel reappears')
+  assert.ok(panel.includes('const sayHere = (text, tone)') && panel.includes('const say = sayHere'),
+    'its messages must show under the button: the 自动蒙皮 status line is inside a collapsed panel')
+  assert.ok(panel.includes('kit.status && kit.status.parentElement !== body'), 'and that line follows the button into the panel')
+  assert.ok(panel.includes("button.addEventListener('drop'") && panel.includes('item.webkitGetAsEntry ? item.webkitGetAsEntry() : null'),
+    'a folder can be dropped on the button, for environments that refuse to open a chooser')
+  assert.ok(panel.includes('const roots = []') && panel.indexOf('const roots = []') < panel.indexOf('guardWith(sayHere)'),
+    'the entries must be taken before the first await, the item list is emptied when the handler returns')
+  assert.ok(panel.includes('function dressLikePanel'), 'it wears that panel button style, not ours')
+  assert.ok(panel.includes("=== '清空'") && panel.includes('window.getComputedStyle(model)'), 'copied from a sibling button, computed style and all')
+  const observer = panel.slice(panel.indexOf('const observer = new MutationObserver'))
+  assert.ok(observer.slice(0, 900).includes('homePsImport()'), 'and it is re-homed in the frame the panel rebuilds, not on the next tick')
 })
 
 test('panel bodies are authored with the spacing the layout pass imposes, so nothing jumps on entry', () => {

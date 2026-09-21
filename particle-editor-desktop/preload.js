@@ -856,6 +856,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   openSpineAtlas: () => ipcRenderer.invoke("open-spine-atlas"),
   openSpineImage: () => ipcRenderer.invoke("open-spine-image"),
   openSequenceFolder: () => ipcRenderer.invoke("open-sequence-folder"),
+  openPhotoshopProject: () => ipcRenderer.invoke("open-photoshop-project"),
   pickDirectory: () => ipcRenderer.invoke("pick-directory"),
   exportPickSaveFile,
   onExportPickSaveFileCanceled,

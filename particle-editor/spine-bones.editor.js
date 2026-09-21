@@ -46,8 +46,9 @@
     helper: { line: '#ff9a3c', hover: '#ffc58a', fill: '#ff9a3c', fillAlpha: 0.3, label: '#ffc58a' }
   }
   const TOOLS = [
-    { id: 'select', label: '选择', key: 'v', hint: '点选骨骼。普通骨:拖关节点=改关节位置(骨骼重算,画面不动),拖骨身=平移整根骨。控制骨(IK/约束目标、零长度骨、枢轴):拖=摆姿势,子骨和图片跟着走、约束联动,拖骨尖=转动。按住 Alt 拖普通骨也是摆姿势;按住 Shift 拖控制骨则改它所在的关节。P=指定父骨(再点一根骨),Shift+P=挂到 root,也可以在右侧骨骼树里拖一根骨到另一根上' },
+    { id: 'move', label: '移动', key: 'v', hint: '拖动移动骨骼。普通骨:拖关节点=改关节位置(骨骼重算,画面不动),拖骨身=平移整根骨。控制骨(IK/约束目标、零长度骨、枢轴):拖=摆姿势,子骨和图片跟着走、约束联动,拖骨尖=转动。按住 Alt 拖普通骨也是摆姿势;按住 Shift 拖控制骨则改它所在的关节。P=指定父骨(再点一根骨),Shift+P=挂到 root,也可以在右侧骨骼树里拖一根骨到另一根上。任何工具下点一下骨骼都能选中它' },
     { id: 'rotate', label: '旋转', key: 'r', hint: '拖动旋转选中的骨骼(绕它的起点)。控制骨或按住 Alt:摆姿势,子骨/图片跟着转、约束联动(零长度的枢轴也能转);普通骨:改骨架,骨尖上的关节跟着转、画面不动' },
+    { id: 'scale', label: '缩放', key: 's', hint: '拖动缩放选中的骨骼(沿它自己的两个轴;按住 Shift 等比)。子骨和这根骨上的图片跟着缩放,和 Spine 的缩放一样' },
     { id: 'create', label: '新建', key: 'n', hint: '按下确定起点、拖到终点松开;新骨挂在选中骨骼下(没有就挂 root);单击得到一根零长度的控制骨' }
   ]
 
@@ -466,6 +467,28 @@
   }
 
   /**
+   * Pose scale: multiply the bone's own scale, the way Spine's scale tool does — its
+   * children and the images on it scale with it, nothing is compensated.
+   */
+  function poseScale(skel, index, mulX, mulY) {
+    const out = cloneRig(skel)
+    const b = out.bones[index]
+    if (!b) return null
+    const L = localOf(b)
+    const sx = clampScale(L.scaleX * (Number.isFinite(mulX) ? mulX : 1))
+    const sy = clampScale(L.scaleY * (Number.isFinite(mulY) ? mulY : 1))
+    if (Math.abs(sx - L.scaleX) < 1e-6 && Math.abs(sy - L.scaleY) < 1e-6) return null
+    L.scaleX = sx; L.scaleY = sy
+    writeLocal(b, L)
+    return { skeleton: out, changed: new Set([index]) }
+  }
+  const clampScale = (v) => {
+    if (!Number.isFinite(v)) return 1
+    const s = Math.max(-100, Math.min(100, v))
+    return Math.abs(s) < 0.01 ? (s < 0 ? -0.01 : 0.01) : s
+  }
+
+  /**
    * Which bones are CONTROLS — dragged, they pose (children and images follow, the
    * constraints act) instead of editing the rig: every IK / transform constraint
    * target, every zero-length bone (pivots, turn and expression points, the master
@@ -497,6 +520,33 @@
     for (const e of endpointsAt(W, t0[0], t0[1], tol)) { if (o.frozen && o.frozen.has(e.index) && e.index !== index) continue; addTarget(targets, e.index, e.end, t1) }
     addTarget(targets, index, 'tip', t1)
     return setEndpoints(skel, targets)
+  }
+
+  /**
+   * Put the slots in `order` (draw order: first is drawn first, i.e. at the bottom).
+   * Names that are not in the skeleton are ignored, slots the caller left out keep their
+   * relative order at the end. Attachments, constraints and animations all address slots
+   * by NAME, so nothing else has to move with them.
+   */
+  function setSlotOrder(skel, order) {
+    const slots = Array.isArray(skel.slots) ? skel.slots : []
+    if (!slots.length || !Array.isArray(order) || !order.length) return null
+    const bySlot = new Map(slots.map((s) => [s.name, s]))
+    const out = cloneRig(skel)
+    const seen = new Set()
+    const next = []
+    for (const name of order) {
+      const slot = bySlot.get(name)
+      if (!slot || seen.has(name)) continue
+      seen.add(name)
+      next.push(slot)
+    }
+    for (const s of slots) if (!seen.has(s.name)) next.push(s)
+    if (next.length !== slots.length) return null
+    const same = next.every((s, i) => s.name === slots[i].name)
+    if (same) return null
+    out.slots = next.map((s) => bySlot.get(s.name))
+    return { skeleton: out, changed: new Set() }
   }
 
   /** Spine's naming: bone, bone2, bone3, … (first free). */
@@ -851,7 +901,7 @@
     ctx.globalAlpha = alpha
     if (len < 1) {
       // a zero-length bone: ring + crosshair
-      const r = style.selected ? 7 : 5
+      const r = style.selected ? 6 : 4
       ctx.beginPath(); ctx.arc(ox, oy, r + 1.5, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 3; ctx.stroke()
       ctx.beginPath(); ctx.arc(ox, oy, r, 0, Math.PI * 2); ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.stroke()
       ctx.beginPath(); ctx.moveTo(ox - r - 3, oy); ctx.lineTo(ox + r + 3, oy); ctx.moveTo(ox, oy - r - 3); ctx.lineTo(ox, oy + r + 3); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.stroke()
@@ -859,7 +909,8 @@
       return
     }
     const nx = -(ty - oy) / len, ny = (tx - ox) / len
-    const half = Math.max(2.5, Math.min(7, len * 0.09))
+    // slimmer than Spine's wedge: at 221 bones a fat triangle hides the art
+    const half = Math.max(1.6, Math.min(4, len * 0.055))
     ctx.beginPath()
     ctx.moveTo(ox + nx * half, oy + ny * half)
     ctx.lineTo(tx, ty)
@@ -869,7 +920,7 @@
     ctx.globalAlpha = alpha * (style.fillAlpha === undefined ? 0.55 : style.fillAlpha)
     ctx.fill()
     ctx.globalAlpha = alpha
-    ctx.lineWidth = style.selected ? 2 : 1.2
+    ctx.lineWidth = style.selected ? 1.6 : 1
     ctx.strokeStyle = style.selected ? '#ffffff' : 'rgba(0,0,0,0.7)'
     ctx.stroke()
     ctx.lineWidth = 1
@@ -908,9 +959,9 @@
   function createController(host) {
     const OVERLAY_MARK = 'data-novaflow-bones-editor-overlay'
     const st = {
-      enabled: false, preview: false, tool: 'select', skel: null, W: [], WF: [], mechs: [], owned: new Set(), derived: new Set(), controls: new Set(), constrained: new Set(),
-      selected: -1, hover: null, drag: null, undo: [], redo: [], dirty: false, cleanDepth: 0,
-      overlay: null, box: { l: -1, t: -1, w: -1, h: -1, shown: false }, showNames: false, timer: 0, raf: 0, viewSig: '', pickParent: false, bound: false
+      enabled: false, preview: false, tool: 'move', skel: null, W: [], WF: [], mechs: [], owned: new Set(), derived: new Set(), controls: new Set(), constrained: new Set(),
+      selected: -1, picked: new Set(), hover: null, drag: null, undo: [], redo: [], dirty: false, cleanDepth: 0,
+      overlay: null, box: { l: -1, t: -1, w: -1, h: -1, shown: false }, showNames: false, timer: 0, raf: 0, viewSig: '', pickParent: false, bound: false, pickBound: false, pickStart: null
     }
     const emit = (fn, ...a) => { try { if (typeof host[fn] === 'function') host[fn](...a) } catch { /* the host is not ours to break */ } }
 
@@ -1059,6 +1110,17 @@
       g.clearRect(0, 0, ov.width, ov.height)
       const toS = toScreenFn()
       if (!toS || !st.skel) return
+      if (st.tool === 'scale' && st.selected >= 0) {
+        const m = st.W[st.selected]
+        if (m) {
+          const o = toS(m.worldX, m.worldY)
+          const len = Math.max(18, m.length > 0 ? Math.hypot(...toS(...tipOf(m)).map((v, i) => v - o[i])) : 30)
+          const ax = toS(m.worldX + m.a * len * 0.6, m.worldY + m.c * len * 0.6)
+          const ay = toS(m.worldX + m.b * len * 0.6, m.worldY + m.d * len * 0.6)
+          g.strokeStyle = ACCENT; g.lineWidth = 1.4
+          for (const p of [ax, ay]) { g.beginPath(); g.moveTo(o[0], o[1]); g.lineTo(p[0], p[1]); g.stroke(); g.beginPath(); g.arc(p[0], p[1], 3.5, 0, Math.PI * 2); g.fillStyle = ACCENT; g.fill() }
+        }
+      }
       if (st.tool === 'create' && st.selected >= 0 && !st.drag) {
         // the next bone hangs on this one: mark its tip so the chain is predictable
         const m = st.W[st.selected]
@@ -1088,6 +1150,15 @@
         const c = ROLE_COLORS[role]
         drawBone(g, o[0], o[1], t[0], t[1], { color: hov ? c.hover : c.line, fill: c.fill, alpha: role === 'helper' ? 0.5 : 1, fillAlpha: c.fillAlpha })
         if (st.showNames || hov) drawLabel(g, o[0], o[1], m.name, c.label)
+      }
+      // multi-selection: every other picked bone in the accent colour, thinner than the
+      // one that is actually being edited
+      for (const i of st.picked) {
+        if (i === st.selected || !W[i]) continue
+        const m = W[i]
+        const o = toS(m.worldX, m.worldY), t = m.length > 0 ? toS(...tipOf(m)) : o
+        drawBone(g, o[0], o[1], t[0], t[1], { color: ACCENT, fill: ACCENT, fillAlpha: 0.35 })
+        if (st.showNames) drawLabel(g, o[0], o[1], m.name, ACCENT)
       }
       if (st.selected >= 0 && W[st.selected]) {
         const m = W[st.selected]
@@ -1130,6 +1201,15 @@
         if (hit && hit.index !== st.selected) reparentSelected(hit.index)
         return
       }
+      if (st.tool === 'scale') {
+        const pick = hitTest(st.W, s[0], s[1], toS, 9, editable, isControl)
+        if (pick && pick.index !== st.selected) select(pick.index, { additive: !!(ev.ctrlKey || ev.metaKey) })
+        if (st.selected < 0) return
+        const m = st.W[st.selected]
+        const local = toLocalPoint(m, w[0], w[1])
+        st.drag = { kind: 'scale', base: clone(st.skel), index: st.selected, m, from: local, start: s, moved: false }
+        return
+      }
       if (st.tool === 'create') {
         // start on a joint when there is one under the pointer, so chains connect
         let origin = w
@@ -1140,7 +1220,10 @@
         return
       }
       if (st.tool === 'rotate') {
-        if (st.selected < 0) { const hit = hitTest(st.W, s[0], s[1], toS, 9, editable, isControl); if (hit) select(hit.index); return }
+        // clicking another bone picks it up, whatever the tool is (Spine does the same)
+        const pick = hitTest(st.W, s[0], s[1], toS, 9, editable, isControl)
+        if (pick && pick.index !== st.selected) select(pick.index, { additive: !!(ev.ctrlKey || ev.metaKey) })
+        if (st.selected < 0) return
         // a control (or any bone with Alt) turns as a POSE: children and images follow, the
         // constraints act; a deform bone turns as a rig edit about its origin (the art stays)
         const pose = !ev.shiftKey && (ev.altKey || st.controls.has(st.selected))
@@ -1158,6 +1241,7 @@
       const poseAny = !rigEdit && !!ev.altKey
       const hit = hitTest(st.W, s[0], s[1], toS, 9, rigEdit ? (i) => editable(i) && !st.controls.has(i) : editable, rigEdit ? null : isControl)
       if (!hit) { select(-1); return }
+      if (ev.ctrlKey || ev.metaKey) { select(hit.index, { additive: true }); return }
       select(hit.index)
       if (!rigEdit && (poseAny || st.controls.has(hit.index))) {
         // grabbing the tip of a bone with length swings it (pose rotation); anywhere else moves it
@@ -1182,6 +1266,16 @@
         if (!d.moved) return
         let res = null
         if (d.kind === 'pose') { res = poseMove(d.base, d.index, w[0] - d.w0[0], w[1] - d.w0[1]); if (res) { st.skel = res.skeleton; recompute(); draw() } return }
+        if (d.kind === 'scale') {
+          const local = toLocalPoint(d.m, w[0], w[1])
+          const uniform = ev.shiftKey
+          const ratio = (a, b0) => (Math.abs(b0) < 1e-3 ? 1 : a / b0)
+          let mx = ratio(local[0], d.from[0]), my = ratio(local[1], d.from[1])
+          if (uniform) { const k = Math.abs(d.from[0]) > Math.abs(d.from[1]) ? mx : my; mx = k; my = k }
+          res = poseScale(d.base, d.index, mx, my)
+          if (res) { st.skel = res.skeleton; recompute(); draw() }
+          return
+        }
         if (d.kind === 'poseRotate') { const a1 = Math.atan2(w[1] - d.o[1], w[0] - d.o[0]); res = poseRotate(d.base, d.index, wrap180((a1 - d.a0) * DEG)); if (res) { st.skel = res.skeleton; recompute(); draw() } return }
         if (d.kind === 'joint') res = moveJoint(d.base, d.from, [d.from[0] + w[0] - d.w0[0], d.from[1] + w[1] - d.w0[1]], { tol: d.tol, frozen: st.derived })
         else if (d.kind === 'translate') res = translateBone(d.base, d.index, w[0] - d.w0[0], w[1] - d.w0[1], { frozen: st.derived })
@@ -1220,7 +1314,7 @@
       // the drag already produced the state; record it as one undo step from the base
       const next = st.skel
       st.skel = d.base
-      if (d.kind === 'pose' || d.kind === 'poseRotate') commit(next)   // a pose is not a rig edit: no rebuild
+      if (d.kind === 'pose' || d.kind === 'poseRotate' || d.kind === 'scale') commit(next)   // a pose is not a rig edit: no rebuild
       else finishEdit(next)
     }
     function onClick(ev) {
@@ -1267,11 +1361,12 @@
     }
 
     // ---- public
-    function select(i) {
+    function select(i, opts) {
       const next = i >= 0 && st.skel && st.skel.bones[i] ? i : -1
-      if (next === st.selected) { draw(); return }
+      const additive = !!(opts && opts.additive)
+      if (next === st.selected && !additive) { draw(); return }
       st.selected = next
-      draw(); emit('onSelect', next)
+      draw(); emit('onSelect', next, { additive })
     }
     function setTool(id) { if (TOOLS.some((t) => t.id === id)) { st.tool = id; draw(); emit('onTool', id) } }
     /** What the overlay's geometry depends on: the camera and the preview canvas box. */
@@ -1293,12 +1388,38 @@
       if (st.preview) { recompute(); draw(); st.viewSig = sig; return }   // the animation moves every frame
       if (sig !== st.viewSig) { st.viewSig = sig; draw() }
     }
+    /**
+     * While the bones are only being LOOKED at they are still clickable: a click that did
+     * not drag selects the bone under it (and nothing else — no editing, and the pan /
+     * zoom the app does with the same pointer is left alone, which is why nothing here
+     * calls preventDefault).
+     */
+    function bindPreviewPick() {
+      if (st.pickBound) return
+      st.pickBound = true
+      document.addEventListener('pointerdown', onPreviewDown, true)
+      document.addEventListener('pointerup', onPreviewUp, true)
+    }
+    function onPreviewDown(ev) {
+      if (!st.preview || st.enabled || ev.button !== 0 || !onCanvas(ev)) { st.pickStart = null; return }
+      st.pickStart = canvasPx(ev)
+    }
+    function onPreviewUp(ev) {
+      const start = st.pickStart
+      st.pickStart = null
+      if (!st.preview || st.enabled || !start) return
+      const s = canvasPx(ev), toS = toScreenFn()
+      if (!s || !toS || Math.hypot(s[0] - start[0], s[1] - start[1]) > 4) return
+      const hit = hitTest(st.W, s[0], s[1], toS, 10, editable, isControl)
+      if (hit) select(hit.index, { additive: !!(ev.ctrlKey || ev.metaKey) })
+    }
     /** Draw only (显示骨骼 without 编辑骨骼): the same picture, no input, no freeze. */
     function setPreview(on) {
       const next = !!on && !st.enabled
       if (next === st.preview) { if (!next) { ensureOverlay(); draw() } return }
       st.preview = next
-      if (next) { if (!st.raf) st.raf = window.requestAnimationFrame(frameLoop) }
+      st.pickStart = null
+      if (next) { bindPreviewPick(); if (!st.raf) st.raf = window.requestAnimationFrame(frameLoop) }
       else if (!st.enabled && st.raf) { window.cancelAnimationFrame(st.raf); st.raf = 0 }
       recompute(); ensureOverlay(); draw()
     }
@@ -1353,6 +1474,14 @@
       select(ci)
       return reparentSelected(pi)
     }
+    /** Draw order, as one undo step (the art moves, nothing else does). */
+    function setSlotOrderNamed(order) {
+      if (!st.skel) return false
+      const res = setSlotOrder(st.skel, order)
+      if (!res) return false
+      commit(res.skeleton)
+      return true
+    }
     function reparentSelected(parentIndex) {
       if (st.selected < 0) return false
       const name = st.skel.bones[st.selected].name
@@ -1366,6 +1495,37 @@
     function setSelectedPose(patch) {
       if (st.selected < 0) return false
       const m = st.WF[st.selected]
+      // 移动: the number is the bone's world origin, and typing one does what dragging does —
+      // a control poses, anything else takes its joint (and its art) along
+      if (patch.x !== undefined || patch.y !== undefined) {
+        const dx = patch.x === undefined ? 0 : Number(patch.x) - m.worldX
+        const dy = patch.y === undefined ? 0 : Number(patch.y) - m.worldY
+        if (!Number.isFinite(dx) || !Number.isFinite(dy)) return false
+        if (!dx && !dy) return true
+        if (st.controls.has(st.selected)) {
+          const res = poseMove(st.skel, st.selected, dx, dy)
+          if (!res) return false
+          commit(res.skeleton)
+          return true
+        }
+        finishEdit(translateBone(st.skel, st.selected, dx, dy, { W: st.WF, frozen: st.derived }).skeleton)
+        return true
+      }
+      // 缩放: the number is the bone's own scale, so reach it with the factor poseScale wants
+      if (patch.scaleX !== undefined || patch.scaleY !== undefined) {
+        const b = st.skel.bones[st.selected]
+        const cur = localOf(b)
+        const want = (v, now) => {
+          if (v === undefined) return 1
+          const target = clampScale(Number(v))
+          if (!Number.isFinite(target) || Math.abs(now) < 1e-6) return 1
+          return target / now
+        }
+        const res = poseScale(st.skel, st.selected, want(patch.scaleX, cur.scaleX), want(patch.scaleY, cur.scaleY))
+        if (!res) return false
+        commit(res.skeleton)
+        return true
+      }
       if (st.controls.has(st.selected) || !(m.length > 0)) {
         // a control's angle is a pose: turn it in place, children and constraints follow
         if (patch.rotation === undefined) return false
@@ -1389,7 +1549,16 @@
 
     return {
       load, setEnabled, setPreview, setTool, select, undo, redo, deleteSelected, renameSelected, reparentSelected, reparentNamed, setSelectedPose, draw, dispose,
+      setSlotOrder: setSlotOrderNamed,
       setPickParent, isPickingParent: () => st.pickParent,
+      /** Bones highlighted alongside the selected one (a multi-selection). */
+      setPicked: (names) => {
+        const list = st.skel ? bonesOf(st.skel) : []
+        const want = new Set()
+        for (const n of names || []) { const i = list.findIndex((b) => b.name === n); if (i >= 0) want.add(i) }
+        st.picked = want
+        draw()
+      },
       setShowNames: (v) => { st.showNames = !!v; draw() },
       getSkeleton: () => (st.skel ? cloneRig(st.skel) : null),
       /** The live bone list, read-only — for panels that only need names / parents / lengths. */
@@ -1411,7 +1580,7 @@
   return {
     TOOLS, ACCENT,
     worldTransforms, worldMatrix, localFromWorld, tipOf, endpointsAt, setEndpoints, moveJoint, translateBone, rotateBone,
-    addBone, deleteBone, renameBone, reparentBone, nextName, parseMechanisms, mechanismOwned, rebuildMechanisms, hitTest, poseMove, poseRotate, controlsOf, constrainedOf, cloneRig, forkAttachments,
+    addBone, deleteBone, renameBone, reparentBone, setSlotOrder, poseScale, nextName, parseMechanisms, mechanismOwned, rebuildMechanisms, hitTest, poseMove, poseRotate, controlsOf, constrainedOf, cloneRig, forkAttachments,
     ROLE_COLORS,
     compensateAttachments, attachmentList, createController,
     _internals: { toLocalPoint, deltaTransform, topoOrder, reindexWeighted, segDist, wrap180 }

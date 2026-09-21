@@ -287,7 +287,7 @@ const cacheBusters = {
   "art-generate-credit-pricing.tool.js": "20260920-art-credit-count-1",
   "art-generate-reference-drop.tool.js": "20260720-art-reference-drop-1",
   "spine-split-runtime.js": "20260919-layer-card-routing-2",
-  "novaflow-brand-runtime.js": "20260920-art-prompt-guard-1",
+  "novaflow-brand-runtime.js": "20260922-spine-import-stability-1",
   "novaflow-client-auth.js": "20260916-prompt-input-perf-1",
 };
 for (const [scriptName, cacheBuster] of Object.entries(cacheBusters)) {

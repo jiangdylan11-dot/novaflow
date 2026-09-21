@@ -66,7 +66,7 @@ const indexHtml = read("index.html");
 assert.ok(indexHtml.includes("art-quality-profile.workflow.js?v=20260920-asset-type-guard-1"));
 assert.ok(indexHtml.includes("art-generate-ideogram.workflow.js?v=20260920-ideogram-background-1"));
 assert.ok(indexHtml.includes("novaflow-smart-ai.js?v=20260920-director-leak-guard-1"));
-assert.ok(indexHtml.includes("novaflow-brand-runtime.js?v=20260920-art-prompt-guard-1"));
+assert.ok(indexHtml.includes("novaflow-brand-runtime.js?v=20260922-spine-import-stability-1"));
 assert.ok(indexHtml.indexOf("art-quality-profile.workflow.js") < indexHtml.indexOf("novaflow-brand-runtime.js"), "the profile loads before the runtime that calls it");
 assert.ok(indexHtml.indexOf("art-quality-profile.workflow.js") < indexHtml.indexOf("novaflow-smart-ai.js"), "the profile loads before the smart-AI that calls it");
 

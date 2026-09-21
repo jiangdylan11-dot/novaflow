@@ -9,7 +9,7 @@ const vm = require("node:vm");
 // or the export flow. Both entries share one treatment, mirroring the topbar 文件 → 导出 item.
 const repoRoot = path.resolve(__dirname, "..", "..");
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8").replace(/\r\n?/g, "\n");
-const BRAND_CACHE_VERSION = "20260920-art-prompt-guard-1";
+const BRAND_CACHE_VERSION = "20260922-spine-import-stability-1";
 
 const LOCKED_ATTR = "data-novaflow-primary-shortcut-locked";
 const UNAUTHORIZED_TITLE = "未授权：仓库和导出需要导入授权文件";

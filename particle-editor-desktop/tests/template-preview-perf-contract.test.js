@@ -17,7 +17,7 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 // frame timestamp fresh so coming back does not jump.
 const PARTICLE_IDLE_GUARD = 'if(document.body&&(document.body.classList.contains(`novaflow-aifx-open`)'
   + '||document.body.classList.contains(`novaflow-aifx-leaving`))){F.current=t;P.current=requestAnimationFrame(e);return}';
-const BUNDLE_CACHE_VERSION = "20260920-aifx-particle-idle-1";
+const BUNDLE_CACHE_VERSION = "20260922-spine-first-pause-1";
 const STEP = 1 / 60;
 
 test("template previews share one budgeted scheduler instead of a rAF loop per card", () => {

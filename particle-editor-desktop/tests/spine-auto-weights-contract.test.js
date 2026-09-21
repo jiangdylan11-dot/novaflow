@@ -11,7 +11,7 @@ const WEIGHTS_EDITOR = 'spine-auto-weights.editor.js'
 const ATTACH = 'spine-auto-mesh-attach.js'
 const EDITOR = 'spine-auto-mesh.editor.js'
 const PANEL = 'spine-auto-mesh.panel.js'
-const CACHE_BUSTER = '20260921-auto-mesh-48'
+const CACHE_BUSTER = '20260922-auto-mesh-58'
 
 // particle-editor is an ESM package, so `require` runs the script but its exports
 // land on globalThis -- the same way the browser <script> path publishes it.
@@ -342,6 +342,22 @@ test('setupPoseMatrices walks the tree and applyWeights binds a converted mesh t
 })
 
 // ---------------------------------------------------------- Spine format ---
+
+test('the weights list has the same 已选 / 全选 / 清空 header as the mesh list', () => {
+  const panel = fs.readFileSync(path.join(root, 'particle-editor', 'spine-auto-mesh.panel.js'), 'utf8')
+  const weights = panel.slice(panel.indexOf('renderWeightList = () => {'))
+  assert.ok(weights.includes('`已选 ${usable.filter((l) => l.selected).length} / ${usable.length}`'), 'the weights list counts the ticked layers')
+  assert.ok(weights.indexOf("smallButton('全选')") > 0 && weights.indexOf("smallButton('清空')") > 0, '全选 / 清空 are there too')
+  assert.ok(weights.indexOf("smallButton('全选')") < weights.indexOf('const scroll'), 'the header comes before the rows')
+})
+
+test('the weights list tracks what the preview points at, like the mesh list', () => {
+  const panel = fs.readFileSync(path.join(root, 'particle-editor', 'spine-auto-mesh.panel.js'), 'utf8')
+  assert.ok(panel.includes('const weightRowEls = new Map()'), 'the weights rows are addressable')
+  assert.ok(panel.includes('weightRowEls.set(name, item)'), 'every weights row registers itself')
+  assert.ok(panel.includes('for (const map of [rowEls, weightRowEls])'), 'hover paints both lists')
+  assert.ok(panel.includes('scrollRowIntoView(weightRowEls.get(hoverName))'), 'and scrolls the weights list to it')
+})
 
 test('weightedVertices: Spine locals map back to the bound world position through the bone matrices', () => {
   const rot = Math.PI / 6

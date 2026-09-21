@@ -640,12 +640,14 @@
     if (!p) return
     state.busy = true
     try {
+      // clicking a layer only ACTIVATES it (user decision 2026-09-21): it ticks the layer
+      // in the panel and shows it in the draw order. Meshing and the editors are started
+      // from their own buttons -- a click on the art must never open an editor.
       const layer = p._state.layers.get(hit.name)
       if (layer && !layer.selected) await p.setSelected(hit.name, true)
-      if (layer && !layer.mesh) await p.regenerateLayer(hit.name, layer.density, () => {})
-      await p.editLayer(hit.name, () => {})
+      if (typeof p.focusLayer === 'function') p.focusLayer(hit.name)
     } catch (err) {
-      window.console && console.warn('[auto-mesh] pick edit failed:', err && err.message)
+      window.console && console.warn('[auto-mesh] pick select failed:', err && err.message)
     } finally {
       state.busy = false
       paint()

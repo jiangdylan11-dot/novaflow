@@ -107,8 +107,11 @@
   }
   const guardWith = (setStatus, forRigging) => async (fn) => {
     if (state.busy) return
-    // a rig being edited and a mesh being written would race for the same skeleton
-    if (!forRigging && bones.editing) { setStatus('先在「骨骼架设」里应用修改,或收起该面板', 'error'); return }
+    // a rig with UNSAVED edits and a mesh being written would race for the same skeleton.
+    // Having 骨骼架设 open is not itself a reason to refuse — the panel being open is what
+    // turns editing on now, and meshing while nothing has been changed is harmless.
+    const rigDirty = !!(bones.editing && bones.ctl && bones.ctl.getState().dirty)
+    if (!forRigging && rigDirty) { setStatus('骨骼架设 里还有未保存的修改:先 应用到工程 或 放弃修改', 'error'); return }
     setBusy(true)
     try { await fn() } catch (err) {
       setStatus(String((err && err.message) || err || '操作失败'), 'error')
@@ -122,14 +125,21 @@
 
   /** attachment name -> its row element in the current list render */
   const rowEls = new Map()
+  // the 自动权重 list is a second list of the same layers: hover and focus have to reach
+  // both, or the weights panel just sits there while the preview points somewhere else
+  const weightRowEls = new Map()
   let hoverName = null
+  // the layer the tree / preview last pointed at: both lists scroll to it and keep it
+  // outlined until something else is focused (hover is transient, this is not)
+  let focusName = null
 
   // Hover is the outline only (user decision): a green fill on the card, for hover
   // or for the tick, was too loud next to the tick itself.
   function paintRow(name, on) {
-    const row = rowEls.get(name)
-    if (!row) return
-    row.style.borderColor = on ? 'rgba(34,201,138,0.65)' : 'rgba(255,255,255,0.08)'
+    for (const map of [rowEls, weightRowEls]) {
+      const row = map.get(name)
+      if (row) row.style.borderColor = on ? 'rgba(34,201,138,0.65)' : 'rgba(255,255,255,0.08)'
+    }
   }
 
   /** Called from the list rows. Mirrors onto the preview. */
@@ -151,19 +161,28 @@
   function scrollRowIntoView(row) {
     const box = row && row.parentElement
     if (!box || !row.isConnected) return
-    const top = row.offsetTop, bottom = top + row.offsetHeight
-    if (top < box.scrollTop) box.scrollTop = top
-    else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight
+    // measured, not offsetTop: offsetTop is relative to the nearest POSITIONED ancestor,
+    // which is rarely the scrolling box, and the list then jumped to the wrong place
+    const r = row.getBoundingClientRect(), b = box.getBoundingClientRect()
+    if (r.top < b.top) box.scrollTop -= b.top - r.top
+    else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom
+  }
+  function focusPaint(name) {
+    if (focusName && focusName !== name && focusName !== hoverName) paintRow(focusName, false)
+    focusName = name || null
+    if (focusName) paintRow(focusName, true)
   }
   /** Called from the picker when the pointer moves over the preview. */
   function hoverFromCanvas(name) {
     if (name === hoverName) return
-    if (hoverName) paintRow(hoverName, false)
+    if (hoverName && hoverName !== focusName) paintRow(hoverName, false)
     hoverName = name || null
     if (hoverName) {
       paintRow(hoverName, true)
       scrollRowIntoView(rowEls.get(hoverName))
-    }
+      scrollRowIntoView(weightRowEls.get(hoverName))
+    } else if (focusName) paintRow(focusName, true)
+    try { paintHierLayer(hoverName) } catch { /* the tree is not up yet */ }
   }
 
   // ------------------------------------------------------------- bridging ---
@@ -1221,6 +1240,7 @@
     const hadMesh = !!layer.mesh
     if (!selected) { layer.mesh = null; layer.edited = false; layer.weights = null; layer.weightsEdited = false; layer.fromMesh = false }
     renderList()
+    try { renderHierarchy(true) } catch { /* the tree is not up yet */ }
     if (!selected && hadMesh && state.baseSkeleton && state.source) await applyAll()
   }
 
@@ -1331,18 +1351,6 @@
       fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: STACK_GAP, lineHeight: '1.5'
     }, '越高越密。20~24 通常够用,再高收益很小。')
 
-    const importBtn = el('button', null, '导入 PS 工程（JSON + 贴图文件夹）')
-    importBtn.type = 'button'; styleButton(importBtn, false)
-    importBtn.style.marginTop = STACK_GAP
-    importBtn.title = 'PhotoshopToSpine 导出的文件夹可以直接用,不需要先过一遍 Spine'
-
-    const picker = el('input', { display: 'none' })
-    picker.type = 'file'
-    picker.multiple = true
-    try { picker.webkitdirectory = true } catch { /* plain multi-select instead */ }
-    picker.setAttribute('webkitdirectory', '')
-    picker.setAttribute('directory', '')
-
     const genBtn = el('button', null, '生成网格'); genBtn.type = 'button'; styleButton(genBtn, true)
     genBtn.style.marginTop = STACK_GAP
     const restoreBtn = el('button', null, '还原为导入时的图层'); restoreBtn.type = 'button'
@@ -1360,22 +1368,9 @@
       status.style.color = tone === 'error' ? '#ff8a7a' : (tone === 'ok' ? '#22c98a' : 'rgba(255,255,255,0.55)')
     }
     setStatusFn = setStatus
-    busyButtons.push(importBtn, genBtn, restoreBtn)
+    busyButtons.push(genBtn, restoreBtn)
     busyLists.push(listWrap)
     const guard = guardWith(setStatus)
-
-    importBtn.addEventListener('click', () => { if (!state.busy) picker.click() })
-    picker.addEventListener('change', () => {
-      // `picker.files` is LIVE: resetting picker.value empties the very list we
-      // are holding, so snapshot first or the pick silently turns into nothing.
-      const files = Array.from(picker.files || [])
-      picker.value = ''
-      if (!files.length) { setStatus('没有选到文件'); return }
-      guard(async () => {
-        const n = await importPhotoshopProject(files, (t) => setStatus(t))
-        setStatus(`已载入 ${n} 张贴图,勾选图层后生成`, 'ok')
-      })
-    })
 
     genBtn.addEventListener('click', () => guard(async () => {
       const report = await generate((t) => setStatus(t))
@@ -1516,8 +1511,6 @@
     body.appendChild(row)
     body.appendChild(slider)
     body.appendChild(hint)
-    body.appendChild(importBtn)
-    body.appendChild(picker)
     body.appendChild(genBtn)
     body.appendChild(restoreBtn)
     body.appendChild(status)
@@ -1567,10 +1560,38 @@
 
     renderWeightList = () => {
       listWrap.textContent = ''
+      weightRowEls.clear()
       if (!state.layers.size) {
         listWrap.appendChild(el('div', { fontSize: '11px', color: 'rgba(255,255,255,0.4)' }, '导入工程后,这里列出每一层绑到了哪些骨骼'))
         return
       }
+      // the same header as 自动蒙皮: the tick is one and the same choice in both panels
+      const usable = Array.from(state.layers.values()).filter((l) => l.hasImage)
+      const head = el('div', {
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: '6px', margin: '2px 0 6px'
+      })
+      head.appendChild(el('span', { fontSize: '11px', color: 'rgba(255,255,255,0.5)' },
+        `已选 ${usable.filter((l) => l.selected).length} / ${usable.length}`))
+      const headBtns = el('div', { display: 'flex', gap: '4px' })
+      const allBtn = smallButton('全选')
+      allBtn.addEventListener('click', () => {
+        for (const l of state.layers.values()) if (l.hasImage) l.selected = true
+        renderList()
+      })
+      const noneBtn = smallButton('清空')
+      noneBtn.addEventListener('click', () => guard(async () => {
+        let dropped = false
+        for (const l of state.layers.values()) {
+          if (l.mesh) dropped = true
+          l.selected = false; l.mesh = null; l.edited = false; l.weights = null; l.weightsEdited = false; l.fromMesh = false
+        }
+        renderList()
+        if (dropped && state.baseSkeleton && state.source) await applyAll()
+      }))
+      headBtns.appendChild(allBtn); headBtns.appendChild(noneBtn)
+      head.appendChild(headBtns)
+      listWrap.appendChild(head)
       const scroll = el('div', { overflowY: 'auto', overflowX: 'hidden' })
       state.fitWeightList = () => {
         if (!scroll.isConnected) return
@@ -1615,9 +1636,12 @@
           top.appendChild(weightBtn)
         }
         item.appendChild(top)
+        weightRowEls.set(name, item)
         scroll.appendChild(item)
       }
       listWrap.appendChild(scroll)
+      if (hoverName && weightRowEls.has(hoverName)) paintRow(hoverName, true)
+      if (focusName && weightRowEls.has(focusName)) paintRow(focusName, true)
       state.fitWeightList()
     }
 
@@ -1673,6 +1697,11 @@
     return [ia, ib, ic, id, -(ia * o[0] + ic * o[1]), -(ib * o[0] + id * o[1])]
   }
   /** Hold the preview at the setup pose while the rig is edited: the bones are drawn over the setup artwork. */
+  /** Draw the pose we just set NOW: the app repaints on its own frame, and until it does
+   * the artwork is one pose behind the bones drawn over it. */
+  function repaintPreview(p) {
+    try { if (p && typeof p.renderCurrentPose === 'function') p.renderCurrentPose() } catch { /* mid-rebuild */ }
+  }
   function freezePreview() {
     const p = previewPlayer()
     if (!p || !p.animationState || (bones.frozen && bones.frozen.player === p)) return
@@ -1680,6 +1709,7 @@
     const tr = st.tracks && st.tracks[0]
     bones.frozen = { player: p, timeScale: st.timeScale, anim: tr && tr.animation ? tr.animation.name : null, loop: tr ? !!tr.loop : false, time: tr ? tr.trackTime : 0 }
     try { st.timeScale = 0; st.clearTracks(); p.skeleton.setToSetupPose(); p.skeleton.updateWorldTransform() } catch { /* the preview may be mid-rebuild */ }
+    repaintPreview(p)
     hideAppBones(p)
   }
   /**
@@ -1742,6 +1772,7 @@
     const playing = st.timeScale !== 0 || (st.tracks && st.tracks.some(Boolean))
     if (!playing) return
     try { st.timeScale = 0; st.clearTracks(); p.skeleton.setToSetupPose(); p.skeleton.updateWorldTransform() } catch { /* mid-rebuild */ }
+    repaintPreview(p)
   }
   function thawPreview() {
     const f = bones.frozen
@@ -1753,6 +1784,8 @@
     try {
       if (f.anim) { const e = p.animationState.setAnimation(0, f.anim, f.loop); if (e) e.trackTime = f.time }
       p.animationState.timeScale = f.timeScale
+      p.animationState.apply(p.skeleton); p.skeleton.updateWorldTransform()
+      repaintPreview(p)
     } catch { /* the preview may be gone */ }
     window.setTimeout(syncBonePreview, 0)
   }
@@ -1790,10 +1823,21 @@
           return bones.mechCache.set.has(i)
         } catch { return false }
       },
-      onSelect: (i) => {
+      onSelect: (i, opts) => {
         bones.syncUi()
         const list = bones.ctl ? bones.ctl.peekBones() : []
-        revealInTree(i >= 0 && list[i] ? list[i].name : null)
+        const name = i >= 0 && list[i] ? list[i].name : null
+        // Ctrl-clicking a bone in the preview builds the same multi-selection as the tree
+        if (!name) { hier.bones.clear(); hier.boneAnchor = null } else if (opts && opts.additive) {
+          if (hier.bones.has(name) && hier.bones.size > 1) hier.bones.delete(name); else hier.bones.add(name)
+          hier.bones.add(name)
+          hier.boneAnchor = name
+        } else if (!hier.bones.has(name) || hier.bones.size > 1) { hier.bones = new Set([name]); hier.boneAnchor = name }
+        if (bones.ctl && typeof bones.ctl.setPicked === 'function') bones.ctl.setPicked([...hier.bones])
+        pushBonePicks()
+        renderHierarchy(true)
+        revealInTree(name)
+        syncAppSelection(name)
       },
       onPickParent: (on) => {
         bones.setStatus(on ? '点一根骨作为新的父骨(Esc 取消)' : '', on ? 'ok' : '')
@@ -1823,9 +1867,28 @@
    * drawn in this session are in it before they are written back.
    */
   const HIER_MARK = 'data-novaflow-bones-hierarchy'
+  /**
+   * The app paints its own sidebar blocks as soon as the section mounts, so waiting for a
+   * tick to hide them showed the old layout for a frame or two. This rule is installed
+   * when the script loads: the app's blocks never paint, ours (tagged HIER_MARK, which the
+   * app also labels as one of its sections) always does.
+   */
+  function installSidebarStyle() {
+    if (!document.head || document.getElementById('novaflow-bones-sidebar-style')) return
+    const style = document.createElement('style')
+    style.id = 'novaflow-bones-sidebar-style'
+    // parked off-screen, NOT display:none: the app strips its own data markers off a
+    // block it considers hidden, and then its bone rows can no longer be clicked — which
+    // is how the app's 当前选择骨骼 is set for everything else it does.
+    style.textContent = '[data-novaflow-skeleton-sidebar-body="1"] > [data-novaflow-skeleton-sidebar-section="1"]:not([' + HIER_MARK + '])'
+      + '{position:absolute !important;left:-10000px !important;top:0 !important;width:240px !important;max-height:300px !important;overflow:hidden !important;opacity:0 !important;pointer-events:none !important}'
+    document.head.appendChild(style)
+  }
+  installSidebarStyle()
   const BONE_ROW_SEL = '[data-nf-hier-bone]'
   const APP_SECTION_SEL = '[data-novaflow-skeleton-sidebar-section="1"]'
-  const hier = { box: null, scroll: null, open: new Set(), rows: new Map(), sig: '', selected: null }
+  const hier = { box: null, scroll: null, open: new Set(), rows: new Map(), sig: '', selected: null, layer: null, pick: new Set(), anchor: null, appToken: 0, bones: new Set(), boneAnchor: null }
+  const orderDrag = { on: false, id: -1, over: null, before: null, moved: false }
   const treeDrag = { from: null, name: '', over: null, moved: false, id: -1 }
   const rowName = (row) => String(row && row.dataset && row.dataset.nfHierBone || '')
   const treeRowFor = (name) => (name && hier.rows.get('b:' + name)) || null
@@ -1867,14 +1930,15 @@
   function hierProjectName() {
     const src = importedSource()
     const file = src && src.skeleton && src.skeleton.fileName
-    return String(file || 'skeleton').replace(/\.(json|skel)$/i, '')
+    return file ? String(file).replace(/\.(json|skel)$/i, '') : '未导入工程'
   }
   /** Everything the tree draws, flattened to the rows that are actually visible. */
   function hierModel() {
     const ctl = bones.ctl
-    const skel = ctl && typeof ctl.peek === 'function' ? ctl.peek() : null
+    const live = ctl && typeof ctl.peek === 'function' ? ctl.peek() : null
+    // with nothing imported the tree is the same tree, every group empty and closed
+    const skel = live && Array.isArray(live.bones) ? live : { bones: [], slots: [], skins: [], animations: {} }
     const rows = []
-    if (!skel || !Array.isArray(skel.bones)) return rows
     const list = skel.bones
     const kidsOf = new Map()
     list.forEach((b, i) => {
@@ -1882,6 +1946,19 @@
       if (!kidsOf.has(key)) kidsOf.set(key, [])
       kidsOf.get(key).push(i)
     })
+    // a bone's slots are part of the skeleton tree (Spine shows them under the bone);
+    // the same rows appear in 绘制顺序, which is the order they are drawn in
+    const allSlots = Array.isArray(skel.slots) ? skel.slots : []
+    const slotsOf = new Map()
+    for (const sl of allSlots) {
+      if (!slotsOf.has(sl.bone)) slotsOf.set(sl.bone, [])
+      slotsOf.get(sl.bone).push(sl)
+    }
+    const layerNote = (name) => {
+      const layer = state.layers.get(name)
+      if (!layer) return ''
+      return layer.mesh ? (layer.weights ? '网格 · 权重' : '网格') : (layer.selected ? '已勾选' : '')
+    }
     const group = (key, label, count, depth) => {
       const open = hier.open.has(key)
       rows.push({ key, depth, label, count, open, group: true })
@@ -1892,10 +1969,16 @@
       const walk = (i, depth) => {
         const b = list[i]
         const kids = kidsOf.get(b.name) || []
+        const mine = slotsOf.get(b.name) || []
         const key = 'b:' + b.name
         const open = hier.open.has(key)
-        rows.push({ key, depth, label: b.name, bone: i, group: kids.length > 0, open, role: typeof ctl.roleOf === 'function' ? ctl.roleOf(i) : 'bone' })
-        if (open) for (const k of kids) walk(k, depth + 1)
+        rows.push({ key, depth, label: b.name, bone: i, group: kids.length > 0 || mine.length > 0, open, role: ctl && typeof ctl.roleOf === 'function' ? ctl.roleOf(i) : 'bone' })
+        if (!open) return
+        for (const sl of mine) {
+          const layer = state.layers.get(sl.name)
+          rows.push({ key: 'bs:' + sl.name, depth: depth + 1, label: sl.name, layer: sl.name, slot: true, note: layerNote(sl.name), active: !!(layer && layer.selected), picked: hier.pick.has(sl.name) })
+        }
+        for (const k of kids) walk(k, depth + 1)
       }
       for (const i of (kidsOf.get('') || [])) walk(i, 2)
     }
@@ -1917,16 +2000,14 @@
       for (const name of anims) rows.push({ key: 'a:' + name, depth: 2, label: name, pick: ['动画', name], active: name === animNow })
     }
     const slots = Array.isArray(skel.slots) ? skel.slots : []
-    if (group('g:slots', '图层', slots.length, 1)) {
-      const att = new Map()
-      const visit = (attachments) => { for (const slot of Object.keys(attachments || {})) att.set(slot, Object.keys(attachments[slot] || {})) }
-      if (Array.isArray(skel.skins)) for (const sk of skel.skins) visit(sk && sk.attachments)
-      else if (skel.skins) for (const k of Object.keys(skel.skins)) visit(skel.skins[k])
-      // draw order: the last slot is on top, so the tree reads top-down like the canvas
+    if (group('g:order', '绘制顺序', slots.length, 1)) {
+      if (slots.length) rows.push({ key: 'l-hint', depth: 2, label: '拖动 · Ctrl/Shift 多选 · +/- 移动', fixed: true, hint: true })
+      // the last slot is drawn on top, so the list reads top-down like the artwork
       for (let i = slots.length - 1; i >= 0; i--) {
         const sl = slots[i]
-        const names = att.get(sl.name) || []
-        rows.push({ key: 'l:' + sl.name, depth: 2, label: sl.name, note: names.length > 1 ? `${sl.bone} · ${names.length} 个附件` : sl.bone, boneName: sl.bone })
+        const layer = state.layers.get(sl.name)
+        const note = layer ? (layer.mesh ? (layer.weights ? '网格 · 权重' : '网格') : (layer.selected ? '已勾选' : '')) : ''
+        rows.push({ key: 'l:' + sl.name, depth: 2, label: sl.name, note: note || sl.bone, layer: sl.name, boneName: sl.bone, active: !!(layer && layer.selected), picked: hier.pick.has(sl.name) })
       }
     }
     return rows
@@ -1934,22 +2015,26 @@
   function hierSignature(rows) {
     const ctl = bones.ctl
     const st = ctl ? ctl.getState() : null
-    return rows.map((r) => `${r.key}|${r.open ? 1 : 0}|${r.active ? 1 : 0}|${r.count || ''}|${r.role || ''}`).join(';') + '#' + (st ? st.bones : 0)
+    return rows.map((r) => `${r.key}|${r.open ? 1 : 0}|${r.active ? 1 : 0}|${r.picked ? 1 : 0}|${r.bone !== undefined && hier.bones.has(r.label) ? 1 : 0}|${r.count || ''}|${r.role || ''}|${r.note || ''}`).join(';') + '#' + (st ? st.bones : 0)
   }
   function ensureHierarchy() {
     const body = document.querySelector('[data-novaflow-skeleton-sidebar-body="1"]')
     if (!body) return null
+    // the tree is there whether or not the rig is being edited, so its pointer and key
+    // handlers are bound with it (not from 编辑骨骼, which used to leave 绘制顺序 inert)
+    bindTreeDrag()
     // the app's own blocks stay in the DOM (their buttons are what skins / animations click)
+    installSidebarStyle()
     for (const sec of hierApp(APP_SECTION_SEL)) {
-      if (sec.hasAttribute(HIER_MARK)) { if (sec.style.display !== 'flex') sec.style.setProperty('display', 'flex', 'important'); continue }
-      if (sec.style.display !== 'none') sec.style.display = 'none'
+      if (!sec.hasAttribute(HIER_MARK)) continue
+      if (sec.style.display !== 'flex') sec.style.setProperty('display', 'flex', 'important')
     }
     let box = body.querySelector(`[${HIER_MARK}="1"]`)
     if (!box) {
       box = el('div', { display: 'flex', flexDirection: 'column', minHeight: '0', gap: '6px' })
       box.setAttribute(HIER_MARK, '1')
       const title = el('div', { fontSize: '12px', fontWeight: '900', color: 'rgba(255,255,255,0.86)' }, '工程')
-      const scroll = el('div', { overflow: 'auto', minHeight: '0', display: 'grid', gap: '1px', alignContent: 'start' })
+      const scroll = el('div', { overflowY: 'auto', overflowX: 'hidden', minHeight: '0', display: 'grid', gap: '1px', alignContent: 'start' })
       scroll.setAttribute('data-nf-hier-scroll', '1')
       box.appendChild(title); box.appendChild(scroll)
       body.insertBefore(box, body.firstChild)
@@ -1973,15 +2058,19 @@
       const row = el('div', {
         display: 'flex', alignItems: 'center', gap: '6px', height: '22px', flex: '0 0 auto',
         paddingLeft: (2 + r.depth * 12) + 'px', paddingRight: '6px', borderRadius: '5px',
-        cursor: r.fixed ? 'default' : 'pointer', border: '1px solid transparent'
+        cursor: r.fixed ? 'default' : 'pointer', border: '1px solid transparent',
+        color: r.hint ? 'rgba(255,255,255,0.45)' : 'inherit'
       })
       row.dataset.nfHierKey = r.key
+      if (r.layer) row.dataset.nfHierLayer = r.layer
+      if (r.picked || (r.bone !== undefined && hier.bones.has(r.label))) { row.style.background = 'rgba(34,201,138,0.12)'; row.style.borderColor = 'rgba(34,201,138,0.5)' }
       const expandable = !!r.group && !r.fixed
       const chev = el('i', { width: '12px', fontSize: '9px', opacity: expandable ? '0.75' : '0', flex: '0 0 auto', textAlign: 'center', cursor: expandable ? 'pointer' : 'default' })
       chev.className = `fas fa-chevron-${r.open ? 'down' : 'right'}`
       // Spine's split: the arrow folds, the name selects (a bone with children does both)
       if (expandable) chev.addEventListener('click', (ev) => { ev.preventDefault(); ev.stopPropagation(); toggleHierKey(r.key) })
       row.appendChild(chev)
+      if (r.slot) { const g = el('i', { width: '10px', fontSize: '9px', color: 'rgba(143,211,255,0.75)', flex: '0 0 auto', textAlign: 'center' }); g.className = 'fas fa-layer-group'; row.appendChild(g) }
       if (r.bone !== undefined) {
         row.dataset.nfHierBone = r.label
         const roles = (window.NovaFlowBonesEditor || {}).ROLE_COLORS || {}
@@ -1999,10 +2088,11 @@
           window.setTimeout(() => renderHierarchy(true), 200)
           return
         }
+        if (r.layer) { pickLayerRow(r.layer, ev); return }
         const name = r.bone !== undefined ? r.label : r.target || r.boneName
         if (name && ctl) {
           const i = ctl.peekBones().findIndex((b) => b.name === name)
-          if (i >= 0) { ctl.select(i); bones.syncUi(); return }
+          if (i >= 0) { pickBoneRow(name, i, ev); return }
         }
         if (expandable) toggleHierKey(r.key)
       })
@@ -2013,10 +2103,206 @@
     hier.scroll.textContent = ''
     hier.scroll.appendChild(frag)
     paintHierSelection()
+    // the rows were rebuilt: put the focused layer's outline back on the new ones
+    if (hier.layer) { const keep = hier.layer; hier.layer = null; paintHierLayer(keep) }
   }
   function toggleHierKey(key) {
     if (hier.open.has(key)) hier.open.delete(key); else hier.open.add(key)
     renderHierarchy(true)
+  }
+  /**
+   * The draw order mirrors what the preview points at: hovering a layer marks its row,
+   * clicking one (here or on the art) ticks the layer and brings the row into view. It
+   * never opens an editor — 生成网格 / 编辑 / 权重 are the buttons for that.
+   */
+  function focusLayer(name, activate) {
+    if (!name) return
+    if (activate) {
+      const layer = state.layers.get(name)
+      if (layer && !layer.selected) { Promise.resolve(setSelected(name, true)).catch(() => {}) }
+    }
+    // both lists jump to it, whether it was picked in the tree, on the art or in a list
+    try { scrollRowIntoView(rowEls.get(name)); scrollRowIntoView(weightRowEls.get(name)) } catch { /* the list may be collapsed */ }
+    focusPaint(name)
+    paintHierLayer(name)
+  }
+  function paintHierLayer(name) {
+    for (const prefix of ['l:', 'bs:']) {
+      const prev = hier.layer && hier.rows.get(prefix + hier.layer)
+      if (prev) prev.style.outline = ''
+    }
+    hier.layer = name || null
+    // a selected row already has the solid green frame; the dashed outline is only for
+    // pointing at a row that is NOT selected (hovering the art, say)
+    const selected = !!name && hier.pick.has(name)
+    let first = null
+    for (const prefix of ['l:', 'bs:']) {
+      const row = name && hier.rows.get(prefix + name)
+      if (!row) continue
+      row.style.outline = selected ? '' : '1px dashed rgba(34,201,138,0.8)'
+      if (!first) first = row
+    }
+    if (first) scrollIntoBox(first, hier.scroll)
+  }
+  /**
+   * Bones select like a file list: a plain click picks one, Ctrl adds or removes, Shift
+   * takes the run between the anchor and this row (in the order the tree shows them).
+   * The last one clicked stays the EDITED bone; the rest are highlighted alongside it and
+   * handed to the app, whose own 已选骨骼 works the same way.
+   */
+  function boneRowOrder() {
+    return Array.from(hier.rows.keys()).filter((k) => k.startsWith('b:')).map((k) => k.slice(2))
+  }
+  function pickBoneRow(name, index, ev) {
+    const ctl = bones.ctl
+    if (!ctl) return
+    if (ev && (ev.ctrlKey || ev.metaKey)) {
+      if (hier.bones.has(name)) hier.bones.delete(name); else hier.bones.add(name)
+      hier.boneAnchor = name
+    } else if (ev && ev.shiftKey && hier.boneAnchor) {
+      const list = boneRowOrder()
+      const a = list.indexOf(hier.boneAnchor), b = list.indexOf(name)
+      if (a >= 0 && b >= 0) hier.bones = new Set(list.slice(Math.min(a, b), Math.max(a, b) + 1))
+      else hier.bones = new Set([name])
+    } else {
+      hier.bones = new Set([name])
+      hier.boneAnchor = name
+    }
+    hier.bones.add(name)
+    ctl.select(index)
+    if (typeof ctl.setPicked === 'function') ctl.setPicked([...hier.bones])
+    pushBonePicks()
+    bones.syncUi()
+    renderHierarchy(true)
+  }
+  /** The runtime carries the whole set; the app's tree gets the one being edited. */
+  function pushBonePicks() {
+    const p = previewPlayer()
+    if (!p || typeof p.setSelectedBoneNames !== 'function' || hier.bones.size < 2) return
+    try { p.setSelectedBoneNames([...hier.bones]) } catch { /* not that kind of player */ }
+  }
+  /** The draw order as the tree shows it: top of the list is drawn on top. */
+  function orderNames() {
+    const ctl = bones.ctl
+    const skel = ctl && typeof ctl.peek === 'function' ? ctl.peek() : null
+    const slots = skel && Array.isArray(skel.slots) ? skel.slots : []
+    return slots.map((s) => s.name).reverse()
+  }
+  /**
+   * A layer row selects, it does not tick (user decision 2026-09-21): the first click is
+   * a plain selection, clicking the SAME row again ticks it — which is what puts it in
+   * 自动蒙皮 / 自动权重 — and a third click unticks it. Ctrl / Shift still build the
+   * multi-selection that 绘制顺序 reorders.
+   */
+  function pickLayerRow(name, ev) {
+    const list = orderNames()
+    if (ev && (ev.ctrlKey || ev.metaKey)) {
+      if (hier.pick.has(name)) hier.pick.delete(name); else hier.pick.add(name)
+      hier.anchor = name
+    } else if (ev && ev.shiftKey && hier.anchor && list.includes(hier.anchor)) {
+      const a = list.indexOf(hier.anchor), b = list.indexOf(name)
+      hier.pick = new Set(list.slice(Math.min(a, b), Math.max(a, b) + 1))
+    } else {
+      const again = hier.layer === name && hier.pick.size === 1 && hier.pick.has(name)
+      hier.pick = new Set([name])
+      hier.anchor = name
+      if (again) toggleLayerTick(name)
+    }
+    focusLayer(name)
+    renderHierarchy(true)
+  }
+  function toggleLayerTick(name) {
+    const layer = state.layers.get(name)
+    if (!layer) return
+    if (!layer.hasImage) { bones.setStatus(`${name} 没有贴图,不能参与蒙皮/权重`, 'error'); return }
+    const next = !layer.selected
+    Promise.resolve(setSelected(name, next)).catch(() => {})
+    bones.setStatus(next ? `${name} 已勾选(参与蒙皮/权重)` : `${name} 已取消勾选`, next ? 'ok' : '')
+  }
+  /** Move the picked layers one step (+1 up = drawn later / on top, -1 down). */
+  function nudgeOrder(dir) {
+    const ctl = bones.ctl
+    if (!ctl || typeof ctl.setSlotOrder !== 'function' || !hier.pick.size) return false
+    const list = orderNames()
+    const picked = list.filter((n) => hier.pick.has(n))
+    if (!picked.length) return false
+    const next = list.slice()
+    if (dir > 0) {
+      for (let i = 0; i < next.length; i++) {
+        if (!hier.pick.has(next[i])) continue
+        if (i === 0 || hier.pick.has(next[i - 1])) continue
+        const tmp = next[i - 1]; next[i - 1] = next[i]; next[i] = tmp
+      }
+    } else {
+      for (let i = next.length - 1; i >= 0; i--) {
+        if (!hier.pick.has(next[i])) continue
+        if (i === next.length - 1 || hier.pick.has(next[i + 1])) continue
+        const tmp = next[i + 1]; next[i + 1] = next[i]; next[i] = tmp
+      }
+    }
+    return commitOrder(next)
+  }
+  function commitOrder(displayOrder) {
+    const ctl = bones.ctl
+    if (!ctl || typeof ctl.setSlotOrder !== 'function') return false
+    // the tree shows the topmost layer first; the skeleton stores the opposite
+    if (!ctl.setSlotOrder(displayOrder.slice().reverse())) return false
+    renderHierarchy(true)
+    bones.syncUi()
+    bones.setStatus(`绘制顺序已改(${hier.pick.size} 层) · 应用到工程 后生效`, 'ok')
+    return true
+  }
+  /** Drop the picked layers in front of `before` (null = to the bottom of the list). */
+  function dropOrder(before) {
+    const list = orderNames()
+    const picked = list.filter((n) => hier.pick.has(n))
+    if (!picked.length) return false
+    const rest = list.filter((n) => !hier.pick.has(n))
+    let at = before && rest.includes(before) ? rest.indexOf(before) : rest.length
+    const next = rest.slice(0, at).concat(picked, rest.slice(at))
+    return commitOrder(next)
+  }
+  const markDrop = (row, on) => { if (row) row.style.boxShadow = on ? 'inset 0 2px 0 0 rgba(34,201,138,0.95)' : '' }
+  function endOrderDrag() {
+    markDrop(orderDrag.over, false)
+    orderDrag.on = false; orderDrag.id = -1; orderDrag.over = null; orderDrag.before = null; orderDrag.moved = false
+  }
+  function onOrderPointerDown(ev) {
+    const row = ev.target instanceof Element ? ev.target.closest('[data-nf-hier-layer]') : null
+    if (!row || ev.button !== 0) return
+    const name = row.dataset.nfHierLayer
+    if (!hier.pick.has(name)) pickLayerRow(name, ev)
+    orderDrag.on = true; orderDrag.id = ev.pointerId; orderDrag.moved = false; orderDrag.before = null
+  }
+  function onOrderPointerMove(ev) {
+    if (!orderDrag.on || ev.pointerId !== orderDrag.id) return
+    orderDrag.moved = true
+    const under = document.elementFromPoint(ev.clientX, ev.clientY)
+    const row = under instanceof Element ? under.closest('[data-nf-hier-layer]') : null
+    if (row === orderDrag.over) return
+    markDrop(orderDrag.over, false)
+    orderDrag.over = row || null
+    orderDrag.before = row ? row.dataset.nfHierLayer : null
+    markDrop(orderDrag.over, true)
+  }
+  function onOrderPointerUp(ev) {
+    if (!orderDrag.on || ev.pointerId !== orderDrag.id) return
+    const before = orderDrag.before, moved = orderDrag.moved
+    endOrderDrag()
+    if (!moved) return
+    ev.preventDefault(); ev.stopImmediatePropagation()
+    if (before && hier.pick.has(before)) return   // dropped on itself
+    dropOrder(before)
+  }
+  /** + / = raises the picked layers, - / _ lowers them (Spine's draw-order keys). */
+  function onOrderKey(ev) {
+    if (!hier.pick.size) return
+    const t = ev.target
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
+    const k = ev.key
+    if (k !== '+' && k !== '=' && k !== '-' && k !== '_') return
+    ev.preventDefault(); ev.stopImmediatePropagation()
+    nudgeOrder(k === '+' || k === '=' ? 1 : -1)
   }
   function paintHierSelection() {
     const ctl = bones.ctl
@@ -2034,6 +2320,55 @@
       scrollIntoBox(row, hier.scroll)
     }
   }
+  /**
+   * The app keeps its own selected-bone set, and its (now hidden) tree is what sets it —
+   * everything the app does with 当前选择骨骼 depends on it. So a selection made here is
+   * pushed into that tree: open the ancestors, click the row. `click()` raises no pointer
+   * events, so our own handlers cannot loop through it.
+   */
+  const appBoneRows = () => Array.from(document.querySelectorAll('[data-novaflow-skeleton-bone-row="1"]'))
+  const appBoneRow = (name) => appBoneRows().find((r) => String(r.textContent || '').replace(/\s+/g, ' ').trim() === name) || null
+  function expandAppAncestor(name) {
+    const ctl = bones.ctl
+    if (!ctl) return false
+    const byName = new Map(ctl.peekBones().map((b) => [b.name, b]))
+    const chain = []
+    let cur = byName.get(name)
+    for (let i = 0; i < 200 && cur && cur.parent && byName.has(cur.parent); i++) { chain.unshift(cur.parent); cur = byName.get(cur.parent) }
+    for (let i = chain.length - 1; i >= 0; i--) {
+      const row = appBoneRow(chain[i])
+      if (!row) continue
+      const toggle = row.firstElementChild
+      const chevron = toggle && toggle.querySelector('i')
+      if (chevron && /chevron-right/.test(String(chevron.className))) { toggle.click(); return true }
+      return false
+    }
+    return false
+  }
+  async function syncAppSelection(name) {
+    const token = ++hier.appToken
+    if (!name) return
+    const p = previewPlayer()
+    const cur = p && Array.isArray(p.selectedBoneNames) ? p.selectedBoneNames : null
+    if (cur && cur.length === 1 && cur[0] === name) return
+    for (let pass = 0; pass < 8; pass++) {
+      if (token !== hier.appToken) return
+      const row = appBoneRow(name)
+      if (row) {
+        try { row.click() } catch { /* re-rendered away */ }
+        // that click set the app's selection to this one bone; a multi-selection has to
+        // be put back on the runtime afterwards
+        if (hier.bones.size > 1) window.setTimeout(pushBonePicks, 60)
+        return
+      }
+      if (!expandAppAncestor(name) && pass > 0) break
+      await new Promise((r) => window.setTimeout(r, 120))
+    }
+    // a bone drawn in this session is not in the project's tree yet; the runtime can still
+    // be told, so 当前链条 and the selected-bone overlay follow
+    try { if (p && typeof p.setSelectedBoneNames === 'function') p.setSelectedBoneNames(hier.bones.size > 1 ? [...hier.bones] : [name]) } catch { /* not that kind of player */ }
+  }
+
   /** Open every ancestor so the selected bone has a row, then highlight it. */
   function revealInTree(name) {
     if (!name) { paintHierSelection(); return }
@@ -2057,6 +2392,7 @@
   }
   function onTreePointerDown(ev) {
     if (!bones.editing || ev.button !== 0) return
+    if (ev.target instanceof Element && ev.target.closest('[data-nf-hier-layer]')) return
     const row = ev.target instanceof Element ? ev.target.closest(BONE_ROW_SEL) : null
     if (!row) return
     endTreeDrag()
@@ -2094,6 +2430,317 @@
    * bone tree with fixed skin / animation lists under it runs out of room as soon as a
    * project has more than a couple of each).
    */
+  /**
+   * Move 导入 PS 工程 into the app's 导入工程 panel: one place for "bring a project in".
+   * The app owns that panel, so the button is re-homed whenever it reappears, and it
+   * keeps working from wherever it sits (the file picker travels with it).
+   */
+  /**
+   * 导入 PS 工程 belongs with the app's other imports (user decision 2026-09-21). It is
+   * built here, not in 自动蒙皮's body, so that it can go into the app's panel in the very
+   * frame that panel appears instead of blinking in when the mesh panel mounts.
+   */
+  /**
+   * Import trace, OFF by default: a click that opens nothing looks identical to one that
+   * opens a chooser (a page sees no blur, no visibilitychange, and keeps focus), so when
+   * the import misbehaves somewhere we cannot reach, turn this on from the console:
+   *   window.__NOVAFLOW_IMPORT_DIAG = true   (optionally ...= 'http://127.0.0.1:4799/d')
+   * Nothing is sent until it is set.
+   */
+  function diagOn() {
+    if (window.__NOVAFLOW_IMPORT_DIAG) return window.__NOVAFLOW_IMPORT_DIAG
+    try { if (/[?&]diag=1/.test(location.search)) return true } catch { /* no location here */ }
+    return false
+  }
+  /** A box in the corner: the trace has to survive being screenshotted, not just logged. */
+  function diagBox() {
+    let box = document.getElementById('novaflow-import-diag')
+    if (box) return box
+    box = el('div', {
+      position: 'fixed', left: '8px', bottom: '8px', zIndex: '2147483647', maxWidth: '380px',
+      maxHeight: '220px', overflow: 'auto', background: 'rgba(0,0,0,0.82)', color: '#9fe8a0',
+      font: '11px/1.5 Consolas, monospace', padding: '6px 8px', borderRadius: '6px',
+      border: '1px solid rgba(126,231,135,0.5)', whiteSpace: 'pre-wrap', pointerEvents: 'none'
+    })
+    box.id = 'novaflow-import-diag'
+    document.body.appendChild(box)
+    return box
+  }
+  function diag(stage, info) {
+    const on = diagOn()
+    if (!on) return
+    const line = stage + ' ' + Object.entries(info || {}).map(([k, v]) => k + '=' + String(v)).join(' ')
+    try {
+      const box = diagBox()
+      const now = new Date()
+      const hh = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0') + ':' + String(now.getSeconds()).padStart(2, '0')
+      box.textContent = (box.textContent ? box.textContent + '\n' : '') + hh + '  ' + line
+      box.scrollTop = box.scrollHeight
+    } catch { /* the box is optional */ }
+    try {
+      const url = typeof on === 'string' ? on : 'http://127.0.0.1:4799/d'
+      const q = Object.entries(info || {}).map(([k, v]) => k + '=' + encodeURIComponent(String(v))).join('&')
+      new Image().src = url + '?stage=' + encodeURIComponent(stage) + (q ? '&' + q : '') + '&t=' + Date.now()
+    } catch { /* the sink is optional */ }
+  }
+  function panelBuild() {
+    try {
+      const tag = document.querySelector('script[src*="spine-auto-mesh.panel.js"]')
+      const m = tag && /[?&]v=([^"&]+)/.exec(tag.getAttribute('src') || '')
+      return m ? m[1] : 'unknown'
+    } catch { return 'unknown' }
+  }
+  /** Who would actually receive a click on each import button, and why it is not the button. */
+  function diagHitTest() {
+    try {
+      const panels = Array.from(document.querySelectorAll('.nf-panel')).filter((p) => {
+        const head = p.querySelector('.nf-panel-header')
+        return head && String(head.textContent || '').replace(/\s+/g, '').startsWith('导入工程')
+      })
+      // more than one means the app mounted twice and half the UI on screen is dead
+      diag('hit', { panels: panels.length, roots: document.querySelectorAll('.nf-panel').length })
+      const panel = panels[0]
+      const body = panel && panel.querySelector('.nf-panel-body')
+      if (!body) { diag('hit', { panel: 'not found' }); return }
+      if (window.getComputedStyle(body).display === 'none') { diag('hit', { panel: '未展开' }); return }
+      const describe = (e) => {
+        if (!e) return 'null'
+        const st = window.getComputedStyle(e)
+        const cls = typeof e.className === 'string' && e.className ? '.' + e.className.split(' ').filter(Boolean)[0] : ''
+        return e.tagName + (e.id ? '#' + e.id : '') + cls + '/' + st.position + '/z' + st.zIndex + '/pe' + st.pointerEvents
+      }
+      const buttons = Array.from(body.querySelectorAll('button')).slice(0, 8)
+      for (const btn of buttons) {
+        const r = btn.getBoundingClientRect()
+        if (!r.width || !r.height) { diag('hit', { b: (btn.textContent || '').trim().slice(0, 8), rect: '0x0' }); continue }
+        const top = document.elementFromPoint(Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2))
+        const mine = top === btn || btn.contains(top)
+        diag('hit', { b: (btn.textContent || '').trim().slice(0, 8), ok: mine, top: mine ? 'self' : describe(top) })
+      }
+    } catch (err) {
+      diag('hit', { error: String((err && err.message) || err).slice(0, 50) })
+    }
+  }
+  function diagEnv() {
+    const api0 = window.electronAPI
+    diag('boot', {
+      build: panelBuild(),
+      href: String(location.href).slice(-42),
+      api: typeof api0,
+      ps: api0 ? typeof api0.openPhotoshopProject : 'none',
+      keys: api0 ? Object.keys(api0).length : 0,
+      ua: navigator.userAgent.includes('Electron') ? 'electron' : 'browser'
+    })
+  }
+  try {
+    // Ctrl+Alt+D turns the trace on anywhere, including the desktop app where no URL can be typed
+    window.addEventListener('keydown', (ev) => {
+      if (!ev.ctrlKey || !ev.altKey || String(ev.key).toLowerCase() !== 'd') return
+      window.__NOVAFLOW_IMPORT_DIAG = !window.__NOVAFLOW_IMPORT_DIAG
+      if (window.__NOVAFLOW_IMPORT_DIAG) { diagEnv(); diagHitTest() }
+      else { const box = document.getElementById('novaflow-import-diag'); if (box) box.remove() }
+    }, true)
+    if (diagOn()) setTimeout(() => { diagEnv(); diagHitTest() }, 1200)
+    document.addEventListener('click', (ev) => {
+      if (!diagOn()) return
+      const b = ev.target && ev.target.closest ? ev.target.closest('button') : null
+      const t = b ? (b.textContent || '').trim().slice(0, 16) : ''
+      if (t && /导入|清空|开始/.test(t)) { diag('anyclick', { t, trusted: ev.isTrusted }); return }
+      // a click that lands anywhere else still proves the page receives clicks at all
+      const el2 = ev.target
+      const tag = el2 && el2.tagName ? el2.tagName + (el2.id ? '#' + el2.id : '') : String(el2)
+      diag('click', { on: b ? 'button:' + t : tag, at: Math.round(ev.clientX) + ',' + Math.round(ev.clientY), trusted: ev.isTrusted })
+    }, true)
+  } catch { /* diagnostics never break the panel */ }
+
+  function ensurePsImport() {
+    if (state.psImport) return state.psImport
+    const button = el('button', null, '导入 PS 工程（JSON + 贴图文件夹）')
+    button.type = 'button'
+    styleButton(button, false)
+    button.title = 'PhotoshopToSpine 导出的文件夹可以直接用,不需要先过一遍 Spine;也可以直接把那个文件夹拖到这个按钮上'
+    // the panel this button lives in is the app's 导入工程; the status line it used to write to
+    // sits inside 自动蒙皮, which is collapsed on entry — so a click looked like nothing happened
+    const psStatus = el('div', {
+      display: 'none', marginTop: '6px', fontSize: '11px', lineHeight: '1.5',
+      color: 'rgba(255,255,255,0.72)', wordBreak: 'break-word', overflowWrap: 'anywhere'
+    })
+    const showHere = (text, tone) => {
+      if (!text) { psStatus.style.display = 'none'; psStatus.textContent = ''; return }
+      psStatus.style.display = 'block'
+      psStatus.textContent = text
+      psStatus.style.color = tone === 'err' ? '#ff8f8f' : tone === 'ok' ? '#7ee787' : 'rgba(255,255,255,0.72)'
+    }
+    const sayHere = (text, tone) => { setStatusFn(text, tone); showHere(text, tone) }
+    // parked off-screen rather than display:none: a hidden input still opens the dialog,
+    // but a rendered one does it in every embedder we have seen
+    const picker = el('input', { position: 'fixed', left: '-10000px', top: '0', width: '1px', height: '1px', opacity: '0' })
+    picker.type = 'file'
+    picker.multiple = true
+    try { picker.webkitdirectory = true } catch { /* plain multi-select instead */ }
+    picker.setAttribute('webkitdirectory', '')
+    picker.setAttribute('directory', '')
+    const openPicker = (say) => {
+      // the browser's own folder picker, and the only route when there is no IPC
+      if (!picker.isConnected) document.body.appendChild(picker)
+      say('已打开文件夹选择框;没弹出来就把文件夹直接拖到这个按钮上')
+      diag('pickerclick', { display: (window.getComputedStyle(picker) || {}).display })
+      picker.click()
+    }
+    button.addEventListener('click', () => {
+      diagEnv()
+      diag('psclick', { busy: state.busy, api: typeof window.electronAPI, ps: window.electronAPI ? typeof window.electronAPI.openPhotoshopProject : 'none', connected: picker.isConnected })
+      if (state.busy) return
+      const say = sayHere
+      // the desktop app opens folders through Electron's dialog (its own 导入 buttons do the
+      // same); an <input webkitdirectory> only works in a plain browser
+      const api = window.electronAPI
+      if (api && typeof api.openPhotoshopProject === 'function') {
+        guardWith(say)(async () => {
+          say('选择 PhotoshopToSpine 导出的文件夹…')
+          let res = null
+          diag('ipcstart', {})
+          try {
+            res = await api.openPhotoshopProject()
+            diag('ipcdone', { canceled: res && res.canceled, files: res && res.files ? res.files.length : -1, error: res && res.error ? String(res.error).slice(0, 40) : '' })
+          } catch (err) {
+            diag('ipcreject', { msg: String((err && err.message) || err).slice(0, 60) })
+            // refreshing the window reloads this code but not the main process: an app that
+            // was only refreshed has no handler for it yet
+            say('这个应用还在用旧的主进程(退出后重新打开即可),先用浏览器的选择框', 'warn')
+            openPicker(say)
+            return
+          }
+          if (!res || res.canceled) { say('已取消'); return }
+          if (res.error) throw new Error(res.error)
+          const files = (res.files || []).map((f) => {
+            const bytes = Uint8Array.from(atob(f.base64), (ch) => ch.charCodeAt(0))
+            const file = new File([bytes], f.name, { type: f.mime })
+            try { Object.defineProperty(file, 'webkitRelativePath', { value: f.relativePath || f.name }) } catch { /* read-only in some engines */ }
+            return file
+          })
+          if (!files.length) throw new Error('这个文件夹里没有 JSON 和贴图')
+          const n = await importPhotoshopProject(files, (t) => say(t))
+          say(`已载入 ${n} 张贴图,勾选图层后生成`, 'ok')
+        })
+        return
+      }
+      openPicker(say)
+    })
+    // A folder dropped on the button is read through the entries API, so importing works
+    // even where the environment refuses to open a folder chooser.
+    const entryFiles = async (roots) => {
+      const files = []
+      const readDir = (dir) => new Promise((resolve) => {
+        const reader = dir.createReader()
+        const out = []
+        const step = () => reader.readEntries((batch) => {
+          if (!batch || !batch.length) { resolve(out); return }
+          for (const b of batch) out.push(b)
+          step()
+        }, () => resolve(out))
+        step()
+      })
+      const fileOf = (entry) => new Promise((resolve) => entry.file((f) => resolve(f), () => resolve(null)))
+      const walk = async (entry, prefix, depth) => {
+        if (!entry || depth > 4) return
+        if (entry.isFile) {
+          const f = await fileOf(entry)
+          if (!f) return
+          try { Object.defineProperty(f, 'webkitRelativePath', { value: prefix + f.name }) } catch { /* read-only here and there */ }
+          files.push(f)
+          return
+        }
+        if (entry.isDirectory) {
+          const kids = await readDir(entry)
+          for (const kid of kids) await walk(kid, prefix + entry.name + '/', depth + 1)
+        }
+      }
+      for (const root of roots) await walk(root, '', 0)
+      return files
+    }
+    const dropHint = (on) => {
+      button.style.outline = on ? '1px dashed #7ee787' : ''
+      button.style.outlineOffset = on ? '2px' : ''
+    }
+    button.addEventListener('dragover', (ev) => { ev.preventDefault(); ev.dataTransfer.dropEffect = 'copy'; dropHint(true) })
+    button.addEventListener('dragleave', () => dropHint(false))
+    button.addEventListener('drop', (ev) => {
+      ev.preventDefault()
+      dropHint(false)
+      if (state.busy) return
+      // the item list is emptied as soon as the handler returns, so take the entries NOW
+      const roots = []
+      const items = (ev.dataTransfer && ev.dataTransfer.items) || []
+      for (const item of items) {
+        const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null
+        if (entry) roots.push(entry)
+      }
+      const plain = Array.from((ev.dataTransfer && ev.dataTransfer.files) || [])
+      diag('drop', { roots: roots.length, plain: plain.length })
+      guardWith(sayHere)(async () => {
+        sayHere('读取拖进来的文件夹…')
+        const files = roots.length ? await entryFiles(roots) : plain
+        if (!files.length) throw new Error('这里面没有 JSON 和贴图')
+        const n = await importPhotoshopProject(files, (t) => sayHere(t))
+        sayHere(`已载入 ${n} 张贴图,勾选图层后生成`, 'ok')
+      })
+    })
+    picker.addEventListener('change', () => {
+      // `picker.files` is LIVE: resetting picker.value empties the very list we
+      // are holding, so snapshot first or the pick silently turns into nothing.
+      const files = Array.from(picker.files || [])
+      diag('picked', { n: files.length })
+      picker.value = ''
+      const say = sayHere
+      if (!files.length) { say('没有选到文件'); return }
+      guardWith(say)(async () => {
+        const n = await importPhotoshopProject(files, (t) => say(t))
+        say(`已载入 ${n} 张贴图,勾选图层后生成`, 'ok')
+      })
+    })
+    document.body.appendChild(picker)
+    state.psImport = { button, picker, status: psStatus }
+    busyButtons.push(button)
+    return state.psImport
+  }
+  function homePsImport() {
+    const kit = ensurePsImport()
+    if (!kit || !kit.button) return
+    const panel = Array.from(document.querySelectorAll('.nf-panel')).find((pn) => {
+      const head = pn.querySelector('.nf-panel-header')
+      return head && String(head.textContent || '').replace(/\s+/g, '').startsWith('导入工程')
+    })
+    const body = panel && panel.querySelector('.nf-panel-body')
+    if (!body) return
+    if (kit.button.parentElement !== body) body.appendChild(kit.button)
+    if (kit.status && kit.status.parentElement !== body) body.appendChild(kit.status)
+    if (!kit.picker.isConnected) document.body.appendChild(kit.picker)
+    dressLikePanel(kit.button, body)
+  }
+  /**
+   * Wear the panel's own button style: this row sits among the app's buttons, and its
+   * look is the app's (class + inline style), not ours. Re-applied whenever the app
+   * rebuilds them, guarded by a signature so nothing is written when nothing changed.
+   */
+  function dressLikePanel(btn, body) {
+    const buttons = Array.from(body.querySelectorAll('button')).filter((b) => b !== btn)
+    const model = buttons.find((b) => String(b.textContent || '').replace(/\s+/g, '') === '清空') || buttons[buttons.length - 1]
+    if (!model) return
+    // copied from the COMPUTED style: the app styles these buttons from its own sheet as
+    // often as inline, so copying the style attribute alone left ours looking like a
+    // browser default button
+    const c = window.getComputedStyle(model)
+    const props = ['height', 'minHeight', 'padding', 'borderRadius', 'backgroundColor', 'color', 'borderWidth', 'borderStyle', 'borderColor', 'fontSize', 'fontWeight', 'fontFamily', 'letterSpacing', 'boxShadow', 'cursor']
+    const sig = props.map((k) => c[k]).join('|')
+    if (btn.dataset.nfStyleSig === sig) return
+    btn.dataset.nfStyleSig = sig
+    for (const k of props) { const v = c[k]; if (v && v !== 'auto' && v !== 'none' && v !== '0px') btn.style[k] = v }
+    btn.style.width = '100%'
+    btn.style.marginTop = '8px'
+    btn.style.display = 'block'
+    btn.style.boxSizing = 'border-box'
+  }
   function tuneSkeletonSidebar() {
     const box = ensureHierarchy()
     if (!box) return
@@ -2132,6 +2779,11 @@
     document.addEventListener('pointermove', onTreePointerMove, true)
     document.addEventListener('pointerup', onTreePointerUp, true)
     document.addEventListener('pointercancel', endTreeDrag, true)
+    document.addEventListener('pointerdown', onOrderPointerDown, true)
+    document.addEventListener('pointermove', onOrderPointerMove, true)
+    document.addEventListener('pointerup', onOrderPointerUp, true)
+    document.addEventListener('pointercancel', endOrderDrag, true)
+    window.addEventListener('keydown', onOrderKey, true)
   }
   function setBonesEditing(on) {
     bindTreeDrag()
@@ -2158,6 +2810,7 @@
       if (p && (!bones.frozen || bones.frozen.player !== p)) freezePreview()
     }
     tuneSkeletonSidebar()
+    homePsImport()
     syncBonePreview()
     if (loadBonesFromSource(false)) { bones.renderTree(); bones.syncUi(); renderHierarchy(true) }
   }
@@ -2260,7 +2913,8 @@
     // the switch
     // no 编辑骨骼 checkbox: opening this panel IS the edit mode (user decision 2026-09-21),
     // collapsing it hands the preview back
-    const swHint = el('div', { fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: STACK_GAP }, '展开本面板即进入编辑:预览停在设置姿势,可直接选、拖、画骨骼;收起即恢复播放')
+    const swHint = el('div', { fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: STACK_GAP, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, '展开=编辑(预览停在设置姿势),收起=恢复播放')
+    swHint.title = '展开本面板即进入编辑:预览停在设置姿势,可直接选、拖、画骨骼;收起即恢复播放'
 
     // tools
     const toolsRow = el('div', { display: 'flex', gap: '4px', marginTop: STACK_GAP })
@@ -2273,19 +2927,12 @@
       toolBtns[t.id] = b
       toolsRow.appendChild(b)
     }
-    let showNames = false
-    const namesBtn = smallButton('名称')
-    namesBtn.title = '在预览里标出每根骨骼的名字'
-    namesBtn.addEventListener('click', () => { showNames = !showNames; ensureController().setShowNames(showNames); bones.syncUi() })
-    toolsRow.appendChild(namesBtn)
 
     // actions
     const autoBtn = el('button', null, '自动架设'); autoBtn.type = 'button'; styleButton(autoBtn, true); autoBtn.style.marginTop = STACK_GAP
     autoBtn.title = '按每层的中轴自动搭一套骨架(躯干、四肢带 IK、头发、飘带);搭完展开本面板即可手动修'
-    const row2 = el('div', { display: 'flex', gap: '4px', marginTop: STACK_GAP })
-    const undoBtn = smallButton('撤销'), redoBtn = smallButton('重做'), delBtn = smallButton('删除'), resetBtn = smallButton('放弃修改')
-    undoBtn.title = 'Ctrl+Z'; redoBtn.title = 'Ctrl+Y'; delBtn.title = '删除选中的骨骼:它的子骨挂到它的父骨,图层保持原位(Delete)'; resetBtn.title = '丢掉没应用的修改,回到工程里现在的骨架'
-    for (const b of [undoBtn, redoBtn, delBtn, resetBtn]) { b.style.flex = '1 1 0'; row2.appendChild(b) }
+    const resetBtn = el('button', null, '还原初始骨架'); resetBtn.type = 'button'; styleButton(resetBtn, false); resetBtn.style.marginTop = STACK_GAP
+    resetBtn.title = '丢掉这里的所有改动,回到工程里的骨架(撤销 Ctrl+Z · 重做 Ctrl+Y · 删除选中骨 Delete)'
     const applyBtn = el('button', null, '应用到工程'); applyBtn.type = 'button'; styleButton(applyBtn, true); applyBtn.style.marginTop = STACK_GAP
     applyBtn.title = '把编辑好的骨架写回工程并重建预览;之后再做 自动蒙皮 / 自动权重'
 
@@ -2299,13 +2946,26 @@
     const inputStyle = { flex: '1 1 auto', minWidth: '0', height: '22px', background: '#2a2a2a', color: 'rgba(255,255,255,0.9)', border: '0', borderRadius: '4px', fontSize: '11px', padding: '0 6px', boxSizing: 'border-box' }
     const nameRow = field('名称'); const nameIn = el('input', inputStyle); nameIn.type = 'text'; nameIn.spellcheck = false; nameRow.appendChild(nameIn)
     const parentRow = field('父骨'); const parentSel = el('select', inputStyle); parentRow.appendChild(parentSel)
-    const poseRow = field('角度'); const rotIn = el('input', Object.assign({}, inputStyle, { flex: '1 1 0' })); rotIn.type = 'number'; rotIn.step = '0.1'
-    poseRow.appendChild(rotIn); poseRow.appendChild(el('span', { fontSize: '11px', color: 'rgba(255,255,255,0.5)', flex: '0 0 auto' }, '长度'))
+    // the pair of numbers belongs to the ACTIVE TOOL (user 2026-09-22): 移动 → X/Y,
+    // 旋转 → 角度/长度, 缩放 → 缩放X/缩放Y, and typing one applies that tool's edit
+    const poseRow = field('角度'); const poseLabelA = poseRow.firstChild
+    const rotIn = el('input', Object.assign({}, inputStyle, { flex: '1 1 0' })); rotIn.type = 'number'; rotIn.step = '0.1'
+    const poseLabelB = el('span', { fontSize: '11px', color: 'rgba(255,255,255,0.5)', flex: '0 0 auto' }, '长度')
+    poseRow.appendChild(rotIn); poseRow.appendChild(poseLabelB)
     const lenIn = el('input', Object.assign({}, inputStyle, { flex: '1 1 0' })); lenIn.type = 'number'; lenIn.step = '1'; lenIn.min = '0'; poseRow.appendChild(lenIn)
+    /** What the two fields mean under each tool: label, step, and where the value comes from. */
+    const POSE_FIELDS = {
+      move: { a: { label: 'X', step: '1', min: '' }, b: { label: 'Y', step: '1', min: '' }, title: '骨骼原点的世界坐标' },
+      rotate: { a: { label: '角度', step: '0.1', min: '' }, b: { label: '长度', step: '1', min: '0' }, title: '世界角度与骨骼长度' },
+      scale: { a: { label: '缩放X', step: '0.01', min: '' }, b: { label: '缩放Y', step: '0.01', min: '' }, title: '骨骼自身的缩放,子骨和图片跟着变' },
+      create: { a: { label: '角度', step: '0.1', min: '' }, b: { label: '长度', step: '1', min: '0' }, title: '世界角度与骨骼长度' }
+    }
+    const poseSpec = () => POSE_FIELDS[(bones.ctl ? bones.ctl.getState().tool : 'move')] || POSE_FIELDS.move
     const mechNote = el('div', { fontSize: '10px', color: 'rgba(255,170,90,0.85)', marginTop: '4px', display: 'none' }, '控制骨(IK/约束目标、零长度骨、枢轴):拖动或旋转=摆姿势,约束联动、图片跟着走;辅助链跟着关节走,不单独编辑')
-    const legend = el('div', { display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '2px', fontSize: '10px', color: 'rgba(255,255,255,0.55)' })
-    for (const [color, text] of [['#8fd3ff', '普通骨'], ['#c79bff', '受约束驱动'], ['#ffb454', '控制骨(IK/约束目标、枢轴)'], ['#22c98a', '选中']]) {
-      const chip = el('span', { display: 'inline-flex', alignItems: 'center', gap: '4px' })
+    const legend = el('div', { display: 'flex', alignItems: 'center', gap: '10px', marginTop: '2px', fontSize: '10px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap', overflow: 'hidden' })
+    legend.title = '蓝=普通变形骨 · 紫=被约束驱动 · 琥珀=控制骨(IK/约束目标、零长度枢轴) · 绿=选中'
+    for (const [color, text] of [['#8fd3ff', '普通'], ['#c79bff', '受约束'], ['#ffb454', '控制骨'], ['#22c98a', '选中']]) {
+      const chip = el('span', { display: 'inline-flex', alignItems: 'center', gap: '4px', flex: '0 0 auto' })
       chip.appendChild(el('span', { width: '8px', height: '8px', borderRadius: '2px', background: color, flex: '0 0 auto' }))
       chip.appendChild(el('span', null, text))
       legend.appendChild(chip)
@@ -2333,7 +2993,16 @@
     }
     for (const evName of ['pointerdown', 'focus', 'keydown']) parentSel.addEventListener(evName, refreshParentOptions)
     parentSel.addEventListener('change', () => { const ctl = ensureController(); const i = Number(parentSel.value); if (!ctl.reparentSelected(i)) { setStatus('不能挂到自己或自己的子骨下', 'error'); bones.syncUi() } })
-    const commitPose = () => { const ctl = ensureController(); if (ctl.getState().selected < 0) return; ctl.setSelectedPose({ rotation: Number(rotIn.value), length: Number(lenIn.value) }) }
+    const commitPose = () => {
+      const ctl = ensureController()
+      const st = ctl.getState()
+      if (st.selected < 0) return
+      const tool = st.tool
+      if (tool === 'move') ctl.setSelectedPose({ x: Number(rotIn.value), y: Number(lenIn.value) })
+      else if (tool === 'scale') ctl.setSelectedPose({ scaleX: Number(rotIn.value), scaleY: Number(lenIn.value) })
+      else ctl.setSelectedPose({ rotation: Number(rotIn.value), length: Number(lenIn.value) })
+      bones.syncUi()
+    }
     for (const inp of [rotIn, lenIn]) { inp.addEventListener('change', commitPose); inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); commitPose(); inp.blur() } ev.stopPropagation() }) }
     bones.focusName = () => { window.setTimeout(() => { try { nameIn.focus(); nameIn.select() } catch { /* hidden */ } }, 0) }
 
@@ -2343,9 +3012,10 @@
     bones.renderTree = () => {
       const ctl = bones.ctl
       const n = ctl ? ctl.peekBones().length : 0
+      listWrap.title = '换父骨:选中后按 P 再点新父骨(Shift+P 挂到 root),或在右侧树里把一根骨拖到另一根上'
       listWrap.textContent = n
-        ? `骨骼树在右侧面板(${n} 根)。换父骨:选中后按 P 再点新父骨(Shift+P 挂到 root),或在右侧树里把一根骨拖到另一根上。`
-        : (importedSource() ? '工程里还没有骨骼:点 自动架设,或用 新建 直接画' : '导入工程后,右侧面板会列出骨骼树')
+        ? `骨骼树在右侧(${n} 根) · 换父骨 P / Shift+P`
+        : (importedSource() ? '还没有骨骼:点 自动架设,或用 新建 画' : '导入工程后右侧列出骨骼树')
     }
 
     // writes that would invalidate layout are skipped when nothing changes: the next
@@ -2357,9 +3027,9 @@
     const setStyle = (node, prop, v) => { if (node.style[prop] !== v) node.style[prop] = v }
     bones.syncUi = () => {
       const ctl = bones.ctl
-      const st = ctl ? ctl.getState() : { enabled: false, tool: 'select', selected: -1, dirty: false, canUndo: false, canRedo: false, bones: 0 }
+      const st = ctl ? ctl.getState() : { enabled: false, tool: 'move', selected: -1, dirty: false, canUndo: false, canRedo: false, bones: 0 }
       const ready = !bones.editing || !!previewPlayer()
-      setText(swHint, ready ? '展开本面板即进入编辑:预览停在设置姿势,可直接选、拖、画骨骼;收起即恢复播放' : '预览还没就绪,等骨骼预览出来再编辑')
+      setText(swHint, ready ? '展开=编辑(预览停在设置姿势),收起=恢复播放' : '预览还没就绪,等骨骼预览出来再编辑')
       setStyle(swHint, 'color', ready ? 'rgba(255,255,255,0.4)' : '#ff8a7a')
       for (const id of Object.keys(toolBtns)) {
         const b = toolBtns[id]
@@ -2369,12 +3039,8 @@
         setDisabled(b, !bones.editing)
         setStyle(b, 'opacity', bones.editing ? '1' : '0.5')
       }
-      setStyle(namesBtn, 'background', showNames ? 'rgba(30,166,114,0.18)' : '#333333')
-      setStyle(namesBtn, 'color', showNames ? '#7ce8b5' : 'rgba(255,255,255,0.92)')
-      setDisabled(undoBtn, !st.canUndo); setDisabled(redoBtn, !st.canRedo)
-      setDisabled(delBtn, st.selected < 0 || (ctl && ctl.isOwned(st.selected)))
       setDisabled(resetBtn, !st.dirty)
-      for (const b of [undoBtn, redoBtn, delBtn, resetBtn]) setStyle(b, 'opacity', b.disabled ? '0.5' : '1')
+      setStyle(resetBtn, 'opacity', resetBtn.disabled ? '0.5' : '1')
       setDisabled(applyBtn, !st.dirty)
       setStyle(applyBtn, 'opacity', st.dirty ? '1' : '0.6')
       setText(applyBtn, st.dirty ? '应用到工程(有未保存的修改)' : '应用到工程')
@@ -2386,8 +3052,23 @@
         if (document.activeElement !== nameIn) nameIn.value = b.name
         const W = ctl.getWorld()
         const m = W[st.selected]
-        if (document.activeElement !== rotIn) rotIn.value = m ? (Math.atan2(m.c, m.a) * 180 / Math.PI).toFixed(1) : '0'
-        if (document.activeElement !== lenIn) lenIn.value = m ? String(Math.round(m.length * 10) / 10) : '0'
+        const spec = poseSpec()
+        setText(poseLabelA, spec.a.label)
+        setText(poseLabelB, spec.b.label)
+        if (poseRow.title !== spec.title) poseRow.title = spec.title
+        for (const [inp, cell] of [[rotIn, spec.a], [lenIn, spec.b]]) {
+          if (inp.step !== cell.step) inp.step = cell.step
+          if ((inp.getAttribute('min') || '') !== cell.min) { if (cell.min) inp.setAttribute('min', cell.min); else inp.removeAttribute('min') }
+        }
+        const round1 = (v) => String(Math.round(v * 10) / 10)
+        let va = '0', vb = '0'
+        if (st.tool === 'move') { va = m ? round1(m.worldX) : '0'; vb = m ? round1(m.worldY) : '0' } else if (st.tool === 'scale') {
+          const sx = b.scaleX === undefined ? 1 : Number(b.scaleX)
+          const sy = b.scaleY === undefined ? 1 : Number(b.scaleY)
+          va = String(Math.round(sx * 1000) / 1000); vb = String(Math.round(sy * 1000) / 1000)
+        } else { va = m ? (Math.atan2(m.c, m.a) * 180 / Math.PI).toFixed(1) : '0'; vb = m ? round1(m.length) : '0' }
+        if (document.activeElement !== rotIn) rotIn.value = va
+        if (document.activeElement !== lenIn) lenIn.value = vb
         const index = new Map(skel.bones.map((x, i) => [x.name, i]))
         const optionsKey = skel.bones.map((x) => x.name + '<' + (x.parent || '')).join('\n')
         if (parentSel.dataset.optionsKey !== optionsKey) {
@@ -2435,10 +3116,7 @@
         setStatus(`自动架设完成 · ${r.bones} 根骨 · ${r.ik} 个 IK · ${r.layers} 层`, 'ok')
       })()
     })
-    undoBtn.addEventListener('click', () => { ensureController().undo() })
-    redoBtn.addEventListener('click', () => { ensureController().redo() })
-    delBtn.addEventListener('click', () => { const ctl = ensureController(); const st = ctl.getState(); const name = st.selected >= 0 ? ctl.getSkeleton().bones[st.selected].name : null; if (ctl.deleteSelected()) setStatus(`已删除 ${name}`, 'ok') })
-    resetBtn.addEventListener('click', () => { loadBonesFromSource(true); setStatus('已回到工程里的骨架') })
+    resetBtn.addEventListener('click', () => { loadBonesFromSource(true); renderHierarchy(true); setStatus('已还原为工程里的骨架') })
     applyBtn.addEventListener('click', () => guard(async () => {
       const n = await applyBones((t) => setStatus(t))
       setStatus(`已写回 ${n} 根骨`, 'ok')
@@ -2446,11 +3124,11 @@
     busyButtons.push(autoBtn, applyBtn)
     busyLists.push(listWrap)
 
+    body.appendChild(autoBtn)
     body.appendChild(swHint)
     body.appendChild(toolsRow)
-    body.appendChild(autoBtn)
-    body.appendChild(row2)
     body.appendChild(applyBtn)
+    body.appendChild(resetBtn)
     body.appendChild(status)
     body.appendChild(legend)
     body.appendChild(selBox)
@@ -2649,6 +3327,13 @@
     const observer = new MutationObserver((mutations) => {
       if (!mutationAddsElement(mutations)) return
       schedule()
+      // the sidebar is the app's; as soon as it (re)appears the tree goes in, in the same
+      // frame, so entering 骨骼动画 never shows the app's own blocks
+      const body = document.querySelector('[data-novaflow-skeleton-sidebar-body="1"]')
+      if (body && !body.querySelector(`[${HIER_MARK}="1"]`)) { try { tuneSkeletonSidebar() } catch { /* not ready */ } }
+      // the app rebuilds its 导入工程 panel; put our button back in the same frame, or it
+      // blinks out and returns on the next tick
+      try { homePsImport() } catch { /* the panel is not up */ }
     })
     observer.observe(document.documentElement, { childList: true, subtree: true })
     window.setInterval(() => {
@@ -2692,6 +3377,8 @@
     restore,
     applyAll,
     mount: () => mount(true),
+    focusLayer,
+    _order: { pick: (name, ev) => pickLayerRow(name, ev), nudge: (d) => nudgeOrder(d), drop: (before) => dropOrder(before), names: orderNames, picked: () => [...hier.pick] },
     autoRig,
     applyBones,
     setBonesEditing,

@@ -10299,6 +10299,41 @@ ipcMain.handle("open-spine-image", async () => {
   return { canceled: false, fileName, dataUrl };
 });
 
+ipcMain.handle("open-photoshop-project", async () => {
+  // PhotoshopToSpine export: one JSON plus an images folder. The renderer cannot open
+  // a folder itself (an <input webkitdirectory> never opens a dialog in this app), so
+  // the whole folder is read here and handed over as bytes.
+  const pick = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+  if (pick.canceled || !pick.filePaths?.[0]) return { canceled: true };
+  const root = pick.filePaths[0];
+  const MAX_TOTAL = 512 * 1024 * 1024;
+  const files = [];
+  let total = 0;
+  const walk = (dir, rel, depth) => {
+    if (depth > 4) return;
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      const relPath = rel ? rel + "/" + entry.name : entry.name;
+      if (entry.isDirectory()) { walk(full, relPath, depth + 1); continue; }
+      const low = entry.name.toLowerCase();
+      const isJson = low.endsWith(".json");
+      const isImage = low.endsWith(".png") || low.endsWith(".jpg") || low.endsWith(".jpeg");
+      if (!isJson && !isImage) continue;
+      const buf = fs.readFileSync(full);
+      total += buf.length;
+      if (total > MAX_TOTAL) throw new Error("\u6587\u4ef6\u592a\u5927\uff08\u8d85\u8fc7 512MB\uff09");
+      files.push({
+        name: entry.name,
+        relativePath: relPath,
+        mime: isJson ? "application/json" : (low.endsWith(".png") ? "image/png" : "image/jpeg"),
+        base64: buf.toString("base64")
+      });
+    }
+  };
+  try { walk(root, "", 0); } catch (err) { return { canceled: false, error: String(err?.message || err) }; }
+  return { canceled: false, folderName: path.basename(root), files };
+});
+
 ipcMain.handle("open-sequence-folder", async () => {
   const pick = await dialog.showOpenDialog({
     properties: ["openDirectory"]
