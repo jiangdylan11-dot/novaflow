@@ -83,21 +83,19 @@
    ========================================================================== */
 
 #novaflow-web-login-gate {
-  /* Depth rather than flat black, in five layers: two soft glows placed
-     off-centre, a fine dot field, a grid, and a cool near-black base. Every
-     layer is deliberately low contrast so it reads as texture - the form has
-     to stay the brightest thing on screen. */
+  /* Depth rather than flat black, in four layers: two soft glows placed
+     off-centre, a grid, and a cool near-black base. Every layer is
+     deliberately low contrast so it reads as texture - the form has to stay
+     the brightest thing on screen. Grid lines only; no dot field. */
   background-color: #06090C !important;
   background-image:
     radial-gradient(1100px 620px at 22% 30%, rgba(23, 165, 130, 0.16), transparent 62%),
     radial-gradient(900px 560px at 78% 78%, rgba(32, 110, 160, 0.115), transparent 66%),
-    radial-gradient(circle, rgba(200, 228, 220, 0.14) 1px, transparent 1.4px),
     linear-gradient(rgba(255, 255, 255, 0.042) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.042) 1px, transparent 1px),
     linear-gradient(160deg, #090F15 0%, #06090C 52%, #05080A 100%) !important;
-  /* The dot field is offset from the grid pitch so the two do not moire. */
-  background-size: auto, auto, 26px 26px, 52px 52px, 52px 52px, auto !important;
-  background-position: center center, center center, 0 0, center center, center center, center center !important;
+  background-size: auto, auto, 52px 52px, 52px 52px, auto !important;
+  background-position: center center !important;
 }
 
 .nf-login-shell {
