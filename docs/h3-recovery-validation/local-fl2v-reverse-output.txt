@@ -1,9 +1,0 @@
-参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；<Picture 2> 对应 [Shot 1] = 4.00 秒
-
-integrated_multimodal_description: [Shot 1] <Picture 1> + <Picture 2>: 主体1：数量一名; 身份银发女性, 戴护目镜; 姿态站立姿态; 动作可见接触关系：右手持设备；左臂垂于身侧；雨中站立。 <Picture 1> + <Picture 2>: 关系：可见接触关系：右手持设备。 <Picture 1> + <Picture 2>: 场景：霓虹夜景街道；高楼林立；地面湿滑反光。
-
-<Picture 1> + <Picture 2>: 画面：平视视角；浅景深；背景虚化。 画面从首帧状态自然延续。 镜头保持构图。 动作在 4.00 秒连续抵达尾帧状态。
-
-overall_soundscape: 与场景一致的低强度环境底声。
-
-non_diegetic_music: N/A

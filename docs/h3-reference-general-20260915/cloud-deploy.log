@@ -1,6 +1,0 @@
-Uploading asset (novaflow-backend): supabase/functions/novaflow-backend/index.ts
-Uploading asset (novaflow-backend): supabase/functions/novaflow-backend/license-verification.workflow.mjs
-Uploading asset (novaflow-backend): supabase/functions/novaflow-backend/storyboard-grok.workflow.mjs
-Uploading asset (novaflow-backend): supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs
-Uploading asset (novaflow-backend): supabase/functions/novaflow-backend/h3-prompt-enhance.mjs
-{"project_ref":"cjakoblszlmbmotchzva","functions":["novaflow-backend"],"dashboard_url":"https://supabase.com/dashboard/project/cjakoblszlmbmotchzva/functions","message":"Deployed Functions."}

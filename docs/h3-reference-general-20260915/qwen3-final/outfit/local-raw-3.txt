@@ -1,8 +1,0 @@
-{
-  "0": "A female character with purple hair, wearing a dark blue long-sleeved denim jacket and pants, holding a golden staff, against a solid green backdrop. Source material: TOKEN_0.",
-  "1": "The source video being edited in this session.",
-  "2": "Replace the character's clothing in the video with a dark blue long-sleeved denim jacket and pants, leaving all other elements unchanged.",
-  "3": "Face, hair, actions, and background remain unchanged.",
-  "4": "Sitting posture, wearing a dark blue long-sleeved denim jacket and pants, holding a golden staff, purple hair, against a solid green backdrop. Preserve the original video shot.",
-  "5": "Sitting posture, wearing a dark blue long-sleeved denim jacket and pants, holding a golden staff, purple hair, against a solid green backdrop."
-}

@@ -1,23 +1,11 @@
-# 当前 Web 主线入口（2026-09-23）
+# NovaFlow 当前运行入口
 
-本仓库已独立迁移为 NovaFlow Web。当前维护入口以根目录 `README.md`、`AGENTS.md` 和 `novaflow-web/docs/INDEPENDENT_WORKSPACE.md` 为准：
+- 唯一开发仓库：`D:/AI_APP/NovaFlow-Web`。旧 `D:/AI_APP/NovaFlow` 已删除。
+- 网页源码：`novaflow-web/renderer`；助手：`novaflow-web/worker`；后台：`novaflow-web/admin`。
+- 从启动助手打开本地浏览器工作台，默认 `http://127.0.0.1:4784/`，授权和本机连接由助手处理。
+- 后台 GUI：`npm run admin:start`；后台 HTTP：`npm run admin:server`，默认 `127.0.0.1:4761`。
+- 修改网页后执行 `npm run sync:runtime`、`npm run check:runtime`，入口集成执行 `npm run check:entry`。
+- `web-dist`、`worker-renderer` 和各 `dist` 是生成产物，不直接修改。
+- 源码、安装包、已安装程序和线上网页分别验证，构建成功不代表已安装或已发布。
 
-- 启动助手：`npm run dev`，本地浏览器工作台默认 `http://127.0.0.1:4784/`，授权连接由助手打开。
-- 后台管理：`npm run admin:start`，源码 `novaflow-web/admin/`。
-- 网页构建和校验：`npm run sync:runtime`、`npm run check:runtime`、`npm run check:entry`。
-
-以下 4783/桌面 renderer 锁定规则仅作为旧桌面产品历史记录，不作为当前 Web 主线的验收入口。
-
----
-
-# Entry Lock
-
-- The only accepted runtime entry is `http://127.0.0.1:4783/`.
-- The real runtime chain is `tools/preview_runtime_server.py` -> `particle-editor-desktop/dist/win-unpacked/resources/app/renderer/index.html` -> JS `assets/index-Bqc1waVn.js`, CSS `assets/index-g5_V6IX0.css`, and icon `assets/asset-CLAJAQ7J.ico`.
-- `5173`, `4173`, `particle-editor` Vite, source preview, and Electron dev are retired validation paths. They must not be treated as active entries, backup entries, or day-to-day verification ports.
-- By default, code changes must apply directly to `D:\AI_APP\NovaFlow\particle-editor-desktop\dist\win-unpacked\resources\app\renderer`.
-- Mirror the same change to `D:\AI_APP\NovaFlow\particle-editor-desktop\renderer` only when needed to prevent drift between renderer copies.
-- `particle-editor` is a static mirror shell for the locked runtime, not a separate validation target.
-- The root verification command is `python tools/check_4783_runtime.py`. Use it to confirm both runtime health and 4783-only policy alignment.
-- `RUNTIME_SURFACE_HASH_SNAPSHOT.json` records explicit active-surface hash acceptances for locked-runtime-only guard patches. It is verification metadata only and must not be used to imply a Source runtime or generation behavior change.
-- Before editing code, list the target files, why each file must change, whether the entry chain is affected, and whether any existing module will be removed.
+详见 [独立项目说明](novaflow-web/docs/INDEPENDENT_WORKSPACE.md)。

@@ -1,8 +1,0 @@
-{
-  "0": "The white long dress worn by the female character with purple hair in the video must be changed to red, while the style, transparency, material, character pose, and background remain unchanged. Source material: TOKEN_0.",
-  "1": "The source video for this edit.",
-  "2": "Replace the white long dress of the female character in the video with red, while keeping all other visual elements unchanged.",
-  "3": "Dress style, character posture, green background curtain, golden waist ornament and arm rings, and the gesture of holding the staff",
-  "4": "In the starting frame of the video, the female character with purple hair is seated, wearing a white long dress made of thin, semi-transparent fabric, adorned with golden waist ornament and arm rings, holding a golden staff, with a solid green background curtain. Starting from the first frame, only change the dress color to red; all other aspects including style, transparency, material, character posture, background, accessories, and staff gesture must remain unchanged. Preserve the original video shot.",
-  "5": "The scene displays TOKEN_0. In the starting frame of the video, the female character with purple hair is seated, wearing a white long dress made of thin, semi-transparent fabric, adorned with golden waist ornament and arm rings, holding a golden staff, with a solid green background curtain. Starting from the first frame, only change the dress color to red; all other aspects including style, transparency, material, character posture, background, accessories, and staff gesture must remain unchanged."
-}

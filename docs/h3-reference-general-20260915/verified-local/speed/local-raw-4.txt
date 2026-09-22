@@ -1,7 +1,0 @@
-{
-  "0": "The target content rotates on a solid green background following the original video path, but at half speed: starts front-facing at TOKEN_0 seconds, reaches the narrowest side at TOKEN_1 seconds, and returns to front-facing at TOKEN_2 seconds. Source material: TOKEN_3.",
-  "1": "The original video of the gold coin rotating on a green background",
-  "2": "Halve the rotation speed of the gold coin, while keeping all other visual appearance and background unchanged",
-  "3": "Gold coin appearance, background, rotation path, and timing: starts front-facing at TOKEN_0 seconds, reaches the narrowest side at TOKEN_1 seconds, and returns to front-facing at TOKEN_2 seconds. Preserve original video framing.",
-  "4": "Rotates on a solid green background following the original video path, but at half speed: starts front-facing at TOKEN_0 seconds, reaches the narrowest side at TOKEN_1 seconds, and returns to front-facing at TOKEN_2 seconds. Except for explicitly modified elements, retain the background, framing, composition, motion direction, speed, trajectory, and pose corresponding to TOKEN_3 at each moment; the specified editing effects remain active as per the above requirements."
-}

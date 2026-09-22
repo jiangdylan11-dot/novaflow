@@ -1,8 +1,0 @@
-{
-  "0": "Replace the gold coin style with a golden circular coin featuring a cat head relief on its surface, with a ring-shaped raised edge, metallic texture, and no transparency. Source material: TOKEN_0.",
-  "1": "The source video for this edit.",
-  "2": "Replace the rotating gold coin style in TOKEN_0 with the style from TOKEN_1, while preserving the original motion trajectory and green background.",
-  "3": "The rotation trajectory, background color, and start/end phase remain unchanged.",
-  "4": "Execute this modification according to the target description; if no specific modifications are specified for background, camera, composition, or motion timing, retain the source video’s settings. Preserve original video camera angles.",
-  "5": "Rotate starting from the front on a solid green background, reaching the narrow side at TOKEN_0 seconds and returning to the front at TOKEN_1 seconds. Except for the explicitly modified parts, retain the background, camera, composition, motion direction, speed, trajectory, and pose corresponding to TOKEN_2 at the specified moments; the specified editing effects remain continuously active as per the above requirements."
-}

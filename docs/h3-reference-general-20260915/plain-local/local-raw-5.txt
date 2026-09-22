@@ -1,8 +1,0 @@
-{
-  "0": "A golden circular coin with a cat head relief on its surface, featuring a ring-shaped raised edge, metallic in appearance, and without transparency. Source material: TOKEN_0.",
-  "1": "The source video being edited in this session.",
-  "2": "Replace the rotating gold coin in the video with the cat-head coin style from reference image TOKEN_0.",
-  "3": "Rotational motion, green background, timing path: At TOKEN_0 seconds, start from the front face; at TOKEN_1 seconds, reach the narrow side profile; at TOKEN_2 seconds, return to the front face.",
-  "4": "Execute this modification according to the target description; if no specific changes are specified for background, camera, composition, or motion timing, retain the source video’s original settings. Preserve original video framing.",
-  "5": "Rotate on a solid green background, starting from the front face, reaching the narrow side profile at TOKEN_0 seconds, and returning to the front face at TOKEN_1 seconds. Except for the explicitly modified elements, retain all background, camera, composition, motion direction, speed, trajectory, and posture as defined in TOKEN_2 at the corresponding time; the specified editing effects remain continuously active as per the above requirements."
-}

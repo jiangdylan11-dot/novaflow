@@ -1,8 +1,0 @@
-{
-  "0": "Replace the golden coin tree with an ice crystal tree, whose canopy is composed of ice crystal particles, planted in a matching circular pot adorned with swirl patterns, exhibiting an overall icy crystalline texture, while the background remains pure blue. Material source: TOKEN_0.",
-  "1": "The source video being edited in this session.",
-  "2": "Replace the golden coin tree and particle effects with an ice crystal theme, preserving the original motion rhythm and background.",
-  "3": "The growth and falling motion paths and rhythm remain unchanged, with the original background preserved.",
-  "4": "From the start of the video, display the ice crystal tree, whose canopy consists of ice crystal particles, planted in a matching circular pot adorned with swirl patterns, exhibiting an overall icy crystalline texture, with a pure blue background. Ice crystal particles continue to fall along the original gold coin falling trajectory, while the tree maintains its original growth posture. Preserve the original video framing.",
-  "5": "From the start of the video, display the ice crystal tree, whose canopy consists of ice crystal particles, planted in a matching circular pot adorned with swirl patterns, exhibiting an overall icy crystalline texture, with a pure blue background. Ice crystal particles continue to fall along the original gold coin falling trajectory, while the tree maintains its original growth posture."
-}

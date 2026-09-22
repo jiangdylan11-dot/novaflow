@@ -1,9 +1,0 @@
-{
-  "promptId": "e1d93057-ce9a-4191-a1e1-f2f3a21f952c",
-  "seconds": 95.83,
-  "status": "success",
-  "strength": 0.2,
-  "seed": 9122026,
-  "reversePrompt": "A small illustrated teal and copper robot with round warm glowing eyes. Preserve the exact robot shape, pose, painted material, limb count, outline and colour palette. Only refine the existing details. The plain background is a temporary matte for a transparent asset.",
-  "reversePromptStubbedForControlledComparison": true
-}

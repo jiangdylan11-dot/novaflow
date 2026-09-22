@@ -1,8 +1,0 @@
-{
-  "0": "Replace the coin style with a golden circular coin featuring a cat head relief on its surface, with a ring-shaped raised edge, metallic texture, and no transparency. Source material: TOKEN_0.",
-  "1": "The starting frame of the source video shows a golden circular badge centered in the frame, featuring a 3D owl pattern on its surface, against a solid green background. The badge appears metallic with a glossy edge, and no other elements are present in the background.",
-  "2": "Replace the rotating coin style in TOKEN_0 with the style from TOKEN_1, while preserving the background and motion trajectory.",
-  "3": "Solid green background; retain the original video's rotation trajectory and timing: 0.000 seconds starting from the front view, 1.500 seconds reaching the narrow side view, 3.000 seconds returning to the front view.",
-  "4": "Solid green background; fully retain the original video's rotation trajectory and timing: 0.000 seconds starting from the front view, 1.500 seconds reaching the narrow side view, 3.000 seconds returning to the front view. Preserve the original video's camera shot.",
-  "5": "Rotate centrally against a solid green background, starting at 0.000 seconds from the front view, reaching the narrow side view at 1.500 seconds, and returning to the front view at 3.000 seconds. Except for explicitly specified changes, retain all background, camera shot, composition, motion direction, speed, trajectory, and pose from TOKEN_0 at corresponding timestamps; apply the specified editing effects as described above continuously."
-}

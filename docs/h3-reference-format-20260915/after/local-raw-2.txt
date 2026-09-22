@@ -1,6 +1,0 @@
-```json
-{
-    "0": "At 0.000 seconds, the gold coin will be replaced with a golden coin featuring a cat face pattern. The coin will remain in the center of the video, rotating at the same speed and direction. The background will be a green screen, and the coin's trajectory and camera angle will remain unchanged.",
-    "1": "The scene will show"
-}
-```

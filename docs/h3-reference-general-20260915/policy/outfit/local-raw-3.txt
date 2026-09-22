@@ -1,8 +1,0 @@
-{
-  "0": "A female character with purple hair, wearing a dark blue long-sleeved denim jacket and pants, holding a golden staff, against a solid green backdrop. Source material: TOKEN_0.",
-  "1": "The source video being edited in this session.",
-  "2": "Replace the character's clothing in the video with a dark blue long-sleeved denim jacket and pants; all other elements remain unchanged.",
-  "3": "Face, hair, actions, and background remain unchanged.",
-  "4": "Perform the modification as described in the target; if no specific changes are specified for background, camera, composition, or timing of actions, retain the corresponding elements from the source video. Preserve original video framing.",
-  "5": "Seated posture, wearing a dark blue long-sleeved denim jacket and pants, holding a golden staff, against a solid green backdrop. Except for explicitly modified elements in this edit, retain the background, camera, composition, direction, speed, trajectory, and posture from the moment corresponding to TOKEN_0; the specified editing effects remain continuously active as per the above requirements."
-}

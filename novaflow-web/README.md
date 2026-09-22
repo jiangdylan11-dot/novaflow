@@ -78,7 +78,7 @@ npm test
 
 ## 算力池在哪管
 
-在**桌面后台管理器**里（`particle-editor-desktop/license-admin-gui` 的 **算力节点** 页），
+在**桌面后台管理器**里（`novaflow-web/admin/license-admin-gui` 的 **算力节点** 页），
 和授权、积分、用户并列。发一次性注册码、看在线节点、停用/恢复、吊销码，都在那儿。
 
 Web 站点里没有任何算力配置入口——用户只看得到顶栏的「AI 已连接 / 未连接」，
@@ -86,7 +86,7 @@ Web 站点里没有任何算力配置入口——用户只看得到顶栏的「A
 
 ---
 
-## 与稳定版的关系
+## 与现有线上服务的关系
 
 - **复用**：登录/积分用现有 `novaflow-backend`；扣费用现有 `settle_comfy_usage` RPC。两者一行未改。
 - **新增**：一个新的 Edge Function `novaflow-web`，五张新表，`novaflow_web_*` 命名空间的函数。
@@ -96,7 +96,7 @@ Web 站点里没有任何算力配置入口——用户只看得到顶栏的「A
 验证：
 
 ```bash
-npm run verify:stable
+npm run verify:independent
 ```
 
 ```bash

@@ -1,5 +1,0 @@
-{
-  "preserveBackground": true,
-  "preserveMotion": true,
-  "sameShapeAppearanceOnly": true
-}

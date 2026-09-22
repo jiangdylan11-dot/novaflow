@@ -1,9 +1,0 @@
-{
-  "baselineSha256": "edfa32dddda866b255eeeda5dab486b7bef99aba0d3f1429213b7d805e3b6d2e",
-  "currentSha256": "76d25676189f2b5f11201c15b4959447eb765af1bdd11079799561d60d99dd5c",
-  "onlyChangedProductionFunction": "materialMotion",
-  "referenceSelectionUnchanged": true,
-  "bodyEdgeRulesUnchanged": true,
-  "shadowRulesUnchanged": true,
-  "emissionRecoveryUnchanged": true
-}

@@ -1,7 +1,0 @@
-{
-  "0": "A female character with purple hair wears a long white dress, made of light, semi-transparent fabric, adorned with golden waist ornaments and arm rings, holding a golden staff; background is a solid green curtain. Source material: TOKEN_0.",
-  "1": "The source video being edited in this session.",
-  "2": "Change the long white dress to red; all other elements remain unchanged.",
-  "3": "Character, action, background, dress style, material, transparency, golden waist ornaments and arm rings, holding golden staff, camera timing sequence",
-  "4": "Wearing a long red dress, made of light, semi-transparent fabric, adorned with golden waist ornaments and arm rings, holding a golden staff; background is a solid green curtain."
-}

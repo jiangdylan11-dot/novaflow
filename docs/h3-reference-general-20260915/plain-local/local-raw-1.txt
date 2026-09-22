@@ -1,4 +1,0 @@
-{
-  "sources": ["<Picture 1>"],
-  "changes": ["content"]
-}

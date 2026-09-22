@@ -2,6 +2,7 @@
 node_modules/
 dist/
 dist-admin/
+.runtime-logs/
 
 !build/
 !build/icon.ico

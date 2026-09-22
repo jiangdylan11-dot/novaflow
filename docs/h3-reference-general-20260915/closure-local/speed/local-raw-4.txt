@@ -1,6 +1,0 @@
-{
-  "0": "A golden circular coin with a 3D owl pattern on its surface, serrated edges, placed on a solid green background.",
-  "1": "Halve the rotation speed of the coin; all other visual aspects and background remain unchanged.",
-  "2": "Maintain the coin's appearance and background as-is, only halving the rotation speed. Keep the original video shot.",
-  "3": "The coin continues to rotate at half its original speed; its appearance and solid green background remain unchanged. Except for the explicitly specified changes, retain the background, shot, composition, direction of motion, speed, trajectory, and posture from the moment corresponding to TOKEN_0; apply the specified editing effects as described above continuously."
-}

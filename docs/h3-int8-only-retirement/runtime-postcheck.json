@@ -1,9 +1,0 @@
-{
-  "time": "2026-09-12T19:09:22.104Z",
-  "endpoint": "http://127.0.0.1:8189/object_info/UNETLoader",
-  "models": [
-    "Minimax_H3\\10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors"
-  ],
-  "deletedAbsent": true,
-  "int8Present": true
-}

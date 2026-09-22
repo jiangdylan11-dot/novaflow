@@ -1,9 +1,0 @@
-{
-  "runtime": "Electron 32.2.0, same version as installer",
-  "maskSource": "real AI output matched against captured RGB",
-  "frames": 73,
-  "sourceChangedFrames": 0,
-  "rgbaChangedFrames": 73,
-  "maxRGBADifference": 1,
-  "maxVisibleDifference": 0.9882352941176435
-}
