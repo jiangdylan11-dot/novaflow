@@ -383,7 +383,22 @@
       // Uploads happen before the task exists, so they are queued here and
       // attached when the task is created. The gateway PUT then targets the
       // worker the scheduler picked.
-      const safe = String(name || 'reference.png').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120);
+      // Sanitising a name can destroy it: 参考图.png and 背景图.png both become
+      // ___.png, and the second would silently overwrite the first. When the
+      // name actually changed, give it a short suffix derived from the original
+      // so two different files stay two different files.
+      const raw = String(name || 'reference.png');
+      const cleaned = raw.replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 120);
+      let safe = cleaned;
+      if (cleaned !== raw) {
+        let h = 0;
+        for (let i = 0; i < raw.length; i += 1) h = (h * 31 + raw.charCodeAt(i)) >>> 0;
+        const tag = h.toString(36).slice(0, 6);
+        const dot = cleaned.lastIndexOf('.');
+        safe = dot > 0
+          ? cleaned.slice(0, dot) + '_' + tag + cleaned.slice(dot)
+          : cleaned + '_' + tag;
+      }
       pendingUploads.push({ name: safe, bytes: (bytes && bytes.byteLength) || 0, kind: 'image' });
       uploads.set(safe, { bytes: bytes });
       return { ok: true, result: { name: safe, subfolder: '', type: 'input' } };
@@ -513,6 +528,45 @@
     const port = m[1];
     const taskType = PORT_TASK_TYPE[port];
     const path = url.slice(url.indexOf(port) + port.length).split('?')[0] || '/';
+
+    // Reference images. Same shape of bug as the probe: the panel POSTs the
+    // file straight to http://127.0.0.1:8189/upload/image instead of going
+    // through electronAPI.runtimeUploadImage, so the override never applied
+    // and the file was offered to a ComfyUI on the viewer's machine - which
+    // is not where the task will run even when one is there.
+    //
+    // Route it to the same queue runtimeUploadImage feeds, so the bytes end up
+    // on whichever worker the scheduler picks, and answer in the shape the
+    // caller reads back ({ data: { name } }).
+    if (path === '/upload/image' || path === '/api/upload/image' || path === '/upload/mask') {
+      try {
+        const form = init && init.body ? init.body : (input && input.body);
+        let file = null;
+        let filename = 'reference.png';
+        if (form && typeof form.get === 'function') {
+          file = form.get('image') || form.get('file') || form.get('mask');
+          if (file && file.name) filename = file.name;
+        }
+        if (!file || typeof file.arrayBuffer !== 'function') {
+          return new Response(JSON.stringify({ error: '上传内容读不出来（没有找到图片字段）' }),
+            { status: 400, headers: { 'content-type': 'application/json' } });
+        }
+        const bytes = await file.arrayBuffer();
+        const res = await electronAPI.runtimeUploadImage(filename, bytes);
+        if (!res || !res.ok) {
+          return new Response(JSON.stringify({ error: String((res && res.error) || '上传失败') }),
+            { status: 502, headers: { 'content-type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({
+          name: res.result.name,
+          subfolder: res.result.subfolder || '',
+          type: res.result.type || 'input'
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+      } catch (error) {
+        return new Response(JSON.stringify({ error: String(error && error.message ? error.message : error) }),
+          { status: 500, headers: { 'content-type': 'application/json' } });
+      }
+    }
 
     if (path === '/system_stats' || path === '/') {
       const workers = await poolHas(taskType);

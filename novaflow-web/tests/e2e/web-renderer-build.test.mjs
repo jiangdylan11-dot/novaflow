@@ -251,6 +251,18 @@ section('nothing tells a browser user to install a runtime');
   check('the local runtime ports are intercepted', /8188\|8189/.test(shim), null);
   check('and answered from the worker pool', /available_workers/.test(shim), null);
   check('while the worker gateway is left alone', !/8790/.test(shim.split('LOCAL_RUNTIME')[1] || ''), null);
+
+  // Reference images had the same shape of bug: the panel POSTs them straight
+  // to the local ComfyUI upload endpoint instead of going through
+  // electronAPI.runtimeUploadImage, so they were being offered to a machine
+  // that is not going to run the task.
+  check('reference uploads are routed to the worker, not a local ComfyUI',
+    /upload\/image/.test(shim) && /runtimeUploadImage/.test(shim), null);
+
+  // Sanitising a filename can destroy it - 参考图.png and 背景图.png both
+  // become ___.png - and the second would silently overwrite the first.
+  check('a name the sanitiser flattens gets a suffix so two files stay two files',
+    /cleaned !== raw/.test(shim), null);
 }
 
 // ---------------------------------------------------------------------------
