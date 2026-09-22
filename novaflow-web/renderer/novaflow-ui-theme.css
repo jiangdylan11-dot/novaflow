@@ -366,6 +366,58 @@
 }
 
 /* ==========================================================================
+   2. Workspace shell - the reference's panel system
+   Taken from spline-review's own stylesheet (the #nf-design layer), which is
+   where these values are defined rather than guessed:
+     --nf-bg #242424   --nf-panel #161616   --nf-raised #272727
+     --nf-field #222222  --nf-line #2e2e2e  --nf-soft #343434
+     panels radius 12 on a 1px line, toolbars radius 9, controls radius 7
+     layout 56 | 218 | 1fr, padding 0 10px 10px, gap 9px
+   ========================================================================== */
+
+:root {
+  --nf-ref-bg: #242424;
+  --nf-ref-panel: #161616;
+  --nf-ref-raised: #272727;
+  --nf-ref-field: #222222;
+  --nf-ref-line: #2e2e2e;
+  --nf-ref-soft: #343434;
+  --nf-ref-dock-line: #363636;
+  --nf-ref-bar-line: #333333;
+  --nf-ref-text: #eaeaea;
+  --nf-ref-muted: #979797;
+  --nf-ref-radius-panel: 12px;
+  --nf-ref-radius-bar: 9px;
+  --nf-ref-radius-control: 7px;
+  --nf-ref-dot: #3d3d3d;
+}
+
+/* 2.0 The workspace backdrop. The bundle writes #151515 inline on
+   .novaflow-app (no !important), and the first-paint lock puts #0b0b0b on the
+   body; the reference has both at #242424, with the PANELS darker than the
+   backdrop and the canvas the same value as it. */
+.novaflow-app,
+.novaflow-app .nf-app-body {
+  /* Literal, not var(): these tokens are declared later in this file, and a
+     var() inside the `background` SHORTHAND resolves to nothing when the
+     custom property is not in scope - every sub-property came out empty. */
+  background-color: #242424 !important;
+  background-image: none !important;
+}
+
+/* 2.1 The stage. The bundle writes `background: #151515` inline on the second
+   child of .nf-app-body (no !important), so a rule can take it. The reference
+   floats the stage as a rounded panel on the backdrop, at the same value as
+   the backdrop - the artwork is what separates it, not a colour step. */
+.novaflow-app .nf-app-body > div:nth-child(2) {
+  background-color: #242424 !important;
+  background-image: none !important;
+  border-radius: 12px !important;
+  margin: 8px 10px 10px 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* ==========================================================================
    2. Workspace
    Ranks the renderer's own controls. Colour and state only - no rule here
    moves, resizes or hides anything.

@@ -129,7 +129,10 @@
     bodyGap: '6px'
   })
   const SPLIT_CONTROL_FONT_SIZE = '13px'
-  const SPLIT_WORKSPACE_PANEL_BACKGROUND = '#151515'
+  // Reference splits these: the stage carries --nf-bg (#242424) and the
+  // right-hand resource panel carries --nf-panel (#161616).
+  const SPLIT_WORKSPACE_PANEL_BACKGROUND = '#242424'
+  const SPLIT_RIGHT_PANEL_BACKGROUND = '#161616'
   const SPLIT_RIGHT_PANEL_INSET = '10px'
   const SPLIT_RIGHT_PANEL_INSET_PX = 10
   const SPLIT_RIGHT_PANEL_GAP = '6px'
@@ -328,7 +331,7 @@
   // Neutral dark grey, flat. The canvas sits ABOVE the panels in value so
   // the artwork is the brightest thing on screen; the former top-to-bottom
   // gradient is gone with the rest of the bevelled styling.
-  const SPLIT_CHECKER_BACKGROUND_COLOR = '#232323'
+  const SPLIT_CHECKER_BACKGROUND_COLOR = '#242424'
   const SPLIT_CHECKER_BACKGROUND_IMAGE = 'none'
   const SPLIT_CHECKER_BACKGROUND_SIZE = '100% 100%'
   const SPLIT_CHECKER_BACKGROUND_POSITION = '0 0'
@@ -30320,7 +30323,7 @@
     }
     panel.__novaflowSpineSplitRightSignature = panelSignature
     panel.innerHTML = ''
-    panel.appendChild(h('div', { style: { height: '100%', minHeight: '0', display: 'grid', gridTemplateRows: showRightWorkspaceMergeButton ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr)', gap: showRightWorkspaceMergeButton ? '8px' : '0', padding: SPLIT_RIGHT_PANEL_INSET, boxSizing: 'border-box', background: SPLIT_WORKSPACE_PANEL_BACKGROUND, color: '#e5e7eb', overflow: 'hidden' } }, [
+    panel.appendChild(h('div', { style: { height: '100%', minHeight: '0', display: 'grid', gridTemplateRows: showRightWorkspaceMergeButton ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr)', gap: showRightWorkspaceMergeButton ? '8px' : '0', padding: SPLIT_RIGHT_PANEL_INSET, boxSizing: 'border-box', background: SPLIT_RIGHT_PANEL_BACKGROUND, color: '#e5e7eb', overflow: 'hidden' } }, [
       (sourceCards.length || sets.length) ? h('div', {
         'data-novaflow-layer-scroll': '1',
         onwheel: handleContainedWheel,
