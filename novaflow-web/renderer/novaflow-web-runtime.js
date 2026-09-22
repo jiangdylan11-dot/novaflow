@@ -36,6 +36,19 @@
 
   const SESSION_KEY = 'novaflow_web_session_v1';
   const CLIENT_AUTH_KEY = 'novaflow.client.auth.session.v1';
+  let computeMode = CONFIG.localAssistant ? 'local' : 'shared';
+  const taskModes = new Map();
+  let localKey = '';
+  if (CONFIG.localAssistant && root.location) {
+    try {
+      const pair = new URLSearchParams(root.location.hash.slice(1)).get('local-pair');
+      if (pair && /^[a-f0-9]{64}$/.test(pair)) {
+        root.sessionStorage.setItem('novaflow.local.pair', pair);
+        root.history.replaceState(null, '', root.location.pathname + root.location.search);
+      }
+      localKey = root.sessionStorage.getItem('novaflow.local.pair') || '';
+    } catch (_) {}
+  }
 
   // ---------------------------------------------------------------- session
   let session = null;
@@ -76,7 +89,23 @@
     return parsed;
   }
 
-  const control = (method, path, body) => api(CONFIG.controlUrl, method, path, body);
+  async function localControl(method, path, body) {
+    if (!CONFIG.localAssistant) throw new Error('请在本地助手点击“打开 NovaFlow”，连接本机工作台');
+    const res = await fetch(CONFIG.localOrigin + path, { method,
+      headers: { 'content-type': 'application/json', 'x-novaflow-local': localKey },
+      body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+    const value = await res.json();
+    if (!res.ok) throw Object.assign(new Error(value.error || '本机服务请求失败'), { status: res.status });
+    return value;
+  }
+  async function control(method, path, body) {
+    const taskId = /^\/api\/web\/tasks\/([^/]+)/.exec(path)?.[1];
+    const mode = taskModes.get(taskId) || computeMode;
+    const isCompute = /^\/api\/web\/(tasks|capabilities|workers|loras)(?:[/?]|$)/.test(path);
+    const value = mode === 'local' && isCompute ? await localControl(method, path, body) : await api(CONFIG.controlUrl, method, path, body);
+    if (path === '/api/web/tasks' && method === 'POST' && value.task) taskModes.set(value.task.id, mode);
+    return value;
+  }
   const auth = (method, path, body) => api(CONFIG.authUrl, method, path, body);
 
   // ------------------------------------------------------- workflow intents
@@ -633,7 +662,7 @@
     // ---- capabilities the Web line does not have --------------------------
     // Declared so the renderer's feature checks pass, and answered honestly so
     // a panel that depends on one says why instead of hanging.
-    licenseGetState: async () => ({
+    licenseGetState: async () => computeMode === 'local' ? localControl('GET', '/local/license') : ({
       ok: true,
       result: { state: 'web', authorized: true, permissions: ['web'] }
     }),
@@ -903,6 +932,17 @@
     setSession: saveSession,
     tasks: tasks,
     control: control,
+    localControl,
+    get computeMode() { return computeMode; },
+    async setComputeMode(mode) {
+      if (!['local', 'shared'].includes(mode)) throw new Error('无效算力选择');
+      if ([...tasks.values()].some(t => RUNNING.includes(t.status))) throw new Error('请等待当前任务完成后切换算力');
+      if (mode === 'local') await localControl('GET', '/local/state');
+      computeMode = mode;
+      capsCache = { at: 0, byTaskType: {} };
+      root.dispatchEvent?.(new Event('novaflow-compute-changed'));
+      root.NovaFlowWebAccount?.guard();
+    },
     auth: auth,
     fileUrl: (name) => electronAPI.runtimeFileUrl(name),
     isWeb: true

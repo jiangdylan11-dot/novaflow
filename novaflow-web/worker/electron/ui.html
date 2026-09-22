@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
-<title>NovaFlow Compute Node</title>
+<title>NovaFlow 本地助手</title>
 <style>
   :root {
     --bg: #0b0b0b; --panel: #181818; --surface: #171717; --field: #070707;
@@ -81,7 +81,7 @@
 <body>
 <header>
   <span class="mark"></span>
-  <h1>NovaFlow Compute Node</h1>
+  <h1>NovaFlow 本地助手</h1>
   <span class="ver" id="version">v0.1.0</span>
 </header>
 
@@ -102,6 +102,8 @@
       <div class="row"><span class="k">显存</span><span class="v" id="vram">—</span></div>
       <div class="row"><span class="k">ComfyUI</span><span class="v" id="comfy">—</span></div>
       <div class="row"><span class="k">当前任务</span><span class="v" id="task">空闲</span></div>
+      <div class="row"><span class="k">算力分享</span><span class="v" id="sharing">未分享 · 仅自己使用</span></div>
+      <div class="row"><span class="k">本机排队</span><span class="v" id="localQueue">0</span></div>
       <div class="row"><span class="k">已完成 / 失败</span><span class="v" id="stats">0 / 0</span></div>
       <div class="row"><span class="k">对外地址</span><span class="v" id="endpoint">—</span></div>
     </div>
@@ -112,9 +114,15 @@
     </div>
 
     <div style="display:flex; gap:8px; margin-top:12px">
-      <button class="primary wide" id="startBtn">启动</button>
-      <button class="wide" id="stopBtn" disabled>停止</button>
+      <button class="primary wide" id="startBtn">启动本地服务</button>
+      <button class="wide" id="stopBtn" disabled>停止本地服务</button>
     </div>
+    <div style="display:flex; gap:8px; margin-top:8px">
+      <button class="primary wide" id="openBtn" disabled>打开 NovaFlow</button>
+      <button class="wide" id="shareBtn" disabled>算力分享</button>
+      <button class="wide" id="unshareBtn" disabled>停止分享</button>
+    </div>
+    <div class="hint" style="margin-top:8px">默认仅供自己使用。停止分享后，本地服务继续运行；已接任务完成后结束分享。停止本地服务会等待当前任务完成。</div>
   </section>
 
   <!-- -------------------------------------------------------- settings -->
@@ -140,6 +148,7 @@
         <label for="gatewayPort">网关端口</label>
         <input id="gatewayPort" type="number" min="1024" max="65535" />
       </div>
+      <div><label for="localPort">本机工作台端口</label><input id="localPort" type="number" min="1024" max="65535" value="4784" /></div>
       <div>
         <label for="comfyImageUrl">ComfyUI 图像端（必须是本机回环地址）</label>
         <input id="comfyImageUrl" />
@@ -156,6 +165,11 @@
         </div>
       </div>
       <button class="primary" id="saveBtn">保存设置</button>
+      <div class="hint">修改设置后停止并重新启动本地服务生效。已有 NovaFlow 本机授权会自动读取。</div>
+      <div class="row"><span class="k">本机授权</span><button id="licenseBtn">查看绑定</button></div>
+      <div id="licenseState" class="hint"></div>
+      <div><label for="licenseText">授权码 / 授权文件内容</label><input id="licenseText" placeholder="粘贴绑定本机的授权码" /></div>
+      <button id="importLicenseBtn">导入本机授权</button>
       <div class="hint">
         ComfyUI 只会绑定在本机回环地址上，外部只能通过本节点的网关访问，
         且必须携带控制面下发的一次性凭证。本程序不持有任何 Supabase 密钥。
@@ -175,7 +189,7 @@
 <script>
   const api = window.novaflowWorker;
   const $ = (id) => document.getElementById(id);
-  const FIELDS = ['controlUrl','registrationCode','workerName','publicEndpoint','gatewayPort','comfyImageUrl','comfyVideoUrl','modelsRoot'];
+  const FIELDS = ['controlUrl','registrationCode','workerName','publicEndpoint','gatewayPort','localPort','comfyImageUrl','comfyVideoUrl','modelsRoot'];
 
   function showError(message) {
     const box = $('err');
@@ -198,9 +212,14 @@
   const STATUS_DOT = { idle: 'on', busy: 'busy', offline: '', maintenance: '' };
 
   function render(state) {
-    const running = Boolean(state && state.status && state.status !== 'offline');
+    const running = Boolean(state && state.localRunning);
     $('startBtn').disabled = running;
     $('stopBtn').disabled = !running;
+    $('openBtn').disabled = !running;
+    $('shareBtn').disabled = !running || Boolean(state?.sharing) || Boolean(state?.draining);
+    $('unshareBtn').disabled = !state?.sharing;
+    $('sharing').textContent = state?.draining ? '正在结束分享 · 等待当前任务完成' : state?.sharing ? '已开启 · 接收共享任务' : '未分享 · 仅自己使用';
+    $('localQueue').textContent = state?.queuedLocal || 0;
 
     if (!state) {
       $('statusText').textContent = '未启动';
@@ -209,7 +228,7 @@
     }
 
     $('version').textContent = 'v' + (state.version || '0.1.0');
-    $('statusText').textContent = STATUS_TEXT[state.status] || state.status;
+    $('statusText').textContent = running ? (state.currentTaskId ? '本地已启动 · 工作中' : '本地已启动 · 空闲') : '未启动';
     $('statusDot').className = 'dot ' + (STATUS_DOT[state.status] || '');
 
     $('gpu').textContent = state.gpu && state.gpu.detected
@@ -249,7 +268,7 @@
 
   (async function init() {
     const config = await api.getConfig();
-    for (const key of FIELDS) if ($(key)) $(key).value = config[key] == null ? '' : config[key];
+    for (const key of FIELDS) if ($(key)) $(key).value = config[key] == null ? (key === 'localPort' ? '4784' : '') : config[key];
 
     render(await api.getState());
     (await api.getLogs()).forEach(appendLog);
@@ -281,10 +300,27 @@
   });
 
   $('stopBtn').addEventListener('click', async () => {
+    $('stopBtn').disabled = true;
+    $('stopBtn').textContent = '正在停止…';
     const res = await api.stop();
     if (!res.ok) showError(res.error);
     render(res.state);
+    $('stopBtn').textContent = '停止本地服务';
   });
+
+  for (const [id, action] of [['shareBtn', 'share'], ['unshareBtn', 'unshare'], ['openBtn', 'openWorkbench']]) {
+    $(id).addEventListener('click', async () => {
+      $(id).disabled = true; showError('');
+      try { const res = await api[action](); render(res.state || await api.getState()); if (!res.ok) showError(res.error); }
+      catch (e) { render(await api.getState()); showError(String(e.message)); }
+    });
+  }
+  async function showLicense(res) {
+    if (!res.ok) { showError(res.error); return; }
+    $('licenseState').textContent = '状态：' + res.state.status + ' / 机器码：' + (res.state.machineId || '—') + (res.state.reason ? ' / ' + res.state.reason : '');
+  }
+  $('licenseBtn').addEventListener('click', async () => showLicense(await api.license()));
+  $('importLicenseBtn').addEventListener('click', async () => { await showLicense(await api.importLicense($('licenseText').value)); $('licenseText').value = ''; });
 
   $('openLogs').addEventListener('click', () => api.openLogFolder());
 </script>

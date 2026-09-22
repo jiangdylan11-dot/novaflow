@@ -13,6 +13,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 
 const SUITES = [
+  { name: 'local-assistant', file: 'e2e/local-assistant.test.mjs', needs: [], timeoutMs: 90000 },
+  { name: 'web-compute-mode', file: 'e2e/web-compute-mode.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'worker-account-binding', file: 'e2e/worker-account-binding.test.mjs', needs: [], timeoutMs: 90000 },
   { name: 'protocol', file: 'e2e/protocol.test.mjs', needs: [], timeoutMs: 180000 },
   { name: 'workflow-redaction', file: 'e2e/workflow-redaction.test.mjs', needs: [], timeoutMs: 600000 },
   { name: 'web-renderer-build', file: 'e2e/web-renderer-build.test.mjs', needs: [], timeoutMs: 600000 },

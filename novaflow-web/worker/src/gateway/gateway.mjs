@@ -251,7 +251,10 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
   return {
     server,
     async listen(port, host = '0.0.0.0') {
-      await new Promise((r) => server.listen(port, host, r));
+      await new Promise((resolve, reject) => {
+        server.once('error', reject);
+        server.listen(port, host, () => { server.removeListener('error', reject); resolve(); });
+      });
       return server.address().port;
     },
     async close() {

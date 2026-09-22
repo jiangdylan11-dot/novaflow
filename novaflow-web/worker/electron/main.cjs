@@ -12,7 +12,9 @@ const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 
-const DATA_DIR = path.join(app.getPath('userData'), 'data');
+const customDataDir = process.env?.NOVAFLOW_ASSISTANT_DATA_DIR;
+if (customDataDir) app.setPath('userData', path.resolve(customDataDir, '..'));
+const DATA_DIR = customDataDir || path.join(app.getPath('userData'), 'data');
 const CONFIG_FILE = path.join(DATA_DIR, 'worker.config.json');
 const LOG_FILE = path.join(DATA_DIR, 'worker.log');
 const MAX_LOG_LINES = 2000;
@@ -44,7 +46,7 @@ function readConfig() {
     return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
   } catch {
     return {
-      controlUrl: '',
+      controlUrl: 'https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-web',
       workerName: 'novaflow-' + require('node:os').hostname().toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40),
       registrationCode: '',
       comfyImageUrl: 'http://127.0.0.1:8188',
@@ -65,8 +67,8 @@ function writeConfig(config) {
 // worker-core is ESM; load it once, lazily, from CommonJS.
 async function loadCore() {
   if (createWorker) return createWorker;
-  const url = require('node:url').pathToFileURL(path.join(__dirname, '../src/worker-core.mjs')).href;
-  ({ createWorker } = await import(url));
+  const url = require('node:url').pathToFileURL(path.join(__dirname, '../src/local-assistant.mjs')).href;
+  ({ createLocalAssistant: createWorker } = await import(url));
   return createWorker;
 }
 
@@ -80,13 +82,15 @@ async function startWorker() {
 
 async function startWorkerAttempt() {
   const config = readConfig();
-  if (!config.controlUrl) throw new Error('请先在设置里填写 NovaFlow 控制面地址');
 
   const factory = await loadCore();
-  worker = factory({
+  worker = await factory({
     controlUrl: config.controlUrl,
     dataDir: DATA_DIR,
     workflowDir: path.join(__dirname, '../workflows'),
+    webRoot: firstExisting([path.join(process.resourcesPath || '', 'web-dist'), path.join(__dirname, '../../web-dist')]),
+    localPort: Number(config.localPort) || 4784,
+    licenseDataDir: path.join(app.getPath('appData'), 'NovaFlow'),
     // NovaFlow's own graph builders, shipped beside the app. A compute node
     // builds graphs with the product's real code, not an approximation.
     rendererDir: firstExisting([
@@ -123,7 +127,6 @@ async function startWorkerAttempt() {
   }
   // The registration code is single use; drop it once it has been spent so a
   // later restart does not fail trying to reuse it.
-  if (config.registrationCode) writeConfig({ ...config, registrationCode: '' });
   return state;
 }
 
@@ -138,11 +141,11 @@ async function stopWorker() {
 function createWindow() {
   win = new BrowserWindow({
     width: 480,
-    height: 640,
+    height: 760,
     minWidth: 420,
     minHeight: 560,
     backgroundColor: '#0b0b0b',
-    title: 'NovaFlow Compute Node',
+    title: 'NovaFlow 本地助手',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -160,6 +163,31 @@ ipcMain.handle('worker:setConfig', (_e, patch) => writeConfig({ ...readConfig(),
 ipcMain.handle('worker:getState', () => (worker ? worker.getState() : null));
 ipcMain.handle('worker:getLogs', () => logLines.slice(-400));
 ipcMain.handle('worker:openLogFolder', () => shell.openPath(DATA_DIR));
+ipcMain.handle('worker:openWorkbench', async () => {
+  try { if (!worker) throw new Error('请先启动本地服务'); await shell.openExternal(worker.openUrl); return { ok: true }; }
+  catch (e) { return { ok: false, error: String(e.message) }; }
+});
+ipcMain.handle('worker:share', async () => {
+  try {
+    if (!worker) throw new Error('请先启动本地服务');
+    const state = await worker.startSharing();
+    const config = readConfig();
+    if (config.registrationCode) writeConfig({ ...config, registrationCode: '' });
+    return { ok: true, state: worker.getState() };
+  } catch (e) { return { ok: false, error: String(e.message), state: worker?.getState() }; }
+});
+ipcMain.handle('worker:unshare', async () => {
+  try { await worker?.stopSharing(); return { ok: true, state: worker?.getState() }; }
+  catch (e) { return { ok: false, error: String(e.message) }; }
+});
+ipcMain.handle('worker:license', async () => {
+  try { if (!worker) throw new Error('请先启动本地服务'); return { ok: true, state: await worker.license.state() }; }
+  catch (e) { return { ok: false, error: String(e.message) }; }
+});
+ipcMain.handle('worker:importLicense', async (_e, text) => {
+  try { if (!worker) throw new Error('请先启动本地服务'); return { ok: true, state: await worker.license.importLicense(text) }; }
+  catch (e) { return { ok: false, error: String(e.message) }; }
+});
 
 ipcMain.handle('worker:start', async () => {
   try {
@@ -188,8 +216,8 @@ ipcMain.handle('worker:pickModelsFolder', async () => {
 
 app.whenReady().then(async () => {
   createWindow();
-  // A node that was configured earlier should come back online by itself after
-  // a reboot, without someone having to click Start.
+  // Auto-start only restores private local services. Sharing always requires
+  // an explicit click, including after upgrades from the former Worker.
   const config = readConfig();
   if (config.controlUrl && config.autoStart !== false) {
     try { await startWorker(); } catch (error) { log('auto start skipped: ' + String(error.message || error)); }

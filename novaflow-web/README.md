@@ -2,6 +2,10 @@
 
 NovaFlow 的 Web 产品线：浏览器端 + Supabase 控制面 + 分布式 GPU Worker。
 
+统一入口第一阶段：同一份浏览器编辑器可选择本机或共享算力。本地助手独立启动本机服务，
+用户主动开启分享后才接收其他人的任务；设备授权与账号绑定继续保留。
+使用方式、验证结果和未完成项见 [本地助手说明](docs/LOCAL-ASSISTANT.md)。
+
 普通用户只需要浏览器；不安装 NovaFlow、不安装 ComfyUI、不装 Python、不下模型、不需要显卡。
 算力由装了 `NovaFlowWorkerSetup.exe` 的机器提供。
 

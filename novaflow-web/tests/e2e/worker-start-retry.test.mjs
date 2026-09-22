@@ -88,6 +88,7 @@ const sandbox = createContext({
         await new Promise(resolve => { releaseStart = resolve; });
         return this.getState();
       },
+      async startSharing() { return this.getState(); },
       async stop() { this.stopped = true; }
     };
     instances.push(instance);
@@ -108,5 +109,7 @@ assert.equal((await pending).state.status, 'idle');
 assert.equal((await concurrent).state.status, 'idle');
 assert.equal(instances.length, 2);
 assert.equal(options[1].registrationCode, 'new-code');
+assert.equal(config.registrationCode, 'new-code');
+assert.equal((await handlers.get('worker:share')()).ok, true);
 assert.equal(config.registrationCode, '');
 console.log(checks + ' passed, 0 failed: registration failure cleanup and Electron retry');

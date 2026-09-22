@@ -1,0 +1,94 @@
+// Loopback-only browser workbench. The public Worker gateway NEVER mounts
+// these routes. Browser pairing is provided only by the local assistant UI.
+import { createServer } from 'node:http';
+import { readFile, realpath } from 'node:fs/promises';
+import { resolve, join, sep, extname } from 'node:path';
+import { randomBytes } from 'node:crypto';
+import { createGateway } from './gateway/gateway.mjs';
+import { issueGrantToken, safeCompare } from '../../packages/shared/src/tokens.mjs';
+import { TASK_TYPE_REQUIREMENTS } from '../../packages/shared/src/protocol.mjs';
+
+const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.json': 'application/json', '.woff2': 'font/woff2' };
+const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+async function bodyOf(req) {
+  const chunks = []; let size = 0;
+  for await (const chunk of req) { size += chunk.length; if (size > 256 * 1024) throw fail('请求过大', 413); chunks.push(chunk); }
+  try { return JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch { throw fail('无效 JSON'); }
+}
+
+export async function startLocalServer({ worker, tasks, license, dataDir, webRoot, port = 4784, controlUrl = '' }) {
+  const secret = randomBytes(32).toString('hex');
+  const grantKey = randomBytes(32).toString('hex');
+  const gateway = createGateway({ workerId: worker.identity.workerId, dataDir, getGrantKey: () => grantKey });
+  let origin = '';
+  const root = await realpath(webRoot);
+  const server = createServer(async (req, res) => {
+    const json = (status, value) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(value)); };
+    try {
+      if (req.headers.host !== new URL(origin).host) throw fail('invalid host', 403);
+      if (req.headers.origin && req.headers.origin !== origin) throw fail('foreign origin', 403);
+      const url = new URL(req.url, origin);
+      if (url.pathname.startsWith('/gw/')) {
+        const id = /^\/gw\/tasks\/([^/]+)\//.exec(url.pathname)?.[1];
+        if (!tasks.has(id)) throw fail('本机任务不存在', 404);
+        gateway.server.emit('request', req, res); return;
+      }
+      if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/local/')) {
+        if (!safeCompare(req.headers['x-novaflow-local'] || '', secret)) throw fail('请从本地助手点击“打开 NovaFlow”连接本机', 401);
+        const body = req.method === 'POST' ? await bodyOf(req) : {};
+        const s = worker.getState();
+        if (req.method === 'GET' && url.pathname === '/local/state') return json(200, s);
+        if (req.method === 'GET' && url.pathname === '/local/license') return json(200, await license.state());
+        if (req.method === 'POST' && url.pathname === '/local/bind-account') return json(200, await worker.bindAccount(String(body.token || '')));
+        if (req.method === 'POST' && url.pathname === '/local/license') return json(200, await license.importLicense(body.text));
+        if (req.method === 'GET' && url.pathname === '/api/web/capabilities') {
+          return json(200, { available_workers: s.comfy.image || s.comfy.video ? 1 : 0, models: s.models,
+            taskTypes: Object.entries(TASK_TYPE_REQUIREMENTS).map(([task_type, spec]) => ({ task_type, ...spec,
+              available_workers: s.models.some(m => m.model_id === spec.modelId && m.status === 'ready') ? 1 : 0 })) });
+        }
+        if (req.method === 'GET' && url.pathname === '/api/web/workers') return json(200, { workers: [{ ...s, id: s.workerId, worker_name: s.workerName }] });
+        if (url.pathname.startsWith('/api/web/loras/') && req.method === 'GET') {
+          const kind = url.pathname.split('/').pop();
+          return json(200, await worker.readLoraCatalog(kind, { nsfw: url.searchParams.get('nsfw') === 'true', mode: url.searchParams.get('mode') || 't2v', steps: Number(url.searchParams.get('steps')) || 4 }));
+        }
+        if (url.pathname === '/api/web/tasks' && req.method === 'GET') return json(200, { tasks: tasks.list() });
+        if (url.pathname === '/api/web/tasks' && req.method === 'POST') {
+          if (!s.localRunning) throw fail('本地服务未启动', 503);
+          await license.assertAllowed();
+          return json(201, { task: await tasks.create(body, s.workerId) });
+        }
+        const match = /^\/api\/web\/tasks\/([^/]+)(?:\/(grant|cancel))?$/.exec(url.pathname);
+        if (match) {
+          const task = tasks.get(match[1]);
+          if (!task) throw fail('本机任务不存在', 404);
+          if (!match[2] && req.method === 'GET') return json(200, { task });
+          if (match[2] === 'cancel' && req.method === 'POST') return json(200, { task: await worker.cancelLocalTask(task.id) });
+          if (match[2] === 'grant' && req.method === 'POST') {
+            if (!['upload', 'download'].includes(body.op)) throw fail('无效的文件操作');
+            if (body.op === 'upload' && !['queued', 'assigned', 'uploading'].includes(task.status)) throw fail('上传窗口已关闭', 409);
+            const token = await issueGrantToken({ userId: 'local-owner', workerId: s.workerId, taskId: task.id, op: body.op, ttlSeconds: 3600 }, grantKey);
+            return json(200, { grant: { token, endpoint: origin, expiresAt: new Date(Date.now() + 3600000).toISOString() } });
+          }
+        }
+        throw fail('未找到本机接口', 404);
+      }
+      if (req.method !== 'GET' && req.method !== 'HEAD') throw fail('method not allowed', 405);
+      const pathname = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname);
+      const path = await realpath(resolve(root, '.' + pathname));
+      if (!path.startsWith(root + sep)) throw fail('invalid path', 403);
+      let bytes = await readFile(path);
+      if (path === join(root, 'index.html')) {
+        // The same web-dist used by the hosted site; only local connection
+        // metadata is injected, never a license bypass or session credential.
+        const config = JSON.stringify({ controlUrl, localAssistant: true, localOrigin: origin }).replace(/</g, '\\u003c');
+        bytes = Buffer.from(bytes.toString().replace('<head>', '<head><script>window.NOVAFLOW_WEB_CONFIG=' + config + ';</script>'));
+      }
+      res.writeHead(200, { 'content-type': types[extname(path)] || 'application/octet-stream', 'cache-control': 'no-store', 'x-content-type-options': 'nosniff', 'referrer-policy': 'no-referrer', 'x-frame-options': 'DENY' });
+      res.end(req.method === 'HEAD' ? undefined : bytes);
+    } catch (error) { json(error.status || (error.code === 'ENOENT' ? 404 : 400), { error: String(error.message || error) }); }
+  });
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve); });
+  origin = 'http://127.0.0.1:' + server.address().port;
+  return { origin, openUrl: origin + '/#local-pair=' + secret, server,
+    close: () => new Promise(resolve => { server.close(resolve); server.closeIdleConnections(); }) };
+}

@@ -95,6 +95,14 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
       try { await json('/interrupt', { method: 'POST' }); } catch { /* best effort */ }
     },
 
+    async cancelPrompt(promptId) {
+      await json('/queue', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ delete: [promptId] }) });
+      const queue = await this.queueState();
+      if (queue.queue_running?.some(row => row?.[1] === promptId)) {
+        await json('/interrupt', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt_id: promptId }) });
+      }
+    },
+
     async viewFile({ filename, subfolder = '', type = 'output' }) {
       const qs = new URLSearchParams({ filename, subfolder, type });
       const res = await doFetch(base + '/view?' + qs.toString());
