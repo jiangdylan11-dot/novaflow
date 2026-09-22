@@ -281,7 +281,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       // background-COLOR, not the `background` shorthand: this rule is injected
       // after the theme stylesheet and carries !important, so a shorthand here
       // would reset the theme's background-image and wipe the backdrop.
-      const style = el('style', '', '#' + GATE_ID + '{background-color:#06090c!important;z-index:2147483640!important}');
+      const style = el('style', '', '#' + GATE_ID + '{background-color:#0b0b0c!important;z-index:2147483640!important}');
       style.id = GATE_ID + '-style';
       root.document.head.appendChild(style);
     }
@@ -293,7 +293,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       'position:fixed', 'inset:0', 'z-index:2147483640',
       // Colour only, for the same reason as the rule above: the shorthand
       // would take the theme's backdrop layers with it.
-      'background-color:#06090c', 'display:flex', 'align-items:center',
+      'background-color:#0b0b0c', 'display:flex', 'align-items:center',
       'justify-content:center', 'overflow:hidden',
       'font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif'
     ].join(';'));

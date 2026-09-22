@@ -83,19 +83,10 @@
    ========================================================================== */
 
 #novaflow-web-login-gate {
-  /* Depth rather than flat black, in four layers: two soft glows placed
-     off-centre, a grid, and a cool near-black base. Every layer is
-     deliberately low contrast so it reads as texture - the form has to stay
-     the brightest thing on screen. Grid lines only; no dot field. */
-  background-color: #06090C !important;
-  background-image:
-    radial-gradient(1100px 620px at 22% 30%, rgba(23, 165, 130, 0.16), transparent 62%),
-    radial-gradient(900px 560px at 78% 78%, rgba(32, 110, 160, 0.115), transparent 66%),
-    linear-gradient(rgba(255, 255, 255, 0.042) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.042) 1px, transparent 1px),
-    linear-gradient(160deg, #090F15 0%, #06090C 52%, #05080A 100%) !important;
-  background-size: auto, auto, 52px 52px, 52px 52px, auto !important;
-  background-position: center center !important;
+  /* Plain near-black. No glow, no grid, no gradient - the product owner asked
+     for a plain backdrop, so the form is the only thing on it. */
+  background-color: #0B0B0C !important;
+  background-image: none !important;
 }
 
 .nf-login-shell {
@@ -161,9 +152,9 @@
   height: 36px;
   padding: 0 15px;
   box-sizing: border-box;
-  border: 1px solid rgba(255, 255, 255, 0.09);
-  border-radius: 9px;
-  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid #26282C;
+  border-radius: 8px;
+  background: #141518;
   font-size: 12.5px;
   line-height: 1;
   color: #C3C9CF;
@@ -198,16 +189,15 @@
 .nf-login-card {
   width: 100%;
   box-sizing: border-box;
-  background: linear-gradient(180deg, rgba(20, 26, 31, 0.96) 0%, rgba(13, 18, 22, 0.96) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.075);
-  border-radius: 16px;
+  /* Flat fill and a hairline edge - no gradient, no shadow. */
+  background: #121316;
+  border: 1px solid #26282C;
+  border-radius: 14px;
   padding: 32px 30px;
   display: flex;
   flex-direction: column;
   color: var(--nf-text);
-  /* Lifts the card off the backdrop. This is a drop shadow on a surface, not
-     a bevel on a control. */
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+  box-shadow: none;
 }
 
 .nf-login-card-title {
@@ -281,8 +271,8 @@
   width: 100%;
   height: 44px;
   box-sizing: border-box;
-  background: rgba(8, 11, 14, 0.9);
-  border: 1px solid rgba(255, 255, 255, 0.085);
+  background: #0D0E10;
+  border: 1px solid #2A2C30;
   border-radius: 9px;
   padding: 0 14px 0 40px;
   font: inherit;
@@ -296,13 +286,14 @@
 }
 
 #novaflow-web-login-gate input.nf-login-input:hover {
-  border-color: rgba(255, 255, 255, 0.14);
+  border-color: #33363B;
 }
 
 #novaflow-web-login-gate input.nf-login-input:focus {
   border-color: var(--nf-focus);
-  outline: 0;
-  box-shadow: 0 0 0 3px rgba(53, 199, 158, 0.13);
+  outline: 2px solid rgba(53, 199, 158, 0.28);
+  outline-offset: -1px;
+  box-shadow: none;
 }
 
 /* Chrome paints an autofilled field with its own near-white background and
@@ -314,8 +305,8 @@
 #novaflow-web-login-gate input.nf-login-input:-webkit-autofill:hover,
 #novaflow-web-login-gate input.nf-login-input:-webkit-autofill:focus {
   -webkit-text-fill-color: var(--nf-text) !important;
-  -webkit-box-shadow: 0 0 0 1000px #0A0E11 inset !important;
-  box-shadow: 0 0 0 1000px #0A0E11 inset !important;
+  -webkit-box-shadow: 0 0 0 1000px #0D0E10 inset !important;
+  box-shadow: 0 0 0 1000px #0D0E10 inset !important;
   caret-color: var(--nf-text);
   transition: background-color 100000s ease-in-out 0s;
 }
