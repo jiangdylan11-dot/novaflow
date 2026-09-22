@@ -64,12 +64,6 @@
   .launch-progress progress { width: 100%; height: 7px; accent-color: var(--accent); display: block; margin-top: 6px; }
   #shareProgress progress { accent-color: #f5c542; }
 
-  .models { display: flex; flex-direction: column; gap: 5px; }
-  .model { display: flex; justify-content: space-between; align-items: center;
-    background: var(--surface); border-radius: 6px; padding: 6px 9px; font-size: 12px; }
-  .ready { color: #7ce8b5; }
-  .missing { color: var(--dim); }
-  .invalid { color: #fca5a5; }
 
   #logs {
     background: #000; border-radius: 8px; padding: 9px; height: 150px; overflow-y: auto;
@@ -126,10 +120,6 @@
       <div class="row"><span class="k">对外地址</span><span class="v" id="endpoint">—</span></div>
     </div>
 
-    <div class="card" style="margin-top:12px">
-      <span class="k">模型</span>
-      <div class="models" id="models"><div class="hint">启动后自动检测</div></div>
-    </div>
 
     <div id="launcher-actions" style="display:flex; gap:12px; margin-top:16px">
       <div class="launch-column">
@@ -307,13 +297,6 @@
     $('stats').textContent = (state.stats?.completed || 0) + ' / ' + (state.stats?.failed || 0);
     $('endpoint').textContent = state.endpointUrl || '—';
 
-    const models = state.models || [];
-    $('models').innerHTML = models.length
-      ? models.map((m) =>
-          '<div class="model"><span>' + m.model_id + '</span><span class="' + m.status + '">' +
-          ({ ready: 'Ready', missing: '缺失', invalid: '损坏', updating: '更新中' }[m.status] || m.status) +
-          '</span></div>').join('')
-      : '<div class="hint">' + (state.gpu ? '未检测到模型' : '启动后自动检测') + '</div>';
 
     if (state.lastError) showError(state.lastError);
   }

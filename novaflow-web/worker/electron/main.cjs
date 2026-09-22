@@ -1,7 +1,7 @@
 // NovaFlow local launcher: machine binding, private services and optional
 // compute sharing. The editor itself runs in the browser.
 
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, Tray, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
 
@@ -14,6 +14,7 @@ const MAX_LOG_LINES = 2000;
 
 let win = null;
 let quitting = false;
+let tray = null;
 let worker = null;
 let configDirty = false;
 let commands = Promise.resolve();
@@ -168,12 +169,33 @@ async function discardFailedIdleWorker() {
   }
 }
 
+function showWindow() {
+  if (!win || win.isDestroyed()) createWindow();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
+
+function createTray() {
+  tray = new Tray(path.join(__dirname, 'assets/favicon.ico'));
+  tray.setToolTip('NovaFlow 本地助手');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '打开本地助手', click: showWindow },
+    { type: 'separator' },
+    { label: '退出本地助手', click: async () => {
+      await command(async () => { await worker?.stop(); worker = null; }).catch(() => {});
+      app.quit();
+    } }
+  ]));
+  tray.on('click', showWindow);
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 680,
-    height: 660,
+    height: 550,
     minWidth: 620,
-    minHeight: 620,
+    minHeight: 500,
     backgroundColor: '#0b0b0b',
     title: 'NovaFlow 本地助手',
     icon: path.join(__dirname, 'assets/favicon.ico'),
@@ -191,7 +213,7 @@ function createWindow() {
   win.on('close', event => {
     if (quitting) return;
     event.preventDefault();
-    win.minimize();
+    win.hide();
   });
   win.on('closed', () => { win = null; });
 }
@@ -276,7 +298,7 @@ ipcMain.handle('worker:pickModelsFolder', async () => {
   return result.canceled ? '' : result.filePaths[0];
 });
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => { createWindow(); createTray(); });
 app.on('before-quit', () => { quitting = true; });
 
 app.on('window-all-closed', async () => {
@@ -284,16 +306,12 @@ app.on('window-all-closed', async () => {
   app.quit();
 });
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
-});
+app.on('activate', showWindow);
 
 // A single instance: two workers sharing one identity and one gateway port
 // would fight over both.
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
-  });
+  app.on('second-instance', showWindow);
 }

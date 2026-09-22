@@ -10,7 +10,8 @@ import { tmpdir } from 'node:os';
 export async function createLauncherFixture() {
   const handlers = new Map(), instances = [], windows = [], opened = [], events = [];
   const app = new EventEmitter();
-  Object.assign(app, { getPath: () => tmpdir(), whenReady: () => ({ then() {} }), requestSingleInstanceLock: () => true });
+  Object.assign(app, { getPath: () => tmpdir(), whenReady: () => ({ then() {} }), requestSingleInstanceLock: () => true,
+    quit() { this.emit('before-quit'); this.quitCalled = true; } });
   const fixture = { config: { controlUrl: 'https://control.test', registrationCode: 'test-node' },
     licenseState: { status: 'unlicensed', locked: true, machineId: 'TEST-MACHINE-ONLY' },
     localFailure: false, fileCanceled: true, handlers, instances, windows, opened, events, app };
@@ -29,11 +30,18 @@ export async function createLauncherFixture() {
       windows.push(this);
     }
     loadFile() {}
+    hide() { this.hidden = true; }
+    show() { this.hidden = false; }
     minimize() { this.minimized = true; }
     isMinimized() { return !!this.minimized; }
     restore() { this.minimized = false; }
     focus() { this.focused = true; }
     isDestroyed() { return false; }
+  }
+  class FakeTray extends EventEmitter {
+    constructor() { super(); fixture.tray = this; }
+    setToolTip(text) { this.tooltip = text; }
+    setContextMenu(menu) { this.menu = menu; }
   }
   const fakeFs = {
     mkdirSync() {}, existsSync() { return true; }, appendFileSync() {},
@@ -52,7 +60,7 @@ export async function createLauncherFixture() {
         ipcMain: { handle: (name, fn) => handlers.set(name, fn) },
         shell: { openExternal: async url => { opened.push(url); } },
         dialog: { showOpenDialog: async () => ({ canceled: fixture.fileCanceled, filePaths: ['test-fixture.nfl'] }) },
-        BrowserWindow: FakeWindow
+        BrowserWindow: FakeWindow, Tray: FakeTray, Menu: { buildFromTemplate: items => items }
       };
       throw new Error('Unexpected fixture import: ' + name);
     },
@@ -77,7 +85,7 @@ export async function createLauncherFixture() {
     }
   });
   runInContext(await readFile(new URL('../../worker/electron/main.cjs', import.meta.url), 'utf8'), sandbox);
-  runInContext('createWorker = factory; localLicense = license; createWindow();', sandbox);
+  runInContext('createWorker = factory; localLicense = license; createWindow(); createTray();', sandbox);
   fixture.call = (name, payload) => handlers.get('worker:' + name)({ sender: windows[0].webContents }, payload);
   return fixture;
 }
