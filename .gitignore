@@ -40,3 +40,6 @@ particle-editor/_tmp_ai_seq_verify.mp4
 particle-editor/scripts/verify-ai-video-duration.mjs
 particle-editor-desktop/.localappdata/
 supabase/.temp/
+
+# Local migration archive: historical assets, configuration and audit evidence.
+/.legacy-migration/

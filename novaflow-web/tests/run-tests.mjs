@@ -13,6 +13,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 
 const SUITES = [
+  { name: 'spine-head-layer', file: 'e2e/spine-head-layer.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'runtime-launcher', file: 'e2e/runtime-launcher.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'tunnel-address', file: 'e2e/tunnel-address.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'local-launcher', file: 'e2e/local-launcher.test.mjs', needs: [], timeoutMs: 60000 },

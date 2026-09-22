@@ -30,7 +30,13 @@ const ROOT = resolve(HERE, '..');
 const BASELINE_FILE = join(ROOT, 'docs/stable-baseline.json');
 const HISTORY_FILE = join(ROOT, 'docs/stable-baseline-history.json');
 
-const STABLE_DIR = process.env.NOVAFLOW_STABLE_DIR || 'D:/AI_APP/NovaFlow';
+// Independent Web checkouts no longer require a neighbouring desktop repository.
+// Keep the historical comparison available only for an explicitly supplied tree.
+if (!process.env.NOVAFLOW_STABLE_DIR) {
+  await import('./check-independent-workspace.mjs');
+  process.exit(0);
+}
+const STABLE_DIR = process.env.NOVAFLOW_STABLE_DIR;
 
 // Paths this product line could ever have reason to write. If the stable tree
 // changes and none of the changed paths are in here, the change came from

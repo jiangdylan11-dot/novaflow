@@ -11958,14 +11958,15 @@
     return cropped
   }
 
-  // With the whole-head layer present the separate face + feature layers are redundant.
+  // The whole-head layer replaces face; keep features for the following face merge.
   function applySeeThroughHeadLayer(parts) {
     const list = Array.isArray(parts) ? parts : []
     const head = list.find((part) => part && part.seeThroughHeadLayer && part.dataUrl)
     if (!head) return list
     if (state.includeFaceDetails) return list.filter((part) => part !== head)
     const rawId = (part) => String(part && part.id || '').trim().toLowerCase()
-    return list.filter((part) => part === head || (rawId(part) !== 'face' && !facialFeatureId(part.id)))
+    // Separate brows, lashes and irides carry detail missing from the whole-head image.
+    return list.filter((part) => part === head || rawId(part) !== 'face')
   }
 
   async function runSplit(viewMode, options) {

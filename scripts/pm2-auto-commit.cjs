@@ -1,5 +1,6 @@
 const { spawn } = require("child_process");
 const fs = require("fs");
+const path = require("path");
 
 const nodeExe = fs.existsSync("C:\\Program Files\\nodejs\\node.exe")
   ? "C:\\Program Files\\nodejs\\node.exe"
@@ -12,7 +13,7 @@ if (!fs.existsSync(npmCli)) {
 }
 
 const child = spawn(nodeExe, [npmCli, "run", "watch:auto-commit"], {
-  cwd: "D:\\AI_APP\\NovaFlow",
+  cwd: path.resolve(__dirname, ".."),
   stdio: ["ignore", "pipe", "pipe"],
   shell: false,
   windowsHide: true

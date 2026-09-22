@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
-  [string] $RuntimeSourcePath = "D:\AI_APP\NovaFlow\_exports\NovaFlow-AI-Runtime\package\AI-Runtime",
-  [string] $OutputRoot = "D:\AI_APP\NovaFlow\_exports\NovaFlow-AI-Runtime-Installer",
+  [string] $RuntimeSourcePath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime/package/AI-Runtime")),
+  [string] $OutputRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime-Installer")),
   [string] $Version = "0.2.5"
 )
 

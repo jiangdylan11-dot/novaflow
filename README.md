@@ -12,8 +12,11 @@
 | 构建及检查网页 | `npm run sync:runtime`、`npm run check:runtime`、`npm run check:entry` |
 | 打包启动助手 | `npm run build:win` |
 | 打包后台管理 | `npm run admin:build` |
+| AI 环境打包工具 | `tools/ai-runtime/` |
 
 源码维护入口是上面三个目录。`web-dist`、`worker-renderer` 和各 `dist` 为构建输出，不直接修改。
 旧项目目录保留作归档；本仓库内部的 `particle-editor-desktop` 仍包含授权和 LoRA 公共模块，尚不能整目录删除。
 
 迁移记录、依赖安装及发布说明见 [独立项目说明](novaflow-web/docs/INDEPENDENT_WORKSPACE.md)。
+
+旧项目独有资料与未提交补丁保存在本机 `.legacy-migration/20260923/`，不会进入 Git 或安装包。AI 环境历史导出包归入本项目 `_exports/`；这些是本机资料，与源码分开保存。

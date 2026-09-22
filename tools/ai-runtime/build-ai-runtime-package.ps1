@@ -2,7 +2,7 @@
 param(
   [string] $SourceComfyRoot,
   [string] $SourcePythonRoot,
-  [string] $OutputRoot = "D:\AI_APP\NovaFlow\_exports\NovaFlow-AI-Runtime",
+  [string] $OutputRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime")),
   [string] $InstallPath = "C:\ProgramData\NovaFlow\AI-Runtime",
   [string] $AssetsPath,
   [string] $ModelsPath,
