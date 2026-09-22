@@ -18,13 +18,35 @@ cd novaflow-web/worker && npm ci && npm run build:win
 NSIS 安装器，非一键（可选安装目录），装到当前用户目录，中文界面，
 建桌面与开始菜单快捷方式。卸载不删用户数据。
 
+## 前提：这个安装包不含 AI 运行时，也不含模型
+
+它只有 78 MB，里面是 Worker 程序 + NovaFlow 自己的图构建器 + 文件网关。
+**ComfyUI、Python、CUDA、模型权重都不在里面。** 一台新机器还需要：
+
+| 东西 | 体积 | 从哪来 |
+| --- | --- | --- |
+| ComfyUI + Python + CUDA | 约 7.5 GB | NovaFlow 桌面版的 AI 运行时（`C:\ProgramData\NovaFlow\AI-Runtime\engine`），或者对方自己已有的 ComfyUI |
+| `Qwen-Rapid-AIO-NSFW-v20.safetensors` | 26.5 GB | 出图要用 |
+| Minimax H3 四件套（模型 / 文本编码器 / 视频 VAE / 音频 VAE） | 39.5 GB | 出视频要用 |
+
+只装 Worker 不装这些，机器照样能上线，只是模型状态会报 `missing`，
+调度器就不会把对应的活派给它——**不会报错，只是一直闲着**。
+所以可以先只备一个模型：只放 Qwen 就只接出图的活，两个都放才接视频。
+
+权重**不会自动下载**。清单里 `download.mode` 是 `import_or_configured_url`，
+因为这些权重是按用户授权的，本项目不适合代为分发。
+做法是把 Worker 指向机器上已有的 ComfyUI models 目录。
+
 ## 朋友要做的事
 
+0. 先让他那台机器有一个能跑的 ComfyUI 和模型（见上表）。
 1. 双击 `NovaFlowWorkerSetup.exe`，下一步到底。
 2. 打开「NovaFlow Worker」。
 3. 到「设置」页，填两样：
    - **控制面地址**：`https://<你的项目>.supabase.co/functions/v1/novaflow-web`
    - **注册码**：你给他的 `NFW-XXXXXX-XXXXXX`
+
+   如果他的 ComfyUI 不在默认的 `127.0.0.1:8188` / `8189`，在同一页改掉。
 4. 保存 → 回「状态」页 → 点「启动」。
 
 然后是自动的：检测 GPU → 检查 ComfyUI → 检测模型 → 注册 → 上线。
@@ -33,7 +55,9 @@ NSIS 安装器，非一键（可选安装目录），装到当前用户目录，
 注册码是一次性的，用掉后程序会自己把它从配置里清掉，
 这样重启不会拿一个已失效的码去反复失败。
 
-**不需要**手动装 Python、`pip install`、配 CUDA、复制自定义节点、改 JSON 路径、改环境变量。
+Worker 这一侧**不需要**装 Python、`pip install`、配 CUDA、复制自定义节点、
+改 JSON 路径、改环境变量——这些是 ComfyUI 那一侧的事，
+而 ComfyUI 由 NovaFlow 桌面版的安装包负责，不归这个安装包管。
 
 ## 界面
 
