@@ -11,7 +11,7 @@
     radius: '8px',
     headerHeight: '36px',
     headerPadding: '0 12px',
-    headerBackground: '#2f2f2f',
+    headerBackground: '#24262a',
     headerFontSize: '13px',
     headerFontWeight: '400',
     headerGap: '8px',

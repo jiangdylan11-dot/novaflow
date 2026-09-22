@@ -282,51 +282,104 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       style.id = GATE_ID + '-style';
       root.document.head.appendChild(style);
     }
+    // Two columns at a desktop width: what the product is on the left, the
+    // sign-in form on the right. The inline rules here are the ones that must
+    // hold even if the stylesheet has not arrived - it covers the running app,
+    // so it may not be transparent or scrollable-behind for a frame.
     const gate = el('div', [
       'position:fixed', 'inset:0', 'z-index:2147483640',
-      'background:#0b0b0b', 'display:flex', 'align-items:center',
-      'justify-content:center', 'flex-direction:column', 'gap:22px',
+      'background:#0b0b0c', 'display:flex', 'align-items:center',
+      'justify-content:center', 'overflow:hidden',
       'font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif'
     ].join(';'));
     gate.id = GATE_ID;
 
-    const logo = el('img', [
-      'display:block', 'width:320px', 'max-width:calc(100vw - 64px)',
-      'height:auto', 'object-fit:contain'
-    ].join(';'));
+    const shell = el('div'); shell.className = 'nf-login-shell';
+
+    const brand = el('div'); brand.className = 'nf-login-brand';
+    const logo = el('img'); logo.className = 'nf-login-logo';
     logo.src = './assets/logo.png';
     logo.alt = 'NovaFlow';
     logo.draggable = false;
-    gate.appendChild(logo);
+    brand.appendChild(logo);
 
-    const card = el('div', [
-      'width:340px', 'max-width:calc(100vw - 32px)', 'background:#161616',
-      'border:1px solid #242424', 'border-radius:12px', 'padding:22px',
-      'display:flex', 'flex-direction:column', 'gap:10px', 'color:#e5e7eb'
-    ].join(';'));
+    const headline = el('h1', '', '游戏美术全流程 AI 工作站');
+    headline.className = 'nf-login-headline';
+    brand.appendChild(headline);
 
-    card.appendChild(el('div', 'color:#a0a0a0;font-size:12px;line-height:1.7;margin-bottom:2px',
-      '请使用 NovaFlow 账号登录。没有账号请找管理员开通。'));
+    const lede = el('p'); lede.className = 'nf-login-lede';
+    lede.appendChild(root.document.createTextNode('粒子特效、序列动画、骨骼绑定、批量图像处理。'));
+    lede.appendChild(el('br'));
+    lede.appendChild(root.document.createTextNode('本地模型与云端模型，统一工作空间。'));
+    brand.appendChild(lede);
 
-    const account = el('input', FIELD);
+    // Descriptive labels for what is inside. They are deliberately not
+    // controls: the only way in from this screen is the form on the right.
+    const tags = el('div'); tags.className = 'nf-login-tags';
+    for (const [icon, label] of [
+      ['✦', '粒子特效'], ['▷', 'AI 序列动画'], ['✎', '绘图与拆图'], ['▤', '批量工具']
+    ]) {
+      const tag = el('div'); tag.className = 'nf-login-tag';
+      const mark = el('span', '', icon); mark.className = 'nf-login-tag-icon';
+      mark.setAttribute('aria-hidden', 'true');
+      tag.appendChild(mark);
+      tag.appendChild(el('span', '', label));
+      tags.appendChild(tag);
+    }
+    brand.appendChild(tags);
+
+    const footnote = el('div'); footnote.className = 'nf-login-footnote';
+    footnote.appendChild(el('span', '', 'NOVAFLOW'));
+    footnote.appendChild(el('span', '', '|'));
+    footnote.appendChild(el('span', '', 'WEB 工作空间'));
+    brand.appendChild(footnote);
+
+    shell.appendChild(brand);
+
+    const card = el('div'); card.className = 'nf-login-card';
+    const cardTitle = el('h2', '', '登录'); cardTitle.className = 'nf-login-card-title';
+    card.appendChild(cardTitle);
+    const cardNote = el('p', '', '请使用 NovaFlow 账号登录。没有账号请找管理员开通。');
+    cardNote.className = 'nf-login-card-note';
+    card.appendChild(cardNote);
+
+    const accountLabel = el('label', '', '账号');
+    accountLabel.className = 'nf-login-field';
+    accountLabel.htmlFor = 'novaflow-web-login-account';
+    const account = el('input');
+    account.className = 'nf-login-input';
+    account.id = 'novaflow-web-login-account';
     account.placeholder = '账号';
     account.autocomplete = 'username';
-    const password = el('input', FIELD);
+
+    const passwordLabel = el('label', '', '密码');
+    passwordLabel.className = 'nf-login-field';
+    passwordLabel.htmlFor = 'novaflow-web-login-password';
+    const password = el('input');
+    password.className = 'nf-login-input';
+    password.id = 'novaflow-web-login-password';
     password.placeholder = '密码';
     password.type = 'password';
     password.autocomplete = 'current-password';
+
+    card.appendChild(accountLabel);
     card.appendChild(account);
+    const gap = el('div'); gap.className = 'nf-login-gap'; card.appendChild(gap);
+    card.appendChild(passwordLabel);
     card.appendChild(password);
 
-    const submit = el('button', [
-      'height:38px', 'border:0', 'border-radius:8px', 'background:#1ea672',
-      'color:#fff', 'font:inherit', 'font-size:14px', 'font-weight:600',
-      'cursor:pointer', 'margin-top:4px'
-    ].join(';'), '登录');
+    const submit = el('button', '', '登录');
+    submit.className = 'nf-login-submit';
+    submit.type = 'button';
     card.appendChild(submit);
 
-    const note = el('div', 'font-size:12px;line-height:1.6;min-height:18px;color:#a0a0a0');
+    const note = el('div');
+    note.className = 'nf-login-note';
+    note.style.color = '#a0a0a0';
+    note.setAttribute('role', 'status');
     card.appendChild(note);
+
+    shell.appendChild(card);
 
     async function login() {
       const name = account.value.trim();
@@ -358,7 +411,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     password.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
     account.addEventListener('keydown', (e) => { if (e.key === 'Enter') password.focus(); });
 
-    gate.appendChild(card);
+    gate.appendChild(shell);
     setTimeout(() => { try { account.focus(); } catch (_) {} }, 80);
     return gate;
   }

@@ -2430,7 +2430,11 @@
   const AI_ANIMATION_PROMPT_HISTORY_POPOVER_ROW_BUDGET = 15;
   const AI_ANIMATION_PROMPT_HISTORY_POPOVER_MAX_HEIGHT =
     22 + AI_ANIMATION_PROMPT_HISTORY_POPOVER_ROW_BUDGET * 30 + (AI_ANIMATION_PROMPT_HISTORY_POPOVER_ROW_BUDGET - 1) * 4;
-  const PRIMARY_PANEL_BACKGROUND = "#2a2a2a";
+  // The selected-entry pair, declared before its first consumer below.
+  const PRIMARY_ENTRY_ACTIVE_RADIUS_PX = "10px";
+  const UI_SELECTED_BACKGROUND = "#1c4136";
+  const UI_SELECTED_BORDER = "#29594a";
+  const PRIMARY_PANEL_BACKGROUND = "#16171a";
   const PRIMARY_PANEL_EXPANDED_BACKGROUND = "#181818";
   const LEFT_PANEL_BACKGROUND = "#181818";
   const LEFT_LAYOUT_BACKGROUND = LEFT_PANEL_BACKGROUND;
@@ -2439,7 +2443,7 @@
   const LEFT_PANEL_EDGE = "rgba(154, 159, 165, 0.05)";
   const SECONDARY_ENTRY_BACKGROUND = "#303030";
   const SECONDARY_ENTRY_HOVER_BACKGROUND = "#3b3b3b";
-  const SECONDARY_ENTRY_ACTIVE_BACKGROUND = "#303030";
+  const SECONDARY_ENTRY_ACTIVE_BACKGROUND = UI_SELECTED_BACKGROUND;
   const SKELETON_SELECTION_BACKGROUND = "rgba(30, 166, 114, 0.14)";
   const SKELETON_SELECTION_SHADOW = "inset 3px 0 0 rgba(30, 166, 114, 0.92)";
   const SKELETON_PREVIEW_CAMERA_ZOOM_MIN_SCALE = 0.1;
@@ -2565,9 +2569,10 @@
   const AI_SEQUENCE_PREVIEW_BRUSH_LAYER_Z_INDEX = DROPDOWN_UNDERLAY_Z_INDEX;
   const AI_SEQUENCE_PREVIEW_BRUSH_CURSOR_Z_INDEX = String(Number(AI_SEQUENCE_PREVIEW_BRUSH_LAYER_Z_INDEX) + 1);
   const AI_ANIMATION_PLACEHOLDER_NOTE_COLOR = "#a0a0a0";
-  const PRIMARY_ACTIVE_BACKGROUND = "#1ea672";
+  const PRIMARY_ACTIVE_BACKGROUND = UI_SELECTED_BACKGROUND;
   const PRIMARY_INACTIVE_BACKGROUND = PRIMARY_PANEL_BACKGROUND;
-  const UI_TOPBAR_BACKGROUND = "#242424";
+  // Near-black topbar, separated from the workspace by a hairline rule.
+  const UI_TOPBAR_BACKGROUND = "#101113";
   const UI_FIELD_BACKGROUND = "#070707";
   const UI_SELECT_BACKGROUND = "#070707";
   const UI_SELECT_HOVER_BACKGROUND = "#111111";
@@ -2579,16 +2584,22 @@
   const UI_SYSTEM_ACTION_DISABLED_BACKGROUND = "#202020";
   const UI_SYSTEM_ROW_ACTIVE_BACKGROUND = "#333333";
   const UI_SYSTEM_ROW_INACTIVE_BACKGROUND = "#222222";
-  const UI_ACCENT = "#1ea672";
-  const UI_ACCENT_HOVER = "#25bc84";
-  const UI_ACCENT_TEXT = "#7ce8b5";
-  const UI_TOGGLE_ON_BACKGROUND = "#1ea672";
+  // Rank, not decoration. UI_ACCENT is the ONE main action of a surface
+  // (生成 / 登录 / the active tool's own run button). The selected entry is a
+  // dark green fill with light green text and a hairline edge - never a solid
+  // accent block, and never an edge light along one side.
+  const UI_ACCENT = "#17a582";
+  const UI_ACCENT_HOVER = "#1ab891";
+  const UI_ACCENT_TEXT = "#6fd9b8";
+  // "On" reads slightly brighter than a main action so a live switch or a
+  // filled slider is legible at 2px.
+  const UI_TOGGLE_ON_BACKGROUND = "#1bb28c";
   const UI_ACCENT_SOFT = "rgba(32, 37, 42, 0.96)";
   const UI_ACCENT_GLOW = "rgba(33, 196, 135, 0.12)";
   const UI_ACCENT_KNOB = "#e8e8e8";
   const UI_TOGGLE_ON_FRAME = "none";
   const UI_TOGGLE_KNOB_SHADOW = "0 1px 5px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.16)";
-  const UI_RANGE_ACCENT = "#20c997";
+  const UI_RANGE_ACCENT = "#1bb28c";
   const UPLOAD_ZONE_BACKGROUND = "#1B1B1B";
   const UPLOAD_ZONE_BACKGROUND_ALT = "#171717";
   const UPLOAD_ZONE_PANEL_BACKGROUND = "#202020";
@@ -20822,9 +20833,11 @@
       [data-novaflow-primary-entry="1"][data-novaflow-primary-active="1"] {
         background: ${PRIMARY_ACTIVE_BACKGROUND} !important;
         background-image: none !important;
-        border-radius: 0 !important;
-        box-shadow: none !important;
-        color: #ffffff !important;
+        border-radius: 10px !important;
+        /* A hairline edge: zero offset, zero blur. Not an inner shadow, and
+           deliberately not an edge light along one side. */
+        box-shadow: inset 0 0 0 1px ${UI_SELECTED_BORDER} !important;
+        color: ${UI_ACCENT_TEXT} !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -20856,11 +20869,11 @@
         white-space: nowrap !important;
       }
       [data-novaflow-primary-entry="1"][data-novaflow-primary-active="1"]::before {
-        color: #ffffff !important;
+        color: ${UI_ACCENT_TEXT} !important;
       }
       [data-novaflow-primary-entry="1"][data-novaflow-primary-active="1"]::after {
         content: attr(data-novaflow-primary-label);
-        color: #ffffff !important;
+        color: ${UI_ACCENT_TEXT} !important;
       }
       [data-novaflow-primary-entry="1"]:hover {
         background: ${PRIMARY_INACTIVE_BACKGROUND} !important;
@@ -21044,7 +21057,9 @@
         background: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
         background-color: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
         color: ${UI_ACCENT_TEXT} !important;
-        box-shadow: inset 0 -2px 0 ${UI_ACCENT} !important;
+        /* Was an inset edge light along the bottom. The selected state is now
+           carried by the fill and the text; this is a plain hairline edge. */
+        box-shadow: inset 0 0 0 1px ${UI_SELECTED_BORDER} !important;
         outline: 0 !important;
       }
       body.novaflow-aifx-open #novaflow-aifx-mvp {
@@ -31384,7 +31399,10 @@
       nfSetStyleIfChanged(shell, "background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(shell, "background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(shell, "background-image", "none", "important");
-      nfSetStyleIfChanged(shell, "box-shadow", "none", "important");
+      // The selected rail entry reads as a rounded block with a hairline edge.
+      // Both are set here because the inline value wins over the stylesheet.
+      nfSetStyleIfChanged(shell, "border-radius", active ? PRIMARY_ENTRY_ACTIVE_RADIUS_PX : "0", "important");
+      nfSetStyleIfChanged(shell, "box-shadow", active ? `inset 0 0 0 1px ${UI_SELECTED_BORDER}` : "none", "important");
     });
   }
 
@@ -37221,7 +37239,7 @@
       nfSetStyleIfChanged(button, "background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(button, "background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(button, "background-image", "none", "important");
-      nfSetStyleIfChanged(button, "color", active ? "#ffffff" : "rgba(244, 247, 251, 0.88)", "important");
+      nfSetStyleIfChanged(button, "color", active ? UI_ACCENT_TEXT : "rgba(244, 247, 251, 0.88)", "important");
       nfSetStyleIfChanged(button, "opacity", "1", "important");
     });
   }
@@ -51071,12 +51089,15 @@
       nfSetStyleIfChanged(button, "padding", "0 6px", "important");
       nfSetStyleIfChanged(button, "border", "0", "important");
       nfSetStyleIfChanged(button, "border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
-      nfSetStyleIfChanged(button, "background", SECONDARY_ENTRY_BACKGROUND, "important");
-      nfSetStyleIfChanged(button, "background-color", SECONDARY_ENTRY_BACKGROUND, "important");
+      const secondaryBackground = active ? SECONDARY_ENTRY_ACTIVE_BACKGROUND : SECONDARY_ENTRY_BACKGROUND;
+      nfSetStyleIfChanged(button, "background", secondaryBackground, "important");
+      nfSetStyleIfChanged(button, "background-color", secondaryBackground, "important");
       nfSetStyleIfChanged(button, "background-image", "none", "important");
       nfSetStyleIfChanged(button, "color", active ? UI_ACCENT_TEXT : "rgba(244, 247, 251, 0.92)", "important");
-      nfSetStyleIfChanged(button, "box-shadow", active ? `inset 0 -2px 0 ${UI_ACCENT}` : "none", "important");
-      nfSetStyleIfChanged(button, "outline", "0", "important");
+      nfSetStyleIfChanged(button, "box-shadow", active ? `inset 0 0 0 1px ${UI_SELECTED_BORDER}` : "none", "important");
+      // Not !important: it still beats the bundle stylesheet, while letting
+      // the theme's :focus-visible ring through for keyboard users.
+      nfSetStyleIfChanged(button, "outline", "0");
       nfSetStyleIfChanged(button, "box-sizing", "border-box", "important");
       nfSetStyleIfChanged(button, "overflow", "hidden", "important");
       nfSetStyleIfChanged(button, "transition", "none", "important");

@@ -59,6 +59,12 @@
   const SPLIT_RECT_RADIUS = '8px'
   const SPLIT_PANEL_BACKGROUND = '#2a2a2a'
   const SPLIT_PANEL_HOVER_BACKGROUND = '#3b3b3b'
+  // Selected-entry rank: dark green fill, light green text, hairline edge.
+  // Distinct from SPLIT_ACTIVE_* below, which stays the main-action green.
+  const SPLIT_SELECTED_BACKGROUND = '#1c4136'
+  const SPLIT_SELECTED_HOVER_BACKGROUND = '#24513f'
+  const SPLIT_SELECTED_BORDER = '#29594a'
+  const SPLIT_SELECTED_TEXT = '#6fd9b8'
   const SPLIT_ACTIVE_BACKGROUND = '#1ea672'
   const SPLIT_ACTIVE_HOVER_BACKGROUND = '#25b87f'
   const SPLIT_LAYOUT_BORDER = '1px solid transparent'
@@ -319,8 +325,11 @@
   const SEE_THROUGH_QUEUE_MISSING_GRACE_MS = 45 * 1000
   const SEE_THROUGH_SLOW_WARN_MS = 8 * 60 * 1000
   const SEE_THROUGH_LONG_WARN_MS = 12 * 60 * 1000
-  const SPLIT_CHECKER_BACKGROUND_COLOR = '#0b0b0b'
-  const SPLIT_CHECKER_BACKGROUND_IMAGE = 'linear-gradient(180deg, #101010 0%, #0b0b0b 100%)'
+  // Neutral dark grey, flat. The canvas sits ABOVE the panels in value so
+  // the artwork is the brightest thing on screen; the former top-to-bottom
+  // gradient is gone with the rest of the bevelled styling.
+  const SPLIT_CHECKER_BACKGROUND_COLOR = '#232323'
+  const SPLIT_CHECKER_BACKGROUND_IMAGE = 'none'
   const SPLIT_CHECKER_BACKGROUND_SIZE = '100% 100%'
   const SPLIT_CHECKER_BACKGROUND_POSITION = '0 0'
   const WORKFLOW_KEY = 'bone_ai_split_workflow_json'
@@ -722,7 +731,7 @@
   function splitActionHoverInlineStyleForButton(button) {
     const action = button instanceof HTMLElement ? button.getAttribute(CONTROL_ACTION_ATTR) || '' : ''
     const status = action ? splitControlActionPatchState(action) : { active: false }
-    const background = status.active ? SPLIT_ACTIVE_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND
+    const background = status.active ? SPLIT_SELECTED_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND
     return Object.assign({}, splitActionHoverInlineStyle, {
       background,
       'background-color': background
@@ -3712,16 +3721,18 @@
         font-weight: ${SPLIT_TOOL_FONT_WEIGHT} !important;
       }
       #${WORKSPACE_OVERLAY_ID} button[${TOOL_ACTION_ATTR}][data-novaflow-spine-split-tool-active="1"] {
-        background: ${SPLIT_ACTIVE_BACKGROUND} !important;
-        background-color: ${SPLIT_ACTIVE_BACKGROUND} !important;
+        background: ${SPLIT_SELECTED_BACKGROUND} !important;
+        background-color: ${SPLIT_SELECTED_BACKGROUND} !important;
         background-image: none !important;
         border: 0 !important;
+        box-shadow: inset 0 0 0 1px ${SPLIT_SELECTED_BORDER} !important;
+        color: ${SPLIT_SELECTED_TEXT} !important;
         font-weight: ${SPLIT_TOOL_FONT_WEIGHT} !important;
       }
       #${WORKSPACE_OVERLAY_ID} button[${TOOL_ACTION_ATTR}][data-novaflow-spine-split-tool-active="1"]:hover,
       #${WORKSPACE_OVERLAY_ID} button[${TOOL_ACTION_ATTR}][data-novaflow-spine-split-tool-active="1"]:focus-visible {
-        background: ${SPLIT_ACTIVE_HOVER_BACKGROUND} !important;
-        background-color: ${SPLIT_ACTIVE_HOVER_BACKGROUND} !important;
+        background: ${SPLIT_SELECTED_HOVER_BACKGROUND} !important;
+        background-color: ${SPLIT_SELECTED_HOVER_BACKGROUND} !important;
       }
       #${WORKSPACE_OVERLAY_ID} [data-novaflow-spine-split-fit-button="1"]:hover,
       #${WORKSPACE_OVERLAY_ID} [data-novaflow-spine-split-fit-button="1"]:focus-visible {
@@ -3750,8 +3761,8 @@
     const blocked = !!node.disabled || node.getAttribute('aria-disabled') === 'true' || splitGlobalBusyInteractionLocked()
     const lit = !!hovering && !blocked
     const background = lit
-      ? (active ? SPLIT_ACTIVE_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND)
-      : (active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND)
+      ? (active ? SPLIT_SELECTED_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND)
+      : (active ? SPLIT_SELECTED_BACKGROUND : SPLIT_PANEL_BACKGROUND)
     node.style.setProperty('background', background, 'important')
     node.style.setProperty('background-color', background, 'important')
   }
@@ -3761,7 +3772,7 @@
     const extraStyle = props.style && typeof props.style === 'object' ? props.style : null
     delete props.style
     const toolAction = props[TOOL_ACTION_ATTR] || ''
-    const background = active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND
+    const background = active ? SPLIT_SELECTED_BACKGROUND : SPLIT_PANEL_BACKGROUND
     const node = h('button', Object.assign({
       type: 'button',
       onclick: toolAction ? (event) => runDirectSplitToolAction(toolAction, onClick, event) : onClick,
@@ -13370,9 +13381,10 @@
     return Object.assign({
       height: '32px',
       borderRadius: '8px',
-      background: status.active ? SPLIT_ACTIVE_BACKGROUND : '#333333',
+      background: status.active ? SPLIT_SELECTED_BACKGROUND : '#333333',
       border: SPLIT_LAYOUT_BORDER,
-      color: '#fff',
+      boxShadow: status.active ? `inset 0 0 0 1px ${SPLIT_SELECTED_BORDER}` : 'none',
+      color: status.active ? SPLIT_SELECTED_TEXT : '#fff',
       cursor: state.busy ? 'default' : 'pointer',
       fontWeight: SPLIT_TOOL_FONT_WEIGHT,
       fontSize: '12px',
@@ -13799,7 +13811,7 @@
         (typeof buttonNode.matches === 'function' && buttonNode.matches(':hover'))
       )
       const background = status.active
-        ? (hovering ? SPLIT_ACTIVE_HOVER_BACKGROUND : SPLIT_ACTIVE_BACKGROUND)
+        ? (hovering ? SPLIT_SELECTED_HOVER_BACKGROUND : SPLIT_SELECTED_BACKGROUND)
         : (hovering ? SPLIT_PANEL_HOVER_BACKGROUND : '#333333')
       const border = SPLIT_LAYOUT_BORDER
       if (status.known && buttonNode.textContent !== status.text) {
@@ -14390,8 +14402,8 @@
     const applyHover = (button, hovering) => {
       if (!(button instanceof HTMLElement)) return
       const background = hovering
-        ? (active ? SPLIT_ACTIVE_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND)
-        : (active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND)
+        ? (active ? SPLIT_SELECTED_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND)
+        : (active ? SPLIT_SELECTED_BACKGROUND : SPLIT_PANEL_BACKGROUND)
       button.style.setProperty('background', background, 'important')
       button.style.setProperty('background-color', background, 'important')
     }
@@ -14410,11 +14422,12 @@
         maxHeight: '34px',
         minWidth: minWidth || '68px',
         borderRadius: SPLIT_RECT_RADIUS,
-        background: active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND,
-        backgroundColor: active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND,
+        background: active ? SPLIT_SELECTED_BACKGROUND : SPLIT_PANEL_BACKGROUND,
+        backgroundColor: active ? SPLIT_SELECTED_BACKGROUND : SPLIT_PANEL_BACKGROUND,
         backgroundImage: 'none',
         border: '0',
-        color: '#fff',
+        boxShadow: active ? `inset 0 0 0 1px ${SPLIT_SELECTED_BORDER}` : 'none',
+        color: active ? SPLIT_SELECTED_TEXT : '#fff',
         cursor: state.busy ? 'default' : 'pointer',
         fontWeight: '400',
         fontSize: SPLIT_CONTROL_FONT_SIZE,
@@ -14450,8 +14463,8 @@
     const background = blocked
       ? SPLIT_PANEL_BACKGROUND
       : hovering
-      ? (active ? SPLIT_ACTIVE_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND)
-      : (active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND)
+      ? (active ? SPLIT_SELECTED_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND)
+      : (active ? SPLIT_SELECTED_BACKGROUND : SPLIT_PANEL_BACKGROUND)
     // Properties re-set below with !important are left out of this plain assignment: writing them twice
     // with different priorities emitted two style mutations per property on every sync pass.
     Object.assign(button.style, {
@@ -14462,7 +14475,7 @@
       borderRadius: SPLIT_RECT_RADIUS,
       backgroundImage: 'none',
       border: '0',
-      color: blocked ? 'rgba(255,255,255,0.42)' : '#fff',
+      color: blocked ? 'rgba(255,255,255,0.42)' : (active ? SPLIT_SELECTED_TEXT : '#fff'),
       cursor: blocked || state.busy ? 'default' : 'pointer',
       fontWeight: '400',
       padding: '0 14px',

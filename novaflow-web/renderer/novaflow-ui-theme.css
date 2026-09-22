@@ -1,0 +1,391 @@
+/*
+ * NovaFlow UI theme - the green / grey visual pass.
+ *
+ * WHY THIS IS A STYLESHEET AND NOT A COMPONENT CHANGE
+ *
+ * The editor a browser loads is assets/index-*.js: a prebuilt React bundle
+ * whose TypeScript is only partly kept in renderer/src and has no entry module
+ * left, so it cannot be rebuilt here. That bundle styles itself with inline
+ * `style` objects - over a thousand of them. Inline styles outrank any
+ * stylesheet, which is why the rules below carry `!important`; it is the only
+ * lever a stylesheet has over an inline style, not a shortcut around
+ * specificity. The same reason produced resource-mention.tool.css next door.
+ *
+ * What keeps that honest is the scope. Every rule is anchored to .novaflow-app
+ * or to a data-novaflow-* hook the renderer already emits and the app's own
+ * code already relies on (primary-entry, secondary-entry, editor-panel,
+ * spine-split-control-*). Nothing here selects on a bare element or a colour
+ * value, so a rule can only reach the control it names.
+ *
+ * WHAT IT MAY AND MAY NOT DO
+ *
+ * Appearance only: colour, border, radius, spacing, typography, hover, focus
+ * and selected states. No rule may change layout roles, hide a control, or
+ * alter what anything does. Nothing here reads or writes application state.
+ *
+ * Colour carries rank, not decoration:
+ *   green  #17A582  the one main action of a surface
+ *   green  #1C4136  the selected entry (fill + text, never an edge light)
+ *   green  #1BB28C  "on" - switches, slider fills, checkboxes
+ *   grey            everything else - 导出 and AI 助手 included
+ *
+ * Yellow is NOT an action colour here. It was specified for AI 助手 and then
+ * ruled out by the product owner, who kept that control grey with the prompt
+ * actions it sits among; it survives only as the accent on one login tag.
+ *
+ * Buttons are flat: no inset shadow, no bottom edge light, no gradient, no
+ * bevel - in every state. Keyboard focus keeps a visible ring; removing the
+ * inner shadow must not cost a focus indicator.
+ */
+
+:root {
+  /* Surfaces, darkest to lightest. The canvas sits ABOVE the panels so the
+     work is the brightest thing on screen. */
+  --nf-topbar: #101113;
+  --nf-panel-deep: #131416;
+  --nf-panel: #17181B;
+  --nf-panel-raised: #1D1F22;
+  --nf-canvas: #232323;
+
+  --nf-line: #26282C;
+  --nf-line-soft: #202225;
+
+  --nf-text: #E8EAED;
+  --nf-text-dim: #9AA0A6;
+  --nf-text-faint: #6E747A;
+
+  /* Rank colours. */
+  --nf-primary: #17A582;
+  --nf-primary-hover: #1AB891;
+  --nf-primary-press: #148F71;
+  --nf-selected-bg: #1C4136;
+  --nf-selected-fg: #6FD9B8;
+  --nf-selected-line: #29594A;
+  --nf-on: #1BB28C;
+  /* Accent on one descriptive login tag only; not an action colour. */
+  --nf-helper: #E9C55C;
+
+  --nf-control-bg: #24262A;
+  --nf-control-bg-hover: #2C2F34;
+  --nf-control-line: #303338;
+
+  --nf-focus: #35C79E;
+
+  --nf-r-panel: 11px;
+  --nf-r-control: 6px;
+}
+
+/* ==========================================================================
+   1. Login gate
+   The signed-out screen built by novaflow-web-account.js. Two columns on a
+   desktop width: brand and product copy on the left, the real sign-in form on
+   the right. Every control in it is the module's own; this only dresses them.
+   ========================================================================== */
+
+#novaflow-web-login-gate {
+  /* Grid and glow are drawn low-contrast so they read as texture, not as
+     content - the form has to stay the brightest thing here. */
+  background-color: #0B0B0C !important;
+  background-image:
+    radial-gradient(900px 520px at 26% 42%, rgba(23, 165, 130, 0.055), transparent 70%),
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px) !important;
+  background-size: auto, 64px 64px, 64px 64px !important;
+  background-position: center center !important;
+}
+
+.nf-login-shell {
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 0 48px;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 386px;
+  align-items: center;
+  gap: 64px;
+}
+
+.nf-login-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+.nf-login-logo {
+  display: block;
+  width: 332px;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  margin-bottom: 30px;
+}
+
+.nf-login-headline {
+  margin: 0 0 18px;
+  font-size: 27px;
+  line-height: 1.3;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #F3F5F7;
+}
+
+.nf-login-lede {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.95;
+  color: var(--nf-text-dim);
+}
+
+.nf-login-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 26px;
+}
+
+/* Descriptive only - these are not controls and must not look clickable. */
+.nf-login-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 13px;
+  box-sizing: border-box;
+  border: 1px solid var(--nf-line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.018);
+  font-size: 12px;
+  line-height: 1;
+  color: #BFC4C9;
+  cursor: default;
+  user-select: none;
+}
+
+.nf-login-tag-icon {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--nf-primary);
+}
+
+.nf-login-tag:nth-child(4) .nf-login-tag-icon {
+  color: var(--nf-helper);
+}
+
+.nf-login-footnote {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 40px;
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  color: var(--nf-text-faint);
+}
+
+.nf-login-footnote span:nth-child(2) {
+  color: #3A3E43;
+}
+
+.nf-login-card {
+  width: 100%;
+  box-sizing: border-box;
+  background: #121316;
+  border: 1px solid var(--nf-line);
+  border-radius: 14px;
+  padding: 28px 26px;
+  display: flex;
+  flex-direction: column;
+  color: var(--nf-text);
+}
+
+.nf-login-card-title {
+  margin: 0 0 9px;
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 700;
+  color: #F3F5F7;
+}
+
+.nf-login-card-note {
+  margin: 0 0 22px;
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--nf-text-dim);
+}
+
+.nf-login-field {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 12px;
+  line-height: 1;
+  color: #B3B8BD;
+}
+
+.nf-login-gap {
+  height: 15px;
+}
+
+#novaflow-web-login-gate input.nf-login-input {
+  width: 100%;
+  height: 43px;
+  box-sizing: border-box;
+  background: #0D0E10;
+  border: 1px solid #2A2C30;
+  border-radius: 8px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--nf-text);
+}
+
+#novaflow-web-login-gate input.nf-login-input::placeholder {
+  color: #5C6167;
+}
+
+#novaflow-web-login-gate input.nf-login-input:hover {
+  border-color: #33363B;
+}
+
+#novaflow-web-login-gate input.nf-login-input:focus {
+  border-color: var(--nf-focus);
+  outline: 2px solid rgba(53, 199, 158, 0.28);
+  outline-offset: -1px;
+}
+
+/* The main action of this screen: solid green, flat. */
+#novaflow-web-login-gate button.nf-login-submit {
+  width: 100%;
+  height: 44px;
+  margin-top: 24px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--nf-primary);
+  background-image: none;
+  box-shadow: none;
+  color: #FFFFFF;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+#novaflow-web-login-gate button.nf-login-submit:hover:not(:disabled) {
+  background: var(--nf-primary-hover);
+}
+
+#novaflow-web-login-gate button.nf-login-submit:active:not(:disabled) {
+  background: var(--nf-primary-press);
+}
+
+#novaflow-web-login-gate button.nf-login-submit:focus-visible {
+  outline: 2px solid var(--nf-focus);
+  outline-offset: 2px;
+}
+
+#novaflow-web-login-gate button.nf-login-submit:disabled {
+  background: #2A2D31;
+  color: #7E848A;
+  cursor: wait;
+}
+
+/* The module writes this line's colour inline per outcome (error / progress /
+   success); only its metrics are set here so those colours still show. */
+.nf-login-note {
+  min-height: 18px;
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ==========================================================================
+   2. Workspace
+   Ranks the renderer's own controls. Colour and state only - no rule here
+   moves, resizes or hides anything.
+   ========================================================================== */
+
+/* 2.1 「AI 助手」 keeps the grey of the prompt actions it sits with (历史记录 /
+   编辑), on the product owner's call. Yellow is therefore not used as an
+   action colour anywhere in the workspace; it survives only as the accent on
+   one descriptive login tag. 导出 is grey for the same reason. */
+
+/* 2.2 Flat in every state.
+   Scoped to the renderer's own ranked controls rather than to every button,
+   so a third-party surface or an icon glyph is not caught by it. Bevels,
+   gradients and edge lights are removed; the hairline `inset 0 0 0 1px` that
+   marks a selected entry is set per-control and is not a shadow. */
+.novaflow-app [data-novaflow-primary-entry="1"],
+.novaflow-app [data-novaflow-secondary-entry="1"],
+.novaflow-app [data-novaflow-spine-split-persistent-tool],
+.novaflow-app [data-novaflow-spine-split-control-action],
+.novaflow-app [data-novaflow-spine-split-control-category-toggle],
+.novaflow-app [data-novaflow-smart-ai-button="1"] {
+  background-image: none !important;
+  text-shadow: none !important;
+  filter: none !important;
+}
+
+/* 2.3 Keyboard focus.
+   The controls above set `outline: 0` inline to drop the browser default.
+   Removing the inner shadow must not also cost a focus indicator, so it is
+   put back here for keyboard users only. */
+.novaflow-app button:focus-visible,
+.novaflow-app [role="button"]:focus-visible,
+.novaflow-app input:focus-visible,
+.novaflow-app select:focus-visible,
+.novaflow-app textarea:focus-visible {
+  outline: 2px solid var(--nf-focus) !important;
+  outline-offset: 1px !important;
+}
+
+/* The ranked entries clear their outline from rules carrying three attribute
+   selectors, which outrank the plain rule above. These carry a fourth so the
+   ring wins on specificity rather than on source order. */
+.novaflow-app [data-novaflow-secondary-entry="1"][aria-pressed]:focus-visible,
+.novaflow-app [data-novaflow-primary-entry="1"][data-novaflow-primary-active]:focus-visible,
+.novaflow-app [data-novaflow-spine-split-persistent-tool][data-novaflow-spine-split-tool-active]:focus-visible {
+  outline: 2px solid var(--nf-focus) !important;
+  /* Inset, because these controls clip to their own rounded box. */
+  outline-offset: -2px !important;
+}
+
+/* The split workspace clears outlines from an id-scoped rule, which outranks
+   the selector above. Matched here with the id so focus survives there too. */
+.novaflow-app #novaflow-spine-split-workspace-overlay button:focus-visible,
+.novaflow-app #novaflow-spine-split-workspace-overlay [role="button"]:focus-visible,
+.novaflow-app #novaflow-spine-split-workspace-overlay input:focus-visible,
+.novaflow-app #novaflow-spine-split-workspace-overlay select:focus-visible,
+.novaflow-app #novaflow-spine-split-workspace-overlay textarea:focus-visible {
+  outline: 2px solid var(--nf-focus) !important;
+  outline-offset: 1px !important;
+}
+
+/* Narrow viewports stack instead of letting the form overflow. */
+@media (max-width: 980px) {
+  #novaflow-web-login-gate {
+    align-items: flex-start !important;
+    overflow: auto !important;
+    padding: 48px 0 !important;
+  }
+
+  .nf-login-shell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+    padding: 0 28px;
+    max-width: 480px;
+  }
+
+  .nf-login-logo {
+    width: 260px;
+    margin-bottom: 22px;
+  }
+
+  .nf-login-headline {
+    font-size: 23px;
+  }
+
+  .nf-login-footnote {
+    margin-top: 28px;
+  }
+}
