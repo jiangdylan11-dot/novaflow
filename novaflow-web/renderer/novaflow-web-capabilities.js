@@ -799,3 +799,330 @@
     });
   };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
+
+// ---------------------------------------------------------------------------
+// Spine 图集稳妥压缩.
+//
+// 工具 → PNG 压缩 → Spine 图集 was the one tab whose 开始压缩 button stayed
+// disabled in the browser: the panel enables it on
+// `window.electronAPI.compressSpineAtlasSafe`, which only the desktop preload
+// had. On the desktop that handler is sharp with `palette: false` - a PNG
+// re-encode that keeps every stored RGBA byte and only rewrites the filtering
+// and the deflate stream.
+//
+// That is reproducible in a browser, and it is NOT the canvas re-encode the
+// 普通 PNG tab falls back to. Canvas premultiplies on the way in and
+// unpremultiplies on the way out, so a semi-transparent pixel comes back a
+// shade off and a fully transparent pixel loses its RGB entirely. A Spine
+// atlas is exactly the file where that matters: PMA pages carry colour under
+// low alpha, and the transparent margin around every region carries the colour
+// the runtime bleeds into the edge texels. So this decodes the PNG itself -
+// inflate, unfilter - and re-encodes the same samples, never letting the
+// pixels through a canvas.
+//
+// What it does not do is the 增强 (PMA, 55-100) path: that one quantises to a
+// palette, which is pngquant's job and has no browser equivalent. It keeps its
+// own hint and its own disabled button.
+// ---------------------------------------------------------------------------
+(function (root) {
+  'use strict';
+
+  const api = root.electronAPI;
+  if (!api) return;
+  // A desktop preload answers this for real; never shadow it.
+  if (typeof api.compressSpineAtlasSafe === 'function') return;
+  // Compression Streams is the entire engine here. Where it is missing there
+  // is nothing to install, and the panel keeps its existing hint rather than
+  // offering a button that cannot work.
+  if (typeof root.CompressionStream !== 'function' || typeof root.DecompressionStream !== 'function') return;
+
+  const SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+  // Channels per colour type: 0 grey, 2 truecolour, 3 palette, 4 grey+alpha,
+  // 6 truecolour+alpha.
+  const CHANNELS = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
+  // Dropped on re-encode: none of it is pixels, and none of it is colour.
+  // Everything else that precedes IDAT - PLTE, tRNS, and the colour chunks
+  // sRGB / gAMA / cHRM / iCCP / sBIT - is carried across verbatim, so the
+  // output renders identically and not merely "with the same pixels".
+  const DROPPED_CHUNKS = new Set(['tEXt', 'zTXt', 'iTXt', 'tIME', 'pHYs', 'hIST', 'eXIf', 'bKGD', 'sPLT', 'oFFs']);
+  // One IDAT per MiB, the way every other encoder writes them.
+  const IDAT_SPLIT = 1024 * 1024;
+  // Past this, the filter passes cost more than a second strategy can win
+  // back, so a big page gets one attempt and a fast answer.
+  const SINGLE_STRATEGY_BYTES = 32 * 1024 * 1024;
+
+  const CRC_TABLE = (() => {
+    const table = new Int32Array(256);
+    for (let n = 0; n < 256; n += 1) {
+      let c = n;
+      for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+      table[n] = c;
+    }
+    return table;
+  })();
+
+  function crc32(bytes) {
+    let c = -1;
+    for (let i = 0; i < bytes.length; i += 1) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ -1) >>> 0;
+  }
+
+  function bytesFromDataUrl(dataUrl) {
+    const text = String(dataUrl || '');
+    const comma = text.indexOf(',');
+    if (comma < 0) throw new Error('图片数据无效');
+    const binary = root.atob(text.slice(comma + 1));
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
+    return out;
+  }
+
+  const through = async (bytes, stream) =>
+    new Uint8Array(await new root.Response(new root.Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+
+  const inflate = (bytes) => through(bytes, new root.DecompressionStream('deflate'));
+  const deflate = (bytes) => through(bytes, new root.CompressionStream('deflate'));
+
+  /** Split a PNG into its chunks, in file order. */
+  function readChunks(bytes) {
+    if (bytes.length < 8 || SIGNATURE.some((value, index) => bytes[index] !== value)) {
+      throw new Error('不是 PNG 文件');
+    }
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    const chunks = [];
+    let offset = 8;
+    while (offset + 8 <= bytes.length) {
+      const length = view.getUint32(offset);
+      const type = String.fromCharCode(bytes[offset + 4], bytes[offset + 5], bytes[offset + 6], bytes[offset + 7]);
+      const start = offset + 8;
+      if (start + length + 4 > bytes.length) throw new Error('PNG 数据不完整');
+      chunks.push({ type, data: bytes.subarray(start, start + length) });
+      offset = start + length + 4;
+      if (type === 'IEND') break;
+    }
+    if (!chunks.length || chunks[0].type !== 'IHDR') throw new Error('PNG 缺少 IHDR');
+    return chunks;
+  }
+
+  function readHeader(data) {
+    if (data.length < 13) throw new Error('PNG 头部损坏');
+    const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+    const header = {
+      width: view.getUint32(0),
+      height: view.getUint32(4),
+      bitDepth: data[8],
+      colorType: data[9],
+      interlace: data[12]
+    };
+    const channels = CHANNELS[header.colorType];
+    if (!channels) throw new Error('PNG 颜色类型不支持：' + header.colorType);
+    if (!header.width || !header.height) throw new Error('PNG 尺寸无效');
+    const bitsPerPixel = channels * header.bitDepth;
+    header.bytesPerPixel = Math.max(1, Math.ceil(bitsPerPixel / 8));
+    header.stride = Math.ceil((header.width * bitsPerPixel) / 8);
+    return header;
+  }
+
+  const paeth = (a, b, c) => {
+    const p = a + b - c;
+    const pa = Math.abs(p - a);
+    const pb = Math.abs(p - b);
+    const pc = Math.abs(p - c);
+    if (pa <= pb && pa <= pc) return a;
+    return pb <= pc ? b : c;
+  };
+
+  /** Filtered scanlines -> raw samples. */
+  function unfilter(filtered, header) {
+    const { height, stride, bytesPerPixel } = header;
+    if (filtered.length < height * (stride + 1)) throw new Error('PNG 像素数据不完整');
+    const raw = new Uint8Array(height * stride);
+    for (let y = 0; y < height; y += 1) {
+      const type = filtered[y * (stride + 1)];
+      const from = y * (stride + 1) + 1;
+      const to = y * stride;
+      const up = to - stride;
+      for (let x = 0; x < stride; x += 1) {
+        const value = filtered[from + x];
+        const left = x >= bytesPerPixel ? raw[to + x - bytesPerPixel] : 0;
+        const above = y > 0 ? raw[up + x] : 0;
+        const corner = y > 0 && x >= bytesPerPixel ? raw[up + x - bytesPerPixel] : 0;
+        let restored;
+        if (type === 0) restored = value;
+        else if (type === 1) restored = value + left;
+        else if (type === 2) restored = value + above;
+        else if (type === 3) restored = value + ((left + above) >> 1);
+        else if (type === 4) restored = value + paeth(left, above, corner);
+        else throw new Error('PNG 行过滤类型不支持：' + type);
+        raw[to + x] = restored & 0xff;
+      }
+    }
+    return raw;
+  }
+
+  /** One scanline, one filter type, written into dst. */
+  function filterRow(dst, raw, rowStart, prevStart, stride, bytesPerPixel, type, hasPrev) {
+    for (let x = 0; x < stride; x += 1) {
+      const value = raw[rowStart + x];
+      const left = x >= bytesPerPixel ? raw[rowStart + x - bytesPerPixel] : 0;
+      const above = hasPrev ? raw[prevStart + x] : 0;
+      const corner = hasPrev && x >= bytesPerPixel ? raw[prevStart + x - bytesPerPixel] : 0;
+      let filtered;
+      if (type === 0) filtered = value;
+      else if (type === 1) filtered = value - left;
+      else if (type === 2) filtered = value - above;
+      else if (type === 3) filtered = value - ((left + above) >> 1);
+      else filtered = value - paeth(left, above, corner);
+      dst[x] = filtered & 0xff;
+    }
+  }
+
+  /**
+   * Raw samples -> filtered scanlines.
+   *
+   * `strategy` is either a fixed filter type or 'adaptive', the minimum sum of
+   * absolute differences heuristic the PNG spec suggests and sharp's
+   * adaptiveFiltering uses.
+   */
+  function refilter(raw, header, strategy) {
+    const { height, stride, bytesPerPixel } = header;
+    const out = new Uint8Array(height * (stride + 1));
+    const scratch = strategy === 'adaptive' ? new Uint8Array(stride) : null;
+    const best = strategy === 'adaptive' ? new Uint8Array(stride) : null;
+    for (let y = 0; y < height; y += 1) {
+      const rowStart = y * stride;
+      const prevStart = rowStart - stride;
+      const target = y * (stride + 1);
+      if (strategy !== 'adaptive') {
+        out[target] = strategy;
+        filterRow(out.subarray(target + 1, target + 1 + stride), raw, rowStart, prevStart, stride, bytesPerPixel, strategy, y > 0);
+        continue;
+      }
+      let bestType = 0;
+      let bestScore = Infinity;
+      for (let type = 0; type <= 4; type += 1) {
+        filterRow(scratch, raw, rowStart, prevStart, stride, bytesPerPixel, type, y > 0);
+        let score = 0;
+        for (let x = 0; x < stride; x += 1) {
+          const signed = scratch[x];
+          score += signed < 128 ? signed : 256 - signed;
+        }
+        if (score < bestScore) {
+          bestScore = score;
+          bestType = type;
+          best.set(scratch);
+        }
+      }
+      out[target] = bestType;
+      out.set(best, target + 1);
+    }
+    return out;
+  }
+
+  function chunk(type, data) {
+    const out = new Uint8Array(12 + data.length);
+    const view = new DataView(out.buffer);
+    view.setUint32(0, data.length);
+    for (let i = 0; i < 4; i += 1) out[4 + i] = type.charCodeAt(i);
+    out.set(data, 8);
+    view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)));
+    return out;
+  }
+
+  const concat = (list) => {
+    const total = list.reduce((sum, item) => sum + item.length, 0);
+    const out = new Uint8Array(total);
+    let at = 0;
+    for (const item of list) { out.set(item, at); at += item.length; }
+    return out;
+  };
+
+  /** Header, the colour chunks the source carried, the new IDATs, IEND. */
+  function buildPng(chunks, compressed) {
+    const parts = [new Uint8Array(SIGNATURE)];
+    for (const item of chunks) {
+      if (item.type === 'IDAT') break;
+      if (item.type === 'IEND' || DROPPED_CHUNKS.has(item.type)) continue;
+      parts.push(chunk(item.type, item.data));
+    }
+    for (let offset = 0; offset < compressed.length; offset += IDAT_SPLIT) {
+      parts.push(chunk('IDAT', compressed.subarray(offset, Math.min(offset + IDAT_SPLIT, compressed.length))));
+    }
+    parts.push(chunk('IEND', new Uint8Array(0)));
+    return concat(parts);
+  }
+
+  /** Read a PNG down to its raw samples. */
+  async function decode(bytes) {
+    const chunks = readChunks(bytes);
+    const header = readHeader(chunks[0].data);
+    // Adam7 stores seven sub-images with their own widths; re-filtering those
+    // correctly is a different algorithm, and an atlas page is never
+    // interlaced.
+    if (header.interlace !== 0) throw new Error('隔行 PNG 暂不支持稳妥压缩');
+    // An APNG keeps its frames in fdAT chunks after IDAT. Re-encoding the
+    // still image would leave the animation behind, so say so instead.
+    if (chunks.some((item) => item.type === 'acTL')) throw new Error('动画 PNG（APNG）暂不支持稳妥压缩');
+    const idat = chunks.filter((item) => item.type === 'IDAT').map((item) => item.data);
+    if (!idat.length) throw new Error('PNG 缺少像素数据');
+    return { chunks, header, raw: unfilter(await inflate(concat(idat)), header) };
+  }
+
+  /**
+   * Which filter strategies to try, best guess first.
+   *
+   * Palette and sub-byte images are bytes of indices, where neighbouring
+   * values mean nothing arithmetically, so filtering usually costs size - the
+   * spec's own advice is to leave them unfiltered. Everything else gets the
+   * adaptive heuristic first.
+   *
+   * The slider is the effort dial: Compression Streams exposes no zlib level,
+   * so a higher 压缩强度 buys more strategies to take the smallest of instead.
+   * The pixels are the same either way - only how hard it looks changes.
+   */
+  function strategiesFor(header, level, rawBytes) {
+    const flat = header.colorType === 3 || header.bitDepth < 8;
+    const ordered = flat ? [0, 1, 'adaptive'] : ['adaptive', 0, 4];
+    const budget = rawBytes > SINGLE_STRATEGY_BYTES ? 1 : level <= 2 ? 1 : level <= 6 ? 2 : 3;
+    return ordered.slice(0, budget);
+  }
+
+  /**
+   * Lossless PNG re-encode.
+   *
+   * 稳妥 is a promise about the pixels, so it is checked rather than asserted:
+   * the result is decoded again and compared byte for byte with what went in,
+   * and a mismatch fails that file instead of handing back a quietly altered
+   * atlas. The panel keeps the original whenever the result is not smaller.
+   */
+  api.compressSpineAtlasSafe = async (payload) => {
+    try {
+      const source = bytesFromDataUrl(payload && payload.dataUrl);
+      const { chunks, header, raw } = await decode(source);
+      const level = Math.max(0, Math.min(9, Math.round(Number(payload && payload.compressionLevel) || 0)));
+
+      let best = null;
+      for (const strategy of strategiesFor(header, level, raw.length)) {
+        const compressed = await deflate(refilter(raw, header, strategy));
+        if (!best || compressed.length < best.length) best = compressed;
+      }
+
+      const out = buildPng(chunks, best);
+      const check = await decode(out);
+      if (check.raw.length !== raw.length) throw new Error('重编码后像素长度不一致');
+      for (let i = 0; i < raw.length; i += 1) {
+        if (check.raw[i] !== raw[i]) throw new Error('重编码后像素不一致，已放弃该图');
+      }
+
+      return {
+        ok: true,
+        bytes: Array.from(out),
+        width: header.width,
+        height: header.height,
+        losslessVerified: true
+      };
+    } catch (error) {
+      return { ok: false, error: String((error && error.message) || error) };
+    }
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
