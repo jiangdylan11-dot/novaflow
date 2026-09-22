@@ -373,6 +373,9 @@ export function redactStringLiterals(source, moduleName) {
       continue;
     }
 
+    // Quoted strings only. Minified code uses backticks for everything, and
+    // scanning those generically has broken the bundle more than once; the one
+    // template that matters is handled by name in build-web-renderer.mjs.
     if (c === '"' || c === "'") {
       const quote = c;
       let j = i + 1;
@@ -404,11 +407,27 @@ export function redactStringLiterals(source, moduleName) {
  * @param {string} source
  * @param {{ moduleName: string, replacement: (name: string) => string }} opts
  */
-export function redactModule(source, { moduleName, replacement, forceNames }) {
-  const fns = redactFunctions(source, moduleName, replacement, forceNames);
-  const graphs = redactGraphLiterals(fns.code);
+export function redactModule(source, { moduleName, replacement, forceNames, passes } = {}) {
+  // A minified bundle gets DATA passes only. Hollowing out a function there is
+  // reckless: the names carry no meaning, so there is no way to tell a graph
+  // builder from a UI function, and getting it wrong replaces something the
+  // app calls with an object - which is exactly how the animation section went
+  // blank with 'Sr is not a function'. Removing the topology DATA is enough,
+  // and it cannot change a call signature.
+  const doFunctions = !passes || passes.functions !== false;
+  const doIdentifiers = !passes || passes.identifiers !== false;
+  // Climbing to the outermost object literal is guesswork on minified code,
+  // where one wrong brace rewrites unrelated program text.
+  const doGraphs = !passes || passes.graphs !== false;
+
+  const fns = doFunctions
+    ? redactFunctions(source, moduleName, replacement, forceNames)
+    : { code: source, redacted: [] };
+  const graphs = doGraphs ? redactGraphLiterals(fns.code) : { code: fns.code, replaced: 0 };
   const comments = stripMarkerComments(graphs.code, moduleName);
-  const idents = renameMarkerIdentifiers(comments.code, moduleName);
+  const idents = doIdentifiers
+    ? renameMarkerIdentifiers(comments.code, moduleName)
+    : { code: comments.code, renamed: [] };
   const strings = redactStringLiterals(idents.code, moduleName);
 
   return {

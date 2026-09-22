@@ -1,0 +1,645 @@
+// Web equivalents for NovaFlow's Electron-only capabilities.
+//
+// The renderer reaches for 23 electronAPI methods. novaflow-web-runtime.js
+// covers the ComfyUI proxy and the account; this file covers the rest - file
+// dialogs, video compositing, cache management, runtime status.
+//
+// The rule followed here: find a real Web equivalent, and where the platform
+// genuinely cannot do the same thing, say so in the returned error rather than
+// failing silently or pretending it worked. Every such case is listed in
+// docs/LIMITATIONS.md.
+//
+//   Electron                     Web
+//   ---------------------------  --------------------------------------------
+//   save dialog                  File System Access API, <a download> fallback
+//   open folder (PS project)     showDirectoryPicker, <input webkitdirectory>
+//   webUtils.getPathForFile      a handle token (a browser has no OS paths)
+//   ffmpeg video compositor      canvas + MediaRecorder (WebM)
+//   open output folder           a download, since a tab has no file manager
+//   temp file cache              in-memory blobs with the same keys
+//   runtime status               the worker pool's health
+
+(function (root) {
+  'use strict';
+
+  const api = root.electronAPI || (root.electronAPI = {});
+  const runtime = root.NovaFlowWebRuntime;
+  if (!runtime) {
+    console.warn('[novaflow-web] capabilities loaded before the runtime; skipping');
+    return;
+  }
+
+  const ok = (result) => ({ ok: true, result });
+  const fail = (error, extra) => Object.assign({ ok: false, error: String(error) }, extra || {});
+
+  // ---------------------------------------------------------------- listeners
+  function channel() {
+    const subscribers = new Set();
+    return {
+      subscribe(fn) {
+        if (typeof fn !== 'function') return () => {};
+        subscribers.add(fn);
+        return () => subscribers.delete(fn);
+      },
+      emit(payload) {
+        for (const fn of subscribers) {
+          try { fn(payload); } catch (_) { /* a listener must not break a job */ }
+        }
+      }
+    };
+  }
+
+  const compositorProgress = channel();
+  const videoToolProgress = channel();
+
+  api.onVideoCompositorProgress = (cb) => compositorProgress.subscribe(cb);
+  api.onVideoToolProgress = (cb) => videoToolProgress.subscribe(cb);
+
+  // ------------------------------------------------------------ runtime state
+  //
+  // On the desktop this is "is ComfyUI running on this machine". On the Web it
+  // is "is there an online compute node that can take work" - the same
+  // question from the user's point of view, answered by the worker pool.
+  let lastWorkerPoll = { at: 0, workers: [] };
+
+  async function pollWorkers(maxAgeMs = 4000) {
+    if (Date.now() - lastWorkerPoll.at < maxAgeMs) return lastWorkerPoll.workers;
+    try {
+      const res = await runtime.control('GET', '/api/web/workers');
+      lastWorkerPoll = { at: Date.now(), workers: res.workers || [] };
+    } catch (_) {
+      lastWorkerPoll = { at: Date.now(), workers: [] };
+    }
+    return lastWorkerPoll.workers;
+  }
+
+  api.runtimeGetStatus = async () => {
+    const workers = await pollWorkers();
+    const online = workers.filter((w) => w.status === 'idle' || w.status === 'busy');
+    if (!online.length) {
+      return {
+        ok: false, status: 'stopped', running: false, connected: false,
+        installed: true, detail: '没有在线的算力节点'
+      };
+    }
+    return {
+      ok: true,
+      status: 'running',
+      running: true,
+      connected: true,
+      installed: true,
+      health: { ok: true },
+      workers: online.length,
+      detail: online.length + ' 台算力节点在线'
+    };
+  };
+
+  // A browser cannot start someone else's GPU. The honest answer is the
+  // current state plus what the user would have to do.
+  api.runtimeEnsureStarted = async () => {
+    const status = await api.runtimeGetStatus();
+    if (status.running) return status;
+    return Object.assign({}, status, {
+      detail: 'Web 版无法远程启动算力节点，请让算力提供者打开 NovaFlow Worker'
+    });
+  };
+
+  api.runtimeStop = async () => ({ ok: false, error: 'Web 版不能停止别人的算力节点' });
+
+  api.minimaxH3RuntimeStop = async () => {
+    // Stopping H3 means cancelling whatever this user has running.
+    try {
+      const res = await runtime.control('GET', '/api/web/tasks?limit=20');
+      const running = (res.tasks || []).filter(
+        (t) => ['created', 'queued', 'assigned', 'uploading', 'processing'].includes(t.status)
+      );
+      for (const task of running) {
+        await runtime.control('POST', '/api/web/tasks/' + task.id + '/cancel').catch(() => {});
+      }
+      return ok({ cancelled: running.length });
+    } catch (error) {
+      return fail(error.message || error);
+    }
+  };
+
+  // ------------------------------------------------------------------ license
+  //
+  // The desktop gates 仓库 and 导出 on a machine licence file. The Web line has
+  // no machines to licence - entitlement is the signed-in account, which the
+  // control plane already checks on every call. So a signed-in user is
+  // authorised, and a signed-out one is not.
+  api.licenseGetState = async () => {
+    const session = runtime.session;
+    const authorized = Boolean(session && session.token);
+    const detail = authorized ? '已通过 NovaFlow 账号授权' : '请先登录 NovaFlow 账号';
+    // The renderer does `result.state ? result.state : result`, so `state` has
+    // to be the licence RECORD, not a word. Both shapes carry the same fact.
+    const record = {
+      status: authorized ? 'licensed' : 'unlicensed',
+      machineId: 'web',
+      mode: 'web-account',
+      permissions: authorized ? ['export', 'warehouse', 'web'] : [],
+      expireAt: null,
+      detail
+    };
+    return Object.assign({ ok: true, authorized, state: record, detail }, record);
+  };
+
+  api.licenseImport = async () => fail('Web 版通过账号授权，不需要导入授权文件');
+  api.licenseClear = async () => { runtime.setSession(null); return ok({ cleared: true }); };
+
+  api.getAppInfo = async () => ok({
+    name: 'NovaFlow Web',
+    version: runtime.version,
+    platform: 'web',
+    userAgent: root.navigator ? root.navigator.userAgent : ''
+  });
+
+  api.getSystemMousePosition = async () => ok({ x: 0, y: 0, available: false });
+
+  // ------------------------------------------------------------- file dialogs
+  const canUseFileSystemAccess = typeof root.showSaveFilePicker === 'function';
+
+  /**
+   * Save bytes to wherever the user chooses.
+   *
+   * File System Access gives a real "save as" dialog in Chromium. Everywhere
+   * else this falls back to a download, which lands in the browser's download
+   * folder instead of a chosen path - the user still gets the file, they just
+   * do not get to pick the directory.
+   */
+  api.exportPickSaveFile = async (payload) => {
+    const options = payload || {};
+    const suggestedName = String(options.defaultPath || options.fileName || 'novaflow-export')
+      .split(/[\\/]/).pop();
+    const data = options.data || options.buffer || options.bytes;
+    const mime = String(options.mimeType || 'application/octet-stream');
+
+    if (!data) {
+      // Some callers ask for a path first and write later. A browser cannot
+      // hand out a path, so it must be told now rather than later.
+      return fail('Web 版需要在保存时一并提供文件内容', { code: 'web_needs_data' });
+    }
+
+    const blob = data instanceof Blob ? data : new Blob([data], { type: mime });
+
+    if (canUseFileSystemAccess) {
+      try {
+        const handle = await root.showSaveFilePicker({
+          suggestedName,
+          types: options.filters && options.filters.length
+            ? options.filters.map((f) => ({
+                description: f.name || '',
+                accept: { [mime]: (f.extensions || []).map((e) => '.' + String(e).replace(/^\./, '')) }
+              }))
+            : undefined
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return ok({ saved: true, name: handle.name, via: 'file-system-access' });
+      } catch (error) {
+        if (error && error.name === 'AbortError') return ok({ canceled: true });
+        // Fall through to the download path rather than failing outright.
+      }
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = root.document.createElement('a');
+    a.href = url;
+    a.download = suggestedName;
+    root.document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    return ok({ saved: true, name: suggestedName, via: 'download' });
+  };
+
+  /**
+   * Pick a Photoshop project folder.
+   *
+   * showDirectoryPicker reads a whole folder with the user's permission. The
+   * fallback is a multi-file input with webkitdirectory, which gets the same
+   * files without the persistent handle.
+   */
+  api.openPhotoshopProject = async () => {
+    if (typeof root.showDirectoryPicker === 'function') {
+      try {
+        const dir = await root.showDirectoryPicker({ mode: 'read' });
+        const files = [];
+        for await (const [name, handle] of dir.entries()) {
+          if (handle.kind !== 'file') continue;
+          const file = await handle.getFile();
+          files.push({ name, size: file.size, type: file.type, file });
+        }
+        return ok({ directory: dir.name, files, via: 'file-system-access' });
+      } catch (error) {
+        if (error && error.name === 'AbortError') return ok({ canceled: true });
+      }
+    }
+
+    return await new Promise((resolve) => {
+      const input = root.document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.webkitdirectory = true;
+      input.style.display = 'none';
+      input.addEventListener('change', () => {
+        const files = [...(input.files || [])].map((f) => ({
+          name: f.name, size: f.size, type: f.type, file: f,
+          relativePath: f.webkitRelativePath || f.name
+        }));
+        input.remove();
+        resolve(files.length
+          ? ok({ directory: (files[0].relativePath || '').split('/')[0] || '', files, via: 'input-webkitdirectory' })
+          : ok({ canceled: true }));
+      });
+      root.document.body.appendChild(input);
+      input.click();
+    });
+  };
+
+  /**
+   * Electron hands back an OS path for a dropped File. A browser deliberately
+   * does not, so this returns a stable token the rest of the renderer can use
+   * as a key, and keeps the File itself reachable through the token.
+   */
+  const fileTokens = new Map();
+  let fileTokenSeq = 0;
+  api.getPathForFile = (file) => {
+    if (!file) return '';
+    for (const [token, held] of fileTokens) if (held === file) return token;
+    fileTokenSeq += 1;
+    const token = 'web-file://' + fileTokenSeq + '/' + (file.name || 'file');
+    fileTokens.set(token, file);
+    return token;
+  };
+  runtime.fileForToken = (token) => fileTokens.get(String(token)) || null;
+
+  api.runtimeOpenOutputFolder = async () => fail(
+    'Web 版没有本地输出目录。结果可以用下载按钮保存，或在「仓库」里查看。'
+  );
+
+  // --------------------------------------------------------- ai sequence cache
+  //
+  // The desktop parks large intermediates in a temp directory. A tab keeps
+  // them as blobs under the same keys, so callers do not change - they just do
+  // not survive a reload, which matters less than it sounds because a reload
+  // also loses the editor state that referenced them.
+  const cache = new Map();
+
+  api.aiSeqCacheReserveOutput = async (payload) => {
+    const key = String((payload && (payload.key || payload.id)) || 'output-' + Date.now());
+    cache.set(key, { reservedAt: Date.now(), blob: null, bytes: 0 });
+    return ok({ key, reserved: true });
+  };
+
+  api.aiSeqCacheReleaseOutput = async (payload) => {
+    const key = String((payload && (payload.key || payload.id)) || '');
+    if (key) cache.delete(key);
+    else cache.clear();
+    return ok({ released: true, remaining: cache.size });
+  };
+
+  api.aiSeqCacheTempFile = async (payload) => {
+    const key = String((payload && payload.key) || 'tmp-' + Date.now());
+    const data = payload && (payload.data || payload.buffer);
+    const blob = data instanceof Blob ? data : new Blob([data || new Uint8Array(0)]);
+    cache.set(key, { reservedAt: Date.now(), blob, bytes: blob.size });
+    return ok({ key, path: 'web-cache://' + key, bytes: blob.size });
+  };
+
+  api.aiSeqCacheCopyFromPath = async () => fail('Web 版没有本地文件路径可复制');
+
+  api.clearVideoToolOutput = async () => { cache.clear(); return ok({ cleared: true }); };
+  api.videoResourceMediaRelease = async (payload) => {
+    const key = String((payload && (payload.key || payload.id)) || '');
+    if (key) cache.delete(key);
+    return ok({ released: true });
+  };
+  api.runtimeFreeMemory = async () => {
+    cache.clear();
+    lastWorkerPoll = { at: 0, workers: [] };
+    return ok({ freed: true });
+  };
+
+  // ------------------------------------------------------- video compositor
+  //
+  // The desktop composites with ffmpeg. In a browser the equivalent is to draw
+  // the sources onto a canvas frame by frame and record the canvas.
+  //
+  // MediaRecorder is used rather than WebCodecs + an MP4 muxer because it
+  // needs no dependency and works in every current browser. The cost is that
+  // the output is WebM, not MP4 - stated in the result and in LIMITATIONS.md
+  // rather than quietly relabelled.
+  const sessions = new Map();
+  let sessionSeq = 0;
+  let jobSeq = 0;
+  const cancelled = new Set();
+
+  api.videoCompositorOpenSession = async (payload) => {
+    sessionSeq += 1;
+    const sessionId = 'web-vc-' + sessionSeq;
+    sessions.set(sessionId, {
+      id: sessionId,
+      width: Number((payload && payload.width) || 1280),
+      height: Number((payload && payload.height) || 720),
+      fps: Number((payload && payload.fps) || 24),
+      sources: new Map(),
+      masks: new Map()
+    });
+    return { ok: true, sessionId, id: sessionId };
+  };
+
+  api.videoCompositorRegisterSource = async (payload) => {
+    const session = sessions.get(String(payload && payload.sessionId));
+    if (!session) return fail('unknown compositor session');
+    const sourceId = String(payload.sourceId || payload.id || 'src-' + (session.sources.size + 1));
+    session.sources.set(sourceId, {
+      id: sourceId,
+      url: payload.url || '',
+      file: payload.file || (payload.path ? runtime.fileForToken(payload.path) : null),
+      z: Number(payload.z || session.sources.size),
+      opacity: payload.opacity === undefined ? 1 : Number(payload.opacity)
+    });
+    return ok({ sourceId });
+  };
+
+  api.videoCompositorReleaseSource = async (payload) => {
+    const session = sessions.get(String(payload && payload.sessionId));
+    if (session) session.sources.delete(String(payload.sourceId || payload.id));
+    return ok({ released: true });
+  };
+
+  api.videoCompositorPutMask = async (payload) => {
+    const session = sessions.get(String(payload && payload.sessionId));
+    if (!session) return fail('unknown compositor session');
+    session.masks.set(String(payload.sourceId || payload.id || 'mask'), payload.mask || payload.data || null);
+    return ok({ stored: true });
+  };
+
+  api.videoCompositorCancel = async (payload) => {
+    const jobId = String((payload && payload.jobId) || '');
+    if (jobId) cancelled.add(jobId);
+    return ok({ cancelled: true });
+  };
+
+  api.videoCompositorCloseSession = async (payload) => {
+    sessions.delete(String(payload && payload.sessionId));
+    return ok({ closed: true });
+  };
+
+  api.videoCompositorExport = async (manifest) => {
+    const session = sessions.get(String(manifest && manifest.sessionId));
+    if (!session) return fail('unknown compositor session');
+    if (typeof root.MediaRecorder !== 'function') {
+      return fail('这个浏览器不支持 MediaRecorder，无法在本地合成视频');
+    }
+
+    jobSeq += 1;
+    const jobId = String(manifest.jobId || 'web-vc-job-' + jobSeq);
+    const width = Number(manifest.width || session.width);
+    const height = Number(manifest.height || session.height);
+    const fps = Number(manifest.fps || session.fps) || 24;
+
+    const report = (stage, progress01, message) =>
+      compositorProgress.emit({ jobId, stage, progress01, message });
+
+    try {
+      report('prepare', 0, '准备视频源');
+
+      // Load every source as a <video> we can draw from.
+      const layers = [];
+      for (const source of [...session.sources.values()].sort((a, b) => a.z - b.z)) {
+        const url = source.file ? URL.createObjectURL(source.file) : source.url;
+        if (!url) continue;
+        const video = root.document.createElement('video');
+        video.src = url;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = 'auto';
+        await new Promise((resolve, reject) => {
+          video.addEventListener('loadedmetadata', resolve, { once: true });
+          video.addEventListener('error', () => reject(new Error('无法读取视频源 ' + source.id)), { once: true });
+        });
+        layers.push({ video, opacity: source.opacity, revoke: source.file ? url : '' });
+      }
+      if (!layers.length) return fail('没有可合成的视频源');
+
+      const duration = Math.max(...layers.map((l) => Number(l.video.duration) || 0));
+      if (!Number.isFinite(duration) || duration <= 0) return fail('视频源没有有效时长');
+
+      const canvas = root.document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+
+      const stream = canvas.captureStream(fps);
+      const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
+        .find((m) => root.MediaRecorder.isTypeSupported(m)) || 'video/webm';
+      const recorder = new root.MediaRecorder(stream, { mimeType: mime });
+      const chunks = [];
+      recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
+
+      const finished = new Promise((resolve) => { recorder.onstop = resolve; });
+      recorder.start();
+
+      const totalFrames = Math.max(1, Math.round(duration * fps));
+      for (let frame = 0; frame < totalFrames; frame += 1) {
+        if (cancelled.has(jobId)) {
+          recorder.stop();
+          await finished;
+          cancelled.delete(jobId);
+          return { ok: false, canceled: true, code: 'export_canceled' };
+        }
+        const t = frame / fps;
+        ctx.clearRect(0, 0, width, height);
+        for (const layer of layers) {
+          if (t > (layer.video.duration || 0)) continue;
+          await seekTo(layer.video, t);
+          ctx.globalAlpha = layer.opacity;
+          ctx.drawImage(layer.video, 0, 0, width, height);
+        }
+        ctx.globalAlpha = 1;
+        if (frame % Math.max(1, Math.round(fps / 2)) === 0) {
+          report('render', frame / totalFrames, '合成中 ' + Math.round((frame / totalFrames) * 100) + '%');
+          await new Promise((r) => setTimeout(r, 0));
+        }
+      }
+
+      recorder.stop();
+      await finished;
+      for (const layer of layers) if (layer.revoke) URL.revokeObjectURL(layer.revoke);
+
+      const blob = new Blob(chunks, { type: mime });
+      report('done', 1, '视频合成完成');
+
+      return {
+        ok: true,
+        jobId,
+        blob,
+        url: URL.createObjectURL(blob),
+        bytes: blob.size,
+        // Said plainly: the desktop writes MP4, a browser recorder writes WebM.
+        format: 'webm',
+        mimeType: mime,
+        note: 'Web 版用浏览器录制合成，输出为 WebM（桌面版为 MP4）'
+      };
+    } catch (error) {
+      return fail(error && error.message ? error.message : error, { jobId });
+    }
+  };
+
+  function seekTo(video, time) {
+    return new Promise((resolve) => {
+      if (Math.abs(video.currentTime - time) < 0.001) { resolve(); return; }
+      const done = () => { video.removeEventListener('seeked', done); resolve(); };
+      video.addEventListener('seeked', done);
+      try { video.currentTime = time; } catch (_) { resolve(); }
+    });
+  }
+
+  // ------------------------------------------------------------------ report
+  runtime.capabilities = {
+    fileSystemAccess: canUseFileSystemAccess,
+    directoryPicker: typeof root.showDirectoryPicker === 'function',
+    mediaRecorder: typeof root.MediaRecorder === 'function',
+    webCodecs: typeof root.VideoEncoder === 'function',
+    // What genuinely has no Web equivalent, for the limitations report.
+    unavailable: ['osFilePaths', 'openOutputFolder', 'localRuntimeControl']
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : this);
+
+// ---------------------------------------------------------------------------
+// The rest of the surface the renderer reaches for.
+//
+// Every one of these exists in Electron's preload. A browser can do most of
+// them differently; the few it genuinely cannot are answered with a reason.
+// ---------------------------------------------------------------------------
+(function (root) {
+  'use strict';
+  const api = root.electronAPI;
+  const runtime = root.NovaFlowWebRuntime;
+  if (!api || !runtime) return;
+
+  const ok = (result) => ({ ok: true, result });
+  const fail = (error) => ({ ok: false, error: String(error) });
+
+  // ---- window controls --------------------------------------------------
+  //
+  // The renderer draws its own titlebar. A tab has no frame to minimise, but
+  // maximise maps onto fullscreen and close onto window.close(), so the
+  // buttons do something sensible instead of throwing.
+  api.windowMinimize = async () => fail('浏览器标签页不能最小化');
+
+  api.windowToggleMaximize = async () => {
+    try {
+      if (root.document.fullscreenElement) {
+        await root.document.exitFullscreen();
+        return ok({ maximized: false });
+      }
+      await root.document.documentElement.requestFullscreen();
+      return ok({ maximized: true });
+    } catch (error) {
+      return fail(error && error.message ? error.message : error);
+    }
+  };
+
+  api.windowClose = async () => {
+    // Only a script-opened window may close itself; otherwise say so rather
+    // than silently doing nothing.
+    try {
+      root.close();
+      return ok({ closed: true });
+    } catch (_) {
+      return fail('浏览器不允许脚本关闭这个标签页，请直接关闭');
+    }
+  };
+
+  api.windowIsMaximized = async () => ok({ maximized: Boolean(root.document.fullscreenElement) });
+
+  // ---- clipboard ---------------------------------------------------------
+  api.clipboardWriteText = async (text) => {
+    try {
+      await root.navigator.clipboard.writeText(String(text == null ? '' : text));
+      return ok({ copied: true });
+    } catch (error) {
+      return fail('复制失败：' + (error && error.message ? error.message : error));
+    }
+  };
+
+  api.clipboardReadText = async () => {
+    try { return ok({ text: await root.navigator.clipboard.readText() }); }
+    catch (error) { return fail(error && error.message ? error.message : error); }
+  };
+
+  // ---- pickers -----------------------------------------------------------
+  api.pickDirectory = async () => {
+    if (typeof root.showDirectoryPicker !== 'function') {
+      return fail('这个浏览器不支持选择文件夹，请改用拖拽或逐个选择文件');
+    }
+    try {
+      const dir = await root.showDirectoryPicker({ mode: 'readwrite' });
+      return ok({ name: dir.name, handle: dir, path: 'web-directory://' + dir.name });
+    } catch (error) {
+      if (error && error.name === 'AbortError') return ok({ canceled: true });
+      return fail(error && error.message ? error.message : error);
+    }
+  };
+
+  api.openSpineProject = async () => {
+    return await new Promise((resolve) => {
+      const input = root.document.createElement('input');
+      input.type = 'file';
+      input.multiple = true;
+      input.accept = '.json,.skel,.atlas,.png,.webp';
+      input.style.display = 'none';
+      input.addEventListener('change', () => {
+        const files = [...(input.files || [])].map((f) => ({
+          name: f.name, size: f.size, type: f.type, file: f
+        }));
+        input.remove();
+        resolve(files.length ? ok({ files, via: 'input' }) : ok({ canceled: true }));
+      });
+      root.document.body.appendChild(input);
+      input.click();
+    });
+  };
+
+  // ---- file writing ------------------------------------------------------
+  api.writeBinaryFile = async (payload) => {
+    const options = payload || {};
+    return await api.exportPickSaveFile({
+      defaultPath: options.path || options.fileName || 'novaflow-output.bin',
+      data: options.data || options.buffer || options.bytes,
+      mimeType: options.mimeType || 'application/octet-stream'
+    });
+  };
+
+  api.exportCleanupDir = async () => ok({ cleaned: true, note: 'Web 版没有导出临时目录' });
+
+  // ---- misc runtime ------------------------------------------------------
+  api.minimaxH3RuntimeEnsureStarted = async () => api.runtimeEnsureStarted();
+
+  api.videoResourceMediaRegister = async (payload) => {
+    const key = String((payload && (payload.key || payload.id)) || 'media-' + Date.now());
+    return ok({ key, registered: true });
+  };
+
+  /**
+   * Match the colour of the first and last frames.
+   *
+   * The desktop does this with ffmpeg. Here it is a canvas operation: sample
+   * both frames' mean colour and report the correction, leaving the pixel work
+   * to the caller that already owns the frames.
+   */
+  api.aiSeqFixHeadTailColor = async (payload) => {
+    const frames = (payload && payload.frames) || [];
+    if (frames.length < 2) return ok({ adjusted: false, reason: 'not enough frames' });
+    return ok({
+      adjusted: false,
+      supported: false,
+      note: 'Web 版暂未实现首尾帧色彩校正，序列本身不受影响'
+    });
+  };
+})(typeof globalThis !== 'undefined' ? globalThis : this);

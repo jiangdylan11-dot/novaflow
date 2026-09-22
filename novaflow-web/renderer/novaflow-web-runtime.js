@@ -1,9 +1,14 @@
 // NovaFlow Web Runtime.
 //
-// This is the whole Electron-to-Web adapter. It loads BEFORE
-// proxy-electron-api.js, publishes a complete `window.electronAPI`, and so
-// wins the capability check that file performs - the renderer above it never
-// learns it is not running in Electron.
+// This loads AFTER proxy-electron-api.js, which has already installed the
+// renderer's own browser implementation of electronAPI - the one 4783 runs on
+// every day. We do not replace it. We OVERRIDE the handful of methods that
+// point at a local ComfyUI and at the desktop's local client API, and leave
+// everything else exactly as the renderer expects.
+//
+// Loading first was wrong: publishing electronAPI early makes
+// proxy-electron-api.js stand down, and the renderer then takes its DESKTOP
+// path on the strength of whatever capabilities we happen to advertise.
 //
 // What it translates:
 //
@@ -303,11 +308,20 @@
           return { ok: true, status: 200, result: {} };
         }
 
-        if (clean === '/object_info' || clean.startsWith('/object_info')) {
-          // Node metadata is topology. The renderer only uses it to populate
-          // model dropdowns, which the control plane answers instead.
-          const caps = await control('GET', '/api/web/capabilities');
-          return { ok: true, status: 200, result: caps.objectInfo || {} };
+        if (clean.startsWith('/object_info')) {
+          // The node catalogue lives on a compute node, not here. Answering
+          // with an empty object would be worse than saying so: a caller that
+          // believes it holds a catalogue then builds from nothing, and the
+          // renderer has paths that generate a Web Worker's source from it -
+          // which is how an empty success became a SyntaxError in a worker.
+          //
+          // Reporting "no runtime" makes callers take the same branch they
+          // take on the desktop when ComfyUI is not running.
+          return {
+            ok: false,
+            status: 503,
+            error: 'NovaFlow Web 不在浏览器里暴露节点目录；节点信息由算力节点持有'
+          };
         }
 
         if (clean === '/system_stats') {
@@ -459,7 +473,15 @@
   };
 
   // ------------------------------------------------------------------ expose
-  root.electronAPI = Object.assign({}, root.electronAPI || {}, electronAPI);
+  // Override, never replace. Anything the renderer's own implementation
+  // provides and we do not is left alone.
+  const existing = root.electronAPI || (root.electronAPI = {});
+  const overridden = [];
+  for (const [key, value] of Object.entries(electronAPI)) {
+    if (typeof existing[key] !== 'undefined') overridden.push(key);
+    existing[key] = value;
+  }
+  root.__novaflowWebOverrides = overridden;
 
   root.NovaFlowWebRuntime = {
     config: CONFIG,

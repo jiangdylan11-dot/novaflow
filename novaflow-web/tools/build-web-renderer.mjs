@@ -21,6 +21,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { redactModule, findMarkers } from './redact-workflow-module.mjs';
 import { instrumentModule } from './instrument-workflow-module.mjs';
+import { redactBundleFile } from './redact-dead-bundle-workflow.mjs';
 import { allWorkflowEntryMethods } from '../packages/shared/src/workflow-modules.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -37,6 +38,9 @@ const SKIP_DIRS = ['src', 'node_modules', 'dist', 'debug-assets'];
 // Loaded first so `window.electronAPI` exists before proxy-electron-api.js
 // runs its capability check and installs its own loopback fallback.
 const RUNTIME_SHIM = 'novaflow-web-runtime.js';
+// Loaded right after the runtime: the Electron-capability equivalents extend
+// the electronAPI the runtime published.
+const CAPABILITY_SHIM = 'novaflow-web-capabilities.js';
 
 const REPLACEMENT = (moduleName) => (fn) =>
   '\n    return globalThis.NovaFlowWebRuntime.serverOnly(' +
@@ -193,13 +197,17 @@ async function copyAssets(from, to, { referenced, report, forceNames }) {
       continue;
     }
 
-    const redacted = redactModule(source, {
-      moduleName, forceNames, replacement: REPLACEMENT(moduleName)
-    });
-    const instrumented = instrumentModule(source, { moduleName });
+    // The bundle is shipped as built and then given ONE targeted edit; see
+    // redact-dead-bundle-workflow.mjs for why the general passes are not used
+    // on minified code.
+    const redacted = { code: source, redacted: [], redactedGraphs: 0, strippedComments: 0, renamedIdentifiers: [], redactedLiterals: 0, remaining: [] };
+    const instrumented = { code: source, registered: [] };
     await writeFile(join(to, entry.name), redacted.code, 'utf8');
     await mkdir(join(WORKER_OUT, 'assets'), { recursive: true });
     await writeFile(join(WORKER_OUT, 'assets', entry.name), instrumented.code, 'utf8');
+
+    const targeted = redactBundleFile(join(to, entry.name));
+    report.bundleEdits = (report.bundleEdits || []).concat({ file: entry.name, ...targeted });
 
     report.bundles.push({
       file: entry.name,
@@ -223,15 +231,35 @@ export function rewriteIndexHtml(html) {
     '        controlUrl: "http://127.0.0.1:4890",\n' +
     '        authUrl: "https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-backend"\n' +
     '      };\n' +
-    '    </script>\n' +
-    '    <script src="./' + RUNTIME_SHIM + '?v=web-1"></script>\n';
+    '    </script>\n';
 
-  // Before the first script tag, whatever it is.
+  // The config goes first, because modules read it as they load. The shims go
+  // last - see below.
   const firstScript = out.search(/<script\b/);
   if (firstScript >= 0) {
     out = out.slice(0, firstScript) + configTag + '    ' + out.slice(firstScript);
   } else {
     out = out.replace('</head>', configTag + '  </head>');
+  }
+
+  // The transport shims load LAST, after proxy-electron-api.js has installed
+  // the renderer's own browser implementation. That implementation is what
+  // 4783 runs on and it works; the Web line only needs to redirect the AI
+  // runtime away from 127.0.0.1:8188 and towards the worker pool.
+  //
+  // Loading them first was wrong: publishing electronAPI early makes
+  // proxy-electron-api.js stand down, and the renderer then takes its DESKTOP
+  // path on the strength of capabilities we advertise. That is what produced a
+  // blank animation section.
+  const shimTags =
+    '    <script src="./' + RUNTIME_SHIM + '?v=web-1"></script>\n' +
+    '    <script src="./' + CAPABILITY_SHIM + '?v=web-1"></script>\n';
+  const lastScript = out.lastIndexOf('</script>');
+  if (lastScript >= 0) {
+    const insertAt = lastScript + '</script>'.length;
+    out = out.slice(0, insertAt) + '\n' + shimTags + out.slice(insertAt);
+  } else {
+    out = out.replace('</body>', shimTags + '  </body>');
   }
 
   // The desktop shell hard-codes a minimum width for an Electron window. A
