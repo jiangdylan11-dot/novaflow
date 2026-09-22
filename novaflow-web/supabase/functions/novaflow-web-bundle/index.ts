@@ -1,5 +1,5 @@
 // GENERATED - do not edit. Built by tools/bundle-edge-function.mjs.
-// Source: supabase/functions/novaflow-web/ (6 modules + index.ts)
+// Source: supabase/functions/novaflow-web/ (7 modules + index.ts)
 // Rebuild with: npm run bundle:edge
 //
 // One file on purpose: a multi-file deploy can lose a module, and a lost
@@ -217,7 +217,8 @@ const ERROR_CODE = Object.freeze({
   CONFLICT: 'conflict',
   INSUFFICIENT_CREDITS: 'insufficient_credits',
   NO_WORKER: 'no_capable_worker',
-  RATE_LIMITED: 'rate_limited'
+  RATE_LIMITED: 'rate_limited',
+  UNAVAILABLE: 'unavailable'
 });
 
 // Filenames the gateway will serve. Anything outside this shape is refused
@@ -806,6 +807,69 @@ function runtimeFor(modelId) {
   return findModel(modelId)?.runtime || 'image';
 }
 
+// ===== task-files.mjs ================================================
+// GENERATED COPY - do not edit here.
+// Source: packages/shared/src/task-files.mjs
+// Regenerate with: npm run sync:edge
+// Where a task's files live, and how long a link to one is good for.
+//
+// The browser used to reach the worker directly: the control plane handed it
+// grant.endpoint - the address the worker registered - and the browser fetched
+// the result from there. That address is http://127.0.0.1:8790, because a
+// worker behind a home router has no other address to give, and the installer
+// is not allowed to ask anyone for one.
+//
+// It works exactly once: when the browser and the worker are the same machine.
+// That is the owner sitting at the GPU. For everybody else 127.0.0.1 is their
+// OWN machine, where nothing is listening - and since the scheduler has no
+// owner filter, a task goes to whichever worker is free, so "everybody else"
+// is the normal case, not the edge case.
+//
+// So task files go through an object store both sides can reach. Neither side
+// needs an address for the other, which is what lets a friend's PC and a cloud
+// GPU register through the same flow as the owner's desktop.
+
+const TASK_FILES_BUCKET = 'novaflow-task-files';
+
+// Long enough for a slow upload of a video, short enough that a leaked link is
+// not a standing key. The browser re-asks; it is one round trip.
+const FILE_URL_TTL_SECONDS = 900;
+
+const FILE_KIND = { INPUT: 'input', OUTPUT: 'output' };
+
+/**
+ * Strip a name down to something safe as an object key, without letting two
+ * different names collapse into one.
+ *
+ * 参考图.png and 背景图.png both reduce to ___.png, and the second would
+ * overwrite the first. When the name actually changed, a short hash of the
+ * original keeps them apart.
+ */
+function safeFileName(name) {
+  const raw = String(name == null ? '' : name);
+  const cleaned = raw.replace(/[^A-Za-z0-9._-]/g, '_').replace(/^\.+/, '').slice(0, 120) || 'file';
+  if (cleaned === raw) return cleaned;
+  let h = 0;
+  for (let i = 0; i < raw.length; i += 1) h = (h * 31 + raw.charCodeAt(i)) >>> 0;
+  const tag = h.toString(36).slice(0, 6);
+  const dot = cleaned.lastIndexOf('.');
+  return dot > 0 ? cleaned.slice(0, dot) + '_' + tag + cleaned.slice(dot) : cleaned + '_' + tag;
+}
+
+/** tasks/<taskId>/<input|output>/<name> - the one place this shape is decided. */
+function taskObjectPath(taskId, kind, name) {
+  const id = String(taskId || '').replace(/[^A-Za-z0-9-]/g, '');
+  if (!id) throw new Error('taskObjectPath needs a task id');
+  const bucketKind = kind === FILE_KIND.OUTPUT ? FILE_KIND.OUTPUT : FILE_KIND.INPUT;
+  return 'tasks/' + id + '/' + bucketKind + '/' + safeFileName(name);
+}
+
+/** Everything under one task, for the sweeper. */
+function taskObjectPrefix(taskId) {
+  const id = String(taskId || '').replace(/[^A-Za-z0-9-]/g, '');
+  return 'tasks/' + id + '/';
+}
+
 // ===== control-plane.mjs =============================================
 // GENERATED COPY - do not edit here.
 // Source: packages/shared/src/control-plane.mjs
@@ -1202,7 +1266,12 @@ function createControlPlane({ store, secrets, logger }) {
         bytes: clampInt(f?.bytes, 0, 8 * 1024 * 1024 * 1024, 0),
         width: clampInt(f?.width, 0, 16384, 0),
         height: clampInt(f?.height, 0, 16384, 0),
-        duration_seconds: Number(f?.duration_seconds) || 0
+        duration_seconds: Number(f?.duration_seconds) || 0,
+        // Whether this file also reached the object store. The browser asks
+        // for a signed link only when it did; a worker on an older build
+        // uploads nothing, and a signed link to an absent object is a 404 in
+        // place of a picture for a task that ran perfectly well.
+        stored: f?.stored === true
       })).filter((f) => f.name),
       worker_id: String(worker.id),
       endpoint_url: String(worker.endpoint_url || ''),
@@ -1454,6 +1523,82 @@ function createControlPlane({ store, secrets, logger }) {
     };
   }
 
+  // ---- task files ------------------------------------------------------
+  //
+  // The route a task's bytes take between a browser and a worker that cannot
+  // reach each other. Both ask here for a short-lived signed URL against an
+  // object store both CAN reach, so neither needs an address for the other.
+  // task-files.mjs says why this exists at all.
+  //
+  // One handler for both callers because the rules are the same shape: you may
+  // touch a task's files if you are the user who owns it or the worker it was
+  // assigned to, and only in the direction and at the time that makes sense.
+  async function handleTaskFiles(taskId, body, headers, actor) {
+    const task = await store.getTask(taskId);
+    if (!task) throw new HttpError(404, ERROR_CODE.NOT_FOUND, 'unknown task');
+
+    if (actor === 'user') {
+      const user = await requireUser(headers);
+      if (String(task.user_id) !== String(user.id)) {
+        // Not 403: a task that is not yours should not be distinguishable from
+        // one that does not exist.
+        throw new HttpError(404, ERROR_CODE.NOT_FOUND, 'unknown task');
+      }
+    } else {
+      const worker = await requireWorker(headers);
+      if (String(task.assigned_worker_id || '') !== String(worker.id)) {
+        throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'task is not assigned to this worker');
+      }
+    }
+
+    if (!store.files) {
+      throw new HttpError(501, ERROR_CODE.UNAVAILABLE, 'this control plane has no object store configured');
+    }
+
+    const op = sanitizeText(body.op, 20) === 'download' ? 'download' : 'upload';
+    const kind = sanitizeText(body.kind, 20) === FILE_KIND.OUTPUT ? FILE_KIND.OUTPUT : FILE_KIND.INPUT;
+
+    // Who may write what. A browser supplies inputs; a worker produces
+    // outputs. Neither writes the other's side, so a compromised browser
+    // cannot plant a result and a worker cannot rewrite the request.
+    if (op === 'upload') {
+      if (actor === 'user' && kind !== FILE_KIND.INPUT) {
+        throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'a browser may only upload inputs');
+      }
+      if (actor === 'worker' && kind !== FILE_KIND.OUTPUT) {
+        throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'a worker may only upload outputs');
+      }
+    }
+    if (op === 'download' && actor === 'user' && kind === FILE_KIND.OUTPUT
+      && task.status !== TASK_STATE.COMPLETED) {
+      throw new HttpError(409, ERROR_CODE.CONFLICT, 'results are not ready');
+    }
+    if (op === 'download' && actor === 'user' && task.result_expired) {
+      throw new HttpError(410, ERROR_CODE.EXPIRED, 'results have been cleaned up');
+    }
+
+    const names = Array.isArray(body.names) ? body.names.slice(0, 32) : [];
+    if (!names.length) throw new HttpError(400, ERROR_CODE.BAD_REQUEST, 'names is required');
+
+    const files = {};
+    for (const raw of names) {
+      const name = safeFileName(sanitizeText(raw, 200));
+      const objectPath = taskObjectPath(task.id, kind, name);
+      files[name] = op === 'upload'
+        ? await store.files.signUpload(objectPath, FILE_URL_TTL_SECONDS)
+        : await store.files.signDownload(objectPath, FILE_URL_TTL_SECONDS);
+    }
+
+    return {
+      ok: true,
+      op,
+      kind,
+      taskId: task.id,
+      files,
+      expiresAt: new Date((nowSeconds() + FILE_URL_TTL_SECONDS) * 1000).toISOString()
+    };
+  }
+
   // ---- adding a compute node -------------------------------------------
   //
   // Bringing a new machine online must not require touching the database, an
@@ -1626,6 +1771,12 @@ function createControlPlane({ store, secrets, logger }) {
       m = path.match(/^\/api\/web\/tasks\/([^/]+)\/grant$/);
       if (m && method === 'POST') return ok(await handleTaskGrant(m[1], body, headers));
 
+      m = path.match(/^\/api\/web\/tasks\/([^/]+)\/files$/);
+      if (m && method === 'POST') return ok(await handleTaskFiles(m[1], body, headers, 'user'));
+
+      m = path.match(/^\/api\/worker\/tasks\/([^/]+)\/files$/);
+      if (m && method === 'POST') return ok(await handleTaskFiles(m[1], body, headers, 'worker'));
+
       if (method === 'POST' && path === '/api/maintenance/sweep') return ok(await handleSweep(body, headers));
 
       return { status: 404, body: { ok: false, error: 'not found', code: ERROR_CODE.NOT_FOUND } };
@@ -1764,6 +1915,8 @@ function workerTaskView(task) {
 //                                      so a Desktop login works on the Web
 //   NOVAFLOW_WEB_CONTROL_SECRET        Web-line only: signs worker tokens and
 //                                      derives per-worker grant keys
+
+let bucketReady = false;
 
 const FUNCTION_NAME = 'novaflow-web';
 
@@ -2058,6 +2211,60 @@ const supabaseStore = {
     });
     if (error) throw error;
     return data;
+  },
+
+  // ---- task files -------------------------------------------------------
+  //
+  // The object store a browser and a worker that cannot reach each other both
+  // CAN reach. task-files.mjs says why that matters; the short version is that
+  // a worker behind a home router registers as http://127.0.0.1:8790, which is
+  // only the right address when the browser happens to be on the same machine.
+  //
+  // The bucket is created here on first use rather than by a migration,
+  // because the deployed function is the only thing holding a service role key
+  // and nobody should have to create it by hand to add a compute node.
+  files: {
+    kind: 'supabase',
+
+    async ensureBucket() {
+      if (bucketReady) return;
+      const { error } = await admin().storage.createBucket(TASK_FILES_BUCKET, { public: false });
+      // Already there is the normal case after the first call ever.
+      if (error && !/already exists|Duplicate/i.test(String(error.message || error))) throw error;
+      bucketReady = true;
+    },
+
+    async signUpload(objectPath: string, ttlSeconds: number) {
+      await supabaseStore.files.ensureBucket();
+      const bucket = admin().storage.from(TASK_FILES_BUCKET);
+      // An upload URL is single-use and refuses to overwrite, so a retry after
+      // a half-finished PUT would fail forever. Clear the way first.
+      await bucket.remove([objectPath]).catch(() => {});
+      const { data, error } = await bucket.createSignedUploadUrl(objectPath);
+      if (error) throw error;
+      void ttlSeconds;
+      return { url: data.signedUrl, method: 'PUT', headers: {} };
+    },
+
+    async signDownload(objectPath: string, ttlSeconds: number) {
+      await supabaseStore.files.ensureBucket();
+      const { data, error } = await admin().storage
+        .from(TASK_FILES_BUCKET)
+        .createSignedUrl(objectPath, Math.max(60, Number(ttlSeconds) || 900));
+      if (error) throw error;
+      return { url: data.signedUrl, method: 'GET', headers: {} };
+    },
+
+    async removePrefix(prefix: string) {
+      const bucket = admin().storage.from(TASK_FILES_BUCKET);
+      const dirs = ['input', 'output'];
+      for (const dir of dirs) {
+        const { data } = await bucket.list(prefix.replace(/\/+$/, '') + '/' + dir);
+        const names = (data || []).map((f: any) => prefix.replace(/\/+$/, '') + '/' + dir + '/' + f.name);
+        if (names.length) await bucket.remove(names).catch(() => {});
+      }
+      return true;
+    }
   }
 };
 

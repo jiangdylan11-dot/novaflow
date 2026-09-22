@@ -205,7 +205,8 @@ export const ERROR_CODE = Object.freeze({
   CONFLICT: 'conflict',
   INSUFFICIENT_CREDITS: 'insufficient_credits',
   NO_WORKER: 'no_capable_worker',
-  RATE_LIMITED: 'rate_limited'
+  RATE_LIMITED: 'rate_limited',
+  UNAVAILABLE: 'unavailable'
 });
 
 // Filenames the gateway will serve. Anything outside this shape is refused

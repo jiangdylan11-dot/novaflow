@@ -10,8 +10,10 @@
 // come from the existing novaflow-backend and this code path is not deployed.
 
 import { createServer } from 'node:http';
+import { fileURLToPath } from 'node:url';
 import { createDatabase, seedUser, seedProviderBudget } from './db.mjs';
 import { createPgStore } from './pg-store.mjs';
+import { createLocalFileStore } from './file-store.mjs';
 import { createControlPlane } from '../../packages/shared/src/control-plane.mjs';
 import { base64UrlJson, hmacSha256, sha256Hex, resolveControlSecret } from '../../packages/shared/src/tokens.mjs';
 
@@ -20,11 +22,13 @@ const SESSION_SECRET = process.env.NOVAFLOW_SESSION_SECRET || 'local-dev-session
 // Optional, exactly as in production: derived from the session secret when it
 // is not set, so the two deployments behave the same way.
 const CONTROL_SECRET_ENV = process.env.NOVAFLOW_WEB_CONTROL_SECRET || '';
+const FILE_STORE_DIR = process.env.NOVAFLOW_WEB_FILE_DIR
+  || fileURLToPath(new URL('../../.artifacts/task-files/', import.meta.url));
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, content-type, x-novaflow-grant, range',
-  'access-control-allow-methods': 'GET, POST, OPTIONS',
+  'access-control-allow-methods': 'GET, POST, PUT, OPTIONS',
   'access-control-expose-headers': 'content-range, accept-ranges, content-length'
 };
 
@@ -70,6 +74,14 @@ export async function createLocalControlPlane({ verbose = false } = {}) {
     controlSecret: CONTROL_SECRET_ENV,
     sessionSecret: SESSION_SECRET
   });
+  // The object store task files travel through. Supabase Storage in the
+  // deployed function; on disk here, so the same route is exercised locally -
+  // a suite that only ever ran the direct worker path is how that path stayed
+  // broken for everyone who is not sitting at the GPU.
+  //
+  // The base URL is filled in after listen(), when the port is known.
+  store.files = createLocalFileStore({ dir: FILE_STORE_DIR, secret: controlSecret });
+
   const plane = createControlPlane({
     store,
     secrets: { sessionSecret: SESSION_SECRET, controlSecret },
@@ -138,6 +150,11 @@ export async function startLocalControlPlane({ port = DEFAULT_PORT, verbose = fa
       }
 
       const url = new URL(req.url, 'http://127.0.0.1');
+
+      // Signed object-store URLs. Checked first: they carry their own
+      // signature and answer with bytes, not JSON.
+      if (await ctx.store.files.handle(req, res, url)) return;
+
       const query = Object.fromEntries(url.searchParams.entries());
 
       // Local-only helper so a developer can get a session without standing up
@@ -194,6 +211,9 @@ export async function startLocalControlPlane({ port = DEFAULT_PORT, verbose = fa
 
   await listenOnUsablePort(server, port);
   const address = 'http://127.0.0.1:' + server.address().port;
+  // Signed URLs have to be absolute - the worker and the browser fetch them
+  // from elsewhere - and the port is only known now.
+  ctx.store.files.setBaseUrl(address);
   return { ...ctx, server, port: server.address().port, url: address };
 }
 

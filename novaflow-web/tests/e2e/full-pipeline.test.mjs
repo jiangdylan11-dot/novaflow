@@ -127,7 +127,16 @@ try {
       return null;
     }, { label: 'completion', timeoutMs: 300000, intervalMs: 700 });
 
-    check('progress was reported while running', sawProgress, { sawProgress });
+    // Polling for a transient state is a race the test loses whenever the GPU
+    // is quick: processing -> completed can happen between two 700ms polls and
+    // the run then fails on a healthy pipeline. A progress ping that does not
+    // change the status writes no event either, so the durable evidence that
+    // the worker reported its way through the run is the transition INTO
+    // processing - which it only makes by calling the progress endpoint.
+    const events = await ctx.store.taskEvents(taskId);
+    const reported = events.some((e) => String(e.to_status || '') === TASK_STATE.PROCESSING);
+    check('progress was reported while running', sawProgress || reported,
+      { sawProgress, states: events.map((e) => e.to_status) });
     check('task completed', completed.status === TASK_STATE.COMPLETED, completed.status);
     check('output manifest lists a file',
       (completed.output_manifest.files || []).length > 0, completed.output_manifest);
@@ -159,6 +168,114 @@ try {
     await mkdir(proofDir, { recursive: true });
     await writeFile(join(proofDir, 'e2e-result.png'), bytes);
     console.log('  ->  saved proof image to novaflow-web/.artifacts/e2e-result.png (' + bytes.length + ' bytes)');
+
+    // -----------------------------------------------------------------------
+    section('5b. a browser that is NOT on the worker machine can still get it');
+    {
+      // Everything above passes because the test, the worker and the browser
+      // are one machine, so grant.endpoint - http://127.0.0.1:8790 - resolves
+      // to the machine holding the file. That is the owner sitting at the GPU.
+      //
+      // It is not anybody else. The scheduler has no owner filter, so a task
+      // goes to whichever worker is free, and the browser asking for the
+      // result is somewhere else entirely; 127.0.0.1 then means the VIEWER's
+      // own machine, where nothing is listening.
+      //
+      // So the bytes also go through an object store, and this is the route a
+      // real user's browser takes.
+      // The browser only takes this route when the manifest says the file got
+      // there. Without this check the flag could be false for every run, the
+      // browser would quietly use the gateway, and none of the rest of this
+      // section would be testing what it looks like it is testing.
+      check('the manifest records that the worker stored the file',
+        completed.output_manifest.files[0].stored === true, completed.output_manifest.files[0]);
+
+      const links = await call(BASE, 'POST', '/api/web/tasks/' + taskId + '/files', {
+        token, body: { op: 'download', kind: 'output', names: [fileName] }
+      });
+      check('the control plane issues a link that needs no worker address',
+        links.status === 200 && Boolean(links.body.files?.[fileName]?.url),
+        { status: links.status, body: links.body });
+
+      const remote = await fetch(links.body.files[fileName].url);
+      const relayed = Buffer.from(await remote.arrayBuffer());
+      check('and it returns the same bytes the gateway did',
+        remote.status === 200 && relayed.equals(bytes),
+        { status: remote.status, bytes: relayed.length, expected: bytes.length });
+
+      const anonymous = await call(BASE, 'POST', '/api/web/tasks/' + taskId + '/files', {
+        body: { op: 'download', kind: 'output', names: [fileName] }
+      });
+      check('an unauthenticated caller gets no link', anonymous.status === 401, { status: anonymous.status });
+
+      const asOutput = await call(BASE, 'POST', '/api/web/tasks/' + taskId + '/files', {
+        token, body: { op: 'upload', kind: 'output', names: [fileName] }
+      });
+      check('a browser cannot get a link to WRITE a result',
+        asOutput.status === 403, { status: asOutput.status });
+    }
+
+    // -----------------------------------------------------------------------
+    section('5c. a task WITH a reference image runs end to end');
+    {
+      // The direction nothing ever tested. The browser queued the reference
+      // bytes in a Map, sent the task carrying only their NAMES, and never
+      // read the Map again - so the pixels stayed in the browser and the
+      // worker waited two minutes for an upload that was not coming, then
+      // failed the task. Text-to-image has no references, which is the only
+      // reason every run that was ever verified worked.
+      //
+      // The image from section 5 is a real PNG, so this is a real 图生图.
+      const editTask = await call(BASE, 'POST', '/api/web/tasks', {
+        token,
+        body: {
+          task_type: 'qwen2511_edit',
+          parameters: {
+            prompt: 'make the cube blue',
+            width: 512, height: 512, steps: 4, count: 1, cfg: 1.0, seed: 77,
+            references: [{ name: 'ref.png', bytes: bytes.length, kind: 'image' }]
+          }
+        }
+      });
+      check('an edit task with a reference is accepted',
+        editTask.status === 200 && editTask.body.task.status === TASK_STATE.QUEUED,
+        { status: editTask.status, task: editTask.body.task?.status });
+      const editId = editTask.body.task.id;
+
+      const up = await call(BASE, 'POST', '/api/web/tasks/' + editId + '/files', {
+        token, body: { op: 'upload', kind: 'input', names: ['ref.png'] }
+      });
+      check('the browser is given somewhere to put the reference',
+        up.status === 200 && Boolean(up.body.files?.['ref.png']?.url), up.body);
+
+      const put = await fetch(up.body.files['ref.png'].url, {
+        method: up.body.files['ref.png'].method || 'PUT',
+        headers: { 'content-type': 'application/octet-stream' },
+        body: bytes
+      });
+      check('the reference uploads', put.ok, { status: put.status });
+
+      const done = await waitFor(async () => {
+        const r = await call(BASE, 'GET', '/api/web/tasks/' + editId, { token });
+        const t = r.body.task;
+        if (t.status === TASK_STATE.COMPLETED) return t;
+        if (t.status === TASK_STATE.FAILED) throw new Error('edit task failed: ' + t.error_message);
+        return null;
+      }, { label: 'edit completion', timeoutMs: 300000, intervalMs: 700 });
+
+      check('the worker picked the reference up and finished',
+        (done.output_manifest.files || []).length > 0, done.output_manifest);
+
+      const editName = done.output_manifest.files[0].name;
+      const editLinks = await call(BASE, 'POST', '/api/web/tasks/' + editId + '/files', {
+        token, body: { op: 'download', kind: 'output', names: [editName] }
+      });
+      const editBytes = Buffer.from(await (await fetch(editLinks.body.files[editName].url)).arrayBuffer());
+      check('and the edited image comes back', editBytes.subarray(1, 4).toString() === 'PNG',
+        { bytes: editBytes.length });
+      await writeFile(join(proofDir, 'e2e-edit.png'), editBytes);
+      console.log('  ->  saved edited proof to novaflow-web/.artifacts/e2e-edit.png (' + editBytes.length + ' bytes)');
+    }
 
     // -----------------------------------------------------------------------
     section('6. HTTP Range works (video streams without a full download)');

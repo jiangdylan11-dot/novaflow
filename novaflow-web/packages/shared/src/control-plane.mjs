@@ -50,6 +50,12 @@ import {
 import { priceTask } from './pricing.mjs';
 import { isAllowedWorkflowCall, workflowModule } from './workflow-modules.mjs';
 import { MODEL_MANIFEST } from './model-manifest.mjs';
+import {
+  FILE_KIND,
+  FILE_URL_TTL_SECONDS,
+  safeFileName,
+  taskObjectPath
+} from './task-files.mjs';
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 4000;
@@ -433,7 +439,12 @@ export function createControlPlane({ store, secrets, logger }) {
         bytes: clampInt(f?.bytes, 0, 8 * 1024 * 1024 * 1024, 0),
         width: clampInt(f?.width, 0, 16384, 0),
         height: clampInt(f?.height, 0, 16384, 0),
-        duration_seconds: Number(f?.duration_seconds) || 0
+        duration_seconds: Number(f?.duration_seconds) || 0,
+        // Whether this file also reached the object store. The browser asks
+        // for a signed link only when it did; a worker on an older build
+        // uploads nothing, and a signed link to an absent object is a 404 in
+        // place of a picture for a task that ran perfectly well.
+        stored: f?.stored === true
       })).filter((f) => f.name),
       worker_id: String(worker.id),
       endpoint_url: String(worker.endpoint_url || ''),
@@ -685,6 +696,82 @@ export function createControlPlane({ store, secrets, logger }) {
     };
   }
 
+  // ---- task files ------------------------------------------------------
+  //
+  // The route a task's bytes take between a browser and a worker that cannot
+  // reach each other. Both ask here for a short-lived signed URL against an
+  // object store both CAN reach, so neither needs an address for the other.
+  // task-files.mjs says why this exists at all.
+  //
+  // One handler for both callers because the rules are the same shape: you may
+  // touch a task's files if you are the user who owns it or the worker it was
+  // assigned to, and only in the direction and at the time that makes sense.
+  async function handleTaskFiles(taskId, body, headers, actor) {
+    const task = await store.getTask(taskId);
+    if (!task) throw new HttpError(404, ERROR_CODE.NOT_FOUND, 'unknown task');
+
+    if (actor === 'user') {
+      const user = await requireUser(headers);
+      if (String(task.user_id) !== String(user.id)) {
+        // Not 403: a task that is not yours should not be distinguishable from
+        // one that does not exist.
+        throw new HttpError(404, ERROR_CODE.NOT_FOUND, 'unknown task');
+      }
+    } else {
+      const worker = await requireWorker(headers);
+      if (String(task.assigned_worker_id || '') !== String(worker.id)) {
+        throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'task is not assigned to this worker');
+      }
+    }
+
+    if (!store.files) {
+      throw new HttpError(501, ERROR_CODE.UNAVAILABLE, 'this control plane has no object store configured');
+    }
+
+    const op = sanitizeText(body.op, 20) === 'download' ? 'download' : 'upload';
+    const kind = sanitizeText(body.kind, 20) === FILE_KIND.OUTPUT ? FILE_KIND.OUTPUT : FILE_KIND.INPUT;
+
+    // Who may write what. A browser supplies inputs; a worker produces
+    // outputs. Neither writes the other's side, so a compromised browser
+    // cannot plant a result and a worker cannot rewrite the request.
+    if (op === 'upload') {
+      if (actor === 'user' && kind !== FILE_KIND.INPUT) {
+        throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'a browser may only upload inputs');
+      }
+      if (actor === 'worker' && kind !== FILE_KIND.OUTPUT) {
+        throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'a worker may only upload outputs');
+      }
+    }
+    if (op === 'download' && actor === 'user' && kind === FILE_KIND.OUTPUT
+      && task.status !== TASK_STATE.COMPLETED) {
+      throw new HttpError(409, ERROR_CODE.CONFLICT, 'results are not ready');
+    }
+    if (op === 'download' && actor === 'user' && task.result_expired) {
+      throw new HttpError(410, ERROR_CODE.EXPIRED, 'results have been cleaned up');
+    }
+
+    const names = Array.isArray(body.names) ? body.names.slice(0, 32) : [];
+    if (!names.length) throw new HttpError(400, ERROR_CODE.BAD_REQUEST, 'names is required');
+
+    const files = {};
+    for (const raw of names) {
+      const name = safeFileName(sanitizeText(raw, 200));
+      const objectPath = taskObjectPath(task.id, kind, name);
+      files[name] = op === 'upload'
+        ? await store.files.signUpload(objectPath, FILE_URL_TTL_SECONDS)
+        : await store.files.signDownload(objectPath, FILE_URL_TTL_SECONDS);
+    }
+
+    return {
+      ok: true,
+      op,
+      kind,
+      taskId: task.id,
+      files,
+      expiresAt: new Date((nowSeconds() + FILE_URL_TTL_SECONDS) * 1000).toISOString()
+    };
+  }
+
   // ---- adding a compute node -------------------------------------------
   //
   // Bringing a new machine online must not require touching the database, an
@@ -856,6 +943,12 @@ export function createControlPlane({ store, secrets, logger }) {
 
       m = path.match(/^\/api\/web\/tasks\/([^/]+)\/grant$/);
       if (m && method === 'POST') return ok(await handleTaskGrant(m[1], body, headers));
+
+      m = path.match(/^\/api\/web\/tasks\/([^/]+)\/files$/);
+      if (m && method === 'POST') return ok(await handleTaskFiles(m[1], body, headers, 'user'));
+
+      m = path.match(/^\/api\/worker\/tasks\/([^/]+)\/files$/);
+      if (m && method === 'POST') return ok(await handleTaskFiles(m[1], body, headers, 'worker'));
 
       if (method === 'POST' && path === '/api/maintenance/sweep') return ok(await handleSweep(body, headers));
 

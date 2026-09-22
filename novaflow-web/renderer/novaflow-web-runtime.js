@@ -212,6 +212,70 @@
     return { queue_running: running, queue_pending: pending };
   }
 
+  // ------------------------------------------------------- the file route
+  //
+  // A worker behind a home router registers as http://127.0.0.1:8790. That is
+  // the right address only when the browser is on the same machine as the GPU
+  // - the owner, and nobody else. Since the scheduler has no owner filter, a
+  // task goes wherever there is capacity, so "nobody else" is most people.
+  //
+  // So files travel through an object store both ends can reach. The direct
+  // gateway is kept as a fallback for the same-machine case and for a control
+  // plane with no object store, which answers 501.
+  const storedUrls = new Map();   // taskId:kind:name -> { url, at }
+
+  async function fileLinks(taskId, op, kind, names) {
+    const res = await control('POST', '/api/web/tasks/' + taskId + '/files', {
+      op: op, kind: kind, names: names
+    });
+    return (res && res.files) || {};
+  }
+
+  async function putInputs(taskId, refs) {
+    const names = refs.map((r) => r.name);
+    const links = await fileLinks(taskId, 'upload', 'input', names);
+    for (const ref of refs) {
+      const link = links[ref.name];
+      const held = uploads.get(ref.name);
+      if (!link || !held) throw new Error('没有拿到 ' + ref.name + ' 的上传地址');
+      const res = await fetch(link.url, {
+        method: link.method || 'PUT',
+        headers: Object.assign({ 'content-type': 'application/octet-stream' }, link.headers || {}),
+        body: held.bytes
+      });
+      if (!res.ok) throw new Error(ref.name + ' 上传返回 ' + res.status);
+      uploads.delete(ref.name);
+    }
+  }
+
+  /**
+   * A URL for one output file, or '' when it is not in the object store.
+   *
+   * The worker marks each file `stored` only after its upload succeeded, so
+   * this asks the manifest rather than assuming. A worker on an older build
+   * uploads nothing at all, and guessing would hand back a signed link to an
+   * object that is not there - a 404 in place of a picture, for a task that
+   * ran perfectly well and is sitting on the gateway.
+   */
+  async function storedUrl(task, name) {
+    const file = ((task.output_manifest && task.output_manifest.files) || [])
+      .find((f) => f.name === name);
+    if (!file || file.stored !== true) return '';
+    const taskId = task.id;
+    const key = taskId + ':output:' + name;
+    const cached = storedUrls.get(key);
+    if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.url;
+    try {
+      const links = await fileLinks(taskId, 'download', 'output', [name]);
+      const url = (links[name] && links[name].url) || '';
+      if (url) storedUrls.set(key, { url: url, at: Date.now() });
+      return url;
+    } catch (error) {
+      if (error && error.status === 501) return '';
+      throw error;
+    }
+  }
+
   // ------------------------------------------------------------- submission
   async function submitPrompt(body) {
     const intent = intentFrom(body && body.prompt);
@@ -225,16 +289,37 @@
       );
     }
 
+    const refs = pendingUploads.splice(0, pendingUploads.length);
+
     const task = await control('POST', '/api/web/tasks', {
       task_type: 'renderer_workflow',
       workflow: { module: intent.module, method: intent.method },
       parameters: intent.options || {},
-      references: pendingUploads.splice(0, pendingUploads.length)
+      references: refs
     });
 
     const promptId = task.task.id;
     tasks.set(promptId, task.task);
     root.NovaFlowWebRuntime.lastTask = task.task;
+
+    // Send the reference images.
+    //
+    // This used to queue the bytes in `uploads` and never read the map again:
+    // the task carried the NAMES of the references and the pixels stayed in
+    // the browser, so a worker running 图生图 waited two minutes for an upload
+    // that was never coming and then failed the task. Text-to-image has no
+    // references, which is why every run that was ever verified worked.
+    if (refs.length) {
+      try {
+        await putInputs(promptId, refs);
+      } catch (error) {
+        // Say which step failed. "timed out waiting for the browser to upload"
+        // arrives from the worker two minutes later and points at the wrong
+        // side of the wire.
+        throw new Error('参考图上传失败：' + String(error.message || error));
+      }
+    }
+
     return { prompt_id: promptId, number: tasks.size, node_errors: {} };
   }
 
@@ -383,12 +468,17 @@
       if (!entry) return { ok: false, error: 'unknown output file: ' + filename };
 
       try {
-        const grant = await grantFor(entry, 'download');
-        const url = grant.endpoint.replace(/\/+$/, '') +
-          '/gw/tasks/' + entry.id + '/output/' + encodeURIComponent(filename) +
-          '?grant=' + encodeURIComponent(grant.token);
+        // The object store first: it works from any browser. The gateway only
+        // works when this browser is on the worker's own machine.
+        let url = await storedUrl(entry, filename);
+        if (!url) {
+          const grant = await grantFor(entry, 'download');
+          url = grant.endpoint.replace(/\/+$/, '') +
+            '/gw/tasks/' + entry.id + '/output/' + encodeURIComponent(filename) +
+            '?grant=' + encodeURIComponent(grant.token);
+        }
         const res = await fetch(url);
-        if (!res.ok) return { ok: false, error: 'gateway returned ' + res.status };
+        if (!res.ok) return { ok: false, error: '取回结果失败：' + res.status };
         const buffer = await res.arrayBuffer();
         return {
           ok: true,
@@ -409,6 +499,8 @@
         (t) => ((t.output_manifest && t.output_manifest.files) || []).some((f) => f.name === filename)
       );
       if (!entry) return '';
+      const stored = await storedUrl(entry, filename);
+      if (stored) return stored;
       const grant = await grantFor(entry, 'download');
       return grant.endpoint.replace(/\/+$/, '') +
         '/gw/tasks/' + entry.id + '/output/' + encodeURIComponent(filename) +
