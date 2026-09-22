@@ -34,6 +34,7 @@ const ctx = await startLocalControlPlane({ port: 0 });
 const BASE = ctx.url;
 const dataDir = await mkdtemp(join(tmpdir(), 'nfweb-rw-'));
 let worker = null;
+let token = '';
 
 async function comfyUp() {
   try {
@@ -124,7 +125,7 @@ try {
   // -------------------------------------------------------------------------
   section('the control plane prices and queues it');
   const login = await call(BASE, 'POST', '/dev/login', { body: { email: 'rw@novaflow.local', balance: 5000 } });
-  const token = login.body.session.token;
+  token = login.body.session.token;
   {
     const refused = await call(BASE, 'POST', '/api/web/tasks', {
       token,
@@ -161,7 +162,7 @@ try {
   section('the worker builds with NovaFlow\'s own builder');
   {
     const host = await createWorkflowHost({ rendererDir: RENDERER });
-    const graph = host.buildGraph({
+    const graph = await host.buildGraph({
       module: recordedIntent.module,
       method: recordedIntent.method,
       options: recordedIntent.options
@@ -206,6 +207,10 @@ try {
         task_type: 'renderer_workflow',
         workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' },
         parameters: {
+          // This module builds CLOUD provider graphs; it accepts gpt and
+          // google, not a local runtime. Its own validation says so.
+          mode: 'txt2img',
+          provider: 'gpt',
           prompt: 'a small blue cube on a white table, product photo',
           width: 512, height: 512, steps: 4, count: 1
         }
@@ -227,6 +232,8 @@ try {
       // ComfyUI. Either way the CONTRACT holds: the browser sent no graph, and
       // a failure is reported honestly rather than silently swallowed.
       check('the task reached a terminal state', ['completed', 'failed'].includes(settled.status), settled.status);
+      check('the state machine recorded a timestamp for it',
+        Boolean(settled.completed_at || settled.failed_at), settled);
       if (settled.status === 'completed') {
         check('it produced a file',
           (settled.output_manifest.files || []).length > 0, settled.output_manifest);
@@ -235,6 +242,38 @@ try {
         check('a failure costs the user nothing', settled.charged_credit_cost === 0, settled);
       }
     }
+  }
+  // ---------------------------------------------------------------------------
+  section('a builder that refuses its options fails one task, not the node');
+  {
+    const bad = await call(BASE, 'POST', '/api/web/tasks', {
+      token,
+      body: {
+        task_type: 'renderer_workflow',
+        workflow: { module: 'NovaFlowArtGenerateProviderWorkflow', method: 'buildWorkflow' },
+        parameters: { prompt: 'no mode given on purpose' }
+      }
+    });
+    check('the task was accepted', bad.status === 200, bad.body);
+
+    if (bad.status === 200) {
+      const settled = await waitFor(async () => {
+        const r = await call(BASE, 'GET', '/api/web/tasks/' + bad.body.task.id, { token });
+        return ['completed', 'failed'].includes(r.body.task.status) ? r.body.task : null;
+      }, { label: 'the bad-options task to settle', timeoutMs: 90000, intervalMs: 700 });
+
+      check('it failed rather than hanging', settled.status === 'failed', settled.status);
+      check('the message names the builder and the reason',
+        /refused these options/.test(settled.error_message || ''), settled.error_message);
+      check('nothing was charged', Number(settled.charged_credit_cost) === 0, settled.charged_credit_cost);
+    }
+
+    const alive = worker.getState();
+    check('the worker is still online afterwards', alive.status !== 'offline', alive.status);
+
+    const after = await call(BASE, 'GET', '/api/web/workers', { token });
+    check('and still visible to the control plane',
+      (after.body.workers || []).some((w) => w.id === alive.workerId), alive.workerId);
   }
 } finally {
   try { if (worker) await worker.stop(); } catch { /* already down */ }

@@ -41,17 +41,44 @@ const RUNTIME_SHIM = 'novaflow-web-runtime.js';
 // Loaded right after the runtime: the Electron-capability equivalents extend
 // the electronAPI the runtime published.
 const CAPABILITY_SHIM = 'novaflow-web-capabilities.js';
+// 我的算力节点 - mint a registration code, watch the pool come online.
+const WORKERS_PANEL = 'novaflow-web-workers-panel.js';
+
+// The Web line's own files. They belong to the BROWSER half only.
+//
+// The worker loads every .js in its tree, so shipping these there let the
+// runtime shim override runtimeRequestJson - the very bridge the worker's
+// builders read the ComfyUI node catalogue through, answered on the browser
+// side with "no node catalogue here, 503". A compute node must never be
+// handed the browser's refusals.
+const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM, WORKERS_PANEL]);
 
 const REPLACEMENT = (moduleName) => (fn) =>
   '\n    return globalThis.NovaFlowWebRuntime.serverOnly(' +
   JSON.stringify(moduleName) + ', ' + JSON.stringify(fn) + ', arguments);\n  ';
 
+/**
+ * Clear a directory's CONTENTS, keeping the directory itself.
+ *
+ * Removing the directory is the obvious thing and it is wrong here: on Windows
+ * a static server previewing web-dist holds the directory open, and rmdir then
+ * fails with EBUSY and takes the whole build down. Nothing needs the inode to
+ * change - only what is inside it.
+ */
+async function emptyDir(dir) {
+  let list = [];
+  try { list = await readdir(dir, { withFileTypes: true }); } catch { return; }
+  for (const entry of list) {
+    await rm(join(dir, entry.name), { recursive: true, force: true });
+  }
+}
+
 export async function buildWebRenderer({ logger, clean = true } = {}) {
   const log = logger || (() => {});
 
   if (clean) {
-    await rm(WEB_OUT, { recursive: true, force: true });
-    await rm(WORKER_OUT, { recursive: true, force: true });
+    await emptyDir(WEB_OUT);
+    await emptyDir(WORKER_OUT);
   }
   await mkdir(WEB_OUT, { recursive: true });
   await mkdir(WORKER_OUT, { recursive: true });
@@ -68,6 +95,12 @@ export async function buildWebRenderer({ logger, clean = true } = {}) {
     if (!entry.isFile() || extname(entry.name) !== '.js') continue;
     const source = await readFile(join(SRC, entry.name), 'utf8');
     const moduleName = entry.name.replace(/\.js$/, '');
+
+    if (BROWSER_ONLY.has(entry.name)) {
+      await writeFile(join(WEB_OUT, entry.name), source, 'utf8');
+      report.browserOnly = (report.browserOnly || []).concat(entry.name);
+      continue;
+    }
 
     if (!findMarkers(source, moduleName).length) {
       // Nothing to hide; both sides get the file untouched.
@@ -253,7 +286,8 @@ export function rewriteIndexHtml(html) {
   // blank animation section.
   const shimTags =
     '    <script src="./' + RUNTIME_SHIM + '?v=web-1"></script>\n' +
-    '    <script src="./' + CAPABILITY_SHIM + '?v=web-1"></script>\n';
+    '    <script src="./' + CAPABILITY_SHIM + '?v=web-1"></script>\n' +
+    '    <script src="./' + WORKERS_PANEL + '?v=web-1"></script>\n';
   const lastScript = out.lastIndexOf('</script>');
   if (lastScript >= 0) {
     const insertAt = lastScript + '</script>'.length;

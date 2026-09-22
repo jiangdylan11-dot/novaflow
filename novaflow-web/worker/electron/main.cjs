@@ -24,6 +24,12 @@ const logLines = [];
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
 
+/** The first path that exists, or the last so an error names something real. */
+function firstExisting(paths) {
+  for (const p of paths) { try { if (p && fs.existsSync(p)) return p; } catch (_) {} }
+  return paths[paths.length - 1];
+}
+
 function log(message, meta) {
   const line = new Date().toISOString() + '  ' + message + (meta ? '  ' + JSON.stringify(meta) : '');
   logLines.push(line);
@@ -73,6 +79,13 @@ async function startWorker() {
     controlUrl: config.controlUrl,
     dataDir: DATA_DIR,
     workflowDir: path.join(__dirname, '../workflows'),
+    // NovaFlow's own graph builders, shipped beside the app. A compute node
+    // builds graphs with the product's real code, not an approximation.
+    rendererDir: firstExisting([
+      path.join(process.resourcesPath || '', 'worker-renderer'),
+      path.join(__dirname, '../../worker-renderer'),
+      path.join(__dirname, '../../../worker-renderer')
+    ]),
     configPath: path.join(DATA_DIR, 'identity.json'),
     comfyImageUrl: config.comfyImageUrl || 'http://127.0.0.1:8188',
     comfyVideoUrl: config.comfyVideoUrl || 'http://127.0.0.1:8189',

@@ -89,6 +89,29 @@ CREATED ──> QUEUED ──> ASSIGNED ──> UPLOADING ──> PROCESSING ─
 
 ---
 
+## 算力池怎么变大
+
+调度器不认识具体机器，只认「谁在心跳、显存够不够、模型 ready 没」。
+所以加一台机器不需要改调度，也不需要任何人去改配置：
+
+```
+Owner 在 Web 顶栏点「算力节点」
+   -> POST /api/web/workers/codes           发一个一次性码（库里只存 sha256）
+新机器装 NovaFlowWorkerSetup.exe，填地址 + 码
+   -> 自己生成 workerId / workerSecret       明文永不出这台机器
+   -> POST /api/worker/register              码被消费，gpu_workers 落行
+   -> 探 nvidia-smi / ComfyUI /system_stats   检测显卡与运行时
+   -> POST /api/worker/models                worker_models 落行
+   -> POST /api/worker/heartbeat 每 15s       状态 online
+   -> POST /api/worker/claim 轮询             调度器开始派单
+```
+
+码是一次性的（`max_uses` 可调），过期时间可调，可吊销，
+且抢不走一台已注册的机器——重新注册必须出示当前 secret，否则 409。
+云 GPU、朋友的电脑和自己的电脑走的是同一条路径，没有哪一种要特殊对待。
+
+---
+
 ## 掉线与恢复
 
 `novaflow_web_sweep()`，可由 cron 或运维调用：

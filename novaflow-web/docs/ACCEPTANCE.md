@@ -1,17 +1,21 @@
 # 验收清单逐条结果
 
-测试命令：`npm test`（六个套件，271 项断言，0 失败）。
+测试命令：`npm test`（十个套件，481 项断言，0 失败）。
 结果文件：`novaflow-web/.artifacts/test-results.json`。
 
 | 套件 | 断言 | 耗时 |
 | --- | --- | --- |
-| protocol | 74 | 1.3s |
-| sql-contract | 37 | 1.3s |
-| control-plane | 48 | 1.5s |
-| security | 42 | 1.4s |
-| multi-worker | 28 | 13.5s |
-| full-pipeline | 42 | 11.8s |
-| **合计** | **271 passed / 0 failed** | |
+| protocol | 74 | 1.8s |
+| workflow-redaction | 94 | 0.6s |
+| web-renderer-build | 40 | 12.3s |
+| sql-contract | 37 | 1.6s |
+| control-plane | 48 | 1.8s |
+| security | 42 | 1.7s |
+| multi-worker | 28 | 13.8s |
+| worker-onboarding | 48 | 2.7s |
+| renderer-workflow | 28 | 6.5s |
+| full-pipeline | 42 | 25.5s |
+| **合计** | **481 passed / 0 failed** | |
 
 ---
 
@@ -23,7 +27,7 @@
 | 2 | Supabase 登录 | ⚠️ 部分 | 会话令牌验证与现有 `novaflow-backend` 逐字节兼容；本地用同格式令牌全链路验证。**未用真实生产账号登录过**（构建机无凭据） |
 | 3 | credits 读取 | ✅ | `control-plane`、`full-pipeline`；浏览器显示 1000 → 999.4 |
 | 4 | 创建 ai_task | ✅ | `control-plane`、`full-pipeline`（用 `web_ai_tasks`，见下方说明） |
-| 5 | Worker 注册 | ✅ | `control-plane`、`multi-worker`、`full-pipeline` |
+| 5 | Worker 注册 | ✅ | `control-plane`、`multi-worker`、`full-pipeline`；整条接入闭环在 `worker-onboarding` 48 项 |
 | 6 | Worker heartbeat | ✅ | 同上；超时判定在 `multi-worker` 里实测 |
 | 7 | GPU 检测 | ✅ | `full-pipeline` 真调 `nvidia-smi`，识别出 RTX 4090 Laptop / 16376 MB |
 | 8 | Model capability 上报 | ✅ | 真问本机 ComfyUI `/object_info`，两个模型都报 ready |
@@ -73,15 +77,64 @@ distinct workers used: 2
 
 ---
 
-## 浏览器实测
+## 接入一台新算力机（实测，2026-09-22）
 
-`http://127.0.0.1:4892`，本地控制面 + 真 ComfyUI：
+这条链路是分开做的两件事：**在浏览器里发码**，和**在一台机器上只凭这个码上线**。
+中间没有任何一步碰过数据库、IP、`.env` 或源码。
 
-1. 登录 → 积分显示 1000
-2. 左栏「美工 / 绘图」，填提示词，选 512×512，步数 6
-3. 点「开始生成」→ 「已分配到算力节点 99be6302」→ 进度 15% → 完成
-4. 画布显示生成图，底部标注 `已完成 · out_0001.png · 512×512 · 301.1 KB · 扣除 0.6 积分`
-5. 顶栏积分变成 **999.4**
+1. `http://127.0.0.1:4892` 顶栏点 **算力节点** → 面板显示「还没有算力节点」
+2. 备注填 `laowang-4090` → 点 **生成注册码** → 拿到 `NFW-VZ8MUT-2K2SW2`，
+   下面写着「只显示这一次，请立刻复制。一次性使用，2026/9/29 12:43:01 过期。」
+3. 另一台机器上只给两样东西——控制面地址和这个码：
+
+   ```
+   NOVAFLOW_WEB_CONTROL_URL=http://127.0.0.1:4890
+   NOVAFLOW_WORKER_REGISTRATION_CODE=NFW-VZ8MUT-2K2SW2
+   ```
+
+4. 它自己完成了剩下的全部：
+
+   ```
+   [worker] gateway listening  {"port":8791,"endpoint":"http://127.0.0.1:8791"}
+   [worker] registered         {"gpu":"NVIDIA GeForce RTX 4090 Laptop GPU","vramMb":16376}
+   [worker] models reported    {"ready":["qwen-image-2511","minimax-h3"]}
+   NovaFlow Compute Node online
+   ```
+
+5. 面板（8 秒一刷）随即长出一行：
+   `laowang-4090 · NVIDIA GeForce RTX 4090 Laptop GPU · 16GB · ComfyUI 0.24.1 · 完成 0 / 失败 0 · 空闲`，
+   顶栏同时从「AI 未连接」变成 **「AI 已连接」**
+6. 从页面下单一张 512×512：调度器自己把它派给这台新机器，
+   `[worker] task completed {"outputs":1,"ms":18578}`
+7. 浏览器凭 `nfg_` 短期凭证从**这台 Worker 的网关**取回 317,267 字节 PNG
+   （无凭证同一 URL 返回 401），积分 100000 → **99999.4**，正好 0.6
+8. 面板那一行变成 `完成 1 / 失败 0`
+
+一次性、吊销、过期、以及「别人拿码抢不走已注册的机器」这些边界，
+由 `worker-onboarding` 套件的 48 条断言覆盖。
+
+### 第二台：直接用安装包的产物
+
+同一块面板再发一个码 `NFW-3EA8M2-FTVXTJ`，交给**安装包解包出来的目录**
+（`worker/dist/win-unpacked/resources/app`，不是源码目录）：
+
+```
+[worker] registered      {"gpu":"NVIDIA GeForce RTX 4090 Laptop GPU","vramMb":16376}
+[worker] models reported {"ready":["qwen-image-2511","minimax-h3"]}
+NovaFlow Compute Node online   gateway http://127.0.0.1:8792
+```
+
+面板随即是两行：
+
+```
+laowang-4090             RTX 4090 Laptop 16GB  ComfyUI 0.24.1  完成 1 / 失败 0  空闲
+packaged-installer-node  RTX 4090 Laptop 16GB  ComfyUI 0.24.1  完成 0 / 失败 0  空闲
+```
+
+安装包 `NovaFlowWorkerSetup.exe` 81.8 MB，随包带 97 个 NovaFlow 构建器模块；
+浏览器那三个 Web 专用文件（runtime / capabilities / 算力节点面板）不在里面——
+`web-renderer-build` 套件专门盯着这一条，因为其中的 runtime 会覆盖
+`runtimeRequestJson`，而算力节点恰恰要用它去读本机 ComfyUI 的节点目录。
 
 ---
 

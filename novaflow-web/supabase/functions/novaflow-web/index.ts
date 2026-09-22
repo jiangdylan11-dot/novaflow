@@ -234,6 +234,42 @@ const supabaseStore = {
     return Number(data || 0);
   },
 
+  async createRegistrationCode({ ownerId, codeHash, label, maxUses, expiresAt }: any) {
+    const { data, error } = await admin()
+      .from('web_worker_registration_codes')
+      .insert({
+        code_hash: codeHash, owner_id: ownerId,
+        label: label || '', max_uses: maxUses || 1, expires_at: expiresAt
+      })
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+
+  async listRegistrationCodes(ownerId: string) {
+    const { data, error } = await admin()
+      .from('web_worker_registration_codes')
+      .select('label, max_uses, used_count, expires_at, created_at')
+      .eq('owner_id', ownerId)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error) throw error;
+    return data || [];
+  },
+
+  async revokeRegistrationCodes(ownerId: string, label: string | null) {
+    let query = admin()
+      .from('web_worker_registration_codes')
+      .update({ expires_at: new Date().toISOString() })
+      .eq('owner_id', ownerId)
+      .gt('expires_at', new Date().toISOString());
+    if (label) query = query.eq('label', label);
+    const { data, error } = await query.select('code_hash');
+    if (error) throw error;
+    return (data || []).length;
+  },
+
   async consumeRegistrationCode(codeHash: string) {
     // PostgREST cannot express "increment if under the cap" atomically, so we
     // read, then update with the used_count we saw as a guard. A racing second

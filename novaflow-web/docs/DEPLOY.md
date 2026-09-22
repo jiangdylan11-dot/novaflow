@@ -203,8 +203,13 @@ Edge Function 和 Worker 网关都返回 `Access-Control-Allow-Origin: *`，
 
 1. 跑迁移（Desktop 此时完全不受影响，新表只是多出来没人用）
 2. 部署 `novaflow-web` 函数
-3. 至少让一台 Worker 上线（见 [WORKER.md](WORKER.md)）
-4. 部署 Web 站点
-5. 打开站点，用 NovaFlow 账号登录，跑一次生成
+3. 部署 Web 站点
+4. 打开站点，用 NovaFlow 账号登录
+5. 顶栏点 **算力节点** → 生成注册码 → 在有显卡的机器上装
+   `NovaFlowWorkerSetup.exe`，填控制面地址和这个码，点启动
+   （详见 [WORKER.md](WORKER.md)）
+6. 面板上那台机器变成「空闲」之后，跑一次生成
+
+第 5 步之后要再加机器，重复第 5 步就行——不用再动数据库、IP、`.env` 或源码。
 
 任何一步出问题，回滚都是独立的：删函数不影响表，跑回滚脚本不影响 Desktop。

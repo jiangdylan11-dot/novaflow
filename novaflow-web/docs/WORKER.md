@@ -87,17 +87,41 @@ node worker/src/main-headless.mjs
 
 ## 注册码从哪来
 
-控制面的 `web_worker_registration_codes` 表。本地控制面有个便捷接口：
+在 NovaFlow Web 里点顶栏的 **算力节点**。
+
+弹出的「我的算力节点」面板上半部分是当前节点（名字、显卡、显存、ComfyUI 版本、
+完成/失败数、在线状态，每 8 秒刷新）；下半部分是「接入一台新机器」：
+填个备注 → 点 **生成注册码** → 得到 `NFW-XXXXXX-XXXXXX`，旁边就是控制面地址和复制按钮。
+这两样就是新机器要填的全部内容。
+
+明文码**只在这一次返回**。数据库里存的是
+`sha256("novaflow-web-registration-code:v1:" + 明文码)`，
+所以读到数据库也拿不到能用的码，面板自己的列表接口也不会再吐出明文。
+
+默认一次性、7 天过期。要给一批云 GPU 用就把 `max_uses` 调大：
 
 ```bash
-curl -X POST http://127.0.0.1:4890/dev/registration-code \
-  -H 'content-type: application/json' \
-  -d '{"email":"you@example.com","label":"给老王的","max_uses":1}'
+# 面板点按钮走的就是这个接口
+curl -X POST $CONTROL/api/web/workers/codes \
+  -H "authorization: Bearer $SESSION" -H 'content-type: application/json' \
+  -d '{"label":"云 GPU","max_uses":3,"valid_days":1}'
+
+# 还剩几次
+curl $CONTROL/api/web/workers/codes -H "authorization: Bearer $SESSION"
+
+# 吊销没用完的
+curl -X POST $CONTROL/api/web/workers/codes/revoke \
+  -H "authorization: Bearer $SESSION" -d '{"label":"云 GPU"}'
 ```
 
-生产环境目前需要直接往表里插（`code_hash` 是
-`sha256("novaflow-web-registration-code:v1:" + 明文码)`）。
-把这个做成后台界面是后续工作，见 [LIMITATIONS.md](LIMITATIONS.md)。
+吊销是把 `expires_at` 推到现在，不是删行——用过的码仍留在历史里。
+
+本地控制面另有 `/dev/registration-code`，那只是测试用的捷径；
+生产的 Edge Function 里没有它，也不需要它。
+
+**整条接入链路不需要改数据库、配 IP、编辑 .env 或改源码。**
+云 GPU、朋友的电脑、自己的电脑走的是同一个流程。
+`worker-onboarding` 套件就是照着这条链路一步步测的（48 条断言）。
 
 ## 身份
 

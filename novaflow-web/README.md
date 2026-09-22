@@ -52,18 +52,22 @@ npm start
 npm test
 ```
 
-六个套件，全部跑真组件：
+十个套件，全部跑真组件：
 
 | 套件 | 验证什么 |
 | --- | --- |
 | `protocol` | JS 与 SQL 状态机逐对一致、工作流绑定可解析、定价不可被客户端左右、边缘函数副本与源码同步 |
+| `workflow-redaction` | 剥离后的模块逐函数差分回归（191 个辅助函数 × 5348 次探针，结果逐字节相同） |
+| `web-renderer-build` | 浏览器那份全部能解析、没有任何图拓扑泄漏、能录的都能重放、Web 专用文件不进算力节点 |
 | `sql-contract` | 迁移是纯增量的（真 PostgreSQL 前后快照对比）、回滚只删自己建的东西 |
 | `control-plane` | 鉴权边界、调度、积分、失败不扣分、非法状态迁移被拒 |
 | `security` | 越权取文件、过期令牌、跨用户访问、ComfyUI 不可外联、路径穿越 |
 | `multi-worker` | 不重复领取、任务分散、离线跳过、掉线重排、恢复后继续接单 |
+| `worker-onboarding` | 发码 → 新机器只凭码自注册 → 检测 GPU/ComfyUI/模型 → 心跳 → Online → 自动派单；以及一次性、吊销、抢占防护 |
+| `renderer-workflow` | 浏览器只发意图，图由算力节点用 NovaFlow 自己的构建器造出来并送进真 ComfyUI |
 | `full-pipeline` | 浏览器 → 控制面 → Worker → **真 ComfyUI 出图** → 网关 Range 下载 → 积分结算 → TTL 清理 |
 
-`full-pipeline` 需要本机 ComfyUI；没有时它会明说跳过生成部分，不会假装通过。
+`renderer-workflow` 和 `full-pipeline` 需要本机 ComfyUI；没有时它会明说跳过生成部分，不会假装通过。
 
 ---
 

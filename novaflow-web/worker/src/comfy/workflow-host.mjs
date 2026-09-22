@@ -99,8 +99,13 @@ export async function createWorkflowHost({ rendererDir, logger, comfy, objectInf
 
   function asPrompt(result, label) {
     const graph = typeof result === 'string' ? JSON.parse(result) : result;
-    const prompt = graph && typeof graph === 'object' && graph.prompt && typeof graph.prompt === 'object'
-      ? graph.prompt
+    // A builder may hand back the bare graph, or wrap it - ComfyUI's own
+    // submit shape uses .prompt, and several NovaFlow builders return
+    // {workflow, ...} with metadata alongside. Unwrap either.
+    const prompt = graph && typeof graph === 'object'
+      ? (graph.prompt && typeof graph.prompt === 'object' ? graph.prompt
+        : graph.workflow && typeof graph.workflow === 'object' ? graph.workflow
+        : graph)
       : graph;
     if (!prompt || typeof prompt !== 'object' || !Object.keys(prompt).length) {
       throw new Error(label + ' produced an empty graph');
@@ -163,7 +168,12 @@ export async function createWorkflowHost({ rendererDir, logger, comfy, objectInf
           ' (registered here: ' + (host.buildersFor(module).join(', ') || 'none') + ')');
       }
       // A builder may be async: it fetches the node catalogue before emitting.
-      return await builder.apply(null, Array.isArray(args) ? args : [args]);
+      try {
+        return await builder.apply(null, Array.isArray(args) ? args : [args]);
+      } catch (error) {
+        throw new Error(module + '.' + fn + ' refused these arguments: ' +
+          String(error && error.message ? error.message : error));
+      }
     },
 
     /** Replay and require the result to be a ComfyUI graph. */
@@ -178,7 +188,17 @@ export async function createWorkflowHost({ rendererDir, logger, comfy, objectInf
       if (!GRAPH_METHODS.has(String(method))) {
         throw new Error('not a graph-building method: ' + method);
       }
-      return asPrompt(await builder(options), module + '.' + method);
+      // A builder validates its own options and throws when a panel sends
+      // something it does not support. That is a task failure with a useful
+      // message, not a crash.
+      let result;
+      try {
+        result = await builder(options);
+      } catch (error) {
+        throw new Error(module + '.' + method + ' refused these options: ' +
+          String(error && error.message ? error.message : error));
+      }
+      return asPrompt(result, module + '.' + method);
     },
 
     callHelper({ module, method, args = [] }) {

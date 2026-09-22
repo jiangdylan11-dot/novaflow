@@ -67,6 +67,17 @@ function bad(message, code = ERROR_CODE.BAD_REQUEST) {
   return new HttpError(400, code, message);
 }
 
+/** Six uppercase characters a person can read off a screen and retype. */
+function randomChunk() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';  // no I/O/0/1
+  const bytes = new Uint8Array(6);
+  (globalThis.crypto || {}).getRandomValues?.(bytes);
+  if (!bytes.some(Boolean)) {
+    for (let i = 0; i < bytes.length; i += 1) bytes[i] = Math.floor(Math.random() * 256);
+  }
+  return [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
+}
+
 function nowSeconds() {
   return Math.floor(Date.now() / 1000);
 }
@@ -663,6 +674,64 @@ export function createControlPlane({ store, secrets, logger }) {
     };
   }
 
+  // ---- adding a compute node -------------------------------------------
+  //
+  // Bringing a new machine online must not require touching the database, an
+  // IP, a .env or the source. An owner mints a code here, the installer takes
+  // it, and the machine registers itself. A cloud GPU, a friend's PC and the
+  // owner's own desktop all use this same path.
+  async function handleCreateRegistrationCode(body, headers) {
+    const user = await requireUser(headers);
+    const label = sanitizeText(body.label, 80);
+    const maxUses = clampInt(body.max_uses ?? body.maxUses, 1, 50, 1);
+    const days = clampInt(body.valid_days ?? body.validDays, 1, 90, 7);
+
+    // The plaintext is returned ONCE and never stored; the row holds a hash,
+    // so a database read cannot yield a usable code.
+    const code = 'NFW-' + randomChunk() + '-' + randomChunk();
+    const codeHash = await sha256Hex('novaflow-web-registration-code:v1:' + code);
+    const expiresAt = new Date(Date.now() + days * 24 * 3600 * 1000).toISOString();
+
+    await store.createRegistrationCode({
+      ownerId: user.id, codeHash, label, maxUses, expiresAt
+    });
+
+    log('registration code minted', { owner: user.id, maxUses, days });
+    return {
+      ok: true,
+      registration_code: code,
+      label,
+      max_uses: maxUses,
+      expires_at: expiresAt,
+      instructions: '在新机器上安装 NovaFlowWorkerSetup.exe，填入控制面地址和这个注册码，点启动即可。'
+    };
+  }
+
+  async function handleListRegistrationCodes(headers) {
+    const user = await requireUser(headers);
+    const rows = await store.listRegistrationCodes(user.id);
+    // Never the hash, and never anything from which a code could be rebuilt.
+    return {
+      ok: true,
+      codes: rows.map((r) => ({
+        label: r.label,
+        max_uses: r.max_uses,
+        used_count: r.used_count,
+        remaining: Math.max(0, Number(r.max_uses) - Number(r.used_count)),
+        expires_at: r.expires_at,
+        created_at: r.created_at,
+        expired: Date.parse(r.expires_at) <= Date.now()
+      }))
+    };
+  }
+
+  async function handleRevokeRegistrationCodes(body, headers) {
+    const user = await requireUser(headers);
+    const label = sanitizeText(body.label, 80);
+    const count = await store.revokeRegistrationCodes(user.id, label || null);
+    return { ok: true, revoked: count };
+  }
+
   async function handleListWorkers(headers) {
     const user = await requireUser(headers);
     const workers = await store.listWorkers(user.id);
@@ -753,6 +822,9 @@ export function createControlPlane({ store, secrets, logger }) {
       if (method === 'POST' && path === '/api/web/tasks') return ok(await handleCreateTask(body, headers));
       if (method === 'GET' && path === '/api/web/tasks') return ok(await handleListTasks(query, headers));
       if (method === 'GET' && path === '/api/web/workers') return ok(await handleListWorkers(headers));
+      if (method === 'POST' && path === '/api/web/workers/codes') return ok(await handleCreateRegistrationCode(body, headers));
+      if (method === 'GET' && path === '/api/web/workers/codes') return ok(await handleListRegistrationCodes(headers));
+      if (method === 'POST' && path === '/api/web/workers/codes/revoke') return ok(await handleRevokeRegistrationCodes(body, headers));
 
       m = path.match(/^\/api\/web\/tasks\/([^/]+)$/);
       if (m && method === 'GET') return ok(await handleGetTask(m[1], headers));

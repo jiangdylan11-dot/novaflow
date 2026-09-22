@@ -378,7 +378,12 @@ export function createWorker(options) {
       if (!host) throw new Error('this worker has no renderer workflow host configured');
       // The browser recorded WHICH builder and WHAT options; the builder
       // itself has never left this machine.
-      graph = host.buildGraph({
+      //
+      // This MUST be awaited: buildGraph reads the ComfyUI node catalogue
+      // before it emits, so it is async. Without the await `graph` is a
+      // promise - and a rejected one takes the whole node down instead of
+      // failing the one task.
+      graph = await host.buildGraph({
         module: intent.module,
         method: intent.method,
         options: withReferences(parameters, referenceFilenames)

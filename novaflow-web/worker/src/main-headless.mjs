@@ -9,7 +9,14 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createWorker } from './worker-core.mjs';
 
+import { existsSync } from 'node:fs';
+
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+/** The first path that exists, or the last one so the error names something. */
+function firstExisting(paths) {
+  return paths.find((p) => existsSync(p)) || paths[paths.length - 1];
+}
 const WORKER_ROOT = resolve(HERE, '..');
 
 export async function loadConfig(overrides = {}) {
@@ -43,13 +50,36 @@ export async function loadConfig(overrides = {}) {
     rendererDir: overrides.rendererDir
       || process.env.NOVAFLOW_RENDERER_DIR
       || fileConfig.rendererDir
-      || resolve(WORKER_ROOT, '../renderer'),
+      // In a packaged worker this sits beside the app; in the repo it is the
+      // build output. Both are tried so one config works either way.
+      || firstExisting([
+        resolve(WORKER_ROOT, '../worker-renderer'),
+        resolve(WORKER_ROOT, '../../worker-renderer'),
+        resolve(WORKER_ROOT, '../renderer')
+      ]),
     configPath: overrides.configPath || join(dataDir, 'identity.json'),
     pollIntervalMs: Number(overrides.pollIntervalMs || fileConfig.pollIntervalMs || 2000)
   };
 }
 
+/**
+ * A compute node runs on somebody else's machine, often unattended. A graph
+ * builder throwing - because a panel sent options it did not expect - must
+ * fail that ONE task, never take the node down. These guards are the last
+ * line; the task-level handling in worker-core is the first.
+ */
+function guardProcess(logger) {
+  const log = logger || ((m) => console.error('[worker] ' + m));
+  process.on('uncaughtException', (error) => {
+    log('uncaught error (node stays up): ' + String(error && error.stack || error).slice(0, 400));
+  });
+  process.on('unhandledRejection', (reason) => {
+    log('unhandled rejection (node stays up): ' + String(reason && reason.stack || reason).slice(0, 400));
+  });
+}
+
 export async function startHeadlessWorker(overrides = {}) {
+  guardProcess(overrides.logger);
   const config = await loadConfig(overrides);
   if (!config.controlUrl) {
     throw new Error('NOVAFLOW_WEB_CONTROL_URL is required (the control plane the worker registers with)');

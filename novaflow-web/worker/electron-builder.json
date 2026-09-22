@@ -21,6 +21,13 @@
       "filter": [
         "**/*.mjs"
       ]
+    },
+    {
+      "from": "../worker-renderer",
+      "to": "worker-renderer",
+      "filter": [
+        "**/*.js"
+      ]
     }
   ],
   "asar": false,

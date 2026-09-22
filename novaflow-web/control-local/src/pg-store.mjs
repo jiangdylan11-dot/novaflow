@@ -160,6 +160,34 @@ export function createPgStore(db) {
       );
     },
 
+    async listRegistrationCodes(ownerId) {
+      // The hash is never selected: an owner's own listing must not be a way
+      // to recover a code that was shown once.
+      return await many(
+        `select label, max_uses, used_count, expires_at, created_at
+           from public.web_worker_registration_codes
+          where owner_id = $1
+          order by created_at desc
+          limit 50`,
+        [ownerId]
+      );
+    },
+
+    async revokeRegistrationCodes(ownerId, label) {
+      // Revoking expires the row rather than deleting it, so a code that was
+      // already spent still shows in the owner's history.
+      const rows = await many(
+        `update public.web_worker_registration_codes
+            set expires_at = now()
+          where owner_id = $1
+            and expires_at > now()
+            and ($2::text is null or label = $2)
+        returning code_hash`,
+        [ownerId, label]
+      );
+      return rows.length;
+    },
+
     async createRegistrationCode({ ownerId, codeHash, label, maxUses, expiresAt }) {
       return await one(
         `insert into public.web_worker_registration_codes (code_hash, owner_id, label, max_uses, expires_at)

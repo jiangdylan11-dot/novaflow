@@ -29,7 +29,10 @@
     "verify:stable": "node tools/verify-stable-untouched.mjs",
     "sync:edge": "node tools/sync-edge-function.mjs",
     "check:edge": "node tools/sync-edge-function.mjs --check",
-    "test:redaction": "node tests/e2e/workflow-redaction.test.mjs"
+    "test:redaction": "node tests/e2e/workflow-redaction.test.mjs",
+    "build:renderer": "node tools/build-web-renderer.mjs",
+    "serve:renderer": "python tools/serve-web-dist.py --port 4892 --root web-dist",
+    "test:build": "node tests/e2e/web-renderer-build.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8"

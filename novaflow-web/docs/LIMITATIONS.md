@@ -107,16 +107,6 @@ H3 那条没跑，是因为一次视频生成要占用这台机器的 GPU 很久
 
 ---
 
-## 注册码目前要手工造
-
-生产环境要发注册码，得直接往 `web_worker_registration_codes` 插一行
-（`code_hash` 是 `sha256("novaflow-web-registration-code:v1:" + 明文)`）。
-本地控制面有 `/dev/registration-code` 便捷接口，但那个接口不在部署的 Edge Function 里。
-
-做一个「我的算力节点」管理界面来发码/吊销，是明显的下一步，本次没做。
-
----
-
 ## 其它没做的
 
 - **速率限制**：控制面没有限流。现有 `novaflow-backend` 对 license 校验有限流
