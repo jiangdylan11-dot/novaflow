@@ -356,7 +356,18 @@
         void query;
         return { ok: false, status: 404, error: 'NovaFlow Web does not proxy ' + clean };
       } catch (error) {
-        return { ok: false, status: error.status || 500, error: String(error.message || error) };
+        // "missing session token" is the control plane's own wording and it
+        // surfaced raw in three different panels, none of which told anyone to
+        // log in. Say the thing that can be acted on.
+        const status = error.status || 500;
+        if (status === 401 || /session token|unauthor/i.test(String(error.message || ''))) {
+          return {
+            ok: false,
+            status: 401,
+            error: '请先登录 NovaFlow 账号（点顶栏右上角的「登录」）'
+          };
+        }
+        return { ok: false, status, error: String(error.message || error) };
       }
     },
 

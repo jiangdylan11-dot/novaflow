@@ -189,7 +189,7 @@ section('4b. browser-only files stay out of the compute node');
     workerFiles.filter((f) => f.startsWith('novaflow-web-')), []);
   checkEqual('the build says which files it held back',
     (report.browserOnly || []).slice().sort(),
-    ['novaflow-web-capabilities.js', 'novaflow-web-runtime.js']);
+    ['novaflow-web-account.js', 'novaflow-web-capabilities.js', 'novaflow-web-runtime.js']);
   for (const file of report.browserOnly || []) {
     check(file + ' did ship to the browser', webFiles.includes(file), webFiles.length);
   }
@@ -304,6 +304,34 @@ section('the shims honour the signatures the renderer calls with');
 
   // And the reader that unpacks it is present, so this is not vacuous.
   check('the shim unpacks a payload object', /function asPayload/.test(shim), null);
+}
+
+// ---------------------------------------------------------------------------
+section('a logged-out visitor is told to log in, and can');
+{
+  // Everything on the Web needs a session. Without one the control plane says
+  // "missing session token" and the panels surfaced that raw - three different
+  // noises for one cause, none of them actionable, and the login buried in
+  // 动画 → 模式选择 where nobody looks when the app says 503.
+  const account = await readFile(join(PATHS.WEB_OUT, 'novaflow-web-account.js'), 'utf8');
+  const html = await readFile(join(PATHS.WEB_OUT, 'index.html'), 'utf8');
+  const shim = await readFile(join(PATHS.WEB_OUT, 'novaflow-web-runtime.js'), 'utf8');
+
+  check('the account control ships', account.length > 1000, account.length);
+  check('and is loaded by the page',
+    (html.match(/novaflow-web-account\.js/g) || []).length === 1, null);
+  check('it puts a control in the topbar',
+    /novaflow-topbar-ai-runtime-status/.test(account), null);
+  check("and signs in through the renderer's own login",
+    /clientAuthLogin/.test(account), null);
+
+  check('an unauthenticated call says what to do about it',
+    /请先登录/.test(shim), null);
+  // The phrase may appear in a comment explaining the bug; what matters is
+  // that it is not what a user is shown.
+  const shimCode = shim.replace(/^\s*\/\/.*$/gm, '');
+  check('rather than leaking the API wording',
+    !/missing session token/.test(shimCode), null);
 }
 
 // ---------------------------------------------------------------------------

@@ -74,7 +74,11 @@ const CAPABILITY_SHIM = 'novaflow-web-capabilities.js';
 // builders read the ComfyUI node catalogue through, answered on the browser
 // side with "no node catalogue here, 503". A compute node must never be
 // handed the browser's refusals.
-const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM]);
+// The account control in the topbar. Everything on the Web needs a session,
+// and without a visible way to sign in the app just emits API noise.
+const ACCOUNT_SHIM = 'novaflow-web-account.js';
+
+const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM, ACCOUNT_SHIM]);
 
 const REPLACEMENT = (moduleName) => (fn) =>
   '\n    return globalThis.NovaFlowWebRuntime.serverOnly(' +
@@ -331,7 +335,8 @@ export function rewriteIndexHtml(html) {
   // blank animation section.
   const shimTags =
     '    <script src="./' + RUNTIME_SHIM + '?v=web-1"></script>\n' +
-    '    <script src="./' + CAPABILITY_SHIM + '?v=web-1"></script>\n';
+    '    <script src="./' + CAPABILITY_SHIM + '?v=web-1"></script>\n' +
+    '    <script src="./' + ACCOUNT_SHIM + '?v=web-1"></script>\n';
   const lastScript = out.lastIndexOf('</script>');
   if (lastScript >= 0) {
     const insertAt = lastScript + '</script>'.length;
