@@ -7,11 +7,20 @@
 
   const PANEL_ATTR = 'data-novaflow-left-accordion-panel'
   const TOKENS = Object.freeze({
-    panelGap: '5px',
-    radius: '8px',
-    headerHeight: '36px',
-    headerPadding: '0 12px',
-    headerBackground: '#272727',
+    // Reference (spline-review): the group header is a bare summary row -
+    // no plate, no radius. Groups are separated by the details' bottom rule,
+    // and only :hover gets a fill. The ICON keeps a small plate of its own.
+    panelGap: '0px',
+    radius: '0px',
+    headerHeight: '44px',
+    headerPadding: '0 3px',
+    headerBackground: 'transparent',
+    headerHoverBackground: '#222222',
+    panelBorderBottom: '1px solid #313131',
+    iconPlateBackground: '#292929',
+    iconPlateRadius: '5px',
+    iconPlateSize: '24px',
+    iconPlatePadding: '4px',
     headerFontSize: '13px',
     headerFontWeight: '400',
     headerGap: '8px',
@@ -37,6 +46,7 @@
       background: 'transparent',
       backgroundColor: 'transparent',
       border: '0',
+      borderBottom: TOKENS.panelBorderBottom,
       borderRadius: TOKENS.radius,
       boxShadow: 'none',
       boxSizing: 'border-box',
@@ -57,7 +67,7 @@
       maxHeight: TOKENS.headerHeight,
       padding: TOKENS.headerPadding,
       border: '0',
-      borderRadius: expanded ? `${TOKENS.radius} ${TOKENS.radius} 0 0` : TOKENS.radius,
+      borderRadius: TOKENS.radius,
       background: TOKENS.headerBackground,
       backgroundColor: TOKENS.headerBackground,
       color: '#fff',
@@ -87,15 +97,23 @@
 
   function iconStyle() {
     return {
-      flex: `0 0 ${TOKENS.iconSlot}`,
-      width: TOKENS.iconSlot,
-      minWidth: TOKENS.iconSlot,
-      maxWidth: TOKENS.iconSlot,
+      flex: `0 0 ${TOKENS.iconPlateSize}`,
+      width: TOKENS.iconPlateSize,
+      minWidth: TOKENS.iconPlateSize,
+      maxWidth: TOKENS.iconPlateSize,
+      height: TOKENS.iconPlateSize,
       marginRight: TOKENS.iconMarginRight,
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: TOKENS.iconPlateBackground,
+      borderRadius: TOKENS.iconPlateRadius,
+      padding: TOKENS.iconPlatePadding,
+      boxSizing: 'border-box',
       textAlign: 'center',
       fontSize: TOKENS.iconFontSize,
       lineHeight: '1',
-      color: '#fff',
+      color: '#bdbdbd',
     }
   }
 

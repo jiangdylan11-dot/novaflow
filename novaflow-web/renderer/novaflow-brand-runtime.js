@@ -2270,7 +2270,11 @@
   const SECONDARY_PANEL_BODY_INSET = 11;
   const PRIMARY_SECONDARY_GAP = NOVAFLOW_UNIFORM_GAP;
   const SECONDARY_ENTRY_GAP = NOVAFLOW_UNIFORM_GAP;
-  const SECONDARY_ENTRY_HEIGHT = 35;
+  const SECONDARY_ENTRY_HEIGHT = 29;
+  // Reference .nf-tabs: a 4px inset capsule with 3px between the pills.
+  const SECONDARY_GROUP_INSET = 4;
+  const SECONDARY_GROUP_PILL_GAP = 3;
+  const SECONDARY_ENTRY_RADIUS_PX = "5px";
   const ART_DRAWING_PANEL_HEADER_HEIGHT = 36;
   const NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT = 34;
   const NOVAFLOW_TOGGLE_SWITCH_WIDTH = 26;
@@ -2386,10 +2390,26 @@
   // Rail geometry, measured off the approved reference (spline-review):
   // a 56-wide rail of 65-tall entries, floated 10px off the left edge.
   const PRIMARY_SIDEBAR_LEFT = 10;
+  // Reference: the rail is 56 wide but its entries are 44 - they sit inset,
+  // not edge-to-edge, which is what keeps the selected block from looking fat.
+  const PRIMARY_SIDEBAR_ITEM_INSET = 6;
+  const PRIMARY_SIDEBAR_ITEM_WIDTH = 44;
   const PRIMARY_RAIL_PANEL_RADIUS = 12;
+  // The bottom generation dock (reference .nf-dock): a floating rounded panel,
+  // not a strip welded to the bottom edge.
+  // Reference .nf-grid: a flat dot field over the stage, not a 3D floor.
+  const STAGE_DOT_COLOR = "#3d3d3d";
+  const STAGE_DOT_SIZE_PX = 24;
+  const DOCK_SURFACE = "#161616";
+  const DOCK_BORDER_COLOR = "#363636";
+  const DOCK_RADIUS_PX = "12px";
+  const DOCK_PADDING = "13px 14px";
+  const DOCK_SHADOW = "0 4px 12px rgba(0, 0, 0, 0.13)";
   // The reference floats each panel off the chrome: 8px below the topbar,
   // 10px above the bottom, with a hairline edge on a slightly lighter fill.
   const PRIMARY_PANEL_TOP_GAP = 8;
+  // The rail panel pads its entries in by 10, like the reference.
+  const PRIMARY_RAIL_INNER_PAD = 10;
   const PRIMARY_PANEL_BOTTOM_GAP = 10;
   const PRIMARY_PANEL_SURFACE = "#161616";
   const PRIMARY_PANEL_BORDER_COLOR = "#2e2e2e";
@@ -2399,11 +2419,13 @@
   const PRIMARY_SIDEBAR_GAP = 9;
   const PRIMARY_VISIBLE_CONTENT_WIDTH = 227;
   const PRIMARY_LEFT_PANEL_WIDTH = 218;
-  const SECONDARY_ENTRY_GROUP_WIDTH = PRIMARY_LEFT_PANEL_WIDTH;
+  const PRIMARY_LEFT_PANEL_PAD = 9;
+  const SECONDARY_ENTRY_GROUP_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_PANEL_PAD * 2;
+  const SECONDARY_GROUP_HEIGHT = SECONDARY_ENTRY_HEIGHT + SECONDARY_GROUP_INSET * 2;
   const PRIMARY_PANEL_BODY_VERTICAL_INSET = 14;
   const PRIMARY_PANEL_BODY_INSET = 11;
   const PRIMARY_PANEL_INNER_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_PANEL_BODY_INSET * 2;
-  const TOPBAR_HEIGHT = 56;
+  const TOPBAR_HEIGHT = 54;
   const PRIMARY_CONTENT_OUTER_GAP = PRIMARY_SIDEBAR_GAP;
   const PRIMARY_CONTENT_WIDTH = PRIMARY_VISIBLE_CONTENT_WIDTH;
   const LEFT_CONTENT_SHELL_TOP_PADDING = 0;
@@ -2412,6 +2434,11 @@
   const NOVAFLOW_TOOLS_PREVIEW_TITLE_ROW_HEIGHT = 49;
   const NOVAFLOW_TOOLS_UPLOAD_ZONE_HEIGHT = 44;
   const PRIMARY_SIDEBAR_ITEM_HEIGHT = 65;
+  // Reference rail has gap:5 between entries, so the pitch is 65 + 5 = 70.
+  // Declared AFTER the height it reads: a const used before its own line
+  // throws at module scope and takes the whole runtime down with it.
+  const PRIMARY_RAIL_ITEM_GAP = 5;
+  const PRIMARY_RAIL_ITEM_PITCH = PRIMARY_SIDEBAR_ITEM_HEIGHT + PRIMARY_RAIL_ITEM_GAP;
   const PRIMARY_OUTPUT_SHORTCUT_GAP = 12;
   const PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH = 44;
   const PRIMARY_CONTENT_LEFT = PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_WIDTH + PRIMARY_SIDEBAR_GAP;
@@ -2420,7 +2447,7 @@
   const NOVAFLOW_TOOLS_WORKSPACE_PADDING_LEFT = 12;
   const NOVAFLOW_TOOLS_WORKSPACE_BACKGROUND = "#242424";
   const AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH = 260;
-  const AI_ANIMATION_PREVIEW_UI_GAP = 8;
+  const AI_ANIMATION_PREVIEW_UI_GAP = 10;
   const AI_ANIMATION_RESOURCE_SIDEBAR_GAP = AI_ANIMATION_PREVIEW_UI_GAP;
   const AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT = 232;
   const AI_ANIMATION_GENERATION_INNER_GAP = 8;
@@ -2443,8 +2470,10 @@
   const AI_ANIMATION_PROMPT_HISTORY_POPOVER_MAX_HEIGHT =
     22 + AI_ANIMATION_PROMPT_HISTORY_POPOVER_ROW_BUDGET * 30 + (AI_ANIMATION_PROMPT_HISTORY_POPOVER_ROW_BUDGET - 1) * 4;
   // The selected-entry pair, declared before its first consumer below.
-  const PRIMARY_ENTRY_ACTIVE_RADIUS_PX = "10px";
-  const UI_SELECTED_BACKGROUND = "#1c4136";
+  const PRIMARY_ENTRY_ACTIVE_RADIUS_PX = "7px";
+  // Reference uses two: the rail entry #1b4035, the segment pill #1c4136.
+  const UI_SELECTED_BACKGROUND = "#1b4035";
+  const UI_SEGMENT_SELECTED_BACKGROUND = "#1c4136";
   const UI_SELECTED_BORDER = "#29594a";
   const PRIMARY_PANEL_BACKGROUND = "#161616";
   const PRIMARY_PANEL_EXPANDED_BACKGROUND = "#181818";
@@ -2457,9 +2486,11 @@
   const PRIMARY_RAIL_BACKGROUND = PRIMARY_PANEL_BACKGROUND;
   const LEFT_COLUMN_BACKGROUND_IMAGE = "none";
   const LEFT_PANEL_EDGE = "rgba(154, 159, 165, 0.05)";
-  const SECONDARY_ENTRY_BACKGROUND = "#272727";
+  // Unselected segment entries are bare in the reference; only the
+  // selected one is filled.
+  const SECONDARY_ENTRY_BACKGROUND = "transparent";
   const SECONDARY_ENTRY_HOVER_BACKGROUND = "#303030";
-  const SECONDARY_ENTRY_ACTIVE_BACKGROUND = UI_SELECTED_BACKGROUND;
+  const SECONDARY_ENTRY_ACTIVE_BACKGROUND = UI_SEGMENT_SELECTED_BACKGROUND;
   const SKELETON_SELECTION_BACKGROUND = "rgba(30, 166, 114, 0.14)";
   const SKELETON_SELECTION_SHADOW = "inset 3px 0 0 rgba(30, 166, 114, 0.92)";
   const SKELETON_PREVIEW_CAMERA_ZOOM_MIN_SCALE = 0.1;
@@ -2588,7 +2619,9 @@
   const AI_SEQUENCE_PREVIEW_BRUSH_CURSOR_Z_INDEX = String(Number(AI_SEQUENCE_PREVIEW_BRUSH_LAYER_Z_INDEX) + 1);
   const AI_ANIMATION_PLACEHOLDER_NOTE_COLOR = "#a0a0a0";
   const PRIMARY_ACTIVE_BACKGROUND = UI_SELECTED_BACKGROUND;
-  const PRIMARY_INACTIVE_BACKGROUND = PRIMARY_PANEL_BACKGROUND;
+  // Reference: an unselected rail entry has NO plate - the rail surface
+  // behind it is the background.
+  const PRIMARY_INACTIVE_BACKGROUND = "transparent";
   // Near-black topbar, separated from the workspace by a hairline rule.
   const UI_TOPBAR_BACKGROUND = "#101113";
   const UI_FIELD_BACKGROUND = "#222222";
@@ -9328,11 +9361,12 @@
         display: none !important;
       }
       body.novaflow-blackgray-preview .novaflow-app [data-novaflow-bottom-controls="1"] {
-        background: ${LEFT_PANEL_BACKGROUND} !important;
-        background-color: ${LEFT_PANEL_BACKGROUND} !important;
+        background: ${DOCK_SURFACE} !important;
+        background-color: ${DOCK_SURFACE} !important;
         background-image: none !important;
-        border: 0 !important;
-        box-shadow: none !important;
+        border: 1px solid ${DOCK_BORDER_COLOR} !important;
+        border-radius: ${DOCK_RADIUS_PX} !important;
+        box-shadow: ${DOCK_SHADOW} !important;
         backdrop-filter: none !important;
         box-sizing: border-box !important;
       }
@@ -20868,7 +20902,7 @@
         justify-content: center !important;
       }
       [data-novaflow-primary-entry="1"][data-novaflow-primary-active="0"] {
-        color: rgba(244, 247, 251, 0.88) !important;
+        color: #9c9c9c !important;
         box-shadow: none !important;
         /* The bundle paints these #2a2a2a inline. Clearing it lets the rail
            surface behind show through, which is what makes the column read as
@@ -20882,9 +20916,9 @@
       [data-novaflow-primary-entry="1"]::before {
         content: attr(data-novaflow-primary-icon);
         display: block !important;
-        font-size: 23px !important;
+        font-size: 21px !important;
         line-height: 1 !important;
-        color: rgba(244,247,251,0.78) !important;
+        color: #9c9c9c !important;
       }
       [data-novaflow-primary-entry="1"][data-novaflow-primary-label="特效"]::before {
         font-size: 30px !important;
@@ -20892,7 +20926,7 @@
       [data-novaflow-primary-entry="1"]::after {
         content: attr(data-novaflow-primary-label);
         display: block !important;
-        font-size: 12px !important;
+        font-size: 11px !important;
         font-weight: 400 !important;
         line-height: 1.2 !important;
         color: inherit !important;
@@ -21034,13 +21068,12 @@
         top: var(--novaflow-secondary-top, 132px) !important;
         left: var(--novaflow-secondary-left, 0px) !important;
         z-index: ${DROPDOWN_UNDERLAY_Z_INDEX} !important;
-        padding-left: 0 !important;
-        padding-right: 0 !important;
+        padding: ${SECONDARY_GROUP_INSET}px !important;
         box-sizing: border-box !important;
         overflow: hidden !important;
         background: transparent !important;
-        gap: ${SECONDARY_ENTRY_GAP}px !important;
-        column-gap: ${SECONDARY_ENTRY_GAP}px !important;
+        gap: ${SECONDARY_GROUP_PILL_GAP}px !important;
+        column-gap: ${SECONDARY_GROUP_PILL_GAP}px !important;
         row-gap: 0 !important;
       }
       [data-novaflow-secondary-entry="1"]:not([data-novaflow-source-layout="1"]) {
@@ -21084,6 +21117,7 @@
       }
       [data-novaflow-secondary-entry="1"][data-novaflow-secondary-active="1"]:not([data-novaflow-source-layout="1"]) {
         border: 0 !important;
+        border-radius: 5px !important;
         background: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
         background-color: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
         color: ${UI_ACCENT_TEXT} !important;
@@ -21417,17 +21451,17 @@
           var(--novaflow-preview-left, 0px)
           round 10px
         ) !important;
-        transform-origin: center bottom !important;
-        transform: perspective(640px) rotateX(62deg) !important;
-        opacity: 0.9 !important;
+        /* The reference draws the preview as a flat dot field, not a
+           perspective floor - so no transform, no fade mask, and the dots are
+           evenly spaced across the whole stage. */
+        transform: none !important;
+        opacity: 1 !important;
         background-image:
-          linear-gradient(rgba(130, 146, 164, 0.26) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(130, 146, 164, 0.26) 1px, transparent 1px),
-          linear-gradient(90deg, transparent calc(50% - 1px), rgba(170, 184, 198, 0.34) 50%, transparent calc(50% + 1px)) !important;
-        background-size: 72px 72px, 72px 72px, 100% 100% !important;
-        background-position: center calc(100% + 36px), calc(50% + 36px) bottom, center bottom !important;
-        -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.84) 0%, rgba(0, 0, 0, 0.55) 58%, transparent 100%) !important;
-        mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.84) 0%, rgba(0, 0, 0, 0.55) 58%, transparent 100%) !important;
+          radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px) !important;
+        background-size: ${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px !important;
+        background-position: center center !important;
+        -webkit-mask-image: none !important;
+        mask-image: none !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-left-column="1"] .nf-panel:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *) {
         position: relative !important;
@@ -25778,10 +25812,10 @@
         outline: none !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-bottom-controls="1"]:not([data-novaflow-source-layout="1"]) {
-        background: ${PRIMARY_PANEL_BACKGROUND} !important;
-        border: 0 !important;
-        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
-        box-shadow: none !important;
+        background: ${DOCK_SURFACE} !important;
+        border: 1px solid ${DOCK_BORDER_COLOR} !important;
+        border-radius: ${DOCK_RADIUS_PX} !important;
+        box-shadow: ${DOCK_SHADOW} !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls .nf-panel-header:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *),
       body.novaflow-blackgray-preview-with-bottom-controls button:not(.nf-win-btn):not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *),
@@ -28125,18 +28159,18 @@
       nfSetStyleIfChanged(rail, "border", "0", "important");
       nfSetStyleIfChanged(rail, "box-shadow", "none", "important");
     }
-    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP;
+    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP + PRIMARY_RAIL_INNER_PAD;
     buttons.forEach((button, index) => {
       const parent = button.parentElement instanceof HTMLElement ? button.parentElement : null;
       const cell = parent && parent !== rail && isPrimaryEntryCellCandidate(parent, button) ? parent : button;
       nfSetAttrIfChanged(cell, "data-novaflow-primary-cell", "1");
       nfSetStyleIfChanged(cell, "position", "fixed", "important");
-      nfSetStyleIfChanged(cell, "left", `${PRIMARY_SIDEBAR_LEFT}px`, "important");
-      nfSetStyleIfChanged(cell, "top", `${top + index * PRIMARY_SIDEBAR_ITEM_HEIGHT}px`, "important");
-      nfSetStyleIfChanged(cell, "width", `${PRIMARY_SIDEBAR_WIDTH}px`, "important");
+      nfSetStyleIfChanged(cell, "left", `${PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_ITEM_INSET}px`, "important");
+      nfSetStyleIfChanged(cell, "top", `${top + index * PRIMARY_RAIL_ITEM_PITCH}px`, "important");
+      nfSetStyleIfChanged(cell, "width", `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`, "important");
       nfSetStyleIfChanged(cell, "height", `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`, "important");
-      nfSetStyleIfChanged(cell, "min-width", `${PRIMARY_SIDEBAR_WIDTH}px`, "important");
-      nfSetStyleIfChanged(cell, "max-width", `${PRIMARY_SIDEBAR_WIDTH}px`, "important");
+      nfSetStyleIfChanged(cell, "min-width", `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`, "important");
+      nfSetStyleIfChanged(cell, "max-width", `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`, "important");
       nfSetStyleIfChanged(cell, "flex", "none", "important");
       nfSetStyleIfChanged(cell, "z-index", DROPDOWN_UNDERLAY_Z_INDEX, "important");
       nfSetStyleIfChanged(cell, "overflow", "hidden", "important");
@@ -28696,10 +28730,10 @@
       hidePrimaryOutputShortcutUntilReady();
       return;
     }
-    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP;
-    const dividerTop = top + PRIMARY_ENTRY_LABELS.length * PRIMARY_SIDEBAR_ITEM_HEIGHT + PRIMARY_OUTPUT_SHORTCUT_GAP;
+    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP + PRIMARY_RAIL_INNER_PAD;
+    const dividerTop = top + PRIMARY_ENTRY_LABELS.length * PRIMARY_RAIL_ITEM_PITCH + PRIMARY_OUTPUT_SHORTCUT_GAP;
     const cellTop = dividerTop + PRIMARY_OUTPUT_SHORTCUT_GAP;
-    const exportCellTop = cellTop + PRIMARY_SIDEBAR_ITEM_HEIGHT;
+    const exportCellTop = cellTop + PRIMARY_RAIL_ITEM_PITCH;
     const shortcutZIndex = getPrimaryOutputShortcutZIndex();
     let divider = document.getElementById(PRIMARY_OUTPUT_SHORTCUT_DIVIDER_ID);
     if (!(divider instanceof HTMLElement)) {
@@ -31478,12 +31512,10 @@
   }
 
   /** Corners for one rail cell so a column of them looks like a single panel. */
-  function primaryRailCellRadius(index, count) {
-    const r = PRIMARY_RAIL_PANEL_RADIUS;
-    if (count <= 1) return `${r}px`;
-    if (index === 0) return `${r}px ${r}px 0 0`;
-    if (index === count - 1) return `0 0 ${r}px ${r}px`;
-    return "0";
+  function primaryRailCellRadius() {
+    // The reference gives EVERY entry the same small radius - they are
+    // separate blocks inside the rail panel, not slices of it.
+    return PRIMARY_ENTRY_ACTIVE_RADIUS_PX;
   }
 
   function paintPrimaryEntryShells(button, active) {
@@ -31553,13 +31585,15 @@
     const x = Number(event.clientX);
     const y = Number(event.clientY);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-    if (x < PRIMARY_SIDEBAR_LEFT - 4 || x > PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_WIDTH + 16) return null;
-    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP;
+    if (x < PRIMARY_SIDEBAR_LEFT - 4 || x > PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_WIDTH + 16) return null; // rail band, not the narrower entry box
+    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP + PRIMARY_RAIL_INNER_PAD;
     const localY = y - top;
     if (localY < 0) return null;
-    const index = Math.floor(localY / PRIMARY_SIDEBAR_ITEM_HEIGHT);
+    const index = Math.floor(localY / PRIMARY_RAIL_ITEM_PITCH);
     if (index < 0 || index >= PRIMARY_ENTRY_LABELS.length) return null;
-    const offset = localY - index * PRIMARY_SIDEBAR_ITEM_HEIGHT;
+    // The gap between entries is dead space, so a hit past the entry box is
+    // not that entry.
+    const offset = localY - index * PRIMARY_RAIL_ITEM_PITCH;
     if (offset < 0 || offset > PRIMARY_SIDEBAR_ITEM_HEIGHT) return null;
     return PRIMARY_ENTRY_LABELS[index] || null;
   }
@@ -37350,7 +37384,8 @@
       nfSetStyleIfChanged(button, "background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(button, "background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(button, "background-image", "none", "important");
-      nfSetStyleIfChanged(button, "color", active ? UI_ACCENT_TEXT : "rgba(244, 247, 251, 0.88)", "important");
+      nfSetStyleIfChanged(button, "color", active ? UI_ACCENT_TEXT : "#9c9c9c", "important");
+      nfSetStyleIfChanged(button, "font-size", "11px", "important");
       nfSetStyleIfChanged(button, "opacity", "1", "important");
     });
   }
@@ -50829,12 +50864,30 @@
     const upperRail = findSidebarSecondaryAnchorRect() || findPrimaryRailRect() || findClosestUpperRailRect(groupRect);
     const shellHeight = SECONDARY_ENTRY_HEIGHT;
     const buttonHeight = SECONDARY_ENTRY_HEIGHT;
-    const left = upperRail ? Math.round(upperRail.left) : 0;
+    // Reference: the segment sits INSIDE the left panel's padding, so it is
+    // measured off the panel box rather than off whatever rail is above it.
+    const left = (upperRail ? Math.round(upperRail.left) : 0)
+      + PRIMARY_LEFT_PANEL_PAD + SECONDARY_GROUP_INSET + 1;
     const rootWidth = upperRail ? Math.round(upperRail.width) : Math.round(groupRect.width || PRIMARY_VISIBLE_CONTENT_WIDTH);
-    const secondaryWidth = Math.min(SECONDARY_ENTRY_GROUP_WIDTH, rootWidth);
-    const top = upperRail ? Math.round(upperRail.bottom + PRIMARY_SECONDARY_GAP) : Math.max(88, Math.round(groupRect.top - 10));
+    const secondaryWidth = Math.min(SECONDARY_ENTRY_GROUP_WIDTH - (SECONDARY_GROUP_INSET + 1) * 2, rootWidth);
+    const panelTop = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP + PRIMARY_RAIL_INNER_PAD;
+    const top = upperRail
+      ? panelTop + SECONDARY_GROUP_INSET + 1
+      : Math.max(88, Math.round(groupRect.top - 10));
     const shieldTop = upperRail ? Math.round(upperRail.bottom) : top;
     const desiredContentTop = Math.round(top + shellHeight + SECONDARY_CONTENT_GAP);
+    // Inline, because the group's padding and the pills' radius are each set
+    // by more than one stylesheet rule and the last one kept winning. This is
+    // the capsule spec from the reference: 4px inset, 3px gap, 5px pills.
+    nfSetStyleIfChanged(group, "padding", "0", "important");
+    nfSetStyleIfChanged(group, "gap", `${SECONDARY_GROUP_PILL_GAP}px`, "important");
+    nfSetStyleIfChanged(group, "column-gap", `${SECONDARY_GROUP_PILL_GAP}px`, "important");
+    nfSetStyleIfChanged(group, "box-sizing", "border-box", "important");
+    Array.from(group.querySelectorAll('[data-novaflow-secondary-entry="1"]')).forEach((entry) => {
+      if (entry instanceof HTMLElement) {
+        nfSetStyleIfChanged(entry, "border-radius", SECONDARY_ENTRY_RADIUS_PX, "important");
+      }
+    });
     nfSetStyleIfChanged(group, "--novaflow-secondary-top", `${top}px`);
     nfSetStyleIfChanged(group, "--novaflow-secondary-left", `${left}px`);
     nfSetStyleIfChanged(group, "--novaflow-secondary-width", `${secondaryWidth}px`);
@@ -51199,7 +51252,7 @@
       nfSetStyleIfChanged(button, "justify-content", "center", "important");
       nfSetStyleIfChanged(button, "padding", "0 6px", "important");
       nfSetStyleIfChanged(button, "border", "0", "important");
-      nfSetStyleIfChanged(button, "border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
+      nfSetStyleIfChanged(button, "border-radius", SECONDARY_ENTRY_RADIUS_PX, "important");
       const secondaryBackground = active ? SECONDARY_ENTRY_ACTIVE_BACKGROUND : SECONDARY_ENTRY_BACKGROUND;
       nfSetStyleIfChanged(button, "background", secondaryBackground, "important");
       nfSetStyleIfChanged(button, "background-color", secondaryBackground, "important");
@@ -69277,11 +69330,14 @@
     ));
     if (bottomControls instanceof HTMLElement) {
       nfSetAttrIfChanged(bottomControls, "data-novaflow-bottom-controls", "1");
-      nfSetStyleIfChanged(bottomControls, "background", LEFT_PANEL_BACKGROUND, "important");
-      nfSetStyleIfChanged(bottomControls, "background-color", LEFT_PANEL_BACKGROUND, "important");
-      nfSetStyleIfChanged(bottomControls, "border", "0", "important");
-      nfSetStyleIfChanged(bottomControls, "border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
-      nfSetStyleIfChanged(bottomControls, "box-shadow", "none", "important");
+      // The dock spec. Written inline because this element carries
+      // data-novaflow-source-layout, which every stylesheet rule for the strip
+      // excludes with :not() - so the stylesheet cannot reach it at all.
+      nfSetStyleIfChanged(bottomControls, "background", DOCK_SURFACE, "important");
+      nfSetStyleIfChanged(bottomControls, "background-color", DOCK_SURFACE, "important");
+      nfSetStyleIfChanged(bottomControls, "border", `1px solid ${DOCK_BORDER_COLOR}`, "important");
+      nfSetStyleIfChanged(bottomControls, "border-radius", DOCK_RADIUS_PX, "important");
+      nfSetStyleIfChanged(bottomControls, "box-shadow", DOCK_SHADOW, "important");
       nfSetStyleIfChanged(bottomControls, "overflow", "hidden", "important");
       styleBottomControlRanges(bottomControls);
     }
@@ -71309,9 +71365,9 @@
         grid-column: 1;
         z-index: 1;
         margin: 0 ${AI_ANIMATION_PREVIEW_UI_GAP}px ${AI_ANIMATION_PREVIEW_UI_GAP}px;
-        border-radius: 8px;
-        background: #1b1b1b;
-        border: 0;
+        border-radius: ${DOCK_RADIUS_PX};
+        background: ${DOCK_SURFACE};
+        border: 1px solid ${DOCK_BORDER_COLOR};
         box-sizing: border-box;
         display: grid;
         grid-template-rows: 46px 24px minmax(0, 1fr);
@@ -72069,14 +72125,14 @@
         min-height: ${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px !important;
         max-height: ${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px !important;
         margin: 0 ${AI_ANIMATION_PREVIEW_UI_GAP}px ${AI_ANIMATION_PREVIEW_UI_GAP}px !important;
-        padding: 10px 16px !important;
-        border: 0 !important;
-        border-color: transparent !important;
-        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
+        padding: ${DOCK_PADDING} !important;
+        border: 1px solid ${DOCK_BORDER_COLOR} !important;
+        border-color: ${DOCK_BORDER_COLOR} !important;
+        border-radius: ${DOCK_RADIUS_PX} !important;
         outline: 0 !important;
-        box-shadow: none !important;
+        box-shadow: ${DOCK_SHADOW} !important;
         box-sizing: border-box !important;
-        background: #181818 !important;
+        background: ${DOCK_SURFACE} !important;
         background-color: #181818 !important;
         background-image: none !important;
         display: flex !important;

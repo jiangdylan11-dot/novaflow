@@ -405,6 +405,19 @@
   background-image: none !important;
 }
 
+/* 2.0b Segment pills: 5px corners. The renderer writes 7px from the shared
+   radius token through more than one path, so this pins it at the one place
+   the reference differs. */
+.novaflow-app [data-novaflow-secondary-entry="1"][aria-pressed] {
+  border-radius: 5px !important;
+}
+
+/* The group is a capsule with a 4px inset, so the pills sit in from its edge
+   exactly as the reference measures (group 198x37 -> pills 94x29). */
+.novaflow-app [data-novaflow-secondary-group="1"]:not([data-novaflow-source-layout="1"]) {
+  padding: 4px !important;
+}
+
 /* 2.1 The stage. The bundle writes `background: #151515` inline on the second
    child of .nf-app-body (no !important), so a rule can take it. The reference
    floats the stage as a rounded panel on the backdrop, at the same value as
