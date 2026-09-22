@@ -77,8 +77,9 @@ const CAPABILITY_SHIM = 'novaflow-web-capabilities.js';
 // The account control in the topbar. Everything on the Web needs a session,
 // and without a visible way to sign in the app just emits API noise.
 const ACCOUNT_SHIM = 'novaflow-web-account.js';
+const WAREHOUSE_SHIM = 'novaflow-web-warehouse.js';
 
-const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM, ACCOUNT_SHIM]);
+const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM, ACCOUNT_SHIM, WAREHOUSE_SHIM]);
 
 const REPLACEMENT = (moduleName) => (fn) => {
   if (moduleName === 'novaflow-brand-runtime' && fn === 'validateArtWorkflowNodes') return '\n    return;\n  ';
@@ -337,6 +338,7 @@ export function rewriteIndexHtml(html) {
   // path on the strength of capabilities we advertise. That is what produced a
   // blank animation section.
   const shimTags =
+    '    <script src="./' + WAREHOUSE_SHIM + '?v=warehouse-1"></script>\n' +
     '    <script src="./' + RUNTIME_SHIM + '?v=web-1"></script>\n' +
     '    <script src="./' + CAPABILITY_SHIM + '?v=web-1"></script>\n' +
     '    <script src="./' + ACCOUNT_SHIM + '?v=web-1"></script>\n';

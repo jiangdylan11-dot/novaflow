@@ -491,6 +491,9 @@
         const res = await fetch(url);
         if (!res.ok) return { ok: false, error: '取回结果失败：' + res.status };
         const buffer = await res.arrayBuffer();
+        if (root.NovaFlowWebWarehouse) {
+          await root.NovaFlowWebWarehouse.save({ blob: new Blob([buffer], { type: mimeFor(filename) }), name: filename });
+        }
         const bytes = new Uint8Array(buffer);
         let binary = '';
         for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768));
@@ -620,7 +623,8 @@
       ok: true,
       result: { state: 'web', authorized: true, permissions: ['web'] }
     }),
-    runtimeOpenOutputFolder: async () => ({ ok: false, error: 'Web 版没有本地输出目录，请用下载按钮' }),
+    runtimeOpenOutputFolder: async () => root.NovaFlowWebWarehouse
+      ? root.NovaFlowWebWarehouse.open() : ({ ok: false, error: '仓库组件未加载，请刷新网页后重试' }),
     runtimeFreeMemory: async () => ({ ok: true, result: {} }),
     promptAssistantGetStatus: async () => ({ ok: true, result: { available: false, reason: 'web' } }),
     promptAssistantOptimizePrompt: async () => ({ ok: false, error: '提示词助手在 Web 版通过智能 AI 提供' }),

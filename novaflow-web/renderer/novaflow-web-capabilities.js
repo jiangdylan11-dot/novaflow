@@ -15,7 +15,7 @@
 //   open folder (PS project)     showDirectoryPicker, <input webkitdirectory>
 //   webUtils.getPathForFile      a handle token (a browser has no OS paths)
 //   ffmpeg video compositor      canvas + MediaRecorder (WebM)
-//   open output folder           a download, since a tab has no file manager
+//   open output folder           mapped local-folder browser and save queue
 //   temp file cache              in-memory blobs with the same keys
 //   runtime status               the worker pool's health
 
@@ -298,9 +298,8 @@
   };
   runtime.fileForToken = (token) => fileTokens.get(String(token)) || null;
 
-  api.runtimeOpenOutputFolder = async () => fail(
-    'Web 版没有本地输出目录。结果可以用下载按钮保存，或在「仓库」里查看。'
-  );
+  api.runtimeOpenOutputFolder = async () => root.NovaFlowWebWarehouse
+    ? root.NovaFlowWebWarehouse.open() : fail('仓库组件未加载，请刷新网页后重试');
 
   // --------------------------------------------------------- ai sequence cache
   //
@@ -338,6 +337,10 @@
     releaseCache(key);
     const path = URL.createObjectURL(blob);
     cache.set(key, { reservedAt: Date.now(), blob, bytes: blob.size, path });
+    // External image providers use this cache bridge as well as Worker outputs.
+    if (root.NovaFlowWebWarehouse && /^\["art-output"/.test(key)) {
+      await root.NovaFlowWebWarehouse.save({ blob, name: payload.fileName });
+    }
     const value = { key, path, bytes: blob.size };
     return { ...ok(value), ...value };
   };

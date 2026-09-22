@@ -190,7 +190,7 @@ section('4b. browser-only files stay out of the compute node');
     workerFiles.filter((f) => f.startsWith('novaflow-web-')), []);
   checkEqual('the build says which files it held back',
     (report.browserOnly || []).slice().sort(),
-    ['novaflow-web-account.js', 'novaflow-web-capabilities.js', 'novaflow-web-runtime.js']);
+    ['novaflow-web-account.js', 'novaflow-web-capabilities.js', 'novaflow-web-runtime.js', 'novaflow-web-warehouse.js']);
   for (const file of report.browserOnly || []) {
     check(file + ' did ship to the browser', webFiles.includes(file), webFiles.length);
   }

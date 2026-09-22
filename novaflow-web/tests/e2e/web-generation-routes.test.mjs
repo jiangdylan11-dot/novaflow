@@ -17,11 +17,13 @@ const assert = new Proxy(strictAssert, { get(target, key) {
   return typeof fn === 'function' ? (...args) => { checks += 1; return fn(...args); } : fn;
 } });
 const submissions = [];
+const warehouseFiles = [];
 const response = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } });
 let task;
 const sandbox = createDomSandbox({
   HTMLButtonElement: class {}, HTMLInputElement: class {}, HTMLTextAreaElement: class {}, HTMLSelectElement: class {},
   Response, Request, Blob, FormData,
+  NovaFlowWebWarehouse: { save: async item => { warehouseFiles.push(item); }, open: async () => ({ ok: true, warehouse: true }) },
   NOVAFLOW_WEB_CONFIG: { controlUrl: 'https://control.test' },
   fetch: async (input, init = {}) => {
     const url = String(input);
@@ -61,6 +63,8 @@ assert.equal((await history.json())['test-task'].outputs['nf-output'].gifs[0].fi
 const binary = await sandbox.electronAPI.runtimeRequestBinary({ path: '/view?filename=NovaFlow_result-task.mp4' });
 assert.equal(binary.dataBase64, 'AQID');
 assert.equal(binary.contentType, 'video/mp4');
+assert.equal(warehouseFiles.at(-1).name, 'NovaFlow_result-task.mp4');
+assert.deepEqual([...new Uint8Array(await warehouseFiles.at(-1).blob.arrayBuffer())], [1, 2, 3]);
 const direct = await sandbox.fetch('http://127.0.0.1:8189/view?filename=NovaFlow_result-task.mp4&type=output');
 assert.deepEqual([...new Uint8Array(await direct.arrayBuffer())], [1, 2, 3]);
 assert.equal((await sandbox.fetch('http://127.0.0.1:8189/object_info')).status, 503);
