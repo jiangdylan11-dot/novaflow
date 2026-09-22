@@ -220,19 +220,32 @@ Edge Function 和 Worker 网关都返回 `Access-Control-Allow-Origin: *`，
 
 ---
 
-### 站点指向哪个控制面
-
-构建**永远**产出本地默认值（`http://127.0.0.1:4890`），指向生产是构建之后的一步：
+### 打包站点：一条命令，别自己排顺序
 
 ```bash
-npm run build:renderer
-npm run config:web -- --control-url=https://<项目ref>.supabase.co/functions/v1/novaflow-web
-npm run config:web -- --show      # 读回来确认
+npm run package:site -- --control-url=https://<项目ref>.supabase.co/functions/v1/novaflow-web --out=C:/path/site.zip
 ```
 
-它只改构建产物 `web-dist/index.html` 里那一个 config 块，改完自己读回来核对，
-块不在预期位置就报错而不是瞎猜。**每次重新构建都要重跑一次**，
-因为构建会把它写回本地默认值。
+它依次做四件事：构建 → 改地址 → **读回来核对** → 打 zip。
+
+**为什么要合成一条命令**：构建**永远**把 `http://127.0.0.1:4890` 写回 index.html，
+所以任何在改完地址之后再跑的构建都会悄悄把它冲掉 —— 跑一次测试套件就会。
+我本人就这么干了一次：打包了被冲掉之后的产物，公网站点去连 `127.0.0.1:4890`，
+表现是「暂无可用算力」，而算力池明明好好的。
+
+最后一步会**拒绝**产出仍然指向 localhost 的 zip（除非显式 `--allow-local`），
+因为那种 zip 放到公网主机上没有任何正当用途。
+
+zip 用 `tar` 打，不用 PowerShell 的 `Compress-Archive` —— 后者写的是反斜杠路径分隔符，
+违反 ZIP 规范。Cloudflare 的解压器严格按规范来，结果是**子目录里的文件全部 404**、
+主界面包丢失、页面全黑。这个也是真部署出来才发现的。
+
+要单独改地址（不重新构建）仍可以：
+
+```bash
+npm run config:web -- --control-url=...   # 只改 web-dist/index.html
+npm run config:web -- --show              # 读回来确认
+```
 
 ### 边缘函数的两个开关
 
