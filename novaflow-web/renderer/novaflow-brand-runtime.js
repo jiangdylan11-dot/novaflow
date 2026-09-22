@@ -2420,6 +2420,13 @@
   const PRIMARY_VISIBLE_CONTENT_WIDTH = 227;
   const PRIMARY_LEFT_PANEL_WIDTH = 218;
   const PRIMARY_LEFT_PANEL_PAD = 9;
+  // Reference .nf-sidebar pads its content in by 10, so cards are 198 wide
+  // inside a 218 panel.
+  const PRIMARY_LEFT_CARD_INSET = 10;
+  const PRIMARY_LEFT_CARD_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_CARD_INSET * 2;
+  const PRIMARY_LEFT_CARD_HEADER_HEIGHT = 46;
+  // The shell lands the cards at 89; the reference wants 85.
+  const PRIMARY_LEFT_CARD_SHIFT = -4;
   const SECONDARY_ENTRY_GROUP_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_PANEL_PAD * 2;
   const SECONDARY_GROUP_HEIGHT = SECONDARY_ENTRY_HEIGHT + SECONDARY_GROUP_INSET * 2;
   const PRIMARY_PANEL_BODY_VERTICAL_INSET = 14;
@@ -28721,6 +28728,54 @@
     };
     surface(PRIMARY_RAIL_SURFACE_ID, PRIMARY_SIDEBAR_LEFT, PRIMARY_SIDEBAR_WIDTH);
     surface(PRIMARY_LEFT_SURFACE_ID, PRIMARY_CONTENT_LEFT, PRIMARY_LEFT_PANEL_WIDTH);
+    syncPrimaryLeftCards();
+  }
+
+  /**
+   * Inset the left panel's cards and strip the plate off their headers.
+   *
+   * Reference: a 218 panel pads its content in by 10, so the cards are 198 and
+   * the group header is a bare 46-tall row that only fills on hover. Written
+   * inline from here because the card width is set by several stylesheet rules
+   * AND an inline !important, so nothing a stylesheet says survives.
+   */
+  function syncPrimaryLeftCards() {
+    Array.from(document.querySelectorAll('[data-novaflow-left-content-shell="1"], [data-novaflow-left-content-root="1"]')).forEach((shell) => {
+      if (shell instanceof HTMLElement) {
+        // The shell already sits 14 in from the panel edge, so it adds no
+        // padding of its own; the cards correct the last 4px themselves.
+        nfSetStyleIfChanged(shell, "padding-left", "0", "important");
+        nfSetStyleIfChanged(shell, "padding-right", "0", "important");
+        nfSetStyleIfChanged(shell, "box-sizing", "border-box", "important");
+      }
+    });
+    Array.from(document.querySelectorAll('[data-novaflow-editor-panel="1"]')).forEach((card) => {
+      if (!(card instanceof HTMLElement)) return;
+      nfSetStyleIfChanged(card, "width", `${PRIMARY_LEFT_CARD_WIDTH}px`, "important");
+      nfSetStyleIfChanged(card, "min-width", `${PRIMARY_LEFT_CARD_WIDTH}px`, "important");
+      nfSetStyleIfChanged(card, "max-width", `${PRIMARY_LEFT_CARD_WIDTH}px`, "important");
+      // The shell already indents its children, so the card itself takes no
+      // extra margin - the inset is applied to the shell below instead.
+      nfSetStyleIfChanged(card, "margin-left", `${PRIMARY_LEFT_CARD_SHIFT}px`, "important");
+      nfSetStyleIfChanged(card, "min-height", `${PRIMARY_LEFT_CARD_HEADER_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(card, "font-size", "12px", "important");
+      const header = card.querySelector(".nf-panel-header") || card.firstElementChild;
+      if (header instanceof HTMLElement) {
+        nfSetStyleIfChanged(header, "background", "transparent", "important");
+        nfSetStyleIfChanged(header, "background-color", "transparent", "important");
+        nfSetStyleIfChanged(header, "height", `${PRIMARY_LEFT_CARD_HEADER_HEIGHT}px`, "important");
+        nfSetStyleIfChanged(header, "min-height", `${PRIMARY_LEFT_CARD_HEADER_HEIGHT}px`, "important");
+        nfSetStyleIfChanged(header, "font-size", "12px", "important");
+        // The label is a child span, and it carries its own size.
+        Array.from(header.querySelectorAll("*")).forEach((node) => {
+          if (node instanceof HTMLElement) {
+            nfSetStyleIfChanged(node, "font-size", "12px", "important");
+          }
+        });
+        nfSetStyleIfChanged(header, "color", "#d4d4d4", "important");
+        nfSetStyleIfChanged(header, "border-radius", "6px", "important");
+      }
+    });
   }
 
   function ensurePrimaryOutputShortcut() {
@@ -61403,22 +61458,23 @@
     const hover = button.getAttribute("data-hover") === "1";
     const focus = button === document.activeElement;
     const pressed = button.getAttribute("data-pressed") === "1";
-    const background = pressed ? "#303030" : hover || focus ? "#3a3a3a" : UI_BUTTON_BACKGROUND;
+    // Reference .nf-canvas-bar button: no plate until hover, 28 tall, 5px.
+    const background = pressed ? "#303030" : hover || focus ? "#393939" : "transparent";
     setParticleProjectActionStyles(button, {
-      height: "32px",
-      "min-width": "72px",
-      padding: "0 16px",
-      "border-radius": "8px",
+      height: "28px",
+      "min-width": "62px",
+      padding: "0 12px",
+      "border-radius": "5px",
       border: "0",
       background,
       "background-color": background,
       "background-image": "none",
       "box-shadow": "none",
-      color: "#ffffff",
+      color: "#a0a0a0",
       cursor: "pointer",
-      "font-size": "12px",
+      "font-size": "11px",
       "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
-      "line-height": "32px",
+      "line-height": "28px",
       "white-space": "nowrap",
       display: "inline-flex",
       "align-items": "center",
