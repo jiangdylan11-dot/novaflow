@@ -33,3 +33,13 @@
 网页更新包：`novaflow-web/.artifacts/novaflow-web-warehouse-ui.zip`。SHA256：`A067B70000456BDF87ECD659AC0E93582CA20F143A7249A2D93EF4C7C6188A37`。
 
 目录授权参考：[Chrome File System Access API](https://developer.chrome.com/docs/capabilities/web-apis/file-system-access)、[showDirectoryPicker](https://developer.mozilla.org/en-US/docs/Web/API/Window/showDirectoryPicker)。
+
+## 2026-09-23 本地文件入口、删除与分类精简
+
+仓库工具栏新增“打开 Windows 文件夹”，通过 novaflow://warehouse/open 调起启动助手，适用于本地网页和外网页面。浏览器只写入短期目录凭证，不发送任意系统路径；助手在已记住目录和配套环境 output 中验证凭证，其他目录首次由用户选取相同仓库根目录。支持打开正在浏览的子目录，拒绝越界路径、失效/不匹配凭证。安装包新增 novaflow 协议注册，需要更新安装助手后生效。浏览器首次可能要求允许打开 NovaFlow。
+
+素材卡片和预览页新增删除入口。按照用户最终要求，确认后使用 File System Access removeEntry 直接删除本地原文件，不创建回收目录，不进入系统回收站。删除成功立即更新列表/计数，拒绝无权限、文件被替换等情况；删除失败保留错误反馈。移除“待保存”分类，正常仅显示全部作品、图片、视频；未能写盘的结果仍在全部作品中提示未保存，保留异常暂存与重试能力。删除未保存结果会持久化废弃标记，防止其他页重新写入该结果。
+
+验证：仓库文件测试 31 项、助手 57 项、目录定位测试通过；网页构建 82 项通过。隔离浏览器使用真实 OPFS 文件验证永久删除提示、删除后列表/计数归零，无生产文件删除。Windows Electron shell.openPath 实际调用成功打开测试目录。测试未安装覆盖生产助手，因此浏览器协议注册后的完整唤起链仍需更新安装包验收。根目录 sync:runtime/check:runtime/check:entry 已执行，仍有此前记录的桌面依赖/renderer 缺失及集成限制。
+
+已生成 worker/dist/NovaFlowSetup-0.4.4.exe 和仓库根目录 .artifacts/novaflow-web-warehouse-actions.zip，分别核对包内 main.cjs、warehouse-folder.cjs、网页仓库模块与源码一致。已安装程序与正式外网站点尚未替换；本地网页版随新助手安装包更新，外网页需部署新的网页 ZIP。隔离预览脚本位于 tests/helpers/preview-warehouse.mjs，不进入发布包。

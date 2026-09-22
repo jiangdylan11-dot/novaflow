@@ -6,7 +6,7 @@
   const MIME = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', bmp: 'image/bmp', mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime' };
   const records = new Map();
   let db, directory = null, permission = 'prompt', lastError = '', panel, status, listing, preview, previousFocus;
-  let serial = Promise.resolve(), previewUrl = '', busy = false;
+  let serial = Promise.resolve(), previewUrl = '', busy = false, feedback = '';
   let folderLabel, connectionLabel, errorLabel, summary, breadcrumbs, search, sort, viewer;
   let folderTrail = [], entries = [], filter = 'all', listingVersion = 0, thumbnailObserver;
   const thumbnailUrls = new Set();
@@ -55,10 +55,11 @@
     folderLabel.textContent = directory ? directory.name : '连接本地文件夹';
     connectionLabel.textContent = directory ? (permission === 'granted' ? '已连接本机' : '需要恢复授权') : '尚未连接';
     connectionLabel.dataset.connected = String(!!directory && permission === 'granted');
-    status.textContent = pendingCount() ? pendingCount() + ' 个结果等待保存' : directory && permission === 'granted' ? '新生成的图片和视频将自动保存到此文件夹' : '选择作品文件夹，即可浏览并自动保存生成结果';
+    status.textContent = feedback || (pendingCount() ? pendingCount() + ' 个结果等待保存' : directory && permission === 'granted' ? '新生成的图片和视频将自动保存到此文件夹' : '选择作品文件夹，即可浏览并自动保存生成结果');
     errorLabel.textContent = lastError; errorLabel.hidden = !lastError;
     panel.querySelector('[data-warehouse-action="authorize"]').hidden = !directory || permission === 'granted';
     panel.querySelector('[data-warehouse-action="disconnect"]').hidden = !directory;
+    panel.querySelector('[data-warehouse-action="open-folder"]').disabled = !directory || permission !== 'granted';
     panel.querySelector('[data-warehouse-action="retry"]').hidden = !lastError || !pendingCount() || permission !== 'granted';
   }
   function notice() {
@@ -121,6 +122,8 @@
     const run = async () => {
       for (const record of records.values()) {
         if (!record.blob) continue;
+        const latest = db && await transaction('outputs', 'readonly', store => store.get(record.id));
+        if (latest?.discarded) { records.set(record.id, latest); continue; }
         const name = await write(record);
         const saved = { ...record, savedName: name, blob: null };
         // Keep the retryable blob until the disk write and local index commit.
@@ -191,6 +194,53 @@
       await refreshList(); tell();
     });
   }
+  async function openFolder() {
+    if (!directory || permission !== 'granted') throw new Error('请先连接本地文件夹并恢复授权');
+    const id = root.crypto.randomUUID();
+    const name = '.novaflow-open-' + id + '.json';
+    const target = directory;
+    const file = await target.getFileHandle(name, { create: true });
+    const stream = await file.createWritable();
+    await stream.write(new Blob([JSON.stringify({ id, createdAt: Date.now() })]));
+    await stream.close();
+    const link = node('a', null, root.document.body);
+    link.href = 'novaflow://warehouse/open?id=' + id + '&sub=' + encodeURIComponent(folderTrail.map(folder => folder.name).join('/'));
+    link.click(); link.remove();
+    feedback = '请允许浏览器打开 NovaFlow；需要新版助手。首次定位其他目录时请选择仓库根目录。'; lastError = ''; tell();
+    // The native helper removes its proof after opening. Also clean up if the
+    // browser prompt was cancelled or the helper is not installed.
+    root.setTimeout(() => target.removeEntry(name).catch(() => {}), 180000);
+  }
+  async function removeAsset(item) {
+    return enqueue(async () => {
+      if (item.pending) {
+        const record = records.get(item.id);
+        if (!record?.blob) throw new Error('此素材已保存，请刷新后重试');
+        const discarded = { ...record, blob: null, discarded: true };
+        await persist(discarded); records.set(item.id, discarded);
+      } else {
+        const parent = item.parent;
+        if (!parent || await parent.queryPermission({ mode: 'readwrite' }) !== 'granted') throw new Error('请先恢复文件夹写入授权');
+        const current = await parent.getFileHandle(item.name);
+        if (!await current.isSameEntry(item.handle)) throw new Error('文件已被替换，请刷新后重试');
+        await parent.removeEntry(item.name);
+      }
+      clearPreview();
+      lastError = ''; feedback = item.pending ? '已删除未保存结果' : '已从本地文件夹删除素材';
+      await refreshList(); tell(); notice();
+    });
+  }
+  function confirmRemove(item, host) {
+    host.replaceChildren();
+    node('span', item.pending ? '永久删除此未保存结果？' : '从电脑永久删除？无法撤销。', host);
+    const yes = action(host, '确认删除', () => removeAsset(item)); yes.className = 'nf-wh-delete';
+    action(host, '取消', () => { host.replaceChildren(); addDelete(item, host); });
+    yes.focus();
+  }
+  function addDelete(item, host) {
+    const button = action(host, '删除素材', () => confirmRemove(item, host));
+    button.className = 'nf-wh-delete'; button.setAttribute('aria-label', '删除素材 ' + item.name);
+  }
   function node(tag, text, parent) {
     const value = root.document.createElement(tag);
     if (text != null) value.textContent = text;
@@ -208,7 +258,7 @@
     previewUrl = ''; if (preview) preview.replaceChildren();
     if (viewer) viewer.hidden = true;
   }
-  function showPreview(blob, name) {
+  function showPreview(blob, name, item) {
     clearPreview(); previewUrl = URL.createObjectURL(blob);
     viewer.hidden = false;
     const media = node(/\.(mp4|webm|mov)$/i.test(name) ? 'video' : 'img', null, preview);
@@ -217,6 +267,7 @@
     const details = node('div', null, preview); details.className = 'nf-wh-preview-details';
     const label = node('div', null, details); node('strong', name, label); node('p', formatBytes(blob.size), label);
     action(details, '下载原文件', () => download(blob, name));
+    if (item) { const actions = node('div', null, details); actions.className = 'nf-wh-asset-actions'; addDelete(item, actions); }
     viewer.querySelector('button').focus();
   }
   function formatBytes(bytes) {
@@ -255,16 +306,17 @@
       node('span', '/', breadcrumbs);
       action(breadcrumbs, folder.name, () => { folderTrail = folderTrail.slice(0, index + 1); return refreshList(); }).className = 'nf-wh-crumb';
     });
-    const counts = { all: entries.filter(item => item.kind === 'file').length, image: 0, video: 0, pending: pending.length };
-    entries.forEach(item => { if (item.kind === 'file') counts[/\.(mp4|webm|mov)$/i.test(item.name) ? 'video' : 'image']++; });
+    const visibleEntries = [...entries, ...pending];
+    const counts = { all: visibleEntries.filter(item => item.kind === 'file').length, image: 0, video: 0 };
+    visibleEntries.forEach(item => { if (item.kind === 'file') counts[/\.(mp4|webm|mov)$/i.test(item.name) ? 'video' : 'image']++; });
     panel.querySelectorAll('[data-warehouse-filter]').forEach(button => {
       button.setAttribute('aria-pressed', String(button.dataset.warehouseFilter === filter));
       button.querySelector('.nf-wh-count').textContent = counts[button.dataset.warehouseFilter];
     });
     const needle = search.value.trim().toLowerCase();
-    const items = (filter === 'pending' ? pending : entries).filter(item => {
+    const items = visibleEntries.filter(item => {
       if (needle && !item.name.toLowerCase().includes(needle)) return false;
-      if (item.kind === 'directory' || filter === 'all' || filter === 'pending') return true;
+      if (item.kind === 'directory' || filter === 'all') return true;
       return (filter === 'video') === /\.(mp4|webm|mov)$/i.test(item.name);
     }).sort((a, b) => (a.kind === 'directory' ? 0 : 1) - (b.kind === 'directory' ? 0 : 1) || (sort.value === 'newest' ? (b.modified || b.createdAt || 0) - (a.modified || a.createdAt || 0) : 0) || a.name.localeCompare(b.name, 'zh-CN', { numeric: true }));
     summary.textContent = items.length + ' 项' + (entries.length >= 1000 ? ' · 当前目录最多读取 1,000 项' : '');
@@ -283,9 +335,10 @@
     }, { root: listing, rootMargin: '100px' });
     for (const item of items.slice(0, 200)) {
       const folder = item.kind === 'directory', video = /\.(mp4|webm|mov)$/i.test(item.name);
-      const card = action(listing, '', async () => {
+      const wrapper = node('div', null, listing); wrapper.className = 'nf-wh-asset-wrap';
+      const card = action(wrapper, '', async () => {
         if (folder) { folderTrail.push(item.handle); await refreshList(); }
-        else showPreview(item.blob || await item.handle.getFile(), item.name);
+        else showPreview(item.blob || await item.handle.getFile(), item.name, item);
       });
       card.className = 'nf-wh-asset'; card.title = item.name; card.setAttribute('aria-label', (folder ? '打开文件夹 ' : '预览 ') + item.name);
       const thumb = node('div', null, card); thumb.className = 'nf-wh-thumb' + (folder ? ' nf-wh-folder' : ''); icon(folder ? 'folder' : video ? 'video' : 'image', thumb);
@@ -293,6 +346,7 @@
       const info = node('div', null, card); info.className = 'nf-wh-asset-info'; node('strong', item.name, info);
       node('span', folder ? '文件夹' : item.pending ? formatBytes(item.blob.size) + ' · 等待保存' : formatBytes(item.size) + ' · ' + new Date(item.modified).toLocaleDateString('zh-CN'), info);
       if (folder) continue;
+      const actions = node('div', null, wrapper); actions.className = 'nf-wh-asset-actions'; addDelete(item, actions);
       const load = async () => {
         try {
           const file = item.blob || await item.handle.getFile();
@@ -316,7 +370,7 @@
         for await (const [name, handle] of current.entries()) {
           if (handle.kind === 'directory') found.push({ name, handle, kind: 'directory' });
           else if (MEDIA.test(name)) {
-            try { const file = await handle.getFile(); found.push({ name, handle, kind: 'file', size: file.size, modified: file.lastModified }); }
+            try { const file = await handle.getFile(); found.push({ name, handle, parent: current, kind: 'file', size: file.size, modified: file.lastModified }); }
             catch { /* The file may disappear while a local generation is moving it. */ }
           }
           if (found.length >= 1000) break;
@@ -380,6 +434,12 @@
 #novaflow-local-warehouse .nf-wh-list{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));align-content:start;gap:14px;padding:18px;scrollbar-width:thin;scrollbar-color:#3d4b44 transparent}
 #novaflow-local-warehouse .nf-wh-asset{min-width:0;overflow:hidden;background:#292929;border:1px solid #ffffff0b;padding:0;border-radius:10px;text-align:left}
 #novaflow-local-warehouse .nf-wh-asset:hover{background:#333;border-color:#46bc9266}
+#novaflow-local-warehouse .nf-wh-asset-wrap{min-width:0;border:1px solid #ffffff12;border-radius:8px;overflow:hidden;background:#262626}
+#novaflow-local-warehouse .nf-wh-asset-wrap .nf-wh-asset{width:100%;border:0;border-radius:0}
+#novaflow-local-warehouse .nf-wh-asset-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:4px;padding:3px 6px;font-size:11px}
+#novaflow-local-warehouse .nf-wh-asset-actions button{padding:4px 6px;font-size:11px}
+#novaflow-local-warehouse .nf-wh-delete{color:#e6a3a3}
+#novaflow-local-warehouse button:disabled{opacity:.45;cursor:default}
 #novaflow-local-warehouse .nf-wh-thumb{position:relative;aspect-ratio:4/3;background:#141414;display:grid;place-items:center;color:#516c5b;overflow:hidden}
 #novaflow-local-warehouse .nf-wh-thumb>.nf-wh-icon{width:36px;height:36px}
 #novaflow-local-warehouse .nf-wh-folder{background:#242424;color:#76cfa6}
@@ -420,7 +480,7 @@
       const body = node('div', null, card); body.className = 'nf-wh-body';
       const sidebar = node('nav', null, body); sidebar.className = 'nf-wh-sidebar'; sidebar.setAttribute('aria-label', '仓库分类');
       node('p', '作品库', sidebar).className = 'nf-wh-eyebrow';
-      for (const [key, label, symbol] of [['all', '全部作品', 'grid'], ['image', '图片', 'image'], ['video', '视频', 'video'], ['pending', '待保存', 'clock']]) {
+      for (const [key, label, symbol] of [['all', '全部作品', 'grid'], ['image', '图片', 'image'], ['video', '视频', 'video']]) {
         const button = action(sidebar, '', () => { filter = key; renderList(); }); button.className = 'nf-wh-nav'; button.dataset.warehouseFilter = key; icon(symbol, button); node('span', label, button); node('span', '0', button).className = 'nf-wh-count';
       }
       const folderInfo = node('div', null, sidebar); folderInfo.className = 'nf-wh-folder-info';
@@ -431,6 +491,7 @@
       breadcrumbs = node('div', null, toolbar); breadcrumbs.className = 'nf-wh-breadcrumbs'; breadcrumbs.setAttribute('aria-label', '当前文件夹');
       action(toolbar, '恢复授权', authorize, 'authorize').className = 'nf-wh-primary';
       action(toolbar, '重试保存', () => enqueue(flushNow), 'retry').className = 'nf-wh-secondary';
+      action(toolbar, '打开 Windows 文件夹', openFolder, 'open-folder').className = 'nf-wh-secondary';
       action(toolbar, '连接 / 更换文件夹', connect, 'connect').className = 'nf-wh-secondary';
       const filters = node('div', null, main); filters.className = 'nf-wh-filters';
       const searchBox = node('label', null, filters); searchBox.className = 'nf-wh-search'; icon('search', searchBox);
@@ -460,5 +521,5 @@
     await ready; await enqueue(async () => { await flushNow(); await refreshList(); }); tell();
     return { ok: true, result: { opened: true, mapped: !!directory } };
   }
-  root.NovaFlowWebWarehouse = { open, save, connect, authorize, disconnect, ready };
+  root.NovaFlowWebWarehouse = { open, save, connect, authorize, disconnect, openFolder, removeAsset, ready };
 })(typeof window !== 'undefined' ? window : globalThis);

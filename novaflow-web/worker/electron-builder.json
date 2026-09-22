@@ -48,6 +48,7 @@
       "to": "lora-catalogs/minimax-h3-lora-catalog.cjs"
     }
   ],
+  "protocols": [{ "name": "NovaFlow 本地仓库", "schemes": ["novaflow"] }],
   "asar": false,
   "win": {
     "icon": "electron/assets/favicon.ico",

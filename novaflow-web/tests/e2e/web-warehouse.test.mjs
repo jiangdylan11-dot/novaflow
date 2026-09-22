@@ -1,7 +1,7 @@
 // Real disk writes behind File System Access handles; verify permission loss,
 // persisted pending outputs, collisions, deduplication, and cancellation.
 import assert from 'node:assert/strict';
-import { readFile, writeFile, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { readFile, writeFile, mkdtemp, readdir, rm, mkdir, unlink, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { webcrypto } from 'node:crypto';
@@ -13,26 +13,43 @@ const stores = { settings: new Map(), outputs: new Map() };
 let granted = false, requests = 0, writes = 0, cancel = false, checks = 0;
 const check = (actual, expected) => { assert.deepEqual(actual, expected); checks++; };
 const missing = () => Object.assign(new Error('not found'), { name: 'NotFoundError' });
-const handle = {
-  name: 'local-warehouse', kind: 'directory',
-  async queryPermission() { return granted ? 'granted' : 'prompt'; },
-  async requestPermission() { requests++; granted = true; return 'granted'; },
-  async getFileHandle(name, options = {}) {
-    assert.equal(name.includes('/'), false); assert.equal(name.includes('\\'), false);
-    const path = join(dir, name);
-    if (!options.create) try { await readFile(path); } catch { throw missing(); }
-    return {
-      kind: 'file', name,
-      async getFile() { return new Blob([await readFile(path)]); },
-      async createWritable() {
-        if (!granted) throw Object.assign(new Error('permission revoked'), { name: 'NotAllowedError' });
-        let bytes;
-        return { async write(blob) { bytes = new Uint8Array(await blob.arrayBuffer()); }, async close() { writes++; await writeFile(path, bytes); }, async abort() {} };
-      }
-    };
-  },
-  async *entries() { for (const name of await readdir(dir)) yield [name, await this.getFileHandle(name)]; }
-};
+let failDelete = false;
+function directoryHandle(folder) {
+  return {
+    name: folder.split(/[\\/]/).pop(), kind: 'directory',
+    async queryPermission() { return granted ? 'granted' : 'prompt'; },
+    async requestPermission() { requests++; granted = true; return 'granted'; },
+    async isSameEntry(other) { return other.path === folder; },
+    path: folder,
+    async getDirectoryHandle(name, options = {}) {
+      assert(!/[\\/]/.test(name));
+      const child = join(folder, name);
+      if (options.create) await mkdir(child, { recursive: true });
+      return directoryHandle(child);
+    },
+    async removeEntry(name) { assert(!/[\\/]/.test(name)); if (failDelete) throw new Error('file locked'); await unlink(join(folder, name)); },
+    async getFileHandle(name, options = {}) {
+      assert(!/[\\/]/.test(name));
+      const path = join(folder, name);
+      if (!options.create) try { await readFile(path); } catch { throw missing(); }
+      return {
+        kind: 'file', name, path,
+        async isSameEntry(other) { return path === other.path; },
+        async getFile() { return new Blob([await readFile(path)]); },
+        async createWritable() {
+          if (!granted) throw Object.assign(new Error('permission revoked'), { name: 'NotAllowedError' });
+          let bytes;
+          return { async write(blob) { bytes = new Uint8Array(await blob.arrayBuffer()); }, async close() { writes++; await writeFile(path, bytes); }, async abort() {} };
+        }
+      };
+    },
+    async *entries() {
+      for (const name of await readdir(folder)) yield [name, (await stat(join(folder, name))).isDirectory() ? directoryHandle(join(folder, name)) : await this.getFileHandle(name)];
+    }
+  };
+}
+const handle = directoryHandle(dir);
+
 function idb() {
   return {
     open() {
@@ -113,5 +130,25 @@ try {
   const disconnected = await olderTab.save({ name: 'after-disconnect.png', blob: image });
   check(disconnected.pending, true); // Another tab cannot retain a disconnected mapping.
   check((await readdir(dir)).length, 5);
+  // Removing a pending result must not leave a blob that a later reconnect saves.
+  const pendingRecord = [...stores.outputs.values()].find(record => record.blob);
+  await olderTab.removeAsset({ ...pendingRecord, pending: true });
+  check(stores.outputs.get(pendingRecord.id).discarded, true);
+  check(stores.outputs.get(pendingRecord.id).blob, null);
+  await warehouse.connect();
+  const deleteName = occupied;
+  const selected = { name: deleteName, parent: handle, handle: await handle.getFileHandle(deleteName) };
+  granted = false;
+  await assert.rejects(warehouse.removeAsset(selected), /授权/); checks++;
+  check(await readFile(join(dir, deleteName), 'utf8'), 'user-original');
+  granted = true; failDelete = true;
+  await assert.rejects(warehouse.removeAsset(selected), /file locked/); checks++;
+  check(await readFile(join(dir, deleteName), 'utf8'), 'user-original');
+  failDelete = false;
+  await warehouse.removeAsset(selected);
+  check((await readdir(dir)).includes(deleteName), false);
+  check((await readdir(dir)).includes('.novaflow-trash'), false);
+  check((await readdir(dir)).some(name => name.startsWith('existing_') && name.endsWith('_1.png')), true);
+
 } finally { await rm(dir, { recursive: true, force: true }); }
 console.log(checks + ' passed, 0 failed: local warehouse persistence and permissions');

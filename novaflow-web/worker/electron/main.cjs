@@ -316,7 +316,39 @@ ipcMain.handle('worker:pickModelsFolder', async () => {
   return result.canceled ? '' : result.filePaths[0];
 });
 
-app.whenReady().then(() => { createWindow(); createTray(); });
+async function handleWarehouseLink(argv = []) {
+  const link = argv.find(value => typeof value === 'string' && value.startsWith('novaflow:'));
+  if (!link) return;
+  try {
+    const { openWarehouseFolder } = require('./warehouse-folder.cjs');
+    const config = readConfig();
+    const candidates = [...(config.warehouseFolders || [])];
+    for (const environment of ['AI-Runtime', 'AI-Runtime-H3']) {
+      try {
+        const runtime = JSON.parse((await fs.promises.readFile(path.join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow', environment, 'runtime.json'), 'utf8')).replace(/^\uFEFF/, ''));
+        if (runtime.modelsPath) candidates.push(path.join(path.dirname(runtime.modelsPath), 'output'));
+        if (runtime.outputPath) candidates.push(runtime.outputPath);
+      } catch { /* A fresh machine may not have the AI environment yet. */ }
+    }
+    await openWarehouseFolder(link, {
+      candidates,
+      pickFolder: async () => {
+        const result = await dialog.showOpenDialog(win, { title: '选择网页中已连接的仓库根目录（仅首次定位）', properties: ['openDirectory'] });
+        return result.canceled ? '' : result.filePaths[0];
+      },
+      openPath: folder => shell.openPath(folder),
+      remember: folder => {
+        const latest = readConfig();
+        writeConfig({ ...latest, warehouseFolders: [folder, ...(latest.warehouseFolders || []).filter(value => value !== folder)].slice(0, 20) });
+      }
+    });
+  } catch (error) { dialog.showErrorBox('打开仓库文件夹失败', String(error.message || error)); }
+}
+app.whenReady().then(() => {
+  if (app.isPackaged) app.setAsDefaultProtocolClient('novaflow');
+  createWindow(); createTray();
+  void handleWarehouseLink(process.argv);
+});
 app.on('before-quit', () => { quitting = true; });
 
 app.on('window-all-closed', async () => {
@@ -331,5 +363,8 @@ app.on('activate', showWindow);
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on('second-instance', showWindow);
+  app.on('second-instance', (_event, argv = []) => {
+    if (argv.some(value => typeof value === 'string' && value.startsWith('novaflow:'))) void handleWarehouseLink(argv);
+    else showWindow();
+  });
 }
