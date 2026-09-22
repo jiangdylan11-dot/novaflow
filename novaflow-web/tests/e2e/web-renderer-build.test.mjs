@@ -16,6 +16,7 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { createContext, runInContext } from 'node:vm';
 import { buildWebRenderer, scanForLeaks, checkSyntax, PATHS } from '../../tools/build-web-renderer.mjs';
 import { createWorkflowHost } from '../../worker/src/comfy/workflow-host.mjs';
 import { findMarkers } from '../../tools/redact-workflow-module.mjs';
@@ -332,6 +333,125 @@ section('a logged-out visitor is told to log in, and can');
   const shimCode = shim.replace(/^\s*\/\/.*$/gm, '');
   check('rather than leaking the API wording',
     !/missing session token/.test(shimCode), null);
+}
+
+// ---------------------------------------------------------------------------
+section('the Web line answers every method the renderer can call, and they run');
+{
+  // Six bugs reached users as the same shape: the renderer calls something, the
+  // Web line does not answer it, so it falls through to proxy-electron-api.js,
+  // which builds a localhost URL - on the Web that is the VIEWER's machine.
+  // Each was found by somebody clicking the one button that reached it.
+  //
+  // This loads the four files the browser loads, in the browser's order, and
+  // decides by function identity: a method still pointing at the proxy's own
+  // implementation is one the Web line never answered. Identity rather than a
+  // source scan, because the proxy exposes some methods through a conditional
+  // spread - a regex over the source missed one of those and read 34/34 green
+  // while clientAuthAiTaskCommitUsage was still aimed at localhost:4761.
+  const files = [
+    'proxy-electron-api.js', 'novaflow-web-runtime.js',
+    'novaflow-web-capabilities.js', 'novaflow-web-account.js'
+  ];
+
+  const node = () => {
+    const n = {
+      style: { setProperty() {}, removeProperty() {} }, dataset: {}, children: [],
+      textContent: '', value: '', id: '', type: '', placeholder: '', title: '',
+      autocomplete: '', disabled: false, parentNode: null,
+      setAttribute() {}, removeAttribute() {}, getAttribute: () => null,
+      addEventListener() {}, removeEventListener() {}, remove() {}, focus() {},
+      click() {}, closest: () => null, querySelector: () => null,
+      querySelectorAll: () => [], appendChild(c) { n.children.push(c); return c; },
+      insertBefore(c) { n.children.push(c); return c; }, removeChild() {}, contains: () => false
+    };
+    return n;
+  };
+
+  const sandbox = {
+    console: { log() {}, warn() {}, error() {}, info() {}, debug() {} },
+    Math, JSON, Date, Promise, Object, Array, String, Number, Boolean, Error,
+    Map, Set, RegExp, Symbol, ArrayBuffer, Uint8Array, TextEncoder, TextDecoder,
+    URL, URLSearchParams, Blob, FormData, AbortController, structuredClone,
+    // Real timers, shortened, so an internal wait settles instead of hanging the
+    // test. Intervals stay dead: the shims poll on them.
+    setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms || 0, 20)),
+    clearTimeout(t) { clearTimeout(t); }, setInterval: () => 0, clearInterval() {},
+    requestAnimationFrame: () => 0, cancelAnimationFrame() {},
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    sessionStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    navigator: { userAgent: 'test', clipboard: { writeText: async () => {} } },
+    location: { href: 'https://novaflow.test/', origin: 'https://novaflow.test', reload() {} },
+    addEventListener() {}, removeEventListener() {}, dispatchEvent() {},
+    // Every network call answers the same way: a refusal the shims must survive.
+    fetch: async () => ({
+      ok: false, status: 503, statusText: 'unavailable',
+      headers: { get: () => null },
+      json: async () => ({ error: 'offline in test' }),
+      text: async () => '{"error":"offline in test"}',
+      arrayBuffer: async () => new ArrayBuffer(0),
+      blob: async () => ({ size: 0 })
+    })
+  };
+  sandbox.document = {
+    readyState: 'complete', body: node(), documentElement: node(), head: node(),
+    createElement: node, createTextNode: node, getElementById: () => null,
+    querySelector: () => null, querySelectorAll: () => [],
+    addEventListener() {}, removeEventListener() {},
+    getElementsByTagName: () => []
+  };
+  sandbox.window = sandbox;
+  sandbox.globalThis = sandbox;
+  sandbox.self = sandbox;
+
+  const context = createContext(sandbox);
+  const load = async (file) =>
+    runInContext(await readFile(join(PATHS.WEB_OUT, file), 'utf8'), context, { filename: file });
+
+  await load(files[0]);
+  const desktop = Object.assign({}, sandbox.electronAPI);
+  check('the desktop implementation exposes a substantial API',
+    Object.keys(desktop).length >= 30, Object.keys(desktop).length);
+
+  for (const file of files.slice(1)) await load(file);
+  const web = sandbox.electronAPI;
+
+  const inherited = Object.keys(desktop)
+    .filter((name) => typeof desktop[name] === 'function' && web[name] === desktop[name]);
+  checkEqual('every one of them is answered by the Web line', inherited, []);
+
+  // Answering is not the same as working: one of these read a helper from the
+  // IIFE next door, which throws ReferenceError the moment somebody clicks it.
+  // Nothing below asserts behaviour, only that calling does not explode on a
+  // binding that is not there.
+  const payload = {
+    baseUrl: 'http://127.0.0.1:8188', path: '/x', init: {}, url: 'http://127.0.0.1:8188/x',
+    filename: 'a.png', subfolder: '', type: 'output', name: 'a.png', text: 'x',
+    prompt: 'x', taskType: 'qwen_t2i', module: 'M', method: 'm', options: {},
+    buffer: new Uint8Array(1), data: {}, account: 'a', password: 'b'
+  };
+
+  const broken = [];
+  for (const [name, fn] of Object.entries(web)) {
+    if (typeof fn !== 'function') continue;
+    try {
+      // Some of these wait on something that never arrives here. The point is
+      // whether the call survives being made, so a slow one counts as survived.
+      await Promise.race([
+        fn(payload),
+        new Promise((resolve) => setTimeout(resolve, 500))
+      ]);
+    } catch (error) {
+      const message = String((error && error.message) || error);
+      // Matched by name and message, not instanceof: the error is constructed
+      // inside the vm realm, so it is not an instance of this realm's classes.
+      if ((error && error.name) === 'ReferenceError'
+        || /is not defined|Cannot read properties of undefined/.test(message)) {
+        broken.push(name + ': ' + message);
+      }
+    }
+  }
+  checkEqual('calling any of them does not hit a missing binding', broken, []);
 }
 
 // ---------------------------------------------------------------------------

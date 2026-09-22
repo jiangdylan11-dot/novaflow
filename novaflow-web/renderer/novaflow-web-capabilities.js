@@ -618,6 +618,88 @@
 
   api.windowIsMaximized = async () => ok({ maximized: Boolean(root.document.fullscreenElement) });
 
+  // ------------------------------------------- the rest of the desktop API
+  //
+  // An audit of proxy-electron-api.js - the implementation the renderer was
+  // written against - found ten methods the Web line never answered. Left
+  // alone they fall through to that implementation, which builds a localhost
+  // URL; on the Web that is the VIEWER's machine, so they would hang or fail
+  // with something unreadable. Five bugs had already reached users this way,
+  // each found by somebody clicking the one button that reached it.
+  //
+  // Each one below either does the Web-appropriate thing or says plainly why
+  // there isn't one. None of them pretends.
+
+  // Restarting a runtime means restarting somebody else's machine.
+  api.runtimeRestart = async () => {
+    const status = await api.runtimeGetStatus();
+    return Object.assign({}, status, {
+      ok: false,
+      detail: 'Web 版不能重启算力节点，请让算力提供者在 NovaFlow Worker 里操作'
+    });
+  };
+
+  // A browser cannot open a folder on anyone's disk. Results are fetched from
+  // the worker's gateway and saved through the browser's own download.
+  const noFolder = (what) => fail(
+    'Web 版打不开' + what + '：文件在算力节点上，请用页面里的下载/导出取回'
+  );
+  api.runtimeOpenAssetsFolder = async () => noFolder('素材目录');
+  api.runtimeOpenLogsFolder = async () => noFolder('日志目录');
+  api.runtimeOpenInstallFolder = async () => noFolder('安装目录');
+
+  // There is no licence on the Web - licenseGetState above says why. These read
+  // the answer back from it rather than restating it, so there is one place the
+  // Web licence is described and these cannot drift from it.
+  const licence = async () => {
+    try {
+      const state = await api.licenseGetState();
+      return (state && state.state) || state || {};
+    } catch (_) {
+      return {};
+    }
+  };
+  api.licenseGetMachineId = async () => ok({ machineId: 'web', reason: '浏览器没有机器码' });
+  api.licenseImportFile = async () => ok(Object.assign({ imported: false, alreadyLicensed: true }, await licence()));
+  api.licenseImportText = async () => ok(Object.assign({ imported: false, alreadyLicensed: true }, await licence()));
+  api.licenseRemove = async () => ok(Object.assign({ removed: false }, await licence()));
+  api.licenseOpenMain = async () => ok({ opened: false, reason: 'Web 版没有授权窗口' });
+
+  // The pre-flight and the post-hoc record for a paid provider task
+  // (可灵 / 即梦). On the desktop both ask the local admin server on 4761; here
+  // the authority is the control plane, which settles a task when the worker
+  // reports it finished. Self-hosted work needs neither - it costs nothing.
+  //
+  // Both answer from the same place so the caller's credit display stays true:
+  // it reads `credits` off whatever comes back and re-renders from it.
+  const session = async (detail, extra) => {
+    try {
+      const me = await runtime.control('GET', '/api/web/me');
+      return Object.assign({ ok: true, httpStatus: 200, credits: me.credits, user: me.user, detail }, extra || {});
+    } catch (error) {
+      const status = error.status === 401 ? 401 : 502;
+      return {
+        ok: false,
+        httpStatus: status,
+        error: status === 401
+          ? '请先登录 NovaFlow 账号（点顶栏右上角的「登录」）'
+          : String(error.message || error)
+      };
+    }
+  };
+
+  api.clientAuthAiTaskAuthorize = async (payload) => session(
+    '自有算力任务不计积分；付费 Provider（Grok / GPT / Google）按次结算',
+    { requested: (payload && (payload.taskType || payload.task_type)) || null }
+  );
+
+  // Nothing to commit: the control plane settles from the worker's report, not
+  // from the browser, which cannot be trusted to report its own usage. This
+  // returns the settled balance rather than pretending to have written one.
+  api.clientAuthAiTaskCommitUsage = async () => session(
+    '用量由控制面在算力节点回报后结算，浏览器不记账'
+  );
+
   // ---- clipboard ---------------------------------------------------------
   api.clipboardWriteText = async (text) => {
     try {

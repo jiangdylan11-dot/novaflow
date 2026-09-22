@@ -95,7 +95,10 @@ await writeFile(
     ranAt: new Date().toISOString(),
     totalPassed,
     totalFailed,
-    suites: results.map(({ output, ...rest }) => rest)
+    // A passing suite's output is noise; a failing one's is the whole point,
+    // and dropping it meant re-running the suite to find out what happened.
+    suites: results.map(({ output, ...rest }) =>
+      rest.failed || rest.code !== 0 ? { ...rest, tail: output.slice(-4000) } : rest)
   }, null, 2),
   'utf8'
 );
