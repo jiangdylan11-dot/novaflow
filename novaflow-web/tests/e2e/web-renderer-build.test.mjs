@@ -139,6 +139,16 @@ section('4. the shims load last and only override transport');
   check('availability is read from the public endpoint',
     /pollCapacity/.test(capsShim) && /available_workers/.test(capsShim), null);
 
+  // Desktop chrome that cannot work in a tab is hidden rather than shown
+  // pretending: the window buttons (the browser has its own) and 释放内存
+  // (the VRAM is on somebody else's machine).
+  check('the window controls are hidden',
+    /\.nf-topbar-right/.test(capsShim) && /\.nf-win-btn/.test(capsShim), null);
+  check('the release-memory button is hidden',
+    /topbar-ai-runtime-release/.test(capsShim), null);
+  check('and freeing memory does not claim to have freed any',
+    /freed: false/.test(capsShim) && !/freed: true/.test(capsShim), null);
+
   // The desktop licence binds to a MACHINE CODE. A browser tab has no machine,
   // so there is nothing to bind and no file anyone could issue - a licence gate
   // on the Web is a form that can never succeed. Entitlement here is the

@@ -339,10 +339,18 @@
     if (key) cache.delete(key);
     return ok({ released: true });
   };
+  // No GPU memory is held in this tab, so this must not report that it freed
+  // any. It drops what the page itself cached and says plainly where the
+  // memory actually lives.
   api.runtimeFreeMemory = async () => {
     cache.clear();
     lastWorkerPoll = { at: 0, workers: [] };
-    return ok({ freed: true });
+    lastCaps = { at: 0, count: 0 };
+    return ok({
+      freed: false,
+      cacheCleared: true,
+      detail: '显存在算力节点上，不在浏览器里；Web 版不能释放别人机器的显存'
+    });
   };
 
   // ------------------------------------------------------- video compositor
@@ -552,6 +560,31 @@
   // The renderer draws its own titlebar. A tab has no frame to minimise, but
   // maximise maps onto fullscreen and close onto window.close(), so the
   // buttons do something sensible instead of throwing.
+  // Two bits of desktop chrome the Web build hides, for the same reason:
+  // a control that cannot do what it says is worse than no control.
+  //
+  //   minimize / maximize / close - the browser tab already has these above
+  //     the page, and two of the three cannot work from inside a page at all.
+  //
+  //   释放内存 - on the desktop this frees the LOCAL ComfyUI's VRAM. Here the
+  //     GPU belongs to somebody else's machine; a user of the Web app has no
+  //     business unloading it and no way to. Pressing it could only ever
+  //     clear a cache in this tab while implying it did something to a GPU.
+  //
+  // The methods behind them stay and answer honestly, because the renderer
+  // still calls them from a shortcut or a status refresh.
+  (function hideDesktopOnlyChrome() {
+    const STYLE_ID = 'novaflow-web-hide-desktop-chrome';
+    if (root.document.getElementById(STYLE_ID)) return;
+    const style = root.document.createElement('style');
+    style.id = STYLE_ID;
+    // .nf-topbar-right holds nothing but the three window buttons.
+    style.textContent =
+      '.nf-topbar-right, .nf-win-btn,' +
+      ' [data-novaflow-topbar-ai-runtime-release="1"] { display: none !important; }';
+    (root.document.head || root.document.documentElement).appendChild(style);
+  })();
+
   api.windowMinimize = async () => fail('浏览器标签页不能最小化');
 
   api.windowToggleMaximize = async () => {
