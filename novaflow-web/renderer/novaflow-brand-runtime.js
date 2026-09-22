@@ -5193,6 +5193,11 @@
   const NOVAFLOW_RUNTIME_MODAL_SCANNER_SURFACE_SELECTOR = [
     ".novaflow-app",
     ".nf-app-body",
+    // The Web line's sign-in gate. It is a full-screen runtime surface, not a
+    // business dialog: without this the scanner reads it as a modal backdrop,
+    // takes its layout grid for a dialog card and draws a 1px frame around the
+    // whole two-column screen.
+    "#novaflow-web-login-gate",
     "[data-novaflow-source-layout='1']",
     "[data-novaflow-preview-workspace='1']",
     "[data-novaflow-ai-main-workspace='1']",
@@ -5218,6 +5223,8 @@
   ].join(", ");
 
   const NOVAFLOW_RUNTIME_MODAL_SCANNER_INNER_SURFACE_SELECTOR = [
+    // Matched with closest(), so this also covers the gate's own children.
+    "#novaflow-web-login-gate",
     "[data-novaflow-source-layout='1']",
     "[data-novaflow-preview-workspace='1']",
     "[data-novaflow-ai-main-workspace='1']",

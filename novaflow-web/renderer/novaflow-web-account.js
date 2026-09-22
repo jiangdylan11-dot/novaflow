@@ -278,7 +278,10 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     // The shared modal scanner may clear inline backdrop styles. Keep the
     // login screen opaque and above the editor while it is signed out.
     if (!root.document.getElementById(GATE_ID + '-style')) {
-      const style = el('style', '', '#' + GATE_ID + '{background:#0b0b0b!important;z-index:2147483640!important}');
+      // background-COLOR, not the `background` shorthand: this rule is injected
+      // after the theme stylesheet and carries !important, so a shorthand here
+      // would reset the theme's background-image and wipe the backdrop.
+      const style = el('style', '', '#' + GATE_ID + '{background-color:#06090c!important;z-index:2147483640!important}');
       style.id = GATE_ID + '-style';
       root.document.head.appendChild(style);
     }
@@ -288,7 +291,9 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     // so it may not be transparent or scrollable-behind for a frame.
     const gate = el('div', [
       'position:fixed', 'inset:0', 'z-index:2147483640',
-      'background:#0b0b0c', 'display:flex', 'align-items:center',
+      // Colour only, for the same reason as the rule above: the shorthand
+      // would take the theme's backdrop layers with it.
+      'background-color:#06090c', 'display:flex', 'align-items:center',
       'justify-content:center', 'overflow:hidden',
       'font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif'
     ].join(';'));
@@ -362,11 +367,21 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     password.type = 'password';
     password.autocomplete = 'current-password';
 
+    // The icon is drawn on the wrapper, not on the input: Chrome paints an
+    // autofilled field with its own background, which would cover a
+    // background-image set on the input itself.
+    const wrap = (kind, field) => {
+      const node = el('div');
+      node.className = 'nf-login-input-wrap nf-login-input-wrap-' + kind;
+      node.appendChild(field);
+      return node;
+    };
+
     card.appendChild(accountLabel);
-    card.appendChild(account);
+    card.appendChild(wrap('user', account));
     const gap = el('div'); gap.className = 'nf-login-gap'; card.appendChild(gap);
     card.appendChild(passwordLabel);
-    card.appendChild(password);
+    card.appendChild(wrap('lock', password));
 
     const submit = el('button', '', '登录');
     submit.className = 'nf-login-submit';
