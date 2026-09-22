@@ -9,7 +9,9 @@
 // no admin token; its only credential is its own worker secret.
 
 import { mkdir, readFile, writeFile, readdir, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createGateway, sweepTaskFiles } from './gateway/gateway.mjs';
 import { createComfyClient, collectOutputs, assertLocalOnly } from './comfy/comfy-client.mjs';
@@ -26,7 +28,18 @@ import {
   requirementsFor
 } from '../../packages/shared/src/protocol.mjs';
 
-export const WORKER_VERSION = '0.2.0';
+// Read from package.json, which is also what electron-builder stamps into the
+// installer. Two hand-maintained version constants had already drifted apart
+// (0.2.0 here, 0.1.0 there) and neither moved when the gateway was fixed - so
+// "is this the build with the fix?" had no answer you could see.
+export const WORKER_VERSION = (() => {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    return String(JSON.parse(readFileSync(join(here, '..', 'package.json'), 'utf8')).version || '0.0.0');
+  } catch {
+    return '0.0.0';
+  }
+})();
 
 /**
  * Point the renderer's recorded options at the files that actually landed in

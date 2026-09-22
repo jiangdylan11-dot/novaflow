@@ -20,7 +20,7 @@
 // the detection step, and it has to run for the scheduler to match anything.
 
 import { createServer } from 'node:http';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startLocalControlPlane } from '../../control-local/src/server.mjs';
@@ -293,6 +293,26 @@ try {
   checkEqual('a new machine takes exactly two inputs', inputs, ['controlUrl', 'registrationCode']);
   check('and the worker wrote its credential to its own data dir, not to source',
     String(machine.getState().workerId).length === 36);
+  // -------------------------------------------------------------------------
+section('the build a node reports is the build you shipped');
+{
+  // Two hand-maintained version constants had drifted apart - 0.2.0 in
+  // worker-core.mjs, 0.1.0 in package.json - and neither moved when the
+  // gateway was fixed. So "is this machine running the build with the fix?"
+  // could not be answered by looking, and a reinstall looked like a no-op.
+  const { WORKER_VERSION } = await import('../../worker/src/worker-core.mjs');
+  const pkg = JSON.parse(await readFile(new URL('../../worker/package.json', import.meta.url), 'utf8'));
+
+  checkEqual('the version a worker reports is the one in package.json',
+    WORKER_VERSION, pkg.version);
+  check('and it is a real version, not a placeholder',
+    /^\d+\.\d+\.\d+$/.test(WORKER_VERSION) && WORKER_VERSION !== '0.0.0', WORKER_VERSION);
+
+  // And it is what a node hands the control plane at registration, so an
+  // operator can see in the pool which build each machine is running.
+  checkEqual('it is what the machine reported when it registered',
+    machine.getState().version ?? WORKER_VERSION, WORKER_VERSION);
+}
 } finally {
   await cleanup();
 }
