@@ -104,5 +104,14 @@ try {
   check(stores.settings.has('directory'), false);
   check((await readdir(dir)).length, 4); // Disconnect never deletes local files.
   check((await warehouse.save({ name: 'secret.txt', blob: new Blob(['not media']) })).ok, false);
+  const olderTab = boot(); await olderTab.ready;
+  cancel = false; await warehouse.connect();
+  const crossTab = await olderTab.save({ name: 'other-tab.png', blob: image });
+  check(crossTab.ok, true); // A tab opened before mapping uses the latest folder.
+  check((await readdir(dir)).length, 5);
+  await warehouse.disconnect();
+  const disconnected = await olderTab.save({ name: 'after-disconnect.png', blob: image });
+  check(disconnected.pending, true); // Another tab cannot retain a disconnected mapping.
+  check((await readdir(dir)).length, 5);
 } finally { await rm(dir, { recursive: true, force: true }); }
 console.log(checks + ' passed, 0 failed: local warehouse persistence and permissions');
