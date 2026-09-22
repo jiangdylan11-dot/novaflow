@@ -3,7 +3,7 @@
 ## 现场结论
 
 - 线上静态网页已经包含生成路由修复；报错来自旧版云端函数，不能通过重复安装 Worker 或刷新页面解决。
-- Supabase `novaflow-web` 部署版本 5 缺少 `novaflow-brand-runtime.buildArtGenerateRunWorkflow` 和 `spine-split-runtime.defaultQwenInpaintWorkflow/defaultRmbgWorkflow` 白名单。补丁已在函数编辑器核对，尚待用户确认最终发布；未声称线上绘图、补图已恢复。
+- Supabase `novaflow-web` 部署版本 5 缺少 `novaflow-brand-runtime.buildArtGenerateRunWorkflow` 和 `spine-split-runtime.defaultQwenInpaintWorkflow/defaultRmbgWorkflow` 白名单。用户确认发布后已上线版本 6，函数列表显示部署数 6、刚刚更新；只补齐上述白名单，未修改 `novaflow-backend`。
 - 视频任务 `b385e2b6-7287-47e9-b2f4-368a5dc0fc89` 的本机日志为 `fetch failed`。现场探测 8188、8189 均拒绝连接，原因是本地算力服务已停止。
 - 使用原配置的图像、H3 启动脚本在后台恢复服务，两端 `/system_stats` 均返回 200。
 
@@ -16,6 +16,18 @@
 - Worker 执行完成，耗时 38.6 秒，返回 1 个视频。
 - 网页资源列表出现 `MiniMax_H3_t2v_00014_-fd5aa764-1.mp4`，状态显示“已加载到画板”，画板实际显示并播放生成视频。
 - 页面成功状态旁仍显示 0%，本次不把该进度数字作为成功依据。
+
+## 版本 6 发布后图像链路实测
+
+在新开的正式站点验收页操作，保留用户正在使用的视频页。
+
+- 本地模型 / Instant / 1024 × 1024 / 1 张：网页文生图任务 `cdd0d402-2177-42a2-8dab-545293244cff`，ComfyUI prompt `ef546b55-a7c4-4d4f-8fee-efbf532d7a99`。Worker 执行 26.5 秒，返回 PNG；网页显示“生成完成 100%”，原图资源和画板均显示图片。
+- 智能补图：实际拖动画笔绘制遮罩并填写要求，任务 `6ff05d3c-4a19-4c60-9357-dc58ad0ec2d0` 完成，ComfyUI prompt `0e3e62f1-70ec-456d-a5f0-e5c55548a0cc`，生成耗时 71.9 秒。
+- 补图后处理实际触发自动前景抠图任务 `310bd142-04a8-4016-8988-dd424abf0520`，耗时 5 秒并返回 PNG；网页新增 `source_layer_inpaint` 图层，合成视图可显示。
+- 首次遮罩选在天空，前景提取会去掉该背景区域，因此该例只作为调用链验证，不能作为主体补全效果通过的证据。另用人物衣服区域验证可见补图效果。
+- 主体区域补图任务 `b602b8bb-3806-4fe5-9cd4-371faa574b4f` 完成（70.1 秒），随后自动抠图任务 `661a0b83-dd82-441b-8e63-b80700a54f44` 完成（4.2 秒）。网页新增可见的 `source_layer_inpaint_2` 衣服补丁图层，切换“图层”后实际显示叠回原图的结果；已核对单层和合成视图。
+- 本次确认工作流下发、执行、文件回传和图层显示恢复；模型生成的衣服细节与接缝未达到精修验收，不把流程成功等同于任意图片的补全质量保证。
+- 已实际运行自动前景抠图分支；本轮未单独重测“智能抠图”按钮的全部交互。
 
 ## Worker 0.4.3
 
