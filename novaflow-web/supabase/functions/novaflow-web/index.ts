@@ -332,10 +332,29 @@ const plane = createControlPlane({
     console.log(JSON.stringify({ fn: FUNCTION_NAME, message, meta }))
 });
 
+const FUNCTION_SLUG = 'novaflow-web';
+
+/** /functions/v1/novaflow-web/api/... and /novaflow-web/api/... -> /api/... */
+function routePath(pathname: string): string {
+  let out = pathname;
+  const viaGateway = '/functions/v1/' + FUNCTION_SLUG;
+  if (out === viaGateway || out.startsWith(viaGateway + '/')) out = out.slice(viaGateway.length);
+  const bare = '/' + FUNCTION_SLUG;
+  if (out === bare || out.startsWith(bare + '/')) out = out.slice(bare.length);
+  return out || '/';
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
 
   const url = new URL(req.url);
+  // Supabase routes a function by prefixing the path with its slug, so what
+  // arrives here is /novaflow-web/api/web/... while every route, every test and
+  // the local control plane speak /api/web/... . Strip the prefix rather than
+  // teaching the shared router about a deployment detail - otherwise the two
+  // deployments disagree about paths, which is exactly the drift the shared
+  // implementation exists to prevent.
+  const path = routePath(url.pathname);
   let body: unknown = {};
   if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
     const raw = await req.text();
@@ -360,7 +379,7 @@ Deno.serve(async (req: Request) => {
 
   const result = await plane.handle({
     method: req.method,
-    path: url.pathname,
+    path,
     headers,
     query: Object.fromEntries(url.searchParams.entries()),
     body

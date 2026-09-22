@@ -117,11 +117,31 @@ export const TASK_TYPE_WORKFLOW = Object.freeze({
 
 // Which model each task type needs, and the VRAM floor the scheduler enforces
 // before it hands the task to a worker.
+// `billing` is the rule that decides whether a task costs credits at all.
+//
+//   'self_hosted' - it runs on a GPU in this pool: the owner's machine, a
+//     friend's, a rented one. Nobody is invoiced for it, so NovaFlow does not
+//     invoice for it either. Credits exist to meter what a third party bills
+//     for, not to tax someone's own hardware.
+//
+//   'provider' - it goes out to a paid API (Grok, GPT, Google). That is real
+//     money leaving, and that is what credits are for.
+//
+// Every task type NovaFlow Web runs today is self-hosted. The metered path is
+// kept wired, and priced, for the provider-backed types that will use it.
+export const BILLING = Object.freeze({ SELF_HOSTED: 'self_hosted', PROVIDER: 'provider' });
+
 export const TASK_TYPE_REQUIREMENTS = Object.freeze({
-  [TASK_TYPE.QWEN_T2I]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '绘图' },
-  [TASK_TYPE.QWEN_EDIT]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '图生图' },
-  [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列' }
+  [TASK_TYPE.QWEN_T2I]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '绘图', billing: BILLING.SELF_HOSTED },
+  [TASK_TYPE.QWEN_EDIT]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '图生图', billing: BILLING.SELF_HOSTED },
+  [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列', billing: BILLING.SELF_HOSTED }
 });
+
+/** Does this task type cost the user credits? */
+export function isMetered(taskType) {
+  const req = TASK_TYPE_REQUIREMENTS[String(taskType || '')];
+  return Boolean(req) && req.billing === BILLING.PROVIDER;
+}
 
 export function requirementsFor(taskType) {
   return TASK_TYPE_REQUIREMENTS[String(taskType || '')] || null;

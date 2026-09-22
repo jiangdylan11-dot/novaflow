@@ -11,7 +11,7 @@
 // subject under test is the scheduler.
 
 import { startLocalControlPlane } from '../../control-local/src/server.mjs';
-import { check, call, section, finish, uuid, waitFor } from '../helpers.mjs';
+import { check, checkEqual, call, section, finish, uuid, waitFor } from '../helpers.mjs';
 import { generateWorkerSecret } from '../../packages/shared/src/tokens.mjs';
 import { WORKER_MODEL_STATUS, TASK_STATE } from '../../packages/shared/src/protocol.mjs';
 
@@ -217,14 +217,17 @@ section('a task stranded on a dead worker is requeued, not lost or charged');
   const done = await call(BASE, 'GET', '/api/web/tasks/' + taskId, { token: owner.token });
   check('the task eventually completed', done.body.task.status === TASK_STATE.COMPLETED, done.body.task.status);
 
+  // A failed attempt must cost nothing - and on this pool a successful one
+  // does not either, because it ran on our own GPU. What matters here is that
+  // recovery never invents a charge.
   const balanceAfter = await ctx.store.getCreditBalance(owner.user.id);
-  check('the user was charged once, for the successful run',
-    balanceAfter < balanceMid, { balanceMid, balanceAfter });
+  checkEqual('the retry cost the user nothing', balanceMid - balanceAfter, 0);
 
   const settlements = await ctx.db.query(
     "select count(*)::int as n from public.comfy_usage_settlements where prompt_id like 'p-recovery%'"
   );
-  check('the failed attempt produced no settlement row', settlements.rows[0].n === 1, settlements.rows[0]);
+  checkEqual('and wrote no settlement row at all, for either attempt',
+    settlements.rows[0].n, 0);
 }
 
 // ---------------------------------------------------------------------------

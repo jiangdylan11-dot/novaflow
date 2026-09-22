@@ -217,7 +217,9 @@ try {
       }
     });
     check('renderer workflow task queued', created.status === 200, created.body);
-    check('it was priced server-side', created.body?.pricing?.creditCost > 0, created.body?.pricing);
+  check('the server decided the price, and self-hosted work is free',
+    created.body.pricing.source === 'novaflow_web_self_hosted_v1' && created.body.pricing.creditCost === 0,
+    created.body.pricing);
 
     if (created.status === 200) {
       const taskId = created.body.task.id;

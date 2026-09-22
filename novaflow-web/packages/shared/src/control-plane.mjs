@@ -474,7 +474,13 @@ export function createControlPlane({ store, secrets, logger }) {
     });
 
     let settlement = null;
-    try {
+    // Nothing to settle when nothing was charged. Calling the settlement RPC
+    // with a zero amount would write a usage row implying a third party billed
+    // for this, which nobody did.
+    if (pricing.creditCost <= 0) {
+      settlement = { ok: true, skipped: 'self_hosted', charged: 0 };
+      await store.markCharged(taskId, 0);
+    } else try {
       settlement = await store.settleCredits({
         userId: current.user_id,
         promptId,
@@ -556,10 +562,15 @@ export function createControlPlane({ store, secrets, logger }) {
       pricing = priceTask(taskType, parameters);
     }
 
-    const balance = await store.getCreditBalance(user.id);
-    if (Number(balance) < pricing.creditCost) {
-      throw new HttpError(402, ERROR_CODE.INSUFFICIENT_CREDITS,
-        'not enough credits for this task', { required: pricing.creditCost, balance: Number(balance) });
+    // A task that costs nothing is not gated on a balance. Reading credits at
+    // all would only create a way for a zero-credit account to be refused work
+    // its own GPU was about to do for free.
+    if (pricing.creditCost > 0) {
+      const balance = await store.getCreditBalance(user.id);
+      if (Number(balance) < pricing.creditCost) {
+        throw new HttpError(402, ERROR_CODE.INSUFFICIENT_CREDITS,
+          'not enough credits for this task', { required: pricing.creditCost, balance: Number(balance) });
+      }
     }
 
     // Fail fast when nothing online can run it, instead of parking the task in

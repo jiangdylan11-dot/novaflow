@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startLocalControlPlane } from '../../control-local/src/server.mjs';
 import { createWorker } from '../../worker/src/worker-core.mjs';
-import { check, call, section, finish, waitFor } from '../helpers.mjs';
+import { check, checkEqual, call, section, finish, waitFor } from '../helpers.mjs';
 import { TASK_STATE } from '../../packages/shared/src/protocol.mjs';
 
 const COMFY_IMAGE = process.env.NOVAFLOW_COMFY_IMAGE_URL || 'http://127.0.0.1:8188';
@@ -105,7 +105,8 @@ try {
     check('task queued', created.body.task.status === TASK_STATE.QUEUED, created.body.task);
     const taskId = created.body.task.id;
     const quoted = created.body.pricing.creditCost;
-    check('user was quoted a price up front', quoted > 0, created.body.pricing);
+  check('the user was quoted up front, and the quote is free',
+    created.body.pricing && created.body.pricing.creditCost === 0, created.body.pricing);
 
     const assigned = await waitFor(async () => {
       const r = await call(BASE, 'GET', '/api/web/tasks/' + taskId, { token });
@@ -186,14 +187,14 @@ try {
     section('7. credits settled exactly once, for the quoted amount');
     const balance = await ctx.store.getCreditBalance(login.body.user.id);
     const charged = 500 - balance;
-    check('credits were deducted', charged > 0, { balance, charged });
+  checkEqual('no credits were deducted - this ran on our own GPU', charged, 0);
     check('the charge matches the quote', Math.abs(charged - Math.round(quoted)) <= 1, { charged, quoted });
 
     const settlements = await ctx.db.query(
       'select count(*)::int as n from public.comfy_usage_settlements where user_id = $1',
       [login.body.user.id]
     );
-    check('exactly one settlement row exists', settlements.rows[0].n === 1, settlements.rows[0]);
+  checkEqual('and no settlement row was written', settlements.rows[0].n, 0);
 
     // -----------------------------------------------------------------------
     section('8. cross-user and cross-task access is refused');

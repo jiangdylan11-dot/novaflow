@@ -3,16 +3,21 @@
 // Spec 17: the trusted backend decides the cost. Neither the browser nor the
 // worker may supply, influence or negotiate a number.
 //
+// WHAT COSTS CREDITS: only what a third party bills for - Grok, GPT, Google.
+// Generation that runs on this pool's own GPUs is free, however many machines
+// are in it and whoever owns them. Charging for someone's own hardware would
+// be inventing a fee, not recovering one.
+//
 // The Desktop line settles ComfyUI usage with a client-reported
 // `comfy_api_exact_price_v1` amount. That is a reasonable trust assumption for
 // a signed desktop build talking to a ComfyUI on the same machine; it is NOT
-// acceptable for a browser we do not control, so the Web line derives every
-// cost here, from validated business parameters only.
+// acceptable for a browser we do not control, so where the Web line does
+// charge, it derives every cost here from validated business parameters only.
 //
 // Cost is expressed in credits with 6 decimals, matching the precision the
 // existing settle_comfy_usage RPC enforces.
 
-import { TASK_TYPE } from './protocol.mjs';
+import { TASK_TYPE, isMetered } from './protocol.mjs';
 
 // Base rates. Deliberately simple and auditable: a rate card, not a formula
 // nobody can reproduce by hand.
@@ -49,6 +54,28 @@ function clampInt(value, min, max, fallback) {
  * clamps instead, so a hostile browser gets a sane (and never cheaper) price.
  */
 export function priceTask(taskType, parameters = {}) {
+  const type = String(taskType || '');
+
+  // Work that runs on this pool's own GPUs is free. Credits meter what a third
+  // party bills for - Grok, GPT, Google - not somebody's own graphics card.
+  if (!isMetered(type)) {
+    return {
+      creditCost: 0,
+      source: 'novaflow_web_self_hosted_v1',
+      breakdown: { billing: 'self_hosted', reason: '在自有算力上运行，不计积分' }
+    };
+  }
+  return priceFromRateCard(type, parameters);
+}
+
+/**
+ * The rate card itself, independent of who pays.
+ *
+ * Exported so it stays under test: every task type today is self-hosted and
+ * therefore free, and a rate card nothing exercises is a rate card that has
+ * quietly rotted by the time a provider-backed task type needs it.
+ */
+export function priceFromRateCard(taskType, parameters = {}) {
   const type = String(taskType || '');
   const params = parameters && typeof parameters === 'object' ? parameters : {};
 

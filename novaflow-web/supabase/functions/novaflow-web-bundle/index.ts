@@ -129,11 +129,31 @@ const TASK_TYPE_WORKFLOW = Object.freeze({
 
 // Which model each task type needs, and the VRAM floor the scheduler enforces
 // before it hands the task to a worker.
+// `billing` is the rule that decides whether a task costs credits at all.
+//
+//   'self_hosted' - it runs on a GPU in this pool: the owner's machine, a
+//     friend's, a rented one. Nobody is invoiced for it, so NovaFlow does not
+//     invoice for it either. Credits exist to meter what a third party bills
+//     for, not to tax someone's own hardware.
+//
+//   'provider' - it goes out to a paid API (Grok, GPT, Google). That is real
+//     money leaving, and that is what credits are for.
+//
+// Every task type NovaFlow Web runs today is self-hosted. The metered path is
+// kept wired, and priced, for the provider-backed types that will use it.
+const BILLING = Object.freeze({ SELF_HOSTED: 'self_hosted', PROVIDER: 'provider' });
+
 const TASK_TYPE_REQUIREMENTS = Object.freeze({
-  [TASK_TYPE.QWEN_T2I]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '绘图' },
-  [TASK_TYPE.QWEN_EDIT]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '图生图' },
-  [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列' }
+  [TASK_TYPE.QWEN_T2I]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '绘图', billing: BILLING.SELF_HOSTED },
+  [TASK_TYPE.QWEN_EDIT]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '图生图', billing: BILLING.SELF_HOSTED },
+  [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列', billing: BILLING.SELF_HOSTED }
 });
+
+/** Does this task type cost the user credits? */
+function isMetered(taskType) {
+  const req = TASK_TYPE_REQUIREMENTS[String(taskType || '')];
+  return Boolean(req) && req.billing === BILLING.PROVIDER;
+}
 
 function requirementsFor(taskType) {
   return TASK_TYPE_REQUIREMENTS[String(taskType || '')] || null;
@@ -450,11 +470,16 @@ function bearerToken(headerValue) {
 // Spec 17: the trusted backend decides the cost. Neither the browser nor the
 // worker may supply, influence or negotiate a number.
 //
+// WHAT COSTS CREDITS: only what a third party bills for - Grok, GPT, Google.
+// Generation that runs on this pool's own GPUs is free, however many machines
+// are in it and whoever owns them. Charging for someone's own hardware would
+// be inventing a fee, not recovering one.
+//
 // The Desktop line settles ComfyUI usage with a client-reported
 // `comfy_api_exact_price_v1` amount. That is a reasonable trust assumption for
 // a signed desktop build talking to a ComfyUI on the same machine; it is NOT
-// acceptable for a browser we do not control, so the Web line derives every
-// cost here, from validated business parameters only.
+// acceptable for a browser we do not control, so where the Web line does
+// charge, it derives every cost here from validated business parameters only.
 //
 // Cost is expressed in credits with 6 decimals, matching the precision the
 // existing settle_comfy_usage RPC enforces.
@@ -496,6 +521,28 @@ function clampInt(value, min, max, fallback) {
  * clamps instead, so a hostile browser gets a sane (and never cheaper) price.
  */
 function priceTask(taskType, parameters = {}) {
+  const type = String(taskType || '');
+
+  // Work that runs on this pool's own GPUs is free. Credits meter what a third
+  // party bills for - Grok, GPT, Google - not somebody's own graphics card.
+  if (!isMetered(type)) {
+    return {
+      creditCost: 0,
+      source: 'novaflow_web_self_hosted_v1',
+      breakdown: { billing: 'self_hosted', reason: '在自有算力上运行，不计积分' }
+    };
+  }
+  return priceFromRateCard(type, parameters);
+}
+
+/**
+ * The rate card itself, independent of who pays.
+ *
+ * Exported so it stays under test: every task type today is self-hosted and
+ * therefore free, and a rate card nothing exercises is a rate card that has
+ * quietly rotted by the time a provider-backed task type needs it.
+ */
+function priceFromRateCard(taskType, parameters = {}) {
   const type = String(taskType || '');
   const params = parameters && typeof parameters === 'object' ? parameters : {};
 
@@ -1196,7 +1243,13 @@ function createControlPlane({ store, secrets, logger }) {
     });
 
     let settlement = null;
-    try {
+    // Nothing to settle when nothing was charged. Calling the settlement RPC
+    // with a zero amount would write a usage row implying a third party billed
+    // for this, which nobody did.
+    if (pricing.creditCost <= 0) {
+      settlement = { ok: true, skipped: 'self_hosted', charged: 0 };
+      await store.markCharged(taskId, 0);
+    } else try {
       settlement = await store.settleCredits({
         userId: current.user_id,
         promptId,
@@ -1278,10 +1331,15 @@ function createControlPlane({ store, secrets, logger }) {
       pricing = priceTask(taskType, parameters);
     }
 
-    const balance = await store.getCreditBalance(user.id);
-    if (Number(balance) < pricing.creditCost) {
-      throw new HttpError(402, ERROR_CODE.INSUFFICIENT_CREDITS,
-        'not enough credits for this task', { required: pricing.creditCost, balance: Number(balance) });
+    // A task that costs nothing is not gated on a balance. Reading credits at
+    // all would only create a way for a zero-credit account to be refused work
+    // its own GPU was about to do for free.
+    if (pricing.creditCost > 0) {
+      const balance = await store.getCreditBalance(user.id);
+      if (Number(balance) < pricing.creditCost) {
+        throw new HttpError(402, ERROR_CODE.INSUFFICIENT_CREDITS,
+          'not enough credits for this task', { required: pricing.creditCost, balance: Number(balance) });
+      }
     }
 
     // Fail fast when nothing online can run it, instead of parking the task in
@@ -1707,12 +1765,7 @@ function workerTaskView(task) {
 //   NOVAFLOW_WEB_CONTROL_SECRET        Web-line only: signs worker tokens and
 //                                      derives per-worker grant keys
 
-
-
-
-
 const FUNCTION_NAME = 'novaflow-web';
-const MAX_BODY_BYTES = 256 * 1024;
 
 function env(name: string): string {
   return String(Deno.env.get(name) || '').trim();
@@ -2022,10 +2075,29 @@ const plane = createControlPlane({
     console.log(JSON.stringify({ fn: FUNCTION_NAME, message, meta }))
 });
 
+const FUNCTION_SLUG = 'novaflow-web';
+
+/** /functions/v1/novaflow-web/api/... and /novaflow-web/api/... -> /api/... */
+function routePath(pathname: string): string {
+  let out = pathname;
+  const viaGateway = '/functions/v1/' + FUNCTION_SLUG;
+  if (out === viaGateway || out.startsWith(viaGateway + '/')) out = out.slice(viaGateway.length);
+  const bare = '/' + FUNCTION_SLUG;
+  if (out === bare || out.startsWith(bare + '/')) out = out.slice(bare.length);
+  return out || '/';
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: CORS });
 
   const url = new URL(req.url);
+  // Supabase routes a function by prefixing the path with its slug, so what
+  // arrives here is /novaflow-web/api/web/... while every route, every test and
+  // the local control plane speak /api/web/... . Strip the prefix rather than
+  // teaching the shared router about a deployment detail - otherwise the two
+  // deployments disagree about paths, which is exactly the drift the shared
+  // implementation exists to prevent.
+  const path = routePath(url.pathname);
   let body: unknown = {};
   if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
     const raw = await req.text();
@@ -2050,7 +2122,7 @@ Deno.serve(async (req: Request) => {
 
   const result = await plane.handle({
     method: req.method,
-    path: url.pathname,
+    path,
     headers,
     query: Object.fromEntries(url.searchParams.entries()),
     body

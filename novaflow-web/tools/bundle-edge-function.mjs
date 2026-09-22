@@ -114,14 +114,30 @@ function extractFunction(source, name) {
  * conflict and must not be silently merged.
  */
 function dedupe(body, name, previousText, owner, here) {
-  const mine = extractFunction(body, name);
+  const mine = extractDeclaration(body, name);
   if (!mine || !previousText || mine.text !== previousText) {
     throw new Error(
       'name collision: ' + name + ' declared in both ' + owner + ' and ' + here +
-      (mine && previousText ? ' with different bodies' : '')
+      (mine && previousText ? ' with different values' : '')
     );
   }
   return (body.slice(0, mine.start) + body.slice(mine.end)).replace(/\n{3,}/g, '\n\n');
+}
+
+/**
+ * A top-level declaration's full text - a function body by brace matching, or
+ * a single-line const/let/var by its terminating semicolon.
+ *
+ * Anything else returns null and stays a collision, because merging two
+ * declarations this cannot read would be a guess.
+ */
+function extractDeclaration(source, name) {
+  const fn = extractFunction(source, name);
+  if (fn) return fn;
+  const re = new RegExp('^(?:const|let|var)\\s+' + name + '\\s*=.*?;[ \\t]*$', 'm');
+  const m = re.exec(source);
+  if (!m) return null;
+  return { start: m.index, end: m.index + m[0].length, text: m[0] };
 }
 
 export async function bundleEdgeFunction() {
@@ -155,7 +171,7 @@ export async function bundleEdgeFunction() {
         deduped.push(n + ' (' + name + ' reuses ' + prior.module + ')');
         continue;
       }
-      seenNames.set(n, { module: name, text: extractFunction(body, n)?.text || null });
+      seenNames.set(n, { module: name, text: extractDeclaration(body, n)?.text || null });
     }
     parts.push('// ===== ' + name + ' ' + '='.repeat(Math.max(0, 62 - name.length)) + '\n' + body);
   }
@@ -163,7 +179,21 @@ export async function bundleEdgeFunction() {
   let main = entry;
   main = main.replace(/^[ \t]*import\s+[^;]*?from\s+['"]\.\/[^'"]+['"];?[ \t]*$/gm, '');
   main = main.replace(/^[ \t]*import\s+[^;]*?from\s+['"](?:npm:|jsr:|node:|https:)[^'"]*['"];?[ \t]*$/gm, '');
-  parts.push('// ===== ' + ENTRY + ' ' + '='.repeat(Math.max(0, 62 - ENTRY.length)) + '\n' + main.trim());
+  // The entry is code like any other and can collide like any other. Leaving
+  // it out of this check is what put a duplicate `const MAX_BODY_BYTES` into a
+  // deployed bundle: it parsed fine in Node's type-stripping mode and only
+  // surfaced as BOOT_ERROR in production.
+  main = main.trim();
+  for (const n of declaredNames(main)) {
+    const prior = seenNames.get(n);
+    if (!prior) {
+      seenNames.set(n, { module: ENTRY, text: extractDeclaration(main, n)?.text || null });
+      continue;
+    }
+    main = dedupe(main, n, prior.text, prior.module, ENTRY);
+    deduped.push(n + ' (' + ENTRY + ' reuses ' + prior.module + ')');
+  }
+  parts.push('// ===== ' + ENTRY + ' ' + '='.repeat(Math.max(0, 62 - ENTRY.length)) + '\n' + main);
 
   const header = [
     '// GENERATED - do not edit. Built by tools/bundle-edge-function.mjs.',
@@ -176,6 +206,18 @@ export async function bundleEdgeFunction() {
   ].join('\n');
 
   const code = header + [...externals].join('\n') + '\n\n' + parts.join('\n\n') + '\n';
+
+  // Belt and braces: whatever the passes above believed, the emitted file must
+  // not declare the same top-level name twice. Deno refuses to start on that,
+  // and a refusal to start is only visible in production.
+  const counts = new Map();
+  for (const m of code.matchAll(/^(?:const|let|var|class|function|async function)\s+([A-Za-z_$][\w$]*)/gm)) {
+    counts.set(m[1], (counts.get(m[1]) || 0) + 1);
+  }
+  const duplicated = [...counts.entries()].filter(([, n]) => n > 1).map(([n]) => n);
+  if (duplicated.length) {
+    throw new Error('the bundle declares these names more than once: ' + duplicated.join(', '));
+  }
   await mkdir(OUT, { recursive: true });
   await writeFile(join(OUT, 'index.ts'), code, 'utf8');
 

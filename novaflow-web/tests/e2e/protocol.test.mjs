@@ -17,7 +17,7 @@ import {
   TASK_TYPE_REQUIREMENTS, canTransition, isTerminalState, isSafeFilename,
   TOKEN_PREFIX, requirementsFor
 } from '../../packages/shared/src/protocol.mjs';
-import { priceTask } from '../../packages/shared/src/pricing.mjs';
+import { priceTask, priceFromRateCard } from '../../packages/shared/src/pricing.mjs';
 import { MODEL_MANIFEST, findModel } from '../../packages/shared/src/model-manifest.mjs';
 import { validateTaskParameters } from '../../packages/shared/src/control-plane.mjs';
 
@@ -92,35 +92,46 @@ section('every task type is runnable');
 // ---------------------------------------------------------------------------
 section('pricing is server-authoritative and sane');
 {
-  const base = priceTask(TASK_TYPE.QWEN_T2I, { width: 1024, height: 1024, steps: 20, count: 1 });
-  check('a standard image has a positive price', base.creditCost > 0, base);
+  // What a user is actually charged: nothing, because every task type today
+  // runs on this pool's own GPUs. See the "only third-party work costs
+  // credits" section for that rule.
+  checkEqual('a self-hosted image is free',
+    priceTask(TASK_TYPE.QWEN_T2I, { width: 1024, height: 1024, steps: 20, count: 1 }).creditCost, 0);
+  checkEqual('a self-hosted video is free',
+    priceTask(TASK_TYPE.H3_I2V, { width: 1280, height: 720, duration_seconds: 10 }).creditCost, 0);
 
-  const bigger = priceTask(TASK_TYPE.QWEN_T2I, { width: 2048, height: 2048, steps: 20, count: 1 });
+  // The rate card underneath still has to be right, because a provider-backed
+  // task type will use it. Exercised directly so it cannot rot unnoticed while
+  // everything above it is free.
+  const base = priceFromRateCard(TASK_TYPE.QWEN_T2I, { width: 1024, height: 1024, steps: 20, count: 1 });
+  check('the rate card prices a standard image above zero', base.creditCost > 0, base);
+
+  const bigger = priceFromRateCard(TASK_TYPE.QWEN_T2I, { width: 2048, height: 2048, steps: 20, count: 1 });
   check('a bigger image costs more', bigger.creditCost > base.creditCost, { base: base.creditCost, bigger: bigger.creditCost });
 
-  const more = priceTask(TASK_TYPE.QWEN_T2I, { width: 1024, height: 1024, steps: 40, count: 1 });
+  const more = priceFromRateCard(TASK_TYPE.QWEN_T2I, { width: 1024, height: 1024, steps: 40, count: 1 });
   check('more steps cost more', more.creditCost > base.creditCost, { base: base.creditCost, more: more.creditCost });
 
-  const batch = priceTask(TASK_TYPE.QWEN_T2I, { width: 1024, height: 1024, steps: 20, count: 4 });
+  const batch = priceFromRateCard(TASK_TYPE.QWEN_T2I, { width: 1024, height: 1024, steps: 20, count: 4 });
   check('a batch of 4 costs 4x', Math.abs(batch.creditCost - base.creditCost * 4) < 0.0001, { batch: batch.creditCost });
 
   // A client cannot smuggle a price in, whatever it calls the field.
-  const hostile = priceTask(TASK_TYPE.QWEN_T2I, {
+  const hostile = priceFromRateCard(TASK_TYPE.QWEN_T2I, {
     width: 1024, height: 1024, steps: 20, count: 1,
     creditCost: 0, credit_cost: 0, chargeAmount: 0, price: 0, cost: 0, free: true
   });
   checkEqual('client-supplied price fields are ignored', hostile.creditCost, base.creditCost);
 
   // Out-of-range values clamp UP to the allowed maximum, never down to free.
-  const absurd = priceTask(TASK_TYPE.QWEN_T2I, { width: 999999, height: 999999, steps: 99999, count: 9999 });
+  const absurd = priceFromRateCard(TASK_TYPE.QWEN_T2I, { width: 999999, height: 999999, steps: 99999, count: 9999 });
   check('absurd parameters clamp to a real, non-zero price', absurd.creditCost > base.creditCost, absurd);
 
-  const negative = priceTask(TASK_TYPE.QWEN_T2I, { width: -1, height: -1, steps: -5, count: -3 });
+  const negative = priceFromRateCard(TASK_TYPE.QWEN_T2I, { width: -1, height: -1, steps: -5, count: -3 });
   check('negative parameters never yield a negative or zero price', negative.creditCost > 0, negative);
 
-  const video = priceTask(TASK_TYPE.H3_I2V, { width: 1280, height: 720, duration_seconds: 5 });
+  const video = priceFromRateCard(TASK_TYPE.H3_I2V, { width: 1280, height: 720, duration_seconds: 5 });
   check('video pricing scales with duration',
-    priceTask(TASK_TYPE.H3_I2V, { width: 1280, height: 720, duration_seconds: 10 }).creditCost > video.creditCost);
+    priceFromRateCard(TASK_TYPE.H3_I2V, { width: 1280, height: 720, duration_seconds: 10 }).creditCost > video.creditCost);
 
   check('an unknown task type prices at zero rather than guessing',
     priceTask('nonsense', {}).creditCost === 0);
@@ -250,6 +261,29 @@ section('the control secret does not have to be configured');
 
   const none = await resolveControlSecret({});
   checkEqual('and nothing at all yields nothing, rather than a guessable default', none, '');
+}
+
+// ---------------------------------------------------------------------------
+section('only third-party work costs credits');
+{
+  // The product rule: credits meter what Grok / GPT / Google bill for.
+  // Generation that runs on this pool's own GPUs is free, whoever owns the
+  // machine. Charging for someone's own hardware would be inventing a fee.
+  const { priceTask } = await import('../../packages/shared/src/pricing.mjs');
+  const { TASK_TYPE_REQUIREMENTS, isMetered, BILLING } = await import('../../packages/shared/src/protocol.mjs');
+
+  for (const [type, req] of Object.entries(TASK_TYPE_REQUIREMENTS)) {
+    checkEqual(type + ' runs on our own GPUs', req.billing, BILLING.SELF_HOSTED);
+    const priced = priceTask(type, { width: 1024, height: 1024, steps: 40, count: 10, duration_seconds: 30 });
+    checkEqual(type + ' costs nothing even at maximum settings', priced.creditCost, 0);
+    check(type + ' says why it is free', /self_hosted/.test(priced.source), priced.source);
+    check(type + ' is not metered', !isMetered(type), null);
+  }
+
+  // The metering machinery is kept, not deleted - a provider-backed task type
+  // has to be able to use it without this all being rebuilt.
+  check('the rate card is still there for provider-backed work',
+    Object.keys((await import('../../packages/shared/src/pricing.mjs')).PRICE_TABLE).length >= 3, null);
 }
 
 finish('protocol');

@@ -129,7 +129,9 @@ let taskId = '';
   });
   check('task created', created.status === 200 && created.body.task.status === TASK_STATE.QUEUED, created.body);
   taskId = created.body.task.id;
-  check('server priced the task', created.body.pricing.creditCost > 0, created.body.pricing);
+  check('the server, not the client, decided the price',
+    created.body.pricing.source === 'novaflow_web_self_hosted_v1', created.body.pricing);
+  checkEqual('and self-hosted work is free', created.body.pricing.creditCost, 0);
   check('a capable worker was detected', created.body.capableWorkers === 1, created.body);
 
   // The browser must not be able to talk itself into a cheaper task.
@@ -141,7 +143,13 @@ let taskId = '';
       parameters: { prompt: 'x', width: 4096, height: 4096, steps: 100, count: 10 }
     }
   });
-  check('client-supplied price is ignored', cheeky.body.pricing.creditCost > 100, cheeky.body.pricing);
+  // The client cannot smuggle a price in. It happens to be zero either way
+  // today, so what is asserted is that the server's own verdict is what lands,
+  // not that a made-up field was merely ignored.
+  checkEqual('client-supplied price fields do not change the verdict',
+    cheeky.body.pricing.creditCost, 0);
+  checkEqual('and the verdict is the server rate rule',
+    cheeky.body.pricing.source, 'novaflow_web_self_hosted_v1');
   // It was only a pricing probe; drop it so it does not sit at the head of the
   // FIFO queue and get claimed ahead of the tasks the later sections create.
   await call(BASE, 'POST', '/api/web/tasks/' + cheeky.body.task.id + '/cancel', { token: alice.token });
@@ -152,12 +160,18 @@ let taskId = '';
   });
   check('unknown task type refused', junk.status === 400, junk.body);
 
+  // Credits meter what Grok / GPT / Google bill for. A user with none of them
+  // must still be able to run their own GPU, so a zero balance is not a gate.
   const poor = await devLogin('poor@novaflow.local', 0);
-  const denied = await call(BASE, 'POST', '/api/web/tasks', {
+  const allowed = await call(BASE, 'POST', '/api/web/tasks', {
     token: poor.token,
     body: { task_type: 'qwen_t2i', parameters: { prompt: 'x' } }
   });
-  check('insufficient credits refused up front', denied.status === 402, denied.body);
+  check('a zero-credit account can still use its own GPU', allowed.status === 200, allowed.body);
+  checkEqual('at no cost', allowed.body.pricing.creditCost, 0);
+  const poorBalance = await ctx.store.getCreditBalance(poor.user.id);
+  checkEqual('and its balance is untouched', poorBalance, 0);
+  await call(BASE, 'POST', '/api/web/tasks/' + allowed.body.task.id + '/cancel', { token: poor.token });
 }
 
 // ---------------------------------------------------------------------------
@@ -210,11 +224,13 @@ section('assignment + progress + completion + credits');
     }
   });
   check('task completed', complete.body.task.status === TASK_STATE.COMPLETED, complete.body.task);
-  check('settlement ran', complete.body.settlement && complete.body.settlement.status, complete.body.settlement);
+  check('settlement was skipped rather than written as a zero charge',
+    complete.body.settlement && complete.body.settlement.skipped === 'self_hosted',
+    complete.body.settlement);
 
   const balanceAfter = await ctx.store.getCreditBalance(alice.user.id);
   const charged = balanceBefore - balanceAfter;
-  check('credits were deducted exactly once', charged > 0, { balanceBefore, balanceAfter, charged });
+  checkEqual('no credits were deducted for work on our own GPU', charged, 0);
 
   // Replay the completion: the idempotency key must prevent a second charge.
   await call(BASE, 'POST', '/api/worker/tasks/' + taskId + '/complete', {
