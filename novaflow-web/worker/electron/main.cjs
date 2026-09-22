@@ -21,7 +21,24 @@ let configDirty = false;
 let commands = Promise.resolve();
 const operations = {};
 let activeOperation = '';
-const launcherState = () => ({ ...(worker?.getState() || {}), operations: { ...operations } });
+function registrationSummary(state = {}) {
+  let identity = null;
+  try { identity = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'identity.json'), 'utf8')); } catch { /* No saved identity. */ }
+  const saved = Boolean(identity?.workerId && identity?.workerSecret);
+  const config = readConfig();
+  const sameControl = saved && String(identity.controlUrl || '').replace(/\/+$/, '') === String(config.controlUrl || '').replace(/\/+$/, '');
+  // Only expose public metadata; never send the saved secret to the renderer.
+  return {
+    status: state.sharing && sameControl ? 'verified' : saved ? (sameControl ? 'saved' : 'different-control') : 'new',
+    workerId: saved ? String(identity.workerId) : '',
+    workerName: saved ? String(identity.workerName || config.workerName || '') : '',
+    savedAt: saved ? String(identity.savedAt || '') : ''
+  };
+}
+const launcherState = () => {
+  const state = worker?.getState() || {};
+  return { ...state, registration: registrationSummary(state), operations: { ...operations } };
+};
 function progress(percent, message) {
   if (!activeOperation) return;
   operations[activeOperation] = { ...operations[activeOperation], percent, message, status: 'running' };

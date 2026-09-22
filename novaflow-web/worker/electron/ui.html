@@ -81,6 +81,11 @@
   .launch-column > button { width: 100%; height: 46px; display: flex; align-items: center; justify-content: center; gap: 10px; font-size: 15px; border-radius: 9px; }
   .launch-column svg { width: 23px; height: 23px; flex: none; }
   .footer-note { margin-top: 14px; border-top: 1px solid #ffffff10; padding-top: 10px; font-size: 10px; color: #95959b; }
+  .registration-info { margin-top: 9px; padding: 10px 12px; border: 1px solid #ffffff12; border-radius: 8px; background: #ffffff03; }
+  #registrationStatus { color: #d5d5da; font-size: 12px; font-weight: 600; }
+  #registrationInfo[data-status="verified"] #registrationStatus { color: #7ce3bf; }
+  #registrationIdentity { margin-top: 6px; color: #b0b0b6; font-size: 11px; overflow-wrap: anywhere; user-select: text; }
+  #registrationHint { margin-top: 6px; }
   .website[aria-disabled="true"] { color: var(--dim); cursor: default; text-decoration: none; }
   .launch-progress { margin-top: 14px; font-size: 10px; color: #aaaab0; display: flex; flex-direction: column-reverse; gap: 8px; }
   .launch-progress progress { width: 100%; height: 4px; accent-color: var(--accent); display: block; border: none; border-radius: 5px; overflow: hidden; }
@@ -176,8 +181,13 @@
         <input id="controlUrl" placeholder="https://xxx.supabase.co/functions/v1/novaflow-web" />
       </div>
       <div>
-        <label for="registrationCode">注册码（首次接入时填写）</label>
-        <input id="registrationCode" placeholder="NFW-XXXXXX-XXXXXX" />
+        <label for="registrationCode">算力分享注册码（仅首次接入使用）</label>
+        <input id="registrationCode" placeholder="NFW-XXXXXX-XXXXXX" aria-describedby="registrationHint" />
+        <div id="registrationInfo" class="registration-info" aria-live="polite">
+          <div id="registrationStatus">正在读取接入记录…</div>
+          <div id="registrationIdentity" class="hidden"></div>
+          <div id="registrationHint" class="hint">本地启动使用机器授权，与算力分享注册码独立。</div>
+        </div>
       </div>
       <div>
         <label for="workerName">节点名称</label>
@@ -293,6 +303,7 @@
     function render(state) {
       lastState = state;
       renderProgress();
+      renderRegistration(state?.registration);
       const running = Boolean(state && state.localRunning);
       $('localLink').setAttribute('aria-disabled', String(!running));
     $('novaFlowBtn').disabled = localBusy;
@@ -343,6 +354,27 @@
     if (atBottom) box.scrollTop = box.scrollHeight;
   }
 
+  function renderRegistration(info = {}) {
+    const status = info.status || 'new';
+    $('registrationInfo').dataset.status = status;
+    $('registrationStatus').textContent = ({
+      verified: '已注册 · 本次连接已验证',
+      saved: '已保存节点身份 · 等待连接验证',
+      'different-control': '检测到其他控制面的节点记录',
+      new: '未发现已保存的节点身份'
+    })[status];
+    $('registrationIdentity').classList.toggle('hidden', !info.workerId);
+    $('registrationIdentity').textContent = info.workerId ? '节点：' + (info.workerName || '—') + '　｜　ID：' + info.workerId : '';
+    const hints = {
+      verified: '正在使用已保存的节点身份，无需重复填写。首次注册码接入成功后会自动清空。',
+      saved: '将自动尝试复用历史身份；若已接入过，无需重复填写注册码。身份是否有效以连接结果为准。',
+      'different-control': '历史身份与当前控制面地址不一致，请确认地址；新服务首次接入需要注册码。',
+      new: '首次开启算力分享需填写注册码，或从网页账号绑定节点。仅启动本地无需此码。'
+    };
+    $('registrationHint').textContent = hints[status] + (status === 'new' ? '' : ' 本地启动使用独立的机器授权。');
+    $('registrationCode').placeholder = status === 'verified' ? '已接入，无需重复填写' : 'NFW-XXXXXX-XXXXXX';
+  }
+
   (async function init() {
     const config = await api.getConfig();
     for (const key of FIELDS) if ($(key)) $(key).value = config[key] == null ? (key === 'localPort' ? '4784' : '') : config[key];
@@ -358,6 +390,7 @@
     for (const key of FIELDS) patch[key] = $(key).value.trim();
     patch.gatewayPort = Number(patch.gatewayPort) || 8790;
     await api.setConfig(patch);
+    render(await api.getState());
     showError('');
     $('saveBtn').textContent = '已保存';
     setTimeout(() => { $('saveBtn').textContent = '保存设置'; }, 1200);

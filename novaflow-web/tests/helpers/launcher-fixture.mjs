@@ -45,7 +45,7 @@ export async function createLauncherFixture() {
   }
   const fakeFs = {
     mkdirSync() {}, existsSync() { return true; }, appendFileSync() {},
-    readFileSync: () => JSON.stringify(fixture.config),
+    readFileSync: file => JSON.stringify(String(file).endsWith('identity.json') ? fixture.identity || {} : fixture.config),
     writeFileSync: (_file, data) => { fixture.config = JSON.parse(data); },
     promises: { readFile: async () => 'test-only-license' }
   };

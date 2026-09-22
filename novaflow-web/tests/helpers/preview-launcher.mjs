@@ -4,6 +4,9 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { createLauncherFixture } from './launcher-fixture.mjs';
 const fixture = await createLauncherFixture();
+// Preview a returning node without reading any production identity or secret.
+fixture.identity = { workerId: 'preview-node-only', workerSecret: 'preview-secret-only', workerName: 'preview-node', controlUrl: fixture.config.controlUrl };
+fixture.config.registrationCode = '';
 const source = await readFile(new URL('../../worker/electron/ui.html', import.meta.url), 'utf8');
 const bridge = `<script>
 const invoke = async (name, payload) => (await fetch('/ipc', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({name,payload}) })).json();
