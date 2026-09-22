@@ -18,7 +18,7 @@
     "web:preview": "npm --prefix web run preview",
     "worker:dev": "npm --prefix worker run dev",
     "worker:headless": "node worker/src/main-headless.mjs",
-    "worker:build": "npm --prefix worker run build:win",
+    "worker:build": "node tools/fetch-cloudflared.mjs && npm --prefix worker run build:win",
     "test": "node tests/run-tests.mjs",
     "test:sql": "node tests/e2e/sql-contract.test.mjs",
     "test:protocol": "node tests/e2e/protocol.test.mjs",
@@ -36,7 +36,9 @@
     "bundle:edge": "node tools/bundle-edge-function.mjs",
     "config:web": "node tools/set-web-config.mjs",
     "verify:edge": "node tools/verify-edge-bundle.mjs",
-    "package:site": "node tools/package-site.mjs"
+    "package:site": "node tools/package-site.mjs",
+    "verify:tunnel": "node tools/verify-tunnel.mjs",
+    "fetch:cloudflared": "node tools/fetch-cloudflared.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

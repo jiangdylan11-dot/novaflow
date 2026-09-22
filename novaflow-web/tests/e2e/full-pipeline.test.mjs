@@ -55,6 +55,7 @@ try {
   check('owner minted a registration code', Boolean(ownerCode.body.registration_code), ownerCode.body);
 
   worker = createWorker({
+    tunnel: false,   // see verify:tunnel for the real one
     controlUrl: BASE,
     dataDir,
     workflowDir: WORKFLOW_DIR,
@@ -170,56 +171,64 @@ try {
     console.log('  ->  saved proof image to novaflow-web/.artifacts/e2e-result.png (' + bytes.length + ' bytes)');
 
     // -----------------------------------------------------------------------
-    section('5b. a browser that is NOT on the worker machine can still get it');
+    section('5b. the address the outside world gets is read-only and warehouse-only');
     {
-      // Everything above passes because the test, the worker and the browser
-      // are one machine, so grant.endpoint - http://127.0.0.1:8790 - resolves
-      // to the machine holding the file. That is the owner sitting at the GPU.
+      // The worker's public address is a Cloudflare tunnel: it dials out from
+      // the owner's machine, so nothing is opened on their router, and the
+      // bytes go from their disk to whoever asked without passing through any
+      // storage. That is what makes a result the owner generated actually
+      // reachable by somebody else's browser.
       //
-      // It is not anybody else. The scheduler has no owner filter, so a task
-      // goes to whichever worker is free, and the browser asking for the
-      // result is somewhere else entirely; 127.0.0.1 then means the VIEWER's
-      // own machine, where nothing is listening.
-      //
-      // So the bytes also go through an object store, and this is the route a
-      // real user's browser takes.
-      // The browser only takes this route when the manifest says the file got
-      // there. Without this check the flag could be false for every run, the
-      // browser would quietly use the gateway, and none of the rest of this
-      // section would be testing what it looks like it is testing.
-      check('the manifest records that the worker stored the file',
-        completed.output_manifest.files[0].stored === true, completed.output_manifest.files[0]);
-
-      const links = await call(BASE, 'POST', '/api/web/tasks/' + taskId + '/files', {
-        token, body: { op: 'download', kind: 'output', names: [fileName] }
+      // A tunnel forwards whatever method it is handed, though - a PUT through
+      // one arrives at the origin exactly like a GET - so "read-only" has to
+      // be enforced here, at the gateway. These requests carry the Host header
+      // a tunnelled request carries, which is how the gateway tells outside
+      // from inside.
+      // What a real tunnelled request carries. Measured against a live quick
+      // tunnel - cloudflared adds these and keeps the original Host. The Host
+      // header itself is not used here because fetch() refuses to set it.
+      const outside = {
+        'cf-connecting-ip': '203.0.113.9',
+        'cdn-loop': 'cloudflare; loops=1'
+      };
+      const base = grant.body.grant.endpoint;
+      const out = (path, init) => fetch(base + path, {
+        ...init, headers: { ...outside, ...(init?.headers || {}) }
       });
-      check('the control plane issues a link that needs no worker address',
-        links.status === 200 && Boolean(links.body.files?.[fileName]?.url),
-        { status: links.status, body: links.body });
 
-      const remote = await fetch(links.body.files[fileName].url);
-      const relayed = Buffer.from(await remote.arrayBuffer());
-      // A <video> will not start playing an application/octet-stream, and a
-      // video that silently refuses to play looks like one that failed to
-      // generate. Images sniff their way past it; that is why this is easy to
-      // miss until the first H3 clip.
-      check('the stored copy carries a real content type',
-        /^image\/|^video\//.test(String(remote.headers.get('content-type') || '')),
-        remote.headers.get('content-type'));
-      check('and it returns the same bytes the gateway did',
-        remote.status === 200 && relayed.equals(bytes),
-        { status: remote.status, bytes: relayed.length, expected: bytes.length });
-
-      const anonymous = await call(BASE, 'POST', '/api/web/tasks/' + taskId + '/files', {
-        body: { op: 'download', kind: 'output', names: [fileName] }
+      const read = await out('/gw/tasks/' + taskId + '/output/' + fileName, {
+        headers: { 'x-novaflow-grant': grant.body.grant.token }
       });
-      check('an unauthenticated caller gets no link', anonymous.status === 401, { status: anonymous.status });
+      const readBytes = Buffer.from(await read.arrayBuffer());
+      check('from outside, a finished result reads normally',
+        read.status === 200 && readBytes.equals(bytes), { status: read.status });
 
-      const asOutput = await call(BASE, 'POST', '/api/web/tasks/' + taskId + '/files', {
-        token, body: { op: 'upload', kind: 'output', names: [fileName] }
+      const write = await out('/gw/tasks/' + taskId + '/input/evil.png', {
+        method: 'PUT',
+        headers: { 'x-novaflow-grant': grant.body.grant.token },
+        body: 'x'
       });
-      check('a browser cannot get a link to WRITE a result',
-        asOutput.status === 403, { status: asOutput.status });
+      const writeBody = await write.text();
+      // Checked by the reason, not just the number: an upload grant cannot be
+      // minted for a finished task either, so a 403 on its own would pass this
+      // whether or not the rule above it exists.
+      check('from outside, nothing may be written to the owner disk',
+        write.status === 403 && /finished results only/.test(writeBody),
+        { status: write.status, body: writeBody.slice(0, 120) });
+
+      const peek = await out('/gw/tasks/' + taskId + '/input/' + fileName, {
+        headers: { 'x-novaflow-grant': grant.body.grant.token }
+      });
+      const peekBody = await peek.text();
+      check('from outside, only the warehouse is visible',
+        peek.status === 403 && /finished results only/.test(peekBody),
+        { status: peek.status, body: peekBody.slice(0, 120) });
+
+      // And the owner, whose browser reaches 127.0.0.1, keeps the full gateway.
+      const inside = await fetch(base + '/gw/tasks/' + taskId + '/output/' + fileName, {
+        headers: { 'x-novaflow-grant': grant.body.grant.token }
+      });
+      check('on the machine itself the gateway is unchanged', inside.status === 200, { status: inside.status });
     }
 
     // -----------------------------------------------------------------------
@@ -274,10 +283,18 @@ try {
         (done.output_manifest.files || []).length > 0, done.output_manifest);
 
       const editName = done.output_manifest.files[0].name;
-      const editLinks = await call(BASE, 'POST', '/api/web/tasks/' + editId + '/files', {
+      const refused = await call(BASE, 'POST', '/api/web/tasks/' + editId + '/files', {
         token, body: { op: 'download', kind: 'output', names: [editName] }
       });
-      const editBytes = Buffer.from(await (await fetch(editLinks.body.files[editName].url)).arrayBuffer());
+      check('results are never served from storage', refused.status === 403, { status: refused.status });
+
+      const editGrant = await call(BASE, 'POST', '/api/web/tasks/' + editId + '/grant', {
+        token, body: { op: 'download' }
+      });
+      const editBytes = Buffer.from(await (await fetch(
+        editGrant.body.grant.endpoint + '/gw/tasks/' + editId + '/output/' + editName,
+        { headers: { 'x-novaflow-grant': editGrant.body.grant.token } }
+      )).arrayBuffer());
       check('and the edited image comes back', editBytes.subarray(1, 4).toString() === 'PNG',
         { bytes: editBytes.length });
       await writeFile(join(proofDir, 'e2e-edit.png'), editBytes);
@@ -352,12 +369,6 @@ try {
     // Nothing did before: result_expired was only ever set by this line in
     // this test, and in production a task's results were "expired" on the
     // worker's disk while the control plane still offered to fetch them.
-    const storedLink = await call(BASE, 'POST', '/api/web/tasks/' + taskId + '/files', {
-      token, body: { op: 'download', kind: 'output', names: [fileName] }
-    });
-    check('the stored copy is refused once results expired',
-      storedLink.status === 410, { status: storedLink.status });
-
     const afterTtl = await call(BASE, 'GET', '/api/web/tasks/' + taskId, { token });
     check('task metadata survives but is marked expired',
       afterTtl.body.task.result_expired === true, afterTtl.body.task);

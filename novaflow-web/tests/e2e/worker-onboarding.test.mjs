@@ -66,6 +66,7 @@ async function newMachine({ name, code, expectFailure = false }) {
   const dataDir = await mkdtemp(join(tmpdir(), 'nfweb-onboard-'));
   tempDirs.push(dataDir);
   const worker = createWorker({
+    tunnel: false,   // see verify:tunnel for the real one
     controlUrl: BASE,
     dataDir,
     workflowDir: WORKFLOW_DIR,

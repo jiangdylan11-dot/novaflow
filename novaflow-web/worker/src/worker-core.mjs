@@ -14,6 +14,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { createGateway, sweepTaskFiles } from './gateway/gateway.mjs';
+import { createTunnel } from './tunnel.mjs';
 import { createComfyClient, collectOutputs, assertLocalOnly } from './comfy/comfy-client.mjs';
 import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength } from './comfy/workflow-runner.mjs';
 import { createWorkflowHost } from './comfy/workflow-host.mjs';
@@ -21,7 +22,6 @@ import { workflowModule } from '../../packages/shared/src/workflow-modules.mjs';
 import { inspectAllModels, inspectViaComfy } from './models/model-manager.mjs';
 import { detectGpu, detectSystem } from './hardware.mjs';
 import { generateWorkerSecret } from '../../packages/shared/src/tokens.mjs';
-import { contentTypeFor } from '../../packages/shared/src/task-files.mjs';
 import {
   HEARTBEAT_INTERVAL_SECONDS,
   TASK_STATE,
@@ -78,6 +78,7 @@ export function createWorker(options) {
     gatewayPort = 8790,
     gatewayHost = '0.0.0.0',
     publicEndpoint = '',
+    tunnel: tunnelEnabled = true,
     workerName = 'novaflow-worker',
     rendererDir = '',
     registrationCode = '',
@@ -104,6 +105,8 @@ export function createWorker(options) {
     system: null,
     models: [],
     endpointUrl: publicEndpoint,
+    localEndpointUrl: '',
+    transport: 'direct',
     lastError: '',
     lastHeartbeatAt: null,
     startedAt: nowIso(),
@@ -128,6 +131,8 @@ export function createWorker(options) {
       system: state.system,
       models: state.models.map((m) => ({ model_id: m.model_id, status: m.status })),
       endpointUrl: state.endpointUrl,
+      localEndpointUrl: state.localEndpointUrl,
+      transport: state.transport,
       comfy: state.comfy,
       lastError: state.lastError,
       lastHeartbeatAt: state.lastHeartbeatAt,
@@ -230,7 +235,7 @@ export function createWorker(options) {
         ? (await comfyVideo.systemStats().catch(() => null))?.system?.comfyui_version || ''
         : (await comfyImage.systemStats().catch(() => null))?.system?.comfyui_version || '',
       endpoint_url: state.endpointUrl,
-      transport: 'direct'
+      transport: state.transport || 'direct'
     };
 
     const body = {
@@ -324,37 +329,22 @@ export function createWorker(options) {
     }
   }
 
-  // ---- the object store route -------------------------------------------
+  // ---- reference images in ------------------------------------------------
   //
-  // A worker behind a home router registers as http://127.0.0.1:8790, which is
-  // the right address for exactly one browser: one running on this machine.
-  // Everyone else's browser resolves it to their OWN machine. So the bytes go
-  // through an object store instead, and neither side needs to reach the
-  // other. See packages/shared/src/task-files.mjs.
+  // Results go OUT from this disk directly, through the tunnel - they are the
+  // large files and they were generated here, so there is no reason for them
+  // to make a round trip through anyone's storage.
   //
-  // The gateway is still there and still works; it is simply not the only way
-  // in or out any more.
+  // Reference images come the other way, and the tunnel refuses every write by
+  // design: nothing reachable from the internet may put a file on this disk.
+  // So they arrive through the control plane's object store instead - a few MB
+  // that are deleted the moment the task finishes.
   async function fileUrls(taskId, { op, kind, names }) {
     const res = await callControl('POST', '/api/worker/tasks/' + taskId + '/files', {
       token: state.workerToken,
       body: { op, kind, names }
     });
     return (res && res.files) || {};
-  }
-
-  /** Push one finished output up, so a browser anywhere can fetch it. */
-  async function putOutput(taskId, name, bytes) {
-    const links = await fileUrls(taskId, { op: 'upload', kind: 'output', names: [name] });
-    const link = links[name];
-    if (!link) throw new Error('control plane issued no upload URL for ' + name);
-    const res = await fetch(link.url, {
-      method: link.method || 'PUT',
-      headers: { 'content-type': contentTypeFor(name), ...(link.headers || {}) },
-      body: bytes
-    });
-    if (!res.ok) {
-      throw new Error('uploading ' + name + ' to the object store failed: ' + res.status);
-    }
   }
 
   /**
@@ -513,21 +503,7 @@ export function createWorker(options) {
       const safeName = 'out_' + String(i + 1).padStart(4, '0') + ext;
       await writeFile(join(outDir, safeName), bytes);
       const info = await stat(join(outDir, safeName));
-      // Up to the object store before the task is reported complete, so the
-      // browser never sees a finished task whose bytes it cannot reach.
-      let stored = false;
-      try {
-        await putOutput(task.id, safeName, bytes);
-        stored = true;
-      } catch (error) {
-        // Not fatal: a same-machine browser can still use the gateway, and a
-        // failed upload must not throw away work that already ran on the GPU.
-        log('output upload failed, falling back to the gateway', {
-          taskId: task.id, name: safeName, error: String(error.message || error)
-        });
-      }
       outputs.push({
-        stored,
         name: safeName,
         kind: /\.(mp4|webm)$/i.test(ext) ? 'video' : 'image',
         bytes: info.size,
@@ -628,6 +604,7 @@ export function createWorker(options) {
   // Lifecycle
   // -------------------------------------------------------------------------
   let gateway = null;
+  let tunnel = null;
   let timers = [];
   let running = false;
 
@@ -645,8 +622,27 @@ export function createWorker(options) {
       logger: log
     });
     const port = await gateway.listen(gatewayPort, gatewayHost);
-    if (!state.endpointUrl) state.endpointUrl = 'http://127.0.0.1:' + port;
-    log('gateway listening', { port, endpoint: state.endpointUrl });
+    state.localEndpointUrl = 'http://127.0.0.1:' + port;
+    log('gateway listening', { port, endpoint: state.localEndpointUrl });
+
+    // A public address for a machine that has none. Without one this node can
+    // only serve a browser running on this very machine - which is the owner
+    // and nobody else. See tunnel.mjs.
+    // Tests turn this off: a suite that reaches the internet to pass is a
+    // suite that fails for reasons that have nothing to do with the code.
+    // `npm run verify:tunnel` opens a real one and fetches a real file
+    // through it.
+    if (!state.endpointUrl && tunnelEnabled !== false) {
+      tunnel = createTunnel({ port, logger: log });
+      const publicUrl = await tunnel.start();
+      state.endpointUrl = publicUrl || state.localEndpointUrl;
+      state.transport = publicUrl ? 'tunnel' : 'direct';
+      if (!publicUrl) {
+        log('no public address: only a browser on this machine can fetch results');
+      }
+    } else if (!state.endpointUrl) {
+      state.endpointUrl = state.localEndpointUrl;
+    }
 
     await register();
     await reportModels();
@@ -671,6 +667,8 @@ export function createWorker(options) {
         body: { status: 'offline', current_task_id: null }
       });
     } catch { /* going offline quietly is acceptable */ }
+    if (tunnel) tunnel.stop();
+    tunnel = null;
     if (gateway) await gateway.close();
     gateway = null;
     emit();
@@ -687,6 +685,8 @@ export function createWorker(options) {
     getState: snapshotState,
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     get identity() { return { workerId: state.workerId, workerName }; },
-    get gatewayEndpoint() { return state.endpointUrl; }
+    get gatewayEndpoint() { return state.endpointUrl; },
+    get localEndpoint() { return state.localEndpointUrl; },
+    get transport() { return state.transport; }
   };
 }

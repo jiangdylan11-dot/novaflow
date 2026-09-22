@@ -182,6 +182,7 @@ try {
   if (comfyReady) {
     const code = await call(BASE, 'POST', '/dev/registration-code', { body: { email: 'rw@novaflow.local' } });
     worker = createWorker({
+    tunnel: false,   // see verify:tunnel for the real one
       controlUrl: BASE,
       dataDir,
       workflowDir: join(ROOT, 'worker/workflows'),

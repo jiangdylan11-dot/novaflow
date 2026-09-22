@@ -3,6 +3,8 @@ node_modules/
 web/dist/
 worker/dist/
 worker/data/
+# Cloudflare's own release binary, 52 MB. tools/fetch-cloudflared.mjs gets it.
+worker/vendor/
 .artifacts/
 *.log
 

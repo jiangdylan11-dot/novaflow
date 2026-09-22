@@ -169,6 +169,26 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
         return;
       }
 
+      // Is this request arriving from outside this machine?
+      //
+      // The gateway is reachable two ways: on 127.0.0.1 by a browser running
+      // on this machine, and through a Cloudflare tunnel by anyone. A tunnel
+      // forwards whatever method it is handed - a PUT through one arrives at
+      // the origin exactly like a GET - so the restriction has to live here.
+      //
+      // From outside: read only, and the warehouse only. Nobody gets to put a
+      // file on this disk or read anything but a finished result. The owner's
+      // own browser reaches 127.0.0.1 and keeps the full gateway.
+      // Measured against a real quick tunnel: cloudflared keeps the original
+      // Host and adds cf-connecting-ip / cdn-loop. Cloudflare routes by Host,
+      // so a client cannot reach this tunnel while pretending to be local, and
+      // the cf headers arrive whatever the client sends. A request from the
+      // owner's own browser carries none of the three.
+      const hostHeader = String(req.headers.host || '').toLowerCase();
+      const fromOutside = Boolean(req.headers['cf-connecting-ip'])
+        || Boolean(req.headers['cdn-loop'])
+        || !/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(hostHeader);
+
       const m = /^\/gw\/tasks\/([0-9a-fA-F-]{36})\/(input|output|preview)\/([^/]+)$/.exec(url.pathname);
       if (!m) { fail(404, 'not found'); return; }
 
@@ -182,6 +202,12 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
       const dir = taskDir(taskId, kind);
       const filePath = resolve(dir, name);
       if (!filePath.startsWith(resolve(dir) + sep)) { fail(400, 'unacceptable path'); return; }
+
+      if (fromOutside && (kind === 'input' || req.method !== 'GET' && req.method !== 'HEAD')) {
+        log('refused a non-read from outside', { host: hostHeader, method: req.method, kind });
+        fail(403, 'this address serves finished results only');
+        return;
+      }
 
       if ((req.method === 'PUT' || req.method === 'POST') && kind === 'input') {
         const grant = await readGrant(req, url, { taskId, op: GRANT_OP.UPLOAD });

@@ -212,21 +212,20 @@
     return { queue_running: running, queue_pending: pending };
   }
 
-  // ------------------------------------------------------- the file route
+  // --------------------------------------------------- reference images out
   //
-  // A worker behind a home router registers as http://127.0.0.1:8790. That is
-  // the right address only when the browser is on the same machine as the GPU
-  // - the owner, and nobody else. Since the scheduler has no owner filter, a
-  // task goes wherever there is capacity, so "nobody else" is most people.
+  // Results come back the other way: straight off the worker's disk, through
+  // its tunnel, never through storage. They are the large files and they were
+  // made on that machine, so a round trip through anyone's bucket would cost
+  // bandwidth to achieve nothing.
   //
-  // So files travel through an object store both ends can reach. The direct
-  // gateway is kept as a fallback for the same-machine case and for a control
-  // plane with no object store, which answers 501.
-  const storedUrls = new Map();   // taskId:kind:name -> { url, at }
-
-  async function fileLinks(taskId, op, kind, names) {
+  // Reference images cannot go that way, because the tunnel refuses every
+  // write: nothing reachable from the internet may put a file on the owner's
+  // disk. So they go up through the control plane instead - a few MB, deleted
+  // when the task ends.
+  async function fileLinks(taskId, op, names) {
     const res = await control('POST', '/api/web/tasks/' + taskId + '/files', {
-      op: op, kind: kind, names: names
+      op: op, kind: 'input', names: names
     });
     return (res && res.files) || {};
   }
@@ -247,7 +246,7 @@
 
   async function putInputs(taskId, refs) {
     const names = refs.map((r) => r.name);
-    const links = await fileLinks(taskId, 'upload', 'input', names);
+    const links = await fileLinks(taskId, 'upload', names);
     for (const ref of refs) {
       const link = links[ref.name];
       const held = uploads.get(ref.name);
@@ -259,34 +258,6 @@
       });
       if (!res.ok) throw new Error(ref.name + ' 上传返回 ' + res.status);
       uploads.delete(ref.name);
-    }
-  }
-
-  /**
-   * A URL for one output file, or '' when it is not in the object store.
-   *
-   * The worker marks each file `stored` only after its upload succeeded, so
-   * this asks the manifest rather than assuming. A worker on an older build
-   * uploads nothing at all, and guessing would hand back a signed link to an
-   * object that is not there - a 404 in place of a picture, for a task that
-   * ran perfectly well and is sitting on the gateway.
-   */
-  async function storedUrl(task, name) {
-    const file = ((task.output_manifest && task.output_manifest.files) || [])
-      .find((f) => f.name === name);
-    if (!file || file.stored !== true) return '';
-    const taskId = task.id;
-    const key = taskId + ':output:' + name;
-    const cached = storedUrls.get(key);
-    if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.url;
-    try {
-      const links = await fileLinks(taskId, 'download', 'output', [name]);
-      const url = (links[name] && links[name].url) || '';
-      if (url) storedUrls.set(key, { url: url, at: Date.now() });
-      return url;
-    } catch (error) {
-      if (error && error.status === 501) return '';
-      throw error;
     }
   }
 
@@ -482,15 +453,13 @@
       if (!entry) return { ok: false, error: 'unknown output file: ' + filename };
 
       try {
-        // The object store first: it works from any browser. The gateway only
-        // works when this browser is on the worker's own machine.
-        let url = await storedUrl(entry, filename);
-        if (!url) {
-          const grant = await grantFor(entry, 'download');
-          url = grant.endpoint.replace(/\/+$/, '') +
-            '/gw/tasks/' + entry.id + '/output/' + encodeURIComponent(filename) +
-            '?grant=' + encodeURIComponent(grant.token);
-        }
+        // Straight from the worker's disk. grant.endpoint is its tunnel
+        // address when it has one, so this reaches the machine that made the
+        // file from anywhere - without the bytes passing through any storage.
+        const grant = await grantFor(entry, 'download');
+        const url = grant.endpoint.replace(/\/+$/, '') +
+          '/gw/tasks/' + entry.id + '/output/' + encodeURIComponent(filename) +
+          '?grant=' + encodeURIComponent(grant.token);
         const res = await fetch(url);
         if (!res.ok) return { ok: false, error: '取回结果失败：' + res.status };
         const buffer = await res.arrayBuffer();
@@ -513,8 +482,6 @@
         (t) => ((t.output_manifest && t.output_manifest.files) || []).some((f) => f.name === filename)
       );
       if (!entry) return '';
-      const stored = await storedUrl(entry, filename);
-      if (stored) return stored;
       const grant = await grantFor(entry, 'download');
       return grant.endpoint.replace(/\/+$/, '') +
         '/gw/tasks/' + entry.id + '/output/' + encodeURIComponent(filename) +

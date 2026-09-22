@@ -28,6 +28,13 @@
       "filter": [
         "**/*.js"
       ]
+    },
+    {
+      "from": "vendor",
+      "to": "vendor",
+      "filter": [
+        "**/*"
+      ]
     }
   ],
   "asar": false,

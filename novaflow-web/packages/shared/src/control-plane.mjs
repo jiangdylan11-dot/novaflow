@@ -440,12 +440,7 @@ export function createControlPlane({ store, secrets, logger }) {
         bytes: clampInt(f?.bytes, 0, 8 * 1024 * 1024 * 1024, 0),
         width: clampInt(f?.width, 0, 16384, 0),
         height: clampInt(f?.height, 0, 16384, 0),
-        duration_seconds: Number(f?.duration_seconds) || 0,
-        // Whether this file also reached the object store. The browser asks
-        // for a signed link only when it did; a worker on an older build
-        // uploads nothing, and a signed link to an absent object is a 404 in
-        // place of a picture for a task that ran perfectly well.
-        stored: f?.stored === true
+        duration_seconds: Number(f?.duration_seconds) || 0
       })).filter((f) => f.name),
       worker_id: String(worker.id),
       endpoint_url: String(worker.endpoint_url || ''),
@@ -734,25 +729,23 @@ export function createControlPlane({ store, secrets, logger }) {
     }
 
     const op = sanitizeText(body.op, 20) === 'download' ? 'download' : 'upload';
-    const kind = sanitizeText(body.kind, 20) === FILE_KIND.OUTPUT ? FILE_KIND.OUTPUT : FILE_KIND.INPUT;
 
-    // Who may write what. A browser supplies inputs; a worker produces
-    // outputs. Neither writes the other's side, so a compromised browser
-    // cannot plant a result and a worker cannot rewrite the request.
-    if (op === 'upload') {
-      if (actor === 'user' && kind !== FILE_KIND.INPUT) {
-        throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'a browser may only upload inputs');
-      }
-      if (actor === 'worker' && kind !== FILE_KIND.OUTPUT) {
-        throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'a worker may only upload outputs');
-      }
+    // Inputs only. Results never come this way: they were generated on the
+    // worker's own disk and are served from it directly, which is the whole
+    // point of the tunnel - a finished video has no reason to make a round
+    // trip through anyone's storage, and that round trip is what would
+    // exhaust a free tier.
+    //
+    // So this route carries the other direction, which the tunnel refuses by
+    // design: nothing reachable from the internet may write to a worker's
+    // disk. A reference image is a few MB and is deleted when the task ends.
+    const kind = FILE_KIND.INPUT;
+    if (sanitizeText(body.kind, 20) === FILE_KIND.OUTPUT) {
+      throw new HttpError(403, ERROR_CODE.FORBIDDEN,
+        'results are served from the worker, not from storage');
     }
-    if (op === 'download' && actor === 'user' && kind === FILE_KIND.OUTPUT
-      && task.status !== TASK_STATE.COMPLETED) {
-      throw new HttpError(409, ERROR_CODE.CONFLICT, 'results are not ready');
-    }
-    if (op === 'download' && actor === 'user' && task.result_expired) {
-      throw new HttpError(410, ERROR_CODE.EXPIRED, 'results have been cleaned up');
+    if (op === 'upload' && actor === 'worker') {
+      throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'a worker does not upload inputs');
     }
 
     const names = Array.isArray(body.names) ? body.names.slice(0, 32) : [];
