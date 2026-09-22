@@ -28671,7 +28671,11 @@
         "box-sizing": "border-box",
         "box-shadow": "none",
         "pointer-events": "none",
-        "z-index": "89998"
+        // BELOW the panel content, which sits at z-index 20. At 89998 these
+        // surfaces painted straight over it and the left panel came up blank
+        // on every page whose content is not itself raised - the rail only
+        // survived because its cells are at 90000.
+        "z-index": "6"
       };
       for (const [property, value] of Object.entries(rules)) {
         if (node.style.getPropertyValue(property) !== value) {
