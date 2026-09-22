@@ -599,6 +599,19 @@
       return { ok: true, result: { authenticated: false } };
     },
 
+    // Web account dialog: read the real credit/quota snapshot from the account
+    // service, rather than the compute control plane's capability snapshot.
+    async clientAuthAccountDetails() {
+      if (!session) return { ok: false, httpStatus: 401, error: '请先登录账号' };
+      try {
+        const profile = await auth('GET', '/api/client/bootstrap');
+        if (profile.ok === false) return { ok: false, error: profile.error || '账户信息读取失败' };
+        return { ok: true, result: { credits: profile.credits, providerQuotas: profile.providerQuotas } };
+      } catch (error) {
+        return { ok: false, httpStatus: error.status, error: String(error.message || error) };
+      }
+    },
+
     async clientAuthBootstrap() {
       try {
         const me = await control('GET', '/api/web/me');

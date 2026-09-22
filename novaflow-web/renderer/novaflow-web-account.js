@@ -24,8 +24,35 @@
   const BUTTON_ID = 'novaflow-web-account-button';
   const DIALOG_ID = 'novaflow-web-account-dialog';
 
-  const runtime = () => root.NovaFlowWebRuntime;
   const api = () => root.electronAPI || {};
+  let previousFocus, dialogRequest = 0;
+
+  // Web-only presentation. Keep the shared desktop account module running for
+  // authorization, but present its account controls only through the topbar.
+  const styles = el('style', '', `
+html body [data-novaflow-client-auth-panel="1"]{display:none!important}
+#novaflow-web-account-dialog{position:fixed!important;inset:0!important;width:100vw!important;height:100vh!important;max-width:none!important;max-height:none!important;margin:0!important;padding:20px!important;box-sizing:border-box;background:transparent!important;border:0!important;outline:0;color:#ddd;font:13px "Segoe UI",Tahoma,Geneva,Verdana,sans-serif;overflow:auto}
+#novaflow-web-account-dialog[open]{display:flex!important;align-items:center;justify-content:center}
+#novaflow-web-account-dialog::backdrop{background:rgba(0,0,0,.55)}
+#novaflow-web-account-dialog .nf-account-card{width:420px;max-width:100%;box-sizing:border-box;background:#212121!important;border:1px solid #ffffff1a!important;border-radius:8px!important;overflow:hidden;box-shadow:none!important;color:#ddd}
+#novaflow-web-account-dialog .nf-account-header{display:flex;align-items:center;gap:12px;background:#1d1d1d;border-bottom:1px solid #333;padding:12px 14px}
+#novaflow-web-account-dialog .nf-account-header h2{margin:0;color:#ccc;font:600 13px/26px "Segoe UI",sans-serif;flex:1}
+#novaflow-web-account-dialog .nf-account-close{background:none!important;border:0!important;color:#9a9a9a!important;font:16px/16px "Segoe UI",sans-serif;padding:1px 6px;cursor:pointer}
+#novaflow-web-account-dialog .nf-account-body{padding:18px 14px 14px;display:flex;flex-direction:column;gap:14px}
+#novaflow-web-account-dialog .nf-account-user{font-size:14px;color:#ddd;font-weight:600}
+#novaflow-web-account-dialog .nf-account-metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+#novaflow-web-account-dialog .nf-account-metric{background:#191919;border:1px solid #ffffff0a;border-radius:8px;padding:14px 12px}
+#novaflow-web-account-dialog .nf-account-label{font-size:12px;color:#999;margin-bottom:7px}
+#novaflow-web-account-dialog .nf-account-value{font-size:22px;line-height:1.4;font-weight:600;color:#f0f0f0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+#novaflow-web-account-dialog .nf-account-caption{font-size:11px;color:#888;margin-top:5px}
+#novaflow-web-account-dialog .nf-account-error{font-size:12px;color:#edac8e;line-height:1.6}
+#novaflow-web-account-dialog .nf-account-actions{display:flex;gap:10px;margin-top:2px}
+#novaflow-web-account-dialog .nf-account-actions button{flex:1;background:#333;color:#ddd;border:0;border-radius:8px;font:inherit;padding:10px;cursor:pointer}
+#novaflow-web-account-dialog .nf-account-actions button:disabled{opacity:.5;cursor:wait}
+#novaflow-web-account-dialog [hidden]{display:none!important}
+`);
+  styles.id = 'novaflow-web-account-style';
+  root.document.head.appendChild(styles);
 
   function el(tag, style, text) {
     const node = root.document.createElement(tag);
@@ -41,8 +68,21 @@
   ].join(';');
 
   function close() {
+    dialogRequest++;
     const open = root.document.getElementById(DIALOG_ID);
-    if (open && open.parentNode) open.parentNode.removeChild(open);
+    if (open) { if (open.open) open.close(); open.remove(); }
+    if (previousFocus && previousFocus.isConnected) previousFocus.focus();
+  }
+
+  function show(backdrop, card) {
+    backdrop.appendChild(card);
+    root.document.body.appendChild(backdrop);
+    backdrop.showModal(); // Native top layer also covers the app's fixed rails.
+  }
+
+  function displayNumber(value) {
+    if (value == null || value === '' || !Number.isFinite(Number(value))) return '—';
+    return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(Number(value));
   }
 
   async function currentUser() {
@@ -57,53 +97,71 @@
 
   async function open() {
     close();
+    previousFocus = root.document.activeElement;
+    const request = dialogRequest;
     const who = await currentUser();
+    if (request !== dialogRequest) return;
 
-    const backdrop = el('div', [
-      'position:fixed', 'inset:0', 'background:rgba(0,0,0,0.55)',
-      'display:flex', 'align-items:center', 'justify-content:center',
-      'z-index:2147483600'
-    ].join(';'));
+    const backdrop = el('dialog');
     backdrop.id = DIALOG_ID;
+    backdrop.setAttribute('aria-labelledby', 'novaflow-web-account-title');
     backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
-
-    const card = el('div', [
-      'width:380px', 'max-width:calc(100vw - 32px)', 'background:#1c1c1c',
-      'border:1px solid #2c2c2c', 'border-radius:12px', 'padding:20px',
-      'color:#e5e7eb', 'display:flex', 'flex-direction:column', 'gap:10px',
-      'font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif',
-      'box-shadow:0 18px 48px rgba(0,0,0,0.48)'
-    ].join(';'));
-
-    const head = el('div', 'display:flex;align-items:center;margin-bottom:4px');
-    head.appendChild(el('div', 'font-size:16px;font-weight:600;flex:1',
-      who ? 'NovaFlow 账号' : '登录 NovaFlow'));
-    const x = el('button', 'background:transparent;border:0;color:#6b7280;font-size:20px;cursor:pointer;line-height:1', '×');
-    x.addEventListener('click', close);
-    head.appendChild(x);
-    card.appendChild(head);
+    backdrop.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
+    const card = el('section'); card.className = 'nf-account-card';
+    const head = el('header'); head.className = 'nf-account-header';
+    const title = el('h2', '', who ? 'NovaFlow 账户' : '登录 NovaFlow');
+    title.id = 'novaflow-web-account-title'; head.appendChild(title);
+    const x = el('button', '', '×'); x.className = 'nf-account-close'; x.type = 'button'; x.setAttribute('aria-label', '关闭账户');
+    x.addEventListener('click', close); head.appendChild(x); card.appendChild(head);
+    const body = el('div'); body.className = 'nf-account-body'; card.appendChild(body);
 
     if (who) {
       const name = who.user && (who.user.display_name || who.user.email) || '已登录';
-      card.appendChild(el('div', 'color:#e5e7eb;font-size:14px', name));
-      card.appendChild(el('div', 'color:#6b7280;font-size:12px',
-        '积分 ' + ((who.credits && who.credits.balance) ?? 0) +
-        '（自有算力出图不计积分，只有 Grok / GPT / Google 才扣）'));
-      const out = el('button', [
-        'margin-top:8px', 'height:34px', 'border:0', 'border-radius:8px',
-        'background:#333', 'color:#e5e7eb', 'font:inherit', 'font-size:13px', 'cursor:pointer'
-      ].join(';'), '退出登录');
+      const username = el('div', '', name); username.className = 'nf-account-user'; body.appendChild(username);
+      const metrics = el('div'); metrics.className = 'nf-account-metrics'; body.appendChild(metrics);
+      function metric(label, caption) {
+        const box = el('div'); box.className = 'nf-account-metric';
+        const labelNode = el('div', '', label); labelNode.className = 'nf-account-label'; box.appendChild(labelNode);
+        const value = el('div', '', '—'); value.className = 'nf-account-value'; box.appendChild(value);
+        const hint = el('div', '', caption); hint.className = 'nf-account-caption'; box.appendChild(hint);
+        metrics.appendChild(box); return value;
+      }
+      const credits = metric('可用积分', '账户当前余额');
+      credits.textContent = displayNumber(who.credits && who.credits.balance);
+      const quota = metric('提示词服务', '剩余次数 / 总次数');
+      const note = el('div', '', '正在读取账户信息…'); note.className = 'nf-account-error'; note.setAttribute('role', 'status'); body.appendChild(note);
+      const actions = el('div'); actions.className = 'nf-account-actions'; body.appendChild(actions);
+      const retry = el('button', '', '重新读取'); retry.type = 'button'; retry.hidden = true; actions.appendChild(retry);
+      const out = el('button', '', '退出登录'); out.type = 'button'; actions.appendChild(out);
       out.addEventListener('click', async () => {
-        try { await api().clientAuthLogout(); } catch (_) {}
-        root.location.reload();
+        out.disabled = true;
+        try { await api().clientAuthLogout(); root.location.reload(); }
+        catch (_) { out.disabled = false; note.hidden = false; note.textContent = '退出失败，请重试'; }
       });
-      card.appendChild(out);
-      backdrop.appendChild(card);
-      root.document.body.appendChild(backdrop);
+      async function loadDetails() {
+        retry.disabled = true; retry.hidden = true;
+        note.hidden = false; note.textContent = '正在读取账户信息…';
+        try {
+          const reply = await api().clientAuthAccountDetails();
+          if (!backdrop.isConnected) return;
+          if (!reply || reply.ok === false) throw new Error((reply && reply.error) || '读取失败');
+          const profile = reply.result || {};
+          credits.textContent = displayNumber(profile.credits && (profile.credits.balance_text ?? profile.credits.balance));
+          const promptQuota = profile.providerQuotas && profile.providerQuotas.grok;
+          if (!promptQuota || promptQuota.status === 'error') throw new Error('提示词服务次数暂不可用');
+          quota.textContent = displayNumber(promptQuota.remaining_count) + ' / ' + displayNumber(promptQuota.allocated_count);
+          note.hidden = true;
+        } catch (_) {
+          if (!backdrop.isConnected) return;
+          quota.textContent = '—'; note.hidden = false; note.textContent = '账户信息暂未完整读取，请重试'; retry.hidden = false;
+        } finally { retry.disabled = false; }
+      }
+      retry.addEventListener('click', loadDetails);
+      show(backdrop, card); void loadDetails();
       return;
     }
 
-    card.appendChild(el('div', 'color:#a0a0a0;font-size:12px;line-height:1.7',
+    body.appendChild(el('div', 'color:#a0a0a0;font-size:12px;line-height:1.7',
       '用你的 NovaFlow 账号登录。生成、读取积分、取回结果都需要登录后才能进行。'));
 
     const account = el('input', FIELD);
@@ -113,17 +171,17 @@
     password.placeholder = '密码';
     password.type = 'password';
     password.autocomplete = 'current-password';
-    card.appendChild(account);
-    card.appendChild(password);
+    body.appendChild(account);
+    body.appendChild(password);
 
     const submit = el('button', [
       'height:36px', 'border:0', 'border-radius:8px', 'background:#1ea672',
       'color:#fff', 'font:inherit', 'font-size:13px', 'font-weight:600', 'cursor:pointer'
     ].join(';'), '登录');
-    card.appendChild(submit);
+    body.appendChild(submit);
 
     const note = el('div', 'font-size:12px;line-height:1.6;min-height:18px;color:#a0a0a0');
-    card.appendChild(note);
+    body.appendChild(note);
 
     async function login() {
       const name = account.value.trim();
@@ -153,8 +211,7 @@
     password.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
     account.addEventListener('keydown', (e) => { if (e.key === 'Enter') password.focus(); });
 
-    backdrop.appendChild(card);
-    root.document.body.appendChild(backdrop);
+    show(backdrop, card);
     setTimeout(() => { try { account.focus(); } catch (_) {} }, 50);
   }
 
