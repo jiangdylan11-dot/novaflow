@@ -341,7 +341,16 @@ try {
     check('sweep named the task whose output went away',
       swept.expiredTasks.includes(taskId), swept.expiredTasks);
 
-    await ctx.store.markResultsExpired(swept.expiredTasks);
+    // sweepFiles now reports the expired ids to the control plane itself.
+    // Nothing did before: result_expired was only ever set by this line in
+    // this test, and in production a task's results were "expired" on the
+    // worker's disk while the control plane still offered to fetch them.
+    const storedLink = await call(BASE, 'POST', '/api/web/tasks/' + taskId + '/files', {
+      token, body: { op: 'download', kind: 'output', names: [fileName] }
+    });
+    check('the stored copy is refused once results expired',
+      storedLink.status === 410, { status: storedLink.status });
+
     const afterTtl = await call(BASE, 'GET', '/api/web/tasks/' + taskId, { token });
     check('task metadata survives but is marked expired',
       afterTtl.body.task.result_expired === true, afterTtl.body.task);

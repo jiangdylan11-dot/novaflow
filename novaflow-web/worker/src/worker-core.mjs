@@ -607,6 +607,19 @@ export function createWorker(options) {
     if (result.removedFiles) {
       log('ttl sweep', { files: result.removedFiles, bytes: result.removedBytes });
     }
+    // Tell the control plane, so the task is marked expired and its copies in
+    // the object store go too. Without this the local files vanish and the
+    // remote ones stay forever, which is the worst of both.
+    if (result.expiredTasks && result.expiredTasks.length && state.workerToken) {
+      try {
+        await callControl('POST', '/api/worker/expire', {
+          token: state.workerToken,
+          body: { taskIds: result.expiredTasks }
+        });
+      } catch (error) {
+        log('could not report expired tasks', { error: String(error.message || error) });
+      }
+    }
     return result;
   }
 

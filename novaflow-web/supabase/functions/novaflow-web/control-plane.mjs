@@ -57,7 +57,8 @@ import {
   FILE_KIND,
   FILE_URL_TTL_SECONDS,
   safeFileName,
-  taskObjectPath
+  taskObjectPath,
+  taskObjectPrefix
 } from './task-files.mjs';
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -710,21 +711,25 @@ export function createControlPlane({ store, secrets, logger }) {
   // touch a task's files if you are the user who owns it or the worker it was
   // assigned to, and only in the direction and at the time that makes sense.
   async function handleTaskFiles(taskId, body, headers, actor) {
+    // Authenticate BEFORE looking the task up. The other way round, a caller
+    // with no credentials at all learns which task ids exist from the
+    // difference between 404 and 401 - and it also makes "route is missing"
+    // and "task is not there" the same answer, which is how this ordering was
+    // caught: the bundle verifier could not tell them apart either.
+    const user = actor === 'user' ? await requireUser(headers) : null;
+    const worker = actor === 'user' ? null : await requireWorker(headers);
+
     const task = await store.getTask(taskId);
     if (!task) throw new HttpError(404, ERROR_CODE.NOT_FOUND, 'unknown task');
 
-    if (actor === 'user') {
-      const user = await requireUser(headers);
+    if (user) {
       if (String(task.user_id) !== String(user.id)) {
         // Not 403: a task that is not yours should not be distinguishable from
         // one that does not exist.
         throw new HttpError(404, ERROR_CODE.NOT_FOUND, 'unknown task');
       }
-    } else {
-      const worker = await requireWorker(headers);
-      if (String(task.assigned_worker_id || '') !== String(worker.id)) {
-        throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'task is not assigned to this worker');
-      }
+    } else if (String(task.assigned_worker_id || '') !== String(worker.id)) {
+      throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'task is not assigned to this worker');
     }
 
     if (!store.files) {
@@ -773,6 +778,35 @@ export function createControlPlane({ store, secrets, logger }) {
       files,
       expiresAt: new Date((nowSeconds() + FILE_URL_TTL_SECONDS) * 1000).toISOString()
     };
+  }
+
+  /**
+   * A worker reporting that a task's results have aged out.
+   *
+   * The worker already deletes its own copy on a timer. Nothing told the
+   * control plane, so result_expired was never set outside the test suite -
+   * and once files also live in an object store, nothing would ever delete
+   * them either. A bucket that only grows is not a working product.
+   *
+   * A worker may only expire tasks it ran.
+   */
+  async function handleWorkerExpire(body, headers) {
+    const worker = await requireWorker(headers);
+    const ids = (Array.isArray(body.taskIds) ? body.taskIds : []).slice(0, 200);
+    const mine = [];
+    for (const id of ids) {
+      const task = await store.getTask(sanitizeText(id, 64));
+      if (task && String(task.assigned_worker_id || '') === String(worker.id)) mine.push(task.id);
+    }
+    if (!mine.length) return { ok: true, expired: 0 };
+
+    await store.markResultsExpired(mine);
+    if (store.files && store.files.removePrefix) {
+      for (const id of mine) {
+        await store.files.removePrefix(taskObjectPrefix(id)).catch(() => {});
+      }
+    }
+    return { ok: true, expired: mine.length };
   }
 
   // ---- adding a compute node -------------------------------------------
@@ -922,6 +956,7 @@ export function createControlPlane({ store, secrets, logger }) {
       if (method === 'POST' && path === '/api/worker/heartbeat') return ok(await handleHeartbeat(body, headers));
       if (method === 'POST' && path === '/api/worker/models') return ok(await handleWorkerModels(body, headers));
       if (method === 'POST' && path === '/api/worker/claim') return ok(await handleClaim(headers));
+      if (method === 'POST' && path === '/api/worker/expire') return ok(await handleWorkerExpire(body, headers));
 
       let m = path.match(/^\/api\/worker\/tasks\/([^/]+)\/(progress|complete|fail)$/);
       if (m && method === 'POST') {
