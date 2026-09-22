@@ -29,6 +29,8 @@ export async function createLocalAssistant(options) {
       if (server) return this.getState();
       if (starting) return starting;
       starting = (async () => {
+        // CLI and Electron must both authorize before starting any service.
+        await license.assertAllowed();
         runtimes = await services.start();
         await worker.startLocal();
         server = await startLocalServer({ worker, tasks, license, dataDir: options.dataDir,

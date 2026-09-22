@@ -77,11 +77,10 @@ const CAPABILITY_SHIM = 'novaflow-web-capabilities.js';
 // The account control in the topbar. Everything on the Web needs a session,
 // and without a visible way to sign in the app just emits API noise.
 const ACCOUNT_SHIM = 'novaflow-web-account.js';
-const COMPUTE_SHIM = 'novaflow-web-compute.js';
 const WAREHOUSE_SHIM = 'novaflow-web-warehouse.js';
 
 const TEMPLATE_SHIM = 'novaflow-web-templates.js';
-const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM, ACCOUNT_SHIM, WAREHOUSE_SHIM, TEMPLATE_SHIM, COMPUTE_SHIM]);
+const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM, ACCOUNT_SHIM, WAREHOUSE_SHIM, TEMPLATE_SHIM]);
 
 const REPLACEMENT = (moduleName) => (fn) => {
   // The catalog is UI data. Its desktop fallback mentions a Comfy node, which
@@ -359,8 +358,7 @@ export function rewriteIndexHtml(html) {
     '    <script src="./' + RUNTIME_SHIM + '?v=web-1"></script>\n' +
     '    <script src="./' + CAPABILITY_SHIM + '?v=web-1"></script>\n' +
     '    <script src="./' + TEMPLATE_SHIM + '?v=templates-1"></script>\n' +
-    '    <script src="./' + ACCOUNT_SHIM + '?v=web-1"></script>\n' +
-    '    <script src="./' + COMPUTE_SHIM + '?v=compute-1"></script>\n';
+    '    <script src="./' + ACCOUNT_SHIM + '?v=web-1"></script>\n';
   const lastScript = out.lastIndexOf('</script>');
   if (lastScript >= 0) {
     const insertAt = lastScript + '</script>'.length;

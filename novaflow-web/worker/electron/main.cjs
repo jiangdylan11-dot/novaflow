@@ -1,16 +1,10 @@
-// NovaFlow Worker - Electron shell.
-//
-// A deliberately small window (spec 7: "Worker UI 保持极简"). It shows GPU,
-// status, ComfyUI health, model readiness and the current task, and offers
-// start / stop / logs / settings. It does NOT contain any of the NovaFlow
-// editor UI - a compute node has no reason to ship a design tool.
-//
-// All real work happens in ../src/worker-core.mjs, the same module the
-// headless entry point and the test suite drive.
+// NovaFlow local launcher: machine binding, private services and optional
+// compute sharing. The editor itself runs in the browser.
 
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
+const { createLicenseGate } = require('./license-window.cjs');
 
 const customDataDir = process.env?.NOVAFLOW_ASSISTANT_DATA_DIR;
 if (customDataDir) app.setPath('userData', path.resolve(customDataDir, '..'));
@@ -23,6 +17,16 @@ let win = null;
 let worker = null;
 let startPromise = null;
 let createWorker = null;
+let localLicense = null;
+async function getLicense() {
+  if (!localLicense) {
+    const url = require('node:url').pathToFileURL(path.join(__dirname, '../src/local-license.mjs')).href;
+    const { createLocalLicense } = await import(url);
+    localLicense = createLocalLicense(path.join(app.getPath('appData'), 'NovaFlow'));
+  }
+  return localLicense;
+}
+const licenseGate = createLicenseGate({ BrowserWindow, ipcMain, dialog, getParent: () => win, getLicense });
 const logLines = [];
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -81,10 +85,12 @@ async function startWorker() {
 }
 
 async function startWorkerAttempt() {
+  if (!await licenseGate.ensureAllowed()) throw Object.assign(new Error('已取消启动'), { canceled: true });
   const config = readConfig();
 
   const factory = await loadCore();
   worker = await factory({
+    license: await getLicense(),
     controlUrl: config.controlUrl,
     dataDir: DATA_DIR,
     workflowDir: path.join(__dirname, '../workflows'),
@@ -131,6 +137,8 @@ async function startWorkerAttempt() {
 }
 
 async function stopWorker() {
+  licenseGate.cancel();
+  if (startPromise) await startPromise.catch(() => {});
   if (!worker) return null;
   await worker.stop();
   const state = worker.getState();
@@ -181,11 +189,7 @@ ipcMain.handle('worker:unshare', async () => {
   catch (e) { return { ok: false, error: String(e.message) }; }
 });
 ipcMain.handle('worker:license', async () => {
-  try { if (!worker) throw new Error('请先启动本地服务'); return { ok: true, state: await worker.license.state() }; }
-  catch (e) { return { ok: false, error: String(e.message) }; }
-});
-ipcMain.handle('worker:importLicense', async (_e, text) => {
-  try { if (!worker) throw new Error('请先启动本地服务'); return { ok: true, state: await worker.license.importLicense(text) }; }
+  try { return await licenseGate.inspect(); }
   catch (e) { return { ok: false, error: String(e.message) }; }
 });
 
@@ -194,7 +198,7 @@ ipcMain.handle('worker:start', async () => {
     return { ok: true, state: await startWorker() };
   } catch (error) {
     log('start failed: ' + String(error && error.message ? error.message : error));
-    return { ok: false, error: String(error && error.message ? error.message : error) };
+    return { ok: false, canceled: Boolean(error.canceled), error: String(error && error.message ? error.message : error) };
   }
 });
 
@@ -219,7 +223,7 @@ app.whenReady().then(async () => {
   // Auto-start only restores private local services. Sharing always requires
   // an explicit click, including after upgrades from the former Worker.
   const config = readConfig();
-  if (config.controlUrl && config.autoStart !== false) {
+  if (config.autoStart === true) {
     try { await startWorker(); } catch (error) { log('auto start skipped: ' + String(error.message || error)); }
   }
 });

@@ -168,8 +168,6 @@
       <div class="hint">修改设置后停止并重新启动本地服务生效。已有 NovaFlow 本机授权会自动读取。</div>
       <div class="row"><span class="k">本机授权</span><button id="licenseBtn">查看绑定</button></div>
       <div id="licenseState" class="hint"></div>
-      <div><label for="licenseText">授权码 / 授权文件内容</label><input id="licenseText" placeholder="粘贴绑定本机的授权码" /></div>
-      <button id="importLicenseBtn">导入本机授权</button>
       <div class="hint">
         ComfyUI 只会绑定在本机回环地址上，外部只能通过本节点的网关访问，
         且必须携带控制面下发的一次性凭证。本程序不持有任何 Supabase 密钥。
@@ -295,7 +293,7 @@
     showError('');
     $('startBtn').disabled = true;
     const res = await api.start();
-    if (!res.ok) { showError(res.error); $('startBtn').disabled = false; }
+    if (!res.ok) { showError(res.canceled ? '' : res.error); $('startBtn').disabled = false; }
     else render(res.state);
   });
 
@@ -320,7 +318,6 @@
     $('licenseState').textContent = '状态：' + res.state.status + ' / 机器码：' + (res.state.machineId || '—') + (res.state.reason ? ' / ' + res.state.reason : '');
   }
   $('licenseBtn').addEventListener('click', async () => showLicense(await api.license()));
-  $('importLicenseBtn').addEventListener('click', async () => { await showLicense(await api.importLicense($('licenseText').value)); $('licenseText').value = ''; });
 
   $('openLogs').addEventListener('click', () => api.openLogFolder());
 </script>

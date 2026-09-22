@@ -14,7 +14,6 @@ contextBridge.exposeInMainWorld('novaflowWorker', {
   unshare: () => ipcRenderer.invoke('worker:unshare'),
   openWorkbench: () => ipcRenderer.invoke('worker:openWorkbench'),
   license: () => ipcRenderer.invoke('worker:license'),
-  importLicense: text => ipcRenderer.invoke('worker:importLicense', text),
   openLogFolder: () => ipcRenderer.invoke('worker:openLogFolder'),
   pickModelsFolder: () => ipcRenderer.invoke('worker:pickModelsFolder'),
   onState: (fn) => {

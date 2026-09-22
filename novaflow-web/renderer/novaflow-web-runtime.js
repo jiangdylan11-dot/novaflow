@@ -36,7 +36,8 @@
 
   const SESSION_KEY = 'novaflow_web_session_v1';
   const CLIENT_AUTH_KEY = 'novaflow.client.auth.session.v1';
-  let computeMode = CONFIG.localAssistant ? 'local' : 'shared';
+  // The launcher chooses the endpoint; the editor has no compute selector.
+  const computeMode = CONFIG.localAssistant ? 'local' : 'shared';
   const taskModes = new Map();
   let localKey = '';
   if (CONFIG.localAssistant && root.location) {
@@ -934,15 +935,6 @@
     control: control,
     localControl,
     get computeMode() { return computeMode; },
-    async setComputeMode(mode) {
-      if (!['local', 'shared'].includes(mode)) throw new Error('无效算力选择');
-      if ([...tasks.values()].some(t => RUNNING.includes(t.status))) throw new Error('请等待当前任务完成后切换算力');
-      if (mode === 'local') await localControl('GET', '/local/state');
-      computeMode = mode;
-      capsCache = { at: 0, byTaskType: {} };
-      root.dispatchEvent?.(new Event('novaflow-compute-changed'));
-      root.NovaFlowWebAccount?.guard();
-    },
     auth: auth,
     fileUrl: (name) => electronAPI.runtimeFileUrl(name),
     isWeb: true

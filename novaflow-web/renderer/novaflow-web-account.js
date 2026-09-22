@@ -358,15 +358,6 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     password.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
     account.addEventListener('keydown', (e) => { if (e.key === 'Enter') password.focus(); });
 
-    if (root.NOVAFLOW_WEB_CONFIG?.localAssistant) {
-      const local = el('button', 'margin-top:12px;width:100%;padding:10px;border:1px solid #444;border-radius:8px;background:#222;color:#eee', '返回本机使用');
-      local.type = 'button';
-      local.addEventListener('click', async () => {
-        try { await root.NovaFlowWebRuntime.setComputeMode('local'); removeGate(); }
-        catch (e) { local.textContent = e.message; }
-      });
-      card.appendChild(local);
-    }
     gate.appendChild(card);
     setTimeout(() => { try { account.focus(); } catch (_) {} }, 80);
     return gate;

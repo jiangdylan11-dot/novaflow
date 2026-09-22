@@ -50,7 +50,8 @@ const workflowDir = join(dataDir, 'workflows'); await mkdir(workflowDir);
 await writeFile(join(workflowDir, 'qwen_t2i.json'), JSON.stringify({ comfy: 'image', bindings: {}, graph: { '1': { class_type: 'Fixture', inputs: {} } } }));
 const license = { state: async () => ({ status: licensed ? 'licensed' : 'locked', machineId: 'fixture' }),
   assertAllowed: async () => { if (!licensed) throw Object.assign(new Error('license rejected'), { status: 403 }); }, importLicense: async () => { throw new Error('fixture'); } };
-const services = { start: async () => [{ kind: 'image', running: true, reused: true }], stop: async () => {} };
+let serviceStarts = 0;
+const services = { start: async () => { serviceStarts++; return [{ kind: 'image', running: true, reused: true }]; }, stop: async () => {} };
 const assistant = await createLocalAssistant({ controlUrl, dataDir, configPath: join(dataDir, 'identity.json'), workflowDir, webRoot,
   localPort: 0, gatewayPort: 0, gatewayHost: '127.0.0.1', tunnel: false, workerName: 'assistant-test',
   comfyImageUrl: comfyUrl, comfyVideoUrl: comfyUrl, license, services, pollIntervalMs: 30 });
@@ -60,7 +61,14 @@ const call = async (method, path, body, extra = {}) => {
   return { status: r.status, body: await r.json() };
 };
 try {
+  licensed = false;
+  await assert.rejects(assistant.start(), /license rejected/);
+  check(serviceStarts === 0, 'unbound machine cannot start runtimes');
+  check(!assistant.getState().localRunning && !assistant.getState().workbenchUrl, 'unbound machine cannot start queue or workbench');
+  check(upstreamCalls === 0, 'unbound machine cannot register or share');
+  licensed = true;
   await assistant.start(); origin = assistant.getState().workbenchUrl; pairing = new URL(assistant.openUrl).hash.split('=')[1];
+  check(serviceStarts === 1, 'binding permits retry on same assistant');
   check(assistant.getState().localRunning && !assistant.getState().sharing, 'local starts private');
   check(upstreamCalls === 0, 'local startup does not contact cloud');
   check((await fetch(origin + '/local/state')).status === 401, 'unpaired request denied');

@@ -29,18 +29,25 @@ check(requests.at(-1).url, 'http://127.0.0.1:4784/api/web/capabilities');
 check(requests.at(-1).init.headers['x-novaflow-local'], pair);
 check(requests.at(-1).init.headers.Authorization, undefined);
 await runtime.control('POST', '/api/web/tasks', {});
-runtime.tasks.set('private-task', { status: 'queued' });
-await assert.rejects(runtime.setComputeMode('shared'), /当前任务/); checks++;
-runtime.tasks.get('private-task').status = 'completed';
-await runtime.setComputeMode('shared');
-await runtime.control('GET', '/api/web/capabilities');
-check(requests.at(-1).url, 'https://control.test/api/web/capabilities');
+check(runtime.setComputeMode, undefined);
+await runtime.control('GET', '/api/web/me');
+check(requests.at(-1).url, 'https://control.test/api/web/me');
 check(requests.at(-1).init.headers['x-novaflow-local'], undefined);
 await runtime.control('POST', '/api/web/tasks/private-task/grant', { op: 'download' });
 check(requests.at(-1).url, 'http://127.0.0.1:4784/api/web/tasks/private-task/grant');
-await runtime.setComputeMode('local');
 const before = requests.length; rejectLocal = true;
 await assert.rejects(runtime.control('POST', '/api/web/tasks', {}), /local unavailable/); checks++;
 check(requests.length, before + 1);
 check(requests.at(-1).url.startsWith('http://127.0.0.1:4784'), true);
+const cloud = createDomSandbox({ Response, Request, Blob, FormData, AbortSignal, Event,
+  NOVAFLOW_WEB_CONFIG: { controlUrl: 'https://control.test' },
+  fetch: async (url, init) => { requests.push({ url: String(url), init }); return new Response('{}'); }
+});
+cloud.localStorage.setItem('novaflow_web_session_v1', JSON.stringify({ token: 'cloud-session' }));
+runInContext(source, createContext(cloud));
+check(cloud.NovaFlowWebRuntime.computeMode, 'shared');
+check(cloud.NovaFlowWebRuntime.setComputeMode, undefined);
+await cloud.NovaFlowWebRuntime.control('POST', '/api/web/tasks', {});
+check(requests.at(-1).url, 'https://control.test/api/web/tasks');
+check(requests.at(-1).init.headers['x-novaflow-local'], undefined);
 console.log(checks + ' passed, 0 failed: browser compute routing and private task isolation');
