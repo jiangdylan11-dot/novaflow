@@ -47,8 +47,11 @@ export const COMFY_MARKERS = [
   'FluxKontextImageScale',
   'TextEncodeQwenImageEdit', 'QwenImageDiffsynthControlnet',
   'InpaintModelConditioning', 'DifferentialDiffusion',
-  '.safetensors', '.ckpt', '.gguf'
 ];
+
+// A bare extension in a file-type filter is not topology; a NAMED weight file
+// is. Matching the filename is what tells the two apart.
+export const WEIGHT_FILE_RE = /[\w][\w .\\/-]*\.(?:safetensors|ckpt|gguf|pth|onnx)\b/;
 
 export const PLACEHOLDER_STRING = '<server-side>';
 export const PLACEHOLDER_GRAPH = '{ /* graph lives on the compute node */ }';
@@ -56,13 +59,32 @@ export const PLACEHOLDER_GRAPH = '{ /* graph lives on the compute node */ }';
 /** Marker hits in `text`, with the module's own name masked out. */
 export function findMarkers(text, moduleName) {
   const scanned = moduleName ? text.split(moduleName).join('<module>') : text;
-  return [...new Set(COMFY_MARKERS.filter((m) => scanned.includes(m)))];
+  const found = COMFY_MARKERS.filter((m) => scanned.includes(m));
+  if (WEIGHT_FILE_RE.test(scanned)) found.push('<weight-file>');
+  return [...new Set(found)];
+}
+
+/**
+ * Is the `/` at `index` the start of a regex literal, or a division sign?
+ *
+ * After an identifier, a number, `)` or `]` it is division; otherwise a regex.
+ * Getting this wrong is not cosmetic: a regex containing an unbalanced brace
+ * throws off brace counting and truncates a function body, which is exactly
+ * how a 3.7 MB file ends up with orphaned code after its closing brace.
+ */
+export function regexAllowedAt(source, index) {
+  for (let i = index - 1; i >= 0; i -= 1) {
+    const c = source[i];
+    if (c === ' ' || c === '\t' || c === '\n' || c === '\r') continue;
+    return !/[A-Za-z0-9_$)\]]/.test(c);
+  }
+  return true;
 }
 
 /**
  * Walk forward from the `{` at `start` to its matching `}`, skipping strings,
- * template literals and comments. Returns the index just past the closing
- * brace, or -1 if unbalanced.
+ * template literals, regex literals and comments. Returns the index just past
+ * the closing brace, or -1 if unbalanced.
  */
 export function matchBrace(source, start) {
   let depth = 0;
@@ -100,6 +122,27 @@ export function matchBrace(source, start) {
         i += 1;
       }
       continue;
+    }
+
+    // regex literal
+    if (c === '/' && regexAllowedAt(source, i)) {
+      let j = i + 1;
+      let inClass = false;
+      let closed = false;
+      while (j < n) {
+        const r = source[j];
+        if (r === '\\') { j += 2; continue; }
+        if (r === '\n') break;
+        if (r === '[') inClass = true;
+        else if (r === ']') inClass = false;
+        else if (r === '/' && !inClass) { closed = true; j += 1; break; }
+        j += 1;
+      }
+      if (closed) {
+        while (j < n && /[a-z]/.test(source[j])) j += 1;
+        i = j;
+        continue;
+      }
     }
 
     if (c === '{') depth += 1;

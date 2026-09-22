@@ -1,0 +1,43 @@
+"""Static server for the built NovaFlow Web renderer.
+
+Plain static files with permissive CORS, because the page talks to a control
+plane on one origin and a worker gateway on another. Nothing here ships with
+the product - a real deployment uses a static host (see docs/DEPLOY.md). This
+exists so the build can be opened locally without a bundler in the way.
+"""
+
+import argparse
+import http.server
+import os
+import socketserver
+
+
+class Handler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
+    def log_message(self, fmt, *args):
+        pass
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=4892)
+    ap.add_argument("--root", default="web-dist")
+    args = ap.parse_args()
+
+    os.chdir(args.root)
+    socketserver.TCPServer.allow_reuse_address = True
+    with socketserver.TCPServer(("127.0.0.1", args.port), Handler) as srv:
+        print(
+            "NovaFlow Web renderer on http://127.0.0.1:%d  (root=%s)"
+            % (args.port, args.root),
+            flush=True,
+        )
+        srv.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

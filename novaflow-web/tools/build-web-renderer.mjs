@@ -1,0 +1,348 @@
+// Build the NovaFlow Web renderer.
+//
+// Takes renderer/ - a verbatim copy of NovaFlow's own renderer - and produces
+// two trees:
+//
+//   web-dist/          the deployable static site. Every ComfyUI graph builder
+//                      is hollowed out; what is left records {module, fn, args}
+//                      and sends it to the control plane.
+//
+//   worker-renderer/   what a compute node loads. The same modules, with those
+//                      same builders REGISTERED by name so the worker can
+//                      replay a recorded call with its closure intact.
+//
+// Both halves are cut from the same source with the same span rules, so they
+// cannot drift: tests/e2e/web-renderer-build.test.mjs asserts the two lists of
+// function names are identical, and that web-dist contains no topology.
+
+import { readFile, writeFile, mkdir, readdir, rm, cp, stat } from 'node:fs/promises';
+import { dirname, join, resolve, relative, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { redactModule, findMarkers } from './redact-workflow-module.mjs';
+import { instrumentModule } from './instrument-workflow-module.mjs';
+import { allWorkflowEntryMethods } from '../packages/shared/src/workflow-modules.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(HERE, '..');
+const SRC = join(ROOT, 'renderer');
+const WEB_OUT = join(ROOT, 'web-dist');
+const WORKER_OUT = join(ROOT, 'worker-renderer');
+
+// Directories carried across untouched. `src/` is the TypeScript the bundle in
+// assets/ was already built from, so it is not shipped.
+const ASSET_DIRS = ['assets', 'templates', 'aifx-styles', 'aifx-templates', 'vendor', 'public'];
+const SKIP_DIRS = ['src', 'node_modules', 'dist', 'debug-assets'];
+
+// Loaded first so `window.electronAPI` exists before proxy-electron-api.js
+// runs its capability check and installs its own loopback fallback.
+const RUNTIME_SHIM = 'novaflow-web-runtime.js';
+
+const REPLACEMENT = (moduleName) => (fn) =>
+  '\n    return globalThis.NovaFlowWebRuntime.serverOnly(' +
+  JSON.stringify(moduleName) + ', ' + JSON.stringify(fn) + ', arguments);\n  ';
+
+export async function buildWebRenderer({ logger, clean = true } = {}) {
+  const log = logger || (() => {});
+
+  if (clean) {
+    await rm(WEB_OUT, { recursive: true, force: true });
+    await rm(WORKER_OUT, { recursive: true, force: true });
+  }
+  await mkdir(WEB_OUT, { recursive: true });
+  await mkdir(WORKER_OUT, { recursive: true });
+
+  const entries = await readdir(SRC, { withFileTypes: true });
+  const report = {
+    modules: [], copied: 0, redactedModules: 0,
+    totalRedacted: 0, totalRegistered: 0, mismatches: [], leaks: []
+  };
+
+  // -------------------------------------------------------------- js modules
+  const forceNames = allWorkflowEntryMethods();
+  for (const entry of entries) {
+    if (!entry.isFile() || extname(entry.name) !== '.js') continue;
+    const source = await readFile(join(SRC, entry.name), 'utf8');
+    const moduleName = entry.name.replace(/\.js$/, '');
+
+    if (!findMarkers(source, moduleName).length) {
+      // Nothing to hide; both sides get the file untouched.
+      await writeFile(join(WEB_OUT, entry.name), source, 'utf8');
+      await writeFile(join(WORKER_OUT, entry.name), source, 'utf8');
+      report.copied += 1;
+      continue;
+    }
+
+    const redacted = redactModule(source, {
+      moduleName,
+      forceNames,
+      replacement: REPLACEMENT(moduleName)
+    });
+    const instrumented = instrumentModule(source, { moduleName });
+
+    await writeFile(join(WEB_OUT, entry.name), redacted.code, 'utf8');
+    await writeFile(join(WORKER_OUT, entry.name), instrumented.code, 'utf8');
+
+    // The browser must not be able to record a call the worker cannot replay.
+    const registered = new Set(instrumented.registered);
+    const unreplayable = redacted.redacted.filter(
+      (name) => !registered.has(name) && !forceNames.includes(name)
+    );
+
+    report.modules.push({
+      module: moduleName,
+      redacted: redacted.redacted.length,
+      registered: instrumented.registered.length,
+      graphs: redacted.redactedGraphs,
+      comments: redacted.strippedComments,
+      identifiers: redacted.renamedIdentifiers.length,
+      literals: redacted.redactedLiterals,
+      remaining: redacted.remaining,
+      unreplayable
+    });
+    report.redactedModules += 1;
+    report.totalRedacted += redacted.redacted.length;
+    report.totalRegistered += instrumented.registered.length;
+    if (redacted.remaining.length) report.leaks.push({ module: moduleName, markers: redacted.remaining });
+    if (unreplayable.length) report.mismatches.push({ module: moduleName, unreplayable });
+  }
+
+  // ------------------------------------------------- the prebuilt React bundle
+  //
+  // renderer/assets holds nine index-*.js files, eight of them left over from
+  // older builds. index.html names the one that matters, so only that one is
+  // shipped - and it goes through the same transform, because it is code a
+  // browser downloads like any other.
+  const indexHtmlSource = await readFile(join(SRC, 'index.html'), 'utf8');
+  const referencedAssets = new Set(
+    [...indexHtmlSource.matchAll(/\.\/assets\/([A-Za-z0-9._-]+)/g)].map((m) => m[1])
+  );
+  report.bundles = [];
+
+  // --------------------------------------------------------- other assets
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.includes(entry.name)) continue;
+      if (!ASSET_DIRS.includes(entry.name)) continue;
+      if (entry.name === 'assets') {
+        await copyAssets(join(SRC, 'assets'), join(WEB_OUT, 'assets'), {
+          referenced: referencedAssets, report, forceNames
+        });
+        continue;
+      }
+      await cp(join(SRC, entry.name), join(WEB_OUT, entry.name), { recursive: true });
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    if (extname(entry.name) === '.js') continue;
+    if (entry.name === 'index.html') continue;
+    await cp(join(SRC, entry.name), join(WEB_OUT, entry.name));
+  }
+
+  // ------------------------------------------------------------- index.html
+  const html = await readFile(join(SRC, 'index.html'), 'utf8');
+  await writeFile(join(WEB_OUT, 'index.html'), rewriteIndexHtml(html), 'utf8');
+
+  log('web renderer built', {
+    modules: report.redactedModules,
+    copied: report.copied,
+    redacted: report.totalRedacted,
+    registered: report.totalRegistered
+  });
+
+  return report;
+}
+
+/**
+ * Put the Web runtime in front of everything.
+ *
+ * It must run before proxy-electron-api.js, which checks whether a preload
+ * already provided electronAPI and installs a loopback fallback when it has
+ * not. Winning that check is what makes the rest of the renderer work
+ * unmodified.
+ */
+/**
+ * Copy assets, transforming any JavaScript on the way.
+ *
+ * A stale bundle nobody references is dropped rather than shipped and
+ * redacted: eight megabytes of dead code is not something to carry, and
+ * scanning it for leaks would only ever report on code no browser loads.
+ */
+async function copyAssets(from, to, { referenced, report, forceNames }) {
+  await mkdir(to, { recursive: true });
+  const list = await readdir(from, { withFileTypes: true });
+  for (const entry of list) {
+    if (entry.isDirectory()) {
+      await cp(join(from, entry.name), join(to, entry.name), { recursive: true });
+      continue;
+    }
+    if (extname(entry.name) !== '.js') {
+      await cp(join(from, entry.name), join(to, entry.name));
+      continue;
+    }
+    // A bundle index.html does not name is a leftover from an older build.
+    if (/^index-[A-Za-z0-9_-]+\.js$/.test(entry.name) && !referenced.has(entry.name)) {
+      report.droppedBundles = (report.droppedBundles || 0) + 1;
+      continue;
+    }
+
+    const source = await readFile(join(from, entry.name), 'utf8');
+    const moduleName = 'assets/' + entry.name.replace(/\.js$/, '');
+    if (!findMarkers(source, moduleName).length) {
+      await cp(join(from, entry.name), join(to, entry.name));
+      continue;
+    }
+
+    const redacted = redactModule(source, {
+      moduleName, forceNames, replacement: REPLACEMENT(moduleName)
+    });
+    const instrumented = instrumentModule(source, { moduleName });
+    await writeFile(join(to, entry.name), redacted.code, 'utf8');
+    await mkdir(join(WORKER_OUT, 'assets'), { recursive: true });
+    await writeFile(join(WORKER_OUT, 'assets', entry.name), instrumented.code, 'utf8');
+
+    report.bundles.push({
+      file: entry.name,
+      redacted: redacted.redacted.length,
+      registered: instrumented.registered.length,
+      graphs: redacted.redactedGraphs,
+      remaining: redacted.remaining
+    });
+    if (redacted.remaining.length) report.leaks.push({ module: moduleName, markers: redacted.remaining });
+  }
+}
+
+export function rewriteIndexHtml(html) {
+  let out = html;
+
+  // A config block the deployment can rewrite without touching the bundle.
+  const configTag =
+    '    <script>\n' +
+    '      // Filled in at deploy time. See docs/DEPLOY.md.\n' +
+    '      window.NOVAFLOW_WEB_CONFIG = window.NOVAFLOW_WEB_CONFIG || {\n' +
+    '        controlUrl: "http://127.0.0.1:4890",\n' +
+    '        authUrl: "https://cjakoblszlmbmotchzva.supabase.co/functions/v1/novaflow-backend"\n' +
+    '      };\n' +
+    '    </script>\n' +
+    '    <script src="./' + RUNTIME_SHIM + '?v=web-1"></script>\n';
+
+  // Before the first script tag, whatever it is.
+  const firstScript = out.search(/<script\b/);
+  if (firstScript >= 0) {
+    out = out.slice(0, firstScript) + configTag + '    ' + out.slice(firstScript);
+  } else {
+    out = out.replace('</head>', configTag + '  </head>');
+  }
+
+  // The desktop shell hard-codes a minimum width for an Electron window. A
+  // browser tab can be narrower, and a horizontal scrollbar is better than a
+  // clipped layout.
+  out = out.replace(
+    'html, body, #root { min-width: 1280px;',
+    'html, body, #root { min-width: 1024px;'
+  );
+
+  out = out.replace('<title>NovaFlow</title>', '<title>NovaFlow Web</title>');
+  return out;
+}
+
+/** Everything in web-dist that still names a ComfyUI node. */
+export async function scanForLeaks(dir = WEB_OUT) {
+  const hits = [];
+  async function walk(current) {
+    let list = [];
+    try { list = await readdir(current, { withFileTypes: true }); } catch { return; }
+    for (const entry of list) {
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) { await walk(full); continue; }
+      if (!['.js', '.html', '.json', '.mjs'].includes(extname(entry.name))) continue;
+      // The prebuilt React bundle is the desktop app's own UI code; it is
+      // scanned too, because "shipped to a browser" is the test, not "written
+      // by this project".
+      const text = await readFile(full, 'utf8');
+      const markers = findMarkers(text.replace(/^\s*\/\/.*$/gm, ''));
+      if (markers.length) hits.push({ file: relative(dir, full), markers });
+    }
+  }
+  await walk(dir);
+  return hits;
+}
+
+/**
+ * Parse every emitted file.
+ *
+ * The transform rewrites 8.5 MB of somebody else's JavaScript; a brace-matching
+ * slip truncates a function and leaves orphaned code behind it. That is not
+ * something to discover in a browser console, so the build refuses to finish
+ * with a file that does not parse.
+ */
+export async function checkSyntax(dir) {
+  const bad = [];
+  async function walk(current) {
+    let list = [];
+    try { list = await readdir(current, { withFileTypes: true }); } catch { return; }
+    for (const entry of list) {
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) { await walk(full); continue; }
+      if (extname(entry.name) !== '.js') continue;
+      try {
+        execFileSync(process.execPath, ['--check', full], { stdio: 'pipe' });
+      } catch (error) {
+        const message = String(error.stderr || error.message || '');
+        bad.push({ file: relative(dir, full), error: message.split('\n').slice(0, 4).join(' ').slice(0, 220) });
+      }
+    }
+  }
+  await walk(dir);
+  return bad;
+}
+
+export const PATHS = { SRC, WEB_OUT, WORKER_OUT };
+
+const invokedDirectly = process.argv[1] && process.argv[1].endsWith('build-web-renderer.mjs');
+if (invokedDirectly) {
+  const report = await buildWebRenderer({ logger: (m, x) => console.log(m, JSON.stringify(x)) });
+
+  console.log('\n  module                                        redact  register  graphs  ids  strings');
+  for (const m of report.modules) {
+    console.log(
+      '  ' + m.module.padEnd(44) +
+      String(m.redacted).padStart(6) +
+      String(m.registered).padStart(10) +
+      String(m.graphs).padStart(8) +
+      String(m.identifiers).padStart(5) +
+      String(m.literals).padStart(9)
+    );
+  }
+  console.log('\n  untouched modules: ' + report.copied);
+
+  if (report.mismatches.length) {
+    console.log('\n  RECORDED BUT NOT REPLAYABLE:');
+    for (const x of report.mismatches) console.log('    ' + x.module + ': ' + x.unreplayable.join(', '));
+  }
+
+  const leaks = await scanForLeaks();
+  console.log('\n  leak scan over web-dist: ' + (leaks.length ? leaks.length + ' file(s)' : 'clean'));
+  for (const l of leaks.slice(0, 10)) console.log('    ' + l.file + ' -> ' + l.markers.slice(0, 6).join(', '));
+
+  for (const [label, dir] of [['web-dist', WEB_OUT], ['worker-renderer', WORKER_OUT]]) {
+    const bad = await checkSyntax(dir);
+    console.log('  syntax check ' + label + ': ' + (bad.length ? bad.length + ' FAILED' : 'all files parse'));
+    for (const b of bad.slice(0, 6)) console.log('    ' + b.file + ' -> ' + b.error);
+    if (bad.length) process.exitCode = 1;
+  }
+
+  const size = await dirSize(WEB_OUT);
+  console.log('\n  web-dist: ' + Math.round(size / (1024 * 1024)) + ' MB');
+}
+
+async function dirSize(dir) {
+  let total = 0;
+  const list = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  for (const entry of list) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) total += await dirSize(full);
+    else total += (await stat(full).catch(() => ({ size: 0 }))).size;
+  }
+  return total;
+}

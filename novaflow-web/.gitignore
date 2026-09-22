@@ -14,3 +14,7 @@ worker/data/
 # Worker runtime state
 identity.json
 worker.config.json
+
+# Build output of the renderer transform
+web-dist/
+worker-renderer/
