@@ -2387,6 +2387,14 @@
   // a 56-wide rail of 65-tall entries, floated 10px off the left edge.
   const PRIMARY_SIDEBAR_LEFT = 10;
   const PRIMARY_RAIL_PANEL_RADIUS = 12;
+  // The reference floats each panel off the chrome: 8px below the topbar,
+  // 10px above the bottom, with a hairline edge on a slightly lighter fill.
+  const PRIMARY_PANEL_TOP_GAP = 8;
+  const PRIMARY_PANEL_BOTTOM_GAP = 10;
+  const PRIMARY_PANEL_SURFACE = "#161616";
+  const PRIMARY_PANEL_BORDER_COLOR = "#2e2e2e";
+  const PRIMARY_RAIL_SURFACE_ID = "novaflow-primary-rail-surface";
+  const PRIMARY_LEFT_SURFACE_ID = "novaflow-primary-left-surface";
   const PRIMARY_SIDEBAR_WIDTH = 56;
   const PRIMARY_SIDEBAR_GAP = 9;
   const PRIMARY_VISIBLE_CONTENT_WIDTH = 227;
@@ -2441,9 +2449,13 @@
   const PRIMARY_PANEL_BACKGROUND = "#16171a";
   const PRIMARY_PANEL_EXPANDED_BACKGROUND = "#181818";
   const LEFT_PANEL_BACKGROUND = "#181818";
-  const LEFT_LAYOUT_BACKGROUND = LEFT_PANEL_BACKGROUND;
+  // The column is now just a layout box: the rail and the left panel are drawn
+  // as floating surfaces, so anything painted here would sit behind them as a
+  // full-height strip and cancel their rounded edges. Distinct from
+  // LEFT_PANEL_BACKGROUND, which is still the panels' own fill.
+  const LEFT_LAYOUT_BACKGROUND = "transparent";
   const PRIMARY_RAIL_BACKGROUND = PRIMARY_PANEL_BACKGROUND;
-  const LEFT_COLUMN_BACKGROUND_IMAGE = `linear-gradient(to right, ${PRIMARY_RAIL_BACKGROUND} 0, ${PRIMARY_RAIL_BACKGROUND} ${PRIMARY_SIDEBAR_WIDTH}px, ${LEFT_LAYOUT_BACKGROUND} ${PRIMARY_SIDEBAR_WIDTH}px, ${LEFT_LAYOUT_BACKGROUND} 100%)`;
+  const LEFT_COLUMN_BACKGROUND_IMAGE = "none";
   const LEFT_PANEL_EDGE = "rgba(154, 159, 165, 0.05)";
   const SECONDARY_ENTRY_BACKGROUND = "#303030";
   const SECONDARY_ENTRY_HOVER_BACKGROUND = "#3b3b3b";
@@ -20856,6 +20868,11 @@
       [data-novaflow-primary-entry="1"][data-novaflow-primary-active="0"] {
         color: rgba(244, 247, 251, 0.88) !important;
         box-shadow: none !important;
+        /* The bundle paints these #2a2a2a inline. Clearing it lets the rail
+           surface behind show through, which is what makes the column read as
+           one panel rather than a stack of tiles. */
+        background: transparent !important;
+        background-color: transparent !important;
       }
       [data-novaflow-primary-entry="1"] > * {
         display: none !important;
@@ -28106,7 +28123,7 @@
       nfSetStyleIfChanged(rail, "border", "0", "important");
       nfSetStyleIfChanged(rail, "box-shadow", "none", "important");
     }
-    const top = getTopbarBottom();
+    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP;
     buttons.forEach((button, index) => {
       const parent = button.parentElement instanceof HTMLElement ? button.parentElement : null;
       const cell = parent && parent !== rail && isPrimaryEntryCellCandidate(parent, button) ? parent : button;
@@ -28618,13 +28635,62 @@
     return PRIMARY_OUTPUT_SHORTCUT_Z_INDEX;
   }
 
+  /**
+   * The two panels the rail and the left column sit ON.
+   *
+   * The entries are separate fixed cells, so there is no element whose box is
+   * the panel - the reference's rounded surface has to be drawn by something.
+   * These are inert: pointer-events none, no text, below the cells, and marked
+   * runtime-ignore so the modal scanner leaves them alone. They carry no state
+   * and nothing reads them.
+   */
+  function ensurePrimarySurfacePanels() {
+    if (!(document.body instanceof HTMLElement)) return;
+    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP;
+    const surface = (id, left, width) => {
+      let node = document.getElementById(id);
+      if (!(node instanceof HTMLElement)) {
+        node = document.createElement("div");
+        node.id = id;
+        node.setAttribute("aria-hidden", "true");
+        node.setAttribute("data-novaflow-primary-surface", "1");
+        document.body.appendChild(node);
+      }
+      // Written straight onto the node rather than through setImportantStyles:
+      // that helper skips anything the runtime is told to ignore, and it takes
+      // CSS property names, not camelCase.
+      const rules = {
+        position: "fixed",
+        left: left + "px",
+        top: top + "px",
+        width: width + "px",
+        height: "calc(100vh - " + (top + PRIMARY_PANEL_BOTTOM_GAP) + "px)",
+        background: PRIMARY_PANEL_SURFACE,
+        border: "1px solid " + PRIMARY_PANEL_BORDER_COLOR,
+        "border-radius": PRIMARY_RAIL_PANEL_RADIUS + "px",
+        "box-sizing": "border-box",
+        "box-shadow": "none",
+        "pointer-events": "none",
+        "z-index": "89998"
+      };
+      for (const [property, value] of Object.entries(rules)) {
+        if (node.style.getPropertyValue(property) !== value) {
+          node.style.setProperty(property, value, "important");
+        }
+      }
+    };
+    surface(PRIMARY_RAIL_SURFACE_ID, PRIMARY_SIDEBAR_LEFT, PRIMARY_SIDEBAR_WIDTH);
+    surface(PRIMARY_LEFT_SURFACE_ID, PRIMARY_CONTENT_LEFT, PRIMARY_LEFT_PANEL_WIDTH);
+  }
+
   function ensurePrimaryOutputShortcut() {
+    ensurePrimarySurfacePanels();
     if (!(document.body instanceof HTMLElement)) return;
     if (!isPrimaryOutputShortcutLayoutReady()) {
       hidePrimaryOutputShortcutUntilReady();
       return;
     }
-    const top = getTopbarBottom();
+    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP;
     const dividerTop = top + PRIMARY_ENTRY_LABELS.length * PRIMARY_SIDEBAR_ITEM_HEIGHT + PRIMARY_OUTPUT_SHORTCUT_GAP;
     const cellTop = dividerTop + PRIMARY_OUTPUT_SHORTCUT_GAP;
     const exportCellTop = cellTop + PRIMARY_SIDEBAR_ITEM_HEIGHT;
@@ -28663,7 +28729,7 @@
       display: "block",
       position: "fixed",
       left: `${PRIMARY_SIDEBAR_LEFT}px`,
-      borderRadius: primaryRailCellRadius(0, 2),
+      "border-radius": primaryRailCellRadius(0, 2),
       top: `${cellTop}px`,
       width: `${PRIMARY_SIDEBAR_WIDTH}px`,
       height: `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`,
@@ -28710,7 +28776,7 @@
       display: "block",
       position: "fixed",
       left: `${PRIMARY_SIDEBAR_LEFT}px`,
-      borderRadius: primaryRailCellRadius(1, 2),
+      "border-radius": primaryRailCellRadius(1, 2),
       top: `${exportCellTop}px`,
       width: `${PRIMARY_SIDEBAR_WIDTH}px`,
       height: `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`,
@@ -31481,8 +31547,8 @@
     const x = Number(event.clientX);
     const y = Number(event.clientY);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-    if (x < -4 || x > PRIMARY_SIDEBAR_WIDTH + 16) return null;
-    const top = getTopbarBottom();
+    if (x < PRIMARY_SIDEBAR_LEFT - 4 || x > PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_WIDTH + 16) return null;
+    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP;
     const localY = y - top;
     if (localY < 0) return null;
     const index = Math.floor(localY / PRIMARY_SIDEBAR_ITEM_HEIGHT);
