@@ -308,7 +308,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     logo.draggable = false;
     brand.appendChild(logo);
 
-    const headline = el('h1', '', '游戏美术全流程 AI 工作站');
+    const headline = el('h1', '', '游戏美术工作站');
     headline.className = 'nf-login-headline';
     brand.appendChild(headline);
 
