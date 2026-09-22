@@ -9,9 +9,11 @@ import { tmpdir } from 'node:os';
 
 export async function createLauncherFixture() {
   const handlers = new Map(), instances = [], windows = [], opened = [], events = [];
+  const app = new EventEmitter();
+  Object.assign(app, { getPath: () => tmpdir(), whenReady: () => ({ then() {} }), requestSingleInstanceLock: () => true });
   const fixture = { config: { controlUrl: 'https://control.test', registrationCode: 'test-node' },
     licenseState: { status: 'unlicensed', locked: true, machineId: 'TEST-MACHINE-ONLY' },
-    localFailure: false, fileCanceled: true, handlers, instances, windows, opened, events };
+    localFailure: false, fileCanceled: true, handlers, instances, windows, opened, events, app };
   const license = {
     state: async () => fixture.licenseState,
     async importLicense(text) {
@@ -27,6 +29,10 @@ export async function createLauncherFixture() {
       windows.push(this);
     }
     loadFile() {}
+    minimize() { this.minimized = true; }
+    isMinimized() { return !!this.minimized; }
+    restore() { this.minimized = false; }
+    focus() { this.focused = true; }
     isDestroyed() { return false; }
   }
   const fakeFs = {
@@ -42,7 +48,7 @@ export async function createLauncherFixture() {
       if (name === 'node:path') return path;
       if (name === 'node:fs') return fakeFs;
       if (name === 'electron') return {
-        app: { getPath: () => tmpdir(), whenReady: () => ({ then() {} }), on() {}, requestSingleInstanceLock: () => true },
+        app,
         ipcMain: { handle: (name, fn) => handlers.set(name, fn) },
         shell: { openExternal: async url => { opened.push(url); } },
         dialog: { showOpenDialog: async () => ({ canceled: fixture.fileCanceled, filePaths: ['test-fixture.nfl'] }) },

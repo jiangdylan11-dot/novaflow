@@ -13,6 +13,7 @@ const LOG_FILE = path.join(DATA_DIR, 'worker.log');
 const MAX_LOG_LINES = 2000;
 
 let win = null;
+let quitting = false;
 let worker = null;
 let configDirty = false;
 let commands = Promise.resolve();
@@ -170,9 +171,9 @@ async function discardFailedIdleWorker() {
 function createWindow() {
   win = new BrowserWindow({
     width: 680,
-    height: 820,
+    height: 660,
     minWidth: 620,
-    minHeight: 720,
+    minHeight: 620,
     backgroundColor: '#0b0b0b',
     title: 'NovaFlow 本地助手',
     icon: path.join(__dirname, 'assets/favicon.ico'),
@@ -187,6 +188,11 @@ function createWindow() {
     }
   });
   win.loadFile(path.join(__dirname, 'ui.html'));
+  win.on('close', event => {
+    if (quitting) return;
+    event.preventDefault();
+    win.minimize();
+  });
   win.on('closed', () => { win = null; });
 }
 
@@ -271,6 +277,7 @@ ipcMain.handle('worker:pickModelsFolder', async () => {
 });
 
 app.whenReady().then(createWindow);
+app.on('before-quit', () => { quitting = true; });
 
 app.on('window-all-closed', async () => {
   await command(async () => { await worker?.stop(); worker = null; }).catch(() => {});
