@@ -1,9 +1,22 @@
 import { readFile, access } from 'node:fs/promises';
 import { join } from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { spawn } from 'node:child_process';
 import { assertLocalOnly } from './comfy/comfy-client.mjs';
-const exec = promisify(execFile);
+// The batch file starts a long-lived Python process. execFile waits for its
+// inherited output pipes to close, even after the launcher itself has exited.
+// Runtime logs already go to files; wait for the launcher's exit, not Python.
+export function runRuntimeLauncher(command, args, { env = process.env, timeoutMs = 150000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { env, windowsHide: true, stdio: 'ignore' });
+    const timer = setTimeout(() => { child.kill(); reject(new Error('运行环境启动脚本超时')); }, timeoutMs);
+    child.once('error', error => { clearTimeout(timer); reject(error); });
+    child.once('exit', code => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error('运行环境脚本退出码：' + code + '，请查看运行环境日志'));
+    });
+  });
+}
 
 export function createRuntimeServices({ imageUrl = 'http://127.0.0.1:8188', videoUrl = 'http://127.0.0.1:8189', logger = () => {} } = {}) {
   const entries = [
@@ -17,18 +30,20 @@ export function createRuntimeServices({ imageUrl = 'http://127.0.0.1:8188', vide
   async function script(entry, name) {
     const file = join(entry.root, 'scripts', name + '-runtime.bat');
     await access(file);
-    await exec('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '& $env:NOVAFLOW_ASSISTANT_RUNTIME_SCRIPT; exit $LASTEXITCODE'], {
-      env: { ...process.env, NOVAFLOW_ASSISTANT_RUNTIME_SCRIPT: file }, windowsHide: true, timeout: 150000, maxBuffer: 1024 * 1024
+    await runRuntimeLauncher('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', '& $env:NOVAFLOW_ASSISTANT_RUNTIME_SCRIPT; exit $LASTEXITCODE'], {
+      env: { ...process.env, NOVAFLOW_ASSISTANT_RUNTIME_SCRIPT: file }
     });
   }
   return {
-    async start() {
+    async start(onProgress = () => {}) {
       const results = await Promise.all(entries.map(async entry => {
         if (await up(entry.url)) return { kind: entry.kind, running: true, reused: true };
+        onProgress('正在启动' + (entry.kind === 'image' ? '图像' : '视频') + '运行环境，首次加载可能需要几分钟');
         try {
           const config = JSON.parse((await readFile(join(entry.root, 'runtime.json'), 'utf8')).replace(/^\uFEFF/, ''));
           if (Number(config.port) !== Number(new URL(entry.url).port)) throw new Error('运行环境端口与设置不一致');
           await script(entry, 'start');
+          onProgress('正在等待' + (entry.kind === 'image' ? '图像' : '视频') + '服务就绪');
           owned.add(entry);
           const deadline = Date.now() + 120000;
           while (Date.now() < deadline) {

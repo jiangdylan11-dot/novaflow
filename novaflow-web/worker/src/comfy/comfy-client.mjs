@@ -96,10 +96,11 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
     },
 
     async cancelPrompt(promptId) {
-      await json('/queue', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ delete: [promptId] }) });
-      const queue = await this.queueState();
+      const signal = AbortSignal.timeout(5000);
+      await json('/queue', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ delete: [promptId] }) });
+      const queue = await json('/queue', { method: 'GET', signal });
       if (queue.queue_running?.some(row => row?.[1] === promptId)) {
-        await json('/interrupt', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt_id: promptId }) });
+        await json('/interrupt', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ prompt_id: promptId }) });
       }
     },
 
@@ -123,7 +124,7 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
         if (signal?.aborted) throw new Error('cancelled');
         if (Date.now() - started > timeoutMs) throw new Error('ComfyUI prompt timed out');
 
-        const hist = await this.history(promptId);
+        const hist = await json('/history/' + encodeURIComponent(promptId), { method: 'GET', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : undefined });
         const entry = hist?.[promptId];
         if (entry) {
           const status = entry.status || {};
@@ -141,7 +142,7 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
           }
         }
 
-        const queue = await this.queueState().catch(() => null);
+        const queue = await json('/queue', { method: 'GET', signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30000)]) : undefined }).catch(() => null);
         if (queue) {
           const running = (queue.queue_running || []).some((item) => item?.[1] === promptId);
           const pendingIndex = (queue.queue_pending || []).findIndex((item) => item?.[1] === promptId);

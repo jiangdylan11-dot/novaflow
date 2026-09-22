@@ -364,8 +364,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
   }
 
   async function guard() {
-    if (root.NovaFlowWebRuntime?.computeMode === 'local') { removeGate(); return; }
-    if (await currentUser() || root.NovaFlowWebRuntime?.computeMode === 'local') {
+    if (await currentUser()) {
       removeGate();
       return;
     }

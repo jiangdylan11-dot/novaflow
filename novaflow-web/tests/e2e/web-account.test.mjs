@@ -38,4 +38,24 @@ await api.clientAuthLogout();
 const before = requests.length;
 check((await api.clientAuthAccountDetails()).httpStatus, 401);
 check(requests.length, before);
+// Local authorization must not bypass the same account login screen.
+const accountSource = await readFile(new URL('../../renderer/novaflow-web-account.js', import.meta.url), 'utf8');
+for (const computeMode of ['local', 'shared']) {
+  let authenticated = false;
+  const gateSandbox = createDomSandbox({
+    NovaFlowWebRuntime: { computeMode },
+    electronAPI: { clientAuthStatus: async () => ({ ok: true, result: { authenticated } }) },
+    setTimeout: () => 0, setInterval: () => 0, clearInterval() {}
+  });
+  const mounted = new Map();
+  gateSandbox.document.getElementById = id => mounted.get(id) || null;
+  gateSandbox.document.body.appendChild = node => { mounted.set(node.id, node); node.parentNode = gateSandbox.document.body; return node; };
+  gateSandbox.document.body.removeChild = node => { mounted.delete(node.id); node.parentNode = null; return node; };
+  runInContext(accountSource, createContext(gateSandbox));
+  await gateSandbox.NovaFlowWebAccount.guard();
+  check(!!gateSandbox.document.getElementById('novaflow-web-login-gate'), true);
+  authenticated = true;
+  await gateSandbox.NovaFlowWebAccount.guard();
+  check(!!gateSandbox.document.getElementById('novaflow-web-login-gate'), false);
+}
 console.log(checks + ' passed, 0 failed: Web account quota source, errors and session preservation');

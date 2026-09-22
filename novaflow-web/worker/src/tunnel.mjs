@@ -22,7 +22,8 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 // A quick tunnel prints its hostname once, on stderr, inside a box.
-const URL_RE = /https:\/\/[a-z0-9][a-z0-9-]*\.trycloudflare\.com/i;
+const URL_RE = /https:\/\/(?!api\.)[a-z0-9][a-z0-9-]*\.trycloudflare\.com/ig;
+export function tunnelAddress(text) { return String(text).match(URL_RE)?.[0] || ''; }
 
 /** Where cloudflared is: beside the source in dev, in resources when packaged. */
 export function cloudflaredPath() {
@@ -60,22 +61,24 @@ export function createTunnel({ port, host = '127.0.0.1', exePath, logger } = {})
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
+    let output = '';
     const read = (chunk) => {
-      const text = String(chunk);
+      output = (output + String(chunk)).slice(-8192);
       if (url) return;
-      const m = URL_RE.exec(text);
-      if (m) {
-        log('tunnel open', { url: m[0], target });
-        settle(m[0]);
+      const address = tunnelAddress(output);
+      if (address) {
+        log('tunnel open', { url: address, target });
+        settle(address);
       }
     };
     child.stdout.on('data', read);
     child.stderr.on('data', read);
+    child.on('error', error => { log('tunnel process failed', { error: error.message }); settle(''); });
 
     child.on('exit', (code) => {
       if (stopped) return;
       // A quick tunnel is not guaranteed to stay up, and its hostname changes
-      // when it comes back. The worker re-registers on every heartbeat, so a
+      // when it comes back. The worker reads this URL on every heartbeat, so a
       // new address propagates on its own within one interval.
       const had = url;
       url = '';
@@ -100,13 +103,14 @@ export function createTunnel({ port, host = '127.0.0.1', exePath, logger } = {})
       launch();
       if (url) return url;
       return await new Promise((resolve) => {
+        const finish = value => { clearTimeout(timer); resolve(value); };
         const timer = setTimeout(() => {
-          const at = waiters.indexOf(resolve);
+          const at = waiters.indexOf(finish);
           if (at >= 0) waiters.splice(at, 1);
           log('tunnel did not come up in time; staying on the local address');
           resolve('');
         }, timeoutMs);
-        waiters.push((value) => { clearTimeout(timer); resolve(value); });
+        waiters.push(finish);
       });
     },
 

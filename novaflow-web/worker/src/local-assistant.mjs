@@ -15,6 +15,7 @@ export async function createLocalAssistant(options) {
   }
   const tasks = await createLocalTasks(options.dataDir);
   const license = options.license || createLocalLicense(options.licenseDataDir || join(process.env.APPDATA, 'NovaFlow'));
+  const progress = options.onProgress || (() => {});
   const services = options.services || createRuntimeServices({ imageUrl: options.comfyImageUrl, videoUrl: options.comfyVideoUrl, logger: options.logger });
   const worker = createWorker({ ...options, localTasks: tasks });
   let server = null;
@@ -31,7 +32,9 @@ export async function createLocalAssistant(options) {
   const listeners = new Set();
   const emit = () => { for (const fn of listeners) fn(snapshot()); };
   const ensureServices = async () => {
-    if (!servicesRunning) { runtimes = await services.start(); servicesRunning = true; }
+    progress(20, '正在检查图像和视频运行环境');
+    if (!servicesRunning) { runtimes = await services.start(message => progress(25, message)); servicesRunning = true; }
+    progress(40, '运行环境已就绪');
   };
   const releaseUnused = async () => {
     const s = worker.getState();
@@ -52,7 +55,8 @@ export async function createLocalAssistant(options) {
       await license.assertAllowed();
       try {
         await ensureServices();
-        await worker.startLocal();
+        await worker.startLocal({ onProgress: progress });
+        progress(90, '正在启动本地网页服务');
         server = await startLocalServer({ worker, tasks, license, dataDir: options.dataDir,
           webRoot: options.webRoot, port: options.localPort ?? 4784, controlUrl: options.controlUrl });
         emit();
@@ -76,7 +80,7 @@ export async function createLocalAssistant(options) {
       // Sharing uses the node registration, not the local editor license.
       try {
         await ensureServices();
-        await worker.startSharing(settings);
+        await worker.startSharing({ ...settings, onProgress: progress });
         emit();
         return snapshot();
       } catch (error) { await releaseUnused(); throw error; }

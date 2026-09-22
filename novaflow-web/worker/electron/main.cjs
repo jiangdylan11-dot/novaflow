@@ -16,6 +16,16 @@ let win = null;
 let worker = null;
 let configDirty = false;
 let commands = Promise.resolve();
+const operations = {};
+let activeOperation = '';
+const launcherState = () => ({ ...(worker?.getState() || {}), operations: { ...operations } });
+function progress(percent, message) {
+  if (!activeOperation) return;
+  operations[activeOperation] = { ...operations[activeOperation], percent, message, status: 'running' };
+  log('startup progress', { operation: activeOperation, percent, message,
+    elapsedMs: Date.now() - operations[activeOperation].startedAt });
+  if (win && !win.isDestroyed()) win.webContents.send('worker:state', launcherState());
+}
 const command = action => {
   const next = commands.then(action);
   commands = next.catch(() => {});
@@ -115,12 +125,13 @@ async function ensureWorker() {
     publicEndpoint: config.publicEndpoint || '',
     workerName: config.workerName,
     registrationCode: config.registrationCode || '',
-    logger: log
+    logger: log,
+    onProgress: progress
   });
   configDirty = false;
 
   worker.onChange((state) => {
-    if (win && !win.isDestroyed()) win.webContents.send('worker:state', state);
+    if (win && !win.isDestroyed()) win.webContents.send('worker:state', launcherState());
   });
 
   return worker;
@@ -128,19 +139,23 @@ async function ensureWorker() {
 
 async function startWorker() {
   if (worker?.getState().localRunning) return { ok: true, state: worker.getState() };
+  progress(5, '正在验证本机授权');
   const licenseState = await (await getLicense()).state();
   if (licenseState.status !== 'licensed' || licenseState.locked) {
     return { ok: false, needsLicense: true, licenseState, state: worker?.getState() };
   }
   const instance = await ensureWorker();
   await instance.start();
+  progress(95, '正在打开 NovaFlow 登录界面');
   await shell.openExternal(instance.openUrl);
   return { ok: true, state: instance.getState() };
 }
 
 async function stopWorker() {
   if (!worker) return null;
-  return worker.stopLocal();
+  const state = await worker.stopLocal();
+  delete operations.local;
+  return state;
 }
 
 async function discardFailedIdleWorker() {
@@ -174,20 +189,45 @@ function createWindow() {
 
 ipcMain.handle('worker:getConfig', () => readConfig());
 ipcMain.handle('worker:setConfig', (_e, patch) => { configDirty = true; return writeConfig({ ...readConfig(), ...(patch || {}) }); });
-ipcMain.handle('worker:getState', () => (worker ? worker.getState() : null));
+ipcMain.handle('worker:getState', launcherState);
 ipcMain.handle('worker:getLogs', () => logLines.slice(-400));
 ipcMain.handle('worker:openLogFolder', () => shell.openPath(DATA_DIR));
 ipcMain.handle('worker:openWebsite', () => shell.openExternal('https://novaflow.jiangdylan11.workers.dev/'));
+ipcMain.handle('worker:openLocal', async () => {
+  try {
+    if (!worker?.getState().localRunning) throw new Error('请先启动 NovaFlow');
+    await shell.openExternal(worker.openUrl);
+    return { ok: true };
+  } catch (error) { return { ok: false, error: String(error.message || error) }; }
+});
 
-const respond = action => command(async () => {
-  try { return await action(); }
+const respond = (action, kind) => {
+  if (kind) {
+    operations[kind] = { percent: 0, message: '等待前一项操作完成', status: 'queued', startedAt: Date.now() };
+    if (win && !win.isDestroyed()) win.webContents.send('worker:state', launcherState());
+  }
+  return command(async () => {
+  activeOperation = kind || '';
+  try {
+    if (kind) progress(2, '准备启动');
+    const result = await action();
+    if (kind) operations[kind] = { ...operations[kind], percent: result.ok ? 100 : operations[kind].percent,
+      status: result.ok ? 'complete' : 'error', message: result.needsLicense ? '请先完成本机授权' : result.ok ? '启动完成' : result.error,
+      finishedAt: Date.now() };
+    return { ...result, state: launcherState() };
+  }
   catch (error) {
     log('operation failed: ' + String(error.message || error));
+    if (kind) operations[kind] = { ...operations[kind], status: 'error', message: String(error.message || error), finishedAt: Date.now() };
     await discardFailedIdleWorker();
-    return { ok: false, error: String(error.message || error), state: worker?.getState() };
+    return { ok: false, error: String(error.message || error), state: launcherState() };
+  } finally {
+    activeOperation = '';
+    if (win && !win.isDestroyed()) win.webContents.send('worker:state', launcherState());
   }
-});
-ipcMain.handle('worker:start', () => respond(startWorker));
+  });
+};
+ipcMain.handle('worker:start', () => respond(startWorker, 'local'));
 ipcMain.handle('worker:stop', () => respond(async () => ({ ok: true, state: await stopWorker() })));
 ipcMain.handle('worker:share', () => respond(async () => {
   const instance = await ensureWorker();
@@ -195,8 +235,12 @@ ipcMain.handle('worker:share', () => respond(async () => {
   const config = readConfig();
   if (config.registrationCode) writeConfig({ ...config, registrationCode: '' });
   return { ok: true, state: instance.getState() };
+}, 'share'));
+ipcMain.handle('worker:unshare', () => respond(async () => {
+  const state = await worker?.stopSharing();
+  delete operations.share;
+  return { ok: true, state };
 }));
-ipcMain.handle('worker:unshare', () => respond(async () => ({ ok: true, state: await worker?.stopSharing() })));
 
 // License actions update only authorization. They never resume startup.
 const licenseAction = action => async (event, payload) => {

@@ -57,6 +57,15 @@
   button.primary { background: var(--accent); color: #fff; font-weight: 600; }
   button.primary:hover:not(:disabled) { background: var(--accent-hover); }
   button.wide { flex: 1; }
+  button.sharing { background: #f5c542; color: #241d08; font-weight: 600; }
+  button.sharing:hover:not(:disabled) { background: #ffda65; }
+  button.primary:disabled, button.sharing:disabled { opacity: .65; cursor: wait; }
+  .launch-column { flex: 1; min-width: 0; }
+  .launch-column > button { width: 100%; }
+  .website[aria-disabled="true"] { color: var(--dim); cursor: default; text-decoration: none; }
+  .launch-progress { margin-top: 12px; font-size: 11px; color: #b9c0ca; }
+  .launch-progress progress { width: 100%; height: 7px; accent-color: var(--accent); display: block; margin-top: 6px; }
+  #shareProgress progress { accent-color: #f5c542; }
 
   .models { display: flex; flex-direction: column; gap: 5px; }
   .model { display: flex; justify-content: space-between; align-items: center;
@@ -130,11 +139,18 @@
     </div>
 
     <div id="launcher-actions" style="display:flex; gap:12px; margin-top:16px">
-      <button class="primary wide" id="novaFlowBtn">启动NovaFlow</button>
-      <button class="primary wide" id="shareBtn">开启算力分享</button>
+      <div class="launch-column">
+        <button class="primary wide" id="novaFlowBtn">启动NovaFlow</button>
+        <a class="website" id="localLink" href="#" aria-disabled="true">快捷打开本地界面 ↗</a>
+      </div>
+      <div class="launch-column">
+        <button class="sharing wide" id="shareBtn">开启算力分享</button>
+        <a class="website" id="websiteLink" href="https://novaflow.jiangdylan11.workers.dev/">快捷打开外网界面 ↗</a>
+      </div>
     </div>
-    <div class="hint" style="margin-top:10px">本地使用和算力分享可分别开启、关闭。停止时会等待已接任务完成。</div>
-    <a class="website" id="websiteLink" href="https://novaflow.jiangdylan11.workers.dev/">快捷打开外网软件 ↗</a>
+    <div id="localProgress" class="launch-progress hidden" aria-live="polite"><span></span><progress max="100" value="0" aria-label="本地启动进度"></progress></div>
+    <div id="shareProgress" class="launch-progress hidden" aria-live="polite"><span></span><progress max="100" value="0" aria-label="算力分享启动进度"></progress></div>
+    <div class="hint" style="margin-top:10px">本地使用和算力分享可分别开启、关闭。停止会立即取消对应任务。</div>
   </section>
 
   <!-- -------------------------------------------------------- settings -->
@@ -245,10 +261,25 @@
   const STATUS_DOT = { idle: 'on', busy: 'busy', offline: '', maintenance: '' };
 
   let lastState = null;
-  let localBusy = false, localClosing = false, shareBusy = false;
-  function render(state) {
-    lastState = state;
-    const running = Boolean(state && state.localRunning);
+    let localBusy = false, localClosing = false, shareBusy = false;
+    function renderProgress() {
+      for (const kind of ['local', 'share']) {
+        const item = lastState?.operations?.[kind], box = $(kind + 'Progress');
+        box.classList.toggle('hidden', !item);
+        if (!item) continue;
+        const seconds = Math.max(0, Math.floor(((item.finishedAt || Date.now()) - item.startedAt) / 1000));
+        box.querySelector('span').textContent = (kind === 'local' ? '本地：' : '分享：') + item.message + ' · ' + seconds + ' 秒';
+        const bar = box.querySelector('progress');
+        if (item.status === 'queued') bar.removeAttribute('value');
+        else bar.value = item.percent;
+      }
+    }
+    setInterval(renderProgress, 1000);
+    function render(state) {
+      lastState = state;
+      renderProgress();
+      const running = Boolean(state && state.localRunning);
+      $('localLink').setAttribute('aria-disabled', String(!running));
     $('novaFlowBtn').disabled = localBusy;
     $('novaFlowBtn').textContent = localBusy ? (localClosing ? '正在关闭…' : '正在启动…') : running ? '关闭NovaFlow' : '启动NovaFlow';
     $('shareBtn').disabled = shareBusy;
@@ -268,13 +299,13 @@
 
     $('gpu').textContent = state.gpu && state.gpu.detected
       ? state.gpu.name
-      : '未检测到（需要 NVIDIA 驱动）';
+      : state.gpu ? '未检测到（需要 NVIDIA 驱动）' : '—';
     $('vram').textContent = state.gpu && state.gpu.vramMb
       ? Math.round(state.gpu.vramMb / 1024) + ' GB'
       : '—';
 
     const comfy = state.comfy || {};
-    $('comfy').textContent = [
+    $('comfy').textContent = !state.gpu ? '—' : [
       comfy.image ? '图像 ✓' : '图像 ✗',
       comfy.video ? '视频 ✓' : '视频 ✗'
     ].join('   ');
@@ -289,7 +320,7 @@
           '<div class="model"><span>' + m.model_id + '</span><span class="' + m.status + '">' +
           ({ ready: 'Ready', missing: '缺失', invalid: '损坏', updating: '更新中' }[m.status] || m.status) +
           '</span></div>').join('')
-      : '<div class="hint">未检测到模型</div>';
+      : '<div class="hint">' + (state.gpu ? '未检测到模型' : '启动后自动检测') + '</div>';
 
     if (state.lastError) showError(state.lastError);
   }
@@ -350,10 +381,16 @@
     } catch (error) { showError(String(error.message)); }
     finally { shareBusy = false; render(lastState); }
   });
-  $('websiteLink').addEventListener('click', async event => {
+    $('websiteLink').addEventListener('click', async event => {
     event.preventDefault();
     try { await api.openWebsite(); } catch (error) { showError(String(error.message)); }
-  });
+    });
+    $('localLink').addEventListener('click', async event => {
+      event.preventDefault();
+      if (!lastState?.localRunning) return;
+      try { const res = await api.openLocal(); if (!res.ok) showError(res.error); }
+      catch (error) { showError(String(error.message)); }
+    });
 
   const isLicensed = state => state?.status === 'licensed' && !state.locked;
   let previousFocus = null, licenseBusy = false;

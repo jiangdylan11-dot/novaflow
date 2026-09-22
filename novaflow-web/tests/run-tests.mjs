@@ -13,6 +13,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 
 const SUITES = [
+  { name: 'runtime-launcher', file: 'e2e/runtime-launcher.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'tunnel-address', file: 'e2e/tunnel-address.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'local-launcher', file: 'e2e/local-launcher.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'local-assistant', file: 'e2e/local-assistant.test.mjs', needs: [], timeoutMs: 90000 },
   { name: 'web-compute-mode', file: 'e2e/web-compute-mode.test.mjs', needs: [], timeoutMs: 60000 },

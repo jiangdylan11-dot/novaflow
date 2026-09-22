@@ -139,11 +139,11 @@ export async function inspectAllModels(modelsRoot, { verifyHashes = false, manif
  * operator points the worker at an existing ComfyUI whose folder layout we do
  * not control, so it takes precedence when available.
  */
-export async function inspectViaComfy(comfy, { manifest = MODEL_MANIFEST } = {}) {
+export async function inspectViaComfy(comfy, { manifest = MODEL_MANIFEST, timeoutMs = 5000 } = {}) {
   const known = new Set();
   for (const node of ['CheckpointLoaderSimple', 'UNETLoader', 'VAELoader', 'CLIPLoader']) {
     try {
-      const res = await fetch(comfy.baseUrl + '/object_info/' + node);
+      const res = await fetch(comfy.baseUrl + '/object_info/' + node, { signal: AbortSignal.timeout(timeoutMs) });
       if (!res.ok) continue;
       const info = await res.json();
       const spec = Object.values(info)[0];

@@ -108,20 +108,18 @@ try {
   await assistant.startSharing();
   await wait(() => assistant.getState().currentTaskId === shared.id && queued.length === 2);
   await assistant.stopSharing();
-  check(assistant.getState().draining && assistant.getState().localRunning, 'stop sharing drains without closing local service');
+  check(!assistant.getState().draining && assistant.getState().localRunning, 'stop sharing cancels without closing local service');
+  check(cancelled.has(queued[1]), 'running shared prompt interrupted immediately');
   const later = (await call('POST', '/api/web/tasks', { task_type: 'qwen_t2i', parameters: {} })).body.task;
   check(queued.length === 2, 'private and shared never run concurrently');
-  finished.add(queued[1]); autoFinish = true;
+  autoFinish = true;
   await wait(() => assistant.tasks.get(later.id).status === 'completed');
-  check(remoteResults.get(shared.id)?.action === 'complete', 'in-flight shared task finishes after stop');
+  check(remoteResults.get(shared.id)?.action === 'fail' && remoteResults.get(shared.id)?.error_code === 'worker_stopped', 'stopped shared task fails without completion billing');
   check(!assistant.getState().draining && !assistant.getState().sharing, 'sharing finishes disabled');
   const previousClaims = claims;
   await new Promise(r => setTimeout(r, 150));
   check(claims === previousClaims, 'no new cloud claims after stop sharing');
   const sharedGrant = await issueGrantToken({ userId: 'fixture', taskId: shared.id, workerId: assistant.worker.identity.workerId, op: 'download' }, key);
-  const sharedFile = remoteResults.get(shared.id).outputs[0].name;
-  const sharedDownload = await fetch(assistant.worker.localEndpoint + '/gw/tasks/' + shared.id + '/output/' + sharedFile, { headers: { 'x-novaflow-grant': sharedGrant } });
-  check(Buffer.from(await sharedDownload.arrayBuffer()).equals(png), 'shared result remains downloadable after stopping sharing');
   const wrong = await fetch(origin + '/gw/tasks/' + local.id + '/output/' + name, { headers: { 'x-novaflow-grant': sharedGrant } });
   check(wrong.status === 401 || wrong.status === 403, 'public grant cannot read private local output');
   check(JSON.parse(await readFile(join(dataDir, 'local-tasks.json'))).some(t => t.id === local.id && t.status === 'completed'), 'local history persisted');
@@ -138,6 +136,10 @@ try {
   await assistant.stopSharing(); autoFinish = true; finished.add(queued[4]);
   await wait(() => assistant.tasks.get(priority.id).status === 'completed');
   check(remoteQueue.length === 1, 'unclaimed public job remains available elsewhere');
+  const finishedGrant = await issueGrantToken({ userId: 'fixture', taskId: remote2.id, workerId: assistant.worker.identity.workerId, op: 'download' }, key);
+  const sharedFile = remoteResults.get(remote2.id).outputs[0].name;
+  const sharedDownload = await fetch(assistant.worker.localEndpoint + '/gw/tasks/' + remote2.id + '/output/' + sharedFile, { headers: { 'x-novaflow-grant': finishedGrant } });
+  check(Buffer.from(await sharedDownload.arrayBuffer()).equals(png), 'shared result remains downloadable after stopping sharing');
   autoFinish = false;
   const cancel = (await call('POST', '/api/web/tasks', { task_type: 'qwen_t2i', parameters: {} })).body.task;
   await wait(() => assistant.tasks.get(cancel.id).prompt_id);
@@ -145,6 +147,13 @@ try {
   await wait(() => !assistant.getState().currentTaskId);
   check(assistant.tasks.get(cancel.id).status === 'cancelled', 'worker completion/failure cannot overwrite cancellation');
 
+  const stopNow = (await call('POST', '/api/web/tasks', { task_type: 'qwen_t2i', parameters: {} })).body.task;
+  await wait(() => assistant.tasks.get(stopNow.id).prompt_id);
+  const stopQueued = (await call('POST', '/api/web/tasks', { task_type: 'qwen_t2i', parameters: {} })).body.task;
+  await assistant.worker.stopLocal();
+  check(cancelled.has(assistant.tasks.get(stopNow.id).prompt_id), 'local stop interrupts running prompt');
+  check(assistant.tasks.get(stopNow.id).status === 'cancelled' && assistant.tasks.get(stopQueued.id).status === 'cancelled', 'local stop cancels active and queued work');
+  await wait(() => !assistant.getState().currentTaskId);
   // A cold share does not depend on the editor or its machine license.
   remoteQueue.length = 0;
   const events = await fetch(origin + '/local/events', { headers: { 'x-novaflow-local': pairing } });
@@ -168,10 +177,10 @@ try {
   await assistant.stopLocal();
   check(assistant.getState().sharing && assistant.getState().currentTaskId === independent.id, 'closing local leaves shared task running');
   await assistant.stopSharing();
-  check(assistant.getState().draining, 'share can drain while editor is closed');
+  check(!assistant.getState().sharing && !assistant.getState().draining, 'share stops immediately while editor is closed');
   finished.add(queued.at(-1)); autoFinish = true;
   await wait(() => remoteResults.has(independent.id));
-  check(remoteResults.get(independent.id).action === 'complete', 'independent shared job finishes successfully');
+  check(remoteResults.get(independent.id).action === 'fail', 'independent shared job is cancelled by stop');
   await assistant.startSharing();
   check(assistant.getState().sharing && !assistant.getState().localRunning, 'share restarts independently after stop');
   await assistant.stopSharing();
@@ -190,9 +199,11 @@ try {
   await assistant.startSharing();
   await wait(() => releaseClaim);
   await assistant.stopSharing();
-  check(assistant.getState().draining, 'stop waits for an in-flight claim');
+  check(!assistant.getState().draining && !assistant.getState().sharing, 'stop does not wait for an in-flight claim');
+  const lateClaim = { ...shared, id: randomUUID() }; remoteQueue.push(lateClaim);
   releaseClaim(); releaseClaim = null;
-  await wait(() => !assistant.getState().draining);
+  await wait(() => remoteResults.has(lateClaim.id));
+  check(remoteResults.get(lateClaim.id).error_code === 'worker_stopped', 'late claim cannot start after stop');
   check(!assistant.getState().sharing, 'empty claim clears draining without re-enabling share');
 } finally {
   releaseClaim?.();

@@ -115,6 +115,19 @@ export function createWorker(options) {
   const log = logger || ((msg, meta) => console.log('[worker] ' + msg, meta ? JSON.stringify(meta) : ''));
   const listeners = new Set();
   let activeRegistrationCode = registrationCode;
+  let activeTask = null;
+  let shareEpoch = 0;
+  function checkCancelled(taskId) {
+    if ((activeTask?.id === taskId && activeTask.controller.signal.aborted) || localTasks?.get(taskId)?.status === 'cancelled') {
+      throw new Error('任务已被停止操作取消');
+    }
+  }
+  async function cancelActiveTask() {
+    const task = activeTask;
+    if (!task) return;
+    task.controller.abort();
+    if (task.promptId) await task.comfy.cancelPrompt(task.promptId);
+  }
 
   const state = {
     workerId: '',
@@ -291,7 +304,8 @@ export function createWorker(options) {
     return res;
   }
 
-  async function reportModels() {
+  async function reportModels(onProgress = () => {}) {
+    onProgress(75, '正在检测可用模型');
     const byId = new Map();
     for (const runtime of ['image', 'video']) {
       if (!state.comfy[runtime]) continue;
@@ -309,6 +323,7 @@ export function createWorker(options) {
       return { ...(found || {}), model_id: spec.model_id, model_version: spec.version, status: 'missing',
         detail: { ...(found?.detail || {}), reason: state.comfy[spec.runtime] ? 'runtime_model_catalog_unavailable' : 'runtime_offline' } };
     });
+    onProgress(82, '正在检测 LoRA 兼容性');
     for (const model of models) {
       if (model.status === 'ready') model.detail = { ...(model.detail || {}), lora_catalog: await loraCatalog.report(runtimeFor(model.model_id)) };
     }
@@ -322,6 +337,7 @@ export function createWorker(options) {
 
   async function heartbeat() {
     try {
+      if (tunnel) state.endpointUrl = tunnel.url || '';
       const previous = { ...state.comfy };
       state.comfy.image = await comfyImage.isUp();
       state.comfy.video = await comfyVideo.isUp();
@@ -329,7 +345,7 @@ export function createWorker(options) {
       await callControl('POST', '/api/worker/heartbeat', {
         token: state.workerToken,
         body: {
-          status: sharing && !localTasks?.has(state.currentTaskId) ? state.status : 'maintenance',
+            status: sharing && (!tunnel || tunnel.url) && !localTasks?.has(state.currentTaskId) ? state.status : 'maintenance',
           current_task_id: localTasks?.has(state.currentTaskId) ? null : state.currentTaskId,
           hardware: {
             vram_mb: state.gpu?.vramMb,
@@ -357,6 +373,7 @@ export function createWorker(options) {
   // Task execution
   // -------------------------------------------------------------------------
   async function reportProgress(taskId, status, progress, note, promptId) {
+    checkCancelled(taskId);
     try {
       await callControl('POST', '/api/worker/tasks/' + taskId + '/progress', {
         token: state.workerToken,
@@ -372,7 +389,7 @@ export function createWorker(options) {
     const dir = join(dataDir, 'tasks', taskId, 'input');
     const started = Date.now();
     for (;;) {
-      if (localTasks?.get(taskId)?.status === 'cancelled') throw new Error('本机任务已取消');
+      checkCancelled(taskId);
       let present = [];
       try {
         present = (await readdir(dir)).filter((n) => expected.some((e) => e.name === n));
@@ -386,6 +403,7 @@ export function createWorker(options) {
   }
 
   async function runTask(task) {
+    checkCancelled(task.id);
     // Two shapes of task. A renderer workflow names one of NovaFlow's own
     // builders and we run it here; a fixed task type uses a template file.
     const intent = task.workflow && task.workflow.module ? task.workflow : null;
@@ -407,6 +425,7 @@ export function createWorker(options) {
       throw new Error((runtime === 'video' ? '视频' : '图像') + '算力服务未启动或已断开：' + comfy.baseUrl + '，请启动本地算力服务后重试');
     }
 
+    checkCancelled(task.id);
     state.currentTaskId = task.id;
     state.status = 'busy';
     emit();
@@ -425,6 +444,7 @@ export function createWorker(options) {
       await reportProgress(task.id, TASK_STATE.UPLOADING, 2, 'waiting for reference upload');
       const names = await waitForInputs(task.id, expectedRefs);
       for (let i = 0; i < expectedRefs.length; i += 1) {
+        checkCancelled(task.id);
         const name = names.find((n) => n === expectedRefs[i].name) || names[i];
         if (!name) continue;
         const bytes = await readFile(join(dataDir, 'tasks', task.id, 'input', name));
@@ -467,12 +487,15 @@ export function createWorker(options) {
 
     // 3. Run.
     const startedAt = Date.now();
-    if (localTasks?.get(task.id)?.status === 'cancelled') throw new Error('本机任务已取消');
+    checkCancelled(task.id);
     const promptId = await comfy.queuePrompt(graph);
-    if (localTasks?.get(task.id)?.status === 'cancelled') await comfy.cancelPrompt(promptId);
+    activeTask.comfy = comfy; activeTask.promptId = promptId;
+    if (activeTask.controller.signal.aborted || localTasks?.get(task.id)?.status === 'cancelled') await comfy.cancelPrompt(promptId);
+    checkCancelled(task.id);
     await reportProgress(task.id, TASK_STATE.PROCESSING, 12, 'queued in ComfyUI', promptId);
 
     const history = await comfy.waitForPrompt(promptId, {
+      signal: activeTask.controller.signal,
       onProgress: async (pct, note) => {
         await reportProgress(task.id, TASK_STATE.PROCESSING, pct, note, promptId);
       }
@@ -480,11 +503,13 @@ export function createWorker(options) {
 
     // 4. Pull results out of ComfyUI and into this task's folder, so the
     //    browser fetches them from the gateway and never touches ComfyUI.
+    checkCancelled(task.id);
     const produced = collectOutputs(history);
     if (!produced.length) throw new Error('ComfyUI finished without producing a file');
 
     const outputs = [];
     for (let i = 0; i < produced.length; i += 1) {
+      checkCancelled(task.id);
       const item = produced[i];
       const bytes = await comfy.viewFile(item);
       const ext = (item.filename.match(/\.[A-Za-z0-9]+$/) || ['.png'])[0];
@@ -507,6 +532,8 @@ export function createWorker(options) {
 
     // 5. Report. The worker reports success and execution metadata; the
     //    control plane decides what it costs (spec 17).
+    const comfyVersion = (await comfy.systemStats().catch(() => null))?.system?.comfyui_version || '';
+    checkCancelled(task.id);
     const result = await callControl('POST', '/api/worker/tasks/' + task.id + '/complete', {
       token: state.workerToken,
       body: {
@@ -514,7 +541,7 @@ export function createWorker(options) {
         outputs,
         execution: {
           elapsed_ms: Date.now() - startedAt,
-          comfy_version: (await comfy.systemStats().catch(() => null))?.system?.comfyui_version || '',
+          comfy_version: comfyVersion,
           seed
         }
       }
@@ -537,10 +564,11 @@ export function createWorker(options) {
   }
 
   async function claimAndRunLocked() {
+    const epoch = shareEpoch;
     let claim;
     const local = localRunning && localTasks?.next();
     if (local) claim = { task: local };
-    else if (!sharing || !running) return false;
+    else if (!sharing || !running || (tunnel && !tunnel.url)) return false;
     try {
       if (!claim) claim = await callControl('POST', '/api/worker/claim', { token: state.workerToken });
     } catch (error) {
@@ -551,6 +579,8 @@ export function createWorker(options) {
     if (claim.grantKey) state.grantKey = claim.grantKey;
 
     const task = claim.task;
+    activeTask = { id: task.id, controller: new AbortController(), promptId: '', comfy: null };
+    if (!local && (!sharing || epoch !== shareEpoch)) activeTask.controller.abort();
     // Mark the reservation before async model/health checks so closing the
     // local editor cannot tear down a task that is still preparing.
     state.currentTaskId = task.id;
@@ -561,12 +591,13 @@ export function createWorker(options) {
     } catch (error) {
       const message = String(error?.message || error);
       log('task failed', { taskId: task.id, error: message });
-      state.stats.failed += 1;
+      const cancelled = activeTask?.controller.signal.aborted;
+      if (!cancelled) state.stats.failed += 1;
       try {
         await callControl('POST', '/api/worker/tasks/' + task.id + '/fail', {
           token: state.workerToken,
           body: {
-            error_code: /timed out/i.test(message) ? 'timeout' : 'worker_error',
+            error_code: cancelled ? 'worker_stopped' : /timed out/i.test(message) ? 'timeout' : 'worker_error',
             error_message: message.slice(0, 500)
           }
         });
@@ -576,6 +607,7 @@ export function createWorker(options) {
         log('failure report failed', { taskId: task.id, error: String(reportError?.message || reportError) });
       }
     } finally {
+      activeTask = null;
       state.currentTaskId = null;
       state.status = 'idle';
       draining = false;
@@ -628,15 +660,17 @@ export function createWorker(options) {
   let draining = false;
   let claimBusy = false;
 
-  async function startLocal() {
+  async function startLocal({ onProgress = () => {} } = {}) {
     if (localRunning) return snapshotState();
     await mkdir(join(dataDir, 'tasks'), { recursive: true });
     await loadIdentity();
+    onProgress(45, '正在检测显卡和系统');
     state.gpu = await detectGpu();
     state.system = await detectSystem();
+    onProgress(60, '正在连接图像和视频服务');
     state.comfy.image = await comfyImage.isUp();
     state.comfy.video = await comfyVideo.isUp();
-    await reportModels();
+    await reportModels(onProgress);
     localRunning = true;
     state.status = state.currentTaskId ? 'busy' : 'idle';
     localTimer = setInterval(() => { claimAndRun().catch(e => log('local task error', { error: String(e.message) })); }, 500);
@@ -658,8 +692,10 @@ export function createWorker(options) {
 
   async function stopSharing() {
     sharing = false;
-    draining = claimBusy && !localTasks?.has(state.currentTaskId);
-    if (state.workerToken) await heartbeat();
+    shareEpoch++;
+    draining = false;
+    if (activeTask && !localTasks?.has(activeTask.id)) await cancelActiveTask();
+    if (state.workerToken) heartbeat().catch(() => {});
     // Keep the authenticated file gateway alive: completed tasks still need
     // to download their results. Only stop() closes it.
     emit();
@@ -672,9 +708,9 @@ export function createWorker(options) {
     clearInterval(localHealthTimer);
     localTimer = null;
     localHealthTimer = null;
-    // Do not interrupt a shared task or stop its claim loop.
-    while (state.currentTaskId && localTasks?.has(state.currentTaskId)) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+    // Each switch cancels only its own jobs, including private queued tasks.
+    for (const task of localTasks?.list() || []) {
+      if (!['completed', 'failed', 'cancelled', 'expired'].includes(task.status)) await cancelLocalTask(task.id);
     }
     state.status = state.currentTaskId ? 'busy' : sharing ? 'idle' : 'offline';
     emit();
@@ -701,19 +737,16 @@ export function createWorker(options) {
     const task = localTasks?.get(id);
     if (!task) throw new Error('本机任务不存在');
     await localTasks.cancel(id);
-    if (state.currentTaskId === id && task.prompt_id) {
-      const runtime = task.workflow ? workflowModule(task.workflow.module)?.runtime : requirementsFor(task.task_type)?.kind === 'video' ? 'video' : 'image';
-      await comfyFor(runtime).cancelPrompt(task.prompt_id);
-    }
+    if (activeTask?.id === id) await cancelActiveTask();
     emit();
     return task;
   }
 
-  async function start({ registrationCode: code } = {}) {
+  async function start({ registrationCode: code, onProgress = () => {} } = {}) {
     if (code !== undefined) activeRegistrationCode = String(code);
     if (starting) return starting;
     if (running) { sharing = true; draining = false; await heartbeat(); emit(); return snapshotState(); }
-    starting = startResources().catch(async (error) => {
+    starting = startResources(onProgress).catch(async (error) => {
       await closeSharing().catch(() => {});
       if (error.message === 'missing session token' || error.message === 'unknown worker') {
         error.message = '云端没有此节点的注册记录，请在设置中填写新的注册码，保存后重新启动';
@@ -728,13 +761,14 @@ export function createWorker(options) {
     finally { starting = null; }
   }
 
-  async function startResources() {
+  async function startResources(onProgress = () => {}) {
     running = true;
     state.lastError = '';
 
     await mkdir(join(dataDir, 'tasks'), { recursive: true });
     await loadIdentity();
 
+    onProgress(45, '正在启动算力网关');
     gateway = createGateway({
       workerId: state.workerId,
       dataDir,
@@ -753,8 +787,10 @@ export function createWorker(options) {
     // `npm run verify:tunnel` opens a real one and fetches a real file
     // through it.
     if (!state.endpointUrl && tunnelEnabled !== false) {
+      onProgress(55, '正在建立外网共享连接');
       tunnel = createTunnel({ port, logger: log });
       const publicUrl = await tunnel.start();
+      if (!publicUrl) throw new Error('外网共享连接未能建立，请检查网络后重试；本地使用不受影响');
       state.endpointUrl = publicUrl || state.localEndpointUrl;
       state.transport = publicUrl ? 'tunnel' : 'direct';
       if (!publicUrl) {
@@ -764,8 +800,9 @@ export function createWorker(options) {
       state.endpointUrl = state.localEndpointUrl;
     }
 
+    onProgress(65, '正在检测硬件并注册算力节点');
     await register();
-    await reportModels();
+    await reportModels(onProgress);
     if (state.currentTaskId) state.status = 'busy';
     sharing = true;
     draining = false;
@@ -781,10 +818,7 @@ export function createWorker(options) {
 
   async function stop() {
     await stopSharing();
-    localRunning = false;
-    clearInterval(localTimer);
-    clearInterval(localHealthTimer);
-    localTimer = null;
+    await stopLocal();
     while (claimBusy) await new Promise(resolve => setTimeout(resolve, 100));
     await closeSharing();
     state.status = 'offline';
