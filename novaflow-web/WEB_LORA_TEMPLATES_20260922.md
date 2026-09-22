@@ -30,4 +30,6 @@
 - 已将本机 Worker 的 models 目录设为 `E:\NovaFlow\models`，恢复 H3 8189 服务。
 - Worker 安装包：`worker/dist/NovaFlowWorkerSetup.exe`，SHA256 `5dd87ee9b23142be2400c2a01aa1018573c4321d9391ae2f946f7c656684c35e`。
 - Web 包：`.artifacts/novaflow-web-lora-templates.zip`，SHA256 `a740882be641d9a72e7605eb76e9f86a8fc9786124a6a2ebeb31cd571454eea0`。
-- 待用户在 Cloudflare 选择 ZIP 后发布并验证线上；Worker 启动命令被自动审批拒绝（仅返回 blocked by policy），已请用户打开并启动节点。
+- 用户已在 Cloudflare 完成上传发布，正式版本 `1e50d16f`。线上 runtime、模板 shim、LoRA UI 模块和模板 JSON 均与最终包逐字节一致。
+- 正式网页已显示全部 19 个粒子模板；Qwen 14 个、H3 10 个列表实际读回，选中后均显示强度和移除按钮。验收用选择已移除，未触发生成。
+- Worker 启动命令曾被自动审批拒绝（仅返回 blocked by policy），用户随后手动启动成功。13:41 UTC 日志确认注册、图像/视频模型就绪；已安装关键文件与 0.4.4 安装包逐字节一致。
