@@ -12,6 +12,7 @@
   ],
   "scripts": {
     "control:dev": "node control-local/src/server.mjs",
+    "start": "node tools/start-local-stack.mjs",
     "web:dev": "npm --prefix web run dev",
     "web:build": "npm --prefix web run build",
     "web:preview": "npm --prefix web run preview",

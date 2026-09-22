@@ -32,22 +32,17 @@ NovaFlow 的 Web 产品线：浏览器端 + Supabase 控制面 + 分布式 GPU W
 cd D:\AI_APP\NovaFlow-Web\novaflow-web && npm install
 ```
 
-三个终端：
+一条命令起全部（控制面 + 一台 Worker + Web）：
 
 ```bash
-npm run control:dev
+npm start
 ```
 
-```bash
-npm run web:build && npm run web:preview
-```
+它会打印出要打开的地址（默认 <http://127.0.0.1:4892>），
+点「本地验收登录」即可。Ctrl+C 全部停止。
 
-```bash
-node worker/src/main-headless.mjs
-```
-
-Worker 需要环境变量（见 `docs/WORKER.md`）。然后打开
-<http://127.0.0.1:4892>，点「本地验收登录」。
+想分开跑就用 `npm run control:dev`、`npm run web:preview`、
+`node worker/src/main-headless.mjs`（Worker 的环境变量见 `docs/WORKER.md`）。
 
 ---
 
