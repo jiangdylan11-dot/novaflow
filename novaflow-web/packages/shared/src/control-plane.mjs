@@ -1,3 +1,4 @@
+import { commonLoraCatalog } from './lora-catalog.mjs';
 // NovaFlow Web - control plane.
 //
 // ONE implementation of the whole API, used by both deployments:
@@ -817,6 +818,26 @@ export function createControlPlane({ store, secrets, logger }) {
     };
   }
 
+  async function handleLoraCatalog(kind, query, headers, selection) {
+    await requireUser(headers);
+    if (!['qwen', 'h3'].includes(kind)) throw bad('invalid LoRA kind');
+    const mode = String(query.mode || 'i2v');
+    const steps = Number(query.steps || 4);
+    if (kind === 'h3' && (!['t2v','i2v','fl2v','r2v'].includes(mode) || !Number.isInteger(steps) || steps < 1 || steps > 100)) throw bad('invalid LoRA context');
+    const modelId = kind === 'h3' ? 'minimax-h3' : 'qwen-image-2511';
+    const rows = await store.listCapableModelDetails(modelId, kind === 'h3' ? 15000 : 16000, HEARTBEAT_TIMEOUT_SECONDS);
+    let items;
+    try { items = commonLoraCatalog(rows, { kind, mode, steps, nsfw: query.nsfw === 'true' || query.nsfw === true }); }
+    catch (error) { throw new HttpError(503, 'lora_catalog_unavailable', error.message); }
+    if (selection) {
+      const item = items.find(item => item.name === selection.name && item.fingerprint === selection.fingerprint);
+      const strength = Number(selection.strength);
+      if (!item || !Number.isFinite(strength) || strength < 0 || strength > 2) throw bad('LoRA 已变化或不兼容，请重新选择');
+      return { ok: true, item, strength };
+    }
+    return { ok: true, items };
+  }
+
   async function handleSweep(body, headers) {
     // The sweeper is infrastructure, not a user action. It is authorised with
     // the control secret so a logged-in user cannot drive recovery timing.
@@ -850,6 +871,9 @@ export function createControlPlane({ store, secrets, logger }) {
       }
       if (method === 'GET' && path === '/api/web/capabilities') return ok(await handleCapabilities());
       if (method === 'GET' && path === '/api/web/me') return ok(await handleMe(headers));
+      if (method === 'GET' && path === '/api/web/loras/qwen') return ok(await handleLoraCatalog('qwen', query, headers));
+      if (method === 'GET' && path === '/api/web/loras/h3') return ok(await handleLoraCatalog('h3', query, headers));
+      if (method === 'POST' && path === '/api/web/loras/h3/validate') return ok(await handleLoraCatalog('h3', body, headers, body));
 
       if (method === 'POST' && path === '/api/worker/register') return ok(await handleWorkerRegister(body, headers));
       if (method === 'POST' && path === '/api/worker/login') return ok(await handleWorkerLogin(body));

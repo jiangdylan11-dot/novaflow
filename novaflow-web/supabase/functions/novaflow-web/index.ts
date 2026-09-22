@@ -154,6 +154,16 @@ const supabaseStore = {
     return (data || []).length;
   },
 
+  async listCapableModelDetails(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number) {
+    const { data, error } = await admin().from('worker_models')
+      .select('detail, gpu_workers!inner(status,vram_mb,last_heartbeat)')
+      .eq('model_id', modelId).eq('status', 'ready')
+      .in('gpu_workers.status', ['idle', 'busy']).gte('gpu_workers.vram_mb', minVramMb)
+      .gt('gpu_workers.last_heartbeat', new Date(Date.now() - heartbeatTimeoutSeconds * 1000).toISOString());
+    if (error) throw error;
+    return data || [];
+  },
+
   async createTask({ userId, taskType, modelId, inputManifest, estimatedCreditCost, expiresAt }: any) {
     const { data, error } = await admin().rpc('novaflow_web_create_task', {
       p_user_id: userId,

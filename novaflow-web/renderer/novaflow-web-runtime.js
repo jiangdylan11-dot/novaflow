@@ -60,6 +60,7 @@
   async function api(base, method, path, body) {
     const res = await fetch(base.replace(/\/+$/, '') + path, {
       method: method,
+      signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
       headers: authHeaders(),
       body: body === undefined ? undefined : JSON.stringify(body)
     });
@@ -652,9 +653,18 @@
       catch (error) { return { ok: false, error: String(error.message || error) }; }
     },
 
-    qwenLoraCatalog: async () => ({ ok: true, result: { loras: [] } }),
-    minimaxH3LoraCatalog: async () => ({ ok: true, result: { loras: [] } }),
-    minimaxH3LoraValidate: async () => ({ ok: true, result: { valid: true } }),
+    async qwenLoraCatalog(payload = {}) {
+      try { return await control('GET', '/api/web/loras/qwen?nsfw=' + (payload.nsfw === true)); }
+      catch (error) { return { ok: false, error: String(error.message || error), items: [] }; }
+    },
+    async minimaxH3LoraCatalog(payload = {}) {
+      try { return await control('GET', '/api/web/loras/h3?mode=' + encodeURIComponent(payload.mode || 'i2v') + '&steps=' + encodeURIComponent(payload.steps || 4)); }
+      catch (error) { return { ok: false, error: String(error.message || error), items: [] }; }
+    },
+    async minimaxH3LoraValidate(payload) {
+      try { return await control('POST', '/api/web/loras/h3/validate', payload); }
+      catch (error) { return { ok: false, error: String(error.message || error) }; }
+    },
     async minimaxH3OutputPublish(payload) {
       const task = tasks.get(String(payload && payload.promptId || ''));
       const filename = String(payload && payload.filename || '');

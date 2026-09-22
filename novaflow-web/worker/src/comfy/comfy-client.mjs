@@ -26,7 +26,7 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
   const clientId = 'novaflow-worker-' + Math.random().toString(36).slice(2, 10);
 
   async function json(path, init) {
-    const res = await doFetch(base + path, init);
+    const res = await doFetch(base + path, { ...init, signal: init?.signal || AbortSignal.timeout(30000) });
     const text = await res.text();
     let body = null;
     try { body = text ? JSON.parse(text) : null; } catch { body = { raw: text }; }

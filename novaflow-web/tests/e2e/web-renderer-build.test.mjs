@@ -49,6 +49,18 @@ check('most modules needed nothing', report.copied > 50, report.copied);
 check('builders were hollowed out', report.totalRedacted > 20, report.totalRedacted);
 check('builders were registered for the worker', report.totalRegistered > 20, report.totalRegistered);
 
+section('LoRA UI catalog survives graph redaction');
+{
+  const browser = createContext({ NovaFlowWebRuntime: { serverOnly: () => ({ recipe: true }) } });
+  runInContext(await readFile(join(PATHS.WEB_OUT, 'art-generate-lora.js'), 'utf8'), browser);
+  const catalog = browser.NovaFlowArtGenerateLora.catalogFromInfo;
+  checkEqual('catalog produces names, not workflow recipes', Array.from(catalog({ok:true,items:[{name:'qwen/style.safetensors'}]})), ['qwen/style.safetensors']);
+  checkEqual('managed and unsafe catalog entries stay hidden', Array.from(catalog({ok:true,items:[{name:'qwen/turbo.safetensors'},{name:'../style.safetensors'}]})), []);
+  let error = '';
+  try { catalog({ok:false,error:'node offline',items:[]}); } catch (e) { error = e.message; }
+  checkEqual('catalog failure remains retryable UI error', error, 'node offline');
+}
+
 // ---------------------------------------------------------------------------
 let webFiles = [];
 
@@ -190,7 +202,7 @@ section('4b. browser-only files stay out of the compute node');
     workerFiles.filter((f) => f.startsWith('novaflow-web-')), []);
   checkEqual('the build says which files it held back',
     (report.browserOnly || []).slice().sort(),
-    ['novaflow-web-account.js', 'novaflow-web-capabilities.js', 'novaflow-web-runtime.js', 'novaflow-web-warehouse.js']);
+    ['novaflow-web-account.js', 'novaflow-web-capabilities.js', 'novaflow-web-runtime.js', 'novaflow-web-templates.js', 'novaflow-web-warehouse.js']);
   for (const file of report.browserOnly || []) {
     check(file + ' did ship to the browser', webFiles.includes(file), webFiles.length);
   }

@@ -20,6 +20,7 @@ import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength } from './comf
 import { createWorkflowHost } from './comfy/workflow-host.mjs';
 import { workflowModule } from '../../packages/shared/src/workflow-modules.mjs';
 import { inspectAllModels, inspectViaComfy } from './models/model-manager.mjs';
+import { createWorkerLoraCatalog } from './models/lora-catalog.mjs';
 import { MODEL_MANIFEST, runtimeFor } from '../../packages/shared/src/model-manifest.mjs';
 import { detectGpu, detectSystem } from './hardware.mjs';
 import { generateWorkerSecret } from '../../packages/shared/src/tokens.mjs';
@@ -181,6 +182,9 @@ export function createWorker(options) {
   const comfyImage = createComfyClient({ baseUrl: comfyImageUrl, logger: log });
   const comfyVideo = createComfyClient({ baseUrl: comfyVideoUrl, logger: log });
 
+  const loraCatalog = createWorkerLoraCatalog({ modelsRoot, image: comfyImage, video: comfyVideo });
+  let lastModelReportAt = 0;
+
   function comfyFor(runtime) {
     return runtime === 'video' ? comfyVideo : comfyImage;
   }
@@ -296,8 +300,12 @@ export function createWorker(options) {
       return { ...(found || {}), model_id: spec.model_id, model_version: spec.version, status: 'missing',
         detail: { ...(found?.detail || {}), reason: state.comfy[spec.runtime] ? 'runtime_model_catalog_unavailable' : 'runtime_offline' } };
     });
+    for (const model of models) {
+      if (model.status === 'ready') model.detail = { ...(model.detail || {}), lora_catalog: await loraCatalog.report(runtimeFor(model.model_id)) };
+    }
     state.models = models;
     await callControl('POST', '/api/worker/models', { body: { models }, token: state.workerToken });
+    lastModelReportAt = Date.now();
     log('models reported', { ready: models.filter((m) => m.status === 'ready').map((m) => m.model_id) });
     emit();
     return models;
@@ -308,7 +316,7 @@ export function createWorker(options) {
       const previous = { ...state.comfy };
       state.comfy.image = await comfyImage.isUp();
       state.comfy.video = await comfyVideo.isUp();
-      if (previous.image !== state.comfy.image || previous.video !== state.comfy.video) await reportModels();
+      if (previous.image !== state.comfy.image || previous.video !== state.comfy.video || Date.now() - lastModelReportAt > 120000) await reportModels();
       await callControl('POST', '/api/worker/heartbeat', {
         token: state.workerToken,
         body: {
@@ -444,6 +452,8 @@ export function createWorker(options) {
       graph = buildGraph(template, parameters, extra);
       seed = resolvedSeed(template, graph);
     }
+
+    await loraCatalog.validateGraph(graph, parameters);
 
     // 3. Run.
     const startedAt = Date.now();

@@ -1,0 +1,155 @@
+{
+  "id": "1",
+  "systemName": "向内收缩",
+  "enabled": true,
+  "systemX": -21,
+  "systemY": 24,
+  "systemRotationDeg": 0,
+  "systemScale": 1,
+  "mode": "stream",
+  "burstCount": 20,
+  "loopIntervalSec": 1,
+  "rate": 100,
+  "streamDurationSec": 0,
+  "loopAnimation": true,
+  "loopDurationSec": 2,
+  "streamLoopEnabled": true,
+  "lifetimeMin": 0.8,
+  "lifetimeMax": 0.9,
+  "speedMin": 150,
+  "speedMax": 139,
+  "gravityEnabled": false,
+  "gravityX": 0,
+  "gravityY": 500,
+  "dampingEnabled": false,
+  "noiseEnabled": false,
+  "noiseMode": "random",
+  "sNoiseStrengthMode": "linear",
+  "sNoiseCurve": [
+    {
+      "t": 0,
+      "v": 1
+    },
+    {
+      "t": 1,
+      "v": 1
+    }
+  ],
+  "minTravelY": 0,
+  "sizeStart": 43.3,
+  "sizeEnd": 1,
+  "useSizeCurve": false,
+  "sizeCurve": [
+    {
+      "t": 0,
+      "v": 0.7
+    },
+    {
+      "t": 0.25,
+      "v": 1
+    },
+    {
+      "t": 1,
+      "v": 0
+    }
+  ],
+  "opacityStart": 1,
+  "opacityEnd": 0,
+  "useOpacityCurve": true,
+  "opacityCurve": [
+    {
+      "t": 0,
+      "v": 1
+    },
+    {
+      "t": 1,
+      "v": 0
+    }
+  ],
+  "particleSpinDegPerSec": 0,
+  "rotationMode": "fixed",
+  "pathEnabled": false,
+  "pathMode": "lock",
+  "pathType": "circle",
+  "pathClosed": true,
+  "pathPoints": [
+    {
+      "x": -120,
+      "y": 0
+    },
+    {
+      "x": 120,
+      "y": 0
+    }
+  ],
+  "pathStartT": 0,
+  "pathSpeedPxPerSec": 360,
+  "pathRadiusX": 120,
+  "pathRadiusY": 120,
+  "pathRadiusOffset": 0,
+  "pathThickness": 0,
+  "pathSpeedDegPerSec": 180,
+  "pathReverse": false,
+  "pathRandomStartAngle": true,
+  "pathStartAngleDeg": 0,
+  "pathEmitSampleCount": 50,
+  "pathEmitSideMode": "left",
+  "pathEmitBothSideRatioLeft": 0.5,
+  "pathEmitFacingEnabled": false,
+  "pathEmitFacingDeg": 0,
+  "shape": {
+    "type": "circle",
+    "x": 0,
+    "y": 0,
+    "emitInward": true,
+    "outerRadius": 238,
+    "innerRadius": 96
+  },
+  "sprites": [
+    {
+      "id": "builtin_triangle_1",
+      "name": "三角形",
+      "dataUrl": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAAFPUlEQVR4AeyUi3ETQRBEbSIxmUAkmMhIjUzMc5e3jlLJsj6zu/OjRiMk6+52pl/3t6f+V3oDDUBp+Z+eGoAGoPgGio/fCdAAFN9A8fE7ARqA4hsoOv4YuxNgbKLoewNQVPgxdgMwNlH0vQEoKvwYuwEYmyj63gAUFX6M3QCMTRR9bwCKCX86bgNwupFinxuAYoKfjlsagLe3t1deP06XUulzaQAQ+hevP7zKVlkAcP4rqr+7/4X/v7/zsV6VBQCp393Pm6psCpQEAMcP90t9WtkUKAkAgv/vfj6qUqeAJjzTygFwxv1jLSVToBwAqH3O/XytKpcCpQC44H6pTyuXAqUAQOBL7ufPqlIpUAaAK9wv9WmlUqAMAAh7jfv5mapMCpQA4Ab3S31amRQoAQCC3uJ+fq5KkQKa5EJLD8Ad7h/rKpEC6QFAzXvcz2Wq9CmQGoAH3C/1aelTIDUACPiI+7lclToF0gJg4H6pT0udAmkBQDgL93MbVdoUSAmAofulPi1tCqQEAMEs3c/tVKFSQCe+oqUDYIL7xxpTpkA6AFBrhvu5rSpdCqQCYKL7pT4tXQqkAgCBZrqf26tSpUAaABa4X+rTUqVAGgAQZoX7eYwqTQqkAGCh+6U+LU0KpAAAQVa6n8epXKaATnZDCw/ABveP9aZIgfAAoMYO9/NYVfgUCA3ARvdLfVr4FAgNAALsdD+PV4VOgbAAOHC/1KeFToGwALB4D+7nGKqwKRASAEful/q0sCkQEgAW7sn9HEe1NQV0gjtaOAAcun+sPWQKhAOAbXt0P8dShUuBUAA4dr/Up4VLgVAAsGDP7ud4qlApEAaAAO6X+rRQKRAGABYbwf0cUxUmBUIAEMj9Up8WJgVCAMBCI7mf46qWpICe9EBzD0BA9w85QqSAewDYZkT3c2yV+xRwDUBg90t9mvsUcA0AC4zsfo6vcp0CbgFI4H6pT3OdAm4BYHEZ3M8YKrcp4BKARO6X+jS3KeASABaWyf2MozJNAd3RoLkDIKH7h0wuU8AdAGwro/sZS+UuBVwBkNj9Up/mLgVcAcCCMruf8VSuUsANAAXcL/VprlLADQAspoL7GVPlJgVcAFDI/VKf5iYFXADAQiq5n3FVd6WArjRs2wEo6P4hn4sU2A4A26jofsZWbU+BrQAUdr/Up21Pga0AsIDK7md81dYU2AZAu1/iv7etKbANACZv97OEj9qWAlsAaPd/yH68bUuBLQAwd7ufJZzUxRQ4+a3Zx+UAtPs/1W5LCiwHgPHb/Szhk1qeAksBaPd/Ivvx9fIUWAoAc7b7WcIXtTQFlgHQ7v9C9uPPS1NgGQDM1+5nCVfWshRYAkC7/0rZj58tS4ElADBXu58l3FhKgRuvufnn0wFo99+sybhgSQpMB4Bp2v0s4c6angJTAWj33yn7cdn0FJgKAHO0+1nCgzU1BaYB0O5/UPbj8qkpMA0Azt/uZwlGNS0FpgDQ7jeS/bjNtBSYAgDnbvezhEfqzLVTUsAcgHb/GelsvpqSAuYAMGu7nyVMKvMUMAWg3T9J9uO25ilgCgDnbPezhMllmgJmALT7J8t+3N40BcwA4HztfpawqMxSwAQA3P/C4L95fe/X04od/GTPJmUCwPPz899+2ezg2j2aqM9NTADgPl1BN9AABBXO6tgNgNUmg96nAQgqnNWxGwCrTQa9TwMQVDirYzcAVpsMep8GwIlwu47RAOzavJPnNgBOhNh1jAZg1+adPLcBcCLErmM0ALs27+S5DYATIXYdowHYtXknz20ANgux+/H/AAAA//85GbDwAAAABklEQVQDAEB/0RD3T/gEAAAAAElFTkSuQmCC",
+      "path": "built-in/",
+      "weight": 1,
+      "mode": "single",
+      "colorMode": "lifecycle",
+      "colorStops": [
+        {
+          "t": 0,
+          "color": "#e7ff70"
+        },
+        {
+          "t": 1,
+          "color": "#dc1818"
+        }
+      ],
+      "blendMode": "normal",
+      "color": "#e7ff70"
+    }
+  ],
+  "spritePlayback": "single",
+  "spriteSequenceFps": 12,
+  "spriteSequenceLoop": true,
+  "spriteSequenceRandom": false,
+  "warmupEnabled": false,
+  "warmupSeconds": 0,
+  "blendMode": "add",
+  "colorStart": "#ffffff",
+  "colorEnd": "#ffffff",
+  "emissionAngleEnabled": false,
+  "emissionAngleDeg": 360,
+  "emissionOffsetDeg": 0,
+  "attractorEnabled": false,
+  "attractorMode": "linear",
+  "attractorStrength": 0,
+  "attractorRadius": 200,
+  "spiralInward": false,
+  "spiralStartRadius": 200,
+  "spiralEndRadius": 0,
+  "swirlStrength": 0,
+  "targetSpeedRatio": 0.12,
+  "noiseFrequency": 1.2,
+  "noiseIntensity": 80,
+  "lockSpriteRotation": false
+}

@@ -79,9 +79,13 @@ const CAPABILITY_SHIM = 'novaflow-web-capabilities.js';
 const ACCOUNT_SHIM = 'novaflow-web-account.js';
 const WAREHOUSE_SHIM = 'novaflow-web-warehouse.js';
 
-const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM, ACCOUNT_SHIM, WAREHOUSE_SHIM]);
+const TEMPLATE_SHIM = 'novaflow-web-templates.js';
+const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM, ACCOUNT_SHIM, WAREHOUSE_SHIM, TEMPLATE_SHIM]);
 
 const REPLACEMENT = (moduleName) => (fn) => {
+  // The catalog is UI data. Its desktop fallback mentions a Comfy node, which
+  // causes the graph scanner to select it; returning a recipe breaks .filter().
+  if (moduleName === 'art-generate-lora' && fn === 'catalogFromInfo') return '\n    if (!info?.ok || !Array.isArray(info.items)) throw new Error(info?.error || "读取兼容 LoRA 失败");\n    return info.items.map(item => item.name).filter(isSelectable);\n  ';
   if (moduleName === 'novaflow-brand-runtime' && fn === 'validateArtWorkflowNodes') return '\n    return;\n  ';
   if (moduleName === 'novaflow-brand-runtime' && fn === 'applyArtReferenceControlNet') return '\n    return globalThis.NovaFlowWebRuntime.recordArtReferenceControl(...arguments);\n  ';
   return '\n    return globalThis.NovaFlowWebRuntime.serverOnly(' +
@@ -220,6 +224,18 @@ export async function buildWebRenderer({ logger, clean = true } = {}) {
     await cp(join(SRC, entry.name), join(WEB_OUT, entry.name));
   }
 
+  const particleTemplates = [];
+  for (const filename of (await readdir(join(ROOT, 'particle-templates'))).sort((a,b) => a.localeCompare(b, 'zh-CN', { numeric: true }))) {
+    if (!filename.endsWith('.json') || filename.startsWith('builtin_tpl_')) continue;
+    const parsed = JSON.parse(await readFile(join(ROOT, 'particle-templates', filename), 'utf8'));
+    const name = filename.slice(0, -5).replace(/\s+/g, ' ').trim().slice(0, 40);
+    const config = parsed.config || (parsed.systemName ? parsed : null);
+    if (config) particleTemplates.push({ id: parsed.config ? String(parsed.id || 'file_' + name) : 'file_' + name, name, config, createdAt: Number(parsed.createdAt) || 1 });
+  }
+  if (!particleTemplates.length) throw new Error('no bundled particle templates');
+  await mkdir(join(WEB_OUT, 'templates'), { recursive: true });
+  await writeFile(join(WEB_OUT, 'templates/particle-bundled.json'), JSON.stringify(particleTemplates));
+
   // ------------------------------------------------------------- index.html
   const html = await readFile(join(SRC, 'index.html'), 'utf8');
   await writeFile(join(WEB_OUT, 'index.html'), rewriteIndexHtml(html), 'utf8');
@@ -341,6 +357,7 @@ export function rewriteIndexHtml(html) {
     '    <script src="./' + WAREHOUSE_SHIM + '?v=warehouse-1"></script>\n' +
     '    <script src="./' + RUNTIME_SHIM + '?v=web-1"></script>\n' +
     '    <script src="./' + CAPABILITY_SHIM + '?v=web-1"></script>\n' +
+    '    <script src="./' + TEMPLATE_SHIM + '?v=templates-1"></script>\n' +
     '    <script src="./' + ACCOUNT_SHIM + '?v=web-1"></script>\n';
   const lastScript = out.lastIndexOf('</script>');
   if (lastScript >= 0) {

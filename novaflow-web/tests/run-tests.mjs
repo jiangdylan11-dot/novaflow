@@ -18,6 +18,8 @@ const SUITES = [
   { name: 'web-renderer-build', file: 'e2e/web-renderer-build.test.mjs', needs: [], timeoutMs: 600000 },
   { name: 'web-generation-routes', file: 'e2e/web-generation-routes.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-warehouse', file: 'e2e/web-warehouse.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'web-lora', file: 'e2e/web-lora.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'web-templates', file: 'e2e/web-templates.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-account', file: 'e2e/web-account.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'sql-contract', file: 'e2e/sql-contract.test.mjs', needs: [], timeoutMs: 300000 },
   { name: 'control-plane', file: 'e2e/control-plane.test.mjs', needs: [], timeoutMs: 300000 },

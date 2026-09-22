@@ -35,6 +35,14 @@
       "filter": [
         "**/*"
       ]
+    },
+    {
+      "from": "../../particle-editor-desktop/main/qwen-lora-catalog.js",
+      "to": "lora-catalogs/qwen-lora-catalog.cjs"
+    },
+    {
+      "from": "../../particle-editor-desktop/main/minimax-h3-lora-catalog.js",
+      "to": "lora-catalogs/minimax-h3-lora-catalog.cjs"
     }
   ],
   "asar": false,

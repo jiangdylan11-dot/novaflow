@@ -88,6 +88,12 @@ export function createPgStore(db) {
       return Number(row?.count || 0);
     },
 
+    async listCapableModelDetails(modelId, minVramMb, heartbeatTimeoutSeconds) {
+      return await many(`select wm.detail from public.worker_models wm join public.gpu_workers w on w.id=wm.worker_id
+        where wm.model_id=$1 and wm.status='ready' and w.status in ('idle','busy') and w.vram_mb >= $2
+        and w.last_heartbeat > now() - make_interval(secs => $3)`, [modelId, minVramMb, heartbeatTimeoutSeconds]);
+    },
+
     async createTask({ userId, taskType, modelId, inputManifest, estimatedCreditCost, expiresAt }) {
       return await one(
         'select * from public.novaflow_web_create_task($1, $2, $3, $4::jsonb, $5, $6)',
