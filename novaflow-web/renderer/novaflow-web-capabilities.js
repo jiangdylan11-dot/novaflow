@@ -124,29 +124,35 @@
 
   // ------------------------------------------------------------------ license
   //
-  // The desktop gates 仓库 and 导出 on a machine licence file. The Web line has
-  // no machines to licence - entitlement is the signed-in account, which the
-  // control plane already checks on every call. So a signed-in user is
-  // authorised, and a signed-out one is not.
-  api.licenseGetState = async () => {
-    const session = runtime.session;
-    const authorized = Boolean(session && session.token);
-    const detail = authorized ? '已通过 NovaFlow 账号授权' : '请先登录 NovaFlow 账号';
-    // The renderer does `result.state ? result.state : result`, so `state` has
-    // to be the licence RECORD, not a word. Both shapes carry the same fact.
-    const record = {
-      status: authorized ? 'licensed' : 'unlicensed',
-      machineId: 'web',
-      mode: 'web-account',
-      permissions: authorized ? ['export', 'warehouse', 'web'] : [],
-      expireAt: null,
-      detail
-    };
-    return Object.assign({ ok: true, authorized, state: record, detail }, record);
+  // There is no licence gate on the Web. The desktop one binds a licence file
+  // to a MACHINE CODE, and a browser tab is not a machine - there is nothing
+  // to bind to, no way to issue such a file, and the dialog that asks for one
+  // would be a form that can never succeed.
+  //
+  // So the Web reports licensed, always. That is not a bypass of the desktop's
+  // entitlement: what actually costs money here is generation, and every
+  // generate call carries a session token that the control plane checks and
+  // charges credits for. 导出 and 仓库 act on the user's own canvas in their
+  // own browser, which is not something to hold behind a machine licence.
+  const WEB_LICENSE = {
+    status: 'licensed',
+    machineId: 'web',
+    mode: 'web-no-license-required',
+    permissions: ['export', 'warehouse', 'web'],
+    expireAt: null,
+    detail: 'NovaFlow Web 不需要授权文件（授权文件绑定机器码，浏览器没有机器码）'
   };
 
-  api.licenseImport = async () => fail('Web 版通过账号授权，不需要导入授权文件');
-  api.licenseClear = async () => { runtime.setSession(null); return ok({ cleared: true }); };
+  // The renderer does `result.state ? result.state : result`, so `state` has to
+  // be the licence RECORD, not a word. Both shapes carry the same fact.
+  api.licenseGetState = async () =>
+    Object.assign({ ok: true, authorized: true, state: WEB_LICENSE, detail: WEB_LICENSE.detail }, WEB_LICENSE);
+
+  api.licenseImport = async () =>
+    ok(Object.assign({ imported: false, alreadyLicensed: true }, WEB_LICENSE));
+  // Clearing a licence that does not exist must not log anyone out: the
+  // account session is a separate thing and is dropped from the account panel.
+  api.licenseClear = async () => ok(Object.assign({ cleared: false }, WEB_LICENSE));
 
   api.getAppInfo = async () => ok({
     name: 'NovaFlow Web',

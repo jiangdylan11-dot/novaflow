@@ -128,6 +128,16 @@ section('4. the shims load last and only override transport');
     panel.includes('/api/web/workers/codes'), null);
   check('it lists the pool from the control plane',
     panel.includes("'/api/web/workers'"), null);
+
+  // The desktop licence binds to a MACHINE CODE. A browser tab has no machine,
+  // so there is nothing to bind and no file anyone could issue - a licence gate
+  // on the Web is a form that can never succeed. Entitlement here is the
+  // account, checked on every generate call by the control plane.
+  const caps = await readFile(join(PATHS.WEB_OUT, 'novaflow-web-capabilities.js'), 'utf8');
+  check('the Web reports licensed without a licence file',
+    /status: 'licensed'/.test(caps) && !/unlicensed/.test(caps), null);
+  check('and never sends anyone to a machine-code form',
+    !/licenseImport = async \(\) => fail/.test(caps), null);
 }
 
 // ---------------------------------------------------------------------------
