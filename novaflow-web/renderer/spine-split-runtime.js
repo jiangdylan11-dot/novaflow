@@ -56,9 +56,9 @@
   const INPAINT_MODE_ATTR = 'data-novaflow-selection-inpaint-mode'
   const LEGACY_BONE_SPLIT_PANEL_HIDDEN_ATTR = 'data-novaflow-legacy-bone-split-hidden'
   const SPLIT_PREVIEW_UI_GAP = '8px'
-  const SPLIT_RECT_RADIUS = '8px'
-  const SPLIT_PANEL_BACKGROUND = '#2a2a2a'
-  const SPLIT_PANEL_HOVER_BACKGROUND = '#3b3b3b'
+  const SPLIT_RECT_RADIUS = '7px'
+  const SPLIT_PANEL_BACKGROUND = '#272727'
+  const SPLIT_PANEL_HOVER_BACKGROUND = '#303030'
   // Selected-entry rank: dark green fill, light green text, hairline edge.
   // Distinct from SPLIT_ACTIVE_* below, which stays the main-action green.
   const SPLIT_SELECTED_BACKGROUND = '#1c4136'

@@ -2262,7 +2262,7 @@
   const AI_ANIMATION_PREPAINT_RELEASE_MS = 520;
   const AI_ANIMATION_STABLE_CENTER_MIN_SHIFT = 12;
   const NOVAFLOW_UNIFORM_GAP = 5;
-  const NOVAFLOW_RECT_RADIUS_PX = "8px";
+  const NOVAFLOW_RECT_RADIUS_PX = "7px";
   const NOVAFLOW_RECT_RADIUS_TOP_PX = `${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX} 0 0`;
   const NOVAFLOW_RECT_RADIUS_BOTTOM_PX = `0 0 ${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX}`;
   const SECONDARY_CONTENT_GAP = NOVAFLOW_UNIFORM_GAP;
@@ -2446,9 +2446,9 @@
   const PRIMARY_ENTRY_ACTIVE_RADIUS_PX = "10px";
   const UI_SELECTED_BACKGROUND = "#1c4136";
   const UI_SELECTED_BORDER = "#29594a";
-  const PRIMARY_PANEL_BACKGROUND = "#16171a";
+  const PRIMARY_PANEL_BACKGROUND = "#161616";
   const PRIMARY_PANEL_EXPANDED_BACKGROUND = "#181818";
-  const LEFT_PANEL_BACKGROUND = "#181818";
+  const LEFT_PANEL_BACKGROUND = "#161616";
   // The column is now just a layout box: the rail and the left panel are drawn
   // as floating surfaces, so anything painted here would sit behind them as a
   // full-height strip and cancel their rounded edges. Distinct from
@@ -2457,8 +2457,8 @@
   const PRIMARY_RAIL_BACKGROUND = PRIMARY_PANEL_BACKGROUND;
   const LEFT_COLUMN_BACKGROUND_IMAGE = "none";
   const LEFT_PANEL_EDGE = "rgba(154, 159, 165, 0.05)";
-  const SECONDARY_ENTRY_BACKGROUND = "#303030";
-  const SECONDARY_ENTRY_HOVER_BACKGROUND = "#3b3b3b";
+  const SECONDARY_ENTRY_BACKGROUND = "#272727";
+  const SECONDARY_ENTRY_HOVER_BACKGROUND = "#303030";
   const SECONDARY_ENTRY_ACTIVE_BACKGROUND = UI_SELECTED_BACKGROUND;
   const SKELETON_SELECTION_BACKGROUND = "rgba(30, 166, 114, 0.14)";
   const SKELETON_SELECTION_SHADOW = "inset 3px 0 0 rgba(30, 166, 114, 0.92)";
@@ -2591,17 +2591,17 @@
   const PRIMARY_INACTIVE_BACKGROUND = PRIMARY_PANEL_BACKGROUND;
   // Near-black topbar, separated from the workspace by a hairline rule.
   const UI_TOPBAR_BACKGROUND = "#101113";
-  const UI_FIELD_BACKGROUND = "#070707";
-  const UI_SELECT_BACKGROUND = "#070707";
-  const UI_SELECT_HOVER_BACKGROUND = "#111111";
-  const UI_SURFACE_MUTED = "#171717";
-  const UI_BUTTON_BACKGROUND = "#333333";
-  const UI_DISABLED_NEUTRAL_BUTTON_BACKGROUND = "#2b2b2b";
-  const UI_TOGGLE_OFF_BACKGROUND = "#222222";
-  const UI_SYSTEM_ACTION_BACKGROUND = "#333333";
+  const UI_FIELD_BACKGROUND = "#222222";
+  const UI_SELECT_BACKGROUND = "#222222";
+  const UI_SELECT_HOVER_BACKGROUND = "#2a2a2a";
+  const UI_SURFACE_MUTED = "#161616";
+  const UI_BUTTON_BACKGROUND = "#272727";
+  const UI_DISABLED_NEUTRAL_BUTTON_BACKGROUND = "#222222";
+  const UI_TOGGLE_OFF_BACKGROUND = "#343434";
+  const UI_SYSTEM_ACTION_BACKGROUND = "#272727";
   const UI_SYSTEM_ACTION_DISABLED_BACKGROUND = "#202020";
-  const UI_SYSTEM_ROW_ACTIVE_BACKGROUND = "#333333";
-  const UI_SYSTEM_ROW_INACTIVE_BACKGROUND = "#222222";
+  const UI_SYSTEM_ROW_ACTIVE_BACKGROUND = "#272727";
+  const UI_SYSTEM_ROW_INACTIVE_BACKGROUND = "#1d1d1d";
   // Rank, not decoration. UI_ACCENT is the ONE main action of a surface
   // (生成 / 登录 / the active tool's own run button). The selected entry is a
   // dark green fill with light green text and a hairline edge - never a solid
@@ -53276,7 +53276,12 @@
     const semantic = getSemanticActiveState(button);
     if (semantic !== null) return semantic;
     const rawStyle = `${button.getAttribute("style") || ""} ${button.style.background || ""} ${button.style.backgroundColor || ""}`.toLowerCase();
-    if (rawStyle.includes("#333333") || rawStyle.includes("51, 51, 51") || rawStyle.includes("#222222")) return false;
+    // Last-resort sniff: this reads the BUTTON'S OWN COLOUR to decide whether
+    // loop is off. It has to list whatever the neutral tones currently are, or
+    // a restyle silently flips every un-attributed loop button to "active".
+    // The literals stay for buttons still painted with the old values.
+    const inactiveTones = [UI_BUTTON_BACKGROUND, UI_TOGGLE_OFF_BACKGROUND, "#333333", "51, 51, 51", "#222222"];
+    if (inactiveTones.some((tone) => tone && rawStyle.includes(String(tone).toLowerCase()))) return false;
     return true;
   }
 
