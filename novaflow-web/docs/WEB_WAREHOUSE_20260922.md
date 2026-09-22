@@ -27,7 +27,8 @@
 - 更新 ZIP 已构建，控制面仍指向线上 Supabase；未包含独立组件验收页。
 - 第一版映射功能已在正式站发布，Cloudflare 部署 25c28458；线上 warehouse/runtime/capabilities 文件与对应源码一致。用户已在正式站选择并授权 E:\NovaFlow\output，选择时目录为空。
 - 正式站真实生成图片任务 018f7b20-95db-401f-a9d5-6e436e1abb4b 自动保存 PNG（895,290 字节）；视频任务 ebf4743c-fa2b-49a2-bcd2-445ecff3a4c7 自动保存 MP4（123,238 字节）。两个本地文件的 SHA256 均与 Worker 原始输出一致，证实原字节入库。
-- 界面更新包 novaflow-web-warehouse-ui.zip 已构建，包内仓库文件与源码逐字节一致，不包含独立组件验收页。上传仍受 Chrome 扩展本地文件访问权限限制，已让用户在 Cloudflare 上传页手动选择本次新版 ZIP；新版界面尚待正式部署。
+- 界面更新包 novaflow-web-warehouse-ui.zip 已构建，包内仓库文件与源码逐字节一致，不包含独立组件验收页。用户手动上传新版 ZIP 后已完成正式部署。线上 novaflow-web-warehouse.js 返回 HTTP 200，SHA256 为 5965f2612fcccacc50c4c8384ac9cf2e90e56960d0ce748783c7ee4569b5ecf8，与提交源码逐字节一致。
+- 正式网页刷新后自动恢复 output 目录，不需重选；仓库显示全部作品 2、图片 1、视频 1、待保存 0。实际截图确认深灰弹框、标题栏、右上角叉号和缩略图，未显示常驻刷新按钮；MP4 点击预览后正常呈现茶杯画面和播放控件，关闭预览回到列表。
 
 网页更新包：`novaflow-web/.artifacts/novaflow-web-warehouse-ui.zip`。SHA256：`A067B70000456BDF87ECD659AC0E93582CA20F143A7249A2D93EF4C7C6188A37`。
 
