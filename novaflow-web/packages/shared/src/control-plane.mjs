@@ -751,17 +751,28 @@ export function createControlPlane({ store, secrets, logger }) {
     };
   }
 
-  function handleCapabilities() {
+  // Public on purpose. The app has to be able to say "算力可用" before anyone
+  // logs in, and a COUNT is all it needs: no names, no GPUs, no endpoints, no
+  // owners. Whose machines they are stays behind a session.
+  async function handleCapabilities() {
+    const entries = Object.entries(TASK_TYPE_REQUIREMENTS);
+    const counts = await Promise.all(entries.map(([, value]) =>
+      store.countCapableWorkers(value.modelId, value.minVramMb, HEARTBEAT_TIMEOUT_SECONDS)
+        .catch(() => 0)
+    ));
+    const taskTypes = entries.map(([key, value], i) => ({
+      task_type: key,
+      model_id: value.modelId,
+      min_vram_mb: value.minVramMb,
+      kind: value.kind,
+      label: value.label,
+      available_workers: counts[i]
+    }));
     return {
       ok: true,
       protocol: PROTOCOL_VERSION,
-      taskTypes: Object.entries(TASK_TYPE_REQUIREMENTS).map(([key, value]) => ({
-        task_type: key,
-        model_id: value.modelId,
-        min_vram_mb: value.minVramMb,
-        kind: value.kind,
-        label: value.label
-      })),
+      taskTypes,
+      available_workers: Math.max(0, ...counts),
       models: MODEL_MANIFEST.map((m) => ({
         model_id: m.model_id,
         display_name: m.display_name,
@@ -802,7 +813,7 @@ export function createControlPlane({ store, secrets, logger }) {
       if (method === 'GET' && path === '/health') {
         return ok({ ok: true, service: 'novaflow-web-control', protocol: PROTOCOL_VERSION, status: 'running' });
       }
-      if (method === 'GET' && path === '/api/web/capabilities') return ok(handleCapabilities());
+      if (method === 'GET' && path === '/api/web/capabilities') return ok(await handleCapabilities());
       if (method === 'GET' && path === '/api/web/me') return ok(await handleMe(headers));
 
       if (method === 'POST' && path === '/api/worker/register') return ok(await handleWorkerRegister(body, headers));

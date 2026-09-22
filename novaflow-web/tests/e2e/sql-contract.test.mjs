@@ -227,6 +227,45 @@ section('new tables are locked to service_role');
 }
 
 // ---------------------------------------------------------------------------
+section('the migration changes no permission it does not own');
+{
+  // A real one this caught, on the production database: the migration used to
+  // `revoke all on function public.gen_random_uuid() from public`. That is a
+  // built-in every table defaults to - including the Desktop product's own -
+  // so revoking it from PUBLIC changes shared state rather than adding to it.
+  // It also does not live under `public` on a real Supabase project, so the
+  // whole migration aborted and nothing applied.
+  //
+  // Every grant here is written through `execute format(...)` over this
+  // migration's own object names, so what matters is that no grant or revoke
+  // names a CONCRETE identifier belonging to anything else.
+  const sql = await readFile(join(WEB_MIGRATIONS, '20260922010000_novaflow_web_worker_fabric.sql'), 'utf8');
+  const lines = sql.split('\n').filter((l) => /\b(grant|revoke)\b/i.test(l) && !/^\s*--/.test(l));
+
+  const OURS = /^(gpu_workers|worker_models|web_ai_tasks|web_task_events|web_worker_registration_codes|novaflow_web_\w+)$/;
+  const offenders = [];
+  for (const line of lines) {
+    const after = /\bon\s+(?:function\s+|table\s+|schema\s+|sequence\s+)?([^\s]+)/i.exec(line);
+    if (!after) continue;
+    const target = after[1].replace(/^public\./i, '').replace(/\(.*$/, '').replace(/[",;]/g, '');
+    // %I / %s are filled from this migration's own name arrays.
+    if (target.includes('%')) continue;
+    if (!OURS.test(target)) offenders.push(line.trim().slice(0, 100));
+  }
+
+  checkEqual('no grant or revoke names an object this migration did not create',
+    offenders, []);
+  check('there are grants to check, so this is not vacuous', lines.length >= 3, lines.length);
+
+  // And the names those placeholders are filled with are all ours.
+  const arrays = [...sql.matchAll(/array\s*\[([^\]]+)\]/gi)].map((m) => m[1]);
+  const named = arrays.flatMap((a) => [...a.matchAll(/'([^']+)'/g)].map((m) => m[1]))
+    .filter((n) => /^[a-z_]+$/i.test(n));
+  const foreignNames = named.filter((n) => !OURS.test(n.replace(/\(.*$/, '')));
+  checkEqual('the name arrays those loops iterate contain only our objects',
+    foreignNames, []);
+}
+
 section('rollback removes only what was added');
 {
   const rollbackPath = join(WEB_MIGRATIONS, 'rollback_novaflow_web_worker_fabric.sql');

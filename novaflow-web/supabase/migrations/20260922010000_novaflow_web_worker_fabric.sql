@@ -244,8 +244,6 @@ begin
 end
 $novaflow_web_rls$;
 
-revoke all on function public.gen_random_uuid() from public;
-
 -- ---------------------------------------------------------------------------
 -- Helper: record a transition and enforce the state machine.
 -- ---------------------------------------------------------------------------

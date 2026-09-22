@@ -16,7 +16,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Cache-Control", "no-store")
+        # Chrome's Private Network Access check: a page on a public origin may
+        # only reach 127.0.0.1 if the local server opts in. Without this a
+        # fetch from, say, a dashboard tab fails as "Failed to fetch" with no
+        # further explanation.
+        self.send_header("Access-Control-Allow-Private-Network", "true")
+        self.send_header("Access-Control-Allow-Headers", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
         super().end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.end_headers()
 
     def log_message(self, fmt, *args):
         pass

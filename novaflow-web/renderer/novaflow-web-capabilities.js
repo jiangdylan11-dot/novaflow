@@ -73,13 +73,29 @@
     return lastWorkerPoll.workers;
   }
 
+  // "Is there compute right now" is read from the PUBLIC capabilities endpoint,
+  // not from the worker listing. Two reasons: the listing needs a session, and
+  // a user who has not logged in would be told 未连接 while machines are
+  // sitting there idle; and which machines they are is nobody's business but
+  // the pool owner's. A count is all the app needs to draw its indicator.
+  let lastCaps = { at: 0, count: 0 };
+  async function pollCapacity(maxAgeMs = 8000) {
+    if (Date.now() - lastCaps.at < maxAgeMs) return lastCaps.count;
+    try {
+      const caps = await runtime.control('GET', '/api/web/capabilities');
+      lastCaps = { at: Date.now(), count: Number(caps.available_workers || 0) };
+    } catch (_) {
+      lastCaps = { at: Date.now(), count: 0 };
+    }
+    return lastCaps.count;
+  }
+
   api.runtimeGetStatus = async () => {
-    const workers = await pollWorkers();
-    const online = workers.filter((w) => w.status === 'idle' || w.status === 'busy');
-    if (!online.length) {
+    const online = await pollCapacity();
+    if (!online) {
       return {
         ok: false, status: 'stopped', running: false, connected: false,
-        installed: true, detail: '没有在线的算力节点'
+        installed: true, detail: '暂无可用算力'
       };
     }
     return {
@@ -89,8 +105,8 @@
       connected: true,
       installed: true,
       health: { ok: true },
-      workers: online.length,
-      detail: online.length + ' 台算力节点在线'
+      workers: online,
+      detail: online + ' 台算力可用'
     };
   };
 

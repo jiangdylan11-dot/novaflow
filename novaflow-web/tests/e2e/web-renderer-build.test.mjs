@@ -119,15 +119,25 @@ section('4. the shims load last and only override transport');
   check('object_info reports no runtime instead of an empty success',
     /object_info/.test(shim) && /ok: false/.test(shim), null);
 
-  // 我的算力节点: minting a registration code has to be something an owner can
-  // do in the app, because the brief forbids reaching for the database.
-  check('the compute-node panel is present exactly once',
-    (html.match(/novaflow-web-workers-panel\.js/g) || []).length === 1);
-  const panel = await readFile(join(PATHS.WEB_OUT, 'novaflow-web-workers-panel.js'), 'utf8');
-  check('it mints codes through the app API, not by hand',
-    panel.includes('/api/web/workers/codes'), null);
-  check('it lists the pool from the control plane',
-    panel.includes("'/api/web/workers'"), null);
+  // Running a compute pool is an operator's job, not a user's. Minting codes
+  // and onboarding machines live in the desktop 后台管理 tool next to 授权 and
+  // 积分; someone who opens NovaFlow to draw should see whether compute is
+  // available and nothing else.
+  check('the app ships no pool-management surface',
+    !/workers-panel|workers\/codes/.test(html), null);
+  const appFiles = webFiles.filter((f) => f.endsWith('.js'));
+  const minting = [];
+  for (const file of appFiles) {
+    const text = await readFile(join(PATHS.WEB_OUT, file), 'utf8');
+    if (text.includes('/api/web/workers/codes')) minting.push(file);
+  }
+  checkEqual('no shipped file can mint a registration code', minting, []);
+
+  // "Is there compute" has to work before anyone logs in, so it reads the
+  // public capabilities endpoint rather than the owner's worker listing.
+  const capsShim = await readFile(join(PATHS.WEB_OUT, 'novaflow-web-capabilities.js'), 'utf8');
+  check('availability is read from the public endpoint',
+    /pollCapacity/.test(capsShim) && /available_workers/.test(capsShim), null);
 
   // The desktop licence binds to a MACHINE CODE. A browser tab has no machine,
   // so there is nothing to bind and no file anyone could issue - a licence gate
@@ -152,7 +162,7 @@ section('4b. browser-only files stay out of the compute node');
     workerFiles.filter((f) => f.startsWith('novaflow-web-')), []);
   checkEqual('the build says which files it held back',
     (report.browserOnly || []).slice().sort(),
-    ['novaflow-web-capabilities.js', 'novaflow-web-runtime.js', 'novaflow-web-workers-panel.js']);
+    ['novaflow-web-capabilities.js', 'novaflow-web-runtime.js']);
   for (const file of report.browserOnly || []) {
     check(file + ' did ship to the browser', webFiles.includes(file), webFiles.length);
   }

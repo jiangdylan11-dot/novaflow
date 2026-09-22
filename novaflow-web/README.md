@@ -71,6 +71,16 @@ npm test
 
 ---
 
+## 算力池在哪管
+
+在**桌面后台管理器**里（`particle-editor-desktop/license-admin-gui` 的 **算力节点** 页），
+和授权、积分、用户并列。发一次性注册码、看在线节点、停用/恢复、吊销码，都在那儿。
+
+Web 站点里没有任何算力配置入口——用户只看得到顶栏的「AI 已连接 / 未连接」，
+那个状态读的是公开的 `/api/web/capabilities`，不用登录也准。
+
+---
+
 ## 与稳定版的关系
 
 - **复用**：登录/积分用现有 `novaflow-backend`；扣费用现有 `settle_comfy_usage` RPC。两者一行未改。

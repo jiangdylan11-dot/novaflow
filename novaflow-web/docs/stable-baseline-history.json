@@ -3577,5 +3577,32 @@
       "attributedToWebLine": []
     },
     "verdict": "changed-by-someone-else"
+  },
+  {
+    "supersededAt": "2026-09-22T06:19:32.341Z",
+    "previousBaseline": {
+      "recordedAt": "2026-09-22T05:27:49.760Z",
+      "head": "f5b31cf4e776179bd7e073121e741b3a8ff3eb09",
+      "statusSha": "f4c7e7188281e3d09a986793d93fc99a34c8ef0f2a99d1c6f6d15f614f59a384"
+    },
+    "delta": {
+      "added": [
+        " M particle-editor-desktop/license-admin-gui/admin-data.js",
+        " M particle-editor-desktop/license-admin-gui/index.html",
+        " M particle-editor-desktop/license-admin-gui/ipc.js",
+        " M particle-editor-desktop/license-admin-gui/preload.js",
+        " M particle-editor-desktop/license-admin-gui/renderer.js"
+      ],
+      "removed": [],
+      "attributedToWebLine": [],
+      "authorised": [
+        " M particle-editor-desktop/license-admin-gui/admin-data.js",
+        " M particle-editor-desktop/license-admin-gui/index.html",
+        " M particle-editor-desktop/license-admin-gui/ipc.js",
+        " M particle-editor-desktop/license-admin-gui/preload.js",
+        " M particle-editor-desktop/license-admin-gui/renderer.js"
+      ]
+    },
+    "verdict": "authorised-change"
   }
 ]

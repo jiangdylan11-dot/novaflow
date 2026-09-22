@@ -37,6 +37,27 @@ const STABLE_DIR = process.env.NOVAFLOW_STABLE_DIR || 'D:/AI_APP/NovaFlow';
 // somewhere else.
 const WEB_LINE_PATHS = ['novaflow-web/', 'web-dist/', 'worker-renderer/'];
 
+// Changes in the stable tree this line was EXPLICITLY told to make, with what
+// was said and when. Without this the verifier has only two answers - "we did
+// it, that is a violation" and "somebody else did it" - and an authorised
+// change would be reported as somebody else's. That is a lie by omission.
+//
+// Anything not listed here is still a violation. The list is deliberately
+// narrow: a directory, not a repository.
+const AUTHORISED_PATHS = [
+  {
+    prefix: 'particle-editor-desktop/license-admin-gui/',
+    on: '2026-09-22',
+    why: '用户选择「直接改 Stable 那份」，把算力池管理做进已有的后台管理器，' +
+         '与授权/积分/用户并列。只动这个后台工具目录，不碰 particle-editor、' +
+         'Runtime、dist 或依赖。'
+  }
+];
+
+function authorisedFor(path) {
+  return AUTHORISED_PATHS.find((entry) => path.startsWith(entry.prefix)) || null;
+}
+
 function git(args, cwd = STABLE_DIR) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
 }
@@ -78,10 +99,10 @@ function attribute(baseline, current) {
   const now = new Set(current.statusLines || []);
   const added = [...now].filter((l) => !before.has(l));
   const removed = [...before].filter((l) => !now.has(l));
-  const ours = [...added, ...removed].filter(
-    (l) => WEB_LINE_PATHS.some((p) => pathOf(l).startsWith(p))
-  );
-  return { added, removed, ours };
+  const changed = [...added, ...removed];
+  const ours = changed.filter((l) => WEB_LINE_PATHS.some((p) => pathOf(l).startsWith(p)));
+  const authorised = changed.filter((l) => authorisedFor(pathOf(l)));
+  return { added, removed, ours, authorised };
 }
 
 const args = process.argv.slice(2);
@@ -163,7 +184,26 @@ if (failed) {
   if (delta.added.length > 15 || delta.removed.length > 15) console.log('    ...');
   console.log('');
 
-  if (delta.ours.length === 0) {
+  const unexplained = [...delta.added, ...delta.removed]
+    .filter((l) => !authorisedFor(pathOf(l)));
+
+  if (delta.authorised.length) {
+    console.log('  AUTHORISED: these were changed on purpose, with permission:');
+    for (const entry of AUTHORISED_PATHS) {
+      const hits = delta.authorised.filter((l) => pathOf(l).startsWith(entry.prefix));
+      if (!hits.length) continue;
+      console.log('    ' + entry.prefix + '  (' + entry.on + ')');
+      console.log('      ' + entry.why);
+      for (const l of hits.slice(0, 10)) console.log('      ' + l);
+      if (hits.length > 10) console.log('      ... ' + (hits.length - 10) + ' more');
+    }
+    console.log('');
+  }
+
+  if (unexplained.length === 0 && delta.authorised.length) {
+    verdict = 'authorised-change';
+    console.log('  Everything that changed was authorised. Nothing else moved.');
+  } else if (delta.ours.length === 0) {
     verdict = 'changed-by-someone-else';
     console.log('  ATTRIBUTION: none of these paths belong to the Web line.');
     console.log('  The stable tree moved on its own - another session, or ordinary');
@@ -182,7 +222,12 @@ if (rebaseline) {
   history.push({
     supersededAt: new Date().toISOString(),
     previousBaseline: { recordedAt: baseline.recordedAt, head: baseline.head, statusSha: baseline.statusSha },
-    delta: { added: delta.added, removed: delta.removed, attributedToWebLine: delta.ours },
+    delta: {
+      added: delta.added,
+      removed: delta.removed,
+      attributedToWebLine: delta.ours,
+      authorised: delta.authorised
+    },
     verdict
   });
   await mkdir(dirname(HISTORY_FILE), { recursive: true });
@@ -197,6 +242,8 @@ if (rebaseline) {
 console.log('');
 if (failed === 0) {
   console.log('Stable NovaFlow is untouched.');
+} else if (verdict === 'authorised-change') {
+  console.log('Stable NovaFlow changed exactly where it was allowed to, and nowhere else.');
 } else if (verdict === 'changed-by-someone-else') {
   console.log('Stable NovaFlow differs from the baseline, but NOT because of this work.');
 } else {

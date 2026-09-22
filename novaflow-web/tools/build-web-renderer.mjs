@@ -41,8 +41,10 @@ const RUNTIME_SHIM = 'novaflow-web-runtime.js';
 // Loaded right after the runtime: the Electron-capability equivalents extend
 // the electronAPI the runtime published.
 const CAPABILITY_SHIM = 'novaflow-web-capabilities.js';
-// 我的算力节点 - mint a registration code, watch the pool come online.
-const WORKERS_PANEL = 'novaflow-web-workers-panel.js';
+// Nothing in the Web build manages the compute pool. That lives in the desktop
+// 后台管理 tool (particle-editor-desktop/license-admin-gui, 算力节点 module),
+// next to 授权 and 积分 where an operator already works. Someone who opens
+// NovaFlow to draw sees only whether compute is available.
 
 // The Web line's own files. They belong to the BROWSER half only.
 //
@@ -51,7 +53,7 @@ const WORKERS_PANEL = 'novaflow-web-workers-panel.js';
 // builders read the ComfyUI node catalogue through, answered on the browser
 // side with "no node catalogue here, 503". A compute node must never be
 // handed the browser's refusals.
-const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM, WORKERS_PANEL]);
+const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM]);
 
 const REPLACEMENT = (moduleName) => (fn) =>
   '\n    return globalThis.NovaFlowWebRuntime.serverOnly(' +
@@ -286,8 +288,7 @@ export function rewriteIndexHtml(html) {
   // blank animation section.
   const shimTags =
     '    <script src="./' + RUNTIME_SHIM + '?v=web-1"></script>\n' +
-    '    <script src="./' + CAPABILITY_SHIM + '?v=web-1"></script>\n' +
-    '    <script src="./' + WORKERS_PANEL + '?v=web-1"></script>\n';
+    '    <script src="./' + CAPABILITY_SHIM + '?v=web-1"></script>\n';
   const lastScript = out.lastIndexOf('</script>');
   if (lastScript >= 0) {
     const insertAt = lastScript + '</script>'.length;

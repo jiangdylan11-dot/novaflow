@@ -129,6 +129,27 @@ curl -X POST https://<ref>.supabase.co/functions/v1/novaflow-web/api/maintenance
 
 ---
 
+### 部署实录（2026-09-22，生产项目 cjakoblszlmbmotchzva）
+
+迁移已经跑过了，实测是纯增量的：11 张既有表、6 个既有函数一个没动，
+行数逐表相同（licenses 13 / users 3 / credits 3 / comfy_usage_settlements 46 /
+grok_quota_reservations 295），新增 5 表 10 函数。
+
+路上踩到两个真问题，都已修：
+
+1. `revoke all on function public.gen_random_uuid() from public` —— 这行是错的。
+   它动的是**别人也在用的内建函数**（既有表的 id 默认值就是它），而且在真实
+   Supabase 上 `gen_random_uuid` 住在 `pg_catalog`/`extensions` 而不是 `public`，
+   整个迁移直接回滚。已删除，`sql-contract` 增加了「grant/revoke 只能指向本迁移
+   自己建的对象」这条断言（并用反向实验验证过它确实抓得到）。
+2. `control-plane.mjs` 依赖 `workflow-modules.mjs`，而同步脚本的文件清单是手写的，
+   漏了它。本地全绿、`check:edge` 也说 in sync，但部署后 Deno 会在冷启动时找不到模块。
+   同步脚本改成**从 index.ts 顺着 import 推导**文件清单，清单不可能再和代码脱节。
+
+边缘函数现在打成**单文件**部署（`npm run bundle:edge` → `novaflow-web-bundle/index.ts`）。
+多文件部署每多一个文件就多一条「某个文件没上去」的失败路径，而那种失败只会在
+生产冷启动时才现形。
+
 ## 3. Web 站点
 
 ### 3.1 构建
@@ -205,11 +226,14 @@ Edge Function 和 Worker 网关都返回 `Access-Control-Allow-Origin: *`，
 2. 部署 `novaflow-web` 函数
 3. 部署 Web 站点
 4. 打开站点，用 NovaFlow 账号登录
-5. 顶栏点 **算力节点** → 生成注册码 → 在有显卡的机器上装
-   `NovaFlowWorkerSetup.exe`，填控制面地址和这个码，点启动
-   （详见 [WORKER.md](WORKER.md)）
-6. 面板上那台机器变成「空闲」之后，跑一次生成
+5. 打开**后台管理器**（`授权管理工具（双击打开）.vbs`）→ 左栏 **算力节点**
+   → 生成注册码 → 在有显卡的机器上装 `NovaFlowWorkerSetup.exe`，
+   填控制面地址和这个码，点启动（详见 [WORKER.md](WORKER.md)）
+6. 后台那一行变成「空闲」之后，回站点跑一次生成
 
 第 5 步之后要再加机器，重复第 5 步就行——不用再动数据库、IP、`.env` 或源码。
+
+后台管理器的算力节点页直连 Supabase，所以第 1 步的迁移没跑之前，
+那一页会直说「这个 Supabase 项目还没有算力池的表」，而不是报一个看不懂的错。
 
 任何一步出问题，回滚都是独立的：删函数不影响表，跑回滚脚本不影响 Desktop。

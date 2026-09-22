@@ -5,7 +5,9 @@
 // copies must match their sources, pricing must be monotonic and must ignore
 // anything a client sends, and every task type must have a workflow.
 
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { createDatabase } from '../../control-local/src/db.mjs';
 import { syncEdgeFunction } from '../../tools/sync-edge-function.mjs';
@@ -187,6 +189,41 @@ section('model manifest is coherent');
   }
   const usedModels = new Set(Object.values(TASK_TYPE_REQUIREMENTS).map((r) => r.modelId));
   for (const id of usedModels) check('task types only reference manifest models: ' + id, Boolean(findModel(id)));
+}
+
+// ---------------------------------------------------------------------------
+section('the edge function can actually be deployed');
+{
+  // This is where a real production deploy died. The file list was written by
+  // hand and had lost workflow-modules.mjs: every local test passed, the sync
+  // check said "in sync", and Deno failed to resolve the import on cold start.
+  // The list is now derived from the imports, and this asserts that.
+  const { resolveSharedFiles } = await import('../../tools/sync-edge-function.mjs');
+  const { files, missing } = await resolveSharedFiles();
+  checkEqual('every relative import of the edge function resolves', missing, []);
+  check('and it reaches more than a couple of modules', files.length >= 5, files);
+
+  const fnDir = new URL('../../supabase/functions/novaflow-web/', import.meta.url);
+  const onDisk = (await readdir(fnDir)).filter((f) => f !== 'index.ts' && /\.(mjs|ts|js)$/.test(f)).sort();
+  checkEqual('the folder holds exactly those modules, no more, no fewer', onDisk, files);
+
+  // The bundle is what gets deployed, so it has to be current and parseable.
+  const { bundleEdgeFunction } = await import('../../tools/bundle-edge-function.mjs');
+  const bundle = await bundleEdgeFunction();
+  check('the bundle inlines every module', bundle.files.length === files.length, bundle.files);
+  check('and produces one file with the Deno entry point', bundle.chars > 50000, bundle.chars);
+
+  const code = await readFile(fileURLToPath(new URL('../../supabase/functions/novaflow-web-bundle/index.ts', import.meta.url)), 'utf8');
+  check('the bundle serves requests', /Deno\.serve\(/.test(code), null);
+  checkEqual('no relative import survives the bundle',
+    [...code.matchAll(/^[ \t]*import\s+[^;]*?from\s+['"]\.\/[^'"]+['"]/gm)].map((m) => m[0].trim()), []);
+  // Node 24 strips types, so this parses the TypeScript for real.
+  try {
+    execFileSync(process.execPath, ['--check', fileURLToPath(new URL('../../supabase/functions/novaflow-web-bundle/index.ts', import.meta.url))], { stdio: 'pipe' });
+    check('the bundle parses', true);
+  } catch (error) {
+    check('the bundle parses', false, String(error.stderr || error.message).slice(0, 200));
+  }
 }
 
 finish('protocol');
