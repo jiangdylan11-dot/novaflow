@@ -28,7 +28,8 @@
     "test:e2e": "node tests/e2e/full-pipeline.test.mjs",
     "verify:stable": "node tools/verify-stable-untouched.mjs",
     "sync:edge": "node tools/sync-edge-function.mjs",
-    "check:edge": "node tools/sync-edge-function.mjs --check"
+    "check:edge": "node tools/sync-edge-function.mjs --check",
+    "test:redaction": "node tests/e2e/workflow-redaction.test.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8"

@@ -14,6 +14,7 @@ const ROOT = resolve(HERE, '..');
 
 const SUITES = [
   { name: 'protocol', file: 'e2e/protocol.test.mjs', needs: [], timeoutMs: 180000 },
+  { name: 'workflow-redaction', file: 'e2e/workflow-redaction.test.mjs', needs: [], timeoutMs: 600000 },
   { name: 'sql-contract', file: 'e2e/sql-contract.test.mjs', needs: [], timeoutMs: 300000 },
   { name: 'control-plane', file: 'e2e/control-plane.test.mjs', needs: [], timeoutMs: 300000 },
   { name: 'security', file: 'e2e/security.test.mjs', needs: [], timeoutMs: 240000 },

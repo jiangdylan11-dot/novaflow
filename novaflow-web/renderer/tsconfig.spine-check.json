@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": [],
+  "files": [
+    "src/components/SpinePreview.tsx",
+    "src/components/SkeletonAnimation.tsx",
+    "src/components/panels/SpinePreviewPanel.tsx",
+    "src/runtime/spine/SpineLoadQueue.ts",
+    "src/runtime/spine/SpineParseWorker.ts",
+    "src/runtime/spine/SpineResourceCache.ts",
+    "src/runtime/spine/SpineRuntimeLayer.ts",
+    "src/runtime/spine/SpineRuntimeTypes.ts"
+  ]
+}

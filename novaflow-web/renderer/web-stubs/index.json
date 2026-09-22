@@ -1,0 +1,81 @@
+{
+  "generatedAt": "2026-09-22T04:46:10.527Z",
+  "modules": [
+    {
+      "module": "NovaFlowComfyWorkflowCreditCost",
+      "stub": "NovaFlowComfyWorkflowCreditCost.stub.js"
+    },
+    {
+      "module": "NovaFlowArtQualityProfile",
+      "stub": "NovaFlowArtQualityProfile.stub.js"
+    },
+    {
+      "module": "NovaFlowArtReferenceCompiler",
+      "stub": "NovaFlowArtReferenceCompiler.stub.js"
+    },
+    {
+      "module": "NovaFlowAiSequenceMiniMaxH3PromptWorkflow",
+      "stub": "NovaFlowAiSequenceMiniMaxH3PromptWorkflow.stub.js"
+    },
+    {
+      "module": "NovaFlowAiSequenceMiniMaxH3ReverseWorkflow",
+      "stub": "NovaFlowAiSequenceMiniMaxH3ReverseWorkflow.stub.js"
+    },
+    {
+      "module": "NovaFlowAiSequenceMiniMaxH3Workflow",
+      "stub": "NovaFlowAiSequenceMiniMaxH3Workflow.stub.js"
+    },
+    {
+      "module": "NovaFlowAiSequenceOutpaintWorkflow",
+      "stub": "NovaFlowAiSequenceOutpaintWorkflow.stub.js"
+    },
+    {
+      "module": "NovaFlowAiSequenceVideoMergeExportWorkflow",
+      "stub": "NovaFlowAiSequenceVideoMergeExportWorkflow.stub.js"
+    },
+    {
+      "module": "NovaFlowAifxRestyleWorkflow",
+      "stub": "NovaFlowAifxRestyleWorkflow.stub.js"
+    },
+    {
+      "module": "NovaFlowArtGenerateIdeogramWorkflow",
+      "stub": "NovaFlowArtGenerateIdeogramWorkflow.stub.js"
+    },
+    {
+      "module": "NovaFlowArtGenerateProviderWorkflow",
+      "stub": "NovaFlowArtGenerateProviderWorkflow.stub.js"
+    },
+    {
+      "module": "NovaFlowSmartAiArtAutoIntent",
+      "stub": "NovaFlowSmartAiArtAutoIntent.stub.js"
+    },
+    {
+      "module": "NovaFlowSplitInpaintNsfwWorkflow",
+      "stub": "NovaFlowSplitInpaintNsfwWorkflow.stub.js"
+    },
+    {
+      "module": "NovaFlowUiDesignAssistantWorkflow",
+      "stub": "NovaFlowUiDesignAssistantWorkflow.stub.js"
+    },
+    {
+      "module": "NovaFlowUiDesignGenerateWorkflow",
+      "stub": "NovaFlowUiDesignGenerateWorkflow.stub.js"
+    },
+    {
+      "module": "NovaFlowUiDesignLocalDirectorWorkflow",
+      "stub": "NovaFlowUiDesignLocalDirectorWorkflow.stub.js"
+    },
+    {
+      "module": "NovaFlowUiDesignLocalRefineWorkflow",
+      "stub": "NovaFlowUiDesignLocalRefineWorkflow.stub.js"
+    },
+    {
+      "module": "NovaFlowUiDesignLocalWorkflow",
+      "stub": "NovaFlowUiDesignLocalWorkflow.stub.js"
+    },
+    {
+      "module": "NovaFlowUiDesignQualityReviewWorkflow",
+      "stub": "NovaFlowUiDesignQualityReviewWorkflow.stub.js"
+    }
+  ]
+}
