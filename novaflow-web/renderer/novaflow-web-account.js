@@ -218,6 +218,13 @@
   }
 
   function buildGate() {
+    // The shared modal scanner may clear inline backdrop styles. Keep the
+    // login screen opaque and above the editor while it is signed out.
+    if (!root.document.getElementById(GATE_ID + '-style')) {
+      const style = el('style', '', '#' + GATE_ID + '{background:#0b0b0b!important;z-index:2147483640!important}');
+      style.id = GATE_ID + '-style';
+      root.document.head.appendChild(style);
+    }
     const gate = el('div', [
       'position:fixed', 'inset:0', 'z-index:2147483640',
       'background:#0b0b0b', 'display:flex', 'align-items:center',
@@ -226,9 +233,13 @@
     ].join(';'));
     gate.id = GATE_ID;
 
-    const logo = el('div', [
-      'font-size:26px', 'font-weight:700', 'letter-spacing:3px', 'color:#ffffff'
-    ].join(';'), 'NOVAFLOW');
+    const logo = el('img', [
+      'display:block', 'width:320px', 'max-width:calc(100vw - 64px)',
+      'height:auto', 'object-fit:contain'
+    ].join(';'));
+    logo.src = './assets/logo.png';
+    logo.alt = 'NovaFlow';
+    logo.draggable = false;
     gate.appendChild(logo);
 
     const card = el('div', [
