@@ -175,6 +175,9 @@ function createWindow() {
     minHeight: 720,
     backgroundColor: '#0b0b0b',
     title: 'NovaFlow 本地助手',
+    icon: path.join(__dirname, 'assets/favicon.ico'),
+    titleBarStyle: 'hidden',
+    titleBarOverlay: { color: '#242424', symbolColor: '#e5e7eb', height: 38 },
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

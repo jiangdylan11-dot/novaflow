@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8" />
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
 <title>NovaFlow 本地助手</title>
 <style>
   :root {
@@ -17,14 +17,11 @@
     font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
     height: 100vh; display: flex; flex-direction: column; overflow: hidden;
   }
-  header {
-    padding: 14px 16px; background: #242424; display: flex; align-items: center; gap: 9px;
-    border-bottom: 1px solid #000;
-  }
-  .mark { width: 20px; height: 20px; border-radius: 6px;
-    background: linear-gradient(135deg, #18b7ff, var(--accent)); }
-  h1 { font-size: 14px; margin: 0; font-weight: 600; }
-  .ver { font-size: 11px; color: var(--dim); margin-left: auto; }
+  .titlebar { height: 38px; flex: none; display: flex; align-items: center;
+    padding: 0 150px 0 14px; background: #242424; -webkit-app-region: drag;
+    user-select: none; border-bottom: 1px solid #000; }
+  .titlebar img { width: 172px; height: 32px; object-fit: contain; pointer-events: none; }
+  .ver { margin-left: 10px; font-size: 11px; color: #8b929d; }
 
   main { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
   ::-webkit-scrollbar { width: 8px; }
@@ -104,11 +101,7 @@
 </style>
 </head>
 <body>
-<header>
-  <span class="mark"></span>
-  <h1>NovaFlow 本地助手</h1>
-  <span class="ver" id="version">v0.4.4</span>
-</header>
+<div class="titlebar" aria-label="NovaFlow 标题栏"><img src="assets/logo.png" alt="NovaFlow" draggable="false" /><span class="ver" id="version">v0.4.4</span></div>
 
 <main>
   <div class="tabs">
@@ -293,9 +286,9 @@
       return;
     }
 
-    $('version').textContent = 'v' + (state.version || '0.4.4');
     $('statusText').textContent = running ? (state.currentTaskId ? '本地已启动 · 工作中' : '本地已启动 · 空闲') : state.sharing ? '算力分享中' : state.draining ? '正在完成共享任务' : '未启动';
     $('statusDot').className = 'dot ' + (STATUS_DOT[state.status] || '');
+    $('version').textContent = 'v' + (state.version || '0.4.4');
 
     $('gpu').textContent = state.gpu && state.gpu.detected
       ? state.gpu.name
@@ -409,7 +402,6 @@
     $('licenseFeedback').textContent = '';
     $('licenseText').value = '';
     document.querySelector('main').inert = true;
-    document.querySelector('header').inert = true;
     $('licenseOverlay').classList.remove('hidden');
     $('licenseClose').focus();
   }
@@ -417,7 +409,6 @@
     if (licenseBusy) return;
     $('licenseOverlay').classList.add('hidden');
     document.querySelector('main').inert = false;
-    document.querySelector('header').inert = false;
     $('licenseText').value = '';
     previousFocus?.focus();
   }

@@ -49,6 +49,7 @@
   ],
   "asar": false,
   "win": {
+    "icon": "electron/assets/favicon.ico",
     "target": [
       {
         "target": "nsis",
