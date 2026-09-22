@@ -1,0 +1,8 @@
+.secrets/
+node_modules/
+dist/
+dist-admin/
+
+!build/
+!build/icon.ico
+!build/icon.png

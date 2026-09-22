@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "NovaFlow Web product line - browser app, Supabase control plane and distributed GPU worker. Physically isolated from the stable NovaFlow Desktop tree.",
+  "description": "NovaFlow Web independent workspace: browser editor, local assistant, administration and GPU workers.",
   "workspaces": [
     "packages/shared",
     "control-local",
@@ -27,7 +27,7 @@
     "test:security": "node tests/e2e/security.test.mjs",
     "test:multiworker": "node tests/e2e/multi-worker.test.mjs",
     "test:e2e": "node tests/e2e/full-pipeline.test.mjs",
-    "verify:stable": "node tools/verify-stable-untouched.mjs",
+    "verify:stable": "npm run verify:independent",
     "sync:edge": "node tools/sync-edge-function.mjs",
     "check:edge": "node tools/sync-edge-function.mjs --check",
     "test:redaction": "node tests/e2e/workflow-redaction.test.mjs",
@@ -39,7 +39,10 @@
     "verify:edge": "node tools/verify-edge-bundle.mjs",
     "package:site": "node tools/package-site.mjs",
     "verify:tunnel": "node tools/verify-tunnel.mjs",
-    "fetch:cloudflared": "node tools/fetch-cloudflared.mjs"
+    "fetch:cloudflared": "node tools/fetch-cloudflared.mjs",
+    "verify:independent": "node tools/check-independent-workspace.mjs",
+    "admin:start": "npm --prefix admin start",
+    "admin:build": "npm --prefix admin run build:win"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

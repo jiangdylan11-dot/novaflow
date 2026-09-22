@@ -1,0 +1,22 @@
+{
+  "name": "novaflow-license-manager",
+  "productName": "NovaFlow 后台管理",
+  "version": "3.0.5",
+  "private": true,
+  "description": "NovaFlow Web administration application",
+  "main": "admin-main.js",
+  "scripts": {
+    "start": "electron .",
+    "server": "node admin-server/server.js",
+    "test": "node tests/dashboard-contract.cjs",
+    "build:win": "electron-builder --config electron-builder.json --win nsis --x64"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.108.2",
+    "ws": "8.21.0"
+  },
+  "devDependencies": {
+    "electron": "32.2.0",
+    "electron-builder": "25.1.8"
+  }
+}

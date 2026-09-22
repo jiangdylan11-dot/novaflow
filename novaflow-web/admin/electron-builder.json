@@ -1,0 +1,54 @@
+{
+  "appId": "com.novaflow.licenseadmin",
+  "productName": "NovaFlow 后台管理",
+  "electronVersion": "32.2.0",
+  "artifactName": "NovaFlow 后台管理 Setup ${version}.${ext}",
+  "extraMetadata": {
+    "main": "admin-main.js",
+    "name": "novaflow-license-manager"
+  },
+  "files": [
+    "admin-main.js",
+    "admin-server/**/*",
+    "license/config.js",
+    "license-admin-core.js",
+    "license-admin-online.js",
+    "license-admin-gui/**/*",
+    "license-public-key.b64",
+    ".secrets/license-private-key.pem",
+    "package.json",
+    "prompt_assistant/h3_prompt_enhance_policy.json",
+    "!**/tests/**/*"
+  ],
+  "directories": {
+    "output": "dist-admin",
+    "buildResources": "build"
+  },
+  "asar": false,
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  },
+  "mac": {
+    "icon": "build/icon.png",
+    "target": [
+      "dmg"
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "installerIcon": "build/icon.ico",
+    "uninstallerIcon": "build/icon.ico",
+    "installerHeaderIcon": "build/icon.ico"
+  }
+}

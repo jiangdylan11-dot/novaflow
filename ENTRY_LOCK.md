@@ -1,3 +1,15 @@
+# 当前 Web 主线入口（2026-09-23）
+
+本仓库已独立迁移为 NovaFlow Web。当前维护入口以根目录 `README.md`、`AGENTS.md` 和 `novaflow-web/docs/INDEPENDENT_WORKSPACE.md` 为准：
+
+- 启动助手：`npm run dev`，本地浏览器工作台默认 `http://127.0.0.1:4784/`，授权连接由助手打开。
+- 后台管理：`npm run admin:start`，源码 `novaflow-web/admin/`。
+- 网页构建和校验：`npm run sync:runtime`、`npm run check:runtime`、`npm run check:entry`。
+
+以下 4783/桌面 renderer 锁定规则仅作为旧桌面产品历史记录，不作为当前 Web 主线的验收入口。
+
+---
+
 # Entry Lock
 
 - The only accepted runtime entry is `http://127.0.0.1:4783/`.

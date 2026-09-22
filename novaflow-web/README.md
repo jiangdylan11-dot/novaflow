@@ -7,11 +7,11 @@ NovaFlow 的 Web 产品线：浏览器端 + Supabase 控制面 + 分布式 GPU W
 使用方式、验证结果和未完成项见 [本地助手说明](docs/LOCAL-ASSISTANT.md)。
 
 普通用户只需要浏览器；不安装 NovaFlow、不安装 ComfyUI、不装 Python、不下模型、不需要显卡。
-算力由装了 `NovaFlowWorkerSetup.exe` 的机器提供。
+算力由装了 `NovaFlowSetup-0.4.4.exe` 的机器提供。
 
-**这条产品线与稳定版 NovaFlow Desktop 物理隔离。** 它活在独立的 git worktree
-（`D:\AI_APP\NovaFlow-Web`，分支 `feature/novaflow-web`）里，有自己的
-`node_modules`、构建产物、配置和安装包。删掉整个目录，Desktop 照常运行。
+**本项目现为独立 Git 仓库。** `D:\AI_APP\NovaFlow-Web` 自带 `.git`，不再依赖旧目录的 Git 或后台源码。
+日常开发以本目录为准；后台管理位于 `admin/`，保留原账号配置和签名密钥。
+操作入口与迁移验证见 [独立项目说明](docs/INDEPENDENT_WORKSPACE.md)。
 
 ---
 
@@ -24,6 +24,7 @@ NovaFlow 的 Web 产品线：浏览器端 + Supabase 控制面 + 分布式 GPU W
 | `supabase/functions/novaflow-web/` | Supabase Edge Function（`packages/shared` 的部署外壳） |
 | `control-local/` | 本地控制面：PGlite（真 PostgreSQL）跑真迁移，供开发与测试 |
 | `web/` | 浏览器端 React + Vite 应用 |
+| `admin/` | 独立后台管理端：授权、用户、积分、算力和使用记录 |
 | `worker/` | GPU Worker：Electron 界面 + 网关 + ComfyUI 执行器 + 模型管理 |
 | `tests/` | 端到端测试（真数据库、真 HTTP、真 ComfyUI） |
 | `docs/` | 架构、部署、Worker 安装、安全边界 |

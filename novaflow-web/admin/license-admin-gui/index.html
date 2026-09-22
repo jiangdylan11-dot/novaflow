@@ -1,0 +1,1429 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self';" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NovaFlow 后台管理</title>
+  </head>
+  <body>
+    <div id="app">
+      <aside class="sidebar" aria-label="后台管理模块">
+        <div class="brandBlock">
+          <div class="brandMark">NF</div>
+          <div>
+            <div class="brandName">NovaFlow 后台管理</div>
+            <div class="brandSub">授权、积分与 AI Provider</div>
+          </div>
+        </div>
+        <nav class="moduleNav">
+          <button class="moduleNavButton active" data-module="dashboard" type="button">仪表盘</button>
+          <button class="moduleNavButton" data-module="users" type="button">用户管理</button>
+          <button class="moduleNavButton" data-module="licenses" type="button">授权管理</button>
+          <button class="moduleNavButton" data-module="credits" type="button">积分管理</button>
+          <button class="moduleNavButton" data-module="ai-services" type="button">AI 服务</button>
+          <button class="moduleNavButton" data-module="compute" type="button">算力节点</button>
+        </nav>
+      </aside>
+
+      <main class="mainShell">
+        <header class="topbar">
+          <div>
+            <div class="name">NovaFlow 后台管理</div>
+            <div class="sub">后台管理侧数据、积分分配与授权功能保持独立接线。</div>
+          </div>
+          <div id="globalStatus" class="globalStatus">读取中...</div>
+        </header>
+
+        <section id="module-dashboard" class="modulePanel active">
+          <div class="sectionHeader">
+            <div>
+              <div class="sectionTitle">仪表盘</div>
+              <div class="sectionHint">后台管理总览，只保留真实用户、授权、积分和 AI Provider 必要数据。</div>
+            </div>
+            <span id="dashboardDataBadge" class="pill skeletonPill"></span>
+          </div>
+          <div class="metricGrid">
+            <section class="metricCard">
+              <div class="metricLabel">注册用户</div>
+              <div id="dashboardUsersCount" class="metricValue">...</div>
+              <div class="metricMeta">users 表预留</div>
+            </section>
+            <section class="metricCard">
+              <div class="metricLabel">有效授权</div>
+              <div id="dashboardLicensesCount" class="metricValue">46</div>
+              <div class="metricMeta">licenses 表预留</div>
+            </section>
+            <section class="metricCard">
+              <div class="metricLabel">AI 服务状态</div>
+              <div id="dashboardAiStatusValue" class="metricValue">...</div>
+              <div id="dashboardAiStatusMeta" class="metricMeta">-</div>
+            </section>
+            <section class="metricCard">
+              <div class="metricLabel">已分配积分</div>
+              <div id="dashboardCreditCost" class="metricValue">...</div>
+              <div class="metricMeta">仅统计 credits 当前余额</div>
+            </section>
+            <section class="metricCard">
+              <div class="metricLabel">ComfyUI 手动总余额</div>
+              <div id="dashboardComfyBudgetBalance" class="metricValue">...</div>
+              <div id="dashboardComfyBudgetMeta" class="metricMeta">system_settings.provider_budget_comfyui</div>
+            </section>
+          </div>
+          <section class="panel dashboardActivityPanel">
+            <div class="panelHeader">
+              <div>
+                <div class="cardTitle">最近活动</div>
+                <div class="cardHint">使用后台已有日志数据；无日志时显示空状态。</div>
+              </div>
+            </div>
+            <div id="dashboardRecentActivity" class="activityList">
+              <div class="skeletonBlock"></div>
+              <div class="skeletonLine"></div>
+              <div class="skeletonLine short"></div>
+            </div>
+          </section>
+        </section>
+
+        <section id="module-users" class="modulePanel">
+          <div class="sectionHeader">
+            <div>
+              <div class="sectionTitle">用户管理</div>
+              <div class="sectionHint">后台手动开户、修改密码、积分额度、提示词服务次数和状态维护；主程序不开放自助注册。</div>
+            </div>
+            <span id="usersDataBadge" class="pill skeletonPill"></span>
+          </div>
+          <div class="gridTwo userGrid">
+            <section class="panel">
+              <div class="panelHeader">
+                <div>
+                  <div class="cardTitle">新建登录账号</div>
+                  <div class="cardHint">创建 Supabase Auth 登录身份，并写入 users / credits；账号不要求邮箱格式。</div>
+                </div>
+                <div id="createUserStatus" class="hint">-</div>
+              </div>
+              <div class="row">
+                <div class="label">账号</div>
+                <div class="field">
+                  <input id="newUserAccount" type="text" spellcheck="false" placeholder="例如：artist01" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">初始密码</div>
+                <div class="field">
+                  <input id="newUserPassword" type="password" spellcheck="false" placeholder="至少 6 位" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">显示名</div>
+                <div class="field">
+                  <input id="newUserDisplayName" type="text" spellcheck="false" placeholder="可选" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">状态</div>
+                <div class="field">
+                  <select id="newUserStatus">
+                    <option value="active">active</option>
+                    <option value="disabled">disabled</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">初始积分</div>
+                <div class="field">
+                  <input id="newUserInitialCredits" type="number" min="0" step="1" value="0" />
+                </div>
+              </div>
+              <div class="row detailRow">
+                <div class="label">备注</div>
+                <div class="field">
+                  <textarea id="newUserNote" spellcheck="false" placeholder="例如：手动开户 / 赠送积分 / 试用账号"></textarea>
+                </div>
+              </div>
+              <div class="actions">
+                <button id="createAdminUser" class="btn primary" type="button" disabled>创建账号</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panelHeader">
+                <div>
+                  <div class="cardTitle">用户列表</div>
+                  <div class="cardHint">可搜索、禁用、修改密码或删除无效用户；删除会清理用户资料、积分余额和可匹配的 Auth 登录身份。</div>
+                </div>
+                <input id="userSearchInput" class="tableSearch" type="search" spellcheck="false" placeholder="搜索用户" />
+              </div>
+              <table class="dataTable userTable">
+                <thead>
+                  <tr>
+                    <th>用户</th>
+                    <th>账号</th>
+                    <th>注册时间</th>
+                    <th>当前积分</th>
+                    <th>提示词次数</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="usersTableBody">
+                  <tr>
+                    <td colspan="7"><div class="skeletonLine"></div></td>
+                  </tr>
+                </tbody>
+              </table>
+            </section>
+          </div>
+        </section>
+
+        <section id="module-licenses" class="modulePanel">
+          <div class="sectionHeader">
+            <div>
+              <div class="sectionTitle">授权管理</div>
+              <div class="sectionHint">保留原授权码生成、查询、启用、停用、密钥和校验功能。</div>
+            </div>
+            <span class="pill">licenses</span>
+          </div>
+
+          <nav class="tabs" aria-label="授权管理导航">
+            <button class="tab active" data-tab="online" type="button">授权列表</button>
+            <button class="tab" data-tab="issue" type="button">新建授权码</button>
+            <button class="tab" data-tab="keys" type="button">密钥设置</button>
+            <button class="tab" data-tab="verify" type="button">校验工具</button>
+          </nav>
+
+          <section id="tab-online" class="tabPanel active">
+            <div class="gridTwo licenseGrid">
+              <section class="panel">
+                <div class="panelHeader">
+                  <div>
+                    <div class="cardTitle">授权详情</div>
+                    <div class="cardHint">选择列表记录后可启用、关闭或更新授权。新建请到「新建授权码」。</div>
+                  </div>
+                  <div id="onlineActionStatus" class="hint">-</div>
+                </div>
+                <div class="row">
+                  <div class="label">License Key</div>
+                  <div class="field">
+                    <input id="onlineLicenseKey" type="text" spellcheck="false" placeholder="nf_..." />
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="label">机器码</div>
+                  <div class="field">
+                    <input id="onlineMachineId" type="text" spellcheck="false" placeholder="可按机器码查询，创建/更新时必填" />
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="label">状态 / 到期</div>
+                  <div class="field">
+                    <select id="onlineStatus">
+                      <option value="active">active / 启用</option>
+                      <option value="banned">banned / 关闭</option>
+                      <option value="expired">expired / 过期</option>
+                    </select>
+                    <input id="onlineExpireAt" type="date" title="空白表示远程到期时间 2099-12-31" />
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="label">Permissions</div>
+                  <div class="field">
+                    <textarea id="onlinePermissions" spellcheck="false" placeholder='空白默认 []，也可填 {"export": true}'></textarea>
+                  </div>
+                </div>
+                <div class="actions licenseActions">
+                  <button id="queryOnlineLicense" class="btn secondary">按条件查询</button>
+                  <button id="upsertOnlineLicense" class="btn primary">更新</button>
+                  <button id="activateOnlineLicense" class="btn primary">启用授权</button>
+                  <button id="expireOnlineLicense" class="btn secondary">设为过期</button>
+                </div>
+                <div class="row detailRow">
+                  <div class="label">当前记录</div>
+                  <div class="field">
+                    <pre id="onlineResult" class="resultBox">-</pre>
+                  </div>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panelHeader">
+                  <div>
+                    <div class="cardTitle">授权码列表</div>
+                    <div class="cardHint">默认显示最近 100 条记录。</div>
+                  </div>
+                  <button id="refreshOnlineList" class="btn secondary" type="button">刷新列表</button>
+                </div>
+                <div id="onlineListStatus" class="listStatus">-</div>
+                <div id="onlineList" class="recordList"></div>
+              </section>
+            </div>
+
+            <section class="panel configPanel">
+              <div class="panelHeader">
+                <div>
+                  <div class="cardTitle">Supabase 授权配置</div>
+                  <div class="cardHint">Secret Key 仅保存在本机后台管理配置中；本轮不接入新表。</div>
+                </div>
+                <div id="onlineConfigStatus" class="hint">未配置</div>
+              </div>
+              <div class="row">
+                <div class="label">Project URL</div>
+                <div class="field">
+                  <input id="onlineSupabaseUrl" type="text" spellcheck="false" placeholder="https://xxx.supabase.co" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">Secret Key</div>
+                <div class="field">
+                  <input id="onlineSecretKey" type="password" spellcheck="false" placeholder="sb_secret_...（只保存在本机后台管理工具）" />
+                </div>
+              </div>
+              <div class="actions">
+                <button id="saveOnlineConfig" class="btn primary">保存配置</button>
+                <button id="testOnlineConfig" class="btn secondary">测试连接</button>
+              </div>
+            </section>
+          </section>
+
+          <section id="tab-issue" class="tabPanel">
+            <section class="panel">
+              <div class="panelHeader">
+                <div>
+                  <div class="cardTitle">新建授权码 / 签发授权文件（license.nfl）</div>
+                  <div class="cardHint">生成后可直接复制授权码，也可导出 license.nfl。</div>
+                </div>
+                <div id="issueResult" class="hint">-</div>
+              </div>
+              <div class="row">
+                <div class="label">机器码</div>
+                <div class="field">
+                  <input id="issueMachineId" type="text" spellcheck="false" placeholder="从用户端复制的机器码（64位hex）" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">License Key</div>
+                <div class="field">
+                  <input id="issueLicenseKey" type="text" spellcheck="false" placeholder="留空自动生成；需要与 Supabase licenses.license_key 一致" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">到期日</div>
+                <div class="field">
+                  <input id="issueExpiresAt" type="date" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">功能</div>
+                <div class="field">
+                  <textarea id="issueFeatures" spellcheck="false" placeholder='例如：{ "export": true }'></textarea>
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">输出文件</div>
+                <div class="field">
+                  <input id="issueOutPath" type="text" spellcheck="false" />
+                  <button id="pickIssueOut" class="btn">选择...</button>
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">在线同步</div>
+                <div class="field">
+                  <label class="checkField">
+                    <input id="issueSyncOnline" type="checkbox" checked />
+                    <span>生成后自动写入/更新 Supabase licenses，并设为 active</span>
+                  </label>
+                </div>
+              </div>
+              <div class="actions">
+                <button id="issue" class="btn primary">一键生成授权文件</button>
+                <button id="copyIssueText" class="btn secondary">复制授权码</button>
+              </div>
+              <div class="row detailRow">
+                <div class="label">授权码</div>
+                <div class="field">
+                  <textarea id="issueLicenseText" spellcheck="false" placeholder="生成后会显示在这里，可直接复制给用户"></textarea>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <section id="tab-keys" class="tabPanel">
+            <section class="panel">
+              <div class="panelHeader">
+                <div>
+                  <div class="cardTitle">本地签名密钥</div>
+                  <div class="cardHint">公钥随应用使用，私钥只保存在管理员电脑。</div>
+                </div>
+                <div class="status">
+                  <div id="statusText" class="statusText">读取中...</div>
+                  <div class="statusMeta">
+                    <span>指纹：</span><span id="fingerprint" class="mono">-</span>
+                    <span class="sep">|</span>
+                    <span>公钥预览：</span><span id="pubPreview" class="mono">-</span>
+                  </div>
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">公钥文件（.b64）</div>
+                <div class="field">
+                  <input id="pubPath" type="text" spellcheck="false" />
+                  <button id="pickPub" class="btn">选择...</button>
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">私钥文件（.pem）</div>
+                <div class="field">
+                  <input id="privPath" type="text" spellcheck="false" />
+                  <button id="pickPriv" class="btn">选择...</button>
+                </div>
+              </div>
+              <div class="actions">
+                <button id="refresh" class="btn secondary">刷新状态</button>
+                <button id="openFolder" class="btn secondary">打开目录</button>
+                <button id="copyPubKey" class="btn secondary">复制公钥</button>
+                <button id="copyPrivKey" class="btn secondary">复制私钥</button>
+                <div class="spacer"></div>
+                <button id="generate" class="btn primary">生成密钥对</button>
+                <button id="delete" class="btn danger">删除密钥</button>
+              </div>
+            </section>
+
+            <section class="notice">
+              <div class="tipTitle">重要提示</div>
+              <div class="tipItem">私钥不要发送给用户，不要提交到仓库。</div>
+              <div class="tipItem">更换密钥对会导致旧授权文件全部失效。</div>
+            </section>
+          </section>
+
+          <section id="tab-verify" class="tabPanel">
+            <section class="panel">
+              <div class="panelHeader">
+                <div>
+                  <div class="cardTitle">校验授权文件</div>
+                  <div class="cardHint">可拖入 license.nfl，或选择文件校验签名和机器码。</div>
+                </div>
+                <div id="verifyResult" class="hint">-</div>
+              </div>
+              <div class="row">
+                <div class="label">授权文件</div>
+                <div class="field">
+                  <input id="verifyLicensePath" type="text" spellcheck="false" placeholder="拖入文件或点击选择" />
+                  <button id="pickVerifyIn" class="btn">选择...</button>
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">机器码</div>
+                <div class="field">
+                  <input id="verifyMachineId" type="text" spellcheck="false" placeholder="填写后可校验是否绑定到该机器" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">拖拽区</div>
+                <div class="field">
+                  <div id="dropZone" class="dropZone">把 license.nfl 拖到这里</div>
+                </div>
+              </div>
+              <div class="actions">
+                <button id="verify" class="btn secondary">校验</button>
+              </div>
+            </section>
+          </section>
+        </section>
+
+        <section id="module-credits" class="modulePanel">
+          <div class="sectionHeader">
+            <div>
+              <div class="sectionTitle">积分管理</div>
+              <div class="sectionHint">用户当前积分和管理员手动分配；轻量后台不保存积分流水。</div>
+            </div>
+            <span id="creditsDataBadge" class="pill skeletonPill"></span>
+          </div>
+          <section class="adminSection">
+            <div class="adminSectionHeader">
+              <div class="sectionSubTitle">积分</div>
+            </div>
+            <div class="gridTwo splitGrid creditSectionGrid">
+              <section class="panel creditListPanel">
+                <div class="panelHeader">
+                  <div>
+                    <div class="cardTitle">当前积分</div>
+                    <div class="cardHint">用户只能消耗后台分配的积分；余额不足时后续后台服务应拒绝 AI 任务。</div>
+                  </div>
+                  <div class="panelTools">
+                    <input id="creditUserSearchInput" class="tableSearch compactSearch" type="search" spellcheck="false" placeholder="输入用户名" />
+                    <button id="creditUserSearchButton" class="btn iconButton searchButton" type="button" title="搜索并选中用户" aria-label="搜索并选中用户">&#128269;</button>
+                  </div>
+                </div>
+                <div class="tableViewport creditTableViewport">
+                  <table class="dataTable">
+                    <thead>
+                      <tr>
+                        <th>用户</th>
+                        <th>当前积分</th>
+                        <th>状态</th>
+                      </tr>
+                    </thead>
+                    <tbody id="creditsTableBody">
+                      <tr>
+                        <td colspan="3"><div class="skeletonLine"></div></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+              <section class="panel creditEditPanel">
+              <div class="panelHeader">
+                <div>
+                  <div class="cardTitle">手动分配积分</div>
+                  <div class="cardHint">仅后台管理端写入 Supabase；mock 数据不可写入。</div>
+                </div>
+                <div id="creditAdjustStatus" class="hint">-</div>
+              </div>
+              <div class="row">
+                <div class="label">用户</div>
+                <div class="field">
+                  <select id="creditAdjustUser">
+                    <option value="">请选择用户</option>
+                  </select>
+                  <div id="creditAdjustCurrentBalance" class="hint">当前积分：-</div>
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">操作</div>
+                <div class="field">
+                  <select id="creditAdjustMode">
+                    <option value="add">增加积分</option>
+                    <option value="deduct">扣减积分</option>
+                    <option value="set">设置余额</option>
+                  </select>
+                  <input id="creditAdjustAmount" type="number" min="0" step="1" placeholder="积分数量" />
+                </div>
+              </div>
+              <div class="row">
+                <div class="label">功能 / 备注</div>
+                <div class="field">
+                  <input id="creditAdjustFeature" type="text" value="后台积分分配" spellcheck="false" />
+                </div>
+              </div>
+              <div class="row detailRow">
+                <div class="label">备注</div>
+                <div class="field">
+                <textarea id="creditAdjustNote" spellcheck="false" placeholder="例如：用户开通赠送 / 手动校正 / 退款扣减"></textarea>
+                </div>
+              </div>
+              <div class="actions">
+                <button id="applyCreditAdjust" class="btn primary" type="button">确认写入</button>
+              </div>
+            </section>
+            </div>
+          </section>
+
+          <section class="adminSection">
+            <div class="adminSectionHeader">
+              <div>
+                <div class="sectionSubTitle">提示词次数</div>
+                <div class="sectionHint">管理员手动分配提示词优化和反推的可用次数。</div>
+              </div>
+              <div id="grokQuotaStatus" class="hint">-</div>
+            </div>
+            <div class="gridTwo splitGrid quotaSectionGrid">
+              <section class="panel quotaListPanel">
+                <div class="panelHeader">
+                  <div>
+                    <div class="cardTitle">当前提示词次数</div>
+                    <div class="cardHint">后台调用成功后只累计 used_count，不保存 prompt、workflow 或完整请求。</div>
+                  </div>
+                  <div class="panelTools">
+                    <input id="grokQuotaUserSearchInput" class="tableSearch compactSearch" type="search" spellcheck="false" placeholder="输入用户名" />
+                    <button id="grokQuotaUserSearchButton" class="btn iconButton searchButton" type="button" title="搜索并选中用户" aria-label="搜索并选中用户">&#128269;</button>
+                  </div>
+                </div>
+                <div class="tableViewport quotaTableViewport">
+                  <table class="dataTable">
+                    <thead>
+                      <tr>
+                        <th>用户</th>
+                        <th>已分配</th>
+                        <th>已使用</th>
+                        <th>剩余</th>
+                        <th>状态</th>
+                      </tr>
+                    </thead>
+                    <tbody id="grokQuotaTableBody">
+                      <tr>
+                        <td colspan="5"><div class="skeletonLine"></div></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+              <section class="panel quotaEditPanel">
+                <div class="panelHeader">
+                  <div>
+                    <div class="cardTitle">修改提示词次数</div>
+                    <div class="cardHint">选择用户后写入现有次数配置。</div>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="label">服务</div>
+                  <div class="field">
+                    <select id="providerQuotaKey">
+                      <option value="grok">提示词服务</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="label">用户</div>
+                  <div class="field">
+                    <select id="grokQuotaUser">
+                      <option value="">请选择用户</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="label">分配次数</div>
+                  <div class="field">
+                    <input id="grokQuotaAllocated" type="number" min="0" step="1" placeholder="例如 100" />
+                    <span id="grokQuotaCurrent" class="hint">当前：-</span>
+                  </div>
+                </div>
+                <div class="row detailRow">
+                  <div class="label">备注</div>
+                  <div class="field">
+                    <textarea id="grokQuotaNote" spellcheck="false" placeholder="例如：Prompt 优化次数 / 测试用户 / 手动校正"></textarea>
+                  </div>
+                </div>
+                <div class="actions">
+                  <button id="saveGrokQuota" class="btn primary" type="button">保存提示词服务次数</button>
+                </div>
+              </section>
+            </div>
+          </section>
+        </section>
+
+        <section id="module-compute" class="modulePanel">
+          <div class="sectionHeader">
+            <div>
+              <div class="sectionTitle">算力节点</div>
+              <div class="sectionHint">NovaFlow Web 的 GPU 池。发一个一次性注册码，对方装上 Worker 填进去就自动上线；不需要改数据库、配 IP 或改代码。</div>
+            </div>
+            <span id="computeDataBadge" class="pill skeletonPill"></span>
+          </div>
+
+          <section class="panel">
+            <div class="panelHeader">
+              <div>
+                <div class="cardTitle">在线节点</div>
+                <div class="cardHint">心跳、显卡、ComfyUI 版本和完成量由节点自己上报。</div>
+              </div>
+              <div id="computeWorkerStatus" class="hint">-</div>
+            </div>
+            <table class="dataTable">
+              <thead>
+                <tr>
+                  <th>名称</th>
+                  <th>显卡 / 显存</th>
+                  <th>ComfyUI</th>
+                  <th>完成 / 失败</th>
+                  <th>最后心跳</th>
+                  <th>对外地址</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="computeWorkersTableBody">
+                <tr><td colspan="7"><div class="skeletonLine"></div></td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel">
+            <div class="panelHeader">
+              <div>
+                <div class="cardTitle">接入一台新机器</div>
+                <div class="cardHint">对方那台机器还需要一个能跑的 ComfyUI 和模型，安装包本身不含这些。</div>
+              </div>
+              <div id="computeMintStatus" class="hint">-</div>
+            </div>
+            <div class="row">
+              <div class="label">归属用户</div>
+              <div class="field">
+                <select id="computeCodeOwner">
+                  <option value="">请选择用户</option>
+                </select>
+                <div class="hint">这台机器算谁的算力，任务和统计都挂在这个账号下。</div>
+              </div>
+            </div>
+            <div class="row">
+              <div class="label">备注</div>
+              <div class="field">
+                <input id="computeCodeLabel" type="text" placeholder="例如：老王的 4090" spellcheck="false" />
+              </div>
+            </div>
+            <div class="row">
+              <div class="label">可用次数 / 有效天数</div>
+              <div class="field">
+                <input id="computeCodeUses" type="number" min="1" max="50" value="1" />
+                <input id="computeCodeDays" type="number" min="1" max="90" value="7" />
+                <div class="hint">一台机器用掉一次。要接一批云 GPU 就把次数调大。</div>
+              </div>
+            </div>
+            <div class="actions">
+              <button id="computeMintCode" class="btn primary" type="button">生成注册码</button>
+            </div>
+            <div id="computeCodeResult" class="row detailRow" style="display:none">
+              <div class="label">注册码</div>
+              <div class="field">
+                <input id="computeCodeValue" type="text" readonly spellcheck="false" />
+                <div class="hint">只显示这一次。数据库里只存哈希，关掉就找不回来了。</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panelHeader">
+              <div>
+                <div class="cardTitle">已发出的注册码</div>
+                <div class="cardHint">明文不落库，这里只能看到备注、用量和有效期。</div>
+              </div>
+              <div id="computeCodesStatus" class="hint">-</div>
+            </div>
+            <table class="dataTable">
+              <thead>
+                <tr>
+                  <th>备注</th>
+                  <th>已用 / 上限</th>
+                  <th>有效期</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="computeCodesTableBody">
+                <tr><td colspan="4"><div class="skeletonLine"></div></td></tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel">
+            <div class="panelHeader">
+              <div>
+                <div class="cardTitle">用户使用记录</div>
+                <div class="cardHint">谁、什么时候、用了哪台机器。不含提示词和产出内容。</div>
+              </div>
+              <div id="computeUsageStatus" class="hint">-</div>
+            </div>
+            <table class="dataTable">
+              <thead>
+                <tr>
+                  <th>用户</th>
+                  <th>生成数量</th>
+                  <th>用过的算力节点</th>
+                  <th>最近一次</th>
+                </tr>
+              </thead>
+              <tbody id="computeUsageTableBody">
+                <tr><td colspan="4"><div class="skeletonLine"></div></td></tr>
+              </tbody>
+            </table>
+          </section>
+        </section>
+
+        <section id="module-ai-services" class="modulePanel">
+          <div class="sectionHeader">
+            <div>
+              <div class="sectionTitle">AI 服务</div>
+              <div class="sectionHint">只保留 Provider 配置、连接检测和手动总余额；真实 Key 后续只由后台服务保存。</div>
+            </div>
+            <span id="aiServicesDataBadge" class="pill skeletonPill"></span>
+          </div>
+          <section class="panel providerStatusPanel">
+            <div class="panelHeader">
+              <div>
+                <div class="cardTitle">Provider 状态</div>
+                <div class="cardHint">当前展示服务商状态，并对 ComfyUI 执行后台侧只读连接检测。</div>
+              </div>
+            </div>
+            <table class="dataTable">
+              <thead>
+                <tr>
+                  <th>服务商</th>
+                  <th>API Key</th>
+                  <th>启用状态</th>
+                  <th>计费倍率</th>
+                  <th>连接状态</th>
+                  <th>账号状态</th>
+                  <th>余额</th>
+                </tr>
+              </thead>
+              <tbody id="aiProvidersTableBody">
+                <tr>
+                  <td colspan="7"><div class="skeletonLine"></div></td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+
+          <section class="panel providerConfigPanel">
+            <div class="panelHeader">
+              <div>
+                <div class="cardTitle">配置</div>
+                <div class="cardHint">写入本机后台环境变量；API Key 不回显，留空不修改，保存后重新检测状态。</div>
+              </div>
+              <div id="providerRuntimeConfigStatus" class="hint">-</div>
+            </div>
+            <div class="providerConfigGrid">
+              <section class="providerConfigCard">
+                <div class="cardTitle">ComfyUI</div>
+                <div class="row">
+                  <div class="label">Base URL</div>
+                  <div class="field">
+                    <input id="comfyRuntimeBaseUrl" type="url" spellcheck="false" placeholder="https://cloud.comfy.org" />
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="label">API Key</div>
+                  <div class="field">
+                    <input id="comfyRuntimeApiKey" type="password" spellcheck="false" placeholder="留空不修改当前 Key" />
+                  </div>
+                </div>
+                <label class="checkField">
+                  <input id="comfyRuntimeClearKey" type="checkbox" />
+                  清空 ComfyUI API Key
+                </label>
+                <div class="actions">
+                  <button id="saveComfyRuntimeConfig" class="btn primary" type="button">保存 ComfyUI 配置</button>
+                  <span id="comfyRuntimeConfigHint" class="hint">-</span>
+                </div>
+              </section>
+              <section class="providerConfigCard">
+                <div class="cardTitle">Grok</div>
+                <div class="row">
+                  <div class="label">Base URL</div>
+                  <div class="field">
+                    <input id="grokRuntimeBaseUrl" type="url" spellcheck="false" placeholder="https://api.x.ai/v1" />
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="label">Model</div>
+                  <div class="field">
+                    <input id="grokRuntimeModel" type="text" spellcheck="false" placeholder="grok-4.3" />
+                  </div>
+                </div>
+                <div class="row">
+                  <div class="label">API Key</div>
+                  <div class="field">
+                    <input id="grokRuntimeApiKey" type="password" spellcheck="false" placeholder="留空不修改当前 Key" />
+                  </div>
+                </div>
+                <label class="checkField">
+                  <input id="grokRuntimeClearKey" type="checkbox" />
+                  清空 Grok API Key
+                </label>
+                <div class="actions">
+                  <button id="saveGrokRuntimeConfig" class="btn primary" type="button">保存 Grok 配置</button>
+                  <span id="grokRuntimeConfigHint" class="hint">-</span>
+                </div>
+              </section>
+            </div>
+          </section>
+
+          <section class="panel providerCheckPanel">
+            <div class="panelHeader">
+              <div>
+                <div class="cardTitle">ComfyUI 检测摘要</div>
+                <div class="cardHint">只读检测 Provider 基础状态，不提交 workflow、不创建任务、不扣积分。</div>
+              </div>
+            </div>
+            <div id="comfyProviderHealthRows">
+              <div class="settingRow">
+                <span>状态</span>
+                <strong><span class="skeletonLine short"></span></strong>
+              </div>
+            </div>
+          </section>
+
+          <section class="panel providerBalancePanel">
+            <div class="panelHeader">
+              <div>
+                <div class="cardTitle">ComfyUI 手动总余额</div>
+                <div class="cardHint">手动录入 ComfyUI 当前账户余额；生成成功后会按用户实际消耗自动减少，不读取官方实时余额。</div>
+              </div>
+              <div id="providerBudgetStatus" class="hint">-</div>
+            </div>
+            <div class="row">
+              <div class="label">当前手动总余额</div>
+              <div class="field">
+                <input id="comfyProviderBudgetBalance" type="number" min="0" step="0.01" placeholder="例如 10550.00" />
+                <span id="comfyProviderBudgetDisplay" class="hint">-</span>
+              </div>
+            </div>
+            <div class="row detailRow">
+              <div class="label">备注</div>
+              <div class="field">
+                <textarea id="comfyProviderBudgetNote" spellcheck="false" placeholder="例如：来自 ComfyUI 平台余额页面的人工校准"></textarea>
+              </div>
+            </div>
+            <div class="actions">
+              <button id="saveComfyProviderBudget" class="btn primary" type="button">保存手动总余额</button>
+            </div>
+          </section>
+
+          <section class="notice">
+            <div class="tipTitle">安全边界</div>
+            <div class="tipItem">不要把云端 API 直接接到 NovaFlow 客户端。</div>
+            <div class="tipItem">API Key 后续只保存在后台服务。</div>
+            <div class="tipItem">前端 UI 不保存真实 Key。</div>
+            <div class="tipItem">后台服务负责转发和扣积分。</div>
+            <div class="tipItem">轻量后台不保存任务记录、消费流水或完整 Workflow。</div>
+            <div class="tipItem">ComfyUI 连接检测只调用官方只读用户接口，不提交工作流、不创建任务。</div>
+            <div class="tipItem">Grok API Key 只从后台环境变量读取；前端只显示和分配提示词服务次数。</div>
+          </section>
+        </section>
+
+        <div id="passwordEditDialog" class="modalOverlay" hidden>
+          <div class="modalPanel" role="dialog" aria-modal="true" aria-labelledby="passwordEditTitle">
+            <div class="modalHeader">
+              <div>
+                <div id="passwordEditTitle" class="modalTitle">修改密码</div>
+                <div id="passwordEditAccount" class="modalHint">-</div>
+              </div>
+              <button id="passwordEditClose" class="iconButton" type="button" aria-label="关闭">×</button>
+            </div>
+            <div class="modalBody">
+              <label class="modalField">
+                <span>新密码</span>
+                <input id="passwordEditValue" type="password" spellcheck="false" autocomplete="new-password" placeholder="至少 6 位" />
+              </label>
+              <label class="modalField">
+                <span>确认密码</span>
+                <input id="passwordEditConfirmValue" type="password" spellcheck="false" autocomplete="new-password" placeholder="再次输入新密码" />
+              </label>
+              <div id="passwordEditStatus" class="modalStatus">密码只写入 Supabase Auth，不会显示给用户。</div>
+            </div>
+            <div class="modalActions">
+              <button id="passwordEditCancel" class="btn secondary" type="button">取消</button>
+              <button id="passwordEditSubmit" class="btn primary" type="button">确认修改</button>
+            </div>
+          </div>
+        </div>
+
+        <div id="toast" class="toast"></div>
+      </main>
+    </div>
+
+    <script src="./renderer.js"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --page-bg: #0F1117;
+        --panel-bg: #171B22;
+        --card-bg: #1D232D;
+        --input-bg: #11161D;
+        --hover-bg: #242B36;
+        --border: rgba(255,255,255,0.08);
+        --text: rgba(255,255,255,0.92);
+        --muted: rgba(255,255,255,0.62);
+        --caption: rgba(255,255,255,0.46);
+        --primary: #22C55E;
+        --danger: #EF4444;
+        --warning: #F59E0B;
+        --secondary: #2A313C;
+        --page-x: 32px;
+        --page-y: 24px;
+        --section-gap: 32px;
+        --card-pad: 24px;
+        --input-h: 40px;
+        --button-h: 36px;
+        --radius-card: 12px;
+        --radius-control: 8px;
+        --transition: 150ms ease;
+      }
+      * { box-sizing: border-box; }
+      html { background: var(--page-bg); }
+      body {
+        margin: 0;
+        font-family: Inter, "Segoe UI", ui-sans-serif, system-ui, -apple-system, Roboto, Helvetica, Arial;
+        background: var(--page-bg);
+        color: var(--text);
+        font-size: 14px;
+      }
+      #app { min-height: 100vh; display: grid; grid-template-columns: 220px minmax(0, 1fr); }
+      .sidebar {
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        padding: 20px 14px;
+        border-right: 1px solid var(--border);
+        background: var(--panel-bg);
+        overflow: auto;
+      }
+      .brandBlock {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        padding: 2px 4px 18px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 16px;
+      }
+      .brandMark {
+        width: 30px;
+        height: 30px;
+        border-radius: var(--radius-control);
+        display: grid;
+        place-items: center;
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        color: var(--primary);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0;
+      }
+      .brandName { font-size: 14px; font-weight: 600; }
+      .brandSub { margin-top: 4px; font-size: 12px; color: var(--caption); }
+      .moduleNav { display: grid; gap: 4px; }
+      .moduleNavButton {
+        position: relative;
+        width: 100%;
+        height: 36px;
+        text-align: left;
+        padding: 0 12px 0 16px;
+        border-radius: var(--radius-control);
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background var(--transition), color var(--transition), border-color var(--transition);
+      }
+      .moduleNavButton:hover { background: var(--hover-bg); color: var(--text); }
+      .moduleNavButton.active {
+        background: var(--hover-bg);
+        border-color: var(--border);
+        color: #fff;
+      }
+      .moduleNavButton.active::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 8px;
+        bottom: 8px;
+        width: 3px;
+        border-radius: 999px;
+        background: var(--primary);
+      }
+      .mainShell { min-width: 0; padding: var(--page-y) var(--page-x); width: 100%; }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        padding-bottom: 24px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: var(--section-gap);
+      }
+      .name { font-size: 28px; line-height: 1.2; font-weight: 600; }
+      .sub { margin-top: 8px; font-size: 14px; color: var(--muted); }
+      .globalStatus {
+        flex: 0 0 auto;
+        min-height: 28px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: var(--panel-bg);
+        color: var(--muted);
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .globalStatus.sourceSupabase { color: var(--primary); }
+      .globalStatus.sourceMock { color: var(--warning); }
+      .globalStatus.sourceError { color: var(--danger); }
+      .modulePanel, .tabPanel { display: none; }
+      .modulePanel.active, .tabPanel.active { display: grid; gap: var(--section-gap); }
+      .sectionHeader {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+      }
+      .sectionTitle { font-size: 28px; line-height: 1.2; font-weight: 600; }
+      .sectionSubTitle { font-size: 20px; line-height: 1.3; font-weight: 600; }
+      .sectionHint { margin-top: 8px; font-size: 12px; color: var(--caption); line-height: 1.5; }
+      .adminSection { display: grid; gap: 16px; }
+      .adminSectionHeader {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 16px;
+      }
+      .pill {
+        flex: 0 0 auto;
+        min-height: 24px;
+        border-radius: 999px;
+        padding: 5px 10px;
+        background: var(--secondary);
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+      }
+      .pill.sourceSupabase { color: var(--primary); }
+      .pill.sourceMock { color: var(--warning); }
+      .pill.sourceError { color: var(--danger); }
+      .tabs {
+        display: flex;
+        gap: 6px;
+        padding: 4px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-card);
+        background: var(--panel-bg);
+        width: max-content;
+        max-width: 100%;
+        overflow-x: auto;
+      }
+      .tab {
+        height: var(--button-h);
+        min-width: 96px;
+        padding: 0 16px;
+        border-radius: var(--radius-control);
+        border: 1px solid transparent;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 500;
+        transition: background var(--transition), color var(--transition), border-color var(--transition);
+      }
+      .tab:hover { background: var(--hover-bg); color: var(--text); }
+      .tab.active { background: var(--hover-bg); color: #fff; border-color: var(--border); box-shadow: inset 0 -2px 0 var(--primary); }
+      .metricGrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+      .metricCard {
+        height: 120px;
+        min-width: 0;
+        display: grid;
+        align-content: center;
+        justify-items: center;
+        gap: 10px;
+        text-align: center;
+        background: var(--card-bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-card);
+        padding: 18px;
+      }
+      .metricLabel { font-size: 12px; color: var(--muted); font-weight: 500; }
+      .metricValue { font-size: 34px; line-height: 1; font-weight: 700; }
+      .metricMeta { max-width: 100%; font-size: 12px; color: var(--caption); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .gridTwo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+      .userGrid { grid-template-columns: minmax(320px, 45fr) minmax(520px, 55fr); }
+      .licenseGrid { grid-template-columns: minmax(340px, 40fr) minmax(520px, 60fr); }
+      .splitGrid { grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr); }
+      .providerConfigGrid { display: grid; grid-template-columns: repeat(2, minmax(340px, 1fr)); gap: 24px; }
+      .providerConfigCard {
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-card);
+        background: var(--card-bg);
+        padding: var(--card-pad);
+      }
+      .panel {
+        min-width: 0;
+        overflow-x: auto;
+        background: var(--panel-bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-card);
+        padding: var(--card-pad);
+      }
+      .configPanel { margin-top: 0; }
+      .panelHeader {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: flex-start;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 16px;
+      }
+      .panelTools { display: flex; gap: 8px; align-items: center; flex: 0 0 auto; }
+      .cardTitle { font-size: 20px; line-height: 1.3; font-weight: 600; color: var(--text); }
+      .cardHint { margin-top: 6px; font-size: 12px; color: var(--caption); line-height: 1.5; }
+      .row { display: grid; gap: 8px; padding: 16px 0; border-top: 1px solid var(--border); }
+      .panelHeader + .row, .providerConfigCard > .cardTitle + .row { border-top: 0; }
+      .detailRow { align-items: start; }
+      .label { font-size: 12px; color: var(--muted); font-weight: 600; }
+      .field { display: flex; gap: 10px; align-items: center; min-width: 0; flex-wrap: wrap; }
+      input, select {
+        flex: 1;
+        min-width: 0;
+        height: var(--input-h);
+        border-radius: var(--radius-control);
+        border: 1px solid var(--border);
+        background: var(--input-bg);
+        color: var(--text);
+        padding: 0 12px;
+        font-size: 14px;
+        outline: none;
+        transition: border-color var(--transition), background var(--transition);
+      }
+      input:focus, select:focus, textarea:focus { border-color: rgba(34,197,94,0.5); background: #121922; }
+      select { max-width: 240px; }
+      input[type="checkbox"] { flex: 0 0 auto; width: 16px; height: 16px; padding: 0; accent-color: var(--primary); }
+      input:disabled, select:disabled, textarea:disabled { opacity: 0.65; cursor: not-allowed; }
+      textarea {
+        flex: 1;
+        min-height: 120px;
+        border-radius: var(--radius-control);
+        border: 1px solid var(--border);
+        background: var(--input-bg);
+        color: var(--text);
+        padding: 12px;
+        font-size: 14px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        line-height: 1.5;
+        resize: vertical;
+        outline: none;
+        transition: border-color var(--transition), background var(--transition);
+      }
+      .tableSearch { flex: 0 1 240px; }
+      .compactSearch { flex: 0 0 180px; width: 180px; }
+      .tableSelect { min-width: 104px; max-width: 132px; height: var(--input-h); font-size: 13px; }
+      .tableActions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: flex-end;
+        flex-wrap: nowrap;
+        min-width: 252px;
+      }
+      .tableActions .btn { min-width: 76px; }
+      .mockKey { width: 100%; min-width: 220px; }
+      .checkField { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); font-weight: 500; }
+      .resultBox {
+        flex: 1;
+        min-height: 120px;
+        max-height: 260px;
+        margin: 0;
+        white-space: pre-wrap;
+        overflow: auto;
+        border-radius: var(--radius-control);
+        border: 1px solid var(--border);
+        background: var(--input-bg);
+        color: var(--text);
+        padding: 12px;
+        font-size: 12px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        line-height: 1.5;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: var(--button-h);
+        min-width: 88px;
+        padding: 0 16px;
+        border-radius: var(--radius-control);
+        border: 1px solid var(--border);
+        background: var(--secondary);
+        color: #fff;
+        cursor: pointer;
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+        transition: background var(--transition), border-color var(--transition), opacity var(--transition);
+      }
+      .btn:hover { background: var(--hover-bg); }
+      .btn.secondary { background: var(--secondary); }
+      .btn.primary { background: var(--primary); border-color: rgba(0,0,0,0); color: #07110A; }
+      .btn.danger { background: var(--danger); border-color: rgba(0,0,0,0); }
+      .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+      .iconButton {
+        width: var(--button-h);
+        min-width: var(--button-h);
+        padding: 0;
+        font-size: 14px;
+      }
+      .actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        padding-top: 16px;
+        border-top: 1px solid var(--border);
+        margin-top: 16px;
+      }
+      .licenseActions {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .licenseActions .btn { width: 100%; }
+      .providerConfigCard > .actions { margin-top: auto; }
+      .creditSectionGrid, .quotaSectionGrid { align-items: stretch; }
+      .creditSectionGrid > .panel, .quotaSectionGrid > .panel { height: 660px; }
+      .creditListPanel, .quotaListPanel {
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .creditEditPanel, .quotaEditPanel { overflow: auto; }
+      .tableViewport {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-control);
+        background: var(--panel-bg);
+      }
+      .tableViewport .dataTable { min-width: 100%; }
+      .tableViewport .dataTable th {
+        position: sticky;
+        top: 0;
+        z-index: 1;
+      }
+      .spacer { flex: 1; }
+      .hint { font-size: 12px; color: var(--muted); font-weight: 600; }
+      .status { display: flex; flex-direction: column; gap: 6px; text-align: right; }
+      .statusText { font-size: 12px; font-weight: 600; }
+      .statusMeta { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+      .sep { opacity: 0.45; margin: 0 4px; }
+      .mono, .monoCell { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; color: var(--text); }
+      .listStatus { min-height: 18px; margin: 0 0 12px; color: var(--muted); font-size: 12px; font-weight: 500; }
+      .recordList { display: grid; gap: 10px; max-height: 640px; overflow: auto; padding-right: 4px; }
+      .recordItem {
+        width: 100%;
+        text-align: left;
+        border: 1px solid var(--border);
+        border-radius: var(--radius-control);
+        background: var(--card-bg);
+        color: var(--text);
+        padding: 12px;
+        cursor: pointer;
+        transition: background var(--transition), border-color var(--transition);
+      }
+      .recordItem:hover, .recordItem.active { border-color: rgba(34,197,94,0.5); background: var(--hover-bg); }
+      .recordTop { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+      .recordKey { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; font-weight: 600; word-break: break-all; }
+      .recordActions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+      .recordDeleteButton { height: 28px; min-width: 56px; padding: 0 9px; border-radius: 7px; font-size: 12px; }
+      .badge {
+        flex: 0 0 auto;
+        min-width: 64px;
+        text-align: center;
+        border-radius: 999px;
+        padding: 4px 8px;
+        font-size: 12px;
+        font-weight: 600;
+        background: var(--secondary);
+        color: var(--muted);
+      }
+      .badge.active { background: rgba(34,197,94,0.14); color: #86efac; }
+      .badge.disabled, .badge.banned { background: rgba(148,163,184,0.14); color: #cbd5e1; }
+      .badge.expired { background: rgba(245,158,11,0.16); color: #fcd34d; }
+      .badge.error { background: rgba(239,68,68,0.16); color: #fca5a5; }
+      .recordMeta { margin-top: 8px; display: grid; gap: 4px; color: var(--caption); font-size: 12px; word-break: break-all; }
+      .dropZone {
+        width: 100%;
+        height: 96px;
+        border-radius: var(--radius-control);
+        border: 1px dashed rgba(255,255,255,0.22);
+        background: var(--input-bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--muted);
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .dropZone.drag { border-color: rgba(34,197,94,0.7); background: var(--hover-bg); color: var(--text); }
+      .notice {
+        background: var(--panel-bg);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-card);
+        padding: var(--card-pad);
+      }
+      .tipTitle { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+      .tipItem { font-size: 12px; color: var(--muted); line-height: 1.5; margin-top: 6px; }
+      .dataTable { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; overflow: hidden; }
+      .dataTable th, .dataTable td { padding: 13px 12px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: middle; }
+      .dataTable th { color: var(--muted); font-size: 13px; font-weight: 600; background: var(--hover-bg); }
+      .dataTable tr:hover td { background: rgba(255,255,255,0.025); }
+      .dataTable td { color: rgba(255,255,255,0.84); }
+      .userTable { min-width: 760px; }
+      .userTable th:last-child, .userTable td:last-child {
+        width: 276px;
+        min-width: 276px;
+        text-align: right;
+      }
+      .emptyTableCell { padding: 28px 12px !important; text-align: center !important; }
+      .tableEmpty { display: grid; justify-items: center; gap: 8px; color: var(--muted); }
+      .schemaList { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 16px; }
+      .schemaList span { border-radius: var(--radius-control); border: 1px solid var(--border); background: var(--input-bg); padding: 8px 10px; font-size: 12px; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+      .emptyState { min-height: 150px; display: grid; place-items: center; gap: 8px; border-radius: var(--radius-card); border: 1px dashed rgba(255,255,255,0.14); background: var(--card-bg); padding: 24px; text-align: center; }
+      .emptyTitle { font-size: 14px; font-weight: 600; }
+      .emptyText { font-size: 12px; line-height: 1.6; color: var(--muted); }
+      .settingsGrid { display: grid; grid-template-columns: minmax(320px, 0.8fr) minmax(360px, 1.2fr); gap: 24px; align-items: start; }
+      .settingRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); font-size: 14px; color: var(--muted); }
+      .settingRow:first-of-type { border-top: 0; }
+      .settingRow strong { color: var(--text); }
+      .activityList { display: grid; gap: 10px; }
+      .activityItem { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-top: 1px solid var(--border); }
+      .activityItem:first-child { border-top: 0; padding-top: 0; }
+      .activityTitle { font-size: 14px; font-weight: 600; color: var(--text); }
+      .activityMeta { margin-top: 4px; font-size: 12px; color: var(--caption); }
+      .activityTime { flex: 0 0 auto; font-size: 12px; color: var(--muted); }
+      .skeletonPill, .skeletonLine, .skeletonBlock {
+        display: block;
+        background: var(--hover-bg);
+        border-radius: 999px;
+      }
+      .skeletonPill { width: 82px; height: 24px; }
+      .skeletonLine { width: 100%; max-width: 360px; height: 14px; }
+      .skeletonLine.short { max-width: 180px; }
+      .skeletonBlock { width: 100%; height: 42px; border-radius: var(--radius-control); }
+      .toast { position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%); background: var(--panel-bg); border: 1px solid var(--border); border-radius: var(--radius-control); padding: 10px 12px; font-size: 12px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity var(--transition); }
+      .toast.show { opacity: 1; }
+      .modalOverlay { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 24px; background: rgba(0,0,0,0.58); }
+      .modalOverlay[hidden] { display: none; }
+      .modalPanel { width: min(440px, 100%); border-radius: var(--radius-card); border: 1px solid var(--border); background: var(--panel-bg); box-shadow: 0 24px 90px rgba(0,0,0,0.46); }
+      .modalHeader { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; padding: 20px 24px 16px; border-bottom: 1px solid var(--border); }
+      .modalTitle { font-size: 20px; font-weight: 600; }
+      .modalHint { margin-top: 6px; font-size: 12px; color: var(--caption); }
+      .iconButton { width: 32px; height: 32px; border-radius: var(--radius-control); border: 1px solid var(--border); background: var(--input-bg); color: var(--text); cursor: pointer; font-size: 18px; line-height: 1; }
+      .modalBody { display: grid; gap: 16px; padding: 20px 24px; }
+      .modalField { display: grid; gap: 8px; font-size: 12px; color: var(--muted); font-weight: 600; }
+      .modalField input { width: 100%; }
+      .modalStatus { min-height: 18px; font-size: 12px; color: var(--caption); line-height: 1.45; }
+      .modalStatus.error { color: #fca5a5; }
+      .modalStatus.success { color: #86efac; }
+      .modalActions { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px 24px; border-top: 1px solid var(--border); }
+      @media (max-width: 1180px) {
+        #app { grid-template-columns: 1fr; }
+        .sidebar { position: static; height: auto; }
+        .moduleNav { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+        .moduleNavButton { text-align: center; padding: 0 10px; }
+        .moduleNavButton.active::before { display: none; }
+        .metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      }
+      @media (max-width: 980px) {
+        .gridTwo, .userGrid, .licenseGrid, .splitGrid, .settingsGrid, .providerConfigGrid { grid-template-columns: 1fr; }
+        .creditSectionGrid > .panel, .quotaSectionGrid > .panel { height: auto; }
+        .creditListPanel, .quotaListPanel { min-height: 420px; }
+        .tableViewport { max-height: 420px; }
+        .status { text-align: left; }
+        .statusMeta { justify-content: flex-start; }
+      }
+      @media (max-width: 680px) {
+        :root { --page-x: 18px; --page-y: 18px; }
+        .moduleNav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .metricGrid { grid-template-columns: 1fr; }
+        .topbar, .sectionHeader, .adminSectionHeader { flex-direction: column; align-items: flex-start; }
+        .panelHeader { flex-direction: column; align-items: stretch; }
+        .panelTools { width: 100%; }
+        .compactSearch { flex: 1 1 auto; width: auto; }
+        .tabs { width: 100%; }
+        .field { align-items: stretch; }
+        .field > .btn, .field > select { flex: 1 1 auto; max-width: none; }
+      }
+    </style>
+  </body>
+</html>
