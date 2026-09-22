@@ -1,0 +1,55 @@
+{
+  "appId": "com.novaflow.worker",
+  "productName": "NovaFlow Worker",
+  "copyright": "NovaFlow",
+  "directories": {
+    "output": "dist",
+    "buildResources": "build"
+  },
+  "files": [
+    "electron/**/*",
+    "src/**/*",
+    "workflows/**/*",
+    "package.json",
+    "!**/*.map",
+    "!data/**/*"
+  ],
+  "extraResources": [
+    {
+      "from": "../packages/shared/src",
+      "to": "packages/shared/src",
+      "filter": [
+        "**/*.mjs"
+      ]
+    }
+  ],
+  "asar": false,
+  "win": {
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      }
+    ],
+    "artifactName": "NovaFlowWorkerSetup.${ext}"
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "NovaFlow Worker",
+    "deleteAppDataOnUninstall": false,
+    "installerLanguages": [
+      "zh_CN",
+      "en_US"
+    ],
+    "language": 2052
+  },
+  "compression": "normal",
+  "npmRebuild": false,
+  "buildDependenciesFromSource": false
+}

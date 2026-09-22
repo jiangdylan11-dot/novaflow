@@ -1,0 +1,63 @@
+{
+  "id": "qwen_t2i",
+  "comfy": "image",
+  "note": "Text to image on the Qwen AIO checkpoint. Verified against ComfyUI 0.24.1 on 127.0.0.1:8188.",
+  "bindings": {
+    "prompt": { "node": "2", "input": "text" },
+    "negative_prompt": { "node": "3", "input": "text" },
+    "width": { "node": "4", "input": "width" },
+    "height": { "node": "4", "input": "height" },
+    "count": { "node": "4", "input": "batch_size" },
+    "steps": { "node": "5", "input": "steps" },
+    "cfg": { "node": "5", "input": "cfg" },
+    "seed": { "node": "5", "input": "seed" }
+  },
+  "graph": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": { "ckpt_name": "Qwen-Rapid-AIO-NSFW-v20.safetensors" },
+      "_meta": { "title": "Qwen AIO checkpoint" }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": { "text": "", "clip": ["1", 1] },
+      "_meta": { "title": "positive" }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": { "text": "", "clip": ["1", 1] },
+      "_meta": { "title": "negative" }
+    },
+    "4": {
+      "class_type": "EmptySD3LatentImage",
+      "inputs": { "width": 1024, "height": 1024, "batch_size": 1 },
+      "_meta": { "title": "canvas" }
+    },
+    "5": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 0,
+        "steps": 8,
+        "cfg": 1.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1.0,
+        "model": ["1", 0],
+        "positive": ["2", 0],
+        "negative": ["3", 0],
+        "latent_image": ["4", 0]
+      },
+      "_meta": { "title": "sampler" }
+    },
+    "6": {
+      "class_type": "VAEDecode",
+      "inputs": { "samples": ["5", 0], "vae": ["1", 2] },
+      "_meta": { "title": "decode" }
+    },
+    "7": {
+      "class_type": "SaveImage",
+      "inputs": { "filename_prefix": "novaflow_web", "images": ["6", 0] },
+      "_meta": { "title": "save" }
+    }
+  }
+}

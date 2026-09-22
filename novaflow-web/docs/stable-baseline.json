@@ -1,0 +1,21 @@
+{
+  "recordedAt": "2026-09-22T04:31:55.738Z",
+  "stableDir": "D:/AI_APP/NovaFlow",
+  "head": "f5b31cf4e776179bd7e073121e741b3a8ff3eb09",
+  "branch": "rebuild/source-driven-runtime",
+  "statusSha": "59bf20733928fe1b923d43ebd2d94e1a7a51838655c4738d24b5162c56604df4",
+  "diffSha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "statusLineCount": 3563,
+  "trackedModified": [
+    " M particle-editor-desktop/tests/art-generate-provider-runtime-contract.test.js",
+    " M particle-editor-desktop/tests/prompt-input-perf-contract.test.js",
+    " M particle-editor-desktop/tests/spine-split-effect-extract.test.js",
+    " M particle-editor-desktop/tests/spine-split-effect-remove.test.js",
+    " M particle-editor-desktop/tests/spine-split-leg-face-contract.test.js",
+    " M particle-editor-desktop/tests/spine-split-mask-stencil.test.js",
+    " M particle-editor-desktop/tests/spine-split-remove-background.test.js",
+    " M particle-editor/index.html",
+    " M particle-editor/spine-split-runtime.js"
+  ],
+  "diffIsEmpty": true
+}

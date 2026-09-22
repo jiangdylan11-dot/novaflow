@@ -1,0 +1,100 @@
+// NovaFlow Web test runner.
+//
+// Runs each suite in its own process, because several of them stand up a real
+// PostgreSQL, a real HTTP server and a real worker; isolating them keeps one
+// suite's ports and timers out of the next one's way.
+
+import { spawn } from 'node:child_process';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { writeFile, mkdir } from 'node:fs/promises';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = resolve(HERE, '..');
+
+const SUITES = [
+  { name: 'protocol', file: 'e2e/protocol.test.mjs', needs: [], timeoutMs: 180000 },
+  { name: 'sql-contract', file: 'e2e/sql-contract.test.mjs', needs: [], timeoutMs: 300000 },
+  { name: 'control-plane', file: 'e2e/control-plane.test.mjs', needs: [], timeoutMs: 300000 },
+  { name: 'security', file: 'e2e/security.test.mjs', needs: [], timeoutMs: 240000 },
+  { name: 'multi-worker', file: 'e2e/multi-worker.test.mjs', needs: [], timeoutMs: 300000 },
+  { name: 'full-pipeline', file: 'e2e/full-pipeline.test.mjs', needs: ['comfyui'], timeoutMs: 600000 }
+];
+
+function runSuite(suite) {
+  return new Promise((resolve) => {
+    const started = Date.now();
+    const child = spawn(process.execPath, [join(HERE, suite.file)], {
+      cwd: ROOT,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: process.env
+    });
+
+    let out = '';
+    child.stdout.on('data', (d) => { out += d; process.stdout.write(d); });
+    child.stderr.on('data', (d) => { out += d; process.stderr.write(d); });
+
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      out += '\nSUITE TIMED OUT after ' + suite.timeoutMs + 'ms\n';
+    }, suite.timeoutMs);
+
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      const m = out.match(/(\d+) passed, (\d+) failed/);
+      resolve({
+        name: suite.name,
+        code,
+        passed: m ? Number(m[1]) : 0,
+        failed: m ? Number(m[2]) : (code === 0 ? 0 : 1),
+        elapsedMs: Date.now() - started,
+        output: out
+      });
+    });
+  });
+}
+
+const only = process.argv.slice(2).filter((a) => !a.startsWith('-'));
+const suites = only.length ? SUITES.filter((s) => only.includes(s.name)) : SUITES;
+
+const results = [];
+for (const suite of suites) {
+  console.log('\n' + '='.repeat(66));
+  console.log('SUITE: ' + suite.name + (suite.needs.length ? '   (needs: ' + suite.needs.join(', ') + ')' : ''));
+  console.log('='.repeat(66));
+  results.push(await runSuite(suite));
+}
+
+console.log('\n' + '='.repeat(66));
+console.log('SUMMARY');
+console.log('='.repeat(66));
+let totalPassed = 0;
+let totalFailed = 0;
+for (const r of results) {
+  totalPassed += r.passed;
+  totalFailed += r.failed;
+  const flag = r.code === 0 ? 'OK  ' : 'FAIL';
+  console.log(
+    '  ' + flag + '  ' + r.name.padEnd(16) +
+    String(r.passed).padStart(4) + ' passed  ' +
+    String(r.failed).padStart(3) + ' failed  ' +
+    (r.elapsedMs / 1000).toFixed(1) + 's'
+  );
+}
+console.log('  ' + '-'.repeat(60));
+console.log('  TOTAL' + String(totalPassed).padStart(15) + ' passed  ' + String(totalFailed).padStart(3) + ' failed');
+
+await mkdir(join(ROOT, '.artifacts'), { recursive: true });
+await writeFile(
+  join(ROOT, '.artifacts/test-results.json'),
+  JSON.stringify({
+    ranAt: new Date().toISOString(),
+    totalPassed,
+    totalFailed,
+    suites: results.map(({ output, ...rest }) => rest)
+  }, null, 2),
+  'utf8'
+);
+console.log('\n  results written to novaflow-web/.artifacts/test-results.json');
+
+process.exit(results.some((r) => r.code !== 0) ? 1 : 0);

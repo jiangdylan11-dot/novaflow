@@ -1,0 +1,35 @@
+{
+  "name": "novaflow-web-workspace",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "NovaFlow Web product line - browser app, Supabase control plane and distributed GPU worker. Physically isolated from the stable NovaFlow Desktop tree.",
+  "workspaces": [
+    "packages/shared",
+    "control-local",
+    "web",
+    "worker"
+  ],
+  "scripts": {
+    "control:dev": "node control-local/src/server.mjs",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build",
+    "web:preview": "npm --prefix web run preview",
+    "worker:dev": "npm --prefix worker run dev",
+    "worker:headless": "node worker/src/main-headless.mjs",
+    "worker:build": "npm --prefix worker run build:win",
+    "test": "node tests/run-tests.mjs",
+    "test:sql": "node tests/e2e/sql-contract.test.mjs",
+    "test:protocol": "node tests/e2e/protocol.test.mjs",
+    "test:control": "node tests/e2e/control-plane.test.mjs",
+    "test:security": "node tests/e2e/security.test.mjs",
+    "test:multiworker": "node tests/e2e/multi-worker.test.mjs",
+    "test:e2e": "node tests/e2e/full-pipeline.test.mjs",
+    "verify:stable": "node tools/verify-stable-untouched.mjs",
+    "sync:edge": "node tools/sync-edge-function.mjs",
+    "check:edge": "node tools/sync-edge-function.mjs --check"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}

@@ -1,0 +1,501 @@
+// NovaFlow GPU Worker - core loop.
+//
+// Lifecycle:
+//   load/create identity -> register -> report models -> heartbeat forever
+//                                                     -> claim -> run -> report
+//
+// Everything the worker is allowed to do is scoped to itself and to the task
+// currently assigned to it (spec 8). It holds no Supabase key, no Grok key and
+// no admin token; its only credential is its own worker secret.
+
+import { mkdir, readFile, writeFile, readdir, stat } from 'node:fs/promises';
+import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { createGateway, sweepTaskFiles } from './gateway/gateway.mjs';
+import { createComfyClient, collectOutputs, assertLocalOnly } from './comfy/comfy-client.mjs';
+import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength } from './comfy/workflow-runner.mjs';
+import { inspectAllModels, inspectViaComfy } from './models/model-manager.mjs';
+import { detectGpu, detectSystem } from './hardware.mjs';
+import { generateWorkerSecret } from '../../packages/shared/src/tokens.mjs';
+import {
+  HEARTBEAT_INTERVAL_SECONDS,
+  TASK_STATE,
+  TTL_SECONDS,
+  requirementsFor
+} from '../../packages/shared/src/protocol.mjs';
+
+export const WORKER_VERSION = '0.1.0';
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+export function createWorker(options) {
+  const {
+    controlUrl,
+    dataDir,
+    workflowDir,
+    configPath,
+    comfyImageUrl = 'http://127.0.0.1:8188',
+    comfyVideoUrl = 'http://127.0.0.1:8189',
+    modelsRoot = '',
+    gatewayPort = 8790,
+    gatewayHost = '0.0.0.0',
+    publicEndpoint = '',
+    workerName = 'novaflow-worker',
+    registrationCode = '',
+    ownerSessionToken = '',
+    pollIntervalMs = 2000,
+    logger
+  } = options;
+
+  // Refuse to run if ComfyUI is configured off loopback (spec 9).
+  assertLocalOnly(comfyImageUrl);
+  assertLocalOnly(comfyVideoUrl);
+
+  const log = logger || ((msg, meta) => console.log('[worker] ' + msg, meta ? JSON.stringify(meta) : ''));
+  const listeners = new Set();
+
+  const state = {
+    workerId: '',
+    workerSecret: '',
+    workerToken: '',
+    grantKey: '',
+    status: 'offline',
+    currentTaskId: null,
+    gpu: null,
+    system: null,
+    models: [],
+    endpointUrl: publicEndpoint,
+    lastError: '',
+    lastHeartbeatAt: null,
+    startedAt: nowIso(),
+    comfy: { image: false, video: false },
+    stats: { completed: 0, failed: 0 }
+  };
+
+  function emit() {
+    const snapshot = snapshotState();
+    for (const fn of listeners) {
+      try { fn(snapshot); } catch { /* a UI listener must not break the loop */ }
+    }
+  }
+
+  function snapshotState() {
+    return {
+      workerId: state.workerId,
+      workerName,
+      status: state.status,
+      currentTaskId: state.currentTaskId,
+      gpu: state.gpu,
+      system: state.system,
+      models: state.models.map((m) => ({ model_id: m.model_id, status: m.status })),
+      endpointUrl: state.endpointUrl,
+      comfy: state.comfy,
+      lastError: state.lastError,
+      lastHeartbeatAt: state.lastHeartbeatAt,
+      startedAt: state.startedAt,
+      stats: { ...state.stats },
+      version: WORKER_VERSION
+    };
+  }
+
+  const comfyImage = createComfyClient({ baseUrl: comfyImageUrl, logger: log });
+  const comfyVideo = createComfyClient({ baseUrl: comfyVideoUrl, logger: log });
+
+  function comfyFor(runtime) {
+    return runtime === 'video' ? comfyVideo : comfyImage;
+  }
+
+  // -------------------------------------------------------------------------
+  // Identity: generated once, kept in the worker's own config file.
+  // -------------------------------------------------------------------------
+  async function loadIdentity() {
+    try {
+      const raw = JSON.parse(await readFile(configPath, 'utf8'));
+      if (raw.workerId && raw.workerSecret) {
+        state.workerId = String(raw.workerId);
+        state.workerSecret = String(raw.workerSecret);
+        return true;
+      }
+    } catch { /* first run */ }
+    state.workerId = randomUUID();
+    state.workerSecret = generateWorkerSecret();
+    await saveIdentity();
+    return false;
+  }
+
+  async function saveIdentity() {
+    await mkdir(join(configPath, '..'), { recursive: true });
+    await writeFile(configPath, JSON.stringify({
+      workerId: state.workerId,
+      workerSecret: state.workerSecret,
+      workerName,
+      controlUrl,
+      savedAt: nowIso()
+    }, null, 2), 'utf8');
+  }
+
+  // -------------------------------------------------------------------------
+  // Control-plane calls
+  // -------------------------------------------------------------------------
+  async function callControl(method, path, { body, token } = {}) {
+    const res = await fetch(controlUrl + path, {
+      method,
+      headers: {
+        'content-type': 'application/json',
+        ...(token ? { authorization: 'Bearer ' + token } : {})
+      },
+      body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const text = await res.text();
+    let parsed = null;
+    try { parsed = text ? JSON.parse(text) : null; } catch { parsed = { raw: text }; }
+    if (!res.ok) {
+      const err = new Error(String(parsed?.error || ('control plane ' + res.status)));
+      err.status = res.status;
+      err.body = parsed;
+      throw err;
+    }
+    return parsed;
+  }
+
+  async function register() {
+    state.gpu = await detectGpu();
+    state.system = await detectSystem();
+    state.comfy.image = await comfyImage.isUp();
+    state.comfy.video = await comfyVideo.isUp();
+
+    const hardware = {
+      gpu_name: state.gpu.name,
+      vram_mb: state.gpu.vramMb,
+      ram_mb: state.system.ramMb,
+      driver_version: state.gpu.driverVersion,
+      cuda_version: state.gpu.cudaVersion,
+      worker_version: WORKER_VERSION,
+      comfy_version: state.comfy.video
+        ? (await comfyVideo.systemStats().catch(() => null))?.system?.comfyui_version || ''
+        : (await comfyImage.systemStats().catch(() => null))?.system?.comfyui_version || '',
+      endpoint_url: state.endpointUrl,
+      transport: 'direct'
+    };
+
+    const body = {
+      worker_id: state.workerId,
+      worker_name: workerName,
+      worker_secret: state.workerSecret,
+      hardware
+    };
+    if (registrationCode) body.registration_code = registrationCode;
+
+    const res = await callControl('POST', '/api/worker/register', {
+      body,
+      token: ownerSessionToken || undefined
+    });
+    state.workerToken = res.workerToken;
+    state.grantKey = res.grantKey;
+    state.status = 'idle';
+    log('registered', { workerId: state.workerId, gpu: state.gpu.name, vramMb: state.gpu.vramMb });
+    emit();
+    return res;
+  }
+
+  async function reportModels() {
+    // Prefer what ComfyUI says it can load over what the filesystem suggests.
+    let models = null;
+    if (state.comfy.image) models = await inspectViaComfy(comfyImage).catch(() => null);
+    if (state.comfy.video) {
+      const videoModels = await inspectViaComfy(comfyVideo).catch(() => null);
+      if (videoModels) {
+        const byId = new Map((models || []).map((m) => [m.model_id, m]));
+        for (const m of videoModels) {
+          const existing = byId.get(m.model_id);
+          // A model counts as ready if EITHER runtime can load it.
+          if (!existing || m.status === 'ready') byId.set(m.model_id, m);
+        }
+        models = [...byId.values()];
+      }
+    }
+    if (!models && modelsRoot) models = await inspectAllModels(modelsRoot);
+    if (!models) models = [];
+
+    state.models = models;
+    await callControl('POST', '/api/worker/models', { body: { models }, token: state.workerToken });
+    log('models reported', { ready: models.filter((m) => m.status === 'ready').map((m) => m.model_id) });
+    emit();
+    return models;
+  }
+
+  async function heartbeat() {
+    try {
+      state.comfy.image = await comfyImage.isUp();
+      state.comfy.video = await comfyVideo.isUp();
+      await callControl('POST', '/api/worker/heartbeat', {
+        token: state.workerToken,
+        body: {
+          status: state.status,
+          current_task_id: state.currentTaskId,
+          hardware: {
+            vram_mb: state.gpu?.vramMb,
+            ram_mb: state.system?.ramMb,
+            worker_version: WORKER_VERSION,
+            endpoint_url: state.endpointUrl
+          }
+        }
+      });
+      state.lastHeartbeatAt = nowIso();
+      state.lastError = '';
+    } catch (error) {
+      // A 401 means our token aged out; re-register rather than going quiet.
+      if (error.status === 401) {
+        log('worker token rejected, re-registering');
+        await register().catch((e) => { state.lastError = String(e?.message || e); });
+      } else {
+        state.lastError = String(error?.message || error);
+      }
+    }
+    emit();
+  }
+
+  // -------------------------------------------------------------------------
+  // Task execution
+  // -------------------------------------------------------------------------
+  async function reportProgress(taskId, status, progress, note, promptId) {
+    try {
+      await callControl('POST', '/api/worker/tasks/' + taskId + '/progress', {
+        token: state.workerToken,
+        body: { status, progress, note, prompt_id: promptId }
+      });
+    } catch (error) {
+      log('progress report failed', { taskId, error: String(error?.message || error) });
+    }
+  }
+
+  async function waitForInputs(taskId, expected, { timeoutMs = 120000 } = {}) {
+    if (!expected.length) return [];
+    const dir = join(dataDir, 'tasks', taskId, 'input');
+    const started = Date.now();
+    for (;;) {
+      let present = [];
+      try {
+        present = (await readdir(dir)).filter((n) => expected.some((e) => e.name === n));
+      } catch { present = []; }
+      if (present.length >= expected.length) return present;
+      if (Date.now() - started > timeoutMs) {
+        throw new Error('timed out waiting for the browser to upload ' + expected.length + ' input file(s)');
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }
+
+  async function runTask(task) {
+    const req = requirementsFor(task.task_type);
+    const template = await loadWorkflow(workflowDir, task.task_type);
+    const runtime = template.comfy === 'video' ? 'video' : 'image';
+    const comfy = comfyFor(runtime);
+    const parameters = task.parameters || {};
+
+    state.currentTaskId = task.id;
+    state.status = 'busy';
+    emit();
+
+    const outDir = join(dataDir, 'tasks', task.id, 'output');
+    await mkdir(outDir, { recursive: true });
+
+    // 1. Inputs. The browser uploads straight to this worker's gateway.
+    const expectedRefs = Array.isArray(parameters.references) ? parameters.references : [];
+    const referenceFilenames = [];
+    if (expectedRefs.length) {
+      await reportProgress(task.id, TASK_STATE.UPLOADING, 2, 'waiting for reference upload');
+      const names = await waitForInputs(task.id, expectedRefs);
+      for (let i = 0; i < expectedRefs.length; i += 1) {
+        const name = names.find((n) => n === expectedRefs[i].name) || names[i];
+        if (!name) continue;
+        const bytes = await readFile(join(dataDir, 'tasks', task.id, 'input', name));
+        const target = 'nfweb-' + task.id.slice(0, 8) + '-' + i + '-' + name;
+        await comfy.uploadImage(target, bytes);
+        referenceFilenames[i] = target;
+      }
+    }
+
+    await reportProgress(task.id, TASK_STATE.PROCESSING, 8, 'submitting to ComfyUI');
+
+    // 2. Build the graph. The browser never saw or supplied any of this.
+    const extra = { referenceFilenames };
+    if (req?.kind === 'video') {
+      extra.length = videoFrameLength(parameters.duration_seconds, parameters.fps);
+    }
+    const graph = buildGraph(template, parameters, extra);
+    const seed = resolvedSeed(template, graph);
+
+    // 3. Run.
+    const startedAt = Date.now();
+    const promptId = await comfy.queuePrompt(graph);
+    await reportProgress(task.id, TASK_STATE.PROCESSING, 12, 'queued in ComfyUI', promptId);
+
+    const history = await comfy.waitForPrompt(promptId, {
+      onProgress: async (pct, note) => {
+        await reportProgress(task.id, TASK_STATE.PROCESSING, pct, note, promptId);
+      }
+    });
+
+    // 4. Pull results out of ComfyUI and into this task's folder, so the
+    //    browser fetches them from the gateway and never touches ComfyUI.
+    const produced = collectOutputs(history);
+    if (!produced.length) throw new Error('ComfyUI finished without producing a file');
+
+    const outputs = [];
+    for (let i = 0; i < produced.length; i += 1) {
+      const item = produced[i];
+      const bytes = await comfy.viewFile(item);
+      const ext = (item.filename.match(/\.[A-Za-z0-9]+$/) || ['.png'])[0];
+      const safeName = 'out_' + String(i + 1).padStart(4, '0') + ext;
+      await writeFile(join(outDir, safeName), bytes);
+      const info = await stat(join(outDir, safeName));
+      outputs.push({
+        name: safeName,
+        kind: /\.(mp4|webm)$/i.test(ext) ? 'video' : 'image',
+        bytes: info.size,
+        width: Number(parameters.width) || 0,
+        height: Number(parameters.height) || 0,
+        duration_seconds: req?.kind === 'video' ? Number(parameters.duration_seconds) || 0 : 0
+      });
+    }
+
+    // 5. Report. The worker reports success and execution metadata; the
+    //    control plane decides what it costs (spec 17).
+    const result = await callControl('POST', '/api/worker/tasks/' + task.id + '/complete', {
+      token: state.workerToken,
+      body: {
+        prompt_id: promptId,
+        outputs,
+        execution: {
+          elapsed_ms: Date.now() - startedAt,
+          comfy_version: (await comfy.systemStats().catch(() => null))?.system?.comfyui_version || '',
+          seed
+        }
+      }
+    });
+
+    state.stats.completed += 1;
+    log('task completed', { taskId: task.id, outputs: outputs.length, ms: Date.now() - startedAt });
+    return result;
+  }
+
+  async function claimAndRun() {
+    if (state.currentTaskId) return false;
+    let claim;
+    try {
+      claim = await callControl('POST', '/api/worker/claim', { token: state.workerToken });
+    } catch (error) {
+      if (error.status === 401) await register().catch(() => {});
+      return false;
+    }
+    if (!claim?.task) return false;
+    if (claim.grantKey) state.grantKey = claim.grantKey;
+
+    const task = claim.task;
+    try {
+      await runTask(task);
+    } catch (error) {
+      const message = String(error?.message || error);
+      log('task failed', { taskId: task.id, error: message });
+      state.stats.failed += 1;
+      try {
+        await callControl('POST', '/api/worker/tasks/' + task.id + '/fail', {
+          token: state.workerToken,
+          body: {
+            error_code: /timed out/i.test(message) ? 'timeout' : 'worker_error',
+            error_message: message.slice(0, 500)
+          }
+        });
+      } catch (reportError) {
+        // If we cannot even report the failure, the control plane's heartbeat
+        // sweeper will requeue the task. Nothing is charged either way.
+        log('failure report failed', { taskId: task.id, error: String(reportError?.message || reportError) });
+      }
+    } finally {
+      state.currentTaskId = null;
+      state.status = 'idle';
+      emit();
+    }
+    return true;
+  }
+
+  // -------------------------------------------------------------------------
+  // TTL cleanup (spec 13)
+  // -------------------------------------------------------------------------
+  async function sweepFiles(ttl = TTL_SECONDS) {
+    const result = await sweepTaskFiles({ dataDir, ttlSeconds: ttl });
+    if (result.removedFiles) {
+      log('ttl sweep', { files: result.removedFiles, bytes: result.removedBytes });
+    }
+    return result;
+  }
+
+  // -------------------------------------------------------------------------
+  // Lifecycle
+  // -------------------------------------------------------------------------
+  let gateway = null;
+  let timers = [];
+  let running = false;
+
+  async function start() {
+    if (running) return snapshotState();
+    running = true;
+
+    await mkdir(join(dataDir, 'tasks'), { recursive: true });
+    await loadIdentity();
+
+    gateway = createGateway({
+      workerId: state.workerId,
+      dataDir,
+      getGrantKey: () => state.grantKey,
+      logger: log
+    });
+    const port = await gateway.listen(gatewayPort, gatewayHost);
+    if (!state.endpointUrl) state.endpointUrl = 'http://127.0.0.1:' + port;
+    log('gateway listening', { port, endpoint: state.endpointUrl });
+
+    await register();
+    await reportModels();
+
+    timers.push(setInterval(() => { heartbeat().catch(() => {}); }, HEARTBEAT_INTERVAL_SECONDS * 1000));
+    timers.push(setInterval(() => { claimAndRun().catch(() => {}); }, pollIntervalMs));
+    timers.push(setInterval(() => { reportModels().catch(() => {}); }, 10 * 60 * 1000));
+    timers.push(setInterval(() => { sweepFiles().catch(() => {}); }, 15 * 60 * 1000));
+
+    emit();
+    return snapshotState();
+  }
+
+  async function stop() {
+    running = false;
+    for (const t of timers) clearInterval(t);
+    timers = [];
+    state.status = 'offline';
+    try {
+      await callControl('POST', '/api/worker/heartbeat', {
+        token: state.workerToken,
+        body: { status: 'offline', current_task_id: null }
+      });
+    } catch { /* going offline quietly is acceptable */ }
+    if (gateway) await gateway.close();
+    gateway = null;
+    emit();
+  }
+
+  return {
+    start,
+    stop,
+    heartbeat,
+    reportModels,
+    claimAndRun,
+    sweepFiles,
+    register,
+    getState: snapshotState,
+    onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
+    get identity() { return { workerId: state.workerId, workerName }; },
+    get gatewayEndpoint() { return state.endpointUrl; }
+  };
+}

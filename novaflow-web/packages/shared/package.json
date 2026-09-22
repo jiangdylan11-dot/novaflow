@@ -1,0 +1,15 @@
+{
+  "name": "@novaflow-web/shared",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./protocol": "./src/protocol.mjs",
+    "./tokens": "./src/tokens.mjs",
+    "./control-plane": "./src/control-plane.mjs",
+    "./pricing": "./src/pricing.mjs",
+    "./model-manifest": "./src/model-manifest.mjs"
+  }
+}

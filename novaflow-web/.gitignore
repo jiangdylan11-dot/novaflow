@@ -1,0 +1,16 @@
+# Dependencies and build output live per-package; none of it belongs in git.
+node_modules/
+web/dist/
+worker/dist/
+worker/data/
+.artifacts/
+*.log
+
+# Local environment
+.env
+.env.local
+.env.*.local
+
+# Worker runtime state
+identity.json
+worker.config.json

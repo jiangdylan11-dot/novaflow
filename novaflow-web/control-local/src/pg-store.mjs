@@ -1,0 +1,199 @@
+// Store adapter over a raw Postgres connection (PGlite locally).
+//
+// Every method is a thin call into the SQL functions created by
+// supabase/migrations/20260922010000_novaflow_web_worker_fabric.sql. The
+// Supabase adapter calls the same functions through PostgREST rpc(), so the
+// two deployments cannot drift in behaviour - only in transport.
+
+export function createPgStore(db) {
+  async function one(sql, params) {
+    const res = await db.query(sql, params);
+    return res.rows[0] || null;
+  }
+  async function many(sql, params) {
+    const res = await db.query(sql, params);
+    return res.rows || [];
+  }
+
+  return {
+    async getUserById(userId) {
+      return await one(
+        'select id, email, display_name, role, plan, status from public.users where id = $1',
+        [userId]
+      );
+    },
+
+    async getUserByEmail(email) {
+      return await one(
+        'select id, email, display_name, role, plan, status from public.users where lower(email) = lower($1)',
+        [email]
+      );
+    },
+
+    async getCreditBalance(userId) {
+      const row = await one('select balance from public.credits where user_id = $1', [userId]);
+      return Number(row?.balance || 0);
+    },
+
+    async registerWorker({ workerId, ownerId, workerName, secretHash, hardware }) {
+      return await one(
+        'select * from public.novaflow_web_register_worker($1, $2, $3, $4, $5::jsonb)',
+        [workerId, ownerId, workerName, secretHash, JSON.stringify(hardware || {})]
+      );
+    },
+
+    async getWorkerById(workerId) {
+      if (!workerId) return null;
+      // A malformed id must read as "no such worker", not as a 500.
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(workerId))) return null;
+      return await one('select * from public.gpu_workers where id = $1', [workerId]);
+    },
+
+    async listWorkers(ownerId) {
+      return await many(
+        'select * from public.gpu_workers where owner_id = $1 order by created_at',
+        [ownerId]
+      );
+    },
+
+    async heartbeat({ workerId, status, currentTaskId, hardware }) {
+      return await one(
+        'select * from public.novaflow_web_worker_heartbeat($1, $2, $3, $4::jsonb)',
+        [workerId, status, currentTaskId || null, JSON.stringify(hardware || {})]
+      );
+    },
+
+    async reportModels(workerId, models) {
+      const row = await one(
+        'select public.novaflow_web_report_models($1, $2::jsonb) as count',
+        [workerId, JSON.stringify(models || [])]
+      );
+      return Number(row?.count || 0);
+    },
+
+    async countCapableWorkers(modelId, minVramMb, heartbeatTimeoutSeconds) {
+      const row = await one(
+        `select count(*)::int as count
+           from public.gpu_workers w
+          where w.status in ('idle', 'busy')
+            and w.vram_mb >= $2
+            and w.last_heartbeat is not null
+            and w.last_heartbeat > now() - make_interval(secs => $3)
+            and exists (
+              select 1 from public.worker_models wm
+               where wm.worker_id = w.id and wm.model_id = $1 and wm.status = 'ready'
+            )`,
+        [modelId, minVramMb, heartbeatTimeoutSeconds]
+      );
+      return Number(row?.count || 0);
+    },
+
+    async createTask({ userId, taskType, modelId, inputManifest, estimatedCreditCost, expiresAt }) {
+      return await one(
+        'select * from public.novaflow_web_create_task($1, $2, $3, $4::jsonb, $5, $6)',
+        [userId, taskType, modelId, JSON.stringify(inputManifest || {}), estimatedCreditCost, expiresAt]
+      );
+    },
+
+    async getTask(taskId) {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(taskId || ''))) return null;
+      return await one('select * from public.web_ai_tasks where id = $1', [taskId]);
+    },
+
+    async listTasks(userId, limit) {
+      return await many(
+        'select * from public.web_ai_tasks where user_id = $1 order by created_at desc limit $2',
+        [userId, limit]
+      );
+    },
+
+    async claimTask(workerId, heartbeatTimeoutSeconds) {
+      const row = await one(
+        'select * from public.novaflow_web_claim_task($1, $2)',
+        [workerId, heartbeatTimeoutSeconds]
+      );
+      // The function returns an all-null record when nothing was claimable.
+      return row && row.id ? row : null;
+    },
+
+    async updateTaskStatus({ taskId, workerId, toStatus, progress, note, detail }) {
+      return await one(
+        'select * from public.novaflow_web_update_task_status($1, $2, $3, $4, $5, $6::jsonb)',
+        [taskId, workerId || null, toStatus, progress, note || '', JSON.stringify(detail || {})]
+      );
+    },
+
+    async markCharged(taskId, amount) {
+      return await one(
+        `update public.web_ai_tasks
+            set charged_credit_cost = $2, credit_settled = true, updated_at = now()
+          where id = $1 returning *`,
+        [taskId, amount]
+      );
+    },
+
+    async sweep({ heartbeatTimeoutSeconds, assignTimeoutSeconds, processingTimeoutSeconds, maxAttempts }) {
+      const row = await one(
+        'select public.novaflow_web_sweep($1, $2, $3, $4) as result',
+        [heartbeatTimeoutSeconds, assignTimeoutSeconds, processingTimeoutSeconds, maxAttempts]
+      );
+      return row?.result || {};
+    },
+
+    async markResultsExpired(taskIds) {
+      const row = await one(
+        'select public.novaflow_web_mark_result_expired($1::uuid[]) as count',
+        [taskIds || []]
+      );
+      return Number(row?.count || 0);
+    },
+
+    async consumeRegistrationCode(codeHash) {
+      return await one(
+        `update public.web_worker_registration_codes
+            set used_count = used_count + 1
+          where code_hash = $1
+            and expires_at > now()
+            and used_count < max_uses
+          returning owner_id, label`,
+        [codeHash]
+      );
+    },
+
+    async createRegistrationCode({ ownerId, codeHash, label, maxUses, expiresAt }) {
+      return await one(
+        `insert into public.web_worker_registration_codes (code_hash, owner_id, label, max_uses, expires_at)
+         values ($1, $2, $3, $4, $5) returning *`,
+        [codeHash, ownerId, label || '', maxUses || 1, expiresAt]
+      );
+    },
+
+    // Reuses the PRODUCTION settlement function unchanged. Idempotent on
+    // usage_key, atomic across user credits and the provider budget.
+    async settleCredits({ userId, promptId, taskType, modelId, estimatedCreditCost, chargeAmount, pricingSource, pricingDetails }) {
+      const row = await one(
+        `select public.settle_comfy_usage($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb) as result`,
+        [
+          'comfyui:' + promptId,
+          userId,
+          promptId,
+          'comfyui',
+          modelId || '',
+          taskType,
+          estimatedCreditCost,
+          chargeAmount,
+          pricingSource,
+          JSON.stringify(pricingDetails || {})
+        ]
+      );
+      return row?.result || null;
+    },
+
+    async taskEvents(taskId) {
+      return await many(
+        'select from_status, to_status, actor, created_at from public.web_task_events where task_id = $1 order by id',
+        [taskId]
+      );
+    }
+  };
+}

@@ -1,0 +1,10 @@
+{
+  "name": "@novaflow-web/control-local",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/server.mjs",
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}
