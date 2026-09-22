@@ -266,6 +266,47 @@ section('nothing tells a browser user to install a runtime');
 }
 
 // ---------------------------------------------------------------------------
+section('the shims honour the signatures the renderer calls with');
+{
+  // 美工 and 绘图 were dead for every user because of this. The renderer calls
+  //
+  //   runtimeRequestJson({ baseUrl, path, init })
+  //
+  // with ONE object, and the shim declared (baseUrl, path, init) positionally,
+  // so path arrived undefined and the answer was
+  // "NovaFlow AI Runtime 未连接: NovaFlow Web does not proxy" - with nothing
+  // after "proxy", because the path it was complaining about was undefined.
+  //
+  // proxy-electron-api.js is the contract: it is the implementation the
+  // renderer was written against and the one 4783 runs on. So the test is
+  // whether the shim accepts what THAT accepts, not whether it looks tidy.
+  const proxy = await readFile(join(PATHS.WEB_OUT, 'proxy-electron-api.js'), 'utf8');
+  const shim = await readFile(join(PATHS.WEB_OUT, 'novaflow-web-runtime.js'), 'utf8');
+
+  // Every runtime method the proxy defines as taking a single payload.
+  const payloadMethods = [...proxy.matchAll(/const (runtime[A-Za-z]+) = async \((payload|\)\s*=>)/g)]
+    .map((m) => m[1]);
+  check('the contract really is payload-shaped', payloadMethods.length >= 3, payloadMethods);
+
+  const missing = [];
+  for (const name of payloadMethods) {
+    // The shim may not implement every one; what it must not do is implement
+    // one with a positional signature.
+    const decl = new RegExp('async ' + name + '\\(([^)]*)\\)').exec(shim);
+    if (!decl) continue;
+    const params = decl[1].trim();
+    const acceptsPayload = params === '' || params.startsWith('...') ||
+      params.startsWith('payload') || params.startsWith('{');
+    if (!acceptsPayload) missing.push(name + '(' + params + ')');
+  }
+  checkEqual('no shim method takes positional arguments the renderer never sends',
+    missing, []);
+
+  // And the reader that unpacks it is present, so this is not vacuous.
+  check('the shim unpacks a payload object', /function asPayload/.test(shim), null);
+}
+
+// ---------------------------------------------------------------------------
 section('the build ships a website, not a project folder');
 {
   // Cloudflare's uploader spotted this first: the build was copying everything

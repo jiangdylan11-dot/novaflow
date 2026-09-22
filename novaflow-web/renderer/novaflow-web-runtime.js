@@ -238,6 +238,29 @@
     return { prompt_id: promptId, number: tasks.size, node_errors: {} };
   }
 
+  // The renderer calls these with a SINGLE payload object:
+  //
+  //   runtimeRequestJson({ baseUrl, path, init })
+  //   runtimeUploadImage({ baseUrl, fileName, dataBase64, type, subfolder })
+  //
+  // I wrote them as positional parameters, so `path` arrived undefined and the
+  // shim answered "NovaFlow Web does not proxy " - with nothing after the
+  // space, which is what gave it away. 美工 and 绘图 were dead for every user
+  // because of it. The shapes below are taken from proxy-electron-api.js,
+  // which is the contract, and a test now asserts they still match it.
+  //
+  // Positional calls are accepted too: this file's own fetch interceptor uses
+  // them, and tolerating both costs nothing.
+  function asPayload(args, names) {
+    const first = args[0];
+    if (first && typeof first === 'object' && !ArrayBuffer.isView(first) && !(first instanceof ArrayBuffer)) {
+      return first;
+    }
+    const out = {};
+    names.forEach((n, i) => { out[n] = args[i]; });
+    return out;
+  }
+
   // ------------------------------------------------------------ the adapter
   //
   // Mirrors the shape proxy-electron-api.js probes for, so the renderer's
@@ -270,7 +293,8 @@
       }
     },
 
-    async runtimeRequestJson(baseUrl, path, init) {
+    async runtimeRequestJson(...args) {
+      const { baseUrl, path, init } = asPayload(args, ['baseUrl', 'path', 'init']);
       const method = String((init && init.method) || 'GET').toUpperCase();
       const clean = String(path || '').split('?')[0].replace(/\/+$/, '');
       const query = String(path || '').includes('?')
@@ -336,7 +360,8 @@
       }
     },
 
-    async runtimeRequestBinary(baseUrl, path) {
+    async runtimeRequestBinary(...args) {
+      const { baseUrl, path } = asPayload(args, ['baseUrl', 'path', 'init']);
       const query = new URLSearchParams(String(path).split('?')[1] || '');
       const filename = query.get('filename');
       if (!filename) return { ok: false, error: 'missing filename' };
@@ -379,7 +404,20 @@
         '?grant=' + encodeURIComponent(grant.token);
     },
 
-    async runtimeUploadImage(name, bytes) {
+    async runtimeUploadImage(...args) {
+      // Canonical: { baseUrl, fileName, dataBase64, type, subfolder }.
+      // Positional (name, bytes) is what this file's interceptor passes.
+      const payload = asPayload(args, ['fileName', 'dataBase64']);
+      const name = payload.fileName ?? payload.name;
+      let bytes = payload.bytes;
+      if (bytes == null && typeof payload.dataBase64 === 'string') {
+        const bin = atob(payload.dataBase64.replace(/^data:[^,]*,/, ''));
+        const buf = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i += 1) buf[i] = bin.charCodeAt(i);
+        bytes = buf.buffer;
+      } else if (bytes == null) {
+        bytes = payload.dataBase64;
+      }
       // Uploads happen before the task exists, so they are queued here and
       // attached when the task is created. The gateway PUT then targets the
       // worker the scheduler picked.
@@ -615,7 +653,30 @@
     /** Called by every redacted graph builder. */
     serverOnly(module, fn, args) {
       const intent = recordIntent({ module: module, method: fn, options: args && args[0] });
-      return { __novaflowServerOnly: true, module: intent.module, fn: intent.method, options: intent.options };
+      const marker = {
+        __novaflowServerOnly: true,
+        module: intent.module,
+        fn: intent.method,
+        options: intent.options
+      };
+
+      // Callers disagree about what a builder returns, because on the desktop
+      // getWorkflowJson() hands back a JSON STRING while other paths use the
+      // graph object. A plain object broke the video panel with
+      //   workflow JSON 解析失败："[object Object]" is not valid JSON
+      // because it does JSON.parse on the result.
+      //
+      // So this is both: a String carrying the JSON text, with the marker's
+      // own properties on it. JSON.parse(result) works, result.module works,
+      // and isIntent() still recognises it.
+      let out;
+      try {
+        out = new String(JSON.stringify(marker));
+        Object.assign(out, marker);
+      } catch (_) {
+        return marker;
+      }
+      return out;
     },
 
     /** Called by the generated stubs. */

@@ -283,4 +283,29 @@ try {
   await rm(dataDir, { recursive: true, force: true }).catch(() => {});
 }
 
+// ---------------------------------------------------------------------------
+section('a redacted builder returns something every caller can use');
+{
+  // The video panel does JSON.parse on what getWorkflowJson() returns, because
+  // on the desktop that is a JSON string. serverOnly() returned a plain object,
+  // so the panel died with
+  //   workflow JSON 解析失败："[object Object]" is not valid JSON（[object Object]…）
+  // Other paths use the result as an object. It has to be both.
+  const shim = await readFile(new URL('../../renderer/novaflow-web-runtime.js', import.meta.url), 'utf8');
+  check('serverOnly returns a String carrying the marker',
+    /new String\(JSON\.stringify\(marker\)\)/.test(shim), null);
+  check('with the marker fields copied onto it',
+    /Object\.assign\(out, marker\)/.test(shim), null);
+
+  // Behavioural check of the same shape, without a browser.
+  const marker = { __novaflowServerOnly: true, module: 'M', fn: 'getWorkflowJson', options: { a: 1 } };
+  const out = new String(JSON.stringify(marker));
+  Object.assign(out, marker);
+  const parsed = JSON.parse(out);
+  checkEqual('JSON.parse on it yields the intent', parsed.module, 'M');
+  checkEqual('and reading a property still works', out.fn, 'getWorkflowJson');
+  check('and it is still recognisable as an intent',
+    typeof out === 'object' && out.__novaflowServerOnly === true, null);
+}
+
 finish('renderer-workflow');
