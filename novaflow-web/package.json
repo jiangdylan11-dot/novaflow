@@ -33,7 +33,8 @@
     "build:renderer": "node tools/build-web-renderer.mjs",
     "serve:renderer": "python tools/serve-web-dist.py --port 4892 --root web-dist",
     "test:build": "node tests/e2e/web-renderer-build.test.mjs",
-    "bundle:edge": "node tools/bundle-edge-function.mjs"
+    "bundle:edge": "node tools/bundle-edge-function.mjs",
+    "config:web": "node tools/set-web-config.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8"

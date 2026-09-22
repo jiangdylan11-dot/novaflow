@@ -148,6 +148,21 @@ section('4. the shims load last and only override transport');
     /topbar-ai-runtime-release/.test(capsShim), null);
   check('the licence badge is hidden',
     /\.nf-license-status/.test(capsShim), null);
+
+  // A deployment has to repoint the site at its own control plane. Editing
+  // index.html by hand inside a 22 MB tree is how that goes wrong, so it is a
+  // command - and the build always emits the local default, which means the
+  // command has to be re-run after every rebuild.
+  const { readConfig, writeConfig } = await import('../../tools/set-web-config.mjs');
+  const built = readConfig(html);
+  check('the build emits a readable config block', Boolean(built && built.controlUrl), built);
+  checkEqual('and it defaults to the local control plane', built.controlUrl, 'http://127.0.0.1:4890');
+  const moved = writeConfig(html, { controlUrl: 'https://example.test/functions/v1/novaflow-web' });
+  checkEqual('repointing changes only the control URL',
+    readConfig(moved),
+    { controlUrl: 'https://example.test/functions/v1/novaflow-web', authUrl: built.authUrl });
+  check('and rewrites nothing else', moved.length - html.length === ('https://example.test/functions/v1/novaflow-web'.length - built.controlUrl.length),
+    { before: html.length, after: moved.length });
   check('and freeing memory does not claim to have freed any',
     /freed: false/.test(capsShim) && !/freed: true/.test(capsShim), null);
 

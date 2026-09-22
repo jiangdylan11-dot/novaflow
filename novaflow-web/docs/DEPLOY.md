@@ -220,6 +220,29 @@ Edge Function 和 Worker 网关都返回 `Access-Control-Allow-Origin: *`，
 
 ---
 
+### 站点指向哪个控制面
+
+构建**永远**产出本地默认值（`http://127.0.0.1:4890`），指向生产是构建之后的一步：
+
+```bash
+npm run build:renderer
+npm run config:web -- --control-url=https://<项目ref>.supabase.co/functions/v1/novaflow-web
+npm run config:web -- --show      # 读回来确认
+```
+
+它只改构建产物 `web-dist/index.html` 里那一个 config 块，改完自己读回来核对，
+块不在预期位置就报错而不是瞎猜。**每次重新构建都要重跑一次**，
+因为构建会把它写回本地默认值。
+
+### 边缘函数的两个开关
+
+1. **Verify JWT with legacy secret 必须关掉**。NovaFlow 用的是自己的 `nfs_` 会话令牌，
+   不是 Supabase JWT；开着的话网关会在函数代码跑之前就返回
+   `401 UNAUTHORIZED_NO_AUTH_HEADER`。现有的 `novaflow-backend` 本来就是关着的。
+2. **`NOVAFLOW_WEB_CONTROL_SECRET`** 要在 Edge Functions → Secrets 里加。
+   它签发 Worker 令牌、派生文件凭证密钥。`NOVAFLOW_SESSION_SECRET` 是项目级密钥，
+   已经有了，novaflow-web 自动继承 —— 所以登录令牌和 novaflow-backend 逐字节兼容。
+
 ## 4. 部署顺序
 
 1. 跑迁移（Desktop 此时完全不受影响，新表只是多出来没人用）
