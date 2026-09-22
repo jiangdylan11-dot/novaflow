@@ -12,7 +12,7 @@ window.novaflowWorker.onState = () => {};
 window.novaflowWorker.onLog = () => {};
 </script>`;
 const html = source.replace("default-src 'none';", "default-src 'none'; connect-src 'self';")
-  .replace('<title>NovaFlow 本地助手</title>', '<title>NovaFlow 助手交互测试（隔离数据）</title>')
+  .replace('<title>NovaFlow</title>', '<title>NovaFlow 助手交互测试（隔离数据）</title>')
   .replace('<script>', bridge + '<script>');
 const server = createServer(async (req, res) => {
   if (req.method === 'GET' && req.url === '/') { res.setHeader('content-type', 'text/html; charset=utf-8'); res.end(html); return; }

@@ -1,6 +1,7 @@
 {
   "appId": "com.novaflow.worker",
-  "productName": "NovaFlow Worker",
+  "productName": "NovaFlow",
+  "executableName": "NovaFlow",
   "copyright": "NovaFlow",
   "directories": {
     "output": "dist",
@@ -58,7 +59,7 @@
         ]
       }
     ],
-    "artifactName": "NovaFlowWorkerSetup.${ext}"
+    "artifactName": "NovaFlowSetup.${ext}"
   },
   "nsis": {
     "oneClick": false,
@@ -66,7 +67,7 @@
     "allowToChangeInstallationDirectory": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "shortcutName": "NovaFlow Worker",
+    "shortcutName": "NovaFlow",
     "deleteAppDataOnUninstall": false,
     "installerLanguages": [
       "zh_CN",

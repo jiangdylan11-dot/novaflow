@@ -6,7 +6,8 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 const customDataDir = process.env?.NOVAFLOW_ASSISTANT_DATA_DIR;
-if (customDataDir) app.setPath('userData', path.resolve(customDataDir, '..'));
+// Keep the existing assistant identity when the visible product is renamed.
+app.setPath('userData', customDataDir ? path.resolve(customDataDir, '..') : path.join(app.getPath('appData'), 'NovaFlow Worker'));
 const DATA_DIR = customDataDir || path.join(app.getPath('userData'), 'data');
 const CONFIG_FILE = path.join(DATA_DIR, 'worker.config.json');
 const LOG_FILE = path.join(DATA_DIR, 'worker.log');
@@ -178,7 +179,7 @@ function showWindow() {
 
 function createTray() {
   tray = new Tray(path.join(__dirname, 'assets/favicon.ico'));
-  tray.setToolTip('NovaFlow 本地助手');
+  tray.setToolTip('NovaFlow');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '打开本地助手', click: showWindow },
     { type: 'separator' },
@@ -197,7 +198,7 @@ function createWindow() {
     minWidth: 620,
     minHeight: 500,
     backgroundColor: '#0b0b0b',
-    title: 'NovaFlow 本地助手',
+    title: 'NovaFlow',
     icon: path.join(__dirname, 'assets/favicon.ico'),
     titleBarStyle: 'hidden',
     titleBarOverlay: { color: '#242424', symbolColor: '#e5e7eb', height: 38 },
