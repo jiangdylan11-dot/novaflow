@@ -199,6 +199,13 @@ try {
 
       const remote = await fetch(links.body.files[fileName].url);
       const relayed = Buffer.from(await remote.arrayBuffer());
+      // A <video> will not start playing an application/octet-stream, and a
+      // video that silently refuses to play looks like one that failed to
+      // generate. Images sniff their way past it; that is why this is easy to
+      // miss until the first H3 clip.
+      check('the stored copy carries a real content type',
+        /^image\/|^video\//.test(String(remote.headers.get('content-type') || '')),
+        remote.headers.get('content-type'));
       check('and it returns the same bytes the gateway did',
         remote.status === 200 && relayed.equals(bytes),
         { status: remote.status, bytes: relayed.length, expected: bytes.length });

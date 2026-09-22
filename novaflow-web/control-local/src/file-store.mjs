@@ -13,6 +13,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize, sep } from 'node:path';
+import { contentTypeFor } from '../../packages/shared/src/task-files.mjs';
 
 function signature(secret, method, objectPath, expires) {
   return createHmac('sha256', secret)
@@ -133,7 +134,7 @@ export function createLocalFileStore({ dir, secret, baseUrl = '' }) {
           return true;
         }
         res.writeHead(206, {
-          'content-type': 'application/octet-stream',
+          'content-type': contentTypeFor(objectPath),
           'content-length': String(end - start + 1),
           'content-range': 'bytes ' + start + '-' + end + '/' + info.size,
           'accept-ranges': 'bytes'
@@ -143,7 +144,7 @@ export function createLocalFileStore({ dir, secret, baseUrl = '' }) {
       }
 
       res.writeHead(200, {
-        'content-type': 'application/octet-stream',
+        'content-type': contentTypeFor(objectPath),
         'content-length': String(info.size),
         'accept-ranges': 'bytes'
       });

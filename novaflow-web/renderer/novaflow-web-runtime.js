@@ -231,6 +231,20 @@
     return (res && res.files) || {};
   }
 
+  // The browser shim is a plain <script>, so it carries its own copy of the
+  // one rule in task-files.mjs it needs. A file stored as octet-stream is
+  // fine for an <img>, which sniffs, and not fine for a <video>, which does
+  // not - and a video that silently refuses to play looks like a generation
+  // that failed.
+  function mimeFor(name) {
+    const ext = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+    const map = {
+      png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',
+      gif: 'image/gif', bmp: 'image/bmp', mp4: 'video/mp4', webm: 'video/webm'
+    };
+    return (ext && map[ext[1]]) || 'application/octet-stream';
+  }
+
   async function putInputs(taskId, refs) {
     const names = refs.map((r) => r.name);
     const links = await fileLinks(taskId, 'upload', 'input', names);
@@ -240,7 +254,7 @@
       if (!link || !held) throw new Error('没有拿到 ' + ref.name + ' 的上传地址');
       const res = await fetch(link.url, {
         method: link.method || 'PUT',
-        headers: Object.assign({ 'content-type': 'application/octet-stream' }, link.headers || {}),
+        headers: Object.assign({ 'content-type': mimeFor(ref.name) }, link.headers || {}),
         body: held.bytes
       });
       if (!res.ok) throw new Error(ref.name + ' 上传返回 ' + res.status);

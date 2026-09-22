@@ -21,6 +21,7 @@ import { workflowModule } from '../../packages/shared/src/workflow-modules.mjs';
 import { inspectAllModels, inspectViaComfy } from './models/model-manager.mjs';
 import { detectGpu, detectSystem } from './hardware.mjs';
 import { generateWorkerSecret } from '../../packages/shared/src/tokens.mjs';
+import { contentTypeFor } from '../../packages/shared/src/task-files.mjs';
 import {
   HEARTBEAT_INTERVAL_SECONDS,
   TASK_STATE,
@@ -348,7 +349,7 @@ export function createWorker(options) {
     if (!link) throw new Error('control plane issued no upload URL for ' + name);
     const res = await fetch(link.url, {
       method: link.method || 'PUT',
-      headers: { 'content-type': 'application/octet-stream', ...(link.headers || {}) },
+      headers: { 'content-type': contentTypeFor(name), ...(link.headers || {}) },
       body: bytes
     });
     if (!res.ok) {

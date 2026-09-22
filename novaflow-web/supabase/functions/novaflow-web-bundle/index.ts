@@ -870,6 +870,24 @@ function taskObjectPrefix(taskId) {
   return 'tasks/' + id + '/';
 }
 
+// The content type to store a file as.
+//
+// Everything used to go up as application/octet-stream, which an <img> will
+// sniff its way past but a <video> will not: the browser needs the type to
+// decide it can play the thing at all, and a video that silently refuses to
+// start is indistinguishable from one that failed to generate.
+const TYPES = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',
+  gif: 'image/gif', bmp: 'image/bmp', tif: 'image/tiff', tiff: 'image/tiff',
+  mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime',
+  json: 'application/json', txt: 'text/plain; charset=utf-8'
+};
+
+function contentTypeFor(name) {
+  const ext = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+  return (ext && TYPES[ext[1]]) || 'application/octet-stream';
+}
+
 // ===== control-plane.mjs =============================================
 // GENERATED COPY - do not edit here.
 // Source: packages/shared/src/control-plane.mjs
