@@ -42,6 +42,12 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
     clientId,
     baseUrl: base,
 
+    // The workflow host may inspect only this worker's configured runtime.
+    async requestJson(_baseUrl, path) {
+      if (!/^\/object_info(?:\/[^/]+)?$/.test(path) && path !== '/system_stats') throw new Error('unsupported builder lookup');
+      return await json(path, { method: 'GET' });
+    },
+
     async systemStats() {
       return await json('/system_stats', { method: 'GET' });
     },

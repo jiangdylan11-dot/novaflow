@@ -610,6 +610,21 @@ function estimateTask(taskType, parameters) {
 // says how the cost is derived from the recorded options.
 
 const WORKFLOW_MODULES = Object.freeze({
+  'novaflow-brand-runtime': {
+    label: '绘图', modelId: 'qwen-image-2511', minVramMb: 16000,
+    runtime: 'image', kind: 'image', price: 'image', positional: true,
+    methods: ['buildArtGenerateRunWorkflow']
+  },
+  // Private builders used by the art tools have positional arguments, unlike
+  // the exported workflow modules. Only these audited builders are callable.
+  'spine-split-runtime': {
+    label: '美工 · 补图 / 智能抠图',
+    modelId: 'qwen-image-2511',
+    minVramMb: 16000,
+    runtime: 'image', kind: 'image', price: 'image',
+    positional: true,
+    methods: ['defaultQwenInpaintWorkflow', 'defaultRmbgWorkflow']
+  },
   // ---- 美工 -------------------------------------------------------------
   NovaFlowArtGenerateProviderWorkflow: {
     label: '绘图',
@@ -691,6 +706,19 @@ const WORKFLOW_MODULES = Object.freeze({
     price: 'image',
     methods: ['buildWorkflow']
   }
+});
+
+// Build-time file names must resolve to the same public API names accepted by
+// the control plane. Private runtimes retain their file name.
+const WORKFLOW_SOURCE_MODULES = Object.freeze({
+  'art-generate-provider.workflow': 'NovaFlowArtGenerateProviderWorkflow',
+  'art-generate-ideogram.workflow': 'NovaFlowArtGenerateIdeogramWorkflow',
+  'ui-design-local.workflow': 'NovaFlowUiDesignLocalWorkflow',
+  'ui-design-local-refine.workflow': 'NovaFlowUiDesignLocalRefineWorkflow',
+  'ai-sequence-minimax-h3.workflow': 'NovaFlowAiSequenceMiniMaxH3Workflow',
+  'ai-sequence-video-merge-export.workflow': 'NovaFlowAiSequenceVideoMergeExportWorkflow',
+  'aifx-restyle.workflow': 'NovaFlowAifxRestyleWorkflow',
+  'split-inpaint-nsfw.workflow': 'NovaFlowSplitInpaintNsfwWorkflow'
 });
 
 function workflowModule(name) {

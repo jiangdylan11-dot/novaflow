@@ -309,41 +309,52 @@
   // not survive a reload, which matters less than it sounds because a reload
   // also loses the editor state that referenced them.
   const cache = new Map();
+  function releaseCache(key) {
+    for (const [id, held] of cache) {
+      if (key && key !== id && key !== held.path) continue;
+      if (held.path) URL.revokeObjectURL(held.path);
+      cache.delete(id);
+    }
+  }
 
   api.aiSeqCacheReserveOutput = async (payload) => {
     const key = String((payload && (payload.key || payload.id)) || 'output-' + Date.now());
+    releaseCache(key);
     cache.set(key, { reservedAt: Date.now(), blob: null, bytes: 0 });
     return ok({ key, reserved: true });
   };
 
   api.aiSeqCacheReleaseOutput = async (payload) => {
     const key = String((payload && (payload.key || payload.id)) || '');
-    if (key) cache.delete(key);
-    else cache.clear();
+    releaseCache(key);
     return ok({ released: true, remaining: cache.size });
   };
 
   api.aiSeqCacheTempFile = async (payload) => {
-    const key = String((payload && payload.key) || 'tmp-' + Date.now());
-    const data = payload && (payload.data || payload.buffer);
-    const blob = data instanceof Blob ? data : new Blob([data || new Uint8Array(0)]);
-    cache.set(key, { reservedAt: Date.now(), blob, bytes: blob.size });
-    return ok({ key, path: 'web-cache://' + key, bytes: blob.size });
+    const key = String((payload && (payload.cacheKey || payload.key)) || 'tmp-' + Date.now());
+    const data = payload && (payload.bytes || payload.data || payload.buffer);
+    if (data == null) return fail('没有可缓存的文件数据');
+    const blob = data instanceof Blob ? data : new Blob([data], { type: payload.mimeType || 'application/octet-stream' });
+    releaseCache(key);
+    const path = URL.createObjectURL(blob);
+    cache.set(key, { reservedAt: Date.now(), blob, bytes: blob.size, path });
+    const value = { key, path, bytes: blob.size };
+    return { ...ok(value), ...value };
   };
 
   api.aiSeqCacheCopyFromPath = async () => fail('Web 版没有本地文件路径可复制');
 
-  api.clearVideoToolOutput = async () => { cache.clear(); return ok({ cleared: true }); };
+  api.clearVideoToolOutput = async () => { releaseCache(); return ok({ cleared: true }); };
   api.videoResourceMediaRelease = async (payload) => {
     const key = String((payload && (payload.key || payload.id)) || '');
-    if (key) cache.delete(key);
+    if (key) releaseCache(key);
     return ok({ released: true });
   };
   // No GPU memory is held in this tab, so this must not report that it freed
   // any. It drops what the page itself cached and says plainly where the
   // memory actually lives.
   api.runtimeFreeMemory = async () => {
-    cache.clear();
+    releaseCache();
     lastWorkerPoll = { at: 0, workers: [] };
     lastCaps = { at: 0, count: 0 };
     return ok({

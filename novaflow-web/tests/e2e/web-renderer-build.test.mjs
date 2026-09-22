@@ -203,7 +203,8 @@ section('5. the worker copy still builds NovaFlow\'s real graphs');
   check('the worker loads the renderer', host.loaded.length > 80, host.loaded.length);
   check('builders are registered', host.builderCount > 50, host.builderCount);
 
-  const missing = Object.keys(WORKFLOW_MODULES).filter((m) => !host.modules.includes(m));
+  const missing = Object.entries(WORKFLOW_MODULES).flatMap(([m, spec]) =>
+    spec.methods.filter((method) => !host.buildersFor(m).includes(method) && !host.describe(m)?.functions.includes(method)).map(method => m + '.' + method));
   checkEqual('every allow-listed module is present', missing, []);
 
   const graph = await host.buildGraph({

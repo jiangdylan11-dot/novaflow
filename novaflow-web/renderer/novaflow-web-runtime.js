@@ -137,6 +137,9 @@
   const grants = new Map();     // taskId -> download grant
   const uploads = new Map();    // filename -> { taskId, name }
   const pendingUploads = [];
+  // Session-only metadata for the existing H3 output-resource adapter. Its
+  // legacy "local" schema is backed by signed Worker downloads on the Web.
+  const videoOutputs = new Map();
 
   async function refreshTask(promptId) {
     const known = tasks.get(promptId);
@@ -286,7 +289,25 @@
       );
     }
 
-    const refs = pendingUploads.splice(0, pendingUploads.length);
+    // Other panels may prepare uploads without submitting a task. Attach only
+    // filenames actually used by this intent, otherwise an earlier inpaint
+    // preview becomes a reference image on a later text-to-video request.
+    const usedNames = new Set();
+    const collectNames = (value) => {
+      if (typeof value === 'string') usedNames.add(value);
+      else if (Array.isArray(value)) value.forEach(collectNames);
+      else if (value && typeof value === 'object') Object.values(value).forEach(collectNames);
+    };
+    collectNames(intent.options);
+    const selected = new Map();
+    for (let i = 0; i < pendingUploads.length;) {
+      const ref = pendingUploads[i];
+      if (usedNames.has(ref.name)) {
+        selected.set(ref.name, ref);
+        pendingUploads.splice(i, 1);
+      } else i += 1;
+    }
+    const refs = [...selected.values()];
 
     const task = await control('POST', '/api/web/tasks', {
       task_type: 'renderer_workflow',
@@ -349,25 +370,21 @@
   // capability check passes and it never installs its loopback fallback.
   const electronAPI = {
     // ---- ComfyUI runtime proxy -------------------------------------------
-    async runtimeGetSystemStats() {
+    async runtimeGetSystemStats(payload) {
       try {
-        const caps = await control('GET', '/api/web/capabilities');
-        const workers = session ? await control('GET', '/api/web/workers') : { workers: [] };
-        const online = (workers.workers || []).filter((w) => w.status === 'idle' || w.status === 'busy');
+        const video = /:8189(?:\/|$)/.test(String(payload && payload.baseUrl || ''));
+        const count = await poolHas(video ? 'h3_i2v' : 'qwen_t2i');
+        if (!count) return { ok: false, status: 503, error: '暂无可用算力节点，请稍后重试' };
         return {
           ok: true,
+          status: 200,
           result: {
             system: {
               os: 'web',
-              comfyui_version: 'novaflow-web/' + caps.protocol,
+              comfyui_version: 'novaflow-web-pool',
               ram_total: 0, ram_free: 0
             },
-            devices: online.map((w) => ({
-              name: w.gpu_name,
-              type: 'cuda',
-              vram_total: (w.vram_mb || 0) * 1024 * 1024,
-              vram_free: (w.vram_mb || 0) * 1024 * 1024
-            }))
+            devices: [{ name: count + ' 台算力节点', type: 'cuda', index: 0, vram_total: 0, vram_free: 0 }]
           }
         };
       } catch (error) {
@@ -378,7 +395,7 @@
     async runtimeRequestJson(...args) {
       const { baseUrl, path, init } = asPayload(args, ['baseUrl', 'path', 'init']);
       const method = String((init && init.method) || 'GET').toUpperCase();
-      const clean = String(path || '').split('?')[0].replace(/\/+$/, '');
+      const clean = String(path || '').split('?')[0].replace(/^\/api\//, '/').replace(/\/+$/, '');
       const query = String(path || '').includes('?')
         ? new URLSearchParams(String(path).split('?')[1])
         : new URLSearchParams();
@@ -431,8 +448,7 @@
         }
 
         if (clean === '/system_stats') {
-          const stats = await electronAPI.runtimeGetSystemStats();
-          return { ok: stats.ok, status: stats.ok ? 200 : 503, result: stats.result };
+          return await electronAPI.runtimeGetSystemStats({ baseUrl });
         }
 
         void query;
@@ -475,11 +491,18 @@
         const res = await fetch(url);
         if (!res.ok) return { ok: false, error: '取回结果失败：' + res.status };
         const buffer = await res.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i += 32768) binary += String.fromCharCode(...bytes.subarray(i, i + 32768));
+        const contentType = res.headers.get('content-type') || mimeFor(filename);
         return {
           ok: true,
+          status: 200,
+          dataBase64: btoa(binary),
+          contentType,
           result: {
             data: buffer,
-            contentType: res.headers.get('content-type') || 'application/octet-stream',
+            contentType,
             url: url
           }
         };
@@ -535,7 +558,7 @@
       }
       pendingUploads.push({ name: safe, bytes: (bytes && bytes.byteLength) || 0, kind: 'image' });
       uploads.set(safe, { bytes: bytes });
-      return { ok: true, result: { name: safe, subfolder: '', type: 'input' } };
+      return { ok: true, status: 200, result: { name: safe, subfolder: '', type: 'input' } };
     },
 
     // ---- account ----------------------------------------------------------
@@ -615,8 +638,34 @@
     qwenLoraCatalog: async () => ({ ok: true, result: { loras: [] } }),
     minimaxH3LoraCatalog: async () => ({ ok: true, result: { loras: [] } }),
     minimaxH3LoraValidate: async () => ({ ok: true, result: { valid: true } }),
-    minimaxH3OutputPublish: async () => ({ ok: false, error: 'Web 版暂不提供仓库' }),
-    minimaxH3OutputList: async () => ({ ok: true, result: { items: [] } }),
+    async minimaxH3OutputPublish(payload) {
+      const task = tasks.get(String(payload && payload.promptId || ''));
+      const filename = String(payload && payload.filename || '');
+      const file = task && ((task.output_manifest && task.output_manifest.files) || []).find(f => f.name === filename);
+      if (!file || !/\.(mp4|webm)$/i.test(filename)) return { ok: false, error: '找不到当前任务的视频结果' };
+      // Match the history preview identity so publishing updates its resource
+      // card instead of displaying a second copy of the same output.
+      const id = task.id + ':output::' + filename;
+      const item = {
+        id, runtimeKind: 'minimax_h3_local', type: 'local', promptId: task.id,
+        fileName: filename, localPath: 'web-output://' + task.id + '/' + encodeURIComponent(filename),
+        mimeType: mimeFor(filename), sourceKind: 'minimax_h3_output', createdAt: Date.now(),
+        mediaDurationSec: payload.mediaDurationSec, generationElapsedSec: payload.generationElapsedSec
+      };
+      videoOutputs.delete(id);
+      videoOutputs.set(id, item);
+      while (videoOutputs.size > 30) videoOutputs.delete(videoOutputs.keys().next().value);
+      return { ok: true, item };
+    },
+    async minimaxH3OutputList() {
+      return { ok: true, items: [...videoOutputs.values()].reverse() };
+    },
+    async aiSeqReadTempFile(payload) {
+      const item = [...videoOutputs.values()].find(value => value.localPath === String(payload && payload.path || ''));
+      if (!item) return { ok: false, error: '当前页面没有此临时视频' };
+      const reply = await electronAPI.runtimeRequestBinary({ path: '/view?filename=' + encodeURIComponent(item.fileName) });
+      return reply.ok ? { ok: true, bytes: new Uint8Array(reply.result.data), mimeType: item.mimeType } : reply;
+    },
 
     runtimeProviderUsageSettlement: 'web-control-plane-v1'
   };
@@ -723,6 +772,29 @@
       }), { status: 200, headers: { 'content-type': 'application/json' } });
     }
 
+    // Video panels use fetch directly. Route submission, polling and output
+    // downloads through the same adapter as the image tools, keeping queries.
+    const target = new URL(url);
+    const cleanPath = target.pathname.replace(/^\/api\//, '/');
+    if (cleanPath === '/view') {
+      const reply = await electronAPI.runtimeRequestBinary({ baseUrl: target.origin, path: target.pathname + target.search });
+      return new Response(reply.ok ? reply.result.data : JSON.stringify({ error: reply.error }), {
+        status: reply.ok ? 200 : (reply.status || 502),
+        headers: { 'content-type': reply.ok ? reply.contentType : 'application/json' }
+      });
+    }
+    if (/^\/(?:prompt|history(?:\/[^/]+)?|queue|interrupt)$/.test(cleanPath)) {
+      let requestInit = init || {};
+      if (input && typeof input.clone === 'function' && !init) {
+        requestInit = { method: input.method };
+        if (!/^(GET|HEAD)$/i.test(input.method)) requestInit.body = await input.clone().text();
+      }
+      const reply = await electronAPI.runtimeRequestJson({ baseUrl: target.origin, path: target.pathname + target.search, init: requestInit });
+      return new Response(JSON.stringify(reply.ok ? reply.data : { error: reply.error }), {
+        status: reply.status || (reply.ok ? 200 : 502), headers: { 'content-type': 'application/json' }
+      });
+    }
+
     // Anything else aimed at a local runtime is a request this browser has no
     // business making. Say so rather than letting it hang on a dead port.
     return new Response(JSON.stringify({
@@ -732,6 +804,16 @@
   };
 
   // ------------------------------------------------------------------ expose
+  // These are the proxy-electron-api contracts the existing UI consumes.
+  // Keep result for compatibility, but data is what the editor actually reads.
+  for (const name of ['runtimeRequestJson', 'runtimeGetSystemStats', 'runtimeUploadImage']) {
+    const implementation = electronAPI[name];
+    electronAPI[name] = async function (...args) {
+      const reply = await implementation(...args);
+      if (reply && reply.ok && reply.result !== undefined) reply.data = reply.result;
+      return reply;
+    };
+  }
   // Override, never replace. Anything the renderer's own implementation
   // provides and we do not is left alone.
   const existing = root.electronAPI || (root.electronAPI = {});
@@ -748,7 +830,10 @@
 
     /** Called by every redacted graph builder. */
     serverOnly(module, fn, args) {
-      const intent = recordIntent({ module: module, method: fn, options: args && args[0] });
+      const options = module === 'spine-split-runtime' || module === 'novaflow-brand-runtime'
+        ? { __args: Array.from(args || []) }
+        : args && args[0];
+      const intent = recordIntent({ module: module, method: fn, options });
       const marker = {
         __novaflowServerOnly: true,
         module: intent.module,
@@ -778,6 +863,12 @@
     /** Called by the generated stubs. */
     recordWorkflowIntent(intent) {
       return recordIntent(intent);
+    },
+
+    recordArtReferenceControl(workflow, uploadedNames, rolePlan) {
+      if (!isIntent(workflow)) throw new Error('missing Web art workflow intent');
+      workflow.options.__controlNet = rolePlan;
+      return { applied: 0 };
     },
 
     get lastWorkflowIntent() { return lastIntent; },

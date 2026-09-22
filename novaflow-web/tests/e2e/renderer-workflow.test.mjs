@@ -28,6 +28,7 @@ import { createContext, runInContext } from 'node:vm';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '../..');
 const RENDERER = join(ROOT, 'renderer');
+const WORKER_RENDERER = join(ROOT, 'worker-renderer');
 const COMFY_IMAGE = process.env.NOVAFLOW_COMFY_IMAGE_URL || 'http://127.0.0.1:8188';
 
 const ctx = await startLocalControlPlane({ port: 0 });
@@ -57,8 +58,8 @@ try {
 
     // Every declared module must actually exist on the worker, or a user
     // would queue a task no worker can ever run.
-    const host = await createWorkflowHost({ rendererDir: RENDERER });
-    const missing = Object.keys(WORKFLOW_MODULES).filter((m) => !host.modules.includes(m));
+    const host = await createWorkflowHost({ rendererDir: WORKER_RENDERER });
+    const missing = Object.keys(WORKFLOW_MODULES).filter((m) => !host.modules.includes(m) && !host.buildersFor(m).length);
     checkEqual('every declared module is loadable on the worker', missing, []);
 
     // And every declared method must exist on it.
@@ -66,7 +67,7 @@ try {
     for (const [name, spec] of Object.entries(WORKFLOW_MODULES)) {
       const described = host.describe(name);
       for (const method of spec.methods) {
-        if (!described || !described.functions.includes(method)) badMethods.push(name + '.' + method);
+        if (!described?.functions.includes(method) && !host.buildersFor(name).includes(method)) badMethods.push(name + '.' + method);
       }
     }
     checkEqual('every declared method exists', badMethods, []);
@@ -186,7 +187,7 @@ try {
       controlUrl: BASE,
       dataDir,
       workflowDir: join(ROOT, 'worker/workflows'),
-      rendererDir: RENDERER,
+      rendererDir: WORKER_RENDERER,
       configPath: join(dataDir, 'identity.json'),
       comfyImageUrl: COMFY_IMAGE,
       comfyVideoUrl: process.env.NOVAFLOW_COMFY_VIDEO_URL || 'http://127.0.0.1:8189',

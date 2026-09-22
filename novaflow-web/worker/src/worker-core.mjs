@@ -47,7 +47,25 @@ export const WORKER_VERSION = (() => {
  * ComfyUI's input folder. The renderer named them before upload; the worker
  * renamed them to keep one task's inputs out of another's way.
  */
-function withReferences(parameters, filenames) {
+export function withReferences(parameters, filenames, references = [], method = '') {
+  if (Array.isArray(parameters.__args)) {
+    const args = structuredClone(parameters.__args);
+    if (method === 'buildArtGenerateRunWorkflow') {
+      args[2] = (args[2] || []).map((name) => {
+        const found = references.findIndex((ref) => ref.name === name);
+        if (found < 0 || !filenames[found]) throw new Error('workflow input is not an uploaded task reference');
+        return filenames[found];
+      });
+      return { ...parameters, __args: args };
+    }
+    const indexes = method === 'defaultQwenInpaintWorkflow' ? [1, 2] : [1];
+    for (const index of indexes) {
+      const found = references.findIndex((ref) => ref.name === args[index]);
+      if (found < 0 || !filenames[found]) throw new Error('workflow input is not an uploaded task reference');
+      args[index] = filenames[found];
+    }
+    return { ...parameters, __args: args };
+  }
   if (!filenames || !filenames.length) return parameters;
   const next = { ...parameters };
   next.__novaflowReferenceFiles = filenames;
@@ -145,17 +163,18 @@ export function createWorker(options) {
   // The renderer's own graph builders, running here instead of in a browser.
   // Loaded lazily: a worker that only ever runs fixed task types never pays
   // for it, and a renderer directory that is missing is not fatal.
-  let workflowHostPromise = null;
-  function workflowHost() {
+  const workflowHosts = new Map();
+  function workflowHost(runtime) {
     if (!rendererDir) return null;
-    if (!workflowHostPromise) {
-      workflowHostPromise = createWorkflowHost({ rendererDir, logger: log })
+    if (!workflowHosts.has(runtime)) {
+      const promise = createWorkflowHost({ rendererDir, logger: log, comfy: comfyFor(runtime) })
         .catch((error) => {
           log('workflow host unavailable', { error: String(error?.message || error) });
           return null;
         });
+      workflowHosts.set(runtime, promise);
     }
-    return workflowHostPromise;
+    return workflowHosts.get(runtime);
   }
 
   const comfyImage = createComfyClient({ baseUrl: comfyImageUrl, logger: log });
@@ -395,7 +414,7 @@ export function createWorker(options) {
     let graph;
     let seed = null;
     if (intent) {
-      const host = await workflowHost();
+      const host = await workflowHost(runtime);
       if (!host) throw new Error('this worker has no renderer workflow host configured');
       // The browser recorded WHICH builder and WHAT options; the builder
       // itself has never left this machine.
@@ -407,7 +426,7 @@ export function createWorker(options) {
       graph = await host.buildGraph({
         module: intent.module,
         method: intent.method,
-        options: withReferences(parameters, referenceFilenames)
+        options: withReferences(parameters, referenceFilenames, expectedRefs, intent.method)
       });
     } else {
       const extra = { referenceFilenames };
@@ -439,7 +458,11 @@ export function createWorker(options) {
       const item = produced[i];
       const bytes = await comfy.viewFile(item);
       const ext = (item.filename.match(/\.[A-Za-z0-9]+$/) || ['.png'])[0];
-      const safeName = 'out_' + String(i + 1).padStart(4, '0') + ext;
+      // The art editor matches history outputs by its request prefix. Renaming
+      // every result to out_0001 makes a completed task look empty forever.
+      // Add task identity as a suffix so simultaneous tasks cannot collide.
+      const stem = item.filename.replace(/\.[A-Za-z0-9]+$/, '').replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 90);
+      const safeName = stem + '-' + task.id.slice(0, 8) + '-' + (i + 1) + ext;
       await writeFile(join(outDir, safeName), bytes);
       const info = await stat(join(outDir, safeName));
       outputs.push({

@@ -9084,6 +9084,14 @@
     const baseUrl = await detectComfyBaseUrl()
     const imageName = await uploadDataUrl(baseUrl, `novaflow_cutout_${Date.now()}.png`, imageDataUrl)
     const prefix = `novaflow_cutout_${Date.now()}`
+    // Node selection belongs to the assigned worker. The browser cannot read
+    // its private catalogue; defaultRmbgWorkflow selects the same node there.
+    if (window.NovaFlowWebRuntime) {
+      const workflow = await defaultRmbgWorkflow(baseUrl, imageName, prefix, null)
+      const result = await runPromptForFirstImage(baseUrl, workflow, prefix, 300000)
+      await assertModelAlphaDataUrl(result, 'RMBG')
+      return result
+    }
     const nodes = await defaultRmbgNodes(baseUrl)
     if (!nodes.length) throw new Error('NovaFlow AI Runtime 未安装可用的 RMBG / BiRefNet 模型节点，拒绝使用 mask 或阈值伪抠图')
     const node = nodes[0]

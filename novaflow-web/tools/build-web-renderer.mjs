@@ -23,7 +23,7 @@ import { redactModule, findMarkers } from './redact-workflow-module.mjs';
 import { instrumentModule } from './instrument-workflow-module.mjs';
 import { redactBundleFile } from './redact-dead-bundle-workflow.mjs';
 import { rewordBundle } from './reword-desktop-strings.mjs';
-import { allWorkflowEntryMethods } from '../packages/shared/src/workflow-modules.mjs';
+import { allWorkflowEntryMethods, WORKFLOW_SOURCE_MODULES } from '../packages/shared/src/workflow-modules.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
@@ -80,9 +80,12 @@ const ACCOUNT_SHIM = 'novaflow-web-account.js';
 
 const BROWSER_ONLY = new Set([RUNTIME_SHIM, CAPABILITY_SHIM, ACCOUNT_SHIM]);
 
-const REPLACEMENT = (moduleName) => (fn) =>
-  '\n    return globalThis.NovaFlowWebRuntime.serverOnly(' +
+const REPLACEMENT = (moduleName) => (fn) => {
+  if (moduleName === 'novaflow-brand-runtime' && fn === 'validateArtWorkflowNodes') return '\n    return;\n  ';
+  if (moduleName === 'novaflow-brand-runtime' && fn === 'applyArtReferenceControlNet') return '\n    return globalThis.NovaFlowWebRuntime.recordArtReferenceControl(...arguments);\n  ';
+  return '\n    return globalThis.NovaFlowWebRuntime.serverOnly(' +
   JSON.stringify(moduleName) + ', ' + JSON.stringify(fn) + ', arguments);\n  ';
+};
 
 /**
  * Clear a directory's CONTENTS, keeping the directory itself.
@@ -145,10 +148,10 @@ export async function buildWebRenderer({ logger, clean = true } = {}) {
 
     const redacted = redactModule(source, {
       moduleName,
-      forceNames,
-      replacement: REPLACEMENT(moduleName)
+      forceNames: forceNames.filter((name) => name !== 'buildArtGenerateRunWorkflow'),
+      replacement: REPLACEMENT(WORKFLOW_SOURCE_MODULES[moduleName] || moduleName)
     });
-    const instrumented = instrumentModule(source, { moduleName });
+    const instrumented = instrumentModule(source, { moduleName, forceNames: moduleName === 'novaflow-brand-runtime' ? ['buildArtGenerateRunWorkflow'] : [] });
 
     await writeFile(join(WEB_OUT, entry.name), redacted.code, 'utf8');
     await writeFile(join(WORKER_OUT, entry.name), instrumented.code, 'utf8');

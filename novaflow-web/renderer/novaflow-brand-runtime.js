@@ -76054,7 +76054,7 @@
   }
 
   function buildArtGenerateWorkflowWithSeed(seed, build) {
-    // Every workflow builder (local KSampler, Ideogram, the presets) reads the seed straight from
+    // Every workflow builder reads the seed straight from
     // ART_GENERATE_STATE, so a fixed-seed batch pins the state seed for this synchronous build only.
     if (!Number.isFinite(seed)) return build();
     const previousSeed = ART_GENERATE_STATE.seed;
@@ -76076,6 +76076,18 @@
     const providerOptions = arguments.length > 10 && arguments[10] && typeof arguments[10] === "object"
       ? arguments[10]
       : {};
+    if (window.NovaFlowWebRuntime) {
+      const stateKeys = ['mode', 'provider', 'nsfw', 'width', 'height', 'seed', 'randomSeed', 'localTextQuality', 'localEditStrength', 'loras',
+        'localUiRefinePreset', 'localUiRefineDenoise', 'localUiRepairMaskEncoding', 'uiRunIntent', 'iterationReferenceCount',
+        'gptQualityTxt2img', 'gptQualityImg2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight',
+        'googleAspectRatioTxt2img', 'googleAspectRatioImg2img', 'googleResolution'];
+      const runState = Object.fromEntries(stateKeys.filter((key) => state[key] !== undefined).map((key) => [key, state[key]]));
+      const marker = window.NovaFlowWebRuntime.serverOnly('novaflow-brand-runtime', 'buildArtGenerateRunWorkflow', [
+        provider, mode, uploadedNames, outputPrefix, positivePrompt, negativePrompt, clientId, referenceSizes,
+        runState, arguments[9], providerOptions
+      ]);
+      return { workflow: JSON.parse(String(marker)), provider, mode };
+    }
     const api = window.NovaFlowArtGenerateProviderWorkflow;
     if (!api) throw new Error("NovaFlow \u4e91\u7aef\u56fe\u50cf\u5de5\u4f5c\u6d41\u6a21\u5757\u672a\u5c31\u7eea");
     let localWorkflow = null;

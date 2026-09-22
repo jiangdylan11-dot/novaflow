@@ -21,11 +21,15 @@ import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createContext, runInContext } from 'node:vm';
 import { createDomSandbox } from './dom-shim.mjs';
+import { workflowModule, isAllowedWorkflowCall } from '../../../packages/shared/src/workflow-modules.mjs';
 
 // Not runtime modules; loading them only produces noise.
 const NOT_RUNTIME = new Set([
   'eslint.config.js',
   'vite.config.js',
+  'proxy-electron-api.js',
+  'runtime-fetch-proxy.js',
+  'runtime-detect-stabilizer.js',
   'ai-sequence-matting-worker.js'  // a web worker entry, loaded via importScripts
 ]);
 
@@ -183,8 +187,27 @@ export async function createWorkflowHost({ rendererDir, logger, comfy, objectInf
 
     /** The exported-builder path, used by the fixed task types. */
     async buildGraph({ module, method, options }) {
+      if (!isAllowedWorkflowCall(module, method)) throw new Error('workflow not available on the web: ' + module + '.' + method);
       const builder = resolveBuilder(module, method);
       if (!builder) throw new Error('unknown workflow method: ' + module + '.' + method);
+      if (workflowModule(module)?.positional) {
+        const args = options && options.__args;
+        if (!Array.isArray(args)) throw new Error('missing positional workflow arguments');
+        const safe = args.slice();
+        if (method === 'buildArtGenerateRunWorkflow') {
+          const built = await builder(...safe);
+          if (options.__controlNet) {
+            const apply = resolveBuilder(module, 'applyArtReferenceControlNet');
+            if (!apply) throw new Error('missing reference control builder');
+            apply(built.workflow, safe[2], options.__controlNet);
+          }
+          return asPrompt(built, module + '.' + method);
+        }
+        // A caller never chooses a network destination or supplies node metadata.
+        safe[0] = '';
+        if (method === 'defaultRmbgWorkflow') safe[3] = null;
+        return asPrompt(await builder(...safe), module + '.' + method);
+      }
       if (!GRAPH_METHODS.has(String(method))) {
         throw new Error('not a graph-building method: ' + method);
       }
@@ -241,9 +264,12 @@ function createComfyBridge({ comfy, objectInfo, log }) {
   const cache = new Map();
   if (objectInfo) cache.set('/object_info', objectInfo);
 
+  const envelope = (data) => ({ ok: true, status: 200, data, result: data });
   async function requestJson(baseUrl, path) {
+    if (baseUrl && typeof baseUrl === 'object') ({ path, baseUrl } = baseUrl);
     const clean = String(path || '').split('?')[0];
-    if (cache.has(clean)) return { ok: true, status: 200, result: cache.get(clean) };
+    if (!/^\/object_info(?:\/[^/]+)?$/.test(clean) && clean !== '/system_stats') throw new Error('unsupported builder lookup: ' + clean);
+    if (cache.has(clean)) return envelope(cache.get(clean));
 
     // A per-node lookup can be answered from a full catalogue we already hold.
     const perNode = new RegExp('^\\/object_info\\/(.+)$').exec(clean);
@@ -251,7 +277,7 @@ function createComfyBridge({ comfy, objectInfo, log }) {
       const all = cache.get('/object_info') || {};
       const name = decodeURIComponent(perNode[1]);
       const one = all[name] ? { [name]: all[name] } : {};
-      return { ok: true, status: 200, result: one };
+      return envelope(one);
     }
 
     if (!comfy) {
@@ -259,7 +285,7 @@ function createComfyBridge({ comfy, objectInfo, log }) {
     }
     const result = await comfy.requestJson(baseUrl, clean);
     if (clean === '/object_info') cache.set(clean, result);
-    return { ok: true, status: 200, result };
+    return envelope(result);
   }
 
   return {

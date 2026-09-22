@@ -36,7 +36,7 @@ const CONST_FN_DECL = /(^|[;{}\n]\s*)(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\
 /**
  * @returns {{ code: string, registered: string[], skipped: string[] }}
  */
-export function instrumentModule(source, { moduleName, registryGlobal = '__nfBuilders' }) {
+export function instrumentModule(source, { moduleName, registryGlobal = '__nfBuilders', forceNames = [] }) {
   const spans = [];
   for (const { re, terminator } of [
     { re: FUNCTION_DECL, terminator: '' },
@@ -50,7 +50,7 @@ export function instrumentModule(source, { moduleName, registryGlobal = '__nfBui
       const open = m.index + m[0].length - 1;
       const close = matchBrace(source, open);
       if (close < 0) continue;
-      if (!findMarkers(source.slice(open + 1, close - 1), moduleName).length) continue;
+      if (!forceNames.includes(name) && !findMarkers(source.slice(open + 1, close - 1), moduleName).length) continue;
 
       // A registration statement can only follow a declaration that actually
       // ENDS here. `const a = () => {...}, b = ...` is one declaration with a
