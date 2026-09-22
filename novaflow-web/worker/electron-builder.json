@@ -59,7 +59,7 @@
         ]
       }
     ],
-    "artifactName": "NovaFlowSetup.${ext}"
+    "artifactName": "NovaFlowSetup-${version}.${ext}"
   },
   "nsis": {
     "oneClick": false,
