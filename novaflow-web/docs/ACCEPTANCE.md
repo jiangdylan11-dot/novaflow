@@ -131,7 +131,7 @@ laowang-4090             RTX 4090 Laptop 16GB  ComfyUI 0.24.1  完成 1 / 失败
 packaged-installer-node  RTX 4090 Laptop 16GB  ComfyUI 0.24.1  完成 0 / 失败 0  空闲
 ```
 
-安装包 `NovaFlowWorkerSetup.exe` 81.8 MB，随包带 97 个 NovaFlow 构建器模块；
+安装包 `NovaFlowWorkerSetup.exe` 78 MB，随包带 97 个 NovaFlow 构建器模块；
 浏览器那三个 Web 专用文件（runtime / capabilities / 算力节点面板）不在里面——
 `web-renderer-build` 套件专门盯着这一条，因为其中的 runtime 会覆盖
 `runtimeRequestJson`，而算力节点恰恰要用它去读本机 ComfyUI 的节点目录。

@@ -6,7 +6,7 @@
 ## 安装包
 
 ```
-novaflow-web/worker/dist/NovaFlowWorkerSetup.exe    （77 MB）
+novaflow-web/worker/dist/NovaFlowWorkerSetup.exe    （78 MB）
 ```
 
 构建：
