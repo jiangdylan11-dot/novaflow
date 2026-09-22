@@ -495,7 +495,10 @@ export function createWorker(options) {
   // TTL cleanup (spec 13)
   // -------------------------------------------------------------------------
   async function sweepFiles(ttl = TTL_SECONDS) {
-    const result = await sweepTaskFiles({ dataDir, ttlSeconds: ttl });
+    // The task this worker is running right now has an empty output folder
+    // until ComfyUI finishes. Tell the sweeper, or it will delete it.
+    const active = [state.currentTaskId].filter(Boolean);
+    const result = await sweepTaskFiles({ dataDir, ttlSeconds: ttl, activeTaskIds: active });
     if (result.removedFiles) {
       log('ttl sweep', { files: result.removedFiles, bytes: result.removedBytes });
     }

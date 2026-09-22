@@ -220,7 +220,14 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
  * configured window and reports which task ids lost their results, so the
  * control plane can mark result_expired without us guessing.
  */
-export async function sweepTaskFiles({ dataDir, ttlSeconds, now = Date.now() }) {
+// An empty task folder is normally a finished task whose files have aged out.
+// It is also what a task looks like in the seconds after it is claimed and
+// before it writes anything, so an empty folder is only safe to remove once it
+// has been empty for a while AND is not one the worker is running right now.
+export const EMPTY_TASK_GRACE_SECONDS = 3600;
+
+export async function sweepTaskFiles({ dataDir, ttlSeconds, now = Date.now(), activeTaskIds = [] }) {
+  const active = new Set((activeTaskIds || []).map(String));
   const root = join(dataDir, 'tasks');
   const expiredTasks = [];
   let removedFiles = 0;
@@ -236,6 +243,10 @@ export async function sweepTaskFiles({ dataDir, ttlSeconds, now = Date.now() }) 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     const taskId = entry.name;
+    // Never touch a task this worker is in the middle of. Its output folder is
+    // empty until ComfyUI finishes, and deleting it there makes the write fail
+    // with ENOENT and costs the user the whole generation.
+    if (active.has(taskId)) continue;
     let lostResult = false;
 
     for (const kind of ['input', 'preview', 'output']) {
@@ -266,12 +277,20 @@ export async function sweepTaskFiles({ dataDir, ttlSeconds, now = Date.now() }) 
 
     if (lostResult) expiredTasks.push(taskId);
 
-    // Drop the task folder entirely once nothing is left in it.
+    // Drop the task folder once nothing is left in it - but only if it has
+    // been sitting empty, not if it was created moments ago.
     try {
       const remaining = await Promise.all(['input', 'preview', 'output'].map(async (kind) => {
         try { return (await readdir(join(root, taskId, kind))).length; } catch { return 0; }
       }));
-      if (remaining.every((n) => n === 0)) await rm(join(root, taskId), { recursive: true, force: true });
+      if (remaining.every((n) => n === 0)) {
+        let folder;
+        try { folder = await stat(join(root, taskId)); } catch { folder = null; }
+        const age = folder ? now - folder.mtimeMs : 0;
+        if (folder && age > EMPTY_TASK_GRACE_SECONDS * 1000) {
+          await rm(join(root, taskId), { recursive: true, force: true });
+        }
+      }
     } catch { /* leave the folder if it is in use */ }
   }
 

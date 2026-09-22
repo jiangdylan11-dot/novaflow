@@ -146,6 +146,8 @@ section('4. the shims load last and only override transport');
     /\.nf-topbar-right/.test(capsShim) && /\.nf-win-btn/.test(capsShim), null);
   check('the release-memory button is hidden',
     /topbar-ai-runtime-release/.test(capsShim), null);
+  check('the licence badge is hidden',
+    /\.nf-license-status/.test(capsShim), null);
   check('and freeing memory does not claim to have freed any',
     /freed: false/.test(capsShim) && !/freed: true/.test(capsShim), null);
 

@@ -571,6 +571,11 @@
   //     business unloading it and no way to. Pressing it could only ever
   //     clear a cache in this tab while implying it did something to a GPU.
   //
+  //   已授权 - there is no licence gate on the Web at all (a licence binds to a
+  //     machine code and a tab has none), so this badge can only ever read
+  //     已授权. A status that cannot change is not status, it is decoration -
+  //     and clicking it opened a machine-code dialog that leads nowhere.
+  //
   // The methods behind them stay and answer honestly, because the renderer
   // still calls them from a shortcut or a status refresh.
   (function hideDesktopOnlyChrome() {
@@ -580,7 +585,7 @@
     style.id = STYLE_ID;
     // .nf-topbar-right holds nothing but the three window buttons.
     style.textContent =
-      '.nf-topbar-right, .nf-win-btn,' +
+      '.nf-topbar-right, .nf-win-btn, .nf-license-status,' +
       ' [data-novaflow-topbar-ai-runtime-release="1"] { display: none !important; }';
     (root.document.head || root.document.documentElement).appendChild(style);
   })();

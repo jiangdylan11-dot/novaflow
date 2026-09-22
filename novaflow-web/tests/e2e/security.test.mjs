@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { startLocalControlPlane } from '../../control-local/src/server.mjs';
 import { createGateway } from '../../worker/src/gateway/gateway.mjs';
-import { check, call, section, finish, uuid } from '../helpers.mjs';
+import { check, checkEqual, call, section, finish, uuid } from '../helpers.mjs';
 import {
   deriveWorkerGrantKey, generateWorkerSecret, issueGrantToken,
   hashWorkerSecret, issueWorkerToken, base64UrlJson, hmacSha256
@@ -262,6 +262,55 @@ try {
   await gateway.close();
   ctx.server.close();
   await rm(dataDir, { recursive: true, force: true }).catch(() => {});
+}
+
+// ---------------------------------------------------------------------------
+section('the TTL sweeper never deletes a task that is still running');
+{
+  // Found on a real three-node run: a task took longer than the gap to the
+  // next sweep tick, the sweeper saw an EMPTY output folder (ComfyUI had not
+  // finished yet), removed the whole task folder, and the worker's write then
+  // failed with ENOENT - costing the user the entire generation. An empty
+  // folder is indistinguishable from a just-claimed one, so "empty" alone is
+  // not a licence to delete.
+  const { sweepTaskFiles, EMPTY_TASK_GRACE_SECONDS } = await import('../../worker/src/gateway/gateway.mjs');
+  const { mkdtemp, mkdir, writeFile, readdir } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join: j } = await import('node:path');
+
+  const dir = await mkdtemp(j(tmpdir(), 'nfweb-sweep-'));
+  const running = '11111111-1111-1111-1111-111111111111';
+  const finished = '22222222-2222-2222-2222-222222222222';
+  for (const id of [running, finished]) {
+    for (const kind of ['input', 'preview', 'output']) {
+      await mkdir(j(dir, 'tasks', id, kind), { recursive: true });
+    }
+  }
+
+  const ttl = { input: 24 * 3600, image: 72 * 3600, video: 48 * 3600 };
+
+  // A sweep while the task is in flight must leave it alone.
+  await sweepTaskFiles({ dataDir: dir, ttlSeconds: ttl, activeTaskIds: [running] });
+  let left = await readdir(j(dir, 'tasks'));
+  check('a running task keeps its folder even though it is empty',
+    left.includes(running), left);
+
+  // A folder that is merely young is also left alone - a worker may be about
+  // to write into it, and the active list is not the only protection.
+  check('a freshly created empty folder survives', left.includes(finished), left);
+
+  // Old and empty and not running: that one goes.
+  const old = Date.now() + (EMPTY_TASK_GRACE_SECONDS + 60) * 1000;
+  await sweepTaskFiles({ dataDir: dir, ttlSeconds: ttl, now: old, activeTaskIds: [running] });
+  left = await readdir(j(dir, 'tasks'));
+  check('an old empty folder is cleaned up', !left.includes(finished), left);
+  check('and the running one is still protected', left.includes(running), left);
+
+  // And a real output file is never removed before its TTL.
+  await writeFile(j(dir, 'tasks', running, 'output', 'out_0001.png'), Buffer.alloc(16));
+  await sweepTaskFiles({ dataDir: dir, ttlSeconds: ttl, activeTaskIds: [] });
+  const outs = await readdir(j(dir, 'tasks', running, 'output'));
+  checkEqual('a fresh result survives a sweep', outs, ['out_0001.png']);
 }
 
 finish('security');
