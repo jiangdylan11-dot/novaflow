@@ -20,6 +20,7 @@ import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength } from './comf
 import { createWorkflowHost } from './comfy/workflow-host.mjs';
 import { workflowModule } from '../../packages/shared/src/workflow-modules.mjs';
 import { inspectAllModels, inspectViaComfy } from './models/model-manager.mjs';
+import { MODEL_MANIFEST, runtimeFor } from '../../packages/shared/src/model-manifest.mjs';
 import { detectGpu, detectSystem } from './hardware.mjs';
 import { generateWorkerSecret } from '../../packages/shared/src/tokens.mjs';
 import {
@@ -278,24 +279,23 @@ export function createWorker(options) {
   }
 
   async function reportModels() {
-    // Prefer what ComfyUI says it can load over what the filesystem suggests.
-    let models = null;
-    if (state.comfy.image) models = await inspectViaComfy(comfyImage).catch(() => null);
-    if (state.comfy.video) {
-      const videoModels = await inspectViaComfy(comfyVideo).catch(() => null);
-      if (videoModels) {
-        const byId = new Map((models || []).map((m) => [m.model_id, m]));
-        for (const m of videoModels) {
-          const existing = byId.get(m.model_id);
-          // A model counts as ready if EITHER runtime can load it.
-          if (!existing || m.status === 'ready') byId.set(m.model_id, m);
-        }
-        models = [...byId.values()];
+    const byId = new Map();
+    for (const runtime of ['image', 'video']) {
+      if (!state.comfy[runtime]) continue;
+      const found = await inspectViaComfy(comfyFor(runtime)).catch(() => null);
+      for (const model of found || []) {
+        // Model files visible on 8188 do not make the separate 8189 service
+        // usable. Advertise the endpoint that runTask will actually select.
+        if (runtimeFor(model.model_id) === runtime) byId.set(model.model_id, model);
       }
     }
-    if (!models && modelsRoot) models = await inspectAllModels(modelsRoot);
-    if (!models) models = [];
-
+    const diskModels = modelsRoot ? await inspectAllModels(modelsRoot).catch(() => []) : [];
+    const models = MODEL_MANIFEST.map((spec) => {
+      const found = byId.get(spec.model_id) || diskModels.find(m => m.model_id === spec.model_id);
+      if (state.comfy[spec.runtime] && byId.has(spec.model_id)) return found;
+      return { ...(found || {}), model_id: spec.model_id, model_version: spec.version, status: 'missing',
+        detail: { ...(found?.detail || {}), reason: state.comfy[spec.runtime] ? 'runtime_model_catalog_unavailable' : 'runtime_offline' } };
+    });
     state.models = models;
     await callControl('POST', '/api/worker/models', { body: { models }, token: state.workerToken });
     log('models reported', { ready: models.filter((m) => m.status === 'ready').map((m) => m.model_id) });
@@ -305,8 +305,10 @@ export function createWorker(options) {
 
   async function heartbeat() {
     try {
+      const previous = { ...state.comfy };
       state.comfy.image = await comfyImage.isUp();
       state.comfy.video = await comfyVideo.isUp();
+      if (previous.image !== state.comfy.image || previous.video !== state.comfy.video) await reportModels();
       await callControl('POST', '/api/worker/heartbeat', {
         token: state.workerToken,
         body: {
@@ -380,6 +382,12 @@ export function createWorker(options) {
       : (template.comfy === 'video' ? 'video' : 'image');
     const comfy = comfyFor(runtime);
     const parameters = task.parameters || {};
+
+    if (!await comfy.isUp()) {
+      state.comfy[runtime] = false;
+      await reportModels();
+      throw new Error((runtime === 'video' ? '视频' : '图像') + '算力服务未启动或已断开：' + comfy.baseUrl + '，请启动本地算力服务后重试');
+    }
 
     state.currentTaskId = task.id;
     state.status = 'busy';
