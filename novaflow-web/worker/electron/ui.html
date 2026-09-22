@@ -96,6 +96,10 @@
   #shareProgress progress { accent-color: #f5c542; }
 
 
+  .settings-card { gap: 14px; }
+  .license-setting { padding: 12px 0; border-top: 1px solid #ffffff10; border-bottom: 1px solid #ffffff10; }
+  .license-setting .hint { margin-top: 5px; }
+  .license-setting #licenseState:empty { display: none; }
   #logs {
     background: #000; border-radius: 8px; padding: 9px; height: 150px; overflow-y: auto;
     font: 11px ui-monospace, Consolas, monospace; color: #9ca3af; white-space: pre-wrap; word-break: break-all;
@@ -175,11 +179,7 @@
 
   <!-- -------------------------------------------------------- settings -->
   <section id="tab-settings" class="hidden">
-    <div class="card">
-      <div>
-        <label for="controlUrl">NovaFlow 控制面地址</label>
-        <input id="controlUrl" placeholder="https://xxx.supabase.co/functions/v1/novaflow-web" />
-      </div>
+    <div class="card settings-card">
       <div>
         <label for="registrationCode">算力分享注册码（仅首次接入使用）</label>
         <input id="registrationCode" placeholder="NFW-XXXXXX-XXXXXX" aria-describedby="registrationHint" />
@@ -193,38 +193,11 @@
         <label for="workerName">节点名称</label>
         <input id="workerName" />
       </div>
-      <div>
-        <label for="publicEndpoint">对外可达地址（留空则用本机地址）</label>
-        <input id="publicEndpoint" placeholder="http://你的公网IP:8790" />
-      </div>
-      <div>
-        <label for="gatewayPort">网关端口</label>
-        <input id="gatewayPort" type="number" min="1024" max="65535" />
-      </div>
-      <div><label for="localPort">本机工作台端口</label><input id="localPort" type="number" min="1024" max="65535" value="4784" /></div>
-      <div>
-        <label for="comfyImageUrl">ComfyUI 图像端（必须是本机回环地址）</label>
-        <input id="comfyImageUrl" />
-      </div>
-      <div>
-        <label for="comfyVideoUrl">ComfyUI 视频端</label>
-        <input id="comfyVideoUrl" />
-      </div>
-      <div>
-        <label for="modelsRoot">models 目录（可选，用于离线检测）</label>
-        <div style="display:flex; gap:6px">
-          <input id="modelsRoot" placeholder="E:\NovaFlow\models" />
-          <button id="pickModels" style="flex:none">选择</button>
-        </div>
+      <div class="license-setting">
+        <div class="row"><div><span class="k">本机授权</span><div class="hint">用于本地启动，已有授权自动读取</div></div><button id="licenseBtn">查看绑定</button></div>
+        <div id="licenseState" class="hint"></div>
       </div>
       <button class="primary" id="saveBtn">保存设置</button>
-      <div class="hint">修改连接设置后，关闭NovaFlow并停止分享，再启动生效。已有 NovaFlow 本机授权会自动读取。</div>
-      <div class="row"><span class="k">本机授权</span><button id="licenseBtn">查看绑定</button></div>
-      <div id="licenseState" class="hint"></div>
-      <div class="hint">
-        ComfyUI 只会绑定在本机回环地址上，外部只能通过本节点的网关访问，
-        且必须携带控制面下发的一次性凭证。本程序不持有任何 Supabase 密钥。
-      </div>
     </div>
   </section>
 
@@ -260,7 +233,8 @@
 <script>
   const api = window.novaflowWorker;
   const $ = (id) => document.getElementById(id);
-  const FIELDS = ['controlUrl','registrationCode','workerName','publicEndpoint','gatewayPort','localPort','comfyImageUrl','comfyVideoUrl','modelsRoot'];
+  // Only submit user-facing preferences; saved runtime configuration stays in the main process.
+  const FIELDS = ['registrationCode','workerName'];
 
   function showError(message, success = false) {
     const box = $('err');
@@ -368,7 +342,7 @@
     const hints = {
       verified: '正在使用已保存的节点身份，无需重复填写。首次注册码接入成功后会自动清空。',
       saved: '将自动尝试复用历史身份；若已接入过，无需重复填写注册码。身份是否有效以连接结果为准。',
-      'different-control': '历史身份与当前控制面地址不一致，请确认地址；新服务首次接入需要注册码。',
+      'different-control': '历史身份与当前服务不一致，请联系管理员检查接入信息。',
       new: '首次开启算力分享需填写注册码，或从网页账号绑定节点。仅启动本地无需此码。'
     };
     $('registrationHint').textContent = hints[status] + (status === 'new' ? '' : ' 本地启动使用独立的机器授权。');
@@ -377,7 +351,7 @@
 
   (async function init() {
     const config = await api.getConfig();
-    for (const key of FIELDS) if ($(key)) $(key).value = config[key] == null ? (key === 'localPort' ? '4784' : '') : config[key];
+    for (const key of FIELDS) if ($(key)) $(key).value = config[key] ?? '';
 
     render(await api.getState());
     (await api.getLogs()).forEach(appendLog);
@@ -388,17 +362,11 @@
   $('saveBtn').addEventListener('click', async () => {
     const patch = {};
     for (const key of FIELDS) patch[key] = $(key).value.trim();
-    patch.gatewayPort = Number(patch.gatewayPort) || 8790;
     await api.setConfig(patch);
     render(await api.getState());
     showError('');
     $('saveBtn').textContent = '已保存';
     setTimeout(() => { $('saveBtn').textContent = '保存设置'; }, 1200);
-  });
-
-  $('pickModels').addEventListener('click', async () => {
-    const dir = await api.pickModelsFolder();
-    if (dir) $('modelsRoot').value = dir;
   });
 
   $('novaFlowBtn').addEventListener('click', async () => {
