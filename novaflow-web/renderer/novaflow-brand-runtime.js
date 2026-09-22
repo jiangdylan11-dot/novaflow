@@ -2383,10 +2383,14 @@
   const AI_ANIMATION_RANDOM_SEED_INPUT_WIDTH = 76;
   const SOURCE_PRIMARY_SIDEBAR_WIDTH = 100;
   const SOURCE_PRIMARY_LEFT_PANEL_WIDTH = 302;
-  const PRIMARY_SIDEBAR_WIDTH = 80;
+  // Rail geometry, measured off the approved reference (spline-review):
+  // a 56-wide rail of 65-tall entries, floated 10px off the left edge.
+  const PRIMARY_SIDEBAR_LEFT = 10;
+  const PRIMARY_RAIL_PANEL_RADIUS = 12;
+  const PRIMARY_SIDEBAR_WIDTH = 56;
   const PRIMARY_SIDEBAR_GAP = 9;
-  const PRIMARY_VISIBLE_CONTENT_WIDTH = 250;
-  const PRIMARY_LEFT_PANEL_WIDTH = 242;
+  const PRIMARY_VISIBLE_CONTENT_WIDTH = 227;
+  const PRIMARY_LEFT_PANEL_WIDTH = 218;
   const SECONDARY_ENTRY_GROUP_WIDTH = PRIMARY_LEFT_PANEL_WIDTH;
   const PRIMARY_PANEL_BODY_VERTICAL_INSET = 14;
   const PRIMARY_PANEL_BODY_INSET = 11;
@@ -2399,10 +2403,10 @@
   const NOVAFLOW_TOOLS_ENTRY_SHELL_TOP = TOPBAR_HEIGHT + 14;
   const NOVAFLOW_TOOLS_PREVIEW_TITLE_ROW_HEIGHT = 49;
   const NOVAFLOW_TOOLS_UPLOAD_ZONE_HEIGHT = 44;
-  const PRIMARY_SIDEBAR_ITEM_HEIGHT = 96;
+  const PRIMARY_SIDEBAR_ITEM_HEIGHT = 65;
   const PRIMARY_OUTPUT_SHORTCUT_GAP = 12;
   const PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH = 44;
-  const PRIMARY_CONTENT_LEFT = PRIMARY_SIDEBAR_WIDTH + PRIMARY_SIDEBAR_GAP;
+  const PRIMARY_CONTENT_LEFT = PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_WIDTH + PRIMARY_SIDEBAR_GAP;
   const PRIMARY_COLUMN_WIDTH = PRIMARY_CONTENT_LEFT + PRIMARY_CONTENT_WIDTH;
   const NOVAFLOW_TOOLS_PRIMARY_COLUMN_WIDTH = PRIMARY_COLUMN_WIDTH;
   const NOVAFLOW_TOOLS_WORKSPACE_PADDING_LEFT = 12;
@@ -20890,7 +20894,7 @@
       }
       [data-novaflow-primary-output-divider="1"] {
         position: fixed !important;
-        left: ${(PRIMARY_SIDEBAR_WIDTH - PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH) / 2}px !important;
+        left: ${PRIMARY_SIDEBAR_LEFT + (PRIMARY_SIDEBAR_WIDTH - PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH) / 2}px !important;
         width: ${PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH}px !important;
         height: 1px !important;
         min-height: 1px !important;
@@ -28108,7 +28112,7 @@
       const cell = parent && parent !== rail && isPrimaryEntryCellCandidate(parent, button) ? parent : button;
       nfSetAttrIfChanged(cell, "data-novaflow-primary-cell", "1");
       nfSetStyleIfChanged(cell, "position", "fixed", "important");
-      nfSetStyleIfChanged(cell, "left", "0", "important");
+      nfSetStyleIfChanged(cell, "left", `${PRIMARY_SIDEBAR_LEFT}px`, "important");
       nfSetStyleIfChanged(cell, "top", `${top + index * PRIMARY_SIDEBAR_ITEM_HEIGHT}px`, "important");
       nfSetStyleIfChanged(cell, "width", `${PRIMARY_SIDEBAR_WIDTH}px`, "important");
       nfSetStyleIfChanged(cell, "height", `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`, "important");
@@ -28635,7 +28639,7 @@
     setImportantStyles(divider, {
       display: "block",
       position: "fixed",
-      left: `${(PRIMARY_SIDEBAR_WIDTH - PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH) / 2}px`,
+      left: `${PRIMARY_SIDEBAR_LEFT + (PRIMARY_SIDEBAR_WIDTH - PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH) / 2}px`,
       top: `${dividerTop}px`,
       width: `${PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH}px`,
       height: "1px",
@@ -28658,7 +28662,8 @@
     setImportantStyles(cell, {
       display: "block",
       position: "fixed",
-      left: "0",
+      left: `${PRIMARY_SIDEBAR_LEFT}px`,
+      borderRadius: primaryRailCellRadius(0, 2),
       top: `${cellTop}px`,
       width: `${PRIMARY_SIDEBAR_WIDTH}px`,
       height: `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`,
@@ -28704,7 +28709,8 @@
     setImportantStyles(exportCell, {
       display: "block",
       position: "fixed",
-      left: "0",
+      left: `${PRIMARY_SIDEBAR_LEFT}px`,
+      borderRadius: primaryRailCellRadius(1, 2),
       top: `${exportCellTop}px`,
       width: `${PRIMARY_SIDEBAR_WIDTH}px`,
       height: `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`,
@@ -31391,6 +31397,23 @@
     return shells;
   }
 
+  /** Which slot in the rail a button occupies, by its own label attribute. */
+  function primaryRailEntryIndex(button) {
+    const label = button instanceof HTMLElement ? button.getAttribute("data-novaflow-primary-label") : "";
+    const shown = PRIMARY_ENTRY_DISPLAY_LABELS.indexOf(label);
+    if (shown >= 0) return shown;
+    return PRIMARY_ENTRY_LABELS.indexOf(label);
+  }
+
+  /** Corners for one rail cell so a column of them looks like a single panel. */
+  function primaryRailCellRadius(index, count) {
+    const r = PRIMARY_RAIL_PANEL_RADIUS;
+    if (count <= 1) return `${r}px`;
+    if (index === 0) return `${r}px ${r}px 0 0`;
+    if (index === count - 1) return `0 0 ${r}px ${r}px`;
+    return "0";
+  }
+
   function paintPrimaryEntryShells(button, active) {
     getPrimaryEntryShells(button).forEach((shell) => {
       const directCell = shell === button.parentElement;
@@ -31406,9 +31429,18 @@
       nfSetStyleIfChanged(shell, "background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(shell, "background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(shell, "background-image", "none", "important");
-      // The selected rail entry reads as a rounded block with a hairline edge.
-      // Both are set here because the inline value wins over the stylesheet.
-      nfSetStyleIfChanged(shell, "border-radius", active ? PRIMARY_ENTRY_ACTIVE_RADIUS_PX : "0", "important");
+      // Radius is decided in this one place, because two writers disagreeing
+      // meant whichever ran last won. A selected entry is a rounded block; an
+      // unselected one carries the rail panel's own corner when it sits at an
+      // end of the column, so the separate fixed cells read as one panel.
+      nfSetStyleIfChanged(
+        shell,
+        "border-radius",
+        active
+          ? PRIMARY_ENTRY_ACTIVE_RADIUS_PX
+          : primaryRailCellRadius(primaryRailEntryIndex(button), PRIMARY_ENTRY_LABELS.length),
+        "important"
+      );
       nfSetStyleIfChanged(shell, "box-shadow", active ? `inset 0 0 0 1px ${UI_SELECTED_BORDER}` : "none", "important");
     });
   }
