@@ -22,6 +22,7 @@ import { execFileSync } from 'node:child_process';
 import { redactModule, findMarkers } from './redact-workflow-module.mjs';
 import { instrumentModule } from './instrument-workflow-module.mjs';
 import { redactBundleFile } from './redact-dead-bundle-workflow.mjs';
+import { rewordBundle } from './reword-desktop-strings.mjs';
 import { allWorkflowEntryMethods } from '../packages/shared/src/workflow-modules.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -34,6 +35,26 @@ const WORKER_OUT = join(ROOT, 'worker-renderer');
 // assets/ was already built from, so it is not shipped.
 const ASSET_DIRS = ['assets', 'templates', 'aifx-styles', 'aifx-templates', 'vendor', 'public'];
 const SKIP_DIRS = ['src', 'node_modules', 'dist', 'debug-assets'];
+
+// Build tooling and internal notes are not part of a website. They were being
+// copied out because the rule was "everything that is not .js", which shipped
+// package.json and package-lock.json to a public origin - handing anyone the
+// full dependency tree and its versions - along with four tsconfigs, the vite
+// config and two internal .md files. A browser loads none of it.
+const NOT_SHIPPED = [
+  /\.(ts|tsx|mts|cts)$/i,          // TypeScript sources and declarations
+  /\.md$/i,                        // internal notes
+  /^tsconfig.*\.json$/i,
+  /^package(-lock)?\.json$/i,
+  /\.config\.(js|ts|mjs|cjs)$/i,   // vite.config.ts, eslint.config.js, ...
+  /^\.env/i,
+  /\.map$/i                        // source maps point back at sources
+];
+
+/** Is this a file a browser actually loads? */
+export function isShippable(name) {
+  return !NOT_SHIPPED.some((re) => re.test(name));
+}
 
 // Loaded first so `window.electronAPI` exists before proxy-electron-api.js
 // runs its capability check and installs its own loopback fallback.
@@ -95,6 +116,12 @@ export async function buildWebRenderer({ logger, clean = true } = {}) {
   const forceNames = allWorkflowEntryMethods();
   for (const entry of entries) {
     if (!entry.isFile() || extname(entry.name) !== '.js') continue;
+    // eslint.config.js and friends are build tooling that happens to end in
+    // .js. Neither a browser nor a compute node has any use for them.
+    if (!isShippable(entry.name)) {
+      report.notShipped = (report.notShipped || []).concat(entry.name);
+      continue;
+    }
     const source = await readFile(join(SRC, entry.name), 'utf8');
     const moduleName = entry.name.replace(/\.js$/, '');
 
@@ -169,12 +196,19 @@ export async function buildWebRenderer({ logger, clean = true } = {}) {
         });
         continue;
       }
-      await cp(join(SRC, entry.name), join(WEB_OUT, entry.name), { recursive: true });
+      await cp(join(SRC, entry.name), join(WEB_OUT, entry.name), {
+        recursive: true,
+        filter: (src) => isShippable(src.split(/[\\/]/).pop() || '')
+      });
       continue;
     }
     if (!entry.isFile()) continue;
     if (extname(entry.name) === '.js') continue;
     if (entry.name === 'index.html') continue;
+    if (!isShippable(entry.name)) {
+      report.notShipped = (report.notShipped || []).concat(entry.name);
+      continue;
+    }
     await cp(join(SRC, entry.name), join(WEB_OUT, entry.name));
   }
 
@@ -212,7 +246,10 @@ async function copyAssets(from, to, { referenced, report, forceNames }) {
   const list = await readdir(from, { withFileTypes: true });
   for (const entry of list) {
     if (entry.isDirectory()) {
-      await cp(join(from, entry.name), join(to, entry.name), { recursive: true });
+      await cp(join(from, entry.name), join(to, entry.name), {
+        recursive: true,
+        filter: (src) => isShippable(src.split(/[\\/]/).pop() || '')
+      });
       continue;
     }
     if (extname(entry.name) !== '.js') {
@@ -243,6 +280,12 @@ async function copyAssets(from, to, { referenced, report, forceNames }) {
 
     const targeted = redactBundleFile(join(to, entry.name));
     report.bundleEdits = (report.bundleEdits || []).concat({ file: entry.name, ...targeted });
+
+    // Messages that tell a browser user to install software on their own
+    // machine. The compute is somebody else's.
+    const reworded = rewordBundle(join(to, entry.name));
+    report.rewordedStrings = reworded.applied;
+    if (reworded.missing.length) report.rewordMisses = reworded.missing;
 
     report.bundles.push({
       file: entry.name,

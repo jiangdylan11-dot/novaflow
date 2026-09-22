@@ -226,6 +226,69 @@ section('5. the worker copy still builds NovaFlow\'s real graphs');
 }
 
 // ---------------------------------------------------------------------------
+section('nothing tells a browser user to install a runtime');
+{
+  // A friend opened the site, switched to AI 序列, and was told
+  // "未找到 MiniMax H3 Runtime（8189），请确认已安装并启动" - advice about
+  // software they are not meant to install, about a port on their own machine
+  // that will never have a runtime on it. The compute is somebody else's.
+  const bundleName = (await readdir(join(PATHS.WEB_OUT, 'assets')))
+    .find((f) => /^index-.*\.js$/.test(f));
+  const bundle = await readFile(join(PATHS.WEB_OUT, 'assets', bundleName), 'utf8');
+
+  const { REWORDS } = await import('../../tools/reword-desktop-strings.mjs');
+  const survived = REWORDS.filter((r) => bundle.includes(r.from)).map((r) => r.from);
+  checkEqual('no desktop install advice survives in the shipped bundle', survived, []);
+  check('and the Web wording is there instead',
+    bundle.includes('暂无可用算力节点'), null);
+  check('the build reports every reword it made',
+    (report.rewordedStrings || []).length === REWORDS.length, report.rewordedStrings);
+  checkEqual('and none of them silently failed to match', report.rewordMisses || [], []);
+
+  // The probe behind the message is answered from the pool, not from a port on
+  // the viewer's machine.
+  const shim = await readFile(join(PATHS.WEB_OUT, 'novaflow-web-runtime.js'), 'utf8');
+  check('the local runtime ports are intercepted', /8188\|8189/.test(shim), null);
+  check('and answered from the worker pool', /available_workers/.test(shim), null);
+  check('while the worker gateway is left alone', !/8790/.test(shim.split('LOCAL_RUNTIME')[1] || ''), null);
+}
+
+// ---------------------------------------------------------------------------
+section('the build ships a website, not a project folder');
+{
+  // Cloudflare's uploader spotted this first: the build was copying everything
+  // that was not a .js, which put package.json and package-lock.json on a
+  // public origin - the whole dependency tree and its versions, free to read -
+  // plus four tsconfigs, vite.config.ts and two internal .md files. A browser
+  // loads none of it.
+  const all = [];
+  async function walk(dir, prefix = '') {
+    for (const e of await readdir(dir, { withFileTypes: true })) {
+      if (e.isDirectory()) await walk(join(dir, e.name), prefix + e.name + '/');
+      else all.push(prefix + e.name);
+    }
+  }
+  await walk(PATHS.WEB_OUT);
+
+  const leaked = all.filter((f) => {
+    const name = f.split('/').pop();
+    return /\.(ts|tsx|mts|cts|md|map)$/i.test(name) ||
+      /^tsconfig.*\.json$/i.test(name) ||
+      /^package(-lock)?\.json$/i.test(name) ||
+      /\.config\.(js|ts|mjs|cjs)$/i.test(name) ||
+      /^\.env/i.test(name);
+  });
+  checkEqual('no build tooling or internal note is published', leaked, []);
+  check('the build reports what it held back', (report.notShipped || []).length > 0, report.notShipped);
+
+  // The site still has everything it needs to run.
+  for (const needed of ['index.html', 'favicon.svg', 'robots.txt']) {
+    check(needed + ' is still published', all.includes(needed), null);
+  }
+  check('and it is still a whole app (' + all.length + ' files)', all.length > 250, all.length);
+}
+
+// ---------------------------------------------------------------------------
 section('the build is a complete site');
 {
   const files = await readdir(PATHS.WEB_OUT);

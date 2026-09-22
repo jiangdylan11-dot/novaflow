@@ -472,6 +472,77 @@
     runtimeProviderUsageSettlement: 'web-control-plane-v1'
   };
 
+  // ------------------------------------------------- local runtime probes
+  //
+  // The AI-sequence panel checks whether a ComfyUI is up before it lets you
+  // generate. For images it asks through electronAPI, which we override. For
+  // VIDEO it does not: it fetches http://127.0.0.1:8189/system_stats straight
+  // from the page. On the desktop that is the right question. On the Web it
+  // asks the VIEWER's machine - which has no runtime, and never will - so a
+  // friend opening the site was told "未找到 MiniMax H3 Runtime（8189），
+  // 请确认已安装并启动" about software they are not supposed to install.
+  //
+  // The honest answer to "is there a runtime" on the Web is "is there a
+  // capable machine in the pool", so that is what these probes are answered
+  // with. Only the two runtime ports are intercepted; the worker gateway on
+  // 8790 and everything else goes through untouched.
+  const LOCAL_RUNTIME = /^https?:\/\/(?:127\.0\.0\.1|localhost):(8188|8189)(\/|$)/i;
+  const PORT_TASK_TYPE = { 8188: 'qwen_t2i', 8189: 'h3_i2v' };
+
+  let capsCache = { at: 0, byTaskType: {} };
+  async function poolHas(taskType) {
+    if (Date.now() - capsCache.at > 8000) {
+      try {
+        const caps = await control('GET', '/api/web/capabilities');
+        const byTaskType = {};
+        for (const t of caps.taskTypes || []) byTaskType[t.task_type] = Number(t.available_workers || 0);
+        capsCache = { at: Date.now(), byTaskType };
+      } catch (_) {
+        capsCache = { at: Date.now(), byTaskType: {} };
+      }
+    }
+    return Number(capsCache.byTaskType[taskType] || 0);
+  }
+
+  const nativeFetch = root.fetch.bind(root);
+  root.fetch = async function (input, init) {
+    const url = String(input && input.url ? input.url : input || '');
+    const m = LOCAL_RUNTIME.exec(url);
+    if (!m) return nativeFetch(input, init);
+
+    const port = m[1];
+    const taskType = PORT_TASK_TYPE[port];
+    const path = url.slice(url.indexOf(port) + port.length).split('?')[0] || '/';
+
+    if (path === '/system_stats' || path === '/') {
+      const workers = await poolHas(taskType);
+      if (!workers) {
+        // Fail the probe, so the panel does not offer to generate on compute
+        // that is not there. The wording the panel shows is rewritten for the
+        // Web build; see tools/build-web-renderer.mjs.
+        return new Response(JSON.stringify({ ok: false, error: 'no capable compute node online' }),
+          { status: 503, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({
+        system: {
+          os: 'novaflow-web',
+          comfyui_version: 'novaflow-web-pool',
+          python_version: '',
+          ram_total: 0,
+          ram_free: 0
+        },
+        devices: [{ name: workers + ' 台算力节点', type: 'cuda', index: 0, vram_total: 0, vram_free: 0 }]
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+
+    // Anything else aimed at a local runtime is a request this browser has no
+    // business making. Say so rather than letting it hang on a dead port.
+    return new Response(JSON.stringify({
+      ok: false,
+      error: 'NovaFlow Web 不在浏览器里访问本机 ComfyUI；该请求应由算力节点执行'
+    }), { status: 503, headers: { 'content-type': 'application/json' } });
+  };
+
   // ------------------------------------------------------------------ expose
   // Override, never replace. Anything the renderer's own implementation
   // provides and we do not is left alone.
