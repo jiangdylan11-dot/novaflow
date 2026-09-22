@@ -19,6 +19,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { createControlPlane } from './control-plane.mjs';
+import { resolveControlSecret } from './tokens.mjs';
 
 const FUNCTION_NAME = 'novaflow-web';
 const MAX_BODY_BYTES = 256 * 1024;
@@ -39,6 +40,9 @@ function sessionSecret(): string {
   return env('NOVAFLOW_SESSION_SECRET');
 }
 
+// Optional. When it is not set it is derived from NOVAFLOW_SESSION_SECRET,
+// so a deployment has one fewer secret to create by hand. See
+// resolveControlSecret in tokens.mjs for why that is safe.
 function controlSecret(): string {
   return env('NOVAFLOW_WEB_CONTROL_SECRET');
 }
@@ -323,7 +327,7 @@ const CORS = {
 
 const plane = createControlPlane({
   store: supabaseStore,
-  secrets: { sessionSecret: sessionSecret(), controlSecret: controlSecret() },
+  secrets: { sessionSecret: sessionSecret(), controlSecret: await resolveControlSecret({ controlSecret: controlSecret(), sessionSecret: sessionSecret() }) },
   logger: (message: string, meta: unknown) =>
     console.log(JSON.stringify({ fn: FUNCTION_NAME, message, meta }))
 });

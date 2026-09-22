@@ -13,11 +13,13 @@ import { createServer } from 'node:http';
 import { createDatabase, seedUser, seedProviderBudget } from './db.mjs';
 import { createPgStore } from './pg-store.mjs';
 import { createControlPlane } from '../../packages/shared/src/control-plane.mjs';
-import { base64UrlJson, hmacSha256, sha256Hex } from '../../packages/shared/src/tokens.mjs';
+import { base64UrlJson, hmacSha256, sha256Hex, resolveControlSecret } from '../../packages/shared/src/tokens.mjs';
 
 const DEFAULT_PORT = Number(process.env.NOVAFLOW_WEB_CONTROL_PORT || 4890);
 const SESSION_SECRET = process.env.NOVAFLOW_SESSION_SECRET || 'local-dev-session-secret-change-me';
-const CONTROL_SECRET = process.env.NOVAFLOW_WEB_CONTROL_SECRET || 'local-dev-control-secret-change-me';
+// Optional, exactly as in production: derived from the session secret when it
+// is not set, so the two deployments behave the same way.
+const CONTROL_SECRET_ENV = process.env.NOVAFLOW_WEB_CONTROL_SECRET || '';
 
 const CORS_HEADERS = {
   'access-control-allow-origin': '*',
@@ -64,12 +66,53 @@ export async function createLocalControlPlane({ verbose = false } = {}) {
   const db = await createDatabase({ verbose });
   const store = createPgStore(db);
   await seedProviderBudget(db, { providerKey: 'comfyui', balance: 1_000_000 });
+  const controlSecret = await resolveControlSecret({
+    controlSecret: CONTROL_SECRET_ENV,
+    sessionSecret: SESSION_SECRET
+  });
   const plane = createControlPlane({
     store,
-    secrets: { sessionSecret: SESSION_SECRET, controlSecret: CONTROL_SECRET },
+    secrets: { sessionSecret: SESSION_SECRET, controlSecret },
     logger: verbose ? (msg, meta) => console.log('[control] ' + msg, meta || '') : undefined
   });
-  return { db, store, plane, sessionSecret: SESSION_SECRET, controlSecret: CONTROL_SECRET };
+  return { db, store, plane, sessionSecret: SESSION_SECRET, controlSecret };
+}
+
+// Ports fetch() refuses to talk to. Undici (and every browser) keeps a list of
+// "unsafe" ports - ancient protocols that a redirect could be used to attack -
+// and asking for port 0 occasionally lands on one. The result is a suite that
+// passes ten times and then dies with "TypeError: fetch failed / bad port",
+// which looks like a bug in whatever was being tested.
+const UNSAFE_PORTS = new Set([
+  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79,
+  87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137,
+  139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515, 526, 530, 531, 532,
+  540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720, 1723,
+  2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669,
+  6679, 6697, 10080
+]);
+
+/**
+ * Listen, and when the OS hands back a port fetch will not use, try again.
+ *
+ * Only applies to an ephemeral request (port 0). An explicit port is honoured
+ * as asked - if someone names a blocked port, that is worth an error, not a
+ * silent move somewhere else.
+ */
+async function listenOnUsablePort(server, port, attempts = 8) {
+  for (let i = 0; i < attempts; i += 1) {
+    await new Promise((resolve, reject) => {
+      server.once('error', reject);
+      server.listen(port, '127.0.0.1', () => {
+        server.removeListener('error', reject);
+        resolve();
+      });
+    });
+    const chosen = server.address().port;
+    if (port !== 0 || !UNSAFE_PORTS.has(chosen)) return chosen;
+    await new Promise((resolve) => server.close(resolve));
+  }
+  throw new Error('could not get a port fetch() will talk to after ' + attempts + ' tries');
 }
 
 export async function startLocalControlPlane({ port = DEFAULT_PORT, verbose = false } = {}) {
@@ -149,7 +192,7 @@ export async function startLocalControlPlane({ port = DEFAULT_PORT, verbose = fa
     }
   });
 
-  await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
+  await listenOnUsablePort(server, port);
   const address = 'http://127.0.0.1:' + server.address().port;
   return { ...ctx, server, port: server.address().port, url: address };
 }

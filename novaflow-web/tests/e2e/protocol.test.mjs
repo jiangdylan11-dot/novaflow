@@ -226,4 +226,30 @@ section('the edge function can actually be deployed');
   }
 }
 
+// ---------------------------------------------------------------------------
+section('the control secret does not have to be configured');
+{
+  // One fewer thing to create by hand when deploying. It is derived from the
+  // session secret every deployment already has, with domain separation, so
+  // holding one tells you nothing about the other.
+  const { resolveControlSecret, hmacSha256 } = await import('../../packages/shared/src/tokens.mjs');
+
+  const session = 'a-session-secret-that-every-deployment-already-has';
+  const derived = await resolveControlSecret({ sessionSecret: session });
+  check('a control secret is produced without one being set', derived.length >= 32, derived.length);
+  checkEqual('and it is the same every cold start', derived, await resolveControlSecret({ sessionSecret: session }));
+  check('it is not the session secret itself', derived !== session, null);
+  check('and not a bare hash of it either',
+    derived !== await hmacSha256(session, session), null);
+
+  const other = await resolveControlSecret({ sessionSecret: session + 'x' });
+  check('a different session secret gives a different control secret', derived !== other, null);
+
+  const explicit = await resolveControlSecret({ controlSecret: 'set-by-hand', sessionSecret: session });
+  checkEqual('an explicit secret still wins', explicit, 'set-by-hand');
+
+  const none = await resolveControlSecret({});
+  checkEqual('and nothing at all yields nothing, rather than a guessable default', none, '');
+}
+
 finish('protocol');

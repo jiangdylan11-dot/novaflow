@@ -364,6 +364,26 @@ async function verifyWorkerToken(token, controlSecret) {
 }
 
 // ---------------------------------------------------------------------------
+// The control secret, which signs worker tokens and derives grant keys.
+//
+// It does not have to be a secret anyone configures. Deriving it from the
+// session secret - which every deployment already has, because that is what
+// verifies logins - removes a setup step without weakening anything: the
+// derivation is domain-separated, so holding a worker token tells you nothing
+// about the session secret and vice versa.
+//
+// An explicit NOVAFLOW_WEB_CONTROL_SECRET still wins, for a deployment that
+// wants the two rotated independently.
+// ---------------------------------------------------------------------------
+async function resolveControlSecret({ controlSecret, sessionSecret } = {}) {
+  const explicit = String(controlSecret || '').trim();
+  if (explicit) return explicit;
+  const session = String(sessionSecret || '').trim();
+  if (!session) return '';
+  return await hmacSha256('novaflow-web-control-secret:v1', session);
+}
+
+// ---------------------------------------------------------------------------
 // Per-worker grant key. Derived, never stored: the control plane can always
 // recompute it, and a worker only ever learns its own.
 // ---------------------------------------------------------------------------
@@ -1690,6 +1710,7 @@ function workerTaskView(task) {
 
 
 
+
 const FUNCTION_NAME = 'novaflow-web';
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -1709,6 +1730,9 @@ function sessionSecret(): string {
   return env('NOVAFLOW_SESSION_SECRET');
 }
 
+// Optional. When it is not set it is derived from NOVAFLOW_SESSION_SECRET,
+// so a deployment has one fewer secret to create by hand. See
+// resolveControlSecret in tokens.mjs for why that is safe.
 function controlSecret(): string {
   return env('NOVAFLOW_WEB_CONTROL_SECRET');
 }
@@ -1993,7 +2017,7 @@ const CORS = {
 
 const plane = createControlPlane({
   store: supabaseStore,
-  secrets: { sessionSecret: sessionSecret(), controlSecret: controlSecret() },
+  secrets: { sessionSecret: sessionSecret(), controlSecret: await resolveControlSecret({ controlSecret: controlSecret(), sessionSecret: sessionSecret() }) },
   logger: (message: string, meta: unknown) =>
     console.log(JSON.stringify({ fn: FUNCTION_NAME, message, meta }))
 });
