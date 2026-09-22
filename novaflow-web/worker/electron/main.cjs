@@ -4,7 +4,6 @@
 const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs');
-const { createLicenseGate } = require('./license-window.cjs');
 
 const customDataDir = process.env?.NOVAFLOW_ASSISTANT_DATA_DIR;
 if (customDataDir) app.setPath('userData', path.resolve(customDataDir, '..'));
@@ -15,7 +14,13 @@ const MAX_LOG_LINES = 2000;
 
 let win = null;
 let worker = null;
-let startPromise = null;
+let configDirty = false;
+let commands = Promise.resolve();
+const command = action => {
+  const next = commands.then(action);
+  commands = next.catch(() => {});
+  return next;
+};
 let createWorker = null;
 let localLicense = null;
 async function getLicense() {
@@ -26,7 +31,6 @@ async function getLicense() {
   }
   return localLicense;
 }
-const licenseGate = createLicenseGate({ BrowserWindow, ipcMain, dialog, getParent: () => win, getLicense });
 const logLines = [];
 
 fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -76,16 +80,14 @@ async function loadCore() {
   return createWorker;
 }
 
-async function startWorker() {
-  if (startPromise) return startPromise;
-  if (worker) return worker.getState();
-  startPromise = startWorkerAttempt();
-  try { return await startPromise; }
-  finally { startPromise = null; }
-}
-
-async function startWorkerAttempt() {
-  if (!await licenseGate.ensureAllowed()) throw Object.assign(new Error('已取消启动'), { canceled: true });
+async function ensureWorker() {
+  if (worker && configDirty) {
+    const s = worker.getState();
+    if (!s.localRunning && !s.sharing && !s.draining && !s.currentTaskId) {
+      await worker.stop(); worker = null;
+    }
+  }
+  if (worker) return worker;
   const config = readConfig();
 
   const factory = await loadCore();
@@ -115,43 +117,47 @@ async function startWorkerAttempt() {
     registrationCode: config.registrationCode || '',
     logger: log
   });
+  configDirty = false;
 
   worker.onChange((state) => {
     if (win && !win.isDestroyed()) win.webContents.send('worker:state', state);
   });
 
-  let state;
-  try {
-    state = await worker.start();
-  } catch (error) {
-    // A failed instance must not short-circuit the next Start click. Recreate
-    // it from the saved settings so a newly entered code is actually used.
-    const failed = worker;
-    worker = null;
-    await failed.stop().catch(() => {});
-    throw error;
+  return worker;
+}
+
+async function startWorker() {
+  if (worker?.getState().localRunning) return { ok: true, state: worker.getState() };
+  const licenseState = await (await getLicense()).state();
+  if (licenseState.status !== 'licensed' || licenseState.locked) {
+    return { ok: false, needsLicense: true, licenseState, state: worker?.getState() };
   }
-  // The registration code is single use; drop it once it has been spent so a
-  // later restart does not fail trying to reuse it.
-  return state;
+  const instance = await ensureWorker();
+  await instance.start();
+  await shell.openExternal(instance.openUrl);
+  return { ok: true, state: instance.getState() };
 }
 
 async function stopWorker() {
-  licenseGate.cancel();
-  if (startPromise) await startPromise.catch(() => {});
   if (!worker) return null;
-  await worker.stop();
-  const state = worker.getState();
-  worker = null;
-  return state;
+  return worker.stopLocal();
+}
+
+async function discardFailedIdleWorker() {
+  if (!worker) return;
+  const s = worker.getState();
+  if (!s.localRunning && !s.sharing && !s.draining && !s.currentTaskId) {
+    const failed = worker; worker = null;
+    await failed.stop().catch(() => {});
+  }
 }
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 480,
-    height: 760,
-    minWidth: 420,
-    minHeight: 560,
+    width: 680,
+    height: 820,
+    minWidth: 620,
+    minHeight: 720,
     backgroundColor: '#0b0b0b',
     title: 'NovaFlow 本地助手',
     autoHideMenuBar: true,
@@ -167,47 +173,46 @@ function createWindow() {
 }
 
 ipcMain.handle('worker:getConfig', () => readConfig());
-ipcMain.handle('worker:setConfig', (_e, patch) => writeConfig({ ...readConfig(), ...(patch || {}) }));
+ipcMain.handle('worker:setConfig', (_e, patch) => { configDirty = true; return writeConfig({ ...readConfig(), ...(patch || {}) }); });
 ipcMain.handle('worker:getState', () => (worker ? worker.getState() : null));
 ipcMain.handle('worker:getLogs', () => logLines.slice(-400));
 ipcMain.handle('worker:openLogFolder', () => shell.openPath(DATA_DIR));
-ipcMain.handle('worker:openWorkbench', async () => {
-  try { if (!worker) throw new Error('请先启动本地服务'); await shell.openExternal(worker.openUrl); return { ok: true }; }
-  catch (e) { return { ok: false, error: String(e.message) }; }
-});
-ipcMain.handle('worker:share', async () => {
-  try {
-    if (!worker) throw new Error('请先启动本地服务');
-    const state = await worker.startSharing();
-    const config = readConfig();
-    if (config.registrationCode) writeConfig({ ...config, registrationCode: '' });
-    return { ok: true, state: worker.getState() };
-  } catch (e) { return { ok: false, error: String(e.message), state: worker?.getState() }; }
-});
-ipcMain.handle('worker:unshare', async () => {
-  try { await worker?.stopSharing(); return { ok: true, state: worker?.getState() }; }
-  catch (e) { return { ok: false, error: String(e.message) }; }
-});
-ipcMain.handle('worker:license', async () => {
-  try { return await licenseGate.inspect(); }
-  catch (e) { return { ok: false, error: String(e.message) }; }
-});
+ipcMain.handle('worker:openWebsite', () => shell.openExternal('https://novaflow.jiangdylan11.workers.dev/'));
 
-ipcMain.handle('worker:start', async () => {
-  try {
-    return { ok: true, state: await startWorker() };
-  } catch (error) {
-    log('start failed: ' + String(error && error.message ? error.message : error));
-    return { ok: false, canceled: Boolean(error.canceled), error: String(error && error.message ? error.message : error) };
+const respond = action => command(async () => {
+  try { return await action(); }
+  catch (error) {
+    log('operation failed: ' + String(error.message || error));
+    await discardFailedIdleWorker();
+    return { ok: false, error: String(error.message || error), state: worker?.getState() };
   }
 });
+ipcMain.handle('worker:start', () => respond(startWorker));
+ipcMain.handle('worker:stop', () => respond(async () => ({ ok: true, state: await stopWorker() })));
+ipcMain.handle('worker:share', () => respond(async () => {
+  const instance = await ensureWorker();
+  await instance.startSharing({ registrationCode: readConfig().registrationCode || '' });
+  const config = readConfig();
+  if (config.registrationCode) writeConfig({ ...config, registrationCode: '' });
+  return { ok: true, state: instance.getState() };
+}));
+ipcMain.handle('worker:unshare', () => respond(async () => ({ ok: true, state: await worker?.stopSharing() })));
 
-ipcMain.handle('worker:stop', async () => {
+// License actions update only authorization. They never resume startup.
+const licenseAction = action => async (event, payload) => {
+  if (!win || event.sender !== win.webContents) return { ok: false, error: 'Invalid assistant window' };
+  try { return { ok: true, state: await action(await getLicense(), payload) }; }
+  catch (error) { return { ok: false, error: String(error.message || error), state: error.state }; }
+};
+ipcMain.handle('worker:license', licenseAction(license => license.state()));
+ipcMain.handle('worker:licenseImportText', licenseAction((license, text) => license.importLicense(text)));
+ipcMain.handle('worker:licenseImportFile', async event => {
+  if (!win || event.sender !== win.webContents) return { ok: false, error: 'Invalid assistant window' };
   try {
-    return { ok: true, state: await stopWorker() };
-  } catch (error) {
-    return { ok: false, error: String(error && error.message ? error.message : error) };
-  }
+    const pick = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'NovaFlow License', extensions: ['nfl', 'json'] }] });
+    if (pick.canceled || !pick.filePaths?.[0]) return { canceled: true };
+    return { ok: true, state: await (await getLicense()).importLicense(await fs.promises.readFile(pick.filePaths[0], 'utf8')) };
+  } catch (error) { return { ok: false, error: String(error.message || error), state: error.state }; }
 });
 
 ipcMain.handle('worker:pickModelsFolder', async () => {
@@ -218,18 +223,10 @@ ipcMain.handle('worker:pickModelsFolder', async () => {
   return result.canceled ? '' : result.filePaths[0];
 });
 
-app.whenReady().then(async () => {
-  createWindow();
-  // Auto-start only restores private local services. Sharing always requires
-  // an explicit click, including after upgrades from the former Worker.
-  const config = readConfig();
-  if (config.autoStart === true) {
-    try { await startWorker(); } catch (error) { log('auto start skipped: ' + String(error.message || error)); }
-  }
-});
+app.whenReady().then(createWindow);
 
 app.on('window-all-closed', async () => {
-  await stopWorker().catch(() => {});
+  await command(async () => { await worker?.stop(); worker = null; }).catch(() => {});
   app.quit();
 });
 

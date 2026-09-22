@@ -28,6 +28,7 @@ const comfy = createServer(async (req, res) => {
 });
 const comfyUrl = await listen(comfy);
 const remoteQueue = [], remoteResults = new Map();
+let holdNextClaim = false, releaseClaim = null;
 const key = 'test-shared-grant-key-long-enough';
 const remote = createServer(async (req, res) => {
   upstreamCalls++;
@@ -38,7 +39,11 @@ const remote = createServer(async (req, res) => {
     if (rejectRegister) { res.statusCode = 401; return send({ error: 'registration rejected' }); }
     return send({ workerToken: 'fixture-worker', grantKey: key });
   }
-  if (req.url === '/api/worker/claim') { claims++; return send({ task: remoteQueue.shift() || null, grantKey: key }); }
+  if (req.url === '/api/worker/claim') {
+    claims++;
+    if (holdNextClaim) { holdNextClaim = false; await new Promise(resolve => { releaseClaim = resolve; }); }
+    return send({ task: remoteQueue.shift() || null, grantKey: key });
+  }
   const m = /^\/api\/worker\/tasks\/([^/]+)\/(complete|fail)$/.exec(req.url);
   if (m) remoteResults.set(m[1], { ...body, action: m[2] });
   return send({ ok: true });
@@ -139,7 +144,58 @@ try {
   check((await call('POST', '/api/web/tasks/' + cancel.id + '/cancel')).status === 200, 'running private task can be cancelled');
   await wait(() => !assistant.getState().currentTaskId);
   check(assistant.tasks.get(cancel.id).status === 'cancelled', 'worker completion/failure cannot overwrite cancellation');
+
+  // A cold share does not depend on the editor or its machine license.
+  remoteQueue.length = 0;
+  const events = await fetch(origin + '/local/events', { headers: { 'x-novaflow-local': pairing } });
+  const closedMessage = events.text();
+  await assistant.stopLocal();
+  check((await closedMessage).includes('data: closed'), 'closing local editor notifies its browser');
+  check(!assistant.getState().localRunning && !assistant.getState().workbenchUrl, 'local stop closes its own endpoint');
+  licensed = false;
+  autoFinish = false;
+  const independent = { ...shared, id: randomUUID() };
+  remoteQueue.push(independent);
+  await assistant.startSharing();
+  await wait(() => assistant.getState().currentTaskId === independent.id && queued.at(-1));
+  check(assistant.getState().sharing && !assistant.getState().localRunning, 'unlicensed machine shares without opening editor');
+  await assert.rejects(assistant.start(), /license rejected/); checks++;
+  check(assistant.getState().sharing, 'denied local startup preserves active share');
+  licensed = true;
+  const startsBeforeLocal = serviceStarts;
+  await assistant.start();
+  check(serviceStarts === startsBeforeLocal, 'local start reuses sharing runtime');
+  await assistant.stopLocal();
+  check(assistant.getState().sharing && assistant.getState().currentTaskId === independent.id, 'closing local leaves shared task running');
+  await assistant.stopSharing();
+  check(assistant.getState().draining, 'share can drain while editor is closed');
+  finished.add(queued.at(-1)); autoFinish = true;
+  await wait(() => remoteResults.has(independent.id));
+  check(remoteResults.get(independent.id).action === 'complete', 'independent shared job finishes successfully');
+  await assistant.startSharing();
+  check(assistant.getState().sharing && !assistant.getState().localRunning, 'share restarts independently after stop');
+  await assistant.stopSharing();
+  licensed = false;
+  const coldDir = await mkdtemp(join(tmpdir(), 'novaflow-cold-share-test-'));
+  const cold = await createLocalAssistant({ controlUrl, dataDir: coldDir,
+    configPath: join(coldDir, 'identity.json'), workflowDir, gatewayPort: 0,
+    gatewayHost: '127.0.0.1', tunnel: false, comfyImageUrl: comfyUrl, comfyVideoUrl: comfyUrl,
+    license, services: { start: async () => [], stop: async () => {} }, pollIntervalMs: 30 });
+  try {
+    await cold.startSharing();
+    check(cold.getState().sharing && !cold.getState().localRunning, 'fresh unlicensed assistant starts directly in sharing mode');
+    check(!cold.getState().workbenchUrl, 'sharing-only startup creates no local editor endpoint');
+  } finally { await cold.stop(); }
+  holdNextClaim = true;
+  await assistant.startSharing();
+  await wait(() => releaseClaim);
+  await assistant.stopSharing();
+  check(assistant.getState().draining, 'stop waits for an in-flight claim');
+  releaseClaim(); releaseClaim = null;
+  await wait(() => !assistant.getState().draining);
+  check(!assistant.getState().sharing, 'empty claim clears draining without re-enabling share');
 } finally {
+  releaseClaim?.();
   for (const id of queued) finished.add(id);
   await assistant.stop(); comfy.closeAllConnections(); remote.closeAllConnections(); comfy.close(); remote.close();
 }

@@ -21,6 +21,7 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
   const grantKey = randomBytes(32).toString('hex');
   const gateway = createGateway({ workerId: worker.identity.workerId, dataDir, getGrantKey: () => grantKey });
   let origin = '';
+  const lifecycleClients = new Set();
   const root = await realpath(webRoot);
   const server = createServer(async (req, res) => {
     const json = (status, value) => { res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(value)); };
@@ -34,9 +35,16 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
         gateway.server.emit('request', req, res); return;
       }
       if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/local/')) {
-        if (!safeCompare(req.headers['x-novaflow-local'] || '', secret)) throw fail('请从本地助手点击“打开 NovaFlow”连接本机', 401);
+        if (!safeCompare(req.headers['x-novaflow-local'] || '', secret)) throw fail('请从本地助手点击“启动NovaFlow”连接本机', 401);
         const body = req.method === 'POST' ? await bodyOf(req) : {};
         const s = worker.getState();
+        if (req.method === 'GET' && url.pathname === '/local/events') {
+          res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
+          res.write('data: ready\n\n');
+          lifecycleClients.add(res);
+          res.on('close', () => lifecycleClients.delete(res));
+          return;
+        }
         if (req.method === 'GET' && url.pathname === '/local/state') return json(200, s);
         if (req.method === 'GET' && url.pathname === '/local/license') return json(200, await license.state());
         if (req.method === 'POST' && url.pathname === '/local/bind-account') return json(200, await worker.bindAccount(String(body.token || '')));
@@ -90,5 +98,9 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, '127.0.0.1', resolve); });
   origin = 'http://127.0.0.1:' + server.address().port;
   return { origin, openUrl: origin + '/#local-pair=' + secret, server,
-    close: () => new Promise(resolve => { server.close(resolve); server.closeIdleConnections(); }) };
+    close: () => new Promise(resolve => {
+      for (const client of lifecycleClients) client.end('data: closed\n\n');
+      lifecycleClients.clear();
+      server.close(resolve); server.closeIdleConnections();
+    }) };
 }

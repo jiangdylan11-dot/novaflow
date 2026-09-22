@@ -50,4 +50,18 @@ check(cloud.NovaFlowWebRuntime.setComputeMode, undefined);
 await cloud.NovaFlowWebRuntime.control('POST', '/api/web/tasks', {});
 check(requests.at(-1).url, 'https://control.test/api/web/tasks');
 check(requests.at(-1).init.headers['x-novaflow-local'], undefined);
+// Only an explicit server shutdown closes the local browser editor.
+let onLoad, closeCalls = 0;
+const closing = createDomSandbox({ Response, Request, Blob, FormData, AbortSignal, Event, TextDecoder,
+  NOVAFLOW_WEB_CONFIG: { localAssistant: true, localOrigin: 'http://127.0.0.1:4784' },
+  addEventListener: (name, fn) => { if (name === 'load') onLoad = fn; },
+  close: () => { closeCalls++; },
+  fetch: async () => new Response('data: ready\n\ndata: closed\n\n')
+});
+runInContext(source, createContext(closing));
+await onLoad();
+check(closeCalls, 1);
+closing.fetch = async () => { throw new Error('temporary connection failure'); };
+await onLoad();
+check(closeCalls, 1);
 console.log(checks + ' passed, 0 failed: browser compute routing and private task isolation');

@@ -14,7 +14,6 @@ export function createLocalLicense(userDataDir) {
     allowOfflineCache: true, successReuseMs: 30000, successReuseScope: 'local-assistant' });
   return {
     state,
-    renderLockScreen: value => require(join(root, 'license/licenseLockScreen.js')).renderLicenseLockScreenHtml(value),
     async assertAllowed() {
       const s = await state();
       if (s.status !== 'licensed' || s.locked) throw Object.assign(new Error('本机授权未通过，请在本地助手「设置」中查看或导入有效授权'), { status: 403, code: s.reason || s.error || s.status });

@@ -114,6 +114,7 @@ export function createWorker(options) {
 
   const log = logger || ((msg, meta) => console.log('[worker] ' + msg, meta ? JSON.stringify(meta) : ''));
   const listeners = new Set();
+  let activeRegistrationCode = registrationCode;
 
   const state = {
     workerId: '',
@@ -276,7 +277,7 @@ export function createWorker(options) {
       worker_secret: state.workerSecret,
       hardware
     };
-    if (registrationCode && !sessionToken) body.registration_code = registrationCode;
+    if (activeRegistrationCode && !sessionToken) body.registration_code = activeRegistrationCode;
 
     const res = await callControl('POST', '/api/worker/register', {
       body,
@@ -528,7 +529,11 @@ export function createWorker(options) {
     if (claimBusy || state.currentTaskId) return false;
     claimBusy = true;
     try { return await claimAndRunLocked(); }
-    finally { claimBusy = false; }
+    finally {
+      claimBusy = false;
+      // A stop may arrive during an empty cloud claim, before a task exists.
+      if (draining && !state.currentTaskId) { draining = false; emit(); }
+    }
   }
 
   async function claimAndRunLocked() {
@@ -546,6 +551,11 @@ export function createWorker(options) {
     if (claim.grantKey) state.grantKey = claim.grantKey;
 
     const task = claim.task;
+    // Mark the reservation before async model/health checks so closing the
+    // local editor cannot tear down a task that is still preparing.
+    state.currentTaskId = task.id;
+    state.status = 'busy';
+    emit();
     try {
       await runTask(task);
     } catch (error) {
@@ -656,6 +666,21 @@ export function createWorker(options) {
     return snapshotState();
   }
 
+  async function stopLocal() {
+    localRunning = false;
+    clearInterval(localTimer);
+    clearInterval(localHealthTimer);
+    localTimer = null;
+    localHealthTimer = null;
+    // Do not interrupt a shared task or stop its claim loop.
+    while (state.currentTaskId && localTasks?.has(state.currentTaskId)) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    state.status = state.currentTaskId ? 'busy' : sharing ? 'idle' : 'offline';
+    emit();
+    return snapshotState();
+  }
+
   async function bindAccount(sessionToken) {
     if (!localRunning || sharing || claimBusy) throw new Error('请在本地服务空闲且未分享时绑定账号');
     if (!controlUrl || !sessionToken) throw new Error('请先配置控制面地址并登录 NovaFlow 账号');
@@ -684,7 +709,8 @@ export function createWorker(options) {
     return task;
   }
 
-  async function start() {
+  async function start({ registrationCode: code } = {}) {
+    if (code !== undefined) activeRegistrationCode = String(code);
     if (starting) return starting;
     if (running) { sharing = true; draining = false; await heartbeat(); emit(); return snapshotState(); }
     starting = startResources().catch(async (error) => {
@@ -795,6 +821,7 @@ export function createWorker(options) {
   return {
     start,
     startLocal,
+    stopLocal,
     bindAccount,
     cancelLocalTask,
     startSharing: start,

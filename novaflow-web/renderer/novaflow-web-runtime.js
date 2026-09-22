@@ -91,7 +91,7 @@
   }
 
   async function localControl(method, path, body) {
-    if (!CONFIG.localAssistant) throw new Error('请在本地助手点击“打开 NovaFlow”，连接本机工作台');
+    if (!CONFIG.localAssistant) throw new Error('请在本地助手点击“启动NovaFlow”，连接本机工作台');
     const res = await fetch(CONFIG.localOrigin + path, { method,
       headers: { 'content-type': 'application/json', 'x-novaflow-local': localKey },
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30000) });
@@ -99,6 +99,31 @@
     if (!res.ok) throw Object.assign(new Error(value.error || '本机服务请求失败'), { status: res.status });
     return value;
   }
+  if (CONFIG.localAssistant) root.addEventListener?.('load', async () => {
+    try {
+      const response = await fetch(CONFIG.localOrigin + '/local/events', { headers: { 'x-novaflow-local': localKey } });
+      if (!response.ok) return;
+      const reader = response.body.getReader(), decoder = new TextDecoder();
+      let buffer = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        buffer += decoder.decode(value, { stream: true });
+        const messages = buffer.split('\n\n'); buffer = messages.pop();
+        if (messages.includes('data: closed')) {
+          // Browsers may disallow closing an externally opened tab. In that
+          // case cover the stopped editor rather than leave active controls.
+          const panel = root.document.createElement('div');
+          panel.setAttribute('role', 'status');
+          panel.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:grid;place-items:center;background:#151515;color:#eee;font:16px system-ui;padding:32px;text-align:center';
+          panel.textContent = 'NovaFlow 已关闭。可关闭此标签页，需要使用时请在本地助手点击“启动NovaFlow”。';
+          root.document.body.appendChild(panel);
+          root.close?.();
+          return;
+        }
+      }
+    } catch (_) { /* A temporary transport loss never closes the editor. */ }
+  }, { once: true });
   async function control(method, path, body) {
     const taskId = /^\/api\/web\/tasks\/([^/]+)/.exec(path)?.[1];
     const mode = taskModes.get(taskId) || computeMode;

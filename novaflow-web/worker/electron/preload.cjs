@@ -12,8 +12,10 @@ contextBridge.exposeInMainWorld('novaflowWorker', {
   stop: () => ipcRenderer.invoke('worker:stop'),
   share: () => ipcRenderer.invoke('worker:share'),
   unshare: () => ipcRenderer.invoke('worker:unshare'),
-  openWorkbench: () => ipcRenderer.invoke('worker:openWorkbench'),
+  openWebsite: () => ipcRenderer.invoke('worker:openWebsite'),
   license: () => ipcRenderer.invoke('worker:license'),
+  licenseImportText: text => ipcRenderer.invoke('worker:licenseImportText', text),
+  licenseImportFile: () => ipcRenderer.invoke('worker:licenseImportFile'),
   openLogFolder: () => ipcRenderer.invoke('worker:openLogFolder'),
   pickModelsFolder: () => ipcRenderer.invoke('worker:pickModelsFolder'),
   onState: (fn) => {

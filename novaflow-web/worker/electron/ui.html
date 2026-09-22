@@ -76,13 +76,29 @@
   .tab { flex: 1; height: 30px; background: #222; border-radius: 6px; font-size: 12px; }
   .tab.active { background: var(--accent); color: #fff; }
   .hidden { display: none !important; }
+  .website { display: block; text-align: center; margin-top: 14px; color: #8cdcc0; text-decoration: none; }
+  .website:hover { text-decoration: underline; }
+  .license-overlay { position: fixed; inset: 0; z-index: 100; padding: 24px; display: grid; place-items: center; background: rgba(0,0,0,.72); }
+  .license-dialog { width: min(520px, 100%); max-height: calc(100vh - 48px); overflow-y: auto; background: #1d1d1d; border: 1px solid #404040; border-radius: 12px; padding: 22px; box-shadow: 0 20px 60px #0008; }
+  .license-heading { display: flex; align-items: center; justify-content: space-between; }
+  .license-heading h2 { margin: 0; font-size: 20px; }
+  #licenseClose { font-size: 22px; padding: 0; width: 32px; background: transparent; }
+  #licenseMessage { color: #b6bdc7; line-height: 1.6; margin: 10px 0 16px; }
+  .license-grid { display: grid; grid-template-columns: 88px minmax(0,1fr); gap: 10px 12px; padding: 14px; background: #151515; border-radius: 8px; font-size: 12px; }
+  .license-grid span { color: #999; }
+  .license-grid output { font: 12px ui-monospace,Consolas,monospace; overflow-wrap: anywhere; user-select: text; }
+  #licenseText { width: 100%; min-height: 100px; margin-top: 14px; resize: vertical; background: #101010; color: #fff; border: 1px solid #383838; border-radius: 8px; padding: 10px; font: inherit; }
+  .license-actions { display: flex; gap: 8px; margin-top: 14px; }
+  .license-actions button { flex: 1; padding: 0 10px; }
+  #licenseFeedback { min-height: 18px; font-size: 12px; line-height: 1.5; color: #fca5a5; margin-top: 12px; }
+
 </style>
 </head>
 <body>
 <header>
   <span class="mark"></span>
   <h1>NovaFlow 本地助手</h1>
-  <span class="ver" id="version">v0.1.0</span>
+  <span class="ver" id="version">v0.4.4</span>
 </header>
 
 <main>
@@ -113,16 +129,12 @@
       <div class="models" id="models"><div class="hint">启动后自动检测</div></div>
     </div>
 
-    <div style="display:flex; gap:8px; margin-top:12px">
-      <button class="primary wide" id="startBtn">启动本地服务</button>
-      <button class="wide" id="stopBtn" disabled>停止本地服务</button>
+    <div id="launcher-actions" style="display:flex; gap:12px; margin-top:16px">
+      <button class="primary wide" id="novaFlowBtn">启动NovaFlow</button>
+      <button class="primary wide" id="shareBtn">开启算力分享</button>
     </div>
-    <div style="display:flex; gap:8px; margin-top:8px">
-      <button class="primary wide" id="openBtn" disabled>打开 NovaFlow</button>
-      <button class="wide" id="shareBtn" disabled>算力分享</button>
-      <button class="wide" id="unshareBtn" disabled>停止分享</button>
-    </div>
-    <div class="hint" style="margin-top:8px">默认仅供自己使用。停止分享后，本地服务继续运行；已接任务完成后结束分享。停止本地服务会等待当前任务完成。</div>
+    <div class="hint" style="margin-top:10px">本地使用和算力分享可分别开启、关闭。停止时会等待已接任务完成。</div>
+    <a class="website" id="websiteLink" href="https://novaflow.jiangdylan11.workers.dev/">快捷打开外网软件 ↗</a>
   </section>
 
   <!-- -------------------------------------------------------- settings -->
@@ -165,7 +177,7 @@
         </div>
       </div>
       <button class="primary" id="saveBtn">保存设置</button>
-      <div class="hint">修改设置后停止并重新启动本地服务生效。已有 NovaFlow 本机授权会自动读取。</div>
+      <div class="hint">修改连接设置后，关闭NovaFlow并停止分享，再启动生效。已有 NovaFlow 本机授权会自动读取。</div>
       <div class="row"><span class="k">本机授权</span><button id="licenseBtn">查看绑定</button></div>
       <div id="licenseState" class="hint"></div>
       <div class="hint">
@@ -184,16 +196,39 @@
   </section>
 </main>
 
+<div id="licenseOverlay" class="license-overlay hidden">
+  <section class="license-dialog" role="dialog" aria-modal="true" aria-labelledby="licenseTitle" tabindex="-1">
+    <div class="license-heading"><h2 id="licenseTitle">机器码授权</h2><button id="licenseClose" aria-label="关闭授权窗口">×</button></div>
+    <p id="licenseMessage">请导入授权文件或粘贴授权码，完成本机绑定。</p>
+    <div class="license-grid">
+      <span>授权状态</span><output id="bindingStatus">—</output>
+      <span>到期时间</span><output id="bindingExpire">—</output>
+      <span>license_key</span><output id="bindingKey">—</output>
+      <span>machine_id</span><output id="bindingMachine">—</output>
+    </div>
+    <textarea id="licenseText" spellcheck="false" aria-label="授权码" placeholder="粘贴授权码或 license.nfl JSON 内容"></textarea>
+    <div class="license-actions">
+      <button id="licenseRefresh">重新验证</button>
+      <button id="licenseImportFile">导入 license.nfl</button>
+      <button class="primary" id="licenseImportText">粘贴导入</button>
+    </div>
+    <div id="licenseFeedback" aria-live="polite"></div>
+  </section>
+</div>
+
 <script>
   const api = window.novaflowWorker;
   const $ = (id) => document.getElementById(id);
   const FIELDS = ['controlUrl','registrationCode','workerName','publicEndpoint','gatewayPort','localPort','comfyImageUrl','comfyVideoUrl','modelsRoot'];
 
-  function showError(message) {
+  function showError(message, success = false) {
     const box = $('err');
     if (!message) { box.classList.add('hidden'); box.textContent = ''; return; }
     box.classList.remove('hidden');
     box.textContent = message;
+    box.style.color = success ? '#7ce8b5' : '';
+    box.style.background = success ? 'rgba(30,166,114,.12)' : '';
+    box.style.borderColor = success ? 'rgba(30,166,114,.4)' : '';
   }
 
   document.querySelectorAll('.tab').forEach((btn) => {
@@ -209,14 +244,16 @@
   const STATUS_TEXT = { idle: '在线 · 空闲', busy: '在线 · 工作中', offline: '离线', maintenance: '维护中' };
   const STATUS_DOT = { idle: 'on', busy: 'busy', offline: '', maintenance: '' };
 
+  let lastState = null;
+  let localBusy = false, localClosing = false, shareBusy = false;
   function render(state) {
+    lastState = state;
     const running = Boolean(state && state.localRunning);
-    $('startBtn').disabled = running;
-    $('stopBtn').disabled = !running;
-    $('openBtn').disabled = !running;
-    $('shareBtn').disabled = !running || Boolean(state?.sharing) || Boolean(state?.draining);
-    $('unshareBtn').disabled = !state?.sharing;
-    $('sharing').textContent = state?.draining ? '正在结束分享 · 等待当前任务完成' : state?.sharing ? '已开启 · 接收共享任务' : '未分享 · 仅自己使用';
+    $('novaFlowBtn').disabled = localBusy;
+    $('novaFlowBtn').textContent = localBusy ? (localClosing ? '正在关闭…' : '正在启动…') : running ? '关闭NovaFlow' : '启动NovaFlow';
+    $('shareBtn').disabled = shareBusy;
+    $('shareBtn').textContent = shareBusy ? '正在处理…' : state?.sharing ? '停止算力分享' : '开启算力分享';
+    $('sharing').textContent = state?.draining ? '正在结束分享 · 等待当前任务完成' : state?.sharing ? '已开启 · 接收共享任务' : '未开启';
     $('localQueue').textContent = state?.queuedLocal || 0;
 
     if (!state) {
@@ -225,8 +262,8 @@
       return;
     }
 
-    $('version').textContent = 'v' + (state.version || '0.1.0');
-    $('statusText').textContent = running ? (state.currentTaskId ? '本地已启动 · 工作中' : '本地已启动 · 空闲') : '未启动';
+    $('version').textContent = 'v' + (state.version || '0.4.4');
+    $('statusText').textContent = running ? (state.currentTaskId ? '本地已启动 · 工作中' : '本地已启动 · 空闲') : state.sharing ? '算力分享中' : state.draining ? '正在完成共享任务' : '未启动';
     $('statusDot').className = 'dot ' + (STATUS_DOT[state.status] || '');
 
     $('gpu').textContent = state.gpu && state.gpu.detected
@@ -254,7 +291,7 @@
           '</span></div>').join('')
       : '<div class="hint">未检测到模型</div>';
 
-    showError(state.lastError || '');
+    if (state.lastError) showError(state.lastError);
   }
 
   function appendLog(line) {
@@ -289,35 +326,109 @@
     if (dir) $('modelsRoot').value = dir;
   });
 
-  $('startBtn').addEventListener('click', async () => {
-    showError('');
-    $('startBtn').disabled = true;
-    const res = await api.start();
-    if (!res.ok) { showError(res.canceled ? '' : res.error); $('startBtn').disabled = false; }
-    else render(res.state);
+  $('novaFlowBtn').addEventListener('click', async () => {
+    if (localBusy) return;
+    const closing = Boolean(lastState?.localRunning);
+    localClosing = closing;
+    localBusy = true; showError(''); render(lastState);
+    try {
+      const res = await api[closing ? 'stop' : 'start']();
+      render(res.state || await api.getState());
+      if (res.needsLicense) openLicense(res.licenseState);
+      else if (!res.ok) showError(res.error);
+    } catch (error) { showError(String(error.message)); }
+    finally { localBusy = false; render(lastState); }
+  });
+  $('shareBtn').addEventListener('click', async () => {
+    if (shareBusy) return;
+    const stopping = Boolean(lastState?.sharing);
+    shareBusy = true; showError(''); render(lastState);
+    try {
+      const res = await api[stopping ? 'unshare' : 'share']();
+      render(res.state || await api.getState());
+      if (!res.ok) showError(res.error);
+    } catch (error) { showError(String(error.message)); }
+    finally { shareBusy = false; render(lastState); }
+  });
+  $('websiteLink').addEventListener('click', async event => {
+    event.preventDefault();
+    try { await api.openWebsite(); } catch (error) { showError(String(error.message)); }
   });
 
-  $('stopBtn').addEventListener('click', async () => {
-    $('stopBtn').disabled = true;
-    $('stopBtn').textContent = '正在停止…';
-    const res = await api.stop();
-    if (!res.ok) showError(res.error);
-    render(res.state);
-    $('stopBtn').textContent = '停止本地服务';
+  const isLicensed = state => state?.status === 'licensed' && !state.locked;
+  let previousFocus = null, licenseBusy = false;
+  function renderLicense(state) {
+    const s = state || {};
+    $('licenseTitle').textContent = isLicensed(s) ? '本机已授权' : s.status === 'unlicensed' ? '需要授权' : '授权失效';
+    $('bindingStatus').textContent = s.status || '—';
+    $('bindingExpire').textContent = s.expireAt || s.online?.remoteExpireAt || '—';
+    $('bindingKey').textContent = s.licenseKey || s.online?.licenseKey || '—';
+    $('bindingMachine').textContent = s.machineId || '—';
+    $('licenseMessage').textContent = isLicensed(s) ? '本机绑定已完成，可关闭此窗口并点击“启动NovaFlow”。' : '请导入 license.nfl 或粘贴授权码，完成本机绑定和联网验证。';
+  }
+  function openLicense(state) {
+    previousFocus = document.activeElement;
+    renderLicense(state);
+    $('licenseFeedback').textContent = '';
+    $('licenseText').value = '';
+    document.querySelector('main').inert = true;
+    document.querySelector('header').inert = true;
+    $('licenseOverlay').classList.remove('hidden');
+    $('licenseClose').focus();
+  }
+  function closeLicense() {
+    if (licenseBusy) return;
+    $('licenseOverlay').classList.add('hidden');
+    document.querySelector('main').inert = false;
+    document.querySelector('header').inert = false;
+    $('licenseText').value = '';
+    previousFocus?.focus();
+  }
+  async function licenseAction(action) {
+    if (licenseBusy) return;
+    licenseBusy = true;
+    for (const id of ['licenseRefresh','licenseImportFile','licenseImportText','licenseClose']) $(id).disabled = true;
+    $('licenseFeedback').textContent = '正在验证授权…';
+    let authorized = false;
+    try {
+      const res = await action();
+      if (res.canceled) { $('licenseFeedback').textContent = ''; return; }
+      if (res.state) renderLicense(res.state);
+      authorized = res.ok && isLicensed(res.state);
+      $('licenseFeedback').textContent = authorized ? '' : (res.error || res.state?.reason || '授权未通过，请检查授权内容。');
+    } catch (error) { $('licenseFeedback').textContent = String(error.message); }
+    finally {
+      licenseBusy = false;
+      for (const id of ['licenseRefresh','licenseImportFile','licenseImportText','licenseClose']) $(id).disabled = false;
+    }
+    if (authorized) {
+      closeLicense();
+      $('licenseState').textContent = '授权成功，请再次点击“启动NovaFlow”。';
+      showError('授权成功，请再次点击“启动NovaFlow”。', true);
+      $('novaFlowBtn').focus();
+    }
+  }
+  $('licenseClose').addEventListener('click', closeLicense);
+  $('licenseOverlay').addEventListener('keydown', event => {
+    if (event.key === 'Escape') { event.preventDefault(); closeLicense(); }
+    if (event.key === 'Tab') {
+      const items = [...$('licenseOverlay').querySelectorAll('button:not(:disabled),textarea')];
+      const first = items[0], last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    }
   });
-
-  for (const [id, action] of [['shareBtn', 'share'], ['unshareBtn', 'unshare'], ['openBtn', 'openWorkbench']]) {
-    $(id).addEventListener('click', async () => {
-      $(id).disabled = true; showError('');
-      try { const res = await api[action](); render(res.state || await api.getState()); if (!res.ok) showError(res.error); }
-      catch (e) { render(await api.getState()); showError(String(e.message)); }
-    });
-  }
-  async function showLicense(res) {
-    if (!res.ok) { showError(res.error); return; }
-    $('licenseState').textContent = '状态：' + res.state.status + ' / 机器码：' + (res.state.machineId || '—') + (res.state.reason ? ' / ' + res.state.reason : '');
-  }
-  $('licenseBtn').addEventListener('click', async () => showLicense(await api.license()));
+  $('licenseRefresh').addEventListener('click', () => licenseAction(() => api.license()));
+  $('licenseImportFile').addEventListener('click', () => licenseAction(() => api.licenseImportFile()));
+  $('licenseImportText').addEventListener('click', () => {
+    const text = $('licenseText').value.trim();
+    if (!text) { $('licenseFeedback').textContent = '请先粘贴授权内容。'; return; }
+    licenseAction(() => api.licenseImportText(text));
+  });
+  $('licenseBtn').addEventListener('click', async () => {
+    try { const res = await api.license(); if (res.ok) openLicense(res.state); else showError(res.error); }
+    catch (error) { showError(String(error.message)); }
+  });
 
   $('openLogs').addEventListener('click', () => api.openLogFolder());
 </script>
