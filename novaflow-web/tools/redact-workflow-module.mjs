@@ -143,7 +143,8 @@ const DECL_PATTERNS = [
 // ---------------------------------------------------------------------------
 // Pass 1: hollow out functions that name a node.
 // ---------------------------------------------------------------------------
-function redactFunctions(source, moduleName, replacement) {
+function redactFunctions(source, moduleName, replacement, forceNames) {
+  const forced = new Set(forceNames || []);
   const spans = [];
 
   for (const { re, nameGroup } of DECL_PATTERNS) {
@@ -155,14 +156,25 @@ function redactFunctions(source, moduleName, replacement) {
       const open = m.index + m[0].length - 1;
       const close = matchBrace(source, open);
       if (close < 0) continue;
-      if (!findMarkers(source.slice(open + 1, close - 1), moduleName).length) continue;
+      // A public entry point is hollowed out even when its own body is
+      // innocent, because it is the name the worker must be able to call.
+      // Without this the recorded intent would name a private helper.
+      const carries = findMarkers(source.slice(open + 1, close - 1), moduleName).length > 0;
+      if (!carries && !forced.has(name)) continue;
       spans.push({ name, open, close, size: close - open });
     }
   }
 
   // Innermost only: the outermost match is always the module's own IIFE, and
   // redacting that deletes the module rather than its topology.
-  const innermost = spans.filter((s) => !spans.some(
+  // A forced span always wins over anything nested inside it: the public
+  // entry point must be the one that records.
+  const forcedSpans = spans.filter((s) => forced.has(s.name));
+  const nested = (inner) => forcedSpans.some(
+    (f) => f !== inner && inner.open >= f.open && inner.close <= f.close
+  );
+  const candidates = spans.filter((s) => forced.has(s.name) || !nested(s));
+  const innermost = candidates.filter((s) => !candidates.some(
     (t) => t !== s && t.open >= s.open && t.close <= s.close && (t.open > s.open || t.close < s.close)
   ));
   innermost.sort((a, b) => (a.open - b.open) || (a.size - b.size));
@@ -349,8 +361,8 @@ export function redactStringLiterals(source, moduleName) {
  * @param {string} source
  * @param {{ moduleName: string, replacement: (name: string) => string }} opts
  */
-export function redactModule(source, { moduleName, replacement }) {
-  const fns = redactFunctions(source, moduleName, replacement);
+export function redactModule(source, { moduleName, replacement, forceNames }) {
+  const fns = redactFunctions(source, moduleName, replacement, forceNames);
   const graphs = redactGraphLiterals(fns.code);
   const comments = stripMarkerComments(graphs.code, moduleName);
   const idents = renameMarkerIdentifiers(comments.code, moduleName);

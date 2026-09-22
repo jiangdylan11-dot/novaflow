@@ -177,8 +177,11 @@ section('assignment + progress + completion + credits');
 {
   const claim = await call(BASE, 'POST', '/api/worker/claim', { token: w1.workerToken });
   check('worker claims the queued task', claim.body.task?.id === taskId, claim.body);
-  check('claimed task carries business parameters only',
-    claim.body.task.parameters.prompt === 'a knight' && !('workflow' in claim.body.task), claim.body.task);
+  // The worker view may name WHICH builder to run, but never a graph: no
+  // node has a class_type anywhere in what it receives.
+  check('claimed task carries business parameters, never a graph',
+    claim.body.task.parameters.prompt === 'a knight' &&
+    !JSON.stringify(claim.body.task).includes('class_type'), claim.body.task);
 
   const secondClaim = await call(BASE, 'POST', '/api/worker/claim', { token: w1.workerToken });
   check('a busy worker claims nothing more', secondClaim.body.task === null, secondClaim.body);

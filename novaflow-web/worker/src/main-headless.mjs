@@ -38,6 +38,12 @@ export async function loadConfig(overrides = {}) {
     publicEndpoint: overrides.publicEndpoint || process.env.NOVAFLOW_PUBLIC_ENDPOINT || fileConfig.publicEndpoint || '',
     dataDir,
     workflowDir: overrides.workflowDir || join(WORKER_ROOT, 'workflows'),
+    // Where NovaFlow's own *.workflow.js builders live. Shipped beside the
+    // worker so a compute node can run renderer workflows without a browser.
+    rendererDir: overrides.rendererDir
+      || process.env.NOVAFLOW_RENDERER_DIR
+      || fileConfig.rendererDir
+      || resolve(WORKER_ROOT, '../renderer'),
     configPath: overrides.configPath || join(dataDir, 'identity.json'),
     pollIntervalMs: Number(overrides.pollIntervalMs || fileConfig.pollIntervalMs || 2000)
   };

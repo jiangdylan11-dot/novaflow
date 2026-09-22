@@ -48,6 +48,7 @@ import {
 } from './tokens.mjs';
 
 import { priceTask } from './pricing.mjs';
+import { isAllowedWorkflowCall, workflowModule } from './workflow-modules.mjs';
 import { MODEL_MANIFEST } from './model-manifest.mjs';
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -128,6 +129,67 @@ export function validateTaskParameters(taskType, raw) {
     cfg: Math.min(20, Math.max(0, Number(input.cfg) || 1.2)),
     references: cleanRefs
   };
+}
+
+
+// ---------------------------------------------------------------------------
+// Renderer-workflow options.
+//
+// These come from NovaFlow's own panels, so their shape belongs to the
+// renderer, not to us. We do not try to reshape them - we bound them: a size
+// cap so one task cannot carry a payload, and depth/string limits so a hostile
+// client cannot hand the worker something pathological to parse.
+// ---------------------------------------------------------------------------
+const MAX_WORKFLOW_OPTIONS_BYTES = 128 * 1024;
+const MAX_WORKFLOW_DEPTH = 12;
+
+export function sanitizeWorkflowOptions(raw, depth = 0) {
+  if (depth > MAX_WORKFLOW_DEPTH) return null;
+  if (raw === null || raw === undefined) return null;
+  const t = typeof raw;
+  if (t === 'string') return raw.slice(0, MAX_PROMPT_CHARS);
+  if (t === 'number') return Number.isFinite(raw) ? raw : 0;
+  if (t === 'boolean') return raw;
+  if (Array.isArray(raw)) return raw.slice(0, 256).map((v) => sanitizeWorkflowOptions(v, depth + 1));
+  if (t !== 'object') return null;
+
+  const out = {};
+  for (const [key, value] of Object.entries(raw).slice(0, 256)) {
+    out[String(key).slice(0, 120)] = sanitizeWorkflowOptions(value, depth + 1);
+  }
+  if (depth === 0) {
+    const size = JSON.stringify(out).length;
+    if (size > MAX_WORKFLOW_OPTIONS_BYTES) {
+      throw bad('workflow options are too large (' + size + ' bytes)');
+    }
+  }
+  return out;
+}
+
+/**
+ * Pull the few fields pricing needs out of whatever shape the renderer used.
+ * Anything missing falls back to the rate card's own defaults, so an unusual
+ * panel is charged a sane price rather than nothing.
+ */
+export function pricingViewOf(options) {
+  const o = options && typeof options === 'object' ? options : {};
+  const res = (o.resolution && typeof o.resolution === 'object') ? o.resolution : {};
+  return {
+    width: Number(o.width ?? res.width ?? o.canvasWidth) || undefined,
+    height: Number(o.height ?? res.height ?? o.canvasHeight) || undefined,
+    steps: Number(o.steps ?? o.stepCount) || undefined,
+    count: Number(o.count ?? o.batchSize ?? o.imageCount) || undefined,
+    duration_seconds: Number(o.durationSeconds ?? o.duration_seconds ?? o.duration) || undefined
+  };
+}
+
+export function sanitizeReferences(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, 8).map((r) => ({
+    name: String((r && r.name) || '').slice(0, 128).replace(/[^A-Za-z0-9._-]/g, '_'),
+    bytes: Math.min(64 * 1024 * 1024, Math.max(0, Math.floor(Number(r && r.bytes) || 0))),
+    kind: String((r && r.kind) || 'image').slice(0, 32)
+  })).filter((r) => r.name);
 }
 
 // ---------------------------------------------------------------------------
@@ -451,11 +513,37 @@ export function createControlPlane({ store, secrets, logger }) {
   async function handleCreateTask(body, headers) {
     const user = await requireUser(headers);
     const taskType = sanitizeText(body.task_type || body.taskType, 80);
-    if (!isKnownTaskType(taskType)) throw bad('unsupported task type: ' + taskType);
 
-    const req = requirementsFor(taskType);
-    const parameters = validateTaskParameters(taskType, body.parameters);
-    const pricing = priceTask(taskType, parameters);
+    // Two ways in. A fixed task type is the simple API. A renderer workflow
+    // carries {module, method} instead, because NovaFlow's own panels decide
+    // which builder to run - and the ALLOW-LIST here is what stops a browser
+    // reaching a builder nobody vetted.
+    const workflow = body.workflow && typeof body.workflow === 'object' ? body.workflow : null;
+    let req;
+    let parameters;
+    let pricing;
+    let inputWorkflow = null;
+
+    if (taskType === 'renderer_workflow') {
+      const moduleName = sanitizeText(workflow && workflow.module, 120);
+      const method = sanitizeText(workflow && workflow.method, 80);
+      if (!isAllowedWorkflowCall(moduleName, method)) {
+        throw bad('workflow not available on the web: ' + moduleName + '.' + method);
+      }
+      const entry = workflowModule(moduleName);
+      req = { modelId: entry.modelId, minVramMb: entry.minVramMb, kind: entry.kind };
+      // The renderer's options are its own shape, so they are carried through
+      // rather than reshaped - but the COST is still derived here, from the
+      // dimensions and duration we can read out of them.
+      parameters = sanitizeWorkflowOptions(body.parameters);
+      pricing = priceTask(entry.price === 'video' ? 'h3_i2v' : 'qwen_t2i', pricingViewOf(parameters));
+      inputWorkflow = { module: moduleName, method };
+    } else {
+      if (!isKnownTaskType(taskType)) throw bad('unsupported task type: ' + taskType);
+      req = requirementsFor(taskType);
+      parameters = validateTaskParameters(taskType, body.parameters);
+      pricing = priceTask(taskType, parameters);
+    }
 
     const balance = await store.getCreditBalance(user.id);
     if (Number(balance) < pricing.creditCost) {
@@ -470,7 +558,9 @@ export function createControlPlane({ store, secrets, logger }) {
       parameters,
       min_vram_mb: req.minVramMb,
       protocol: PROTOCOL_VERSION,
-      created_from: 'web'
+      created_from: 'web',
+      workflow: inputWorkflow,
+      references: sanitizeReferences(body.references)
     };
 
     const task = await store.createTask({
@@ -782,6 +872,10 @@ function workerTaskView(task) {
     model_id: task.model_id,
     status: task.status,
     parameters: task.input_manifest?.parameters || {},
+    // Which of NovaFlow's own builders to run, when the task came from the
+    // renderer rather than from a fixed task type.
+    workflow: task.input_manifest?.workflow || null,
+    references: task.input_manifest?.references || [],
     attempt_count: Number(task.attempt_count || 0),
     assigned_at: task.assigned_at,
     expires_at: task.expires_at

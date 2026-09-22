@@ -14,6 +14,8 @@ import { randomUUID } from 'node:crypto';
 import { createGateway, sweepTaskFiles } from './gateway/gateway.mjs';
 import { createComfyClient, collectOutputs, assertLocalOnly } from './comfy/comfy-client.mjs';
 import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength } from './comfy/workflow-runner.mjs';
+import { createWorkflowHost } from './comfy/workflow-host.mjs';
+import { workflowModule } from '../../packages/shared/src/workflow-modules.mjs';
 import { inspectAllModels, inspectViaComfy } from './models/model-manager.mjs';
 import { detectGpu, detectSystem } from './hardware.mjs';
 import { generateWorkerSecret } from '../../packages/shared/src/tokens.mjs';
@@ -24,7 +26,27 @@ import {
   requirementsFor
 } from '../../packages/shared/src/protocol.mjs';
 
-export const WORKER_VERSION = '0.1.0';
+export const WORKER_VERSION = '0.2.0';
+
+/**
+ * Point the renderer's recorded options at the files that actually landed in
+ * ComfyUI's input folder. The renderer named them before upload; the worker
+ * renamed them to keep one task's inputs out of another's way.
+ */
+function withReferences(parameters, filenames) {
+  if (!filenames || !filenames.length) return parameters;
+  const next = { ...parameters };
+  next.__novaflowReferenceFiles = filenames;
+  if (Array.isArray(next.references)) {
+    next.references = next.references.map((r, i) => (
+      filenames[i] ? { ...r, name: filenames[i], uploadedName: filenames[i] } : r
+    ));
+  }
+  // The H3 builders read these two directly.
+  if (filenames[0]) { next.firstFrame = filenames[0]; next.first_frame = filenames[0]; }
+  if (filenames[1]) { next.lastFrame = filenames[1]; next.last_frame = filenames[1]; }
+  return next;
+}
 
 function nowIso() {
   return new Date().toISOString();
@@ -43,6 +65,7 @@ export function createWorker(options) {
     gatewayHost = '0.0.0.0',
     publicEndpoint = '',
     workerName = 'novaflow-worker',
+    rendererDir = '',
     registrationCode = '',
     ownerSessionToken = '',
     pollIntervalMs = 2000,
@@ -98,6 +121,22 @@ export function createWorker(options) {
       stats: { ...state.stats },
       version: WORKER_VERSION
     };
+  }
+
+  // The renderer's own graph builders, running here instead of in a browser.
+  // Loaded lazily: a worker that only ever runs fixed task types never pays
+  // for it, and a renderer directory that is missing is not fatal.
+  let workflowHostPromise = null;
+  function workflowHost() {
+    if (!rendererDir) return null;
+    if (!workflowHostPromise) {
+      workflowHostPromise = createWorkflowHost({ rendererDir, logger: log })
+        .catch((error) => {
+          log('workflow host unavailable', { error: String(error?.message || error) });
+          return null;
+        });
+    }
+    return workflowHostPromise;
   }
 
   const comfyImage = createComfyClient({ baseUrl: comfyImageUrl, logger: log });
@@ -289,9 +328,18 @@ export function createWorker(options) {
   }
 
   async function runTask(task) {
-    const req = requirementsFor(task.task_type);
-    const template = await loadWorkflow(workflowDir, task.task_type);
-    const runtime = template.comfy === 'video' ? 'video' : 'image';
+    // Two shapes of task. A renderer workflow names one of NovaFlow's own
+    // builders and we run it here; a fixed task type uses a template file.
+    const intent = task.workflow && task.workflow.module ? task.workflow : null;
+    const moduleSpec = intent ? workflowModule(intent.module) : null;
+
+    const req = intent
+      ? { kind: moduleSpec?.kind || 'image', modelId: moduleSpec?.modelId }
+      : requirementsFor(task.task_type);
+    const template = intent ? null : await loadWorkflow(workflowDir, task.task_type);
+    const runtime = intent
+      ? (moduleSpec?.runtime || 'image')
+      : (template.comfy === 'video' ? 'video' : 'image');
     const comfy = comfyFor(runtime);
     const parameters = task.parameters || {};
 
@@ -303,7 +351,9 @@ export function createWorker(options) {
     await mkdir(outDir, { recursive: true });
 
     // 1. Inputs. The browser uploads straight to this worker's gateway.
-    const expectedRefs = Array.isArray(parameters.references) ? parameters.references : [];
+    const expectedRefs = Array.isArray(task.references) && task.references.length
+      ? task.references
+      : (Array.isArray(parameters.references) ? parameters.references : []);
     const referenceFilenames = [];
     if (expectedRefs.length) {
       await reportProgress(task.id, TASK_STATE.UPLOADING, 2, 'waiting for reference upload');
@@ -321,12 +371,26 @@ export function createWorker(options) {
     await reportProgress(task.id, TASK_STATE.PROCESSING, 8, 'submitting to ComfyUI');
 
     // 2. Build the graph. The browser never saw or supplied any of this.
-    const extra = { referenceFilenames };
-    if (req?.kind === 'video') {
-      extra.length = videoFrameLength(parameters.duration_seconds, parameters.fps);
+    let graph;
+    let seed = null;
+    if (intent) {
+      const host = await workflowHost();
+      if (!host) throw new Error('this worker has no renderer workflow host configured');
+      // The browser recorded WHICH builder and WHAT options; the builder
+      // itself has never left this machine.
+      graph = host.buildGraph({
+        module: intent.module,
+        method: intent.method,
+        options: withReferences(parameters, referenceFilenames)
+      });
+    } else {
+      const extra = { referenceFilenames };
+      if (req?.kind === 'video') {
+        extra.length = videoFrameLength(parameters.duration_seconds, parameters.fps);
+      }
+      graph = buildGraph(template, parameters, extra);
+      seed = resolvedSeed(template, graph);
     }
-    const graph = buildGraph(template, parameters, extra);
-    const seed = resolvedSeed(template, graph);
 
     // 3. Run.
     const startedAt = Date.now();

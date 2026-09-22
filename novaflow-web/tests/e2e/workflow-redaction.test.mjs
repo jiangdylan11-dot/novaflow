@@ -19,6 +19,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createContext, runInContext } from 'node:vm';
 import { redactModule, findMarkers, matchBrace } from '../../tools/redact-workflow-module.mjs';
+import { allWorkflowEntryMethods } from '../../packages/shared/src/workflow-modules.mjs';
 import { check, checkEqual, section, finish } from '../helpers.mjs';
 
 // Same reason as the inert timers: a probe can leave an async throw in flight.
@@ -161,7 +162,7 @@ for (const file of files) {
 
   section(file + '  ->  ' + moduleName);
 
-  const result = redactModule(source, { moduleName, replacement: REPLACEMENT(moduleName) });
+  const result = redactModule(source, { moduleName, replacement: REPLACEMENT(moduleName), forceNames: allWorkflowEntryMethods() });
   totalRedacted += result.redacted.length;
 
   // --- 1. nothing leaks ----------------------------------------------------

@@ -235,18 +235,18 @@ export async function createWorkflowHost({ rendererDir, logger } = {}) {
 // The only methods a client may ask the host to run. Everything about ComfyUI
 // topology lives behind exactly these names.
 export const GRAPH_METHODS = new Set([
+  // The real entry points, read off the modules themselves rather than
+  // guessed. Anything not here cannot be invoked by a browser.
   'getWorkflowJson',
   'buildWorkflow',
+  'buildRunWorkflow',
+  'buildLocalUiWorkflow',
+  'createWorkflow',
   'createTemplate',
-  'buildGraph',
-  'patchWorkflow',
-  'toWorkflow',
-  // Several modules name their builder plainly. These carry topology just the
-  // same, so they run here and are recorded in the browser.
   'build',
   'compile',
-  'buildLocalUiWorkflow',
-  'buildRequest'
+  'compilePrompt',
+  'patchWorkflow'
 ]);
 
 // Validators re-run authoritatively on the worker before a graph is submitted.
