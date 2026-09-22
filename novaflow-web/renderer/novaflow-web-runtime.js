@@ -212,29 +212,58 @@
     return { queue_running: running, queue_pending: pending };
   }
 
-  // --------------------------------------------------- reference images out
+  // ------------------------------------------------- reference images in
   //
-  // Results come back the other way: straight off the worker's disk, through
-  // its tunnel, never through storage. They are the large files and they were
-  // made on that machine, so a round trip through anyone's bucket would cost
-  // bandwidth to achieve nothing.
+  // Straight to the machine that will run the task, through the same tunnel
+  // the results come back on. Nothing about a task's files touches any
+  // storage: they were made on that disk and the references join them there.
   //
-  // Reference images cannot go that way, because the tunnel refuses every
-  // write: nothing reachable from the internet may put a file on the owner's
-  // disk. So they go up through the control plane instead - a few MB, deleted
-  // when the task ends.
-  async function fileLinks(taskId, op, names) {
-    const res = await control('POST', '/api/web/tasks/' + taskId + '/files', {
-      op: op, kind: 'input', names: names
-    });
-    return (res && res.files) || {};
+  // This is why the upload has to wait. A reference belongs to ONE worker -
+  // whichever the scheduler picked - so there is nobody to send it to until
+  // the task is assigned, and the grant that authorises the write is minted
+  // against that worker.
+  async function waitForAssignment(taskId, { timeoutMs = 60000 } = {}) {
+    const started = Date.now();
+    for (;;) {
+      const res = await control('GET', '/api/web/tasks/' + taskId);
+      const task = res.task || {};
+      tasks.set(taskId, task);
+      if (task.assigned_worker_id) return task;
+      if (task.status === 'failed' || task.status === 'cancelled') {
+        throw new Error('任务在上传参考图前就结束了：' + (task.error_message || task.status));
+      }
+      if (Date.now() - started > timeoutMs) {
+        throw new Error('等不到空闲算力节点，参考图没能送出');
+      }
+      await new Promise((r) => setTimeout(r, 700));
+    }
   }
 
-  // The browser shim is a plain <script>, so it carries its own copy of the
-  // one rule in task-files.mjs it needs. A file stored as octet-stream is
-  // fine for an <img>, which sniffs, and not fine for a <video>, which does
-  // not - and a video that silently refuses to play looks like a generation
-  // that failed.
+  async function putReferences(taskId, refs) {
+    const task = await waitForAssignment(taskId);
+    const grant = await grantFor(task, 'upload');
+    const base = String(grant.endpoint || '').replace(/\/+$/, '');
+    if (!base) throw new Error('算力节点没有可用地址');
+
+    for (const ref of refs) {
+      const held = uploads.get(ref.name);
+      if (!held) throw new Error('找不到 ' + ref.name + ' 的图像数据');
+      const res = await fetch(
+        base + '/gw/tasks/' + taskId + '/input/' + encodeURIComponent(ref.name),
+        {
+          method: 'PUT',
+          headers: { 'content-type': mimeFor(ref.name), 'x-novaflow-grant': grant.token },
+          body: held.bytes
+        }
+      );
+      if (!res.ok) throw new Error(ref.name + ' 上传返回 ' + res.status);
+      uploads.delete(ref.name);
+    }
+  }
+
+  // A file stored as octet-stream is fine for an <img>, which sniffs, and not
+  // fine for a <video>, which does not - and a video that silently refuses to
+  // play looks like a generation that failed.
   function mimeFor(name) {
     const ext = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
     const map = {
@@ -242,23 +271,6 @@
       gif: 'image/gif', bmp: 'image/bmp', mp4: 'video/mp4', webm: 'video/webm'
     };
     return (ext && map[ext[1]]) || 'application/octet-stream';
-  }
-
-  async function putInputs(taskId, refs) {
-    const names = refs.map((r) => r.name);
-    const links = await fileLinks(taskId, 'upload', names);
-    for (const ref of refs) {
-      const link = links[ref.name];
-      const held = uploads.get(ref.name);
-      if (!link || !held) throw new Error('没有拿到 ' + ref.name + ' 的上传地址');
-      const res = await fetch(link.url, {
-        method: link.method || 'PUT',
-        headers: Object.assign({ 'content-type': mimeFor(ref.name) }, link.headers || {}),
-        body: held.bytes
-      });
-      if (!res.ok) throw new Error(ref.name + ' 上传返回 ' + res.status);
-      uploads.delete(ref.name);
-    }
   }
 
   // ------------------------------------------------------------- submission
@@ -296,7 +308,7 @@
     // references, which is why every run that was ever verified worked.
     if (refs.length) {
       try {
-        await putInputs(promptId, refs);
+        await putReferences(promptId, refs);
       } catch (error) {
         // Say which step failed. "timed out waiting for the browser to upload"
         // arrives from the worker two minutes later and points at the wrong

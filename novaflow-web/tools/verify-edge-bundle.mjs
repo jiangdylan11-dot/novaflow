@@ -93,25 +93,25 @@ export async function verifyEdgeBundle({ timeoutMs = 90000 } = {}) {
       };
     }
 
-    // The task-file route, which is how a browser and a worker that cannot
-    // reach each other exchange bytes. Unauthenticated it must answer 401 -
-    // that proves the route is IN the bundle. A 404 here would mean the
-    // endpoint was written, tested locally, bundled without it, and deployed:
-    // the site would work in the suite and hand every user a picture they
-    // cannot fetch.
+    // The grant route, which is how a browser is told where to fetch a result
+    // and authorised to do it. Unauthenticated it must answer 401 - that
+    // proves the route is IN the bundle. A 404 here would mean the endpoint
+    // was written, tested locally, bundled without it, and deployed: the
+    // site would pass its suite and hand every user a picture they cannot
+    // fetch.
     let files;
     try {
-      const res = await fetch(listening + '/api/web/tasks/00000000-0000-4000-8000-000000000000/files', {
+      const res = await fetch(listening + '/api/web/tasks/00000000-0000-4000-8000-000000000000/grant', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ op: 'download', kind: 'output', names: ['x.png'] })
+        body: JSON.stringify({ op: 'download' })
       });
       files = { status: res.status, body: (await res.text()).slice(0, 160) };
     } catch (error) {
-      return { ok: false, booted: true, error: 'the task-file route did not answer: ' + String(error.message || error) };
+      return { ok: false, booted: true, error: 'the grant route did not answer: ' + String(error.message || error) };
     }
     if (files.status === 404) {
-      return { ok: false, booted: true, answers, files, error: 'the bundle has no task-file route' };
+      return { ok: false, booted: true, answers, files, error: 'the bundle has no grant route' };
     }
 
     return { ok: true, booted: true, status: 200, answers, files, body: answers[0].body, output: output.slice(0, 400) };
@@ -158,5 +158,5 @@ if (invokedDirectly) {
   }
   console.log('edge bundle boots and answers on every routing form:');
   for (const a of res.answers) console.log('  ' + String(a.status) + '  ' + a.form);
-  if (res.files) console.log('  ' + String(res.files.status) + '  POST .../files   (the task-file route is in the bundle)');
+  if (res.files) console.log('  ' + String(res.files.status) + '  POST .../grant   (the grant route is in the bundle)');
 }

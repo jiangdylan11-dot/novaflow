@@ -20,9 +20,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { createControlPlane } from './control-plane.mjs';
 import { resolveControlSecret } from './tokens.mjs';
-import { TASK_FILES_BUCKET } from './task-files.mjs';
-
-let bucketReady = false;
 
 const FUNCTION_NAME = 'novaflow-web';
 const MAX_BODY_BYTES = 256 * 1024;
@@ -318,60 +315,6 @@ const supabaseStore = {
     });
     if (error) throw error;
     return data;
-  },
-
-  // ---- task files -------------------------------------------------------
-  //
-  // The object store a browser and a worker that cannot reach each other both
-  // CAN reach. task-files.mjs says why that matters; the short version is that
-  // a worker behind a home router registers as http://127.0.0.1:8790, which is
-  // only the right address when the browser happens to be on the same machine.
-  //
-  // The bucket is created here on first use rather than by a migration,
-  // because the deployed function is the only thing holding a service role key
-  // and nobody should have to create it by hand to add a compute node.
-  files: {
-    kind: 'supabase',
-
-    async ensureBucket() {
-      if (bucketReady) return;
-      const { error } = await admin().storage.createBucket(TASK_FILES_BUCKET, { public: false });
-      // Already there is the normal case after the first call ever.
-      if (error && !/already exists|Duplicate/i.test(String(error.message || error))) throw error;
-      bucketReady = true;
-    },
-
-    async signUpload(objectPath: string, ttlSeconds: number) {
-      await supabaseStore.files.ensureBucket();
-      const bucket = admin().storage.from(TASK_FILES_BUCKET);
-      // An upload URL is single-use and refuses to overwrite, so a retry after
-      // a half-finished PUT would fail forever. Clear the way first.
-      await bucket.remove([objectPath]).catch(() => {});
-      const { data, error } = await bucket.createSignedUploadUrl(objectPath);
-      if (error) throw error;
-      void ttlSeconds;
-      return { url: data.signedUrl, method: 'PUT', headers: {} };
-    },
-
-    async signDownload(objectPath: string, ttlSeconds: number) {
-      await supabaseStore.files.ensureBucket();
-      const { data, error } = await admin().storage
-        .from(TASK_FILES_BUCKET)
-        .createSignedUrl(objectPath, Math.max(60, Number(ttlSeconds) || 900));
-      if (error) throw error;
-      return { url: data.signedUrl, method: 'GET', headers: {} };
-    },
-
-    async removePrefix(prefix: string) {
-      const bucket = admin().storage.from(TASK_FILES_BUCKET);
-      const dirs = ['input', 'output'];
-      for (const dir of dirs) {
-        const { data } = await bucket.list(prefix.replace(/\/+$/, '') + '/' + dir);
-        const names = (data || []).map((f: any) => prefix.replace(/\/+$/, '') + '/' + dir + '/' + f.name);
-        if (names.length) await bucket.remove(names).catch(() => {});
-      }
-      return true;
-    }
   }
 };
 

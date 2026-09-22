@@ -171,63 +171,62 @@ try {
     console.log('  ->  saved proof image to novaflow-web/.artifacts/e2e-result.png (' + bytes.length + ' bytes)');
 
     // -----------------------------------------------------------------------
-    section('5b. the address the outside world gets is read-only and warehouse-only');
+    section('5b. what the outside world may do with the owner machine');
     {
       // The worker's public address is a Cloudflare tunnel: it dials out from
-      // the owner's machine, so nothing is opened on their router, and the
-      // bytes go from their disk to whoever asked without passing through any
-      // storage. That is what makes a result the owner generated actually
-      // reachable by somebody else's browser.
+      // the owner's machine, so nothing is opened on their router, and a
+      // result goes from their disk to whoever asked without passing through
+      // any storage. Reference images come back the same way.
       //
-      // A tunnel forwards whatever method it is handed, though - a PUT through
-      // one arrives at the origin exactly like a GET - so "read-only" has to
-      // be enforced here, at the gateway. These requests carry the Host header
-      // a tunnelled request carries, which is how the gateway tells outside
-      // from inside.
-      // What a real tunnelled request carries. Measured against a live quick
-      // tunnel - cloudflared adds these and keeps the original Host. The Host
-      // header itself is not used here because fetch() refuses to set it.
-      const outside = {
-        'cf-connecting-ip': '203.0.113.9',
-        'cdn-loop': 'cloudflare; loops=1'
-      };
+      // A tunnel forwards whatever method it is handed - a PUT through one
+      // arrives at the origin exactly like a GET - so the limits live here, at
+      // the gateway. These requests carry the headers a tunnelled request
+      // carries, measured against a live quick tunnel; fetch() will not set
+      // Host, and cloudflared adds these regardless of what the client sends.
+      const outside = { 'cf-connecting-ip': '203.0.113.9', 'cdn-loop': 'cloudflare; loops=1' };
       const base = grant.body.grant.endpoint;
       const out = (path, init) => fetch(base + path, {
         ...init, headers: { ...outside, ...(init?.headers || {}) }
       });
+      const G = { 'x-novaflow-grant': grant.body.grant.token };
 
-      const read = await out('/gw/tasks/' + taskId + '/output/' + fileName, {
-        headers: { 'x-novaflow-grant': grant.body.grant.token }
-      });
+      const read = await out('/gw/tasks/' + taskId + '/output/' + fileName, { headers: G });
       const readBytes = Buffer.from(await read.arrayBuffer());
-      check('from outside, a finished result reads normally',
-        read.status === 200 && readBytes.equals(bytes), { status: read.status });
+      check('a finished result reads normally', read.status === 200 && readBytes.equals(bytes),
+        { status: read.status });
 
-      const write = await out('/gw/tasks/' + taskId + '/input/evil.png', {
-        method: 'PUT',
-        headers: { 'x-novaflow-grant': grant.body.grant.token },
-        body: 'x'
-      });
-      const writeBody = await write.text();
-      // Checked by the reason, not just the number: an upload grant cannot be
-      // minted for a finished task either, so a 403 on its own would pass this
-      // whether or not the rule above it exists.
-      check('from outside, nothing may be written to the owner disk',
-        write.status === 403 && /finished results only/.test(writeBody),
-        { status: write.status, body: writeBody.slice(0, 120) });
-
-      const peek = await out('/gw/tasks/' + taskId + '/input/' + fileName, {
-        headers: { 'x-novaflow-grant': grant.body.grant.token }
-      });
+      // Checked by the reason, not the number: several other things also
+      // answer 403 here, so a bare status check would pass whether or not the
+      // rule exists.
+      const peek = await out('/gw/tasks/' + taskId + '/input/' + fileName, { headers: G });
       const peekBody = await peek.text();
-      check('from outside, only the warehouse is visible',
-        peek.status === 403 && /finished results only/.test(peekBody),
+      check('nobody outside may read an input - the warehouse is all that shows',
+        peek.status === 403 && /results and reference uploads only/.test(peekBody),
         { status: peek.status, body: peekBody.slice(0, 120) });
 
-      // And the owner, whose browser reaches 127.0.0.1, keeps the full gateway.
-      const inside = await fetch(base + '/gw/tasks/' + taskId + '/output/' + fileName, {
-        headers: { 'x-novaflow-grant': grant.body.grant.token }
+      const overwrite = await out('/gw/tasks/' + taskId + '/output/' + fileName, {
+        method: 'PUT', headers: G, body: 'x'
       });
+      const overwriteBody = await overwrite.text();
+      check('nobody outside may overwrite a result',
+        overwrite.status === 403 && /results and reference uploads only/.test(overwriteBody),
+        { status: overwrite.status, body: overwriteBody.slice(0, 120) });
+
+      const wipe = await out('/gw/tasks/' + taskId + '/output/' + fileName, { method: 'DELETE', headers: G });
+      check('and no other method gets through', wipe.status === 403, { status: wipe.status });
+
+      // The one write that is allowed needs a grant for THIS task and THIS
+      // worker. A download grant is not an upload grant.
+      const wrongOp = await out('/gw/tasks/' + taskId + '/input/ref.png', {
+        method: 'PUT', headers: G, body: 'x'
+      });
+      check('a reference upload still needs an upload grant', wrongOp.status === 403,
+        { status: wrongOp.status });
+
+      const noGrant = await out('/gw/tasks/' + taskId + '/input/ref.png', { method: 'PUT', body: 'x' });
+      check('and one with no grant at all is refused', noGrant.status === 401, { status: noGrant.status });
+
+      const inside = await fetch(base + '/gw/tasks/' + taskId + '/output/' + fileName, { headers: G });
       check('on the machine itself the gateway is unchanged', inside.status === 200, { status: inside.status });
     }
 
@@ -258,18 +257,32 @@ try {
         { status: editTask.status, task: editTask.body.task?.status });
       const editId = editTask.body.task.id;
 
-      const up = await call(BASE, 'POST', '/api/web/tasks/' + editId + '/files', {
-        token, body: { op: 'upload', kind: 'input', names: ['ref.png'] }
-      });
-      check('the browser is given somewhere to put the reference',
-        up.status === 200 && Boolean(up.body.files?.['ref.png']?.url), up.body);
+      // A reference belongs to ONE worker - whichever the scheduler picked -
+      // so there is nobody to send it to until the task is assigned, and the
+      // grant that authorises the write is minted against that worker.
+      const ready = await waitFor(async () => {
+        const r = await call(BASE, 'GET', '/api/web/tasks/' + editId, { token });
+        return r.body.task.assigned_worker_id ? r.body.task : null;
+      }, { label: 'edit assignment', timeoutMs: 30000 });
+      check('the scheduler picked a worker for it', Boolean(ready.assigned_worker_id),
+        ready.assigned_worker_id);
 
-      const put = await fetch(up.body.files['ref.png'].url, {
-        method: up.body.files['ref.png'].method || 'PUT',
-        headers: { 'content-type': 'application/octet-stream' },
-        body: bytes
+      const upGrant = await call(BASE, 'POST', '/api/web/tasks/' + editId + '/grant', {
+        token, body: { op: 'upload' }
       });
-      check('the reference uploads', put.ok, { status: put.status });
+      check('an upload grant is minted for that worker',
+        upGrant.status === 200 && upGrant.body.grant.workerId === ready.assigned_worker_id,
+        { status: upGrant.status, workerId: upGrant.body.grant?.workerId });
+
+      const put = await fetch(
+        upGrant.body.grant.endpoint + '/gw/tasks/' + editId + '/input/ref.png',
+        {
+          method: 'PUT',
+          headers: { 'content-type': 'image/png', 'x-novaflow-grant': upGrant.body.grant.token },
+          body: bytes
+        }
+      );
+      check('the reference goes straight onto the worker disk', put.ok, { status: put.status });
 
       const done = await waitFor(async () => {
         const r = await call(BASE, 'GET', '/api/web/tasks/' + editId, { token });
@@ -283,11 +296,6 @@ try {
         (done.output_manifest.files || []).length > 0, done.output_manifest);
 
       const editName = done.output_manifest.files[0].name;
-      const refused = await call(BASE, 'POST', '/api/web/tasks/' + editId + '/files', {
-        token, body: { op: 'download', kind: 'output', names: [editName] }
-      });
-      check('results are never served from storage', refused.status === 403, { status: refused.status });
-
       const editGrant = await call(BASE, 'POST', '/api/web/tasks/' + editId + '/grant', {
         token, body: { op: 'download' }
       });

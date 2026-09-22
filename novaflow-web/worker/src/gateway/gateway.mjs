@@ -203,9 +203,22 @@ export function createGateway({ workerId, dataDir, getGrantKey, onUpload, logger
       const filePath = resolve(dir, name);
       if (!filePath.startsWith(resolve(dir) + sep)) { fail(400, 'unacceptable path'); return; }
 
-      if (fromOutside && (kind === 'input' || req.method !== 'GET' && req.method !== 'HEAD')) {
-        log('refused a non-read from outside', { host: hostHeader, method: req.method, kind });
-        fail(403, 'this address serves finished results only');
+      // What the outside world may do here.
+      //
+      // Read a finished result, and place the reference image for a task it
+      // owns. Nothing else: no reading anyone's inputs (the warehouse is the
+      // only thing on show), no other method, no other shape.
+      //
+      // The write is not an open door. It needs a grant the control plane
+      // mints only for the signed-in user who created that task, bound to
+      // {user, task, this worker, upload}, good for 15 minutes, capped at
+      // 64 MB, landing only in that one task's input folder, and swept when
+      // the task ends.
+      const reading = (req.method === 'GET' || req.method === 'HEAD') && kind !== 'input';
+      const placing = (req.method === 'PUT' || req.method === 'POST') && kind === 'input';
+      if (fromOutside && !reading && !placing) {
+        log('refused from outside', { host: hostHeader, method: req.method, kind });
+        fail(403, 'this address serves finished results and reference uploads only');
         return;
       }
 

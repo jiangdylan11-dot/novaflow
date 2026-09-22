@@ -2,16 +2,15 @@
 //
 // The test suite deliberately runs with the tunnel off: a suite that has to
 // reach the internet to pass is a suite that fails for reasons that have
-// nothing to do with the code. So the suite checks the RULES (read-only,
-// warehouse-only) by sending the headers a tunnelled request carries, and this
-// checks the THING: cloudflared really starts, really publishes an address,
-// and a fetch from outside really comes back with the bytes - and really
-// cannot write.
+// nothing to do with the code. So the suite checks the RULES - by sending the
+// headers a tunnelled request carries - and this checks the THING: cloudflared
+// really starts, really publishes an address, a fetch from outside really
+// comes back with the bytes off this disk, and the limits really hold when the
+// request has crossed the internet rather than been simulated.
 //
 //   node tools/verify-tunnel.mjs
 
-import { createServer } from 'node:http';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGateway } from '../worker/src/gateway/gateway.mjs';
@@ -27,17 +26,19 @@ const BYTES = Buffer.concat([
 ]);
 
 let failures = 0;
-const check = (label, ok, detail) => {
+function check(label, ok, detail) {
   console.log('  ' + (ok ? 'PASS' : 'FAIL') + '  ' + label + (ok ? '' : '  <- ' + JSON.stringify(detail)));
   if (!ok) failures += 1;
-};
+}
 
 const dataDir = await mkdtemp(join(tmpdir(), 'nf-tunnel-'));
 const workerId = '99999999-8888-4777-8666-555555555555';
 const grantKey = await deriveWorkerGrantKey(workerId, 'verify-tunnel-secret');
 
 await mkdir(join(dataDir, 'tasks', TASK, 'output'), { recursive: true });
+await mkdir(join(dataDir, 'tasks', TASK, 'input'), { recursive: true });
 await writeFile(join(dataDir, 'tasks', TASK, 'output', NAME), BYTES);
+await writeFile(join(dataDir, 'tasks', TASK, 'input', NAME), BYTES);
 
 const gateway = createGateway({ workerId, dataDir, getGrantKey: () => grantKey, logger: () => {} });
 const port = await gateway.listen(0, '127.0.0.1');
@@ -45,56 +46,93 @@ console.log('gateway on 127.0.0.1:' + port);
 
 const tunnel = createTunnel({ port, logger: (m, d) => console.log('  [tunnel] ' + m, d || '') });
 if (!tunnel.available) {
-  console.log('\ncloudflared is not here. Expected at worker/vendor/cloudflared.exe');
+  console.log('\ncloudflared is not here. Run: node tools/fetch-cloudflared.mjs');
   process.exit(1);
 }
 
 const url = await tunnel.start();
-check('cloudflared published a public address', /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/i.test(url), url);
-if (!url) {
-  tunnel.stop(); await gateway.close(); await rm(dataDir, { recursive: true, force: true });
-  process.exit(1);
-}
+check('cloudflared published a public address',
+  /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/i.test(url), url);
 
 const token = await issueGrantToken(
   { userId: 'u1', taskId: TASK, workerId, op: GRANT_OP.DOWNLOAD, ttlSeconds: 600 }, grantKey
 );
 
-// A quick tunnel answers a moment after it prints its address.
-let read = null;
-for (let i = 0; i < 12 && !read; i += 1) {
-  await new Promise((r) => setTimeout(r, 2500));
-  try {
-    const res = await fetch(url + '/gw/tasks/' + TASK + '/output/' + NAME + '?grant=' + token);
-    read = { status: res.status, bytes: Buffer.from(await res.arrayBuffer()), type: res.headers.get('content-type') };
-  } catch (_) { /* not up yet */ }
+// A quick tunnel answers a little after it prints its address, and its
+// hostname takes a moment to resolve. Every request goes through this, so a
+// DNS miss is a retry rather than a stack trace.
+async function req(path, init, { tries = 12, waitMs = 2500 } = {}) {
+  let last = null;
+  for (let i = 0; i < tries; i += 1) {
+    try {
+      return await fetch(url + path, init);
+    } catch (error) {
+      last = error;
+      await new Promise((r) => setTimeout(r, waitMs));
+    }
+  }
+  throw new Error('never answered ' + path + ': ' + String((last && last.message) || last));
 }
-check('a browser anywhere gets the bytes off this disk',
-  Boolean(read) && read.status === 200 && read.bytes.equals(BYTES),
-  read ? { status: read.status, got: read.bytes.length, want: BYTES.length } : 'never answered');
 
-const noGrant = await fetch(url + '/gw/tasks/' + TASK + '/output/' + NAME);
-check('without a grant it is refused', noGrant.status === 401, { status: noGrant.status });
+const out = '/gw/tasks/' + TASK + '/output/' + NAME;
+const input = '/gw/tasks/' + TASK + '/input/' + NAME;
 
-const write = await fetch(url + '/gw/tasks/' + TASK + '/input/evil.png?grant=' + token, {
-  method: 'PUT', body: 'x'
-});
-const writeBody = await write.text();
-check('through the real tunnel, nothing may be written to this disk',
-  write.status === 403 && /finished results only/.test(writeBody),
-  { status: write.status, body: writeBody.slice(0, 120) });
+if (url) {
+  try {
+    const res = await req(out + '?grant=' + token);
+    const got = Buffer.from(await res.arrayBuffer());
+    check('a browser anywhere gets the bytes off this disk',
+      res.status === 200 && got.equals(BYTES),
+      { status: res.status, got: got.length, want: BYTES.length });
 
-const peek = await fetch(url + '/gw/tasks/' + TASK + '/input/' + NAME + '?grant=' + token);
-check('through the real tunnel, only the warehouse is visible', peek.status === 403, { status: peek.status });
+    const noGrant = await req(out, {}, { tries: 3 });
+    check('without a grant it is refused', noGrant.status === 401, { status: noGrant.status });
 
-const ranged = await fetch(url + '/gw/tasks/' + TASK + '/output/' + NAME + '?grant=' + token, {
-  headers: { range: 'bytes=0-99' }
-});
-check('range works, so a video can start before it finishes downloading',
-  ranged.status === 206, { status: ranged.status });
+    // The one write the outside world may make needs a grant minted for that
+    // exact task and worker; a download grant is not an upload grant.
+    const write = await req('/gw/tasks/' + TASK + '/input/ref.png?grant=' + token,
+      { method: 'PUT', body: 'x' }, { tries: 3 });
+    check('a reference upload needs an upload grant', write.status === 403, { status: write.status });
+
+    // And the write that IS allowed: a reference image, with a grant minted
+    // for this task and this worker, landing on this disk from outside.
+    const upToken = await issueGrantToken(
+      { userId: 'u1', taskId: TASK, workerId, op: GRANT_OP.UPLOAD, ttlSeconds: 600 }, grantKey
+    );
+    const REF = Buffer.from('reference-bytes-' + Date.now());
+    const placed = await req('/gw/tasks/' + TASK + '/input/ref.png?grant=' + upToken,
+      { method: 'PUT', headers: { 'content-type': 'image/png' }, body: REF }, { tries: 3 });
+    check('with the right grant, a reference image lands on the disk',
+      placed.status === 200, { status: placed.status });
+
+    const landed = await readFile(join(dataDir, 'tasks', TASK, 'input', 'ref.png')).catch(() => null);
+    check('and the bytes on disk are the ones that were sent',
+      Boolean(landed) && landed.equals(REF), landed ? landed.length : 'missing');
+
+    const peek = await req(input + '?grant=' + token, {}, { tries: 3 });
+    const peekBody = await peek.text();
+    check('only the warehouse shows - nobody outside reads an input',
+      peek.status === 403 && /results and reference uploads only/.test(peekBody),
+      { status: peek.status, body: peekBody.slice(0, 120) });
+
+    const over = await req(out + '?grant=' + token, { method: 'PUT', body: 'x' }, { tries: 3 });
+    const overBody = await over.text();
+    check('a result cannot be overwritten from outside',
+      over.status === 403 && /results and reference uploads only/.test(overBody),
+      { status: over.status, body: overBody.slice(0, 120) });
+
+    const ranged = await req(out + '?grant=' + token, { headers: { range: 'bytes=0-99' } }, { tries: 3 });
+    check('range works, so a video starts before it finishes downloading',
+      ranged.status === 206, { status: ranged.status });
+  } catch (error) {
+    check('the tunnel answered at all', false, String(error.message || error));
+  }
+}
 
 tunnel.stop();
 await gateway.close();
 await rm(dataDir, { recursive: true, force: true });
-console.log(failures ? '\n' + failures + ' failed' : '\nthe public address works, and it is read-only');
+console.log(failures
+  ? '\n' + failures + ' failed'
+  : '\nthe public address works: results out, references in, nothing else');
 process.exit(failures ? 1 : 0);

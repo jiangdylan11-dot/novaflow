@@ -329,66 +329,6 @@ export function createWorker(options) {
     }
   }
 
-  // ---- reference images in ------------------------------------------------
-  //
-  // Results go OUT from this disk directly, through the tunnel - they are the
-  // large files and they were generated here, so there is no reason for them
-  // to make a round trip through anyone's storage.
-  //
-  // Reference images come the other way, and the tunnel refuses every write by
-  // design: nothing reachable from the internet may put a file on this disk.
-  // So they arrive through the control plane's object store instead - a few MB
-  // that are deleted the moment the task finishes.
-  async function fileUrls(taskId, { op, kind, names }) {
-    const res = await callControl('POST', '/api/worker/tasks/' + taskId + '/files', {
-      token: state.workerToken,
-      body: { op, kind, names }
-    });
-    return (res && res.files) || {};
-  }
-
-  /**
-   * Pull the browser's reference images down.
-   *
-   * The browser uploads them right after the task is created, and this worker
-   * may claim it first, so a missing file means "not yet", not "never".
-   */
-  async function fetchInputs(taskId, expected, { timeoutMs = 120000 } = {}) {
-    const dir = join(dataDir, 'tasks', taskId, 'input');
-    await mkdir(dir, { recursive: true });
-    const names = expected.map((e) => e.name);
-    const got = [];
-    const started = Date.now();
-
-    for (const name of names) {
-      for (;;) {
-        let ok = false;
-        try {
-          const links = await fileUrls(taskId, { op: 'download', kind: 'input', names: [name] });
-          const link = links[name];
-          if (link) {
-            const res = await fetch(link.url);
-            if (res.ok) {
-              await writeFile(join(dir, name), Buffer.from(await res.arrayBuffer()));
-              got.push(name);
-              ok = true;
-            }
-          }
-        } catch (error) {
-          // A control plane with no object store configured cannot serve this
-          // route at all; fall back rather than spin for two minutes.
-          if (error && error.status === 501) return null;
-        }
-        if (ok) break;
-        if (Date.now() - started > timeoutMs) {
-          throw new Error('timed out waiting for the browser to upload ' + names.length + ' input file(s)');
-        }
-        await new Promise((r) => setTimeout(r, 500));
-      }
-    }
-    return got;
-  }
-
   async function waitForInputs(taskId, expected, { timeoutMs = 120000 } = {}) {
     if (!expected.length) return [];
     const dir = join(dataDir, 'tasks', taskId, 'input');
@@ -429,17 +369,16 @@ export function createWorker(options) {
     const outDir = join(dataDir, 'tasks', task.id, 'output');
     await mkdir(outDir, { recursive: true });
 
-    // 1. Inputs. The browser uploads straight to this worker's gateway.
+    // 1. Inputs. The browser uploads straight to this worker's gateway -
+    //    through the tunnel when it is somebody else's browser. Nothing about
+    //    a task's files goes through storage in either direction.
     const expectedRefs = Array.isArray(task.references) && task.references.length
       ? task.references
       : (Array.isArray(parameters.references) ? parameters.references : []);
     const referenceFilenames = [];
     if (expectedRefs.length) {
       await reportProgress(task.id, TASK_STATE.UPLOADING, 2, 'waiting for reference upload');
-      // Object store first. A control plane without one answers 501 and the
-      // gateway path below still works for a same-machine browser.
-      const names = (await fetchInputs(task.id, expectedRefs))
-        || (await waitForInputs(task.id, expectedRefs));
+      const names = await waitForInputs(task.id, expectedRefs);
       for (let i = 0; i < expectedRefs.length; i += 1) {
         const name = names.find((n) => n === expectedRefs[i].name) || names[i];
         if (!name) continue;

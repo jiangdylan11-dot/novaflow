@@ -53,13 +53,6 @@ import {
 import { priceTask } from './pricing.mjs';
 import { isAllowedWorkflowCall, workflowModule } from './workflow-modules.mjs';
 import { MODEL_MANIFEST } from './model-manifest.mjs';
-import {
-  FILE_KIND,
-  FILE_URL_TTL_SECONDS,
-  safeFileName,
-  taskObjectPath,
-  taskObjectPrefix
-} from './task-files.mjs';
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 4000;
@@ -695,91 +688,13 @@ export function createControlPlane({ store, secrets, logger }) {
     };
   }
 
-  // ---- task files ------------------------------------------------------
-  //
-  // The route a task's bytes take between a browser and a worker that cannot
-  // reach each other. Both ask here for a short-lived signed URL against an
-  // object store both CAN reach, so neither needs an address for the other.
-  // task-files.mjs says why this exists at all.
-  //
-  // One handler for both callers because the rules are the same shape: you may
-  // touch a task's files if you are the user who owns it or the worker it was
-  // assigned to, and only in the direction and at the time that makes sense.
-  async function handleTaskFiles(taskId, body, headers, actor) {
-    // Authenticate BEFORE looking the task up. The other way round, a caller
-    // with no credentials at all learns which task ids exist from the
-    // difference between 404 and 401 - and it also makes "route is missing"
-    // and "task is not there" the same answer, which is how this ordering was
-    // caught: the bundle verifier could not tell them apart either.
-    const user = actor === 'user' ? await requireUser(headers) : null;
-    const worker = actor === 'user' ? null : await requireWorker(headers);
-
-    const task = await store.getTask(taskId);
-    if (!task) throw new HttpError(404, ERROR_CODE.NOT_FOUND, 'unknown task');
-
-    if (user) {
-      if (String(task.user_id) !== String(user.id)) {
-        // Not 403: a task that is not yours should not be distinguishable from
-        // one that does not exist.
-        throw new HttpError(404, ERROR_CODE.NOT_FOUND, 'unknown task');
-      }
-    } else if (String(task.assigned_worker_id || '') !== String(worker.id)) {
-      throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'task is not assigned to this worker');
-    }
-
-    if (!store.files) {
-      throw new HttpError(501, ERROR_CODE.UNAVAILABLE, 'this control plane has no object store configured');
-    }
-
-    const op = sanitizeText(body.op, 20) === 'download' ? 'download' : 'upload';
-
-    // Inputs only. Results never come this way: they were generated on the
-    // worker's own disk and are served from it directly, which is the whole
-    // point of the tunnel - a finished video has no reason to make a round
-    // trip through anyone's storage, and that round trip is what would
-    // exhaust a free tier.
-    //
-    // So this route carries the other direction, which the tunnel refuses by
-    // design: nothing reachable from the internet may write to a worker's
-    // disk. A reference image is a few MB and is deleted when the task ends.
-    const kind = FILE_KIND.INPUT;
-    if (sanitizeText(body.kind, 20) === FILE_KIND.OUTPUT) {
-      throw new HttpError(403, ERROR_CODE.FORBIDDEN,
-        'results are served from the worker, not from storage');
-    }
-    if (op === 'upload' && actor === 'worker') {
-      throw new HttpError(403, ERROR_CODE.FORBIDDEN, 'a worker does not upload inputs');
-    }
-
-    const names = Array.isArray(body.names) ? body.names.slice(0, 32) : [];
-    if (!names.length) throw new HttpError(400, ERROR_CODE.BAD_REQUEST, 'names is required');
-
-    const files = {};
-    for (const raw of names) {
-      const name = safeFileName(sanitizeText(raw, 200));
-      const objectPath = taskObjectPath(task.id, kind, name);
-      files[name] = op === 'upload'
-        ? await store.files.signUpload(objectPath, FILE_URL_TTL_SECONDS)
-        : await store.files.signDownload(objectPath, FILE_URL_TTL_SECONDS);
-    }
-
-    return {
-      ok: true,
-      op,
-      kind,
-      taskId: task.id,
-      files,
-      expiresAt: new Date((nowSeconds() + FILE_URL_TTL_SECONDS) * 1000).toISOString()
-    };
-  }
-
   /**
    * A worker reporting that a task's results have aged out.
    *
    * The worker already deletes its own copy on a timer. Nothing told the
-   * control plane, so result_expired was never set outside the test suite -
-   * and once files also live in an object store, nothing would ever delete
-   * them either. A bucket that only grows is not a working product.
+   * control plane, so result_expired was never set outside the test suite,
+   * and the control plane went on offering a download for bytes that were
+   * already gone.
    *
    * A worker may only expire tasks it ran.
    */
@@ -794,11 +709,6 @@ export function createControlPlane({ store, secrets, logger }) {
     if (!mine.length) return { ok: true, expired: 0 };
 
     await store.markResultsExpired(mine);
-    if (store.files && store.files.removePrefix) {
-      for (const id of mine) {
-        await store.files.removePrefix(taskObjectPrefix(id)).catch(() => {});
-      }
-    }
     return { ok: true, expired: mine.length };
   }
 
@@ -974,12 +884,6 @@ export function createControlPlane({ store, secrets, logger }) {
 
       m = path.match(/^\/api\/web\/tasks\/([^/]+)\/grant$/);
       if (m && method === 'POST') return ok(await handleTaskGrant(m[1], body, headers));
-
-      m = path.match(/^\/api\/web\/tasks\/([^/]+)\/files$/);
-      if (m && method === 'POST') return ok(await handleTaskFiles(m[1], body, headers, 'user'));
-
-      m = path.match(/^\/api\/worker\/tasks\/([^/]+)\/files$/);
-      if (m && method === 'POST') return ok(await handleTaskFiles(m[1], body, headers, 'worker'));
 
       if (method === 'POST' && path === '/api/maintenance/sweep') return ok(await handleSweep(body, headers));
 
