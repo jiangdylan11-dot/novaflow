@@ -313,4 +313,48 @@ section('the TTL sweeper never deletes a task that is still running');
   checkEqual('a fresh result survives a sweep', outs, ['out_0001.png']);
 }
 
+// ---------------------------------------------------------------------------
+section("a public site can reach a worker on the viewer's own machine");
+{
+  // The deployed site is https on a public domain; the gateway that holds the
+  // files is http://127.0.0.1 on the viewer's machine. Chrome will not even
+  // send that request unless the local server answers the Private Network
+  // Access preflight - and the failure is a bare "Failed to fetch".
+  const { createGateway } = await import('../../worker/src/gateway/gateway.mjs');
+  const { mkdtemp } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join: j } = await import('node:path');
+
+  const dir = await mkdtemp(j(tmpdir(), 'nfweb-pna-'));
+  const gw = createGateway({
+    workerId: '00000000-0000-0000-0000-0000000000aa',
+    dataDir: dir,
+    getGrantKey: async () => 'k',
+    onUpload: async () => {}
+  });
+  const port = await gw.listen(0, '127.0.0.1');
+  const url = 'http://127.0.0.1:' + port;
+
+  const pre = await fetch(url + '/gw/health', {
+    method: 'OPTIONS',
+    headers: {
+      origin: 'https://novaflow.example',
+      'access-control-request-method': 'GET',
+      'access-control-request-private-network': 'true'
+    }
+  });
+  checkEqual('the preflight is answered', pre.status, 204);
+  checkEqual('and it grants private-network access',
+    pre.headers.get('access-control-allow-private-network'), 'true');
+  checkEqual('for the page origin that asked',
+    pre.headers.get('access-control-allow-origin'), 'https://novaflow.example');
+
+  // The grant is still what authorises; opening the network path changes none
+  // of that.
+  const unauthorised = await fetch(url + '/gw/tasks/11111111-1111-1111-1111-111111111111/output/x.png');
+  check('a file still cannot be read without a grant', unauthorised.status === 401, unauthorised.status);
+
+  await gw.close();
+}
+
 finish('security');

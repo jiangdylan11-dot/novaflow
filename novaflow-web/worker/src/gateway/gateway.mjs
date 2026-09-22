@@ -46,7 +46,13 @@ function corsHeaders(origin) {
     'access-control-allow-origin': origin || '*',
     'access-control-allow-headers': 'content-type, x-novaflow-grant, range',
     'access-control-allow-methods': 'GET, PUT, POST, OPTIONS',
-    'access-control-expose-headers': 'content-range, accept-ranges, content-length, x-novaflow-task'
+    'access-control-expose-headers': 'content-range, accept-ranges, content-length, x-novaflow-task',
+    // Chrome's Private Network Access check. The site is on a public https
+    // origin and this gateway is on the viewer's own machine, so without this
+    // the browser refuses the request before it is sent - and the only symptom
+    // is "Failed to fetch" with no explanation. It is not a relaxation of
+    // anything: a grant is still required, and it is what actually authorises.
+    'access-control-allow-private-network': 'true'
   };
 }
 
