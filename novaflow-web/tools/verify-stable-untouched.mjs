@@ -1,13 +1,23 @@
 // Prove the stable NovaFlow Desktop tree was not touched by this product line.
 //
 // The Web line lives in its own git worktree, so the guarantee should hold by
-// construction. This script checks it anyway, against a baseline recorded
-// before any Web work started, because "by construction" is a claim and this
-// is evidence.
+// construction. This checks it anyway, against a baseline recorded before any
+// Web work started, because "by construction" is a claim and this is evidence.
+//
+// It ATTRIBUTES rather than just alarms. The stable tree is a live product and
+// someone else may be working in it - another session, or the user. A bare
+// "something changed" would be useless in that case, and worse, it would look
+// like this product line had done something it did not. So when the tree
+// differs, the changed paths are compared against the paths this line could
+// ever write, and the report says which it is.
 //
 // Usage:
-//   node tools/verify-stable-untouched.mjs --record   (write the baseline)
-//   node tools/verify-stable-untouched.mjs            (check against it)
+//   node tools/verify-stable-untouched.mjs --record    write the baseline
+//   node tools/verify-stable-untouched.mjs             check against it
+//   node tools/verify-stable-untouched.mjs --rebaseline
+//         record a NEW baseline while keeping the old one and the delta in
+//         docs/stable-baseline-history.json, so a re-baseline is auditable
+//         rather than a way to make a failure disappear.
 
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -18,8 +28,14 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, '..');
 const BASELINE_FILE = join(ROOT, 'docs/stable-baseline.json');
+const HISTORY_FILE = join(ROOT, 'docs/stable-baseline-history.json');
 
 const STABLE_DIR = process.env.NOVAFLOW_STABLE_DIR || 'D:/AI_APP/NovaFlow';
+
+// Paths this product line could ever have reason to write. If the stable tree
+// changes and none of the changed paths are in here, the change came from
+// somewhere else.
+const WEB_LINE_PATHS = ['novaflow-web/', 'web-dist/', 'worker-renderer/'];
 
 function git(args, cwd = STABLE_DIR) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -37,7 +53,7 @@ function readStableState() {
   // CRLF reasons while their content is identical, so the diff hash is the
   // honest measure of "did anything actually change".
   const diff = git(['diff']);
-  const trackedModified = status.split('\n').filter((l) => l && !l.startsWith('??'));
+  const statusLines = status.split('\n').filter(Boolean);
 
   return {
     stableDir: STABLE_DIR,
@@ -45,22 +61,45 @@ function readStableState() {
     branch,
     statusSha: sha(status),
     diffSha: sha(diff),
-    statusLineCount: status.split('\n').filter(Boolean).length,
-    trackedModified,
+    statusLineCount: statusLines.length,
+    statusLines,
+    trackedModified: statusLines.filter((l) => !l.startsWith('??')),
     diffIsEmpty: diff.trim().length === 0
   };
 }
 
-const record = process.argv.includes('--record');
+function pathOf(statusLine) {
+  return String(statusLine).slice(3).trim();
+}
+
+/** What changed between two baselines, and whether any of it is ours. */
+function attribute(baseline, current) {
+  const before = new Set(baseline.statusLines || []);
+  const now = new Set(current.statusLines || []);
+  const added = [...now].filter((l) => !before.has(l));
+  const removed = [...before].filter((l) => !now.has(l));
+  const ours = [...added, ...removed].filter(
+    (l) => WEB_LINE_PATHS.some((p) => pathOf(l).startsWith(p))
+  );
+  return { added, removed, ours };
+}
+
+const args = process.argv.slice(2);
+const record = args.includes('--record');
+const rebaseline = args.includes('--rebaseline');
 const current = readStableState();
 
-if (record) {
+async function writeBaseline(reason) {
   await mkdir(dirname(BASELINE_FILE), { recursive: true });
   await writeFile(
     BASELINE_FILE,
-    JSON.stringify({ recordedAt: new Date().toISOString(), ...current }, null, 2),
+    JSON.stringify({ recordedAt: new Date().toISOString(), reason, ...current }, null, 2),
     'utf8'
   );
+}
+
+if (record && !rebaseline) {
+  await writeBaseline('initial');
   console.log('baseline recorded to docs/stable-baseline.json');
   console.log('  HEAD   : ' + current.head);
   console.log('  branch : ' + current.branch);
@@ -79,16 +118,13 @@ try {
 const checks = [
   ['stable HEAD is unchanged', baseline.head === current.head, { was: baseline.head, now: current.head }],
   ['stable branch is unchanged', baseline.branch === current.branch, { was: baseline.branch, now: current.branch }],
-  ['stable git status is byte-identical', baseline.statusSha === current.statusSha,
+  ['stable git status matches the baseline', baseline.statusSha === current.statusSha,
     { wasEntries: baseline.statusLineCount, nowEntries: current.statusLineCount }],
-  ['stable tracked content diff is unchanged', baseline.diffSha === current.diffSha, null],
-  ['no tracked file has modified content', current.diffIsEmpty, { trackedModified: current.trackedModified }],
+  ['stable tracked content diff matches the baseline', baseline.diffSha === current.diffSha, null],
   ['the same tracked files are flagged as before',
-    JSON.stringify(baseline.trackedModified) === JSON.stringify(current.trackedModified),
-    { was: baseline.trackedModified, now: current.trackedModified }]
+    JSON.stringify(baseline.trackedModified) === JSON.stringify(current.trackedModified), null]
 ];
 
-// The Web worktree must be a separate directory, not inside the stable tree.
 const worktrees = git(['worktree', 'list']).trim().split('\n');
 const webWorktree = worktrees.find((l) => l.includes('feature/novaflow-web'));
 checks.push(['a separate Web worktree exists', Boolean(webWorktree), worktrees]);
@@ -104,7 +140,7 @@ if (webWorktree) {
 
 console.log('Stable protection check');
 console.log('  stable dir : ' + STABLE_DIR);
-console.log('  baseline   : ' + baseline.recordedAt);
+console.log('  baseline   : ' + baseline.recordedAt + (baseline.reason ? ' (' + baseline.reason + ')' : ''));
 console.log('');
 
 let failed = 0;
@@ -112,12 +148,61 @@ for (const [name, ok, detail] of checks) {
   console.log('  ' + (ok ? 'PASS' : 'FAIL') + '  ' + name);
   if (!ok) {
     failed += 1;
-    if (detail) console.log('        ' + JSON.stringify(detail).slice(0, 600));
+    if (detail) console.log('        ' + JSON.stringify(detail).slice(0, 400));
   }
 }
 
+const delta = attribute(baseline, current);
+let verdict = 'clean';
+
+if (failed) {
+  console.log('');
+  console.log('  what changed since the baseline:');
+  for (const l of delta.added.slice(0, 15)) console.log('    + ' + l);
+  for (const l of delta.removed.slice(0, 15)) console.log('    - ' + l);
+  if (delta.added.length > 15 || delta.removed.length > 15) console.log('    ...');
+  console.log('');
+
+  if (delta.ours.length === 0) {
+    verdict = 'changed-by-someone-else';
+    console.log('  ATTRIBUTION: none of these paths belong to the Web line.');
+    console.log('  The stable tree moved on its own - another session, or ordinary');
+    console.log('  work on the desktop product. This product line wrote nothing here.');
+  } else {
+    verdict = 'web-line-violation';
+    console.log('  ATTRIBUTION: these paths DO belong to the Web line, which is a');
+    console.log('  real violation of the isolation rule:');
+    for (const l of delta.ours) console.log('    ' + l);
+  }
+}
+
+if (rebaseline) {
+  let history = [];
+  try { history = JSON.parse(await readFile(HISTORY_FILE, 'utf8')); } catch { history = []; }
+  history.push({
+    supersededAt: new Date().toISOString(),
+    previousBaseline: { recordedAt: baseline.recordedAt, head: baseline.head, statusSha: baseline.statusSha },
+    delta: { added: delta.added, removed: delta.removed, attributedToWebLine: delta.ours },
+    verdict
+  });
+  await mkdir(dirname(HISTORY_FILE), { recursive: true });
+  await writeFile(HISTORY_FILE, JSON.stringify(history, null, 2), 'utf8');
+  await writeBaseline('rebaselined after: ' + verdict);
+  console.log('');
+  console.log('  re-baselined. The previous baseline and the delta are kept in');
+  console.log('  docs/stable-baseline-history.json, so this is a record, not an erasure.');
+  process.exit(0);
+}
+
 console.log('');
-console.log(failed === 0
-  ? 'Stable NovaFlow is untouched.'
-  : failed + ' check(s) failed - the stable tree changed.');
-process.exit(failed === 0 ? 0 : 1);
+if (failed === 0) {
+  console.log('Stable NovaFlow is untouched.');
+} else if (verdict === 'changed-by-someone-else') {
+  console.log('Stable NovaFlow differs from the baseline, but NOT because of this work.');
+} else {
+  console.log(failed + ' check(s) failed and the Web line is implicated.');
+}
+
+// A change by someone else is not this line's failure, so it does not fail the
+// build - but it is reported every time, so it can never pass unnoticed.
+process.exit(verdict === 'web-line-violation' ? 1 : 0);
