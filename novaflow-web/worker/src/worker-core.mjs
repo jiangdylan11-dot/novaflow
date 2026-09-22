@@ -569,10 +569,29 @@ export function createWorker(options) {
   let tunnel = null;
   let timers = [];
   let running = false;
+  let starting = null;
 
   async function start() {
+    if (starting) return starting;
     if (running) return snapshotState();
+    starting = startResources().catch(async (error) => {
+      await stop().catch(() => {});
+      if (error.message === 'missing session token' || error.message === 'unknown worker') {
+        error.message = '云端没有此节点的注册记录，请在设置中填写新的注册码，保存后重新启动';
+      } else if (error.message === 'registration code is invalid or used up') {
+        error.message = '注册码无效、已过期或已使用，请填写新的注册码，保存后重新启动';
+      }
+      state.lastError = String(error.message || error);
+      emit();
+      throw error;
+    });
+    try { return await starting; }
+    finally { starting = null; }
+  }
+
+  async function startResources() {
     running = true;
+    state.lastError = '';
 
     await mkdir(join(dataDir, 'tasks'), { recursive: true });
     await loadIdentity();
@@ -624,15 +643,22 @@ export function createWorker(options) {
     timers = [];
     state.status = 'offline';
     try {
-      await callControl('POST', '/api/worker/heartbeat', {
-        token: state.workerToken,
-        body: { status: 'offline', current_task_id: null }
-      });
+      if (state.workerToken) {
+        await callControl('POST', '/api/worker/heartbeat', {
+          token: state.workerToken,
+          body: { status: 'offline', current_task_id: null }
+        });
+      }
     } catch { /* going offline quietly is acceptable */ }
     if (tunnel) tunnel.stop();
     tunnel = null;
     if (gateway) await gateway.close();
     gateway = null;
+    state.workerToken = '';
+    state.grantKey = '';
+    state.endpointUrl = publicEndpoint;
+    state.localEndpointUrl = '';
+    state.transport = 'direct';
     emit();
   }
 

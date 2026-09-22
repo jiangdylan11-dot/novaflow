@@ -22,6 +22,7 @@ const SUITES = [
   { name: 'security', file: 'e2e/security.test.mjs', needs: [], timeoutMs: 240000 },
   { name: 'multi-worker', file: 'e2e/multi-worker.test.mjs', needs: [], timeoutMs: 300000 },
   { name: 'worker-onboarding', file: 'e2e/worker-onboarding.test.mjs', needs: [], timeoutMs: 300000 },
+  { name: 'worker-start-retry', file: 'e2e/worker-start-retry.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'renderer-workflow', file: 'e2e/renderer-workflow.test.mjs', needs: ['comfyui'], timeoutMs: 400000 },
   { name: 'full-pipeline', file: 'e2e/full-pipeline.test.mjs', needs: ['comfyui'], timeoutMs: 600000 }
 ];

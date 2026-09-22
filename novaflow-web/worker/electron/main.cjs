@@ -19,6 +19,7 @@ const MAX_LOG_LINES = 2000;
 
 let win = null;
 let worker = null;
+let startPromise = null;
 let createWorker = null;
 const logLines = [];
 
@@ -70,7 +71,14 @@ async function loadCore() {
 }
 
 async function startWorker() {
+  if (startPromise) return startPromise;
   if (worker) return worker.getState();
+  startPromise = startWorkerAttempt();
+  try { return await startPromise; }
+  finally { startPromise = null; }
+}
+
+async function startWorkerAttempt() {
   const config = readConfig();
   if (!config.controlUrl) throw new Error('请先在设置里填写 NovaFlow 控制面地址');
 
@@ -102,7 +110,17 @@ async function startWorker() {
     if (win && !win.isDestroyed()) win.webContents.send('worker:state', state);
   });
 
-  const state = await worker.start();
+  let state;
+  try {
+    state = await worker.start();
+  } catch (error) {
+    // A failed instance must not short-circuit the next Start click. Recreate
+    // it from the saved settings so a newly entered code is actually used.
+    const failed = worker;
+    worker = null;
+    await failed.stop().catch(() => {});
+    throw error;
+  }
   // The registration code is single use; drop it once it has been spent so a
   // later restart does not fail trying to reuse it.
   if (config.registrationCode) writeConfig({ ...config, registrationCode: '' });
