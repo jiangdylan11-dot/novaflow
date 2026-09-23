@@ -2266,6 +2266,7 @@
   const NOVAFLOW_RECT_RADIUS_TOP_PX = `${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX} 0 0`;
   const NOVAFLOW_RECT_RADIUS_BOTTOM_PX = `0 0 ${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX}`;
   const SECONDARY_CONTENT_GAP = NOVAFLOW_UNIFORM_GAP;
+  const SECONDARY_TO_CONTENT_GAP = 17;
   const SECONDARY_CONTENT_COLUMN_GAP = NOVAFLOW_UNIFORM_GAP;
   const SECONDARY_PANEL_BODY_INSET = 11;
   const PRIMARY_SECONDARY_GAP = NOVAFLOW_UNIFORM_GAP;
@@ -2283,7 +2284,7 @@
   const SECONDARY_GROUP_INSET = 4;
   const SECONDARY_GROUP_PILL_GAP = 3;
   const SECONDARY_ENTRY_RADIUS_PX = "5px";
-  const ART_DRAWING_PANEL_HEADER_HEIGHT = 36;
+  const ART_DRAWING_PANEL_HEADER_HEIGHT = 46;
   const NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT = 34;
   const NOVAFLOW_TOGGLE_SWITCH_WIDTH = 26;
   const NOVAFLOW_TOGGLE_SWITCH_HEIGHT = 14;
@@ -2304,7 +2305,8 @@
     "[data-novaflow-particle-project-action]",
     "[data-novaflow-template-button='1']",
     "[data-novaflow-autofit-button='1']",
-    "[data-novaflow-medium-weight='1']"
+    "[data-novaflow-medium-weight='1']",
+    "[data-novaflow-editor-panel='1'] > .nf-panel-header"
   ].join(",");
   const NOVAFLOW_STRONG_FONT_WEIGHT = "700";
   const NOVAFLOW_ICON_FONT_WEIGHT = "900";
@@ -2313,16 +2315,19 @@
   const NOVAFLOW_SELECT_ARROW_STROKE = "1.1px";
   const NOVAFLOW_SELECT_ARROW_COLOR = "rgba(238, 244, 252, 0.64)";
   const NOVAFLOW_NUMBER_INPUT_WIDTH = 50;
-  const PARTICLE_DENSITY_PANEL_HEADER_HEIGHT = 36;
+  const PARTICLE_DENSITY_PANEL_HEADER_HEIGHT = 46;
   const PARTICLE_DENSITY_PANEL_BODY_PADDING_Y = 8;
-  const PARTICLE_DENSITY_PANEL_BODY_PADDING_X = 12;
-  const PARTICLE_DENSITY_PANEL_STACK_GAP = 5;
+  const PARTICLE_DENSITY_PANEL_BODY_PADDING_X = 7;
+  const PARTICLE_DENSITY_PANEL_STACK_GAP = 7;
   const PARTICLE_DENSITY_SECTION_GAP = 6;
   const PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT = 14;
   const PARTICLE_DENSITY_SLIDER_TITLE_GAP = 2;
   const PARTICLE_DENSITY_SLIDER_ROW_HEIGHT = 26;
-  const PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT = 2;
+  const PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT = 3;
   const PARTICLE_DENSITY_SLIDER_THUMB_SIZE = 12;
+  // The unfilled half of every slider. One value, rather than the literal
+  // that had been repeated at each of the eighteen places a range is painted.
+  const UI_RANGE_TRACK = "#3b3b3b";
   const PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT = 24;
   const SPRITE_EDITOR_SLIDER_GROUP_GAP = 4;
   const SPRITE_EDITOR_SLIDER_STACK_TOP_GAP = 5;
@@ -2436,6 +2441,21 @@
   const CANVAS_BAR_PILL_RADIUS_PX = "9px";
   const WORKSPACE_SIDE_GAP = 10;
   const DOCK_HEIGHT = 99;
+  // The reference uses one number field and one icon button everywhere: in
+  // the dock, in the left panel and in the resource sidebar.
+  const UI_NUM_FIELD_WIDTH = 49;
+  const UI_NUM_FIELD_HEIGHT = 28;
+  const UI_NUM_FIELD_BACKGROUND = "#272727";
+  const UI_NUM_FIELD_BORDER_COLOR = "#343434";
+  const UI_NUM_FIELD_RADIUS_PX = "6px";
+  const UI_NUM_FIELD_TEXT = "#e9e9e9";
+  const UI_ICON_BUTTON_SIZE = 30;
+  const UI_ICON_BUTTON_BACKGROUND = "#282828";
+  const UI_ICON_BUTTON_RADIUS_PX = "7px";
+  const UI_ICON_BUTTON_TEXT = "#eaeaea";
+  const UI_ICON_BUTTON_DISABLED_BACKGROUND = "#252629";
+  const UI_ICON_BUTTON_DISABLED_TEXT = "#969aa2";
+  const UI_CONTROL_LABEL_TEXT = "#a9a9a9";
   const DOCK_SURFACE = "#161616";
   const DOCK_BORDER_COLOR = "#363636";
   const DOCK_RADIUS_PX = "12px";
@@ -2461,6 +2481,15 @@
   const PRIMARY_LEFT_CARD_INSET = 10;
   const PRIMARY_LEFT_CARD_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_CARD_INSET * 2;
   const PRIMARY_LEFT_CARD_HEADER_HEIGHT = 46;
+  // The reference gives the group header a bare row and puts the only plate
+  // on its icon: a 24 square, 7 in from the card edge, 8 before the label.
+  const PRIMARY_LEFT_CARD_HEADER_PAD = 7;
+  const PRIMARY_LEFT_CARD_ICON_SIZE = 24;
+  const PRIMARY_LEFT_CARD_ICON_BACKGROUND = "#292929";
+  const PRIMARY_LEFT_CARD_ICON_RADIUS_PX = "5px";
+  const PRIMARY_LEFT_CARD_ICON_COLOR = "#bdbdbd";
+  const PRIMARY_LEFT_CARD_ICON_GAP = 8;
+  const PRIMARY_LEFT_CARD_TITLE_COLOR = "#d4d4d4";
   // The shell lands the cards at 89; the reference wants 85.
   const PRIMARY_LEFT_CARD_SHIFT = 0;
   const SECONDARY_ENTRY_GROUP_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_PANEL_PAD * 2;
@@ -8823,7 +8852,7 @@
         padding: 0 !important;
         margin: 0 !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
         cursor: pointer !important;
         box-sizing: border-box !important;
@@ -14658,7 +14687,7 @@
     };
     if (type === "range") {
       styles["accent-color"] = UI_RANGE_ACCENT;
-      styles.background = `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`;
+      styles.background = `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`;
     } else if (type === "checkbox") {
       styles["accent-color"] = UI_RANGE_ACCENT;
     }
@@ -22119,7 +22148,7 @@
         appearance: none !important;
         -webkit-appearance: none !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-param-range="1"]::-webkit-slider-runnable-track {
         height: ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px !important;
@@ -22974,7 +23003,7 @@
         max-height: ${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px !important;
         padding: 0 !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] input[type="range"]::-webkit-slider-runnable-track {
         height: ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px !important;
@@ -24432,7 +24461,7 @@
         appearance: none !important;
         -webkit-appearance: none !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
         cursor: pointer !important;
         box-sizing: border-box !important;
@@ -24625,7 +24654,7 @@
         appearance: none !important;
         -webkit-appearance: none !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
         cursor: pointer !important;
         box-sizing: border-box !important;
@@ -24643,7 +24672,7 @@
         appearance: none !important;
         -webkit-appearance: none !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
         cursor: pointer !important;
         box-sizing: border-box !important;
@@ -24837,7 +24866,7 @@
         appearance: none !important;
         -webkit-appearance: none !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
         cursor: pointer !important;
       }
@@ -25284,7 +25313,7 @@
         padding: 0 !important;
         border-radius: 999px !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         cursor: pointer !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-skeleton-timeline-range="1"]::-webkit-slider-runnable-track {
@@ -25722,7 +25751,7 @@
         margin-top: 2px !important;
         margin-bottom: 0 !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
         cursor: pointer !important;
       }
@@ -25855,6 +25884,49 @@
         box-shadow: none !important;
         outline: none !important;
       }
+      /* The dock's controls are rendered by the bundle with plain inline
+         styles - no !important - so a stylesheet rule reaches them. The
+         reference gives them the same number field and icon button it uses
+         everywhere else. */
+      [data-novaflow-bottom-controls="1"] input:not([type="range"]):not([type="color"]) {
+        width: ${UI_NUM_FIELD_WIDTH}px !important;
+        height: ${UI_NUM_FIELD_HEIGHT}px !important;
+        min-height: ${UI_NUM_FIELD_HEIGHT}px !important;
+        padding: 0 8px !important;
+        box-sizing: border-box !important;
+        background: ${UI_NUM_FIELD_BACKGROUND} !important;
+        border: 1px solid ${UI_NUM_FIELD_BORDER_COLOR} !important;
+        border-radius: ${UI_NUM_FIELD_RADIUS_PX} !important;
+        color: ${UI_NUM_FIELD_TEXT} !important;
+        font-size: 11px !important;
+        text-align: center !important;
+      }
+      [data-novaflow-bottom-controls="1"] button {
+        width: ${UI_ICON_BUTTON_SIZE}px !important;
+        height: ${UI_ICON_BUTTON_SIZE}px !important;
+        min-height: ${UI_ICON_BUTTON_SIZE}px !important;
+        background: ${UI_ICON_BUTTON_BACKGROUND} !important;
+        border: 0 !important;
+        border-radius: ${UI_ICON_BUTTON_RADIUS_PX} !important;
+        color: ${UI_ICON_BUTTON_TEXT} !important;
+        font-size: 12px !important;
+      }
+      [data-novaflow-bottom-controls="1"] button:hover:not(:disabled) {
+        background: #323232 !important;
+      }
+      [data-novaflow-bottom-controls="1"] button:disabled {
+        background: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        color: ${UI_ICON_BUTTON_DISABLED_TEXT} !important;
+      }
+      [data-novaflow-bottom-controls="1"] div:not([data-novaflow-bottom-controls]) {
+        font-size: 11px !important;
+        color: ${UI_CONTROL_LABEL_TEXT} !important;
+      }
+      [data-novaflow-bottom-controls="1"] {
+        /* The reference leaves 11 between the parameter row and the timeline. */
+        gap: 11px !important;
+        row-gap: 11px !important;
+      }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-bottom-controls="1"]:not([data-novaflow-source-layout="1"]) {
         background: ${DOCK_SURFACE} !important;
         border: 1px solid ${DOCK_BORDER_COLOR} !important;
@@ -25881,7 +25953,7 @@
       }
       body.novaflow-blackgray-preview-with-bottom-controls input[type="range"]:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *) {
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
       }
       body.novaflow-blackgray-preview-has-bottom-controls [data-novaflow-bottom-control-range="1"] {
         height: ${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px !important;
@@ -25889,7 +25961,7 @@
         max-height: ${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px !important;
         padding: 0 !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls input[type="range"]:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *)::-webkit-slider-runnable-track {
         background: transparent !important;
@@ -26098,7 +26170,7 @@
         height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
         min-height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
         max-height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         border-radius: 999px !important;
       }
       body.novaflow-primary-target-particle .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar input[type="range"]::-webkit-slider-runnable-track {
@@ -26971,7 +27043,7 @@
         appearance: none !important;
         -webkit-appearance: none !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
       }
       [data-novaflow-export-modal-root="1"] input[type="range"]::-webkit-slider-runnable-track,
@@ -28785,6 +28857,35 @@
    * inline from here because the card width is set by several stylesheet rules
    * AND an inline !important, so nothing a stylesheet says survives.
    */
+  /**
+   * The reference's group header: one plated icon, then the label, then the
+   * chevron. The icon is the only surface in the row - the row itself only
+   * fills on hover.
+   */
+  function stylePrimaryLeftCardHeaderIcon(header) {
+    const icon = header.querySelector("i[class*='fa-']:not([class*='chevron'])");
+    if (!(icon instanceof HTMLElement)) return;
+    const size = `${PRIMARY_LEFT_CARD_ICON_SIZE}px`;
+    nfSetStyleIfChanged(icon, "display", "inline-flex", "important");
+    nfSetStyleIfChanged(icon, "align-items", "center", "important");
+    nfSetStyleIfChanged(icon, "justify-content", "center", "important");
+    nfSetStyleIfChanged(icon, "flex", "0 0 auto", "important");
+    nfSetStyleIfChanged(icon, "width", size, "important");
+    nfSetStyleIfChanged(icon, "min-width", size, "important");
+    nfSetStyleIfChanged(icon, "height", size, "important");
+    nfSetStyleIfChanged(icon, "min-height", size, "important");
+    nfSetStyleIfChanged(icon, "margin", `0 ${PRIMARY_LEFT_CARD_ICON_GAP}px 0 0`, "important");
+    nfSetStyleIfChanged(icon, "padding", "0", "important");
+    nfSetStyleIfChanged(icon, "background", PRIMARY_LEFT_CARD_ICON_BACKGROUND, "important");
+    nfSetStyleIfChanged(icon, "background-color", PRIMARY_LEFT_CARD_ICON_BACKGROUND, "important");
+    nfSetStyleIfChanged(icon, "border-radius", PRIMARY_LEFT_CARD_ICON_RADIUS_PX, "important");
+    nfSetAttrIfChanged(icon, "data-novaflow-keep-radius", "1");
+    nfSetStyleIfChanged(icon, "color", PRIMARY_LEFT_CARD_ICON_COLOR, "important");
+    nfSetStyleIfChanged(icon, "font-size", "12px", "important");
+    nfSetStyleIfChanged(icon, "line-height", "1", "important");
+    nfSetStyleIfChanged(icon, "text-align", "center", "important");
+  }
+
   function syncPrimaryLeftCards() {
     Array.from(document.querySelectorAll('[data-novaflow-left-content-shell="1"], [data-novaflow-left-content-root="1"]')).forEach((shell) => {
       if (shell instanceof HTMLElement) {
@@ -28818,8 +28919,11 @@
             nfSetStyleIfChanged(node, "font-size", "12px", "important");
           }
         });
-        nfSetStyleIfChanged(header, "color", "#d4d4d4", "important");
+        nfSetStyleIfChanged(header, "color", PRIMARY_LEFT_CARD_TITLE_COLOR, "important");
         nfSetStyleIfChanged(header, "border-radius", "6px", "important");
+        nfSetStyleIfChanged(header, "padding", `0 ${PRIMARY_LEFT_CARD_HEADER_PAD}px`, "important");
+        nfSetStyleIfChanged(header, "box-sizing", "border-box", "important");
+        stylePrimaryLeftCardHeaderIcon(header);
       }
     });
   }
@@ -30428,7 +30532,8 @@
       "[data-novaflow-particle-project-action]",
       "[data-novaflow-template-button='1']",
       "[data-novaflow-template-control='1']",
-      "[data-novaflow-autofit-button='1']"
+      "[data-novaflow-autofit-button='1']",
+      "[data-novaflow-bottom-controls='1'] input"
     ].join(","))) {
       return true;
     }
@@ -35888,7 +35993,7 @@
       range.style.setProperty("max-height", `${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px`, "important");
       range.style.setProperty("padding", "0", "important");
       range.style.setProperty("accent-color", UI_RANGE_ACCENT, "important");
-      range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
+      range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
       range.style.setProperty("background-color", "transparent", "important");
       syncRangeFillVisual(range);
     });
@@ -46585,7 +46690,7 @@
         appearance: "none",
         "-webkit-appearance": "none",
         "accent-color": UI_RANGE_ACCENT,
-        background: `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`,
+        background: `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`,
         "background-color": "transparent",
         cursor: "pointer",
         "box-sizing": "border-box"
@@ -48635,7 +48740,7 @@
         padding: "0",
         margin: "0",
         "accent-color": UI_RANGE_ACCENT,
-        background: `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`,
+        background: `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`,
         "background-color": "transparent",
         "box-sizing": "border-box"
       });
@@ -50986,7 +51091,7 @@
       ? panelTop + SECONDARY_GROUP_TOP_INSET
       : Math.max(88, Math.round(groupRect.top - 10));
     const shieldTop = upperRail ? Math.round(upperRail.bottom) : top;
-    const desiredContentTop = Math.round(top + shellHeight + SECONDARY_CONTENT_GAP);
+    const desiredContentTop = Math.round(top + shellHeight + SECONDARY_TO_CONTENT_GAP);
     // Inline, because the group's padding and the pills' radius are each set
     // by more than one stylesheet rule and the last one kept winning. This is
     // the capsule spec from the reference: 4px inset, 3px gap, 5px pills.
@@ -52370,7 +52475,7 @@
             appearance: "none",
             "-webkit-appearance": "none",
             "accent-color": UI_RANGE_ACCENT,
-            background: `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`
+            background: `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`
           });
           setImportantStyles(valueInput, {
             width: valueWidth,
@@ -57756,7 +57861,7 @@
       range.style.setProperty("margin", "0", "important");
       range.style.setProperty("padding", "0", "important");
       range.style.setProperty("accent-color", UI_RANGE_ACCENT, "important");
-      range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
+      range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
       syncRangeFillVisual(range);
       if (valueInput instanceof HTMLInputElement) {
         valueInput.style.setProperty("flex", `0 0 ${SPRITE_EDITOR_SLIDER_VALUE_WIDTH}px`, "important");
@@ -68254,7 +68359,7 @@
     range.style.setProperty("appearance", "none", "important");
     range.style.setProperty("-webkit-appearance", "none", "important");
     range.style.setProperty("accent-color", UI_RANGE_ACCENT, "important");
-    range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
+    range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
     range.style.setProperty("background-color", "transparent", "important");
     range.style.setProperty("cursor", "pointer", "important");
   }
@@ -69355,7 +69460,7 @@
       range.style.setProperty("max-height", `${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px`, "important");
       range.style.setProperty("padding", "0", "important");
       range.style.setProperty("accent-color", UI_RANGE_ACCENT, "important");
-      range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
+      range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
       syncRangeFillVisual(range);
     });
   }
