@@ -34948,6 +34948,7 @@
   // writers that disagree cannot spin; those are counted for fixing at source.
   const NOVAFLOW_SPEC_STATE_ATTRIBUTES = new Set([
     "class",
+    "data-novaflow-tools-entry-active",
     "data-novaflow-art-generate-active",
     "data-novaflow-skeleton-top-button-active",
     "data-filled",
@@ -35247,6 +35248,24 @@
   // 美工: opening 模式 (the generation dock) while an edit mode's tools are
   // up leaves that edit, as asked - through the edit's own 退出, once per
   // tool bar, so whatever it does on exit still happens.
+  // 工具 → PNG 压缩: 普通 PNG / Spine 图集 are marked on the first pass, so
+  // they are the segmented plate from their first frame (the settings pass
+  // that marked them ran a quarter second later; until then they stacked,
+  // bright green).
+  function markNovaflowToolsModeRowEarly() {
+    if (!document.body || !document.body.classList.contains("novaflow-primary-target-tools")) return;
+    const buttons = Array.from(document.querySelectorAll("button")).filter((button) => getNovaflowToolsPngModeButtonKey(button));
+    if (buttons.length < 2 || !buttons.every((button) => button.parentElement === buttons[0].parentElement)) return;
+    nfSetAttrIfChanged(buttons[0].parentElement, "data-novaflow-tools-mode-row", "1");
+    buttons.forEach((button) => {
+      nfSetAttrIfChanged(button, "data-novaflow-tools-mode-button", "1");
+      if (!button.hasAttribute("data-novaflow-tools-mode-active")) {
+        const bg = String(button.style.background || button.style.backgroundColor || "");
+        nfSetAttrIfChanged(button, "data-novaflow-tools-mode-active", /30,\s*166,\s*114|#1ea672/i.test(bg) ? "1" : "0");
+      }
+    });
+  }
+
   function exitArtEditWhenGenerating() {
     const body = document.body;
     if (!body || body.getAttribute(ART_GENERATE_ACTIVE_ATTR) !== "1") return;
@@ -35850,6 +35869,7 @@
     // 美工 / UI zoom cells are put in with the pill, not a poll later.
     try { syncNovaflowZoomPercentLabels(); } catch (_) { void 0; }
     try { exitArtEditWhenGenerating(); } catch (_) { void 0; }
+    try { markNovaflowToolsModeRowEarly(); } catch (_) { void 0; }
     syncNovaflowStackAdoption();
     NOVAFLOW_STACK_WORKSPACE_TOP = NOVAFLOW_LAYOUT_TIER === "stack"
       ? TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP + novaflowStackSidebarHeight() + NOVAFLOW_STACK_GAP
