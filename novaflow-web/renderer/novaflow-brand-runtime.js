@@ -2544,6 +2544,16 @@
   const AI_ANIMATION_STACK_SURFACE = "#161616";
   const AI_ANIMATION_TIMELINE_BORDER_COLOR = "#343434";
   const AI_ANIMATION_TIMELINE_RADIUS = 10;
+  // 多参视频's reference tiles, measured off animation-spline.html at 1580:
+  // a left-aligned row of 87x59 dashed wells, 8 apart, 11 above the parameter
+  // row. The app was drawing them 117x132, which pushed the dock to 468.
+  const AI_ANIMATION_REFERENCE_TILE_WIDTH = 87;
+  const AI_ANIMATION_REFERENCE_TILE_HEIGHT = 59;
+  const AI_ANIMATION_REFERENCE_TILE_GAP = 8;
+  const AI_ANIMATION_REFERENCE_TILE_SURFACE = "#202020";
+  const AI_ANIMATION_REFERENCE_TILE_BORDER_COLOR = "#4f4f4f";
+  const AI_ANIMATION_REFERENCE_TILE_RADIUS_PX = "8px";
+  const AI_ANIMATION_DOCK_ROW_GAP = 11;
   // The AI page's canvas bar carries the same two capsules the particle page
   // does - a plate holding bare 28-tall buttons - so it reuses those tokens
   // and only adds its own vertical offsets.
@@ -22641,8 +22651,8 @@
       body.novaflow-ai-animation-section-layers [data-novaflow-ai-bottom-main-row="1"] {
         flex-direction: column !important;
         align-items: stretch !important;
-        gap: ${PRIMARY_PANEL_TOP_GAP}px !important;
-        row-gap: ${PRIMARY_PANEL_TOP_GAP}px !important;
+        gap: ${AI_ANIMATION_DOCK_ROW_GAP}px !important;
+        row-gap: ${AI_ANIMATION_DOCK_ROW_GAP}px !important;
       }
       body.novaflow-ai-animation-section-layers [data-novaflow-ai-reference-column="1"] {
         order: 0 !important;
@@ -30858,7 +30868,8 @@
       "[data-novaflow-ai-top-mode-tabs='1'] button",
       "[data-novaflow-ai-board-controls-top-left='1']",
       "[data-novaflow-ai-board-controls-top-left='1'] button",
-      "[data-novaflow-ai-resource-action='1']"
+      "[data-novaflow-ai-resource-action='1']",
+      "[data-novaflow-ai-reference-column='1'] [data-nf-upload-dropzone='1']"
     ].join(","))) {
       return true;
     }
@@ -31307,6 +31318,74 @@
         selector: '[data-novaflow-ai-top-mode-tabs="1"]',
         style: {
           top: `calc(var(--novaflow-ai-preview-top, ${TOPBAR_HEIGHT}px) + ${PRIMARY_PANEL_TOP_GAP + AI_ANIMATION_CANVAS_BAR_TOP_GAP}px)`
+        }
+      },
+      {
+        // The dock's rows are sized by their content; both of these carried a
+        // fixed height from the two-column layout and left 88 of dead space
+        // above the tiles.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row="1"]',
+        style: {
+          height: "auto",
+          "min-height": "0",
+          "max-height": "none"
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-reference-column="1"]',
+        style: {
+          // normalizeAiAnimationReferenceColumnPosition pushes this column
+          // down to line up with the prompt box beside it. There is nothing
+          // beside it any more, and that margin was 240 of dead space at the
+          // top of the dock.
+          "margin-top": "0",
+          height: `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          "min-height": `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          "max-height": `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          flex: "0 0 auto",
+          "align-self": "flex-start"
+        }
+      },
+      {
+        // The tile row is exactly one tile tall. Left to grow it squared off
+        // and pushed the parameter row off the bottom of the page.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-reference-column="1"] > *',
+        style: {
+          display: "flex",
+          "flex-direction": "row",
+          "flex-wrap": "nowrap",
+          "justify-content": "flex-start",
+          "align-items": "flex-start",
+          gap: `${AI_ANIMATION_REFERENCE_TILE_GAP}px`,
+          height: `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          "min-height": `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          "max-height": `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          width: "auto",
+          "max-width": "100%"
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"]',
+        style: {
+          width: `${AI_ANIMATION_REFERENCE_TILE_WIDTH}px`,
+          "min-width": `${AI_ANIMATION_REFERENCE_TILE_WIDTH}px`,
+          "max-width": `${AI_ANIMATION_REFERENCE_TILE_WIDTH}px`,
+          height: `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          "min-height": `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          "max-height": `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          flex: "0 0 auto",
+          margin: "0",
+          padding: "0",
+          background: AI_ANIMATION_REFERENCE_TILE_SURFACE,
+          "background-color": AI_ANIMATION_REFERENCE_TILE_SURFACE,
+          border: `1px dashed ${AI_ANIMATION_REFERENCE_TILE_BORDER_COLOR}`,
+          "border-radius": AI_ANIMATION_REFERENCE_TILE_RADIUS_PX,
+          "box-sizing": "border-box",
+          "font-size": "11px"
         }
       },
       {
