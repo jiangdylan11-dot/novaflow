@@ -9334,18 +9334,20 @@
         font-weight: 700 !important;
         box-shadow: none !important;
       }
+      /* A helper action, and helpers are grey - this was the only olive
+         control in the app. */
       body.novaflow-primary-target-tools [data-novaflow-tools-overwrite-button="1"] {
-        background: #b98218 !important;
-        background-color: #b98218 !important;
-        color: #fff2c0 !important;
-        border-color: rgba(255, 211, 105, 0.32) !important;
+        background: ${UI_BUTTON_BACKGROUND} !important;
+        background-color: ${UI_BUTTON_BACKGROUND} !important;
+        color: ${UI_SEGMENT_IDLE_TEXT} !important;
+        border-color: transparent !important;
         box-shadow: none !important;
       }
       body.novaflow-primary-target-tools [data-novaflow-tools-overwrite-button="1"]:disabled,
       body.novaflow-primary-target-tools [data-novaflow-tools-overwrite-button="1"][aria-disabled="true"] {
-        background: rgba(185, 130, 24, 0.64) !important;
-        background-color: rgba(185, 130, 24, 0.64) !important;
-        color: rgba(255, 242, 192, 0.72) !important;
+        background: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        background-color: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        color: ${UI_ICON_BUTTON_DISABLED_TEXT} !important;
       }
       body.novaflow-primary-target-tools [data-novaflow-tools-current-tool-card="1"] {
         display: none !important;
@@ -31308,6 +31310,79 @@
         }
       },
       {
+        // 工具: the tool list is a navigation column - 198x40 entries on the
+        // card's own inset, bare until selected, and then the rail's dark
+        // green with its hairline edge rather than a solid accent block.
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-tools-entry]",
+        style: (node) => {
+          const active = node.getAttribute("data-novaflow-tools-entry-active") === "1";
+          return {
+            width: `${PRIMARY_LEFT_CARD_WIDTH}px`,
+            "min-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+            "max-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+            "margin-left": `${PRIMARY_LEFT_CARD_INSET}px`,
+            height: `${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px`,
+            "min-height": `${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px`,
+            "max-height": `${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px`,
+            padding: "0 12px",
+            "box-sizing": "border-box",
+            "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            border: "0",
+            background: active ? UI_SELECTED_BACKGROUND : "transparent",
+            "background-color": active ? UI_SELECTED_BACKGROUND : "transparent",
+            "background-image": "none",
+            "box-shadow": active ? `inset 0 0 0 1px ${UI_RAIL_SELECTED_BORDER}` : "none",
+            color: active ? NOVAFLOW_TOOLS_ENTRY_SELECTED_TEXT : UI_SEGMENT_IDLE_TEXT,
+            "font-size": "12px",
+            "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT
+          };
+        }
+      },
+      {
+        // The backdrop behind the two preview columns is not a surface.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-grid="1"]',
+        style: {
+          background: "transparent",
+          "background-color": "transparent",
+          "background-image": "none"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-card="1"]',
+        style: {
+          background: NOVAFLOW_TOOLS_VIEW_SURFACE,
+          "background-color": NOVAFLOW_TOOLS_VIEW_SURFACE,
+          "background-image": "none",
+          border: `1px solid ${NOVAFLOW_TOOLS_VIEW_BORDER_COLOR}`,
+          "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`,
+          "box-shadow": "none",
+          padding: "13px",
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        // 直接覆盖 was the only olive control in the app; it is a helper.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-overwrite-button="1"], [data-novaflow-tools-start-button="1"]',
+        style: (node) => {
+          const disabled = node.disabled === true;
+          const main = node.getAttribute("data-novaflow-tools-start-button") === "1";
+          const background = disabled
+            ? UI_ICON_BUTTON_DISABLED_BACKGROUND
+            : (main ? UI_ACCENT : UI_BUTTON_BACKGROUND);
+          return {
+            background,
+            "background-color": background,
+            "background-image": "none",
+            border: "0",
+            color: disabled ? UI_ICON_BUTTON_DISABLED_TEXT : (main ? "#ffffff" : UI_SEGMENT_IDLE_TEXT)
+          };
+        }
+      },
+      {
         // ...and the left column's sections are cards, so they take the card
         // width rather than the panel's full width, which overhung it by 10.
         when: "body.novaflow-ai-animation-section-layers",
@@ -31336,7 +31411,9 @@
       }
       nodes.forEach((node) => {
         if (!(node instanceof HTMLElement)) return;
-        for (const [property, value] of Object.entries(entry.style)) {
+        const style = typeof entry.style === "function" ? entry.style(node) : entry.style;
+        if (!style) return;
+        for (const [property, value] of Object.entries(style)) {
           nfSetStyleIfChanged(node, property, value, "important");
         }
       });
@@ -35160,19 +35237,26 @@
   function applyNovaflowToolsEntryButtonVisual(button, looksActive) {
     if (!(button instanceof HTMLElement)) return;
     button.setAttribute("data-novaflow-tools-entry-active", looksActive ? "1" : "0");
-    button.style.setProperty("width", `${PRIMARY_LEFT_PANEL_WIDTH}px`, "important");
-    button.style.setProperty("min-width", `${PRIMARY_LEFT_PANEL_WIDTH}px`, "important");
-    button.style.setProperty("max-width", `${PRIMARY_LEFT_PANEL_WIDTH}px`, "important");
-    button.style.setProperty("height", "44px", "important");
-    button.style.setProperty("min-height", "44px", "important");
-    button.style.setProperty("max-height", "44px", "important");
-    button.style.setProperty("padding", "7px 10px", "important");
-    button.style.setProperty("background", looksActive ? UI_ACCENT : UI_BUTTON_BACKGROUND, "important");
-    button.style.setProperty("background-color", looksActive ? UI_ACCENT : UI_BUTTON_BACKGROUND, "important");
-    button.style.setProperty("border-color", "transparent", "important");
-    button.style.setProperty("color", looksActive ? "#ffffff" : "rgba(238, 244, 252, 0.96)", "important");
+    // The reference draws this list like the rail: bare until selected, then
+    // the dark green with a hairline edge. It is navigation, not an action,
+    // so it never takes the accent fill.
+    button.style.setProperty("width", `${PRIMARY_LEFT_CARD_WIDTH}px`, "important");
+    button.style.setProperty("min-width", `${PRIMARY_LEFT_CARD_WIDTH}px`, "important");
+    button.style.setProperty("max-width", `${PRIMARY_LEFT_CARD_WIDTH}px`, "important");
+    button.style.setProperty("margin-left", `${PRIMARY_LEFT_CARD_INSET}px`, "important");
+    button.style.setProperty("height", `${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px`, "important");
+    button.style.setProperty("min-height", `${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px`, "important");
+    button.style.setProperty("max-height", `${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px`, "important");
+    button.style.setProperty("padding", "0 12px", "important");
+    button.style.setProperty("border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
+    button.style.setProperty("background", looksActive ? UI_SELECTED_BACKGROUND : "transparent", "important");
+    button.style.setProperty("background-color", looksActive ? UI_SELECTED_BACKGROUND : "transparent", "important");
+    button.style.setProperty("border", "0", "important");
+    button.style.setProperty("color", looksActive ? NOVAFLOW_TOOLS_ENTRY_SELECTED_TEXT : UI_SEGMENT_IDLE_TEXT, "important");
+    button.style.setProperty("font-size", "12px", "important");
+    button.style.setProperty("font-weight", NOVAFLOW_MEDIUM_FONT_WEIGHT, "important");
     button.style.setProperty("background-image", "none", "important");
-    button.style.setProperty("box-shadow", "none", "important");
+    button.style.setProperty("box-shadow", looksActive ? `inset 0 0 0 1px ${UI_RAIL_SELECTED_BORDER}` : "none", "important");
     button.style.setProperty("filter", "none", "important");
   }
 
