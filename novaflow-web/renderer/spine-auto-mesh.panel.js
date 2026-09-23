@@ -2924,12 +2924,16 @@
     swHint.title = '展开本面板即进入编辑:预览停在设置姿势,可直接选、拖、画骨骼;收起即恢复播放'
 
     // tools
-    const toolsRow = el('div', { display: 'flex', gap: '4px', marginTop: STACK_GAP })
+    // one row that shares the column evenly and can narrow with it (a scrollbar
+    // took a few px and 新建 wrapped, or the row ran past the edge)
+    const toolsRow = el('div', { display: 'flex', flexWrap: 'nowrap', gap: '4px', marginTop: STACK_GAP, width: '100%', minWidth: '0', boxSizing: 'border-box' })
     const toolBtns = {}
     for (const t of (E ? E.TOOLS : [])) {
       const b = smallButton(t.label)
       b.title = `${t.hint}(快捷键 ${t.key.toUpperCase()})`
       b.style.flex = '1 1 0'
+      b.style.minWidth = '0'
+      b.style.padding = '0 4px'
       b.addEventListener('click', () => { ensureController().setTool(t.id); bones.syncUi() })
       toolBtns[t.id] = b
       toolsRow.appendChild(b)
@@ -2969,11 +2973,11 @@
     }
     const poseSpec = () => POSE_FIELDS[(bones.ctl ? bones.ctl.getState().tool : 'move')] || POSE_FIELDS.move
     const mechNote = el('div', { fontSize: '10px', color: 'rgba(255,170,90,0.85)', marginTop: '4px', display: 'none' }, '控制骨(IK/约束目标、零长度骨、枢轴):拖动或旋转=摆姿势,约束联动、图片跟着走;辅助链跟着关节走,不单独编辑')
-    const legend = el('div', { display: 'flex', alignItems: 'center', gap: '10px', marginTop: '2px', fontSize: '10px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap', overflow: 'hidden' })
+    const legend = el('div', { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px', marginTop: '2px', fontSize: '10px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap', overflow: 'hidden', width: '100%', minWidth: '0' })
     legend.title = '蓝=普通变形骨 · 紫=被约束驱动 · 琥珀=控制骨(IK/约束目标、零长度枢轴) · 绿=选中'
     for (const [color, text] of [['#8fd3ff', '普通'], ['#c79bff', '受约束'], ['#ffb454', '控制骨'], ['#22c98a', '选中']]) {
-      const chip = el('span', { display: 'inline-flex', alignItems: 'center', gap: '4px', flex: '0 0 auto' })
-      chip.appendChild(el('span', { width: '8px', height: '8px', borderRadius: '2px', background: color, flex: '0 0 auto' }))
+      const chip = el('span', { display: 'inline-flex', alignItems: 'center', gap: '2px', flex: '0 1 auto', minWidth: '0' })
+      chip.appendChild(el('span', { width: '6px', height: '6px', borderRadius: '2px', background: color, flex: '0 0 auto' }))
       chip.appendChild(el('span', null, text))
       legend.appendChild(chip)
     }
