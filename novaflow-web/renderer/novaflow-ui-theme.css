@@ -663,3 +663,47 @@ html[data-novaflow-layout-tier="stack"] [data-novaflow-topbar-status],
 html[data-novaflow-layout-tier="stack"] [data-novaflow-ai-connection-status] {
   display: none !important;
 }
+
+/* 2.0i Sliders.
+   The reference draws every slider as the browser's own, tinted #1BB28C, on a
+   3px box (accent-color; light scheme). The runtime had fifteen custom thumb
+   and track skins; the :not(#id) lifts this over all of them. */
+html body input[type="range"]:not(#nf-native-range) {
+  -webkit-appearance: auto !important;
+  appearance: auto !important;
+  accent-color: #1bb28c !important;
+  color-scheme: light !important;
+  background: transparent !important;
+  background-image: none !important;
+  height: 3px !important;
+  min-height: 3px !important;
+  max-height: 3px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+html body input[type="range"]:not(#nf-native-range)::-webkit-slider-thumb {
+  -webkit-appearance: auto !important;
+  appearance: auto !important;
+}
+html body input[type="range"]:not(#nf-native-range)::-webkit-slider-runnable-track {
+  -webkit-appearance: auto !important;
+  appearance: auto !important;
+}
+html body input[type="checkbox"]:not(#nf-native-check) {
+  accent-color: #1bb28c !important;
+  color-scheme: dark !important;
+}
+
+/* 2.0j Type.
+   The reference's face and rhythm: Segoe UI with Microsoft YaHei for the
+   Chinese, 13px on a 1.5 line. Sizes and weights per control follow the
+   runtime's reference spec (buttons 500, the main action 600). */
+html body,
+html body .novaflow-app,
+html body #novaflow-web-login-gate {
+  font-family: "Segoe UI", "Microsoft YaHei", sans-serif !important;
+}
+html body .novaflow-app {
+  line-height: 1.5 !important;
+}
