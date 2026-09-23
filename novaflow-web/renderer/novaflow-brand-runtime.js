@@ -34742,6 +34742,51 @@
         style: { background: "transparent", "background-color": "transparent", "box-shadow": "none", border: "0" }
       },
       {
+        // 美工's layer rows, compact so the name reads (it had 22px, one
+        // character): eye 18, thumb 28 with the mask as a small badge on its
+        // corner, the name taking the rest, × 16.
+        selector: "[data-novaflow-spine-split-layer-row]",
+        style: {
+          display: "grid", "grid-template-columns": "18px 28px minmax(0, 1fr) 16px", "grid-template-rows": "28px",
+          gap: "5px", "column-gap": "5px", padding: "5px 6px", "align-items": "center", "box-sizing": "border-box"
+        }
+      },
+      {
+        selector: '[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-command="visibility"]',
+        style: {
+          "grid-column": "1", "grid-row": "1", width: "18px", "min-width": "18px", "max-width": "18px", height: "18px",
+          "min-height": "18px", "max-height": "18px", padding: "0", "font-size": "10px", "border-radius": "5px"
+        }
+      },
+      {
+        selector: "[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-thumb]",
+        style: { "grid-column": "2", "grid-row": "1", width: "28px", "min-width": "28px", "max-width": "28px", height: "28px", "min-height": "28px", "max-height": "28px" }
+      },
+      {
+        selector: '[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-stencil="1"]',
+        style: {
+          "grid-column": "2", "grid-row": "1", "justify-self": "end", "align-self": "end", position: "relative", "z-index": "1",
+          width: "14px", "min-width": "14px", "max-width": "14px", height: "14px", "min-height": "14px", "max-height": "14px",
+          padding: "1px", margin: "0 -3px -3px 0", "border-radius": "4px", "box-sizing": "border-box"
+        }
+      },
+      {
+        selector: "[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-name-slot]",
+        style: { "grid-column": "3", "grid-row": "1", width: "auto", "min-width": "0", "max-width": "none", overflow: "hidden" }
+      },
+      {
+        // The name smaller, as asked: 11px, cut with an ellipsis.
+        selector: "[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-name-slot] *",
+        style: { "font-size": "11px", "line-height": "14px", "white-space": "nowrap", overflow: "hidden", "text-overflow": "ellipsis", "min-width": "0" }
+      },
+      {
+        selector: '[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-command="delete"]',
+        style: {
+          "grid-column": "4", "grid-row": "1", width: "16px", "min-width": "16px", "max-width": "16px", height: "16px",
+          "min-height": "16px", "max-height": "16px", padding: "0"
+        }
+      },
+      {
         // 点击存储 is as tall as the cards beside it (they carry a name row).
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile="1"]',
