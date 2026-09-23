@@ -33037,6 +33037,71 @@
         style: { display: "none" }
       },
       {
+        // 美工 / UI, measured off ui-spline.html: the node canvas carries the
+        // stage's dot field, and the canvas bar's plate holds its buttons
+        // directly - the toolbar inside it had its own fill and 7px padding.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-viewport="1"]',
+        style: {
+          "background-image": `radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px)`,
+          "background-size": `${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px`,
+          "background-position": "0 0"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-toolbar]',
+        style: {
+          padding: "0", margin: "0", gap: "3px", "column-gap": "3px", height: "28px", "min-height": "28px",
+          background: "transparent", "background-color": "transparent", border: "0", "box-shadow": "none",
+          "backdrop-filter": "none", "border-radius": "0", display: "flex", "align-items": "center"
+        }
+      },
+      {
+        // The empty state: centred on the stage, a 17/500 line over the 12px
+        // note, and three plain 30-tall buttons - no one of them is the
+        // main action until there is something to act on.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-empty-state]',
+        style: { top: "50%", gap: "12px", "row-gap": "12px" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-empty-state] > div:first-child',
+        style: { "font-size": "17px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, color: "#dbdbdb", "line-height": "26px" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-empty-state] > div:nth-child(2)',
+        style: { "font-size": "12px", color: "#969696", "line-height": "18px" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-empty-state] > div:nth-child(3)',
+        style: { gap: "8px", "margin-top": "15px" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-empty-action]',
+        style: (node) => (nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle"), {
+          width: "auto", "min-width": "0", height: "30px", "min-height": "30px", "max-height": "30px", padding: "5px 10px",
+          background: `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`, "background-color": `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`,
+          color: "var(--nf-cb-hover-fg, #888888)", border: "1px solid transparent", "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+          "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "box-shadow": "none", "box-sizing": "border-box"
+        })
+      },
+      {
+        // UI 拆图　第二阶段: one disabled button, its two words in one type.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-split-placeholder="1"]',
+        style: { padding: "5px 10px", gap: "13px", "justify-content": "center", opacity: NOVAFLOW_DISABLED_OPACITY, width: "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-split-placeholder="1"] > span',
+        style: { "font-size": "13px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, color: UI_ICON_BUTTON_DISABLED_TEXT }
+      },
+      {
         // AI 序列动画's dock.
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-generation-panel="1"]',
