@@ -1220,7 +1220,7 @@ html body :is([data-novaflow-generate-icon="1"], #nf-lift)::before {
    a 58 thumbnail and a tight caption. The same as the spec entries, keyed on
    the card's shape rather than on a marker written a pass later (a new
    upload drew one big centred card for a frame first). */
-html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> div > div:first-child :is(img, video, canvas)) {
+html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> [data-novaflow-ai-resource-id]) {
   position: static !important;
   top: auto !important;
   left: auto !important;
@@ -1237,7 +1237,7 @@ html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div
   align-content: start !important;
   height: auto !important;
 }
-html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> div > div:first-child :is(img, video, canvas)) > div {
+html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> [data-novaflow-ai-resource-id]) > div {
   width: 100% !important;
   min-width: 0 !important;
   max-width: 100% !important;
@@ -1247,7 +1247,7 @@ html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div
   border-radius: 8px !important;
   overflow: hidden !important;
 }
-html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> div > div:first-child :is(img, video, canvas)) > div > div:first-child {
+html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> [data-novaflow-ai-resource-id]) > div > div:first-child {
   width: 100% !important;
   height: 58px !important;
   min-height: 58px !important;
@@ -1263,14 +1263,14 @@ html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div
   text-align: center !important;
   justify-content: center !important;
 }
-html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> div > div:first-child :is(img, video, canvas)) > div > div:nth-child(2) {
+html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> [data-novaflow-ai-resource-id]) > div > div:nth-child(2) {
   width: 100% !important;
   height: auto !important;
   min-height: 0 !important;
   padding: 0 !important;
   box-sizing: border-box !important;
 }
-html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> div > div:first-child :is(img, video, canvas)) > div > div:nth-child(2) > div {
+html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> [data-novaflow-ai-resource-id]) > div > div:nth-child(2) > div {
   width: 100% !important;
   height: auto !important;
   min-height: 0 !important;
@@ -1345,4 +1345,31 @@ html[data-novaflow-switch-veil="1"] :is([data-novaflow-left-content-root="1"], .
 html[data-novaflow-layout-tier="stack"] [data-novaflow-ai-preview-viewport="1"] {
   padding-bottom: 0 !important;
   padding-right: 0 !important;
+}
+
+/* 3.0n A resource card's own look from its first frame: 8 radius, the
+   thumbnail filled (cover), the 18 corner ×, a tight caption. */
+html body :is([data-novaflow-ai-resource-sidebar-panel="1"], #nf-lift) :is([data-novaflow-ai-resource-id], #nf-lift) {
+  height: auto !important;
+  min-height: 0 !important;
+  border-radius: 8px !important;
+}
+html body [data-novaflow-ai-resource-sidebar-panel="1"] [data-novaflow-ai-resource-id] > div:first-child > :is(img, video) {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+}
+html body [data-novaflow-ai-resource-sidebar-panel="1"] [data-novaflow-ai-resource-id] [data-novaflow-ai-resource-action-kind="close"],
+html body [data-novaflow-ai-resource-sidebar-panel="1"] [data-novaflow-ai-resource-id] > div:first-child > button {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  top: 4px !important;
+  right: 4px !important;
+  left: auto !important;
+  padding: 0 !important;
+  border-radius: 5px !important;
+  font-size: 11px !important;
+  line-height: 18px !important;
 }

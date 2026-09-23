@@ -10486,20 +10486,22 @@
       if (!isSmallOverlay) return;
       setAttributeIfChanged(button, "data-novaflow-ai-resource-action", "1");
       setAttributeIfChanged(button, "data-novaflow-ai-resource-action-kind", isClose ? "close" : "play");
+      // A card's corner control at its final 18 (the spec's): 28 here drew it
+      // big for the new card's first frames.
       setImportantStyles(button, {
-        width: "28px",
-        "min-width": "28px",
-        "max-width": "28px",
-        height: "28px",
-        "min-height": "28px",
-        "max-height": "28px",
+        width: "18px",
+        "min-width": "18px",
+        "max-width": "18px",
+        height: "18px",
+        "min-height": "18px",
+        "max-height": "18px",
         padding: "0",
         display: "inline-flex",
         "align-items": "center",
         "justify-content": "center",
         border: "1px solid rgba(255, 255, 255, 0.18)",
         "border-color": "rgba(255, 255, 255, 0.18)",
-        "border-radius": "8px",
+        "border-radius": "5px",
         background: "rgba(0, 0, 0, 0.55)",
         "background-color": "rgba(0, 0, 0, 0.55)",
         "background-image": "none",
@@ -16696,13 +16698,15 @@
         label.includes("\u5173\u95ed");
       if (!isAction) return;
       setAttributeIfChanged(control, "data-novaflow-ai-resource-overlay-control", "1");
+      // The card's corner control at its final 18 (the spec's), not 28 for
+      // the first frames.
       setImportantStyles(control, {
-        width: "28px",
-        "min-width": "28px",
-        "max-width": "28px",
-        height: "28px",
-        "min-height": "28px",
-        "max-height": "28px",
+        width: "18px",
+        "min-width": "18px",
+        "max-width": "18px",
+        height: "18px",
+        "min-height": "18px",
+        "max-height": "18px",
         padding: "0",
         display: "inline-flex",
         "align-items": "center",
@@ -16711,14 +16715,14 @@
         "border-color": "rgba(255, 255, 255, 0.18)",
         "border-width": "1px",
         "border-style": "solid",
-        "border-radius": "8px",
+        "border-radius": "5px",
         "box-sizing": "border-box",
         background: "rgba(0, 0, 0, 0.55)",
         "background-color": "rgba(0, 0, 0, 0.55)",
         "background-image": "none",
         color: "#ffffff",
         "box-shadow": "none",
-        "font-size": "16px",
+        "font-size": "11px",
         "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
         "line-height": "1",
         transition: "none"
@@ -17439,11 +17443,14 @@
     const mediaHeight = mediaRect && Number.isFinite(mediaRect.height) && mediaRect.height > 12
       ? Math.round(mediaRect.height)
       : 80;
-    const cardHeight = Math.max(120, mediaHeight + AI_SEQUENCE_RUNTIME_DURATION_META_HEIGHT_PX);
+    void mediaHeight;
+    // The card is as tall as its 58 thumbnail and its caption (theme sheet
+    // 3.0n / the spec): a fixed 120 here drew a new card 10 taller for its
+    // first frames.
     setImportantStyles(card, {
-      height: `${cardHeight}px`,
-      "min-height": `${cardHeight}px`,
-      "max-height": `${cardHeight}px`,
+      height: "auto",
+      "min-height": "0",
+      "max-height": "none",
       overflow: "hidden",
       transition: "none"
     });
@@ -17461,10 +17468,10 @@
     }
     if (metaRow instanceof HTMLElement && metaRow !== card) {
       setImportantStyles(metaRow, {
-        height: `${AI_SEQUENCE_RUNTIME_DURATION_META_HEIGHT_PX}px`,
-        "min-height": `${AI_SEQUENCE_RUNTIME_DURATION_META_HEIGHT_PX}px`,
-        "max-height": `${AI_SEQUENCE_RUNTIME_DURATION_META_HEIGHT_PX}px`,
-        padding: "4px 10px 12px",
+        height: "auto",
+        "min-height": "0",
+        "max-height": "none",
+        padding: "4px 6px",
         "align-items": "center",
         "box-sizing": "border-box",
         overflow: "hidden",
@@ -35153,7 +35160,13 @@
 
   function syncParticleTemplateManager() {
     const body = document.body;
-    if (!body || !body.classList.contains("novaflow-primary-target-particle") || body.classList.contains("novaflow-aifx-open")) return;
+    if (!body) return;
+    if (!body.classList.contains("novaflow-primary-target-particle") || body.classList.contains("novaflow-aifx-open")) {
+      // The left column is reused by the other pages: 模板管理 belongs to
+      // 粒子特效 only, so it leaves with it (动画 / 骨骼动画 showed it).
+      document.querySelectorAll(`[${PARTICLE_TEMPLATE_MANAGER_ATTR}]`).forEach((panel) => panel.remove());
+      return;
+    }
     const root = document.querySelector('[data-novaflow-left-content-root="1"]');
     if (!(root instanceof HTMLElement)) return;
     const firstPanel = Array.from(root.children).find((child) => child.getAttribute("data-novaflow-editor-panel") === "1" && !child.hasAttribute(PARTICLE_TEMPLATE_MANAGER_ATTR));
