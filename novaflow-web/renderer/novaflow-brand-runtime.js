@@ -33654,7 +33654,9 @@
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-editor-panel="1"] button',
         style: (node) => {
-          if (node.hasAttribute("data-novaflow-toggle-card-button") || node.closest("[data-novaflow-particle-segment]")) return null;
+          // AI 特效 shares the page (and the panel markers): its 模板库 is a
+          // plain button like 风格库, not a chip.
+          if (node.hasAttribute("data-novaflow-toggle-card-button") || node.closest("[data-novaflow-particle-segment]") || node.closest("#novaflow-aifx-mvp")) return null;
           if (node.closest('[data-novaflow-sprite-editor-card="1"], .nf-panel-header')) return null;
           const parent = node.parentElement;
           if (!(parent instanceof HTMLElement)) return null;
@@ -34150,18 +34152,20 @@
       {
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-template-popup-layer="1"] > div > div:nth-child(2)',
-        style: { flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", "padding-right": "4px", height: "auto" }
+        style: { flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", "padding-right": "0", height: "auto" }
       },
       {
         when: "body.novaflow-primary-target-particle",
         selector: "[data-novaflow-template-preview-sync-signature]",
-        style: { display: "grid", "grid-template-columns": "repeat(5, minmax(0, 1fr))", "grid-template-rows": "none", "grid-auto-rows": "auto", gap: "8px", width: "100%", height: "auto" }
+        style: { display: "grid", "grid-template-columns": "repeat(5, minmax(0, 1fr))", "grid-template-rows": "none", "grid-auto-rows": "auto", gap: "8px", width: "100%", height: "auto", padding: "0" }
       },
       {
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-tile="1"]',
         style: (node) => ({
-          position: "relative", display: "block", width: "auto", height: "auto", "min-height": "0", padding: "8px",
+          // The column's width (the library wrote 163 into 179 columns and left
+          // a 16px gap beside every card).
+          position: "relative", display: "block", width: "100%", "min-width": "0", "max-width": "none", height: "auto", "min-height": "0", padding: "8px",
           background: "#161616", "background-color": "#161616", "border-radius": "10px", cursor: "pointer", "box-sizing": "border-box",
           "border-width": "1px", "border-style": node.hasAttribute("data-novaflow-template-save-tile") ? "dashed" : "solid",
           "border-top-color": "var(--nf-tpl-bd, rgba(255, 255, 255, 0.12))", "border-right-color": "var(--nf-tpl-bd, rgba(255, 255, 255, 0.12))",
