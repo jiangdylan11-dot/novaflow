@@ -8816,6 +8816,12 @@
   ]
   const QWEN21_VAE = 'qwen_image_2.1_vae_bf16.safetensors'
   const QWEN21_STEPS = 25
+  // Smart completion stays on 2509 + eigen-banana. In blind tests (15 box-selection cases, 3 judges each)
+  // 2509 still won hands, props, UI text and scene backgrounds, and removing eigen-banana from 2509
+  // brought back the same failure bare 2.1 shows (the pale hole kept as a flat block), so the gap is the
+  // missing completion LoRA rather than the base model. The 2.1 branch stays available on request.
+  const QWEN21_COMPLETION_ENGINE = 'qwen-2.1'
+  const DEFAULT_COMPLETION_ENGINE = ''
 
   // Strict: the weight must actually appear in that loader's choice list. comfyChoiceFromCandidates
   // falls back to candidates[0] when a node reports no choices at all, which would light 2.1 up on a
@@ -9011,8 +9017,10 @@
     const route = options && options.route || resolveInpaintWorkflowRoute(options && options.inpaintMode, options && options.inpaintProvider)
     const info = await comfyAllObjectInfo(baseUrl).catch(() => ({}))
     const qwen21 = qwen21Runtime(info)
-    // Completion only for now: it is the one mode with a measured 2.1 recipe. Edit keeps the 2511 route.
-    if (qwen21 && route.mode === 'completion' && info.VAEEncode && info.SetLatentNoiseMask && info.ImageToMask && info.KSampler && info.SplitImageWithAlpha && info.InvertMask && info.ImageCompositeMasked && info.ImagePadForOutpaint && info.ImageCrop && info.MaskComposite && info.ThresholdMask) {
+    // Opt-in only (see DEFAULT_COMPLETION_ENGINE), and completion only: it is the one mode with a
+    // measured 2.1 recipe. Edit keeps the 2511 route.
+    const wantsQwen21 = !!(options && options.inpaintEngine === QWEN21_COMPLETION_ENGINE)
+    if (wantsQwen21 && qwen21 && route.mode === 'completion' && info.VAEEncode && info.SetLatentNoiseMask && info.ImageToMask && info.KSampler && info.SplitImageWithAlpha && info.InvertMask && info.ImageCompositeMasked && info.ImagePadForOutpaint && info.ImageCrop && info.MaskComposite && info.ThresholdMask) {
       setInpaintDebugAttr('workflow-engine', 'qwen-2.1')
       setInpaintDebugAttr('workflow-mode', normalizeSelectionInpaintMode(options && options.inpaintMode))
       setInpaintDebugAttr('workflow-provider', route.provider)
@@ -18949,8 +18957,7 @@
     ctx.fillRect(0, 0, width, height)
     ctx.drawImage(cropImageCanvas, 0, 0, width, height)
     // The same matte-backed crop before the hole is blended in. Only the Qwen-Image-2.1 graph reads it,
-    // as the sampler's starting latent. The browser cannot tell which engine the runtime will pick, so
-    // a Qwen completion uploads it on a 2509/2511 runtime too, where the graph ignores it.
+    // as the sampler's starting latent, and it is only uploaded when that engine is requested.
     const latentInput = cloneCanvas(canvas)
     const image = ctx.getImageData(0, 0, width, height)
     const mask = modelMask.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height)
@@ -22988,11 +22995,12 @@
       const result = await runLayerInpaintValidated(inputCanvases.modelInput.toDataURL('image/png'), modelMaskCanvas.toDataURL('image/png'), inpaintPrompt, qwenCrop, part, {
         inpaintMode: selectionInpaintMode,
         route: executionRoute,
+        inpaintEngine: DEFAULT_COMPLETION_ENGINE,
         inputSize: { width: inputCanvases.modelInput.width, height: inputCanvases.modelInput.height },
         promptParts: { user: userInpaintPrompt, part: baseInpaintPrompt },
-        // Rapid AIO NSFW builds from the same V4 canvases but never reads it, and in web mode an upload
-        // no task references is never released, so only the plain Qwen completion route carries it.
-        latentInputDataUrl: inputCanvases.latentInput && executionRoute.workflow === 'qwen' ? inputCanvases.latentInput.toDataURL('image/png') : ''
+        // Only the 2.1 graph reads the undug crop. Rapid AIO NSFW builds from the same V4 canvases but
+        // never reads it, and in web mode an upload no task references is never released.
+        latentInputDataUrl: inputCanvases.latentInput && executionRoute.workflow === 'qwen' && DEFAULT_COMPLETION_ENGINE === QWEN21_COMPLETION_ENGINE ? inputCanvases.latentInput.toDataURL('image/png') : ''
       })
       const normalizedFullMask = normalizeMaskCanvas(cloneCanvas(processingMaskCanvas))
       const patchPart = executionRoute.outputMode === 'replacement'

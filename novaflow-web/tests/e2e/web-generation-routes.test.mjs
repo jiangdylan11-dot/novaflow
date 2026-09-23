@@ -154,13 +154,16 @@ const host21 = await createWorkflowHost({ rendererDir: fileURLToPath(new URL('..
 const completionRoute = { mode: 'completion', provider: 'qwen-completion-v4', workflow: 'qwen', outputMode: 'patch', v4: true };
 const build21 = async (inputSize, extra = {}, promptText = 'leg') => {
   const call = sandbox.NovaFlowWebRuntime.serverOnly('spine-split-runtime', 'defaultQwenInpaintWorkflow', [
-    'http://127.0.0.1:8188', 'image.png', 'mask.png', 'NovaFlow_Complete', promptText, { inpaintMode: 'completion', route: completionRoute, latentInputName: 'latent.png', inputSize, ...extra }
+    'http://127.0.0.1:8188', 'image.png', 'mask.png', 'NovaFlow_Complete', promptText, { inpaintMode: 'completion', route: completionRoute, inpaintEngine: 'qwen-2.1', latentInputName: 'latent.png', inputSize, ...extra }
   ]);
   const opts = withReferences(JSON.parse(String(call)).options, ['task-image.png', 'task-mask.png', 'task-latent.png'], latentRefs, 'defaultQwenInpaintWorkflow');
   return await host21.buildGraph({ module: 'spine-split-runtime', method: 'defaultQwenInpaintWorkflow', options: opts });
 };
 // The graph is built inside the host's vm context; bring it into this realm before deep comparisons.
 const byClass = (graph, type) => Object.entries(JSON.parse(JSON.stringify(graph))).filter(([, node]) => node.class_type === type);
+// Completion stays on 2509 unless the 2.1 engine is asked for: without it the 2.1-capable fixture falls
+// through to the 2509 graph, which this fixture cannot satisfy.
+await assert.rejects(build21({ width: 450, height: 700 }, { inpaintEngine: '' }), /UNETLoader/);
 const g21 = JSON.parse(JSON.stringify(await build21({ width: 450, height: 700 })));
 assert.equal(byClass(g21, 'TextEncodeQwenImage21').length, 1);
 assert.equal(g21['3'].inputs.image, 'task-latent.png');
