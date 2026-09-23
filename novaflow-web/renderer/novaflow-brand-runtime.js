@@ -2272,6 +2272,14 @@
   const SECONDARY_ENTRY_GAP = NOVAFLOW_UNIFORM_GAP;
   const SECONDARY_ENTRY_HEIGHT = 29;
   // Reference .nf-tabs: a 4px inset capsule with 3px between the pills.
+  // .nf-tabs in the reference: a 198x37 plate inset 10 from the panel edge,
+  // darker than the panel it sits on, holding two 29-tall pills.
+  const SECONDARY_GROUP_PAD = 3;
+  const SECONDARY_GROUP_BACKGROUND = "#101010";
+  const SECONDARY_GROUP_BORDER_COLOR = "#262626";
+  const SECONDARY_GROUP_RADIUS_PX = "8px";
+  const SECONDARY_GROUP_TOP_INSET = 11;
+  const SECONDARY_GROUP_LEFT_INSET = 10;
   const SECONDARY_GROUP_INSET = 4;
   const SECONDARY_GROUP_PILL_GAP = 3;
   const SECONDARY_ENTRY_RADIUS_PX = "5px";
@@ -2287,6 +2295,17 @@
   const AI_ANIMATION_SEED_SWITCH_KNOB_SIZE = 10;
   const AI_ANIMATION_SEED_SWITCH_KNOB_LEFT = 4;
   const NOVAFLOW_NORMAL_FONT_WEIGHT = "400";
+  // The reference sets its controls a step above body text. A blanket 400
+  // sweep had been flattening the rail, the segment and the canvas bar.
+  const NOVAFLOW_MEDIUM_FONT_WEIGHT = "500";
+  const NOVAFLOW_MEDIUM_WEIGHT_SELECTOR = [
+    "[data-novaflow-primary-entry='1']",
+    "[data-novaflow-secondary-entry='1']",
+    "[data-novaflow-particle-project-action]",
+    "[data-novaflow-template-button='1']",
+    "[data-novaflow-autofit-button='1']",
+    "[data-novaflow-medium-weight='1']"
+  ].join(",");
   const NOVAFLOW_STRONG_FONT_WEIGHT = "700";
   const NOVAFLOW_ICON_FONT_WEIGHT = "900";
   const NOVAFLOW_THIN_ARROW_STROKE = "1.35px";
@@ -2400,6 +2419,23 @@
   // Reference .nf-grid: a flat dot field over the stage, not a 3D floor.
   const STAGE_DOT_COLOR = "#3d3d3d";
   const STAGE_DOT_SIZE_PX = 24;
+  // The bar floating over the top of the stage. The reference gives it two
+  // ranks: bare text buttons that only fill on hover, and one quiet button
+  // that carries a plate.
+  const CANVAS_BAR_BUTTON_HEIGHT = 28;
+  const CANVAS_BAR_BUTTON_RADIUS_PX = "5px";
+  const CANVAS_BAR_BUTTON_TEXT = "#a0a0a0";
+  const CANVAS_BAR_BUTTON_HOVER_BACKGROUND = "#393939";
+  const CANVAS_BAR_QUIET_HEIGHT = 36;
+  const CANVAS_BAR_QUIET_BACKGROUND = "#171717";
+  const CANVAS_BAR_QUIET_BORDER_COLOR = "#333333";
+  const CANVAS_BAR_QUIET_RADIUS_PX = "8px";
+  const CANVAS_BAR_QUIET_TEXT = "#b8b8b8";
+  const CANVAS_BAR_PILL_BACKGROUND = "#161616";
+  const CANVAS_BAR_PILL_BORDER_COLOR = "#333333";
+  const CANVAS_BAR_PILL_RADIUS_PX = "9px";
+  const WORKSPACE_SIDE_GAP = 10;
+  const DOCK_HEIGHT = 99;
   const DOCK_SURFACE = "#161616";
   const DOCK_BORDER_COLOR = "#363636";
   const DOCK_RADIUS_PX = "12px";
@@ -2426,9 +2462,9 @@
   const PRIMARY_LEFT_CARD_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_CARD_INSET * 2;
   const PRIMARY_LEFT_CARD_HEADER_HEIGHT = 46;
   // The shell lands the cards at 89; the reference wants 85.
-  const PRIMARY_LEFT_CARD_SHIFT = -4;
+  const PRIMARY_LEFT_CARD_SHIFT = 0;
   const SECONDARY_ENTRY_GROUP_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_PANEL_PAD * 2;
-  const SECONDARY_GROUP_HEIGHT = SECONDARY_ENTRY_HEIGHT + SECONDARY_GROUP_INSET * 2;
+  const SECONDARY_GROUP_HEIGHT = SECONDARY_ENTRY_HEIGHT + (SECONDARY_GROUP_PAD + 1) * 2;
   const PRIMARY_PANEL_BODY_VERTICAL_INSET = 14;
   const PRIMARY_PANEL_BODY_INSET = 11;
   const PRIMARY_PANEL_INNER_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_PANEL_BODY_INSET * 2;
@@ -2446,7 +2482,7 @@
   // throws at module scope and takes the whole runtime down with it.
   const PRIMARY_RAIL_ITEM_GAP = 5;
   const PRIMARY_RAIL_ITEM_PITCH = PRIMARY_SIDEBAR_ITEM_HEIGHT + PRIMARY_RAIL_ITEM_GAP;
-  const PRIMARY_OUTPUT_SHORTCUT_GAP = 12;
+  const PRIMARY_OUTPUT_SHORTCUT_GAP = 15;
   const PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH = 44;
   const PRIMARY_CONTENT_LEFT = PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_WIDTH + PRIMARY_SIDEBAR_GAP;
   const PRIMARY_COLUMN_WIDTH = PRIMARY_CONTENT_LEFT + PRIMARY_CONTENT_WIDTH;
@@ -2649,6 +2685,14 @@
   const UI_ACCENT = "#17a582";
   const UI_ACCENT_HOVER = "#1ab891";
   const UI_ACCENT_TEXT = "#6fd9b8";
+  // The reference does not use one selected-text green. The rail sits on the
+  // darkest fill and gets the lightest text; the segment sits on a slightly
+  // lighter fill and gets a slightly deeper one.
+  const UI_RAIL_SELECTED_TEXT = "#8cdec3";
+  const UI_RAIL_SELECTED_BORDER = "#306553";
+  const UI_SEGMENT_SELECTED_TEXT = "#9be4cd";
+  const UI_SEGMENT_SELECTED_BORDER = "#2c604f";
+  const UI_SEGMENT_IDLE_TEXT = "#eaeaea";
   // "On" reads slightly brighter than a main action so a live switch or a
   // filled slider is legible at 2px.
   const UI_TOGGLE_ON_BACKGROUND = "#1bb28c";
@@ -4827,32 +4871,36 @@
 
   function stylePreviewButtonSurface(element) {
     if (!(element instanceof HTMLElement)) return;
-    nfSetStyleIfChanged(element, "background", PRIMARY_PANEL_BACKGROUND, "important");
-    nfSetStyleIfChanged(element, "background-color", PRIMARY_PANEL_BACKGROUND, "important");
+    const quiet = element.getAttribute("data-novaflow-autofit-button") === "1";
+    const height = quiet ? CANVAS_BAR_QUIET_HEIGHT : CANVAS_BAR_BUTTON_HEIGHT;
+    const background = quiet ? CANVAS_BAR_QUIET_BACKGROUND : "transparent";
+    nfSetStyleIfChanged(element, "background", background, "important");
+    nfSetStyleIfChanged(element, "background-color", background, "important");
     nfSetStyleIfChanged(element, "background-image", "none", "important");
-    nfSetStyleIfChanged(element, "border", "0", "important");
-    nfSetStyleIfChanged(element, "border-color", "transparent", "important");
-    nfSetStyleIfChanged(element, "border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
+    nfSetStyleIfChanged(element, "border", quiet ? `1px solid ${CANVAS_BAR_QUIET_BORDER_COLOR}` : "0", "important");
+    nfSetStyleIfChanged(element, "border-radius", quiet ? CANVAS_BAR_QUIET_RADIUS_PX : CANVAS_BAR_BUTTON_RADIUS_PX, "important");
     nfSetStyleIfChanged(element, "box-shadow", "none", "important");
-    nfSetStyleIfChanged(element, "height", "34px", "important");
-    nfSetStyleIfChanged(element, "min-height", "34px", "important");
-    nfSetStyleIfChanged(element, "max-height", "34px", "important");
+    nfSetStyleIfChanged(element, "height", `${height}px`, "important");
+    nfSetStyleIfChanged(element, "min-height", `${height}px`, "important");
+    nfSetStyleIfChanged(element, "max-height", `${height}px`, "important");
+    nfSetStyleIfChanged(element, "min-width", "0", "important");
+    nfSetStyleIfChanged(element, "padding", quiet ? "0 13px" : "0 11px", "important");
     nfSetStyleIfChanged(element, "display", "inline-flex", "important");
     nfSetStyleIfChanged(element, "align-items", "center", "important");
     nfSetStyleIfChanged(element, "justify-content", "center", "important");
     nfSetStyleIfChanged(element, "box-sizing", "border-box", "important");
-    nfSetStyleIfChanged(element, "color", "#ffffff", "important");
-    nfSetStyleIfChanged(element, "font-size", "13px", "important");
-    nfSetStyleIfChanged(element, "font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
-    nfSetStyleIfChanged(element, "line-height", "34px", "important");
+    nfSetStyleIfChanged(element, "color", quiet ? CANVAS_BAR_QUIET_TEXT : CANVAS_BAR_BUTTON_TEXT, "important");
+    nfSetStyleIfChanged(element, "font-size", "11px", "important");
+    nfSetStyleIfChanged(element, "font-weight", "500", "important");
+    nfSetStyleIfChanged(element, "line-height", "1", "important");
     nfSetStyleIfChanged(element, "-webkit-app-region", "no-drag", "important");
   }
 
   function styleTemplateControlSurface(element) {
     if (!(element instanceof HTMLElement)) return;
     element.setAttribute("data-novaflow-template-control", "1");
-    element.style.setProperty("background", PRIMARY_PANEL_BACKGROUND, "important");
-    element.style.setProperty("background-color", PRIMARY_PANEL_BACKGROUND, "important");
+    element.style.setProperty("background", "transparent", "important");
+    element.style.setProperty("background-color", "transparent", "important");
     element.style.setProperty("background-image", "none", "important");
     element.style.setProperty("border", "0", "important");
     element.style.setProperty("border-color", "transparent", "important");
@@ -4928,8 +4976,8 @@
         nfSetStyleIfChanged(child, "top", "auto", "important");
         nfSetStyleIfChanged(child, "bottom", "auto", "important");
         nfSetStyleIfChanged(child, "transform", "none", "important");
-        nfSetStyleIfChanged(child, "padding", "0 18px", "important");
-        nfSetStyleIfChanged(child, "min-width", "92px", "important");
+        nfSetStyleIfChanged(child, "padding", "0 13px", "important");
+        nfSetStyleIfChanged(child, "min-width", "0", "important");
         nfSetStyleIfChanged(child, "width", "auto", "important");
         nfSetStyleIfChanged(child, "white-space", "nowrap", "important");
         nfSetStyleIfChanged(child, "flex", "0 0 auto", "important");
@@ -4939,13 +4987,19 @@
       nfSetStyleIfChanged(controls, "font-size", "0", "important");
       nfSetStyleIfChanged(controls, "line-height", "0", "important");
       nfSetStyleIfChanged(controls, "color", "transparent", "important");
+      autoFitChildren.forEach((child) => {
+        nfSetStyleIfChanged(child, "font-size", "11px", "important");
+        nfSetStyleIfChanged(child, "font-weight", "500", "important");
+        nfSetStyleIfChanged(child, "line-height", "1", "important");
+        nfSetStyleIfChanged(child, "color", CANVAS_BAR_QUIET_TEXT, "important");
+      });
       nfSetStyleIfChanged(controls, "text-indent", "0", "important");
     } else if (directText.includes("\u81ea\u52a8\u9002\u914d")) {
       controls.textContent = "\u81ea\u52a8\u9002\u914d";
       nfSetAttrIfChanged(controls, "data-novaflow-autofit-button", "1");
       stylePreviewButtonSurface(controls);
-      nfSetStyleIfChanged(controls, "padding", "0 18px", "important");
-      nfSetStyleIfChanged(controls, "min-width", "92px", "important");
+      nfSetStyleIfChanged(controls, "padding", "0 13px", "important");
+      nfSetStyleIfChanged(controls, "min-width", "0", "important");
       nfSetStyleIfChanged(controls, "width", "auto", "important");
       nfSetStyleIfChanged(controls, "white-space", "nowrap", "important");
       nfSetStyleIfChanged(controls, "flex", "0 0 auto", "important");
@@ -8270,6 +8324,15 @@
         display: none !important;
         visibility: hidden !important;
         pointer-events: none !important;
+      }
+      .novaflow-app .nf-app-body {
+        /* The bundle stylesheet clears the fixed topbar with a hard-coded 56.
+           That is the one number the topbar height has to agree with, or every
+           panel below it sits 2px low. */
+        margin-top: ${TOPBAR_HEIGHT}px !important;
+        height: calc(100vh - ${TOPBAR_HEIGHT}px) !important;
+        min-height: calc(100vh - ${TOPBAR_HEIGHT}px) !important;
+        box-sizing: border-box !important;
       }
       .novaflow-app .nf-app-body > div:first-child {
         width: ${PRIMARY_COLUMN_WIDTH}px !important;
@@ -20902,8 +20965,8 @@
         border-radius: 10px !important;
         /* A hairline edge: zero offset, zero blur. Not an inner shadow, and
            deliberately not an edge light along one side. */
-        box-shadow: inset 0 0 0 1px ${UI_SELECTED_BORDER} !important;
-        color: ${UI_ACCENT_TEXT} !important;
+        box-shadow: inset 0 0 0 1px ${UI_RAIL_SELECTED_BORDER} !important;
+        color: ${UI_RAIL_SELECTED_TEXT} !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
@@ -20934,17 +20997,17 @@
         content: attr(data-novaflow-primary-label);
         display: block !important;
         font-size: 11px !important;
-        font-weight: 400 !important;
+        font-weight: ${NOVAFLOW_MEDIUM_FONT_WEIGHT} !important;
         line-height: 1.2 !important;
         color: inherit !important;
         white-space: nowrap !important;
       }
       [data-novaflow-primary-entry="1"][data-novaflow-primary-active="1"]::before {
-        color: ${UI_ACCENT_TEXT} !important;
+        color: ${UI_RAIL_SELECTED_TEXT} !important;
       }
       [data-novaflow-primary-entry="1"][data-novaflow-primary-active="1"]::after {
         content: attr(data-novaflow-primary-label);
-        color: ${UI_ACCENT_TEXT} !important;
+        color: ${UI_RAIL_SELECTED_TEXT} !important;
       }
       [data-novaflow-primary-entry="1"]:hover {
         background: ${PRIMARY_INACTIVE_BACKGROUND} !important;
@@ -21127,10 +21190,10 @@
         border-radius: 5px !important;
         background: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
         background-color: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
-        color: ${UI_ACCENT_TEXT} !important;
+        color: ${UI_SEGMENT_SELECTED_TEXT} !important;
         /* Was an inset edge light along the bottom. The selected state is now
            carried by the fill and the text; this is a plain hairline edge. */
-        box-shadow: inset 0 0 0 1px ${UI_SELECTED_BORDER} !important;
+        box-shadow: inset 0 0 0 1px ${UI_SEGMENT_SELECTED_BORDER} !important;
         outline: 0 !important;
       }
       body.novaflow-aifx-open #novaflow-aifx-mvp {
@@ -26100,9 +26163,9 @@
         background-image: radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px) !important;
         background-size: ${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px !important;
         background-position: center center !important;
-        margin: 0 !important;
+        margin: ${PRIMARY_PANEL_TOP_GAP}px ${WORKSPACE_SIDE_GAP}px ${PRIMARY_PANEL_BOTTOM_GAP}px 0 !important;
         border: 0 !important;
-        border-radius: 0 !important;
+        border-radius: ${PRIMARY_RAIL_PANEL_RADIUS}px !important;
         box-shadow: none !important;
         overflow: visible !important;
         box-sizing: border-box !important;
@@ -26240,20 +26303,26 @@
         box-shadow: none !important;
       }
       .novaflow-app [data-novaflow-autofit-button="1"] {
-        min-width: 92px !important;
+        min-width: 0 !important;
         width: auto !important;
-        height: 34px !important;
-        min-height: 34px !important;
-        max-height: 34px !important;
-        padding: 0 18px !important;
-        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
-        background: ${PRIMARY_PANEL_BACKGROUND} !important;
-        background-color: ${PRIMARY_PANEL_BACKGROUND} !important;
-        border: 0 !important;
+        height: ${CANVAS_BAR_QUIET_HEIGHT}px !important;
+        min-height: ${CANVAS_BAR_QUIET_HEIGHT}px !important;
+        max-height: ${CANVAS_BAR_QUIET_HEIGHT}px !important;
+        padding: 0 13px !important;
+        border-radius: ${CANVAS_BAR_QUIET_RADIUS_PX} !important;
+        background: ${CANVAS_BAR_QUIET_BACKGROUND} !important;
+        background-color: ${CANVAS_BAR_QUIET_BACKGROUND} !important;
+        border: 1px solid ${CANVAS_BAR_QUIET_BORDER_COLOR} !important;
         box-shadow: none !important;
-        color: #ffffff !important;
-        font-size: 13px !important;
-        line-height: 34px !important;
+        color: ${CANVAS_BAR_QUIET_TEXT} !important;
+        font-size: 11px !important;
+        font-weight: 500 !important;
+        line-height: 1 !important;
+      }
+      .novaflow-app [data-novaflow-template-button="1"]:hover,
+      .novaflow-app [data-novaflow-particle-project-action="1"]:hover {
+        background: ${CANVAS_BAR_BUTTON_HOVER_BACKGROUND} !important;
+        background-color: ${CANVAS_BAR_BUTTON_HOVER_BACKGROUND} !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-single-control="1"]:not([data-novaflow-source-layout="1"]) > *:not([data-novaflow-single-button="1"]),
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-zoom-controls="1"]:not([data-novaflow-source-layout="1"]) > *:not([data-novaflow-autofit-button="1"]) {
@@ -28673,6 +28742,7 @@
         node.id = id;
         node.setAttribute("aria-hidden", "true");
         node.setAttribute("data-novaflow-primary-surface", "1");
+        node.setAttribute("data-novaflow-keep-radius", "1");
         document.body.appendChild(node);
       }
       // Written straight onto the node rather than through setImportantStyles:
@@ -28784,7 +28854,7 @@
       "max-height": "1px",
       "z-index": shortcutZIndex,
       "pointer-events": "none",
-      background: "rgba(255,255,255,0.14)"
+      background: "transparent"
     });
 
     let cell = document.getElementById(PRIMARY_OUTPUT_SHORTCUT_CELL_ID);
@@ -28799,13 +28869,13 @@
     setImportantStyles(cell, {
       display: "block",
       position: "fixed",
-      left: `${PRIMARY_SIDEBAR_LEFT}px`,
+      left: `${PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_ITEM_INSET}px`,
       "border-radius": primaryRailCellRadius(0, 2),
       top: `${cellTop}px`,
-      width: `${PRIMARY_SIDEBAR_WIDTH}px`,
+      width: `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`,
       height: `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`,
-      "min-width": `${PRIMARY_SIDEBAR_WIDTH}px`,
-      "max-width": `${PRIMARY_SIDEBAR_WIDTH}px`,
+      "min-width": `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`,
+      "max-width": `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`,
       flex: "none",
       "z-index": shortcutZIndex,
       overflow: "hidden",
@@ -28846,13 +28916,13 @@
     setImportantStyles(exportCell, {
       display: "block",
       position: "fixed",
-      left: `${PRIMARY_SIDEBAR_LEFT}px`,
+      left: `${PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_ITEM_INSET}px`,
       "border-radius": primaryRailCellRadius(1, 2),
       top: `${exportCellTop}px`,
-      width: `${PRIMARY_SIDEBAR_WIDTH}px`,
+      width: `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`,
       height: `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`,
-      "min-width": `${PRIMARY_SIDEBAR_WIDTH}px`,
-      "max-width": `${PRIMARY_SIDEBAR_WIDTH}px`,
+      "min-width": `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`,
+      "max-width": `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`,
       flex: "none",
       "z-index": shortcutZIndex,
       overflow: "hidden",
@@ -28973,7 +29043,8 @@
       if (!(node instanceof HTMLElement)) return;
       if (node.getAttribute("data-novaflow-template-save-plus") === "1") return;
       if (isNovaflowIconFontElement(node)) return;
-      setStylePropertyIfChanged(node, "font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
+      const medium = node.matches(NOVAFLOW_MEDIUM_WEIGHT_SELECTOR) || Boolean(node.closest(NOVAFLOW_MEDIUM_WEIGHT_SELECTOR));
+      setStylePropertyIfChanged(node, "font-weight", medium ? NOVAFLOW_MEDIUM_FONT_WEIGHT : NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
     };
     if (root.matches(selector)) apply(root);
     nfAnimationPerfRunVisualRhythmStep("queryCandidates", () => Array.from(root.querySelectorAll(selector))).forEach(apply);
@@ -30350,10 +30421,18 @@
       "[data-novaflow-primary-cell='1']",
       "[data-novaflow-primary-entry='1']",
       "[data-novaflow-toggle-switch='1']",
-      "[data-novaflow-toggle-knob='1']"
+      "[data-novaflow-toggle-knob='1']",
+      "[data-novaflow-keep-radius='1']",
+      "[data-novaflow-preview-workspace='1']",
+      "[data-novaflow-bottom-controls='1']",
+      "[data-novaflow-particle-project-action]",
+      "[data-novaflow-template-button='1']",
+      "[data-novaflow-template-control='1']",
+      "[data-novaflow-autofit-button='1']"
     ].join(","))) {
       return true;
     }
+    if (element.closest("[data-novaflow-keep-radius='1']")) return true;
     if (element.closest("[data-novaflow-toggle-switch='1'], [data-novaflow-toggle-knob='1']")) return true;
     if (profile.max >= 80) return true;
     const minSize = Math.min(rect.width || 0, rect.height || 0);
@@ -30365,6 +30444,8 @@
     if (profile.topMax > 0.5 && profile.bottomMax <= 0.5) return true;
     return element.matches("[data-novaflow-ai-collapse-heading]:not([data-collapsed='1'])");
   }
+
+  const NOVAFLOW_RECT_RADIUS_NUMBER = parseFloat(NOVAFLOW_RECT_RADIUS_PX) || 0;
 
   function getNovaflowRectRadiusTarget(element, profile) {
     if (isNovaflowTopOnlyRectRadius(element, profile)) {
@@ -30378,14 +30459,14 @@
     if (!hasSquareCorner) {
       return {
         value: NOVAFLOW_RECT_RADIUS_PX,
-        corners: [8, 8, 8, 8]
+        corners: [NOVAFLOW_RECT_RADIUS_NUMBER, NOVAFLOW_RECT_RADIUS_NUMBER, NOVAFLOW_RECT_RADIUS_NUMBER, NOVAFLOW_RECT_RADIUS_NUMBER]
       };
     }
     const corners = [
-      profile.topLeft > 0.5 ? 8 : 0,
-      profile.topRight > 0.5 ? 8 : 0,
-      profile.bottomRight > 0.5 ? 8 : 0,
-      profile.bottomLeft > 0.5 ? 8 : 0
+      profile.topLeft > 0.5 ? NOVAFLOW_RECT_RADIUS_NUMBER : 0,
+      profile.topRight > 0.5 ? NOVAFLOW_RECT_RADIUS_NUMBER : 0,
+      profile.bottomRight > 0.5 ? NOVAFLOW_RECT_RADIUS_NUMBER : 0,
+      profile.bottomLeft > 0.5 ? NOVAFLOW_RECT_RADIUS_NUMBER : 0
     ];
     return {
       value: corners.map((radius) => (radius ? NOVAFLOW_RECT_RADIUS_PX : "0")).join(" "),
@@ -37415,7 +37496,7 @@
       nfSetStyleIfChanged(button, "background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(button, "background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(button, "background-image", "none", "important");
-      nfSetStyleIfChanged(button, "color", active ? UI_ACCENT_TEXT : "#9c9c9c", "important");
+      nfSetStyleIfChanged(button, "color", active ? UI_RAIL_SELECTED_TEXT : "#9c9c9c", "important");
       nfSetStyleIfChanged(button, "font-size", "11px", "important");
       nfSetStyleIfChanged(button, "opacity", "1", "important");
     });
@@ -50893,30 +50974,39 @@
   function pinSecondaryGroup(group, buttons) {
     const groupRect = group.getBoundingClientRect();
     const upperRail = findSidebarSecondaryAnchorRect() || findPrimaryRailRect() || findClosestUpperRailRect(groupRect);
-    const shellHeight = SECONDARY_ENTRY_HEIGHT;
+    const shellHeight = SECONDARY_GROUP_HEIGHT;
     const buttonHeight = SECONDARY_ENTRY_HEIGHT;
     // Reference: the segment sits INSIDE the left panel's padding, so it is
     // measured off the panel box rather than off whatever rail is above it.
-    const left = (upperRail ? Math.round(upperRail.left) : 0)
-      + PRIMARY_LEFT_PANEL_PAD + SECONDARY_GROUP_INSET + 1;
+    const left = (upperRail ? Math.round(upperRail.left) : 0) + SECONDARY_GROUP_LEFT_INSET;
     const rootWidth = upperRail ? Math.round(upperRail.width) : Math.round(groupRect.width || PRIMARY_VISIBLE_CONTENT_WIDTH);
-    const secondaryWidth = Math.min(SECONDARY_ENTRY_GROUP_WIDTH - (SECONDARY_GROUP_INSET + 1) * 2, rootWidth);
-    const panelTop = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP + PRIMARY_RAIL_INNER_PAD;
+    const secondaryWidth = Math.min(PRIMARY_LEFT_CARD_WIDTH, rootWidth);
+    const panelTop = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP;
     const top = upperRail
-      ? panelTop + SECONDARY_GROUP_INSET + 1
+      ? panelTop + SECONDARY_GROUP_TOP_INSET
       : Math.max(88, Math.round(groupRect.top - 10));
     const shieldTop = upperRail ? Math.round(upperRail.bottom) : top;
     const desiredContentTop = Math.round(top + shellHeight + SECONDARY_CONTENT_GAP);
     // Inline, because the group's padding and the pills' radius are each set
     // by more than one stylesheet rule and the last one kept winning. This is
     // the capsule spec from the reference: 4px inset, 3px gap, 5px pills.
-    nfSetStyleIfChanged(group, "padding", "0", "important");
+    nfSetStyleIfChanged(group, "padding", `${SECONDARY_GROUP_PAD}px`, "important");
     nfSetStyleIfChanged(group, "gap", `${SECONDARY_GROUP_PILL_GAP}px`, "important");
     nfSetStyleIfChanged(group, "column-gap", `${SECONDARY_GROUP_PILL_GAP}px`, "important");
+    nfSetStyleIfChanged(group, "background", SECONDARY_GROUP_BACKGROUND, "important");
+    nfSetStyleIfChanged(group, "background-color", SECONDARY_GROUP_BACKGROUND, "important");
+    nfSetStyleIfChanged(group, "border", `1px solid ${SECONDARY_GROUP_BORDER_COLOR}`, "important");
+    nfSetStyleIfChanged(group, "border-radius", SECONDARY_GROUP_RADIUS_PX, "important");
+    nfSetAttrIfChanged(group, "data-novaflow-keep-radius", "1");
     nfSetStyleIfChanged(group, "box-sizing", "border-box", "important");
     Array.from(group.querySelectorAll('[data-novaflow-secondary-entry="1"]')).forEach((entry) => {
       if (entry instanceof HTMLElement) {
         nfSetStyleIfChanged(entry, "border-radius", SECONDARY_ENTRY_RADIUS_PX, "important");
+        nfSetStyleIfChanged(entry, "flex", "1 1 0", "important");
+        nfSetStyleIfChanged(entry, "min-width", "0", "important");
+        nfSetStyleIfChanged(entry, "height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
+        nfSetStyleIfChanged(entry, "min-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
+        nfSetStyleIfChanged(entry, "max-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
       }
     });
     nfSetStyleIfChanged(group, "--novaflow-secondary-top", `${top}px`);
@@ -50934,9 +51024,10 @@
     nfSetStyleIfChanged(group, "min-width", `${secondaryWidth}px`, "important");
     nfSetStyleIfChanged(group, "max-width", `${secondaryWidth}px`, "important");
     nfSetStyleIfChanged(group, "height", `${shellHeight}px`, "important");
-    nfSetStyleIfChanged(group, "padding", "0", "important");
+    nfSetStyleIfChanged(group, "min-height", `${shellHeight}px`, "important");
+    nfSetStyleIfChanged(group, "max-height", `${shellHeight}px`, "important");
     nfSetStyleIfChanged(group, "box-sizing", "border-box", "important");
-    nfSetStyleIfChanged(group, "align-items", "start", "important");
+    nfSetStyleIfChanged(group, "align-items", "center", "important");
     const next = group.nextElementSibling;
     const parent = group.parentElement;
     if (parent instanceof HTMLElement) {
@@ -51288,7 +51379,7 @@
       nfSetStyleIfChanged(button, "background", secondaryBackground, "important");
       nfSetStyleIfChanged(button, "background-color", secondaryBackground, "important");
       nfSetStyleIfChanged(button, "background-image", "none", "important");
-      nfSetStyleIfChanged(button, "color", active ? UI_ACCENT_TEXT : "rgba(244, 247, 251, 0.92)", "important");
+      nfSetStyleIfChanged(button, "color", active ? UI_SEGMENT_SELECTED_TEXT : UI_SEGMENT_IDLE_TEXT, "important");
       nfSetStyleIfChanged(button, "box-shadow", active ? `inset 0 0 0 1px ${UI_SELECTED_BORDER}` : "none", "important");
       // Not !important: it still beats the bundle stylesheet, while letting
       // the theme's :focus-visible ring through for keyboard users.
@@ -61435,22 +61526,23 @@
     const focus = button === document.activeElement;
     const pressed = button.getAttribute("data-pressed") === "1";
     // Reference .nf-canvas-bar button: no plate until hover, 28 tall, 5px.
-    const background = pressed ? "#303030" : hover || focus ? "#393939" : "transparent";
+    const background = pressed ? "#303030" : hover || focus ? CANVAS_BAR_BUTTON_HOVER_BACKGROUND : "transparent";
     setParticleProjectActionStyles(button, {
-      height: "28px",
-      "min-width": "62px",
-      padding: "0 12px",
-      "border-radius": "5px",
+      height: `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+      width: "66px",
+      "min-width": "66px",
+      padding: "0",
+      "border-radius": CANVAS_BAR_BUTTON_RADIUS_PX,
       border: "0",
       background,
       "background-color": background,
       "background-image": "none",
       "box-shadow": "none",
-      color: "#a0a0a0",
+      color: CANVAS_BAR_BUTTON_TEXT,
       cursor: "pointer",
       "font-size": "11px",
-      "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
-      "line-height": "28px",
+      "font-weight": "500",
+      "line-height": "1",
       "white-space": "nowrap",
       display: "inline-flex",
       "align-items": "center",
@@ -61747,20 +61839,26 @@
       host = document.createElement("div");
       host.id = PARTICLE_PROJECT_TOP_ACTIONS_ID;
       host.setAttribute("data-preview-ui", "1");
+      host.setAttribute("data-novaflow-keep-radius", "1");
       host.setAttribute("data-novaflow-runtime-ignore", "1");
       host.setAttribute("aria-label", "\u7c92\u5b50\u9879\u76ee\u64cd\u4f5c");
       document.body.appendChild(host);
     }
     setParticleProjectActionStyles(host, {
       position: "fixed",
-      top: `${TOPBAR_HEIGHT + 7}px`,
-      left: `${PRIMARY_COLUMN_WIDTH + 10}px`,
+      top: `${TOPBAR_HEIGHT + 15}px`,
+      left: `${PRIMARY_COLUMN_WIDTH}px`,
       display: "flex",
       "align-items": "center",
-      gap: "10px",
-      height: "34px",
+      gap: "3px",
+      height: "38px",
       margin: "0",
-      padding: "0",
+      padding: "0 4px",
+      "box-sizing": "border-box",
+      background: CANVAS_BAR_PILL_BACKGROUND,
+      "background-color": CANVAS_BAR_PILL_BACKGROUND,
+      border: `1px solid ${CANVAS_BAR_PILL_BORDER_COLOR}`,
+      "border-radius": CANVAS_BAR_PILL_RADIUS_PX,
       "z-index": TOPBAR_MENU_LAYER_Z_INDEX,
       "pointer-events": "auto",
       "-webkit-app-region": "no-drag"
@@ -69371,6 +69469,20 @@
       nfSetStyleIfChanged(bottomControls, "border-radius", DOCK_RADIUS_PX, "important");
       nfSetStyleIfChanged(bottomControls, "box-shadow", DOCK_SHADOW, "important");
       nfSetStyleIfChanged(bottomControls, "overflow", "hidden", "important");
+      // The reference docks this strip to the bottom of the workspace box,
+      // full width, 99 tall. It had been floating inset by its own margins.
+      nfSetStyleIfChanged(bottomControls, "position", "absolute", "important");
+      nfSetStyleIfChanged(bottomControls, "left", "0", "important");
+      nfSetStyleIfChanged(bottomControls, "right", "0", "important");
+      nfSetStyleIfChanged(bottomControls, "bottom", "0", "important");
+      nfSetStyleIfChanged(bottomControls, "top", "auto", "important");
+      nfSetStyleIfChanged(bottomControls, "width", "auto", "important");
+      nfSetStyleIfChanged(bottomControls, "margin", "0", "important");
+      nfSetStyleIfChanged(bottomControls, "height", DOCK_HEIGHT + "px", "important");
+      nfSetStyleIfChanged(bottomControls, "min-height", DOCK_HEIGHT + "px", "important");
+      nfSetStyleIfChanged(bottomControls, "max-height", DOCK_HEIGHT + "px", "important");
+      nfSetStyleIfChanged(bottomControls, "padding", DOCK_PADDING, "important");
+      nfSetStyleIfChanged(bottomControls, "box-sizing", "border-box", "important");
       styleBottomControlRanges(bottomControls);
     }
 
@@ -69418,9 +69530,9 @@
       }
       nfSetStyleIfChanged(templateControl, "border", "0", "important");
       nfSetStyleIfChanged(templateControl, "box-shadow", "none", "important");
-      nfSetStyleIfChanged(templateControl, "height", "34px", "important");
-      nfSetStyleIfChanged(templateControl, "min-height", "34px", "important");
-      nfSetStyleIfChanged(templateControl, "max-height", "34px", "important");
+      nfSetStyleIfChanged(templateControl, "height", `${CANVAS_BAR_BUTTON_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(templateControl, "min-height", `${CANVAS_BAR_BUTTON_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(templateControl, "max-height", `${CANVAS_BAR_BUTTON_HEIGHT}px`, "important");
       if (templateButton instanceof HTMLElement) {
         nfSetAttrIfChanged(templateButton, "data-novaflow-template-button", "1");
         const templateButtonSourceOwned = isSourceOwnedLayout(templateButton) || isInsideSourceOwnedLayout(templateButton);
@@ -69428,12 +69540,10 @@
           nfSetAttrIfChanged(templateButton, "data-novaflow-single-button", "1");
         }
         stylePreviewButtonSurface(templateButton);
-        nfSetStyleIfChanged(templateButton, "padding", "0 18px", "important");
-        nfSetStyleIfChanged(templateButton, "min-width", "92px", "important");
       }
     }
     if (zoomControls instanceof HTMLElement) {
-      const targetHeight = 34;
+      const targetHeight = CANVAS_BAR_QUIET_HEIGHT;
       nfSetAttrIfChanged(zoomControls, "data-novaflow-zoom-controls", "1");
       nfSetStyleIfChanged(zoomControls, "--novaflow-top-control-height", `${targetHeight}px`);
       nfSetStyleIfChanged(zoomControls, "height", `${targetHeight}px`, "important");
@@ -69443,18 +69553,20 @@
       nfSetStyleIfChanged(zoomControls, "align-items", "center", "important");
       nfSetStyleIfChanged(zoomControls, "justify-content", "center", "important");
       nfSetStyleIfChanged(zoomControls, "gap", "4px", "important");
-      nfSetStyleIfChanged(zoomControls, "background", PRIMARY_PANEL_BACKGROUND, "important");
+      nfSetStyleIfChanged(zoomControls, "background", "transparent", "important");
       nfSetStyleIfChanged(zoomControls, "border", "0", "important");
       nfSetStyleIfChanged(zoomControls, "border-radius", "8px", "important");
-      nfSetStyleIfChanged(zoomControls, "padding", "0 4px", "important");
+      nfSetStyleIfChanged(zoomControls, "padding", "0", "important");
       styleAutoFitOnlyControl(zoomControls);
       Array.from(zoomControls.children).forEach((child) => {
         if (!(child instanceof HTMLElement)) return;
         if (child.getAttribute("data-novaflow-autofit-percent-hidden") === "1") return;
-        nfSetStyleIfChanged(child, "height", "30px", "important");
-        nfSetStyleIfChanged(child, "min-height", "30px", "important");
-        nfSetStyleIfChanged(child, "padding", child.getAttribute("data-novaflow-autofit-button") === "1" ? "0 18px" : "0 10px", "important");
-        nfSetStyleIfChanged(child, "border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
+        const childQuiet = child.getAttribute("data-novaflow-autofit-button") === "1";
+        const childHeight = childQuiet ? CANVAS_BAR_QUIET_HEIGHT : CANVAS_BAR_BUTTON_HEIGHT;
+        nfSetStyleIfChanged(child, "height", `${childHeight}px`, "important");
+        nfSetStyleIfChanged(child, "min-height", `${childHeight}px`, "important");
+        nfSetStyleIfChanged(child, "padding", childQuiet ? "0 13px" : "0 11px", "important");
+        nfSetStyleIfChanged(child, "border-radius", childQuiet ? CANVAS_BAR_QUIET_RADIUS_PX : CANVAS_BAR_BUTTON_RADIUS_PX, "important");
         if (child.getAttribute("data-novaflow-autofit-button") !== "1") {
           nfSetStyleIfChanged(child, "background", "transparent", "important");
           nfSetStyleIfChanged(child, "background-color", "transparent", "important");
@@ -69464,7 +69576,7 @@
         nfSetStyleIfChanged(child, "display", "inline-flex", "important");
         nfSetStyleIfChanged(child, "align-items", "center", "important");
         nfSetStyleIfChanged(child, "justify-content", "center", "important");
-        nfSetStyleIfChanged(child, "line-height", "30px", "important");
+        nfSetStyleIfChanged(child, "line-height", "1", "important");
       });
     }
     applyPreviewPanel(active, bottomControls);
