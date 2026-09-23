@@ -459,6 +459,29 @@
   --nf-card-header-bg: #222222;
 }
 
+/* 2.0e The particle preview stage.
+   The editor draws its own opaque near-black backdrop into an offscreen canvas
+   and blits it in, so neither a CSS background nor a fill hook can reach it -
+   the reference's #242424 + dot field was simply covered.
+
+   `screen` solves it without touching the render pipeline: black composites to
+   whatever is beneath it, so the backdrop below shows through, while the bright
+   particles are essentially unchanged (screen against a dark backdrop is close
+   to identity). Reversible, and no drawing code is modified.
+
+   Scoped to the particle preview only - the drawing page's canvas shows the
+   user's artwork, where screen would wash it out. */
+.novaflow-app [data-novaflow-preview-workspace="1"] {
+  background-color: #242424 !important;
+  background-image: radial-gradient(#3d3d3d 1px, transparent 1px) !important;
+  background-size: 24px 24px !important;
+  background-position: center center !important;
+}
+
+.novaflow-app [data-novaflow-preview-workspace="1"] canvas {
+  mix-blend-mode: screen !important;
+}
+
 /* 2.1 The stage. The bundle writes `background: #151515` inline on the second
    child of .nf-app-body (no !important), so a rule can take it. The reference
    floats the stage as a rounded panel on the backdrop, at the same value as

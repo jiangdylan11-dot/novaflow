@@ -21437,38 +21437,12 @@
         position: relative !important;
         isolation: isolate !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-preview-workspace="1"][data-novaflow-source-layout="1"]::before {
+      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-preview-workspace="1"][data-novaflow-source-layout="1"]::after {
+        /* The reference has no perspective floor. The dot field lives on the
+           stage's own background instead - see the rule that owns this node
+           further down, which is the only one specific enough to set it. */
         content: none !important;
         display: none !important;
-      }
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-preview-workspace="1"][data-novaflow-source-layout="1"]::after {
-        content: "" !important;
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        z-index: 1 !important;
-        pointer-events: none !important;
-        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
-        clip-path: inset(
-          var(--novaflow-preview-top, 0px)
-          var(--novaflow-preview-right, 0px)
-          var(--novaflow-preview-bottom, 0px)
-          var(--novaflow-preview-left, 0px)
-          round 10px
-        ) !important;
-        /* The reference draws the preview as a flat dot field, not a
-           perspective floor - so no transform, no fade mask, and the dots are
-           evenly spaced across the whole stage. */
-        transform: none !important;
-        opacity: 1 !important;
-        background-image:
-          radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px) !important;
-        background-size: ${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px !important;
-        background-position: center center !important;
-        -webkit-mask-image: none !important;
-        mask-image: none !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-left-column="1"] .nf-panel:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *) {
         position: relative !important;
@@ -26123,7 +26097,9 @@
       }
       body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"] {
         background: ${PREVIEW_OUTSIDE_BACKGROUND} !important;
-        background-image: none !important;
+        background-image: radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px) !important;
+        background-size: ${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px !important;
+        background-position: center center !important;
         margin: 0 !important;
         border: 0 !important;
         border-radius: 0 !important;
