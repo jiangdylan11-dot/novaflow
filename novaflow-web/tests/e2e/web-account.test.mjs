@@ -38,6 +38,43 @@ await api.clientAuthLogout();
 const before = requests.length;
 check((await api.clientAuthAccountDetails()).httpStatus, 401);
 check(requests.length, before);
+// A Web status poll may fail while the control plane is temporarily offline.
+// Keep the stored token, including the copy held by the shared account panel,
+// and clear both stores only after an explicit authentication rejection.
+let controlStatus = 503;
+const recoveryRequests = [];
+const recovering = createDomSandbox({
+  Response, Request, Blob, FormData,
+  NOVAFLOW_WEB_CONFIG: { controlUrl: 'https://control.test' },
+  fetch: async (url, init) => {
+    recoveryRequests.push({ url: String(url), init });
+    return new Response(JSON.stringify(controlStatus === 200
+      ? { user: { display_name: 'Dylan' }, credits: { balance: 1 } }
+      : { error: controlStatus === 401 ? 'invalid session' : 'temporarily unavailable' }), { status: controlStatus });
+  }
+});
+recovering.localStorage.setItem('novaflow.client.auth.session.v1', JSON.stringify({
+  session: { token: 'recovered-token' }, user: { display_name: 'Dylan' }
+}));
+runInContext(source, createContext(recovering));
+check((await recovering.electronAPI.clientAuthStatus()).result.authenticated, true);
+check(recoveryRequests.at(-1).init.headers.Authorization, 'Bearer recovered-token');
+check(!!recovering.localStorage.getItem('novaflow.client.auth.session.v1'), true);
+controlStatus = 200;
+check((await recovering.electronAPI.clientAuthStatus()).result.user.display_name, 'Dylan');
+controlStatus = 401;
+check((await recovering.electronAPI.clientAuthStatus()).result.authenticated, false);
+check(recovering.localStorage.getItem('novaflow.client.auth.session.v1'), null);
+check(recovering.localStorage.getItem('novaflow_web_session_v1'), null);
+// A tab that was open before login must pick up the token written by a second tab.
+recovering.localStorage.setItem('novaflow.client.auth.session.v1', JSON.stringify({
+  session: { token: 'new-tab-token' }, user: { display_name: 'Dylan' }
+}));
+controlStatus = 200;
+check((await recovering.electronAPI.clientAuthStatus()).result.authenticated, true);
+check(recoveryRequests.at(-1).init.headers.Authorization, 'Bearer new-tab-token');
+recovering.localStorage.removeItem('novaflow.client.auth.session.v1');
+check((await recovering.electronAPI.clientAuthStatus()).result.authenticated, false);
 // Local authorization must not bypass the same account login screen.
 const accountSource = await readFile(new URL('../../renderer/novaflow-web-account.js', import.meta.url), 'utf8');
 for (const computeMode of ['local', 'shared']) {

@@ -115,7 +115,7 @@ function block(index) {
   header.writeUInt32LE(index); header.writeUInt32LE(bytes.length, 4);
   return Buffer.concat([header, bytes]);
 }
-let packed = Buffer.concat([block(0), block(1)]), submitted, fetchedSource, cancelled = 0;
+let packed = Buffer.concat([block(0), block(1)]), submitted, fetchedSource, cancelled = 0, rejectMissingToken = false;
 const sandbox = createDomSandbox({
   console, atob, btoa, Blob, Response, DecompressionStream,
   fetch: async url => { fetchedSource = url; return new Response(new Uint8Array([1, 2, 3])); },
@@ -123,6 +123,7 @@ const sandbox = createDomSandbox({
   NovaFlowWebRuntime: {
     control: async (method, path, body) => {
       if (path.endsWith('/cancel')) { cancelled++; return {}; }
+      if (rejectMissingToken) throw Object.assign(new Error('missing session token'), { status: 401 });
       if (method === 'POST') { submitted = body; return { task: { id: 'test-matting' } }; }
       return { task: { id: 'test-matting', status: 'completed', output_manifest: { files: [{ name: 'mask-test.bin' }] } } };
     },
@@ -154,6 +155,10 @@ for (const invalid of [Buffer.concat([block(0), block(0)]), Buffer.concat([block
 }
 check(cancelled, 4, 'failed transfers release their task');
 check((await sandbox.electronAPI.aiSeqRembgBatch({ ...payload, rendererDecodedFrames: [{ decodedFrameIndex: 0 }] })).ok, false, 'missing captured bytes fail before submission');
+rejectMissingToken = true;
+const signedOut = await sandbox.electronAPI.aiSeqRembgBatch(payload);
+check(signedOut.ok, false, 'unauthorized matting is rejected');
+check(signedOut.error.includes('重新登录'), true, 'session error offers a login action');
 
 const html = await readFile(new URL('../../renderer/index.html', import.meta.url), 'utf8');
 const asset = html.match(/src="\.\/(assets\/index-[^"?]+\.js)/)[1];

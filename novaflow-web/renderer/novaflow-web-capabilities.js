@@ -741,7 +741,10 @@
       if (taskId) {
         try { await runtime.control('POST', '/api/web/tasks/' + taskId + '/cancel', {}); } catch (_) { /* already terminal */ }
       }
-      const message = String((error && error.message) || error);
+      const rawMessage = String((error && error.message) || error);
+      const message = error?.status === 401 || /missing session token|invalid session|session expired/i.test(rawMessage)
+        ? '登录已失效，请点顶栏右上角的账号按钮重新登录后重试抠图'
+        : rawMessage;
       reportMatting(jobId, 'error', message, undefined);
       return { ok: false, jobId, error: message };
     }

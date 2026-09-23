@@ -53,9 +53,23 @@
 
   // ---------------------------------------------------------------- session
   let session = null;
-  try {
-    session = JSON.parse(root.localStorage.getItem(SESSION_KEY) || 'null');
-  } catch (_) { session = null; }
+  function currentSession() {
+    try {
+      const savedRaw = root.localStorage.getItem(CLIENT_AUTH_KEY);
+      const primaryRaw = root.localStorage.getItem(SESSION_KEY);
+      let saved = null, primary = null;
+      try { saved = JSON.parse(savedRaw || 'null'); } catch (_) {}
+      try { primary = JSON.parse(primaryRaw || 'null'); } catch (_) {}
+      // The shared account panel can retain a valid login after an older Web
+      // status probe removed only SESSION_KEY. Re-read on each request so an
+      // editor opened before login also sees a login made in another tab.
+      session = saved?.session?.token
+        ? { token: saved.session.token, user: saved.user || primary?.user || null }
+        : primary?.token ? primary : null;
+    } catch (_) { /* private mode may only retain the in-memory session */ }
+    return session;
+  }
+  currentSession();
 
   function saveSession(next) {
     session = next;
@@ -67,7 +81,8 @@
 
   function authHeaders(extra) {
     const headers = Object.assign({ 'Content-Type': 'application/json' }, extra || {});
-    if (session && session.token) headers.Authorization = 'Bearer ' + session.token;
+    const active = currentSession();
+    if (active?.token) headers.Authorization = 'Bearer ' + active.token;
     return headers;
   }
 
@@ -664,16 +679,28 @@
 
     // ---- account ----------------------------------------------------------
     async clientAuthStatus() {
-      if (!session) return { ok: true, result: { authenticated: false } };
+      const checkedSession = currentSession();
+      if (!checkedSession) return { ok: true, result: { authenticated: false } };
       try {
         const me = await control('GET', '/api/web/me');
         return {
           ok: true,
           result: { authenticated: true, user: me.user, credits: me.credits }
         };
-      } catch (_) {
-        saveSession(null);
-        return { ok: true, result: { authenticated: false } };
+      } catch (error) {
+        if (error.status === 401 || error.status === 403) {
+          const latest = currentSession();
+          if (latest?.token && latest.token !== checkedSession.token) {
+            return { ok: true, result: { authenticated: true, user: latest.user || null } };
+          }
+          saveSession(null);
+          try { root.localStorage.removeItem(CLIENT_AUTH_KEY); } catch (_) {}
+          return { ok: true, result: { authenticated: false } };
+        }
+        // A temporary control-plane/network failure is not a logout. The
+        // next status probe can retry with the same signed session.
+        const active = currentSession();
+        return { ok: true, result: { authenticated: !!active, user: active?.user || null, temporarilyUnavailable: true } };
       }
     },
 
@@ -700,7 +727,7 @@
     // Web account dialog: read the real credit/quota snapshot from the account
     // service, rather than the compute control plane's capability snapshot.
     async clientAuthAccountDetails() {
-      if (!session) return { ok: false, httpStatus: 401, error: '请先登录账号' };
+      if (!currentSession()) return { ok: false, httpStatus: 401, error: '请先登录账号' };
       try {
         const profile = await auth('GET', '/api/client/bootstrap');
         if (profile.ok === false) return { ok: false, error: profile.error || '账户信息读取失败' };

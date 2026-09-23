@@ -220,6 +220,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
   // one place in the topbar that already reports whether you can generate.
   async function refresh(btn) {
     const who = await currentUser();
+    if (!who) void guard();
     const label = who
       ? (who.user && (who.user.display_name || who.user.email) || '已登录')
       : '登录';
