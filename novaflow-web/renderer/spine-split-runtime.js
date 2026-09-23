@@ -6843,6 +6843,18 @@
       const value = inputWithOverride(all[key], overrides && Object.prototype.hasOwnProperty.call(overrides, key) ? overrides[key] : undefined)
       if (value !== undefined) inputs[key] = value
     })
+    // Dotted keys are ComfyUI V3 dynamic inputs (COMFY_AUTOGROW_V3 etc). They only exist after the
+    // schema is expanded at execution time, so object_info never lists them and the loop above drops
+    // them silently: the prompt still returns status=success and the reference images simply vanish.
+    // Pass them through verbatim, the same way art-generate-provider.workflow.js writes
+    // `model.images.image_N` literals. Non-dotted unknown keys stay filtered as before.
+    if (overrides) {
+      Object.keys(overrides).forEach((key) => {
+        if (key.indexOf('.') < 0 || Object.prototype.hasOwnProperty.call(all, key)) return
+        const value = overrides[key]
+        if (value !== undefined) inputs[key] = value
+      })
+    }
     return inputs
   }
 
@@ -8787,9 +8799,210 @@
     return { prompt, instruction }
   }
 
+  // --- Qwen-Image-2.1 engine ---------------------------------------------------------------
+  // A Runtime is 2.1-capable only when the node, the loader and all three weights are present.
+  // ComfyUI 0.24.1 (the 8188 default) has none of them, so this is false there and every existing
+  // route keeps running exactly as before. Point NOVAFLOW_COMFY_IMAGE_URL at a 0.37.0 Runtime that
+  // carries the 2.1 weights and the 2.1 branches light up with no other configuration.
+  const QWEN21_UNETS = [
+    'qwen-image-2.1-UC-Q8_0.gguf',
+    'qwen-image-2.1-UC-Q5_K_M.gguf',
+    'qwen-image-2.1-UC-Q4_K_M.gguf'
+  ]
+  const QWEN21_CLIPS = [
+    'qwen3vl_8b_w4a8_heretic.safetensors',
+    'qwen3vl_8b_int8_convrot.safetensors',
+    'qwen3vl_8b_bf16.safetensors'
+  ]
+  const QWEN21_VAE = 'qwen_image_2.1_vae_bf16.safetensors'
+  const QWEN21_STEPS = 25
+
+  // Strict: the weight must actually appear in that loader's choice list. comfyChoiceFromCandidates
+  // falls back to candidates[0] when a node reports no choices at all, which would light 2.1 up on a
+  // Runtime that merely has the loader installed but none of the weights.
+  function qwen21Pick(nodeInfo, key, candidates) {
+    const choices = comfyChoices(nodeInfo && nodeInfo.input && nodeInfo.input.required && nodeInfo.input.required[key])
+    if (!choices.length) return ''
+    for (const item of candidates) {
+      if (choices.includes(item)) return item
+    }
+    return ''
+  }
+
+  function qwen21Runtime(info) {
+    if (!info || !info.TextEncodeQwenImage21 || !info.UnetLoaderGGUF || !info.CLIPLoader || !info.VAELoader) return null
+    const unetName = qwen21Pick(info.UnetLoaderGGUF, 'unet_name', QWEN21_UNETS)
+    const clipName = qwen21Pick(info.CLIPLoader, 'clip_name', QWEN21_CLIPS)
+    const vaeName = qwen21Pick(info.VAELoader, 'vae_name', [QWEN21_VAE])
+    if (!unetName || !clipName || !vaeName) return null
+    return { unetName, clipName, vaeName }
+  }
+
+  // Same canvases as the 2509/2511 route: modelInput is already the matte+blank dug plate and
+  // maskName is already the dilated/feathered modelMask, so mergeInpaintResult does not change.
+  // Only the graph differs.
+  //   * the dug plate is the reference image (it is how the model sees where the hole is), but the
+  //     latent comes from VAEEncode of the undug crop (latentInputName). SetLatentNoiseMask keeps part
+  //     of the starting latent wherever the feathered mask is below 1; started from the dug plate that
+  //     part is the pale thigh-to-blank gradient, and it came out as a washed-out band across the limb
+  //     at the top of the hole (seam colour gap 56-73 over three seeds, 29-47 from the undug crop).
+  //     Without latentInputName it falls back to the dug plate.
+  //   * never TextEncodeQwenImage21's third output (that one is torch.zeros, and with it the model
+  //     has no sense of position)
+  //   * SetLatentNoiseMask replaces the mask channel 2.1 does not have
+  //   * no LoRA and no ModelSamplingAuraFlow: the 3.1/1.5/3 shifts were measured against 2509/2511
+  //     and carrying them over makes 2.1 stop inpainting altogether
+  //   * negative_prompt is left empty on purpose: at cfg=1 ComfyUI drops uncond entirely
+  //     (comfy/samplers.py cond_scale==1 -> uncond_ = null), so it would be dead weight
+  // The 2509 completion instruction ("infer the missing structure inside the selected mask") only works
+  // there because the completion LoRA was trained on it. 2.1 reads it as "nothing to add": on a layer
+  // whose name matches no part word it left 99% of the hole empty and erased a hand that was cut out.
+  // Describing the hole and what belongs in it made it fill 100% of the hole on legs and on a hand, and
+  // it still honours the part-word guidance (bare feet for leg layers).
+  const QWEN21_COMPLETION_INSTRUCTION = 'The first image is a game-art character layer with a pale blank hole cut into it. The second image marks that hole in white. Redraw inside the hole the missing parts of the figure that the surrounding pixels lead into (body, limbs, hands, feet, clothing, hair, weapon or object), continuing their outlines, colors, line art and shading so the figure is whole again. Keep the same game-art style, lighting, color palette and perspective, and keep everything outside the hole exactly as it is.'
+
+  function buildQwen21InpaintWorkflow(info, runtime, imageName, maskName, prefix, promptText, route, latentInputName, inputSize) {
+    const text = `${QWEN21_COMPLETION_INSTRUCTION} ${String(promptText || '').trim()}`.trim()
+    // The 2.1 VAE centre-crops anything that is not a multiple of 16 before encoding, and
+    // TextEncodeQwenImage21 rounds its references to multiples of 32. cropPadEngine aligns the crop to
+    // 64 only until it hits the layer edge, so a 450x700 crop decoded as 448x688 and landed 1px left
+    // and 6px up, leaving the bottom rows of the hole ungenerated. Pad right/bottom up to 32 and crop
+    // the result back instead; without a size the graph is built unpadded, as before.
+    const width = Math.max(0, Math.round(Number(inputSize && inputSize.width) || 0))
+    const height = Math.max(0, Math.round(Number(inputSize && inputSize.height) || 0))
+    const padRight = width ? Math.ceil(width / 32) * 32 - width : 0
+    const padBottom = height ? Math.ceil(height / 32) * 32 - height : 0
+    const workflow = {
+      '1': { class_type: 'LoadImage', inputs: { image: imageName } },
+      '2': { class_type: 'LoadImage', inputs: { image: maskName } },
+      '4': { class_type: 'UnetLoaderGGUF', inputs: buildComfyNodeInputs(info.UnetLoaderGGUF, { unet_name: runtime.unetName }) },
+      '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: runtime.clipName, type: 'qwen_image', device: 'default' }) },
+      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: runtime.vaeName }) }
+    }
+    if (latentInputName) workflow['3'] = { class_type: 'LoadImage', inputs: { image: latentInputName } }
+    let nextId = 11
+    const padIds = {}
+    const padded = (key, ref) => {
+      if (!padRight && !padBottom) return ref
+      const id = String(nextId)
+      nextId += 1
+      workflow[id] = { class_type: 'ImagePadForOutpaint', inputs: { image: ref, left: 0, top: 0, right: padRight, bottom: padBottom, feathering: 0 } }
+      padIds[key] = id
+      return [id, 0]
+    }
+    const plateRef = padded('plate', ['1', 0])
+    const maskImageRef = padded('mask', ['2', 0])
+    const latentPixelsRef = latentInputName ? padded('latent', ['3', 0]) : plateRef
+    workflow['7'] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(info.VAEEncode, { pixels: latentPixelsRef, vae: ['6', 0] }) }
+    workflow['8'] = { class_type: 'ImageToMask', inputs: buildComfyNodeInputs(info.ImageToMask, { image: maskImageRef, channel: 'red' }) }
+    let noiseMaskRef = ['8', 0]
+    if (padIds.mask) {
+      // The pad is filled with 0.5 grey. The mask is shrunk to the 16px latent grid bilinearly, so a
+      // latent cell straddling the layer edge sampled that grey and kept 25-50% of the starting latent
+      // on the last few pixels of a hole reaching the edge. Add the pad's own mask (1 in the pad, 0
+      // inside) so the strip is fully regenerated; it is cropped off afterwards anyway.
+      workflow[String(nextId)] = { class_type: 'MaskComposite', inputs: { destination: ['8', 0], source: [padIds.mask, 1], x: 0, y: 0, operation: 'add' } }
+      noiseMaskRef = [String(nextId), 0]
+      nextId += 1
+    }
+    workflow['9'] = { class_type: 'SetLatentNoiseMask', inputs: buildComfyNodeInputs(info.SetLatentNoiseMask, { samples: ['7', 0], mask: noiseMaskRef }) }
+    workflow['10'] = {
+      class_type: 'TextEncodeQwenImage21',
+      inputs: buildComfyNodeInputs(info.TextEncodeQwenImage21, {
+        clip: ['5', 0],
+        vae: ['6', 0],
+        resolution: 0,
+        prompt: text,
+        negative_prompt: '',
+        'images.image_1': plateRef,
+        'images.image_2': maskImageRef
+      })
+    }
+    let modelRef = ['4', 0]
+    if (info.QwenImage21Cache) {
+      workflow[String(nextId)] = { class_type: 'QwenImage21Cache', inputs: buildComfyNodeInputs(info.QwenImage21Cache, { model: modelRef, device: 'auto', dtype: 'default' }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    workflow[String(nextId)] = {
+      class_type: 'KSampler',
+      inputs: buildComfyNodeInputs(info.KSampler, {
+        model: modelRef,
+        positive: ['10', 0],
+        negative: ['10', 1],
+        latent_image: ['9', 0],
+        seed: 746924259,
+        steps: QWEN21_STEPS,
+        cfg: 1,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        denoise: 1
+      })
+    }
+    const sampleRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: { samples: sampleRef, vae: ['6', 0] } }
+    const decodedRef = [String(nextId), 0]
+    nextId += 1
+    // 2.1 decodes RGBA and leaves the parts of the hole it did not draw transparent. mergeInpaintResult
+    // was built for 2509's opaque RGB: it floors alpha to 220 inside the pasteMask, so a transparent
+    // pixel that RMBG happens to keep turns into an opaque black patch. Put the dug plate back under the
+    // transparent pixels so this branch hands over the same kind of opaque image the 2509 branch does.
+    workflow[String(nextId)] = { class_type: 'SplitImageWithAlpha', inputs: { image: decodedRef } }
+    const splitId = String(nextId)
+    nextId += 1
+    // SplitImageWithAlpha returns 1 - alpha (LoadImage's mask convention); ImageCompositeMasked wants alpha.
+    workflow[String(nextId)] = { class_type: 'InvertMask', inputs: { mask: [splitId, 1] } }
+    const alphaRef = [String(nextId), 0]
+    nextId += 1
+    workflow[String(nextId)] = {
+      class_type: 'ImageCompositeMasked',
+      inputs: buildComfyNodeInputs(info.ImageCompositeMasked, {
+        destination: plateRef,
+        source: [splitId, 0],
+        x: 0,
+        y: 0,
+        resize_source: false,
+        mask: alphaRef
+      })
+    }
+    let imageRef = [String(nextId), 0]
+    nextId += 1
+    if (padRight || padBottom) {
+      workflow[String(nextId)] = { class_type: 'ImageCrop', inputs: { image: imageRef, width, height, x: 0, y: 0 } }
+      imageRef = [String(nextId), 0]
+      nextId += 1
+    }
+    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: { images: imageRef, filename_prefix: prefix } }
+    return workflow
+  }
+
   async function defaultQwenInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
     const route = options && options.route || resolveInpaintWorkflowRoute(options && options.inpaintMode, options && options.inpaintProvider)
     const info = await comfyAllObjectInfo(baseUrl).catch(() => ({}))
+    const qwen21 = qwen21Runtime(info)
+    // Completion only for now: it is the one mode with a measured 2.1 recipe. Edit keeps the 2511 route.
+    if (qwen21 && route.mode === 'completion' && info.VAEEncode && info.SetLatentNoiseMask && info.ImageToMask && info.KSampler && info.SplitImageWithAlpha && info.InvertMask && info.ImageCompositeMasked && info.ImagePadForOutpaint && info.ImageCrop && info.MaskComposite) {
+      setInpaintDebugAttr('workflow-engine', 'qwen-2.1')
+      setInpaintDebugAttr('workflow-mode', normalizeSelectionInpaintMode(options && options.inpaintMode))
+      setInpaintDebugAttr('workflow-provider', route.provider)
+      setInpaintDebugAttr('workflow-prompt-head', String(promptText || '').slice(0, 1000))
+      state.lastProcessingDebug = {
+        ...(state.lastProcessingDebug || {}),
+        qwenInpaint: {
+          engine: 'qwen-2.1',
+          unet: qwen21.unetName,
+          clip: qwen21.clipName,
+          vae: qwen21.vaeName,
+          loras: [],
+          steps: QWEN21_STEPS,
+          seed: 746924259,
+          provider: route.provider
+        }
+      }
+      return buildQwen21InpaintWorkflow(info, qwen21, imageName, maskName, prefix, promptText, route, options && options.latentInputName || '', options && options.inputSize)
+    }
+    setInpaintDebugAttr('workflow-engine', 'qwen-2509-2511')
     const textNodeName = info.TextEncodeQwenImageEditPlusAdvance_lrzjason
       ? 'TextEncodeQwenImageEditPlusAdvance_lrzjason'
       : 'TextEncodeQwenImageEditPlusAdvance'
@@ -9075,6 +9288,8 @@
 
   async function defaultAiRetouchWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
     const route = options && options.route || resolveInpaintWorkflowRoute(options && options.inpaintMode, options && options.inpaintProvider)
+    // Removal and Rapid AIO never report an engine; without this they would inherit the last Qwen run's.
+    setInpaintDebugAttr('workflow-engine', '')
     if (route.workflow === 'removal') return await defaultRemovalInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options || {})
     if (route.workflow === 'rapid-aio-nsfw') return await defaultRapidAioNsfwInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, { ...(options || {}), route })
     return await defaultQwenInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, { ...(options || {}), route })
@@ -9148,7 +9363,9 @@
 
   async function runLayerInpaint(imageDataUrl, maskDataUrl, prompt, options) {
     const baseUrl = await detectComfyBaseUrl()
-    const initialOptions = options || {}
+    // The options are sent on as task parameters, so the latent image travels as an upload and only
+    // its name goes into them.
+    const { latentInputDataUrl, ...initialOptions } = options || {}
     const initialRoute = initialOptions.route || resolveInpaintWorkflowRoute(initialOptions.inpaintMode, initialOptions.inpaintProvider)
     const workflowText = initialRoute.workflow === 'rapid-aio-nsfw'
       ? ''
@@ -9157,11 +9374,14 @@
       const stamp = Date.now()
       const imageName = await uploadDataUrl(baseUrl, `novaflow_inpaint_image_${stamp}_${prefixSuffix || route.provider}.png`, dataUrl)
       const maskName = await uploadDataUrl(baseUrl, `novaflow_inpaint_mask_${stamp}_${prefixSuffix || route.provider}.png`, maskDataUrl)
+      const latentInputName = latentInputDataUrl && !workflowText
+        ? await uploadDataUrl(baseUrl, `novaflow_inpaint_latent_${stamp}_${prefixSuffix || route.provider}.png`, latentInputDataUrl)
+        : ''
       const prefixBase = initialOptions && initialOptions.prefix ? String(initialOptions.prefix) : `novaflow_inpaint_${stamp}`
       const prefix = prefixSuffix ? `${prefixBase}_${prefixSuffix}` : prefixBase
       const workflow = workflowText
         ? patchGenericWorkflow(JSON.parse(workflowText), { loadImages: [imageName, maskName], prefix, prompt })
-        : await defaultAiRetouchWorkflow(baseUrl, imageName, maskName, prefix, prompt, { ...initialOptions, route, inpaintMode: route.mode, inpaintProvider: route.provider })
+        : await defaultAiRetouchWorkflow(baseUrl, imageName, maskName, prefix, prompt, { ...initialOptions, route, inpaintMode: route.mode, inpaintProvider: route.provider, ...(latentInputName ? { latentInputName } : {}) })
       return await runPromptForFirstImage(baseUrl, workflow, prefix, 600000)
     }
     return await runWithRoute(imageDataUrl, initialRoute, '')
@@ -18698,6 +18918,10 @@
     ctx.fillStyle = `rgb(${matte.r}, ${matte.g}, ${matte.b})`
     ctx.fillRect(0, 0, width, height)
     ctx.drawImage(cropImageCanvas, 0, 0, width, height)
+    // The same matte-backed crop before the hole is blended in. Only the Qwen-Image-2.1 graph reads it,
+    // as the sampler's starting latent. The browser cannot tell which engine the runtime will pick, so
+    // a Qwen completion uploads it on a 2509/2511 runtime too, where the graph ignores it.
+    const latentInput = cloneCanvas(canvas)
     const image = ctx.getImageData(0, 0, width, height)
     const mask = modelMask.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height)
     for (let i = 0; i < image.data.length; i += 4) {
@@ -18714,7 +18938,7 @@
     canvas.__qwenCompletionPreprocess = meta
     modelMask.__qwenCompletionPreprocess = meta
     pasteMask.__qwenCompletionPreprocess = meta
-    return { modelInput: canvas, guide: hardMask, maskForModel: modelMask, pasteMask, meta }
+    return { modelInput: canvas, latentInput, guide: hardMask, maskForModel: modelMask, pasteMask, meta }
   }
 
   function buildRemovalInpaintCanvases(cropImageCanvas) {
@@ -22731,7 +22955,14 @@
       setInpaintDebugAttr('execute-provider', executionRoute.provider)
       setInpaintDebugAttr('execute-restore-strategy', restoreStrategy ? restoreStrategy.id : '')
       setInpaintDebugAttr('execute-prompt-head', inpaintPrompt.slice(0, 1000))
-      const result = await runLayerInpaintValidated(inputCanvases.modelInput.toDataURL('image/png'), modelMaskCanvas.toDataURL('image/png'), inpaintPrompt, qwenCrop, part, { inpaintMode: selectionInpaintMode, route: executionRoute })
+      const result = await runLayerInpaintValidated(inputCanvases.modelInput.toDataURL('image/png'), modelMaskCanvas.toDataURL('image/png'), inpaintPrompt, qwenCrop, part, {
+        inpaintMode: selectionInpaintMode,
+        route: executionRoute,
+        inputSize: { width: inputCanvases.modelInput.width, height: inputCanvases.modelInput.height },
+        // Rapid AIO NSFW builds from the same V4 canvases but never reads it, and in web mode an upload
+        // no task references is never released, so only the plain Qwen completion route carries it.
+        latentInputDataUrl: inputCanvases.latentInput && executionRoute.workflow === 'qwen' ? inputCanvases.latentInput.toDataURL('image/png') : ''
+      })
       const normalizedFullMask = normalizeMaskCanvas(cloneCanvas(processingMaskCanvas))
       const patchPart = executionRoute.outputMode === 'replacement'
         ? await mergeRemovalInpaintResult(part, qwenCrop, layerOriginalCanvas, normalizedFullMask, result)
@@ -35116,7 +35347,9 @@
       crop.bbox = bounds
       const qwenCanvases = buildQwenInpaintCanvases(crop.cropImage, crop.cropMask)
       const qwenInput = qwenCanvases.modelInput
-      const result = await runLayerInpaint(qwenInput.toDataURL('image/png'), crop.cropMask.toDataURL('image/png'), String(promptText || 'Extend the missing human forearm naturally from the existing glove and skin.'))
+      const result = await runLayerInpaint(qwenInput.toDataURL('image/png'), crop.cropMask.toDataURL('image/png'), String(promptText || 'Extend the missing human forearm naturally from the existing glove and skin.'), {
+        inputSize: { width: qwenInput.width, height: qwenInput.height }
+      })
       const resultCropCanvas = await canvasFromDataUrl(result, crop.cropBox.width, crop.cropBox.height)
       const sanitizedCropCanvas = sanitizeInpaintResultCropConservative(resultCropCanvas, crop.cropImage, crop.cropMask, qwenCanvases.guide)
       const finalCanvas = pasteBackEngine(layerOriginalCanvas, sanitizedCropCanvas, crop.cropMask, crop.cropBox, { feather: 0, hardThreshold: 8, preserveOutsideHardMask: true })

@@ -68,6 +68,14 @@ export function withReferences(parameters, filenames, references = [], method = 
       if (found < 0 || !filenames[found]) throw new Error('workflow input is not an uploaded task reference');
       args[index] = filenames[found];
     }
+    // The Qwen-Image-2.1 completion route also samples from the undug crop, named in the options.
+    // Same rule as the positional inputs: it must be one of this task's uploads.
+    const inpaintOptions = method === 'defaultQwenInpaintWorkflow' ? args[5] : null;
+    if (inpaintOptions && typeof inpaintOptions === 'object' && inpaintOptions.latentInputName) {
+      const found = references.findIndex((ref) => ref.name === inpaintOptions.latentInputName);
+      if (found < 0 || !filenames[found]) throw new Error('workflow input is not an uploaded task reference');
+      args[5] = { ...inpaintOptions, latentInputName: filenames[found] };
+    }
     return { ...parameters, __args: args };
   }
   if (!filenames || !filenames.length) return parameters;
