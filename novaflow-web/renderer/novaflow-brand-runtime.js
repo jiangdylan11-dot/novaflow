@@ -31389,6 +31389,34 @@
         }
       },
       {
+        // 美工 / 绘图: the control column is a card, 198 wide like every other
+        // page's, and its groups sit on the same 53 pitch.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-drawing-host="1"], [data-novaflow-spine-split-control-category]',
+        style: {
+          width: `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "min-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "max-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: "[data-novaflow-spine-split-control-category]",
+        style: {
+          "margin-bottom": `${PARTICLE_DENSITY_PANEL_STACK_GAP}px`
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: "[data-novaflow-spine-split-control-category-toggle]",
+        style: {
+          "font-size": "12px",
+          "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+          color: PRIMARY_LEFT_CARD_TITLE_COLOR
+        }
+      },
+      {
         // 工具: the tool list is a navigation column - 198x40 entries on the
         // card's own inset, bare until selected, and then the rail's dark
         // green with its hairline edge rather than a solid accent block.
@@ -50129,7 +50157,7 @@
     const panelBodyPadding = particleDensity
       ? `${PARTICLE_DENSITY_PANEL_BODY_PADDING_Y}px ${PARTICLE_DENSITY_PANEL_BODY_PADDING_X}px`
       : "";
-    const panelGap = particleDensity ? PARTICLE_DENSITY_PANEL_STACK_GAP : SECONDARY_CONTENT_GAP;
+    const panelGap = PARTICLE_DENSITY_PANEL_STACK_GAP;
     const panelInnerGap = artDrawingTarget ? 0 : panelGap;
     const panelColumnGap = particleDensity ? PARTICLE_DENSITY_PANEL_STACK_GAP : SECONDARY_CONTENT_COLUMN_GAP;
     const wrappers = new Set();

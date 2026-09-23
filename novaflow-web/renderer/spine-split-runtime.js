@@ -150,6 +150,11 @@
   const SPLIT_PANEL_SURFACE = '#161616'
   const SPLIT_PANEL_BORDER_COLOR = '#2e2e2e'
   const SPLIT_PANEL_RADIUS = '12px' 
+  // The reference lists these one per line, 184x32, bare until you touch
+  // them: 12/500 #b4b4b4 with no plate. They had been a two-column grid of
+  // #333333 blocks with white text.
+  const SPLIT_ACTION_TEXT = '#b4b4b4'
+  const SPLIT_ACTION_HOVER_BACKGROUND = '#262626' 
   const LAYER_POINTER_AUTO_SCROLL_EDGE_PX = 44
   const LAYER_POINTER_AUTO_SCROLL_MAX_PX = 22
   const LAYER_POINTER_NEAREST_Y_SLACK_PX = 72
@@ -2966,7 +2971,7 @@
     const background = String(style && style.background || '')
     return background.includes('59,130,246') || background.includes('30,166,114')
       ? background
-      : '#333333'
+      : 'transparent'
   }
 
   function splitControlActionStyle(action, disabled, style) {
@@ -3562,7 +3567,8 @@
         max-width: 100% !important;
         box-sizing: border-box !important;
         overflow: hidden !important;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        row-gap: 10px !important;
       }
       [data-psd-fusion-ui="1"] button[${CONTROL_ACTION_ATTR}],
       [data-psd-fusion-ui="1"] button[${CONTROL_PLACEHOLDER_ATTR}] {
@@ -13392,14 +13398,18 @@
     const status = splitControlActionPatchState(action)
     return Object.assign({
       height: '32px',
-      borderRadius: '8px',
-      background: status.active ? SPLIT_SELECTED_BACKGROUND : '#333333',
-      border: SPLIT_LAYOUT_BORDER,
+      minHeight: '32px',
+      borderRadius: SPLIT_RECT_RADIUS,
+      background: status.active ? SPLIT_SELECTED_BACKGROUND : 'transparent',
+      backgroundColor: status.active ? SPLIT_SELECTED_BACKGROUND : 'transparent',
+      border: '0',
       boxShadow: status.active ? `inset 0 0 0 1px ${SPLIT_SELECTED_BORDER}` : 'none',
-      color: status.active ? SPLIT_SELECTED_TEXT : '#fff',
+      color: status.active ? SPLIT_SELECTED_TEXT : SPLIT_ACTION_TEXT,
       cursor: state.busy ? 'default' : 'pointer',
-      fontWeight: SPLIT_TOOL_FONT_WEIGHT,
+      fontWeight: '500',
       fontSize: '12px',
+      textAlign: 'left',
+      padding: '0 10px',
       transition: 'none'
     }, style || {})
   }
@@ -13824,7 +13834,7 @@
       )
       const background = status.active
         ? (hovering ? SPLIT_SELECTED_HOVER_BACKGROUND : SPLIT_SELECTED_BACKGROUND)
-        : (hovering ? SPLIT_PANEL_HOVER_BACKGROUND : '#333333')
+        : (hovering ? SPLIT_ACTION_HOVER_BACKGROUND : 'transparent')
       const border = SPLIT_LAYOUT_BORDER
       if (status.known && buttonNode.textContent !== status.text) {
         buttonNode.textContent = status.text
@@ -13834,9 +13844,9 @@
       setSplitAttributeIfChanged(buttonNode, 'aria-disabled', blocked ? 'true' : 'false')
       buttonNode.style.setProperty('background', background, 'important')
       buttonNode.style.setProperty('background-color', background, 'important')
-      buttonNode.style.setProperty('border', border, 'important')
-      buttonNode.style.setProperty('color', '#fff', 'important')
-      buttonNode.style.setProperty('font-weight', SPLIT_TOOL_FONT_WEIGHT, 'important')
+      buttonNode.style.setProperty('border', '0', 'important')
+      buttonNode.style.setProperty('color', status.active ? SPLIT_SELECTED_TEXT : SPLIT_ACTION_TEXT, 'important')
+      buttonNode.style.setProperty('font-weight', '500', 'important')
       buttonNode.style.setProperty('font-size', '12px', 'important')
       buttonNode.style.setProperty('line-height', '1.2', 'important')
       buttonNode.style.setProperty('min-width', '0', 'important')

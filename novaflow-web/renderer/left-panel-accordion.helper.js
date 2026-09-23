@@ -10,9 +10,9 @@
     // Reference (spline-review): the group header is a bare summary row -
     // no plate, no radius. Groups are separated by the details' bottom rule,
     // and only :hover gets a fill. The ICON keeps a small plate of its own.
-    panelGap: '0px',
+    panelGap: '7px',
     radius: '0px',
-    headerHeight: '44px',
+    headerHeight: '46px',
     headerPadding: '0 3px',
     headerBackground: 'transparent',
     headerHoverBackground: '#222222',
@@ -21,8 +21,8 @@
     iconPlateRadius: '5px',
     iconPlateSize: '24px',
     iconPlatePadding: '4px',
-    headerFontSize: '13px',
-    headerFontWeight: '400',
+    headerFontSize: '12px',
+    headerFontWeight: '500',
     headerGap: '8px',
     titleMaxWidth: 'calc(100% - 20px)',
     iconSlot: '18px',
@@ -31,7 +31,7 @@
     chevronSlot: '12px',
     chevronFontSize: '12px',
     chevronOpacity: '0.7',
-    bodyPadding: '6px 12px 8px',
+    bodyPadding: '5px 7px 8px',
     bodyGap: '6px',
   })
 
@@ -42,6 +42,7 @@
       minWidth: '0',
       maxWidth: '100%',
       margin: '0',
+      marginBottom: TOKENS.panelGap,
       overflow: 'hidden',
       background: 'transparent',
       backgroundColor: 'transparent',
@@ -70,7 +71,7 @@
       borderRadius: TOKENS.radius,
       background: TOKENS.headerBackground,
       backgroundColor: TOKENS.headerBackground,
-      color: '#fff',
+      color: '#d4d4d4',
       cursor: 'pointer',
       fontSize: TOKENS.headerFontSize,
       fontWeight: TOKENS.headerFontWeight,
