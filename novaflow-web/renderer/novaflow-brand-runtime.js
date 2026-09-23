@@ -2661,7 +2661,9 @@
     const wide = NOVAFLOW_LAYOUT_TIER === "wide";
     const mode = Boolean(node.closest('[data-novaflow-ai-top-mode-tabs="1"]')) || node.hasAttribute("data-novaflow-art-generate-mode");
     const text = normalizeText(node.textContent || "");
-    const icon = /^[+\-\u2212\u00d7]?$/.test(text) && !/^\d+$/.test(text);
+    // A glyph button (+, -, undo, redo...): one character that is not a digit
+    // or a word; the reference gives it a 16px icon box.
+    const icon = text.length <= 1 && !/^[0-9A-Za-z\u4e00-\u9fff]$/.test(text);
     const disabled = node.disabled === true || node.getAttribute("aria-disabled") === "true";
     const active = !disabled && canvasBarButtonActive(node);
     // Idle buttons read their fill through a var so :hover can still change it.
