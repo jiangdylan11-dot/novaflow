@@ -21953,6 +21953,13 @@
            (0,4,1) ::after rule would otherwise blank the label. */
         content: attr(data-novaflow-primary-label) !important;
         display: block !important;
+        /* ...and turn it into its invisible press overlay (absolute, 0). */
+        position: static !important;
+        inset: auto !important;
+        width: auto !important;
+        height: auto !important;
+        opacity: 1 !important;
+        background: none !important;
         font-size: 11px !important;
         font-weight: ${NOVAFLOW_MEDIUM_FONT_WEIGHT} !important;
         line-height: 1.2 !important;
@@ -34054,7 +34061,8 @@
     "novaflow-primary-output-shortcut-divider",
     "novaflow-particle-project-top-actions",
     "novaflow-spine-split-workspace-overlay",
-    "novaflow-spine-split-right-workspace-host"
+    "novaflow-spine-split-right-workspace-host",
+    "novaflow-aifx-mvp"
   ];
   let NOVAFLOW_STACK_DOC_HEIGHT = 0;
 
@@ -34082,8 +34090,16 @@
       const scopeTop = scope.getBoundingClientRect().top;
       Array.from(scope.children).forEach((child) => {
         if (!(child instanceof HTMLElement)) return;
-        const rect = child.getBoundingClientRect();
+        let rect = child.getBoundingClientRect();
         if (rect.height <= 0) return;
+        // UI's host box runs on past its last row; its content is what ends.
+        if (child.hasAttribute("data-novaflow-art-ui-host")) {
+          const last = Array.from(child.querySelectorAll("*")).reduce((low, node) => {
+            const r = node.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && r.bottom > low ? r.bottom : low;
+          }, rect.top);
+          rect = { bottom: last };
+        }
         const childBottom = top + (rect.bottom - scopeTop) + scope.scrollTop + (scopeTop + window.scrollY - top);
         bottom = Math.max(bottom, childBottom);
       });
@@ -34120,10 +34136,21 @@
     if (originals) delete originals[name];
   }
 
+  // What this layout pass has placed, node by node: a node placed twice in
+  // one pass keeps both sets, and a node the pass did not place at all (a
+  // page left, an overlay closed) is handed back at its end.
+  let NOVAFLOW_STACK_PASS_NAMES = null;
+
   function placeNovaflowStackNode(node, styles) {
     if (!(node instanceof HTMLElement)) return;
     const previous = (node.getAttribute(NOVAFLOW_STACK_PROPS_ATTR) || "").split(",").filter(Boolean);
-    const names = Object.keys(styles);
+    let names = Object.keys(styles);
+    if (NOVAFLOW_STACK_PASS_NAMES) {
+      const placed = NOVAFLOW_STACK_PASS_NAMES.get(node) || new Set();
+      names.forEach((name) => placed.add(name));
+      NOVAFLOW_STACK_PASS_NAMES.set(node, placed);
+      names = Array.from(placed);
+    }
     previous.forEach((name) => {
       if (!names.includes(name)) restoreNovaflowStackProperty(node, name);
     });
@@ -34137,6 +34164,14 @@
     });
     queueNovaflowSpecStyle(node, styles);
     nfSetAttrIfChanged(node, NOVAFLOW_STACK_PROPS_ATTR, names.join(","));
+  }
+
+  function releaseUnplacedNovaflowStackNodes(placedNodes) {
+    Array.from(document.querySelectorAll(`[${NOVAFLOW_STACK_PROPS_ATTR}]`)).forEach((node) => {
+      if (!(node instanceof HTMLElement) || placedNodes.has(node)) return;
+      (node.getAttribute(NOVAFLOW_STACK_PROPS_ATTR) || "").split(",").filter(Boolean).forEach((name) => restoreNovaflowStackProperty(node, name));
+      node.removeAttribute(NOVAFLOW_STACK_PROPS_ATTR);
+    });
   }
 
   function releaseNovaflowStackNodes() {
@@ -34180,6 +34215,16 @@
       releaseNovaflowStackNodes();
       return;
     }
+    NOVAFLOW_STACK_PASS_NAMES = new Map();
+    try {
+      applyNovaflowStackLayoutPass();
+      releaseUnplacedNovaflowStackNodes(NOVAFLOW_STACK_PASS_NAMES);
+    } finally {
+      NOVAFLOW_STACK_PASS_NAMES = null;
+    }
+  }
+
+  function applyNovaflowStackLayoutPass() {
     const body = document.body;
     if (!(body instanceof HTMLElement)) return;
     const viewportWidth = Math.round(window.innerWidth || 0);
@@ -34233,6 +34278,31 @@
         height: `${NOVAFLOW_STACK_RESOURCES_HEIGHT}px`, "min-height": "0", "max-height": `${NOVAFLOW_STACK_RESOURCES_HEIGHT}px`
       });
       contentBottom = resourcesTop + NOVAFLOW_STACK_RESOURCES_HEIGHT;
+    } else if (body.classList.contains("novaflow-skeleton-animation-layout")) {
+      // 骨骼动画, off spine-spline.html at 507: the stage (539) with its play
+      // bar 9 under it, then the project tree, 299 tall.
+      const workspace = firstVisible("[data-novaflow-skeleton-workspace]");
+      // Not firstVisible: stacked, the bundle leaves the stage 0 wide until
+      // it is placed here.
+      const stage = workspace instanceof HTMLElement ? workspace.querySelector(":scope > [data-novaflow-skeleton-preview-stage]") : null;
+      const tree = workspace instanceof HTMLElement ? workspace.querySelector(":scope > [data-novaflow-skeleton-sidebar]") : null;
+      const stageHeight = NOVAFLOW_STACK_CENTER_MIN_HEIGHT - SKELETON_PLAYBAR_HEIGHT - 9;
+      const treeTop = NOVAFLOW_STACK_CENTER_MIN_HEIGHT + NOVAFLOW_STACK_GAP;
+      const treeHeight = 299;
+      placeNovaflowStackNode(workspace, {
+        position: "fixed", top: `${workspaceTop}px`, left: `${columnLeft}px`, right: "auto", bottom: "auto",
+        width: `${columnWidth}px`, "min-width": "0", "max-width": `${columnWidth}px`,
+        height: `${treeTop + treeHeight}px`, "min-height": "0", "max-height": `${treeTop + treeHeight}px`
+      });
+      placeNovaflowStackNode(stage, {
+        position: "absolute", top: "0", left: "0", right: "auto", bottom: "auto",
+        width: "100%", "min-width": "0", "max-width": "100%", height: `${stageHeight}px`, "min-height": "0", "max-height": `${stageHeight}px`
+      });
+      placeNovaflowStackNode(tree, {
+        position: "absolute", top: `${treeTop}px`, left: "0", right: "auto", bottom: "auto",
+        width: "100%", "min-width": "0", "max-width": "100%", height: `${treeHeight}px`, "min-height": "0", "max-height": `${treeHeight}px`
+      });
+      contentBottom = workspaceTop + treeTop + treeHeight;
     } else if (body.classList.contains("novaflow-primary-target-particle")) {
       // 特效: the stage and its dock are one block, 600 tall at the least.
       const workspace = firstVisible('[data-novaflow-preview-workspace="1"]');
@@ -34260,8 +34330,86 @@
         });
         contentBottom = resourcesTop + NOVAFLOW_STACK_RESOURCES_HEIGHT;
       } else if (uiShell instanceof HTMLElement) {
-        contentBottom = Math.max(contentBottom, novaflowDocRect(uiShell).bottom);
+        // UI, off ui-spline.html at 507: the canvas (600) over the resources
+        // (140), 8 apart - the shell's two columns become two rows.
+        const uiResourcesHeight = 140;
+        placeNovaflowStackNode(uiShell, {
+          position: "fixed", top: `${workspaceTop}px`, left: `${columnLeft}px`, right: "auto", bottom: "auto",
+          width: `${columnWidth}px`, "min-width": "0", "max-width": `${columnWidth}px`,
+          height: `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT + NOVAFLOW_STACK_GAP + uiResourcesHeight}px`, "min-height": "0", "max-height": "none",
+          "grid-template-columns": "minmax(0, 1fr)",
+          "grid-template-rows": `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT}px ${uiResourcesHeight}px`,
+          "row-gap": `${NOVAFLOW_STACK_GAP}px`, "column-gap": "0"
+        });
+        const previewHost = uiShell.querySelector(":scope > [data-novaflow-ui-design-preview-host]");
+        placeNovaflowStackNode(previewHost, { width: "100%", "min-width": "0", "max-width": "100%", height: `${uiResourcesHeight}px`, "min-height": "0", "max-height": `${uiResourcesHeight}px`, padding: "0" });
+        placeNovaflowStackNode(previewHost instanceof HTMLElement ? previewHost.querySelector("[data-novaflow-ui-design-resource-panel]") : null, {
+          width: "100%", "min-width": "0", "max-width": "100%", "margin-left": "0", height: "100%"
+        });
+        contentBottom = workspaceTop + NOVAFLOW_STACK_CENTER_MIN_HEIGHT + NOVAFLOW_STACK_GAP + uiResourcesHeight;
       }
+    }
+    if (body.classList.contains("novaflow-aifx-open")) {
+      // AI 特效 (an overlay over the particle page), off aifx-spline.html at
+      // 507: its groups in the sidebar, cut at its foot like the other
+      // pages', and its 600 stage block under it.
+      const mvp = document.getElementById("novaflow-aifx-mvp");
+      const mvpTop = TOPBAR_HEIGHT;
+      const sideTop = top + 65;
+      placeNovaflowStackNode(mvp, {
+        position: "fixed", top: `${mvpTop}px`, left: `${columnLeft}px`, right: "auto", bottom: "auto",
+        width: `${columnWidth}px`, "min-width": "0", "max-width": `${columnWidth}px`,
+        height: `${workspaceTop + NOVAFLOW_STACK_CENTER_MIN_HEIGHT - mvpTop}px`
+      });
+      if (mvp instanceof HTMLElement) {
+        placeNovaflowStackNode(mvp.querySelector(".aifx-side"), {
+          position: "absolute", top: `${sideTop - mvpTop}px`, left: "0", width: "100%", "margin-top": "0",
+          height: `${Math.max(60, top + sideHeight - 11 - sideTop)}px`, "max-height": "none", overflow: "hidden"
+        });
+        placeNovaflowStackNode(mvp.querySelector(".aifx-main"), {
+          position: "absolute", top: `${workspaceTop - mvpTop}px`, left: "0", width: "100%", "min-width": "0", "max-width": "100%",
+          height: `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT}px`, margin: "0"
+        });
+      }
+      contentBottom = Math.max(contentBottom, workspaceTop + NOVAFLOW_STACK_CENTER_MIN_HEIGHT);
+    }
+    if (body.classList.contains("novaflow-primary-target-tools")) {
+      // 工具, measured off tools-spline.html at 507: the tool list in the
+      // sidebar, then the parameters panel, then 原图 and 结果图 as two 300
+      // cards, 10 apart.
+      const shell = firstVisible('[data-novaflow-left-content-shell="1"]');
+      placeNovaflowStackNode(shell, { "padding-bottom": "0" });
+      const workspace = firstVisible("[data-novaflow-tools-workspace]");
+      const leftPanel = firstVisible("[data-novaflow-tools-left-panel]");
+      const rightPanel = document.querySelector("[data-novaflow-tools-right-panel]");
+      const grid = document.querySelector("[data-novaflow-tools-preview-grid]");
+      const cardHeight = 300;
+      placeNovaflowStackNode(workspace, {
+        position: "fixed", top: `${workspaceTop}px`, left: `${columnLeft}px`, right: "auto", bottom: "auto",
+        width: `${columnWidth}px`, "min-width": "0", "max-width": `${columnWidth}px`,
+        height: "auto", "min-height": "0", "max-height": "none",
+        display: "flex", "flex-direction": "column", gap: `${NOVAFLOW_STACK_GAP + 2}px`
+      });
+      placeNovaflowStackNode(leftPanel, {
+        width: "100%", "min-width": "0", "max-width": "100%", height: "auto", "min-height": "0", "max-height": "none",
+        flex: "0 0 auto", "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`
+      });
+      placeNovaflowStackNode(rightPanel, {
+        width: "100%", "min-width": "0", "max-width": "100%", height: "auto", "min-height": "0", "max-height": "none", flex: "0 0 auto"
+      });
+      placeNovaflowStackNode(grid, {
+        width: "100%", height: "auto", "min-height": "0", "max-height": "none", display: "grid",
+        "grid-template-columns": "minmax(0, 1fr)", "grid-template-rows": "none", "grid-auto-rows": `${cardHeight}px`,
+        gap: `${NOVAFLOW_STACK_GAP + 2}px`
+      });
+      Array.from(document.querySelectorAll("[data-novaflow-tools-preview-card]")).forEach((card) => {
+        placeNovaflowStackNode(card, { width: "auto", "min-width": "0", "max-width": "none", height: `${cardHeight}px`, "min-height": "0", "max-height": `${cardHeight}px` });
+      });
+      // 导出到文件夹 / 直接覆盖 sit on 结果图's header, now the second card.
+      placeNovaflowStackNode(document.querySelector("[data-novaflow-tools-output-settings]"), {
+        top: `${cardHeight + NOVAFLOW_STACK_GAP + 2 + 12}px`, right: "12px", left: "auto"
+      });
+      if (workspace instanceof HTMLElement) contentBottom = Math.max(contentBottom, novaflowDocRect(workspace).bottom);
     }
     syncNovaflowStackDocumentHeight(contentBottom);
     placeNovaflowStackNode(document.getElementById(PRIMARY_RAIL_SURFACE_ID), {
@@ -69613,6 +69761,20 @@
       document.querySelector('[data-novaflow-ai-resource-sidebar-panel="1"], [data-novaflow-ai-bottom-workspace="1"]')
     ) return null;
     const rightColumn = findPreviewWorkspaceColumn();
+    // Once found, the sidebar is kept by its mark. The size checks below are
+    // for the bundle's own panel; the layout this finds then resizes it
+    // (narrower on the narrow tier), and measuring it again lost it, dropped
+    // the layout, found it again - a loop that froze the page at 1280.
+    const marked = document.querySelector('[data-novaflow-skeleton-sidebar="1"]');
+    if (
+      marked instanceof HTMLElement &&
+      (!(rightColumn instanceof HTMLElement) || rightColumn.contains(marked)) &&
+      isVisible(marked) &&
+      hasSkeletonTreeStructure(marked)
+    ) {
+      const markedWorkspace = marked.parentElement instanceof HTMLElement ? marked.parentElement : (rightColumn || marked);
+      return { workspace: markedWorkspace, sidebar: marked, rightColumn: rightColumn || markedWorkspace };
+    }
     const findFallbackSidebar = () => Array.from(document.querySelectorAll('[data-preview-ui="1"], .nf-panel, aside, section, div'))
       .filter((node) => {
         if (!(node instanceof HTMLElement) || !isVisible(node)) return false;
@@ -69662,15 +69824,26 @@
 
   function findSkeletonPreviewStage(workspace, sidebar) {
     if (!(workspace instanceof HTMLElement) || !(sidebar instanceof HTMLElement)) return null;
+    // Kept by its mark once found: stacked, the stage is no longer left of
+    // the sidebar, which the checks below require.
+    const marked = Array.from(workspace.children).find((child) => (
+      child instanceof HTMLElement && child !== sidebar &&
+      child.getAttribute("data-novaflow-skeleton-preview-stage") === "1" && isVisible(child)
+    ));
+    if (marked instanceof HTMLElement) return marked;
     const workspaceRect = workspace.getBoundingClientRect();
     return Array.from(workspace.children)
       .filter((child) => child instanceof HTMLElement && child !== sidebar && isVisible(child))
       .filter((child) => {
+        const hasStageContent = child.querySelector("canvas, .nf-template-fab, input[type='range'], button") instanceof Element;
+        // Stacked, the bundle leaves the stage a sliver beside the tree; its
+        // content is what identifies it there.
+        if (NOVAFLOW_LAYOUT_TIER === "stack") return hasStageContent;
         const rect = child.getBoundingClientRect();
         if (rect.width < 240 || rect.height < 240) return false;
         if (rect.left > workspaceRect.left + 80) return false;
         if (rect.right > sidebar.getBoundingClientRect().left + 36) return false;
-        return child.querySelector("canvas, .nf-template-fab, input[type='range'], button") instanceof Element;
+        return hasStageContent;
       })
       .sort((a, b) => {
         const ar = a.getBoundingClientRect();
