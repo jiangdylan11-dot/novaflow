@@ -1373,3 +1373,10 @@ html body [data-novaflow-ai-resource-sidebar-panel="1"] [data-novaflow-ai-resour
   font-size: 11px !important;
   line-height: 18px !important;
 }
+
+/* 3.0o UI's resource column: no light rule down its left edge, and the
+   panel inside it lands where 绘图's does (the 1px rule had pushed it). */
+html body :is([data-novaflow-ui-design-preview-host], #nf-lift) {
+  border-left: 0 !important;
+  border-left-width: 0 !important;
+}

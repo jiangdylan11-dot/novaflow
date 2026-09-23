@@ -34000,7 +34000,12 @@
         // closed (the split runtime cleared it, and the rows closed up).
         when: "body.novaflow-primary-target-art",
         selector: "[data-novaflow-spine-split-control-category]",
-        style: { "padding-top": "3px", "padding-bottom": "3px", "margin-top": "0", "margin-bottom": "0" }
+        // The first group starts flush, as every other page's does (its
+        // title at the list's top, not 3 lower - 绘图 <-> UI jumped by it).
+        style: (node) => {
+          const first = !(node.previousElementSibling && node.previousElementSibling.hasAttribute("data-novaflow-spine-split-control-category"));
+          return { "padding-top": first ? "0" : "3px", "padding-bottom": "3px", "margin-top": "0", "margin-bottom": "0" };
+        }
       },
       {
         // 预设名称 + 保存: one height (32), 8 apart, 保存 no bigger than it needs.
