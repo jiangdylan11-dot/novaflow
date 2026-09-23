@@ -462,15 +462,33 @@
 /* 2.0e The particle preview stage.
    The editor draws its own opaque near-black backdrop into an offscreen canvas
    and blits it in, so neither a CSS background nor a fill hook can reach it -
-   the reference's #242424 + dot field was simply covered.
+   the reference's #242424 + dot field was simply covered. The fix has to be a
+   blend mode, because the render pipeline may not be touched: the four #000
+   fills in the bundle are sequence-export compositing, video-frame extraction
+   and two alpha-mask generators, where black is part of the algorithm.
 
-   `screen` solves it without touching the render pipeline: black composites to
-   whatever is beneath it, so the backdrop below shows through, while the bright
-   particles are essentially unchanged (screen against a dark backdrop is close
-   to identity). Reversible, and no drawing code is modified.
+   `lighten`, not `screen`. Screen never reaches the source value: compositing
+   the canvas's rgb(10) over rgb(36) gives rgb(45), so the whole stage read as
+   a grey plate a step lighter than it should be, and the editor's own
+   perspective floor (rgb 13-24) came through at rgb(50). Lighten takes the
+   per-channel maximum instead, so:
+
+     - the canvas's flat backdrop (<= rgb 24) loses to #242424 and disappears,
+       leaving the stage EXACTLY at the reference value with its dot field;
+     - every particle passes through unchanged rather than being lifted toward
+       white, which is what was hazing the glow;
+     - stacking is idempotent, so the overlay canvases cannot compound it.
+
+   Measured on the live stage: 99.8% of the base canvas is at or below rgb 24
+   and nothing at all falls between rgb 25 and rgb 60, so nothing the editor
+   actually draws is clipped by the #242424 floor.
+
+   Only the base canvas is blended. The two overlays are fully transparent and
+   composite correctly on their own; leaving them normal means a dark stroke
+   drawn on them later cannot silently vanish.
 
    Scoped to the particle preview only - the drawing page's canvas shows the
-   user's artwork, where screen would wash it out. */
+   user's artwork, which must composite normally. */
 .novaflow-app [data-novaflow-preview-workspace="1"] {
   background-color: #242424 !important;
   background-image: radial-gradient(#3d3d3d 1px, transparent 1px) !important;
@@ -479,7 +497,13 @@
 }
 
 .novaflow-app [data-novaflow-preview-workspace="1"] canvas {
-  mix-blend-mode: screen !important;
+  mix-blend-mode: normal !important;
+}
+
+/* The runtime pins the base canvas to position:relative and the overlays to
+   position:absolute, so this is the same discriminator its own rules use. */
+.novaflow-app [data-novaflow-preview-workspace="1"] canvas:not([style*="position: absolute"]) {
+  mix-blend-mode: lighten !important;
 }
 
 /* 2.1 The stage. The bundle writes `background: #151515` inline on the second
