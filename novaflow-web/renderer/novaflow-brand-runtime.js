@@ -34650,12 +34650,21 @@
       {
         // 绘图's dock rows (theme sheet 3.0c): tiles, then the two prompts,
         // 10 apart; each prompt 86 tall, as the reference's.
+        // Tiles on their own row; the two prompts side by side under them
+        // (as asked: not one above the other).
         selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid",
-        style: { display: "flex", "flex-direction": "column", gap: "10px", "margin-top": "8px", height: "auto", "min-height": "0", "max-height": "none", flex: "0 0 auto" }
+        style: {
+          display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(0, 1fr)", "grid-template-rows": "none", "grid-auto-rows": "auto",
+          gap: "10px", "margin-top": "8px", height: "auto", "min-height": "0", "max-height": "none", flex: "0 0 auto"
+        }
+      },
+      {
+        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid > .novaflow-art-generate-ref-grid",
+        style: { "grid-column": "1 / -1" }
       },
       {
         selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid > .novaflow-art-generate-prompt",
-        style: { width: "100%", flex: "0 0 86px", height: "86px", "min-height": "86px", "max-height": "86px" }
+        style: { width: "auto", "min-width": "0", flex: "none", "grid-column": "auto", height: "108px", "min-height": "108px", "max-height": "108px" }
       },
       {
         // AI 特效 → 特效模板: the loaded preview's × (in place of 清空), small
