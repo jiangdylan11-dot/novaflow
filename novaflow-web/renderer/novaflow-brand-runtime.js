@@ -2802,7 +2802,15 @@
   const PLAYBACK_FRAME_TEXT = "#979797";
   const PLAYBACK_RULER_TEXT = "#949494";
   const PLAYBACK_RULER_HEIGHT = 34;
+  const PLAYBACK_ICON_SCAN = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7V5a2 2 0 0 1 2-2h2'/%3E%3Cpath d='M17 3h2a2 2 0 0 1 2 2v2'/%3E%3Cpath d='M21 17v2a2 2 0 0 1-2 2h-2'/%3E%3Cpath d='M7 21H5a2 2 0 0 1-2-2v-2'/%3E%3C/svg%3E")`;
+  const PLAYBACK_ICON_WIND = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.8 19.6A2 2 0 1 0 14 16H2'/%3E%3Cpath d='M17.5 8a2.5 2.5 0 1 1 2 4H2'/%3E%3Cpath d='M9.8 4.4A2 2 0 1 1 11 8H2'/%3E%3C/svg%3E")`;
+  const PLAYBACK_ICON_IMAGE = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E")`;
+  const PLAYBACK_ICON_X = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 6 6 18'/%3E%3Cpath d='m6 6 12 12'/%3E%3C/svg%3E")`;
   const PLAYBACK_ICON_BY_TITLE = {
+    "\u663e\u793a/\u9690\u85cf\u53d1\u5c04\u5668\u5f62\u72b6": "scan",
+    "\u663e\u793a/\u9690\u85cf\u529b\u573a\u5411\u91cf": "wind",
+    "\u4e0a\u4f20\u80cc\u666f\u56fe": "image",
+    "\u6e05\u9664\u80cc\u666f\u56fe": "x",
     "\u8d77\u59cb\u5e27": "skip-back",
     "\u540e\u9000 1 \u5e27": "step-back",
     "\u64ad\u653e": "play",
@@ -21731,6 +21739,10 @@
       [data-novaflow-playback-icon="step-forward"] { --nf-playback-icon: ${PLAYBACK_ICON_STEP_FORWARD}; }
       [data-novaflow-playback-icon="skip-forward"] { --nf-playback-icon: ${PLAYBACK_ICON_SKIP_FORWARD}; }
       [data-novaflow-playback-icon="repeat"] { --nf-playback-icon: ${PLAYBACK_ICON_REPEAT}; }
+      [data-novaflow-playback-icon="scan"] { --nf-playback-icon: ${PLAYBACK_ICON_SCAN}; }
+      [data-novaflow-playback-icon="wind"] { --nf-playback-icon: ${PLAYBACK_ICON_WIND}; }
+      [data-novaflow-playback-icon="image"] { --nf-playback-icon: ${PLAYBACK_ICON_IMAGE}; }
+      [data-novaflow-playback-icon="x"] { --nf-playback-icon: ${PLAYBACK_ICON_X}; }
       [data-novaflow-prompt-action-kind="assistant"] { --nf-prompt-action-icon: ${DOCK_ICON_SPARKLES}; }
       [data-novaflow-prompt-action-kind="edit"] { --nf-prompt-action-icon: ${DOCK_ICON_PENCIL_LINE}; }
       [data-novaflow-primary-output-entry="1"]::after,
@@ -32953,6 +32965,76 @@
         when: "body.novaflow-skeleton-animation-layout",
         selector: '[data-novaflow-bones-hierarchy="1"] > div:nth-child(2) > div > i',
         style: { color: SKELETON_TREE_TEXT }
+      },
+      {
+        // 特效's dock: 11 between rows and groups, a label 6 from its control,
+        // 170 sliders, 30x30 outline-icon buttons.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"]',
+        style: { gap: `${DOCK_ROW_GAP}px`, "row-gap": `${DOCK_ROW_GAP}px`, padding: "13px 14px" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] > div',
+        style: { gap: `${DOCK_ROW_GAP}px`, "column-gap": `${DOCK_ROW_GAP}px`, "flex-wrap": "wrap", "row-gap": "8px", "align-items": "center" }
+      },
+      {
+        // 画布尺寸 X [ ] Y [ ]: a space after the label, 6 around each letter.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] > div:first-child > div:first-child',
+        style: { gap: "3px", "column-gap": "3px", flex: "0 0 auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] [data-novaflow-canvas-size-axis-field]',
+        style: { gap: "2px", "column-gap": "2px", width: "auto", "margin-left": "0" }
+      },
+      {
+        // 整体缩放 / 旋转偏移: label, a 170 slider, the value - one parameter.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] > div:first-child > div:has(> input[type="range"])',
+        style: { gap: `${DOCK_LABEL_GAP}px`, "column-gap": `${DOCK_LABEL_GAP}px`, flex: "0 0 auto", width: "auto", "min-width": "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] > div:first-child > div:has(> input[type="range"]) > input[type="range"]',
+        style: { width: "170px", "min-width": "170px", "max-width": "170px", flex: "0 0 170px" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] input[type="range"]',
+        style: { height: "3px", "min-height": "3px", "max-height": "3px", margin: "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] > div:first-child > div:has(> input[type="range"]) > div',
+        style: { width: "auto", "min-width": "0", padding: "0", "white-space": "nowrap" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] button',
+        style: (node) => {
+          const title = String(node.getAttribute("title") || node.getAttribute("aria-label") || "").replace(/\s+/g, "");
+          const icon = Object.keys(PLAYBACK_ICON_BY_TITLE).reduce((found, key) => found || (key.replace(/\s+/g, "") === title ? PLAYBACK_ICON_BY_TITLE[key] : ""), "");
+          if (icon) nfSetAttrIfChanged(node, "data-novaflow-playback-icon", icon);
+          const disabled = node.disabled === true;
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", disabled ? "disabled" : "idle");
+          const idle = `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`;
+          return {
+            width: `${PLAYBACK_BUTTON_SIZE}px`, "min-width": `${PLAYBACK_BUTTON_SIZE}px`, "max-width": `${PLAYBACK_BUTTON_SIZE}px`,
+            height: `${PLAYBACK_BUTTON_SIZE}px`, "min-height": `${PLAYBACK_BUTTON_SIZE}px`, "max-height": `${PLAYBACK_BUTTON_SIZE}px`,
+            padding: "6px", border: "1px solid transparent", "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            background: disabled ? CANVAS_BAR_DISABLED_BACKGROUND : idle, "background-color": disabled ? CANVAS_BAR_DISABLED_BACKGROUND : idle,
+            color: disabled ? CANVAS_BAR_DISABLED_TEXT : `var(--nf-cb-hover-fg, ${UI_ICON_BUTTON_TEXT})`,
+            opacity: disabled ? NOVAFLOW_DISABLED_OPACITY : "1", "box-shadow": "none",
+            display: "inline-flex", "align-items": "center", "justify-content": "center", "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] button[data-novaflow-playback-icon] > i',
+        style: { display: "none" }
       },
       {
         // AI 序列动画's dock.
