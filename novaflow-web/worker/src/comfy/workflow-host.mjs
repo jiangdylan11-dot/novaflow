@@ -195,6 +195,9 @@ export async function createWorkflowHost({ rendererDir, logger, comfy, objectInf
         if (!Array.isArray(args)) throw new Error('missing positional workflow arguments');
         const safe = args.slice();
         if (method === 'buildArtGenerateRunWorkflow') {
+          // The art builder is synchronous on the desktop, so it cannot fetch /object_info itself.
+          // Warm the catalogue here; the builder reads it through __objectInfoSync to pick an engine.
+          try { await sandbox.electronAPI.runtimeRequestJson('', '/object_info'); } catch (_) { /* no runtime: default graph */ }
           const built = await builder(...safe);
           if (options.__controlNet) {
             const apply = resolveBuilder(module, 'applyArtReferenceControlNet');
@@ -297,6 +300,7 @@ function createComfyBridge({ comfy, objectInfo, log }) {
     runtimeRequestBinary: async () => { throw new Error('a workflow builder must not fetch binaries'); },
     runtimeUploadImage: async () => { throw new Error('a workflow builder must not upload'); },
     runtimeProviderUsageSettlement: 'worker-host-v1',
-    __primeObjectInfo: (info) => { cache.set('/object_info', info); log('object info primed', { nodes: Object.keys(info || {}).length }); }
+    __primeObjectInfo: (info) => { cache.set('/object_info', info); log('object info primed', { nodes: Object.keys(info || {}).length }); },
+    __objectInfoSync: () => cache.get('/object_info') || null
   };
 }

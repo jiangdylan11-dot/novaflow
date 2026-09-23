@@ -148,6 +148,7 @@ const qwen21Info = {
   ImageCrop: { input: { required: io('image', 'width', 'height', 'x', 'y') } },
   MaskComposite: { input: { required: { ...io('destination', 'source', 'x', 'y'), operation: [['multiply', 'add', 'subtract', 'and', 'or', 'xor']] } } },
   ThresholdMask: { input: { required: io('mask', 'value') } },
+  EmptyLatentImage: { input: { required: io('width', 'height', 'batch_size') } },
   SaveImage: { input: { required: io('images', 'filename_prefix') } }
 };
 const host21 = await createWorkflowHost({ rendererDir: fileURLToPath(new URL('../../worker-renderer/', import.meta.url)), objectInfo: qwen21Info });
@@ -194,6 +195,24 @@ assert.deepEqual(byClass(g21Aligned, 'VAEEncode')[0][1].inputs.pixels, ['3', 0])
 // The 2.1 prompt is built from the user's words and the part guidance, never from the 2509 template's
 // "Transparent background." line; a merged prompt without the parts loses that line.
 const promptOf = (graph) => byClass(graph, 'TextEncodeQwenImage21')[0][1].inputs.prompt;
+// Local txt2img / img2img switch to Qwen-Image-2.1 on a compute node that carries it.
+const buildArt = async (mode, refs, sizes, extraState = {}) => JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
+  'local', mode, refs, 'NovaFlow_Art', 'a swordswoman in red', '', 'client', sizes, { provider: 'local', mode, width: 900, height: 1300, seed: 42, randomSeed: false, ...extraState }, 4, {}
+] } })));
+const t2i = await buildArt('txt2img', [], []);
+assert.equal(byClass(t2i, 'TextEncodeQwenImage21').length, 1);
+const t2iLatent = byClass(t2i, 'EmptyLatentImage')[0][1].inputs;
+assert.deepEqual([t2iLatent.width, t2iLatent.height], [896, 1312]);
+const t2iSampler = byClass(t2i, 'KSampler')[0][1].inputs;
+assert.deepEqual([t2iSampler.seed, t2iSampler.steps, t2iSampler.cfg], [42, 25, 1]);
+assert.equal(byClass(t2i, 'SaveImage')[0][1].inputs.filename_prefix, 'NovaFlow_Art');
+const i2i = await buildArt('img2img', ['ref.png'], [{ width: 624, height: 1360 }]);
+const i2iEncode = byClass(i2i, 'TextEncodeQwenImage21')[0][1].inputs;
+assert.equal(i2i[i2iEncode['images.image_1'][0]].inputs.image, 'ref.png');
+assert.equal(i2iEncode.resolution, 0);
+assert.deepEqual(byClass(i2i, 'KSampler')[0][1].inputs.latent_image[1], 2);
+assert.equal(byClass(await buildArt('img2img', ['big.png'], [{ width: 2048, height: 2048 }]), 'TextEncodeQwenImage21')[0][1].inputs.resolution, 1024);
+assert.equal(byClass(await buildArt('img2img', ['ref.png'], [], { nsfw: true }), 'TextEncodeQwenImage21').length, 0);
 const template = ['User instruction, highest priority:', '补全腿部', '', 'Complete the masked missing area.', 'Transparent background.', '', 'Original protective context:', 'leg'].join(String.fromCharCode(10));
 const withParts = promptOf(JSON.parse(JSON.stringify(await build21(undefined, { promptParts: { user: '补全腿部，赤脚', part: 'Extend the leg.' } }, template))));
 assert.ok(withParts.includes('补全腿部，赤脚') && withParts.includes('Extend the leg.') && withParts.includes('bare feet'));

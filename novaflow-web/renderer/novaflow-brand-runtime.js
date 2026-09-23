@@ -76069,6 +76069,74 @@
     }
   }
 
+  // Qwen-Image-2.1 for local txt2img / img2img. In side-by-side tests it followed character prompts
+  // that Ideogram Instant drifted from, and in img2img it kept face, props and background that the
+  // 4-step 2511 route changed (against 2511 without Lightning it was also faster: 85-100s vs 115-235s).
+  // It only runs on a compute node whose ComfyUI carries the 2.1 weights: the worker warms the node
+  // catalogue and exposes it as electronAPI.__objectInfoSync. The desktop and the browser never have
+  // that hook, so they keep their current graphs; NSFW, LoRA and UI-design runs keep theirs too.
+  const ART_QWEN21_UNETS = ["qwen-image-2.1-UC-Q8_0.gguf", "qwen-image-2.1-UC-Q5_K_M.gguf", "qwen-image-2.1-UC-Q4_K_M.gguf"];
+  const ART_QWEN21_CLIPS = ["qwen3vl_8b_w4a8_heretic.safetensors", "qwen3vl_8b_int8_convrot.safetensors", "qwen3vl_8b_bf16.safetensors"];
+  const ART_QWEN21_VAE = "qwen_image_2.1_vae_bf16.safetensors";
+
+  function artQwen21Choice(nodeInfo, key, candidates) {
+    const spec = nodeInfo?.input?.required?.[key];
+    const choices = Array.isArray(spec) && Array.isArray(spec[0]) ? spec[0] : [];
+    return candidates.find((name) => choices.includes(name)) || "";
+  }
+
+  function artQwen21Runtime() {
+    const info = window.electronAPI?.__objectInfoSync?.();
+    if (!info || !info.TextEncodeQwenImage21 || !info.UnetLoaderGGUF || !info.CLIPLoader || !info.VAELoader || !info.KSampler || !info.VAEDecode || !info.SaveImage) return null;
+    const unet = artQwen21Choice(info.UnetLoaderGGUF, "unet_name", ART_QWEN21_UNETS);
+    const clip = artQwen21Choice(info.CLIPLoader, "clip_name", ART_QWEN21_CLIPS);
+    const vae = artQwen21Choice(info.VAELoader, "vae_name", [ART_QWEN21_VAE]);
+    return unet && clip && vae ? { info, unet, clip, vae } : null;
+  }
+
+  function buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions) {
+    if (mode !== "txt2img" && mode !== "img2img") return null;
+    if (state?.nsfw === true || (Array.isArray(state?.loras) && state.loras.length)) return null;
+    if (/^ui-design/i.test(String(providerOptions?.taskProfile || ""))) return null;
+    const references = (Array.isArray(uploadedNames) ? uploadedNames : []).filter(Boolean).slice(0, 4);
+    if (mode === "img2img" && !references.length) return null;
+    const runtime = artQwen21Runtime();
+    if (!runtime) return null;
+    const seed = state?.randomSeed || Number(state?.seed) < 0
+      ? Math.floor(Math.random() * 1000000000)
+      : Math.round(Number(state?.seed) || 0);
+    const workflow = {
+      "1": { class_type: "UnetLoaderGGUF", inputs: { unet_name: runtime.unet } },
+      "2": { class_type: "CLIPLoader", inputs: { clip_name: runtime.clip, type: "qwen_image", device: "default" } },
+      "3": { class_type: "VAELoader", inputs: { vae_name: runtime.vae } }
+    };
+    let model = ["1", 0];
+    if (runtime.info.QwenImage21Cache) {
+      workflow["4"] = { class_type: "QwenImage21Cache", inputs: { model, device: "auto", dtype: "default" } };
+      model = ["4", 0];
+    }
+    // resolution 0 keeps each reference at its own size (rounded to 32); a large one would blow the
+    // latent up, so anything past ~1.3 MP (or of unknown size) is brought to ~1 MP instead.
+    const first = Array.isArray(referenceSizes) ? referenceSizes[0] : null;
+    const pixels = Number(first?.width) * Number(first?.height);
+    const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: "", resolution: mode === "img2img" && !(pixels > 0 && pixels <= 1300000) ? 1024 : 0 };
+    references.forEach((name, index) => {
+      workflow[String(10 + index)] = { class_type: "LoadImage", inputs: { image: name } };
+      encode[`images.image_${index + 1}`] = [String(10 + index), 0];
+    });
+    workflow["5"] = { class_type: "TextEncodeQwenImage21", inputs: encode };
+    let latent = ["5", 2];
+    if (mode === "txt2img") {
+      const round32 = (value) => Math.max(256, Math.min(2048, Math.round((Number(value) || 1024) / 32) * 32));
+      workflow["6"] = { class_type: "EmptyLatentImage", inputs: { width: round32(state?.width), height: round32(state?.height), batch_size: 1 } };
+      latent = ["6", 0];
+    }
+    workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: latent, seed, steps: 25, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
+    workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
+    workflow["9"] = { class_type: "SaveImage", inputs: { images: ["8", 0], filename_prefix: String(outputPrefix || "NovaFlow_Art") } };
+    return { workflow, modelKey: mode === "txt2img" ? "qwen-image-2.1-t2i" : "qwen-image-2.1-i2i" };
+  }
+
   function buildArtGenerateRunWorkflow(provider, mode, uploadedNames, outputPrefix, positivePrompt, negativePrompt, clientId, referenceSizes = []) {
     const state = arguments.length > 8 && arguments[8] && typeof arguments[8] === "object"
       ? arguments[8]
@@ -76092,7 +76160,13 @@
     if (!api) throw new Error("NovaFlow \u4e91\u7aef\u56fe\u50cf\u5de5\u4f5c\u6d41\u6a21\u5757\u672a\u5c31\u7eea");
     let localWorkflow = null;
     let localModelKey = artWorkflowKeyForState(state);
-    if (provider === "local") {
+    const qwen21Build = provider === "local"
+      ? buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions)
+      : null;
+    if (qwen21Build) {
+      localWorkflow = qwen21Build.workflow;
+      localModelKey = qwen21Build.modelKey;
+    } else if (provider === "local") {
       if (shouldUseArtGenerateIdeogramWorkflow(provider, mode, state, providerOptions)) {
         const ideogramApi = window.NovaFlowArtGenerateIdeogramWorkflow;
         if (typeof ideogramApi?.build !== "function") {
