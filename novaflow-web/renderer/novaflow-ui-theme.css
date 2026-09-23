@@ -732,3 +732,58 @@ html[data-novaflow-transitions="off"] *::after {
 [data-novaflow-prompt-action-button="1"][data-novaflow-canvas-bar-button="idle"]:hover {
   --nf-cb-hover-bg: #393939;
 }
+
+/* 2.0n 特效's chips and segmented control, off particles-spline.html.
+   Fill and ink come from the sheet, keyed on the state the editor writes
+   (aria-pressed, or its inline green), so a click still repaints them. :is(..., #nf-lift) gives the rules an
+   id's weight over the runtime's long body-class selectors. */
+html body :is([data-novaflow-particle-chip="1"], #nf-lift) {
+  background: #282828 !important;
+  background-color: #282828 !important;
+  color: #eaeaea !important;
+  border: 1px solid transparent !important;
+}
+html body :is([data-novaflow-particle-segment="1"], #nf-lift) > button {
+  background: transparent !important;
+  background-color: transparent !important;
+  color: #eaeaea !important;
+  border: 1px solid transparent !important;
+}
+html body :is([data-novaflow-particle-chip="1"], #nf-lift):hover:not([aria-pressed="true"]):not([style*="30, 166, 114"]),
+html body :is([data-novaflow-particle-segment="1"], #nf-lift) > button:hover:not([aria-pressed="true"]):not([style*="30, 166, 114"]) {
+  background: #373737 !important;
+  background-color: #373737 !important;
+  color: #ffffff !important;
+}
+html body :is([data-novaflow-particle-chip="1"], #nf-lift)[aria-pressed="true"],
+html body :is([data-novaflow-particle-chip="1"], #nf-lift)[style*="30, 166, 114"],
+html body :is([data-novaflow-particle-segment="1"], #nf-lift) > button[aria-pressed="true"],
+html body :is([data-novaflow-particle-segment="1"], #nf-lift) > button[style*="30, 166, 114"] {
+  background: #193d33 !important;
+  background-color: #193d33 !important;
+  color: #8ee0c5 !important;
+  border: 1px solid #306553 !important;
+}
+/* One knob: the switch draws its knob as a child; the old skin's pseudo
+   knob made a second one. */
+html body [data-novaflow-toggle-switch="1"]::before,
+html body [data-novaflow-toggle-switch="1"]::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* 2.0o One knob on the AI switches too (随机种子, the dock's toggles): the
+   knob is a child; an older skin drew a second one as a pseudo. */
+html body [data-novaflow-ai-state-toggle]::before,
+html body [data-novaflow-ai-state-toggle]::after {
+  content: none !important;
+  display: none !important;
+}
+
+/* 2.0p The reference tile under the pointer, or while a file is dragged
+   over it. */
+html body [data-novaflow-ai-reference-column="1"] > [data-nf-upload-dropzone="1"]:hover,
+html body [data-novaflow-ai-reference-column="1"] > [data-nf-upload-dropzone="1"][data-novaflow-ai-reference-hover="1"] {
+  --nf-dz-bg: #262626;
+  --nf-dz-bd: #1bb28c;
+}
