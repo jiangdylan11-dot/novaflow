@@ -2505,7 +2505,7 @@
   const PRIMARY_CONTENT_WIDTH = PRIMARY_VISIBLE_CONTENT_WIDTH;
   const LEFT_CONTENT_SHELL_TOP_PADDING = 0;
   const LEFT_CONTENT_SHELL_BOTTOM_PADDING = 64;
-  const NOVAFLOW_TOOLS_ENTRY_SHELL_TOP = TOPBAR_HEIGHT + 14;
+  const NOVAFLOW_TOOLS_ENTRY_SHELL_TOP = TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP + 11;
   const NOVAFLOW_TOOLS_PREVIEW_TITLE_ROW_HEIGHT = 49;
   const NOVAFLOW_TOOLS_UPLOAD_ZONE_HEIGHT = 44;
   const PRIMARY_SIDEBAR_ITEM_HEIGHT = 65;
@@ -2521,6 +2521,16 @@
   const NOVAFLOW_TOOLS_PRIMARY_COLUMN_WIDTH = PRIMARY_COLUMN_WIDTH;
   const NOVAFLOW_TOOLS_WORKSPACE_PADDING_LEFT = 12;
   const NOVAFLOW_TOOLS_WORKSPACE_BACKGROUND = "#242424";
+  // 工具: the reference gives the tool list 198x40 entries on a 45 pitch, and
+  // draws the two preview columns as panels a step lighter than the chrome.
+  const NOVAFLOW_TOOLS_ENTRY_HEIGHT = 40;
+  const NOVAFLOW_TOOLS_ENTRY_GAP = 5;
+  const NOVAFLOW_TOOLS_ENTRY_SELECTED_TEXT = "#98e3cb";
+  const NOVAFLOW_TOOLS_VIEW_SURFACE = "#1d1d1d";
+  const NOVAFLOW_TOOLS_VIEW_BORDER_COLOR = "#353535";
+  const NOVAFLOW_TOOLS_BLANK_SURFACE = "#242424";
+  const NOVAFLOW_TOOLS_BLANK_BORDER_COLOR = "#3c3c3c";
+  const NOVAFLOW_TOOLS_BLANK_RADIUS_PX = "8px";
   const AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH = 206;
   const AI_ANIMATION_RESOURCE_SIDEBAR_INSET = WORKSPACE_SIDE_GAP;
   const AI_ANIMATION_RESOURCE_SIDEBAR_SPAN = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + AI_ANIMATION_RESOURCE_SIDEBAR_INSET;
@@ -8500,9 +8510,12 @@
         box-shadow: none !important;
       }
       body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar > div:has(> button[data-novaflow-tools-entry]) {
-        width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
-        min-width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
-        max-width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
+        width: ${PRIMARY_LEFT_CARD_WIDTH}px !important;
+        min-width: ${PRIMARY_LEFT_CARD_WIDTH}px !important;
+        max-width: ${PRIMARY_LEFT_CARD_WIDTH}px !important;
+        margin-left: ${PRIMARY_LEFT_CARD_INSET}px !important;
+        gap: ${NOVAFLOW_TOOLS_ENTRY_GAP}px !important;
+        row-gap: ${NOVAFLOW_TOOLS_ENTRY_GAP}px !important;
       }
       body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar > div:has(> button) > button {
         width: 100% !important;
@@ -8517,33 +8530,81 @@
         overflow: hidden !important;
       }
       body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar > div:has(> button) > button[data-novaflow-tools-entry] {
-        height: 44px !important;
-        min-height: 44px !important;
-        max-height: 44px !important;
-        padding: 7px 10px !important;
-        border-radius: 8px !important;
+        height: ${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px !important;
+        min-height: ${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px !important;
+        max-height: ${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px !important;
+        padding: 0 12px !important;
+        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
         font-size: 12px !important;
+        font-weight: ${NOVAFLOW_MEDIUM_FONT_WEIGHT} !important;
         line-height: 1.2 !important;
         box-shadow: none !important;
         filter: none !important;
       }
       body.novaflow-primary-target-tools [data-novaflow-tools-entry] {
-        background: ${UI_BUTTON_BACKGROUND} !important;
-        background-color: ${UI_BUTTON_BACKGROUND} !important;
+        background: transparent !important;
+        background-color: transparent !important;
         background-image: none !important;
         border-color: transparent !important;
-        color: rgba(238, 244, 252, 0.96) !important;
+        color: ${UI_SEGMENT_IDLE_TEXT} !important;
         box-shadow: none !important;
         filter: none !important;
         transform: none !important;
         transition: none !important;
       }
+      body.novaflow-primary-target-tools [data-novaflow-tools-entry]:hover:not([data-novaflow-tools-entry-active="1"]) {
+        background: #262626 !important;
+        background-color: #262626 !important;
+      }
+      /* Selected is the same dark green the rail uses, with the same hairline
+         edge - the tool list is a navigation column, not an action list. */
       body.novaflow-primary-target-tools [data-novaflow-tools-entry-active="1"] {
-        background: ${UI_ACCENT} !important;
-        background-color: ${UI_ACCENT} !important;
+        background: ${UI_SELECTED_BACKGROUND} !important;
+        background-color: ${UI_SELECTED_BACKGROUND} !important;
         background-image: none !important;
         border-color: transparent !important;
-        color: #ffffff !important;
+        box-shadow: inset 0 0 0 1px ${UI_RAIL_SELECTED_BORDER} !important;
+        color: ${NOVAFLOW_TOOLS_ENTRY_SELECTED_TEXT} !important;
+      }
+      /* The two preview columns are panels; the grid behind them is not. */
+      body.novaflow-primary-target-tools [data-novaflow-tools-preview-grid="1"] {
+        background: transparent !important;
+        background-color: transparent !important;
+        background-image: none !important;
+        gap: ${WORKSPACE_SIDE_GAP}px !important;
+        column-gap: ${WORKSPACE_SIDE_GAP}px !important;
+      }
+      body.novaflow-primary-target-tools [data-novaflow-tools-preview-card="1"] {
+        background: ${NOVAFLOW_TOOLS_VIEW_SURFACE} !important;
+        background-color: ${NOVAFLOW_TOOLS_VIEW_SURFACE} !important;
+        background-image: none !important;
+        border: 1px solid ${NOVAFLOW_TOOLS_VIEW_BORDER_COLOR} !important;
+        border-radius: ${PRIMARY_RAIL_PANEL_RADIUS}px !important;
+        box-shadow: none !important;
+        padding: 13px !important;
+        box-sizing: border-box !important;
+      }
+      /* 导出 and 直接覆盖 are helper actions: grey, and grey when disabled.
+         The overwrite action had been the only olive control in the app. */
+      body.novaflow-primary-target-tools [data-novaflow-tools-overwrite-button="1"],
+      body.novaflow-primary-target-tools [data-novaflow-tools-preview-card="1"] button:disabled {
+        background: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        background-color: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        background-image: none !important;
+        border: 0 !important;
+        color: ${UI_ICON_BUTTON_DISABLED_TEXT} !important;
+      }
+      body.novaflow-primary-target-tools [data-novaflow-tools-overwrite-button="1"]:not(:disabled) {
+        background: ${UI_BUTTON_BACKGROUND} !important;
+        background-color: ${UI_BUTTON_BACKGROUND} !important;
+        color: ${UI_SEGMENT_IDLE_TEXT} !important;
+      }
+      /* The one main action of this surface keeps the green, but a disabled
+         main action is not an action. */
+      body.novaflow-primary-target-tools [data-novaflow-tools-start-button="1"]:disabled {
+        background: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        background-color: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        color: ${UI_ICON_BUTTON_DISABLED_TEXT} !important;
       }
       body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] {
         grid-template-columns: ${PRIMARY_LEFT_PANEL_WIDTH}px minmax(0, 1fr) !important;
@@ -22570,6 +22631,39 @@
         scale: var(--novaflow-ai-board-boost-scale, 1) !important;
         transform-origin: center center !important;
       }
+      /* 多参视频 puts the reference tiles beside the settings and squeezes the
+         prompt into a 263 gutter. The reference stacks the dock instead: the
+         tile row, then the parameter row, then progress, then the prompt -
+         each of them the full width of the dock. This is the flex direction
+         only; nothing moves in the DOM and no control changes what it does. */
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-bottom-main-row="1"] {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: ${PRIMARY_PANEL_TOP_GAP}px !important;
+        row-gap: ${PRIMARY_PANEL_TOP_GAP}px !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-reference-column="1"] {
+        order: 0 !important;
+        flex: 0 0 auto !important;
+        flex-direction: row !important;
+        width: 100% !important;
+        max-width: none !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-reference-column="1"] > * {
+        width: 100% !important;
+        max-width: none !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-settings-column="1"] {
+        order: 1 !important;
+        flex: 1 1 auto !important;
+        width: 100% !important;
+        max-width: none !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-prompt-grid="1"],
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-prompt-column="1"] {
+        width: 100% !important;
+        max-width: none !important;
+      }
       body.novaflow-ai-animation-section-layers [data-novaflow-ai-mode-section="1"],
       body.novaflow-ai-animation-section-layers [data-novaflow-ai-post-section="1"],
       body.novaflow-ai-animation-section-layers [data-novaflow-left-content-root="1"] > * {
@@ -22829,9 +22923,9 @@
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] > *:first-child {
         flex: 0 0 auto !important;
-        height: ${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px !important;
+        height: auto !important;
         min-height: ${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px !important;
-        max-height: ${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px !important;
+        max-height: none !important;
         overflow: visible !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] > *:last-child {
