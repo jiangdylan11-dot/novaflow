@@ -3554,6 +3554,14 @@
     const html = document.documentElement;
     if (!html) return;
     html.setAttribute("data-novaflow-switch-veil", "1");
+    // Only the new page's groups count: the old page's are still in the
+    // column when the first mutations arrive.
+    const GROUP_SELECTOR = ".nf-panel-header, [data-novaflow-spine-split-control-category-toggle]";
+    const oldGroups = new Set(document.querySelectorAll(GROUP_SELECTOR));
+    const newGroupsIn = () => {
+      const root = document.querySelector('[data-novaflow-left-content-root="1"]');
+      return Boolean(root && Array.from(root.querySelectorAll(GROUP_SELECTOR)).some((node) => !oldGroups.has(node) && node.getClientRects().length));
+    };
     const runsAtClick = (window.__novaflowSpecStats || {}).runs || 0;
     const startedAt = performance.now();
     let frames = 0;
@@ -3561,7 +3569,11 @@
     const check = () => {
       frames += 1;
       const runs = (window.__novaflowSpecStats || {}).runs || 0;
-      if ((runs > runsAtClick && frames >= 2) || performance.now() - startedAt > 260) {
+      // Laid out once a spec pass has run and the new page's groups are in
+      // (a slow page such as 美工 has them only after its mount; waiting a
+      // further frame there kept the column blank ~200ms longer).
+      const groupsIn = newGroupsIn();
+      if (groupsIn || (runs > runsAtClick && frames >= 2) || performance.now() - startedAt > 260) {
         NOVAFLOW_SWITCH_VEIL_FRAME = 0;
         html.removeAttribute("data-novaflow-switch-veil");
         return;
@@ -3569,6 +3581,23 @@
       NOVAFLOW_SWITCH_VEIL_FRAME = window.requestAnimationFrame(check);
     };
     NOVAFLOW_SWITCH_VEIL_FRAME = window.requestAnimationFrame(check);
+    // The moment the new page's groups land, before that frame paints (a
+    // frame check came one busy frame too late on 美工).
+    try {
+      const watcher = new MutationObserver((records) => {
+        if (html.getAttribute("data-novaflow-switch-veil") !== "1") { watcher.disconnect(); return; }
+        // Cheap first: only a batch that added a group header is looked at.
+        const addedGroup = records.some((record) => Array.from(record.addedNodes).some((node) => (
+          node instanceof Element && (node.matches(GROUP_SELECTOR) || node.querySelector(GROUP_SELECTOR))
+        )));
+        if (addedGroup && newGroupsIn()) {
+          html.removeAttribute("data-novaflow-switch-veil");
+          watcher.disconnect();
+        }
+      });
+      watcher.observe(document.body, { childList: true, subtree: true });
+      window.setTimeout(() => watcher.disconnect(), 600);
+    } catch (_) { void 0; }
   }
 
   hushNovaflowTransitions();
@@ -34813,6 +34842,13 @@
           if (Math.abs(a.left - b.left) > 2 || Math.abs(a.top - b.top) > 2 || Math.abs(a.right - b.right) > 2 || Math.abs(a.bottom - b.bottom) > 2) return null;
           return { "border-radius": "12px" };
         }
+      },
+      {
+        // 工具's action buttons in one weight: 开始压缩 was 600 beside 清空's
+        // 500, and the heavier face smeared when dimmed.
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-tools-section] button",
+        style: { "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT }
       },
       {
         // 点击存储 is as tall as the cards beside it (they carry a name row).
