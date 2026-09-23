@@ -34984,7 +34984,7 @@
       icon.className = "fas fa-th-large";
       icon.setAttribute("data-novaflow-keep-radius", "1");
       title.appendChild(icon);
-      title.appendChild(document.createTextNode(" \u6a21\u677f\u7ba1\u7406"));
+      title.appendChild(document.createTextNode("\u6a21\u677f\u7ba1\u7406"));
       const chevron = document.createElement("i");
       chevron.className = "fas fa-chevron-right";
       header.appendChild(title);

@@ -971,3 +971,40 @@ html body :is([data-novaflow-template-popup-layer="1"], #nf-lift) [data-novaflow
   background: transparent !important;
   color: #ff6b6b !important;
 }
+
+/* 3.0a One chevron everywhere: every fa-chevron (the AI 特效 panel, dialogs,
+   anything outside .novaflow-app too) is the same thin 7px / 1.35px stroke. */
+html body :is(i.fa-chevron-right, i.fa-chevron-down, i.fa-chevron-left, i.fa-chevron-up) {
+  position: relative !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 16px !important;
+  min-width: 16px !important;
+  height: 16px !important;
+  min-height: 16px !important;
+  color: rgba(238, 244, 252, 0.68) !important;
+  font-size: 0 !important;
+  line-height: 1 !important;
+  opacity: 1 !important;
+  vertical-align: middle !important;
+  box-sizing: border-box !important;
+}
+html body :is(i.fa-chevron-right, i.fa-chevron-down, i.fa-chevron-left, i.fa-chevron-up)::before {
+  content: "" !important;
+  position: absolute !important;
+  left: 50% !important;
+  top: 50% !important;
+  width: 7px !important;
+  height: 7px !important;
+  border: 0 !important;
+  border-right: 1.35px solid currentColor !important;
+  border-bottom: 1.35px solid currentColor !important;
+  box-sizing: border-box !important;
+  background: transparent !important;
+  transform-origin: center !important;
+}
+html body i.fa-chevron-right::before { transform: translate(-50%, -50%) rotate(-45deg) !important; }
+html body i.fa-chevron-down::before { transform: translate(-50%, -50%) rotate(45deg) !important; }
+html body i.fa-chevron-left::before { transform: translate(-50%, -50%) rotate(135deg) !important; }
+html body i.fa-chevron-up::before { transform: translate(-50%, -50%) rotate(-135deg) !important; }
