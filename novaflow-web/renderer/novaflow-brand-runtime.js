@@ -30874,7 +30874,12 @@
       "#novaflow-spine-split-view-controls",
       "#novaflow-spine-split-view-controls button",
       "[data-novaflow-spine-split-fit-button='1']",
-      "#novaflow-spine-split-right-workspace-host > div"
+      "#novaflow-spine-split-right-workspace-host > div",
+      "[data-novaflow-ui-design-viewport='1']",
+      "[data-novaflow-ui-design-resource-panel='1']",
+      "[data-novaflow-ui-design-bottom-dock='1']",
+      "[data-novaflow-ui-design-bottom-dock='1'] button",
+      "[data-novaflow-ui-design-toolbar-action='fit']"
     ].join(","))) {
       return true;
     }
@@ -31391,6 +31396,184 @@
           "border-radius": AI_ANIMATION_REFERENCE_TILE_RADIUS_PX,
           "box-sizing": "border-box",
           "font-size": "11px"
+        }
+      },
+      {
+        // 美工 / UI: the node canvas is the same stage panel as everywhere
+        // else. It had been #101010 behind a #0F1113 workspace behind a
+        // #101315 viewport - three near-blacks stacked, none of them the
+        // reference's value.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-mount-root="1"], [data-novaflow-ui-design-shell="1"], [data-novaflow-ui-design-workspace="1"]',
+        style: {
+          background: "transparent",
+          "background-color": "transparent",
+          "background-image": "none",
+          // 44 of padding here was holding the canvas host at 1008 and the
+          // resource column 44 short of the workspace's right edge.
+          padding: "0",
+          gap: "0",
+          margin: "0"
+        }
+      },
+      {
+        // The shell is a grid, so its track sizes decide the split - `flex`
+        // on the children is ignored and the canvas kept its old 1008.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-shell="1"]',
+        style: {
+          "grid-template-columns": `minmax(0, 1fr) ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + WORKSPACE_SIDE_GAP}px`
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-canvas-host="1"]',
+        style: {
+          flex: "1 1 auto",
+          width: "auto",
+          "min-width": "0",
+          "max-width": "none",
+          margin: "0",
+          padding: "0"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-viewport="1"]',
+        style: {
+          background: PREVIEW_OUTSIDE_BACKGROUND,
+          "background-color": PREVIEW_OUTSIDE_BACKGROUND,
+          "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`
+        }
+      },
+      {
+        // The resource column is the reference's floating panel: the slot it
+        // takes is 216 and the 206 panel is what the padding leaves, which
+        // also gives the canvas host the reference's 1052.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-preview-host="1"]',
+        style: {
+          width: `${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + WORKSPACE_SIDE_GAP}px`,
+          "min-width": `${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + WORKSPACE_SIDE_GAP}px`,
+          "max-width": `${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + WORKSPACE_SIDE_GAP}px`,
+          flex: `0 0 ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + WORKSPACE_SIDE_GAP}px`,
+          padding: `0 0 0 ${WORKSPACE_SIDE_GAP}px`,
+          background: "transparent",
+          "background-color": "transparent",
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-resource-panel="1"]',
+        style: {
+          width: "100%",
+          "min-width": "0",
+          "max-width": "none",
+          background: PRIMARY_PANEL_SURFACE,
+          "background-color": PRIMARY_PANEL_SURFACE,
+          border: `1px solid ${PRIMARY_PANEL_BORDER_COLOR}`,
+          "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`,
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        // The reference puts these in the canvas bar at the stage's top-left,
+        // in the same plate the other pages use; the app had them floating
+        // across the bottom of the canvas.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-bottom-dock="1"]',
+        style: {
+          position: "absolute",
+          top: `${AI_ANIMATION_CANVAS_BAR_TOP_GAP}px`,
+          left: "0",
+          right: "auto",
+          bottom: "auto",
+          transform: "none",
+          width: "max-content",
+          height: `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+          "min-height": `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+          padding: "4px",
+          gap: `${SECONDARY_GROUP_PILL_GAP}px`,
+          "box-sizing": "border-box",
+          background: CANVAS_BAR_PILL_BACKGROUND,
+          "background-color": CANVAS_BAR_PILL_BACKGROUND,
+          border: `1px solid ${CANVAS_BAR_PILL_BORDER_COLOR}`,
+          "border-radius": CANVAS_BAR_PILL_RADIUS_PX
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-bottom-dock="1"] button',
+        style: {
+          height: `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+          "min-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+          "max-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+          width: "auto",
+          "min-width": "0",
+          padding: "0 11px",
+          border: "0",
+          "border-radius": CANVAS_BAR_BUTTON_RADIUS_PX,
+          background: "transparent",
+          "background-color": "transparent",
+          color: CANVAS_BAR_BUTTON_TEXT,
+          "font-size": "11px",
+          "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-toolbar-action="fit"]',
+        style: {
+          top: `${AI_ANIMATION_CANVAS_QUIET_TOP_GAP}px`,
+          width: "auto",
+          "min-width": "0",
+          height: `${CANVAS_BAR_QUIET_HEIGHT}px`,
+          "min-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
+          "max-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
+          padding: "0 13px",
+          background: CANVAS_BAR_QUIET_BACKGROUND,
+          "background-color": CANVAS_BAR_QUIET_BACKGROUND,
+          border: `1px solid ${CANVAS_BAR_QUIET_BORDER_COLOR}`,
+          "border-radius": CANVAS_BAR_QUIET_RADIUS_PX,
+          color: CANVAS_BAR_QUIET_TEXT,
+          "font-size": "11px",
+          "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        // The left column's cards, and the disabled second-stage note.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-ui-host="1"], [data-novaflow-ui-design-left-root="1"], [data-novaflow-ui-design-mode-host="1"]',
+        style: {
+          width: `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "min-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "max-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-split-placeholder="1"]',
+        style: {
+          width: "auto",
+          "min-width": "0",
+          "max-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "align-self": "flex-start",
+          height: "32px",
+          "min-height": "32px",
+          "max-height": "32px",
+          padding: "0 12px",
+          background: UI_ICON_BUTTON_DISABLED_BACKGROUND,
+          "background-color": UI_ICON_BUTTON_DISABLED_BACKGROUND,
+          border: "0",
+          "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+          color: UI_ICON_BUTTON_DISABLED_TEXT,
+          "font-size": "13px",
+          "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+          "box-sizing": "border-box"
         }
       },
       {
