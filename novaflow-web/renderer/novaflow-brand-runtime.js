@@ -34737,6 +34737,12 @@
         style: (node) => canvasBarButtonStyle(node)
       },
       {
+        // 画笔 72 -> 画笔 124 widened the bar and moved the slider under the
+        // pointer: the reading holds a fixed width (three digits), even digits.
+        selector: '[data-novaflow-edit-tool-bar="1"] > label > span',
+        style: { display: "inline-block", width: "50px", "min-width": "50px", "max-width": "50px", "text-align": "left", "font-variant-numeric": "tabular-nums", "white-space": "nowrap", "flex": "0 0 50px" }
+      },
+      {
         // The sliders' labels in that row (画笔 / 羽化): bare on the plate.
         selector: '[data-novaflow-edit-tool-bar="1"] > label',
         style: { background: "transparent", "background-color": "transparent", "box-shadow": "none", border: "0" }
