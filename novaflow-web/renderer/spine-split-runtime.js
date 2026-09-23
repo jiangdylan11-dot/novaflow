@@ -8861,8 +8861,22 @@
   // it still honours the part-word guidance (bare feet for leg layers).
   const QWEN21_COMPLETION_INSTRUCTION = 'The first image is a game-art character layer with a pale blank hole cut into it. The second image marks that hole in white. Redraw inside the hole the missing parts of the figure that the surrounding pixels lead into (body, limbs, hands, feet, clothing, hair, weapon or object), continuing their outlines, colors, line art and shading so the figure is whole again. Keep the same game-art style, lighting, color palette and perspective, and keep everything outside the hole exactly as it is.'
 
-  function buildQwen21InpaintWorkflow(info, runtime, imageName, maskName, prefix, promptText, route, latentInputName, inputSize) {
-    const text = `${QWEN21_COMPLETION_INSTRUCTION} ${String(promptText || '').trim()}`.trim()
+  // The 2509 completion template (SELECTION_INPAINT_MODE_TEMPLATES.completion, added whenever the user
+  // types a 修图要求) ends with "Transparent background.". 2509 cannot output alpha and ignores it; 2.1
+  // decodes RGBA and has a strong cut-out prior, so with that line 57% of a leg-shaped hole came out
+  // semi-transparent and the result was grey smears. Build the 2.1 prompt from the user's own
+  // words and the part guidance instead; a caller that only has the merged text loses that line.
+  function qwen21CompletionPromptText(promptText, promptParts) {
+    const user = String(promptParts && promptParts.user || '').trim()
+    const part = String(promptParts && promptParts.part || '').trim()
+    const body = promptParts
+      ? [user ? inpaintUserInstructionText(user) : '', part].filter(Boolean).join('\n')
+      : String(promptText || '').replace(/^\s*Transparent background\.?\s*$/gim, '').trim()
+    return `${QWEN21_COMPLETION_INSTRUCTION} ${body}`.trim()
+  }
+
+  function buildQwen21InpaintWorkflow(info, runtime, imageName, maskName, prefix, promptText, route, latentInputName, inputSize, promptParts) {
+    const text = qwen21CompletionPromptText(promptText, promptParts)
     // The 2.1 VAE centre-crops anything that is not a multiple of 16 before encoding, and
     // TextEncodeQwenImage21 rounds its references to multiples of 32. cropPadEngine aligns the crop to
     // 64 only until it hits the layer edge, so a 450x700 crop decoded as 448x688 and landed 1px left
@@ -8906,6 +8920,22 @@
       nextId += 1
     }
     workflow['9'] = { class_type: 'SetLatentNoiseMask', inputs: buildComfyNodeInputs(info.SetLatentNoiseMask, { samples: ['7', 0], mask: noiseMaskRef }) }
+    // The dug plate fades the layer into the pale hole across the feathered mask edge, which is right
+    // for 2509's LoRA but 2.1 continues the fade: on a leg-shaped hole the shins came out as pale
+    // translucent stockings with a hard line where the hole starts. With the undug crop at hand the
+    // reference keeps the layer crisp and only the hole core (mask >= 0.9) shows the dug plate.
+    let referenceRef = plateRef
+    if (latentInputName) {
+      workflow[String(nextId)] = { class_type: 'ThresholdMask', inputs: { mask: ['8', 0], value: 0.9 } }
+      const coreId = String(nextId)
+      nextId += 1
+      workflow[String(nextId)] = {
+        class_type: 'ImageCompositeMasked',
+        inputs: buildComfyNodeInputs(info.ImageCompositeMasked, { destination: latentPixelsRef, source: plateRef, x: 0, y: 0, resize_source: false, mask: [coreId, 0] })
+      }
+      referenceRef = [String(nextId), 0]
+      nextId += 1
+    }
     workflow['10'] = {
       class_type: 'TextEncodeQwenImage21',
       inputs: buildComfyNodeInputs(info.TextEncodeQwenImage21, {
@@ -8914,7 +8944,7 @@
         resolution: 0,
         prompt: text,
         negative_prompt: '',
-        'images.image_1': plateRef,
+        'images.image_1': referenceRef,
         'images.image_2': maskImageRef
       })
     }
@@ -8982,7 +9012,7 @@
     const info = await comfyAllObjectInfo(baseUrl).catch(() => ({}))
     const qwen21 = qwen21Runtime(info)
     // Completion only for now: it is the one mode with a measured 2.1 recipe. Edit keeps the 2511 route.
-    if (qwen21 && route.mode === 'completion' && info.VAEEncode && info.SetLatentNoiseMask && info.ImageToMask && info.KSampler && info.SplitImageWithAlpha && info.InvertMask && info.ImageCompositeMasked && info.ImagePadForOutpaint && info.ImageCrop && info.MaskComposite) {
+    if (qwen21 && route.mode === 'completion' && info.VAEEncode && info.SetLatentNoiseMask && info.ImageToMask && info.KSampler && info.SplitImageWithAlpha && info.InvertMask && info.ImageCompositeMasked && info.ImagePadForOutpaint && info.ImageCrop && info.MaskComposite && info.ThresholdMask) {
       setInpaintDebugAttr('workflow-engine', 'qwen-2.1')
       setInpaintDebugAttr('workflow-mode', normalizeSelectionInpaintMode(options && options.inpaintMode))
       setInpaintDebugAttr('workflow-provider', route.provider)
@@ -9000,7 +9030,7 @@
           provider: route.provider
         }
       }
-      return buildQwen21InpaintWorkflow(info, qwen21, imageName, maskName, prefix, promptText, route, options && options.latentInputName || '', options && options.inputSize)
+      return buildQwen21InpaintWorkflow(info, qwen21, imageName, maskName, prefix, promptText, route, options && options.latentInputName || '', options && options.inputSize, options && options.promptParts)
     }
     setInpaintDebugAttr('workflow-engine', 'qwen-2509-2511')
     const textNodeName = info.TextEncodeQwenImageEditPlusAdvance_lrzjason
@@ -22959,6 +22989,7 @@
         inpaintMode: selectionInpaintMode,
         route: executionRoute,
         inputSize: { width: inputCanvases.modelInput.width, height: inputCanvases.modelInput.height },
+        promptParts: { user: userInpaintPrompt, part: baseInpaintPrompt },
         // Rapid AIO NSFW builds from the same V4 canvases but never reads it, and in web mode an upload
         // no task references is never released, so only the plain Qwen completion route carries it.
         latentInputDataUrl: inputCanvases.latentInput && executionRoute.workflow === 'qwen' ? inputCanvases.latentInput.toDataURL('image/png') : ''

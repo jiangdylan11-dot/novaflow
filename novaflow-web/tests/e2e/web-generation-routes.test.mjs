@@ -147,13 +147,14 @@ const qwen21Info = {
   ImagePadForOutpaint: { input: { required: io('image', 'left', 'top', 'right', 'bottom', 'feathering') } },
   ImageCrop: { input: { required: io('image', 'width', 'height', 'x', 'y') } },
   MaskComposite: { input: { required: { ...io('destination', 'source', 'x', 'y'), operation: [['multiply', 'add', 'subtract', 'and', 'or', 'xor']] } } },
+  ThresholdMask: { input: { required: io('mask', 'value') } },
   SaveImage: { input: { required: io('images', 'filename_prefix') } }
 };
 const host21 = await createWorkflowHost({ rendererDir: fileURLToPath(new URL('../../worker-renderer/', import.meta.url)), objectInfo: qwen21Info });
 const completionRoute = { mode: 'completion', provider: 'qwen-completion-v4', workflow: 'qwen', outputMode: 'patch', v4: true };
-const build21 = async (inputSize) => {
+const build21 = async (inputSize, extra = {}, promptText = 'leg') => {
   const call = sandbox.NovaFlowWebRuntime.serverOnly('spine-split-runtime', 'defaultQwenInpaintWorkflow', [
-    'http://127.0.0.1:8188', 'image.png', 'mask.png', 'NovaFlow_Complete', 'leg', { inpaintMode: 'completion', route: completionRoute, latentInputName: 'latent.png', inputSize }
+    'http://127.0.0.1:8188', 'image.png', 'mask.png', 'NovaFlow_Complete', promptText, { inpaintMode: 'completion', route: completionRoute, latentInputName: 'latent.png', inputSize, ...extra }
   ]);
   const opts = withReferences(JSON.parse(String(call)).options, ['task-image.png', 'task-mask.png', 'task-latent.png'], latentRefs, 'defaultQwenInpaintWorkflow');
   return await host21.buildGraph({ module: 'spine-split-runtime', method: 'defaultQwenInpaintWorkflow', options: opts });
@@ -168,7 +169,13 @@ assert.equal(Object.keys(pads).length, 3);
 for (const pad of Object.values(pads)) assert.deepEqual([pad.left, pad.top, pad.right, pad.bottom, pad.feathering], [0, 0, 30, 4, 0]);
 const encodeFrom = byClass(g21, 'VAEEncode')[0][1].inputs.pixels[0];
 assert.deepEqual(pads[encodeFrom].image, ['3', 0]);
-assert.deepEqual(pads[g21['10'].inputs['images.image_1'][0]].image, ['1', 0]);
+// The reference is the undug crop with only the hole core taken from the dug plate.
+const reference = g21[g21['10'].inputs['images.image_1'][0]];
+assert.equal(reference.class_type, 'ImageCompositeMasked');
+assert.deepEqual(pads[reference.inputs.destination[0]].image, ['3', 0]);
+assert.deepEqual(pads[reference.inputs.source[0]].image, ['1', 0]);
+const core = g21[reference.inputs.mask[0]];
+assert.deepEqual([core.class_type, core.inputs.mask, core.inputs.value], ['ThresholdMask', ['8', 0], 0.9]);
 assert.deepEqual(pads[g21['10'].inputs['images.image_2'][0]].image, ['2', 0]);
 // The noise mask is 1 across the pad strip, not the pad's grey.
 const noiseMask = g21[byClass(g21, 'SetLatentNoiseMask')[0][1].inputs.mask[0]];
@@ -181,6 +188,15 @@ assert.deepEqual(byClass(g21, 'SaveImage')[0][1].inputs.images, [cropId, 0]);
 const g21Aligned = JSON.parse(JSON.stringify(await build21(undefined)));
 assert.equal(byClass(g21Aligned, 'ImagePadForOutpaint').length + byClass(g21Aligned, 'ImageCrop').length + byClass(g21Aligned, 'MaskComposite').length, 0);
 assert.deepEqual(byClass(g21Aligned, 'VAEEncode')[0][1].inputs.pixels, ['3', 0]);
+// The 2.1 prompt is built from the user's words and the part guidance, never from the 2509 template's
+// "Transparent background." line; a merged prompt without the parts loses that line.
+const promptOf = (graph) => byClass(graph, 'TextEncodeQwenImage21')[0][1].inputs.prompt;
+const template = ['User instruction, highest priority:', '补全腿部', '', 'Complete the masked missing area.', 'Transparent background.', '', 'Original protective context:', 'leg'].join(String.fromCharCode(10));
+const withParts = promptOf(JSON.parse(JSON.stringify(await build21(undefined, { promptParts: { user: '补全腿部，赤脚', part: 'Extend the leg.' } }, template))));
+assert.ok(withParts.includes('补全腿部，赤脚') && withParts.includes('Extend the leg.') && withParts.includes('bare feet'));
+assert.ok(!/Transparent background|Complete the masked missing area/.test(withParts));
+const merged = promptOf(JSON.parse(JSON.stringify(await build21(undefined, {}, template))));
+assert.ok(merged.includes('Complete the masked missing area.') && !/Transparent background/.test(merged));
 runInContext(await readFile(new URL('novaflow-web-capabilities.js', web), 'utf8'), context);
 const cached = await sandbox.electronAPI.aiSeqCacheTempFile({ fileName: 'result.png', cacheKey: 'art-output', bytes: new Uint8Array([4, 5, 6]) });
 assert.ok(cached.ok && cached.path.startsWith('blob:'));
