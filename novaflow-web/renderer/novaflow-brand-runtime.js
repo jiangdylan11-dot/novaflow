@@ -2495,7 +2495,7 @@
   const LEFT_PANEL_EDGE = "rgba(154, 159, 165, 0.05)";
   // Unselected segment entries are bare in the reference; only the
   // selected one is filled.
-  const SECONDARY_ENTRY_BACKGROUND = "transparent";
+  const SECONDARY_ENTRY_BACKGROUND = "var(--nf-seg-entry-bg, transparent)";
   const SECONDARY_ENTRY_HOVER_BACKGROUND = "#303030";
   const SECONDARY_ENTRY_ACTIVE_BACKGROUND = UI_SEGMENT_SELECTED_BACKGROUND;
   const SKELETON_SELECTION_BACKGROUND = "rgba(30, 166, 114, 0.14)";
@@ -2628,7 +2628,7 @@
   const PRIMARY_ACTIVE_BACKGROUND = UI_SELECTED_BACKGROUND;
   // Reference: an unselected rail entry has NO plate - the rail surface
   // behind it is the background.
-  const PRIMARY_INACTIVE_BACKGROUND = "transparent";
+  const PRIMARY_INACTIVE_BACKGROUND = "var(--nf-rail-entry-bg, transparent)";
   // Near-black topbar, separated from the workspace by a hairline rule.
   const UI_TOPBAR_BACKGROUND = "#101113";
   const UI_FIELD_BACKGROUND = "#222222";
@@ -28761,8 +28761,8 @@
       nfSetStyleIfChanged(card, "font-size", "12px", "important");
       const header = card.querySelector(".nf-panel-header") || card.firstElementChild;
       if (header instanceof HTMLElement) {
-        nfSetStyleIfChanged(header, "background", "transparent", "important");
-        nfSetStyleIfChanged(header, "background-color", "transparent", "important");
+        nfSetStyleIfChanged(header, "background", "var(--nf-card-header-bg, transparent)", "important");
+        nfSetStyleIfChanged(header, "background-color", "var(--nf-card-header-bg, transparent)", "important");
         nfSetStyleIfChanged(header, "height", `${PRIMARY_LEFT_CARD_HEADER_HEIGHT}px`, "important");
         nfSetStyleIfChanged(header, "min-height", `${PRIMARY_LEFT_CARD_HEADER_HEIGHT}px`, "important");
         nfSetStyleIfChanged(header, "font-size", "12px", "important");
