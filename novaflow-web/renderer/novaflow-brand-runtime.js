@@ -34801,6 +34801,20 @@
         }
       },
       {
+        // A canvas that fills the stage (the particle view and its overlays)
+        // takes the stage's 12 radius: square, its dark corners showed past
+        // the stage's rounded ones.
+        selector: "[data-novaflow-preview-workspace] canvas",
+        style: (node) => {
+          const stage = node.closest("[data-novaflow-preview-workspace]");
+          if (!(stage instanceof HTMLElement)) return null;
+          const a = node.getBoundingClientRect();
+          const b = stage.getBoundingClientRect();
+          if (Math.abs(a.left - b.left) > 2 || Math.abs(a.top - b.top) > 2 || Math.abs(a.right - b.right) > 2 || Math.abs(a.bottom - b.bottom) > 2) return null;
+          return { "border-radius": "12px" };
+        }
+      },
+      {
         // 点击存储 is as tall as the cards beside it (they carry a name row).
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile="1"]',

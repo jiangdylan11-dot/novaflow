@@ -1437,3 +1437,10 @@ html body :is([data-novaflow-ui-design-output-orientation][aria-pressed="true"],
   background-color: #1c4136 !important;
   color: #9be4cd !important;
 }
+
+/* 3.0q The stage's corners: its canvases (the particle view and its
+   overlays) fill the stage square and were not clipped by its 12 radius,
+   so four dark corners showed. */
+html body :is([data-novaflow-preview-workspace], #nf-lift) > canvas {
+  border-radius: 12px !important;
+}
