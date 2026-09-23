@@ -1380,3 +1380,60 @@ html body :is([data-novaflow-ui-design-preview-host], #nf-lift) {
   border-left: 0 !important;
   border-left-width: 0 !important;
 }
+
+/* 3.0p UI's node canvas in the app's neutral greys (it carried a blue-teal
+   tint: #202326, #171a1c, rgba(8,11,14,..)) - the same surfaces as the
+   panels and the generation dock; the ports and status dots keep their
+   colours. */
+html body :is([data-novaflow-ui-design-node], #nf-lift) {
+  background: #1c1c1c !important;
+  background-color: #1c1c1c !important;
+}
+html body :is([data-novaflow-ui-design-node]:not([style*="2px solid"]), #nf-lift) {
+  border-color: #333333 !important;
+}
+html body :is([data-novaflow-ui-design-node-drag-handle], #nf-lift) {
+  background: #222222 !important;
+  background-image: none !important;
+  border-bottom: 1px solid #2a2a2a !important;
+}
+html body :is([data-novaflow-ui-design-port-rail], #nf-lift) {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+html body :is([data-novaflow-ui-design-layout-size], #nf-lift) {
+  background: rgba(0, 0, 0, 0.6) !important;
+}
+html body :is([data-novaflow-ui-design-prompt-editor], [data-novaflow-ui-design-node-params-body], #nf-lift) {
+  background: #202020 !important;
+  background-color: #202020 !important;
+  border-color: #2e2e2e !important;
+}
+html body :is([data-novaflow-ui-design-prompt-field], [data-novaflow-ui-design-prompt-editor] .nf-resource-mention-editor, #nf-lift) {
+  background: #181818 !important;
+  background-color: #181818 !important;
+  border-color: #343434 !important;
+}
+html body :is([data-novaflow-ui-design-design-assistant], #nf-lift) {
+  background: #262626 !important;
+  background-color: #262626 !important;
+  color: #c5c5c5 !important;
+}
+html body :is([data-novaflow-ui-design-design-assistant], #nf-lift):hover {
+  background: #393939 !important;
+  background-color: #393939 !important;
+  color: #ffffff !important;
+}
+html body :is([data-novaflow-ui-design-output-orientations], #nf-lift) {
+  border-color: #343434 !important;
+}
+html body :is([data-novaflow-ui-design-output-orientation], #nf-lift) {
+  background: #262626 !important;
+  background-color: #262626 !important;
+  border-left-color: #343434 !important;
+}
+html body :is([data-novaflow-ui-design-output-orientation][aria-pressed="true"], #nf-lift) {
+  background: #1c4136 !important;
+  background-color: #1c4136 !important;
+  color: #9be4cd !important;
+}

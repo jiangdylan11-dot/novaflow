@@ -33478,10 +33478,11 @@
         })
       },
       {
-        // UI 拆图　第二阶段: one disabled button, its two words in one type.
+        // UI 拆图　第二阶段: a placeholder for something not built yet - off,
+        // as asked.
         when: "body.novaflow-primary-target-art",
         selector: '[data-novaflow-ui-design-split-placeholder="1"]',
-        style: { padding: "5px 10px", gap: "13px", "justify-content": "center", opacity: NOVAFLOW_DISABLED_OPACITY, width: "auto" }
+        style: { display: "none" }
       },
       {
         when: "body.novaflow-primary-target-art",
