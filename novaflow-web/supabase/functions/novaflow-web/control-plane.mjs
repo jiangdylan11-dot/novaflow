@@ -31,6 +31,7 @@ import {
   HEARTBEAT_TIMEOUT_SECONDS,
   ASSIGN_TIMEOUT_SECONDS,
   PROCESSING_TIMEOUT_SECONDS,
+  MATTING_TASK_TYPE,
   MAX_TASK_ATTEMPTS,
   PROTOCOL_VERSION,
   TASK_STATE,
@@ -117,6 +118,54 @@ export function validateTaskParameters(taskType, raw) {
       kind: sanitizeText(r?.kind, 32) || 'image'
     }))
     .filter((r) => r.name);
+
+  // Matting is tagged kind:'video' so the scheduler treats it as video work,
+  // but it is not a generation: there is no prompt, no seed, and the frame
+  // size is whatever the user's clip already is rather than something we pick.
+  // It has to be answered before the generation branch below, which would
+  // clamp the real dimensions to its own range and reject the job for having
+  // no reference IMAGE.
+  if (taskType === MATTING_TASK_TYPE) {
+    // Not clampInt: clamping to [1, 300] turns a missing or zero count into 1
+    // and a 400-frame request into 300, and either one then disagrees with the
+    // frame times packed below - the worker would matte a different number of
+    // frames than the panel is waiting for. A count we cannot honour exactly
+    // is a refusal, not something to round.
+    const frameCount = Math.floor(Number(input.frame_count));
+    if (!Number.isFinite(frameCount) || frameCount < 1) throw bad('a matting task needs frame_count');
+    if (frameCount > 300) throw bad('a matting task is limited to 300 frames, got ' + frameCount);
+    if (!cleanRefs.length) throw bad('a matting task needs the source video');
+    if (input.input_encoding !== 'png-frames-v1') throw bad('a matting task needs verified renderer frames');
+    if (cleanRefs.some(ref => ref.kind !== 'frames')) throw bad('invalid matting frame pack');
+
+    // One base64 f32 per frame, not an array: sanitizeWorkflowOptions caps
+    // arrays at 256 entries and the panel's own ceiling is 300 frames, so an
+    // array of times would be silently truncated for any clip over ~8.5s.
+    const times = sanitizeText(input.frame_times_f32, MAX_PROMPT_CHARS);
+    if (!times) throw bad('a matting task needs frame_times_f32');
+    let timeBytes;
+    try { timeBytes = Uint8Array.from(atob(times), c => c.charCodeAt(0)); } catch { throw bad('invalid frame_times_f32'); }
+    if (timeBytes.length !== frameCount * 4) throw bad('frame_times_f32 does not match frame_count');
+    const timeView = new DataView(timeBytes.buffer);
+    for (let i = 0; i < frameCount; i++) {
+      const time = timeView.getFloat32(i * 4, true);
+      if (!Number.isFinite(time) || time < 0) throw bad('invalid frame_times_f32 timestamp');
+    }
+    const width = Number(input.width), height = Number(input.height);
+    if (![width, height].every(n => Number.isInteger(n) && n >= 16 && n <= 8192)) throw bad('invalid matting dimensions');
+
+    return {
+      width,
+      height,
+      fps: Number(input.fps) || 0,
+      frame_count: frameCount,
+      frame_times_f32: times,
+      input_encoding: 'png-frames-v1',
+      return_mask_only: input.return_mask_only !== false,
+      source_name: sanitizeText(input.source_name, 128) || 'input.mp4',
+      references: cleanRefs
+    };
+  }
 
   if (req.kind === 'video') {
     const parameters = {
@@ -562,7 +611,9 @@ export function createControlPlane({ store, secrets, logger }) {
     } else {
       if (!isKnownTaskType(taskType)) throw bad('unsupported task type: ' + taskType);
       req = requirementsFor(taskType);
-      parameters = validateTaskParameters(taskType, body.parameters);
+      parameters = validateTaskParameters(taskType, taskType === MATTING_TASK_TYPE
+        ? { ...body.parameters, references: sanitizeReferences(body.references) }
+        : body.parameters);
       pricing = priceTask(taskType, parameters);
     }
 

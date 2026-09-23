@@ -1,10 +1,41 @@
 // GENERATED - do not edit. Built by tools/bundle-edge-function.mjs.
-// Source: supabase/functions/novaflow-web/ (6 modules + index.ts)
+// Source: supabase/functions/novaflow-web/ (7 modules + index.ts)
 // Rebuild with: npm run bundle:edge
 //
 // One file on purpose: a multi-file deploy can lose a module, and a lost
 // module only shows up as a cold-start failure in production.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+
+// ===== lora-catalog.mjs ==============================================
+// GENERATED COPY - do not edit here.
+// Source: packages/shared/src/lora-catalog.mjs
+// Regenerate with: npm run sync:edge
+// Advertise only selections supported by every node the scheduler can choose.
+// Older nodes and failed scans are unavailable, never an empty success.
+function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4 }) {
+  if (!rows.length) throw new Error('暂无在线算力可读取 LoRA');
+  const key = kind === 'qwen' ? (nsfw ? 'qwen_nsfw' : 'qwen') : (mode === 'r2v' ? 'h3_ref' : 'h3');
+  const lists = rows.map(row => {
+    const report = row.detail?.lora_catalog;
+    if (report?.version !== 1) throw new Error('算力节点需要更新到 0.4.4 才能读取 LoRA');
+    if (Date.now() - Date.parse(report.updated_at) > 300000 || !Number.isFinite(Date.parse(report.updated_at))) throw new Error('LoRA 列表已过期，等待节点更新后重试');
+    const value = report[key];
+    if (!value?.ok || !Array.isArray(value.items)) throw new Error('算力节点读取 LoRA 失败，请检查节点的 models 目录与模型文件');
+    return value.items.filter(item => {
+      const name = String(item?.name || '');
+      if (!/\.safetensors$/i.test(name) || name.split(/[\\/]/).some(p => !p || p === '.' || p === '..' || p.includes(':'))) return false;
+      if (kind === 'qwen') return /^qwen[\\/]/i.test(name);
+      const family = mode === 'r2v' ? 'ref2va' : 'fl2va';
+      return item.kind === 'standard' && ['h3', family].includes(item.modelFamily) &&
+        (!item.supportedSteps || item.supportedSteps.includes(steps)) && typeof item.fingerprint === 'string';
+    }).map(item => kind === 'qwen' ? { name: item.name } : {
+      name: item.name, fingerprint: item.fingerprint, modelFamily: item.modelFamily,
+      kind: item.kind, supportedSteps: item.supportedSteps, strengthRange: item.strengthRange
+    });
+  });
+  return lists[0].filter(item => lists.slice(1).every(list => list.some(other =>
+    other.name === item.name && (kind !== 'h3' || other.fingerprint === item.fingerprint))));
+}
 
 // ===== protocol.mjs ==================================================
 // GENERATED COPY - do not edit here.
@@ -143,10 +174,22 @@ const TASK_TYPE_WORKFLOW = Object.freeze({
 // kept wired, and priced, for the provider-backed types that will use it.
 const BILLING = Object.freeze({ SELF_HOSTED: 'self_hosted', PROVIDER: 'provider' });
 
+// 'video_matting' is deliberately absent from TASK_TYPE and
+// TASK_TYPE_WORKFLOW above. Membership there means "this type names a ComfyUI
+// graph file", which the worker's loadWorkflow() then insists on loading and
+// tests/e2e/protocol.test.mjs asserts exists. AI 抠图 runs BiRefNet in a
+// Python process and never opens ComfyUI at all, so it belongs only here -
+// isKnownTaskType() reads THIS table, which is what admits it to the queue.
+const MATTING_TASK_TYPE = 'video_matting';
+
 const TASK_TYPE_REQUIREMENTS = Object.freeze({
   [TASK_TYPE.QWEN_T2I]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '绘图', billing: BILLING.SELF_HOSTED },
   [TASK_TYPE.QWEN_EDIT]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '图生图', billing: BILLING.SELF_HOSTED },
-  [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列', billing: BILLING.SELF_HOSTED }
+  [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列', billing: BILLING.SELF_HOSTED },
+  // Matting is segmentation, not generation: BiRefNet runs at a fixed
+  // 1024x1024 whatever the clip is, so the VRAM floor is far below the
+  // generation types and a machine that cannot draw can still cut out.
+  [MATTING_TASK_TYPE]: { modelId: 'birefnet-matting', minVramMb: 4000, kind: 'video', label: '抠图', billing: BILLING.SELF_HOSTED }
 });
 
 /** Does this task type cost the user credits? */
@@ -819,6 +862,27 @@ const MODEL_MANIFEST = Object.freeze([
       mode: 'import_or_configured_url',
       hint: 'Import from an existing NovaFlow H3 runtime (e.g. E:/NovaFlow/models) or configure a URL.'
     }
+  },
+  {
+    model_id: 'birefnet-matting',
+    display_name: 'BiRefNet (AI 抠图)',
+    version: '2.0.0',
+    // 'local' on purpose, and it is load-bearing. reportModels only asks
+    // ComfyUI about runtimes 'image' and 'video'; a model tagged 'local' is
+    // never looked for in a node catalogue that could not answer for it
+    // anyway, and is never falsely matched by a checkpoint whose filename
+    // happens to end the same way. Readiness comes from the files on disk.
+    runtime: 'local',
+    min_vram_mb: 4000,
+    compatible_workflows: ['video_matting'],
+    required_files: [
+      { path: 'RMBG/RMBG-2.0/model.safetensors', min_bytes: 400_000_000, sha256: null },
+      { path: 'RMBG/RMBG-2.0/config.json', min_bytes: 100, sha256: null }
+    ],
+    download: {
+      mode: 'import_or_configured_url',
+      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models/RMBG），或让 BiRefNet 首次运行时自行下载。'
+    }
   }
 ]);
 
@@ -839,6 +903,7 @@ function runtimeFor(modelId) {
 // GENERATED COPY - do not edit here.
 // Source: packages/shared/src/control-plane.mjs
 // Regenerate with: npm run sync:edge
+
 // NovaFlow Web - control plane.
 //
 // ONE implementation of the whole API, used by both deployments:
@@ -859,6 +924,14 @@ function runtimeFor(modelId) {
 //     task currently assigned to it.
 //   * Credits are computed here from validated parameters and settled here.
 //     The worker reports success/failure and execution metadata, nothing else.
+
+
+
+
+
+
+
+
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 4000;
@@ -887,6 +960,8 @@ function randomChunk() {
   return [...bytes].map((b) => alphabet[b % alphabet.length]).join('');
 }
 
+
+
 // ---------------------------------------------------------------------------
 // Parameter validation. Everything a browser sends is clamped to a range we
 // are willing to run; nothing is passed through to a workflow unexamined.
@@ -894,6 +969,8 @@ function randomChunk() {
 function sanitizeText(value, max) {
   return String(value == null ? '' : value).slice(0, max);
 }
+
+
 
 function validateTaskParameters(taskType, raw) {
   const input = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
@@ -912,6 +989,54 @@ function validateTaskParameters(taskType, raw) {
       kind: sanitizeText(r?.kind, 32) || 'image'
     }))
     .filter((r) => r.name);
+
+  // Matting is tagged kind:'video' so the scheduler treats it as video work,
+  // but it is not a generation: there is no prompt, no seed, and the frame
+  // size is whatever the user's clip already is rather than something we pick.
+  // It has to be answered before the generation branch below, which would
+  // clamp the real dimensions to its own range and reject the job for having
+  // no reference IMAGE.
+  if (taskType === MATTING_TASK_TYPE) {
+    // Not clampInt: clamping to [1, 300] turns a missing or zero count into 1
+    // and a 400-frame request into 300, and either one then disagrees with the
+    // frame times packed below - the worker would matte a different number of
+    // frames than the panel is waiting for. A count we cannot honour exactly
+    // is a refusal, not something to round.
+    const frameCount = Math.floor(Number(input.frame_count));
+    if (!Number.isFinite(frameCount) || frameCount < 1) throw bad('a matting task needs frame_count');
+    if (frameCount > 300) throw bad('a matting task is limited to 300 frames, got ' + frameCount);
+    if (!cleanRefs.length) throw bad('a matting task needs the source video');
+    if (input.input_encoding !== 'png-frames-v1') throw bad('a matting task needs verified renderer frames');
+    if (cleanRefs.some(ref => ref.kind !== 'frames')) throw bad('invalid matting frame pack');
+
+    // One base64 f32 per frame, not an array: sanitizeWorkflowOptions caps
+    // arrays at 256 entries and the panel's own ceiling is 300 frames, so an
+    // array of times would be silently truncated for any clip over ~8.5s.
+    const times = sanitizeText(input.frame_times_f32, MAX_PROMPT_CHARS);
+    if (!times) throw bad('a matting task needs frame_times_f32');
+    let timeBytes;
+    try { timeBytes = Uint8Array.from(atob(times), c => c.charCodeAt(0)); } catch { throw bad('invalid frame_times_f32'); }
+    if (timeBytes.length !== frameCount * 4) throw bad('frame_times_f32 does not match frame_count');
+    const timeView = new DataView(timeBytes.buffer);
+    for (let i = 0; i < frameCount; i++) {
+      const time = timeView.getFloat32(i * 4, true);
+      if (!Number.isFinite(time) || time < 0) throw bad('invalid frame_times_f32 timestamp');
+    }
+    const width = Number(input.width), height = Number(input.height);
+    if (![width, height].every(n => Number.isInteger(n) && n >= 16 && n <= 8192)) throw bad('invalid matting dimensions');
+
+    return {
+      width,
+      height,
+      fps: Number(input.fps) || 0,
+      frame_count: frameCount,
+      frame_times_f32: times,
+      input_encoding: 'png-frames-v1',
+      return_mask_only: input.return_mask_only !== false,
+      source_name: sanitizeText(input.source_name, 128) || 'input.mp4',
+      references: cleanRefs
+    };
+  }
 
   if (req.kind === 'video') {
     const parameters = {
@@ -940,6 +1065,7 @@ function validateTaskParameters(taskType, raw) {
     references: cleanRefs
   };
 }
+
 
 // ---------------------------------------------------------------------------
 // Renderer-workflow options.
@@ -1356,7 +1482,9 @@ function createControlPlane({ store, secrets, logger }) {
     } else {
       if (!isKnownTaskType(taskType)) throw bad('unsupported task type: ' + taskType);
       req = requirementsFor(taskType);
-      parameters = validateTaskParameters(taskType, body.parameters);
+      parameters = validateTaskParameters(taskType, taskType === MATTING_TASK_TYPE
+        ? { ...body.parameters, references: sanitizeReferences(body.references) }
+        : body.parameters);
       pricing = priceTask(taskType, parameters);
     }
 
@@ -1615,6 +1743,26 @@ function createControlPlane({ store, secrets, logger }) {
     };
   }
 
+  async function handleLoraCatalog(kind, query, headers, selection) {
+    await requireUser(headers);
+    if (!['qwen', 'h3'].includes(kind)) throw bad('invalid LoRA kind');
+    const mode = String(query.mode || 'i2v');
+    const steps = Number(query.steps || 4);
+    if (kind === 'h3' && (!['t2v','i2v','fl2v','r2v'].includes(mode) || !Number.isInteger(steps) || steps < 1 || steps > 100)) throw bad('invalid LoRA context');
+    const modelId = kind === 'h3' ? 'minimax-h3' : 'qwen-image-2511';
+    const rows = await store.listCapableModelDetails(modelId, kind === 'h3' ? 15000 : 16000, HEARTBEAT_TIMEOUT_SECONDS);
+    let items;
+    try { items = commonLoraCatalog(rows, { kind, mode, steps, nsfw: query.nsfw === 'true' || query.nsfw === true }); }
+    catch (error) { throw new HttpError(503, 'lora_catalog_unavailable', error.message); }
+    if (selection) {
+      const item = items.find(item => item.name === selection.name && item.fingerprint === selection.fingerprint);
+      const strength = Number(selection.strength);
+      if (!item || !Number.isFinite(strength) || strength < 0 || strength > 2) throw bad('LoRA 已变化或不兼容，请重新选择');
+      return { ok: true, item, strength };
+    }
+    return { ok: true, items };
+  }
+
   async function handleSweep(body, headers) {
     // The sweeper is infrastructure, not a user action. It is authorised with
     // the control secret so a logged-in user cannot drive recovery timing.
@@ -1648,6 +1796,9 @@ function createControlPlane({ store, secrets, logger }) {
       }
       if (method === 'GET' && path === '/api/web/capabilities') return ok(await handleCapabilities());
       if (method === 'GET' && path === '/api/web/me') return ok(await handleMe(headers));
+      if (method === 'GET' && path === '/api/web/loras/qwen') return ok(await handleLoraCatalog('qwen', query, headers));
+      if (method === 'GET' && path === '/api/web/loras/h3') return ok(await handleLoraCatalog('h3', query, headers));
+      if (method === 'POST' && path === '/api/web/loras/h3/validate') return ok(await handleLoraCatalog('h3', body, headers, body));
 
       if (method === 'POST' && path === '/api/worker/register') return ok(await handleWorkerRegister(body, headers));
       if (method === 'POST' && path === '/api/worker/login') return ok(await handleWorkerLogin(body));
@@ -1819,7 +1970,12 @@ function workerTaskView(task) {
 //   NOVAFLOW_WEB_CONTROL_SECRET        Web-line only: signs worker tokens and
 //                                      derives per-worker grant keys
 
+
+
+
+
 const FUNCTION_NAME = 'novaflow-web';
+
 
 function env(name: string): string {
   return String(Deno.env.get(name) || '').trim();
@@ -1949,6 +2105,16 @@ const supabaseStore = {
       .gt('gpu_workers.last_heartbeat', since);
     if (error) throw error;
     return (data || []).length;
+  },
+
+  async listCapableModelDetails(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number) {
+    const { data, error } = await admin().from('worker_models')
+      .select('detail, gpu_workers!inner(status,vram_mb,last_heartbeat)')
+      .eq('model_id', modelId).eq('status', 'ready')
+      .in('gpu_workers.status', ['idle', 'busy']).gte('gpu_workers.vram_mb', minVramMb)
+      .gt('gpu_workers.last_heartbeat', new Date(Date.now() - heartbeatTimeoutSeconds * 1000).toISOString());
+    if (error) throw error;
+    return data || [];
   },
 
   async createTask({ userId, taskType, modelId, inputManifest, estimatedCreditCost, expiresAt }: any) {

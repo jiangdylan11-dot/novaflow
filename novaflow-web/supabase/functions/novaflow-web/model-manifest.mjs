@@ -65,6 +65,27 @@ export const MODEL_MANIFEST = Object.freeze([
       mode: 'import_or_configured_url',
       hint: 'Import from an existing NovaFlow H3 runtime (e.g. E:/NovaFlow/models) or configure a URL.'
     }
+  },
+  {
+    model_id: 'birefnet-matting',
+    display_name: 'BiRefNet (AI 抠图)',
+    version: '2.0.0',
+    // 'local' on purpose, and it is load-bearing. reportModels only asks
+    // ComfyUI about runtimes 'image' and 'video'; a model tagged 'local' is
+    // never looked for in a node catalogue that could not answer for it
+    // anyway, and is never falsely matched by a checkpoint whose filename
+    // happens to end the same way. Readiness comes from the files on disk.
+    runtime: 'local',
+    min_vram_mb: 4000,
+    compatible_workflows: ['video_matting'],
+    required_files: [
+      { path: 'RMBG/RMBG-2.0/model.safetensors', min_bytes: 400_000_000, sha256: null },
+      { path: 'RMBG/RMBG-2.0/config.json', min_bytes: 100, sha256: null }
+    ],
+    download: {
+      mode: 'import_or_configured_url',
+      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models/RMBG），或让 BiRefNet 首次运行时自行下载。'
+    }
   }
 ]);
 

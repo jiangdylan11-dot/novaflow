@@ -26,10 +26,12 @@ import { detectGpu, detectSystem } from './hardware.mjs';
 import { generateWorkerSecret } from '../../packages/shared/src/tokens.mjs';
 import {
   HEARTBEAT_INTERVAL_SECONDS,
+  MATTING_TASK_TYPE,
   TASK_STATE,
   TTL_SECONDS,
   requirementsFor
 } from '../../packages/shared/src/protocol.mjs';
+import { runMatting, probeMatting } from './matting.mjs';
 
 // Read from package.json, which is also what electron-builder stamps into the
 // installer. Two hand-maintained version constants had already drifted apart
@@ -319,13 +321,37 @@ export function createWorker(options) {
     const diskModels = modelsRoot ? await inspectAllModels(modelsRoot).catch(() => []) : [];
     const models = MODEL_MANIFEST.map((spec) => {
       const found = byId.get(spec.model_id) || diskModels.find(m => m.model_id === spec.model_id);
+      // A 'local' model is not loaded by ComfyUI, so no node catalogue can
+      // vouch for it. The loop above only ever asks the 'image' and 'video'
+      // runtimes, which left state.comfy['local'] undefined and every such
+      // model permanently 'missing' - and the claim SQL matches on
+      // status = 'ready', so the task could never be assigned to anybody.
+      // Disk inspection is the whole answer here, exactly as it is the
+      // fallback for the ComfyUI-served models.
+      if (spec.runtime === 'local') {
+        return found || { model_id: spec.model_id, model_version: spec.version, status: 'missing',
+          detail: { reason: 'model_files_not_found' } };
+      }
       if (state.comfy[spec.runtime] && byId.has(spec.model_id)) return found;
       return { ...(found || {}), model_id: spec.model_id, model_version: spec.version, status: 'missing',
         detail: { ...(found?.detail || {}), reason: state.comfy[spec.runtime] ? 'runtime_model_catalog_unavailable' : 'runtime_offline' } };
     });
+    const matting = models.find(model => model.model_id === 'birefnet-matting');
+    if (matting?.status === 'ready') {
+      const capability = await probeMatting(modelsRoot);
+      matting.detail = { ...matting.detail, matting: capability };
+      if (!capability.ok) matting.status = 'missing';
+    }
     onProgress(82, '正在检测 LoRA 兼容性');
     for (const model of models) {
-      if (model.status === 'ready') model.detail = { ...(model.detail || {}), lora_catalog: await loraCatalog.report(runtimeFor(model.model_id)) };
+      // LoRA catalogues come from ComfyUI, so a model that is not served by
+      // ComfyUI has none to report. Asking anyway sends a pointless
+      // /object_info query and files a failed lookup under a model that was
+      // never going to have one.
+      const runtime = runtimeFor(model.model_id);
+      if (model.status === 'ready' && runtime !== 'local') {
+        model.detail = { ...(model.detail || {}), lora_catalog: await loraCatalog.report(runtime) };
+      }
     }
     state.models = models;
     if (state.workerToken) await callControl('POST', '/api/worker/models', { body: { models }, token: state.workerToken });
@@ -404,6 +430,14 @@ export function createWorker(options) {
 
   async function runTask(task) {
     checkCancelled(task.id);
+
+    // AI 抠图 is the one task that is not a ComfyUI graph: it runs BiRefNet in
+    // a Python process. Everything below this line belongs to ComfyUI -
+    // loadWorkflow throws outright for a type that names no graph file, and
+    // comfy.isUp() would refuse a job on a machine that can cut out perfectly
+    // well without a generation runtime running. So the branch goes first.
+    if (task.task_type === MATTING_TASK_TYPE) return runMattingTask(task);
+
     // Two shapes of task. A renderer workflow names one of NovaFlow's own
     // builders and we run it here; a fixed task type uses a template file.
     const intent = task.workflow && task.workflow.module ? task.workflow : null;
@@ -549,6 +583,91 @@ export function createWorker(options) {
 
     state.stats.completed += 1;
     log('task completed', { taskId: task.id, outputs: outputs.length, ms: Date.now() - startedAt });
+    return result;
+  }
+
+  /**
+   * AI 抠图 - the only task type that never touches ComfyUI.
+   *
+   * It reuses every part of the pipeline that is not ComfyUI's: the same
+   * cancellation token, the same wait for the browser's upload, the same
+   * progress reports, the same completion POST. Only the middle step differs,
+   * and that step is BiRefNet driven by the same birefnet-runner.py the
+   * desktop app has shipped all along - so the mattes a Web user gets are
+   * produced by the identical model and transform as the desktop's.
+   */
+  async function runMattingTask(task) {
+    const startedAt = Date.now();
+    checkCancelled(task.id);
+    state.currentTaskId = task.id;
+    state.status = 'busy';
+    emit();
+
+    const parameters = task.parameters || {};
+    const taskDir = join(dataDir, 'tasks', task.id);
+    const outDir = join(taskDir, 'output');
+    await mkdir(outDir, { recursive: true });
+
+    const expectedRefs = Array.isArray(task.references) && task.references.length
+      ? task.references
+      : (Array.isArray(parameters.references) ? parameters.references : []);
+    if (!expectedRefs.length) throw new Error('抠图任务没有声明源视频');
+
+    await reportProgress(task.id, TASK_STATE.UPLOADING, 2, '等待浏览器上传源视频');
+    const names = await waitForInputs(task.id, expectedRefs);
+    checkCancelled(task.id);
+
+    const sourceName = names.find((n) => n === expectedRefs[0].name) || names[0];
+    if (!sourceName) throw new Error('源视频没有送达');
+
+    await reportProgress(task.id, TASK_STATE.PROCESSING, 8, '正在解码帧');
+    let progressReports = Promise.resolve();
+    const produced = await runMatting({
+      sourcePath: join(taskDir, 'input', sourceName),
+      framePacks: expectedRefs.map(ref => join(taskDir, 'input', ref.name)),
+      workDir: taskDir,
+      outDir,
+      parameters,
+      modelsRoot,
+      log,
+      onProgress: (percent, note) => {
+        progressReports = progressReports.then(() => reportProgress(task.id, TASK_STATE.PROCESSING, percent, note))
+          .catch(error => log('matting progress failed', { error: error.message }));
+      },
+      isCancelled: () => {
+        try { checkCancelled(task.id); return false; } catch (_) { return true; }
+      }
+    });
+    // Completion must not overtake the final progress request on a slow link.
+    await progressReports;
+
+    const outputs = [];
+    for (const name of produced) {
+      const info = await stat(join(outDir, name));
+      outputs.push({
+        name,
+        kind: /\.(mp4|webm)$/i.test(name) ? 'video' : 'mask',
+        bytes: info.size,
+        width: Number(parameters.width) || 0,
+        height: Number(parameters.height) || 0,
+        duration_seconds: 0
+      });
+    }
+
+    checkCancelled(task.id);
+    const result = await callControl('POST', '/api/worker/tasks/' + task.id + '/complete', {
+      token: state.workerToken,
+      body: {
+        // The control plane requires a prompt_id and there is no ComfyUI
+        // prompt behind this task, so it carries the job's own identity.
+        prompt_id: 'matting-' + task.id,
+        outputs,
+        execution: { elapsed_ms: Date.now() - startedAt, comfy_version: '', seed: null }
+      }
+    });
+
+    state.stats.completed += 1;
+    log('matting completed', { taskId: task.id, outputs: outputs.length, ms: Date.now() - startedAt });
     return result;
   }
 

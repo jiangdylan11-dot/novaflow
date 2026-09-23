@@ -16,8 +16,18 @@
     "!data/**/*"
   ],
   "extraResources": [
+    { "from": "src/matting", "to": "matting", "filter": ["*.py"] },
     { "from": "../web-dist", "to": "web-dist", "filter": ["**/*"] },
-    { "from": "../../particle-editor-desktop", "to": "desktop-license", "filter": ["license-core.js", "license-public-key.b64", "license/**/*.js"] },
+    {
+      "from": "../../particle-editor-desktop",
+      "to": "desktop-license",
+      "filter": [
+        "license-core.js",
+        "license-public-key.b64",
+        "license/**/*.js",
+        "main/birefnet-runner.py"
+      ]
+    },
     {
       "from": "../packages/shared/src",
       "to": "packages/shared/src",

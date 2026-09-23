@@ -281,13 +281,19 @@
   // whichever the scheduler picked - so there is nobody to send it to until
   // the task is assigned, and the grant that authorises the write is minted
   // against that worker.
-  async function waitForAssignment(taskId, { timeoutMs = 60000 } = {}) {
+  async function waitForAssignment(taskId, { timeoutMs = 60000, onWait } = {}) {
     const started = Date.now();
     for (;;) {
       const res = await control('GET', '/api/web/tasks/' + taskId);
       const task = res.task || {};
       tasks.set(taskId, task);
       if (task.assigned_worker_id) return task;
+      // A panel that shows progress needs to say something during this wait;
+      // 60s of a frozen bar reads as a hang. The callback is optional so the
+      // existing callers are unchanged.
+      if (typeof onWait === 'function') {
+        try { onWait(Math.round((Date.now() - started) / 1000)); } catch (_) { /* a listener must not break the wait */ }
+      }
       if (task.status === 'failed' || task.status === 'cancelled') {
         throw new Error('任务在上传参考图前就结束了：' + (task.error_message || task.status));
       }
@@ -318,6 +324,42 @@
       if (!res.ok) throw new Error(ref.name + ' 上传返回 ' + res.status);
       uploads.delete(ref.name);
     }
+  }
+
+  // The same three steps for bytes a panel never staged under a name.
+  //
+  // putReferences can only send what went through `uploads`, which is how the
+  // art panels work: they prepare a named image and submit later. The cutout
+  // shim holds one blob it made itself and has nowhere to stage it, so it
+  // needs wait-for-worker / mint-grant / PUT without the staging. Same wire
+  // format, same tunnel, same grant - only the source of the bytes differs.
+  async function putTaskInput(taskId, name, bytes, onWait) {
+    const task = await waitForAssignment(taskId, { onWait: onWait });
+    const grant = await grantFor(task, 'upload');
+    const base = String(grant.endpoint || '').replace(/\/+$/, '');
+    if (!base) throw new Error('算力节点没有可用地址');
+
+    const res = await fetch(
+      base + '/gw/tasks/' + taskId + '/input/' + encodeURIComponent(name),
+      {
+        method: 'PUT',
+        headers: { 'content-type': mimeFor(name), 'x-novaflow-grant': grant.token },
+        body: bytes
+      }
+    );
+    if (!res.ok) throw new Error(name + ' 上传返回 ' + res.status);
+    return task;
+  }
+
+  /** One finished output file, as raw bytes. The warehouse is the caller's business. */
+  async function fetchTaskOutput(task, filename) {
+    const grant = await grantFor(task, 'download');
+    const url = grant.endpoint.replace(/\/+$/, '') +
+      '/gw/tasks/' + task.id + '/output/' + encodeURIComponent(filename) +
+      '?grant=' + encodeURIComponent(grant.token);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('取回 ' + filename + ' 失败：' + res.status);
+    return new Uint8Array(await res.arrayBuffer());
   }
 
   // A file stored as octet-stream is fine for an <img>, which sniffs, and not
@@ -959,6 +1001,13 @@
     tasks: tasks,
     control: control,
     localControl,
+    // Exposed for capability shims that submit their own tasks rather than a
+    // recorded graph intent - novaflow-web-capabilities.js's AI 抠图 is the
+    // first. They are the module's own helpers, not a new protocol.
+    waitForAssignment,
+    grantFor,
+    putTaskInput,
+    fetchTaskOutput,
     get computeMode() { return computeMode; },
     auth: auth,
     fileUrl: (name) => electronAPI.runtimeFileUrl(name),

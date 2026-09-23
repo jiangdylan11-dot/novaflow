@@ -1,0 +1,48 @@
+<!doctype html><meta charset="utf-8"><title>视频抠图实际链路验收</title>
+<style>body{background:#202020;color:#eee;font:16px system-ui;margin:28px}button{padding:12px;margin:12px}video,canvas{width:360px;height:360px;object-fit:contain}canvas{background:repeating-conic-gradient(#777 0% 25%,#ddd 0% 50%) 0/24px 24px}pre{white-space:pre-wrap}</style>
+<h1>视频抠图实际链路验收</h1><p>真实网页接口 → 已授权本机助手 → BiRefNet → 遮罩回传 → 透明预览</p>
+<button id="run">运行 39 帧视频抠图</button><span id="status">等待开始</span><br>
+<video id="source" muted controls></video><canvas id="result"></canvas><pre id="report"></pre>
+<script>window.NOVAFLOW_WEB_CONFIG={localAssistant:true,localOrigin:location.origin};</script>
+<script src="/novaflow-web-runtime.js"></script><script src="/novaflow-web-capabilities.js"></script>
+<script>
+const source=document.querySelector('#source'), output=document.querySelector('#result'), status=document.querySelector('#status'), report=document.querySelector('#report');
+const seek=t=>new Promise(resolve=>{if(Math.abs(source.currentTime-t)<.00001){resolve();return;}source.addEventListener('seeked',resolve,{once:true});source.currentTime=t;});
+document.querySelector('#run').onclick=async()=>{
+  const button=document.querySelector('#run');button.disabled=true;
+  try {
+    const bytes=await (await fetch('/aifx-templates/slot-symbol-pop.mp4')).arrayBuffer();
+    source.src=URL.createObjectURL(new Blob([bytes],{type:'video/mp4'}));
+    await new Promise((resolve,reject)=>{source.onloadeddata=resolve;source.onerror=reject;});
+    const width=source.videoWidth,height=source.videoHeight,fps=24,count=39;
+    output.width=width;output.height=height;
+    const capture=document.createElement('canvas');capture.width=width;capture.height=height;
+    const ctx=capture.getContext('2d',{willReadFrequently:true}), frames=[];
+    for(let i=0;i<count;i++){
+      status.textContent='准备视频帧 '+(i+1)+'/'+count;
+      await seek(i/fps);ctx.drawImage(source,0,0);
+      const blob=await new Promise(resolve=>capture.toBlob(resolve,'image/png'));
+      frames.push({decodedFrameIndex:i,mediaTime:i/fps,timeSec:i/fps,bytes:new Uint8Array(await blob.arrayBuffer())});
+    }
+    status.textContent='正在提交至本机算力';
+    const chunks=[];
+    const off=electronAPI.onAiSeqRembgMaskChunk(c=>chunks.push(c));
+    electronAPI.onAiSeqRembgBatchProgress(e=>status.textContent=e.message);
+    const started=performance.now();
+    const reply=await electronAPI.aiSeqRembgBatch({jobId:'browser-live',kind:'video',fps,totalFrames:count,rendererFrameWidth:width,rendererFrameHeight:height,rendererDecodedFrames:frames,returnMaskOnly:true,video:{fileName:'slot-symbol-pop.mp4',sourceUrl:source.src}});
+    off();if(!reply.ok)throw Error(reply.error);
+    const stride=width*height;
+    if(reply.alphaBytes.length!==stride*count)throw Error('回传帧数/尺寸错误');
+    const samples=Array.from({length:count},(_,i)=>{const plane=reply.alphaBytes.subarray(i*stride,(i+1)*stride);let transparent=0,opaque=0;for(const a of plane){if(a<10)transparent++;if(a>245)opaque++;}return{frame:i,transparent,opaque};});
+    if(!samples.some(s=>s.transparent>stride*.05&&s.opaque>stride*.005))throw Error('遮罩没有有效前景/背景');
+    await seek(20/fps);ctx.drawImage(source,0,0);const image=ctx.getImageData(0,0,width,height);
+    for(let i=0;i<stride;i++)image.data[i*4+3]=reply.alphaBytes[20*stride+i];
+    output.getContext('2d').putImageData(image,0,0);
+    const canvasBlob=await new Promise(resolve=>output.toBlob(resolve,'image/png'));
+    const summary={ok:true,width,height,frames:reply.frames,maskBytes:reply.alphaBytes.length,previewChunks:chunks.length,seconds:Math.round((performance.now()-started)/1000),samples};
+    report.textContent=JSON.stringify(summary,null,2);status.textContent='成功：真实抠图与透明预览已完成';
+    const link=document.createElement('a');link.textContent='下载透明预览 PNG';link.href=URL.createObjectURL(canvasBlob);link.download='matting-live-preview.png';report.before(link);
+  }catch(error){status.textContent='失败：'+error.message;report.textContent=error.stack;}
+  finally{button.disabled=false;}
+};
+</script>

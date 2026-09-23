@@ -115,7 +115,15 @@ function extractFunction(source, name) {
  */
 function dedupe(body, name, previousText, owner, here) {
   const mine = extractDeclaration(body, name);
-  if (!mine || !previousText || mine.text !== previousText) {
+  // Compare the SOURCE, not its line endings. A Windows checkout with
+  // core.autocrlf on gives some of these files CRLF and others LF, which made
+  // two byte-for-byte identical helpers look like a genuine conflict and
+  // stopped the edge bundle from building at all. Normalising here keeps the
+  // check doing its real job - catching two different helpers that share a
+  // name - without failing on whitespace nobody chose.
+  const sameSource = mine && previousText &&
+    mine.text.replace(/\r\n/g, '\n') === previousText.replace(/\r\n/g, '\n');
+  if (!sameSource) {
     throw new Error(
       'name collision: ' + name + ' declared in both ' + owner + ' and ' + here +
       (mine && previousText ? ' with different values' : '')

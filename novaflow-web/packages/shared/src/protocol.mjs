@@ -131,10 +131,22 @@ export const TASK_TYPE_WORKFLOW = Object.freeze({
 // kept wired, and priced, for the provider-backed types that will use it.
 export const BILLING = Object.freeze({ SELF_HOSTED: 'self_hosted', PROVIDER: 'provider' });
 
+// 'video_matting' is deliberately absent from TASK_TYPE and
+// TASK_TYPE_WORKFLOW above. Membership there means "this type names a ComfyUI
+// graph file", which the worker's loadWorkflow() then insists on loading and
+// tests/e2e/protocol.test.mjs asserts exists. AI 抠图 runs BiRefNet in a
+// Python process and never opens ComfyUI at all, so it belongs only here -
+// isKnownTaskType() reads THIS table, which is what admits it to the queue.
+export const MATTING_TASK_TYPE = 'video_matting';
+
 export const TASK_TYPE_REQUIREMENTS = Object.freeze({
   [TASK_TYPE.QWEN_T2I]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '绘图', billing: BILLING.SELF_HOSTED },
   [TASK_TYPE.QWEN_EDIT]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '图生图', billing: BILLING.SELF_HOSTED },
-  [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列', billing: BILLING.SELF_HOSTED }
+  [TASK_TYPE.H3_I2V]: { modelId: 'minimax-h3', minVramMb: 15000, kind: 'video', label: 'AI序列', billing: BILLING.SELF_HOSTED },
+  // Matting is segmentation, not generation: BiRefNet runs at a fixed
+  // 1024x1024 whatever the clip is, so the VRAM floor is far below the
+  // generation types and a machine that cannot draw can still cut out.
+  [MATTING_TASK_TYPE]: { modelId: 'birefnet-matting', minVramMb: 4000, kind: 'video', label: '抠图', billing: BILLING.SELF_HOSTED }
 });
 
 /** Does this task type cost the user credits? */
