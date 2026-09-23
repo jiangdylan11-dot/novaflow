@@ -2696,6 +2696,13 @@
   const PRIMARY_INACTIVE_BACKGROUND = "var(--nf-rail-entry-bg, transparent)";
   // Near-black topbar, separated from the workspace by a hairline rule.
   const UI_TOPBAR_BACKGROUND = "#101113";
+  const UI_TOPBAR_BORDER_COLOR = "#303135";
+  const UI_TOPBAR_PAD_X = 20;
+  const UI_TOPBAR_LOGO_WIDTH = 167;
+  const UI_TOPBAR_LOGO_HEIGHT = 31;
+  const UI_TOPBAR_RIGHT_GAP = 18;
+  const UI_TOPBAR_STATUS_TEXT = "#979797";
+  const UI_TOPBAR_STATUS_DOT = "#a3a3a3";
   const UI_FIELD_BACKGROUND = "#222222";
   const UI_SELECT_BACKGROUND = "#222222";
   const UI_SELECT_HOVER_BACKGROUND = "#2a2a2a";
@@ -8315,12 +8322,36 @@
         height: ${TOPBAR_HEIGHT}px !important;
         min-height: ${TOPBAR_HEIGHT}px !important;
         max-height: ${TOPBAR_HEIGHT}px !important;
+        padding: 0 ${UI_TOPBAR_PAD_X}px !important;
+        border-bottom: 1px solid ${UI_TOPBAR_BORDER_COLOR} !important;
         box-sizing: border-box !important;
         z-index: ${TOPBAR_LAYER_Z_INDEX} !important;
         overflow: visible !important;
         background: ${UI_TOPBAR_BACKGROUND} !important;
         background-color: ${UI_TOPBAR_BACKGROUND} !important;
         background-image: none !important;
+      }
+      [data-novaflow-topbar-ai-runtime-state="1"] {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 7px !important;
+        font-size: 11px !important;
+        color: ${UI_TOPBAR_STATUS_TEXT} !important;
+      }
+      [data-novaflow-topbar-ai-runtime-state="1"]::before {
+        /* The reference marks the runtime state with a dot, not a word. */
+        content: "" !important;
+        width: 4px !important;
+        height: 4px !important;
+        border-radius: 50% !important;
+        background: ${UI_TOPBAR_STATUS_DOT} !important;
+        flex: 0 0 auto !important;
+      }
+      [data-novaflow-topbar-ai-runtime-connected="1"] [data-novaflow-topbar-ai-runtime-state="1"] {
+        color: #88c6b4 !important;
+      }
+      [data-novaflow-topbar-ai-runtime-connected="1"] [data-novaflow-topbar-ai-runtime-state="1"]::before {
+        background: #49c7a4 !important;
       }
       .nf-topbar .nf-topbar-left,
       .nf-topbar .nf-menubar,
@@ -20096,7 +20127,8 @@
     style.textContent = `
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] {
         gap: 6px !important;
-        padding-left: 12px !important;
+        /* The topbar's own 20 already sets the left margin. */
+        padding-left: 0 !important;
       }
       #${DROPDOWN_OVERLAY_ID} {
         position: fixed !important;
@@ -20535,10 +20567,11 @@
         background: var(--novaflow-ai-preview-color, #0b0b0b) !important;
       }
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] img[alt="logo"] {
-        width: 196px !important;
-        height: 37px !important;
+        width: ${UI_TOPBAR_LOGO_WIDTH}px !important;
+        height: ${UI_TOPBAR_LOGO_HEIGHT}px !important;
         object-fit: contain !important;
-        filter: drop-shadow(0 0 10px rgba(28, 148, 255, 0.18));
+        /* Flat: the reference has no glow on the mark. */
+        filter: none !important;
       }
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] span {
         display: none !important;
@@ -20552,7 +20585,7 @@
       #${PRIMARY_SIDEBAR_ID} {
         position: fixed !important;
         left: 0 !important;
-        top: 56px !important;
+        top: ${TOPBAR_HEIGHT}px !important;
         bottom: 0 !important;
         width: ${PRIMARY_COLUMN_WIDTH}px !important;
         background: ${LEFT_COLUMN_BACKGROUND_IMAGE} !important;
@@ -27713,6 +27746,8 @@
         height: ${TOPBAR_HEIGHT}px !important;
         min-height: ${TOPBAR_HEIGHT}px !important;
         max-height: ${TOPBAR_HEIGHT}px !important;
+        padding: 0 ${UI_TOPBAR_PAD_X}px !important;
+        border-bottom: 1px solid ${UI_TOPBAR_BORDER_COLOR} !important;
         box-sizing: border-box !important;
         z-index: ${TOPBAR_LAYER_Z_INDEX} !important;
         overflow: visible !important;
@@ -28127,6 +28162,7 @@
       host.setAttribute("data-novaflow-topbar-ai-runtime", "1");
       const state = document.createElement("span");
       state.setAttribute("data-novaflow-topbar-ai-runtime-state", "1");
+      state.setAttribute("data-novaflow-medium-weight", "0");
       state.textContent = "AI \u672a\u8fde\u63a5";
       const button = document.createElement("button");
       button.type = "button";
@@ -28146,16 +28182,16 @@
       display: "inline-flex",
       "align-items": "center",
       "justify-content": "center",
-      gap: "10px",
-      height: "30px",
-      "min-height": "30px",
-      "max-height": "30px",
+      gap: `${UI_TOPBAR_RIGHT_GAP}px`,
+      height: "28px",
+      "min-height": "28px",
+      "max-height": "28px",
       "margin-left": "auto",
-      "margin-right": "10px",
-      "font-size": "12px",
+      "margin-right": "0",
+      "font-size": "11px",
       "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
       "line-height": "1",
-      color: "rgba(255,255,255,0.70)",
+      color: UI_TOPBAR_STATUS_TEXT,
       "white-space": "nowrap",
       "pointer-events": "auto",
       "-webkit-app-region": "no-drag"

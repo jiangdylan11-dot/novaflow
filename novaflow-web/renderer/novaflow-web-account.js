@@ -224,11 +224,15 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       ? (who.user && (who.user.display_name || who.user.email) || '已登录')
       : '登录';
     if (btn.textContent !== label) btn.textContent = label;
+    // Signed in this is a quiet chip, exactly as the reference draws it;
+    // signed out it is the one action on the screen, so it keeps the green.
     const colour = who ? '#e5e7eb' : '#ffffff';
-    const background = who ? '#333333' : '#1ea672';
+    const background = who ? '#171717' : '#17a582';
+    const border = who ? '1px solid #333333' : '0';
     btn.style.setProperty('color', colour, 'important');
     btn.style.setProperty('background', background, 'important');
     btn.style.setProperty('background-color', background, 'important');
+    btn.style.setProperty('border', border, 'important');
   }
 
   function mount() {
@@ -242,10 +246,10 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     btn.textContent = '登录';
     btn.title = 'NovaFlow 账号';
     const styles = {
-      height: '30px', 'min-height': '30px', 'max-height': '30px',
-      padding: '0 12px', border: '0', 'border-radius': '8px',
-      background: '#1ea672', 'background-image': 'none',
-      color: '#ffffff', 'font-size': '12px', 'font-weight': '600',
+      height: '28px', 'min-height': '28px', 'max-height': '28px',
+      padding: '0 13px', border: '0', 'border-radius': '7px',
+      background: '#17a582', 'background-image': 'none',
+      color: '#ffffff', 'font-size': '12px', 'font-weight': '500',
       'line-height': '1', 'box-shadow': 'none', 'white-space': 'nowrap',
       cursor: 'pointer', '-webkit-app-region': 'no-drag'
     };
