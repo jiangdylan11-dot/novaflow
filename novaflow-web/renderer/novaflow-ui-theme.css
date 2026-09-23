@@ -670,26 +670,45 @@ html[data-novaflow-layout-tier="stack"] [data-novaflow-ai-connection-status] {
    3px box (accent-color; light scheme). The runtime had fifteen custom thumb
    and track skins; the :not(#id) lifts this over all of them. */
 html body input[type="range"]:not(#nf-native-range) {
-  -webkit-appearance: auto !important;
-  appearance: auto !important;
-  accent-color: #1bb28c !important;
-  color-scheme: light !important;
-  background: transparent !important;
-  background-image: none !important;
+  /* 2.0s No outline on any slider, anywhere (dialogs included): a flat 3px
+     track, its filled part green, a flat 13px green knob. The keyboard
+     focus ring (below) stays. */
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  background: linear-gradient(90deg, #1bb28c 0, #1bb28c var(--nf-range-pct, 0%), #3b3b3b var(--nf-range-pct, 0%), #3b3b3b 100%) !important;
   height: 3px !important;
   min-height: 3px !important;
   max-height: 3px !important;
   padding: 0 !important;
   border: 0 !important;
+  border-radius: 3px !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}
+html body input[type="range"]:not(#nf-native-range)::-webkit-slider-runnable-track {
+  -webkit-appearance: none !important;
+  height: 3px !important;
+  background: transparent !important;
+  border: 0 !important;
   box-shadow: none !important;
 }
 html body input[type="range"]:not(#nf-native-range)::-webkit-slider-thumb {
-  -webkit-appearance: auto !important;
-  appearance: auto !important;
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  width: 13px !important;
+  height: 13px !important;
+  margin-top: -5px !important;
+  border-radius: 50% !important;
+  background: #1bb28c !important;
+  border: 0 !important;
+  box-shadow: none !important;
 }
-html body input[type="range"]:not(#nf-native-range)::-webkit-slider-runnable-track {
-  -webkit-appearance: auto !important;
-  appearance: auto !important;
+html body input[type="range"]:not(#nf-native-range):disabled::-webkit-slider-thumb {
+  background: #5a5a5a !important;
+}
+html body input[type="range"]:not(#nf-native-range):focus-visible {
+  outline: 2px solid #1bb28c !important;
+  outline-offset: 4px !important;
 }
 html body input[type="checkbox"]:not(#nf-native-check) {
   accent-color: #1bb28c !important;
@@ -737,7 +756,7 @@ html[data-novaflow-transitions="off"] *::after {
    Fill and ink come from the sheet, keyed on the state the editor writes
    (aria-pressed, or its inline green), so a click still repaints them. :is(..., #nf-lift) gives the rules an
    id's weight over the runtime's long body-class selectors. */
-html body :is([data-novaflow-particle-chip="1"], #nf-lift) {
+html body :is([data-novaflow-particle-chip], #nf-lift) {
   background: #282828 !important;
   background-color: #282828 !important;
   color: #eaeaea !important;
@@ -749,14 +768,14 @@ html body :is([data-novaflow-particle-segment="1"], #nf-lift) > button {
   color: #eaeaea !important;
   border: 1px solid transparent !important;
 }
-html body :is([data-novaflow-particle-chip="1"], #nf-lift):hover:not([aria-pressed="true"]):not([style*="30, 166, 114"]),
+html body :is([data-novaflow-particle-chip], #nf-lift):hover:not([aria-pressed="true"]):not([style*="30, 166, 114"]),
 html body :is([data-novaflow-particle-segment="1"], #nf-lift) > button:hover:not([aria-pressed="true"]):not([style*="30, 166, 114"]) {
   background: #373737 !important;
   background-color: #373737 !important;
   color: #ffffff !important;
 }
-html body :is([data-novaflow-particle-chip="1"], #nf-lift)[aria-pressed="true"],
-html body :is([data-novaflow-particle-chip="1"], #nf-lift)[style*="30, 166, 114"],
+html body :is([data-novaflow-particle-chip], #nf-lift)[aria-pressed="true"],
+html body :is([data-novaflow-particle-chip], #nf-lift)[style*="30, 166, 114"],
 html body :is([data-novaflow-particle-segment="1"], #nf-lift) > button[aria-pressed="true"],
 html body :is([data-novaflow-particle-segment="1"], #nf-lift) > button[style*="30, 166, 114"] {
   background: #193d33 !important;
@@ -782,8 +801,61 @@ html body [data-novaflow-ai-state-toggle]::after {
 
 /* 2.0p The reference tile under the pointer, or while a file is dragged
    over it. */
-html body [data-novaflow-ai-reference-column="1"] > [data-nf-upload-dropzone="1"]:hover,
-html body [data-novaflow-ai-reference-column="1"] > [data-nf-upload-dropzone="1"][data-novaflow-ai-reference-hover="1"] {
+html body [data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"]:hover,
+html body [data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"][data-novaflow-ai-reference-hover="1"] {
   --nf-dz-bg: #262626;
   --nf-dz-bd: #1bb28c;
+}
+
+/* 2.0q 自动链条 / 实时预览's checkbox drawn as the 27x15 switch; the knob is
+   a gradient, so :checked alone moves it. */
+html body :is([data-novaflow-ribbon-chain-toggle-input], [data-novaflow-ribbon-preview-toggle-input], #nf-lift) {
+  background: radial-gradient(circle at 7.5px 50%, #cacaca 4.5px, transparent 5px), #3e3e3e !important;
+}
+html body :is([data-novaflow-ribbon-chain-toggle-input], [data-novaflow-ribbon-preview-toggle-input], #nf-lift):checked {
+  background: radial-gradient(circle at 19.5px 50%, #ffffff 4.5px, transparent 5px), #1bb28c !important;
+}
+html body :is([data-novaflow-ai-state-toggle], #nf-lift):focus:not(:focus-visible) {
+  outline: 0 !important;
+}
+
+/* 2.0r AI 特效's panel: a slider row gives the slider the room (the label
+   and value take what they need), and its buttons answer the pointer like
+   the rest of the app. */
+html body #novaflow-aifx-mvp .aifx-row:has(> .aifx-slider) {
+  display: flex !important;
+  align-items: center !important;
+  gap: 9px !important;
+}
+html body #novaflow-aifx-mvp .aifx-row:has(> .aifx-slider) > label {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+html body #novaflow-aifx-mvp .aifx-row > .aifx-slider {
+  flex: 1 1 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+html body #novaflow-aifx-mvp .aifx-row:has(> .aifx-slider) > .aifx-value {
+  flex: 0 0 auto !important;
+  min-width: 24px !important;
+  text-align: right !important;
+}
+html body #novaflow-aifx-mvp .aifx-button:not(.aifx-icon-button):not(:disabled):hover {
+  background: #373737 !important;
+  background-color: #373737 !important;
+  color: #ffffff !important;
+}
+html body #novaflow-aifx-mvp .aifx-primary:not(:disabled):hover {
+  background: #20b490 !important;
+  background-color: #20b490 !important;
+}
+html body #novaflow-aifx-mvp .aifx-section-header:hover {
+  background: #222222 !important;
+  background-color: #222222 !important;
+}
+html body #novaflow-aifx-mvp .aifx-section-header:hover {
+  --nf-card-header-bg: #222222;
 }

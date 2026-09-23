@@ -1245,7 +1245,7 @@
                   <div class="aifx-prompt-hint">选了风格＝加东西；取消风格＝这里就是材质，颜色也能写。<br>写「多出什么、变成什么」才生效（滴落融水 / 掉冰碴 / 碎片变金币 / 绕一圈星星）；只写「怎么动」（翻滚 / 吸回 / 拖影）不生效，运动跟着素材走。</div>
                 </div>
                 <div class="aifx-row" style="margin-top:12px">
-                  <label>候选数量</label>
+                  <label>数量</label>
                   <input class="aifx-slider" data-action="candidates" type="range" min="1" max="4" value="2">
                   <div class="aifx-value" data-candidates-value>2</div>
                 </div>

@@ -33471,25 +33471,26 @@
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-editor-panel="1"] [data-novaflow-toggle-card="1"]',
         style: {
+          // A card, as asked: kept on and off, the switch on its right edge.
           // Auto height: a switch that is on shows its own fields under it.
-          background: "transparent", "background-color": "transparent", border: "0", "border-radius": "7px",
-          height: "auto", "min-height": "31px", "max-height": "none", padding: "0", overflow: "visible", "box-shadow": "none"
+          background: "#272727", "background-color": "#272727", border: "1px solid transparent", "border-radius": "7px",
+          height: "auto", "min-height": "46px", "max-height": "none", padding: "0", overflow: "visible", "box-shadow": "none"
         }
       },
       {
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-editor-panel="1"] [data-novaflow-toggle-card-button="1"]',
         style: (node) => ({
-          height: "31px", "min-height": "31px", padding: "6px 9px 6px 24px", "justify-content": "flex-start", gap: "7px",
+          height: "44px", "min-height": "44px", padding: "0 12px", "justify-content": "space-between", gap: "7px",
           background: "transparent", "background-color": "transparent", border: "0", "box-shadow": "none",
-          "font-size": "11px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
-          color: node.getAttribute("data-novaflow-toggle-enabled") === "1" ? "#8ee0c5" : "#a9a9a9"
+          "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+          color: node.getAttribute("data-novaflow-toggle-enabled") === "1" ? "#8ee0c5" : "#eaeaea"
         })
       },
       {
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-editor-panel="1"] [data-novaflow-toggle-card-button="1"] > span:not([data-novaflow-toggle-switch])',
-        style: { color: "inherit", "font-size": "11px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT }
+        style: { color: "inherit", "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT }
       },
       {
         // The switch itself, wherever the runtime draws this switch.
@@ -33558,8 +33559,20 @@
           if (siblings.length < 2 || !siblings.every((child) => child.tagName === "BUTTON")) return null;
           const label = normalizeText(node.getAttribute("title") || node.textContent || "");
           if (!label || label.length > 6 || /^[+\-]$/.test(label)) return null;
-          nfSetAttrIfChanged(node, "data-novaflow-particle-chip", "1");
+          const iconChip = Boolean(node.querySelector("i, img, svg"));
+          nfSetAttrIfChanged(node, "data-novaflow-particle-chip", iconChip ? "icon" : "1");
           nfSetAttrIfChanged(parent, "data-novaflow-particle-chip-row", "1");
+          if (iconChip) {
+            // Shapes and sprite presets: the icon alone, every one 36x32;
+            // the name stays for screen readers and the tooltip.
+            if (!node.getAttribute("title")) nfSetAttrIfChanged(node, "title", label);
+            return {
+              width: "36px", "min-width": "36px", "max-width": "36px", height: "32px", "min-height": "32px", "max-height": "32px",
+              flex: "0 0 36px", padding: "0", "border-radius": "7px", display: "flex", "flex-direction": "row",
+              "align-items": "center", "justify-content": "center", gap: "0", "box-shadow": "none", "box-sizing": "border-box",
+              position: "relative", overflow: "hidden"
+            };
+          }
           return {
             height: "32px", "min-height": "32px", "max-height": "32px", width: "auto", "min-width": "0", "max-width": "none",
             flex: "0 0 auto", padding: "5px 10px", "border-radius": "7px", "flex-direction": "row", gap: "7px",
@@ -33574,13 +33587,20 @@
       },
       {
         when: "body.novaflow-primary-target-particle",
-        selector: '[data-novaflow-particle-chip="1"] > :not(:last-child)',
-        style: { display: "none" }
+        selector: '[data-novaflow-particle-chip="icon"] > :last-child:not(:first-child)',
+        style: { position: "absolute", width: "1px", height: "1px", overflow: "hidden", clip: "rect(0 0 0 0)", "clip-path": "inset(50%)", "white-space": "nowrap", margin: "-1px", padding: "0" }
       },
       {
         when: "body.novaflow-primary-target-particle",
-        selector: '[data-novaflow-particle-chip="1"] > :last-child',
-        style: { width: "auto", "max-width": "none", overflow: "visible", "text-overflow": "clip", "white-space": "nowrap", "font-size": "13px", "line-height": "20px", height: "auto" }
+        selector: '[data-novaflow-particle-chip="icon"] > :first-child',
+        style: (node) => (node.tagName === "IMG" || node.querySelector("img")
+          ? { width: "18px", height: "18px", "min-width": "18px", "min-height": "18px", margin: "0", display: "flex", "align-items": "center", "justify-content": "center" }
+          : { "font-size": "14px", width: "auto", height: "auto", margin: "0", "line-height": "1" })
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-particle-chip="icon"] > :first-child img',
+        style: { width: "18px", height: "18px", "object-fit": "contain" }
       },
       {
         // The sprite card: one column, like the reference's stacked fields -
@@ -33622,7 +33642,7 @@
         // Every slider: the native 3px track (theme sheet); some carried a
         // 26px box inline, which set the thumb off the track.
         selector: '.novaflow-app input[type="range"]',
-        style: { height: "3px", "min-height": "3px", "max-height": "3px", padding: "0", background: "transparent", "background-color": "transparent", "background-image": "none", "border-radius": "0" }
+        style: { height: "3px", "min-height": "3px", "max-height": "3px", padding: "0", border: "0", "box-shadow": "none", outline: "0" }
       },
       {
         // 视频处理's tools, off animation-spline.html: bare 184x32 rows, the
@@ -33634,7 +33654,7 @@
           if (node.hasAttribute("data-novaflow-ai-cutout-mode") || node.hasAttribute("data-novaflow-ai-chroma-close")) return null;
           nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", node.disabled ? "disabled" : "idle");
           return {
-            width: `${PRIMARY_LEFT_CARD_WIDTH - 14}px`, "min-width": "0", "max-width": "100%",
+            width: "100%", "min-width": "0", "max-width": "100%",
             height: "32px", "min-height": "32px", "max-height": "32px", padding: "6px 9px 6px 24px",
             display: "flex", "align-items": "center", "justify-content": "flex-start", "text-align": "left", gap: "7px",
             background: "var(--nf-cb-hover-bg, transparent)", "background-color": "var(--nf-cb-hover-bg, transparent)",
@@ -33688,18 +33708,23 @@
         // over 参考图, centred. Its fill and edge are vars, so it answers
         // the pointer.
         when: "body.novaflow-ai-animation-section-layers",
-        selector: '[data-novaflow-ai-reference-column="1"] > [data-nf-upload-dropzone="1"]',
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"]',
         style: (node) => (node.querySelector("img, video, canvas") ? null : {
           display: "flex", "flex-direction": "column", "align-items": "center", "justify-content": "center", gap: "2px",
           width: "87px", "min-width": "87px", "max-width": "87px", height: "59px", "min-height": "59px", "max-height": "59px",
           padding: "0", "box-sizing": "border-box", "border-radius": "8px",
           background: "var(--nf-dz-bg, #202020)", "background-color": "var(--nf-dz-bg, #202020)", "background-image": "none",
-          border: "1px dashed var(--nf-dz-bd, #4f4f4f)", color: "#adadad", "box-shadow": "none", cursor: "pointer"
+          // Longhands: a shorthand holding var() is left pending and never
+          // written, which is why the edge did not answer the pointer.
+          "border-width": "1px", "border-style": "dashed",
+          "border-top-color": "var(--nf-dz-bd, #4f4f4f)", "border-right-color": "var(--nf-dz-bd, #4f4f4f)",
+          "border-bottom-color": "var(--nf-dz-bd, #4f4f4f)", "border-left-color": "var(--nf-dz-bd, #4f4f4f)",
+          color: "#adadad", "box-shadow": "none", cursor: "pointer"
         })
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
-        selector: '[data-novaflow-ai-reference-column="1"] > [data-nf-upload-dropzone="1"] > div',
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"] > div',
         style: (node) => (node.parentElement.querySelector("img, video, canvas") ? null : {
           width: "auto", "max-width": "none", height: "auto", overflow: "visible", "text-overflow": "clip", "white-space": "nowrap",
           color: "#adadad", "font-size": normalizeText(node.textContent || "") === "+" ? "13px" : "11px", "line-height": "16px",
@@ -33752,7 +33777,7 @@
         // A loaded reference tile: the picture fills it, × sits small in its
         // corner, the size reads along its foot.
         when: "body.novaflow-ai-animation-section-layers",
-        selector: '[data-novaflow-ai-reference-column="1"] > [data-nf-upload-dropzone="1"]',
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"]',
         style: (node) => (node.querySelector("img, video, canvas") ? {
           position: "relative", width: "87px", "min-width": "87px", "max-width": "87px", height: "59px", "min-height": "59px", "max-height": "59px",
           padding: "0", overflow: "hidden", "border-radius": "8px", border: "1px solid #343434", background: "#202020", "background-color": "#202020"
@@ -33760,12 +33785,12 @@
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
-        selector: '[data-novaflow-ai-reference-column="1"] > [data-nf-upload-dropzone="1"] > img',
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"] > img',
         style: { position: "absolute", inset: "0", width: "100%", height: "100%", "min-width": "0", "min-height": "0", "max-width": "none", "max-height": "none", flex: "none", "object-fit": "contain", margin: "0", padding: "0", "border-radius": "0" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
-        selector: '[data-novaflow-ai-reference-column="1"] > [data-nf-upload-dropzone="1"] > button',
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"] > button',
         style: {
           position: "absolute", top: "3px", right: "3px", left: "auto", bottom: "auto", width: "18px", height: "18px", "min-width": "18px", "min-height": "18px",
           padding: "0", "border-radius": "5px", "font-size": "11px", "line-height": "18px", background: "rgba(0, 0, 0, 0.62)", "background-color": "rgba(0, 0, 0, 0.62)",
@@ -33774,12 +33799,72 @@
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
-        selector: '[data-novaflow-ai-reference-column="1"] > [data-nf-upload-dropzone="1"]:has(img) > div',
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"]:has(img) > div',
         style: {
           position: "absolute", left: "0", right: "0", bottom: "0", top: "auto", width: "auto", "max-width": "none", height: "16px",
           "font-size": "10px", "line-height": "16px", "text-align": "center", color: "#d6d6d6", background: "rgba(0, 0, 0, 0.55)",
           overflow: "hidden", "white-space": "nowrap", "text-overflow": "ellipsis", padding: "0 3px", margin: "0", "z-index": "1"
         }
+      },
+      {
+        // Every left card's header is 46 from its first frame; drawn 29 and
+        // corrected a pass later, a group jumped when opened (飘带计算).
+        selector: '[data-novaflow-editor-panel="1"] > .nf-panel-header',
+        style: { height: "46px", "min-height": "46px", "max-height": "46px", "box-sizing": "border-box" }
+      },
+      {
+        // 事件's row: the same 12 inset as the other switch cards, so the
+        // switches line up down the column.
+        selector: "[data-novaflow-ribbon-event-head]",
+        style: { padding: "0 12px", "justify-content": "space-between" }
+      },
+      {
+        // 自动链条 / 实时预览: the same card and 27x15 switch as the others.
+        selector: "[data-novaflow-ribbon-chain-toggle-card], [data-novaflow-ribbon-preview-toggle-card]",
+        style: (node) => (node.getBoundingClientRect().height > 0 || node.style.display !== "none" ? {
+          background: "#272727", "background-color": "#272727", border: "1px solid transparent", "border-radius": "7px",
+          "box-shadow": "none", "justify-content": "space-between", padding: "0 12px"
+        } : null)
+      },
+      {
+        selector: "[data-novaflow-ribbon-chain-toggle-input], [data-novaflow-ribbon-preview-toggle-input]",
+        style: (node) => {
+          if (node.style.display === "none") return null;
+          const card = node.closest("[data-novaflow-ribbon-chain-toggle-card], [data-novaflow-ribbon-preview-toggle-card]");
+          const on = card
+            ? (card.getAttribute("data-novaflow-ribbon-chain-enabled") || card.getAttribute("data-novaflow-ribbon-preview-enabled")) === "1"
+            : node.checked === true;
+          return {
+            "-webkit-appearance": "none", appearance: "none", width: "27px", "min-width": "27px", "max-width": "27px",
+            height: "15px", "min-height": "15px", "max-height": "15px", margin: "0", padding: "0", border: "0", "border-radius": "15px",
+            "box-shadow": "none", flex: "0 0 27px", cursor: "pointer",
+            background: on
+              ? "radial-gradient(circle at 19.5px 50%, #ffffff 4.5px, transparent 5px), #1bb28c"
+              : "radial-gradient(circle at 7.5px 50%, #cacaca 4.5px, transparent 5px), #3e3e3e"
+          };
+        }
+      },
+      {
+        // The AI switches (随机种子 and the dock's): one knob. The bundle
+        // draws its own, which follows the state; the runtime's second knob
+        // sat fixed on the right.
+        selector: "[data-novaflow-ai-state-toggle] > [data-novaflow-ai-state-toggle-knob]",
+        style: { display: "none" }
+      },
+      {
+        selector: "[data-novaflow-ai-state-toggle] > span:not([data-novaflow-ai-state-toggle-knob])",
+        style: (node) => {
+          const on = novaflowAiToggleOn(node.parentElement);
+          return {
+            position: "absolute", top: "3px", left: on ? "15px" : "3px", width: "9px", height: "9px", "min-width": "9px", "min-height": "9px",
+            "max-width": "9px", "max-height": "9px", transform: "none", "border-radius": "50%", margin: "0",
+            background: on ? "#ffffff" : "#cacaca", "background-color": on ? "#ffffff" : "#cacaca", "box-shadow": "none", display: "block"
+          };
+        }
+      },
+      {
+        selector: "[data-novaflow-ai-state-toggle]",
+        style: { outline: "0", border: "0", "box-shadow": "none" }
       },
       {
         // AI 序列动画's dock.
@@ -33866,7 +33951,7 @@
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-random-seed-field="1"]',
         style: (node) => {
-          const on = node.querySelector('[data-novaflow-ai-state-toggle]')?.getAttribute("aria-pressed") === "true";
+          const on = novaflowAiToggleOn(node.querySelector('[data-novaflow-ai-state-toggle]'));
           nfSetAttrIfChanged(node, "data-novaflow-toggle-on", on ? "1" : "0");
           return { gap: "7px", "margin-left": `${DOCK_ROW_GAP - DOCK_LABEL_GAP}px`, "align-items": "center", height: "28px" };
         }
@@ -33883,7 +33968,7 @@
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-random-seed-field="1"] [data-novaflow-ai-state-toggle]',
         style: (node) => {
-          const on = node.getAttribute("aria-pressed") === "true";
+          const on = novaflowAiToggleOn(node);
           return {
             width: "27px", "min-width": "27px", "max-width": "27px", height: "15px", "min-height": "15px", "max-height": "15px",
             padding: "0", border: "0", "border-radius": "15px", "box-shadow": "none",
@@ -33895,7 +33980,7 @@
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-random-seed-field="1"] [data-novaflow-ai-state-toggle-knob="1"]',
         style: (node) => {
-          const on = node.closest("[data-novaflow-ai-state-toggle]")?.getAttribute("aria-pressed") === "true";
+          const on = novaflowAiToggleOn(node.closest("[data-novaflow-ai-state-toggle]"));
           return {
             width: "9px", height: "9px", "min-width": "9px", "min-height": "9px", top: "3px", left: on ? "15px" : "3px",
             right: "auto", bottom: "auto", transform: "none", "border-radius": "50%",
@@ -34278,6 +34363,10 @@
     "data-active",
     "data-novaflow-tools-mode-active",
     "data-novaflow-ai-sequence-tool-active",
+    "data-novaflow-ai-state-toggle",
+    "data-novaflow-toggle-enabled",
+    "data-novaflow-ribbon-chain-enabled",
+    "data-novaflow-ribbon-preview-enabled",
     "data-novaflow-spine-split-tool-active"
   ]);
   let NOVAFLOW_SPEC_DESIRED = new WeakMap();
@@ -34530,6 +34619,43 @@
   }
 
   const NOVAFLOW_FIELD_FILL_SEEN = new WeakMap();
+
+  // An AI switch's state: its own on/off mark first (kept current by the
+  // runtime), aria-pressed only when there is none.
+  function novaflowAiToggleOn(toggle) {
+    if (!(toggle instanceof HTMLElement)) return false;
+    const state = toggle.getAttribute("data-novaflow-ai-state-toggle");
+    if (state === "on") return true;
+    if (state === "off") return false;
+    return toggle.getAttribute("aria-pressed") === "true";
+  }
+
+  // Every slider shows its filled part (theme sheet 2.0s draws it from this
+  // var); set on input, and looked over a few times a second for values a
+  // component changes without an event (playback).
+  function syncNovaflowRangeFill(input) {
+    if (!(input instanceof HTMLInputElement) || input.type !== "range") return;
+    const min = Number.parseFloat(input.min);
+    const max = Number.parseFloat(input.max);
+    const lo = Number.isFinite(min) ? min : 0;
+    const hi = Number.isFinite(max) ? max : 100;
+    const value = Number.parseFloat(input.value);
+    const pct = hi > lo && Number.isFinite(value) ? Math.min(100, Math.max(0, ((value - lo) / (hi - lo)) * 100)) : 0;
+    // Only a real change: other runtimes write this var in their own
+    // precision, and rewriting theirs would trade values with them.
+    const current = Number.parseFloat(input.style.getPropertyValue("--nf-range-pct"));
+    if (Number.isFinite(current) && Math.abs(current - pct) < 0.05) return;
+    input.style.setProperty("--nf-range-pct", `${pct.toFixed(2)}%`);
+  }
+
+  document.addEventListener("input", (event) => syncNovaflowRangeFill(event.target), true);
+  document.addEventListener("change", (event) => syncNovaflowRangeFill(event.target), true);
+  window.setInterval(() => {
+    if (document.hidden) return;
+    document.querySelectorAll('input[type="range"]').forEach((input) => {
+      if (input.offsetParent !== null || input.getClientRects().length) syncNovaflowRangeFill(input);
+    });
+  }, 250);
 
   function firstVisible(selector) {
     return Array.from(document.querySelectorAll(selector)).find((node) => {
