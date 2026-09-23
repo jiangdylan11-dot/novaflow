@@ -2854,6 +2854,14 @@
     return { background: `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`, color: `var(--nf-cb-hover-fg, ${UI_ICON_BUTTON_TEXT})`, border: "transparent", opacity: "1" };
   }
 
+  // 骨骼动画, measured off spine-spline.html: a dark 24px checker under the
+  // stage, a 52 play bar (30x30 button, native slider, plain time), and the
+  // project tree as 39-tall rows over #313131 rules.
+  const SKELETON_CHECKER_BASE = "#252525";
+  const SKELETON_CHECKER_SQUARE = "#2b2b2b";
+  const SKELETON_TREE_TEXT = "#ababab";
+  const SKELETON_TREE_RULE = "#313131";
+
   function novaflowLayoutTierForWidth(width) {
     const w = Number(width) || 0;
     if (w > 0 && w <= NOVAFLOW_LAYOUT_STACK_MAX) return "stack";
@@ -32851,6 +32859,100 @@
             "font-size": "11px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "box-shadow": "none", "box-sizing": "border-box"
           };
         }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-preview-stage="1"] > div:first-child',
+        style: (node) => (String(node.style.backgroundImage || getComputedStyle(node).backgroundImage).includes("conic-gradient")
+          ? {
+            "background-color": SKELETON_CHECKER_BASE,
+            "background-image": `conic-gradient(${SKELETON_CHECKER_SQUARE} 25%, transparent 0deg, transparent 50%, ${SKELETON_CHECKER_SQUARE} 0deg, ${SKELETON_CHECKER_SQUARE} 75%, transparent 0deg)`,
+            "background-size": "24px 24px",
+            "background-position": "0 0"
+          }
+          : null)
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-bottom-playbar="1"]',
+        style: { padding: "10px 12px", display: "flex", "flex-direction": "column", "justify-content": "center" }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-bottom-playbar-surface="1"]',
+        style: { padding: "0", background: "transparent", "background-color": "transparent", "border-radius": "0", height: "30px", "min-height": "30px" }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-bottom-playbar-surface="1"] > div',
+        style: { gap: "10px", height: "30px", "align-items": "center" }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-playback-button="1"]',
+        style: (node) => {
+          const playing = Boolean(node.querySelector(".fa-pause"));
+          nfSetAttrIfChanged(node, "data-novaflow-playback-icon", playing ? "pause" : "play");
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle");
+          return {
+            width: `${PLAYBACK_BUTTON_SIZE}px`, "min-width": `${PLAYBACK_BUTTON_SIZE}px`, "max-width": `${PLAYBACK_BUTTON_SIZE}px`,
+            height: `${PLAYBACK_BUTTON_SIZE}px`, "min-height": `${PLAYBACK_BUTTON_SIZE}px`, "max-height": `${PLAYBACK_BUTTON_SIZE}px`,
+            padding: "6px", border: "1px solid transparent", "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            background: `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`, "background-color": `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`,
+            color: `var(--nf-cb-hover-fg, ${UI_ICON_BUTTON_TEXT})`, "box-shadow": "none", display: "inline-flex",
+            "align-items": "center", "justify-content": "center", "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-playback-button="1"] > i',
+        style: { display: "none" }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-timeline-time="1"]',
+        style: {
+          background: "transparent", "background-color": "transparent", padding: "0", height: "auto", "min-height": "0",
+          width: "auto", "min-width": "0", "font-size": "11px", color: PLAYBACK_FRAME_TEXT, border: "0", "box-shadow": "none"
+        }
+      },
+      {
+        // The project tree: 12 in, rows of 39 over a #313131 rule, the count
+        // at the right.
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-sidebar-body="1"]',
+        style: { padding: "12px", gap: "0" }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-bones-hierarchy="1"], [data-novaflow-bones-hierarchy="1"] > div:nth-child(2)',
+        style: { gap: "0", "row-gap": "0", padding: "0" }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-bones-hierarchy="1"] > [data-novaflow-skeleton-sidebar-title="1"], [data-novaflow-bones-hierarchy="1"] > div:nth-child(2) > div',
+        style: (node) => {
+          const child = node.parentElement && !node.hasAttribute("data-novaflow-skeleton-sidebar-title") && node.previousElementSibling;
+          return {
+            height: "39px", "min-height": "39px", padding: child ? "10px 0 10px 16px" : "10px 0", margin: "0",
+            display: "flex", "align-items": "center", gap: "6px", "box-sizing": "border-box",
+            border: "0", "border-bottom": `1px solid ${SKELETON_TREE_RULE}`, "border-radius": "0",
+            "font-size": "12px", color: SKELETON_TREE_TEXT, background: "transparent", "background-color": "transparent"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-bones-hierarchy="1"] > div:nth-child(2) > div > span',
+        style: (node) => (node.previousElementSibling && node.previousElementSibling.tagName === "SPAN"
+          ? { "margin-left": "auto", "font-size": "12px", color: SKELETON_TREE_TEXT }
+          : { "font-size": "12px", color: SKELETON_TREE_TEXT })
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-bones-hierarchy="1"] > div:nth-child(2) > div > i',
+        style: { color: SKELETON_TREE_TEXT }
       },
       {
         // AI 序列动画's dock.
