@@ -32683,8 +32683,9 @@
             position: "relative", "text-align": "left", "justify-content": "flex-start", overflow: "visible",
             border: active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "1px solid transparent",
             "border-radius": NOVAFLOW_RECT_RADIUS_PX,
-            // 54 a row: more room between the tools, as asked.
-            height: "54px", "min-height": "54px", "max-height": "54px", "box-shadow": "none", "margin-top": "0", "margin-bottom": "0"
+            // A 40 block in a 54 pitch: the fill (hover, selected) stays
+            // clear of the lines between the tools.
+            height: "40px", "min-height": "40px", "max-height": "40px", "box-shadow": "none", "margin-top": "7px", "margin-bottom": "7px"
           };
           return {
             width: `${PRIMARY_LEFT_CARD_WIDTH}px`,
@@ -33533,7 +33534,7 @@
           return {
             position: "absolute", top: "3px", left: on ? "15px" : "3px", width: "9px", height: "9px", "min-width": "9px", "min-height": "9px",
             transform: "none", "border-radius": "50%", background: on ? "#ffffff" : "#cacaca", "background-color": on ? "#ffffff" : "#cacaca",
-            "box-shadow": "none", margin: "0"
+            "box-shadow": "none", margin: "0", display: "block", visibility: "visible", opacity: "1"
           };
         }
       },
@@ -33585,9 +33586,10 @@
             // Shapes and sprite presets: the icon alone, every one 36x32;
             // the name stays for screen readers and the tooltip.
             if (!node.getAttribute("title")) nfSetAttrIfChanged(node, "title", label);
+            nfSetAttrIfChanged(parent, "data-novaflow-particle-chip-row", "icon");
             return {
-              width: "36px", "min-width": "36px", "max-width": "36px", height: "32px", "min-height": "32px", "max-height": "32px",
-              flex: "0 0 36px", padding: "0", "border-radius": "7px", display: "flex", "flex-direction": "row",
+              width: "32px", "min-width": "32px", "max-width": "32px", height: "30px", "min-height": "30px", "max-height": "30px",
+              flex: "0 0 32px", padding: "0", "border-radius": "7px", display: "flex", "flex-direction": "row",
               "align-items": "center", "justify-content": "center", gap: "0", "box-shadow": "none", "box-sizing": "border-box",
               position: "relative", overflow: "hidden"
             };
@@ -33601,8 +33603,8 @@
       },
       {
         when: "body.novaflow-primary-target-particle",
-        selector: '[data-novaflow-particle-chip-row="1"]',
-        style: { display: "flex", "flex-wrap": "wrap", gap: "8px", height: "auto", "min-height": "0", "max-height": "none" }
+        selector: "[data-novaflow-particle-chip-row]",
+        style: (node) => ({ display: "flex", "flex-wrap": "wrap", gap: node.getAttribute("data-novaflow-particle-chip-row") === "icon" ? "6px" : "8px", height: "auto", "min-height": "0", "max-height": "none" })
       },
       {
         when: "body.novaflow-primary-target-particle",
@@ -33693,7 +33695,7 @@
         when: "body.novaflow-primary-target-particle",
         selector: "[data-novaflow-sprite-editor-lifecycle-stop-row]",
         style: (node) => ({
-          "grid-template-columns": node.children.length >= 4 ? "44px 20px minmax(0, 1fr) auto" : "44px 20px minmax(0, 1fr)",
+          "grid-template-columns": node.children.length >= 4 ? "42px 20px minmax(0, 1fr) 22px" : "42px 20px minmax(0, 1fr)",
           "column-gap": "6px", width: "100%", "min-width": "0", "max-width": "100%"
         })
       },
@@ -33937,6 +33939,54 @@
         when: "body.novaflow-primary-target-tools",
         selector: "[data-novaflow-pair-switch-card] > :first-child",
         style: { flex: "1 1 auto", "min-width": "0", "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, color: "inherit", "line-height": "18px", margin: "0" }
+      },
+      {
+        // 美工's groups keep their 3 above and below after being opened and
+        // closed (the split runtime cleared it, and the rows closed up).
+        when: "body.novaflow-primary-target-art",
+        selector: "[data-novaflow-spine-split-control-category]",
+        style: { "padding-top": "3px", "padding-bottom": "3px", "margin-top": "0", "margin-bottom": "0" }
+      },
+      {
+        // 预设名称 + 保存: one height (32), 8 apart, 保存 no bigger than it needs.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-editor-panel="1"] button',
+        style: (node) => {
+          if (normalizeText(node.textContent || "") !== "\u4fdd\u5b58") return null;
+          const field = node.previousElementSibling;
+          if (!(field instanceof HTMLInputElement)) return null;
+          nfSetAttrIfChanged(node.parentElement, "data-novaflow-preset-save-row", "1");
+          return {
+            height: "32px", "min-height": "32px", "max-height": "32px", width: "auto", "min-width": "0", "max-width": "none",
+            padding: "0 12px", "font-size": "12px", "line-height": "30px", "border-radius": NOVAFLOW_RECT_RADIUS_PX, flex: "0 0 auto", margin: "0"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-preset-save-row] > input",
+        style: { height: "32px", "min-height": "32px", "max-height": "32px", flex: "1 1 auto", "min-width": "0", width: "auto", margin: "0", "box-sizing": "border-box" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-preset-save-row]",
+        style: { display: "flex", "align-items": "center", gap: "8px", "column-gap": "8px", "grid-template-columns": "none", width: "100%", "max-width": "100%" }
+      },
+      {
+        // The hex field reads whole (#ffd166) in the row's width.
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-sprite-editor-lifecycle-stop-row] input:not([type=\"color\"])",
+        style: { padding: "0 6px", "font-size": "11px", "min-width": "0", width: "100%", "box-sizing": "border-box" }
+      },
+      {
+        // A colour stop's 删除 is a white ×.
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-sprite-editor-lifecycle-stop-delete]",
+        style: {
+          width: "22px", "min-width": "22px", "max-width": "22px", height: "22px", "min-height": "22px", "max-height": "22px",
+          padding: "0", border: "0", background: "transparent", "background-color": "transparent", "font-size": "0", color: "#ffffff",
+          display: "flex", "align-items": "center", "justify-content": "center", "border-radius": "5px", position: "relative"
+        }
       },
       {
         // AI 序列动画's dock.
@@ -55335,7 +55385,7 @@
           const shellLeft = PRIMARY_CONTENT_LEFT;
           const shellWidth = PRIMARY_VISIBLE_CONTENT_WIDTH;
           const shellTop = desiredContentTop;
-          const shellBottom = contentBottomOffset > 0 ? contentBottomOffset : -PRIMARY_CONTENT_OUTER_GAP;
+          const shellBottom = contentBottomOffset > 0 ? contentBottomOffset : PRIMARY_PANEL_BOTTOM_GAP + 11; // inside the panel's rounded foot
           nfSetAttrIfChanged(shell, "data-novaflow-left-content-shell", "1");
           shell.removeAttribute("data-novaflow-left-content-clamped");
           nfSetStyleIfChanged(shell, "--novaflow-left-shell-left", `${shellLeft}px`);
@@ -55469,7 +55519,7 @@
       ? root.parentElement
       : root.closest('[data-novaflow-left-content-shell="1"]');
     if (shell instanceof HTMLElement) {
-      const shellBottom = contentBottomOffset > 0 ? contentBottomOffset : -PRIMARY_CONTENT_OUTER_GAP;
+      const shellBottom = contentBottomOffset > 0 ? contentBottomOffset : PRIMARY_PANEL_BOTTOM_GAP + 11; // inside the panel's rounded foot
       shell.style.setProperty("--novaflow-left-shell-bottom", `${shellBottom}px`);
       shell.style.setProperty("bottom", `${shellBottom}px`, "important");
     }

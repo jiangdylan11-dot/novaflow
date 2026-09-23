@@ -869,7 +869,7 @@ html body [data-novaflow-tools-entry]:not([data-novaflow-tools-entry-active="1"]
   top: auto !important;
   left: 0 !important;
   right: 0 !important;
-  bottom: -1px !important;
+  bottom: -8px !important;
   width: auto !important;
   height: 1px !important;
   opacity: 1 !important;
@@ -901,4 +901,16 @@ html body [data-novaflow-pair-switch="on"]::after {
 html body [data-novaflow-pair-switch]:has(> button:focus-visible) {
   outline: 2px solid #1bb28c !important;
   outline-offset: 3px !important;
+}
+
+/* 2.0w A colour stop's delete: a white ×, lit on hover. */
+html body [data-novaflow-sprite-editor-lifecycle-stop-delete]::before {
+  content: "\00d7" !important;
+  font-size: 16px !important;
+  line-height: 1 !important;
+  color: #ffffff !important;
+}
+html body [data-novaflow-sprite-editor-lifecycle-stop-delete]:hover {
+  background: #373737 !important;
+  background-color: #373737 !important;
 }
