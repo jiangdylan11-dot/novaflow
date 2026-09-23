@@ -32668,6 +32668,16 @@
           // Idle entries take the canvas bar's hover (#373737, white), as the
           // reference's tool list does.
           nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : "idle");
+          // Rows with a #272727 line under each, as asked (no icons).
+          const iconRow = {
+            position: "relative", "text-align": "left", "justify-content": "flex-start",
+            "border-bottom": active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "1px solid #272727",
+            "border-top": active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "0",
+            "border-left": active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "0",
+            "border-right": active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "0",
+            "border-radius": active ? NOVAFLOW_RECT_RADIUS_PX : "0",
+            height: "46px", "min-height": "46px", "max-height": "46px", "box-shadow": "none", "margin-top": "0", "margin-bottom": "0"
+          };
           return {
             width: `${PRIMARY_LEFT_CARD_WIDTH}px`,
             "min-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
@@ -32686,7 +32696,8 @@
             "box-shadow": active ? `inset 0 0 0 1px ${UI_RAIL_SELECTED_BORDER}` : "none",
             color: active ? NOVAFLOW_TOOLS_ENTRY_SELECTED_TEXT : `var(--nf-cb-hover-fg, ${UI_SEGMENT_IDLE_TEXT})`,
             "font-size": "12px",
-            "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT
+            "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+            ...iconRow
           };
         }
       },
@@ -33865,6 +33876,12 @@
       {
         selector: "[data-novaflow-ai-state-toggle]",
         style: { outline: "0", border: "0", "box-shadow": "none" }
+      },
+      {
+        // The tool rows sit edge to edge, their lines between them.
+        when: "body.novaflow-primary-target-tools",
+        selector: ":has(> [data-novaflow-tools-entry])",
+        style: { gap: "0", "row-gap": "0" }
       },
       {
         // AI 序列动画's dock.
