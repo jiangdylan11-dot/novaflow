@@ -2518,12 +2518,19 @@
   const NOVAFLOW_TOOLS_PRIMARY_COLUMN_WIDTH = PRIMARY_COLUMN_WIDTH;
   const NOVAFLOW_TOOLS_WORKSPACE_PADDING_LEFT = 12;
   const NOVAFLOW_TOOLS_WORKSPACE_BACKGROUND = "#242424";
-  const AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH = 260;
+  const AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH = 206;
+  const AI_ANIMATION_RESOURCE_SIDEBAR_INSET = WORKSPACE_SIDE_GAP;
+  const AI_ANIMATION_RESOURCE_SIDEBAR_SPAN = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + AI_ANIMATION_RESOURCE_SIDEBAR_INSET;
   const AI_ANIMATION_PREVIEW_UI_GAP = 10;
   const AI_ANIMATION_RESOURCE_SIDEBAR_GAP = AI_ANIMATION_PREVIEW_UI_GAP;
-  const AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT = 232;
+  const AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT = 206;
   const AI_ANIMATION_GENERATION_INNER_GAP = 8;
-  const AI_ANIMATION_PANEL_TIMELINE_GAP = 8;
+  // The reference stacks a 206-tall generation dock and a 97-tall playback
+  // bar 9 apart, both on the panel surface with their own edge.
+  const AI_ANIMATION_PANEL_TIMELINE_GAP = 9;
+  const AI_ANIMATION_STACK_SURFACE = "#161616";
+  const AI_ANIMATION_TIMELINE_BORDER_COLOR = "#343434";
+  const AI_ANIMATION_TIMELINE_RADIUS = 10;
   const AI_ANIMATION_REFERENCE_UPLOAD_WIDTH = 132;
   const AI_ANIMATION_REFERENCE_UPLOAD_GAP = 10;
   const AI_ANIMATION_SOURCE_OWNED_SETTINGS_MIN_WIDTH = 260;
@@ -5082,7 +5089,7 @@
         nfSetAttrIfChanged(node, "data-novaflow-zoom-controls", "1");
         if (isSourceOwnedLayout(node) || isInsideSourceOwnedLayout(node)) {
           nfSetStyleIfChanged(node, "top", `${AI_ANIMATION_PREVIEW_UI_GAP}px`, "important");
-          nfSetStyleIfChanged(node, "right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
+          nfSetStyleIfChanged(node, "right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
         }
         styleAutoFitOnlyControl(node);
       });
@@ -5102,7 +5109,7 @@
         setAttributeIfChanged(node, "data-novaflow-zoom-controls", "1");
         if (isSourceOwnedLayout(node) || isInsideSourceOwnedLayout(node)) {
           nfSetStyleIfChanged(node, "top", `${AI_ANIMATION_PREVIEW_UI_GAP}px`, "important");
-          nfSetStyleIfChanged(node, "right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
+          nfSetStyleIfChanged(node, "right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
           styleAutoFitOnlyControl(node);
           return;
         }
@@ -9529,13 +9536,17 @@
   installPreBrandSidebarMount();
 
   function applyAiAnimationResourceSidebarStyles(host, panel) {
+    nfSetAttrIfChanged(host, "data-novaflow-keep-radius", "1");
     setImportantStyles(host, {
       position: "fixed",
-      top: "56px",
-      right: "0",
-      bottom: "0",
+      top: `${TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP}px`,
+      right: `${AI_ANIMATION_RESOURCE_SIDEBAR_INSET}px`,
+      bottom: `${PRIMARY_PANEL_BOTTOM_GAP}px`,
       left: "auto",
-      width: `var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px)`,
+      // The literal width, not the var: the var is the span to the window
+      // edge, and feeding it back in here would make the panel creep wider
+      // every time the geometry is re-measured.
+      width: `${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px`,
       height: "auto",
       "min-height": "0",
       "max-height": "none",
@@ -9544,10 +9555,10 @@
       "flex-direction": "column",
       padding: "0",
       margin: "0",
-      background: LEFT_PANEL_BACKGROUND,
-      "background-color": LEFT_PANEL_BACKGROUND,
-      border: "0",
-      "border-radius": "0",
+      background: PRIMARY_PANEL_SURFACE,
+      "background-color": PRIMARY_PANEL_SURFACE,
+      border: `1px solid ${PRIMARY_PANEL_BORDER_COLOR}`,
+      "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`,
       "box-shadow": "none",
       overflow: "hidden",
       "box-sizing": "border-box",
@@ -9565,8 +9576,8 @@
       gap: "5px",
       "row-gap": "5px",
       "column-gap": "0",
-      background: LEFT_PANEL_BACKGROUND,
-      "background-color": LEFT_PANEL_BACKGROUND,
+      background: "transparent",
+      "background-color": "transparent",
       border: "0",
       "border-left": "0",
       "border-radius": "0",
@@ -9757,10 +9768,10 @@
   function applyAiAnimationBottomWorkspaceStyles(bottomWorkspace) {
     setImportantStyles(bottomWorkspace, {
       position: "fixed",
-      left: `calc(var(--novaflow-ai-preview-left, ${PRIMARY_COLUMN_WIDTH}px) + ${AI_ANIMATION_PREVIEW_UI_GAP}px)`,
-      right: `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`,
+      left: `var(--novaflow-ai-preview-left, ${PRIMARY_COLUMN_WIDTH}px)`,
+      right: `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`,
       top: "auto",
-      bottom: `${AI_ANIMATION_PREVIEW_UI_GAP}px`,
+      bottom: `${PRIMARY_PANEL_BOTTOM_GAP}px`,
       width: "auto",
       "max-width": "none",
       "min-width": "0",
@@ -9785,6 +9796,7 @@
     const children = Array.from(bottomWorkspace.children).filter((child) => child instanceof HTMLElement);
     children.forEach((child, index) => {
       const isTimeline = index === children.length - 1;
+      nfSetAttrIfChanged(child, "data-novaflow-keep-radius", "1");
       setImportantStyles(child, {
         position: "relative",
         left: "auto",
@@ -9802,14 +9814,14 @@
         "min-height": isTimeline ? "0" : `${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px`,
         "box-sizing": "border-box",
         margin: "0",
-        background: isTimeline ? "rgba(24, 24, 24, 0.96)" : "#181818",
-        "background-color": isTimeline ? "rgba(24, 24, 24, 0.96)" : "#181818",
+        background: AI_ANIMATION_STACK_SURFACE,
+        "background-color": AI_ANIMATION_STACK_SURFACE,
         "background-image": "none",
-        border: "0",
+        border: `1px solid ${isTimeline ? AI_ANIMATION_TIMELINE_BORDER_COLOR : DOCK_BORDER_COLOR}`,
         outline: "0",
-        "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+        "border-radius": `${isTimeline ? AI_ANIMATION_TIMELINE_RADIUS : PRIMARY_RAIL_PANEL_RADIUS}px`,
         "box-shadow": "none",
-        padding: "10px 16px",
+        padding: isTimeline ? "11px 13px" : "14px 15px",
         overflow: isTimeline ? "hidden" : "visible",
         flex: isTimeline ? "0 0 auto" : "0 0 auto"
       });
@@ -9823,9 +9835,9 @@
     if (!(bottomWorkspace instanceof HTMLElement)) return;
     const children = Array.from(bottomWorkspace.children).filter((child) => child instanceof HTMLElement);
     children.forEach((child) => {
+      const isTimeline = child === children[children.length - 1];
       setImportantStyles(child, {
-        border: "0",
-        "border-color": "transparent",
+        border: `1px solid ${isTimeline ? AI_ANIMATION_TIMELINE_BORDER_COLOR : DOCK_BORDER_COLOR}`,
         outline: "0",
         "outline-color": "transparent",
         "box-shadow": "none"
@@ -12918,7 +12930,7 @@
     if (isSourceOwnedLayout(controls) || isInsideSourceOwnedLayout(controls)) return;
     setImportantStyles(controls, {
       position: "absolute",
-      right: `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`,
+      right: `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`,
       top: `${AI_ANIMATION_PREVIEW_UI_GAP}px`,
       width: "auto",
       "min-width": "0",
@@ -20897,7 +20909,7 @@
         right: 0 !important;
         bottom: 0 !important;
         left: auto !important;
-        width: var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) !important;
+        width: var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) !important;
         min-height: 0 !important;
         display: flex !important;
         flex-direction: column !important;
@@ -20929,8 +20941,8 @@
       body.novaflow-primary-target-animation:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-bottom-workspace="1"],
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-bottom-workspace="1"] {
         position: fixed !important;
-        left: calc(var(--novaflow-ai-preview-left, ${PRIMARY_COLUMN_WIDTH}px) + ${AI_ANIMATION_PREVIEW_UI_GAP}px) !important;
-        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
+        left: var(--novaflow-ai-preview-left, ${PRIMARY_COLUMN_WIDTH}px) !important;
+        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
         top: auto !important;
         bottom: ${AI_ANIMATION_PREVIEW_UI_GAP}px !important;
         width: auto !important;
@@ -20947,7 +20959,7 @@
       body.novaflow-primary-target-animation:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-zoom-controls="1"]:not([data-novaflow-source-layout="1"]),
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-zoom-controls="1"]:not([data-novaflow-source-layout="1"]),
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-zoom-controls="1"]:not([data-novaflow-source-layout="1"]) {
-        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
+        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
       }
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-entry-fit-guard="1"],
       body.novaflow-ai-animation-entry-fit-active [data-novaflow-ai-entry-fit-guard="1"] {
@@ -22478,7 +22490,7 @@
         pointer-events: none !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-main-workspace="1"] {
-        --novaflow-ai-resource-sidebar-width: ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px;
+        --novaflow-ai-resource-sidebar-width: ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px;
         --novaflow-ai-resource-sidebar-gap: ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px;
         position: relative !important;
         isolation: isolate !important;
@@ -22507,8 +22519,8 @@
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] {
         position: fixed !important;
-        left: calc(var(--novaflow-ai-preview-left, ${PRIMARY_COLUMN_WIDTH}px) + ${AI_ANIMATION_PREVIEW_UI_GAP}px) !important;
-        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
+        left: var(--novaflow-ai-preview-left, ${PRIMARY_COLUMN_WIDTH}px) !important;
+        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
         top: auto !important;
         bottom: ${AI_ANIMATION_PREVIEW_UI_GAP}px !important;
         width: auto !important;
@@ -22708,11 +22720,19 @@
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] > * {
         min-height: 0 !important;
-        background: #181818 !important;
-        background-color: #181818 !important;
+        background: ${AI_ANIMATION_STACK_SURFACE} !important;
+        background-color: ${AI_ANIMATION_STACK_SURFACE} !important;
         background-image: none !important;
-        border-color: rgba(255, 255, 255, 0.10) !important;
+        border: 1px solid ${DOCK_BORDER_COLOR} !important;
+        border-radius: ${PRIMARY_RAIL_PANEL_RADIUS}px !important;
+        padding: 14px 15px !important;
+        box-sizing: border-box !important;
         overflow: visible !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] > *:last-child {
+        border-color: ${AI_ANIMATION_TIMELINE_BORDER_COLOR} !important;
+        border-radius: ${AI_ANIMATION_TIMELINE_RADIUS}px !important;
+        padding: 11px 13px !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] > *:first-child {
         flex: 0 0 auto !important;
@@ -23111,7 +23131,7 @@
         right: 0 !important;
         bottom: 0 !important;
         left: auto !important;
-        width: var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) !important;
+        width: var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) !important;
         height: auto !important;
         min-height: 0 !important;
         max-height: none !important;
@@ -23256,7 +23276,7 @@
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-zoom-controls="1"]:not([data-novaflow-source-layout="1"]),
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-zoom-controls="1"]:not([data-novaflow-source-layout="1"]) {
-        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
+        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-zoom-controls="1"]:not([data-novaflow-source-layout="1"]) {
         position: absolute !important;
@@ -27802,6 +27822,10 @@
       .novaflow-app [data-novaflow-ai-resource-action="1"],
       .novaflow-app [data-preview-ui="1"] {
         border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-bottom-workspace="1"] {
+        gap: ${AI_ANIMATION_PANEL_TIMELINE_GAP}px !important;
+        row-gap: ${AI_ANIMATION_PANEL_TIMELINE_GAP}px !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app select {
         padding-right: 26px !important;
@@ -32480,14 +32504,14 @@
     if (syncAiAnimationPreviewRealGeometryVars({ allowCached: true })) return;
     const previewLeft = PRIMARY_COLUMN_WIDTH;
     const previewTop = getTopbarBottom();
-    const previewRight = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH;
+    const previewRight = AI_ANIMATION_RESOURCE_SIDEBAR_SPAN;
     const previewRightEdge = Math.max(previewLeft + 240, (window.innerWidth || 1280) - previewRight);
     const previewCenterX = Math.round((previewLeft + previewRightEdge) / 2);
     setStylePropertyIfChanged(document.body, "--novaflow-ai-preview-left", `${previewLeft}px`);
     setStylePropertyIfChanged(document.body, "--novaflow-ai-preview-top", `${previewTop}px`);
     setStylePropertyIfChanged(document.body, "--novaflow-ai-preview-right", `${previewRight}px`);
     setStylePropertyIfChanged(document.body, "--novaflow-ai-preview-center-x", `${previewCenterX}px`);
-    setStylePropertyIfChanged(document.body, "--novaflow-ai-resource-sidebar-width", `${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px`);
+    setStylePropertyIfChanged(document.body, "--novaflow-ai-resource-sidebar-width", `${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px`);
     setStylePropertyIfChanged(document.body, "--novaflow-ai-resource-sidebar-gap", `${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px`);
   }
 
@@ -32518,7 +32542,7 @@
     const currentValue = document.body.style.getPropertyValue(name).trim();
     if (currentValue) return currentValue;
     const previewLeft = PRIMARY_COLUMN_WIDTH;
-    const previewRight = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH;
+    const previewRight = AI_ANIMATION_RESOURCE_SIDEBAR_SPAN;
     const previewRightEdge = Math.max(previewLeft + 240, (window.innerWidth || 1280) - previewRight);
     const previewCenterX = Math.round((previewLeft + previewRightEdge) / 2);
     if (name === "--novaflow-ai-preview-left") return `${previewLeft}px`;
@@ -53260,7 +53284,7 @@
         sourceControls.setAttribute("data-novaflow-ai-zoom-controls", "1");
         sourceControls.setAttribute("data-novaflow-zoom-controls", "1");
         sourceControls.style.setProperty("top", `${AI_ANIMATION_PREVIEW_UI_GAP}px`, "important");
-        sourceControls.style.setProperty("right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
+        sourceControls.style.setProperty("right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
         styleAutoFitOnlyControl(sourceControls);
         nfAnimationPerfCount("aiAnimationZoomControlsSourceFastPath");
         return;
@@ -53293,7 +53317,7 @@
       controls.setAttribute("data-novaflow-zoom-controls", "1");
       if (isSourceOwnedLayout(controls) || isInsideSourceOwnedLayout(controls)) {
         controls.style.setProperty("top", `${AI_ANIMATION_PREVIEW_UI_GAP}px`, "important");
-        controls.style.setProperty("right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
+        controls.style.setProperty("right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
         styleAutoFitOnlyControl(controls);
         return;
       }
@@ -53393,7 +53417,7 @@
     const topGroup = group instanceof HTMLElement ? group : findAiAnimationTopModeGroup(document);
     if (!(topGroup instanceof HTMLElement)) return;
     const previewLeft = PRIMARY_COLUMN_WIDTH;
-    const previewRight = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH;
+    const previewRight = AI_ANIMATION_RESOURCE_SIDEBAR_SPAN;
     const previewRightEdge = Math.max(previewLeft + 220, Math.round((window.innerWidth || 1280) - previewRight));
     const previewTop = getTopbarBottom();
     const centerX = Math.round((previewLeft + previewRightEdge) / 2);
