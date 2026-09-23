@@ -29078,9 +29078,12 @@
       if (!(button instanceof HTMLElement)) return;
       const label = normalizeText(button.textContent || "");
       const icon = button.querySelector("i, svg") instanceof Element;
-      // Anything that is not an icon or a one-character glyph is a chip, and
-      // chips keep their own width and their selected state.
-      if (!icon && label.length > 1) return;
+      // Only a button that says nothing, or says it in one glyph, is an icon
+      // button. A button with a word in it is a chip or a group header and
+      // keeps its own width - the drawing page's category headers carry both
+      // an icon AND a label, and squaring them to 30 hid every title.
+      if (label.length > 1) return;
+      if (!icon && !label) return;
       const computed = getRafCachedComputedStyle(button);
       const rgb = String(computed.backgroundColor).match(/\d+/g);
       // A green fill on an icon here is a state, not a rank: the reference

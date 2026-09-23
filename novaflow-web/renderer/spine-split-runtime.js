@@ -140,7 +140,16 @@
   const SPLIT_RIGHT_CHILD_LAYER_INSET = '10px'
   const SPLIT_RIGHT_CHILD_LAYER_GAP = '4px'
   const SPLIT_RIGHT_SET_CARD_HEIGHT = '46px'
-  const SPLIT_RIGHT_WORKSPACE_WIDTH = 260
+  // The reference floats a 206 panel inset 10 from the window edge and 10
+  // clear of the stage, so the column this occupies in the flex row is 226
+  // and the panel itself is what the padding leaves.
+  const SPLIT_RIGHT_WORKSPACE_WIDTH = 226
+  const SPLIT_RIGHT_WORKSPACE_INSET = 10
+  const SPLIT_RIGHT_WORKSPACE_TOP_GAP = 8
+  const SPLIT_RIGHT_WORKSPACE_BOTTOM_GAP = 10
+  const SPLIT_PANEL_SURFACE = '#161616'
+  const SPLIT_PANEL_BORDER_COLOR = '#2e2e2e'
+  const SPLIT_PANEL_RADIUS = '12px' 
   const LAYER_POINTER_AUTO_SCROLL_EDGE_PX = 44
   const LAYER_POINTER_AUTO_SCROLL_MAX_PX = 22
   const LAYER_POINTER_NEAREST_Y_SLACK_PX = 72
@@ -28483,8 +28492,10 @@
     node.style.setProperty('flex-basis', width, 'important')
     node.style.setProperty('flex-shrink', '0', 'important')
     node.style.setProperty('box-sizing', 'border-box', 'important')
-    node.style.setProperty('background', SPLIT_WORKSPACE_PANEL_BACKGROUND, 'important')
-    node.style.setProperty('overflow', 'hidden', 'important')
+    node.style.setProperty('padding', `${SPLIT_RIGHT_WORKSPACE_TOP_GAP}px ${SPLIT_RIGHT_WORKSPACE_INSET}px ${SPLIT_RIGHT_WORKSPACE_BOTTOM_GAP}px ${SPLIT_RIGHT_WORKSPACE_INSET}px`, 'important')
+    // The column is a layout slot; the panel inside it is the surface.
+    node.style.setProperty('background', 'transparent', 'important')
+    node.style.setProperty('overflow', 'visible', 'important')
   }
 
   function removeFallbackRightWorkspaceHost() {
@@ -28612,7 +28623,9 @@
       position: 'relative',
       zIndex: '2147483201',
       pointerEvents: 'auto',
-      background: SPLIT_WORKSPACE_PANEL_BACKGROUND,
+      background: SPLIT_PANEL_SURFACE,
+      border: `1px solid ${SPLIT_PANEL_BORDER_COLOR}`,
+      borderRadius: SPLIT_PANEL_RADIUS,
       overflow: 'hidden'
     }
   }
