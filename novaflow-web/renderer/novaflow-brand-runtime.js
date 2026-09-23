@@ -3161,7 +3161,8 @@
   // dark green fill with light green text and a hairline edge - never a solid
   // accent block, and never an edge light along one side.
   const UI_ACCENT = "#17a582";
-  const UI_ACCENT_HOVER = "#1ab891";
+  // The reference's main action under the pointer (#20b490).
+  const UI_ACCENT_HOVER = "#20b490";
   const UI_ACCENT_TEXT = "#6fd9b8";
   // The reference does not use one selected-text green. The rail sits on the
   // darkest fill and gets the lightest text; the segment sits on a slightly
@@ -21523,6 +21524,11 @@
         box-shadow: none !important;
         color: #ffffff !important;
       }
+      body.novaflow-primary-target-animation:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-generate-button="1"]:hover:not(:disabled),
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-generate-button="1"]:hover:not(:disabled) {
+        background: ${UI_ACCENT_HOVER} !important;
+        background-color: ${UI_ACCENT_HOVER} !important;
+      }
       body.novaflow-primary-target-animation:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-state-toggle="off"],
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-state-toggle="off"],
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-state-toggle="off"],
@@ -32636,6 +32642,9 @@
         selector: "[data-novaflow-tools-entry]",
         style: (node) => {
           const active = node.getAttribute("data-novaflow-tools-entry-active") === "1";
+          // Idle entries take the canvas bar's hover (#373737, white), as the
+          // reference's tool list does.
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : "idle");
           return {
             width: `${PRIMARY_LEFT_CARD_WIDTH}px`,
             "min-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
@@ -32648,11 +32657,11 @@
             "box-sizing": "border-box",
             "border-radius": NOVAFLOW_RECT_RADIUS_PX,
             border: "0",
-            background: active ? UI_SELECTED_BACKGROUND : "transparent",
-            "background-color": active ? UI_SELECTED_BACKGROUND : "transparent",
+            background: active ? UI_SELECTED_BACKGROUND : "var(--nf-cb-hover-bg, transparent)",
+            "background-color": active ? UI_SELECTED_BACKGROUND : "var(--nf-cb-hover-bg, transparent)",
             "background-image": "none",
             "box-shadow": active ? `inset 0 0 0 1px ${UI_RAIL_SELECTED_BORDER}` : "none",
-            color: active ? NOVAFLOW_TOOLS_ENTRY_SELECTED_TEXT : UI_SEGMENT_IDLE_TEXT,
+            color: active ? NOVAFLOW_TOOLS_ENTRY_SELECTED_TEXT : `var(--nf-cb-hover-fg, ${UI_SEGMENT_IDLE_TEXT})`,
             "font-size": "12px",
             "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT
           };
@@ -32745,7 +32754,17 @@
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-resource-sidebar-head="1"] [data-novaflow-ai-resource-action="1"]',
-        style: { padding: "4px 8px", height: "28px", "min-height": "28px" }
+        // #282828 with #c5c5c5 ink, and the canvas bar's hover (#373737,
+        // white) - the reference's 上传资源.
+        style: (node) => {
+          const disabled = node.getAttribute("aria-disabled") === "true" || node.getAttribute("data-novaflow-ai-sequence-upload-enabled") === "0";
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", disabled ? "disabled" : "idle");
+          return {
+            padding: "4px 8px", height: "28px", "min-height": "28px",
+            background: "var(--nf-cb-hover-bg, #282828)", "background-color": "var(--nf-cb-hover-bg, #282828)",
+            color: "var(--nf-cb-hover-fg, #c5c5c5)"
+          };
+        }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
@@ -54939,7 +54958,7 @@
       nfSetStyleIfChanged(button, "height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
       nfSetStyleIfChanged(button, "min-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
       nfSetStyleIfChanged(button, "max-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
-      nfSetStyleIfChanged(button, "font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
+      nfSetStyleIfChanged(button, "font-weight", NOVAFLOW_MEDIUM_FONT_WEIGHT, "important");
       nfSetStyleIfChanged(button, "display", "flex", "important");
       nfSetStyleIfChanged(button, "align-items", "center", "important");
       nfSetStyleIfChanged(button, "justify-content", "center", "important");
@@ -54950,7 +54969,7 @@
       nfSetStyleIfChanged(button, "background", secondaryBackground, "important");
       nfSetStyleIfChanged(button, "background-color", secondaryBackground, "important");
       nfSetStyleIfChanged(button, "background-image", "none", "important");
-      nfSetStyleIfChanged(button, "color", active ? UI_SEGMENT_SELECTED_TEXT : UI_SEGMENT_IDLE_TEXT, "important");
+      nfSetStyleIfChanged(button, "color", active ? UI_SEGMENT_SELECTED_TEXT : `var(--nf-seg-entry-fg, ${UI_SEGMENT_IDLE_TEXT})`, "important");
       nfSetStyleIfChanged(button, "box-shadow", active ? `inset 0 0 0 1px ${UI_SEGMENT_SELECTED_BORDER}` : "none", "important");
       // Not !important: it still beats the bundle stylesheet, while letting
       // the theme's :focus-visible ring through for keyboard users.

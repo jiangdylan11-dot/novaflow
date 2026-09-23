@@ -452,7 +452,8 @@
 }
 
 .novaflow-app [data-novaflow-secondary-entry="1"][data-novaflow-secondary-active="0"]:hover {
-  --nf-seg-entry-bg: #252525;
+  --nf-seg-entry-bg: #373737;
+  --nf-seg-entry-fg: #ffffff;
 }
 
 .novaflow-app [data-novaflow-editor-panel="1"] > .nf-panel-header:hover,
@@ -724,4 +725,10 @@ html[data-novaflow-transitions="off"] *::after {
    than showing a green 登录 that turns into the account name. */
 #novaflow-topbar-ai-runtime-status[data-novaflow-account-pending="1"] {
   visibility: hidden !important;
+}
+
+/* 2.0m The prompt bar's buttons: the reference lifts them to #393939 under
+   the pointer, a step lighter than the canvas bar's #373737. */
+[data-novaflow-prompt-action-button="1"][data-novaflow-canvas-bar-button="idle"]:hover {
+  --nf-cb-hover-bg: #393939;
 }
