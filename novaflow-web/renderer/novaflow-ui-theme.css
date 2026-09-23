@@ -862,7 +862,7 @@ html body #novaflow-aifx-mvp .aifx-section-header:hover {
 
 
 /* 2.0u 工具's rows: the line under each, and the group rows' hover. */
-html body [data-novaflow-tools-entry]:not([data-novaflow-tools-entry-active="1"])::after {
+html body :is([data-novaflow-tools-entry], #nf-lift)::after {
   content: "" !important;
   position: absolute !important;
   /* Clear of the button press overlay's own ::after (inset 0, opacity 0). */
@@ -1008,3 +1008,23 @@ html body i.fa-chevron-right::before { transform: translate(-50%, -50%) rotate(-
 html body i.fa-chevron-down::before { transform: translate(-50%, -50%) rotate(45deg) !important; }
 html body i.fa-chevron-left::before { transform: translate(-50%, -50%) rotate(135deg) !important; }
 html body i.fa-chevron-up::before { transform: translate(-50%, -50%) rotate(-135deg) !important; }
+
+/* 3.0b One plus in every upload area: two 1.5px bars in the text colour,
+   centred in the box the runtime sizes (26 / 18 / 12). */
+html body :is([data-novaflow-plus-glyph="1"], #nf-lift)::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  display: block !important;
+  width: auto !important;
+  height: auto !important;
+  opacity: 1 !important;
+  transform: none !important;
+  border: 0 !important;
+  background:
+    linear-gradient(currentColor, currentColor) center / 100% 1.5px no-repeat,
+    linear-gradient(currentColor, currentColor) center / 1.5px 100% no-repeat !important;
+}
+html body :is([data-novaflow-plus-glyph="1"], #nf-lift)::after {
+  content: none !important;
+}

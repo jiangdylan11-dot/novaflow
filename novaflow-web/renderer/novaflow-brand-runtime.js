@@ -34530,6 +34530,34 @@
         }
       },
       {
+        // Every upload area's "+" is one mark (theme sheet 3.0b): two bars of
+        // the same 1.5px stroke, whatever font or size it came in. Only the
+        // size follows the area.
+        selector: '[data-nf-upload-dropzone] *, [data-novaflow-template-save-plus], [class*="upload"] *, [class*="dropzone"] *',
+        style: (node) => {
+          if (node.childElementCount !== 0 || normalizeText(node.textContent || "") !== "+") return null;
+          if (node.closest("button:not([data-nf-upload-dropzone])") && !node.closest("[data-nf-upload-dropzone]")) return null;
+          nfSetAttrIfChanged(node, "data-novaflow-plus-glyph", "1");
+          const size = node.hasAttribute("data-novaflow-template-save-plus") ? 26 : node.closest('[data-novaflow-ai-reference-column="1"]') ? 12 : 18;
+          return {
+            "font-size": "0", "line-height": "0", color: "currentColor", display: "block", position: "relative", flex: "0 0 auto",
+            width: `${size}px`, "min-width": `${size}px`, "max-width": `${size}px`, height: `${size}px`, "min-height": `${size}px`, "max-height": `${size}px`,
+            margin: "0 auto", padding: "0", overflow: "visible"
+          };
+        }
+      },
+      {
+        // 点击存储 is as tall as the cards beside it (they carry a name row).
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile="1"]',
+        style: { display: "flex", "flex-direction": "column", "align-self": "stretch", height: "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile] > div',
+        style: { flex: "1 1 auto", "aspect-ratio": "auto", height: "auto", "min-height": "0" }
+      },
+      {
         // 自动适配, as asked: a canvas bar pill like 导入项目 / 保存项目 - the
         // zoom (percent) on its left, the button on its right.
         selector: '[data-novaflow-zoom-controls="1"][data-novaflow-autofit-only="1"], #novaflow-spine-split-zoom-hud, #novaflow-ui-fit-pill',
@@ -34954,8 +34982,9 @@
     };
     return [
       ["\u6a21\u677f\u5e93", () => document.querySelector('[data-novaflow-template-button="1"]')],
-      ["\u5bfc\u5165\u9879\u76ee", () => find("\u5bfc\u5165\u9879\u76ee")],
-      ["\u4fdd\u5b58\u9879\u76ee", () => find("\u4fdd\u5b58\u9879\u76ee")]
+      // Shown as \u5bfc\u5165 / \u4fdd\u5b58, as asked; the originals keep their names.
+      ["\u5bfc\u5165", () => find("\u5bfc\u5165\u9879\u76ee")],
+      ["\u4fdd\u5b58", () => find("\u4fdd\u5b58\u9879\u76ee")]
     ];
   }
 
