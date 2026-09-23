@@ -197,6 +197,15 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       try {
         const res = await api().clientAuthLogin({ account: name, password: password.value });
         if (!res || res.ok === false) throw new Error((res && res.error) || '登录失败');
+        // The account service and the compute control plane are separate
+        // services with separate trust. clientAuthStatus re-presents the new
+        // token to the control plane and DROPS the session if it is refused,
+        // so without this check a refused token reloads straight back to an
+        // empty form with nothing said. Ask here instead, and say why.
+        const status = await api().clientAuthStatus();
+        if (!(status && status.ok !== false && status.result && status.result.authenticated)) {
+          throw new Error('账号已通过验证，但算力控制面不接受这个会话。请确认控制面与账号服务使用同一套会话密钥。');
+        }
         note.style.color = '#7ce8b5';
         note.textContent = '已登录，正在刷新…';
         setTimeout(() => root.location.reload(), 400);
