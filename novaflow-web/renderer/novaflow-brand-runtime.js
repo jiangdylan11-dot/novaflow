@@ -2336,6 +2336,7 @@
   const NOVAFLOW_ICON_FONT_WEIGHT = "900";
   const NOVAFLOW_THIN_ARROW_STROKE = "1.35px";
   const NOVAFLOW_THIN_ARROW_SIZE = "7px";
+  const NOVAFLOW_THIN_SELECT_ARROW = 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 10 6%27%3E%3Cpath d=%27M1 1l4 4 4-4%27 fill=%27none%27 stroke=%27rgba(238,244,252,0.68)%27 stroke-width=%271.35%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E")';
   const NOVAFLOW_SELECT_ARROW_STROKE = "1.1px";
   const NOVAFLOW_SELECT_ARROW_COLOR = "rgba(238, 244, 252, 0.64)";
   const NOVAFLOW_NUMBER_INPUT_WIDTH = 49;
@@ -33534,7 +33535,7 @@
           return {
             position: "absolute", top: "3px", left: on ? "15px" : "3px", width: "9px", height: "9px", "min-width": "9px", "min-height": "9px",
             transform: "none", "border-radius": "50%", background: on ? "#ffffff" : "#cacaca", "background-color": on ? "#ffffff" : "#cacaca",
-            "box-shadow": "none", margin: "0", display: "block", visibility: "visible", opacity: "1"
+            "box-shadow": "none", margin: "0", display: "block", visibility: "inherit", opacity: "1"
           };
         }
       },
@@ -33815,7 +33816,9 @@
         style: {
           position: "absolute", top: "3px", right: "3px", left: "auto", bottom: "auto", width: "18px", height: "18px", "min-width": "18px", "min-height": "18px",
           padding: "0", "border-radius": "5px", "font-size": "11px", "line-height": "18px", background: "rgba(0, 0, 0, 0.62)", "background-color": "rgba(0, 0, 0, 0.62)",
-          color: "#ffffff", border: "0", "z-index": "2", display: "flex", "align-items": "center", "justify-content": "center", transform: "none"
+          // 33: above the tile's upload input (32), or × opens the picker
+          // instead of clearing.
+          color: "#ffffff", border: "0", "z-index": "33", "pointer-events": "auto", display: "flex", "align-items": "center", "justify-content": "center", transform: "none"
         }
       },
       {
@@ -34535,14 +34538,63 @@
         // size follows the area.
         selector: '[data-nf-upload-dropzone] *, [data-novaflow-template-save-plus], [class*="upload"] *, [class*="dropzone"] *',
         style: (node) => {
-          if (node.childElementCount !== 0 || normalizeText(node.textContent || "") !== "+") return null;
+          if (node.childElementCount !== 0) return null;
+          // A filled zone hides its icon (it turns into a check there).
+          if (node.classList.contains("nf-upload-dropzone__icon") && node.closest('[data-filled="1"]')) return { display: "none" };
+          if (normalizeText(node.textContent || "") !== "+") return null;
           if (node.closest("button:not([data-nf-upload-dropzone])") && !node.closest("[data-nf-upload-dropzone]")) return null;
           nfSetAttrIfChanged(node, "data-novaflow-plus-glyph", "1");
-          const size = node.hasAttribute("data-novaflow-template-save-plus") ? 26 : node.closest('[data-novaflow-ai-reference-column="1"]') ? 12 : 18;
+          const size = node.hasAttribute("data-novaflow-template-save-plus") ? 26 : node.closest('[data-novaflow-ai-reference-column="1"], [data-novaflow-art-generate-reference-column="1"]') ? 12 : 18;
           return {
             "font-size": "0", "line-height": "0", color: "currentColor", display: "block", position: "relative", flex: "0 0 auto",
             width: `${size}px`, "min-width": `${size}px`, "max-width": `${size}px`, height: `${size}px`, "min-height": `${size}px`, "max-height": `${size}px`,
             margin: "0 auto", padding: "0", overflow: "visible"
+          };
+        }
+      },
+      {
+        // 绘图: AI优化 / AI反推 are not in the reference's prompt bar (历史记录,
+        // AI 助手, 编辑), and were asked off. Hidden only; the code is kept.
+        selector: '#novaflow-art-generate-workspace .novaflow-art-generate-assistant-button[data-running]',
+        style: { display: "none" }
+      },
+      {
+        // 绘图's dock rows (theme sheet 3.0c): tiles, then the two prompts,
+        // 10 apart; each prompt 86 tall, as the reference's.
+        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid",
+        style: { display: "flex", "flex-direction": "column", gap: "10px", "margin-top": "8px", height: "auto", "min-height": "0", "max-height": "none", flex: "0 0 auto" }
+      },
+      {
+        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid > .novaflow-art-generate-prompt",
+        style: { width: "100%", flex: "0 0 86px", height: "86px", "min-height": "86px", "max-height": "86px" }
+      },
+      {
+        // AI 特效 → 特效模板: the loaded preview's × (in place of 清空), small
+        // on its corner; lit by the var on hover (aifx sheet).
+        selector: "#novaflow-aifx-mvp [data-template-clear-x]",
+        style: {
+          position: "absolute", top: "6px", right: "6px", left: "auto", bottom: "auto", "z-index": "2",
+          width: "20px", "min-width": "20px", "max-width": "20px", height: "20px", "min-height": "20px", "max-height": "20px",
+          padding: "0", border: "0", "border-radius": "5px", display: "flex", "align-items": "center", "justify-content": "center",
+          "background-color": "var(--nf-x-bg, rgba(0, 0, 0, 0.62))", "background-image": "none", color: "var(--nf-x-fg, #ffffff)"
+        }
+      },
+      {
+        // 模板库 alone in its row now 清空 is off: the full width.
+        selector: '#novaflow-aifx-mvp [data-action="open-template-library"]',
+        style: { flex: "1 1 auto", width: "100%", "min-width": "0", "max-width": "none", "justify-content": "center" }
+      },
+      {
+        // Every dropdown's arrow is the panels' thin chevron (7px box, 1.35
+        // stroke) instead of the browser's heavy one.
+        selector: "select:not([multiple]):not([size])",
+        style: (node) => {
+          const pad = Number.parseFloat(getComputedStyle(node).paddingRight) || 0;
+          return {
+            appearance: "none", "-webkit-appearance": "none",
+            "background-image": NOVAFLOW_THIN_SELECT_ARROW, "background-repeat": "no-repeat",
+            "background-position": "right 10px center", "background-size": "10px 6px",
+            "padding-right": `${Math.max(26, pad)}px`
           };
         }
       },
@@ -34577,7 +34629,7 @@
         style: {
           display: "flex", "align-items": "center", "justify-content": "center", height: "28px", "min-height": "28px", width: "auto",
           "min-width": "44px", padding: "0 6px", "font-size": "11px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, color: "#9a9a9a",
-          visibility: "visible", opacity: "1", position: "static", "white-space": "nowrap", "line-height": "28px", overflow: "visible"
+          visibility: "inherit", opacity: "1", position: "static", "white-space": "nowrap", "line-height": "28px", overflow: "visible"
         }
       },
       {
@@ -34695,6 +34747,7 @@
   // writers that disagree cannot spin; those are counted for fixing at source.
   const NOVAFLOW_SPEC_STATE_ATTRIBUTES = new Set([
     "class",
+    "data-filled",
     "hidden",
     "data-open",
     "data-collapsed",

@@ -715,6 +715,16 @@
       }
       #${APP_ID} .nf-upload-dropzone[data-filled="1"] { padding: 8px; gap: 6px; }
       #${APP_ID} .nf-upload-dropzone[data-filled="1"] .nf-upload-dropzone__preview { display: block; }
+      /* The loaded template's way out: a small × on the preview's corner. */
+      #${APP_ID} [data-template-preview] { position: relative; }
+      #${APP_ID} [data-template-clear-x] {
+        position: absolute; top: 6px; right: 6px; z-index: 2;
+        width: 20px !important; height: 20px !important; min-width: 20px !important; min-height: 20px !important;
+        max-width: 20px !important; max-height: 20px !important; padding: 0 !important; border: 0; border-radius: 5px !important;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(0, 0, 0, 0.62); color: #ffffff; cursor: pointer;
+      }
+      #${APP_ID} [data-template-clear-x]:hover { --nf-x-bg: rgba(0, 0, 0, 0.82); --nf-x-fg: #ff6b6b; }
       #${APP_ID} .nf-upload-dropzone[data-filled="1"] .nf-upload-dropzone__icon,
       #${APP_ID} .nf-upload-dropzone[data-filled="1"] .nf-upload-dropzone__title,
       #${APP_ID} .nf-upload-dropzone[data-filled="1"] .nf-upload-dropzone__hint { display: none; }
@@ -1217,7 +1227,7 @@
                 <div class="aifx-help aifx-detected" data-template-detected style="color:#6f7479"></div>
                 <div class="aifx-row" style="margin-top:10px">
                   <button class="aifx-button" data-action="open-template-library" type="button" style="flex:1">模板库</button>
-                  <button class="aifx-button" data-action="clear-template" type="button">清空</button>
+                  <button class="aifx-button" data-action="clear-template" type="button" hidden style="display:none">清空</button>
                 </div>
               </div>
             </div>
@@ -1713,7 +1723,8 @@
   // the file name sits under it in normal flow.
   const syncDropzonePreview = (zone, host, entry, build) => {
     if (!zone || !host) return
-    zone.setAttribute('data-filled', entry ? '1' : '0')
+    const filled = entry ? '1' : '0'
+    if (zone.getAttribute('data-filled') !== filled) zone.setAttribute('data-filled', filled)
     const key = entry ? String(entry.objectUrl || '') : ''
     if (host.getAttribute('data-preview-src') === key) return
     host.setAttribute('data-preview-src', key)
@@ -2791,6 +2802,12 @@
     refs.supplement = root.querySelector('[data-action="prompt-supplement"]')
     refs.templateZone = root.querySelector('[data-template-zone]')
     refs.templatePreview = root.querySelector('[data-template-preview]')
+    refs.templateClearX = document.createElement('button')
+    refs.templateClearX.type = 'button'
+    refs.templateClearX.textContent = '×'
+    refs.templateClearX.title = '清空'
+    refs.templateClearX.setAttribute('aria-label', '清空')
+    refs.templateClearX.setAttribute('data-template-clear-x', '')
     refs.styleZone = root.querySelector('[data-style-zone]')
     refs.stylePreview = root.querySelector('[data-style-preview]')
     refs.templateEmpty = root.querySelector('[data-template-empty]')
@@ -2870,6 +2887,12 @@
     document.body.appendChild(refs.library)
     root.querySelector('[data-action="clear-template"]')
       .addEventListener('click', guard(() => { clearTemplate() }))
+    // The same clear as 清空; stopped here so the zone does not open the picker.
+    refs.templateClearX.addEventListener('click', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!state.isGenerating) clearTemplate()
+    })
     root.querySelector('[data-action="clear-style"]')
       .addEventListener('click', guard(() => { clearReference() }))
     root.querySelector('[data-action="generate"]')
@@ -3018,6 +3041,10 @@
       video.src = entry.objectUrl
       return video
     })
+    // The preview is rebuilt on a new file, which drops the ×; put it back.
+    if (refs.templateClearX && refs.templatePreview && refs.templateClearX.parentElement !== refs.templatePreview) {
+      refs.templatePreview.appendChild(refs.templateClearX)
+    }
     syncDropzonePreview(refs.styleZone, refs.stylePreview, state.reference, (entry) => {
       const image = document.createElement('img')
       image.alt = ''
@@ -3045,13 +3072,6 @@
       if (state.source && state.shapeAuto) {
         refs.templateDetected.appendChild(document.createTextNode(
           '已识别：' + state.shapeAuto + (state.lifecycleAuto ? ' · ' + state.lifecycleAuto : '')))
-        const fix = document.createElement('button')
-        fix.type = 'button'
-        fix.textContent = '不对，改一下'
-        fix.setAttribute('data-action', 'open-shape-library')
-        fix.disabled = state.isGenerating
-        fix.addEventListener('click', guard(() => openLibrary('shape')))
-        refs.templateDetected.appendChild(fix)
       }
     }
     if (refs.seedLock) {

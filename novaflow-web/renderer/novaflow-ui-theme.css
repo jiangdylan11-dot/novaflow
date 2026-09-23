@@ -1028,3 +1028,132 @@ html body :is([data-novaflow-plus-glyph="1"], #nf-lift)::before {
 html body :is([data-novaflow-plus-glyph="1"], #nf-lift)::after {
   content: none !important;
 }
+
+/* 3.0c 绘图's generation dock laid out as the reference's (and 动画's):
+   the settings row, the progress, the reference tiles small (87x59) on
+   their own row, then the prompts full width - positive over negative. */
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-bottom {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-edit-grid,
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-edit-grid[data-mode] {
+  display: flex !important;
+  flex-direction: column !important;
+  flex: 0 0 auto !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin-top: 8px !important;
+  gap: 10px !important;
+  grid-template-columns: none !important;
+}
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref-grid {
+  display: flex !important;
+  gap: 8px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 59px !important;
+  min-height: 59px !important;
+  max-height: 59px !important;
+  align-self: flex-start !important;
+}
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref {
+  position: relative !important;
+  flex: 0 0 87px !important;
+  width: 87px !important;
+  min-width: 87px !important;
+  max-width: 87px !important;
+  height: 59px !important;
+  min-height: 59px !important;
+  max-height: 59px !important;
+  gap: 2px !important;
+  border: 1px dashed #4f4f4f !important;
+  border-radius: 8px !important;
+  background: #202020 !important;
+  background-color: #202020 !important;
+  color: #adadad !important;
+  overflow: hidden !important;
+}
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref:hover,
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref[data-novaflow-art-generate-ref-drag="1"] {
+  border-color: #1bb28c !important;
+  background: #262626 !important;
+  background-color: #262626 !important;
+}
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref:has(img) {
+  border-style: solid !important;
+  border-color: #343434 !important;
+}
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref .nf-upload-dropzone__icon {
+  color: #adadad !important;
+}
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref .nf-upload-dropzone__title {
+  color: #adadad !important;
+  font-size: 11px !important;
+  line-height: 16px !important;
+}
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref img {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref button:not(.novaflow-art-generate-ref-size) {
+  position: absolute !important;
+  top: 3px !important;
+  right: 3px !important;
+  left: auto !important;
+  bottom: auto !important;
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 5px !important;
+  background: rgba(0, 0, 0, 0.62) !important;
+  color: #ffffff !important;
+  z-index: 3 !important;
+}
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref button.novaflow-art-generate-ref-size {
+  height: 16px !important;
+  min-height: 16px !important;
+  max-height: 16px !important;
+  font-size: 10px !important;
+  line-height: 16px !important;
+  z-index: 2 !important;
+}
+html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-prompt {
+  width: 100% !important;
+  flex: 0 0 86px !important;
+  height: 86px !important;
+  min-height: 86px !important;
+  max-height: 86px !important;
+}
+
+/* 3.0d 本地仓库: the selected category reads like the top tabs (粒子特效 /
+   AI特效) - dark green, a 1px green ring, mint text; the search field is
+   just the box, no grey bar inside it. */
+html body #novaflow-local-warehouse .nf-wh-nav[aria-pressed="true"] {
+  background: #1c4136 !important;
+  background-color: #1c4136 !important;
+  border-color: transparent !important;
+  box-shadow: inset 0 0 0 1px #2c604f !important;
+  color: #9be4cd !important;
+}
+html body #novaflow-local-warehouse .nf-wh-nav[aria-pressed="true"] .nf-wh-count {
+  color: #9be4cd !important;
+}
+html body #novaflow-local-warehouse .nf-wh-search input,
+html body #novaflow-local-warehouse .nf-wh-search input:hover,
+html body #novaflow-local-warehouse .nf-wh-search input:focus {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  outline: 0 !important;
+}
