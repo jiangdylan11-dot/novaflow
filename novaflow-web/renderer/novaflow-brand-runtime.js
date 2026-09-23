@@ -34860,6 +34860,18 @@
         style: { "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT }
       },
       {
+        // 工具's preview heads: the file size right after the title, not at
+        // the far end under the export buttons.
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-tools-preview-card] > div:first-child",
+        style: { "justify-content": "flex-start", "align-items": "center", gap: "8px" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-tools-preview-card] > div:first-child > :not(:first-child)",
+        style: { "margin-left": "0", "font-size": "11px", "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT, color: "#8a8a8a" }
+      },
+      {
         // 点击存储 is as tall as the cards beside it (they carry a name row).
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile="1"]',

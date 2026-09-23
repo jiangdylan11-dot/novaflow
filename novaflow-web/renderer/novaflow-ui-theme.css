@@ -2151,3 +2151,23 @@ html body #novaflow-mp4-compress-root .nf-mp4-top-actions > button:hover:not(:di
   background: #373737 !important;
   color: #ffffff !important;
 }
+
+/* 3.0s Every tool's preview head: the file size right after the title
+   (原图 28.7 KB), not pushed to the far end under the export buttons. */
+html body :is([data-novaflow-tools-preview-card], #nf-lift) > div:first-child {
+  justify-content: flex-start !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+html body :is([data-novaflow-tools-preview-card], #nf-lift) > div:first-child > :not(:first-child),
+html body :is(.nf-prb-panel-head, .nf-mp4-panel-head, .nf-vfc-panel-head, .nf-saw-panel-head, #nf-lift) > :not(:first-child) {
+  margin-left: 0 !important;
+  font-size: 11px !important;
+  font-weight: 400 !important;
+  color: #8a8a8a !important;
+}
+html body :is(.nf-prb-panel-head, .nf-mp4-panel-head, .nf-vfc-panel-head, .nf-saw-panel-head, #nf-lift) {
+  justify-content: flex-start !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
