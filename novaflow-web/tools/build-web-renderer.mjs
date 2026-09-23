@@ -19,6 +19,7 @@ import { readFile, writeFile, mkdir, readdir, rm, cp, stat } from 'node:fs/promi
 import { dirname, join, resolve, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { redactModule, findMarkers } from './redact-workflow-module.mjs';
 import { instrumentModule } from './instrument-workflow-module.mjs';
 import { redactBundleFile } from './redact-dead-bundle-workflow.mjs';
@@ -240,6 +241,10 @@ export async function buildWebRenderer({ logger, clean = true } = {}) {
   const html = await readFile(join(SRC, 'index.html'), 'utf8');
   await writeFile(join(WEB_OUT, 'index.html'), rewriteIndexHtml(html), 'utf8');
 
+  // Last, once every file is on disk: give each local asset a ?v= derived
+  // from its own bytes.
+  await stampCacheTokens();
+
   log('web renderer built', {
     modules: report.redactedModules,
     copied: report.copied,
@@ -320,6 +325,52 @@ async function copyAssets(from, to, { referenced, report, forceNames }) {
     });
     if (redacted.remaining.length) report.leaks.push({ module: moduleName, markers: redacted.remaining });
   }
+}
+
+/**
+ * Give every local asset in index.html a ?v= that changes when the asset does.
+ *
+ * The tokens in index.html are hand-written and the shim tags carry fixed
+ * ones, so a file could change while its URL did not. A browser that had
+ * already cached it then keeps serving the old copy, which is how a rebuilt
+ * runtime, stylesheet or account shim reaches a reloaded page unchanged. The
+ * symptom is always "my fix did nothing", so it costs an afternoon each time.
+ *
+ * The token is the first 10 hex of the file's SHA-1: deterministic, so a file
+ * that did not change keeps its URL and stays cached. assets/ is left alone -
+ * those names already carry the bundler's own content hash.
+ */
+async function stampCacheTokens() {
+  const indexPath = join(WEB_OUT, 'index.html');
+  let html;
+  try {
+    html = await readFile(indexPath, 'utf8');
+  } catch {
+    return;
+  }
+  const tokens = new Map();
+  const tokenFor = async (name) => {
+    if (tokens.has(name)) return tokens.get(name);
+    let token = null;
+    try {
+      token = createHash('sha1').update(await readFile(join(WEB_OUT, name))).digest('hex').slice(0, 10);
+    } catch {
+      token = null;
+    }
+    tokens.set(name, token);
+    return token;
+  };
+  const found = [];
+  const pattern = /(src|href)="\.\/([^"?#]+?)(?:\?v=[^"#]*)?"/g;
+  for (let match = pattern.exec(html); match; match = pattern.exec(html)) found.push(match);
+  let out = html;
+  for (const [whole, attribute, name] of found) {
+    if (name.startsWith('assets/')) continue;
+    const token = await tokenFor(name);
+    if (!token) continue;
+    out = out.split(whole).join(`${attribute}="./${name}?v=${token}"`);
+  }
+  if (out !== html) await writeFile(indexPath, out, 'utf8');
 }
 
 export function rewriteIndexHtml(html) {

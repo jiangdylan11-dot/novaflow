@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>NovaFlow 本地验收登录</title>
+<!--
+  本地验收登录 - only for the local acceptance stack.
+
+  This is NOT a second sign-in for the product. The app's own sign-in screen
+  talks to the account service, which mints a token signed with that service's
+  secret; the compute control plane only accepts tokens signed with its own. On
+  a developer machine those two secrets are different, so a real sign-in
+  succeeds and is then refused by the control plane, and the app returns to the
+  form. That is an environment mismatch, not something to work around in the
+  product.
+
+  tools/start-local-stack.mjs already provides the answer: the local control
+  plane exposes /dev/login, which mints a demo session it will accept. This
+  page just calls it and hands the session to the app, so the local build can
+  be opened and reviewed. It handles no password, and it is a separate page -
+  the product's sign-in screen is untouched.
+-->
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid;
+    place-items: center;
+    background: #0b0b0c;
+    color: #eaeaea;
+    font: 13px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  }
+  main {
+    width: 390px;
+    box-sizing: border-box;
+    padding: 32px 30px;
+    background: #121517;
+    border: 1px solid #282e32;
+    border-radius: 14px;
+  }
+  h1 { margin: 0 0 12px; font-size: 22px; font-weight: 600; }
+  p { margin: 0 0 20px; color: #898b93; font-size: 11px; }
+  button {
+    width: 100%;
+    height: 42px;
+    border: 1px solid #24b693;
+    border-radius: 7px;
+    background: #17a582;
+    color: #fff;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled { background: #23282c; border-color: #23282c; color: #767c82; cursor: wait; }
+  .note { min-height: 20px; margin-top: 14px; font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>本地验收登录</h1>
+  <p>用本机控制面的演示账号进入，仅用于本地验收。线上账号请走应用自己的登录页。</p>
+  <button id="go" type="button">进入工作台</button>
+  <div class="note" id="note"></div>
+</main>
+<script>
+(function () {
+  var CONTROL = (window.NOVAFLOW_WEB_CONFIG && window.NOVAFLOW_WEB_CONFIG.controlUrl) || 'http://127.0.0.1:4890';
+  var SESSION_KEY = 'novaflow_web_session_v1';
+  var CLIENT_AUTH_KEY = 'novaflow.client.auth.session.v1';
+  var go = document.getElementById('go');
+  var note = document.getElementById('note');
+
+  function say(text, ok) {
+    note.textContent = text;
+    note.style.color = ok ? '#7ce8b5' : '#fca5a5';
+  }
+
+  go.addEventListener('click', async function () {
+    go.disabled = true;
+    say('正在向本机控制面取会话…', true);
+    try {
+      var res = await fetch(CONTROL + '/dev/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email: 'demo@novaflow.local', balance: 2000 })
+      });
+      var data = await res.json();
+      if (!res.ok || !data || data.ok === false || !data.session) {
+        throw new Error((data && data.error) || ('控制面返回 ' + res.status));
+      }
+      // The same two keys the web runtime reads on boot.
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ token: data.session.token, user: data.user }));
+      localStorage.setItem(CLIENT_AUTH_KEY, JSON.stringify(data));
+      say('已取得会话，正在进入…', true);
+      setTimeout(function () { location.replace('./'); }, 350);
+    } catch (error) {
+      say(String((error && error.message) || error) + '（本机控制面是否在 ' + CONTROL + ' 上运行？）', false);
+      go.disabled = false;
+    }
+  });
+})();
+</script>
+</body>
+</html>
