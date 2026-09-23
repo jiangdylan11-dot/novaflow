@@ -2613,11 +2613,11 @@
     "#novaflow-particle-project-top-actions",
     '[data-novaflow-skeleton-top-button-group="1"]',
     "#novaflow-spine-split-view-controls",
-    '[data-novaflow-ui-design-bottom-dock="1"]'
+    '[data-novaflow-ui-design-bottom-dock="1"]',
+    "#novaflow-art-generate-workspace .novaflow-art-generate-top"
   ];
   const CANVAS_BAR_QUIET_SELECTOR = [
     '[data-novaflow-autofit-button="1"]',
-    '[data-novaflow-spine-split-fit-button="1"]',
     '[data-novaflow-ui-design-toolbar-action="fit"]'
   ].join(", ");
   const CANVAS_BAR_PILL_SHADOW = "0 3px 7px rgba(0, 0, 0, 0.133)";
@@ -2647,6 +2647,7 @@
   }
 
   function canvasBarButtonActive(node) {
+    if (node.hasAttribute("data-novaflow-art-generate-mode")) return node.getAttribute("data-active") === "1";
     if (node.getAttribute("data-novaflow-skeleton-premultiply-alpha-button") === "1") {
       return node.getAttribute("aria-pressed") !== "false";
     }
@@ -2658,7 +2659,7 @@
 
   function canvasBarButtonStyle(node) {
     const wide = NOVAFLOW_LAYOUT_TIER === "wide";
-    const mode = Boolean(node.closest('[data-novaflow-ai-top-mode-tabs="1"]'));
+    const mode = Boolean(node.closest('[data-novaflow-ai-top-mode-tabs="1"]')) || node.hasAttribute("data-novaflow-art-generate-mode");
     const text = normalizeText(node.textContent || "");
     const icon = /^[+\-\u2212\u00d7]?$/.test(text) && !/^\d+$/.test(text);
     const disabled = node.disabled === true || node.getAttribute("aria-disabled") === "true";
@@ -32232,10 +32233,9 @@
         // running the full height of the window.
         when: "body.novaflow-primary-target-art",
         selector: '#novaflow-spine-split-workspace-overlay, [data-novaflow-art-workspace-host="1"]',
+        // Its box comes from data-novaflow-stage-box, which the drawing
+        // runtime reads; only the surface is set here.
         style: {
-          top: `${TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP}px`,
-          bottom: `${PRIMARY_PANEL_BOTTOM_GAP}px`,
-          height: "auto",
           background: PREVIEW_OUTSIDE_BACKGROUND,
           "background-color": PREVIEW_OUTSIDE_BACKGROUND,
           "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`,
@@ -32263,31 +32263,6 @@
         }
       },
       {
-        when: "body.novaflow-primary-target-art",
-        selector: "[data-novaflow-spine-split-persistent-tool]",
-        style: (node) => {
-          const active = node.getAttribute("aria-pressed") === "true"
-            || node.getAttribute("data-novaflow-spine-split-tool-active") === "1";
-          return {
-            height: `${CANVAS_BAR_BUTTON_HEIGHT}px`,
-            "min-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
-            "max-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
-            width: "auto",
-            "min-width": "0",
-            padding: "0 11px",
-            border: "0",
-            "border-radius": CANVAS_BAR_BUTTON_RADIUS_PX,
-            background: active ? UI_SEGMENT_SELECTED_BACKGROUND : "transparent",
-            "background-color": active ? UI_SEGMENT_SELECTED_BACKGROUND : "transparent",
-            "box-shadow": active ? `inset 0 0 0 1px ${UI_SEGMENT_SELECTED_BORDER}` : "none",
-            color: active ? UI_SEGMENT_SELECTED_TEXT : CANVAS_BAR_BUTTON_TEXT,
-            "font-size": "11px",
-            "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
-            "box-sizing": "border-box"
-          };
-        }
-      },
-      {
         // ...and 自动适配 is the quiet button the other pages use.
         when: "body.novaflow-primary-target-art",
         selector: "#novaflow-spine-split-zoom-hud",
@@ -32298,26 +32273,6 @@
           background: "transparent",
           "background-color": "transparent",
           border: "0"
-        }
-      },
-      {
-        when: "body.novaflow-primary-target-art",
-        selector: '[data-novaflow-spine-split-fit-button="1"]',
-        style: {
-          width: "auto",
-          "min-width": "0",
-          height: `${CANVAS_BAR_QUIET_HEIGHT}px`,
-          "min-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
-          "max-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
-          padding: "0 13px",
-          background: CANVAS_BAR_QUIET_BACKGROUND,
-          "background-color": CANVAS_BAR_QUIET_BACKGROUND,
-          border: `1px solid ${CANVAS_BAR_QUIET_BORDER_COLOR}`,
-          "border-radius": CANVAS_BAR_QUIET_RADIUS_PX,
-          color: CANVAS_BAR_QUIET_TEXT,
-          "font-size": "11px",
-          "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
-          "box-sizing": "border-box"
         }
       },
       {
@@ -32491,6 +32446,184 @@
         when: "body.novaflow-ai-animation-section-layers",
         selector: "[data-novaflow-ai-preview-bg-option]",
         style: { "border-color": "#6c6c6c" }
+      },
+      {
+        // 绘图's generation workspace: the mode plate centred in the canvas
+        // bar, the stage, then the dock 9 under it, as wide as the stage.
+        when: "body.novaflow-primary-target-art",
+        selector: "#novaflow-art-generate-workspace",
+        style: { "grid-template-rows": "52px minmax(0, 1fr) auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-top",
+        style: { "justify-self": "center", "align-self": "start", width: "max-content", "margin-top": `${AI_ANIMATION_CANVAS_BAR_TOP_GAP}px`, display: "flex", "align-items": "center", "pointer-events": "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-panel]',
+        style: {
+          margin: `${AI_ANIMATION_PANEL_TIMELINE_GAP}px 0 0`, width: "100%", "max-width": "none", "box-sizing": "border-box",
+          padding: "13px 14px", gap: `${DOCK_ROW_GAP}px`, "row-gap": `${DOCK_ROW_GAP}px`,
+          height: "auto", "min-height": "0", "max-height": "none",
+          background: DOCK_SURFACE, "background-color": DOCK_SURFACE, border: `1px solid ${DOCK_BORDER_COLOR}`,
+          "border-radius": DOCK_RADIUS_PX, "box-shadow": "none"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-settings-row]',
+        style: { height: "auto", "min-height": "32px", "max-height": "none", padding: "0", margin: "0", "align-items": "flex-start", gap: `${DOCK_ROW_GAP}px`, flex: "0 0 auto" }
+      },
+      {
+        // 分辨率 W [ ] H [ ] is one parameter in the reference: a space after
+        // the label and 6 between its two fields, not the 11 between groups.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-settings-fields] > label:not([data-novaflow-art-generate-count-field])',
+        style: (node) => {
+          const letter = normalizeText(Array.from(node.childNodes).filter((child) => child.nodeType === 3).map((child) => child.textContent).join(""));
+          if (letter === "W") return { "margin-left": `${4 - DOCK_ROW_GAP}px` };
+          if (letter === "H") return { "margin-left": `${DOCK_LABEL_GAP - DOCK_ROW_GAP}px` };
+          return null;
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-panel] > div:nth-child(3)',
+        style: { "grid-template-rows": "auto", height: "auto", "min-height": "0", "max-height": "none", margin: "0", flex: "0 0 auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-settings-fields]',
+        style: { gap: `${DOCK_LABEL_GAP}px`, "row-gap": "8px", "column-gap": `${DOCK_ROW_GAP}px`, "align-items": "center", "flex-wrap": "wrap", "padding-top": "2px", height: "auto" }
+      },
+      {
+        // Labels and the fields they wrap: 11px #A9A9A9, 6 from the control.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-settings-fields] > span, [data-novaflow-art-generate-settings-fields] > label, [data-novaflow-art-generate-settings-fields] > div, [data-novaflow-art-generate-settings-fields] > div > span, [data-novaflow-art-generate-settings-fields] > label > span',
+        style: (node) => {
+          const toggleHost = node.querySelector && node.querySelector("[data-novaflow-art-generate-state-toggle]");
+          const on = toggleHost ? toggleHost.getAttribute("aria-pressed") === "true" : false;
+          const owner = node.closest("[data-novaflow-art-generate-settings-fields] > div");
+          const ownerOn = owner ? owner.querySelector("[data-novaflow-art-generate-state-toggle]")?.getAttribute("aria-pressed") === "true" : false;
+          const isToggleLabel = node.tagName === "SPAN" && node.parentElement && node.parentElement.querySelector("[data-novaflow-art-generate-state-toggle]");
+          return {
+            "font-size": "11px", "line-height": "28px", height: "28px", "white-space": "nowrap",
+            display: node.tagName === "SPAN" && !node.children.length ? "inline-block" : "inline-flex",
+            "align-items": "center", gap: toggleHost ? "7px" : `${DOCK_LABEL_GAP}px`,
+            "font-weight": isToggleLabel ? NOVAFLOW_MEDIUM_FONT_WEIGHT : "400",
+            color: isToggleLabel ? (ownerOn ? DOCK_TOGGLE_ON_TEXT : DOCK_LABEL_TEXT) : DOCK_LABEL_TEXT,
+            ...(on ? {} : {})
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-value-field]',
+        style: {
+          width: `${UI_NUM_FIELD_WIDTH}px`, "min-width": `${UI_NUM_FIELD_WIDTH}px`, "max-width": `${UI_NUM_FIELD_WIDTH}px`,
+          height: `${UI_NUM_FIELD_HEIGHT}px`, "min-height": `${UI_NUM_FIELD_HEIGHT}px`, "max-height": `${UI_NUM_FIELD_HEIGHT}px`,
+          padding: "5px", border: `1px solid ${UI_NUM_FIELD_BORDER_COLOR}`, "border-radius": UI_NUM_FIELD_RADIUS_PX,
+          background: UI_NUM_FIELD_BACKGROUND, "background-color": UI_NUM_FIELD_BACKGROUND,
+          color: UI_NUM_FIELD_TEXT, "font-size": "11px", "text-align": "center", "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-state-toggle]',
+        style: (node) => {
+          const on = node.getAttribute("aria-pressed") === "true";
+          return {
+            width: "27px", "min-width": "27px", "max-width": "27px", height: "15px", "min-height": "15px", "max-height": "15px",
+            padding: "0", border: "0", "border-radius": "15px", "box-shadow": "none",
+            background: on ? DOCK_SWITCH_ON : DOCK_SWITCH_OFF, "background-color": on ? DOCK_SWITCH_ON : DOCK_SWITCH_OFF
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-state-toggle-knob]',
+        style: (node) => {
+          const on = node.closest("[data-novaflow-art-generate-state-toggle]")?.getAttribute("aria-pressed") === "true";
+          return {
+            width: "9px", height: "9px", "min-width": "9px", "min-height": "9px", top: "3px", left: on ? "15px" : "3px",
+            right: "auto", bottom: "auto", transform: "none", "border-radius": "50%",
+            background: on ? DOCK_SWITCH_KNOB_ON : DOCK_SWITCH_KNOB_OFF, "background-color": on ? DOCK_SWITCH_KNOB_ON : DOCK_SWITCH_KNOB_OFF,
+            "box-shadow": "none"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-submit]',
+        style: (node) => {
+          const disabled = node.disabled === true;
+          return {
+            margin: "0", "line-height": "1",
+            "min-width": "104px", width: "auto", height: "32px", "min-height": "32px", "max-height": "32px",
+            padding: "5px 10px", border: `1px solid ${disabled ? "transparent" : DOCK_PRIMARY_BORDER}`, "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            "font-size": "12px", "font-weight": "600", "box-shadow": "none", "box-sizing": "border-box",
+            opacity: disabled ? NOVAFLOW_DISABLED_OPACITY : "1"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-progress]',
+        style: { display: "flex", "flex-direction": "row", "align-items": "center", gap: "8px", height: "15px", "min-height": "15px", "max-height": "15px", margin: "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-progress] > div:first-child',
+        style: { flex: "0 0 auto", width: "auto", padding: "0", gap: "8px", height: "15px", display: "flex", "align-items": "center" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-progress] > div:first-child > div',
+        style: { "font-size": "10px", color: DOCK_PROGRESS_TEXT, "line-height": "15px", height: "15px", width: "auto", "max-width": "none", overflow: "visible", "text-overflow": "clip", "white-space": "nowrap" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-progress] > div:nth-child(2)',
+        style: { flex: "1 1 auto", width: "auto", height: "1px", "min-height": "1px", "border-radius": "0", background: DOCK_PROGRESS_LINE, "background-color": DOCK_PROGRESS_LINE }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-progress] > div:nth-child(2) > div',
+        style: { height: "1px", "border-radius": "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-prompt-grid]',
+        style: { height: "auto", "min-height": "0", "max-height": "none", gap: "0", margin: "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-prompt-frame]',
+        style: {
+          height: "109px", "min-height": "109px", "max-height": "109px",
+          background: DOCK_PROMPT_SURFACE, "background-color": DOCK_PROMPT_SURFACE,
+          border: `1px solid ${DOCK_PROMPT_BORDER}`, "border-radius": "8px", "box-sizing": "border-box", overflow: "hidden"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-prompt-frame] > div:first-child',
+        style: { height: "33px", "min-height": "33px", "max-height": "33px", padding: "4px 7px", "align-items": "center", "box-sizing": "border-box", background: DOCK_PROMPT_SURFACE, "background-color": DOCK_PROMPT_SURFACE }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-prompt-frame] > div:first-child > div',
+        style: { gap: "4px", height: "24px", "align-items": "center" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-prompt-frame] textarea',
+        style: {
+          height: "74px", "min-height": "74px", "max-height": "74px", padding: "12px 14px",
+          "font-size": "12px", color: DOCK_PROMPT_TEXT, background: DOCK_PROMPT_SURFACE, "background-color": DOCK_PROMPT_SURFACE,
+          border: "0", "border-radius": "0", "box-shadow": "none", resize: "none", "box-sizing": "border-box"
+        }
       },
       {
         // AI 序列动画's dock.
@@ -32821,7 +32954,9 @@
         style: () => canvasBarPillStyle()
       },
       {
-        selector: CANVAS_BAR_PILL_SELECTORS.map((pill) => `${pill} button`).join(", "),
+        // The drawing page's own runtime draws its view buttons and 自动适配
+        // to the same values; it owns them, so they are left out here.
+        selector: CANVAS_BAR_PILL_SELECTORS.filter((pill) => pill !== "#novaflow-spine-split-view-controls").map((pill) => `${pill} button`).join(", "),
         style: (node) => canvasBarButtonStyle(node)
       },
       {
@@ -33182,10 +33317,7 @@
       const host = document.getElementById("novaflow-spine-split-right-workspace-host");
       const uiShell = firstVisible('[data-novaflow-ui-design-shell="1"]');
       if (overlay instanceof HTMLElement && overlay.getBoundingClientRect().width > 0) {
-        placeNovaflowStackNode(overlay, {
-          top: `${workspaceTop}px`, bottom: "auto", left: `${columnLeft}px`, right: "auto",
-          width: `${columnWidth}px`, height: `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT}px`
-        });
+        // The overlay itself follows data-novaflow-stage-box.
         const resourcesTop = workspaceTop + NOVAFLOW_STACK_CENTER_MIN_HEIGHT + NOVAFLOW_STACK_GAP;
         placeNovaflowStackNode(host, {
           top: `${resourcesTop}px`, bottom: "auto", left: `${columnLeft}px`, right: "auto",
@@ -33242,6 +33374,26 @@
     }
   }
 
+  // The drawing page's own runtime places its stage overlay from this box, so
+  // it and the spec agree on the stage for every tier.
+  function publishNovaflowStageBox() {
+    const box = novaflowStageBox(true);
+    const height = NOVAFLOW_LAYOUT_TIER === "stack"
+      ? NOVAFLOW_STACK_CENTER_MIN_HEIGHT
+      : Math.max(160, Math.round((window.innerHeight || 0) - box.top - PRIMARY_PANEL_BOTTOM_GAP));
+    const value = [box.left, box.top, box.width, height].map((n) => Math.round(n)).join(",");
+    nfSetAttrIfChanged(document.documentElement, "data-novaflow-stage-box", value);
+    // With 绘图's generation dock up, the stage panel itself stops 9 above
+    // it, as the reference's does; the dock sits on the page, not the panel.
+    let surfaceHeight = height;
+    const dock = document.querySelector(`#${ART_GENERATE_WORKSPACE_ID} .novaflow-art-generate-bottom`);
+    if (document.body && document.body.getAttribute(ART_GENERATE_ACTIVE_ATTR) === "1" && dock instanceof HTMLElement && dock.offsetHeight > 0) {
+      surfaceHeight = Math.max(160, height - dock.offsetHeight - AI_ANIMATION_PANEL_TIMELINE_GAP);
+    }
+    const surface = [box.left, box.top, box.width, surfaceHeight].map((n) => Math.round(n)).join(",");
+    nfSetAttrIfChanged(document.documentElement, "data-novaflow-stage-surface-box", surface);
+  }
+
   function applyNovaflowReferenceSpec() {
     // Always the whole document. The rhythm pass is often called with a
     // narrow scope, and a page-level spec queried from inside that scope
@@ -33255,6 +33407,7 @@
     NOVAFLOW_STACK_WORKSPACE_TOP = NOVAFLOW_LAYOUT_TIER === "stack"
       ? TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP + novaflowStackSidebarHeight() + NOVAFLOW_STACK_GAP
       : 0;
+    publishNovaflowStageBox();
     // Every entry for a node is gathered first and written once. Writing them
     // one by one let a shorthand (background, border, gap, padding) and its
     // own longhands, or two entries, undo each other on every pass - each
@@ -76214,6 +76367,12 @@
   }
 
   function getArtGenerateWorkspaceRect() {
+    // The whole stage for this width, published by the reference spec; the
+    // drawing overlay under it may be shorter, stopping above the dock.
+    const published = String(document.documentElement?.getAttribute("data-novaflow-stage-box") || "").split(",").map(Number);
+    if (published.length === 4 && published.every(Number.isFinite) && published[2] > 0 && published[3] > 0) {
+      return { left: published[0], top: published[1], width: published[2], height: published[3] };
+    }
     const splitOverlay = document.getElementById("novaflow-spine-split-workspace-overlay");
     const splitNativeRect = getArtGenerateOverlayNativeRect(splitOverlay);
     if (splitNativeRect) {
