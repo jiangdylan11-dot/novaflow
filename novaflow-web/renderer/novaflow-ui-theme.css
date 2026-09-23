@@ -447,7 +447,8 @@
    The inline value is a var(), so redefining the property here brings the
    feedback back without giving up the override. */
 .novaflow-app [data-novaflow-primary-entry="1"][data-novaflow-primary-active="0"]:hover {
-  --nf-rail-entry-bg: #262626;
+  --nf-rail-entry-bg: #373737;
+  --nf-rail-entry-fg: #ffffff;
 }
 
 .novaflow-app [data-novaflow-secondary-entry="1"][data-novaflow-secondary-active="0"]:hover {

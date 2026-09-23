@@ -10,13 +10,13 @@
     // Reference (spline-review): the group header is a bare summary row -
     // no plate, no radius. Groups are separated by the details' bottom rule,
     // and only :hover gets a fill. The ICON keeps a small plate of its own.
-    panelGap: '7px',
+    panelGap: '0px',
     radius: '0px',
     headerHeight: '46px',
     headerPadding: '0 3px',
     headerBackground: 'transparent',
     headerHoverBackground: '#222222',
-    panelBorderBottom: '1px solid #313131',
+    panelBorderBottom: '1px solid #272727',
     iconPlateBackground: '#292929',
     iconPlateRadius: '5px',
     iconPlateSize: '24px',
