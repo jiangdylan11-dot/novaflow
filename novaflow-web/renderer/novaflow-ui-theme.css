@@ -609,3 +609,21 @@
     margin-top: 28px;
   }
 }
+
+
+/* 2.0f Canvas bar hover.
+   The runtime writes these buttons' fill and ink inline through
+   var(--nf-cb-hover-bg / -fg), so the reference's hover (#373737, white) can
+   still reach an idle button; selected and disabled ones carry fixed values. */
+.novaflow-app [data-novaflow-canvas-bar-button="idle"]:hover,
+[data-novaflow-canvas-bar-button="idle"]:hover {
+  --nf-cb-hover-bg: #373737;
+  --nf-cb-hover-fg: #ffffff;
+}
+
+/* 2.0g Adaptive layout.
+   The bundle gives the app root an inline 1280 minimum for its Electron
+   window. The renderer lays itself out for any width now, so it goes. */
+.novaflow-app {
+  min-width: 0 !important;
+}

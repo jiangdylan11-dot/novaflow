@@ -419,11 +419,11 @@ export function rewriteIndexHtml(html) {
   }
 
   // The desktop shell hard-codes a minimum width for an Electron window. A
-  // browser tab can be narrower, and a horizontal scrollbar is better than a
-  // clipped layout.
+  // browser tab can be narrower, and the renderer now lays itself out for any
+  // width (the reference's 1400 / 720 tiers), so the page takes no minimum.
   out = out.replace(
     'html, body, #root { min-width: 1280px;',
-    'html, body, #root { min-width: 1024px;'
+    'html, body, #root { min-width: 0;'
   );
 
   out = out.replace('<title>NovaFlow</title>', '<title>NovaFlow Web</title>');

@@ -143,10 +143,16 @@
   // The reference floats a 206 panel inset 10 from the window edge and 10
   // clear of the stage, so the column this occupies in the flex row is 226
   // and the panel itself is what the padding leaves.
-  const SPLIT_RIGHT_WORKSPACE_WIDTH = 226
-  const SPLIT_RIGHT_WORKSPACE_INSET = 10
+  // Above 1400 the panel is 206 with 10 gutters; at or below it the reference
+  // narrows it to 172 with 8 gutters. The brand runtime owns the tier and
+  // publishes it on <html>.
   const SPLIT_RIGHT_WORKSPACE_TOP_GAP = 8
-  const SPLIT_RIGHT_WORKSPACE_BOTTOM_GAP = 10
+  function splitLayoutTier() {
+    return (document.documentElement && document.documentElement.getAttribute('data-novaflow-layout-tier')) || 'wide'
+  }
+  function splitRightWorkspaceInset() { return splitLayoutTier() === 'wide' ? 10 : 8 }
+  function splitRightPanelWidth() { return splitLayoutTier() === 'wide' ? 206 : 172 }
+  function splitRightWorkspaceWidth() { return splitRightPanelWidth() + splitRightWorkspaceInset() * 2 }
   const SPLIT_PANEL_SURFACE = '#161616'
   const SPLIT_PANEL_BORDER_COLOR = '#2e2e2e'
   const SPLIT_PANEL_RADIUS = '12px' 
@@ -28494,7 +28500,7 @@
       node.setAttribute(RIGHT_WORKSPACE_ROOT_STYLE_ATTR, node.getAttribute('style') || '')
     }
     setSplitAttributeIfChanged(node, RIGHT_WORKSPACE_ROOT_ATTR, '1')
-    const width = `${SPLIT_RIGHT_WORKSPACE_WIDTH}px`
+    const width = `${splitRightWorkspaceWidth()}px`
     node.style.setProperty('width', width, 'important')
     node.style.setProperty('min-width', width, 'important')
     node.style.setProperty('max-width', width, 'important')
@@ -28502,7 +28508,7 @@
     node.style.setProperty('flex-basis', width, 'important')
     node.style.setProperty('flex-shrink', '0', 'important')
     node.style.setProperty('box-sizing', 'border-box', 'important')
-    node.style.setProperty('padding', `${SPLIT_RIGHT_WORKSPACE_TOP_GAP}px ${SPLIT_RIGHT_WORKSPACE_INSET}px ${SPLIT_RIGHT_WORKSPACE_BOTTOM_GAP}px ${SPLIT_RIGHT_WORKSPACE_INSET}px`, 'important')
+    node.style.setProperty('padding', `${SPLIT_RIGHT_WORKSPACE_TOP_GAP}px ${splitRightWorkspaceInset()}px ${splitRightWorkspaceInset()}px ${splitRightWorkspaceInset()}px`, 'important')
     // The column is a layout slot; the panel inside it is the surface.
     node.style.setProperty('background', 'transparent', 'important')
     node.style.setProperty('overflow', 'visible', 'important')
@@ -28527,7 +28533,7 @@
       host = h('div', { id: RIGHT_WORKSPACE_HOST_ID, [ROOT_ATTR]: '1' })
       ;(document.body || document.documentElement).appendChild(host)
     }
-    const width = `${SPLIT_RIGHT_WORKSPACE_WIDTH}px`
+    const width = `${splitRightWorkspaceWidth()}px`
     const top = fallbackRightWorkspaceTop()
     host.setAttribute(ROOT_ATTR, '1')
     host.style.setProperty('position', 'fixed', 'important')
@@ -28554,7 +28560,7 @@
     if (node.closest(`#${WORKSPACE_OVERLAY_ID}, #${RIGHT_WORKSPACE_ID}`)) return false
     if (mountedCard && (node === mountedCard || node.contains(mountedCard) || mountedCard.contains(node))) return false
     const rect = node.getBoundingClientRect()
-    if (!rect || rect.width < 200 || rect.width > 430 || rect.height < 260) return false
+    if (!rect || rect.width < 150 || rect.width > 430 || rect.height < 260) return false
     if (rect.right < window.innerWidth * 0.78 || rect.left < window.innerWidth * 0.55) return false
     const style = window.getComputedStyle(node)
     if (!style || style.display === 'none' || style.visibility === 'hidden') return false
@@ -28564,7 +28570,7 @@
   function rightPanelRootCandidateScore(node) {
     const rect = node.getBoundingClientRect()
     const text = textOf(node)
-    let score = Math.abs(rect.width - SPLIT_RIGHT_WORKSPACE_WIDTH) * 5
+    let score = Math.abs(rect.width - splitRightWorkspaceWidth()) * 5
     score += Math.abs((window.innerWidth || rect.right) - rect.right) * 1.5
     score += Math.max(0, 360 - rect.height) * 0.3
     if (node.getAttribute(RIGHT_WORKSPACE_ROOT_ATTR) === '1') score -= 1000
@@ -36089,6 +36095,8 @@
   window.addEventListener('blur', cancelLayerPointerDrag, true)
   window.addEventListener('blur', hideActiveBrushCursors, true)
   window.addEventListener('resize', () => syncSplitWorkspace())
+  // The brand runtime switches the layout tier a beat after the resize itself.
+  window.addEventListener('novaflow:layout-tier', () => syncSplitWorkspace())
   window.addEventListener('keydown', handleLayerHotkeys, true)
   window.addEventListener('keyup', handlePenModifierKeyChange, true)
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { mount(); startSplitMountRetry() })

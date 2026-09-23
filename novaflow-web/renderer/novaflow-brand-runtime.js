@@ -2432,11 +2432,11 @@
   const SOURCE_PRIMARY_LEFT_PANEL_WIDTH = 302;
   // Rail geometry, measured off the approved reference (spline-review):
   // a 56-wide rail of 65-tall entries, floated 10px off the left edge.
-  const PRIMARY_SIDEBAR_LEFT = 10;
+  let PRIMARY_SIDEBAR_LEFT = 10;
   // Reference: the rail is 56 wide but its entries are 44 - they sit inset,
   // not edge-to-edge, which is what keeps the selected block from looking fat.
   const PRIMARY_SIDEBAR_ITEM_INSET = 6;
-  const PRIMARY_SIDEBAR_ITEM_WIDTH = 44;
+  let PRIMARY_SIDEBAR_ITEM_WIDTH = 44;
   const PRIMARY_RAIL_PANEL_RADIUS = 12;
   // The bottom generation dock (reference .nf-dock): a floating rounded panel,
   // not a strip welded to the bottom edge.
@@ -2458,7 +2458,7 @@
   const CANVAS_BAR_PILL_BACKGROUND = "#161616";
   const CANVAS_BAR_PILL_BORDER_COLOR = "#333333";
   const CANVAS_BAR_PILL_RADIUS_PX = "9px";
-  const WORKSPACE_SIDE_GAP = 10;
+  let WORKSPACE_SIDE_GAP = 10;
   const DOCK_HEIGHT = 99;
   // The reference uses one number field and one icon button everywhere: in
   // the dock, in the left panel and in the resource sidebar.
@@ -2510,20 +2510,20 @@
   const PRIMARY_PANEL_TOP_GAP = 8;
   // The rail panel pads its entries in by 10, like the reference.
   const PRIMARY_RAIL_INNER_PAD = 10;
-  const PRIMARY_PANEL_BOTTOM_GAP = 10;
+  let PRIMARY_PANEL_BOTTOM_GAP = 10;
   const PRIMARY_PANEL_SURFACE = "#161616";
   const PRIMARY_PANEL_BORDER_COLOR = "#2e2e2e";
   const PRIMARY_RAIL_SURFACE_ID = "novaflow-primary-rail-surface";
   const PRIMARY_LEFT_SURFACE_ID = "novaflow-primary-left-surface";
-  const PRIMARY_SIDEBAR_WIDTH = 56;
-  const PRIMARY_SIDEBAR_GAP = 9;
-  const PRIMARY_VISIBLE_CONTENT_WIDTH = 227;
-  const PRIMARY_LEFT_PANEL_WIDTH = 218;
+  let PRIMARY_SIDEBAR_WIDTH = 56;
+  let PRIMARY_SIDEBAR_GAP = 9;
+  let PRIMARY_VISIBLE_CONTENT_WIDTH = 227;
+  let PRIMARY_LEFT_PANEL_WIDTH = 218;
   const PRIMARY_LEFT_PANEL_PAD = 9;
   // Reference .nf-sidebar pads its content in by 10, so cards are 198 wide
   // inside a 218 panel.
   const PRIMARY_LEFT_CARD_INSET = 10;
-  const PRIMARY_LEFT_CARD_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_CARD_INSET * 2;
+  let PRIMARY_LEFT_CARD_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_CARD_INSET * 2;
   const PRIMARY_LEFT_CARD_HEADER_HEIGHT = 46;
   // The reference gives the group header a bare row and puts the only plate
   // on its icon: a 24 square, 7 in from the card edge, 8 before the label.
@@ -2536,14 +2536,14 @@
   const PRIMARY_LEFT_CARD_TITLE_COLOR = "#d4d4d4";
   // The shell lands the cards at 89; the reference wants 85.
   const PRIMARY_LEFT_CARD_SHIFT = 0;
-  const SECONDARY_ENTRY_GROUP_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_PANEL_PAD * 2;
+  let SECONDARY_ENTRY_GROUP_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_PANEL_PAD * 2;
   const SECONDARY_GROUP_HEIGHT = SECONDARY_ENTRY_HEIGHT + (SECONDARY_GROUP_PAD + 1) * 2;
   const PRIMARY_PANEL_BODY_VERTICAL_INSET = 14;
   const PRIMARY_PANEL_BODY_INSET = 11;
-  const PRIMARY_PANEL_INNER_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_PANEL_BODY_INSET * 2;
+  let PRIMARY_PANEL_INNER_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_PANEL_BODY_INSET * 2;
   const TOPBAR_HEIGHT = 54;
-  const PRIMARY_CONTENT_OUTER_GAP = PRIMARY_SIDEBAR_GAP;
-  const PRIMARY_CONTENT_WIDTH = PRIMARY_VISIBLE_CONTENT_WIDTH;
+  let PRIMARY_CONTENT_OUTER_GAP = PRIMARY_SIDEBAR_GAP;
+  let PRIMARY_CONTENT_WIDTH = PRIMARY_VISIBLE_CONTENT_WIDTH;
   const LEFT_CONTENT_SHELL_TOP_PADDING = 0;
   const LEFT_CONTENT_SHELL_BOTTOM_PADDING = 64;
   const NOVAFLOW_TOOLS_ENTRY_SHELL_TOP = TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP + 11;
@@ -2558,12 +2558,12 @@
   const PRIMARY_OUTPUT_SHORTCUT_GAP = 15;
   // The rule between 工具 and 仓库 (.nf-rule): 30 wide, #2C2C2C, 12 clear of
   // the entries on either side. It had been drawn, but transparent.
-  const PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH = 30;
+  let PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH = 30;
   const PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN = 12;
   const PRIMARY_OUTPUT_SHORTCUT_DIVIDER_COLOR = "#2c2c2c";
-  const PRIMARY_CONTENT_LEFT = PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_WIDTH + PRIMARY_SIDEBAR_GAP;
-  const PRIMARY_COLUMN_WIDTH = PRIMARY_CONTENT_LEFT + PRIMARY_CONTENT_WIDTH;
-  const NOVAFLOW_TOOLS_PRIMARY_COLUMN_WIDTH = PRIMARY_COLUMN_WIDTH;
+  let PRIMARY_CONTENT_LEFT = PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_WIDTH + PRIMARY_SIDEBAR_GAP;
+  let PRIMARY_COLUMN_WIDTH = PRIMARY_CONTENT_LEFT + PRIMARY_CONTENT_WIDTH;
+  let NOVAFLOW_TOOLS_PRIMARY_COLUMN_WIDTH = PRIMARY_COLUMN_WIDTH;
   const NOVAFLOW_TOOLS_WORKSPACE_PADDING_LEFT = 12;
   const NOVAFLOW_TOOLS_WORKSPACE_BACKGROUND = "#242424";
   // 工具: the reference gives the tool list 198x40 entries on a 45 pitch, and
@@ -2576,9 +2576,225 @@
   const NOVAFLOW_TOOLS_BLANK_SURFACE = "#242424";
   const NOVAFLOW_TOOLS_BLANK_BORDER_COLOR = "#3c3c3c";
   const NOVAFLOW_TOOLS_BLANK_RADIUS_PX = "8px";
-  const AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH = 206;
-  const AI_ANIMATION_RESOURCE_SIDEBAR_INSET = WORKSPACE_SIDE_GAP;
-  const AI_ANIMATION_RESOURCE_SIDEBAR_SPAN = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + AI_ANIMATION_RESOURCE_SIDEBAR_INSET;
+  let AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH = 206;
+  let AI_ANIMATION_RESOURCE_SIDEBAR_INSET = WORKSPACE_SIDE_GAP;
+  let AI_ANIMATION_RESOURCE_SIDEBAR_SPAN = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + AI_ANIMATION_RESOURCE_SIDEBAR_INSET;
+
+  // Adaptive layout, from the reference's own media queries (spline-review):
+  //   wide    > 1400   rail 56, left column 218, resources 206, gutters 10 / 9
+  //   narrow <= 1400   rail 52, left column 192, resources 172, gutters 8
+  //   stack  <=  720   rail 48, one column: the left column over the stage,
+  //                    the dock and the resources under it, the page scrolls
+  // (The reference's 1100 block is overridden by its later 1400 block, so the
+  // columns do not narrow again at 1100.) The values above are `let` so every
+  // writer that already reads them follows the tier without being touched.
+  const NOVAFLOW_LAYOUT_TIERS = {
+    wide: { sidebarLeft: 10, railWidth: 56, railItem: 44, railGap: 9, panel: 218, sideGap: 10, bottomGap: 10, resources: 206 },
+    narrow: { sidebarLeft: 8, railWidth: 52, railItem: 40, railGap: 8, panel: 192, sideGap: 8, bottomGap: 8, resources: 172 },
+    stack: { sidebarLeft: 8, railWidth: 48, railItem: 36, railGap: 8, panel: 192, sideGap: 8, bottomGap: 8, resources: 172 }
+  };
+  const NOVAFLOW_LAYOUT_NARROW_MAX = 1400;
+  const NOVAFLOW_LAYOUT_STACK_MAX = 720;
+  let NOVAFLOW_LAYOUT_TIER = "wide";
+
+  // The canvas bar, measured off every *-spline.html page: 38-tall plates
+  // (4 in, 3 between, #333 hairline, radius 9, a soft drop) holding 28-tall
+  // buttons with a 1px edge that is transparent until selected. Buttons pad
+  // 10 a side wide and 8 at or below 1400; the video-mode tabs are at least
+  // 76 / 64 wide and the + / - board buttons at least 30.
+  const CANVAS_BAR_PILL_SELECTORS = [
+    '[data-novaflow-ai-board-controls-top-left="1"]',
+    '[data-novaflow-ai-top-mode-tabs="1"]',
+    "#novaflow-particle-project-top-actions",
+    '[data-novaflow-skeleton-top-button-group="1"]',
+    "#novaflow-spine-split-view-controls",
+    '[data-novaflow-ui-design-bottom-dock="1"]'
+  ];
+  const CANVAS_BAR_QUIET_SELECTOR = [
+    '[data-novaflow-autofit-button="1"]',
+    '[data-novaflow-spine-split-fit-button="1"]',
+    '[data-novaflow-ui-design-toolbar-action="fit"]'
+  ].join(", ");
+  const CANVAS_BAR_PILL_SHADOW = "0 3px 7px rgba(0, 0, 0, 0.133)";
+  const CANVAS_BAR_PILL_TEXT = "#eaeaea";
+  const CANVAS_BAR_DISABLED_BACKGROUND = "#252629";
+  const CANVAS_BAR_DISABLED_TEXT = "#969aa2";
+  // Every disabled button in the reference is also drawn at 0.38.
+  const NOVAFLOW_DISABLED_OPACITY = "0.38";
+
+  function canvasBarPillStyle() {
+    return {
+      height: `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+      "min-height": `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+      "max-height": `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+      padding: "4px",
+      gap: "3px",
+      "column-gap": "3px",
+      "box-sizing": "border-box",
+      background: CANVAS_BAR_PILL_BACKGROUND,
+      "background-color": CANVAS_BAR_PILL_BACKGROUND,
+      "background-image": "none",
+      border: `1px solid ${CANVAS_BAR_PILL_BORDER_COLOR}`,
+      "border-radius": CANVAS_BAR_PILL_RADIUS_PX,
+      "box-shadow": CANVAS_BAR_PILL_SHADOW,
+      color: CANVAS_BAR_PILL_TEXT
+    };
+  }
+
+  function canvasBarButtonActive(node) {
+    if (node.getAttribute("data-novaflow-skeleton-premultiply-alpha-button") === "1") {
+      return node.getAttribute("aria-pressed") !== "false";
+    }
+    if (node.hasAttribute("data-novaflow-spine-split-tool-active")) {
+      return node.getAttribute("data-novaflow-spine-split-tool-active") === "1";
+    }
+    return node.getAttribute("aria-pressed") === "true";
+  }
+
+  function canvasBarButtonStyle(node) {
+    const wide = NOVAFLOW_LAYOUT_TIER === "wide";
+    const mode = Boolean(node.closest('[data-novaflow-ai-top-mode-tabs="1"]'));
+    const text = normalizeText(node.textContent || "");
+    const icon = /^[+\-\u2212\u00d7]?$/.test(text) && !/^\d+$/.test(text);
+    const disabled = node.disabled === true || node.getAttribute("aria-disabled") === "true";
+    const active = !disabled && canvasBarButtonActive(node);
+    // Idle buttons read their fill through a var so :hover can still change it.
+    nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : (disabled ? "disabled" : "idle"));
+    const activeText = mode ? AI_ANIMATION_MODE_SELECTED_TEXT : UI_SEGMENT_SELECTED_TEXT;
+    const activeBorder = mode ? AI_ANIMATION_MODE_SELECTED_BORDER : UI_SEGMENT_SELECTED_BORDER;
+    const background = active
+      ? UI_SEGMENT_SELECTED_BACKGROUND
+      : (disabled ? CANVAS_BAR_DISABLED_BACKGROUND : "var(--nf-cb-hover-bg, transparent)");
+    return {
+      height: `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+      "min-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+      "max-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+      width: "auto",
+      // + / - carry a 16 glyph box in the reference: 16 + the padding + the edge.
+      "min-width": mode ? `${wide ? 76 : 64}px` : (icon ? `${18 + (wide ? 20 : 16)}px` : "0"),
+      "max-width": "none",
+      flex: "0 0 auto",
+      padding: `4px ${wide ? 10 : 8}px`,
+      border: `1px solid ${active ? activeBorder : "transparent"}`,
+      "border-radius": CANVAS_BAR_BUTTON_RADIUS_PX,
+      background,
+      "background-color": background,
+      "background-image": "none",
+      "box-shadow": "none",
+      color: active ? activeText : (disabled ? CANVAS_BAR_DISABLED_TEXT : `var(--nf-cb-hover-fg, ${CANVAS_BAR_BUTTON_TEXT})`),
+      opacity: disabled ? NOVAFLOW_DISABLED_OPACITY : "1",
+      "font-size": "11px",
+      "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+      "line-height": "1",
+      "box-sizing": "border-box"
+    };
+  }
+
+  function canvasBarQuietStyle(node) {
+    const disabled = node.disabled === true || node.getAttribute("aria-disabled") === "true";
+    nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", disabled ? "disabled" : "idle");
+    return {
+      width: "auto",
+      "min-width": "0",
+      height: `${CANVAS_BAR_QUIET_HEIGHT}px`,
+      "min-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
+      "max-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
+      padding: "5px 12px",
+      background: `var(--nf-cb-hover-bg, ${CANVAS_BAR_QUIET_BACKGROUND})`,
+      "background-color": `var(--nf-cb-hover-bg, ${CANVAS_BAR_QUIET_BACKGROUND})`,
+      "background-image": "none",
+      border: `1px solid ${CANVAS_BAR_QUIET_BORDER_COLOR}`,
+      "border-radius": CANVAS_BAR_QUIET_RADIUS_PX,
+      "box-shadow": "none",
+      color: `var(--nf-cb-hover-fg, ${CANVAS_BAR_QUIET_TEXT})`,
+      opacity: disabled ? NOVAFLOW_DISABLED_OPACITY : "1",
+      "font-size": "11px",
+      "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+      "line-height": "1",
+      "box-sizing": "border-box"
+    };
+  }
+
+  // Where the canvas bar sits: the stage's own box, from the layout metrics.
+  // `withResources` is every page with a right-hand panel; the particle page
+  // runs its stage to the window's gutter.
+  function novaflowStageBox(withResources = true) {
+    const viewportWidth = Math.max(0, Math.round(window.innerWidth || document.documentElement.clientWidth || 0));
+    const left = PRIMARY_COLUMN_WIDTH;
+    const right = withResources
+      ? viewportWidth - AI_ANIMATION_RESOURCE_SIDEBAR_SPAN - WORKSPACE_SIDE_GAP
+      : viewportWidth - WORKSPACE_SIDE_GAP;
+    return { left, right, width: Math.max(0, right - left), top: TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP };
+  }
+
+  // The reference's canvas bar is one flex row: the plate on the left, the
+  // quiet 自动适配 at the right edge and, on the video page, the mode tabs
+  // centred on the stage. At or below 1100 the tabs join the row
+  // (space-between), and when the three no longer fit they keep the first
+  // line, right-aligned, while 自动适配 drops to a second line on the left.
+  const CANVAS_BAR_ROW_TOP = 7;
+  const CANVAS_BAR_WRAP_TOP = 3;
+  const CANVAS_BAR_LINE_GAP = 8;
+  function aiCanvasBarLayout() {
+    const box = novaflowStageBox(true);
+    const pill = document.querySelector('[data-novaflow-ai-board-controls-top-left="1"]');
+    const tabs = document.querySelector('[data-novaflow-ai-top-mode-tabs="1"]');
+    const quiet = document.querySelector('[data-novaflow-ai-zoom-controls="1"]');
+    const pillWidth = pill instanceof HTMLElement ? pill.offsetWidth : 0;
+    const tabsWidth = tabs instanceof HTMLElement ? tabs.offsetWidth : 0;
+    const quietWidth = quiet instanceof HTMLElement ? quiet.offsetWidth : 0;
+    const viewportWidth = Math.round(window.innerWidth || 0);
+    if (viewportWidth > 1100) {
+      return { wrapped: false, rowTop: CANVAS_BAR_ROW_TOP, tabsCenter: box.left + box.width / 2, box };
+    }
+    const fits = pillWidth + tabsWidth + quietWidth <= box.width;
+    if (fits) {
+      const free = box.width - pillWidth - tabsWidth - quietWidth;
+      return { wrapped: false, rowTop: CANVAS_BAR_ROW_TOP, tabsCenter: box.left + pillWidth + free / 2 + tabsWidth / 2, box };
+    }
+    return {
+      wrapped: true,
+      rowTop: CANVAS_BAR_WRAP_TOP,
+      tabsCenter: box.right - tabsWidth / 2,
+      quietTop: CANVAS_BAR_WRAP_TOP + AI_ANIMATION_CAPSULE_HEIGHT + CANVAS_BAR_LINE_GAP,
+      box
+    };
+  }
+
+  function novaflowLayoutTierForWidth(width) {
+    const w = Number(width) || 0;
+    if (w > 0 && w <= NOVAFLOW_LAYOUT_STACK_MAX) return "stack";
+    if (w > 0 && w <= NOVAFLOW_LAYOUT_NARROW_MAX) return "narrow";
+    return "wide";
+  }
+
+  function assignNovaflowLayoutMetrics(tier) {
+    const m = NOVAFLOW_LAYOUT_TIERS[tier] || NOVAFLOW_LAYOUT_TIERS.wide;
+    NOVAFLOW_LAYOUT_TIER = NOVAFLOW_LAYOUT_TIERS[tier] ? tier : "wide";
+    PRIMARY_SIDEBAR_LEFT = m.sidebarLeft;
+    PRIMARY_SIDEBAR_ITEM_WIDTH = m.railItem;
+    WORKSPACE_SIDE_GAP = m.sideGap;
+    PRIMARY_PANEL_BOTTOM_GAP = m.bottomGap;
+    PRIMARY_SIDEBAR_WIDTH = m.railWidth;
+    PRIMARY_SIDEBAR_GAP = m.railGap;
+    PRIMARY_LEFT_PANEL_WIDTH = m.panel;
+    PRIMARY_VISIBLE_CONTENT_WIDTH = m.panel + m.railGap;
+    AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH = m.resources;
+    // Everything derived from them, in declaration order.
+    PRIMARY_LEFT_CARD_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_CARD_INSET * 2;
+    SECONDARY_ENTRY_GROUP_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_PANEL_PAD * 2;
+    PRIMARY_PANEL_INNER_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_PANEL_BODY_INSET * 2;
+    PRIMARY_CONTENT_OUTER_GAP = PRIMARY_SIDEBAR_GAP;
+    PRIMARY_CONTENT_WIDTH = PRIMARY_VISIBLE_CONTENT_WIDTH;
+    // The rule between 工具 and 仓库 is the entry width less 7 each side.
+    PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH = PRIMARY_SIDEBAR_ITEM_WIDTH - 14;
+    PRIMARY_CONTENT_LEFT = PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_WIDTH + PRIMARY_SIDEBAR_GAP;
+    PRIMARY_COLUMN_WIDTH = PRIMARY_CONTENT_LEFT + PRIMARY_CONTENT_WIDTH;
+    NOVAFLOW_TOOLS_PRIMARY_COLUMN_WIDTH = PRIMARY_COLUMN_WIDTH;
+    AI_ANIMATION_RESOURCE_SIDEBAR_INSET = WORKSPACE_SIDE_GAP;
+    AI_ANIMATION_RESOURCE_SIDEBAR_SPAN = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + AI_ANIMATION_RESOURCE_SIDEBAR_INSET;
+    return NOVAFLOW_LAYOUT_TIER;
+  }
   const AI_ANIMATION_PREVIEW_UI_GAP = 10;
   const AI_ANIMATION_RESOURCE_SIDEBAR_GAP = AI_ANIMATION_PREVIEW_UI_GAP;
   const AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT = 206;
@@ -8363,9 +8579,12 @@
   }
 
   function installPreBrandStyle() {
-    if (!document.head || document.getElementById(PRE_BRAND_STYLE_ID)) return;
-    const style = document.createElement("style");
+    if (!document.head) return;
+    const existing = document.getElementById(PRE_BRAND_STYLE_ID);
+    if (existing && existing.getAttribute("data-novaflow-layout-tier") === NOVAFLOW_LAYOUT_TIER) return;
+    const style = existing || document.createElement("style");
     style.id = PRE_BRAND_STYLE_ID;
+    style.setAttribute("data-novaflow-layout-tier", NOVAFLOW_LAYOUT_TIER);
     style.textContent = `
       .novaflow-app i.fa-chevron-right,
       .novaflow-app i.fa-chevron-down,
@@ -9657,7 +9876,7 @@
         box-sizing: border-box !important;
       }
     `;
-    document.head.appendChild(style);
+    if (!existing) document.head.appendChild(style);
   }
 
   function paintPrimarySidebarBackdrop(sidebar) {
@@ -9680,6 +9899,37 @@
     observer.observe(document.documentElement, { childList: true });
     document.addEventListener("DOMContentLoaded", ensurePreBrandSidebarBackdrop, { once: true });
   }
+
+  function syncNovaflowLayoutTierAttribute() {
+    const root = document.documentElement;
+    if (root) root.setAttribute("data-novaflow-layout-tier", NOVAFLOW_LAYOUT_TIER);
+    if (document.body) document.body.setAttribute("data-novaflow-layout-tier", NOVAFLOW_LAYOUT_TIER);
+  }
+
+  let NOVAFLOW_LAYOUT_TIER_RESIZE_TIMER = 0;
+  function refreshNovaflowLayoutTier() {
+    const next = novaflowLayoutTierForWidth(window.innerWidth);
+    syncNovaflowLayoutTierAttribute();
+    if (next === NOVAFLOW_LAYOUT_TIER) return false;
+    assignNovaflowLayoutMetrics(next);
+    syncNovaflowLayoutTierAttribute();
+    installPreBrandStyle();
+    ensureStyle();
+    try { scheduleFullLayoutRefresh(); } catch (_) {}
+    try { scheduleNovaflowReferenceSpec(); } catch (_) {}
+    try { window.dispatchEvent(new CustomEvent("novaflow:layout-tier", { detail: { tier: next } })); } catch (_) {}
+    return true;
+  }
+
+  assignNovaflowLayoutMetrics(novaflowLayoutTierForWidth(window.innerWidth));
+  syncNovaflowLayoutTierAttribute();
+  window.addEventListener("resize", () => {
+    if (NOVAFLOW_LAYOUT_TIER_RESIZE_TIMER) window.clearTimeout(NOVAFLOW_LAYOUT_TIER_RESIZE_TIMER);
+    NOVAFLOW_LAYOUT_TIER_RESIZE_TIMER = window.setTimeout(() => {
+      NOVAFLOW_LAYOUT_TIER_RESIZE_TIMER = 0;
+      refreshNovaflowLayoutTier();
+    }, 60);
+  }, { passive: true });
 
   installPreBrandStyle();
   installPreBrandSidebarMount();
@@ -20282,9 +20532,11 @@
   }
 
   function ensureStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const style = document.createElement("style");
+    const existing = document.getElementById(STYLE_ID);
+    if (existing && existing.getAttribute("data-novaflow-layout-tier") === NOVAFLOW_LAYOUT_TIER) return;
+    const style = existing || document.createElement("style");
     style.id = STYLE_ID;
+    style.setAttribute("data-novaflow-layout-tier", NOVAFLOW_LAYOUT_TIER);
     style.textContent = `
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] {
         gap: 6px !important;
@@ -28291,7 +28543,7 @@
         font-weight: ${NOVAFLOW_ICON_FONT_WEIGHT} !important;
       }
     `;
-    document.head.appendChild(style);
+    if (!existing) document.head.appendChild(style);
   }
 
   function ensureIconLink() {
@@ -28579,7 +28831,9 @@
     return Array.from(body.children).find((child) => {
       if (!(child instanceof HTMLElement)) return false;
       const rect = child.getBoundingClientRect();
-      return rect.left <= 4 && rect.width >= 300 && rect.width <= PRIMARY_COLUMN_WIDTH + 48 && rect.height > 300;
+      // The column is PRIMARY_COLUMN_WIDTH wide, which the narrow tier takes
+      // below the old fixed floor of 300.
+      return rect.left <= 4 && rect.width >= Math.min(300, PRIMARY_COLUMN_WIDTH - 8) && rect.width <= PRIMARY_COLUMN_WIDTH + 48 && rect.height > 300;
     }) || null;
   }
 
@@ -30978,6 +31232,8 @@
       "[data-novaflow-editor-panel='1']",
       "[data-novaflow-ai-collapse-heading]",
       "[data-novaflow-ai-post-section='1']",
+      "[data-novaflow-canvas-bar-button]",
+      "#novaflow-particle-project-top-actions",
       "select"
     ].join(","))) {
       return true;
@@ -32048,6 +32304,80 @@
         when: "body.novaflow-ai-animation-section-layers",
         selector: "[data-novaflow-ai-collapse-heading]",
         style: { "border-radius": "6px" }
+      },
+      {
+        // Every page's canvas bar plates and buttons (see canvasBarButtonStyle).
+        selector: CANVAS_BAR_PILL_SELECTORS.join(", "),
+        style: () => canvasBarPillStyle()
+      },
+      {
+        selector: CANVAS_BAR_PILL_SELECTORS.map((pill) => `${pill} button`).join(", "),
+        style: (node) => canvasBarButtonStyle(node)
+      },
+      {
+        selector: CANVAS_BAR_QUIET_SELECTOR,
+        style: (node) => canvasBarQuietStyle(node)
+      },
+      {
+        // 自动适配 sits on the stage's right edge, not 8-10 in from it.
+        selector: [
+          '[data-novaflow-zoom-controls="1"]:not([data-novaflow-ai-zoom-controls="1"])',
+          "#novaflow-spine-split-zoom-hud",
+          '[data-novaflow-ui-design-toolbar-action="fit"]'
+        ].join(", "),
+        style: (node) => {
+          if (getComputedStyle(node).position !== "absolute") return null;
+          return { right: "0", left: "auto", top: "8px", height: `${CANVAS_BAR_QUIET_HEIGHT}px`, "min-height": `${CANVAS_BAR_QUIET_HEIGHT}px` };
+        }
+      },
+      {
+        // 动画 / AI 序列动画: its container runs under the resource panel too.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-zoom-controls="1"]',
+        style: (node) => {
+          if (getComputedStyle(node).position !== "absolute") return null;
+          const layout = aiCanvasBarLayout();
+          if (layout.wrapped) {
+            return { left: "0", right: "auto", top: `${layout.quietTop}px` };
+          }
+          // Measured against its own container, whose right edge is the
+          // workspace's rather than the stage's.
+          const parent = node.offsetParent;
+          const parentRight = parent instanceof HTMLElement ? parent.getBoundingClientRect().right : layout.box.right + AI_ANIMATION_RESOURCE_SIDEBAR_SPAN;
+          return { right: `${Math.round(parentRight - layout.box.right)}px`, left: "auto", top: `${layout.rowTop + 1}px` };
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-top-mode-tabs="1"]',
+        style: () => {
+          const layout = aiCanvasBarLayout();
+          return {
+            left: `${Math.round(layout.tabsCenter)}px`,
+            top: `${layout.box.top + layout.rowTop}px`,
+            transform: "translateX(-50%)"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-board-controls-top-left="1"]',
+        style: () => ({ top: `${aiCanvasBarLayout().rowTop}px` })
+      },
+      {
+        // 特效: 模板库 sits midway between the plate and 自动适配.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-control="1"]',
+        style: (node) => {
+          const parent = node.offsetParent;
+          const pill = document.getElementById("novaflow-particle-project-top-actions");
+          if (!(parent instanceof HTMLElement) || !(pill instanceof HTMLElement)) return null;
+          const box = novaflowStageBox(false);
+          const pillRight = pill.getBoundingClientRect().right;
+          const quietLeft = box.right - 70;
+          const center = pillRight + (quietLeft - pillRight) / 2;
+          return { left: `${Math.round(center - parent.getBoundingClientRect().left)}px`, transform: "translateX(-50%)" };
+        }
       },
       {
         // An open 模式选择 is the reference's .nf-detail: 7 in, 5 from the
