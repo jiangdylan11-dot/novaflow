@@ -19,7 +19,7 @@ import { createComfyClient, collectOutputs, assertLocalOnly } from './comfy/comf
 import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength } from './comfy/workflow-runner.mjs';
 import { createWorkflowHost } from './comfy/workflow-host.mjs';
 import { workflowModule } from '../../packages/shared/src/workflow-modules.mjs';
-import { inspectAllModels, inspectViaComfy } from './models/model-manager.mjs';
+import { inspectAllModels, inspectViaComfy, detectQwenImage21 } from './models/model-manager.mjs';
 import { createWorkerLoraCatalog } from './models/lora-catalog.mjs';
 import { MODEL_MANIFEST, runtimeFor } from '../../packages/shared/src/model-manifest.mjs';
 import { detectGpu, detectSystem } from './hardware.mjs';
@@ -156,6 +156,7 @@ export function createWorker(options) {
     lastHeartbeatAt: null,
     startedAt: nowIso(),
     comfy: { image: false, video: false },
+    features: { qwenImage21: false },
     stats: { completed: 0, failed: 0 }
   };
 
@@ -179,6 +180,7 @@ export function createWorker(options) {
       localEndpointUrl: state.localEndpointUrl,
       transport: state.transport,
       comfy: state.comfy,
+      features: { ...state.features },
       lastError: state.lastError,
       lastHeartbeatAt: state.lastHeartbeatAt,
       startedAt: state.startedAt,
@@ -211,6 +213,7 @@ export function createWorker(options) {
 
   const loraCatalog = createWorkerLoraCatalog({ modelsRoot, image: comfyImage, video: comfyVideo });
   let lastModelReportAt = 0;
+  let lastFeatureProbeAt = 0;
 
   function comfyFor(runtime) {
     return runtime === 'video' ? comfyVideo : comfyImage;
@@ -362,6 +365,8 @@ export function createWorker(options) {
       }
     }
     state.models = models;
+    state.features.qwenImage21 = state.comfy.image ? await detectQwenImage21(comfyImage).catch(() => false) : false;
+    lastFeatureProbeAt = Date.now();
     if (state.workerToken) await callControl('POST', '/api/worker/models', { body: { models }, token: state.workerToken });
     lastModelReportAt = Date.now();
     log('models reported', { ready: models.filter((m) => m.status === 'ready').map((m) => m.model_id) });
@@ -418,7 +423,9 @@ export function createWorker(options) {
     }
   }
 
-  async function waitForInputs(taskId, expected, { timeoutMs = 120000 } = {}) {
+  // Two minutes covers the usual one to three references; a multi-reference UI
+  // run (up to 16) gets ten more seconds per extra file.
+  async function waitForInputs(taskId, expected, { timeoutMs = 120000 + Math.max(0, expected.length - 3) * 10000 } = {}) {
     if (!expected.length) return [];
     const dir = join(dataDir, 'tasks', taskId, 'input');
     const started = Date.now();
@@ -809,6 +816,11 @@ export function createWorker(options) {
         state.comfy.image = await comfyImage.isUp();
         state.comfy.video = await comfyVideo.isUp();
         if (previous !== JSON.stringify(state.comfy)) await reportModels();
+        else if (state.comfy.image && !state.features.qwenImage21 && Date.now() - lastFeatureProbeAt > 60000) {
+          // A probe that timed out at start, or weights added later, should not need a restart.
+          lastFeatureProbeAt = Date.now();
+          state.features.qwenImage21 = await detectQwenImage21(comfyImage).catch(() => false);
+        }
         emit();
       } catch (e) { log('local health check failed', { error: String(e.message) }); }
       finally { checkingHealth = false; }

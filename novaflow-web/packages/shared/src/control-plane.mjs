@@ -244,9 +244,13 @@ export function pricingViewOf(options) {
   };
 }
 
+// A UI-design run on a Qwen-Image-2.1 node uploads up to 15 references; the
+// rest is headroom.
+export const MAX_TASK_REFERENCES = 20;
+
 export function sanitizeReferences(raw) {
   if (!Array.isArray(raw)) return [];
-  return raw.slice(0, 8).map((r) => ({
+  return raw.slice(0, MAX_TASK_REFERENCES).map((r) => ({
     name: String((r && r.name) || '').slice(0, 128).replace(/[^A-Za-z0-9._-]/g, '_'),
     bytes: Math.min(64 * 1024 * 1024, Math.max(0, Math.floor(Number(r && r.bytes) || 0))),
     kind: String((r && r.kind) || 'image').slice(0, 32)

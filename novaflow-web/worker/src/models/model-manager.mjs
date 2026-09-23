@@ -139,6 +139,34 @@ export async function inspectAllModels(modelsRoot, { verifyHashes = false, manif
  * operator points the worker at an existing ComfyUI whose folder layout we do
  * not control, so it takes precedence when available.
  */
+// The files the renderer's Qwen-Image-2.1 builders choose from (ART_QWEN21_* in
+// renderer/novaflow-brand-runtime.js). The page asks for this before it plans a
+// UI-design run: a 2.1 node takes up to 16 references, a 2511 node three.
+const QWEN21_UNETS = ['qwen-image-2.1-UC-Q8_0.gguf', 'qwen-image-2.1-UC-Q5_K_M.gguf', 'qwen-image-2.1-UC-Q4_K_M.gguf'];
+const QWEN21_CLIPS = ['qwen3vl_8b_w4a8_heretic.safetensors', 'qwen3vl_8b_int8_convrot.safetensors', 'qwen3vl_8b_bf16.safetensors'];
+const QWEN21_VAE = 'qwen_image_2.1_vae_bf16.safetensors';
+const QWEN21_NODES = ['TextEncodeQwenImage21', 'UnetLoaderGGUF', 'CLIPLoader', 'VAELoader', 'EmptyLatentImage', 'SplitImageWithAlpha', 'ImageScale', 'ImageCrop'];
+
+export async function detectQwenImage21(comfy, { timeoutMs = 5000 } = {}) {
+  const specs = {};
+  for (const node of QWEN21_NODES) {
+    try {
+      const res = await fetch(comfy.baseUrl + '/object_info/' + node, { signal: AbortSignal.timeout(timeoutMs) });
+      if (!res.ok) return false;
+      const spec = (await res.json())?.[node];
+      if (!spec) return false;
+      specs[node] = spec;
+    } catch { return false; }
+  }
+  const choices = (node, key) => {
+    const field = specs[node]?.input?.required?.[key];
+    return Array.isArray(field) && Array.isArray(field[0]) ? field[0].map(String) : [];
+  };
+  return QWEN21_UNETS.some((name) => choices('UnetLoaderGGUF', 'unet_name').includes(name))
+    && QWEN21_CLIPS.some((name) => choices('CLIPLoader', 'clip_name').includes(name))
+    && choices('VAELoader', 'vae_name').includes(QWEN21_VAE);
+}
+
 export async function inspectViaComfy(comfy, { manifest = MODEL_MANIFEST, timeoutMs = 5000 } = {}) {
   const known = new Set();
   for (const node of ['CheckpointLoaderSimple', 'UNETLoader', 'VAELoader', 'CLIPLoader']) {

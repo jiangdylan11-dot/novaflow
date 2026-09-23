@@ -196,8 +196,10 @@ export async function createWorkflowHost({ rendererDir, logger, comfy, objectInf
         const safe = args.slice();
         if (method === 'buildArtGenerateRunWorkflow') {
           // The art builder is synchronous on the desktop, so it cannot fetch /object_info itself.
-          // Warm the catalogue here; the builder reads it through __objectInfoSync to pick an engine.
-          try { await sandbox.electronAPI.runtimeRequestJson('', '/object_info'); } catch (_) { /* no runtime: default graph */ }
+          // Re-read the catalogue here; the builder reads it through __objectInfoSync to pick an
+          // engine. It is fetched per build because the node can gain or lose the 2.1 weights while
+          // this worker runs, and the page routes UI runs by the node's live answer.
+          try { await sandbox.electronAPI.__refreshObjectInfo(); } catch (_) { /* no runtime: default graph */ }
           const built = await builder(...safe);
           if (options.__controlNet) {
             const apply = resolveBuilder(module, 'applyArtReferenceControlNet');
@@ -301,6 +303,12 @@ function createComfyBridge({ comfy, objectInfo, log }) {
     runtimeUploadImage: async () => { throw new Error('a workflow builder must not upload'); },
     runtimeProviderUsageSettlement: 'worker-host-v1',
     __primeObjectInfo: (info) => { cache.set('/object_info', info); log('object info primed', { nodes: Object.keys(info || {}).length }); },
+    __refreshObjectInfo: async () => {
+      if (!comfy) return cache.get('/object_info') || null;
+      const fresh = await comfy.requestJson('', '/object_info');
+      cache.set('/object_info', fresh);
+      return fresh;
+    },
     __objectInfoSync: () => cache.get('/object_info') || null
   };
 }

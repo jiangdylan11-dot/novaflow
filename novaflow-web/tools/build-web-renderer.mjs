@@ -151,9 +151,14 @@ export async function buildWebRenderer({ logger, clean = true } = {}) {
       continue;
     }
 
+    // The force list is by name. The execution bridge in novaflow-brand-runtime shares its method
+    // name with the art provider module's buildRunWorkflow entry, but only forwards to
+    // buildArtGenerateRunWorkflow, which already hands itself to the worker. Redacting the bridge
+    // too turned local UI-design runs into a call no worker accepts.
     const redacted = redactModule(source, {
       moduleName,
-      forceNames: forceNames.filter((name) => name !== 'buildArtGenerateRunWorkflow'),
+      forceNames: forceNames.filter((name) => name !== 'buildArtGenerateRunWorkflow'
+        && !(moduleName === 'novaflow-brand-runtime' && name === 'buildRunWorkflow')),
       replacement: REPLACEMENT(WORKFLOW_SOURCE_MODULES[moduleName] || moduleName)
     });
     const instrumented = instrumentModule(source, { moduleName, forceNames: moduleName === 'novaflow-brand-runtime' ? ['buildArtGenerateRunWorkflow'] : [] });
@@ -355,7 +360,7 @@ export function rewriteIndexHtml(html) {
   // blank animation section.
   const shimTags =
     '    <script src="./' + WAREHOUSE_SHIM + '?v=warehouse-1"></script>\n' +
-    '    <script src="./' + RUNTIME_SHIM + '?v=web-1"></script>\n' +
+    '    <script src="./' + RUNTIME_SHIM + '?v=web-2"></script>\n' +
     '    <script src="./' + CAPABILITY_SHIM + '?v=web-1"></script>\n' +
     '    <script src="./' + TEMPLATE_SHIM + '?v=templates-1"></script>\n' +
     '    <script src="./' + ACCOUNT_SHIM + '?v=web-1"></script>\n';

@@ -26,6 +26,7 @@ const SUITES = [
   { name: 'workflow-redaction', file: 'e2e/workflow-redaction.test.mjs', needs: [], timeoutMs: 600000 },
   { name: 'web-renderer-build', file: 'e2e/web-renderer-build.test.mjs', needs: [], timeoutMs: 600000 },
   { name: 'web-generation-routes', file: 'e2e/web-generation-routes.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'web-ui-design-qwen21', file: 'e2e/web-ui-design-qwen21.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'warehouse-folder', file: 'e2e/warehouse-folder.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-warehouse', file: 'e2e/web-warehouse.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-lora', file: 'e2e/web-lora.test.mjs', needs: [], timeoutMs: 60000 },

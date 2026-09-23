@@ -76137,6 +76137,149 @@
     return { workflow, modelKey: mode === "txt2img" ? "qwen-image-2.1-t2i" : "qwen-image-2.1-i2i" };
   }
 
+  // UI design on a Qwen-Image-2.1 node: every connected reference goes in as images.image_N and the
+  // page structure travels in the prompt. The page only asks for it (state.localUiEngine) after the
+  // node reported the 2.1 files, so a node without them is an error here, never a silent 2511 run
+  // that would drop all but three references.
+  const QWEN21_UI_MAX_REFERENCES = 16;
+  const QWEN21_UI_MAX_WORKING_PIXELS = 1048576;
+  // Measured on the 16 GB laptop GPU: seconds per step ~ 1.5 + 0.8 x total reference megapixels, so
+  // 2 MP keeps a screen near 90-100 s. A background squeezed to 0.25 MP lost its lettering; symbols
+  // and parts are far smaller than their budget and go in at their own size.
+  const QWEN21_UI_TOTAL_REFERENCE_PIXELS = 2000000;
+  // Pixel budget per declared role; a larger reference is scaled down in the graph, a smaller one is
+  // left alone. An iteration's base image is not budgeted: it is sampled at the working size.
+  const QWEN21_UI_ROLE_PIXELS = Object.freeze({
+    layout: 500000,
+    reference: 500000,
+    style: 500000,
+    character: 400000,
+    subject: 400000,
+    content: 500000,
+    material: 200000,
+    color: 200000
+  });
+
+  const QWEN21_UI_MAX_OUTPUT_EDGE = 4096;
+
+  // Multiples of 32 within the pixel cap, chosen for the closest aspect ratio so the final resize to
+  // the requested size does not visibly stretch the screen (flooring both sides of 756x1638 gave 3%).
+  function uiQwen21WorkingSize(width, height) {
+    const w = Math.max(256, Number(width) || 1024);
+    const h = Math.max(256, Number(height) || 1024);
+    const scale = Math.min(1, Math.sqrt(QWEN21_UI_MAX_WORKING_PIXELS / (w * h)));
+    const aspect = w / h;
+    // Among sizes that keep at least three quarters of the allowed area, take the largest one within
+    // 1% of the requested aspect; if none is that close, the closest one.
+    const targetArea = w * h * scale * scale;
+    const candidates = [];
+    for (let cw = 256; cw <= Math.ceil(w * scale / 32) * 32; cw += 32) {
+      const ch = Math.max(256, Math.round(cw / aspect / 32) * 32);
+      if (cw * ch > QWEN21_UI_MAX_WORKING_PIXELS || cw * ch < targetArea * 0.75) continue;
+      candidates.push({ width: cw, height: ch, error: Math.abs(cw / ch - aspect) / aspect });
+    }
+    const close = candidates.filter((item) => item.error <= 0.01);
+    const best = close.length
+      ? close.reduce((a, b) => (b.width * b.height > a.width * a.height ? b : a))
+      : candidates.reduce((a, b) => (a && a.error <= b.error ? a : b), null);
+    if (best) return { width: best.width, height: best.height };
+    const floor32 = (value) => Math.max(256, Math.floor(value * scale / 32) * 32);
+    return { width: floor32(w), height: floor32(h) };
+  }
+
+  function buildUiQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions) {
+    const runtime = artQwen21Runtime();
+    const info = runtime?.info || {};
+    const missing = ["LoadImage", "EmptyLatentImage", "ImageScale", "SplitImageWithAlpha"].filter((type) => !info[type]);
+    if (!runtime || missing.length) {
+      throw new Error("当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法按多参考图生成 UI。请在本地助手里重新启动 NovaFlow 后再试");
+    }
+    const names = (Array.isArray(uploadedNames) ? uploadedNames : []).filter(Boolean);
+    if (names.length > QWEN21_UI_MAX_REFERENCES) {
+      throw new Error(`Qwen-Image-2.1 最多接收 ${QWEN21_UI_MAX_REFERENCES} 张参考图，当前 ${names.length} 张`);
+    }
+    const roles = Array.isArray(providerOptions?.referenceRoles) ? providerOptions.referenceRoles : [];
+    const roleEntry = (index) => roles.find((item) => Number(item?.index) === index) || roles[index] || {};
+    const roleAt = (index) => String(roleEntry(index).role || "reference").toLowerCase();
+    // The current design in an iteration: sampled at the working size, never shrunk to a role budget.
+    const isBase = (index) => String(roleEntry(index).treatment || "").toLowerCase() === "base";
+    const sizes = names.map((_, index) => {
+      const size = Array.isArray(referenceSizes) ? referenceSizes[index] : null;
+      return { width: Math.max(0, Number(size?.width) || 0), height: Math.max(0, Number(size?.height) || 0) };
+    });
+    // Per-role budget first, then one shared cap so a long reference list cannot blow up the prefix.
+    // A size the page could not measure counts as the full budget, and the graph scales it by pixel
+    // count instead of trusting a declared size.
+    const budgetFor = (index) => QWEN21_UI_ROLE_PIXELS[roleAt(index)] ?? QWEN21_UI_ROLE_PIXELS.reference;
+    const budgets = names.map((_, index) => {
+      if (isBase(index)) return 0;
+      const pixels = sizes[index].width * sizes[index].height;
+      return pixels > 0 ? Math.min(pixels, budgetFor(index)) : budgetFor(index);
+    });
+    const scaledTotal = budgets.reduce((sum, value) => sum + value, 0);
+    const share = scaledTotal > QWEN21_UI_TOTAL_REFERENCE_PIXELS ? QWEN21_UI_TOTAL_REFERENCE_PIXELS / scaledTotal : 1;
+    const seed = state?.randomSeed || Number(state?.seed) < 0
+      ? Math.floor(Math.random() * 1000000000)
+      : Math.round(Number(state?.seed) || 0);
+    const workflow = {
+      "1": { class_type: "UnetLoaderGGUF", inputs: { unet_name: runtime.unet } },
+      "2": { class_type: "CLIPLoader", inputs: { clip_name: runtime.clip, type: "qwen_image", device: "default" } },
+      "3": { class_type: "VAELoader", inputs: { vae_name: runtime.vae } }
+    };
+    let model = ["1", 0];
+    if (info.QwenImage21Cache) {
+      workflow["4"] = { class_type: "QwenImage21Cache", inputs: { model, device: "auto", dtype: "default" } };
+      model = ["4", 0];
+    }
+    // resolution 0 keeps each reference at its own size (rounded to 32); the budgets above are
+    // applied per reference instead, since one resolution for all would blow small assets up.
+    const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: "", resolution: 0 };
+    const clampEdge = (value) => Math.max(64, Math.min(QWEN21_UI_MAX_OUTPUT_EDGE, Math.round(Number(value) || 1024)));
+    const requested = { width: clampEdge(state?.width), height: clampEdge(state?.height) };
+    const working = uiQwen21WorkingSize(requested.width, requested.height);
+    names.forEach((name, index) => {
+      const loadId = String(100 + index);
+      workflow[loadId] = { class_type: "LoadImage", inputs: { image: name } };
+      let image = [loadId, 0];
+      const { width, height } = sizes[index];
+      const pixels = width * height;
+      const target = budgets[index] * share;
+      if (isBase(index)) {
+        const scaleId = String(200 + index);
+        workflow[scaleId] = { class_type: "ImageScale", inputs: { image, upscale_method: "lanczos", width: working.width, height: working.height, crop: "center" } };
+        image = [scaleId, 0];
+      } else if (pixels <= 0 && info.ImageScaleToTotalPixels) {
+        const scaleId = String(200 + index);
+        workflow[scaleId] = { class_type: "ImageScaleToTotalPixels", inputs: { image, upscale_method: "lanczos", megapixels: Math.max(0.05, Math.round(target / 10000) / 100), resolution_steps: 32 } };
+        image = [scaleId, 0];
+      } else if (pixels > 0 && target < pixels) {
+        const factor = Math.sqrt(target / pixels);
+        const scaleId = String(200 + index);
+        workflow[scaleId] = {
+          class_type: "ImageScale",
+          inputs: {
+            image,
+            upscale_method: "lanczos",
+            width: Math.max(32, Math.floor(width * factor / 32) * 32),
+            height: Math.max(32, Math.floor(height * factor / 32) * 32),
+            crop: "disabled"
+          }
+        };
+        image = [scaleId, 0];
+      }
+      encode[`images.image_${index + 1}`] = image;
+    });
+    workflow["5"] = { class_type: "TextEncodeQwenImage21", inputs: encode };
+    workflow["6"] = { class_type: "EmptyLatentImage", inputs: { width: working.width, height: working.height, batch_size: 1 } };
+    workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: ["6", 0], seed, steps: 25, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
+    workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
+    // 2.1 always decodes RGBA; a UI screen is opaque, so keep the colour and drop the alpha.
+    workflow["9"] = { class_type: "SplitImageWithAlpha", inputs: { image: ["8", 0] } };
+    workflow["10"] = { class_type: "ImageScale", inputs: { image: ["9", 0], upscale_method: "lanczos", width: requested.width, height: requested.height, crop: "disabled" } };
+    workflow["11"] = { class_type: "SaveImage", inputs: { images: ["10", 0], filename_prefix: String(outputPrefix || "NovaFlow_UI") } };
+    return { workflow, modelKey: "qwen-image-2.1-ui" };
+  }
+
   function buildArtGenerateRunWorkflow(provider, mode, uploadedNames, outputPrefix, positivePrompt, negativePrompt, clientId, referenceSizes = []) {
     const state = arguments.length > 8 && arguments[8] && typeof arguments[8] === "object"
       ? arguments[8]
@@ -76146,7 +76289,7 @@
       : {};
     if (window.NovaFlowWebRuntime) {
       const stateKeys = ['mode', 'provider', 'nsfw', 'width', 'height', 'seed', 'randomSeed', 'localTextQuality', 'localEditStrength', 'loras',
-        'localUiRefinePreset', 'localUiRefineDenoise', 'localUiRepairMaskEncoding', 'uiRunIntent', 'iterationReferenceCount',
+        'localUiRefinePreset', 'localUiRefineDenoise', 'localUiRepairMaskEncoding', 'uiRunIntent', 'iterationReferenceCount', 'localUiEngine',
         'gptQualityTxt2img', 'gptQualityImg2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight',
         'googleAspectRatioTxt2img', 'googleAspectRatioImg2img', 'googleResolution'];
       const runState = Object.fromEntries(stateKeys.filter((key) => state[key] !== undefined).map((key) => [key, state[key]]));
@@ -76160,9 +76303,14 @@
     if (!api) throw new Error("NovaFlow \u4e91\u7aef\u56fe\u50cf\u5de5\u4f5c\u6d41\u6a21\u5757\u672a\u5c31\u7eea");
     let localWorkflow = null;
     let localModelKey = artWorkflowKeyForState(state);
-    const qwen21Build = provider === "local"
-      ? buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions)
-      : null;
+    const uiQwen21 = provider === "local"
+      && String(providerOptions?.taskProfile || "").toLowerCase() === "ui-design"
+      && state?.localUiEngine === "qwen-2.1";
+    const qwen21Build = uiQwen21
+      ? buildUiQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions)
+      : provider === "local"
+        ? buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions)
+        : null;
     if (qwen21Build) {
       localWorkflow = qwen21Build.workflow;
       localModelKey = qwen21Build.modelKey;
@@ -76615,6 +76763,7 @@
           : undefined,
         localUiRepairMaskEncoding: String(source.localUiRepairMaskEncoding || ""),
         uiRunIntent: source.uiRunIntent === "iteration" ? "iteration" : "redesign",
+        localUiEngine: source.localUiEngine === "qwen-2.1" ? "qwen-2.1" : "",
         iterationReferenceCount: Math.max(0, Math.round(Number(source.iterationReferenceCount) || 0)),
         gptQualityImg2img: ["low", "medium", "high"].includes(source.gptQualityImg2img) ? source.gptQualityImg2img : "high",
         gptSize: String(source.gptSize || "auto"),

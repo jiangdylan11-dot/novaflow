@@ -10,6 +10,7 @@
     ['style', '风格参考'],
     ['character', '角色参考'],
     ['subject', '内容参考'],
+    ['asset', '素材参考'],
     ['material', '材质参考'],
     ['color', '色彩参考'],
     ['reference', '普通参考'],

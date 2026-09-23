@@ -111,6 +111,7 @@
         previewUrl: stringValue(source.previewUrl || source.thumbnailUrl || ""),
         fileName: stringValue(source.fileName || source.name || ""),
         order: order,
+        modelImageNumber: Number(source.modelImageNumber) > 0 ? Math.round(Number(source.modelImageNumber)) : 0,
         modelLabel: ""
       };
     });
@@ -121,8 +122,8 @@
       if (normalized === "art-generate") {
         descriptor.modelLabel = "图" + ordinals.image;
       } else if (normalized === "ui-design") {
-        // 图1始终保留给页面结构控制图；用户引用从模型图2开始。
-        descriptor.modelLabel = "图" + (descriptor.order + 2);
+        // 图1通常留给页面结构控制图，用户引用从模型图2开始；不收控制图的引擎（2.1）由调用方给出编号。
+        descriptor.modelLabel = "图" + (descriptor.modelImageNumber || descriptor.order + 2);
       } else {
         const typeLabel = descriptor.kind === "video"
           ? "Video"

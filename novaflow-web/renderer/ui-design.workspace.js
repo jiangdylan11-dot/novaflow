@@ -25,7 +25,7 @@
   const PROVIDER_REFERENCE_LIMIT_FALLBACKS = Object.freeze({ local: 2, gpt: 15, google: 13 })
   const BLOCK_COLORS = ['#22c58b', '#38bdf8', '#a78bfa', '#f59e0b', '#fb7185', '#84cc16']
   const GENERATOR_SETTING_KEYS = Object.freeze([
-    'provider', 'localEditStrength', 'randomSeed', 'seed', 'nsfw',
+    'provider', 'localEditStrength', 'randomSeed', 'seed',
     'prompt', 'negativePrompt', 'negativePromptSource',
     'promptMentionBindings', 'promptMentionSourceOrder',
     'gptQualityImg2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight',
@@ -42,6 +42,7 @@
     style: '风格参考',
     character: '角色参考',
     subject: '内容参考',
+    asset: '素材参考',
     material: '材质参考',
     color: '色彩参考',
     reference: '普通参考',
@@ -359,7 +360,7 @@
 
     function generatorSettings(node) {
       const fallback = Object.assign(
-        { provider: 'local', localEditStrength: 'faithful', randomSeed: true, seed: 0, nsfw: false },
+        { provider: 'local', localEditStrength: 'faithful', randomSeed: true, seed: 0 },
         generatorPromptDefaults(),
         pickGeneratorSettings(fallbackGenerationState()),
       )

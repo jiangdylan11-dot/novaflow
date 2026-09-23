@@ -280,7 +280,9 @@
       let localWorkflow = options.localWorkflow
       let uiLocal = null
       let uiRefine = null
-      if (taskProfile === 'ui-design') {
+      if (taskProfile === 'ui-design' && String(options.localModelKey || '') === 'qwen-image-2.1-ui') {
+        uiLocal = { workflow: localWorkflow, metadata: Object.freeze({ taskProfile, engine: 'qwen-2.1', mode }) }
+      } else if (taskProfile === 'ui-design') {
         const localUiWorkflow = root?.NovaFlowUiDesignLocalWorkflow
         if (typeof localUiWorkflow?.build !== 'function') {
           throw new Error('Local UI workflow module is required for taskProfile=ui-design')
@@ -306,7 +308,6 @@
           uploadedNames: options.uploadedNames,
           preset: options.state?.localUiRefinePreset,
           denoise: options.state?.localUiRefineDenoise,
-          nsfw: options.state?.nsfw === true,
           state: options.state,
         })
         localWorkflow = uiRefine.workflow

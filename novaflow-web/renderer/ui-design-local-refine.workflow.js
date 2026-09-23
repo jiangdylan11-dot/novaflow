@@ -33,26 +33,6 @@
       lightning: false,
     }),
   })
-  const RAPID_PRESETS = Object.freeze({
-    [POLISH_PRESET]: Object.freeze({
-      name: POLISH_PRESET,
-      steps: 6,
-      cfg: 1,
-      samplerName: 'euler_ancestral',
-      scheduler: 'beta',
-      denoise: 0.35,
-      lightning: false,
-    }),
-    [ENHANCED_REDRAW_PRESET]: Object.freeze({
-      name: ENHANCED_REDRAW_PRESET,
-      steps: 6,
-      cfg: 1,
-      samplerName: 'euler_ancestral',
-      scheduler: 'beta',
-      denoise: 0.58,
-      lightning: false,
-    }),
-  })
 
   function text(value) {
     return String(value == null ? '' : value).trim()
@@ -157,8 +137,7 @@
     if (!textEncoders.length) throw new Error('Local UI refinement requires TextEncodeQwenImageEditPlus')
     if (!vaeEncoders.length) throw new Error('Local UI refinement requires VAEEncode')
     if (!samplers.length) throw new Error('Local UI refinement requires at least one KSampler node')
-    const rapidFamily = options.nsfw === true
-    if (!rapidFamily && !lightningToggles.length) {
+    if (!lightningToggles.length) {
       throw new Error('Local UI refinement requires an Enable 4 Step(s) LoRA switch')
     }
 
@@ -187,7 +166,7 @@
     })
 
     const presetName = normalizePreset(options.preset || options.refinePreset || options.mode)
-    const preset = rapidFamily ? RAPID_PRESETS[presetName] : PRESETS[presetName]
+    const preset = PRESETS[presetName]
     const denoise = resolveDenoise(options.denoise, preset)
     samplers.forEach(([, node]) => {
       node.inputs.steps = preset.steps
@@ -277,7 +256,7 @@
         version: VERSION,
         taskProfile: TASK_PROFILE,
         preset: presetName,
-        modelFamily: rapidFamily ? 'rapid' : 'standard',
+        modelFamily: 'standard',
         firstResultImageName: firstImageName,
         firstLoadImageNodeId: firstLoadId,
         firstVaeEncodeNodeId: firstVaeEncodeId,
@@ -303,7 +282,6 @@
     MAX_DENOISE,
     REPAIR_MASK_ENCODING,
     PRESETS,
-    RAPID_PRESETS,
     normalizePreset,
     resolveDenoise,
     build,

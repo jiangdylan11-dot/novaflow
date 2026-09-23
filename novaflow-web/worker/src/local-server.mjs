@@ -50,7 +50,7 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
         if (req.method === 'POST' && url.pathname === '/local/bind-account') return json(200, await worker.bindAccount(String(body.token || '')));
         if (req.method === 'POST' && url.pathname === '/local/license') return json(200, await license.importLicense(body.text));
         if (req.method === 'GET' && url.pathname === '/api/web/capabilities') {
-          return json(200, { available_workers: s.comfy.image || s.comfy.video ? 1 : 0, models: s.models,
+          return json(200, { available_workers: s.comfy.image || s.comfy.video ? 1 : 0, models: s.models, features: s.features || {},
             taskTypes: Object.entries(TASK_TYPE_REQUIREMENTS).map(([task_type, spec]) => ({ task_type, ...spec,
               available_workers: s.models.some(m => m.model_id === spec.modelId && m.status === 'ready') ? 1 : 0 })) });
         }

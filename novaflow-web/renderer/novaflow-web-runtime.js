@@ -477,6 +477,11 @@
     return out;
   }
 
+  // What the compute node's image runtime offers beyond the fixed task types,
+  // e.g. { qwenImage21: true }. Only a local assistant reports it; the shared
+  // pool answers without it and the page keeps its default routes.
+  let runtimeFeatureCache = {};
+
   // ------------------------------------------------------------ the adapter
   //
   // Mirrors the shape proxy-electron-api.js probes for, so the renderer's
@@ -735,6 +740,17 @@
       } catch (error) {
         return { ok: false, httpStatus: error.status, error: String(error.message || error) };
       }
+    },
+
+    async runtimeFeatures() {
+      try {
+        const caps = await control('GET', '/api/web/capabilities');
+        runtimeFeatureCache = caps && caps.features && typeof caps.features === 'object' ? { ...caps.features } : {};
+      } catch (_) { /* keep the last answer */ }
+      return { ...runtimeFeatureCache };
+    },
+    runtimeFeaturesSync() {
+      return { ...runtimeFeatureCache };
     },
 
     async clientAuthBootstrap() {
@@ -1040,4 +1056,8 @@
     fileUrl: (name) => electronAPI.runtimeFileUrl(name),
     isWeb: true
   };
+  // Warm the feature snapshot so panels that size themselves synchronously
+  // (the UI-design reference limit) see the node's answer; runs re-check it.
+  // Only a local assistant reports features, so the shared pool is not asked.
+  if (computeMode === 'local') electronAPI.runtimeFeatures();
 })(typeof globalThis !== 'undefined' ? globalThis : this);

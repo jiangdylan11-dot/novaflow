@@ -18,6 +18,10 @@
   const LOCAL_REDESIGN_MODEL_PROMPT_MAX_CHARS = 1800
   const LOCAL_REFINEMENT_MODEL_PROMPT_MAX_CHARS = 1800
   const LOCAL_PROMPT_LOCK_MAX_CHARS = 480
+  // A local compute node whose ComfyUI carries Qwen-Image-2.1 takes every connected reference
+  // (up to 15 plus the layout guide) in one pass, instead of 2511's three slots.
+  const LOCAL_UI_ENGINE_QWEN21 = 'qwen-2.1'
+  const QWEN21_UI_PROMPT_MAX_CHARS = 4000
   const CONTROLLED_STRUCTURE_REFINEMENT_CONTRACT = [
     'Image 1 is the only visual base and already establishes one screen-native full-screen digital interface.',
     'Preserve every correct theme, subject, region order and control group from Image 1. Reconstruct only the missing or incorrect regions, item counts and controls explicitly required below.',
@@ -87,6 +91,15 @@
       externalReferenceLimit: 2,
       reservedLayoutReferences: 1,
       negativePrompt: true,
+    }),
+    // cfg 1 ignores a negative prompt on 2.1, so what to avoid goes into the positive prompt.
+    localQwen21: Object.freeze({
+      provider: 'local',
+      engine: LOCAL_UI_ENGINE_QWEN21,
+      totalReferenceLimit: 15,
+      externalReferenceLimit: 15,
+      reservedLayoutReferences: 0,
+      negativePrompt: false,
     }),
     gpt: Object.freeze({
       provider: 'gpt',
@@ -271,8 +284,31 @@
     return provider === 'gpt' || provider === 'google' ? provider : 'local'
   }
 
-  function providerCapability(provider) {
-    return referenceLimits[normalizeProvider(provider)]
+  // The local assistant probes its node catalogue and reports { qwenImage21 } in the capability
+  // snapshot; only the web runtime shim exposes it. The desktop and the shared pool never report
+  // it and keep the 2511 route.
+  function localQwen21Available() {
+    try {
+      return root?.electronAPI?.runtimeFeaturesSync?.()?.qwenImage21 === true
+    } catch {
+      return false
+    }
+  }
+
+  async function refreshLocalQwen21Available() {
+    try {
+      const features = await root?.electronAPI?.runtimeFeatures?.()
+      return features ? features.qwenImage21 === true : localQwen21Available()
+    } catch {
+      return localQwen21Available()
+    }
+  }
+
+  function providerCapability(provider, options = {}) {
+    const normalized = normalizeProvider(provider)
+    if (normalized !== 'local') return referenceLimits[normalized]
+    const qwen21 = typeof options.qwen21 === 'boolean' ? options.qwen21 : localQwen21Available()
+    return qwen21 ? referenceLimits.localQwen21 : referenceLimits.local
   }
 
   function providerTitle(provider) {
@@ -584,14 +620,16 @@
         ? positiveInteger(options.modelImageNumbers[referenceIndex], 0)
         : 0
       const modelImageNumber = mappedImageNumber || referenceIndex + 2
+      // Qwen-Image-2.1 names its references <imageN>; the 2511 and cloud prompts say 图N.
+      const modelLabel = options.imageToken === 'angle' ? `<image${modelImageNumber}>` : `图${modelImageNumber}`
       mentions.push(Object.freeze({
         token,
         referenceIndex,
         modelImageNumber,
-        modelLabel: `图${modelImageNumber}`,
+        modelLabel,
         sourceId: cleanText(reference.sourceId),
       }))
-      return `图${modelImageNumber}`
+      return modelLabel
     })
     return Object.freeze({
       text,
@@ -630,12 +668,12 @@
     return true
   }
 
-  function validateExternalReferenceCount(provider, refs) {
-    const capability = providerCapability(provider)
+  function validateExternalReferenceCount(provider, refs, capability = providerCapability(provider)) {
     if (refs.length <= capability.externalReferenceLimit) return capability
     throw new Error(
       `${providerTitle(provider)} 最多支持 ${capability.externalReferenceLimit} 张外部参考图` +
-      `（另保留 ${capability.reservedLayoutReferences} 张页面结构控制图），当前已连接 ${refs.length} 张`,
+      (capability.reservedLayoutReferences ? `（另保留 ${capability.reservedLayoutReferences} 张页面结构控制图）` : '') +
+      `，当前已连接 ${refs.length} 张`,
     )
   }
 
@@ -1635,6 +1673,193 @@
     ]).replace(/\r?\n/g, ' ')
   }
 
+  // What each declared reference role asks of Qwen-Image-2.1. The images reach it as they are
+  // (no anti-copy proxies), so the role wording is what separates "take the look" from
+  // "put this asset in the screen".
+  const QWEN21_UI_REFERENCE_RULES = Object.freeze({
+    layout: 'layout reference: follow its section positions, proportions, grouping and control placement; replace its theme, characters, logo and text with the requested ones.',
+    style: 'style reference: take its palette, materials, lighting, ornament and frame language and typography feel; do not copy its layout, characters, logo or text.',
+    character: 'character reference: show this character with the same identity, face, hair, outfit and colors.',
+    subject: 'content reference: include this subject with the same identity and key details.',
+    content: 'finished asset: reproduce it faithfully (same silhouette, colors and details) as a part of the screen.',
+    material: 'material reference: take only its surface material and texture.',
+    color: 'palette reference (a low-detail proxy): take only its colors.',
+  })
+
+  function qwen21UiReferenceRule(reference) {
+    if (cleanText(reference?.treatment) === 'base') {
+      return 'the current design. Keep everything the request does not mention unchanged: layout, text, colors, assets and style.'
+    }
+    const role = normalizeReferenceRole(reference?.role)
+    // A plain reference is often a finished slice too; the request says where it goes.
+    return QWEN21_UI_REFERENCE_RULES[role]
+      || 'reference image: use it as the request describes; if it is a finished game asset (symbol, button, frame, background), reproduce it faithfully.'
+  }
+
+  // The resource name is the only per-image hint the model gets besides the request, so it goes
+  // in front of the rule ("<image3> SCATTER符号: ...").
+  function qwen21UiReferenceLabel(reference) {
+    // The current design's rule already says what it is; its file name is only noise.
+    if (cleanText(reference?.treatment) === 'base') return ''
+    const label = cleanText(reference?.name)
+      .replace(/\.(?:png|jpe?g|webp|gif|bmp)$/i, '')
+      .replace(/^ui_(?:q21_|reference_)\d+_?/i, '')
+      .replace(/[_\s]+/g, ' ')
+      .trim()
+    return label.length > 40 ? label.slice(0, 40) : label
+  }
+
+  function qwen21RegionBox(region, canvas) {
+    const width = finiteNumber(canvas?.width)
+    const height = finiteNumber(canvas?.height)
+    const norm = (key, pixelKey, extent) => finiteNumber(region?.[key])
+      ?? (extent > 0 && finiteNumber(region?.[pixelKey]) != null ? finiteNumber(region[pixelKey]) / extent : null)
+    return {
+      top: norm('yNorm', 'y', height),
+      height: norm('hNorm', 'height', height),
+      left: norm('xNorm', 'x', width),
+      width: norm('wNorm', 'width', width),
+    }
+  }
+
+  // No guide image reaches 2.1, so the text carries the whole layout: vertical band and, for regions
+  // that share a row, the horizontal one too.
+  function qwen21RegionSpan(region, canvas) {
+    const box = qwen21RegionBox(region, canvas)
+    if (box.top == null || box.height == null) return ''
+    const percent = (value) => Math.round(Math.max(0, Math.min(1, value)) * 100)
+    const vertical = `${percent(box.top)}-${percent(box.top + box.height)}% from the top`
+    return box.left != null && box.width != null && box.width < 0.9
+      ? `${vertical}, ${percent(box.left)}-${percent(box.left + box.width)}% from the left`
+      : vertical
+  }
+
+  function compileQwen21UiPrompt(options = {}) {
+    const project = options.project && typeof options.project === 'object' ? options.project : {}
+    const semantic = options.semantic && typeof options.semantic === 'object' ? options.semantic : {}
+    const canvas = semantic.canvas && typeof semantic.canvas === 'object' ? semantic.canvas : projectCanvas(project)
+    const width = positiveInteger(canvas.width, 0)
+    const height = positiveInteger(canvas.height, 0)
+    const orientation = width > height ? 'landscape' : (width < height ? 'portrait' : 'square')
+    const carrierIntent = cleanText(options.carrierIntent).toLowerCase() === 'hardware' ? 'hardware' : 'screen'
+    const iteration = cleanText(options.intent).toLowerCase() === 'iteration'
+    const userPrompt = cleanText(options.userPrompt)
+    const target = userPrompt
+      || cleanText(project.requirement || project.requirements || project.generateRequirement || project.prompt)
+      || cleanText(project.description || semantic.description)
+    const references = Array.isArray(options.references) ? options.references : []
+    const imageNumbers = Array.isArray(options.referenceImageNumbers) ? options.referenceImageNumbers : []
+    const referenceLines = references.map((reference, index) => {
+      const label = qwen21UiReferenceLabel(reference)
+      return `<image${positiveInteger(imageNumbers[index], index + 1)}>${label ? ` ${label}` : ''}: ${qwen21UiReferenceRule(reference)}`
+    })
+    const guideNumber = positiveInteger(options.layoutGuideImageNumber, 0)
+    if (guideNumber) {
+      referenceLines.push(`<image${guideNumber}>: blurred grayscale occupancy map, not artwork. Use it only for where each functional group sits, its relative size, order and repeat counts. Never draw gray blobs, boxes, outlines or guide marks.`)
+    }
+    const regions = (Array.isArray(semantic.regions) ? semantic.regions : projectBlocks(project))
+      .map((region, index) => ({ region, index, box: qwen21RegionBox(region, canvas) }))
+      .sort((a, b) => (a.box.top == null || b.box.top == null
+        ? a.index - b.index
+        : (a.box.top - b.box.top) || ((a.box.left ?? 0) - (b.box.left ?? 0)) || (a.index - b.index)))
+      .map((item) => item.region)
+    const regionLines = regions.map((region, index) => {
+      const purpose = normalizeScreenNativeUiText(region?.purpose || region?.description || semanticRoleInstruction(region?.role), carrierIntent)
+      const requirement = normalizeScreenNativeUiText(region?.requirements || region?.requirement || region?.prompt, carrierIntent)
+      const clause = [purpose, requirement && !localModelTextContains(purpose, requirement) ? requirement : ''].filter(Boolean).join('；')
+      const span = qwen21RegionSpan(region, canvas)
+      const name = cleanText(region?.name || region?.title || region?.label)
+      const label = name && !localModelTextContains(clause, name) ? `${name}：` : ''
+      // Position and name stay whole when the prompt has to shrink; only the description is cut.
+      return { prefix: `- ${span || localRegionBand(region, canvas, index, regions.length)}: ${label}`, clause: clause || '完成该功能区' }
+    })
+    // The region lines already carry positions and counts; the 2511 reference-content contract and
+    // content-lock paragraphs repeat the request (with raw @参考图 tokens) and only lengthen it.
+    const structureRules = [
+      localPromptStructureRule(userPrompt),
+      localFooterGroupingRule(userPrompt, regions),
+    ].map(cleanText).filter(Boolean)
+    const lock = normalizeScreenNativeUiText(compileLocalPromptProtectionLock({
+      userPrompt,
+      regions,
+      contentIdentityLock: options.contentIdentityLock,
+    }), carrierIntent)
+    const avoid = cleanText(options.negativePrompt)
+    const opening = iteration
+      ? `Edit <image1>, the current game UI design, into its next version at ${width}x${height}. Keep it one finished, opaque, edge-to-edge ${orientation} screen.`
+      : carrierIntent === 'hardware'
+        ? `Render the requested physical device as one finished, front-facing ${width}x${height} product image.`
+        : `Design one finished, opaque, edge-to-edge ${width}x${height} ${orientation} game UI screen. The whole image is the screen itself, viewed straight-on.`
+    // The closing lines carry what to keep and what to avoid (cfg 1 ignores a negative prompt), so
+    // they are sized first and never cut; the request, image roles and regions shrink to fit.
+    const tail = [
+      structureRules.length ? `Structure rules: ${compactLocalModelText(structureRules.join('；'), 500)}` : '',
+      lock ? `Must keep: ${compactLocalModelText(lock, 500)}` : '',
+      carrierIntent === 'hardware'
+        ? 'Do not show: annotations, guide marks, editor grid, watermark.'
+        : 'Do not show: device frame, phone mockup, arcade or slot cabinet, room, product shot, annotations, guide marks, editor grid, watermark.',
+      avoid ? `Also avoid: ${compactLocalModelText(avoid, 300)}` : '',
+    ].filter(Boolean).join('\n')
+    const head = (targetChars, referenceChars, regionChars) => [
+      opening,
+      target ? `${iteration ? 'Change only this' : 'Content (highest priority)'}: ${compactLocalModelText(target, targetChars)}` : '',
+      referenceLines.length ? ['Images:', ...referenceLines.map((line) => compactLocalModelText(line, referenceChars))].join('\n') : '',
+      regionLines.length ? ['Screen structure, top to bottom:', ...regionLines.map((line) => line.prefix + compactLocalModelText(line.clause, regionChars))].join('\n') : '',
+    ].filter(Boolean).join('\n')
+    const room = QWEN21_UI_PROMPT_MAX_CHARS - tail.length - 1
+    let body = head(1200, 400, 400)
+    for (const [targetChars, referenceChars, regionChars] of [[1200, 400, 90], [800, 160, 90], [500, 120, 70], [300, 90, 50]]) {
+      if (body.length <= room) break
+      body = head(targetChars, referenceChars, regionChars)
+    }
+    if (body.length > room) body = body.slice(0, Math.max(0, room))
+    return `${body}\n${tail}`
+  }
+
+  // The 2.1 graph scales each reference to a pixel budget for its role, so it needs real sizes;
+  // a connected resource does not always carry them.
+  function measureDataUrl(dataUrl) {
+    const ImageCtor = root && root.Image
+    if (typeof ImageCtor !== 'function' || !cleanText(dataUrl)) return Promise.resolve({ width: 0, height: 0 })
+    return new Promise((resolve) => {
+      const image = new ImageCtor()
+      image.onload = () => resolve({
+        width: positiveInteger(image.naturalWidth || image.width, 0),
+        height: positiveInteger(image.naturalHeight || image.height, 0),
+      })
+      image.onerror = () => resolve({ width: 0, height: 0 })
+      image.src = dataUrl
+    })
+  }
+
+  // A transparent slice hands the model whatever colour its clear pixels store: in the tests every
+  // symbol came out on a coloured block. On neutral grey the same slices read as cut-out assets.
+  // Without a canvas (tests, workers) the image goes as it is.
+  async function flattenOnNeutralGray(dataUrl) {
+    const documentRef = root && root.document
+    const ImageCtor = root && root.Image
+    if (!/^data:image\/(?:png|webp);/i.test(cleanText(dataUrl))) return dataUrl
+    if (typeof documentRef?.createElement !== 'function' || typeof ImageCtor !== 'function') return dataUrl
+    try {
+      const image = await new Promise((resolve, reject) => {
+        const item = new ImageCtor()
+        item.onload = () => resolve(item)
+        item.onerror = () => reject(new Error('reference image did not load'))
+        item.src = dataUrl
+      })
+      const canvas = documentRef.createElement('canvas')
+      canvas.width = positiveInteger(image.naturalWidth || image.width, 1)
+      canvas.height = positiveInteger(image.naturalHeight || image.height, 1)
+      const context = canvas.getContext('2d')
+      context.fillStyle = '#808080'
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(image, 0, 0)
+      return canvas.toDataURL('image/png')
+    } catch {
+      return dataUrl
+    }
+  }
+
   function mergeDistinctPromptParts(first, second) {
     const left = cleanText(first)
     const right = cleanText(second)
@@ -1808,7 +2033,12 @@
     // The exact same ordered snapshot drives @ mentions, prompt numbering,
     // upload order and workflow reference metadata.
     const refs = externalReferenceSnapshot(options.refs || options.references)
-    const capability = validateExternalReferenceCount(provider, refs)
+    // Asked on every run: the assistant may point at another ComfyUI than when the page loaded.
+    // Refinement passes are 2511-only and never reach here from a 2.1 run.
+    const qwen21 = provider === 'local' && !refinementCandidate && await refreshLocalQwen21Available()
+    const capability = validateExternalReferenceCount(provider, refs, providerCapability(provider, { qwen21 }))
+    if (qwen21) state.localUiEngine = LOCAL_UI_ENGINE_QWEN21
+    else delete state.localUiEngine
     const semanticLayout = resolveSemanticLayout(project, options, state)
     const originalUserPrompt = cleanText(options.prompt)
     const carrierIntent = resolveUiOutputCarrier(
@@ -1854,6 +2084,41 @@
       if (refinementCandidate) {
         localIntent = 'refinement'
         modelRefs = []
+      } else if (qwen21) {
+        // Qwen-Image-2.1 gets every connected reference as it is: no automatic primary, material
+        // proxy or three-slot selection. Palette-only colour references keep their low-frequency
+        // proxy, and the director's deterministic fallback still supplies the content lock.
+        if (typeof localWorkflow?.resolveIntent !== 'function' || typeof referenceWorkflow?.buildReferencePlan !== 'function'
+          || typeof referenceWorkflow?.materializeReferencePlan !== 'function') {
+          throw new Error('本地 UI 专用参考图工作流尚未就绪')
+        }
+        localIntent = localWorkflow.resolveIntent(state, refs)
+        localReferencePlan = referenceWorkflow.buildReferencePlan(refs, {
+          mode: localIntent,
+          baseIndex: localIntent === 'iteration' && Number(state.iterationReferenceCount) > 0 ? 0 : undefined,
+        })
+        throwIfAborted(signal)
+        localReferencePlan = await referenceWorkflow.materializeReferencePlan(localReferencePlan, {
+          transformer: options.localReferenceTransformer,
+        })
+        throwIfAborted(signal)
+        modelRefs = localReferencePlan.entries
+        const director = localDirectorApi()
+        directorResult = typeof director?.run === 'function'
+          ? await director.run({
+              intent: localIntent,
+              prompt: options.prompt,
+              negativePrompt: options.negativePrompt ?? state.negativePrompt,
+              references: refs,
+              structure: semanticLayout,
+              size: semanticLayout.canvas,
+              targetStyle: state.targetStyle,
+              electronAPI: options.electronAPI || root?.electronAPI,
+              skip: true,
+              signal,
+            })
+          : null
+        throwIfAborted(signal)
       } else {
       if (typeof localWorkflow?.resolveIntent !== 'function' || typeof referenceWorkflow?.buildReferencePlan !== 'function'
         || typeof referenceWorkflow?.materializeReferencePlan !== 'function') {
@@ -1942,16 +2207,30 @@
     const referenceGuidedRedesign = provider === 'local'
       && localIntent === 'redesign'
       && !refinementCandidate
+      && !qwen21
     const executionMode = MODE
     state.mode = executionMode
-    const synthesisPlan = synthesisReferencePlan({
-      provider,
-      intent: localIntent,
-      refinementCandidate,
-      layoutGuide,
-      modelRefs,
-      primaryReferencePlan,
-    })
+    // 2.1 gets the page structure as text only. A guide image leaked grey haze and blobs into the
+    // screen wherever it sat in the list (first it also pulled the layout off), so its references
+    // are the connected images alone.
+    const synthesisPlan = qwen21
+      ? Object.freeze({
+          references: Object.freeze([...modelRefs]),
+          externalModelImageNumbers: Object.freeze(modelRefs.map((_, index) => index + 1)),
+          layoutGuideIndex: -1,
+          layoutGuideImageNumber: 0,
+          primaryModelReferenceIndex: -1,
+          primaryModelImageNumber: 0,
+          guideLast: false,
+        })
+      : synthesisReferencePlan({
+          provider,
+          intent: localIntent,
+          refinementCandidate,
+          layoutGuide,
+          modelRefs,
+          primaryReferencePlan,
+        })
     const sourceModelImageNumbers = sourceAlignedModelImageNumbers(
       refs,
       modelRefs,
@@ -1981,7 +2260,7 @@
           ? layoutGuideEncoding
         : cleanText(reference.proxyEncoding),
     }))
-    const compiled = referenceGuidedRedesign
+    const compiled = referenceGuidedRedesign || qwen21
       ? ''
       : compilePromptFromReferences(project, modelRefs, semanticLayout, {
           provider,
@@ -2023,7 +2302,9 @@
               modelReferenceContentPrompt,
             ].filter(Boolean).join('\n')
           : '')
-    const conciseRedesignMentionSource = referenceGuidedRedesign
+    const conciseRedesignMentionSource = qwen21
+      ? modelUserPrompt
+      : referenceGuidedRedesign
       ? (
           modelUserPrompt
           || normalizeScreenNativeUiText(directorResult?.prompt, carrierIntent)
@@ -2037,10 +2318,24 @@
         ? '当前候选成品中已经建立的原始视觉方向'
         : '',
       modelImageNumbers: sourceModelImageNumbers,
+      imageToken: qwen21 ? 'angle' : '',
     }))
     assertStableUiMentionBindings(options.prompt, refs, state.promptMentionBindings)
     const supplementalPrompt = cleanText(compiledMentions.text)
-    const basePrompt = referenceGuidedRedesign
+    const basePrompt = qwen21
+      ? compileQwen21UiPrompt({
+          project,
+          semantic: semanticLayout,
+          intent: localIntent,
+          userPrompt: supplementalPrompt,
+          references: modelRefs,
+          referenceImageNumbers: synthesisPlan.externalModelImageNumbers,
+          layoutGuideImageNumber: synthesisPlan.layoutGuideImageNumber,
+          carrierIntent,
+          contentIdentityLock: stateContentIdentityLock || directorResult?.contentIdentityLock || null,
+          negativePrompt: cleanText(options.negativePrompt ?? state.negativePrompt),
+        })
+      : referenceGuidedRedesign
       ? compileLocalRedesignModelPrompt({
           project,
           semantic: semanticLayout,
@@ -2065,7 +2360,7 @@
                 repairTokens: repairMask?.selectedTokens,
               })
             : (
-                referenceGuidedRedesign
+                referenceGuidedRedesign || qwen21
                   ? basePrompt
                   : localWorkflowApi().compileAntiCopyPrompt(basePrompt, {
                       state,
@@ -2119,6 +2414,10 @@
       throwIfAborted(signal)
       if (!cleanText(baseUrl)) throw new Error('NovaFlow AI Runtime 未连接')
 
+      const uploadDataUrls = qwen21
+        ? await Promise.all(references.map((reference) => flattenOnNeutralGray(reference.dataUrl)))
+        : null
+      throwIfAborted(signal)
       const uploadedNames = []
       for (let index = 0; index < references.length; index += 1) {
         const reference = references[index]
@@ -2132,10 +2431,15 @@
           referenceIndex: index,
           referenceRole: reference.role || 'reference',
         })
-        const upload = await bridge.uploadDataUrl(baseUrl, reference.name, reference.dataUrl)
+        const uploadName = qwen21 ? `ui_q21_${String(index + 1).padStart(2, '0')}.png` : reference.name
+        const upload = await bridge.uploadDataUrl(baseUrl, uploadName, uploadDataUrls ? uploadDataUrls[index] : reference.dataUrl)
         throwIfAborted(signal)
-        uploadedNames.push(uploadedName(upload, reference.name))
+        uploadedNames.push(uploadedName(upload, uploadName))
       }
+      const measuredSizes = qwen21
+        ? await Promise.all(uploadDataUrls.map((dataUrl) => measureDataUrl(dataUrl)))
+        : null
+      throwIfAborted(signal)
       if (repairMask) {
         emitProgress(onProgress, 'upload', '正在上传语义局部修复蒙版', 0.21, {
           referenceRole: 'repair_mask',
@@ -2182,10 +2486,11 @@
               visualEncoding: layoutGuideEncoding,
             },
         referenceRoles,
-        referenceSizes: references.map((reference) => ({
-          width: positiveInteger(reference.width, 0),
-          height: positiveInteger(reference.height, 0),
-        })),
+        referenceSizes: references.map((reference, index) => (
+          measuredSizes && measuredSizes[index].width > 0
+            ? measuredSizes[index]
+            : { width: positiveInteger(reference.width, 0), height: positiveInteger(reference.height, 0) }
+        )),
         promptMentions: compiledMentions.mentions,
         state,
       })
@@ -2355,6 +2660,7 @@
         localReferenceContentPrompt: cleanText(directorResult?.referenceContentPrompt),
         localWorkflow: workflowRun?.uiLocal || null,
         localRefinement: workflowRun?.uiRefine || null,
+        localEngine: qwen21 ? LOCAL_UI_ENGINE_QWEN21 : '',
       }
       emitProgress(onProgress, 'complete', 'UI 设计生成完成', 1, { promptId, result })
       return result
@@ -2388,7 +2694,9 @@
     trustedStateContentLockPrompt,
     MAX_EXTERNAL_REFERENCES,
     referenceLimits,
+    LOCAL_UI_ENGINE_QWEN21,
     providerCapability,
+    compileQwen21UiPrompt,
     normalizeReferenceRole,
     externalReferences,
     externalReferenceSnapshot,

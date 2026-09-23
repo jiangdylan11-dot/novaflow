@@ -45,24 +45,6 @@
     denoise: 1,
     lightning: true,
   })
-  const RAPID_ENHANCED_SAMPLING = Object.freeze({
-    editStrength: 'enhanced',
-    steps: 6,
-    cfg: 1,
-    samplerName: 'euler_ancestral',
-    scheduler: 'beta',
-    denoise: 1,
-    lightning: false,
-  })
-  const RAPID_FAITHFUL_SAMPLING = Object.freeze({
-    editStrength: 'faithful',
-    steps: 4,
-    cfg: 1,
-    samplerName: 'euler_ancestral',
-    scheduler: 'beta',
-    denoise: 1,
-    lightning: false,
-  })
 
   // Local UI redesign always carries one Gaussian-only semantic scaffold.
   // Ordinary references may be routed ahead of it so the model sees real UI
@@ -174,7 +156,7 @@
   }
 
   function resolveQualityMode(intent, state = {}, roles = []) {
-    if (intent === ITERATION_INTENT || state?.nsfw === true) return PERFORMANCE_MODE
+    if (intent === ITERATION_INTENT) return PERFORMANCE_MODE
     const automaticPrimaryReference = roles.some((item) => (
       item.role === 'reference' && item.autoPrimary === true
     ))
@@ -184,11 +166,7 @@
   }
 
   function samplingForIntent(intent, state = {}, qualityMode = PERFORMANCE_MODE) {
-    const rapidFamily = state?.nsfw === true
     if (intent !== ITERATION_INTENT) {
-      if (rapidFamily) {
-        return Object.freeze({ ...RAPID_ENHANCED_SAMPLING, editStrength: 'ui-quality-redesign' })
-      }
       if (qualityMode === QUALITY_MODE) {
         return cleanText(state?.localUiRefinePreset).toLowerCase() === 'enhanced-redraw'
           ? QUALITY_REFERENCE_RETRY_SAMPLING
@@ -197,11 +175,6 @@
       return cleanText(state?.localEditStrength).toLowerCase() === 'enhanced'
         ? Object.freeze({ ...ENHANCED_SAMPLING, editStrength: 'ui-enhanced-redraw' })
         : REDESIGN_SAMPLING
-    }
-    if (rapidFamily) {
-      return cleanText(state?.localEditStrength).toLowerCase() === 'enhanced'
-        ? RAPID_ENHANCED_SAMPLING
-        : RAPID_FAITHFUL_SAMPLING
     }
     return cleanText(state?.localEditStrength).toLowerCase() === 'enhanced'
       ? ENHANCED_SAMPLING
@@ -555,8 +528,6 @@
     QWEN_EDIT_4STEP_LORA,
     ENHANCED_SAMPLING,
     FAITHFUL_SAMPLING,
-    RAPID_ENHANCED_SAMPLING,
-    RAPID_FAITHFUL_SAMPLING,
     REDESIGN_SAMPLING,
     QUALITY_REFERENCE_SAMPLING,
     AUTO_PRIMARY_MAX_WORKING_PIXELS,

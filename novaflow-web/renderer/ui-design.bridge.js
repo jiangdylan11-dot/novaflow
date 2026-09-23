@@ -18,6 +18,7 @@
   let selectedEntity = null
   let generationState = null
   let generationPromise = null
+  let featureRefresh = null
   let generationStatus = ''
   let generationStatusError = false
   let generationStatusGeneratorId = ''
@@ -766,6 +767,8 @@
       sourceId: String(reference.id || reference.sourceId || reference.resourceId || ''),
       nodeId: String(reference.nodeId || ''),
       label: String(reference.name || reference.fileName || `参考图${index + 1}`),
+      // The model sees the layout guide as image 1 unless the engine takes none (Qwen-Image-2.1).
+      modelImageNumber: index + 1 + Math.max(0, Number(context.capability?.reservedLayoutReferences) || 0),
       name: String(reference.name || reference.fileName || `ui_reference_${index + 1}.png`),
       fileName: String(reference.fileName || reference.name || `ui_reference_${index + 1}.png`),
       kind: 'image',
@@ -943,6 +946,15 @@
       })
       throw error
     }
+    // The local reference limit depends on the node's engine; ask it again before checking. A
+    // second click during the question waits for the same answer and then joins the first run.
+    if (root?.NovaFlowWebRuntime?.computeMode === 'local' && typeof root?.electronAPI?.runtimeFeatures === 'function') {
+      if (!featureRefresh) {
+        featureRefresh = Promise.resolve(root.electronAPI.runtimeFeatures()).catch(() => {}).finally(() => { featureRefresh = null })
+      }
+      await featureRefresh
+      if (generationPromise) return generationPromise
+    }
     const state = activeStore.getState()
     const context = generationContext(state, String(request.generatorNodeId || ''))
     const generatorNodeId = String(context.generator?.id || request.generatorNodeId || '')
@@ -988,6 +1000,8 @@
     }
     const runState = {
       ...profile.settings,
+      // UI design has no NSFW route; a generator saved before it was removed may still carry the flag.
+      nsfw: false,
       mode: 'img2img',
       width: output.width,
       height: output.height,
@@ -1051,6 +1065,24 @@
     const task = (async () => {
       let result = await modules.generateWorkflow.run(generationOptions)
       if (context.provider !== 'local' || runState.uiRunIntent === 'iteration') return result
+      if (result?.localEngine === 'qwen-2.1') {
+        return {
+          ...result,
+          qualityReview: {
+            status: 'REVIEW',
+            unavailable: true,
+            reason: 'qwen21-single-pass',
+            summary: 'Qwen-Image-2.1 多参考图结果已生成；精修和视觉审查只有 2511 路线，本次保留结果供人工验收。',
+            hardFailures: [],
+            failureCodes: [],
+            scores: {},
+            retryPrompt: '',
+            confidence: 0,
+          },
+          qualityRetryCount: 0,
+          qualityAccepted: false,
+        }
+      }
 
       let localDraft = null
       const localUiContentLockPrompt = String(
@@ -1074,8 +1106,7 @@
         || 'quality',
       ).trim().toLowerCase()
       const referenceGuidedRedesign = result?.referenceGuidedRedesign === true
-      const deterministicPolish = runState.nsfw !== true
-        && localSynthesisMode !== 'txt2img'
+      const deterministicPolish = localSynthesisMode !== 'txt2img'
         && !referenceGuidedRedesign
       if (deterministicPolish) {
         localDraft = {
