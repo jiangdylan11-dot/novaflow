@@ -3542,7 +3542,37 @@
     if (target instanceof Element && target.closest(NOVAFLOW_PAGE_SWITCH_SELECTOR)) hushNovaflowTransitions();
   }
 
+  // Switching 特效 / 动画 / 美工 / 工具: the new page's content stays veiled
+  // until the runtime has laid it out (a spec pass and two frames, 260ms at
+  // most), so a half-built frame - the old rail state, a bare list - is
+  // never shown. Only for an entry that is not already the page.
+  let NOVAFLOW_SWITCH_VEIL_FRAME = 0;
+  function veilNovaflowPrimarySwitch(event) {
+    const target = event && event.target;
+    const entry = target instanceof Element ? target.closest('[data-novaflow-primary-entry="1"]') : null;
+    if (!(entry instanceof HTMLElement) || entry.getAttribute("data-novaflow-primary-active") === "1") return;
+    const html = document.documentElement;
+    if (!html) return;
+    html.setAttribute("data-novaflow-switch-veil", "1");
+    const runsAtClick = (window.__novaflowSpecStats || {}).runs || 0;
+    const startedAt = performance.now();
+    let frames = 0;
+    if (NOVAFLOW_SWITCH_VEIL_FRAME) window.cancelAnimationFrame(NOVAFLOW_SWITCH_VEIL_FRAME);
+    const check = () => {
+      frames += 1;
+      const runs = (window.__novaflowSpecStats || {}).runs || 0;
+      if ((runs > runsAtClick && frames >= 2) || performance.now() - startedAt > 260) {
+        NOVAFLOW_SWITCH_VEIL_FRAME = 0;
+        html.removeAttribute("data-novaflow-switch-veil");
+        return;
+      }
+      NOVAFLOW_SWITCH_VEIL_FRAME = window.requestAnimationFrame(check);
+    };
+    NOVAFLOW_SWITCH_VEIL_FRAME = window.requestAnimationFrame(check);
+  }
+
   hushNovaflowTransitions();
+  document.addEventListener("click", veilNovaflowPrimarySwitch, true);
   document.addEventListener("pointerdown", hushNovaflowTransitionsForSwitch, true);
   document.addEventListener("click", hushNovaflowTransitionsForSwitch, true);
   window.addEventListener("novaflow:app-ready", hushNovaflowTransitions);
