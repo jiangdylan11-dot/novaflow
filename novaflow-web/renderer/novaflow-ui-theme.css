@@ -1157,3 +1157,14 @@ html body #novaflow-local-warehouse .nf-wh-search input:focus {
   box-shadow: none !important;
   outline: 0 !important;
 }
+
+/* 3.0e The chip rows drawn as a segmented tray (as 爆发 / 持续): an
+   unselected button is bare on the tray. */
+html body :is([data-novaflow-particle-chip-row="1"]:not([data-novaflow-template-manager-body]), #nf-lift) > [data-novaflow-particle-chip]:not([aria-pressed="true"]):not([style*="30, 166, 114"]) {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+html body :is([data-novaflow-particle-chip-row="1"]:not([data-novaflow-template-manager-body]), #nf-lift) > [data-novaflow-particle-chip]:hover:not([aria-pressed="true"]):not([style*="30, 166, 114"]) {
+  background: #373737 !important;
+  background-color: #373737 !important;
+}

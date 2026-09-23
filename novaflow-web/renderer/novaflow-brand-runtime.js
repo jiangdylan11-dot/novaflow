@@ -34599,6 +34599,30 @@
         }
       },
       {
+        // 着色模式 / 混合 drew their own arrow beside the select; the select's
+        // thin chevron is the one arrow now.
+        selector: "[data-novaflow-sprite-editor-select-wrap] > span",
+        style: (node) => (node.childElementCount === 0 && !normalizeText(node.textContent || "") ? { display: "none" } : null)
+      },
+      {
+        // 等比 / 分离XY, 线性 / 曲线, 单张 / 随机 / 序列: drawn as 爆发 / 持续
+        // is - a #101010 tray, the buttons sharing its width evenly.
+        selector: '[data-novaflow-particle-chip-row="1"]:not([data-novaflow-template-manager-body]) > *',
+        style: {
+          flex: "1 1 0", width: "auto", "min-width": "0", "max-width": "none", "justify-content": "center", "text-align": "center",
+          height: "29px", "min-height": "29px", "max-height": "29px", padding: "4px 7px", "border-radius": "5px",
+          "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "box-shadow": "none", margin: "0"
+        }
+      },
+      {
+        selector: '[data-novaflow-particle-chip-row="1"]:not([data-novaflow-template-manager-body])',
+        style: {
+          width: "100%", "flex-wrap": "nowrap", display: "flex", background: "#101010", "background-color": "#101010",
+          border: "1px solid #262626", "border-radius": "8px", padding: "3px", gap: "3px",
+          height: "37px", "min-height": "37px", "max-height": "37px", "box-sizing": "border-box"
+        }
+      },
+      {
         // 点击存储 is as tall as the cards beside it (they carry a name row).
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile="1"]',
