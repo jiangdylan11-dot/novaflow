@@ -114,6 +114,10 @@
   }
 
   function findWorkspaces() {
+    // The tools workspace as the app marks it (its grid moved to a flex row,
+    // which the shape test below no longer recognises).
+    const marked = document.querySelector('[data-novaflow-tools-workspace]')
+    if (marked instanceof HTMLElement && marked.getBoundingClientRect().width > 500) return [marked]
     return Array.from(document.querySelectorAll('div')).filter((node) => {
       if (!(node instanceof HTMLElement) || node.id === ROOT_ID || node.closest(`#${ROOT_ID}`)) return false
       const rect = node.getBoundingClientRect()
