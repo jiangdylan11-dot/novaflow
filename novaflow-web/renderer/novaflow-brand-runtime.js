@@ -18660,24 +18660,15 @@
     const background = color;
     setStylePropertyIfChanged(viewport, "--novaflow-ai-preview-color", color);
     setAttributeIfChanged(viewport, "data-novaflow-ai-preview-bg", mode);
-    viewport.style.setProperty(
-      "background",
-      background,
-      "important"
-    );
-    viewport.style.setProperty(
-      "background-color",
-      color,
-      "important"
-    );
-    viewport.style.setProperty(
-      "background-image",
-      "none",
-      "important"
-    );
-    viewport.style.setProperty("background-size", "auto", "important");
-    viewport.style.setProperty("background-position", "center", "important");
-    viewport.style.setProperty("background-repeat", "no-repeat", "important");
+    // The chosen backdrop fills the preview's own area (below the canvas
+    // bar, above the dock), not the whole stage; around it the stage keeps
+    // its dark. Dark itself therefore looks exactly as before.
+    void background;
+    setStylePropertyIfChanged(viewport, "background-color", AI_ANIMATION_PREVIEW_BACKGROUND_COLOR, "important");
+    setStylePropertyIfChanged(viewport, "background-image", `linear-gradient(${color}, ${color})`, "important");
+    setStylePropertyIfChanged(viewport, "background-size", "var(--novaflow-ai-sequence-effective-width, 100%) var(--novaflow-ai-sequence-effective-height, 100%)", "important");
+    setStylePropertyIfChanged(viewport, "background-position", "var(--novaflow-ai-sequence-effective-left, 0px) var(--novaflow-ai-sequence-effective-top, 0px)", "important");
+    setStylePropertyIfChanged(viewport, "background-repeat", "no-repeat", "important");
   }
 
   function isAiSequencePreviewBgToggleTarget(target) {
@@ -19246,7 +19237,16 @@
         right = Math.max(left + 1, Math.round(resourceRect.left) - AI_ANIMATION_PREVIEW_UI_GAP);
       }
     }
-    const top = rect.top + padTop;
+    let top = rect.top + padTop;
+    // The canvas bar (board controls, mode tabs, 自动适配) is not preview:
+    // the area starts 8 below it, as it ends 8 above the dock.
+    Array.from(document.querySelectorAll('[data-novaflow-ai-top-mode-tabs="1"], [data-novaflow-ai-zoom-controls="1"], [data-novaflow-ai-board-controls-top-left]')).forEach((node) => {
+      if (!(node instanceof HTMLElement) || !isVisible(node)) return;
+      const barRect = node.getBoundingClientRect();
+      if (barRect.top >= rect.top - 4 && barRect.bottom < rect.top + 120) {
+        top = Math.max(top, Math.round(barRect.bottom) + 8);
+      }
+    });
     let bottom = Math.max(top + 1, rect.bottom - padBottom);
     Array.from(document.querySelectorAll('[data-novaflow-ai-bottom-workspace="1"], [data-novaflow-ai-video-merge-workspace="1"] .nf-vm-timeline')).forEach((node) => {
       if (!(node instanceof HTMLElement) || !isVisible(node)) return;
@@ -19272,6 +19272,8 @@
     setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-center-y", `${localCenterY}px`);
     setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-width", `${Math.max(1, Math.round(effectiveRect.width))}px`);
     setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-height", `${Math.max(1, Math.round(effectiveRect.height))}px`);
+    setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-left", `${Math.round(effectiveRect.left - rect.left)}px`);
+    setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-top", `${Math.round(effectiveRect.top - rect.top)}px`);
     const backgroundToggle = viewport.querySelector('[data-novaflow-ai-preview-bg-toggle="1"]');
     if (backgroundToggle instanceof HTMLElement) {
       // Follow the visible stage, above either generation controls or the editing timeline.
