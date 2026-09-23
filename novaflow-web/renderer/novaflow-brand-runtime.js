@@ -34878,6 +34878,39 @@
         style: { "margin-left": "0", "font-size": "11px", "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT, color: "#8a8a8a" }
       },
       {
+        // 动画's dock ordered as 绘图's: the settings row, the progress, the
+        // reference tiles, then the prompt (the tiles had led). The settings
+        // column steps aside so its rows and the tiles share one column.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row] > [data-novaflow-ai-settings-column]',
+        style: { display: "contents" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row]',
+        style: { display: "flex", "flex-direction": "column", gap: "10px" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row] [data-novaflow-ai-settings-row]',
+        style: { order: "1" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row] [data-novaflow-ai-generation-progress]',
+        style: { order: "2", "margin-top": "0", "margin-bottom": "0" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row] > [data-novaflow-ai-reference-column="1"]',
+        style: { order: "3", "margin-top": "0", "margin-bottom": "0" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row] [data-novaflow-ai-prompt-grid]',
+        style: { order: "4", "margin-top": "0" }
+      },
+      {
         // 点击存储 is as tall as the cards beside it (they carry a name row).
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile="1"]',
