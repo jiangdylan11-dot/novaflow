@@ -34664,7 +34664,13 @@
       },
       {
         selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid > .novaflow-art-generate-prompt",
-        style: { width: "auto", "min-width": "0", flex: "none", "grid-column": "auto", height: "108px", "min-height": "108px", "max-height": "108px" }
+        // A model without a negative prompt leaves the positive one alone: it
+        // takes the whole row, not half of it.
+        style: (node) => ({
+          width: "auto", "min-width": "0", flex: "none",
+          "grid-column": node.parentElement && node.parentElement.getAttribute("data-negative-prompt") === "0" ? "1 / -1" : "auto",
+          height: "108px", "min-height": "108px", "max-height": "108px"
+        })
       },
       {
         // AI 特效 → 特效模板: the loaded preview's × (in place of 清空), small
