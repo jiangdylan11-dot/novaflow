@@ -34715,6 +34715,33 @@
         }
       },
       {
+        // 美工's edit modes (局部编辑, 去除物体, 蒙版编辑 ...): the row of tools
+        // over the canvas sits on the canvas bar's plate, as 原图 / 图层 do.
+        selector: ':has(> [data-novaflow-spine-split-tool-action])',
+        style: (node) => {
+          if (node.id === "novaflow-spine-split-view-controls" || node.closest("#novaflow-spine-split-view-controls")) return null;
+          const tools = Array.from(node.children).filter((child) => child.hasAttribute("data-novaflow-spine-split-tool-action"));
+          if (tools.length < 2) return null;
+          nfSetAttrIfChanged(node, "data-novaflow-edit-tool-bar", "1");
+          return {
+            ...canvasBarPillStyle(), display: "flex", "flex-wrap": "nowrap", "align-items": "center", "justify-content": "center",
+            width: "auto", "max-width": "96%", "margin-left": "auto", "margin-right": "auto",
+            // On the canvas bar's row (7 below the stage top), not 12 in.
+            "margin-top": "-5px"
+          };
+        }
+      },
+      {
+        // Its buttons read as the bar's: bare until hovered or on.
+        selector: '[data-novaflow-edit-tool-bar="1"] > button',
+        style: (node) => canvasBarButtonStyle(node)
+      },
+      {
+        // The sliders' labels in that row (画笔 / 羽化): bare on the plate.
+        selector: '[data-novaflow-edit-tool-bar="1"] > label',
+        style: { background: "transparent", "background-color": "transparent", "box-shadow": "none", border: "0" }
+      },
+      {
         // 点击存储 is as tall as the cards beside it (they carry a name row).
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile="1"]',
@@ -34863,6 +34890,7 @@
   // writers that disagree cannot spin; those are counted for fixing at source.
   const NOVAFLOW_SPEC_STATE_ATTRIBUTES = new Set([
     "class",
+    "data-novaflow-art-generate-active",
     "data-novaflow-skeleton-top-button-active",
     "data-filled",
     "hidden",
@@ -35156,6 +35184,22 @@
       ["\u5bfc\u5165", () => find("\u5bfc\u5165\u9879\u76ee")],
       ["\u4fdd\u5b58", () => find("\u4fdd\u5b58\u9879\u76ee")]
     ];
+  }
+
+  // 美工: opening 模式 (the generation dock) while an edit mode's tools are
+  // up leaves that edit, as asked - through the edit's own 退出, once per
+  // tool bar, so whatever it does on exit still happens.
+  function exitArtEditWhenGenerating() {
+    const body = document.body;
+    if (!body || body.getAttribute(ART_GENERATE_ACTIVE_ATTR) !== "1") return;
+    document.querySelectorAll('[data-novaflow-edit-tool-bar="1"]').forEach((bar) => {
+      if (!(bar instanceof HTMLElement) || bar.__novaflowExitedForGenerate) return;
+      const exit = Array.from(bar.querySelectorAll(":scope > [data-novaflow-spine-split-tool-action]"))
+        .find((button) => normalizeText(button.textContent || "") === "退出");
+      if (!(exit instanceof HTMLElement)) return;
+      bar.__novaflowExitedForGenerate = true;
+      window.setTimeout(() => { if (exit.isConnected) exit.click(); }, 0);
+    });
   }
 
   function syncParticleTemplateManager() {
@@ -35747,6 +35791,7 @@
     try { syncParticleTemplateManager(); } catch (_) { void 0; }
     // 美工 / UI zoom cells are put in with the pill, not a poll later.
     try { syncNovaflowZoomPercentLabels(); } catch (_) { void 0; }
+    try { exitArtEditWhenGenerating(); } catch (_) { void 0; }
     syncNovaflowStackAdoption();
     NOVAFLOW_STACK_WORKSPACE_TOP = NOVAFLOW_LAYOUT_TIER === "stack"
       ? TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP + novaflowStackSidebarHeight() + NOVAFLOW_STACK_GAP
