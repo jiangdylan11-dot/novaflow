@@ -32676,7 +32676,8 @@
             "border-left": active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "0",
             "border-right": active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "0",
             "border-radius": active ? NOVAFLOW_RECT_RADIUS_PX : "0",
-            height: "46px", "min-height": "46px", "max-height": "46px", "box-shadow": "none", "margin-top": "0", "margin-bottom": "0"
+            // 54 a row: more room between the tools, as asked.
+            height: "54px", "min-height": "54px", "max-height": "54px", "box-shadow": "none", "margin-top": "0", "margin-bottom": "0"
           };
           return {
             width: `${PRIMARY_LEFT_CARD_WIDTH}px`,
@@ -34544,7 +34545,9 @@
       });
       bottom += 11;
     }
-    return Math.min(NOVAFLOW_STACK_SIDEBAR_MAX_HEIGHT, Math.max(120, Math.round(bottom - top)));
+    // 工具's list is short and must show whole (its rows are 54 now).
+    const cap = document.body && document.body.classList.contains("novaflow-primary-target-tools") ? 400 : NOVAFLOW_STACK_SIDEBAR_MAX_HEIGHT;
+    return Math.min(cap, Math.max(120, Math.round(bottom - top)));
   }
 
   function syncNovaflowStackDocumentHeight(contentBottom) {
