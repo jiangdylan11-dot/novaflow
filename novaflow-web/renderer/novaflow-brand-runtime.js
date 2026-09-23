@@ -2314,9 +2314,9 @@
   const NOVAFLOW_THIN_ARROW_SIZE = "7px";
   const NOVAFLOW_SELECT_ARROW_STROKE = "1.1px";
   const NOVAFLOW_SELECT_ARROW_COLOR = "rgba(238, 244, 252, 0.64)";
-  const NOVAFLOW_NUMBER_INPUT_WIDTH = 50;
+  const NOVAFLOW_NUMBER_INPUT_WIDTH = 49;
   const PARTICLE_DENSITY_PANEL_HEADER_HEIGHT = 46;
-  const PARTICLE_DENSITY_PANEL_BODY_PADDING_Y = 8;
+  const PARTICLE_DENSITY_PANEL_BODY_PADDING_Y = 5;
   const PARTICLE_DENSITY_PANEL_BODY_PADDING_X = 7;
   const PARTICLE_DENSITY_PANEL_STACK_GAP = 7;
   const PARTICLE_DENSITY_SECTION_GAP = 6;
@@ -2328,7 +2328,7 @@
   // The unfilled half of every slider. One value, rather than the literal
   // that had been repeated at each of the eighteen places a range is painted.
   const UI_RANGE_TRACK = "#3b3b3b";
-  const PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT = 24;
+  const PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT = 28;
   const SPRITE_EDITOR_SLIDER_GROUP_GAP = 4;
   const SPRITE_EDITOR_SLIDER_STACK_TOP_GAP = 5;
   const SPRITE_EDITOR_SLIDER_TITLE_HEIGHT = 13;
@@ -2703,15 +2703,15 @@
   const UI_TOPBAR_RIGHT_GAP = 18;
   const UI_TOPBAR_STATUS_TEXT = "#979797";
   const UI_TOPBAR_STATUS_DOT = "#a3a3a3";
-  const UI_FIELD_BACKGROUND = "#222222";
-  const UI_SELECT_BACKGROUND = "#222222";
+  const UI_FIELD_BACKGROUND = "#272727";
+  const UI_SELECT_BACKGROUND = "#272727";
   const UI_SELECT_HOVER_BACKGROUND = "#2a2a2a";
   const UI_SURFACE_MUTED = "#161616";
   const UI_BUTTON_BACKGROUND = "#272727";
   const UI_DISABLED_NEUTRAL_BUTTON_BACKGROUND = "#222222";
   const UI_TOGGLE_OFF_BACKGROUND = "#343434";
-  const UI_SYSTEM_ACTION_BACKGROUND = "#272727";
-  const UI_SYSTEM_ACTION_DISABLED_BACKGROUND = "#202020";
+  const UI_SYSTEM_ACTION_BACKGROUND = "#282828";
+  const UI_SYSTEM_ACTION_DISABLED_BACKGROUND = "#252629";
   const UI_SYSTEM_ROW_ACTIVE_BACKGROUND = "#272727";
   const UI_SYSTEM_ROW_INACTIVE_BACKGROUND = "#1d1d1d";
   // Rank, not decoration. UI_ACCENT is the ONE main action of a surface
@@ -28929,6 +28929,64 @@
     nfSetStyleIfChanged(icon, "text-align", "center", "important");
   }
 
+  /**
+   * The controls inside an expanded group.
+   *
+   * The reference uses exactly two of them here - the same number field and
+   * the same icon button the dock and the resource sidebar use - so this is
+   * the panel-side half of that one spec. Written inline because the bundle
+   * renders these with inline styles of its own, some of them !important.
+   */
+  function stylePrimaryLeftCardControls(card) {
+    Array.from(card.querySelectorAll('input:not([type="range"]):not([type="color"])')).forEach((field) => {
+      if (!(field instanceof HTMLInputElement)) return;
+      nfSetAttrIfChanged(field, "data-novaflow-keep-radius", "1");
+      nfSetStyleIfChanged(field, "width", `${UI_NUM_FIELD_WIDTH}px`, "important");
+      nfSetStyleIfChanged(field, "height", `${UI_NUM_FIELD_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(field, "min-height", `${UI_NUM_FIELD_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(field, "border-radius", UI_NUM_FIELD_RADIUS_PX, "important");
+      nfSetStyleIfChanged(field, "background", UI_NUM_FIELD_BACKGROUND, "important");
+      nfSetStyleIfChanged(field, "background-color", UI_NUM_FIELD_BACKGROUND, "important");
+      nfSetStyleIfChanged(field, "border", `1px solid ${UI_NUM_FIELD_BORDER_COLOR}`, "important");
+      nfSetStyleIfChanged(field, "color", UI_NUM_FIELD_TEXT, "important");
+      nfSetStyleIfChanged(field, "font-size", "11px", "important");
+      nfSetStyleIfChanged(field, "box-sizing", "border-box", "important");
+    });
+    Array.from(card.querySelectorAll("label, .nf-range-label")).forEach((label) => {
+      if (!(label instanceof HTMLElement)) return;
+      nfSetStyleIfChanged(label, "font-size", "11px", "important");
+      nfSetStyleIfChanged(label, "color", UI_CONTROL_LABEL_TEXT, "important");
+    });
+    Array.from(card.querySelectorAll("button")).forEach((button) => {
+      if (!(button instanceof HTMLElement)) return;
+      const label = normalizeText(button.textContent || "");
+      const icon = button.querySelector("i, svg") instanceof Element;
+      // Anything that is not an icon or a one-character glyph is a chip, and
+      // chips keep their own width and their selected state.
+      if (!icon && label.length > 1) return;
+      const computed = getRafCachedComputedStyle(button);
+      const rgb = String(computed.backgroundColor).match(/\d+/g);
+      // A green fill on an icon here is a state, not a rank: the reference
+      // draws every plain icon button grey, so only the state keeps its
+      // colour, retuned to the palette's own "on".
+      const on = Boolean(icon && rgb && Number(rgb[1]) > Number(rgb[0]) + 24 && Number(rgb[1]) > Number(rgb[2]) + 24);
+      const background = on ? UI_TOGGLE_ON_BACKGROUND : (button.disabled ? UI_ICON_BUTTON_DISABLED_BACKGROUND : UI_ICON_BUTTON_BACKGROUND);
+      nfSetAttrIfChanged(button, "data-novaflow-keep-radius", "1");
+      nfSetStyleIfChanged(button, "width", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      nfSetStyleIfChanged(button, "min-width", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      nfSetStyleIfChanged(button, "height", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      nfSetStyleIfChanged(button, "min-height", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      nfSetStyleIfChanged(button, "padding", "0", "important");
+      nfSetStyleIfChanged(button, "border", "0", "important");
+      nfSetStyleIfChanged(button, "border-radius", UI_ICON_BUTTON_RADIUS_PX, "important");
+      nfSetStyleIfChanged(button, "background", background, "important");
+      nfSetStyleIfChanged(button, "background-color", background, "important");
+      nfSetStyleIfChanged(button, "color", button.disabled ? UI_ICON_BUTTON_DISABLED_TEXT : UI_ICON_BUTTON_TEXT, "important");
+      nfSetStyleIfChanged(button, "font-size", "12px", "important");
+      nfSetStyleIfChanged(button, "box-sizing", "border-box", "important");
+    });
+  }
+
   function syncPrimaryLeftCards() {
     Array.from(document.querySelectorAll('[data-novaflow-left-content-shell="1"], [data-novaflow-left-content-root="1"]')).forEach((shell) => {
       if (shell instanceof HTMLElement) {
@@ -28968,6 +29026,7 @@
         nfSetStyleIfChanged(header, "box-sizing", "border-box", "important");
         stylePrimaryLeftCardHeaderIcon(header);
       }
+      stylePrimaryLeftCardControls(card);
     });
   }
 
@@ -29228,7 +29287,7 @@
       setRawStylePropertyIfChanged(field, "max-height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`, "important");
       setRawStylePropertyIfChanged(field, "font-size", "11px", "important");
       setRawStylePropertyIfChanged(field, "line-height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT - 2}px`, "important");
-      setRawStylePropertyIfChanged(field, "border-radius", "8px", "important");
+      setRawStylePropertyIfChanged(field, "border-radius", UI_NUM_FIELD_RADIUS_PX, "important");
     }
     if (field instanceof HTMLInputElement) {
       setRawStylePropertyIfChanged(field, "appearance", "textfield", "important");
@@ -31807,7 +31866,7 @@
           : primaryRailCellRadius(primaryRailEntryIndex(button), PRIMARY_ENTRY_LABELS.length),
         "important"
       );
-      nfSetStyleIfChanged(shell, "box-shadow", active ? `inset 0 0 0 1px ${UI_SELECTED_BORDER}` : "none", "important");
+      nfSetStyleIfChanged(shell, "box-shadow", active ? `inset 0 0 0 1px ${UI_RAIL_SELECTED_BORDER}` : "none", "important");
     });
   }
 
@@ -49495,20 +49554,21 @@
       const rowCompactDensity = isCompactDensityContainer(container);
       const rowDensityGap = rowCompactDensity ? PARTICLE_DENSITY_SECTION_GAP : densityGap;
       const rowDensityColumnGap = rowCompactDensity ? PARTICLE_DENSITY_SECTION_GAP : densityColumnGap;
-      const columns = directButtons.length > 5 ? 2 : directButtons.length;
       setImportantStyles(container, {
-        display: "grid",
-        "grid-template-columns": `repeat(${columns}, minmax(0, 1fr))`,
+        display: "flex",
+        "flex-wrap": "wrap",
         gap: `${rowDensityGap}px`,
         "row-gap": `${rowDensityGap}px`,
         "column-gap": `${rowDensityColumnGap}px`,
-        "align-items": "stretch"
+        "align-items": "center",
+        "justify-content": "flex-start"
       });
       directButtons.forEach((button) => {
         setImportantStyles(button, {
-          width: "100%",
+          width: "auto",
           "min-width": "0",
           "max-width": "100%",
+          flex: "0 0 auto",
           "box-sizing": "border-box",
           "margin-left": "0",
           "margin-right": "0"
@@ -49566,6 +49626,8 @@
     };
     normalizePass();
     normalizePass();
+    const ownerCard = body.closest('[data-novaflow-editor-panel="1"]');
+    if (ownerCard instanceof HTMLElement) stylePrimaryLeftCardControls(ownerCard);
   }
 
   function normalizeRibbonPanelRuntimeOwner(root) {
@@ -51530,7 +51592,7 @@
       nfSetStyleIfChanged(button, "background-color", secondaryBackground, "important");
       nfSetStyleIfChanged(button, "background-image", "none", "important");
       nfSetStyleIfChanged(button, "color", active ? UI_SEGMENT_SELECTED_TEXT : UI_SEGMENT_IDLE_TEXT, "important");
-      nfSetStyleIfChanged(button, "box-shadow", active ? `inset 0 0 0 1px ${UI_SELECTED_BORDER}` : "none", "important");
+      nfSetStyleIfChanged(button, "box-shadow", active ? `inset 0 0 0 1px ${UI_SEGMENT_SELECTED_BORDER}` : "none", "important");
       // Not !important: it still beats the bundle stylesheet, while letting
       // the theme's :focus-visible ring through for keyboard users.
       nfSetStyleIfChanged(button, "outline", "0");
@@ -58249,12 +58311,30 @@
       const siblings = Array.from(parent.children).filter((child) => child instanceof HTMLButtonElement);
       if (siblings.length !== 4) return;
       const plusButton = siblings.find((candidate) => isNewSystemButton(candidate));
-      if (!(plusButton instanceof HTMLButtonElement) || button === plusButton) return;
+      if (!(plusButton instanceof HTMLButtonElement)) return;
       const background = button.disabled ? UI_SYSTEM_ACTION_DISABLED_BACKGROUND : UI_SYSTEM_ACTION_BACKGROUND;
       button.style.setProperty("background", background, "important");
       button.style.setProperty("background-color", background, "important");
+      button.style.setProperty("background-image", "none", "important");
+      button.style.setProperty("border", "0", "important");
       button.style.setProperty("border-color", "transparent", "important");
-      button.style.setProperty("color", button.disabled ? "rgba(238, 244, 252, 0.38)" : "rgba(238, 244, 252, 0.9)", "important");
+      button.style.setProperty("border-radius", UI_ICON_BUTTON_RADIUS_PX, "important");
+      button.setAttribute("data-novaflow-keep-radius", "1");
+      button.style.setProperty("width", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      button.style.setProperty("min-width", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      button.style.setProperty("max-width", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      button.style.setProperty("height", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      button.style.setProperty("min-height", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      button.style.setProperty("max-height", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      button.style.setProperty("padding", "0", "important");
+      button.style.setProperty("flex", "0 0 auto", "important");
+      button.style.setProperty("font-size", "12px", "important");
+      button.style.setProperty("color", button.disabled ? UI_ICON_BUTTON_DISABLED_TEXT : UI_ICON_BUTTON_TEXT, "important");
+      parent.style.setProperty("display", "flex", "important");
+      parent.style.setProperty("grid-template-columns", "none", "important");
+      parent.style.setProperty("align-items", "center", "important");
+      parent.style.setProperty("justify-content", "flex-start", "important");
+      parent.style.setProperty("gap", "8px", "important");
     });
   }
 
@@ -69495,6 +69575,26 @@
     deleteButton.style.setProperty("z-index", "8", "important");
   }
 
+  function styleBottomControlFields(bottomControls) {
+    if (!(bottomControls instanceof HTMLElement)) return;
+    Array.from(bottomControls.querySelectorAll('input:not([type="range"]):not([type="color"])')).forEach((field) => {
+      if (!(field instanceof HTMLInputElement)) return;
+      nfSetAttrIfChanged(field, "data-novaflow-keep-radius", "1");
+      nfSetStyleIfChanged(field, "width", `${UI_NUM_FIELD_WIDTH}px`, "important");
+      nfSetStyleIfChanged(field, "min-width", `${UI_NUM_FIELD_WIDTH}px`, "important");
+      nfSetStyleIfChanged(field, "max-width", `${UI_NUM_FIELD_WIDTH}px`, "important");
+      nfSetStyleIfChanged(field, "height", `${UI_NUM_FIELD_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(field, "min-height", `${UI_NUM_FIELD_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(field, "border-radius", UI_NUM_FIELD_RADIUS_PX, "important");
+      nfSetStyleIfChanged(field, "background", UI_NUM_FIELD_BACKGROUND, "important");
+      nfSetStyleIfChanged(field, "background-color", UI_NUM_FIELD_BACKGROUND, "important");
+      nfSetStyleIfChanged(field, "border", `1px solid ${UI_NUM_FIELD_BORDER_COLOR}`, "important");
+      nfSetStyleIfChanged(field, "color", UI_NUM_FIELD_TEXT, "important");
+      nfSetStyleIfChanged(field, "font-size", "11px", "important");
+      nfSetStyleIfChanged(field, "box-sizing", "border-box", "important");
+    });
+  }
+
   function styleBottomControlRanges(bottomControls) {
     if (!(bottomControls instanceof HTMLElement)) return;
     Array.from(bottomControls.querySelectorAll('input[type="range"]')).forEach((range) => {
@@ -69634,6 +69734,7 @@
       nfSetStyleIfChanged(bottomControls, "padding", DOCK_PADDING, "important");
       nfSetStyleIfChanged(bottomControls, "box-sizing", "border-box", "important");
       styleBottomControlRanges(bottomControls);
+      styleBottomControlFields(bottomControls);
     }
 
     const templateControl = findContainerByTexts(["\u6a21\u677f\u5e93"], (rect) => (
