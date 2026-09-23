@@ -30869,7 +30869,12 @@
       "[data-novaflow-ai-board-controls-top-left='1']",
       "[data-novaflow-ai-board-controls-top-left='1'] button",
       "[data-novaflow-ai-resource-action='1']",
-      "[data-novaflow-ai-reference-column='1'] [data-nf-upload-dropzone='1']"
+      "[data-novaflow-ai-reference-column='1'] [data-nf-upload-dropzone='1']",
+      "#novaflow-spine-split-workspace-overlay",
+      "#novaflow-spine-split-view-controls",
+      "#novaflow-spine-split-view-controls button",
+      "[data-novaflow-spine-split-fit-button='1']",
+      "#novaflow-spine-split-right-workspace-host > div"
     ].join(","))) {
       return true;
     }
@@ -31386,6 +31391,100 @@
           "border-radius": AI_ANIMATION_REFERENCE_TILE_RADIUS_PX,
           "box-sizing": "border-box",
           "font-size": "11px"
+        }
+      },
+      {
+        // 美工 / 绘图: the stage is the same rounded panel every other page
+        // draws, and the split workspace has to sit inside it rather than
+        // running the full height of the window.
+        when: "body.novaflow-primary-target-art",
+        selector: '#novaflow-spine-split-workspace-overlay, [data-novaflow-art-workspace-host="1"]',
+        style: {
+          top: `${TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP}px`,
+          bottom: `${PRIMARY_PANEL_BOTTOM_GAP}px`,
+          height: "auto",
+          background: PREVIEW_OUTSIDE_BACKGROUND,
+          "background-color": PREVIEW_OUTSIDE_BACKGROUND,
+          "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`,
+          overflow: "hidden"
+        }
+      },
+      {
+        // The view switch is the canvas bar's plate, like the particle page's.
+        when: "body.novaflow-primary-target-art",
+        selector: "#novaflow-spine-split-view-controls",
+        style: {
+          top: `${AI_ANIMATION_CANVAS_BAR_TOP_GAP}px`,
+          left: "0",
+          right: "auto",
+          transform: "none",
+          height: `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+          "min-height": `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+          padding: "4px",
+          gap: `${SECONDARY_GROUP_PILL_GAP}px`,
+          "box-sizing": "border-box",
+          background: CANVAS_BAR_PILL_BACKGROUND,
+          "background-color": CANVAS_BAR_PILL_BACKGROUND,
+          border: `1px solid ${CANVAS_BAR_PILL_BORDER_COLOR}`,
+          "border-radius": CANVAS_BAR_PILL_RADIUS_PX
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: "[data-novaflow-spine-split-persistent-tool]",
+        style: (node) => {
+          const active = node.getAttribute("aria-pressed") === "true"
+            || node.getAttribute("data-novaflow-spine-split-tool-active") === "1";
+          return {
+            height: `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+            "min-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+            "max-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+            width: "auto",
+            "min-width": "0",
+            padding: "0 11px",
+            border: "0",
+            "border-radius": CANVAS_BAR_BUTTON_RADIUS_PX,
+            background: active ? UI_SEGMENT_SELECTED_BACKGROUND : "transparent",
+            "background-color": active ? UI_SEGMENT_SELECTED_BACKGROUND : "transparent",
+            "box-shadow": active ? `inset 0 0 0 1px ${UI_SEGMENT_SELECTED_BORDER}` : "none",
+            color: active ? UI_SEGMENT_SELECTED_TEXT : CANVAS_BAR_BUTTON_TEXT,
+            "font-size": "11px",
+            "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+            "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        // ...and 自动适配 is the quiet button the other pages use.
+        when: "body.novaflow-primary-target-art",
+        selector: "#novaflow-spine-split-zoom-hud",
+        style: {
+          top: `${AI_ANIMATION_CANVAS_QUIET_TOP_GAP}px`,
+          height: `${CANVAS_BAR_QUIET_HEIGHT}px`,
+          "min-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
+          background: "transparent",
+          "background-color": "transparent",
+          border: "0"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-spine-split-fit-button="1"]',
+        style: {
+          width: "auto",
+          "min-width": "0",
+          height: `${CANVAS_BAR_QUIET_HEIGHT}px`,
+          "min-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
+          "max-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
+          padding: "0 13px",
+          background: CANVAS_BAR_QUIET_BACKGROUND,
+          "background-color": CANVAS_BAR_QUIET_BACKGROUND,
+          border: `1px solid ${CANVAS_BAR_QUIET_BORDER_COLOR}`,
+          "border-radius": CANVAS_BAR_QUIET_RADIUS_PX,
+          color: CANVAS_BAR_QUIET_TEXT,
+          "font-size": "11px",
+          "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+          "box-sizing": "border-box"
         }
       },
       {
