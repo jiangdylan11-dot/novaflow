@@ -2652,6 +2652,11 @@
     if (node.getAttribute("data-novaflow-skeleton-premultiply-alpha-button") === "1") {
       return node.getAttribute("aria-pressed") !== "false";
     }
+    // 显示骨骼 / 当前链条 / 显示网格 say "on" only through their fill, which
+    // the skeleton sync reads into this marker.
+    if (node.getAttribute("data-novaflow-skeleton-top-button") === "1") {
+      return node.getAttribute("data-novaflow-skeleton-top-button-active") === "1";
+    }
     if (node.hasAttribute("data-novaflow-spine-split-tool-active")) {
       return node.getAttribute("data-novaflow-spine-split-tool-active") === "1";
     }
@@ -9210,13 +9215,13 @@
         background-color: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
         color: ${UI_ICON_BUTTON_DISABLED_TEXT} !important;
       }
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] {
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] {
         grid-template-columns: ${PRIMARY_LEFT_PANEL_WIDTH}px minmax(0, 1fr) !important;
       }
       body.novaflow-primary-target-tools .novaflow-app .nf-app-body div[style*="grid-template-columns"][style*="minmax(0"]:has(> input[type="file"]) {
         grid-template-columns: ${PRIMARY_LEFT_PANEL_WIDTH}px minmax(0, 1fr) !important;
       }
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child {
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child {
         width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
         min-width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
         max-width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
@@ -9230,7 +9235,7 @@
         border: 0 !important;
         box-sizing: border-box !important;
       }
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child > div {
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child > div {
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
@@ -9240,9 +9245,9 @@
         max-width: 100% !important;
         box-sizing: border-box !important;
       }
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(1),
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(2),
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(3) {
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(1),
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(2),
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(3) {
         padding-left: ${PRIMARY_PANEL_BODY_INSET}px !important;
         padding-right: ${PRIMARY_PANEL_BODY_INSET}px !important;
       }
@@ -9252,8 +9257,8 @@
         padding-left: ${PRIMARY_PANEL_BODY_INSET}px !important;
         padding-right: ${PRIMARY_PANEL_BODY_INSET}px !important;
       }
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(2),
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(3) {
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(2),
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(3) {
         gap: ${SECONDARY_CONTENT_GAP}px !important;
         row-gap: ${SECONDARY_CONTENT_GAP}px !important;
         column-gap: ${SECONDARY_CONTENT_COLUMN_GAP}px !important;
@@ -9264,7 +9269,7 @@
         row-gap: ${SECONDARY_CONTENT_GAP}px !important;
         column-gap: ${SECONDARY_CONTENT_COLUMN_GAP}px !important;
       }
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child [data-nf-upload-dropzone="1"] {
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child [data-nf-upload-dropzone="1"] {
         width: 100% !important;
         min-width: 0 !important;
         max-width: 100% !important;
@@ -21623,7 +21628,7 @@
         background: ${PREVIEW_OUTSIDE_BACKGROUND} !important;
         background-color: ${PREVIEW_OUTSIDE_BACKGROUND} !important;
       }
-      body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) .nf-app-body > div:nth-child(2),
+      body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0']),
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-preview-workspace="1"],
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-main-workspace="1"] {
         background: ${AI_ANIMATION_PREVIEW_BACKGROUND} !important;
@@ -27282,7 +27287,7 @@
       body.novaflow-blackgray-preview-with-bottom-controls input[type="range"][data-novaflow-ai-timeline-edit-locked="1"]:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *)::-moz-range-progress {
         background: #747b84 !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"] {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"] {
         background: ${PREVIEW_OUTSIDE_BACKGROUND} !important;
         background-image: radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px) !important;
         background-size: ${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px !important;
@@ -27295,7 +27300,7 @@
         box-sizing: border-box !important;
         position: relative !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"]::before {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"]::before {
         content: "" !important;
         position: absolute !important;
         left: 0 !important;
@@ -27307,25 +27312,25 @@
         z-index: 31 !important;
         pointer-events: none !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"]::after {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"]::after {
         content: none !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"] canvas {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"] canvas {
         clip-path: none !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"] canvas:not([style*="position: absolute"]) {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"] canvas:not([style*="position: absolute"]) {
         position: relative !important;
         z-index: 2 !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"] canvas[style*="position: absolute"] {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"] canvas[style*="position: absolute"] {
         position: absolute !important;
         inset: 0 !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"] canvas[style*="z-index: 3"] {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"] canvas[style*="z-index: 3"] {
         z-index: 3 !important;
         opacity: 1 !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"] canvas[style*="z-index: 9"] {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"] canvas[style*="z-index: 9"] {
         z-index: 9 !important;
         opacity: 1 !important;
       }
@@ -34797,6 +34802,7 @@
   // writers that disagree cannot spin; those are counted for fixing at source.
   const NOVAFLOW_SPEC_STATE_ATTRIBUTES = new Set([
     "class",
+    "data-novaflow-skeleton-top-button-active",
     "data-filled",
     "hidden",
     "data-open",
@@ -72917,7 +72923,12 @@
           window.setTimeout(refreshTopButtonState, 160);
         });
       }
-      const inlineVisual = `${button.style.getPropertyValue("background")} ${button.style.getPropertyValue("background-color")} ${button.style.getPropertyValue("border")}`;
+      // The bar's quiet skin owns the inline fill now, so the "on" green is
+      // read from what React asked for (its props), not from the element.
+      const reactPropsKey = Object.keys(button).find((key) => key.startsWith("__reactProps"));
+      const reactStyle = reactPropsKey && button[reactPropsKey] && button[reactPropsKey].style ? button[reactPropsKey].style : null;
+      const reactVisual = reactStyle ? `${reactStyle.background || ""} ${reactStyle.backgroundColor || ""} ${reactStyle.border || ""}` : "";
+      const inlineVisual = `${button.style.getPropertyValue("background")} ${button.style.getPropertyValue("background-color")} ${button.style.getPropertyValue("border")} ${reactVisual}`;
       const active = /30\s*,\s*166\s*,\s*114|#1ea672/i.test(inlineVisual)
         || button.getAttribute("aria-pressed") === "true"
         || (label.includes("\u663e\u793a\u9aa8\u9abc") && hasCurrentChainToggle);
@@ -82114,7 +82125,7 @@
     const topbar = document.querySelector(".novaflow-app .nf-topbar");
     const brand = document.querySelector('.nf-brand[data-novaflow-brand="20260516-chain-unified"]');
     const primaryColumn = document.querySelector(".novaflow-app .nf-app-body > div:first-child");
-    const workspaceColumn = document.querySelector(".novaflow-app .nf-app-body > div:nth-child(2)");
+    const workspaceColumn = document.querySelector(".novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*='inset: 0'])");
     const leftScroll = document.querySelector(".novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar");
     const leftContentRoot = document.querySelector('[data-novaflow-left-content-root="1"]');
     const primaryButtons = PRIMARY_ENTRY_DISPLAY_LABELS.map((label) => findPrimaryEntryButton(label));

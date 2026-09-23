@@ -512,7 +512,7 @@
    child of .nf-app-body (no !important), so a rule can take it. The reference
    floats the stage as a rounded panel on the backdrop, at the same value as
    the backdrop - the artwork is what separates it, not a colour step. */
-.novaflow-app .nf-app-body > div:nth-child(2) {
+.novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace]):not([data-preview-ui][style*="inset: 0"]) {
   background-color: #242424 !important;
   background-image: none !important;
   border-radius: 12px !important;
