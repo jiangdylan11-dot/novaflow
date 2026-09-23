@@ -1338,3 +1338,11 @@ html body :is([data-novaflow-zoom-controls="1"], #novaflow-spine-split-zoom-hud)
 html[data-novaflow-switch-veil="1"] :is([data-novaflow-left-content-root="1"], .novaflow-app .nf-app-body > div:not(:first-child):not([data-preview-ui][style*="inset: 0"]) > *) {
   opacity: 0 !important;
 }
+
+/* 3.0m Stacked (narrow) AI 序列动画: the dock sits below the preview, not
+   over it, so the preview keeps no room for it at its foot - that reserve
+   (220) left the picture 75 tall and drew it a thumbnail. */
+html[data-novaflow-layout-tier="stack"] [data-novaflow-ai-preview-viewport="1"] {
+  padding-bottom: 0 !important;
+  padding-right: 0 !important;
+}
