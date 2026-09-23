@@ -264,9 +264,15 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     };
     for (const [k, v] of Object.entries(styles)) btn.style.setProperty(k, v, 'important');
     btn.addEventListener('click', open);
+    // Until the first status answer the chip can only say 登录, in green, and
+    // a moment later it became the account name: a flash on every start. The
+    // status box stays hidden until the chip knows (or for 1.5s at most).
+    host.setAttribute('data-novaflow-account-pending', '1');
+    const reveal = () => host.removeAttribute('data-novaflow-account-pending');
+    const revealTimer = setTimeout(reveal, 1500);
     host.appendChild(btn);
 
-    refresh(btn);
+    refresh(btn).then(reveal, reveal).then(() => clearTimeout(revealTimer));
     setInterval(() => refresh(btn), 15000);
     return true;
   }

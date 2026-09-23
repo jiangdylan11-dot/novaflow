@@ -4968,7 +4968,9 @@
     if (surface === "animation" && actions.getAttribute("data-novaflow-ai-storyboard-actions") !== "1") {
       const frame = actions.closest('[data-novaflow-ai-prompt-kind="positive"], [data-novaflow-ai-prompt-frame="1"]');
       const topRow = frame?.firstElementChild;
-      if (topRow instanceof HTMLElement) topRow.style.setProperty("padding-right", "176px", "important");
+      // The brand runtime lays out a row it has marked as the prompt's
+      // history row; writing its padding here only fought that.
+      if (topRow instanceof HTMLElement && !topRow.hasAttribute("data-novaflow-ai-prompt-history-row")) topRow.style.setProperty("padding-right", "176px", "important");
     }
     mountPromptEditButton(actions, surface);
   }

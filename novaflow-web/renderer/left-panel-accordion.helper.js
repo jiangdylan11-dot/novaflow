@@ -13,7 +13,8 @@
     panelGap: '0px',
     radius: '0px',
     headerHeight: '46px',
-    headerPadding: '0 3px',
+    // 7 each side: the reference summary's icon sits 7 in from the card.
+    headerPadding: '0 7px',
     headerBackground: 'transparent',
     headerHoverBackground: '#222222',
     panelBorderBottom: '1px solid #272727',
