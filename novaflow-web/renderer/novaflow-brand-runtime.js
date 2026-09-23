@@ -34623,6 +34623,32 @@
         }
       },
       {
+        // A group header built as icon + title (导入工程, 骨骼架设, 自动蒙皮,
+        // 自动权重) spaced them 10 on top of the icon's own 8: its title sat
+        // 10 right of every other group's.
+        selector: '[data-novaflow-editor-panel="1"] > .nf-panel-header',
+        style: (node) => (node.firstElementChild instanceof HTMLElement && node.firstElementChild.tagName === "I" ? { gap: "0", "column-gap": "0" } : null)
+      },
+      {
+        // A dropdown that drew its own arrow beside the select (飘带计算's
+        // 选择预设, 着色模式, ...) showed two: the select's thin chevron is the
+        // one arrow now, so any small arrow next to a select stands down.
+        selector: ':has(> select) > :is(i, svg, span, div):not(select)',
+        style: (node) => {
+          if (node.tagName !== "I" && node.tagName.toLowerCase() !== "svg" && (node.childElementCount !== 0 || normalizeText(node.textContent || ""))) return null;
+          if (node.tagName === "I" && !/fa-(chevron|angle|caret)/.test(node.className || "")) return null;
+          const rect = node.getBoundingClientRect();
+          if (node.style.getPropertyValue("display") !== "none" && (rect.width > 18 || rect.height > 18)) return null;
+          return { display: "none" };
+        }
+      },
+      {
+        // 视频处理's rows: 颜色校正's label carried its own white; it takes the
+        // row's ink like 视频合并 / 视频抠图.
+        selector: '[data-nf-color-correction-open] *, [data-novaflow-ai-video-merge-entry="1"] *, [data-novaflow-video-cutout="1"] *',
+        style: { color: "inherit" }
+      },
+      {
         // 点击存储 is as tall as the cards beside it (they carry a name row).
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile="1"]',
@@ -54314,7 +54340,9 @@
 
   function normalizeLeftAccordionPanelContainment(root) {
     if (!(root instanceof HTMLElement)) return;
-    const panelWidth = `${PRIMARY_LEFT_PANEL_WIDTH}px`;
+    // The card width syncPrimaryLeftCards settles on. Writing the column's
+    // (218) here first made a group just opened (飘带计算) flash 20 wider.
+    const panelWidth = `${PRIMARY_LEFT_CARD_WIDTH}px`;
     const particleDensity = isParticleDensityTarget();
     const artDrawingTarget = !particleDensity && document.body && document.body.classList.contains("novaflow-primary-target-art");
     const panelHeaderHeight = particleDensity
@@ -55895,7 +55923,8 @@
         const viewportBottom = window.innerHeight || document.documentElement.clientHeight || 900;
         const bottomLimit = getLeftContentBottomLimit(left, rootWidth);
         const bottomGap = bottomLimit < viewportBottom ? 12 : 0;
-        const contentBottomOffset = Math.max(0, Math.round(viewportBottom - bottomLimit + bottomGap));
+        // Never below the panel's rounded foot, dock or no dock.
+    const contentBottomOffset = Math.max(PRIMARY_PANEL_BOTTOM_GAP + 11, Math.round(viewportBottom - bottomLimit + bottomGap));
         if (shell instanceof HTMLElement) {
           const shellLeft = PRIMARY_CONTENT_LEFT;
           const shellWidth = PRIMARY_VISIBLE_CONTENT_WIDTH;
@@ -56012,7 +56041,8 @@
     const viewportBottom = window.innerHeight || document.documentElement.clientHeight || 900;
     const bottomLimit = getLeftContentBottomLimit(left, width);
     const bottomGap = bottomLimit < viewportBottom ? 12 : 0;
-    const contentBottomOffset = Math.max(0, Math.round(viewportBottom - bottomLimit + bottomGap));
+    // Never below the panel's rounded foot, dock or no dock.
+    const contentBottomOffset = Math.max(PRIMARY_PANEL_BOTTOM_GAP + 11, Math.round(viewportBottom - bottomLimit + bottomGap));
     const contentHeight = Math.max(160, Math.round(bottomLimit - top - bottomGap));
     if (!Number.isFinite(contentHeight) || contentHeight <= 0) return false;
     const contentHeightOffset = Math.max(0, Math.round(top + contentBottomOffset));

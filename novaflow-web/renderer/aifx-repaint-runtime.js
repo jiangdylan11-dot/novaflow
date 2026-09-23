@@ -37,7 +37,7 @@
     bodyPadding: '6px 12px 8px',
     bodyGap: '6px',
   })
-  const AIFX_ACCENT = '#1ea672'
+  const AIFX_ACCENT = '#17A582'
   const AIFX_SLIDER_ACCENT = '#20c997'
   const AIFX_SURFACE_BASE = '#181818'
   const AIFX_SURFACE_ELEVATED = '#333333'
@@ -846,6 +846,7 @@
         justify-content: center;
         font-size: 12px;
       }
+      .aifx-primary:hover:not(:disabled) { background: #20b490; }
       .aifx-button:disabled, .aifx-primary:disabled {
         cursor: not-allowed;
         opacity: 0.45;

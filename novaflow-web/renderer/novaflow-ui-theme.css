@@ -1168,3 +1168,32 @@ html body :is([data-novaflow-particle-chip-row="1"]:not([data-novaflow-template-
   background: #373737 !important;
   background-color: #373737 !important;
 }
+
+/* 3.0f 骨骼动画's solid green buttons (自动架设, 生成网格, 自动权重, 应用到工程)
+   light like every other primary on hover. */
+html body [data-novaflow-solid-green="1"]:hover:not(:disabled) {
+  background: #20b490 !important;
+  background-color: #20b490 !important;
+}
+
+/* 3.0g A full-window dialog shade (导出 and the like) that happens to be the
+   app body's second child was painted as the stage (#242424) and hid the
+   page. It is the shade the other dialogs use. */
+html body .novaflow-app .nf-app-body > div[data-preview-ui][style*="position: fixed"][style*="inset: 0"] {
+  background: rgba(0, 0, 0, 0.58) !important;
+  background-color: rgba(0, 0, 0, 0.58) !important;
+  background-image: none !important;
+}
+
+/* 3.0h The bundle's solid buttons painted #1ea672 (导出's 序列帧 and its
+   export button, and the like) take the app's one green: #17A582, lit
+   #20b490. The particle chips / segments keep their own "on" look. */
+html body button[style*="background: rgb(30, 166, 114)"]:not([data-novaflow-particle-chip]):not([aria-pressed]) {
+  background: #17A582 !important;
+  background-color: #17A582 !important;
+  color: #ffffff !important;
+}
+html body button[style*="background: rgb(30, 166, 114)"]:not([data-novaflow-particle-chip]):not([aria-pressed]):hover:not(:disabled) {
+  background: #20b490 !important;
+  background-color: #20b490 !important;
+}

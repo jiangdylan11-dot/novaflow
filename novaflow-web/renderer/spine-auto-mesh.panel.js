@@ -1287,9 +1287,10 @@
     Object.assign(btn.style, {
       width: '100%', height: '30px', borderRadius: '6px', border: '0',
       cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-      color: primary ? '#062a18' : 'rgba(255,255,255,0.86)',
-      background: primary ? '#22c98a' : '#3a3a3a'
+      color: primary ? '#ffffff' : 'rgba(255,255,255,0.86)',
+      background: primary ? '#17A582' : '#3a3a3a'
     })
+    if (primary) btn.setAttribute('data-novaflow-solid-green', '1')
   }
 
   // The app's own small-button look: #333 at rest, the green accent on hover. The
@@ -2555,7 +2556,7 @@
 
   function ensurePsImport() {
     if (state.psImport) return state.psImport
-    const button = el('button', null, '导入 PS 工程（JSON + 贴图文件夹）')
+    const button = el('button', null, '导入PS工程')
     button.type = 'button'
     styleButton(button, false)
     button.title = 'PhotoshopToSpine 导出的文件夹可以直接用,不需要先过一遍 Spine;也可以直接把那个文件夹拖到这个按钮上'
@@ -2700,7 +2701,11 @@
       })
     })
     document.body.appendChild(picker)
-    state.psImport = { button, picker, status: psStatus }
+    // What to pick, under the button (the name alone is short now).
+    const psNote = el('div', { marginTop: '6px', fontSize: '11px', lineHeight: '1.5', color: 'rgba(255,255,255,0.45)' },
+      '选择 PhotoshopToSpine 导出的文件夹（JSON + 贴图），也可以直接拖到按钮上')
+    psNote.setAttribute('data-novaflow-ps-import-note', '1')
+    state.psImport = { button, picker, status: psStatus, note: psNote }
     busyButtons.push(button)
     return state.psImport
   }
@@ -2714,6 +2719,7 @@
     const body = panel && panel.querySelector('.nf-panel-body')
     if (!body) return
     if (kit.button.parentElement !== body) body.appendChild(kit.button)
+    if (kit.note && kit.note.previousElementSibling !== kit.button) kit.button.after(kit.note)
     if (kit.status && kit.status.parentElement !== body) body.appendChild(kit.status)
     if (!kit.picker.isConnected) document.body.appendChild(kit.picker)
     dressLikePanel(kit.button, body)
@@ -3034,8 +3040,8 @@
       for (const id of Object.keys(toolBtns)) {
         const b = toolBtns[id]
         const on = bones.editing && st.tool === id
-        setStyle(b, 'background', on ? '#22c98a' : '#333333')
-        setStyle(b, 'color', on ? '#062a18' : 'rgba(255,255,255,0.92)')
+        setStyle(b, 'background', on ? '#17A582' : '#333333')
+        setStyle(b, 'color', on ? '#ffffff' : 'rgba(255,255,255,0.92)')
         setDisabled(b, !bones.editing)
         setStyle(b, 'opacity', bones.editing ? '1' : '0.5')
       }
