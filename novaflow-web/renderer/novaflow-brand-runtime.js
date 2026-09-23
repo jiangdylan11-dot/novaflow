@@ -34530,6 +34530,39 @@
         }
       },
       {
+        // 自动适配, as asked: a canvas bar pill like 导入项目 / 保存项目 - the
+        // zoom (percent) on its left, the button on its right.
+        selector: '[data-novaflow-zoom-controls="1"][data-novaflow-autofit-only="1"], #novaflow-spine-split-zoom-hud, #novaflow-ui-fit-pill',
+        style: (node) => {
+          const pill = { ...canvasBarPillStyle(), display: "flex", "flex-direction": "row", "align-items": "center", width: "auto", "min-width": "0", "max-width": "none", "font-size": "11px" };
+          if (node.id === "novaflow-ui-fit-pill") {
+            const button = document.querySelector("[data-novaflow-ui-design-auto-fit]");
+            const buttonWidth = button instanceof HTMLElement ? Math.ceil(button.getBoundingClientRect().width) : 70;
+            return { ...pill, position: "absolute", top: `${CANVAS_BAR_ROW_TOP}px`, right: "0", left: "auto", "padding-right": `${buttonWidth + 7}px`, "z-index": "6", "pointer-events": "none" };
+          }
+          if (node.hasAttribute("data-novaflow-ai-zoom-controls")) return { ...pill, top: `${aiCanvasBarLayout().rowTop}px` };
+          return { ...pill, top: `${CANVAS_BAR_ROW_TOP}px` };
+        }
+      },
+      {
+        selector: '[data-novaflow-zoom-controls="1"][data-novaflow-autofit-only="1"] > [data-novaflow-autofit-percent-hidden], [data-novaflow-zoom-percent="1"]',
+        style: {
+          display: "flex", "align-items": "center", "justify-content": "center", height: "28px", "min-height": "28px", width: "auto",
+          "min-width": "44px", padding: "0 6px", "font-size": "11px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, color: "#9a9a9a",
+          visibility: "visible", opacity: "1", position: "static", "white-space": "nowrap", "line-height": "28px", overflow: "visible"
+        }
+      },
+      {
+        selector: '[data-novaflow-zoom-controls="1"][data-novaflow-autofit-only="1"] > [data-novaflow-autofit-button="1"], #novaflow-spine-split-zoom-hud > button, [data-novaflow-ui-design-auto-fit]',
+        style: (node) => {
+          const style = { ...canvasBarButtonStyle(node), "min-width": "0" };
+          if (node.hasAttribute("data-novaflow-ui-design-auto-fit")) {
+            return { ...style, position: "absolute", top: `${CANVAS_BAR_ROW_TOP + 5}px`, right: "5px", left: "auto", "z-index": "7" };
+          }
+          return { ...style, position: "static" };
+        }
+      },
+      {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-top-mode-tabs="1"]',
         style: () => {
@@ -35102,6 +35135,60 @@
       try { ensurePrimaryOutputShortcut(); } catch (_) { void 0; }
     });
   }, { passive: true });
+
+  // The zoom shown beside 自动适配. 特效 / 动画 / 骨骼动画 keep theirs in the
+  // controls already (it was hidden); 美工's and UI's are read off the
+  // picture on the stage.
+  function novaflowStageZoomPercent() {
+    const world = document.querySelector('[data-novaflow-ui-design-world]');
+    if (world instanceof HTMLElement && world.getBoundingClientRect().width >= 0 && document.querySelector("[data-novaflow-ui-design-auto-fit]")) {
+      const match = /matrix\(([-\d.e]+)/.exec(getComputedStyle(world).transform || "");
+      return `${Math.round((match ? Number.parseFloat(match[1]) : 1) * 100)}%`;
+    }
+    const overlay = document.getElementById("novaflow-spine-split-workspace-overlay");
+    if (overlay instanceof HTMLElement) {
+      let best = null;
+      overlay.querySelectorAll("img, canvas").forEach((media) => {
+        const natural = media instanceof HTMLImageElement ? media.naturalWidth : media.width;
+        const width = media.getBoundingClientRect().width;
+        if (natural > 0 && width > 0 && (!best || width > best.width)) best = { width, natural };
+      });
+      if (best) return `${Math.round((best.width / best.natural) * 100)}%`;
+    }
+    return "100%";
+  }
+
+  function syncNovaflowZoomPercentLabels() {
+    const hud = document.getElementById("novaflow-spine-split-zoom-hud");
+    const uiFit = document.querySelector("[data-novaflow-ui-design-auto-fit]");
+    const place = (host, before) => {
+      let label = host.querySelector(':scope > [data-novaflow-zoom-percent="1"]');
+      if (!(label instanceof HTMLElement)) {
+        label = document.createElement("span");
+        label.setAttribute("data-novaflow-zoom-percent", "1");
+        label.setAttribute("aria-live", "off");
+        host.insertBefore(label, before || host.firstChild);
+      }
+      const text = novaflowStageZoomPercent();
+      if (label.textContent !== text) label.textContent = text;
+    };
+    if (hud instanceof HTMLElement) place(hud, hud.firstChild);
+    if (uiFit instanceof HTMLElement && uiFit.parentElement) {
+      let pill = document.getElementById("novaflow-ui-fit-pill");
+      if (!(pill instanceof HTMLElement) || pill.parentElement !== uiFit.parentElement) {
+        if (pill) pill.remove();
+        pill = document.createElement("div");
+        pill.id = "novaflow-ui-fit-pill";
+        uiFit.parentElement.insertBefore(pill, uiFit);
+      }
+      place(pill, null);
+    }
+  }
+
+  window.setInterval(() => {
+    if (document.hidden) return;
+    try { syncNovaflowZoomPercentLabels(); } catch (_) { void 0; }
+  }, 300);
 
   document.addEventListener("input", (event) => syncNovaflowRangeFill(event.target), true);
   document.addEventListener("change", (event) => syncNovaflowRangeFill(event.target), true);
