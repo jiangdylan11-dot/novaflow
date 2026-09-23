@@ -91,14 +91,14 @@
 
 .nf-login-shell {
   width: 100%;
-  max-width: 1180px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 0 48px;
   box-sizing: border-box;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 400px;
+  grid-template-columns: minmax(0, 1fr) 390px;
   align-items: center;
-  gap: 72px;
+  gap: 100px;
   /* Explicitly no frame: this is a layout grid, not a surface. */
   background: none;
   border: 0;
@@ -114,72 +114,72 @@
 
 .nf-login-logo {
   display: block;
-  width: 340px;
+  width: 330px;
   max-width: 100%;
   height: auto;
   object-fit: contain;
-  margin-bottom: 34px;
+  margin-bottom: 32px;
 }
 
 .nf-login-headline {
-  margin: 0 0 20px;
-  font-size: 28px;
+  margin: 0 0 15px;
+  font-size: 24px;
   line-height: 1.32;
-  font-weight: 700;
+  font-weight: 600;
   letter-spacing: 0.4px;
-  color: #F4F6F8;
+  color: #E1E4E8;
 }
 
 .nf-login-lede {
   margin: 0;
-  font-size: 13.5px;
+  font-size: 13px;
   line-height: 2;
-  color: #98A0A8;
+  color: #818992;
 }
 
 .nf-login-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 11px;
-  margin-top: 30px;
+  gap: 9px;
+  margin-top: 28px;
 }
 
 /* Descriptive only - these are not controls and must not look clickable. */
 .nf-login-tag {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  height: 36px;
-  padding: 0 15px;
+  gap: 7px;
+  height: 35px;
+  padding: 0 14px;
   box-sizing: border-box;
-  border: 1px solid #26282C;
-  border-radius: 8px;
-  background: #141518;
-  font-size: 12.5px;
+  border: 1px solid rgba(255, 255, 255, 0.035);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.01);
+  font-size: 11px;
   line-height: 1;
-  color: #C3C9CF;
+  color: #A5ADB4;
   cursor: default;
   user-select: none;
 }
 
 .nf-login-tag-icon {
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
-  color: var(--nf-primary);
+  color: #59C7A7;
 }
 
 .nf-login-tag:nth-child(4) .nf-login-tag-icon {
-  color: var(--nf-helper);
+  color: #E9C55C;
 }
 
 .nf-login-footnote {
   display: flex;
   align-items: center;
   gap: 13px;
-  margin-top: 44px;
-  font-size: 11px;
+  margin-top: 35px;
+  font-size: 10px;
   letter-spacing: 1.7px;
-  color: #5A6066;
+  color: #59636C;
 }
 
 .nf-login-footnote span:nth-child(2) {
@@ -190,8 +190,8 @@
   width: 100%;
   box-sizing: border-box;
   /* Flat fill and a hairline edge - no gradient, no shadow. */
-  background: #121316;
-  border: 1px solid #26282C;
+  background: #121517;
+  border: 1px solid #282E32;
   border-radius: 14px;
   padding: 32px 30px;
   display: flex;
@@ -201,26 +201,26 @@
 }
 
 .nf-login-card-title {
-  margin: 0 0 10px;
-  font-size: 21px;
+  margin: 0 0 12px;
+  font-size: 22px;
   line-height: 1.3;
-  font-weight: 700;
-  color: #F4F6F8;
+  font-weight: 600;
+  color: #EAEAEA;
 }
 
 .nf-login-card-note {
-  margin: 0 0 26px;
-  font-size: 12.5px;
+  margin: 0 0 27px;
+  font-size: 11px;
   line-height: 1.7;
-  color: #8D949B;
+  color: #898B93;
 }
 
 .nf-login-field {
   display: block;
   margin-bottom: 8px;
-  font-size: 12.5px;
+  font-size: 11px;
   line-height: 1;
-  color: #AEB4BA;
+  color: #A2A4AD;
 }
 
 .nf-login-gap {
@@ -269,7 +269,7 @@
 
 #novaflow-web-login-gate input.nf-login-input {
   width: 100%;
-  height: 44px;
+  height: 43px;
   box-sizing: border-box;
   /* Light fields on a dark screen, by request. Everything below follows from
      that inversion: dark text, a darker icon, and an autofill fix that now
@@ -280,7 +280,7 @@
   background: #FFFFFF !important;
   background-image: none !important;
   border: 1px solid #C9CFD5 !important;
-  border-radius: 9px !important;
+  border-radius: 7px !important;
   padding: 0 14px 0 40px !important;
   font: inherit;
   font-size: 13px !important;
@@ -321,16 +321,16 @@
 /* The main action of this screen: solid green, flat. */
 #novaflow-web-login-gate button.nf-login-submit {
   width: 100%;
-  height: 46px;
-  margin-top: 28px;
-  border: 0;
-  border-radius: 9px;
+  height: 42px;
+  margin-top: 24px;
+  border: 1px solid #24B693;
+  border-radius: 7px;
   background: var(--nf-primary);
   background-image: none;
   box-shadow: none;
   color: #FFFFFF;
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.6px;
   cursor: pointer;

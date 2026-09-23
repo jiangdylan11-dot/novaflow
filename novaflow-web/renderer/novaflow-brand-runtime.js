@@ -27963,6 +27963,13 @@
       body.novaflow-ai-animation-section-layers :not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fa-solid):not([class*="fa-"]) {
         font-weight: ${NOVAFLOW_NORMAL_FONT_WEIGHT} !important;
       }
+      /* The blanket rule above flattens everything on the page, including the
+         sign-in screen, which is not part of the editor chrome. */
+      #novaflow-web-login-gate .nf-login-headline,
+      #novaflow-web-login-gate .nf-login-card-title,
+      #novaflow-web-login-gate button.nf-login-submit {
+        font-weight: 600 !important;
+      }
       body.novaflow-blackgray-preview-with-bottom-controls .fa,
       body.novaflow-blackgray-preview-with-bottom-controls .fas,
       body.novaflow-blackgray-preview-with-bottom-controls .far,
@@ -29183,6 +29190,8 @@
       if (!(node instanceof HTMLElement)) return;
       if (node.getAttribute("data-novaflow-template-save-plus") === "1") return;
       if (isNovaflowIconFontElement(node)) return;
+      // The sign-in screen is not editor chrome and sets its own type.
+      if (node.closest("#novaflow-web-login-gate")) return;
       const medium = node.matches(NOVAFLOW_MEDIUM_WEIGHT_SELECTOR) || Boolean(node.closest(NOVAFLOW_MEDIUM_WEIGHT_SELECTOR));
       setStylePropertyIfChanged(node, "font-weight", medium ? NOVAFLOW_MEDIUM_FONT_WEIGHT : NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
     };

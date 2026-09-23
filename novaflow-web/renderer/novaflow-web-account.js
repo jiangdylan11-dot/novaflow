@@ -302,6 +302,9 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       'font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif'
     ].join(';'));
     gate.id = GATE_ID;
+    // The runtime clamps every rounded box under body to the control radius.
+    // The login card is a panel and keeps the reference's 14.
+    gate.setAttribute('data-novaflow-keep-radius', '1');
 
     const shell = el('div'); shell.className = 'nf-login-shell';
 
