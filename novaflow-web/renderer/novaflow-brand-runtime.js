@@ -78672,7 +78672,10 @@
     const bottomRect = bottomPanel instanceof HTMLElement && isVisible(bottomPanel) ? bottomPanel.getBoundingClientRect() : null;
     const left = overlayRect.left;
     const right = overlayRect.right;
-    const top = Math.max(overlayRect.top, topRect ? topRect.bottom + AI_ANIMATION_PREVIEW_UI_GAP : overlayRect.top + 52 + AI_ANIMATION_PREVIEW_UI_GAP);
+    // Before the 文生图 / 图生图 bar is up, its place is known: the canvas bar
+    // row (7 down, 38 tall). A 52 guess fitted the picture once and then a
+    // few frames later again when the bar arrived.
+    const top = Math.max(overlayRect.top, topRect ? topRect.bottom + AI_ANIMATION_PREVIEW_UI_GAP : overlayRect.top + CANVAS_BAR_ROW_TOP + AI_ANIMATION_CAPSULE_HEIGHT + AI_ANIMATION_PREVIEW_UI_GAP);
     const bottom = Math.min(overlayRect.bottom, bottomRect ? bottomRect.top - AI_ANIMATION_PREVIEW_UI_GAP : overlayRect.bottom);
     const width = Math.max(1, right - left);
     const height = Math.max(1, bottom - top);
