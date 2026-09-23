@@ -421,7 +421,7 @@
     const status = root.querySelector('.nf-vfc-status')
     if (status instanceof HTMLElement) status.textContent = state.processing ? '正在按顺序转换视频，请稍候…' : ''
     const exportButton = root.querySelector('[data-vfc-export]')
-    if (exportButton instanceof HTMLButtonElement) { exportButton.disabled = state.exporting || !done; exportButton.textContent = state.exporting ? '导出中…' : '导出到文件夹' }
+    if (exportButton instanceof HTMLButtonElement) { exportButton.disabled = state.exporting || !done; exportButton.textContent = state.exporting ? '导出中…' : '导出另存' }
   }
 
   function resultPanelHtml(item) {
@@ -482,7 +482,7 @@
         <div class="nf-vfc-panel"><div class="nf-vfc-panel-head"><span>原片</span><small>${selected ? `${selected.width || '?'} × ${selected.height || '?'}｜${formatDuration(selected.durationSec)}｜${formatBytes(selected.bytes)}` : ''}</small></div><div class="nf-vfc-preview">${sourcePanelHtml(selected)}</div></div>
         <div class="nf-vfc-panel"><div class="nf-vfc-panel-head"><span>结果片</span><small data-vfc-result-head>${resultHeadHtml(selected)}</small></div><div class="nf-vfc-preview" data-vfc-result-preview>${resultPanelHtml(selected)}</div></div>
       </div>
-      <div class="nf-vfc-top-actions"><button data-vfc-export ${state.exporting || !done ? 'disabled' : ''}>${state.exporting ? '导出中…' : '导出到文件夹'}</button></div>`
+      <div class="nf-vfc-top-actions"><button data-vfc-export ${state.exporting || !done ? 'disabled' : ''}>${state.exporting ? '导出中…' : '导出另存'}</button></div>`
     root.querySelector('[data-vfc-pick]')?.addEventListener('click', () => root.querySelector('[data-vfc-file]')?.click())
     root.querySelector('[data-vfc-file]')?.addEventListener('change', (event) => { addFiles(event.target.files); event.target.value = '' })
     root.querySelectorAll('[data-vfc-format]').forEach((button) => button.addEventListener('click', () => {
