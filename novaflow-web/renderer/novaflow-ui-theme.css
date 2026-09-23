@@ -1471,3 +1471,679 @@ html body :is([data-novaflow-ui-design-switch-field], #nf-lift) > button:not([st
   background: #1c1c1c !important;
   background-color: #1c1c1c !important;
 }
+
+/* 3.0r 工具's PNG 去黑 / MP4 压缩 / 视频格式转换 / SPINE 图集转换 laid out and
+   drawn as PNG / JPG 压缩 are: a 218 settings panel, two preview cards
+   (#1d1d1d, 12 radius, a 34 head, #242424 wells), small grey exports. */
+
+html body #novaflow-png-remove-black-root {
+  background: transparent !important;
+  padding: 0 !important;
+  gap: 10px !important;
+  grid-template-columns: 218px minmax(0, 1fr) !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-side {
+  background: #161616 !important;
+  border: 1px solid #2e2e2e !important;
+  border-radius: 12px !important;
+  padding: 16px 13px !important;
+  box-sizing: border-box !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  grid-template-rows: none !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+  gap: 12px !important;
+  overflow: hidden !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-side > *,
+html body #novaflow-png-remove-black-root .nf-prb-side .nf-prb-controls > *,
+html body #novaflow-png-remove-black-root .nf-prb-side .nf-prb-actions > * {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-side * {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+html body #novaflow-png-remove-black-root :is(.nf-prb-formats, .nf-prb-preset, .nf-prb-controls, .nf-prb-actions) {
+  width: 100% !important;
+}
+html body #novaflow-png-remove-black-root :is(.nf-prb-controls, .nf-prb-actions, .nf-prb-controls > label, .nf-prb-preset, .nf-prb-side > label) {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-controls {
+  height: auto !important;
+  grid-template-rows: none !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+}
+html body #novaflow-png-remove-black-root :is(.nf-prb-formats, .nf-prb-preset-options) {
+  display: flex !important;
+  gap: 3px !important;
+  padding: 3px !important;
+  height: 37px !important;
+  background: #101010 !important;
+  border: 1px solid #262626 !important;
+  border-radius: 8px !important;
+  box-sizing: border-box !important;
+}
+html body #novaflow-png-remove-black-root :is(.nf-prb-format, .nf-prb-preset-options > button) {
+  flex: 1 1 0 !important;
+  height: 29px !important;
+  min-height: 29px !important;
+  padding: 4px 7px !important;
+  border: 1px solid transparent !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  color: #eaeaea !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+html body #novaflow-png-remove-black-root :is(.nf-prb-format, .nf-prb-preset-options > button):hover:not(.active) {
+  background: #373737 !important;
+}
+html body #novaflow-png-remove-black-root :is(.nf-prb-format.active, .nf-prb-preset-options > button.active) {
+  background: #1c4136 !important;
+  border-color: #2c604f !important;
+  color: #9be4cd !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-list {
+  padding: 0 !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-upload {
+  height: 88px !important;
+  min-height: 88px !important;
+  background: #212121 !important;
+  border: 1px dashed #4b4b4b !important;
+  border-radius: 7px !important;
+  color: #d8d8d8 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-upload:hover {
+  background: #262626 !important;
+  border-color: #1bb28c !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-btn {
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 7px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-btn:not(.alt):not(:disabled) {
+  background: #17A582 !important;
+  color: #ffffff !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-btn:not(.alt):not(:disabled):hover {
+  background: #20b490 !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-btn.alt {
+  background: #252629 !important;
+  color: #c5c5c5 !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-btn:disabled {
+  background: #252629 !important;
+  color: #969aa2 !important;
+  opacity: 0.38 !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-main {
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 100% !important;
+  gap: 10px !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-panel {
+  background: #1d1d1d !important;
+  border: 1px solid #353535 !important;
+  border-radius: 12px !important;
+  padding: 12px !important;
+  box-sizing: border-box !important;
+  grid-template-rows: 34px minmax(0, 1fr) !important;
+  row-gap: 12px !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-panel-head {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: #eaeaea !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-preview {
+  background: #242424 !important;
+  border: 1px solid #3c3c3c !important;
+  border-radius: 8px !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-top-actions {
+  top: 15px !important;
+  right: 13px !important;
+  gap: 6px !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-top-actions > button {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 5px 8px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  border-radius: 7px !important;
+  background: #252629 !important;
+  color: #c5c5c5 !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+}
+html body #novaflow-png-remove-black-root .nf-prb-top-actions > button:hover:not(:disabled) {
+  background: #373737 !important;
+  color: #ffffff !important;
+}
+
+html body #novaflow-video-format-convert-root {
+  background: transparent !important;
+  padding: 0 !important;
+  gap: 10px !important;
+  grid-template-columns: 218px minmax(0, 1fr) !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-side {
+  background: #161616 !important;
+  border: 1px solid #2e2e2e !important;
+  border-radius: 12px !important;
+  padding: 16px 13px !important;
+  box-sizing: border-box !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  grid-template-rows: none !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+  gap: 12px !important;
+  overflow: hidden !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-side > *,
+html body #novaflow-video-format-convert-root .nf-vfc-side .nf-vfc-controls > *,
+html body #novaflow-video-format-convert-root .nf-vfc-side .nf-vfc-actions > * {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-side * {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+html body #novaflow-video-format-convert-root :is(.nf-vfc-formats, .nf-vfc-preset, .nf-vfc-controls, .nf-vfc-actions) {
+  width: 100% !important;
+}
+html body #novaflow-video-format-convert-root :is(.nf-vfc-controls, .nf-vfc-actions, .nf-vfc-controls > label, .nf-vfc-preset, .nf-vfc-side > label) {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-controls {
+  height: auto !important;
+  grid-template-rows: none !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+}
+html body #novaflow-video-format-convert-root :is(.nf-vfc-formats, .nf-vfc-preset-options) {
+  display: flex !important;
+  gap: 3px !important;
+  padding: 3px !important;
+  height: 37px !important;
+  background: #101010 !important;
+  border: 1px solid #262626 !important;
+  border-radius: 8px !important;
+  box-sizing: border-box !important;
+}
+html body #novaflow-video-format-convert-root :is(.nf-vfc-format, .nf-vfc-preset-options > button) {
+  flex: 1 1 0 !important;
+  height: 29px !important;
+  min-height: 29px !important;
+  padding: 4px 7px !important;
+  border: 1px solid transparent !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  color: #eaeaea !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+html body #novaflow-video-format-convert-root :is(.nf-vfc-format, .nf-vfc-preset-options > button):hover:not(.active) {
+  background: #373737 !important;
+}
+html body #novaflow-video-format-convert-root :is(.nf-vfc-format.active, .nf-vfc-preset-options > button.active) {
+  background: #1c4136 !important;
+  border-color: #2c604f !important;
+  color: #9be4cd !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-list {
+  padding: 0 !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-upload {
+  height: 88px !important;
+  min-height: 88px !important;
+  background: #212121 !important;
+  border: 1px dashed #4b4b4b !important;
+  border-radius: 7px !important;
+  color: #d8d8d8 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-upload:hover {
+  background: #262626 !important;
+  border-color: #1bb28c !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-btn {
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 7px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-btn:not(.alt):not(:disabled) {
+  background: #17A582 !important;
+  color: #ffffff !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-btn:not(.alt):not(:disabled):hover {
+  background: #20b490 !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-btn.alt {
+  background: #252629 !important;
+  color: #c5c5c5 !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-btn:disabled {
+  background: #252629 !important;
+  color: #969aa2 !important;
+  opacity: 0.38 !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-main {
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 100% !important;
+  gap: 10px !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-panel {
+  background: #1d1d1d !important;
+  border: 1px solid #353535 !important;
+  border-radius: 12px !important;
+  padding: 12px !important;
+  box-sizing: border-box !important;
+  grid-template-rows: 34px minmax(0, 1fr) !important;
+  row-gap: 12px !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-panel-head {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: #eaeaea !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-preview {
+  background: #242424 !important;
+  border: 1px solid #3c3c3c !important;
+  border-radius: 8px !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-top-actions {
+  top: 15px !important;
+  right: 13px !important;
+  gap: 6px !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-top-actions > button {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 5px 8px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  border-radius: 7px !important;
+  background: #252629 !important;
+  color: #c5c5c5 !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+}
+html body #novaflow-video-format-convert-root .nf-vfc-top-actions > button:hover:not(:disabled) {
+  background: #373737 !important;
+  color: #ffffff !important;
+}
+
+html body #novaflow-spine-atlas-webp-root {
+  background: transparent !important;
+  padding: 0 !important;
+  gap: 10px !important;
+  grid-template-columns: 218px minmax(0, 1fr) !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-side {
+  background: #161616 !important;
+  border: 1px solid #2e2e2e !important;
+  border-radius: 12px !important;
+  padding: 16px 13px !important;
+  box-sizing: border-box !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  grid-template-rows: none !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+  gap: 12px !important;
+  overflow: hidden !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-side > *,
+html body #novaflow-spine-atlas-webp-root .nf-saw-side .nf-saw-controls > *,
+html body #novaflow-spine-atlas-webp-root .nf-saw-side .nf-saw-actions > * {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-side * {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+html body #novaflow-spine-atlas-webp-root :is(.nf-saw-formats, .nf-saw-preset, .nf-saw-controls, .nf-saw-actions) {
+  width: 100% !important;
+}
+html body #novaflow-spine-atlas-webp-root :is(.nf-saw-controls, .nf-saw-actions, .nf-saw-controls > label, .nf-saw-preset, .nf-saw-side > label) {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-controls {
+  height: auto !important;
+  grid-template-rows: none !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+}
+html body #novaflow-spine-atlas-webp-root :is(.nf-saw-formats, .nf-saw-preset-options) {
+  display: flex !important;
+  gap: 3px !important;
+  padding: 3px !important;
+  height: 37px !important;
+  background: #101010 !important;
+  border: 1px solid #262626 !important;
+  border-radius: 8px !important;
+  box-sizing: border-box !important;
+}
+html body #novaflow-spine-atlas-webp-root :is(.nf-saw-format, .nf-saw-preset-options > button) {
+  flex: 1 1 0 !important;
+  height: 29px !important;
+  min-height: 29px !important;
+  padding: 4px 7px !important;
+  border: 1px solid transparent !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  color: #eaeaea !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+html body #novaflow-spine-atlas-webp-root :is(.nf-saw-format, .nf-saw-preset-options > button):hover:not(.active) {
+  background: #373737 !important;
+}
+html body #novaflow-spine-atlas-webp-root :is(.nf-saw-format.active, .nf-saw-preset-options > button.active) {
+  background: #1c4136 !important;
+  border-color: #2c604f !important;
+  color: #9be4cd !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-list {
+  padding: 0 !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-upload {
+  height: 88px !important;
+  min-height: 88px !important;
+  background: #212121 !important;
+  border: 1px dashed #4b4b4b !important;
+  border-radius: 7px !important;
+  color: #d8d8d8 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-upload:hover {
+  background: #262626 !important;
+  border-color: #1bb28c !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-btn {
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 7px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-btn:not(.alt):not(:disabled) {
+  background: #17A582 !important;
+  color: #ffffff !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-btn:not(.alt):not(:disabled):hover {
+  background: #20b490 !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-btn.alt {
+  background: #252629 !important;
+  color: #c5c5c5 !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-btn:disabled {
+  background: #252629 !important;
+  color: #969aa2 !important;
+  opacity: 0.38 !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-main {
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 100% !important;
+  gap: 10px !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-panel {
+  background: #1d1d1d !important;
+  border: 1px solid #353535 !important;
+  border-radius: 12px !important;
+  padding: 12px !important;
+  box-sizing: border-box !important;
+  grid-template-rows: 34px minmax(0, 1fr) !important;
+  row-gap: 12px !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-panel-head {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: #eaeaea !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-preview {
+  background: #242424 !important;
+  border: 1px solid #3c3c3c !important;
+  border-radius: 8px !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-top-actions {
+  top: 15px !important;
+  right: 13px !important;
+  gap: 6px !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-top-actions > button {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 5px 8px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  border-radius: 7px !important;
+  background: #252629 !important;
+  color: #c5c5c5 !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+}
+html body #novaflow-spine-atlas-webp-root .nf-saw-top-actions > button:hover:not(:disabled) {
+  background: #373737 !important;
+  color: #ffffff !important;
+}
+
+html body #novaflow-mp4-compress-root {
+  background: transparent !important;
+  padding: 0 !important;
+  gap: 10px !important;
+  grid-template-columns: 218px minmax(0, 1fr) !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-side {
+  background: #161616 !important;
+  border: 1px solid #2e2e2e !important;
+  border-radius: 12px !important;
+  padding: 16px 13px !important;
+  box-sizing: border-box !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  grid-template-rows: none !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+  gap: 12px !important;
+  overflow: hidden !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-side > *,
+html body #novaflow-mp4-compress-root .nf-mp4-side .nf-mp4-controls > *,
+html body #novaflow-mp4-compress-root .nf-mp4-side .nf-mp4-actions > * {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-side * {
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+html body #novaflow-mp4-compress-root :is(.nf-mp4-formats, .nf-mp4-preset, .nf-mp4-controls, .nf-mp4-actions) {
+  width: 100% !important;
+}
+html body #novaflow-mp4-compress-root :is(.nf-mp4-controls, .nf-mp4-actions, .nf-mp4-controls > label, .nf-mp4-preset, .nf-mp4-side > label) {
+  grid-template-columns: minmax(0, 1fr) !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-controls {
+  height: auto !important;
+  grid-template-rows: none !important;
+  grid-auto-rows: max-content !important;
+  align-content: start !important;
+}
+html body #novaflow-mp4-compress-root :is(.nf-mp4-formats, .nf-mp4-preset-options) {
+  display: flex !important;
+  gap: 3px !important;
+  padding: 3px !important;
+  height: 37px !important;
+  background: #101010 !important;
+  border: 1px solid #262626 !important;
+  border-radius: 8px !important;
+  box-sizing: border-box !important;
+}
+html body #novaflow-mp4-compress-root :is(.nf-mp4-format, .nf-mp4-preset-options > button) {
+  flex: 1 1 0 !important;
+  height: 29px !important;
+  min-height: 29px !important;
+  padding: 4px 7px !important;
+  border: 1px solid transparent !important;
+  border-radius: 5px !important;
+  background: transparent !important;
+  color: #eaeaea !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+}
+html body #novaflow-mp4-compress-root :is(.nf-mp4-format, .nf-mp4-preset-options > button):hover:not(.active) {
+  background: #373737 !important;
+}
+html body #novaflow-mp4-compress-root :is(.nf-mp4-format.active, .nf-mp4-preset-options > button.active) {
+  background: #1c4136 !important;
+  border-color: #2c604f !important;
+  color: #9be4cd !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-list {
+  padding: 0 !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-upload {
+  height: 88px !important;
+  min-height: 88px !important;
+  background: #212121 !important;
+  border: 1px dashed #4b4b4b !important;
+  border-radius: 7px !important;
+  color: #d8d8d8 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-upload:hover {
+  background: #262626 !important;
+  border-color: #1bb28c !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-btn {
+  height: 32px !important;
+  min-height: 32px !important;
+  border-radius: 7px !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  box-shadow: none !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-btn:not(.alt):not(:disabled) {
+  background: #17A582 !important;
+  color: #ffffff !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-btn:not(.alt):not(:disabled):hover {
+  background: #20b490 !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-btn.alt {
+  background: #252629 !important;
+  color: #c5c5c5 !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-btn:disabled {
+  background: #252629 !important;
+  color: #969aa2 !important;
+  opacity: 0.38 !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-main {
+  background: transparent !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 100% !important;
+  gap: 10px !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-panel {
+  background: #1d1d1d !important;
+  border: 1px solid #353535 !important;
+  border-radius: 12px !important;
+  padding: 12px !important;
+  box-sizing: border-box !important;
+  grid-template-rows: 34px minmax(0, 1fr) !important;
+  row-gap: 12px !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-panel-head {
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  color: #eaeaea !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-preview {
+  background: #242424 !important;
+  border: 1px solid #3c3c3c !important;
+  border-radius: 8px !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-top-actions {
+  top: 15px !important;
+  right: 13px !important;
+  gap: 6px !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-top-actions > button {
+  height: 30px !important;
+  min-height: 30px !important;
+  padding: 5px 8px !important;
+  font-size: 11px !important;
+  font-weight: 500 !important;
+  border-radius: 7px !important;
+  background: #252629 !important;
+  color: #c5c5c5 !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+}
+html body #novaflow-mp4-compress-root .nf-mp4-top-actions > button:hover:not(:disabled) {
+  background: #373737 !important;
+  color: #ffffff !important;
+}
