@@ -30070,8 +30070,15 @@
       return;
     }
     const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP + PRIMARY_RAIL_INNER_PAD;
-    const dividerTop = top + PRIMARY_ENTRY_LABELS.length * PRIMARY_RAIL_ITEM_PITCH + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN;
-    const cellTop = dividerTop + 1 + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN + (PRIMARY_RAIL_ITEM_PITCH - PRIMARY_SIDEBAR_ITEM_HEIGHT);
+    // 仓库 and 导出 sit at the foot of the rail, as asked, with their line
+    // above them; never over the page entries on a short window, and on the
+    // stacked tier (which scrolls) they stay under the entries.
+    const stackedDividerTop = top + PRIMARY_ENTRY_LABELS.length * PRIMARY_RAIL_ITEM_PITCH + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN;
+    const stackedCellTop = stackedDividerTop + 1 + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN + (PRIMARY_RAIL_ITEM_PITCH - PRIMARY_SIDEBAR_ITEM_HEIGHT);
+    const railFootCellTop = Math.round((window.innerHeight || 0) - PRIMARY_PANEL_BOTTOM_GAP - PRIMARY_RAIL_INNER_PAD - PRIMARY_SIDEBAR_ITEM_HEIGHT - PRIMARY_RAIL_ITEM_PITCH);
+    const stackedTier = document.documentElement.getAttribute("data-novaflow-layout-tier") === "stack";
+    const cellTop = stackedTier ? stackedCellTop : Math.max(stackedCellTop, railFootCellTop);
+    const dividerTop = cellTop - (PRIMARY_RAIL_ITEM_PITCH - PRIMARY_SIDEBAR_ITEM_HEIGHT) - PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN - 1;
     const exportCellTop = cellTop + PRIMARY_RAIL_ITEM_PITCH;
     const shortcutZIndex = getPrimaryOutputShortcutZIndex();
     let divider = document.getElementById(PRIMARY_OUTPUT_SHORTCUT_DIVIDER_ID);
@@ -32668,14 +32675,14 @@
           // Idle entries take the canvas bar's hover (#373737, white), as the
           // reference's tool list does.
           nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : "idle");
-          // Rows with a #272727 line under each, as asked (no icons).
+          // Rows with a #272727 line under each (drawn by the theme sheet's
+          // 2.0u, outside the row so the row keeps its corners), as asked; the
+          // hover fill is the group rows' #222222 on the same 7 corners.
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : "tool-row");
           const iconRow = {
-            position: "relative", "text-align": "left", "justify-content": "flex-start",
-            "border-bottom": active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "1px solid #272727",
-            "border-top": active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "0",
-            "border-left": active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "0",
-            "border-right": active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "0",
-            "border-radius": active ? NOVAFLOW_RECT_RADIUS_PX : "0",
+            position: "relative", "text-align": "left", "justify-content": "flex-start", overflow: "visible",
+            border: active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "1px solid transparent",
+            "border-radius": NOVAFLOW_RECT_RADIUS_PX,
             // 54 a row: more room between the tools, as asked.
             height: "54px", "min-height": "54px", "max-height": "54px", "box-shadow": "none", "margin-top": "0", "margin-bottom": "0"
           };
@@ -33885,6 +33892,53 @@
         style: { gap: "0", "row-gap": "0" }
       },
       {
+        // A 未开启 / 已开启 pair (工具 → Spine 图集's 预乘 Alpha) drawn as the
+        // particle page's switch card, as asked: the question on the left,
+        // a 27x15 switch on the right. Both buttons stay; the one not
+        // pressed lies over the switch, so a click picks the other state.
+        when: "body.novaflow-primary-target-tools",
+        selector: "div:has(> button[aria-pressed] + button[aria-pressed])",
+        style: (node) => {
+          const buttons = Array.from(node.children).filter((child) => child.tagName === "BUTTON");
+          if (buttons.length !== 2) return null;
+          const texts = buttons.map((button) => normalizeText(button.textContent || ""));
+          if (!texts[0].startsWith("\u672a\u5f00\u542f") || !texts[1].startsWith("\u5df2\u5f00\u542f")) return null;
+          const on = buttons[1].getAttribute("aria-pressed") === "true";
+          nfSetAttrIfChanged(node, "data-novaflow-pair-switch", on ? "on" : "off");
+          const card = node.parentElement;
+          if (card instanceof HTMLElement) nfSetAttrIfChanged(card, "data-novaflow-pair-switch-card", on ? "on" : "off");
+          return {
+            position: "relative", width: "27px", "min-width": "27px", "max-width": "27px", height: "15px", "min-height": "15px", "max-height": "15px",
+            flex: "0 0 27px", padding: "0", margin: "0", border: "0", "border-radius": "15px", overflow: "hidden", "box-shadow": "none",
+            background: on ? "#1bb28c" : "#3e3e3e", "background-color": on ? "#1bb28c" : "#3e3e3e", display: "block"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-pair-switch] > button",
+        style: (node) => ({
+          position: "absolute", inset: "0", width: "100%", height: "100%", "min-width": "0", "min-height": "0", "max-height": "none",
+          margin: "0", padding: "0", border: "0", opacity: "0", "font-size": "0", background: "transparent", "background-color": "transparent",
+          "pointer-events": node.getAttribute("aria-pressed") === "true" ? "none" : "auto", cursor: "pointer", "z-index": node.getAttribute("aria-pressed") === "true" ? "0" : "1"
+        })
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-pair-switch-card]",
+        style: (node) => ({
+          display: "flex", "flex-direction": "row", "align-items": "center", "justify-content": "space-between", gap: "10px",
+          background: "#272727", "background-color": "#272727", border: "1px solid transparent", "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+          padding: "8px 12px", "min-height": "46px", height: "auto", "box-sizing": "border-box",
+          color: node.getAttribute("data-novaflow-pair-switch-card") === "on" ? "#8ee0c5" : "#eaeaea"
+        })
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-pair-switch-card] > :first-child",
+        style: { flex: "1 1 auto", "min-width": "0", "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, color: "inherit", "line-height": "18px", margin: "0" }
+      },
+      {
         // AI 序列动画's dock.
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-generation-panel="1"]',
@@ -34667,6 +34721,16 @@
     if (Number.isFinite(current) && Math.abs(current - pct) < 0.05) return;
     input.style.setProperty("--nf-range-pct", `${pct.toFixed(2)}%`);
   }
+
+  // 仓库 / 导出 follow the rail's foot as the window's height changes.
+  let NOVAFLOW_OUTPUT_SHORTCUT_RESIZE_FRAME = 0;
+  window.addEventListener("resize", () => {
+    if (NOVAFLOW_OUTPUT_SHORTCUT_RESIZE_FRAME) return;
+    NOVAFLOW_OUTPUT_SHORTCUT_RESIZE_FRAME = window.requestAnimationFrame(() => {
+      NOVAFLOW_OUTPUT_SHORTCUT_RESIZE_FRAME = 0;
+      try { ensurePrimaryOutputShortcut(); } catch (_) { void 0; }
+    });
+  }, { passive: true });
 
   document.addEventListener("input", (event) => syncNovaflowRangeFill(event.target), true);
   document.addEventListener("change", (event) => syncNovaflowRangeFill(event.target), true);

@@ -32,7 +32,8 @@
     chevronSlot: '12px',
     chevronFontSize: '12px',
     chevronOpacity: '0.7',
-    bodyPadding: '5px 7px 8px',
+    // The reference's open group: 5 over its content, 17 under it.
+    bodyPadding: '5px 7px 17px',
     bodyGap: '6px',
   })
 
