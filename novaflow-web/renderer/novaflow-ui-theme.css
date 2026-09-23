@@ -1470,7 +1470,7 @@ html body :is([data-novaflow-ui-design-layout-preview], #nf-lift) [style*="borde
 }
 /* The node's pill switches off: an outline like the fields', so the track
    still reads against the node. */
-html body :is([data-novaflow-ui-design-switch-field], #nf-lift) > button:not([style*="23, 165, 130"]) {
+html body :is([data-novaflow-ui-design-switch-field], #nf-lift) > button[aria-checked="false"] {
   box-shadow: inset 0 0 0 1px #3a3a3a !important;
   background: #1c1c1c !important;
   background-color: #1c1c1c !important;
@@ -2170,4 +2170,16 @@ html body :is(.nf-prb-panel-head, .nf-mp4-panel-head, .nf-vfc-panel-head, .nf-sa
   justify-content: flex-start !important;
   align-items: center !important;
   gap: 8px !important;
+}
+html body :is([data-novaflow-ui-design-switch-field], #nf-lift) > button[aria-checked="true"] {
+  background: #17A582 !important;
+  background-color: #17A582 !important;
+  box-shadow: none !important;
+}
+
+/* 3.0t 绘图's switches: the knob is the span; the button's own ::before drew
+   a second white dot beside it. */
+html body :is(.novaflow-art-generate-switch, #nf-lift)::before {
+  content: none !important;
+  display: none !important;
 }
