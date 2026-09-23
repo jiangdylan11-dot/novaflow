@@ -34917,6 +34917,36 @@
         style: { order: "4", "margin-top": "0" }
       },
       {
+        // 骨骼架设's 移动 / 旋转 / 缩放 / 新建: one row that shares the width
+        // evenly, flush both sides (it wrapped 新建 to a line of its own once
+        // a scrollbar narrowed the column).
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-expanded-body-row="1"]',
+        style: (node) => {
+          const texts = Array.from(node.children).map((child) => normalizeText(child.textContent || ""));
+          if (!(texts.includes("移动") && texts.includes("新建"))) return null;
+          nfSetAttrIfChanged(node, "data-novaflow-skeleton-tool-row", "1");
+          return { "flex-wrap": "nowrap", gap: "5px", width: "100%" };
+        }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-tool-row="1"] > button',
+        style: { flex: "1 1 0", width: "auto", "min-width": "0", "max-width": "none", padding: "0 4px" }
+      },
+      {
+        // Its colour legend (普通 / 受约束 / 控制骨 / 选中) across the width,
+        // 选中 no longer cut at the edge.
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-editor-panel="1"] div',
+        style: (node) => {
+          if (node.childElementCount !== 4) return null;
+          const text = normalizeText(node.textContent || "");
+          if (!text.includes("普通") || !text.includes("选中") || text.length > 20) return null;
+          return { display: "flex", "flex-wrap": "nowrap", "justify-content": "space-between", gap: "4px", width: "100%", "max-width": "100%", "font-size": "10px", overflow: "hidden" };
+        }
+      },
+      {
         // 点击存储 is as tall as the cards beside it (they carry a name row).
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile="1"]',

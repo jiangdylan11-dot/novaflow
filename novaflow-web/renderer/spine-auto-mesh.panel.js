@@ -2919,7 +2919,8 @@
     // the switch
     // no 编辑骨骼 checkbox: opening this panel IS the edit mode (user decision 2026-09-21),
     // collapsing it hands the preview back
-    const swHint = el('div', { fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: STACK_GAP, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, '展开=编辑(预览停在设置姿势),收起=恢复播放')
+    // wraps: the whole note is read, not cut at the column's edge
+    const swHint = el('div', { fontSize: '11px', lineHeight: '1.5', color: 'rgba(255,255,255,0.4)', marginTop: STACK_GAP, whiteSpace: 'normal', wordBreak: 'break-word' }, '展开=编辑(预览停在设置姿势),收起=恢复播放')
     swHint.title = '展开本面板即进入编辑:预览停在设置姿势,可直接选、拖、画骨骼;收起即恢复播放'
 
     // tools
