@@ -34947,6 +34947,21 @@
         }
       },
       {
+        // The stage's own 模板库 (moved into 模板管理): marked and hidden at
+        // every width. The stacked (narrow) layout never ran the canvas bar
+        // code that marked it, so it showed again there - and 模板管理's
+        // 模板库 had nothing to click.
+        when: "body.novaflow-primary-target-particle:not(.novaflow-aifx-open)",
+        selector: "[data-novaflow-preview-workspace] [data-preview-ui] > button",
+        style: (node) => {
+          if (normalizeText(node.textContent || "") !== "模板库") return null;
+          if (node.closest("[data-novaflow-template-manager], [data-novaflow-template-popup-layer]")) return null;
+          nfSetAttrIfChanged(node, "data-novaflow-template-button", "1");
+          nfSetAttrIfChanged(node.parentElement, "data-novaflow-template-control", "1");
+          return { display: "none" };
+        }
+      },
+      {
         // 点击存储 is as tall as the cards beside it (they carry a name row).
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile="1"]',
@@ -73912,6 +73927,9 @@
       return;
     }
     clearTemplateGridStyleLeak();
+    // Near the top of the stage, wherever the stage is: stacked (narrow), it
+    // sits under the left panel and the popup was never recognised there.
+    const popupTopLimit = Math.round(rightColumn.getBoundingClientRect().top) + 180;
     const popup = Array.from(rightColumn.querySelectorAll("div"))
       .filter((node) => node instanceof HTMLElement && isVisible(node))
       .map((node) => {
@@ -73925,7 +73943,7 @@
         text.includes("\u70b9\u51fb\u5b58\u50a8") &&
         rect.width >= 320 &&
         rect.height >= 160 &&
-        rect.top <= 180 &&
+        rect.top <= popupTopLimit &&
         (style.position === "absolute" || style.position === "fixed")
       ))
       .sort((a, b) => {
