@@ -483,9 +483,11 @@
    and nothing at all falls between rgb 25 and rgb 60, so nothing the editor
    actually draws is clipped by the #242424 floor.
 
-   Only the base canvas is blended. The two overlays are fully transparent and
-   composite correctly on their own; leaving them normal means a dark stroke
-   drawn on them later cannot silently vanish.
+   Only the base canvas is blended, and it is matched POSITIVELY. The bundle
+   gives it position:relative and the runtime pins that with !important, while
+   every overlay is position:absolute. Selecting it as "not absolute" would
+   also have caught every canvas with no inline position at all - the template
+   library's thumbnails are exactly that - and quietly flattened their darks.
 
    Scoped to the particle preview only - the drawing page's canvas shows the
    user's artwork, which must composite normally. */
@@ -500,9 +502,7 @@
   mix-blend-mode: normal !important;
 }
 
-/* The runtime pins the base canvas to position:relative and the overlays to
-   position:absolute, so this is the same discriminator its own rules use. */
-.novaflow-app [data-novaflow-preview-workspace="1"] canvas:not([style*="position: absolute"]) {
+.novaflow-app [data-novaflow-preview-workspace="1"] canvas[style*="position: relative"] {
   mix-blend-mode: lighten !important;
 }
 
