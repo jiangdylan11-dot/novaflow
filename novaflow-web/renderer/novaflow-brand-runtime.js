@@ -34661,6 +34661,18 @@
         style: { color: "inherit" }
       },
       {
+        // Every 开始生成 (whatever credit note follows it) and AI 特效's 生成特效
+        // carries a sparkle before its label (theme sheet 3.0i).
+        selector: "button",
+        style: (node) => {
+          const text = normalizeText(node.textContent || "");
+          const generate = /^\u5f00\u59cb\u751f\u6210/.test(text) || (node.getAttribute("data-action") === "generate" && node.closest("#novaflow-aifx-mvp"));
+          if (!generate) return null;
+          nfSetAttrIfChanged(node, "data-novaflow-generate-icon", "1");
+          return null;
+        }
+      },
+      {
         // 点击存储 is as tall as the cards beside it (they carry a name row).
         when: "body.novaflow-primary-target-particle",
         selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile="1"]',
