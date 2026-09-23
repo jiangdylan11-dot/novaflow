@@ -2819,6 +2819,41 @@
   const PLAYBACK_ICON_SKIP_FORWARD = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='5 4 15 12 5 20 5 4'/%3E%3Cline x1='19' x2='19' y1='5' y2='19'/%3E%3C/svg%3E")`;
   const PLAYBACK_ICON_REPEAT = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m17 2 4 4-4 4'/%3E%3Cpath d='M3 11v-1a4 4 0 0 1 4-4h14'/%3E%3Cpath d='m7 22-4-4 4-4'/%3E%3Cpath d='M21 13v1a4 4 0 0 1-4 4H3'/%3E%3C/svg%3E")`;
 
+  // 工具, measured off tools-spline.html: a parameter panel beside the tool
+  // list (218 wide; 194 at or below 1400, 174 at or below 1100) and two
+  // preview panels, all on 10 gutters.
+  const TOOLS_PARAMS_SURFACE = "#161616";
+  const TOOLS_PARAMS_BORDER = "#2e2e2e";
+  const TOOLS_TABS_SURFACE = "#101010";
+  const TOOLS_TABS_BORDER = "#262626";
+  const TOOLS_DROP_SURFACE = "#212121";
+  const TOOLS_DROP_BORDER = "#4b4b4b";
+  const TOOLS_DROP_TEXT = "#b9b9b9";
+  const TOOLS_HINT_TEXT = "#979797";
+  const TOOLS_RANGE_LABEL_TEXT = "#ababab";
+  const TOOLS_VIEW_GAP = 10;
+  const TOOLS_BLANK_TEXT = "#888888";
+  function toolsParamsWidth() {
+    const width = Math.round(window.innerWidth || 0);
+    if (NOVAFLOW_LAYOUT_TIER === "stack") return Math.max(160, width - NOVAFLOW_STACK_SIDE_INSET);
+    if (width <= 1100) return 174;
+    if (width <= 1400) return 194;
+    return 218;
+  }
+  function toolsButtonState(node, primary) {
+    const disabled = node.disabled === true || node.getAttribute("aria-disabled") === "true";
+    if (disabled) {
+      nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "disabled");
+      return { background: CANVAS_BAR_DISABLED_BACKGROUND, color: CANVAS_BAR_DISABLED_TEXT, border: "transparent", opacity: NOVAFLOW_DISABLED_OPACITY };
+    }
+    if (primary) {
+      nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "active");
+      return { background: UI_ACCENT, color: "#ffffff", border: DOCK_PRIMARY_BORDER, opacity: "1" };
+    }
+    nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle");
+    return { background: `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`, color: `var(--nf-cb-hover-fg, ${UI_ICON_BUTTON_TEXT})`, border: "transparent", opacity: "1" };
+  }
+
   function novaflowLayoutTierForWidth(width) {
     const w = Number(width) || 0;
     if (w > 0 && w <= NOVAFLOW_LAYOUT_STACK_MAX) return "stack";
@@ -32623,6 +32658,198 @@
           height: "74px", "min-height": "74px", "max-height": "74px", padding: "12px 14px",
           "font-size": "12px", color: DOCK_PROMPT_TEXT, background: DOCK_PROMPT_SURFACE, "background-color": DOCK_PROMPT_SURFACE,
           border: "0", "border-radius": "0", "box-shadow": "none", resize: "none", "box-sizing": "border-box"
+        }
+      },
+      {
+        // 工具: the parameter column and the two previews, on the page.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-workspace]',
+        style: () => ({
+          background: "transparent", "background-color": "transparent", padding: "0",
+          display: "flex", "flex-direction": "row", gap: `${TOOLS_VIEW_GAP}px`, "align-items": "stretch",
+          height: `calc(100vh - ${TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP + PRIMARY_PANEL_BOTTOM_GAP}px)`,
+          "box-sizing": "border-box"
+        })
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel]',
+        style: () => {
+          const width = toolsParamsWidth();
+          return {
+            width: `${width}px`, "min-width": `${width}px`, "max-width": `${width}px`, flex: `0 0 ${width}px`,
+            height: "auto", "align-self": "stretch", padding: "16px 13px", margin: "0",
+            display: "flex", "flex-direction": "column", gap: "12px", "overflow-y": "auto", "overflow-x": "hidden",
+            background: TOOLS_PARAMS_SURFACE, "background-color": TOOLS_PARAMS_SURFACE,
+            border: `1px solid ${TOOLS_PARAMS_BORDER}`, "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`, "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] > [data-novaflow-tools-section], [data-novaflow-tools-left-panel] > [data-novaflow-tools-section] > div:not([data-novaflow-tools-mode-row])',
+        style: { display: "flex", "flex-direction": "column", gap: "12px", "row-gap": "12px", width: "100%", margin: "0", padding: "0", height: "auto", "min-height": "0" }
+      },
+      {
+        // 普通 PNG / Spine 图集: the reference's segmented plate.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-mode-row]',
+        style: {
+          display: "flex", "flex-direction": "row", gap: "3px", padding: "3px", height: "37px", "min-height": "37px", "max-height": "37px",
+          width: "100%", "box-sizing": "border-box", "margin-bottom": "14px",
+          background: TOOLS_TABS_SURFACE, "background-color": TOOLS_TABS_SURFACE,
+          border: `1px solid ${TOOLS_TABS_BORDER}`, "border-radius": "8px"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-mode-button]',
+        style: (node) => {
+          const active = node.getAttribute("data-novaflow-tools-mode-active") === "1" || node.getAttribute("aria-pressed") === "true";
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : "idle");
+          return {
+            flex: "1 1 0", width: "auto", "min-width": "0", height: "29px", "min-height": "29px", "max-height": "29px",
+            padding: "4px 7px", border: `1px solid ${active ? UI_SEGMENT_SELECTED_BORDER : "transparent"}`, "border-radius": "5px",
+            background: active ? UI_SEGMENT_SELECTED_BACKGROUND : "var(--nf-cb-hover-bg, transparent)",
+            "background-color": active ? UI_SEGMENT_SELECTED_BACKGROUND : "var(--nf-cb-hover-bg, transparent)",
+            color: active ? UI_SEGMENT_SELECTED_TEXT : `var(--nf-cb-hover-fg, ${UI_SEGMENT_IDLE_TEXT})`,
+            "box-shadow": "none", "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        // 选择 PNG: a dashed 88-tall well.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-upload-zone]',
+        style: {
+          width: "100%", height: "88px", "min-height": "88px", "max-height": "88px", padding: "20px 10px",
+          display: "flex", "flex-direction": "column", "align-items": "center", "justify-content": "center", gap: "7px",
+          background: TOOLS_DROP_SURFACE, "background-color": TOOLS_DROP_SURFACE,
+          border: `1px dashed ${TOOLS_DROP_BORDER}`, "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+          color: TOOLS_DROP_TEXT, "font-size": "13px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "box-sizing": "border-box", "box-shadow": "none"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-upload-zone] > div, [data-novaflow-tools-upload-zone] [data-novaflow-tools-upload-title-slot] > div',
+        style: { "font-size": "13px", "line-height": "20px", height: "auto", color: TOOLS_DROP_TEXT, "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] label > span',
+        style: { "font-size": "11px", color: TOOLS_RANGE_LABEL_TEXT, "margin-top": "6px" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] label',
+        style: { display: "flex", "flex-direction": "column", gap: "14px", width: "100%" }
+      },
+      {
+        // The reference's slider is the browser's own on a 3px box.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] input[type="range"]',
+        style: { height: "3px", "min-height": "3px", "max-height": "3px", margin: "0", "margin-bottom": "2px" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] [data-novaflow-tools-section] > div > div:not([data-novaflow-tools-action-row])',
+        style: { "letter-spacing": "0", "word-break": "normal" }
+      },
+      {
+        // The hint, the counts and the batch note: plain 11px text.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] [data-novaflow-tools-section] > div > div:not([data-novaflow-tools-action-row]):not(:has(button)), [data-novaflow-tools-left-panel] [data-novaflow-tools-section] > div:not(:has(*))',
+        style: { "font-size": "11px", color: TOOLS_HINT_TEXT, padding: "0", border: "0", background: "transparent", "background-color": "transparent", "line-height": "18px" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-action-row]',
+        style: { display: "flex", "flex-direction": "column", gap: "12px", height: "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-start-button], [data-novaflow-tools-clear-button]',
+        style: (node) => {
+          const primary = node.hasAttribute("data-novaflow-tools-start-button");
+          const state = toolsButtonState(node, primary);
+          return {
+            width: "100%", height: "32px", "min-height": "32px", "max-height": "32px", padding: "5px 10px",
+            background: state.background, "background-color": state.background, color: state.color,
+            border: `1px solid ${state.border}`, "border-radius": NOVAFLOW_RECT_RADIUS_PX, opacity: state.opacity,
+            "font-size": "13px", "font-weight": primary ? NOVAFLOW_PRIMARY_FONT_WEIGHT : NOVAFLOW_MEDIUM_FONT_WEIGHT,
+            "box-shadow": "none", "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-right-panel]',
+        style: { flex: "1 1 auto", "min-width": "0", padding: "0", margin: "0", height: "auto", "align-self": "stretch", position: "relative" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-grid]',
+        style: { padding: "0", margin: "0", display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(0, 1fr)", "grid-template-rows": "minmax(0, 1fr)", gap: `${TOOLS_VIEW_GAP}px`, width: "100%", height: "100%", "max-height": "100%", "min-height": "0", "box-sizing": "border-box" }
+      },
+      {
+        // The current tool's name above the tabs: the reference names the
+        // tool only in the list, so it is kept for readers but not drawn.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-current-tool-card]',
+        style: {
+          position: "absolute", width: "1px", height: "1px", "min-height": "0", margin: "-1px", padding: "0",
+          overflow: "hidden", clip: "rect(0 0 0 0)", "white-space": "nowrap", border: "0"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-card]',
+        style: {
+          padding: "12px", display: "flex", "flex-direction": "column", gap: "12px", height: "100%", "max-height": "100%", "min-height": "0",
+          background: NOVAFLOW_TOOLS_VIEW_SURFACE, "background-color": NOVAFLOW_TOOLS_VIEW_SURFACE,
+          border: `1px solid ${NOVAFLOW_TOOLS_VIEW_BORDER_COLOR}`, "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`, "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-card] > div:first-child',
+        style: { height: "34px", "min-height": "34px", "max-height": "34px", display: "flex", "align-items": "center", "justify-content": "space-between", gap: "6px", padding: "0", margin: "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-card] > div:first-child > div',
+        style: { "font-size": "12px", "font-weight": "400", color: UI_SEGMENT_IDLE_TEXT, "line-height": "18px" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-card-body]',
+        style: {
+          flex: "1 1 auto", "min-height": "0", background: NOVAFLOW_TOOLS_BLANK_SURFACE, "background-color": NOVAFLOW_TOOLS_BLANK_SURFACE,
+          border: `1px solid ${NOVAFLOW_TOOLS_BLANK_BORDER_COLOR}`, "border-radius": NOVAFLOW_TOOLS_BLANK_RADIUS_PX, "box-sizing": "border-box"
+        }
+      },
+      {
+        // 导出到文件夹 / 直接覆盖 sit in the 结果图 header, 13 in from its edge.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-output-settings]',
+        style: { top: "12px", right: "13px", left: "auto", width: "auto", height: "30px", "z-index": "5" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-output-settings] > div',
+        style: { gap: "6px", height: "30px", display: "flex", "align-items": "center", width: "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-output-settings] button',
+        style: (node) => {
+          const state = toolsButtonState(node, false);
+          return {
+            width: "auto", "min-width": "0", height: "30px", "min-height": "30px", "max-height": "30px", padding: "5px 8px",
+            background: state.background, "background-color": state.background, color: state.color,
+            border: `1px solid ${state.border}`, "border-radius": NOVAFLOW_RECT_RADIUS_PX, opacity: state.opacity,
+            "font-size": "11px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "box-shadow": "none", "box-sizing": "border-box"
+          };
         }
       },
       {
