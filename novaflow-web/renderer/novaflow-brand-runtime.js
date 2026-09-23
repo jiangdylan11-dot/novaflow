@@ -34763,7 +34763,9 @@
         style: { "grid-column": "2", "grid-row": "1", width: "28px", "min-width": "28px", "max-width": "28px", height: "28px", "min-height": "28px", "max-height": "28px" }
       },
       {
-        selector: '[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-stencil="1"]',
+        // Keyed on the command, not on the stencil flag: that flag changes when
+        // the mask is picked, and the badge fell to a line of its own.
+        selector: '[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-command="stencil"]',
         style: {
           "grid-column": "2", "grid-row": "1", "justify-self": "end", "align-self": "end", position: "relative", "z-index": "1",
           width: "14px", "min-width": "14px", "max-width": "14px", height: "14px", "min-height": "14px", "max-height": "14px",
