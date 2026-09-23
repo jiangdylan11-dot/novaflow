@@ -34084,7 +34084,8 @@
         when: "body.novaflow-primary-target-particle",
         selector: "[data-novaflow-template-manager-body]",
         style: (node) => ({
-          "grid-template-columns": "repeat(3, minmax(0, 1fr))", gap: "8px", padding: "5px 7px 17px", "box-sizing": "border-box",
+          // 模板库 on a row of its own, 导入 / 保存 side by side under it.
+          "grid-template-columns": "repeat(2, minmax(0, 1fr))", gap: "8px", padding: "5px 7px 17px", "box-sizing": "border-box",
           display: node.parentElement?.getAttribute("data-open") === "1" ? "grid" : "none"
         })
       },
@@ -34097,6 +34098,7 @@
         when: "body.novaflow-primary-target-particle",
         selector: "[data-novaflow-template-manager-action]",
         style: (node) => (nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle"), {
+          "grid-column": node === node.parentElement?.firstElementChild ? "1 / -1" : "auto",
           height: "32px", "min-height": "32px", padding: "0 4px", width: "100%", "min-width": "0", "white-space": "nowrap",
           "border-radius": NOVAFLOW_RECT_RADIUS_PX, border: "1px solid transparent",
           background: "var(--nf-cb-hover-bg, #282828)", "background-color": "var(--nf-cb-hover-bg, #282828)",
