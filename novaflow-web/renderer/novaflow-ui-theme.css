@@ -903,14 +903,71 @@ html body [data-novaflow-pair-switch]:has(> button:focus-visible) {
   outline-offset: 3px !important;
 }
 
-/* 2.0w A colour stop's delete: a white ×, lit on hover. */
-html body [data-novaflow-sprite-editor-lifecycle-stop-delete]::before {
-  content: "\00d7" !important;
-  font-size: 16px !important;
-  line-height: 1 !important;
-  color: #ffffff !important;
-}
 html body [data-novaflow-sprite-editor-lifecycle-stop-delete]:hover {
   background: #373737 !important;
   background-color: #373737 !important;
+}
+
+/* 2.0x 特效's 模板库, as AI 特效's: the ring on the card under the pointer,
+   the red × on hover, the name answering the pointer, the rename field. */
+html body [data-novaflow-template-popup-layer="1"] [data-novaflow-template-tile="1"]:hover {
+  --nf-tpl-bd: #1bb28c;
+  box-shadow: 0 0 0 1px #1bb28c inset !important;
+}
+html body [data-novaflow-template-popup-layer="1"] [data-novaflow-template-label]:hover {
+  background: rgba(255, 255, 255, 0.10) !important;
+  color: #ffffff !important;
+}
+html body input.novaflow-template-rename {
+  width: 100% !important;
+  box-sizing: border-box !important;
+  height: 18px !important;
+  padding: 0 2px !important;
+  margin: 0 !important;
+  background: #0f0f0f !important;
+  border: 1px solid #1bb28c !important;
+  border-radius: 4px !important;
+  color: #ffffff !important;
+  font-size: 11px !important;
+  line-height: 16px !important;
+  outline: none !important;
+}
+
+/* 2.0y While 模板库 is open, its page column is lifted over the left panel,
+   the rail and the top bar, so the shade covers the whole window as AI
+   特效's does. It drops back when the library closes. */
+html body :is([data-novaflow-preview-workspace="1"], #nf-lift):has([data-novaflow-template-popup-layer="1"]) {
+  z-index: 2147483637 !important;
+  isolation: auto !important;
+}
+
+/* 2.0z One cross everywhere (panels, cards, dialogs, both template
+   libraries): a 12px mask of a thin cross in the button's own colour. */
+html body :is([data-novaflow-x-glyph="1"], [data-novaflow-sprite-editor-lifecycle-stop-delete], #nf-lift)::before,
+html body :is(#novaflow-aifx-mvp, .aifx-library, #nf-lift) button.aifx-library-del::before {
+  content: "" !important;
+  display: block !important;
+  position: static !important;
+  flex: 0 0 12px !important;
+  width: 12px !important;
+  height: 12px !important;
+  opacity: 1 !important;
+  background: currentColor !important;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M18 6 6 18%22/%3E%3Cpath d=%22m6 6 12 12%22/%3E%3C/svg%3E") center / contain no-repeat !important;
+  mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22black%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22%3E%3Cpath d=%22M18 6 6 18%22/%3E%3Cpath d=%22m6 6 12 12%22/%3E%3C/svg%3E") center / contain no-repeat !important;
+}
+html body :is(.aifx-library, #nf-lift) button.aifx-library-del {
+  font-size: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: #ffffff !important;
+}
+html body :is(.aifx-library, #nf-lift) button.aifx-library-del:hover,
+html body :is([data-novaflow-template-popup-layer="1"], #nf-lift) [data-novaflow-template-delete-button]:hover {
+  background: transparent !important;
+  color: #ff6b6b !important;
 }

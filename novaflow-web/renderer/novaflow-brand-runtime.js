@@ -33989,6 +33989,169 @@
         }
       },
       {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-manager-body]",
+        style: (node) => ({
+          "grid-template-columns": "repeat(3, minmax(0, 1fr))", gap: "8px", padding: "5px 7px 17px", "box-sizing": "border-box",
+          display: node.parentElement?.getAttribute("data-open") === "1" ? "grid" : "none"
+        })
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-manager] > .nf-panel-header",
+        style: { display: "flex", "align-items": "center", "justify-content": "space-between", width: "100%", cursor: "pointer" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-manager-action]",
+        style: (node) => (nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle"), {
+          height: "32px", "min-height": "32px", padding: "0 4px", width: "100%", "min-width": "0", "white-space": "nowrap",
+          "border-radius": NOVAFLOW_RECT_RADIUS_PX, border: "1px solid transparent",
+          background: "var(--nf-cb-hover-bg, #282828)", "background-color": "var(--nf-cb-hover-bg, #282828)",
+          color: "var(--nf-cb-hover-fg, #eaeaea)", "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, cursor: "pointer",
+          "box-shadow": "none"
+        })
+      },
+      {
+        // Their old places on the canvas bar.
+        when: "body.novaflow-primary-target-particle:not(.novaflow-aifx-open)",
+        selector: '#novaflow-particle-project-top-actions, [data-novaflow-template-control="1"]',
+        style: { display: "none" }
+      },
+      {
+        // 模板库, as AI 特效's: centred on a 58% shade, a 980 panel, five
+        // cards a row, each a 16:10 picture over its name.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"]',
+        style: {
+          position: "fixed", top: "0", left: "0", right: "0", bottom: "0", width: "auto", "min-width": "0", "max-width": "none",
+          height: "auto", "min-height": "0", "max-height": "none", transform: "none", display: "flex", "align-items": "center",
+          "justify-content": "center", padding: "72px 24px 24px", background: "rgba(0, 0, 0, 0.58)", "background-color": "rgba(0, 0, 0, 0.58)",
+          overflow: "hidden", "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] > div',
+        style: {
+          position: "relative", display: "flex", "flex-direction": "column", width: "980px", "max-width": "100%", height: "auto",
+          "max-height": "100%", background: "#1c1c1c", "background-color": "#1c1c1c", border: "1px solid rgba(255, 255, 255, 0.10)",
+          "border-radius": "12px", padding: "12px", "box-shadow": "0 24px 64px rgba(0, 0, 0, 0.5)", overflow: "hidden", "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] > div > div:first-child',
+        style: { "margin-bottom": "10px", height: "30px", "min-height": "30px", "align-items": "center", "justify-content": "space-between", display: "flex", "flex": "0 0 auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] > div > div:first-child > div:first-child',
+        style: { "font-size": "14px", "font-weight": NOVAFLOW_PRIMARY_FONT_WEIGHT, color: "rgba(255, 255, 255, 0.92)" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] > div > div:first-child button',
+        style: (node) => (nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle"), {
+          height: "30px", "min-width": "86px", padding: "0 12px", background: "var(--nf-cb-hover-bg, #2a2a2a)", "background-color": "var(--nf-cb-hover-bg, #2a2a2a)",
+          border: "1px solid rgba(255, 255, 255, 0.10)", "border-radius": "8px", color: "#ffffff", "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT
+        })
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] > div > div:nth-child(2)',
+        style: { flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", "padding-right": "4px", height: "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-preview-sync-signature]",
+        style: { display: "grid", "grid-template-columns": "repeat(5, minmax(0, 1fr))", "grid-template-rows": "none", "grid-auto-rows": "auto", gap: "8px", width: "100%", height: "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-tile="1"]',
+        style: (node) => ({
+          position: "relative", display: "block", width: "auto", height: "auto", "min-height": "0", padding: "8px",
+          background: "#161616", "background-color": "#161616", "border-radius": "10px", cursor: "pointer", "box-sizing": "border-box",
+          "border-width": "1px", "border-style": node.hasAttribute("data-novaflow-template-save-tile") ? "dashed" : "solid",
+          "border-top-color": "var(--nf-tpl-bd, rgba(255, 255, 255, 0.12))", "border-right-color": "var(--nf-tpl-bd, rgba(255, 255, 255, 0.12))",
+          "border-bottom-color": "var(--nf-tpl-bd, rgba(255, 255, 255, 0.12))", "border-left-color": "var(--nf-tpl-bd, rgba(255, 255, 255, 0.12))",
+          "box-shadow": "none", overflow: "hidden"
+        })
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-save-tile] > div",
+        style: {
+          width: "100%", "aspect-ratio": "16 / 10", display: "flex", "flex-direction": "column", "align-items": "center", "justify-content": "center",
+          gap: "2px", "border-radius": "8px", background: "rgba(255, 255, 255, 0.03)", color: "#ffffff", margin: "0", height: "auto"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-save-plus]",
+        style: { "font-size": "40px", "line-height": "1", "font-weight": "200", height: "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-save-title], [data-novaflow-template-save-hint]",
+        style: { "font-size": "11px", color: "rgba(255, 255, 255, 0.55)", "line-height": "15px", height: "auto", "text-align": "center" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-preview]',
+        style: {
+          position: "relative", inset: "auto", top: "auto", left: "auto", width: "100%", height: "auto", "aspect-ratio": "16 / 10",
+          "border-radius": "8px", overflow: "hidden", background: "#000000", "background-color": "#000000",
+          display: "flex", "align-items": "center", "justify-content": "center"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-preview] > canvas',
+        style: { height: "100%", width: "auto", "max-width": "100%", position: "relative" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-delete-button]',
+        style: {
+          position: "absolute", right: "6px", top: "6px", left: "auto", bottom: "auto", width: "20px", height: "20px", "min-width": "20px",
+          "min-height": "20px", "border-radius": "999px", background: "rgba(0, 0, 0, 0.55)", "background-color": "rgba(0, 0, 0, 0.55)",
+          border: "1px solid rgba(255, 255, 255, 0.25)", color: "#ffffff", "font-size": "12px", "line-height": "1", padding: "0", "z-index": "2"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-label]',
+        style: (node) => {
+          applyParticleTemplateName(node);
+          return {
+            position: "static", inset: "auto", "margin-top": "6px", "margin-left": "-3px", padding: "1px 3px", height: "auto", "min-height": "0",
+            width: "auto", display: "block", background: "transparent", "background-color": "transparent", "font-size": "11px",
+            color: "#cbd0d6", "text-align": "left", "white-space": "nowrap", overflow: "hidden", "text-overflow": "ellipsis",
+            "border-radius": "4px", cursor: "text", "justify-content": "flex-start"
+          };
+        }
+      },
+      {
+        // Every close / delete "×" in the app is one mark (theme sheet 2.0z):
+        // the same thin 12px cross, whatever font or weight it came in.
+        selector: 'button, [role="button"]',
+        style: (node) => {
+          if (node.childElementCount !== 0) return null;
+          const text = normalizeText(node.textContent || "");
+          if (text !== "\u00d7" && text !== "\u2715" && text !== "\u2716" && text !== "\u2717") return null;
+          nfSetAttrIfChanged(node, "data-novaflow-x-glyph", "1");
+          return { "font-size": "0", "line-height": "0", display: "inline-flex", "align-items": "center", "justify-content": "center" };
+        }
+      },
+      {
+        // 模板库's delete: the bare cross, no round plate.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-delete-button]',
+        style: { background: "transparent", "background-color": "transparent", border: "0", "box-shadow": "none", color: "#ffffff" }
+      },
+      {
         // AI 序列动画's dock.
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-generation-panel="1"]',
@@ -34744,6 +34907,164 @@
 
   const NOVAFLOW_FIELD_FILL_SEEN = new WeakMap();
 
+  // 特效 → 模板管理, as asked: the list's first group holds 模板库, 导入项目
+  // and 保存项目 (their canvas bar places are hidden). Each button here
+  // clicks the original, so what they do is unchanged.
+  const PARTICLE_TEMPLATE_MANAGER_ATTR = "data-novaflow-template-manager";
+
+  function particleTemplateManagerTargets() {
+    // Looked up at click time: the canvas bar's buttons are rebuilt when the
+    // page is switched, and a kept reference would point at the old ones.
+    const find = (text) => {
+      const project = document.getElementById("novaflow-particle-project-top-actions");
+      return project ? Array.from(project.querySelectorAll("button")).find((button) => normalizeText(button.textContent || "") === text) || null : null;
+    };
+    return [
+      ["\u6a21\u677f\u5e93", () => document.querySelector('[data-novaflow-template-button="1"]')],
+      ["\u5bfc\u5165\u9879\u76ee", () => find("\u5bfc\u5165\u9879\u76ee")],
+      ["\u4fdd\u5b58\u9879\u76ee", () => find("\u4fdd\u5b58\u9879\u76ee")]
+    ];
+  }
+
+  function syncParticleTemplateManager() {
+    const body = document.body;
+    if (!body || !body.classList.contains("novaflow-primary-target-particle") || body.classList.contains("novaflow-aifx-open")) return;
+    const root = document.querySelector('[data-novaflow-left-content-root="1"]');
+    if (!(root instanceof HTMLElement)) return;
+    const firstPanel = Array.from(root.children).find((child) => child.getAttribute("data-novaflow-editor-panel") === "1" && !child.hasAttribute(PARTICLE_TEMPLATE_MANAGER_ATTR));
+    if (!(firstPanel instanceof HTMLElement)) return;
+    let panel = root.querySelector(`:scope > [${PARTICLE_TEMPLATE_MANAGER_ATTR}]`);
+    if (!(panel instanceof HTMLElement)) {
+      panel = document.createElement("div");
+      panel.className = "nf-panel";
+      panel.setAttribute("data-novaflow-editor-panel", "1");
+      panel.setAttribute("data-novaflow-source-layout", "1");
+      panel.setAttribute(PARTICLE_TEMPLATE_MANAGER_ATTR, "1");
+      panel.setAttribute("data-open", "0");
+      const header = document.createElement("div");
+      header.className = "nf-panel-header";
+      header.setAttribute("role", "button");
+      header.setAttribute("tabindex", "0");
+      header.setAttribute("aria-expanded", "false");
+      const title = document.createElement("span");
+      const icon = document.createElement("i");
+      icon.className = "fas fa-th-large";
+      icon.setAttribute("data-novaflow-keep-radius", "1");
+      title.appendChild(icon);
+      title.appendChild(document.createTextNode(" \u6a21\u677f\u7ba1\u7406"));
+      const chevron = document.createElement("i");
+      chevron.className = "fas fa-chevron-right";
+      header.appendChild(title);
+      header.appendChild(chevron);
+      const content = document.createElement("div");
+      content.className = "nf-panel-body";
+      content.setAttribute("data-novaflow-template-manager-body", "1");
+      content.style.setProperty("display", "none", "important");
+      particleTemplateManagerTargets().forEach(([label, resolve]) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.setAttribute("data-novaflow-template-manager-action", label);
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const target = resolve();
+          if (target instanceof HTMLElement) target.click();
+        });
+        content.appendChild(button);
+      });
+      const toggle = () => {
+        const open = panel.getAttribute("data-open") !== "1";
+        panel.setAttribute("data-open", open ? "1" : "0");
+        header.setAttribute("aria-expanded", open ? "true" : "false");
+        chevron.className = open ? "fas fa-chevron-down" : "fas fa-chevron-right";
+        content.style.setProperty("display", open ? "grid" : "none", "important");
+      };
+      header.addEventListener("click", toggle);
+      header.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggle(); }
+      });
+      panel.appendChild(header);
+      panel.appendChild(content);
+    }
+    if (panel.nextElementSibling !== firstPanel) root.insertBefore(panel, firstPanel);
+  }
+
+  // Template names can be changed from the library (double-click a name),
+  // as AI 特效's library allows. Only the name shown changes; it is kept in
+  // this browser, and the template itself is left as it is.
+  const PARTICLE_TEMPLATE_NAMES_KEY = "novaflow.particleTemplateNames.v1";
+
+  function readParticleTemplateNames() {
+    try { return JSON.parse(window.localStorage.getItem(PARTICLE_TEMPLATE_NAMES_KEY) || "{}") || {}; } catch (_) { return {}; }
+  }
+
+  function writeParticleTemplateNames(names) {
+    try { window.localStorage.setItem(PARTICLE_TEMPLATE_NAMES_KEY, JSON.stringify(names)); } catch (_) { void 0; }
+  }
+
+  function applyParticleTemplateName(label) {
+    if (!(label instanceof HTMLElement)) return;
+    const text = normalizeText(label.textContent || "");
+    let original = label.getAttribute("data-novaflow-template-name-original");
+    const shown = label.getAttribute("data-novaflow-template-name-shown");
+    // The editor changed the label itself (another template in this slot).
+    if (!original || (text !== shown && text !== original)) original = text;
+    nfSetAttrIfChanged(label, "data-novaflow-template-name-original", original);
+    nfSetAttrIfChanged(label, "title", "\u53cc\u51fb\u6539\u540d");
+    const wanted = readParticleTemplateNames()[original] || original;
+    nfSetAttrIfChanged(label, "data-novaflow-template-name-shown", wanted);
+    if (text !== wanted && !label.querySelector("input")) {
+      const node = Array.from(label.childNodes).find((child) => child.nodeType === Node.TEXT_NODE);
+      if (node) node.nodeValue = wanted;
+    }
+  }
+
+  // A click on a template's name does not load it: the name is for
+  // renaming (double-click); the picture loads it.
+  document.addEventListener("click", (event) => {
+    const label = event.target instanceof Element ? event.target.closest('[data-novaflow-template-popup-layer="1"] [data-novaflow-template-card="1"] [data-novaflow-template-label]') : null;
+    if (label) event.stopPropagation();
+  }, true);
+
+  document.addEventListener("dblclick", (event) => {
+    const label = event.target instanceof Element ? event.target.closest('[data-novaflow-template-popup-layer="1"] [data-novaflow-template-card="1"] [data-novaflow-template-label]') : null;
+    if (!(label instanceof HTMLElement) || label.querySelector("input")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const original = label.getAttribute("data-novaflow-template-name-original") || normalizeText(label.textContent || "");
+    const input = document.createElement("input");
+    input.className = "novaflow-template-rename";
+    input.value = readParticleTemplateNames()[original] || original;
+    const textNode = Array.from(label.childNodes).find((child) => child.nodeType === Node.TEXT_NODE);
+    if (textNode) textNode.nodeValue = "";
+    label.appendChild(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (save) => {
+      if (done) return;
+      done = true;
+      const names = readParticleTemplateNames();
+      const next = normalizeText(input.value || "");
+      if (save) {
+        if (next && next !== original) names[original] = next;
+        else delete names[original];
+        writeParticleTemplateNames(names);
+      }
+      input.remove();
+      if (textNode) textNode.nodeValue = names[original] || original;
+      label.setAttribute("data-novaflow-template-name-shown", names[original] || original);
+    };
+    input.addEventListener("keydown", (keyEvent) => {
+      keyEvent.stopPropagation();
+      if (keyEvent.key === "Enter") finish(true);
+      if (keyEvent.key === "Escape") finish(false);
+    });
+    input.addEventListener("click", (clickEvent) => clickEvent.stopPropagation());
+    input.addEventListener("blur", () => finish(true));
+  }, true);
+
   // An AI switch's state: its own on/off mark first (kept current by the
   // runtime), aria-pressed only when there is none.
   function novaflowAiToggleOn(toggle) {
@@ -35131,6 +35452,7 @@
 
   function applyNovaflowReferenceSpecPass(root, body) {
     installNovaflowReferenceSpecObserver();
+    try { syncParticleTemplateManager(); } catch (_) { void 0; }
     syncNovaflowStackAdoption();
     NOVAFLOW_STACK_WORKSPACE_TOP = NOVAFLOW_LAYOUT_TIER === "stack"
       ? TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP + novaflowStackSidebarHeight() + NOVAFLOW_STACK_GAP
