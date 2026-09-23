@@ -627,3 +627,39 @@
 .novaflow-app {
   min-width: 0 !important;
 }
+
+/* 2.0h The stacked tier (<= 720): one scrolling column.
+   The app root becomes the containing block of its fixed blocks (transform),
+   and is as tall as the stacked content, so the document scrolls them. */
+html[data-novaflow-layout-tier="stack"],
+html[data-novaflow-layout-tier="stack"] body {
+  height: auto !important;
+  min-height: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
+html[data-novaflow-layout-tier="stack"] #root {
+  height: auto !important;
+}
+html[data-novaflow-layout-tier="stack"] .novaflow-app {
+  /* flow-root keeps .nf-app-body's 54 top margin inside, which overflow:hidden
+     used to do; without it the margin collapses through and drops the page. */
+  display: flow-root !important;
+  transform: translateZ(0) !important;
+  height: var(--nf-stack-doc-height, 100vh) !important;
+  min-height: 100vh !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+html[data-novaflow-layout-tier="stack"] .novaflow-app .nf-app-body {
+  height: calc(var(--nf-stack-doc-height, 100vh) - 54px) !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+/* The topbar keeps the brand and the account; the status line goes, and the
+   mark is 146 wide. */
+html[data-novaflow-layout-tier="stack"] .nf-topbar .nf-status,
+html[data-novaflow-layout-tier="stack"] [data-novaflow-topbar-status],
+html[data-novaflow-layout-tier="stack"] [data-novaflow-ai-connection-status] {
+  display: none !important;
+}

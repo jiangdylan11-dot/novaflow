@@ -2724,7 +2724,10 @@
     const right = withResources
       ? viewportWidth - AI_ANIMATION_RESOURCE_SIDEBAR_SPAN - WORKSPACE_SIDE_GAP
       : viewportWidth - WORKSPACE_SIDE_GAP;
-    return { left, right, width: Math.max(0, right - left), top: TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP };
+    const top = NOVAFLOW_LAYOUT_TIER === "stack" && NOVAFLOW_STACK_WORKSPACE_TOP
+      ? NOVAFLOW_STACK_WORKSPACE_TOP
+      : TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP;
+    return { left, right, width: Math.max(0, right - left), top };
   }
 
   // The reference's canvas bar is one flex row: the plate on the left, the
@@ -2768,9 +2771,23 @@
     return "wide";
   }
 
-  function assignNovaflowLayoutMetrics(tier) {
-    const m = NOVAFLOW_LAYOUT_TIERS[tier] || NOVAFLOW_LAYOUT_TIERS.wide;
+  // The stacked tier's left column takes the window's width less the rail
+  // and gutters (8 + 48 + 8 on the left, 8 on the right).
+  const NOVAFLOW_STACK_SIDE_INSET = 72;
+  const NOVAFLOW_STACK_SIDEBAR_MAX_HEIGHT = 320;
+  let NOVAFLOW_LAYOUT_WIDTH = 0;
+  // Where the stacked workspace starts: under the left column. Set by each
+  // spec pass, before its entries run.
+  let NOVAFLOW_STACK_WORKSPACE_TOP = 0;
+
+  function assignNovaflowLayoutMetrics(tier, width = window.innerWidth) {
+    const base = NOVAFLOW_LAYOUT_TIERS[tier] || NOVAFLOW_LAYOUT_TIERS.wide;
+    const viewportWidth = Math.max(0, Math.round(Number(width) || 0));
+    const m = tier === "stack"
+      ? { ...base, panel: Math.max(160, viewportWidth - NOVAFLOW_STACK_SIDE_INSET), resources: Math.max(160, viewportWidth - NOVAFLOW_STACK_SIDE_INSET) }
+      : base;
     NOVAFLOW_LAYOUT_TIER = NOVAFLOW_LAYOUT_TIERS[tier] ? tier : "wide";
+    NOVAFLOW_LAYOUT_WIDTH = viewportWidth;
     PRIMARY_SIDEBAR_LEFT = m.sidebarLeft;
     PRIMARY_SIDEBAR_ITEM_WIDTH = m.railItem;
     WORKSPACE_SIDE_GAP = m.sideGap;
@@ -2793,6 +2810,13 @@
     NOVAFLOW_TOOLS_PRIMARY_COLUMN_WIDTH = PRIMARY_COLUMN_WIDTH;
     AI_ANIMATION_RESOURCE_SIDEBAR_INSET = WORKSPACE_SIDE_GAP;
     AI_ANIMATION_RESOURCE_SIDEBAR_SPAN = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + AI_ANIMATION_RESOURCE_SIDEBAR_INSET;
+    if (NOVAFLOW_LAYOUT_TIER === "stack") {
+      // One column: the workspace starts at the rail's gutter, not after the
+      // left column, and the resources sit under it rather than beside it.
+      PRIMARY_COLUMN_WIDTH = PRIMARY_CONTENT_LEFT;
+      NOVAFLOW_TOOLS_PRIMARY_COLUMN_WIDTH = PRIMARY_COLUMN_WIDTH;
+      AI_ANIMATION_RESOURCE_SIDEBAR_SPAN = 0;
+    }
     return NOVAFLOW_LAYOUT_TIER;
   }
   const AI_ANIMATION_PREVIEW_UI_GAP = 10;
@@ -9910,9 +9934,15 @@
   function refreshNovaflowLayoutTier() {
     const next = novaflowLayoutTierForWidth(window.innerWidth);
     syncNovaflowLayoutTierAttribute();
-    if (next === NOVAFLOW_LAYOUT_TIER) return false;
-    assignNovaflowLayoutMetrics(next);
+    const width = Math.round(window.innerWidth || 0);
+    if (next === NOVAFLOW_LAYOUT_TIER && !(next === "stack" && width !== NOVAFLOW_LAYOUT_WIDTH)) return false;
+    assignNovaflowLayoutMetrics(next, width);
     syncNovaflowLayoutTierAttribute();
+    // A stacked width change rebuilds the sheets too, so drop their tier tag.
+    [PRE_BRAND_STYLE_ID, STYLE_ID].forEach((id) => {
+      const sheet = document.getElementById(id);
+      if (sheet) sheet.removeAttribute("data-novaflow-layout-tier");
+    });
     installPreBrandStyle();
     ensureStyle();
     try { scheduleFullLayoutRefresh(); } catch (_) {}
@@ -21577,7 +21607,9 @@
       }
       [data-novaflow-primary-output-entry="1"]::after,
       [data-novaflow-primary-export-entry="1"]::after {
-        content: attr(data-novaflow-primary-label);
+        /* !important: inside the stacked app root, the global hover sheet's
+           (0,4,1) ::after rule would otherwise blank the label. */
+        content: attr(data-novaflow-primary-label) !important;
         display: block !important;
         font-size: 11px !important;
         font-weight: ${NOVAFLOW_MEDIUM_FONT_WEIGHT} !important;
@@ -29341,12 +29373,12 @@
     const buttons = PRIMARY_ENTRY_LABELS.map((label) => findPrimaryEntryButton(label));
     const primaryReady = buttons.every((button) => (
       button instanceof HTMLElement &&
-      isStartupReadyRect(button, 40, 40)
+      isStartupReadyRect(button, Math.min(40, PRIMARY_SIDEBAR_ITEM_WIDTH - 1), 40)
     ));
     return Boolean(
       topbar instanceof HTMLElement &&
       primaryColumn instanceof HTMLElement &&
-      isStartupReadyRect(topbar, 400, 40) &&
+      isStartupReadyRect(topbar, Math.min(400, (window.innerWidth || 400) - 20), 40) &&
       isStartupReadyRect(primaryColumn, PRIMARY_SIDEBAR_WIDTH - 1, 300) &&
       primaryReady
     );
@@ -32459,6 +32491,227 @@
     window.addEventListener("resize", scheduleNovaflowReferenceSpec, { passive: true });
   }
 
+  // The stacked tier (<= 720) scrolls the page, as the reference does. Its
+  // blocks are position:fixed, which does not scroll; giving the app root a
+  // transform makes it their containing block, so they scroll with the
+  // document while modals and menus hung off <body> stay on the viewport.
+  // The runtime's own chrome that hangs off <body> moves in with them.
+  const NOVAFLOW_STACK_ADOPTED_IDS = [
+    PRIMARY_RAIL_SURFACE_ID,
+    PRIMARY_LEFT_SURFACE_ID,
+    "novaflow-primary-output-shortcut-cell",
+    "novaflow-primary-export-shortcut-cell",
+    "novaflow-primary-output-shortcut-divider",
+    "novaflow-particle-project-top-actions",
+    "novaflow-spine-split-workspace-overlay",
+    "novaflow-spine-split-right-workspace-host"
+  ];
+  let NOVAFLOW_STACK_DOC_HEIGHT = 0;
+
+  function syncNovaflowStackAdoption() {
+    const app = document.querySelector(".novaflow-app");
+    if (!(app instanceof HTMLElement) || !document.body) return;
+    const stacked = NOVAFLOW_LAYOUT_TIER === "stack";
+    NOVAFLOW_STACK_ADOPTED_IDS.forEach((id) => {
+      const node = document.getElementById(id);
+      if (!(node instanceof HTMLElement)) return;
+      if (stacked && node.parentElement === document.body) app.appendChild(node);
+      else if (!stacked && node.parentElement === app) document.body.appendChild(node);
+    });
+  }
+
+  // How tall the stacked left column is: its content, up to 320.
+  function novaflowStackSidebarHeight() {
+    const top = TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP;
+    let bottom = top + 62;
+    // The lowest visible child of the left content (or the tool list), in
+    // unscrolled terms: the list's own scroll must not shrink it.
+    const scope = document.querySelector('[data-novaflow-left-content-root="1"]')
+      || document.querySelector('[data-novaflow-left-content-shell="1"]');
+    if (scope instanceof HTMLElement) {
+      const scopeTop = scope.getBoundingClientRect().top;
+      Array.from(scope.children).forEach((child) => {
+        if (!(child instanceof HTMLElement)) return;
+        const rect = child.getBoundingClientRect();
+        if (rect.height <= 0) return;
+        const childBottom = top + (rect.bottom - scopeTop) + scope.scrollTop + (scopeTop + window.scrollY - top);
+        bottom = Math.max(bottom, childBottom);
+      });
+      bottom += 11;
+    }
+    return Math.min(NOVAFLOW_STACK_SIDEBAR_MAX_HEIGHT, Math.max(120, Math.round(bottom - top)));
+  }
+
+  function syncNovaflowStackDocumentHeight(contentBottom) {
+    const height = Math.max(Math.round(window.innerHeight || 0), Math.round(contentBottom + PRIMARY_PANEL_BOTTOM_GAP));
+    if (height === NOVAFLOW_STACK_DOC_HEIGHT) return;
+    NOVAFLOW_STACK_DOC_HEIGHT = height;
+    document.documentElement.style.setProperty("--nf-stack-doc-height", `${height}px`);
+  }
+
+  // Stacked placement. Every property written here is remembered on the node
+  // so that widening the window past 720 hands the node back untouched.
+  const NOVAFLOW_STACK_PROPS_ATTR = "data-novaflow-stack-props";
+  const NOVAFLOW_STACK_STAGE_MIN_HEIGHT = 350;
+  const NOVAFLOW_STACK_CENTER_MIN_HEIGHT = 600;
+  const NOVAFLOW_STACK_RESOURCES_HEIGHT = 140;
+  const NOVAFLOW_STACK_GAP = 8;
+  const NOVAFLOW_STACK_DOCK_GAP = 9;
+
+  // What each placed property held before the stacked tier took it, so the
+  // wider tiers get their own writers' values back rather than nothing.
+  const NOVAFLOW_STACK_ORIGINALS = new WeakMap();
+
+  function restoreNovaflowStackProperty(node, name) {
+    const originals = NOVAFLOW_STACK_ORIGINALS.get(node);
+    const saved = originals && originals[name];
+    if (saved && saved[0]) node.style.setProperty(name, saved[0], saved[1]);
+    else node.style.removeProperty(name);
+    if (originals) delete originals[name];
+  }
+
+  function placeNovaflowStackNode(node, styles) {
+    if (!(node instanceof HTMLElement)) return;
+    const previous = (node.getAttribute(NOVAFLOW_STACK_PROPS_ATTR) || "").split(",").filter(Boolean);
+    const names = Object.keys(styles);
+    previous.forEach((name) => {
+      if (!names.includes(name)) restoreNovaflowStackProperty(node, name);
+    });
+    let originals = NOVAFLOW_STACK_ORIGINALS.get(node);
+    if (!originals) {
+      originals = {};
+      NOVAFLOW_STACK_ORIGINALS.set(node, originals);
+    }
+    names.forEach((name) => {
+      if (!(name in originals)) originals[name] = [node.style.getPropertyValue(name), node.style.getPropertyPriority(name)];
+      nfSetStyleIfChanged(node, name, styles[name], "important");
+    });
+    nfSetAttrIfChanged(node, NOVAFLOW_STACK_PROPS_ATTR, names.join(","));
+  }
+
+  function releaseNovaflowStackNodes() {
+    Array.from(document.querySelectorAll(`[${NOVAFLOW_STACK_PROPS_ATTR}]`)).forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      (node.getAttribute(NOVAFLOW_STACK_PROPS_ATTR) || "").split(",").filter(Boolean).forEach((name) => restoreNovaflowStackProperty(node, name));
+      node.removeAttribute(NOVAFLOW_STACK_PROPS_ATTR);
+    });
+    if (NOVAFLOW_STACK_DOC_HEIGHT) {
+      NOVAFLOW_STACK_DOC_HEIGHT = 0;
+      document.documentElement.style.removeProperty("--nf-stack-doc-height");
+    }
+  }
+
+  function firstVisible(selector) {
+    return Array.from(document.querySelectorAll(selector)).find((node) => {
+      if (!(node instanceof HTMLElement)) return false;
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    }) || null;
+  }
+
+  // Page offsets: the document's, since the stacked blocks scroll with it.
+  function novaflowDocRect(node) {
+    const rect = node.getBoundingClientRect();
+    return { top: rect.top + window.scrollY, bottom: rect.bottom + window.scrollY, height: rect.height, left: rect.left, width: rect.width };
+  }
+
+  function applyNovaflowStackLayout() {
+    if (NOVAFLOW_LAYOUT_TIER !== "stack") {
+      releaseNovaflowStackNodes();
+      return;
+    }
+    const body = document.body;
+    if (!(body instanceof HTMLElement)) return;
+    const viewportWidth = Math.round(window.innerWidth || 0);
+    const columnLeft = PRIMARY_CONTENT_LEFT;
+    const columnWidth = Math.max(160, viewportWidth - columnLeft - NOVAFLOW_STACK_GAP);
+    const top = TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP;
+    const sideHeight = novaflowStackSidebarHeight();
+    const workspaceTop = top + sideHeight + NOVAFLOW_STACK_GAP;
+    let contentBottom = top + sideHeight;
+
+    // The left column: its surface, and a content list that scrolls inside it.
+    placeNovaflowStackNode(document.getElementById(PRIMARY_LEFT_SURFACE_ID), {
+      top: `${top}px`, bottom: "auto", left: `${columnLeft}px`, width: `${columnWidth}px`,
+      height: `${sideHeight}px`, "min-height": "0", "max-height": `${sideHeight}px`
+    });
+    const listTop = top + 65;
+    const listHeight = Math.max(60, sideHeight - 65 - 11);
+    [firstVisible('[data-novaflow-left-content-shell="1"]'), firstVisible('[data-novaflow-left-content-root="1"]')].forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      const nodeTop = Math.round(node.getBoundingClientRect().top + window.scrollY);
+      const ownTop = nodeTop < listTop - 20 ? nodeTop : listTop;
+      const ownHeight = Math.max(60, top + sideHeight - 11 - ownTop);
+      const ownLeft = Math.round(node.getBoundingClientRect().left);
+      const ownWidth = Math.max(120, columnLeft + columnWidth - ownLeft - (ownLeft > columnLeft + 2 ? 10 : 0));
+      placeNovaflowStackNode(node, {
+        bottom: "auto", height: `${ownHeight}px`, "max-height": `${ownHeight}px`, "min-height": "0",
+        width: `${ownWidth}px`, "min-width": "0", "max-width": `${ownWidth}px`
+      });
+    });
+
+    if (body.classList.contains("novaflow-ai-animation-section-layers")) {
+      // 动画 / AI 序列动画: stage, then the dock, then the resources.
+      const workspace = firstVisible('[data-novaflow-ai-main-workspace="1"]');
+      placeNovaflowStackNode(workspace, {
+        top: `${workspaceTop - top}px`, height: `${NOVAFLOW_STACK_STAGE_MIN_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_STACK_STAGE_MIN_HEIGHT}px`, "max-height": `${NOVAFLOW_STACK_STAGE_MIN_HEIGHT}px`,
+        flex: "0 0 auto", width: `${columnWidth}px`, "min-width": `${columnWidth}px`, "max-width": `${columnWidth}px`
+      });
+      const dockTop = workspaceTop + NOVAFLOW_STACK_STAGE_MIN_HEIGHT + NOVAFLOW_STACK_DOCK_GAP;
+      const dock = firstVisible('[data-novaflow-ai-bottom-workspace="1"]');
+      placeNovaflowStackNode(dock, {
+        top: `${dockTop}px`, bottom: "auto", left: `${columnLeft}px`, right: "auto",
+        width: `${columnWidth}px`, "max-width": `${columnWidth}px`, height: "auto", "max-height": "none"
+      });
+      const dockBottom = dock instanceof HTMLElement ? novaflowDocRect(dock).bottom : dockTop;
+      const resources = firstVisible('[data-novaflow-ai-resource-sidebar-host="1"]');
+      const resourcesTop = Math.round(dockBottom + NOVAFLOW_STACK_GAP);
+      placeNovaflowStackNode(resources, {
+        top: `${resourcesTop}px`, bottom: "auto", left: `${columnLeft}px`, right: "auto",
+        width: `${columnWidth}px`, "min-width": `${columnWidth}px`, "max-width": `${columnWidth}px`,
+        height: `${NOVAFLOW_STACK_RESOURCES_HEIGHT}px`, "min-height": "0", "max-height": `${NOVAFLOW_STACK_RESOURCES_HEIGHT}px`
+      });
+      contentBottom = resourcesTop + NOVAFLOW_STACK_RESOURCES_HEIGHT;
+    } else if (body.classList.contains("novaflow-primary-target-particle")) {
+      // 特效: the stage and its dock are one block, 600 tall at the least.
+      const workspace = firstVisible('[data-novaflow-preview-workspace="1"]');
+      placeNovaflowStackNode(workspace, {
+        top: `${workspaceTop - top}px`, height: `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT}px`, "max-height": `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT}px`,
+        flex: "0 0 auto", width: `${columnWidth}px`, "min-width": `${columnWidth}px`, "max-width": `${columnWidth}px`
+      });
+      placeNovaflowStackNode(document.getElementById("novaflow-particle-project-top-actions"), {
+        top: `${workspaceTop + CANVAS_BAR_ROW_TOP}px`, left: `${columnLeft}px`
+      });
+      contentBottom = workspaceTop + NOVAFLOW_STACK_CENTER_MIN_HEIGHT;
+    } else if (body.classList.contains("novaflow-primary-target-art")) {
+      // 美工: the drawing stage, then the resources panel under it.
+      const overlay = document.getElementById("novaflow-spine-split-workspace-overlay");
+      const host = document.getElementById("novaflow-spine-split-right-workspace-host");
+      const uiShell = firstVisible('[data-novaflow-ui-design-shell="1"]');
+      if (overlay instanceof HTMLElement && overlay.getBoundingClientRect().width > 0) {
+        placeNovaflowStackNode(overlay, {
+          top: `${workspaceTop}px`, bottom: "auto", left: `${columnLeft}px`, right: "auto",
+          width: `${columnWidth}px`, height: `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT}px`
+        });
+        const resourcesTop = workspaceTop + NOVAFLOW_STACK_CENTER_MIN_HEIGHT + NOVAFLOW_STACK_GAP;
+        placeNovaflowStackNode(host, {
+          top: `${resourcesTop}px`, bottom: "auto", left: `${columnLeft}px`, right: "auto",
+          width: `${columnWidth}px`, "min-width": `${columnWidth}px`, "max-width": `${columnWidth}px`,
+          height: `${NOVAFLOW_STACK_RESOURCES_HEIGHT}px`, "max-height": `${NOVAFLOW_STACK_RESOURCES_HEIGHT}px`, padding: "0"
+        });
+        contentBottom = resourcesTop + NOVAFLOW_STACK_RESOURCES_HEIGHT;
+      } else if (uiShell instanceof HTMLElement) {
+        contentBottom = Math.max(contentBottom, novaflowDocRect(uiShell).bottom);
+      }
+    }
+    syncNovaflowStackDocumentHeight(contentBottom);
+    placeNovaflowStackNode(document.getElementById(PRIMARY_RAIL_SURFACE_ID), {
+      top: `${top}px`, bottom: "auto", height: `${Math.max(sideHeight, NOVAFLOW_STACK_DOC_HEIGHT - top - PRIMARY_PANEL_BOTTOM_GAP)}px`
+    });
+  }
+
   function applyNovaflowReferenceSpec() {
     // Always the whole document. The rhythm pass is often called with a
     // narrow scope, and a page-level spec queried from inside that scope
@@ -32468,6 +32721,10 @@
     const body = document.body;
     if (!(body instanceof HTMLElement)) return;
     installNovaflowReferenceSpecObserver();
+    syncNovaflowStackAdoption();
+    NOVAFLOW_STACK_WORKSPACE_TOP = NOVAFLOW_LAYOUT_TIER === "stack"
+      ? TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP + novaflowStackSidebarHeight() + NOVAFLOW_STACK_GAP
+      : 0;
     novaflowReferenceSpec().forEach((entry) => {
       if (entry.when && !body.matches(entry.when)) return;
       let nodes;
@@ -32485,6 +32742,7 @@
         }
       });
     });
+    applyNovaflowStackLayout();
   }
 
   function normalizeNovaflowVisualRhythm(scope = document) {
@@ -78824,19 +79082,22 @@
     const primaryButtons = PRIMARY_ENTRY_DISPLAY_LABELS.map((label) => findPrimaryEntryButton(label));
     const primaryTargetClass = getStartupPrimaryTargetClass();
     const ageMs = nowMs() - STARTUP_APP_READY_STARTED_AT;
+    // The floors follow the layout tier: a stacked window is narrower than
+    // 600 and its left column is only the rail's 64.
+    const viewportWidth = window.innerWidth || 1280;
     const shellReady =
       app instanceof HTMLElement &&
-      isStartupReadyRect(appBody, 600, 360) &&
-      isStartupReadyRect(topbar, 600, 40) &&
-      isStartupReadyRect(primaryColumn, 80, 300) &&
-      isStartupReadyRect(workspaceColumn, 300, 300);
+      isStartupReadyRect(appBody, Math.min(600, viewportWidth - 20), 360) &&
+      isStartupReadyRect(topbar, Math.min(600, viewportWidth - 20), 40) &&
+      isStartupReadyRect(primaryColumn, Math.min(80, PRIMARY_COLUMN_WIDTH - 8), 300) &&
+      isStartupReadyRect(workspaceColumn, Math.min(300, viewportWidth - 120), 300);
     const leftReady =
       leftScroll instanceof HTMLElement &&
       leftContentRoot instanceof HTMLElement &&
       isStartupReadyRect(leftScroll, 180, 240);
     const primaryReady = primaryButtons.every((button) => (
       button instanceof HTMLElement &&
-      isStartupReadyRect(button, 40, 40)
+      isStartupReadyRect(button, Math.min(40, PRIMARY_SIDEBAR_ITEM_WIDTH - 1), 40)
     ));
     const ready = Boolean(
       ageMs >= 900 &&
