@@ -13699,7 +13699,7 @@
         setImportantStyleIfChanged(header, 'max-height', SPLIT_LEFT_PANEL_ACCORDION_TOKENS.headerHeight)
         setImportantStyleIfChanged(header, 'padding', SPLIT_LEFT_PANEL_ACCORDION_TOKENS.headerPadding)
         setImportantStyleIfChanged(header, 'border', '0')
-        setImportantStyleIfChanged(header, 'border-radius', open ? `${SPLIT_LEFT_PANEL_ACCORDION_TOKENS.radius} ${SPLIT_LEFT_PANEL_ACCORDION_TOKENS.radius} 0 0` : SPLIT_LEFT_PANEL_ACCORDION_TOKENS.radius)
+        setImportantStyleIfChanged(header, 'border-radius', '6px') // the cards' header radius, open or not: a square one made its hover fill a hard rectangle
         setImportantStyleIfChanged(header, 'background', SPLIT_LEFT_PANEL_ACCORDION_TOKENS.headerBackground)
         setImportantStyleIfChanged(header, 'background-color', SPLIT_LEFT_PANEL_ACCORDION_TOKENS.headerBackground)
         setImportantStyleIfChanged(header, 'box-shadow', 'none')

@@ -32826,10 +32826,11 @@
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
+        // 暂无内容 is centred by the theme sheet (3.0j), which lets go the
+        // moment a card lands; written inline it stayed a frame on the first
+        // upload and drew that card big in the middle.
         selector: '[data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:only-child',
-        style: (node) => (normalizeText(node.textContent || "") === "暂无内容"
-          ? { position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: "90%", height: "auto", "text-align": "center", "justify-content": "center" }
-          : null)
+        style: () => null
       },
       {
         // The background dots: three bare 16 swatches, 6 apart, 37 above the
@@ -33775,8 +33776,8 @@
         selector: '[data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div',
         style: (node) => (node.querySelector('[data-novaflow-ai-resource-card="1"]') ? {
           position: "static", top: "auto", left: "auto", right: "auto", bottom: "auto", transform: "none",
-          width: "100%", "max-width": "100%", "box-sizing": "border-box", padding: "10px", display: "grid",
-          "grid-template-columns": "repeat(2, minmax(0, 1fr))", gap: "8px", "align-content": "start", height: "auto"
+          width: "100%", "max-width": "100%", "box-sizing": "border-box", padding: "8px", display: "grid",
+          "grid-template-columns": "repeat(2, minmax(0, 1fr))", gap: "6px", "align-content": "start", height: "auto"
         } : null)
       },
       {
@@ -33787,7 +33788,7 @@
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-resource-card="1"] > div:first-child',
-        style: { width: "100%", height: "62px", "min-height": "62px", "max-height": "62px" }
+        style: { width: "100%", height: "58px", "min-height": "58px", "max-height": "58px" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
@@ -33807,7 +33808,7 @@
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-resource-card="1"] > div:nth-child(2) > div',
-        style: { width: "100%", height: "auto", "min-height": "0", padding: "5px 6px", gap: "5px", "box-sizing": "border-box" }
+        style: { width: "100%", height: "auto", "min-height": "0", padding: "4px 6px", gap: "3px", "box-sizing": "border-box" }
       },
       {
         // A loaded reference tile: the picture fills it, × sits small in its
@@ -34526,7 +34527,9 @@
         ].join(", "),
         style: (node) => {
           if (getComputedStyle(node).position !== "absolute") return null;
-          return { right: "0", left: "auto", top: "8px", height: `${CANVAS_BAR_QUIET_HEIGHT}px`, "min-height": `${CANVAS_BAR_QUIET_HEIGHT}px` };
+          // The pill's own 38 / 7 from its first pass (theme sheet 3.0k), not
+          // 36 / 8 until the autofit marker arrived a pass later.
+          return { right: "0", left: "auto", top: `${CANVAS_BAR_ROW_TOP}px`, height: `${AI_ANIMATION_CAPSULE_HEIGHT}px`, "min-height": `${AI_ANIMATION_CAPSULE_HEIGHT}px`, "max-height": `${AI_ANIMATION_CAPSULE_HEIGHT}px` };
         }
       },
       {
@@ -34703,8 +34706,8 @@
       {
         selector: '[data-novaflow-zoom-controls="1"][data-novaflow-autofit-only="1"] > [data-novaflow-autofit-percent-hidden], [data-novaflow-zoom-percent="1"]',
         style: {
-          display: "flex", "align-items": "center", "justify-content": "center", height: "28px", "min-height": "28px", width: "auto",
-          "min-width": "44px", padding: "0 6px", "font-size": "11px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, color: "#9a9a9a",
+          display: "flex", "align-items": "center", "justify-content": "center", height: "28px", "min-height": "28px", width: "44px",
+          "min-width": "44px", "max-width": "44px", padding: "0", "box-sizing": "border-box", "font-size": "11px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, color: "#9a9a9a",
           visibility: "inherit", opacity: "1", position: "static", "white-space": "nowrap", "line-height": "28px", overflow: "visible"
         }
       },
@@ -35699,6 +35702,8 @@
   function applyNovaflowReferenceSpecPass(root, body) {
     installNovaflowReferenceSpecObserver();
     try { syncParticleTemplateManager(); } catch (_) { void 0; }
+    // 美工 / UI zoom cells are put in with the pill, not a poll later.
+    try { syncNovaflowZoomPercentLabels(); } catch (_) { void 0; }
     syncNovaflowStackAdoption();
     NOVAFLOW_STACK_WORKSPACE_TOP = NOVAFLOW_LAYOUT_TIER === "stack"
       ? TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP + novaflowStackSidebarHeight() + NOVAFLOW_STACK_GAP

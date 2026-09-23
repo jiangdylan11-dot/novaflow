@@ -1215,3 +1215,120 @@ html body :is([data-novaflow-generate-icon="1"], #nf-lift)::before {
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22black%22%3E%3Cpath d=%22M11 2.5l1.8 5.2 5.2 1.8-5.2 1.8L11 16.5l-1.8-5.2L4 9.5l5.2-1.8z%22/%3E%3Cpath d=%22M18.5 14l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z%22/%3E%3C/svg%3E") center / contain no-repeat !important;
   mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22black%22%3E%3Cpath d=%22M11 2.5l1.8 5.2 5.2 1.8-5.2 1.8L11 16.5l-1.8-5.2L4 9.5l5.2-1.8z%22/%3E%3Cpath d=%22M18.5 14l.9 2.6 2.6.9-2.6.9-.9 2.6-.9-2.6-2.6-.9 2.6-.9z%22/%3E%3C/svg%3E") center / contain no-repeat !important;
 }
+
+/* 3.0j 资源列表's cards from their first frame: two columns, 8 in, 6 apart,
+   a 58 thumbnail and a tight caption. The same as the spec entries, keyed on
+   the card's shape rather than on a marker written a pass later (a new
+   upload drew one big centred card for a frame first). */
+html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> div > div:first-child :is(img, video, canvas)) {
+  position: static !important;
+  top: auto !important;
+  left: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: none !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  padding: 8px !important;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 6px !important;
+  align-content: start !important;
+  height: auto !important;
+}
+html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> div > div:first-child :is(img, video, canvas)) > div {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  box-sizing: border-box !important;
+  border-radius: 8px !important;
+  overflow: hidden !important;
+}
+html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> div > div:first-child :is(img, video, canvas)) > div > div:first-child {
+  width: 100% !important;
+  height: 58px !important;
+  min-height: 58px !important;
+  max-height: 58px !important;
+}
+html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:only-child:not(:has([data-novaflow-ai-resource-id])) {
+  position: absolute !important;
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  width: 90% !important;
+  height: auto !important;
+  text-align: center !important;
+  justify-content: center !important;
+}
+html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> div > div:first-child :is(img, video, canvas)) > div > div:nth-child(2) {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+}
+html body [data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:has(> div > div:first-child :is(img, video, canvas)) > div > div:nth-child(2) > div {
+  width: 100% !important;
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 4px 6px !important;
+  gap: 3px !important;
+  box-sizing: border-box !important;
+}
+
+/* 3.0k 自动适配's pill, one size on every page and from the first frame
+   (the bundle drew it 130x34 until the spec's pass): 38 tall, the zoom in a
+   44 cell, the button 28 tall. */
+html body :is([data-novaflow-zoom-controls="1"], #novaflow-spine-split-zoom-hud, #novaflow-ui-fit-pill):not(button) {
+  height: 38px !important;
+  min-height: 38px !important;
+  max-height: 38px !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding: 4px !important;
+  gap: 3px !important;
+  box-sizing: border-box !important;
+  display: flex !important;
+  align-items: center !important;
+  background: #161616 !important;
+  background-color: #161616 !important;
+  border: 1px solid #333333 !important;
+  border-radius: 9px !important;
+  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.133) !important;
+  transition: none !important;
+}
+html body #novaflow-spine-split-zoom-hud {
+  min-width: 123px !important;
+  justify-content: flex-end !important;
+}
+html body :is([data-novaflow-zoom-controls="1"], #novaflow-spine-split-zoom-hud, #novaflow-ui-fit-pill) > :is(div:not([role]):not(button), span[data-novaflow-zoom-percent="1"]) {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 44px !important;
+  min-width: 44px !important;
+  max-width: 44px !important;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+  font-size: 11px !important;
+  line-height: 28px !important;
+  color: #9a9a9a !important;
+  visibility: inherit !important;
+  opacity: 1 !important;
+}
+html body :is([data-novaflow-zoom-controls="1"], #novaflow-spine-split-zoom-hud) > button {
+  height: 28px !important;
+  min-height: 28px !important;
+  max-height: 28px !important;
+  padding: 4px 10px !important;
+  border-radius: 5px !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+  box-sizing: border-box !important;
+}

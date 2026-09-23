@@ -176,7 +176,8 @@
     section?.setAttribute?.(PANEL_ATTR, '1')
     section?.setAttribute?.('data-open', open ? '1' : '0')
     header?.setAttribute?.('aria-expanded', open ? 'true' : 'false')
-    if (header?.style) header.style.borderRadius = open ? `${TOKENS.radius} ${TOKENS.radius} 0 0` : TOKENS.radius
+    // The header keeps the cards' 6px radius (the runtime's): squaring it
+    // here on each toggle made its hover fill a hard rectangle.
     setImportantStyle(body, 'display', open ? 'grid' : 'none')
     setImportantStyle(body, 'gap', TOKENS.bodyGap)
     setImportantStyle(body, 'row-gap', TOKENS.bodyGap)
