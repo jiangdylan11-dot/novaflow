@@ -161,17 +161,23 @@ function isStoredTensor(value, tensorDataBytes) {
     && offsets[1] - offsets[0] === elementCount * bytesPerElement;
 }
 
-// ComfyUI's key map for MiniMax H3 (comfy/lora.py: the generic lora_unet_ / bare names and the H3
-// branch's diffusion_model. names): every 2-D weight of the model under three names. H3 has no
-// transformer. or lycoris_ names. A name that two weights would share is dropped.
+// ComfyUI's key map for MiniMax H3: every 2-D weight of the model under diffusion_model.<name> and
+// lora_unet_<name with _>. H3 runs on its own engine (AI-Runtime-H3, ComfyUI 0.31.1), whose lora.py
+// has no H3 branch for bare names (0.37 added one), and neither version maps transformer. or
+// lycoris_ names. A model file with a diffusion_model. prefix contributes only those weights; a name
+// two weights would share is dropped.
 function h3Targets(baseHeader) {
   const targets = new Map();
   const ambiguous = new Set();
-  for (const [key, value] of Object.entries(baseHeader || {})) {
-    if (key === "__metadata__" || !key.endsWith(".weight") || !Array.isArray(value?.shape) || value.shape.length !== 2) continue;
+  const keys = Object.keys(baseHeader || {}).filter((key) => key !== "__metadata__");
+  const prefixed = keys.some((key) => /^(?:model\.)?diffusion_model\./.test(key));
+  for (const key of keys) {
+    const value = baseHeader[key];
+    if (!key.endsWith(".weight") || !Array.isArray(value?.shape) || value.shape.length !== 2) continue;
+    if (prefixed && !/^(?:model\.)?diffusion_model\./.test(key)) continue;
     const name = key.replace(/^(?:model\.)?diffusion_model\./, "").slice(0, -".weight".length);
     const target = { name, shape: value.shape };
-    for (const alias of [name, `diffusion_model.${name}`, `lora_unet_${name.replace(/\./g, "_")}`]) {
+    for (const alias of [`diffusion_model.${name}`, `lora_unet_${name.replace(/\./g, "_")}`]) {
       if (targets.has(alias) && targets.get(alias).name !== name) ambiguous.add(alias);
       targets.set(alias, target);
     }
@@ -185,9 +191,25 @@ function h3Targets(baseHeader) {
 // weight is hit twice (the later would silently replace the earlier), and the file holds nothing
 // else (DoRA scales, LoKr / LoHa parts, text-encoder keys). Which modules it trains is up to it: an
 // attention-only LoRA, or one that also trains adaln_proj or condition_proj, is fine.
+// The file as ComfyUI's loaders read it: when DynamicVRAM is off it falls back to safetensors'
+// safe_open, which refuses gaps, overlaps or trailing bytes in the data and non-string metadata.
+function isWholeSafetensors(header, entries, tensorDataBytes) {
+  const metadata = header?.__metadata__;
+  if (metadata !== undefined && (!metadata || typeof metadata !== "object" || Array.isArray(metadata)
+    || !Object.values(metadata).every((value) => typeof value === "string"))) return false;
+  if (!entries.every(([, value]) => isStoredTensor(value, tensorDataBytes))) return false;
+  const spans = entries.map(([, value]) => value.data_offsets).sort((left, right) => left[0] - right[0] || left[1] - right[1]);
+  let end = 0;
+  for (const [start, stop] of spans) {
+    if (start !== end) return false;
+    end = stop;
+  }
+  return end === tensorDataBytes;
+}
+
 function h3LoraFits(header, tensorDataBytes, targets) {
   const entries = Object.entries(header || {}).filter(([name]) => name !== "__metadata__");
-  if (!entries.length || !entries.every(([, value]) => isStoredTensor(value, tensorDataBytes))) return false;
+  if (!entries.length || !isWholeSafetensors(header, entries, tensorDataBytes)) return false;
   const consumed = new Set();
   const hit = new Set();
   let pairs = 0;
@@ -207,9 +229,10 @@ function h3LoraFits(header, tensorDataBytes, targets) {
     hit.add(target.name);
     consumed.add(name);
     consumed.add(upName);
+    // One value, in a dtype the H3 engine's loader reads (its DynamicVRAM table has no F8_E8M0).
     const alpha = header[`${prefix}.alpha`];
     if (alpha) {
-      if (alpha.shape.reduce((product, part) => product * part, 1) !== 1) return false;
+      if (alpha.shape.reduce((product, part) => product * part, 1) !== 1 || !LORA_DTYPES.has(String(alpha.dtype).toUpperCase())) return false;
       consumed.add(`${prefix}.alpha`);
     }
     pairs += 1;

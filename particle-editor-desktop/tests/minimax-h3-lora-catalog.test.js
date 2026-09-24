@@ -389,7 +389,8 @@ test("lists LoRAs that also train condition_proj or AdaLN, and attention-only on
 test("hides names ComfyUI does not map for H3, a weight hit twice, DoRA scales and an AdaLN LoRA for another time basis", async (t) => {
   const fixture = createFixture(t);
   const files = {
-    // ComfyUI's H3 key map has no transformer. or lycoris_ names: these would never load.
+    // The H3 engine (ComfyUI 0.31.1) maps neither bare, transformer. nor lycoris_ names.
+    "bare.safetensors": pairTensors("blocks.3.attn.qkv_proj", 5376, 21504),
     "transformer-prefix.safetensors": pairTensors("transformer.blocks.3.attn.qkv_proj", 5376, 21504),
     "lycoris-prefix.safetensors": pairTensors("lycoris_blocks_3_attn_qkv_proj", 5376, 21504, { style: "updown" }),
     // Two spellings of one weight: the later would silently replace the earlier.
@@ -407,11 +408,23 @@ test("hides names ComfyUI does not map for H3, a weight hit twice, DoRA scales a
     "transposed.safetensors": pairTensors("diffusion_model.blocks.3.attn.out_proj", 5376, 7168),
     // A 1-D norm weight is not a LoRA target.
     "norm.safetensors": pairTensors("diffusion_model.blocks.0.attn.norm_q", 128, 1),
+    // An alpha the engine's loader cannot read.
+    "alpha-e8m0.safetensors": {
+      ...pairTensors("diffusion_model.blocks.3.attn.qkv_proj", 5376, 21504),
+      "diffusion_model.blocks.3.attn.qkv_proj.alpha": { dtype: "F8_E8M0", shape: [], data_offsets: [0, 1] },
+    },
   };
   for (const [file, tensors] of Object.entries(files)) {
     writeSafetensors(path.join(fixture.h3LorasPath, file), {}, combineTensors(tensors));
     fixture.state.runtimeNames.push(`minimax_h3/${file}`);
   }
+  // Data with a gap, or metadata that is not all strings: safetensors' safe_open refuses both.
+  const gap = combineTensors(pairTensors("diffusion_model.blocks.3.attn.qkv_proj", 5376, 21504));
+  const gapFile = path.join(fixture.h3LorasPath, "gap.safetensors");
+  writeSafetensors(gapFile, {}, gap);
+  fs.appendFileSync(gapFile, Buffer.alloc(2));
+  writeSafetensors(path.join(fixture.h3LorasPath, "metadata.safetensors"), { ss_steps: 1500 }, gap);
+  fixture.state.runtimeNames.push("minimax_h3/gap.safetensors", "minimax_h3/metadata.safetensors");
   assert.deepEqual(await fixture.makeCatalog().catalog({ mode: "t2v", steps: 4 }), []);
 });
 
