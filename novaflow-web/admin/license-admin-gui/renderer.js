@@ -1381,10 +1381,11 @@ function renderDashboardRecentActivity(data) {
     const user = userById.get(String(task.user_id || ""));
     const worker = workerById.get(String(task.assigned_worker_id || ""));
     const account = userAccountLabel(user) || user?.display_name || String(task.user_id || "").slice(0, 8) || "(未知用户)";
-    const node = worker?.worker_name || (task.assigned_worker_id ? String(task.assigned_worker_id).slice(0, 8) : "尚未分配节点");
+    const node = worker?.worker_name || (task.assigned_worker_id ? String(task.assigned_worker_id).slice(0, 8) : "");
     items.push({
+      account,
       at: task.completed_at || task.created_at || "",
-      title: `${account} 在 ${node} 生成`,
+      title: node ? `在 ${node} 生成` : "尚未分配到节点",
       meta: String(task.task_type || "任务"),
       status: String(task.status || ""),
       statusText: WEB_TASK_STATUS_TEXT[task.status] || String(task.status || "-")
@@ -1392,12 +1393,13 @@ function renderDashboardRecentActivity(data) {
   });
 
   (Array.isArray(logsResult?.records) && !isErrorResult(logsResult) ? logsResult.records : []).forEach((record) => {
-    const account = record.email || record.user_id || record.userId || "-";
+    const account = String(record.email || record.user_id || record.userId || "-");
     const amount = record.amount ?? record.balance ?? record.delta ?? "-";
     items.push({
+      account,
       at: record.created_at || record.updated_at || record.at || "",
       title: String(record.feature || record.source || record.mode || "后台记录"),
-      meta: `${account} · ${formatCreditAmount(amount)}`,
+      meta: formatCreditAmount(amount),
       status: "",
       statusText: ""
     });
@@ -1408,45 +1410,104 @@ function renderDashboardRecentActivity(data) {
     return;
   }
 
-  items
-    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
-    .slice(0, 8)
-    .forEach((item) => {
+  // One line per person, newest person first; the line folds that person's
+  // generations away until it is clicked.
+  items.sort((a, b) => String(b.at).localeCompare(String(a.at)));
+  const groups = new Map();
+  items.forEach((item) => {
+    if (!groups.has(item.account)) {
+      groups.set(item.account, { account: item.account, items: [], completed: 0, failed: 0, running: 0 });
+    }
+    const group = groups.get(item.account);
+    group.items.push(item);
+    if (item.status === "completed") group.completed += 1;
+    else if (item.status === "failed") group.failed += 1;
+    else if (["queued", "assigned", "uploading", "processing", "created"].includes(item.status)) group.running += 1;
+  });
+
+  const badgeFor = (item) => {
+    const badge = document.createElement("span");
+    const tone = item.status === "completed" ? "active"
+      : item.status === "failed" ? "error"
+      : ["cancelled", "expired"].includes(item.status) ? "disabled"
+      : "expired";
+    badge.className = `badge ${tone}`;
+    badge.textContent = item.statusText;
+    return badge;
+  };
+
+  [...groups.values()].slice(0, 10).forEach((group) => {
+    const latest = group.items[0];
+    const details = document.createElement("details");
+    details.className = "activityGroup";
+
+    const summary = document.createElement("summary");
+    summary.className = "activityItem activitySummary";
+    const main = document.createElement("div");
+    main.className = "activityMain";
+    const title = document.createElement("div");
+    title.className = "activityTitle";
+    title.textContent = group.account;
+    const meta = document.createElement("div");
+    meta.className = "activityMeta";
+    const parts = [`${formatNumber(group.items.length)} 次`];
+    if (group.completed) parts.push(`已完成 ${formatNumber(group.completed)}`);
+    if (group.failed) parts.push(`失败 ${formatNumber(group.failed)}`);
+    if (group.running) parts.push(`进行中 ${formatNumber(group.running)}`);
+    parts.push(`最近 ${latest.title}`);
+    meta.textContent = parts.join(" · ");
+    main.appendChild(title);
+    main.appendChild(meta);
+    const side = document.createElement("div");
+    side.className = "activitySide";
+    if (latest.statusText) side.appendChild(badgeFor(latest));
+    const time = document.createElement("div");
+    time.className = "activityTime";
+    time.textContent = formatDateTime(latest.at);
+    side.appendChild(time);
+    const chevron = document.createElement("span");
+    chevron.className = "activityChevron";
+    chevron.setAttribute("aria-hidden", "true");
+    side.appendChild(chevron);
+    summary.appendChild(main);
+    summary.appendChild(side);
+    details.appendChild(summary);
+
+    const list = document.createElement("div");
+    list.className = "activitySubList";
+    group.items.slice(0, 30).forEach((item) => {
       const row = document.createElement("div");
-      row.className = "activityItem";
-
-      const main = document.createElement("div");
-      main.className = "activityMain";
-      const title = document.createElement("div");
-      title.className = "activityTitle";
-      title.textContent = item.title;
-      const meta = document.createElement("div");
-      meta.className = "activityMeta";
-      meta.textContent = item.meta;
-      main.appendChild(title);
-      main.appendChild(meta);
-
-      const side = document.createElement("div");
-      side.className = "activitySide";
-      if (item.statusText) {
-        const badge = document.createElement("span");
-        const tone = item.status === "completed" ? "active"
-          : item.status === "failed" ? "error"
-          : ["cancelled", "expired"].includes(item.status) ? "disabled"
-          : "expired";
-        badge.className = `badge ${tone}`;
-        badge.textContent = item.statusText;
-        side.appendChild(badge);
-      }
-      const time = document.createElement("div");
-      time.className = "activityTime";
-      time.textContent = formatDateTime(item.at);
-      side.appendChild(time);
-
-      row.appendChild(main);
-      row.appendChild(side);
-      container.appendChild(row);
+      row.className = "activityItem activitySub";
+      const subMain = document.createElement("div");
+      subMain.className = "activityMain";
+      const subTitle = document.createElement("div");
+      subTitle.className = "activityTitle";
+      subTitle.textContent = item.title;
+      const subMeta = document.createElement("div");
+      subMeta.className = "activityMeta";
+      subMeta.textContent = item.meta;
+      subMain.appendChild(subTitle);
+      subMain.appendChild(subMeta);
+      const subSide = document.createElement("div");
+      subSide.className = "activitySide";
+      if (item.statusText) subSide.appendChild(badgeFor(item));
+      const subTime = document.createElement("div");
+      subTime.className = "activityTime";
+      subTime.textContent = formatDateTime(item.at);
+      subSide.appendChild(subTime);
+      row.appendChild(subMain);
+      row.appendChild(subSide);
+      list.appendChild(row);
     });
+    if (group.items.length > 30) {
+      const more = document.createElement("div");
+      more.className = "activityMore";
+      more.textContent = `还有 ${formatNumber(group.items.length - 30)} 条，见「算力节点」的使用记录`;
+      list.appendChild(more);
+    }
+    details.appendChild(list);
+    container.appendChild(details);
+  });
 }
 
 function renderDashboard(data) {
