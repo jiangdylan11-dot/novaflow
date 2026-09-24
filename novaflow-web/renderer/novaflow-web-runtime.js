@@ -745,7 +745,13 @@
     async runtimeFeatures() {
       try {
         const caps = await control('GET', '/api/web/capabilities');
-        runtimeFeatureCache = caps && caps.features && typeof caps.features === 'object' ? { ...caps.features } : {};
+        const next = caps && caps.features && typeof caps.features === 'object' ? { ...caps.features } : {};
+        const changed = JSON.stringify(next) !== JSON.stringify(runtimeFeatureCache);
+        runtimeFeatureCache = next;
+        // Panels drawn before the answer arrived (drawing controls, UI-design limits) redraw on this.
+        if (changed && typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') {
+          root.dispatchEvent(new root.CustomEvent('novaflow:runtime-features', { detail: { ...next } }));
+        }
       } catch (_) { /* keep the last answer */ }
       return { ...runtimeFeatureCache };
     },

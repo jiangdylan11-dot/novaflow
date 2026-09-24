@@ -92,14 +92,14 @@
       reservedLayoutReferences: 1,
       negativePrompt: true,
     }),
-    // cfg 1 ignores a negative prompt on 2.1, so what to avoid goes into the positive prompt.
+    // The user's negative prompt is real on 2.1: a filled one switches the graph to cfg 2.5.
     localQwen21: Object.freeze({
       provider: 'local',
       engine: LOCAL_UI_ENGINE_QWEN21,
       totalReferenceLimit: 15,
       externalReferenceLimit: 15,
       reservedLayoutReferences: 0,
-      negativePrompt: false,
+      negativePrompt: true,
     }),
     gpt: Object.freeze({
       provider: 'gpt',
@@ -1784,21 +1784,19 @@
       regions,
       contentIdentityLock: options.contentIdentityLock,
     }), carrierIntent)
-    const avoid = cleanText(options.negativePrompt)
     const opening = iteration
       ? `Edit <image1>, the current game UI design, into its next version at ${width}x${height}. Keep it one finished, opaque, edge-to-edge ${orientation} screen.`
       : carrierIntent === 'hardware'
         ? `Render the requested physical device as one finished, front-facing ${width}x${height} product image.`
         : `Design one finished, opaque, edge-to-edge ${width}x${height} ${orientation} game UI screen. The whole image is the screen itself, viewed straight-on.`
-    // The closing lines carry what to keep and what to avoid (cfg 1 ignores a negative prompt), so
-    // they are sized first and never cut; the request, image roles and regions shrink to fit.
+    // The closing lines carry what to keep and what never to draw, so they are sized first and never
+    // cut; the request, image roles and regions shrink to fit.
     const tail = [
       structureRules.length ? `Structure rules: ${compactLocalModelText(structureRules.join('；'), 500)}` : '',
       lock ? `Must keep: ${compactLocalModelText(lock, 500)}` : '',
       carrierIntent === 'hardware'
         ? 'Do not show: annotations, guide marks, editor grid, watermark.'
         : 'Do not show: device frame, phone mockup, arcade or slot cabinet, room, product shot, annotations, guide marks, editor grid, watermark.',
-      avoid ? `Also avoid: ${compactLocalModelText(avoid, 300)}` : '',
     ].filter(Boolean).join('\n')
     const head = (targetChars, referenceChars, regionChars) => [
       opening,
@@ -2333,7 +2331,6 @@
           layoutGuideImageNumber: synthesisPlan.layoutGuideImageNumber,
           carrierIntent,
           contentIdentityLock: stateContentIdentityLock || directorResult?.contentIdentityLock || null,
-          negativePrompt: cleanText(options.negativePrompt ?? state.negativePrompt),
         })
       : referenceGuidedRedesign
       ? compileLocalRedesignModelPrompt({
@@ -2380,7 +2377,9 @@
             : DIGITAL_UI_CANVAS_NEGATIVE_PROMPT
         )
       : ''
-    const negativePrompt = capability.negativePrompt
+    const negativePrompt = qwen21
+      ? requestedNegativePrompt
+      : capability.negativePrompt
       ? mergeDistinctPromptParts(
           mergeDistinctPromptParts(requestedNegativePrompt, directedNegativePrompt),
           digitalCanvasNegativePrompt,

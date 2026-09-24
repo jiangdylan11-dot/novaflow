@@ -34,6 +34,23 @@
     false,
   )
 
+  // A local node with Qwen-Image-2.1 runs non-NSFW, LoRA-free drawing on it (the worker picks the
+  // engine). 2.1 has no quality or edit-strength setting and its img2img keeps the first reference's
+  // size; the negative prompt stays (a filled one switches the run to real guidance).
+  const LOCAL_QWEN21_CAPABILITIES = Object.freeze({
+    txt2img: Object.freeze({ ...capability(0, ['width', 'height', 'seed', 'nsfw'], true), engine: 'qwen-2.1' }),
+    img2img: Object.freeze({ ...capability(3, ['seed', 'nsfw'], true), engine: 'qwen-2.1' }),
+  })
+
+  function localQwen21Drawing(state) {
+    if (state?.nsfw === true || (Array.isArray(state?.loras) && state.loras.length)) return false
+    try {
+      return globalThis?.electronAPI?.runtimeFeaturesSync?.()?.qwenImage21 === true
+    } catch {
+      return false
+    }
+  }
+
   const providerOptions = Object.freeze([
     Object.freeze({ value: 'local', label: '本地模型' }),
     Object.freeze({ value: 'gpt', label: 'GPT' }),
@@ -118,15 +135,18 @@
   function renderKey(state) {
     const provider = normalizeProvider(state?.provider)
     const mode = normalizeMode(state?.mode)
-    const route = provider === 'local' && mode === 'txt2img'
-      ? (state?.nsfw === true ? 'rapid' : 'ideogram-instant')
-      : ''
+    const route = provider === 'local' && localQwen21Drawing(state)
+      ? 'qwen-2.1'
+      : provider === 'local' && mode === 'txt2img'
+        ? (state?.nsfw === true ? 'rapid' : 'ideogram-instant')
+        : ''
     return `${provider}:${mode}:${route}`
   }
 
   function capabilityFor(provider, mode, state) {
     const providerKey = normalizeProvider(provider)
     const modeKey = normalizeMode(mode)
+    if (providerKey === 'local' && localQwen21Drawing(state)) return LOCAL_QWEN21_CAPABILITIES[modeKey]
     if (providerKey === 'local' && modeKey === 'txt2img' && state?.nsfw !== true) {
       return LOCAL_IDEOGRAM_TEXT_CAPABILITY
     }

@@ -571,8 +571,8 @@
   function generatorSettings(state, generator, workspaceValue) {
     const promptDefaults = {
       prompt: '',
-      negativePrompt: String(root?.NovaFlowUiDesignGenerateTool?.DEFAULT_UI_NEGATIVE_PROMPT || ''),
-      negativePromptSource: 'default',
+      negativePrompt: '',
+      negativePromptSource: '',
     }
     const legacy = isObject(state?.settings) ? state.settings : {}
     const stored = isObject(generator?.data?.generationSettings) ? generator.data.generationSettings : {}
@@ -580,6 +580,12 @@
       ? workspaceValue.generationSettings
       : (isObject(workspaceValue) ? workspaceValue : {})
     const merged = { ...promptDefaults, ...legacy, ...stored, ...workspaceSettings }
+    // A generator saved while the automatic negative list was filled in carries it with source
+    // 'default'; that list is no longer applied (an empty negative keeps the run at normal speed).
+    if (merged.negativePromptSource === 'default') {
+      merged.negativePrompt = ''
+      merged.negativePromptSource = ''
+    }
     const normalize = dependencies().structure?.normalizeGeneratorSettings
     return typeof normalize === 'function' ? normalize(merged) : merged
   }
@@ -1716,6 +1722,9 @@
     syncTimers.forEach((timer) => root?.clearTimeout?.(timer))
     syncTimers.clear()
   }
+
+  // The local reference limit and controls follow the node's engine; redraw once the node answers.
+  root?.addEventListener?.('novaflow:runtime-features', () => scheduleSync(0))
 
   function scheduleSync(delays = NAVIGATION_SYNC_DELAYS) {
     ;(Array.isArray(delays) ? delays : [delays]).forEach((delay) => {

@@ -75,6 +75,14 @@ const latent = byClass(ui, 'EmptyLatentImage')[0][1].inputs;
 assert.deepEqual([latent.width, latent.height], [640, 1376]);
 const sampler = byClass(ui, 'KSampler')[0][1].inputs;
 assert.deepEqual([sampler.seed, sampler.steps, sampler.cfg, sampler.latent_image[0]], [7, 25, 1, byClass(ui, 'EmptyLatentImage')[0][0]]);
+// A filled negative prompt is used for real: cfg 1 would never evaluate it, so the run goes to 2.5.
+const withNegative = JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
+  'local', 'img2img', names.slice(0, 2), 'NovaFlow_UI', 'slot main screen', '模糊，水印', 'client', sizes.slice(0, 2),
+  { provider: 'local', mode: 'img2img', width: 756, height: 1638, seed: 7, randomSeed: false, localUiEngine: 'qwen-2.1' },
+  16, { taskProfile: 'ui-design', referenceRoles: [{ index: 0, role: 'style' }, { index: 1, role: 'content' }] }
+] } })));
+assert.equal(byClass(withNegative, 'TextEncodeQwenImage21')[0][1].inputs.negative_prompt, '模糊，水印');
+assert.equal(byClass(withNegative, 'KSampler')[0][1].inputs.cfg, 2.5);
 // Opaque output at the requested size.
 const [splitId] = byClass(ui, 'SplitImageWithAlpha')[0];
 const finish = byClass(ui, 'ImageScale').find(([, node]) => node.inputs.image[0] === splitId)[1].inputs;
@@ -131,6 +139,14 @@ const drawI2i = JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'nov
 const drawSaved = drawI2i[byClass(drawI2i, 'SaveImage')[0][1].inputs.images[0]];
 assert.equal(drawSaved.class_type, 'ImageScale');
 assert.deepEqual([drawSaved.inputs.width, drawSaved.inputs.height], [512, 720]);
+assert.equal(byClass(drawI2i, 'KSampler')[0][1].inputs.cfg, 1);
+// Drawing on 2.1: the negative box works the same way.
+const drawNegative = JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
+  'local', 'txt2img', [], 'NovaFlow_Art', 'a knight', 'blurry, extra fingers', 'client', [],
+  { provider: 'local', mode: 'txt2img', width: 1024, height: 1024, seed: 1, randomSeed: false }, 4, {}
+] } })));
+assert.equal(byClass(drawNegative, 'TextEncodeQwenImage21')[0][1].inputs.negative_prompt, 'blurry, extra fingers');
+assert.equal(byClass(drawNegative, 'KSampler')[0][1].inputs.cfg, 2.5);
 
 // Asked for 2.1 on a node without it: an error, never a 2511 graph that keeps three references.
 const hostOld = await createWorkflowHost({ rendererDir, objectInfo: { LoadImage: qwen21Info.LoadImage, KSampler: qwen21Info.KSampler } });
@@ -181,6 +197,7 @@ assert.equal(generate.providerCapability('local').externalReferenceLimit, 2);
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({ qwenImage21: true }), runtimeFeatures: async () => ({ qwenImage21: true }) };
 assert.equal(generate.providerCapability('local').externalReferenceLimit, 15);
 assert.equal(generate.providerCapability('local').reservedLayoutReferences, 0);
+assert.equal(generate.providerCapability('local').negativePrompt, true);
 assert.equal(generate.providerCapability('gpt').externalReferenceLimit, 15);
 
 const mentions = generate.compileUiMentions('把@参考图2放在转轴里', [{ sourceId: 'a' }, { sourceId: 'b' }], { modelImageNumbers: [1, 2], imageToken: 'angle' });
@@ -229,14 +246,15 @@ assert.equal(state.localUiEngine, 'qwen-2.1');
 assert.equal(uploads.length, 12);
 assert.deepEqual(uploads, Array.from({ length: 12 }, (_, i) => `ui_q21_${String(i + 1).padStart(2, '0')}.png`));
 assert.equal(built.maxReferences, 15);
-assert.equal(built.negativePrompt, '');
+// Only what the user wrote: the automatic 2511 canvas negatives would force cfg 2.5 on every run.
+assert.equal(built.negativePrompt, '模糊，水印');
 assert.equal(built.referenceRoles.length, 12);
 assert.ok(built.referenceRoles.every((item) => item.role !== 'ui_layout'));
 assert.equal(built.referenceRoles[0].role, 'style');
 assert.equal(built.referenceRoles[1].role, 'content');
 assert.ok(built.prompt.includes('<image2>') && built.prompt.includes('<image12> 符号10: finished asset'));
 assert.ok(!built.prompt.includes('occupancy map') && built.prompt.includes('Screen structure, top to bottom:'));
-assert.ok(built.prompt.includes('wild') && built.prompt.includes('Also avoid: 模糊，水印'));
+assert.ok(built.prompt.includes('wild') && !built.prompt.includes('Also avoid'));
 assert.ok(!/图\d/.test(built.prompt) && built.prompt.length <= 4000);
 assert.ok(built.prompt.includes('<image1> 风格: style reference') && built.prompt.includes('<image2> 符号0: finished asset'));
 // Region lines carry their position; the 2511 content-lock paragraphs stay out.
@@ -269,7 +287,7 @@ const longPrompt = generate.compileQwen21UiPrompt({
   references: Array.from({ length: 15 }, (_, i) => ({ name: '一个很长的素材名称' + i + '.png', role: i % 2 ? 'style' : 'reference' }))
 });
 assert.ok(longPrompt.length <= 4000, 'prompt length ' + longPrompt.length);
-assert.ok(longPrompt.includes('Also avoid: 模糊，水印') && longPrompt.includes('Do not show:') && longPrompt.includes('<image15>'));
+assert.ok(!longPrompt.includes('Also avoid') && longPrompt.includes('Do not show:') && longPrompt.includes('<image15>'));
 assert.ok(longPrompt.includes('- 88-100% from the top: 区7：说明'));
 
 // Sixteen connected images is one too many even on 2.1.
@@ -278,6 +296,19 @@ await assert.rejects(generate.run({ bridge, project, refs: [...runRefs, ...runRe
 // Without the node's answer the page stays on the 2511 plan.
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
 await assert.rejects(generate.run({ bridge, project, refs: runRefs.slice(0, 3), state: { ...state }, prompt: 'x' }), /最多支持 2 张/);
+
+// Drawing controls on a 2.1 node: no Instant quality, no edit strength, img2img without W/H, the
+// negative prompt kept; NSFW and LoRA runs keep their old controls.
+renderer('art-generate-model.resource.js');
+const models = globalThis.NovaFlowArtGenerateModels;
+globalThis.electronAPI = { runtimeFeaturesSync: () => ({ qwenImage21: true }), runtimeFeatures: async () => ({ qwenImage21: true }) };
+assert.deepEqual([...models.capabilityFor('local', 'txt2img', {}).fields], ['width', 'height', 'seed', 'nsfw']);
+assert.deepEqual([...models.capabilityFor('local', 'img2img', {}).fields], ['seed', 'nsfw']);
+assert.equal(models.capabilityFor('local', 'img2img', {}).negativePrompt, true);
+assert.ok(models.capabilityFor('local', 'txt2img', { nsfw: true }).fields.includes('textQuality'));
+assert.ok(models.capabilityFor('local', 'img2img', { loras: [{ name: 'x' }] }).fields.includes('editStrength'));
+globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
+assert.ok(models.capabilityFor('local', 'txt2img', {}).fields.includes('instantQuality'));
 
 // The prompt editor's chips show the model image each @参考图 becomes: after the guide on 2511,
 // the first connected image on 2.1.

@@ -88,9 +88,12 @@
     state.mode = MODE
     state.provider = normalizeProvider(state.provider)
     state.prompt = String(state.prompt == null ? '' : state.prompt)
-    if (!hasNegativePrompt && negativePromptSource !== 'user') {
-      state.negativePrompt = DEFAULT_UI_NEGATIVE_PROMPT
-      state.negativePromptSource = 'default'
+    // Nothing is filled in for the user, as in the drawing panel: an empty negative prompt keeps a
+    // local run at its normal speed and a filled one is used for real. A project saved with the old
+    // automatic list drops it here; what the user or the assistant wrote stays.
+    if (!hasNegativePrompt || negativePromptSource === 'default') {
+      state.negativePrompt = ''
+      state.negativePromptSource = ''
     } else {
       state.negativePrompt = String(state.negativePrompt == null ? '' : state.negativePrompt)
       state.negativePromptSource = negativePromptSource || 'user'
@@ -439,11 +442,20 @@
     renderFields(record)
   }
 
+  // A node with Qwen-Image-2.1 runs local UI design on it, which has no edit-strength setting.
+  function localQwen21Engine() {
+    try {
+      return root?.NovaFlowUiDesignGenerateWorkflow?.providerCapability?.('local')?.engine === 'qwen-2.1'
+    } catch {
+      return false
+    }
+  }
+
   function dynamicParameterNodes(record) {
     const state = record.state
     if (state.provider === 'local') {
       return [
-        selectControl(record, 'localEditStrength', '编辑强度', [
+        localQwen21Engine() ? null : selectControl(record, 'localEditStrength', '编辑强度', [
           { value: 'faithful', label: '保真' },
           { value: 'enhanced', label: '增强' },
         ], state.localEditStrength),
@@ -458,7 +470,7 @@
             trailing: seedField(record, { inline: true, disabled: state.randomSeed }),
           }),
         ]),
-      ]
+      ].filter(Boolean)
     }
     if (state.provider === 'gpt') {
       return [selectControl(record, 'gptQualityImg2img', '质量', [
@@ -564,8 +576,9 @@
     const state = record.state
     if (state.provider === 'gpt') return `质量 ${String(state.gptQualityImg2img || 'low').toUpperCase()}`
     if (state.provider === 'google') return `分辨率 ${state.googleResolution || '1K'} · 画幅 ${state.googleAspectRatioImg2img}`
-    const strength = state.localEditStrength === 'enhanced' ? '增强' : '保真'
     const seed = state.randomSeed ? '随机种子' : `Seed ${Math.max(0, Number(state.seed) || 0)}`
+    if (localQwen21Engine()) return `Qwen-Image-2.1 · ${seed}`
+    const strength = state.localEditStrength === 'enhanced' ? '增强' : '保真'
     return `${strength} · ${seed}`
   }
 
@@ -731,7 +744,7 @@
   function negativePromptSourceLabel(source) {
     if (source === 'assistant') return '助手填写'
     if (source === 'user') return '用户填写'
-    return '默认填写'
+    return ''
   }
 
   function disposePromptMentions(record) {
@@ -1000,14 +1013,14 @@
         record,
         'negativePrompt',
         '负面要求',
-        '自动填写需要避免的画面问题，可继续修改或清空。',
+        '填写需要避免的画面问题（可不填写）',
         2,
       )
       children.push(
         createElement(record.documentRef, 'div', {
           style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', minWidth: '0' },
         }, [
-          createElement(record.documentRef, 'span', { text: '负面要求（自动填写）', style: { color: 'rgba(255,255,255,0.72)', fontSize: '10px', fontWeight: '800' } }),
+          createElement(record.documentRef, 'span', { text: '负面要求（可不填写）', style: { color: 'rgba(255,255,255,0.72)', fontSize: '10px', fontWeight: '800' } }),
           createElement(record.documentRef, 'span', {
             'data-novaflow-ui-design-negative-source': record.state.negativePromptSource,
             text: negativePromptSourceLabel(record.state.negativePromptSource),

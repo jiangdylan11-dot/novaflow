@@ -411,7 +411,7 @@ export function rewriteIndexHtml(html) {
   // blank animation section.
   const shimTags =
     '    <script src="./' + WAREHOUSE_SHIM + '?v=warehouse-1"></script>\n' +
-    '    <script src="./' + RUNTIME_SHIM + '?v=web-2"></script>\n' +
+    '    <script src="./' + RUNTIME_SHIM + '?v=web-3"></script>\n' +
     '    <script src="./' + CAPABILITY_SHIM + '?v=web-1"></script>\n' +
     '    <script src="./' + TEMPLATE_SHIM + '?v=templates-1"></script>\n' +
     '    <script src="./' + ACCOUNT_SHIM + '?v=web-1"></script>\n';

@@ -79333,6 +79333,15 @@
     });
   }
 
+  // Whether the node carries Qwen-Image-2.1 decides which drawing controls apply; redraw when it answers.
+  if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+    window.addEventListener("novaflow:runtime-features", () => {
+      try {
+        if (ART_GENERATE_STATE.active) renderArtGenerateSurfaces();
+      } catch (_) { /* the panel redraws on its next change anyway */ }
+    });
+  }
+
   function renderArtGenerateSurfaces(options = {}) {
     ensureArtGenerateStyle();
     const forceBottomRender = !!(options && options.forceBottom) || ART_GENERATE_FORCE_BOTTOM_RENDER;
@@ -81790,7 +81799,18 @@
     return unet && clip && vae ? { info, unet, clip, vae } : null;
   }
 
-  function buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions) {
+  // At cfg 1 (the 2.1 default) the sampler never evaluates the negative prompt: filled and empty gave
+  // identical pixels. A filled negative box therefore switches the run to real guidance, which
+  // evaluates both prompts per step and takes about twice as long; an empty box keeps cfg 1.
+  const QWEN21_NEGATIVE_CFG = 2.5;
+
+  function qwen21Guidance(negativePrompt) {
+    const negative = String(negativePrompt || "").trim();
+    return { negative, cfg: negative ? QWEN21_NEGATIVE_CFG : 1 };
+  }
+
+  function buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt) {
+    const guidance = qwen21Guidance(negativePrompt);
     if (mode !== "txt2img" && mode !== "img2img") return null;
     if (state?.nsfw === true || (Array.isArray(state?.loras) && state.loras.length)) return null;
     if (/^ui-design/i.test(String(providerOptions?.taskProfile || ""))) return null;
@@ -81815,7 +81835,7 @@
     // latent up, so anything past ~1.3 MP (or of unknown size) is brought to ~1 MP instead.
     const first = Array.isArray(referenceSizes) ? referenceSizes[0] : null;
     const pixels = Number(first?.width) * Number(first?.height);
-    const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: "", resolution: mode === "img2img" && !(pixels > 0 && pixels <= 1300000) ? 1024 : 0 };
+    const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: guidance.negative, resolution: mode === "img2img" && !(pixels > 0 && pixels <= 1300000) ? 1024 : 0 };
     references.forEach((name, index) => {
       workflow[String(10 + index)] = { class_type: "LoadImage", inputs: { image: name } };
       encode[`images.image_${index + 1}`] = [String(10 + index), 0];
@@ -81827,7 +81847,7 @@
       workflow["6"] = { class_type: "EmptyLatentImage", inputs: { width: round32(state?.width), height: round32(state?.height), batch_size: 1 } };
       latent = ["6", 0];
     }
-    workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: latent, seed, steps: 25, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
+    workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: latent, seed, steps: 25, cfg: guidance.cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
     workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
     let output = ["8", 0];
     // At resolution 0 the encoder floors the first reference to multiples of 32 (512x720 came back
@@ -81892,7 +81912,8 @@
     return { width: floor32(w), height: floor32(h) };
   }
 
-  function buildUiQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions) {
+  function buildUiQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt) {
+    const guidance = qwen21Guidance(negativePrompt);
     const runtime = artQwen21Runtime();
     const info = runtime?.info || {};
     const missing = ["LoadImage", "EmptyLatentImage", "ImageScale", "SplitImageWithAlpha"].filter((type) => !info[type]);
@@ -81938,7 +81959,7 @@
     }
     // resolution 0 keeps each reference at its own size (rounded to 32); the budgets above are
     // applied per reference instead, since one resolution for all would blow small assets up.
-    const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: "", resolution: 0 };
+    const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: guidance.negative, resolution: 0 };
     const clampEdge = (value) => Math.max(64, Math.min(QWEN21_UI_MAX_OUTPUT_EDGE, Math.round(Number(value) || 1024)));
     const requested = { width: clampEdge(state?.width), height: clampEdge(state?.height) };
     const working = uiQwen21WorkingSize(requested.width, requested.height);
@@ -81976,7 +81997,7 @@
     });
     workflow["5"] = { class_type: "TextEncodeQwenImage21", inputs: encode };
     workflow["6"] = { class_type: "EmptyLatentImage", inputs: { width: working.width, height: working.height, batch_size: 1 } };
-    workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: ["6", 0], seed, steps: 25, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
+    workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: ["6", 0], seed, steps: 25, cfg: guidance.cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
     workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
     // 2.1 always decodes RGBA; a UI screen is opaque, so keep the colour and drop the alpha.
     workflow["9"] = { class_type: "SplitImageWithAlpha", inputs: { image: ["8", 0] } };
@@ -82012,9 +82033,9 @@
       && String(providerOptions?.taskProfile || "").toLowerCase() === "ui-design"
       && state?.localUiEngine === "qwen-2.1";
     const qwen21Build = uiQwen21
-      ? buildUiQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions)
+      ? buildUiQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt)
       : provider === "local"
-        ? buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions)
+        ? buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt)
         : null;
     if (qwen21Build) {
       localWorkflow = qwen21Build.workflow;

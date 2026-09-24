@@ -353,8 +353,8 @@
     function generatorPromptDefaults() {
       return {
         prompt: '',
-        negativePrompt: String(root?.NovaFlowUiDesignGenerateTool?.DEFAULT_UI_NEGATIVE_PROMPT || ''),
-        negativePromptSource: 'default',
+        negativePrompt: '',
+        negativePromptSource: '',
       }
     }
 
