@@ -45,7 +45,10 @@ test('old presets default to zero weight and new values survive a preset JSON ro
   assert.equal(loaded.waveCount, 1.35);
   assert.equal(loaded.uniformWeight, 75);
   assert.equal(api.normalizeRibbonUniformWaveValue('uniformWeight', NaN), 0);
-  assert.equal(api.normalizeRibbonUniformWaveValue('waveCount', 8), 2);
+  const extended = api.normalizeRibbonParameterPresetValues(JSON.parse(JSON.stringify({ ...old, waveCount: 8.35 })));
+  assert.equal(extended.waveCount, 8.35);
+  assert.equal(api.normalizeRibbonUniformWaveValue('waveCount', -1), 0);
+  assert.equal(api.normalizeRibbonUniformWaveValue('uniformWeight', 150), 100);
 });
 
 test('0% is exactly the previous solver, including wind, whip, offset and loop count', () => {
@@ -110,7 +113,7 @@ test('the middle weight mixes local rotations before native whip, never after it
 
 test('counts, weights and whip produce finite closed loops; changing wave count affects the pose', () => {
   const fixture = chain(5);
-  for (const waveCount of [0, 0.5, 1, 2]) for (const uniformWeight of [50, 100]) {
+  for (const waveCount of [0, 0.5, 1, 2, 3.25, 5, 8.35]) for (const uniformWeight of [50, 100]) {
     const output = run(fixture, { waveCount, uniformWeight, whip: 25 });
     for (const frames of output.values()) {
       assert.equal(frames[0].angle, frames.at(-1).angle);
@@ -118,6 +121,7 @@ test('counts, weights and whip produce finite closed loops; changing wave count 
     }
   }
   assert.notDeepEqual(plain([...run(fixture, { waveCount: 1 })]), plain([...run(fixture, { waveCount: 1.5 })]));
+  assert.notDeepEqual(plain([...run(chain(15), { waveCount: 5 })]), plain([...run(chain(15), { waveCount: 8.35 })]));
 });
 
 test('Spine 4.2 value frames and 3.8 angle frames preserve their writeback format', () => {

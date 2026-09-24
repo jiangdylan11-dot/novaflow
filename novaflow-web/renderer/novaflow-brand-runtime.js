@@ -44086,7 +44086,7 @@
   const RIBBON_WAVE_PHASE_DEFAULT = 0;
   const RIBBON_WAVE_PHASE_RANGE_MAX = 100;
   const RIBBON_UNIFORM_WAVE_CONTROLS = {
-    waveCount: { label: "波浪数量", attribute: "wave-count", max: 2, step: 0.05, fallback: 1 },
+    waveCount: { label: "波浪数量", attribute: "wave-count", max: 5, step: 0.05, fallback: 1, freeNumber: true },
     uniformWeight: { label: "波浪权重", attribute: "uniform-weight", max: 100, step: 1, fallback: 0 }
   };
   let ribbonUniformWaveValues = { waveCount: 1, uniformWeight: 0 };
@@ -45653,7 +45653,9 @@
   function normalizeRibbonUniformWaveValue(key, value) {
     const control = RIBBON_UNIFORM_WAVE_CONTROLS[key];
     const numeric = value === null || value === "" ? NaN : Number(value);
-    const next = Number.isFinite(numeric) ? Math.max(0, Math.min(control.max, numeric)) : control.fallback;
+    const next = Number.isFinite(numeric)
+      ? Math.max(0, control.freeNumber ? numeric : Math.min(control.max, numeric))
+      : control.fallback;
     return Number(next.toFixed(key === "waveCount" ? 2 : 0));
   }
 
@@ -45668,13 +45670,15 @@
     const previous = ribbonUniformWaveValues[key];
     ribbonUniformWaveValues[key] = next;
     if (!(panel instanceof HTMLElement)) return previous !== next;
-    const attribute = RIBBON_UNIFORM_WAVE_CONTROLS[key].attribute;
+    const control = RIBBON_UNIFORM_WAVE_CONTROLS[key];
+    const attribute = control.attribute;
     let changed = previous !== next;
     for (const type of ["range", "number"]) {
       const input = panel.querySelector(`[data-novaflow-ribbon-${attribute}-${type}="1"]`);
       if (!(input instanceof HTMLInputElement)) continue;
-      changed = input.value !== String(next) || changed;
-      setRibbonEventInputValue(input, next, false);
+      const inputValue = type === "range" ? Math.min(control.max, next) : next;
+      changed = input.value !== String(inputValue) || changed;
+      setRibbonEventInputValue(input, inputValue, false);
       if (type === "range") syncRangeFillVisual(input);
     }
     return changed;
@@ -45699,7 +45703,7 @@
           const input = document.createElement("input");
           input.type = type;
           input.min = "0";
-          input.max = String(control.max);
+          if (type === "range" || !control.freeNumber) input.max = String(control.max);
           input.step = String(control.step);
           input.value = String(ribbonUniformWaveValues[key]);
           input.setAttribute("aria-label", control.label);
@@ -45709,7 +45713,8 @@
             setRibbonUniformWaveSliderValue(panel, key, input.value);
             if (apply) scheduleRibbonParameterControlPreview(group, "uniform-wave-slider");
           };
-          input.addEventListener("input", () => commit(false), true);
+          // Let a typed decimal finish before normalizing the number field.
+          input.addEventListener("input", () => { if (type === "range") commit(false); }, true);
           input.addEventListener("change", () => commit(true), true);
           row.appendChild(input);
         }
