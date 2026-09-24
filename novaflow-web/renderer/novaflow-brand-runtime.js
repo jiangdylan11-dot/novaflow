@@ -74780,9 +74780,21 @@
     });
   }
 
+  // The dock's own inline dressing, taken off a row that was mistaken for it.
+  const DOCK_STYLE_PROPERTIES = [
+    "background", "background-color", "border", "border-radius", "box-shadow", "overflow",
+    "position", "left", "right", "bottom", "top", "inset", "width", "margin",
+    "height", "min-height", "max-height", "padding", "box-sizing"
+  ];
+  function clearDockStyles(node) {
+    if (!(node instanceof HTMLElement)) return;
+    DOCK_STYLE_PROPERTIES.forEach((property) => node.style.removeProperty(property));
+  }
+
   function applySeparatedPanelTags(active) {
     Array.from(document.querySelectorAll('[data-novaflow-bottom-controls="1"]')).forEach((node) => {
       if (node instanceof HTMLElement && node.getAttribute("data-novaflow-source-layout") !== "1") {
+        if (node.style.getPropertyValue("position") === "absolute") clearDockStyles(node);
         node.removeAttribute("data-novaflow-bottom-controls");
       }
     });
@@ -74805,7 +74817,7 @@
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 1200;
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 1600;
     const rightColumn = findPreviewWorkspaceColumn();
-    const bottomControls = findContainerByTexts(["\u6574\u4f53\u7f29\u653e", "\u65cb\u8f6c\u504f\u79fb"], (rect) => (
+    let bottomControls = findContainerByTexts(["\u6574\u4f53\u7f29\u653e", "\u65cb\u8f6c\u504f\u79fb"], (rect) => (
       rect.left >= PRIMARY_COLUMN_WIDTH - 24 &&
       rect.width >= 620 &&
       rect.height >= 52 &&
@@ -74813,6 +74825,18 @@
       rect.top >= viewportHeight * 0.52
     ));
     if (bottomControls instanceof HTMLElement) {
+      // The dock is the strip that carries data-novaflow-source-layout: its
+      // first row (\u753b\u5e03\u5c3a\u5bf8 \u2026 \u65cb\u8f6c\u504f\u79fb) and, under it, the playback row. In a
+      // narrow window that first row wraps to two lines, and at 66px tall it
+      // satisfied the size filter above by itself - so it was dressed as a
+      // second dock, 99 tall and absolute, laid over the playback row, with
+      // \u6682\u505c poking through \u753b\u5e03\u5c3a\u5bf8. Climb to the real dock and undress the row.
+      const dock = bottomControls.closest('[data-novaflow-source-layout="1"]');
+      if (dock instanceof HTMLElement && dock !== bottomControls) {
+        clearDockStyles(bottomControls);
+        bottomControls.removeAttribute("data-novaflow-bottom-controls");
+        bottomControls = dock;
+      }
       nfSetAttrIfChanged(bottomControls, "data-novaflow-bottom-controls", "1");
       // The dock spec. Written inline because this element carries
       // data-novaflow-source-layout, which every stylesheet rule for the strip
@@ -74832,9 +74856,11 @@
       nfSetStyleIfChanged(bottomControls, "top", "auto", "important");
       nfSetStyleIfChanged(bottomControls, "width", "auto", "important");
       nfSetStyleIfChanged(bottomControls, "margin", "0", "important");
-      nfSetStyleIfChanged(bottomControls, "height", DOCK_HEIGHT + "px", "important");
+      // 99 is the two-row height. When the first row wraps in a narrow window
+      // the dock grows with it, rather than clipping the playback row away.
+      nfSetStyleIfChanged(bottomControls, "height", "auto", "important");
       nfSetStyleIfChanged(bottomControls, "min-height", DOCK_HEIGHT + "px", "important");
-      nfSetStyleIfChanged(bottomControls, "max-height", DOCK_HEIGHT + "px", "important");
+      nfSetStyleIfChanged(bottomControls, "max-height", "none", "important");
       nfSetStyleIfChanged(bottomControls, "padding", DOCK_PADDING, "important");
       nfSetStyleIfChanged(bottomControls, "box-sizing", "border-box", "important");
       styleBottomControlRanges(bottomControls);

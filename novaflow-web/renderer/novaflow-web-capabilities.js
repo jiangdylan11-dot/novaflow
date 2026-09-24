@@ -31,6 +31,16 @@
 
   const ok = (result) => ({ ok: true, result });
   const fail = (error, extra) => Object.assign({ ok: false, error: String(error) }, extra || {});
+  // vendor/ sits next to this script; index.html loads it as ./novaflow-web-capabilities.js.
+  const capabilitiesBase = (() => {
+    try {
+      const src = root.document && root.document.currentScript && root.document.currentScript.src;
+      if (src) return new URL('./', src).href;
+      return (root.document && root.document.baseURI) || '';
+    } catch (_) {
+      return '';
+    }
+  })();
 
   // ---------------------------------------------------------------- listeners
   function channel() {
@@ -349,12 +359,217 @@
 
   api.aiSeqCacheCopyFromPath = async () => fail('Web 版没有本地文件路径可复制');
 
-  api.clearVideoToolOutput = async () => { releaseCache(); return ok({ cleared: true }); };
+  api.clearVideoToolOutput = async (payload) => {
+    releaseCache();
+    releaseVideoOutputs(payload && payload.tool);
+    return ok({ cleared: true });
+  };
   api.videoResourceMediaRelease = async (payload) => {
-    const key = String((payload && (payload.key || payload.id)) || '');
-    if (key) releaseCache(key);
+    const key = String((payload && (payload.key || payload.id || payload.token)) || '');
+    if (key) { releaseCache(key); releaseVideoOutputs(null, key); }
     return ok({ released: true });
   };
+
+  // ---- 工具 → MP4 压缩 / 视频格式转换 ---------------------------------------
+  //
+  // The desktop runs its bundled ffmpeg (main/mp4-compressor.js and
+  // main/video-format-converter.js). Here it is ffmpeg.wasm: the same FFmpeg,
+  // compiled to WebAssembly (vendor/ffmpeg, @ffmpeg/ffmpeg 0.12.15 over
+  // @ffmpeg/core 0.12.10 - a 32 MB download the first time, then cached by the
+  // browser), running in its own worker. The encoder settings are the
+  // desktop's, argument for argument, less the log flags the desktop used to
+  // read progress from a pipe: ffmpeg.wasm reports progress from its own log.
+  //
+  // It is single-threaded, so a long clip takes a while - the tools show the
+  // percentage. Results are kept as blobs under web-video:// tokens, which is
+  // what the tools pass back for previewing, saving and clearing.
+  const videoOutputs = new Map();
+  // The preview registration in the next block reads results from here.
+  runtime.videoOutputs = videoOutputs;
+  let videoOutputSeq = 0;
+  function releaseVideoOutputs(tool, token) {
+    for (const [key, held] of videoOutputs) {
+      if (tool && held.tool !== tool) continue;
+      if (token && held.token !== token && key !== token) continue;
+      if (held.url) URL.revokeObjectURL(held.url);
+      videoOutputs.delete(key);
+    }
+  }
+  const FFMPEG_VENDOR_VERSION = '0.12.15';
+  const ffmpegVendorUrl = (file) => new URL('vendor/ffmpeg/' + file + '?v=' + FFMPEG_VENDOR_VERSION, capabilitiesBase || root.location.href).href;
+  let ffmpegPromise = null;
+  let ffmpegJob = null;
+  // Progress and log lines belong to the job that is running; the tools get
+  // the progress by job id, the log feeds the audio probe and error text.
+  function listenToFfmpeg(ffmpeg) {
+    ffmpeg.on('progress', (event) => {
+      if (!ffmpegJob || !event) return;
+      const progress01 = Math.max(0, Math.min(1, Number(event.progress) || 0));
+      if (Math.abs(progress01 - ffmpegJob.last) < 0.01 && progress01 < 1) return;
+      ffmpegJob.last = progress01;
+      videoToolProgress.emit({ jobId: ffmpegJob.jobId, progress01 });
+    });
+    ffmpeg.on('log', (event) => { if (ffmpegJob && event && event.message) ffmpegJob.log = (ffmpegJob.log + '\n' + event.message).slice(-4000); });
+    return ffmpeg;
+  }
+  function loadFfmpeg() {
+    if (!ffmpegPromise) {
+      ffmpegPromise = (async () => {
+        // Tests hand in a stand-in instead of the 32 MB core.
+        if (root.NovaFlowWebFfmpeg) return listenToFfmpeg(root.NovaFlowWebFfmpeg);
+        if (typeof root.WebAssembly !== 'object' || typeof root.Worker !== 'function') throw new Error('这个浏览器不支持 WebAssembly 线程，无法在网页里处理视频');
+        const probe = await root.fetch(ffmpegVendorUrl('core/ffmpeg-core.js'), { method: 'HEAD' });
+        if (!probe.ok) throw new Error('站点没有打包 ffmpeg 组件（vendor/ffmpeg/core），请运行 tools/fetch-ffmpeg-core.mjs 后重新发布');
+        const { FFmpeg } = await import(ffmpegVendorUrl('index.js'));
+        const ffmpeg = listenToFfmpeg(new FFmpeg());
+        await ffmpeg.load({
+          classWorkerURL: ffmpegVendorUrl('worker.js'),
+          coreURL: ffmpegVendorUrl('core/ffmpeg-core.js'),
+          wasmURL: ffmpegVendorUrl('core/ffmpeg-core.wasm')
+        });
+        return ffmpeg;
+      })().catch((error) => {
+        ffmpegPromise = null;
+        throw new Error('ffmpeg 组件加载失败：' + String((error && error.message) || error));
+      });
+    }
+    return ffmpegPromise;
+  }
+  const clampNumber = (value, min, max) => Math.max(min, Math.min(max, value));
+  const sanitizeVideoName = (name) => String(name || '').replace(/\\/g, '/').split('/').pop().replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/[. ]+$/g, '').trim().slice(0, 120);
+  const videoStem = (name, fallback) => (sanitizeVideoName(name).replace(/\.[^/.]+$/, '') || fallback);
+  // main/mp4-compressor.js: the slider shared with PNG / JPG 压缩 rides CRF from 18 to 34.
+  function mp4CompressionPlan(strength) {
+    const level = clampNumber(Math.round(Number(strength) || 0), 0, 100);
+    return { strength: level, quality: clampNumber(Math.round(95 - level * 0.6), 35, 95), crf: clampNumber(Math.round(18 + level * 0.16), 18, 34), zone: level >= 78 ? 'danger' : level >= 56 ? 'warning' : 'safe' };
+  }
+  function mp4CompressArgs(inPath, outPath, crf, audioMode) {
+    return [
+      '-i', inPath,
+      '-map', '0:v:0',
+      ...(audioMode === 'none' ? ['-an'] : ['-map', '0:a:0']),
+      '-c:v', 'libx264', '-preset', 'medium', '-crf', String(crf), '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+      ...(audioMode === 'none' ? [] : audioMode === 'copy' ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '128k']),
+      outPath
+    ];
+  }
+  // main/video-format-converter.js: a percentage off the decoded frame, rounded down to even.
+  const VIDEO_CONVERT_FORMATS = ['mp4', 'webm', 'gif'];
+  const normalizeVideoFormat = (value) => (VIDEO_CONVERT_FORMATS.includes(String(value || '').trim().toLowerCase()) ? String(value).trim().toLowerCase() : 'mp4');
+  const normalizeScalePct = (value) => { const pct = Number(value); return clampNumber(Math.round(Number.isFinite(pct) ? pct : 100), 10, 200); };
+  const videoConvertScaleFilter = (scalePct) => `scale=max(2\\,trunc(iw*${normalizeScalePct(scalePct)}/200)*2):max(2\\,trunc(ih*${normalizeScalePct(scalePct)}/200)*2):flags=lanczos`;
+  function videoConvertArgs(inPath, outPath, format, scalePct) {
+    const target = normalizeVideoFormat(format);
+    const vf = videoConvertScaleFilter(scalePct);
+    if (target === 'gif') return ['-i', inPath, '-filter_complex', `${vf},split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse=new=1`, '-loop', '0', outPath];
+    if (target === 'webm') return ['-i', inPath, '-vf', vf, '-c:v', 'libvpx-vp9', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '2', '-pix_fmt', 'yuv420p', '-b:v', '0', '-crf', '30', outPath];
+    return ['-i', inPath, '-vf', vf, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-crf', '18', outPath];
+  }
+  function videoInputFile(payload) {
+    const token = String((payload && payload.inputPath) || '');
+    const file = token ? runtime.fileForToken(token) : null;
+    if (!file) throw new Error('找不到原始视频文件，请重新选择');
+    return file;
+  }
+  /** What the input carries, read off ffmpeg's own probe log: an AAC track is copied, anything else re-encoded. */
+  function audioModeFromLog(log) {
+    const text = String(log || '');
+    const audio = text.match(/Stream #0:\d+.*?Audio: (\w+)/);
+    if (!audio) return 'none';
+    return audio[1].toLowerCase() === 'aac' ? 'copy' : 'encode';
+  }
+  async function runVideoJob({ tool, jobId, file, buildArgs, outName, mimeType }) {
+    const ffmpeg = await loadFfmpeg();
+    const inName = 'in_' + (++videoOutputSeq) + '.' + (String(file.name || '').split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const outFile = 'out_' + videoOutputSeq + '_' + outName;
+    ffmpegJob = { jobId, last: -1, log: '' };
+    try {
+      await ffmpeg.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
+      // One probe pass for the stream list: ffmpeg prints it before refusing the missing output.
+      await ffmpeg.exec(['-i', inName]).catch(() => {});
+      const probeLog = ffmpegJob.log;
+      ffmpegJob.log = '';
+      const code = await ffmpeg.exec(buildArgs(inName, outFile, probeLog));
+      if (code !== 0) {
+        const tail = ffmpegJob.log.split('\n').filter((line) => /error|invalid|failed|unsupported|not found/i.test(line)).slice(-3).join('；');
+        throw new Error('ffmpeg 退出码 ' + code + (tail ? '：' + tail.slice(0, 240) : ''));
+      }
+      const data = await ffmpeg.readFile(outFile);
+      await ffmpeg.deleteFile(outFile).catch(() => {});
+      const blob = new Blob([data], { type: mimeType });
+      const token = 'web-video://' + videoOutputSeq + '/' + outName;
+      videoOutputs.set(token, { tool, token, blob, fileName: outName, url: '' });
+      videoToolProgress.emit({ jobId, progress01: 1 });
+      return { token, blob };
+    } finally {
+      await ffmpeg.deleteFile(inName).catch(() => {});
+      ffmpegJob = null;
+    }
+  }
+
+  api.compressMp4 = async (payload) => {
+    try {
+      const file = videoInputFile(payload);
+      const plan = mp4CompressionPlan(payload && payload.strength !== undefined ? payload.strength : 32);
+      const fileName = videoStem((payload && payload.fileName) || file.name, 'video') + '-compressed.mp4';
+      const { token, blob } = await runVideoJob({
+        tool: 'mp4-compress', jobId: String((payload && payload.jobId) || 'mp4_' + Date.now()), file,
+        buildArgs: (inName, outFile, probeLog) => mp4CompressArgs(inName, outFile, plan.crf, audioModeFromLog(probeLog)),
+        outName: fileName, mimeType: 'video/mp4'
+      });
+      const bytesIn = file.size;
+      // The desktop's rule: a clip already tighter than this pass keeps its own bytes.
+      if (blob.size >= bytesIn) {
+        releaseVideoOutputs(null, token);
+        return { ok: true, keptOriginal: true, outPath: String(payload.inputPath), fileName, bytesIn, bytesOut: bytesIn, plan, jobId: payload && payload.jobId };
+      }
+      return { ok: true, keptOriginal: false, outPath: token, fileName, bytesIn, bytesOut: blob.size, plan, jobId: payload && payload.jobId };
+    } catch (error) {
+      return { ok: false, error: '视频压缩失败：' + String((error && error.message) || error).slice(0, 240) };
+    }
+  };
+
+  api.convertVideoFormat = async (payload) => {
+    try {
+      const file = videoInputFile(payload);
+      const format = normalizeVideoFormat(payload && payload.format);
+      const scalePct = normalizeScalePct(payload && payload.scalePct);
+      const fileName = videoStem((payload && payload.fileName) || file.name, 'video') + '.' + format;
+      const { token, blob } = await runVideoJob({
+        tool: 'video-convert', jobId: String((payload && payload.jobId) || 'convert_' + Date.now()), file,
+        buildArgs: (inName, outFile) => videoConvertArgs(inName, outFile, format, scalePct),
+        outName: fileName, mimeType: format === 'gif' ? 'image/gif' : format === 'webm' ? 'video/webm' : 'video/mp4'
+      });
+      return { ok: true, outPath: token, fileName, format, scalePct, bytesIn: file.size, bytesOut: blob.size, jobId: payload && payload.jobId };
+    } catch (error) {
+      return { ok: false, error: '视频转换失败：' + String((error && error.message) || error).slice(0, 240) };
+    }
+  };
+
+  api.saveVideoToolOutput = async (payload) => {
+    const items = Array.isArray(payload && payload.items) ? payload.items : [];
+    if (!items.length) return { ok: false, error: '没有可导出的视频' };
+    const blobs = items.map((item) => {
+      const held = videoOutputs.get(String((item && item.srcPath) || ''));
+      const source = !held && item && item.srcPath ? runtime.fileForToken(String(item.srcPath)) : null;
+      const blob = held ? held.blob : source;
+      if (!blob) throw new Error('找不到结果文件：' + String((item && item.fileName) || ''));
+      return { blob, fileName: sanitizeVideoName(item.fileName) || (held ? held.fileName : 'video-output.mp4') };
+    });
+    const picked = await api.pickDirectory();
+    if (picked && picked.canceled) return { ok: true, canceled: true };
+    const saved = [];
+    for (const { blob, fileName } of blobs) {
+      const written = picked && picked.ok && picked.dir
+        ? await api.writeBinaryFile({ dir: picked.dir, fileName, data: blob })
+        : await api.exportPickSaveFile({ fileName, data: blob, mimeType: blob.type });
+      if (written && written.result && written.result.canceled) return { ok: true, canceled: true };
+      if (!written || written.ok === false) return { ok: false, error: (written && written.error) || '导出失败' };
+      saved.push(fileName);
+    }
+    return { ok: true, canceled: false, dir: picked && picked.dir, saved };
+  };
+  api.overwriteVideoToolOutput = async () => ({ ok: false, error: '浏览器里没有原文件路径，不能直接覆盖原片；请用「导出另存」' });
   // No GPU memory is held in this tab, so this must not report that it freed
   // any. It drops what the page itself cached and says plainly where the
   // memory actually lives.
@@ -1156,9 +1371,17 @@
   api.minimaxH3RuntimeEnsureStarted = async () => api.runtimeEnsureStarted();
 
   api.videoResourceMediaRegister = async (payload) => {
+    // A result of MP4 压缩 / 视频格式转换: hand back a URL the preview can play.
+    const outputs = root.NovaFlowWebRuntime && root.NovaFlowWebRuntime.videoOutputs;
+    const held = outputs ? outputs.get(String((payload && payload.filePath) || '')) : null;
+    if (held) {
+      if (!held.url) held.url = URL.createObjectURL(held.blob);
+      return { ok: true, url: held.url, token: held.token, key: held.token, registered: true };
+    }
     const key = String((payload && (payload.key || payload.id)) || 'media-' + Date.now());
     return ok({ key, registered: true });
   };
+
 
   /**
    * Match the colour of the first and last frames.

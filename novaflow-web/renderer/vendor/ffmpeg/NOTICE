@@ -1,0 +1,6 @@
+ffmpeg.wasm in the browser, for 工具 → MP4 压缩 and 视频格式转换.
+
+- This directory: @ffmpeg/ffmpeg 0.12.15 (dist/esm), MIT - https://github.com/ffmpegwasm/ffmpeg.wasm
+- core/: @ffmpeg/core 0.12.10 (dist/esm ffmpeg-core.js + ffmpeg-core.wasm, 32 MB), the single-thread build of FFmpeg with libx264 / libvpx, GPL-2.0-or-later. It is not kept in git: tools/fetch-ffmpeg-core.mjs downloads it (the build calls that; the page downloads it from the site on first use).
+
+libx264 makes the core GPL; distributing the site with it is distribution in the GPL sense. See LICENSE.ffmpeg-core.

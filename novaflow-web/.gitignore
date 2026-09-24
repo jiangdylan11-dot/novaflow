@@ -20,3 +20,5 @@ worker.config.json
 # Build output of the renderer transform
 web-dist/
 worker-renderer/
+# ffmpeg.wasm's 32 MB core, GPL. tools/fetch-ffmpeg-core.mjs gets it; the build calls that.
+renderer/vendor/ffmpeg/core/

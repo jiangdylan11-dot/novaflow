@@ -38,6 +38,7 @@ const SUITES = [
   { name: 'web-spine-atlas-webp', file: 'e2e/web-spine-atlas-webp.test.mjs', needs: [], timeoutMs: 120000 },
   { name: 'web-spine-skel-import', file: 'e2e/web-spine-skel-import.test.mjs', needs: [], timeoutMs: 120000 },
   { name: 'web-png-strong', file: 'e2e/web-png-strong.test.mjs', needs: [], timeoutMs: 120000 },
+  { name: 'web-video-tools', file: 'e2e/web-video-tools.test.mjs', needs: [], timeoutMs: 120000 },
   { name: 'sql-contract', file: 'e2e/sql-contract.test.mjs', needs: [], timeoutMs: 300000 },
   { name: 'control-plane', file: 'e2e/control-plane.test.mjs', needs: [], timeoutMs: 300000 },
   { name: 'security', file: 'e2e/security.test.mjs', needs: [], timeoutMs: 240000 },

@@ -24,6 +24,7 @@ import { redactModule, findMarkers } from './redact-workflow-module.mjs';
 import { instrumentModule } from './instrument-workflow-module.mjs';
 import { redactBundleFile } from './redact-dead-bundle-workflow.mjs';
 import { rewordBundle } from './reword-desktop-strings.mjs';
+import { fetchFfmpegCore } from './fetch-ffmpeg-core.mjs';
 import { allWorkflowEntryMethods, WORKFLOW_SOURCE_MODULES } from '../packages/shared/src/workflow-modules.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -118,6 +119,17 @@ export async function buildWebRenderer({ logger, clean = true } = {}) {
   }
   await mkdir(WEB_OUT, { recursive: true });
   await mkdir(WORKER_OUT, { recursive: true });
+
+  // ffmpeg.wasm's 32 MB core (工具 → MP4 压缩 / 视频格式转换) is fetched, not
+  // committed; see tools/fetch-ffmpeg-core.mjs. Offline, the build still goes
+  // through and the page says the component is missing.
+  try {
+    const core = await fetchFfmpegCore();
+    log('ffmpeg core', { bytes: core.bytes, downloaded: core.downloaded });
+  } catch (error) {
+    log('ffmpeg core missing', String((error && error.message) || error));
+    console.warn('  ffmpeg core not available: ' + String((error && error.message) || error));
+  }
 
   const entries = await readdir(SRC, { withFileTypes: true });
   const report = {

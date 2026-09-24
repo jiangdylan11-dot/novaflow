@@ -217,6 +217,28 @@ fixture 是一份真实的 3.8.99 导出）。
 
 ---
 
+## MP4 压缩 / 视频格式转换：ffmpeg.wasm
+
+工具 → MP4 压缩 和 视频格式转换 在 Web 上由 `novaflow-web-capabilities.js` 回答
+`compressMp4` / `convertVideoFormat`：用编译成 WebAssembly 的 FFmpeg（`renderer/vendor/ffmpeg/`，
+@ffmpeg/ffmpeg 0.12.15 包装层 + @ffmpeg/core 0.12.10 单线程内核）在 Worker 里跑。
+编码参数逐条照抄桌面版 `main/mp4-compressor.js` 和 `main/video-format-converter.js`
+（CRF 18–34 随强度、AAC 直拷贝、VP9 / GIF 调色板、按百分比缩放到偶数尺寸），只去掉桌面版
+读管道进度用的日志参数——ffmpeg.wasm 从自己的日志里报进度。「原片已经更优就保留原片」的规则
+也一样。`tests/e2e/web-video-tools.test.mjs` 把网页端发给 ffmpeg 的参数和桌面模块生成的
+参数逐项比对。
+
+**32 MB 的内核不进 git**：`tools/fetch-ffmpeg-core.mjs` 从 npm 下载到
+`renderer/vendor/ffmpeg/core/`（已 gitignore），`build-web-renderer.mjs` 每次构建先确认它在；
+站点和启动助手安装包因此各大 32 MB。页面第一次点开始时从站点下载一次，之后走浏览器缓存。
+
+**单线程**：没有 SharedArrayBuffer（站点没开跨源隔离头），x264 在浏览器里只有一个核可用，
+长片子要等，工具里有百分比。导出覆盖在浏览器里做不到（没有原路径），按钮会说明请用导出另存。
+
+**授权提醒**：@ffmpeg/core 链接了 libx264 / libvpx，是 GPL-2.0-or-later（`vendor/ffmpeg/NOTICE`）。
+
+---
+
 ## 其它没做的
 
 - **速率限制**：控制面没有限流。现有 `novaflow-backend` 对 license 校验有限流
