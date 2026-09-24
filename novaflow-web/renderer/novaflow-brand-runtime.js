@@ -18809,8 +18809,60 @@
         return;
       }
       getAiSequencePreviewEffectiveRect(viewport);
+      syncAiAnimationStageBottomToDock();
     });
     targets.forEach((node) => aiSequencePreviewGeometryObserver.observe(node));
+  }
+
+  // The dock grows after the mode switch has already been laid out: 多参视频
+  // adds a row of reference tiles, and nothing re-measured the stage inset, so
+  // the board kept the 文生视频 inset and its bottom ran under the tiles. The
+  // dock's own resize is the moment to re-measure and re-fit.
+  let aiAnimationDockHeightSeen = -1;
+  let aiAnimationDockResizeObserver = null;
+  let aiAnimationDockObserved = null;
+  // The shared geometry observer is rebound lazily, and a mode switch mounts a
+  // new dock; this one follows the dock itself, and the mode tabs ask for a
+  // measure right after the switch.
+  function observeAiAnimationDockForStageBottom(dock) {
+    if (typeof ResizeObserver !== "function" || dock === aiAnimationDockObserved) return;
+    if (aiAnimationDockResizeObserver) aiAnimationDockResizeObserver.disconnect();
+    aiAnimationDockObserved = dock;
+    aiAnimationDockResizeObserver = new ResizeObserver(() => syncAiAnimationStageBottomToDock());
+    aiAnimationDockResizeObserver.observe(dock);
+  }
+  document.addEventListener("click", (event) => {
+    const target = event.target instanceof Element
+      ? event.target.closest('[data-novaflow-ai-top-mode-tabs="1"] [data-novaflow-ai-generation-mode]')
+      : null;
+    if (!target) return;
+    [150, 500, 1000].forEach((delay) => window.setTimeout(syncAiAnimationStageBottomToDock, delay));
+  }, true);
+  function syncAiAnimationStageBottomToDock() {
+    const dock = document.querySelector('[data-novaflow-ai-bottom-workspace="1"]');
+    const workspace = dock instanceof HTMLElement ? dock.closest('[data-novaflow-ai-main-workspace="1"]') : null;
+    if (!(dock instanceof HTMLElement) || !(workspace instanceof HTMLElement) || !isVisible(dock)) return;
+    observeAiAnimationDockForStageBottom(dock);
+    const dockRect = dock.getBoundingClientRect();
+    const workspaceRect = workspace.getBoundingClientRect();
+    if (!(dockRect.height > 0) || !(workspaceRect.height > 0)) return;
+    const dockHeight = Math.round(dockRect.height);
+    if (dockHeight === aiAnimationDockHeightSeen) return;
+    const previous = aiAnimationDockHeightSeen;
+    aiAnimationDockHeightSeen = dockHeight;
+    const stageBottom = Math.max(220, Math.round(workspaceRect.bottom - dockRect.top + 10));
+    const current = Number.parseFloat(document.body.style.getPropertyValue("--novaflow-ai-main-stage-bottom")) || 0;
+    if (Math.abs(current - stageBottom) < 2) return;
+    setStylePropertyIfChanged(document.body, "--novaflow-ai-main-stage-bottom", stageBottom + "px");
+    if (!isSourceOwnedLayout(workspace)) {
+      setStylePropertyIfChanged(workspace, "--novaflow-ai-main-stage-bottom", stageBottom + "px");
+    }
+    const mainStage = workspace.getAttribute("data-novaflow-ai-main-stage") === "1"
+      ? workspace
+      : workspace.querySelector('[data-novaflow-ai-main-stage="1"]');
+    if (previous >= 0 && mainStage instanceof HTMLElement) {
+      clickAiAnimationAutoFit(workspace, mainStage, { force: true });
+    }
   }
 
   function ensureAiSequencePreviewBgToggle(root = document) {
@@ -33047,13 +33099,15 @@
       },
       {
         when: "body.novaflow-primary-target-art",
+        // Two rows: the text over the bar, never beside it (beside it the text ate the bar's width),
+        // and the cancel × at the row's right edge, under the generate button.
         selector: '[data-novaflow-art-generate-progress]',
-        style: { display: "flex", "flex-direction": "row", "align-items": "center", gap: "8px", height: "15px", "min-height": "15px", "max-height": "15px", margin: "0" }
+        style: { display: "flex", "flex-direction": "column", "align-items": "stretch", gap: "4px", height: "auto", "min-height": "0", "max-height": "none", margin: "0" }
       },
       {
         when: "body.novaflow-primary-target-art",
         selector: '[data-novaflow-art-generate-progress] > div:first-child',
-        style: { flex: "0 0 auto", width: "auto", padding: "0", gap: "8px", height: "15px", display: "flex", "align-items": "center" }
+        style: { flex: "0 0 auto", width: "100%", padding: "0 34px 0 0", gap: "8px", height: "18px", "min-height": "18px", display: "flex", "align-items": "center", position: "relative", "box-sizing": "border-box" }
       },
       {
         when: "body.novaflow-primary-target-art",
@@ -33063,12 +33117,17 @@
       {
         when: "body.novaflow-primary-target-art",
         selector: '[data-novaflow-art-generate-progress] > div:nth-child(2)',
-        style: { flex: "1 1 auto", width: "auto", height: "1px", "min-height": "1px", "border-radius": "0", background: DOCK_PROGRESS_LINE, "background-color": DOCK_PROGRESS_LINE }
+        style: { flex: "0 0 auto", width: "100%", height: "1px", "min-height": "1px", "border-radius": "0", background: DOCK_PROGRESS_LINE, "background-color": DOCK_PROGRESS_LINE }
       },
       {
         when: "body.novaflow-primary-target-art",
         selector: '[data-novaflow-art-generate-progress] > div:nth-child(2) > div',
         style: { height: "1px", "border-radius": "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-progress] > div:first-child > button',
+        style: { position: "absolute", right: "0", top: "0", width: "18px", height: "18px", "min-width": "18px", padding: "0", margin: "0", "line-height": "18px", "font-size": "12px", transform: "none" }
       },
       {
         when: "body.novaflow-primary-target-art",
@@ -34394,12 +34453,12 @@
         // 等待生成 0% and a hairline running out to the right.
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-generation-progress="1"]',
-        style: { display: "flex", "flex-direction": "row", "align-items": "center", gap: "8px", height: "15px", "min-height": "15px", "max-height": "15px" }
+        style: { display: "flex", "flex-direction": "column", "align-items": "stretch", gap: "4px", height: "auto", "min-height": "0", "max-height": "none", position: "relative" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-generation-progress="1"] > div:first-child',
-        style: { flex: "0 0 auto", width: "auto", padding: "0", gap: "8px", height: "15px", "align-items": "center" }
+        style: { flex: "0 0 auto", width: "100%", padding: "0 34px 0 0", gap: "8px", height: "18px", "min-height": "18px", "align-items": "center", "box-sizing": "border-box" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
@@ -34409,12 +34468,17 @@
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-generation-progress="1"] > div:nth-child(2)',
-        style: { flex: "1 1 auto", width: "auto", height: "1px", "min-height": "1px", "border-radius": "0", background: DOCK_PROGRESS_LINE, "background-color": DOCK_PROGRESS_LINE, position: "static" }
+        style: { flex: "0 0 auto", width: "100%", height: "1px", "min-height": "1px", "border-radius": "0", background: DOCK_PROGRESS_LINE, "background-color": DOCK_PROGRESS_LINE, position: "static" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-generation-progress="1"] > div:nth-child(2) > div',
         style: { height: "1px", "border-radius": "0" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-generation-progress="1"] > div:first-child > button',
+        style: { position: "absolute", right: "0", top: "0", width: "18px", height: "18px", "min-width": "18px", padding: "0", margin: "0", "line-height": "18px", "font-size": "12px", transform: "none" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
@@ -37514,6 +37578,11 @@
   function getAiAnimationGuardedPreviewVarValue(property, value, ownerStyle) {
     if (!document.body || ownerStyle !== document.body.style) return null;
     const name = String(property || "");
+    // Only the three preview column vars are guarded. The fallback below keeps a
+    // var at its current value, which froze --novaflow-ai-main-stage-bottom at
+    // the 文生视频 dock height: 多参视频 adds a row of reference tiles, the
+    // board kept the old inset and ran under them.
+    if (name !== "--novaflow-ai-preview-left" && name !== "--novaflow-ai-preview-right" && name !== "--novaflow-ai-preview-center-x") return null;
     const text = String(value ?? "").trim();
     if (
       (name === "--novaflow-ai-preview-left" && text !== "434px") ||
@@ -61424,6 +61493,9 @@
     const preservedExternalButtons = preserveAiAnimationPromptAssistantExternalButtons(actions);
     if (topRow) {
       topRow.setAttribute("data-novaflow-ai-prompt-history-row", "1");
+      // Above the 参考图 tiles (z 8, their × at 33): the popover is fixed but lives in this row's
+      // stacking context, so the row itself has to sit on top.
+      setImportantStyles(topRow, { position: "relative", "z-index": "40" });
       setImportantStyles(topRow, {
         display: "flex",
         flex: "0 0 32px",
@@ -61503,6 +61575,9 @@
       const topRow = frame.firstElementChild instanceof HTMLElement ? frame.firstElementChild : null;
       if (!(topRow instanceof HTMLElement)) return;
       topRow.setAttribute("data-novaflow-ai-prompt-history-row", "1");
+      // Above the 参考图 tiles (z 8, their × at 33): the popover is fixed but lives in this row's
+      // stacking context, so the row itself has to sit on top.
+      setImportantStyles(topRow, { position: "relative", "z-index": "40" });
       setImportantStyles(topRow, {
         display: "flex",
         flex: "0 0 26px",
@@ -79226,7 +79301,38 @@
     if ("promptId" in options) ART_GENERATE_STATE.progressPromptId = String(options.promptId || "");
     if ("queueRemaining" in options) ART_GENERATE_STATE.progressQueueRemaining = Math.max(0, Number(options.queueRemaining) || 0);
     if ("started" in options) ART_GENERATE_STATE.progressStartedAt = options.started ? Date.now() : 0;
+    // A tick only changes the numbers. Rebuilding the dock for it wiped the styles the reference spec
+    // had written, so for a frame the dock was laid out by the stylesheets alone (taller, the prompts
+    // stacked) and everything that measures it - the preview fit, the stage box - jumped with it.
+    if (ART_GENERATE_STATE.running && patchArtGenerateProgressRow()) return;
     renderArtGenerateSurfaces({ forceBottom: true });
+  }
+
+  // Write a fresh progress row's text and bar into the mounted one. False when the structure differs
+  // (a run starting or ending, a prompt id or the cancel button appearing): that needs a real render.
+  function patchArtGenerateProgressRow() {
+    const current = document.querySelector("#novaflow-art-generate-workspace [data-novaflow-art-generate-progress]");
+    if (!(current instanceof HTMLElement)) return false;
+    const fresh = renderArtGenerateProgressRow();
+    if (fresh.getAttribute("data-running") !== current.getAttribute("data-running")) return false;
+    const part = (root, name) => root.querySelector(".novaflow-art-generate-progress-" + name);
+    for (const name of ["label", "percent", "credit", "prompt", "cancel"]) {
+      const mounted = part(current, name);
+      const next = part(fresh, name);
+      if (!!mounted !== !!next) return false;
+      if (!mounted) continue;
+      if (mounted.textContent !== next.textContent) mounted.textContent = next.textContent;
+      for (const attr of ["data-running", "data-error", "data-novaflow-art-generate-credit-status"]) {
+        if (next.hasAttribute(attr) && mounted.getAttribute(attr) !== next.getAttribute(attr)) mounted.setAttribute(attr, next.getAttribute(attr));
+      }
+      if (name === "credit" && mounted.style.display !== next.style.display) mounted.style.display = next.style.display;
+    }
+    const bar = part(current, "bar");
+    const nextBar = part(fresh, "bar");
+    if (!bar || !nextBar) return false;
+    if (bar.style.width !== nextBar.style.width) bar.style.width = nextBar.style.width;
+    if (bar.getAttribute("data-active") !== nextBar.getAttribute("data-active")) bar.setAttribute("data-active", nextBar.getAttribute("data-active"));
+    return true;
   }
 
   function resetArtGenerateProgress(label = "\u7b49\u5f85\u751f\u6210", pct = 0) {

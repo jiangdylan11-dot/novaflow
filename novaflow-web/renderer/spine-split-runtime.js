@@ -3488,6 +3488,21 @@
         border-color: transparent !important;
         box-shadow: none !important;
       }
+      /* 合并图层 sits outside the control grid, so it never got the grid buttons' hover; give it the same. */
+      #${RIGHT_WORKSPACE_ID} [${RIGHT_WORKSPACE_MERGE_ATTR}="1"] {
+        cursor: pointer !important;
+        transition: background-color 120ms ease-out, background 120ms ease-out, border-color 120ms ease-out !important;
+      }
+      #${RIGHT_WORKSPACE_ID} [${RIGHT_WORKSPACE_MERGE_ATTR}="1"]:not([disabled]):not([aria-disabled="true"]):hover,
+      #${RIGHT_WORKSPACE_ID} [${RIGHT_WORKSPACE_MERGE_ATTR}="1"]:not([disabled]):focus-visible {
+        background: #424242 !important;
+        background-color: #424242 !important;
+        border-color: rgba(255, 255, 255, 0.16) !important;
+      }
+      #${RIGHT_WORKSPACE_ID} [${RIGHT_WORKSPACE_MERGE_ATTR}="1"]:not([disabled]):not([aria-disabled="true"]):active {
+        background: #353535 !important;
+        background-color: #353535 !important;
+      }
       [${LAYER_ROW_ATTR}],
       body.novaflow-skeleton-animation-layout [${LAYER_ROW_ATTR}] {
         border: 0 !important;
@@ -7960,6 +7975,10 @@
     return { unetName, clipName, vaeName, loraName }
   }
 
+  function objectTransferUsableRuntime(resolved) {
+    return resolved && typeof resolved === 'object' && resolved.unetName ? resolved : null
+  }
+
   function objectTransferEngine() {
     // Which model 万物迁移 runs on. The page cannot read the node's catalogue itself; it learns whether the
     // node carries Qwen-Image-2.1 the way the drawing and UI-design panels do, from the local assistant's
@@ -7996,6 +8015,9 @@
   }
 
   function buildObjectTransferQwen21Workflow(info, uploads, prefix, resolved, prompt, options) {
+    // On the Web the page cannot read the node catalogue, so the runtime it resolved arrives here (replayed
+    // on the node) as a server-only marker string. Resolve against the catalogue this node holds instead.
+    resolved = objectTransferUsableRuntime(resolved) || resolveObjectTransferRuntime(info, 'qwen-2.1')
     // The 2.1 graph for both passes: the arranged plate is image_1 and the untouched scene is image_2,
     // each at its own size (resolution 0, so the 32-aligned plate is never resampled); the sampler runs
     // on the encoder's own latent (image_1's grid) at denoise 1, and the RGBA decode is split to RGB
@@ -8206,6 +8228,9 @@
   }
 
   function buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, prompt, maskName, denoise, options) {
+    // On the Web the page cannot read the node catalogue, so the runtime it resolved arrives here (replayed
+    // on the node) as a server-only marker string. Resolve against the catalogue this node holds instead.
+    resolved = objectTransferUsableRuntime(resolved) || resolveObjectTransferRuntime(info, 'qwen-2511')
     // The 万物迁移 graph: the composite placement guide on an unscaled plate, the untouched picture as the
     // second image, and one denoise for the whole frame. The centre-cropping rescale node is not here —
     // it picked a preset by aspect and cropped one axis, and there is no inverse.
@@ -8642,11 +8667,16 @@
   }
 
   function defaultSamPointWorkflow(info, imageName, prefix, seedCanvas, options) {
+    // The point prompts are read off the stroke here, where the canvas is; the graph is built where the
+    // node catalogue is (on the Web that is the compute node, which replays the builder below).
+    return samPointWorkflowFromPrompts(info, imageName, prefix, seedPromptPoints(seedCanvas), options)
+  }
+
+  function samPointWorkflowFromPrompts(info, imageName, prefix, prompts, options) {
     if (!info || !info['SAM Model Loader'] || !info['SAM Parameters'] || !info['SAM Image Mask']) {
       throw new Error('NovaFlow AI Runtime 未安装 SAM 点选抠图节点')
     }
-    const prompts = seedPromptPoints(seedCanvas)
-    if (!prompts) throw new Error('笔触区域太小，无法生成 SAM 点提示')
+    if (!prompts || !Array.isArray(prompts.points) || !prompts.points.length) throw new Error('笔触区域太小，无法生成 SAM 点提示')
     const requestedSize = options && options.modelSize
     const modelSize = requestedSize && optionIncludes(info['SAM Model Loader'].input.required.model_size, requestedSize)
       ? requestedSize
@@ -22351,7 +22381,7 @@
   function toggleSelectionEffectMode() { setSelectionEffectMode(!(state.selectionTool && state.selectionTool.effectMode)) }
 
   function qwenEditReferenceSize(width, height) {
-    // Mirrors TextEncodeQwenImageEditPlus (ComfyUI comfy_extras/nodes_qwen.py): the reference latent is
+    // Mirrors the Qwen edit text encoder (ComfyUI comfy_extras/nodes_qwen.py): the reference latent is
     // the input area-resized to ~1 MP and snapped to /8, and the model draws on that grid.
     const safeWidth = Math.max(1, Math.round(width || 1))
     const safeHeight = Math.max(1, Math.round(height || 1))
@@ -22372,7 +22402,7 @@
     // sampled latent's grid and the edit lands back on the pixels it came from. Measured 2026-09-17 on a
     // 756x816 crop: matched (984x1064) keeps the stair edges at correlation 0.976/0.981 with 0px offset
     // and 2.97/255 mean difference; a mismatched 736x800 plate (reference 1.34x bigger) drifts 4px with
-    // correlation 0.38 and 24.65/255. FluxKontextImageScale is NOT used for this: it center-crops one
+    // correlation 0.38 and 24.65/255. The Kontext image-scale node is NOT used for this: it center-crops one
     // axis (measured: 29 columns off each side of a 756px crop) and that crop has no inverse.
     const direct = qwenEditReferenceSize(width, height)
     const directCheck = qwenEditReferenceSize(direct.width, direct.height)
@@ -22455,6 +22485,9 @@
   }
 
   function buildEffectExtractQwenWorkflow(info, imageName, prefix, resolved) {
+    // On the Web the page cannot read the node catalogue, so the runtime it resolved arrives here (replayed
+    // on the node) as a server-only marker string. Resolve against the catalogue this node holds instead.
+    resolved = objectTransferUsableRuntime(resolved) || resolveObjectTransferQwenRuntime(info)
     const lora = info.LoraLoaderModelOnly || null
     const aura = info.ModelSamplingAuraFlow || null
     const cfgNorm = info.CFGNorm || null
@@ -22744,6 +22777,9 @@
   }
 
   function buildEffectDeeffectQwenWorkflow(info, imageName, prefix, resolved) {
+    // On the Web the page cannot read the node catalogue, so the runtime it resolved arrives here (replayed
+    // on the node) as a server-only marker string. Resolve against the catalogue this node holds instead.
+    resolved = objectTransferUsableRuntime(resolved) || resolveObjectTransferQwenRuntime(info)
     // Identical graph to the extraction, one prompt apart, so both passes see the same plate geometry.
     const lora = info.LoraLoaderModelOnly || null
     const aura = info.ModelSamplingAuraFlow || null

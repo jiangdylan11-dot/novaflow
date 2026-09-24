@@ -122,7 +122,7 @@
       'aria-label': `查看大图 ${text(options.name || '生成结果')}`,
       style: {
         position: 'fixed', inset: '0', zIndex: '2147483645', display: 'grid', placeItems: 'center',
-        padding: '16px', boxSizing: 'border-box', background: 'rgba(3,7,18,0.84)', color: '#fff',
+        padding: '16px', boxSizing: 'border-box', background: 'rgba(0,0,0,0.78)', color: '#fff',
         pointerEvents: 'auto',
       },
     })
@@ -130,7 +130,7 @@
       style: {
         width: '100%', height: '100%', minWidth: '0', minHeight: '0', overflow: 'hidden',
         display: 'grid', gridTemplateRows: '52px minmax(0,1fr)', borderRadius: '12px',
-        border: '1px solid rgba(255,255,255,0.15)', background: '#090d14',
+        border: '1px solid rgba(255,255,255,0.1)', background: '#1b1b1b',
         boxShadow: '0 28px 100px rgba(0,0,0,0.62)',
       },
     })
@@ -169,7 +169,7 @@
       style: {
         display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto auto auto', alignItems: 'center', gap: '8px',
         padding: '0 10px 0 16px', borderBottom: '1px solid rgba(255,255,255,0.09)',
-        background: 'rgba(15,23,42,0.88)',
+        background: '#212121',
       },
     }, [title, scaleLabel, fitButton, closeButton])
     const stage = element(documentRef, 'div', {
@@ -177,7 +177,7 @@
       title: '滚轮缩放，拖动查看，双击恢复适配',
       style: {
         position: 'relative', minWidth: '0', minHeight: '0', overflow: 'hidden',
-        background: 'radial-gradient(circle at center, rgba(30,41,59,0.72), rgba(2,6,23,0.96))',
+        background: '#141414',
         cursor: 'grab', touchAction: 'none', userSelect: 'none',
       },
     })
