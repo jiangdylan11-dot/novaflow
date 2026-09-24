@@ -9,6 +9,8 @@
   },
   "files": [
     "admin-main.js",
+    "build/icon.ico",
+    "build/icon.png",
     "admin-server/**/*",
     "license/config.js",
     "license-admin-core.js",

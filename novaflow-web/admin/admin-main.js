@@ -15,6 +15,7 @@ function createWindow() {
     minWidth: 1080,
     minHeight: 680,
     title: "NovaFlow 后台管理",
+    icon: path.join(__dirname, "build", "icon.ico"),
     backgroundColor: "#0B0E13",
     autoHideMenuBar: true,
     webPreferences: {
