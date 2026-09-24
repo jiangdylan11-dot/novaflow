@@ -491,8 +491,16 @@
 
   // What the compute node's image runtime offers beyond the fixed task types,
   // e.g. { qwenImage21: true }: the local assistant, or on the website the
-  // shared pool (true while a node that can build 2.1 is online).
-  let runtimeFeatureCache = {};
+  // shared pool (true while a node that can build 2.1 is online). The website
+  // draws on 2.1, so its panel starts from that layout (steps, CFG, ten
+  // references, the 2.1 LoRA list) and keeps it while nobody is online: an
+  // empty pool says nothing about the node that will take the run. Only a
+  // drawing node that lacks 2.1 switches it to the 2511 layout.
+  let runtimeFeatureCache = computeMode === 'shared' ? { qwenImage21: true } : {};
+  function drawingNodeOnline(caps) {
+    const types = caps && Array.isArray(caps.taskTypes) ? caps.taskTypes : [];
+    return types.some((t) => t && t.kind === 'image' && Number(t.available_workers) > 0);
+  }
   // The answer can be missing on the first try (a page opened while the assistant restarts, a model
   // probe that timed out at start): until the node reports 2.1, ask again every 15 s for a while and
   // when the window regains focus, so the drawing panel does not stay on its fallback layout.
@@ -772,9 +780,12 @@
 
     async runtimeFeatures() {
       runtimeFeatureCheckedAt = Date.now();
+      let answered = false;
       try {
         const caps = await control('GET', '/api/web/capabilities');
         const next = caps && caps.features && typeof caps.features === 'object' ? { ...caps.features } : {};
+        if (computeMode === 'shared' && next.qwenImage21 !== true && !drawingNodeOnline(caps)) next.qwenImage21 = true;
+        else answered = true;
         const changed = JSON.stringify(next) !== JSON.stringify(runtimeFeatureCache);
         runtimeFeatureCache = next;
         // Panels drawn before the answer arrived (drawing controls, UI-design limits) redraw on this.
@@ -782,7 +793,7 @@
           root.dispatchEvent(new root.CustomEvent('novaflow:runtime-features', { detail: { ...next } }));
         }
       } catch (_) { /* keep the last answer */ }
-      if (runtimeFeatureCache.qwenImage21 === true) runtimeFeatureRetries = 0;
+      if (answered && runtimeFeatureCache.qwenImage21 === true) runtimeFeatureRetries = 0;
       else scheduleRuntimeFeatureRetry();
       return { ...runtimeFeatureCache };
     },

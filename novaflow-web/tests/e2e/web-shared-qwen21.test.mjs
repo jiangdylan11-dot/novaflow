@@ -1,6 +1,8 @@
 // The website (shared pool) draws and designs UI on Qwen-Image-2.1 exactly when a node that can build
 // it is online: the node reports the model, the control plane queues 2.1 runs for that model and says
-// so in its capabilities, the 2.1 LoRA list comes from those nodes, and the page asks the pool.
+// so in its capabilities, the 2.1 LoRA list comes from those nodes, and the page asks the pool. While
+// nobody is online the page keeps the 2.1 layout, as the local assistant shows it; only a drawing
+// node without 2.1 switches it to the 2511 layout.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -53,8 +55,19 @@ try {
   const create = (parameters) => request('/api/web/tasks', 'POST', { task_type: 'renderer_workflow',
     workflow: { module: M, method: 'buildArtGenerateRunWorkflow' }, parameters }, token);
 
+  // The shared-mode page asks the pool on load; an empty pool keeps the 2.1 layout.
+  const sandbox = createDomSandbox({ Response, Request, Blob, FormData, NOVAFLOW_WEB_CONFIG: { controlUrl: ctx.url }, fetch });
+  sandbox.localStorage.setItem('novaflow_web_session_v1', JSON.stringify({ token }));
+  runInContext(await readFile(new URL('../../renderer/novaflow-web-runtime.js', import.meta.url), 'utf8'), createContext(sandbox));
+  equal(sandbox.NovaFlowWebRuntime.computeMode, 'shared');
+  equal(sandbox.electronAPI.runtimeFeaturesSync().qwenImage21, true);
+  equal((await request('/api/web/capabilities')).body.features, { qwenImage21: false });
+  equal((await sandbox.electronAPI.runtimeFeatures()).qwenImage21, true);
+
+  // A drawing node without 2.1 is the one that switches the page to the 2511 layout.
   const older = await node('2511', [{ model_id: 'qwen-image-2511', status: 'ready', detail: { lora_catalog: lora([]) } }]);
   equal((await request('/api/web/capabilities')).body.features, { qwenImage21: false });
+  equal((await sandbox.electronAPI.runtimeFeatures()).qwenImage21, false);
   const task21 = await create(run({ localDrawEngine: 'qwen-2.1' }));
   equal(task21.body.capableWorkers, 0);
   equal(await claim(older), null);
@@ -73,15 +86,8 @@ try {
   equal((await request('/api/web/loras/qwen?nsfw=false', 'GET', undefined, token)).body.items,
     [{ name: 'qwen/style.safetensors' }]);
 
-  // The shared-mode page asks the pool on load and gets the 2.1 LoRA list.
-  const sandbox = createDomSandbox({ Response, Request, Blob, FormData, NOVAFLOW_WEB_CONFIG: { controlUrl: ctx.url }, fetch });
-  sandbox.localStorage.setItem('novaflow_web_session_v1', JSON.stringify({ token }));
-  runInContext(await readFile(new URL('../../renderer/novaflow-web-runtime.js', import.meta.url), 'utf8'), createContext(sandbox));
-  equal(sandbox.NovaFlowWebRuntime.computeMode, 'shared');
-  for (let i = 0; i < 50 && sandbox.electronAPI.runtimeFeaturesSync().qwenImage21 !== true; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-  equal(sandbox.electronAPI.runtimeFeaturesSync().qwenImage21, true);
+  // With the 2.1 node online the page is back on 2.1 and gets the 2.1 LoRA list.
+  equal((await sandbox.electronAPI.runtimeFeatures()).qwenImage21, true);
   equal((await sandbox.electronAPI.qwenLoraCatalog({ nsfw: false, engine: 'qwen-2.1' })).items, [{ name: 'qwen/q21.safetensors' }]);
 } finally {
   await new Promise((resolve) => ctx.server.close(resolve));
