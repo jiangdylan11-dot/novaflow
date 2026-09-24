@@ -548,20 +548,24 @@ function updateGrokQuotaCurrent() {
   const quota = (grokQuotaState.quotas || []).find((item) => String(item.user_id || "") === String(userId || ""));
   const mode = grokQuotaMode();
   input.placeholder = mode === "set" ? "总次数" : "次数";
+  // 清零已用 takes no number.
+  input.disabled = mode === "reset_used";
   if (!userId || !quota) {
     label.textContent = "当前：-";
     if (!editing) {
       input.value = "";
       if (note) note.value = "";
     }
+    updateGrokQuotaPreview();
     return;
   }
   if (!editing) {
-    // 设置总次数 starts from the current total; 增加 / 扣减 from a blank amount.
+    // 改成总次数 starts from the current total; 增加 / 扣减 from a blank amount.
     input.value = mode === "set" ? String(Number(quota.allocated_count || 0)) : "";
     if (note) note.value = String(quota.note || "");
   }
-  label.textContent = `已分配 ${formatNumber(quota.allocated_count || 0)} · 已用 ${formatNumber(quota.used_count || 0)} · 剩余 ${formatNumber(quota.remaining_count || 0)}`;
+  label.textContent = `当前：总次数 ${formatNumber(quota.allocated_count || 0)} · 已用 ${formatNumber(quota.used_count || 0)} · 剩余 ${formatNumber(quota.remaining_count || 0)}`;
+  updateGrokQuotaPreview();
 }
 
 async function loadAdminDataset(apiName, badgeId) {
@@ -897,6 +901,11 @@ function renderMembers(usersResult, creditsResult, quotaResult) {
     adjust.textContent = "调整";
     adjust.title = "在右侧调整这个用户的积分和提示词次数";
     adjust.addEventListener("click", () => {
+      // The direct edit: the number box shows this person's total, ready to
+      // be overwritten.
+      const modeSelect = $("grokQuotaMode");
+      if (modeSelect) modeSelect.value = "set";
+      grokQuotaDirty = false;
       ["creditAdjustUser", "grokQuotaUser"].forEach((id) => {
         const select = $(id);
         if (!select) return;
@@ -2412,7 +2421,7 @@ async function applyCreditAdjustment() {
 // allocation. The backend only ever stores the resulting total.
 function grokQuotaMode() {
   const mode = String($("grokQuotaMode")?.value || "set");
-  return ["add", "deduct", "set"].includes(mode) ? mode : "set";
+  return ["add", "deduct", "set", "reset_used"].includes(mode) ? mode : "set";
 }
 
 function grokQuotaPayload() {
@@ -2420,19 +2429,53 @@ function grokQuotaPayload() {
   const amount = Number($("grokQuotaAllocated")?.value || 0);
   const quota = (grokQuotaState.quotas || []).find((item) => String(item.user_id || "") === String(userId));
   const current = Number(quota?.allocated_count || 0);
+  const used = Number(quota?.used_count || 0);
+  const reserved = Number(quota?.reserved_count || 0);
   const mode = grokQuotaMode();
   const allocatedCount = mode === "add" ? current + amount
     : mode === "deduct" ? Math.max(0, current - amount)
+    : mode === "reset_used" ? current
     : amount;
+  const usedAfter = mode === "reset_used" ? 0 : used;
   return {
     providerKey: normalizeProviderQuotaKey($("providerQuotaKey")?.value || grokQuotaState.providerKey),
     userId,
     mode,
     amount,
     currentAllocated: current,
+    currentUsed: used,
     allocatedCount,
+    remainingAfter: Math.max(0, allocatedCount - usedAfter - reserved),
     note: $("grokQuotaNote")?.value.trim() || ""
   };
+}
+
+// What the save button will do, in numbers, before it is pressed. The
+// allocation used to be a bare "分配次数" box, and a number typed into it
+// while the mode said 增加 stacked on top of the old total.
+function updateGrokQuotaPreview() {
+  const preview = $("grokQuotaPreview");
+  if (!preview) return;
+  const payload = grokQuotaPayload();
+  if (!payload.userId) {
+    preview.textContent = "保存后：先选择用户";
+    return;
+  }
+  const n = formatNumber;
+  if (payload.mode === "reset_used") {
+    preview.textContent = `保存后：已用 ${n(payload.currentUsed)} → 0，总次数 ${n(payload.currentAllocated)} 不变，剩余 ${n(payload.remainingAfter)}`;
+    return;
+  }
+  if (!Number.isFinite(payload.amount) || $("grokQuotaAllocated")?.value === "") {
+    preview.textContent = payload.mode === "set"
+      ? `保存后：总次数改为输入的数字（当前 ${n(payload.currentAllocated)}，已用 ${n(payload.currentUsed)}）`
+      : `保存后：在当前 ${n(payload.currentAllocated)} 的基础上${payload.mode === "add" ? "增加" : "扣减"}输入的数字`;
+    return;
+  }
+  const how = payload.mode === "set" ? `${n(payload.currentAllocated)} → ${n(payload.allocatedCount)}`
+    : payload.mode === "add" ? `${n(payload.currentAllocated)} + ${n(payload.amount)} = ${n(payload.allocatedCount)}`
+    : `${n(payload.currentAllocated)} − ${n(payload.amount)} = ${n(payload.allocatedCount)}`;
+  preview.textContent = `保存后：总次数 ${how}，已用 ${n(payload.currentUsed)}，剩余 ${n(payload.remainingAfter)}`;
 }
 
 async function saveGrokQuota() {
@@ -2447,18 +2490,43 @@ async function saveGrokQuota() {
     alert("请选择用户");
     return;
   }
+  const user = grokQuotaState.users.find((item) => String(item.id || "") === String(payload.userId));
+  const quota = grokQuotaState.quotas.find((item) => String(item.user_id || "") === String(payload.userId));
+  const who = userAccountLabel(user) || payload.userId;
+
+  if (payload.mode === "reset_used") {
+    const confirmed = confirm(`确定把 ${who} 的 ${providerLabel}已用次数清零？\n当前已用：${formatNumber(payload.currentUsed)}，总次数 ${formatNumber(payload.currentAllocated)} 不变，剩余将为 ${formatNumber(payload.remainingAfter)}。`);
+    if (!confirmed) return;
+    try {
+      if (status) status.textContent = "保存中...";
+      const res = await window.adminAPI.resetAdminProviderQuotaUsage({ userId: payload.userId, providerKey: payload.providerKey, note: payload.note });
+      const result = res?.result || {};
+      if (!res?.ok || result.status === "error" || result.ok === false) {
+        if (status) status.textContent = "保存失败";
+        alert(result.error || res?.error || `清零 ${providerLabel}已用次数失败`);
+        return;
+      }
+      if (status) status.textContent = "已清零";
+      grokQuotaDirty = false;
+      toast(`${who} 的${providerLabel}已用次数已清零`);
+      await loadAdminData();
+    } catch (err) {
+      if (status) status.textContent = "保存失败";
+      alert(`清零 ${providerLabel}已用次数失败：${String(err?.message || err)}`);
+    }
+    return;
+  }
+
   if (!Number.isInteger(payload.amount) || payload.amount < 0 || (payload.mode !== "set" && payload.amount === 0)) {
     alert(payload.mode === "set"
       ? `${providerLabel} 总次数必须是大于等于 0 的整数`
       : `${providerLabel} ${payload.mode === "add" ? "增加" : "扣减"}的次数必须是大于 0 的整数`);
     return;
   }
-  const user = grokQuotaState.users.find((item) => String(item.id || "") === String(payload.userId));
-  const quota = grokQuotaState.quotas.find((item) => String(item.user_id || "") === String(payload.userId));
   const modeText = payload.mode === "add" ? `增加 ${formatNumber(payload.amount)} 次`
     : payload.mode === "deduct" ? `扣减 ${formatNumber(payload.amount)} 次`
-    : `设为 ${formatNumber(payload.amount)} 次`;
-  const confirmed = confirm(`确定把 ${userAccountLabel(user) || payload.userId} 的 ${providerLabel}次数${modeText}？\n当前已分配：${formatNumber(payload.currentAllocated)} · 已用：${formatNumber(quota?.used_count || 0)}\n调整后总次数：${formatNumber(payload.allocatedCount)}`);
+    : `改成 ${formatNumber(payload.amount)} 次`;
+  const confirmed = confirm(`确定把 ${who} 的 ${providerLabel}总次数${modeText}？\n当前总次数：${formatNumber(payload.currentAllocated)} · 已用：${formatNumber(quota?.used_count || 0)}\n保存后总次数：${formatNumber(payload.allocatedCount)} · 剩余：${formatNumber(payload.remainingAfter)}`);
   if (!confirmed) return;
 
   try {
@@ -3245,7 +3313,10 @@ async function init() {
   });
   $("comfyProviderBudgetBalance").addEventListener("input", () => { providerBudgetDirty = true; });
   $("comfyProviderBudgetNote").addEventListener("input", () => { providerBudgetDirty = true; });
-  $("grokQuotaAllocated").addEventListener("input", () => { grokQuotaDirty = true; });
+  $("grokQuotaAllocated").addEventListener("input", () => {
+    grokQuotaDirty = true;
+    updateGrokQuotaPreview();
+  });
   $("grokQuotaNote").addEventListener("input", () => { grokQuotaDirty = true; });
   $("saveGrokQuota").addEventListener("click", async () => {
     await saveGrokQuota();

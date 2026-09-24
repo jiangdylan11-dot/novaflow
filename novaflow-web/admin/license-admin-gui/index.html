@@ -634,11 +634,13 @@
                       <div class="label">操作</div>
                       <div class="field">
                         <select id="grokQuotaMode">
-                          <option value="add">增加次数</option>
-                          <option value="deduct">扣减次数</option>
-                          <option value="set">设置总次数</option>
+                          <option value="set">改成总次数</option>
+                          <option value="add">在此基础上增加</option>
+                          <option value="deduct">在此基础上扣减</option>
+                          <option value="reset_used">清零已用次数</option>
                         </select>
-                        <input id="grokQuotaAllocated" type="number" min="0" step="1" placeholder="次数" />
+                        <input id="grokQuotaAllocated" type="number" min="0" step="1" placeholder="总次数" />
+                        <div id="grokQuotaPreview" class="hint">保存后：-</div>
                       </div>
                     </div>
                     <div class="row">
