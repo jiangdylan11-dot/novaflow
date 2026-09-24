@@ -112,6 +112,15 @@ function Find-ComfyCandidates {
   return $mainRoots | ForEach-Object { Test-ComfyRoot $_ } | Where-Object { $_.Usable } | Sort-Object Root
 }
 
+function Get-ComfyVersion {
+  param([Parameter(Mandatory=$true)][string] $ComfyRoot)
+  $file = Join-Path $ComfyRoot "comfyui_version.py"
+  if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { return $null }
+  $match = Select-String -LiteralPath $file -Pattern '__version__\s*=\s*"([0-9]+(?:\.[0-9]+){1,3})"' | Select-Object -First 1
+  if (-not $match) { return $null }
+  return [version] $match.Matches[0].Groups[1].Value
+}
+
 function Invoke-RobocopyChecked {
   param(
     [Parameter(Mandatory=$true)][string] $Source,
@@ -392,18 +401,31 @@ Write-Host "Copying Python runtime from $SourcePythonRoot"
 Invoke-RobocopyChecked -Source $SourcePythonRoot -Destination $pythonDest -ExcludeDirs $pythonExcludeDirs -ExcludeFiles $excludeFiles
 Remove-TorchStaticLibraries -PythonRoot $pythonDest
 
-$runtimePatcher = Join-Path $scriptRoot "apply-runtime-patches.ps1"
-if (-not (Test-Path -LiteralPath $runtimePatcher -PathType Leaf)) {
-  throw "Runtime patcher was not found: $runtimePatcher"
+# The two NovaFlow patches are pinned to ComfyUI 0.24.1 file hashes (and the INT8 one to
+# comfy-kitchen 0.2.11). ComfyUI 0.37 ships INT8 TensorWise itself and no longer has the lines the
+# price patch anchors on, so an engine from 0.37 on is packed as it is; its NOVAFLOW-ENGINE.json
+# manifest (version, commit, pip changes) goes into the package with it.
+$comfyVersion = Get-ComfyVersion $SourceComfyRoot
+if ($comfyVersion -and $comfyVersion -ge [version] "0.37.0") {
+  Write-Host "ComfyUI $comfyVersion carries INT8 TensorWise natively; the 0.24.1 Runtime patches are not applied."
+} else {
+  $runtimePatcher = Join-Path $scriptRoot "apply-runtime-patches.ps1"
+  if (-not (Test-Path -LiteralPath $runtimePatcher -PathType Leaf)) {
+    throw "Runtime patcher was not found: $runtimePatcher"
+  }
+  Write-Host "Applying verified NovaFlow Runtime patches..."
+  & $runtimePatcher -RuntimeRoot $runtimePackageRoot -PythonExecutable (Join-Path $pythonDest "python.exe")
+  $int8RuntimePatcher = Join-Path $scriptRoot "apply-runtime-int8-tensorwise-patch.ps1"
+  if (-not (Test-Path -LiteralPath $int8RuntimePatcher -PathType Leaf)) {
+    throw "INT8 TensorWise Runtime patcher was not found: $int8RuntimePatcher"
+  }
+  Write-Host "Applying verified INT8 TensorWise Runtime patch..."
+  & $int8RuntimePatcher -RuntimeRoot $runtimePackageRoot -PythonExecutable (Join-Path $pythonDest "python.exe")
 }
-Write-Host "Applying verified NovaFlow Runtime patches..."
-& $runtimePatcher -RuntimeRoot $runtimePackageRoot -PythonExecutable (Join-Path $pythonDest "python.exe")
-$int8RuntimePatcher = Join-Path $scriptRoot "apply-runtime-int8-tensorwise-patch.ps1"
-if (-not (Test-Path -LiteralPath $int8RuntimePatcher -PathType Leaf)) {
-  throw "INT8 TensorWise Runtime patcher was not found: $int8RuntimePatcher"
+$engineManifest = Join-Path (Split-Path -Parent $SourceComfyRoot) "NOVAFLOW-ENGINE.json"
+if (Test-Path -LiteralPath $engineManifest -PathType Leaf) {
+  Copy-Item -LiteralPath $engineManifest -Destination (Join-Path $engineRoot "NOVAFLOW-ENGINE.json") -Force
 }
-Write-Host "Applying verified INT8 TensorWise Runtime patch..."
-& $int8RuntimePatcher -RuntimeRoot $runtimePackageRoot -PythonExecutable (Join-Path $pythonDest "python.exe")
 
 $tokens = @{
   VERSION = $Version

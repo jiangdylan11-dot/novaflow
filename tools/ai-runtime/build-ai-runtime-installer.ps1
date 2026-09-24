@@ -216,18 +216,30 @@ New-Item -ItemType Directory -Force -Path $releaseRuntimeRoot | Out-Null
 
 Write-Host "Copying Runtime package..."
 Copy-DirectoryContents -Source $RuntimeSourcePath -Destination $runtimeDest
-$runtimePatcher = Join-Path $scriptRoot "apply-runtime-patches.ps1"
-if (-not (Test-Path -LiteralPath $runtimePatcher -PathType Leaf)) {
-  throw "Runtime patcher was not found: $runtimePatcher"
+# The two NovaFlow patches are pinned to ComfyUI 0.24.1 file hashes (and the INT8 one to
+# comfy-kitchen 0.2.11); ComfyUI 0.37 carries INT8 TensorWise itself, so its engine ships as built.
+$comfyVersion = $null
+$comfyVersionFile = Join-Path $runtimeDest "engine\ComfyUI\comfyui_version.py"
+if (Test-Path -LiteralPath $comfyVersionFile -PathType Leaf) {
+  $versionMatch = Select-String -LiteralPath $comfyVersionFile -Pattern '__version__\s*=\s*"([0-9]+(?:\.[0-9]+){1,3})"' | Select-Object -First 1
+  if ($versionMatch) { $comfyVersion = [version] $versionMatch.Matches[0].Groups[1].Value }
 }
-Write-Host "Applying verified NovaFlow Runtime patches..."
-& $runtimePatcher -RuntimeRoot $runtimeDest -PythonExecutable (Join-Path $runtimeDest "engine\python\python.exe")
-$int8RuntimePatcher = Join-Path $scriptRoot "apply-runtime-int8-tensorwise-patch.ps1"
-if (-not (Test-Path -LiteralPath $int8RuntimePatcher -PathType Leaf)) {
-  throw "INT8 TensorWise Runtime patcher was not found: $int8RuntimePatcher"
+if ($comfyVersion -and $comfyVersion -ge [version] "0.37.0") {
+  Write-Host "ComfyUI $comfyVersion carries INT8 TensorWise natively; the 0.24.1 Runtime patches are not applied."
+} else {
+  $runtimePatcher = Join-Path $scriptRoot "apply-runtime-patches.ps1"
+  if (-not (Test-Path -LiteralPath $runtimePatcher -PathType Leaf)) {
+    throw "Runtime patcher was not found: $runtimePatcher"
+  }
+  Write-Host "Applying verified NovaFlow Runtime patches..."
+  & $runtimePatcher -RuntimeRoot $runtimeDest -PythonExecutable (Join-Path $runtimeDest "engine\python\python.exe")
+  $int8RuntimePatcher = Join-Path $scriptRoot "apply-runtime-int8-tensorwise-patch.ps1"
+  if (-not (Test-Path -LiteralPath $int8RuntimePatcher -PathType Leaf)) {
+    throw "INT8 TensorWise Runtime patcher was not found: $int8RuntimePatcher"
+  }
+  Write-Host "Applying verified INT8 TensorWise Runtime patch..."
+  & $int8RuntimePatcher -RuntimeRoot $runtimeDest -PythonExecutable (Join-Path $runtimeDest "engine\python\python.exe")
 }
-Write-Host "Applying verified INT8 TensorWise Runtime patch..."
-& $int8RuntimePatcher -RuntimeRoot $runtimeDest -PythonExecutable (Join-Path $runtimeDest "engine\python\python.exe")
 Write-RuntimeJson -Path (Join-Path $runtimeDest "runtime.json") -RuntimeVersion $Version
 Write-RuntimeScriptShim -RuntimeRoot $runtimeDest -ScriptName "start-runtime.bat"
 Write-RuntimeScriptShim -RuntimeRoot $runtimeDest -ScriptName "stop-runtime.bat"

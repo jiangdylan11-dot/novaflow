@@ -313,6 +313,21 @@ namespace NovaFlow.AiRuntimeSetup
             string modelsPath = Path.Combine(assetsPath, "models");
             string customNodesPath = Path.Combine(assetsPath, "custom_nodes");
 
+            // A copy over an older Runtime would leave its files beside the new ones (an old
+            // comfy_kitchen dist-info next to the new one, stale ComfyUI modules). The engine that is
+            // there moves aside to engine.previous (one generation, for going back by renaming), and
+            // the new engine is copied into an empty folder; logs and the rest stay.
+            string engineTarget = Path.Combine(runtimePath, "engine");
+            if (Directory.Exists(engineTarget))
+            {
+                string previousEngine = Path.Combine(runtimePath, "engine.previous");
+                if (Directory.Exists(previousEngine))
+                {
+                    Directory.Delete(previousEngine, true);
+                }
+                Directory.Move(engineTarget, previousEngine);
+            }
+
             reporter.ReportProgress(0, U("6B63", "5728", "590D", "5236", "0020", "Runtime", "002E", "002E", "002E"));
             CopyDirectory(sourceRuntime, runtimePath, reporter);
 
