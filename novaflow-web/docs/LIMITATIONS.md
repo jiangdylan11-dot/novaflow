@@ -230,7 +230,7 @@ fixture 是一份真实的 3.8.99 导出）。
 
 **32 MB 的内核不进 git**：`tools/fetch-ffmpeg-core.mjs` 从 npm 下载到
 `renderer/vendor/ffmpeg/core/`（已 gitignore），`build-web-renderer.mjs` 每次构建先确认它在；
-站点和启动助手安装包因此各大 32 MB。页面第一次点开始时从站点下载一次，之后走浏览器缓存。
+站点和启动助手安装包因此各大 32 MB。Cloudflare 单个静态文件最多 25 MiB，所以构建把内核切成两片（`ffmpeg-core.wasm.part0/1` 加 `ffmpeg-core.wasm.parts.json` 清单），页面第一次点开始时下载两片拼回去，之后走浏览器缓存；`package:site` 遇到超过 25 MiB 的文件会直接拒绝打包。
 
 **单线程**：没有 SharedArrayBuffer（站点没开跨源隔离头），x264 在浏览器里只有一个核可用，
 长片子要等，工具里有百分比。导出覆盖在浏览器里做不到（没有原路径），按钮会说明请用导出另存。

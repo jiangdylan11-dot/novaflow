@@ -518,6 +518,26 @@ section('the build is a complete site');
   }
   checkEqual('every script index.html references exists', absent, []);
   check('the site loads ' + scripts.length + ' scripts', scripts.length > 85, scripts.length);
+
+  // Cloudflare refuses any single file over 25 MiB; ffmpeg's 32 MB core ships in parts.
+  const oversized = [];
+  const walk = async (dir) => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { await walk(full); continue; }
+      if (entry.isFile() && (await stat(full)).size >= 25 * 1024 * 1024) oversized.push(entry.name);
+    }
+  };
+  await walk(PATHS.WEB_OUT);
+  checkEqual('no published file reaches the 25 MiB host limit', oversized, []);
+  let manifest = null;
+  try { manifest = JSON.parse(await readFile(join(PATHS.WEB_OUT, 'vendor/ffmpeg/core/ffmpeg-core.wasm.parts.json'), 'utf8')); } catch { /* core not fetched on this machine */ }
+  if (manifest) {
+    check('the ffmpeg core manifest lists its parts', Array.isArray(manifest.parts) && manifest.parts.length >= 2, manifest);
+    let total = 0;
+    for (const part of manifest.parts) total += (await stat(join(PATHS.WEB_OUT, 'vendor/ffmpeg/core', part))).size;
+    checkEqual('the parts add up to the core', total, manifest.bytes);
+  }
 }
 
 void execFileSync;

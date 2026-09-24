@@ -14,11 +14,11 @@
 //   node tools/package-site.mjs --control-url=https://<ref>.supabase.co/functions/v1/novaflow-web
 //   node tools/package-site.mjs --control-url=... --out=C:/path/site.zip
 
-import { readFile, writeFile, rm, mkdir } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { readFile, writeFile, rm, mkdir, readdir, stat } from 'node:fs/promises';
+import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
-import { buildWebRenderer, PATHS } from './build-web-renderer.mjs';
+import { buildWebRenderer, PATHS, HOST_FILE_LIMIT } from './build-web-renderer.mjs';
 import { readConfig, writeConfig } from './set-web-config.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -65,6 +65,18 @@ export async function packageSite({ controlUrl, authUrl, out, allowLocal = false
   //    spec, so every file in a subdirectory 404s and the site is a blank page
   //    with the main bundle missing. That cost a deploy to find.
   const zip = resolve(out || join(ROOT, '.artifacts/novaflow-web-site.zip'));
+  // Cloudflare's uploader refuses any file of 25 MiB or more, one file at a
+  // time, after everything else has gone up. Refuse here instead.
+  const oversized = [];
+  const walk = async (dir) => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) { await walk(full); continue; }
+      if (entry.isFile() && (await stat(full)).size >= HOST_FILE_LIMIT) oversized.push(relative(PATHS.WEB_OUT, full));
+    }
+  };
+  await walk(PATHS.WEB_OUT);
+  if (oversized.length) throw new Error('refusing to package: over the host\'s 25 MiB file limit: ' + oversized.join(', '));
   await mkdir(dirname(zip), { recursive: true });
   await rm(zip, { force: true });
   // Windows' own tar.exe, by full path. A `tar` from Git Bash reads C:\... as

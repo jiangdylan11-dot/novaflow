@@ -94,6 +94,39 @@ const REPLACEMENT = (moduleName) => (fn) => {
   JSON.stringify(moduleName) + ', ' + JSON.stringify(fn) + ', arguments);\n  ';
 };
 
+// Static hosts (Cloudflare Workers assets, Pages) refuse a single file over 25
+// MiB. Anything larger in the published tree becomes `<name>.part0`, `.part1`,
+// ... of PART_BYTES each plus `<name>.parts.json` listing them, and the
+// original is dropped from the tree. The page reads the manifest first.
+export const HOST_FILE_LIMIT = 25 * 1024 * 1024;
+export const PART_BYTES = 20 * 1024 * 1024;
+
+export async function splitLargeFiles(dir) {
+  const split = [];
+  const walk = async (folder) => {
+    for (const entry of await readdir(folder, { withFileTypes: true })) {
+      const full = join(folder, entry.name);
+      if (entry.isDirectory()) { await walk(full); continue; }
+      if (!entry.isFile()) continue;
+      const info = await stat(full);
+      if (info.size < HOST_FILE_LIMIT) continue;
+      const bytes = await readFile(full);
+      const parts = [];
+      for (let offset = 0, index = 0; offset < bytes.length; offset += PART_BYTES, index += 1) {
+        const partName = entry.name + '.part' + index;
+        await writeFile(join(folder, partName), bytes.subarray(offset, Math.min(offset + PART_BYTES, bytes.length)));
+        parts.push(partName);
+      }
+      const digest = createHash('sha256').update(bytes).digest('hex');
+      await writeFile(join(folder, entry.name + '.parts.json'), JSON.stringify({ file: entry.name, bytes: bytes.length, sha256: digest, parts }, null, 2));
+      await rm(full);
+      split.push({ file: relative(dir, full).replace(/\\/g, '/'), bytes: bytes.length, parts: parts.length });
+    }
+  };
+  await walk(dir);
+  return split;
+}
+
 /**
  * Clear a directory's CONTENTS, keeping the directory itself.
  *
@@ -241,6 +274,12 @@ export async function buildWebRenderer({ logger, clean = true } = {}) {
     }
     await cp(join(SRC, entry.name), join(WEB_OUT, entry.name));
   }
+
+  // Cloudflare takes static files up to 25 MiB each. ffmpeg's core is 32 MB,
+  // so the site carries it in parts (with a manifest beside them) and the page
+  // stitches them back together before handing the bytes to WebAssembly.
+  report.split = await splitLargeFiles(WEB_OUT);
+  for (const item of report.split) log('split for the 25 MiB limit', item);
 
   const particleTemplates = [];
   for (const filename of (await readdir(join(ROOT, 'particle-templates'))).sort((a,b) => a.localeCompare(b, 'zh-CN', { numeric: true }))) {

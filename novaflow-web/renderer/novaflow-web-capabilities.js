@@ -412,6 +412,30 @@
     ffmpeg.on('log', (event) => { if (ffmpegJob && event && event.message) ffmpegJob.log = (ffmpegJob.log + '\n' + event.message).slice(-4000); });
     return ffmpeg;
   }
+  // The site carries the 32 MB core in parts (static hosts stop at 25 MiB a
+  // file; build-web-renderer.mjs splits it and writes the manifest). They are
+  // stitched back together here and handed to the worker as a blob URL, the
+  // way ffmpeg.wasm's own toBlobURL does. Without a manifest the whole file
+  // is fetched as-is.
+  async function ffmpegWasmUrl() {
+    const whole = ffmpegVendorUrl('core/ffmpeg-core.wasm');
+    const manifestResponse = await root.fetch(ffmpegVendorUrl('core/ffmpeg-core.wasm.parts.json'));
+    if (!manifestResponse.ok) return whole;
+    const manifest = await manifestResponse.json();
+    const parts = Array.isArray(manifest && manifest.parts) ? manifest.parts : [];
+    if (!parts.length) return whole;
+    const buffers = await Promise.all(parts.map(async (name) => {
+      const response = await root.fetch(ffmpegVendorUrl('core/' + name));
+      if (!response.ok) throw new Error('下载 ffmpeg 组件分片失败（' + name + '：' + response.status + '）');
+      return new Uint8Array(await response.arrayBuffer());
+    }));
+    const total = buffers.reduce((sum, part) => sum + part.length, 0);
+    if (Number(manifest.bytes) && total !== Number(manifest.bytes)) throw new Error('ffmpeg 组件分片不完整：' + total + ' / ' + manifest.bytes + ' 字节');
+    const joined = new Uint8Array(total);
+    let offset = 0;
+    for (const part of buffers) { joined.set(part, offset); offset += part.length; }
+    return URL.createObjectURL(new Blob([joined], { type: 'application/wasm' }));
+  }
   function loadFfmpeg() {
     if (!ffmpegPromise) {
       ffmpegPromise = (async () => {
@@ -425,7 +449,7 @@
         await ffmpeg.load({
           classWorkerURL: ffmpegVendorUrl('worker.js'),
           coreURL: ffmpegVendorUrl('core/ffmpeg-core.js'),
-          wasmURL: ffmpegVendorUrl('core/ffmpeg-core.wasm')
+          wasmURL: await ffmpegWasmUrl()
         });
         return ffmpeg;
       })().catch((error) => {
