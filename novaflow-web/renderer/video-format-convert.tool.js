@@ -471,7 +471,7 @@
         <button class="nf-vfc-upload" data-vfc-pick>＋　选择视频</button>
         <div class="nf-vfc-controls">
           <label class="nf-vfc-scale"><span>输出尺寸 ${state.scalePct}%</span><input data-vfc-scale data-novaflow-tools-range="1" type="range" min="10" max="200" value="${state.scalePct}" ${state.processing ? 'disabled' : ''}></label>
-          <div class="nf-vfc-hint">${escapeHtml(active.note)}</div>
+          <div class="nf-vfc-hint">${escapeHtml(active.id === 'webm' && window.electronAPI?.videoToolsEngine === 'ffmpeg.wasm' ? 'VP8 + Opus（网页版的 ffmpeg.wasm 暂不能编 VP9），网页内嵌可用；要 VP9 请用桌面版。' : active.note)}</div>
           <div class="nf-vfc-actions"><button class="nf-vfc-btn" data-vfc-run ${state.processing || !state.items.length ? 'disabled' : ''}>${state.processing ? '转换中…' : `转换为 ${active.label}`}</button><button class="nf-vfc-btn alt" data-vfc-clear ${state.processing || !state.items.length ? 'disabled' : ''}>清空</button></div>
           <div class="nf-vfc-count">已选 ${state.items.length} 个｜完成 ${done} 个｜可导出 ${done} 个</div>
           <div class="nf-vfc-status">${state.processing ? '正在按顺序转换视频，请稍候…' : ''}</div>

@@ -482,11 +482,38 @@
   const normalizeVideoFormat = (value) => (VIDEO_CONVERT_FORMATS.includes(String(value || '').trim().toLowerCase()) ? String(value).trim().toLowerCase() : 'mp4');
   const normalizeScalePct = (value) => { const pct = Number(value); return clampNumber(Math.round(Number.isFinite(pct) ? pct : 100), 10, 200); };
   const videoConvertScaleFilter = (scalePct) => `scale=max(2\\,trunc(iw*${normalizeScalePct(scalePct)}/200)*2):max(2\\,trunc(ih*${normalizeScalePct(scalePct)}/200)*2):flags=lanczos`;
-  function videoConvertArgs(inPath, outPath, format, scalePct) {
+  /** What ffmpeg's probe pass said about the input: size, frame rate, audio. */
+  function sourceFromLog(log) {
+    const text = String(log || '');
+    const video = text.match(/Stream #0:\d+.*?Video:.*?(\d{2,5})x(\d{2,5})/);
+    const fps = text.match(/(\d+(?:\.\d+)?) fps/);
+    return {
+      width: video ? Number(video[1]) : 0,
+      height: video ? Number(video[2]) : 0,
+      fps: fps ? Number(fps[1]) : 0,
+      hasAudio: /Stream #0:\d+.*?Audio:/.test(text)
+    };
+  }
+  // WebM on the Web is VP8 + Opus. The desktop writes VP9, but this core's
+  // libvpx-vp9 traps ("memory access out of bounds") on the first frame with
+  // every setting tried; VP8 encodes cleanly. VP8 has no constant-quality
+  // mode without a bitrate, so it gets the desktop's quality target as CRF
+  // and a cap of 0.12 bits per pixel per frame at the output size.
+  function webmBitrateKbps(scalePct, source) {
+    const pct = normalizeScalePct(scalePct);
+    const width = Math.max(2, Math.trunc((source.width || 1280) * pct / 200) * 2);
+    const height = Math.max(2, Math.trunc((source.height || 720) * pct / 200) * 2);
+    const fps = source.fps > 0 ? Math.min(60, source.fps) : 30;
+    return Math.max(600, Math.round((width * height * fps * 0.12) / 1000));
+  }
+  function videoConvertArgs(inPath, outPath, format, scalePct, source) {
     const target = normalizeVideoFormat(format);
     const vf = videoConvertScaleFilter(scalePct);
     if (target === 'gif') return ['-i', inPath, '-filter_complex', `${vf},split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse=new=1`, '-loop', '0', outPath];
-    if (target === 'webm') return ['-i', inPath, '-vf', vf, '-c:v', 'libvpx-vp9', '-row-mt', '1', '-deadline', 'good', '-cpu-used', '2', '-pix_fmt', 'yuv420p', '-b:v', '0', '-crf', '30', outPath];
+    if (target === 'webm') {
+      const kbps = webmBitrateKbps(scalePct, source || {});
+      return ['-i', inPath, '-vf', vf, '-c:v', 'libvpx', '-deadline', 'good', '-cpu-used', '2', '-crf', '10', '-b:v', kbps + 'k', '-pix_fmt', 'yuv420p', '-c:a', 'libopus', '-b:a', '128k', outPath];
+    }
     return ['-i', inPath, '-vf', vf, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-crf', '18', outPath];
   }
   function videoInputFile(payload) {
@@ -525,11 +552,22 @@
       videoOutputs.set(token, { tool, token, blob, fileName: outName, url: '' });
       videoToolProgress.emit({ jobId, progress01: 1 });
       return { token, blob };
+    } catch (error) {
+      // A trap inside the WebAssembly (out-of-bounds, unreachable) leaves the
+      // instance unusable; drop it so the next job loads a fresh one.
+      if (/RuntimeError|memory access|unreachable|abort/i.test(String((error && error.message) || error))) {
+        ffmpegPromise = null;
+        try { if (typeof ffmpeg.terminate === 'function') ffmpeg.terminate(); } catch (_) { /* already gone */ }
+      }
+      throw error;
     } finally {
-      await ffmpeg.deleteFile(inName).catch(() => {});
+      if (ffmpegPromise) await ffmpeg.deleteFile(inName).catch(() => {});
       ffmpegJob = null;
     }
   }
+
+  // The tools read this to describe what the Web build actually writes.
+  api.videoToolsEngine = 'ffmpeg.wasm';
 
   api.compressMp4 = async (payload) => {
     try {
@@ -561,7 +599,7 @@
       const fileName = videoStem((payload && payload.fileName) || file.name, 'video') + '.' + format;
       const { token, blob } = await runVideoJob({
         tool: 'video-convert', jobId: String((payload && payload.jobId) || 'convert_' + Date.now()), file,
-        buildArgs: (inName, outFile) => videoConvertArgs(inName, outFile, format, scalePct),
+        buildArgs: (inName, outFile, probeLog) => videoConvertArgs(inName, outFile, format, scalePct, sourceFromLog(probeLog)),
         outName: fileName, mimeType: format === 'gif' ? 'image/gif' : format === 'webm' ? 'video/webm' : 'video/mp4'
       });
       return { ok: true, outPath: token, fileName, format, scalePct, bytesIn: file.size, bytesOut: blob.size, jobId: payload && payload.jobId };

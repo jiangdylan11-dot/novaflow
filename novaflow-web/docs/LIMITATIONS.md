@@ -232,6 +232,8 @@ fixture 是一份真实的 3.8.99 导出）。
 `renderer/vendor/ffmpeg/core/`（已 gitignore），`build-web-renderer.mjs` 每次构建先确认它在；
 站点和启动助手安装包因此各大 32 MB。Cloudflare 单个静态文件最多 25 MiB，所以构建把内核切成两片（`ffmpeg-core.wasm.part0/1` 加 `ffmpeg-core.wasm.parts.json` 清单），页面第一次点开始时下载两片拼回去，之后走浏览器缓存；`package:site` 遇到超过 25 MiB 的文件会直接拒绝打包。
 
+**WebM 是 VP8 + Opus，不是 VP9**：这份内核的 libvpx-vp9 一编第一帧就 `memory access out of bounds`（去掉 row-mt、单线程、realtime 都一样），VP8 正常，所以网页端 WebM 用 VP8（CRF 10，码率上限按输出尺寸 0.12 bit/像素/帧），音轨转 Opus；工具里的说明会照实写。要 VP9 请用桌面版。
+
 **单线程**：没有 SharedArrayBuffer（站点没开跨源隔离头），x264 在浏览器里只有一个核可用，
 长片子要等，工具里有百分比。导出覆盖在浏览器里做不到（没有原路径），按钮会说明请用导出另存。
 

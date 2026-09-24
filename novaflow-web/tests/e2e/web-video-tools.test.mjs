@@ -145,8 +145,16 @@ ok(/^web-file:\/\//.test(clipToken), 'a dropped file gets a web-file token: ' + 
     const result = await api.convertVideoFormat({ jobId: 'vfc_' + format, inputPath: movToken, fileName: 'clip.mov', format, scalePct });
     equal(result.ok, true, 'converts to ' + format + ': ' + result.error);
     equal([result.fileName, result.format, result.scalePct, result.bytesIn, result.bytesOut], ['clip.' + format, format, scalePct, 7000, 1200], format + ': the desktop result shape');
-    const expected = core(desktopConvert.videoConvertArgs({ inPath: execs[1][1], outPath: execs[1][execs[1].length - 1], format, scalePct }));
-    equal(execs[1], expected, format + ' at ' + scalePct + '%: the desktop\'s arguments, less its log and progress flags');
+    if (format === 'webm') {
+      // The Web writes VP8 + Opus (this core's VP9 traps); the scale filter is the desktop's,
+      // the bitrate cap is 0.12 bits per pixel per frame at the output size: the probe said
+      // 1280x720 at 30 fps, so 50% is 640x360 -> 829 kbps.
+      const desktopScale = desktopConvert.videoConvertScaleFilter(scalePct);
+      equal(execs[1], ['-i', execs[1][1], '-vf', desktopScale, '-c:v', 'libvpx', '-deadline', 'good', '-cpu-used', '2', '-crf', '10', '-b:v', '829k', '-pix_fmt', 'yuv420p', '-c:a', 'libopus', '-b:a', '128k', execs[1][execs[1].length - 1]], 'webm at 50%: VP8 + Opus with the desktop\'s scale filter and a size-based bitrate cap');
+    } else {
+      const expected = core(desktopConvert.videoConvertArgs({ inPath: execs[1][1], outPath: execs[1][execs[1].length - 1], format, scalePct }));
+      equal(execs[1], expected, format + ' at ' + scalePct + '%: the desktop\'s arguments, less its log and progress flags');
+    }
     const preview = await api.videoResourceMediaRegister({ filePath: result.outPath });
     equal(urls[urls.length - 1].blob.type, mime, format + ' previews as ' + mime);
     ok(preview.ok && preview.url, format + ' has a preview URL');
