@@ -1051,13 +1051,15 @@ html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-e
 }
 html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref-grid {
   display: flex !important;
+  flex-wrap: wrap !important;
   gap: 8px !important;
   width: auto !important;
   min-width: 0 !important;
   max-width: none !important;
-  height: 59px !important;
+  /* grows a row at a time: 2.1 takes up to 15 references */
+  height: auto !important;
   min-height: 59px !important;
-  max-height: 59px !important;
+  max-height: none !important;
   align-self: flex-start !important;
 }
 /* A Qwen-Image-2.1 node takes up to 10 references: the row wraps instead of running off the panel. */
