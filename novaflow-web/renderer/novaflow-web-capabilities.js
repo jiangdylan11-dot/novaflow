@@ -73,50 +73,75 @@
       host.id = 'novaflow-web-busy';
       host.setAttribute('role', 'status');
       host.setAttribute('aria-live', 'polite');
+      // The brand runtime rewrites corner radii on new elements; this card
+      // keeps its own, so the radius does not flicker while it updates.
+      host.setAttribute('data-novaflow-keep-radius', '1');
       doc.body.appendChild(host);
       return host;
     }
-    function render() {
+    // Each task keeps its card and updates it in place: rebuilding the card on
+    // every progress tick made it a new element each time, which the page's
+    // styling passes then restyled a beat later - the radius visibly changed.
+    function mountCard(task) {
       const node = ensureHost();
       if (!node) return;
-      node.textContent = '';
-      for (const task of tasks.values()) {
-        const card = doc.createElement('div');
-        card.className = 'nf-busy';
-        const row = doc.createElement('div');
-        row.className = 'nf-busy-row';
-        const spin = doc.createElement('span');
-        spin.className = 'nf-busy-spin';
-        const text = doc.createElement('span');
-        text.className = 'nf-busy-text';
-        text.textContent = task.text + (task.progress01 == null ? '' : ' ' + Math.round(task.progress01 * 100) + '%');
-        text.title = task.text;
-        row.appendChild(spin);
-        row.appendChild(text);
-        card.appendChild(row);
-        if (task.progress01 != null) {
-          const bar = doc.createElement('div');
-          bar.className = 'nf-busy-bar';
-          const fill = doc.createElement('i');
-          fill.style.width = Math.round(task.progress01 * 100) + '%';
-          bar.appendChild(fill);
-          card.appendChild(bar);
-        }
-        node.appendChild(card);
-      }
-      node.style.display = tasks.size ? 'grid' : 'none';
+      const card = doc.createElement('div');
+      card.className = 'nf-busy';
+      card.setAttribute('data-novaflow-keep-radius', '1');
+      const row = doc.createElement('div');
+      row.className = 'nf-busy-row';
+      const spin = doc.createElement('span');
+      spin.className = 'nf-busy-spin';
+      const text = doc.createElement('span');
+      text.className = 'nf-busy-text';
+      row.appendChild(spin);
+      row.appendChild(text);
+      card.appendChild(row);
+      const bar = doc.createElement('div');
+      bar.className = 'nf-busy-bar';
+      const fill = doc.createElement('i');
+      bar.appendChild(fill);
+      card.appendChild(bar);
+      node.appendChild(card);
+      task.card = card;
+      task.textNode = text;
+      task.bar = bar;
+      task.fill = fill;
+      paintCard(task);
+      node.style.display = 'grid';
+    }
+    function paintCard(task) {
+      if (!task.card) return;
+      const label = task.text + (task.progress01 == null ? '' : ' ' + Math.round(task.progress01 * 100) + '%');
+      if (task.textNode.textContent !== label) task.textNode.textContent = label;
+      task.textNode.title = task.text;
+      task.bar.style.display = task.progress01 == null ? 'none' : '';
+      if (task.progress01 != null) task.fill.style.width = Math.round(task.progress01 * 100) + '%';
     }
     const clamp01 = (value) => (value == null ? null : Math.max(0, Math.min(1, Number(value) || 0)));
     return {
-      begin(id, text, progress01) { tasks.set(String(id), { text: String(text || '正在处理…'), progress01: clamp01(progress01) }); render(); },
+      begin(id, text, progress01) {
+        const key = String(id);
+        const existing = tasks.get(key);
+        if (existing) { existing.text = String(text || existing.text); existing.progress01 = clamp01(progress01); paintCard(existing); return; }
+        const task = { text: String(text || '正在处理…'), progress01: clamp01(progress01), card: null };
+        tasks.set(key, task);
+        mountCard(task);
+      },
       update(id, text, progress01) {
         const task = tasks.get(String(id));
         if (!task) return;
         if (text) task.text = String(text);
         if (progress01 !== undefined) task.progress01 = clamp01(progress01);
-        render();
+        paintCard(task);
       },
-      end(id) { if (tasks.delete(String(id))) render(); },
+      end(id) {
+        const task = tasks.get(String(id));
+        if (!task) return;
+        tasks.delete(String(id));
+        if (task.card && task.card.parentNode) task.card.parentNode.removeChild(task.card);
+        if (host && !tasks.size) host.style.display = 'none';
+      },
       active() { return tasks.size; }
     };
   })();
