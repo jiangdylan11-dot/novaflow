@@ -26289,6 +26289,13 @@
         box-shadow: ${SKELETON_SELECTION_SHADOW} !important;
         color: #ffffff !important;
       }
+      body.novaflow-skeleton-animation-layout [data-novaflow-bones-hierarchy="1"] [data-nf-hier-key]:not([data-nf-hier-fixed="1"]):hover {
+        --nf-hier-bg: rgba(255, 255, 255, 0.06);
+      }
+      body.novaflow-skeleton-animation-layout [data-novaflow-bones-hierarchy="1"] [data-nf-hier-scroll="1"] {
+        overflow-x: auto !important;
+        overflow-y: auto !important;
+      }
       [data-novaflow-spine-split-layer-row][data-novaflow-spine-split-layer-selected="1"],
       [data-novaflow-spine-split-layer-row][data-novaflow-spine-split-layer-selected="1"]:hover,
       [data-novaflow-spine-split-layer-row][data-novaflow-spine-split-layer-selected="1"]:focus-visible,
@@ -30103,7 +30110,9 @@
    * renders these with inline styles of its own, some of them !important.
    */
   function stylePrimaryLeftCardControls(card) {
-    Array.from(card.querySelectorAll('input:not([type="range"]):not([type="color"])')).forEach((field) => {
+    // 飘带's 预设名称 (and the event preset's) is a text field that fills its row; sized
+    // like a number field it was 49 wide next to a 34-tall 保存.
+    Array.from(card.querySelectorAll('input:not([type="range"]):not([type="color"]):not([data-novaflow-ribbon-preset-name]):not([data-novaflow-ribbon-event-preset-name])')).forEach((field) => {
       if (!(field instanceof HTMLInputElement)) return;
       nfSetAttrIfChanged(field, "data-novaflow-keep-radius", "1");
       nfSetStyleIfChanged(field, "width", `${UI_NUM_FIELD_WIDTH}px`, "important");
@@ -33428,20 +33437,44 @@
         selector: '[data-novaflow-bones-hierarchy="1"] > [data-novaflow-skeleton-sidebar-title="1"], [data-novaflow-bones-hierarchy="1"] > div:nth-child(2) > div',
         style: (node) => {
           const child = node.parentElement && !node.hasAttribute("data-novaflow-skeleton-sidebar-title") && node.previousElementSibling;
+          // The tree's own depth (the project 0, its groups 1, root's bones 2, their
+          // children 3 ...) steps in 16 a level; a row is as wide as it needs and the
+          // box scrolls sideways, so a deep chain keeps its indent in the same panel.
+          const depth = child ? Math.max(1, Number(node.getAttribute("data-nf-hier-depth")) || 1) : 0;
+          // 'selected' is the bone being edited, 'picked' the rest of a multi-selection.
+          const state = child ? String(node.getAttribute("data-nf-hier-state") || "") : "";
+          const lit = state === "selected" || state === "picked";
           return {
-            height: "39px", "min-height": "39px", padding: child ? "10px 0 10px 16px" : "10px 0", margin: "0",
+            height: "39px", "min-height": "39px", padding: child ? `10px 6px 10px ${depth * 16}px` : "10px 0", margin: "0",
+            width: child ? "max-content" : "auto", "min-width": child ? "100%" : "0",
             display: "flex", "align-items": "center", gap: "6px", "box-sizing": "border-box",
             border: "0", "border-bottom": `1px solid ${SKELETON_TREE_RULE}`, "border-radius": "0",
-            "font-size": "12px", color: SKELETON_TREE_TEXT, background: "transparent", "background-color": "transparent"
+            "font-size": "12px", color: lit ? "#ffffff" : SKELETON_TREE_TEXT,
+            // A longhand holding var(): the sheet's :hover sets the variable, this keeps
+            // the property, so the pointer shows on a row without the spec undoing it.
+            "background-color": lit ? SKELETON_SELECTION_BACKGROUND : "var(--nf-hier-bg, transparent)", "background-image": "none",
+            "box-shadow": state === "selected" ? SKELETON_SELECTION_SHADOW : "none"
           };
         }
       },
       {
         when: "body.novaflow-skeleton-animation-layout",
         selector: '[data-novaflow-bones-hierarchy="1"] > div:nth-child(2) > div > span',
-        style: (node) => (node.previousElementSibling && node.previousElementSibling.tagName === "SPAN"
-          ? { "margin-left": "auto", "font-size": "12px", color: SKELETON_TREE_TEXT }
-          : { "font-size": "12px", color: SKELETON_TREE_TEXT })
+        style: (node) => {
+          // The row tags its name and its trailing count / note; going by "the span after
+          // a span" pushed a bone's name to the right, after its little colour square.
+          const row = node.parentElement;
+          const state = row ? String(row.getAttribute("data-nf-hier-state") || "") : "";
+          const lit = state === "selected" || state === "picked";
+          // Sticky: the count keeps to the visible right edge while a deep chain has the
+          // tree scrolled sideways (the row is as wide as its deepest sibling).
+          if (node.hasAttribute("data-nf-hier-trail")) return { "margin-left": "auto", position: "sticky", right: "6px", "font-size": "12px", color: lit ? "rgba(255, 255, 255, 0.7)" : SKELETON_TREE_TEXT };
+          if (node.hasAttribute("data-nf-hier-label")) {
+            const active = row && row.getAttribute("data-nf-hier-active") === "1";
+            return { "font-size": "12px", color: lit ? "#ffffff" : active ? "#7ce8b5" : SKELETON_TREE_TEXT };
+          }
+          return null;
+        }
       },
       {
         when: "body.novaflow-skeleton-animation-layout",
@@ -35181,6 +35214,7 @@
   // writers that disagree cannot spin; those are counted for fixing at source.
   const NOVAFLOW_SPEC_STATE_ATTRIBUTES = new Set([
     "class",
+    "data-nf-hier-state",
     "data-novaflow-tools-entry-active",
     "data-novaflow-art-generate-active",
     "data-novaflow-skeleton-top-button-active",

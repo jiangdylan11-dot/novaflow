@@ -894,6 +894,7 @@
 
   // -------------------------------------------------------------- drawing ---
 
+  const HALO = 'rgba(34,201,138,0.42)'
   function drawBone(ctx, ox, oy, tx, ty, style) {
     const len = Math.hypot(tx - ox, ty - oy)
     const col = style.color, alpha = style.alpha === undefined ? 1 : style.alpha
@@ -902,6 +903,7 @@
     if (len < 1) {
       // a zero-length bone: ring + crosshair
       const r = style.selected ? 6 : 4
+      if (style.halo) { ctx.beginPath(); ctx.arc(ox, oy, r + 4, 0, Math.PI * 2); ctx.strokeStyle = HALO; ctx.lineWidth = 6; ctx.stroke() }
       ctx.beginPath(); ctx.arc(ox, oy, r + 1.5, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 3; ctx.stroke()
       ctx.beginPath(); ctx.arc(ox, oy, r, 0, Math.PI * 2); ctx.strokeStyle = col; ctx.lineWidth = 1.6; ctx.stroke()
       ctx.beginPath(); ctx.moveTo(ox - r - 3, oy); ctx.lineTo(ox + r + 3, oy); ctx.moveTo(ox, oy - r - 3); ctx.lineTo(ox, oy + r + 3); ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.stroke()
@@ -916,6 +918,7 @@
     ctx.lineTo(tx, ty)
     ctx.lineTo(ox - nx * half, oy - ny * half)
     ctx.closePath()
+    if (style.halo) { ctx.lineJoin = 'round'; ctx.lineWidth = style.selected ? 9 : 7; ctx.strokeStyle = HALO; ctx.stroke() }
     ctx.fillStyle = style.fill || col
     ctx.globalAlpha = alpha * (style.fillAlpha === undefined ? 0.55 : style.fillAlpha)
     ctx.fill()
@@ -1151,19 +1154,19 @@
         drawBone(g, o[0], o[1], t[0], t[1], { color: hov ? c.hover : c.line, fill: c.fill, alpha: role === 'helper' ? 0.5 : 1, fillAlpha: c.fillAlpha })
         if (st.showNames || hov) drawLabel(g, o[0], o[1], m.name, c.label)
       }
-      // multi-selection: every other picked bone in the accent colour, thinner than the
-      // one that is actually being edited
+      // multi-selection: every picked bone glows in the accent colour and carries its name;
+      // the one being edited is the same with a white edge and bigger joints
       for (const i of st.picked) {
         if (i === st.selected || !W[i]) continue
         const m = W[i]
         const o = toS(m.worldX, m.worldY), t = m.length > 0 ? toS(...tipOf(m)) : o
-        drawBone(g, o[0], o[1], t[0], t[1], { color: ACCENT, fill: ACCENT, fillAlpha: 0.35 })
-        if (st.showNames) drawLabel(g, o[0], o[1], m.name, ACCENT)
+        drawBone(g, o[0], o[1], t[0], t[1], { color: ACCENT, fill: ACCENT, fillAlpha: 0.7, halo: true })
+        drawLabel(g, o[0], o[1], m.name, ACCENT)
       }
       if (st.selected >= 0 && W[st.selected]) {
         const m = W[st.selected]
         const o = toS(m.worldX, m.worldY), t = m.length > 0 ? toS(...tipOf(m)) : o
-        drawBone(g, o[0], o[1], t[0], t[1], { color: ACCENT, fill: ACCENT, selected: true, fillAlpha: 0.6 })
+        drawBone(g, o[0], o[1], t[0], t[1], { color: ACCENT, fill: ACCENT, selected: true, halo: true, fillAlpha: 0.85 })
         drawLabel(g, o[0], o[1], m.name, ACCENT)
         if (st.tool === 'rotate' && m.length > 0) {
           g.save(); g.setLineDash([3, 3]); g.strokeStyle = 'rgba(34,201,138,0.5)'

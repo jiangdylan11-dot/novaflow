@@ -1830,7 +1830,6 @@
         const name = i >= 0 && list[i] ? list[i].name : null
         // Ctrl-clicking a bone in the preview builds the same multi-selection as the tree
         if (!name) { hier.bones.clear(); hier.boneAnchor = null } else if (opts && opts.additive) {
-          if (hier.bones.has(name) && hier.bones.size > 1) hier.bones.delete(name); else hier.bones.add(name)
           hier.bones.add(name)
           hier.boneAnchor = name
         } else if (!hier.bones.has(name) || hier.bones.size > 1) { hier.bones = new Set([name]); hier.boneAnchor = name }
@@ -1893,12 +1892,16 @@
   const treeDrag = { from: null, name: '', over: null, moved: false, id: -1 }
   const rowName = (row) => String(row && row.dataset && row.dataset.nfHierBone || '')
   const treeRowFor = (name) => (name && hier.rows.get('b:' + name)) || null
-  /** Scroll `row` into `box` and nothing else (see scrollRowIntoView). */
+  /** Scroll `row` into `box` and nothing else (see scrollRowIntoView); sideways too, to its name. */
   function scrollIntoBox(row, box) {
     if (!row || !box) return
     const rr = row.getBoundingClientRect(), br = box.getBoundingClientRect()
     if (rr.top < br.top) box.scrollTop -= br.top - rr.top
     else if (rr.bottom > br.bottom) box.scrollTop += rr.bottom - br.bottom
+    const label = row.querySelector('[data-nf-hier-label]')
+    const lr = label ? label.getBoundingClientRect() : rr
+    if (lr.right > br.right) box.scrollLeft += lr.right - br.right + 6
+    if (lr.left < br.left) box.scrollLeft -= br.left - lr.left + 6
   }
   const hierApp = (sel) => Array.from(document.querySelectorAll(sel))
   function appSectionByTitle(text) {
@@ -2035,7 +2038,8 @@
       box = el('div', { display: 'flex', flexDirection: 'column', minHeight: '0', gap: '6px' })
       box.setAttribute(HIER_MARK, '1')
       const title = el('div', { fontSize: '12px', fontWeight: '900', color: 'rgba(255,255,255,0.86)' }, '工程')
-      const scroll = el('div', { overflowY: 'auto', overflowX: 'hidden', minHeight: '0', display: 'grid', gap: '1px', alignContent: 'start' })
+      // a deep chain outgrows the sidebar: the rows keep their indent and the box scrolls sideways
+      const scroll = el('div', { overflowY: 'auto', overflowX: 'auto', minHeight: '0', display: 'grid', gap: '1px', alignContent: 'start' })
       scroll.setAttribute('data-nf-hier-scroll', '1')
       box.appendChild(title); box.appendChild(scroll)
       body.insertBefore(box, body.firstChild)
@@ -2056,15 +2060,24 @@
     const frag = document.createDocumentFragment()
     const ctl = bones.ctl
     for (const r of rows) {
+      const picked = !!(r.picked || (r.bone !== undefined && hier.bones.has(r.label)))
       const row = el('div', {
         display: 'flex', alignItems: 'center', gap: '6px', height: '22px', flex: '0 0 auto',
-        paddingLeft: (2 + r.depth * 12) + 'px', paddingRight: '6px', borderRadius: '5px',
+        // as wide as its deepest row, never narrower than the box: the sidebar keeps its
+        // size and a long chain scrolls sideways instead of losing its indent
+        width: 'max-content', minWidth: '100%', boxSizing: 'border-box',
+        paddingLeft: (r.depth * 16) + 'px', paddingRight: '6px', borderRadius: '5px',
         cursor: r.fixed ? 'default' : 'pointer', border: '1px solid transparent',
         color: r.hint ? 'rgba(255,255,255,0.45)' : 'inherit'
       })
       row.dataset.nfHierKey = r.key
+      // depth / state / fixed / active: the brand runtime's spec owns the row's paint and
+      // reads these (its inline !important used to flatten every row to one look)
+      row.dataset.nfHierDepth = String(r.depth)
+      if (r.fixed) row.dataset.nfHierFixed = '1'
+      if (r.active) row.dataset.nfHierActive = '1'
       if (r.layer) row.dataset.nfHierLayer = r.layer
-      if (r.picked || (r.bone !== undefined && hier.bones.has(r.label))) { row.style.background = 'rgba(34,201,138,0.12)'; row.style.borderColor = 'rgba(34,201,138,0.5)' }
+      setHierRowState(row, picked ? 'picked' : '')
       const expandable = !!r.group && !r.fixed
       const chev = el('i', { width: '12px', fontSize: '9px', opacity: expandable ? '0.75' : '0', flex: '0 0 auto', textAlign: 'center', cursor: expandable ? 'pointer' : 'default' })
       chev.className = `fas fa-chevron-${r.open ? 'down' : 'right'}`
@@ -2078,9 +2091,11 @@
         const color = (roles[r.role] && roles[r.role].line) || '#8fd3ff'
         row.appendChild(el('span', { width: '8px', height: '8px', borderRadius: '2px', background: color, flex: '0 0 auto' }))
       }
-      row.appendChild(el('span', { fontSize: '11px', color: r.active ? '#7ce8b5' : 'rgba(255,255,255,0.88)', fontWeight: r.group && r.depth <= 1 ? '800' : '400', flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, r.label))
-      if (r.count !== undefined) row.appendChild(el('span', { fontSize: '10px', color: 'rgba(255,255,255,0.35)', flex: '0 0 auto' }, String(r.count)))
-      if (r.note) row.appendChild(el('span', { fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginLeft: 'auto', flex: '0 1 auto', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, r.note))
+      const label = el('span', { fontSize: '11px', color: r.active ? '#7ce8b5' : 'rgba(255,255,255,0.88)', fontWeight: r.group && r.depth <= 1 ? '800' : '400', flex: '0 0 auto', whiteSpace: 'nowrap' }, r.label)
+      label.dataset.nfHierLabel = '1'
+      row.appendChild(label)
+      if (r.count !== undefined) { const c = el('span', { fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginLeft: 'auto', flex: '0 0 auto' }, String(r.count)); c.dataset.nfHierTrail = '1'; row.appendChild(c) }
+      if (r.note) { const nt = el('span', { fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginLeft: 'auto', flex: '0 0 auto', whiteSpace: 'nowrap' }, r.note); nt.dataset.nfHierTrail = '1'; row.appendChild(nt) }
       row.addEventListener('click', (ev) => {
         ev.preventDefault(); ev.stopPropagation()
         if (r.pick) {
@@ -2158,7 +2173,12 @@
     const ctl = bones.ctl
     if (!ctl) return
     if (ev && (ev.ctrlKey || ev.metaKey)) {
-      if (hier.bones.has(name)) hier.bones.delete(name); else hier.bones.add(name)
+      // Ctrl toggles: a bone taken out of the set hands the edit to the last one left in it
+      if (hier.bones.has(name) && hier.bones.size > 1) {
+        hier.bones.delete(name)
+        name = [...hier.bones].pop()
+        index = ctl.peekBones().findIndex((b) => b.name === name)
+      } else hier.bones.add(name)
       hier.boneAnchor = name
     } else if (ev && ev.shiftKey && hier.boneAnchor) {
       const list = boneRowOrder()
@@ -2170,7 +2190,9 @@
       hier.boneAnchor = name
     }
     hier.bones.add(name)
-    ctl.select(index)
+    // additive: the editor's onSelect keeps the set built here; a plain select() reported
+    // the click as a single pick and collapsed a Ctrl / Shift selection to one bone
+    ctl.select(index, { additive: true })
     if (typeof ctl.setPicked === 'function') ctl.setPicked([...hier.bones])
     pushBonePicks()
     bones.syncUi()
@@ -2305,20 +2327,30 @@
     ev.preventDefault(); ev.stopImmediatePropagation()
     nudgeOrder(k === '+' || k === '=' ? 1 : -1)
   }
+  /** 'selected' (the bone being edited) / 'picked' (the rest of a multi-selection) / ''. */
+  function setHierRowState(row, state) {
+    if (!row) return
+    row.dataset.nfHierState = state
+    // the look when the brand runtime is not there to paint it; its spec overrides this
+    row.style.background = state ? 'rgba(34,201,138,' + (state === 'selected' ? '0.16' : '0.12') + ')' : ''
+    row.style.borderColor = state === 'selected' ? 'rgba(34,201,138,0.9)' : state ? 'rgba(34,201,138,0.5)' : 'transparent'
+  }
+  /** The edited bone's row: marked, and scrolled into view (the last one clicked is what the tree shows). */
   function paintHierSelection() {
     const ctl = bones.ctl
     const st = ctl ? ctl.getState() : null
     const list = ctl ? ctl.peekBones() : []
     const name = st && st.selected >= 0 && list[st.selected] ? list[st.selected].name : null
-    if (name === hier.selected && (!name || hier.rows.get('b:' + name))) return
-    const prev = hier.selected && hier.rows.get('b:' + hier.selected)
-    if (prev) { prev.style.background = ''; prev.style.borderColor = 'transparent' }
-    hier.selected = name
     const row = name && hier.rows.get('b:' + name)
+    if (name === hier.selected && (!name || (row && row.dataset.nfHierState === 'selected'))) return
+    const prev = hier.selected && hier.rows.get('b:' + hier.selected)
+    if (prev && prev !== row) setHierRowState(prev, hier.bones.has(hier.selected) ? 'picked' : '')
+    hier.selected = name
     if (row) {
-      row.style.background = 'rgba(34,201,138,0.16)'
-      row.style.borderColor = 'rgba(34,201,138,0.9)'
+      setHierRowState(row, 'selected')
       scrollIntoBox(row, hier.scroll)
+      // once more after the brand runtime's pass has sized the rebuilt rows
+      window.setTimeout(() => { if (hier.selected === name && row.isConnected) scrollIntoBox(row, hier.scroll) }, 80)
     }
   }
   /**
