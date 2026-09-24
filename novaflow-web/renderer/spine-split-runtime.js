@@ -12325,7 +12325,9 @@
     const promptContext = { options, resolution, steps }
     setSplitBusyDetail(`${seeThroughModeLabel(options)} ${resolution}px / ${steps}\u6b65\n\u0052\u0075\u006e\u0074\u0069\u006d\u0065 \u5df2\u4e0b\u53d1\uff0c\u6b63\u5728\u786e\u8ba4\u961f\u5217`)
     await waitForSeeThroughPrompt(baseUrl, promptId, promptContext)
-    if (!sent || !sent.ok || !promptId) throw new Error('See-through 下发失败')
+    // The shim answers a refused task with its reason (not logged in, 普通账户 on the shared pool, no
+    // capable node); without it the panel says only 下发失败 and nobody can tell which.
+    if (!sent || !sent.ok || !promptId) throw new Error(sent && sent.error ? `See-through 下发失败：${sent.error}` : 'See-through 下发失败')
     const logBlob = await fetchBlob(baseUrl, viewOutputPath('seethrough_psd_info.log'))
     if (!logBlob) throw new Error('See-through 未写入图层信息')
     const latest = (await logBlob.text()).trim()
