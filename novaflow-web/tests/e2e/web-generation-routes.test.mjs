@@ -82,6 +82,16 @@ await api.runtimeUploadImage({ fileName: 'test.png', dataBase64: 'AQID' });
 const cutoutIntent = sandbox.NovaFlowWebRuntime.serverOnly('spine-split-runtime', 'defaultRmbgWorkflow', ['', 'test.png', 'cutout', null]);
 await api.runtimeRequestJson({ path: '/prompt', init: { method: 'POST', body: JSON.stringify({ prompt: JSON.parse(String(cutoutIntent)) }) } });
 assert.deepEqual(submissions[1].references.map(ref => ref.name), ['test.png']);
+// 一键拆图: the See-through graph is replayed on the compute node with the uploaded source as its
+// second positional argument, and the page's upload rides along as the task's reference.
+await api.runtimeUploadImage({ fileName: 'split.png', dataBase64: 'AQID' });
+const splitSpec = { seed: 7, resolution: 1024, steps: 30, prefix: 'novaflow_spine_1_ab', useLama: true, headLayer: true };
+const splitIntent = sandbox.NovaFlowWebRuntime.serverOnly('spine-split-runtime', 'buildSeeThroughSplitWorkflow', ['http://127.0.0.1:8188', 'split.png', splitSpec]);
+await api.runtimeRequestJson({ path: '/prompt', init: { method: 'POST', body: JSON.stringify({ prompt: JSON.parse(String(splitIntent)) }) } });
+assert.equal(submissions[2].workflow.method, 'buildSeeThroughSplitWorkflow');
+assert.deepEqual(submissions[2].references.map(ref => ref.name), ['split.png']);
+assert.deepEqual(submissions[2].parameters.__args, ['http://127.0.0.1:8188', 'split.png', splitSpec]);
+assert.equal(withReferences({ __args: ['http://127.0.0.1:8188', 'split.png', splitSpec] }, ['nfweb-1-0-split.png'], [{ name: 'split.png' }], 'buildSeeThroughSplitWorkflow').__args[1], 'nfweb-1-0-split.png');
 
 // Invoke the actual art wrapper with the same fixed-seed callback as the UI.
 const brand = instrumentModule(await readFile(new URL('novaflow-brand-runtime.js', web), 'utf8'), {
@@ -128,6 +138,19 @@ const cutout = await host.buildGraph({ module: 'spine-split-runtime', method: 'd
 assert.equal(cutout['1'].inputs.image, 'task-image.png');
 assert.equal(cutout['2'].class_type, 'RMBG');
 await assert.rejects(host.buildGraph({ module: 'spine-split-runtime', method: 'patchWorkflow', options: {} }), /not available/);
+// The split graph names the task's copy of the source, carries the page's seed and prefix, and adds
+// the whole-head node only where the catalogue has it; without See-through it refuses.
+const seeThroughInfo = Object.fromEntries(['SeeThrough_LoadLayerDiffModel', 'SeeThrough_LoadDepthModel', 'SeeThrough_GenerateLayers', 'SeeThrough_GenerateDepth', 'SeeThrough_PostProcess', 'SeeThrough_SavePSD'].map((name) => [name, {}]));
+const splitCall = { module: 'spine-split-runtime', method: 'buildSeeThroughSplitWorkflow', options: { __args: ['http://evil.test', 'task-split.png', splitSpec] } };
+const rendererDir = fileURLToPath(new URL('../../worker-renderer/', import.meta.url));
+const split = await (await createWorkflowHost({ rendererDir, objectInfo: { ...seeThroughInfo, NovaFlowSeeThroughHeadLayer: {} } })).buildGraph(splitCall);
+assert.equal(split['1'].inputs.image, 'task-split.png');
+assert.equal(split['4'].inputs.seed, 7);
+assert.equal(split['8'].inputs.filename_prefix, 'novaflow_spine_1_ab');
+assert.equal(split['10'].class_type, 'NovaFlowSeeThroughHeadLayer');
+assert.equal(split['10'].inputs.filename_prefix, 'novaflow_spine_1_ab');
+assert.equal((await (await createWorkflowHost({ rendererDir, objectInfo: seeThroughInfo })).buildGraph(splitCall))['10'], undefined);
+await assert.rejects((await createWorkflowHost({ rendererDir, objectInfo: { RMBG: {} } })).buildGraph(splitCall), /节点未加载/);
 
 // A runtime carrying the Qwen-Image-2.1 weights takes the 2.1 completion graph: latent from the
 // undug upload, and a crop that is not a multiple of 32 padded before encoding and cropped back after.

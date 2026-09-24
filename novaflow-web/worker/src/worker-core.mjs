@@ -29,6 +29,7 @@ import {
   MATTING_TASK_TYPE,
   TASK_STATE,
   TTL_SECONDS,
+  isSafeFilename,
   requirementsFor
 } from '../../packages/shared/src/protocol.mjs';
 import { runMatting, probeMatting } from './matting.mjs';
@@ -90,6 +91,53 @@ export function withReferences(parameters, filenames, references = [], method = 
   if (filenames[0]) { next.firstFrame = filenames[0]; next.first_frame = filenames[0]; }
   if (filenames[1]) { next.lastFrame = filenames[1]; next.last_frame = filenames[1]; }
   return next;
+}
+
+export const SEE_THROUGH_SPLIT_METHOD = 'buildSeeThroughSplitWorkflow';
+
+/**
+ * One 一键拆图 run's files, read out of ComfyUI's output folder by name.
+ *
+ * See-through does not report its layers through the prompt history: SavePSD writes the layer PNGs
+ * and `<prefix>_<ts>_<uid>_layers.json` and points the shared `seethrough_psd_info.log` at that json;
+ * NovaFlow's head node adds `<prefix>_head.json` (+ its PNG) when it ran. The page fetches each of
+ * these by exactly these names, so they are kept, and the log is written per task so a later run
+ * cannot repoint it.
+ */
+export async function collectSeeThroughOutputs(comfy, prefix) {
+  const safePrefix = String(prefix || '');
+  if (!safePrefix || !isSafeFilename(safePrefix)) throw new Error('拆图任务缺少有效的输出前缀');
+  const view = (filename) => comfy.viewFile({ filename, subfolder: '', type: 'output' });
+  let infoName = '';
+  try { infoName = String(await view('seethrough_psd_info.log')).trim(); } catch { throw new Error('See-through 未写入图层信息'); }
+  if (!infoName.startsWith(safePrefix) || !isSafeFilename(infoName)) throw new Error('See-through 图层信息不是本次任务输出');
+  const infoBytes = await view(infoName);
+  let info = null;
+  try { info = JSON.parse(String(infoBytes)); } catch { throw new Error('See-through 图层信息无法解析'); }
+  const infoFile = { name: infoName, kind: 'file', bytes: infoBytes };
+  const files = [{ name: 'seethrough_psd_info.log', kind: 'file', bytes: Buffer.from(infoName) }, infoFile];
+  const served = new Set();
+  for (const layer of Array.isArray(info?.layers) ? info.layers : []) {
+    const original = String(layer?.filename || '');
+    if (!original.startsWith(safePrefix)) continue;
+    // See-through names a layer file after its tag, spaces included ("back hair"). The gateway serves
+    // safe names only, so the file is stored, and listed in the json the page reads, under one.
+    const name = original.replace(/[^A-Za-z0-9._-]+/g, '_');
+    if (!isSafeFilename(name) || served.has(name)) continue;
+    served.add(name);
+    layer.filename = name;
+    files.push({ name, kind: 'image', bytes: await view(original) });
+  }
+  infoFile.bytes = Buffer.from(JSON.stringify(info));
+  const headName = safePrefix + '_head.json';
+  let head = null;
+  try { head = JSON.parse(String(await view(headName))); } catch { head = null; }
+  if (head && typeof head === 'object') {
+    files.push({ name: headName, kind: 'file', bytes: Buffer.from(JSON.stringify(head)) });
+    const png = String(head.layer?.filename || '');
+    if (head.ok === true && png.startsWith(safePrefix) && isSafeFilename(png)) files.push({ name: png, kind: 'image', bytes: await view(png) });
+  }
+  return files;
 }
 
 function nowIso() {
@@ -584,6 +632,16 @@ export function createWorker(options) {
         height: Number(parameters.height) || 0,
         duration_seconds: req?.kind === 'video' ? Number(parameters.duration_seconds) || 0 : 0
       });
+    }
+
+    // 一键拆图 keeps its layers outside the prompt history; copy them by name (collectSeeThroughOutputs).
+    if (intent && intent.method === SEE_THROUGH_SPLIT_METHOD) {
+      const prefix = String(parameters.__args?.[2]?.prefix || '');
+      for (const file of await collectSeeThroughOutputs(comfy, prefix)) {
+        checkCancelled(task.id);
+        await writeFile(join(outDir, file.name), file.bytes);
+        outputs.push({ name: file.name, kind: file.kind, bytes: file.bytes.length, width: 0, height: 0, duration_seconds: 0 });
+      }
     }
 
     // 5. Report. The worker reports success and execution metadata; the

@@ -575,7 +575,7 @@
     fusionFeatherPx: 4,
     secondPassSplit: false,
     includeFaceDetails: false,
-    seeThroughHeadLayerNodeAvailable: false,
+    seeThroughHeadLayerNodeAvailable: null, // unknown until the node catalogue is read; the Web page never reads it
     splitPreviewDataUrl: '',
     splitPreviewRefreshToken: 0,
     splitPreviewRefreshTimer: 0,
@@ -12199,6 +12199,18 @@
     return lines.join('\n')
   }
 
+  // ComfyUI, and the Web task shim standing in for it, put the failing node's message in
+  // status.messages; without it a node missing on the compute node reads as a bare 执行失败.
+  function seeThroughHistoryErrorDetail(status) {
+    const messages = Array.isArray(status && status.messages) ? status.messages : []
+    for (const entry of messages) {
+      const payload = Array.isArray(entry) ? entry[1] : entry
+      const text = payload && (payload.exception_message || payload.error || payload.message)
+      if (text) return String(text).trim().slice(0, 400)
+    }
+    return ''
+  }
+
   async function waitForSeeThroughPrompt(baseUrl, promptId, context) {
     const start = Date.now()
     let lastQueueCheck = 0
@@ -12226,7 +12238,8 @@
         debug.status = 'error'
         debug.durationMs = elapsedMs
         state.lastProcessingDebug = debug
-        throw new Error('\u0053\u0065\u0065\u002d\u0074\u0068\u0072\u006f\u0075\u0067\u0068 \u6267\u884c\u5931\u8d25')
+        const detail = seeThroughHistoryErrorDetail(status)
+        throw new Error(detail ? `See-through 执行失败：${detail}` : 'See-through 执行失败')
       }
       if (status && status.completed) {
         debug.status = 'completed'
@@ -12268,29 +12281,44 @@
     throw new Error('\u0053\u0065\u0065\u002d\u0074\u0068\u0072\u006f\u0075\u0067\u0068 \u6267\u884c\u8d85\u8fc7 30 \u5206\u949f\uff0c\u8bf7\u91cd\u542f Runtime \u540e\u91cd\u8bd5')
   }
 
-  async function runSeeThroughLayers(options) {
-    const baseUrl = await detectComfyBaseUrl()
+  // The See-through split graph. The desktop page builds it against the local runtime; the Web build
+  // hollows this function out and the compute node replays it with the same arguments (runtime URL,
+  // uploaded image, options: the positional shape worker-core rewrites), so the graph never reaches
+  // the browser. The node check runs wherever the graph is built, since that machine holds the catalogue.
+  async function buildSeeThroughSplitWorkflow(baseUrl, uploadedName, options) {
     await assertSeeThrough(baseUrl)
-    const uploadedName = await uploadImage(baseUrl)
-    const size = await sourceSize()
-    const prefix = `novaflow_spine_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
-    const seed = Math.floor(Math.random() * 1000000000)
-    const resolution = seeThroughResolution(size, options)
-    const steps = seeThroughStepCount(options)
+    const spec = options && typeof options === 'object' ? options : {}
+    const seed = Number.isFinite(Number(spec.seed)) ? Math.floor(Number(spec.seed)) : Math.floor(Math.random() * 1000000000)
+    const resolution = Number(spec.resolution) || 1024
+    const steps = Number(spec.steps) || 30
+    const prefix = String(spec.prefix || `novaflow_spine_${Date.now()}`)
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: uploadedName } },
       '2': { class_type: 'SeeThrough_LoadLayerDiffModel', inputs: { model: 'seethroughv0.0.2_layerdiff3d', vae_ckpt: '', unet_ckpt: '' } },
       '3': { class_type: 'SeeThrough_LoadDepthModel', inputs: { model: 'seethroughv0.0.1_marigold' } },
       '4': { class_type: 'SeeThrough_GenerateLayers', inputs: { image: ['1', 0], layerdiff_model: ['2', 0], seed, resolution, num_inference_steps: steps } },
       '5': { class_type: 'SeeThrough_GenerateDepth', inputs: { layers: ['4', 0], depth_model: ['3', 0], seed } },
-      '6': { class_type: 'SeeThrough_PostProcess', inputs: { layers_depth: ['5', 0], tblr_split: true, use_lama: state.inpaintMode !== 'off' } },
+      '6': { class_type: 'SeeThrough_PostProcess', inputs: { layers_depth: ['5', 0], tblr_split: true, use_lama: spec.useLama !== false } },
       '7': { class_type: 'PreviewImage', inputs: { images: ['6', 1] } },
       '8': { class_type: 'SeeThrough_SavePSD', inputs: { parts: ['6', 0], filename_prefix: prefix } }
     }
-    const wantHeadLayer = seeThroughWantsHeadLayer()
-    if (wantHeadLayer) {
+    if (spec.headLayer && state.seeThroughHeadLayerNodeAvailable) {
       workflow['10'] = { class_type: 'NovaFlowSeeThroughHeadLayer', inputs: { image: ['1', 0], layers: ['4', 0], layerdiff_model: ['2', 0], seed, resolution, num_inference_steps: steps, filename_prefix: prefix } }
     }
+    return workflow
+  }
+
+  async function runSeeThroughLayers(options) {
+    const baseUrl = await detectComfyBaseUrl()
+    const uploadedName = await uploadImage(baseUrl)
+    const size = await sourceSize()
+    const prefix = `novaflow_spine_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
+    const seed = Math.floor(Math.random() * 1000000000)
+    const resolution = seeThroughResolution(size, options)
+    const steps = seeThroughStepCount(options)
+    const workflow = await buildSeeThroughSplitWorkflow(baseUrl, uploadedName, {
+      seed, resolution, steps, prefix, useLama: state.inpaintMode !== 'off', headLayer: !state.includeFaceDetails
+    })
     const sent = await requestJson(baseUrl, '/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: `novaflow_spine_${Date.now()}`, prompt: workflow }) })
     const promptId = String(sent && sent.data && sent.data.prompt_id || '')
     if (!sent || !sent.ok || !promptId) throw new Error('\u0053\u0065\u0065\u002d\u0074\u0068\u0072\u006f\u0075\u0067\u0068 \u4e0b\u53d1\u5931\u8d25')
@@ -12333,7 +12361,7 @@
       cropped.seeThroughDepth = Number.isFinite(Number(layer.depth_median)) ? Number(layer.depth_median) : null
       parts.push(cropped)
     }
-    if (wantHeadLayer) {
+    if (seeThroughWantsHeadLayer()) {
       setSplitBusyDetail(`${seeThroughModeLabel(options)} ${resolution}px / ${steps}\u6b65\n\u6b63\u5728\u8bfb\u53d6\u6574\u8138\u56fe\u5c42`)
       const headPart = await fetchSeeThroughHeadLayer(baseUrl, prefix, size, layers.length)
       if (headPart) parts.push(headPart)
@@ -12342,8 +12370,11 @@
     return normalizeSpineLayerOrder(parts)
   }
 
+  // Wanted unless the node catalogue said the helper node is absent. The Web page never reads the
+  // catalogue (the compute node does when it builds the graph), so there it asks for the layer and
+  // a missing manifest answers.
   function seeThroughWantsHeadLayer() {
-    return !state.includeFaceDetails && state.seeThroughHeadLayerNodeAvailable === true
+    return !state.includeFaceDetails && state.seeThroughHeadLayerNodeAvailable !== false
   }
 
   // The helper node writes `${prefix}_head.json` + `${prefix}_head.png` in the same outer-frame convention as the
