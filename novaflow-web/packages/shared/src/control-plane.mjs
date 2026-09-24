@@ -50,8 +50,8 @@ import {
 } from './tokens.mjs';
 
 import { priceTask } from './pricing.mjs';
-import { isAllowedWorkflowCall, workflowModule } from './workflow-modules.mjs';
-import { MODEL_MANIFEST } from './model-manifest.mjs';
+import { isAllowedWorkflowCall, workflowModule, workflowModelId } from './workflow-modules.mjs';
+import { MODEL_MANIFEST, QWEN21_MODEL_ID, findModel } from './model-manifest.mjs';
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 4000;
@@ -602,11 +602,11 @@ export function createControlPlane({ store, secrets, logger }) {
         throw bad('workflow not available on the web: ' + moduleName + '.' + method);
       }
       const entry = workflowModule(moduleName);
-      req = { modelId: entry.modelId, minVramMb: entry.minVramMb, kind: entry.kind };
       // The renderer's options are its own shape, so they are carried through
       // rather than reshaped - but the COST is still derived here, from the
       // dimensions and duration we can read out of them.
       parameters = sanitizeWorkflowOptions(body.parameters);
+      req = { modelId: workflowModelId(moduleName, parameters), minVramMb: entry.minVramMb, kind: entry.kind };
       pricing = priceTask(entry.price === 'video' ? 'h3_i2v' : 'qwen_t2i', pricingViewOf(parameters));
       inputWorkflow = { module: moduleName, method };
     } else {
@@ -851,6 +851,10 @@ export function createControlPlane({ store, secrets, logger }) {
       store.countCapableWorkers(value.modelId, value.minVramMb, HEARTBEAT_TIMEOUT_SECONDS)
         .catch(() => 0)
     ));
+    // The drawing and UI-design panels use Qwen-Image-2.1 while a node that can build it is online;
+    // their runs then queue for that model (workflowModelId), so only such a node takes them.
+    const qwen21 = await store.countCapableWorkers(QWEN21_MODEL_ID, findModel(QWEN21_MODEL_ID).min_vram_mb,
+      HEARTBEAT_TIMEOUT_SECONDS).catch(() => 0);
     const taskTypes = entries.map(([key, value], i) => ({
       task_type: key,
       model_id: value.modelId,
@@ -864,6 +868,7 @@ export function createControlPlane({ store, secrets, logger }) {
       protocol: PROTOCOL_VERSION,
       taskTypes,
       available_workers: Math.max(0, ...counts),
+      features: { qwenImage21: qwen21 > 0 },
       models: MODEL_MANIFEST.map((m) => ({
         model_id: m.model_id,
         display_name: m.display_name,
@@ -879,10 +884,12 @@ export function createControlPlane({ store, secrets, logger }) {
     const mode = String(query.mode || 'i2v');
     const steps = Number(query.steps || 4);
     if (kind === 'h3' && (!['t2v','i2v','fl2v','r2v'].includes(mode) || !Number.isInteger(steps) || steps < 1 || steps > 100)) throw bad('invalid LoRA context');
-    const modelId = kind === 'h3' ? 'minimax-h3' : 'qwen-image-2511';
+    // A 2.1 run takes the LoRAs every 2.1 node can load, checked against its own 2.1 model.
+    const engine = kind === 'qwen' && query.engine === 'qwen-2.1' ? 'qwen-2.1' : '';
+    const modelId = kind === 'h3' ? 'minimax-h3' : engine ? QWEN21_MODEL_ID : 'qwen-image-2511';
     const rows = await store.listCapableModelDetails(modelId, kind === 'h3' ? 15000 : 16000, HEARTBEAT_TIMEOUT_SECONDS);
     let items;
-    try { items = commonLoraCatalog(rows, { kind, mode, steps, nsfw: query.nsfw === 'true' || query.nsfw === true }); }
+    try { items = commonLoraCatalog(rows, { kind, mode, steps, engine, nsfw: query.nsfw === 'true' || query.nsfw === true }); }
     catch (error) { throw new HttpError(503, 'lora_catalog_unavailable', error.message); }
     if (selection) {
       const item = items.find(item => item.name === selection.name && item.fingerprint === selection.fingerprint);

@@ -954,7 +954,7 @@
     }
     // The local reference limit depends on the node's engine; ask it again before checking. A
     // second click during the question waits for the same answer and then joins the first run.
-    if (root?.NovaFlowWebRuntime?.computeMode === 'local' && typeof root?.electronAPI?.runtimeFeatures === 'function') {
+    if (root?.NovaFlowWebRuntime && typeof root?.electronAPI?.runtimeFeatures === 'function') {
       if (!featureRefresh) {
         featureRefresh = Promise.resolve(root.electronAPI.runtimeFeatures()).catch(() => {}).finally(() => { featureRefresh = null })
       }

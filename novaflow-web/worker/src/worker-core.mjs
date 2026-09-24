@@ -21,7 +21,7 @@ import { createWorkflowHost } from './comfy/workflow-host.mjs';
 import { workflowModule } from '../../packages/shared/src/workflow-modules.mjs';
 import { inspectAllModels, inspectViaComfy, detectQwenImage21 } from './models/model-manager.mjs';
 import { createWorkerLoraCatalog } from './models/lora-catalog.mjs';
-import { MODEL_MANIFEST, runtimeFor } from '../../packages/shared/src/model-manifest.mjs';
+import { MODEL_MANIFEST, QWEN21_MODEL_ID, runtimeFor } from '../../packages/shared/src/model-manifest.mjs';
 import { detectGpu, detectSystem } from './hardware.mjs';
 import { generateWorkerSecret } from '../../packages/shared/src/tokens.mjs';
 import {
@@ -330,8 +330,15 @@ export function createWorker(options) {
       }
     }
     const diskModels = modelsRoot ? await inspectAllModels(modelsRoot).catch(() => []) : [];
+    const qwen21 = state.comfy.image ? await detectQwenImage21(comfyImage).catch(() => false) : false;
     const models = MODEL_MANIFEST.map((spec) => {
       const found = byId.get(spec.model_id) || diskModels.find(m => m.model_id === spec.model_id);
+      // Qwen-Image-2.1 is ready when this node can build its graph: the builder's own check, which
+      // also covers the other quantisations and text encoders it accepts.
+      if (spec.model_id === QWEN21_MODEL_ID) {
+        return { ...(found || {}), model_id: spec.model_id, model_version: spec.version, status: qwen21 ? 'ready' : 'missing',
+          detail: { ...(found?.detail || {}), ...(qwen21 ? {} : { reason: 'qwen_image_21_unavailable' }) } };
+      }
       // A 'local' model is not loaded by ComfyUI, so no node catalogue can
       // vouch for it. The loop above only ever asks the 'image' and 'video'
       // runtimes, which left state.comfy['local'] undefined and every such
@@ -365,7 +372,7 @@ export function createWorker(options) {
       }
     }
     state.models = models;
-    state.features.qwenImage21 = state.comfy.image ? await detectQwenImage21(comfyImage).catch(() => false) : false;
+    state.features.qwenImage21 = qwen21;
     lastFeatureProbeAt = Date.now();
     if (state.workerToken) await callControl('POST', '/api/worker/models', { body: { models }, token: state.workerToken });
     lastModelReportAt = Date.now();

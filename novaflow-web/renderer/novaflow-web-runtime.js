@@ -478,8 +478,8 @@
   }
 
   // What the compute node's image runtime offers beyond the fixed task types,
-  // e.g. { qwenImage21: true }. Only a local assistant reports it; the shared
-  // pool answers without it and the page keeps its default routes.
+  // e.g. { qwenImage21: true }: the local assistant, or on the website the
+  // shared pool (true while a node that can build 2.1 is online).
   let runtimeFeatureCache = {};
   // The answer can be missing on the first try (a page opened while the assistant restarts, a model
   // probe that timed out at start): until the node reports 2.1, ask again every 15 s for a while and
@@ -488,7 +488,7 @@
   let runtimeFeatureRetries = 0;
   let runtimeFeatureCheckedAt = 0;
   function scheduleRuntimeFeatureRetry() {
-    if (computeMode !== 'local' || runtimeFeatureRetry || runtimeFeatureRetries >= 40 || typeof root.setTimeout !== 'function') return;
+    if (runtimeFeatureRetry || runtimeFeatureRetries >= 40 || typeof root.setTimeout !== 'function') return;
     runtimeFeatureRetry = root.setTimeout(() => {
       runtimeFeatureRetry = null;
       runtimeFeatureRetries += 1;
@@ -1083,13 +1083,10 @@
   };
   // Warm the feature snapshot so panels that size themselves synchronously
   // (the UI-design reference limit) see the node's answer; runs re-check it.
-  // Only a local assistant reports features, so the shared pool is not asked.
-  if (computeMode === 'local') {
-    electronAPI.runtimeFeatures();
-    if (typeof root.addEventListener === 'function') {
-      root.addEventListener('focus', () => {
-        if (Date.now() - runtimeFeatureCheckedAt > 10000) electronAPI.runtimeFeatures();
-      });
-    }
+  electronAPI.runtimeFeatures();
+  if (typeof root.addEventListener === 'function') {
+    root.addEventListener('focus', () => {
+      if (Date.now() - runtimeFeatureCheckedAt > 10000) electronAPI.runtimeFeatures();
+    });
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this);

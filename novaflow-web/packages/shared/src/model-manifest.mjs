@@ -83,8 +83,30 @@ export const MODEL_MANIFEST = Object.freeze([
       mode: 'import_or_configured_url',
       hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models/RMBG），或让 BiRefNet 首次运行时自行下载。'
     }
+  },
+  {
+    // Drawing and UI design on Qwen-Image-2.1. A node reports it ready exactly when it can build the
+    // 2.1 graph (detectQwenImage21, the check the builder itself makes), and the control plane queues
+    // a run that asks for 2.1 on this model, so only such a node claims it.
+    model_id: 'qwen-image-2.1',
+    display_name: 'Qwen-Image-2.1',
+    version: '2.1',
+    runtime: 'image',
+    min_vram_mb: 16000,
+    compatible_workflows: ['novaflow-brand-runtime.buildArtGenerateRunWorkflow'],
+    required_files: [
+      { path: 'diffusion_models/qwen-image-2.1-UC-Q8_0.gguf', min_bytes: 7_000_000_000, sha256: null },
+      { path: 'text_encoders/qwen3vl_8b_w4a8_heretic.safetensors', min_bytes: 6_000_000_000, sha256: null },
+      { path: 'vae/qwen_image_2.1_vae_bf16.safetensors', min_bytes: 600_000_000, sha256: null }
+    ],
+    download: {
+      mode: 'import_or_configured_url',
+      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models），并安装 ComfyUI-GGUF-leejet 节点。'
+    }
   }
 ]);
+
+export const QWEN21_MODEL_ID = 'qwen-image-2.1';
 
 export function findModel(modelId) {
   return MODEL_MANIFEST.find((m) => m.model_id === String(modelId || '')) || null;

@@ -135,6 +135,24 @@ export function isAllowedWorkflowCall(name, method) {
   return entry.methods.includes(String(method || ''));
 }
 
+// The model a renderer run needs. A drawing or UI-design run that asks for Qwen-Image-2.1 records it
+// in its run state (__args[8]); the node builds the 2.1 graph under exactly these conditions (see
+// buildArtGenerateRunWorkflow), so such a run is queued for the 2.1 model and a node without it
+// never claims it.
+export function workflowModelId(name, options) {
+  const entry = workflowModule(name);
+  if (!entry) return null;
+  const args = name === 'novaflow-brand-runtime' && Array.isArray(options?.__args) ? options.__args : null;
+  if (args && args[0] === 'local') {
+    const state = args[8] && typeof args[8] === 'object' ? args[8] : {};
+    const profile = String(args[10]?.taskProfile || '');
+    const ui = profile.toLowerCase() === 'ui-design' && state.localUiEngine === 'qwen-2.1';
+    const draw = !/^ui-design/i.test(profile) && state.localDrawEngine === 'qwen-2.1';
+    if (ui || draw) return 'qwen-image-2.1';
+  }
+  return entry.modelId;
+}
+
 export function workflowModuleNames() {
   return Object.keys(WORKFLOW_MODULES);
 }

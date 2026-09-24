@@ -12,9 +12,11 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 // Regenerate with: npm run sync:edge
 // Advertise only selections supported by every node the scheduler can choose.
 // Older nodes and failed scans are unavailable, never an empty success.
-function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4 }) {
+function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, engine = '' }) {
   if (!rows.length) throw new Error('暂无在线算力可读取 LoRA');
-  const key = kind === 'qwen' ? (nsfw ? 'qwen_nsfw' : 'qwen') : (mode === 'r2v' ? 'h3_ref' : 'h3');
+  const key = kind === 'qwen'
+    ? (engine === 'qwen-2.1' ? 'qwen21' : nsfw ? 'qwen_nsfw' : 'qwen')
+    : (mode === 'r2v' ? 'h3_ref' : 'h3');
   const lists = rows.map(row => {
     const report = row.detail?.lora_catalog;
     if (report?.version !== 1) throw new Error('算力节点需要更新到 0.4.4 才能读取 LoRA');
@@ -776,6 +778,24 @@ function isAllowedWorkflowCall(name, method) {
   return entry.methods.includes(String(method || ''));
 }
 
+// The model a renderer run needs. A drawing or UI-design run that asks for Qwen-Image-2.1 records it
+// in its run state (__args[8]); the node builds the 2.1 graph under exactly these conditions (see
+// buildArtGenerateRunWorkflow), so such a run is queued for the 2.1 model and a node without it
+// never claims it.
+function workflowModelId(name, options) {
+  const entry = workflowModule(name);
+  if (!entry) return null;
+  const args = name === 'novaflow-brand-runtime' && Array.isArray(options?.__args) ? options.__args : null;
+  if (args && args[0] === 'local') {
+    const state = args[8] && typeof args[8] === 'object' ? args[8] : {};
+    const profile = String(args[10]?.taskProfile || '');
+    const ui = profile.toLowerCase() === 'ui-design' && state.localUiEngine === 'qwen-2.1';
+    const draw = !/^ui-design/i.test(profile) && state.localDrawEngine === 'qwen-2.1';
+    if (ui || draw) return 'qwen-image-2.1';
+  }
+  return entry.modelId;
+}
+
 function workflowModuleNames() {
   return Object.keys(WORKFLOW_MODULES);
 }
@@ -883,8 +903,30 @@ const MODEL_MANIFEST = Object.freeze([
       mode: 'import_or_configured_url',
       hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models/RMBG），或让 BiRefNet 首次运行时自行下载。'
     }
+  },
+  {
+    // Drawing and UI design on Qwen-Image-2.1. A node reports it ready exactly when it can build the
+    // 2.1 graph (detectQwenImage21, the check the builder itself makes), and the control plane queues
+    // a run that asks for 2.1 on this model, so only such a node claims it.
+    model_id: 'qwen-image-2.1',
+    display_name: 'Qwen-Image-2.1',
+    version: '2.1',
+    runtime: 'image',
+    min_vram_mb: 16000,
+    compatible_workflows: ['novaflow-brand-runtime.buildArtGenerateRunWorkflow'],
+    required_files: [
+      { path: 'diffusion_models/qwen-image-2.1-UC-Q8_0.gguf', min_bytes: 7_000_000_000, sha256: null },
+      { path: 'text_encoders/qwen3vl_8b_w4a8_heretic.safetensors', min_bytes: 6_000_000_000, sha256: null },
+      { path: 'vae/qwen_image_2.1_vae_bf16.safetensors', min_bytes: 600_000_000, sha256: null }
+    ],
+    download: {
+      mode: 'import_or_configured_url',
+      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models），并安装 ComfyUI-GGUF-leejet 节点。'
+    }
   }
 ]);
+
+const QWEN21_MODEL_ID = 'qwen-image-2.1';
 
 function findModel(modelId) {
   return MODEL_MANIFEST.find((m) => m.model_id === String(modelId || '')) || null;
@@ -1476,11 +1518,11 @@ function createControlPlane({ store, secrets, logger }) {
         throw bad('workflow not available on the web: ' + moduleName + '.' + method);
       }
       const entry = workflowModule(moduleName);
-      req = { modelId: entry.modelId, minVramMb: entry.minVramMb, kind: entry.kind };
       // The renderer's options are its own shape, so they are carried through
       // rather than reshaped - but the COST is still derived here, from the
       // dimensions and duration we can read out of them.
       parameters = sanitizeWorkflowOptions(body.parameters);
+      req = { modelId: workflowModelId(moduleName, parameters), minVramMb: entry.minVramMb, kind: entry.kind };
       pricing = priceTask(entry.price === 'video' ? 'h3_i2v' : 'qwen_t2i', pricingViewOf(parameters));
       inputWorkflow = { module: moduleName, method };
     } else {
@@ -1725,6 +1767,10 @@ function createControlPlane({ store, secrets, logger }) {
       store.countCapableWorkers(value.modelId, value.minVramMb, HEARTBEAT_TIMEOUT_SECONDS)
         .catch(() => 0)
     ));
+    // The drawing and UI-design panels use Qwen-Image-2.1 while a node that can build it is online;
+    // their runs then queue for that model (workflowModelId), so only such a node takes them.
+    const qwen21 = await store.countCapableWorkers(QWEN21_MODEL_ID, findModel(QWEN21_MODEL_ID).min_vram_mb,
+      HEARTBEAT_TIMEOUT_SECONDS).catch(() => 0);
     const taskTypes = entries.map(([key, value], i) => ({
       task_type: key,
       model_id: value.modelId,
@@ -1738,6 +1784,7 @@ function createControlPlane({ store, secrets, logger }) {
       protocol: PROTOCOL_VERSION,
       taskTypes,
       available_workers: Math.max(0, ...counts),
+      features: { qwenImage21: qwen21 > 0 },
       models: MODEL_MANIFEST.map((m) => ({
         model_id: m.model_id,
         display_name: m.display_name,
@@ -1753,10 +1800,12 @@ function createControlPlane({ store, secrets, logger }) {
     const mode = String(query.mode || 'i2v');
     const steps = Number(query.steps || 4);
     if (kind === 'h3' && (!['t2v','i2v','fl2v','r2v'].includes(mode) || !Number.isInteger(steps) || steps < 1 || steps > 100)) throw bad('invalid LoRA context');
-    const modelId = kind === 'h3' ? 'minimax-h3' : 'qwen-image-2511';
+    // A 2.1 run takes the LoRAs every 2.1 node can load, checked against its own 2.1 model.
+    const engine = kind === 'qwen' && query.engine === 'qwen-2.1' ? 'qwen-2.1' : '';
+    const modelId = kind === 'h3' ? 'minimax-h3' : engine ? QWEN21_MODEL_ID : 'qwen-image-2511';
     const rows = await store.listCapableModelDetails(modelId, kind === 'h3' ? 15000 : 16000, HEARTBEAT_TIMEOUT_SECONDS);
     let items;
-    try { items = commonLoraCatalog(rows, { kind, mode, steps, nsfw: query.nsfw === 'true' || query.nsfw === true }); }
+    try { items = commonLoraCatalog(rows, { kind, mode, steps, engine, nsfw: query.nsfw === 'true' || query.nsfw === true }); }
     catch (error) { throw new HttpError(503, 'lora_catalog_unavailable', error.message); }
     if (selection) {
       const item = items.find(item => item.name === selection.name && item.fingerprint === selection.fingerprint);

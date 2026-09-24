@@ -3,9 +3,11 @@
 // Regenerate with: npm run sync:edge
 // Advertise only selections supported by every node the scheduler can choose.
 // Older nodes and failed scans are unavailable, never an empty success.
-export function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4 }) {
+export function commonLoraCatalog(rows, { kind, nsfw = false, mode = 'i2v', steps = 4, engine = '' }) {
   if (!rows.length) throw new Error('暂无在线算力可读取 LoRA');
-  const key = kind === 'qwen' ? (nsfw ? 'qwen_nsfw' : 'qwen') : (mode === 'r2v' ? 'h3_ref' : 'h3');
+  const key = kind === 'qwen'
+    ? (engine === 'qwen-2.1' ? 'qwen21' : nsfw ? 'qwen_nsfw' : 'qwen')
+    : (mode === 'r2v' ? 'h3_ref' : 'h3');
   const lists = rows.map(row => {
     const report = row.detail?.lora_catalog;
     if (report?.version !== 1) throw new Error('算力节点需要更新到 0.4.4 才能读取 LoRA');

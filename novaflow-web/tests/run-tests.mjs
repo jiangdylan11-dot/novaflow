@@ -31,6 +31,7 @@ const SUITES = [
   { name: 'web-warehouse', file: 'e2e/web-warehouse.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-lora', file: 'e2e/web-lora.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-lora-qwen21', file: 'e2e/web-lora-qwen21.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'web-shared-qwen21', file: 'e2e/web-shared-qwen21.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-templates', file: 'e2e/web-templates.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-account', file: 'e2e/web-account.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-png-compress', file: 'e2e/web-png-compress.test.mjs', needs: [], timeoutMs: 60000 },
