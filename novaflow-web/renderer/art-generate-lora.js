@@ -132,6 +132,7 @@
     if (record.loading) return
     const context = record.context
     const request = { nsfw: !!record.options.state.nsfw }
+    let dropped = false
     record.loading = true
     record.loaded = true
     record.error = ''
@@ -140,13 +141,16 @@
       const names = qwen21Route(record.options.state) ? [] : catalogFromInfo(await record.options.loadCatalog(request))
       if (context === record.context) {
         record.names = names
+        const before = (record.options.state.loras || []).length
         record.options.state.loras = (record.options.state.loras || []).filter(item => names.includes(item.name))
+        dropped = record.options.state.loras.length !== before
       }
     } catch (error) {
       if (context === record.context) record.error = String(error?.message || error)
     } finally {
       record.loading = false
       mount(record.options)
+      if (dropped) record.options.onChange?.()
     }
   }
 
@@ -161,7 +165,8 @@
       if (css) el.style.cssText = css
       return el
     }
-    const change = () => { mount(record.options) }
+    // The chosen LoRAs can change the route, and with it the reference grid and steps / CFG.
+    const change = () => { mount(record.options); record.options.onChange?.() }
     const children = [element('div', '添加兼容 LoRA', 'font-size:11px;color:#999;line-height:16px;')]
     const select = element('select', '', 'box-sizing:border-box;width:100%;min-width:0;height:36px;background:#090909;color:#ddd;border:1px solid #333;border-radius:8px;padding:0 10px;font-size:12px;')
     select.setAttribute('data-novaflow-art-generate-select-field', '1')

@@ -78354,6 +78354,7 @@
     }));
     if (mounted) window.NovaFlowArtGenerateLora?.mount?.({
       host, state: ART_GENERATE_STATE,
+      onChange: () => { renderArtGenerateSurfaces({ forceBottom: true }); },
       async loadCatalog(context) {
         await detectArtGenerateBaseUrl();
         const response = await window.electronAPI?.qwenLoraCatalog?.(context);
@@ -82264,6 +82265,15 @@
     return { workflow, modelKey: "qwen-image-2.1-ui" };
   }
 
+  // The engine the drawing panel shows for this run ("qwen-2.1" or ""). The page decides it from the
+  // node's features and sends it with the run, so the worker never picks 2.1 on its own: steps / CFG,
+  // W / H and the reference count always mean what the panel showed (a shared-pool page that does not
+  // know the node's features keeps the other routes). UI design sends its own localUiEngine.
+  function artGenerateDrawEngine(provider, mode, state, providerOptions) {
+    if (provider !== "local" || /^ui-design/i.test(String(providerOptions?.taskProfile || ""))) return "";
+    return window.NovaFlowArtGenerateModels?.capabilityFor?.(provider, mode, state)?.engine === "qwen-2.1" ? "qwen-2.1" : "";
+  }
+
   function buildArtGenerateRunWorkflow(provider, mode, uploadedNames, outputPrefix, positivePrompt, negativePrompt, clientId, referenceSizes = []) {
     const state = arguments.length > 8 && arguments[8] && typeof arguments[8] === "object"
       ? arguments[8]
@@ -82278,6 +82288,8 @@
         'gptQualityTxt2img', 'gptQualityImg2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight',
         'googleAspectRatioTxt2img', 'googleAspectRatioImg2img', 'googleResolution'];
       const runState = Object.fromEntries(stateKeys.filter((key) => state[key] !== undefined).map((key) => [key, state[key]]));
+      const drawEngine = artGenerateDrawEngine(provider, mode, state, providerOptions);
+      if (drawEngine) runState.localDrawEngine = drawEngine;
       const marker = window.NovaFlowWebRuntime.serverOnly('novaflow-brand-runtime', 'buildArtGenerateRunWorkflow', [
         provider, mode, uploadedNames, outputPrefix, positivePrompt, negativePrompt, clientId, referenceSizes,
         runState, arguments[9], providerOptions
@@ -82298,11 +82310,19 @@
     const uiQwen21 = provider === "local"
       && String(providerOptions?.taskProfile || "").toLowerCase() === "ui-design"
       && state?.localUiEngine === "qwen-2.1";
+    const drawQwen21 = drawingRun && (state === ART_GENERATE_STATE
+      ? artGenerateDrawEngine(provider, mode, state, providerOptions)
+      : String(state?.localDrawEngine || "")) === "qwen-2.1";
     const qwen21Build = uiQwen21
       ? buildUiQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt)
-      : provider === "local"
+      : drawQwen21
         ? buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt, samplingFor("qwen-2.1"))
         : null;
+    // Asked for 2.1 on a node that cannot build it: an error, never a 2511 graph that keeps three of
+    // the references and other steps than the panel showed.
+    if (drawQwen21 && !qwen21Build) {
+      throw new Error("当前算力节点无法按 Qwen-Image-2.1 生成（缺少模型或节点），请在本地助手里重新启动 NovaFlow 后再试");
+    }
     if (qwen21Build) {
       localWorkflow = qwen21Build.workflow;
       localModelKey = qwen21Build.modelKey;
@@ -82567,21 +82587,35 @@
       ART_GENERATE_STATE.activeClientId = clientId;
       let uploadedNames = [];
       const referenceSizes = [];
+      // Every reference goes up under its own name (two files both called 1.png must not collapse
+      // into one image). On the web each task takes the images staged for it, so a batch stages them
+      // again for every image after the first.
+      const uploadStamp = `${Date.now().toString(36)}${Math.random().toString(16).slice(2, 6)}`;
+      const uploadReferences = async (pass) => {
+        const names = [];
+        for (let i = 0; i < refs.length; i += 1) {
+          const item = refs[i];
+          const mime = String(item.mimeType || artDataUrlMime(item.dataUrl) || "");
+          const ext = /jpe?g/i.test(mime) ? "jpg" : /webp/i.test(mime) ? "webp" : "png";
+          const uploadedName = await artUploadDataUrl(baseUrl, `art_ref_${uploadStamp}_${pass + 1}_${String(i + 1).padStart(2, "0")}.${ext}`, item.dataUrl);
+          if (!isArtGenerateRunCurrent(runToken)) return null;
+          names.push(uploadedName);
+          if (pass === 0) setArtGenerateProgress(`\u53c2\u8003\u56fe${i + 1}\u5df2\u4e0a\u4f20`, Math.min(0.22, 0.12 + (i + 1) * 0.04));
+        }
+        return names;
+      };
       if (runMode === "img2img") {
         setArtGenerateProgress("\u6b63\u5728\u4e0a\u4f20\u53c2\u8003\u56fe...", 0.12);
         setArtGenerateStatus("\u6b63\u5728\u4e0a\u4f20\u53c2\u8003\u56fe...");
         for (let i = 0; i < refs.length; i += 1) {
-          const item = refs[i];
-          const image = await loadNovaflowArtExportImage(item.dataUrl);
+          const image = await loadNovaflowArtExportImage(refs[i].dataUrl);
           referenceSizes.push({
             width: Math.max(1, Math.round(Number(image.naturalWidth || image.width) || 1)),
             height: Math.max(1, Math.round(Number(image.naturalHeight || image.height) || 1))
           });
-          const uploadedName = await artUploadDataUrl(baseUrl, item.name || `reference_${i + 1}.png`, item.dataUrl);
-          if (!isArtGenerateRunCurrent(runToken)) return;
-          uploadedNames.push(uploadedName);
-          setArtGenerateProgress(`\u53c2\u8003\u56fe${i + 1}\u5df2\u4e0a\u4f20`, Math.min(0.22, 0.12 + (i + 1) * 0.04));
         }
+        uploadedNames = await uploadReferences(0);
+        if (!uploadedNames) return;
       }
       const batchCount = normalizeArtGenerateCount(ART_GENERATE_STATE.count);
       ART_GENERATE_STATE.count = batchCount;
@@ -82593,6 +82627,10 @@
       let lastPromptId = "";
       for (let batchIndex = 0; batchIndex < batchCount; batchIndex += 1) {
         ART_GENERATE_STATE.batchIndex = batchIndex;
+        if (batchIndex > 0 && runMode === "img2img" && window.NovaFlowWebRuntime) {
+          uploadedNames = await uploadReferences(batchIndex);
+          if (!uploadedNames) return;
+        }
         const prefix = `NovaFlow_Generate_${runProvider}_${runMode}_${Date.now()}`;
         const workflowRun = buildArtGenerateWorkflowWithSeed(
           fixedSeed ? baseSeed + batchIndex : null,

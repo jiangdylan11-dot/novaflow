@@ -205,7 +205,7 @@ assert.deepEqual(byClass(g21Aligned, 'VAEEncode')[0][1].inputs.pixels, ['3', 0])
 const promptOf = (graph) => byClass(graph, 'TextEncodeQwenImage21')[0][1].inputs.prompt;
 // Local txt2img / img2img switch to Qwen-Image-2.1 on a compute node that carries it.
 const buildArt = async (mode, refs, sizes, extraState = {}) => JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
-  'local', mode, refs, 'NovaFlow_Art', 'a swordswoman in red', '', 'client', sizes, { provider: 'local', mode, width: 900, height: 1300, seed: 42, randomSeed: false, ...extraState }, 4, {}
+  'local', mode, refs, 'NovaFlow_Art', 'a swordswoman in red', '', 'client', sizes, { provider: 'local', mode, width: 900, height: 1300, seed: 42, randomSeed: false, localDrawEngine: extraState.nsfw ? '' : 'qwen-2.1', ...extraState }, 4, {}
 ] } })));
 const t2i = await buildArt('txt2img', [], []);
 assert.equal(byClass(t2i, 'TextEncodeQwenImage21').length, 1);

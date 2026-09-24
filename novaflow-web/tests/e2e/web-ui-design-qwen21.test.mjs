@@ -134,9 +134,9 @@ assert.equal(Object.keys(byClass(textOnly, 'TextEncodeQwenImage21')[0][1].inputs
 
 // Drawing img2img on 2.1 with W / H on reference 1's size is an edit in place: reference 1 goes in at
 // the working size, the sampler takes the encoder's own latent and the output comes back at W / H.
-const buildDraw = async (names, sizes, width, height, negative = '') => JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
+const buildDraw = async (names, sizes, width, height, negative = '', extraState = {}) => JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
   'local', 'img2img', names, 'NovaFlow_Art', 'recolour', negative, 'client', sizes,
-  { provider: 'local', mode: 'img2img', width, height, seed: 1, randomSeed: false }, 4, {}
+  { provider: 'local', mode: 'img2img', width, height, seed: 1, randomSeed: false, localDrawEngine: 'qwen-2.1', ...extraState }, 4, {}
 ] } })));
 const drawI2i = await buildDraw(['ref.png'], [{ width: 512, height: 720 }], 512, 720);
 // The model card's 40 steps unless the panel says otherwise.
@@ -186,7 +186,7 @@ assert.equal(fewExtra[byClass(fewExtra, 'TextEncodeQwenImage21')[0][1].inputs['i
 // to 2.1.
 const drawT2i = async (userNegative, compiledNegative, extraState = {}) => JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
   'local', 'txt2img', [], 'NovaFlow_Art', 'a knight', compiledNegative, 'client', [],
-  { provider: 'local', mode: 'txt2img', width: 1024, height: 1024, seed: 1, randomSeed: false, negativePrompt: userNegative, ...extraState }, 4, {}
+  { provider: 'local', mode: 'txt2img', width: 1024, height: 1024, seed: 1, randomSeed: false, localDrawEngine: 'qwen-2.1', negativePrompt: userNegative, ...extraState }, 4, {}
 ] } })));
 const profileOnly = await drawT2i('', '错误人体，畸形手指，低完成度');
 assert.equal(byClass(profileOnly, 'TextEncodeQwenImage21')[0][1].inputs.negative_prompt, '');
@@ -197,6 +197,17 @@ assert.equal(byClass(drawNegative, 'KSampler')[0][1].inputs.cfg, 2.5);
 // Steps / CFG typed on the panel for this route are what the run uses.
 const drawTyped = await drawT2i('', '', { samplingOverrides: { 'qwen-2.1:txt2img': { steps: 25, cfg: 3 } } });
 assert.deepEqual([byClass(drawTyped, 'KSampler')[0][1].inputs.steps, byClass(drawTyped, 'KSampler')[0][1].inputs.cfg], [25, 3]);
+// The worker builds 2.1 only when the page's panel showed it (localDrawEngine); without it a node
+// that has 2.1 still runs the route the panel showed, and asked for 2.1 a node without it is an
+// error rather than a 2511 graph that keeps three references.
+const notAsked = await buildDraw(['ref.png'], [{ width: 512, height: 720 }], 512, 720, '', { localDrawEngine: '' });
+assert.equal(byClass(notAsked, 'TextEncodeQwenImage21').length, 0);
+assert.ok(byClass(notAsked, 'TextEncodeQwenImageEditPlus').length > 0);
+const noQwen21Host = await createWorkflowHost({ rendererDir, objectInfo: { LoadImage: qwen21Info.LoadImage, KSampler: qwen21Info.KSampler } });
+await assert.rejects(noQwen21Host.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
+  'local', 'txt2img', [], 'NovaFlow_Art', 'a knight', '', 'client', [],
+  { provider: 'local', mode: 'txt2img', width: 1024, height: 1024, seed: 1, randomSeed: false, localDrawEngine: 'qwen-2.1' }, 4, {}
+] } }), /无法按 Qwen-Image-2.1 生成/);
 
 // Asked for 2.1 on a node without it: an error, never a 2511 graph that keeps three references.
 const hostOld = await createWorkflowHost({ rendererDir, objectInfo: { LoadImage: qwen21Info.LoadImage, KSampler: qwen21Info.KSampler } });
