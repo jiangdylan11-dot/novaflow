@@ -281,6 +281,8 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
   let proc = null, startPromise = null, stopPromise = null, lease = null;
   let nextId = 1, buffer = '', stderrTail = [], pending = new Map();
   let lastError = '', lastWarning = '';
+  // The pool task the worker is running for us: its own currentTaskId, not a drawing holding the GPU.
+  let ownTaskId = '';
 
   function config() {
     const runtimeJson = runtimeJsonPath || process.env.NOVAFLOW_RUNTIME_JSON || runtimeJsonDefault();
@@ -445,7 +447,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
   /** Make room on the GPU: nothing may be drawing, and ComfyUI unloads what it holds. */
   async function releaseRuntimes() {
     const state = worker?.getState?.() || {};
-    if (state.currentTaskId) return { ok: false, state: 'runtime-generation-busy', errorCode: 'runtime-generation-busy', error: '绘图模型正在生成或排队，请等待绘图完成后再优化提示词' };
+    if (state.currentTaskId && state.currentTaskId !== ownTaskId) return { ok: false, state: 'runtime-generation-busy', errorCode: 'runtime-generation-busy', error: '绘图模型正在生成或排队，请等待绘图完成后再优化提示词' };
     let released = false;
     for (const url of new Set(comfyUrls)) {
       const queue = await inspectQueue(url);
@@ -504,9 +506,16 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
 
   const invalid = error => ({ ok: false, error: String(error?.message || error), errorCode: 'invalid-request' });
 
-  return {
+  const api = {
     get running() { return Boolean(proc); },
     get busy() { return Boolean(lease); },
+    /** One request on behalf of a prompt_assistant pool task (worker-core). */
+    async runForTask(taskId, method, payload) {
+      if (!['optimizePrompt', 'reverseImagePrompt', 'describeArtStyle'].includes(String(method))) return invalid(new Error('未知的提示词助手操作'));
+      ownTaskId = String(taskId || '');
+      try { return await api[method](payload); }
+      finally { ownTaskId = ''; }
+    },
     status() {
       const cfg = config();
       return { ok: true, ...publicConfig(cfg), error: cfg.enabled || cfg.reverseModelEnabled ? lastError : cfg.error, warning: lastWarning };
@@ -538,4 +547,5 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     },
     stop
   };
+  return api;
 }

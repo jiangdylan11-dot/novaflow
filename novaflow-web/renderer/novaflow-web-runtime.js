@@ -134,9 +134,45 @@
   const PROMPT_ASSISTANT_REFUSAL = '提示词助手在 Web 版通过智能 AI 提供';
   const PROMPT_ASSISTANT_TIMEOUT_MS = 16 * 60 * 1000;
   async function localPromptAssistant(action, payload) {
-    if (computeMode !== 'local') return { ok: false, error: PROMPT_ASSISTANT_REFUSAL };
-    try { return await localControl('POST', '/local/prompt-assistant/' + action, payload || {}, PROMPT_ASSISTANT_TIMEOUT_MS); }
+    if (computeMode === 'local') {
+      try { return await localControl('POST', '/local/prompt-assistant/' + action, payload || {}, PROMPT_ASSISTANT_TIMEOUT_MS); }
+      catch (error) { return { ok: false, error: String(error.message || error) }; }
+    }
+    // The shared pool: every compute node is a full copy of the desktop runtime, so
+    // the same service answers from one of them - as a prompt_assistant task whose
+    // request is one uploaded JSON file and whose reply is one output file.
+    try { return await pooledPromptAssistant(action, payload || {}); }
     catch (error) { return { ok: false, error: String(error.message || error) }; }
+  }
+  async function pooledPromptAssistant(action, payload) {
+    const caps = await control('GET', '/api/web/capabilities');
+    const type = (caps && caps.taskTypes || []).find((t) => t.task_type === 'prompt_assistant');
+    if (!type || !(type.available_workers > 0)) throw new Error(PROMPT_ASSISTANT_REFUSAL + '：当前算力池没有带本地模型的节点');
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    const created = await control('POST', '/api/web/tasks', {
+      task_type: 'prompt_assistant',
+      parameters: { action },
+      references: [{ name: 'request.json', kind: 'json', bytes: bytes.length }]
+    });
+    if (!created || !created.task) throw new Error((created && created.error) || '提示词任务创建失败');
+    tasks.set(created.task.id, created.task);
+    await putTaskInput(created.task.id, 'request.json', bytes);
+    const finished = await waitForTaskEnd(created.task.id, PROMPT_ASSISTANT_TIMEOUT_MS);
+    const reply = await fetchTaskOutput(finished, 'result.json');
+    return JSON.parse(new TextDecoder().decode(reply));
+  }
+  async function waitForTaskEnd(taskId, timeoutMs) {
+    const started = Date.now();
+    for (;;) {
+      const res = await control('GET', '/api/web/tasks/' + taskId);
+      const task = (res && res.task) || {};
+      if (task.status === 'completed') { tasks.set(taskId, task); return task; }
+      if (task.status === 'failed' || task.status === 'cancelled' || task.status === 'expired') {
+        throw new Error(task.error_message || task.error_code || ('任务' + task.status));
+      }
+      if (Date.now() - started > timeoutMs) throw new Error('提示词助手等待超时，请检查算力节点后重试');
+      await new Promise((r) => setTimeout(r, 1000));
+    }
   }
   if (CONFIG.localAssistant) root.addEventListener?.('load', async () => {
     try {
@@ -862,9 +898,8 @@
       : ({ ok: true, result: { available: false, reason: 'web' } }),
     promptAssistantOptimizePrompt: async (payload) => localPromptAssistant('optimize-prompt', payload),
     promptAssistantReverseImagePrompt: async (payload) => localPromptAssistant('reverse-image-prompt', payload),
-    // 万物迁移 names the scene's style from this when it exists and paints
-    // without it otherwise; only a machine with the model should offer it.
-    ...(computeMode === 'local' ? { promptAssistantDescribeArtStyle: async (payload) => localPromptAssistant('describe-art-style', payload) } : {}),
+    // 万物迁移 names the scene's style from this when it exists and paints without it otherwise.
+    promptAssistantDescribeArtStyle: async (payload) => localPromptAssistant('describe-art-style', payload),
 
     async smartAiPromptOptimize(payload) {
       try { return { ok: true, result: await auth('POST', '/api/client/grok/prompt-optimize', payload, SMART_AI_TIMEOUT_MS) }; }

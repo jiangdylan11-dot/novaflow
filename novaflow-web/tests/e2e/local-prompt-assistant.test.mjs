@@ -156,11 +156,45 @@ try {
     fetch: async (url, init) => { requests.push({ url: String(url), init }); return new Response('{}'); }
   });
   runInContext(source, createContext(cloud));
+  // -- the hosted site asks the pool: a node with the model answers as a task --
   const before = requests.length;
   const refused = await cloud.electronAPI.promptAssistantOptimizePrompt({ prompt: 'hello' });
-  check(refused.ok === false && refused.error === '提示词助手在 Web 版通过智能 AI 提供', 'the hosted site still says where the assistant is');
-  equal(requests.length, before, 'the hosted site sends nothing anywhere');
-  equal(cloud.electronAPI.promptAssistantDescribeArtStyle, undefined, 'the hosted site does not offer the style describer');
+  check(refused.ok === false && refused.error.startsWith('提示词助手在 Web 版通过智能 AI 提供'), 'an empty pool still says where the assistant is');
+  equal(requests.length, before + 1, 'the hosted site asked the pool once');
+  equal(requests.at(-1).url, 'https://control.test/api/web/capabilities');
+  equal(typeof cloud.electronAPI.promptAssistantDescribeArtStyle, 'function', 'the hosted site offers the style describer through the pool');
+
+  const poolRequests = [];
+  let poolPolls = 0;
+  const pool = createDomSandbox({ Response, Request, Blob, FormData, AbortSignal, Event, TextEncoder, TextDecoder,
+    NOVAFLOW_WEB_CONFIG: { controlUrl: 'https://control.test' },
+    fetch: async (url, init) => {
+      const u = String(url); poolRequests.push({ url: u, init });
+      const reply = (body, status = 200) => new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+      if (u.endsWith('/api/web/capabilities')) return reply({ ok: true, taskTypes: [{ task_type: 'prompt_assistant', available_workers: 1 }] });
+      if (u.endsWith('/api/web/tasks') && init.method === 'POST') return reply({ task: { id: 'pa-1', status: 'queued' } });
+      if (u.endsWith('/api/web/tasks/pa-1/grant')) return reply({ grant: { endpoint: 'https://node.test', token: 'g-1', expiresAt: new Date(Date.now() + 600000).toISOString() } });
+      if (u.endsWith('/api/web/tasks/pa-1')) { poolPolls += 1; return reply({ task: { id: 'pa-1', status: poolPolls < 2 ? 'assigned' : 'completed', assigned_worker_id: 'w-1' } }); }
+      if (u.startsWith('https://node.test/gw/tasks/pa-1/input/request.json')) return reply({ ok: true });
+      if (u.startsWith('https://node.test/gw/tasks/pa-1/output/result.json')) return reply({ ok: true, data: { positivePrompt: 'from the pool' } });
+      return reply({ error: 'unexpected ' + u }, 404);
+    }
+  });
+  pool.localStorage.setItem('novaflow_web_session_v1', JSON.stringify({ token: 'cloud-session' }));
+  runInContext(source, createContext(pool));
+  const pooled = await pool.electronAPI.promptAssistantOptimizePrompt({ prompt: 'hello', surface: 'art' });
+  equal(pooled.data.positivePrompt, 'from the pool', 'the node reply comes back in the desktop bridge shape');
+  const created = poolRequests.find(r => r.url.endsWith('/api/web/tasks') && r.init.method === 'POST');
+  const createdBody = JSON.parse(created.init.body);
+  equal(createdBody.task_type, 'prompt_assistant');
+  equal(createdBody.parameters.action, 'optimize-prompt');
+  equal(createdBody.references[0].name, 'request.json');
+  const upload = poolRequests.find(r => r.url.startsWith('https://node.test/gw/tasks/pa-1/input/request.json'));
+  equal(upload.init.method, 'PUT');
+  equal(upload.init.headers['x-novaflow-grant'], 'g-1', 'the request travels to the node under a grant');
+  equal(JSON.parse(new TextDecoder().decode(upload.init.body)).surface, 'art', 'the whole payload is the uploaded request');
+  await pool.electronAPI.promptAssistantReverseImagePrompt({ images: [{ name: 'a.png', dataUrl: 'data:image/png;base64,QQ==' }] });
+  equal(JSON.parse(poolRequests.filter(r => r.url.endsWith('/api/web/tasks') && r.init.method === 'POST').at(-1).init.body).parameters.action, 'reverse-image-prompt');
 } finally {
   await assistant.stop(); comfy.closeAllConnections(); comfy.close();
 }

@@ -184,6 +184,16 @@ const BILLING = Object.freeze({ SELF_HOSTED: 'self_hosted', PROVIDER: 'provider'
 // isKnownTaskType() reads THIS table, which is what admits it to the queue.
 const MATTING_TASK_TYPE = 'video_matting';
 
+// 提示词助手 (优化 / 反推 / 画风描述) is the desktop's Python service, which every
+// compute node ships. On the shared pool it runs as this task: the request
+// travels as one uploaded JSON file, the reply comes back as one output file.
+// Like matting it names no ComfyUI graph, so it lives only in this table.
+const PROMPT_ASSISTANT_TASK_TYPE = 'prompt_assistant';
+const PROMPT_ASSISTANT_MODEL_ID = 'prompt-assistant';
+const PROMPT_ASSISTANT_ACTIONS = Object.freeze(['optimize-prompt', 'reverse-image-prompt', 'describe-art-style']);
+const PROMPT_ASSISTANT_REQUEST_FILE = 'request.json';
+const PROMPT_ASSISTANT_RESULT_FILE = 'result.json';
+
 const TASK_TYPE_REQUIREMENTS = Object.freeze({
   [TASK_TYPE.QWEN_T2I]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '绘图', billing: BILLING.SELF_HOSTED },
   [TASK_TYPE.QWEN_EDIT]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '图生图', billing: BILLING.SELF_HOSTED },
@@ -191,7 +201,9 @@ const TASK_TYPE_REQUIREMENTS = Object.freeze({
   // Matting is segmentation, not generation: BiRefNet runs at a fixed
   // 1024x1024 whatever the clip is, so the VRAM floor is far below the
   // generation types and a machine that cannot draw can still cut out.
-  [MATTING_TASK_TYPE]: { modelId: 'birefnet-matting', minVramMb: 4000, kind: 'video', label: '抠图', billing: BILLING.SELF_HOSTED }
+  [MATTING_TASK_TYPE]: { modelId: 'birefnet-matting', minVramMb: 4000, kind: 'video', label: '抠图', billing: BILLING.SELF_HOSTED },
+  // A 7B VL model in fp8; the node frees its drawing runtime's memory first.
+  [PROMPT_ASSISTANT_TASK_TYPE]: { modelId: PROMPT_ASSISTANT_MODEL_ID, minVramMb: 8000, kind: 'text', label: '提示词助手', billing: BILLING.SELF_HOSTED }
 });
 
 /** Does this task type cost the user credits? */
@@ -958,6 +970,24 @@ const MODEL_MANIFEST = Object.freeze([
     }
   },
   {
+    // 提示词助手's own model. 'local' like BiRefNet: ComfyUI never loads it, the
+    // files on disk say whether it is here, and worker-core then asks the
+    // Python service itself (reportModels) before advertising it.
+    model_id: 'prompt-assistant',
+    display_name: '提示词助手 (Qwen2.5-VL 7B)',
+    version: '1.0.0',
+    runtime: 'local',
+    min_vram_mb: 8000,
+    compatible_workflows: ['prompt_assistant'],
+    required_files: [
+      { path: 'text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors', min_bytes: 5_000_000_000, sha256: null }
+    ],
+    download: {
+      mode: 'import_or_configured_url',
+      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models/text_encoders）。'
+    }
+  },
+  {
     // Drawing and UI design on Qwen-Image-2.1. A node reports it ready exactly when it can build the
     // 2.1 graph (detectQwenImage21, the check the builder itself makes), and the control plane queues
     // a run that asks for 2.1 on this model, so only such a node claims it.
@@ -1132,6 +1162,18 @@ function validateTaskParameters(taskType, raw) {
       source_name: sanitizeText(input.source_name, 128) || 'input.mp4',
       references: cleanRefs
     };
+  }
+
+  // 提示词助手: no prompt, no size, no seed. The whole request (it can hold a
+  // dozen reference frames) is the one uploaded JSON file; only the action is
+  // a parameter, so the body stays far under MAX_BODY_BYTES.
+  if (taskType === PROMPT_ASSISTANT_TASK_TYPE) {
+    const action = sanitizeText(input.action, 40);
+    if (!PROMPT_ASSISTANT_ACTIONS.includes(action)) throw bad('unsupported prompt assistant action: ' + action);
+    if (cleanRefs.length !== 1 || cleanRefs[0].name !== PROMPT_ASSISTANT_REQUEST_FILE || cleanRefs[0].kind !== 'json') {
+      throw bad('a prompt assistant task carries its request as ' + PROMPT_ASSISTANT_REQUEST_FILE);
+    }
+    return { action, references: cleanRefs };
   }
 
   if (req.kind === 'video') {
@@ -1607,7 +1649,7 @@ function createControlPlane({ store, secrets, logger }) {
     } else {
       if (!isKnownTaskType(taskType)) throw bad('unsupported task type: ' + taskType);
       req = requirementsFor(taskType);
-      parameters = validateTaskParameters(taskType, taskType === MATTING_TASK_TYPE
+      parameters = validateTaskParameters(taskType, taskType === MATTING_TASK_TYPE || taskType === PROMPT_ASSISTANT_TASK_TYPE
         ? { ...body.parameters, references: sanitizeReferences(body.references) }
         : body.parameters);
       pricing = priceTask(taskType, parameters);

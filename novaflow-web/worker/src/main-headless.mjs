@@ -8,6 +8,7 @@ import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createWorker } from './worker-core.mjs';
+import { createPromptAssistant } from './prompt-assistant.mjs';
 
 import { existsSync } from 'node:fs';
 
@@ -84,7 +85,14 @@ export async function startHeadlessWorker(overrides = {}) {
   if (!config.controlUrl) {
     throw new Error('NOVAFLOW_WEB_CONTROL_URL is required (the control plane the worker registers with)');
   }
-  const worker = createWorker({ ...config, logger: overrides.logger });
+  let promptAssistant = null;
+  const worker = createWorker({ ...config, logger: overrides.logger, promptAssistant: () => promptAssistant });
+  // Every compute node ships the desktop runtime, 提示词助手 included; a node
+  // whose runtime.json or service script is missing simply reports it absent.
+  promptAssistant = createPromptAssistant({
+    worker, logger: overrides.logger,
+    comfyUrls: [config.comfyImageUrl, config.comfyVideoUrl].map(url => String(url).replace(/\/+$/, ''))
+  });
   await worker.start();
   return worker;
 }

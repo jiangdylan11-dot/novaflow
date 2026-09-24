@@ -29,6 +29,9 @@ import {
   ASSIGN_TIMEOUT_SECONDS,
   PROCESSING_TIMEOUT_SECONDS,
   MATTING_TASK_TYPE,
+  PROMPT_ASSISTANT_ACTIONS,
+  PROMPT_ASSISTANT_REQUEST_FILE,
+  PROMPT_ASSISTANT_TASK_TYPE,
   MAX_TASK_ATTEMPTS,
   PROTOCOL_VERSION,
   TASK_STATE,
@@ -167,6 +170,18 @@ export function validateTaskParameters(taskType, raw) {
       source_name: sanitizeText(input.source_name, 128) || 'input.mp4',
       references: cleanRefs
     };
+  }
+
+  // 提示词助手: no prompt, no size, no seed. The whole request (it can hold a
+  // dozen reference frames) is the one uploaded JSON file; only the action is
+  // a parameter, so the body stays far under MAX_BODY_BYTES.
+  if (taskType === PROMPT_ASSISTANT_TASK_TYPE) {
+    const action = sanitizeText(input.action, 40);
+    if (!PROMPT_ASSISTANT_ACTIONS.includes(action)) throw bad('unsupported prompt assistant action: ' + action);
+    if (cleanRefs.length !== 1 || cleanRefs[0].name !== PROMPT_ASSISTANT_REQUEST_FILE || cleanRefs[0].kind !== 'json') {
+      throw bad('a prompt assistant task carries its request as ' + PROMPT_ASSISTANT_REQUEST_FILE);
+    }
+    return { action, references: cleanRefs };
   }
 
   if (req.kind === 'video') {
@@ -642,7 +657,7 @@ export function createControlPlane({ store, secrets, logger }) {
     } else {
       if (!isKnownTaskType(taskType)) throw bad('unsupported task type: ' + taskType);
       req = requirementsFor(taskType);
-      parameters = validateTaskParameters(taskType, taskType === MATTING_TASK_TYPE
+      parameters = validateTaskParameters(taskType, taskType === MATTING_TASK_TYPE || taskType === PROMPT_ASSISTANT_TASK_TYPE
         ? { ...body.parameters, references: sanitizeReferences(body.references) }
         : body.parameters);
       pricing = priceTask(taskType, parameters);

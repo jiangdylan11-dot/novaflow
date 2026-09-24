@@ -142,6 +142,16 @@ export const BILLING = Object.freeze({ SELF_HOSTED: 'self_hosted', PROVIDER: 'pr
 // isKnownTaskType() reads THIS table, which is what admits it to the queue.
 export const MATTING_TASK_TYPE = 'video_matting';
 
+// 提示词助手 (优化 / 反推 / 画风描述) is the desktop's Python service, which every
+// compute node ships. On the shared pool it runs as this task: the request
+// travels as one uploaded JSON file, the reply comes back as one output file.
+// Like matting it names no ComfyUI graph, so it lives only in this table.
+export const PROMPT_ASSISTANT_TASK_TYPE = 'prompt_assistant';
+export const PROMPT_ASSISTANT_MODEL_ID = 'prompt-assistant';
+export const PROMPT_ASSISTANT_ACTIONS = Object.freeze(['optimize-prompt', 'reverse-image-prompt', 'describe-art-style']);
+export const PROMPT_ASSISTANT_REQUEST_FILE = 'request.json';
+export const PROMPT_ASSISTANT_RESULT_FILE = 'result.json';
+
 export const TASK_TYPE_REQUIREMENTS = Object.freeze({
   [TASK_TYPE.QWEN_T2I]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '绘图', billing: BILLING.SELF_HOSTED },
   [TASK_TYPE.QWEN_EDIT]: { modelId: 'qwen-image-2511', minVramMb: 16000, kind: 'image', label: '图生图', billing: BILLING.SELF_HOSTED },
@@ -149,7 +159,9 @@ export const TASK_TYPE_REQUIREMENTS = Object.freeze({
   // Matting is segmentation, not generation: BiRefNet runs at a fixed
   // 1024x1024 whatever the clip is, so the VRAM floor is far below the
   // generation types and a machine that cannot draw can still cut out.
-  [MATTING_TASK_TYPE]: { modelId: 'birefnet-matting', minVramMb: 4000, kind: 'video', label: '抠图', billing: BILLING.SELF_HOSTED }
+  [MATTING_TASK_TYPE]: { modelId: 'birefnet-matting', minVramMb: 4000, kind: 'video', label: '抠图', billing: BILLING.SELF_HOSTED },
+  // A 7B VL model in fp8; the node frees its drawing runtime's memory first.
+  [PROMPT_ASSISTANT_TASK_TYPE]: { modelId: PROMPT_ASSISTANT_MODEL_ID, minVramMb: 8000, kind: 'text', label: '提示词助手', billing: BILLING.SELF_HOSTED }
 });
 
 /** Does this task type cost the user credits? */

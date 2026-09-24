@@ -27,6 +27,10 @@ import { generateWorkerSecret } from '../../packages/shared/src/tokens.mjs';
 import {
   HEARTBEAT_INTERVAL_SECONDS,
   MATTING_TASK_TYPE,
+  PROMPT_ASSISTANT_MODEL_ID,
+  PROMPT_ASSISTANT_REQUEST_FILE,
+  PROMPT_ASSISTANT_RESULT_FILE,
+  PROMPT_ASSISTANT_TASK_TYPE,
   TASK_STATE,
   TTL_SECONDS,
   isSafeFilename,
@@ -204,8 +208,12 @@ export function createWorker(options) {
     ownerSessionToken = '',
     pollIntervalMs = 2000,
     localTasks = null,
+    // The node's 提示词助手 (a function, because the assistant is created after
+    // the worker it shares the GPU with). Absent on a node without one.
+    promptAssistant = null,
     logger
   } = options;
+  const promptAssistantRef = () => (typeof promptAssistant === 'function' ? promptAssistant() : promptAssistant) || null;
 
   // Refuse to run if ComfyUI is configured off loopback (spec 9).
   assertLocalOnly(comfyImageUrl);
@@ -449,6 +457,19 @@ export function createWorker(options) {
       matting.detail = { ...matting.detail, matting: capability };
       if (!capability.ok) matting.status = 'missing';
     }
+    // The model file alone is not the assistant: the Python service and its
+    // runtime must be here too, and only the assistant knows.
+    const prompt = models.find(model => model.model_id === PROMPT_ASSISTANT_MODEL_ID);
+    if (prompt) {
+      const assistant = promptAssistantRef();
+      let status = null;
+      try { status = assistant && typeof assistant.status === 'function' ? assistant.status() : null; } catch (_) { status = null; }
+      const enabled = Boolean(status && (status.enabled || status.reverseModelEnabled));
+      prompt.detail = { ...(prompt.detail || {}), prompt_assistant: status
+        ? { enabled, runtimeStatus: status.runtimeStatus || '', error: status.error || '' }
+        : { enabled: false, reason: 'no_prompt_assistant' } };
+      if (!enabled) prompt.status = 'missing';
+    }
     onProgress(82, '正在检测 LoRA 兼容性');
     for (const model of models) {
       // LoRA catalogues come from ComfyUI, so a model that is not served by
@@ -548,6 +569,7 @@ export function createWorker(options) {
     // comfy.isUp() would refuse a job on a machine that can cut out perfectly
     // well without a generation runtime running. So the branch goes first.
     if (task.task_type === MATTING_TASK_TYPE) return runMattingTask(task);
+    if (task.task_type === PROMPT_ASSISTANT_TASK_TYPE) return runPromptAssistantTask(task);
 
     // Two shapes of task. A renderer workflow names one of NovaFlow's own
     // builders and we run it here; a fixed task type uses a template file.
@@ -790,6 +812,66 @@ export function createWorker(options) {
 
     state.stats.completed += 1;
     log('matting completed', { taskId: task.id, outputs: outputs.length, ms: Date.now() - startedAt });
+    return result;
+  }
+
+  /**
+   * 提示词助手 for the pool: the same Python service the local page talks to,
+   * asked by a task. The request is the one uploaded JSON file, the reply is
+   * the one output file - ok:false replies included, so the page shows the
+   * assistant's own message exactly as the local route would.
+   */
+  const PROMPT_ASSISTANT_METHODS = {
+    'optimize-prompt': 'optimizePrompt',
+    'reverse-image-prompt': 'reverseImagePrompt',
+    'describe-art-style': 'describeArtStyle'
+  };
+  async function runPromptAssistantTask(task) {
+    const startedAt = Date.now();
+    checkCancelled(task.id);
+    state.currentTaskId = task.id;
+    state.status = 'busy';
+    emit();
+
+    const assistant = promptAssistantRef();
+    if (!assistant || typeof assistant.runForTask !== 'function') throw new Error('此算力节点没有提示词助手');
+    const parameters = task.parameters || {};
+    const method = PROMPT_ASSISTANT_METHODS[String(parameters.action || '')];
+    if (!method) throw new Error('未知的提示词助手操作：' + String(parameters.action || ''));
+    const taskDir = join(dataDir, 'tasks', task.id);
+    const outDir = join(taskDir, 'output');
+    await mkdir(outDir, { recursive: true });
+
+    const expectedRefs = Array.isArray(task.references) && task.references.length
+      ? task.references
+      : (Array.isArray(parameters.references) ? parameters.references : []);
+    if (!expectedRefs.length) throw new Error('提示词任务没有声明请求文件');
+    await reportProgress(task.id, TASK_STATE.UPLOADING, 2, '等待浏览器上传请求');
+    const names = await waitForInputs(task.id, expectedRefs);
+    checkCancelled(task.id);
+    const requestName = names.find((n) => n === PROMPT_ASSISTANT_REQUEST_FILE) || names[0];
+    if (!requestName) throw new Error('提示词请求没有送达');
+    let request;
+    try { request = JSON.parse(await readFile(join(taskDir, 'input', requestName), 'utf8')); }
+    catch (error) { throw new Error('提示词请求不是有效的 JSON：' + String(error.message || error)); }
+
+    await reportProgress(task.id, TASK_STATE.PROCESSING, 10, '本地模型推理中');
+    const reply = await assistant.runForTask(task.id, method, request && typeof request === 'object' ? request : {});
+    checkCancelled(task.id);
+    const bytes = Buffer.from(JSON.stringify(reply ?? { ok: false, error: '提示词助手没有返回结果' }));
+    await writeFile(join(outDir, PROMPT_ASSISTANT_RESULT_FILE), bytes);
+
+    const result = await callControl('POST', '/api/worker/tasks/' + task.id + '/complete', {
+      token: state.workerToken,
+      body: {
+        prompt_id: 'prompt-' + task.id,
+        outputs: [{ name: PROMPT_ASSISTANT_RESULT_FILE, kind: 'json', bytes: bytes.length, width: 0, height: 0, duration_seconds: 0 }],
+        execution: { elapsed_ms: Date.now() - startedAt, comfy_version: '', seed: null }
+      }
+    });
+
+    state.stats.completed += 1;
+    log('prompt assistant completed', { taskId: task.id, action: parameters.action, ok: reply?.ok !== false, ms: Date.now() - startedAt });
     return result;
   }
 

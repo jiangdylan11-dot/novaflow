@@ -18,10 +18,11 @@ export async function createLocalAssistant(options) {
   const license = options.license || createLocalLicense(options.licenseDataDir || join(process.env.APPDATA, 'NovaFlow'));
   const progress = options.onProgress || (() => {});
   const services = options.services || createRuntimeServices({ imageUrl: options.comfyImageUrl, videoUrl: options.comfyVideoUrl, logger: options.logger });
-  const worker = createWorker({ ...options, localTasks: tasks });
+  let promptAssistant = null;
+  const worker = createWorker({ ...options, localTasks: tasks, promptAssistant: () => promptAssistant });
   // 提示词助手 shares the GPU with these runtimes, so it needs their addresses
   // to ask for the memory back before it loads its own model.
-  const promptAssistant = createPromptAssistant({
+  promptAssistant = createPromptAssistant({
     worker, logger: options.logger,
     comfyUrls: [options.comfyImageUrl || 'http://127.0.0.1:8188', options.comfyVideoUrl || 'http://127.0.0.1:8189'].map(url => String(url).replace(/\/+$/, '')),
     ...(options.promptAssistant || {})
