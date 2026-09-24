@@ -53,9 +53,11 @@ textarea.nf-resource-mention-backing::placeholder {
   pointer-events: none;
 }
 
+/* Focus: the app's thin green line, the same as on a plain prompt field. */
 .nf-resource-mention-editor:focus {
-  border-color: rgba(139, 92, 246, 0.78) !important;
-  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.24);
+  outline: 1px solid var(--nf-focus, #35C79E) !important;
+  outline-offset: 1px !important;
+  box-shadow: none;
 }
 
 .nf-resource-mention-chip {
