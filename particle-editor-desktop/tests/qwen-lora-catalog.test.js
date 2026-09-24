@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { createQwenLoraCatalog, BASE_MODELS } = require('../main/qwen-lora-catalog');
+const { createQwenLoraCatalog, BASE_MODELS, compatible } = require('../main/qwen-lora-catalog');
 
 function write(file, shapes, dtype = 'BF16') {
   let offset = 0;
@@ -48,4 +48,37 @@ test('catalog enforces exact root, all tensor pairs, payload integrity and actua
   fs.symlinkSync(path.join(root, '..'), path.join(root, 'escape'), 'junction');
   names.push('qwen/escape/outside.safetensors');
   assert.equal((await catalog.catalog()).some(x => x.name.includes('escape')), false);
+});
+
+test('LoKr modules count when kron(w1, w2) lands exactly on the weight, as ComfyUI applies them', () => {
+  const base = {
+    'transformer_blocks.0.attn.to_q.weight': { shape: [3072, 3072] },
+    'transformer_blocks.0.attn.to_k.weight': { shape: [3072, 3072] },
+    'transformer_blocks.0.img_mlp.net.2.weight': { shape: [3072, 12288] },
+    'transformer_blocks.0.attn.norm_q.weight': { shape: [128] },
+  };
+  const t = (shape, dtype = 'BF16') => ({ shape, dtype });
+  const q = 'lycoris_transformer_blocks_0_attn_to_q';
+  const mlp = 'lycoris_transformer_blocks_0_img_mlp_net_2';
+  const whole = { [`${q}.lokr_w1`]: t([6, 6]), [`${q}.lokr_w2`]: t([512, 512]), [`${q}.alpha`]: t([]) };
+  // Whole factors with alpha, as the ai-toolkit export on disk.
+  assert.equal(compatible({ ...whole, [`${mlp}.lokr_w1`]: t([6, 6]), [`${mlp}.lokr_w2`]: t([512, 2048]) }, base), true);
+  // A factor as w_a @ w_b.
+  assert.equal(compatible({ [`${q}.lokr_w1`]: t([6, 6]), [`${q}.lokr_w2_a`]: t([512, 8]), [`${q}.lokr_w2_b`]: t([8, 512]) }, base), true);
+  // A LoKr module and a LoRA pair on different weights.
+  assert.equal(compatible({ ...whole, 'transformer.transformer_blocks.0.attn.to_k.lora_A.weight': t([2, 3072]), 'transformer.transformer_blocks.0.attn.to_k.lora_B.weight': t([3072, 2]) }, base), true);
+  // Same element count, transposed layout: ComfyUI would reshape it onto the weight silently.
+  assert.equal(compatible({ [`${mlp}.lokr_w1`]: t([6, 6]), [`${mlp}.lokr_w2`]: t([2048, 512]) }, base), false);
+  // Half a decomposed factor, or whole plus decomposed.
+  assert.equal(compatible({ [`${q}.lokr_w1`]: t([6, 6]), [`${q}.lokr_w2_a`]: t([512, 8]) }, base), false);
+  assert.equal(compatible({ ...whole, [`${q}.lokr_w2_a`]: t([512, 8]), [`${q}.lokr_w2_b`]: t([8, 512]) }, base), false);
+  // Tucker, DoRA, fp8 factors, an alpha that is not a scalar.
+  assert.equal(compatible({ ...whole, [`${q}.lokr_t2`]: t([8, 8, 1, 1]) }, base), false);
+  assert.equal(compatible({ ...whole, [`${q}.dora_scale`]: t([3072, 1]) }, base), false);
+  assert.equal(compatible({ [`${q}.lokr_w1`]: t([6, 6], 'F8_E4M3'), [`${q}.lokr_w2`]: t([512, 512]) }, base), false);
+  assert.equal(compatible({ ...whole, [`${q}.alpha`]: t([2]) }, base), false);
+  // A LoKr module and a LoRA pair on one weight: ComfyUI keeps only one of them.
+  assert.equal(compatible({ ...whole, 'transformer.transformer_blocks.0.attn.to_q.lora_A.weight': t([2, 3072]), 'transformer.transformer_blocks.0.attn.to_q.lora_B.weight': t([3072, 2]) }, base), false);
+  // A 1-D weight is not a target.
+  assert.equal(compatible({ 'lycoris_transformer_blocks_0_attn_norm_q.lokr_w1': t([2, 1]), 'lycoris_transformer_blocks_0_attn_norm_q.lokr_w2': t([64, 1]) }, base), false);
 });

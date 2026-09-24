@@ -99,10 +99,12 @@ function parseGguf(data) {
 
 // Mirrors the Qwen key map in Runtime comfy/lora.py: every 2-D weight B of the diffusion model is a
 // target under B, diffusion_model.B, transformer.B, lora_unet_<B with _> and lycoris_<B with _>.
-// Never trust model metadata labels: a LoRA fits only when every pair lands on a target of exactly
-// its shape (ComfyUI would reshape a same-sized pair onto the wrong layout without a word), no two
-// pairs hit one weight (the later one would silently replace the earlier), and nothing else is in
-// the file (text-encoder keys, LoKr / LoHa / DoRA parts are not loaded by LoraLoaderModelOnly).
+// Never trust model metadata labels: a LoRA fits only when every module lands on a target of exactly
+// its shape (ComfyUI would reshape a same-sized delta onto the wrong layout without a word), no two
+// modules hit one weight (the later one would silently replace the earlier), and nothing else is in
+// the file. Modules are plain LoRA pairs or LoKr (ComfyUI's LoKrAdapter: delta = kron(w1, w2), each
+// factor whole or as w_a @ w_b). Text-encoder keys, LoHa, DoRA scales and Tucker (lokr_t2) parts are
+// left unconsumed, so a file with them is not listed.
 const PAIR_SUFFIXES = Object.freeze([
   ['.lora_down.weight', '.lora_up.weight'],
   ['.lora_A.weight', '.lora_B.weight'],
@@ -113,6 +115,7 @@ const PAIR_SUFFIXES = Object.freeze([
   ['.lora_A', '.lora_B'],
 ]);
 const LORA_DTYPES = new Set(['F16', 'BF16', 'F32']);
+const LOKR_KEY = /\.(?:lokr_w1|lokr_w2|lokr_w1_a|lokr_w1_b|lokr_w2_a|lokr_w2_b|lokr_t2)$/;
 
 function loraTargets(base) {
   const entries = Object.entries(base).filter(([k, v]) => k !== '__metadata__' && k.endsWith('.weight') && Array.isArray(v?.shape) && v.shape.length === 2);
@@ -129,33 +132,63 @@ function loraTargets(base) {
   return targets;
 }
 
+const is2d = tensor => Array.isArray(tensor?.shape) && tensor.shape.length === 2 && tensor.shape.every(n => n >= 1);
+const loraDtype = tensor => !tensor.dtype || LORA_DTYPES.has(tensor.dtype);
+
+// One Kronecker factor of a LoKr module: the whole matrix, or w_a @ w_b; never both (ComfyUI would
+// drop the pair) and never half (it would fail).
+function lokrFactor(lora, prefix, n) {
+  const whole = lora[`${prefix}.lokr_w${n}`], a = lora[`${prefix}.lokr_w${n}_a`], b = lora[`${prefix}.lokr_w${n}_b`];
+  if (whole) return !a && !b && is2d(whole) && loraDtype(whole) ? { shape: whole.shape, keys: [`${prefix}.lokr_w${n}`] } : null;
+  if (!a || !b || !is2d(a) || !is2d(b) || a.shape[1] !== b.shape[0] || !loraDtype(a) || !loraDtype(b)) return null;
+  return { shape: [a.shape[0], b.shape[1]], keys: [`${prefix}.lokr_w${n}_a`, `${prefix}.lokr_w${n}_b`] };
+}
+
 function compatible(lora, base) {
   const targets = loraTargets(base);
   const consumed = new Set(['__metadata__']);
   const hit = new Set();
-  let pairs = 0;
+  let modules = 0;
+  const alphaOk = prefix => {
+    const alpha = lora[prefix + '.alpha'];
+    if (!alpha) return true;
+    if (alpha.shape.reduce((a, b) => a * b, 1) !== 1) return false;
+    consumed.add(prefix + '.alpha');
+    return true;
+  };
   for (const name of Object.keys(lora)) {
     if (consumed.has(name)) continue;
     const suffix = PAIR_SUFFIXES.find(([down]) => name.endsWith(down));
-    if (!suffix) continue;
-    const prefix = name.slice(0, -suffix[0].length);
-    const upName = prefix + suffix[1];
-    const down = lora[name], up = lora[upName];
-    const target = targets.get(prefix);
-    if (!up || !target || hit.has(target.name)) return false;
-    const [out, inner] = target.shape;
-    if (down.shape?.length !== 2 || up.shape?.length !== 2 || down.shape[0] < 1 || down.shape[0] !== up.shape[1] || down.shape[1] !== inner || up.shape[0] !== out) return false;
-    if ((down.dtype && !LORA_DTYPES.has(down.dtype)) || (up.dtype && !LORA_DTYPES.has(up.dtype))) return false;
-    hit.add(target.name);
-    consumed.add(name); consumed.add(upName);
-    const alpha = lora[prefix + '.alpha'];
-    if (alpha) {
-      if (alpha.shape.reduce((a, b) => a * b, 1) !== 1) return false;
-      consumed.add(prefix + '.alpha');
+    if (suffix) {
+      const prefix = name.slice(0, -suffix[0].length);
+      const upName = prefix + suffix[1];
+      const down = lora[name], up = lora[upName];
+      const target = targets.get(prefix);
+      if (!up || !target || hit.has(target.name)) return false;
+      const [out, inner] = target.shape;
+      if (down.shape?.length !== 2 || up.shape?.length !== 2 || down.shape[0] < 1 || down.shape[0] !== up.shape[1] || down.shape[1] !== inner || up.shape[0] !== out) return false;
+      if (!loraDtype(down) || !loraDtype(up)) return false;
+      hit.add(target.name);
+      consumed.add(name); consumed.add(upName);
+      if (!alphaOk(prefix)) return false;
+      modules++;
+      continue;
     }
-    pairs++;
+    const lokr = name.match(LOKR_KEY);
+    if (!lokr) continue;
+    const prefix = name.slice(0, -lokr[0].length);
+    const target = targets.get(prefix);
+    if (!target || hit.has(target.name) || lora[prefix + '.lokr_t2'] || lora[prefix + '.dora_scale']) return false;
+    const w1 = lokrFactor(lora, prefix, 1), w2 = lokrFactor(lora, prefix, 2);
+    if (!w1 || !w2) return false;
+    const [out, inner] = target.shape;
+    if (w1.shape[0] * w2.shape[0] !== out || w1.shape[1] * w2.shape[1] !== inner) return false;
+    hit.add(target.name);
+    for (const key of [...w1.keys, ...w2.keys]) consumed.add(key);
+    if (!alphaOk(prefix)) return false;
+    modules++;
   }
-  return pairs > 0 && Object.keys(lora).every(k => consumed.has(k));
+  return modules > 0 && Object.keys(lora).every(k => consumed.has(k));
 }
 
 function createQwenLoraCatalog(options = {}) {

@@ -173,12 +173,54 @@ function writeOversizedHeaderDeclaration(filePath) {
   fs.writeFileSync(filePath, length);
 }
 
+// A header-only stand-in for the H3 model the animation panel loads (10Eros), with the 2-D weights
+// LoRAs target: 50 main blocks and 2 refiner blocks (attention and MLP), each main block's AdaLN
+// projection on the 8-wide time basis, and the text condition projection.
+const H3_BASE_PARTS = ["diffusion_models", "Minimax_H3", "10Eros_Max_h3_TURBO-hybrid_beta5_int8.safetensors"];
+function writeH3Base(modelsPath) {
+  const header = {};
+  const add = (name, shape, dtype = "BF16") => { header[`${name}.weight`] = { dtype, shape, data_offsets: [0, 0] }; };
+  const blockWeights = (prefix, dtype) => {
+    add(`${prefix}.attn.qkv_proj`, [21504, 5376], dtype);
+    add(`${prefix}.attn.out_proj`, [5376, 7168], dtype);
+    add(`${prefix}.mlp.fc1`, [28672, 5376], dtype);
+    add(`${prefix}.mlp.fc2`, [5376, 14336], dtype);
+  };
+  for (let block = 0; block < 50; block += 1) {
+    blockWeights(`blocks.${block}`, "I8");
+    add(`blocks.${block}.adaln_proj.linear`, [96768, 8]);
+  }
+  for (let block = 0; block < 2; block += 1) blockWeights(`token_refiner.blocks.${block}`);
+  add("condition_proj", [5376, 5120]);
+  header["blocks.0.attn.norm_q.weight"] = { dtype: "BF16", shape: [128], data_offsets: [0, 0] };
+  const filePath = path.join(modelsPath, ...H3_BASE_PARTS);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const json = Buffer.from(JSON.stringify(header), "utf8");
+  const length = Buffer.alloc(8);
+  length.writeBigUInt64LE(BigInt(json.length));
+  fs.writeFileSync(filePath, Buffer.concat([length, json]));
+  return filePath;
+}
+
+// One LoRA pair on `prefix` (ComfyUI spellings: 'ab' lora_A/B, 'updown' lora_down/up).
+function pairTensors(prefix, input, output, { rank = 2, style = "ab", alpha = false, dtype = "BF16" } = {}) {
+  const [down, up] = style === "ab" ? [".lora_A.weight", ".lora_B.weight"] : [".lora_down.weight", ".lora_up.weight"];
+  const width = dtype === "F32" ? 4 : 2;
+  const tensors = {
+    [prefix + down]: { dtype, shape: [rank, input], data_offsets: [0, rank * input * width] },
+    [prefix + up]: { dtype, shape: [output, rank], data_offsets: [0, output * rank * width] },
+  };
+  if (alpha) tensors[`${prefix}.alpha`] = { dtype: "F32", shape: [], data_offsets: [0, 4] };
+  return tensors;
+}
+
 function createFixture(t) {
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), "novaflow-h3-lora-"));
   const modelsPath = path.join(workspace, "models");
   const lorasPath = path.join(modelsPath, "loras");
   const h3LorasPath = path.join(lorasPath, "minimax_h3");
   fs.mkdirSync(h3LorasPath, { recursive: true });
+  const basePath = writeH3Base(modelsPath);
   t.after(() => fs.rmSync(workspace, { recursive: true, force: true }));
 
   const state = { runtimeNames: [] };
@@ -191,7 +233,7 @@ function createFixture(t) {
       ...(options.expectedModelsPath ? { expectedModelsPath: options.expectedModelsPath } : {}),
     });
   }
-  return { workspace, modelsPath, lorasPath, h3LorasPath, state, makeCatalog };
+  return { workspace, modelsPath, lorasPath, h3LorasPath, basePath, state, makeCatalog };
 }
 
 test("shows a metadata-declared FL2VA standard LoRA at arbitrary valid step counts", async (t) => {
@@ -269,7 +311,7 @@ test("accepts all four real H3 target dimensions and rejects a single wrong targ
   assert.deepEqual(items.map((item) => item.name), [validName]);
 });
 
-test("requires object_info intersection and hides unknown, foreign, damaged, oversized, and shape-mismatched files", async (t) => {
+test("requires object_info intersection and hides foreign, damaged, oversized, and shape-mismatched files", async (t) => {
   const fixture = createFixture(t);
   const validButMissing = "minimax_h3/valid-but-not-in-runtime.safetensors";
   writeSafetensors(path.join(fixture.lorasPath, ...validButMissing.split("/")), h3Metadata("fl2va"));
@@ -303,7 +345,83 @@ test("requires object_info intersection and hides unknown, foreign, damaged, ove
     "minimax_h3/oversized.safetensors",
   ];
 
-  assert.deepEqual(await fixture.makeCatalog().catalog({ mode: "text_video", steps: 4 }), []);
+  // Only tensors that fit the loaded model decide: a file without a declared base, or with the
+  // network-module metadata missing or different, is listed when every pair fits (no base = any
+  // mode). An unreadable declared base, a wrong shape and non-H3 names stay hidden.
+  const listed = await fixture.makeCatalog().catalog({ mode: "text_video", steps: 4 });
+  assert.deepEqual(listed.map((item) => [item.name, item.modelFamily]), [
+    ["minimax_h3/missing-network.safetensors", "fl2va"],
+    ["minimax_h3/unknown.safetensors", "h3"],
+    ["minimax_h3/wrong-network.safetensors", "fl2va"],
+  ]);
+});
+
+test("lists LoRAs that also train condition_proj or AdaLN, and attention-only ones, when every pair fits the loaded model", async (t) => {
+  const fixture = createFixture(t);
+  const files = {
+    // grindtime-style: main blocks plus the text condition projection, lora_A/B with alphas.
+    "condition.safetensors": combineTensors(
+      pairTensors("diffusion_model.blocks.3.attn.qkv_proj", 5376, 21504, { alpha: true, dtype: "F32" }),
+      pairTensors("diffusion_model.condition_proj", 5120, 5376, { alpha: true, dtype: "F32" }),
+    ),
+    // cxy_kiss-style: AdaLN projection on the 8-wide time basis, refiner blocks too.
+    "adaln.safetensors": combineTensors(
+      pairTensors("diffusion_model.blocks.0.adaln_proj.linear", 8, 96768, { rank: 32 }),
+      pairTensors("diffusion_model.token_refiner.blocks.1.mlp.fc2", 14336, 5376),
+    ),
+    // Footjob-style: attention only, kohya names, no metadata.
+    "attention-only.safetensors": combineTensors(
+      pairTensors("lora_unet_blocks_7_attn_qkv_proj", 5376, 21504, { style: "updown", alpha: true, dtype: "F32" }),
+      pairTensors("lora_unet_blocks_7_attn_out_proj", 7168, 5376, { style: "updown", alpha: true, dtype: "F32" }),
+    ),
+  };
+  for (const [file, tensors] of Object.entries(files)) {
+    writeSafetensors(path.join(fixture.h3LorasPath, file), {}, tensors);
+    fixture.state.runtimeNames.push(`minimax_h3/${file}`);
+  }
+  for (const mode of ["t2v", "i2v", "fl2v", "r2v"]) {
+    const items = await fixture.makeCatalog().catalog({ mode, steps: 4 });
+    assert.deepEqual(items.map((item) => item.name).sort(), Object.keys(files).map((file) => `minimax_h3/${file}`).sort());
+    assert.ok(items.every((item) => item.modelFamily === "h3" && item.kind === "standard"));
+  }
+});
+
+test("hides names ComfyUI does not map for H3, a weight hit twice, DoRA scales and an AdaLN LoRA for another time basis", async (t) => {
+  const fixture = createFixture(t);
+  const files = {
+    // ComfyUI's H3 key map has no transformer. or lycoris_ names: these would never load.
+    "transformer-prefix.safetensors": pairTensors("transformer.blocks.3.attn.qkv_proj", 5376, 21504),
+    "lycoris-prefix.safetensors": pairTensors("lycoris_blocks_3_attn_qkv_proj", 5376, 21504, { style: "updown" }),
+    // Two spellings of one weight: the later would silently replace the earlier.
+    "twice.safetensors": combineTensors(
+      pairTensors("diffusion_model.blocks.3.attn.qkv_proj", 5376, 21504),
+      pairTensors("lora_unet_blocks_3_attn_qkv_proj", 5376, 21504, { style: "updown" }),
+    ),
+    "dora.safetensors": combineTensors(
+      pairTensors("diffusion_model.blocks.3.attn.out_proj", 7168, 5376),
+      { "diffusion_model.blocks.3.attn.out_proj.dora_scale": { dtype: "BF16", shape: [5376, 1], data_offsets: [0, 5376 * 2] } },
+    ),
+    // Trained on an H3 with the 2688-wide time embedding: no AdaLN weight of that shape here.
+    "adaln-other-basis.safetensors": pairTensors("diffusion_model.blocks.0.adaln_proj.linear", 2688, 96768),
+    // Same element count as out_proj, transposed.
+    "transposed.safetensors": pairTensors("diffusion_model.blocks.3.attn.out_proj", 5376, 7168),
+    // A 1-D norm weight is not a LoRA target.
+    "norm.safetensors": pairTensors("diffusion_model.blocks.0.attn.norm_q", 128, 1),
+  };
+  for (const [file, tensors] of Object.entries(files)) {
+    writeSafetensors(path.join(fixture.h3LorasPath, file), {}, combineTensors(tensors));
+    fixture.state.runtimeNames.push(`minimax_h3/${file}`);
+  }
+  assert.deepEqual(await fixture.makeCatalog().catalog({ mode: "t2v", steps: 4 }), []);
+});
+
+test("lists nothing when the H3 model the panel loads is missing", async (t) => {
+  const fixture = createFixture(t);
+  writeSafetensors(path.join(fixture.h3LorasPath, "fine.safetensors"), h3Metadata("fl2va"));
+  fixture.state.runtimeNames = ["minimax_h3/fine.safetensors"];
+  assert.equal((await fixture.makeCatalog().catalog({ mode: "t2v", steps: 4 })).length, 1);
+  fs.rmSync(fixture.basePath);
+  assert.deepEqual(await fixture.makeCatalog().catalog({ mode: "t2v", steps: 4 }), []);
 });
 
 test("hides the managed Turbo profile and every user-selectable accelerator", async (t) => {
@@ -387,21 +505,31 @@ test("reads exactly the safetensors length prefix and JSON header, never tensor 
   const filePath = path.join(fixture.lorasPath, ...relativeName.split("/"));
   writeSafetensors(filePath, h3Metadata("fl2va"));
   fixture.state.runtimeNames = [relativeName];
-  const headerLengthBytes = fs.readFileSync(filePath).subarray(0, 8);
-  const headerLength = Number(headerLengthBytes.readBigUInt64LE());
+  const headerLength = (file) => Number(fs.readFileSync(file).subarray(0, 8).readBigUInt64LE());
+  const limits = new Map([[path.resolve(filePath), headerLength(filePath)], [path.resolve(fixture.basePath), headerLength(fixture.basePath)]]);
+  const files = new Map();
   const readCalls = [];
   const trackedFs = Object.create(fs);
+  trackedFs.openSync = (file, ...rest) => {
+    const fd = fs.openSync(file, ...rest);
+    files.set(fd, path.resolve(String(file)));
+    return fd;
+  };
   trackedFs.readSync = (fd, buffer, offset, length, position) => {
-    readCalls.push({ length, position });
-    assert.ok(position + length <= 8 + headerLength, "attempted to read tensor data");
+    const file = files.get(fd);
+    readCalls.push({ file: path.basename(file), length, position });
+    assert.ok(limits.has(file) && position + length <= 8 + limits.get(file), "attempted to read tensor data");
     return fs.readSync(fd, buffer, offset, length, position);
   };
 
   const items = await fixture.makeCatalog({ fs: trackedFs }).catalog({ mode: "first_last", steps: 31 });
   assert.equal(items.length, 1);
+  // The loaded model's header once, then the LoRA's.
   assert.deepEqual(readCalls, [
-    { length: 8, position: 0 },
-    { length: headerLength, position: 8 },
+    { file: path.basename(fixture.basePath), length: 8, position: 0 },
+    { file: path.basename(fixture.basePath), length: limits.get(path.resolve(fixture.basePath)), position: 8 },
+    { file: "safe.safetensors", length: 8, position: 0 },
+    { file: "safe.safetensors", length: limits.get(path.resolve(filePath)), position: 8 },
   ]);
 });
 
