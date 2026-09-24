@@ -7,6 +7,10 @@ const BASE_MODELS = Object.freeze({
   edit: 'diffusion_models/qwen_image_edit_2511_bf16.safetensors',
   rapid: 'checkpoints/Qwen-Rapid-AIO-NSFW-v20.safetensors',
 });
+// Qwen-Image-2.1 is found by name (the node may carry a GGUF or a safetensors build); its LoRAs are
+// checked against that file's own tensor names and shapes.
+const QWEN21_MODEL = /^qwen[-_ ]?image[-_ ]?2\.1.*\.(?:gguf|safetensors)$/i;
+const QWEN21_DIRS = ['diffusion_models', 'unet'];
 const widths = { BOOL: 1, U8: 1, I8: 1, F8_E4M3: 1, F8_E5M2: 1, F8_E4M3FN: 1, F16: 2, BF16: 2, I16: 2, U16: 2, F32: 4, I32: 4, U32: 4, F64: 8, I64: 8, U64: 8 };
 const normalize = name => String(name).replace(/\\/g, '/').toLowerCase();
 const inside = (root, file) => { const rel = path.relative(root, file); return rel && !rel.startsWith('..') && !path.isAbsolute(rel); };
@@ -40,24 +44,114 @@ function readHeader(file) {
   } finally { fs.closeSync(fd); }
 }
 
-// Mirrors the direct Qwen mappings in Runtime comfy/lora.py. Never trust model metadata labels.
+// GGUF (v2/v3) tensor table in the safetensors header's shape: { name: { shape } }, dims reversed to
+// torch order. Only the header is read; metadata values are skipped.
+function readGgufHeader(file) {
+  const fd = fs.openSync(file, 'r');
+  try {
+    const size = fs.fstatSync(fd).size;
+    for (let span = 1 << 20; ; span *= 4) {
+      const length = Math.min(size, span);
+      const data = Buffer.alloc(length);
+      fs.readSync(fd, data, 0, length, 0);
+      try {
+        return parseGguf(data);
+      } catch (error) {
+        if (error.message !== 'gguf_truncated' || length >= size || span >= 256 << 20) throw error;
+      }
+    }
+  } finally { fs.closeSync(fd); }
+}
+
+function parseGguf(data) {
+  let at = 0;
+  const need = n => { if (at + n > data.length) throw new Error('gguf_truncated'); };
+  const u32 = () => { need(4); const v = data.readUInt32LE(at); at += 4; return v; };
+  const u64 = () => { need(8); const v = data.readBigUInt64LE(at); at += 8; if (v > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('invalid_gguf'); return Number(v); };
+  const str = () => { const n = u64(); if (n > 1 << 20) throw new Error('invalid_gguf'); need(n); const v = data.toString('utf8', at, at + n); at += n; return v; };
+  const fixed = { 0: 1, 1: 1, 2: 2, 3: 2, 4: 4, 5: 4, 6: 4, 7: 1, 10: 8, 11: 8, 12: 8 };
+  const skip = type => {
+    if (fixed[type]) { need(fixed[type]); at += fixed[type]; return; }
+    if (type === 8) { str(); return; }
+    if (type === 9) { const inner = u32(); const count = u64(); for (let i = 0; i < count; i++) skip(inner); return; }
+    throw new Error('invalid_gguf');
+  };
+  need(4);
+  if (data.toString('latin1', 0, 4) !== 'GGUF') throw new Error('invalid_gguf');
+  at = 4;
+  const version = u32();
+  if (version < 2 || version > 3) throw new Error('unsupported_gguf');
+  const tensors = u64(), kvs = u64();
+  if (tensors > 100000 || kvs > 100000) throw new Error('invalid_gguf');
+  for (let i = 0; i < kvs; i++) { str(); skip(u32()); }
+  const header = {};
+  for (let i = 0; i < tensors; i++) {
+    const name = str();
+    const dims = u32();
+    if (dims > 8) throw new Error('invalid_gguf');
+    const shape = [];
+    for (let d = 0; d < dims; d++) shape.push(u64());
+    u32(); u64();
+    header[name] = { shape: shape.reverse() };
+  }
+  return header;
+}
+
+// Mirrors the Qwen key map in Runtime comfy/lora.py: every 2-D weight B of the diffusion model is a
+// target under B, diffusion_model.B, transformer.B, lora_unet_<B with _> and lycoris_<B with _>.
+// Never trust model metadata labels: a LoRA fits only when every pair lands on a target of exactly
+// its shape (ComfyUI would reshape a same-sized pair onto the wrong layout without a word), no two
+// pairs hit one weight (the later one would silently replace the earlier), and nothing else is in
+// the file (text-encoder keys, LoKr / LoHa / DoRA parts are not loaded by LoraLoaderModelOnly).
+const PAIR_SUFFIXES = Object.freeze([
+  ['.lora_down.weight', '.lora_up.weight'],
+  ['.lora_A.weight', '.lora_B.weight'],
+  ['.lora_A.default.weight', '.lora_B.default.weight'],
+  ['.lora_linear_layer.down.weight', '.lora_linear_layer.up.weight'],
+  ['.lora.down.weight', '.lora.up.weight'],
+  ['_lora.down.weight', '_lora.up.weight'],
+  ['.lora_A', '.lora_B'],
+]);
+const LORA_DTYPES = new Set(['F16', 'BF16', 'F32']);
+
+function loraTargets(base) {
+  const entries = Object.entries(base).filter(([k, v]) => k !== '__metadata__' && k.endsWith('.weight') && Array.isArray(v?.shape) && v.shape.length === 2);
+  // A checkpoint carries the text encoder and VAE too; only its diffusion model takes these LoRAs.
+  const checkpoint = entries.some(([k]) => k.startsWith('model.diffusion_model.'));
+  const targets = new Map();
+  for (const [key, value] of entries) {
+    if (checkpoint && !key.startsWith('model.diffusion_model.')) continue;
+    const name = key.replace(/^(?:model\.)?diffusion_model\./, '').slice(0, -'.weight'.length);
+    const target = { name, shape: value.shape };
+    const flat = name.replace(/\./g, '_');
+    for (const alias of [name, 'diffusion_model.' + name, 'transformer.' + name, 'lora_unet_' + flat, 'lycoris_' + flat]) targets.set(alias, target);
+  }
+  return targets;
+}
+
 function compatible(lora, base) {
-  const weights = new Map(Object.entries(base).filter(([k]) => k.endsWith('.weight')).map(([k, v]) => [k.replace(/^(?:model\.)?diffusion_model\./, ''), v.shape]));
-  let pairs = 0;
+  const targets = loraTargets(base);
   const consumed = new Set(['__metadata__']);
-  for (const [name, tensor] of Object.entries(lora)) {
-    const match = name.match(/^(.*)\.(lora_A|lora_down)\.weight$/);
-    if (!match) continue;
-    const prefix = match[1];
-    const other = `${prefix}.${match[2] === 'lora_A' ? 'lora_B' : 'lora_up'}.weight`;
-    const up = lora[other]?.shape, down = tensor.shape;
-    const canonical = prefix.replace(/^(diffusion_model|transformer)\./, '') + '.weight';
-    const target = weights.get(canonical);
-    if (!/^transformer_blocks\./.test(canonical) || !target || target.length !== 2 || down.length !== 2 || up?.length !== 2 || down[0] <= 0 || down[0] !== up[1] || down[1] !== target[1] || up[0] !== target[0]) return false;
-    consumed.add(name); consumed.add(other);
-    if (lora[`${prefix}.alpha`]) {
-      if (lora[`${prefix}.alpha`].shape.reduce((a, b) => a * b, 1) !== 1) return false;
-      consumed.add(`${prefix}.alpha`);
+  const hit = new Set();
+  let pairs = 0;
+  for (const name of Object.keys(lora)) {
+    if (consumed.has(name)) continue;
+    const suffix = PAIR_SUFFIXES.find(([down]) => name.endsWith(down));
+    if (!suffix) continue;
+    const prefix = name.slice(0, -suffix[0].length);
+    const upName = prefix + suffix[1];
+    const down = lora[name], up = lora[upName];
+    const target = targets.get(prefix);
+    if (!up || !target || hit.has(target.name)) return false;
+    const [out, inner] = target.shape;
+    if (down.shape?.length !== 2 || up.shape?.length !== 2 || down.shape[0] < 1 || down.shape[0] !== up.shape[1] || down.shape[1] !== inner || up.shape[0] !== out) return false;
+    if ((down.dtype && !LORA_DTYPES.has(down.dtype)) || (up.dtype && !LORA_DTYPES.has(up.dtype))) return false;
+    hit.add(target.name);
+    consumed.add(name); consumed.add(upName);
+    const alpha = lora[prefix + '.alpha'];
+    if (alpha) {
+      if (alpha.shape.reduce((a, b) => a * b, 1) !== 1) return false;
+      consumed.add(prefix + '.alpha');
     }
     pairs++;
   }
@@ -72,16 +166,27 @@ function createQwenLoraCatalog(options = {}) {
     const stat = fs.statSync(file);
     const stamp = `${stat.size}:${stat.mtimeMs}:${stat.ctimeMs}`;
     if (cache.get(file)?.stamp === stamp) return cache.get(file).data;
-    const data = readHeader(file);
+    const data = /\.gguf$/i.test(file) ? readGgufHeader(file) : readHeader(file);
     cache.set(file, { stamp, data });
     return data;
   }
-  async function catalog({ nsfw = false } = {}) {
+  function qwen21Model() {
+    for (const dir of QWEN21_DIRS) {
+      const folder = path.join(models, dir);
+      if (!fs.existsSync(folder)) continue;
+      const name = fs.readdirSync(folder).filter(file => QWEN21_MODEL.test(file)).sort()[0];
+      if (name) return path.join(folder, name);
+    }
+    throw new Error('算力节点没有 Qwen-Image-2.1 模型，无法检查 2.1 LoRA');
+  }
+  // engine 'qwen-2.1' checks against the Qwen-Image-2.1 model; otherwise NSFW checks against Rapid
+  // AIO and the rest against the 2511 edit model.
+  async function catalog({ nsfw = false, engine = '' } = {}) {
     if (!fs.existsSync(root)) return [];
     // Reject a junction replacing the requested directory, and links escaping it.
     const realRoot = fs.realpathSync(root);
     if (normalize(realRoot) !== normalize(root)) throw new Error('Qwen LoRA 目录不能指向其他目录');
-    const base = header(path.join(models, BASE_MODELS[nsfw ? 'rapid' : 'edit']));
+    const base = header(engine === 'qwen-2.1' ? qwen21Model() : path.join(models, BASE_MODELS[nsfw ? 'rapid' : 'edit']));
     const info = await options.listRuntimeLoraNames();
     const field = info?.LoraLoaderModelOnly?.input?.required?.lora_name;
     const names = Array.isArray(field?.[0]) ? field[0] : field?.[1]?.options;
@@ -103,4 +208,4 @@ function createQwenLoraCatalog(options = {}) {
   return Object.freeze({ catalog });
 }
 
-module.exports = { createQwenLoraCatalog, compatible, readHeader, QWEN_ROOT, BASE_MODELS };
+module.exports = { createQwenLoraCatalog, compatible, readHeader, readGgufHeader, QWEN_ROOT, BASE_MODELS, QWEN21_MODEL };

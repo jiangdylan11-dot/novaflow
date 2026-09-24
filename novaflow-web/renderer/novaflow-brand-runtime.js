@@ -82019,7 +82019,7 @@
     const steps = Math.max(1, Math.round(Number(sampling?.steps) || QWEN21_ART_DEFAULT_STEPS));
     const cfg = Number(sampling?.cfg) > 0 ? Number(sampling.cfg) : guidance.cfg;
     if (mode !== "txt2img" && mode !== "img2img") return null;
-    if (state?.nsfw === true || (Array.isArray(state?.loras) && state.loras.length)) return null;
+    if (state?.nsfw === true) return null;
     if (/^ui-design/i.test(String(providerOptions?.taskProfile || ""))) return null;
     const references = mode === "img2img"
       ? (Array.isArray(uploadedNames) ? uploadedNames : []).filter(Boolean).slice(0, QWEN21_ART_MAX_REFERENCES)
@@ -82326,6 +82326,12 @@
     if (qwen21Build) {
       localWorkflow = qwen21Build.workflow;
       localModelKey = qwen21Build.modelKey;
+      // The drawing panel's 2.1 LoRAs go between the model loader and the 2.1 cache.
+      if (drawQwen21 && Array.isArray(state.loras) && state.loras.length) {
+        const loraApi = window.NovaFlowArtGenerateLora;
+        if (!loraApi) throw new Error("LoRA 模块未就绪，请刷新后重试");
+        localWorkflow = loraApi.apply(localWorkflow, { ...state, provider, mode });
+      }
     } else if (provider === "local") {
       if (shouldUseArtGenerateIdeogramWorkflow(provider, mode, state, providerOptions)) {
         const ideogramApi = window.NovaFlowArtGenerateIdeogramWorkflow;
@@ -82395,7 +82401,7 @@
     window.NovaFlowArtGenerateLora?.validate(workflow, objectInfo);
     if (Object.keys(workflow).some(id => /^nf_art_lora_/.test(id))) {
       const nsfw = Object.values(workflow).some(node => node.class_type === "CheckpointLoaderSimple" && /Qwen-Rapid/i.test(String(node.inputs?.ckpt_name)));
-      const catalog = await window.electronAPI?.qwenLoraCatalog?.({ nsfw });
+      const catalog = await window.electronAPI?.qwenLoraCatalog?.(window.NovaFlowArtGenerateLora?.isQwen21Graph?.(workflow) ? { nsfw: false, engine: "qwen-2.1" } : { nsfw });
       if (!catalog?.ok) throw new Error(catalog?.error || "无法验证 LoRA 兼容性");
       window.NovaFlowArtGenerateLora.validate(workflow, catalog);
     }

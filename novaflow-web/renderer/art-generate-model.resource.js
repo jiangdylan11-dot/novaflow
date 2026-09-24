@@ -34,8 +34,8 @@
     false,
   )
 
-  // A local node with Qwen-Image-2.1 runs non-NSFW, LoRA-free drawing on it (the worker picks the
-  // engine). 2.1 has no quality or edit-strength setting; its img2img takes up to 10 references (the
+  // A local node with Qwen-Image-2.1 runs non-NSFW drawing on it, LoRAs included (the list offers
+  // only LoRAs made for 2.1); the page tells the worker so with the run. 2.1 has no quality or edit-strength setting; its img2img takes up to 10 references (the
   // model card's limit, as in the UI module) and keeps W / H, which a new reference 1 fills with its
   // size; the negative prompt stays (a filled one switches the run to real guidance).
   const LOCAL_QWEN21_CAPABILITIES = Object.freeze({
@@ -44,7 +44,7 @@
   })
 
   function localQwen21Drawing(state) {
-    if (state?.nsfw === true || (Array.isArray(state?.loras) && state.loras.length)) return false
+    if (state?.nsfw === true) return false
     try {
       return globalThis?.electronAPI?.runtimeFeaturesSync?.()?.qwenImage21 === true
     } catch {

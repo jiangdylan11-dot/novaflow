@@ -819,7 +819,7 @@
     },
 
     async qwenLoraCatalog(payload = {}) {
-      try { return await control('GET', '/api/web/loras/qwen?nsfw=' + (payload.nsfw === true)); }
+      try { return await control('GET', '/api/web/loras/qwen?nsfw=' + (payload.nsfw === true) + (payload.engine === 'qwen-2.1' ? '&engine=qwen-2.1' : '')); }
       catch (error) { return { ok: false, error: String(error.message || error), items: [] }; }
     },
     async minimaxH3LoraCatalog(payload = {}) {

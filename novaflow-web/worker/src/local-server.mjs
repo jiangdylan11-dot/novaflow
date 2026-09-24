@@ -55,9 +55,22 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
               available_workers: s.models.some(m => m.model_id === spec.modelId && m.status === 'ready') ? 1 : 0 })) });
         }
         if (req.method === 'GET' && url.pathname === '/api/web/workers') return json(200, { workers: [{ ...s, id: s.workerId, worker_name: s.workerName }] });
+        // The page checks each chosen H3 LoRA before an animation run, as it does with the control
+        // plane in shared mode: the selection must still be in this node's list for the run's mode
+        // and steps (without this route every local run with an H3 LoRA stopped at a 404).
+        if (url.pathname === '/api/web/loras/h3/validate' && req.method === 'POST') {
+          const mode = String(body.mode || 'i2v');
+          const steps = Number(body.steps || 4);
+          if (!['t2v', 'i2v', 'fl2v', 'r2v'].includes(mode) || !Number.isInteger(steps) || steps < 1 || steps > 100) throw fail('invalid LoRA context');
+          const catalog = await worker.readLoraCatalog('h3', { mode, steps });
+          const item = (catalog.items || []).find(entry => entry.name === body.name && entry.fingerprint === body.fingerprint);
+          const strength = Number(body.strength);
+          if (!item || !Number.isFinite(strength) || strength < 0 || strength > 2) throw fail('LoRA 已变化或不兼容，请重新选择');
+          return json(200, { ok: true, item, strength });
+        }
         if (url.pathname.startsWith('/api/web/loras/') && req.method === 'GET') {
           const kind = url.pathname.split('/').pop();
-          return json(200, await worker.readLoraCatalog(kind, { nsfw: url.searchParams.get('nsfw') === 'true', mode: url.searchParams.get('mode') || 't2v', steps: Number(url.searchParams.get('steps')) || 4 }));
+          return json(200, await worker.readLoraCatalog(kind, { nsfw: url.searchParams.get('nsfw') === 'true', engine: url.searchParams.get('engine') === 'qwen-2.1' ? 'qwen-2.1' : '', mode: url.searchParams.get('mode') || 't2v', steps: Number(url.searchParams.get('steps')) || 4 }));
         }
         if (url.pathname === '/api/web/tasks' && req.method === 'GET') return json(200, { tasks: tasks.list() });
         if (url.pathname === '/api/web/tasks' && req.method === 'POST') {

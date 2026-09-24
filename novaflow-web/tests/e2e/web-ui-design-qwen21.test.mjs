@@ -369,8 +369,8 @@ assert.deepEqual([...models.capabilityFor('local', 'img2img', {}).fields], allFi
 assert.equal(models.capabilityFor('local', 'img2img', {}).referenceLimit, 10);
 assert.equal(models.capabilityFor('local', 'img2img', { nsfw: true }).referenceLimit, 3);
 assert.equal(models.capabilityFor('local', 'img2img', {}).negativePrompt, true);
-// The LoRA list offers nothing on the 2.1 route (the catalogue's Qwen LoRAs are for 2509-2512);
-// NSFW (Rapid AIO) keeps its list.
+// On the 2.1 route the LoRA list asks for the LoRAs the node found to fit 2.1 (web-lora-qwen21 covers
+// the detection); NSFW (Rapid AIO) keeps its own list.
 renderer('art-generate-lora.js');
 const artLora = globalThis.NovaFlowArtGenerateLora;
 assert.equal(artLora.qwen21Route({ provider: 'local', mode: 'img2img' }), true);
@@ -385,10 +385,17 @@ assert.deepEqual(pick(models.localSamplingFor({ provider: 'local' }, 'txt2img', 
 assert.deepEqual(pick(models.localSamplingFor({ provider: 'local' }, 'img2img', 'blurry')), ['qwen-2.1', 40, 2.5, false]);
 assert.deepEqual(pick(models.localSamplingFor({ provider: 'local', nsfw: true }, 'img2img', 'blurry')), ['rapid', 6, 1, false]);
 assert.deepEqual(pick(models.localSamplingFor({ provider: 'local', nsfw: true }, 'txt2img', '')), ['rapid', 6, 1, false]);
+// A LoRA run stays on 2.1 there (its list offers only LoRAs made for 2.1).
 const lora = { provider: 'local', loras: [{ name: 'x' }] };
+assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['qwen-2.1', 40, 1, false]);
+// The 2511 route (a node without 2.1): 4 Lightning steps at CFG 1, the base 40 steps at CFG 4 with a
+// negative; its txt2img is Ideogram Instant, without steps / CFG.
+const withQwen21 = globalThis.electronAPI;
+globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
 assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['standard', 4, 1, true]);
 assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', 'blurry')), ['standard', 40, 4, false]);
 assert.equal(models.localSamplingFor(lora, 'txt2img', ''), null);
+globalThis.electronAPI = withQwen21;
 assert.equal(models.localSamplingFor({ provider: 'gpt' }, 'img2img', ''), null);
 // The state's own negative prompt is the default source; a run can name its route.
 assert.equal(models.localSamplingFor({ provider: 'local', negativePrompt: 'blurry' }, 'txt2img').cfg, 2.5);
@@ -410,9 +417,11 @@ assert.equal(typed.samplingOverrides['qwen-2.1:img2img'], undefined);
 typed.nsfw = true;
 assert.equal(models.localSamplingFor(typed, 'img2img').steps, 8);
 // On the 2511 route more than 8 steps turns the Lightning LoRA off and CFG follows to 4.
+globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
 const loraTyped = { ...lora };
 models.setLocalSamplingValue(loraTyped, 'img2img', 'steps', '20');
 assert.deepEqual(pick(models.localSamplingFor(loraTyped, 'img2img', '')), ['standard', 20, 4, false]);
+globalThis.electronAPI = withQwen21;
 // The preset on the legacy graphs: the run's sampling over the family's sampler; UI design (no
 // sampling) keeps its edit-strength presets.
 const presetGraph = () => ({ 1: { class_type: 'KSampler', inputs: {} }, 2: { class_type: 'PrimitiveBoolean', inputs: { value: true }, _meta: { title: 'Enable 4 Step(s) LoRA?' } } });

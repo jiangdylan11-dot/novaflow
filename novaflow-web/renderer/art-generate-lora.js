@@ -11,12 +11,12 @@
   const key = (name) => String(name || '').replace(/\\/g, '/').toLowerCase()
 
   function supports(state = {}) {
-    return state.provider === 'local' && (state.mode === 'img2img' || state.nsfw === true)
+    return state.provider === 'local' && (state.mode === 'img2img' || state.nsfw === true || qwen21Route(state))
   }
 
-  // On a Qwen-Image-2.1 node non-NSFW drawing runs on 2.1, and the Qwen LoRAs in the catalogue
-  // (trained for Qwen-Image / Edit 2509-2512) do not apply to it, so none is offered there. NSFW
-  // runs on Rapid AIO (2511) and keeps its list.
+  // On a Qwen-Image-2.1 node non-NSFW drawing (txt2img and img2img) runs on 2.1, and the list offers
+  // only LoRAs the node found to fit 2.1 (header names and shapes against its 2.1 model; the Qwen
+  // LoRAs for 2509-2512 never do). NSFW runs on Rapid AIO (2511) and keeps that list.
   function qwen21Route(state = {}) {
     if (state.nsfw === true) return false
     try {
@@ -59,13 +59,21 @@
     return active
   }
 
-  // Insert after the Qwen model loader so existing sampling/Lightning patches remain downstream.
+  // A Qwen-Image-2.1 drawing graph; the worker builds it without the page's features, so the graph
+  // itself says so.
+  function isQwen21Graph(workflow) {
+    return Object.values(workflow || {}).some(node => ['UnetLoaderGGUF', 'UNETLoader'].includes(node?.class_type) &&
+      /qwen[-_ ]?image[-_ ]?2\.1/i.test(String(node.inputs?.unet_name || '')))
+  }
+
+  // Insert after the Qwen model loader so existing sampling/Lightning patches remain downstream (on
+  // 2.1: UnetLoaderGGUF -> LoRAs -> QwenImage21Cache -> KSampler).
   function apply(workflow, state) {
-    if (!supports(state)) return workflow
+    if (!supports(state) && !(state?.provider === 'local' && isQwen21Graph(workflow))) return workflow
     const selected = selection(state.loras)
     if (!selected.length) return workflow
     const bases = Object.entries(workflow).filter(([, node]) =>
-      ['UNETLoader', 'CheckpointLoaderSimple'].includes(node?.class_type) &&
+      ['UNETLoader', 'UnetLoaderGGUF', 'CheckpointLoaderSimple'].includes(node?.class_type) &&
       /qwen/i.test(String(node.inputs?.unet_name || node.inputs?.ckpt_name || '')))
     if (bases.length !== 1) throw new Error('当前工作流没有唯一的 Qwen 模型，无法添加 LoRA')
     const [baseId] = bases[0]
@@ -131,14 +139,14 @@
   async function refresh(record) {
     if (record.loading) return
     const context = record.context
-    const request = { nsfw: !!record.options.state.nsfw }
+    const request = qwen21Route(record.options.state) ? { nsfw: false, engine: 'qwen-2.1' } : { nsfw: !!record.options.state.nsfw }
     let dropped = false
     record.loading = true
     record.loaded = true
     record.error = ''
     mount(record.options)
     try {
-      const names = qwen21Route(record.options.state) ? [] : catalogFromInfo(await record.options.loadCatalog(request))
+      const names = catalogFromInfo(await record.options.loadCatalog(request))
       if (context === record.context) {
         record.names = names
         const before = (record.options.state.loras || []).length
@@ -229,5 +237,5 @@
     slot.replaceChildren(...children)
   }
 
-  return Object.freeze({ supports, qwen21Route, catalogFromInfo, selection, apply, validate, mount })
+  return Object.freeze({ supports, qwen21Route, isQwen21Graph, catalogFromInfo, selection, apply, validate, mount })
 })
