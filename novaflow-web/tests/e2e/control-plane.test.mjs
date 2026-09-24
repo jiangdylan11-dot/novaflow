@@ -350,4 +350,44 @@ section('account tiers: other people\'s nodes need a 高级账户');
   check('the default dev login is a 高级账户', pro.body.compute.shared === true && pro.body.user.plan === 'pro', pro.body);
 }
 
+// ---------------------------------------------------------------------------
+section('算力源 picker: the pool is listed, and a pinned task waits for its node');
+{
+  // Earlier sections left tasks queued; a pinned task must be the only thing the
+  // two fresh workers below can pick up.
+  const basicPro = (await call(BASE, 'POST', '/dev/login', { body: { email: 'basic@novaflow.local', plan: 'pro' } })).body.session.token;
+  for (const token of [alice.token, bob.token, basicPro]) {
+    const list = await call(BASE, 'GET', '/api/web/tasks?limit=100', { token });
+    for (const task of list.body.tasks) if (task.status === TASK_STATE.QUEUED) await call(BASE, 'POST', '/api/web/tasks/' + task.id + '/cancel', { token });
+  }
+
+  const nodes = await call(BASE, 'GET', '/api/web/nodes', { token: alice.token });
+  check('a signed-in user sees every pool node with a status', nodes.status === 200 && nodes.body.nodes.length >= 2
+    && nodes.body.nodes.every((n) => n.name && ['idle', 'busy', 'offline'].includes(n.status)), nodes.body);
+  check('the listing carries no endpoint, secret or owner', !/endpoint|secret|owner/.test(JSON.stringify(nodes.body)), Object.keys(nodes.body.nodes[0] || {}));
+  check('and says this account may pin one', nodes.body.compute.shared === true, nodes.body.compute);
+  const anon = await call(BASE, 'GET', '/api/web/nodes');
+  check('but not without a session', anon.status === 401, anon.status);
+
+  const first = await registerWorker({ ownerToken: alice.token, name: 'pin-first', models: ['qwen-image-2511'] });
+  const second = await registerWorker({ ownerToken: bob.token, name: 'pin-second', models: ['qwen-image-2511'] });
+  const body = { task_type: 'qwen_t2i', parameters: { prompt: 'pinned', width: 1024, height: 1024, steps: 20, count: 1 }, target_worker_id: second.workerId };
+  const pinned = await call(BASE, 'POST', '/api/web/tasks', { token: alice.token, body });
+  check('a pinned task is created and counts its node alone',
+    pinned.status === 200 && pinned.body.capableWorkers === 1 && pinned.body.target.id === second.workerId, pinned.body);
+  const wrong = await call(BASE, 'POST', '/api/worker/claim', { token: first.workerToken });
+  check('another idle worker with the model does not get it', wrong.body.task === null, wrong.body);
+  const right = await call(BASE, 'POST', '/api/worker/claim', { token: second.workerToken });
+  check('the pinned node claims it', !!(right.body.task && right.body.task.id === pinned.body.task.id), right.body);
+  const narrowed = await call(BASE, 'GET', '/api/web/capabilities?worker=' + first.workerId);
+  check('capabilities can be asked about one node', narrowed.status === 200 && narrowed.body.available_workers === 1, narrowed.body.available_workers);
+  const busyNode = await call(BASE, 'GET', '/api/web/capabilities?worker=' + second.workerId);
+  check('a node that is busy still counts as compute', busyNode.body.available_workers === 1, busyNode.body.available_workers);
+  const missing = await call(BASE, 'POST', '/api/web/tasks', { token: alice.token, body: { ...body, target_worker_id: uuid() } });
+  check('an unknown node is refused rather than silently ignored', missing.status === 404, missing.body);
+  const basicTrial = (await call(BASE, 'POST', '/dev/login', { body: { email: 'basic@novaflow.local', plan: 'trial' } })).body.session.token;
+  const basicNodes = await call(BASE, 'GET', '/api/web/nodes', { token: basicTrial });
+  check('a 普通账户 sees the list but may not pin', basicNodes.status === 200 && basicNodes.body.compute.shared === false, basicNodes.body.compute);
+}
+
 finish('control-plane');

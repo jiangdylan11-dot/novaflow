@@ -140,9 +140,9 @@ const supabaseStore = {
     return Number(data || 0);
   },
 
-  async countCapableWorkers(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number) {
+  async countCapableWorkers(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number, workerId: string | null = null) {
     const since = new Date(Date.now() - heartbeatTimeoutSeconds * 1000).toISOString();
-    const { data, error } = await admin()
+    let query = admin()
       .from('worker_models')
       .select('worker_id, gpu_workers!inner(id,status,vram_mb,last_heartbeat)')
       .eq('model_id', modelId)
@@ -150,8 +150,19 @@ const supabaseStore = {
       .in('gpu_workers.status', ['idle', 'busy'])
       .gte('gpu_workers.vram_mb', minVramMb)
       .gt('gpu_workers.last_heartbeat', since);
+    if (workerId) query = query.eq('worker_id', workerId);
+    const { data, error } = await query;
     if (error) throw error;
     return (data || []).length;
+  },
+
+  async listPoolWorkers() {
+    const { data, error } = await admin()
+      .from('gpu_workers')
+      .select('id,worker_name,status,gpu_name,vram_mb,last_heartbeat')
+      .order('worker_name');
+    if (error) throw error;
+    return data || [];
   },
 
   async listCapableModelDetails(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number) {

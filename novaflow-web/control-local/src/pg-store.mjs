@@ -71,11 +71,12 @@ export function createPgStore(db) {
       return Number(row?.count || 0);
     },
 
-    async countCapableWorkers(modelId, minVramMb, heartbeatTimeoutSeconds) {
+    async countCapableWorkers(modelId, minVramMb, heartbeatTimeoutSeconds, workerId = null) {
       const row = await one(
         `select count(*)::int as count
            from public.gpu_workers w
           where w.status in ('idle', 'busy')
+            and ($4::uuid is null or w.id = $4::uuid)
             and w.vram_mb >= $2
             and w.last_heartbeat is not null
             and w.last_heartbeat > now() - make_interval(secs => $3)
@@ -83,9 +84,15 @@ export function createPgStore(db) {
               select 1 from public.worker_models wm
                where wm.worker_id = w.id and wm.model_id = $1 and wm.status = 'ready'
             )`,
-        [modelId, minVramMb, heartbeatTimeoutSeconds]
+        [modelId, minVramMb, heartbeatTimeoutSeconds, workerId || null]
       );
       return Number(row?.count || 0);
+    },
+
+    async listPoolWorkers() {
+      return await many(
+        'select id, worker_name, status, gpu_name, vram_mb, last_heartbeat from public.gpu_workers order by worker_name'
+      );
     },
 
     async listCapableModelDetails(modelId, minVramMb, heartbeatTimeoutSeconds) {

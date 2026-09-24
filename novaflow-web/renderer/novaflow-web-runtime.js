@@ -36,9 +36,21 @@
 
   const SESSION_KEY = 'novaflow_web_session_v1';
   const CLIENT_AUTH_KEY = 'novaflow.client.auth.session.v1';
-  // The launcher chooses the endpoint; the editor has no compute selector.
+  // The launcher chooses the DEFAULT endpoint: the local assistant's own machine, or the shared pool on
+  // the hosted site. Prompt-assistant and licence calls follow this and nothing else.
   const computeMode = CONFIG.localAssistant ? 'local' : 'shared';
   const taskModes = new Map();
+  // 算力源: the pool node the user pinned in the topbar (novaflow-web-compute-node.js). Pinned work
+  // always goes through the control plane, carries the node id, and asks capabilities about that
+  // node alone - also from a page the local assistant opened, whose own machine is the default.
+  const NODE_KEY = 'novaflow.web.compute.node.v1';
+  const NODE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  let computeNode = null;
+  try {
+    const saved = JSON.parse(root.localStorage.getItem(NODE_KEY) || 'null');
+    if (saved && NODE_ID.test(String(saved.id))) computeNode = { id: String(saved.id), name: String(saved.name || '') };
+  } catch (_) { /* private mode: nothing pinned */ }
+  const taskMode = () => (CONFIG.localAssistant && !computeNode ? 'local' : 'shared');
   let localKey = '';
   if (CONFIG.localAssistant && root.location) {
     try {
@@ -153,8 +165,12 @@
   }, { once: true });
   async function control(method, path, body) {
     const taskId = /^\/api\/web\/tasks\/([^/]+)/.exec(path)?.[1];
-    const mode = taskModes.get(taskId) || computeMode;
+    const mode = taskModes.get(taskId) || taskMode();
     const isCompute = /^\/api\/web\/(tasks|capabilities|workers|loras)(?:[/?]|$)/.test(path);
+    if (mode === 'shared' && computeNode) {
+      if (path === '/api/web/tasks' && method === 'POST') body = Object.assign({}, body || {}, { target_worker_id: computeNode.id });
+      if (/^\/api\/web\/capabilities(?:\?|$)/.test(path)) path += (path.includes('?') ? '&' : '?') + 'worker=' + encodeURIComponent(computeNode.id);
+    }
     const value = mode === 'local' && isCompute ? await localControl(method, path, body) : await api(CONFIG.controlUrl, method, path, body);
     if (path === '/api/web/tasks' && method === 'POST' && value.task) taskModes.set(value.task.id, mode);
     return value;
@@ -167,6 +183,8 @@
   // per module so the matching /prompt submission can pick it up. Keyed by
   // module because a panel may prepare one workflow while another is running.
   const intents = new Map();
+  // 一键拆图 tasks: their layer files are working material for the 拆图 panel, not 仓库 entries.
+  const splitTasks = new Set();
   let lastIntent = null;
 
   function recordIntent(intent) {
@@ -443,6 +461,7 @@
 
     const promptId = task.task.id;
     tasks.set(promptId, task.task);
+    if (intent.method === 'buildSeeThroughSplitWorkflow') splitTasks.add(promptId);
     root.NovaFlowWebRuntime.lastTask = task.task;
 
     // Send the reference images.
@@ -496,7 +515,7 @@
   // references, the 2.1 LoRA list) and keeps it while nobody is online: an
   // empty pool says nothing about the node that will take the run. Only a
   // drawing node that lacks 2.1 switches it to the 2511 layout.
-  let runtimeFeatureCache = computeMode === 'shared' ? { qwenImage21: true } : {};
+  let runtimeFeatureCache = taskMode() === 'shared' ? { qwenImage21: true } : {};
   function drawingNodeOnline(caps) {
     const types = caps && Array.isArray(caps.taskTypes) ? caps.taskTypes : [];
     return types.some((t) => t && t.kind === 'image' && Number(t.available_workers) > 0);
@@ -629,7 +648,9 @@
       const filename = query.get('filename');
       if (!filename) return { ok: false, error: 'missing filename' };
 
-      const entry = [...tasks.values()].find(
+      // Newest task first: 一键拆图's seethrough_psd_info.log keeps one name across runs, and the
+      // page wants the run it just made.
+      const entry = [...tasks.values()].reverse().find(
         (t) => ((t.output_manifest && t.output_manifest.files) || []).some((f) => f.name === filename)
       );
       if (!entry) return { ok: false, error: 'unknown output file: ' + filename };
@@ -645,7 +666,7 @@
         const res = await fetch(url);
         if (!res.ok) return { ok: false, error: '取回结果失败：' + res.status };
         const buffer = await res.arrayBuffer();
-        if (root.NovaFlowWebWarehouse) {
+        if (root.NovaFlowWebWarehouse && !splitTasks.has(entry.id)) {
           await root.NovaFlowWebWarehouse.save({ blob: new Blob([buffer], { type: mimeFor(filename) }), name: filename });
         }
         const bytes = new Uint8Array(buffer);
@@ -670,7 +691,7 @@
 
     /** A URL an <img>/<video> can use directly, with the grant in the query. */
     async runtimeFileUrl(filename) {
-      const entry = [...tasks.values()].find(
+      const entry = [...tasks.values()].reverse().find(
         (t) => ((t.output_manifest && t.output_manifest.files) || []).some((f) => f.name === filename)
       );
       if (!entry) return '';
@@ -784,7 +805,7 @@
       try {
         const caps = await control('GET', '/api/web/capabilities');
         const next = caps && caps.features && typeof caps.features === 'object' ? { ...caps.features } : {};
-        if (computeMode === 'shared' && next.qwenImage21 !== true && !drawingNodeOnline(caps)) next.qwenImage21 = true;
+        if (taskMode() === 'shared' && next.qwenImage21 !== true && !drawingNodeOnline(caps)) next.qwenImage21 = true;
         else answered = true;
         const changed = JSON.stringify(next) !== JSON.stringify(runtimeFeatureCache);
         runtimeFeatureCache = next;
@@ -1104,7 +1125,28 @@
     grantFor,
     putTaskInput,
     fetchTaskOutput,
-    get computeMode() { return computeMode; },
+    get computeMode() { return taskMode(); },
+    get localAssistant() { return !!CONFIG.localAssistant; },
+    get computeNode() { return computeNode ? { id: computeNode.id, name: computeNode.name } : null; },
+    // Pin work to one pool node (null: back to the launcher's default). Remembered per browser.
+    setComputeNode(node) {
+      const next = node && NODE_ID.test(String(node.id)) ? { id: String(node.id), name: String(node.name || '') } : null;
+      computeNode = next;
+      try {
+        if (next) root.localStorage.setItem(NODE_KEY, JSON.stringify(next));
+        else root.localStorage.removeItem(NODE_KEY);
+      } catch (_) { /* private mode */ }
+      // Every cached answer spoke for the previous source.
+      capsCache = { at: 0, byTaskType: {} };
+      runtimeFeatureCache = taskMode() === 'shared' ? { qwenImage21: true } : {};
+      runtimeFeatureRetries = 0;
+      electronAPI.runtimeFeatures();
+      if (typeof root.dispatchEvent === 'function' && typeof root.CustomEvent === 'function') {
+        root.dispatchEvent(new root.CustomEvent('novaflow:compute-node', { detail: next }));
+      }
+      return next;
+    },
+    listComputeNodes: () => control('GET', '/api/web/nodes'),
     auth: auth,
     fileUrl: (name) => electronAPI.runtimeFileUrl(name),
     isWeb: true

@@ -195,6 +195,9 @@
   // sitting there idle; and which machines they are is nobody's business but
   // the pool owner's. A count is all the app needs to draw its indicator.
   let lastCaps = { at: 0, count: 0 };
+  if (typeof root.addEventListener === 'function') {
+    root.addEventListener('novaflow:compute-node', () => { lastCaps = { at: 0, count: 0 }; });
+  }
   async function pollCapacity(maxAgeMs = 8000) {
     if (Date.now() - lastCaps.at < maxAgeMs) return lastCaps.count;
     try {

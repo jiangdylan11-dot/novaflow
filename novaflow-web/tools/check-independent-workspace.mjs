@@ -13,7 +13,7 @@ const contained = async path => {
   assert(actual.startsWith(root + sep), 'Dependency leaves this checkout: ' + path);
 };
 for (const file of ['novaflow-web/admin/admin-main.js', 'novaflow-web/admin/license-admin-gui/admin-data.js', 'particle-editor-desktop/license-core.js', 'novaflow-web/worker/electron/main.cjs', 'novaflow-web/web-dist/index.html']) await contained(join(root, file));
-for (const name of ['novaflow-web-warehouse.js', 'novaflow-web-runtime.js', 'novaflow-web-account.js', 'novaflow-web-capabilities.js']) {
+for (const name of ['novaflow-web-warehouse.js', 'novaflow-web-runtime.js', 'novaflow-web-account.js', 'novaflow-web-capabilities.js', 'novaflow-web-compute-node.js']) {
   assert.equal(await readFile(join(root, 'novaflow-web/renderer', name), 'utf8'), await readFile(join(root, 'novaflow-web/web-dist', name), 'utf8'), 'Web runtime needs rebuild: ' + name);
 }
 const worker = JSON.parse(await readFile(join(root, 'novaflow-web/worker/electron-builder.json'), 'utf8'));

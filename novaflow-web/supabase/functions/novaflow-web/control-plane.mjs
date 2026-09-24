@@ -59,6 +59,7 @@ import { MODEL_MANIFEST, QWEN21_MODEL_ID, findModel } from './model-manifest.mjs
 
 const MAX_BODY_BYTES = 256 * 1024;
 const MAX_PROMPT_CHARS = 4000;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 class HttpError extends Error {
   constructor(status, code, message, extra) {
@@ -640,16 +641,28 @@ export function createControlPlane({ store, secrets, logger }) {
       }
     }
 
+    // The topbar's 算力源 picker may pin the task to one node. The scheduler
+    // (novaflow_web_claim_task) then lets only that node claim it.
+    let target = null;
+    const targetId = sanitizeText(body.target_worker_id || body.targetWorkerId, 80);
+    if (targetId) {
+      if (!UUID_RE.test(targetId)) throw bad('invalid compute node id');
+      target = await store.getWorkerById(targetId);
+      if (!target) throw new HttpError(404, ERROR_CODE.NOT_FOUND, '所选算力节点不存在或已移除，请重新选择算力源');
+    }
+
     // Fail fast when nothing online can run it, instead of parking the task in
-    // a queue nobody drains.
-    const capable = await store.countCapableWorkers(req.modelId, req.minVramMb, HEARTBEAT_TIMEOUT_SECONDS);
+    // a queue nobody drains. Pinned work counts its node alone.
+    const capable = await store.countCapableWorkers(req.modelId, req.minVramMb, HEARTBEAT_TIMEOUT_SECONDS, target ? target.id : null);
     const inputManifest = {
       parameters,
       min_vram_mb: req.minVramMb,
       protocol: PROTOCOL_VERSION,
       created_from: 'web',
       workflow: inputWorkflow,
-      references: sanitizeReferences(body.references)
+      references: sanitizeReferences(body.references),
+      target_worker_id: target ? target.id : null,
+      target_worker_name: target ? target.worker_name : null
     };
 
     const task = await store.createTask({
@@ -667,7 +680,11 @@ export function createControlPlane({ store, secrets, logger }) {
       task: publicTask(task),
       pricing,
       capableWorkers: capable,
-      warning: capable === 0 ? 'no worker with this model is online right now; the task will wait in the queue' : null
+      target: target ? { id: target.id, name: target.worker_name } : null,
+      warning: capable === 0
+        ? (target ? 'the chosen node is not online with this model right now; the task will wait for it'
+          : 'no worker with this model is online right now; the task will wait in the queue')
+        : null
     };
   }
 
@@ -840,6 +857,30 @@ export function createControlPlane({ store, secrets, logger }) {
     return { ok: true, workers: workers.map(publicWorker) };
   }
 
+  // Every machine in the pool, for the topbar's 算力源 picker: a name, the GPU
+  // and whether it is free right now. No endpoint, no owner, no secret - and
+  // whether THIS account may pin one (a 高级账户), so the page can say so.
+  async function handleListNodes(headers) {
+    const user = await requireUser(headers);
+    const rows = await store.listPoolWorkers();
+    const since = Date.now() - HEARTBEAT_TIMEOUT_SECONDS * 1000;
+    const rank = { idle: 0, busy: 1, offline: 2 };
+    const nodes = rows.map((w) => {
+      const beat = w.last_heartbeat ? new Date(w.last_heartbeat).getTime() : 0;
+      const online = beat > since && ['idle', 'busy'].includes(String(w.status));
+      return {
+        id: w.id,
+        name: w.worker_name,
+        gpu_name: w.gpu_name || '',
+        vram_mb: Number(w.vram_mb) || 0,
+        status: online ? String(w.status) : 'offline',
+        online,
+        last_heartbeat: w.last_heartbeat || null
+      };
+    }).sort((a, b) => (rank[a.status] - rank[b.status]) || String(a.name).localeCompare(String(b.name), 'zh-CN'));
+    return { ok: true, nodes, compute: { shared: canUseSharedCompute(user.plan) } };
+  }
+
   // The credit balance the Web app shows. Read here rather than from
   // novaflow-backend so the same call works against the local control plane
   // during acceptance and against Supabase in production.
@@ -857,16 +898,19 @@ export function createControlPlane({ store, secrets, logger }) {
   // Public on purpose. The app has to be able to say "算力可用" before anyone
   // logs in, and a COUNT is all it needs: no names, no GPUs, no endpoints, no
   // owners. Whose machines they are stays behind a session.
-  async function handleCapabilities() {
+  async function handleCapabilities(query) {
+    // ?worker=<id> narrows every count to one node, for a page that pinned its
+    // work there: 「AI 已连接」 then speaks for that node, not for the pool.
+    const workerId = UUID_RE.test(String(query && query.worker || '')) ? String(query.worker) : null;
     const entries = Object.entries(TASK_TYPE_REQUIREMENTS);
     const counts = await Promise.all(entries.map(([, value]) =>
-      store.countCapableWorkers(value.modelId, value.minVramMb, HEARTBEAT_TIMEOUT_SECONDS)
+      store.countCapableWorkers(value.modelId, value.minVramMb, HEARTBEAT_TIMEOUT_SECONDS, workerId)
         .catch(() => 0)
     ));
     // The drawing and UI-design panels use Qwen-Image-2.1 while a node that can build it is online;
     // their runs then queue for that model (workflowModelId), so only such a node takes them.
     const qwen21 = await store.countCapableWorkers(QWEN21_MODEL_ID, findModel(QWEN21_MODEL_ID).min_vram_mb,
-      HEARTBEAT_TIMEOUT_SECONDS).catch(() => 0);
+      HEARTBEAT_TIMEOUT_SECONDS, workerId).catch(() => 0);
     const taskTypes = entries.map(([key, value], i) => ({
       task_type: key,
       model_id: value.modelId,
@@ -943,7 +987,7 @@ export function createControlPlane({ store, secrets, logger }) {
       if (method === 'GET' && path === '/health') {
         return ok({ ok: true, service: 'novaflow-web-control', protocol: PROTOCOL_VERSION, status: 'running' });
       }
-      if (method === 'GET' && path === '/api/web/capabilities') return ok(await handleCapabilities());
+      if (method === 'GET' && path === '/api/web/capabilities') return ok(await handleCapabilities(query));
       if (method === 'GET' && path === '/api/web/me') return ok(await handleMe(headers));
       if (method === 'GET' && path === '/api/web/loras/qwen') return ok(await handleLoraCatalog('qwen', query, headers));
       if (method === 'GET' && path === '/api/web/loras/h3') return ok(await handleLoraCatalog('h3', query, headers));
@@ -967,6 +1011,7 @@ export function createControlPlane({ store, secrets, logger }) {
       if (method === 'POST' && path === '/api/web/tasks') return ok(await handleCreateTask(body, headers));
       if (method === 'GET' && path === '/api/web/tasks') return ok(await handleListTasks(query, headers));
       if (method === 'GET' && path === '/api/web/workers') return ok(await handleListWorkers(headers));
+      if (method === 'GET' && path === '/api/web/nodes') return ok(await handleListNodes(headers));
       if (method === 'POST' && path === '/api/web/workers/codes') return ok(await handleCreateRegistrationCode(body, headers));
       if (method === 'GET' && path === '/api/web/workers/codes') return ok(await handleListRegistrationCodes(headers));
       if (method === 'POST' && path === '/api/web/workers/codes/revoke') return ok(await handleRevokeRegistrationCodes(body, headers));
