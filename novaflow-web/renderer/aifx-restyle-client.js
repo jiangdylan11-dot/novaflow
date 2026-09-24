@@ -153,13 +153,22 @@
     try { await fetch(BASE_URL + '/interrupt', { method: 'POST' }) } catch (_) {}
   }
 
-  function loadImage(src) {
+  async function loadImage(src) {
+    // On the Web the runtime's fetch shim is what reaches the compute node's output; an <img> src
+    // never goes through it, so the bytes are fetched first and shown from a blob URL.
+    let source = src
+    const web = typeof window === 'object' && window.NovaFlowWebRuntime && window.NovaFlowWebRuntime.isWeb
+    if (web) {
+      const response = await fetch(src)
+      if (!response.ok) throw new Error('AI 特效：帧读取失败 ' + src)
+      source = URL.createObjectURL(await response.blob())
+    }
     return new Promise((resolve, reject) => {
       const image = new Image()
       image.crossOrigin = 'anonymous'
       image.onload = () => resolve(image)
       image.onerror = () => reject(new Error('AI 特效：帧读取失败 ' + src))
-      image.src = src
+      image.src = source
     })
   }
 

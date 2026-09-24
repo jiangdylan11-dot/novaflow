@@ -98,10 +98,10 @@
     return headers;
   }
 
-  async function api(base, method, path, body) {
+  async function api(base, method, path, body, timeoutMs = 20000) {
     const res = await fetch(base.replace(/\/+$/, '') + path, {
       method: method,
-      signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined,
+      signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(timeoutMs) : undefined,
       headers: authHeaders(),
       body: body === undefined ? undefined : JSON.stringify(body)
     });
@@ -175,7 +175,10 @@
     if (path === '/api/web/tasks' && method === 'POST' && value.task) taskModes.set(value.task.id, mode);
     return value;
   }
-  const auth = (method, path, body) => api(CONFIG.authUrl, method, path, body);
+  const auth = (method, path, body, timeoutMs) => api(CONFIG.authUrl, method, path, body, timeoutMs);
+  // Grok reads reference frames for 反推 and 多参 compiles; the 20 s that suits a credit read is what
+  // used to end those with "signal timed out".
+  const SMART_AI_TIMEOUT_MS = 180000;
 
   // ------------------------------------------------------- workflow intents
   //
@@ -183,7 +186,7 @@
   // per module so the matching /prompt submission can pick it up. Keyed by
   // module because a panel may prepare one workflow while another is running.
   const intents = new Map();
-  // 一键拆图 tasks: their layer files are working material for the 拆图 panel, not 仓库 entries.
+  // 一键拆图 layers and AI 特效 frames are working material for their panels, not 仓库 entries.
   const splitTasks = new Set();
   let lastIntent = null;
 
@@ -461,7 +464,7 @@
 
     const promptId = task.task.id;
     tasks.set(promptId, task.task);
-    if (intent.method === 'buildSeeThroughSplitWorkflow') splitTasks.add(promptId);
+    if (intent.method === 'buildSeeThroughSplitWorkflow' || intent.module === 'NovaFlowAifxRestyleWorkflow') splitTasks.add(promptId);
     root.NovaFlowWebRuntime.lastTask = task.task;
 
     // Send the reference images.
@@ -864,11 +867,11 @@
     ...(computeMode === 'local' ? { promptAssistantDescribeArtStyle: async (payload) => localPromptAssistant('describe-art-style', payload) } : {}),
 
     async smartAiPromptOptimize(payload) {
-      try { return { ok: true, result: await auth('POST', '/api/client/grok/prompt-optimize', payload) }; }
+      try { return { ok: true, result: await auth('POST', '/api/client/grok/prompt-optimize', payload, SMART_AI_TIMEOUT_MS) }; }
       catch (error) { return { ok: false, error: String(error.message || error) }; }
     },
     async smartAiImageReverse(payload) {
-      try { return { ok: true, result: await auth('POST', '/api/client/grok/image-reverse', payload) }; }
+      try { return { ok: true, result: await auth('POST', '/api/client/grok/image-reverse', payload, SMART_AI_TIMEOUT_MS) }; }
       catch (error) { return { ok: false, error: String(error.message || error) }; }
     },
 

@@ -1903,20 +1903,25 @@
       setStatus('准备运行时', '正在确认 H3 运行时。')
       await client.ensureRuntime({ reason: 'aifx-restyle' })
 
-      if (!state.source.uploadedName) {
+      // On the Web a staged upload belongs to the one task that takes it, so every run (and every
+      // candidate below) uploads afresh; the desktop runtime keeps the files and the names stay valid.
+      const web = !!(typeof window === 'object' && window.NovaFlowWebRuntime && window.NovaFlowWebRuntime.isWeb)
+      const uploadInputs = async () => {
         setStatus('上传素材', state.source.fileName)
         state.source.uploadedName = await client.uploadFile(state.source.blob, state.source.fileName)
+        if (state.reference) {
+          setStatus('上传参考图', state.reference.fileName)
+          state.reference.uploadedName = await client.uploadFile(state.reference.blob, state.reference.fileName)
+        }
       }
-      if (state.reference && !state.reference.uploadedName) {
-        setStatus('上传参考图', state.reference.fileName)
-        state.reference.uploadedName = await client.uploadFile(state.reference.blob, state.reference.fileName)
-      }
+      if (web || !state.source.uploadedName || (state.reference && !state.reference.uploadedName)) await uploadInputs()
 
       const label = restyle.getPreset(state.attribute)?.label || ''
       const total = Math.max(1, Math.min(4, Math.round(state.candidateCount) || 1))
       state.candidates = []
       state.selectedCandidate = 0
       for (let index = 0; index < total; index += 1) {
+        if (web && index > 0) await uploadInputs()
         const seed = state.lockedSeed == null
           ? Math.floor(Math.random() * 0xffffffff)
           : (state.lockedSeed + index) >>> 0
@@ -2644,6 +2649,7 @@
     try {
       await handler(event)
     } catch (error) {
+      console.error('[NovaFlow aifx]', error)
       setStatus('出错了', String(error && error.message || error))
       refreshUi()
     }
@@ -2978,7 +2984,8 @@
       // The overlay is an empty-state and an error surface, not a permanent
       // banner: once there is something on the canvas it gets out of the way.
       const hasPixels = frameCount() > 0
-      refs.previewStatus.style.display = hasPixels && !state.isGenerating ? 'none' : ''
+      // ... except a failure: with frames on the canvas an error would otherwise never be seen.
+      refs.previewStatus.style.display = hasPixels && !state.isGenerating && statusText !== '出错了' ? 'none' : ''
       refs.previewStatus.setAttribute('data-tone', statusText === '出错了' ? 'warning' : 'idle')
       refs.previewStatus.setAttribute('title', [statusText, detailText].filter(Boolean).join(' · '))
     }

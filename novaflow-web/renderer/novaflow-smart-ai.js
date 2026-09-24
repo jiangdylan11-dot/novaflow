@@ -5009,8 +5009,16 @@
         return workflow.compileForGeneration(options, async payload => {
           const api = window.electronAPI || {};
           const h3ReferenceFrames = await captureH3ReferenceFrames({...options, mode:'multi_reference'});
-          // Compilation is local and does not silently spend cloud credits.
-          const response = await api.promptAssistantOptimizePrompt?.({...payload, h3ReferenceFrames});
+          // Compilation is local and does not silently spend cloud credits - where there is a local
+          // machine to ask. The hosted site has none (the Web runtime answers that it is provided
+          // through 智能 AI), and there the compile goes the same way the dialog's Grok choice does.
+          let response = await api.promptAssistantOptimizePrompt?.({...payload, h3ReferenceFrames});
+          const noLocalMachine = !response || (response.ok === false && /Web 版通过智能 AI/.test(String(response.error || '')));
+          if (noLocalMachine && typeof api.smartAiPromptOptimize === 'function') {
+            const token = readSessionToken();
+            if (!token) throw new Error('多参提示词编译需要先登录 NovaFlow 账号');
+            response = await api.smartAiPromptOptimize({...payload, h3ReferenceFrames, token});
+          }
           if (!response || response.ok === false) throw new Error(response?.error || '多参提示词编译失败');
           return readSmartAiResult(response).prompt;
         });

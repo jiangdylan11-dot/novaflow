@@ -440,8 +440,13 @@
   api.aiSeqCacheReserveOutput = async (payload) => {
     const key = String((payload && (payload.key || payload.id)) || 'output-' + Date.now());
     releaseCache(key);
-    cache.set(key, { reservedAt: Date.now(), blob: null, bytes: 0 });
-    return ok({ key, reserved: true });
+    // 视频合并 reserves a resource-list slot before it renders and reads the
+    // path back; the export puts its clip under this token.
+    const format = String((payload && payload.format) || 'mp4').toLowerCase() === 'webm' ? 'webm' : 'mp4';
+    const fileName = String((payload && payload.baseName) || 'novaflow_output').replace(/[^A-Za-z0-9_.-]+/g, '_').slice(0, 80) + '.' + format;
+    const path = 'web-video://reserved/' + encodeURIComponent(key) + '/' + fileName;
+    cache.set(key, { reservedAt: Date.now(), blob: null, bytes: 0, path, fileName, format });
+    return { ...ok({ key, reserved: true, path, fileName }), key, path, fileName, reserved: true };
   };
 
   api.aiSeqCacheReleaseOutput = async (payload) => {
@@ -808,6 +813,224 @@
   let jobSeq = 0;
   const cancelled = new Set();
 
+  // ---- 视频抠图 → 保存进资源列表 ---------------------------------------------
+  //
+  // The bundle saves a matted clip the way the desktop does: it asks for a temp
+  // folder, writes one PNG per rendered frame into it through writeBinaryFile,
+  // then has ffmpeg turn NF_%04d.png into a WebM that keeps the alpha. Here the
+  // folder is a Map behind a web-temp:// token (the second block's
+  // writeBinaryFile and exportCleanupDir know it), and ffmpeg.wasm encodes VP8
+  // with yuva420p: VP9 traps in this core (see webmBitrateKbps), VP8 does not,
+  // and Chrome plays VP8 alpha.
+  const webTempDirs = new Map();
+  let webTempSeq = 0;
+  api.__webTempDirs = webTempDirs;
+
+  api.exportCreateTempDir = async (payload) => {
+    const prefix = String((payload && payload.prefix) || 'novaflow_tmp_').replace(/[^A-Za-z0-9_.-]/g, '_').slice(0, 60);
+    const dir = 'web-temp://' + (++webTempSeq) + '/' + prefix;
+    webTempDirs.set(dir, new Map());
+    return { ok: true, dir, result: { dir } };
+  };
+
+  api.exportEncodeFramesToVideo = async (payload) => {
+    const options = payload || {};
+    const files = webTempDirs.get(String(options.dir || ''));
+    if (!files) return fail('导出临时目录不存在', { code: 'web_temp_dir_missing' });
+    const names = [...files.keys()].filter((name) => /\.png$/i.test(name)).sort();
+    if (!names.length) return fail('没有可编码的帧', { code: 'web_no_frames' });
+    const fps = clampNumber(Number(options.fps) || 24, 1, 120);
+    const keepAlpha = options.keepAlpha !== false;
+    const ffmpeg = await loadFfmpeg();
+    const jobId = 'frames-encode-' + (++videoOutputSeq);
+    const tag = 'seq' + videoOutputSeq + '_';
+    const pattern = /%0?\d*d/.test(String(options.pattern || '')) ? String(options.pattern) : 'NF_%04d.png';
+    const label = '正在编码抠图视频（' + names.length + ' 帧）…';
+    ffmpegJob = { jobId, last: -1, log: '', label };
+    busy.begin(jobId, label);
+    const written = [];
+    try {
+      // The frames go in under the requested pattern, numbered from 0 in name order.
+      for (let index = 0; index < names.length; index += 1) {
+        const name = tag + pattern.replace(/%0?(\d*)d/, (m, width) => String(index).padStart(Number(width) || 1, '0'));
+        await ffmpeg.writeFile(name, files.get(names[index]).slice());
+        written.push(name);
+      }
+      busy.update(jobId, label, 0);
+      const outFile = tag + 'out.webm';
+      const width = Math.max(0, Math.round(Number(options.width) || 0));
+      const height = Math.max(0, Math.round(Number(options.height) || 0));
+      const kbps = clampNumber(Math.round((width && height ? width * height : 1920 * 1080) * fps * 0.12 / 1000), 1500, 24000);
+      const format = keepAlpha ? 'yuva420p' : 'yuv420p';
+      const args = ['-framerate', String(fps), '-start_number', '0', '-i', tag + pattern,
+        '-vf', 'scale=trunc(iw/2)*2:trunc(ih/2)*2:flags=lanczos,format=' + format,
+        '-c:v', 'libvpx', '-pix_fmt', format, '-auto-alt-ref', '0', '-deadline', 'good', '-cpu-used', '4',
+        '-crf', '10', '-b:v', kbps + 'k'];
+      if (keepAlpha) args.push('-metadata:s:v:0', 'alpha_mode=1');
+      args.push('-y', outFile);
+      const code = await ffmpeg.exec(args);
+      if (code !== 0) {
+        const tail = ffmpegJob.log.split('\n').filter((line) => /error|invalid|failed|unsupported|not found/i.test(line)).slice(-3).join('；');
+        throw new Error('ffmpeg 退出码 ' + code + (tail ? '：' + tail.slice(0, 240) : ''));
+      }
+      const data = await ffmpeg.readFile(outFile);
+      await ffmpeg.deleteFile(outFile).catch(() => {});
+      const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+      const out = { ok: true, format: 'webm', mimeType: 'video/webm', fps, width, height, frames: names.length, bytes: bytes.length };
+      if (options.returnBase64 !== false) out.base64 = base64FromBytes(bytes);
+      videoToolProgress.emit({ jobId, progress01: 1 });
+      return out;
+    } catch (error) {
+      if (/RuntimeError|memory access|unreachable|abort/i.test(String((error && error.message) || error))) {
+        ffmpegPromise = null;
+        try { if (typeof ffmpeg.terminate === 'function') ffmpeg.terminate(); } catch (_) { /* already gone */ }
+      }
+      return fail('抠图视频编码失败：' + String((error && error.message) || error));
+    } finally {
+      busy.end(jobId);
+      if (ffmpegPromise) for (const name of written) await ffmpeg.deleteFile(name).catch(() => {});
+      ffmpegJob = null;
+    }
+  };
+
+  // ---- 视频处理 → 颜色校正 --------------------------------------------------
+  //
+  // The desktop runs ffmpeg for this: the mean colour of the first frame (or of
+  // the uploaded 色彩校正参照) is the target, the mean of the last frame is where
+  // the clip drifted to, and a per-channel offset scaled by how far it drifted
+  // is ramped in over the last third of the clip so the tail lands back on the
+  // head's colour. The same here: the means come out of scale=1:1 rawvideo
+  // passes, the ramp is a lutrgb copy faded in over the original.
+  const fixColorProgress = channel();
+  api.onAiSeqFixHeadTailColorProgress = (cb) => fixColorProgress.subscribe(cb);
+  // Always a fresh copy: ffmpeg.wasm transfers the buffer it is handed to its
+  // worker, which would leave the caller's frames, masks or clip detached.
+  const bytesOf = async (value) => value instanceof Blob ? new Uint8Array(await value.arrayBuffer())
+    : value instanceof ArrayBuffer ? new Uint8Array(value.slice(0))
+      : ArrayBuffer.isView(value) ? new Uint8Array(value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength))
+        : Uint8Array.from(value || []);
+  const durationFromLog = (log) => {
+    const m = String(log || '').match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
+    return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : 0;
+  };
+  api.aiSeqFixHeadTailColor = async (payload) => {
+    const options = payload || {};
+    const video = options.videoA || options.video || {};
+    const source = video.bytes || video.data;
+    if (!source) return fail('颜色校正缺少视频内容');
+    const ffmpeg = await loadFfmpeg();
+    const seq = ++videoOutputSeq;
+    const jobId = 'fix-color-' + seq;
+    const ext = (String(video.fileName || '').split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+    const inName = 'fix_' + seq + '_in.' + ext;
+    const outName = 'fix_' + seq + '_out.mp4';
+    const label = '正在校正首尾颜色…';
+    const relay = videoToolProgress.subscribe((event) => {
+      if (event && event.jobId === jobId) fixColorProgress.emit({ jobId: options.jobId, stage: 'running', progress01: event.progress01 });
+    });
+    ffmpegJob = { jobId, last: -1, log: '', label };
+    busy.begin(jobId, '正在读取视频…');
+    const scratch = [inName, outName];
+    const mean = async (inputArgs, file) => {
+      scratch.push(file);
+      const code = await ffmpeg.exec([...inputArgs, '-frames:v', '1', '-vf', 'scale=1:1:flags=area,format=rgb24', '-f', 'rawvideo', '-y', file]);
+      if (code !== 0) return null;
+      const rgb = await ffmpeg.readFile(file).catch(() => null);
+      return rgb && rgb.length >= 3 ? [rgb[0], rgb[1], rgb[2]] : null;
+    };
+    try {
+      await ffmpeg.writeFile(inName, await bytesOf(source));
+      await ffmpeg.exec(['-i', inName]).catch(() => {});
+      const probeLog = ffmpegJob.log;
+      ffmpegJob.log = '';
+      const durationSec = Number(options.durationSec) || durationFromLog(probeLog);
+      const head = await mean(['-i', inName], 'fix_' + seq + '_head.rgb');
+      let tail = await mean(['-sseof', '-0.1', '-i', inName], 'fix_' + seq + '_tail.rgb');
+      if (!tail && durationSec > 0.1) tail = await mean(['-ss', String(Math.max(0, durationSec - 0.05)), '-i', inName], 'fix_' + seq + '_tail2.rgb');
+      if (!head || !tail) throw new Error('无法读取首尾帧');
+      let target = head;
+      const reference = options.colorRefImage && (options.colorRefImage.bytes || options.colorRefImage.data);
+      if (reference) {
+        const refName = 'fix_' + seq + '_ref.png';
+        scratch.push(refName);
+        await ffmpeg.writeFile(refName, await bytesOf(reference));
+        target = (await mean(['-i', refName], 'fix_' + seq + '_refmean.rgb')) || head;
+      }
+      const diff = target.map((value, index) => value - tail[index]);
+      const magnitude = diff.reduce((sum, value) => sum + Math.abs(value), 0) / 3;
+      const k = magnitude > 24 ? 1.3 : magnitude > 12 ? 1.2 : 1.1;
+      const offset = diff.map((value) => Math.round(value * k));
+      const start = Math.max(0, durationSec * (2 / 3));
+      const fade = Math.max(0.05, durationSec - start);
+      const audio = audioModeFromLog(probeLog);
+      const lut = "lutrgb=r='clip(val+(" + offset[0] + "),0,255)':g='clip(val+(" + offset[1] + "),0,255)':b='clip(val+(" + offset[2] + "),0,255)'";
+      const graph = '[0:v]split[base][copy];[copy]' + lut + ',format=yuva420p,fade=t=in:st=' + start.toFixed(3) + ':d=' + fade.toFixed(3) + ':alpha=1[tint];[base][tint]overlay=format=auto,format=yuv420p[v]';
+      const args = ['-i', inName, '-filter_complex', graph, '-map', '[v]'];
+      if (audio === 'copy') args.push('-map', '0:a?', '-c:a', 'copy');
+      else if (audio === 'encode') args.push('-map', '0:a?', '-c:a', 'aac', '-b:a', '128k');
+      else args.push('-an');
+      args.push('-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-y', outName);
+      busy.update(jobId, label, 0);
+      const code = await ffmpeg.exec(args);
+      if (code !== 0) {
+        const tail2 = ffmpegJob.log.split('\n').filter((line) => /error|invalid|failed|unsupported|not found/i.test(line)).slice(-3).join('；');
+        throw new Error('ffmpeg 退出码 ' + code + (tail2 ? '：' + tail2.slice(0, 240) : ''));
+      }
+      const data = await ffmpeg.readFile(outName);
+      const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+      fixColorProgress.emit({ jobId: options.jobId, stage: 'end', progress01: 1 });
+      return { ok: true, fileName: String(options.outputFileName || 'color_fixed.mp4'), bytes, adjusted: magnitude >= 0.5, head, tail, target, offset, k, durationSec };
+    } catch (error) {
+      const message = String((error && error.message) || error);
+      fixColorProgress.emit({ jobId: options.jobId, stage: 'error', error: message });
+      if (/RuntimeError|memory access|unreachable|abort/i.test(message)) {
+        ffmpegPromise = null;
+        try { if (typeof ffmpeg.terminate === 'function') ffmpeg.terminate(); } catch (_) { /* already gone */ }
+      }
+      return fail('颜色校正失败：' + message);
+    } finally {
+      relay();
+      busy.end(jobId);
+      if (ffmpegPromise) for (const name of scratch) await ffmpeg.deleteFile(name).catch(() => {});
+      ffmpegJob = null;
+    }
+  };
+
+  // ---- 多参视频 → 参考视频/声音探测 --------------------------------------------
+  //
+  // The desktop probes a reference clip with ffprobe before the H3 policy check
+  // (24 fps, 2-15 s). Without this the Web page had no fps or duration at all
+  // and every 视频参考 was refused. One ffmpeg.wasm pass over the stream list
+  // gives the same numbers.
+  api.aiSeqProbeVideoMeta = async (payload) => {
+    const options = payload || {};
+    const source = options.bytes || options.data;
+    if (!source) return fail('探测缺少视频内容');
+    const ffmpeg = await loadFfmpeg();
+    const seq = ++videoOutputSeq;
+    const ext = (String(options.fileName || '').split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+    const inName = 'probe_' + seq + '.' + ext;
+    const previous = ffmpegJob;
+    ffmpegJob = { jobId: 'probe-' + seq, last: -1, log: '', label: '' };
+    try {
+      await ffmpeg.writeFile(inName, await bytesOf(source));
+      await ffmpeg.exec(['-i', inName]).catch(() => {});
+      const log = ffmpegJob.log;
+      const durationSec = durationFromLog(log);
+      const video = log.match(/Stream #\d+:\d+.*?Video: ([^,\n]+)[^\n]*?(\d{2,5})x(\d{2,5})[^\n]*?(\d+(?:\.\d+)?) fps/);
+      const fps = video ? Number(video[4]) : 0;
+      const width = video ? Number(video[2]) : 0;
+      const height = video ? Number(video[3]) : 0;
+      const hasAudio = /Stream #\d+:\d+.*?Audio:/.test(log);
+      return { ok: true, fps, frames: fps && durationSec ? Math.round(fps * durationSec) : 0, durationSec, width, height, hasAudio, codec: video ? String(video[1]).trim() : '' };
+    } catch (error) {
+      return fail('视频探测失败：' + String((error && error.message) || error));
+    } finally {
+      ffmpegJob = previous;
+      if (ffmpegPromise) await ffmpeg.deleteFile(inName).catch(() => {});
+    }
+  };
+
   api.videoCompositorOpenSession = async (payload) => {
     sessionSeq += 1;
     const sessionId = 'web-vc-' + sessionSeq;
@@ -822,18 +1045,79 @@
     return { ok: true, sessionId, id: sessionId };
   };
 
-  api.videoCompositorRegisterSource = async (payload) => {
-    const session = sessions.get(String(payload && payload.sessionId));
-    if (!session) return fail('unknown compositor session');
-    const sourceId = String(payload.sourceId || payload.id || 'src-' + (session.sources.size + 1));
-    session.sources.set(sourceId, {
-      id: sourceId,
-      url: payload.url || '',
-      file: payload.file || (payload.path ? runtime.fileForToken(payload.path) : null),
-      z: Number(payload.z || session.sources.size),
-      opacity: payload.opacity === undefined ? 1 : Number(payload.opacity)
+  // ---- 视频合并 ---------------------------------------------------------------
+  //
+  // The desktop registers each source through ffprobe, keeps the painted
+  // masks, and composites with ffmpeg. The same here on ffmpeg.wasm: a source
+  // is the dropped File (web-file:// token), a resource-list clip (blob: URL)
+  // or an earlier output (web-video:// token); a mask is a PNG whose alpha is
+  // the coverage; the export builds one filter graph - scale, alphamerge and
+  // overlay per layer at the layer's centre and scale - and encodes MP4 or
+  // WebM at the canvas size and fps, straight into the reserved resource-list
+  // slot. Audio comes from the layer the workspace chose.
+  let sourceSeq = 0;
+  let maskSeq = 0;
+  const evenSize = (value) => Math.max(2, Math.round(Number(value) / 2) * 2);
+  async function compositorSourceBlob(options) {
+    if (options.file instanceof Blob) return options.file;
+    const path = String(options.path || options.filePath || options.localPath || '');
+    const fromToken = path ? runtime.fileForToken(path) : null;
+    if (fromToken) return fromToken;
+    const held = path ? videoOutputs.get(path) : null;
+    if (held && held.blob) return held.blob;
+    for (const entry of cache.values()) if (entry && entry.blob && entry.path && entry.path === path) return entry.blob;
+    for (const candidate of [path, String(options.url || '')]) {
+      if (!/^(blob:|https?:|data:)/.test(candidate)) continue;
+      try { const res = await root.fetch(candidate); if (res.ok) return await res.blob(); } catch (_) { /* next */ }
+    }
+    return null;
+  }
+  function probeWithVideoElement(blob) {
+    return new Promise((resolve) => {
+      const video = root.document.createElement('video');
+      const url = URL.createObjectURL(blob);
+      let settled = false;
+      const done = (value) => { if (settled) return; settled = true; try { URL.revokeObjectURL(url); } catch (_) { /* gone */ } resolve(value); };
+      const timer = setTimeout(() => done(null), 15000);
+      video.addEventListener('loadedmetadata', () => {
+        clearTimeout(timer);
+        done({ width: video.videoWidth, height: video.videoHeight, durationSec: Number.isFinite(video.duration) ? video.duration : 0 });
+      }, { once: true });
+      video.addEventListener('error', () => { clearTimeout(timer); done(null); }, { once: true });
+      video.preload = 'metadata';
+      video.muted = true;
+      video.src = url;
     });
-    return ok({ sourceId });
+  }
+
+  api.videoCompositorRegisterSource = async (payload) => {
+    const options = payload || {};
+    const session = sessions.get(String(options.sessionId));
+    if (!session) return fail('unknown compositor session');
+    const blob = await compositorSourceBlob(options);
+    if (!blob) return fail('video_merge_source_unreadable');
+    // ffmpeg's stream list gives fps and audio; the video element covers size
+    // and duration when the log leaves them out (MediaRecorder WebM says
+    // nothing about duration, but the element still knows).
+    let meta = null;
+    try {
+      const probed = await api.aiSeqProbeVideoMeta({ bytes: blob, fileName: options.fileName || 'source.mp4' });
+      if (probed && probed.ok) meta = probed;
+    } catch (_) { meta = null; }
+    const element = (!meta || !meta.width || !(meta.durationSec > 0)) ? await probeWithVideoElement(blob) : null;
+    const width = Math.round((meta && meta.width) || (element && element.width) || 0);
+    const height = Math.round((meta && meta.height) || (element && element.height) || 0);
+    const durationSec = Number((meta && meta.durationSec) || (element && element.durationSec) || 0);
+    if (!width || !height || !(durationSec > 0)) return fail('video_merge_source_metadata_invalid');
+    const fps = Number(meta && meta.fps) || Number(session.fps) || 30;
+    const sourceId = String(options.sourceId || options.id || ('src-' + (++sourceSeq)));
+    const probe = {
+      width, height, displayWidth: width, displayHeight: height, durationSec, fps, avgFrameRate: fps,
+      rotationDeg: 0, rotation: 0, hasAudio: !!(meta && meta.hasAudio), hasAlpha: !!options.alphaSourceConfirmed,
+      codec: (meta && meta.codec) || '', pixelFormat: ''
+    };
+    session.sources.set(sourceId, { id: sourceId, blob, fileName: String(options.fileName || 'source.mp4'), probe });
+    return { ok: true, sourceId, id: sourceId, meta: probe, probe, source: { sourceId, probe } };
   };
 
   api.videoCompositorReleaseSource = async (payload) => {
@@ -843,15 +1127,26 @@
   };
 
   api.videoCompositorPutMask = async (payload) => {
-    const session = sessions.get(String(payload && payload.sessionId));
+    const options = payload || {};
+    const session = sessions.get(String(options.sessionId));
     if (!session) return fail('unknown compositor session');
-    session.masks.set(String(payload.sourceId || payload.id || 'mask'), payload.mask || payload.data || null);
-    return ok({ stored: true });
+    const data = options.bytes || options.mask || options.data;
+    if (!data) return fail('video_merge_mask_bytes_required');
+    const maskId = 'mask-' + (++maskSeq);
+    session.masks.set(maskId, { id: maskId, layerId: options.layerId, sourceId: options.sourceId, bytes: await bytesOf(data), width: options.width, height: options.height });
+    return { ok: true, maskId, id: maskId };
   };
 
+  const compositorJobs = new Map();
   api.videoCompositorCancel = async (payload) => {
     const jobId = String((payload && payload.jobId) || '');
     if (jobId) cancelled.add(jobId);
+    // ffmpeg.wasm cannot be interrupted mid-run; dropping the instance is the cancel.
+    if (jobId && compositorJobs.has(jobId)) {
+      const ffmpeg = compositorJobs.get(jobId);
+      ffmpegPromise = null;
+      try { if (typeof ffmpeg.terminate === 'function') ffmpeg.terminate(); } catch (_) { /* already gone */ }
+    }
     return ok({ cancelled: true });
   };
 
@@ -863,112 +1158,125 @@
   api.videoCompositorExport = async (manifest) => {
     const session = sessions.get(String(manifest && manifest.sessionId));
     if (!session) return fail('unknown compositor session');
-    if (typeof root.MediaRecorder !== 'function') {
-      return fail('这个浏览器不支持 MediaRecorder，无法在本地合成视频');
-    }
-
+    const output = (manifest && manifest.output) || {};
+    const width = evenSize(Number(output.width) || Number(manifest.width) || session.width || 1280);
+    const height = evenSize(Number(output.height) || Number(manifest.height) || session.height || 720);
+    const fps = Number(output.fps) || Number(manifest.fps) || Number(session.fps) || 30;
+    const format = String(output.format || manifest.format || 'mp4').toLowerCase() === 'webm' ? 'webm' : 'mp4';
+    const filePath = String(output.filePath || manifest.filePath || '');
+    const layers = (Array.isArray(manifest.layers) ? manifest.layers : [])
+      .filter((layer) => layer && layer.visible !== false)
+      .map((layer) => ({ ...layer, source: session.sources.get(String(layer.sourceId)), mask: layer.maskId ? session.masks.get(String(layer.maskId)) : null }))
+      .filter((layer) => layer.source);
+    if (!layers.length) return fail('没有可合成的视频源');
     jobSeq += 1;
     const jobId = String(manifest.jobId || 'web-vc-job-' + jobSeq);
-    const width = Number(manifest.width || session.width);
-    const height = Number(manifest.height || session.height);
-    const fps = Number(manifest.fps || session.fps) || 24;
-
-    const report = (stage, progress01, message) =>
-      compositorProgress.emit({ jobId, stage, progress01, message });
-
+    const report = (stage, progress01, message) => compositorProgress.emit({ jobId, stage, progress01, message });
+    report('prepare', 0, '准备视频源');
+    const ffmpeg = await loadFfmpeg();
+    compositorJobs.set(jobId, ffmpeg);
+    const seq = ++videoOutputSeq;
+    const tag = 'merge' + seq + '_';
+    const outFile = tag + 'out.' + format;
+    const scratch = [outFile];
+    const label = '正在合成视频…';
+    ffmpegJob = { jobId, last: -1, log: '', label };
+    const relay = videoToolProgress.subscribe((event) => { if (event && event.jobId === jobId) report('render', event.progress01, '合成中 ' + Math.round(event.progress01 * 100) + '%'); });
+    busy.begin(jobId, label);
     try {
-      report('prepare', 0, '准备视频源');
-
-      // Load every source as a <video> we can draw from.
-      const layers = [];
-      for (const source of [...session.sources.values()].sort((a, b) => a.z - b.z)) {
-        const url = source.file ? URL.createObjectURL(source.file) : source.url;
-        if (!url) continue;
-        const video = root.document.createElement('video');
-        video.src = url;
-        video.muted = true;
-        video.playsInline = true;
-        video.preload = 'auto';
-        await new Promise((resolve, reject) => {
-          video.addEventListener('loadedmetadata', resolve, { once: true });
-          video.addEventListener('error', () => reject(new Error('无法读取视频源 ' + source.id)), { once: true });
-        });
-        layers.push({ video, opacity: source.opacity, revoke: source.file ? url : '' });
-      }
-      if (!layers.length) return fail('没有可合成的视频源');
-
-      const duration = Math.max(...layers.map((l) => Number(l.video.duration) || 0));
-      if (!Number.isFinite(duration) || duration <= 0) return fail('视频源没有有效时长');
-
-      const canvas = root.document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-
-      const stream = canvas.captureStream(fps);
-      const mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']
-        .find((m) => root.MediaRecorder.isTypeSupported(m)) || 'video/webm';
-      const recorder = new root.MediaRecorder(stream, { mimeType: mime });
-      const chunks = [];
-      recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
-
-      const finished = new Promise((resolve) => { recorder.onstop = resolve; });
-      recorder.start();
-
-      const totalFrames = Math.max(1, Math.round(duration * fps));
-      for (let frame = 0; frame < totalFrames; frame += 1) {
-        if (cancelled.has(jobId)) {
-          recorder.stop();
-          await finished;
-          cancelled.delete(jobId);
-          return { ok: false, canceled: true, code: 'export_canceled' };
-        }
-        const t = frame / fps;
-        ctx.clearRect(0, 0, width, height);
-        for (const layer of layers) {
-          if (t > (layer.video.duration || 0)) continue;
-          await seekTo(layer.video, t);
-          ctx.globalAlpha = layer.opacity;
-          ctx.drawImage(layer.video, 0, 0, width, height);
-        }
-        ctx.globalAlpha = 1;
-        if (frame % Math.max(1, Math.round(fps / 2)) === 0) {
-          report('render', frame / totalFrames, '合成中 ' + Math.round((frame / totalFrames) * 100) + '%');
-          await new Promise((r) => setTimeout(r, 0));
+      // 上层在前: the manifest lists the top layer first, so the overlays go on from the bottom up.
+      const stack = layers.slice().reverse();
+      const duration = Math.max(...stack.map((layer) => Number(layer.source.probe.durationSec) || 0));
+      const args = [];
+      let inputs = 0;
+      for (let i = 0; i < stack.length; i += 1) {
+        const layer = stack[i];
+        const ext = (String(layer.source.fileName || '').split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+        const name = tag + 'src' + i + '.' + ext;
+        await ffmpeg.writeFile(name, await bytesOf(layer.source.blob));
+        scratch.push(name);
+        args.push('-i', name);
+        layer.videoInput = inputs++;
+        if (layer.mask) {
+          const maskName = tag + 'mask' + i + '.png';
+          await ffmpeg.writeFile(maskName, layer.mask.bytes.slice());
+          scratch.push(maskName);
+          args.push('-loop', '1', '-i', maskName);
+          layer.maskInput = inputs++;
         }
       }
-
-      recorder.stop();
-      await finished;
-      for (const layer of layers) if (layer.revoke) URL.revokeObjectURL(layer.revoke);
-
-      const blob = new Blob(chunks, { type: mime });
-      report('done', 1, '视频合成完成');
-
-      return {
-        ok: true,
-        jobId,
-        blob,
-        url: URL.createObjectURL(blob),
-        bytes: blob.size,
-        // Said plainly: the desktop writes MP4, a browser recorder writes WebM.
-        format: 'webm',
-        mimeType: mime,
-        note: 'Web 版用浏览器录制合成，输出为 WebM（桌面版为 MP4）'
+      const filters = ['color=c=black:s=' + width + 'x' + height + ':r=' + fps + ':d=' + duration.toFixed(3) + '[base]'];
+      let last = 'base';
+      stack.forEach((layer, i) => {
+        const probe = layer.source.probe;
+        const scale = Math.max(0.01, Number(layer.transform && layer.transform.scale) || 1);
+        const lw = evenSize(probe.displayWidth * scale);
+        const lh = evenSize(probe.displayHeight * scale);
+        const cx = Number(layer.transform && layer.transform.centerX);
+        const cy = Number(layer.transform && layer.transform.centerY);
+        const x = Math.round((Number.isFinite(cx) ? cx : width / 2) - lw / 2);
+        const y = Math.round((Number.isFinite(cy) ? cy : height / 2) - lh / 2);
+        filters.push('[' + layer.videoInput + ':v]scale=' + lw + ':' + lh + ':flags=lanczos,setsar=1,format=rgba[l' + i + ']');
+        let src = 'l' + i;
+        if (layer.mask) {
+          filters.push('[' + layer.maskInput + ':v]scale=' + lw + ':' + lh + ':flags=lanczos,format=rgba,alphaextract[a' + i + ']');
+          filters.push('[l' + i + '][a' + i + ']alphamerge[lm' + i + ']');
+          src = 'lm' + i;
+        }
+        filters.push('[' + last + '][' + src + ']overlay=x=' + x + ':y=' + y + ':format=auto:eof_action=pass[o' + i + ']');
+        last = 'o' + i;
+      });
+      filters.push('[' + last + ']format=yuv420p[vout]');
+      const audioLayer = manifest.audio && manifest.audio.mode === 'single'
+        ? stack.find((layer) => String(layer.layerId) === String(manifest.audio.sourceLayerId) && layer.source.probe.hasAudio)
+        : null;
+      const encode = format === 'webm'
+        ? ['-c:v', 'libvpx', '-crf', '10', '-b:v', String(clampNumber(Math.round(width * height * fps * 0.12 / 1000), 1500, 24000)) + 'k', '-deadline', 'good', '-cpu-used', '4', '-pix_fmt', 'yuv420p']
+        : ['-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
+      const run = async (withAudio) => {
+        const full = args.slice();
+        full.push('-filter_complex', filters.join(';'), '-map', '[vout]');
+        if (withAudio) full.push('-map', audioLayer.videoInput + ':a?', '-c:a', format === 'webm' ? 'libopus' : 'aac', '-b:a', '160k');
+        else full.push('-an');
+        full.push(...encode, '-r', String(fps), '-t', duration.toFixed(3), '-y', outFile);
+        ffmpegJob.log = '';
+        return ffmpeg.exec(full);
       };
+      busy.update(jobId, label, 0);
+      let code = await run(!!audioLayer);
+      if (code !== 0 && audioLayer && !cancelled.has(jobId)) code = await run(false);
+      if (cancelled.has(jobId)) { cancelled.delete(jobId); return { ok: false, canceled: true, code: 'export_canceled', jobId }; }
+      if (code !== 0) {
+        const tail = ffmpegJob.log.split('\n').filter((line) => /error|invalid|failed|unsupported|not found/i.test(line)).slice(-3).join('；');
+        throw new Error('ffmpeg 退出码 ' + code + (tail ? '：' + tail.slice(0, 240) : ''));
+      }
+      const data = await ffmpeg.readFile(outFile);
+      const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+      const mimeType = format === 'webm' ? 'video/webm' : 'video/mp4';
+      const blob = new Blob([bytes], { type: mimeType });
+      const fileName = (filePath.split('/').pop() || ('novaflow_video_merge.' + format));
+      const token = filePath || ('web-video://' + seq + '/' + fileName);
+      videoOutputs.set(token, { tool: 'video-merge', token, blob, fileName, url: '' });
+      for (const entry of cache.values()) if (entry && entry.path === token) { entry.blob = blob; entry.bytes = blob.size; }
+      report('done', 1, '视频合成完成');
+      return { ok: true, jobId, filePath: token, path: token, blob, url: URL.createObjectURL(blob), bytes: blob.size, format, mimeType, width, height, fps };
     } catch (error) {
-      return fail(error && error.message ? error.message : error, { jobId });
+      const message = String((error && error.message) || error);
+      if (/RuntimeError|memory access|unreachable|abort/i.test(message)) {
+        ffmpegPromise = null;
+        try { if (typeof ffmpeg.terminate === 'function') ffmpeg.terminate(); } catch (_) { /* already gone */ }
+      }
+      report('error', 0, message);
+      return fail(cancelled.has(jobId) ? 'export_canceled' : ('视频合成失败：' + message), { jobId });
+    } finally {
+      relay();
+      busy.end(jobId);
+      compositorJobs.delete(jobId);
+      cancelled.delete(jobId);
+      if (ffmpegPromise) for (const name of scratch) await ffmpeg.deleteFile(name).catch(() => {});
+      ffmpegJob = null;
     }
   };
-
-  function seekTo(video, time) {
-    return new Promise((resolve) => {
-      if (Math.abs(video.currentTime - time) < 0.001) { resolve(); return; }
-      const done = () => { video.removeEventListener('seeked', done); resolve(); };
-      video.addEventListener('seeked', done);
-      try { video.currentTime = time; } catch (_) { resolve(); }
-    });
-  }
 
   // ------------------------------------------------------------------ report
   runtime.capabilities = {
@@ -1550,6 +1858,20 @@
   // ---- file writing ------------------------------------------------------
   api.writeBinaryFile = async (payload) => {
     const options = payload || {};
+    // A web-temp:// folder (exportCreateTempDir) collects the frames of a clip
+    // being encoded; nothing there touches disk or asks anything.
+    const tempFiles = api.__webTempDirs && api.__webTempDirs.get(String(options.dir || ''));
+    if (tempFiles) {
+      const fileName = String(options.fileName || options.path || 'frame.png').split(/[\\/]/).pop();
+      const data = options.data || options.buffer || options.bytes;
+      if (!data) return fail('Web 版需要在保存时一并提供文件内容');
+      const bytes = data instanceof Blob ? new Uint8Array(await data.arrayBuffer())
+        : data instanceof ArrayBuffer ? new Uint8Array(data)
+          : ArrayBuffer.isView(data) ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
+            : Uint8Array.from(data);
+      tempFiles.set(fileName, bytes);
+      return ok({ saved: true, name: fileName, dir: options.dir, via: 'web-temp' });
+    }
     // Into the folder pickDirectory handed out, when the caller went through
     // it; otherwise the save dialog, one file at a time.
     const folder = directoryHandles.get(String(options.dir || ''));
@@ -1575,7 +1897,11 @@
     });
   };
 
-  api.exportCleanupDir = async () => ok({ cleaned: true, note: 'Web 版没有导出临时目录' });
+  api.exportCleanupDir = async (payload) => {
+    const dir = String((payload && payload.dir) || '');
+    if (api.__webTempDirs && api.__webTempDirs.delete(dir)) return ok({ cleaned: true, dir });
+    return ok({ cleaned: true, note: 'Web 版没有导出临时目录' });
+  };
 
   // ---- misc runtime ------------------------------------------------------
   api.minimaxH3RuntimeEnsureStarted = async () => api.runtimeEnsureStarted();
@@ -1593,22 +1919,7 @@
   };
 
 
-  /**
-   * Match the colour of the first and last frames.
-   *
-   * The desktop does this with ffmpeg. Here it is a canvas operation: sample
-   * both frames' mean colour and report the correction, leaving the pixel work
-   * to the caller that already owns the frames.
-   */
-  api.aiSeqFixHeadTailColor = async (payload) => {
-    const frames = (payload && payload.frames) || [];
-    if (frames.length < 2) return ok({ adjusted: false, reason: 'not enough frames' });
-    return ok({
-      adjusted: false,
-      supported: false,
-      note: 'Web 版暂未实现首尾帧色彩校正，序列本身不受影响'
-    });
-  };
+  // aiSeqFixHeadTailColor (颜色校正) is implemented in the first block, on ffmpeg.wasm.
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 // ---------------------------------------------------------------------------
