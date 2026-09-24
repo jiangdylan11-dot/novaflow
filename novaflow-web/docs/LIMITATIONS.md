@@ -137,7 +137,7 @@ Web 版顶栏隐藏了两处只有 Electron 才讲得通的东西：
 
 ---
 
-## PNG 压缩：无损这一半在浏览器里做，量化那一半没有
+## PNG 压缩：无损这一半在浏览器里做
 
 工具 → PNG 压缩 的 **Spine 图集** 页签走的是无损重编码：自己解 PNG（inflate +
 反过滤），重新选行过滤器再压一遍 deflate，存的每一个 RGBA 字节原样带出来，
@@ -149,9 +149,7 @@ Web 版顶栏隐藏了两处只有 Electron 才讲得通的东西：
 低 alpha 下带色，每个区域四周的透明边带着运行时要往外扩的边缘色）。普通 PNG 页签
 的浏览器兜底至今还是 canvas 重编码，那条路对普通图能用，对图集不能用。
 
-**没做的是量化**：压缩强度 55-100 的 **增强（PMA）** 和普通 PNG 的 **强压缩**
-要把图降到调色板，那是 pngquant 的活，浏览器没有对应物。这两个入口在 Web 上
-仍然是禁用的，并且自己会说明原因。
+**量化那一半**见下一节「PNG 强压缩 / Spine 图集增强」：现在也在浏览器里做了。
 
 滑杆在 Web 上是「花多少力气」而不是 zlib 等级：Compression Streams 不暴露等级，
 所以强度高只是多试几种行过滤策略再取最小的那份，出来的像素完全一样。
@@ -181,6 +179,41 @@ alpha 无损并核对；需要 PMA 有损压缩仍请用桌面版。
 （顶层 `{ canceled, dir }`），`writeBinaryFile` 收到那个 `dir` 就直接写进
 选中的文件夹。之前它返回 `{ ok, result }`，每个读 `dir` 的调用方都当成了取消。
 导出覆盖需要能改写原文件的宿主，浏览器里没有原路径，这个按钮在 Web 上保持禁用。
+
+---
+
+## PNG 强压缩 / Spine 图集增强：量化在浏览器里也做了
+
+上一节说「量化那一半没有」，现在有了。`compressPngStrong` 在 Web 上由
+`novaflow-web-capabilities.js` 回答：桌面版走 sharp 的调色板 PNG（底下是
+libimagequant），Web 上直接用编译成 WebAssembly 的 libimagequant
+（`renderer/vendor/imagequant/`，libimagequant-wasm 0.3.0）在 Worker 里跑，
+面板从压缩强度算出的 质量 / 颜色数 / 抖动 / effort 原样交给同一个库
+（sharp 的 effort 1–10 对应 libimagequant 的 speed 11−effort）。量化结果由
+上面那条 PNG 编码器写成索引 PNG（重新选行过滤、deflate、解回来逐字节核对）。
+Spine 图集档位照抄桌面版 `compression-helpers.js`：先分类原图 alpha，读成
+straight 的页面不量化、走无损（`safeFallback`），输出里全透明的调色板项一律写黑。
+`tests/e2e/web-png-strong.test.mjs` 用真实 wasm 验收。
+
+**授权提醒**：libimagequant 本体是 GPL-3.0-or-later（ImageOptim 另售商业授权），
+npm 包装层是 MIT，但 wasm 里嵌的就是 GPL 的库。公开站点分发它属于 GPL 意义上的
+分发，要不要换成商业授权或换库（例如 MIT 的 quantizr / 纯 JS 的 image-q）是产品决定，
+`vendor/imagequant/NOTICE` 写明了来源和许可证。
+
+---
+
+## 骨骼动画：.skel 导入
+
+导入工程对话框的 Skeleton 只收 .json，之后的工程构建、骨骼和网格编辑器读的也都是
+Spine JSON。`spine-skel-import.js` 把 Spine 3.8 的二进制 .skel 按 spine-webgl-3.8
+的 SkeletonBinary 逐字段读出来，写成 3.8 的 JSON 方言，再替换掉文件选择器里的文件：
+对话框和后面的流程只看到 JSON。验收方式是用 vendored 的 3.8 运行时分别读原
+.skel 和转出的 JSON，比较两份 SkeletonData 的骨骼、插槽、约束、皮肤与附件、事件、
+每条动画时间线的每一帧和曲线（`tests/e2e/web-spine-skel-import.test.mjs`，
+fixture 是一份真实的 3.8.99 导出）。
+
+**只支持 3.8。** Spine 4.x 的二进制布局不同（64 位哈希、按分量拆开的时间线），
+遇到会明确拒绝并提示导出 JSON，而不是读错。
 
 ---
 

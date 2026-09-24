@@ -1027,23 +1027,99 @@
     }
   };
 
-  api.openSpineProject = async () => {
-    return await new Promise((resolve) => {
+  // ---- 骨骼动画 → 导入工程 ------------------------------------------------
+  //
+  // The import panel asks the host for its files: openSpineJson / openSpineAtlas
+  // / openSpineImage for one file each, openSpineProject for the whole set, all
+  // answering { canceled } or the desktop's { fileName, text } / { images }
+  // shapes. Without them the panel falls back to a hidden input that only
+  // exists while its modal is open, so on the Web the 导入 buttons did nothing.
+  //
+  // A .skel is taken wherever a .json is: spine-skel-import.js turns the
+  // Spine 3.8 binary into the JSON text the panel reads.
+  const pickFiles = (accept, multiple) => {
+    // Tests drive this instead of a native dialog.
+    if (typeof root.NovaFlowWebFilePicker === 'function') return Promise.resolve(root.NovaFlowWebFilePicker({ accept, multiple }));
+    return new Promise((resolve) => {
       const input = root.document.createElement('input');
       input.type = 'file';
-      input.multiple = true;
-      input.accept = '.json,.skel,.atlas,.png,.webp';
+      input.multiple = !!multiple;
+      input.accept = accept;
       input.style.display = 'none';
-      input.addEventListener('change', () => {
-        const files = [...(input.files || [])].map((f) => ({
-          name: f.name, size: f.size, type: f.type, file: f
-        }));
+      let settled = false;
+      const finish = (files) => {
+        if (settled) return;
+        settled = true;
         input.remove();
-        resolve(files.length ? ok({ files, via: 'input' }) : ok({ canceled: true }));
-      });
+        resolve(files && files.length ? files : null);
+      };
+      input.addEventListener('change', () => finish([...(input.files || [])]));
+      input.addEventListener('cancel', () => finish(null));
       root.document.body.appendChild(input);
       input.click();
     });
+  };
+  const isSkelName = (name) => /\.skel$/i.test(String(name || ''));
+  const readText = (file) => file.text();
+  const readDataUrl = (file) => new Promise((resolve, reject) => {
+    const reader = new root.FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('读取 ' + file.name + ' 失败'));
+    reader.readAsDataURL(file);
+  });
+  /** A skeleton file as the panel wants it: JSON text, from a .json or a .skel. */
+  async function readSpineSkeleton(file) {
+    if (!isSkelName(file.name)) return { fileName: file.name, text: await readText(file) };
+    const converter = root.NovaFlowSpineSkel;
+    if (!converter || typeof converter.toJson !== 'function') throw new Error('.skel 转换器未加载，请刷新页面后重试');
+    const { text, version } = converter.toJson(new Uint8Array(await file.arrayBuffer()));
+    return { fileName: file.name.replace(/\.skel$/i, '.json'), text, sourceFileName: file.name, convertedFromSkel: true, spineVersion: version };
+  }
+  const tell = (message) => { try { root.alert(message); } catch (_) { console.error('[novaflow-web]', message); } };
+
+  api.openSpineJson = async () => {
+    const files = await pickFiles('.json,.skel,application/json', false);
+    if (!files) return { canceled: true };
+    try {
+      return Object.assign({ canceled: false }, await readSpineSkeleton(files[0]));
+    } catch (error) {
+      const message = String((error && error.message) || error);
+      tell('导入 Skeleton 失败：' + message);
+      return { canceled: true, error: message };
+    }
+  };
+  api.openSpineJson.readFile = readSpineSkeleton;
+  api.openSpineAtlas = async () => {
+    const files = await pickFiles('.atlas', false);
+    if (!files) return { canceled: true };
+    return { canceled: false, fileName: files[0].name, text: await readText(files[0]) };
+  };
+  api.openSpineImage = async () => {
+    const files = await pickFiles('image/png,.png,image/jpeg,.jpg,.jpeg', true);
+    if (!files) return { canceled: true };
+    const images = await Promise.all(files.map(async (file) => ({ fileName: file.name, dataUrl: await readDataUrl(file) })));
+    return { canceled: false, fileName: images[0].fileName, dataUrl: images[0].dataUrl, images };
+  };
+  api.openSpineProject = async () => {
+    const files = await pickFiles('.json,.skel,.atlas,image/png,.png,image/jpeg,.jpg,.jpeg', true);
+    if (!files) return { canceled: true };
+    try {
+      const skeletons = files.filter((file) => /\.(json|skel)$/i.test(file.name));
+      const atlases = files.filter((file) => /\.atlas$/i.test(file.name));
+      const images = files.filter((file) => /\.(png|jpe?g)$/i.test(file.name));
+      if (skeletons.length !== 1) throw new Error('请选择 1 个 Skeleton（.json 或 .skel），当前 ' + skeletons.length + ' 个');
+      const skeleton = await readSpineSkeleton(skeletons[0]);
+      return {
+        canceled: false,
+        jsonFileName: skeleton.fileName,
+        jsonText: skeleton.text,
+        convertedFromSkel: !!skeleton.convertedFromSkel,
+        atlases: await Promise.all(atlases.map(async (file) => ({ fileName: file.name, text: await readText(file) }))),
+        images: await Promise.all(images.map(async (file) => ({ fileName: file.name, dataUrl: await readDataUrl(file) })))
+      };
+    } catch (error) {
+      return { canceled: true, error: String((error && error.message) || error) };
+    }
   };
 
   // ---- file writing ------------------------------------------------------
@@ -1397,25 +1473,29 @@
    * and a mismatch fails that file instead of handing back a quietly altered
    * atlas. The panel keeps the original whenever the result is not smaller.
    */
+  async function reencodeLossless(source, level) {
+    const { chunks, header, raw } = await decode(source);
+
+    let best = null;
+    for (const strategy of strategiesFor(header, level, raw.length)) {
+      const compressed = await deflate(refilter(raw, header, strategy));
+      if (!best || compressed.length < best.length) best = compressed;
+    }
+
+    const out = buildPng(chunks, best);
+    const check = await decode(out);
+    if (check.raw.length !== raw.length) throw new Error('重编码后像素长度不一致');
+    for (let i = 0; i < raw.length; i += 1) {
+      if (check.raw[i] !== raw[i]) throw new Error('重编码后像素不一致，已放弃该图');
+    }
+    return { out, header };
+  }
+
   api.compressSpineAtlasSafe = async (payload) => {
     try {
       const source = bytesFromDataUrl(payload && payload.dataUrl);
-      const { chunks, header, raw } = await decode(source);
       const level = Math.max(0, Math.min(9, Math.round(Number(payload && payload.compressionLevel) || 0)));
-
-      let best = null;
-      for (const strategy of strategiesFor(header, level, raw.length)) {
-        const compressed = await deflate(refilter(raw, header, strategy));
-        if (!best || compressed.length < best.length) best = compressed;
-      }
-
-      const out = buildPng(chunks, best);
-      const check = await decode(out);
-      if (check.raw.length !== raw.length) throw new Error('重编码后像素长度不一致');
-      for (let i = 0; i < raw.length; i += 1) {
-        if (check.raw[i] !== raw[i]) throw new Error('重编码后像素不一致，已放弃该图');
-      }
-
+      const { out, header } = await reencodeLossless(source, level);
       return {
         ok: true,
         bytes: Array.from(out),
@@ -1454,7 +1534,411 @@
   // byte, is checked byte for byte, and still lands at about half the PNG.
   // The status and warnings say so, and docs/LIMITATIONS.md records it.
   // ---------------------------------------------------------------------------
+  // vendor/ sits next to this script; index.html loads it as ./novaflow-web-capabilities.js.
+  const scriptBase = (() => {
+    try {
+      const src = root.document && root.document.currentScript && root.document.currentScript.src;
+      if (src) return new URL('./', src).href;
+      return (root.document && root.document.baseURI) || '';
+    } catch (_) {
+      return '';
+    }
+  })();
+
+  /** The decoder's raw samples, whatever the colour type and depth, as 8-bit RGBA. */
+  function pngToRgba(png) {
+    const { header, raw, chunks } = png;
+    const { width, height, bitDepth, colorType, stride } = header;
+    const out = new Uint8Array(width * height * 4);
+    const plte = (chunks.find((item) => item.type === 'PLTE') || {}).data || null;
+    const trns = (chunks.find((item) => item.type === 'tRNS') || {}).data || null;
+    if (colorType === 3 && !plte) throw new Error('PNG 缺少调色板');
+    const maxValue = (1 << bitDepth) - 1;
+    const bytesPerSample = bitDepth === 16 ? 2 : 1;
+    // Sample `index` of a row, reduced to 8 bits (the high byte of a 16-bit sample).
+    const sample = (rowStart, index) => {
+      if (bitDepth === 8) return raw[rowStart + index];
+      if (bitDepth === 16) return raw[rowStart + index * 2];
+      const bit = index * bitDepth;
+      return (raw[rowStart + (bit >> 3)] >> (8 - bitDepth - (bit & 7))) & maxValue;
+    };
+    // The full sample, for the tRNS comparison the spec makes at the file's depth.
+    const sampleFull = (rowStart, index) => (bitDepth === 16 ? (raw[rowStart + index * 2] << 8) | raw[rowStart + index * 2 + 1] : sample(rowStart, index));
+    const grey = (value) => (bitDepth < 8 ? Math.round((value * 255) / maxValue) : value);
+    const trnsGrey = trns && colorType === 0 && trns.length >= 2 ? (trns[0] << 8) | trns[1] : -1;
+    const trnsRgb = trns && colorType === 2 && trns.length >= 6 ? [(trns[0] << 8) | trns[1], (trns[2] << 8) | trns[3], (trns[4] << 8) | trns[5]] : null;
+    for (let y = 0; y < height; y += 1) {
+      const rowStart = y * stride;
+      for (let x = 0; x < width; x += 1) {
+        const o = (y * width + x) * 4;
+        if (colorType === 6) {
+          const i = rowStart + x * 4 * bytesPerSample;
+          out[o] = raw[i]; out[o + 1] = raw[i + bytesPerSample]; out[o + 2] = raw[i + 2 * bytesPerSample]; out[o + 3] = raw[i + 3 * bytesPerSample];
+        } else if (colorType === 2) {
+          const i = x * 3;
+          out[o] = sample(rowStart, i); out[o + 1] = sample(rowStart, i + 1); out[o + 2] = sample(rowStart, i + 2);
+          out[o + 3] = trnsRgb && sampleFull(rowStart, i) === trnsRgb[0] && sampleFull(rowStart, i + 1) === trnsRgb[1] && sampleFull(rowStart, i + 2) === trnsRgb[2] ? 0 : 255;
+        } else if (colorType === 4) {
+          const i = x * 2;
+          out[o] = out[o + 1] = out[o + 2] = sample(rowStart, i);
+          out[o + 3] = sample(rowStart, i + 1);
+        } else if (colorType === 3) {
+          const index = sample(rowStart, x);
+          if (index * 3 + 2 >= plte.length) throw new Error('PNG 调色板索引越界');
+          out[o] = plte[index * 3]; out[o + 1] = plte[index * 3 + 1]; out[o + 2] = plte[index * 3 + 2];
+          out[o + 3] = trns && index < trns.length ? trns[index] : 255;
+        } else {
+          out[o] = out[o + 1] = out[o + 2] = grey(sample(rowStart, x));
+          out[o + 3] = trnsGrey >= 0 && sampleFull(rowStart, x) === trnsGrey ? 0 : 255;
+        }
+      }
+    }
+    return out;
+  }
+  function countOverAlpha(rgba) {
+    let count = 0;
+    for (let i = 0; i < rgba.length; i += 4) {
+      if (Math.max(rgba[i], rgba[i + 1], rgba[i + 2]) > rgba[i + 3]) count += 1;
+    }
+    return count;
+  }
+  function readPngSource(payload) {
+    const bytes = payload && payload.bytes;
+    if (bytes instanceof Uint8Array && bytes.length) return bytes;
+    if (bytes && typeof bytes === 'object' && typeof bytes.length === 'number' && bytes.length) return Uint8Array.from(bytes);
+    if (payload && typeof payload.dataUrl === 'string' && payload.dataUrl) return bytesFromDataUrl(payload.dataUrl);
+    throw new Error('图片数据无效');
+  }
+
   if (typeof api.convertSpineAtlasWebp !== 'function') installSpineAtlasWebp();
+  if (typeof api.compressPngStrong !== 'function') installPngStrong();
+
+  // ---------------------------------------------------------------------------
+  // PNG 强压缩 and Spine 图集增强压缩 (工具 → PNG 压缩): quantise to a palette.
+  //
+  // The desktop answers `compressPngStrong` with sharp's palette PNG, which is
+  // libimagequant. Here it is libimagequant itself, compiled to WebAssembly
+  // (vendor/imagequant, libimagequant-wasm 0.3.0 - GPL, see its NOTICE), in
+  // a worker: the quality / colours / dither / effort the panel derives from
+  // 压缩强度 go to the same library with the same meaning (sharp's effort 1-10
+  // is libimagequant speed 11-effort). The indexed image it hands back is
+  // written by the PNG encoder above - re-filtered, deflated, read back and
+  // compared - so the pixels in the file are exactly the quantiser's.
+  //
+  // The Spine profile (profile: "spine-atlas-pma") does what the desktop's
+  // compression-helpers.js does: the page's stored alpha is classified, a page
+  // that reads as straight alpha is not quantised but re-encoded losslessly
+  // (safeFallback), and every fully transparent palette entry is written black
+  // so a premultiplied runtime cannot pick colour up from it.
+  // ---------------------------------------------------------------------------
+  function installPngStrong() {
+    const IMAGEQUANT_VERSION = '0.3.0';
+    const SPINE_ATLAS_PMA_PROFILE = 'spine-atlas-pma';
+    const MAX_ALPHA_ANALYSIS_PIXELS = 4096 * 4096;
+    const vendorUrl = (file) => new URL('vendor/imagequant/' + file + '?v=' + IMAGEQUANT_VERSION, scriptBase || root.location.href).href;
+    const clamp = (value, min, max, fallback) => {
+      const number = Number(value);
+      return Number.isFinite(number) ? Math.max(min, Math.min(max, number)) : fallback;
+    };
+
+    // ---- the quantiser ----------------------------------------------------
+    const QUANT_WORKER_SOURCE = [
+      'let wasm = null;',
+      'self.onmessage = async (event) => {',
+      '  const { id, op } = event.data;',
+      '  try {',
+      '    if (op === "init") {',
+      '      wasm = await import(event.data.moduleUrl);',
+      '      await wasm.default({ module_or_path: event.data.wasmBinary });',
+      '      self.postMessage({ id, ok: true });',
+      '    } else if (op === "quantize") {',
+      '      const { rgba, width, height, options } = event.data;',
+      '      const quantizer = new wasm.ImageQuantizer();',
+      '      try {',
+      '        quantizer.setSpeed(options.speed);',
+      '        quantizer.setQuality(options.minQuality, options.quality);',
+      '        quantizer.setMaxColors(options.colors);',
+      '        const result = quantizer.quantizeImage(rgba, width, height);',
+      '        try {',
+      '          result.setDithering(options.dither);',
+      '          const palette = result.getPalette();',
+      '          const indices = new Uint8Array(result.getPaletteIndices(rgba, width, height));',
+      '          const flat = new Uint8Array(palette.length * 4);',
+      '          for (let i = 0; i < palette.length; i += 1) { const c = palette[i]; flat[i * 4] = c[0]; flat[i * 4 + 1] = c[1]; flat[i * 4 + 2] = c[2]; flat[i * 4 + 3] = c[3]; }',
+      '          self.postMessage({ id, ok: true, palette: flat, indices, quality: result.getQuantizationQuality() }, [flat.buffer, indices.buffer]);',
+      '        } finally { result.free(); }',
+      '      } finally { quantizer.free(); }',
+      '    } else {',
+      '      throw new Error("unknown op " + op);',
+      '    }',
+      '  } catch (error) {',
+      '    self.postMessage({ id, ok: false, error: String((error && error.message) || error) });',
+      '  }',
+      '};'
+    ].join('\n');
+
+    async function fetchWasm(url) {
+      const response = await root.fetch(url);
+      if (!response.ok) throw new Error('下载调色板压缩器失败（' + response.status + '）');
+      return await response.arrayBuffer();
+    }
+    const quantizeWith = (wasm, rgba, width, height, options) => {
+      const quantizer = new wasm.ImageQuantizer();
+      try {
+        quantizer.setSpeed(options.speed);
+        quantizer.setQuality(options.minQuality, options.quality);
+        quantizer.setMaxColors(options.colors);
+        const result = quantizer.quantizeImage(rgba, width, height);
+        try {
+          result.setDithering(options.dither);
+          const palette = result.getPalette();
+          const indices = new Uint8Array(result.getPaletteIndices(rgba, width, height));
+          const flat = new Uint8Array(palette.length * 4);
+          for (let i = 0; i < palette.length; i += 1) { const c = palette[i]; flat[i * 4] = c[0]; flat[i * 4 + 1] = c[1]; flat[i * 4 + 2] = c[2]; flat[i * 4 + 3] = c[3]; }
+          return { palette: flat, indices, quality: result.getQuantizationQuality() };
+        } finally { result.free(); }
+      } finally { quantizer.free(); }
+    };
+    async function createWorkerQuantizer(moduleUrl, wasmBinary) {
+      const blob = new root.Blob([QUANT_WORKER_SOURCE], { type: 'text/javascript' });
+      const worker = new root.Worker(root.URL.createObjectURL(blob), { type: 'module' });
+      const pending = new Map();
+      let seq = 0;
+      worker.onmessage = (event) => {
+        const data = event.data || {};
+        const job = pending.get(data.id);
+        if (!job) return;
+        pending.delete(data.id);
+        if (data.ok) job.resolve(data); else job.reject(new Error(data.error || '调色板压缩器出错'));
+      };
+      worker.onerror = (event) => {
+        const error = new Error((event && event.message) || '调色板压缩器线程出错');
+        for (const job of pending.values()) job.reject(error);
+        pending.clear();
+      };
+      const call = (message, transfer) => new Promise((resolve, reject) => {
+        const id = ++seq;
+        pending.set(id, { resolve, reject });
+        worker.postMessage(Object.assign({ id }, message), transfer || []);
+      });
+      await call({ op: 'init', moduleUrl, wasmBinary }, [wasmBinary]);
+      return {
+        quantize: async (rgba, width, height, options) => {
+          const copy = new Uint8ClampedArray(rgba);
+          const reply = await call({ op: 'quantize', rgba: copy, width, height, options }, [copy.buffer]);
+          return { palette: reply.palette, indices: reply.indices, quality: reply.quality };
+        }
+      };
+    }
+    async function createInlineQuantizer(moduleUrl, wasmBinary) {
+      const wasm = await import(moduleUrl);
+      await wasm.default({ module_or_path: wasmBinary });
+      return { quantize: async (rgba, width, height, options) => quantizeWith(wasm, new Uint8ClampedArray(rgba), width, height, options) };
+    }
+    let quantizerPromise = null;
+    function loadQuantizer() {
+      if (root.NovaFlowWebQuantizer) return Promise.resolve(root.NovaFlowWebQuantizer);
+      if (!quantizerPromise) {
+        quantizerPromise = (async () => {
+          if (typeof root.WebAssembly !== 'object') throw new Error('这个浏览器不支持 WebAssembly，无法在网页里做调色板压缩');
+          const moduleUrl = vendorUrl('libimagequant_wasm.js');
+          if (typeof root.Worker === 'function' && typeof root.Blob === 'function' && root.URL && typeof root.URL.createObjectURL === 'function') {
+            try {
+              return await createWorkerQuantizer(moduleUrl, await fetchWasm(vendorUrl('libimagequant_wasm_bg.wasm')));
+            } catch (error) {
+              console.warn('[novaflow-web] imagequant worker unavailable, quantising on the page:', error);
+            }
+          }
+          return await createInlineQuantizer(moduleUrl, await fetchWasm(vendorUrl('libimagequant_wasm_bg.wasm')));
+        })().catch((error) => {
+          quantizerPromise = null;
+          throw new Error('调色板压缩器加载失败：' + String((error && error.message) || error));
+        });
+      }
+      return quantizerPromise;
+    }
+
+    // ---- the desktop's alpha classification (compression-helpers.js) ------
+    function classifyAlpha(rgba, width, height) {
+      const pixelCount = width * height;
+      if (pixelCount > MAX_ALPHA_ANALYSIS_PIXELS) return { mode: 'ambiguous', reason: 'analysis-pixel-limit', pixelCount };
+      let transparent = 0, translucent = 0, pmaLike = 0, straightLike = 0, lowAlpha = 0, highAlpha = 0;
+      let alphaSum = 0, maxRgbSum = 0, alphaSquareSum = 0, maxRgbSquareSum = 0, alphaRgbProductSum = 0;
+      let lowAlphaRgbSum = 0, highAlphaRgbSum = 0, lowAlphaNormalizedRgbSum = 0, highAlphaNormalizedRgbSum = 0;
+      let minTranslucentAlpha = 255, maxTranslucentAlpha = 0;
+      const buckets = new Set();
+      for (let i = 0; i < rgba.length; i += 4) {
+        const alpha = rgba[i + 3];
+        if (alpha <= 4) { transparent += 1; continue; }
+        if (alpha >= 250) continue;
+        const maxRgb = Math.max(rgba[i], rgba[i + 1], rgba[i + 2]);
+        translucent += 1;
+        if (alpha <= 32) { lowAlpha += 1; lowAlphaRgbSum += maxRgb; lowAlphaNormalizedRgbSum += maxRgb / alpha; }
+        if (alpha >= 128) { highAlpha += 1; highAlphaRgbSum += maxRgb; highAlphaNormalizedRgbSum += maxRgb / alpha; }
+        alphaSum += alpha; maxRgbSum += maxRgb; alphaSquareSum += alpha * alpha; maxRgbSquareSum += maxRgb * maxRgb; alphaRgbProductSum += alpha * maxRgb;
+        if (alpha < minTranslucentAlpha) minTranslucentAlpha = alpha;
+        if (alpha > maxTranslucentAlpha) maxTranslucentAlpha = alpha;
+        buckets.add(Math.min(15, Math.floor(alpha / 16)));
+        if (maxRgb <= alpha + 3) pmaLike += 1;
+        if (maxRgb > alpha + 18) straightLike += 1;
+      }
+      const reason = 'full-resolution-alpha-analysis';
+      if (transparent === 0 && translucent === 0) return { mode: 'opaque', reason, pixelCount };
+      const premultipliedRatio = translucent > 0 ? pmaLike / translucent : 0;
+      const straightRatio = translucent > 0 ? straightLike / translucent : 0;
+      const numerator = translucent * alphaRgbProductSum - alphaSum * maxRgbSum;
+      const denominator = Math.sqrt((translucent * alphaSquareSum - alphaSum * alphaSum) * (translucent * maxRgbSquareSum - maxRgbSum * maxRgbSum));
+      const correlation = denominator > 0 ? numerator / denominator : 0;
+      const lowMean = lowAlpha > 0 ? lowAlphaRgbSum / lowAlpha : 0;
+      const highMean = highAlpha > 0 ? highAlphaRgbSum / highAlpha : 0;
+      const intensityGrowth = lowMean > 0 ? highMean / lowMean : highMean > 0 ? 255 : 0;
+      const lowNormalized = lowAlpha > 0 ? lowAlphaNormalizedRgbSum / lowAlpha : 0;
+      const highNormalized = highAlpha > 0 ? highAlphaNormalizedRgbSum / highAlpha : 0;
+      const retention = lowNormalized > 0 ? highNormalized / lowNormalized : highNormalized > 0 ? 255 : 0;
+      let mode = 'ambiguous';
+      if (translucent >= 64 && lowAlpha >= 64 && minTranslucentAlpha <= 16 && maxTranslucentAlpha >= 128 && buckets.size >= 8
+        && correlation >= 0.35 && intensityGrowth >= 4 && retention >= 0.5 && premultipliedRatio >= 0.995 && straightRatio <= 0.001) {
+        mode = 'pma-like';
+      } else if (translucent >= 64 && straightRatio >= 0.04) {
+        mode = 'straight';
+      }
+      return { mode, reason, pixelCount };
+    }
+    /** Palette entries of an indexed source that are fully transparent yet carry colour. */
+    function countDirtyTransparentEntries(png) {
+      if (png.header.colorType !== 3) return 0;
+      const plte = (png.chunks.find((item) => item.type === 'PLTE') || {}).data;
+      const trns = (png.chunks.find((item) => item.type === 'tRNS') || {}).data;
+      if (!plte || !trns) return 0;
+      let dirty = 0;
+      for (let i = 0; i < trns.length && i * 3 + 2 < plte.length; i += 1) {
+        if (trns[i] === 0 && (plte[i * 3] || plte[i * 3 + 1] || plte[i * 3 + 2])) dirty += 1;
+      }
+      return dirty;
+    }
+
+    // ---- writing the indexed PNG ----------------------------------------
+    const be32 = (value) => [(value >>> 24) & 255, (value >>> 16) & 255, (value >>> 8) & 255, value & 255];
+    function packIndices(indices, width, height, bitDepth) {
+      const stride = Math.ceil((width * bitDepth) / 8);
+      const raw = new Uint8Array(height * stride);
+      if (bitDepth === 8) {
+        for (let y = 0; y < height; y += 1) raw.set(indices.subarray(y * width, (y + 1) * width), y * stride);
+      } else {
+        const perByte = 8 / bitDepth;
+        for (let y = 0; y < height; y += 1) {
+          for (let x = 0; x < width; x += 1) {
+            raw[y * stride + Math.floor(x / perByte)] |= indices[y * width + x] << (8 - bitDepth - (x % perByte) * bitDepth);
+          }
+        }
+      }
+      return { raw, stride };
+    }
+    async function writeIndexedPng(width, height, palette, indices, level) {
+      const colors = palette.length / 4;
+      const bitDepth = colors <= 2 ? 1 : colors <= 4 ? 2 : colors <= 16 ? 4 : 8;
+      const { raw, stride } = packIndices(indices, width, height, bitDepth);
+      const header = { width, height, bitDepth, colorType: 3, interlace: 0, bytesPerPixel: 1, stride };
+      const plte = new Uint8Array(colors * 3);
+      const trns = new Uint8Array(colors);
+      for (let i = 0; i < colors; i += 1) {
+        plte[i * 3] = palette[i * 4]; plte[i * 3 + 1] = palette[i * 4 + 1]; plte[i * 3 + 2] = palette[i * 4 + 2];
+        trns[i] = palette[i * 4 + 3];
+      }
+      let trnsLength = colors;
+      while (trnsLength > 0 && trns[trnsLength - 1] === 255) trnsLength -= 1;
+      const chunks = [{ type: 'IHDR', data: Uint8Array.from([...be32(width), ...be32(height), bitDepth, 3, 0, 0, 0]) }, { type: 'PLTE', data: plte }];
+      if (trnsLength > 0) chunks.push({ type: 'tRNS', data: trns.subarray(0, trnsLength) });
+      chunks.push({ type: 'IDAT', data: new Uint8Array(0) });
+      let best = null;
+      for (const strategy of strategiesFor(header, level, raw.length)) {
+        const compressed = await deflate(refilter(raw, header, strategy));
+        if (!best || compressed.length < best.length) best = compressed;
+      }
+      const out = buildPng(chunks, best);
+      const check = await decode(out);
+      if (check.header.colorType !== 3 || check.header.bitDepth !== bitDepth || check.raw.length !== raw.length) throw new Error('调色板 PNG 写出后校验失败');
+      for (let i = 0; i < raw.length; i += 1) {
+        if (check.raw[i] !== raw[i]) throw new Error('调色板 PNG 写出后像素不一致');
+      }
+      return out;
+    }
+
+    async function compressPngStrong(payload) {
+      const source = readPngSource(payload);
+      const png = await decode(source);
+      const { width, height } = png.header;
+      const compressionLevel = Math.round(clamp(payload.compressionLevel, 0, 9, 9));
+      const effort = Math.round(clamp(payload.effort, 1, 10, 8));
+      const quality = Math.round(clamp(payload.quality, 1, 100, 80));
+      const colors = Math.round(clamp(payload.colors !== undefined ? payload.colors : payload.colours, 2, 256, 256));
+      const dither = clamp(payload.dither, 0, 1, 0.5);
+      const spineProfile = String(payload.profile || '').trim() === SPINE_ATLAS_PMA_PROFILE;
+
+      const rgba = pngToRgba(png);
+      let alphaAnalysis = null;
+      let effectivePalette = true;
+      let inputDirty = 0;
+      if (spineProfile) {
+        inputDirty = countDirtyTransparentEntries(png);
+        alphaAnalysis = classifyAlpha(rgba, width, height);
+        if (alphaAnalysis.mode === 'straight') effectivePalette = false;
+      }
+
+      let out;
+      let paletteLength = null;
+      let achievedQuality = null;
+      let repaired = 0;
+      if (effectivePalette) {
+        const quantizer = await loadQuantizer();
+        const result = await quantizer.quantize(rgba, width, height, { speed: 11 - effort, minQuality: 0, quality, colors, dither });
+        const palette = new Uint8Array(result.palette);
+        if (!palette.length || palette.length % 4 !== 0 || result.indices.length !== width * height) throw new Error('调色板压缩器返回的数据无效');
+        if (spineProfile) {
+          for (let i = 0; i < palette.length; i += 4) {
+            if (palette[i + 3] === 0 && (palette[i] || palette[i + 1] || palette[i + 2])) {
+              palette[i] = palette[i + 1] = palette[i + 2] = 0;
+              repaired += 1;
+            }
+          }
+        }
+        paletteLength = palette.length / 4;
+        achievedQuality = Number(result.quality);
+        out = await writeIndexedPng(width, height, palette, new Uint8Array(result.indices), compressionLevel);
+      } else {
+        out = (await reencodeLossless(source, compressionLevel)).out;
+      }
+
+      return {
+        ok: true,
+        bytes: Array.from(out),
+        width,
+        height,
+        size: out.length,
+        paletteLength,
+        quality: achievedQuality,
+        spineAtlasProtection: spineProfile
+          ? {
+              alphaMode: alphaAnalysis.mode,
+              pmaConfirmed: true,
+              analysisReason: alphaAnalysis.reason,
+              analyzedPixels: alphaAnalysis.pixelCount,
+              safeFallback: !effectivePalette,
+              inputDirtyTransparentEntries: inputDirty,
+              repairedTransparentEntries: repaired
+            }
+          : undefined
+      };
+    }
+
+    api.compressPngStrong = async (payload) => {
+      try {
+        return await compressPngStrong(payload || {});
+      } catch (error) {
+        return { ok: false, error: String((error && error.message) || error) };
+      }
+    };
+  }
 
   function installSpineAtlasWebp() {
     const WEBP_VENDOR_VERSION = '1.5.0';
@@ -1482,16 +1966,6 @@
     // wasm-feature-detect's SIMD probe: a module with one v128 instruction.
     const SIMD_PROBE = Uint8Array.of(0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11);
 
-    // vendor/webp/ sits next to this script; index.html loads it as ./novaflow-web-capabilities.js.
-    const scriptBase = (() => {
-      try {
-        const src = root.document && root.document.currentScript && root.document.currentScript.src;
-        if (src) return new URL('./', src).href;
-        return (root.document && root.document.baseURI) || '';
-      } catch (_) {
-        return '';
-      }
-    })();
     const vendorUrl = (file) => new URL('vendor/webp/' + file + '?v=' + WEBP_VENDOR_VERSION, scriptBase || root.location.href).href;
 
     // ---- names ----------------------------------------------------------
@@ -1628,63 +2102,7 @@
       if (image && typeof image.dataUrl === 'string' && image.dataUrl) return bytesFromDataUrl(image.dataUrl);
       throw new Error('PNG 输入无效：' + sourceName);
     }
-    /** The decoder's raw samples, whatever the colour type and depth, as 8-bit RGBA. */
-    function pngToRgba(png) {
-      const { header, raw, chunks } = png;
-      const { width, height, bitDepth, colorType, stride } = header;
-      const out = new Uint8Array(width * height * 4);
-      const plte = (chunks.find((item) => item.type === 'PLTE') || {}).data || null;
-      const trns = (chunks.find((item) => item.type === 'tRNS') || {}).data || null;
-      if (colorType === 3 && !plte) throw new Error('PNG 缺少调色板');
-      const maxValue = (1 << bitDepth) - 1;
-      const bytesPerSample = bitDepth === 16 ? 2 : 1;
-      // Sample `index` of a row, reduced to 8 bits (the high byte of a 16-bit sample).
-      const sample = (rowStart, index) => {
-        if (bitDepth === 8) return raw[rowStart + index];
-        if (bitDepth === 16) return raw[rowStart + index * 2];
-        const bit = index * bitDepth;
-        return (raw[rowStart + (bit >> 3)] >> (8 - bitDepth - (bit & 7))) & maxValue;
-      };
-      // The full sample, for the tRNS comparison the spec makes at the file's depth.
-      const sampleFull = (rowStart, index) => (bitDepth === 16 ? (raw[rowStart + index * 2] << 8) | raw[rowStart + index * 2 + 1] : sample(rowStart, index));
-      const grey = (value) => (bitDepth < 8 ? Math.round((value * 255) / maxValue) : value);
-      const trnsGrey = trns && colorType === 0 && trns.length >= 2 ? (trns[0] << 8) | trns[1] : -1;
-      const trnsRgb = trns && colorType === 2 && trns.length >= 6 ? [(trns[0] << 8) | trns[1], (trns[2] << 8) | trns[3], (trns[4] << 8) | trns[5]] : null;
-      for (let y = 0; y < height; y += 1) {
-        const rowStart = y * stride;
-        for (let x = 0; x < width; x += 1) {
-          const o = (y * width + x) * 4;
-          if (colorType === 6) {
-            const i = rowStart + x * 4 * bytesPerSample;
-            out[o] = raw[i]; out[o + 1] = raw[i + bytesPerSample]; out[o + 2] = raw[i + 2 * bytesPerSample]; out[o + 3] = raw[i + 3 * bytesPerSample];
-          } else if (colorType === 2) {
-            const i = x * 3;
-            out[o] = sample(rowStart, i); out[o + 1] = sample(rowStart, i + 1); out[o + 2] = sample(rowStart, i + 2);
-            out[o + 3] = trnsRgb && sampleFull(rowStart, i) === trnsRgb[0] && sampleFull(rowStart, i + 1) === trnsRgb[1] && sampleFull(rowStart, i + 2) === trnsRgb[2] ? 0 : 255;
-          } else if (colorType === 4) {
-            const i = x * 2;
-            out[o] = out[o + 1] = out[o + 2] = sample(rowStart, i);
-            out[o + 3] = sample(rowStart, i + 1);
-          } else if (colorType === 3) {
-            const index = sample(rowStart, x);
-            if (index * 3 + 2 >= plte.length) throw new Error('PNG 调色板索引越界');
-            out[o] = plte[index * 3]; out[o + 1] = plte[index * 3 + 1]; out[o + 2] = plte[index * 3 + 2];
-            out[o + 3] = trns && index < trns.length ? trns[index] : 255;
-          } else {
-            out[o] = out[o + 1] = out[o + 2] = grey(sample(rowStart, x));
-            out[o + 3] = trnsGrey >= 0 && sampleFull(rowStart, x) === trnsGrey ? 0 : 255;
-          }
-        }
-      }
-      return out;
-    }
-    function countOverAlpha(rgba) {
-      let count = 0;
-      for (let i = 0; i < rgba.length; i += 4) {
-        if (Math.max(rgba[i], rgba[i + 1], rgba[i + 2]) > rgba[i + 3]) count += 1;
-      }
-      return count;
-    }
+    // pngToRgba and countOverAlpha live at the section's top: 强压缩 below reads pages the same way.
     /** JPG keeps no alpha: a PMA page already is its own composite over black, a straight one is multiplied down. */
     function compositeOnBlack(rgba, pma) {
       const out = new Uint8ClampedArray(rgba.length);

@@ -1,0 +1,3 @@
+libimagequant-wasm 0.3.0 (https://github.com/akshetpandey/libimagequant-wasm), the wasm-bindgen build of the Rust imagequant crate (libimagequant, https://github.com/ImageOptim/libimagequant).
+
+The wrapper is MIT (LICENSE.wrapper). libimagequant itself is GPL-3.0-or-later, with a commercial licence sold by ImageOptim; the wasm here embeds it. See LICENSE.libimagequant.
