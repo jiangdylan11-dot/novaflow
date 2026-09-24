@@ -119,7 +119,7 @@
   }
 
   function referenceIndex(slot) {
-    const match = stringValue(slot?.getAttribute?.("data-ais-import")).match(/^art_reference_([1-3])$/);
+    const match = stringValue(slot?.getAttribute?.("data-ais-import")).match(/^art_reference_([1-9][0-9]?)$/);
     return match ? Number(match[1]) - 1 : -1;
   }
 
@@ -226,12 +226,15 @@
       if (resourceId) {
         result = controller?.onResource?.(index, resourceId);
       } else {
-        const file = files.find(isSupportedImageFile);
-        if (!file) {
+        const images = files.filter(isSupportedImageFile);
+        if (!images.length) {
           reportRejected("请拖入 PNG/JPG/WebP 图片");
           return;
         }
-        result = controller?.onFile?.(index, file);
+        // Several images at once fill this slot and the empty ones after it (a 2.1 node takes 15).
+        result = images.length > 1 && typeof controller?.onFiles === "function"
+          ? controller.onFiles(index, images)
+          : controller?.onFile?.(index, images[0]);
       }
     } catch (error) {
       reportError(error);

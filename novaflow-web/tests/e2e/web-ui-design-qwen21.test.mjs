@@ -131,15 +131,52 @@ const textOnly = await buildUi(host21, [], [], []);
 assert.equal(byClass(textOnly, 'LoadImage').length, 0);
 assert.equal(Object.keys(byClass(textOnly, 'TextEncodeQwenImage21')[0][1].inputs).filter((key) => key.startsWith('images.')).length, 0);
 
-// Drawing img2img on 2.1 gives the output back the reference's own size (the encoder floors it to 32).
-const drawI2i = JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
-  'local', 'img2img', ['ref.png'], 'NovaFlow_Art', 'recolour', '', 'client', [{ width: 512, height: 720 }],
-  { provider: 'local', mode: 'img2img', width: 512, height: 720, seed: 1, randomSeed: false }, 4, {}
+// Drawing img2img on 2.1 with W / H on reference 1's size is an edit in place: reference 1 goes in at
+// the working size, the sampler takes the encoder's own latent and the output comes back at W / H.
+const buildDraw = async (names, sizes, width, height, negative = '') => JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
+  'local', 'img2img', names, 'NovaFlow_Art', 'recolour', negative, 'client', sizes,
+  { provider: 'local', mode: 'img2img', width, height, seed: 1, randomSeed: false }, 4, {}
 ] } })));
+const drawI2i = await buildDraw(['ref.png'], [{ width: 512, height: 720 }], 512, 720);
 const drawSaved = drawI2i[byClass(drawI2i, 'SaveImage')[0][1].inputs.images[0]];
 assert.equal(drawSaved.class_type, 'ImageScale');
 assert.deepEqual([drawSaved.inputs.width, drawSaved.inputs.height], [512, 720]);
 assert.equal(byClass(drawI2i, 'KSampler')[0][1].inputs.cfg, 1);
+const drawEncode = byClass(drawI2i, 'TextEncodeQwenImage21')[0];
+assert.deepEqual(byClass(drawI2i, 'KSampler')[0][1].inputs.latent_image, [drawEncode[0], 2]);
+const drawFirst = drawI2i[drawEncode[1].inputs['images.image_1'][0]];
+assert.deepEqual([drawFirst.class_type, drawFirst.inputs.width, drawFirst.inputs.height], ['ImageScale', 512, 736]);
+assert.equal(drawI2i[drawFirst.inputs.image[0]].class_type, 'LoadImage');
+// No node reads its own output (the old graph gave the output scale reference 1's loader id).
+const reaches = (graph, from, target, seen = new Set()) => {
+  if (seen.has(from)) return false;
+  seen.add(from);
+  return Object.values(graph[from]?.inputs || {}).some((value) => Array.isArray(value) && (String(value[0]) === target || reaches(graph, String(value[0]), target, seen)));
+};
+Object.keys(drawI2i).forEach((id) => assert.ok(!reaches(drawI2i, id, id), `cycle at ${id}`));
+// W / H on another aspect lay the picture out anew on an empty latent of that size.
+const drawRelayout = await buildDraw(['ref.png'], [{ width: 512, height: 720 }], 1024, 1024);
+const relayoutLatent = byClass(drawRelayout, 'EmptyLatentImage')[0];
+assert.deepEqual([relayoutLatent[1].inputs.width, relayoutLatent[1].inputs.height], [1024, 1024]);
+assert.deepEqual(byClass(drawRelayout, 'KSampler')[0][1].inputs.latent_image, [relayoutLatent[0], 0]);
+assert.equal(drawRelayout[byClass(drawRelayout, 'SaveImage')[0][1].inputs.images[0]].class_type, 'VAEDecode');
+// A large W / H is sampled at ~1.3 MP and scaled up at the end.
+const drawLarge = await buildDraw(['ref.png'], [{ width: 4000, height: 4000 }], 2048, 2048);
+const largeFirst = drawLarge[byClass(drawLarge, 'TextEncodeQwenImage21')[0][1].inputs['images.image_1'][0]].inputs;
+assert.ok(largeFirst.width === largeFirst.height && largeFirst.width * largeFirst.height <= 1300000 && largeFirst.width % 32 === 0);
+const largeSaved = drawLarge[byClass(drawLarge, 'SaveImage')[0][1].inputs.images[0]].inputs;
+assert.deepEqual([largeSaved.width, largeSaved.height], [2048, 2048]);
+// Up to fifteen references; the ones after reference 1 share 1.5 MP, 0.5 MP at most each.
+const many = Array.from({ length: 16 }, (_, i) => `r${i}.png`);
+const drawMany = await buildDraw(many, many.map(() => ({ width: 1024, height: 1024 })), 1024, 1024);
+const manyEncode = byClass(drawMany, 'TextEncodeQwenImage21')[0][1].inputs;
+assert.equal(Object.keys(manyEncode).filter((key) => key.startsWith('images.')).length, 15);
+assert.equal(byClass(drawMany, 'LoadImage').length, 15);
+const extraPixels = Array.from({ length: 14 }, (_, i) => drawMany[manyEncode[`images.image_${i + 2}`][0]].inputs)
+  .map((inputs) => inputs.width * inputs.height);
+assert.ok(extraPixels.every((pixels) => pixels <= 500000) && extraPixels.reduce((a, b) => a + b, 0) <= 1500000);
+const fewExtra = await buildDraw(['a.png', 'b.png'], [{ width: 800, height: 600 }, { width: 400, height: 300 }], 800, 600);
+assert.equal(fewExtra[byClass(fewExtra, 'TextEncodeQwenImage21')[0][1].inputs['images.image_2'][0]].class_type, 'LoadImage');
 // Drawing on 2.1: the negative box works the same way.
 const drawNegative = JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
   'local', 'txt2img', [], 'NovaFlow_Art', 'a knight', 'blurry, extra fingers', 'client', [],
@@ -297,13 +334,15 @@ await assert.rejects(generate.run({ bridge, project, refs: [...runRefs, ...runRe
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
 await assert.rejects(generate.run({ bridge, project, refs: runRefs.slice(0, 3), state: { ...state }, prompt: 'x' }), /最多支持 2 张/);
 
-// Drawing controls on a 2.1 node: no Instant quality, no edit strength, img2img without W/H, the
-// negative prompt kept; NSFW and LoRA runs keep their old controls.
+// Drawing controls on a 2.1 node: no Instant quality, no edit strength, img2img with W / H and up to
+// fifteen references, the negative prompt kept; NSFW and LoRA runs keep their old controls.
 renderer('art-generate-model.resource.js');
 const models = globalThis.NovaFlowArtGenerateModels;
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({ qwenImage21: true }), runtimeFeatures: async () => ({ qwenImage21: true }) };
 assert.deepEqual([...models.capabilityFor('local', 'txt2img', {}).fields], ['width', 'height', 'seed', 'nsfw']);
-assert.deepEqual([...models.capabilityFor('local', 'img2img', {}).fields], ['seed', 'nsfw']);
+assert.deepEqual([...models.capabilityFor('local', 'img2img', {}).fields], ['width', 'height', 'seed', 'nsfw']);
+assert.equal(models.capabilityFor('local', 'img2img', {}).referenceLimit, 15);
+assert.equal(models.capabilityFor('local', 'img2img', { nsfw: true }).referenceLimit, 3);
 assert.equal(models.capabilityFor('local', 'img2img', {}).negativePrompt, true);
 assert.ok(models.capabilityFor('local', 'txt2img', { nsfw: true }).fields.includes('textQuality'));
 assert.ok(models.capabilityFor('local', 'img2img', { loras: [{ name: 'x' }] }).fields.includes('editStrength'));
@@ -320,5 +359,10 @@ const chip = (modelImageNumber) => globalThis.NovaFlowResourceMentionTool.compil
 }).text;
 assert.equal(chip(1), '图1');
 assert.equal(chip(undefined), '图2');
+// The drawing panel's slots past the fixed three are @参考图 targets too.
+const artRefs = Array.from({ length: 5 }, (_, i) => ({ key: `art_reference_${i + 1}`, label: `参考图${i + 1}`, kind: 'image', occupied: true, fileName: `r${i}.png`, previewUrl: 'data:image/png;base64,AA' }));
+const artCompiled = globalThis.NovaFlowResourceMentionTool.compileText({ surface: 'art-generate', text: '@参考图5 和 @参考图2', resources: artRefs });
+assert.deepEqual(artCompiled.invalidTokens, []);
+assert.ok(artCompiled.text.includes('5') && !artCompiled.text.includes('@参考图5'));
 
 console.log(checks + ' passed, 0 failed: UI design on Qwen-Image-2.1 (page plan, worker graph, node probe)');

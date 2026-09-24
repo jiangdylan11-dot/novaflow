@@ -214,12 +214,23 @@ assert.deepEqual([t2iLatent.width, t2iLatent.height], [896, 1312]);
 const t2iSampler = byClass(t2i, 'KSampler')[0][1].inputs;
 assert.deepEqual([t2iSampler.seed, t2iSampler.steps, t2iSampler.cfg], [42, 25, 1]);
 assert.equal(byClass(t2i, 'SaveImage')[0][1].inputs.filename_prefix, 'NovaFlow_Art');
-const i2i = await buildArt('img2img', ['ref.png'], [{ width: 624, height: 1360 }]);
+// W / H on reference 1's size (as a new reference 1 fills them): an edit on the encoder's own latent.
+const i2i = await buildArt('img2img', ['ref.png'], [{ width: 624, height: 1360 }], { width: 624, height: 1360 });
 const i2iEncode = byClass(i2i, 'TextEncodeQwenImage21')[0][1].inputs;
-assert.equal(i2i[i2iEncode['images.image_1'][0]].inputs.image, 'ref.png');
+// Reference 1 is put on the 32 grid by the graph (624 x 1360 -> 640 x 1376), the output scaled back.
+const i2iFirst = i2i[i2iEncode['images.image_1'][0]];
+assert.deepEqual([i2iFirst.class_type, i2iFirst.inputs.width, i2iFirst.inputs.height], ['ImageScale', 640, 1376]);
+assert.equal(i2i[i2iFirst.inputs.image[0]].inputs.image, 'ref.png');
 assert.equal(i2iEncode.resolution, 0);
 assert.deepEqual(byClass(i2i, 'KSampler')[0][1].inputs.latent_image[1], 2);
-assert.equal(byClass(await buildArt('img2img', ['big.png'], [{ width: 2048, height: 2048 }]), 'TextEncodeQwenImage21')[0][1].inputs.resolution, 1024);
+// Another aspect (900 x 1300 here) is sampled on an empty latent of that size; a large reference 1 is
+// brought to ~1 MP by the graph instead of the encoder's resolution setting.
+const i2iRelayout = await buildArt('img2img', ['big.png'], [{ width: 2048, height: 2048 }]);
+const relayoutEncode = byClass(i2iRelayout, 'TextEncodeQwenImage21')[0][1].inputs;
+assert.equal(relayoutEncode.resolution, 0);
+const relayoutFirst = i2iRelayout[relayoutEncode['images.image_1'][0]].inputs;
+assert.ok(relayoutFirst.width * relayoutFirst.height <= 1048576);
+assert.equal(i2iRelayout[byClass(i2iRelayout, 'KSampler')[0][1].inputs.latent_image[0]].class_type, 'EmptyLatentImage');
 assert.equal(byClass(await buildArt('img2img', ['ref.png'], [], { nsfw: true }), 'TextEncodeQwenImage21').length, 0);
 const template = ['User instruction, highest priority:', '补全腿部', '', 'Complete the masked missing area.', 'Transparent background.', '', 'Original protective context:', 'leg'].join(String.fromCharCode(10));
 const withParts = promptOf(JSON.parse(JSON.stringify(await build21(undefined, { promptParts: { user: '补全腿部，赤脚', part: 'Extend the leg.' } }, template))));

@@ -68,9 +68,21 @@
       });
   }
 
+  // Drawing on a Qwen-Image-2.1 node takes up to 15 references; past the fixed three, each slot the
+  // page reports is one more @参考图N.
+  const ART_GENERATE_MAX_REFERENCES = 15;
+
+  function artGenerateResourceConfig(resources) {
+    const count = Math.min(ART_GENERATE_MAX_REFERENCES, Array.isArray(resources) ? resources.length : 0);
+    if (count <= ART_GENERATE_RESOURCE_CONFIG.length) return ART_GENERATE_RESOURCE_CONFIG;
+    return Array.from({ length: count }, function (_, index) {
+      return ART_GENERATE_RESOURCE_CONFIG[index] || Object.freeze({ key: "art_reference_" + (index + 1), label: "参考图" + (index + 1), kind: "image" });
+    });
+  }
+
   function configForSurface(surface, resources) {
     const normalized = normalizeSurface(surface);
-    if (normalized === "art-generate") return ART_GENERATE_RESOURCE_CONFIG;
+    if (normalized === "art-generate") return artGenerateResourceConfig(resources);
     if (normalized === "ui-design") return uiDesignResourceConfig(resources);
     if (normalized === "minimax-h3-image-video") return MINIMAX_H3_IMAGE_VIDEO_RESOURCE_CONFIG;
     if (normalized === "minimax-h3-first-last") return MINIMAX_H3_FIRST_LAST_RESOURCE_CONFIG;

@@ -79825,24 +79825,56 @@
     }, children);
   }
 
+  // Storage holds as many references as the largest model takes (Qwen-Image-2.1: 15). The grid and a
+  // run use the first ones the active model accepts, so a switch to a three-reference route keeps the
+  // rest for switching back.
+  const ART_GENERATE_MAX_REFERENCES = 15;
+  const ART_GENERATE_BASE_REFERENCE_SLOTS = 3;
+
+  function artGenerateImg2imgCapability() {
+    const provider = window.NovaFlowArtGenerateModels?.normalizeProvider?.(ART_GENERATE_STATE.provider) || "local";
+    return window.NovaFlowArtGenerateModels?.capabilityFor?.(provider, "img2img", ART_GENERATE_STATE) || null;
+  }
+
+  function artGenerateReferenceLimit() {
+    const limit = Math.round(Number(artGenerateImg2imgCapability()?.referenceLimit) || ART_GENERATE_BASE_REFERENCE_SLOTS);
+    return Math.max(1, Math.min(ART_GENERATE_MAX_REFERENCES, limit));
+  }
+
   function artGenerateReferences() {
-    const refs = Array.isArray(ART_GENERATE_STATE.references) ? ART_GENERATE_STATE.references.slice(0, 3) : [];
-    while (refs.length < 3) refs.push(null);
+    const refs = Array.isArray(ART_GENERATE_STATE.references) ? ART_GENERATE_STATE.references.slice(0, ART_GENERATE_MAX_REFERENCES) : [];
+    while (refs.length < ART_GENERATE_BASE_REFERENCE_SLOTS) refs.push(null);
+    // An emptied slot past the fixed three closes up, so the grid ends at the last filled one.
+    while (refs.length > ART_GENERATE_BASE_REFERENCE_SLOTS && !refs[refs.length - 1]) refs.pop();
     if (!refs[0] && ART_GENERATE_STATE.reference && ART_GENERATE_STATE.reference.dataUrl) refs[0] = ART_GENERATE_STATE.reference;
     ART_GENERATE_STATE.references = refs;
     ART_GENERATE_STATE.reference = refs[0] || null;
     return refs;
   }
 
+  // Slots on screen: the fixed three, then the filled ones a 2.1 node added with the + tile.
+  function artGenerateVisibleReferenceCount() {
+    return Math.min(artGenerateReferenceLimit(), Math.max(ART_GENERATE_BASE_REFERENCE_SLOTS, artGenerateReferences().length));
+  }
+
   function setArtGenerateReference(index, value) {
     const refs = artGenerateReferences();
-    refs[Math.max(0, Math.min(2, Number(index) || 0))] = value || null;
+    const target = Math.max(0, Math.min(ART_GENERATE_MAX_REFERENCES - 1, Number(index) || 0));
+    while (refs.length <= target) refs.push(null);
+    refs[target] = value || null;
     ART_GENERATE_STATE.references = refs;
     ART_GENERATE_STATE.reference = refs[0] || null;
+    // On 2.1 a new reference 1 fills W / H with its size once it is measured, so an untouched panel
+    // edits the image at its own size; the user can still change it.
+    if (target === 0) {
+      ART_GENERATE_STATE.referenceSizeFillPending = value?.dataUrl && artGenerateImg2imgCapability()?.engine === "qwen-2.1"
+        ? String(value.dataUrl)
+        : "";
+    }
   }
 
   function artGenerateResourceMentionSnapshot() {
-    return artGenerateReferences().map((item, index) => ({
+    return artGenerateReferences().slice(0, artGenerateVisibleReferenceCount()).map((item, index) => ({
       key: `art_reference_${index + 1}`,
       label: `\u53c2\u8003\u56fe${index + 1}`,
       kind: "image",
@@ -79896,22 +79928,29 @@
     } catch {}
   }
 
-  function getArtGenerateDroppedImageFile(event) {
+  function isArtGenerateReferenceImageFile(file) {
+    const tool = window.NovaFlowArtGenerateReferenceDropTool;
+    if (typeof tool?.isSupportedImageFile === "function") return tool.isSupportedImageFile(file);
+    if (!file || typeof file !== "object") return false;
+    const mime = String(file.type || "");
+    const name = String(file.name || "");
+    return /^image\/(?:png|jpe?g|webp)$/i.test(mime) || /\.(png|jpe?g|webp)$/i.test(name);
+  }
+
+  function getArtGenerateDroppedImageFiles(event) {
     const tool = window.NovaFlowArtGenerateReferenceDropTool;
     const files = typeof tool?.filesFromDataTransfer === "function"
       ? tool.filesFromDataTransfer(event?.dataTransfer)
       : Array.from(event?.dataTransfer?.files || []);
-    return files.find((file) => {
-      if (typeof tool?.isSupportedImageFile === "function") return tool.isSupportedImageFile(file);
-      if (!file || typeof file !== "object") return false;
-      const mime = String(file.type || "");
-      const name = String(file.name || "");
-      return /^image\/(?:png|jpe?g|webp)$/i.test(mime) || /\.(png|jpe?g|webp)$/i.test(name);
-    }) || null;
+    return files.filter(isArtGenerateReferenceImageFile);
+  }
+
+  function getArtGenerateDroppedImageFile(event) {
+    return getArtGenerateDroppedImageFiles(event)[0] || null;
   }
 
   async function loadArtGenerateReferenceFile(index, file) {
-    const targetIndex = Math.max(0, Math.min(2, Number(index) || 0));
+    const targetIndex = Math.max(0, Math.min(ART_GENERATE_MAX_REFERENCES - 1, Number(index) || 0));
     const dataUrl = await artFileToDataUrl(file);
     setArtGenerateReference(targetIndex, {
       name: file?.name || `reference_${targetIndex + 1}.png`,
@@ -79919,6 +79958,36 @@
       mimeType: file?.type || artDataUrlMime(dataUrl)
     });
     ART_GENERATE_STATE.status = `\u53c2\u8003\u56fe${targetIndex + 1}\u5df2\u8f7d\u5165`;
+    ART_GENERATE_STATE.error = "";
+    renderArtGenerateSurfaces({ forceBottom: true });
+  }
+
+  // Several images at once (the + tile's picker, or a multi-file drop) fill the chosen slot and then
+  // the empty slots after it, up to what the active model takes.
+  async function loadArtGenerateReferenceFiles(index, files) {
+    const images = Array.from(files || []).filter(isArtGenerateReferenceImageFile);
+    if (!images.length) return;
+    const limit = artGenerateReferenceLimit();
+    const start = Math.max(0, Math.min(limit - 1, Number(index) || 0));
+    const refs = artGenerateReferences();
+    const targets = [start];
+    for (let slot = start + 1; slot < limit && targets.length < images.length; slot += 1) {
+      if (!refs[slot] || !refs[slot].dataUrl) targets.push(slot);
+    }
+    for (let i = 0; i < targets.length; i += 1) {
+      const file = images[i];
+      const dataUrl = await artFileToDataUrl(file);
+      setArtGenerateReference(targets[i], {
+        name: file?.name || `reference_${targets[i] + 1}.png`,
+        dataUrl,
+        mimeType: file?.type || artDataUrlMime(dataUrl)
+      });
+    }
+    const skipped = images.length - targets.length;
+    ART_GENERATE_STATE.status = targets.length > 1
+      ? `\u5df2\u8f7d\u5165 ${targets.length} \u5f20\u53c2\u8003\u56fe`
+      : `\u53c2\u8003\u56fe${start + 1}\u5df2\u8f7d\u5165`;
+    if (skipped > 0) ART_GENERATE_STATE.status += `\uff0c\u6700\u591a ${limit} \u5f20\uff0c${skipped} \u5f20\u672a\u8f7d\u5165`;
     ART_GENERATE_STATE.error = "";
     renderArtGenerateSurfaces({ forceBottom: true });
   }
@@ -79933,7 +80002,7 @@
   }
 
   function loadArtGenerateReferenceResource(index, resourceId) {
-    const targetIndex = Math.max(0, Math.min(2, Number(index) || 0));
+    const targetIndex = Math.max(0, Math.min(ART_GENERATE_MAX_REFERENCES - 1, Number(index) || 0));
     const resource = findArtGenerateSourceResource(resourceId);
     const dataUrl = String(resource?.dataUrl || "");
     if (!resource || !/^data:image\/(?:png|jpe?g|webp)(?:;|,)/i.test(dataUrl)) {
@@ -79959,6 +80028,7 @@
         Boolean(document.querySelector(`#${ART_GENERATE_WORKSPACE_ID} [data-ais-import^="art_reference_"]`))
       ),
       onFile: (index, file) => loadArtGenerateReferenceFile(index, file),
+      onFiles: (index, files) => loadArtGenerateReferenceFiles(index, files),
       onResource: (index, resourceId) => loadArtGenerateReferenceResource(index, resourceId),
       onReject: (message) => {
         ART_GENERATE_STATE.status = String(message || "\u8bf7\u62d6\u5165 PNG/JPG/WebP \u56fe\u7247");
@@ -80008,6 +80078,10 @@
       if (!current || String(current.dataUrl || "") !== dataUrl) return;
       current.width = size.width;
       current.height = size.height;
+      if (index === 0 && ART_GENERATE_STATE.referenceSizeFillPending === dataUrl) {
+        ART_GENERATE_STATE.referenceSizeFillPending = "";
+        if (applyArtGenerateReferenceResolution(0)) return;
+      }
       renderArtGenerateSurfaces({ forceBottom: true });
     });
     return null;
@@ -80097,30 +80171,39 @@
   }
 
   function renderArtGenerateReferenceGrid() {
+    const limit = artGenerateReferenceLimit();
+    const visible = artGenerateVisibleReferenceCount();
+    const slots = Array.from({ length: visible }, (_, index) => renderArtGenerateReferencePicker(index));
+    // A model that takes more than three references gets a + tile for the next one.
+    if (limit > ART_GENERATE_BASE_REFERENCE_SLOTS && visible < limit) {
+      slots.push(renderArtGenerateReferencePicker(visible, { add: true, limit }));
+    }
     return createArtEl("div", {
       className: "novaflow-art-generate-ref-grid",
-      "data-novaflow-art-generate-reference-column": "1"
-    }, [0, 1, 2].map((index) => (
-      renderArtGenerateReferencePicker(index)
-    )));
+      "data-novaflow-art-generate-reference-column": "1",
+      "data-novaflow-art-generate-ref-expandable": limit > ART_GENERATE_BASE_REFERENCE_SLOTS ? "1" : "0"
+    }, slots);
   }
 
-  function renderArtGenerateReferencePicker(index) {
+  function renderArtGenerateReferencePicker(index, options = {}) {
+    const addTile = options.add === true;
     const refs = artGenerateReferences();
-    const current = refs[index] || null;
+    const current = addTile ? null : refs[index] || null;
     const inputId = `${ART_GENERATE_FILE_INPUT_ID}-${index}`;
     const input = createArtEl("input", {
       id: inputId,
       type: "file",
       accept: "image/png,image/jpeg,image/webp",
+      multiple: addTile ? "" : null,
       style: { display: "none" },
       onclick: (event) => {
         event.currentTarget.value = "";
       },
       onchange: async (event) => {
-        const file = event.currentTarget.files && event.currentTarget.files[0];
-        if (!file) return;
-        await loadArtGenerateReferenceFile(index, file);
+        const files = Array.from(event.currentTarget.files || []);
+        if (!files.length) return;
+        if (files.length > 1) await loadArtGenerateReferenceFiles(index, files);
+        else await loadArtGenerateReferenceFile(index, files[0]);
       }
     });
     const body = current && current.dataUrl
@@ -80140,13 +80223,15 @@
       ]
       : [
         createArtEl("span", { className: "nf-upload-dropzone__icon", text: "+" }),
-        createArtEl("span", { className: "nf-upload-dropzone__title", text: `\u53c2\u8003\u56fe${index + 1}` })
+        createArtEl("span", { className: "nf-upload-dropzone__title", text: addTile ? "\u6dfb\u52a0\u53c2\u8003\u56fe" : `\u53c2\u8003\u56fe${index + 1}` })
       ];
     return createArtEl("div", {
       role: "button",
       tabIndex: "0",
       className: "novaflow-art-generate-ref nf-upload-dropzone nf-upload-dropzone--large",
       "data-ais-import": `art_reference_${index + 1}`,
+      "data-novaflow-art-generate-ref-add": addTile ? "1" : null,
+      title: addTile ? `\u6dfb\u52a0\u53c2\u8003\u56fe\uff08\u6700\u591a ${options.limit} \u5f20\uff0c\u53ef\u591a\u9009\uff09` : null,
       "data-nf-upload-dropzone": "1",
       ondragenter: (event) => {
         stopArtGenerateReferenceDropEvent(event);
@@ -80169,14 +80254,15 @@
       ondrop: async (event) => {
         stopArtGenerateReferenceDropEvent(event);
         event.currentTarget?.removeAttribute?.("data-novaflow-art-generate-ref-drag");
-        const file = getArtGenerateDroppedImageFile(event);
-        if (!file) {
+        const files = getArtGenerateDroppedImageFiles(event);
+        if (!files.length) {
           ART_GENERATE_STATE.status = "\u8bf7\u62d6\u5165 PNG/JPG/WebP \u56fe\u7247";
           ART_GENERATE_STATE.error = "";
           renderArtGenerateSurfaces({ forceBottom: true });
           return;
         }
-        await loadArtGenerateReferenceFile(index, file);
+        if (files.length > 1) await loadArtGenerateReferenceFiles(index, files);
+        else await loadArtGenerateReferenceFile(index, files[0]);
       },
       onclick: () => {
         const picker = document.getElementById(inputId);
@@ -81809,15 +81895,38 @@
     return { negative, cfg: negative ? QWEN21_NEGATIVE_CFG : 1 };
   }
 
+  // Drawing on 2.1. The encoder takes 16 images; the page sends up to 15, as in the UI module.
+  const QWEN21_ART_MAX_REFERENCES = 15;
+  // Sampling past ~1.3 MP adds time rather than detail: a larger W / H is sampled at this size and
+  // scaled up at the end.
+  const QWEN21_ART_MAX_WORKING_PIXELS = 1300000;
+  // Reference 1 is the picture being worked on; when W / H re-lay it out it is still the main source.
+  // The others are budgeted like UI references (0.5 MP each, 1.5 MP together), which keeps a long
+  // list near the UI module's time (seconds per step ~ 1.5 + 0.8 x reference megapixels).
+  const QWEN21_ART_FIRST_REFERENCE_PIXELS = 1048576;
+  const QWEN21_ART_REFERENCE_PIXELS = 500000;
+  const QWEN21_ART_EXTRA_REFERENCE_PIXELS = 1500000;
+
+  function artQwen21WorkingSize(width, height) {
+    if (width * height <= QWEN21_ART_MAX_WORKING_PIXELS) {
+      const round32 = (value) => Math.max(256, Math.round(value / 32) * 32);
+      return { width: round32(width), height: round32(height) };
+    }
+    return uiQwen21WorkingSize(width, height, QWEN21_ART_MAX_WORKING_PIXELS);
+  }
+
   function buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt) {
     const guidance = qwen21Guidance(negativePrompt);
     if (mode !== "txt2img" && mode !== "img2img") return null;
     if (state?.nsfw === true || (Array.isArray(state?.loras) && state.loras.length)) return null;
     if (/^ui-design/i.test(String(providerOptions?.taskProfile || ""))) return null;
-    const references = (Array.isArray(uploadedNames) ? uploadedNames : []).filter(Boolean).slice(0, 4);
+    const references = mode === "img2img"
+      ? (Array.isArray(uploadedNames) ? uploadedNames : []).filter(Boolean).slice(0, QWEN21_ART_MAX_REFERENCES)
+      : [];
     if (mode === "img2img" && !references.length) return null;
     const runtime = artQwen21Runtime();
     if (!runtime) return null;
+    const info = runtime.info || {};
     const seed = state?.randomSeed || Number(state?.seed) < 0
       ? Math.floor(Math.random() * 1000000000)
       : Math.round(Number(state?.seed) || 0);
@@ -81827,39 +81936,87 @@
       "3": { class_type: "VAELoader", inputs: { vae_name: runtime.vae } }
     };
     let model = ["1", 0];
-    if (runtime.info.QwenImage21Cache) {
+    if (info.QwenImage21Cache) {
       workflow["4"] = { class_type: "QwenImage21Cache", inputs: { model, device: "auto", dtype: "default" } };
       model = ["4", 0];
     }
-    // resolution 0 keeps each reference at its own size (rounded to 32); a large one would blow the
-    // latent up, so anything past ~1.3 MP (or of unknown size) is brought to ~1 MP instead.
-    const first = Array.isArray(referenceSizes) ? referenceSizes[0] : null;
-    const pixels = Number(first?.width) * Number(first?.height);
-    const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: guidance.negative, resolution: mode === "img2img" && !(pixels > 0 && pixels <= 1300000) ? 1024 : 0 };
-    references.forEach((name, index) => {
-      workflow[String(10 + index)] = { class_type: "LoadImage", inputs: { image: name } };
-      encode[`images.image_${index + 1}`] = [String(10 + index), 0];
-    });
+    // resolution 0: the encoder takes every reference at the size the graph hands it (rounded to 32),
+    // so each one is budgeted here.
+    const encode = { clip: ["2", 0], vae: ["3", 0], prompt: String(positivePrompt || ""), negative_prompt: guidance.negative, resolution: 0 };
     workflow["5"] = { class_type: "TextEncodeQwenImage21", inputs: encode };
-    let latent = ["5", 2];
     if (mode === "txt2img") {
       const round32 = (value) => Math.max(256, Math.min(2048, Math.round((Number(value) || 1024) / 32) * 32));
       workflow["6"] = { class_type: "EmptyLatentImage", inputs: { width: round32(state?.width), height: round32(state?.height), batch_size: 1 } };
+      workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: ["6", 0], seed, steps: 25, cfg: guidance.cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
+      workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
+      workflow["9"] = { class_type: "SaveImage", inputs: { images: ["8", 0], filename_prefix: String(outputPrefix || "NovaFlow_Art") } };
+      return { workflow, modelKey: "qwen-image-2.1-t2i" };
+    }
+    const sizes = references.map((_, index) => {
+      const size = Array.isArray(referenceSizes) ? referenceSizes[index] : null;
+      return { width: Math.max(0, Math.round(Number(size?.width) || 0)), height: Math.max(0, Math.round(Number(size?.height) || 0)) };
+    });
+    // W / H as the panel has them (a new reference 1 fills them with its size).
+    const clampEdge = (value, fallback) => Math.max(256, Math.min(2048, Math.round(Number(value) || fallback || 1024)));
+    const first = sizes[0];
+    const firstPixels = first.width * first.height;
+    const requested = { width: clampEdge(state?.width, first.width), height: clampEdge(state?.height, first.height) };
+    const working = artQwen21WorkingSize(requested.width, requested.height);
+    // The encoder's own latent is reference 1's size; sampling on it keeps an edit in place (any other
+    // size shifts the edit). So with W / H on reference 1's aspect, reference 1 goes in at the working
+    // size and the run is an edit; another aspect is a new layout on an empty latent of that size.
+    const firstAspect = firstPixels > 0 ? first.width / first.height : 0;
+    const editInPlace = firstAspect > 0 && Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02;
+    const scaleTo = (index, image, width, height) => {
+      const scaleId = String(200 + index);
+      workflow[scaleId] = { class_type: "ImageScale", inputs: { image, upscale_method: "lanczos", width, height, crop: "disabled" } };
+      return [scaleId, 0];
+    };
+    const scaleToPixels = (index, image, pixels) => {
+      const { width, height } = sizes[index];
+      if (width * height <= 0) {
+        if (!info.ImageScaleToTotalPixels) return image;
+        const scaleId = String(200 + index);
+        workflow[scaleId] = { class_type: "ImageScaleToTotalPixels", inputs: { image, upscale_method: "lanczos", megapixels: Math.max(0.05, Math.round(pixels / 10000) / 100), resolution_steps: 32 } };
+        return [scaleId, 0];
+      }
+      if (width * height <= pixels) return image;
+      const factor = Math.sqrt(pixels / (width * height));
+      return scaleTo(index, image, Math.max(32, Math.floor(width * factor / 32) * 32), Math.max(32, Math.floor(height * factor / 32) * 32));
+    };
+    const extraBudgets = sizes.slice(1).map(({ width, height }) => (
+      width * height > 0 ? Math.min(width * height, QWEN21_ART_REFERENCE_PIXELS) : QWEN21_ART_REFERENCE_PIXELS
+    ));
+    const extraTotal = extraBudgets.reduce((sum, value) => sum + value, 0);
+    const share = extraTotal > QWEN21_ART_EXTRA_REFERENCE_PIXELS ? QWEN21_ART_EXTRA_REFERENCE_PIXELS / extraTotal : 1;
+    references.forEach((name, index) => {
+      const loadId = String(100 + index);
+      workflow[loadId] = { class_type: "LoadImage", inputs: { image: name } };
+      let image = [loadId, 0];
+      if (index === 0 && editInPlace) {
+        if (first.width !== working.width || first.height !== working.height) image = scaleTo(0, image, working.width, working.height);
+      } else if (index === 0) {
+        image = scaleToPixels(0, image, QWEN21_ART_FIRST_REFERENCE_PIXELS);
+      } else {
+        image = scaleToPixels(index, image, extraBudgets[index - 1] * share);
+      }
+      encode[`images.image_${index + 1}`] = image;
+    });
+    let latent = ["5", 2];
+    if (!editInPlace) {
+      workflow["6"] = { class_type: "EmptyLatentImage", inputs: { width: working.width, height: working.height, batch_size: 1 } };
       latent = ["6", 0];
     }
     workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: latent, seed, steps: 25, cfg: guidance.cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
     workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
     let output = ["8", 0];
-    // At resolution 0 the encoder floors the first reference to multiples of 32 (512x720 came back
-    // 512x704); scale the result back to the reference's own size.
-    const refWidth = Math.round(Number(first?.width) || 0);
-    const refHeight = Math.round(Number(first?.height) || 0);
-    if (mode === "img2img" && encode.resolution === 0 && refWidth > 0 && refHeight > 0 && (refWidth % 32 || refHeight % 32) && runtime.info.ImageScale) {
-      workflow["10"] = { class_type: "ImageScale", inputs: { image: output, upscale_method: "lanczos", width: refWidth, height: refHeight, crop: "disabled" } };
-      output = ["10", 0];
+    // Delivered at W / H exactly: the working size is on the 32 grid and capped at ~1.3 MP.
+    if (working.width !== requested.width || working.height !== requested.height) {
+      workflow["9"] = { class_type: "ImageScale", inputs: { image: output, upscale_method: "lanczos", width: requested.width, height: requested.height, crop: "disabled" } };
+      output = ["9", 0];
     }
-    workflow["9"] = { class_type: "SaveImage", inputs: { images: output, filename_prefix: String(outputPrefix || "NovaFlow_Art") } };
-    return { workflow, modelKey: mode === "txt2img" ? "qwen-image-2.1-t2i" : "qwen-image-2.1-i2i" };
+    workflow["10"] = { class_type: "SaveImage", inputs: { images: output, filename_prefix: String(outputPrefix || "NovaFlow_Art") } };
+    return { workflow, modelKey: "qwen-image-2.1-i2i" };
   }
 
   // UI design on a Qwen-Image-2.1 node: every connected reference goes in as images.image_N and the
@@ -81889,10 +82046,10 @@
 
   // Multiples of 32 within the pixel cap, chosen for the closest aspect ratio so the final resize to
   // the requested size does not visibly stretch the screen (flooring both sides of 756x1638 gave 3%).
-  function uiQwen21WorkingSize(width, height) {
+  function uiQwen21WorkingSize(width, height, maxPixels = QWEN21_UI_MAX_WORKING_PIXELS) {
     const w = Math.max(256, Number(width) || 1024);
     const h = Math.max(256, Number(height) || 1024);
-    const scale = Math.min(1, Math.sqrt(QWEN21_UI_MAX_WORKING_PIXELS / (w * h)));
+    const scale = Math.min(1, Math.sqrt(maxPixels / (w * h)));
     const aspect = w / h;
     // Among sizes that keep at least three quarters of the allowed area, take the largest one within
     // 1% of the requested aspect; if none is that close, the closest one.
@@ -81900,7 +82057,7 @@
     const candidates = [];
     for (let cw = 256; cw <= Math.ceil(w * scale / 32) * 32; cw += 32) {
       const ch = Math.max(256, Math.round(cw / aspect / 32) * 32);
-      if (cw * ch > QWEN21_UI_MAX_WORKING_PIXELS || cw * ch < targetArea * 0.75) continue;
+      if (cw * ch > maxPixels || cw * ch < targetArea * 0.75) continue;
       candidates.push({ width: cw, height: ch, error: Math.abs(cw / ch - aspect) / aspect });
     }
     const close = candidates.filter((item) => item.error <= 0.01);
@@ -82242,7 +82399,7 @@
       prompt: promptSnapshot.prompt,
       negativePrompt: promptSnapshot.negativePrompt
     };
-    const allRefs = artGenerateReferences().filter((item) => item && item.dataUrl);
+    const allRefs = artGenerateReferences().slice(0, artGenerateReferenceLimit()).filter((item) => item && item.dataUrl);
     const rolePlan = runMode === "img2img"
       ? window.__NovaFlowSmartAI?.getArtGenerationReferencePlan?.(allRefs)
       : null;

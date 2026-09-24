@@ -35,11 +35,12 @@
   )
 
   // A local node with Qwen-Image-2.1 runs non-NSFW, LoRA-free drawing on it (the worker picks the
-  // engine). 2.1 has no quality or edit-strength setting and its img2img keeps the first reference's
-  // size; the negative prompt stays (a filled one switches the run to real guidance).
+  // engine). 2.1 has no quality or edit-strength setting; its img2img takes up to 15 references (the
+  // encoder has 16 inputs, as in the UI module) and keeps W / H, which a new reference 1 fills with
+  // its size; the negative prompt stays (a filled one switches the run to real guidance).
   const LOCAL_QWEN21_CAPABILITIES = Object.freeze({
     txt2img: Object.freeze({ ...capability(0, ['width', 'height', 'seed', 'nsfw'], true), engine: 'qwen-2.1' }),
-    img2img: Object.freeze({ ...capability(3, ['seed', 'nsfw'], true), engine: 'qwen-2.1' }),
+    img2img: Object.freeze({ ...capability(15, ['width', 'height', 'seed', 'nsfw'], true), engine: 'qwen-2.1' }),
   })
 
   function localQwen21Drawing(state) {
