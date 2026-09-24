@@ -16,7 +16,7 @@
   const CAPABILITIES = Object.freeze({
     local: Object.freeze({
       txt2img: capability(0, ['width', 'height', 'textQuality', 'seed', 'nsfw'], true),
-      img2img: capability(3, ['width', 'height', 'editStrength', 'seed', 'nsfw'], true),
+      img2img: capability(3, ['width', 'height', 'seed', 'nsfw'], true),
     }),
     gpt: Object.freeze({
       txt2img: capability(0, ['quality', 'size'], false),
@@ -63,11 +63,6 @@
     Object.freeze({ value: 'fine', label: '\u7cbe\u7ec6' }),
   ])
 
-  const LOCAL_EDIT_STRENGTH_OPTIONS = Object.freeze([
-    Object.freeze({ value: 'faithful', label: '\u4fdd\u771f' }),
-    Object.freeze({ value: 'enhanced', label: '\u589e\u5f3a' }),
-  ])
-
   function preset(steps, cfg, samplerName, scheduler, lightning) {
     const value = {
       steps,
@@ -109,6 +104,15 @@
 
   function normalizeLocalEditStrength(value) {
     return String(value || '').trim().toLowerCase() === 'enhanced' ? 'enhanced' : 'faithful'
+  }
+
+  // The drawing panel has no edit-strength choice. NSFW img2img (Rapid AIO) runs its 4-step preset;
+  // the 2511 route (a LoRA run) samples fully (12 steps, cfg 4, no Lightning) only when a negative
+  // prompt is filled in, since at cfg 1 the negative is never evaluated - the rule Qwen-Image-2.1
+  // follows. UI design keeps its own setting.
+  function drawingEditStrength(state, negativePrompt) {
+    if (state?.nsfw === true) return 'faithful'
+    return String(negativePrompt || '').trim() ? 'enhanced' : 'faithful'
   }
 
   function getCapability(provider, mode) {
@@ -155,7 +159,7 @@
       referenceLimit: modeKey === 'img2img' ? 3 : 0,
       fields: providerKey === 'local'
         ? (modeKey === 'img2img'
-          ? ['width', 'height', 'editStrength', 'seed', 'nsfw']
+          ? ['width', 'height', 'seed', 'nsfw']
           : ['width', 'height', 'textQuality', 'seed', 'nsfw'])
         : [],
       negativePrompt: providerKey === 'local',
@@ -238,7 +242,6 @@
   return Object.freeze({
     providerOptions,
     LOCAL_TEXT_QUALITY_OPTIONS,
-    LOCAL_EDIT_STRENGTH_OPTIONS,
     getCapability,
     normalizeProvider,
     normalizeMode,
@@ -247,6 +250,7 @@
     capabilityFor,
     normalizeLocalTextQuality,
     normalizeLocalEditStrength,
+    drawingEditStrength,
     localPresetFor,
     applyLocalWorkflowPreset,
     workflowSettings,

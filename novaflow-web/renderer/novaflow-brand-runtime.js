@@ -76669,7 +76669,6 @@
     width: 1024,
     height: 1024,
     localTextQuality: "fine",
-    localEditStrength: "faithful",
     loras: [],
     seed: -1,
     randomSeed: true,
@@ -82184,6 +82183,13 @@
     }
     const api = window.NovaFlowArtGenerateProviderWorkflow;
     if (!api) throw new Error("NovaFlow \u4e91\u7aef\u56fe\u50cf\u5de5\u4f5c\u6d41\u6a21\u5757\u672a\u5c31\u7eea");
+    // A drawing run's img2img preset follows the negative prompt (there is no edit-strength choice);
+    // UI design passes its own setting.
+    const drawingEditStrength = window.NovaFlowArtGenerateModels?.drawingEditStrength;
+    const presetState = mode === "img2img" && typeof drawingEditStrength === "function"
+      && !/^ui-design/i.test(String(providerOptions?.taskProfile || ""))
+      ? { ...state, localEditStrength: drawingEditStrength(state, negativePrompt) }
+      : state;
     let localWorkflow = null;
     let localModelKey = artWorkflowKeyForState(state);
     const uiQwen21 = provider === "local"
@@ -82223,10 +82229,10 @@
         }
         if (state === ART_GENERATE_STATE) {
           localWorkflow = patchArtWorkflow(cloneArtWorkflow(), uploadedNames, outputPrefix, positivePrompt, negativePrompt, referenceSizes);
-          localWorkflow = modelApi.applyLocalWorkflowPreset(localWorkflow, ART_GENERATE_STATE, mode);
+          localWorkflow = modelApi.applyLocalWorkflowPreset(localWorkflow, presetState, mode);
         } else {
           localWorkflow = patchArtWorkflow(cloneArtWorkflowForState(state), uploadedNames, outputPrefix, positivePrompt, negativePrompt, referenceSizes, state);
-          localWorkflow = modelApi.applyLocalWorkflowPreset(localWorkflow, state, mode);
+          localWorkflow = modelApi.applyLocalWorkflowPreset(localWorkflow, presetState, mode);
         }
         if (Array.isArray(state.loras) && state.loras.length) {
           const loraApi = window.NovaFlowArtGenerateLora;
@@ -82245,7 +82251,7 @@
       uploadedNames,
       outputPrefix,
       nodeIdPrefix: clientId,
-      settings: window.NovaFlowArtGenerateModels?.workflowSettings?.(state, provider, mode) || {},
+      settings: window.NovaFlowArtGenerateModels?.workflowSettings?.(presetState, provider, mode) || {},
       localWorkflow,
       localModelKey,
       state,

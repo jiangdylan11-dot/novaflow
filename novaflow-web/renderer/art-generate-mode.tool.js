@@ -209,22 +209,6 @@
           rerender,
         }))
       }
-      if (fields.has('editStrength')) {
-        state.localEditStrength = models?.normalizeLocalEditStrength?.(state.localEditStrength) || (state.localEditStrength === 'enhanced' ? 'enhanced' : 'faithful')
-        nodes.push(renderSelect({
-          createElement,
-          label: '\u7f16\u8f91\u5f3a\u5ea6',
-          value: state.localEditStrength,
-          values: models?.LOCAL_EDIT_STRENGTH_OPTIONS || [
-            { value: 'faithful', label: '\u4fdd\u771f' },
-            { value: 'enhanced', label: '\u589e\u5f3a' },
-          ],
-          onChange: (value) => {
-            state.localEditStrength = models?.normalizeLocalEditStrength?.(value) || (value === 'enhanced' ? 'enhanced' : 'faithful')
-          },
-          rerender,
-        }))
-      }
       if (fields.has('seed')) nodes.push(options.renderSeedToggle())
       if (fields.has('nsfw') && options.nsfwSwitch) nodes.push(options.nsfwSwitch)
       return nodes

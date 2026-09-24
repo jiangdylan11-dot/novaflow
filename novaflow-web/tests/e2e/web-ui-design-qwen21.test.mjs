@@ -345,7 +345,22 @@ assert.equal(models.capabilityFor('local', 'img2img', {}).referenceLimit, 15);
 assert.equal(models.capabilityFor('local', 'img2img', { nsfw: true }).referenceLimit, 3);
 assert.equal(models.capabilityFor('local', 'img2img', {}).negativePrompt, true);
 assert.ok(models.capabilityFor('local', 'txt2img', { nsfw: true }).fields.includes('textQuality'));
-assert.ok(models.capabilityFor('local', 'img2img', { loras: [{ name: 'x' }] }).fields.includes('editStrength'));
+// No edit-strength choice on any drawing route: NSFW img2img runs its 4-step preset, a LoRA (2511) run
+// samples fully only with a negative prompt filled in; UI design keeps its own setting.
+assert.deepEqual([...models.capabilityFor('local', 'img2img', { loras: [{ name: 'x' }] }).fields], ['width', 'height', 'seed', 'nsfw']);
+assert.ok(!models.capabilityFor('local', 'img2img', { nsfw: true }).fields.includes('editStrength'));
+assert.equal(models.drawingEditStrength({ nsfw: true }, 'blurry'), 'faithful');
+assert.equal(models.drawingEditStrength({ loras: [{ name: 'x' }] }, '  '), 'faithful');
+assert.equal(models.drawingEditStrength({ loras: [{ name: 'x' }] }, 'blurry'), 'enhanced');
+const presetGraph = () => ({ 1: { class_type: 'KSampler', inputs: {} }, 2: { class_type: 'PrimitiveBoolean', inputs: { value: true }, _meta: { title: 'Enable 4 Step(s) LoRA?' } } });
+const presetOf = (state, negative) => {
+  const graph = models.applyLocalWorkflowPreset(presetGraph(), { ...state, localEditStrength: models.drawingEditStrength(state, negative) }, 'img2img');
+  return [graph[1].inputs.steps, graph[1].inputs.cfg, graph[2].inputs.value];
+};
+assert.deepEqual(presetOf({ loras: [{ name: 'x' }] }, ''), [4, 1, true]);
+assert.deepEqual(presetOf({ loras: [{ name: 'x' }] }, 'blurry'), [12, 4, false]);
+assert.deepEqual(presetOf({ nsfw: true }, '').slice(0, 2), [4, 1]);
+assert.deepEqual(presetOf({ nsfw: true }, 'blurry').slice(0, 2), [4, 1]);
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
 assert.ok(models.capabilityFor('local', 'txt2img', {}).fields.includes('instantQuality'));
 
