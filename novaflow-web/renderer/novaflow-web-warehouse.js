@@ -265,10 +265,16 @@
     media.src = previewUrl; media.alt = name; media.controls = true;
     media.className = 'nf-wh-full-media';
     const details = node('div', null, preview); details.className = 'nf-wh-preview-details';
-    const label = node('div', null, details); node('strong', name, label); node('p', formatBytes(blob.size), label);
+    const label = node('div', null, details); node('strong', name, label);
+    const facts = node('p', (item?.dimensions ? item.dimensions + ' · ' : '') + formatBytes(blob.size), label);
+    media[media.tagName === 'VIDEO' ? 'onloadedmetadata' : 'onload'] = () => { const dims = dimensionsOf(media); if (dims) { if (item) item.dimensions = dims; facts.textContent = dims + ' · ' + formatBytes(blob.size); } };
     action(details, '下载原文件', () => download(blob, name));
     if (item) { const actions = node('div', null, details); actions.className = 'nf-wh-asset-actions'; addDelete(item, actions); }
     viewer.querySelector('button').focus();
+  }
+  function dimensionsOf(media) {
+    const width = media.naturalWidth || media.videoWidth, height = media.naturalHeight || media.videoHeight;
+    return width && height ? width + '×' + height : '';
   }
   function formatBytes(bytes) {
     return bytes >= 1048576 ? (bytes / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' KB';
@@ -344,7 +350,8 @@
       const thumb = node('div', null, card); thumb.className = 'nf-wh-thumb' + (folder ? ' nf-wh-folder' : ''); icon(folder ? 'folder' : video ? 'video' : 'image', thumb);
       if (!folder) { const type = node('span', item.pending ? '待保存' : item.name.split('.').pop().toUpperCase(), thumb); type.className = 'nf-wh-type'; }
       const info = node('div', null, card); info.className = 'nf-wh-asset-info'; node('strong', item.name, info);
-      node('span', folder ? '文件夹' : item.pending ? formatBytes(item.blob.size) + ' · 等待保存' : formatBytes(item.size) + ' · ' + new Date(item.modified).toLocaleDateString('zh-CN'), info);
+      const metaText = folder ? '文件夹' : item.pending ? formatBytes(item.blob.size) + ' · 等待保存' : formatBytes(item.size) + ' · ' + new Date(item.modified).toLocaleDateString('zh-CN');
+      const meta = node('span', (item.dimensions ? item.dimensions + ' · ' : '') + metaText, info);
       if (folder) continue;
       const actions = node('div', null, wrapper); actions.className = 'nf-wh-asset-actions'; addDelete(item, actions);
       const load = async () => {
@@ -353,7 +360,9 @@
           if (version !== listingVersion || panel.hidden) return;
           const url = URL.createObjectURL(file); thumbnailUrls.add(url);
           const media = node(video ? 'video' : 'img', null, thumb); media.className = 'nf-wh-thumbnail'; media.src = url; media.alt = ''; media.muted = true; media.preload = 'metadata';
-          if (video) media.onloadedmetadata = () => { if (Number.isFinite(media.duration) && media.duration > 0) media.currentTime = Math.min(0.1, media.duration / 2); };
+          const stamp = () => { const dims = dimensionsOf(media); if (dims) { item.dimensions = dims; meta.textContent = dims + ' · ' + metaText; } };
+          if (video) media.onloadedmetadata = () => { stamp(); if (Number.isFinite(media.duration) && media.duration > 0) media.currentTime = Math.min(0.1, media.duration / 2); };
+          else media.onload = stamp;
         } catch { /* A moved file keeps its placeholder; opening reports the error. */ }
       };
       jobs.set(card, load); if (thumbnailObserver) thumbnailObserver.observe(card); else void load();
@@ -431,7 +440,7 @@
 #novaflow-local-warehouse input::placeholder{color:#777}
 #novaflow-local-warehouse select{font:inherit;font-size:12px;background:#303030;border:1px solid #ffffff10;color:#aaa;border-radius:7px;padding:8px;max-width:130px}
 #novaflow-local-warehouse .nf-wh-summary{color:#888;margin-left:auto;white-space:nowrap;font-size:12px}
-#novaflow-local-warehouse .nf-wh-list{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));align-content:start;gap:14px;padding:18px;scrollbar-width:thin;scrollbar-color:#3d4b44 transparent}
+#novaflow-local-warehouse .nf-wh-list{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));grid-auto-rows:max-content;align-content:start;gap:14px;padding:18px;scrollbar-width:thin;scrollbar-color:#3d4b44 transparent}
 #novaflow-local-warehouse .nf-wh-asset{min-width:0;overflow:hidden;background:#292929;border:1px solid #ffffff0b;padding:0;border-radius:10px;text-align:left}
 #novaflow-local-warehouse .nf-wh-asset:hover{background:#333;border-color:#46bc9266}
 #novaflow-local-warehouse .nf-wh-asset-wrap{min-width:0;border:1px solid #ffffff12;border-radius:8px;overflow:hidden;background:#262626}
