@@ -93,7 +93,6 @@ function registerLicenseAdminIpc() {
   registerAdminDataWrite("admin:data:worker_codes:delete", adminData.deleteAdminWorkerRegistrationCode);
   registerAdminDataWrite("admin:data:worker_codes:purge", adminData.purgeAdminWorkerRegistrationCodes);
   registerAdminDataWrite("admin:data:web_tasks:purge", adminData.purgeAdminWebTasks);
-  registerAdminDataWrite("admin:data:provider_quotas:reset-usage", adminData.resetAdminProviderCallQuotaUsage);
 
   ipcMain.handle("admin:data:provider_quotas:list", async (_evt, payload) => {
     try {

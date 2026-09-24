@@ -2680,66 +2680,6 @@ async function readProviderQuotaRecord(client, user, providerKey) {
   return normalizeProviderQuotaRecord(data, user, providerKey);
 }
 
-// 清零已用: the allocation stays, used_count goes back to 0 - a new period for
-// the same person. A reservation in flight is kept so the call that holds it
-// still settles; the previous used count is recorded on the row.
-async function resetAdminProviderCallQuotaUsage(payload) {
-  const startedAt = Date.now();
-  const operation = "provider_quota.reset_usage";
-  const { client, result } = adminWriteClient(operation, startedAt);
-  if (!client) return result;
-
-  const userId = String(payload?.userId || payload?.user_id || "").trim();
-  const providerKey = normalizeProviderQuotaKey(payload?.providerKey || payload?.provider_key || "grok");
-  const note = String(payload?.note || "").trim().slice(0, 500);
-  if (!userId) return adminWriteErrorResult(operation, "请选择用户", Date.now() - startedAt);
-
-  try {
-    const { data: user, error: userError } = await client
-      .from("users")
-      .select(adminQueries.users.select)
-      .eq("id", userId)
-      .maybeSingle();
-    if (userError) throw userError;
-    if (!user) throw new Error("用户不存在，无法清零提示词服务次数");
-
-    const key = providerQuotaSettingKey(providerKey, user.id);
-    const { data: setting, error: readError } = await client
-      .from("system_settings")
-      .select(adminQueries.system_settings.select)
-      .eq("key", key)
-      .maybeSingle();
-    if (readError) throw readError;
-    if (!setting) throw new Error("该用户还没有分配过提示词服务次数");
-    const current = normalizeProviderQuotaRecord(setting, user, providerKey);
-    const now = new Date().toISOString();
-    const value = {
-      ...(setting.value && typeof setting.value === "object" ? setting.value : {}),
-      used_count: 0,
-      remaining_count: Math.max(0, current.allocated_count - current.reserved_count),
-      source: "manual",
-      note: note || current.note || "",
-      updated_at: now,
-      usage_reset_at: now,
-      usage_reset_from: current.used_count
-    };
-    const { data, error } = await client
-      .from("system_settings")
-      .update({ value, updated_at: now })
-      .eq("key", key)
-      .select(adminQueries.system_settings.select)
-      .maybeSingle();
-    if (error) throw error;
-    const record = normalizeProviderQuotaRecord(data, user, providerKey);
-    logAdminData("info", "reset provider quota usage", {
-      source: "supabase", status: "connected", provider: providerKey, userId: user.id, previousUsed: current.used_count
-    });
-    return adminWriteResult(operation, startedAt, { record, previousUsed: current.used_count });
-  } catch (err) {
-    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
-  }
-}
-
 async function getAdminProviderCallQuotas(input = {}) {
   const startedAt = Date.now();
   const providerKey = normalizeProviderQuotaKey(input?.providerKey || input?.provider_key || "grok");
@@ -3910,6 +3850,5 @@ module.exports = {
   setAdminGpuWorkerStatus,
   setAdminGpuWorkerTier,
   deleteAdminGpuWorker,
-  resetAdminProviderCallQuotaUsage,
   hashWorkerRegistrationCode
 };

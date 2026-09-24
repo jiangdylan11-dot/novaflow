@@ -49,17 +49,6 @@ function safePathText(p) {
 }
 
 let adminDataStatusLocked = false;
-let creditAdjustState = {
-  users: [],
-  credits: [],
-  writable: false
-};
-let grokQuotaState = {
-  providerKey: "grok",
-  users: [],
-  quotas: [],
-  writable: false
-};
 let userManagementState = {
   usersResult: null,
   creditsResult: null,
@@ -364,12 +353,6 @@ function displayNameByUserId(userMap, userId, fallback) {
   return fallback || userAccountLabel(user) || user?.display_name || String(userId || "-");
 }
 
-function creditBalanceByUserId(credits, userId) {
-  const record = (credits || []).find((item) => String(item.user_id || "") === String(userId || ""));
-  const n = Number(record?.balance || 0);
-  return Number.isFinite(n) ? n : 0;
-}
-
 function grokQuotaTextByUserId(quotas, userId) {
   const record = (quotas || []).find((item) => String(item.user_id || "") === String(userId || ""));
   if (!record) return "0 / 0";
@@ -454,118 +437,6 @@ function searchableUserText(user) {
     user?.display_name,
     user?.name
   ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
-}
-
-function findUserBySearch(users, query) {
-  const q = String(query || "").trim().toLowerCase();
-  if (!q) return null;
-  const list = Array.isArray(users) ? users : [];
-  return list.find((user) => searchableUserText(user).some((value) => value === q)) ||
-    list.find((user) => searchableUserText(user).some((value) => value.includes(q)));
-}
-
-function selectUserFromSearch(inputId, selectId, users, onSelected) {
-  const input = $(inputId);
-  const select = $(selectId);
-  const query = String(input?.value || "").trim();
-  if (!input || !select) return;
-  if (!query) {
-    alert("请输入用户名");
-    input.focus();
-    return;
-  }
-  const user = findUserBySearch(users, query);
-  if (!user?.id) {
-    alert("未找到匹配用户");
-    input.select();
-    return;
-  }
-  const userId = String(user.id);
-  const hasOption = Array.from(select.options || []).some((option) => String(option.value) === userId);
-  if (!hasOption) {
-    alert("当前下拉列表中没有该用户");
-    return;
-  }
-  select.value = userId;
-  select.dispatchEvent(new Event("change", { bubbles: true }));
-  input.value = userAccountLabel(user) || user.display_name || userId;
-  if (typeof onSelected === "function") onSelected();
-  toast("已选中用户");
-}
-
-function selectCreditAdjustUserFromSearch() {
-  selectUserFromSearch(
-    "creditUserSearchInput",
-    "creditAdjustUser",
-    creditAdjustState.users,
-    updateCreditAdjustCurrentBalance
-  );
-}
-
-function selectGrokQuotaUserFromSearch() {
-  selectUserFromSearch(
-    "grokQuotaUserSearchInput",
-    "grokQuotaUser",
-    grokQuotaState.users,
-    updateGrokQuotaCurrent
-  );
-}
-
-function updateCreditAdjustCurrentBalance() {
-  const select = $("creditAdjustUser");
-  const label = $("creditAdjustCurrentBalance");
-  if (!select || !label) return;
-  const userId = select.value;
-  if (!userId) {
-    label.textContent = "当前积分：-";
-    return;
-  }
-  label.textContent = `当前积分：${formatCreditAmount(creditBalanceByUserId(creditAdjustState.credits, userId))}`;
-}
-
-// Has the operator typed into the allocation field since it was last loaded?
-//
-// Every reload used to overwrite the box with the stored number, and a reload
-// happens after any write anywhere in the tool - so typing 10000, having some
-// other panel finish its refresh, and finding the box back at its old value
-// looked exactly like "I cannot type in here".
-let grokQuotaDirty = false;
-
-function updateGrokQuotaCurrent() {
-  const providerSelect = $("providerQuotaKey");
-  const select = $("grokQuotaUser");
-  const input = $("grokQuotaAllocated");
-  const label = $("grokQuotaCurrent");
-  const note = $("grokQuotaNote");
-  const saveButton = $("saveGrokQuota");
-  if (!select || !input || !label) return;
-  // Never take the field away from whoever is using it.
-  const editing = grokQuotaDirty || document.activeElement === input || document.activeElement === note;
-  const providerKey = normalizeProviderQuotaKey(providerSelect?.value || grokQuotaState.providerKey);
-  if (providerSelect && providerSelect.value !== providerKey) providerSelect.value = providerKey;
-  if (saveButton) saveButton.textContent = `保存 ${providerQuotaLabel(providerKey)} 次数`;
-  const userId = select.value;
-  const quota = (grokQuotaState.quotas || []).find((item) => String(item.user_id || "") === String(userId || ""));
-  const mode = grokQuotaMode();
-  input.placeholder = mode === "set" ? "总次数" : "次数";
-  // 清零已用 takes no number.
-  input.disabled = mode === "reset_used";
-  if (!userId || !quota) {
-    label.textContent = "当前：-";
-    if (!editing) {
-      input.value = "";
-      if (note) note.value = "";
-    }
-    updateGrokQuotaPreview();
-    return;
-  }
-  if (!editing) {
-    // 改成总次数 starts from the current total; 增加 / 扣减 from a blank amount.
-    input.value = mode === "set" ? String(Number(quota.allocated_count || 0)) : "";
-    if (note) note.value = String(quota.note || "");
-  }
-  label.textContent = `当前：总次数 ${formatNumber(quota.allocated_count || 0)} · 已用 ${formatNumber(quota.used_count || 0)} · 剩余 ${formatNumber(quota.remaining_count || 0)}`;
-  updateGrokQuotaPreview();
 }
 
 async function loadAdminDataset(apiName, badgeId) {
@@ -817,29 +688,6 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
   replaceRows("usersTableBody", rows, 8, filter ? "没有匹配的用户" : "暂无用户数据");
 }
 
-function renderCredits(creditsResult, userMap) {
-  if (isErrorResult(creditsResult)) {
-    replaceRows("creditsTableBody", [], 3, resultErrorText(creditsResult));
-  } else {
-    const creditByUserId = new Map((creditsResult.records || []).map((item) => [String(item.user_id || ""), item]));
-    const rowsFromUsers = Array.from(userMap.values()).map((user) => {
-      return creditByUserId.get(String(user.id || "")) || { user_id: user.id, email: user.email, balance: 0 };
-    });
-    const userIds = new Set(rowsFromUsers.map((item) => String(item.user_id || "")));
-    const extraRows = (creditsResult.records || []).filter((item) => !userIds.has(String(item.user_id || "")));
-    const displayRows = rowsFromUsers.length ? [...rowsFromUsers, ...extraRows] : (creditsResult.records || []);
-    const creditRows = displayRows.map((item) => {
-      const tr = document.createElement("tr");
-      const balance = Number(item.balance || 0);
-      tr.appendChild(textCell(displayNameByUserId(userMap, item.user_id, accountNameFromEmail(item.email))));
-      tr.appendChild(textCell(formatCreditAmount(balance)));
-      tr.appendChild(nodeCell(statusBadge(balance > 0 ? "normal" : "low")));
-      return tr;
-    });
-    replaceRows("creditsTableBody", creditRows, 3, "暂无积分数据");
-  }
-}
-
 function renderCreditStats(creditsResult, quotaResult) {
   const credits = creditsResult?.records || [];
   const quotas = quotaResult?.records || [];
@@ -855,18 +703,22 @@ function renderCreditStats(creditsResult, quotaResult) {
 }
 
 // 会员管理: one row per user with the account tier, the credit balance and the
-// prompt-service quota side by side. 「调整」 puts that user into both edit
-// forms on the right.
-let memberState = { users: [], credits: [], quotas: [], usersResult: null };
+// prompt-service quota side by side. 「调整」 picks that user for the one edit
+// panel on the right.
+let memberState = { users: [], credits: [], quotas: [], usersResult: null, creditsResult: null, quotaResult: null, writable: false };
 
 function renderMembers(usersResult, creditsResult, quotaResult) {
   const body = $("membersTableBody");
   if (!body) return;
+  const live = (result) => result?.source === "supabase" && result?.status !== "error";
   memberState = {
     usersResult,
+    creditsResult,
+    quotaResult,
     users: usersResult?.records || [],
     credits: creditsResult?.records || [],
-    quotas: quotaResult?.records || []
+    quotas: quotaResult?.records || [],
+    writable: live(usersResult) && live(creditsResult) && live(quotaResult)
   };
   if (isErrorResult(usersResult)) {
     replaceRows("membersTableBody", [], 7, resultErrorText(usersResult));
@@ -883,6 +735,8 @@ function renderMembers(usersResult, creditsResult, quotaResult) {
     const quota = quotaByUser.get(userId);
     const plan = normalizeUserPlanValue(user.plan);
     const tr = document.createElement("tr");
+    tr.dataset.userId = userId;
+    if (userId && userId === memberAdjust.userId) tr.classList.add("active");
     tr.appendChild(textCell(userAccountLabel(user) || userDisplayName(user)));
     const planBadge = document.createElement("span");
     planBadge.className = "badge " + (plan === "trial" ? "disabled" : plan === "standard" ? "expired" : "active");
@@ -899,175 +753,149 @@ function renderMembers(usersResult, creditsResult, quotaResult) {
     adjust.type = "button";
     adjust.className = "btn secondary";
     adjust.textContent = "调整";
-    adjust.title = "在右侧调整这个用户的积分和提示词次数";
-    adjust.addEventListener("click", () => {
-      // The direct edit: the number box shows this person's total, ready to
-      // be overwritten.
-      const modeSelect = $("grokQuotaMode");
-      if (modeSelect) modeSelect.value = "set";
-      grokQuotaDirty = false;
-      ["creditAdjustUser", "grokQuotaUser"].forEach((id) => {
-        const select = $(id);
-        if (!select) return;
-        select.value = userId;
-        select.dispatchEvent(new Event("change", { bubbles: true }));
-      });
-      document.querySelectorAll("#membersTableBody tr").forEach((row) => row.classList.toggle("active", row === tr));
-      const amount = $("creditAdjustAmount");
-      if (amount) {
-        amount.focus();
-        amount.scrollIntoView({ block: "nearest" });
-      }
-    });
+    adjust.title = "在右侧改这个会员的积分或 Grok 次数";
+    adjust.addEventListener("click", () => selectMemberForAdjust(userId));
     actions.appendChild(adjust);
     tr.appendChild(nodeCell(actions));
     return tr;
   });
   setText("membersCount", filter ? `匹配 ${rows.length} / ${memberState.users.length}` : `共 ${memberState.users.length} 个`);
   replaceRows("membersTableBody", rows, 7, filter ? "没有匹配的用户" : "暂无用户数据");
+  renderMemberAdjust({ prefill: true });
 }
 
-function renderCreditAdjustControls(usersResult, creditsResult) {
-  const select = $("creditAdjustUser");
-  const button = $("applyCreditAdjust");
-  const status = $("creditAdjustStatus");
-  if (!select || !button || !status) return;
+// The one edit panel: two kinds, one number, one button. 积分调整 writes the
+// balance the number says; Grok 次数分配 writes the total the number says.
+// The row's 调整 button picks the member.
+let memberAdjust = { kind: "credits", userId: "" };
 
-  // Same trap as the quota panel: a failed load emptied this and disabled the
-  // user list and the button, and nothing retries by itself - loadAdminData
-  // runs at startup and after a successful write, and both controls that could
-  // cause one were now disabled. Keep the last good data and stay usable.
-  const failed = isErrorResult(usersResult) || isErrorResult(creditsResult);
-  const users = (usersResult.records || []).length || !failed
-    ? (usersResult.records || [])
-    : (creditAdjustState.users || []);
-  const credits = (creditsResult.records || []).length || !failed
-    ? (creditsResult.records || [])
-    : (creditAdjustState.credits || []);
-  const writable = failed
-    ? Boolean(users.length && creditAdjustState.writable)
-    : usersResult.source === "supabase" &&
-      usersResult.status !== "error" &&
-      creditsResult.source === "supabase" &&
-      creditsResult.status !== "error";
-  const currentUserId = select.value;
-
-  creditAdjustState = { users, credits, writable };
-  select.replaceChildren();
-  if (!users.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = writable ? "暂无用户，请先接入用户数据" : failed ? "读取失败" : "mock 数据不可写入";
-    select.appendChild(option);
-  } else {
-    users.forEach((user) => {
-      const option = document.createElement("option");
-      option.value = String(user.id || "");
-      option.textContent = `${userAccountLabel(user) || user.display_name || user.id} · ${formatCreditAmount(creditBalanceByUserId(credits, user.id))}`;
-      select.appendChild(option);
-    });
-    if (currentUserId && users.some((user) => String(user.id || "") === currentUserId)) {
-      select.value = currentUserId;
-    }
-  }
-  select.disabled = !writable || !users.length;
-  button.disabled = !writable || !users.length;
-  status.textContent = failed
-    ? writable
-      ? "读取失败，显示的是上次的数据；保存会重试"
-      : "读取失败，请稍后重试"
-    : writable
-      ? users.length ? "可写入 Supabase" : "暂无可分配用户"
-      : usersResult.source === "mock" || creditsResult.source === "mock" ? "mock 数据不可写入" : "数据异常，暂停写入";
-  updateCreditAdjustCurrentBalance();
+function memberAdjustUser() {
+  return memberState.users.find((user) => String(user.id || "") === memberAdjust.userId) || null;
 }
 
-function renderGrokQuotaControls(usersResult, quotaResult) {
-  const providerSelect = $("providerQuotaKey");
-  const select = $("grokQuotaUser");
-  const button = $("saveGrokQuota");
-  const status = $("grokQuotaStatus");
-  if (!select || !button || !status) return;
+function memberAdjustCurrent() {
+  const user = memberAdjustUser();
+  if (!user) return null;
+  const credit = memberState.credits.find((item) => String(item.user_id || "") === memberAdjust.userId);
+  const quota = memberState.quotas.find((item) => String(item.user_id || "") === memberAdjust.userId);
+  const allocated = Number(quota?.allocated_count || 0);
+  const used = Number(quota?.used_count || 0);
+  const reserved = Number(quota?.reserved_count || 0);
+  return {
+    balance: Number(user.current_credits ?? credit?.balance ?? 0) || 0,
+    allocated,
+    used,
+    reserved,
+    remaining: Math.max(0, allocated - used - reserved),
+    note: String(quota?.note || "")
+  };
+}
 
-  const providerKey = normalizeProviderQuotaKey(providerSelect?.value || quotaResult?.providerKey || "grok");
-  if (providerSelect) {
-    providerSelect.replaceChildren(...PROVIDER_QUOTA_OPTIONS.map((provider) => {
-      const option = document.createElement("option");
-      option.value = provider.key;
-      option.textContent = provider.label;
-      return option;
-    }));
-    providerSelect.value = providerKey;
+function selectMemberForAdjust(userId) {
+  memberAdjust.userId = String(userId || "");
+  document.querySelectorAll("#membersTableBody tr").forEach((row) => {
+    row.classList.toggle("active", Boolean(memberAdjust.userId) && row.dataset.userId === memberAdjust.userId);
+  });
+  renderMemberAdjust({ prefill: true });
+  const input = $("memberAdjustValue");
+  if (input && !input.disabled) {
+    input.focus();
+    input.select();
   }
-  // A failed load used to empty this panel and disable both controls, and
-  // nothing retries on its own - loadAdminData only runs at startup and after
-  // a successful write, and every control that could trigger one was now
-  // disabled. One Supabase hiccup among the eight calls it makes and the only
-  // way out was restarting the app.
-  //
-  // So a failure keeps whatever was last loaded and stays usable. Pressing
-  // save then either works, because the backend recovered, or says exactly
-  // what went wrong - and a successful save reloads everything.
-  const failed = isErrorResult(usersResult) || isErrorResult(quotaResult);
-  const users = (usersResult.records || []).length || !failed
-    ? (usersResult.records || [])
-    : (grokQuotaState.users || []);
-  const quotas = (quotaResult.records || []).length || !failed
-    ? (quotaResult.records || [])
-    : (grokQuotaState.quotas || []);
-  const writable = failed
-    ? Boolean(users.length && grokQuotaState.writable)
-    : usersResult.source === "supabase" &&
-      usersResult.status !== "error" &&
-      quotaResult.source === "supabase" &&
-      quotaResult.status !== "error";
-  const currentUserId = select.value;
-  grokQuotaState = { providerKey, users, quotas, writable };
+}
 
-  if (isErrorResult(quotaResult)) {
-    replaceRows("grokQuotaTableBody", [], 5, resultErrorText(quotaResult));
-  } else {
-    const rows = quotas.map((quota) => {
-      const tr = document.createElement("tr");
-      tr.appendChild(textCell(displayNameByUserId(new Map(users.map((user) => [String(user.id || ""), user])), quota.user_id, accountNameFromEmail(quota.email))));
-      tr.appendChild(textCell(formatNumber(quota.allocated_count || 0)));
-      tr.appendChild(textCell(formatNumber(quota.used_count || 0)));
-      tr.appendChild(textCell(formatNumber(quota.remaining_count || 0)));
-      tr.appendChild(nodeCell(statusBadge(Number(quota.remaining_count || 0) > 0 ? "normal" : "low")));
-      return tr;
-    });
-    replaceRows("grokQuotaTableBody", rows, 5, `暂无 ${providerQuotaLabel(providerKey)}次数数据`);
+function setMemberAdjustKind(kind) {
+  memberAdjust.kind = kind === "quota" ? "quota" : "credits";
+  renderMemberAdjust({ prefill: true });
+  const input = $("memberAdjustValue");
+  if (input && !input.disabled) {
+    input.focus();
+    input.select();
   }
+}
 
-  select.replaceChildren();
-  if (!users.length) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = writable ? "暂无用户" : failed ? "读取失败" : "mock 数据不可写入";
-    select.appendChild(option);
-  } else {
-    users.forEach((user) => {
-      const quota = quotas.find((item) => String(item.user_id || "") === String(user.id || ""));
-      const option = document.createElement("option");
-      option.value = String(user.id || "");
-      option.textContent = `${userAccountLabel(user) || user.display_name || user.id} · 剩余 ${formatNumber(quota?.remaining_count || 0)}`;
-      select.appendChild(option);
-    });
-    if (currentUserId && users.some((user) => String(user.id || "") === currentUserId)) {
-      select.value = currentUserId;
+function renderMemberAdjust({ prefill = false } = {}) {
+  const target = $("memberAdjustTarget");
+  const label = $("memberAdjustLabel");
+  const hint = $("memberAdjustHint");
+  const input = $("memberAdjustValue");
+  const submit = $("memberAdjustSubmit");
+  if (!target || !label || !hint || !input || !submit) return;
+  const isQuota = memberAdjust.kind === "quota";
+  document.querySelectorAll("[data-adjust-kind]").forEach((button) => {
+    button.classList.toggle("active", button.getAttribute("data-adjust-kind") === memberAdjust.kind);
+  });
+  label.textContent = isQuota ? "新的 Grok 总次数" : "新的积分余额";
+  const user = memberAdjustUser();
+  const current = memberAdjustCurrent();
+  if (!user || !current) {
+    target.textContent = "在左侧列表点「调整」选择会员";
+    hint.textContent = "";
+    input.value = "";
+    input.disabled = true;
+    submit.disabled = true;
+    return;
+  }
+  target.textContent = `会员：${userAccountLabel(user) || userDisplayName(user)}`;
+  hint.textContent = isQuota
+    ? `当前总次数 ${formatNumber(current.allocated)} · 已用 ${formatNumber(current.used)} · 剩余 ${formatNumber(current.remaining)}`
+    : `当前积分 ${formatCreditAmount(current.balance)}`;
+  input.disabled = !memberState.writable;
+  submit.disabled = !memberState.writable;
+  if (prefill) input.value = String(isQuota ? current.allocated : current.balance);
+  setText("memberAdjustStatus", memberState.writable ? "" : "mock 数据不可写入");
+}
+
+async function submitMemberAdjust() {
+  const status = $("memberAdjustStatus");
+  const input = $("memberAdjustValue");
+  const user = memberAdjustUser();
+  const current = memberAdjustCurrent();
+  if (!user || !current) {
+    alert("请先在列表里点「调整」选择会员");
+    return;
+  }
+  if (!memberState.writable) {
+    alert("当前不是 Supabase 可写数据，不能写入。");
+    return;
+  }
+  const value = Number(input?.value);
+  if (input?.value === "" || !Number.isInteger(value) || value < 0) {
+    alert("请输入大于等于 0 的整数");
+    return;
+  }
+  const isQuota = memberAdjust.kind === "quota";
+  const who = userAccountLabel(user) || userDisplayName(user);
+  const before = isQuota ? current.allocated : current.balance;
+  const fmt = isQuota ? formatNumber : formatCreditAmount;
+  if (value === before) {
+    toast("数值没有变化");
+    return;
+  }
+  const confirmed = confirm(isQuota
+    ? `确定把 ${who} 的 Grok 次数从 ${fmt(before)} 改成 ${fmt(value)}？\n已用 ${formatNumber(current.used)} 不变，剩余将为 ${formatNumber(Math.max(0, value - current.used - current.reserved))}。`
+    : `确定把 ${who} 的积分余额从 ${fmt(before)} 改成 ${fmt(value)}？`);
+  if (!confirmed) return;
+
+  if (status) status.textContent = "写入中...";
+  try {
+    const res = isQuota
+      ? await window.adminAPI.setAdminProviderQuota({ providerKey: "grok", userId: user.id, allocatedCount: value, note: current.note })
+      : await window.adminAPI.adjustAdminUserCredits({ userId: user.id, mode: "set", amount: value, feature: "后台积分分配", note: "" });
+    const result = res?.result || {};
+    if (!res?.ok || result.status === "error" || result.ok === false) {
+      if (status) status.textContent = "写入失败";
+      alert(result.error || res?.error || "写入失败");
+      return;
     }
+    if (status) status.textContent = `已写入：${fmt(before)} → ${fmt(value)}`;
+    toast(isQuota ? `${who} 的 Grok 次数已改为 ${fmt(value)}` : `${who} 的积分已改为 ${fmt(value)}`);
+    await loadAdminData();
+    if (status) status.textContent = `已写入：${fmt(before)} → ${fmt(value)}`;
+  } catch (err) {
+    if (status) status.textContent = "写入失败";
+    alert(`写入失败：${String(err?.message || err)}`);
   }
-  select.disabled = !writable || !users.length;
-  button.disabled = !writable || !users.length;
-  button.textContent = `保存 ${providerQuotaLabel(providerKey)}次数`;
-  status.textContent = failed
-    ? writable
-      ? "读取失败，显示的是上次的数据；保存会重试"
-      : "读取失败，请稍后重试"
-    : writable
-      ? users.length ? `可写入 ${providerQuotaLabel(providerKey)}次数` : "暂无可分配用户"
-      : quotaResult.source === "mock" || usersResult.source === "mock" ? "mock 数据不可写入" : "数据异常，暂停写入";
-  updateGrokQuotaCurrent();
 }
 
 function isComfyUiProvider(provider) {
@@ -2030,12 +1858,6 @@ async function loadAdminData() {
       return [provider.key, result];
     }));
     const providerQuotasByKey = Object.fromEntries(quotaEntries);
-    const selectedQuotaKey = normalizeProviderQuotaKey($("providerQuotaKey")?.value || "grok");
-    const selectedQuota = providerQuotasByKey[selectedQuotaKey] || {
-      providerKey: selectedQuotaKey,
-      source: "mock",
-      records: []
-    };
     const comfyStatus = await loadAdminProviderStatus("getAdminComfyUiProviderStatus");
     const grokStatus = await loadAdminProviderStatus("getAdminGrokProviderStatus");
     // For the dashboard's activity feed; the 算力节点 page loads its own copy.
@@ -2050,9 +1872,6 @@ async function loadAdminData() {
     setDataBadge("aiServicesDataBadge", hasErrorResult([providers, settings]) ? { status: "error" } : hasSupabaseResult([providers, settings]) ? { source: "supabase" } : { source: "mock" });
 
     renderUsers(users, credits, providerQuotasByKey);
-    renderCredits(credits, userMap);
-    renderCreditAdjustControls(users, credits);
-    renderGrokQuotaControls(users, selectedQuota);
     renderAiServices(providers, settings, comfyStatus, grokStatus);
     renderProviderRuntimeConfigControls(comfyStatus, grokStatus);
     renderSettings(settings);
@@ -2064,14 +1883,6 @@ async function loadAdminData() {
     setAdminDataSourceStatus([{ status: "error" }]);
     ["dashboardDataBadge", "usersDataBadge", "creditsDataBadge", "aiServicesDataBadge", "tasksDataBadge", "consumptionDataBadge", "settingsDataBadge"].forEach((id) => setDataBadge(id, "Supabase Error"));
     replaceRows("usersTableBody", [], 8, message);
-    replaceRows("creditsTableBody", [], 3, message);
-    replaceRows("grokQuotaTableBody", [], 5, message);
-    replaceRows("creditLogsPreviewBody", [], 4, message);
-    renderCreditAdjustControls({ source: "supabase", status: "error", records: [] }, { source: "supabase", status: "error", records: [] });
-    renderGrokQuotaControls(
-      { source: "supabase", status: "error", records: [] },
-      { providerKey: normalizeProviderQuotaKey($("providerQuotaKey")?.value || "grok"), source: "supabase", status: "error", records: [] }
-    );
     replaceRows("aiProvidersTableBody", [], 7, message);
     replaceRows("aiModelsTableBody", [], 5, message);
     replaceRows("tasksTableBody", [], 6, message);
@@ -2351,201 +2162,6 @@ async function deleteUserRow(button) {
   } finally {
     button.disabled = false;
     button.textContent = "删除";
-  }
-}
-
-function creditAdjustPayload() {
-  return {
-    userId: $("creditAdjustUser")?.value || "",
-    mode: $("creditAdjustMode")?.value || "add",
-    amount: Number($("creditAdjustAmount")?.value || 0),
-    feature: $("creditAdjustFeature")?.value.trim() || "后台积分分配",
-    note: $("creditAdjustNote")?.value.trim() || ""
-  };
-}
-
-async function applyCreditAdjustment() {
-  const status = $("creditAdjustStatus");
-  const payload = creditAdjustPayload();
-  if (!creditAdjustState.writable) {
-    alert("当前不是 Supabase 可写数据，不能写入积分。");
-    return;
-  }
-  if (!payload.userId) {
-    alert("请先选择用户");
-    return;
-  }
-  if (!Number.isInteger(payload.amount)) {
-    alert("积分数量必须是整数");
-    return;
-  }
-  if (payload.mode === "set" ? payload.amount < 0 : payload.amount <= 0) {
-    alert(payload.mode === "set" ? "设置余额不能小于 0" : "充值或扣减积分必须大于 0");
-    return;
-  }
-  const user = creditAdjustState.users.find((item) => String(item.id || "") === String(payload.userId));
-  const beforeBalance = creditBalanceByUserId(creditAdjustState.credits, payload.userId);
-  const afterBalance = payload.mode === "set"
-    ? payload.amount
-    : payload.mode === "deduct" ? beforeBalance - payload.amount : beforeBalance + payload.amount;
-  if (afterBalance < 0) {
-    alert("扣减后积分不能小于 0");
-    return;
-  }
-  const actionText = payload.mode === "set" ? "设置余额" : payload.mode === "deduct" ? "扣减积分" : "增加积分";
-  const confirmed = confirm(`确定为 ${userAccountLabel(user) || payload.userId} ${actionText}？\n当前积分：${formatCreditAmount(beforeBalance)}\n写入后：${formatCreditAmount(afterBalance)}`);
-  if (!confirmed) return;
-
-  try {
-    status.textContent = "写入中...";
-    const res = await window.adminAPI.adjustAdminUserCredits(payload);
-    const result = res?.result || {};
-    if (!res?.ok || result.status === "error" || result.ok === false) {
-      status.textContent = "写入失败";
-      alert(result.error || res?.error || "积分写入失败");
-      return;
-    }
-    const adjustment = result.adjustment || {};
-    status.textContent = `已写入：${formatCreditAmount(adjustment.beforeBalance)} -> ${formatCreditAmount(adjustment.afterBalance)}`;
-    $("creditAdjustAmount").value = "";
-    $("creditAdjustNote").value = "";
-    toast("积分已更新");
-    await loadAdminData();
-  } catch (err) {
-    status.textContent = "写入失败";
-    alert(`积分写入失败：${String(err?.message || err)}`);
-  }
-}
-
-// The quota form works like the credit form: add to, take from, or set the
-// allocation. The backend only ever stores the resulting total.
-function grokQuotaMode() {
-  const mode = String($("grokQuotaMode")?.value || "set");
-  return ["add", "deduct", "set", "reset_used"].includes(mode) ? mode : "set";
-}
-
-function grokQuotaPayload() {
-  const userId = $("grokQuotaUser")?.value || "";
-  const amount = Number($("grokQuotaAllocated")?.value || 0);
-  const quota = (grokQuotaState.quotas || []).find((item) => String(item.user_id || "") === String(userId));
-  const current = Number(quota?.allocated_count || 0);
-  const used = Number(quota?.used_count || 0);
-  const reserved = Number(quota?.reserved_count || 0);
-  const mode = grokQuotaMode();
-  const allocatedCount = mode === "add" ? current + amount
-    : mode === "deduct" ? Math.max(0, current - amount)
-    : mode === "reset_used" ? current
-    : amount;
-  const usedAfter = mode === "reset_used" ? 0 : used;
-  return {
-    providerKey: normalizeProviderQuotaKey($("providerQuotaKey")?.value || grokQuotaState.providerKey),
-    userId,
-    mode,
-    amount,
-    currentAllocated: current,
-    currentUsed: used,
-    allocatedCount,
-    remainingAfter: Math.max(0, allocatedCount - usedAfter - reserved),
-    note: $("grokQuotaNote")?.value.trim() || ""
-  };
-}
-
-// What the save button will do, in numbers, before it is pressed. The
-// allocation used to be a bare "分配次数" box, and a number typed into it
-// while the mode said 增加 stacked on top of the old total.
-function updateGrokQuotaPreview() {
-  const preview = $("grokQuotaPreview");
-  if (!preview) return;
-  const payload = grokQuotaPayload();
-  if (!payload.userId) {
-    preview.textContent = "保存后：先选择用户";
-    return;
-  }
-  const n = formatNumber;
-  if (payload.mode === "reset_used") {
-    preview.textContent = `保存后：已用 ${n(payload.currentUsed)} → 0，总次数 ${n(payload.currentAllocated)} 不变，剩余 ${n(payload.remainingAfter)}`;
-    return;
-  }
-  if (!Number.isFinite(payload.amount) || $("grokQuotaAllocated")?.value === "") {
-    preview.textContent = payload.mode === "set"
-      ? `保存后：总次数改为输入的数字（当前 ${n(payload.currentAllocated)}，已用 ${n(payload.currentUsed)}）`
-      : `保存后：在当前 ${n(payload.currentAllocated)} 的基础上${payload.mode === "add" ? "增加" : "扣减"}输入的数字`;
-    return;
-  }
-  const how = payload.mode === "set" ? `${n(payload.currentAllocated)} → ${n(payload.allocatedCount)}`
-    : payload.mode === "add" ? `${n(payload.currentAllocated)} + ${n(payload.amount)} = ${n(payload.allocatedCount)}`
-    : `${n(payload.currentAllocated)} − ${n(payload.amount)} = ${n(payload.allocatedCount)}`;
-  preview.textContent = `保存后：总次数 ${how}，已用 ${n(payload.currentUsed)}，剩余 ${n(payload.remainingAfter)}`;
-}
-
-async function saveGrokQuota() {
-  const status = $("grokQuotaStatus");
-  const payload = grokQuotaPayload();
-  const providerLabel = providerQuotaLabel(payload.providerKey);
-  if (!grokQuotaState.writable) {
-    alert(`当前不是 Supabase 可写数据，不能写入 ${providerLabel}次数。`);
-    return;
-  }
-  if (!payload.userId) {
-    alert("请选择用户");
-    return;
-  }
-  const user = grokQuotaState.users.find((item) => String(item.id || "") === String(payload.userId));
-  const quota = grokQuotaState.quotas.find((item) => String(item.user_id || "") === String(payload.userId));
-  const who = userAccountLabel(user) || payload.userId;
-
-  if (payload.mode === "reset_used") {
-    const confirmed = confirm(`确定把 ${who} 的 ${providerLabel}已用次数清零？\n当前已用：${formatNumber(payload.currentUsed)}，总次数 ${formatNumber(payload.currentAllocated)} 不变，剩余将为 ${formatNumber(payload.remainingAfter)}。`);
-    if (!confirmed) return;
-    try {
-      if (status) status.textContent = "保存中...";
-      const res = await window.adminAPI.resetAdminProviderQuotaUsage({ userId: payload.userId, providerKey: payload.providerKey, note: payload.note });
-      const result = res?.result || {};
-      if (!res?.ok || result.status === "error" || result.ok === false) {
-        if (status) status.textContent = "保存失败";
-        alert(result.error || res?.error || `清零 ${providerLabel}已用次数失败`);
-        return;
-      }
-      if (status) status.textContent = "已清零";
-      grokQuotaDirty = false;
-      toast(`${who} 的${providerLabel}已用次数已清零`);
-      await loadAdminData();
-    } catch (err) {
-      if (status) status.textContent = "保存失败";
-      alert(`清零 ${providerLabel}已用次数失败：${String(err?.message || err)}`);
-    }
-    return;
-  }
-
-  if (!Number.isInteger(payload.amount) || payload.amount < 0 || (payload.mode !== "set" && payload.amount === 0)) {
-    alert(payload.mode === "set"
-      ? `${providerLabel} 总次数必须是大于等于 0 的整数`
-      : `${providerLabel} ${payload.mode === "add" ? "增加" : "扣减"}的次数必须是大于 0 的整数`);
-    return;
-  }
-  const modeText = payload.mode === "add" ? `增加 ${formatNumber(payload.amount)} 次`
-    : payload.mode === "deduct" ? `扣减 ${formatNumber(payload.amount)} 次`
-    : `改成 ${formatNumber(payload.amount)} 次`;
-  const confirmed = confirm(`确定把 ${who} 的 ${providerLabel}总次数${modeText}？\n当前总次数：${formatNumber(payload.currentAllocated)} · 已用：${formatNumber(quota?.used_count || 0)}\n保存后总次数：${formatNumber(payload.allocatedCount)} · 剩余：${formatNumber(payload.remainingAfter)}`);
-  if (!confirmed) return;
-
-  try {
-    if (status) status.textContent = "保存中...";
-    const api = window.adminAPI?.setAdminProviderQuota || window.adminAPI?.setAdminGrokProviderQuota;
-    const res = await api(payload);
-    const result = res?.result || {};
-    if (!res?.ok || result.status === "error" || result.ok === false) {
-      if (status) status.textContent = "保存失败";
-      alert(result.error || res?.error || `保存 ${providerLabel}次数失败`);
-      return;
-    }
-    if (status) status.textContent = "已保存";
-    grokQuotaDirty = false;
-    toast(`${providerLabel}次数已保存`);
-    await loadAdminData();
-  } catch (err) {
-    if (status) status.textContent = "保存失败";
-    alert(`保存 ${providerLabel}次数失败：${String(err?.message || err)}`);
   }
 }
 
@@ -3264,63 +2880,28 @@ async function init() {
   $("createAdminUser").addEventListener("click", async () => {
     await createAdminUser();
   });
-  $("creditUserSearchButton")?.addEventListener("click", selectCreditAdjustUserFromSearch);
-  $("creditUserSearchInput")?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      selectCreditAdjustUserFromSearch();
-    }
-  });
   $("memberSearchInput")?.addEventListener("input", () => {
     renderMembers(
       memberState.usersResult || { records: [] },
-      { records: memberState.credits },
-      { records: memberState.quotas }
+      memberState.creditsResult || { records: [] },
+      memberState.quotaResult || { records: [] }
     );
   });
-  $("creditAdjustUser").addEventListener("change", updateCreditAdjustCurrentBalance);
+  document.querySelectorAll("[data-adjust-kind]").forEach((button) => {
+    button.addEventListener("click", () => setMemberAdjustKind(button.getAttribute("data-adjust-kind") || "credits"));
+  });
+  $("memberAdjustSubmit")?.addEventListener("click", () => { void submitMemberAdjust(); });
+  $("memberAdjustValue")?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void submitMemberAdjust();
+    }
+  });
   $("computeMintCode")?.addEventListener("click", () => { void mintComputeCode(); });
   $("computePurgeCodes")?.addEventListener("click", () => { void purgeComputeCodes(); });
   $("computePurgeUsage")?.addEventListener("click", () => { void purgeComputeUsage(); });
-  $("applyCreditAdjust").addEventListener("click", async () => {
-    await applyCreditAdjustment();
-  });
-  $("grokQuotaUserSearchButton")?.addEventListener("click", selectGrokQuotaUserFromSearch);
-  $("grokQuotaUserSearchInput")?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      selectGrokQuotaUserFromSearch();
-    }
-  });
-  $("grokQuotaUser").addEventListener("change", () => {
-    // A different user means the typed number belongs to nobody; show theirs.
-    grokQuotaDirty = false;
-    updateGrokQuotaCurrent();
-  });
-  $("grokQuotaMode")?.addEventListener("change", () => {
-    grokQuotaDirty = false;
-    updateGrokQuotaCurrent();
-  });
-  $("providerQuotaKey").addEventListener("change", () => {
-    const providerKey = normalizeProviderQuotaKey($("providerQuotaKey")?.value || "grok");
-    const quotaResult = userManagementState.providerQuotaResultsByKey?.[providerKey] || {
-      providerKey,
-      source: "mock",
-      records: []
-    };
-    grokQuotaDirty = false;
-    renderGrokQuotaControls(userManagementState.usersResult || { records: [] }, quotaResult);
-  });
   $("comfyProviderBudgetBalance").addEventListener("input", () => { providerBudgetDirty = true; });
   $("comfyProviderBudgetNote").addEventListener("input", () => { providerBudgetDirty = true; });
-  $("grokQuotaAllocated").addEventListener("input", () => {
-    grokQuotaDirty = true;
-    updateGrokQuotaPreview();
-  });
-  $("grokQuotaNote").addEventListener("input", () => { grokQuotaDirty = true; });
-  $("saveGrokQuota").addEventListener("click", async () => {
-    await saveGrokQuota();
-  });
   $("saveComfyProviderBudget").addEventListener("click", async () => {
     await saveComfyProviderBudget();
   });

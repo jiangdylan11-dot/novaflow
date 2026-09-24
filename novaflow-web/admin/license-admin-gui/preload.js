@@ -35,7 +35,6 @@ contextBridge.exposeInMainWorld("adminAPI", {
   deleteAdminWorkerCode: (payload) => ipcRenderer.invoke("admin:data:worker_codes:delete", payload),
   purgeAdminWorkerCodes: () => ipcRenderer.invoke("admin:data:worker_codes:purge"),
   purgeAdminWebTasks: (payload) => ipcRenderer.invoke("admin:data:web_tasks:purge", payload),
-  resetAdminProviderQuotaUsage: (payload) => ipcRenderer.invoke("admin:data:provider_quotas:reset-usage", payload),
   getAdminGrokProviderQuotas: () => ipcRenderer.invoke("admin:data:provider_quotas:grok:list"),
   getAdminProviderQuotas: (providerKey) => ipcRenderer.invoke("admin:data:provider_quotas:list", { providerKey }),
   getAdminComfyUiProviderStatus: () => ipcRenderer.invoke("admin:provider:comfyui:status"),
