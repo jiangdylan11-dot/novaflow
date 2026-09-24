@@ -8,6 +8,7 @@ import { createWorkflowHost } from '../../worker/src/comfy/workflow-host.mjs';
 import { instrumentModule } from '../../tools/instrument-workflow-module.mjs';
 import { isAllowedWorkflowCall } from '../../packages/shared/src/workflow-modules.mjs';
 import { withReferences } from '../../worker/src/worker-core.mjs';
+import { isSafeFilename } from '../../packages/shared/src/protocol.mjs';
 import { fileURLToPath } from 'node:url';
 
 const web = new URL('../../web-dist/', import.meta.url);
@@ -49,6 +50,12 @@ assert.ok(stats.ok && stats.data.system && stats.data.devices.length === 1);
 assert.equal(stats.data, stats.result);
 const uploaded = await api.runtimeUploadImage({ fileName: 'test.png', dataBase64: 'AQID' });
 assert.equal(uploaded.data.name, 'test.png');
+// A name with no ASCII in it must still come out as something the worker gateway accepts, and two
+// such names must stay two files.
+const cn1 = (await api.runtimeUploadImage({ fileName: '白衣女.png', dataBase64: 'AQID' })).data.name;
+const cn2 = (await api.runtimeUploadImage({ fileName: '背景图.png', dataBase64: 'AQID' })).data.name;
+assert.ok(isSafeFilename(cn1) && isSafeFilename(cn2) && cn1 !== cn2, cn1 + ' / ' + cn2);
+assert.ok(isSafeFilename((await api.runtimeUploadImage({ fileName: '(1).png', dataBase64: 'AQID' })).data.name));
 // A prepared image from another panel must not contaminate text-to-video.
 runInContext(await readFile(new URL('ai-sequence-minimax-h3.workflow.js', web), 'utf8'), context);
 const video = sandbox.NovaFlowAiSequenceMiniMaxH3Workflow.getWorkflowJson({ mode: 't2v', prompt: 'a girl by the sea' });

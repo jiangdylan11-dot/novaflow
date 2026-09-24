@@ -734,6 +734,11 @@
           ? cleaned.slice(0, dot) + '_' + tag + cleaned.slice(dot)
           : cleaned + '_' + tag;
       }
+      // The gateway stores and serves only names that start with a letter or digit (isSafeFilename).
+      // A name with no ASCII at all, 白衣女.png say, cleaned to ____<tag>.png: the control plane took
+      // the task, every upload of the file came back 400, the node waited two minutes for it, and the
+      // panel said only 下发失败. Give such a name an ASCII head instead.
+      if (!/^[A-Za-z0-9]/.test(safe)) safe = 'ref-' + safe.replace(/^[._-]+/, '');
       pendingUploads.push({ name: safe, bytes: (bytes && bytes.byteLength) || 0, kind: 'image' });
       uploads.set(safe, { bytes: bytes });
       return { ok: true, status: 200, result: { name: safe, subfolder: '', type: 'input' } };
