@@ -211,6 +211,15 @@ export const GATEWAY_ROUTES = Object.freeze({
   preview: (taskId, name) => '/gw/tasks/' + taskId + '/preview/' + name
 });
 
+// Account tiers. `users.plan` is what the administrator sets: a 普通账户
+// (trial) may only run on the machine 启动NovaFlow opened, a 高级账户 (pro or
+// team) may also queue work for other people's nodes in the shared pool.
+export const SHARED_COMPUTE_PLANS = Object.freeze(['pro', 'team']);
+
+export function canUseSharedCompute(plan) {
+  return SHARED_COMPUTE_PLANS.includes(String(plan || 'trial').trim().toLowerCase());
+}
+
 export const ERROR_CODE = Object.freeze({
   UNAUTHORIZED: 'unauthorized',
   FORBIDDEN: 'forbidden',
@@ -219,6 +228,7 @@ export const ERROR_CODE = Object.freeze({
   BAD_REQUEST: 'bad_request',
   CONFLICT: 'conflict',
   INSUFFICIENT_CREDITS: 'insufficient_credits',
+  PLAN_REQUIRED: 'plan_required',
   NO_WORKER: 'no_capable_worker',
   RATE_LIMITED: 'rate_limited',
   UNAVAILABLE: 'unavailable'

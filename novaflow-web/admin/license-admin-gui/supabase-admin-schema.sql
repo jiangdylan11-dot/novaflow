@@ -28,7 +28,7 @@ comment on column public.users.id is '用户主键，可后续映射 Supabase Au
 comment on column public.users.email is '内部 Supabase Auth 邮箱，唯一；用户可见账号由后台映射生成';
 comment on column public.users.display_name is '用户显示名称';
 comment on column public.users.role is '角色，例如 user/admin';
-comment on column public.users.plan is '用户方案，当前默认 trial，保留字段用于后续兼容';
+comment on column public.users.plan is '账户类型：trial=普通账户（只能用本机算力），pro/team=高级账户（可用其他算力节点）；默认 trial';
 comment on column public.users.status is '用户状态，例如 active/disabled';
 
 -- credits：用户当前积分余额表。

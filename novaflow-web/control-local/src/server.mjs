@@ -143,13 +143,16 @@ export async function startLocalControlPlane({ port = DEFAULT_PORT, verbose = fa
 
       // Local-only helper so a developer can get a session without standing up
       // the production auth stack. Never part of the deployed edge function.
+      // The session is a 高级账户 (pro) unless the caller asks for another plan,
+      // so a developer can create shared tasks straight away.
       if (req.method === 'POST' && url.pathname === '/dev/login') {
         const body = await readBody(req, 16 * 1024);
         const email = String(body.email || 'demo@novaflow.local');
         const user = await seedUser(ctx.db, {
           email,
           balance: Number.isFinite(Number(body.balance)) ? Number(body.balance) : 1000,
-          displayName: String(body.display_name || 'NovaFlow Demo')
+          displayName: String(body.display_name || 'NovaFlow Demo'),
+          plan: ['trial', 'pro', 'team'].includes(String(body.plan || '')) ? String(body.plan) : 'pro'
         });
         const token = await mintLocalSessionToken(user);
         const balance = await ctx.store.getCreditBalance(user.id);

@@ -253,6 +253,15 @@ const GATEWAY_ROUTES = Object.freeze({
   preview: (taskId, name) => '/gw/tasks/' + taskId + '/preview/' + name
 });
 
+// Account tiers. `users.plan` is what the administrator sets: a 普通账户
+// (trial) may only run on the machine 启动NovaFlow opened, a 高级账户 (pro or
+// team) may also queue work for other people's nodes in the shared pool.
+const SHARED_COMPUTE_PLANS = Object.freeze(['pro', 'team']);
+
+function canUseSharedCompute(plan) {
+  return SHARED_COMPUTE_PLANS.includes(String(plan || 'trial').trim().toLowerCase());
+}
+
 const ERROR_CODE = Object.freeze({
   UNAUTHORIZED: 'unauthorized',
   FORBIDDEN: 'forbidden',
@@ -261,6 +270,7 @@ const ERROR_CODE = Object.freeze({
   BAD_REQUEST: 'bad_request',
   CONFLICT: 'conflict',
   INSUFFICIENT_CREDITS: 'insufficient_credits',
+  PLAN_REQUIRED: 'plan_required',
   NO_WORKER: 'no_capable_worker',
   RATE_LIMITED: 'rate_limited',
   UNAVAILABLE: 'unavailable'
@@ -1499,6 +1509,13 @@ function createControlPlane({ store, secrets, logger }) {
 
   async function handleCreateTask(body, headers) {
     const user = await requireUser(headers);
+    // Every task created here runs on somebody else's node. A 普通账户 keeps
+    // to its own machine (the local assistant never calls this endpoint).
+    if (!canUseSharedCompute(user.plan)) {
+      throw new HttpError(403, ERROR_CODE.PLAN_REQUIRED,
+        '普通账户只能使用本机算力：请在本地助手点击“启动NovaFlow”后生成。使用其他算力节点需要高级账户。',
+        { plan: String(user.plan || 'trial') });
+    }
     const taskType = sanitizeText(body.task_type || body.taskType, 80);
 
     // Two ways in. A fixed task type is the simple API. A renderer workflow
@@ -1753,8 +1770,9 @@ function createControlPlane({ store, secrets, logger }) {
     const balance = await store.getCreditBalance(user.id);
     return {
       ok: true,
-      user: { id: user.id, email: user.email, display_name: user.display_name || '' },
-      credits: { balance: Number(balance) }
+      user: { id: user.id, email: user.email, display_name: user.display_name || '', plan: String(user.plan || 'trial') },
+      credits: { balance: Number(balance) },
+      compute: { shared: canUseSharedCompute(user.plan) }
     };
   }
 

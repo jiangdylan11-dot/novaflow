@@ -324,4 +324,30 @@ section('scheduler respects capability');
   check('a worker without the model or VRAM claims nothing', claim.body.task === null, claim.body);
 }
 
+// ---------------------------------------------------------------------------
+section('account tiers: other people\'s nodes need a 高级账户');
+{
+  const body = { task_type: 'qwen_t2i', parameters: { prompt: 'a knight', width: 1024, height: 1024, steps: 20, count: 1 } };
+  const basic = await call(BASE, 'POST', '/dev/login', { body: { email: 'basic@novaflow.local', balance: 5000, plan: 'trial' } });
+  const basicToken = basic.body.session.token;
+  const me = await call(BASE, 'GET', '/api/web/me', { token: basicToken });
+  check('a 普通账户 (trial) reads its plan and no shared compute',
+    me.status === 200 && me.body.user.plan === 'trial' && me.body.compute.shared === false, me.body);
+  const refused = await call(BASE, 'POST', '/api/web/tasks', { token: basicToken, body });
+  check('a 普通账户 cannot queue work for other nodes',
+    refused.status === 403 && refused.body.code === 'plan_required' && /本机算力/.test(refused.body.error), refused.body);
+  const list = await call(BASE, 'GET', '/api/web/tasks', { token: basicToken });
+  check('the same account still reads its task list', list.status === 200 && list.body.tasks.length === 0, list.body);
+  const upgraded = await call(BASE, 'POST', '/dev/login', { body: { email: 'basic@novaflow.local', balance: 5000, plan: 'pro' } });
+  const allowed = await call(BASE, 'POST', '/api/web/tasks', { token: upgraded.body.session.token, body });
+  check('upgraded to pro, the same account creates a task', allowed.status === 200 && allowed.body.task.status === TASK_STATE.QUEUED, allowed.body);
+  const stale = await call(BASE, 'POST', '/api/web/tasks', { token: basicToken, body });
+  check('the plan is read from the user row, not the old token', stale.status === 200, stale.body);
+  const team = await call(BASE, 'POST', '/dev/login', { body: { email: 'team@novaflow.local', balance: 5000, plan: 'team' } });
+  const teamMe = await call(BASE, 'GET', '/api/web/me', { token: team.body.session.token });
+  check('a team account counts as 高级账户', teamMe.body.compute.shared === true && teamMe.body.user.plan === 'team', teamMe.body);
+  const pro = await call(BASE, 'GET', '/api/web/me', { token: alice.token });
+  check('the default dev login is a 高级账户', pro.body.compute.shared === true && pro.body.user.plan === 'pro', pro.body);
+}
+
 finish('control-plane');

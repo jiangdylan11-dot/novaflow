@@ -53,6 +53,14 @@ const USER_STATUS_OPTIONS = [
   ["disabled", "disabled"]
 ];
 
+// users.plan decides where a user's work may run: 普通 (trial) only on the
+// machine the local assistant opened, 高级 (pro / team) also on other nodes.
+const USER_PLAN_OPTIONS = [
+  ["trial", "普通（本机算力）"],
+  ["pro", "高级（可用其他节点）"],
+  ["team", "团队（可用其他节点）"]
+];
+
 function setGlobalStatus(text, tone, options = {}) {
   if (adminDataStatusLocked && !options.force) return;
   const el = $("globalStatus");
@@ -329,6 +337,11 @@ function providerQuotaLabel(providerKey) {
 function normalizeUserStatusValue(value) {
   const s = String(value || "active").trim().toLowerCase();
   return USER_STATUS_OPTIONS.some(([key]) => key === s) ? s : "active";
+}
+
+function normalizeUserPlanValue(value) {
+  const s = String(value || "trial").trim().toLowerCase();
+  return USER_PLAN_OPTIONS.some(([key]) => key === s) ? s : "trial";
 }
 
 function userDisplayName(user) {
@@ -631,7 +644,7 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
   }
 
   if (isErrorResult(usersResult)) {
-    replaceRows("usersTableBody", [], 7, resultErrorText(usersResult));
+    replaceRows("usersTableBody", [], 8, resultErrorText(usersResult));
     return;
   }
   const creditMap = new Map((creditsResult?.records || []).map((item) => [String(item.user_id || ""), item]));
@@ -670,6 +683,14 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
     const providerQuotaCell = textCell(providerQuotaText);
     providerQuotaCell.title = providerQuotaTitle || "未分配提示词服务次数";
     tr.appendChild(providerQuotaCell);
+
+    const planSelect = createTableSelect(
+      USER_PLAN_OPTIONS,
+      normalizeUserPlanValue(user.plan),
+      !userManagementState.writable,
+      "plan"
+    );
+    tr.appendChild(nodeCell(planSelect));
 
     const statusSelect = createTableSelect(
       USER_STATUS_OPTIONS,
@@ -717,7 +738,7 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
     tr.appendChild(nodeCell(actionWrap));
     return tr;
   });
-  replaceRows("usersTableBody", rows, 7, filter ? "没有匹配的用户" : "暂无用户数据");
+  replaceRows("usersTableBody", rows, 8, filter ? "没有匹配的用户" : "暂无用户数据");
 }
 
 function renderCredits(creditsResult, userMap) {
@@ -1609,7 +1630,7 @@ async function loadAdminData() {
     const message = `Supabase Error: ${String(err?.message || err)}`;
     setAdminDataSourceStatus([{ status: "error" }]);
     ["dashboardDataBadge", "usersDataBadge", "creditsDataBadge", "aiServicesDataBadge", "tasksDataBadge", "consumptionDataBadge", "settingsDataBadge"].forEach((id) => setDataBadge(id, "Supabase Error"));
-    replaceRows("usersTableBody", [], 7, message);
+    replaceRows("usersTableBody", [], 8, message);
     replaceRows("creditsTableBody", [], 3, message);
     replaceRows("grokQuotaTableBody", [], 5, message);
     replaceRows("creditLogsPreviewBody", [], 4, message);
@@ -1633,7 +1654,7 @@ function createAdminUserPayload() {
     accountName: $("newUserAccount")?.value.trim() || "",
     password: $("newUserPassword")?.value || "",
     displayName: $("newUserDisplayName")?.value.trim() || "",
-    plan: "trial",
+    plan: normalizeUserPlanValue($("newUserPlan")?.value),
     status: $("newUserStatus")?.value || "active",
     initialCredits: Number($("newUserInitialCredits")?.value || 0),
     note: $("newUserNote")?.value.trim() || ""
@@ -1644,6 +1665,7 @@ function clearCreateAdminUserForm() {
   if ($("newUserAccount")) $("newUserAccount").value = "";
   if ($("newUserPassword")) $("newUserPassword").value = "";
   if ($("newUserDisplayName")) $("newUserDisplayName").value = "";
+  if ($("newUserPlan")) $("newUserPlan").value = "trial";
   if ($("newUserStatus")) $("newUserStatus").value = "active";
   if ($("newUserInitialCredits")) $("newUserInitialCredits").value = "0";
   if ($("newUserNote")) $("newUserNote").value = "";
@@ -1708,19 +1730,25 @@ async function saveUserRow(button) {
     return;
   }
   const status = row.querySelector('select[data-field="status"]')?.value || "active";
+  const plan = normalizeUserPlanValue(row.querySelector('select[data-field="plan"]')?.value);
   const user = userManagementState.users.find((item) => String(item.id || "") === String(userId));
   const oldStatus = normalizeUserStatusValue(user?.status);
-  if (status === oldStatus) {
+  const oldPlan = normalizeUserPlanValue(user?.plan);
+  if (status === oldStatus && plan === oldPlan) {
     toast("用户信息没有变化");
     return;
   }
-  const confirmed = confirm(`确定更新 ${userAccountLabel(user) || userId}？\n状态：${oldStatus} -> ${status}`);
+  const planLabel = (value) => (USER_PLAN_OPTIONS.find(([key]) => key === value) || [value, value])[1];
+  const changes = [];
+  if (plan !== oldPlan) changes.push(`账户类型：${planLabel(oldPlan)} -> ${planLabel(plan)}`);
+  if (status !== oldStatus) changes.push(`状态：${oldStatus} -> ${status}`);
+  const confirmed = confirm(`确定更新 ${userAccountLabel(user) || userId}？\n${changes.join("\n")}`);
   if (!confirmed) return;
 
   try {
     button.disabled = true;
     button.textContent = "保存中...";
-    const res = await window.adminAPI.updateAdminUser({ userId, status });
+    const res = await window.adminAPI.updateAdminUser({ userId, status, plan });
     const result = res?.result || {};
     if (!res?.ok || result.status === "error" || result.ok === false) {
       alert(result.error || res?.error || "更新用户失败");

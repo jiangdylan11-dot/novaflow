@@ -121,6 +121,15 @@
                 </div>
               </div>
               <div class="row">
+                <div class="label">账户类型</div>
+                <div class="field">
+                  <select id="newUserPlan">
+                    <option value="trial">普通（只能用本机算力）</option>
+                    <option value="pro">高级（可用其他算力节点）</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row">
                 <div class="label">状态</div>
                 <div class="field">
                   <select id="newUserStatus">
@@ -150,7 +159,7 @@
               <div class="panelHeader">
                 <div>
                   <div class="cardTitle">用户列表</div>
-                  <div class="cardHint">可搜索、禁用、修改密码或删除无效用户；删除会清理用户资料、积分余额和可匹配的 Auth 登录身份。</div>
+                  <div class="cardHint">可搜索、切换账户类型、禁用、修改密码或删除无效用户；普通账户只能用本机算力，高级账户可用其他算力节点。删除会清理用户资料、积分余额和可匹配的 Auth 登录身份。</div>
                 </div>
                 <input id="userSearchInput" class="tableSearch" type="search" spellcheck="false" placeholder="搜索用户" />
               </div>
@@ -162,13 +171,14 @@
                     <th>注册时间</th>
                     <th>当前积分</th>
                     <th>提示词次数</th>
+                    <th>账户类型</th>
                     <th>状态</th>
                     <th>操作</th>
                   </tr>
                 </thead>
                 <tbody id="usersTableBody">
                   <tr>
-                    <td colspan="7"><div class="skeletonLine"></div></td>
+                    <td colspan="8"><div class="skeletonLine"></div></td>
                   </tr>
                 </tbody>
               </table>

@@ -8,7 +8,7 @@ const source = await readFile(new URL('../../renderer/novaflow-web-runtime.js', 
 let checks = 0, status = 200;
 const requests = [];
 const check = (actual, expected) => { assert.deepEqual(actual, expected); checks++; };
-const profile = { ok: true, credits: { balance: 5000.125 }, providerQuotas: { grok: { status: 'connected', remaining_count: 12, allocated_count: 30 } } };
+const profile = { ok: true, user: { plan: 'pro' }, credits: { balance: 5000.125 }, providerQuotas: { grok: { status: 'connected', remaining_count: 12, allocated_count: 30 } } };
 const sandbox = createDomSandbox({
   Response, Request, Blob, FormData,
   NOVAFLOW_WEB_CONFIG: { controlUrl: 'https://control.test', authUrl: 'https://account.test' },
@@ -23,11 +23,13 @@ const api = sandbox.electronAPI;
 const account = await api.clientAuthAccountDetails();
 check(account.ok, true);
 check(account.result.credits.balance, 5000.125);
+check(account.result.user.plan, 'pro'); // The dialog shows the tier the account service holds.
 check(account.result.providerQuotas.grok.remaining_count, 12);
 check(account.result.providerQuotas.grok.allocated_count, 30);
-check(requests[0].url, 'https://account.test/api/client/bootstrap');
-check(requests[0].init.method, 'GET');
-check(requests[0].init.headers.Authorization, 'Bearer test-token');
+// The runtime probes capabilities on load, so find the account read by URL.
+const bootstrap = requests.find((r) => r.url === 'https://account.test/api/client/bootstrap');
+check(bootstrap.init.method, 'GET');
+check(bootstrap.init.headers.Authorization, 'Bearer test-token');
 status = 503;
 const unavailable = await api.clientAuthAccountDetails();
 check(unavailable.ok, false);

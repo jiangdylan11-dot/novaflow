@@ -772,7 +772,7 @@
       try {
         const profile = await auth('GET', '/api/client/bootstrap');
         if (profile.ok === false) return { ok: false, error: profile.error || '账户信息读取失败' };
-        return { ok: true, result: { credits: profile.credits, providerQuotas: profile.providerQuotas } };
+        return { ok: true, result: { user: profile.user, credits: profile.credits, providerQuotas: profile.providerQuotas } };
       } catch (error) {
         return { ok: false, httpStatus: error.status, error: String(error.message || error) };
       }

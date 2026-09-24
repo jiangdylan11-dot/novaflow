@@ -56,13 +56,13 @@ export async function createDatabase({ verbose = false } = {}) {
 }
 
 /** Seed a user with a credit balance. Test/demo helper only. */
-export async function seedUser(db, { email, balance = 1000, displayName = '' }) {
+export async function seedUser(db, { email, balance = 1000, displayName = '', plan = 'pro' }) {
   const res = await db.query(
-    `insert into public.users (email, display_name, status)
-     values ($1, $2, 'active')
-     on conflict (email) do update set display_name = excluded.display_name
+    `insert into public.users (email, display_name, status, plan)
+     values ($1, $2, 'active', $3)
+     on conflict (email) do update set display_name = excluded.display_name, plan = excluded.plan
      returning *`,
-    [email, displayName]
+    [email, displayName, plan]
   );
   const user = res.rows[0];
   await db.query(

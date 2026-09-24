@@ -40,6 +40,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
 #novaflow-web-account-dialog .nf-account-close{background:none!important;border:0!important;color:#9a9a9a!important;font:16px/16px "Segoe UI",sans-serif;padding:1px 6px;cursor:pointer}
 #novaflow-web-account-dialog .nf-account-body{padding:18px 14px 14px;display:flex;flex-direction:column;gap:14px}
 #novaflow-web-account-dialog .nf-account-user{font-size:14px;color:#ddd;font-weight:600}
+#novaflow-web-account-dialog .nf-account-tier{margin:-6px 0 12px;font-size:12px;line-height:1.6;color:#a0a0a0}
 #novaflow-web-account-dialog .nf-account-metrics{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 #novaflow-web-account-dialog .nf-account-metric{background:#191919;border:1px solid #ffffff0a;border-radius:8px;padding:14px 12px}
 #novaflow-web-account-dialog .nf-account-label{font-size:12px;color:#999;margin-bottom:7px}
@@ -85,6 +86,14 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 6 }).format(Number(value));
   }
 
+  function tierText(plan) {
+    if (!plan) return '账户类型读取中…';
+    const key = String(plan).trim().toLowerCase();
+    return key === 'pro' || key === 'team'
+      ? '高级账户 · 可使用共享算力节点，也可使用本机算力'
+      : '普通账户 · 只能使用本机算力（在本地助手点击“启动NovaFlow”）';
+  }
+
   async function currentUser() {
     try {
       const res = await api().clientAuthStatus();
@@ -118,6 +127,9 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     if (who) {
       const name = who.user && (who.user.display_name || who.user.email) || '已登录';
       const username = el('div', '', name); username.className = 'nf-account-user'; body.appendChild(username);
+      // The tier decides where work may run: a 普通账户 only on the machine the
+      // local assistant opened, a 高级账户 also on other people's nodes.
+      const tier = el('div', '', tierText(who.user && who.user.plan)); tier.className = 'nf-account-tier'; body.appendChild(tier);
       const metrics = el('div'); metrics.className = 'nf-account-metrics'; body.appendChild(metrics);
       function metric(label, caption) {
         const box = el('div'); box.className = 'nf-account-metric';
@@ -146,6 +158,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
           if (!backdrop.isConnected) return;
           if (!reply || reply.ok === false) throw new Error((reply && reply.error) || '读取失败');
           const profile = reply.result || {};
+          if (profile.user && profile.user.plan) tier.textContent = tierText(profile.user.plan);
           credits.textContent = displayNumber(profile.credits && (profile.credits.balance_text ?? profile.credits.balance));
           const promptQuota = profile.providerQuotas && profile.providerQuotas.grok;
           if (!promptQuota || promptQuota.status === 'error') throw new Error('提示词服务次数暂不可用');
