@@ -2,6 +2,39 @@ function $(id) {
   return document.getElementById(id);
 }
 
+// Fill an optional summary element. The stat strips, count pills and topbar
+// crumb are layout sugar: a missing id must never break the data render.
+function setText(id, text) {
+  const el = $(id);
+  if (el) el.textContent = String(text ?? "-");
+}
+
+// Side drawers hold the "create" forms (new account, new compute node) so the
+// tables keep the full page width. Opening one is plain show/hide; every
+// input inside keeps its id, so the existing handlers work unchanged.
+function openDrawer(id) {
+  const overlay = $(id);
+  if (!overlay) return;
+  overlay.hidden = false;
+  const first = overlay.querySelector("input:not([readonly]), select, textarea");
+  setTimeout(() => { try { first?.focus(); } catch (_) {} }, 30);
+}
+
+function closeDrawer(overlay) {
+  if (overlay) overlay.hidden = true;
+}
+
+function closeOpenDrawers() {
+  let closed = false;
+  document.querySelectorAll(".drawerOverlay").forEach((overlay) => {
+    if (!overlay.hidden) {
+      overlay.hidden = true;
+      closed = true;
+    }
+  });
+  return closed;
+}
+
 function toast(msg) {
   const el = $("toast");
   el.textContent = String(msg || "");
@@ -43,6 +76,8 @@ let passwordEditState = {
   userId: "",
   accountLabel: ""
 };
+// Last signing-key status from refresh(); the dashboard's system panel shows it.
+let signingKeyStatusText = "";
 
 const PROVIDER_QUOTA_OPTIONS = [
   { key: "grok", label: "提示词服务", shortLabel: "提示词服务" }
@@ -88,6 +123,8 @@ function showModule(moduleName) {
   document.querySelectorAll(".modulePanel").forEach((el) => {
     el.classList.toggle("active", el.id === `module-${name}`);
   });
+  const activeNav = document.querySelector(`.moduleNavButton[data-module="${name}"]`);
+  if (activeNav) setText("topbarModuleName", activeNav.textContent.trim());
   if (["dashboard", "ai-services"].includes(name)) {
     void loadAdminData();
   }
@@ -663,6 +700,21 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
       user.status
     ].some((value) => String(value || "").toLowerCase().includes(filter));
   });
+
+  const allUsers = usersResult.records || [];
+  const activeCount = allUsers.filter((user) => normalizeUserStatusValue(user.status) === "active").length;
+  const proCount = allUsers.filter((user) => normalizeUserPlanValue(user.plan) !== "trial").length;
+  const creditTotal = allUsers.reduce((sum, user) => {
+    const credit = creditMap.get(String(user.id || ""));
+    return sum + (Number(user.current_credits ?? credit?.balance ?? 0) || 0);
+  }, 0);
+  setText("usersStatTotal", formatNumber(allUsers.length));
+  setText("usersStatActive", formatNumber(activeCount));
+  setText("usersStatDisabled", formatNumber(allUsers.length - activeCount));
+  setText("usersStatPro", formatNumber(proCount));
+  setText("usersStatCredits", formatCreditAmount(creditTotal));
+  setText("usersCount", filter ? `匹配 ${sourceRows.length} / ${allUsers.length}` : `共 ${allUsers.length} 个`);
+
   const rows = sourceRows.map((user) => {
     const credit = creditMap.get(String(user.id || ""));
     const tr = document.createElement("tr");
@@ -762,6 +814,20 @@ function renderCredits(creditsResult, userMap) {
     });
     replaceRows("creditsTableBody", creditRows, 3, "暂无积分数据");
   }
+}
+
+function renderCreditStats(creditsResult, quotaResult) {
+  const credits = creditsResult?.records || [];
+  const quotas = quotaResult?.records || [];
+  const total = credits.reduce((sum, item) => sum + (Number(item.balance || 0) || 0), 0);
+  const funded = credits.filter((item) => Number(item.balance || 0) > 0).length;
+  const allocated = quotas.reduce((sum, item) => sum + (Number(item.allocated_count || 0) || 0), 0);
+  const used = quotas.reduce((sum, item) => sum + (Number(item.used_count || 0) || 0), 0);
+  setText("creditStatTotal", formatCreditAmount(total));
+  setText("creditStatFunded", formatNumber(funded));
+  setText("creditStatEmpty", formatNumber(credits.length - funded));
+  setText("quotaStatAllocated", formatNumber(allocated));
+  setText("quotaStatUsed", formatNumber(used));
 }
 
 function renderCreditAdjustControls(usersResult, creditsResult) {
@@ -1257,6 +1323,18 @@ function renderDashboard(data) {
   }
   setDataBadge("dashboardDataBadge", hasErrorResult(results) ? { status: "error" } : hasSupabaseResult(results) ? { source: "supabase" } : { source: "mock" });
   renderDashboardRecentActivity(data.creditLogs);
+
+  const activeUsers = users.filter((user) => normalizeUserStatusValue(user.status) === "active").length;
+  renderSettingRows("dashboardSystemRows", [
+    { label: "数据源", value: sourceLabel },
+    { label: "ComfyUI 连接", value: providerHealthStatusText(data.comfyStatus, false) },
+    {
+      label: "Grok 提示词服务",
+      value: data.grokStatus?.configured ? `已配置 · ${data.grokStatus.model || "grok-4.3"}` : "未配置"
+    },
+    { label: "签名密钥", value: signingKeyStatusText || "读取中..." },
+    { label: "启用用户", value: `${formatNumber(activeUsers)} / ${formatNumber(users.length)}` }
+  ], "暂无状态数据");
 }
 
 // ---------------------------------------------------------------------------
@@ -1310,7 +1388,16 @@ function renderComputeWorkers(workersResult) {
       : (writable ? (workersResult.records || []).length + " 台" : "mock 数据不可写入");
   }
 
-  const rows = (workersResult.records || []).map((item) => {
+  const workers = workersResult.records || [];
+  const countByStatus = (value) => workers.filter((item) => String(item.status || "") === value).length;
+  const sumOf = (field) => workers.reduce((sum, item) => sum + (Number(item[field] || 0) || 0), 0);
+  setText("computeStatTotal", formatNumber(workers.length));
+  setText("computeStatIdle", formatNumber(countByStatus("idle")));
+  setText("computeStatBusy", formatNumber(countByStatus("busy")));
+  setText("computeStatOffline", formatNumber(countByStatus("offline") + countByStatus("maintenance")));
+  setText("computeStatCompleted", `${formatNumber(sumOf("total_completed"))} / ${formatNumber(sumOf("total_failed"))}`);
+
+  const rows = workers.map((item) => {
     const tr = document.createElement("tr");
     tr.appendChild(textCell(item.worker_name || item.id));
     tr.appendChild(textCell(
@@ -1376,7 +1463,7 @@ function renderComputeWorkers(workersResult) {
   replaceRows(
     "computeWorkersTableBody",
     rows,
-    7,
+    8,
     isErrorResult(workersResult) ? computeErrorText(workersResult) : "还没有算力节点，发一个注册码接入一台"
   );
 }
@@ -1499,8 +1586,10 @@ async function mintComputeCode() {
       value.value = payload.registrationCode;
       value.select?.();
     }
-    status.textContent = "已生成，" + formatDateTime(payload.expiresAt) + " 过期";
+    // loadComputeData re-renders the owner select and resets this status
+    // line, so the "generated" message has to be written after it.
     await loadComputeData();
+    status.textContent = "已生成，" + formatDateTime(payload.expiresAt) + " 过期";
   } catch (err) {
     const text = String(err?.message || err);
     status.textContent = computeErrorText({ error: text });
@@ -1625,7 +1714,8 @@ async function loadAdminData() {
     renderAiServices(providers, settings, comfyStatus, grokStatus);
     renderProviderRuntimeConfigControls(comfyStatus, grokStatus);
     renderSettings(settings);
-    renderDashboard({ users, credits, creditLogs, providers, settings, userMap });
+    renderCreditStats(credits, providerQuotasByKey.grok);
+    renderDashboard({ users, credits, creditLogs, providers, settings, userMap, comfyStatus, grokStatus });
   } catch (err) {
     const message = `Supabase Error: ${String(err?.message || err)}`;
     setAdminDataSourceStatus([{ status: "error" }]);
@@ -1710,6 +1800,7 @@ async function createAdminUser() {
     }
     if (status) status.textContent = "已创建";
     clearCreateAdminUserForm();
+    closeDrawer($("userCreateDrawer"));
     toast("后台用户已创建");
     await loadAdminData();
   } catch (err) {
@@ -2280,29 +2371,39 @@ function renderOnlineList(records, selectedLicenseKey) {
   if (!container) return;
   container.replaceChildren();
   if (status) status.textContent = list.length ? `共 ${list.length} 条记录` : "暂无记录";
+
+  // Status summary above the table, and the dashboard's "有效授权" card, which
+  // used to show a hard-coded number.
+  const countStatus = (value) => list.filter((record) => String(record.status || "").toLowerCase() === value).length;
+  setText("licStatTotal", formatNumber(list.length));
+  setText("licStatActive", formatNumber(countStatus("active")));
+  setText("licStatExpired", formatNumber(countStatus("expired")));
+  setText("licStatBanned", formatNumber(countStatus("banned")));
+  setText("dashboardLicensesCount", formatNumber(countStatus("active")));
+
   if (!list.length) {
-    const empty = document.createElement("div");
-    empty.className = "listStatus";
-    empty.textContent = "没有可显示的授权记录";
-    container.appendChild(empty);
+    replaceRows("onlineList", [], 6, "没有可显示的授权记录");
     return;
   }
   const current = String(selectedLicenseKey || $("onlineLicenseKey")?.value || "").trim();
   list.forEach((record) => {
-    const item = document.createElement("div");
+    // One table row per licence; click or Enter selects it into the form.
+    const item = document.createElement("tr");
     item.tabIndex = 0;
-    item.setAttribute("role", "button");
     item.className = "recordItem";
     if (record.license_key && record.license_key === current) item.classList.add("active");
 
-    const top = document.createElement("div");
-    top.className = "recordTop";
-    const key = document.createElement("div");
-    key.className = "recordKey";
-    key.textContent = record.license_key || "(空 license_key)";
-    const badge = document.createElement("div");
+    item.appendChild(textCell(record.license_key || "(空 license_key)", "recordKey"));
+    const badge = document.createElement("span");
     badge.className = `badge ${String(record.status || "").toLowerCase()}`;
     badge.textContent = record.status || "-";
+    item.appendChild(nodeCell(badge));
+    const machine = textCell(record.machine_id || "-", "recordMachine");
+    machine.title = record.machine_id || "";
+    item.appendChild(machine);
+    item.appendChild(textCell(formatShortDate(record.expire_at)));
+    item.appendChild(textCell(formatShortDate(record.created_at)));
+
     const actions = document.createElement("div");
     actions.className = "recordActions";
     const deleteButton = document.createElement("button");
@@ -2351,26 +2452,10 @@ function renderOnlineList(records, selectedLicenseKey) {
       }
     });
 
-    actions.appendChild(badge);
     actions.appendChild(copyButton);
     actions.appendChild(deleteButton);
-    top.appendChild(key);
-    top.appendChild(actions);
+    item.appendChild(nodeCell(actions));
 
-    const meta = document.createElement("div");
-    meta.className = "recordMeta";
-    const machine = document.createElement("div");
-    machine.textContent = `machine_id: ${record.machine_id || "-"}`;
-    const expire = document.createElement("div");
-    expire.textContent = `expire_at: ${formatShortDate(record.expire_at)}`;
-    const created = document.createElement("div");
-    created.textContent = `created_at: ${formatShortDate(record.created_at)}`;
-    meta.appendChild(machine);
-    meta.appendChild(expire);
-    meta.appendChild(created);
-
-    item.appendChild(top);
-    item.appendChild(meta);
     const selectRecord = () => {
       fillOnlineFormFromRecord(record);
       $("onlineResult").textContent = formatOnlineRecord(record);
@@ -2624,14 +2709,16 @@ async function refresh() {
   const privPath = $("privPath").value;
   const res = await window.adminAPI.getStatus({ publicKeyPath: pubPath, privateKeyPath: privPath });
   if (!res?.ok) {
-    $("statusText").textContent = "状态读取失败";
+    signingKeyStatusText = "状态读取失败";
+    $("statusText").textContent = signingKeyStatusText;
     $("fingerprint").textContent = "-";
     $("pubPreview").textContent = "-";
     return;
   }
   const st = res.status;
   const ok = st.pubExists && st.privExists;
-  $("statusText").textContent = ok ? "密钥已存在" : st.pubExists || st.privExists ? "密钥不完整" : "未生成密钥";
+  signingKeyStatusText = ok ? "密钥已存在" : st.pubExists || st.privExists ? "密钥不完整" : "未生成密钥";
+  $("statusText").textContent = signingKeyStatusText;
   $("fingerprint").textContent = st.pubFingerprint || "-";
   $("pubPreview").textContent = st.pubPreview || "-";
   setGlobalStatus(ok ? "密钥正常" : "密钥未就绪");
@@ -2956,7 +3043,46 @@ async function init() {
     if (event.target === $("passwordEditDialog")) closePasswordEditDialog();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape" && !$("passwordEditDialog").hidden) closePasswordEditDialog();
+    if (event.key !== "Escape") return;
+    if (!$("passwordEditDialog").hidden) closePasswordEditDialog();
+    else closeOpenDrawers();
+  });
+
+  document.querySelectorAll("[data-drawer-open]").forEach((el) => {
+    el.addEventListener("click", () => openDrawer(el.getAttribute("data-drawer-open") || ""));
+  });
+  document.querySelectorAll("[data-drawer-close]").forEach((el) => {
+    el.addEventListener("click", () => closeDrawer(el.closest(".drawerOverlay")));
+  });
+  document.querySelectorAll(".drawerOverlay").forEach((overlay) => {
+    overlay.addEventListener("mousedown", (event) => {
+      if (event.target === overlay) closeDrawer(overlay);
+    });
+  });
+
+  // Dashboard shortcuts: jump to a module, optionally straight into one of
+  // its tabs or create drawers.
+  document.querySelectorAll("[data-module-link]").forEach((el) => {
+    el.addEventListener("click", () => {
+      showModule(el.getAttribute("data-module-link") || "dashboard");
+      const tab = el.getAttribute("data-tab-after");
+      if (tab) showTab(tab);
+      const drawer = el.getAttribute("data-drawer-after");
+      if (drawer) openDrawer(drawer);
+    });
+  });
+
+  $("globalRefresh")?.addEventListener("click", async () => {
+    const button = $("globalRefresh");
+    button.disabled = true;
+    try {
+      await loadAdminData();
+      if (document.querySelector('.moduleNavButton.active[data-module="compute"]')) await loadComputeData();
+      await refreshOnlineList({ silent: true });
+      toast("已刷新");
+    } finally {
+      button.disabled = false;
+    }
   });
 
   document.querySelectorAll(".tab").forEach((el) => {

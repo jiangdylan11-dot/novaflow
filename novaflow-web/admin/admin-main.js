@@ -6,11 +6,16 @@ const { registerLicenseAdminIpc } = require("./license-admin-gui/ipc");
 app.setPath("userData", path.join(app.getPath("appData"), "novaflow-license-manager"));
 
 function createWindow() {
+  // Data tables and the side-by-side edit panels are laid out for a wide
+  // window; the default used to be 1200x760, which pushed every list into a
+  // horizontal scroll.
   const win = new BrowserWindow({
-    width: 1200,
-    height: 760,
+    width: 1440,
+    height: 880,
+    minWidth: 1080,
+    minHeight: 680,
     title: "NovaFlow 后台管理",
-    backgroundColor: "#090b0f",
+    backgroundColor: "#0B0E13",
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "license-admin-gui", "preload.js"),
