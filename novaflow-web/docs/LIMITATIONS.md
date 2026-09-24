@@ -158,6 +158,32 @@ Web 版顶栏隐藏了两处只有 Electron 才讲得通的东西：
 
 ---
 
+## SPINE 图集转换：WebP 在浏览器里编码，PMA 页面走无损
+
+工具 → SPINE 图集转换 在 Web 上由 `novaflow-web-capabilities.js` 回答
+`convertSpineAtlasWebp`：PNG 用上面那条自己的解码器读（不过 canvas），
+WebP 用 `renderer/vendor/webp/` 里编译成 WebAssembly 的 libwebp
+（@jsquash/webp 1.5.0，桌面版无损路径用的就是同一个编码器）在 Worker 里编码，
+再解回来核对；JPG 没有透明要保护，走 canvas。atlas 的改名、`pma:` 标记、
+Spine 3.x 页面不写 `pma:` 这些规则和桌面版 `main/spine-atlas-webp-converter.js`
+逐行一致，`tests/e2e/web-spine-atlas-webp.test.mjs` 用真实的 wasm 编码器验收。
+
+**和桌面版不同的一处：PMA 页面在 Web 上只做无损 WebP。** 桌面版的 PMA 兼容
+有损压缩是把 YUV 帧直接喂给 libwebp，并把全透明像素的亮度压到黑以下，让 VP8
+的振铃抬不回黑色以上；libwebp 的 RGBA 入口没有这个余量。用同一台机器上的图集实测，
+有损编码在任何档位都会让几万个全透明像素高出黑色 1～14 级——预乘混合下这是一圈
+亮边，桌面版正是为了把它压到零才做了那条 YUV 路径。所以 Web 上 PMA 页面按
+`exact` 无损写出、逐字节校验（状态显示「RGBA 已校验」，警告里说明），体积约为
+PNG 的一半；压缩档位对 PMA 页面不起作用。未预乘（Straight）页面按档位有损压缩，
+alpha 无损并核对；需要 PMA 有损压缩仍请用桌面版。
+
+导出另存走 `showDirectoryPicker`：`pickDirectory` 现在按桌面版的形状回答
+（顶层 `{ canceled, dir }`），`writeBinaryFile` 收到那个 `dir` 就直接写进
+选中的文件夹。之前它返回 `{ ok, result }`，每个读 `dir` 的调用方都当成了取消。
+导出覆盖需要能改写原文件的宿主，浏览器里没有原路径，这个按钮在 Web 上保持禁用。
+
+---
+
 ## 其它没做的
 
 - **速率限制**：控制面没有限流。现有 `novaflow-backend` 对 license 校验有限流

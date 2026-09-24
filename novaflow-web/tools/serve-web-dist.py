@@ -9,7 +9,6 @@ exists so the build can be opened locally without a bundler in the way.
 import argparse
 import http.server
 import os
-import socketserver
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -40,8 +39,10 @@ def main():
     args = ap.parse_args()
 
     os.chdir(args.root)
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("127.0.0.1", args.port), Handler) as srv:
+    # Threaded: Chromium opens spare connections ahead of its requests, and a
+    # one-request-at-a-time server sits on an idle socket while the page waits.
+    http.server.ThreadingHTTPServer.allow_reuse_address = True
+    with http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler) as srv:
         print(
             "NovaFlow Web renderer on http://127.0.0.1:%d  (root=%s)"
             % (args.port, args.root),

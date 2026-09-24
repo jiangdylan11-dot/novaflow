@@ -203,7 +203,9 @@
       return fail('Web 版需要在保存时一并提供文件内容', { code: 'web_needs_data' });
     }
 
-    const blob = data instanceof Blob ? data : new Blob([data], { type: mime });
+    // Tools hand bytes over the way the desktop IPC takes them, as a plain
+    // Array; a Blob would write that as text.
+    const blob = data instanceof Blob ? data : new Blob([Array.isArray(data) ? Uint8Array.from(data) : data], { type: mime });
 
     if (canUseFileSystemAccess) {
       try {
@@ -998,16 +1000,30 @@
   };
 
   // ---- pickers -----------------------------------------------------------
+  /**
+   * Pick a folder to write into.
+   *
+   * Answers the way the desktop's pick-directory does - { canceled, dir } at
+   * the top level - because that is what every caller reads (工具's 导出另存,
+   * the sequence exporters); the previous { ok, result } shape read as
+   * "canceled" to all of them. `dir` is a token for the folder handle, and
+   * writeBinaryFile below writes straight into that folder with it.
+   */
+  const directoryHandles = new Map();
+  let directorySeq = 0;
   api.pickDirectory = async () => {
     if (typeof root.showDirectoryPicker !== 'function') {
-      return fail('这个浏览器不支持选择文件夹，请改用拖拽或逐个选择文件');
+      return fail('这个浏览器不支持选择文件夹，请改用拖拽或逐个选择文件', { canceled: false });
     }
     try {
-      const dir = await root.showDirectoryPicker({ mode: 'readwrite' });
-      return ok({ name: dir.name, handle: dir, path: 'web-directory://' + dir.name });
+      const handle = await root.showDirectoryPicker({ mode: 'readwrite' });
+      directorySeq += 1;
+      const dir = 'web-directory://' + directorySeq + '/' + handle.name;
+      directoryHandles.set(dir, handle);
+      return { ok: true, canceled: false, dir, name: handle.name, handle, path: dir };
     } catch (error) {
-      if (error && error.name === 'AbortError') return ok({ canceled: true });
-      return fail(error && error.message ? error.message : error);
+      if (error && error.name === 'AbortError') return { ok: true, canceled: true };
+      return fail(error && error.message ? error.message : error, { canceled: false });
     }
   };
 
@@ -1033,6 +1049,24 @@
   // ---- file writing ------------------------------------------------------
   api.writeBinaryFile = async (payload) => {
     const options = payload || {};
+    // Into the folder pickDirectory handed out, when the caller went through
+    // it; otherwise the save dialog, one file at a time.
+    const folder = directoryHandles.get(String(options.dir || ''));
+    if (folder) {
+      try {
+        const fileName = String(options.fileName || options.path || 'novaflow-output.bin').split(/[\\/]/).pop();
+        const data = options.data || options.buffer || options.bytes;
+        if (!data) return fail('Web 版需要在保存时一并提供文件内容', { code: 'web_needs_data' });
+        const fileHandle = await folder.getFileHandle(fileName, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(data instanceof Blob ? data : new Blob([Array.isArray(data) ? Uint8Array.from(data) : data]));
+        await writable.close();
+        return ok({ saved: true, name: fileName, dir: options.dir, via: 'file-system-access' });
+      } catch (error) {
+        if (error && error.name === 'AbortError') return ok({ canceled: true });
+        return fail(error && error.message ? error.message : error);
+      }
+    }
     return await api.exportPickSaveFile({
       defaultPath: options.path || options.fileName || 'novaflow-output.bin',
       data: options.data || options.buffer || options.bytes,
@@ -1393,5 +1427,574 @@
       return { ok: false, error: String((error && error.message) || error) };
     }
   };
+
+
+  // ---------------------------------------------------------------------------
+  // SPINE 图集转换 (工具 → SPINE 图集转换): the PNG pages of a Spine atlas become
+  // WebP or JPG, and the atlas is rewritten to name them.
+  //
+  // The desktop answers `convertSpineAtlasWebp` in main/spine-atlas-webp-
+  // converter.js with sharp, ffmpeg and @jsquash/webp. The browser build had
+  // no answer at all, so 开始转换 stopped at "能力未加载". Here:
+  //
+  //   - the PNG is read by the decoder above, never through a canvas (see the
+  //     note at the top of this section: a canvas premultiplies, and an atlas
+  //     is the one file where the transparent margin's colour matters);
+  //   - WebP is encoded and checked by libwebp compiled to WebAssembly
+  //     (vendor/webp, @jsquash/webp 1.5.0 - the same encoder the desktop's
+  //     exact path runs), inside a worker so the page keeps painting;
+  //   - JPG has no transparency to protect, so it goes through a canvas.
+  //
+  // What the browser does differently: a PMA page is written LOSSLESS. The
+  // desktop's PMA-compatible lossy encoder hands libwebp a YUV frame whose
+  // fully transparent pixels sit below black, so VP8 ringing cannot lift them
+  // above it; libwebp's RGBA entry has no such headroom, and every lossy
+  // encode measured here left thousands of transparent pixels a few levels
+  // above black - a fringe under premultiplied blending. Lossless keeps every
+  // byte, is checked byte for byte, and still lands at about half the PNG.
+  // The status and warnings say so, and docs/LIMITATIONS.md records it.
+  // ---------------------------------------------------------------------------
+  if (typeof api.convertSpineAtlasWebp !== 'function') installSpineAtlasWebp();
+
+  function installSpineAtlasWebp() {
+    const WEBP_VENDOR_VERSION = '1.5.0';
+    const WEBP_PRESETS = { clarity: 95, compact: 90, small: 70 };
+    const WEBP_MAX_DIMENSION = 16383;
+    // struct WebPConfig, as @jsquash/webp/meta.js lists it. The encoder wants
+    // every field present.
+    const WEBP_DEFAULT_OPTIONS = {
+      quality: 75, target_size: 0, target_PSNR: 0, method: 4, sns_strength: 50, filter_strength: 60,
+      filter_sharpness: 0, filter_type: 1, partitions: 0, segments: 4, pass: 1, show_compressed: 0,
+      preprocessing: 0, autofilter: 0, partition_limit: 0, alpha_compression: 1, alpha_filtering: 1,
+      alpha_quality: 100, lossless: 0, exact: 0, image_hint: 0, emulate_jpeg_size: 0, thread_level: 0,
+      low_memory: 0, near_lossless: 100, use_delta_palette: 0, use_sharp_yuv: 0
+    };
+    // Straight alpha, lossy: what the desktop asks of sharp (quality, alpha
+    // kept lossless, sharp YUV, effort 6). libwebp's transparent-area cleanup
+    // stays on: under straight alpha those pixels are invisible, and smoothing
+    // them is the cheapest bleed there is.
+    const lossyOptions = (quality) => Object.assign({}, WEBP_DEFAULT_OPTIONS, {
+      quality, method: 6, exact: 0, use_sharp_yuv: 1, alpha_quality: 100, alpha_compression: 1
+    });
+    // Exact: every RGBA byte kept, transparent pixels included. Method 4 came
+    // out within a kilobyte of method 6 on real atlases at a fifth of the time.
+    const LOSSLESS_OPTIONS = Object.assign({}, WEBP_DEFAULT_OPTIONS, { lossless: 1, exact: 1, quality: 100, method: 4 });
+    // wasm-feature-detect's SIMD probe: a module with one v128 instruction.
+    const SIMD_PROBE = Uint8Array.of(0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8, 0, 65, 0, 253, 15, 253, 98, 11);
+
+    // vendor/webp/ sits next to this script; index.html loads it as ./novaflow-web-capabilities.js.
+    const scriptBase = (() => {
+      try {
+        const src = root.document && root.document.currentScript && root.document.currentScript.src;
+        if (src) return new URL('./', src).href;
+        return (root.document && root.document.baseURI) || '';
+      } catch (_) {
+        return '';
+      }
+    })();
+    const vendorUrl = (file) => new URL('vendor/webp/' + file + '?v=' + WEBP_VENDOR_VERSION, scriptBase || root.location.href).href;
+
+    // ---- names ----------------------------------------------------------
+    // main/path-helpers.js, so the output names match the desktop's.
+    function sanitizeFileName(name) {
+      if (typeof name !== 'string') return '';
+      const base = name.replace(/\\/g, '/').split('/').pop();
+      const cleaned = base.replace(/[<>:"/\\|?*\x00-\x1F]/g, '_').replace(/[. ]+$/g, '').trim();
+      return cleaned.length ? cleaned.slice(0, 120) : '';
+    }
+    function sanitizeFileStem(name, fallback) {
+      const cleaned = sanitizeFileName(name).replace(/\.[^/.]+$/g, '');
+      return cleaned.length ? cleaned : fallback;
+    }
+    const normalizeName = (value) => String(value || '').replace(/\\/g, '/').split('/').pop().trim().toLowerCase();
+    const normalizeOutputFormat = (value) => {
+      const format = String(value || '').trim().toLowerCase();
+      return format === 'jpg' || format === 'jpeg' ? 'jpg' : 'webp';
+    };
+    const outputFileNameForFormat = (fileName, format) => {
+      const stem = sanitizeFileStem(sanitizeFileName(fileName) || 'atlas.png', 'atlas');
+      return stem + (normalizeOutputFormat(format) === 'jpg' ? '.jpg' : '.webp');
+    };
+    const atlasOutputFileName = (atlasName) => sanitizeFileStem(sanitizeFileName(atlasName) || 'spine.atlas', 'spine') + '.atlas';
+    function clampInt(value, fallback, min, max) {
+      const numeric = Number(value);
+      if (!Number.isFinite(numeric)) return fallback;
+      return Math.max(min, Math.min(max, Math.round(numeric)));
+    }
+
+    // ---- the atlas text ---------------------------------------------------
+    // main/spine-atlas-webp-converter.js, line for line: page headers are
+    // found by the blank line before them, `pma:` is read and rewritten, and
+    // a Spine 3.x page (parsed positionally by that runtime) never gets a
+    // `pma:` line it would mistake for a region name.
+    function splitAtlasLines(text) {
+      const source = String(text || '');
+      const matches = source.match(/[^\r\n]*(?:\r\n|\n|\r|$)/g) || [];
+      return matches.filter((line, index) => line.length > 0 || index < matches.length - 1).map((raw) => {
+        const newlineMatch = raw.match(/(\r\n|\n|\r)$/);
+        const newline = newlineMatch ? newlineMatch[0] : '';
+        return { body: newline ? raw.slice(0, -newline.length) : raw, newline };
+      });
+    }
+    function isAtlasPageHeader(lines, index) {
+      const body = lines[index].body.replace(/^﻿/, '');
+      return !!body.trim() && !body.includes(':') && (index === 0 || !lines[index - 1].body.trim());
+    }
+    function isLegacyAtlasPage(lines, regionStart, headerKeys) {
+      for (let i = regionStart; i < lines.length && !isAtlasPageHeader(lines, i); i += 1) {
+        const key = lines[i].body.split(':')[0].trim().toLowerCase();
+        if (key === 'bounds' || key === 'offsets') return false;
+        if (key === 'xy' || key === 'orig') return true;
+      }
+      return headerKeys.has('format') && headerKeys.has('repeat');
+    }
+    function atlasPages(lines) {
+      const pages = [];
+      for (let i = 0; i < lines.length; i += 1) {
+        if (!isAtlasPageHeader(lines, i)) continue;
+        let end = i + 1;
+        let pma = null;
+        let pmaIndex = -1;
+        const headerKeys = new Set();
+        while (end < lines.length && lines[end].body.includes(':')) {
+          const match = lines[end].body.match(/^\s*pma\s*:\s*(true|false)\s*$/i);
+          if (match) { pma = match[1].toLowerCase() === 'true'; pmaIndex = end; }
+          headerKeys.add(lines[end].body.split(':')[0].trim().toLowerCase());
+          end += 1;
+        }
+        pages.push({ index: i, end, pma, pmaIndex, name: lines[i].body.trim(), legacy: isLegacyAtlasPage(lines, end, headerKeys) });
+      }
+      return pages;
+    }
+    function rewriteAtlasPngPages(atlasText, pngNameToOutputName, outputPma) {
+      const lines = splitAtlasLines(atlasText);
+      const replacements = [];
+      const referencedPngNames = new Set();
+      const legacyPmaPages = [];
+      for (const page of atlasPages(lines).reverse()) {
+        const line = lines[page.index];
+        const original = page.name;
+        if (!/\.png$/i.test(original)) continue;
+        referencedPngNames.add(normalizeName(original));
+        const nextName = pngNameToOutputName.get(normalizeName(original));
+        if (!nextName) continue;
+        replacements.unshift({ oldName: original, nextName });
+        line.body = line.body.replace(original, nextName);
+        if (outputPma.has(normalizeName(original))) {
+          const pma = outputPma.get(normalizeName(original));
+          if (page.pmaIndex >= 0) {
+            lines[page.pmaIndex].body = lines[page.pmaIndex].body.replace(/(true|false)/i, String(pma));
+          } else if (pma && page.legacy) {
+            legacyPmaPages.push(nextName);
+          } else if (pma) {
+            const newline = line.newline || '\n';
+            if (!lines[page.end - 1].newline) lines[page.end - 1].newline = newline;
+            lines.splice(page.end, 0, { body: 'pma: ' + pma, newline });
+          }
+        }
+      }
+      return { text: lines.map((line) => line.body + line.newline).join(''), replacements, referencedPngNames: Array.from(referencedPngNames), legacyPmaPages };
+    }
+    function normalizeAtlasInputs(payload) {
+      const rawAtlases = Array.isArray(payload && payload.atlases) ? payload.atlases : [];
+      const atlases = rawAtlases.map((atlas, index) => ({
+        fileName: atlasOutputFileName((atlas && (atlas.fileName || atlas.atlasName)) || ('spine_' + (index + 1) + '.atlas')),
+        text: atlas && typeof atlas.text === 'string' ? atlas.text : String((atlas && atlas.atlasText) || '')
+      })).filter((atlas) => atlas.text.trim());
+      if (!atlases.length && payload && typeof payload.atlasText === 'string' && payload.atlasText.trim()) {
+        atlases.push({ fileName: atlasOutputFileName(payload.atlasName), text: payload.atlasText });
+      }
+      return atlases;
+    }
+    function resolveEncodeOptions(options) {
+      const hasPreset = !!options && options.preset !== undefined;
+      if (hasPreset && (typeof options.preset !== 'string' || !Object.prototype.hasOwnProperty.call(WEBP_PRESETS, options.preset))) throw new Error('压缩档位无效');
+      const presetQuality = hasPreset ? WEBP_PRESETS[options.preset] : null;
+      const mode = String((options && options.mode) || '').trim().toLowerCase();
+      const jpgFallback = clampInt(options && options.jpgQuality, 85, 1, 100);
+      if (!hasPreset && ((options && options.lossless === true) || mode === 'lossless')) return { mode: 'lossless', quality: null, jpgQuality: jpgFallback };
+      return {
+        mode: 'spine',
+        quality: presetQuality !== null ? presetQuality : clampInt(options && options.quality, 75, 1, 100),
+        jpgQuality: presetQuality !== null ? presetQuality : jpgFallback
+      };
+    }
+
+    // ---- the pixels -------------------------------------------------------
+    function readImageBytes(image, sourceName) {
+      const bytes = image && image.bytes;
+      if (bytes instanceof Uint8Array && bytes.length) return bytes;
+      if (bytes && typeof bytes === 'object' && typeof bytes.length === 'number' && bytes.length) return Uint8Array.from(bytes);
+      if (image && typeof image.dataUrl === 'string' && image.dataUrl) return bytesFromDataUrl(image.dataUrl);
+      throw new Error('PNG 输入无效：' + sourceName);
+    }
+    /** The decoder's raw samples, whatever the colour type and depth, as 8-bit RGBA. */
+    function pngToRgba(png) {
+      const { header, raw, chunks } = png;
+      const { width, height, bitDepth, colorType, stride } = header;
+      const out = new Uint8Array(width * height * 4);
+      const plte = (chunks.find((item) => item.type === 'PLTE') || {}).data || null;
+      const trns = (chunks.find((item) => item.type === 'tRNS') || {}).data || null;
+      if (colorType === 3 && !plte) throw new Error('PNG 缺少调色板');
+      const maxValue = (1 << bitDepth) - 1;
+      const bytesPerSample = bitDepth === 16 ? 2 : 1;
+      // Sample `index` of a row, reduced to 8 bits (the high byte of a 16-bit sample).
+      const sample = (rowStart, index) => {
+        if (bitDepth === 8) return raw[rowStart + index];
+        if (bitDepth === 16) return raw[rowStart + index * 2];
+        const bit = index * bitDepth;
+        return (raw[rowStart + (bit >> 3)] >> (8 - bitDepth - (bit & 7))) & maxValue;
+      };
+      // The full sample, for the tRNS comparison the spec makes at the file's depth.
+      const sampleFull = (rowStart, index) => (bitDepth === 16 ? (raw[rowStart + index * 2] << 8) | raw[rowStart + index * 2 + 1] : sample(rowStart, index));
+      const grey = (value) => (bitDepth < 8 ? Math.round((value * 255) / maxValue) : value);
+      const trnsGrey = trns && colorType === 0 && trns.length >= 2 ? (trns[0] << 8) | trns[1] : -1;
+      const trnsRgb = trns && colorType === 2 && trns.length >= 6 ? [(trns[0] << 8) | trns[1], (trns[2] << 8) | trns[3], (trns[4] << 8) | trns[5]] : null;
+      for (let y = 0; y < height; y += 1) {
+        const rowStart = y * stride;
+        for (let x = 0; x < width; x += 1) {
+          const o = (y * width + x) * 4;
+          if (colorType === 6) {
+            const i = rowStart + x * 4 * bytesPerSample;
+            out[o] = raw[i]; out[o + 1] = raw[i + bytesPerSample]; out[o + 2] = raw[i + 2 * bytesPerSample]; out[o + 3] = raw[i + 3 * bytesPerSample];
+          } else if (colorType === 2) {
+            const i = x * 3;
+            out[o] = sample(rowStart, i); out[o + 1] = sample(rowStart, i + 1); out[o + 2] = sample(rowStart, i + 2);
+            out[o + 3] = trnsRgb && sampleFull(rowStart, i) === trnsRgb[0] && sampleFull(rowStart, i + 1) === trnsRgb[1] && sampleFull(rowStart, i + 2) === trnsRgb[2] ? 0 : 255;
+          } else if (colorType === 4) {
+            const i = x * 2;
+            out[o] = out[o + 1] = out[o + 2] = sample(rowStart, i);
+            out[o + 3] = sample(rowStart, i + 1);
+          } else if (colorType === 3) {
+            const index = sample(rowStart, x);
+            if (index * 3 + 2 >= plte.length) throw new Error('PNG 调色板索引越界');
+            out[o] = plte[index * 3]; out[o + 1] = plte[index * 3 + 1]; out[o + 2] = plte[index * 3 + 2];
+            out[o + 3] = trns && index < trns.length ? trns[index] : 255;
+          } else {
+            out[o] = out[o + 1] = out[o + 2] = grey(sample(rowStart, x));
+            out[o + 3] = trnsGrey >= 0 && sampleFull(rowStart, x) === trnsGrey ? 0 : 255;
+          }
+        }
+      }
+      return out;
+    }
+    function countOverAlpha(rgba) {
+      let count = 0;
+      for (let i = 0; i < rgba.length; i += 4) {
+        if (Math.max(rgba[i], rgba[i + 1], rgba[i + 2]) > rgba[i + 3]) count += 1;
+      }
+      return count;
+    }
+    /** JPG keeps no alpha: a PMA page already is its own composite over black, a straight one is multiplied down. */
+    function compositeOnBlack(rgba, pma) {
+      const out = new Uint8ClampedArray(rgba.length);
+      for (let i = 0; i < rgba.length; i += 4) {
+        const a = rgba[i + 3];
+        if (pma) {
+          out[i] = rgba[i]; out[i + 1] = rgba[i + 1]; out[i + 2] = rgba[i + 2];
+        } else {
+          out[i] = Math.round((rgba[i] * a) / 255); out[i + 1] = Math.round((rgba[i + 1] * a) / 255); out[i + 2] = Math.round((rgba[i + 2] * a) / 255);
+        }
+        out[i + 3] = 255;
+      }
+      return out;
+    }
+    const hasJpegSignature = (bytes) => bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[bytes.length - 2] === 0xff && bytes[bytes.length - 1] === 0xd9;
+    const hasWebpSignature = (bytes) => bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50;
+
+    // ---- the codec --------------------------------------------------------
+    // A test (or a host with its own encoder) can put an object with
+    // encode / decode / encodeJpeg on root.NovaFlowWebWebpCodec; otherwise the
+    // vendored libwebp runs in a module worker, and on the page if the worker
+    // cannot be made.
+    const WEBP_WORKER_SOURCE = [
+      'let encoder = null, decoder = null;',
+      'self.onmessage = async (event) => {',
+      '  const { id, op } = event.data;',
+      '  try {',
+      '    if (op === "init") {',
+      '      const [enc, dec] = await Promise.all([import(event.data.encoderUrl), import(event.data.decoderUrl)]);',
+      '      encoder = await enc.default({ noInitialRun: true, wasmBinary: event.data.encoderWasm });',
+      '      decoder = await dec.default({ noInitialRun: true, wasmBinary: event.data.decoderWasm });',
+      '      self.postMessage({ id, ok: true });',
+      '    } else if (op === "encode") {',
+      '      const encoded = encoder.encode(event.data.rgba, event.data.width, event.data.height, event.data.options);',
+      '      if (!encoded) throw new Error("WebP 编码失败");',
+      '      const bytes = new Uint8Array(encoded);',
+      '      self.postMessage({ id, ok: true, bytes }, [bytes.buffer]);',
+      '    } else if (op === "decode") {',
+      '      const image = decoder.decode(event.data.bytes);',
+      '      if (!image) throw new Error("WebP 解码失败");',
+      '      const rgba = new Uint8Array(image.data);',
+      '      self.postMessage({ id, ok: true, width: image.width, height: image.height, rgba }, [rgba.buffer]);',
+      '    } else {',
+      '      throw new Error("unknown op " + op);',
+      '    }',
+      '  } catch (error) {',
+      '    self.postMessage({ id, ok: false, error: String((error && error.message) || error) });',
+      '  }',
+      '};'
+    ].join('\n');
+
+    const wasmSimd = () => {
+      try { return typeof root.WebAssembly === 'object' && root.WebAssembly.validate(SIMD_PROBE); } catch (_) { return false; }
+    };
+    async function fetchWasm(url) {
+      const response = await root.fetch(url);
+      if (!response.ok) throw new Error('下载 WebP 编码器失败（' + response.status + '）');
+      return await response.arrayBuffer();
+    }
+    async function loadCodecParts() {
+      if (typeof root.WebAssembly !== 'object') throw new Error('这个浏览器不支持 WebAssembly，无法在网页里转换 WebP');
+      const encoderName = wasmSimd() ? 'webp_enc_simd' : 'webp_enc';
+      const [encoderWasm, decoderWasm] = await Promise.all([fetchWasm(vendorUrl(encoderName + '.wasm')), fetchWasm(vendorUrl('webp_dec.wasm'))]);
+      return { encoderUrl: vendorUrl(encoderName + '.js'), decoderUrl: vendorUrl('webp_dec.js'), encoderWasm, decoderWasm };
+    }
+    async function createWorkerCodec(parts) {
+      const blob = new root.Blob([WEBP_WORKER_SOURCE], { type: 'text/javascript' });
+      const worker = new root.Worker(root.URL.createObjectURL(blob), { type: 'module' });
+      const pending = new Map();
+      let seq = 0;
+      const failAll = (error) => { for (const job of pending.values()) job.reject(error); pending.clear(); };
+      worker.onmessage = (event) => {
+        const data = event.data || {};
+        const job = pending.get(data.id);
+        if (!job) return;
+        pending.delete(data.id);
+        if (data.ok) job.resolve(data); else job.reject(new Error(data.error || 'WebP 编码器出错'));
+      };
+      worker.onerror = (event) => failAll(new Error((event && event.message) || 'WebP 编码器线程出错'));
+      const call = (message, transfer) => new Promise((resolve, reject) => {
+        const id = ++seq;
+        pending.set(id, { resolve, reject });
+        worker.postMessage(Object.assign({ id }, message), transfer || []);
+      });
+      await call({ op: 'init', encoderUrl: parts.encoderUrl, decoderUrl: parts.decoderUrl, encoderWasm: parts.encoderWasm, decoderWasm: parts.decoderWasm }, [parts.encoderWasm, parts.decoderWasm]);
+      return {
+        encode: async (rgba, width, height, options) => {
+          const copy = new Uint8Array(rgba);
+          return (await call({ op: 'encode', rgba: copy, width, height, options }, [copy.buffer])).bytes;
+        },
+        decode: async (bytes) => {
+          const copy = new Uint8Array(bytes);
+          const reply = await call({ op: 'decode', bytes: copy }, [copy.buffer]);
+          return { width: reply.width, height: reply.height, data: reply.rgba };
+        }
+      };
+    }
+    async function createInlineCodec(parts) {
+      const [enc, dec] = await Promise.all([import(parts.encoderUrl), import(parts.decoderUrl)]);
+      const encoder = await enc.default({ noInitialRun: true, wasmBinary: parts.encoderWasm });
+      const decoder = await dec.default({ noInitialRun: true, wasmBinary: parts.decoderWasm });
+      return {
+        encode: async (rgba, width, height, options) => {
+          const encoded = encoder.encode(rgba, width, height, options);
+          if (!encoded) throw new Error('WebP 编码失败');
+          return new Uint8Array(encoded);
+        },
+        decode: async (bytes) => {
+          const image = decoder.decode(bytes);
+          if (!image) throw new Error('WebP 解码失败');
+          return { width: image.width, height: image.height, data: new Uint8Array(image.data) };
+        }
+      };
+    }
+    let codecPromise = null;
+    function loadCodec() {
+      if (root.NovaFlowWebWebpCodec) return Promise.resolve(root.NovaFlowWebWebpCodec);
+      if (!codecPromise) {
+        codecPromise = (async () => {
+          const parts = await loadCodecParts();
+          if (typeof root.Worker === 'function' && typeof root.Blob === 'function' && root.URL && typeof root.URL.createObjectURL === 'function') {
+            try {
+              return await createWorkerCodec(parts);
+            } catch (error) {
+              console.warn('[novaflow-web] WebP worker unavailable, encoding on the page:', error);
+            }
+          }
+          // The worker owns the transferred buffers by now, so fetch again.
+          return await createInlineCodec(await loadCodecParts());
+        })().catch((error) => {
+          codecPromise = null;
+          throw new Error('WebP 编码器加载失败：' + String((error && error.message) || error));
+        });
+      }
+      return codecPromise;
+    }
+    async function encodeJpeg(rgb, width, height, quality) {
+      const codec = root.NovaFlowWebWebpCodec;
+      if (codec && typeof codec.encodeJpeg === 'function') return await codec.encodeJpeg(rgb, width, height, quality);
+      if (!root.document || typeof root.ImageData !== 'function') throw new Error('这个环境不能输出 JPG');
+      const canvas = root.document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('浏览器不支持 canvas，无法输出 JPG');
+      context.putImageData(new root.ImageData(rgb, width, height), 0, 0);
+      const blob = await new Promise((resolve, reject) => {
+        canvas.toBlob((result) => (result ? resolve(result) : reject(new Error('JPG 编码失败'))), 'image/jpeg', quality / 100);
+      });
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      if (!hasJpegSignature(bytes)) throw new Error('JPG 输出无效');
+      return bytes;
+    }
+
+    // ---- the conversion ---------------------------------------------------
+    async function decodeAtlasPage(image) {
+      try {
+        return await decode(readImageBytes(image, image.sourceName));
+      } catch (error) {
+        throw new Error('PNG 解码失败：' + image.sourceName + '（' + String((error && error.message) || error) + '）');
+      }
+    }
+    function assertSameShape(image, back, width, height) {
+      if (!back || back.width !== width || back.height !== height || !back.data || back.data.length !== width * height * 4) {
+        throw new Error(image.sourceName + '：WebP 输出尺寸不一致');
+      }
+    }
+
+    async function convertSpineAtlasWebp(payload) {
+      const atlasInputs = normalizeAtlasInputs(payload);
+      if (!atlasInputs.length) throw new Error('缺少 atlas 文件内容');
+      const encodeOptions = resolveEncodeOptions((payload && payload.options) || {});
+      const rawImages = Array.isArray(payload && payload.images) ? payload.images : [];
+      if (!rawImages.length) throw new Error('请至少上传 1 张 PNG 图集');
+
+      const pages = atlasInputs.flatMap((atlas) => atlasPages(splitAtlasLines(atlas.text)));
+      const imageInputs = [];
+      const pngNameToOutputName = new Map();
+      const outputPma = new Map();
+      for (const image of rawImages) {
+        const sourceName = sanitizeFileName(image && image.fileName) || 'atlas.png';
+        if (!/\.png$/i.test(sourceName)) continue;
+        const bytes = readImageBytes(image, sourceName);
+        const outputFormat = normalizeOutputFormat(image.outputFormat || image.format || image.targetFormat);
+        const outputName = outputFileNameForFormat(sourceName, outputFormat);
+        const key = normalizeName(sourceName);
+        if (pngNameToOutputName.has(key)) throw new Error('PNG 文件名重复：' + sourceName);
+        const alphaMode = image.alphaMode || 'auto';
+        if (!['auto', 'straight', 'pma'].includes(alphaMode)) throw new Error('Alpha 设置无效：' + sourceName);
+        const pageModes = new Set(pages.filter((page) => normalizeName(page.name) === key).map((page) => page.pma));
+        if (alphaMode === 'auto' && pageModes.has(true) && pageModes.has(false)) throw new Error('atlas 的 PMA 标记冲突，请指定原图 Alpha：' + sourceName);
+        const pma = alphaMode === 'auto'
+          ? (pageModes.has(null) || !pageModes.size ? null : pageModes.has(true))
+          : alphaMode === 'pma';
+        if (alphaMode !== 'auto' || outputFormat === 'jpg') outputPma.set(key, outputFormat === 'webp' && pma);
+        imageInputs.push({ sourceName, bytes, outputName, outputFormat, pma });
+        pngNameToOutputName.set(key, outputName);
+      }
+      if (!imageInputs.length) throw new Error('请上传 .png 格式的 Spine 图集');
+
+      const warnings = [];
+      const convertedAtlases = [];
+      const matchedSourceNames = new Set();
+      for (const inputAtlas of atlasInputs) {
+        const atlas = rewriteAtlasPngPages(inputAtlas.text, pngNameToOutputName, outputPma);
+        if (!atlas.replacements.length) {
+          warnings.push(inputAtlas.fileName + ' 未匹配到已上传的 PNG 图集');
+          continue;
+        }
+        for (const replacement of atlas.replacements) matchedSourceNames.add(normalizeName(replacement.oldName));
+        for (const ref of atlas.referencedPngNames) {
+          if (!pngNameToOutputName.has(ref)) warnings.push(inputAtlas.fileName + ' 引用的 PNG 未上传：' + ref);
+        }
+        for (const pageName of atlas.legacyPmaPages) {
+          warnings.push(inputAtlas.fileName + '：' + pageName + ' 为 Spine 3.x 格式，未写入 pma 标记（3.x 运行时会将其误读为区域名）');
+        }
+        convertedAtlases.push({ fileName: inputAtlas.fileName, text: atlas.text, replacements: atlas.replacements });
+      }
+      if (!convertedAtlases.length) throw new Error('atlas 未匹配到已上传的 PNG 图集');
+
+      const convertedImages = [];
+      let codec = null;
+      for (const image of imageInputs) {
+        if (!matchedSourceNames.has(normalizeName(image.sourceName))) continue;
+        if (image.outputFormat === 'jpg' && image.pma === null) {
+          throw new Error(image.sourceName + '：atlas 未标记原图 Alpha，转 JPG 前请选择已预乘（PMA）或未预乘（Straight）');
+        }
+        const png = await decodeAtlasPage(image);
+        const { width, height } = png.header;
+        const rgba = pngToRgba(png);
+        let data;
+        let encoding;
+        let quality = null;
+        let alphaQuality = null;
+        let rgbaVerified = false;
+        let alphaVerified = false;
+        let transparentRgbVerified = false;
+
+        if (image.outputFormat === 'jpg') {
+          data = await encodeJpeg(compositeOnBlack(rgba, image.pma), width, height, encodeOptions.jpgQuality);
+          encoding = 'jpg';
+          quality = encodeOptions.jpgQuality;
+          warnings.push(image.sourceName + '：JPG 不保留透明，输出黑底');
+        } else {
+          if (width > WEBP_MAX_DIMENSION || height > WEBP_MAX_DIMENSION) throw new Error(image.sourceName + '：超过 WebP 的尺寸上限 16383');
+          if (!codec) codec = await loadCodec();
+          if (image.pma === false && encodeOptions.mode !== 'lossless') {
+            data = await codec.encode(rgba, width, height, lossyOptions(encodeOptions.quality));
+            if (!hasWebpSignature(data)) throw new Error(image.sourceName + '：WebP 输出无效');
+            const back = await codec.decode(data);
+            assertSameShape(image, back, width, height);
+            for (let i = 3; i < rgba.length; i += 4) {
+              if (rgba[i] !== back.data[i]) throw new Error(image.sourceName + '：WebP Alpha 校验失败');
+            }
+            encoding = 'spine';
+            quality = encodeOptions.quality;
+            alphaQuality = 100;
+            alphaVerified = true;
+          } else {
+            // PMA, unmarked, or asked for lossless: every byte kept and read back.
+            if (image.pma === true) {
+              const over = countOverAlpha(rgba);
+              if (over) warnings.push(image.sourceName + '：原图含超出 Alpha 的颜色（' + over + ' 像素），按无损保留');
+            }
+            data = await codec.encode(rgba, width, height, LOSSLESS_OPTIONS);
+            if (!hasWebpSignature(data)) throw new Error(image.sourceName + '：WebP 输出无效');
+            const back = await codec.decode(data);
+            assertSameShape(image, back, width, height);
+            for (let i = 0; i < rgba.length; i += 1) {
+              if (rgba[i] !== back.data[i]) throw new Error(image.sourceName + '：WebP RGBA 像素校验失败，未生成可导出结果');
+            }
+            encoding = image.pma === true ? 'pma-lossless' : encodeOptions.mode === 'lossless' ? 'lossless' : 'rgba-lossless';
+            rgbaVerified = true;
+            alphaVerified = true;
+            transparentRgbVerified = true;
+            if (image.pma === true) warnings.push(image.sourceName + '：网页版对 PMA 图集只做无损 WebP，已逐字节校验 RGBA；压缩档位不影响这张图，体积可能较大（PMA 兼容有损压缩请用桌面版）');
+            if (image.pma === null) warnings.push(image.sourceName + '：atlas 未标记原图 Alpha，已无损保留 RGBA；不改变预乘状态，体积可能较大');
+          }
+        }
+
+        convertedImages.push({
+          sourceName: image.sourceName,
+          fileName: image.outputName,
+          format: image.outputFormat,
+          bytes: data,
+          width,
+          height,
+          size: data.length,
+          sourceAlphaMode: image.pma === null ? 'unknown' : image.pma ? 'pma' : 'straight',
+          pma: image.outputFormat === 'webp' && image.pma,
+          rgbaVerified,
+          alphaVerified,
+          transparentRgbVerified,
+          encoding,
+          quality,
+          alphaQuality
+        });
+      }
+      if (!convertedImages.length) throw new Error('未生成图集');
+
+      return { ok: true, atlas: convertedAtlases[0], atlases: convertedAtlases, images: convertedImages, warnings };
+    }
+
+    api.convertSpineAtlasWebp = async (payload) => {
+      try {
+        return await convertSpineAtlasWebp(payload);
+      } catch (error) {
+        return { ok: false, error: String((error && error.message) || error) };
+      }
+    };
+  }
 
 })(typeof globalThis !== 'undefined' ? globalThis : this);

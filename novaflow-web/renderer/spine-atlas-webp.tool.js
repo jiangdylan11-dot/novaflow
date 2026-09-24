@@ -440,7 +440,10 @@
     const selected = state.images.find((item) => item.id === state.selectedId) || state.images[0] || null
     const done = state.images.filter((item) => item.result).length
     const readyForOverwrite = state.images.filter((item) => item.result)
-    const overwriteReady = state.resultAtlases.length > 0
+    // 导出覆盖 needs a host that can write back over the source files (the
+    // desktop); in a browser inputPath is a handle token, not a path.
+    const overwriteReady = typeof window.electronAPI?.overwriteSpineAtlasWebpOutput === 'function'
+      && state.resultAtlases.length > 0
       && readyForOverwrite.length > 0
       && readyForOverwrite.every((item) => item.inputPath)
       && state.resultAtlases.every((atlas) => state.atlases.some((item) => normalizeName(item.name) === normalizeName(atlas.fileName) && item.inputPath))

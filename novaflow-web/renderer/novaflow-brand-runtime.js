@@ -2332,6 +2332,9 @@
   ].join(",");
   const NOVAFLOW_PRIMARY_FONT_WEIGHT = "600";
   const NOVAFLOW_PRIMARY_BUTTON_FILL = "rgb(23, 165, 130)";
+  // 工具's self-drawn panels: their buttons take the sections' one weight, not
+  // the green main action's 600.
+  const NOVAFLOW_TOOLS_OWN_PANEL_SELECTOR = "#novaflow-png-remove-black-root, #novaflow-mp4-compress-root, #novaflow-video-format-convert-root, #novaflow-spine-atlas-webp-root";
   const NOVAFLOW_STRONG_FONT_WEIGHT = "700";
   const NOVAFLOW_ICON_FONT_WEIGHT = "900";
   const NOVAFLOW_THIN_ARROW_STROKE = "1.35px";
@@ -30373,10 +30376,14 @@
       // The sign-in screen is not editor chrome and sets its own type.
       if (node.closest("#novaflow-web-login-gate")) return;
       const medium = node.matches(NOVAFLOW_MEDIUM_WEIGHT_SELECTOR) || Boolean(node.closest(NOVAFLOW_MEDIUM_WEIGHT_SELECTOR));
-      // A green main action, and the text inside it, is 600.
+      // A green main action, and the text inside it, is 600 - except in 工具,
+      // whose action buttons share one weight (开始压缩 beside 清空 is 500, see
+      // the tools-section rule below). The tools that draw their own panel
+      // (PNG 去黑 / MP4 压缩 / 视频格式转换 / SPINE 图集转换) live outside the
+      // sections, so 开始转换 came out 600 next to a 500 清空.
       const button = node.closest("button, [role='button']");
       let primary = false;
-      if (button instanceof HTMLElement) {
+      if (button instanceof HTMLElement && !button.closest(NOVAFLOW_TOOLS_OWN_PANEL_SELECTOR)) {
         if (!primaryByButton.has(button)) primaryByButton.set(button, window.getComputedStyle(button).backgroundColor === NOVAFLOW_PRIMARY_BUTTON_FILL);
         primary = primaryByButton.get(button);
       }

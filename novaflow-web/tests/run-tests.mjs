@@ -35,6 +35,7 @@ const SUITES = [
   { name: 'web-templates', file: 'e2e/web-templates.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-account', file: 'e2e/web-account.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'web-png-compress', file: 'e2e/web-png-compress.test.mjs', needs: [], timeoutMs: 60000 },
+  { name: 'web-spine-atlas-webp', file: 'e2e/web-spine-atlas-webp.test.mjs', needs: [], timeoutMs: 120000 },
   { name: 'sql-contract', file: 'e2e/sql-contract.test.mjs', needs: [], timeoutMs: 300000 },
   { name: 'control-plane', file: 'e2e/control-plane.test.mjs', needs: [], timeoutMs: 300000 },
   { name: 'security', file: 'e2e/security.test.mjs', needs: [], timeoutMs: 240000 },
