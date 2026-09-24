@@ -14,6 +14,18 @@
     return state.provider === 'local' && (state.mode === 'img2img' || state.nsfw === true)
   }
 
+  // On a Qwen-Image-2.1 node non-NSFW drawing runs on 2.1, and the Qwen LoRAs in the catalogue
+  // (trained for Qwen-Image / Edit 2509-2512) do not apply to it, so none is offered there. NSFW
+  // runs on Rapid AIO (2511) and keeps its list.
+  function qwen21Route(state = {}) {
+    if (state.nsfw === true) return false
+    try {
+      return globalThis?.electronAPI?.runtimeFeaturesSync?.()?.qwenImage21 === true
+    } catch {
+      return false
+    }
+  }
+
   function isSelectable(name) {
     return /^qwen[\\/]/i.test(name) && !String(name).split(/[\\/]/).some(part => !part || part === '.' || part === '..' || part.includes(':')) && /\.safetensors$/i.test(name) && !managed.test(name)
   }
@@ -101,7 +113,7 @@
       mounts.set(host, record)
     }
     record.options = options
-    const context = `${state.provider}:${state.mode}:${!!state.nsfw}`
+    const context = `${state.provider}:${state.mode}:${!!state.nsfw}:${qwen21Route(state)}`
     if (record.context !== context) { record.context = context; record.loaded = false; record.names = []; record.signature = '' }
     const supported = supports(state)
     if (record.slot.hidden !== !supported) record.slot.hidden = !supported
@@ -125,7 +137,7 @@
     record.error = ''
     mount(record.options)
     try {
-      const names = catalogFromInfo(await record.options.loadCatalog(request))
+      const names = qwen21Route(record.options.state) ? [] : catalogFromInfo(await record.options.loadCatalog(request))
       if (context === record.context) {
         record.names = names
         record.options.state.loras = (record.options.state.loras || []).filter(item => names.includes(item.name))
@@ -155,7 +167,7 @@
     select.setAttribute('data-novaflow-art-generate-select-field', '1')
     select.setAttribute('aria-label', '添加兼容 LoRA')
     const available = record.names.filter(name => !items.some(item => key(item.name) === key(name)))
-    const placeholder = element('option', record.loading ? '正在读取兼容 LoRA…' : available.length ? '请选择兼容 LoRA' : record.names.length ? '所有兼容 LoRA 已添加' : '暂无兼容 LoRA')
+    const placeholder = element('option', record.loading ? '正在读取兼容 LoRA…' : available.length ? '请选择兼容 LoRA' : record.names.length ? '所有兼容 LoRA 已添加' : qwen21Route(state) ? '暂无 Qwen-Image-2.1 可用 LoRA' : '暂无兼容 LoRA')
     placeholder.value = ''
     select.appendChild(placeholder)
     available.forEach(name => {
@@ -212,5 +224,5 @@
     slot.replaceChildren(...children)
   }
 
-  return Object.freeze({ supports, catalogFromInfo, selection, apply, validate, mount })
+  return Object.freeze({ supports, qwen21Route, catalogFromInfo, selection, apply, validate, mount })
 })

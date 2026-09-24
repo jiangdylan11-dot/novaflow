@@ -358,6 +358,12 @@ assert.deepEqual([...models.capabilityFor('local', 'img2img', {}).fields], allFi
 assert.equal(models.capabilityFor('local', 'img2img', {}).referenceLimit, 10);
 assert.equal(models.capabilityFor('local', 'img2img', { nsfw: true }).referenceLimit, 3);
 assert.equal(models.capabilityFor('local', 'img2img', {}).negativePrompt, true);
+// The LoRA list offers nothing on the 2.1 route (the catalogue's Qwen LoRAs are for 2509-2512);
+// NSFW (Rapid AIO) keeps its list.
+renderer('art-generate-lora.js');
+const artLora = globalThis.NovaFlowArtGenerateLora;
+assert.equal(artLora.qwen21Route({ provider: 'local', mode: 'img2img' }), true);
+assert.equal(artLora.qwen21Route({ provider: 'local', mode: 'img2img', nsfw: true }), false);
 assert.deepEqual([...models.capabilityFor('local', 'txt2img', { nsfw: true }).fields], allFields);
 assert.deepEqual([...models.capabilityFor('local', 'img2img', { loras: [{ name: 'x' }] }).fields], allFields);
 assert.deepEqual([...models.capabilityFor('local', 'img2img', { nsfw: true }).fields], allFields);

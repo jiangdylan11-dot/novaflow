@@ -79936,9 +79936,16 @@
     return refs;
   }
 
-  // Slots on screen: the fixed three, then the filled ones a 2.1 node added with the + tile.
+  // Slots on screen. A model that takes more than three references (2.1) shows the slots up to the
+  // last filled one and a + tile, nothing else to start with; the others keep their three fixed slots.
   function artGenerateVisibleReferenceCount() {
-    return Math.min(artGenerateReferenceLimit(), Math.max(ART_GENERATE_BASE_REFERENCE_SLOTS, artGenerateReferences().length));
+    const limit = artGenerateReferenceLimit();
+    if (limit <= ART_GENERATE_BASE_REFERENCE_SLOTS) return limit;
+    let lastFilled = -1;
+    artGenerateReferences().forEach((item, index) => {
+      if (item && item.dataUrl) lastFilled = index;
+    });
+    return Math.min(limit, lastFilled + 1);
   }
 
   function setArtGenerateReference(index, value) {
@@ -80258,7 +80265,8 @@
     const limit = artGenerateReferenceLimit();
     const visible = artGenerateVisibleReferenceCount();
     const slots = Array.from({ length: visible }, (_, index) => renderArtGenerateReferencePicker(index));
-    // A model that takes more than three references gets a + tile for the next one.
+    // A model that takes more than three references gets a + tile for the next one (the only tile
+    // while nothing is loaded).
     if (limit > ART_GENERATE_BASE_REFERENCE_SLOTS && visible < limit) {
       slots.push(renderArtGenerateReferencePicker(visible, { add: true, limit }));
     }
