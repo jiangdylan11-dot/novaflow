@@ -7,7 +7,7 @@ import { createDomSandbox } from '../../worker/src/comfy/dom-shim.mjs';
 import { createWorkflowHost } from '../../worker/src/comfy/workflow-host.mjs';
 import { instrumentModule } from '../../tools/instrument-workflow-module.mjs';
 import { isAllowedWorkflowCall } from '../../packages/shared/src/workflow-modules.mjs';
-import { withReferences } from '../../worker/src/worker-core.mjs';
+import { withReferences, assertGraphLoadsTaskInputs } from '../../worker/src/worker-core.mjs';
 import { isSafeFilename } from '../../packages/shared/src/protocol.mjs';
 import { fileURLToPath } from 'node:url';
 
@@ -269,6 +269,51 @@ assert.ok(withParts.includes('补全腿部，赤脚') && withParts.includes('Ext
 assert.ok(!/Transparent background|Complete the masked missing area/.test(withParts));
 const merged = promptOf(JSON.parse(JSON.stringify(await build21(undefined, {}, template))));
 assert.ok(merged.includes('Complete the masked missing area.') && !/Transparent background/.test(merged));
+// ---- the rest of the art builders. A catalogue-first builder gets this node's catalogue in place of the
+// empty object the page recorded; uploads are renamed wherever the recorded arguments put them; and a
+// graph may load only this task's files.
+const nodeWith = (...keys) => ({ input: { required: Object.fromEntries(keys.map((key) => [key, ['*']])) } });
+const catalogueOf = (...names) => Object.fromEntries(names.map((name) => [name, nodeWith()]));
+const upscaleHost = await createWorkflowHost({ rendererDir, objectInfo: {
+  ...catalogueOf('LoadImage', 'SaveImage'),
+  SeedVR2LoadDiTModel: nodeWith('model', 'device'),
+  SeedVR2LoadVAEModel: nodeWith('model', 'device'),
+  SeedVR2VideoUpscaler: nodeWith('image', 'dit', 'vae', 'seed', 'resolution', 'max_resolution')
+} });
+const upscale = await upscaleHost.buildGraph({ module: 'spine-split-runtime', method: 'buildSeedVr2ImageUpscaleWorkflow', options: { __args: [{}, 'task-up.png', 'novaflow_upscale_1', { resolution: 1080, maxResolution: 2048 }] } });
+assert.equal(upscale['1'].inputs.image, 'task-up.png');
+assert.equal(upscale['5'].class_type, 'SeedVR2VideoUpscaler');
+assert.equal(upscale['5'].inputs.resolution, 1080);
+assert.equal(upscale['6'].inputs.filename_prefix, 'novaflow_upscale_1');
+// Without the nodes the builder refuses on the node, with its own message.
+await assert.rejects(host.buildGraph({ module: 'spine-split-runtime', method: 'buildSeedVr2ImageUpscaleWorkflow', options: { __args: [{}, 'task-up.png', 'p', {}] } }), /SeedVR2/);
+// SAM: the page sends the point prompts it read off the stroke; the node picks a model size it has.
+const samHost = await createWorkflowHost({ rendererDir, objectInfo: {
+  ...catalogueOf('LoadImage', 'SAM Parameters', 'SAM Image Mask', 'JoinImageWithAlpha', 'SaveImage'),
+  'SAM Model Loader': { input: { required: { model_size: [['ViT-B', 'ViT-L']] } } }
+} });
+const sam = await samHost.buildGraph({ module: 'spine-split-runtime', method: 'samPointWorkflowFromPrompts', options: { __args: [{}, 'task-sam.png', 'novaflow_sam_1', { points: [[10, 20], [30, 40]], labels: [1, 1] }, { modelSize: 'ViT-H' }] } });
+assert.equal(sam['1'].inputs.image, 'task-sam.png');
+assert.equal(sam['2'].inputs.model_size, 'ViT-L');
+assert.deepEqual(sam['3'].inputs.points, [[10, 20], [30, 40]]);
+assert.equal(sam['5'].class_type, 'JoinImageWithAlpha');
+// 万物迁移: the runtime the page "resolved" is a marker string here; the node resolves against its own
+// catalogue, and both uploads are renamed inside the object argument.
+const transferArgs = withReferences(
+  { __args: [{}, { placementName: 'run_placement.png', referenceName: 'run_scene.png' }, 'run_1', '{"__novaflowServerOnly":true}', 'prompt', { steps: 8, cfg: 1 }] },
+  ['nfweb-1-0-run_placement.png', 'nfweb-1-1-run_scene.png'], [{ name: 'run_placement.png' }, { name: 'run_scene.png' }], 'buildObjectTransferQwen21Workflow'
+).__args;
+assert.deepEqual(transferArgs[1], { placementName: 'nfweb-1-0-run_placement.png', referenceName: 'nfweb-1-1-run_scene.png' });
+const transferHost = await createWorkflowHost({ rendererDir, objectInfo: { ...qwen21Info, SplitImageWithAlpha: nodeWith('image'), SaveImage: nodeWith('filename_prefix', 'images') } });
+const transfer = await transferHost.buildGraph({ module: 'spine-split-runtime', method: 'buildObjectTransferQwen21Workflow', options: { __args: transferArgs } });
+assert.equal(transfer['1'].inputs.image, 'nfweb-1-0-run_placement.png');
+assert.equal(transfer['2'].inputs.image, 'nfweb-1-1-run_scene.png');
+assert.equal(transfer['4'].inputs.unet_name, 'qwen-image-2.1-UC-Q8_0.gguf');
+assert.equal(Object.values(transfer).find((node) => node.class_type === 'SaveImage').inputs.filename_prefix, 'run_1');
+// The guard: a graph that names a file this task did not upload is refused.
+assertGraphLoadsTaskInputs(transfer, ['nfweb-1-0-run_placement.png', 'nfweb-1-1-run_scene.png']);
+assert.throws(() => assertGraphLoadsTaskInputs(transfer, ['nfweb-1-0-run_placement.png']), /did not upload/);
+
 runInContext(await readFile(new URL('novaflow-web-capabilities.js', web), 'utf8'), context);
 const cached = await sandbox.electronAPI.aiSeqCacheTempFile({ fileName: 'result.png', cacheKey: 'art-output', bytes: new Uint8Array([4, 5, 6]) });
 assert.ok(cached.ok && cached.path.startsWith('blob:'));

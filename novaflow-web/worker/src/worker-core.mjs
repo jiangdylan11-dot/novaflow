@@ -51,8 +51,27 @@ export const WORKER_VERSION = (() => {
  * Point the renderer's recorded options at the files that actually landed in
  * ComfyUI's input folder. The renderer named them before upload; the worker
  * renamed them to keep one task's inputs out of another's way.
+ *
+ * A positional builder names its inputs wherever its signature puts them: a
+ * bare argument (inpaint image and mask), an object of named uploads (万物迁移),
+ * an array (the art builder). Every string equal to a reference name is
+ * replaced, wherever it sits; assertGraphLoadsTaskInputs then checks the graph
+ * itself reads nothing but this task's files.
  */
 export function withReferences(parameters, filenames, references = [], method = '') {
+  const rename = (value) => {
+    if (typeof value === 'string') {
+      const found = references.findIndex((ref) => ref.name === value);
+      return found >= 0 && filenames[found] ? filenames[found] : value;
+    }
+    if (Array.isArray(value)) return value.map(rename);
+    if (value && typeof value === 'object') {
+      const out = {};
+      for (const [key, item] of Object.entries(value)) out[key] = rename(item);
+      return out;
+    }
+    return value;
+  };
   if (Array.isArray(parameters.__args)) {
     const args = structuredClone(parameters.__args);
     if (method === 'buildArtGenerateRunWorkflow') {
@@ -63,11 +82,11 @@ export function withReferences(parameters, filenames, references = [], method = 
       });
       return { ...parameters, __args: args };
     }
-    const indexes = method === 'defaultQwenInpaintWorkflow' ? [1, 2] : [1];
-    for (const index of indexes) {
-      const found = references.findIndex((ref) => ref.name === args[index]);
-      if (found < 0 || !filenames[found]) throw new Error('workflow input is not an uploaded task reference');
-      args[index] = filenames[found];
+    if (method === 'defaultQwenInpaintWorkflow' || method === 'defaultRemovalInpaintWorkflow') {
+      for (const index of [1, 2]) {
+        const found = references.findIndex((ref) => ref.name === args[index]);
+        if (found < 0 || !filenames[found]) throw new Error('workflow input is not an uploaded task reference');
+      }
     }
     // Smart completion stays on 2509 + eigen-banana until 2.1 has its own completion LoRA. The page
     // never asks for 2.1, and a task cannot either: the engine choice and the 2.1-only undug crop
@@ -77,10 +96,13 @@ export function withReferences(parameters, filenames, references = [], method = 
       const { inpaintEngine, latentInputName, ...rest } = inpaintOptions;
       if (inpaintEngine !== undefined || latentInputName !== undefined) args[5] = rest;
     }
-    return { ...parameters, __args: args };
+    return { ...parameters, __args: rename(args) };
   }
   if (!filenames || !filenames.length) return parameters;
-  const next = { ...parameters };
+  // Option objects name their uploads under their own keys (H3's referenceImages / referenceVideo /
+  // referenceAudio, the AI-effects sourceVideo / referenceImage): every string equal to a staged name
+  // becomes the worker's name for that file, wherever it sits.
+  const next = rename(parameters);
   next.__novaflowReferenceFiles = filenames;
   if (Array.isArray(next.references)) {
     next.references = next.references.map((r, i) => (
@@ -91,6 +113,25 @@ export function withReferences(parameters, filenames, references = [], method = 
   if (filenames[0]) { next.firstFrame = filenames[0]; next.first_frame = filenames[0]; }
   if (filenames[1]) { next.lastFrame = filenames[1]; next.last_frame = filenames[1]; }
   return next;
+}
+
+/**
+ * A replayed graph may load only the files this task uploaded. Without this a page could name any
+ * file in the node's input folder and have it read into a result.
+ */
+export function assertGraphLoadsTaskInputs(graph, filenames) {
+  const allowed = new Set((filenames || []).filter(Boolean));
+  for (const [id, node] of Object.entries(graph && typeof graph === 'object' ? graph : {})) {
+    const type = String(node && node.class_type || '');
+    if (!/^(LoadImage|LoadImageMask|LoadVideo|LoadAudio)$/.test(type)) continue;
+    const inputs = node && node.inputs && typeof node.inputs === 'object' ? node.inputs : {};
+    for (const key of ['image', 'video', 'audio', 'file', 'filename']) {
+      const value = inputs[key];
+      if (typeof value === 'string' && !allowed.has(value)) {
+        throw new Error(type + ' node ' + id + ' names a file this task did not upload: ' + value);
+      }
+    }
+  }
 }
 
 export const SEE_THROUGH_SPLIT_METHOD = 'buildSeeThroughSplitWorkflow';
@@ -578,6 +619,7 @@ export function createWorker(options) {
         method: intent.method,
         options: withReferences(parameters, referenceFilenames, expectedRefs, intent.method)
       });
+      assertGraphLoadsTaskInputs(graph, referenceFilenames);
     } else {
       const extra = { referenceFilenames };
       if (req?.kind === 'video') {

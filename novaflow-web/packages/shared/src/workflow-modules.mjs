@@ -21,13 +21,21 @@ export const WORKFLOW_MODULES = Object.freeze({
   // the exported workflow modules. Only these audited builders are callable.
   // buildSeeThroughSplitWorkflow is 一键拆图: the node runs See-through and
   // copies the layer files back by name (worker-core collectSeeThroughOutputs).
+  // The builders whose first argument is the node catalogue (the page sends an
+  // empty object) are listed in workflow-host CATALOGUE_FIRST and get this
+  // node's catalogue when replayed.
   'spine-split-runtime': {
-    label: '美工 · 补图 / 智能抠图 / 一键拆图',
+    label: '美工 · 补图 / 抠图 / 拆图 / 放大 / 扩图 / 迁移 / 角度 / 特效',
     modelId: 'qwen-image-2511',
     minVramMb: 16000,
     runtime: 'image', kind: 'image', price: 'image',
     positional: true,
-    methods: ['defaultQwenInpaintWorkflow', 'defaultRmbgWorkflow', 'buildSeeThroughSplitWorkflow']
+    methods: [
+      'defaultQwenInpaintWorkflow', 'defaultRemovalInpaintWorkflow', 'defaultRmbgWorkflow', 'samPointWorkflowFromPrompts',
+      'buildSeeThroughSplitWorkflow', 'buildSeedVr2ImageUpscaleWorkflow', 'buildQwenImageOutpaintWorkflow',
+      'buildImageAngleAdjustWorkflow', 'buildObjectTransferQwen21Workflow', 'buildQwenEditPlateWorkflow',
+      'buildEffectExtractQwenWorkflow', 'buildEffectDeeffectQwenWorkflow'
+    ]
   },
   // ---- 美工 -------------------------------------------------------------
   NovaFlowArtGenerateProviderWorkflow: {

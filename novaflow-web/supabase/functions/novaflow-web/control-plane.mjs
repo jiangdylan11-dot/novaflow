@@ -209,6 +209,8 @@ export function validateTaskParameters(taskType, raw) {
 const MAX_WORKFLOW_OPTIONS_BYTES = 128 * 1024;
 const MAX_WORKFLOW_DEPTH = 12;
 
+export const MAX_TASK_OUTPUT_FILES = 96;
+
 export function sanitizeWorkflowOptions(raw, depth = 0) {
   if (depth > MAX_WORKFLOW_DEPTH) return null;
   if (raw === null || raw === undefined) return null;
@@ -484,7 +486,8 @@ export function createControlPlane({ store, secrets, logger }) {
       return { ok: true, task: publicTask(current), idempotent: true, settlement: null };
     }
 
-    const outputs = Array.isArray(body.outputs) ? body.outputs.slice(0, 32) : [];
+    // 一键拆图 returns about two dozen files and an AI-effects run one clip plus its frames.
+    const outputs = Array.isArray(body.outputs) ? body.outputs.slice(0, MAX_TASK_OUTPUT_FILES) : [];
     const outputManifest = {
       files: outputs.map((f) => ({
         name: sanitizeText(f?.name, 128),

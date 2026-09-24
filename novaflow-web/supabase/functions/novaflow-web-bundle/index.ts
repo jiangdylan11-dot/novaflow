@@ -674,13 +674,21 @@ const WORKFLOW_MODULES = Object.freeze({
   // the exported workflow modules. Only these audited builders are callable.
   // buildSeeThroughSplitWorkflow is 一键拆图: the node runs See-through and
   // copies the layer files back by name (worker-core collectSeeThroughOutputs).
+  // The builders whose first argument is the node catalogue (the page sends an
+  // empty object) are listed in workflow-host CATALOGUE_FIRST and get this
+  // node's catalogue when replayed.
   'spine-split-runtime': {
-    label: '美工 · 补图 / 智能抠图 / 一键拆图',
+    label: '美工 · 补图 / 抠图 / 拆图 / 放大 / 扩图 / 迁移 / 角度 / 特效',
     modelId: 'qwen-image-2511',
     minVramMb: 16000,
     runtime: 'image', kind: 'image', price: 'image',
     positional: true,
-    methods: ['defaultQwenInpaintWorkflow', 'defaultRmbgWorkflow', 'buildSeeThroughSplitWorkflow']
+    methods: [
+      'defaultQwenInpaintWorkflow', 'defaultRemovalInpaintWorkflow', 'defaultRmbgWorkflow', 'samPointWorkflowFromPrompts',
+      'buildSeeThroughSplitWorkflow', 'buildSeedVr2ImageUpscaleWorkflow', 'buildQwenImageOutpaintWorkflow',
+      'buildImageAngleAdjustWorkflow', 'buildObjectTransferQwen21Workflow', 'buildQwenEditPlateWorkflow',
+      'buildEffectExtractQwenWorkflow', 'buildEffectDeeffectQwenWorkflow'
+    ]
   },
   // ---- 美工 -------------------------------------------------------------
   NovaFlowArtGenerateProviderWorkflow: {
@@ -1133,6 +1141,8 @@ function validateTaskParameters(taskType, raw) {
 const MAX_WORKFLOW_OPTIONS_BYTES = 128 * 1024;
 const MAX_WORKFLOW_DEPTH = 12;
 
+const MAX_TASK_OUTPUT_FILES = 96;
+
 function sanitizeWorkflowOptions(raw, depth = 0) {
   if (depth > MAX_WORKFLOW_DEPTH) return null;
   if (raw === null || raw === undefined) return null;
@@ -1408,7 +1418,8 @@ function createControlPlane({ store, secrets, logger }) {
       return { ok: true, task: publicTask(current), idempotent: true, settlement: null };
     }
 
-    const outputs = Array.isArray(body.outputs) ? body.outputs.slice(0, 32) : [];
+    // 一键拆图 returns about two dozen files and an AI-effects run one clip plus its frames.
+    const outputs = Array.isArray(body.outputs) ? body.outputs.slice(0, MAX_TASK_OUTPUT_FILES) : [];
     const outputManifest = {
       files: outputs.map((f) => ({
         name: sanitizeText(f?.name, 128),

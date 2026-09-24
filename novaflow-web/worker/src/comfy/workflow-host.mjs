@@ -208,8 +208,17 @@ export async function createWorkflowHost({ rendererDir, logger, comfy, objectInf
           }
           return asPrompt(built, module + '.' + method);
         }
-        // A caller never chooses a network destination or supplies node metadata.
-        safe[0] = '';
+        // A caller never chooses a network destination or supplies node metadata: the first argument is
+        // either a runtime URL (blanked; the bridge answers for this node) or the node catalogue (this
+        // node's own, read fresh because weights and nodes come and go while the worker runs).
+        if (CATALOGUE_FIRST.has(method)) {
+          let catalogue = null;
+          try { catalogue = await sandbox.electronAPI.__refreshObjectInfo(); } catch (_) { catalogue = sandbox.electronAPI.__objectInfoSync(); }
+          if (!catalogue || typeof catalogue !== 'object') throw new Error('this node has no ComfyUI node catalogue to build ' + method + ' from');
+          safe[0] = catalogue;
+        } else {
+          safe[0] = '';
+        }
         if (method === 'defaultRmbgWorkflow') safe[3] = null;
         return asPrompt(await builder(...safe), module + '.' + method);
       }
@@ -258,6 +267,19 @@ export const GRAPH_METHODS = new Set([
 ]);
 
 export const VALIDATOR_METHODS = /^(validate|assert|check)[A-Z]/;
+
+// Positional builders whose first argument is the ComfyUI node catalogue. The page cannot read a
+// node's catalogue, so it records an empty object there; the replay hands them this node's.
+export const CATALOGUE_FIRST = new Set([
+  'samPointWorkflowFromPrompts',
+  'buildSeedVr2ImageUpscaleWorkflow',
+  'buildQwenImageOutpaintWorkflow',
+  'buildImageAngleAdjustWorkflow',
+  'buildObjectTransferQwen21Workflow',
+  'buildQwenEditPlateWorkflow',
+  'buildEffectExtractQwenWorkflow',
+  'buildEffectDeeffectQwenWorkflow'
+]);
 
 /**
  * The slice of electronAPI a workflow builder actually uses: reading the node
