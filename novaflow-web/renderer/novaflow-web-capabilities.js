@@ -42,6 +42,87 @@
     }
   })();
 
+  // ---------------------------------------------------------- a working cue
+  //
+  // Long jobs - a 32 MB download the first time a video tool runs, a minute
+  // of encoding, a big atlas going through the WebP encoder - get a small card
+  // in the corner naming what is running and how far along it is, so a quiet
+  // page is never mistaken for a stuck one. It blocks nothing.
+  const busy = (() => {
+    const tasks = new Map();
+    const doc = root.document;
+    let host = null;
+    function ensureHost() {
+      if (host) return host;
+      if (!doc || !doc.head || !doc.body || typeof doc.createElement !== 'function') return null;
+      const style = doc.createElement('style');
+      style.id = 'novaflow-web-busy-style';
+      style.textContent = [
+        // Centred on the screen, as asked: the eye is on the work, not the corner.
+        '#novaflow-web-busy{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:2147483000;display:grid;gap:8px;pointer-events:none;font:13px/1.5 "Segoe UI","Microsoft YaHei",sans-serif}',
+        '#novaflow-web-busy .nf-busy{min-width:300px;max-width:440px;padding:14px 16px;border-radius:12px;background:rgba(29,29,29,.96);border:1px solid #3c3c3c;box-shadow:0 12px 32px rgba(0,0,0,.45);color:#eaeaea;display:grid;gap:8px}',
+        '#novaflow-web-busy .nf-busy-row{display:flex;align-items:center;gap:8px;min-width:0}',
+        '#novaflow-web-busy .nf-busy-spin{width:14px;height:14px;flex:0 0 14px;border-radius:50%;border:2px solid rgba(255,255,255,.18);border-top-color:#25bc84;animation:nf-busy-spin .8s linear infinite}',
+        '#novaflow-web-busy .nf-busy-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+        '#novaflow-web-busy .nf-busy-bar{height:3px;border-radius:2px;background:rgba(255,255,255,.1);overflow:hidden}',
+        '#novaflow-web-busy .nf-busy-bar>i{display:block;height:100%;width:0;background:#25bc84;transition:width .2s linear}',
+        '@keyframes nf-busy-spin{to{transform:rotate(360deg)}}'
+      ].join('');
+      doc.head.appendChild(style);
+      host = doc.createElement('div');
+      host.id = 'novaflow-web-busy';
+      host.setAttribute('role', 'status');
+      host.setAttribute('aria-live', 'polite');
+      doc.body.appendChild(host);
+      return host;
+    }
+    function render() {
+      const node = ensureHost();
+      if (!node) return;
+      node.textContent = '';
+      for (const task of tasks.values()) {
+        const card = doc.createElement('div');
+        card.className = 'nf-busy';
+        const row = doc.createElement('div');
+        row.className = 'nf-busy-row';
+        const spin = doc.createElement('span');
+        spin.className = 'nf-busy-spin';
+        const text = doc.createElement('span');
+        text.className = 'nf-busy-text';
+        text.textContent = task.text + (task.progress01 == null ? '' : ' ' + Math.round(task.progress01 * 100) + '%');
+        text.title = task.text;
+        row.appendChild(spin);
+        row.appendChild(text);
+        card.appendChild(row);
+        if (task.progress01 != null) {
+          const bar = doc.createElement('div');
+          bar.className = 'nf-busy-bar';
+          const fill = doc.createElement('i');
+          fill.style.width = Math.round(task.progress01 * 100) + '%';
+          bar.appendChild(fill);
+          card.appendChild(bar);
+        }
+        node.appendChild(card);
+      }
+      node.style.display = tasks.size ? 'grid' : 'none';
+    }
+    const clamp01 = (value) => (value == null ? null : Math.max(0, Math.min(1, Number(value) || 0)));
+    return {
+      begin(id, text, progress01) { tasks.set(String(id), { text: String(text || '正在处理…'), progress01: clamp01(progress01) }); render(); },
+      update(id, text, progress01) {
+        const task = tasks.get(String(id));
+        if (!task) return;
+        if (text) task.text = String(text);
+        if (progress01 !== undefined) task.progress01 = clamp01(progress01);
+        render();
+      },
+      end(id) { if (tasks.delete(String(id))) render(); },
+      active() { return tasks.size; }
+    };
+  })();
+  runtime.busy = busy;
+  root.NovaFlowWebBusy = busy;
+
   // ---------------------------------------------------------------- listeners
   function channel() {
     const subscribers = new Set();
@@ -408,6 +489,7 @@
       if (Math.abs(progress01 - ffmpegJob.last) < 0.01 && progress01 < 1) return;
       ffmpegJob.last = progress01;
       videoToolProgress.emit({ jobId: ffmpegJob.jobId, progress01 });
+      busy.update(ffmpegJob.jobId, ffmpegJob.label, progress01);
     });
     ffmpeg.on('log', (event) => { if (ffmpegJob && event && event.message) ffmpegJob.log = (ffmpegJob.log + '\n' + event.message).slice(-4000); });
     return ffmpeg;
@@ -417,6 +499,27 @@
   // stitched back together here and handed to the worker as a blob URL, the
   // way ffmpeg.wasm's own toBlobURL does. Without a manifest the whole file
   // is fetched as-is.
+  const formatMb = (bytes) => (bytes / 1024 / 1024).toFixed(1) + ' MB';
+  /** A download that reports as it goes: the browser caches the bytes, so only the first run waits. */
+  async function fetchCounting(url, onBytes) {
+    const response = await root.fetch(url);
+    if (!response.ok) throw new Error('下载失败（' + response.status + '）');
+    if (!response.body || typeof response.body.getReader !== 'function') return new Uint8Array(await response.arrayBuffer());
+    const reader = response.body.getReader();
+    const chunks = [];
+    let received = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      onBytes(value.length);
+    }
+    const out = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.length; }
+    return out;
+  }
   async function ffmpegWasmUrl() {
     const whole = ffmpegVendorUrl('core/ffmpeg-core.wasm');
     const manifestResponse = await root.fetch(ffmpegVendorUrl('core/ffmpeg-core.wasm.parts.json'));
@@ -424,14 +527,20 @@
     const manifest = await manifestResponse.json();
     const parts = Array.isArray(manifest && manifest.parts) ? manifest.parts : [];
     if (!parts.length) return whole;
+    const total = Number(manifest.bytes) || 0;
+    let received = 0;
+    const report = () => busy.update('ffmpeg-load', '正在下载视频处理组件（首次）' + formatMb(received) + (total ? ' / ' + formatMb(total) : ''), total ? received / total : null);
+    report();
     const buffers = await Promise.all(parts.map(async (name) => {
-      const response = await root.fetch(ffmpegVendorUrl('core/' + name));
-      if (!response.ok) throw new Error('下载 ffmpeg 组件分片失败（' + name + '：' + response.status + '）');
-      return new Uint8Array(await response.arrayBuffer());
+      try {
+        return await fetchCounting(ffmpegVendorUrl('core/' + name), (bytes) => { received += bytes; report(); });
+      } catch (error) {
+        throw new Error('下载 ffmpeg 组件分片失败（' + name + '：' + String((error && error.message) || error) + '）');
+      }
     }));
-    const total = buffers.reduce((sum, part) => sum + part.length, 0);
-    if (Number(manifest.bytes) && total !== Number(manifest.bytes)) throw new Error('ffmpeg 组件分片不完整：' + total + ' / ' + manifest.bytes + ' 字节');
-    const joined = new Uint8Array(total);
+    const joinedBytes = buffers.reduce((sum, part) => sum + part.length, 0);
+    if (total && joinedBytes !== total) throw new Error('ffmpeg 组件分片不完整：' + joinedBytes + ' / ' + total + ' 字节');
+    const joined = new Uint8Array(joinedBytes);
     let offset = 0;
     for (const part of buffers) { joined.set(part, offset); offset += part.length; }
     return URL.createObjectURL(new Blob([joined], { type: 'application/wasm' }));
@@ -442,16 +551,23 @@
         // Tests hand in a stand-in instead of the 32 MB core.
         if (root.NovaFlowWebFfmpeg) return listenToFfmpeg(root.NovaFlowWebFfmpeg);
         if (typeof root.WebAssembly !== 'object' || typeof root.Worker !== 'function') throw new Error('这个浏览器不支持 WebAssembly 线程，无法在网页里处理视频');
-        const probe = await root.fetch(ffmpegVendorUrl('core/ffmpeg-core.js'), { method: 'HEAD' });
-        if (!probe.ok) throw new Error('站点没有打包 ffmpeg 组件（vendor/ffmpeg/core），请运行 tools/fetch-ffmpeg-core.mjs 后重新发布');
-        const { FFmpeg } = await import(ffmpegVendorUrl('index.js'));
-        const ffmpeg = listenToFfmpeg(new FFmpeg());
-        await ffmpeg.load({
-          classWorkerURL: ffmpegVendorUrl('worker.js'),
-          coreURL: ffmpegVendorUrl('core/ffmpeg-core.js'),
-          wasmURL: await ffmpegWasmUrl()
-        });
-        return ffmpeg;
+        busy.begin('ffmpeg-load', '正在加载视频处理组件…');
+        try {
+          const probe = await root.fetch(ffmpegVendorUrl('core/ffmpeg-core.js'), { method: 'HEAD' });
+          if (!probe.ok) throw new Error('站点没有打包 ffmpeg 组件（vendor/ffmpeg/core），请运行 tools/fetch-ffmpeg-core.mjs 后重新发布');
+          const { FFmpeg } = await import(ffmpegVendorUrl('index.js'));
+          const ffmpeg = listenToFfmpeg(new FFmpeg());
+          const wasmURL = await ffmpegWasmUrl();
+          busy.update('ffmpeg-load', '正在启动视频处理组件…', null);
+          await ffmpeg.load({
+            classWorkerURL: ffmpegVendorUrl('worker.js'),
+            coreURL: ffmpegVendorUrl('core/ffmpeg-core.js'),
+            wasmURL
+          });
+          return ffmpeg;
+        } finally {
+          busy.end('ffmpeg-load');
+        }
       })().catch((error) => {
         ffmpegPromise = null;
         throw new Error('ffmpeg 组件加载失败：' + String((error && error.message) || error));
@@ -533,13 +649,16 @@
     const ffmpeg = await loadFfmpeg();
     const inName = 'in_' + (++videoOutputSeq) + '.' + (String(file.name || '').split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '');
     const outFile = 'out_' + videoOutputSeq + '_' + outName;
-    ffmpegJob = { jobId, last: -1, log: '' };
+    const label = (tool === 'mp4-compress' ? '正在压缩 ' : '正在转换 ') + String(file.name || outName);
+    ffmpegJob = { jobId, last: -1, log: '', label };
+    busy.begin(jobId, '正在读取 ' + String(file.name || outName) + '…');
     try {
       await ffmpeg.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
       // One probe pass for the stream list: ffmpeg prints it before refusing the missing output.
       await ffmpeg.exec(['-i', inName]).catch(() => {});
       const probeLog = ffmpegJob.log;
       ffmpegJob.log = '';
+      busy.update(jobId, label, 0);
       const code = await ffmpeg.exec(buildArgs(inName, outFile, probeLog));
       if (code !== 0) {
         const tail = ffmpegJob.log.split('\n').filter((line) => /error|invalid|failed|unsupported|not found/i.test(line)).slice(-3).join('；');
@@ -561,6 +680,7 @@
       }
       throw error;
     } finally {
+      busy.end(jobId);
       if (ffmpegPromise) await ffmpeg.deleteFile(inName).catch(() => {});
       ffmpegJob = null;
     }
@@ -1777,6 +1897,8 @@
   }
 
   api.compressSpineAtlasSafe = async (payload) => {
+    const cue = root.NovaFlowWebBusy;
+    if (cue) cue.begin('png-safe', '正在稳妥压缩 PNG…');
     try {
       const source = bytesFromDataUrl(payload && payload.dataUrl);
       const level = Math.max(0, Math.min(9, Math.round(Number(payload && payload.compressionLevel) || 0)));
@@ -1790,6 +1912,8 @@
       };
     } catch (error) {
       return { ok: false, error: String((error && error.message) || error) };
+    } finally {
+      if (cue) cue.end('png-safe');
     }
   };
 
@@ -2217,10 +2341,14 @@
     }
 
     api.compressPngStrong = async (payload) => {
+      const cue = root.NovaFlowWebBusy;
+      if (cue) cue.begin('png-strong', '正在压缩 PNG（调色板量化）…');
       try {
         return await compressPngStrong(payload || {});
       } catch (error) {
         return { ok: false, error: String((error && error.message) || error) };
+      } finally {
+        if (cue) cue.end('png-strong');
       }
     };
   }
@@ -2507,16 +2635,22 @@
       if (root.NovaFlowWebWebpCodec) return Promise.resolve(root.NovaFlowWebWebpCodec);
       if (!codecPromise) {
         codecPromise = (async () => {
-          const parts = await loadCodecParts();
-          if (typeof root.Worker === 'function' && typeof root.Blob === 'function' && root.URL && typeof root.URL.createObjectURL === 'function') {
-            try {
-              return await createWorkerCodec(parts);
-            } catch (error) {
-              console.warn('[novaflow-web] WebP worker unavailable, encoding on the page:', error);
+          const cue = root.NovaFlowWebBusy;
+          if (cue) cue.begin('webp-codec', '正在加载 WebP 编码器…');
+          try {
+            const parts = await loadCodecParts();
+            if (typeof root.Worker === 'function' && typeof root.Blob === 'function' && root.URL && typeof root.URL.createObjectURL === 'function') {
+              try {
+                return await createWorkerCodec(parts);
+              } catch (error) {
+                console.warn('[novaflow-web] WebP worker unavailable, encoding on the page:', error);
+              }
             }
+            // The worker owns the transferred buffers by now, so fetch again.
+            return await createInlineCodec(await loadCodecParts());
+          } finally {
+            if (cue) cue.end('webp-codec');
           }
-          // The worker owns the transferred buffers by now, so fetch again.
-          return await createInlineCodec(await loadCodecParts());
         })().catch((error) => {
           codecPromise = null;
           throw new Error('WebP 编码器加载失败：' + String((error && error.message) || error));
@@ -2612,6 +2746,7 @@
       let codec = null;
       for (const image of imageInputs) {
         if (!matchedSourceNames.has(normalizeName(image.sourceName))) continue;
+        if (root.NovaFlowWebBusy) root.NovaFlowWebBusy.update('spine-webp', '正在转换图集 ' + image.sourceName + '…');
         if (image.outputFormat === 'jpg' && image.pma === null) {
           throw new Error(image.sourceName + '：atlas 未标记原图 Alpha，转 JPG 前请选择已预乘（PMA）或未预乘（Straight）');
         }
@@ -2692,10 +2827,14 @@
     }
 
     api.convertSpineAtlasWebp = async (payload) => {
+      const cue = root.NovaFlowWebBusy;
+      if (cue) cue.begin('spine-webp', '正在转换图集…');
       try {
         return await convertSpineAtlasWebp(payload);
       } catch (error) {
         return { ok: false, error: String((error && error.message) || error) };
+      } finally {
+        if (cue) cue.end('spine-webp');
       }
     };
   }
