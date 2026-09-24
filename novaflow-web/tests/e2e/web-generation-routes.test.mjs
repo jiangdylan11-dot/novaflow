@@ -112,11 +112,14 @@ const latentInpaint = sandbox.NovaFlowWebRuntime.serverOnly('spine-split-runtime
 ]);
 const latentOptions = JSON.parse(String(latentInpaint)).options;
 const latentRefs = [{ name: 'image.png' }, { name: 'mask.png' }, { name: 'latent.png' }];
+// A task cannot switch smart completion to 2.1: the worker drops the engine choice and the undug crop.
 const latentMapped = withReferences(latentOptions, ['task-image.png', 'task-mask.png', 'task-latent.png'], latentRefs, 'defaultQwenInpaintWorkflow');
 assert.deepEqual(latentMapped.__args.slice(1, 3), ['task-image.png', 'task-mask.png']);
-assert.equal(latentMapped.__args[5].latentInputName, 'task-latent.png');
+assert.equal(latentMapped.__args[5].latentInputName, undefined);
 assert.equal(latentMapped.__args[5].inpaintMode, 'completion');
-assert.throws(() => withReferences(latentOptions, ['task-image.png', 'task-mask.png'], latentRefs.slice(0, 2), 'defaultQwenInpaintWorkflow'), /uploaded task reference/);
+const engineAsked = JSON.parse(JSON.stringify(latentOptions));
+engineAsked.__args[5].inpaintEngine = 'qwen-2.1';
+assert.equal(withReferences(engineAsked, ['task-image.png', 'task-mask.png'], latentRefs.slice(0, 2), 'defaultQwenInpaintWorkflow').__args[5].inpaintEngine, undefined);
 
 const host = await createWorkflowHost({ rendererDir: fileURLToPath(new URL('../../worker-renderer/', import.meta.url)), objectInfo: {
   RMBG: { input: { required: { image: ['IMAGE'], model: [['RMBG-2.0']], sensitivity: ['FLOAT', { default: 1 }] } } }
@@ -157,7 +160,12 @@ const build21 = async (inputSize, extra = {}, promptText = 'leg') => {
   const call = sandbox.NovaFlowWebRuntime.serverOnly('spine-split-runtime', 'defaultQwenInpaintWorkflow', [
     'http://127.0.0.1:8188', 'image.png', 'mask.png', 'NovaFlow_Complete', promptText, { inpaintMode: 'completion', route: completionRoute, inpaintEngine: 'qwen-2.1', latentInputName: 'latent.png', inputSize, ...extra }
   ]);
-  const opts = withReferences(JSON.parse(String(call)).options, ['task-image.png', 'task-mask.png', 'task-latent.png'], latentRefs, 'defaultQwenInpaintWorkflow');
+  // The worker never forwards the 2.1 engine choice (see above); the dormant 2.1 completion graph
+  // is still built here directly so it keeps working for when it is switched on again.
+  const opts = JSON.parse(String(call)).options;
+  opts.__args[1] = 'task-image.png';
+  opts.__args[2] = 'task-mask.png';
+  if (opts.__args[5] && opts.__args[5].latentInputName) opts.__args[5].latentInputName = 'task-latent.png';
   return await host21.buildGraph({ module: 'spine-split-runtime', method: 'defaultQwenInpaintWorkflow', options: opts });
 };
 // The graph is built inside the host's vm context; bring it into this realm before deep comparisons.

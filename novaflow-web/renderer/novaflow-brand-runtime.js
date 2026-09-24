@@ -76133,7 +76133,16 @@
     }
     workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: latent, seed, steps: 25, cfg: 1, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
     workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
-    workflow["9"] = { class_type: "SaveImage", inputs: { images: ["8", 0], filename_prefix: String(outputPrefix || "NovaFlow_Art") } };
+    let output = ["8", 0];
+    // At resolution 0 the encoder floors the first reference to multiples of 32 (512x720 came back
+    // 512x704); scale the result back to the reference's own size.
+    const refWidth = Math.round(Number(first?.width) || 0);
+    const refHeight = Math.round(Number(first?.height) || 0);
+    if (mode === "img2img" && encode.resolution === 0 && refWidth > 0 && refHeight > 0 && (refWidth % 32 || refHeight % 32) && runtime.info.ImageScale) {
+      workflow["10"] = { class_type: "ImageScale", inputs: { image: output, upscale_method: "lanczos", width: refWidth, height: refHeight, crop: "disabled" } };
+      output = ["10", 0];
+    }
+    workflow["9"] = { class_type: "SaveImage", inputs: { images: output, filename_prefix: String(outputPrefix || "NovaFlow_Art") } };
     return { workflow, modelKey: mode === "txt2img" ? "qwen-image-2.1-t2i" : "qwen-image-2.1-i2i" };
   }
 

@@ -123,6 +123,15 @@ const textOnly = await buildUi(host21, [], [], []);
 assert.equal(byClass(textOnly, 'LoadImage').length, 0);
 assert.equal(Object.keys(byClass(textOnly, 'TextEncodeQwenImage21')[0][1].inputs).filter((key) => key.startsWith('images.')).length, 0);
 
+// Drawing img2img on 2.1 gives the output back the reference's own size (the encoder floors it to 32).
+const drawI2i = JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
+  'local', 'img2img', ['ref.png'], 'NovaFlow_Art', 'recolour', '', 'client', [{ width: 512, height: 720 }],
+  { provider: 'local', mode: 'img2img', width: 512, height: 720, seed: 1, randomSeed: false }, 4, {}
+] } })));
+const drawSaved = drawI2i[byClass(drawI2i, 'SaveImage')[0][1].inputs.images[0]];
+assert.equal(drawSaved.class_type, 'ImageScale');
+assert.deepEqual([drawSaved.inputs.width, drawSaved.inputs.height], [512, 720]);
+
 // Asked for 2.1 on a node without it: an error, never a 2511 graph that keeps three references.
 const hostOld = await createWorkflowHost({ rendererDir, objectInfo: { LoadImage: qwen21Info.LoadImage, KSampler: qwen21Info.KSampler } });
 await assert.rejects(buildUi(hostOld, names, sizes, roles), /缺少 Qwen-Image-2.1/);

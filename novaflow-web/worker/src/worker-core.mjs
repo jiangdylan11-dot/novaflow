@@ -68,13 +68,13 @@ export function withReferences(parameters, filenames, references = [], method = 
       if (found < 0 || !filenames[found]) throw new Error('workflow input is not an uploaded task reference');
       args[index] = filenames[found];
     }
-    // The Qwen-Image-2.1 completion route also samples from the undug crop, named in the options.
-    // Same rule as the positional inputs: it must be one of this task's uploads.
+    // Smart completion stays on 2509 + eigen-banana until 2.1 has its own completion LoRA. The page
+    // never asks for 2.1, and a task cannot either: the engine choice and the 2.1-only undug crop
+    // are dropped here, so a node that carries 2.1 still builds the 2509 graph.
     const inpaintOptions = method === 'defaultQwenInpaintWorkflow' ? args[5] : null;
-    if (inpaintOptions && typeof inpaintOptions === 'object' && inpaintOptions.latentInputName) {
-      const found = references.findIndex((ref) => ref.name === inpaintOptions.latentInputName);
-      if (found < 0 || !filenames[found]) throw new Error('workflow input is not an uploaded task reference');
-      args[5] = { ...inpaintOptions, latentInputName: filenames[found] };
+    if (inpaintOptions && typeof inpaintOptions === 'object') {
+      const { inpaintEngine, latentInputName, ...rest } = inpaintOptions;
+      if (inpaintEngine !== undefined || latentInputName !== undefined) args[5] = rest;
     }
     return { ...parameters, __args: args };
   }

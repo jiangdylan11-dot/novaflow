@@ -106,7 +106,7 @@
         return { ...base,
           "2": { class_type: "CheckpointLoaderSimple", inputs: { ckpt_name: poseCheckpoint } },
           "3": { class_type: "SDPoseKeypointExtractor", inputs: { model: ["2", 0], vae: ["2", 2], image: ["1", 0], batch_size: 1 } },
-          "4": { class_type: "SDPoseDrawKeypoints", inputs: { keypoints: ["3", 0], draw_body: true, draw_hands: true, draw_face: true, draw_feet: true, stick_width: 4, face_point_size: 3, score_threshold: 0.3 } },
+          "4": { class_type: "SDPoseDrawKeypoints", inputs: { keypoints: ["3", 0], draw_body: true, draw_hands: true, draw_face: true, draw_feet: true, ...(info.SDPoseDrawKeypoints?.input?.required?.draw_head || info.SDPoseDrawKeypoints?.input?.optional?.draw_head ? { draw_head: true } : {}), stick_width: 4, face_point_size: 3, score_threshold: 0.3 } },
           "5": { class_type: "SaveImage", inputs: { images: ["4", 0], filename_prefix: prefix } }
         };
       }
