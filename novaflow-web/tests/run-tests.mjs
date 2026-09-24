@@ -20,6 +20,7 @@ const SUITES = [
   { name: 'tunnel-address', file: 'e2e/tunnel-address.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'local-launcher', file: 'e2e/local-launcher.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'local-assistant', file: 'e2e/local-assistant.test.mjs', needs: [], timeoutMs: 90000 },
+  { name: 'local-prompt-assistant', file: 'e2e/local-prompt-assistant.test.mjs', needs: [], timeoutMs: 90000 },
   { name: 'web-compute-mode', file: 'e2e/web-compute-mode.test.mjs', needs: [], timeoutMs: 60000 },
   { name: 'worker-account-binding', file: 'e2e/worker-account-binding.test.mjs', needs: [], timeoutMs: 90000 },
   { name: 'protocol', file: 'e2e/protocol.test.mjs', needs: [], timeoutMs: 180000 },

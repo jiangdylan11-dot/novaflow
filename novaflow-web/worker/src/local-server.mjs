@@ -10,13 +10,18 @@ import { TASK_TYPE_REQUIREMENTS } from '../../packages/shared/src/protocol.mjs';
 
 const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.json': 'application/json', '.woff2': 'font/woff2' };
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
-async function bodyOf(req) {
+// 提示词助手 requests carry reference images and H3 frames as data URLs (the
+// desktop's own limits: 2.5 MB a frame, 16 MB a request); everything else is
+// small JSON.
+const PROMPT_ASSISTANT_PREFIX = '/local/prompt-assistant/';
+const PROMPT_ASSISTANT_BODY_LIMIT = 24 * 1024 * 1024;
+async function bodyOf(req, limit = 256 * 1024) {
   const chunks = []; let size = 0;
-  for await (const chunk of req) { size += chunk.length; if (size > 256 * 1024) throw fail('请求过大', 413); chunks.push(chunk); }
+  for await (const chunk of req) { size += chunk.length; if (size > limit) throw fail('请求过大', 413); chunks.push(chunk); }
   try { return JSON.parse(Buffer.concat(chunks).toString() || '{}'); } catch { throw fail('无效 JSON'); }
 }
 
-export async function startLocalServer({ worker, tasks, license, dataDir, webRoot, port = 4784, controlUrl = '' }) {
+export async function startLocalServer({ worker, tasks, license, dataDir, webRoot, port = 4784, controlUrl = '', promptAssistant = null }) {
   const secret = randomBytes(32).toString('hex');
   const grantKey = randomBytes(32).toString('hex');
   const gateway = createGateway({ workerId: worker.identity.workerId, dataDir, getGrantKey: () => grantKey });
@@ -36,7 +41,7 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
       }
       if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/local/')) {
         if (!safeCompare(req.headers['x-novaflow-local'] || '', secret)) throw fail('请从本地助手点击“启动NovaFlow”连接本机', 401);
-        const body = req.method === 'POST' ? await bodyOf(req) : {};
+        const body = req.method === 'POST' ? await bodyOf(req, url.pathname.startsWith(PROMPT_ASSISTANT_PREFIX) ? PROMPT_ASSISTANT_BODY_LIMIT : undefined) : {};
         const s = worker.getState();
         if (req.method === 'GET' && url.pathname === '/local/events') {
           res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
@@ -49,6 +54,18 @@ export async function startLocalServer({ worker, tasks, license, dataDir, webRoo
         if (req.method === 'GET' && url.pathname === '/local/license') return json(200, await license.state());
         if (req.method === 'POST' && url.pathname === '/local/bind-account') return json(200, await worker.bindAccount(String(body.token || '')));
         if (req.method === 'POST' && url.pathname === '/local/license') return json(200, await license.importLicense(body.text));
+        // 提示词助手: the desktop's Python service on this machine, reached by
+        // the browser 启动NovaFlow opened. A failed run answers 200 with ok:false,
+        // the shape the editor reads from the desktop bridge.
+        if (url.pathname.startsWith(PROMPT_ASSISTANT_PREFIX)) {
+          if (!promptAssistant) throw fail('本机没有提示词助手', 404);
+          const action = url.pathname.slice(PROMPT_ASSISTANT_PREFIX.length);
+          if (req.method === 'GET' && action === 'status') return json(200, promptAssistant.status());
+          if (req.method === 'POST' && action === 'optimize-prompt') return json(200, await promptAssistant.optimizePrompt(body));
+          if (req.method === 'POST' && action === 'reverse-image-prompt') return json(200, await promptAssistant.reverseImagePrompt(body));
+          if (req.method === 'POST' && action === 'describe-art-style') return json(200, await promptAssistant.describeArtStyle(body));
+          throw fail('未找到本机接口', 404);
+        }
         if (req.method === 'GET' && url.pathname === '/api/web/capabilities') {
           return json(200, { available_workers: s.comfy.image || s.comfy.video ? 1 : 0, models: s.models, features: s.features || {},
             taskTypes: Object.entries(TASK_TYPE_REQUIREMENTS).map(([task_type, spec]) => ({ task_type, ...spec,

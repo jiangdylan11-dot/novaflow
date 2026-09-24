@@ -5,6 +5,7 @@ import { createLocalTasks } from './local-tasks.mjs';
 import { startLocalServer } from './local-server.mjs';
 import { createLocalLicense } from './local-license.mjs';
 import { createRuntimeServices } from './runtime-services.mjs';
+import { createPromptAssistant } from './prompt-assistant.mjs';
 
 export async function createLocalAssistant(options) {
   if (!options.modelsRoot) {
@@ -18,6 +19,13 @@ export async function createLocalAssistant(options) {
   const progress = options.onProgress || (() => {});
   const services = options.services || createRuntimeServices({ imageUrl: options.comfyImageUrl, videoUrl: options.comfyVideoUrl, logger: options.logger });
   const worker = createWorker({ ...options, localTasks: tasks });
+  // 提示词助手 shares the GPU with these runtimes, so it needs their addresses
+  // to ask for the memory back before it loads its own model.
+  const promptAssistant = createPromptAssistant({
+    worker, logger: options.logger,
+    comfyUrls: [options.comfyImageUrl || 'http://127.0.0.1:8188', options.comfyVideoUrl || 'http://127.0.0.1:8189'].map(url => String(url).replace(/\/+$/, '')),
+    ...(options.promptAssistant || {})
+  });
   let server = null;
   let runtimes = [];
   let servicesRunning = false;
@@ -57,7 +65,7 @@ export async function createLocalAssistant(options) {
         await ensureServices();
         await worker.startLocal({ onProgress: progress });
         progress(90, '正在启动本地网页服务');
-        server = await startLocalServer({ worker, tasks, license, dataDir: options.dataDir,
+        server = await startLocalServer({ worker, tasks, license, dataDir: options.dataDir, promptAssistant,
           webRoot: options.webRoot, port: options.localPort ?? 4784, controlUrl: options.controlUrl });
         emit();
         return snapshot();
@@ -71,6 +79,7 @@ export async function createLocalAssistant(options) {
       await worker.stopLocal();
       if (server) await server.close();
       server = null;
+      await promptAssistant.stop();
       await releaseUnused();
       emit();
       return snapshot();
@@ -95,6 +104,7 @@ export async function createLocalAssistant(options) {
       await worker.stop();
       if (server) await server.close();
       server = null;
+      await promptAssistant.stop();
       await services.stop(); servicesRunning = false; runtimes = [];
       emit();
       return snapshot();
@@ -102,6 +112,7 @@ export async function createLocalAssistant(options) {
     get openUrl() { if (!server) throw new Error('请先启动本地服务'); return server.openUrl; },
     get license() { return license; },
     get tasks() { return tasks; },
-    get worker() { return worker; }
+    get worker() { return worker; },
+    get promptAssistant() { return promptAssistant; }
   };
 }

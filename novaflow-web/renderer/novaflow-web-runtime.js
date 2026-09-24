@@ -105,14 +105,26 @@
     return parsed;
   }
 
-  async function localControl(method, path, body) {
+  async function localControl(method, path, body, timeoutMs = 30000) {
     if (!CONFIG.localAssistant) throw new Error('请在本地助手点击“启动NovaFlow”，连接本机工作台');
     const res = await fetch(CONFIG.localOrigin + path, { method,
       headers: { 'content-type': 'application/json', 'x-novaflow-local': localKey },
-      body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30000) });
+      body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
     const value = await res.json();
     if (!res.ok) throw Object.assign(new Error(value.error || '本机服务请求失败'), { status: res.status });
     return value;
+  }
+  // 提示词助手 runs on the machine 启动NovaFlow opened this page from: the
+  // assistant starts the desktop's own Python service and answers in the
+  // desktop bridge's shape. The hosted site has no such machine, so there the
+  // buttons say so and 智能 AI's Grok path stays. A run can load a 7B model
+  // and, for H3, look at a dozen frames, hence the long wait.
+  const PROMPT_ASSISTANT_REFUSAL = '提示词助手在 Web 版通过智能 AI 提供';
+  const PROMPT_ASSISTANT_TIMEOUT_MS = 16 * 60 * 1000;
+  async function localPromptAssistant(action, payload) {
+    if (computeMode !== 'local') return { ok: false, error: PROMPT_ASSISTANT_REFUSAL };
+    try { return await localControl('POST', '/local/prompt-assistant/' + action, payload || {}, PROMPT_ASSISTANT_TIMEOUT_MS); }
+    catch (error) { return { ok: false, error: String(error.message || error) }; }
   }
   if (CONFIG.localAssistant) root.addEventListener?.('load', async () => {
     try {
@@ -805,9 +817,14 @@
     runtimeOpenOutputFolder: async () => root.NovaFlowWebWarehouse
       ? root.NovaFlowWebWarehouse.open() : ({ ok: false, error: '仓库组件未加载，请刷新网页后重试' }),
     runtimeFreeMemory: async () => ({ ok: true, result: {} }),
-    promptAssistantGetStatus: async () => ({ ok: true, result: { available: false, reason: 'web' } }),
-    promptAssistantOptimizePrompt: async () => ({ ok: false, error: '提示词助手在 Web 版通过智能 AI 提供' }),
-    promptAssistantReverseImagePrompt: async () => ({ ok: false, error: '提示词助手在 Web 版通过智能 AI 提供' }),
+    promptAssistantGetStatus: async () => computeMode === 'local'
+      ? localControl('GET', '/local/prompt-assistant/status').catch(error => ({ ok: false, enabled: false, error: String(error.message || error) }))
+      : ({ ok: true, result: { available: false, reason: 'web' } }),
+    promptAssistantOptimizePrompt: async (payload) => localPromptAssistant('optimize-prompt', payload),
+    promptAssistantReverseImagePrompt: async (payload) => localPromptAssistant('reverse-image-prompt', payload),
+    // 万物迁移 names the scene's style from this when it exists and paints
+    // without it otherwise; only a machine with the model should offer it.
+    ...(computeMode === 'local' ? { promptAssistantDescribeArtStyle: async (payload) => localPromptAssistant('describe-art-style', payload) } : {}),
 
     async smartAiPromptOptimize(payload) {
       try { return { ok: true, result: await auth('POST', '/api/client/grok/prompt-optimize', payload) }; }

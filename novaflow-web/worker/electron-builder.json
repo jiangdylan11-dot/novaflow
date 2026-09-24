@@ -25,7 +25,10 @@
         "license-core.js",
         "license-public-key.b64",
         "license/**/*.js",
-        "main/birefnet-runner.py"
+        "main/birefnet-runner.py",
+        "prompt-assistant-service.py",
+        "prompt_assistant/*.py",
+        "prompt_assistant/*.json"
       ]
     },
     {
