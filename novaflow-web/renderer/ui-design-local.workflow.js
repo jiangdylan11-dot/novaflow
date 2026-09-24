@@ -12,7 +12,7 @@
   const ITERATION_INTENT = 'iteration'
   const QUALITY_MODE = 'quality'
   const PERFORMANCE_MODE = 'performance'
-  const QWEN_EDIT_MODEL_NAME = 'qwen_image_edit_2511_bf16.safetensors'
+  const QWEN_EDIT_MODEL_NAME = 'qwen_image_edit_2511_fp8mixed.safetensors'
   const QWEN_EDIT_4STEP_LORA = 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors'
   const REDESIGN_ANTI_COPY_PREFIX = '本地UI重绘约束：'
   const ITERATION_ANTI_COPY_PREFIX = '本地UI修改约束：'

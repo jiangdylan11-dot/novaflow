@@ -98,7 +98,8 @@ test('Art img2img and UI bridge use the 2511 chain; NSFW off is the default', ()
   // The dedicated NSFW module keeps Rapid for the explicit NSFW switch.
   for (const mode of ['edit', 'completion']) assert.equal(nodesOf(built[mode], 'CheckpointLoaderSimple')[0].inputs.ckpt_name, RAPID);
   const { BASE_MODELS } = require('../main/qwen-lora-catalog');
-  assert.equal(BASE_MODELS.edit, 'diffusion_models/' + UNET);
+  // The LoRA check reads the fp8mixed release (the 40 GB bf16 file is retired from disk; bf16 is its fallback).
+  assert.equal(BASE_MODELS.edit, 'diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors');
   assert.equal(BASE_MODELS.rapid, 'checkpoints/' + RAPID);
   for (const name of ['novaflow-brand-runtime.js', 'ui-design-local.workflow.js']) {
     const source = fs.readFileSync(path.resolve(__dirname, '../../particle-editor', name), 'utf8');

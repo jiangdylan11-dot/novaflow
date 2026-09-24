@@ -301,10 +301,10 @@
   const OBJECT_TRANSFER_MIN_VISIBLE_PX = 16
   const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
   const OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE = '\u53c2\u8003\u7269\u4e3b\u4f53\u4e0d\u6e05\u6670\uff0c\u8bf7\u6362\u4e00\u5f20\u80cc\u666f\u66f4\u7b80\u5355\u7684\u56fe\u7247\u3002'
-  // bf16 first, and loaded at the loader's own default dtype — that is exactly what the 图生图 graph does,
-  // and matching its quality means matching its weights. fp8mixed stays as the fallback for a Runtime
-  // that only shipped that one.
-  const OBJECT_TRANSFER_QWEN_UNETS = ['qwen_image_edit_2511_bf16.safetensors', 'qwen_image_edit_2511_fp8mixed.safetensors']
+  // fp8mixed is the 2511 release the Runtime keeps (the 40 GB bf16 file is retired to save disk). The
+  // loader below casts either file to fp8_e4m3fn, so the graph is the same on both; bf16 stays only as
+  // the fallback for a Runtime that still has just that one.
+  const OBJECT_TRANSFER_QWEN_UNETS = ['qwen_image_edit_2511_fp8mixed.safetensors', 'qwen_image_edit_2511_bf16.safetensors']
   const OBJECT_TRANSFER_QWEN_CLIP = 'qwen_2.5_vl_7b_fp8_scaled.safetensors'
   const OBJECT_TRANSFER_QWEN_VAE = 'qwen_image_vae.safetensors'
   const OBJECT_TRANSFER_QWEN_LIGHTNING_LORAS = [
@@ -313,6 +313,21 @@
     'Qwen-Image-Lightning-8steps-V2.0.safetensors',
     'Qwen-Image-Lightning-8steps-V1.0.safetensors'
   ]
+  // 万物迁移 on Qwen-Image-2.1, taken whenever the node reports the 2.1 weights (objectTransferEngine).
+  // Both passes run one graph shape: no Lightning LoRA, no AuraFlow shift, cfg 1 with an empty negative
+  // (ComfyUI never evaluates the negative branch at cfg 1), 25 steps as the 2.1 completion route uses.
+  // Measured 2026-09-24 with the real pipeline (RMBG -> 画风转换 -> placement -> integration -> decode) on the
+  // same inputs and seeds, mean |RGB diff|/255 against the original outside the object box (how much of
+  // the picture the pass repainted) and inside it:
+  //   A seed 9122026: bf16 9.22 / 32.78, fp8mixed 17 / 40.86, q21 3.59 / 20.08
+  //   B seed 9122026: fp8mixed 11.43 / 11.28, q21 9.74 / 34.02
+  //   A seed 424242: fp8mixed 10.99 / 32.57, q21 9.82 / 23.46
+  // 2.1 left the rest of the picture alone and drew a soft contact shadow; both 2511 files (bf16 and
+  // fp8mixed, cast to fp8_e4m3fn alike) painted a hard black blot under the object on the same seed.
+  const OBJECT_TRANSFER_QWEN21_STEPS = 25
+  const OBJECT_TRANSFER_QWEN21_CFG = 1
+  const OBJECT_TRANSFER_QWEN21_RESTYLE_STEPS = 25
+  const OBJECT_TRANSFER_QWEN21_RESTYLE_CFG = 1
   const EFFECT_EXTRACT_TIMEOUT_MS = 10 * 60 * 1000
   const EFFECT_EXTRACT_FILENAME_PREFIX = 'NovaFlow_effect_extract'
   const EFFECT_EXTRACT_SEED = 916202601
@@ -7871,7 +7886,7 @@
     return canvas
   }
 
-  async function objectTransferBuildInputCanvases(styledCutoutDataUrl) {
+  async function objectTransferBuildInputCanvases(styledCutoutDataUrl, engine) {
     // The guide is the picture with the object already sitting in it at the size and place the user
     // dragged it to. That is the whole of 定位 and 大小控制: the model is not told where to put anything,
     // it is handed a frame that is already arranged and asked to repaint it into one picture.
@@ -7889,7 +7904,7 @@
     const stats = objectTransferMaskStats(hardAlphaMask)
     if (stats.max <= 8 || stats.pixels < 16) throw new Error(OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE)
     const placementGuideCanvas = objectTransferCompGuideCanvas(baseCanvas, transferSubjectCanvas)
-    const plateSize = qwenEditPlateSize(size.width, size.height)
+    const plateSize = objectTransferPlateSize(engine, size.width, size.height)
     const plateCanvas = qwenEditPlateCanvas(placementGuideCanvas, plateSize)
     return {
       size,
@@ -7943,6 +7958,102 @@
       ? comfyChoiceFromCandidates(info.LoraLoaderModelOnly, 'lora_name', OBJECT_TRANSFER_QWEN_LIGHTNING_LORAS, 'Qwen Edit Lightning LoRA', { optional: true })
       : ''
     return { unetName, clipName, vaeName, loraName }
+  }
+
+  function objectTransferEngine() {
+    // Which model 万物迁移 runs on. The page cannot read the node's catalogue itself; it learns whether the
+    // node carries Qwen-Image-2.1 the way the drawing and UI-design panels do, from the local assistant's
+    // capability snapshot (runtimeFeaturesSync). Without that answer it stays on 2511.
+    try {
+      const api = window.electronAPI
+      const features = api && typeof api.runtimeFeaturesSync === 'function' ? api.runtimeFeaturesSync() : null
+      if (features && features.qwenImage21 === true) return 'qwen-2.1'
+    } catch (_) { /* no snapshot: 2511 */ }
+    return 'qwen-2511'
+  }
+
+  function resolveObjectTransferRuntime(info, engine) {
+    if (engine !== 'qwen-2.1') return Object.assign({ engine: 'qwen-2511' }, resolveObjectTransferQwenRuntime(info))
+    // Asked for 2.1 on a node that cannot build it: an error, never a silent 2511 run on a 32-aligned
+    // plate that the 2511 encoder would resample.
+    const requiredNodes = ['LoadImage', 'UnetLoaderGGUF', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImage21', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'SaveImage']
+    const runtime = requiredNodes.every((name) => info && info[name]) ? qwen21Runtime(info) : null
+    if (!runtime) throw new Error('当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行万物迁移。请在本地助手里重新启动 NovaFlow 后再试')
+    return { engine: 'qwen-2.1', unetName: runtime.unetName, clipName: runtime.clipName, vaeName: runtime.vaeName, loraName: '' }
+  }
+
+  function qwen21EditPlateSize(width, height) {
+    // TextEncodeQwenImage21 at resolution 0 rounds every reference to a multiple of 32 and resamples it
+    // when it is not one already, and the sampled latent is image_1's grid. Round the 2511 plate up to
+    // 32 so the plate is never resampled and the decode comes back at exactly the plate size; the
+    // content stays uniformly scaled with a black band of at most 31 px, as on the 2511 plate.
+    const base = qwenEditPlateSize(width, height)
+    return { width: Math.ceil(base.width / 32) * 32, height: Math.ceil(base.height / 32) * 32, aspectError: base.aspectError }
+  }
+
+  function objectTransferPlateSize(engine, width, height) {
+    return engine === 'qwen-2.1' ? qwen21EditPlateSize(width, height) : qwenEditPlateSize(width, height)
+  }
+
+  function buildObjectTransferQwen21Workflow(info, uploads, prefix, resolved, prompt, options) {
+    // The 2.1 graph for both passes: the arranged plate is image_1 and the untouched scene is image_2,
+    // each at its own size (resolution 0, so the 32-aligned plate is never resampled); the sampler runs
+    // on the encoder's own latent (image_1's grid) at denoise 1, and the RGBA decode is split to RGB
+    // before it is saved. 2.1 samples at its model card's schedule: no Lightning LoRA, no shift.
+    const settings = options || {}
+    const workflow = {
+      '1': { class_type: 'LoadImage', inputs: { image: uploads.placementName } },
+      '2': { class_type: 'LoadImage', inputs: { image: uploads.referenceName } },
+      '4': { class_type: 'UnetLoaderGGUF', inputs: buildComfyNodeInputs(info.UnetLoaderGGUF, { unet_name: resolved.unetName }) },
+      '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
+      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: resolved.vaeName }) }
+    }
+    let modelRef = ['4', 0]
+    let nextId = 7
+    if (info.QwenImage21Cache) {
+      workflow[String(nextId)] = { class_type: 'QwenImage21Cache', inputs: buildComfyNodeInputs(info.QwenImage21Cache, { model: modelRef, device: 'auto', dtype: 'default' }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    const encodeId = String(nextId)
+    nextId += 1
+    workflow[encodeId] = {
+      class_type: 'TextEncodeQwenImage21',
+      inputs: buildComfyNodeInputs(info.TextEncodeQwenImage21, {
+        clip: ['5', 0],
+        vae: ['6', 0],
+        prompt,
+        negative_prompt: settings.negativePrompt || '',
+        resolution: 0,
+        'images.image_1': ['1', 0],
+        'images.image_2': ['2', 0]
+      })
+    }
+    const samplerId = String(nextId)
+    nextId += 1
+    workflow[samplerId] = {
+      class_type: 'KSampler',
+      inputs: buildComfyNodeInputs(info.KSampler, {
+        seed: Math.floor(Math.random() * 1000000000),
+        steps: settings.steps || OBJECT_TRANSFER_QWEN21_STEPS,
+        cfg: settings.cfg == null ? OBJECT_TRANSFER_QWEN21_CFG : settings.cfg,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        denoise: 1,
+        model: modelRef,
+        positive: [encodeId, 0],
+        negative: [encodeId, 1],
+        latent_image: [encodeId, 2]
+      })
+    }
+    const decodeId = String(nextId)
+    nextId += 1
+    workflow[decodeId] = { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(info.VAEDecode, { samples: [samplerId, 0], vae: ['6', 0] }) }
+    const rgbId = String(nextId)
+    nextId += 1
+    workflow[rgbId] = { class_type: 'SplitImageWithAlpha', inputs: buildComfyNodeInputs(info.SplitImageWithAlpha, { image: [decodeId, 0] }) }
+    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: [rgbId, 0] }) }
+    return workflow
   }
 
   async function objectTransferSceneArtStyleText(sceneCanvas) {
@@ -8021,21 +8132,27 @@
     ].join(' ')
   }
 
-  function buildObjectTransferRestyleWorkflow(info, uploads, prefix, resolved, sceneArtStyle) {
+  function buildObjectTransferRestyleWorkflow(info, uploads, prefix, resolved, sceneArtStyle, engine) {
+    if (engine === 'qwen-2.1') {
+      return buildObjectTransferQwen21Workflow(info, uploads, prefix, resolved, objectTransferRestylePromptText(sceneArtStyle), {
+        steps: OBJECT_TRANSFER_QWEN21_RESTYLE_STEPS,
+        cfg: OBJECT_TRANSFER_QWEN21_RESTYLE_CFG
+      })
+    }
     return buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferRestylePromptText(sceneArtStyle), null, 1, {
       steps: OBJECT_TRANSFER_RESTYLE_STEPS,
       cfg: OBJECT_TRANSFER_RESTYLE_CFG
     })
   }
 
-  async function objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, cutoutDataUrl, sceneCanvas, runId, sceneArtStyle) {
+  async function objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, cutoutDataUrl, sceneCanvas, runId, sceneArtStyle, engine) {
     // The object is repainted on its own, on flat grey, so the model has nothing to do but change how it
     // is drawn. Placing an already in-style object is what makes the integration pass an integration
     // instead of a rescue: no colour grade afterwards can do this, it is a rendering change.
     const cutout = await loadImage(cutoutDataUrl)
     const width = Math.max(1, Math.round(cutout.naturalWidth || cutout.width || 1))
     const height = Math.max(1, Math.round(cutout.naturalHeight || cutout.height || 1))
-    const plateSize = qwenEditPlateSize(width, height)
+    const plateSize = objectTransferPlateSize(engine, width, height)
     const content = qwenEditPlateContent(width, height, plateSize)
     const plate = canvasOfSize(plateSize.width, plateSize.height)
     const ctx = plate.getContext('2d', { willReadFrequently: true })
@@ -8045,7 +8162,7 @@
     setSplitBusyDetail('正在把参考物体转成画面的画风...')
     const objectName = await uploadDataUrl(baseUrl, `${runId}_restyle_object.png`, plate.toDataURL('image/png'))
     const sceneName = await uploadDataUrl(baseUrl, `${runId}_restyle_scene.png`, sceneCanvas.toDataURL('image/png'))
-    const workflow = buildObjectTransferRestyleWorkflow(info, { placementName: objectName, referenceName: sceneName }, `${runId}_restyle`, resolved, sceneArtStyle)
+    const workflow = buildObjectTransferRestyleWorkflow(info, { placementName: objectName, referenceName: sceneName }, `${runId}_restyle`, resolved, sceneArtStyle, engine)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, `${runId}_restyle`, OBJECT_TRANSFER_TIMEOUT_MS)
     const decoded = await qwenEditPlateResultCanvas(resultDataUrl, plateSize, content, width, height, '画风转换')
     setSplitBusyDetail('正在抠出转换后的物体...')
@@ -8054,16 +8171,16 @@
     return { styledCutout, plateDataUrl: plate.toDataURL('image/png'), resultDataUrl, plateSize }
   }
 
-  async function objectTransferStyledCutoutForRun(baseUrl, info, resolved, runId) {
+  async function objectTransferStyledCutoutForRun(baseUrl, info, resolved, runId, engine) {
     // Cached on the cutout it was made from: dragging the object around or resizing it does not change how
     // it is painted, so a second run on the same reference skips this pass entirely.
     const tool = objectTransferState()
     const sceneCanvas = await sourceFullCanvas(await sourceSize())
     const sceneArtStyle = await objectTransferSceneArtStyleText(sceneCanvas)
     // Keyed on the style too: the same object dropped onto a different picture has to be repainted again.
-    const key = `${String(tool.referenceCutoutDataUrl || '').slice(-96)}|${sceneArtStyle.slice(0, 200)}`
+    const key = `${String(engine || '')}|${String(tool.referenceCutoutDataUrl || '').slice(-96)}|${sceneArtStyle.slice(0, 200)}`
     if (tool.referenceStyledDataUrl && tool.referenceStyledKey === key) return tool.referenceStyledDataUrl
-    const restyled = await objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, tool.referenceCutoutDataUrl, sceneCanvas, runId, sceneArtStyle)
+    const restyled = await objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, tool.referenceCutoutDataUrl, sceneCanvas, runId, sceneArtStyle, engine)
     tool.referenceStyledDataUrl = restyled.styledCutout
     tool.referenceStyledKey = key
     return restyled.styledCutout
@@ -8182,25 +8299,32 @@
     return workflow
   }
 
-  function buildObjectTransferQwenWorkflow(info, uploads, prefix, resolved) {
-    const workflow = buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferPromptText(), null, OBJECT_TRANSFER_DENOISE, {
-      shift: OBJECT_TRANSFER_SHIFT,
-      steps: OBJECT_TRANSFER_STEPS,
-      cfg: OBJECT_TRANSFER_CFG,
-      negativePrompt: OBJECT_TRANSFER_NEGATIVE_PROMPT,
-      referenceLatentsMethod: 'index_timestep_zero'
-    })
+  function buildObjectTransferQwenWorkflow(info, uploads, prefix, resolved, engine) {
+    const qwen21 = engine === 'qwen-2.1'
+    const workflow = qwen21
+      ? buildObjectTransferQwen21Workflow(info, uploads, prefix, resolved, objectTransferPromptText(), {
+        steps: OBJECT_TRANSFER_QWEN21_STEPS,
+        cfg: OBJECT_TRANSFER_QWEN21_CFG
+      })
+      : buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferPromptText(), null, OBJECT_TRANSFER_DENOISE, {
+        shift: OBJECT_TRANSFER_SHIFT,
+        steps: OBJECT_TRANSFER_STEPS,
+        cfg: OBJECT_TRANSFER_CFG,
+        negativePrompt: OBJECT_TRANSFER_NEGATIVE_PROMPT,
+        referenceLatentsMethod: 'index_timestep_zero'
+      })
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
-        workflow: 'qwen-image-edit-object-transfer',
+        workflow: qwen21 ? 'qwen-image-2.1-object-transfer' : 'qwen-image-edit-object-transfer',
+        engine: qwen21 ? 'qwen-2.1' : 'qwen-2511',
         unet: resolved.unetName,
         lora: resolved.loraName,
         clip: resolved.clipName,
         vae: resolved.vaeName,
-        shift: OBJECT_TRANSFER_SHIFT,
-        steps: OBJECT_TRANSFER_STEPS,
-        cfg: OBJECT_TRANSFER_CFG,
+        shift: qwen21 ? null : OBJECT_TRANSFER_SHIFT,
+        steps: qwen21 ? OBJECT_TRANSFER_QWEN21_STEPS : OBJECT_TRANSFER_STEPS,
+        cfg: qwen21 ? OBJECT_TRANSFER_QWEN21_CFG : OBJECT_TRANSFER_CFG,
         promptHead: objectTransferPromptText().slice(0, 1000)
       }
     }
@@ -8279,20 +8403,21 @@
     const baseUrl = await detectComfyBaseUrl()
     setSplitBusyDetail('\u6b63\u5728\u68c0\u67e5\u4e07\u7269\u8fc1\u79fb Runtime \u7ec4\u4ef6...')
     const info = await comfyAllObjectInfo(baseUrl)
-    const resolved = resolveObjectTransferQwenRuntime(info)
+    const engine = objectTransferEngine()
+    const resolved = resolveObjectTransferRuntime(info, engine)
     const stamp = Date.now()
     const runId = `${OBJECT_TRANSFER_FILENAME_PREFIX}_${stamp}_${Math.random().toString(16).slice(2, 8)}`
     // 画风转换 first, on its own, against flat grey. The integration pass is handed an object already
     // painted in the picture's language, so it only has to place and light it. That is why the user's rule
     // holds here: the restyle can only be dropped if fusion alone made the object match, and it does not.
-    const styledCutoutDataUrl = await objectTransferStyledCutoutForRun(baseUrl, info, resolved, runId)
-    const assets = await objectTransferBuildInputCanvases(styledCutoutDataUrl)
+    const styledCutoutDataUrl = await objectTransferStyledCutoutForRun(baseUrl, info, resolved, runId, engine)
+    const assets = await objectTransferBuildInputCanvases(styledCutoutDataUrl, engine)
     setSplitBusyDetail('\u6b63\u5728\u4e0a\u4f20\u4e07\u7269\u8fc1\u79fb\u4e34\u65f6\u8f93\u5165...')
     const placementName = await uploadDataUrl(baseUrl, runId + '_placement.png', assets.plateDataUrl)
     // Reference 2 is the UNTOUCHED picture, not the reference photo. The guide already carries the object,
     // so what the model still needs is an un-arranged copy of the scene to hold everything else to.
     const referenceName = await uploadDataUrl(baseUrl, runId + '_scene.png', assets.sceneDataUrl)
-    const workflow = buildObjectTransferQwenWorkflow(info, { placementName, referenceName }, runId, resolved)
+    const workflow = buildObjectTransferQwenWorkflow(info, { placementName, referenceName }, runId, resolved, engine)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
@@ -8304,10 +8429,11 @@
         runtimeInputs: { placementName, referenceName },
         plateSize: assets.plateSize,
         restyled: assets.restyled,
-        denoise: assets.denoise
+        denoise: assets.denoise,
+        engine
       }
     }
-    setSplitBusyDetail(`Qwen Image Edit 2511\n${assets.plateSize.width} x ${assets.plateSize.height} px`)
+    setSplitBusyDetail(`${engine === 'qwen-2.1' ? 'Qwen-Image-2.1' : 'Qwen Image Edit 2511'}\n${assets.plateSize.width} x ${assets.plateSize.height} px`)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, runId, OBJECT_TRANSFER_TIMEOUT_MS)
     return await objectTransferDecodedResultDataUrl(resultDataUrl, assets)
   }
@@ -34650,7 +34776,7 @@
     await wait(200)
     if (!objectTransferReady()) throw new Error('object transfer state is not ready')
     if (options.execute === false) {
-      const assets = await objectTransferBuildInputCanvases()
+      const assets = await objectTransferBuildInputCanvases(objectTransferEngine())
       return { prepared: true, plateSize: assets.plateSize, regionRect: assets.regionRect, regionStrength: assets.regionStrength, bounds: assets.bounds, guideMode: assets.guideMode }
     }
     const startedAt = Date.now()
@@ -35404,6 +35530,10 @@
     runObjectTransferSmokeTest,
     objectTransferBuildInputCanvases,
     buildObjectTransferQwenWorkflow,
+    buildObjectTransferQwen21Workflow,
+    resolveObjectTransferRuntime,
+    objectTransferEngine,
+    qwen21EditPlateSize,
     selectionEffectModeAvailable,
     selectionEffectRemovalActive,
     effectRemovalMaskCanvas,

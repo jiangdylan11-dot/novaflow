@@ -3,10 +3,14 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const QWEN_ROOT = 'E:\\NovaFlow\\models\\loras\\qwen';
+// The 2511 edit model the ordinary Qwen list is checked against. fp8mixed is the copy kept on disk
+// (the 40 GB bf16 release is retired to save space); both files carry the same 846 2-D weights, so a
+// LoRA fits one exactly when it fits the other. bf16 is read only on a node that still has just it.
 const BASE_MODELS = Object.freeze({
-  edit: 'diffusion_models/qwen_image_edit_2511_bf16.safetensors',
+  edit: 'diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors',
   rapid: 'checkpoints/Qwen-Rapid-AIO-NSFW-v20.safetensors',
 });
+const EDIT_MODEL_FALLBACKS = Object.freeze(['diffusion_models/qwen_image_edit_2511_bf16.safetensors']);
 // Qwen-Image-2.1 is found by name (the node may carry a GGUF or a safetensors build); its LoRAs are
 // checked against that file's own tensor names and shapes.
 const QWEN21_MODEL = /^qwen[-_ ]?image[-_ ]?2\.1.*\.(?:gguf|safetensors)$/i;
@@ -212,14 +216,21 @@ function createQwenLoraCatalog(options = {}) {
     }
     throw new Error('算力节点没有 Qwen-Image-2.1 模型，无法检查 2.1 LoRA');
   }
+  function editModel() {
+    for (const relative of [BASE_MODELS.edit, ...EDIT_MODEL_FALLBACKS]) {
+      const file = path.join(models, relative);
+      if (fs.existsSync(file)) return file;
+    }
+    throw new Error('算力节点没有 Qwen Image Edit 2511 模型，无法检查 LoRA');
+  }
   // engine 'qwen-2.1' checks against the Qwen-Image-2.1 model; otherwise NSFW checks against Rapid
-  // AIO and the rest against the 2511 edit model.
+  // AIO and the rest against the 2511 edit model (fp8mixed, or the bf16 release where only that exists).
   async function catalog({ nsfw = false, engine = '' } = {}) {
     if (!fs.existsSync(root)) return [];
     // Reject a junction replacing the requested directory, and links escaping it.
     const realRoot = fs.realpathSync(root);
     if (normalize(realRoot) !== normalize(root)) throw new Error('Qwen LoRA 目录不能指向其他目录');
-    const base = header(engine === 'qwen-2.1' ? qwen21Model() : path.join(models, BASE_MODELS[nsfw ? 'rapid' : 'edit']));
+    const base = header(engine === 'qwen-2.1' ? qwen21Model() : nsfw ? path.join(models, BASE_MODELS.rapid) : editModel());
     const info = await options.listRuntimeLoraNames();
     const field = info?.LoraLoaderModelOnly?.input?.required?.lora_name;
     const names = Array.isArray(field?.[0]) ? field[0] : field?.[1]?.options;
@@ -241,4 +252,4 @@ function createQwenLoraCatalog(options = {}) {
   return Object.freeze({ catalog });
 }
 
-module.exports = { createQwenLoraCatalog, compatible, readHeader, readGgufHeader, QWEN_ROOT, BASE_MODELS, QWEN21_MODEL };
+module.exports = { createQwenLoraCatalog, compatible, readHeader, readGgufHeader, QWEN_ROOT, BASE_MODELS, EDIT_MODEL_FALLBACKS, QWEN21_MODEL };

@@ -83,7 +83,7 @@ try {
   await mkdir(join(models, 'loras', 'qwen'), { recursive: true });
   await writeFile(join(models, 'diffusion_models', 'qwen-image-2.1-test-Q8_0.gguf'), gguf(q21Tensors));
   const oldBase = Object.fromEntries(oldTensors.map(([n, s]) => [n, s]));
-  await writeFile(join(models, 'diffusion_models', 'qwen_image_edit_2511_bf16.safetensors'), safetensors(oldBase));
+  await writeFile(join(models, 'diffusion_models', 'qwen_image_edit_2511_fp8mixed.safetensors'), safetensors(oldBase));
   await writeFile(join(models, 'checkpoints', 'Qwen-Rapid-AIO-NSFW-v20.safetensors'), safetensors(Object.fromEntries(oldTensors.map(([n, s]) => ['model.diffusion_model.' + n, s]))));
   const files = {
     'for21.safetensors': lora(q21Tensors),
