@@ -76668,7 +76668,8 @@
     negativePrompt: "",
     width: 1024,
     height: 1024,
-    localTextQuality: "fine",
+    // Steps / CFG the user typed, per route and mode (see localSamplingFor); empty = route defaults.
+    samplingOverrides: {},
     loras: [],
     seed: -1,
     randomSeed: true,
@@ -79599,6 +79600,89 @@
     return createArtEl("label", { className: "novaflow-art-generate-param" }, [label, input]);
   }
 
+  function formatArtGenerateSamplingValue(kind, sampling) {
+    const value = Number(kind === "steps" ? sampling?.steps : sampling?.cfg);
+    if (!Number.isFinite(value)) return "";
+    return kind === "steps" ? String(Math.round(value)) : String(Math.round(value * 10) / 10);
+  }
+
+  function artGenerateSamplingTitle(kind, sampling) {
+    const manual = kind === "steps" ? sampling.stepsManual : sampling.cfgManual;
+    const fallback = formatArtGenerateSamplingValue(kind, { steps: sampling.defaultSteps, cfg: sampling.defaultCfg });
+    const lines = [manual
+      ? `\u5df2\u624b\u52a8\u8bbe\u7f6e\uff0c\u6e05\u7a7a\u6062\u590d\u9ed8\u8ba4 ${fallback}`
+      : `\u9ed8\u8ba4 ${fallback}\uff08\u6309\u5f53\u524d\u6a21\u578b\uff09`];
+    if (sampling.route === "qwen-2.1" && kind === "cfg") lines.push("\u53cd\u5411\u63d0\u793a\u8bcd\u7559\u7a7a\u65f6 CFG 1\uff08\u53cd\u5411\u4e0d\u751f\u6548\uff09\uff0c\u586b\u5199\u540e\u9ed8\u8ba4 2.5");
+    if (sampling.route === "qwen-2.1" && kind === "steps") lines.push("\u5b98\u65b9\u63a8\u8350 40 \u6b65");
+    if (sampling.route === "rapid") lines.push("NSFW \u6a21\u578b\u4f5c\u8005\u5efa\u8bae\uff1a4\u20138 \u6b65\uff086 \u6700\u4f73\uff0c\u6700\u591a 8\uff09\uff0cCFG 1");
+    if (sampling.route === "standard" && kind === "steps") lines.push("8 \u6b65\u53ca\u4ee5\u4e0b\u4f7f\u7528 4 \u6b65\u52a0\u901f LoRA\uff0c\u66f4\u591a\u6b65\u6570\u5173\u95ed\u52a0\u901f");
+    return lines.join("\n");
+  }
+
+  // Keeps the 步数 / CFG fields on what the next run will use: a route default can change with the
+  // negative prompt (2.1's CFG, the 2511 route) or with the steps (Lightning on or off).
+  function syncArtGenerateSamplingFields() {
+    const sampling = window.NovaFlowArtGenerateModels?.localSamplingFor?.(ART_GENERATE_STATE, ART_GENERATE_STATE.mode);
+    if (!sampling) return;
+    document.querySelectorAll(`#${ART_GENERATE_WORKSPACE_ID} input[data-novaflow-art-generate-sampling]`).forEach((input) => {
+      if (!(input instanceof HTMLInputElement) || document.activeElement === input) return;
+      const kind = input.getAttribute("data-novaflow-art-generate-sampling");
+      input.value = formatArtGenerateSamplingValue(kind, sampling);
+      input.title = artGenerateSamplingTitle(kind, sampling);
+      input.setAttribute("data-novaflow-art-generate-sampling-manual", (kind === "steps" ? sampling.stepsManual : sampling.cfgManual) ? "1" : "0");
+    });
+  }
+
+  // 步数 / CFG: shows what the run will use. A typed value is kept for this route and mode; clearing
+  // the field, or typing the route's own default, goes back to following the route.
+  function renderArtGenerateSamplingField(kind, mode) {
+    const models = window.NovaFlowArtGenerateModels;
+    const runMode = mode || ART_GENERATE_STATE.mode;
+    const sampling = models?.localSamplingFor?.(ART_GENERATE_STATE, runMode);
+    if (!sampling || (kind !== "steps" && kind !== "cfg")) return null;
+    const label = kind === "steps" ? "\u6b65\u6570" : "CFG";
+    const commit = (input) => {
+      if (!(input instanceof HTMLInputElement)) return;
+      const next = models.setLocalSamplingValue?.(ART_GENERATE_STATE, runMode, kind, input.value);
+      if (next) input.value = formatArtGenerateSamplingValue(kind, next);
+      syncArtGenerateSamplingFields();
+    };
+    const input = createArtEl("input", {
+      type: "text",
+      inputmode: kind === "cfg" ? "decimal" : "numeric",
+      autocomplete: "off",
+      "aria-label": label,
+      title: artGenerateSamplingTitle(kind, sampling),
+      "data-novaflow-art-generate-value-field": "1",
+      "data-novaflow-art-generate-sampling": kind,
+      "data-novaflow-art-generate-sampling-manual": (kind === "steps" ? sampling.stepsManual : sampling.cfgManual) ? "1" : "0",
+      value: formatArtGenerateSamplingValue(kind, sampling),
+      onfocus: (event) => {
+        selectArtGenerateNumberInputValue(event.currentTarget);
+      },
+      oninput: (event) => {
+        const inputNode = event.currentTarget;
+        if (!(inputNode instanceof HTMLInputElement)) return;
+        const next = kind === "cfg"
+          ? inputNode.value.replace(/[^\d.]/g, "").replace(/(\..*)\./g, "$1")
+          : inputNode.value.replace(/[^\d]/g, "");
+        if (next !== inputNode.value) inputNode.value = next;
+      },
+      onkeydown: (event) => {
+        if (event?.key !== "Enter") return;
+        event.preventDefault();
+        commit(event.currentTarget);
+      },
+      onchange: (event) => {
+        commit(event.currentTarget);
+      },
+      onblur: (event) => {
+        commit(event.currentTarget);
+      }
+    });
+    return createArtEl("label", { className: "novaflow-art-generate-param", "data-novaflow-art-generate-sampling-field": kind }, [label, input]);
+  }
+
   function renderArtGenerateToggleButton(active, label, onToggle) {
     return createArtEl("button", {
       type: "button",
@@ -79711,6 +79795,7 @@
       state: ART_GENERATE_STATE,
       createElement: createArtEl,
       renderNumber: renderArtGenerateNumber,
+      renderSampling: renderArtGenerateSamplingField,
       renderSeedToggle: renderArtGenerateSeedToggle,
       nsfwSwitch,
       rerender: () => renderArtGenerateSurfaces({ forceBottom: true })
@@ -79824,10 +79909,10 @@
     }, children);
   }
 
-  // Storage holds as many references as the largest model takes (Qwen-Image-2.1: 15). The grid and a
+  // Storage holds as many references as the largest model takes (Qwen-Image-2.1: 10). The grid and a
   // run use the first ones the active model accepts, so a switch to a three-reference route keeps the
   // rest for switching back.
-  const ART_GENERATE_MAX_REFERENCES = 15;
+  const ART_GENERATE_MAX_REFERENCES = 10;
   const ART_GENERATE_BASE_REFERENCE_SLOTS = 3;
 
   function artGenerateImg2imgCapability() {
@@ -80902,6 +80987,7 @@
       },
       oninput: (event) => {
         ART_GENERATE_STATE[key] = String(event.currentTarget.value || "");
+        if (key === "negativePrompt") syncArtGenerateSamplingFields();
       },
       onchange: (event) => {
         addArtGeneratePromptHistoryValue(key, event.currentTarget.value);
@@ -81894,8 +81980,10 @@
     return { negative, cfg: negative ? QWEN21_NEGATIVE_CFG : 1 };
   }
 
-  // Drawing on 2.1. The encoder takes 16 images; the page sends up to 15, as in the UI module.
-  const QWEN21_ART_MAX_REFERENCES = 15;
+  // Drawing on 2.1: up to 10 references, the model card's limit (the encoder node has 16 inputs).
+  const QWEN21_ART_MAX_REFERENCES = 10;
+  // The model card's pipeline runs 40 steps (ComfyUI's template starts at 25 for speed).
+  const QWEN21_ART_DEFAULT_STEPS = 40;
   // Sampling past ~1.3 MP adds time rather than detail: a larger W / H is sampled at this size and
   // scaled up at the end.
   const QWEN21_ART_MAX_WORKING_PIXELS = 1300000;
@@ -81914,8 +82002,13 @@
     return uiQwen21WorkingSize(width, height, QWEN21_ART_MAX_WORKING_PIXELS);
   }
 
-  function buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt) {
-    const guidance = qwen21Guidance(negativePrompt);
+  // sampling: the drawing panel's steps / CFG (localSamplingFor). With it the graph gets only the
+  // user's own negative prompt, as in the UI module; the quality profile's automatic negatives are
+  // for the 2511 route.
+  function buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt, sampling) {
+    const guidance = qwen21Guidance(sampling ? state?.negativePrompt : negativePrompt);
+    const steps = Math.max(1, Math.round(Number(sampling?.steps) || QWEN21_ART_DEFAULT_STEPS));
+    const cfg = Number(sampling?.cfg) > 0 ? Number(sampling.cfg) : guidance.cfg;
     if (mode !== "txt2img" && mode !== "img2img") return null;
     if (state?.nsfw === true || (Array.isArray(state?.loras) && state.loras.length)) return null;
     if (/^ui-design/i.test(String(providerOptions?.taskProfile || ""))) return null;
@@ -81946,7 +82039,7 @@
     if (mode === "txt2img") {
       const round32 = (value) => Math.max(256, Math.min(2048, Math.round((Number(value) || 1024) / 32) * 32));
       workflow["6"] = { class_type: "EmptyLatentImage", inputs: { width: round32(state?.width), height: round32(state?.height), batch_size: 1 } };
-      workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: ["6", 0], seed, steps: 25, cfg: guidance.cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
+      workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: ["6", 0], seed, steps, cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
       workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
       workflow["9"] = { class_type: "SaveImage", inputs: { images: ["8", 0], filename_prefix: String(outputPrefix || "NovaFlow_Art") } };
       return { workflow, modelKey: "qwen-image-2.1-t2i" };
@@ -82006,7 +82099,7 @@
       workflow["6"] = { class_type: "EmptyLatentImage", inputs: { width: working.width, height: working.height, batch_size: 1 } };
       latent = ["6", 0];
     }
-    workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: latent, seed, steps: 25, cfg: guidance.cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
+    workflow["7"] = { class_type: "KSampler", inputs: { model, positive: ["5", 0], negative: ["5", 1], latent_image: latent, seed, steps, cfg, sampler_name: "euler", scheduler: "simple", denoise: 1 } };
     workflow["8"] = { class_type: "VAEDecode", inputs: { samples: ["7", 0], vae: ["3", 0] } };
     let output = ["8", 0];
     // Delivered at W / H exactly: the working size is on the 32 grid and capped at ~1.3 MP.
@@ -82022,7 +82115,8 @@
   // page structure travels in the prompt. The page only asks for it (state.localUiEngine) after the
   // node reported the 2.1 files, so a node without them is an error here, never a silent 2511 run
   // that would drop all but three references.
-  const QWEN21_UI_MAX_REFERENCES = 16;
+  // The model card's limit; the encoder node itself has 16 inputs.
+  const QWEN21_UI_MAX_REFERENCES = 10;
   const QWEN21_UI_MAX_WORKING_PIXELS = 1048576;
   // Measured on the 16 GB laptop GPU: seconds per step ~ 1.5 + 0.8 x total reference megapixels, so
   // 2 MP keeps a screen near 90-100 s. A background squeezed to 0.25 MP lost its lettering; symbols
@@ -82171,6 +82265,7 @@
       : {};
     if (window.NovaFlowWebRuntime) {
       const stateKeys = ['mode', 'provider', 'nsfw', 'width', 'height', 'seed', 'randomSeed', 'localTextQuality', 'localEditStrength', 'loras',
+        'samplingOverrides', 'negativePrompt',
         'localUiRefinePreset', 'localUiRefineDenoise', 'localUiRepairMaskEncoding', 'uiRunIntent', 'iterationReferenceCount', 'localUiEngine',
         'gptQualityTxt2img', 'gptQualityImg2img', 'gptSize', 'gptCustomWidth', 'gptCustomHeight',
         'googleAspectRatioTxt2img', 'googleAspectRatioImg2img', 'googleResolution'];
@@ -82183,13 +82278,13 @@
     }
     const api = window.NovaFlowArtGenerateProviderWorkflow;
     if (!api) throw new Error("NovaFlow \u4e91\u7aef\u56fe\u50cf\u5de5\u4f5c\u6d41\u6a21\u5757\u672a\u5c31\u7eea");
-    // A drawing run's img2img preset follows the negative prompt (there is no edit-strength choice);
-    // UI design passes its own setting.
-    const drawingEditStrength = window.NovaFlowArtGenerateModels?.drawingEditStrength;
-    const presetState = mode === "img2img" && typeof drawingEditStrength === "function"
-      && !/^ui-design/i.test(String(providerOptions?.taskProfile || ""))
-      ? { ...state, localEditStrength: drawingEditStrength(state, negativePrompt) }
-      : state;
+    // A drawing run samples with the steps / CFG its panel shows; their defaults follow the user's own
+    // negative prompt (state.negativePrompt), not the quality profile's automatic one. UI design
+    // keeps its own presets.
+    const drawingRun = provider === "local" && !/^ui-design/i.test(String(providerOptions?.taskProfile || ""));
+    const samplingFor = (route) => (drawingRun
+      ? window.NovaFlowArtGenerateModels?.localSamplingFor?.(state, mode, state?.negativePrompt, route) || null
+      : null);
     let localWorkflow = null;
     let localModelKey = artWorkflowKeyForState(state);
     const uiQwen21 = provider === "local"
@@ -82198,7 +82293,7 @@
     const qwen21Build = uiQwen21
       ? buildUiQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt)
       : provider === "local"
-        ? buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt)
+        ? buildArtQwen21Workflow(mode, uploadedNames, outputPrefix, positivePrompt, state, referenceSizes, providerOptions, negativePrompt, samplingFor("qwen-2.1"))
         : null;
     if (qwen21Build) {
       localWorkflow = qwen21Build.workflow;
@@ -82224,15 +82319,16 @@
         localModelKey = String(ideogramBuild?.modelKey || ideogramBuild?.metadata?.modelKey || "ideogram4-instant");
       } else {
         const modelApi = window.NovaFlowArtGenerateModels;
+        const sampling = samplingFor(state?.nsfw === true ? "rapid" : "standard");
         if (typeof modelApi?.applyLocalWorkflowPreset !== "function") {
           throw new Error("NovaFlow \u672c\u5730\u751f\u6210\u9884\u8bbe\u6a21\u5757\u672a\u5c31\u7eea");
         }
         if (state === ART_GENERATE_STATE) {
           localWorkflow = patchArtWorkflow(cloneArtWorkflow(), uploadedNames, outputPrefix, positivePrompt, negativePrompt, referenceSizes);
-          localWorkflow = modelApi.applyLocalWorkflowPreset(localWorkflow, presetState, mode);
+          localWorkflow = modelApi.applyLocalWorkflowPreset(localWorkflow, ART_GENERATE_STATE, mode, sampling);
         } else {
           localWorkflow = patchArtWorkflow(cloneArtWorkflowForState(state), uploadedNames, outputPrefix, positivePrompt, negativePrompt, referenceSizes, state);
-          localWorkflow = modelApi.applyLocalWorkflowPreset(localWorkflow, presetState, mode);
+          localWorkflow = modelApi.applyLocalWorkflowPreset(localWorkflow, state, mode, sampling);
         }
         if (Array.isArray(state.loras) && state.loras.length) {
           const loraApi = window.NovaFlowArtGenerateLora;
@@ -82251,7 +82347,7 @@
       uploadedNames,
       outputPrefix,
       nodeIdPrefix: clientId,
-      settings: window.NovaFlowArtGenerateModels?.workflowSettings?.(presetState, provider, mode) || {},
+      settings: window.NovaFlowArtGenerateModels?.workflowSettings?.(state, provider, mode) || {},
       localWorkflow,
       localModelKey,
       state,

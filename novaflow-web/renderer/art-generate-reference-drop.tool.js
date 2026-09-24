@@ -231,7 +231,7 @@
           reportRejected("请拖入 PNG/JPG/WebP 图片");
           return;
         }
-        // Several images at once fill this slot and the empty ones after it (a 2.1 node takes 15).
+        // Several images at once fill this slot and the empty ones after it (a 2.1 node takes 10).
         result = images.length > 1 && typeof controller?.onFiles === "function"
           ? controller.onFiles(index, images)
           : controller?.onFile?.(index, images[0]);

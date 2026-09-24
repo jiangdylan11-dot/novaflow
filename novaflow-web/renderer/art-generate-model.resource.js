@@ -15,8 +15,8 @@
 
   const CAPABILITIES = Object.freeze({
     local: Object.freeze({
-      txt2img: capability(0, ['width', 'height', 'textQuality', 'seed', 'nsfw'], true),
-      img2img: capability(3, ['width', 'height', 'seed', 'nsfw'], true),
+      txt2img: capability(0, ['width', 'height', 'steps', 'cfg', 'seed', 'nsfw'], true),
+      img2img: capability(3, ['width', 'height', 'steps', 'cfg', 'seed', 'nsfw'], true),
     }),
     gpt: Object.freeze({
       txt2img: capability(0, ['quality', 'size'], false),
@@ -35,12 +35,12 @@
   )
 
   // A local node with Qwen-Image-2.1 runs non-NSFW, LoRA-free drawing on it (the worker picks the
-  // engine). 2.1 has no quality or edit-strength setting; its img2img takes up to 15 references (the
-  // encoder has 16 inputs, as in the UI module) and keeps W / H, which a new reference 1 fills with
-  // its size; the negative prompt stays (a filled one switches the run to real guidance).
+  // engine). 2.1 has no quality or edit-strength setting; its img2img takes up to 10 references (the
+  // model card's limit, as in the UI module) and keeps W / H, which a new reference 1 fills with its
+  // size; the negative prompt stays (a filled one switches the run to real guidance).
   const LOCAL_QWEN21_CAPABILITIES = Object.freeze({
-    txt2img: Object.freeze({ ...capability(0, ['width', 'height', 'seed', 'nsfw'], true), engine: 'qwen-2.1' }),
-    img2img: Object.freeze({ ...capability(15, ['width', 'height', 'seed', 'nsfw'], true), engine: 'qwen-2.1' }),
+    txt2img: Object.freeze({ ...capability(0, ['width', 'height', 'steps', 'cfg', 'seed', 'nsfw'], true), engine: 'qwen-2.1' }),
+    img2img: Object.freeze({ ...capability(10, ['width', 'height', 'steps', 'cfg', 'seed', 'nsfw'], true), engine: 'qwen-2.1' }),
   })
 
   function localQwen21Drawing(state) {
@@ -56,11 +56,6 @@
     Object.freeze({ value: 'local', label: '本地模型' }),
     Object.freeze({ value: 'gpt', label: 'GPT' }),
     Object.freeze({ value: 'google', label: 'Google' }),
-  ])
-
-  const LOCAL_TEXT_QUALITY_OPTIONS = Object.freeze([
-    Object.freeze({ value: 'fast', label: '\u5feb\u901f' }),
-    Object.freeze({ value: 'fine', label: '\u7cbe\u7ec6' }),
   ])
 
   function preset(steps, cfg, samplerName, scheduler, lightning) {
@@ -106,13 +101,107 @@
     return String(value || '').trim().toLowerCase() === 'enhanced' ? 'enhanced' : 'faithful'
   }
 
-  // The drawing panel has no edit-strength choice. NSFW img2img (Rapid AIO) runs its 4-step preset;
-  // the 2511 route (a LoRA run) samples fully (12 steps, cfg 4, no Lightning) only when a negative
-  // prompt is filled in, since at cfg 1 the negative is never evaluated - the rule Qwen-Image-2.1
-  // follows. UI design keeps its own setting.
-  function drawingEditStrength(state, negativePrompt) {
-    if (state?.nsfw === true) return 'faithful'
-    return String(negativePrompt || '').trim() ? 'enhanced' : 'faithful'
+  // Steps and CFG on the drawing panel, for every local route that samples (Ideogram Instant has
+  // neither). Each route starts from what its publisher recommends; a value the user types is kept
+  // per route and mode, so switching to NSFW never carries 2.1's 40 steps over. Only the user's own
+  // negative prompt counts as filled: the quality profile's automatic negatives would otherwise
+  // switch every run to real guidance.
+  //   Qwen-Image-2.1: 40 steps (the model card's pipeline). CFG 1, where the negative prompt is
+  //     never evaluated; a filled negative raises it to 2.5 (ComfyUI's note: raise cfg only with one).
+  //   NSFW, Rapid AIO: 6 steps, CFG 1 (the author: 4 basic, 6 usually best, never more than 8;
+  //     only CFG 1).
+  //   The 2511 route (a LoRA run): 4 steps with the Lightning LoRA at CFG 1; a filled negative
+  //     switches to the base model's 40 steps at CFG 4. Past 8 steps the Lightning LoRA is off.
+  const LOCAL_SAMPLING_ROUTES = Object.freeze({
+    'qwen-2.1': Object.freeze({ steps: [1, 100], cfg: [1, 10] }),
+    rapid: Object.freeze({ steps: [1, 8], cfg: [1, 10] }),
+    standard: Object.freeze({ steps: [1, 100], cfg: [1, 10] }),
+  })
+  const QWEN21_DEFAULT_STEPS = 40
+  const QWEN21_NEGATIVE_CFG = 2.5
+  const RAPID_DEFAULT_STEPS = 6
+  const STANDARD_LIGHTNING_STEPS = 4
+  const STANDARD_LIGHTNING_MAX_STEPS = 8
+  const STANDARD_FULL_STEPS = 40
+  const STANDARD_FULL_CFG = 4
+
+  function localSamplingRoute(state, mode) {
+    if (normalizeProvider(state?.provider) !== 'local') return ''
+    if (localQwen21Drawing(state)) return 'qwen-2.1'
+    if (state?.nsfw === true) return 'rapid'
+    return normalizeMode(mode || state?.mode) === 'img2img' ? 'standard' : ''
+  }
+
+  function clampLocalSampling(route, key, value) {
+    const limits = LOCAL_SAMPLING_ROUTES[route]?.[key]
+    const numeric = Number(value)
+    if (!limits || !Number.isFinite(numeric)) return null
+    const bounded = Math.max(limits[0], Math.min(limits[1], numeric))
+    return key === 'steps' ? Math.round(bounded) : Math.round(bounded * 10) / 10
+  }
+
+  function localSamplingOverride(state, route, modeKey) {
+    const entry = state?.samplingOverrides?.[`${route}:${modeKey}`]
+    return entry && typeof entry === 'object' ? entry : {}
+  }
+
+  // What a drawing run samples with, and what the panel shows: { route, steps, cfg, lightning,
+  // defaultSteps, defaultCfg, stepsManual, cfgManual }. userNegativePrompt is the text the user wrote
+  // (state.negativePrompt when not given). The panel finds the route from the node's features; a run
+  // names the route it actually builds. null off the sampling routes.
+  function localSamplingFor(state, mode, userNegativePrompt, route) {
+    const modeKey = normalizeMode(mode || state?.mode)
+    route = LOCAL_SAMPLING_ROUTES[route] ? route : localSamplingRoute(state, modeKey)
+    if (!route) return null
+    const negative = String(userNegativePrompt ?? state?.negativePrompt ?? '').trim()
+    const override = localSamplingOverride(state, route, modeKey)
+    const manualSteps = clampLocalSampling(route, 'steps', override.steps)
+    const manualCfg = clampLocalSampling(route, 'cfg', override.cfg)
+    const defaultSteps = route === 'qwen-2.1'
+      ? QWEN21_DEFAULT_STEPS
+      : route === 'rapid'
+        ? RAPID_DEFAULT_STEPS
+        : (negative ? STANDARD_FULL_STEPS : STANDARD_LIGHTNING_STEPS)
+    const steps = manualSteps ?? defaultSteps
+    const lightning = route === 'standard' ? steps <= STANDARD_LIGHTNING_MAX_STEPS : false
+    const defaultCfg = route === 'qwen-2.1'
+      ? (negative ? QWEN21_NEGATIVE_CFG : 1)
+      : route === 'standard' && !lightning ? STANDARD_FULL_CFG : 1
+    return Object.freeze({
+      route,
+      mode: modeKey,
+      steps,
+      cfg: manualCfg ?? defaultCfg,
+      lightning,
+      defaultSteps,
+      defaultCfg,
+      stepsManual: manualSteps != null,
+      cfgManual: manualCfg != null,
+      limits: LOCAL_SAMPLING_ROUTES[route],
+    })
+  }
+
+  // A typed value is kept for this route and mode; an empty field, or the value the route would use
+  // anyway, goes back to following the route's default.
+  function setLocalSamplingValue(state, mode, key, rawValue) {
+    if (!state || typeof state !== 'object' || (key !== 'steps' && key !== 'cfg')) return null
+    const modeKey = normalizeMode(mode || state.mode)
+    const route = localSamplingRoute(state, modeKey)
+    if (!route) return null
+    const overrides = state.samplingOverrides && typeof state.samplingOverrides === 'object' ? { ...state.samplingOverrides } : {}
+    const entryKey = `${route}:${modeKey}`
+    const entry = { ...(overrides[entryKey] || {}) }
+    delete entry[key]
+    overrides[entryKey] = entry
+    state.samplingOverrides = overrides
+    const text = String(rawValue ?? '').trim()
+    const value = text === '' ? null : clampLocalSampling(route, key, text)
+    if (value != null) {
+      const automatic = localSamplingFor(state, modeKey)
+      if (value !== (key === 'steps' ? automatic.defaultSteps : automatic.defaultCfg)) entry[key] = value
+    }
+    if (!Object.keys(entry).length) delete overrides[entryKey]
+    return localSamplingFor(state, modeKey)
   }
 
   function getCapability(provider, mode) {
@@ -187,12 +276,17 @@
     return title === 'enable4steplora' || title === 'enable4stepslora'
   }
 
-  function applyLocalWorkflowPreset(workflow, state, mode) {
+  // sampling (from localSamplingFor) sets a drawing run's steps, CFG and Lightning switch over the
+  // family's sampler; without it (UI design) the edit-strength / quality preset applies.
+  function applyLocalWorkflowPreset(workflow, state, mode, sampling) {
     if (!workflow || typeof workflow !== 'object' || Array.isArray(workflow)) {
       throw new TypeError('\u672c\u5730\u751f\u6210\u5de5\u4f5c\u6d41\u65e0\u6548')
     }
     const source = state && typeof state === 'object' ? state : {}
-    const selectedPreset = localPresetFor(source, mode)
+    const familyPreset = localPresetFor(source, mode)
+    const selectedPreset = sampling && typeof sampling === 'object'
+      ? { ...familyPreset, steps: sampling.steps, cfg: sampling.cfg, lightning: source.nsfw ? familyPreset.lightning : sampling.lightning === true }
+      : familyPreset
     const nodes = Object.values(workflow)
     const samplers = nodes.filter((node) => String(node?.class_type || '') === 'KSampler' && node?.inputs && typeof node.inputs === 'object')
     if (!samplers.length) throw new Error('\u672c\u5730\u751f\u6210\u5de5\u4f5c\u6d41\u7f3a\u5c11 KSampler \u8282\u70b9')
@@ -241,7 +335,6 @@
 
   return Object.freeze({
     providerOptions,
-    LOCAL_TEXT_QUALITY_OPTIONS,
     getCapability,
     normalizeProvider,
     normalizeMode,
@@ -250,7 +343,9 @@
     capabilityFor,
     normalizeLocalTextQuality,
     normalizeLocalEditStrength,
-    drawingEditStrength,
+    localSamplingRoute,
+    localSamplingFor,
+    setLocalSamplingValue,
     localPresetFor,
     applyLocalWorkflowPreset,
     workflowSettings,

@@ -212,7 +212,8 @@ assert.equal(byClass(t2i, 'TextEncodeQwenImage21').length, 1);
 const t2iLatent = byClass(t2i, 'EmptyLatentImage')[0][1].inputs;
 assert.deepEqual([t2iLatent.width, t2iLatent.height], [896, 1312]);
 const t2iSampler = byClass(t2i, 'KSampler')[0][1].inputs;
-assert.deepEqual([t2iSampler.seed, t2iSampler.steps, t2iSampler.cfg], [42, 25, 1]);
+// The model card's 40 steps; CFG 1 with no negative prompt of the user's own.
+assert.deepEqual([t2iSampler.seed, t2iSampler.steps, t2iSampler.cfg], [42, 40, 1]);
 assert.equal(byClass(t2i, 'SaveImage')[0][1].inputs.filename_prefix, 'NovaFlow_Art');
 // W / H on reference 1's size (as a new reference 1 fills them): an edit on the encoder's own latent.
 const i2i = await buildArt('img2img', ['ref.png'], [{ width: 624, height: 1360 }], { width: 624, height: 1360 });

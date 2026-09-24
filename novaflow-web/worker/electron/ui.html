@@ -132,7 +132,7 @@
 </style>
 </head>
 <body>
-<div class="titlebar" aria-label="NovaFlow 标题栏"><img src="assets/logo.png" alt="NovaFlow" draggable="false" /><span class="ver" id="version">v0.4.4</span></div>
+<div class="titlebar" aria-label="NovaFlow 标题栏"><img src="assets/logo.png" alt="NovaFlow" draggable="false" /><span class="ver" id="version"></span></div>
 
 <main>
   <div class="tabs">
@@ -290,6 +290,7 @@
     $('activityBadge').dataset.active = String(Boolean(running || state?.sharing));
     $('localQueue').textContent = state?.queuedLocal || 0;
 
+    $('version').textContent = state?.version ? 'v' + state.version : '';
     if (!state) {
       $('statusText').textContent = '未启动';
       $('statusDot').className = 'dot';
@@ -298,7 +299,6 @@
 
     $('statusText').textContent = running ? '本地已启动' : state.sharing ? '算力分享中' : state.draining ? '正在完成共享任务' : '未启动';
     $('statusDot').className = 'dot ' + (STATUS_DOT[state.status] || '');
-    $('version').textContent = 'v' + (state.version || '0.4.4');
 
     $('gpu').textContent = state.gpu && state.gpu.detected
       ? state.gpu.name

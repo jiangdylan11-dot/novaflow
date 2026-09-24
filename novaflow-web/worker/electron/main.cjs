@@ -37,7 +37,8 @@ function registrationSummary(state = {}) {
 }
 const launcherState = () => {
   const state = worker?.getState() || {};
-  return { ...state, registration: registrationSummary(state), operations: { ...operations } };
+  // The titlebar shows the installed build's own version.
+  return { ...state, version: app.getVersion(), registration: registrationSummary(state), operations: { ...operations } };
 };
 function progress(percent, message) {
   if (!activeOperation) return;

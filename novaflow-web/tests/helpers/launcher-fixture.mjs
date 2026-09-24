@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 export async function createLauncherFixture() {
   const handlers = new Map(), instances = [], windows = [], opened = [], events = [];
   const app = new EventEmitter();
-  Object.assign(app, { getPath: () => tmpdir(), setPath(name, value) { this[name] = value; }, whenReady: () => ({ then() {} }), requestSingleInstanceLock: () => true,
+  Object.assign(app, { getPath: () => tmpdir(), getVersion: () => '0.4.7', setPath(name, value) { this[name] = value; }, whenReady: () => ({ then() {} }), requestSingleInstanceLock: () => true,
     quit() { this.emit('before-quit'); this.quitCalled = true; } });
   const fixture = { config: { controlUrl: 'https://control.test', registrationCode: 'test-node' },
     licenseState: { status: 'unlicensed', locked: true, machineId: 'TEST-MACHINE-ONLY' },

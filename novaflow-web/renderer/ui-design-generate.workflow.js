@@ -18,8 +18,9 @@
   const LOCAL_REDESIGN_MODEL_PROMPT_MAX_CHARS = 1800
   const LOCAL_REFINEMENT_MODEL_PROMPT_MAX_CHARS = 1800
   const LOCAL_PROMPT_LOCK_MAX_CHARS = 480
-  // A local compute node whose ComfyUI carries Qwen-Image-2.1 takes every connected reference
-  // (up to 15 plus the layout guide) in one pass, instead of 2511's three slots.
+  // A local compute node whose ComfyUI carries Qwen-Image-2.1 takes every connected reference in one
+  // pass, instead of 2511's three slots: up to 10, the model card's limit (the encoder node has 16
+  // inputs, but the model supports 10).
   const LOCAL_UI_ENGINE_QWEN21 = 'qwen-2.1'
   const QWEN21_UI_PROMPT_MAX_CHARS = 4000
   const CONTROLLED_STRUCTURE_REFINEMENT_CONTRACT = [
@@ -96,8 +97,8 @@
     localQwen21: Object.freeze({
       provider: 'local',
       engine: LOCAL_UI_ENGINE_QWEN21,
-      totalReferenceLimit: 15,
-      externalReferenceLimit: 15,
+      totalReferenceLimit: 10,
+      externalReferenceLimit: 10,
       reservedLayoutReferences: 0,
       negativePrompt: true,
     }),

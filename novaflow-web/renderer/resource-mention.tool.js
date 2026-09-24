@@ -68,9 +68,9 @@
       });
   }
 
-  // Drawing on a Qwen-Image-2.1 node takes up to 15 references; past the fixed three, each slot the
+  // Drawing on a Qwen-Image-2.1 node takes up to 10 references; past the fixed three, each slot the
   // page reports is one more @参考图N.
-  const ART_GENERATE_MAX_REFERENCES = 15;
+  const ART_GENERATE_MAX_REFERENCES = 10;
 
   function artGenerateResourceConfig(resources) {
     const count = Math.min(ART_GENERATE_MAX_REFERENCES, Array.isArray(resources) ? resources.length : 0);

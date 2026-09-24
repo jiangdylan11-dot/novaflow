@@ -193,22 +193,10 @@
       if (fields.has('instantQuality')) {
         nodes.push(createElement('span', { className: 'novaflow-art-generate-param', text: '\u8d28\u91cf Instant' }))
       }
-      if (fields.has('textQuality')) {
-        state.localTextQuality = models?.normalizeLocalTextQuality?.(state.localTextQuality) || (state.localTextQuality === 'fast' ? 'fast' : 'fine')
-        nodes.push(renderSelect({
-          createElement,
-          label: '\u8d28\u91cf',
-          value: state.localTextQuality,
-          values: models?.LOCAL_TEXT_QUALITY_OPTIONS || [
-            { value: 'fast', label: '\u5feb\u901f' },
-            { value: 'fine', label: '\u7cbe\u7ec6' },
-          ],
-          onChange: (value) => {
-            state.localTextQuality = models?.normalizeLocalTextQuality?.(value) || (value === 'fast' ? 'fast' : 'fine')
-          },
-          rerender,
-        }))
-      }
+      // Steps and CFG start from the route's own defaults (2.1, NSFW, the 2511 route); see
+      // localSamplingFor.
+      if (fields.has('steps') && typeof options.renderSampling === 'function') nodes.push(options.renderSampling('steps', mode))
+      if (fields.has('cfg') && typeof options.renderSampling === 'function') nodes.push(options.renderSampling('cfg', mode))
       if (fields.has('seed')) nodes.push(options.renderSeedToggle())
       if (fields.has('nsfw') && options.nsfwSwitch) nodes.push(options.nsfwSwitch)
       return nodes

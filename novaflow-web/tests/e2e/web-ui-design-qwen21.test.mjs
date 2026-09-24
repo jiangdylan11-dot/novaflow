@@ -46,22 +46,23 @@ const buildUi = async (host, names, sizes, roles, extraState = {}) => JSON.parse
   ] }
 })));
 
-// 1 style screenshot, 10 symbols and a full-screen background: every one is a reference.
-const names = Array.from({ length: 12 }, (_, i) => `ui_q21_${String(i + 1).padStart(2, '0')}.png`);
-const sizes = [{ width: 1920, height: 1080 }, ...Array.from({ length: 10 }, () => ({ width: 148, height: 125 })), { width: 756, height: 1638 }];
-const roles = ['style', ...Array.from({ length: 11 }, () => 'content')];
+// 1 style screenshot, 8 symbols and a full-screen background: every one is a reference (10, the
+// model card's limit).
+const names = Array.from({ length: 10 }, (_, i) => `ui_q21_${String(i + 1).padStart(2, '0')}.png`);
+const sizes = [{ width: 1920, height: 1080 }, ...Array.from({ length: 8 }, () => ({ width: 148, height: 125 })), { width: 756, height: 1638 }];
+const roles = ['style', ...Array.from({ length: 9 }, () => 'content')];
 const ui = await buildUi(host21, names, sizes, roles);
 const encode = byClass(ui, 'TextEncodeQwenImage21');
 assert.equal(encode.length, 1);
 const encodeInputs = encode[0][1].inputs;
 assert.equal(encodeInputs.resolution, 0);
 assert.equal(encodeInputs.negative_prompt, '');
-for (let i = 0; i < 12; i += 1) {
+for (let i = 0; i < 10; i += 1) {
   let ref = encodeInputs[`images.image_${i + 1}`];
   if (ui[ref[0]].class_type === 'ImageScale') ref = ui[ref[0]].inputs.image;
   assert.equal(ui[ref[0]].inputs.image, names[i]);
 }
-assert.equal(encodeInputs['images.image_13'], undefined);
+assert.equal(encodeInputs['images.image_11'], undefined);
 assert.equal(byClass(ui, 'UNETLoader').length + byClass(ui, 'TextEncodeQwenImageEditPlus').length, 0);
 // The style screenshot and the background are over their 0.5 MP budget; the symbols go in as they are.
 const refScales = byClass(ui, 'ImageScale').filter(([, node]) => node.inputs.image[0] !== byClass(ui, 'SplitImageWithAlpha')[0][0]);
@@ -90,12 +91,12 @@ assert.deepEqual([finish.width, finish.height], [756, 1638]);
 assert.equal(byClass(ui, 'SaveImage')[0][1].inputs.filename_prefix, 'NovaFlow_UI');
 
 // A long list of large references shares one pixel cap.
-const bigNames = Array.from({ length: 15 }, (_, i) => `big_${i}.png`);
+const bigNames = Array.from({ length: 10 }, (_, i) => `big_${i}.png`);
 const big = await buildUi(host21, bigNames, bigNames.map(() => ({ width: 1024, height: 1024 })), bigNames.map(() => 'layout'));
 const bigPixels = byClass(big, 'ImageScale').filter(([, node]) => ui && node.inputs.width !== 756).reduce((sum, [, node]) => sum + node.inputs.width * node.inputs.height, 0);
 assert.ok(bigPixels <= 2000000 && bigPixels > 1500000, 'reference pixels stay near the shared cap: ' + bigPixels);
 
-await assert.rejects(buildUi(host21, Array.from({ length: 17 }, (_, i) => `r${i}.png`), [], Array.from({ length: 17 }, () => 'reference')), /最多接收 16/);
+await assert.rejects(buildUi(host21, Array.from({ length: 11 }, (_, i) => `r${i}.png`), [], Array.from({ length: 11 }, () => 'reference')), /最多接收 10/);
 // Iteration: the current design is sampled at the working size, outside the reference budgets.
 const iteration = await buildUi(host21, ['base.png', 's1.png', 's2.png'], [{ width: 756, height: 1638 }, { width: 148, height: 125 }, { width: 148, height: 125 }],
   [{ role: 'content', treatment: 'base' }, 'content', 'content'], { uiRunIntent: 'iteration' });
@@ -138,6 +139,8 @@ const buildDraw = async (names, sizes, width, height, negative = '') => JSON.par
   { provider: 'local', mode: 'img2img', width, height, seed: 1, randomSeed: false }, 4, {}
 ] } })));
 const drawI2i = await buildDraw(['ref.png'], [{ width: 512, height: 720 }], 512, 720);
+// The model card's 40 steps unless the panel says otherwise.
+assert.equal(byClass(drawI2i, 'KSampler')[0][1].inputs.steps, 40);
 const drawSaved = drawI2i[byClass(drawI2i, 'SaveImage')[0][1].inputs.images[0]];
 assert.equal(drawSaved.class_type, 'ImageScale');
 assert.deepEqual([drawSaved.inputs.width, drawSaved.inputs.height], [512, 720]);
@@ -166,24 +169,34 @@ const largeFirst = drawLarge[byClass(drawLarge, 'TextEncodeQwenImage21')[0][1].i
 assert.ok(largeFirst.width === largeFirst.height && largeFirst.width * largeFirst.height <= 1300000 && largeFirst.width % 32 === 0);
 const largeSaved = drawLarge[byClass(drawLarge, 'SaveImage')[0][1].inputs.images[0]].inputs;
 assert.deepEqual([largeSaved.width, largeSaved.height], [2048, 2048]);
-// Up to fifteen references; the ones after reference 1 share 1.5 MP, 0.5 MP at most each.
-const many = Array.from({ length: 16 }, (_, i) => `r${i}.png`);
+// Up to ten references (the model card's limit); the ones after reference 1 share 1.5 MP, 0.5 MP at
+// most each.
+const many = Array.from({ length: 11 }, (_, i) => `r${i}.png`);
 const drawMany = await buildDraw(many, many.map(() => ({ width: 1024, height: 1024 })), 1024, 1024);
 const manyEncode = byClass(drawMany, 'TextEncodeQwenImage21')[0][1].inputs;
-assert.equal(Object.keys(manyEncode).filter((key) => key.startsWith('images.')).length, 15);
-assert.equal(byClass(drawMany, 'LoadImage').length, 15);
-const extraPixels = Array.from({ length: 14 }, (_, i) => drawMany[manyEncode[`images.image_${i + 2}`][0]].inputs)
+assert.equal(Object.keys(manyEncode).filter((key) => key.startsWith('images.')).length, 10);
+assert.equal(byClass(drawMany, 'LoadImage').length, 10);
+const extraPixels = Array.from({ length: 9 }, (_, i) => drawMany[manyEncode[`images.image_${i + 2}`][0]].inputs)
   .map((inputs) => inputs.width * inputs.height);
 assert.ok(extraPixels.every((pixels) => pixels <= 500000) && extraPixels.reduce((a, b) => a + b, 0) <= 1500000);
 const fewExtra = await buildDraw(['a.png', 'b.png'], [{ width: 800, height: 600 }, { width: 400, height: 300 }], 800, 600);
 assert.equal(fewExtra[byClass(fewExtra, 'TextEncodeQwenImage21')[0][1].inputs['images.image_2'][0]].class_type, 'LoadImage');
-// Drawing on 2.1: the negative box works the same way.
-const drawNegative = JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
-  'local', 'txt2img', [], 'NovaFlow_Art', 'a knight', 'blurry, extra fingers', 'client', [],
-  { provider: 'local', mode: 'txt2img', width: 1024, height: 1024, seed: 1, randomSeed: false }, 4, {}
+// Drawing on 2.1: only the user's own negative prompt (state.negativePrompt) counts and reaches the
+// graph; the quality profile's automatic negatives in the compiled argument neither switch CFG nor go
+// to 2.1.
+const drawT2i = async (userNegative, compiledNegative, extraState = {}) => JSON.parse(JSON.stringify(await host21.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
+  'local', 'txt2img', [], 'NovaFlow_Art', 'a knight', compiledNegative, 'client', [],
+  { provider: 'local', mode: 'txt2img', width: 1024, height: 1024, seed: 1, randomSeed: false, negativePrompt: userNegative, ...extraState }, 4, {}
 ] } })));
+const profileOnly = await drawT2i('', '错误人体，畸形手指，低完成度');
+assert.equal(byClass(profileOnly, 'TextEncodeQwenImage21')[0][1].inputs.negative_prompt, '');
+assert.deepEqual([byClass(profileOnly, 'KSampler')[0][1].inputs.steps, byClass(profileOnly, 'KSampler')[0][1].inputs.cfg], [40, 1]);
+const drawNegative = await drawT2i('blurry, extra fingers', 'blurry, extra fingers，错误人体，低完成度');
 assert.equal(byClass(drawNegative, 'TextEncodeQwenImage21')[0][1].inputs.negative_prompt, 'blurry, extra fingers');
 assert.equal(byClass(drawNegative, 'KSampler')[0][1].inputs.cfg, 2.5);
+// Steps / CFG typed on the panel for this route are what the run uses.
+const drawTyped = await drawT2i('', '', { samplingOverrides: { 'qwen-2.1:txt2img': { steps: 25, cfg: 3 } } });
+assert.deepEqual([byClass(drawTyped, 'KSampler')[0][1].inputs.steps, byClass(drawTyped, 'KSampler')[0][1].inputs.cfg], [25, 3]);
 
 // Asked for 2.1 on a node without it: an error, never a 2511 graph that keeps three references.
 const hostOld = await createWorkflowHost({ rendererDir, objectInfo: { LoadImage: qwen21Info.LoadImage, KSampler: qwen21Info.KSampler } });
@@ -191,8 +204,8 @@ await assert.rejects(buildUi(hostOld, names, sizes, roles), /缺少 Qwen-Image-2
 // Without the engine flag the UI run never becomes a 2.1 graph.
 await assert.rejects(buildUi(host21, names.slice(0, 3), sizes.slice(0, 3), ['style', 'content', 'ui_layout'], { localUiEngine: '' }), (error) => !/Qwen-Image-2.1/.test(error.message));
 
-// The worker renames all fifteen uploads.
-const refs15 = Array.from({ length: 15 }, (_, i) => ({ name: `ui_q21_${i}.png` }));
+// The worker renames all ten uploads.
+const refs15 = Array.from({ length: 10 }, (_, i) => ({ name: `ui_q21_${i}.png` }));
 const mapped = withReferences({ __args: ['local', 'img2img', refs15.map((r) => r.name)] }, refs15.map((_, i) => `task-${i}.png`), refs15, 'buildArtGenerateRunWorkflow');
 assert.deepEqual(mapped.__args[2], refs15.map((_, i) => `task-${i}.png`));
 assert.equal(MAX_TASK_REFERENCES, 20);
@@ -232,7 +245,7 @@ const generate = globalThis.NovaFlowUiDesignGenerateWorkflow;
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
 assert.equal(generate.providerCapability('local').externalReferenceLimit, 2);
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({ qwenImage21: true }), runtimeFeatures: async () => ({ qwenImage21: true }) };
-assert.equal(generate.providerCapability('local').externalReferenceLimit, 15);
+assert.equal(generate.providerCapability('local').externalReferenceLimit, 10);
 assert.equal(generate.providerCapability('local').reservedLayoutReferences, 0);
 assert.equal(generate.providerCapability('local').negativePrompt, true);
 assert.equal(generate.providerCapability('gpt').externalReferenceLimit, 15);
@@ -243,7 +256,7 @@ assert.equal(mentions.text, '把<image2>放在转轴里');
 const pixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 const runRefs = [
   { name: '风格.png', dataUrl: pixel, role: 'style', sourceId: 's', width: 1920, height: 1080 },
-  ...Array.from({ length: 11 }, (_, i) => ({ name: `符号${i}.png`, dataUrl: pixel, role: 'asset', sourceId: `a${i}`, width: 148, height: 125 }))
+  ...Array.from({ length: 9 }, (_, i) => ({ name: `符号${i}.png`, dataUrl: pixel, role: 'asset', sourceId: `a${i}`, width: 148, height: 125 }))
 ];
 const project = {
   width: 756, height: 1638, canvas: { width: 756, height: 1638 },
@@ -279,17 +292,17 @@ const result = await generate.run({
 });
 assert.equal(result.localEngine, 'qwen-2.1');
 assert.equal(state.localUiEngine, 'qwen-2.1');
-// No guide image: the twelve connected images are the references, the structure is text.
-assert.equal(uploads.length, 12);
-assert.deepEqual(uploads, Array.from({ length: 12 }, (_, i) => `ui_q21_${String(i + 1).padStart(2, '0')}.png`));
-assert.equal(built.maxReferences, 15);
+// No guide image: the ten connected images are the references, the structure is text.
+assert.equal(uploads.length, 10);
+assert.deepEqual(uploads, Array.from({ length: 10 }, (_, i) => `ui_q21_${String(i + 1).padStart(2, '0')}.png`));
+assert.equal(built.maxReferences, 10);
 // Only what the user wrote: the automatic 2511 canvas negatives would force cfg 2.5 on every run.
 assert.equal(built.negativePrompt, '模糊，水印');
-assert.equal(built.referenceRoles.length, 12);
+assert.equal(built.referenceRoles.length, 10);
 assert.ok(built.referenceRoles.every((item) => item.role !== 'ui_layout'));
 assert.equal(built.referenceRoles[0].role, 'style');
 assert.equal(built.referenceRoles[1].role, 'content');
-assert.ok(built.prompt.includes('<image2>') && built.prompt.includes('<image12> 符号10: finished asset'));
+assert.ok(built.prompt.includes('<image2>') && built.prompt.includes('<image10> 符号8: finished asset'));
 assert.ok(!built.prompt.includes('occupancy map') && built.prompt.includes('Screen structure, top to bottom:'));
 assert.ok(built.prompt.includes('wild') && !built.prompt.includes('Also avoid'));
 assert.ok(!/图\d/.test(built.prompt) && built.prompt.length <= 4000);
@@ -321,46 +334,81 @@ const longPrompt = generate.compileQwen21UiPrompt({
   project: { width: 756, height: 1638, canvas: { width: 756, height: 1638 } },
   semantic: { canvas: { width: 756, height: 1638 }, regions: Array.from({ length: 8 }, (_, i) => ({ name: '区' + i, purpose: '说明'.repeat(60), yNorm: i / 8, hNorm: 0.12, xNorm: 0, wNorm: 1 })) },
   userPrompt: '界面要求，'.repeat(400), negativePrompt: '模糊，水印',
-  references: Array.from({ length: 15 }, (_, i) => ({ name: '一个很长的素材名称' + i + '.png', role: i % 2 ? 'style' : 'reference' }))
+  references: Array.from({ length: 10 }, (_, i) => ({ name: '一个很长的素材名称' + i + '.png', role: i % 2 ? 'style' : 'reference' }))
 });
 assert.ok(longPrompt.length <= 4000, 'prompt length ' + longPrompt.length);
-assert.ok(!longPrompt.includes('Also avoid') && longPrompt.includes('Do not show:') && longPrompt.includes('<image15>'));
+assert.ok(!longPrompt.includes('Also avoid') && longPrompt.includes('Do not show:') && longPrompt.includes('<image10>'));
 assert.ok(longPrompt.includes('- 88-100% from the top: 区7：说明'));
 
-// Sixteen connected images is one too many even on 2.1.
-await assert.rejects(generate.run({ bridge, project, refs: [...runRefs, ...runRefs.slice(0, 4)], state: { ...state }, prompt: 'x' }), /最多支持 15 张外部参考图，当前已连接 16 张/);
+// Eleven connected images is one too many even on 2.1 (the model card's limit is 10).
+await assert.rejects(generate.run({ bridge, project, refs: [...runRefs, ...runRefs.slice(0, 1)], state: { ...state }, prompt: 'x' }), /最多支持 10 张外部参考图，当前已连接 11 张/);
 
 // Without the node's answer the page stays on the 2511 plan.
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
 await assert.rejects(generate.run({ bridge, project, refs: runRefs.slice(0, 3), state: { ...state }, prompt: 'x' }), /最多支持 2 张/);
 
-// Drawing controls on a 2.1 node: no Instant quality, no edit strength, img2img with W / H and up to
-// fifteen references, the negative prompt kept; NSFW and LoRA runs keep their old controls.
+// Drawing controls on a 2.1 node: no Instant quality or edit strength; steps and CFG on every local
+// route that samples; img2img with W / H and up to ten references; the negative prompt kept.
 renderer('art-generate-model.resource.js');
 const models = globalThis.NovaFlowArtGenerateModels;
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({ qwenImage21: true }), runtimeFeatures: async () => ({ qwenImage21: true }) };
-assert.deepEqual([...models.capabilityFor('local', 'txt2img', {}).fields], ['width', 'height', 'seed', 'nsfw']);
-assert.deepEqual([...models.capabilityFor('local', 'img2img', {}).fields], ['width', 'height', 'seed', 'nsfw']);
-assert.equal(models.capabilityFor('local', 'img2img', {}).referenceLimit, 15);
+const allFields = ['width', 'height', 'steps', 'cfg', 'seed', 'nsfw'];
+assert.deepEqual([...models.capabilityFor('local', 'txt2img', {}).fields], allFields);
+assert.deepEqual([...models.capabilityFor('local', 'img2img', {}).fields], allFields);
+assert.equal(models.capabilityFor('local', 'img2img', {}).referenceLimit, 10);
 assert.equal(models.capabilityFor('local', 'img2img', { nsfw: true }).referenceLimit, 3);
 assert.equal(models.capabilityFor('local', 'img2img', {}).negativePrompt, true);
-assert.ok(models.capabilityFor('local', 'txt2img', { nsfw: true }).fields.includes('textQuality'));
-// No edit-strength choice on any drawing route: NSFW img2img runs its 4-step preset, a LoRA (2511) run
-// samples fully only with a negative prompt filled in; UI design keeps its own setting.
-assert.deepEqual([...models.capabilityFor('local', 'img2img', { loras: [{ name: 'x' }] }).fields], ['width', 'height', 'seed', 'nsfw']);
-assert.ok(!models.capabilityFor('local', 'img2img', { nsfw: true }).fields.includes('editStrength'));
-assert.equal(models.drawingEditStrength({ nsfw: true }, 'blurry'), 'faithful');
-assert.equal(models.drawingEditStrength({ loras: [{ name: 'x' }] }, '  '), 'faithful');
-assert.equal(models.drawingEditStrength({ loras: [{ name: 'x' }] }, 'blurry'), 'enhanced');
+assert.deepEqual([...models.capabilityFor('local', 'txt2img', { nsfw: true }).fields], allFields);
+assert.deepEqual([...models.capabilityFor('local', 'img2img', { loras: [{ name: 'x' }] }).fields], allFields);
+assert.deepEqual([...models.capabilityFor('local', 'img2img', { nsfw: true }).fields], allFields);
+// Route defaults: 2.1 40 steps, CFG 1 (2.5 with the user's negative); NSFW (Rapid AIO) 6 steps, CFG 1;
+// the 2511 route of a LoRA run 4 Lightning steps at CFG 1, the base 40 steps at CFG 4 with a negative.
+const pick = (sampling) => sampling && [sampling.route, sampling.steps, sampling.cfg, sampling.lightning];
+assert.deepEqual(pick(models.localSamplingFor({ provider: 'local' }, 'txt2img', '')), ['qwen-2.1', 40, 1, false]);
+assert.deepEqual(pick(models.localSamplingFor({ provider: 'local' }, 'img2img', 'blurry')), ['qwen-2.1', 40, 2.5, false]);
+assert.deepEqual(pick(models.localSamplingFor({ provider: 'local', nsfw: true }, 'img2img', 'blurry')), ['rapid', 6, 1, false]);
+assert.deepEqual(pick(models.localSamplingFor({ provider: 'local', nsfw: true }, 'txt2img', '')), ['rapid', 6, 1, false]);
+const lora = { provider: 'local', loras: [{ name: 'x' }] };
+assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['standard', 4, 1, true]);
+assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', 'blurry')), ['standard', 40, 4, false]);
+assert.equal(models.localSamplingFor(lora, 'txt2img', ''), null);
+assert.equal(models.localSamplingFor({ provider: 'gpt' }, 'img2img', ''), null);
+// The state's own negative prompt is the default source; a run can name its route.
+assert.equal(models.localSamplingFor({ provider: 'local', negativePrompt: 'blurry' }, 'txt2img').cfg, 2.5);
+assert.equal(models.localSamplingFor({ provider: 'local' }, 'img2img', '', 'standard').route, 'standard');
+// Typed values stay with their route and mode, within the route's range; typing the default or
+// clearing the field follows the route again.
+const typed = { provider: 'local', nsfw: true };
+assert.equal(models.setLocalSamplingValue(typed, 'img2img', 'steps', '20').steps, 8);
+assert.equal(models.localSamplingFor(typed, 'img2img').stepsManual, true);
+assert.equal(models.localSamplingFor(typed, 'txt2img').steps, 6);
+typed.nsfw = false;
+assert.equal(models.localSamplingFor(typed, 'img2img').steps, 40);
+models.setLocalSamplingValue(typed, 'img2img', 'cfg', '3.25');
+assert.equal(models.localSamplingFor(typed, 'img2img').cfg, 3.3);
+models.setLocalSamplingValue(typed, 'img2img', 'steps', '40');
+assert.equal(models.localSamplingFor(typed, 'img2img').stepsManual, false);
+models.setLocalSamplingValue(typed, 'img2img', 'cfg', '');
+assert.equal(typed.samplingOverrides['qwen-2.1:img2img'], undefined);
+typed.nsfw = true;
+assert.equal(models.localSamplingFor(typed, 'img2img').steps, 8);
+// On the 2511 route more than 8 steps turns the Lightning LoRA off and CFG follows to 4.
+const loraTyped = { ...lora };
+models.setLocalSamplingValue(loraTyped, 'img2img', 'steps', '20');
+assert.deepEqual(pick(models.localSamplingFor(loraTyped, 'img2img', '')), ['standard', 20, 4, false]);
+// The preset on the legacy graphs: the run's sampling over the family's sampler; UI design (no
+// sampling) keeps its edit-strength presets.
 const presetGraph = () => ({ 1: { class_type: 'KSampler', inputs: {} }, 2: { class_type: 'PrimitiveBoolean', inputs: { value: true }, _meta: { title: 'Enable 4 Step(s) LoRA?' } } });
 const presetOf = (state, negative) => {
-  const graph = models.applyLocalWorkflowPreset(presetGraph(), { ...state, localEditStrength: models.drawingEditStrength(state, negative) }, 'img2img');
-  return [graph[1].inputs.steps, graph[1].inputs.cfg, graph[2].inputs.value];
+  const sampling = models.localSamplingFor(state, 'img2img', negative, state.nsfw ? 'rapid' : 'standard');
+  const graph = models.applyLocalWorkflowPreset(presetGraph(), state, 'img2img', sampling);
+  return [graph[1].inputs.steps, graph[1].inputs.cfg, graph[2].inputs.value, graph[1].inputs.sampler_name];
 };
-assert.deepEqual(presetOf({ loras: [{ name: 'x' }] }, ''), [4, 1, true]);
-assert.deepEqual(presetOf({ loras: [{ name: 'x' }] }, 'blurry'), [12, 4, false]);
-assert.deepEqual(presetOf({ nsfw: true }, '').slice(0, 2), [4, 1]);
-assert.deepEqual(presetOf({ nsfw: true }, 'blurry').slice(0, 2), [4, 1]);
+assert.deepEqual(presetOf(lora, ''), [4, 1, true, 'euler']);
+assert.deepEqual(presetOf(lora, 'blurry'), [40, 4, false, 'euler']);
+assert.deepEqual(presetOf({ provider: 'local', nsfw: true }, 'blurry'), [6, 1, true, 'euler_ancestral']);
+const uiPreset = models.applyLocalWorkflowPreset(presetGraph(), { localEditStrength: 'enhanced' }, 'img2img');
+assert.deepEqual([uiPreset[1].inputs.steps, uiPreset[1].inputs.cfg, uiPreset[2].inputs.value], [12, 4, false]);
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
 assert.ok(models.capabilityFor('local', 'txt2img', {}).fields.includes('instantQuality'));
 
