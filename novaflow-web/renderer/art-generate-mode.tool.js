@@ -190,9 +190,6 @@
       if (fields.has('width') || fields.has('height')) nodes.push(createElement('span', { className: 'novaflow-art-generate-param', text: '\u5206\u8fa8\u7387' }))
       if (fields.has('width')) nodes.push(options.renderNumber('W', 'width', 256, 2048))
       if (fields.has('height')) nodes.push(options.renderNumber('H', 'height', 256, 2048))
-      if (fields.has('instantQuality')) {
-        nodes.push(createElement('span', { className: 'novaflow-art-generate-param', text: '\u8d28\u91cf Instant' }))
-      }
       // Steps and CFG start from the route's own defaults (2.1, NSFW, the 2511 route); see
       // localSamplingFor.
       if (fields.has('steps') && typeof options.renderSampling === 'function') nodes.push(options.renderSampling('steps', mode))

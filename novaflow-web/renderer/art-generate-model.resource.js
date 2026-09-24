@@ -28,28 +28,19 @@
     }),
   })
 
-  const LOCAL_IDEOGRAM_TEXT_CAPABILITY = capability(
-    0,
-    ['width', 'height', 'instantQuality', 'seed', 'nsfw'],
-    false,
-  )
-
-  // A local node with Qwen-Image-2.1 runs non-NSFW drawing on it, LoRAs included (the list offers
-  // only LoRAs made for 2.1); the page tells the worker so with the run. 2.1 has no quality or edit-strength setting; its img2img takes up to 10 references (the
-  // model card's limit, as in the UI module) and keeps W / H, which a new reference 1 fills with its
-  // size; the negative prompt stays (a filled one switches the run to real guidance).
+  // Non-NSFW local drawing runs on Qwen-Image-2.1, on the local assistant and on the shared pool
+  // alike, LoRAs included (the list offers only LoRAs made for 2.1); the page tells the worker so
+  // with the run. There is one layout: 2.1 has no quality or edit-strength setting; its img2img
+  // takes up to 10 references (the model card's limit, as in the UI module) and keeps W / H, which
+  // a new reference 1 fills with its size; the negative prompt stays (a filled one switches the run
+  // to real guidance). NSFW keeps Rapid AIO (2511) with its own limits.
   const LOCAL_QWEN21_CAPABILITIES = Object.freeze({
     txt2img: Object.freeze({ ...capability(0, ['width', 'height', 'steps', 'cfg', 'seed', 'nsfw'], true), engine: 'qwen-2.1' }),
     img2img: Object.freeze({ ...capability(10, ['width', 'height', 'steps', 'cfg', 'seed', 'nsfw'], true), engine: 'qwen-2.1' }),
   })
 
   function localQwen21Drawing(state) {
-    if (state?.nsfw === true) return false
-    try {
-      return globalThis?.electronAPI?.runtimeFeaturesSync?.()?.qwenImage21 === true
-    } catch {
-      return false
-    }
+    return state?.nsfw !== true
   }
 
   const providerOptions = Object.freeze([
@@ -231,9 +222,7 @@
     const mode = normalizeMode(state?.mode)
     const route = provider === 'local' && localQwen21Drawing(state)
       ? 'qwen-2.1'
-      : provider === 'local' && mode === 'txt2img'
-        ? (state?.nsfw === true ? 'rapid' : 'ideogram-instant')
-        : ''
+      : provider === 'local' && mode === 'txt2img' ? 'rapid' : ''
     return `${provider}:${mode}:${route}`
   }
 
@@ -241,9 +230,6 @@
     const providerKey = normalizeProvider(provider)
     const modeKey = normalizeMode(mode)
     if (providerKey === 'local' && localQwen21Drawing(state)) return LOCAL_QWEN21_CAPABILITIES[modeKey]
-    if (providerKey === 'local' && modeKey === 'txt2img' && state?.nsfw !== true) {
-      return LOCAL_IDEOGRAM_TEXT_CAPABILITY
-    }
     return getCapability(providerKey, modeKey) || {
       referenceLimit: modeKey === 'img2img' ? 3 : 0,
       fields: providerKey === 'local'

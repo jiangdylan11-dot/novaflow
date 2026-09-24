@@ -159,11 +159,12 @@ try {
   context.globalThis = context;
   runInContext(await readFile(new URL('../../renderer/art-generate-lora.js', import.meta.url), 'utf8'), context);
   const art = context.NovaFlowArtGenerateLora;
-  context.electronAPI = { runtimeFeaturesSync: () => ({ qwenImage21: true }) };
-  check(() => assert.equal(art.supports({ provider: 'local', mode: 'txt2img' }), true));
-  check(() => assert.equal(art.qwen21Route({ provider: 'local', mode: 'img2img', nsfw: true }), false));
+  // One layout: non-NSFW local drawing is the 2.1 route whatever the node reported.
   context.electronAPI = { runtimeFeaturesSync: () => ({}) };
-  check(() => assert.equal(art.supports({ provider: 'local', mode: 'txt2img' }), false));
+  check(() => assert.equal(art.supports({ provider: 'local', mode: 'txt2img' }), true));
+  check(() => assert.equal(art.qwen21Route({ provider: 'local', mode: 'txt2img' }), true));
+  check(() => assert.equal(art.qwen21Route({ provider: 'local', mode: 'img2img', nsfw: true }), false));
+  check(() => assert.equal(art.supports({ provider: 'gpt', mode: 'txt2img' }), false));
   const drawGraph = () => ({
     1: { class_type: 'UnetLoaderGGUF', inputs: { unet_name: 'qwen-image-2.1-UC-Q8_0.gguf' } },
     4: { class_type: 'QwenImage21Cache', inputs: { model: ['1', 0], device: 'auto', dtype: 'default' } },

@@ -253,8 +253,9 @@ renderer('ui-design-generate.workflow.js');
 // The renderer folder is ESM-typed, so the UMD modules register on globalThis only.
 const generate = globalThis.NovaFlowUiDesignGenerateWorkflow;
 
+// One layout: the 2.1 limits whatever the node reported.
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
-assert.equal(generate.providerCapability('local').externalReferenceLimit, 2);
+assert.equal(generate.providerCapability('local').externalReferenceLimit, 10);
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({ qwenImage21: true }), runtimeFeatures: async () => ({ qwenImage21: true }) };
 assert.equal(generate.providerCapability('local').externalReferenceLimit, 10);
 assert.equal(generate.providerCapability('local').reservedLayoutReferences, 0);
@@ -354,10 +355,6 @@ assert.ok(longPrompt.includes('- 88-100% from the top: 区7：说明'));
 // Eleven connected images is one too many even on 2.1 (the model card's limit is 10).
 await assert.rejects(generate.run({ bridge, project, refs: [...runRefs, ...runRefs.slice(0, 1)], state: { ...state }, prompt: 'x' }), /最多支持 10 张外部参考图，当前已连接 11 张/);
 
-// Without the node's answer the page stays on the 2511 plan.
-globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
-await assert.rejects(generate.run({ bridge, project, refs: runRefs.slice(0, 3), state: { ...state }, prompt: 'x' }), /最多支持 2 张/);
-
 // Drawing controls on a 2.1 node: no Instant quality or edit strength; steps and CFG on every local
 // route that samples; img2img with W / H and up to ten references; the negative prompt kept.
 renderer('art-generate-model.resource.js');
@@ -388,13 +385,14 @@ assert.deepEqual(pick(models.localSamplingFor({ provider: 'local', nsfw: true },
 // A LoRA run stays on 2.1 there (its list offers only LoRAs made for 2.1).
 const lora = { provider: 'local', loras: [{ name: 'x' }] };
 assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['qwen-2.1', 40, 1, false]);
-// The 2511 route (a node without 2.1): 4 Lightning steps at CFG 1, the base 40 steps at CFG 4 with a
-// negative; its txt2img is Ideogram Instant, without steps / CFG.
+// The 2511 route is only ever named by a run (no panel shows it): 4 Lightning steps at CFG 1, the
+// base 40 steps at CFG 4 with a negative. Without the node's answer the panel still shows 2.1.
+assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '', 'standard')), ['standard', 4, 1, true]);
+assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', 'blurry', 'standard')), ['standard', 40, 4, false]);
 const withQwen21 = globalThis.electronAPI;
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
-assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['standard', 4, 1, true]);
-assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', 'blurry')), ['standard', 40, 4, false]);
-assert.equal(models.localSamplingFor(lora, 'txt2img', ''), null);
+assert.deepEqual(pick(models.localSamplingFor(lora, 'txt2img', '')), ['qwen-2.1', 40, 1, false]);
+assert.deepEqual(pick(models.localSamplingFor(lora, 'img2img', '')), ['qwen-2.1', 40, 1, false]);
 globalThis.electronAPI = withQwen21;
 assert.equal(models.localSamplingFor({ provider: 'gpt' }, 'img2img', ''), null);
 // The state's own negative prompt is the default source; a run can name its route.
@@ -417,11 +415,8 @@ assert.equal(typed.samplingOverrides['qwen-2.1:img2img'], undefined);
 typed.nsfw = true;
 assert.equal(models.localSamplingFor(typed, 'img2img').steps, 8);
 // On the 2511 route more than 8 steps turns the Lightning LoRA off and CFG follows to 4.
-globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
-const loraTyped = { ...lora };
-models.setLocalSamplingValue(loraTyped, 'img2img', 'steps', '20');
-assert.deepEqual(pick(models.localSamplingFor(loraTyped, 'img2img', '')), ['standard', 20, 4, false]);
-globalThis.electronAPI = withQwen21;
+const loraTyped = { ...lora, samplingOverrides: { 'standard:img2img': { steps: 20 } } };
+assert.deepEqual(pick(models.localSamplingFor(loraTyped, 'img2img', '', 'standard')), ['standard', 20, 4, false]);
 // The preset on the legacy graphs: the run's sampling over the family's sampler; UI design (no
 // sampling) keeps its edit-strength presets.
 const presetGraph = () => ({ 1: { class_type: 'KSampler', inputs: {} }, 2: { class_type: 'PrimitiveBoolean', inputs: { value: true }, _meta: { title: 'Enable 4 Step(s) LoRA?' } } });
@@ -436,7 +431,8 @@ assert.deepEqual(presetOf({ provider: 'local', nsfw: true }, 'blurry'), [6, 1, t
 const uiPreset = models.applyLocalWorkflowPreset(presetGraph(), { localEditStrength: 'enhanced' }, 'img2img');
 assert.deepEqual([uiPreset[1].inputs.steps, uiPreset[1].inputs.cfg, uiPreset[2].inputs.value], [12, 4, false]);
 globalThis.electronAPI = { runtimeFeaturesSync: () => ({}), runtimeFeatures: async () => ({}) };
-assert.ok(models.capabilityFor('local', 'txt2img', {}).fields.includes('instantQuality'));
+assert.ok(!models.capabilityFor('local', 'txt2img', {}).fields.includes('instantQuality'));
+assert.deepEqual([...models.capabilityFor('local', 'txt2img', {}).fields], allFields);
 
 // The prompt editor's chips show the model image each @参考图 becomes: after the guide on 2511,
 // the first connected image on 2.1.

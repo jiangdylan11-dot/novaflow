@@ -14,16 +14,11 @@
     return state.provider === 'local' && (state.mode === 'img2img' || state.nsfw === true || qwen21Route(state))
   }
 
-  // On a Qwen-Image-2.1 node non-NSFW drawing (txt2img and img2img) runs on 2.1, and the list offers
+  // Non-NSFW drawing (txt2img and img2img) runs on Qwen-Image-2.1 everywhere, and the list offers
   // only LoRAs the node found to fit 2.1 (header names and shapes against its 2.1 model; the Qwen
   // LoRAs for 2509-2512 never do). NSFW runs on Rapid AIO (2511) and keeps that list.
   function qwen21Route(state = {}) {
-    if (state.nsfw === true) return false
-    try {
-      return globalThis?.electronAPI?.runtimeFeaturesSync?.()?.qwenImage21 === true
-    } catch {
-      return false
-    }
+    return state.nsfw !== true
   }
 
   function isSelectable(name) {

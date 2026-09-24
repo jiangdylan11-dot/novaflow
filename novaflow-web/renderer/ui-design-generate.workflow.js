@@ -285,24 +285,15 @@
     return provider === 'gpt' || provider === 'google' ? provider : 'local'
   }
 
-  // The local assistant probes its node catalogue and reports { qwenImage21 } in the capability
-  // snapshot; only the web runtime shim exposes it. The desktop and the shared pool never report
-  // it and keep the 2511 route.
+  // Local UI design runs on Qwen-Image-2.1 everywhere, on the local assistant and on the shared
+  // pool alike: one layout (ten references, a real negative prompt). A node without 2.1 fails the
+  // run with a clear error rather than drawing a smaller layout.
   function localQwen21Available() {
-    try {
-      return root?.electronAPI?.runtimeFeaturesSync?.()?.qwenImage21 === true
-    } catch {
-      return false
-    }
+    return true
   }
 
   async function refreshLocalQwen21Available() {
-    try {
-      const features = await root?.electronAPI?.runtimeFeatures?.()
-      return features ? features.qwenImage21 === true : localQwen21Available()
-    } catch {
-      return localQwen21Available()
-    }
+    return true
   }
 
   function providerCapability(provider, options = {}) {
