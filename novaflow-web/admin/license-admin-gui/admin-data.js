@@ -62,7 +62,10 @@ const adminQueries = {
     limit: 500
   },
   gpu_workers: {
-    select: "id,owner_id,worker_name,status,gpu_name,vram_mb,ram_mb,comfy_version,worker_version,endpoint_url,transport,last_heartbeat,total_completed,total_failed,created_at",
+    select: "id,owner_id,worker_name,status,tier,gpu_name,vram_mb,ram_mb,comfy_version,worker_version,endpoint_url,transport,last_heartbeat,total_completed,total_failed,created_at",
+    // Until 20260925010000_novaflow_web_node_tiers.sql is applied there is no
+    // tier column; the page still has to list the nodes.
+    fallbackSelect: "id,owner_id,worker_name,status,gpu_name,vram_mb,ram_mb,comfy_version,worker_version,endpoint_url,transport,last_heartbeat,total_completed,total_failed,created_at",
     orderBy: "created_at",
     ascending: false,
     limit: 200
@@ -83,7 +86,8 @@ const adminQueries = {
     // row identity and is used for revoking; it stays in JS and is never put in
     // the DOM. It cannot be turned back into a code, and the plaintext is shown
     // once at creation and never stored, so nothing here can recover a code.
-    select: "code_hash,owner_id,label,max_uses,used_count,expires_at,created_at",
+    select: "code_hash,owner_id,label,tier,max_uses,used_count,expires_at,created_at",
+    fallbackSelect: "code_hash,owner_id,label,max_uses,used_count,expires_at,created_at",
     orderBy: "created_at",
     ascending: false,
     limit: 200
@@ -198,6 +202,7 @@ const mockData = {
       owner_id: "U-1001",
       worker_name: "mock-4090",
       status: "idle",
+      tier: "standard",
       gpu_name: "NVIDIA GeForce RTX 4090",
       vram_mb: 24564,
       ram_mb: 65536,
@@ -216,6 +221,7 @@ const mockData = {
       code_hash: "0000000000000000000000000000000000000000000000000000000000000000",
       owner_id: "U-1001",
       label: "mock placeholder",
+      tier: "standard",
       max_uses: 1,
       used_count: 0,
       expires_at: "2026-07-08T08:00:00.000Z",
@@ -467,7 +473,9 @@ function shouldRetryLegacySelect(err, options = {}) {
   const message = String(err?.message || err || "").toLowerCase();
   return (
     message.includes("schema cache") ||
-    message.includes("could not find")
+    message.includes("could not find") ||
+    // PostgREST wording for a column the migration has not added yet.
+    message.includes("does not exist")
   );
 }
 
@@ -1179,6 +1187,8 @@ async function createAdminWorkerRegistrationCode(payload) {
   const label = String(payload?.label || "").trim().slice(0, 80);
   const maxUses = Math.max(1, Math.min(50, Number(payload?.maxUses || payload?.max_uses || 1) || 1));
   const days = Math.max(1, Math.min(90, Number(payload?.validDays || payload?.valid_days || 7) || 7));
+  // Which tier the machines this code admits join as: 普通 unless asked.
+  const tier = normalizeGpuWorkerTier(payload?.tier ?? payload?.nodeTier ?? payload?.node_tier);
 
   const code = "NFW-" + workerCodeChunk() + "-" + workerCodeChunk();
   const expiresAt = new Date(Date.now() + days * 24 * 3600 * 1000).toISOString();
@@ -1190,6 +1200,7 @@ async function createAdminWorkerRegistrationCode(payload) {
         code_hash: hashWorkerRegistrationCode(code),
         owner_id: ownerId,
         label,
+        tier,
         max_uses: maxUses,
         expires_at: expiresAt
       })
@@ -1198,7 +1209,7 @@ async function createAdminWorkerRegistrationCode(payload) {
     if (error) throw error;
     const durationMs = Date.now() - startedAt;
     logAdminData("info", "create worker registration code", {
-      source: "supabase", status: "connected", ownerId, maxUses, days, durationMs
+      source: "supabase", status: "connected", ownerId, tier, maxUses, days, durationMs
     });
     return {
       source: "supabase",
@@ -1295,6 +1306,186 @@ async function setAdminGpuWorkerStatus(payload) {
       durationMs: Date.now() - startedAt,
       record: data
     };
+  } catch (err) {
+    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
+  }
+}
+
+// Node tiers. 普通 (standard) nodes serve 中级 and 高级 accounts, 高级
+// (premium) nodes serve 高级 accounts only. The scheduler in Supabase reads
+// gpu_workers.tier; this only writes it.
+function normalizeGpuWorkerTier(value) {
+  return String(value || "").trim().toLowerCase() === "premium" ? "premium" : "standard";
+}
+
+function adminWriteResult(operation, startedAt, extra = {}) {
+  return {
+    source: "supabase",
+    status: "connected",
+    configured: true,
+    operation,
+    ok: true,
+    durationMs: Date.now() - startedAt,
+    ...extra
+  };
+}
+
+// The Supabase client, or the mock/error result to hand back instead.
+function adminWriteClient(operation, startedAt) {
+  const clientState = getAdminClient();
+  if (clientState.client) return { client: clientState.client };
+  const durationMs = Date.now() - startedAt;
+  if (clientState.status === "mock") return { result: adminWriteMockResult(operation, durationMs) };
+  return { result: adminWriteErrorResult(operation, clientState.error || "client initialization failed", durationMs) };
+}
+
+async function setAdminGpuWorkerTier(payload) {
+  const startedAt = Date.now();
+  const operation = "gpu_workers.set_tier";
+  const { client, result } = adminWriteClient(operation, startedAt);
+  if (!client) return result;
+
+  const id = String(payload?.id || "").trim();
+  if (!id) return adminWriteErrorResult(operation, "缺少算力节点 id", Date.now() - startedAt);
+  const tier = normalizeGpuWorkerTier(payload?.tier);
+
+  try {
+    const { data, error } = await client
+      .from("gpu_workers")
+      .update({ tier, updated_at: new Date().toISOString() })
+      .eq("id", id)
+      .select(adminQueries.gpu_workers.select)
+      .maybeSingle();
+    if (error) throw error;
+    logAdminData("info", "set gpu worker tier", { source: "supabase", status: "connected", id, tier });
+    return adminWriteResult(operation, startedAt, { record: data });
+  } catch (err) {
+    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
+  }
+}
+
+// Heartbeats stop when a Worker is closed; after this long the node counts
+// as gone for the purpose of deleting it. Same window the control plane uses
+// to call a node offline.
+const GPU_WORKER_OFFLINE_AFTER_MS = 2 * 60 * 1000;
+
+// Removing a node row. worker_models go with it (cascade); finished tasks keep
+// their history with assigned_worker_id cleared (set null). A node that is
+// still heartbeating is refused: stop it first, so a Worker that is running
+// does not find its identity gone mid-task.
+async function deleteAdminGpuWorker(payload) {
+  const startedAt = Date.now();
+  const operation = "gpu_workers.delete";
+  const { client, result } = adminWriteClient(operation, startedAt);
+  if (!client) return result;
+
+  const id = String(payload?.id || "").trim();
+  if (!id) return adminWriteErrorResult(operation, "缺少算力节点 id", Date.now() - startedAt);
+
+  try {
+    const { data: worker, error: readError } = await client
+      .from("gpu_workers")
+      .select("id,worker_name,status,last_heartbeat")
+      .eq("id", id)
+      .maybeSingle();
+    if (readError) throw readError;
+    if (!worker) throw new Error("算力节点不存在或已删除");
+    const beat = Date.parse(worker.last_heartbeat || "") || 0;
+    const live = ["idle", "busy"].includes(String(worker.status || "")) && Date.now() - beat < GPU_WORKER_OFFLINE_AFTER_MS;
+    if (live) throw new Error("节点还在线，请先停用，等它离线后再删除");
+
+    const { data, error } = await client
+      .from("gpu_workers")
+      .delete()
+      .eq("id", id)
+      .select("id,worker_name");
+    if (error) throw error;
+    logAdminData("info", "delete gpu worker", { source: "supabase", status: "connected", id, name: worker.worker_name });
+    return adminWriteResult(operation, startedAt, { deleted: (data || []).length, record: worker });
+  } catch (err) {
+    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
+  }
+}
+
+async function deleteAdminWorkerRegistrationCode(payload) {
+  const startedAt = Date.now();
+  const operation = "web_worker_registration_codes.delete";
+  const { client, result } = adminWriteClient(operation, startedAt);
+  if (!client) return result;
+
+  const codeHash = String(payload?.codeHash || payload?.code_hash || "").trim();
+  if (!codeHash) return adminWriteErrorResult(operation, "缺少注册码标识", Date.now() - startedAt);
+
+  try {
+    const { data, error } = await client
+      .from("web_worker_registration_codes")
+      .delete()
+      .eq("code_hash", codeHash)
+      .select("code_hash,label");
+    if (error) throw error;
+    logAdminData("info", "delete worker registration code", { source: "supabase", status: "connected", deleted: (data || []).length });
+    return adminWriteResult(operation, startedAt, { deleted: (data || []).length });
+  } catch (err) {
+    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
+  }
+}
+
+// Every code that can no longer admit a machine: expired, revoked (which
+// expires it) or used up. PostgREST cannot compare two columns in a filter,
+// so the spent set is worked out here from the rows.
+async function purgeAdminWorkerRegistrationCodes() {
+  const startedAt = Date.now();
+  const operation = "web_worker_registration_codes.purge";
+  const { client, result } = adminWriteClient(operation, startedAt);
+  if (!client) return result;
+
+  try {
+    const { data: rows, error: readError } = await client
+      .from("web_worker_registration_codes")
+      .select("code_hash,max_uses,used_count,expires_at")
+      .limit(1000);
+    if (readError) throw readError;
+    const now = Date.now();
+    const spent = (rows || [])
+      .filter((row) => Date.parse(row.expires_at) <= now || Number(row.used_count || 0) >= Number(row.max_uses || 1))
+      .map((row) => row.code_hash);
+    if (!spent.length) return adminWriteResult(operation, startedAt, { deleted: 0 });
+    const { data, error } = await client
+      .from("web_worker_registration_codes")
+      .delete()
+      .in("code_hash", spent)
+      .select("code_hash");
+    if (error) throw error;
+    logAdminData("info", "purge worker registration codes", { source: "supabase", status: "connected", deleted: (data || []).length });
+    return adminWriteResult(operation, startedAt, { deleted: (data || []).length });
+  } catch (err) {
+    return adminWriteErrorResult(operation, err, Date.now() - startedAt);
+  }
+}
+
+// Usage history older than N days. Only finished work goes: anything queued
+// or running belongs to the scheduler. Events cascade with their task.
+const WEB_TASK_TERMINAL_STATUSES = ["completed", "failed", "cancelled", "expired"];
+
+async function purgeAdminWebTasks(payload) {
+  const startedAt = Date.now();
+  const operation = "web_ai_tasks.purge";
+  const { client, result } = adminWriteClient(operation, startedAt);
+  if (!client) return result;
+
+  const days = Math.max(1, Math.min(3650, Math.floor(Number(payload?.olderThanDays ?? payload?.older_than_days ?? 30)) || 30));
+  const cutoff = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+
+  try {
+    const { data, error } = await client
+      .from("web_ai_tasks")
+      .delete()
+      .in("status", WEB_TASK_TERMINAL_STATUSES)
+      .lt("created_at", cutoff)
+      .select("id");
+    if (error) throw error;
+    logAdminData("info", "purge web tasks", { source: "supabase", status: "connected", days, deleted: (data || []).length });
+    return adminWriteResult(operation, startedAt, { deleted: (data || []).length, days, cutoff });
   } catch (err) {
     return adminWriteErrorResult(operation, err, Date.now() - startedAt);
   }
@@ -3653,6 +3844,11 @@ module.exports = {
   getAdminWorkerRegistrationCodes,
   createAdminWorkerRegistrationCode,
   revokeAdminWorkerRegistrationCode,
+  deleteAdminWorkerRegistrationCode,
+  purgeAdminWorkerRegistrationCodes,
+  purgeAdminWebTasks,
   setAdminGpuWorkerStatus,
+  setAdminGpuWorkerTier,
+  deleteAdminGpuWorker,
   hashWorkerRegistrationCode
 };

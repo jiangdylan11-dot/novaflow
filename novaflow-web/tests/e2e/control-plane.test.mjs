@@ -18,7 +18,7 @@ async function devLogin(email, balance) {
   return { token: res.body.session.token, user: res.body.user, credits: res.body.credits };
 }
 
-async function registerWorker({ ownerToken, name, vram = 32768, models = ['qwen-image-2511', 'minimax-h3'], endpoint }) {
+async function registerWorker({ ownerToken, code, name, vram = 32768, models = ['qwen-image-2511', 'minimax-h3'], endpoint }) {
   const workerId = uuid();
   const secret = generateWorkerSecret();
   const res = await call(BASE, 'POST', '/api/worker/register', {
@@ -27,6 +27,7 @@ async function registerWorker({ ownerToken, name, vram = 32768, models = ['qwen-
       worker_id: workerId,
       worker_name: name,
       worker_secret: secret,
+      ...(code ? { registration_code: code } : {}),
       hardware: {
         gpu_name: 'NVIDIA GeForce RTX 5090',
         vram_mb: vram,
@@ -388,6 +389,70 @@ section('算力源 picker: the pool is listed, and a pinned task waits for its n
   const basicTrial = (await call(BASE, 'POST', '/dev/login', { body: { email: 'basic@novaflow.local', plan: 'trial' } })).body.session.token;
   const basicNodes = await call(BASE, 'GET', '/api/web/nodes', { token: basicTrial });
   check('a 普通账户 sees the list but may not pin', basicNodes.status === 200 && basicNodes.body.compute.shared === false, basicNodes.body.compute);
+}
+
+// ---------------------------------------------------------------------------
+section('node tiers: a 中级账户 keeps to 普通 nodes, a 高级账户 uses every node');
+{
+  const body = { task_type: 'qwen_t2i', parameters: { prompt: 'tiers', width: 1024, height: 1024, steps: 20, count: 1 } };
+  const mid = (await call(BASE, 'POST', '/dev/login', { body: { email: 'mid@novaflow.local', balance: 5000, plan: 'standard' } })).body.session.token;
+  // Nothing else may be queued, so the claims below can only pick up what
+  // this section creates.
+  for (const token of [alice.token, bob.token, mid]) {
+    const list = await call(BASE, 'GET', '/api/web/tasks?limit=100', { token });
+    for (const task of list.body.tasks) if (task.status === TASK_STATE.QUEUED) await call(BASE, 'POST', '/api/web/tasks/' + task.id + '/cancel', { token });
+  }
+
+  // The registration code decides the tier a machine joins as.
+  const premiumCode = await call(BASE, 'POST', '/api/web/workers/codes', { token: alice.token, body: { label: 'cloud-a100', tier: 'premium' } });
+  check('a registration code can admit 高级 nodes', premiumCode.status === 200 && premiumCode.body.tier === 'premium', premiumCode.body);
+  const standardCode = await call(BASE, 'POST', '/api/web/workers/codes', { token: alice.token, body: { label: 'home-4090' } });
+  check('and admits 普通 nodes unless told otherwise', standardCode.body.tier === 'standard', standardCode.body);
+  const premium = await registerWorker({ code: premiumCode.body.registration_code, name: 'tier-premium', models: ['qwen-image-2511'] });
+  const standard = await registerWorker({ code: standardCode.body.registration_code, name: 'tier-standard', models: ['qwen-image-2511'] });
+  check('a machine joins with the tier of its code',
+    premium.res.body.worker.tier === 'premium' && standard.res.body.worker.tier === 'standard',
+    [premium.res.body.worker.tier, standard.res.body.worker.tier]);
+  const codes = await call(BASE, 'GET', '/api/web/workers/codes', { token: alice.token });
+  check('the owner\'s code list shows each code\'s tier',
+    codes.body.codes.some((c) => c.label === 'cloud-a100' && c.tier === 'premium') && codes.body.codes.some((c) => c.label === 'home-4090' && c.tier === 'standard'),
+    codes.body.codes);
+
+  const listed = await call(BASE, 'GET', '/api/web/nodes', { token: alice.token });
+  const tierByName = Object.fromEntries(listed.body.nodes.map((n) => [n.name, n.tier]));
+  check('the picker listing says which tier each node is',
+    tierByName['tier-premium'] === 'premium' && tierByName['tier-standard'] === 'standard' && tierByName['studio-5090'] === 'standard', tierByName);
+  check('and that a 高级账户 may use 高级 nodes', listed.body.compute.shared === true && listed.body.compute.premium === true, listed.body.compute);
+
+  const midMe = await call(BASE, 'GET', '/api/web/me', { token: mid });
+  check('a 中级账户 has shared compute but no 高级 nodes',
+    midMe.body.user.plan === 'standard' && midMe.body.compute.shared === true && midMe.body.compute.premium === false, midMe.body);
+  const midNodes = await call(BASE, 'GET', '/api/web/nodes', { token: mid });
+  check('the picker tells it so', midNodes.body.compute.shared === true && midNodes.body.compute.premium === false, midNodes.body.compute);
+
+  const pinnedPremium = await call(BASE, 'POST', '/api/web/tasks', { token: mid, body: { ...body, target_worker_id: premium.workerId } });
+  check('pinning a 高级 node is refused for a 中级账户',
+    pinnedPremium.status === 403 && pinnedPremium.body.code === 'node_tier_required' && /高级账户/.test(pinnedPremium.body.error), pinnedPremium.body);
+  const pinnedStandard = await call(BASE, 'POST', '/api/web/tasks', { token: mid, body: { ...body, target_worker_id: standard.workerId } });
+  check('pinning a 普通 node is allowed', pinnedStandard.status === 200 && pinnedStandard.body.target.id === standard.workerId, pinnedStandard.body);
+  await call(BASE, 'POST', '/api/web/tasks/' + pinnedStandard.body.task.id + '/cancel', { token: mid });
+
+  const midAuto = await call(BASE, 'POST', '/api/web/tasks', { token: mid, body });
+  check('an unpinned 中级 task is created', midAuto.status === 200 && midAuto.body.task.status === TASK_STATE.QUEUED, midAuto.body);
+  const proAuto = await call(BASE, 'POST', '/api/web/tasks', { token: alice.token, body });
+  check('a 高级账户 counts one more capable node - the 高级 one',
+    proAuto.body.capableWorkers === midAuto.body.capableWorkers + 1, [midAuto.body.capableWorkers, proAuto.body.capableWorkers]);
+  const wrongTier = await call(BASE, 'POST', '/api/worker/claim', { token: premium.workerToken });
+  check('a 高级 node skips the 中级 task and takes the 高级 account\'s instead',
+    !!(wrongTier.body.task && wrongTier.body.task.id === proAuto.body.task.id), wrongTier.body);
+  const rightTier = await call(BASE, 'POST', '/api/worker/claim', { token: standard.workerToken });
+  check('a 普通 node takes the 中级 task', !!(rightTier.body.task && rightTier.body.task.id === midAuto.body.task.id), rightTier.body);
+
+  // Re-registering keeps whatever tier the node has; a code cannot demote it.
+  const again = await call(BASE, 'POST', '/api/worker/register', {
+    body: { worker_id: premium.workerId, worker_name: 'tier-premium', worker_secret: premium.secret, registration_code: standardCode.body.registration_code, hardware: { vram_mb: 81920 } }
+  });
+  check('re-registration keeps the node\'s tier', again.status === 200 && again.body.worker.tier === 'premium', again.body);
 }
 
 finish('control-plane');

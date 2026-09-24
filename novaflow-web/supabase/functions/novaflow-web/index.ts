@@ -140,17 +140,19 @@ const supabaseStore = {
     return Number(data || 0);
   },
 
-  async countCapableWorkers(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number, workerId: string | null = null) {
+  async countCapableWorkers(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number, workerId: string | null = null, allowPremium = true) {
     const since = new Date(Date.now() - heartbeatTimeoutSeconds * 1000).toISOString();
     let query = admin()
       .from('worker_models')
-      .select('worker_id, gpu_workers!inner(id,status,vram_mb,last_heartbeat)')
+      .select('worker_id, gpu_workers!inner(id,status,tier,vram_mb,last_heartbeat)')
       .eq('model_id', modelId)
       .eq('status', 'ready')
       .in('gpu_workers.status', ['idle', 'busy'])
       .gte('gpu_workers.vram_mb', minVramMb)
       .gt('gpu_workers.last_heartbeat', since);
     if (workerId) query = query.eq('worker_id', workerId);
+    // A 中级账户 counts 普通 nodes alone.
+    if (allowPremium === false) query = query.neq('gpu_workers.tier', 'premium');
     const { data, error } = await query;
     if (error) throw error;
     return (data || []).length;
@@ -159,10 +161,21 @@ const supabaseStore = {
   async listPoolWorkers() {
     const { data, error } = await admin()
       .from('gpu_workers')
-      .select('id,worker_name,status,gpu_name,vram_mb,last_heartbeat')
+      .select('id,worker_name,status,tier,gpu_name,vram_mb,last_heartbeat')
       .order('worker_name');
     if (error) throw error;
     return data || [];
+  },
+
+  async setWorkerTier(workerId: string, tier: string) {
+    const { data, error } = await admin()
+      .from('gpu_workers')
+      .update({ tier: tier === 'premium' ? 'premium' : 'standard', updated_at: new Date().toISOString() })
+      .eq('id', workerId)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
   },
 
   async listCapableModelDetails(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number) {
@@ -259,12 +272,13 @@ const supabaseStore = {
     return Number(data || 0);
   },
 
-  async createRegistrationCode({ ownerId, codeHash, label, maxUses, expiresAt }: any) {
+  async createRegistrationCode({ ownerId, codeHash, label, maxUses, expiresAt, tier }: any) {
     const { data, error } = await admin()
       .from('web_worker_registration_codes')
       .insert({
         code_hash: codeHash, owner_id: ownerId,
-        label: label || '', max_uses: maxUses || 1, expires_at: expiresAt
+        label: label || '', max_uses: maxUses || 1, expires_at: expiresAt,
+        tier: tier === 'premium' ? 'premium' : 'standard'
       })
       .select()
       .maybeSingle();
@@ -275,7 +289,7 @@ const supabaseStore = {
   async listRegistrationCodes(ownerId: string) {
     const { data, error } = await admin()
       .from('web_worker_registration_codes')
-      .select('label, max_uses, used_count, expires_at, created_at')
+      .select('label, tier, max_uses, used_count, expires_at, created_at')
       .eq('owner_id', ownerId)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -301,7 +315,7 @@ const supabaseStore = {
     // use matches zero rows and is rejected.
     const { data: row, error } = await admin()
       .from('web_worker_registration_codes')
-      .select('code_hash, owner_id, label, max_uses, used_count, expires_at')
+      .select('code_hash, owner_id, label, tier, max_uses, used_count, expires_at')
       .eq('code_hash', codeHash)
       .gt('expires_at', new Date().toISOString())
       .maybeSingle();
@@ -313,7 +327,7 @@ const supabaseStore = {
       .update({ used_count: row.used_count + 1 })
       .eq('code_hash', codeHash)
       .eq('used_count', row.used_count)
-      .select('owner_id, label')
+      .select('owner_id, label, tier')
       .maybeSingle();
     if (claimError) throw claimError;
     return claimed || null;

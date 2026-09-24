@@ -79,6 +79,21 @@ function registerLicenseAdminIpc() {
     }
   });
 
+  const registerAdminDataWrite = (channel, writer) => {
+    ipcMain.handle(channel, async (_evt, payload) => {
+      try {
+        return { ok: true, result: await writer(payload) };
+      } catch (err) {
+        return { ok: false, error: String(err?.message || err) };
+      }
+    });
+  };
+  registerAdminDataWrite("admin:data:gpu_workers:set-tier", adminData.setAdminGpuWorkerTier);
+  registerAdminDataWrite("admin:data:gpu_workers:delete", adminData.deleteAdminGpuWorker);
+  registerAdminDataWrite("admin:data:worker_codes:delete", adminData.deleteAdminWorkerRegistrationCode);
+  registerAdminDataWrite("admin:data:worker_codes:purge", adminData.purgeAdminWorkerRegistrationCodes);
+  registerAdminDataWrite("admin:data:web_tasks:purge", adminData.purgeAdminWebTasks);
+
   ipcMain.handle("admin:data:provider_quotas:list", async (_evt, payload) => {
     try {
       const result = await adminData.getAdminProviderCallQuotas({ providerKey: payload?.providerKey || payload?.provider_key || "grok" });

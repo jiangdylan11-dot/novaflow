@@ -24,8 +24,16 @@
   const CHIP_ID = 'novaflow-web-compute-node-chip';
   const DIALOG_ID = 'novaflow-web-compute-node-dialog';
   const STYLE_ID = 'novaflow-web-compute-node-style';
-  const CONTACT_ADMIN = '普通账户只能使用本机算力。需要使用其他算力节点，请联系管理员开通高级账户。';
+  const CONTACT_ADMIN = '普通账户只能使用本机算力。需要使用其他算力节点，请联系管理员开通中级或高级账户。';
+  const PREMIUM_LOCKED = '中级账户只能使用普通算力节点。需要使用高级算力节点，请联系管理员升级为高级账户。';
   const STATUS_TEXT = { idle: '空闲', busy: '忙碌', offline: '离线', local: '本机', auto: '自动' };
+  const TIER_TEXT = { standard: '普通节点', premium: '高级节点' };
+  // The pool is shown in two groups. A 中级账户 may pick from the first only;
+  // a 高级账户 from both. The order is the order of the tiers.
+  const TIER_GROUPS = [
+    { tier: 'standard', title: '普通算力节点', hint: '中级及以上账户可用' },
+    { tier: 'premium', title: '高级算力节点', hint: '仅高级账户可用' }
+  ];
 
   const runtime = () => root.NovaFlowWebRuntime || null;
   const api = () => root.electronAPI || {};
@@ -54,6 +62,10 @@
     '#' + DIALOG_ID + ' .nf-node-row[aria-disabled="true"]{opacity:.55;cursor:not-allowed}',
     '#' + DIALOG_ID + ' .nf-node-name{font-size:13px;font-weight:600}',
     '#' + DIALOG_ID + ' .nf-node-hint{margin-top:2px;font-size:11px;color:#8d8d8d}',
+    '#' + DIALOG_ID + ' .nf-node-group{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px 2px 2px;font-size:11px;color:#8d8d8d}',
+    '#' + DIALOG_ID + ' .nf-node-group b{font-size:12px;font-weight:600;color:#c9c9c9}',
+    '#' + DIALOG_ID + ' .nf-node-tier{display:inline-block;margin-left:6px;padding:1px 6px;border-radius:999px;font-size:10px;font-weight:500;vertical-align:1px;background:#2a2a2a;color:#a0a0a0}',
+    '#' + DIALOG_ID + ' .nf-node-tier[data-tier="premium"]{background:#3a2f12;color:#facc15}',
     '#' + DIALOG_ID + ' .nf-node-badge{flex:0 0 auto;padding:3px 8px;border-radius:999px;font-size:11px;background:#2a2a2a;color:#a0a0a0}',
     '#' + DIALOG_ID + ' .nf-node-badge[data-status="idle"]{background:#153b2e;color:#7ce8b5}',
     '#' + DIALOG_ID + ' .nf-node-badge[data-status="busy"]{background:#3a2f12;color:#facc15}',
@@ -96,28 +108,45 @@
    * The rows of the picker, as data. `reply` is GET /api/web/nodes; `current`
    * the pinned node; `localAssistant` whether this page was opened by the
    * local assistant (then the first row is that machine, otherwise the pool).
+   *
+   * `allowed` is whether this account may pin any pool node (中级 or 高级);
+   * `premium` whether it may also pin a 高级 node. Pool rows carry their tier
+   * and come back grouped by it, so the dialog can head each group.
    */
   function buildRows(reply, current, localAssistant) {
     const allowed = !!(reply && reply.compute && reply.compute.shared);
+    const premium = allowed && !!(reply.compute.premium);
     const nodes = (reply && Array.isArray(reply.nodes)) ? reply.nodes : [];
     const rows = [];
     if (localAssistant) {
       rows.push({ id: null, name: '本机', hint: '启动NovaFlow 的这台电脑', status: 'local', locked: false, selected: !current });
     } else {
-      rows.push({ id: null, name: '自动分配', hint: '任意空闲的算力节点', status: 'auto', locked: !allowed, selected: !current });
+      rows.push({
+        id: null,
+        name: '自动分配',
+        hint: premium ? '任意空闲的算力节点' : '任意空闲的普通算力节点',
+        status: 'auto',
+        locked: !allowed,
+        selected: !current
+      });
     }
     for (const n of nodes) {
       const status = ['idle', 'busy', 'offline'].includes(String(n.status)) ? String(n.status) : (n.online ? 'busy' : 'offline');
+      const tier = String(n.tier) === 'premium' ? 'premium' : 'standard';
       rows.push({
         id: String(n.id),
         name: String(n.name || '未命名节点'),
         hint: [n.gpu_name, vramText(n.vram_mb)].filter(Boolean).join(' · ') || '算力节点',
+        tier,
         status,
-        locked: !allowed,
+        locked: !allowed || (tier === 'premium' && !premium),
         selected: !!(current && String(current.id) === String(n.id))
       });
     }
-    return { allowed, rows };
+    const groups = TIER_GROUPS
+      .map((group) => ({ tier: group.tier, title: group.title, hint: group.hint, rows: rows.filter((r) => r.id && r.tier === group.tier) }))
+      .filter((group) => group.rows.length);
+    return { allowed, premium, rows, groups };
   }
 
   // ------------------------------------------------------------------ chip
@@ -169,7 +198,13 @@
     if (row.selected) btn.setAttribute('aria-current', 'true');
     if (row.locked) btn.setAttribute('aria-disabled', 'true');
     const main = el('div', 'nf-node-main');
-    main.appendChild(el('div', 'nf-node-name', row.name));
+    const name = el('div', 'nf-node-name', row.name);
+    if (row.tier) {
+      const tier = el('span', 'nf-node-tier', TIER_TEXT[row.tier] || row.tier);
+      tier.setAttribute('data-tier', row.tier);
+      name.appendChild(tier);
+    }
+    main.appendChild(name);
     main.appendChild(el('div', 'nf-node-hint', row.hint));
     btn.appendChild(main);
     const badge = el('span', 'nf-node-badge', STATUS_TEXT[row.status] || row.status);
@@ -219,22 +254,36 @@
     }
     if (!backdrop.isConnected) return;
 
-    const { allowed, rows } = buildRows(reply, rt.computeNode, rt.localAssistant);
+    const { allowed, premium, rows, groups } = buildRows(reply, rt.computeNode, rt.localAssistant);
     const pick = (row) => {
-      if (row.locked) { note.classList.add('nf-node-warn'); note.textContent = CONTACT_ADMIN; return; }
+      if (row.locked) {
+        note.classList.add('nf-node-warn');
+        note.textContent = allowed && row.tier === 'premium' ? PREMIUM_LOCKED : CONTACT_ADMIN;
+        return;
+      }
       rt.setComputeNode(row.id ? { id: row.id, name: row.name } : null);
       close();
       render();
       void probe();
     };
-    for (const row of rows) list.appendChild(rowNode(row, pick));
+    // The default source first, then the pool in its two tiers, each headed.
+    list.appendChild(rowNode(rows[0], pick));
+    for (const group of groups) {
+      const head = el('div', 'nf-node-group');
+      head.appendChild(el('b', '', group.title));
+      head.appendChild(el('span', '', group.hint));
+      list.appendChild(head);
+      for (const row of group.rows) list.appendChild(rowNode(row, pick));
+    }
     if (!allowed) {
       note.classList.add('nf-node-warn');
       note.textContent = CONTACT_ADMIN;
+    } else if (rows.length <= 1) {
+      note.textContent = '算力池里还没有其他节点。';
+    } else if (!premium) {
+      note.textContent = '点击节点即切换。中级账户只能选普通算力节点，「自动分配」也只会落到普通节点；高级算力节点需要高级账户。';
     } else {
-      note.textContent = rows.length > 1
-        ? '点击节点即切换。「空闲」表示现在就能开始，「忙碌」会排队等它，「离线」要等它重新上线。'
-        : '算力池里还没有其他节点。';
+      note.textContent = '点击节点即切换。「空闲」表示现在就能开始，「忙碌」会排队等它，「离线」要等它重新上线。';
     }
   }
 
@@ -270,5 +319,5 @@
     if (mount() || attempts > 120) clearInterval(timer);
   }, 500);
 
-  root.NovaFlowWebComputeNode = { open, close, mount, render, chipText, buildRows, CONTACT_ADMIN };
+  root.NovaFlowWebComputeNode = { open, close, mount, render, chipText, buildRows, CONTACT_ADMIN, PREMIUM_LOCKED, TIER_TEXT };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

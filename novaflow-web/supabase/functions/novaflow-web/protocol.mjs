@@ -211,13 +211,45 @@ export const GATEWAY_ROUTES = Object.freeze({
   preview: (taskId, name) => '/gw/tasks/' + taskId + '/preview/' + name
 });
 
-// Account tiers. `users.plan` is what the administrator sets: a 普通账户
-// (trial) may only run on the machine 启动NovaFlow opened, a 高级账户 (pro or
-// team) may also queue work for other people's nodes in the shared pool.
-export const SHARED_COMPUTE_PLANS = Object.freeze(['pro', 'team']);
+// Account tiers. `users.plan` is what the administrator sets:
+//
+//   trial      普通账户  only the machine 启动NovaFlow opened; no pool node
+//   standard   中级账户  pool nodes marked 普通 (standard), not 高级 ones
+//   pro / team 高级账户  every pool node, 普通 and 高级 alike
+//
+// Anything else reads as trial, so a typo in the database can only take
+// access away, never grant it.
+export const PLAN_TIERS = Object.freeze(['trial', 'standard', 'pro', 'team']);
+export const SHARED_COMPUTE_PLANS = Object.freeze(['standard', 'pro', 'team']);
+export const PREMIUM_NODE_PLANS = Object.freeze(['pro', 'team']);
+
+export function normalizePlan(plan) {
+  const key = String(plan || 'trial').trim().toLowerCase();
+  return PLAN_TIERS.includes(key) ? key : 'trial';
+}
 
 export function canUseSharedCompute(plan) {
-  return SHARED_COMPUTE_PLANS.includes(String(plan || 'trial').trim().toLowerCase());
+  return SHARED_COMPUTE_PLANS.includes(normalizePlan(plan));
+}
+
+export function canUsePremiumNodes(plan) {
+  return PREMIUM_NODE_PLANS.includes(normalizePlan(plan));
+}
+
+// Node tiers. Every pool node is 普通 (standard) or 高级 (premium). The
+// registration code that admits a machine decides its tier, and the
+// administrator may change it afterwards; the scheduler and the picker both
+// read it from gpu_workers.tier.
+export const NODE_TIERS = Object.freeze(['standard', 'premium']);
+
+export function normalizeNodeTier(tier) {
+  return String(tier || '').trim().toLowerCase() === 'premium' ? 'premium' : 'standard';
+}
+
+/** May an account with this plan run work on a node of this tier? */
+export function planAllowsNode(plan, tier) {
+  if (!canUseSharedCompute(plan)) return false;
+  return normalizeNodeTier(tier) === 'standard' || canUsePremiumNodes(plan);
 }
 
 export const ERROR_CODE = Object.freeze({
@@ -229,6 +261,7 @@ export const ERROR_CODE = Object.freeze({
   CONFLICT: 'conflict',
   INSUFFICIENT_CREDITS: 'insufficient_credits',
   PLAN_REQUIRED: 'plan_required',
+  NODE_TIER_REQUIRED: 'node_tier_required',
   NO_WORKER: 'no_capable_worker',
   RATE_LIMITED: 'rate_limited',
   UNAVAILABLE: 'unavailable'

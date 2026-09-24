@@ -35,7 +35,10 @@ import {
   TASK_TYPE_REQUIREMENTS,
   TTL_SECONDS,
   canUseSharedCompute,
+  canUsePremiumNodes,
   isKnownTaskType,
+  normalizeNodeTier,
+  planAllowsNode,
   requirementsFor
 } from './protocol.mjs';
 
@@ -342,6 +345,10 @@ export function createControlPlane({ store, secrets, logger }) {
     }
 
     let ownerId = '';
+    // The code that admits a machine also says which tier it joins as (普通 /
+    // 高级节点). An owner registering their own machine gets 普通; the
+    // administrator can change either later.
+    let tier = '';
     const code = sanitizeText(body.registration_code || body.registrationCode, 200).trim();
     if (existing) {
       // An existing worker keeps its owner; a registration code cannot move it.
@@ -351,6 +358,7 @@ export function createControlPlane({ store, secrets, logger }) {
       const owner = await store.consumeRegistrationCode(codeHash);
       if (!owner) throw new HttpError(401, ERROR_CODE.UNAUTHORIZED, 'registration code is invalid or used up');
       ownerId = String(owner.owner_id);
+      tier = normalizeNodeTier(owner.tier);
     } else {
       const user = await requireUser(headers);
       ownerId = String(user.id);
@@ -376,9 +384,16 @@ export function createControlPlane({ store, secrets, logger }) {
       }
     });
 
+    // Re-registration keeps whatever tier the administrator set; only a fresh
+    // machine takes the tier from its code.
+    if (!existing && tier) {
+      const retiered = await store.setWorkerTier(registered.id, tier);
+      if (retiered) Object.assign(registered, retiered);
+    }
+
     const token = await issueWorkerToken(registered, controlSecret, 24 * 3600);
     const grantKey = await deriveWorkerGrantKey(registered.id, controlSecret);
-    log('worker registered', { workerId: registered.id, name: workerName });
+    log('worker registered', { workerId: registered.id, name: workerName, tier: normalizeNodeTier(registered.tier) });
     return {
       ok: true,
       worker: publicWorker(registered),
@@ -592,9 +607,12 @@ export function createControlPlane({ store, secrets, logger }) {
     // to its own machine (the local assistant never calls this endpoint).
     if (!canUseSharedCompute(user.plan)) {
       throw new HttpError(403, ERROR_CODE.PLAN_REQUIRED,
-        '普通账户只能使用本机算力：请在本地助手点击“启动NovaFlow”后生成。使用其他算力节点需要高级账户。',
+        '普通账户只能使用本机算力：请在本地助手点击“启动NovaFlow”后生成。使用其他算力节点需要中级或高级账户。',
         { plan: String(user.plan || 'trial') });
     }
+    // A 中级账户 may use 普通 nodes only; the scheduler reads this flag off the
+    // task so a 高级 node never picks its work up, pinned or not.
+    const allowPremiumNodes = canUsePremiumNodes(user.plan);
     const taskType = sanitizeText(body.task_type || body.taskType, 80);
 
     // Two ways in. A fixed task type is the simple API. A renderer workflow
@@ -649,11 +667,18 @@ export function createControlPlane({ store, secrets, logger }) {
       if (!UUID_RE.test(targetId)) throw bad('invalid compute node id');
       target = await store.getWorkerById(targetId);
       if (!target) throw new HttpError(404, ERROR_CODE.NOT_FOUND, '所选算力节点不存在或已移除，请重新选择算力源');
+      if (!planAllowsNode(user.plan, target.tier)) {
+        throw new HttpError(403, ERROR_CODE.NODE_TIER_REQUIRED,
+          '中级账户只能使用普通算力节点；使用高级算力节点需要高级账户。',
+          { plan: String(user.plan || 'trial'), node_tier: normalizeNodeTier(target.tier) });
+      }
     }
 
     // Fail fast when nothing online can run it, instead of parking the task in
-    // a queue nobody drains. Pinned work counts its node alone.
-    const capable = await store.countCapableWorkers(req.modelId, req.minVramMb, HEARTBEAT_TIMEOUT_SECONDS, target ? target.id : null);
+    // a queue nobody drains. Pinned work counts its node alone; a 中级账户
+    // counts 普通 nodes alone.
+    const capable = await store.countCapableWorkers(req.modelId, req.minVramMb, HEARTBEAT_TIMEOUT_SECONDS,
+      target ? target.id : null, allowPremiumNodes);
     const inputManifest = {
       parameters,
       min_vram_mb: req.minVramMb,
@@ -662,7 +687,8 @@ export function createControlPlane({ store, secrets, logger }) {
       workflow: inputWorkflow,
       references: sanitizeReferences(body.references),
       target_worker_id: target ? target.id : null,
-      target_worker_name: target ? target.worker_name : null
+      target_worker_name: target ? target.worker_name : null,
+      allow_premium_nodes: allowPremiumNodes
     };
 
     const task = await store.createTask({
@@ -811,15 +837,18 @@ export function createControlPlane({ store, secrets, logger }) {
     const codeHash = await sha256Hex('novaflow-web-registration-code:v1:' + code);
     const expiresAt = new Date(Date.now() + days * 24 * 3600 * 1000).toISOString();
 
+    // Which tier the machines this code admits join as: 普通 unless asked.
+    const tier = normalizeNodeTier(body.tier ?? body.node_tier ?? body.nodeTier);
     await store.createRegistrationCode({
-      ownerId: user.id, codeHash, label, maxUses, expiresAt
+      ownerId: user.id, codeHash, label, maxUses, expiresAt, tier
     });
 
-    log('registration code minted', { owner: user.id, maxUses, days });
+    log('registration code minted', { owner: user.id, maxUses, days, tier });
     return {
       ok: true,
       registration_code: code,
       label,
+      tier,
       max_uses: maxUses,
       expires_at: expiresAt,
       instructions: '在新机器上安装 NovaFlowWorkerSetup.exe，填入控制面地址和这个注册码，点启动即可。'
@@ -834,6 +863,7 @@ export function createControlPlane({ store, secrets, logger }) {
       ok: true,
       codes: rows.map((r) => ({
         label: r.label,
+        tier: normalizeNodeTier(r.tier),
         max_uses: r.max_uses,
         used_count: r.used_count,
         remaining: Math.max(0, Number(r.max_uses) - Number(r.used_count)),
@@ -873,12 +903,18 @@ export function createControlPlane({ store, secrets, logger }) {
         name: w.worker_name,
         gpu_name: w.gpu_name || '',
         vram_mb: Number(w.vram_mb) || 0,
+        tier: normalizeNodeTier(w.tier),
         status: online ? String(w.status) : 'offline',
         online,
         last_heartbeat: w.last_heartbeat || null
       };
     }).sort((a, b) => (rank[a.status] - rank[b.status]) || String(a.name).localeCompare(String(b.name), 'zh-CN'));
-    return { ok: true, nodes, compute: { shared: canUseSharedCompute(user.plan) } };
+    return {
+      ok: true,
+      nodes,
+      // shared: may pin any 普通 node; premium: may also pin a 高级 node.
+      compute: { shared: canUseSharedCompute(user.plan), premium: canUsePremiumNodes(user.plan) }
+    };
   }
 
   // The credit balance the Web app shows. Read here rather than from
@@ -891,7 +927,7 @@ export function createControlPlane({ store, secrets, logger }) {
       ok: true,
       user: { id: user.id, email: user.email, display_name: user.display_name || '', plan: String(user.plan || 'trial') },
       credits: { balance: Number(balance) },
-      compute: { shared: canUseSharedCompute(user.plan) }
+      compute: { shared: canUseSharedCompute(user.plan), premium: canUsePremiumNodes(user.plan) }
     };
   }
 
@@ -1078,6 +1114,7 @@ function publicWorker(worker) {
     id: worker.id,
     worker_name: worker.worker_name,
     status: worker.status,
+    tier: normalizeNodeTier(worker.tier),
     gpu_name: worker.gpu_name,
     vram_mb: worker.vram_mb,
     ram_mb: worker.ram_mb,

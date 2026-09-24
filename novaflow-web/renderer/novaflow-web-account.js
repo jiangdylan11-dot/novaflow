@@ -89,9 +89,9 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
   function tierText(plan) {
     if (!plan) return '账户类型读取中…';
     const key = String(plan).trim().toLowerCase();
-    return key === 'pro' || key === 'team'
-      ? '高级账户 · 可使用共享算力节点，也可使用本机算力'
-      : '普通账户 · 只能使用本机算力（在本地助手点击“启动NovaFlow”）';
+    if (key === 'pro' || key === 'team') return '高级账户 · 可使用所有算力节点（普通和高级），也可使用本机算力';
+    if (key === 'standard') return '中级账户 · 可使用普通算力节点，也可使用本机算力；高级算力节点需要高级账户';
+    return '普通账户 · 只能使用本机算力（在本地助手点击“启动NovaFlow”）';
   }
 
   async function currentUser() {

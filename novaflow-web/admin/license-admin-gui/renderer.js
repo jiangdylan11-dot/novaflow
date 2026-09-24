@@ -89,12 +89,27 @@ const USER_STATUS_OPTIONS = [
 ];
 
 // users.plan decides where a user's work may run: 普通 (trial) only on the
-// machine the local assistant opened, 高级 (pro / team) also on other nodes.
+// machine the local assistant opened, 中级 (standard) also on 普通 pool
+// nodes, 高级 (pro / team) on every pool node.
 const USER_PLAN_OPTIONS = [
-  ["trial", "普通（本机算力）"],
-  ["pro", "高级（可用其他节点）"],
-  ["team", "团队（可用其他节点）"]
+  ["trial", "普通（仅本机）"],
+  ["standard", "中级（普通节点）"],
+  ["pro", "高级（所有节点）"],
+  ["team", "团队（所有节点）"]
 ];
+const USER_PLAN_SHORT = { trial: "普通", standard: "中级", pro: "高级", team: "团队" };
+
+// gpu_workers.tier: 普通 nodes serve 中级 and 高级 accounts, 高级 nodes serve
+// 高级 accounts only.
+const GPU_WORKER_TIER_OPTIONS = [
+  ["standard", "普通节点"],
+  ["premium", "高级节点"]
+];
+const GPU_WORKER_TIER_TEXT = { standard: "普通节点", premium: "高级节点" };
+
+function normalizeGpuWorkerTier(value) {
+  return String(value || "").trim().toLowerCase() === "premium" ? "premium" : "standard";
+}
 
 function setGlobalStatus(text, tone, options = {}) {
   if (adminDataStatusLocked && !options.force) return;
@@ -531,6 +546,8 @@ function updateGrokQuotaCurrent() {
   if (saveButton) saveButton.textContent = `保存 ${providerQuotaLabel(providerKey)} 次数`;
   const userId = select.value;
   const quota = (grokQuotaState.quotas || []).find((item) => String(item.user_id || "") === String(userId || ""));
+  const mode = grokQuotaMode();
+  input.placeholder = mode === "set" ? "总次数" : "次数";
   if (!userId || !quota) {
     label.textContent = "当前：-";
     if (!editing) {
@@ -540,10 +557,11 @@ function updateGrokQuotaCurrent() {
     return;
   }
   if (!editing) {
-    input.value = String(Number(quota.allocated_count || 0));
+    // 设置总次数 starts from the current total; 增加 / 扣减 from a blank amount.
+    input.value = mode === "set" ? String(Number(quota.allocated_count || 0)) : "";
     if (note) note.value = String(quota.note || "");
   }
-  label.textContent = `已用 ${formatNumber(quota.used_count || 0)} / 剩余 ${formatNumber(quota.remaining_count || 0)}`;
+  label.textContent = `已分配 ${formatNumber(quota.allocated_count || 0)} · 已用 ${formatNumber(quota.used_count || 0)} · 剩余 ${formatNumber(quota.remaining_count || 0)}`;
 }
 
 async function loadAdminDataset(apiName, badgeId) {
@@ -703,7 +721,8 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
 
   const allUsers = usersResult.records || [];
   const activeCount = allUsers.filter((user) => normalizeUserStatusValue(user.status) === "active").length;
-  const proCount = allUsers.filter((user) => normalizeUserPlanValue(user.plan) !== "trial").length;
+  const proCount = allUsers.filter((user) => ["pro", "team"].includes(normalizeUserPlanValue(user.plan))).length;
+  const standardCount = allUsers.filter((user) => normalizeUserPlanValue(user.plan) === "standard").length;
   const creditTotal = allUsers.reduce((sum, user) => {
     const credit = creditMap.get(String(user.id || ""));
     return sum + (Number(user.current_credits ?? credit?.balance ?? 0) || 0);
@@ -712,6 +731,7 @@ function renderUsers(usersResult, creditsResult, grokQuotasResult) {
   setText("usersStatActive", formatNumber(activeCount));
   setText("usersStatDisabled", formatNumber(allUsers.length - activeCount));
   setText("usersStatPro", formatNumber(proCount));
+  setText("usersStatStandard", formatNumber(standardCount));
   setText("usersStatCredits", formatCreditAmount(creditTotal));
   setText("usersCount", filter ? `匹配 ${sourceRows.length} / ${allUsers.length}` : `共 ${allUsers.length} 个`);
 
@@ -828,6 +848,74 @@ function renderCreditStats(creditsResult, quotaResult) {
   setText("creditStatEmpty", formatNumber(credits.length - funded));
   setText("quotaStatAllocated", formatNumber(allocated));
   setText("quotaStatUsed", formatNumber(used));
+}
+
+// 会员管理: one row per user with the account tier, the credit balance and the
+// prompt-service quota side by side. 「调整」 puts that user into both edit
+// forms on the right.
+let memberState = { users: [], credits: [], quotas: [], usersResult: null };
+
+function renderMembers(usersResult, creditsResult, quotaResult) {
+  const body = $("membersTableBody");
+  if (!body) return;
+  memberState = {
+    usersResult,
+    users: usersResult?.records || [],
+    credits: creditsResult?.records || [],
+    quotas: quotaResult?.records || []
+  };
+  if (isErrorResult(usersResult)) {
+    replaceRows("membersTableBody", [], 7, resultErrorText(usersResult));
+    return;
+  }
+  const creditByUser = new Map(memberState.credits.map((item) => [String(item.user_id || ""), item]));
+  const quotaByUser = new Map(memberState.quotas.map((item) => [String(item.user_id || ""), item]));
+  const filter = String($("memberSearchInput")?.value || "").trim().toLowerCase();
+  const users = memberState.users.filter((user) => !filter || searchableUserText(user).includes(filter));
+
+  const rows = users.map((user) => {
+    const userId = String(user.id || "");
+    const credit = creditByUser.get(userId);
+    const quota = quotaByUser.get(userId);
+    const plan = normalizeUserPlanValue(user.plan);
+    const tr = document.createElement("tr");
+    tr.appendChild(textCell(userAccountLabel(user) || userDisplayName(user)));
+    const planBadge = document.createElement("span");
+    planBadge.className = "badge " + (plan === "trial" ? "disabled" : plan === "standard" ? "expired" : "active");
+    planBadge.textContent = USER_PLAN_SHORT[plan] || plan;
+    tr.appendChild(nodeCell(planBadge));
+    tr.appendChild(textCell(formatCreditAmount(user.current_credits ?? credit?.balance ?? 0)));
+    tr.appendChild(textCell(formatNumber(quota?.allocated_count || 0)));
+    tr.appendChild(textCell(formatNumber(quota?.used_count || 0)));
+    tr.appendChild(textCell(formatNumber(quota?.remaining_count || 0)));
+
+    const actions = document.createElement("div");
+    actions.className = "tableActions";
+    const adjust = document.createElement("button");
+    adjust.type = "button";
+    adjust.className = "btn secondary";
+    adjust.textContent = "调整";
+    adjust.title = "在右侧调整这个用户的积分和提示词次数";
+    adjust.addEventListener("click", () => {
+      ["creditAdjustUser", "grokQuotaUser"].forEach((id) => {
+        const select = $(id);
+        if (!select) return;
+        select.value = userId;
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      document.querySelectorAll("#membersTableBody tr").forEach((row) => row.classList.toggle("active", row === tr));
+      const amount = $("creditAdjustAmount");
+      if (amount) {
+        amount.focus();
+        amount.scrollIntoView({ block: "nearest" });
+      }
+    });
+    actions.appendChild(adjust);
+    tr.appendChild(nodeCell(actions));
+    return tr;
+  });
+  setText("membersCount", filter ? `匹配 ${rows.length} / ${memberState.users.length}` : `共 ${memberState.users.length} 个`);
+  replaceRows("membersTableBody", rows, 7, filter ? "没有匹配的用户" : "暂无用户数据");
 }
 
 function renderCreditAdjustControls(usersResult, creditsResult) {
@@ -1244,7 +1332,22 @@ function renderSettings(settingsResult) {
   renderSettingRows("systemSettingsRows", rows, "暂无系统设置");
 }
 
-function renderDashboardRecentActivity(logsResult) {
+const WEB_TASK_STATUS_TEXT = {
+  created: "已创建",
+  queued: "排队中",
+  assigned: "已分配",
+  uploading: "上传中",
+  processing: "生成中",
+  completed: "已完成",
+  failed: "失败",
+  cancelled: "已取消",
+  expired: "已过期"
+};
+
+// The dashboard's 最近活动: who generated what on which node, newest first,
+// plus any credit log rows the backend still writes. The lightweight backend
+// writes no credit logs, so in practice this is the compute usage feed.
+function renderDashboardRecentActivity(data) {
   const container = $("dashboardRecentActivity");
   if (!container) return;
   container.replaceChildren();
@@ -1257,47 +1360,93 @@ function renderDashboardRecentActivity(logsResult) {
     titleEl.textContent = title || "暂无数据";
     const hintEl = document.createElement("div");
     hintEl.className = "emptyText";
-    hintEl.textContent = hint || "点击左侧创建或者刷新列表";
+    hintEl.textContent = hint || "有用户在算力节点上生成后会显示在这里";
     wrap.appendChild(titleEl);
     wrap.appendChild(hintEl);
     container.appendChild(wrap);
   };
 
-  if (isErrorResult(logsResult)) {
-    empty(resultErrorText(logsResult), "请检查 Supabase 配置或刷新列表");
+  const logsResult = data?.creditLogs;
+  const usageResult = data?.usage;
+  if (isErrorResult(usageResult)) {
+    empty(computeErrorText(usageResult), "请检查 Supabase 配置或刷新列表");
     return;
   }
 
-  const records = Array.isArray(logsResult?.records) ? logsResult.records : [];
-  if (!records.length) {
-    empty("暂无数据", logsResult?.message || "点击左侧创建或者刷新列表");
-    return;
-  }
+  const userById = new Map((data?.users?.records || []).map((user) => [String(user.id || ""), user]));
+  const workerById = new Map((data?.workers?.records || []).map((worker) => [String(worker.id || ""), worker]));
+  const items = [];
 
-  records.slice(0, 6).forEach((record) => {
-    const row = document.createElement("div");
-    row.className = "activityItem";
+  (Array.isArray(usageResult?.records) ? usageResult.records : []).forEach((task) => {
+    const user = userById.get(String(task.user_id || ""));
+    const worker = workerById.get(String(task.assigned_worker_id || ""));
+    const account = userAccountLabel(user) || user?.display_name || String(task.user_id || "").slice(0, 8) || "(未知用户)";
+    const node = worker?.worker_name || (task.assigned_worker_id ? String(task.assigned_worker_id).slice(0, 8) : "尚未分配节点");
+    items.push({
+      at: task.completed_at || task.created_at || "",
+      title: `${account} 在 ${node} 生成`,
+      meta: String(task.task_type || "任务"),
+      status: String(task.status || ""),
+      statusText: WEB_TASK_STATUS_TEXT[task.status] || String(task.status || "-")
+    });
+  });
 
-    const main = document.createElement("div");
-    const title = document.createElement("div");
-    title.className = "activityTitle";
-    title.textContent = String(record.feature || record.source || record.mode || "后台记录");
-    const meta = document.createElement("div");
-    meta.className = "activityMeta";
+  (Array.isArray(logsResult?.records) && !isErrorResult(logsResult) ? logsResult.records : []).forEach((record) => {
     const account = record.email || record.user_id || record.userId || "-";
     const amount = record.amount ?? record.balance ?? record.delta ?? "-";
-    meta.textContent = `${account} · ${formatCreditAmount(amount)}`;
-    main.appendChild(title);
-    main.appendChild(meta);
-
-    const time = document.createElement("div");
-    time.className = "activityTime";
-    time.textContent = formatDateTime(record.created_at || record.updated_at || record.at);
-
-    row.appendChild(main);
-    row.appendChild(time);
-    container.appendChild(row);
+    items.push({
+      at: record.created_at || record.updated_at || record.at || "",
+      title: String(record.feature || record.source || record.mode || "后台记录"),
+      meta: `${account} · ${formatCreditAmount(amount)}`,
+      status: "",
+      statusText: ""
+    });
   });
+
+  if (!items.length) {
+    empty("暂无活动", usageResult?.message || logsResult?.message || "有用户在算力节点上生成后会显示在这里");
+    return;
+  }
+
+  items
+    .sort((a, b) => String(b.at).localeCompare(String(a.at)))
+    .slice(0, 8)
+    .forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "activityItem";
+
+      const main = document.createElement("div");
+      main.className = "activityMain";
+      const title = document.createElement("div");
+      title.className = "activityTitle";
+      title.textContent = item.title;
+      const meta = document.createElement("div");
+      meta.className = "activityMeta";
+      meta.textContent = item.meta;
+      main.appendChild(title);
+      main.appendChild(meta);
+
+      const side = document.createElement("div");
+      side.className = "activitySide";
+      if (item.statusText) {
+        const badge = document.createElement("span");
+        const tone = item.status === "completed" ? "active"
+          : item.status === "failed" ? "error"
+          : ["cancelled", "expired"].includes(item.status) ? "disabled"
+          : "expired";
+        badge.className = `badge ${tone}`;
+        badge.textContent = item.statusText;
+        side.appendChild(badge);
+      }
+      const time = document.createElement("div");
+      time.className = "activityTime";
+      time.textContent = formatDateTime(item.at);
+      side.appendChild(time);
+
+      row.appendChild(main);
+      row.appendChild(side);
+      container.appendChild(row);
+    });
 }
 
 function renderDashboard(data) {
@@ -1322,7 +1471,7 @@ function renderDashboard(data) {
       : `生成成功后自动扣减 · ${sourceLabel}`;
   }
   setDataBadge("dashboardDataBadge", hasErrorResult(results) ? { status: "error" } : hasSupabaseResult(results) ? { source: "supabase" } : { source: "mock" });
-  renderDashboardRecentActivity(data.creditLogs);
+  renderDashboardRecentActivity(data);
 
   const activeUsers = users.filter((user) => normalizeUserStatusValue(user.status) === "active").length;
   renderSettingRows("dashboardSystemRows", [
@@ -1427,14 +1576,36 @@ function renderComputeWorkers(workersResult) {
       : "没有对外地址：只有这台机器上的浏览器能取回结果。请确认 Worker 是 0.4.0 或更新，并且能连外网。";
     tr.appendChild(address);
 
+    // 普通 / 高级节点. Changing it takes effect at once: the scheduler reads
+    // the tier off the row for every claim.
+    const tierSelect = createTableSelect(GPU_WORKER_TIER_OPTIONS, normalizeGpuWorkerTier(item.tier), !writable, "tier");
+    tierSelect.addEventListener("change", async () => {
+      tierSelect.disabled = true;
+      try {
+        const res = await window.adminAPI.setAdminGpuWorkerTier({ id: item.id, tier: tierSelect.value });
+        if (!res?.ok || res.result?.ok === false) {
+          throw new Error(String(res?.error || res?.result?.error || "修改等级失败"));
+        }
+        toast(`${item.worker_name || "节点"} 已设为${GPU_WORKER_TIER_TEXT[normalizeGpuWorkerTier(tierSelect.value)]}`);
+        await loadComputeData();
+      } catch (err) {
+        if (status) status.textContent = String(err?.message || err);
+        tierSelect.value = normalizeGpuWorkerTier(item.tier);
+        tierSelect.disabled = false;
+      }
+    });
+    tr.appendChild(nodeCell(tierSelect));
+
     tr.appendChild(nodeCell(statusBadge(COMPUTE_WORKER_STATUS[item.status] || item.status)));
 
     const action = document.createElement("td");
     if (writable) {
+      const actions = document.createElement("div");
+      actions.className = "tableActions";
       const stopped = item.status === "maintenance";
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "btn";
+      button.className = "btn secondary";
       button.textContent = stopped ? "恢复" : "停用";
       button.addEventListener("click", async () => {
         button.disabled = true;
@@ -1452,7 +1623,44 @@ function renderComputeWorkers(workersResult) {
           button.disabled = false;
         }
       });
-      action.appendChild(button);
+      actions.appendChild(button);
+
+      // A node that is gone for good. Only once it stopped heartbeating (or
+      // was taken out of service), so a running Worker never loses its row.
+      const beat = Date.parse(item.last_heartbeat || "") || 0;
+      const live = ["idle", "busy"].includes(String(item.status || "")) && Date.now() - beat < 2 * 60 * 1000;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "btn danger";
+      remove.textContent = "删除";
+      remove.disabled = live;
+      remove.title = live ? "节点在线时不能删除：先停用，等它离线" : "删除这台节点的记录";
+      remove.addEventListener("click", async () => {
+        const name = String(item.worker_name || item.id || "");
+        const confirmed = await confirmByTyping({
+          title: "删除算力节点",
+          hint: name,
+          warning: "会删除这台节点的记录和它上报的模型清单；已完成任务的历史保留，只是不再关联到这台机器。要重新接入需要新的注册码。",
+          label: "输入节点名称确认",
+          expected: name,
+          confirmText: "确认删除"
+        });
+        if (!confirmed) return;
+        remove.disabled = true;
+        try {
+          const res = await window.adminAPI.deleteAdminGpuWorker({ id: item.id });
+          if (!res?.ok || res.result?.ok === false) {
+            throw new Error(String(res?.error || res?.result?.error || "删除失败"));
+          }
+          toast("算力节点已删除");
+          await loadComputeData();
+        } catch (err) {
+          if (status) status.textContent = String(err?.message || err);
+          remove.disabled = false;
+        }
+      });
+      actions.appendChild(remove);
+      action.appendChild(actions);
     } else {
       action.textContent = "-";
     }
@@ -1463,7 +1671,7 @@ function renderComputeWorkers(workersResult) {
   replaceRows(
     "computeWorkersTableBody",
     rows,
-    8,
+    9,
     isErrorResult(workersResult) ? computeErrorText(workersResult) : "还没有算力节点，发一个注册码接入一台"
   );
 }
@@ -1485,21 +1693,31 @@ function renderComputeCodes(codesResult) {
 
     const tr = document.createElement("tr");
     tr.appendChild(textCell(item.label || "(无备注)"));
+    const tier = normalizeGpuWorkerTier(item.tier);
+    const tierBadge = document.createElement("span");
+    tierBadge.className = "badge " + (tier === "premium" ? "expired" : "");
+    tierBadge.textContent = GPU_WORKER_TIER_TEXT[tier];
+    tr.appendChild(nodeCell(tierBadge));
     tr.appendChild(textCell(used + " / " + max));
     tr.appendChild(textCell((expired ? "已失效 · " : "到期 ") + formatDateTime(item.expires_at)));
 
     const action = document.createElement("td");
-    if (writable && !spent) {
+    if (writable) {
       const button = document.createElement("button");
       button.type = "button";
-      button.className = "btn";
-      button.textContent = "吊销";
+      // A live code is revoked (it stays in the list as spent); a spent one
+      // can be dropped from the list for good.
+      button.className = spent ? "btn danger" : "btn secondary";
+      button.textContent = spent ? "删除" : "吊销";
       button.addEventListener("click", async () => {
+        if (spent && !confirm(`删除注册码「${item.label || "(无备注)"}」的记录？`)) return;
         button.disabled = true;
         try {
-          const res = await window.adminAPI.revokeAdminWorkerCode({ codeHash: item.code_hash });
+          const res = spent
+            ? await window.adminAPI.deleteAdminWorkerCode({ codeHash: item.code_hash })
+            : await window.adminAPI.revokeAdminWorkerCode({ codeHash: item.code_hash });
           if (!res?.ok || res.result?.ok === false) {
-            throw new Error(String(res?.error || res?.result?.error || "吊销失败"));
+            throw new Error(String(res?.error || res?.result?.error || (spent ? "删除失败" : "吊销失败")));
           }
           await loadComputeData();
         } catch (err) {
@@ -1515,10 +1733,18 @@ function renderComputeCodes(codesResult) {
     return tr;
   });
 
+  const purgeButton = $("computePurgeCodes");
+  if (purgeButton) {
+    const spentCount = (codesResult.records || []).filter((item) =>
+      Date.parse(item.expires_at) <= Date.now() || Number(item.used_count || 0) >= Number(item.max_uses || 1)).length;
+    purgeButton.disabled = !writable || !spentCount;
+    purgeButton.textContent = spentCount ? `清理失效注册码（${spentCount}）` : "清理失效注册码";
+  }
+
   replaceRows(
     "computeCodesTableBody",
     rows,
-    4,
+    5,
     isErrorResult(codesResult) ? computeErrorText(codesResult) : "还没有发出过注册码"
   );
 }
@@ -1573,6 +1799,7 @@ async function mintComputeCode() {
     const res = await window.adminAPI.createAdminWorkerCode({
       ownerId,
       label: $("computeCodeLabel")?.value || "",
+      tier: normalizeGpuWorkerTier($("computeCodeTier")?.value),
       maxUses: Number($("computeCodeUses")?.value || 1),
       validDays: Number($("computeCodeDays")?.value || 7)
     });
@@ -1617,6 +1844,8 @@ function renderComputeUsage(usageResult, usersResult, workersResult) {
         ? tasks.length + " 次生成"
         : "";
   }
+  const purgeButton = $("computePurgeUsage");
+  if (purgeButton) purgeButton.disabled = !(usageResult?.source === "supabase" && usageResult?.status !== "error") || !tasks.length;
 
   const byUser = new Map();
   for (const task of tasks) {
@@ -1663,6 +1892,46 @@ function renderComputeUsage(usageResult, usersResult, workersResult) {
   );
 }
 
+// The two "clean up" buttons on the 算力节点 page: spent registration codes,
+// and finished usage rows older than the chosen number of days.
+async function purgeComputeCodes() {
+  const button = $("computePurgeCodes");
+  const status = $("computeCodesStatus");
+  if (!confirm("删除所有已失效、已吊销或已用完的注册码记录？\n正在生效的注册码不受影响。")) return;
+  if (button) button.disabled = true;
+  try {
+    const res = await window.adminAPI.purgeAdminWorkerCodes();
+    if (!res?.ok || res.result?.ok === false) {
+      throw new Error(String(res?.error || res?.result?.error || "清理失败"));
+    }
+    toast(`已清理 ${formatNumber(res.result?.deleted || 0)} 条注册码记录`);
+    await loadComputeData();
+  } catch (err) {
+    if (status) status.textContent = String(err?.message || err);
+    if (button) button.disabled = false;
+  }
+}
+
+async function purgeComputeUsage() {
+  const button = $("computePurgeUsage");
+  const status = $("computeUsageStatus");
+  const days = Math.max(1, Number($("computeUsagePurgeDays")?.value || 30) || 30);
+  if (!confirm(`删除 ${days} 天前已完成、失败、取消或过期的生成记录？\n排队中和进行中的任务不会被删除。`)) return;
+  if (button) button.disabled = true;
+  try {
+    const res = await window.adminAPI.purgeAdminWebTasks({ olderThanDays: days });
+    if (!res?.ok || res.result?.ok === false) {
+      throw new Error(String(res?.error || res?.result?.error || "清理失败"));
+    }
+    toast(`已清理 ${formatNumber(res.result?.deleted || 0)} 条生成记录`);
+    await loadComputeData();
+    await loadAdminData();
+  } catch (err) {
+    if (status) status.textContent = String(err?.message || err);
+    if (button) button.disabled = false;
+  }
+}
+
 async function loadComputeData() {
   try {
     const workers = await loadAdminDataset("getAdminGpuWorkers", "computeDataBadge");
@@ -1699,6 +1968,9 @@ async function loadAdminData() {
     };
     const comfyStatus = await loadAdminProviderStatus("getAdminComfyUiProviderStatus");
     const grokStatus = await loadAdminProviderStatus("getAdminGrokProviderStatus");
+    // For the dashboard's activity feed; the 算力节点 page loads its own copy.
+    const usage = await loadAdminDataset("getAdminWebTaskUsage");
+    const workers = await loadAdminDataset("getAdminGpuWorkers");
     const userMap = new Map((users.records || []).map((user) => [String(user.id || ""), user]));
     const quotaResults = Object.values(providerQuotasByKey);
     const results = [users, credits, providers, settings, ...quotaResults];
@@ -1715,7 +1987,8 @@ async function loadAdminData() {
     renderProviderRuntimeConfigControls(comfyStatus, grokStatus);
     renderSettings(settings);
     renderCreditStats(credits, providerQuotasByKey.grok);
-    renderDashboard({ users, credits, creditLogs, providers, settings, userMap, comfyStatus, grokStatus });
+    renderMembers(users, credits, providerQuotasByKey.grok);
+    renderDashboard({ users, credits, creditLogs, providers, settings, userMap, comfyStatus, grokStatus, usage, workers });
   } catch (err) {
     const message = `Supabase Error: ${String(err?.message || err)}`;
     setAdminDataSourceStatus([{ status: "error" }]);
@@ -1734,7 +2007,8 @@ async function loadAdminData() {
     replaceRows("tasksTableBody", [], 6, message);
     replaceRows("consumptionTableBody", [], 5, message);
     renderSettingRows("systemSettingsRows", [], message);
-    renderDashboardRecentActivity({ source: "supabase", status: "error", records: [], error: message });
+    replaceRows("membersTableBody", [], 7, message);
+    renderDashboardRecentActivity({ usage: { source: "supabase", status: "error", records: [], error: message } });
     renderProviderBudgetControls({ source: "supabase", status: "error", records: [] });
   }
 }
@@ -2073,11 +2347,29 @@ async function applyCreditAdjustment() {
   }
 }
 
+// The quota form works like the credit form: add to, take from, or set the
+// allocation. The backend only ever stores the resulting total.
+function grokQuotaMode() {
+  const mode = String($("grokQuotaMode")?.value || "set");
+  return ["add", "deduct", "set"].includes(mode) ? mode : "set";
+}
+
 function grokQuotaPayload() {
+  const userId = $("grokQuotaUser")?.value || "";
+  const amount = Number($("grokQuotaAllocated")?.value || 0);
+  const quota = (grokQuotaState.quotas || []).find((item) => String(item.user_id || "") === String(userId));
+  const current = Number(quota?.allocated_count || 0);
+  const mode = grokQuotaMode();
+  const allocatedCount = mode === "add" ? current + amount
+    : mode === "deduct" ? Math.max(0, current - amount)
+    : amount;
   return {
     providerKey: normalizeProviderQuotaKey($("providerQuotaKey")?.value || grokQuotaState.providerKey),
-    userId: $("grokQuotaUser")?.value || "",
-    allocatedCount: Number($("grokQuotaAllocated")?.value || 0),
+    userId,
+    mode,
+    amount,
+    currentAllocated: current,
+    allocatedCount,
     note: $("grokQuotaNote")?.value.trim() || ""
   };
 }
@@ -2094,13 +2386,18 @@ async function saveGrokQuota() {
     alert("请选择用户");
     return;
   }
-  if (!Number.isInteger(payload.allocatedCount) || payload.allocatedCount < 0) {
-    alert(`${providerLabel} 分配次数必须是大于等于 0 的整数`);
+  if (!Number.isInteger(payload.amount) || payload.amount < 0 || (payload.mode !== "set" && payload.amount === 0)) {
+    alert(payload.mode === "set"
+      ? `${providerLabel} 总次数必须是大于等于 0 的整数`
+      : `${providerLabel} ${payload.mode === "add" ? "增加" : "扣减"}的次数必须是大于 0 的整数`);
     return;
   }
   const user = grokQuotaState.users.find((item) => String(item.id || "") === String(payload.userId));
   const quota = grokQuotaState.quotas.find((item) => String(item.user_id || "") === String(payload.userId));
-  const confirmed = confirm(`确定设置 ${userAccountLabel(user) || payload.userId} 的 ${providerLabel}次数？\n当前已用：${formatNumber(quota?.used_count || 0)}\n新的分配次数：${formatNumber(payload.allocatedCount)}`);
+  const modeText = payload.mode === "add" ? `增加 ${formatNumber(payload.amount)} 次`
+    : payload.mode === "deduct" ? `扣减 ${formatNumber(payload.amount)} 次`
+    : `设为 ${formatNumber(payload.amount)} 次`;
+  const confirmed = confirm(`确定把 ${userAccountLabel(user) || payload.userId} 的 ${providerLabel}次数${modeText}？\n当前已分配：${formatNumber(payload.currentAllocated)} · 已用：${formatNumber(quota?.used_count || 0)}\n调整后总次数：${formatNumber(payload.allocatedCount)}`);
   if (!confirmed) return;
 
   try {
@@ -2838,20 +3135,29 @@ async function init() {
   $("createAdminUser").addEventListener("click", async () => {
     await createAdminUser();
   });
-  $("creditUserSearchButton").addEventListener("click", selectCreditAdjustUserFromSearch);
-  $("creditUserSearchInput").addEventListener("keydown", (event) => {
+  $("creditUserSearchButton")?.addEventListener("click", selectCreditAdjustUserFromSearch);
+  $("creditUserSearchInput")?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       selectCreditAdjustUserFromSearch();
     }
   });
+  $("memberSearchInput")?.addEventListener("input", () => {
+    renderMembers(
+      memberState.usersResult || { records: [] },
+      { records: memberState.credits },
+      { records: memberState.quotas }
+    );
+  });
   $("creditAdjustUser").addEventListener("change", updateCreditAdjustCurrentBalance);
   $("computeMintCode")?.addEventListener("click", () => { void mintComputeCode(); });
+  $("computePurgeCodes")?.addEventListener("click", () => { void purgeComputeCodes(); });
+  $("computePurgeUsage")?.addEventListener("click", () => { void purgeComputeUsage(); });
   $("applyCreditAdjust").addEventListener("click", async () => {
     await applyCreditAdjustment();
   });
-  $("grokQuotaUserSearchButton").addEventListener("click", selectGrokQuotaUserFromSearch);
-  $("grokQuotaUserSearchInput").addEventListener("keydown", (event) => {
+  $("grokQuotaUserSearchButton")?.addEventListener("click", selectGrokQuotaUserFromSearch);
+  $("grokQuotaUserSearchInput")?.addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
       selectGrokQuotaUserFromSearch();
@@ -2859,6 +3165,10 @@ async function init() {
   });
   $("grokQuotaUser").addEventListener("change", () => {
     // A different user means the typed number belongs to nobody; show theirs.
+    grokQuotaDirty = false;
+    updateGrokQuotaCurrent();
+  });
+  $("grokQuotaMode")?.addEventListener("change", () => {
     grokQuotaDirty = false;
     updateGrokQuotaCurrent();
   });

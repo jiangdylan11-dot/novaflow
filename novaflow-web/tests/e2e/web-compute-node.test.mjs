@@ -74,15 +74,16 @@ check(picker.chipText({ name: 'x' }, 'starting', ''), 'AI-x 启动中');
 // ---- the rows
 const reply = {
   ok: true,
-  compute: { shared: true },
+  compute: { shared: true, premium: true },
   nodes: [
-    { id: '11111111-1111-1111-1111-111111111111', name: 'studio-5090', gpu_name: 'RTX 5090', vram_mb: 32768, status: 'idle', online: true },
-    { id: '22222222-2222-2222-2222-222222222222', name: 'laptop-3060', gpu_name: 'RTX 3060', vram_mb: 12288, status: 'busy', online: true },
+    { id: '11111111-1111-1111-1111-111111111111', name: 'studio-5090', gpu_name: 'RTX 5090', vram_mb: 32768, tier: 'premium', status: 'idle', online: true },
+    { id: '22222222-2222-2222-2222-222222222222', name: 'laptop-3060', gpu_name: 'RTX 3060', vram_mb: 12288, tier: 'standard', status: 'busy', online: true },
     { id: '33333333-3333-3333-3333-333333333333', name: 'old-box', gpu_name: '', vram_mb: 0, status: 'offline', online: false }
   ]
 };
 const hosted = picker.buildRows(reply, { id: '22222222-2222-2222-2222-222222222222', name: 'laptop-3060' }, false);
 check(hosted.allowed, true);
+check(hosted.premium, true);
 check(hosted.rows.map((r) => [r.name, r.status, r.locked, r.selected]), [
   ['自动分配', 'auto', false, false],
   ['studio-5090', 'idle', false, false],
@@ -91,9 +92,25 @@ check(hosted.rows.map((r) => [r.name, r.status, r.locked, r.selected]), [
 ]);
 check(hosted.rows[1].hint, 'RTX 5090 · 32 GB 显存');
 check(hosted.rows[3].hint, '算力节点');
+check(hosted.rows[0].hint, '任意空闲的算力节点');
+// A node without a tier is 普通; the pool comes back grouped, 普通 first.
+check(hosted.rows.map((r) => r.tier ?? null), [null, 'premium', 'standard', 'standard']);
+check(hosted.groups.map((g) => [g.tier, g.title, g.rows.map((r) => r.name)]), [
+  ['standard', '普通算力节点', ['laptop-3060', 'old-box']],
+  ['premium', '高级算力节点', ['studio-5090']]
+]);
+check(picker.TIER_TEXT, { standard: '普通节点', premium: '高级节点' });
 
 const local = picker.buildRows(reply, null, true);
 check(local.rows[0], { id: null, name: '本机', hint: '启动NovaFlow 的这台电脑', status: 'local', locked: false, selected: true });
+
+// A 中级账户: 普通 nodes open, 高级 nodes locked, auto-assign only reaches 普通 nodes.
+const mid = picker.buildRows({ ...reply, compute: { shared: true, premium: false } }, null, false);
+check(mid.allowed, true);
+check(mid.premium, false);
+check(mid.rows.map((r) => [r.name, r.locked]), [['自动分配', false], ['studio-5090', true], ['laptop-3060', false], ['old-box', false]]);
+check(mid.rows[0].hint, '任意空闲的普通算力节点');
+check(/高级账户/.test(picker.PREMIUM_LOCKED), true);
 
 // A 普通账户: every pool row is locked, the local machine is not, and the note names the administrator.
 const basic = picker.buildRows({ ...reply, compute: { shared: false } }, null, true);
@@ -103,5 +120,6 @@ const basicHosted = picker.buildRows({ ...reply, compute: { shared: false } }, n
 check(basicHosted.rows.map((r) => r.locked), [true, true, true, true]);
 check(/联系管理员/.test(picker.CONTACT_ADMIN), true);
 check(picker.buildRows(null, null, false).rows.length, 1); // an unreadable pool still offers the default
+check(picker.buildRows(null, null, false).groups, []);
 
 console.log(checks + ' passed, 0 failed: topbar 算力源 chip and picker rows');

@@ -253,13 +253,45 @@ const GATEWAY_ROUTES = Object.freeze({
   preview: (taskId, name) => '/gw/tasks/' + taskId + '/preview/' + name
 });
 
-// Account tiers. `users.plan` is what the administrator sets: a 普通账户
-// (trial) may only run on the machine 启动NovaFlow opened, a 高级账户 (pro or
-// team) may also queue work for other people's nodes in the shared pool.
-const SHARED_COMPUTE_PLANS = Object.freeze(['pro', 'team']);
+// Account tiers. `users.plan` is what the administrator sets:
+//
+//   trial      普通账户  only the machine 启动NovaFlow opened; no pool node
+//   standard   中级账户  pool nodes marked 普通 (standard), not 高级 ones
+//   pro / team 高级账户  every pool node, 普通 and 高级 alike
+//
+// Anything else reads as trial, so a typo in the database can only take
+// access away, never grant it.
+const PLAN_TIERS = Object.freeze(['trial', 'standard', 'pro', 'team']);
+const SHARED_COMPUTE_PLANS = Object.freeze(['standard', 'pro', 'team']);
+const PREMIUM_NODE_PLANS = Object.freeze(['pro', 'team']);
+
+function normalizePlan(plan) {
+  const key = String(plan || 'trial').trim().toLowerCase();
+  return PLAN_TIERS.includes(key) ? key : 'trial';
+}
 
 function canUseSharedCompute(plan) {
-  return SHARED_COMPUTE_PLANS.includes(String(plan || 'trial').trim().toLowerCase());
+  return SHARED_COMPUTE_PLANS.includes(normalizePlan(plan));
+}
+
+function canUsePremiumNodes(plan) {
+  return PREMIUM_NODE_PLANS.includes(normalizePlan(plan));
+}
+
+// Node tiers. Every pool node is 普通 (standard) or 高级 (premium). The
+// registration code that admits a machine decides its tier, and the
+// administrator may change it afterwards; the scheduler and the picker both
+// read it from gpu_workers.tier.
+const NODE_TIERS = Object.freeze(['standard', 'premium']);
+
+function normalizeNodeTier(tier) {
+  return String(tier || '').trim().toLowerCase() === 'premium' ? 'premium' : 'standard';
+}
+
+/** May an account with this plan run work on a node of this tier? */
+function planAllowsNode(plan, tier) {
+  if (!canUseSharedCompute(plan)) return false;
+  return normalizeNodeTier(tier) === 'standard' || canUsePremiumNodes(plan);
 }
 
 const ERROR_CODE = Object.freeze({
@@ -271,6 +303,7 @@ const ERROR_CODE = Object.freeze({
   CONFLICT: 'conflict',
   INSUFFICIENT_CREDITS: 'insufficient_credits',
   PLAN_REQUIRED: 'plan_required',
+  NODE_TIER_REQUIRED: 'node_tier_required',
   NO_WORKER: 'no_capable_worker',
   RATE_LIMITED: 'rate_limited',
   UNAVAILABLE: 'unavailable'
@@ -1277,6 +1310,10 @@ function createControlPlane({ store, secrets, logger }) {
     }
 
     let ownerId = '';
+    // The code that admits a machine also says which tier it joins as (普通 /
+    // 高级节点). An owner registering their own machine gets 普通; the
+    // administrator can change either later.
+    let tier = '';
     const code = sanitizeText(body.registration_code || body.registrationCode, 200).trim();
     if (existing) {
       // An existing worker keeps its owner; a registration code cannot move it.
@@ -1286,6 +1323,7 @@ function createControlPlane({ store, secrets, logger }) {
       const owner = await store.consumeRegistrationCode(codeHash);
       if (!owner) throw new HttpError(401, ERROR_CODE.UNAUTHORIZED, 'registration code is invalid or used up');
       ownerId = String(owner.owner_id);
+      tier = normalizeNodeTier(owner.tier);
     } else {
       const user = await requireUser(headers);
       ownerId = String(user.id);
@@ -1311,9 +1349,16 @@ function createControlPlane({ store, secrets, logger }) {
       }
     });
 
+    // Re-registration keeps whatever tier the administrator set; only a fresh
+    // machine takes the tier from its code.
+    if (!existing && tier) {
+      const retiered = await store.setWorkerTier(registered.id, tier);
+      if (retiered) Object.assign(registered, retiered);
+    }
+
     const token = await issueWorkerToken(registered, controlSecret, 24 * 3600);
     const grantKey = await deriveWorkerGrantKey(registered.id, controlSecret);
-    log('worker registered', { workerId: registered.id, name: workerName });
+    log('worker registered', { workerId: registered.id, name: workerName, tier: normalizeNodeTier(registered.tier) });
     return {
       ok: true,
       worker: publicWorker(registered),
@@ -1527,9 +1572,12 @@ function createControlPlane({ store, secrets, logger }) {
     // to its own machine (the local assistant never calls this endpoint).
     if (!canUseSharedCompute(user.plan)) {
       throw new HttpError(403, ERROR_CODE.PLAN_REQUIRED,
-        '普通账户只能使用本机算力：请在本地助手点击“启动NovaFlow”后生成。使用其他算力节点需要高级账户。',
+        '普通账户只能使用本机算力：请在本地助手点击“启动NovaFlow”后生成。使用其他算力节点需要中级或高级账户。',
         { plan: String(user.plan || 'trial') });
     }
+    // A 中级账户 may use 普通 nodes only; the scheduler reads this flag off the
+    // task so a 高级 node never picks its work up, pinned or not.
+    const allowPremiumNodes = canUsePremiumNodes(user.plan);
     const taskType = sanitizeText(body.task_type || body.taskType, 80);
 
     // Two ways in. A fixed task type is the simple API. A renderer workflow
@@ -1584,11 +1632,18 @@ function createControlPlane({ store, secrets, logger }) {
       if (!UUID_RE.test(targetId)) throw bad('invalid compute node id');
       target = await store.getWorkerById(targetId);
       if (!target) throw new HttpError(404, ERROR_CODE.NOT_FOUND, '所选算力节点不存在或已移除，请重新选择算力源');
+      if (!planAllowsNode(user.plan, target.tier)) {
+        throw new HttpError(403, ERROR_CODE.NODE_TIER_REQUIRED,
+          '中级账户只能使用普通算力节点；使用高级算力节点需要高级账户。',
+          { plan: String(user.plan || 'trial'), node_tier: normalizeNodeTier(target.tier) });
+      }
     }
 
     // Fail fast when nothing online can run it, instead of parking the task in
-    // a queue nobody drains. Pinned work counts its node alone.
-    const capable = await store.countCapableWorkers(req.modelId, req.minVramMb, HEARTBEAT_TIMEOUT_SECONDS, target ? target.id : null);
+    // a queue nobody drains. Pinned work counts its node alone; a 中级账户
+    // counts 普通 nodes alone.
+    const capable = await store.countCapableWorkers(req.modelId, req.minVramMb, HEARTBEAT_TIMEOUT_SECONDS,
+      target ? target.id : null, allowPremiumNodes);
     const inputManifest = {
       parameters,
       min_vram_mb: req.minVramMb,
@@ -1597,7 +1652,8 @@ function createControlPlane({ store, secrets, logger }) {
       workflow: inputWorkflow,
       references: sanitizeReferences(body.references),
       target_worker_id: target ? target.id : null,
-      target_worker_name: target ? target.worker_name : null
+      target_worker_name: target ? target.worker_name : null,
+      allow_premium_nodes: allowPremiumNodes
     };
 
     const task = await store.createTask({
@@ -1746,15 +1802,18 @@ function createControlPlane({ store, secrets, logger }) {
     const codeHash = await sha256Hex('novaflow-web-registration-code:v1:' + code);
     const expiresAt = new Date(Date.now() + days * 24 * 3600 * 1000).toISOString();
 
+    // Which tier the machines this code admits join as: 普通 unless asked.
+    const tier = normalizeNodeTier(body.tier ?? body.node_tier ?? body.nodeTier);
     await store.createRegistrationCode({
-      ownerId: user.id, codeHash, label, maxUses, expiresAt
+      ownerId: user.id, codeHash, label, maxUses, expiresAt, tier
     });
 
-    log('registration code minted', { owner: user.id, maxUses, days });
+    log('registration code minted', { owner: user.id, maxUses, days, tier });
     return {
       ok: true,
       registration_code: code,
       label,
+      tier,
       max_uses: maxUses,
       expires_at: expiresAt,
       instructions: '在新机器上安装 NovaFlowWorkerSetup.exe，填入控制面地址和这个注册码，点启动即可。'
@@ -1769,6 +1828,7 @@ function createControlPlane({ store, secrets, logger }) {
       ok: true,
       codes: rows.map((r) => ({
         label: r.label,
+        tier: normalizeNodeTier(r.tier),
         max_uses: r.max_uses,
         used_count: r.used_count,
         remaining: Math.max(0, Number(r.max_uses) - Number(r.used_count)),
@@ -1808,12 +1868,18 @@ function createControlPlane({ store, secrets, logger }) {
         name: w.worker_name,
         gpu_name: w.gpu_name || '',
         vram_mb: Number(w.vram_mb) || 0,
+        tier: normalizeNodeTier(w.tier),
         status: online ? String(w.status) : 'offline',
         online,
         last_heartbeat: w.last_heartbeat || null
       };
     }).sort((a, b) => (rank[a.status] - rank[b.status]) || String(a.name).localeCompare(String(b.name), 'zh-CN'));
-    return { ok: true, nodes, compute: { shared: canUseSharedCompute(user.plan) } };
+    return {
+      ok: true,
+      nodes,
+      // shared: may pin any 普通 node; premium: may also pin a 高级 node.
+      compute: { shared: canUseSharedCompute(user.plan), premium: canUsePremiumNodes(user.plan) }
+    };
   }
 
   // The credit balance the Web app shows. Read here rather than from
@@ -1826,7 +1892,7 @@ function createControlPlane({ store, secrets, logger }) {
       ok: true,
       user: { id: user.id, email: user.email, display_name: user.display_name || '', plan: String(user.plan || 'trial') },
       credits: { balance: Number(balance) },
-      compute: { shared: canUseSharedCompute(user.plan) }
+      compute: { shared: canUseSharedCompute(user.plan), premium: canUsePremiumNodes(user.plan) }
     };
   }
 
@@ -2013,6 +2079,7 @@ function publicWorker(worker) {
     id: worker.id,
     worker_name: worker.worker_name,
     status: worker.status,
+    tier: normalizeNodeTier(worker.tier),
     gpu_name: worker.gpu_name,
     vram_mb: worker.vram_mb,
     ram_mb: worker.ram_mb,
@@ -2222,17 +2289,19 @@ const supabaseStore = {
     return Number(data || 0);
   },
 
-  async countCapableWorkers(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number, workerId: string | null = null) {
+  async countCapableWorkers(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number, workerId: string | null = null, allowPremium = true) {
     const since = new Date(Date.now() - heartbeatTimeoutSeconds * 1000).toISOString();
     let query = admin()
       .from('worker_models')
-      .select('worker_id, gpu_workers!inner(id,status,vram_mb,last_heartbeat)')
+      .select('worker_id, gpu_workers!inner(id,status,tier,vram_mb,last_heartbeat)')
       .eq('model_id', modelId)
       .eq('status', 'ready')
       .in('gpu_workers.status', ['idle', 'busy'])
       .gte('gpu_workers.vram_mb', minVramMb)
       .gt('gpu_workers.last_heartbeat', since);
     if (workerId) query = query.eq('worker_id', workerId);
+    // A 中级账户 counts 普通 nodes alone.
+    if (allowPremium === false) query = query.neq('gpu_workers.tier', 'premium');
     const { data, error } = await query;
     if (error) throw error;
     return (data || []).length;
@@ -2241,10 +2310,21 @@ const supabaseStore = {
   async listPoolWorkers() {
     const { data, error } = await admin()
       .from('gpu_workers')
-      .select('id,worker_name,status,gpu_name,vram_mb,last_heartbeat')
+      .select('id,worker_name,status,tier,gpu_name,vram_mb,last_heartbeat')
       .order('worker_name');
     if (error) throw error;
     return data || [];
+  },
+
+  async setWorkerTier(workerId: string, tier: string) {
+    const { data, error } = await admin()
+      .from('gpu_workers')
+      .update({ tier: tier === 'premium' ? 'premium' : 'standard', updated_at: new Date().toISOString() })
+      .eq('id', workerId)
+      .select()
+      .maybeSingle();
+    if (error) throw error;
+    return data;
   },
 
   async listCapableModelDetails(modelId: string, minVramMb: number, heartbeatTimeoutSeconds: number) {
@@ -2341,12 +2421,13 @@ const supabaseStore = {
     return Number(data || 0);
   },
 
-  async createRegistrationCode({ ownerId, codeHash, label, maxUses, expiresAt }: any) {
+  async createRegistrationCode({ ownerId, codeHash, label, maxUses, expiresAt, tier }: any) {
     const { data, error } = await admin()
       .from('web_worker_registration_codes')
       .insert({
         code_hash: codeHash, owner_id: ownerId,
-        label: label || '', max_uses: maxUses || 1, expires_at: expiresAt
+        label: label || '', max_uses: maxUses || 1, expires_at: expiresAt,
+        tier: tier === 'premium' ? 'premium' : 'standard'
       })
       .select()
       .maybeSingle();
@@ -2357,7 +2438,7 @@ const supabaseStore = {
   async listRegistrationCodes(ownerId: string) {
     const { data, error } = await admin()
       .from('web_worker_registration_codes')
-      .select('label, max_uses, used_count, expires_at, created_at')
+      .select('label, tier, max_uses, used_count, expires_at, created_at')
       .eq('owner_id', ownerId)
       .order('created_at', { ascending: false })
       .limit(50);
@@ -2383,7 +2464,7 @@ const supabaseStore = {
     // use matches zero rows and is rejected.
     const { data: row, error } = await admin()
       .from('web_worker_registration_codes')
-      .select('code_hash, owner_id, label, max_uses, used_count, expires_at')
+      .select('code_hash, owner_id, label, tier, max_uses, used_count, expires_at')
       .eq('code_hash', codeHash)
       .gt('expires_at', new Date().toISOString())
       .maybeSingle();
@@ -2395,7 +2476,7 @@ const supabaseStore = {
       .update({ used_count: row.used_count + 1 })
       .eq('code_hash', codeHash)
       .eq('used_count', row.used_count)
-      .select('owner_id, label')
+      .select('owner_id, label, tier')
       .maybeSingle();
     if (claimError) throw claimError;
     return claimed || null;

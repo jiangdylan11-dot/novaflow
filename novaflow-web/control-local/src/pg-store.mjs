@@ -71,12 +71,13 @@ export function createPgStore(db) {
       return Number(row?.count || 0);
     },
 
-    async countCapableWorkers(modelId, minVramMb, heartbeatTimeoutSeconds, workerId = null) {
+    async countCapableWorkers(modelId, minVramMb, heartbeatTimeoutSeconds, workerId = null, allowPremium = true) {
       const row = await one(
         `select count(*)::int as count
            from public.gpu_workers w
           where w.status in ('idle', 'busy')
             and ($4::uuid is null or w.id = $4::uuid)
+            and ($5::boolean or w.tier <> 'premium')
             and w.vram_mb >= $2
             and w.last_heartbeat is not null
             and w.last_heartbeat > now() - make_interval(secs => $3)
@@ -84,14 +85,21 @@ export function createPgStore(db) {
               select 1 from public.worker_models wm
                where wm.worker_id = w.id and wm.model_id = $1 and wm.status = 'ready'
             )`,
-        [modelId, minVramMb, heartbeatTimeoutSeconds, workerId || null]
+        [modelId, minVramMb, heartbeatTimeoutSeconds, workerId || null, allowPremium !== false]
       );
       return Number(row?.count || 0);
     },
 
     async listPoolWorkers() {
       return await many(
-        'select id, worker_name, status, gpu_name, vram_mb, last_heartbeat from public.gpu_workers order by worker_name'
+        'select id, worker_name, status, tier, gpu_name, vram_mb, last_heartbeat from public.gpu_workers order by worker_name'
+      );
+    },
+
+    async setWorkerTier(workerId, tier) {
+      return await one(
+        `update public.gpu_workers set tier = $2, updated_at = now() where id = $1 returning *`,
+        [workerId, tier === 'premium' ? 'premium' : 'standard']
       );
     },
 
@@ -168,7 +176,7 @@ export function createPgStore(db) {
           where code_hash = $1
             and expires_at > now()
             and used_count < max_uses
-          returning owner_id, label`,
+          returning owner_id, label, tier`,
         [codeHash]
       );
     },
@@ -177,7 +185,7 @@ export function createPgStore(db) {
       // The hash is never selected: an owner's own listing must not be a way
       // to recover a code that was shown once.
       return await many(
-        `select label, max_uses, used_count, expires_at, created_at
+        `select label, tier, max_uses, used_count, expires_at, created_at
            from public.web_worker_registration_codes
           where owner_id = $1
           order by created_at desc
@@ -201,11 +209,11 @@ export function createPgStore(db) {
       return rows.length;
     },
 
-    async createRegistrationCode({ ownerId, codeHash, label, maxUses, expiresAt }) {
+    async createRegistrationCode({ ownerId, codeHash, label, maxUses, expiresAt, tier }) {
       return await one(
-        `insert into public.web_worker_registration_codes (code_hash, owner_id, label, max_uses, expires_at)
-         values ($1, $2, $3, $4, $5) returning *`,
-        [codeHash, ownerId, label || '', maxUses || 1, expiresAt]
+        `insert into public.web_worker_registration_codes (code_hash, owner_id, label, max_uses, expires_at, tier)
+         values ($1, $2, $3, $4, $5, $6) returning *`,
+        [codeHash, ownerId, label || '', maxUses || 1, expiresAt, tier === 'premium' ? 'premium' : 'standard']
       );
     },
 

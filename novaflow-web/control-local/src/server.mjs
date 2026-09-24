@@ -152,7 +152,7 @@ export async function startLocalControlPlane({ port = DEFAULT_PORT, verbose = fa
           email,
           balance: Number.isFinite(Number(body.balance)) ? Number(body.balance) : 1000,
           displayName: String(body.display_name || 'NovaFlow Demo'),
-          plan: ['trial', 'pro', 'team'].includes(String(body.plan || '')) ? String(body.plan) : 'pro'
+          plan: ['trial', 'standard', 'pro', 'team'].includes(String(body.plan || '')) ? String(body.plan) : 'pro'
         });
         const token = await mintLocalSessionToken(user);
         const balance = await ctx.store.getCreditBalance(user.id);
@@ -173,7 +173,8 @@ export async function startLocalControlPlane({ port = DEFAULT_PORT, verbose = fa
           codeHash,
           label: String(body.label || ''),
           maxUses: Number(body.max_uses) || 1,
-          expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString()
+          expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+          tier: String(body.tier || '') === 'premium' ? 'premium' : 'standard'
         });
         send(200, { ok: true, registration_code: code });
         return;
