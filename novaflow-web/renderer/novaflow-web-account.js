@@ -197,6 +197,15 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       try {
         const res = await api().clientAuthLogin({ account: name, password: password.value });
         if (!res || res.ok === false) throw new Error((res && res.error) || '登录失败');
+        // The account service and the compute control plane are separate
+        // services with separate trust. clientAuthStatus re-presents the new
+        // token to the control plane and DROPS the session if it is refused,
+        // so without this check a refused token reloads straight back to an
+        // empty form with nothing said. Ask here instead, and say why.
+        const status = await api().clientAuthStatus();
+        if (!(status && status.ok !== false && status.result && status.result.authenticated)) {
+          throw new Error('账号已通过验证，但算力控制面不接受这个会话。请确认控制面与账号服务使用同一套会话密钥。');
+        }
         note.style.color = '#7ce8b5';
         note.textContent = '已登录，正在刷新…';
         setTimeout(() => root.location.reload(), 400);
@@ -225,11 +234,15 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
       ? (who.user && (who.user.display_name || who.user.email) || '已登录')
       : '登录';
     if (btn.textContent !== label) btn.textContent = label;
+    // Signed in this is a quiet chip, exactly as the reference draws it;
+    // signed out it is the one action on the screen, so it keeps the green.
     const colour = who ? '#e5e7eb' : '#ffffff';
-    const background = who ? '#333333' : '#1ea672';
+    const background = who ? '#171717' : '#17a582';
+    const border = who ? '1px solid #333333' : '0';
     btn.style.setProperty('color', colour, 'important');
     btn.style.setProperty('background', background, 'important');
     btn.style.setProperty('background-color', background, 'important');
+    btn.style.setProperty('border', border, 'important');
   }
 
   function mount() {
@@ -243,18 +256,24 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     btn.textContent = '登录';
     btn.title = 'NovaFlow 账号';
     const styles = {
-      height: '30px', 'min-height': '30px', 'max-height': '30px',
-      padding: '0 12px', border: '0', 'border-radius': '8px',
-      background: '#1ea672', 'background-image': 'none',
-      color: '#ffffff', 'font-size': '12px', 'font-weight': '600',
+      height: '28px', 'min-height': '28px', 'max-height': '28px',
+      padding: '0 13px', border: '0', 'border-radius': '7px',
+      background: '#17a582', 'background-image': 'none',
+      color: '#ffffff', 'font-size': '12px', 'font-weight': '500',
       'line-height': '1', 'box-shadow': 'none', 'white-space': 'nowrap',
       cursor: 'pointer', '-webkit-app-region': 'no-drag'
     };
     for (const [k, v] of Object.entries(styles)) btn.style.setProperty(k, v, 'important');
     btn.addEventListener('click', open);
+    // Until the first status answer the chip can only say 登录, in green, and
+    // a moment later it became the account name: a flash on every start. The
+    // status box stays hidden until the chip knows (or for 1.5s at most).
+    host.setAttribute('data-novaflow-account-pending', '1');
+    const reveal = () => host.removeAttribute('data-novaflow-account-pending');
+    const revealTimer = setTimeout(reveal, 1500);
     host.appendChild(btn);
 
-    refresh(btn);
+    refresh(btn).then(reveal, reveal).then(() => clearTimeout(revealTimer));
     setInterval(() => refresh(btn), 15000);
     return true;
   }
@@ -279,55 +298,126 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     // The shared modal scanner may clear inline backdrop styles. Keep the
     // login screen opaque and above the editor while it is signed out.
     if (!root.document.getElementById(GATE_ID + '-style')) {
-      const style = el('style', '', '#' + GATE_ID + '{background:#0b0b0b!important;z-index:2147483640!important}');
+      // background-COLOR, not the `background` shorthand: this rule is injected
+      // after the theme stylesheet and carries !important, so a shorthand here
+      // would reset the theme's background-image and wipe the backdrop.
+      const style = el('style', '', '#' + GATE_ID + '{background-color:#0b0b0c!important;z-index:2147483640!important}');
       style.id = GATE_ID + '-style';
       root.document.head.appendChild(style);
     }
+    // Two columns at a desktop width: what the product is on the left, the
+    // sign-in form on the right. The inline rules here are the ones that must
+    // hold even if the stylesheet has not arrived - it covers the running app,
+    // so it may not be transparent or scrollable-behind for a frame.
     const gate = el('div', [
       'position:fixed', 'inset:0', 'z-index:2147483640',
-      'background:#0b0b0b', 'display:flex', 'align-items:center',
-      'justify-content:center', 'flex-direction:column', 'gap:22px',
+      // Colour only, for the same reason as the rule above: the shorthand
+      // would take the theme's backdrop layers with it.
+      'background-color:#0b0b0c', 'display:flex', 'align-items:center',
+      'justify-content:center', 'overflow:hidden',
       'font:13px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif'
     ].join(';'));
     gate.id = GATE_ID;
+    // The runtime clamps every rounded box under body to the control radius.
+    // The login card is a panel and keeps the reference's 14.
+    gate.setAttribute('data-novaflow-keep-radius', '1');
 
-    const logo = el('img', [
-      'display:block', 'width:320px', 'max-width:calc(100vw - 64px)',
-      'height:auto', 'object-fit:contain'
-    ].join(';'));
+    const shell = el('div'); shell.className = 'nf-login-shell';
+
+    const brand = el('div'); brand.className = 'nf-login-brand';
+    const logo = el('img'); logo.className = 'nf-login-logo';
     logo.src = './assets/logo.png';
     logo.alt = 'NovaFlow';
     logo.draggable = false;
-    gate.appendChild(logo);
+    brand.appendChild(logo);
 
-    const card = el('div', [
-      'width:340px', 'max-width:calc(100vw - 32px)', 'background:#161616',
-      'border:1px solid #242424', 'border-radius:12px', 'padding:22px',
-      'display:flex', 'flex-direction:column', 'gap:10px', 'color:#e5e7eb'
-    ].join(';'));
+    const headline = el('h1', '', '游戏美术工作站');
+    headline.className = 'nf-login-headline';
+    brand.appendChild(headline);
 
-    card.appendChild(el('div', 'color:#a0a0a0;font-size:12px;line-height:1.7;margin-bottom:2px',
-      '请使用 NovaFlow 账号登录。没有账号请找管理员开通。'));
+    const lede = el('p'); lede.className = 'nf-login-lede';
+    lede.appendChild(root.document.createTextNode('粒子特效、序列动画、骨骼绑定、批量图像处理。'));
+    lede.appendChild(el('br'));
+    lede.appendChild(root.document.createTextNode('本地模型与云端模型，统一工作空间。'));
+    brand.appendChild(lede);
 
-    const account = el('input', FIELD);
+    // Descriptive labels for what is inside. They are deliberately not
+    // controls: the only way in from this screen is the form on the right.
+    const tags = el('div'); tags.className = 'nf-login-tags';
+    for (const [icon, label] of [
+      ['✦', '粒子特效'], ['▷', 'AI 序列动画'], ['✎', '绘图与拆图'], ['▤', '批量工具']
+    ]) {
+      const tag = el('div'); tag.className = 'nf-login-tag';
+      const mark = el('span', '', icon); mark.className = 'nf-login-tag-icon';
+      mark.setAttribute('aria-hidden', 'true');
+      tag.appendChild(mark);
+      tag.appendChild(el('span', '', label));
+      tags.appendChild(tag);
+    }
+    brand.appendChild(tags);
+
+    const footnote = el('div'); footnote.className = 'nf-login-footnote';
+    footnote.appendChild(el('span', '', 'NOVAFLOW'));
+    footnote.appendChild(el('span', '', '|'));
+    footnote.appendChild(el('span', '', 'WEB 工作空间'));
+    brand.appendChild(footnote);
+
+    shell.appendChild(brand);
+
+    const card = el('div'); card.className = 'nf-login-card';
+    const cardTitle = el('h2', '', '登录'); cardTitle.className = 'nf-login-card-title';
+    card.appendChild(cardTitle);
+    const cardNote = el('p', '', '请使用 NovaFlow 账号登录。没有账号请找管理员开通。');
+    cardNote.className = 'nf-login-card-note';
+    card.appendChild(cardNote);
+
+    const accountLabel = el('label', '', '账号');
+    accountLabel.className = 'nf-login-field';
+    accountLabel.htmlFor = 'novaflow-web-login-account';
+    const account = el('input');
+    account.className = 'nf-login-input';
+    account.id = 'novaflow-web-login-account';
     account.placeholder = '账号';
     account.autocomplete = 'username';
-    const password = el('input', FIELD);
+
+    const passwordLabel = el('label', '', '密码');
+    passwordLabel.className = 'nf-login-field';
+    passwordLabel.htmlFor = 'novaflow-web-login-password';
+    const password = el('input');
+    password.className = 'nf-login-input';
+    password.id = 'novaflow-web-login-password';
     password.placeholder = '密码';
     password.type = 'password';
     password.autocomplete = 'current-password';
-    card.appendChild(account);
-    card.appendChild(password);
 
-    const submit = el('button', [
-      'height:38px', 'border:0', 'border-radius:8px', 'background:#1ea672',
-      'color:#fff', 'font:inherit', 'font-size:14px', 'font-weight:600',
-      'cursor:pointer', 'margin-top:4px'
-    ].join(';'), '登录');
+    // The icon is drawn on the wrapper, not on the input: Chrome paints an
+    // autofilled field with its own background, which would cover a
+    // background-image set on the input itself.
+    const wrap = (kind, field) => {
+      const node = el('div');
+      node.className = 'nf-login-input-wrap nf-login-input-wrap-' + kind;
+      node.appendChild(field);
+      return node;
+    };
+
+    card.appendChild(accountLabel);
+    card.appendChild(wrap('user', account));
+    const gap = el('div'); gap.className = 'nf-login-gap'; card.appendChild(gap);
+    card.appendChild(passwordLabel);
+    card.appendChild(wrap('lock', password));
+
+    const submit = el('button', '', '登录');
+    submit.className = 'nf-login-submit';
+    submit.type = 'button';
     card.appendChild(submit);
 
-    const note = el('div', 'font-size:12px;line-height:1.6;min-height:18px;color:#a0a0a0');
+    const note = el('div');
+    note.className = 'nf-login-note';
+    note.style.color = '#a0a0a0';
+    note.setAttribute('role', 'status');
     card.appendChild(note);
+
+    shell.appendChild(card);
 
     async function login() {
       const name = account.value.trim();
@@ -359,7 +449,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     password.addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
     account.addEventListener('keydown', (e) => { if (e.key === 'Enter') password.focus(); });
 
-    gate.appendChild(card);
+    gate.appendChild(shell);
     setTimeout(() => { try { account.focus(); } catch (_) {} }, 80);
     return gate;
   }

@@ -114,6 +114,10 @@
   }
 
   function findWorkspaces() {
+    // The tools workspace as the app marks it (its grid moved to a flex row,
+    // which the shape test below no longer recognises).
+    const marked = document.querySelector('[data-novaflow-tools-workspace]')
+    if (marked instanceof HTMLElement && marked.getBoundingClientRect().width > 500) return [marked]
     return Array.from(document.querySelectorAll('div')).filter((node) => {
       if (!(node instanceof HTMLElement) || node.id === ROOT_ID || node.closest(`#${ROOT_ID}`)) return false
       const rect = node.getBoundingClientRect()
@@ -459,7 +463,7 @@
         <div class="nf-saw-panel"><div class="nf-saw-panel-head"><span>原图</span><small>${escapeHtml(selectedSourceMeta)}</small></div><div class="nf-saw-preview">${selected ? `<img src="${selected.dataUrl}">` : state.atlases[0] ? `<pre class="nf-saw-atlas">${escapeHtml(state.atlases[0].text.slice(0, 4000))}</pre>` : '<div class="nf-saw-empty">还没有文件</div>'}</div></div>
         <div class="nf-saw-panel"><div class="nf-saw-panel-head"><span>结果图</span><small>${escapeHtml(selectedResultMeta)}</small></div><div class="nf-saw-preview">${selected?.result ? `<img src="${selected.result.url}">` : resultAtlas ? `<pre class="nf-saw-atlas">${escapeHtml(resultAtlas.text.slice(0, 4000))}</pre>` : '<div class="nf-saw-empty">等待转换结果</div>'}</div></div>
       </div>
-      <div class="nf-saw-top-actions"><button data-saw-export ${state.exporting || !done || !state.resultAtlases.length ? 'disabled' : ''}>${state.exporting ? '导出中…' : '导出到文件夹'}</button><button data-saw-overwrite ${state.exporting || !overwriteReady ? 'disabled' : ''}>直接覆盖</button></div>`
+      <div class="nf-saw-top-actions"><button data-saw-export ${state.exporting || !done || !state.resultAtlases.length ? 'disabled' : ''}>${state.exporting ? '导出中…' : '导出另存'}</button><button data-saw-overwrite ${state.exporting || !overwriteReady ? 'disabled' : ''}>导出覆盖</button></div>`
     root.querySelector('[data-saw-pick]')?.addEventListener('click', () => root.querySelector('[data-saw-file]')?.click())
     root.querySelector('[data-saw-file]')?.addEventListener('change', (event) => { addFiles(event.target.files); event.target.value = '' })
     root.querySelector('[data-saw-run]')?.addEventListener('click', processAll)

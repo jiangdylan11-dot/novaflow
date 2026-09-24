@@ -119,6 +119,10 @@
   }
 
   function findWorkspace() {
+    // The tools workspace as the app marks it (its grid moved to a flex row,
+    // which the shape test below no longer recognises).
+    const marked = document.querySelector('[data-novaflow-tools-workspace]')
+    if (marked instanceof HTMLElement && marked.getBoundingClientRect().width > 500) return marked
     const candidates = Array.from(document.querySelectorAll('div')).filter((node) => {
       const rect = node.getBoundingClientRect()
       const text = textOf(node)
@@ -420,7 +424,7 @@
     const status = root.querySelector('.nf-mp4-status')
     if (status instanceof HTMLElement) status.textContent = state.processing ? '正在按顺序压缩视频，请稍候…' : ''
     const exportButton = root.querySelector('[data-mp4-export]')
-    if (exportButton instanceof HTMLButtonElement) { exportButton.disabled = state.exporting || !done; exportButton.textContent = state.exporting ? '导出中…' : '导出到文件夹' }
+    if (exportButton instanceof HTMLButtonElement) { exportButton.disabled = state.exporting || !done; exportButton.textContent = state.exporting ? '导出中…' : '导出另存' }
     const overwrite = root.querySelector('[data-mp4-overwrite]')
     if (overwrite instanceof HTMLButtonElement) overwrite.disabled = state.exporting || !overwriteReady
   }
@@ -480,7 +484,7 @@
         <div class="nf-mp4-panel"><div class="nf-mp4-panel-head"><span>原片</span><small>${selected ? `${selected.width} × ${selected.height}｜${formatDuration(selected.durationSec)}｜${formatBytes(selected.bytes)}` : ''}</small></div><div class="nf-mp4-preview">${selected ? `<video src="${escapeHtml(selected.url)}" controls preload="metadata"></video>` : '<div class="nf-mp4-empty">还没有视频</div>'}</div></div>
         <div class="nf-mp4-panel"><div class="nf-mp4-panel-head"><span>结果片</span><small data-mp4-result-head>${resultHeadHtml(selected)}</small></div><div class="nf-mp4-preview" data-mp4-result-preview>${resultPanelHtml(selected)}</div></div>
       </div>
-      <div class="nf-mp4-top-actions"><button data-mp4-export ${state.exporting || !done ? 'disabled' : ''}>${state.exporting ? '导出中…' : '导出到文件夹'}</button><button data-mp4-overwrite ${state.exporting || !overwriteReady ? 'disabled' : ''}>直接覆盖</button></div>`
+      <div class="nf-mp4-top-actions"><button data-mp4-export ${state.exporting || !done ? 'disabled' : ''}>${state.exporting ? '导出中…' : '导出另存'}</button><button data-mp4-overwrite ${state.exporting || !overwriteReady ? 'disabled' : ''}>导出覆盖</button></div>`
     root.querySelector('[data-mp4-pick]')?.addEventListener('click', () => root.querySelector('[data-mp4-file]')?.click())
     root.querySelector('[data-mp4-file]')?.addEventListener('change', (event) => { addFiles(event.target.files); event.target.value = '' })
     syncRangeFill(root.querySelector('[data-mp4-strength]'))

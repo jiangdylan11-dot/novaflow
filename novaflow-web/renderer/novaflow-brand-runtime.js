@@ -2262,16 +2262,44 @@
   const AI_ANIMATION_PREPAINT_RELEASE_MS = 520;
   const AI_ANIMATION_STABLE_CENTER_MIN_SHIFT = 12;
   const NOVAFLOW_UNIFORM_GAP = 5;
-  const NOVAFLOW_RECT_RADIUS_PX = "8px";
+  const NOVAFLOW_RECT_RADIUS_PX = "7px";
   const NOVAFLOW_RECT_RADIUS_TOP_PX = `${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX} 0 0`;
   const NOVAFLOW_RECT_RADIUS_BOTTOM_PX = `0 0 ${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX}`;
   const SECONDARY_CONTENT_GAP = NOVAFLOW_UNIFORM_GAP;
+  const SECONDARY_TO_CONTENT_GAP = 17;
   const SECONDARY_CONTENT_COLUMN_GAP = NOVAFLOW_UNIFORM_GAP;
   const SECONDARY_PANEL_BODY_INSET = 11;
   const PRIMARY_SECONDARY_GAP = NOVAFLOW_UNIFORM_GAP;
   const SECONDARY_ENTRY_GAP = NOVAFLOW_UNIFORM_GAP;
-  const SECONDARY_ENTRY_HEIGHT = 35;
-  const ART_DRAWING_PANEL_HEADER_HEIGHT = 36;
+  const SECONDARY_ENTRY_HEIGHT = 29;
+  // AI 序列动画's 模式选择 / 视频处理 are the same groups as every other page's
+  // left column (animation-spline.html): a 46 header on a 53 pitch, 7 in,
+  // with the icon on a 24 plate. They had been 29-tall filled bars.
+  const AI_ANIMATION_GROUP_HEADER_HEIGHT = 46;
+  const AI_ANIMATION_GROUP_HEADER_INSET = 7;
+  const AI_ANIMATION_GROUP_ICON_PLATE = 24;
+  const AI_ANIMATION_GROUP_ICON_GAP = 9;
+  const AI_ANIMATION_GROUP_PAD_Y = 3;
+  const AI_ANIMATION_GROUP_OPEN_TAIL = 17;
+  const AI_ANIMATION_GROUP_RULE_COLOR = "#272727";
+  const AI_ANIMATION_GROUP_HOVER_BACKGROUND = "#222222";
+  const AI_ANIMATION_GROUP_TITLE_COLOR = "#d4d4d4";
+  const AI_ANIMATION_GROUP_ICON_BACKGROUND = "#292929";
+  const AI_ANIMATION_GROUP_ICON_COLOR = "#bdbdbd";
+  const AI_ANIMATION_GROUP_CHEVRON_COLOR = "#797979";
+  // Reference .nf-tabs: a 4px inset capsule with 3px between the pills.
+  // .nf-tabs in the reference: a 198x37 plate inset 10 from the panel edge,
+  // darker than the panel it sits on, holding two 29-tall pills.
+  const SECONDARY_GROUP_PAD = 3;
+  const SECONDARY_GROUP_BACKGROUND = "#101010";
+  const SECONDARY_GROUP_BORDER_COLOR = "#262626";
+  const SECONDARY_GROUP_RADIUS_PX = "8px";
+  const SECONDARY_GROUP_TOP_INSET = 11;
+  const SECONDARY_GROUP_LEFT_INSET = 10;
+  const SECONDARY_GROUP_INSET = 4;
+  const SECONDARY_GROUP_PILL_GAP = 3;
+  const SECONDARY_ENTRY_RADIUS_PX = "5px";
+  const ART_DRAWING_PANEL_HEADER_HEIGHT = 46;
   const NOVAFLOW_TOGGLE_CARD_BUTTON_HEIGHT = 34;
   const NOVAFLOW_TOGGLE_SWITCH_WIDTH = 26;
   const NOVAFLOW_TOGGLE_SWITCH_HEIGHT = 14;
@@ -2283,24 +2311,49 @@
   const AI_ANIMATION_SEED_SWITCH_KNOB_SIZE = 10;
   const AI_ANIMATION_SEED_SWITCH_KNOB_LEFT = 4;
   const NOVAFLOW_NORMAL_FONT_WEIGHT = "400";
+  // The reference sets its controls a step above body text. A blanket 400
+  // sweep had been flattening the rail, the segment and the canvas bar.
+  const NOVAFLOW_MEDIUM_FONT_WEIGHT = "500";
+  const NOVAFLOW_MEDIUM_WEIGHT_SELECTOR = [
+    "[data-novaflow-primary-entry='1']",
+    "[data-novaflow-secondary-entry='1']",
+    "[data-novaflow-particle-project-action]",
+    "[data-novaflow-template-button='1']",
+    "[data-novaflow-autofit-button='1']",
+    "[data-novaflow-medium-weight='1']",
+    "[data-novaflow-editor-panel='1'] > .nf-panel-header",
+    "[data-novaflow-ai-collapse-heading]",
+    "[data-novaflow-ai-top-mode-tabs='1'] button",
+    "[data-novaflow-ai-board-controls-top-left='1'] button",
+    "[data-novaflow-ai-resource-action='1']",
+    // The reference sets every button in 500 (and its main action in 600).
+    "button",
+    "[role='button']"
+  ].join(",");
+  const NOVAFLOW_PRIMARY_FONT_WEIGHT = "600";
+  const NOVAFLOW_PRIMARY_BUTTON_FILL = "rgb(23, 165, 130)";
   const NOVAFLOW_STRONG_FONT_WEIGHT = "700";
   const NOVAFLOW_ICON_FONT_WEIGHT = "900";
   const NOVAFLOW_THIN_ARROW_STROKE = "1.35px";
   const NOVAFLOW_THIN_ARROW_SIZE = "7px";
+  const NOVAFLOW_THIN_SELECT_ARROW = 'url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 10 6%27%3E%3Cpath d=%27M1 1l4 4 4-4%27 fill=%27none%27 stroke=%27rgba(238,244,252,0.68)%27 stroke-width=%271.35%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E")';
   const NOVAFLOW_SELECT_ARROW_STROKE = "1.1px";
   const NOVAFLOW_SELECT_ARROW_COLOR = "rgba(238, 244, 252, 0.64)";
-  const NOVAFLOW_NUMBER_INPUT_WIDTH = 50;
-  const PARTICLE_DENSITY_PANEL_HEADER_HEIGHT = 36;
-  const PARTICLE_DENSITY_PANEL_BODY_PADDING_Y = 8;
-  const PARTICLE_DENSITY_PANEL_BODY_PADDING_X = 12;
-  const PARTICLE_DENSITY_PANEL_STACK_GAP = 5;
+  const NOVAFLOW_NUMBER_INPUT_WIDTH = 49;
+  const PARTICLE_DENSITY_PANEL_HEADER_HEIGHT = 46;
+  const PARTICLE_DENSITY_PANEL_BODY_PADDING_Y = 5;
+  const PARTICLE_DENSITY_PANEL_BODY_PADDING_X = 7;
+  const PARTICLE_DENSITY_PANEL_STACK_GAP = 7;
   const PARTICLE_DENSITY_SECTION_GAP = 6;
   const PARTICLE_DENSITY_SLIDER_TITLE_HEIGHT = 14;
   const PARTICLE_DENSITY_SLIDER_TITLE_GAP = 2;
   const PARTICLE_DENSITY_SLIDER_ROW_HEIGHT = 26;
-  const PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT = 2;
+  const PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT = 3;
   const PARTICLE_DENSITY_SLIDER_THUMB_SIZE = 12;
-  const PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT = 24;
+  // The unfilled half of every slider. One value, rather than the literal
+  // that had been repeated at each of the eighteen places a range is painted.
+  const UI_RANGE_TRACK = "#3b3b3b";
+  const PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT = 28;
   const SPRITE_EDITOR_SLIDER_GROUP_GAP = 4;
   const SPRITE_EDITOR_SLIDER_STACK_TOP_GAP = 5;
   const SPRITE_EDITOR_SLIDER_TITLE_HEIGHT = 13;
@@ -2383,36 +2436,542 @@
   const AI_ANIMATION_RANDOM_SEED_INPUT_WIDTH = 76;
   const SOURCE_PRIMARY_SIDEBAR_WIDTH = 100;
   const SOURCE_PRIMARY_LEFT_PANEL_WIDTH = 302;
-  const PRIMARY_SIDEBAR_WIDTH = 80;
-  const PRIMARY_SIDEBAR_GAP = 9;
-  const PRIMARY_VISIBLE_CONTENT_WIDTH = 250;
-  const PRIMARY_LEFT_PANEL_WIDTH = 242;
-  const SECONDARY_ENTRY_GROUP_WIDTH = PRIMARY_LEFT_PANEL_WIDTH;
+  // Rail geometry, measured off the approved reference (spline-review):
+  // a 56-wide rail of 65-tall entries, floated 10px off the left edge.
+  let PRIMARY_SIDEBAR_LEFT = 10;
+  // Reference: the rail is 56 wide but its entries are 44 - they sit inset,
+  // not edge-to-edge, which is what keeps the selected block from looking fat.
+  const PRIMARY_SIDEBAR_ITEM_INSET = 6;
+  let PRIMARY_SIDEBAR_ITEM_WIDTH = 44;
+  const PRIMARY_RAIL_PANEL_RADIUS = 12;
+  // The bottom generation dock (reference .nf-dock): a floating rounded panel,
+  // not a strip welded to the bottom edge.
+  // Reference .nf-grid: a flat dot field over the stage, not a 3D floor.
+  const STAGE_DOT_COLOR = "#3d3d3d";
+  const STAGE_DOT_SIZE_PX = 24;
+  // The bar floating over the top of the stage. The reference gives it two
+  // ranks: bare text buttons that only fill on hover, and one quiet button
+  // that carries a plate.
+  const CANVAS_BAR_BUTTON_HEIGHT = 28;
+  const CANVAS_BAR_BUTTON_RADIUS_PX = "5px";
+  const CANVAS_BAR_BUTTON_TEXT = "#a0a0a0";
+  const CANVAS_BAR_BUTTON_HOVER_BACKGROUND = "#393939";
+  const CANVAS_BAR_QUIET_HEIGHT = 36;
+  const CANVAS_BAR_QUIET_BACKGROUND = "#171717";
+  const CANVAS_BAR_QUIET_BORDER_COLOR = "#333333";
+  const CANVAS_BAR_QUIET_RADIUS_PX = "8px";
+  const CANVAS_BAR_QUIET_TEXT = "#b8b8b8";
+  const CANVAS_BAR_PILL_BACKGROUND = "#161616";
+  const CANVAS_BAR_PILL_BORDER_COLOR = "#333333";
+  const CANVAS_BAR_PILL_RADIUS_PX = "9px";
+  let WORKSPACE_SIDE_GAP = 10;
+  const DOCK_HEIGHT = 99;
+  // The reference uses one number field and one icon button everywhere: in
+  // the dock, in the left panel and in the resource sidebar.
+  const UI_NUM_FIELD_WIDTH = 49;
+  const UI_NUM_FIELD_HEIGHT = 28;
+  const UI_NUM_FIELD_BACKGROUND = "#272727";
+  const UI_NUM_FIELD_BORDER_COLOR = "#343434";
+  const UI_NUM_FIELD_RADIUS_PX = "6px";
+  const UI_NUM_FIELD_TEXT = "#e9e9e9";
+  // The left column's groups, measured off every *-spline.html page: no gap
+  // between them, 3 above and below each 46 header, and a 1px #272727 rule
+  // under each group - a 53 pitch the app had been getting from a 7px gap
+  // with no rule at all.
+  const LEFT_GROUP_PAD_Y = 3;
+  const LEFT_GROUP_RULE_COLOR = "#272727";
+  // Dropdowns: #262626 on a #343434 hairline, radius 6, #e9e9e9 text. In the
+  // left column they are 32 tall at 12px; in the dock and canvas bars 28 at
+  // 11px. The bundle had them #070707 with no edge.
+  const UI_SELECT_FIELD_BACKGROUND = "#262626";
+  const UI_SELECT_FIELD_BORDER_COLOR = "#343434";
+  const UI_SELECT_FIELD_RADIUS_PX = "6px";
+  const UI_SELECT_FIELD_TEXT = "#e9e9e9";
+  // A field's own label above its control.
+  const UI_FIELD_LABEL_TEXT = "#909090";
+  const UI_SELECT_LEFT_HEIGHT = 32;
+  const UI_SELECT_DOCK_HEIGHT = 28;
+  const UI_SELECT_LEFT_SCOPE = [
+    '[data-novaflow-editor-panel="1"]',
+    '[data-novaflow-left-content-root="1"]',
+    '[data-novaflow-ai-mode-section="1"]',
+    '[data-novaflow-ai-post-section="1"]',
+    '[data-novaflow-ui-design-left-root="1"]'
+  ].join(", ");
+  const UI_SELECT_MODAL_SCOPE = '[data-novaflow-export-modal-root="1"], [data-novaflow-export-modal-dialog="1"], [role="dialog"]';
+  const UI_ICON_BUTTON_SIZE = 30;
+  const UI_ICON_BUTTON_BACKGROUND = "#282828";
+  const UI_ICON_BUTTON_RADIUS_PX = "7px";
+  const UI_ICON_BUTTON_TEXT = "#eaeaea";
+  const UI_ICON_BUTTON_DISABLED_BACKGROUND = "#252629";
+  const UI_ICON_BUTTON_DISABLED_TEXT = "#969aa2";
+  const UI_CONTROL_LABEL_TEXT = "#a9a9a9";
+  const DOCK_SURFACE = "#161616";
+  const DOCK_BORDER_COLOR = "#363636";
+  const DOCK_RADIUS_PX = "12px";
+  const DOCK_PADDING = "13px 14px";
+  const DOCK_SHADOW = "0 4px 12px rgba(0, 0, 0, 0.13)";
+  // The reference floats each panel off the chrome: 8px below the topbar,
+  // 10px above the bottom, with a hairline edge on a slightly lighter fill.
+  const PRIMARY_PANEL_TOP_GAP = 8;
+  // The rail panel pads its entries in by 10, like the reference.
+  const PRIMARY_RAIL_INNER_PAD = 10;
+  let PRIMARY_PANEL_BOTTOM_GAP = 10;
+  const PRIMARY_PANEL_SURFACE = "#161616";
+  const PRIMARY_PANEL_BORDER_COLOR = "#2e2e2e";
+  const PRIMARY_RAIL_SURFACE_ID = "novaflow-primary-rail-surface";
+  const PRIMARY_LEFT_SURFACE_ID = "novaflow-primary-left-surface";
+  let PRIMARY_SIDEBAR_WIDTH = 56;
+  let PRIMARY_SIDEBAR_GAP = 9;
+  let PRIMARY_VISIBLE_CONTENT_WIDTH = 227;
+  let PRIMARY_LEFT_PANEL_WIDTH = 218;
+  const PRIMARY_LEFT_PANEL_PAD = 9;
+  // Reference .nf-sidebar pads its content in by 10, so cards are 198 wide
+  // inside a 218 panel.
+  const PRIMARY_LEFT_CARD_INSET = 10;
+  let PRIMARY_LEFT_CARD_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_CARD_INSET * 2;
+  const PRIMARY_LEFT_CARD_HEADER_HEIGHT = 46;
+  // The reference gives the group header a bare row and puts the only plate
+  // on its icon: a 24 square, 7 in from the card edge, 8 before the label.
+  const PRIMARY_LEFT_CARD_HEADER_PAD = 7;
+  const PRIMARY_LEFT_CARD_ICON_SIZE = 24;
+  const PRIMARY_LEFT_CARD_ICON_BACKGROUND = "#292929";
+  const PRIMARY_LEFT_CARD_ICON_RADIUS_PX = "5px";
+  const PRIMARY_LEFT_CARD_ICON_COLOR = "#bdbdbd";
+  const PRIMARY_LEFT_CARD_ICON_GAP = 8;
+  const PRIMARY_LEFT_CARD_TITLE_COLOR = "#d4d4d4";
+  // The shell lands the cards at 89; the reference wants 85.
+  const PRIMARY_LEFT_CARD_SHIFT = 0;
+  let SECONDARY_ENTRY_GROUP_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_PANEL_PAD * 2;
+  const SECONDARY_GROUP_HEIGHT = SECONDARY_ENTRY_HEIGHT + (SECONDARY_GROUP_PAD + 1) * 2;
   const PRIMARY_PANEL_BODY_VERTICAL_INSET = 14;
   const PRIMARY_PANEL_BODY_INSET = 11;
-  const PRIMARY_PANEL_INNER_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_PANEL_BODY_INSET * 2;
-  const TOPBAR_HEIGHT = 56;
-  const PRIMARY_CONTENT_OUTER_GAP = PRIMARY_SIDEBAR_GAP;
-  const PRIMARY_CONTENT_WIDTH = PRIMARY_VISIBLE_CONTENT_WIDTH;
+  let PRIMARY_PANEL_INNER_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_PANEL_BODY_INSET * 2;
+  const TOPBAR_HEIGHT = 54;
+  let PRIMARY_CONTENT_OUTER_GAP = PRIMARY_SIDEBAR_GAP;
+  let PRIMARY_CONTENT_WIDTH = PRIMARY_VISIBLE_CONTENT_WIDTH;
   const LEFT_CONTENT_SHELL_TOP_PADDING = 0;
   const LEFT_CONTENT_SHELL_BOTTOM_PADDING = 64;
-  const NOVAFLOW_TOOLS_ENTRY_SHELL_TOP = TOPBAR_HEIGHT + 14;
+  const NOVAFLOW_TOOLS_ENTRY_SHELL_TOP = TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP + 11;
   const NOVAFLOW_TOOLS_PREVIEW_TITLE_ROW_HEIGHT = 49;
   const NOVAFLOW_TOOLS_UPLOAD_ZONE_HEIGHT = 44;
-  const PRIMARY_SIDEBAR_ITEM_HEIGHT = 96;
-  const PRIMARY_OUTPUT_SHORTCUT_GAP = 12;
-  const PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH = 44;
-  const PRIMARY_CONTENT_LEFT = PRIMARY_SIDEBAR_WIDTH + PRIMARY_SIDEBAR_GAP;
-  const PRIMARY_COLUMN_WIDTH = PRIMARY_CONTENT_LEFT + PRIMARY_CONTENT_WIDTH;
-  const NOVAFLOW_TOOLS_PRIMARY_COLUMN_WIDTH = PRIMARY_COLUMN_WIDTH;
+  const PRIMARY_SIDEBAR_ITEM_HEIGHT = 65;
+  // Reference rail has gap:5 between entries, so the pitch is 65 + 5 = 70.
+  // Declared AFTER the height it reads: a const used before its own line
+  // throws at module scope and takes the whole runtime down with it.
+  const PRIMARY_RAIL_ITEM_GAP = 5;
+  const PRIMARY_RAIL_ITEM_PITCH = PRIMARY_SIDEBAR_ITEM_HEIGHT + PRIMARY_RAIL_ITEM_GAP;
+  const PRIMARY_OUTPUT_SHORTCUT_GAP = 15;
+  // The rule between 工具 and 仓库 (.nf-rule): 30 wide, #2C2C2C, 12 clear of
+  // the entries on either side. It had been drawn, but transparent.
+  let PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH = 30;
+  const PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN = 12;
+  const PRIMARY_OUTPUT_SHORTCUT_DIVIDER_COLOR = "#2c2c2c";
+  let PRIMARY_CONTENT_LEFT = PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_WIDTH + PRIMARY_SIDEBAR_GAP;
+  let PRIMARY_COLUMN_WIDTH = PRIMARY_CONTENT_LEFT + PRIMARY_CONTENT_WIDTH;
+  let NOVAFLOW_TOOLS_PRIMARY_COLUMN_WIDTH = PRIMARY_COLUMN_WIDTH;
   const NOVAFLOW_TOOLS_WORKSPACE_PADDING_LEFT = 12;
-  const NOVAFLOW_TOOLS_WORKSPACE_BACKGROUND = "#151515";
-  const AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH = 260;
-  const AI_ANIMATION_PREVIEW_UI_GAP = 8;
+  const NOVAFLOW_TOOLS_WORKSPACE_BACKGROUND = "#242424";
+  // 工具: the reference gives the tool list 198x40 entries on a 45 pitch, and
+  // draws the two preview columns as panels a step lighter than the chrome.
+  const NOVAFLOW_TOOLS_ENTRY_HEIGHT = 40;
+  const NOVAFLOW_TOOLS_ENTRY_GAP = 5;
+  const NOVAFLOW_TOOLS_ENTRY_SELECTED_TEXT = "#98e3cb";
+  const NOVAFLOW_TOOLS_VIEW_SURFACE = "#1d1d1d";
+  const NOVAFLOW_TOOLS_VIEW_BORDER_COLOR = "#353535";
+  const NOVAFLOW_TOOLS_BLANK_SURFACE = "#242424";
+  const NOVAFLOW_TOOLS_BLANK_BORDER_COLOR = "#3c3c3c";
+  const NOVAFLOW_TOOLS_BLANK_RADIUS_PX = "8px";
+  let AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH = 206;
+  let AI_ANIMATION_RESOURCE_SIDEBAR_INSET = WORKSPACE_SIDE_GAP;
+  let AI_ANIMATION_RESOURCE_SIDEBAR_SPAN = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + AI_ANIMATION_RESOURCE_SIDEBAR_INSET;
+
+  // Adaptive layout, from the reference's own media queries (spline-review):
+  //   wide    > 1400   rail 56, left column 218, resources 206, gutters 10 / 9
+  //   narrow <= 1400   rail 52, left column 192, resources 172, gutters 8
+  //   stack  <=  720   rail 48, one column: the left column over the stage,
+  //                    the dock and the resources under it, the page scrolls
+  // (The reference's 1100 block is overridden by its later 1400 block, so the
+  // columns do not narrow again at 1100.) The values above are `let` so every
+  // writer that already reads them follows the tier without being touched.
+  const NOVAFLOW_LAYOUT_TIERS = {
+    wide: { sidebarLeft: 10, railWidth: 56, railItem: 44, railGap: 9, panel: 218, sideGap: 10, bottomGap: 10, resources: 206 },
+    narrow: { sidebarLeft: 8, railWidth: 52, railItem: 40, railGap: 8, panel: 192, sideGap: 8, bottomGap: 8, resources: 172 },
+    stack: { sidebarLeft: 8, railWidth: 48, railItem: 36, railGap: 8, panel: 192, sideGap: 8, bottomGap: 8, resources: 172 }
+  };
+  const NOVAFLOW_LAYOUT_NARROW_MAX = 1400;
+  const NOVAFLOW_LAYOUT_STACK_MAX = 720;
+  let NOVAFLOW_LAYOUT_TIER = "wide";
+
+  // The canvas bar, measured off every *-spline.html page: 38-tall plates
+  // (4 in, 3 between, #333 hairline, radius 9, a soft drop) holding 28-tall
+  // buttons with a 1px edge that is transparent until selected. Buttons pad
+  // 10 a side wide and 8 at or below 1400; the video-mode tabs are at least
+  // 76 / 64 wide and the + / - board buttons at least 30.
+  const CANVAS_BAR_PILL_SELECTORS = [
+    '[data-novaflow-ai-board-controls-top-left="1"]',
+    '[data-novaflow-ai-top-mode-tabs="1"]',
+    "#novaflow-particle-project-top-actions",
+    '[data-novaflow-skeleton-top-button-group="1"]',
+    "#novaflow-spine-split-view-controls",
+    '[data-novaflow-ui-design-bottom-dock="1"]',
+    "#novaflow-art-generate-workspace .novaflow-art-generate-top"
+  ];
+  const CANVAS_BAR_QUIET_SELECTOR = [
+    '[data-novaflow-autofit-button="1"]',
+    '[data-novaflow-ui-design-toolbar-action="fit"]'
+  ].join(", ");
+  const CANVAS_BAR_PILL_SHADOW = "0 3px 7px rgba(0, 0, 0, 0.133)";
+  const CANVAS_BAR_PILL_TEXT = "#eaeaea";
+  const CANVAS_BAR_DISABLED_BACKGROUND = "#252629";
+  const CANVAS_BAR_DISABLED_TEXT = "#969aa2";
+  // Every disabled button in the reference is also drawn at 0.38.
+  const NOVAFLOW_DISABLED_OPACITY = "0.38";
+
+  function canvasBarPillStyle() {
+    return {
+      height: `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+      "min-height": `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+      "max-height": `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+      padding: "4px",
+      gap: "3px",
+      "column-gap": "3px",
+      "box-sizing": "border-box",
+      background: CANVAS_BAR_PILL_BACKGROUND,
+      "background-color": CANVAS_BAR_PILL_BACKGROUND,
+      "background-image": "none",
+      border: `1px solid ${CANVAS_BAR_PILL_BORDER_COLOR}`,
+      "border-radius": CANVAS_BAR_PILL_RADIUS_PX,
+      "box-shadow": CANVAS_BAR_PILL_SHADOW,
+      color: CANVAS_BAR_PILL_TEXT
+    };
+  }
+
+  function canvasBarButtonActive(node) {
+    if (node.hasAttribute("data-novaflow-art-generate-mode")) return node.getAttribute("data-active") === "1";
+    if (node.getAttribute("data-novaflow-skeleton-premultiply-alpha-button") === "1") {
+      return node.getAttribute("aria-pressed") !== "false";
+    }
+    // 显示骨骼 / 当前链条 / 显示网格 say "on" only through their fill, which
+    // the skeleton sync reads into this marker.
+    if (node.getAttribute("data-novaflow-skeleton-top-button") === "1") {
+      return node.getAttribute("data-novaflow-skeleton-top-button-active") === "1";
+    }
+    if (node.hasAttribute("data-novaflow-spine-split-tool-active")) {
+      return node.getAttribute("data-novaflow-spine-split-tool-active") === "1";
+    }
+    return node.getAttribute("aria-pressed") === "true";
+  }
+
+  function canvasBarButtonStyle(node) {
+    const wide = NOVAFLOW_LAYOUT_TIER === "wide";
+    const mode = Boolean(node.closest('[data-novaflow-ai-top-mode-tabs="1"]')) || node.hasAttribute("data-novaflow-art-generate-mode");
+    const text = normalizeText(node.textContent || "");
+    // A glyph button (+, -, undo, redo...): one character that is not a digit
+    // or a word; the reference gives it a 16px icon box.
+    const icon = text.length <= 1 && !/^[0-9A-Za-z\u4e00-\u9fff]$/.test(text);
+    const disabled = node.disabled === true || node.getAttribute("aria-disabled") === "true";
+    const active = !disabled && canvasBarButtonActive(node);
+    // Idle buttons read their fill through a var so :hover can still change it.
+    nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : (disabled ? "disabled" : "idle"));
+    const activeText = mode ? AI_ANIMATION_MODE_SELECTED_TEXT : UI_SEGMENT_SELECTED_TEXT;
+    const activeBorder = mode ? AI_ANIMATION_MODE_SELECTED_BORDER : UI_SEGMENT_SELECTED_BORDER;
+    const background = active
+      ? UI_SEGMENT_SELECTED_BACKGROUND
+      : (disabled ? CANVAS_BAR_DISABLED_BACKGROUND : "var(--nf-cb-hover-bg, transparent)");
+    return {
+      height: `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+      "min-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+      "max-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+      width: "auto",
+      // + / - carry a 16 glyph box in the reference: 16 + the padding + the edge.
+      "min-width": mode ? `${wide ? 76 : 64}px` : (icon ? `${18 + (wide ? 20 : 16)}px` : "0"),
+      "max-width": "none",
+      flex: "0 0 auto",
+      // "+ 参考图": the reference sets a full-width ＋, 3px wider than the
+      // button's own +; the label is left as it is and the room made up here.
+      padding: /^\+\s/.test(text) ? `4px ${wide ? 10 : 8}px 4px ${(wide ? 10 : 8) + 3}px` : `4px ${wide ? 10 : 8}px`,
+      border: `1px solid ${active ? activeBorder : "transparent"}`,
+      "border-radius": CANVAS_BAR_BUTTON_RADIUS_PX,
+      background,
+      "background-color": background,
+      "background-image": "none",
+      "box-shadow": "none",
+      color: active ? activeText : (disabled ? CANVAS_BAR_DISABLED_TEXT : `var(--nf-cb-hover-fg, ${CANVAS_BAR_BUTTON_TEXT})`),
+      opacity: disabled ? NOVAFLOW_DISABLED_OPACITY : "1",
+      "font-size": "11px",
+      "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+      "line-height": "1",
+      "box-sizing": "border-box"
+    };
+  }
+
+  function canvasBarQuietStyle(node) {
+    const disabled = node.disabled === true || node.getAttribute("aria-disabled") === "true";
+    nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", disabled ? "disabled" : "idle");
+    return {
+      width: "auto",
+      "min-width": "0",
+      height: `${CANVAS_BAR_QUIET_HEIGHT}px`,
+      "min-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
+      "max-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
+      padding: "5px 12px",
+      background: `var(--nf-cb-hover-bg, ${CANVAS_BAR_QUIET_BACKGROUND})`,
+      "background-color": `var(--nf-cb-hover-bg, ${CANVAS_BAR_QUIET_BACKGROUND})`,
+      "background-image": "none",
+      border: `1px solid ${CANVAS_BAR_QUIET_BORDER_COLOR}`,
+      "border-radius": CANVAS_BAR_QUIET_RADIUS_PX,
+      "box-shadow": "none",
+      color: `var(--nf-cb-hover-fg, ${CANVAS_BAR_QUIET_TEXT})`,
+      opacity: disabled ? NOVAFLOW_DISABLED_OPACITY : "1",
+      "font-size": "11px",
+      "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+      "line-height": "1",
+      "box-sizing": "border-box"
+    };
+  }
+
+  // Where the canvas bar sits: the stage's own box, from the layout metrics.
+  // `withResources` is every page with a right-hand panel; the particle page
+  // runs its stage to the window's gutter.
+  function novaflowStageBox(withResources = true) {
+    const viewportWidth = Math.max(0, Math.round(window.innerWidth || document.documentElement.clientWidth || 0));
+    const left = PRIMARY_COLUMN_WIDTH;
+    const right = withResources
+      ? viewportWidth - AI_ANIMATION_RESOURCE_SIDEBAR_SPAN - WORKSPACE_SIDE_GAP
+      : viewportWidth - WORKSPACE_SIDE_GAP;
+    const top = NOVAFLOW_LAYOUT_TIER === "stack" && NOVAFLOW_STACK_WORKSPACE_TOP
+      ? NOVAFLOW_STACK_WORKSPACE_TOP
+      : TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP;
+    return { left, right, width: Math.max(0, right - left), top };
+  }
+
+  // The reference's canvas bar is one flex row: the plate on the left, the
+  // quiet 自动适配 at the right edge and, on the video page, the mode tabs
+  // centred on the stage. At or below 1100 the tabs join the row
+  // (space-between), and when the three no longer fit they keep the first
+  // line, right-aligned, while 自动适配 drops to a second line on the left.
+  const CANVAS_BAR_ROW_TOP = 7;
+  const CANVAS_BAR_WRAP_TOP = 3;
+  const CANVAS_BAR_LINE_GAP = 8;
+  function aiCanvasBarLayout() {
+    const box = novaflowStageBox(true);
+    const pill = document.querySelector('[data-novaflow-ai-board-controls-top-left="1"]');
+    const tabs = document.querySelector('[data-novaflow-ai-top-mode-tabs="1"]');
+    const quiet = document.querySelector('[data-novaflow-ai-zoom-controls="1"]');
+    const pillWidth = pill instanceof HTMLElement ? pill.offsetWidth : 0;
+    const tabsWidth = tabs instanceof HTMLElement ? tabs.offsetWidth : 0;
+    const quietWidth = quiet instanceof HTMLElement ? quiet.offsetWidth : 0;
+    const viewportWidth = Math.round(window.innerWidth || 0);
+    if (viewportWidth > 1100) {
+      return { wrapped: false, rowTop: CANVAS_BAR_ROW_TOP, tabsCenter: box.left + box.width / 2, box };
+    }
+    const fits = pillWidth + tabsWidth + quietWidth <= box.width;
+    if (fits) {
+      const free = box.width - pillWidth - tabsWidth - quietWidth;
+      return { wrapped: false, rowTop: CANVAS_BAR_ROW_TOP, tabsCenter: box.left + pillWidth + free / 2 + tabsWidth / 2, box };
+    }
+    return {
+      wrapped: true,
+      rowTop: CANVAS_BAR_WRAP_TOP,
+      tabsCenter: box.right - tabsWidth / 2,
+      quietTop: CANVAS_BAR_WRAP_TOP + AI_ANIMATION_CAPSULE_HEIGHT + CANVAS_BAR_LINE_GAP,
+      box
+    };
+  }
+
+  // The generation dock, measured off animation-spline.html / art-spline.html:
+  // 11 between rows and between parameters, a label 6 from its control,
+  // 11px #A9A9A9 labels, the green 104x32 primary, a 10px progress line and
+  // a prompt panel whose bar carries 16px outline icons.
+  const DOCK_ROW_GAP = 11;
+  const DOCK_LABEL_GAP = 6;
+  const DOCK_LABEL_TEXT = "#a9a9a9";
+  const DOCK_PRIMARY_BORDER = "#24b693";
+  const DOCK_PROGRESS_TEXT = "#7a7a7a";
+  const DOCK_PROGRESS_LINE = "#2d2d2d";
+  const DOCK_PROMPT_SURFACE = "#202020";
+  const DOCK_PROMPT_BORDER = "#353535";
+  const DOCK_PROMPT_TEXT = "#c9c9c9";
+  const DOCK_PROMPT_ACTION_TEXT = "#9f9f9f";
+  const DOCK_TOGGLE_ON_TEXT = "#8ee0c5";
+  const DOCK_SWITCH_ON = "#1bb28c";
+  const DOCK_SWITCH_OFF = "#3e3e3e";
+  const DOCK_SWITCH_KNOB_ON = "#f2f2f2";
+  const DOCK_SWITCH_KNOB_OFF = "#cacaca";
+  const DOCK_ICON_HISTORY = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8'/%3E%3Cpath d='M3 3v5h5'/%3E%3Cpath d='M12 7v5l4 2'/%3E%3C/svg%3E")`;
+  const DOCK_ICON_SPARKLES = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'/%3E%3Cpath d='M20 3v4'/%3E%3Cpath d='M22 5h-4'/%3E%3Cpath d='M4 17v2'/%3E%3Cpath d='M5 18H3'/%3E%3C/svg%3E")`;
+  const DOCK_ICON_PENCIL_LINE = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.376 3.622a1 1 0 0 1 3.002 3.002L7.368 18.635a2 2 0 0 1-.855.506l-2.872.838a.5.5 0 0 1-.62-.62l.838-2.872a2 2 0 0 1 .506-.854z'/%3E%3Cpath d='m15 5 3 3'/%3E%3C/svg%3E")`;
+
+  // The play bar: 30x30 #282828 buttons with the reference's 16px outline
+  // icons, the loop switch in the dark selected green, a 34-tall ruler.
+  const PLAYBACK_BUTTON_SIZE = 30;
+  const PLAYBACK_SELECTED_BACKGROUND = "#193d33";
+  const PLAYBACK_SELECTED_BORDER = "#306553";
+  const PLAYBACK_SELECTED_TEXT = "#8ee0c5";
+  const PLAYBACK_FRAME_TEXT = "#979797";
+  const PLAYBACK_RULER_TEXT = "#949494";
+  const PLAYBACK_RULER_HEIGHT = 34;
+  const PLAYBACK_ICON_SCAN = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7V5a2 2 0 0 1 2-2h2'/%3E%3Cpath d='M17 3h2a2 2 0 0 1 2 2v2'/%3E%3Cpath d='M21 17v2a2 2 0 0 1-2 2h-2'/%3E%3Cpath d='M7 21H5a2 2 0 0 1-2-2v-2'/%3E%3C/svg%3E")`;
+  const PLAYBACK_ICON_WIND = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.8 19.6A2 2 0 1 0 14 16H2'/%3E%3Cpath d='M17.5 8a2.5 2.5 0 1 1 2 4H2'/%3E%3Cpath d='M9.8 4.4A2 2 0 1 1 11 8H2'/%3E%3C/svg%3E")`;
+  const PLAYBACK_ICON_IMAGE = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2' ry='2'/%3E%3Ccircle cx='9' cy='9' r='2'/%3E%3Cpath d='m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21'/%3E%3C/svg%3E")`;
+  const PLAYBACK_ICON_X = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M18 6 6 18'/%3E%3Cpath d='m6 6 12 12'/%3E%3C/svg%3E")`;
+  const PLAYBACK_ICON_BY_TITLE = {
+    "\u663e\u793a/\u9690\u85cf\u53d1\u5c04\u5668\u5f62\u72b6": "scan",
+    "\u663e\u793a/\u9690\u85cf\u529b\u573a\u5411\u91cf": "wind",
+    "\u4e0a\u4f20\u80cc\u666f\u56fe": "image",
+    "\u6e05\u9664\u80cc\u666f\u56fe": "x",
+    "\u8d77\u59cb\u5e27": "skip-back",
+    "\u4e0a\u4e00\u5e27": "step-back",
+    "\u4e0b\u4e00\u5e27": "step-forward",
+    "\u540e\u9000 1 \u5e27": "step-back",
+    "\u64ad\u653e": "play",
+    "\u6682\u505c": "pause",
+    "\u5feb\u8fdb 1 \u5e27": "step-forward",
+    "\u6700\u540e\u5e27": "skip-forward",
+    "\u5faa\u73af": "repeat"
+  };
+  const PLAYBACK_ICON_SKIP_BACK = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='19 20 9 12 19 4 19 20'/%3E%3Cline x1='5' x2='5' y1='19' y2='5'/%3E%3C/svg%3E")`;
+  const PLAYBACK_ICON_STEP_BACK = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='18' x2='18' y1='20' y2='4'/%3E%3Cpolygon points='14,20 4,12 14,4'/%3E%3C/svg%3E")`;
+  const PLAYBACK_ICON_PLAY = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='6 3 20 12 6 21 6 3'/%3E%3C/svg%3E")`;
+  const PLAYBACK_ICON_PAUSE = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='14' y='4' width='4' height='16' rx='1'/%3E%3Crect x='6' y='4' width='4' height='16' rx='1'/%3E%3C/svg%3E")`;
+  const PLAYBACK_ICON_STEP_FORWARD = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cline x1='6' x2='6' y1='4' y2='20'/%3E%3Cpolygon points='10,4 20,12 10,20'/%3E%3C/svg%3E")`;
+  const PLAYBACK_ICON_SKIP_FORWARD = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='5 4 15 12 5 20 5 4'/%3E%3Cline x1='19' x2='19' y1='5' y2='19'/%3E%3C/svg%3E")`;
+  const PLAYBACK_ICON_REPEAT = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m17 2 4 4-4 4'/%3E%3Cpath d='M3 11v-1a4 4 0 0 1 4-4h14'/%3E%3Cpath d='m7 22-4-4 4-4'/%3E%3Cpath d='M21 13v1a4 4 0 0 1-4 4H3'/%3E%3C/svg%3E")`;
+
+  // 工具, measured off tools-spline.html: a parameter panel beside the tool
+  // list (218 wide; 194 at or below 1400, 174 at or below 1100) and two
+  // preview panels, all on 10 gutters.
+  const TOOLS_PARAMS_SURFACE = "#161616";
+  const TOOLS_PARAMS_BORDER = "#2e2e2e";
+  const TOOLS_TABS_SURFACE = "#101010";
+  const TOOLS_TABS_BORDER = "#262626";
+  const TOOLS_DROP_SURFACE = "#212121";
+  const TOOLS_DROP_BORDER = "#4b4b4b";
+  const TOOLS_DROP_TEXT = "#b9b9b9";
+  const TOOLS_HINT_TEXT = "#979797";
+  const TOOLS_RANGE_LABEL_TEXT = "#ababab";
+  const TOOLS_VIEW_GAP = 10;
+  const TOOLS_BLANK_TEXT = "#888888";
+  function toolsParamsWidth() {
+    const width = Math.round(window.innerWidth || 0);
+    if (NOVAFLOW_LAYOUT_TIER === "stack") return Math.max(160, width - NOVAFLOW_STACK_SIDE_INSET);
+    if (width <= 1100) return 174;
+    if (width <= 1400) return 194;
+    return 218;
+  }
+  function toolsButtonState(node, primary) {
+    const disabled = node.disabled === true || node.getAttribute("aria-disabled") === "true";
+    if (disabled) {
+      nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "disabled");
+      return { background: CANVAS_BAR_DISABLED_BACKGROUND, color: CANVAS_BAR_DISABLED_TEXT, border: "transparent", opacity: NOVAFLOW_DISABLED_OPACITY };
+    }
+    if (primary) {
+      nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "active");
+      return { background: UI_ACCENT, color: "#ffffff", border: DOCK_PRIMARY_BORDER, opacity: "1" };
+    }
+    nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle");
+    return { background: `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`, color: `var(--nf-cb-hover-fg, ${UI_ICON_BUTTON_TEXT})`, border: "transparent", opacity: "1" };
+  }
+
+  // 骨骼动画, measured off spine-spline.html: a dark 24px checker under the
+  // stage, a 52 play bar (30x30 button, native slider, plain time), and the
+  // project tree as 39-tall rows over #313131 rules.
+  const SKELETON_CHECKER_BASE = "#252525";
+  const SKELETON_CHECKER_SQUARE = "#2b2b2b";
+  const SKELETON_TREE_TEXT = "#ababab";
+  const SKELETON_TREE_RULE = "#313131";
+
+  function novaflowLayoutTierForWidth(width) {
+    const w = Number(width) || 0;
+    if (w > 0 && w <= NOVAFLOW_LAYOUT_STACK_MAX) return "stack";
+    if (w > 0 && w <= NOVAFLOW_LAYOUT_NARROW_MAX) return "narrow";
+    return "wide";
+  }
+
+  // The stacked tier's left column takes the window's width less the rail
+  // and gutters (8 + 48 + 8 on the left, 8 on the right).
+  const NOVAFLOW_STACK_SIDE_INSET = 72;
+  const NOVAFLOW_STACK_SIDEBAR_MAX_HEIGHT = 320;
+  let NOVAFLOW_LAYOUT_WIDTH = 0;
+  // Where the stacked workspace starts: under the left column. Set by each
+  // spec pass, before its entries run.
+  let NOVAFLOW_STACK_WORKSPACE_TOP = 0;
+
+  function assignNovaflowLayoutMetrics(tier, width = window.innerWidth) {
+    const base = NOVAFLOW_LAYOUT_TIERS[tier] || NOVAFLOW_LAYOUT_TIERS.wide;
+    const viewportWidth = Math.max(0, Math.round(Number(width) || 0));
+    const m = tier === "stack"
+      ? { ...base, panel: Math.max(160, viewportWidth - NOVAFLOW_STACK_SIDE_INSET), resources: Math.max(160, viewportWidth - NOVAFLOW_STACK_SIDE_INSET) }
+      : base;
+    NOVAFLOW_LAYOUT_TIER = NOVAFLOW_LAYOUT_TIERS[tier] ? tier : "wide";
+    NOVAFLOW_LAYOUT_WIDTH = viewportWidth;
+    PRIMARY_SIDEBAR_LEFT = m.sidebarLeft;
+    PRIMARY_SIDEBAR_ITEM_WIDTH = m.railItem;
+    WORKSPACE_SIDE_GAP = m.sideGap;
+    PRIMARY_PANEL_BOTTOM_GAP = m.bottomGap;
+    PRIMARY_SIDEBAR_WIDTH = m.railWidth;
+    PRIMARY_SIDEBAR_GAP = m.railGap;
+    PRIMARY_LEFT_PANEL_WIDTH = m.panel;
+    PRIMARY_VISIBLE_CONTENT_WIDTH = m.panel + m.railGap;
+    AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH = m.resources;
+    // Everything derived from them, in declaration order.
+    PRIMARY_LEFT_CARD_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_CARD_INSET * 2;
+    SECONDARY_ENTRY_GROUP_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_LEFT_PANEL_PAD * 2;
+    PRIMARY_PANEL_INNER_WIDTH = PRIMARY_LEFT_PANEL_WIDTH - PRIMARY_PANEL_BODY_INSET * 2;
+    PRIMARY_CONTENT_OUTER_GAP = PRIMARY_SIDEBAR_GAP;
+    PRIMARY_CONTENT_WIDTH = PRIMARY_VISIBLE_CONTENT_WIDTH;
+    // The rule between 工具 and 仓库 is the entry width less 7 each side.
+    PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH = PRIMARY_SIDEBAR_ITEM_WIDTH - 14;
+    PRIMARY_CONTENT_LEFT = PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_WIDTH + PRIMARY_SIDEBAR_GAP;
+    PRIMARY_COLUMN_WIDTH = PRIMARY_CONTENT_LEFT + PRIMARY_CONTENT_WIDTH;
+    NOVAFLOW_TOOLS_PRIMARY_COLUMN_WIDTH = PRIMARY_COLUMN_WIDTH;
+    AI_ANIMATION_RESOURCE_SIDEBAR_INSET = WORKSPACE_SIDE_GAP;
+    AI_ANIMATION_RESOURCE_SIDEBAR_SPAN = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + AI_ANIMATION_RESOURCE_SIDEBAR_INSET;
+    if (NOVAFLOW_LAYOUT_TIER === "stack") {
+      // One column: the workspace starts at the rail's gutter, not after the
+      // left column, and the resources sit under it rather than beside it.
+      PRIMARY_COLUMN_WIDTH = PRIMARY_CONTENT_LEFT;
+      NOVAFLOW_TOOLS_PRIMARY_COLUMN_WIDTH = PRIMARY_COLUMN_WIDTH;
+      AI_ANIMATION_RESOURCE_SIDEBAR_SPAN = 0;
+    }
+    return NOVAFLOW_LAYOUT_TIER;
+  }
+  const AI_ANIMATION_PREVIEW_UI_GAP = 10;
   const AI_ANIMATION_RESOURCE_SIDEBAR_GAP = AI_ANIMATION_PREVIEW_UI_GAP;
-  const AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT = 232;
+  const AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT = 206;
   const AI_ANIMATION_GENERATION_INNER_GAP = 8;
-  const AI_ANIMATION_PANEL_TIMELINE_GAP = 8;
+  // The reference stacks a 206-tall generation dock and a 97-tall playback
+  // bar 9 apart, both on the panel surface with their own edge.
+  const AI_ANIMATION_PANEL_TIMELINE_GAP = 9;
+  const AI_ANIMATION_STACK_SURFACE = "#161616";
+  const AI_ANIMATION_TIMELINE_BORDER_COLOR = "#343434";
+  const AI_ANIMATION_TIMELINE_RADIUS = 10;
+  // 多参视频's reference tiles, measured off animation-spline.html at 1580:
+  // a left-aligned row of 87x59 dashed wells, 8 apart, 11 above the parameter
+  // row. The app was drawing them 117x132, which pushed the dock to 468.
+  const AI_ANIMATION_REFERENCE_TILE_WIDTH = 87;
+  const AI_ANIMATION_REFERENCE_TILE_HEIGHT = 59;
+  const AI_ANIMATION_REFERENCE_TILE_GAP = 8;
+  const AI_ANIMATION_REFERENCE_TILE_SURFACE = "#202020";
+  const AI_ANIMATION_REFERENCE_TILE_BORDER_COLOR = "#4f4f4f";
+  const AI_ANIMATION_REFERENCE_TILE_RADIUS_PX = "8px";
+  const AI_ANIMATION_DOCK_ROW_GAP = 11;
+  // 骨骼动画, measured off spine-spline.html at 1580: a 1052x882 stage on
+  // #252525, a 52-tall playback bar under it, and the canvas bar's plate
+  // holding 28-tall bare buttons.
+  const SKELETON_STAGE_SURFACE = "#252525";
+  const SKELETON_PLAYBAR_HEIGHT = 52;
+  // The AI page's canvas bar carries the same two capsules the particle page
+  // does - a plate holding bare 28-tall buttons - so it reuses those tokens
+  // and only adds its own vertical offsets.
+  const AI_ANIMATION_CANVAS_BAR_TOP_GAP = 7;
+  const AI_ANIMATION_CANVAS_QUIET_TOP_GAP = 8;
+  const AI_ANIMATION_CAPSULE_HEIGHT = 38;
+  const AI_ANIMATION_MODE_SELECTED_BORDER = "#34705c";
+  const AI_ANIMATION_MODE_SELECTED_TEXT = "#a4e9d4";
+  const AI_ANIMATION_RESOURCE_TITLE_TEXT = "#c5c5c5";
+  const AI_ANIMATION_RESOURCE_EMPTY_TEXT = "#7e7e7e";
   const AI_ANIMATION_REFERENCE_UPLOAD_WIDTH = 132;
   const AI_ANIMATION_REFERENCE_UPLOAD_GAP = 10;
   const AI_ANIMATION_SOURCE_OWNED_SETTINGS_MIN_WIDTH = 260;
@@ -2430,21 +2989,35 @@
   const AI_ANIMATION_PROMPT_HISTORY_POPOVER_ROW_BUDGET = 15;
   const AI_ANIMATION_PROMPT_HISTORY_POPOVER_MAX_HEIGHT =
     22 + AI_ANIMATION_PROMPT_HISTORY_POPOVER_ROW_BUDGET * 30 + (AI_ANIMATION_PROMPT_HISTORY_POPOVER_ROW_BUDGET - 1) * 4;
-  const PRIMARY_PANEL_BACKGROUND = "#2a2a2a";
+  // The selected-entry pair, declared before its first consumer below.
+  const PRIMARY_ENTRY_ACTIVE_RADIUS_PX = "7px";
+  // Reference uses two: the rail entry #1b4035, the segment pill #1c4136.
+  const UI_SELECTED_BACKGROUND = "#1b4035";
+  const UI_SEGMENT_SELECTED_BACKGROUND = "#1c4136";
+  const UI_SELECTED_BORDER = "#29594a";
+  const PRIMARY_PANEL_BACKGROUND = "#161616";
   const PRIMARY_PANEL_EXPANDED_BACKGROUND = "#181818";
-  const LEFT_PANEL_BACKGROUND = "#181818";
-  const LEFT_LAYOUT_BACKGROUND = LEFT_PANEL_BACKGROUND;
+  const LEFT_PANEL_BACKGROUND = "#161616";
+  // The column is now just a layout box: the rail and the left panel are drawn
+  // as floating surfaces, so anything painted here would sit behind them as a
+  // full-height strip and cancel their rounded edges. Distinct from
+  // LEFT_PANEL_BACKGROUND, which is still the panels' own fill.
+  const LEFT_LAYOUT_BACKGROUND = "transparent";
   const PRIMARY_RAIL_BACKGROUND = PRIMARY_PANEL_BACKGROUND;
-  const LEFT_COLUMN_BACKGROUND_IMAGE = `linear-gradient(to right, ${PRIMARY_RAIL_BACKGROUND} 0, ${PRIMARY_RAIL_BACKGROUND} ${PRIMARY_SIDEBAR_WIDTH}px, ${LEFT_LAYOUT_BACKGROUND} ${PRIMARY_SIDEBAR_WIDTH}px, ${LEFT_LAYOUT_BACKGROUND} 100%)`;
+  const LEFT_COLUMN_BACKGROUND_IMAGE = "none";
   const LEFT_PANEL_EDGE = "rgba(154, 159, 165, 0.05)";
-  const SECONDARY_ENTRY_BACKGROUND = "#303030";
-  const SECONDARY_ENTRY_HOVER_BACKGROUND = "#3b3b3b";
-  const SECONDARY_ENTRY_ACTIVE_BACKGROUND = "#303030";
+  // Unselected segment entries are bare in the reference; only the
+  // selected one is filled.
+  const SECONDARY_ENTRY_BACKGROUND = "var(--nf-seg-entry-bg, transparent)";
+  const SECONDARY_ENTRY_HOVER_BACKGROUND = "#303030";
+  const SECONDARY_ENTRY_ACTIVE_BACKGROUND = UI_SEGMENT_SELECTED_BACKGROUND;
   const SKELETON_SELECTION_BACKGROUND = "rgba(30, 166, 114, 0.14)";
   const SKELETON_SELECTION_SHADOW = "inset 3px 0 0 rgba(30, 166, 114, 0.92)";
   const SKELETON_PREVIEW_CAMERA_ZOOM_MIN_SCALE = 0.1;
   const SKELETON_PREVIEW_CAMERA_ZOOM_MAX_SCALE = 24;
-  const PREVIEW_OUTSIDE_BACKGROUND = "#0b0b0b";
+  // The workspace backdrop (reference --nf-bg). Written inline with
+  // !important in places, so this constant is the only way to move it.
+  const PREVIEW_OUTSIDE_BACKGROUND = "#242424";
   const MODAL_BACKDROP_BACKGROUND = "rgba(0, 0, 0, 0.55)";
   const DROPDOWN_OVERLAY_ID = "novaflow-global-dropdown-overlay";
   const DROPDOWN_PORTAL_ID = "novaflow-global-dropdown-portal";
@@ -2556,8 +3129,8 @@
       });
     } catch {}
   }
-  const AI_ANIMATION_PREVIEW_BACKGROUND = "linear-gradient(180deg, #101010 0%, #0b0b0b 100%)";
-  const AI_ANIMATION_PREVIEW_BACKGROUND_COLOR = "#0b0b0b";
+  const AI_ANIMATION_PREVIEW_BACKGROUND = "#242424";
+  const AI_ANIMATION_PREVIEW_BACKGROUND_COLOR = "#242424";
   const AI_ANIMATION_PREVIEW_BLACK_BACKPLATE = "#000000";
   const AI_ANIMATION_PREVIEW_GRAY_BACKGROUND = "#777777";
   const AI_SEQUENCE_CUTOUT_EDIT_CANVAS_ATTR = "data-novaflow-ai-cutout-edit-canvas";
@@ -2565,30 +3138,55 @@
   const AI_SEQUENCE_PREVIEW_BRUSH_LAYER_Z_INDEX = DROPDOWN_UNDERLAY_Z_INDEX;
   const AI_SEQUENCE_PREVIEW_BRUSH_CURSOR_Z_INDEX = String(Number(AI_SEQUENCE_PREVIEW_BRUSH_LAYER_Z_INDEX) + 1);
   const AI_ANIMATION_PLACEHOLDER_NOTE_COLOR = "#a0a0a0";
-  const PRIMARY_ACTIVE_BACKGROUND = "#1ea672";
-  const PRIMARY_INACTIVE_BACKGROUND = PRIMARY_PANEL_BACKGROUND;
-  const UI_TOPBAR_BACKGROUND = "#242424";
-  const UI_FIELD_BACKGROUND = "#070707";
-  const UI_SELECT_BACKGROUND = "#070707";
-  const UI_SELECT_HOVER_BACKGROUND = "#111111";
-  const UI_SURFACE_MUTED = "#171717";
-  const UI_BUTTON_BACKGROUND = "#333333";
-  const UI_DISABLED_NEUTRAL_BUTTON_BACKGROUND = "#2b2b2b";
-  const UI_TOGGLE_OFF_BACKGROUND = "#222222";
-  const UI_SYSTEM_ACTION_BACKGROUND = "#333333";
-  const UI_SYSTEM_ACTION_DISABLED_BACKGROUND = "#202020";
-  const UI_SYSTEM_ROW_ACTIVE_BACKGROUND = "#333333";
-  const UI_SYSTEM_ROW_INACTIVE_BACKGROUND = "#222222";
-  const UI_ACCENT = "#1ea672";
-  const UI_ACCENT_HOVER = "#25bc84";
-  const UI_ACCENT_TEXT = "#7ce8b5";
-  const UI_TOGGLE_ON_BACKGROUND = "#1ea672";
+  const PRIMARY_ACTIVE_BACKGROUND = UI_SELECTED_BACKGROUND;
+  // Reference: an unselected rail entry has NO plate - the rail surface
+  // behind it is the background.
+  const PRIMARY_INACTIVE_BACKGROUND = "var(--nf-rail-entry-bg, transparent)";
+  // Near-black topbar, separated from the workspace by a hairline rule.
+  const UI_TOPBAR_BACKGROUND = "#101113";
+  const UI_TOPBAR_BORDER_COLOR = "#303135";
+  const UI_TOPBAR_PAD_X = 20;
+  const UI_TOPBAR_LOGO_WIDTH = 167;
+  const UI_TOPBAR_LOGO_HEIGHT = 31;
+  const UI_TOPBAR_RIGHT_GAP = 18;
+  const UI_TOPBAR_STATUS_TEXT = "#979797";
+  const UI_TOPBAR_STATUS_DOT = "#a3a3a3";
+  const UI_FIELD_BACKGROUND = "#272727";
+  const UI_SELECT_BACKGROUND = "#272727";
+  const UI_SELECT_HOVER_BACKGROUND = "#2a2a2a";
+  const UI_SURFACE_MUTED = "#161616";
+  const UI_BUTTON_BACKGROUND = "#272727";
+  const UI_DISABLED_NEUTRAL_BUTTON_BACKGROUND = "#222222";
+  const UI_TOGGLE_OFF_BACKGROUND = "#343434";
+  const UI_SYSTEM_ACTION_BACKGROUND = "#282828";
+  const UI_SYSTEM_ACTION_DISABLED_BACKGROUND = "#252629";
+  const UI_SYSTEM_ROW_ACTIVE_BACKGROUND = "#272727";
+  const UI_SYSTEM_ROW_INACTIVE_BACKGROUND = "#1d1d1d";
+  // Rank, not decoration. UI_ACCENT is the ONE main action of a surface
+  // (生成 / 登录 / the active tool's own run button). The selected entry is a
+  // dark green fill with light green text and a hairline edge - never a solid
+  // accent block, and never an edge light along one side.
+  const UI_ACCENT = "#17a582";
+  // The reference's main action under the pointer (#20b490).
+  const UI_ACCENT_HOVER = "#20b490";
+  const UI_ACCENT_TEXT = "#6fd9b8";
+  // The reference does not use one selected-text green. The rail sits on the
+  // darkest fill and gets the lightest text; the segment sits on a slightly
+  // lighter fill and gets a slightly deeper one.
+  const UI_RAIL_SELECTED_TEXT = "#8cdec3";
+  const UI_RAIL_SELECTED_BORDER = "#306553";
+  const UI_SEGMENT_SELECTED_TEXT = "#9be4cd";
+  const UI_SEGMENT_SELECTED_BORDER = "#2c604f";
+  const UI_SEGMENT_IDLE_TEXT = "#eaeaea";
+  // "On" reads slightly brighter than a main action so a live switch or a
+  // filled slider is legible at 2px.
+  const UI_TOGGLE_ON_BACKGROUND = "#1bb28c";
   const UI_ACCENT_SOFT = "rgba(32, 37, 42, 0.96)";
   const UI_ACCENT_GLOW = "rgba(33, 196, 135, 0.12)";
   const UI_ACCENT_KNOB = "#e8e8e8";
   const UI_TOGGLE_ON_FRAME = "none";
   const UI_TOGGLE_KNOB_SHADOW = "0 1px 5px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.16)";
-  const UI_RANGE_ACCENT = "#20c997";
+  const UI_RANGE_ACCENT = "#1bb28c";
   const UPLOAD_ZONE_BACKGROUND = "#1B1B1B";
   const UPLOAD_ZONE_BACKGROUND_ALT = "#171717";
   const UPLOAD_ZONE_PANEL_BACKGROUND = "#202020";
@@ -2599,6 +3197,19 @@
   const UPLOAD_ZONE_TEXT = "#E8E8E8";
   const UPLOAD_ZONE_MUTED = "#A0A0A0";
   const PRIMARY_ENTRY_ICONS = ["\u2726", "\u25b6", "\u270e", "\u25a3"];
+  // The rail draws the reference's outline icons (lucide, 19px, 1.6 stroke)
+  // as masks, so they take the entry's own colour - #9c9c9c, or the selected
+  // green - instead of the filled glyphs above.
+  const PRIMARY_RAIL_ICON_SIZE = 19;
+  const PRIMARY_RAIL_ICON_GAP = 6;
+  const PRIMARY_RAIL_IDLE_TEXT = "#9c9c9c";
+  // The reference's hover for every plain button: #373737 with white text.
+  const PRIMARY_RAIL_HOVER_BACKGROUND = "#373737";
+  const PRIMARY_RAIL_HOVER_TEXT = "#ffffff";
+  const PRIMARY_RAIL_ICON_SPARKLES = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z'/%3E%3Cpath d='M20 3v4'/%3E%3Cpath d='M22 5h-4'/%3E%3Cpath d='M4 17v2'/%3E%3Cpath d='M5 18H3'/%3E%3C/svg%3E")`;
+  const PRIMARY_RAIL_ICON_PLAY = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolygon points='6 3 20 12 6 21 6 3'/%3E%3C/svg%3E")`;
+  const PRIMARY_RAIL_ICON_PENCIL = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z'/%3E%3Cpath d='m15 5 4 4'/%3E%3C/svg%3E")`;
+  const PRIMARY_RAIL_ICON_PANELS = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='18' height='18' x='3' y='3' rx='2'/%3E%3Cpath d='M3 9h18'/%3E%3Cpath d='M9 21V9'/%3E%3C/svg%3E")`;
   const UI_TRACE_FILE = "particle-editor-desktop/dist/win-unpacked/resources/app/renderer/novaflow-brand-runtime.js";
   const UI_TRACE_SEEN = new Set();
 
@@ -2722,14 +3333,21 @@
   }
 
   let NF_INLINE_STYLE_VALUE_SCRATCH = null;
+  // The same few hundred property/value pairs are written over and over;
+  // their normal form never changes.
+  const NF_INLINE_STYLE_VALUE_CACHE = new Map();
 
   function nfNormalizeInlineStyleValue(property, value, priority) {
+    const key = `${property}|${value}`;
+    const cached = NF_INLINE_STYLE_VALUE_CACHE.get(key);
+    if (cached !== undefined) return cached;
     try {
       if (!NF_INLINE_STYLE_VALUE_SCRATCH) NF_INLINE_STYLE_VALUE_SCRATCH = document.createElement("div");
       const scratch = NF_INLINE_STYLE_VALUE_SCRATCH.style;
       scratch.setProperty(property, value, priority);
       const normalized = scratch.getPropertyValue(property);
       scratch.removeProperty(property);
+      if (NF_INLINE_STYLE_VALUE_CACHE.size < 20000) NF_INLINE_STYLE_VALUE_CACHE.set(key, normalized);
       return normalized;
     } catch (_) {
       return String(value);
@@ -2791,6 +3409,214 @@
     };
   }
 
+  // One owner per property. What the reference spec's last pass wrote on a
+  // node is final until its next pass; another writer setting the same
+  // property only started a back-and-forth (the spec's guard put it back a
+  // moment later), which is what flashed on every page switch and click.
+  // Writes to those properties from anywhere else - these helpers, direct
+  // style.setProperty calls, the other runtimes - are left out; everything
+  // else on the node, and every node the spec does not cover, is untouched.
+  // Keyed by the node's style declaration. `var`, because this can run
+  // before the spec's section of this file has.
+  var NOVAFLOW_SPEC_OWNED = null;
+  var NOVAFLOW_SPEC_WRITING = false;
+  const NF_STYLE_LONGHANDS_CACHE = new Map();
+  let NF_STYLE_LONGHANDS_SCRATCH = null;
+
+  function nfStyleLonghands(property, value) {
+    const key = `${property}|${value}`;
+    let parts = NF_STYLE_LONGHANDS_CACHE.get(key);
+    if (parts) return parts;
+    parts = [];
+    try {
+      if (!NF_STYLE_LONGHANDS_SCRATCH) NF_STYLE_LONGHANDS_SCRATCH = document.createElement("div");
+      const scratch = NF_STYLE_LONGHANDS_SCRATCH.style;
+      scratch.cssText = "";
+      scratch.setProperty(property, value, "important");
+      for (let index = 0; index < scratch.length; index += 1) {
+        parts.push([scratch[index], scratch.getPropertyValue(scratch[index])]);
+      }
+      scratch.cssText = "";
+    } catch (_) {
+      parts = [];
+    }
+    if (NF_STYLE_LONGHANDS_CACHE.size < 20000) NF_STYLE_LONGHANDS_CACHE.set(key, parts);
+    return parts;
+  }
+
+  // null: write as asked. []: the spec owns all of it, skip. Otherwise the
+  // longhands the spec does not own, to write one by one.
+  function nfSpecOwnedWrite(element, property, value) {
+    return nfSpecOwnedSplit(NOVAFLOW_SPEC_OWNED && element.style ? NOVAFLOW_SPEC_OWNED.get(element.style) : null, property, value);
+  }
+
+  function nfSpecOwnedSplit(owned, property, value) {
+    if (!owned || property.startsWith("--")) return null;
+    if (owned.has(property)) return [];
+    const parts = nfStyleLonghands(property, value);
+    let ownedCount = 0;
+    for (const [name] of parts) if (owned.has(name)) ownedCount += 1;
+    if (!ownedCount) return null;
+    if (ownedCount === parts.length) return [];
+    // A shorthand with var() cannot be split; the guard settles that one.
+    if (parts.some(([, part]) => !part)) return null;
+    // "initial" is only the shorthand resetting what it does not mention.
+    return parts.filter(([name, part]) => !owned.has(name) && part !== "initial");
+  }
+
+  function nfSpecOwnsAny(owned, property) {
+    return owned.has(property) || nfStyleLonghands(property, "initial").some(([name]) => owned.has(name));
+  }
+
+  function installNovaflowSpecOwnership() {
+    const proto = window.CSSStyleDeclaration && window.CSSStyleDeclaration.prototype;
+    if (!proto || proto.__novaflowSpecOwnership) return;
+    const nativeSetProperty = proto.setProperty;
+    const nativeRemoveProperty = proto.removeProperty;
+    proto.setProperty = function setProperty(property, value, priority) {
+      if (!NOVAFLOW_SPEC_WRITING && NOVAFLOW_SPEC_OWNED) {
+        const owned = NOVAFLOW_SPEC_OWNED.get(this);
+        if (owned) {
+          const split = nfSpecOwnedSplit(owned, String(property), String(value));
+          if (split) {
+            split.forEach(([name, part]) => nativeSetProperty.call(this, name, part, priority));
+            return undefined;
+          }
+        }
+      }
+      return nativeSetProperty.call(this, property, value, priority);
+    };
+    proto.removeProperty = function removeProperty(property) {
+      if (!NOVAFLOW_SPEC_WRITING && NOVAFLOW_SPEC_OWNED) {
+        const owned = NOVAFLOW_SPEC_OWNED.get(this);
+        if (owned && !String(property).startsWith("--") && nfSpecOwnsAny(owned, String(property))) return this.getPropertyValue(property);
+      }
+      return nativeRemoveProperty.call(this, property);
+    };
+    try { Object.defineProperty(proto, "__novaflowSpecOwnership", { value: true }); } catch (_) { void 0; }
+  }
+  installNovaflowSpecOwnership();
+
+  // See the theme sheet's 2.0k: no transitions while a page is assembled -
+  // at start, and for a moment after anything that switches the page.
+  const NOVAFLOW_TRANSITION_HUSH_MS = 900;
+  const NOVAFLOW_PAGE_SWITCH_SELECTOR = [
+    '[data-novaflow-primary-entry="1"]',
+    '[data-novaflow-secondary-entry="1"]',
+    "[data-novaflow-tools-entry]",
+    "[data-novaflow-ai-generation-mode]"
+  ].join(", ");
+  let NOVAFLOW_TRANSITION_HUSH_TIMER = 0;
+  let NOVAFLOW_TRANSITION_HUSH_FRAME = 0;
+
+  // Several runtimes write their transition inline, which no sheet can
+  // override; while hushed, any transition that starts is simply finished.
+  function finishNovaflowHushedTransitions() {
+    NOVAFLOW_TRANSITION_HUSH_FRAME = 0;
+    if (!NOVAFLOW_TRANSITION_HUSH_TIMER) return;
+    try {
+      const Transition = window.CSSTransition;
+      if (Transition && typeof document.getAnimations === "function") {
+        document.getAnimations().forEach((animation) => {
+          if (animation instanceof Transition) animation.finish();
+        });
+      }
+    } catch (_) { void 0; }
+    NOVAFLOW_TRANSITION_HUSH_FRAME = window.requestAnimationFrame(finishNovaflowHushedTransitions);
+  }
+
+  function hushNovaflowTransitions() {
+    const html = document.documentElement;
+    if (!html) return;
+    if (html.getAttribute("data-novaflow-transitions") !== "off") html.setAttribute("data-novaflow-transitions", "off");
+    window.clearTimeout(NOVAFLOW_TRANSITION_HUSH_TIMER);
+    NOVAFLOW_TRANSITION_HUSH_TIMER = window.setTimeout(() => {
+      NOVAFLOW_TRANSITION_HUSH_TIMER = 0;
+      html.removeAttribute("data-novaflow-transitions");
+    }, NOVAFLOW_TRANSITION_HUSH_MS);
+    if (!NOVAFLOW_TRANSITION_HUSH_FRAME) NOVAFLOW_TRANSITION_HUSH_FRAME = window.requestAnimationFrame(finishNovaflowHushedTransitions);
+  }
+
+  function hushNovaflowTransitionsForSwitch(event) {
+    const target = event && event.target;
+    if (target instanceof Element && target.closest(NOVAFLOW_PAGE_SWITCH_SELECTOR)) hushNovaflowTransitions();
+  }
+
+  // Switching 特效 / 动画 / 美工 / 工具: the new page's content stays veiled
+  // until the runtime has laid it out (a spec pass and two frames, 260ms at
+  // most), so a half-built frame - the old rail state, a bare list - is
+  // never shown. Only for an entry that is not already the page.
+  let NOVAFLOW_SWITCH_VEIL_FRAME = 0;
+  function veilNovaflowPrimarySwitch(event) {
+    const target = event && event.target;
+    const entry = target instanceof Element ? target.closest('[data-novaflow-primary-entry="1"]') : null;
+    if (!(entry instanceof HTMLElement) || entry.getAttribute("data-novaflow-primary-active") === "1") return;
+    const html = document.documentElement;
+    if (!html) return;
+    html.setAttribute("data-novaflow-switch-veil", "1");
+    // Only the new page's groups count: the old page's are still in the
+    // column when the first mutations arrive.
+    const GROUP_SELECTOR = ".nf-panel-header, [data-novaflow-spine-split-control-category-toggle]";
+    const oldGroups = new Set(document.querySelectorAll(GROUP_SELECTOR));
+    const newGroupsIn = () => {
+      const root = document.querySelector('[data-novaflow-left-content-root="1"]');
+      return Boolean(root && Array.from(root.querySelectorAll(GROUP_SELECTOR)).some((node) => !oldGroups.has(node) && node.getClientRects().length));
+    };
+    const runsAtClick = (window.__novaflowSpecStats || {}).runs || 0;
+    const startedAt = performance.now();
+    let frames = 0;
+    if (NOVAFLOW_SWITCH_VEIL_FRAME) window.cancelAnimationFrame(NOVAFLOW_SWITCH_VEIL_FRAME);
+    const check = () => {
+      frames += 1;
+      const runs = (window.__novaflowSpecStats || {}).runs || 0;
+      // Laid out once a spec pass has run and the new page's groups are in
+      // (a slow page such as 美工 has them only after its mount; waiting a
+      // further frame there kept the column blank ~200ms longer).
+      const groupsIn = newGroupsIn();
+      if (groupsIn || (runs > runsAtClick && frames >= 2) || performance.now() - startedAt > 260) {
+        NOVAFLOW_SWITCH_VEIL_FRAME = 0;
+        html.removeAttribute("data-novaflow-switch-veil");
+        return;
+      }
+      NOVAFLOW_SWITCH_VEIL_FRAME = window.requestAnimationFrame(check);
+    };
+    NOVAFLOW_SWITCH_VEIL_FRAME = window.requestAnimationFrame(check);
+    // The moment the new page's groups land, before that frame paints (a
+    // frame check came one busy frame too late on 美工).
+    try {
+      const watcher = new MutationObserver((records) => {
+        if (html.getAttribute("data-novaflow-switch-veil") !== "1") { watcher.disconnect(); return; }
+        // Cheap first: only a batch that added a group header is looked at.
+        const addedGroup = records.some((record) => Array.from(record.addedNodes).some((node) => (
+          node instanceof Element && (node.matches(GROUP_SELECTOR) || node.querySelector(GROUP_SELECTOR))
+        )));
+        if (addedGroup && newGroupsIn()) {
+          html.removeAttribute("data-novaflow-switch-veil");
+          watcher.disconnect();
+        }
+      });
+      watcher.observe(document.body, { childList: true, subtree: true });
+      window.setTimeout(() => watcher.disconnect(), 600);
+    } catch (_) { void 0; }
+  }
+
+  hushNovaflowTransitions();
+  document.addEventListener("click", veilNovaflowPrimarySwitch, true);
+  document.addEventListener("pointerdown", hushNovaflowTransitionsForSwitch, true);
+  document.addEventListener("click", hushNovaflowTransitionsForSwitch, true);
+  window.addEventListener("novaflow:app-ready", hushNovaflowTransitions);
+
+  function nfWriteStyleUnlessSpecOwned(element, property, value, priority) {
+    const split = nfSpecOwnedWrite(element, property, value);
+    if (split === null) {
+      element.style.setProperty(property, value, priority);
+      return;
+    }
+    split.forEach(([name, part]) => {
+      if (!nfInlineStylePropertyMatches(element, name, part, priority)) element.style.setProperty(name, part, priority);
+    });
+  }
+
   function setStylePropertyIfChanged(element, property, value, priority = "") {
     if (!(element instanceof HTMLElement)) return;
     if (isInsideNovaflowRuntimeIgnore(element)) return;
@@ -2801,7 +3627,7 @@
       nfAnimationPerfMeasureVisualRhythmStep("skipExisting", __nfPerfStartedAt);
       return;
     }
-    element.style.setProperty(property, nextValue, nextPriority);
+    nfWriteStyleUnlessSpecOwned(element, property, nextValue, nextPriority);
     nfAnimationPerfMeasureVisualRhythmStep("writeStyle", __nfPerfStartedAt);
   }
 
@@ -2811,11 +3637,10 @@
     if (!(element instanceof Element) || !element.style) return;
     const nextValue = String(value);
     const nextPriority = priority || "";
-    if (element.style.getPropertyPriority(property) === nextPriority) {
-      const current = element.style.getPropertyValue(property);
-      if (current === nextValue) return;
-    }
-    element.style.setProperty(property, nextValue, nextPriority);
+    // Compared in the browser's normal form: "0" reads back "0px", and a raw
+    // compare rewrote it on every pass, each rewrite waking every observer.
+    if (nfInlineStylePropertyMatches(element, property, nextValue, nextPriority)) return;
+    nfWriteStyleUnlessSpecOwned(element, property, nextValue, nextPriority);
   }
 
   function nfSetAttrIfChanged(element, name, value) {
@@ -2834,7 +3659,7 @@
       nfAnimationPerfMeasureVisualRhythmStep("skipExisting", __nfPerfStartedAt);
       return;
     }
-    element.style.setProperty(property, nextValue, nextPriority);
+    nfWriteStyleUnlessSpecOwned(element, property, nextValue, nextPriority);
     nfAnimationPerfMeasureVisualRhythmStep("writeStyle", __nfPerfStartedAt);
   }
 
@@ -2942,6 +3767,8 @@
   function removeStylePropertyIfPresent(element, property) {
     if (!(element instanceof HTMLElement)) return;
     if (isInsideNovaflowRuntimeIgnore(element)) return;
+    const owned = NOVAFLOW_SPEC_OWNED && NOVAFLOW_SPEC_OWNED.get(element.style);
+    if (owned && !property.startsWith("--") && nfSpecOwnsAny(owned, property)) return;
     if (element.style.getPropertyValue(property) || element.style.getPropertyPriority(property)) {
       element.style.removeProperty(property);
     }
@@ -4758,32 +5585,49 @@
 
   function stylePreviewButtonSurface(element) {
     if (!(element instanceof HTMLElement)) return;
-    nfSetStyleIfChanged(element, "background", PRIMARY_PANEL_BACKGROUND, "important");
-    nfSetStyleIfChanged(element, "background-color", PRIMARY_PANEL_BACKGROUND, "important");
+    const quiet = element.getAttribute("data-novaflow-autofit-button") === "1";
+    if (quiet) {
+      // 自动适配 is the canvas bar's quiet button; it takes the reference
+      // spec's values here too, so the two writers never disagree (they had
+      // moved it 12px back and forth: 0 13px here, 5px 12px there).
+      Object.entries(canvasBarQuietStyle(element)).forEach(([property, value]) => {
+        nfSetStyleIfChanged(element, property, value, "important");
+      });
+      nfSetStyleIfChanged(element, "display", "inline-flex", "important");
+      nfSetStyleIfChanged(element, "align-items", "center", "important");
+      nfSetStyleIfChanged(element, "justify-content", "center", "important");
+      nfSetStyleIfChanged(element, "-webkit-app-region", "no-drag", "important");
+      return;
+    }
+    const height = quiet ? CANVAS_BAR_QUIET_HEIGHT : CANVAS_BAR_BUTTON_HEIGHT;
+    const background = quiet ? CANVAS_BAR_QUIET_BACKGROUND : "transparent";
+    nfSetStyleIfChanged(element, "background", background, "important");
+    nfSetStyleIfChanged(element, "background-color", background, "important");
     nfSetStyleIfChanged(element, "background-image", "none", "important");
-    nfSetStyleIfChanged(element, "border", "0", "important");
-    nfSetStyleIfChanged(element, "border-color", "transparent", "important");
-    nfSetStyleIfChanged(element, "border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
+    nfSetStyleIfChanged(element, "border", quiet ? `1px solid ${CANVAS_BAR_QUIET_BORDER_COLOR}` : "0", "important");
+    nfSetStyleIfChanged(element, "border-radius", quiet ? CANVAS_BAR_QUIET_RADIUS_PX : CANVAS_BAR_BUTTON_RADIUS_PX, "important");
     nfSetStyleIfChanged(element, "box-shadow", "none", "important");
-    nfSetStyleIfChanged(element, "height", "34px", "important");
-    nfSetStyleIfChanged(element, "min-height", "34px", "important");
-    nfSetStyleIfChanged(element, "max-height", "34px", "important");
+    nfSetStyleIfChanged(element, "height", `${height}px`, "important");
+    nfSetStyleIfChanged(element, "min-height", `${height}px`, "important");
+    nfSetStyleIfChanged(element, "max-height", `${height}px`, "important");
+    nfSetStyleIfChanged(element, "min-width", "0", "important");
+    nfSetStyleIfChanged(element, "padding", quiet ? "0 13px" : "0 11px", "important");
     nfSetStyleIfChanged(element, "display", "inline-flex", "important");
     nfSetStyleIfChanged(element, "align-items", "center", "important");
     nfSetStyleIfChanged(element, "justify-content", "center", "important");
     nfSetStyleIfChanged(element, "box-sizing", "border-box", "important");
-    nfSetStyleIfChanged(element, "color", "#ffffff", "important");
-    nfSetStyleIfChanged(element, "font-size", "13px", "important");
-    nfSetStyleIfChanged(element, "font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
-    nfSetStyleIfChanged(element, "line-height", "34px", "important");
+    nfSetStyleIfChanged(element, "color", quiet ? CANVAS_BAR_QUIET_TEXT : CANVAS_BAR_BUTTON_TEXT, "important");
+    nfSetStyleIfChanged(element, "font-size", "11px", "important");
+    nfSetStyleIfChanged(element, "font-weight", "500", "important");
+    nfSetStyleIfChanged(element, "line-height", "1", "important");
     nfSetStyleIfChanged(element, "-webkit-app-region", "no-drag", "important");
   }
 
   function styleTemplateControlSurface(element) {
     if (!(element instanceof HTMLElement)) return;
     element.setAttribute("data-novaflow-template-control", "1");
-    element.style.setProperty("background", PRIMARY_PANEL_BACKGROUND, "important");
-    element.style.setProperty("background-color", PRIMARY_PANEL_BACKGROUND, "important");
+    element.style.setProperty("background", "transparent", "important");
+    element.style.setProperty("background-color", "transparent", "important");
     element.style.setProperty("background-image", "none", "important");
     element.style.setProperty("border", "0", "important");
     element.style.setProperty("border-color", "transparent", "important");
@@ -4859,8 +5703,7 @@
         nfSetStyleIfChanged(child, "top", "auto", "important");
         nfSetStyleIfChanged(child, "bottom", "auto", "important");
         nfSetStyleIfChanged(child, "transform", "none", "important");
-        nfSetStyleIfChanged(child, "padding", "0 18px", "important");
-        nfSetStyleIfChanged(child, "min-width", "92px", "important");
+        nfSetStyleIfChanged(child, "min-width", "0", "important");
         nfSetStyleIfChanged(child, "width", "auto", "important");
         nfSetStyleIfChanged(child, "white-space", "nowrap", "important");
         nfSetStyleIfChanged(child, "flex", "0 0 auto", "important");
@@ -4870,13 +5713,18 @@
       nfSetStyleIfChanged(controls, "font-size", "0", "important");
       nfSetStyleIfChanged(controls, "line-height", "0", "important");
       nfSetStyleIfChanged(controls, "color", "transparent", "important");
+      autoFitChildren.forEach((child) => {
+        nfSetStyleIfChanged(child, "font-size", "11px", "important");
+        nfSetStyleIfChanged(child, "font-weight", NOVAFLOW_MEDIUM_FONT_WEIGHT, "important");
+        nfSetStyleIfChanged(child, "line-height", "1", "important");
+        nfSetStyleIfChanged(child, "color", `var(--nf-cb-hover-fg, ${CANVAS_BAR_QUIET_TEXT})`, "important");
+      });
       nfSetStyleIfChanged(controls, "text-indent", "0", "important");
     } else if (directText.includes("\u81ea\u52a8\u9002\u914d")) {
       controls.textContent = "\u81ea\u52a8\u9002\u914d";
       nfSetAttrIfChanged(controls, "data-novaflow-autofit-button", "1");
       stylePreviewButtonSurface(controls);
-      nfSetStyleIfChanged(controls, "padding", "0 18px", "important");
-      nfSetStyleIfChanged(controls, "min-width", "92px", "important");
+      nfSetStyleIfChanged(controls, "min-width", "0", "important");
       nfSetStyleIfChanged(controls, "width", "auto", "important");
       nfSetStyleIfChanged(controls, "white-space", "nowrap", "important");
       nfSetStyleIfChanged(controls, "flex", "0 0 auto", "important");
@@ -4921,9 +5769,11 @@
       markedFirstFrameControls.forEach((node) => {
         nfSetAttrIfChanged(node, "data-novaflow-ai-zoom-controls", "1");
         nfSetAttrIfChanged(node, "data-novaflow-zoom-controls", "1");
-        if (isSourceOwnedLayout(node) || isInsideSourceOwnedLayout(node)) {
-          nfSetStyleIfChanged(node, "top", `${AI_ANIMATION_PREVIEW_UI_GAP}px`, "important");
-          nfSetStyleIfChanged(node, "right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
+        // The button inside the controls sits in their flow; placing it too
+        // only fought the controls' own "static, auto" for it.
+        if ((isSourceOwnedLayout(node) || isInsideSourceOwnedLayout(node)) && node.getAttribute("data-novaflow-autofit-button") !== "1") {
+          nfSetStyleIfChanged(node, "top", `${AI_ANIMATION_CANVAS_QUIET_TOP_GAP}px`, "important");
+          nfSetStyleIfChanged(node, "right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
         }
         styleAutoFitOnlyControl(node);
       });
@@ -4941,9 +5791,13 @@
       if (aiAnimationLayoutActive) {
         setAttributeIfChanged(node, "data-novaflow-ai-zoom-controls", "1");
         setAttributeIfChanged(node, "data-novaflow-zoom-controls", "1");
+        // The button inside the controls sits in their flow; placing it too
+        // only fought the controls' own "static, auto" for it.
         if (isSourceOwnedLayout(node) || isInsideSourceOwnedLayout(node)) {
-          nfSetStyleIfChanged(node, "top", `${AI_ANIMATION_PREVIEW_UI_GAP}px`, "important");
-          nfSetStyleIfChanged(node, "right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
+          if (node.getAttribute("data-novaflow-autofit-button") !== "1") {
+            nfSetStyleIfChanged(node, "top", `${AI_ANIMATION_CANVAS_QUIET_TOP_GAP}px`, "important");
+            nfSetStyleIfChanged(node, "right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
+          }
           styleAutoFitOnlyControl(node);
           return;
         }
@@ -5149,10 +6003,12 @@
         clearSpineImportOpenIntent();
       }
     } catch {}
-    root.style.setProperty("background", MODAL_BACKDROP_BACKGROUND, "important");
-    root.style.setProperty("background-color", MODAL_BACKDROP_BACKGROUND, "important");
-    root.style.setProperty("background-image", "none", "important");
-    root.style.setProperty("z-index", MODAL_LAYER_Z_INDEX, "important");
+    // Only when it differs: the shorthand reset background-image each pass,
+    // the next line set it back, and every pass was a style mutation that
+    // scheduled the next (骨骼动画's 导出 ran at a few frames a second).
+    nfSetStyleIfChanged(root, "background-color", MODAL_BACKDROP_BACKGROUND, "important");
+    nfSetStyleIfChanged(root, "background-image", "none", "important");
+    nfSetStyleIfChanged(root, "z-index", MODAL_LAYER_Z_INDEX, "important");
     const dialogCard = getNovaflowExportDialog(root);
     Array.from(root.children).forEach((child) => {
       if (child instanceof HTMLElement && (hasNovaflowExportDialogText(child) || child === dialogCard)) {
@@ -5182,6 +6038,11 @@
   const NOVAFLOW_RUNTIME_MODAL_SCANNER_SURFACE_SELECTOR = [
     ".novaflow-app",
     ".nf-app-body",
+    // The Web line's sign-in gate. It is a full-screen runtime surface, not a
+    // business dialog: without this the scanner reads it as a modal backdrop,
+    // takes its layout grid for a dialog card and draws a 1px frame around the
+    // whole two-column screen.
+    "#novaflow-web-login-gate",
     "[data-novaflow-source-layout='1']",
     "[data-novaflow-preview-workspace='1']",
     "[data-novaflow-ai-main-workspace='1']",
@@ -5207,6 +6068,8 @@
   ].join(", ");
 
   const NOVAFLOW_RUNTIME_MODAL_SCANNER_INNER_SURFACE_SELECTOR = [
+    // Matched with closest(), so this also covers the gate's own children.
+    "#novaflow-web-login-gate",
     "[data-novaflow-source-layout='1']",
     "[data-novaflow-preview-workspace='1']",
     "[data-novaflow-ai-main-workspace='1']",
@@ -5430,7 +6293,7 @@
   function normalizeNovaflowExportNameInput(root) {
     const input = findNovaflowExportNameInput(root);
     if (!(input instanceof HTMLInputElement)) return;
-    input.placeholder = "\u8bf7\u8f93\u5165\u5bfc\u51fa\u540d\u79f0";
+    if (input.placeholder !== "\u8bf7\u8f93\u5165\u5bfc\u51fa\u540d\u79f0") input.placeholder = "\u8bf7\u8f93\u5165\u5bfc\u51fa\u540d\u79f0";
     setAttributeIfChanged(input, "data-novaflow-export-name-input", "1");
     if (!input.__novaflowExportManualNameBound) {
       input.__novaflowExportManualNameBound = true;
@@ -6224,20 +7087,21 @@
     const checkbox = control.querySelector('[data-novaflow-export-transparent-checkbox="1"]');
     const colorInput = control.querySelector('[data-novaflow-export-background-color="1"]');
     if (checkbox instanceof HTMLInputElement) {
-      checkbox.checked = transparent;
-      checkbox.disabled = forcedOpaque;
-      checkbox.style.setProperty("cursor", forcedOpaque ? "not-allowed" : "pointer", "important");
-      checkbox.style.setProperty("opacity", forcedOpaque ? "0.55" : "1", "important");
+      if (checkbox.checked !== transparent) checkbox.checked = transparent;
+      if (checkbox.disabled !== forcedOpaque) checkbox.disabled = forcedOpaque;
+      nfSetStyleIfChanged(checkbox, "cursor", forcedOpaque ? "not-allowed" : "pointer", "important");
+      nfSetStyleIfChanged(checkbox, "opacity", forcedOpaque ? "0.55" : "1", "important");
     }
     if (colorInput instanceof HTMLInputElement) {
-      colorInput.value = /^#[0-9a-f]{6}$/i.test(root.dataset.novaflowExportBackgroundColor || "")
+      const colorValue = /^#[0-9a-f]{6}$/i.test(root.dataset.novaflowExportBackgroundColor || "")
         ? root.dataset.novaflowExportBackgroundColor
         : "#ffffff";
-      colorInput.disabled = transparent;
-      colorInput.style.setProperty("display", transparent ? "none" : "inline-block", "important");
-      colorInput.style.setProperty("width", "42px", "important");
-      colorInput.style.setProperty("height", "24px", "important");
-      colorInput.style.setProperty("padding", "0", "important");
+      if (colorInput.value !== colorValue) colorInput.value = colorValue;
+      if (colorInput.disabled !== transparent) colorInput.disabled = transparent;
+      nfSetStyleIfChanged(colorInput, "display", transparent ? "none" : "inline-block", "important");
+      nfSetStyleIfChanged(colorInput, "width", "42px", "important");
+      nfSetStyleIfChanged(colorInput, "height", "24px", "important");
+      nfSetStyleIfChanged(colorInput, "padding", "0", "important");
     }
   }
 
@@ -6379,18 +7243,22 @@
       if (!name) {
         setAttributeIfChanged(button, "aria-disabled", "true");
         setAttributeIfChanged(button, "data-novaflow-manual-export-name-missing", "1");
-        button.style.setProperty("opacity", "0.55", "important");
-        button.style.setProperty("cursor", "not-allowed", "important");
+        nfSetStyleIfChanged(button, "opacity", "0.55", "important");
+        nfSetStyleIfChanged(button, "cursor", "not-allowed", "important");
       } else {
         removeAttributeIfPresent(button, "aria-disabled");
         removeAttributeIfPresent(button, "data-novaflow-manual-export-name-missing");
-        button.style.setProperty("opacity", "1", "important");
-        button.style.setProperty("cursor", "pointer", "important");
+        nfSetStyleIfChanged(button, "opacity", "1", "important");
+        nfSetStyleIfChanged(button, "cursor", "pointer", "important");
       }
       if (getNovaflowExportContextKind(root) === "skeleton") {
+        // Only when it differs: rewriting the same label replaced its text
+        // node on every pass - a mutation that scheduled the next pass.
         const mode = getNovaflowExportActionModeFromButton(button);
-        if (mode === "seq") button.textContent = "\u5bfc\u51fa\u9aa8\u9abc\u52a8\u753b\u5e8f\u5217 PNG\uff08\u9009\u6587\u4ef6\u5939\uff09";
-        if (mode === "video") button.textContent = "\u5bfc\u51fa\u9aa8\u9abc\u52a8\u753b\u89c6\u9891";
+        const label = mode === "seq"
+          ? "\u5bfc\u51fa\u9aa8\u9abc\u52a8\u753b\u5e8f\u5217 PNG\uff08\u9009\u6587\u4ef6\u5939\uff09"
+          : (mode === "video" ? "\u5bfc\u51fa\u9aa8\u9abc\u52a8\u753b\u89c6\u9891" : "");
+        if (label && button.textContent !== label) button.textContent = label;
       }
     });
   }
@@ -8094,9 +8962,12 @@
   }
 
   function installPreBrandStyle() {
-    if (!document.head || document.getElementById(PRE_BRAND_STYLE_ID)) return;
-    const style = document.createElement("style");
+    if (!document.head) return;
+    const existing = document.getElementById(PRE_BRAND_STYLE_ID);
+    if (existing && existing.getAttribute("data-novaflow-layout-tier") === NOVAFLOW_LAYOUT_TIER) return;
+    const style = existing || document.createElement("style");
     style.id = PRE_BRAND_STYLE_ID;
+    style.setAttribute("data-novaflow-layout-tier", NOVAFLOW_LAYOUT_TIER);
     style.textContent = `
       .novaflow-app i.fa-chevron-right,
       .novaflow-app i.fa-chevron-down,
@@ -8156,12 +9027,36 @@
         height: ${TOPBAR_HEIGHT}px !important;
         min-height: ${TOPBAR_HEIGHT}px !important;
         max-height: ${TOPBAR_HEIGHT}px !important;
+        padding: 0 ${UI_TOPBAR_PAD_X}px !important;
+        border-bottom: 1px solid ${UI_TOPBAR_BORDER_COLOR} !important;
         box-sizing: border-box !important;
         z-index: ${TOPBAR_LAYER_Z_INDEX} !important;
         overflow: visible !important;
         background: ${UI_TOPBAR_BACKGROUND} !important;
         background-color: ${UI_TOPBAR_BACKGROUND} !important;
         background-image: none !important;
+      }
+      [data-novaflow-topbar-ai-runtime-state="1"] {
+        display: inline-flex !important;
+        align-items: center !important;
+        gap: 7px !important;
+        font-size: 11px !important;
+        color: ${UI_TOPBAR_STATUS_TEXT} !important;
+      }
+      [data-novaflow-topbar-ai-runtime-state="1"]::before {
+        /* The reference marks the runtime state with a dot, not a word. */
+        content: "" !important;
+        width: 4px !important;
+        height: 4px !important;
+        border-radius: 50% !important;
+        background: ${UI_TOPBAR_STATUS_DOT} !important;
+        flex: 0 0 auto !important;
+      }
+      [data-novaflow-topbar-ai-runtime-connected="1"] [data-novaflow-topbar-ai-runtime-state="1"] {
+        color: #88c6b4 !important;
+      }
+      [data-novaflow-topbar-ai-runtime-connected="1"] [data-novaflow-topbar-ai-runtime-state="1"]::before {
+        background: #49c7a4 !important;
       }
       .nf-topbar .nf-topbar-left,
       .nf-topbar .nf-menubar,
@@ -8194,6 +9089,15 @@
         display: none !important;
         visibility: hidden !important;
         pointer-events: none !important;
+      }
+      .novaflow-app .nf-app-body {
+        /* The bundle stylesheet clears the fixed topbar with a hard-coded 56.
+           That is the one number the topbar height has to agree with, or every
+           panel below it sits 2px low. */
+        margin-top: ${TOPBAR_HEIGHT}px !important;
+        height: calc(100vh - ${TOPBAR_HEIGHT}px) !important;
+        min-height: calc(100vh - ${TOPBAR_HEIGHT}px) !important;
+        box-sizing: border-box !important;
       }
       .novaflow-app .nf-app-body > div:first-child {
         width: ${PRIMARY_COLUMN_WIDTH}px !important;
@@ -8281,9 +9185,12 @@
         box-shadow: none !important;
       }
       body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar > div:has(> button[data-novaflow-tools-entry]) {
-        width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
-        min-width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
-        max-width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
+        width: ${PRIMARY_LEFT_CARD_WIDTH}px !important;
+        min-width: ${PRIMARY_LEFT_CARD_WIDTH}px !important;
+        max-width: ${PRIMARY_LEFT_CARD_WIDTH}px !important;
+        margin-left: ${PRIMARY_LEFT_CARD_INSET}px !important;
+        gap: ${NOVAFLOW_TOOLS_ENTRY_GAP}px !important;
+        row-gap: ${NOVAFLOW_TOOLS_ENTRY_GAP}px !important;
       }
       body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar > div:has(> button) > button {
         width: 100% !important;
@@ -8298,41 +9205,89 @@
         overflow: hidden !important;
       }
       body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar > div:has(> button) > button[data-novaflow-tools-entry] {
-        height: 44px !important;
-        min-height: 44px !important;
-        max-height: 44px !important;
-        padding: 7px 10px !important;
-        border-radius: 8px !important;
+        height: ${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px !important;
+        min-height: ${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px !important;
+        max-height: ${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px !important;
+        padding: 0 12px !important;
+        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
         font-size: 12px !important;
+        font-weight: ${NOVAFLOW_MEDIUM_FONT_WEIGHT} !important;
         line-height: 1.2 !important;
         box-shadow: none !important;
         filter: none !important;
       }
       body.novaflow-primary-target-tools [data-novaflow-tools-entry] {
-        background: ${UI_BUTTON_BACKGROUND} !important;
-        background-color: ${UI_BUTTON_BACKGROUND} !important;
+        background: transparent !important;
+        background-color: transparent !important;
         background-image: none !important;
         border-color: transparent !important;
-        color: rgba(238, 244, 252, 0.96) !important;
+        color: ${UI_SEGMENT_IDLE_TEXT} !important;
         box-shadow: none !important;
         filter: none !important;
         transform: none !important;
         transition: none !important;
       }
+      body.novaflow-primary-target-tools [data-novaflow-tools-entry]:hover:not([data-novaflow-tools-entry-active="1"]) {
+        background: #262626 !important;
+        background-color: #262626 !important;
+      }
+      /* Selected is the same dark green the rail uses, with the same hairline
+         edge - the tool list is a navigation column, not an action list. */
       body.novaflow-primary-target-tools [data-novaflow-tools-entry-active="1"] {
-        background: ${UI_ACCENT} !important;
-        background-color: ${UI_ACCENT} !important;
+        background: ${UI_SELECTED_BACKGROUND} !important;
+        background-color: ${UI_SELECTED_BACKGROUND} !important;
         background-image: none !important;
         border-color: transparent !important;
-        color: #ffffff !important;
+        box-shadow: inset 0 0 0 1px ${UI_RAIL_SELECTED_BORDER} !important;
+        color: ${NOVAFLOW_TOOLS_ENTRY_SELECTED_TEXT} !important;
       }
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] {
+      /* The two preview columns are panels; the grid behind them is not. */
+      body.novaflow-primary-target-tools [data-novaflow-tools-preview-grid="1"] {
+        background: transparent !important;
+        background-color: transparent !important;
+        background-image: none !important;
+        gap: ${WORKSPACE_SIDE_GAP}px !important;
+        column-gap: ${WORKSPACE_SIDE_GAP}px !important;
+      }
+      body.novaflow-primary-target-tools [data-novaflow-tools-preview-card="1"] {
+        background: ${NOVAFLOW_TOOLS_VIEW_SURFACE} !important;
+        background-color: ${NOVAFLOW_TOOLS_VIEW_SURFACE} !important;
+        background-image: none !important;
+        border: 1px solid ${NOVAFLOW_TOOLS_VIEW_BORDER_COLOR} !important;
+        border-radius: ${PRIMARY_RAIL_PANEL_RADIUS}px !important;
+        box-shadow: none !important;
+        padding: 13px !important;
+        box-sizing: border-box !important;
+      }
+      /* 导出 and 直接覆盖 are helper actions: grey, and grey when disabled.
+         The overwrite action had been the only olive control in the app. */
+      body.novaflow-primary-target-tools [data-novaflow-tools-overwrite-button="1"],
+      body.novaflow-primary-target-tools [data-novaflow-tools-preview-card="1"] button:disabled {
+        background: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        background-color: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        background-image: none !important;
+        border: 0 !important;
+        color: ${UI_ICON_BUTTON_DISABLED_TEXT} !important;
+      }
+      body.novaflow-primary-target-tools [data-novaflow-tools-overwrite-button="1"]:not(:disabled) {
+        background: ${UI_BUTTON_BACKGROUND} !important;
+        background-color: ${UI_BUTTON_BACKGROUND} !important;
+        color: ${UI_SEGMENT_IDLE_TEXT} !important;
+      }
+      /* The one main action of this surface keeps the green, but a disabled
+         main action is not an action. */
+      body.novaflow-primary-target-tools [data-novaflow-tools-start-button="1"]:disabled {
+        background: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        background-color: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        color: ${UI_ICON_BUTTON_DISABLED_TEXT} !important;
+      }
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] {
         grid-template-columns: ${PRIMARY_LEFT_PANEL_WIDTH}px minmax(0, 1fr) !important;
       }
       body.novaflow-primary-target-tools .novaflow-app .nf-app-body div[style*="grid-template-columns"][style*="minmax(0"]:has(> input[type="file"]) {
         grid-template-columns: ${PRIMARY_LEFT_PANEL_WIDTH}px minmax(0, 1fr) !important;
       }
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child {
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child {
         width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
         min-width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
         max-width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
@@ -8346,7 +9301,7 @@
         border: 0 !important;
         box-sizing: border-box !important;
       }
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child > div {
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child > div {
         width: 100% !important;
         max-width: 100% !important;
         box-sizing: border-box !important;
@@ -8356,9 +9311,9 @@
         max-width: 100% !important;
         box-sizing: border-box !important;
       }
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(1),
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(2),
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(3) {
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(1),
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(2),
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(3) {
         padding-left: ${PRIMARY_PANEL_BODY_INSET}px !important;
         padding-right: ${PRIMARY_PANEL_BODY_INSET}px !important;
       }
@@ -8368,8 +9323,8 @@
         padding-left: ${PRIMARY_PANEL_BODY_INSET}px !important;
         padding-right: ${PRIMARY_PANEL_BODY_INSET}px !important;
       }
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(2),
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(3) {
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(2),
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child > div:nth-child(3) {
         gap: ${SECONDARY_CONTENT_GAP}px !important;
         row-gap: ${SECONDARY_CONTENT_GAP}px !important;
         column-gap: ${SECONDARY_CONTENT_COLUMN_GAP}px !important;
@@ -8380,7 +9335,7 @@
         row-gap: ${SECONDARY_CONTENT_GAP}px !important;
         column-gap: ${SECONDARY_CONTENT_COLUMN_GAP}px !important;
       }
-      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:nth-child(2) > div > div[style*="grid-template-columns"] > div:first-child [data-nf-upload-dropzone="1"] {
+      body.novaflow-primary-target-tools .novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0']) > div > div[style*="grid-template-columns"] > div:first-child [data-nf-upload-dropzone="1"] {
         width: 100% !important;
         min-width: 0 !important;
         max-width: 100% !important;
@@ -8684,7 +9639,7 @@
         padding: 0 !important;
         margin: 0 !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
         cursor: pointer !important;
         box-sizing: border-box !important;
@@ -9054,18 +10009,20 @@
         font-weight: 700 !important;
         box-shadow: none !important;
       }
+      /* A helper action, and helpers are grey - this was the only olive
+         control in the app. */
       body.novaflow-primary-target-tools [data-novaflow-tools-overwrite-button="1"] {
-        background: #b98218 !important;
-        background-color: #b98218 !important;
-        color: #fff2c0 !important;
-        border-color: rgba(255, 211, 105, 0.32) !important;
+        background: ${UI_BUTTON_BACKGROUND} !important;
+        background-color: ${UI_BUTTON_BACKGROUND} !important;
+        color: ${UI_SEGMENT_IDLE_TEXT} !important;
+        border-color: transparent !important;
         box-shadow: none !important;
       }
       body.novaflow-primary-target-tools [data-novaflow-tools-overwrite-button="1"]:disabled,
       body.novaflow-primary-target-tools [data-novaflow-tools-overwrite-button="1"][aria-disabled="true"] {
-        background: rgba(185, 130, 24, 0.64) !important;
-        background-color: rgba(185, 130, 24, 0.64) !important;
-        color: rgba(255, 242, 192, 0.72) !important;
+        background: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        background-color: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        color: ${UI_ICON_BUTTON_DISABLED_TEXT} !important;
       }
       body.novaflow-primary-target-tools [data-novaflow-tools-current-tool-card="1"] {
         display: none !important;
@@ -9292,16 +10249,17 @@
         display: none !important;
       }
       body.novaflow-blackgray-preview .novaflow-app [data-novaflow-bottom-controls="1"] {
-        background: ${LEFT_PANEL_BACKGROUND} !important;
-        background-color: ${LEFT_PANEL_BACKGROUND} !important;
+        background: ${DOCK_SURFACE} !important;
+        background-color: ${DOCK_SURFACE} !important;
         background-image: none !important;
-        border: 0 !important;
-        box-shadow: none !important;
+        border: 1px solid ${DOCK_BORDER_COLOR} !important;
+        border-radius: ${DOCK_RADIUS_PX} !important;
+        box-shadow: ${DOCK_SHADOW} !important;
         backdrop-filter: none !important;
         box-sizing: border-box !important;
       }
     `;
-    document.head.appendChild(style);
+    if (!existing) document.head.appendChild(style);
   }
 
   function paintPrimarySidebarBackdrop(sidebar) {
@@ -9325,17 +10283,58 @@
     document.addEventListener("DOMContentLoaded", ensurePreBrandSidebarBackdrop, { once: true });
   }
 
+  function syncNovaflowLayoutTierAttribute() {
+    const root = document.documentElement;
+    if (root) root.setAttribute("data-novaflow-layout-tier", NOVAFLOW_LAYOUT_TIER);
+    if (document.body) document.body.setAttribute("data-novaflow-layout-tier", NOVAFLOW_LAYOUT_TIER);
+  }
+
+  let NOVAFLOW_LAYOUT_TIER_RESIZE_TIMER = 0;
+  function refreshNovaflowLayoutTier() {
+    const next = novaflowLayoutTierForWidth(window.innerWidth);
+    syncNovaflowLayoutTierAttribute();
+    const width = Math.round(window.innerWidth || 0);
+    if (next === NOVAFLOW_LAYOUT_TIER && !(next === "stack" && width !== NOVAFLOW_LAYOUT_WIDTH)) return false;
+    assignNovaflowLayoutMetrics(next, width);
+    syncNovaflowLayoutTierAttribute();
+    // A stacked width change rebuilds the sheets too, so drop their tier tag.
+    [PRE_BRAND_STYLE_ID, STYLE_ID].forEach((id) => {
+      const sheet = document.getElementById(id);
+      if (sheet) sheet.removeAttribute("data-novaflow-layout-tier");
+    });
+    installPreBrandStyle();
+    ensureStyle();
+    try { scheduleFullLayoutRefresh(); } catch (_) {}
+    try { scheduleNovaflowReferenceSpec(); } catch (_) {}
+    try { window.dispatchEvent(new CustomEvent("novaflow:layout-tier", { detail: { tier: next } })); } catch (_) {}
+    return true;
+  }
+
+  assignNovaflowLayoutMetrics(novaflowLayoutTierForWidth(window.innerWidth));
+  syncNovaflowLayoutTierAttribute();
+  window.addEventListener("resize", () => {
+    if (NOVAFLOW_LAYOUT_TIER_RESIZE_TIMER) window.clearTimeout(NOVAFLOW_LAYOUT_TIER_RESIZE_TIMER);
+    NOVAFLOW_LAYOUT_TIER_RESIZE_TIMER = window.setTimeout(() => {
+      NOVAFLOW_LAYOUT_TIER_RESIZE_TIMER = 0;
+      refreshNovaflowLayoutTier();
+    }, 60);
+  }, { passive: true });
+
   installPreBrandStyle();
   installPreBrandSidebarMount();
 
   function applyAiAnimationResourceSidebarStyles(host, panel) {
+    nfSetAttrIfChanged(host, "data-novaflow-keep-radius", "1");
     setImportantStyles(host, {
       position: "fixed",
-      top: "56px",
-      right: "0",
-      bottom: "0",
+      top: `${TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP}px`,
+      right: `${AI_ANIMATION_RESOURCE_SIDEBAR_INSET}px`,
+      bottom: `${PRIMARY_PANEL_BOTTOM_GAP}px`,
       left: "auto",
-      width: `var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px)`,
+      // The literal width, not the var: the var is the span to the window
+      // edge, and feeding it back in here would make the panel creep wider
+      // every time the geometry is re-measured.
+      width: `${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px`,
       height: "auto",
       "min-height": "0",
       "max-height": "none",
@@ -9344,10 +10343,10 @@
       "flex-direction": "column",
       padding: "0",
       margin: "0",
-      background: LEFT_PANEL_BACKGROUND,
-      "background-color": LEFT_PANEL_BACKGROUND,
-      border: "0",
-      "border-radius": "0",
+      background: PRIMARY_PANEL_SURFACE,
+      "background-color": PRIMARY_PANEL_SURFACE,
+      border: `1px solid ${PRIMARY_PANEL_BORDER_COLOR}`,
+      "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`,
       "box-shadow": "none",
       overflow: "hidden",
       "box-sizing": "border-box",
@@ -9365,8 +10364,8 @@
       gap: "5px",
       "row-gap": "5px",
       "column-gap": "0",
-      background: LEFT_PANEL_BACKGROUND,
-      "background-color": LEFT_PANEL_BACKGROUND,
+      background: "transparent",
+      "background-color": "transparent",
       border: "0",
       "border-left": "0",
       "border-radius": "0",
@@ -9479,27 +10478,27 @@
         setAttributeIfChanged(button, "data-novaflow-ai-resource-action-kind", "upload");
         setImportantStyles(button, {
           width: "auto",
-          "min-width": "80px",
+          "min-width": "0",
           "max-width": "none",
-          height: "34px",
-          "min-height": "34px",
-          "max-height": "34px",
-          padding: "0 14px",
+          height: `${UI_NUM_FIELD_HEIGHT}px`,
+          "min-height": `${UI_NUM_FIELD_HEIGHT}px`,
+          "max-height": `${UI_NUM_FIELD_HEIGHT}px`,
+          padding: "0 11px",
           display: "inline-flex",
           "align-items": "center",
           "justify-content": "center",
           border: "0",
           "border-color": "transparent",
-          "border-radius": NOVAFLOW_RECT_RADIUS_PX,
-          background: UI_BUTTON_BACKGROUND,
-          "background-color": UI_BUTTON_BACKGROUND,
+          "border-radius": UI_ICON_BUTTON_RADIUS_PX,
+          background: UI_ICON_BUTTON_BACKGROUND,
+          "background-color": UI_ICON_BUTTON_BACKGROUND,
           "background-image": "none",
-          color: "#ffffff",
+          color: AI_ANIMATION_RESOURCE_TITLE_TEXT,
           "box-shadow": "none",
           outline: "0",
-          "font-size": "12px",
-          "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
-          "line-height": "34px",
+          "font-size": "11px",
+          "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+          "line-height": "1",
           cursor: "pointer",
           transition: "none"
         });
@@ -9516,20 +10515,22 @@
       if (!isSmallOverlay) return;
       setAttributeIfChanged(button, "data-novaflow-ai-resource-action", "1");
       setAttributeIfChanged(button, "data-novaflow-ai-resource-action-kind", isClose ? "close" : "play");
+      // A card's corner control at its final 18 (the spec's): 28 here drew it
+      // big for the new card's first frames.
       setImportantStyles(button, {
-        width: "28px",
-        "min-width": "28px",
-        "max-width": "28px",
-        height: "28px",
-        "min-height": "28px",
-        "max-height": "28px",
+        width: "18px",
+        "min-width": "18px",
+        "max-width": "18px",
+        height: "18px",
+        "min-height": "18px",
+        "max-height": "18px",
         padding: "0",
         display: "inline-flex",
         "align-items": "center",
         "justify-content": "center",
         border: "1px solid rgba(255, 255, 255, 0.18)",
         "border-color": "rgba(255, 255, 255, 0.18)",
-        "border-radius": "8px",
+        "border-radius": "5px",
         background: "rgba(0, 0, 0, 0.55)",
         "background-color": "rgba(0, 0, 0, 0.55)",
         "background-image": "none",
@@ -9557,10 +10558,10 @@
   function applyAiAnimationBottomWorkspaceStyles(bottomWorkspace) {
     setImportantStyles(bottomWorkspace, {
       position: "fixed",
-      left: `calc(var(--novaflow-ai-preview-left, ${PRIMARY_COLUMN_WIDTH}px) + ${AI_ANIMATION_PREVIEW_UI_GAP}px)`,
-      right: `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`,
+      left: `var(--novaflow-ai-preview-left, ${PRIMARY_COLUMN_WIDTH}px)`,
+      right: `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`,
       top: "auto",
-      bottom: `${AI_ANIMATION_PREVIEW_UI_GAP}px`,
+      bottom: `${PRIMARY_PANEL_BOTTOM_GAP}px`,
       width: "auto",
       "max-width": "none",
       "min-width": "0",
@@ -9585,6 +10586,7 @@
     const children = Array.from(bottomWorkspace.children).filter((child) => child instanceof HTMLElement);
     children.forEach((child, index) => {
       const isTimeline = index === children.length - 1;
+      nfSetAttrIfChanged(child, "data-novaflow-keep-radius", "1");
       setImportantStyles(child, {
         position: "relative",
         left: "auto",
@@ -9602,14 +10604,14 @@
         "min-height": isTimeline ? "0" : `${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px`,
         "box-sizing": "border-box",
         margin: "0",
-        background: isTimeline ? "rgba(24, 24, 24, 0.96)" : "#181818",
-        "background-color": isTimeline ? "rgba(24, 24, 24, 0.96)" : "#181818",
+        background: AI_ANIMATION_STACK_SURFACE,
+        "background-color": AI_ANIMATION_STACK_SURFACE,
         "background-image": "none",
-        border: "0",
+        border: `1px solid ${isTimeline ? AI_ANIMATION_TIMELINE_BORDER_COLOR : DOCK_BORDER_COLOR}`,
         outline: "0",
-        "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+        "border-radius": `${isTimeline ? AI_ANIMATION_TIMELINE_RADIUS : PRIMARY_RAIL_PANEL_RADIUS}px`,
         "box-shadow": "none",
-        padding: "10px 16px",
+        padding: isTimeline ? "11px 13px" : "14px 15px",
         overflow: isTimeline ? "hidden" : "visible",
         flex: isTimeline ? "0 0 auto" : "0 0 auto"
       });
@@ -9623,9 +10625,9 @@
     if (!(bottomWorkspace instanceof HTMLElement)) return;
     const children = Array.from(bottomWorkspace.children).filter((child) => child instanceof HTMLElement);
     children.forEach((child) => {
+      const isTimeline = child === children[children.length - 1];
       setImportantStyles(child, {
-        border: "0",
-        "border-color": "transparent",
+        border: `1px solid ${isTimeline ? AI_ANIMATION_TIMELINE_BORDER_COLOR : DOCK_BORDER_COLOR}`,
         outline: "0",
         "outline-color": "transparent",
         "box-shadow": "none"
@@ -9665,6 +10667,13 @@
       AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT,
       Math.ceil(contentBottom - panelRect.top + AI_ANIMATION_GENERATION_INNER_GAP)
     );
+    // The reference sizes the dock by its rows; a held height here was undone
+    // by the spec on every pass, and the dock (and everything above it)
+    // jumped between the two.
+    if (document.body.classList.contains("novaflow-ai-animation-section-layers")) {
+      setImportantStyles(panel, { height: "auto", "min-height": "0", "max-height": "none", overflow: "visible" });
+      return;
+    }
     setImportantStyles(panel, {
       height: `${desiredHeight}px`,
       "min-height": `${desiredHeight}px`,
@@ -9677,6 +10686,10 @@
     if (!(bottomWorkspace instanceof HTMLElement)) return;
     const panel = getAiAnimationGenerationPanelElement(bottomWorkspace);
     if (!(panel instanceof HTMLElement)) return;
+    if (document.body.classList.contains("novaflow-ai-animation-section-layers")) {
+      setImportantStyles(panel, { height: "auto", "min-height": "0", "max-height": "none", overflow: "visible" });
+      return;
+    }
     setImportantStyles(panel, {
       height: `${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px`,
       "min-height": `${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px`,
@@ -10292,7 +11305,10 @@
     const settingsColumn = promptGrid.parentElement;
     if (settingsColumn instanceof HTMLElement) {
       setImportantStyles(settingsColumn, {
-        flex: "1 1 0",
+        // The reference spec sizes the column by its rows ("0 0 auto"); a
+        // zero basis here collapsed the dock to its padding for the frames
+        // between the two writers.
+        flex: document.body.classList.contains("novaflow-ai-animation-section-layers") ? "0 0 auto" : "1 1 0",
         "min-width": cloudModelMethod ? `${AI_ANIMATION_SOURCE_OWNED_SETTINGS_MIN_WIDTH}px` : "0",
         "max-width": "100%"
       });
@@ -12718,7 +13734,7 @@
     if (isSourceOwnedLayout(controls) || isInsideSourceOwnedLayout(controls)) return;
     setImportantStyles(controls, {
       position: "absolute",
-      right: `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`,
+      right: `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`,
       top: `${AI_ANIMATION_PREVIEW_UI_GAP}px`,
       width: "auto",
       "min-width": "0",
@@ -14518,7 +15534,7 @@
     };
     if (type === "range") {
       styles["accent-color"] = UI_RANGE_ACCENT;
-      styles.background = `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`;
+      styles.background = `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`;
     } else if (type === "checkbox") {
       styles["accent-color"] = UI_RANGE_ACCENT;
     }
@@ -15711,13 +16727,15 @@
         label.includes("\u5173\u95ed");
       if (!isAction) return;
       setAttributeIfChanged(control, "data-novaflow-ai-resource-overlay-control", "1");
+      // The card's corner control at its final 18 (the spec's), not 28 for
+      // the first frames.
       setImportantStyles(control, {
-        width: "28px",
-        "min-width": "28px",
-        "max-width": "28px",
-        height: "28px",
-        "min-height": "28px",
-        "max-height": "28px",
+        width: "18px",
+        "min-width": "18px",
+        "max-width": "18px",
+        height: "18px",
+        "min-height": "18px",
+        "max-height": "18px",
         padding: "0",
         display: "inline-flex",
         "align-items": "center",
@@ -15726,14 +16744,14 @@
         "border-color": "rgba(255, 255, 255, 0.18)",
         "border-width": "1px",
         "border-style": "solid",
-        "border-radius": "8px",
+        "border-radius": "5px",
         "box-sizing": "border-box",
         background: "rgba(0, 0, 0, 0.55)",
         "background-color": "rgba(0, 0, 0, 0.55)",
         "background-image": "none",
         color: "#ffffff",
         "box-shadow": "none",
-        "font-size": "16px",
+        "font-size": "11px",
         "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
         "line-height": "1",
         transition: "none"
@@ -16454,11 +17472,14 @@
     const mediaHeight = mediaRect && Number.isFinite(mediaRect.height) && mediaRect.height > 12
       ? Math.round(mediaRect.height)
       : 80;
-    const cardHeight = Math.max(120, mediaHeight + AI_SEQUENCE_RUNTIME_DURATION_META_HEIGHT_PX);
+    void mediaHeight;
+    // The card is as tall as its 58 thumbnail and its caption (theme sheet
+    // 3.0n / the spec): a fixed 120 here drew a new card 10 taller for its
+    // first frames.
     setImportantStyles(card, {
-      height: `${cardHeight}px`,
-      "min-height": `${cardHeight}px`,
-      "max-height": `${cardHeight}px`,
+      height: "auto",
+      "min-height": "0",
+      "max-height": "none",
       overflow: "hidden",
       transition: "none"
     });
@@ -16476,10 +17497,10 @@
     }
     if (metaRow instanceof HTMLElement && metaRow !== card) {
       setImportantStyles(metaRow, {
-        height: `${AI_SEQUENCE_RUNTIME_DURATION_META_HEIGHT_PX}px`,
-        "min-height": `${AI_SEQUENCE_RUNTIME_DURATION_META_HEIGHT_PX}px`,
-        "max-height": `${AI_SEQUENCE_RUNTIME_DURATION_META_HEIGHT_PX}px`,
-        padding: "4px 10px 12px",
+        height: "auto",
+        "min-height": "0",
+        "max-height": "none",
+        padding: "4px 6px",
         "align-items": "center",
         "box-sizing": "border-box",
         overflow: "hidden",
@@ -17705,24 +18726,15 @@
     const background = color;
     setStylePropertyIfChanged(viewport, "--novaflow-ai-preview-color", color);
     setAttributeIfChanged(viewport, "data-novaflow-ai-preview-bg", mode);
-    viewport.style.setProperty(
-      "background",
-      background,
-      "important"
-    );
-    viewport.style.setProperty(
-      "background-color",
-      color,
-      "important"
-    );
-    viewport.style.setProperty(
-      "background-image",
-      "none",
-      "important"
-    );
-    viewport.style.setProperty("background-size", "auto", "important");
-    viewport.style.setProperty("background-position", "center", "important");
-    viewport.style.setProperty("background-repeat", "no-repeat", "important");
+    // The chosen backdrop fills the preview's own area (below the canvas
+    // bar, above the dock), not the whole stage; around it the stage keeps
+    // its dark. Dark itself therefore looks exactly as before.
+    void background;
+    setStylePropertyIfChanged(viewport, "background-color", AI_ANIMATION_PREVIEW_BACKGROUND_COLOR, "important");
+    setStylePropertyIfChanged(viewport, "background-image", `linear-gradient(${color}, ${color})`, "important");
+    setStylePropertyIfChanged(viewport, "background-size", "var(--novaflow-ai-sequence-effective-width, 100%) var(--novaflow-ai-sequence-effective-height, 100%)", "important");
+    setStylePropertyIfChanged(viewport, "background-position", "var(--novaflow-ai-sequence-effective-left, 0px) var(--novaflow-ai-sequence-effective-top, 0px)", "important");
+    setStylePropertyIfChanged(viewport, "background-repeat", "no-repeat", "important");
   }
 
   function isAiSequencePreviewBgToggleTarget(target) {
@@ -18291,7 +19303,16 @@
         right = Math.max(left + 1, Math.round(resourceRect.left) - AI_ANIMATION_PREVIEW_UI_GAP);
       }
     }
-    const top = rect.top + padTop;
+    let top = rect.top + padTop;
+    // The canvas bar (board controls, mode tabs, 自动适配) is not preview:
+    // the area starts 8 below it, as it ends 8 above the dock.
+    Array.from(document.querySelectorAll('[data-novaflow-ai-top-mode-tabs="1"], [data-novaflow-ai-zoom-controls="1"], [data-novaflow-ai-board-controls-top-left]')).forEach((node) => {
+      if (!(node instanceof HTMLElement) || !isVisible(node)) return;
+      const barRect = node.getBoundingClientRect();
+      if (barRect.top >= rect.top - 4 && barRect.bottom < rect.top + 120) {
+        top = Math.max(top, Math.round(barRect.bottom) + 8);
+      }
+    });
     let bottom = Math.max(top + 1, rect.bottom - padBottom);
     Array.from(document.querySelectorAll('[data-novaflow-ai-bottom-workspace="1"], [data-novaflow-ai-video-merge-workspace="1"] .nf-vm-timeline')).forEach((node) => {
       if (!(node instanceof HTMLElement) || !isVisible(node)) return;
@@ -18317,11 +19338,15 @@
     setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-center-y", `${localCenterY}px`);
     setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-width", `${Math.max(1, Math.round(effectiveRect.width))}px`);
     setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-height", `${Math.max(1, Math.round(effectiveRect.height))}px`);
+    setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-left", `${Math.round(effectiveRect.left - rect.left)}px`);
+    setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-top", `${Math.round(effectiveRect.top - rect.top)}px`);
     const backgroundToggle = viewport.querySelector('[data-novaflow-ai-preview-bg-toggle="1"]');
     if (backgroundToggle instanceof HTMLElement) {
       // Follow the visible stage, above either generation controls or the editing timeline.
       setStylePropertyIfChanged(backgroundToggle, "left", `${localCenterX}px`, "important");
-      setStylePropertyIfChanged(backgroundToggle, "top", `${Math.max(0, Math.round(bottom - rect.top - 26))}px`, "important");
+      // Where the reference spec puts it when the dock is up, so the two do
+      // not move it back and forth.
+      setStylePropertyIfChanged(backgroundToggle, "top", aiPreviewBgToggleDockTop(backgroundToggle) || `${Math.max(0, Math.round(bottom - rect.top - 26))}px`, "important");
     }
     return effectiveRect;
   }
@@ -19921,13 +20946,16 @@
   }
 
   function ensureStyle() {
-    if (document.getElementById(STYLE_ID)) return;
-    const style = document.createElement("style");
+    const existing = document.getElementById(STYLE_ID);
+    if (existing && existing.getAttribute("data-novaflow-layout-tier") === NOVAFLOW_LAYOUT_TIER) return;
+    const style = existing || document.createElement("style");
     style.id = STYLE_ID;
+    style.setAttribute("data-novaflow-layout-tier", NOVAFLOW_LAYOUT_TIER);
     style.textContent = `
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] {
         gap: 6px !important;
-        padding-left: 12px !important;
+        /* The topbar's own 20 already sets the left margin. */
+        padding-left: 0 !important;
       }
       #${DROPDOWN_OVERLAY_ID} {
         position: fixed !important;
@@ -20366,10 +21394,11 @@
         background: var(--novaflow-ai-preview-color, #0b0b0b) !important;
       }
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] img[alt="logo"] {
-        width: 196px !important;
-        height: 37px !important;
+        width: ${UI_TOPBAR_LOGO_WIDTH}px !important;
+        height: ${UI_TOPBAR_LOGO_HEIGHT}px !important;
         object-fit: contain !important;
-        filter: drop-shadow(0 0 10px rgba(28, 148, 255, 0.18));
+        /* Flat: the reference has no glow on the mark. */
+        filter: none !important;
       }
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] span {
         display: none !important;
@@ -20383,7 +21412,7 @@
       #${PRIMARY_SIDEBAR_ID} {
         position: fixed !important;
         left: 0 !important;
-        top: 56px !important;
+        top: ${TOPBAR_HEIGHT}px !important;
         bottom: 0 !important;
         width: ${PRIMARY_COLUMN_WIDTH}px !important;
         background: ${LEFT_COLUMN_BACKGROUND_IMAGE} !important;
@@ -20576,6 +21605,11 @@
         box-shadow: none !important;
         color: #ffffff !important;
       }
+      body.novaflow-primary-target-animation:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-generate-button="1"]:hover:not(:disabled),
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-generate-button="1"]:hover:not(:disabled) {
+        background: ${UI_ACCENT_HOVER} !important;
+        background-color: ${UI_ACCENT_HOVER} !important;
+      }
       body.novaflow-primary-target-animation:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-state-toggle="off"],
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-state-toggle="off"],
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-state-toggle="off"],
@@ -20669,7 +21703,7 @@
         background: ${PREVIEW_OUTSIDE_BACKGROUND} !important;
         background-color: ${PREVIEW_OUTSIDE_BACKGROUND} !important;
       }
-      body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) .nf-app-body > div:nth-child(2),
+      body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0']),
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-preview-workspace="1"],
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-main-workspace="1"] {
         background: ${AI_ANIMATION_PREVIEW_BACKGROUND} !important;
@@ -20695,7 +21729,7 @@
         right: 0 !important;
         bottom: 0 !important;
         left: auto !important;
-        width: var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) !important;
+        width: var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) !important;
         min-height: 0 !important;
         display: flex !important;
         flex-direction: column !important;
@@ -20727,8 +21761,8 @@
       body.novaflow-primary-target-animation:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-bottom-workspace="1"],
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-bottom-workspace="1"] {
         position: fixed !important;
-        left: calc(var(--novaflow-ai-preview-left, ${PRIMARY_COLUMN_WIDTH}px) + ${AI_ANIMATION_PREVIEW_UI_GAP}px) !important;
-        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
+        left: var(--novaflow-ai-preview-left, ${PRIMARY_COLUMN_WIDTH}px) !important;
+        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
         top: auto !important;
         bottom: ${AI_ANIMATION_PREVIEW_UI_GAP}px !important;
         width: auto !important;
@@ -20745,7 +21779,7 @@
       body.novaflow-primary-target-animation:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-zoom-controls="1"]:not([data-novaflow-source-layout="1"]),
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-zoom-controls="1"]:not([data-novaflow-source-layout="1"]),
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-zoom-controls="1"]:not([data-novaflow-source-layout="1"]) {
-        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
+        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
       }
       body.novaflow-ai-animation-prepaint:has([data-novaflow-ai-bottom-workspace="1"]) [data-novaflow-ai-entry-fit-guard="1"],
       body.novaflow-ai-animation-entry-fit-active [data-novaflow-ai-entry-fit-guard="1"] {
@@ -20822,62 +21856,84 @@
       [data-novaflow-primary-entry="1"][data-novaflow-primary-active="1"] {
         background: ${PRIMARY_ACTIVE_BACKGROUND} !important;
         background-image: none !important;
-        border-radius: 0 !important;
-        box-shadow: none !important;
-        color: #ffffff !important;
+        border-radius: 10px !important;
+        /* A hairline edge: zero offset, zero blur. Not an inner shadow, and
+           deliberately not an edge light along one side. */
+        box-shadow: inset 0 0 0 1px ${UI_RAIL_SELECTED_BORDER} !important;
+        color: ${UI_RAIL_SELECTED_TEXT} !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
       }
       [data-novaflow-primary-entry="1"][data-novaflow-primary-active="0"] {
-        color: rgba(244, 247, 251, 0.88) !important;
+        color: #9c9c9c !important;
         box-shadow: none !important;
+        /* The bundle paints these #2a2a2a inline. Clearing it lets the rail
+           surface behind show through, which is what makes the column read as
+           one panel rather than a stack of tiles. */
+        background: transparent !important;
+        background-color: transparent !important;
       }
       [data-novaflow-primary-entry="1"] > * {
         display: none !important;
       }
+      [data-novaflow-primary-entry="1"] {
+        flex-direction: column !important;
+        gap: ${PRIMARY_RAIL_ICON_GAP}px !important;
+      }
       [data-novaflow-primary-entry="1"]::before {
-        content: attr(data-novaflow-primary-icon);
+        content: "" !important;
         display: block !important;
-        font-size: 23px !important;
-        line-height: 1 !important;
-        color: rgba(244,247,251,0.78) !important;
+        flex: 0 0 auto !important;
+        width: ${PRIMARY_RAIL_ICON_SIZE}px !important;
+        height: ${PRIMARY_RAIL_ICON_SIZE}px !important;
+        font-size: 0 !important;
+        line-height: 0 !important;
+        background-color: currentColor !important;
+        -webkit-mask: var(--nf-rail-icon) center / contain no-repeat !important;
+        mask: var(--nf-rail-icon) center / contain no-repeat !important;
       }
-      [data-novaflow-primary-entry="1"][data-novaflow-primary-label="特效"]::before {
-        font-size: 30px !important;
-      }
+      [data-novaflow-primary-entry="1"][data-novaflow-primary-label="特效"] { --nf-rail-icon: ${PRIMARY_RAIL_ICON_SPARKLES}; }
+      [data-novaflow-primary-entry="1"][data-novaflow-primary-label="动画"] { --nf-rail-icon: ${PRIMARY_RAIL_ICON_PLAY}; }
+      [data-novaflow-primary-entry="1"][data-novaflow-primary-label="美工"] { --nf-rail-icon: ${PRIMARY_RAIL_ICON_PENCIL}; }
+      [data-novaflow-primary-entry="1"][data-novaflow-primary-label="工具"] { --nf-rail-icon: ${PRIMARY_RAIL_ICON_PANELS}; }
       [data-novaflow-primary-entry="1"]::after {
         content: attr(data-novaflow-primary-label);
         display: block !important;
-        font-size: 12px !important;
-        font-weight: 400 !important;
+        font-size: 11px !important;
+        font-weight: ${NOVAFLOW_MEDIUM_FONT_WEIGHT} !important;
         line-height: 1.2 !important;
         color: inherit !important;
         white-space: nowrap !important;
       }
       [data-novaflow-primary-entry="1"][data-novaflow-primary-active="1"]::before {
-        color: #ffffff !important;
+        background-color: ${UI_RAIL_SELECTED_TEXT} !important;
       }
       [data-novaflow-primary-entry="1"][data-novaflow-primary-active="1"]::after {
         content: attr(data-novaflow-primary-label);
-        color: #ffffff !important;
+        color: ${UI_RAIL_SELECTED_TEXT} !important;
       }
-      [data-novaflow-primary-entry="1"]:hover {
-        background: ${PRIMARY_INACTIVE_BACKGROUND} !important;
+      [data-novaflow-primary-entry="1"][data-novaflow-primary-active="0"]:hover {
+        background: ${PRIMARY_RAIL_HOVER_BACKGROUND} !important;
+        background-color: ${PRIMARY_RAIL_HOVER_BACKGROUND} !important;
+        color: ${PRIMARY_RAIL_HOVER_TEXT} !important;
+      }
+      [data-novaflow-primary-entry="1"][data-novaflow-primary-active="0"]:hover::before {
+        background-color: ${PRIMARY_RAIL_HOVER_TEXT} !important;
       }
       [data-novaflow-primary-entry="1"][data-novaflow-primary-active="1"]:hover {
         background: ${PRIMARY_ACTIVE_BACKGROUND} !important;
       }
       [data-novaflow-primary-output-divider="1"] {
         position: fixed !important;
-        left: ${(PRIMARY_SIDEBAR_WIDTH - PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH) / 2}px !important;
+        left: ${PRIMARY_SIDEBAR_LEFT + (PRIMARY_SIDEBAR_WIDTH - PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH) / 2}px !important;
         width: ${PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH}px !important;
         height: 1px !important;
         min-height: 1px !important;
         max-height: 1px !important;
         z-index: ${PRIMARY_OUTPUT_SHORTCUT_Z_INDEX} !important;
         pointer-events: none !important;
-        background: rgba(255,255,255,0.14) !important;
+        background: ${PRIMARY_OUTPUT_SHORTCUT_DIVIDER_COLOR} !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-primary-output-cell="1"],
       body.novaflow-skeleton-animation-layout [data-novaflow-primary-export-cell="1"],
@@ -20901,9 +21957,9 @@
         flex-direction: column !important;
         align-items: center !important;
         justify-content: center !important;
-        gap: ${NOVAFLOW_UNIFORM_GAP}px !important;
+        gap: ${PRIMARY_RAIL_ICON_GAP}px !important;
         padding: 0 6px !important;
-        font-size: 12px !important;
+        font-size: 11px !important;
         line-height: 1.2 !important;
         text-align: center !important;
         white-space: normal !important;
@@ -20913,9 +21969,10 @@
         visibility: visible !important;
         pointer-events: auto !important;
         transition: none !important;
-        background: ${PRIMARY_INACTIVE_BACKGROUND} !important;
+        background: transparent !important;
         background-image: none !important;
-        color: rgba(244, 247, 251, 0.88) !important;
+        color: ${PRIMARY_RAIL_IDLE_TEXT} !important;
+        border-radius: 7px !important;
       }
       [data-novaflow-primary-output-entry="1"] > *,
       [data-novaflow-primary-export-entry="1"] > * {
@@ -20925,9 +21982,9 @@
       [data-novaflow-primary-export-entry="1"]::before {
         content: "" !important;
         display: block !important;
-        width: 23px !important;
-        height: 23px !important;
-        background: rgba(244,247,251,0.78) !important;
+        width: ${PRIMARY_RAIL_ICON_SIZE}px !important;
+        height: ${PRIMARY_RAIL_ICON_SIZE}px !important;
+        background: currentColor !important;
       }
       [data-novaflow-primary-output-entry="1"]::before {
         -webkit-mask: ${PRIMARY_OUTPUT_SHORTCUT_ICON_MASK} center / contain no-repeat !important;
@@ -20937,27 +21994,70 @@
         -webkit-mask: ${PRIMARY_EXPORT_SHORTCUT_ICON_MASK} center / contain no-repeat !important;
         mask: ${PRIMARY_EXPORT_SHORTCUT_ICON_MASK} center / contain no-repeat !important;
       }
+      [data-novaflow-prompt-action-kind]::before {
+        content: "" !important;
+        display: block !important;
+        flex: 0 0 auto !important;
+        width: 16px !important;
+        height: 16px !important;
+        background-color: currentColor !important;
+        -webkit-mask: var(--nf-prompt-action-icon) center / contain no-repeat !important;
+        mask: var(--nf-prompt-action-icon) center / contain no-repeat !important;
+      }
+      [data-novaflow-prompt-action-kind="history"] { --nf-prompt-action-icon: ${DOCK_ICON_HISTORY}; }
+      [data-novaflow-playback-icon]::before {
+        content: "" !important;
+        display: block !important;
+        flex: 0 0 auto !important;
+        width: 16px !important;
+        height: 16px !important;
+        background-color: currentColor !important;
+        -webkit-mask: var(--nf-playback-icon) center / contain no-repeat !important;
+        mask: var(--nf-playback-icon) center / contain no-repeat !important;
+      }
+      [data-novaflow-playback-icon="skip-back"] { --nf-playback-icon: ${PLAYBACK_ICON_SKIP_BACK}; }
+      [data-novaflow-playback-icon="step-back"] { --nf-playback-icon: ${PLAYBACK_ICON_STEP_BACK}; }
+      [data-novaflow-playback-icon="play"] { --nf-playback-icon: ${PLAYBACK_ICON_PLAY}; }
+      [data-novaflow-playback-icon="pause"] { --nf-playback-icon: ${PLAYBACK_ICON_PAUSE}; }
+      [data-novaflow-playback-icon="step-forward"] { --nf-playback-icon: ${PLAYBACK_ICON_STEP_FORWARD}; }
+      [data-novaflow-playback-icon="skip-forward"] { --nf-playback-icon: ${PLAYBACK_ICON_SKIP_FORWARD}; }
+      [data-novaflow-playback-icon="repeat"] { --nf-playback-icon: ${PLAYBACK_ICON_REPEAT}; }
+      [data-novaflow-playback-icon="scan"] { --nf-playback-icon: ${PLAYBACK_ICON_SCAN}; }
+      [data-novaflow-playback-icon="wind"] { --nf-playback-icon: ${PLAYBACK_ICON_WIND}; }
+      [data-novaflow-playback-icon="image"] { --nf-playback-icon: ${PLAYBACK_ICON_IMAGE}; }
+      [data-novaflow-playback-icon="x"] { --nf-playback-icon: ${PLAYBACK_ICON_X}; }
+      [data-novaflow-prompt-action-kind="assistant"] { --nf-prompt-action-icon: ${DOCK_ICON_SPARKLES}; }
+      [data-novaflow-prompt-action-kind="edit"] { --nf-prompt-action-icon: ${DOCK_ICON_PENCIL_LINE}; }
       [data-novaflow-primary-output-entry="1"]::after,
       [data-novaflow-primary-export-entry="1"]::after {
-        content: attr(data-novaflow-primary-label);
+        /* !important: inside the stacked app root, the global hover sheet's
+           (0,4,1) ::after rule would otherwise blank the label. */
+        content: attr(data-novaflow-primary-label) !important;
         display: block !important;
-        font-size: 12px !important;
-        font-weight: 400 !important;
+        /* ...and turn it into its invisible press overlay (absolute, 0). */
+        position: static !important;
+        inset: auto !important;
+        width: auto !important;
+        height: auto !important;
+        opacity: 1 !important;
+        background: none !important;
+        font-size: 11px !important;
+        font-weight: ${NOVAFLOW_MEDIUM_FONT_WEIGHT} !important;
         line-height: 1.2 !important;
         color: inherit !important;
         white-space: nowrap !important;
       }
       [data-novaflow-primary-output-entry="1"]:hover,
       [data-novaflow-primary-export-entry="1"]:hover {
-        background: ${SECONDARY_ENTRY_HOVER_BACKGROUND} !important;
-        background-color: ${SECONDARY_ENTRY_HOVER_BACKGROUND} !important;
-        color: #ffffff !important;
+        background: ${PRIMARY_RAIL_HOVER_BACKGROUND} !important;
+        background-color: ${PRIMARY_RAIL_HOVER_BACKGROUND} !important;
+        color: ${PRIMARY_RAIL_HOVER_TEXT} !important;
       }
       [data-novaflow-primary-output-entry="1"][data-novaflow-primary-output-hover="1"],
       [data-novaflow-primary-export-entry="1"][data-novaflow-primary-export-hover="1"] {
-        background: ${SECONDARY_ENTRY_HOVER_BACKGROUND} !important;
-        background-color: ${SECONDARY_ENTRY_HOVER_BACKGROUND} !important;
-        color: #ffffff !important;
+        background: ${PRIMARY_RAIL_HOVER_BACKGROUND} !important;
+        background-color: ${PRIMARY_RAIL_HOVER_BACKGROUND} !important;
+        color: ${PRIMARY_RAIL_HOVER_TEXT} !important;
       }
       [data-novaflow-primary-output-entry="1"][data-novaflow-primary-shortcut-locked="1"],
       [data-novaflow-primary-export-entry="1"][data-novaflow-primary-shortcut-locked="1"] {
@@ -20991,13 +22091,12 @@
         top: var(--novaflow-secondary-top, 132px) !important;
         left: var(--novaflow-secondary-left, 0px) !important;
         z-index: ${DROPDOWN_UNDERLAY_Z_INDEX} !important;
-        padding-left: 0 !important;
-        padding-right: 0 !important;
+        padding: ${SECONDARY_GROUP_INSET}px !important;
         box-sizing: border-box !important;
         overflow: hidden !important;
         background: transparent !important;
-        gap: ${SECONDARY_ENTRY_GAP}px !important;
-        column-gap: ${SECONDARY_ENTRY_GAP}px !important;
+        gap: ${SECONDARY_GROUP_PILL_GAP}px !important;
+        column-gap: ${SECONDARY_GROUP_PILL_GAP}px !important;
         row-gap: 0 !important;
       }
       [data-novaflow-secondary-entry="1"]:not([data-novaflow-source-layout="1"]) {
@@ -21041,10 +22140,13 @@
       }
       [data-novaflow-secondary-entry="1"][data-novaflow-secondary-active="1"]:not([data-novaflow-source-layout="1"]) {
         border: 0 !important;
+        border-radius: 5px !important;
         background: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
         background-color: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
-        color: ${UI_ACCENT_TEXT} !important;
-        box-shadow: inset 0 -2px 0 ${UI_ACCENT} !important;
+        color: ${UI_SEGMENT_SELECTED_TEXT} !important;
+        /* Was an inset edge light along the bottom. The selected state is now
+           carried by the fill and the text; this is a plain hairline edge. */
+        box-shadow: inset 0 0 0 1px ${UI_SEGMENT_SELECTED_BORDER} !important;
         outline: 0 !important;
       }
       body.novaflow-aifx-open #novaflow-aifx-mvp {
@@ -21058,11 +22160,90 @@
         box-sizing: border-box !important;
       }
       body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-side > .aifx-panel {
-        width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
-        min-width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
-        max-width: ${PRIMARY_LEFT_PANEL_WIDTH}px !important;
-        margin-left: 0 !important;
+        width: ${PRIMARY_LEFT_CARD_WIDTH}px !important;
+        min-width: ${PRIMARY_LEFT_CARD_WIDTH}px !important;
+        max-width: ${PRIMARY_LEFT_CARD_WIDTH}px !important;
+        margin-left: ${PRIMARY_LEFT_CARD_INSET}px !important;
+        padding: 0 !important;
+        background: transparent !important;
         box-sizing: border-box !important;
+      }
+      /* AI 特效, measured off aifx-spline.html: the groups sit in the left
+         panel like every other page's (their first header at 127), the stage
+         is the rounded #242424 panel with the dot field, and the play bar is
+         its own 52 panel 9 under it. The overlay had its own #181818 column,
+         a black stage with a perspective grid and a floating bar. */
+      body.novaflow-aifx-open #novaflow-aifx-mvp {
+        top: ${TOPBAR_HEIGHT}px !important;
+      }
+      body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-side {
+        margin-top: ${PRIMARY_PANEL_TOP_GAP + 65}px !important;
+        height: calc(100% - ${PRIMARY_PANEL_TOP_GAP + 65 + PRIMARY_PANEL_BOTTOM_GAP + 11}px) !important;
+        background: transparent !important;
+        background-color: transparent !important;
+      }
+      body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-section-title,
+      body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-section-title-wrap {
+        color: ${PRIMARY_LEFT_CARD_TITLE_COLOR} !important;
+      }
+      /* The particle page's left groups are hidden under AI 特效 already;
+         the overlay's own square #181818 shield over them showed as a slab
+         past the rounded panel. The panel shows through instead. */
+      body.novaflow-aifx-open #novaflow-aifx-mvp::before {
+        background: transparent !important;
+      }
+      body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-main {
+        margin: ${PRIMARY_PANEL_TOP_GAP}px ${WORKSPACE_SIDE_GAP}px ${PRIMARY_PANEL_BOTTOM_GAP}px 0 !important;
+        /* Opaque in the page's colour: the particle dock under it showed in
+           the 9px between the stage and the play bar. */
+        background: ${PREVIEW_OUTSIDE_BACKGROUND} !important;
+        border: 0 !important;
+        overflow: visible !important;
+      }
+      body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-main::before {
+        inset: 0 0 ${SKELETON_PLAYBAR_HEIGHT + AI_ANIMATION_PANEL_TIMELINE_GAP}px 0 !important;
+        border-radius: ${PRIMARY_RAIL_PANEL_RADIUS}px !important;
+        background: radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px) 0 0 / ${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px, ${PREVIEW_OUTSIDE_BACKGROUND} !important;
+      }
+      body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-main::after {
+        content: none !important;
+        display: none !important;
+      }
+      body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-preview-wrap {
+        position: absolute !important;
+        inset: 0 0 ${SKELETON_PLAYBAR_HEIGHT + AI_ANIMATION_PANEL_TIMELINE_GAP}px 0 !important;
+        border-radius: ${PRIMARY_RAIL_PANEL_RADIUS}px !important;
+        overflow: hidden !important;
+        background: transparent !important;
+      }
+      body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-preview-grid {
+        visibility: hidden !important;
+      }
+      body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-preview-canvas {
+        mix-blend-mode: lighten !important;
+      }
+      body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-preview-status-title,
+      body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-preview-status-detail {
+        font-size: 12px !important;
+        color: #888888 !important;
+        font-weight: 400 !important;
+      }
+      body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-timeline {
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        height: ${SKELETON_PLAYBAR_HEIGHT}px !important;
+        padding: 10px 12px !important;
+        gap: 8px !important;
+        grid-template-columns: ${PLAYBACK_BUTTON_SIZE}px ${PLAYBACK_BUTTON_SIZE}px ${PLAYBACK_BUTTON_SIZE}px minmax(120px, 1fr) auto !important;
+        background: ${AI_ANIMATION_STACK_SURFACE} !important;
+        border: 1px solid ${AI_ANIMATION_TIMELINE_BORDER_COLOR} !important;
+        border-radius: ${AI_ANIMATION_TIMELINE_RADIUS}px !important;
+        box-sizing: border-box !important;
+      }
+      body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-timeline [data-frame-label] {
+        font-size: 13px !important;
+        color: ${PLAYBACK_FRAME_TEXT} !important;
       }
       [data-novaflow-left-content-root="1"]:not([data-novaflow-source-layout="1"]) {
         display: flex !important;
@@ -21351,38 +22532,12 @@
         position: relative !important;
         isolation: isolate !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-preview-workspace="1"][data-novaflow-source-layout="1"]::before {
+      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-preview-workspace="1"][data-novaflow-source-layout="1"]::after {
+        /* The reference has no perspective floor. The dot field lives on the
+           stage's own background instead - see the rule that owns this node
+           further down, which is the only one specific enough to set it. */
         content: none !important;
         display: none !important;
-      }
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-preview-workspace="1"][data-novaflow-source-layout="1"]::after {
-        content: "" !important;
-        position: absolute !important;
-        left: 0 !important;
-        top: 0 !important;
-        right: 0 !important;
-        bottom: 0 !important;
-        z-index: 1 !important;
-        pointer-events: none !important;
-        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
-        clip-path: inset(
-          var(--novaflow-preview-top, 0px)
-          var(--novaflow-preview-right, 0px)
-          var(--novaflow-preview-bottom, 0px)
-          var(--novaflow-preview-left, 0px)
-          round 10px
-        ) !important;
-        transform-origin: center bottom !important;
-        transform: perspective(640px) rotateX(62deg) !important;
-        opacity: 0.9 !important;
-        background-image:
-          linear-gradient(rgba(130, 146, 164, 0.26) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(130, 146, 164, 0.26) 1px, transparent 1px),
-          linear-gradient(90deg, transparent calc(50% - 1px), rgba(170, 184, 198, 0.34) 50%, transparent calc(50% + 1px)) !important;
-        background-size: 72px 72px, 72px 72px, 100% 100% !important;
-        background-position: center calc(100% + 36px), calc(50% + 36px) bottom, center bottom !important;
-        -webkit-mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.84) 0%, rgba(0, 0, 0, 0.55) 58%, transparent 100%) !important;
-        mask-image: linear-gradient(to top, rgba(0, 0, 0, 0.84) 0%, rgba(0, 0, 0, 0.55) 58%, transparent 100%) !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-left-column="1"] .nf-panel:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *) {
         position: relative !important;
@@ -21577,23 +22732,23 @@
         top: 0 !important;
         right: 0 !important;
         width: 100% !important;
-        height: ${SECONDARY_ENTRY_HEIGHT}px !important;
-        min-height: ${SECONDARY_ENTRY_HEIGHT}px !important;
-        max-height: ${SECONDARY_ENTRY_HEIGHT}px !important;
+        height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT}px !important;
+        min-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT}px !important;
+        max-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT}px !important;
         display: flex !important;
         align-items: center !important;
         justify-content: space-between !important;
         gap: ${NOVAFLOW_UNIFORM_GAP}px !important;
-        padding: 0 42px 0 16px !important;
+        padding: 0 30px 0 ${AI_ANIMATION_GROUP_HEADER_INSET + AI_ANIMATION_GROUP_ICON_PLATE + AI_ANIMATION_GROUP_ICON_GAP}px !important;
         box-sizing: border-box !important;
-        border-radius: ${NOVAFLOW_RECT_RADIUS_TOP_PX} !important;
+        border-radius: 6px !important;
         border: 0 !important;
         margin: 0 !important;
-        background: ${SECONDARY_ENTRY_BACKGROUND} !important;
-        background-color: ${SECONDARY_ENTRY_BACKGROUND} !important;
-        color: rgba(238, 244, 252, 0.96) !important;
-        font-size: 13px !important;
-        font-weight: 400 !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        color: ${AI_ANIMATION_GROUP_TITLE_COLOR} !important;
+        font-size: 12px !important;
+        font-weight: ${NOVAFLOW_MEDIUM_FONT_WEIGHT} !important;
         line-height: 1 !important;
         text-align: left !important;
         cursor: pointer !important;
@@ -21601,8 +22756,11 @@
         z-index: 4 !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading]:hover {
-        background: ${SECONDARY_ENTRY_HOVER_BACKGROUND} !important;
-        background-color: ${SECONDARY_ENTRY_HOVER_BACKGROUND} !important;
+        background: ${AI_ANIMATION_GROUP_HOVER_BACKGROUND} !important;
+        background-color: ${AI_ANIMATION_GROUP_HOVER_BACKGROUND} !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading="post"] {
+        top: ${AI_ANIMATION_GROUP_PAD_Y}px !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading]::after {
         content: "" !important;
@@ -21626,8 +22784,8 @@
         background-color: transparent !important;
         border-left: 0 !important;
         border-top: 0 !important;
-        border-right: ${NOVAFLOW_THIN_ARROW_STROKE} solid rgba(238, 244, 252, 0.72) !important;
-        border-bottom: ${NOVAFLOW_THIN_ARROW_STROKE} solid rgba(238, 244, 252, 0.72) !important;
+        border-right: ${NOVAFLOW_THIN_ARROW_STROKE} solid ${AI_ANIMATION_GROUP_CHEVRON_COLOR} !important;
+        border-bottom: ${NOVAFLOW_THIN_ARROW_STROKE} solid ${AI_ANIMATION_GROUP_CHEVRON_COLOR} !important;
         border-radius: 0 !important;
         box-sizing: border-box !important;
         opacity: 1 !important;
@@ -21640,7 +22798,7 @@
         transform: translateY(-50%) rotate(-45deg) !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading][data-collapsed="1"] {
-        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
+        border-radius: 6px !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading="post"][data-novaflow-ai-collapse-disabled="1"] {
         opacity: 0.48 !important;
@@ -21648,9 +22806,9 @@
         color: rgba(238, 244, 252, 0.54) !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-mode-section="1"][data-novaflow-ai-mode-collapsed="1"] {
-        padding-top: ${SECONDARY_ENTRY_HEIGHT}px !important;
+        padding-top: ${AI_ANIMATION_GROUP_HEADER_HEIGHT}px !important;
         padding-bottom: 0 !important;
-        min-height: ${SECONDARY_ENTRY_HEIGHT}px !important;
+        min-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT}px !important;
         height: auto !important;
         max-height: none !important;
         overflow: visible !important;
@@ -21675,7 +22833,7 @@
         display: block !important;
         position: relative !important;
         top: auto !important;
-        margin-top: ${SECONDARY_CONTENT_GAP}px !important;
+        margin-top: ${AI_ANIMATION_GROUP_PAD_Y}px !important;
         z-index: 2 !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-mode-switch="1"] {
@@ -21736,22 +22894,23 @@
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-mode-section="1"] [data-novaflow-ai-post-section="1"] {
         position: relative !important;
         isolation: isolate !important;
-        margin-top: ${SECONDARY_CONTENT_GAP}px !important;
+        margin-top: ${AI_ANIMATION_GROUP_PAD_Y}px !important;
         margin-left: 0 !important;
         margin-right: 0 !important;
         width: 100% !important;
         min-width: 0 !important;
         max-width: 100% !important;
-        min-height: ${SECONDARY_ENTRY_HEIGHT}px !important;
-        padding: ${SECONDARY_ENTRY_HEIGHT + SECONDARY_CONTENT_GAP}px 0 14px !important;
+        min-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y * 2 + 2}px !important;
+        padding: ${AI_ANIMATION_GROUP_PAD_Y + AI_ANIMATION_GROUP_HEADER_HEIGHT}px 0 ${AI_ANIMATION_GROUP_PAD_Y + AI_ANIMATION_GROUP_OPEN_TAIL}px !important;
         box-sizing: border-box !important;
         overflow: visible !important;
-        background: ${PRIMARY_PANEL_EXPANDED_BACKGROUND} !important;
-        background-color: ${PRIMARY_PANEL_EXPANDED_BACKGROUND} !important;
+        background: transparent !important;
+        background-color: transparent !important;
         background-image: none !important;
         border: 0 !important;
-        border-color: transparent !important;
-        border-radius: 8px !important;
+        border-top: 1px solid ${AI_ANIMATION_GROUP_RULE_COLOR} !important;
+        border-bottom: 1px solid ${AI_ANIMATION_GROUP_RULE_COLOR} !important;
+        border-radius: 0 !important;
         box-shadow: none !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-post-collapsed="0"] {
@@ -21760,24 +22919,24 @@
         overflow: visible !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-post-collapsed="1"] {
-        height: ${SECONDARY_ENTRY_HEIGHT}px !important;
+        height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y * 2 + 2}px !important;
         width: 100% !important;
         min-width: 0 !important;
         max-width: 100% !important;
-        margin-top: ${SECONDARY_CONTENT_GAP}px !important;
         margin-left: 0 !important;
         margin-right: 0 !important;
         padding: 0 !important;
         padding-left: 0 !important;
         padding-right: 0 !important;
-        min-height: ${SECONDARY_ENTRY_HEIGHT}px !important;
-        max-height: ${SECONDARY_ENTRY_HEIGHT}px !important;
+        min-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y * 2 + 2}px !important;
+        max-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y * 2 + 2}px !important;
         overflow: hidden !important;
         background: transparent !important;
         background-color: transparent !important;
         border: 0 !important;
-        border-color: transparent !important;
-        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
+        border-top: 1px solid ${AI_ANIMATION_GROUP_RULE_COLOR} !important;
+        border-bottom: 1px solid ${AI_ANIMATION_GROUP_RULE_COLOR} !important;
+        border-radius: 0 !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-post-collapsed="1"] [data-novaflow-ai-post-body-item="1"] {
         display: none !important;
@@ -21791,42 +22950,46 @@
         box-sizing: border-box !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading="mode"] {
-        padding-left: 40px !important;
+        padding-left: ${AI_ANIMATION_GROUP_HEADER_INSET + AI_ANIMATION_GROUP_ICON_PLATE + AI_ANIMATION_GROUP_ICON_GAP}px !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading="mode"]::before {
         content: "\\f1de" !important;
         position: absolute !important;
-        left: 16px !important;
+        left: ${AI_ANIMATION_GROUP_HEADER_INSET}px !important;
         top: 50% !important;
-        width: 14px !important;
-        height: 14px !important;
+        width: ${AI_ANIMATION_GROUP_ICON_PLATE}px !important;
+        height: ${AI_ANIMATION_GROUP_ICON_PLATE}px !important;
+        border-radius: 5px !important;
+        background: ${AI_ANIMATION_GROUP_ICON_BACKGROUND} !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        color: rgba(238, 244, 252, 0.9) !important;
+        color: ${AI_ANIMATION_GROUP_ICON_COLOR} !important;
         font-family: "Font Awesome 6 Free", "Font Awesome 5 Free", sans-serif !important;
-        font-size: 13px !important;
+        font-size: 12px !important;
         font-weight: 400 !important;
         line-height: 1 !important;
         transform: translateY(-50%) !important;
         pointer-events: none !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading="post"] {
-        padding-left: 40px !important;
+        padding-left: ${AI_ANIMATION_GROUP_HEADER_INSET + AI_ANIMATION_GROUP_ICON_PLATE + AI_ANIMATION_GROUP_ICON_GAP}px !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading="post"]::before {
         content: "\\f0ad" !important;
         position: absolute !important;
-        left: 16px !important;
+        left: ${AI_ANIMATION_GROUP_HEADER_INSET}px !important;
         top: 50% !important;
-        width: 14px !important;
-        height: 14px !important;
+        width: ${AI_ANIMATION_GROUP_ICON_PLATE}px !important;
+        height: ${AI_ANIMATION_GROUP_ICON_PLATE}px !important;
+        border-radius: 5px !important;
+        background: ${AI_ANIMATION_GROUP_ICON_BACKGROUND} !important;
         display: inline-flex !important;
         align-items: center !important;
         justify-content: center !important;
-        color: rgba(238, 244, 252, 0.9) !important;
+        color: ${AI_ANIMATION_GROUP_ICON_COLOR} !important;
         font-family: "Font Awesome 6 Free", "Font Awesome 5 Free", sans-serif !important;
-        font-size: 13px !important;
+        font-size: 12px !important;
         font-weight: 400 !important;
         line-height: 1 !important;
         transform: translateY(-50%) !important;
@@ -21996,7 +23159,7 @@
         appearance: none !important;
         -webkit-appearance: none !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-param-range="1"]::-webkit-slider-runnable-track {
         height: ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px !important;
@@ -22293,7 +23456,7 @@
         pointer-events: none !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-main-workspace="1"] {
-        --novaflow-ai-resource-sidebar-width: ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px;
+        --novaflow-ai-resource-sidebar-width: ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px;
         --novaflow-ai-resource-sidebar-gap: ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px;
         position: relative !important;
         isolation: isolate !important;
@@ -22322,8 +23485,8 @@
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] {
         position: fixed !important;
-        left: calc(var(--novaflow-ai-preview-left, ${PRIMARY_COLUMN_WIDTH}px) + ${AI_ANIMATION_PREVIEW_UI_GAP}px) !important;
-        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
+        left: var(--novaflow-ai-preview-left, ${PRIMARY_COLUMN_WIDTH}px) !important;
+        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
         top: auto !important;
         bottom: ${AI_ANIMATION_PREVIEW_UI_GAP}px !important;
         width: auto !important;
@@ -22360,18 +23523,92 @@
         scale: var(--novaflow-ai-board-boost-scale, 1) !important;
         transform-origin: center center !important;
       }
+      /* 多参视频 puts the reference tiles beside the settings and squeezes the
+         prompt into a 263 gutter. The reference stacks the dock instead: the
+         tile row, then the parameter row, then progress, then the prompt -
+         each of them the full width of the dock. This is the flex direction
+         only; nothing moves in the DOM and no control changes what it does. */
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-bottom-main-row="1"] {
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: ${AI_ANIMATION_DOCK_ROW_GAP}px !important;
+        row-gap: ${AI_ANIMATION_DOCK_ROW_GAP}px !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-reference-column="1"] {
+        order: 0 !important;
+        flex: 0 0 auto !important;
+        flex-direction: row !important;
+        width: 100% !important;
+        max-width: none !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-reference-column="1"] > * {
+        width: 100% !important;
+        max-width: none !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-settings-column="1"] {
+        order: 1 !important;
+        flex: 1 1 auto !important;
+        width: 100% !important;
+        max-width: none !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-prompt-grid="1"],
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-prompt-column="1"] {
+        width: 100% !important;
+        max-width: none !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-mode-section="1"],
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-post-section="1"],
+      body.novaflow-ai-animation-section-layers [data-novaflow-left-content-root="1"] > * {
+        width: ${PRIMARY_LEFT_CARD_WIDTH}px !important;
+        min-width: ${PRIMARY_LEFT_CARD_WIDTH}px !important;
+        max-width: ${PRIMARY_LEFT_CARD_WIDTH}px !important;
+        box-sizing: border-box !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-resource-sidebar-head="1"] {
+        padding: 0 12px 0 10px !important;
+        box-sizing: border-box !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-resource-sidebar-head="1"] > div {
+        font-size: 11px !important;
+        color: ${AI_ANIMATION_RESOURCE_TITLE_TEXT} !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-resource-action="1"] {
+        height: ${UI_NUM_FIELD_HEIGHT}px !important;
+        min-height: ${UI_NUM_FIELD_HEIGHT}px !important;
+        padding: 0 11px !important;
+        background: ${UI_ICON_BUTTON_BACKGROUND} !important;
+        background-color: ${UI_ICON_BUTTON_BACKGROUND} !important;
+        border: 0 !important;
+        border-radius: ${UI_ICON_BUTTON_RADIUS_PX} !important;
+        color: ${AI_ANIMATION_RESOURCE_TITLE_TEXT} !important;
+        font-size: 11px !important;
+        font-weight: 500 !important;
+        box-sizing: border-box !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-resource-sidebar-panel="1"] [data-novaflow-ai-lora-empty="1"],
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-resource-sidebar-panel="1"] > div > div:only-child {
+        font-size: 11px !important;
+        color: ${AI_ANIMATION_RESOURCE_EMPTY_TEXT} !important;
+      }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-top-mode-tabs="1"] {
         position: fixed !important;
-        top: calc(var(--novaflow-ai-preview-top, 56px) + ${AI_ANIMATION_PREVIEW_UI_GAP}px) !important;
+        top: calc(var(--novaflow-ai-preview-top, ${TOPBAR_HEIGHT}px) + ${PRIMARY_PANEL_TOP_GAP + AI_ANIMATION_CANVAS_BAR_TOP_GAP}px) !important;
         left: var(--novaflow-ai-preview-center-x, 50vw) !important;
         right: auto !important;
         width: max-content !important;
         max-width: calc(100vw - var(--novaflow-ai-preview-left, ${PRIMARY_COLUMN_WIDTH}px) - var(--novaflow-ai-preview-right, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px) - 24px) !important;
-        height: var(--novaflow-top-control-height, 34px) !important;
-        min-height: var(--novaflow-top-control-height, 34px) !important;
-        max-height: var(--novaflow-top-control-height, 34px) !important;
+        height: ${AI_ANIMATION_CAPSULE_HEIGHT}px !important;
+        min-height: ${AI_ANIMATION_CAPSULE_HEIGHT}px !important;
+        max-height: ${AI_ANIMATION_CAPSULE_HEIGHT}px !important;
         margin-left: 0 !important;
         margin-right: 0 !important;
+        padding: 4px !important;
+        gap: ${SECONDARY_GROUP_PILL_GAP}px !important;
+        box-sizing: border-box !important;
+        background: ${CANVAS_BAR_PILL_BACKGROUND} !important;
+        background-color: ${CANVAS_BAR_PILL_BACKGROUND} !important;
+        border: 1px solid ${CANVAS_BAR_PILL_BORDER_COLOR} !important;
+        border-radius: ${CANVAS_BAR_PILL_RADIUS_PX} !important;
         transform: translateX(-50%) !important;
         display: flex !important;
         align-items: center !important;
@@ -22380,26 +23617,65 @@
         pointer-events: auto !important;
         -webkit-app-region: no-drag !important;
       }
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-top-mode-tabs="1"] button {
-        height: var(--novaflow-top-control-height, 34px) !important;
-        min-height: var(--novaflow-top-control-height, 34px) !important;
-        max-height: var(--novaflow-top-control-height, 34px) !important;
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-top-mode-tabs="1"] button,
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-board-controls-top-left="1"] button {
+        height: ${CANVAS_BAR_BUTTON_HEIGHT}px !important;
+        min-height: ${CANVAS_BAR_BUTTON_HEIGHT}px !important;
+        max-height: ${CANVAS_BAR_BUTTON_HEIGHT}px !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        flex: 0 0 auto !important;
+        padding: 0 11px !important;
         border: 0 !important;
         border-color: transparent !important;
+        border-radius: ${CANVAS_BAR_BUTTON_RADIUS_PX} !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        background-image: none !important;
         box-shadow: none !important;
+        color: ${CANVAS_BAR_BUTTON_TEXT} !important;
+        font-size: 11px !important;
+        font-weight: 500 !important;
+        line-height: 1 !important;
         pointer-events: auto !important;
         -webkit-app-region: no-drag !important;
       }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-top-mode-tabs="1"] button:hover:not([aria-pressed="true"]),
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-board-controls-top-left="1"] button:hover:not([aria-pressed="true"]) {
+        background: ${CANVAS_BAR_BUTTON_HOVER_BACKGROUND} !important;
+        background-color: ${CANVAS_BAR_BUTTON_HOVER_BACKGROUND} !important;
+      }
+      /* Selected is a fill and a text colour, never an edge light. */
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-top-mode-tabs="1"] button[aria-pressed="true"] {
+        background: ${UI_SEGMENT_SELECTED_BACKGROUND} !important;
+        background-color: ${UI_SEGMENT_SELECTED_BACKGROUND} !important;
+        box-shadow: inset 0 0 0 1px ${AI_ANIMATION_MODE_SELECTED_BORDER} !important;
+        color: ${AI_ANIMATION_MODE_SELECTED_TEXT} !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-board-controls-top-left="1"] button[aria-pressed="true"] {
+        background: ${UI_SEGMENT_SELECTED_BACKGROUND} !important;
+        background-color: ${UI_SEGMENT_SELECTED_BACKGROUND} !important;
+        box-shadow: inset 0 0 0 1px ${UI_SEGMENT_SELECTED_BORDER} !important;
+        color: ${UI_SEGMENT_SELECTED_TEXT} !important;
+      }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-board-controls-top-left="1"] {
         position: absolute !important;
-        top: ${AI_ANIMATION_PREVIEW_UI_GAP}px !important;
-        left: ${AI_ANIMATION_PREVIEW_UI_GAP}px !important;
+        top: ${AI_ANIMATION_CANVAS_BAR_TOP_GAP}px !important;
+        left: 0 !important;
         right: auto !important;
         z-index: 140 !important;
         display: flex !important;
-        height: var(--novaflow-top-control-height, 34px) !important;
-        min-height: var(--novaflow-top-control-height, 34px) !important;
-        max-height: var(--novaflow-top-control-height, 34px) !important;
+        height: ${AI_ANIMATION_CAPSULE_HEIGHT}px !important;
+        min-height: ${AI_ANIMATION_CAPSULE_HEIGHT}px !important;
+        max-height: ${AI_ANIMATION_CAPSULE_HEIGHT}px !important;
+        padding: 4px !important;
+        gap: ${SECONDARY_GROUP_PILL_GAP}px !important;
+        box-sizing: border-box !important;
+        background: ${CANVAS_BAR_PILL_BACKGROUND} !important;
+        background-color: ${CANVAS_BAR_PILL_BACKGROUND} !important;
+        border: 1px solid ${CANVAS_BAR_PILL_BORDER_COLOR} !important;
+        border-radius: ${CANVAS_BAR_PILL_RADIUS_PX} !important;
         align-items: center !important;
         width: max-content !important;
         max-width: max-content !important;
@@ -22523,17 +23799,25 @@
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] > * {
         min-height: 0 !important;
-        background: #181818 !important;
-        background-color: #181818 !important;
+        background: ${AI_ANIMATION_STACK_SURFACE} !important;
+        background-color: ${AI_ANIMATION_STACK_SURFACE} !important;
         background-image: none !important;
-        border-color: rgba(255, 255, 255, 0.10) !important;
+        border: 1px solid ${DOCK_BORDER_COLOR} !important;
+        border-radius: ${PRIMARY_RAIL_PANEL_RADIUS}px !important;
+        padding: 14px 15px !important;
+        box-sizing: border-box !important;
         overflow: visible !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] > *:last-child {
+        border-color: ${AI_ANIMATION_TIMELINE_BORDER_COLOR} !important;
+        border-radius: ${AI_ANIMATION_TIMELINE_RADIUS}px !important;
+        padding: 11px 13px !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] > *:first-child {
         flex: 0 0 auto !important;
-        height: ${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px !important;
+        height: auto !important;
         min-height: ${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px !important;
-        max-height: ${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px !important;
+        max-height: none !important;
         overflow: visible !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] > *:last-child {
@@ -22851,7 +24135,7 @@
         max-height: ${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px !important;
         padding: 0 !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] input[type="range"]::-webkit-slider-runnable-track {
         height: ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px !important;
@@ -22926,7 +24210,7 @@
         right: 0 !important;
         bottom: 0 !important;
         left: auto !important;
-        width: var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) !important;
+        width: var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) !important;
         height: auto !important;
         min-height: 0 !important;
         max-height: none !important;
@@ -23071,7 +24355,7 @@
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-zoom-controls="1"]:not([data-novaflow-source-layout="1"]),
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-zoom-controls="1"]:not([data-novaflow-source-layout="1"]) {
-        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
+        right: calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px)) !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-zoom-controls="1"]:not([data-novaflow-source-layout="1"]) {
         position: absolute !important;
@@ -24309,7 +25593,7 @@
         appearance: none !important;
         -webkit-appearance: none !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
         cursor: pointer !important;
         box-sizing: border-box !important;
@@ -24502,7 +25786,7 @@
         appearance: none !important;
         -webkit-appearance: none !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
         cursor: pointer !important;
         box-sizing: border-box !important;
@@ -24520,7 +25804,7 @@
         appearance: none !important;
         -webkit-appearance: none !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
         cursor: pointer !important;
         box-sizing: border-box !important;
@@ -24714,7 +25998,7 @@
         appearance: none !important;
         -webkit-appearance: none !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
         cursor: pointer !important;
       }
@@ -25161,7 +26445,7 @@
         padding: 0 !important;
         border-radius: 999px !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         cursor: pointer !important;
       }
       body.novaflow-skeleton-animation-layout [data-novaflow-skeleton-timeline-range="1"]::-webkit-slider-runnable-track {
@@ -25599,7 +26883,7 @@
         margin-top: 2px !important;
         margin-bottom: 0 !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
         cursor: pointer !important;
       }
@@ -25732,11 +27016,54 @@
         box-shadow: none !important;
         outline: none !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-bottom-controls="1"]:not([data-novaflow-source-layout="1"]) {
-        background: ${PRIMARY_PANEL_BACKGROUND} !important;
+      /* The dock's controls are rendered by the bundle with plain inline
+         styles - no !important - so a stylesheet rule reaches them. The
+         reference gives them the same number field and icon button it uses
+         everywhere else. */
+      [data-novaflow-bottom-controls="1"] input:not([type="range"]):not([type="color"]) {
+        width: ${UI_NUM_FIELD_WIDTH}px !important;
+        height: ${UI_NUM_FIELD_HEIGHT}px !important;
+        min-height: ${UI_NUM_FIELD_HEIGHT}px !important;
+        padding: 0 8px !important;
+        box-sizing: border-box !important;
+        background: ${UI_NUM_FIELD_BACKGROUND} !important;
+        border: 1px solid ${UI_NUM_FIELD_BORDER_COLOR} !important;
+        border-radius: ${UI_NUM_FIELD_RADIUS_PX} !important;
+        color: ${UI_NUM_FIELD_TEXT} !important;
+        font-size: 11px !important;
+        text-align: center !important;
+      }
+      [data-novaflow-bottom-controls="1"] button {
+        width: ${UI_ICON_BUTTON_SIZE}px !important;
+        height: ${UI_ICON_BUTTON_SIZE}px !important;
+        min-height: ${UI_ICON_BUTTON_SIZE}px !important;
+        background: ${UI_ICON_BUTTON_BACKGROUND} !important;
         border: 0 !important;
-        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
-        box-shadow: none !important;
+        border-radius: ${UI_ICON_BUTTON_RADIUS_PX} !important;
+        color: ${UI_ICON_BUTTON_TEXT} !important;
+        font-size: 12px !important;
+      }
+      [data-novaflow-bottom-controls="1"] button:hover:not(:disabled) {
+        background: #323232 !important;
+      }
+      [data-novaflow-bottom-controls="1"] button:disabled {
+        background: ${UI_ICON_BUTTON_DISABLED_BACKGROUND} !important;
+        color: ${UI_ICON_BUTTON_DISABLED_TEXT} !important;
+      }
+      [data-novaflow-bottom-controls="1"] div:not([data-novaflow-bottom-controls]) {
+        font-size: 11px !important;
+        color: ${UI_CONTROL_LABEL_TEXT} !important;
+      }
+      [data-novaflow-bottom-controls="1"] {
+        /* The reference leaves 11 between the parameter row and the timeline. */
+        gap: 11px !important;
+        row-gap: 11px !important;
+      }
+      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-bottom-controls="1"]:not([data-novaflow-source-layout="1"]) {
+        background: ${DOCK_SURFACE} !important;
+        border: 1px solid ${DOCK_BORDER_COLOR} !important;
+        border-radius: ${DOCK_RADIUS_PX} !important;
+        box-shadow: ${DOCK_SHADOW} !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls .nf-panel-header:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *),
       body.novaflow-blackgray-preview-with-bottom-controls button:not(.nf-win-btn):not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *),
@@ -25758,7 +27085,7 @@
       }
       body.novaflow-blackgray-preview-with-bottom-controls input[type="range"]:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *) {
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
       }
       body.novaflow-blackgray-preview-has-bottom-controls [data-novaflow-bottom-control-range="1"] {
         height: ${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px !important;
@@ -25766,7 +27093,7 @@
         max-height: ${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px !important;
         padding: 0 !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls input[type="range"]:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *)::-webkit-slider-runnable-track {
         background: transparent !important;
@@ -25975,7 +27302,7 @@
         height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
         min-height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
         max-height: ${PARTICLE_DENSITY_SLIDER_ROW_HEIGHT}px !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         border-radius: 999px !important;
       }
       body.novaflow-primary-target-particle .novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar input[type="range"]::-webkit-slider-runnable-track {
@@ -26035,18 +27362,20 @@
       body.novaflow-blackgray-preview-with-bottom-controls input[type="range"][data-novaflow-ai-timeline-edit-locked="1"]:not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *)::-moz-range-progress {
         background: #747b84 !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"] {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"] {
         background: ${PREVIEW_OUTSIDE_BACKGROUND} !important;
-        background-image: none !important;
-        margin: 0 !important;
+        background-image: radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px) !important;
+        background-size: ${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px !important;
+        background-position: center center !important;
+        margin: ${PRIMARY_PANEL_TOP_GAP}px ${WORKSPACE_SIDE_GAP}px ${PRIMARY_PANEL_BOTTOM_GAP}px 0 !important;
         border: 0 !important;
-        border-radius: 0 !important;
+        border-radius: ${PRIMARY_RAIL_PANEL_RADIUS}px !important;
         box-shadow: none !important;
         overflow: visible !important;
         box-sizing: border-box !important;
         position: relative !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"]::before {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"]::before {
         content: "" !important;
         position: absolute !important;
         left: 0 !important;
@@ -26058,25 +27387,25 @@
         z-index: 31 !important;
         pointer-events: none !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"]::after {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"]::after {
         content: none !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"] canvas {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"] canvas {
         clip-path: none !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"] canvas:not([style*="position: absolute"]) {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"] canvas:not([style*="position: absolute"]) {
         position: relative !important;
         z-index: 2 !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"] canvas[style*="position: absolute"] {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"] canvas[style*="position: absolute"] {
         position: absolute !important;
         inset: 0 !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"] canvas[style*="z-index: 3"] {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"] canvas[style*="z-index: 3"] {
         z-index: 3 !important;
         opacity: 1 !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:nth-child(2)[data-novaflow-source-layout="1"] canvas[style*="z-index: 9"] {
+      body.novaflow-blackgray-preview-with-bottom-controls .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0'])[data-novaflow-source-layout="1"] canvas[style*="z-index: 9"] {
         z-index: 9 !important;
         opacity: 1 !important;
       }
@@ -26178,20 +27507,26 @@
         box-shadow: none !important;
       }
       .novaflow-app [data-novaflow-autofit-button="1"] {
-        min-width: 92px !important;
+        min-width: 0 !important;
         width: auto !important;
-        height: 34px !important;
-        min-height: 34px !important;
-        max-height: 34px !important;
-        padding: 0 18px !important;
-        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
-        background: ${PRIMARY_PANEL_BACKGROUND} !important;
-        background-color: ${PRIMARY_PANEL_BACKGROUND} !important;
-        border: 0 !important;
+        height: ${CANVAS_BAR_QUIET_HEIGHT}px !important;
+        min-height: ${CANVAS_BAR_QUIET_HEIGHT}px !important;
+        max-height: ${CANVAS_BAR_QUIET_HEIGHT}px !important;
+        padding: 0 13px !important;
+        border-radius: ${CANVAS_BAR_QUIET_RADIUS_PX} !important;
+        background: ${CANVAS_BAR_QUIET_BACKGROUND} !important;
+        background-color: ${CANVAS_BAR_QUIET_BACKGROUND} !important;
+        border: 1px solid ${CANVAS_BAR_QUIET_BORDER_COLOR} !important;
         box-shadow: none !important;
-        color: #ffffff !important;
-        font-size: 13px !important;
-        line-height: 34px !important;
+        color: ${CANVAS_BAR_QUIET_TEXT} !important;
+        font-size: 11px !important;
+        font-weight: 500 !important;
+        line-height: 1 !important;
+      }
+      .novaflow-app [data-novaflow-template-button="1"]:hover,
+      .novaflow-app [data-novaflow-particle-project-action="1"]:hover {
+        background: ${CANVAS_BAR_BUTTON_HOVER_BACKGROUND} !important;
+        background-color: ${CANVAS_BAR_BUTTON_HOVER_BACKGROUND} !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-single-control="1"]:not([data-novaflow-source-layout="1"]) > *:not([data-novaflow-single-button="1"]),
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-zoom-controls="1"]:not([data-novaflow-source-layout="1"]) > *:not([data-novaflow-autofit-button="1"]) {
@@ -26840,7 +28175,7 @@
         appearance: none !important;
         -webkit-appearance: none !important;
         accent-color: ${UI_RANGE_ACCENT} !important;
-        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
+        background: linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat !important;
         background-color: transparent !important;
       }
       [data-novaflow-export-modal-root="1"] input[type="range"]::-webkit-slider-runnable-track,
@@ -27510,6 +28845,8 @@
         height: ${TOPBAR_HEIGHT}px !important;
         min-height: ${TOPBAR_HEIGHT}px !important;
         max-height: ${TOPBAR_HEIGHT}px !important;
+        padding: 0 ${UI_TOPBAR_PAD_X}px !important;
+        border-bottom: 1px solid ${UI_TOPBAR_BORDER_COLOR} !important;
         box-sizing: border-box !important;
         z-index: ${TOPBAR_LAYER_Z_INDEX} !important;
         overflow: visible !important;
@@ -27564,6 +28901,10 @@
       .novaflow-app [data-novaflow-ai-resource-action="1"],
       .novaflow-app [data-preview-ui="1"] {
         border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
+      }
+      body.novaflow-ai-animation-section-layers [data-novaflow-ai-bottom-workspace="1"] {
+        gap: ${AI_ANIMATION_PANEL_TIMELINE_GAP}px !important;
+        row-gap: ${AI_ANIMATION_PANEL_TIMELINE_GAP}px !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app select {
         padding-right: 26px !important;
@@ -27712,11 +29053,9 @@
       .novaflow-app .nf-panel[data-open="1"] > .nf-panel-header {
         border-radius: ${NOVAFLOW_RECT_RADIUS_TOP_PX} !important;
       }
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading]:not([data-collapsed="1"]) {
-        border-radius: ${NOVAFLOW_RECT_RADIUS_TOP_PX} !important;
-      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading]:not([data-collapsed="1"]),
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading][data-collapsed="1"] {
-        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
+        border-radius: 6px !important;
       }
       body.${PRIMARY_ANIMATION_ENTRY_GEOMETRY_GUARD_CLASS} [data-novaflow-ai-main-stage="1"] {
         visibility: hidden !important;
@@ -27724,6 +29063,13 @@
       body.novaflow-blackgray-preview-with-bottom-controls :not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fa-solid):not([class*="fa-"]),
       body.novaflow-ai-animation-section-layers :not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fa-solid):not([class*="fa-"]) {
         font-weight: ${NOVAFLOW_NORMAL_FONT_WEIGHT} !important;
+      }
+      /* The blanket rule above flattens everything on the page, including the
+         sign-in screen, which is not part of the editor chrome. */
+      #novaflow-web-login-gate .nf-login-headline,
+      #novaflow-web-login-gate .nf-login-card-title,
+      #novaflow-web-login-gate button.nf-login-submit {
+        font-weight: 600 !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls .fa,
       body.novaflow-blackgray-preview-with-bottom-controls .fas,
@@ -27738,7 +29084,7 @@
         font-weight: ${NOVAFLOW_ICON_FONT_WEIGHT} !important;
       }
     `;
-    document.head.appendChild(style);
+    if (!existing) document.head.appendChild(style);
   }
 
   function ensureIconLink() {
@@ -27924,6 +29270,7 @@
       host.setAttribute("data-novaflow-topbar-ai-runtime", "1");
       const state = document.createElement("span");
       state.setAttribute("data-novaflow-topbar-ai-runtime-state", "1");
+      state.setAttribute("data-novaflow-medium-weight", "0");
       state.textContent = "AI \u672a\u8fde\u63a5";
       const button = document.createElement("button");
       button.type = "button";
@@ -27943,16 +29290,16 @@
       display: "inline-flex",
       "align-items": "center",
       "justify-content": "center",
-      gap: "10px",
-      height: "30px",
-      "min-height": "30px",
-      "max-height": "30px",
+      gap: `${UI_TOPBAR_RIGHT_GAP}px`,
+      height: "28px",
+      "min-height": "28px",
+      "max-height": "28px",
       "margin-left": "auto",
-      "margin-right": "10px",
-      "font-size": "12px",
+      "margin-right": "0",
+      "font-size": "11px",
       "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
       "line-height": "1",
-      color: "rgba(255,255,255,0.70)",
+      color: UI_TOPBAR_STATUS_TEXT,
       "white-space": "nowrap",
       "pointer-events": "auto",
       "-webkit-app-region": "no-drag"
@@ -28025,7 +29372,9 @@
     return Array.from(body.children).find((child) => {
       if (!(child instanceof HTMLElement)) return false;
       const rect = child.getBoundingClientRect();
-      return rect.left <= 4 && rect.width >= 300 && rect.width <= PRIMARY_COLUMN_WIDTH + 48 && rect.height > 300;
+      // The column is PRIMARY_COLUMN_WIDTH wide, which the narrow tier takes
+      // below the old fixed floor of 300.
+      return rect.left <= 4 && rect.width >= Math.min(300, PRIMARY_COLUMN_WIDTH - 8) && rect.width <= PRIMARY_COLUMN_WIDTH + 48 && rect.height > 300;
     }) || null;
   }
 
@@ -28080,18 +29429,18 @@
       nfSetStyleIfChanged(rail, "border", "0", "important");
       nfSetStyleIfChanged(rail, "box-shadow", "none", "important");
     }
-    const top = getTopbarBottom();
+    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP + PRIMARY_RAIL_INNER_PAD;
     buttons.forEach((button, index) => {
       const parent = button.parentElement instanceof HTMLElement ? button.parentElement : null;
       const cell = parent && parent !== rail && isPrimaryEntryCellCandidate(parent, button) ? parent : button;
       nfSetAttrIfChanged(cell, "data-novaflow-primary-cell", "1");
       nfSetStyleIfChanged(cell, "position", "fixed", "important");
-      nfSetStyleIfChanged(cell, "left", "0", "important");
-      nfSetStyleIfChanged(cell, "top", `${top + index * PRIMARY_SIDEBAR_ITEM_HEIGHT}px`, "important");
-      nfSetStyleIfChanged(cell, "width", `${PRIMARY_SIDEBAR_WIDTH}px`, "important");
+      nfSetStyleIfChanged(cell, "left", `${PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_ITEM_INSET}px`, "important");
+      nfSetStyleIfChanged(cell, "top", `${top + index * PRIMARY_RAIL_ITEM_PITCH}px`, "important");
+      nfSetStyleIfChanged(cell, "width", `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`, "important");
       nfSetStyleIfChanged(cell, "height", `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`, "important");
-      nfSetStyleIfChanged(cell, "min-width", `${PRIMARY_SIDEBAR_WIDTH}px`, "important");
-      nfSetStyleIfChanged(cell, "max-width", `${PRIMARY_SIDEBAR_WIDTH}px`, "important");
+      nfSetStyleIfChanged(cell, "min-width", `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`, "important");
+      nfSetStyleIfChanged(cell, "max-width", `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`, "important");
       nfSetStyleIfChanged(cell, "flex", "none", "important");
       nfSetStyleIfChanged(cell, "z-index", DROPDOWN_UNDERLAY_Z_INDEX, "important");
       nfSetStyleIfChanged(cell, "overflow", "hidden", "important");
@@ -28107,8 +29456,10 @@
       nfSetStyleIfChanged(button, "align-items", "center", "important");
       nfSetStyleIfChanged(button, "justify-content", "center", "important");
       nfSetStyleIfChanged(button, "padding", "0 6px", "important");
-      nfSetStyleIfChanged(button, "font-size", "13px", "important");
-      nfSetStyleIfChanged(button, "font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
+      // The same type every other rail writer gives it, so a later pass
+      // does not change it again.
+      nfSetStyleIfChanged(button, "font-size", "11px", "important");
+      nfSetStyleIfChanged(button, "font-weight", NOVAFLOW_MEDIUM_FONT_WEIGHT, "important");
       nfSetStyleIfChanged(button, "line-height", "1.2", "important");
       nfSetStyleIfChanged(button, "text-align", "center", "important");
       nfSetStyleIfChanged(button, "white-space", "normal", "important");
@@ -28462,7 +29813,8 @@
       gap: `${NOVAFLOW_UNIFORM_GAP}px`,
       padding: "0 6px",
       "font-size": "12px",
-      "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
+      // The weight the global type pass gives every button, so the two agree.
+      "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
       "line-height": "1.2",
       "text-align": "center",
       "white-space": "normal",
@@ -28533,12 +29885,12 @@
     const buttons = PRIMARY_ENTRY_LABELS.map((label) => findPrimaryEntryButton(label));
     const primaryReady = buttons.every((button) => (
       button instanceof HTMLElement &&
-      isStartupReadyRect(button, 40, 40)
+      isStartupReadyRect(button, Math.min(40, PRIMARY_SIDEBAR_ITEM_WIDTH - 1), 40)
     ));
     return Boolean(
       topbar instanceof HTMLElement &&
       primaryColumn instanceof HTMLElement &&
-      isStartupReadyRect(topbar, 400, 40) &&
+      isStartupReadyRect(topbar, Math.min(400, (window.innerWidth || 400) - 20), 40) &&
       isStartupReadyRect(primaryColumn, PRIMARY_SIDEBAR_WIDTH - 1, 300) &&
       primaryReady
     );
@@ -28592,16 +29944,223 @@
     return PRIMARY_OUTPUT_SHORTCUT_Z_INDEX;
   }
 
+  /**
+   * The two panels the rail and the left column sit ON.
+   *
+   * The entries are separate fixed cells, so there is no element whose box is
+   * the panel - the reference's rounded surface has to be drawn by something.
+   * These are inert: pointer-events none, no text, below the cells, and marked
+   * runtime-ignore so the modal scanner leaves them alone. They carry no state
+   * and nothing reads them.
+   */
+  function ensurePrimarySurfacePanels() {
+    if (!(document.body instanceof HTMLElement)) return;
+    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP;
+    const surface = (id, left, width) => {
+      let node = document.getElementById(id);
+      if (!(node instanceof HTMLElement)) {
+        node = document.createElement("div");
+        node.id = id;
+        node.setAttribute("aria-hidden", "true");
+        node.setAttribute("data-novaflow-primary-surface", "1");
+        node.setAttribute("data-novaflow-keep-radius", "1");
+        document.body.appendChild(node);
+      }
+      // Written straight onto the node rather than through setImportantStyles:
+      // that helper skips anything the runtime is told to ignore, and it takes
+      // CSS property names, not camelCase.
+      const rules = {
+        position: "fixed",
+        left: left + "px",
+        top: top + "px",
+        width: width + "px",
+        height: "calc(100vh - " + (top + PRIMARY_PANEL_BOTTOM_GAP) + "px)",
+        background: PRIMARY_PANEL_SURFACE,
+        border: "1px solid " + PRIMARY_PANEL_BORDER_COLOR,
+        "border-radius": PRIMARY_RAIL_PANEL_RADIUS + "px",
+        "box-sizing": "border-box",
+        "box-shadow": "none",
+        "pointer-events": "none",
+        // BELOW the panel content, which sits at z-index 20. At 89998 these
+        // surfaces painted straight over it and the left panel came up blank
+        // on every page whose content is not itself raised - the rail only
+        // survived because its cells are at 90000.
+        "z-index": "6"
+      };
+      for (const [property, value] of Object.entries(rules)) {
+        if (node.style.getPropertyValue(property) !== value) {
+          node.style.setProperty(property, value, "important");
+        }
+      }
+    };
+    surface(PRIMARY_RAIL_SURFACE_ID, PRIMARY_SIDEBAR_LEFT, PRIMARY_SIDEBAR_WIDTH);
+    surface(PRIMARY_LEFT_SURFACE_ID, PRIMARY_CONTENT_LEFT, PRIMARY_LEFT_PANEL_WIDTH);
+    syncPrimaryLeftCards();
+    // Also from here, not only from the visual rhythm pass: that pass returns
+    // early while a range drag is pending, so a page whose spec entries only
+    // ever ran from there could keep its own values indefinitely.
+    applyNovaflowReferenceSpec();
+  }
+
+  /**
+   * Inset the left panel's cards and strip the plate off their headers.
+   *
+   * Reference: a 218 panel pads its content in by 10, so the cards are 198 and
+   * the group header is a bare 46-tall row that only fills on hover. Written
+   * inline from here because the card width is set by several stylesheet rules
+   * AND an inline !important, so nothing a stylesheet says survives.
+   */
+  /**
+   * The reference's group header: one plated icon, then the label, then the
+   * chevron. The icon is the only surface in the row - the row itself only
+   * fills on hover.
+   */
+  function stylePrimaryLeftCardHeaderIcon(header) {
+    const icon = header.querySelector("i[class*='fa-']:not([class*='chevron'])");
+    if (!(icon instanceof HTMLElement)) return;
+    const size = `${PRIMARY_LEFT_CARD_ICON_SIZE}px`;
+    nfSetStyleIfChanged(icon, "display", "inline-flex", "important");
+    nfSetStyleIfChanged(icon, "align-items", "center", "important");
+    nfSetStyleIfChanged(icon, "justify-content", "center", "important");
+    nfSetStyleIfChanged(icon, "flex", "0 0 auto", "important");
+    nfSetStyleIfChanged(icon, "width", size, "important");
+    nfSetStyleIfChanged(icon, "min-width", size, "important");
+    nfSetStyleIfChanged(icon, "height", size, "important");
+    nfSetStyleIfChanged(icon, "min-height", size, "important");
+    nfSetStyleIfChanged(icon, "margin", `0 ${PRIMARY_LEFT_CARD_ICON_GAP}px 0 0`, "important");
+    nfSetStyleIfChanged(icon, "padding", "0", "important");
+    nfSetStyleIfChanged(icon, "background", PRIMARY_LEFT_CARD_ICON_BACKGROUND, "important");
+    nfSetStyleIfChanged(icon, "background-color", PRIMARY_LEFT_CARD_ICON_BACKGROUND, "important");
+    nfSetStyleIfChanged(icon, "border-radius", PRIMARY_LEFT_CARD_ICON_RADIUS_PX, "important");
+    nfSetAttrIfChanged(icon, "data-novaflow-keep-radius", "1");
+    nfSetStyleIfChanged(icon, "color", PRIMARY_LEFT_CARD_ICON_COLOR, "important");
+    nfSetStyleIfChanged(icon, "font-size", "12px", "important");
+    nfSetStyleIfChanged(icon, "line-height", "1", "important");
+    nfSetStyleIfChanged(icon, "text-align", "center", "important");
+  }
+
+  /**
+   * The controls inside an expanded group.
+   *
+   * The reference uses exactly two of them here - the same number field and
+   * the same icon button the dock and the resource sidebar use - so this is
+   * the panel-side half of that one spec. Written inline because the bundle
+   * renders these with inline styles of its own, some of them !important.
+   */
+  function stylePrimaryLeftCardControls(card) {
+    Array.from(card.querySelectorAll('input:not([type="range"]):not([type="color"])')).forEach((field) => {
+      if (!(field instanceof HTMLInputElement)) return;
+      nfSetAttrIfChanged(field, "data-novaflow-keep-radius", "1");
+      nfSetStyleIfChanged(field, "width", `${UI_NUM_FIELD_WIDTH}px`, "important");
+      nfSetStyleIfChanged(field, "height", `${UI_NUM_FIELD_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(field, "min-height", `${UI_NUM_FIELD_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(field, "border-radius", UI_NUM_FIELD_RADIUS_PX, "important");
+      nfSetStyleIfChanged(field, "background", UI_NUM_FIELD_BACKGROUND, "important");
+      nfSetStyleIfChanged(field, "background-color", UI_NUM_FIELD_BACKGROUND, "important");
+      nfSetStyleIfChanged(field, "border", `1px solid ${UI_NUM_FIELD_BORDER_COLOR}`, "important");
+      nfSetStyleIfChanged(field, "color", UI_NUM_FIELD_TEXT, "important");
+      nfSetStyleIfChanged(field, "font-size", "11px", "important");
+      nfSetStyleIfChanged(field, "box-sizing", "border-box", "important");
+    });
+    Array.from(card.querySelectorAll("label, .nf-range-label")).forEach((label) => {
+      if (!(label instanceof HTMLElement)) return;
+      nfSetStyleIfChanged(label, "font-size", "11px", "important");
+      nfSetStyleIfChanged(label, "color", UI_CONTROL_LABEL_TEXT, "important");
+    });
+    Array.from(card.querySelectorAll("button")).forEach((button) => {
+      if (!(button instanceof HTMLElement)) return;
+      const label = normalizeText(button.textContent || "");
+      const icon = button.querySelector("i, svg") instanceof Element;
+      // Only a button that says nothing, or says it in one glyph, is an icon
+      // button. A button with a word in it is a chip or a group header and
+      // keeps its own width - the drawing page's category headers carry both
+      // an icon AND a label, and squaring them to 30 hid every title.
+      if (label.length > 1) return;
+      if (!icon && !label) return;
+      const computed = getRafCachedComputedStyle(button);
+      const rgb = String(computed.backgroundColor).match(/\d+/g);
+      // A green fill on an icon here is a state, not a rank: the reference
+      // draws every plain icon button grey, so only the state keeps its
+      // colour, retuned to the palette's own "on".
+      const on = Boolean(icon && rgb && Number(rgb[1]) > Number(rgb[0]) + 24 && Number(rgb[1]) > Number(rgb[2]) + 24);
+      const background = on ? UI_TOGGLE_ON_BACKGROUND : (button.disabled ? UI_ICON_BUTTON_DISABLED_BACKGROUND : UI_ICON_BUTTON_BACKGROUND);
+      nfSetAttrIfChanged(button, "data-novaflow-keep-radius", "1");
+      nfSetStyleIfChanged(button, "width", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      nfSetStyleIfChanged(button, "min-width", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      nfSetStyleIfChanged(button, "height", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      nfSetStyleIfChanged(button, "min-height", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      nfSetStyleIfChanged(button, "padding", "0", "important");
+      nfSetStyleIfChanged(button, "border", "0", "important");
+      nfSetStyleIfChanged(button, "border-radius", UI_ICON_BUTTON_RADIUS_PX, "important");
+      nfSetStyleIfChanged(button, "background", background, "important");
+      nfSetStyleIfChanged(button, "background-color", background, "important");
+      nfSetStyleIfChanged(button, "color", button.disabled ? UI_ICON_BUTTON_DISABLED_TEXT : UI_ICON_BUTTON_TEXT, "important");
+      nfSetStyleIfChanged(button, "font-size", "12px", "important");
+      nfSetStyleIfChanged(button, "box-sizing", "border-box", "important");
+    });
+  }
+
+  function syncPrimaryLeftCards() {
+    Array.from(document.querySelectorAll('[data-novaflow-left-content-shell="1"], [data-novaflow-left-content-root="1"]')).forEach((shell) => {
+      if (shell instanceof HTMLElement) {
+        // The shell already sits 14 in from the panel edge, so it adds no
+        // padding of its own; the cards correct the last 4px themselves.
+        nfSetStyleIfChanged(shell, "padding-left", "0", "important");
+        nfSetStyleIfChanged(shell, "padding-right", "0", "important");
+        nfSetStyleIfChanged(shell, "box-sizing", "border-box", "important");
+      }
+    });
+    Array.from(document.querySelectorAll('[data-novaflow-editor-panel="1"]')).forEach((card) => {
+      if (!(card instanceof HTMLElement)) return;
+      nfSetStyleIfChanged(card, "width", `${PRIMARY_LEFT_CARD_WIDTH}px`, "important");
+      nfSetStyleIfChanged(card, "min-width", `${PRIMARY_LEFT_CARD_WIDTH}px`, "important");
+      nfSetStyleIfChanged(card, "max-width", `${PRIMARY_LEFT_CARD_WIDTH}px`, "important");
+      // The shell already indents its children, so the card itself takes no
+      // extra margin - the inset is applied to the shell below instead.
+      nfSetStyleIfChanged(card, "margin-left", `${PRIMARY_LEFT_CARD_SHIFT}px`, "important");
+      nfSetStyleIfChanged(card, "min-height", `${PRIMARY_LEFT_CARD_HEADER_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(card, "font-size", "12px", "important");
+      const header = card.querySelector(".nf-panel-header") || card.firstElementChild;
+      if (header instanceof HTMLElement) {
+        nfSetStyleIfChanged(header, "background", "var(--nf-card-header-bg, transparent)", "important");
+        nfSetStyleIfChanged(header, "background-color", "var(--nf-card-header-bg, transparent)", "important");
+        nfSetStyleIfChanged(header, "height", `${PRIMARY_LEFT_CARD_HEADER_HEIGHT}px`, "important");
+        nfSetStyleIfChanged(header, "min-height", `${PRIMARY_LEFT_CARD_HEADER_HEIGHT}px`, "important");
+        nfSetStyleIfChanged(header, "font-size", "12px", "important");
+        // The label is a child span, and it carries its own size.
+        Array.from(header.querySelectorAll("*")).forEach((node) => {
+          if (node instanceof HTMLElement) {
+            nfSetStyleIfChanged(node, "font-size", "12px", "important");
+          }
+        });
+        nfSetStyleIfChanged(header, "color", PRIMARY_LEFT_CARD_TITLE_COLOR, "important");
+        nfSetStyleIfChanged(header, "border-radius", "6px", "important");
+        nfSetStyleIfChanged(header, "padding", `0 ${PRIMARY_LEFT_CARD_HEADER_PAD}px`, "important");
+        nfSetStyleIfChanged(header, "box-sizing", "border-box", "important");
+        stylePrimaryLeftCardHeaderIcon(header);
+      }
+      stylePrimaryLeftCardControls(card);
+    });
+  }
+
   function ensurePrimaryOutputShortcut() {
+    ensurePrimarySurfacePanels();
     if (!(document.body instanceof HTMLElement)) return;
     if (!isPrimaryOutputShortcutLayoutReady()) {
       hidePrimaryOutputShortcutUntilReady();
       return;
     }
-    const top = getTopbarBottom();
-    const dividerTop = top + PRIMARY_ENTRY_LABELS.length * PRIMARY_SIDEBAR_ITEM_HEIGHT + PRIMARY_OUTPUT_SHORTCUT_GAP;
-    const cellTop = dividerTop + PRIMARY_OUTPUT_SHORTCUT_GAP;
-    const exportCellTop = cellTop + PRIMARY_SIDEBAR_ITEM_HEIGHT;
+    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP + PRIMARY_RAIL_INNER_PAD;
+    // 仓库 and 导出 sit at the foot of the rail, as asked, with their line
+    // above them; never over the page entries on a short window, and on the
+    // stacked tier (which scrolls) they stay under the entries.
+    const stackedDividerTop = top + PRIMARY_ENTRY_LABELS.length * PRIMARY_RAIL_ITEM_PITCH + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN;
+    const stackedCellTop = stackedDividerTop + 1 + PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN + (PRIMARY_RAIL_ITEM_PITCH - PRIMARY_SIDEBAR_ITEM_HEIGHT);
+    const railFootCellTop = Math.round((window.innerHeight || 0) - PRIMARY_PANEL_BOTTOM_GAP - PRIMARY_RAIL_INNER_PAD - PRIMARY_SIDEBAR_ITEM_HEIGHT - PRIMARY_RAIL_ITEM_PITCH);
+    const stackedTier = document.documentElement.getAttribute("data-novaflow-layout-tier") === "stack";
+    const cellTop = stackedTier ? stackedCellTop : Math.max(stackedCellTop, railFootCellTop);
+    const dividerTop = cellTop - (PRIMARY_RAIL_ITEM_PITCH - PRIMARY_SIDEBAR_ITEM_HEIGHT) - PRIMARY_OUTPUT_SHORTCUT_DIVIDER_MARGIN - 1;
+    const exportCellTop = cellTop + PRIMARY_RAIL_ITEM_PITCH;
     const shortcutZIndex = getPrimaryOutputShortcutZIndex();
     let divider = document.getElementById(PRIMARY_OUTPUT_SHORTCUT_DIVIDER_ID);
     if (!(divider instanceof HTMLElement)) {
@@ -28613,7 +30172,7 @@
     setImportantStyles(divider, {
       display: "block",
       position: "fixed",
-      left: `${(PRIMARY_SIDEBAR_WIDTH - PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH) / 2}px`,
+      left: `${PRIMARY_SIDEBAR_LEFT + (PRIMARY_SIDEBAR_WIDTH - PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH) / 2}px`,
       top: `${dividerTop}px`,
       width: `${PRIMARY_OUTPUT_SHORTCUT_DIVIDER_WIDTH}px`,
       height: "1px",
@@ -28621,7 +30180,7 @@
       "max-height": "1px",
       "z-index": shortcutZIndex,
       "pointer-events": "none",
-      background: "rgba(255,255,255,0.14)"
+      background: PRIMARY_OUTPUT_SHORTCUT_DIVIDER_COLOR
     });
 
     let cell = document.getElementById(PRIMARY_OUTPUT_SHORTCUT_CELL_ID);
@@ -28636,12 +30195,13 @@
     setImportantStyles(cell, {
       display: "block",
       position: "fixed",
-      left: "0",
+      left: `${PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_ITEM_INSET}px`,
+      "border-radius": primaryRailCellRadius(0, 2),
       top: `${cellTop}px`,
-      width: `${PRIMARY_SIDEBAR_WIDTH}px`,
+      width: `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`,
       height: `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`,
-      "min-width": `${PRIMARY_SIDEBAR_WIDTH}px`,
-      "max-width": `${PRIMARY_SIDEBAR_WIDTH}px`,
+      "min-width": `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`,
+      "max-width": `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`,
       flex: "none",
       "z-index": shortcutZIndex,
       overflow: "hidden",
@@ -28682,12 +30242,13 @@
     setImportantStyles(exportCell, {
       display: "block",
       position: "fixed",
-      left: "0",
+      left: `${PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_ITEM_INSET}px`,
+      "border-radius": primaryRailCellRadius(1, 2),
       top: `${exportCellTop}px`,
-      width: `${PRIMARY_SIDEBAR_WIDTH}px`,
+      width: `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`,
       height: `${PRIMARY_SIDEBAR_ITEM_HEIGHT}px`,
-      "min-width": `${PRIMARY_SIDEBAR_WIDTH}px`,
-      "max-width": `${PRIMARY_SIDEBAR_WIDTH}px`,
+      "min-width": `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`,
+      "max-width": `${PRIMARY_SIDEBAR_ITEM_WIDTH}px`,
       flex: "none",
       "z-index": shortcutZIndex,
       overflow: "hidden",
@@ -28804,11 +30365,22 @@
       ".nf-upload-dropzone *",
       "[data-ais-import] *"
     ].join(",");
+    const primaryByButton = new Map();
     const apply = (node) => {
       if (!(node instanceof HTMLElement)) return;
       if (node.getAttribute("data-novaflow-template-save-plus") === "1") return;
       if (isNovaflowIconFontElement(node)) return;
-      setStylePropertyIfChanged(node, "font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
+      // The sign-in screen is not editor chrome and sets its own type.
+      if (node.closest("#novaflow-web-login-gate")) return;
+      const medium = node.matches(NOVAFLOW_MEDIUM_WEIGHT_SELECTOR) || Boolean(node.closest(NOVAFLOW_MEDIUM_WEIGHT_SELECTOR));
+      // A green main action, and the text inside it, is 600.
+      const button = node.closest("button, [role='button']");
+      let primary = false;
+      if (button instanceof HTMLElement) {
+        if (!primaryByButton.has(button)) primaryByButton.set(button, window.getComputedStyle(button).backgroundColor === NOVAFLOW_PRIMARY_BUTTON_FILL);
+        primary = primaryByButton.get(button);
+      }
+      setStylePropertyIfChanged(node, "font-weight", primary ? NOVAFLOW_PRIMARY_FONT_WEIGHT : (medium ? NOVAFLOW_MEDIUM_FONT_WEIGHT : NOVAFLOW_NORMAL_FONT_WEIGHT), "important");
     };
     if (root.matches(selector)) apply(root);
     nfAnimationPerfRunVisualRhythmStep("queryCandidates", () => Array.from(root.querySelectorAll(selector))).forEach(apply);
@@ -28843,11 +30415,13 @@
       setRawStylePropertyIfChanged(field, "max-height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT}px`, "important");
       setRawStylePropertyIfChanged(field, "font-size", "11px", "important");
       setRawStylePropertyIfChanged(field, "line-height", `${PARTICLE_DENSITY_NUMBER_INPUT_HEIGHT - 2}px`, "important");
-      setRawStylePropertyIfChanged(field, "border-radius", "8px", "important");
+      setRawStylePropertyIfChanged(field, "border-radius", UI_NUM_FIELD_RADIUS_PX, "important");
     }
     if (field instanceof HTMLInputElement) {
+      // -webkit-appearance is appearance's alias in Chromium: two different
+      // values flipped it on every pass.
       setRawStylePropertyIfChanged(field, "appearance", "textfield", "important");
-      setRawStylePropertyIfChanged(field, "-webkit-appearance", "none", "important");
+      setRawStylePropertyIfChanged(field, "-webkit-appearance", "textfield", "important");
       setRawStylePropertyIfChanged(field, "-moz-appearance", "textfield", "important");
       setRawStylePropertyIfChanged(field, "padding-left", particleDensity ? "8px" : "6px", "important");
       setRawStylePropertyIfChanged(field, "padding-right", particleDensity ? "8px" : "6px", "important");
@@ -29218,7 +30792,8 @@
       return;
     }
     const formatted = formatNovaflowNumericDisplayValue(input.value, forceDecimal);
-    setStylePropertyIfChanged(input, "color", "rgba(238, 244, 252, 0.96)", "important");
+    // The text colour is decided below - shown by the hide path, transparent
+    // under the overlay; setting it visible first flipped it on every pass.
     setStylePropertyIfChanged(input, "caret-color", "rgba(238, 244, 252, 0.96)", "important");
     const visualId = input.getAttribute("data-novaflow-number-input-id") || `nf-num-${Date.now()}-${Math.round(Math.random() * 100000)}`;
     setAttributeIfChanged(input, "data-novaflow-number-input-id", visualId);
@@ -30185,10 +31760,48 @@
       "[data-novaflow-primary-cell='1']",
       "[data-novaflow-primary-entry='1']",
       "[data-novaflow-toggle-switch='1']",
-      "[data-novaflow-toggle-knob='1']"
+      "[data-novaflow-toggle-knob='1']",
+      "[data-novaflow-keep-radius='1']",
+      "[data-novaflow-preview-workspace='1']",
+      "[data-novaflow-bottom-controls='1']",
+      "[data-novaflow-particle-project-action]",
+      "[data-novaflow-template-button='1']",
+      "[data-novaflow-template-control='1']",
+      "[data-novaflow-autofit-button='1']",
+      "[data-novaflow-bottom-controls='1'] input",
+      "[data-novaflow-ai-top-mode-tabs='1']",
+      "[data-novaflow-ai-top-mode-tabs='1'] button",
+      "[data-novaflow-ai-board-controls-top-left='1']",
+      "[data-novaflow-ai-board-controls-top-left='1'] button",
+      "[data-novaflow-ai-resource-action='1']",
+      "[data-novaflow-ai-reference-column='1'] [data-nf-upload-dropzone='1']",
+      "#novaflow-spine-split-workspace-overlay",
+      "#novaflow-spine-split-view-controls",
+      "#novaflow-spine-split-view-controls button",
+      "[data-novaflow-spine-split-fit-button='1']",
+      "#novaflow-spine-split-right-workspace-host > div",
+      "[data-novaflow-ui-design-viewport='1']",
+      "[data-novaflow-ui-design-resource-panel='1']",
+      "[data-novaflow-ui-design-bottom-dock='1']",
+      "[data-novaflow-ui-design-bottom-dock='1'] button",
+      "[data-novaflow-ui-design-toolbar-action='fit']",
+      "[data-novaflow-skeleton-sidebar='1']",
+      "[data-novaflow-skeleton-preview-stage='1']",
+      "[data-novaflow-skeleton-top-button-group='1']",
+      "[data-novaflow-skeleton-top-button-group='1'] button",
+      "[data-novaflow-skeleton-bottom-playbar='1']",
+      "[data-novaflow-skeleton-preview-stage='1'] > :not([data-preview-ui='1'])",
+      "[data-novaflow-editor-panel='1']",
+      "[data-novaflow-editor-panel='1'] > :first-child",
+      "[data-novaflow-ai-collapse-heading]",
+      "[data-novaflow-ai-post-section='1']",
+      "[data-novaflow-canvas-bar-button]",
+      "#novaflow-particle-project-top-actions",
+      "select"
     ].join(","))) {
       return true;
     }
+    if (element.closest("[data-novaflow-keep-radius='1']")) return true;
     if (element.closest("[data-novaflow-toggle-switch='1'], [data-novaflow-toggle-knob='1']")) return true;
     if (profile.max >= 80) return true;
     const minSize = Math.min(rect.width || 0, rect.height || 0);
@@ -30200,6 +31813,8 @@
     if (profile.topMax > 0.5 && profile.bottomMax <= 0.5) return true;
     return element.matches("[data-novaflow-ai-collapse-heading]:not([data-collapsed='1'])");
   }
+
+  const NOVAFLOW_RECT_RADIUS_NUMBER = parseFloat(NOVAFLOW_RECT_RADIUS_PX) || 0;
 
   function getNovaflowRectRadiusTarget(element, profile) {
     if (isNovaflowTopOnlyRectRadius(element, profile)) {
@@ -30213,14 +31828,14 @@
     if (!hasSquareCorner) {
       return {
         value: NOVAFLOW_RECT_RADIUS_PX,
-        corners: [8, 8, 8, 8]
+        corners: [NOVAFLOW_RECT_RADIUS_NUMBER, NOVAFLOW_RECT_RADIUS_NUMBER, NOVAFLOW_RECT_RADIUS_NUMBER, NOVAFLOW_RECT_RADIUS_NUMBER]
       };
     }
     const corners = [
-      profile.topLeft > 0.5 ? 8 : 0,
-      profile.topRight > 0.5 ? 8 : 0,
-      profile.bottomRight > 0.5 ? 8 : 0,
-      profile.bottomLeft > 0.5 ? 8 : 0
+      profile.topLeft > 0.5 ? NOVAFLOW_RECT_RADIUS_NUMBER : 0,
+      profile.topRight > 0.5 ? NOVAFLOW_RECT_RADIUS_NUMBER : 0,
+      profile.bottomRight > 0.5 ? NOVAFLOW_RECT_RADIUS_NUMBER : 0,
+      profile.bottomLeft > 0.5 ? NOVAFLOW_RECT_RADIUS_NUMBER : 0
     ];
     return {
       value: corners.map((radius) => (radius ? NOVAFLOW_RECT_RADIUS_PX : "0")).join(" "),
@@ -30586,7 +32201,7 @@
       if (!(modeSection instanceof HTMLElement)) return;
       const modeCollapsed = modeSection.getAttribute("data-novaflow-ai-mode-collapsed") === "1";
       nfAnimationPerfRunVisualRhythmStep("writeStyle", () => {
-        modeSection.style.setProperty("padding-top", `${modeCollapsed ? SECONDARY_ENTRY_HEIGHT : ART_DRAWING_PANEL_HEADER_HEIGHT}px`, "important");
+        modeSection.style.setProperty("padding-top", `${AI_ANIMATION_GROUP_HEADER_HEIGHT}px`, "important");
         modeSection.style.setProperty("padding-left", "0", "important");
         modeSection.style.setProperty("padding-right", "0", "important");
       });
@@ -30594,16 +32209,3867 @@
         nfAnimationPerfRunVisualRhythmStep("writeStyle", () => {
           modeSection.style.setProperty("height", "auto", "important");
           modeSection.style.setProperty("max-height", "none", "important");
-          modeSection.style.setProperty("min-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
+          modeSection.style.setProperty("min-height", `${AI_ANIMATION_GROUP_HEADER_HEIGHT}px`, "important");
           modeSection.style.setProperty("overflow", "visible", "important");
         });
       }
       nfAnimationPerfRunVisualRhythmStep("writeStyle", () => {
-        postSection.style.setProperty("margin-top", `${SECONDARY_CONTENT_GAP}px`, "important");
+        // 3 under a closed 模式选择; an open one ends on its body's 17 first.
+        postSection.style.setProperty("margin-top", `${modeCollapsed ? AI_ANIMATION_GROUP_PAD_Y : AI_ANIMATION_GROUP_PAD_Y + AI_ANIMATION_GROUP_OPEN_TAIL}px`, "important");
         postSection.style.setProperty("margin-left", "0", "important");
         postSection.style.setProperty("margin-right", "0", "important");
       });
     });
+  }
+
+  /**
+   * The reference spec, applied last.
+   *
+   * Most controls in this app have three or four owners - a bundle inline
+   * style, one or two runtime stylesheet rules, and a runtime inline write -
+   * and which one lands last decides what you see. Chasing each of them
+   * individually is how the same box ends up specified in four places that
+   * slowly drift apart.
+   *
+   * So the values the reference actually measures live here, in one table,
+   * written inline at the end of the visual rhythm pass. Last write wins, so
+   * this is the single place that decides. Each entry names the surface it
+   * belongs to so it can be read against the prototype.
+   *
+   * `when` gates on a body class, so an entry only runs on its own page.
+   */
+  function novaflowReferenceSpec() {
+    return [
+      {
+        // Every left-column group: a 53 pitch made of padding and a bottom
+        // rule, not a gap. The first one drops its top padding so its header
+        // stays where the reference's summary sits.
+        selector: '[data-novaflow-editor-panel="1"]',
+        style: (node) => {
+          // "First" is by position, not by sibling: the UI page splits its
+          // groups across two parents.
+          const rect = node.getBoundingClientRect();
+          const first = !Array.from(document.querySelectorAll('[data-novaflow-editor-panel="1"]')).some((other) => {
+            if (other === node || !(other instanceof HTMLElement)) return false;
+            const box = other.getBoundingClientRect();
+            return box.width > 0 && Math.abs(box.left - rect.left) < 2 && box.bottom <= rect.top + 1 && box.bottom >= rect.top - 20;
+          });
+          return {
+            margin: "0",
+            padding: first ? `0 0 ${LEFT_GROUP_PAD_Y}px` : `${LEFT_GROUP_PAD_Y}px 0`,
+            border: "0",
+            "border-bottom": `1px solid ${LEFT_GROUP_RULE_COLOR}`,
+            "border-radius": "0",
+            background: "transparent",
+            "background-color": "transparent",
+            "box-shadow": "none",
+            "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        selector: ':has(> [data-novaflow-editor-panel="1"])',
+        style: { gap: "0", "row-gap": "0" }
+      },
+      {
+        // The group header (the reference's summary): 46 tall, radius 6.
+        selector: '[data-novaflow-editor-panel="1"] > :first-child',
+        style: { "border-radius": "6px" }
+      },
+      {
+        selector: "select",
+        style: (node) => {
+          if (node.closest("#novaflow-web-login-gate")) return null;
+          const surface = {
+            "background-color": UI_SELECT_FIELD_BACKGROUND,
+            border: `1px solid ${UI_SELECT_FIELD_BORDER_COLOR}`,
+            "border-radius": UI_SELECT_FIELD_RADIUS_PX,
+            color: UI_SELECT_FIELD_TEXT,
+            "box-shadow": "none",
+            "box-sizing": "border-box"
+          };
+          if (node.closest(UI_SELECT_MODAL_SCOPE)) return surface;
+          const left = Boolean(node.closest(UI_SELECT_LEFT_SCOPE));
+          const height = left ? UI_SELECT_LEFT_HEIGHT : UI_SELECT_DOCK_HEIGHT;
+          // A select drawing its own arrow needs the room on the right.
+          const ownArrow = getComputedStyle(node).appearance === "none";
+          return {
+            ...surface,
+            height: `${height}px`,
+            "min-height": `${height}px`,
+            "max-height": `${height}px`,
+            "padding-top": "0",
+            "padding-bottom": "0",
+            "padding-left": left ? "10px" : "8px",
+            "padding-right": ownArrow ? "26px" : (left ? "10px" : "24px"),
+            "font-size": left ? "12px" : "11px",
+            "line-height": "normal"
+          };
+        }
+      },
+      {
+        // AI 序列动画: the mode capsule floats over the stage, 7 below its top
+        // edge - the var is the topbar bottom, so the panel gap is added here.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-top-mode-tabs="1"]',
+        style: {
+          top: `calc(var(--novaflow-ai-preview-top, ${TOPBAR_HEIGHT}px) + ${PRIMARY_PANEL_TOP_GAP + AI_ANIMATION_CANVAS_BAR_TOP_GAP}px)`
+        }
+      },
+      {
+        // The dock's rows are sized by their content; both of these carried a
+        // fixed height from the two-column layout and left 88 of dead space
+        // above the tiles.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row="1"]',
+        style: {
+          height: "auto",
+          "min-height": "0",
+          "max-height": "none"
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-reference-column="1"]',
+        style: {
+          // normalizeAiAnimationReferenceColumnPosition pushes this column
+          // down to line up with the prompt box beside it. There is nothing
+          // beside it any more, and that margin was 240 of dead space at the
+          // top of the dock.
+          "margin-top": "0",
+          height: `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          "min-height": `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          "max-height": `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          flex: "0 0 auto",
+          "align-self": "flex-start"
+        }
+      },
+      {
+        // The tile row is exactly one tile tall. Left to grow it squared off
+        // and pushed the parameter row off the bottom of the page.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-reference-column="1"] > *',
+        style: {
+          display: "flex",
+          "flex-direction": "row",
+          "flex-wrap": "nowrap",
+          "justify-content": "flex-start",
+          "align-items": "flex-start",
+          gap: `${AI_ANIMATION_REFERENCE_TILE_GAP}px`,
+          height: `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          "min-height": `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          "max-height": `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          width: "auto",
+          "max-width": "100%"
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"]',
+        style: {
+          width: `${AI_ANIMATION_REFERENCE_TILE_WIDTH}px`,
+          "min-width": `${AI_ANIMATION_REFERENCE_TILE_WIDTH}px`,
+          "max-width": `${AI_ANIMATION_REFERENCE_TILE_WIDTH}px`,
+          height: `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          "min-height": `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          "max-height": `${AI_ANIMATION_REFERENCE_TILE_HEIGHT}px`,
+          flex: "0 0 auto",
+          margin: "0",
+          padding: "0",
+          background: AI_ANIMATION_REFERENCE_TILE_SURFACE,
+          "background-color": AI_ANIMATION_REFERENCE_TILE_SURFACE,
+          border: `1px dashed ${AI_ANIMATION_REFERENCE_TILE_BORDER_COLOR}`,
+          "border-radius": AI_ANIMATION_REFERENCE_TILE_RADIUS_PX,
+          "box-sizing": "border-box",
+          "font-size": "11px"
+        }
+      },
+      {
+        // 动画 / 骨骼动画: the resource tree is the same floating panel.
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-sidebar="1"]',
+        style: {
+          background: PRIMARY_PANEL_SURFACE,
+          "background-color": PRIMARY_PANEL_SURFACE,
+          border: `1px solid ${PRIMARY_PANEL_BORDER_COLOR}`,
+          "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`,
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        // The stage stops 10 clear of it, and leaves room for the play bar.
+        // The play bar is the stage's own child, so the stage can't clip:
+        // its layers carry the rounding instead.
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-preview-stage="1"]',
+        style: {
+          right: `${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + WORKSPACE_SIDE_GAP}px`,
+          left: "0",
+          width: "auto",
+          bottom: `${SKELETON_PLAYBAR_HEIGHT + AI_ANIMATION_PANEL_TIMELINE_GAP}px`,
+          height: "auto",
+          background: SKELETON_STAGE_SURFACE,
+          "background-color": SKELETON_STAGE_SURFACE,
+          "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`,
+          overflow: "visible"
+        }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-preview-stage="1"] > :not([data-preview-ui="1"])',
+        style: {
+          "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`,
+          overflow: "hidden"
+        }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-top-button-group="1"]',
+        style: {
+          top: `${AI_ANIMATION_CANVAS_BAR_TOP_GAP}px`,
+          left: "0",
+          height: `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+          "min-height": `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+          padding: "4px",
+          gap: `${SECONDARY_GROUP_PILL_GAP}px`,
+          "box-sizing": "border-box",
+          background: CANVAS_BAR_PILL_BACKGROUND,
+          "background-color": CANVAS_BAR_PILL_BACKGROUND,
+          border: `1px solid ${CANVAS_BAR_PILL_BORDER_COLOR}`,
+          "border-radius": CANVAS_BAR_PILL_RADIUS_PX
+        }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-top-button-group="1"] button',
+        style: (node) => {
+          // The premultiply switch is the only one here that carries a state.
+          const active = node.getAttribute("data-novaflow-skeleton-premultiply-alpha-button") === "1"
+            ? node.getAttribute("aria-pressed") !== "false"
+            : node.getAttribute("aria-pressed") === "true";
+          return {
+            height: `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+            "min-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+            "max-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+            width: "auto",
+            "min-width": "0",
+            padding: "0 11px",
+            border: "0",
+            "border-radius": CANVAS_BAR_BUTTON_RADIUS_PX,
+            background: active ? UI_SEGMENT_SELECTED_BACKGROUND : "transparent",
+            "background-color": active ? UI_SEGMENT_SELECTED_BACKGROUND : "transparent",
+            "box-shadow": active ? `inset 0 0 0 1px ${UI_SEGMENT_SELECTED_BORDER}` : "none",
+            color: active ? UI_SEGMENT_SELECTED_TEXT : CANVAS_BAR_BUTTON_TEXT,
+            "font-size": "11px",
+            "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+            "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-bottom-playbar="1"]',
+        style: {
+          // Below the stage, 9 clear, the stage's full width.
+          top: "auto",
+          left: "0",
+          right: "0",
+          width: "auto",
+          "max-width": "none",
+          transform: "none",
+          bottom: `-${SKELETON_PLAYBAR_HEIGHT + AI_ANIMATION_PANEL_TIMELINE_GAP}px`,
+          height: `${SKELETON_PLAYBAR_HEIGHT}px`,
+          "min-height": `${SKELETON_PLAYBAR_HEIGHT}px`,
+          "max-height": `${SKELETON_PLAYBAR_HEIGHT}px`,
+          margin: "0",
+          padding: "11px 13px",
+          "box-sizing": "border-box",
+          background: AI_ANIMATION_STACK_SURFACE,
+          "background-color": AI_ANIMATION_STACK_SURFACE,
+          border: `1px solid ${AI_ANIMATION_TIMELINE_BORDER_COLOR}`,
+          "border-radius": `${AI_ANIMATION_TIMELINE_RADIUS}px`
+        }
+      },
+      {
+        // 美工 / UI: the node canvas is the same stage panel as everywhere
+        // else. It had been #101010 behind a #0F1113 workspace behind a
+        // #101315 viewport - three near-blacks stacked, none of them the
+        // reference's value.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-mount-root="1"], [data-novaflow-ui-design-shell="1"], [data-novaflow-ui-design-workspace="1"]',
+        style: {
+          background: "transparent",
+          "background-color": "transparent",
+          "background-image": "none",
+          // 44 of padding here was holding the canvas host at 1008 and the
+          // resource column 44 short of the workspace's right edge.
+          padding: "0",
+          gap: "0",
+          margin: "0"
+        }
+      },
+      {
+        // The shell is a grid, so its track sizes decide the split - `flex`
+        // on the children is ignored and the canvas kept its old 1008.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-shell="1"]',
+        style: {
+          "grid-template-columns": `minmax(0, 1fr) ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + WORKSPACE_SIDE_GAP}px`
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-canvas-host="1"]',
+        style: {
+          flex: "1 1 auto",
+          width: "auto",
+          "min-width": "0",
+          "max-width": "none",
+          margin: "0",
+          padding: "0"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-viewport="1"]',
+        style: {
+          background: PREVIEW_OUTSIDE_BACKGROUND,
+          "background-color": PREVIEW_OUTSIDE_BACKGROUND,
+          "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`
+        }
+      },
+      {
+        // The resource column is the reference's floating panel: the slot it
+        // takes is 216 and the 206 panel is what the padding leaves, which
+        // also gives the canvas host the reference's 1052.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-preview-host="1"]',
+        style: {
+          width: `${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + WORKSPACE_SIDE_GAP}px`,
+          "min-width": `${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + WORKSPACE_SIDE_GAP}px`,
+          "max-width": `${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + WORKSPACE_SIDE_GAP}px`,
+          flex: `0 0 ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH + WORKSPACE_SIDE_GAP}px`,
+          padding: `0 0 0 ${WORKSPACE_SIDE_GAP}px`,
+          background: "transparent",
+          "background-color": "transparent",
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-resource-panel="1"]',
+        style: {
+          width: "100%",
+          "min-width": "0",
+          "max-width": "none",
+          background: PRIMARY_PANEL_SURFACE,
+          "background-color": PRIMARY_PANEL_SURFACE,
+          border: `1px solid ${PRIMARY_PANEL_BORDER_COLOR}`,
+          "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`,
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        // The reference puts these in the canvas bar at the stage's top-left,
+        // in the same plate the other pages use; the app had them floating
+        // across the bottom of the canvas.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-bottom-dock="1"]',
+        style: {
+          position: "absolute",
+          top: `${AI_ANIMATION_CANVAS_BAR_TOP_GAP}px`,
+          left: "0",
+          right: "auto",
+          bottom: "auto",
+          transform: "none",
+          width: "max-content",
+          height: `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+          "min-height": `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+          padding: "4px",
+          gap: `${SECONDARY_GROUP_PILL_GAP}px`,
+          "box-sizing": "border-box",
+          background: CANVAS_BAR_PILL_BACKGROUND,
+          "background-color": CANVAS_BAR_PILL_BACKGROUND,
+          border: `1px solid ${CANVAS_BAR_PILL_BORDER_COLOR}`,
+          "border-radius": CANVAS_BAR_PILL_RADIUS_PX
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-bottom-dock="1"] button',
+        style: {
+          height: `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+          "min-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+          "max-height": `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+          width: "auto",
+          "min-width": "0",
+          padding: "0 11px",
+          border: "0",
+          "border-radius": CANVAS_BAR_BUTTON_RADIUS_PX,
+          background: "transparent",
+          "background-color": "transparent",
+          color: CANVAS_BAR_BUTTON_TEXT,
+          "font-size": "11px",
+          "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-toolbar-action="fit"]',
+        style: {
+          top: `${AI_ANIMATION_CANVAS_QUIET_TOP_GAP}px`,
+          width: "auto",
+          "min-width": "0",
+          height: `${CANVAS_BAR_QUIET_HEIGHT}px`,
+          "min-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
+          "max-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
+          padding: "0 13px",
+          background: CANVAS_BAR_QUIET_BACKGROUND,
+          "background-color": CANVAS_BAR_QUIET_BACKGROUND,
+          border: `1px solid ${CANVAS_BAR_QUIET_BORDER_COLOR}`,
+          "border-radius": CANVAS_BAR_QUIET_RADIUS_PX,
+          color: CANVAS_BAR_QUIET_TEXT,
+          "font-size": "11px",
+          "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        // The left column's cards, and the disabled second-stage note.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-ui-host="1"], [data-novaflow-ui-design-left-root="1"], [data-novaflow-ui-design-mode-host="1"]',
+        style: {
+          width: `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "min-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "max-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-split-placeholder="1"]',
+        style: {
+          width: "auto",
+          "min-width": "0",
+          "max-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "align-self": "flex-start",
+          height: "32px",
+          "min-height": "32px",
+          "max-height": "32px",
+          padding: "0 12px",
+          background: UI_ICON_BUTTON_DISABLED_BACKGROUND,
+          "background-color": UI_ICON_BUTTON_DISABLED_BACKGROUND,
+          border: "0",
+          "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+          color: UI_ICON_BUTTON_DISABLED_TEXT,
+          "font-size": "13px",
+          "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        // 美工 / 绘图: the stage is the same rounded panel every other page
+        // draws, and the split workspace has to sit inside it rather than
+        // running the full height of the window.
+        when: "body.novaflow-primary-target-art",
+        selector: '#novaflow-spine-split-workspace-overlay, [data-novaflow-art-workspace-host="1"]',
+        // Its box comes from data-novaflow-stage-box, which the drawing
+        // runtime reads; only the surface is set here.
+        style: {
+          background: PREVIEW_OUTSIDE_BACKGROUND,
+          "background-color": PREVIEW_OUTSIDE_BACKGROUND,
+          "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`,
+          overflow: "hidden"
+        }
+      },
+      {
+        // The view switch is the canvas bar's plate, like the particle page's.
+        when: "body.novaflow-primary-target-art",
+        selector: "#novaflow-spine-split-view-controls",
+        style: {
+          top: `${AI_ANIMATION_CANVAS_BAR_TOP_GAP}px`,
+          left: "0",
+          right: "auto",
+          transform: "none",
+          height: `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+          "min-height": `${AI_ANIMATION_CAPSULE_HEIGHT}px`,
+          padding: "4px",
+          gap: `${SECONDARY_GROUP_PILL_GAP}px`,
+          "box-sizing": "border-box",
+          background: CANVAS_BAR_PILL_BACKGROUND,
+          "background-color": CANVAS_BAR_PILL_BACKGROUND,
+          border: `1px solid ${CANVAS_BAR_PILL_BORDER_COLOR}`,
+          "border-radius": CANVAS_BAR_PILL_RADIUS_PX
+        }
+      },
+      {
+        // ...and 自动适配 is the quiet button the other pages use.
+        when: "body.novaflow-primary-target-art",
+        selector: "#novaflow-spine-split-zoom-hud",
+        style: {
+          top: `${AI_ANIMATION_CANVAS_QUIET_TOP_GAP}px`,
+          height: `${CANVAS_BAR_QUIET_HEIGHT}px`,
+          "min-height": `${CANVAS_BAR_QUIET_HEIGHT}px`,
+          background: "transparent",
+          "background-color": "transparent",
+          border: "0"
+        }
+      },
+      {
+        // 美工 / 绘图: the control column is a card, 198 wide like every other
+        // page's; its groups take the shared 53 pitch from the entry above.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-drawing-host="1"], [data-novaflow-spine-split-control-category]',
+        style: {
+          width: `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "min-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "max-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        // The groups' dividers (#272727, as on every page). The split
+        // runtime wrote its categories border: 0 once one was opened, and the
+        // lines went.
+        when: "body.novaflow-primary-target-art",
+        selector: "[data-novaflow-spine-split-control-category]",
+        style: { "border-top": "0", "border-left": "0", "border-right": "0", "border-bottom": "1px solid #272727" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: "[data-novaflow-spine-split-control-category-toggle]",
+        style: {
+          "font-size": "12px",
+          "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+          color: PRIMARY_LEFT_CARD_TITLE_COLOR
+        }
+      },
+      {
+        // 工具: the tool list is a navigation column - 198x40 entries on the
+        // card's own inset, bare until selected, and then the rail's dark
+        // green with its hairline edge rather than a solid accent block.
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-tools-entry]",
+        style: (node) => {
+          const active = node.getAttribute("data-novaflow-tools-entry-active") === "1";
+          // Idle entries take the canvas bar's hover (#373737, white), as the
+          // reference's tool list does.
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : "idle");
+          // Rows with a #272727 line under each (drawn by the theme sheet's
+          // 2.0u, outside the row so the row keeps its corners), as asked; the
+          // hover fill is the group rows' #222222 on the same 7 corners.
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : "tool-row");
+          const iconRow = {
+            position: "relative", "text-align": "left", "justify-content": "flex-start", overflow: "visible",
+            border: active ? `1px solid ${UI_RAIL_SELECTED_BORDER}` : "1px solid transparent",
+            "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            // A 40 block in a 54 pitch: the fill (hover, selected) stays
+            // clear of the lines between the tools.
+            height: "40px", "min-height": "40px", "max-height": "40px", "box-shadow": "none", "margin-top": "7px", "margin-bottom": "7px"
+          };
+          return {
+            width: `${PRIMARY_LEFT_CARD_WIDTH}px`,
+            "min-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+            "max-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+            "margin-left": `${PRIMARY_LEFT_CARD_INSET}px`,
+            height: `${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px`,
+            "min-height": `${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px`,
+            "max-height": `${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px`,
+            padding: "0 12px",
+            "box-sizing": "border-box",
+            "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            border: "0",
+            background: active ? UI_SELECTED_BACKGROUND : "var(--nf-cb-hover-bg, transparent)",
+            "background-color": active ? UI_SELECTED_BACKGROUND : "var(--nf-cb-hover-bg, transparent)",
+            "background-image": "none",
+            "box-shadow": active ? `inset 0 0 0 1px ${UI_RAIL_SELECTED_BORDER}` : "none",
+            color: active ? NOVAFLOW_TOOLS_ENTRY_SELECTED_TEXT : `var(--nf-cb-hover-fg, ${UI_SEGMENT_IDLE_TEXT})`,
+            "font-size": "12px",
+            "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+            ...iconRow
+          };
+        }
+      },
+      {
+        // The backdrop behind the two preview columns is not a surface.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-grid="1"]',
+        style: {
+          background: "transparent",
+          "background-color": "transparent",
+          "background-image": "none"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-card="1"]',
+        style: {
+          background: NOVAFLOW_TOOLS_VIEW_SURFACE,
+          "background-color": NOVAFLOW_TOOLS_VIEW_SURFACE,
+          "background-image": "none",
+          border: `1px solid ${NOVAFLOW_TOOLS_VIEW_BORDER_COLOR}`,
+          "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`,
+          "box-shadow": "none",
+          padding: "13px",
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        // 直接覆盖 was the only olive control in the app; it is a helper.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-overwrite-button="1"], [data-novaflow-tools-start-button="1"]',
+        style: (node) => {
+          const disabled = node.disabled === true;
+          const main = node.getAttribute("data-novaflow-tools-start-button") === "1";
+          const background = disabled
+            ? UI_ICON_BUTTON_DISABLED_BACKGROUND
+            : (main ? UI_ACCENT : UI_BUTTON_BACKGROUND);
+          return {
+            background,
+            "background-color": background,
+            "background-image": "none",
+            border: "0",
+            color: disabled ? UI_ICON_BUTTON_DISABLED_TEXT : (main ? "#ffffff" : UI_SEGMENT_IDLE_TEXT)
+          };
+        }
+      },
+      {
+        // ...and the left column's sections are cards, so they take the card
+        // width rather than the panel's full width, which overhung it by 10.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-mode-section="1"], [data-novaflow-ai-post-section="1"]',
+        style: {
+          width: `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "min-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "max-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: "[data-novaflow-ai-collapse-heading]",
+        style: { "border-radius": "6px" }
+      },
+      {
+        // The resource panel: a 57 head over a #2B2B2B rule (title, count,
+        // 上传资源 spread across it), and the empty note centred on the panel.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-resource-sidebar-panel="1"]',
+        style: { position: "relative", gap: "0", "row-gap": "0" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-resource-sidebar-head="1"]',
+        style: {
+          height: "57px", "min-height": "57px", "max-height": "57px", padding: "14px 12px", gap: "8px",
+          "justify-content": "space-between", "align-items": "center", "flex-shrink": "0",
+          "border-bottom": "1px solid #2b2b2b", "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-resource-sidebar-head="1"] > div',
+        style: (node) => ({
+          "font-size": "11px", height: "auto", "line-height": "17px",
+          color: node.previousElementSibling ? "#979797" : "#c5c5c5"
+        })
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-resource-sidebar-head="1"] [data-novaflow-ai-resource-action="1"]',
+        // #282828 with #c5c5c5 ink, and the canvas bar's hover (#373737,
+        // white) - the reference's 上传资源.
+        style: (node) => {
+          const disabled = node.getAttribute("aria-disabled") === "true" || node.getAttribute("data-novaflow-ai-sequence-upload-enabled") === "0";
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", disabled ? "disabled" : "idle");
+          return {
+            padding: "4px 8px", height: "28px", "min-height": "28px",
+            background: "var(--nf-cb-hover-bg, #282828)", "background-color": "var(--nf-cb-hover-bg, #282828)",
+            color: "var(--nf-cb-hover-fg, #c5c5c5)"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        // 暂无内容 is centred by the theme sheet (3.0j), which lets go the
+        // moment a card lands; written inline it stayed a frame on the first
+        // upload and drew that card big in the middle.
+        selector: '[data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div:only-child',
+        style: () => null
+      },
+      {
+        // The background dots: three bare 16 swatches, 6 apart, 37 above the
+        // dock - no plate behind them.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-preview-bg-toggle="1"]',
+        style: (node) => {
+          const top = aiPreviewBgToggleDockTop(node);
+          const placed = top ? { top, bottom: "auto" } : {};
+          return {
+            ...placed, padding: "0", gap: "6px", height: "16px", "min-height": "16px", width: "auto",
+            background: "transparent", "background-color": "transparent", border: "0", "border-radius": "0",
+            "box-shadow": "none", "backdrop-filter": "none"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: "[data-novaflow-ai-preview-bg-option]",
+        style: { "border-color": "#6c6c6c" }
+      },
+      {
+        // 绘图's generation workspace: the mode plate centred in the canvas
+        // bar, the stage, then the dock 9 under it, as wide as the stage.
+        when: "body.novaflow-primary-target-art",
+        selector: "#novaflow-art-generate-workspace",
+        style: { "grid-template-rows": "52px minmax(0, 1fr) auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-top",
+        style: { "justify-self": "center", "align-self": "start", width: "max-content", "margin-top": `${AI_ANIMATION_CANVAS_BAR_TOP_GAP}px`, display: "flex", "align-items": "center", "pointer-events": "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-panel]',
+        style: {
+          margin: `${AI_ANIMATION_PANEL_TIMELINE_GAP}px 0 0`, width: "100%", "max-width": "none", "box-sizing": "border-box",
+          padding: "13px 14px", gap: `${DOCK_ROW_GAP}px`, "row-gap": `${DOCK_ROW_GAP}px`,
+          height: "auto", "min-height": "0", "max-height": "none",
+          background: DOCK_SURFACE, "background-color": DOCK_SURFACE, border: `1px solid ${DOCK_BORDER_COLOR}`,
+          "border-radius": DOCK_RADIUS_PX, "box-shadow": "none"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-settings-row]',
+        style: { height: "auto", "min-height": "32px", "max-height": "none", padding: "0", margin: "0", "align-items": "flex-start", gap: `${DOCK_ROW_GAP}px`, flex: "0 0 auto" }
+      },
+      {
+        // 分辨率 W [ ] H [ ] is one parameter in the reference: a space after
+        // the label and 6 between its two fields, not the 11 between groups.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-settings-fields] > label:not([data-novaflow-art-generate-count-field])',
+        style: (node) => {
+          const letter = normalizeText(Array.from(node.childNodes).filter((child) => child.nodeType === 3).map((child) => child.textContent).join(""));
+          if (letter === "W") return { "margin-left": `${4 - DOCK_ROW_GAP}px` };
+          if (letter === "H") return { "margin-left": `${DOCK_LABEL_GAP - DOCK_ROW_GAP}px` };
+          return null;
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-panel] > div:nth-child(3)',
+        style: { "grid-template-rows": "auto", height: "auto", "min-height": "0", "max-height": "none", margin: "0", flex: "0 0 auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-settings-fields]',
+        style: { gap: `${DOCK_LABEL_GAP}px`, "row-gap": "8px", "column-gap": `${DOCK_ROW_GAP}px`, "align-items": "center", "flex-wrap": "wrap", "padding-top": "2px", height: "auto" }
+      },
+      {
+        // Labels and the fields they wrap: 11px #A9A9A9, 6 from the control.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-settings-fields] > span, [data-novaflow-art-generate-settings-fields] > label, [data-novaflow-art-generate-settings-fields] > div, [data-novaflow-art-generate-settings-fields] > div > span, [data-novaflow-art-generate-settings-fields] > label > span',
+        style: (node) => {
+          const toggleHost = node.querySelector && node.querySelector("[data-novaflow-art-generate-state-toggle]");
+          const on = toggleHost ? toggleHost.getAttribute("aria-pressed") === "true" : false;
+          const owner = node.closest("[data-novaflow-art-generate-settings-fields] > div");
+          const ownerOn = owner ? owner.querySelector("[data-novaflow-art-generate-state-toggle]")?.getAttribute("aria-pressed") === "true" : false;
+          const isToggleLabel = node.tagName === "SPAN" && node.parentElement && node.parentElement.querySelector("[data-novaflow-art-generate-state-toggle]");
+          return {
+            "font-size": "11px", "line-height": "28px", height: "28px", "white-space": "nowrap",
+            display: node.tagName === "SPAN" && !node.children.length ? "inline-block" : "inline-flex",
+            "align-items": "center", gap: toggleHost ? "7px" : `${DOCK_LABEL_GAP}px`,
+            "font-weight": isToggleLabel ? NOVAFLOW_MEDIUM_FONT_WEIGHT : "400",
+            color: isToggleLabel ? (ownerOn ? DOCK_TOGGLE_ON_TEXT : DOCK_LABEL_TEXT) : DOCK_LABEL_TEXT,
+            ...(on ? {} : {})
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-value-field]',
+        style: {
+          width: `${UI_NUM_FIELD_WIDTH}px`, "min-width": `${UI_NUM_FIELD_WIDTH}px`, "max-width": `${UI_NUM_FIELD_WIDTH}px`,
+          height: `${UI_NUM_FIELD_HEIGHT}px`, "min-height": `${UI_NUM_FIELD_HEIGHT}px`, "max-height": `${UI_NUM_FIELD_HEIGHT}px`,
+          padding: "5px", border: `1px solid ${UI_NUM_FIELD_BORDER_COLOR}`, "border-radius": UI_NUM_FIELD_RADIUS_PX,
+          background: UI_NUM_FIELD_BACKGROUND, "background-color": UI_NUM_FIELD_BACKGROUND,
+          color: UI_NUM_FIELD_TEXT, "font-size": "11px", "text-align": "center", "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-state-toggle]',
+        style: (node) => {
+          const on = node.getAttribute("aria-pressed") === "true";
+          return {
+            width: "27px", "min-width": "27px", "max-width": "27px", height: "15px", "min-height": "15px", "max-height": "15px",
+            padding: "0", border: "0", "border-radius": "15px", "box-shadow": "none",
+            background: on ? DOCK_SWITCH_ON : DOCK_SWITCH_OFF, "background-color": on ? DOCK_SWITCH_ON : DOCK_SWITCH_OFF
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-state-toggle-knob]',
+        style: (node) => {
+          const on = node.closest("[data-novaflow-art-generate-state-toggle]")?.getAttribute("aria-pressed") === "true";
+          return {
+            width: "9px", height: "9px", "min-width": "9px", "min-height": "9px", top: "3px", left: on ? "15px" : "3px",
+            right: "auto", bottom: "auto", transform: "none", "border-radius": "50%",
+            background: on ? DOCK_SWITCH_KNOB_ON : DOCK_SWITCH_KNOB_OFF, "background-color": on ? DOCK_SWITCH_KNOB_ON : DOCK_SWITCH_KNOB_OFF,
+            "box-shadow": "none"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-submit]',
+        style: (node) => {
+          const disabled = node.disabled === true;
+          return {
+            margin: "0", "line-height": "1",
+            "min-width": "104px", width: "auto", height: "32px", "min-height": "32px", "max-height": "32px",
+            padding: "5px 10px", border: `1px solid ${disabled ? "transparent" : DOCK_PRIMARY_BORDER}`, "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            "font-size": "12px", "font-weight": "600", "box-shadow": "none", "box-sizing": "border-box",
+            opacity: disabled ? NOVAFLOW_DISABLED_OPACITY : "1"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-progress]',
+        style: { display: "flex", "flex-direction": "row", "align-items": "center", gap: "8px", height: "15px", "min-height": "15px", "max-height": "15px", margin: "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-progress] > div:first-child',
+        style: { flex: "0 0 auto", width: "auto", padding: "0", gap: "8px", height: "15px", display: "flex", "align-items": "center" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-progress] > div:first-child > div',
+        style: { "font-size": "10px", color: DOCK_PROGRESS_TEXT, "line-height": "15px", height: "15px", width: "auto", "max-width": "none", overflow: "visible", "text-overflow": "clip", "white-space": "nowrap" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-progress] > div:nth-child(2)',
+        style: { flex: "1 1 auto", width: "auto", height: "1px", "min-height": "1px", "border-radius": "0", background: DOCK_PROGRESS_LINE, "background-color": DOCK_PROGRESS_LINE }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-progress] > div:nth-child(2) > div',
+        style: { height: "1px", "border-radius": "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-prompt-grid]',
+        style: { height: "auto", "min-height": "0", "max-height": "none", gap: "0", margin: "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-prompt-frame]',
+        style: {
+          height: "109px", "min-height": "109px", "max-height": "109px",
+          background: DOCK_PROMPT_SURFACE, "background-color": DOCK_PROMPT_SURFACE,
+          border: `1px solid ${DOCK_PROMPT_BORDER}`, "border-radius": "8px", "box-sizing": "border-box", overflow: "hidden"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-prompt-frame] > div:first-child',
+        style: { height: "33px", "min-height": "33px", "max-height": "33px", padding: "4px 7px", "align-items": "center", "box-sizing": "border-box", background: DOCK_PROMPT_SURFACE, "background-color": DOCK_PROMPT_SURFACE }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-prompt-frame] > div:first-child > div',
+        style: { gap: "4px", height: "24px", "align-items": "center" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-art-generate-prompt-frame] textarea',
+        style: {
+          height: "74px", "min-height": "74px", "max-height": "74px", padding: "12px 14px",
+          "font-size": "12px", color: DOCK_PROMPT_TEXT, background: DOCK_PROMPT_SURFACE, "background-color": DOCK_PROMPT_SURFACE,
+          border: "0", "border-radius": "0", "box-shadow": "none", resize: "none", "box-sizing": "border-box"
+        }
+      },
+      {
+        // 工具: the parameter column and the two previews, on the page.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-workspace]',
+        style: () => ({
+          background: "transparent", "background-color": "transparent", padding: "0",
+          display: "flex", "flex-direction": "row", gap: `${TOOLS_VIEW_GAP}px`, "align-items": "stretch",
+          height: `calc(100vh - ${TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP + PRIMARY_PANEL_BOTTOM_GAP}px)`,
+          "box-sizing": "border-box"
+        })
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel]',
+        style: () => {
+          const width = toolsParamsWidth();
+          return {
+            width: `${width}px`, "min-width": `${width}px`, "max-width": `${width}px`, flex: `0 0 ${width}px`,
+            height: "auto", "align-self": "stretch", padding: "16px 13px", margin: "0",
+            display: "flex", "flex-direction": "column", gap: "12px", "overflow-y": "auto", "overflow-x": "hidden",
+            background: TOOLS_PARAMS_SURFACE, "background-color": TOOLS_PARAMS_SURFACE,
+            border: `1px solid ${TOOLS_PARAMS_BORDER}`, "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`, "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] > [data-novaflow-tools-section], [data-novaflow-tools-left-panel] > [data-novaflow-tools-section] > div:not([data-novaflow-tools-mode-row])',
+        style: { display: "flex", "flex-direction": "column", gap: "12px", "row-gap": "12px", width: "100%", margin: "0", padding: "0", height: "auto", "min-height": "0" }
+      },
+      {
+        // 普通 PNG / Spine 图集: the reference's segmented plate.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-mode-row]',
+        style: {
+          display: "flex", "flex-direction": "row", gap: "3px", padding: "3px", height: "37px", "min-height": "37px", "max-height": "37px",
+          width: "100%", "box-sizing": "border-box", "margin-bottom": "14px",
+          background: TOOLS_TABS_SURFACE, "background-color": TOOLS_TABS_SURFACE,
+          border: `1px solid ${TOOLS_TABS_BORDER}`, "border-radius": "8px"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-mode-button]',
+        style: (node) => {
+          const active = node.getAttribute("data-novaflow-tools-mode-active") === "1" || node.getAttribute("aria-pressed") === "true";
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : "idle");
+          return {
+            flex: "1 1 0", width: "auto", "min-width": "0", height: "29px", "min-height": "29px", "max-height": "29px",
+            padding: "4px 7px", border: `1px solid ${active ? UI_SEGMENT_SELECTED_BORDER : "transparent"}`, "border-radius": "5px",
+            background: active ? UI_SEGMENT_SELECTED_BACKGROUND : "var(--nf-cb-hover-bg, transparent)",
+            "background-color": active ? UI_SEGMENT_SELECTED_BACKGROUND : "var(--nf-cb-hover-bg, transparent)",
+            color: active ? UI_SEGMENT_SELECTED_TEXT : `var(--nf-cb-hover-fg, ${UI_SEGMENT_IDLE_TEXT})`,
+            "box-shadow": "none", "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        // 选择 PNG: a dashed 88-tall well.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-upload-zone]',
+        style: {
+          width: "100%", height: "88px", "min-height": "88px", "max-height": "88px", padding: "20px 10px",
+          display: "flex", "flex-direction": "column", "align-items": "center", "justify-content": "center", gap: "7px",
+          background: TOOLS_DROP_SURFACE, "background-color": TOOLS_DROP_SURFACE,
+          border: `1px dashed ${TOOLS_DROP_BORDER}`, "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+          color: TOOLS_DROP_TEXT, "font-size": "13px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "box-sizing": "border-box", "box-shadow": "none"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-upload-zone] > div, [data-novaflow-tools-upload-zone] [data-novaflow-tools-upload-title-slot] > div',
+        style: { "font-size": "13px", "line-height": "20px", height: "auto", color: TOOLS_DROP_TEXT, "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] label > span',
+        style: { "font-size": "11px", color: TOOLS_RANGE_LABEL_TEXT, "margin-top": "6px" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] label',
+        style: { display: "flex", "flex-direction": "column", gap: "14px", width: "100%" }
+      },
+      {
+        // The reference's slider is the browser's own on a 3px box.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] input[type="range"]',
+        style: { height: "3px", "min-height": "3px", "max-height": "3px", margin: "0", "margin-bottom": "2px" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] [data-novaflow-tools-section] > div > div:not([data-novaflow-tools-action-row])',
+        style: { "letter-spacing": "0", "word-break": "normal" }
+      },
+      {
+        // The hint, the counts and the batch note: plain 11px text.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-left-panel] [data-novaflow-tools-section] > div > div:not([data-novaflow-tools-action-row]):not(:has(button)), [data-novaflow-tools-left-panel] [data-novaflow-tools-section] > div:not(:has(*))',
+        style: { "font-size": "11px", color: TOOLS_HINT_TEXT, padding: "0", border: "0", background: "transparent", "background-color": "transparent", "line-height": "18px" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-action-row]',
+        style: { display: "flex", "flex-direction": "column", gap: "12px", height: "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-start-button], [data-novaflow-tools-clear-button]',
+        style: (node) => {
+          const primary = node.hasAttribute("data-novaflow-tools-start-button");
+          const state = toolsButtonState(node, primary);
+          return {
+            width: "100%", height: "32px", "min-height": "32px", "max-height": "32px", padding: "5px 10px",
+            background: state.background, "background-color": state.background, color: state.color,
+            border: `1px solid ${state.border}`, "border-radius": NOVAFLOW_RECT_RADIUS_PX, opacity: state.opacity,
+            "font-size": "13px", "font-weight": primary ? NOVAFLOW_PRIMARY_FONT_WEIGHT : NOVAFLOW_MEDIUM_FONT_WEIGHT,
+            "box-shadow": "none", "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-right-panel]',
+        style: { flex: "1 1 auto", "min-width": "0", padding: "0", margin: "0", height: "auto", "align-self": "stretch", position: "relative" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-grid]',
+        style: { padding: "0", margin: "0", display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(0, 1fr)", "grid-template-rows": "minmax(0, 1fr)", gap: `${TOOLS_VIEW_GAP}px`, width: "100%", height: "100%", "max-height": "100%", "min-height": "0", "box-sizing": "border-box" }
+      },
+      {
+        // The current tool's name above the tabs: the reference names the
+        // tool only in the list, so it is kept for readers but not drawn.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-current-tool-card]',
+        style: {
+          position: "absolute", width: "1px", height: "1px", "min-height": "0", margin: "-1px", padding: "0",
+          overflow: "hidden", clip: "rect(0 0 0 0)", "white-space": "nowrap", border: "0"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-card]',
+        style: {
+          padding: "12px", display: "flex", "flex-direction": "column", gap: "12px", height: "100%", "max-height": "100%", "min-height": "0",
+          background: NOVAFLOW_TOOLS_VIEW_SURFACE, "background-color": NOVAFLOW_TOOLS_VIEW_SURFACE,
+          border: `1px solid ${NOVAFLOW_TOOLS_VIEW_BORDER_COLOR}`, "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`, "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-card] > div:first-child',
+        style: { height: "34px", "min-height": "34px", "max-height": "34px", display: "flex", "align-items": "center", "justify-content": "space-between", gap: "6px", padding: "0", margin: "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-card] > div:first-child > div',
+        style: { "font-size": "12px", "font-weight": "400", color: UI_SEGMENT_IDLE_TEXT, "line-height": "18px" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-preview-card-body]',
+        style: {
+          flex: "1 1 auto", "min-height": "0", background: NOVAFLOW_TOOLS_BLANK_SURFACE, "background-color": NOVAFLOW_TOOLS_BLANK_SURFACE,
+          border: `1px solid ${NOVAFLOW_TOOLS_BLANK_BORDER_COLOR}`, "border-radius": NOVAFLOW_TOOLS_BLANK_RADIUS_PX, "box-sizing": "border-box"
+        }
+      },
+      {
+        // 导出到文件夹 / 直接覆盖 sit in the 结果图 header, 13 in from its edge.
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-output-settings]',
+        style: { top: "12px", right: "13px", left: "auto", width: "auto", height: "30px", "z-index": "5" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-output-settings] > div',
+        style: { gap: "6px", height: "30px", display: "flex", "align-items": "center", width: "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: '[data-novaflow-tools-output-settings] button',
+        style: (node) => {
+          const state = toolsButtonState(node, false);
+          return {
+            width: "auto", "min-width": "0", height: "30px", "min-height": "30px", "max-height": "30px", padding: "5px 8px",
+            background: state.background, "background-color": state.background, color: state.color,
+            border: `1px solid ${state.border}`, "border-radius": NOVAFLOW_RECT_RADIUS_PX, opacity: state.opacity,
+            "font-size": "11px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "box-shadow": "none", "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-preview-stage="1"] > div:first-child',
+        style: (node) => (String(node.style.backgroundImage || getComputedStyle(node).backgroundImage).includes("conic-gradient")
+          ? {
+            "background-color": SKELETON_CHECKER_BASE,
+            "background-image": `conic-gradient(${SKELETON_CHECKER_SQUARE} 25%, transparent 0deg, transparent 50%, ${SKELETON_CHECKER_SQUARE} 0deg, ${SKELETON_CHECKER_SQUARE} 75%, transparent 0deg)`,
+            "background-size": "24px 24px",
+            "background-position": "0 0"
+          }
+          : null)
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-bottom-playbar="1"]',
+        style: { padding: "10px 12px", display: "flex", "flex-direction": "column", "justify-content": "center" }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-bottom-playbar-surface="1"]',
+        style: { padding: "0", background: "transparent", "background-color": "transparent", "border-radius": "0", height: "30px", "min-height": "30px" }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-bottom-playbar-surface="1"] > div',
+        style: { gap: "10px", height: "30px", "align-items": "center" }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-playback-button="1"]',
+        style: (node) => {
+          const playing = Boolean(node.querySelector(".fa-pause"));
+          nfSetAttrIfChanged(node, "data-novaflow-playback-icon", playing ? "pause" : "play");
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle");
+          return {
+            width: `${PLAYBACK_BUTTON_SIZE}px`, "min-width": `${PLAYBACK_BUTTON_SIZE}px`, "max-width": `${PLAYBACK_BUTTON_SIZE}px`,
+            height: `${PLAYBACK_BUTTON_SIZE}px`, "min-height": `${PLAYBACK_BUTTON_SIZE}px`, "max-height": `${PLAYBACK_BUTTON_SIZE}px`,
+            padding: "6px", border: "1px solid transparent", "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            background: `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`, "background-color": `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`,
+            color: `var(--nf-cb-hover-fg, ${UI_ICON_BUTTON_TEXT})`, "box-shadow": "none", display: "inline-flex",
+            "align-items": "center", "justify-content": "center", "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-playback-button="1"] > i',
+        style: { display: "none" }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-timeline-time="1"]',
+        style: {
+          background: "transparent", "background-color": "transparent", padding: "0", height: "auto", "min-height": "0",
+          width: "auto", "min-width": "0", "font-size": "11px", color: PLAYBACK_FRAME_TEXT, border: "0", "box-shadow": "none"
+        }
+      },
+      {
+        // The project tree: 12 in, rows of 39 over a #313131 rule, the count
+        // at the right.
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-sidebar-body="1"]',
+        style: { padding: "12px", gap: "0" }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-bones-hierarchy="1"], [data-novaflow-bones-hierarchy="1"] > div:nth-child(2)',
+        style: { gap: "0", "row-gap": "0", padding: "0" }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-bones-hierarchy="1"] > [data-novaflow-skeleton-sidebar-title="1"], [data-novaflow-bones-hierarchy="1"] > div:nth-child(2) > div',
+        style: (node) => {
+          const child = node.parentElement && !node.hasAttribute("data-novaflow-skeleton-sidebar-title") && node.previousElementSibling;
+          return {
+            height: "39px", "min-height": "39px", padding: child ? "10px 0 10px 16px" : "10px 0", margin: "0",
+            display: "flex", "align-items": "center", gap: "6px", "box-sizing": "border-box",
+            border: "0", "border-bottom": `1px solid ${SKELETON_TREE_RULE}`, "border-radius": "0",
+            "font-size": "12px", color: SKELETON_TREE_TEXT, background: "transparent", "background-color": "transparent"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-bones-hierarchy="1"] > div:nth-child(2) > div > span',
+        style: (node) => (node.previousElementSibling && node.previousElementSibling.tagName === "SPAN"
+          ? { "margin-left": "auto", "font-size": "12px", color: SKELETON_TREE_TEXT }
+          : { "font-size": "12px", color: SKELETON_TREE_TEXT })
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-bones-hierarchy="1"] > div:nth-child(2) > div > i',
+        style: { color: SKELETON_TREE_TEXT }
+      },
+      {
+        // 特效's dock: 11 between rows and groups, a label 6 from its control,
+        // 170 sliders, 30x30 outline-icon buttons.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"]',
+        style: { gap: `${DOCK_ROW_GAP}px`, "row-gap": `${DOCK_ROW_GAP}px`, padding: "13px 14px" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] > div',
+        style: { gap: `${DOCK_ROW_GAP}px`, "column-gap": `${DOCK_ROW_GAP}px`, "flex-wrap": "wrap", "row-gap": "8px", "align-items": "center" }
+      },
+      {
+        // 画布尺寸 X [ ] Y [ ]: a space after the label, 6 around each letter.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] > div:first-child > div:first-child',
+        style: { gap: "3px", "column-gap": "3px", flex: "0 0 auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] [data-novaflow-canvas-size-axis-field]',
+        style: { gap: "2px", "column-gap": "2px", width: "auto", "margin-left": "0" }
+      },
+      {
+        // 整体缩放 / 旋转偏移: label, a 170 slider, the value - one parameter.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] > div:first-child > div:has(> input[type="range"])',
+        style: { gap: `${DOCK_LABEL_GAP}px`, "column-gap": `${DOCK_LABEL_GAP}px`, flex: "0 0 auto", width: "auto", "min-width": "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] > div:first-child > div:has(> input[type="range"]) > input[type="range"]',
+        style: { width: "170px", "min-width": "170px", "max-width": "170px", flex: "0 0 170px" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] input[type="range"]',
+        style: { height: "3px", "min-height": "3px", "max-height": "3px", margin: "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] > div:first-child > div:has(> input[type="range"]) > div',
+        style: { width: "auto", "min-width": "0", padding: "0", "white-space": "nowrap" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] button',
+        style: (node) => {
+          const title = String(node.getAttribute("title") || node.getAttribute("aria-label") || "").replace(/\s+/g, "");
+          const icon = Object.keys(PLAYBACK_ICON_BY_TITLE).reduce((found, key) => found || (key.replace(/\s+/g, "") === title ? PLAYBACK_ICON_BY_TITLE[key] : ""), "");
+          if (icon) nfSetAttrIfChanged(node, "data-novaflow-playback-icon", icon);
+          const disabled = node.disabled === true;
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", disabled ? "disabled" : "idle");
+          const idle = `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`;
+          return {
+            width: `${PLAYBACK_BUTTON_SIZE}px`, "min-width": `${PLAYBACK_BUTTON_SIZE}px`, "max-width": `${PLAYBACK_BUTTON_SIZE}px`,
+            height: `${PLAYBACK_BUTTON_SIZE}px`, "min-height": `${PLAYBACK_BUTTON_SIZE}px`, "max-height": `${PLAYBACK_BUTTON_SIZE}px`,
+            padding: "6px", border: "1px solid transparent", "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            background: disabled ? CANVAS_BAR_DISABLED_BACKGROUND : idle, "background-color": disabled ? CANVAS_BAR_DISABLED_BACKGROUND : idle,
+            color: disabled ? CANVAS_BAR_DISABLED_TEXT : `var(--nf-cb-hover-fg, ${UI_ICON_BUTTON_TEXT})`,
+            opacity: disabled ? NOVAFLOW_DISABLED_OPACITY : "1", "box-shadow": "none",
+            display: "inline-flex", "align-items": "center", "justify-content": "center", "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-bottom-controls="1"] button[data-novaflow-playback-icon] > i',
+        style: { display: "none" }
+      },
+      {
+        // 美工 / UI, measured off ui-spline.html: the node canvas carries the
+        // stage's dot field, and the canvas bar's plate holds its buttons
+        // directly - the toolbar inside it had its own fill and 7px padding.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-viewport="1"]',
+        style: {
+          "background-image": `radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px)`,
+          "background-size": `${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px`,
+          "background-position": "0 0"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-toolbar]',
+        style: {
+          padding: "0", margin: "0", gap: "3px", "column-gap": "3px", height: "28px", "min-height": "28px",
+          background: "transparent", "background-color": "transparent", border: "0", "box-shadow": "none",
+          "backdrop-filter": "none", "border-radius": "0", display: "flex", "align-items": "center"
+        }
+      },
+      {
+        // The empty state: centred on the stage, a 17/500 line over the 12px
+        // note, and three plain 30-tall buttons - no one of them is the
+        // main action until there is something to act on.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-empty-state]',
+        style: { top: "50%", gap: "12px", "row-gap": "12px" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-empty-state] > div:first-child',
+        style: { "font-size": "17px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, color: "#dbdbdb", "line-height": "26px" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-empty-state] > div:nth-child(2)',
+        style: { "font-size": "12px", color: "#969696", "line-height": "18px" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-empty-state] > div:nth-child(3)',
+        style: { gap: "8px", "margin-top": "15px" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-empty-action]',
+        style: (node) => (nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle"), {
+          width: "auto", "min-width": "0", height: "30px", "min-height": "30px", "max-height": "30px", padding: "5px 10px",
+          background: `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`, "background-color": `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`,
+          color: "var(--nf-cb-hover-fg, #888888)", border: "1px solid transparent", "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+          "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "box-shadow": "none", "box-sizing": "border-box"
+        })
+      },
+      {
+        // UI 拆图　第二阶段: a placeholder for something not built yet - off,
+        // as asked.
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-split-placeholder="1"]',
+        style: { display: "none" }
+      },
+      {
+        when: "body.novaflow-primary-target-art",
+        selector: '[data-novaflow-ui-design-split-placeholder="1"] > span',
+        style: { "font-size": "13px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, color: UI_ICON_BUTTON_DISABLED_TEXT }
+      },
+      {
+        // AI 特效's stage and play bar corners. The sheet sets them, but the
+        // global radius pass writes 7 inline over any sheet; the spec's own
+        // inline value is the one it leaves alone.
+        when: "body.novaflow-aifx-open",
+        selector: "#novaflow-aifx-mvp .aifx-preview-wrap",
+        style: { "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px` }
+      },
+      {
+        when: "body.novaflow-aifx-open",
+        selector: "#novaflow-aifx-mvp .aifx-timeline",
+        style: { "border-radius": `${AI_ANIMATION_TIMELINE_RADIUS}px` }
+      },
+      {
+        when: "body.novaflow-aifx-open",
+        selector: "#novaflow-aifx-mvp .aifx-timeline [data-frame-label]",
+        style: { "padding-left": "0", height: "20px", "line-height": "20px" }
+      },
+      {
+        // AI 特效's play bar buttons: the reference's 30x30 outline icons.
+        when: "body.novaflow-aifx-open",
+        selector: "#novaflow-aifx-mvp .aifx-timeline button",
+        style: (node) => {
+          const title = String(node.getAttribute("title") || node.getAttribute("aria-label") || "").replace(/\s+/g, "");
+          const icon = Object.keys(PLAYBACK_ICON_BY_TITLE).reduce((found, key) => found || (key.replace(/\s+/g, "") === title ? PLAYBACK_ICON_BY_TITLE[key] : ""), "");
+          if (icon) nfSetAttrIfChanged(node, "data-novaflow-playback-icon", icon);
+          const disabled = node.disabled === true;
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", disabled ? "disabled" : "idle");
+          const idle = `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`;
+          return {
+            width: `${PLAYBACK_BUTTON_SIZE}px`, "min-width": `${PLAYBACK_BUTTON_SIZE}px`, "max-width": `${PLAYBACK_BUTTON_SIZE}px`,
+            height: `${PLAYBACK_BUTTON_SIZE}px`, "min-height": `${PLAYBACK_BUTTON_SIZE}px`, "max-height": `${PLAYBACK_BUTTON_SIZE}px`,
+            padding: "6px", border: "1px solid transparent", "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            background: disabled ? CANVAS_BAR_DISABLED_BACKGROUND : idle, "background-color": disabled ? CANVAS_BAR_DISABLED_BACKGROUND : idle,
+            color: disabled ? CANVAS_BAR_DISABLED_TEXT : `var(--nf-cb-hover-fg, ${UI_ICON_BUTTON_TEXT})`,
+            opacity: disabled ? NOVAFLOW_DISABLED_OPACITY : "1", "box-shadow": "none",
+            display: "inline-flex", "align-items": "center", "justify-content": "center", "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-aifx-open",
+        selector: "#novaflow-aifx-mvp .aifx-timeline button[data-novaflow-playback-icon] > i",
+        style: { display: "none" }
+      },
+      {
+        when: "body.novaflow-aifx-open",
+        selector: '#novaflow-aifx-mvp .aifx-timeline input[type="range"]',
+        style: { height: "3px", "min-height": "3px", "max-height": "3px", margin: "0" }
+      },
+      {
+        // 特效's groups, off particles-spline.html: a switch row is its label
+        // then a 27x15 switch on the bare panel (no card), 24 in.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-editor-panel="1"] [data-novaflow-toggle-card="1"]',
+        style: {
+          // A card, as asked: kept on and off, the switch on its right edge.
+          // Auto height: a switch that is on shows its own fields under it.
+          background: "#272727", "background-color": "#272727", border: "1px solid transparent", "border-radius": "7px",
+          height: "auto", "min-height": "46px", "max-height": "none", padding: "0", overflow: "visible", "box-shadow": "none"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-editor-panel="1"] [data-novaflow-toggle-card-button="1"]',
+        style: (node) => ({
+          height: "44px", "min-height": "44px", padding: "0 12px", "justify-content": "space-between", gap: "7px",
+          background: "transparent", "background-color": "transparent", border: "0", "box-shadow": "none",
+          "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+          color: node.getAttribute("data-novaflow-toggle-enabled") === "1" ? "#8ee0c5" : "#eaeaea"
+        })
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-editor-panel="1"] [data-novaflow-toggle-card-button="1"] > span:not([data-novaflow-toggle-switch])',
+        style: { color: "inherit", "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT }
+      },
+      {
+        // The switch itself, wherever the runtime draws this switch.
+        selector: '[data-novaflow-toggle-switch="1"]',
+        style: (node) => {
+          const card = node.closest("[data-novaflow-toggle-enabled]");
+          const on = card ? card.getAttribute("data-novaflow-toggle-enabled") === "1" : node.getAttribute("title") === "\u5df2\u5f00\u542f";
+          return {
+            position: "relative", display: "inline-block", flex: "0 0 27px",
+            width: "27px", "min-width": "27px", "max-width": "27px", height: "15px", "min-height": "15px", "max-height": "15px",
+            padding: "0", border: "0", "border-radius": "15px", "box-shadow": "none",
+            background: on ? "#1bb28c" : "#3e3e3e", "background-color": on ? "#1bb28c" : "#3e3e3e"
+          };
+        }
+      },
+      {
+        selector: '[data-novaflow-toggle-switch="1"] > [data-novaflow-toggle-knob="1"]',
+        style: (node) => {
+          const card = node.closest("[data-novaflow-toggle-enabled]");
+          const on = card ? card.getAttribute("data-novaflow-toggle-enabled") === "1" : node.parentElement?.getAttribute("title") === "\u5df2\u5f00\u542f";
+          return {
+            position: "absolute", top: "3px", left: on ? "15px" : "3px", width: "9px", height: "9px", "min-width": "9px", "min-height": "9px",
+            transform: "none", "border-radius": "50%", background: on ? "#ffffff" : "#cacaca", "background-color": on ? "#ffffff" : "#cacaca",
+            "box-shadow": "none", margin: "0", display: "block", visibility: "inherit", opacity: "1"
+          };
+        }
+      },
+      {
+        // 爆发 / 持续: the reference's segmented control, a #101010 tray.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-editor-panel="1"] button[aria-pressed]',
+        style: (node) => {
+          const parent = node.parentElement;
+          const group = parent ? Array.from(parent.children) : [];
+          const texts = group.map((child) => normalizeText(child.textContent || ""));
+          if (group.length === 2 && texts.includes("\u7206\u53d1") && texts.includes("\u6301\u7eed")) {
+            nfSetAttrIfChanged(parent, "data-novaflow-particle-segment", "1");
+            return {
+              height: "29px", "min-height": "29px", "max-height": "29px", padding: "4px 7px", "border-radius": "5px",
+              "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, flex: "1 1 0", "box-shadow": "none"
+            };
+          }
+          return null;
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-particle-segment="1"]',
+        style: {
+          background: "#101010", "background-color": "#101010", border: "1px solid #262626", "border-radius": "8px",
+          padding: "3px", gap: "3px", height: "37px", "min-height": "37px", display: "flex", "box-sizing": "border-box"
+        }
+      },
+      {
+        // Chips (发射器形状, 单张/随机/序列, 等比/分离XY, 线性/曲线, the
+        // sprite presets): text buttons in wrapping rows, 32 tall, 8 apart -
+        // the reference draws no icons in them.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-editor-panel="1"] button',
+        style: (node) => {
+          // AI 特效 shares the page (and the panel markers): its 模板库 is a
+          // plain button like 风格库, not a chip.
+          if (node.hasAttribute("data-novaflow-toggle-card-button") || node.closest("[data-novaflow-particle-segment]") || node.closest("#novaflow-aifx-mvp")) return null;
+          if (node.closest('[data-novaflow-sprite-editor-card="1"], .nf-panel-header')) return null;
+          const parent = node.parentElement;
+          if (!(parent instanceof HTMLElement)) return null;
+          const siblings = Array.from(parent.children);
+          if (siblings.length < 2 || !siblings.every((child) => child.tagName === "BUTTON")) return null;
+          const label = normalizeText(node.getAttribute("title") || node.textContent || "");
+          if (!label || label.length > 6 || /^[+\-]$/.test(label)) return null;
+          const iconChip = Boolean(node.querySelector("i, img, svg"));
+          nfSetAttrIfChanged(node, "data-novaflow-particle-chip", iconChip ? "icon" : "1");
+          nfSetAttrIfChanged(parent, "data-novaflow-particle-chip-row", "1");
+          if (iconChip) {
+            // Shapes and sprite presets: the icon alone, every one 36x32;
+            // the name stays for screen readers and the tooltip.
+            if (!node.getAttribute("title")) nfSetAttrIfChanged(node, "title", label);
+            nfSetAttrIfChanged(parent, "data-novaflow-particle-chip-row", "icon");
+            return {
+              width: "32px", "min-width": "32px", "max-width": "32px", height: "30px", "min-height": "30px", "max-height": "30px",
+              flex: "0 0 32px", padding: "0", "border-radius": "7px", display: "flex", "flex-direction": "row",
+              "align-items": "center", "justify-content": "center", gap: "0", "box-shadow": "none", "box-sizing": "border-box",
+              position: "relative", overflow: "hidden"
+            };
+          }
+          return {
+            height: "32px", "min-height": "32px", "max-height": "32px", width: "auto", "min-width": "0", "max-width": "none",
+            flex: "0 0 auto", padding: "5px 10px", "border-radius": "7px", "flex-direction": "row", gap: "7px",
+            "font-size": "13px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "box-shadow": "none", "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-particle-chip-row]",
+        style: (node) => ({ display: "flex", "flex-wrap": "wrap", gap: node.getAttribute("data-novaflow-particle-chip-row") === "icon" ? "6px" : "8px", height: "auto", "min-height": "0", "max-height": "none" })
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-particle-chip="icon"] > :last-child:not(:first-child)',
+        style: { position: "absolute", width: "1px", height: "1px", overflow: "hidden", clip: "rect(0 0 0 0)", "clip-path": "inset(50%)", "white-space": "nowrap", margin: "-1px", padding: "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-particle-chip="icon"] > :first-child',
+        style: (node) => (node.tagName === "IMG" || node.querySelector("img")
+          ? { width: "18px", height: "18px", "min-width": "18px", "min-height": "18px", margin: "0", display: "flex", "align-items": "center", "justify-content": "center" }
+          : { "font-size": "14px", width: "auto", height: "auto", margin: "0", "line-height": "1" })
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-particle-chip="icon"] > :first-child img',
+        style: { width: "18px", height: "18px", "object-fit": "contain" }
+      },
+      {
+        // The sprite card: one column, like the reference's stacked fields -
+        // two selects side by side ran past the card.
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-sprite-editor-body]",
+        style: { width: "100%", "min-width": "0", "max-width": "100%", "box-sizing": "border-box" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-sprite-editor-top-fields]",
+        style: { "grid-template-columns": "minmax(0, 1fr)", "row-gap": "10px", width: "100%", "max-width": "100%" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-sprite-editor-card="1"] select',
+        style: { width: "100%", "min-width": "0", "max-width": "100%" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        // The card's rows were written 191 wide into a 170 card.
+        selector: '[data-novaflow-sprite-editor-card="1"] *',
+        style: (node) => (/(^|;)\s*(min-)?width:\s*191px/.test(node.getAttribute("style") || "")
+          ? { width: "100%", "min-width": "0", "max-width": "100%", "box-sizing": "border-box" }
+          : null)
+      },
+      {
+        // 选择预设 is a picker: the select's fill, not a black bar.
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-sprite-editor-lifecycle-preset-button]",
+        style: { background: "#262626", "background-color": "#262626", border: "1px solid #343434", "border-radius": "6px", color: "#e9e9e9", height: "32px", "min-height": "32px" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-sprite-editor-lifecycle-preset-row]",
+        style: { "grid-template-columns": "minmax(0, 1fr) auto", width: "100%", "max-width": "100%" }
+      },
+      {
+        // Every slider: the native 3px track (theme sheet); some carried a
+        // 26px box inline, which set the thumb off the track.
+        selector: '.novaflow-app input[type="range"]',
+        style: { height: "3px", "min-height": "3px", "max-height": "3px", padding: "0", border: "0", "box-shadow": "none", outline: "0" }
+      },
+      {
+        // 视频处理's tools, off animation-spline.html: bare 184x32 rows, the
+        // label 24 in on the left, #b4b4b4 until touched. An active tool
+        // keeps the look its own runtime gives it.
+        selector: '[data-novaflow-ai-post-section="1"] [data-novaflow-ai-sequence-tool]',
+        style: (node) => {
+          if (node.getAttribute("data-novaflow-ai-sequence-tool-active") === "1") return null;
+          if (node.hasAttribute("data-novaflow-ai-cutout-mode") || node.hasAttribute("data-novaflow-ai-chroma-close")) return null;
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", node.disabled ? "disabled" : "idle");
+          return {
+            width: "100%", "min-width": "0", "max-width": "100%",
+            height: "32px", "min-height": "32px", "max-height": "32px", padding: "6px 9px 6px 24px",
+            display: "flex", "align-items": "center", "justify-content": "flex-start", "text-align": "left", gap: "7px",
+            background: "var(--nf-cb-hover-bg, transparent)", "background-color": "var(--nf-cb-hover-bg, transparent)",
+            color: "var(--nf-cb-hover-fg, #b4b4b4)", border: "1px solid transparent", "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "line-height": "18px", "box-shadow": "none",
+            "margin-left": "0", "margin-right": "0", "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-sprite-editor-select-wrap]",
+        style: { width: "100%", "min-width": "0", "max-width": "100%" }
+      },
+      {
+        // A colour stop: label, swatch, hex, delete - in the card's width.
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-sprite-editor-lifecycle-stop-row]",
+        style: (node) => ({
+          "grid-template-columns": node.children.length >= 4 ? "42px 20px minmax(0, 1fr) 22px" : "42px 20px minmax(0, 1fr)",
+          "column-gap": "6px", width: "100%", "min-width": "0", "max-width": "100%"
+        })
+      },
+      {
+        // Any field the runtime left in the old #070707 is given the
+        // reference's field (#262626, a #343434 edge). Kept by its mark, so
+        // the next pass does not lose it once it no longer reads black.
+        selector: '.novaflow-app button, .novaflow-app input:not([type="range"]):not([type="checkbox"]):not([type="color"]):not([type="file"])',
+        style: (node) => {
+          if (node.getAttribute("data-novaflow-field-fill") !== "1") {
+            // Measured once per inline style, not on every pass.
+            const styleText = node.getAttribute("style") || "";
+            if (NOVAFLOW_FIELD_FILL_SEEN.get(node) === styleText) return null;
+            const rect = node.getBoundingClientRect();
+            // A hidden one (a closed group) is looked at again when it shows.
+            if (rect.width <= 0 || rect.height <= 0) return null;
+            NOVAFLOW_FIELD_FILL_SEEN.set(node, styleText);
+            if (rect.width < 40 || rect.height < 20 || rect.height > 44) return null;
+            if (getComputedStyle(node).backgroundColor !== "rgb(7, 7, 7)") return null;
+            nfSetAttrIfChanged(node, "data-novaflow-field-fill", "1");
+          }
+          return {
+            background: "#262626", "background-color": "#262626", "background-image": "none",
+            border: "1px solid #343434", "border-radius": "6px", color: "#e9e9e9", "box-shadow": "none"
+          };
+        }
+      },
+      {
+        // The reference tile (图生视频 and the other modes), off
+        // animation-spline.html: 87x59, dashed #4f4f4f on #202020, the plus
+        // over 参考图, centred. Its fill and edge are vars, so it answers
+        // the pointer.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"]',
+        style: (node) => (node.querySelector("img, video, canvas") ? null : {
+          display: "flex", "flex-direction": "column", "align-items": "center", "justify-content": "center", gap: "2px",
+          width: "87px", "min-width": "87px", "max-width": "87px", height: "59px", "min-height": "59px", "max-height": "59px",
+          padding: "0", "box-sizing": "border-box", "border-radius": "8px",
+          background: "var(--nf-dz-bg, #202020)", "background-color": "var(--nf-dz-bg, #202020)", "background-image": "none",
+          // Longhands: a shorthand holding var() is left pending and never
+          // written, which is why the edge did not answer the pointer.
+          "border-width": "1px", "border-style": "dashed",
+          "border-top-color": "var(--nf-dz-bd, #4f4f4f)", "border-right-color": "var(--nf-dz-bd, #4f4f4f)",
+          "border-bottom-color": "var(--nf-dz-bd, #4f4f4f)", "border-left-color": "var(--nf-dz-bd, #4f4f4f)",
+          color: "#adadad", "box-shadow": "none", cursor: "pointer"
+        })
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"] > div',
+        style: (node) => (node.parentElement.querySelector("img, video, canvas") ? null : {
+          width: "auto", "max-width": "none", height: "auto", overflow: "visible", "text-overflow": "clip", "white-space": "nowrap",
+          color: "#adadad", "font-size": normalizeText(node.textContent || "") === "+" ? "13px" : "11px", "line-height": "16px",
+          "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT, margin: "0", padding: "0"
+        })
+      },
+      {
+        // 资源列表: its cards in two columns inside the panel's 10 inset. The
+        // grid had been centred like the empty note and was two 115 columns
+        // in a 204 panel.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-resource-sidebar-panel="1"] > div:nth-child(2) > div',
+        style: (node) => (node.querySelector('[data-novaflow-ai-resource-card="1"]') ? {
+          position: "static", top: "auto", left: "auto", right: "auto", bottom: "auto", transform: "none",
+          width: "100%", "max-width": "100%", "box-sizing": "border-box", padding: "8px", display: "grid",
+          "grid-template-columns": "repeat(2, minmax(0, 1fr))", gap: "6px", "align-content": "start", height: "auto"
+        } : null)
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-resource-card="1"]',
+        style: { width: "100%", "min-width": "0", "max-width": "100%", height: "auto", "min-height": "0", "box-sizing": "border-box", "border-radius": "8px", overflow: "hidden" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-resource-card="1"] > div:first-child',
+        style: { width: "100%", height: "58px", "min-height": "58px", "max-height": "58px" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-resource-card="1"] > div:first-child > img, [data-novaflow-ai-resource-card="1"] > div:first-child > video',
+        style: { width: "100%", height: "100%", "object-fit": "cover" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-resource-card="1"] [data-novaflow-ai-resource-overlay-control]',
+        style: { width: "18px", height: "18px", "min-width": "18px", "min-height": "18px", top: "4px", right: "4px", left: "auto", "font-size": "11px", "line-height": "18px", padding: "0", "border-radius": "5px" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-resource-card="1"] > div:nth-child(2)',
+        style: { width: "100%", height: "auto", "min-height": "0", padding: "0", "box-sizing": "border-box" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-resource-card="1"] > div:nth-child(2) > div',
+        style: { width: "100%", height: "auto", "min-height": "0", padding: "4px 6px", gap: "3px", "box-sizing": "border-box" }
+      },
+      {
+        // A loaded reference tile: the picture fills it, × sits small in its
+        // corner, the size reads along its foot.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"]',
+        style: (node) => (node.querySelector("img, video, canvas") ? {
+          position: "relative", width: "87px", "min-width": "87px", "max-width": "87px", height: "59px", "min-height": "59px", "max-height": "59px",
+          padding: "0", overflow: "hidden", "border-radius": "8px", border: "1px solid #343434", background: "#202020", "background-color": "#202020"
+        } : null)
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"] > img',
+        style: { position: "absolute", inset: "0", width: "100%", height: "100%", "min-width": "0", "min-height": "0", "max-width": "none", "max-height": "none", flex: "none", "object-fit": "contain", margin: "0", padding: "0", "border-radius": "0" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"] > button',
+        style: {
+          position: "absolute", top: "3px", right: "3px", left: "auto", bottom: "auto", width: "18px", height: "18px", "min-width": "18px", "min-height": "18px",
+          padding: "0", "border-radius": "5px", "font-size": "11px", "line-height": "18px", background: "rgba(0, 0, 0, 0.62)", "background-color": "rgba(0, 0, 0, 0.62)",
+          // 33: above the tile's upload input (32), or × opens the picker
+          // instead of clearing.
+          color: "#ffffff", border: "0", "z-index": "33", "pointer-events": "auto", display: "flex", "align-items": "center", "justify-content": "center", transform: "none"
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"]:has(img) > div',
+        style: {
+          position: "absolute", left: "0", right: "0", bottom: "0", top: "auto", width: "auto", "max-width": "none", height: "16px",
+          "font-size": "10px", "line-height": "16px", "text-align": "center", color: "#d6d6d6", background: "rgba(0, 0, 0, 0.55)",
+          overflow: "hidden", "white-space": "nowrap", "text-overflow": "ellipsis", padding: "0 3px", margin: "0", "z-index": "1"
+        }
+      },
+      {
+        // Every left card's header is 46 from its first frame; drawn 29 and
+        // corrected a pass later, a group jumped when opened (飘带计算).
+        selector: '[data-novaflow-editor-panel="1"] > .nf-panel-header',
+        style: { height: "46px", "min-height": "46px", "max-height": "46px", "box-sizing": "border-box" }
+      },
+      {
+        // 事件's row: the same 12 inset as the other switch cards, so the
+        // switches line up down the column.
+        selector: "[data-novaflow-ribbon-event-head]",
+        style: { padding: "0 12px", "justify-content": "space-between" }
+      },
+      {
+        // 自动链条 / 实时预览: the same card and 27x15 switch as the others.
+        selector: "[data-novaflow-ribbon-chain-toggle-card], [data-novaflow-ribbon-preview-toggle-card]",
+        style: (node) => (node.getBoundingClientRect().height > 0 || node.style.display !== "none" ? {
+          background: "#272727", "background-color": "#272727", border: "1px solid transparent", "border-radius": "7px",
+          "box-shadow": "none", "justify-content": "space-between", padding: "0 12px"
+        } : null)
+      },
+      {
+        selector: "[data-novaflow-ribbon-chain-toggle-input], [data-novaflow-ribbon-preview-toggle-input]",
+        style: (node) => {
+          if (node.style.display === "none") return null;
+          const card = node.closest("[data-novaflow-ribbon-chain-toggle-card], [data-novaflow-ribbon-preview-toggle-card]");
+          const on = card
+            ? (card.getAttribute("data-novaflow-ribbon-chain-enabled") || card.getAttribute("data-novaflow-ribbon-preview-enabled")) === "1"
+            : node.checked === true;
+          return {
+            "-webkit-appearance": "none", appearance: "none", width: "27px", "min-width": "27px", "max-width": "27px",
+            height: "15px", "min-height": "15px", "max-height": "15px", margin: "0", padding: "0", border: "0", "border-radius": "15px",
+            "box-shadow": "none", flex: "0 0 27px", cursor: "pointer",
+            background: on
+              ? "radial-gradient(circle at 19.5px 50%, #ffffff 4.5px, transparent 5px), #1bb28c"
+              : "radial-gradient(circle at 7.5px 50%, #cacaca 4.5px, transparent 5px), #3e3e3e"
+          };
+        }
+      },
+      {
+        // The AI switches (随机种子 and the dock's): one knob. The bundle
+        // draws its own, which follows the state; the runtime's second knob
+        // sat fixed on the right.
+        selector: "[data-novaflow-ai-state-toggle] > [data-novaflow-ai-state-toggle-knob]",
+        style: { display: "none" }
+      },
+      {
+        selector: "[data-novaflow-ai-state-toggle] > span:not([data-novaflow-ai-state-toggle-knob])",
+        style: (node) => {
+          const on = novaflowAiToggleOn(node.parentElement);
+          return {
+            position: "absolute", top: "3px", left: on ? "15px" : "3px", width: "9px", height: "9px", "min-width": "9px", "min-height": "9px",
+            "max-width": "9px", "max-height": "9px", transform: "none", "border-radius": "50%", margin: "0",
+            background: on ? "#ffffff" : "#cacaca", "background-color": on ? "#ffffff" : "#cacaca", "box-shadow": "none", display: "block"
+          };
+        }
+      },
+      {
+        selector: "[data-novaflow-ai-state-toggle]",
+        style: { outline: "0", border: "0", "box-shadow": "none" }
+      },
+      {
+        // The tool rows sit edge to edge, their lines between them.
+        when: "body.novaflow-primary-target-tools",
+        selector: ":has(> [data-novaflow-tools-entry])",
+        style: { gap: "0", "row-gap": "0" }
+      },
+      {
+        // A 未开启 / 已开启 pair (工具 → Spine 图集's 预乘 Alpha) drawn as the
+        // particle page's switch card, as asked: the question on the left,
+        // a 27x15 switch on the right. Both buttons stay; the one not
+        // pressed lies over the switch, so a click picks the other state.
+        when: "body.novaflow-primary-target-tools",
+        selector: "div:has(> button[aria-pressed] + button[aria-pressed])",
+        style: (node) => {
+          const buttons = Array.from(node.children).filter((child) => child.tagName === "BUTTON");
+          if (buttons.length !== 2) return null;
+          const texts = buttons.map((button) => normalizeText(button.textContent || ""));
+          if (!texts[0].startsWith("\u672a\u5f00\u542f") || !texts[1].startsWith("\u5df2\u5f00\u542f")) return null;
+          const on = buttons[1].getAttribute("aria-pressed") === "true";
+          nfSetAttrIfChanged(node, "data-novaflow-pair-switch", on ? "on" : "off");
+          const card = node.parentElement;
+          if (card instanceof HTMLElement) nfSetAttrIfChanged(card, "data-novaflow-pair-switch-card", on ? "on" : "off");
+          return {
+            position: "relative", width: "27px", "min-width": "27px", "max-width": "27px", height: "15px", "min-height": "15px", "max-height": "15px",
+            flex: "0 0 27px", padding: "0", margin: "0", border: "0", "border-radius": "15px", overflow: "hidden", "box-shadow": "none",
+            background: on ? "#1bb28c" : "#3e3e3e", "background-color": on ? "#1bb28c" : "#3e3e3e", display: "block"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-pair-switch] > button",
+        style: (node) => ({
+          position: "absolute", inset: "0", width: "100%", height: "100%", "min-width": "0", "min-height": "0", "max-height": "none",
+          margin: "0", padding: "0", border: "0", opacity: "0", "font-size": "0", background: "transparent", "background-color": "transparent",
+          "pointer-events": node.getAttribute("aria-pressed") === "true" ? "none" : "auto", cursor: "pointer", "z-index": node.getAttribute("aria-pressed") === "true" ? "0" : "1"
+        })
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-pair-switch-card]",
+        style: (node) => ({
+          display: "flex", "flex-direction": "row", "align-items": "center", "justify-content": "space-between", gap: "10px",
+          background: "#272727", "background-color": "#272727", border: "1px solid transparent", "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+          padding: "8px 12px", "min-height": "46px", height: "auto", "box-sizing": "border-box",
+          color: node.getAttribute("data-novaflow-pair-switch-card") === "on" ? "#8ee0c5" : "#eaeaea"
+        })
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-pair-switch-card] > :first-child",
+        style: { flex: "1 1 auto", "min-width": "0", "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, color: "inherit", "line-height": "18px", margin: "0" }
+      },
+      {
+        // 美工's groups keep their 3 above and below after being opened and
+        // closed (the split runtime cleared it, and the rows closed up).
+        when: "body.novaflow-primary-target-art",
+        selector: "[data-novaflow-spine-split-control-category]",
+        // The first group starts flush, as every other page's does (its
+        // title at the list's top, not 3 lower - 绘图 <-> UI jumped by it).
+        style: (node) => {
+          const first = !(node.previousElementSibling && node.previousElementSibling.hasAttribute("data-novaflow-spine-split-control-category"));
+          return { "padding-top": first ? "0" : "3px", "padding-bottom": "3px", "margin-top": "0", "margin-bottom": "0" };
+        }
+      },
+      {
+        // 预设名称 + 保存: one height (32), 8 apart, 保存 no bigger than it needs.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-editor-panel="1"] button',
+        style: (node) => {
+          if (normalizeText(node.textContent || "") !== "\u4fdd\u5b58") return null;
+          const field = node.previousElementSibling;
+          if (!(field instanceof HTMLInputElement)) return null;
+          nfSetAttrIfChanged(node.parentElement, "data-novaflow-preset-save-row", "1");
+          return {
+            height: "32px", "min-height": "32px", "max-height": "32px", width: "auto", "min-width": "0", "max-width": "none",
+            padding: "0 12px", "font-size": "12px", "line-height": "30px", "border-radius": NOVAFLOW_RECT_RADIUS_PX, flex: "0 0 auto", margin: "0"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-preset-save-row] > input",
+        style: { height: "32px", "min-height": "32px", "max-height": "32px", flex: "1 1 auto", "min-width": "0", width: "auto", margin: "0", "box-sizing": "border-box" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-preset-save-row]",
+        style: { display: "flex", "align-items": "center", gap: "8px", "column-gap": "8px", "grid-template-columns": "none", width: "100%", "max-width": "100%" }
+      },
+      {
+        // The hex field reads whole (#ffd166) in the row's width.
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-sprite-editor-lifecycle-stop-row] input:not([type=\"color\"])",
+        style: { padding: "0 6px", "font-size": "11px", "min-width": "0", width: "100%", "box-sizing": "border-box" }
+      },
+      {
+        // A colour stop's 删除 is a white ×.
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-sprite-editor-lifecycle-stop-delete]",
+        style: {
+          width: "22px", "min-width": "22px", "max-width": "22px", height: "22px", "min-height": "22px", "max-height": "22px",
+          padding: "0", border: "0", background: "transparent", "background-color": "transparent", "font-size": "0", color: "#ffffff",
+          display: "flex", "align-items": "center", "justify-content": "center", "border-radius": "5px", position: "relative"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-manager-body]",
+        style: (node) => ({
+          // 模板库 on a row of its own, 导入 / 保存 side by side under it.
+          "grid-template-columns": "repeat(2, minmax(0, 1fr))", gap: "8px", padding: "5px 7px 17px", "box-sizing": "border-box",
+          display: node.parentElement?.getAttribute("data-open") === "1" ? "grid" : "none"
+        })
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-manager] > .nf-panel-header",
+        style: { display: "flex", "align-items": "center", "justify-content": "space-between", width: "100%", cursor: "pointer" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-manager-action]",
+        style: (node) => (nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle"), {
+          "grid-column": node === node.parentElement?.firstElementChild ? "1 / -1" : "auto",
+          height: "32px", "min-height": "32px", padding: "0 4px", width: "100%", "min-width": "0", "white-space": "nowrap",
+          "border-radius": NOVAFLOW_RECT_RADIUS_PX, border: "1px solid transparent",
+          background: "var(--nf-cb-hover-bg, #282828)", "background-color": "var(--nf-cb-hover-bg, #282828)",
+          color: "var(--nf-cb-hover-fg, #eaeaea)", "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, cursor: "pointer",
+          "box-shadow": "none"
+        })
+      },
+      {
+        // Their old places on the canvas bar.
+        when: "body.novaflow-primary-target-particle:not(.novaflow-aifx-open)",
+        selector: '#novaflow-particle-project-top-actions, [data-novaflow-template-control="1"]',
+        style: { display: "none" }
+      },
+      {
+        // 模板库, as AI 特效's: centred on a 58% shade, a 980 panel, five
+        // cards a row, each a 16:10 picture over its name.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"]',
+        style: {
+          position: "fixed", top: "0", left: "0", right: "0", bottom: "0", width: "auto", "min-width": "0", "max-width": "none",
+          height: "auto", "min-height": "0", "max-height": "none", transform: "none", display: "flex", "align-items": "center",
+          "justify-content": "center", padding: "72px 24px 24px", background: "rgba(0, 0, 0, 0.58)", "background-color": "rgba(0, 0, 0, 0.58)",
+          overflow: "hidden", "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] > div',
+        style: {
+          position: "relative", display: "flex", "flex-direction": "column", width: "980px", "max-width": "100%", height: "auto",
+          "max-height": "100%", background: "#1c1c1c", "background-color": "#1c1c1c", border: "1px solid rgba(255, 255, 255, 0.10)",
+          "border-radius": "12px", padding: "12px", "box-shadow": "0 24px 64px rgba(0, 0, 0, 0.5)", overflow: "hidden", "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] > div > div:first-child',
+        style: { "margin-bottom": "10px", height: "30px", "min-height": "30px", "align-items": "center", "justify-content": "space-between", display: "flex", "flex": "0 0 auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] > div > div:first-child > div:first-child',
+        style: { "font-size": "14px", "font-weight": NOVAFLOW_PRIMARY_FONT_WEIGHT, color: "rgba(255, 255, 255, 0.92)" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] > div > div:first-child button',
+        style: (node) => (nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle"), {
+          height: "30px", "min-width": "86px", padding: "0 12px", background: "var(--nf-cb-hover-bg, #2a2a2a)", "background-color": "var(--nf-cb-hover-bg, #2a2a2a)",
+          border: "1px solid rgba(255, 255, 255, 0.10)", "border-radius": "8px", color: "#ffffff", "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT
+        })
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] > div > div:nth-child(2)',
+        style: { flex: "1 1 auto", "min-height": "0", "overflow-y": "auto", "padding-right": "0", height: "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-preview-sync-signature]",
+        style: { display: "grid", "grid-template-columns": "repeat(5, minmax(0, 1fr))", "grid-template-rows": "none", "grid-auto-rows": "auto", gap: "8px", width: "100%", height: "auto", padding: "0" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-tile="1"]',
+        style: (node) => ({
+          // The column's width (the library wrote 163 into 179 columns and left
+          // a 16px gap beside every card).
+          position: "relative", display: "block", width: "100%", "min-width": "0", "max-width": "none", height: "auto", "min-height": "0", padding: "8px",
+          background: "#161616", "background-color": "#161616", "border-radius": "10px", cursor: "pointer", "box-sizing": "border-box",
+          "border-width": "1px", "border-style": node.hasAttribute("data-novaflow-template-save-tile") ? "dashed" : "solid",
+          "border-top-color": "var(--nf-tpl-bd, rgba(255, 255, 255, 0.12))", "border-right-color": "var(--nf-tpl-bd, rgba(255, 255, 255, 0.12))",
+          "border-bottom-color": "var(--nf-tpl-bd, rgba(255, 255, 255, 0.12))", "border-left-color": "var(--nf-tpl-bd, rgba(255, 255, 255, 0.12))",
+          "box-shadow": "none", overflow: "hidden"
+        })
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-save-tile] > div",
+        style: {
+          width: "100%", "aspect-ratio": "16 / 10", display: "flex", "flex-direction": "column", "align-items": "center", "justify-content": "center",
+          gap: "2px", "border-radius": "8px", background: "rgba(255, 255, 255, 0.03)", color: "#ffffff", margin: "0", height: "auto"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-save-plus]",
+        style: { "font-size": "40px", "line-height": "1", "font-weight": "200", height: "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: "[data-novaflow-template-save-title], [data-novaflow-template-save-hint]",
+        style: { "font-size": "11px", color: "rgba(255, 255, 255, 0.55)", "line-height": "15px", height: "auto", "text-align": "center" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-preview]',
+        style: {
+          position: "relative", inset: "auto", top: "auto", left: "auto", width: "100%", height: "auto", "aspect-ratio": "16 / 10",
+          "border-radius": "8px", overflow: "hidden", background: "#000000", "background-color": "#000000",
+          display: "flex", "align-items": "center", "justify-content": "center"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-preview] > canvas',
+        style: { height: "100%", width: "auto", "max-width": "100%", position: "relative" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-delete-button]',
+        style: {
+          position: "absolute", right: "6px", top: "6px", left: "auto", bottom: "auto", width: "20px", height: "20px", "min-width": "20px",
+          "min-height": "20px", "border-radius": "999px", background: "rgba(0, 0, 0, 0.55)", "background-color": "rgba(0, 0, 0, 0.55)",
+          border: "1px solid rgba(255, 255, 255, 0.25)", color: "#ffffff", "font-size": "12px", "line-height": "1", padding: "0", "z-index": "2"
+        }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-label]',
+        style: (node) => {
+          applyParticleTemplateName(node);
+          return {
+            position: "static", inset: "auto", "margin-top": "6px", "margin-left": "-3px", padding: "1px 3px", height: "auto", "min-height": "0",
+            width: "auto", display: "block", background: "transparent", "background-color": "transparent", "font-size": "11px",
+            color: "#cbd0d6", "text-align": "left", "white-space": "nowrap", overflow: "hidden", "text-overflow": "ellipsis",
+            "border-radius": "4px", cursor: "text", "justify-content": "flex-start"
+          };
+        }
+      },
+      {
+        // Every close / delete "×" in the app is one mark (theme sheet 2.0z):
+        // the same thin 12px cross, whatever font or weight it came in.
+        selector: 'button, [role="button"]',
+        style: (node) => {
+          if (node.childElementCount !== 0) return null;
+          const text = normalizeText(node.textContent || "");
+          if (text !== "\u00d7" && text !== "\u2715" && text !== "\u2716" && text !== "\u2717") return null;
+          nfSetAttrIfChanged(node, "data-novaflow-x-glyph", "1");
+          return { "font-size": "0", "line-height": "0", display: "inline-flex", "align-items": "center", "justify-content": "center" };
+        }
+      },
+      {
+        // 模板库's delete: the bare cross, no round plate.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-delete-button]',
+        style: { background: "transparent", "background-color": "transparent", border: "0", "box-shadow": "none", color: "#ffffff" }
+      },
+      {
+        // AI 序列动画's dock.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-generation-panel="1"]',
+        // Sized by its rows in every mode. It had been held at 206, or 383
+        // with the reference tiles, which left 多参视频 a tall empty panel.
+        style: {
+          padding: "13px 14px", gap: `${DOCK_ROW_GAP}px`, "row-gap": `${DOCK_ROW_GAP}px`,
+          height: "auto", "min-height": "0", "max-height": "none", flex: "0 0 auto"
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row="1"], [data-novaflow-ai-settings-column="1"]',
+        // Sized by their rows: both had been held at 0 while the rows
+        // hung out of them on offsets tuned for the old title line.
+        style: { gap: `${DOCK_ROW_GAP}px`, "row-gap": `${DOCK_ROW_GAP}px`, height: "auto", "min-height": "0", "max-height": "none", flex: "0 0 auto" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-generation-progress="1"], [data-novaflow-ai-prompt-grid="1"]',
+        style: { "margin-top": "0", "margin-bottom": "0", top: "0" }
+      },
+      {
+        selector: '[data-novaflow-ai-prompt-grid="1"], [data-novaflow-ai-prompt-column="1"]',
+        // They had a 132 basis for the title line above the panel.
+        style: { height: "auto", "min-height": "0", "max-height": "none", flex: "0 0 auto" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-settings-row="1"]',
+        style: { height: "auto", "min-height": "32px", "align-items": "flex-start", gap: `${DOCK_ROW_GAP}px` }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-settings-fields="1"]',
+        style: { gap: `${DOCK_LABEL_GAP}px`, "row-gap": "8px", "column-gap": `${DOCK_LABEL_GAP}px`, "align-items": "center", "flex-wrap": "wrap", "padding-top": "2px" }
+      },
+      {
+        // 随机种子's field, found here in the first frame: the runtime pass
+        // that marks it runs ~0.4s after the page, and the field was drawn as
+        // a plain label until then.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-settings-fields="1"] > *',
+        style: (node) => {
+          if (normalizeText(node.textContent || "").includes("随机种子")) nfSetAttrIfChanged(node, "data-novaflow-ai-random-seed-field", "1");
+          return null;
+        }
+      },
+      {
+        // A parameter's label: 11 clear of the control before it, 6 from its own.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-settings-fields="1"] > div:not([data-novaflow-ai-random-seed-field]), [data-novaflow-ai-random-seed-field="1"] > div',
+        style: (node) => ({
+          "font-size": "11px",
+          "font-weight": "400",
+          color: DOCK_LABEL_TEXT,
+          "line-height": "28px",
+          height: "28px",
+          "margin-left": node.previousElementSibling && !node.closest('[data-novaflow-ai-random-seed-field="1"]') ? `${DOCK_ROW_GAP - DOCK_LABEL_GAP}px` : "0",
+          "white-space": "nowrap"
+        })
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-settings-fields="1"] select',
+        style: { width: "auto", "min-width": "0", "max-width": "180px" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-settings-fields="1"] input:not([type="range"]):not([type="checkbox"])',
+        style: {
+          width: `${UI_NUM_FIELD_WIDTH}px`, "min-width": `${UI_NUM_FIELD_WIDTH}px`, "max-width": `${UI_NUM_FIELD_WIDTH}px`,
+          height: `${UI_NUM_FIELD_HEIGHT}px`, "min-height": `${UI_NUM_FIELD_HEIGHT}px`, "max-height": `${UI_NUM_FIELD_HEIGHT}px`,
+          padding: "5px", border: `1px solid ${UI_NUM_FIELD_BORDER_COLOR}`, "border-radius": UI_NUM_FIELD_RADIUS_PX,
+          background: UI_NUM_FIELD_BACKGROUND, "background-color": UI_NUM_FIELD_BACKGROUND,
+          // No color: the number overlay makes the input's own text transparent.
+          "font-size": "11px", "text-align": "center", "box-sizing": "border-box"
+        }
+      },
+      {
+        // 随机种子: an 11/500 label, green while on, over a 27x15 switch.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-random-seed-field="1"]',
+        style: (node) => {
+          const on = novaflowAiToggleOn(node.querySelector('[data-novaflow-ai-state-toggle]'));
+          nfSetAttrIfChanged(node, "data-novaflow-toggle-on", on ? "1" : "0");
+          return { gap: "7px", "margin-left": `${DOCK_ROW_GAP - DOCK_LABEL_GAP}px`, "align-items": "center", height: "28px" };
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-random-seed-field="1"] > div',
+        style: (node) => ({
+          "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
+          color: node.parentElement?.getAttribute("data-novaflow-toggle-on") === "1" ? DOCK_TOGGLE_ON_TEXT : DOCK_LABEL_TEXT
+        })
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-random-seed-field="1"] [data-novaflow-ai-state-toggle]',
+        style: (node) => {
+          const on = novaflowAiToggleOn(node);
+          return {
+            width: "27px", "min-width": "27px", "max-width": "27px", height: "15px", "min-height": "15px", "max-height": "15px",
+            padding: "0", border: "0", "border-radius": "15px", "box-shadow": "none",
+            background: on ? DOCK_SWITCH_ON : DOCK_SWITCH_OFF, "background-color": on ? DOCK_SWITCH_ON : DOCK_SWITCH_OFF
+          };
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-random-seed-field="1"] [data-novaflow-ai-state-toggle-knob="1"]',
+        style: (node) => {
+          const on = novaflowAiToggleOn(node.closest("[data-novaflow-ai-state-toggle]"));
+          return {
+            width: "9px", height: "9px", "min-width": "9px", "min-height": "9px", top: "3px", left: on ? "15px" : "3px",
+            right: "auto", bottom: "auto", transform: "none", "border-radius": "50%",
+            background: on ? DOCK_SWITCH_KNOB_ON : DOCK_SWITCH_KNOB_OFF, "background-color": on ? DOCK_SWITCH_KNOB_ON : DOCK_SWITCH_KNOB_OFF,
+            "box-shadow": "none"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-generate-button="1"]',
+        style: (node) => {
+          const disabled = node.disabled === true;
+          return {
+            "min-width": "104px", width: "auto", height: "32px", "min-height": "32px", "max-height": "32px",
+            padding: "5px 10px", border: `1px solid ${disabled ? "transparent" : DOCK_PRIMARY_BORDER}`, "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            "font-size": "12px", "font-weight": "600", "box-shadow": "none", "box-sizing": "border-box",
+            opacity: disabled ? NOVAFLOW_DISABLED_OPACITY : "1"
+          };
+        }
+      },
+      {
+        // 等待生成 0% and a hairline running out to the right.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-generation-progress="1"]',
+        style: { display: "flex", "flex-direction": "row", "align-items": "center", gap: "8px", height: "15px", "min-height": "15px", "max-height": "15px" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-generation-progress="1"] > div:first-child',
+        style: { flex: "0 0 auto", width: "auto", padding: "0", gap: "8px", height: "15px", "align-items": "center" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-generation-progress="1"] > div:first-child > div',
+        style: { "font-size": "10px", color: DOCK_PROGRESS_TEXT, "line-height": "15px", height: "15px", width: "auto", "max-width": "none", overflow: "visible", "text-overflow": "clip", "white-space": "nowrap" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-generation-progress="1"] > div:nth-child(2)',
+        style: { flex: "1 1 auto", width: "auto", height: "1px", "min-height": "1px", "border-radius": "0", background: DOCK_PROGRESS_LINE, "background-color": DOCK_PROGRESS_LINE, position: "static" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-generation-progress="1"] > div:nth-child(2) > div',
+        style: { height: "1px", "border-radius": "0" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel])',
+        style: { padding: "10px 12px", height: "auto", "min-height": "0", "max-height": "none", border: `1px solid ${AI_ANIMATION_TIMELINE_BORDER_COLOR}`, "border-radius": `${AI_ANIMATION_TIMELINE_RADIUS}px`, "box-sizing": "border-box" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) > div',
+        style: { gap: `${DOCK_ROW_GAP}px`, "row-gap": `${DOCK_ROW_GAP}px` }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) > div > div:first-child, [data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) > div > div:first-child > div',
+        style: { gap: "8px", "column-gap": "8px", "row-gap": "8px", "min-height": `${PLAYBACK_BUTTON_SIZE}px`, height: "auto", "align-items": "center", "flex-wrap": "wrap" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) button[data-novaflow-ai-playback-button], [data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) button[data-novaflow-ai-loop-button]',
+        style: (node) => {
+          const title = String(node.getAttribute("title") || node.getAttribute("aria-label") || "").replace(/\s+/g, "");
+          const icon = Object.keys(PLAYBACK_ICON_BY_TITLE).reduce((found, key) => found || (key.replace(/\s+/g, "") === title ? PLAYBACK_ICON_BY_TITLE[key] : ""), "");
+          if (icon) nfSetAttrIfChanged(node, "data-novaflow-playback-icon", icon);
+          const active = node.getAttribute("data-novaflow-ai-loop-active") === "1";
+          const disabled = node.disabled === true;
+          if (!active && !disabled) nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle");
+          else nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : "disabled");
+          const idle = `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`;
+          return {
+            width: `${PLAYBACK_BUTTON_SIZE}px`, "min-width": `${PLAYBACK_BUTTON_SIZE}px`, "max-width": `${PLAYBACK_BUTTON_SIZE}px`,
+            height: `${PLAYBACK_BUTTON_SIZE}px`, "min-height": `${PLAYBACK_BUTTON_SIZE}px`, "max-height": `${PLAYBACK_BUTTON_SIZE}px`,
+            padding: "6px", border: `1px solid ${active ? PLAYBACK_SELECTED_BORDER : "transparent"}`, "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            background: active ? PLAYBACK_SELECTED_BACKGROUND : idle, "background-color": active ? PLAYBACK_SELECTED_BACKGROUND : idle,
+            color: active ? PLAYBACK_SELECTED_TEXT : `var(--nf-cb-hover-fg, ${UI_ICON_BUTTON_TEXT})`,
+            "box-shadow": "none", opacity: disabled ? NOVAFLOW_DISABLED_OPACITY : "1", "box-sizing": "border-box",
+            display: "inline-flex", "align-items": "center", "justify-content": "center"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) button[data-novaflow-playback-icon] > svg',
+        style: { display: "none" }
+      },
+      {
+        // 帧率 / 锁定 / 第 N 帧: the dock's 11px labels.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) [data-novaflow-ai-timeline-edit-group-locked] > div, [data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) label[data-novaflow-ai-timeline-lock-label]',
+        style: { "font-size": "11px", color: DOCK_LABEL_TEXT, width: "auto", "min-width": "0" }
+      },
+      {
+        // 帧率's group sits 8 after the loop switch; 锁定 is its checkbox and
+        // label, 19 tall, 6 apart.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) [data-novaflow-ai-timeline-edit-group-locked]',
+        style: (node) => (node.tagName === "LABEL"
+          ? { height: "19px", "min-height": "19px", padding: "0", gap: "6px", margin: "0", "align-items": "center" }
+          : { margin: "0", gap: "6px", "align-items": "center", height: "28px" })
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) [data-novaflow-ai-timeline-edit-group-locked] input[type="range"]',
+        style: { width: "90px", "min-width": "90px", "max-width": "90px" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) [data-novaflow-ai-timeline-edit-group-locked] input:not([type="range"]):not([type="checkbox"])',
+        style: {
+          width: `${UI_NUM_FIELD_WIDTH}px`, height: `${UI_NUM_FIELD_HEIGHT}px`, "min-height": `${UI_NUM_FIELD_HEIGHT}px`, padding: "5px",
+          border: `1px solid ${UI_NUM_FIELD_BORDER_COLOR}`, "border-radius": UI_NUM_FIELD_RADIUS_PX,
+          background: UI_NUM_FIELD_BACKGROUND, "background-color": UI_NUM_FIELD_BACKGROUND, "font-size": "11px", "box-sizing": "border-box"
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) > div > div:first-child > div:first-child > div:last-child > div',
+        style: { "font-size": "11px", color: PLAYBACK_FRAME_TEXT }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) > div > div:first-child > div:last-child input[type="range"]',
+        style: { width: "120px", "min-width": "120px", "max-width": "120px" }
+      },
+      {
+        // The ruler: labels on top, ticks and the frame markers under them.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) > div > div:nth-child(2)',
+        style: {
+          height: `${PLAYBACK_RULER_HEIGHT}px`, "min-height": `${PLAYBACK_RULER_HEIGHT}px`, "max-height": `${PLAYBACK_RULER_HEIGHT}px`,
+          border: "0", "border-radius": "0", background: "transparent", "background-color": "transparent", "box-shadow": "none"
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) > div > div:nth-child(2) > div > div:first-child',
+        style: { top: "0", height: "14px" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) > div > div:nth-child(2) > div > div:first-child > div',
+        style: (node) => ({ "font-size": "10px", "line-height": "14px", color: node.nextElementSibling ? PLAYBACK_RULER_TEXT : node.style.color || PLAYBACK_RULER_TEXT })
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) [data-novaflow-ai-timeline-tick]',
+        style: { bottom: "0" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) > div > div:nth-child(2) > div:nth-child(4) > div',
+        style: (node) => (node.style.top ? { top: "14px", bottom: node.style.height === "0px" ? "auto" : "0" } : null)
+      },
+      {
+        // The prompt panel: its title is only for readers, the bar is 33 and
+        // the text area 74.
+        selector: '[data-novaflow-ai-prompt-title="1"]',
+        style: {
+          position: "absolute", width: "1px", height: "1px", "min-height": "0", margin: "-1px", padding: "0",
+          overflow: "hidden", clip: "rect(0 0 0 0)", "white-space": "nowrap", border: "0"
+        }
+      },
+      {
+        selector: '[data-novaflow-ai-prompt-column="1"], [data-novaflow-ai-prompt-grid="1"]',
+        style: { gap: "0", "row-gap": "0" }
+      },
+      {
+        selector: '[data-novaflow-ai-prompt-frame="1"]',
+        style: {
+          height: "109px", "min-height": "109px", "max-height": "109px",
+          background: DOCK_PROMPT_SURFACE, "background-color": DOCK_PROMPT_SURFACE,
+          border: `1px solid ${DOCK_PROMPT_BORDER}`, "border-radius": "8px", "box-sizing": "border-box", overflow: "hidden"
+        }
+      },
+      {
+        selector: '[data-novaflow-ai-prompt-history-row="1"]',
+        style: {
+          height: "33px", "min-height": "33px", "max-height": "33px", padding: "4px 7px", gap: "4px",
+          "align-items": "center", "box-sizing": "border-box",
+          background: DOCK_PROMPT_SURFACE, "background-color": DOCK_PROMPT_SURFACE
+        }
+      },
+      {
+        selector: '[data-novaflow-ai-prompt-frame="1"] textarea',
+        style: {
+          height: "74px", "min-height": "74px", "max-height": "74px", padding: "12px 14px",
+          "font-size": "12px", color: DOCK_PROMPT_TEXT,
+          background: DOCK_PROMPT_SURFACE, "background-color": DOCK_PROMPT_SURFACE,
+          border: "0", "border-radius": "0", "box-shadow": "none", resize: "none", "box-sizing": "border-box"
+        }
+      },
+      {
+        selector: '[data-novaflow-ai-prompt-assistant-actions="1"]',
+        style: { top: "4px", right: "7px", gap: "4px", height: "24px", "align-items": "center" }
+      },
+      {
+        // 历史记录 / AI 助手 / 编辑: 10/500, a 16 outline icon 7 in, bare
+        // until touched. AI 助手 stays grey, as asked.
+        selector: '[data-novaflow-prompt-action-button="1"]',
+        style: (node) => {
+          const text = normalizeText(node.textContent || "");
+          const kind = text.includes("\u5386\u53f2") ? "history" : (text.includes("AI") ? "assistant" : (text.includes("\u7f16\u8f91") ? "edit" : ""));
+          if (kind) nfSetAttrIfChanged(node, "data-novaflow-prompt-action-kind", kind);
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", "idle");
+          return {
+            height: "24px", "min-height": "24px", "max-height": "24px", padding: "3px 7px", gap: "7px",
+            "min-width": "0", display: "inline-flex", "align-items": "center", "justify-content": "center",
+            border: "1px solid transparent", "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            background: "var(--nf-cb-hover-bg, transparent)", "background-color": "var(--nf-cb-hover-bg, transparent)",
+            color: `var(--nf-cb-hover-fg, ${DOCK_PROMPT_ACTION_TEXT})`, "box-shadow": "none",
+            "font-size": "10px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "line-height": "1", "box-sizing": "border-box"
+          };
+        }
+      },
+      {
+        // Every page's canvas bar plates and buttons (see canvasBarButtonStyle).
+        selector: CANVAS_BAR_PILL_SELECTORS.join(", "),
+        style: () => canvasBarPillStyle()
+      },
+      {
+        // The drawing page's own runtime draws its view buttons and 自动适配
+        // to the same values; it owns them, so they are left out here.
+        selector: CANVAS_BAR_PILL_SELECTORS.filter((pill) => pill !== "#novaflow-spine-split-view-controls").map((pill) => `${pill} button`).join(", "),
+        style: (node) => canvasBarButtonStyle(node)
+      },
+      {
+        selector: CANVAS_BAR_QUIET_SELECTOR,
+        style: (node) => canvasBarQuietStyle(node)
+      },
+      {
+        // 自动适配 sits on the stage's right edge, not 8-10 in from it.
+        selector: [
+          '[data-novaflow-zoom-controls="1"]:not([data-novaflow-ai-zoom-controls="1"])',
+          "#novaflow-spine-split-zoom-hud",
+          '[data-novaflow-ui-design-toolbar-action="fit"]'
+        ].join(", "),
+        style: (node) => {
+          if (getComputedStyle(node).position !== "absolute") return null;
+          // The pill's own 38 / 7 from its first pass (theme sheet 3.0k), not
+          // 36 / 8 until the autofit marker arrived a pass later.
+          return { right: "0", left: "auto", top: `${CANVAS_BAR_ROW_TOP}px`, height: `${AI_ANIMATION_CAPSULE_HEIGHT}px`, "min-height": `${AI_ANIMATION_CAPSULE_HEIGHT}px`, "max-height": `${AI_ANIMATION_CAPSULE_HEIGHT}px` };
+        }
+      },
+      {
+        // 动画 / AI 序列动画: its container runs under the resource panel too.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-zoom-controls="1"]',
+        style: (node) => {
+          if (getComputedStyle(node).position !== "absolute") return null;
+          const layout = aiCanvasBarLayout();
+          if (layout.wrapped) {
+            return { left: "0", right: "auto", top: `${layout.quietTop}px` };
+          }
+          // Measured against its own container, whose right edge is the
+          // workspace's rather than the stage's.
+          const parent = node.offsetParent;
+          const parentRight = parent instanceof HTMLElement ? parent.getBoundingClientRect().right : layout.box.right + AI_ANIMATION_RESOURCE_SIDEBAR_SPAN;
+          return { right: `${Math.round(parentRight - layout.box.right)}px`, left: "auto", top: `${layout.rowTop + 1}px` };
+        }
+      },
+      {
+        // Every upload area's "+" is one mark (theme sheet 3.0b): two bars of
+        // the same 1.5px stroke, whatever font or size it came in. Only the
+        // size follows the area.
+        selector: '[data-nf-upload-dropzone] *, [data-novaflow-template-save-plus], [class*="upload"] *, [class*="dropzone"] *',
+        style: (node) => {
+          if (node.childElementCount !== 0) return null;
+          // A filled zone hides its icon (it turns into a check there).
+          if (node.classList.contains("nf-upload-dropzone__icon") && node.closest('[data-filled="1"]')) return { display: "none" };
+          if (normalizeText(node.textContent || "") !== "+") return null;
+          if (node.closest("button:not([data-nf-upload-dropzone])") && !node.closest("[data-nf-upload-dropzone]")) return null;
+          nfSetAttrIfChanged(node, "data-novaflow-plus-glyph", "1");
+          const size = node.hasAttribute("data-novaflow-template-save-plus") ? 26 : node.closest('[data-novaflow-ai-reference-column="1"], [data-novaflow-art-generate-reference-column="1"]') ? 12 : 18;
+          return {
+            "font-size": "0", "line-height": "0", color: "currentColor", display: "block", position: "relative", flex: "0 0 auto",
+            width: `${size}px`, "min-width": `${size}px`, "max-width": `${size}px`, height: `${size}px`, "min-height": `${size}px`, "max-height": `${size}px`,
+            margin: "0 auto", padding: "0", overflow: "visible"
+          };
+        }
+      },
+      {
+        // 绘图: AI优化 / AI反推 are not in the reference's prompt bar (历史记录,
+        // AI 助手, 编辑), and were asked off. Hidden only; the code is kept.
+        selector: '#novaflow-art-generate-workspace .novaflow-art-generate-assistant-button[data-running]',
+        style: { display: "none" }
+      },
+      {
+        // 绘图's dock rows (theme sheet 3.0c): tiles, then the two prompts,
+        // 10 apart; each prompt 86 tall, as the reference's.
+        // Tiles on their own row; the two prompts side by side under them
+        // (as asked: not one above the other).
+        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid",
+        style: {
+          display: "grid", "grid-template-columns": "minmax(0, 1fr) minmax(0, 1fr)", "grid-template-rows": "none", "grid-auto-rows": "auto",
+          gap: "10px", "margin-top": "8px", height: "auto", "min-height": "0", "max-height": "none", flex: "0 0 auto"
+        }
+      },
+      {
+        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid > .novaflow-art-generate-ref-grid",
+        style: { "grid-column": "1 / -1" }
+      },
+      {
+        selector: "#novaflow-art-generate-workspace .novaflow-art-generate-edit-grid > .novaflow-art-generate-prompt",
+        // A model without a negative prompt leaves the positive one alone: it
+        // takes the whole row, not half of it.
+        style: (node) => ({
+          width: "auto", "min-width": "0", flex: "none",
+          "grid-column": node.parentElement && node.parentElement.getAttribute("data-negative-prompt") === "0" ? "1 / -1" : "auto",
+          height: "108px", "min-height": "108px", "max-height": "108px"
+        })
+      },
+      {
+        // AI 特效 → 特效模板: the loaded preview's × (in place of 清空), small
+        // on its corner; lit by the var on hover (aifx sheet).
+        selector: "#novaflow-aifx-mvp [data-template-clear-x]",
+        style: {
+          position: "absolute", top: "6px", right: "6px", left: "auto", bottom: "auto", "z-index": "2",
+          width: "20px", "min-width": "20px", "max-width": "20px", height: "20px", "min-height": "20px", "max-height": "20px",
+          padding: "0", border: "0", "border-radius": "5px", display: "flex", "align-items": "center", "justify-content": "center",
+          "background-color": "var(--nf-x-bg, rgba(0, 0, 0, 0.62))", "background-image": "none", color: "var(--nf-x-fg, #ffffff)"
+        }
+      },
+      {
+        // 模板库 alone in its row now 清空 is off: the full width.
+        selector: '#novaflow-aifx-mvp [data-action="open-template-library"]',
+        style: { flex: "1 1 auto", width: "100%", "min-width": "0", "max-width": "none", "justify-content": "center" }
+      },
+      {
+        // Every dropdown's arrow is the panels' thin chevron (7px box, 1.35
+        // stroke) instead of the browser's heavy one.
+        selector: "select:not([multiple]):not([size])",
+        style: (node) => {
+          const pad = Number.parseFloat(getComputedStyle(node).paddingRight) || 0;
+          return {
+            appearance: "none", "-webkit-appearance": "none",
+            "background-image": NOVAFLOW_THIN_SELECT_ARROW, "background-repeat": "no-repeat",
+            "background-position": "right 10px center", "background-size": "10px 6px",
+            "padding-right": `${Math.max(26, pad)}px`
+          };
+        }
+      },
+      {
+        // 着色模式 / 混合 drew their own arrow beside the select; the select's
+        // thin chevron is the one arrow now.
+        selector: "[data-novaflow-sprite-editor-select-wrap] > span",
+        style: (node) => (node.childElementCount === 0 && !normalizeText(node.textContent || "") ? { display: "none" } : null)
+      },
+      {
+        // 等比 / 分离XY, 线性 / 曲线, 单张 / 随机 / 序列: drawn as 爆发 / 持续
+        // is - a #101010 tray, the buttons sharing its width evenly.
+        selector: '[data-novaflow-particle-chip-row="1"]:not([data-novaflow-template-manager-body]) > *',
+        style: {
+          flex: "1 1 0", width: "auto", "min-width": "0", "max-width": "none", "justify-content": "center", "text-align": "center",
+          height: "29px", "min-height": "29px", "max-height": "29px", padding: "4px 7px", "border-radius": "5px",
+          "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "box-shadow": "none", margin: "0"
+        }
+      },
+      {
+        selector: '[data-novaflow-particle-chip-row="1"]:not([data-novaflow-template-manager-body])',
+        style: {
+          width: "100%", "flex-wrap": "nowrap", display: "flex", background: "#101010", "background-color": "#101010",
+          border: "1px solid #262626", "border-radius": "8px", padding: "3px", gap: "3px",
+          height: "37px", "min-height": "37px", "max-height": "37px", "box-sizing": "border-box"
+        }
+      },
+      {
+        // A group header built as icon + title (导入工程, 骨骼架设, 自动蒙皮,
+        // 自动权重) spaced them 10 on top of the icon's own 8: its title sat
+        // 10 right of every other group's.
+        selector: '[data-novaflow-editor-panel="1"] > .nf-panel-header',
+        style: (node) => (node.firstElementChild instanceof HTMLElement && node.firstElementChild.tagName === "I" ? { gap: "0", "column-gap": "0" } : null)
+      },
+      {
+        // A dropdown that drew its own arrow beside the select (飘带计算's
+        // 选择预设, 着色模式, ...) showed two: the select's thin chevron is the
+        // one arrow now, so any small arrow next to a select stands down.
+        selector: ':has(> select) > :is(i, svg, span, div):not(select)',
+        style: (node) => {
+          if (node.tagName !== "I" && node.tagName.toLowerCase() !== "svg" && (node.childElementCount !== 0 || normalizeText(node.textContent || ""))) return null;
+          if (node.tagName === "I" && !/fa-(chevron|angle|caret)/.test(node.className || "")) return null;
+          const rect = node.getBoundingClientRect();
+          if (node.style.getPropertyValue("display") !== "none" && (rect.width > 18 || rect.height > 18)) return null;
+          return { display: "none" };
+        }
+      },
+      {
+        // 视频处理's rows: 颜色校正's label carried its own white; it takes the
+        // row's ink like 视频合并 / 视频抠图.
+        selector: '[data-nf-color-correction-open] *, [data-novaflow-ai-video-merge-entry="1"] *, [data-novaflow-video-cutout="1"] *',
+        style: { color: "inherit" }
+      },
+      {
+        // Every 开始生成 (whatever credit note follows it) and AI 特效's 生成特效
+        // carries a sparkle before its label (theme sheet 3.0i).
+        selector: "button",
+        style: (node) => {
+          const text = normalizeText(node.textContent || "");
+          const generate = /^\u5f00\u59cb\u751f\u6210/.test(text) || (node.getAttribute("data-action") === "generate" && node.closest("#novaflow-aifx-mvp"));
+          if (!generate) return null;
+          nfSetAttrIfChanged(node, "data-novaflow-generate-icon", "1");
+          return null;
+        }
+      },
+      {
+        // 美工's edit modes (局部编辑, 去除物体, 蒙版编辑 ...): the row of tools
+        // over the canvas sits on the canvas bar's plate, as 原图 / 图层 do.
+        selector: ':has(> [data-novaflow-spine-split-tool-action])',
+        style: (node) => {
+          if (node.id === "novaflow-spine-split-view-controls" || node.closest("#novaflow-spine-split-view-controls")) return null;
+          const tools = Array.from(node.children).filter((child) => child.hasAttribute("data-novaflow-spine-split-tool-action"));
+          if (tools.length < 2) return null;
+          nfSetAttrIfChanged(node, "data-novaflow-edit-tool-bar", "1");
+          return {
+            ...canvasBarPillStyle(), display: "flex", "flex-wrap": "nowrap", "align-items": "center", "justify-content": "center",
+            width: "auto", "max-width": "96%", "margin-left": "auto", "margin-right": "auto",
+            // On the canvas bar's row (7 below the stage top), not 12 in.
+            "margin-top": "-5px"
+          };
+        }
+      },
+      {
+        // Its buttons read as the bar's: bare until hovered or on.
+        selector: '[data-novaflow-edit-tool-bar="1"] > button',
+        style: (node) => canvasBarButtonStyle(node)
+      },
+      {
+        // 画笔 72 -> 画笔 124 widened the bar and moved the slider under the
+        // pointer: the reading holds a fixed width (three digits), even digits.
+        selector: '[data-novaflow-edit-tool-bar="1"] > label > span',
+        style: { display: "inline-block", width: "50px", "min-width": "50px", "max-width": "50px", "text-align": "left", "font-variant-numeric": "tabular-nums", "white-space": "nowrap", "flex": "0 0 50px" }
+      },
+      {
+        // The sliders' labels in that row (画笔 / 羽化): bare on the plate.
+        selector: '[data-novaflow-edit-tool-bar="1"] > label',
+        style: { background: "transparent", "background-color": "transparent", "box-shadow": "none", border: "0" }
+      },
+      {
+        // 美工's layer rows, compact so the name reads (it had 22px, one
+        // character): eye 18, thumb 28 with the mask as a small badge on its
+        // corner, the name taking the rest, × 16.
+        selector: "[data-novaflow-spine-split-layer-row]",
+        style: {
+          display: "grid", "grid-template-columns": "18px 28px minmax(0, 1fr) 16px", "grid-template-rows": "28px",
+          gap: "5px", "column-gap": "5px", padding: "5px 6px", "align-items": "center", "box-sizing": "border-box"
+        }
+      },
+      {
+        selector: '[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-command="visibility"]',
+        style: {
+          "grid-column": "1", "grid-row": "1", width: "18px", "min-width": "18px", "max-width": "18px", height: "18px",
+          "min-height": "18px", "max-height": "18px", padding: "0", "font-size": "10px", "border-radius": "5px"
+        }
+      },
+      {
+        selector: "[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-thumb]",
+        style: { "grid-column": "2", "grid-row": "1", width: "28px", "min-width": "28px", "max-width": "28px", height: "28px", "min-height": "28px", "max-height": "28px" }
+      },
+      {
+        // Keyed on the command, not on the stencil flag: that flag changes when
+        // the mask is picked, and the badge fell to a line of its own.
+        selector: '[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-command="stencil"]',
+        style: {
+          "grid-column": "2", "grid-row": "1", "justify-self": "end", "align-self": "end", position: "relative", "z-index": "1",
+          width: "14px", "min-width": "14px", "max-width": "14px", height: "14px", "min-height": "14px", "max-height": "14px",
+          padding: "1px", margin: "0 -3px -3px 0", "border-radius": "4px", "box-sizing": "border-box"
+        }
+      },
+      {
+        selector: "[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-name-slot]",
+        style: { "grid-column": "3", "grid-row": "1", width: "auto", "min-width": "0", "max-width": "none", overflow: "hidden" }
+      },
+      {
+        // The name smaller, as asked: 11px, cut with an ellipsis.
+        selector: "[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-name-slot] *",
+        style: { "font-size": "11px", "line-height": "14px", "white-space": "nowrap", overflow: "hidden", "text-overflow": "ellipsis", "min-width": "0" }
+      },
+      {
+        selector: '[data-novaflow-spine-split-layer-row] > [data-novaflow-spine-split-layer-command="delete"]',
+        style: {
+          "grid-column": "4", "grid-row": "1", width: "16px", "min-width": "16px", "max-width": "16px", height: "16px",
+          "min-height": "16px", "max-height": "16px", padding: "0"
+        }
+      },
+      {
+        // A canvas that fills the stage (the particle view and its overlays)
+        // takes the stage's 12 radius: square, its dark corners showed past
+        // the stage's rounded ones.
+        selector: "[data-novaflow-preview-workspace] canvas",
+        style: (node) => {
+          const stage = node.closest("[data-novaflow-preview-workspace]");
+          if (!(stage instanceof HTMLElement)) return null;
+          const a = node.getBoundingClientRect();
+          const b = stage.getBoundingClientRect();
+          if (Math.abs(a.left - b.left) > 2 || Math.abs(a.top - b.top) > 2 || Math.abs(a.right - b.right) > 2 || Math.abs(a.bottom - b.bottom) > 2) return null;
+          return { "border-radius": "12px" };
+        }
+      },
+      {
+        // 工具's action buttons in one weight: 开始压缩 was 600 beside 清空's
+        // 500, and the heavier face smeared when dimmed.
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-tools-section] button",
+        style: { "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT }
+      },
+      {
+        // 工具's preview heads: the file size right after the title, not at
+        // the far end under the export buttons.
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-tools-preview-card] > div:first-child",
+        style: { "justify-content": "flex-start", "align-items": "center", gap: "8px" }
+      },
+      {
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-tools-preview-card] > div:first-child > :not(:first-child)",
+        style: { "margin-left": "0", "font-size": "11px", "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT, color: "#8a8a8a" }
+      },
+      {
+        // 动画's dock ordered as 绘图's: the settings row, the progress, the
+        // reference tiles, then the prompt (the tiles had led). The settings
+        // column steps aside so its rows and the tiles share one column.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row] > [data-novaflow-ai-settings-column]',
+        style: { display: "contents" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row]',
+        style: { display: "flex", "flex-direction": "column", gap: "10px" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row] [data-novaflow-ai-settings-row]',
+        style: { order: "1" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row] [data-novaflow-ai-generation-progress]',
+        style: { order: "2", "margin-top": "0", "margin-bottom": "0" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row] > [data-novaflow-ai-reference-column="1"]',
+        style: { order: "3", "margin-top": "0", "margin-bottom": "0" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-bottom-main-row] [data-novaflow-ai-prompt-grid]',
+        style: { order: "4", "margin-top": "0" }
+      },
+      {
+        // 骨骼架设's 移动 / 旋转 / 缩放 / 新建: one row that shares the width
+        // evenly, flush both sides (it wrapped 新建 to a line of its own once
+        // a scrollbar narrowed the column).
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-expanded-body-row="1"]',
+        style: (node) => {
+          const texts = Array.from(node.children).map((child) => normalizeText(child.textContent || ""));
+          if (!(texts.includes("移动") && texts.includes("新建"))) return null;
+          nfSetAttrIfChanged(node, "data-novaflow-skeleton-tool-row", "1");
+          return { "flex-wrap": "nowrap", gap: "5px", width: "100%" };
+        }
+      },
+      {
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-skeleton-tool-row="1"] > button',
+        style: { flex: "1 1 0", width: "auto", "min-width": "0", "max-width": "none", padding: "0 4px" }
+      },
+      {
+        // Its colour legend (普通 / 受约束 / 控制骨 / 选中) across the width,
+        // 选中 no longer cut at the edge.
+        when: "body.novaflow-skeleton-animation-layout",
+        selector: '[data-novaflow-editor-panel="1"] div',
+        style: (node) => {
+          if (node.childElementCount !== 4) return null;
+          const text = normalizeText(node.textContent || "");
+          if (!text.includes("普通") || !text.includes("选中") || text.length > 20) return null;
+          return { display: "flex", "flex-wrap": "nowrap", "justify-content": "space-between", gap: "4px", width: "100%", "max-width": "100%", "font-size": "10px", overflow: "hidden" };
+        }
+      },
+      {
+        // The stage's own 模板库 (moved into 模板管理): marked and hidden at
+        // every width. The stacked (narrow) layout never ran the canvas bar
+        // code that marked it, so it showed again there - and 模板管理's
+        // 模板库 had nothing to click.
+        when: "body.novaflow-primary-target-particle:not(.novaflow-aifx-open)",
+        selector: "[data-novaflow-preview-workspace] [data-preview-ui] > button",
+        style: (node) => {
+          if (normalizeText(node.textContent || "") !== "模板库") return null;
+          if (node.closest("[data-novaflow-template-manager], [data-novaflow-template-popup-layer]")) return null;
+          nfSetAttrIfChanged(node, "data-novaflow-template-button", "1");
+          nfSetAttrIfChanged(node.parentElement, "data-novaflow-template-control", "1");
+          return { display: "none" };
+        }
+      },
+      {
+        // 点击存储 is as tall as the cards beside it (they carry a name row).
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile="1"]',
+        style: { display: "flex", "flex-direction": "column", "align-self": "stretch", height: "auto" }
+      },
+      {
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-popup-layer="1"] [data-novaflow-template-save-tile] > div',
+        style: { flex: "1 1 auto", "aspect-ratio": "auto", height: "auto", "min-height": "0" }
+      },
+      {
+        // 自动适配, as asked: a canvas bar pill like 导入项目 / 保存项目 - the
+        // zoom (percent) on its left, the button on its right.
+        selector: '[data-novaflow-zoom-controls="1"][data-novaflow-autofit-only="1"], #novaflow-spine-split-zoom-hud, #novaflow-ui-fit-pill',
+        style: (node) => {
+          const pill = { ...canvasBarPillStyle(), display: "flex", "flex-direction": "row", "align-items": "center", width: "auto", "min-width": "0", "max-width": "none", "font-size": "11px" };
+          if (node.id === "novaflow-ui-fit-pill") {
+            const button = document.querySelector("[data-novaflow-ui-design-auto-fit]");
+            const buttonWidth = button instanceof HTMLElement ? Math.ceil(button.getBoundingClientRect().width) : 70;
+            return { ...pill, position: "absolute", top: `${CANVAS_BAR_ROW_TOP}px`, right: "0", left: "auto", "padding-right": `${buttonWidth + 7}px`, "z-index": "6", "pointer-events": "none" };
+          }
+          if (node.hasAttribute("data-novaflow-ai-zoom-controls")) return { ...pill, top: `${aiCanvasBarLayout().rowTop}px` };
+          return { ...pill, top: `${CANVAS_BAR_ROW_TOP}px` };
+        }
+      },
+      {
+        selector: '[data-novaflow-zoom-controls="1"][data-novaflow-autofit-only="1"] > [data-novaflow-autofit-percent-hidden], [data-novaflow-zoom-percent="1"]',
+        style: {
+          display: "flex", "align-items": "center", "justify-content": "center", height: "28px", "min-height": "28px", width: "44px",
+          "min-width": "44px", "max-width": "44px", padding: "0", "box-sizing": "border-box", "font-size": "11px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, color: "#9a9a9a",
+          visibility: "inherit", opacity: "1", position: "static", "white-space": "nowrap", "line-height": "28px", overflow: "visible"
+        }
+      },
+      {
+        selector: '[data-novaflow-zoom-controls="1"][data-novaflow-autofit-only="1"] > [data-novaflow-autofit-button="1"], #novaflow-spine-split-zoom-hud > button, [data-novaflow-ui-design-auto-fit]',
+        style: (node) => {
+          const style = { ...canvasBarButtonStyle(node), "min-width": "0" };
+          if (node.hasAttribute("data-novaflow-ui-design-auto-fit")) {
+            return { ...style, position: "absolute", top: `${CANVAS_BAR_ROW_TOP + 5}px`, right: "5px", left: "auto", "z-index": "7" };
+          }
+          return { ...style, position: "static" };
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-top-mode-tabs="1"]',
+        style: () => {
+          const layout = aiCanvasBarLayout();
+          return {
+            left: `${Math.round(layout.tabsCenter)}px`,
+            top: `${layout.box.top + layout.rowTop}px`,
+            transform: "translateX(-50%)"
+          };
+        }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-board-controls-top-left="1"]',
+        style: () => ({ top: `${aiCanvasBarLayout().rowTop}px` })
+      },
+      {
+        // 特效: 模板库 sits midway between the plate and 自动适配.
+        when: "body.novaflow-primary-target-particle",
+        selector: '[data-novaflow-template-control="1"]',
+        style: (node) => {
+          const parent = node.offsetParent;
+          const pill = document.getElementById("novaflow-particle-project-top-actions");
+          if (!(parent instanceof HTMLElement) || !(pill instanceof HTMLElement)) return null;
+          const box = novaflowStageBox(false);
+          const pillRight = pill.getBoundingClientRect().right;
+          const quietLeft = box.right - 70;
+          const center = pillRight + (quietLeft - pillRight) / 2;
+          return { left: `${Math.round(center - parent.getBoundingClientRect().left)}px`, transform: "translateX(-50%)" };
+        }
+      },
+      {
+        // An open 模式选择 is the reference's .nf-detail: 7 in, 5 from the
+        // header to the first field, 10 between fields.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-mode-section="1"] > [data-novaflow-ai-mode-body-item="1"]:not([data-novaflow-ai-post-section="1"])',
+        style: (node) => {
+          let previous = node.previousElementSibling;
+          while (previous instanceof HTMLElement && previous.getBoundingClientRect().height === 0) previous = previous.previousElementSibling;
+          const first = !(previous instanceof HTMLElement) || previous.hasAttribute("data-novaflow-ai-collapse-heading");
+          return {
+            "margin-top": `${first ? PARTICLE_DENSITY_PANEL_BODY_PADDING_Y : 10}px`,
+            "margin-left": `${AI_ANIMATION_GROUP_HEADER_INSET}px`,
+            "margin-right": `${AI_ANIMATION_GROUP_HEADER_INSET}px`,
+            width: `calc(100% - ${AI_ANIMATION_GROUP_HEADER_INSET * 2}px)`,
+            "min-width": "0",
+            "max-width": `calc(100% - ${AI_ANIMATION_GROUP_HEADER_INSET * 2}px)`
+          };
+        }
+      },
+      {
+        // A field is its label over its control, 8 apart.
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-mode-section="1"] :has(> label + select)',
+        style: { gap: "8px", "row-gap": "8px" }
+      },
+      {
+        when: "body.novaflow-ai-animation-section-layers",
+        selector: '[data-novaflow-ai-mode-section="1"] label:not([data-novaflow-ai-collapse-heading])',
+        style: {
+          "font-size": "11px",
+          "line-height": "16.5px",
+          height: "auto",
+          "min-height": "0",
+          margin: "0",
+          padding: "0",
+          color: UI_FIELD_LABEL_TEXT
+        }
+      }
+    ];
+  }
+
+  // The spec is the last word on geometry, but not every writer runs inside a
+  // pass that ends with it: opening 模式选择 re-sized the section and nothing
+  // put it back. So any change to the attributes that drive layout queues one
+  // more pass for the next frame. The spec's own writes settle on the pass
+  // after, since it only writes what differs.
+  let NOVAFLOW_REFERENCE_SPEC_FRAME = 0;
+  let NOVAFLOW_REFERENCE_SPEC_OBSERVER = null;
+  let NOVAFLOW_REFERENCE_SPEC_SETTLE_TIMER = 0;
+  function scheduleNovaflowReferenceSpec() {
+    // Once on the next frame, and once more after the runtime's own delayed
+    // refreshes (0 / 80 / 180 ms) have had their turn.
+    if (NOVAFLOW_REFERENCE_SPEC_SETTLE_TIMER) window.clearTimeout(NOVAFLOW_REFERENCE_SPEC_SETTLE_TIMER);
+    NOVAFLOW_REFERENCE_SPEC_SETTLE_TIMER = window.setTimeout(() => {
+      NOVAFLOW_REFERENCE_SPEC_SETTLE_TIMER = 0;
+      applyNovaflowReferenceSpec();
+    }, 220);
+    if (NOVAFLOW_REFERENCE_SPEC_FRAME) return;
+    NOVAFLOW_REFERENCE_SPEC_FRAME = window.requestAnimationFrame(() => {
+      NOVAFLOW_REFERENCE_SPEC_FRAME = 0;
+      applyNovaflowReferenceSpec();
+    });
+  }
+
+  // The spec's guard. A value that another writer puts back, or a node that
+  // arrives, used to show for a frame before the next pass - the flash on
+  // every click and page switch. The observer's callback runs as a microtask,
+  // after the writer and before the frame is painted, so it can put the
+  // reference's value back first. It re-asserts only what the last pass wrote
+  // for that node, and each node gets a few re-asserts a frame at most, so two
+  // writers that disagree cannot spin; those are counted for fixing at source.
+  const NOVAFLOW_SPEC_STATE_ATTRIBUTES = new Set([
+    "class",
+    "data-novaflow-tools-entry-active",
+    "data-novaflow-art-generate-active",
+    "data-novaflow-skeleton-top-button-active",
+    "data-filled",
+    "hidden",
+    "data-open",
+    "data-collapsed",
+    "aria-pressed",
+    "aria-expanded",
+    "aria-selected",
+    "data-novaflow-ai-mode-collapsed",
+    "data-novaflow-ai-post-collapsed",
+    "title",
+    "disabled",
+    "data-novaflow-ai-loop-active",
+    "data-active",
+    "data-novaflow-tools-mode-active",
+    "data-novaflow-ai-sequence-tool-active",
+    "data-novaflow-ai-state-toggle",
+    "data-novaflow-toggle-enabled",
+    "data-novaflow-ribbon-chain-enabled",
+    "data-novaflow-ribbon-preview-enabled",
+    "data-novaflow-spine-split-tool-active"
+  ]);
+  let NOVAFLOW_SPEC_DESIRED = new WeakMap();
+  let NOVAFLOW_SPEC_REASSERTS = new WeakMap();
+  let NOVAFLOW_SPEC_SYNC_BUDGET = 4;
+  let NOVAFLOW_SPEC_BUDGET_FRAME = 0;
+
+  function resetNovaflowSpecBudgetNextFrame() {
+    if (NOVAFLOW_SPEC_BUDGET_FRAME) return;
+    NOVAFLOW_SPEC_BUDGET_FRAME = window.requestAnimationFrame(() => {
+      NOVAFLOW_SPEC_BUDGET_FRAME = 0;
+      NOVAFLOW_SPEC_SYNC_BUDGET = 4;
+      NOVAFLOW_SPEC_REASSERTS = new WeakMap();
+    });
+  }
+
+  function runNovaflowReferenceSpecNow() {
+    resetNovaflowSpecBudgetNextFrame();
+    if (NOVAFLOW_SPEC_SYNC_BUDGET <= 0) {
+      scheduleNovaflowReferenceSpec();
+      return;
+    }
+    NOVAFLOW_SPEC_SYNC_BUDGET -= 1;
+    applyNovaflowReferenceSpec();
+  }
+
+  function reassertNovaflowSpecNode(node) {
+    const desired = NOVAFLOW_SPEC_DESIRED.get(node);
+    if (!desired) return;
+    let drifted = false;
+    for (const [property, value] of desired) {
+      if (node.style.getPropertyValue(property) !== value || node.style.getPropertyPriority(property) !== "important") {
+        drifted = true;
+        break;
+      }
+    }
+    if (!drifted) return;
+    resetNovaflowSpecBudgetNextFrame();
+    const count = (NOVAFLOW_SPEC_REASSERTS.get(node) || 0) + 1;
+    NOVAFLOW_SPEC_REASSERTS.set(node, count);
+    if (count > 3) {
+      const stats = window.__novaflowSpecStats || (window.__novaflowSpecStats = { runs: 0, totalMs: 0, maxMs: 0 });
+      stats.contested = (stats.contested || 0) + 1;
+      return;
+    }
+    const wasWriting = NOVAFLOW_SPEC_WRITING;
+    NOVAFLOW_SPEC_WRITING = true;
+    try {
+      for (const [property, value] of desired) {
+        if (node.style.getPropertyValue(property) === value && node.style.getPropertyPriority(property) === "important") continue;
+        node.style.setProperty(property, value, "important");
+      }
+    } finally {
+      NOVAFLOW_SPEC_WRITING = wasWriting;
+    }
+  }
+
+  function isNovaflowSpecRelevantAddition(node) {
+    if (!(node instanceof HTMLElement)) return false;
+    if (node.closest("#novaflow-number-input-overlay-root, [data-novaflow-number-input-visual-for]")) return false;
+    const tag = node.tagName;
+    return tag !== "CANVAS" && tag !== "STYLE" && tag !== "SCRIPT" && tag !== "svg";
+  }
+
+  function handleNovaflowSpecMutations(records) {
+    let fullPass = false;
+    const touched = new Set();
+    for (const record of records) {
+      if (record.type === "childList") {
+        if (!fullPass) {
+          for (const added of record.addedNodes) {
+            if (isNovaflowSpecRelevantAddition(added)) { fullPass = true; break; }
+          }
+        }
+      } else if (record.attributeName === "style") {
+        if (record.target instanceof HTMLElement && NOVAFLOW_SPEC_DESIRED.has(record.target)) touched.add(record.target);
+      } else if (NOVAFLOW_SPEC_STATE_ATTRIBUTES.has(record.attributeName)) {
+        fullPass = true;
+      }
+    }
+    if (fullPass) {
+      runNovaflowReferenceSpecNow();
+      // Writers that answer the same click a frame or two later still get a
+      // pass after them.
+      scheduleNovaflowReferenceSpec();
+      return;
+    }
+    touched.forEach((node) => reassertNovaflowSpecNode(node));
+  }
+
+  function installNovaflowReferenceSpecObserver() {
+    if (NOVAFLOW_REFERENCE_SPEC_OBSERVER || typeof MutationObserver !== "function" || !document.body) return;
+    NOVAFLOW_REFERENCE_SPEC_OBSERVER = new MutationObserver(handleNovaflowSpecMutations);
+    NOVAFLOW_REFERENCE_SPEC_OBSERVER.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      // Not name/type: the particle page's inputs flip those continuously.
+      attributeFilter: ["style", ...NOVAFLOW_SPEC_STATE_ATTRIBUTES]
+    });
+    window.addEventListener("resize", scheduleNovaflowReferenceSpec, { passive: true });
+  }
+
+  // The stacked tier (<= 720) scrolls the page, as the reference does. Its
+  // blocks are position:fixed, which does not scroll; giving the app root a
+  // transform makes it their containing block, so they scroll with the
+  // document while modals and menus hung off <body> stay on the viewport.
+  // The runtime's own chrome that hangs off <body> moves in with them.
+  const NOVAFLOW_STACK_ADOPTED_IDS = [
+    PRIMARY_RAIL_SURFACE_ID,
+    PRIMARY_LEFT_SURFACE_ID,
+    "novaflow-primary-output-shortcut-cell",
+    "novaflow-primary-export-shortcut-cell",
+    "novaflow-primary-output-shortcut-divider",
+    "novaflow-particle-project-top-actions",
+    "novaflow-spine-split-workspace-overlay",
+    "novaflow-spine-split-right-workspace-host",
+    "novaflow-aifx-mvp"
+  ];
+  let NOVAFLOW_STACK_DOC_HEIGHT = 0;
+
+  function syncNovaflowStackAdoption() {
+    const app = document.querySelector(".novaflow-app");
+    if (!(app instanceof HTMLElement) || !document.body) return;
+    const stacked = NOVAFLOW_LAYOUT_TIER === "stack";
+    NOVAFLOW_STACK_ADOPTED_IDS.forEach((id) => {
+      const node = document.getElementById(id);
+      if (!(node instanceof HTMLElement)) return;
+      if (stacked && node.parentElement === document.body) app.appendChild(node);
+      else if (!stacked && node.parentElement === app) document.body.appendChild(node);
+    });
+  }
+
+  // How tall the stacked left column is: its content, up to 320.
+  function novaflowStackSidebarHeight() {
+    const top = TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP;
+    let bottom = top + 62;
+    // The lowest visible child of the left content (or the tool list), in
+    // unscrolled terms: the list's own scroll must not shrink it.
+    const scope = document.querySelector('[data-novaflow-left-content-root="1"]')
+      || document.querySelector('[data-novaflow-left-content-shell="1"]');
+    if (scope instanceof HTMLElement) {
+      const scopeTop = scope.getBoundingClientRect().top;
+      Array.from(scope.children).forEach((child) => {
+        if (!(child instanceof HTMLElement)) return;
+        let rect = child.getBoundingClientRect();
+        if (rect.height <= 0) return;
+        // UI's host box runs on past its last row; its content is what ends.
+        if (child.hasAttribute("data-novaflow-art-ui-host")) {
+          const last = Array.from(child.querySelectorAll("*")).reduce((low, node) => {
+            const r = node.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && r.bottom > low ? r.bottom : low;
+          }, rect.top);
+          rect = { bottom: last };
+        }
+        const childBottom = top + (rect.bottom - scopeTop) + scope.scrollTop + (scopeTop + window.scrollY - top);
+        bottom = Math.max(bottom, childBottom);
+      });
+      bottom += 11;
+    }
+    // 工具's list is short and must show whole (its rows are 54 now).
+    const cap = document.body && document.body.classList.contains("novaflow-primary-target-tools") ? 400 : NOVAFLOW_STACK_SIDEBAR_MAX_HEIGHT;
+    return Math.min(cap, Math.max(120, Math.round(bottom - top)));
+  }
+
+  function syncNovaflowStackDocumentHeight(contentBottom) {
+    const height = Math.max(Math.round(window.innerHeight || 0), Math.round(contentBottom + PRIMARY_PANEL_BOTTOM_GAP));
+    if (height === NOVAFLOW_STACK_DOC_HEIGHT) return;
+    NOVAFLOW_STACK_DOC_HEIGHT = height;
+    document.documentElement.style.setProperty("--nf-stack-doc-height", `${height}px`);
+  }
+
+  // Stacked placement. Every property written here is remembered on the node
+  // so that widening the window past 720 hands the node back untouched.
+  const NOVAFLOW_STACK_PROPS_ATTR = "data-novaflow-stack-props";
+  const NOVAFLOW_STACK_STAGE_MIN_HEIGHT = 350;
+  const NOVAFLOW_STACK_CENTER_MIN_HEIGHT = 600;
+  const NOVAFLOW_STACK_RESOURCES_HEIGHT = 140;
+  const NOVAFLOW_STACK_GAP = 8;
+  const NOVAFLOW_STACK_DOCK_GAP = 9;
+
+  // What each placed property held before the stacked tier took it, so the
+  // wider tiers get their own writers' values back rather than nothing.
+  const NOVAFLOW_STACK_ORIGINALS = new WeakMap();
+
+  function restoreNovaflowStackProperty(node, name) {
+    const originals = NOVAFLOW_STACK_ORIGINALS.get(node);
+    const saved = originals && originals[name];
+    if (saved && saved[0]) node.style.setProperty(name, saved[0], saved[1]);
+    else node.style.removeProperty(name);
+    if (originals) delete originals[name];
+  }
+
+  // What this layout pass has placed, node by node: a node placed twice in
+  // one pass keeps both sets, and a node the pass did not place at all (a
+  // page left, an overlay closed) is handed back at its end.
+  let NOVAFLOW_STACK_PASS_NAMES = null;
+
+  function placeNovaflowStackNode(node, styles) {
+    if (!(node instanceof HTMLElement)) return;
+    const previous = (node.getAttribute(NOVAFLOW_STACK_PROPS_ATTR) || "").split(",").filter(Boolean);
+    let names = Object.keys(styles);
+    if (NOVAFLOW_STACK_PASS_NAMES) {
+      const placed = NOVAFLOW_STACK_PASS_NAMES.get(node) || new Set();
+      names.forEach((name) => placed.add(name));
+      NOVAFLOW_STACK_PASS_NAMES.set(node, placed);
+      names = Array.from(placed);
+    }
+    previous.forEach((name) => {
+      if (!names.includes(name)) restoreNovaflowStackProperty(node, name);
+    });
+    let originals = NOVAFLOW_STACK_ORIGINALS.get(node);
+    if (!originals) {
+      originals = {};
+      NOVAFLOW_STACK_ORIGINALS.set(node, originals);
+    }
+    names.forEach((name) => {
+      if (!(name in originals)) originals[name] = [node.style.getPropertyValue(name), node.style.getPropertyPriority(name)];
+    });
+    queueNovaflowSpecStyle(node, styles);
+    nfSetAttrIfChanged(node, NOVAFLOW_STACK_PROPS_ATTR, names.join(","));
+  }
+
+  function releaseUnplacedNovaflowStackNodes(placedNodes) {
+    Array.from(document.querySelectorAll(`[${NOVAFLOW_STACK_PROPS_ATTR}]`)).forEach((node) => {
+      if (!(node instanceof HTMLElement) || placedNodes.has(node)) return;
+      (node.getAttribute(NOVAFLOW_STACK_PROPS_ATTR) || "").split(",").filter(Boolean).forEach((name) => restoreNovaflowStackProperty(node, name));
+      node.removeAttribute(NOVAFLOW_STACK_PROPS_ATTR);
+    });
+  }
+
+  function releaseNovaflowStackNodes() {
+    Array.from(document.querySelectorAll(`[${NOVAFLOW_STACK_PROPS_ATTR}]`)).forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      (node.getAttribute(NOVAFLOW_STACK_PROPS_ATTR) || "").split(",").filter(Boolean).forEach((name) => restoreNovaflowStackProperty(node, name));
+      node.removeAttribute(NOVAFLOW_STACK_PROPS_ATTR);
+    });
+    if (NOVAFLOW_STACK_DOC_HEIGHT) {
+      NOVAFLOW_STACK_DOC_HEIGHT = 0;
+      document.documentElement.style.removeProperty("--nf-stack-doc-height");
+    }
+  }
+
+  // The background dots sit 37 above the generation dock (aifx-spline's
+  // measure); null when there is no dock to sit over.
+  function aiPreviewBgToggleDockTop(node) {
+    if (!document.body || !document.body.classList.contains("novaflow-ai-animation-section-layers")) return null;
+    const dock = firstVisible('[data-novaflow-ai-generation-panel="1"]');
+    const parent = node.offsetParent;
+    if (!(dock instanceof HTMLElement) || !(parent instanceof HTMLElement) || getComputedStyle(node).position !== "absolute") return null;
+    return `${Math.round(dock.getBoundingClientRect().top - 37 - parent.getBoundingClientRect().top)}px`;
+  }
+
+  const NOVAFLOW_FIELD_FILL_SEEN = new WeakMap();
+
+  // 特效 → 模板管理, as asked: the list's first group holds 模板库, 导入项目
+  // and 保存项目 (their canvas bar places are hidden). Each button here
+  // clicks the original, so what they do is unchanged.
+  const PARTICLE_TEMPLATE_MANAGER_ATTR = "data-novaflow-template-manager";
+
+  function particleTemplateManagerTargets() {
+    // Looked up at click time: the canvas bar's buttons are rebuilt when the
+    // page is switched, and a kept reference would point at the old ones.
+    const find = (text) => {
+      const project = document.getElementById("novaflow-particle-project-top-actions");
+      return project ? Array.from(project.querySelectorAll("button")).find((button) => normalizeText(button.textContent || "") === text) || null : null;
+    };
+    return [
+      ["\u6a21\u677f\u5e93", () => document.querySelector('[data-novaflow-template-button="1"]')],
+      // Shown as \u5bfc\u5165 / \u4fdd\u5b58, as asked; the originals keep their names.
+      ["\u5bfc\u5165", () => find("\u5bfc\u5165\u9879\u76ee")],
+      ["\u4fdd\u5b58", () => find("\u4fdd\u5b58\u9879\u76ee")]
+    ];
+  }
+
+  // 美工: opening 模式 (the generation dock) while an edit mode's tools are
+  // up leaves that edit, as asked - through the edit's own 退出, once per
+  // tool bar, so whatever it does on exit still happens.
+  // 工具 → PNG 压缩: 普通 PNG / Spine 图集 are marked on the first pass, so
+  // they are the segmented plate from their first frame (the settings pass
+  // that marked them ran a quarter second later; until then they stacked,
+  // bright green).
+  function markNovaflowToolsModeRowEarly() {
+    if (!document.body || !document.body.classList.contains("novaflow-primary-target-tools")) return;
+    const buttons = Array.from(document.querySelectorAll("button")).filter((button) => getNovaflowToolsPngModeButtonKey(button));
+    if (buttons.length < 2 || !buttons.every((button) => button.parentElement === buttons[0].parentElement)) return;
+    nfSetAttrIfChanged(buttons[0].parentElement, "data-novaflow-tools-mode-row", "1");
+    buttons.forEach((button) => {
+      nfSetAttrIfChanged(button, "data-novaflow-tools-mode-button", "1");
+      if (!button.hasAttribute("data-novaflow-tools-mode-active")) {
+        const bg = String(button.style.background || button.style.backgroundColor || "");
+        nfSetAttrIfChanged(button, "data-novaflow-tools-mode-active", /30,\s*166,\s*114|#1ea672/i.test(bg) ? "1" : "0");
+      }
+    });
+  }
+
+  function exitArtEditWhenGenerating() {
+    const body = document.body;
+    if (!body || body.getAttribute(ART_GENERATE_ACTIVE_ATTR) !== "1") return;
+    document.querySelectorAll('[data-novaflow-edit-tool-bar="1"]').forEach((bar) => {
+      if (!(bar instanceof HTMLElement) || bar.__novaflowExitedForGenerate) return;
+      const exit = Array.from(bar.querySelectorAll(":scope > [data-novaflow-spine-split-tool-action]"))
+        .find((button) => normalizeText(button.textContent || "") === "退出");
+      if (!(exit instanceof HTMLElement)) return;
+      bar.__novaflowExitedForGenerate = true;
+      window.setTimeout(() => { if (exit.isConnected) exit.click(); }, 0);
+    });
+  }
+
+  function syncParticleTemplateManager() {
+    const body = document.body;
+    if (!body) return;
+    if (!body.classList.contains("novaflow-primary-target-particle") || body.classList.contains("novaflow-aifx-open")) {
+      // The left column is reused by the other pages: 模板管理 belongs to
+      // 粒子特效 only, so it leaves with it (动画 / 骨骼动画 showed it).
+      document.querySelectorAll(`[${PARTICLE_TEMPLATE_MANAGER_ATTR}]`).forEach((panel) => panel.remove());
+      return;
+    }
+    const root = document.querySelector('[data-novaflow-left-content-root="1"]');
+    if (!(root instanceof HTMLElement)) return;
+    const firstPanel = Array.from(root.children).find((child) => child.getAttribute("data-novaflow-editor-panel") === "1" && !child.hasAttribute(PARTICLE_TEMPLATE_MANAGER_ATTR));
+    if (!(firstPanel instanceof HTMLElement)) return;
+    let panel = root.querySelector(`:scope > [${PARTICLE_TEMPLATE_MANAGER_ATTR}]`);
+    if (!(panel instanceof HTMLElement)) {
+      panel = document.createElement("div");
+      panel.className = "nf-panel";
+      panel.setAttribute("data-novaflow-editor-panel", "1");
+      panel.setAttribute("data-novaflow-source-layout", "1");
+      panel.setAttribute(PARTICLE_TEMPLATE_MANAGER_ATTR, "1");
+      panel.setAttribute("data-open", "0");
+      const header = document.createElement("div");
+      header.className = "nf-panel-header";
+      header.setAttribute("role", "button");
+      header.setAttribute("tabindex", "0");
+      header.setAttribute("aria-expanded", "false");
+      const title = document.createElement("span");
+      const icon = document.createElement("i");
+      icon.className = "fas fa-th-large";
+      icon.setAttribute("data-novaflow-keep-radius", "1");
+      title.appendChild(icon);
+      title.appendChild(document.createTextNode("\u6a21\u677f\u7ba1\u7406"));
+      const chevron = document.createElement("i");
+      chevron.className = "fas fa-chevron-right";
+      header.appendChild(title);
+      header.appendChild(chevron);
+      const content = document.createElement("div");
+      content.className = "nf-panel-body";
+      content.setAttribute("data-novaflow-template-manager-body", "1");
+      content.style.setProperty("display", "none", "important");
+      particleTemplateManagerTargets().forEach(([label, resolve]) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.setAttribute("data-novaflow-template-manager-action", label);
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const target = resolve();
+          if (target instanceof HTMLElement) target.click();
+        });
+        content.appendChild(button);
+      });
+      const toggle = () => {
+        const open = panel.getAttribute("data-open") !== "1";
+        panel.setAttribute("data-open", open ? "1" : "0");
+        header.setAttribute("aria-expanded", open ? "true" : "false");
+        chevron.className = open ? "fas fa-chevron-down" : "fas fa-chevron-right";
+        content.style.setProperty("display", open ? "grid" : "none", "important");
+      };
+      header.addEventListener("click", toggle);
+      header.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); toggle(); }
+      });
+      panel.appendChild(header);
+      panel.appendChild(content);
+    }
+    if (panel.nextElementSibling !== firstPanel) root.insertBefore(panel, firstPanel);
+  }
+
+  // Template names can be changed from the library (double-click a name),
+  // as AI 特效's library allows. Only the name shown changes; it is kept in
+  // this browser, and the template itself is left as it is.
+  const PARTICLE_TEMPLATE_NAMES_KEY = "novaflow.particleTemplateNames.v1";
+
+  function readParticleTemplateNames() {
+    try { return JSON.parse(window.localStorage.getItem(PARTICLE_TEMPLATE_NAMES_KEY) || "{}") || {}; } catch (_) { return {}; }
+  }
+
+  function writeParticleTemplateNames(names) {
+    try { window.localStorage.setItem(PARTICLE_TEMPLATE_NAMES_KEY, JSON.stringify(names)); } catch (_) { void 0; }
+  }
+
+  function applyParticleTemplateName(label) {
+    if (!(label instanceof HTMLElement)) return;
+    const text = normalizeText(label.textContent || "");
+    let original = label.getAttribute("data-novaflow-template-name-original");
+    const shown = label.getAttribute("data-novaflow-template-name-shown");
+    // The editor changed the label itself (another template in this slot).
+    if (!original || (text !== shown && text !== original)) original = text;
+    nfSetAttrIfChanged(label, "data-novaflow-template-name-original", original);
+    nfSetAttrIfChanged(label, "title", "\u53cc\u51fb\u6539\u540d");
+    const wanted = readParticleTemplateNames()[original] || original;
+    nfSetAttrIfChanged(label, "data-novaflow-template-name-shown", wanted);
+    if (text !== wanted && !label.querySelector("input")) {
+      const node = Array.from(label.childNodes).find((child) => child.nodeType === Node.TEXT_NODE);
+      if (node) node.nodeValue = wanted;
+    }
+  }
+
+  // A click on a template's name does not load it: the name is for
+  // renaming (double-click); the picture loads it.
+  document.addEventListener("click", (event) => {
+    const label = event.target instanceof Element ? event.target.closest('[data-novaflow-template-popup-layer="1"] [data-novaflow-template-card="1"] [data-novaflow-template-label]') : null;
+    if (label) event.stopPropagation();
+  }, true);
+
+  document.addEventListener("dblclick", (event) => {
+    const label = event.target instanceof Element ? event.target.closest('[data-novaflow-template-popup-layer="1"] [data-novaflow-template-card="1"] [data-novaflow-template-label]') : null;
+    if (!(label instanceof HTMLElement) || label.querySelector("input")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const original = label.getAttribute("data-novaflow-template-name-original") || normalizeText(label.textContent || "");
+    const input = document.createElement("input");
+    input.className = "novaflow-template-rename";
+    input.value = readParticleTemplateNames()[original] || original;
+    const textNode = Array.from(label.childNodes).find((child) => child.nodeType === Node.TEXT_NODE);
+    if (textNode) textNode.nodeValue = "";
+    label.appendChild(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (save) => {
+      if (done) return;
+      done = true;
+      const names = readParticleTemplateNames();
+      const next = normalizeText(input.value || "");
+      if (save) {
+        if (next && next !== original) names[original] = next;
+        else delete names[original];
+        writeParticleTemplateNames(names);
+      }
+      input.remove();
+      if (textNode) textNode.nodeValue = names[original] || original;
+      label.setAttribute("data-novaflow-template-name-shown", names[original] || original);
+    };
+    input.addEventListener("keydown", (keyEvent) => {
+      keyEvent.stopPropagation();
+      if (keyEvent.key === "Enter") finish(true);
+      if (keyEvent.key === "Escape") finish(false);
+    });
+    input.addEventListener("click", (clickEvent) => clickEvent.stopPropagation());
+    input.addEventListener("blur", () => finish(true));
+  }, true);
+
+  // An AI switch's state: its own on/off mark first (kept current by the
+  // runtime), aria-pressed only when there is none.
+  function novaflowAiToggleOn(toggle) {
+    if (!(toggle instanceof HTMLElement)) return false;
+    const state = toggle.getAttribute("data-novaflow-ai-state-toggle");
+    if (state === "on") return true;
+    if (state === "off") return false;
+    return toggle.getAttribute("aria-pressed") === "true";
+  }
+
+  // Every slider shows its filled part (theme sheet 2.0s draws it from this
+  // var); set on input, and looked over a few times a second for values a
+  // component changes without an event (playback).
+  function syncNovaflowRangeFill(input) {
+    if (!(input instanceof HTMLInputElement) || input.type !== "range") return;
+    const min = Number.parseFloat(input.min);
+    const max = Number.parseFloat(input.max);
+    const lo = Number.isFinite(min) ? min : 0;
+    const hi = Number.isFinite(max) ? max : 100;
+    const value = Number.parseFloat(input.value);
+    const pct = hi > lo && Number.isFinite(value) ? Math.min(100, Math.max(0, ((value - lo) / (hi - lo)) * 100)) : 0;
+    // Only a real change: other runtimes write this var in their own
+    // precision, and rewriting theirs would trade values with them.
+    const current = Number.parseFloat(input.style.getPropertyValue("--nf-range-pct"));
+    if (Number.isFinite(current) && Math.abs(current - pct) < 0.05) return;
+    input.style.setProperty("--nf-range-pct", `${pct.toFixed(2)}%`);
+  }
+
+  // 仓库 / 导出 follow the rail's foot as the window's height changes.
+  let NOVAFLOW_OUTPUT_SHORTCUT_RESIZE_FRAME = 0;
+  window.addEventListener("resize", () => {
+    if (NOVAFLOW_OUTPUT_SHORTCUT_RESIZE_FRAME) return;
+    NOVAFLOW_OUTPUT_SHORTCUT_RESIZE_FRAME = window.requestAnimationFrame(() => {
+      NOVAFLOW_OUTPUT_SHORTCUT_RESIZE_FRAME = 0;
+      try { ensurePrimaryOutputShortcut(); } catch (_) { void 0; }
+    });
+  }, { passive: true });
+
+  // The zoom shown beside 自动适配. 特效 / 动画 / 骨骼动画 keep theirs in the
+  // controls already (it was hidden); 美工's and UI's are read off the
+  // picture on the stage.
+  function novaflowStageZoomPercent() {
+    const world = document.querySelector('[data-novaflow-ui-design-world]');
+    if (world instanceof HTMLElement && world.getBoundingClientRect().width >= 0 && document.querySelector("[data-novaflow-ui-design-auto-fit]")) {
+      const match = /matrix\(([-\d.e]+)/.exec(getComputedStyle(world).transform || "");
+      return `${Math.round((match ? Number.parseFloat(match[1]) : 1) * 100)}%`;
+    }
+    const overlay = document.getElementById("novaflow-spine-split-workspace-overlay");
+    if (overlay instanceof HTMLElement) {
+      let best = null;
+      overlay.querySelectorAll("img, canvas").forEach((media) => {
+        const natural = media instanceof HTMLImageElement ? media.naturalWidth : media.width;
+        const width = media.getBoundingClientRect().width;
+        if (natural > 0 && width > 0 && (!best || width > best.width)) best = { width, natural };
+      });
+      if (best) return `${Math.round((best.width / best.natural) * 100)}%`;
+    }
+    return "100%";
+  }
+
+  function syncNovaflowZoomPercentLabels() {
+    const hud = document.getElementById("novaflow-spine-split-zoom-hud");
+    const uiFit = document.querySelector("[data-novaflow-ui-design-auto-fit]");
+    const place = (host, before) => {
+      let label = host.querySelector(':scope > [data-novaflow-zoom-percent="1"]');
+      if (!(label instanceof HTMLElement)) {
+        label = document.createElement("span");
+        label.setAttribute("data-novaflow-zoom-percent", "1");
+        label.setAttribute("aria-live", "off");
+        host.insertBefore(label, before || host.firstChild);
+      }
+      const text = novaflowStageZoomPercent();
+      if (label.textContent !== text) label.textContent = text;
+    };
+    if (hud instanceof HTMLElement) place(hud, hud.firstChild);
+    if (uiFit instanceof HTMLElement && uiFit.parentElement) {
+      let pill = document.getElementById("novaflow-ui-fit-pill");
+      if (!(pill instanceof HTMLElement) || pill.parentElement !== uiFit.parentElement) {
+        if (pill) pill.remove();
+        pill = document.createElement("div");
+        pill.id = "novaflow-ui-fit-pill";
+        uiFit.parentElement.insertBefore(pill, uiFit);
+      }
+      place(pill, null);
+    }
+  }
+
+  window.setInterval(() => {
+    if (document.hidden) return;
+    try { syncNovaflowZoomPercentLabels(); } catch (_) { void 0; }
+  }, 300);
+
+  document.addEventListener("input", (event) => syncNovaflowRangeFill(event.target), true);
+  document.addEventListener("change", (event) => syncNovaflowRangeFill(event.target), true);
+  window.setInterval(() => {
+    if (document.hidden) return;
+    document.querySelectorAll('input[type="range"]').forEach((input) => {
+      if (input.offsetParent !== null || input.getClientRects().length) syncNovaflowRangeFill(input);
+    });
+  }, 250);
+
+  function firstVisible(selector) {
+    return Array.from(document.querySelectorAll(selector)).find((node) => {
+      if (!(node instanceof HTMLElement)) return false;
+      const rect = node.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    }) || null;
+  }
+
+  // Page offsets: the document's, since the stacked blocks scroll with it.
+  function novaflowDocRect(node) {
+    const rect = node.getBoundingClientRect();
+    return { top: rect.top + window.scrollY, bottom: rect.bottom + window.scrollY, height: rect.height, left: rect.left, width: rect.width };
+  }
+
+  function applyNovaflowStackLayout() {
+    if (NOVAFLOW_LAYOUT_TIER !== "stack") {
+      releaseNovaflowStackNodes();
+      return;
+    }
+    NOVAFLOW_STACK_PASS_NAMES = new Map();
+    try {
+      applyNovaflowStackLayoutPass();
+      releaseUnplacedNovaflowStackNodes(NOVAFLOW_STACK_PASS_NAMES);
+    } finally {
+      NOVAFLOW_STACK_PASS_NAMES = null;
+    }
+  }
+
+  function applyNovaflowStackLayoutPass() {
+    const body = document.body;
+    if (!(body instanceof HTMLElement)) return;
+    const viewportWidth = Math.round(window.innerWidth || 0);
+    const columnLeft = PRIMARY_CONTENT_LEFT;
+    const columnWidth = Math.max(160, viewportWidth - columnLeft - NOVAFLOW_STACK_GAP);
+    const top = TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP;
+    const sideHeight = novaflowStackSidebarHeight();
+    const workspaceTop = top + sideHeight + NOVAFLOW_STACK_GAP;
+    let contentBottom = top + sideHeight;
+
+    // The left column: its surface, and a content list that scrolls inside it.
+    placeNovaflowStackNode(document.getElementById(PRIMARY_LEFT_SURFACE_ID), {
+      top: `${top}px`, bottom: "auto", left: `${columnLeft}px`, width: `${columnWidth}px`,
+      height: `${sideHeight}px`, "min-height": "0", "max-height": `${sideHeight}px`
+    });
+    const listTop = top + 65;
+    const listHeight = Math.max(60, sideHeight - 65 - 11);
+    [firstVisible('[data-novaflow-left-content-shell="1"]'), firstVisible('[data-novaflow-left-content-root="1"]')].forEach((node) => {
+      if (!(node instanceof HTMLElement)) return;
+      const nodeTop = Math.round(node.getBoundingClientRect().top + window.scrollY);
+      const ownTop = nodeTop < listTop - 20 ? nodeTop : listTop;
+      const ownHeight = Math.max(60, top + sideHeight - 11 - ownTop);
+      const ownLeft = Math.round(node.getBoundingClientRect().left);
+      const ownWidth = Math.max(120, columnLeft + columnWidth - ownLeft - (ownLeft > columnLeft + 2 ? 10 : 0));
+      placeNovaflowStackNode(node, {
+        bottom: "auto", height: `${ownHeight}px`, "max-height": `${ownHeight}px`, "min-height": "0",
+        width: `${ownWidth}px`, "min-width": "0", "max-width": `${ownWidth}px`
+      });
+    });
+
+    if (body.classList.contains("novaflow-ai-animation-section-layers")) {
+      // 动画 / AI 序列动画: stage, then the dock, then the resources.
+      const workspace = firstVisible('[data-novaflow-ai-main-workspace="1"]');
+      placeNovaflowStackNode(workspace, {
+        top: `${workspaceTop - top}px`, height: `${NOVAFLOW_STACK_STAGE_MIN_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_STACK_STAGE_MIN_HEIGHT}px`, "max-height": `${NOVAFLOW_STACK_STAGE_MIN_HEIGHT}px`,
+        flex: "0 0 auto", width: `${columnWidth}px`, "min-width": `${columnWidth}px`, "max-width": `${columnWidth}px`
+      });
+      const dockTop = workspaceTop + NOVAFLOW_STACK_STAGE_MIN_HEIGHT + NOVAFLOW_STACK_DOCK_GAP;
+      const dock = firstVisible('[data-novaflow-ai-bottom-workspace="1"]');
+      placeNovaflowStackNode(dock, {
+        top: `${dockTop}px`, bottom: "auto", left: `${columnLeft}px`, right: "auto",
+        width: `${columnWidth}px`, "max-width": `${columnWidth}px`, height: "auto", "max-height": "none"
+      });
+      const dockBottom = dock instanceof HTMLElement ? novaflowDocRect(dock).bottom : dockTop;
+      const resources = firstVisible('[data-novaflow-ai-resource-sidebar-host="1"]');
+      const resourcesTop = Math.round(dockBottom + NOVAFLOW_STACK_GAP);
+      placeNovaflowStackNode(resources, {
+        top: `${resourcesTop}px`, bottom: "auto", left: `${columnLeft}px`, right: "auto",
+        width: `${columnWidth}px`, "min-width": `${columnWidth}px`, "max-width": `${columnWidth}px`,
+        height: `${NOVAFLOW_STACK_RESOURCES_HEIGHT}px`, "min-height": "0", "max-height": `${NOVAFLOW_STACK_RESOURCES_HEIGHT}px`
+      });
+      contentBottom = resourcesTop + NOVAFLOW_STACK_RESOURCES_HEIGHT;
+    } else if (body.classList.contains("novaflow-skeleton-animation-layout")) {
+      // 骨骼动画, off spine-spline.html at 507: the stage (539) with its play
+      // bar 9 under it, then the project tree, 299 tall.
+      const workspace = firstVisible("[data-novaflow-skeleton-workspace]");
+      // Not firstVisible: stacked, the bundle leaves the stage 0 wide until
+      // it is placed here.
+      const stage = workspace instanceof HTMLElement ? workspace.querySelector(":scope > [data-novaflow-skeleton-preview-stage]") : null;
+      const tree = workspace instanceof HTMLElement ? workspace.querySelector(":scope > [data-novaflow-skeleton-sidebar]") : null;
+      const stageHeight = NOVAFLOW_STACK_CENTER_MIN_HEIGHT - SKELETON_PLAYBAR_HEIGHT - 9;
+      const treeTop = NOVAFLOW_STACK_CENTER_MIN_HEIGHT + NOVAFLOW_STACK_GAP;
+      const treeHeight = 299;
+      placeNovaflowStackNode(workspace, {
+        position: "fixed", top: `${workspaceTop}px`, left: `${columnLeft}px`, right: "auto", bottom: "auto",
+        width: `${columnWidth}px`, "min-width": "0", "max-width": `${columnWidth}px`,
+        height: `${treeTop + treeHeight}px`, "min-height": "0", "max-height": `${treeTop + treeHeight}px`
+      });
+      placeNovaflowStackNode(stage, {
+        position: "absolute", top: "0", left: "0", right: "auto", bottom: "auto",
+        width: "100%", "min-width": "0", "max-width": "100%", height: `${stageHeight}px`, "min-height": "0", "max-height": `${stageHeight}px`
+      });
+      placeNovaflowStackNode(tree, {
+        position: "absolute", top: `${treeTop}px`, left: "0", right: "auto", bottom: "auto",
+        width: "100%", "min-width": "0", "max-width": "100%", height: `${treeHeight}px`, "min-height": "0", "max-height": `${treeHeight}px`
+      });
+      contentBottom = workspaceTop + treeTop + treeHeight;
+    } else if (body.classList.contains("novaflow-primary-target-particle")) {
+      // 特效: the stage and its dock are one block, 600 tall at the least.
+      const workspace = firstVisible('[data-novaflow-preview-workspace="1"]');
+      placeNovaflowStackNode(workspace, {
+        top: `${workspaceTop - top}px`, height: `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT}px`,
+        "min-height": `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT}px`, "max-height": `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT}px`,
+        flex: "0 0 auto", width: `${columnWidth}px`, "min-width": `${columnWidth}px`, "max-width": `${columnWidth}px`
+      });
+      placeNovaflowStackNode(document.getElementById("novaflow-particle-project-top-actions"), {
+        top: `${workspaceTop + CANVAS_BAR_ROW_TOP}px`, left: `${columnLeft}px`
+      });
+      contentBottom = workspaceTop + NOVAFLOW_STACK_CENTER_MIN_HEIGHT;
+    } else if (body.classList.contains("novaflow-primary-target-art")) {
+      // 美工: the drawing stage, then the resources panel under it.
+      const overlay = document.getElementById("novaflow-spine-split-workspace-overlay");
+      const host = document.getElementById("novaflow-spine-split-right-workspace-host");
+      const uiShell = firstVisible('[data-novaflow-ui-design-shell="1"]');
+      if (overlay instanceof HTMLElement && overlay.getBoundingClientRect().width > 0) {
+        // The overlay itself follows data-novaflow-stage-box.
+        const resourcesTop = workspaceTop + NOVAFLOW_STACK_CENTER_MIN_HEIGHT + NOVAFLOW_STACK_GAP;
+        placeNovaflowStackNode(host, {
+          top: `${resourcesTop}px`, bottom: "auto", left: `${columnLeft}px`, right: "auto",
+          width: `${columnWidth}px`, "min-width": `${columnWidth}px`, "max-width": `${columnWidth}px`,
+          height: `${NOVAFLOW_STACK_RESOURCES_HEIGHT}px`, "max-height": `${NOVAFLOW_STACK_RESOURCES_HEIGHT}px`, padding: "0"
+        });
+        contentBottom = resourcesTop + NOVAFLOW_STACK_RESOURCES_HEIGHT;
+      } else if (uiShell instanceof HTMLElement) {
+        // UI, off ui-spline.html at 507: the canvas (600) over the resources
+        // (140), 8 apart - the shell's two columns become two rows.
+        const uiResourcesHeight = 140;
+        placeNovaflowStackNode(uiShell, {
+          position: "fixed", top: `${workspaceTop}px`, left: `${columnLeft}px`, right: "auto", bottom: "auto",
+          width: `${columnWidth}px`, "min-width": "0", "max-width": `${columnWidth}px`,
+          height: `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT + NOVAFLOW_STACK_GAP + uiResourcesHeight}px`, "min-height": "0", "max-height": "none",
+          "grid-template-columns": "minmax(0, 1fr)",
+          "grid-template-rows": `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT}px ${uiResourcesHeight}px`,
+          "row-gap": `${NOVAFLOW_STACK_GAP}px`, "column-gap": "0"
+        });
+        const previewHost = uiShell.querySelector(":scope > [data-novaflow-ui-design-preview-host]");
+        placeNovaflowStackNode(previewHost, { width: "100%", "min-width": "0", "max-width": "100%", height: `${uiResourcesHeight}px`, "min-height": "0", "max-height": `${uiResourcesHeight}px`, padding: "0" });
+        placeNovaflowStackNode(previewHost instanceof HTMLElement ? previewHost.querySelector("[data-novaflow-ui-design-resource-panel]") : null, {
+          width: "100%", "min-width": "0", "max-width": "100%", "margin-left": "0", height: "100%"
+        });
+        contentBottom = workspaceTop + NOVAFLOW_STACK_CENTER_MIN_HEIGHT + NOVAFLOW_STACK_GAP + uiResourcesHeight;
+      }
+    }
+    if (body.classList.contains("novaflow-aifx-open")) {
+      // AI 特效 (an overlay over the particle page), off aifx-spline.html at
+      // 507: its groups in the sidebar, cut at its foot like the other
+      // pages', and its 600 stage block under it.
+      const mvp = document.getElementById("novaflow-aifx-mvp");
+      const mvpTop = TOPBAR_HEIGHT;
+      const sideTop = top + 65;
+      placeNovaflowStackNode(mvp, {
+        position: "fixed", top: `${mvpTop}px`, left: `${columnLeft}px`, right: "auto", bottom: "auto",
+        width: `${columnWidth}px`, "min-width": "0", "max-width": `${columnWidth}px`,
+        height: `${workspaceTop + NOVAFLOW_STACK_CENTER_MIN_HEIGHT - mvpTop}px`
+      });
+      if (mvp instanceof HTMLElement) {
+        placeNovaflowStackNode(mvp.querySelector(".aifx-side"), {
+          position: "absolute", top: `${sideTop - mvpTop}px`, left: "0", width: "100%", "margin-top": "0",
+          height: `${Math.max(60, top + sideHeight - 11 - sideTop)}px`, "max-height": "none", overflow: "hidden"
+        });
+        placeNovaflowStackNode(mvp.querySelector(".aifx-main"), {
+          position: "absolute", top: `${workspaceTop - mvpTop}px`, left: "0", width: "100%", "min-width": "0", "max-width": "100%",
+          height: `${NOVAFLOW_STACK_CENTER_MIN_HEIGHT}px`, margin: "0"
+        });
+      }
+      contentBottom = Math.max(contentBottom, workspaceTop + NOVAFLOW_STACK_CENTER_MIN_HEIGHT);
+    }
+    if (body.classList.contains("novaflow-primary-target-tools")) {
+      // 工具, measured off tools-spline.html at 507: the tool list in the
+      // sidebar, then the parameters panel, then 原图 and 结果图 as two 300
+      // cards, 10 apart.
+      const shell = firstVisible('[data-novaflow-left-content-shell="1"]');
+      placeNovaflowStackNode(shell, { "padding-bottom": "0" });
+      const workspace = firstVisible("[data-novaflow-tools-workspace]");
+      const leftPanel = firstVisible("[data-novaflow-tools-left-panel]");
+      const rightPanel = document.querySelector("[data-novaflow-tools-right-panel]");
+      const grid = document.querySelector("[data-novaflow-tools-preview-grid]");
+      const cardHeight = 300;
+      placeNovaflowStackNode(workspace, {
+        position: "fixed", top: `${workspaceTop}px`, left: `${columnLeft}px`, right: "auto", bottom: "auto",
+        width: `${columnWidth}px`, "min-width": "0", "max-width": `${columnWidth}px`,
+        height: "auto", "min-height": "0", "max-height": "none",
+        display: "flex", "flex-direction": "column", gap: `${NOVAFLOW_STACK_GAP + 2}px`
+      });
+      placeNovaflowStackNode(leftPanel, {
+        width: "100%", "min-width": "0", "max-width": "100%", height: "auto", "min-height": "0", "max-height": "none",
+        flex: "0 0 auto", "border-radius": `${PRIMARY_RAIL_PANEL_RADIUS}px`
+      });
+      placeNovaflowStackNode(rightPanel, {
+        width: "100%", "min-width": "0", "max-width": "100%", height: "auto", "min-height": "0", "max-height": "none", flex: "0 0 auto"
+      });
+      placeNovaflowStackNode(grid, {
+        width: "100%", height: "auto", "min-height": "0", "max-height": "none", display: "grid",
+        "grid-template-columns": "minmax(0, 1fr)", "grid-template-rows": "none", "grid-auto-rows": `${cardHeight}px`,
+        gap: `${NOVAFLOW_STACK_GAP + 2}px`
+      });
+      Array.from(document.querySelectorAll("[data-novaflow-tools-preview-card]")).forEach((card) => {
+        placeNovaflowStackNode(card, { width: "auto", "min-width": "0", "max-width": "none", height: `${cardHeight}px`, "min-height": "0", "max-height": `${cardHeight}px` });
+      });
+      // 导出到文件夹 / 直接覆盖 sit on 结果图's header, now the second card.
+      placeNovaflowStackNode(document.querySelector("[data-novaflow-tools-output-settings]"), {
+        top: `${cardHeight + NOVAFLOW_STACK_GAP + 2 + 12}px`, right: "12px", left: "auto"
+      });
+      if (workspace instanceof HTMLElement) contentBottom = Math.max(contentBottom, novaflowDocRect(workspace).bottom);
+    }
+    syncNovaflowStackDocumentHeight(contentBottom);
+    placeNovaflowStackNode(document.getElementById(PRIMARY_RAIL_SURFACE_ID), {
+      top: `${top}px`, bottom: "auto", height: `${Math.max(sideHeight, NOVAFLOW_STACK_DOC_HEIGHT - top - PRIMARY_PANEL_BOTTOM_GAP)}px`
+    });
+  }
+
+  let NOVAFLOW_SPEC_PLAN = null;
+  const NOVAFLOW_SPEC_SCRATCH = document.createElement("div");
+
+  function queueNovaflowSpecStyle(node, style) {
+    if (!(node instanceof HTMLElement) || !style) return;
+    if (!NOVAFLOW_SPEC_PLAN) {
+      writeNovaflowSpecDeclarations(node, Object.entries(style));
+      return;
+    }
+    let declarations = NOVAFLOW_SPEC_PLAN.get(node);
+    if (!declarations) {
+      declarations = [];
+      NOVAFLOW_SPEC_PLAN.set(node, declarations);
+    }
+    Object.entries(style).forEach((entry) => declarations.push(entry));
+  }
+
+  // Resolve the declarations in order on a scratch style (so a later
+  // longhand wins over an earlier shorthand, and a later entry over an
+  // earlier one), then write only the longhands whose value or priority
+  // differ. Nothing is written when the node already matches, so a settled
+  // page produces no mutations at all.
+  // Resolved declarations by their text: most entries are the same object
+  // every pass, and resolving them on the scratch style was a third of the
+  // pass.
+  const NOVAFLOW_SPEC_RESOLVED = new Map();
+  // What each node was last given, and its style attribute right after: when
+  // neither changed, the node already matches and is not read again.
+  let NOVAFLOW_SPEC_LAST = new WeakMap();
+
+  function resolveNovaflowSpecDeclarations(declarations) {
+    let key = "";
+    declarations.forEach(([property, value]) => { key += `${property}:${value};`; });
+    let resolved = NOVAFLOW_SPEC_RESOLVED.get(key);
+    if (resolved) return { key, resolved };
+    const scratch = NOVAFLOW_SPEC_SCRATCH.style;
+    scratch.cssText = "";
+    declarations.forEach(([property, value]) => {
+      scratch.setProperty(property, String(value), "important");
+    });
+    resolved = [];
+    for (let index = 0; index < scratch.length; index += 1) {
+      const property = scratch[index];
+      const value = scratch.getPropertyValue(property);
+      // A shorthand written with var() leaves its longhands pending; they
+      // carry no value of their own to write.
+      if (value) resolved.push([property, value]);
+    }
+    if (NOVAFLOW_SPEC_RESOLVED.size > 6000) NOVAFLOW_SPEC_RESOLVED.clear();
+    NOVAFLOW_SPEC_RESOLVED.set(key, resolved);
+    return { key, resolved };
+  }
+
+  function writeNovaflowSpecDeclarations(node, declarations, desiredMap, ownedStyles) {
+    const { key, resolved } = resolveNovaflowSpecDeclarations(declarations);
+    const last = NOVAFLOW_SPEC_LAST.get(node);
+    let desired;
+    if (last && last.key === key && last.styleText === node.getAttribute("style")) {
+      desired = last.desired;
+    } else {
+      desired = new Map();
+      resolved.forEach(([property, value]) => {
+        if (!(node.style.getPropertyValue(property) === value && node.style.getPropertyPriority(property) === "important")) {
+          node.style.setProperty(property, value, "important");
+        }
+        // Read back what the browser stores, so the guard compares like with like.
+        desired.set(property, node.style.getPropertyValue(property));
+      });
+      NOVAFLOW_SPEC_LAST.set(node, { key, styleText: node.getAttribute("style"), desired });
+    }
+    if (desiredMap) desiredMap.set(node, desired);
+    if (ownedStyles) ownedStyles.set(node.style, desired);
+  }
+
+  // The drawing page's own runtime places its stage overlay from this box, so
+  // it and the spec agree on the stage for every tier.
+  function publishNovaflowStageBox() {
+    const box = novaflowStageBox(true);
+    const height = NOVAFLOW_LAYOUT_TIER === "stack"
+      ? NOVAFLOW_STACK_CENTER_MIN_HEIGHT
+      : Math.max(160, Math.round((window.innerHeight || 0) - box.top - PRIMARY_PANEL_BOTTOM_GAP));
+    const value = [box.left, box.top, box.width, height].map((n) => Math.round(n)).join(",");
+    nfSetAttrIfChanged(document.documentElement, "data-novaflow-stage-box", value);
+    // With 绘图's generation dock up, the stage panel itself stops 9 above
+    // it, as the reference's does; the dock sits on the page, not the panel.
+    let surfaceHeight = height;
+    const dock = document.querySelector(`#${ART_GENERATE_WORKSPACE_ID} .novaflow-art-generate-bottom`);
+    if (document.body && document.body.getAttribute(ART_GENERATE_ACTIVE_ATTR) === "1" && dock instanceof HTMLElement && dock.offsetHeight > 0) {
+      surfaceHeight = Math.max(160, height - dock.offsetHeight - AI_ANIMATION_PANEL_TIMELINE_GAP);
+    }
+    const surface = [box.left, box.top, box.width, surfaceHeight].map((n) => Math.round(n)).join(",");
+    nfSetAttrIfChanged(document.documentElement, "data-novaflow-stage-surface-box", surface);
+  }
+
+  function applyNovaflowReferenceSpec() {
+    // Always the whole document. The rhythm pass is often called with a
+    // narrow scope, and a page-level spec queried from inside that scope
+    // simply finds nothing - which is why the skeleton page kept its own
+    // values while every entry looked correct.
+    const root = document;
+    const body = document.body;
+    if (!(body instanceof HTMLElement)) return;
+    const specStartedAt = performance.now();
+    const wasWriting = NOVAFLOW_SPEC_WRITING;
+    NOVAFLOW_SPEC_WRITING = true;
+    try {
+      applyNovaflowReferenceSpecPass(root, body);
+    } finally {
+      NOVAFLOW_SPEC_WRITING = wasWriting;
+      const stats = window.__novaflowSpecStats || (window.__novaflowSpecStats = { runs: 0, totalMs: 0, maxMs: 0 });
+      const spent = performance.now() - specStartedAt;
+      stats.runs += 1;
+      stats.totalMs += spent;
+      if (spent > stats.maxMs) stats.maxMs = spent;
+    }
+  }
+
+  function applyNovaflowReferenceSpecPass(root, body) {
+    installNovaflowReferenceSpecObserver();
+    try { syncParticleTemplateManager(); } catch (_) { void 0; }
+    // 美工 / UI zoom cells are put in with the pill, not a poll later.
+    try { syncNovaflowZoomPercentLabels(); } catch (_) { void 0; }
+    try { exitArtEditWhenGenerating(); } catch (_) { void 0; }
+    try { markNovaflowToolsModeRowEarly(); } catch (_) { void 0; }
+    syncNovaflowStackAdoption();
+    NOVAFLOW_STACK_WORKSPACE_TOP = NOVAFLOW_LAYOUT_TIER === "stack"
+      ? TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP + novaflowStackSidebarHeight() + NOVAFLOW_STACK_GAP
+      : 0;
+    publishNovaflowStageBox();
+    // Every entry for a node is gathered first and written once. Writing them
+    // one by one let a shorthand (background, border, gap, padding) and its
+    // own longhands, or two entries, undo each other on every pass - each
+    // undo a mutation, each mutation another pass: the flicker.
+    const plan = new Map();
+    NOVAFLOW_SPEC_PLAN = plan;
+    try {
+      novaflowReferenceSpec().forEach((entry) => {
+        if (entry.when && !body.matches(entry.when)) return;
+        let nodes;
+        try {
+          nodes = Array.from(root.querySelectorAll(entry.selector));
+        } catch (_) {
+          return;
+        }
+        nodes.forEach((node) => {
+          if (!(node instanceof HTMLElement)) return;
+          const style = typeof entry.style === "function" ? entry.style(node) : entry.style;
+          if (!style) return;
+          queueNovaflowSpecStyle(node, style);
+        });
+      });
+      applyNovaflowStackLayout();
+    } finally {
+      NOVAFLOW_SPEC_PLAN = null;
+    }
+    // Only what this pass asked for is guarded; a node the spec no longer
+    // covers (another page, another tier) is left to its own writers.
+    const desiredMap = new WeakMap();
+    const ownedStyles = new WeakMap();
+    plan.forEach((declarations, node) => writeNovaflowSpecDeclarations(node, declarations, desiredMap, ownedStyles));
+    NOVAFLOW_SPEC_DESIRED = desiredMap;
+    NOVAFLOW_SPEC_OWNED = ownedStyles;
   }
 
   function normalizeNovaflowVisualRhythm(scope = document) {
@@ -30626,6 +36092,8 @@
         normalizeAiAnimationReferenceColumnPosition(scope);
         normalizeNovaflowRectRadii(scope);
         applyParticleDensityPanelInlineTokens(scope);
+        // Last, so the reference spec is what survives.
+        applyNovaflowReferenceSpec();
       });
     } finally {
       nfJankProbeFunctionEnd("normalizeNovaflowVisualRhythm", __nfJankStartedAt);
@@ -31369,6 +36837,21 @@
     return shells;
   }
 
+  /** Which slot in the rail a button occupies, by its own label attribute. */
+  function primaryRailEntryIndex(button) {
+    const label = button instanceof HTMLElement ? button.getAttribute("data-novaflow-primary-label") : "";
+    const shown = PRIMARY_ENTRY_DISPLAY_LABELS.indexOf(label);
+    if (shown >= 0) return shown;
+    return PRIMARY_ENTRY_LABELS.indexOf(label);
+  }
+
+  /** Corners for one rail cell so a column of them looks like a single panel. */
+  function primaryRailCellRadius() {
+    // The reference gives EVERY entry the same small radius - they are
+    // separate blocks inside the rail panel, not slices of it.
+    return PRIMARY_ENTRY_ACTIVE_RADIUS_PX;
+  }
+
   function paintPrimaryEntryShells(button, active) {
     getPrimaryEntryShells(button).forEach((shell) => {
       const directCell = shell === button.parentElement;
@@ -31384,7 +36867,19 @@
       nfSetStyleIfChanged(shell, "background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(shell, "background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(shell, "background-image", "none", "important");
-      nfSetStyleIfChanged(shell, "box-shadow", "none", "important");
+      // Radius is decided in this one place, because two writers disagreeing
+      // meant whichever ran last won. A selected entry is a rounded block; an
+      // unselected one carries the rail panel's own corner when it sits at an
+      // end of the column, so the separate fixed cells read as one panel.
+      nfSetStyleIfChanged(
+        shell,
+        "border-radius",
+        active
+          ? PRIMARY_ENTRY_ACTIVE_RADIUS_PX
+          : primaryRailCellRadius(primaryRailEntryIndex(button), PRIMARY_ENTRY_LABELS.length),
+        "important"
+      );
+      nfSetStyleIfChanged(shell, "box-shadow", active ? `inset 0 0 0 1px ${UI_RAIL_SELECTED_BORDER}` : "none", "important");
     });
   }
 
@@ -31424,13 +36919,15 @@
     const x = Number(event.clientX);
     const y = Number(event.clientY);
     if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-    if (x < -4 || x > PRIMARY_SIDEBAR_WIDTH + 16) return null;
-    const top = getTopbarBottom();
+    if (x < PRIMARY_SIDEBAR_LEFT - 4 || x > PRIMARY_SIDEBAR_LEFT + PRIMARY_SIDEBAR_WIDTH + 16) return null; // rail band, not the narrower entry box
+    const top = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP + PRIMARY_RAIL_INNER_PAD;
     const localY = y - top;
     if (localY < 0) return null;
-    const index = Math.floor(localY / PRIMARY_SIDEBAR_ITEM_HEIGHT);
+    const index = Math.floor(localY / PRIMARY_RAIL_ITEM_PITCH);
     if (index < 0 || index >= PRIMARY_ENTRY_LABELS.length) return null;
-    const offset = localY - index * PRIMARY_SIDEBAR_ITEM_HEIGHT;
+    // The gap between entries is dead space, so a hit past the entry box is
+    // not that entry.
+    const offset = localY - index * PRIMARY_RAIL_ITEM_PITCH;
     if (offset < 0 || offset > PRIMARY_SIDEBAR_ITEM_HEIGHT) return null;
     return PRIMARY_ENTRY_LABELS[index] || null;
   }
@@ -31996,14 +37493,14 @@
     if (syncAiAnimationPreviewRealGeometryVars({ allowCached: true })) return;
     const previewLeft = PRIMARY_COLUMN_WIDTH;
     const previewTop = getTopbarBottom();
-    const previewRight = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH;
+    const previewRight = AI_ANIMATION_RESOURCE_SIDEBAR_SPAN;
     const previewRightEdge = Math.max(previewLeft + 240, (window.innerWidth || 1280) - previewRight);
     const previewCenterX = Math.round((previewLeft + previewRightEdge) / 2);
     setStylePropertyIfChanged(document.body, "--novaflow-ai-preview-left", `${previewLeft}px`);
     setStylePropertyIfChanged(document.body, "--novaflow-ai-preview-top", `${previewTop}px`);
     setStylePropertyIfChanged(document.body, "--novaflow-ai-preview-right", `${previewRight}px`);
     setStylePropertyIfChanged(document.body, "--novaflow-ai-preview-center-x", `${previewCenterX}px`);
-    setStylePropertyIfChanged(document.body, "--novaflow-ai-resource-sidebar-width", `${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px`);
+    setStylePropertyIfChanged(document.body, "--novaflow-ai-resource-sidebar-width", `${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px`);
     setStylePropertyIfChanged(document.body, "--novaflow-ai-resource-sidebar-gap", `${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px`);
   }
 
@@ -32034,7 +37531,7 @@
     const currentValue = document.body.style.getPropertyValue(name).trim();
     if (currentValue) return currentValue;
     const previewLeft = PRIMARY_COLUMN_WIDTH;
-    const previewRight = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH;
+    const previewRight = AI_ANIMATION_RESOURCE_SIDEBAR_SPAN;
     const previewRightEdge = Math.max(previewLeft + 240, (window.innerWidth || 1280) - previewRight);
     const previewCenterX = Math.round((previewLeft + previewRightEdge) / 2);
     if (name === "--novaflow-ai-preview-left") return `${previewLeft}px`;
@@ -33133,8 +38630,10 @@
       button.style.setProperty("background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       button.style.setProperty("background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       button.style.setProperty("background-image", "none", "important");
-      button.style.setProperty("color", active ? "#ffffff" : "rgba(244, 247, 251, 0.88)", "important");
-      button.style.setProperty("opacity", "1", "important");
+      // The switch paints the rail first; it uses the full sync's colours so
+      // the sync that follows does not repaint the labels.
+      nfSetStyleIfChanged(button, "color", active ? UI_RAIL_SELECTED_TEXT : `var(--nf-rail-entry-fg, ${PRIMARY_RAIL_IDLE_TEXT})`, "important");
+      nfSetStyleIfChanged(button, "opacity", "1", "important");
     });
     return true;
   }
@@ -33168,8 +38667,10 @@
       button.style.setProperty("background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       button.style.setProperty("background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       button.style.setProperty("background-image", "none", "important");
-      button.style.setProperty("color", active ? "#ffffff" : "rgba(244, 247, 251, 0.88)", "important");
-      button.style.setProperty("opacity", "1", "important");
+      // The switch paints the rail first; it uses the full sync's colours so
+      // the sync that follows does not repaint the labels.
+      nfSetStyleIfChanged(button, "color", active ? UI_RAIL_SELECTED_TEXT : `var(--nf-rail-entry-fg, ${PRIMARY_RAIL_IDLE_TEXT})`, "important");
+      nfSetStyleIfChanged(button, "opacity", "1", "important");
       touched = true;
     });
     return touched;
@@ -34392,19 +39893,26 @@
   function applyNovaflowToolsEntryButtonVisual(button, looksActive) {
     if (!(button instanceof HTMLElement)) return;
     button.setAttribute("data-novaflow-tools-entry-active", looksActive ? "1" : "0");
-    button.style.setProperty("width", `${PRIMARY_LEFT_PANEL_WIDTH}px`, "important");
-    button.style.setProperty("min-width", `${PRIMARY_LEFT_PANEL_WIDTH}px`, "important");
-    button.style.setProperty("max-width", `${PRIMARY_LEFT_PANEL_WIDTH}px`, "important");
-    button.style.setProperty("height", "44px", "important");
-    button.style.setProperty("min-height", "44px", "important");
-    button.style.setProperty("max-height", "44px", "important");
-    button.style.setProperty("padding", "7px 10px", "important");
-    button.style.setProperty("background", looksActive ? UI_ACCENT : UI_BUTTON_BACKGROUND, "important");
-    button.style.setProperty("background-color", looksActive ? UI_ACCENT : UI_BUTTON_BACKGROUND, "important");
-    button.style.setProperty("border-color", "transparent", "important");
-    button.style.setProperty("color", looksActive ? "#ffffff" : "rgba(238, 244, 252, 0.96)", "important");
+    // The reference draws this list like the rail: bare until selected, then
+    // the dark green with a hairline edge. It is navigation, not an action,
+    // so it never takes the accent fill.
+    button.style.setProperty("width", `${PRIMARY_LEFT_CARD_WIDTH}px`, "important");
+    button.style.setProperty("min-width", `${PRIMARY_LEFT_CARD_WIDTH}px`, "important");
+    button.style.setProperty("max-width", `${PRIMARY_LEFT_CARD_WIDTH}px`, "important");
+    button.style.setProperty("margin-left", `${PRIMARY_LEFT_CARD_INSET}px`, "important");
+    button.style.setProperty("height", `${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px`, "important");
+    button.style.setProperty("min-height", `${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px`, "important");
+    button.style.setProperty("max-height", `${NOVAFLOW_TOOLS_ENTRY_HEIGHT}px`, "important");
+    button.style.setProperty("padding", "0 12px", "important");
+    button.style.setProperty("border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
+    button.style.setProperty("background", looksActive ? UI_SELECTED_BACKGROUND : "transparent", "important");
+    button.style.setProperty("background-color", looksActive ? UI_SELECTED_BACKGROUND : "transparent", "important");
+    button.style.setProperty("border", "0", "important");
+    button.style.setProperty("color", looksActive ? NOVAFLOW_TOOLS_ENTRY_SELECTED_TEXT : UI_SEGMENT_IDLE_TEXT, "important");
+    button.style.setProperty("font-size", "12px", "important");
+    button.style.setProperty("font-weight", NOVAFLOW_MEDIUM_FONT_WEIGHT, "important");
     button.style.setProperty("background-image", "none", "important");
-    button.style.setProperty("box-shadow", "none", "important");
+    button.style.setProperty("box-shadow", looksActive ? `inset 0 0 0 1px ${UI_RAIL_SELECTED_BORDER}` : "none", "important");
     button.style.setProperty("filter", "none", "important");
   }
 
@@ -35613,7 +41121,7 @@
       range.style.setProperty("max-height", `${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px`, "important");
       range.style.setProperty("padding", "0", "important");
       range.style.setProperty("accent-color", UI_RANGE_ACCENT, "important");
-      range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
+      range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
       range.style.setProperty("background-color", "transparent", "important");
       syncRangeFillVisual(range);
     });
@@ -37221,7 +42729,9 @@
       nfSetStyleIfChanged(button, "background", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(button, "background-color", active ? PRIMARY_ACTIVE_BACKGROUND : PRIMARY_INACTIVE_BACKGROUND, "important");
       nfSetStyleIfChanged(button, "background-image", "none", "important");
-      nfSetStyleIfChanged(button, "color", active ? "#ffffff" : "rgba(244, 247, 251, 0.88)", "important");
+      // Idle text is a var() so the stylesheet's :hover can still turn it white.
+      nfSetStyleIfChanged(button, "color", active ? UI_RAIL_SELECTED_TEXT : `var(--nf-rail-entry-fg, ${PRIMARY_RAIL_IDLE_TEXT})`, "important");
+      nfSetStyleIfChanged(button, "font-size", "11px", "important");
       nfSetStyleIfChanged(button, "opacity", "1", "important");
     });
   }
@@ -38230,7 +43740,9 @@
   function getLeftContentBottomLimit(left, width) {
     const viewportBottom = window.innerHeight || document.documentElement.clientHeight || 900;
     const leftEdge = Math.round(left);
-    const rightEdge = leftEdge + Math.round(width);
+    // Never past the left panel's own edge: callers pass an inset left with
+    // the full width, which reached into the stage and its dock.
+    const rightEdge = Math.min(leftEdge + Math.round(width), PRIMARY_CONTENT_LEFT + PRIMARY_LEFT_PANEL_WIDTH);
     let bottomLimit = viewportBottom;
     const selectors = [
       '[data-novaflow-bottom-controls="1"]',
@@ -38239,7 +43751,9 @@
     Array.from(document.querySelectorAll(selectors)).forEach((node) => {
       if (!(node instanceof HTMLElement) || !isVisible(node)) return;
       const rect = node.getBoundingClientRect();
-      const horizontallyOverlaps = rect.left < rightEdge && rect.right > leftEdge;
+      // A real overlap, not a shared edge: the particle dock starts where the
+      // left panel ends, and touching it cut the list 160 short of the panel.
+      const horizontallyOverlaps = rect.left < rightEdge - 4 && rect.right > leftEdge + 4;
       if (!horizontallyOverlaps || rect.top <= getTopbarBottom() + 80) return;
       bottomLimit = Math.min(bottomLimit, Math.max(getTopbarBottom() + 160, Math.round(rect.top)));
     });
@@ -46309,7 +51823,7 @@
         appearance: "none",
         "-webkit-appearance": "none",
         "accent-color": UI_RANGE_ACCENT,
-        background: `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`,
+        background: `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`,
         "background-color": "transparent",
         cursor: "pointer",
         "box-sizing": "border-box"
@@ -48359,7 +53873,7 @@
         padding: "0",
         margin: "0",
         "accent-color": UI_RANGE_ACCENT,
-        background: `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`,
+        background: `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`,
         "background-color": "transparent",
         "box-sizing": "border-box"
       });
@@ -49069,20 +54583,21 @@
       const rowCompactDensity = isCompactDensityContainer(container);
       const rowDensityGap = rowCompactDensity ? PARTICLE_DENSITY_SECTION_GAP : densityGap;
       const rowDensityColumnGap = rowCompactDensity ? PARTICLE_DENSITY_SECTION_GAP : densityColumnGap;
-      const columns = directButtons.length > 5 ? 2 : directButtons.length;
       setImportantStyles(container, {
-        display: "grid",
-        "grid-template-columns": `repeat(${columns}, minmax(0, 1fr))`,
+        display: "flex",
+        "flex-wrap": "wrap",
         gap: `${rowDensityGap}px`,
         "row-gap": `${rowDensityGap}px`,
         "column-gap": `${rowDensityColumnGap}px`,
-        "align-items": "stretch"
+        "align-items": "center",
+        "justify-content": "flex-start"
       });
       directButtons.forEach((button) => {
         setImportantStyles(button, {
-          width: "100%",
+          width: "auto",
           "min-width": "0",
           "max-width": "100%",
+          flex: "0 0 auto",
           "box-sizing": "border-box",
           "margin-left": "0",
           "margin-right": "0"
@@ -49140,6 +54655,8 @@
     };
     normalizePass();
     normalizePass();
+    const ownerCard = body.closest('[data-novaflow-editor-panel="1"]');
+    if (ownerCard instanceof HTMLElement) stylePrimaryLeftCardControls(ownerCard);
   }
 
   function normalizeRibbonPanelRuntimeOwner(root) {
@@ -49183,7 +54700,9 @@
 
   function normalizeLeftAccordionPanelContainment(root) {
     if (!(root instanceof HTMLElement)) return;
-    const panelWidth = `${PRIMARY_LEFT_PANEL_WIDTH}px`;
+    // The card width syncPrimaryLeftCards settles on. Writing the column's
+    // (218) here first made a group just opened (飘带计算) flash 20 wider.
+    const panelWidth = `${PRIMARY_LEFT_CARD_WIDTH}px`;
     const particleDensity = isParticleDensityTarget();
     const artDrawingTarget = !particleDensity && document.body && document.body.classList.contains("novaflow-primary-target-art");
     const panelHeaderHeight = particleDensity
@@ -49194,7 +54713,7 @@
     const panelBodyPadding = particleDensity
       ? `${PARTICLE_DENSITY_PANEL_BODY_PADDING_Y}px ${PARTICLE_DENSITY_PANEL_BODY_PADDING_X}px`
       : "";
-    const panelGap = particleDensity ? PARTICLE_DENSITY_PANEL_STACK_GAP : SECONDARY_CONTENT_GAP;
+    const panelGap = PARTICLE_DENSITY_PANEL_STACK_GAP;
     const panelInnerGap = artDrawingTarget ? 0 : panelGap;
     const panelColumnGap = particleDensity ? PARTICLE_DENSITY_PANEL_STACK_GAP : SECONDARY_CONTENT_COLUMN_GAP;
     const wrappers = new Set();
@@ -49806,13 +55325,14 @@
           "box-sizing": "border-box"
         });
       }
+      // The groups are cards in the left panel, 10 in, as on every page.
       const sidePanel = aifxRoot.querySelector(".aifx-side > .aifx-panel");
       if (sidePanel instanceof HTMLElement) {
         setImportantStyles(sidePanel, {
-          width: `${PRIMARY_LEFT_PANEL_WIDTH}px`,
-          "min-width": `${PRIMARY_LEFT_PANEL_WIDTH}px`,
-          "max-width": `${PRIMARY_LEFT_PANEL_WIDTH}px`,
-          "margin-left": "0",
+          width: `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "min-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "max-width": `${PRIMARY_LEFT_CARD_WIDTH}px`,
+          "margin-left": `${PRIMARY_LEFT_CARD_INSET}px`,
           "box-sizing": "border-box"
         });
       }
@@ -50675,7 +56195,9 @@
         width: "100%",
         "min-width": "0",
         "max-width": "100%",
-        "margin-top": `${SECONDARY_CONTENT_GAP}px`,
+        // With the section layers up, the group rhythm puts it 3 (or 20)
+        // under 模式选择; a second value here made it jump between the two.
+        "margin-top": document.body.classList.contains("novaflow-ai-animation-section-layers") ? null : `${SECONDARY_CONTENT_GAP}px`,
         "margin-left": "0",
         "margin-right": "0",
         "box-sizing": "border-box"
@@ -50698,14 +56220,41 @@
   function pinSecondaryGroup(group, buttons) {
     const groupRect = group.getBoundingClientRect();
     const upperRail = findSidebarSecondaryAnchorRect() || findPrimaryRailRect() || findClosestUpperRailRect(groupRect);
-    const shellHeight = SECONDARY_ENTRY_HEIGHT;
+    const shellHeight = SECONDARY_GROUP_HEIGHT;
     const buttonHeight = SECONDARY_ENTRY_HEIGHT;
-    const left = upperRail ? Math.round(upperRail.left) : 0;
+    // Reference: the segment sits INSIDE the left panel's padding, so it is
+    // measured off the panel box rather than off whatever rail is above it.
+    const left = (upperRail ? Math.round(upperRail.left) : 0) + SECONDARY_GROUP_LEFT_INSET;
     const rootWidth = upperRail ? Math.round(upperRail.width) : Math.round(groupRect.width || PRIMARY_VISIBLE_CONTENT_WIDTH);
-    const secondaryWidth = Math.min(SECONDARY_ENTRY_GROUP_WIDTH, rootWidth);
-    const top = upperRail ? Math.round(upperRail.bottom + PRIMARY_SECONDARY_GAP) : Math.max(88, Math.round(groupRect.top - 10));
+    const secondaryWidth = Math.min(PRIMARY_LEFT_CARD_WIDTH, rootWidth);
+    const panelTop = getTopbarBottom() + PRIMARY_PANEL_TOP_GAP;
+    const top = upperRail
+      ? panelTop + SECONDARY_GROUP_TOP_INSET
+      : Math.max(88, Math.round(groupRect.top - 10));
     const shieldTop = upperRail ? Math.round(upperRail.bottom) : top;
-    const desiredContentTop = Math.round(top + shellHeight + SECONDARY_CONTENT_GAP);
+    const desiredContentTop = Math.round(top + shellHeight + SECONDARY_TO_CONTENT_GAP);
+    // Inline, because the group's padding and the pills' radius are each set
+    // by more than one stylesheet rule and the last one kept winning. This is
+    // the capsule spec from the reference: 4px inset, 3px gap, 5px pills.
+    nfSetStyleIfChanged(group, "padding", `${SECONDARY_GROUP_PAD}px`, "important");
+    nfSetStyleIfChanged(group, "gap", `${SECONDARY_GROUP_PILL_GAP}px`, "important");
+    nfSetStyleIfChanged(group, "column-gap", `${SECONDARY_GROUP_PILL_GAP}px`, "important");
+    nfSetStyleIfChanged(group, "background", SECONDARY_GROUP_BACKGROUND, "important");
+    nfSetStyleIfChanged(group, "background-color", SECONDARY_GROUP_BACKGROUND, "important");
+    nfSetStyleIfChanged(group, "border", `1px solid ${SECONDARY_GROUP_BORDER_COLOR}`, "important");
+    nfSetStyleIfChanged(group, "border-radius", SECONDARY_GROUP_RADIUS_PX, "important");
+    nfSetAttrIfChanged(group, "data-novaflow-keep-radius", "1");
+    nfSetStyleIfChanged(group, "box-sizing", "border-box", "important");
+    Array.from(group.querySelectorAll('[data-novaflow-secondary-entry="1"]')).forEach((entry) => {
+      if (entry instanceof HTMLElement) {
+        nfSetStyleIfChanged(entry, "border-radius", SECONDARY_ENTRY_RADIUS_PX, "important");
+        nfSetStyleIfChanged(entry, "flex", "1 1 0", "important");
+        nfSetStyleIfChanged(entry, "min-width", "0", "important");
+        nfSetStyleIfChanged(entry, "height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
+        nfSetStyleIfChanged(entry, "min-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
+        nfSetStyleIfChanged(entry, "max-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
+      }
+    });
     nfSetStyleIfChanged(group, "--novaflow-secondary-top", `${top}px`);
     nfSetStyleIfChanged(group, "--novaflow-secondary-left", `${left}px`);
     nfSetStyleIfChanged(group, "--novaflow-secondary-width", `${secondaryWidth}px`);
@@ -50721,9 +56270,10 @@
     nfSetStyleIfChanged(group, "min-width", `${secondaryWidth}px`, "important");
     nfSetStyleIfChanged(group, "max-width", `${secondaryWidth}px`, "important");
     nfSetStyleIfChanged(group, "height", `${shellHeight}px`, "important");
-    nfSetStyleIfChanged(group, "padding", "0", "important");
+    nfSetStyleIfChanged(group, "min-height", `${shellHeight}px`, "important");
+    nfSetStyleIfChanged(group, "max-height", `${shellHeight}px`, "important");
     nfSetStyleIfChanged(group, "box-sizing", "border-box", "important");
-    nfSetStyleIfChanged(group, "align-items", "start", "important");
+    nfSetStyleIfChanged(group, "align-items", "center", "important");
     const next = group.nextElementSibling;
     const parent = group.parentElement;
     if (parent instanceof HTMLElement) {
@@ -50733,12 +56283,13 @@
         const viewportBottom = window.innerHeight || document.documentElement.clientHeight || 900;
         const bottomLimit = getLeftContentBottomLimit(left, rootWidth);
         const bottomGap = bottomLimit < viewportBottom ? 12 : 0;
-        const contentBottomOffset = Math.max(0, Math.round(viewportBottom - bottomLimit + bottomGap));
+        // Never below the panel's rounded foot, dock or no dock.
+    const contentBottomOffset = Math.max(PRIMARY_PANEL_BOTTOM_GAP + 11, Math.round(viewportBottom - bottomLimit + bottomGap));
         if (shell instanceof HTMLElement) {
           const shellLeft = PRIMARY_CONTENT_LEFT;
           const shellWidth = PRIMARY_VISIBLE_CONTENT_WIDTH;
           const shellTop = desiredContentTop;
-          const shellBottom = contentBottomOffset > 0 ? contentBottomOffset : -PRIMARY_CONTENT_OUTER_GAP;
+          const shellBottom = contentBottomOffset > 0 ? contentBottomOffset : PRIMARY_PANEL_BOTTOM_GAP + 11; // inside the panel's rounded foot
           nfSetAttrIfChanged(shell, "data-novaflow-left-content-shell", "1");
           shell.removeAttribute("data-novaflow-left-content-clamped");
           nfSetStyleIfChanged(shell, "--novaflow-left-shell-left", `${shellLeft}px`);
@@ -50850,7 +56401,8 @@
     const viewportBottom = window.innerHeight || document.documentElement.clientHeight || 900;
     const bottomLimit = getLeftContentBottomLimit(left, width);
     const bottomGap = bottomLimit < viewportBottom ? 12 : 0;
-    const contentBottomOffset = Math.max(0, Math.round(viewportBottom - bottomLimit + bottomGap));
+    // Never below the panel's rounded foot, dock or no dock.
+    const contentBottomOffset = Math.max(PRIMARY_PANEL_BOTTOM_GAP + 11, Math.round(viewportBottom - bottomLimit + bottomGap));
     const contentHeight = Math.max(160, Math.round(bottomLimit - top - bottomGap));
     if (!Number.isFinite(contentHeight) || contentHeight <= 0) return false;
     const contentHeightOffset = Math.max(0, Math.round(top + contentBottomOffset));
@@ -50872,7 +56424,7 @@
       ? root.parentElement
       : root.closest('[data-novaflow-left-content-shell="1"]');
     if (shell instanceof HTMLElement) {
-      const shellBottom = contentBottomOffset > 0 ? contentBottomOffset : -PRIMARY_CONTENT_OUTER_GAP;
+      const shellBottom = contentBottomOffset > 0 ? contentBottomOffset : PRIMARY_PANEL_BOTTOM_GAP + 11; // inside the panel's rounded foot
       shell.style.setProperty("--novaflow-left-shell-bottom", `${shellBottom}px`);
       shell.style.setProperty("bottom", `${shellBottom}px`, "important");
     }
@@ -51001,15 +56553,11 @@
     nfSetStyleIfChanged(group, "--novaflow-secondary-count", String(buttons.length));
     nfSetStyleIfChanged(group, "display", "grid", "important");
     nfSetStyleIfChanged(group, "grid-template-columns", `repeat(${buttons.length}, minmax(0, 1fr))`, "important");
-    nfSetStyleIfChanged(group, "gap", `${SECONDARY_ENTRY_GAP}px`, "important");
-    nfSetStyleIfChanged(group, "column-gap", `${SECONDARY_ENTRY_GAP}px`, "important");
+    // Gap, padding, border, radius, fill and width are the capsule's, set by
+    // pinSecondaryGroup at the end of this call; writing other values first
+    // only changed them twice per pass.
     nfSetStyleIfChanged(group, "row-gap", "0", "important");
-    nfSetStyleIfChanged(group, "padding-left", "0", "important");
-    nfSetStyleIfChanged(group, "padding-right", "0", "important");
-    nfSetStyleIfChanged(group, "border", "0", "important");
-    nfSetStyleIfChanged(group, "border-radius", "0", "important");
     nfSetStyleIfChanged(group, "box-shadow", "none", "important");
-    nfSetStyleIfChanged(group, "background", "transparent", "important");
     nfSetStyleIfChanged(group, "overflow", "hidden", "important");
     nfSetStyleIfChanged(group, "position", "fixed", "important");
     nfSetStyleIfChanged(group, "z-index", DROPDOWN_UNDERLAY_Z_INDEX, "important");
@@ -51019,8 +56567,6 @@
     group.style.removeProperty("--novaflow-secondary-width");
     nfSetStyleIfChanged(group, "margin-left", "0", "important");
     nfSetStyleIfChanged(group, "margin-right", "0", "important");
-    nfSetStyleIfChanged(group, "width", "100%", "important");
-    nfSetStyleIfChanged(group, "min-width", "0", "important");
     nfSetStyleIfChanged(group, "transform", "none", "important");
 
     markCompactSurfaces(group, buttons);
@@ -51064,19 +56610,22 @@
       nfSetStyleIfChanged(button, "height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
       nfSetStyleIfChanged(button, "min-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
       nfSetStyleIfChanged(button, "max-height", `${SECONDARY_ENTRY_HEIGHT}px`, "important");
-      nfSetStyleIfChanged(button, "font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
+      nfSetStyleIfChanged(button, "font-weight", NOVAFLOW_MEDIUM_FONT_WEIGHT, "important");
       nfSetStyleIfChanged(button, "display", "flex", "important");
       nfSetStyleIfChanged(button, "align-items", "center", "important");
       nfSetStyleIfChanged(button, "justify-content", "center", "important");
       nfSetStyleIfChanged(button, "padding", "0 6px", "important");
       nfSetStyleIfChanged(button, "border", "0", "important");
-      nfSetStyleIfChanged(button, "border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
-      nfSetStyleIfChanged(button, "background", SECONDARY_ENTRY_BACKGROUND, "important");
-      nfSetStyleIfChanged(button, "background-color", SECONDARY_ENTRY_BACKGROUND, "important");
+      nfSetStyleIfChanged(button, "border-radius", SECONDARY_ENTRY_RADIUS_PX, "important");
+      const secondaryBackground = active ? SECONDARY_ENTRY_ACTIVE_BACKGROUND : SECONDARY_ENTRY_BACKGROUND;
+      nfSetStyleIfChanged(button, "background", secondaryBackground, "important");
+      nfSetStyleIfChanged(button, "background-color", secondaryBackground, "important");
       nfSetStyleIfChanged(button, "background-image", "none", "important");
-      nfSetStyleIfChanged(button, "color", active ? UI_ACCENT_TEXT : "rgba(244, 247, 251, 0.92)", "important");
-      nfSetStyleIfChanged(button, "box-shadow", active ? `inset 0 -2px 0 ${UI_ACCENT}` : "none", "important");
-      nfSetStyleIfChanged(button, "outline", "0", "important");
+      nfSetStyleIfChanged(button, "color", active ? UI_SEGMENT_SELECTED_TEXT : `var(--nf-seg-entry-fg, ${UI_SEGMENT_IDLE_TEXT})`, "important");
+      nfSetStyleIfChanged(button, "box-shadow", active ? `inset 0 0 0 1px ${UI_SEGMENT_SELECTED_BORDER}` : "none", "important");
+      // Not !important: it still beats the bundle stylesheet, while letting
+      // the theme's :focus-visible ring through for keyboard users.
+      nfSetStyleIfChanged(button, "outline", "0");
       nfSetStyleIfChanged(button, "box-sizing", "border-box", "important");
       nfSetStyleIfChanged(button, "overflow", "hidden", "important");
       nfSetStyleIfChanged(button, "transition", "none", "important");
@@ -51852,7 +57401,7 @@
     if (modeRoot instanceof HTMLElement) {
       setAttributeIfChanged(modeRoot, "data-novaflow-ai-mode-section", "1");
       setAttributeIfChanged(modeRoot, "data-novaflow-ai-mode-collapsed", AI_ANIMATION_COLLAPSE_STATE.mode ? "1" : "0");
-      modeRoot.style.setProperty("padding-top", `${AI_ANIMATION_COLLAPSE_STATE.mode ? SECONDARY_ENTRY_HEIGHT : ART_DRAWING_PANEL_HEADER_HEIGHT}px`, "important");
+      modeRoot.style.setProperty("padding-top", `${AI_ANIMATION_GROUP_HEADER_HEIGHT}px`, "important");
       modeRoot.style.setProperty("padding-left", "0", "important");
       modeRoot.style.setProperty("padding-right", "0", "important");
     }
@@ -52063,7 +57612,7 @@
             appearance: "none",
             "-webkit-appearance": "none",
             "accent-color": UI_RANGE_ACCENT,
-            background: `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`
+            background: `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`
           });
           setImportantStyles(valueInput, {
             width: valueWidth,
@@ -52370,7 +57919,8 @@
         "justify-content": "center",
         padding: "0 12px",
         "box-sizing": "border-box",
-        "border-radius": "8px",
+        // The global rect radius (7), which the radius pass writes after this.
+        "border-radius": NOVAFLOW_RECT_RADIUS_PX,
         "line-height": "34px",
         border: "0",
         "border-color": "transparent",
@@ -52741,7 +58291,7 @@
         sourceControls.setAttribute("data-novaflow-ai-zoom-controls", "1");
         sourceControls.setAttribute("data-novaflow-zoom-controls", "1");
         sourceControls.style.setProperty("top", `${AI_ANIMATION_PREVIEW_UI_GAP}px`, "important");
-        sourceControls.style.setProperty("right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
+        sourceControls.style.setProperty("right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
         styleAutoFitOnlyControl(sourceControls);
         nfAnimationPerfCount("aiAnimationZoomControlsSourceFastPath");
         return;
@@ -52774,7 +58324,7 @@
       controls.setAttribute("data-novaflow-zoom-controls", "1");
       if (isSourceOwnedLayout(controls) || isInsideSourceOwnedLayout(controls)) {
         controls.style.setProperty("top", `${AI_ANIMATION_PREVIEW_UI_GAP}px`, "important");
-        controls.style.setProperty("right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
+        controls.style.setProperty("right", `calc(var(--novaflow-ai-resource-sidebar-width, ${AI_ANIMATION_RESOURCE_SIDEBAR_SPAN}px) + var(--novaflow-ai-resource-sidebar-gap, ${AI_ANIMATION_RESOURCE_SIDEBAR_GAP}px))`, "important");
         styleAutoFitOnlyControl(controls);
         return;
       }
@@ -52874,7 +58424,7 @@
     const topGroup = group instanceof HTMLElement ? group : findAiAnimationTopModeGroup(document);
     if (!(topGroup instanceof HTMLElement)) return;
     const previewLeft = PRIMARY_COLUMN_WIDTH;
-    const previewRight = AI_ANIMATION_RESOURCE_SIDEBAR_WIDTH;
+    const previewRight = AI_ANIMATION_RESOURCE_SIDEBAR_SPAN;
     const previewRightEdge = Math.max(previewLeft + 220, Math.round((window.innerWidth || 1280) - previewRight));
     const previewTop = getTopbarBottom();
     const centerX = Math.round((previewLeft + previewRightEdge) / 2);
@@ -53144,7 +58694,12 @@
     const semantic = getSemanticActiveState(button);
     if (semantic !== null) return semantic;
     const rawStyle = `${button.getAttribute("style") || ""} ${button.style.background || ""} ${button.style.backgroundColor || ""}`.toLowerCase();
-    if (rawStyle.includes("#333333") || rawStyle.includes("51, 51, 51") || rawStyle.includes("#222222")) return false;
+    // Last-resort sniff: this reads the BUTTON'S OWN COLOUR to decide whether
+    // loop is off. It has to list whatever the neutral tones currently are, or
+    // a restyle silently flips every un-attributed loop button to "active".
+    // The literals stay for buttons still painted with the old values.
+    const inactiveTones = [UI_BUTTON_BACKGROUND, UI_TOGGLE_OFF_BACKGROUND, "#333333", "51, 51, 51", "#222222"];
+    if (inactiveTones.some((tone) => tone && rawStyle.includes(String(tone).toLowerCase()))) return false;
     return true;
   }
 
@@ -55906,6 +61461,12 @@
     });
     actions.innerHTML = "";
     restoreAiAnimationPromptAssistantExternalButtons(actions, preservedExternalButtons);
+    // AI 助手 and 编辑 are mounted by the smart-AI script a frame after it
+    // sees this row - after the page's first frame, so they popped in. Asking
+    // it now puts them in that first frame.
+    if (!actions.querySelector("[data-novaflow-smart-ai-button]")) {
+      try { window.__NovaFlowSmartAI?.refresh?.(); } catch (_) { void 0; }
+    }
     ensureAiAnimationPromptEditorButtons(promptFrames);
     Array.from(actions.querySelectorAll("button")).forEach((button) => {
       applyNovaflowPromptActionButtonStyle(button);
@@ -56653,8 +62214,8 @@
     const postRect = __nfPerfRects.postRect;
     const postOffsetTop = __nfPerfRects.postOffsetTop;
     const fallbackHeight = Math.max(180, Math.round(rootRect.height || 0));
-    const modeHeight = AI_ANIMATION_COLLAPSE_STATE.mode ? SECONDARY_ENTRY_HEIGHT : (postRect
-      ? Math.max(SECONDARY_ENTRY_HEIGHT, Math.round(postOffsetTop - 8))
+    const modeHeight = AI_ANIMATION_COLLAPSE_STATE.mode ? AI_ANIMATION_GROUP_HEADER_HEIGHT : (postRect
+      ? Math.max(AI_ANIMATION_GROUP_HEADER_HEIGHT, Math.round(postOffsetTop - 8))
       : fallbackHeight);
     nfAnimationPerfRunLayoutStep("applyAiAnimationSectionLayers", "previewSurface", () => {
       nfAnimationPerfRunLayoutStep("applyAiAnimationSectionLayers", "setModeSectionHeight", () => {
@@ -57444,7 +63005,7 @@
       range.style.setProperty("margin", "0", "important");
       range.style.setProperty("padding", "0", "important");
       range.style.setProperty("accent-color", UI_RANGE_ACCENT, "important");
-      range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
+      range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
       syncRangeFillVisual(range);
       if (valueInput instanceof HTMLInputElement) {
         valueInput.style.setProperty("flex", `0 0 ${SPRITE_EDITOR_SLIDER_VALUE_WIDTH}px`, "important");
@@ -57787,12 +63348,30 @@
       const siblings = Array.from(parent.children).filter((child) => child instanceof HTMLButtonElement);
       if (siblings.length !== 4) return;
       const plusButton = siblings.find((candidate) => isNewSystemButton(candidate));
-      if (!(plusButton instanceof HTMLButtonElement) || button === plusButton) return;
+      if (!(plusButton instanceof HTMLButtonElement)) return;
       const background = button.disabled ? UI_SYSTEM_ACTION_DISABLED_BACKGROUND : UI_SYSTEM_ACTION_BACKGROUND;
       button.style.setProperty("background", background, "important");
       button.style.setProperty("background-color", background, "important");
+      button.style.setProperty("background-image", "none", "important");
+      button.style.setProperty("border", "0", "important");
       button.style.setProperty("border-color", "transparent", "important");
-      button.style.setProperty("color", button.disabled ? "rgba(238, 244, 252, 0.38)" : "rgba(238, 244, 252, 0.9)", "important");
+      button.style.setProperty("border-radius", UI_ICON_BUTTON_RADIUS_PX, "important");
+      button.setAttribute("data-novaflow-keep-radius", "1");
+      button.style.setProperty("width", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      button.style.setProperty("min-width", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      button.style.setProperty("max-width", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      button.style.setProperty("height", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      button.style.setProperty("min-height", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      button.style.setProperty("max-height", `${UI_ICON_BUTTON_SIZE}px`, "important");
+      button.style.setProperty("padding", "0", "important");
+      button.style.setProperty("flex", "0 0 auto", "important");
+      button.style.setProperty("font-size", "12px", "important");
+      button.style.setProperty("color", button.disabled ? UI_ICON_BUTTON_DISABLED_TEXT : UI_ICON_BUTTON_TEXT, "important");
+      parent.style.setProperty("display", "flex", "important");
+      parent.style.setProperty("grid-template-columns", "none", "important");
+      parent.style.setProperty("align-items", "center", "important");
+      parent.style.setProperty("justify-content", "flex-start", "important");
+      parent.style.setProperty("gap", "8px", "important");
     });
   }
 
@@ -57872,9 +63451,31 @@
     return hasDialogCard ? child : null;
   }
 
+  // Every mutation under a fixed surface walked its ancestors through this,
+  // each step a computed style and two rects - a fifth of a page switch. An
+  // answer holds for the frame unless the node's own children or style
+  // change, which is what turns a node into a modal.
+  let NOVAFLOW_MODAL_CARD_MEMO = new WeakMap();
+  let NOVAFLOW_MODAL_CARD_MEMO_FRAME = 0;
+
   function getNovaflowProtectedModalDialogCard(element) {
     if (!(element instanceof HTMLElement)) return null;
     if (element === document.body || element === document.documentElement) return null;
+    const signature = `${element.childElementCount}|${element.getAttribute("style") || ""}|${element.className}`;
+    const memo = NOVAFLOW_MODAL_CARD_MEMO.get(element);
+    if (memo && memo.signature === signature && (!memo.card || memo.card.isConnected)) return memo.card;
+    const card = readNovaflowProtectedModalDialogCard(element);
+    NOVAFLOW_MODAL_CARD_MEMO.set(element, { signature, card });
+    if (!NOVAFLOW_MODAL_CARD_MEMO_FRAME) {
+      NOVAFLOW_MODAL_CARD_MEMO_FRAME = window.requestAnimationFrame(() => {
+        NOVAFLOW_MODAL_CARD_MEMO_FRAME = 0;
+        NOVAFLOW_MODAL_CARD_MEMO = new WeakMap();
+      });
+    }
+    return card;
+  }
+
+  function readNovaflowProtectedModalDialogCard(element) {
     if (isNovaflowExportModalRoot(element) || hasNovaflowExportDialogText(element)) return null;
     if (isNovaflowPersistentRuntimeSurface(element) || isInsideNovaflowPersistentRuntimeSurface(element)) return null;
     if (isNovaflowRuntimeSurfaceExcludedFromModalScanner(element) || isInsideNovaflowRuntimeSurfaceExcludedFromModalScanner(element)) return null;
@@ -61213,22 +66814,24 @@
     const hover = button.getAttribute("data-hover") === "1";
     const focus = button === document.activeElement;
     const pressed = button.getAttribute("data-pressed") === "1";
-    const background = pressed ? "#303030" : hover || focus ? "#3a3a3a" : UI_BUTTON_BACKGROUND;
+    // Reference .nf-canvas-bar button: no plate until hover, 28 tall, 5px.
+    const background = pressed ? "#303030" : hover || focus ? CANVAS_BAR_BUTTON_HOVER_BACKGROUND : "transparent";
     setParticleProjectActionStyles(button, {
-      height: "32px",
-      "min-width": "72px",
-      padding: "0 16px",
-      "border-radius": "8px",
+      height: `${CANVAS_BAR_BUTTON_HEIGHT}px`,
+      width: "66px",
+      "min-width": "66px",
+      padding: "0",
+      "border-radius": CANVAS_BAR_BUTTON_RADIUS_PX,
       border: "0",
       background,
       "background-color": background,
       "background-image": "none",
       "box-shadow": "none",
-      color: "#ffffff",
+      color: CANVAS_BAR_BUTTON_TEXT,
       cursor: "pointer",
-      "font-size": "12px",
-      "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
-      "line-height": "32px",
+      "font-size": "11px",
+      "font-weight": "500",
+      "line-height": "1",
       "white-space": "nowrap",
       display: "inline-flex",
       "align-items": "center",
@@ -61525,20 +67128,26 @@
       host = document.createElement("div");
       host.id = PARTICLE_PROJECT_TOP_ACTIONS_ID;
       host.setAttribute("data-preview-ui", "1");
+      host.setAttribute("data-novaflow-keep-radius", "1");
       host.setAttribute("data-novaflow-runtime-ignore", "1");
       host.setAttribute("aria-label", "\u7c92\u5b50\u9879\u76ee\u64cd\u4f5c");
       document.body.appendChild(host);
     }
     setParticleProjectActionStyles(host, {
       position: "fixed",
-      top: `${TOPBAR_HEIGHT + 7}px`,
-      left: `${PRIMARY_COLUMN_WIDTH + 10}px`,
+      top: `${TOPBAR_HEIGHT + 15}px`,
+      left: `${PRIMARY_COLUMN_WIDTH}px`,
       display: "flex",
       "align-items": "center",
-      gap: "10px",
-      height: "34px",
+      gap: "3px",
+      height: "38px",
       margin: "0",
-      padding: "0",
+      padding: "0 4px",
+      "box-sizing": "border-box",
+      background: CANVAS_BAR_PILL_BACKGROUND,
+      "background-color": CANVAS_BAR_PILL_BACKGROUND,
+      border: `1px solid ${CANVAS_BAR_PILL_BORDER_COLOR}`,
+      "border-radius": CANVAS_BAR_PILL_RADIUS_PX,
       "z-index": TOPBAR_MENU_LAYER_Z_INDEX,
       "pointer-events": "auto",
       "-webkit-app-region": "no-drag"
@@ -64463,6 +70072,11 @@
     const menuButton = wrap.querySelector(".nf-menu-btn");
     if (!(menuButton instanceof HTMLElement)) return;
     if (normalizeText(menuButton.textContent || "") !== "\u6587\u4ef6") return;
+    // A hidden \u6587\u4ef6 menu stays hidden: lighting it here while
+    // syncTopbarFileMenuHiddenState dimmed it again flipped its opacity on
+    // every sync, and each flip re-ran the export dialog's sync (a freeze on
+    // \u9aa8\u9abc\u52a8\u753b's \u5bfc\u51fa).
+    if (wrap.getAttribute("data-novaflow-topbar-file-hidden") === "1") return;
     [wrap, menuButton].forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
       removeAttributeIfPresent(node, "aria-disabled");
@@ -65656,6 +71270,20 @@
       document.querySelector('[data-novaflow-ai-resource-sidebar-panel="1"], [data-novaflow-ai-bottom-workspace="1"]')
     ) return null;
     const rightColumn = findPreviewWorkspaceColumn();
+    // Once found, the sidebar is kept by its mark. The size checks below are
+    // for the bundle's own panel; the layout this finds then resizes it
+    // (narrower on the narrow tier), and measuring it again lost it, dropped
+    // the layout, found it again - a loop that froze the page at 1280.
+    const marked = document.querySelector('[data-novaflow-skeleton-sidebar="1"]');
+    if (
+      marked instanceof HTMLElement &&
+      (!(rightColumn instanceof HTMLElement) || rightColumn.contains(marked)) &&
+      isVisible(marked) &&
+      hasSkeletonTreeStructure(marked)
+    ) {
+      const markedWorkspace = marked.parentElement instanceof HTMLElement ? marked.parentElement : (rightColumn || marked);
+      return { workspace: markedWorkspace, sidebar: marked, rightColumn: rightColumn || markedWorkspace };
+    }
     const findFallbackSidebar = () => Array.from(document.querySelectorAll('[data-preview-ui="1"], .nf-panel, aside, section, div'))
       .filter((node) => {
         if (!(node instanceof HTMLElement) || !isVisible(node)) return false;
@@ -65705,15 +71333,26 @@
 
   function findSkeletonPreviewStage(workspace, sidebar) {
     if (!(workspace instanceof HTMLElement) || !(sidebar instanceof HTMLElement)) return null;
+    // Kept by its mark once found: stacked, the stage is no longer left of
+    // the sidebar, which the checks below require.
+    const marked = Array.from(workspace.children).find((child) => (
+      child instanceof HTMLElement && child !== sidebar &&
+      child.getAttribute("data-novaflow-skeleton-preview-stage") === "1" && isVisible(child)
+    ));
+    if (marked instanceof HTMLElement) return marked;
     const workspaceRect = workspace.getBoundingClientRect();
     return Array.from(workspace.children)
       .filter((child) => child instanceof HTMLElement && child !== sidebar && isVisible(child))
       .filter((child) => {
+        const hasStageContent = child.querySelector("canvas, .nf-template-fab, input[type='range'], button") instanceof Element;
+        // Stacked, the bundle leaves the stage a sliver beside the tree; its
+        // content is what identifies it there.
+        if (NOVAFLOW_LAYOUT_TIER === "stack") return hasStageContent;
         const rect = child.getBoundingClientRect();
         if (rect.width < 240 || rect.height < 240) return false;
         if (rect.left > workspaceRect.left + 80) return false;
         if (rect.right > sidebar.getBoundingClientRect().left + 36) return false;
-        return child.querySelector("canvas, .nf-template-fab, input[type='range'], button") instanceof Element;
+        return hasStageContent;
       })
       .sort((a, b) => {
         const ar = a.getBoundingClientRect();
@@ -67643,7 +73282,12 @@
           window.setTimeout(refreshTopButtonState, 160);
         });
       }
-      const inlineVisual = `${button.style.getPropertyValue("background")} ${button.style.getPropertyValue("background-color")} ${button.style.getPropertyValue("border")}`;
+      // The bar's quiet skin owns the inline fill now, so the "on" green is
+      // read from what React asked for (its props), not from the element.
+      const reactPropsKey = Object.keys(button).find((key) => key.startsWith("__reactProps"));
+      const reactStyle = reactPropsKey && button[reactPropsKey] && button[reactPropsKey].style ? button[reactPropsKey].style : null;
+      const reactVisual = reactStyle ? `${reactStyle.background || ""} ${reactStyle.backgroundColor || ""} ${reactStyle.border || ""}` : "";
+      const inlineVisual = `${button.style.getPropertyValue("background")} ${button.style.getPropertyValue("background-color")} ${button.style.getPropertyValue("border")} ${reactVisual}`;
       const active = /30\s*,\s*166\s*,\s*114|#1ea672/i.test(inlineVisual)
         || button.getAttribute("aria-pressed") === "true"
         || (label.includes("\u663e\u793a\u9aa8\u9abc") && hasCurrentChainToggle);
@@ -67934,7 +73578,7 @@
     range.style.setProperty("appearance", "none", "important");
     range.style.setProperty("-webkit-appearance", "none", "important");
     range.style.setProperty("accent-color", UI_RANGE_ACCENT, "important");
-    range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
+    range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
     range.style.setProperty("background-color", "transparent", "important");
     range.style.setProperty("cursor", "pointer", "important");
   }
@@ -68283,6 +73927,9 @@
       return;
     }
     clearTemplateGridStyleLeak();
+    // Near the top of the stage, wherever the stage is: stacked (narrow), it
+    // sits under the left panel and the popup was never recognised there.
+    const popupTopLimit = Math.round(rightColumn.getBoundingClientRect().top) + 180;
     const popup = Array.from(rightColumn.querySelectorAll("div"))
       .filter((node) => node instanceof HTMLElement && isVisible(node))
       .map((node) => {
@@ -68296,7 +73943,7 @@
         text.includes("\u70b9\u51fb\u5b58\u50a8") &&
         rect.width >= 320 &&
         rect.height >= 160 &&
-        rect.top <= 180 &&
+        rect.top <= popupTopLimit &&
         (style.position === "absolute" || style.position === "fixed")
       ))
       .sort((a, b) => {
@@ -69025,6 +74672,26 @@
     deleteButton.style.setProperty("z-index", "8", "important");
   }
 
+  function styleBottomControlFields(bottomControls) {
+    if (!(bottomControls instanceof HTMLElement)) return;
+    Array.from(bottomControls.querySelectorAll('input:not([type="range"]):not([type="color"])')).forEach((field) => {
+      if (!(field instanceof HTMLInputElement)) return;
+      nfSetAttrIfChanged(field, "data-novaflow-keep-radius", "1");
+      nfSetStyleIfChanged(field, "width", `${UI_NUM_FIELD_WIDTH}px`, "important");
+      nfSetStyleIfChanged(field, "min-width", `${UI_NUM_FIELD_WIDTH}px`, "important");
+      nfSetStyleIfChanged(field, "max-width", `${UI_NUM_FIELD_WIDTH}px`, "important");
+      nfSetStyleIfChanged(field, "height", `${UI_NUM_FIELD_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(field, "min-height", `${UI_NUM_FIELD_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(field, "border-radius", UI_NUM_FIELD_RADIUS_PX, "important");
+      nfSetStyleIfChanged(field, "background", UI_NUM_FIELD_BACKGROUND, "important");
+      nfSetStyleIfChanged(field, "background-color", UI_NUM_FIELD_BACKGROUND, "important");
+      nfSetStyleIfChanged(field, "border", `1px solid ${UI_NUM_FIELD_BORDER_COLOR}`, "important");
+      nfSetStyleIfChanged(field, "color", UI_NUM_FIELD_TEXT, "important");
+      nfSetStyleIfChanged(field, "font-size", "11px", "important");
+      nfSetStyleIfChanged(field, "box-sizing", "border-box", "important");
+    });
+  }
+
   function styleBottomControlRanges(bottomControls) {
     if (!(bottomControls instanceof HTMLElement)) return;
     Array.from(bottomControls.querySelectorAll('input[type="range"]')).forEach((range) => {
@@ -69035,7 +74702,7 @@
       range.style.setProperty("max-height", `${PARTICLE_DENSITY_SLIDER_THUMB_SIZE}px`, "important");
       range.style.setProperty("padding", "0", "important");
       range.style.setProperty("accent-color", UI_RANGE_ACCENT, "important");
-      range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), #303030 var(--nf-range-pct, 0%), #303030 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
+      range.style.setProperty("background", `linear-gradient(90deg, ${UI_RANGE_ACCENT} 0%, ${UI_RANGE_ACCENT} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} var(--nf-range-pct, 0%), ${UI_RANGE_TRACK} 100%) center / 100% ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px no-repeat`, "important");
       syncRangeFillVisual(range);
     });
   }
@@ -69140,13 +74807,31 @@
     ));
     if (bottomControls instanceof HTMLElement) {
       nfSetAttrIfChanged(bottomControls, "data-novaflow-bottom-controls", "1");
-      nfSetStyleIfChanged(bottomControls, "background", LEFT_PANEL_BACKGROUND, "important");
-      nfSetStyleIfChanged(bottomControls, "background-color", LEFT_PANEL_BACKGROUND, "important");
-      nfSetStyleIfChanged(bottomControls, "border", "0", "important");
-      nfSetStyleIfChanged(bottomControls, "border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
-      nfSetStyleIfChanged(bottomControls, "box-shadow", "none", "important");
+      // The dock spec. Written inline because this element carries
+      // data-novaflow-source-layout, which every stylesheet rule for the strip
+      // excludes with :not() - so the stylesheet cannot reach it at all.
+      nfSetStyleIfChanged(bottomControls, "background", DOCK_SURFACE, "important");
+      nfSetStyleIfChanged(bottomControls, "background-color", DOCK_SURFACE, "important");
+      nfSetStyleIfChanged(bottomControls, "border", `1px solid ${DOCK_BORDER_COLOR}`, "important");
+      nfSetStyleIfChanged(bottomControls, "border-radius", DOCK_RADIUS_PX, "important");
+      nfSetStyleIfChanged(bottomControls, "box-shadow", DOCK_SHADOW, "important");
       nfSetStyleIfChanged(bottomControls, "overflow", "hidden", "important");
+      // The reference docks this strip to the bottom of the workspace box,
+      // full width, 99 tall. It had been floating inset by its own margins.
+      nfSetStyleIfChanged(bottomControls, "position", "absolute", "important");
+      nfSetStyleIfChanged(bottomControls, "left", "0", "important");
+      nfSetStyleIfChanged(bottomControls, "right", "0", "important");
+      nfSetStyleIfChanged(bottomControls, "bottom", "0", "important");
+      nfSetStyleIfChanged(bottomControls, "top", "auto", "important");
+      nfSetStyleIfChanged(bottomControls, "width", "auto", "important");
+      nfSetStyleIfChanged(bottomControls, "margin", "0", "important");
+      nfSetStyleIfChanged(bottomControls, "height", DOCK_HEIGHT + "px", "important");
+      nfSetStyleIfChanged(bottomControls, "min-height", DOCK_HEIGHT + "px", "important");
+      nfSetStyleIfChanged(bottomControls, "max-height", DOCK_HEIGHT + "px", "important");
+      nfSetStyleIfChanged(bottomControls, "padding", DOCK_PADDING, "important");
+      nfSetStyleIfChanged(bottomControls, "box-sizing", "border-box", "important");
       styleBottomControlRanges(bottomControls);
+      styleBottomControlFields(bottomControls);
     }
 
     const templateControl = findContainerByTexts(["\u6a21\u677f\u5e93"], (rect) => (
@@ -69193,9 +74878,9 @@
       }
       nfSetStyleIfChanged(templateControl, "border", "0", "important");
       nfSetStyleIfChanged(templateControl, "box-shadow", "none", "important");
-      nfSetStyleIfChanged(templateControl, "height", "34px", "important");
-      nfSetStyleIfChanged(templateControl, "min-height", "34px", "important");
-      nfSetStyleIfChanged(templateControl, "max-height", "34px", "important");
+      nfSetStyleIfChanged(templateControl, "height", `${CANVAS_BAR_BUTTON_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(templateControl, "min-height", `${CANVAS_BAR_BUTTON_HEIGHT}px`, "important");
+      nfSetStyleIfChanged(templateControl, "max-height", `${CANVAS_BAR_BUTTON_HEIGHT}px`, "important");
       if (templateButton instanceof HTMLElement) {
         nfSetAttrIfChanged(templateButton, "data-novaflow-template-button", "1");
         const templateButtonSourceOwned = isSourceOwnedLayout(templateButton) || isInsideSourceOwnedLayout(templateButton);
@@ -69203,12 +74888,10 @@
           nfSetAttrIfChanged(templateButton, "data-novaflow-single-button", "1");
         }
         stylePreviewButtonSurface(templateButton);
-        nfSetStyleIfChanged(templateButton, "padding", "0 18px", "important");
-        nfSetStyleIfChanged(templateButton, "min-width", "92px", "important");
       }
     }
     if (zoomControls instanceof HTMLElement) {
-      const targetHeight = 34;
+      const targetHeight = CANVAS_BAR_QUIET_HEIGHT;
       nfSetAttrIfChanged(zoomControls, "data-novaflow-zoom-controls", "1");
       nfSetStyleIfChanged(zoomControls, "--novaflow-top-control-height", `${targetHeight}px`);
       nfSetStyleIfChanged(zoomControls, "height", `${targetHeight}px`, "important");
@@ -69218,18 +74901,22 @@
       nfSetStyleIfChanged(zoomControls, "align-items", "center", "important");
       nfSetStyleIfChanged(zoomControls, "justify-content", "center", "important");
       nfSetStyleIfChanged(zoomControls, "gap", "4px", "important");
-      nfSetStyleIfChanged(zoomControls, "background", PRIMARY_PANEL_BACKGROUND, "important");
+      nfSetStyleIfChanged(zoomControls, "background", "transparent", "important");
       nfSetStyleIfChanged(zoomControls, "border", "0", "important");
       nfSetStyleIfChanged(zoomControls, "border-radius", "8px", "important");
-      nfSetStyleIfChanged(zoomControls, "padding", "0 4px", "important");
+      nfSetStyleIfChanged(zoomControls, "padding", "0", "important");
       styleAutoFitOnlyControl(zoomControls);
       Array.from(zoomControls.children).forEach((child) => {
         if (!(child instanceof HTMLElement)) return;
         if (child.getAttribute("data-novaflow-autofit-percent-hidden") === "1") return;
-        nfSetStyleIfChanged(child, "height", "30px", "important");
-        nfSetStyleIfChanged(child, "min-height", "30px", "important");
-        nfSetStyleIfChanged(child, "padding", child.getAttribute("data-novaflow-autofit-button") === "1" ? "0 18px" : "0 10px", "important");
-        nfSetStyleIfChanged(child, "border-radius", NOVAFLOW_RECT_RADIUS_PX, "important");
+        const childQuiet = child.getAttribute("data-novaflow-autofit-button") === "1";
+        // 自动适配 itself was just given the canvas bar's quiet style.
+        if (childQuiet) return;
+        const childHeight = childQuiet ? CANVAS_BAR_QUIET_HEIGHT : CANVAS_BAR_BUTTON_HEIGHT;
+        nfSetStyleIfChanged(child, "height", `${childHeight}px`, "important");
+        nfSetStyleIfChanged(child, "min-height", `${childHeight}px`, "important");
+        nfSetStyleIfChanged(child, "padding", childQuiet ? "0 13px" : "0 11px", "important");
+        nfSetStyleIfChanged(child, "border-radius", childQuiet ? CANVAS_BAR_QUIET_RADIUS_PX : CANVAS_BAR_BUTTON_RADIUS_PX, "important");
         if (child.getAttribute("data-novaflow-autofit-button") !== "1") {
           nfSetStyleIfChanged(child, "background", "transparent", "important");
           nfSetStyleIfChanged(child, "background-color", "transparent", "important");
@@ -69239,7 +74926,7 @@
         nfSetStyleIfChanged(child, "display", "inline-flex", "important");
         nfSetStyleIfChanged(child, "align-items", "center", "important");
         nfSetStyleIfChanged(child, "justify-content", "center", "important");
-        nfSetStyleIfChanged(child, "line-height", "30px", "important");
+        nfSetStyleIfChanged(child, "line-height", "1", "important");
       });
     }
     applyPreviewPanel(active, bottomControls);
@@ -71172,9 +76859,9 @@
         grid-column: 1;
         z-index: 1;
         margin: 0 ${AI_ANIMATION_PREVIEW_UI_GAP}px ${AI_ANIMATION_PREVIEW_UI_GAP}px;
-        border-radius: 8px;
-        background: #1b1b1b;
-        border: 0;
+        border-radius: ${DOCK_RADIUS_PX};
+        background: ${DOCK_SURFACE};
+        border: 1px solid ${DOCK_BORDER_COLOR};
         box-sizing: border-box;
         display: grid;
         grid-template-rows: 46px 24px minmax(0, 1fr);
@@ -71932,14 +77619,14 @@
         min-height: ${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px !important;
         max-height: ${AI_ANIMATION_GENERATION_PANEL_MIN_HEIGHT}px !important;
         margin: 0 ${AI_ANIMATION_PREVIEW_UI_GAP}px ${AI_ANIMATION_PREVIEW_UI_GAP}px !important;
-        padding: 10px 16px !important;
-        border: 0 !important;
-        border-color: transparent !important;
-        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
+        padding: ${DOCK_PADDING} !important;
+        border: 1px solid ${DOCK_BORDER_COLOR} !important;
+        border-color: ${DOCK_BORDER_COLOR} !important;
+        border-radius: ${DOCK_RADIUS_PX} !important;
         outline: 0 !important;
-        box-shadow: none !important;
+        box-shadow: ${DOCK_SHADOW} !important;
         box-sizing: border-box !important;
-        background: #181818 !important;
+        background: ${DOCK_SURFACE} !important;
         background-color: #181818 !important;
         background-image: none !important;
         display: flex !important;
@@ -73150,7 +78837,10 @@
     const bottomRect = bottomPanel instanceof HTMLElement && isVisible(bottomPanel) ? bottomPanel.getBoundingClientRect() : null;
     const left = overlayRect.left;
     const right = overlayRect.right;
-    const top = Math.max(overlayRect.top, topRect ? topRect.bottom + AI_ANIMATION_PREVIEW_UI_GAP : overlayRect.top + 52 + AI_ANIMATION_PREVIEW_UI_GAP);
+    // Before the 文生图 / 图生图 bar is up, its place is known: the canvas bar
+    // row (7 down, 38 tall). A 52 guess fitted the picture once and then a
+    // few frames later again when the bar arrived.
+    const top = Math.max(overlayRect.top, topRect ? topRect.bottom + AI_ANIMATION_PREVIEW_UI_GAP : overlayRect.top + CANVAS_BAR_ROW_TOP + AI_ANIMATION_CAPSULE_HEIGHT + AI_ANIMATION_PREVIEW_UI_GAP);
     const bottom = Math.min(overlayRect.bottom, bottomRect ? bottomRect.top - AI_ANIMATION_PREVIEW_UI_GAP : overlayRect.bottom);
     const width = Math.max(1, right - left);
     const height = Math.max(1, bottom - top);
@@ -73393,6 +79083,12 @@
   }
 
   function getArtGenerateWorkspaceRect() {
+    // The whole stage for this width, published by the reference spec; the
+    // drawing overlay under it may be shorter, stopping above the dock.
+    const published = String(document.documentElement?.getAttribute("data-novaflow-stage-box") || "").split(",").map(Number);
+    if (published.length === 4 && published.every(Number.isFinite) && published[2] > 0 && published[3] > 0) {
+      return { left: published[0], top: published[1], width: published[2], height: published[3] };
+    }
     const splitOverlay = document.getElementById("novaflow-spine-split-workspace-overlay");
     const splitNativeRect = getArtGenerateOverlayNativeRect(splitOverlay);
     if (splitNativeRect) {
@@ -77026,25 +82722,28 @@
     const topbar = document.querySelector(".novaflow-app .nf-topbar");
     const brand = document.querySelector('.nf-brand[data-novaflow-brand="20260516-chain-unified"]');
     const primaryColumn = document.querySelector(".novaflow-app .nf-app-body > div:first-child");
-    const workspaceColumn = document.querySelector(".novaflow-app .nf-app-body > div:nth-child(2)");
+    const workspaceColumn = document.querySelector(".novaflow-app .nf-app-body > div:is(:nth-child(2), [data-novaflow-preview-workspace], [data-preview-ui][style*='inset: 0'] + div):not([data-preview-ui][style*='inset: 0'])");
     const leftScroll = document.querySelector(".novaflow-app .nf-app-body > div:first-child > .nf-hide-scrollbar");
     const leftContentRoot = document.querySelector('[data-novaflow-left-content-root="1"]');
     const primaryButtons = PRIMARY_ENTRY_DISPLAY_LABELS.map((label) => findPrimaryEntryButton(label));
     const primaryTargetClass = getStartupPrimaryTargetClass();
     const ageMs = nowMs() - STARTUP_APP_READY_STARTED_AT;
+    // The floors follow the layout tier: a stacked window is narrower than
+    // 600 and its left column is only the rail's 64.
+    const viewportWidth = window.innerWidth || 1280;
     const shellReady =
       app instanceof HTMLElement &&
-      isStartupReadyRect(appBody, 600, 360) &&
-      isStartupReadyRect(topbar, 600, 40) &&
-      isStartupReadyRect(primaryColumn, 80, 300) &&
-      isStartupReadyRect(workspaceColumn, 300, 300);
+      isStartupReadyRect(appBody, Math.min(600, viewportWidth - 20), 360) &&
+      isStartupReadyRect(topbar, Math.min(600, viewportWidth - 20), 40) &&
+      isStartupReadyRect(primaryColumn, Math.min(80, PRIMARY_COLUMN_WIDTH - 8), 300) &&
+      isStartupReadyRect(workspaceColumn, Math.min(300, viewportWidth - 120), 300);
     const leftReady =
       leftScroll instanceof HTMLElement &&
       leftContentRoot instanceof HTMLElement &&
       isStartupReadyRect(leftScroll, 180, 240);
     const primaryReady = primaryButtons.every((button) => (
       button instanceof HTMLElement &&
-      isStartupReadyRect(button, 40, 40)
+      isStartupReadyRect(button, Math.min(40, PRIMARY_SIDEBAR_ITEM_WIDTH - 1), 40)
     ));
     const ready = Boolean(
       ageMs >= 900 &&

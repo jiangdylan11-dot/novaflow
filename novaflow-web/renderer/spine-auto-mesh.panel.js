@@ -1287,9 +1287,10 @@
     Object.assign(btn.style, {
       width: '100%', height: '30px', borderRadius: '6px', border: '0',
       cursor: 'pointer', fontSize: '12px', fontWeight: '600',
-      color: primary ? '#062a18' : 'rgba(255,255,255,0.86)',
-      background: primary ? '#22c98a' : '#3a3a3a'
+      color: primary ? '#ffffff' : 'rgba(255,255,255,0.86)',
+      background: primary ? '#17A582' : '#3a3a3a'
     })
+    if (primary) btn.setAttribute('data-novaflow-solid-green', '1')
   }
 
   // The app's own small-button look: #333 at rest, the green accent on hover. The
@@ -2555,7 +2556,7 @@
 
   function ensurePsImport() {
     if (state.psImport) return state.psImport
-    const button = el('button', null, '导入 PS 工程（JSON + 贴图文件夹）')
+    const button = el('button', null, '导入PS工程')
     button.type = 'button'
     styleButton(button, false)
     button.title = 'PhotoshopToSpine 导出的文件夹可以直接用,不需要先过一遍 Spine;也可以直接把那个文件夹拖到这个按钮上'
@@ -2700,7 +2701,11 @@
       })
     })
     document.body.appendChild(picker)
-    state.psImport = { button, picker, status: psStatus }
+    // What to pick, under the button (the name alone is short now).
+    const psNote = el('div', { marginTop: '6px', fontSize: '11px', lineHeight: '1.5', color: 'rgba(255,255,255,0.45)' },
+      '选择 PhotoshopToSpine 导出的文件夹（JSON + 贴图），也可以直接拖到按钮上')
+    psNote.setAttribute('data-novaflow-ps-import-note', '1')
+    state.psImport = { button, picker, status: psStatus, note: psNote }
     busyButtons.push(button)
     return state.psImport
   }
@@ -2714,6 +2719,7 @@
     const body = panel && panel.querySelector('.nf-panel-body')
     if (!body) return
     if (kit.button.parentElement !== body) body.appendChild(kit.button)
+    if (kit.note && kit.note.previousElementSibling !== kit.button) kit.button.after(kit.note)
     if (kit.status && kit.status.parentElement !== body) body.appendChild(kit.status)
     if (!kit.picker.isConnected) document.body.appendChild(kit.picker)
     dressLikePanel(kit.button, body)
@@ -2913,16 +2919,21 @@
     // the switch
     // no 编辑骨骼 checkbox: opening this panel IS the edit mode (user decision 2026-09-21),
     // collapsing it hands the preview back
-    const swHint = el('div', { fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: STACK_GAP, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }, '展开=编辑(预览停在设置姿势),收起=恢复播放')
+    // wraps: the whole note is read, not cut at the column's edge
+    const swHint = el('div', { fontSize: '11px', lineHeight: '1.5', color: 'rgba(255,255,255,0.4)', marginTop: STACK_GAP, whiteSpace: 'normal', wordBreak: 'break-word' }, '展开=编辑(预览停在设置姿势),收起=恢复播放')
     swHint.title = '展开本面板即进入编辑:预览停在设置姿势,可直接选、拖、画骨骼;收起即恢复播放'
 
     // tools
-    const toolsRow = el('div', { display: 'flex', gap: '4px', marginTop: STACK_GAP })
+    // one row that shares the column evenly and can narrow with it (a scrollbar
+    // took a few px and 新建 wrapped, or the row ran past the edge)
+    const toolsRow = el('div', { display: 'flex', flexWrap: 'nowrap', gap: '4px', marginTop: STACK_GAP, width: '100%', minWidth: '0', boxSizing: 'border-box' })
     const toolBtns = {}
     for (const t of (E ? E.TOOLS : [])) {
       const b = smallButton(t.label)
       b.title = `${t.hint}(快捷键 ${t.key.toUpperCase()})`
       b.style.flex = '1 1 0'
+      b.style.minWidth = '0'
+      b.style.padding = '0 4px'
       b.addEventListener('click', () => { ensureController().setTool(t.id); bones.syncUi() })
       toolBtns[t.id] = b
       toolsRow.appendChild(b)
@@ -2962,11 +2973,11 @@
     }
     const poseSpec = () => POSE_FIELDS[(bones.ctl ? bones.ctl.getState().tool : 'move')] || POSE_FIELDS.move
     const mechNote = el('div', { fontSize: '10px', color: 'rgba(255,170,90,0.85)', marginTop: '4px', display: 'none' }, '控制骨(IK/约束目标、零长度骨、枢轴):拖动或旋转=摆姿势,约束联动、图片跟着走;辅助链跟着关节走,不单独编辑')
-    const legend = el('div', { display: 'flex', alignItems: 'center', gap: '10px', marginTop: '2px', fontSize: '10px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap', overflow: 'hidden' })
+    const legend = el('div', { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '4px', marginTop: '2px', fontSize: '10px', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap', overflow: 'hidden', width: '100%', minWidth: '0' })
     legend.title = '蓝=普通变形骨 · 紫=被约束驱动 · 琥珀=控制骨(IK/约束目标、零长度枢轴) · 绿=选中'
     for (const [color, text] of [['#8fd3ff', '普通'], ['#c79bff', '受约束'], ['#ffb454', '控制骨'], ['#22c98a', '选中']]) {
-      const chip = el('span', { display: 'inline-flex', alignItems: 'center', gap: '4px', flex: '0 0 auto' })
-      chip.appendChild(el('span', { width: '8px', height: '8px', borderRadius: '2px', background: color, flex: '0 0 auto' }))
+      const chip = el('span', { display: 'inline-flex', alignItems: 'center', gap: '2px', flex: '0 1 auto', minWidth: '0' })
+      chip.appendChild(el('span', { width: '6px', height: '6px', borderRadius: '2px', background: color, flex: '0 0 auto' }))
       chip.appendChild(el('span', null, text))
       legend.appendChild(chip)
     }
@@ -3034,8 +3045,8 @@
       for (const id of Object.keys(toolBtns)) {
         const b = toolBtns[id]
         const on = bones.editing && st.tool === id
-        setStyle(b, 'background', on ? '#22c98a' : '#333333')
-        setStyle(b, 'color', on ? '#062a18' : 'rgba(255,255,255,0.92)')
+        setStyle(b, 'background', on ? '#17A582' : '#333333')
+        setStyle(b, 'color', on ? '#ffffff' : 'rgba(255,255,255,0.92)')
         setDisabled(b, !bones.editing)
         setStyle(b, 'opacity', bones.editing ? '1' : '0.5')
       }

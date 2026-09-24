@@ -56,9 +56,15 @@
   const INPAINT_MODE_ATTR = 'data-novaflow-selection-inpaint-mode'
   const LEGACY_BONE_SPLIT_PANEL_HIDDEN_ATTR = 'data-novaflow-legacy-bone-split-hidden'
   const SPLIT_PREVIEW_UI_GAP = '8px'
-  const SPLIT_RECT_RADIUS = '8px'
-  const SPLIT_PANEL_BACKGROUND = '#2a2a2a'
-  const SPLIT_PANEL_HOVER_BACKGROUND = '#3b3b3b'
+  const SPLIT_RECT_RADIUS = '7px'
+  const SPLIT_PANEL_BACKGROUND = '#272727'
+  const SPLIT_PANEL_HOVER_BACKGROUND = '#303030'
+  // Selected-entry rank: dark green fill, light green text, hairline edge.
+  // Distinct from SPLIT_ACTIVE_* below, which stays the main-action green.
+  const SPLIT_SELECTED_BACKGROUND = '#1c4136'
+  const SPLIT_SELECTED_HOVER_BACKGROUND = '#24513f'
+  const SPLIT_SELECTED_BORDER = '#29594a'
+  const SPLIT_SELECTED_TEXT = '#6fd9b8'
   const SPLIT_ACTIVE_BACKGROUND = '#1ea672'
   const SPLIT_ACTIVE_HOVER_BACKGROUND = '#25b87f'
   const SPLIT_LAYOUT_BORDER = '1px solid transparent'
@@ -123,7 +129,10 @@
     bodyGap: '6px'
   })
   const SPLIT_CONTROL_FONT_SIZE = '13px'
-  const SPLIT_WORKSPACE_PANEL_BACKGROUND = '#151515'
+  // Reference splits these: the stage carries --nf-bg (#242424) and the
+  // right-hand resource panel carries --nf-panel (#161616).
+  const SPLIT_WORKSPACE_PANEL_BACKGROUND = '#242424'
+  const SPLIT_RIGHT_PANEL_BACKGROUND = '#161616'
   const SPLIT_RIGHT_PANEL_INSET = '10px'
   const SPLIT_RIGHT_PANEL_INSET_PX = 10
   const SPLIT_RIGHT_PANEL_GAP = '6px'
@@ -131,7 +140,27 @@
   const SPLIT_RIGHT_CHILD_LAYER_INSET = '10px'
   const SPLIT_RIGHT_CHILD_LAYER_GAP = '4px'
   const SPLIT_RIGHT_SET_CARD_HEIGHT = '46px'
-  const SPLIT_RIGHT_WORKSPACE_WIDTH = 260
+  // The reference floats a 206 panel inset 10 from the window edge and 10
+  // clear of the stage, so the column this occupies in the flex row is 226
+  // and the panel itself is what the padding leaves.
+  // Above 1400 the panel is 206 with 10 gutters; at or below it the reference
+  // narrows it to 172 with 8 gutters. The brand runtime owns the tier and
+  // publishes it on <html>.
+  const SPLIT_RIGHT_WORKSPACE_TOP_GAP = 8
+  function splitLayoutTier() {
+    return (document.documentElement && document.documentElement.getAttribute('data-novaflow-layout-tier')) || 'wide'
+  }
+  function splitRightWorkspaceInset() { return splitLayoutTier() === 'wide' ? 10 : 8 }
+  function splitRightPanelWidth() { return splitLayoutTier() === 'wide' ? 206 : 172 }
+  function splitRightWorkspaceWidth() { return splitRightPanelWidth() + splitRightWorkspaceInset() * 2 }
+  const SPLIT_PANEL_SURFACE = '#161616'
+  const SPLIT_PANEL_BORDER_COLOR = '#2e2e2e'
+  const SPLIT_PANEL_RADIUS = '12px' 
+  // The reference lists these one per line, 184x32, bare until you touch
+  // them: 12/500 #b4b4b4 with no plate. They had been a two-column grid of
+  // #333333 blocks with white text.
+  const SPLIT_ACTION_TEXT = '#b4b4b4'
+  const SPLIT_ACTION_HOVER_BACKGROUND = '#262626' 
   const LAYER_POINTER_AUTO_SCROLL_EDGE_PX = 44
   const LAYER_POINTER_AUTO_SCROLL_MAX_PX = 22
   const LAYER_POINTER_NEAREST_Y_SLACK_PX = 72
@@ -319,8 +348,11 @@
   const SEE_THROUGH_QUEUE_MISSING_GRACE_MS = 45 * 1000
   const SEE_THROUGH_SLOW_WARN_MS = 8 * 60 * 1000
   const SEE_THROUGH_LONG_WARN_MS = 12 * 60 * 1000
-  const SPLIT_CHECKER_BACKGROUND_COLOR = '#0b0b0b'
-  const SPLIT_CHECKER_BACKGROUND_IMAGE = 'linear-gradient(180deg, #101010 0%, #0b0b0b 100%)'
+  // Neutral dark grey, flat. The canvas sits ABOVE the panels in value so
+  // the artwork is the brightest thing on screen; the former top-to-bottom
+  // gradient is gone with the rest of the bevelled styling.
+  const SPLIT_CHECKER_BACKGROUND_COLOR = '#242424'
+  const SPLIT_CHECKER_BACKGROUND_IMAGE = 'none'
   const SPLIT_CHECKER_BACKGROUND_SIZE = '100% 100%'
   const SPLIT_CHECKER_BACKGROUND_POSITION = '0 0'
   const WORKFLOW_KEY = 'bone_ai_split_workflow_json'
@@ -722,7 +754,7 @@
   function splitActionHoverInlineStyleForButton(button) {
     const action = button instanceof HTMLElement ? button.getAttribute(CONTROL_ACTION_ATTR) || '' : ''
     const status = action ? splitControlActionPatchState(action) : { active: false }
-    const background = status.active ? SPLIT_ACTIVE_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND
+    const background = status.active ? SPLIT_SELECTED_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND
     return Object.assign({}, splitActionHoverInlineStyle, {
       background,
       'background-color': background
@@ -2945,7 +2977,7 @@
     const background = String(style && style.background || '')
     return background.includes('59,130,246') || background.includes('30,166,114')
       ? background
-      : '#333333'
+      : 'transparent'
   }
 
   function splitControlActionStyle(action, disabled, style) {
@@ -3541,7 +3573,8 @@
         max-width: 100% !important;
         box-sizing: border-box !important;
         overflow: hidden !important;
-        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+        grid-template-columns: minmax(0, 1fr) !important;
+        row-gap: 10px !important;
       }
       [data-psd-fusion-ui="1"] button[${CONTROL_ACTION_ATTR}],
       [data-psd-fusion-ui="1"] button[${CONTROL_PLACEHOLDER_ATTR}] {
@@ -3712,16 +3745,18 @@
         font-weight: ${SPLIT_TOOL_FONT_WEIGHT} !important;
       }
       #${WORKSPACE_OVERLAY_ID} button[${TOOL_ACTION_ATTR}][data-novaflow-spine-split-tool-active="1"] {
-        background: ${SPLIT_ACTIVE_BACKGROUND} !important;
-        background-color: ${SPLIT_ACTIVE_BACKGROUND} !important;
+        background: ${SPLIT_SELECTED_BACKGROUND} !important;
+        background-color: ${SPLIT_SELECTED_BACKGROUND} !important;
         background-image: none !important;
         border: 0 !important;
+        box-shadow: inset 0 0 0 1px ${SPLIT_SELECTED_BORDER} !important;
+        color: ${SPLIT_SELECTED_TEXT} !important;
         font-weight: ${SPLIT_TOOL_FONT_WEIGHT} !important;
       }
       #${WORKSPACE_OVERLAY_ID} button[${TOOL_ACTION_ATTR}][data-novaflow-spine-split-tool-active="1"]:hover,
       #${WORKSPACE_OVERLAY_ID} button[${TOOL_ACTION_ATTR}][data-novaflow-spine-split-tool-active="1"]:focus-visible {
-        background: ${SPLIT_ACTIVE_HOVER_BACKGROUND} !important;
-        background-color: ${SPLIT_ACTIVE_HOVER_BACKGROUND} !important;
+        background: ${SPLIT_SELECTED_HOVER_BACKGROUND} !important;
+        background-color: ${SPLIT_SELECTED_HOVER_BACKGROUND} !important;
       }
       #${WORKSPACE_OVERLAY_ID} [data-novaflow-spine-split-fit-button="1"]:hover,
       #${WORKSPACE_OVERLAY_ID} [data-novaflow-spine-split-fit-button="1"]:focus-visible {
@@ -3750,8 +3785,8 @@
     const blocked = !!node.disabled || node.getAttribute('aria-disabled') === 'true' || splitGlobalBusyInteractionLocked()
     const lit = !!hovering && !blocked
     const background = lit
-      ? (active ? SPLIT_ACTIVE_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND)
-      : (active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND)
+      ? (active ? SPLIT_SELECTED_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND)
+      : (active ? SPLIT_SELECTED_BACKGROUND : SPLIT_PANEL_BACKGROUND)
     node.style.setProperty('background', background, 'important')
     node.style.setProperty('background-color', background, 'important')
   }
@@ -3761,7 +3796,7 @@
     const extraStyle = props.style && typeof props.style === 'object' ? props.style : null
     delete props.style
     const toolAction = props[TOOL_ACTION_ATTR] || ''
-    const background = active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND
+    const background = active ? SPLIT_SELECTED_BACKGROUND : SPLIT_PANEL_BACKGROUND
     const node = h('button', Object.assign({
       type: 'button',
       onclick: toolAction ? (event) => runDirectSplitToolAction(toolAction, onClick, event) : onClick,
@@ -13627,13 +13662,18 @@
     const status = splitControlActionPatchState(action)
     return Object.assign({
       height: '32px',
-      borderRadius: '8px',
-      background: status.active ? SPLIT_ACTIVE_BACKGROUND : '#333333',
-      border: SPLIT_LAYOUT_BORDER,
-      color: '#fff',
+      minHeight: '32px',
+      borderRadius: SPLIT_RECT_RADIUS,
+      background: status.active ? SPLIT_SELECTED_BACKGROUND : 'transparent',
+      backgroundColor: status.active ? SPLIT_SELECTED_BACKGROUND : 'transparent',
+      border: '0',
+      boxShadow: status.active ? `inset 0 0 0 1px ${SPLIT_SELECTED_BORDER}` : 'none',
+      color: status.active ? SPLIT_SELECTED_TEXT : SPLIT_ACTION_TEXT,
       cursor: state.busy ? 'default' : 'pointer',
-      fontWeight: SPLIT_TOOL_FONT_WEIGHT,
+      fontWeight: '500',
       fontSize: '12px',
+      textAlign: 'left',
+      padding: '0 10px',
       transition: 'none'
     }, style || {})
   }
@@ -13917,7 +13957,7 @@
         setImportantStyleIfChanged(header, 'max-height', SPLIT_LEFT_PANEL_ACCORDION_TOKENS.headerHeight)
         setImportantStyleIfChanged(header, 'padding', SPLIT_LEFT_PANEL_ACCORDION_TOKENS.headerPadding)
         setImportantStyleIfChanged(header, 'border', '0')
-        setImportantStyleIfChanged(header, 'border-radius', open ? `${SPLIT_LEFT_PANEL_ACCORDION_TOKENS.radius} ${SPLIT_LEFT_PANEL_ACCORDION_TOKENS.radius} 0 0` : SPLIT_LEFT_PANEL_ACCORDION_TOKENS.radius)
+        setImportantStyleIfChanged(header, 'border-radius', '6px') // the cards' header radius, open or not: a square one made its hover fill a hard rectangle
         setImportantStyleIfChanged(header, 'background', SPLIT_LEFT_PANEL_ACCORDION_TOKENS.headerBackground)
         setImportantStyleIfChanged(header, 'background-color', SPLIT_LEFT_PANEL_ACCORDION_TOKENS.headerBackground)
         setImportantStyleIfChanged(header, 'box-shadow', 'none')
@@ -14057,8 +14097,8 @@
         (typeof buttonNode.matches === 'function' && buttonNode.matches(':hover'))
       )
       const background = status.active
-        ? (hovering ? SPLIT_ACTIVE_HOVER_BACKGROUND : SPLIT_ACTIVE_BACKGROUND)
-        : (hovering ? SPLIT_PANEL_HOVER_BACKGROUND : '#333333')
+        ? (hovering ? SPLIT_SELECTED_HOVER_BACKGROUND : SPLIT_SELECTED_BACKGROUND)
+        : (hovering ? SPLIT_ACTION_HOVER_BACKGROUND : 'transparent')
       const border = SPLIT_LAYOUT_BORDER
       if (status.known && buttonNode.textContent !== status.text) {
         buttonNode.textContent = status.text
@@ -14068,9 +14108,9 @@
       setSplitAttributeIfChanged(buttonNode, 'aria-disabled', blocked ? 'true' : 'false')
       buttonNode.style.setProperty('background', background, 'important')
       buttonNode.style.setProperty('background-color', background, 'important')
-      buttonNode.style.setProperty('border', border, 'important')
-      buttonNode.style.setProperty('color', '#fff', 'important')
-      buttonNode.style.setProperty('font-weight', SPLIT_TOOL_FONT_WEIGHT, 'important')
+      buttonNode.style.setProperty('border', '0', 'important')
+      buttonNode.style.setProperty('color', status.active ? SPLIT_SELECTED_TEXT : SPLIT_ACTION_TEXT, 'important')
+      buttonNode.style.setProperty('font-weight', '500', 'important')
       buttonNode.style.setProperty('font-size', '12px', 'important')
       buttonNode.style.setProperty('line-height', '1.2', 'important')
       buttonNode.style.setProperty('min-width', '0', 'important')
@@ -14648,8 +14688,8 @@
     const applyHover = (button, hovering) => {
       if (!(button instanceof HTMLElement)) return
       const background = hovering
-        ? (active ? SPLIT_ACTIVE_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND)
-        : (active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND)
+        ? (active ? SPLIT_SELECTED_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND)
+        : (active ? SPLIT_SELECTED_BACKGROUND : SPLIT_PANEL_BACKGROUND)
       button.style.setProperty('background', background, 'important')
       button.style.setProperty('background-color', background, 'important')
     }
@@ -14668,11 +14708,12 @@
         maxHeight: '34px',
         minWidth: minWidth || '68px',
         borderRadius: SPLIT_RECT_RADIUS,
-        background: active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND,
-        backgroundColor: active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND,
+        background: active ? SPLIT_SELECTED_BACKGROUND : SPLIT_PANEL_BACKGROUND,
+        backgroundColor: active ? SPLIT_SELECTED_BACKGROUND : SPLIT_PANEL_BACKGROUND,
         backgroundImage: 'none',
         border: '0',
-        color: '#fff',
+        boxShadow: active ? `inset 0 0 0 1px ${SPLIT_SELECTED_BORDER}` : 'none',
+        color: active ? SPLIT_SELECTED_TEXT : '#fff',
         cursor: state.busy ? 'default' : 'pointer',
         fontWeight: '400',
         fontSize: SPLIT_CONTROL_FONT_SIZE,
@@ -14702,43 +14743,92 @@
     if (node.getAttribute(name) !== next) node.setAttribute(name, next)
   }
 
+  // The canvas bar's buttons, as the reference draws them on every page:
+  // 28 tall, 4px 10px (8 at or below 1400), a 1px edge that is transparent
+  // until selected, 11/500 #A0A0A0; #373737 and white under the pointer;
+  // disabled at 0.38. Written with the brand runtime's priority so the two
+  // never trade the same property back and forth.
+  const SPLIT_CANVAS_BUTTON = {
+    height: '28px',
+    radius: '5px',
+    text: '#a0a0a0',
+    hoverBackground: '#373737',
+    hoverText: '#ffffff',
+    selectedBackground: '#1c4136',
+    selectedBorder: '#2c604f',
+    selectedText: '#9be4cd',
+    disabledBackground: '#252629',
+    disabledText: '#969aa2',
+    quietBackground: '#171717',
+    quietBorder: '#333333',
+    quietText: '#b8b8b8',
+    quietRadius: '8px',
+    quietHeight: '36px'
+  }
+
+  function setSplitImportantStyles(node, styles) {
+    Object.keys(styles).forEach((name) => {
+      const value = String(styles[name])
+      if (node.style.getPropertyValue(name) === value && node.style.getPropertyPriority(name) === 'important') return
+      node.style.setProperty(name, value, 'important')
+    })
+  }
+
   function applySplitCanvasPersistentToolStyle(button, active, hovering, disabled) {
     if (!(button instanceof HTMLElement)) return
     const blocked = !!disabled
+    const selected = !blocked && !!active
+    const pad = splitLayoutTier() === 'wide' ? 10 : 8
     const background = blocked
-      ? SPLIT_PANEL_BACKGROUND
-      : hovering
-      ? (active ? SPLIT_ACTIVE_HOVER_BACKGROUND : SPLIT_PANEL_HOVER_BACKGROUND)
-      : (active ? SPLIT_ACTIVE_BACKGROUND : SPLIT_PANEL_BACKGROUND)
-    // Properties re-set below with !important are left out of this plain assignment: writing them twice
-    // with different priorities emitted two style mutations per property on every sync pass.
-    Object.assign(button.style, {
-      height: '34px',
-      minHeight: '34px',
-      maxHeight: '34px',
-      minWidth: '68px',
-      borderRadius: SPLIT_RECT_RADIUS,
-      backgroundImage: 'none',
-      border: '0',
-      color: blocked ? 'rgba(255,255,255,0.42)' : '#fff',
+      ? SPLIT_CANVAS_BUTTON.disabledBackground
+      : selected
+      ? SPLIT_CANVAS_BUTTON.selectedBackground
+      : (hovering ? SPLIT_CANVAS_BUTTON.hoverBackground : 'transparent')
+    const color = blocked
+      ? SPLIT_CANVAS_BUTTON.disabledText
+      : selected
+      ? SPLIT_CANVAS_BUTTON.selectedText
+      : (hovering ? SPLIT_CANVAS_BUTTON.hoverText : SPLIT_CANVAS_BUTTON.text)
+    setSplitImportantStyles(button, {
+      height: SPLIT_CANVAS_BUTTON.height,
+      'min-height': SPLIT_CANVAS_BUTTON.height,
+      'max-height': SPLIT_CANVAS_BUTTON.height,
+      width: 'auto',
+      'min-width': '0px',
+      'max-width': 'none',
+      flex: '0 0 auto',
+      padding: `4px ${pad}px`,
+      'border-top-width': '1px',
+      'border-right-width': '1px',
+      'border-bottom-width': '1px',
+      'border-left-width': '1px',
+      'border-top-style': 'solid',
+      'border-right-style': 'solid',
+      'border-bottom-style': 'solid',
+      'border-left-style': 'solid',
+      'border-top-color': selected ? SPLIT_CANVAS_BUTTON.selectedBorder : 'transparent',
+      'border-right-color': selected ? SPLIT_CANVAS_BUTTON.selectedBorder : 'transparent',
+      'border-bottom-color': selected ? SPLIT_CANVAS_BUTTON.selectedBorder : 'transparent',
+      'border-left-color': selected ? SPLIT_CANVAS_BUTTON.selectedBorder : 'transparent',
+      'border-radius': SPLIT_CANVAS_BUTTON.radius,
+      'background-color': background,
+      'background-image': 'none',
+      color,
       cursor: blocked || state.busy ? 'default' : 'pointer',
-      fontWeight: '400',
-      padding: '0 14px',
+      'font-size': '11px',
+      'font-weight': '500',
+      'line-height': '1',
       display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      boxSizing: 'border-box',
-      whiteSpace: 'nowrap',
-      opacity: blocked ? '0.72' : '1'
+      'align-items': 'center',
+      'justify-content': 'center',
+      'box-sizing': 'border-box',
+      'white-space': 'nowrap',
+      opacity: blocked ? '0.38' : '1',
+      transition: 'none',
+      'box-shadow': 'none',
+      outline: '0px',
+      transform: 'none'
     })
-    button.style.setProperty('background', background, 'important')
-    button.style.setProperty('background-color', background, 'important')
-    button.style.setProperty('font-size', SPLIT_CONTROL_FONT_SIZE, 'important')
-    button.style.setProperty('line-height', '34px', 'important')
-    button.style.setProperty('transition', 'none', 'important')
-    button.style.setProperty('box-shadow', 'none', 'important')
-    button.style.setProperty('outline', '0', 'important')
-    button.style.setProperty('transform', 'none', 'important')
   }
 
   function setSplitCanvasPersistentToolHover(button, active, hovering, disabled) {
@@ -14858,17 +14948,47 @@
     const next = active ? '1' : '0'
     if (!force && button.__novaflowSpineSplitFitHover === next) return
     button.__novaflowSpineSplitFitHover = next
-    Object.assign(button.style, splitCanvasFitButtonStyle(active))
-    const background = active ? SPLIT_PANEL_HOVER_BACKGROUND : SPLIT_PANEL_BACKGROUND
-    button.style.setProperty('background', background, 'important')
-    button.style.setProperty('background-color', background, 'important')
-    button.style.setProperty('font-size', SPLIT_CONTROL_FONT_SIZE, 'important')
-    button.style.setProperty('line-height', '34px', 'important')
-    button.style.setProperty('transition', 'none', 'important')
-    button.style.setProperty('box-shadow', 'none', 'important')
-    button.style.setProperty('outline', '0', 'important')
-    button.style.setProperty('transform', 'none', 'important')
+    // 自动适配 is the canvas bar's quiet button: 36 tall, 5px 12px, #171717
+    // on a #333 edge, 11/500 #B8B8B8; #373737 and white under the pointer.
+    setSplitImportantStyles(button, {
+      width: 'auto',
+      'min-width': '0px',
+      height: SPLIT_CANVAS_BUTTON.quietHeight,
+      'min-height': SPLIT_CANVAS_BUTTON.quietHeight,
+      'max-height': SPLIT_CANVAS_BUTTON.quietHeight,
+      padding: '5px 12px',
+      'background-color': active ? SPLIT_CANVAS_BUTTON.hoverBackground : SPLIT_CANVAS_BUTTON.quietBackground,
+      'background-image': 'none',
+      'border-top-width': '1px',
+      'border-right-width': '1px',
+      'border-bottom-width': '1px',
+      'border-left-width': '1px',
+      'border-top-style': 'solid',
+      'border-right-style': 'solid',
+      'border-bottom-style': 'solid',
+      'border-left-style': 'solid',
+      'border-top-color': SPLIT_CANVAS_BUTTON.quietBorder,
+      'border-right-color': SPLIT_CANVAS_BUTTON.quietBorder,
+      'border-bottom-color': SPLIT_CANVAS_BUTTON.quietBorder,
+      'border-left-color': SPLIT_CANVAS_BUTTON.quietBorder,
+      'border-radius': SPLIT_CANVAS_BUTTON.quietRadius,
+      color: active ? SPLIT_CANVAS_BUTTON.hoverText : SPLIT_CANVAS_BUTTON.quietText,
+      cursor: 'pointer',
+      'font-size': '11px',
+      'font-weight': '500',
+      'line-height': '1',
+      'white-space': 'nowrap',
+      display: 'inline-flex',
+      'align-items': 'center',
+      'justify-content': 'center',
+      'box-sizing': 'border-box',
+      transition: 'none',
+      'box-shadow': 'none',
+      outline: '0px',
+      transform: 'none'
+    })
   }
+
 
   function setSplitCanvasFitButtonHover(button, active) {
     if (!(button instanceof HTMLElement)) return
@@ -28729,7 +28849,7 @@
       node.setAttribute(RIGHT_WORKSPACE_ROOT_STYLE_ATTR, node.getAttribute('style') || '')
     }
     setSplitAttributeIfChanged(node, RIGHT_WORKSPACE_ROOT_ATTR, '1')
-    const width = `${SPLIT_RIGHT_WORKSPACE_WIDTH}px`
+    const width = `${splitRightWorkspaceWidth()}px`
     node.style.setProperty('width', width, 'important')
     node.style.setProperty('min-width', width, 'important')
     node.style.setProperty('max-width', width, 'important')
@@ -28737,8 +28857,10 @@
     node.style.setProperty('flex-basis', width, 'important')
     node.style.setProperty('flex-shrink', '0', 'important')
     node.style.setProperty('box-sizing', 'border-box', 'important')
-    node.style.setProperty('background', SPLIT_WORKSPACE_PANEL_BACKGROUND, 'important')
-    node.style.setProperty('overflow', 'hidden', 'important')
+    node.style.setProperty('padding', `${SPLIT_RIGHT_WORKSPACE_TOP_GAP}px ${splitRightWorkspaceInset()}px ${splitRightWorkspaceInset()}px ${splitRightWorkspaceInset()}px`, 'important')
+    // The column is a layout slot; the panel inside it is the surface.
+    node.style.setProperty('background', 'transparent', 'important')
+    node.style.setProperty('overflow', 'visible', 'important')
   }
 
   function removeFallbackRightWorkspaceHost() {
@@ -28760,7 +28882,7 @@
       host = h('div', { id: RIGHT_WORKSPACE_HOST_ID, [ROOT_ATTR]: '1' })
       ;(document.body || document.documentElement).appendChild(host)
     }
-    const width = `${SPLIT_RIGHT_WORKSPACE_WIDTH}px`
+    const width = `${splitRightWorkspaceWidth()}px`
     const top = fallbackRightWorkspaceTop()
     host.setAttribute(ROOT_ATTR, '1')
     host.style.setProperty('position', 'fixed', 'important')
@@ -28787,7 +28909,7 @@
     if (node.closest(`#${WORKSPACE_OVERLAY_ID}, #${RIGHT_WORKSPACE_ID}`)) return false
     if (mountedCard && (node === mountedCard || node.contains(mountedCard) || mountedCard.contains(node))) return false
     const rect = node.getBoundingClientRect()
-    if (!rect || rect.width < 200 || rect.width > 430 || rect.height < 260) return false
+    if (!rect || rect.width < 150 || rect.width > 430 || rect.height < 260) return false
     if (rect.right < window.innerWidth * 0.78 || rect.left < window.innerWidth * 0.55) return false
     const style = window.getComputedStyle(node)
     if (!style || style.display === 'none' || style.visibility === 'hidden') return false
@@ -28797,7 +28919,7 @@
   function rightPanelRootCandidateScore(node) {
     const rect = node.getBoundingClientRect()
     const text = textOf(node)
-    let score = Math.abs(rect.width - SPLIT_RIGHT_WORKSPACE_WIDTH) * 5
+    let score = Math.abs(rect.width - splitRightWorkspaceWidth()) * 5
     score += Math.abs((window.innerWidth || rect.right) - rect.right) * 1.5
     score += Math.max(0, 360 - rect.height) * 0.3
     if (node.getAttribute(RIGHT_WORKSPACE_ROOT_ATTR) === '1') score -= 1000
@@ -28866,7 +28988,9 @@
       position: 'relative',
       zIndex: '2147483201',
       pointerEvents: 'auto',
-      background: SPLIT_WORKSPACE_PANEL_BACKGROUND,
+      background: SPLIT_PANEL_SURFACE,
+      border: `1px solid ${SPLIT_PANEL_BORDER_COLOR}`,
+      borderRadius: SPLIT_PANEL_RADIUS,
       overflow: 'hidden'
     }
   }
@@ -28976,7 +29100,22 @@
     restoreManagedNodes()
   }
 
+  // The stage box the brand runtime lays out for the current width (the
+  // reference's panel: 8 under the topbar, the gutter above the bottom, the
+  // right panel's column off the side; or the stacked column). Using it keeps
+  // this overlay and the brand runtime's spec on the same numbers.
+  function splitPublishedStageRect() {
+    const root = document.documentElement
+    const raw = root && (root.getAttribute('data-novaflow-stage-surface-box') || root.getAttribute('data-novaflow-stage-box'))
+    if (!raw) return null
+    const [left, top, width, height] = raw.split(',').map(Number)
+    if (![left, top, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return null
+    return { left, top, width, height }
+  }
+
   function splitWorkspaceRect() {
+    const published = splitPublishedStageRect()
+    if (published) return published
     const leftRoot = findLeftPanelRoot()
     const leftColumn = findLeftColumnRoot()
     const rightRoot = findRightPanelRoot()
@@ -30577,7 +30716,7 @@
     }
     panel.__novaflowSpineSplitRightSignature = panelSignature
     panel.innerHTML = ''
-    panel.appendChild(h('div', { style: { height: '100%', minHeight: '0', display: 'grid', gridTemplateRows: showRightWorkspaceMergeButton ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr)', gap: showRightWorkspaceMergeButton ? '8px' : '0', padding: SPLIT_RIGHT_PANEL_INSET, boxSizing: 'border-box', background: SPLIT_WORKSPACE_PANEL_BACKGROUND, color: '#e5e7eb', overflow: 'hidden' } }, [
+    panel.appendChild(h('div', { style: { height: '100%', minHeight: '0', display: 'grid', gridTemplateRows: showRightWorkspaceMergeButton ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr)', gap: showRightWorkspaceMergeButton ? '8px' : '0', padding: SPLIT_RIGHT_PANEL_INSET, boxSizing: 'border-box', background: SPLIT_RIGHT_PANEL_BACKGROUND, color: '#e5e7eb', overflow: 'hidden' } }, [
       (sourceCards.length || sets.length) ? h('div', {
         'data-novaflow-layer-scroll': '1',
         onwheel: handleContainedWheel,
@@ -36322,6 +36461,8 @@
   window.addEventListener('blur', cancelLayerPointerDrag, true)
   window.addEventListener('blur', hideActiveBrushCursors, true)
   window.addEventListener('resize', () => syncSplitWorkspace())
+  // The brand runtime switches the layout tier a beat after the resize itself.
+  window.addEventListener('novaflow:layout-tier', () => syncSplitWorkspace())
   window.addEventListener('keydown', handleLayerHotkeys, true)
   window.addEventListener('keyup', handlePenModifierKeyChange, true)
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { mount(); startSplitMountRetry() })

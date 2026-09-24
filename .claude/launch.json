@@ -20,6 +20,18 @@
         "novaflow-web/control-local/src/server.mjs"
       ],
       "port": 4890
+    },
+    {
+      "name": "novaflow-web-uitest",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "novaflow-web/tools/serve-web-dist.py",
+        "--port",
+        "4899",
+        "--root",
+        "novaflow-web/web-dist"
+      ],
+      "port": 4899
     }
   ]
 }

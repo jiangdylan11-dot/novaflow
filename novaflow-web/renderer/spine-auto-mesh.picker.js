@@ -852,10 +852,12 @@
 
   function start() {
     let scheduled = false
+    // Before the frame is painted, not on the next one: from a frame later
+    // the toolbar showed without 选择图层 and then grew by it.
     const schedule = () => {
       if (scheduled) return
       scheduled = true
-      window.requestAnimationFrame(() => { scheduled = false; try { mount() } catch { /* keep going */ } })
+      queueMicrotask(() => { scheduled = false; try { mount() } catch { /* keep going */ } })
     }
     mount()
     hookDraws()

@@ -7,13 +7,23 @@
 
   const PANEL_ATTR = 'data-novaflow-left-accordion-panel'
   const TOKENS = Object.freeze({
-    panelGap: '5px',
-    radius: '8px',
-    headerHeight: '36px',
-    headerPadding: '0 12px',
-    headerBackground: '#2f2f2f',
-    headerFontSize: '13px',
-    headerFontWeight: '400',
+    // Reference (spline-review): the group header is a bare summary row -
+    // no plate, no radius. Groups are separated by the details' bottom rule,
+    // and only :hover gets a fill. The ICON keeps a small plate of its own.
+    panelGap: '0px',
+    radius: '0px',
+    headerHeight: '46px',
+    // 7 each side: the reference summary's icon sits 7 in from the card.
+    headerPadding: '0 7px',
+    headerBackground: 'transparent',
+    headerHoverBackground: '#222222',
+    panelBorderBottom: '1px solid #272727',
+    iconPlateBackground: '#292929',
+    iconPlateRadius: '5px',
+    iconPlateSize: '24px',
+    iconPlatePadding: '4px',
+    headerFontSize: '12px',
+    headerFontWeight: '500',
     headerGap: '8px',
     titleMaxWidth: 'calc(100% - 20px)',
     iconSlot: '18px',
@@ -22,7 +32,8 @@
     chevronSlot: '12px',
     chevronFontSize: '12px',
     chevronOpacity: '0.7',
-    bodyPadding: '6px 12px 8px',
+    // The reference's open group: 5 over its content, 17 under it.
+    bodyPadding: '5px 7px 17px',
     bodyGap: '6px',
   })
 
@@ -33,10 +44,12 @@
       minWidth: '0',
       maxWidth: '100%',
       margin: '0',
+      marginBottom: TOKENS.panelGap,
       overflow: 'hidden',
       background: 'transparent',
       backgroundColor: 'transparent',
       border: '0',
+      borderBottom: TOKENS.panelBorderBottom,
       borderRadius: TOKENS.radius,
       boxShadow: 'none',
       boxSizing: 'border-box',
@@ -57,10 +70,10 @@
       maxHeight: TOKENS.headerHeight,
       padding: TOKENS.headerPadding,
       border: '0',
-      borderRadius: expanded ? `${TOKENS.radius} ${TOKENS.radius} 0 0` : TOKENS.radius,
+      borderRadius: TOKENS.radius,
       background: TOKENS.headerBackground,
       backgroundColor: TOKENS.headerBackground,
-      color: '#fff',
+      color: '#d4d4d4',
       cursor: 'pointer',
       fontSize: TOKENS.headerFontSize,
       fontWeight: TOKENS.headerFontWeight,
@@ -87,15 +100,23 @@
 
   function iconStyle() {
     return {
-      flex: `0 0 ${TOKENS.iconSlot}`,
-      width: TOKENS.iconSlot,
-      minWidth: TOKENS.iconSlot,
-      maxWidth: TOKENS.iconSlot,
+      flex: `0 0 ${TOKENS.iconPlateSize}`,
+      width: TOKENS.iconPlateSize,
+      minWidth: TOKENS.iconPlateSize,
+      maxWidth: TOKENS.iconPlateSize,
+      height: TOKENS.iconPlateSize,
       marginRight: TOKENS.iconMarginRight,
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: TOKENS.iconPlateBackground,
+      borderRadius: TOKENS.iconPlateRadius,
+      padding: TOKENS.iconPlatePadding,
+      boxSizing: 'border-box',
       textAlign: 'center',
       fontSize: TOKENS.iconFontSize,
       lineHeight: '1',
-      color: '#fff',
+      color: '#bdbdbd',
     }
   }
 
@@ -155,7 +176,8 @@
     section?.setAttribute?.(PANEL_ATTR, '1')
     section?.setAttribute?.('data-open', open ? '1' : '0')
     header?.setAttribute?.('aria-expanded', open ? 'true' : 'false')
-    if (header?.style) header.style.borderRadius = open ? `${TOKENS.radius} ${TOKENS.radius} 0 0` : TOKENS.radius
+    // The header keeps the cards' 6px radius (the runtime's): squaring it
+    // here on each toggle made its hover fill a hard rectangle.
     setImportantStyle(body, 'display', open ? 'grid' : 'none')
     setImportantStyle(body, 'gap', TOKENS.bodyGap)
     setImportantStyle(body, 'row-gap', TOKENS.bodyGap)
