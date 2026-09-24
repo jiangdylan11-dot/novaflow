@@ -34620,8 +34620,9 @@
         style: { bottom: "0" }
       },
       {
+        // Marker layer is inside the ruler's full-size content wrapper.
         when: "body.novaflow-ai-animation-section-layers",
-        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) > div > div:nth-child(2) > div:nth-child(4) > div',
+        selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) > div > div:nth-child(2) > div > div:nth-child(4) > div',
         style: (node) => (node.style.top ? { top: "14px", bottom: node.style.height === "0px" ? "auto" : "0" } : null)
       },
       {
