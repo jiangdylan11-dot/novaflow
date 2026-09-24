@@ -44073,7 +44073,7 @@
   const RIBBON_EVENT_CARD_SHADOW_HOVER = "0 0 0 1px rgba(32, 201, 151, 0.16)";
   const RIBBON_EVENT_MARKER_IDLE = "rgba(229, 235, 242, 0.46)";
   const RIBBON_EVENT_MARKER_ACTIVE = "#20c997";
-  const RIBBON_ADVANCED_SLIDER_COUNT = 9;
+  const RIBBON_ADVANCED_SLIDER_COUNT = 10;
   const RIBBON_ELASTICITY_SLIDER_LABEL = "\u5f39\u6027\u56de\u5f39";
   const RIBBON_ELASTICITY_STORAGE_KEY = "novaflow.ribbon.elasticity";
   const RIBBON_ELASTICITY_DEFAULT = 42;
@@ -44085,6 +44085,11 @@
   const RIBBON_WAVE_PHASE_STORAGE_KEY = "novaflow.ribbon.wavePhase";
   const RIBBON_WAVE_PHASE_DEFAULT = 0;
   const RIBBON_WAVE_PHASE_RANGE_MAX = 100;
+  const RIBBON_UNIFORM_WAVE_CONTROLS = {
+    waveCount: { label: "波浪数量", attribute: "wave-count", max: 2, step: 0.05, fallback: 1 },
+    uniformWeight: { label: "波浪权重", attribute: "uniform-weight", max: 100, step: 1, fallback: 0 }
+  };
+  let ribbonUniformWaveValues = { waveCount: 1, uniformWeight: 0 };
   const RIBBON_WHIP_STRENGTH_SLIDER_LABEL = "\u97ad\u68a2\u529b\u5ea6";
   const RIBBON_WHIP_STRENGTH_DEFAULT = 0;
   const RIBBON_WHIP_STRENGTH_RANGE_MAX = 200;
@@ -44101,7 +44106,7 @@
   const RIBBON_AMPLITUDE_SLIDER_MAX = 200;
   const RIBBON_WIND_DIRECTION_SLIDER_MIN = -500;
   const RIBBON_WIND_DIRECTION_SLIDER_MAX = 500;
-  const RIBBON_ELASTIC_FORMULA_VERSION = 43;
+  const RIBBON_ELASTIC_FORMULA_VERSION = 44;
   const RIBBON_EVENT_FORMULA_VERSION = 1;
   const RIBBON_EVENT_STRENGTH_LABEL = "\u51b2\u51fb\u5f3a\u5ea6";
   const RIBBON_EVENT_DURATION_LABEL = "\u6301\u7eed\u65f6\u95f4";
@@ -44273,11 +44278,11 @@
   };
   const RIBBON_FREE_NUMBER_PARAMETER_KEYS = new Set(["amplitude", "wind", "delay"]);
   const RIBBON_PARAMETER_PRESET_OVERRIDES = [
-    { label: "\u57fa\u7840\u67d4\u987a", values: { stiffness: 0, amplitude: 36, wind: 0, delay: 57, offset: 0, elasticity: 18, swingCount: 1, wavePhase: 36, whip: 0 } },
-    { label: "\u539a\u91cd\u6447\u6446", values: { stiffness: 18, amplitude: 67, wind: 0, delay: 108, offset: 14, elasticity: 16, swingCount: 1, wavePhase: 0, whip: 78 } },
-    { label: "\u62bd\u97ad\u7529\u5c3e", values: { stiffness: 13, amplitude: 108, wind: 0, delay: 72, offset: 8, elasticity: 13, swingCount: 2, wavePhase: 42, whip: 200 } },
-    { label: "\u98ce\u4e2d\u6446\u52a8", values: { stiffness: 16, amplitude: 38, wind: 88, delay: 42, offset: 24, elasticity: 24, swingCount: 1, wavePhase: 58, whip: 0 } },
-    { label: "\u8f7b\u67d4\u98d8\u52a8", values: { stiffness: 0, amplitude: 80, wind: 0, delay: 72, offset: 10, elasticity: 0, swingCount: 1, wavePhase: 65, whip: 0 } }
+    { label: "\u57fa\u7840\u67d4\u987a", values: { stiffness: 0, amplitude: 70, wind: 0, delay: 57, offset: 0, elasticity: 18, swingCount: 1, wavePhase: 36, waveCount: 1, uniformWeight: 60, whip: 20 } },
+    { label: "\u539a\u91cd\u6447\u6446", values: { stiffness: 25, amplitude: 90, wind: 0, delay: 80, offset: 14, elasticity: 12, swingCount: 1, wavePhase: 0, waveCount: 0.65, uniformWeight: 45, whip: 18 } },
+    { label: "\u62bd\u97ad\u7529\u5c3e", values: { stiffness: 0, amplitude: 80, wind: 0, delay: 57, offset: 8, elasticity: 18, swingCount: 2, wavePhase: 36, waveCount: 1, uniformWeight: 60, whip: 45 } },
+    { label: "\u98ce\u4e2d\u6446\u52a8", values: { stiffness: 10, amplitude: 64, wind: 18, delay: 45, offset: 20, elasticity: 20, swingCount: 1, wavePhase: 45, waveCount: 1.25, uniformWeight: 85, whip: 16 } },
+    { label: "\u8f7b\u67d4\u98d8\u52a8", values: { stiffness: 0, amplitude: 48, wind: 0, delay: 48, offset: 8, elasticity: 12, swingCount: 1, wavePhase: 50, waveCount: 0.9, uniformWeight: 85, whip: 15 } }
   ];
 
   function sanitizeRibbonParameterPresetLabel(value) {
@@ -44307,6 +44312,9 @@
     next.whip = Number.isFinite(whip)
       ? normalizeRibbonWhipStrengthValue(whip)
       : RIBBON_WHIP_STRENGTH_DEFAULT;
+    // Presets saved before uniform waves retain the original calculation at 0%.
+    next.waveCount = normalizeRibbonUniformWaveValue("waveCount", values.waveCount);
+    next.uniformWeight = normalizeRibbonUniformWaveValue("uniformWeight", values.uniformWeight);
     return next;
   }
 
@@ -45405,6 +45413,9 @@
     if (Number.isFinite(Number(values.whip))) {
       changed = setRibbonWhipStrengthSliderValue(panel, Number(values.whip), dispatch) || changed;
     }
+    Object.keys(RIBBON_UNIFORM_WAVE_CONTROLS).forEach((key) => {
+      changed = setRibbonUniformWaveSliderValue(panel, key, values[key]) || changed;
+    });
     refreshRibbonPanelFirstFrame(panel, {
       suppressLayout: options.suppressLayout === true
     });
@@ -45426,6 +45437,8 @@
     values.swingCount = getRibbonSwingCountValue(root);
     values.wavePhase = getRibbonWavePhaseValue(root);
     values.whip = getRibbonWhipStrengthValue(root);
+    values.waveCount = getRibbonUniformWaveValue(root, "waveCount");
+    values.uniformWeight = getRibbonUniformWaveValue(root, "uniformWeight");
     return normalizeRibbonParameterPresetValues(values);
   }
 
@@ -45635,6 +45648,77 @@
       return normalizeRibbonSwingCount(rangeInput.value);
     }
     return normalizeRibbonSwingCount(window.__NovaFlowRibbonSwingCountValue ?? getStoredRibbonSwingCountValue());
+  }
+
+  function normalizeRibbonUniformWaveValue(key, value) {
+    const control = RIBBON_UNIFORM_WAVE_CONTROLS[key];
+    const numeric = value === null || value === "" ? NaN : Number(value);
+    const next = Number.isFinite(numeric) ? Math.max(0, Math.min(control.max, numeric)) : control.fallback;
+    return Number(next.toFixed(key === "waveCount" ? 2 : 0));
+  }
+
+  function getRibbonUniformWaveValue(root = document, key = "waveCount") {
+    const attribute = RIBBON_UNIFORM_WAVE_CONTROLS[key].attribute;
+    const input = root.querySelector(`[data-novaflow-ribbon-${attribute}-number="1"]`);
+    return normalizeRibbonUniformWaveValue(key, input instanceof HTMLInputElement ? input.value : ribbonUniformWaveValues[key]);
+  }
+
+  function setRibbonUniformWaveSliderValue(panel, key, value) {
+    const next = normalizeRibbonUniformWaveValue(key, value);
+    const previous = ribbonUniformWaveValues[key];
+    ribbonUniformWaveValues[key] = next;
+    if (!(panel instanceof HTMLElement)) return previous !== next;
+    const attribute = RIBBON_UNIFORM_WAVE_CONTROLS[key].attribute;
+    let changed = previous !== next;
+    for (const type of ["range", "number"]) {
+      const input = panel.querySelector(`[data-novaflow-ribbon-${attribute}-${type}="1"]`);
+      if (!(input instanceof HTMLInputElement)) continue;
+      changed = input.value !== String(next) || changed;
+      setRibbonEventInputValue(input, next, false);
+      if (type === "range") syncRangeFillVisual(input);
+    }
+    return changed;
+  }
+
+  function ensureRibbonUniformWaveSliders(panel) {
+    if (!(panel instanceof HTMLElement)) return;
+    const body = panel.querySelector('[data-novaflow-ribbon-advanced-body="1"]');
+    if (!(body instanceof HTMLElement)) return;
+    let anchor = body.querySelector('[data-novaflow-ribbon-swing-count-slider="1"]');
+    for (const [key, control] of Object.entries(RIBBON_UNIFORM_WAVE_CONTROLS)) {
+      let group = body.querySelector(`[data-novaflow-ribbon-uniform-wave-slider="${key}"]`);
+      if (!(group instanceof HTMLElement)) {
+        group = document.createElement("div");
+        group.className = "nf-slider";
+        group.setAttribute("data-novaflow-ribbon-advanced-slider", "1");
+        group.setAttribute("data-novaflow-ribbon-uniform-wave-slider", key);
+        const title = document.createElement("div");
+        title.textContent = control.label;
+        const row = document.createElement("div");
+        for (const type of ["range", "number"]) {
+          const input = document.createElement("input");
+          input.type = type;
+          input.min = "0";
+          input.max = String(control.max);
+          input.step = String(control.step);
+          input.value = String(ribbonUniformWaveValues[key]);
+          input.setAttribute("aria-label", control.label);
+          input.setAttribute(`data-novaflow-ribbon-${control.attribute}-${type}`, "1");
+          if (type === "number") input.className = "nf-number";
+          const commit = (apply) => {
+            setRibbonUniformWaveSliderValue(panel, key, input.value);
+            if (apply) scheduleRibbonParameterControlPreview(group, "uniform-wave-slider");
+          };
+          input.addEventListener("input", () => commit(false), true);
+          input.addEventListener("change", () => commit(true), true);
+          row.appendChild(input);
+        }
+        group.append(title, row);
+        body.insertBefore(group, anchor?.nextSibling || null);
+      }
+      anchor = group;
+      styleRibbonAdvancedRangeGroup(group);
+    }
   }
 
   function normalizeRibbonWavePhaseValue(value, fallback = RIBBON_WAVE_PHASE_DEFAULT) {
@@ -49114,6 +49198,7 @@
     setRibbonHiddenValue(timeline, "__novaflowRibbonSwingCountValue", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonNativeSwingCountValue", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonWavePhaseValue", null);
+    setRibbonHiddenValue(timeline, "__novaflowRibbonUniformWaveSignature", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonWhipStrengthValue", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonElasticFormulaVersion", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonCalculationMode", "");
@@ -49528,6 +49613,7 @@
     setRibbonHiddenValue(timeline, "__novaflowRibbonSwingCountValue", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonNativeSwingCountValue", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonWavePhaseValue", null);
+    setRibbonHiddenValue(timeline, "__novaflowRibbonUniformWaveSignature", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonWhipStrengthValue", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonElasticFormulaVersion", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonCalculationMode", "");
@@ -49653,6 +49739,7 @@
     setRibbonHiddenValue(timeline, "__novaflowRibbonSwingCountValue", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonNativeSwingCountValue", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonWavePhaseValue", null);
+    setRibbonHiddenValue(timeline, "__novaflowRibbonUniformWaveSignature", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonWhipStrengthValue", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonElasticFormulaVersion", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonCalculationMode", "");
@@ -49719,6 +49806,7 @@
       hasDirtyValue("__novaflowRibbonSwingCountValue") ||
       hasDirtyValue("__novaflowRibbonNativeSwingCountValue") ||
       hasDirtyValue("__novaflowRibbonWavePhaseValue") ||
+      hasDirtyValue("__novaflowRibbonUniformWaveSignature") ||
       hasDirtyValue("__novaflowRibbonWhipStrengthValue") ||
       hasDirtyValue("__novaflowRibbonElasticFormulaVersion") ||
       hasDirtyValue("__novaflowRibbonCalculationMode") ||
@@ -49745,6 +49833,7 @@
     setRibbonHiddenValue(timeline, "__novaflowRibbonSwingCountValue", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonNativeSwingCountValue", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonWavePhaseValue", null);
+    setRibbonHiddenValue(timeline, "__novaflowRibbonUniformWaveSignature", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonWhipStrengthValue", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonElasticFormulaVersion", null);
     setRibbonHiddenValue(timeline, "__novaflowRibbonCalculationMode", "");
@@ -49787,6 +49876,7 @@
       hasValue("__novaflowRibbonSwingCountValue") ||
       hasValue("__novaflowRibbonNativeSwingCountValue") ||
       hasValue("__novaflowRibbonWavePhaseValue") ||
+      hasValue("__novaflowRibbonUniformWaveSignature") ||
       hasValue("__novaflowRibbonWhipStrengthValue") ||
       hasValue("__novaflowRibbonElasticFormulaVersion") ||
       hasValue("__novaflowRibbonCalculationMode") ||
@@ -50492,6 +50582,120 @@
     return applyRibbonGlobalLoopCountToRotateFrames(finalizedFrames, dur, swingCount, fps);
   }
 
+  function getRibbonUniformWaveLayout(project, targetEntries) {
+    const bones = new Map((project?.bones || []).map((bone) => [getRibbonBoneName(bone), bone]));
+    const entries = new Map(targetEntries.map((entry) => [entry.name, entry]));
+    const children = new Map();
+    for (const entry of targetEntries) {
+      const parent = getRibbonBoneParentName(bones.get(entry.name));
+      if (!entries.has(parent)) continue;
+      if (!children.has(parent)) children.set(parent, []);
+      children.get(parent).push(entry.name);
+    }
+    const groups = [], visited = new Set();
+    const visitRoot = (rootName) => {
+      if (visited.has(rootName)) return;
+      const group = [];
+      const visit = (name, parent, distance, parentScale) => {
+        if (visited.has(name)) return;
+        visited.add(name);
+        const bone = bones.get(name) || {};
+        const scale = parentScale * Math.abs(Number(bone.scaleX) || 1);
+        const child = bones.get((children.get(name) || [])[0]);
+        const fallbackLength = Math.hypot(Number(child?.x) || 0, Number(child?.y) || 0) || 1;
+        const length = (Math.abs(Number(bone.length)) || fallbackLength) * scale;
+        const item = { ...entries.get(name), parentName: parent, distance, length };
+        group.push(item);
+        for (const childName of children.get(name) || []) visit(childName, name, distance + length, scale);
+      };
+      visit(rootName, "", 0, 1);
+      const total = Math.max(...group.map((item) => item.distance + item.length), 0.000001);
+      for (const item of group) item.position = (item.distance + item.length / 2) / total;
+      groups.push(group);
+    };
+    for (const entry of targetEntries) {
+      if (!entries.has(getRibbonBoneParentName(bones.get(entry.name)))) visitRoot(entry.name);
+    }
+    // A malformed parent cycle must not hang preview or pull in unselected bones.
+    for (const entry of targetEntries) visitRoot(entry.name);
+    return groups;
+  }
+
+  function sampleRibbonUniformLoop(frames, time, duration) {
+    if (!frames.length) return 0;
+    const t = ((time % duration) + duration) % duration;
+    let low = 0, high = frames.length - 1;
+    while (low + 1 < high) {
+      const middle = (low + high) >> 1;
+      if (frames[middle].time <= t) low = middle;
+      else high = middle;
+    }
+    const a = frames[low], b = frames[high];
+    const progress = Math.max(0, Math.min(1, (t - a.time) / Math.max(0.000001, b.time - a.time)));
+    return a.angle + (b.angle - a.angle) * progress;
+  }
+
+  function buildRibbonUniformWaveRotateMap(layout, options) {
+    const { duration, fps, stiffness, elasticity, amplitude, wind, delay, offset,
+      wavePhase, whip, swingCount, nativeSwingCount, waveCount, uniformWeight } = options;
+    const result = new Map();
+    const weight = normalizeRibbonUniformWaveValue("uniformWeight", uniformWeight) / 100;
+    const cycles = normalizeRibbonUniformWaveValue("waveCount", waveCount);
+    const source = buildRibbonSyntheticSourceRotateFrames(duration);
+    const legacy = new Map();
+    const getLegacy = (index, complete = false) => {
+      if (!legacy.has(index)) legacy.set(index, buildRibbonElasticRotateFrames(
+        source, elasticity, duration, fps, complete ? swingCount : 1, nativeSwingCount,
+        stiffness, amplitude, complete ? wind : 0, delay, complete ? offset : 0,
+        wavePhase, index, complete ? whip : 0
+      ));
+      return legacy.get(index);
+    };
+    if (weight === 0) {
+      for (const group of layout) for (const item of group) result.set(item.name, getLegacy(item.chainIndex, true));
+      return result;
+    }
+    // Use the same root waveform and local/world conversion as the approved test.
+    // Match the two branches' amplitude before blending; wind remains a static bias.
+    const rootWave = getLegacy(0);
+    const rootPeak = Math.max(...rootWave.map((frame) => Math.abs(frame.angle)), 0.000001);
+    const frameCount = Math.max(8, Math.min(720, Math.round(duration * 60)));
+    for (const group of layout) {
+      const poses = Array.from({ length: frameCount + 1 }, (_,frame) => {
+        const time = duration * frame / frameCount;
+        return group.map((item) => sampleRibbonUniformLoop(getLegacy(item.chainIndex), time, duration));
+      });
+      let worldPeak = 0;
+      for (const pose of poses) {
+        const worldAngles = new Map();
+        group.forEach((item, index) => {
+          const angle = (worldAngles.get(item.parentName) || 0) + pose[index];
+          worldAngles.set(item.name, angle);
+          worldPeak = Math.max(worldPeak, Math.abs(angle));
+        });
+      }
+      const curves = group.map(() => []);
+      for (let frame = 0; frame <= frameCount; frame += 1) {
+        const time = duration * frame / frameCount, worldTargets = new Map();
+        group.forEach((item, index) => {
+          const target = sampleRibbonUniformLoop(rootWave, time - duration * cycles * item.position, duration) * worldPeak / rootPeak;
+          const local = (target - (worldTargets.get(item.parentName) || 0)) * getRibbonStiffnessBendScale(stiffness, item.chainIndex);
+          worldTargets.set(item.name, target);
+          curves[index].push({ time: roundRibbonElasticTime(time), angle: roundRibbonElasticAngle(poses[frame][index] * (1 - weight) + local * weight) });
+        });
+      }
+      group.forEach((item, index) => {
+        const mixed = curves[index];
+        mixed[mixed.length - 1].angle = mixed[0].angle;
+        const windy = applyRibbonChainWindToRotateFrames(mixed, wind, stiffness, item.chainIndex);
+        const whipped = applyRibbonWhipStrengthToRotateFrames(windy, duration, elasticity, delay, whip, item.chainIndex);
+        const shifted = applyRibbonOverallOffsetToRotateFrames(whipped, duration, offset);
+        result.set(item.name, applyRibbonGlobalLoopCountToRotateFrames(shifted, duration, swingCount, fps));
+      });
+    }
+    return result;
+  }
+
   function applyRibbonElasticityResponse(reason = "manual") {
     const context = getRibbonReactProjectContext();
     const animation = context?.animationName ? context.project.animations?.[context.animationName] : null;
@@ -50603,6 +50807,11 @@
     const swingCount = getRibbonSwingCountValue(document);
     const nativeSwingCount = getRibbonNativeSwingCountValue(document);
     const wavePhase = getRibbonWavePhaseValue(document);
+    const waveCount = getRibbonUniformWaveValue(document, "waveCount");
+    const uniformWeight = getRibbonUniformWaveValue(document, "uniformWeight");
+    const uniformWaveLayout = useParameterPresetCalculation ? getRibbonUniformWaveLayout(context.project, targetEntries) : [];
+    const uniformWaveSignature = JSON.stringify([waveCount, uniformWeight, uniformWaveLayout]);
+    let uniformWaveRotateMap = null;
     const whipSource = getRibbonWhipStrengthValueSource(document, context.animationName);
     const whip = useParameterPresetCalculation
       ? syncRibbonWhipStrengthSessionFromControls(document, context.animationName)
@@ -50658,6 +50867,7 @@
         timeline.__novaflowRibbonSwingCountValue === swingCount &&
         timeline.__novaflowRibbonNativeSwingCountValue === nativeSwingCount &&
         timeline.__novaflowRibbonWavePhaseValue === Math.round(wavePhase) &&
+        timeline.__novaflowRibbonUniformWaveSignature === uniformWaveSignature &&
         timeline.__novaflowRibbonWhipStrengthValue === Math.round(whip)
       );
       const alreadyCurrent =
@@ -50675,8 +50885,14 @@
         }
         return;
       }
+      if (useParameterPresetCalculation && !uniformWaveRotateMap) {
+        uniformWaveRotateMap = buildRibbonUniformWaveRotateMap(uniformWaveLayout, {
+          duration, fps, stiffness, elasticity, amplitude, wind, delay, offset,
+          wavePhase, whip, swingCount, nativeSwingCount, waveCount, uniformWeight
+        });
+      }
       const baseRotate = useParameterPresetCalculation
-        ? buildRibbonElasticRotateFrames(source, elasticity, duration, fps, swingCount, nativeSwingCount, stiffness, amplitude, wind, delay, offset, wavePhase, chainIndex, whip)
+        ? uniformWaveRotateMap.get(boneName)
         : cloneRibbonRotateFrames(source);
       const nextRotate = hasEventPoints
         ? applyRibbonEventImpulseToRotateFrames(baseRotate, eventPoints, duration, fps, chainIndex)
@@ -50698,6 +50914,7 @@
         setRibbonHiddenValue(timeline, "__novaflowRibbonSwingCountValue", swingCount);
         setRibbonHiddenValue(timeline, "__novaflowRibbonNativeSwingCountValue", nativeSwingCount);
         setRibbonHiddenValue(timeline, "__novaflowRibbonWavePhaseValue", Math.round(wavePhase));
+        setRibbonHiddenValue(timeline, "__novaflowRibbonUniformWaveSignature", uniformWaveSignature);
         setRibbonHiddenValue(timeline, "__novaflowRibbonWhipStrengthValue", Math.round(whip));
         setRibbonHiddenValue(timeline, "__novaflowRibbonElasticFormulaVersion", RIBBON_ELASTIC_FORMULA_VERSION);
         setRibbonHiddenValue(timeline, "__novaflowRibbonCalculationMode", calculationMode);
@@ -50727,6 +50944,7 @@
       setRibbonHiddenValue(timeline, "__novaflowRibbonSwingCountValue", swingCount);
       setRibbonHiddenValue(timeline, "__novaflowRibbonNativeSwingCountValue", nativeSwingCount);
       setRibbonHiddenValue(timeline, "__novaflowRibbonWavePhaseValue", Math.round(wavePhase));
+      setRibbonHiddenValue(timeline, "__novaflowRibbonUniformWaveSignature", uniformWaveSignature);
       setRibbonHiddenValue(timeline, "__novaflowRibbonWhipStrengthValue", Math.round(whip));
       setRibbonHiddenValue(timeline, "__novaflowRibbonElasticFormulaVersion", RIBBON_ELASTIC_FORMULA_VERSION);
       setRibbonHiddenValue(timeline, "__novaflowRibbonCalculationMode", calculationMode);
@@ -50763,6 +50981,8 @@
       delay: Math.round(delay),
       offset: Math.round(offset),
       wavePhase: Math.round(wavePhase),
+      waveCount,
+      uniformWeight,
       whip: Math.round(whip),
       whipSource,
       chainIndexes: targetEntries.map((entry) => getRibbonChainIndexValue(entry.chainIndex)),
@@ -54185,7 +54405,7 @@
         });
         ensureRibbonElasticitySlider(panel);
         ensureRibbonSwingCountSlider(panel);
-        ensureRibbonWavePhaseSlider(panel);
+        ensureRibbonUniformWaveSliders(panel);
         ensureRibbonWhipStrengthSlider(panel);
         child.querySelectorAll(".nf-slider").forEach((group) => {
           if (group instanceof HTMLElement) styleRibbonAdvancedRangeGroup(group);
@@ -55384,7 +55604,7 @@
         return;
       }
       if (isRibbonParameterPresetBatchApplying()) return;
-      if (target.closest('[data-novaflow-ribbon-whip-strength-slider="1"], [data-novaflow-ribbon-elasticity-slider="1"], [data-novaflow-ribbon-swing-count-slider="1"], [data-novaflow-ribbon-wave-phase-slider="1"]')) {
+      if (target.closest('[data-novaflow-ribbon-whip-strength-slider="1"], [data-novaflow-ribbon-elasticity-slider="1"], [data-novaflow-ribbon-swing-count-slider="1"], [data-novaflow-ribbon-uniform-wave-slider]')) {
         const animationName = getRibbonParameterPresetSessionAnimationName();
         const panel = target.closest('[data-novaflow-ribbon-panel="1"], .nf-panel');
         clearRibbonParameterPresetSelectionUi(panel, { cancelPending: true });
