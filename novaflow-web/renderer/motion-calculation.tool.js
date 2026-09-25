@@ -32,6 +32,19 @@
     return null;
   }
   function slotNames(p,bone){return (p.slots||[]).filter(s=>s.bone===bone).map(s=>s.name);}
+  function clearedAnimation(animation,s){
+    const clean={...animation,bones:{...animation.bones},slots:{...animation.slots}};
+    delete clean.bones[s.bone];
+    for(const name of s.slots){const row={...clean.slots[name]};delete row.color;delete row.rgba;if(Object.keys(row).length)clean.slots[name]=row;else delete clean.slots[name];}
+    return clean;
+  }
+  function calculationBaseline(current,s){
+    // Keep the import intact for restore/cancel; replace only this bone's old
+    // motion and animated opacity when a calculation function is selected.
+    for(const key of Object.keys(s.base.bones?.[s.bone]||{}))s.channels.add(key);
+    s.alpha=true;
+    return patch(current,clearedAnimation(s.base,s),s);
+  }
   function seek(time){
     const range=document.querySelector('[data-novaflow-skeleton-timeline-range="1"]');
     const playbar=range?.closest('[data-novaflow-skeleton-bottom-playbar="1"]');
@@ -46,6 +59,17 @@
     proxy?.setPlaying?.(false);proxy?.renderAt?.(time);
     if(playbar){const label=playbar.querySelector('[data-novaflow-skeleton-timeline-time="1"]');if(label)label.textContent=time.toFixed(5);}
   }
+  let activePlaybackRange=null;
+  function playbackRange(range){activePlaybackRange=range;}
+  // Called by the native React playback clock, before its full-duration wrap.
+  // Paused scrubbing never enters this path and remains unrestricted.
+  window.__NovaFlowMotionPlaybackTime=(time,duration)=>{
+    if(!activePlaybackRange)return null;
+    const start=Math.max(0,Math.min(duration,activePlaybackRange[0]));
+    const end=Math.min(duration,activePlaybackRange[1]),span=end-start;
+    if(!(span>0))return null;
+    return time<start?start:start+(time-start)%span;
+  };
   function patch(current,source,s){
     const out={...current,bones:{...current.bones},slots:{...current.slots}};
     const b={...current.bones?.[s.bone]},original=source.bones?.[s.bone]||{};
@@ -59,7 +83,7 @@
     return out;
   }
   function sameScope(p,s){return p&&p.project.bones===s.identity&&p.activeAnimationName===s.animation&&p.selectedBoneName===s.bone;}
-  function signature(animation,s){return JSON.stringify({bone:animation?.bones?.[s.bone],slots:s.slots.map(n=>animation?.slots?.[n])});}
+  function signature(animation,s){return JSON.stringify({bone:animation?.bones?.[s.bone],slots:s.slots.map(n=>animation?.slots?.[n])},(_,value)=>value&&typeof value==='object'&&!Array.isArray(value)?Object.fromEntries(Object.keys(value).sort().map(key=>[key,value[key]])):value);}
   function matchesExpected(animation,s){
     const current=signature(animation,s);
     if(current===signature(s.expected,s)){s.pendingSignatures?.clear();return true;}
@@ -101,14 +125,14 @@
     if(!context?.project.animations[context.activeAnimationName]||!context.selectedBoneName){body.textContent='请先选择动画和一个骨骼。';return;}
     session=createSession(context);const s=session;
     const host=document.createElement('div');body.append(host);const shadow=host.attachShadow({mode:'open'});
-    const timing=()=>{const minimumDuration=Math.max(.05,A.duration({...s.base,duration:0})),d=Math.max(minimumDuration,A.duration(s.base)||2);return {animationDuration:d,boneDuration:Math.min(d,2.8),animationDelay:0,minimumDuration};};
+    const timing=()=>{const minimumDuration=Math.max(.05,A.duration({...clearedAnimation(s.base,s),duration:0})),d=Math.max(minimumDuration,A.duration(s.base)||2);return {animationDuration:d,boneDuration:Math.min(d,2.8),animationDelay:0,minimumDuration};};
     const preview=(stack,t)=>{
       const p=getContext();if(!sameScope(p,s))throw Error('已切换骨骼，请在新骨骼面板中调整。');
       if(!matchesExpected(p.project.animations[s.animation],s))throw Error('本骨骼已被其他工具修改，请重新打开动画计算。');
       if(stack.bounce.enabled||stack.shuttle.enabled||stack.expand.enabled)s.channels.add('translate');
       if(stack.expand.enabled)s.channels.add('scale');
       if(stack.opacity.opacity.from!==1||stack.opacity.opacity.to!==1||stack.opacity.corrections.alpha.some(v=>v)||stack.opacity.curves?.alpha)s.alpha=true;
-      const baseline=patch(p.project.animations[s.animation],s.base,s);
+      const baseline=calculationBaseline(p.project.animations[s.animation],s);
       const project={...p.project,animations:{...p.project.animations,[s.animation]:baseline}};
       const result=A.calculate(project,s.animation,[s.bone],stack,t,E,window.NovaFlowBonesEditor);
       for(const key of ['translate','scale'])if(result.animation.bones[s.bone]?.[key]!==baseline.bones?.[s.bone]?.[key])s.channels.add(key);
@@ -119,6 +143,7 @@
       mode:activeMode,
       timing,initial:()=>s.config&&copy(s.config),label:()=>`当前骨骼：${s.bone} · 动画：${s.animation}`,
       time:()=>Number(window.__NovaFlowSkeletonTimelineOfficialProxy?.timeSec ?? context?.currentTimeSec)||0,
+      playbackRange,
       seek:time=>{const p=getContext();if(sameScope(p,s)){p.onRibbonEventPreviewFocus?.(time);requestAnimationFrame(()=>{if(session===s)seek(time);});}},
       preview,
       save(stack,t){

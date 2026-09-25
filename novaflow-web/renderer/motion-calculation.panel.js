@@ -7,6 +7,12 @@
   const curveRoot=floating.attachShadow({mode:'open'});
   const interval=document.createElement('div');interval.dataset.novaflowMotionInterval='1';interval.setAttribute('role','img');
   interval.style.cssText='position:fixed;z-index:61;height:6px;border-radius:2px;background:#68c9a4;pointer-events:none;display:none';document.body.append(interval);
+  let bonePlayback=false;
+  const playbackMode=document.createElement('div');playbackMode.dataset.novaflowMotionPlaybackMode='1';playbackMode.setAttribute('role','button');playbackMode.tabIndex=0;
+  playbackMode.style.cssText='display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;height:28px;padding:0 8px;border:1px solid #343434;border-radius:5px;background:#272727;color:#d4d4d4;font:11px "Microsoft YaHei",sans-serif;cursor:pointer;user-select:none';
+  function syncPlaybackMode(){playbackMode.textContent=bonePlayback?'骨骼片段':'完整动画';playbackMode.setAttribute('aria-label','播放范围：'+playbackMode.textContent);playbackMode.setAttribute('aria-pressed',String(bonePlayback));playbackMode.title=bonePlayback?'仅循环播放当前骨骼时段；点击切换完整动画':'播放完整动画总时长；点击仅播放骨骼时段';playbackMode.style.color=bonePlayback?'#6ed3a7':'#d4d4d4';bridge.playbackRange?.(bonePlayback?[timing.animationDelay,timing.animationDelay+timing.boneDuration]:null);}
+  playbackMode.onclick=()=>{bonePlayback=!bonePlayback;syncPlaybackMode();};
+  playbackMode.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();playbackMode.click();}};
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
   const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20260925-3',document.baseURI).href;
@@ -70,6 +76,9 @@
     if(!stylesReady)return;
     const bar=document.querySelector('[data-novaflow-skeleton-bottom-playbar="1"]'),r=bar?.getBoundingClientRect();
     if(!r||r.width<1||!host.host.isConnected){floating.style.display='none';return;}
+    const playButton=bar.querySelector('[data-novaflow-skeleton-playback-button="1"]');
+    if(playButton&&playbackMode.previousElementSibling!==playButton)playButton.after(playbackMode);
+    bridge.playbackRange?.(bonePlayback?[timing.animationDelay,timing.animationDelay+timing.boneDuration]:null);
     // Use the real central timeline bounds, never the window or the right sidebar.
     const left=Math.max(0,r.left),width=Math.max(0,Math.min(innerWidth,r.right)-left);
     body.classList.toggle('compact',width<850);body.classList.toggle('narrow',width<620);
@@ -216,7 +225,7 @@
     number.onblur = () => { number.value = fmt(p[key] * factor); };
     return div;
   }
-  function axisSpec(k) { return k[0] === 's' ? [-.85, 1.8, .01, 100, '%'] : k === 'y' && mode === 'bounce' ? [0, 600, 1, 1, 'px'] : [-200, 200, 1, 1, 'px']; }
+  function axisSpec(k) { return k[0] === 's' ? [-.85, 10, .01, 100, '%'] : mode === 'shuttle' ? [-1000, 1000, 1, 1, 'px'] : k === 'y' && mode === 'bounce' ? [0, 600, 1, 1, 'px'] : [-200, 200, 1, 1, 'px']; }
   function setAmplitude(k, v) {
     if(pointSelected){
       const selected=E.curveFor(p,channel)[point],knots=JSON.parse(JSON.stringify(E.curveFor(p,k)));
@@ -228,7 +237,7 @@
       const other = k === 'sx' ? 'sy' : 'sx';
       // Preserve the current signed X:Y ratio, so squash and uniform expansion share one control.
       const ratio = Math.abs(old) > .0001 ? p.axes[other].amp / old : mode === 'bounce' ? -1 : 1;
-      p.axes[other].amp = E.clamp(v * ratio, -.85, 1.8);
+      p.axes[other].amp = E.clamp(v * ratio, ...axisSpec(other).slice(0,2));
       $('axis-range-' + other).value = p.axes[other].amp;
       $('axis-num-' + other).value = fmt(p.axes[other].amp * 100);
     }
@@ -355,7 +364,7 @@
     syncBounceHeights(); draw(); syncPoint();
   }
   const editableKnots=()=>JSON.parse(JSON.stringify(E.curveFor(p,channel)));
-  function limitValue(value){return E.clamp(value,channel==='alpha'?0:channel.startsWith('s')?.08:-1000,channel==='alpha'?1:channel.startsWith('s')?4:1000);}
+  function limitValue(value){return E.clamp(value,channel==='alpha'?0:channel.startsWith('s')?.08:-1000,channel==='alpha'?1:channel.startsWith('s')?11:1000);}
   function moveKnot(knots,index,u,value){
     const n=knots[index],end=knots.length-1;
     u=index===0?0:index===end?1:E.clamp(u,knots[index-1].u+.0001,knots[index+1].u-.0001);
@@ -505,7 +514,7 @@
   const observer=new ResizeObserver(()=>{curveBounds=null;drawCurve();});observer.observe($('curve'));
   let frameId;
   function frame(){if(host.host.isConnected){positionCurve();if(!collapsed){const currentTime=bridge.time();time=E.clamp(currentTime-timing.animationDelay,0,p.duration);lastSeek=currentTime;drawCurve();}frameId=requestAnimationFrame(frame);}else {floating.style.display='none';interval.style.display='none';}}
-  positionCurve();selectMode(bridge.mode||'bounce');frameId=requestAnimationFrame(frame);
-  return {destroy(){observer.disconnect();cancelAnimationFrame(frameId);releasePreviewSpace();floating.remove();interval.remove();},ownsEvent:event=>event.composedPath().includes(floating),selectMode,status:message=>status(message,true),undo};
+  syncPlaybackMode();positionCurve();selectMode(bridge.mode||'bounce');frameId=requestAnimationFrame(frame);
+  return {destroy(){observer.disconnect();cancelAnimationFrame(frameId);bridge.playbackRange?.(null);playbackMode.remove();releasePreviewSpace();floating.remove();interval.remove();},ownsEvent:event=>event.composedPath().includes(floating),selectMode,status:message=>status(message,true),undo};
 }};
 })();
