@@ -23496,8 +23496,11 @@
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope][aria-disabled="true"],
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-brush-mode="1"]:disabled {
-        opacity: 0.48 !important;
         cursor: not-allowed !important;
+      }
+      /* A locked tray dims as a whole; every pill keeps its shape and fill. */
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-tray-disabled="1"] {
+        opacity: 0.55 !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope="global"] > input[type="checkbox"] {
         position: absolute !important;
@@ -58322,6 +58325,7 @@
           nfSetAttrIfChanged(row, "data-novaflow-ai-brush-scope-row", "1");
           const global = checkbox instanceof HTMLInputElement && checkbox.checked;
           const locked = checkbox instanceof HTMLInputElement ? checkbox.disabled : false;
+          nfSetAttrIfChanged(row, "data-novaflow-ai-brush-tray-disabled", locked ? "1" : "0");
           if (first instanceof HTMLElement && !first.querySelector("input")) {
             if (first.textContent !== "\u5355\u5e27") first.textContent = "\u5355\u5e27";
             nfSetAttrIfChanged(first, "data-novaflow-ai-brush-scope", "single");
@@ -58330,7 +58334,7 @@
             nfSetAttrIfChanged(first, "aria-pressed", global ? "false" : "true");
             nfSetAttrIfChanged(first, "data-novaflow-ai-brush-scope-active", global ? "0" : "1");
             nfSetAttrIfChanged(first, "aria-disabled", locked ? "true" : "false");
-            writeAiAnimationBrushPill(first, !global, locked);
+            writeAiAnimationBrushPill(first, !global, false);
             if (first.getAttribute("data-novaflow-ai-brush-scope-bound") !== "1") {
               first.setAttribute("data-novaflow-ai-brush-scope-bound", "1");
               const toSingle = (event) => {
@@ -58349,7 +58353,7 @@
             nfSetAttrIfChanged(label, "aria-pressed", global ? "true" : "false");
             nfSetAttrIfChanged(label, "data-novaflow-ai-brush-scope-active", global ? "1" : "0");
             nfSetAttrIfChanged(label, "aria-disabled", locked ? "true" : "false");
-            writeAiAnimationBrushPill(label, global, locked);
+            writeAiAnimationBrushPill(label, global, false);
             if (label.getAttribute("data-novaflow-ai-brush-scope-bound") !== "1") {
               label.setAttribute("data-novaflow-ai-brush-scope-bound", "1");
               // A selected pill stays selected; the bare label would untick the box.
@@ -58364,6 +58368,7 @@
         }
         if (buttons.length >= 2 && !(range instanceof HTMLInputElement)) {
           nfSetAttrIfChanged(row, "data-novaflow-ai-cutout-brush-mode-row", "1");
+          nfSetAttrIfChanged(row, "data-novaflow-ai-brush-tray-disabled", buttons.every((button) => button.disabled) ? "1" : "0");
           buttons.forEach((button) => {
             // React writes the bundle's green as the active mark; read it before it is overridden.
             const marked = button.getAttribute("data-novaflow-ai-cutout-brush-mode-active");
@@ -58374,7 +58379,7 @@
             nfSetAttrIfChanged(button, "data-novaflow-ai-cutout-brush-mode", "1");
             nfSetAttrIfChanged(button, "data-novaflow-ai-cutout-brush-mode-active", active ? "1" : "0");
             nfSetAttrIfChanged(button, "aria-pressed", active ? "true" : "false");
-            writeAiAnimationBrushPill(button, active, button.disabled);
+            writeAiAnimationBrushPill(button, active, false);
           });
           return;
         }
@@ -59056,8 +59061,12 @@
   function aiAnimationActiveToolKey(includeOpening = false) {
     const session = getAiSequenceCurrentSession();
     const tool = String(session?.activeTool || session?.editingDraft?.tool || "");
+    const mergePanel = document.querySelector('[data-novaflow-ai-video-merge-layer-panel="1"]');
+    // 视频合并 counts as open once its panel is in the DOM: the rows change in the same
+    // frame the panel appears, not a frame before it.
+    if (tool === "video-merge") return mergePanel ? "video-merge" : "";
     if (tool) return tool;
-    if (document.querySelector('[data-novaflow-ai-video-merge-layer-panel="1"]')) return "video-merge";
+    if (mergePanel) return "video-merge";
     // A tool a row is opening only orders its panel; the rows themselves follow the session.
     if (includeOpening && AI_ANIMATION_TOOL_OPENING && Date.now() < AI_ANIMATION_TOOL_OPENING.until) return AI_ANIMATION_TOOL_OPENING.tool;
     return "";
@@ -59084,7 +59093,16 @@
       if (entry instanceof HTMLElement && entry.getAttribute("aria-disabled") !== "true" && attempt >= 3) { entry.click(); return; }
       if (attempt < 14) window.setTimeout(() => clickEntry(attempt + 1), 60);
     };
-    if (expanded && spec.tools.includes(activeTool)) { AI_ANIMATION_TOOL_OPENING = null; postHeading.click(); return; }
+    if (expanded && spec.tools.includes(activeTool)) {
+      AI_ANIMATION_TOOL_OPENING = null;
+      postHeading.click();
+      // The panel goes at once; the rows follow on the same short timers.
+      [0, 30, 60, 120].forEach((delay) => window.setTimeout(() => {
+        const section = document.querySelector('[data-novaflow-ai-post-section="1"]');
+        if (section instanceof HTMLElement) ensureAiAnimationToolHeadings(section, section.querySelector('[data-novaflow-ai-collapse-heading="post"]'));
+      }, delay));
+      return;
+    }
     if (!expanded) { postHeading.click(); clickEntry(); return; }
     if (activeTool) {
       // Leave the other tool through the group's own collapse, then open this one.
