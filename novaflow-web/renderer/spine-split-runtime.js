@@ -9077,8 +9077,10 @@
 
   function buildQwen21InpaintWorkflow(info, runtime, imageName, maskName, prefix, promptText, route, latentInputName, inputSize, promptParts) {
     // Edit mode shows the model the undug crop everywhere (it has to see what it is changing) and
-    // puts that same crop back under any pixel 2.1 leaves transparent.
-    const edit = !!(route && route.mode === 'edit' && latentInputName)
+    // puts that same crop back under any pixel 2.1 leaves transparent. A page older than the node
+    // sends no undug crop; edit still keeps its own prompt and falls back to the plate, because the
+    // completion prompt drew sunglasses half-transparent over the fringe.
+    const edit = !!(route && route.mode === 'edit')
     const text = edit ? qwen21EditPromptText(promptText, promptParts) : qwen21CompletionPromptText(promptText, promptParts)
     // The 2.1 VAE centre-crops anything that is not a multiple of 16 before encoding, and
     // TextEncodeQwenImage21 rounds its references to multiples of 32. cropPadEngine aligns the crop to
