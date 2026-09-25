@@ -15,7 +15,7 @@ function bridgeFixture(setup=()=>{}){
   for(const file of ['spine-bones.editor.js','motion-calculation.engine.js','motion-calculation.animation.js'])vm.runInContext(readFileSync(new URL('../../renderer/'+file,import.meta.url),'utf8'),ctx);
   const source=readFileSync(new URL('../../renderer/motion-calculation.tool.js',import.meta.url),'utf8');
   // Exercise the real bridge with delayed React commits, without mounting UI.
-  vm.runInContext(source.replace('  setInterval(refresh,350);refresh();','  window.bridgeTest={createSession,write,matchesExpected,calculationBaseline,playbackRange};'),ctx);
+  vm.runInContext(source.replace('  setInterval(refresh,350);refresh();','  window.bridgeTest={createSession,write,matchesExpected,calculationBaseline,playbackRange,playbackTime};'),ctx);
   const bridge=ctx.bridgeTest,session=bridge.createSession(props);session.channels.add('translate');
   const animation=x=>({...props.project.animations.idle,bones:{...props.project.animations.idle.bones,ball:{translate:[{time:0,x}]}}});
   const flush=()=>{props.project=updates.shift()(props.project);};
@@ -96,4 +96,21 @@ test('bone playback controls the native clock inside its delayed range and relea
   assert.equal(tick(time,.016,6),2,'resume starts inside bone interval');
   assert.ok(Math.abs(tick(2.99,.08,6)-2.07)<1e-9,'wrap preserves frame overshoot');
   f.bridge.playbackRange([5,6]);assert.ok(Math.abs(tick(5.99,.08,6)-5.07)<1e-9,'wrap precedes full animation wrap');
+});
+
+test('curve clock follows the native timeline through delayed bone playback and scrubbing',()=>{
+  const f=bridgeFixture(),range={value:'0'};
+  f.ctx.document.querySelector=()=>({querySelector:()=>range});
+  f.ctx.__NovaFlowSkeletonTimelineOfficialProxy={timeSec:99};
+  f.props.currentTimeSec=88;
+  const start=.39,duration=.95,E=f.ctx.NovaFlowMotionEngine,p=E.fresh('bounce');p.duration=duration;
+  for(const t of [0,.39,.58,.865,1.34,1.8,.39,.7]){
+    range.value=String(t);
+    const read=f.bridge.playbackTime();
+    assert.equal(read,t,'cursor reads the displayed timeline, even if proxy/context lag');
+    const progress=E.effectTime(p,E.clamp(read-start,0,duration)/duration);
+    assert.ok(Math.abs(progress-E.clamp((t-start)/duration,0,1))<1e-9);
+  }
+  f.ctx.document.querySelector=()=>null;f.props.currentTimeSec=.61;
+  assert.equal(f.bridge.playbackTime(),.61,'fresh React context is the fallback before timeline mounting');
 });

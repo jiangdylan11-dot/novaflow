@@ -61,6 +61,14 @@
   }
   let activePlaybackRange=null;
   function playbackRange(range){activePlaybackRange=range;}
+  function playbackTime(){
+    // Read the displayed native clock, not the independently updated Spine
+    // proxy or the selection context cached by the 350 ms refresh loop.
+    const bar=document.querySelector('[data-novaflow-skeleton-bottom-playbar="1"]');
+    const range=bar?.querySelector('input[type="range"]');
+    const value=Number(range?.value);
+    return range&&Number.isFinite(value)?value:Number(getContext()?.currentTimeSec)||0;
+  }
   // Called by the native React playback clock, before its full-duration wrap.
   // Paused scrubbing never enters this path and remains unrestricted.
   window.__NovaFlowMotionPlaybackTime=(time,duration)=>{
@@ -142,7 +150,7 @@
     view=window.NovaFlowMotionPanel.mount(shadow,{
       mode:activeMode,
       timing,initial:()=>s.config&&copy(s.config),label:()=>`当前骨骼：${s.bone} · 动画：${s.animation}`,
-      time:()=>Number(window.__NovaFlowSkeletonTimelineOfficialProxy?.timeSec ?? context?.currentTimeSec)||0,
+      time:playbackTime,
       playbackRange,
       seek:time=>{const p=getContext();if(sameScope(p,s)){p.onRibbonEventPreviewFocus?.(time);requestAnimationFrame(()=>{if(session===s)seek(time);});}},
       preview,
