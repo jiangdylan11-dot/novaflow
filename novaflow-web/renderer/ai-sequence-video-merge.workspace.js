@@ -199,6 +199,15 @@
     const zoomReadout = createElement(documentRef, 'div', { className: 'nf-vm-zoom-readout', text: '100%', 'aria-live': 'polite' })
     const zoomHud = createElement(documentRef, 'div', { className: 'nf-vm-zoom-hud', 'data-novaflow-ai-video-merge-zoom-hud': '1' })
     zoomHud.append(zoomReadout, fitButton)
+    // The board HUD's exact metrics (its font, weight and the button's hairline edge), so the
+    // plate stays put to the pixel when the merge takes over from it.
+    try {
+      const appFont = windowRef?.getComputedStyle?.(documentHost || documentRef.body)?.fontFamily
+      if (appFont) zoomHud.style.setProperty('font-family', appFont, 'important')
+      zoomReadout.style.setProperty('font-weight', '500', 'important')
+      fitButton.style.setProperty('font-weight', '500', 'important')
+      fitButton.style.setProperty('border', '1px solid transparent', 'important')
+    } catch (_) {}
     const outputPanel = createElement(documentRef, 'section', {
       className: 'nf-vm-output',
       'data-novaflow-ai-video-merge-output-panel': '1',

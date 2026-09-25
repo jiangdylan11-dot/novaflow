@@ -58461,6 +58461,10 @@
       if (mergePanelMoved) {
         const section = document.querySelector("[data-novaflow-ai-post-section]");
         if (section instanceof HTMLElement) ensureAiAnimationToolHeadings(section, section.querySelector("[data-novaflow-ai-collapse-heading]"));
+        // The board HUD gives way to the merge HUD in this same task (and comes back on close).
+        Array.from(document.querySelectorAll('[data-novaflow-ai-zoom-controls="1"]')).forEach((node) => {
+          if (node instanceof HTMLElement && !isVideoMergeOwnedAutoFitControl(node)) styleAutoFitOnlyControl(node);
+        });
       }
       for (const record of records) {
         const target = record.target;
