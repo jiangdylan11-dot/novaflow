@@ -70053,15 +70053,19 @@
         base = {};
       }
     }
-    const output = base && typeof base === "object" && !Array.isArray(base) ? base : {};
+    let output = base && typeof base === "object" && !Array.isArray(base) ? base : {};
     SKELETON_SPINE_EXPORT_PROJECT_KEYS.forEach((key) => {
       const nextValue = cloneSkeletonSpineExportValue(project[key]);
       if (nextValue !== undefined) output[key] = nextValue;
     });
-    const optimization = optimizeSkeletonSpineRibbonExportAnimations(output.animations, project.animations, output);
-    optimization.curveFormat = normalizeSkeletonSpineExportCurveFields(output);
+    // The version-aware optimizer keeps authored curves and covers scale/opacity as well as ribbon tracks.
+    // Never run the older blanket curve stripping pass on its result.
+    const optimized = window.NovaFlowSpineExportOptimizer?.optimize(output);
+    if (!optimized) throw new Error("动画导出优化器尚未加载，请刷新后重试");
+    output = optimized.project;
+    const optimization = optimized.stats;
     window.__NovaFlowSkeletonSpineExportLastOptimization = optimization;
-    logSkeletonSpineExportOptimizationStats(optimization);
+    console.info("[NovaFlow] Spine export key reduction", optimization);
     if (!output.animations || !Object.keys(output.animations || {}).length) {
       throw new Error("\u5f53\u524d\u9aa8\u9abc\u5de5\u7a0b\u6ca1\u6709\u53ef\u5bfc\u51fa\u7684\u52a8\u753b\u6570\u636e");
     }
@@ -70238,6 +70242,25 @@
   function syncSkeletonSpineExportModalButtons(root = document) {
     if (!isSkeletonSpineExportContextActive()) return;
     const scope = root instanceof HTMLElement || root instanceof Document ? root : document;
+    // This path exports the imported skeleton, not a newly generated particle skeleton.
+    // The shared particle dialog's version picker never converted this project's data.
+    const nativeVersion = getSkeletonSpineExportVersion(getSkeletonSpineExportContext()?.project).match(/^\d+\.\d+/)?.[0];
+    Array.from(scope.querySelectorAll?.('select') || []).forEach((select) => {
+      if (!nativeVersion || !Array.from(select.options).some((option) => option.textContent === 'Spine 3.8')) return;
+      const current = Array.from(select.options).find((option) => option.textContent === `Spine ${nativeVersion}`);
+      if (!current) return;
+      if (select.value !== current.value) select.value = current.value;
+      if (!select.disabled) select.disabled = true;
+      setAttributeIfChanged(select, 'title', `骨骼工程按原版本 ${nativeVersion} 保真导出`);
+      const parent = select.parentElement?.parentElement;
+      Array.from(parent?.querySelectorAll('p') || []).forEach((hint) => {
+        if (hint.textContent.includes('小版本号') || hint.hasAttribute('data-novaflow-native-export-version')) {
+          setAttributeIfChanged(hint, 'data-novaflow-native-export-version', '1');
+          const text = `当前骨骼工程按 Spine ${nativeVersion} 原版本导出，保留骨架和曲线格式。`;
+          if (hint.textContent !== text) hint.textContent = text;
+        }
+      });
+    });
     Array.from(scope.querySelectorAll?.("button") || []).forEach((button) => {
       if (!(button instanceof HTMLButtonElement)) return;
       if (!isSkeletonSpinePackageExportButton(button)) return;
