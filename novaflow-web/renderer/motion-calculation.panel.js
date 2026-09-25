@@ -26,7 +26,7 @@
           </section>
         </div>
         <section id="curveDetails" class="curvepanel" aria-label="曲线微调">
-          <div class="curvebar"><div id="curveTabs" class="segmented"></div><div class="row"><span id="curveState" class="dim"></span><button id="resetCurve">恢复本通道</button></div></div>
+          <div class="curvebar"><div id="curveTabs" class="segmented"></div><div class="row"><span id="curveState" class="dim"></span><button id="resetCurve">重置当前曲线</button></div></div>
           <div class="curvewrap"><canvas id="curve" aria-label="可编辑通道曲线，拖动圆点上下调整数值"></canvas></div>
           <div class="curvefooter"><span>拖点调整 · 双击点还原</span><div class="row"><label>控制点 <select id="pointSelect" aria-label="曲线控制点"></select></label><label>值 <input id="pointValue" type="number" step=".01" aria-label="所选控制点数值"></label><span id="curveUnit">px</span></div></div>
         </section>
