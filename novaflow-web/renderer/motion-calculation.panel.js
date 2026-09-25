@@ -5,32 +5,82 @@
   const floating=document.createElement('div');floating.dataset.novaflowMotionCurve='1';
   floating.style.cssText='position:fixed;z-index:60;display:none';document.body.append(floating);
   const curveRoot=floating.attachShadow({mode:'open'});
-  const E=window.NovaFlowMotionEngine,$=id=>host.getElementById(id)||curveRoot.getElementById(id);
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css',document.baseURI).href;host.append(style);
-  const body=document.createElement('div');body.innerHTML="\n    <p class=\"help\" id=\"selection\"></p>\n    <div id=\"globalTiming\" class=\"global-timing\"></div>\n    <nav id=\"modes\" class=\"segmented\"><button data-mode=\"bounce\" class=\"selected\">弹跳</button><button data-mode=\"expand\">扩张</button><button data-mode=\"shuttle\">往返</button><button data-mode=\"opacity\">透明度</button></nav>\n    <section id=\"presetSection\" class=\"controlsection\"><h2>动作预设</h2><div id=\"presets\" class=\"presets\"></div></section>\n    <div id=\"bounceHeightSection\"><div id=\"bounceHeightControls\"></div><div id=\"impactControl\"></div><p id=\"groundRuleHint\" class=\"help\"></p></div>\n    <section id=\"opacityDetails\" class=\"controlsection\" hidden><h2>透明变化 <span id=\"opacitySummary\">100% → 100%</span></h2><div id=\"opacityPresets\" class=\"presets\"></div><div id=\"opacityControls\"></div><p class=\"help\">默认实心，调整后直接与其他动作叠加。</p></section>\n    <section id=\"mainControls\" class=\"controlsection main-controls\"><div id=\"primaryAxes\"></div><div id=\"params\"></div><div id=\"advancedParams\"></div><div id=\"scaleOptions\"><label class=\"check\"><input id=\"link\" type=\"checkbox\">缩放联动</label><p id=\"linkHelp\" class=\"help\"></p><div id=\"anchorSection\" class=\"anchor-picker\"><div>缩放中心 <span id=\"anchorName\"></span></div><div id=\"anchorGrid\" class=\"anchor-grid\" role=\"group\" aria-label=\"缩放中心\"></div></div></div><p id=\"modeHelp\" class=\"help\"></p></section>\n    <div id=\"effectTiming\"></div>\n    <details id=\"curveDetails\" class=\"curvepanel\"><summary>曲线微调 <span>位移 · 缩放 · 透明度</span></summary><div class=\"curvebar\"><div id=\"curveTabs\" class=\"segmented\"></div><div class=\"row\"><span id=\"curveState\" class=\"dim\">计算曲线</span><button id=\"resetCurve\">恢复本通道</button></div></div><div class=\"curvewrap\"><canvas id=\"curve\" aria-label=\"可编辑通道曲线，拖动圆点上下调整数值\"></canvas></div><div class=\"curvefooter\"><span>拖点调整 · 双击点还原</span><div class=\"row\"><label>控制点 <select id=\"pointSelect\" aria-label=\"曲线控制点\"></select></label><label>值 <input id=\"pointValue\" type=\"number\" step=\".01\" aria-label=\"所选控制点数值\"></label><span id=\"curveUnit\">px</span></div></div></details><p id=\"status\" role=\"status\" class=\"help\"></p><div class=\"save-action\"><button id=\"save\" class=\"primary\">保存动画</button><button id=\"resetAll\">恢复初始值</button></div>\n  ";host.append(body);
-  curveRoot.append(style.cloneNode(true),$('curveDetails'));
-  $('modes').hidden=true;
-  $('curveDetails').classList.add('floating-curve');$('curveDetails').open=true;
+  const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css',document.baseURI).href;
+  const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画计算编辑器');
+  body.innerHTML=`
+    <header class="editor-header"><div class="editor-title"><strong id="editorTitle"></strong><span id="selection"></span></div>
+      <div class="editor-presets"><div id="presetSection"><div id="presets" class="presets"></div></div><div id="opacityPresets" class="presets" hidden></div></div>
+      <button id="editorToggle" aria-expanded="true" aria-controls="editorContent">收起</button>
+    </header>
+    <div id="editorContent">
+      <div class="timing-row"><div id="globalTiming" class="global-timing"></div><div id="effectTiming"></div></div>
+      <div class="editor-workspace">
+        <div class="effect-parameters" aria-label="当前功能参数">
+          <div id="bounceHeightSection"><div id="bounceHeightControls"></div><div id="impactControl"></div><p id="groundRuleHint" class="help"></p></div>
+          <section id="opacityDetails" class="controlsection" hidden><h2>透明变化 <span id="opacitySummary"></span></h2><div id="opacityControls"></div></section>
+          <section id="mainControls" class="controlsection"><div id="primaryAxes"></div><div id="params"></div><div id="advancedParams"></div>
+            <div id="scaleOptions"><label class="check"><input id="link" type="checkbox">缩放联动</label><p id="linkHelp" class="help"></p>
+              <div id="anchorSection" class="anchor-picker"><div>缩放中心 <span id="anchorName"></span></div><div id="anchorGrid" class="anchor-grid" role="group" aria-label="缩放中心"></div></div>
+            </div><p id="modeHelp" class="help"></p>
+          </section>
+        </div>
+        <section id="curveDetails" class="curvepanel" aria-label="曲线微调">
+          <div class="curvebar"><div id="curveTabs" class="segmented"></div><div class="row"><span id="curveState" class="dim"></span><button id="resetCurve">恢复本通道</button></div></div>
+          <div class="curvewrap"><canvas id="curve" aria-label="可编辑通道曲线，拖动圆点上下调整数值"></canvas></div>
+          <div class="curvefooter"><span>拖点调整 · 双击点还原</span><div class="row"><label>控制点 <select id="pointSelect" aria-label="曲线控制点"></select></label><label>值 <input id="pointValue" type="number" step=".01" aria-label="所选控制点数值"></label><span id="curveUnit">px</span></div></div>
+        </section>
+      </div>
+      <footer class="editor-footer"><p id="status" role="status"></p><div class="save-action"><button id="resetAll">恢复初始值</button><button id="save" class="primary">保存动画</button></div></footer>
+    </div>`;
+  curveRoot.append(style,body);
+  let collapsed=false,lastLayout='',previewLayer=null,previousBlockSize='',previousBlockPriority='';
+  function resizePreviewCanvas(layer){
+    const proxy=window.__NovaFlowSkeletonTimelineOfficialProxy,canvas=layer?.querySelector('canvas');
+    if(!canvas||proxy?.canvas!==canvas)return;
+    const r=canvas.getBoundingClientRect(),dpr=devicePixelRatio||1;
+    const width=Math.max(1,Math.round(r.width*dpr)),height=Math.max(1,Math.round(r.height*dpr));
+    if(canvas.width!==width||canvas.height!==height){canvas.width=width;canvas.height=height;proxy.player?.renderCurrentPose?.();}
+  }
+  function releasePreviewSpace(){
+    if(previewLayer){if(previousBlockSize)previewLayer.style.setProperty('block-size',previousBlockSize,previousBlockPriority);else previewLayer.style.removeProperty('block-size');resizePreviewCanvas(previewLayer);}
+    previewLayer=null;
+  }
+  function reservePreviewSpace(){
+    const stage=document.querySelector('[data-novaflow-skeleton-preview-stage="1"]');
+    let layer=stage?.querySelector('canvas');
+    while(layer&&layer.parentElement!==stage)layer=layer.parentElement;
+    if(!layer)return;
+    if(layer!==previewLayer){releasePreviewSpace();previewLayer=layer;previousBlockSize=layer.style.getPropertyValue('block-size');previousBlockPriority=layer.style.getPropertyPriority('block-size');}
+    const height=Math.max(80,floating.getBoundingClientRect().top-stage.getBoundingClientRect().top-8)+'px';
+    // The player fits to its own container, leaving the model above the editor.
+    // Logical block-size avoids fighting the native shell's physical height rule.
+    if(layer.style.getPropertyValue('block-size')!==height)layer.style.setProperty('block-size',height,'important');
+    resizePreviewCanvas(layer);
+  }
   function positionCurve(){
     const bar=document.querySelector('[data-novaflow-skeleton-bottom-playbar="1"]'),r=bar?.getBoundingClientRect();
     if(!r||r.width<1||!host.host.isConnected){floating.style.display='none';return;}
-    floating.style.display='block';floating.style.left=`${r.left}px`;floating.style.width=`${r.width}px`;
-    floating.style.bottom=`${Math.max(0,innerHeight-r.top)+8}px`;
-    floating.style.setProperty('--curve-height',`${Math.max(70,Math.min(145,r.top-155))}px`);
+    // Use the real central timeline bounds, never the window or the right sidebar.
+    const left=Math.max(0,r.left),width=Math.max(0,Math.min(innerWidth,r.right)-left);
+    const available=Math.max(160,r.top-80),height=Math.min(400,Math.max(360,innerHeight*.4),available);
+    const signature=[left,width,r.top,height].join(',');
+    floating.style.display='block';
+    if(signature!==lastLayout){
+      lastLayout=signature;floating.style.left=left+'px';floating.style.width=width+'px';
+      floating.style.bottom=Math.max(0,innerHeight-r.top+8)+'px';
+      floating.style.setProperty('--editor-height',height+'px');
+      body.classList.toggle('compact',width<850);body.classList.toggle('narrow',width<620);
+    }
+    reservePreviewSpace();
   }
   const names = { bounce: '弹跳计算', expand: '扩张计算', shuttle: '往返计算', opacity: '透明度计算' };
   const presetChoices={};
-  function renderPresetSelect(target,items,apply){
+  function renderPresetButtons(target,items,apply){
     if(!items.length){target.replaceChildren();return;}
-    const row=document.createElement('label');row.className='preset-select';
-    const label=document.createElement('span');label.textContent='动作预设';
-    const select=document.createElement('select');select.setAttribute('aria-label',(target.id==='opacityPresets'?names.opacity:names[mode])+'预设');
-    const blank=document.createElement('option');blank.value='';blank.textContent='选择预设';select.append(blank);
-    items.forEach(([name],i)=>{const option=document.createElement('option');option.value=i;option.textContent=name;select.append(option);});
     const key=target.id==='opacityPresets'?'opacity':mode;
-    select.value=presetChoices[key]??'';
-    select.onchange=()=>{if(select.value!==''){presetChoices[key]=select.value;apply(items[Number(select.value)]);}};
-    row.append(label,select);target.replaceChildren(row);
+    target.setAttribute('aria-label',names[key]+'预设');
+    target.replaceChildren(...items.map((item,i)=>{const button=document.createElement('button');button.textContent=item[0];button.classList.toggle('selected',presetChoices[key]===i);button.setAttribute('aria-pressed',String(presetChoices[key]===i));button.onclick=()=>{presetChoices[key]=i;apply(item);};return button;}));
   }
   const labels = { x: '位移 X', y: '位移 Y', sx: '缩放 X', sy: '缩放 Y', alpha: '透明度' };
   const anchorNames = { 'top-left': '左上', top: '上方', 'top-right': '右上', left: '左侧', center: '中心', right: '右侧', 'bottom-left': '左下', bottom: '底部', 'bottom-right': '右下' };
@@ -95,7 +145,6 @@
   function syncEnabled() {
     const opacity = sessions.opacity.opacity;
     $('opacitySummary').textContent = opacity.on ? opacity.behavior === 'pulse' ? '循环变化' : `${fmt(opacity.from * 100)}% → ${fmt(opacity.to * 100)}%` : '未启用';
-    $('modes').querySelectorAll('button').forEach(b => b.classList.toggle('has-effect', b.dataset.mode === 'opacity' ? sessions.opacity.opacity.on : !!sessions[b.dataset.mode].enabled));
     /* composition summary */ const summary = Object.keys(names).filter(m => m === 'opacity' ? sessions.opacity.opacity.on : sessions[m].enabled).map(m => names[m].replace('计算', '')).join(' + ') || '初始姿态 · 选择预设或调整参数';
   }
   function parameterChanged(activate = true) { if (activate && mode !== 'opacity') p.enabled = true; syncEnabled(); time = Math.min(time, p.duration); refreshEvents(); syncBounceHeights(); curveBounds = null; draw(); syncPoint(); }
@@ -105,7 +154,7 @@
     const ground = p.groundY || 0, peak = ground + p.axes.y.amp;
     $('groundRuleHint').textContent = '冲击为 0 时不下沉；力度越大，下冲越深，再回弹。地面仅作参考。';
     for (const [key, value] of [['ground', ground], ['peak', peak]]) {
-      if ($('height-num-' + key) && host.activeElement !== $('height-num-' + key)) $('height-num-' + key).value = fmt(value, 1);
+      if ($('height-num-' + key) && curveRoot.activeElement !== $('height-num-' + key)) $('height-num-' + key).value = fmt(value, 1);
       if ($('height-range-' + key)) $('height-range-' + key).value = value;
     }
     peakCache = E.peaks(p);
@@ -144,8 +193,8 @@
     const [label, min, schemaMax, schemaStep, unit, schemaFactor] = schema[key], factor = key === 'delay' ? 100 / p.duration : schemaFactor, step = key === 'delay' ? p.duration / 100 : schemaStep, max = key === 'delay' ? p.duration : schemaMax, div = document.createElement('div'); div.className = 'param';
     div.innerHTML = `<div class="paramhead"><label for="range-${key}">${label}</label><span class="numberwrap"><input id="num-${key}" type="number" aria-label="${label}数值" min="${min * factor}" max="${max * factor}" step="${step * factor}" value="${fmt(p[key] * factor)}"><span>${unit}</span></span></div><input id="range-${key}" aria-label="${label}" type="range" min="${min}" max="${max}" step="${step}" value="${p[key]}">`;
     const number = div.querySelector('input[type=number]'), range = div.querySelector('input[type=range]');
-    range.oninput = () => { if(key==='duration')p.delay=p.delay/p.duration*Number(range.value);p[key] = Number(range.value); if (key === 'duration') {timing.boneDuration=p[key];shareDuration(p[key]);renderTiming();} number.value = fmt(p[key] * factor); parameterChanged(key !== 'duration'); };
-    number.oninput = () => { if (number.value === '') return; const oldDuration=p.duration;p[key] = validInput(number, min * factor, max * factor, p[key] * factor) / factor; if(key==='duration')p.delay=p.delay/oldDuration*p.duration; if (key === 'count') p[key] = Math.round(p[key]); if (key === 'duration') {timing.boneDuration=p[key];shareDuration(p[key]);renderTiming();} range.value = p[key]; parameterChanged(key !== 'duration'); };
+    range.oninput = () => { if(key==='duration')p.delay=p.delay/p.duration*Number(range.value);p[key] = Number(range.value); if (key === 'duration') {timing.boneDuration=p[key];shareDuration(p[key]);renderEffectTiming();} number.value = fmt(p[key] * factor); parameterChanged(key !== 'duration'); };
+    number.oninput = () => { if (number.value === '') return; const oldDuration=p.duration;p[key] = validInput(number, min * factor, max * factor, p[key] * factor) / factor; if(key==='duration')p.delay=p.delay/oldDuration*p.duration; if (key === 'count') p[key] = Math.round(p[key]); if (key === 'duration') {timing.boneDuration=p[key];shareDuration(p[key]);renderEffectTiming();} range.value = p[key]; parameterChanged(key !== 'duration'); };
     number.onblur = () => { number.value = fmt(p[key] * factor); };
     return div;
   }
@@ -192,7 +241,7 @@
   function renderOpacity() {
     const o = p.opacity;
     $('opacitySummary').textContent = o.on ? (o.behavior === 'pulse' ? '循环变化' : `${fmt(o.from * 100)}% → ${fmt(o.to * 100)}%`) : '未启用';
-    renderPresetSelect($('opacityPresets'),[
+    renderPresetButtons($('opacityPresets'),[
       ['透明到实心', { behavior: 'once', from: 0, to: 1, easing: 1, hold: 0 }],
       ['实心到透明', { behavior: 'once', from: 1, to: 0, easing: 1, hold: 0 }],
       ['呼吸闪烁', { behavior: 'pulse', from: .15, to: 1, cycles: 3, phase: 0, easing: 1, hold: .08 }]
@@ -230,26 +279,30 @@
       const div=document.createElement('div');div.className='param';
       div.innerHTML=`<div class="paramhead"><label for="outer-${key}">${label}</label><span class="numberwrap"><input aria-label="${label}数值" type="number" min="${min*factor}" max="${max*factor}" step="${step*factor}" value="${fmt(timing[key]*factor)}"><span>${unit}</span></span></div><input id="outer-${key}" aria-label="${label}" type="range" min="${min}" max="${max}" step="${step}" value="${timing[key]}">`;
       const range=div.querySelector('[type=range]'),num=div.querySelector('[type=number]');
-      const update=value=>{const ratio=timing.animationDelay/timing.animationDuration;timing[key]=value;if(key==='animationDuration')timing.animationDelay=ratio*value;draw();};
-      range.oninput=()=>{num.value=fmt(Number(range.value)*factor);update(Number(range.value));};
-      num.oninput=()=>{if(num.value==='')return;update(validInput(num,min*factor,max*factor,timing[key]*factor)/factor);range.value=timing[key];};
-      num.onblur=renderTiming;
-      range.onchange=renderTiming;return div;
+      const currentFactor=()=>key==='animationDelay'?100/timing.animationDuration:1;
+      const update=value=>{const ratio=timing.animationDelay/timing.animationDuration;timing[key]=value;if(key==='animationDuration'){timing.animationDelay=ratio*value;const delay=$('outer-animationDelay');delay.max=value;delay.value=timing.animationDelay;}draw();};
+      range.oninput=()=>{num.value=fmt(Number(range.value)*currentFactor());update(Number(range.value));};
+      num.oninput=()=>{if(num.value==='')return;const f=currentFactor();update(validInput(num,min*f,key==='animationDelay'?100:max,timing[key]*f)/f);range.value=timing[key];};
+      num.onblur=()=>{num.value=fmt(timing[key]*currentFactor());};
+      return div;
     });
-    const help=document.createElement('p');help.className='help';help.textContent=`本骨骼：${fmt(timing.animationDelay)}–${fmt(timing.animationDelay+timing.boneDuration)} 秒`;help.title='动画延迟只调整本骨骼在整段时间轴的位置。';
+    const help=document.createElement('p');help.className='help';help.id='timingHint';help.textContent=`本骨骼：${fmt(timing.animationDelay)}–${fmt(timing.animationDelay+timing.boneDuration)} 秒`;help.title='动画延迟只调整本骨骼在整段时间轴的位置。';
     $('globalTiming').replaceChildren(nodes[0],makeParam('duration'),nodes[1],help);
+    renderEffectTiming();
+  }
+  function renderEffectTiming(){
+    $('effectTiming').replaceChildren(makeParam('delay'));
+    const delayHint=document.createElement('p');delayHint.className='help';delayHint.id='delayHint';delayHint.title='在本骨骼自然循环内向后偏移，周期不变。0% 与 100% 是相同起点。';delayHint.textContent=`偏移 ${fmt(p.delay)} 秒 · ${fmt(p.duration)} 秒周期内`;$('effectTiming').append(delayHint);
   }
   function renderPanel() {
-    $('selection').textContent=bridge.label(); $('modes').querySelectorAll('button').forEach(b => { b.classList.toggle('selected', b.dataset.mode === mode); b.setAttribute('aria-pressed', b.dataset.mode === mode); });
+    $('selection').textContent=bridge.label();$('editorTitle').textContent=names[mode];
     renderTiming();
-    $('effectTiming').replaceChildren(makeParam('delay'));
-    const delayHint = document.createElement('p'); delayHint.className = 'help'; delayHint.id='delayHint';delayHint.title='在本骨骼自然循环内向后偏移，周期不变。0% 与 100% 是相同起点。'; $('effectTiming').append(delayHint);
     $('mainControls').hidden = mode === 'opacity';
     $('params').replaceChildren(...commonKeys[mode].map(makeParam));
     $('advancedParams').replaceChildren(...modeKeys[mode].filter(k => k !== 'duration' && !commonKeys[mode].includes(k)).map(makeParam));
     $('primaryAxes').replaceChildren(...primaryChannels[mode].map(makeAxis));
-    $('presetSection').hidden = mode === 'opacity'; $('opacityDetails').hidden = mode !== 'opacity'; $('scaleOptions').hidden = mode !== 'expand';
-    renderPresetSelect($('presets'),presetSets[mode],([name, vals, axes]) => {
+    $('presetSection').hidden = mode === 'opacity';$('opacityPresets').hidden=mode!=='opacity'; $('opacityDetails').hidden = mode !== 'opacity'; $('scaleOptions').hidden = mode !== 'expand';
+    renderPresetButtons($('presets'),presetSets[mode],([name, vals, axes]) => {
       const duration = p.duration, delay = p.delay, opacity = p.opacity, alpha = p.corrections.alpha, groundY = p.groundY, ground = p.ground; p = sessions[mode] = E.freshStack()[mode]; p.duration = duration; p.delay = delay; p.opacity = opacity; p.corrections.alpha = alpha; p.enabled = true; if (mode === 'bounce') { p.groundY = groundY || 0; p.ground = ground !== false; } Object.assign(p, vals); for (const k of E.ownedChannels[mode]) p.axes[k].amp = axes[k]; renderPanel(); restart(true); status(`已应用「${name}」，其他分项调整保留并继续叠加。`);
     });
     $('link').checked = p.link;
@@ -272,7 +325,6 @@
     curveBounds = null; refreshEvents(); renderBounceHeights(); renderOpacity(); renderTabs(); syncPoint(); draw();
   }
   function renderTabs() {
-    $('curveDetails').querySelector('summary span').textContent = names[mode].replace('计算', '') + '分项 · 预览叠加';
     $('curveTabs').replaceChildren(...E.ownedChannels[mode].map(k => { const b = document.createElement('button'); b.textContent = labels[k]; b.classList.toggle('selected', k === channel); b.setAttribute('aria-pressed', k === channel); b.onclick = () => { channel = k; curveBounds = null; renderTabs(); syncPoint(); drawCurve(); }; return b; }));
   }
   function setPointValue(value) {
@@ -315,8 +367,9 @@
     const [ctx, w, h] = canvasContext('curve'); if (!w || !h) return;
     const g = curveGeometry(), xp = u => g.left + u * (g.right - g.left), yp = v => g.bottom - (v - g.min) / (g.max - g.min) * (g.bottom - g.top);
     ctx.font = '11px Segoe UI'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-    for (let i = 0; i <= 4; i++) {
-      const val = g.min + (g.max - g.min) * i / 4, y = yp(val);
+    const ySteps=g.bottom-g.top<70?2:4;
+    for (let i = 0; i <= ySteps; i++) {
+      const val = g.min + (g.max - g.min) * i / ySteps, y = yp(val);
       ctx.strokeStyle = '#343c36'; ctx.beginPath(); ctx.moveTo(g.left, y); ctx.lineTo(g.right, y); ctx.stroke(); ctx.fillStyle = '#a3aaa8'; ctx.fillText(fmt(displayValue(val), channel.startsWith('s') ? 2 : 0) + (channel === 'alpha' ? '%' : ''), g.left - 8, y);
     }
     ctx.textAlign = 'center';
@@ -334,7 +387,8 @@
     ctx.restore();
   }
   function draw() {
-    host.querySelectorAll('input[type=range]').forEach(input=>{input.style.setProperty('--fill',`${100*(Number(input.value)-Number(input.min))/(Number(input.max)-Number(input.min))}%`);});
+    if($('timingHint'))$('timingHint').textContent=`本骨骼：${fmt(timing.animationDelay)}–${fmt(timing.animationDelay+timing.boneDuration)} 秒`;
+    curveRoot.querySelectorAll('input[type=range]').forEach(input=>{input.style.setProperty('--fill',`${100*(Number(input.value)-Number(input.min))/(Number(input.max)-Number(input.min))}%`);});
     if($('delayHint'))$('delayHint').textContent=`偏移 ${fmt(p.delay)} 秒 · ${fmt(p.duration)} 秒周期内`;
     drawCurve();
     const snapshot = JSON.stringify({stack:sessions,timing});
@@ -366,20 +420,22 @@
   $('pointValue').oninput = () => { if ($('pointValue').value === '') return; setPointValue(Number($('pointValue').value) / (channel === 'alpha' ? 100 : 1)); curveBounds = null; drawCurve(); };
   $('pointValue').onblur = () => { $('pointValue').value = fmt(displayValue(E.sample(p, point / 16)[channel]), channel.startsWith('s') ? 3 : 1); };
   $('resetCurve').onclick = () => { p.corrections[channel].fill(0); curveBounds = null; syncBounceHeights(); syncPoint(); draw(); status(`已恢复${labels[channel]}的计算曲线。`); };
-  function selectMode(next){mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':'x';drag=null;renderPanel();status('已切换调整项；已有动画持续叠加，播放进度保留。');}
+  function setCollapsed(value){collapsed=value;$('editorContent').hidden=value;$('editorToggle').textContent=value?'展开':'收起';$('editorToggle').setAttribute('aria-expanded',String(!value));body.classList.toggle('collapsed',value);curveBounds=null;drawCurve();}
+  function selectMode(next){setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':'x';drag=null;renderPanel();status('切换功能保留调整 · 仅操作当前骨骼');}
   $('resetAll').onclick = () => {
+    for(const key of Object.keys(presetChoices))delete presetChoices[key];
     bridge.restore(); Object.assign(sessions,E.freshStack()); Object.assign(timing,bridge.timing()); shareDuration(timing.boneDuration); shareOpacity(sessions.opacity);p=sessions[mode];
     history.push(lastSnapshot);lastSnapshot=JSON.stringify({stack:sessions,timing});redo.length=0;previewError='';time=0;renderPanel();$('save').disabled=false;status('已恢复本骨骼计算前的动画；其他骨骼保留。');
   };
   $('link').onchange = () => { p.link = $('link').checked; parameterChanged(false); };
-  $('curveDetails').ontoggle = () => { curveBounds=null;drawCurve(); };
+  $('editorToggle').onclick=()=>setCollapsed(!collapsed);
   $('save').onclick = () => { try{bridge.save(sessions,timing);status('已保存到当前动画；可使用原有动画导出。');}catch(error){status(error.message);} };
   function restoreSnapshot(value){restoring=true;const v=JSON.parse(value);Object.assign(sessions,v.stack);Object.assign(timing,v.timing);p=sessions[mode];renderPanel();restoring=false;}
   function undo(forward){const from=forward?redo:history,to=forward?history:redo;if(from.length){to.push(lastSnapshot);restoreSnapshot(from.pop());status(forward?'已重做本骨骼参数。':'已撤销本骨骼参数。');}}
   const observer=new ResizeObserver(()=>{curveBounds=null;drawCurve();});observer.observe($('curve'));
   let frameId;
-  function frame(){if(host.host.isConnected){positionCurve();if($('curveDetails').open){time=E.clamp(bridge.time()-timing.animationDelay,0,p.duration);lastSeek=time;drawCurve();}frameId=requestAnimationFrame(frame);}else floating.style.display='none';}
+  function frame(){if(host.host.isConnected){positionCurve();if(!collapsed){time=E.clamp(bridge.time()-timing.animationDelay,0,p.duration);lastSeek=time;drawCurve();}frameId=requestAnimationFrame(frame);}else floating.style.display='none';}
   positionCurve();selectMode(bridge.mode||'bounce');frameId=requestAnimationFrame(frame);
-  return {destroy(){observer.disconnect();cancelAnimationFrame(frameId);floating.remove();},ownsEvent:event=>event.composedPath().includes(floating),selectMode,status,undo};
+  return {destroy(){observer.disconnect();cancelAnimationFrame(frameId);releasePreviewSpace();floating.remove();},ownsEvent:event=>event.composedPath().includes(floating),selectMode,status,undo};
 }};
 })();

@@ -86,7 +86,7 @@
   }
   function open(){
     close();context=getContext();
-    const body=panel.querySelector(`[data-motion-mode="${activeMode}"] .nf-motion-body`);body.replaceChildren();
+    const body=panel.querySelector('.nf-motion-body');body.replaceChildren();
     if(!context?.project.animations[context.activeAnimationName]||!context.selectedBoneName){body.textContent='请先选择动画和一个骨骼。';return;}
     session=createSession(context);const s=session;
     const host=document.createElement('div');body.append(host);const shadow=host.attachShadow({mode:'open'});
@@ -124,18 +124,29 @@
     context=getContext();
     if(!ribbon||!context){if(panel){close();panel.remove();panel=null;}return;}
     if(!panel?.isConnected){
-      close();panel=document.createElement('div');panel.dataset.panelId='bone-motion';panel.dataset.open='0';
+      close();panel=document.createElement('div');panel.className='nf-panel';panel.dataset.panelId='bone-motion';panel.dataset.open='0';
       panel.style.cssText='width:100%;font-size:12px';
-      panel.innerHTML=Object.entries({bounce:'弹跳计算',expand:'扩张计算',shuttle:'往返计算',opacity:'透明度计算'}).map(([mode,label])=>`<section class="nf-panel" data-motion-mode="${mode}" style="width:100%;border-bottom:1px solid #272727;padding:3px 0"><button type="button" class="nf-panel-header" aria-expanded="false" style="width:100%;height:46px;padding:0 7px;display:flex;align-items:center;justify-content:space-between;text-align:left;background:transparent;color:#d4d4d4;border:0;font:inherit;cursor:pointer"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:5px" aria-hidden="true"></i>${label}</span><span aria-hidden="true">›</span></button><div class="nf-motion-body" hidden style="padding:10px"></div></section>`).join('');
+      panel.innerHTML=`<style>
+        [data-panel-id="bone-motion"]{border-bottom:1px solid #272727;padding:3px 0}
+        [data-panel-id="bone-motion"] .nf-panel-header{width:100%;height:46px;padding:0 7px;display:flex;align-items:center;justify-content:space-between;text-align:left;background:transparent;color:#d4d4d4;border:0;font:inherit;cursor:pointer}
+        [data-panel-id="bone-motion"] .nf-motion-tools{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;padding:4px 7px 10px}
+        [data-panel-id="bone-motion"] .nf-motion-tools[hidden]{display:none}
+        [data-panel-id="bone-motion"] [data-motion-mode]{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;height:58px;background:#262626;border:1px solid #303030;border-radius:6px;color:#bdbdbd;font:inherit;font-size:11px;cursor:pointer;box-shadow:none}
+        [data-panel-id="bone-motion"] [data-motion-mode]:hover{background:#303030}
+        [data-panel-id="bone-motion"] [data-motion-mode][aria-pressed="true"]{background:#193f35;color:#b7e5d4;border-color:#285b4b}
+        [data-panel-id="bone-motion"] [data-motion-mode] i{font-size:16px}
+        [data-panel-id="bone-motion"] .nf-motion-body{font-size:11px;color:#999}
+      </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:5px" aria-hidden="true"></i>动画计算</span><span aria-hidden="true">›</span></button><div class="nf-motion-tools" role="group" aria-label="动画计算工具" hidden>${Object.entries({bounce:['弹跳','fa-arrow-up'],expand:['扩张','fa-expand-arrows-alt'],shuttle:['往返','fa-arrows-alt-h'],opacity:['透明度','fa-adjust']}).map(([mode,[label,icon]])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="${mode===activeMode}"><i class="fas ${icon}" aria-hidden="true"></i><span>${label}</span></button>`).join('')}</div><div class="nf-motion-body"></div>`;
       ribbon.after(panel);
-      panel.querySelectorAll('[data-motion-mode]').forEach(section=>section.querySelector('button').onclick=()=>{
-        const next=section.dataset.motionMode,wasOpen=panel.dataset.open==='1',collapse=wasOpen&&next===activeMode;
-        const previous=panel.querySelector(`[data-motion-mode="${activeMode}"] .nf-motion-body`);
-        activeMode=next;panel.dataset.open=collapse?'0':'1';
-        panel.querySelectorAll('[data-motion-mode]').forEach(item=>{const show=!collapse&&item===section;item.querySelector('.nf-motion-body').hidden=!show;item.querySelector('button').setAttribute('aria-expanded',String(show));item.querySelector('button>span:last-child').textContent=show?'⌄':'›';});
-        if(collapse){close();previous.replaceChildren();}
-        else if(wasOpen&&view){section.querySelector('.nf-motion-body').append(...previous.childNodes);view.selectMode(next);}
-        else open();
+      panel.querySelector('.nf-panel-header').onclick=()=>{
+        const expanded=panel.dataset.open!=='1';panel.dataset.open=expanded?'1':'0';
+        panel.querySelector('.nf-motion-tools').hidden=!expanded;panel.querySelector('.nf-panel-header').setAttribute('aria-expanded',String(expanded));panel.querySelector('.nf-panel-header>span:last-child').textContent=expanded?'⌄':'›';
+        if(expanded)open();else{close();panel.querySelector('.nf-motion-body').replaceChildren();}
+      };
+      panel.querySelectorAll('[data-motion-mode]').forEach(button=>button.onclick=()=>{
+        activeMode=button.dataset.motionMode;
+        panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
+        if(view)view.selectMode(activeMode);else open();
       });
     }
     if(panel.dataset.open==='1'&&(!session||!sameScope(context,session)))open();
