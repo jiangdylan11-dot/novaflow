@@ -100,7 +100,7 @@
         'aria-hidden': 'true',
         style: accordion.iconStyle(),
       }),
-      createElement(documentRef, 'span', { text: '模式', style: accordion.labelStyle() }),
+      createElement(documentRef, 'span', { text: '生图', style: accordion.labelStyle() }),
     ])
     const chevron = createElement(documentRef, 'i', {
       className: accordion.chevronClass(false),

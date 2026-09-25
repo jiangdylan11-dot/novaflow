@@ -6,6 +6,11 @@
   'use strict'
 
   const mounts = new WeakMap()
+  // The catalogue per context, kept across mounts: 模式 collapses and re-opens rebuild the slot,
+  // and showing "正在读取兼容 LoRA…" again each time shifted the panel; a known list renders at
+  // once and only refreshes quietly.
+  const catalogCache = new Map()
+  const CATALOG_CACHE_TTL_MS = 5 * 60 * 1000
   const MAX_LORAS = 8
   const managed = /lightning|turbo|(?:^|[\\/_-])(?:4|8)steps?/i
   const key = (name) => String(name || '').replace(/\\/g, '/').toLowerCase()
@@ -110,14 +115,20 @@
     if (!record) {
       const slot = host.ownerDocument.createElement('div')
       slot.setAttribute('data-novaflow-art-lora', '1')
-      slot.style.cssText = 'display:grid;gap:6px;min-width:0;margin-top:10px;text-align:left;'
+      // The brand spec's final spacing, so a rebuilt slot does not move the rows below it.
+      slot.style.cssText = 'display:grid;gap:5px;min-width:0;margin:0;text-align:left;'
       host.appendChild(slot)
       record = { slot, options, names: [], loaded: false, loading: false, error: '', signature: '' }
       mounts.set(host, record)
     }
     record.options = options
     const context = `${state.provider}:${state.mode}:${!!state.nsfw}:${qwen21Route(state)}`
-    if (record.context !== context) { record.context = context; record.loaded = false; record.names = []; record.signature = '' }
+    if (record.context !== context) {
+      record.context = context; record.loaded = false; record.signature = ''
+      const cached = catalogCache.get(context)
+      record.names = cached ? cached.names.slice() : []
+      record.quiet = Boolean(cached)
+    }
     const supported = supports(state)
     if (record.slot.hidden !== !supported) record.slot.hidden = !supported
     const display = supported ? 'grid' : 'none'
@@ -128,7 +139,11 @@
       record.signature = signature
       render(record)
     }
-    if (!record.loaded && !record.loading) void refresh(record)
+    if (!record.loaded && !record.loading) {
+      const cached = catalogCache.get(context)
+      if (cached && Date.now() - cached.at < CATALOG_CACHE_TTL_MS) { record.loaded = true; record.quiet = false }
+      else void refresh(record)
+    }
   }
 
   async function refresh(record) {
@@ -136,12 +151,14 @@
     const context = record.context
     const request = qwen21Route(record.options.state) ? { nsfw: false, engine: 'qwen-2.1' } : { nsfw: !!record.options.state.nsfw }
     let dropped = false
-    record.loading = true
+    // A quiet refresh keeps the cached names on screen instead of the loading placeholder.
+    record.loading = !record.quiet
     record.loaded = true
     record.error = ''
     mount(record.options)
     try {
       const names = catalogFromInfo(await record.options.loadCatalog(request))
+      catalogCache.set(context, { names: names.slice(), at: Date.now() })
       if (context === record.context) {
         record.names = names
         const before = (record.options.state.loras || []).length
@@ -152,6 +169,7 @@
       if (context === record.context) record.error = String(error?.message || error)
     } finally {
       record.loading = false
+      record.quiet = false
       mount(record.options)
       if (dropped) record.options.onChange?.()
     }
@@ -171,7 +189,7 @@
     // The chosen LoRAs can change the route, and with it the reference grid and steps / CFG.
     const change = () => { mount(record.options); record.options.onChange?.() }
     const children = [element('div', '添加兼容 LoRA', 'font-size:11px;color:#999;line-height:16px;')]
-    const select = element('select', '', 'box-sizing:border-box;width:100%;min-width:0;height:36px;background:#090909;color:#ddd;border:1px solid #333;border-radius:8px;padding:0 10px;font-size:12px;')
+    const select = element('select', '', 'box-sizing:border-box;width:100%;min-width:0;height:32px;min-height:32px;max-height:32px;background:#262626;color:#e9e9e9;border:1px solid #343434;border-radius:6px;padding:0 26px 0 10px;font-size:12px;appearance:none;-webkit-appearance:none;')
     select.setAttribute('data-novaflow-art-generate-select-field', '1')
     select.setAttribute('aria-label', '添加兼容 LoRA')
     const available = record.names.filter(name => !items.some(item => key(item.name) === key(name)))

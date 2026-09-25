@@ -3275,6 +3275,8 @@
   function setImportantStyles(element, styles) {
     if (!(element instanceof HTMLElement) || !styles) return;
     if (isInsideNovaflowRuntimeIgnore(element)) return;
+    // The 视频合并 / 视频抠图 rows are styled by their own sheet, not by the panel scanners.
+    if (element.hasAttribute("data-novaflow-ai-tool-heading")) return;
     Object.entries(styles).forEach(([property, value]) => {
       if (value === null || value === undefined) return;
       setStylePropertyIfChanged(element, property, value, "important");
@@ -13495,7 +13497,7 @@
     restoreAiSequenceSecondaryPostReturnLayout(postSection);
     setAttributeIfChanged(root, "data-novaflow-ai-mode-section", "1");
     setAttributeIfChanged(root, "data-novaflow-ai-mode-collapsed", AI_ANIMATION_COLLAPSE_STATE.mode ? "1" : "0");
-    const modeHeading = ensureAiAnimationCollapseHeading(root, "mode", "\u6a21\u5f0f\u9009\u62e9", ["\u6a21\u5f0f"]);
+    const modeHeading = ensureAiAnimationCollapseHeading(root, "mode", "\u52a8\u753b\u751f\u6210", ["\u6a21\u5f0f\u9009\u62e9", "\u6a21\u5f0f"]);
     if (postSection instanceof HTMLElement) {
       setAttributeIfChanged(postSection, "data-novaflow-ai-post-section", "1");
       setAttributeIfChanged(postSection, "data-novaflow-ai-post-collapsed", AI_ANIMATION_COLLAPSE_STATE.post ? "1" : "0");
@@ -14610,6 +14612,8 @@
 
   function aiSequenceToolFromNode(node) {
     if (!(node instanceof HTMLElement)) return null;
+    // The runtime's own 视频合并 / 视频抠图 rows carry the tool names as labels but are not entries.
+    if (node.hasAttribute("data-novaflow-ai-tool-heading")) return null;
     const sequenceTool = node.getAttribute("data-novaflow-ai-sequence-tool");
     if (sequenceTool === "ai-cutout" || sequenceTool === "chroma-key" || sequenceTool === "color-correct" || sequenceTool === "video-merge") return sequenceTool;
     const mode = node.getAttribute("data-novaflow-ai-cutout-mode");
@@ -22854,6 +22858,125 @@
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading][data-collapsed="1"] {
         border-radius: 6px !important;
+      }
+      /* 视频合并 / 视频抠图 at the group level: the 视频处理 heading and the bundle's entry
+         rows are hidden, the two runtime rows take the heading's look, and the section
+         lays out as a column so the active tool's content follows its own row. */
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-mode-section="1"] [data-novaflow-ai-post-section="1"][data-novaflow-ai-tool-headings="1"],
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-mode-section="1"][data-novaflow-ai-mode-collapsed="1"] [data-novaflow-ai-post-section="1"][data-novaflow-ai-tool-headings="1"] {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 0 !important;
+        padding-top: ${AI_ANIMATION_GROUP_PAD_Y}px !important;
+        min-height: 0 !important;
+        height: auto !important;
+        max-height: none !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-tool-headings="1"] > [data-novaflow-ai-collapse-heading="post"],
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-tool-headings="1"] [data-nf-color-correction-actions="1"],
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-tool-headings="1"] [data-novaflow-ai-post-action-row="1"],
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-tool-headings="1"] [data-nf-cutout-post-shell="1"] > div:first-child:empty {
+        display: none !important;
+      }
+      /* Rows first, then whatever the active tool put in the section, under its own row. */
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-tool-headings="1"] > * {
+        order: 100 !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="video-merge"] {
+        order: 0 !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="ai-cutout"] {
+        order: 10 !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-active-tool="video-merge"] > *:not([data-novaflow-ai-tool-heading]) {
+        order: 5 !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-active-tool="ai-cutout"] > *:not([data-novaflow-ai-tool-heading]) {
+        order: 15 !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading] {
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        font-family: inherit !important;
+        position: relative !important;
+        flex: 0 0 auto !important;
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        width: 100% !important;
+        height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT - 11}px !important;
+        min-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT - 11}px !important;
+        max-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT - 11}px !important;
+        margin: 0 !important;
+        padding: 0 30px 0 ${AI_ANIMATION_GROUP_HEADER_INSET + AI_ANIMATION_GROUP_ICON_PLATE + AI_ANIMATION_GROUP_ICON_GAP}px !important;
+        box-sizing: border-box !important;
+        border: 0 !important;
+        border-radius: 6px !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        color: ${AI_ANIMATION_GROUP_TITLE_COLOR} !important;
+        font-size: 12px !important;
+        font-weight: ${NOVAFLOW_MEDIUM_FONT_WEIGHT} !important;
+        line-height: 1 !important;
+        text-align: left !important;
+        cursor: pointer !important;
+        box-shadow: none !important;
+        pointer-events: auto !important;
+        overflow: visible !important;
+        z-index: 4 !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading]:hover {
+        background: ${AI_ANIMATION_GROUP_HOVER_BACKGROUND} !important;
+        background-color: ${AI_ANIMATION_GROUP_HOVER_BACKGROUND} !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading][aria-disabled="true"] {
+        opacity: 0.48 !important;
+        cursor: not-allowed !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading]::before {
+        content: "" !important;
+        position: absolute !important;
+        left: ${AI_ANIMATION_GROUP_HEADER_INSET}px !important;
+        top: 50% !important;
+        width: ${AI_ANIMATION_GROUP_ICON_PLATE}px !important;
+        height: ${AI_ANIMATION_GROUP_ICON_PLATE}px !important;
+        border-radius: 5px !important;
+        background-color: ${AI_ANIMATION_GROUP_ICON_BACKGROUND} !important;
+        background-repeat: no-repeat !important;
+        background-position: center !important;
+        background-size: 14px 14px !important;
+        transform: translateY(-50%) !important;
+        pointer-events: none !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="video-merge"]::before {
+        background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2016%2016'%20fill%3D'none'%20stroke%3D'%23bdbdbd'%20stroke-width%3D'1.3'%20stroke-linejoin%3D'round'%3E%3Crect%20x%3D'2'%20y%3D'2'%20width%3D'8.5'%20height%3D'8.5'%20rx%3D'1.6'%2F%3E%3Cpath%20d%3D'M5.5%2013.2V6.2a.8.8%200%200%201%20.8-.8h7a.8.8%200%200%201%20.8.8v7a.8.8%200%200%201-.8.8h-7a.8.8%200%200%201-.8-.8z'%20fill%3D'%23292929'%2F%3E%3C%2Fsvg%3E") !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="ai-cutout"]::before {
+        background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2016%2016'%20fill%3D'none'%20stroke%3D'%23bdbdbd'%20stroke-width%3D'1.3'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Crect%20x%3D'2'%20y%3D'2'%20width%3D'12'%20height%3D'12'%20rx%3D'2'%20stroke-dasharray%3D'2.6%201.9'%2F%3E%3Ccircle%20cx%3D'8'%20cy%3D'6.5'%20r%3D'1.9'%2F%3E%3Cpath%20d%3D'M4.9%2012.4c.5-1.9%201.7-2.9%203.1-2.9s2.6%201%203.1%202.9'%2F%3E%3C%2Fsvg%3E") !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading]::after {
+        content: "" !important;
+        position: absolute !important;
+        left: auto !important;
+        right: 12px !important;
+        top: 50% !important;
+        width: ${NOVAFLOW_THIN_ARROW_SIZE} !important;
+        height: ${NOVAFLOW_THIN_ARROW_SIZE} !important;
+        border-left: 0 !important;
+        border-top: 0 !important;
+        border-right: ${NOVAFLOW_THIN_ARROW_STROKE} solid ${AI_ANIMATION_GROUP_CHEVRON_COLOR} !important;
+        border-bottom: ${NOVAFLOW_THIN_ARROW_STROKE} solid ${AI_ANIMATION_GROUP_CHEVRON_COLOR} !important;
+        box-sizing: border-box !important;
+        transform: translateY(-50%) rotate(45deg) !important;
+        transform-origin: center !important;
+        transition: transform 120ms ease-out !important;
+        pointer-events: none !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading][data-collapsed="1"]::after {
+        transform: translateY(-50%) rotate(-45deg) !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading="post"][data-novaflow-ai-collapse-disabled="1"] {
         opacity: 0.48 !important;
@@ -58504,12 +58627,100 @@
     syncAiSequenceCutoutReferenceDisabled(postSection, getAiSequenceCurrentSession());
   }
 
+  // 视频合并 / 视频抠图 as rows of the group level (2026-09-25). Only 颜色校正 ever sat
+  // beside them and it is gone, so the 视频处理 heading had nothing to group: it is
+  // hidden and these two runtime rows stand in its place. Each row proxies the
+  // bundle's own entry (the state machine behind 视频处理 stays untouched): a click
+  // expands the tools group and activates the entry, a click on the active row
+  // collapses the group the way the old heading did, and the content the bundle
+  // or an overlay puts into the section is ordered under the active row.
+  const AI_ANIMATION_TOOL_HEADINGS = Object.freeze([
+    { key: "video-merge", label: "视频合并", entry: '[data-novaflow-ai-video-merge-entry="1"]', tools: ["video-merge"] },
+    { key: "ai-cutout", label: "视频抠图", entry: '[data-novaflow-video-cutout="1"]', tools: ["ai-cutout", "chroma-key"] }
+  ]);
+  function aiAnimationActiveToolKey() {
+    const session = getAiSequenceCurrentSession();
+    const tool = String(session?.activeTool || session?.editingDraft?.tool || "");
+    if (tool) return tool;
+    if (document.querySelector('[data-novaflow-ai-video-merge-layer-panel="1"]')) return "video-merge";
+    return "";
+  }
+  function activateAiAnimationToolHeading(spec) {
+    const postSection = document.querySelector('[data-novaflow-ai-post-section="1"]');
+    const postHeading = postSection instanceof HTMLElement ? postSection.querySelector('[data-novaflow-ai-collapse-heading="post"]') : null;
+    if (!(postHeading instanceof HTMLElement)) return;
+    const expanded = !AI_ANIMATION_COLLAPSE_STATE.post;
+    const activeTool = aiAnimationActiveToolKey();
+    // The rows read the session state; re-read it once the group has moved.
+    [0, 160, 420, 900].forEach((delay) => window.setTimeout(() => {
+      const section = document.querySelector('[data-novaflow-ai-post-section="1"]');
+      if (section instanceof HTMLElement) ensureAiAnimationToolHeadings(section, section.querySelector('[data-novaflow-ai-collapse-heading="post"]'));
+    }, delay));
+    const clickEntry = (attempt = 0) => {
+      const entry = document.querySelector(spec.entry);
+      if (entry instanceof HTMLElement && entry.getAttribute("aria-disabled") !== "true" && isVisible(entry.parentElement || entry)) { entry.click(); return; }
+      if (entry instanceof HTMLElement && entry.getAttribute("aria-disabled") !== "true" && attempt >= 3) { entry.click(); return; }
+      if (attempt < 14) window.setTimeout(() => clickEntry(attempt + 1), 60);
+    };
+    if (expanded && spec.tools.includes(activeTool)) { postHeading.click(); return; }
+    if (!expanded) { postHeading.click(); clickEntry(); return; }
+    if (activeTool) {
+      // Leave the other tool through the group's own collapse, then open this one.
+      postHeading.click();
+      window.setTimeout(() => { if (AI_ANIMATION_COLLAPSE_STATE.post) postHeading.click(); clickEntry(); }, 140);
+      return;
+    }
+    clickEntry();
+  }
+  function ensureAiAnimationToolHeadings(postSection, postHeading) {
+    if (!(postSection instanceof HTMLElement)) return;
+    const expanded = !AI_ANIMATION_COLLAPSE_STATE.post;
+    const activeTool = aiAnimationActiveToolKey();
+    AI_ANIMATION_TOOL_HEADINGS.forEach((spec, index) => {
+      let heading = postSection.querySelector(`[data-novaflow-ai-tool-heading="${spec.key}"]`);
+      if (!(heading instanceof HTMLElement)) {
+        heading = document.createElement("button");
+        heading.type = "button";
+        heading.setAttribute("data-novaflow-ai-tool-heading", spec.key);
+        heading.setAttribute("data-novaflow-runtime-ignore", "1");
+        heading.setAttribute("role", "button");
+        heading.setAttribute("tabindex", "0");
+        heading.setAttribute("aria-label", spec.label);
+        heading.textContent = spec.label;
+        const activate = (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          if (heading.getAttribute("aria-disabled") === "true") return;
+          activateAiAnimationToolHeading(spec);
+        };
+        heading.addEventListener("click", activate, true);
+        heading.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          activate(event);
+        }, true);
+        postSection.appendChild(heading);
+      }
+      // markAiAnimationPostBodyItems files every non-heading child as body: not these.
+      removeAttributeIfPresent(heading, "data-novaflow-ai-post-body-item");
+      removeAttributeIfPresent(heading, "data-novaflow-ai-post-action-button");
+      const isActive = expanded && spec.tools.includes(activeTool);
+      const otherActive = expanded && Boolean(activeTool) && !isActive;
+      nfSetAttrIfChanged(heading, "aria-expanded", isActive ? "true" : "false");
+      nfSetAttrIfChanged(heading, "data-collapsed", isActive ? "0" : "1");
+      nfSetAttrIfChanged(heading, "aria-disabled", otherActive ? "true" : "false");
+    });
+    nfSetAttrIfChanged(postSection, "data-novaflow-ai-tool-headings", "1");
+    const active = AI_ANIMATION_TOOL_HEADINGS.find((spec) => expanded && spec.tools.includes(activeTool));
+    nfSetAttrIfChanged(postSection, "data-novaflow-ai-active-tool", active ? active.key : "");
+  }
+
   function syncAiAnimationPostSectionStaticLayout(postSection) {
     if (!(postSection instanceof HTMLElement)) return;
     postSection.setAttribute("data-novaflow-ai-post-section", "1");
     postSection.setAttribute("data-novaflow-ai-post-collapsed", AI_ANIMATION_COLLAPSE_STATE.post ? "1" : "0");
     const postHeading = ensureAiAnimationCollapseHeading(postSection, "post", "视频处理", ["\u5904\u7406\u5de5\u5177", "\u540e\u5904\u7406\u5de5\u5177"]);
     markAiAnimationPostBodyItems(postSection, postHeading);
+    ensureAiAnimationToolHeadings(postSection, postHeading);
     primeAiAnimationPostLayoutMarkers(postSection);
     markAiAnimationPostLayout(postSection);
     styleAiAnimationPostToolStates(postSection);
@@ -59939,7 +60150,7 @@
     restoreAiSequenceSecondaryPostReturnLayout(earlyPostSection);
     setAttributeIfChanged(earlyRoot, "data-novaflow-ai-mode-section", "1");
     setAttributeIfChanged(earlyRoot, "data-novaflow-ai-mode-collapsed", AI_ANIMATION_COLLAPSE_STATE.mode ? "1" : "0");
-    const modeHeading = ensureAiAnimationCollapseHeading(earlyRoot, "mode", "\u6a21\u5f0f\u9009\u62e9", ["\u6a21\u5f0f"]);
+    const modeHeading = ensureAiAnimationCollapseHeading(earlyRoot, "mode", "\u52a8\u753b\u751f\u6210", ["\u6a21\u5f0f\u9009\u62e9", "\u6a21\u5f0f"]);
     if (earlyPostSection instanceof HTMLElement) {
       setAttributeIfChanged(earlyPostSection, "data-novaflow-ai-post-section", "1");
       setAttributeIfChanged(earlyPostSection, "data-novaflow-ai-post-collapsed", AI_ANIMATION_COLLAPSE_STATE.post ? "1" : "0");
@@ -62471,7 +62682,7 @@
         setAttributeIfChanged(root, "data-novaflow-ai-mode-collapsed", AI_ANIMATION_COLLAPSE_STATE.mode ? "1" : "0");
       });
       nfAnimationPerfRunLayoutStep("applyAiAnimationSectionLayers", "modeSectionMarkers", () => {
-        const heading = ensureAiAnimationCollapseHeading(root, "mode", "\u6a21\u5f0f\u9009\u62e9", ["\u6a21\u5f0f"]);
+        const heading = ensureAiAnimationCollapseHeading(root, "mode", "\u52a8\u753b\u751f\u6210", ["\u6a21\u5f0f\u9009\u62e9", "\u6a21\u5f0f"]);
         markAiAnimationModeBodyItems(root, postSection, heading);
         markAiAnimationModeSwitch(root);
         syncAiAnimationModeSwitchGuard(root);

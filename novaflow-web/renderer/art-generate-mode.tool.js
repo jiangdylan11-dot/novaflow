@@ -80,12 +80,13 @@
 
     const label = documentRef.createElement('label')
     label.textContent = '模型方式'
-    label.setAttribute('style', 'font-size:11px;font-weight:800;color:rgba(255,255,255,0.78);')
+    // Created in the brand spec's final look, so the first frame is not a white flash.
+    label.setAttribute('style', 'font-size:11px;font-weight:400;color:#a9a9a9;line-height:16.5px;')
 
     const select = documentRef.createElement('select')
     select.setAttribute('aria-label', '模型方式')
     select.setAttribute('data-novaflow-art-generate-provider', '1')
-    select.setAttribute('style', 'width:100%;height:32px;min-width:0;border-radius:8px;border:1px solid rgba(255,255,255,0.12);background:#2f2f2f;color:#fff;padding:0 9px;box-sizing:border-box;')
+    select.setAttribute('style', 'width:100%;height:32px;min-height:32px;max-height:32px;min-width:0;border-radius:6px;border:1px solid #343434;background:#262626;color:#e9e9e9;padding:0 26px 0 10px;font-size:12px;box-sizing:border-box;appearance:none;-webkit-appearance:none;')
     syncDisabled(select, options.disabled)
     PROVIDER_OPTIONS.forEach((providerOption) => {
       const option = documentRef.createElement('option')

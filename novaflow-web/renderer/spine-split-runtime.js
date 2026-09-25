@@ -3542,22 +3542,22 @@
         box-shadow: none !important;
         outline: 0 !important;
       }
-      /* 原图资源 cards answer the pointer like the layer rows do; the active one keeps its green. */
-      #${RIGHT_WORKSPACE_ID} [data-novaflow-source-resource-card="1"] {
-        transition: filter 120ms ease, background-color 120ms ease !important;
+      /* 原图资源 cards and set rows answer the pointer like the layer rows do; the active card keeps its green. */
+      #${RIGHT_WORKSPACE_ID} [data-novaflow-source-resource-card="1"],
+      #${RIGHT_WORKSPACE_ID} [${SPLIT_SET_TOGGLE_ATTR}] {
+        transition: background-color 120ms ease, border-color 120ms ease !important;
       }
-      #${RIGHT_WORKSPACE_ID} [data-novaflow-source-resource-card="1"]:not([aria-disabled="true"]):hover,
-      #${RIGHT_WORKSPACE_ID} [data-novaflow-source-resource-card="1"]:not([aria-disabled="true"]):focus-visible {
-        filter: brightness(1.18) !important;
+      #${RIGHT_WORKSPACE_ID} [data-novaflow-source-resource-card="1"]:not([aria-disabled="true"]):not([data-novaflow-source-resource-active="1"]):hover,
+      #${RIGHT_WORKSPACE_ID} [data-novaflow-source-resource-card="1"]:not([aria-disabled="true"]):not([data-novaflow-source-resource-active="1"]):focus-visible {
+        background: ${SPLIT_LAYER_ROW_HOVER_BACKGROUND} !important;
+        background-color: ${SPLIT_LAYER_ROW_HOVER_BACKGROUND} !important;
+        border-color: rgba(255,255,255,0.16) !important;
         outline: 0 !important;
       }
-      #${RIGHT_WORKSPACE_ID} [data-novaflow-source-resource-card="1"]:not([aria-disabled="true"]):active {
-        filter: brightness(0.92) !important;
-      }
-      #${RIGHT_WORKSPACE_ID} [${SPLIT_SET_TOGGLE_ATTR}]:hover,
-      #${RIGHT_WORKSPACE_ID} [${SPLIT_SET_TOGGLE_ATTR}]:focus-visible {
-        background: ${SPLIT_PANEL_HOVER_BACKGROUND} !important;
-        background-color: ${SPLIT_PANEL_HOVER_BACKGROUND} !important;
+      #${RIGHT_WORKSPACE_ID} [${SPLIT_SET_TOGGLE_ATTR}]:not([disabled]):hover,
+      #${RIGHT_WORKSPACE_ID} [${SPLIT_SET_TOGGLE_ATTR}]:not([disabled]):focus-visible {
+        background: ${SPLIT_LAYER_ROW_HOVER_BACKGROUND} !important;
+        background-color: ${SPLIT_LAYER_ROW_HOVER_BACKGROUND} !important;
         border-color: transparent !important;
         outline: 0 !important;
         box-shadow: none !important;
@@ -13725,7 +13725,7 @@
   const splitDrawingControlSections = [
     {
       id: 'generate',
-      label: '模式',
+      label: '生图',
       icon: 'magic',
       items: [
         { artGenerateControlHost: true }
@@ -14876,7 +14876,7 @@
 
   function resetSplitCanvasViewport() {
     state.canvasFit = true
-    state.canvasZoom = 1
+    state.canvasZoom = state.lastCanvasFitScale || 1
     state.canvasPanX = 0
     state.canvasPanY = 0
   }
@@ -15656,7 +15656,9 @@
 
   function resetSplitCanvasSourceViewport() {
     state.canvasFit = true
-    state.canvasZoom = 1
+    // The fit is recomputed at the next sync; until then the board keeps the last fit scale
+    // instead of showing a frame at 100% (the jump the user saw when switching 原图资源).
+    state.canvasZoom = state.lastCanvasFitScale || 1
     state.canvasPanX = 0
     state.canvasPanY = 0
     cancelSplitCanvasPanIntent()
@@ -29065,8 +29067,15 @@
     node.style.setProperty('flex-shrink', '0', 'important')
     node.style.setProperty('box-sizing', 'border-box', 'important')
     node.style.setProperty('padding', `${SPLIT_RIGHT_WORKSPACE_TOP_GAP}px ${splitRightWorkspaceInset()}px ${splitRightWorkspaceInset()}px ${splitRightWorkspaceInset()}px`, 'important')
-    // The column is a layout slot; the panel inside it is the surface.
-    node.style.setProperty('background', 'transparent', 'important')
+    // The column is a layout slot; the panel inside it is the surface. The fixed
+    // fallback host floats over the page, so its slot (inside the padding) is painted
+    // in the shell colour: the panel's rounded corners meet that, not the page behind.
+    if (node.id === RIGHT_WORKSPACE_HOST_ID) {
+      node.style.setProperty('background', SPLIT_WORKSPACE_PANEL_BACKGROUND, 'important')
+      node.style.setProperty('background-clip', 'content-box', 'important')
+    } else {
+      node.style.setProperty('background', 'transparent', 'important')
+    }
     node.style.setProperty('overflow', 'visible', 'important')
   }
 
@@ -30597,6 +30606,24 @@
     if (sourceMode === 'selectionTool') scheduleHydrateCurrentSelectionToolCanvas()
   }
 
+  // Each layer set sits under the 原图资源 it was split from (newest first, like the cards);
+  // a set whose source is gone closes the list.
+  function splitRightWorkspaceGroupedNodes(sourceEntries, sets, renderSet) {
+    const ordered = sets.slice().reverse()
+    const used = new Set()
+    const nodes = []
+    sourceEntries.forEach((entry) => {
+      nodes.push(entry.node)
+      ordered.forEach((set) => {
+        if (used.has(set) || String(set && set.sourceResourceId || '') !== entry.id) return
+        used.add(set)
+        nodes.push(renderSet(set))
+      })
+    })
+    ordered.forEach((set) => { if (!used.has(set)) nodes.push(renderSet(set)) })
+    return nodes
+  }
+
   function renderRightWorkspacePanel() {
     const active = isMountedCardVisible()
     const rightRoot = active ? findRightPanelRoot() : null
@@ -30773,6 +30800,7 @@
         draggable: resourceDraggable ? 'true' : 'false',
         'data-novaflow-source-resource-card': '1',
         'data-novaflow-source-resource-id': resource.id,
+        'data-novaflow-source-resource-active': isActive ? '1' : '0',
         'data-novaflow-resource-kind': 'source',
         title: resource.fileName || resource.name || 'source.png',
         onpointerdown: (event) => {
@@ -30834,8 +30862,8 @@
         h('div', { style: checkerStyle({ width: '34px', height: '34px', minWidth: '34px', borderRadius: '7px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }) },
           splitSetPreviewImageNode(sourceResourcePreviewSrc(resource), resource.fileName || resource.name || 'source.png')),
         h('div', { style: { minWidth: 0, height: '30px', display: 'grid', gridTemplateRows: '14px 12px', alignContent: 'center', alignSelf: 'center', gap: '2px' } }, [
-          h('div', { style: { fontSize: '12px', lineHeight: '14px', fontWeight: '500', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, resourceLabel),
-          h('div', { style: { fontSize: '10px', lineHeight: '12px', color: 'rgba(148,163,184,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, `${source.fileName || 'source.png'} · ${Math.max(0, Math.round(Number(size.width) || 0))}x${Math.max(0, Math.round(Number(size.height) || 0))}`)
+          h('div', { style: { fontSize: '12px', lineHeight: '14px', fontWeight: '500', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, source.fileName || resource.name || 'source.png'),
+          h('div', { style: { fontSize: '10px', lineHeight: '12px', color: 'rgba(148,163,184,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, `${Math.max(0, Math.round(Number(size.width) || 0))}x${Math.max(0, Math.round(Number(size.height) || 0))}`)
         ]),
         h('button', {
           type: 'button',
@@ -30914,7 +30942,10 @@
     
     const sets = splitRightWorkspaceSetsForRender()
     const showRightWorkspaceMergeButton = sets.some((set) => normalizeSpineLayerOrder(set && set.parts || []).length > 0)
-    const sourceCards = sourceResourceList().slice().reverse().map((resource) => renderSourceResourceCard(resource)).filter(Boolean)
+    const sourceEntries = sourceResourceList().slice().reverse()
+      .map((resource) => ({ id: String(resource && resource.id || ''), node: renderSourceResourceCard(resource) }))
+      .filter((entry) => entry.node)
+    const sourceCards = sourceEntries.map((entry) => entry.node)
     
     const panelSignature = splitRightWorkspaceRenderSignature(sets, selected, selectedIds, layerListHeight)
     if (panel.__novaflowSpineSplitRightSignature === panelSignature && panel.firstChild) {
@@ -30941,8 +30972,7 @@
           boxSizing: 'border-box'
         }
       }, h('div', { style: { display: 'grid', alignContent: 'start', gap: SPLIT_RIGHT_PANEL_GAP, minHeight: 'max-content', paddingBottom: SPLIT_RIGHT_PANEL_INSET, boxSizing: 'border-box' } }, [
-        ...sourceCards,
-        ...sets.slice().reverse().map((set) => {
+        ...splitRightWorkspaceGroupedNodes(sourceEntries, sets, (set) => {
         const expanded = !!set.expanded
         const setParts = normalizeSpineLayerOrder(set.parts || [])
         return h('div', { style: { minHeight: '0', borderRadius: '0', border: '0', background: 'transparent', overflow: 'visible', display: 'grid', gap: expanded ? SPLIT_RIGHT_PANEL_EXPANDED_GAP : '0', padding: '0' } }, [
