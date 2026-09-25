@@ -24865,6 +24865,13 @@
       body.novaflow-ai-animation-section-layers[data-novaflow-ai-sequence-mode="editing"][data-novaflow-ai-sequence-active-tool="video-merge"] [data-novaflow-ai-bottom-workspace="1"] {
         display: none !important;
       }
+      /* No canvas bar sits above the merge stage: the top inset is 0 from the first frame, not
+         from the runtime pass that measures it ~150ms later (the viewport's dot background is
+         anchored to it and slid until then). */
+      body.novaflow-ai-animation-section-layers[data-novaflow-ai-sequence-mode="editing"][data-novaflow-ai-sequence-active-tool="video-merge"],
+      body.novaflow-ai-animation-section-layers[data-novaflow-ai-sequence-mode="editing"][data-novaflow-ai-sequence-active-tool="video-merge"] [data-novaflow-ai-main-workspace="1"] {
+        --novaflow-ai-main-stage-top: 0px !important;
+      }
       body.novaflow-ai-animation-section-layers[data-novaflow-ai-sequence-mode="editing"][data-novaflow-ai-sequence-active-tool="video-merge"] [data-novaflow-ai-main-stage="1"] > [data-novaflow-ai-zoom-controls="1"],
       body.novaflow-ai-animation-section-layers[data-novaflow-ai-sequence-mode="editing"][data-novaflow-ai-sequence-active-tool="video-merge"] [data-novaflow-ai-zoom-controls="1"]:not([data-novaflow-ai-video-merge-zoom-hud="1"]) {
         display: none !important;
@@ -33364,14 +33371,15 @@
       },
       {
         // The background dots: three bare 16 swatches, 6 apart, 37 above the
-        // dock - no plate behind them.
+        // dock - no plate behind them. `top` is the runtime's (37 above the dock, or 26
+        // above 视频合并's timeline, written as the stage changes): owned here it kept the
+        // dock position for a frame or more after the merge mounted, until this spec's
+        // next pass released it.
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-preview-bg-toggle="1"]',
-        style: (node) => {
-          const top = aiPreviewBgToggleDockTop(node);
-          const placed = top ? { top, bottom: "auto" } : {};
+        style: () => {
           return {
-            ...placed, padding: "0", gap: "6px", height: "16px", "min-height": "16px", width: "auto",
+            bottom: "auto", padding: "0", gap: "6px", height: "16px", "min-height": "16px", width: "auto",
             background: "transparent", "background-color": "transparent", border: "0", "border-radius": "0",
             "box-shadow": "none", "backdrop-filter": "none"
           };
@@ -57920,12 +57928,16 @@
       restoreAiAnimationStableRuntimeAttributes(node, stableRuntimeAttrs);
     });
     primeAiAnimationPostLayoutMarkers(activePost);
-    removeStylePropertiesIfPresent(document.body, [
-      "--novaflow-ai-preview-left",
-      "--novaflow-ai-preview-top",
-      "--novaflow-ai-preview-right",
-      "--novaflow-ai-preview-center-x"
-    ]);
+    // With 视频合并 mounted its shell reads --novaflow-ai-preview-right live; the real-geometry
+    // sync rewrites these a task later (same values), and the plate had jumped 10px in between.
+    if (!document.querySelector('[data-novaflow-ai-video-merge-workspace="1"]')) {
+      removeStylePropertiesIfPresent(document.body, [
+        "--novaflow-ai-preview-left",
+        "--novaflow-ai-preview-top",
+        "--novaflow-ai-preview-right",
+        "--novaflow-ai-preview-center-x"
+      ]);
+    }
     Array.from(document.querySelectorAll('[data-novaflow-ai-mode-body-item="1"], [data-novaflow-ai-post-body-item="1"], [data-novaflow-ai-native-heading="1"], [data-novaflow-ai-collapse-heading]')).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
       if (isAiSequenceStableChromeElement(node)) return;
@@ -58471,6 +58483,12 @@
         // The board HUD gives way to the merge HUD in this same task (and comes back on close).
         Array.from(document.querySelectorAll('[data-novaflow-ai-zoom-controls="1"]')).forEach((node) => {
           if (node instanceof HTMLElement && !isVideoMergeOwnedAutoFitControl(node)) styleAutoFitOnlyControl(node);
+        });
+        // The 底板 toggle moves against the merge plate before this frame paints, not a
+        // runtime pass later. Queued: the brand spec's observer runs after this one in the
+        // same checkpoint and until then still owns the toggle's dock position.
+        queueMicrotask(() => {
+          try { primeAiSequencePreviewEffectiveRectVars(document); } catch (_) {}
         });
       }
       for (const record of records) {
