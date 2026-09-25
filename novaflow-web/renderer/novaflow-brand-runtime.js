@@ -23434,8 +23434,11 @@
         justify-content: stretch !important;
         width: 100% !important;
         min-width: 0 !important;
+        height: 37px !important;
+        min-height: 37px !important;
         margin: 0 !important;
-        padding: ${SECONDARY_GROUP_INSET}px !important;
+        padding: 3px !important;
+        border: 1px solid #262626 !important;
         border-radius: ${SECONDARY_GROUP_RADIUS_PX} !important;
         background: ${SECONDARY_GROUP_BACKGROUND} !important;
         background-color: ${SECONDARY_GROUP_BACKGROUND} !important;
@@ -59418,6 +59421,9 @@
       ...Array.from(document.querySelectorAll('[data-novaflow-ai-zoom-controls="1"], button'))
         .filter((node) => {
           if (!(node instanceof HTMLElement) || !isVisible(node)) return false;
+          // 视频合并's own 自动适配 sits in its shell (a section): closest("div") is the
+          // whole viewport, and the inset would hit its cap and push the plate down.
+          if (node.closest('[data-novaflow-ai-video-merge-workspace="1"]')) return false;
           const text = normalizeText(node.textContent || "");
           return text.includes("\u81ea\u52a8\u9002\u914d") || text.includes("%");
         })
