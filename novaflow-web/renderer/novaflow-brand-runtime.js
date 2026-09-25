@@ -23931,6 +23931,13 @@
         align-items: flex-start !important;
         box-sizing: border-box !important;
       }
+      /* The prompt frame is an isolated stacking context; without a z-index the
+         history popover inside it painted under the reference tiles row that
+         follows it in the dock (多参视频). */
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-prompt-frame="1"] {
+        position: relative !important;
+        z-index: 41 !important;
+      }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-generation-progress="1"] {
         flex: 0 0 24px !important;
         height: 24px !important;
@@ -34511,7 +34518,7 @@
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-generation-progress="1"] > div:first-child > button',
-        style: { position: "absolute", right: "0", top: "0", width: "18px", height: "18px", "min-width": "18px", padding: "0", margin: "0", "line-height": "18px", "font-size": "12px", transform: "none" }
+        style: { position: "absolute", right: "0", top: "0", width: "18px", height: "18px", "min-width": "18px", padding: "0", margin: "0", transform: "none" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
@@ -34856,6 +34863,12 @@
           if (node.style.getPropertyValue("display") !== "none" && (rect.width > 18 || rect.height > 18)) return null;
           return { display: "none" };
         }
+      },
+      {
+        // 颜色校正 is not offered on the Web line: its 视频处理 row is hidden
+        // (the bundle always renders it; the user asked for the feature to go).
+        selector: '[data-nf-color-correction-open]',
+        style: { display: "none" }
       },
       {
         // 视频处理's rows: 颜色校正's label carried its own white; it takes the
@@ -61755,7 +61768,6 @@
       topRow.setAttribute("data-novaflow-ai-prompt-history-row", "1");
       // Above the 参考图 tiles (z 8, their × at 33): the popover is fixed but lives in this row's
       // stacking context, so the row itself has to sit on top.
-      setImportantStyles(topRow, { position: "relative", "z-index": "40" });
       setImportantStyles(topRow, {
         display: "flex",
         flex: "0 0 32px",
@@ -61837,7 +61849,6 @@
       topRow.setAttribute("data-novaflow-ai-prompt-history-row", "1");
       // Above the 参考图 tiles (z 8, their × at 33): the popover is fixed but lives in this row's
       // stacking context, so the row itself has to sit on top.
-      setImportantStyles(topRow, { position: "relative", "z-index": "40" });
       setImportantStyles(topRow, {
         display: "flex",
         flex: "0 0 26px",

@@ -3542,6 +3542,18 @@
         box-shadow: none !important;
         outline: 0 !important;
       }
+      /* 原图资源 cards answer the pointer like the layer rows do; the active one keeps its green. */
+      #${RIGHT_WORKSPACE_ID} [data-novaflow-source-resource-card="1"] {
+        transition: filter 120ms ease, background-color 120ms ease !important;
+      }
+      #${RIGHT_WORKSPACE_ID} [data-novaflow-source-resource-card="1"]:not([aria-disabled="true"]):hover,
+      #${RIGHT_WORKSPACE_ID} [data-novaflow-source-resource-card="1"]:not([aria-disabled="true"]):focus-visible {
+        filter: brightness(1.18) !important;
+        outline: 0 !important;
+      }
+      #${RIGHT_WORKSPACE_ID} [data-novaflow-source-resource-card="1"]:not([aria-disabled="true"]):active {
+        filter: brightness(0.92) !important;
+      }
       #${RIGHT_WORKSPACE_ID} [${SPLIT_SET_TOGGLE_ATTR}]:hover,
       #${RIGHT_WORKSPACE_ID} [${SPLIT_SET_TOGGLE_ATTR}]:focus-visible {
         background: ${SPLIT_PANEL_HOVER_BACKGROUND} !important;

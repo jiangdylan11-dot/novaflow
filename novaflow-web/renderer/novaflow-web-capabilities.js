@@ -498,6 +498,13 @@
   // percentage. Results are kept as blobs under web-video:// tokens, which is
   // what the tools pass back for previewing, saving and clearing.
   const videoOutputs = new Map();
+  // A finished clip also belongs in the 仓库, like a generated one.
+  async function saveToWarehouse(blob, name) {
+    const warehouse = root.NovaFlowWebWarehouse;
+    if (!warehouse || typeof warehouse.save !== 'function' || !blob) return;
+    try { await warehouse.save({ blob, name: String(name || 'video.mp4') }); }
+    catch (error) { console.warn('[NovaFlow web] 仓库保存失败', error); }
+  }
   // The preview registration in the next block reads results from here.
   runtime.videoOutputs = videoOutputs;
   let videoOutputSeq = 0;
@@ -878,6 +885,8 @@
       const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
       const out = { ok: true, format: 'webm', mimeType: 'video/webm', fps, width, height, frames: names.length, bytes: bytes.length };
       if (options.returnBase64 !== false) out.base64 = base64FromBytes(bytes);
+      const outPathName = String(options.outPath || '').split(/[\\/]/).pop() || '';
+      await saveToWarehouse(new Blob([bytes.slice()], { type: 'video/webm' }), /\.webm$/i.test(outPathName) ? outPathName : 'cutout_' + Date.now() + '.webm');
       videoToolProgress.emit({ jobId, progress01: 1 });
       return out;
     } catch (error) {
@@ -893,16 +902,9 @@
     }
   };
 
-  // ---- 视频处理 → 颜色校正 --------------------------------------------------
-  //
-  // The desktop runs ffmpeg for this: the mean colour of the first frame (or of
-  // the uploaded 色彩校正参照) is the target, the mean of the last frame is where
-  // the clip drifted to, and a per-channel offset scaled by how far it drifted
-  // is ramped in over the last third of the clip so the tail lands back on the
-  // head's colour. The same here: the means come out of scale=1:1 rawvideo
-  // passes, the ramp is a lutrgb copy faded in over the original.
-  const fixColorProgress = channel();
-  api.onAiSeqFixHeadTailColorProgress = (cb) => fixColorProgress.subscribe(cb);
+  // 颜色校正 is not offered on the Web line (removed 2026-09-25 at the user's request;
+  // the brand runtime hides its 视频处理 entry). The helpers below are shared by
+  // the video tools that remain.
   // Always a fresh copy: ffmpeg.wasm transfers the buffer it is handed to its
   // worker, which would leave the caller's frames, masks or clip detached.
   const bytesOf = async (value) => value instanceof Blob ? new Uint8Array(await value.arrayBuffer())
@@ -912,88 +914,6 @@
   const durationFromLog = (log) => {
     const m = String(log || '').match(/Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/);
     return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) : 0;
-  };
-  api.aiSeqFixHeadTailColor = async (payload) => {
-    const options = payload || {};
-    const video = options.videoA || options.video || {};
-    const source = video.bytes || video.data;
-    if (!source) return fail('颜色校正缺少视频内容');
-    const ffmpeg = await loadFfmpeg();
-    const seq = ++videoOutputSeq;
-    const jobId = 'fix-color-' + seq;
-    const ext = (String(video.fileName || '').split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
-    const inName = 'fix_' + seq + '_in.' + ext;
-    const outName = 'fix_' + seq + '_out.mp4';
-    const label = '正在校正首尾颜色…';
-    const relay = videoToolProgress.subscribe((event) => {
-      if (event && event.jobId === jobId) fixColorProgress.emit({ jobId: options.jobId, stage: 'running', progress01: event.progress01 });
-    });
-    ffmpegJob = { jobId, last: -1, log: '', label };
-    busy.begin(jobId, '正在读取视频…');
-    const scratch = [inName, outName];
-    const mean = async (inputArgs, file) => {
-      scratch.push(file);
-      const code = await ffmpeg.exec([...inputArgs, '-frames:v', '1', '-vf', 'scale=1:1:flags=area,format=rgb24', '-f', 'rawvideo', '-y', file]);
-      if (code !== 0) return null;
-      const rgb = await ffmpeg.readFile(file).catch(() => null);
-      return rgb && rgb.length >= 3 ? [rgb[0], rgb[1], rgb[2]] : null;
-    };
-    try {
-      await ffmpeg.writeFile(inName, await bytesOf(source));
-      await ffmpeg.exec(['-i', inName]).catch(() => {});
-      const probeLog = ffmpegJob.log;
-      ffmpegJob.log = '';
-      const durationSec = Number(options.durationSec) || durationFromLog(probeLog);
-      const head = await mean(['-i', inName], 'fix_' + seq + '_head.rgb');
-      let tail = await mean(['-sseof', '-0.1', '-i', inName], 'fix_' + seq + '_tail.rgb');
-      if (!tail && durationSec > 0.1) tail = await mean(['-ss', String(Math.max(0, durationSec - 0.05)), '-i', inName], 'fix_' + seq + '_tail2.rgb');
-      if (!head || !tail) throw new Error('无法读取首尾帧');
-      let target = head;
-      const reference = options.colorRefImage && (options.colorRefImage.bytes || options.colorRefImage.data);
-      if (reference) {
-        const refName = 'fix_' + seq + '_ref.png';
-        scratch.push(refName);
-        await ffmpeg.writeFile(refName, await bytesOf(reference));
-        target = (await mean(['-i', refName], 'fix_' + seq + '_refmean.rgb')) || head;
-      }
-      const diff = target.map((value, index) => value - tail[index]);
-      const magnitude = diff.reduce((sum, value) => sum + Math.abs(value), 0) / 3;
-      const k = magnitude > 24 ? 1.3 : magnitude > 12 ? 1.2 : 1.1;
-      const offset = diff.map((value) => Math.round(value * k));
-      const start = Math.max(0, durationSec * (2 / 3));
-      const fade = Math.max(0.05, durationSec - start);
-      const audio = audioModeFromLog(probeLog);
-      const lut = "lutrgb=r='clip(val+(" + offset[0] + "),0,255)':g='clip(val+(" + offset[1] + "),0,255)':b='clip(val+(" + offset[2] + "),0,255)'";
-      const graph = '[0:v]split[base][copy];[copy]' + lut + ',format=yuva420p,fade=t=in:st=' + start.toFixed(3) + ':d=' + fade.toFixed(3) + ':alpha=1[tint];[base][tint]overlay=format=auto,format=yuv420p[v]';
-      const args = ['-i', inName, '-filter_complex', graph, '-map', '[v]'];
-      if (audio === 'copy') args.push('-map', '0:a?', '-c:a', 'copy');
-      else if (audio === 'encode') args.push('-map', '0:a?', '-c:a', 'aac', '-b:a', '128k');
-      else args.push('-an');
-      args.push('-c:v', 'libx264', '-crf', '18', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', '-y', outName);
-      busy.update(jobId, label, 0);
-      const code = await ffmpeg.exec(args);
-      if (code !== 0) {
-        const tail2 = ffmpegJob.log.split('\n').filter((line) => /error|invalid|failed|unsupported|not found/i.test(line)).slice(-3).join('；');
-        throw new Error('ffmpeg 退出码 ' + code + (tail2 ? '：' + tail2.slice(0, 240) : ''));
-      }
-      const data = await ffmpeg.readFile(outName);
-      const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
-      fixColorProgress.emit({ jobId: options.jobId, stage: 'end', progress01: 1 });
-      return { ok: true, fileName: String(options.outputFileName || 'color_fixed.mp4'), bytes, adjusted: magnitude >= 0.5, head, tail, target, offset, k, durationSec };
-    } catch (error) {
-      const message = String((error && error.message) || error);
-      fixColorProgress.emit({ jobId: options.jobId, stage: 'error', error: message });
-      if (/RuntimeError|memory access|unreachable|abort/i.test(message)) {
-        ffmpegPromise = null;
-        try { if (typeof ffmpeg.terminate === 'function') ffmpeg.terminate(); } catch (_) { /* already gone */ }
-      }
-      return fail('颜色校正失败：' + message);
-    } finally {
-      relay();
-      busy.end(jobId);
-      if (ffmpegPromise) for (const name of scratch) await ffmpeg.deleteFile(name).catch(() => {});
-      ffmpegJob = null;
-    }
   };
 
   // ---- 多参视频 → 参考视频/声音探测 --------------------------------------------
@@ -1184,8 +1104,9 @@
     const relay = videoToolProgress.subscribe((event) => { if (event && event.jobId === jobId) report('render', event.progress01, '合成中 ' + Math.round(event.progress01 * 100) + '%'); });
     busy.begin(jobId, label);
     try {
-      // 上层在前: the manifest lists the top layer first, so the overlays go on from the bottom up.
-      const stack = layers.slice().reverse();
+      // The manifest lists state.layers bottom first - the preview draws them in this order and
+      // the workspace list only displays them reversed under 上层在前 - so overlays go on in order.
+      const stack = layers.slice();
       const duration = Math.max(...stack.map((layer) => Number(layer.source.probe.durationSec) || 0));
       const args = [];
       let inputs = 0;
@@ -1201,7 +1122,7 @@
           const maskName = tag + 'mask' + i + '.png';
           await ffmpeg.writeFile(maskName, layer.mask.bytes.slice());
           scratch.push(maskName);
-          args.push('-loop', '1', '-i', maskName);
+          args.push('-loop', '1', '-framerate', String(fps), '-i', maskName);
           layer.maskInput = inputs++;
         }
       }
@@ -1216,13 +1137,23 @@
         const cy = Number(layer.transform && layer.transform.centerY);
         const x = Math.round((Number.isFinite(cx) ? cx : width / 2) - lw / 2);
         const y = Math.round((Number.isFinite(cy) ? cy : height / 2) - lh / 2);
-        filters.push('[' + layer.videoInput + ':v]scale=' + lw + ':' + lh + ':flags=lanczos,setsar=1,format=rgba[l' + i + ']');
+        const dw = Math.max(2, Math.round(probe.displayWidth)), dh = Math.max(2, Math.round(probe.displayHeight));
+        filters.push('[' + layer.videoInput + ':v]setpts=PTS-STARTPTS,scale=' + dw + ':' + dh + ':flags=lanczos,setsar=1,fps=' + fps + ',format=rgba[l' + i + ']');
         let src = 'l' + i;
         if (layer.mask) {
-          filters.push('[' + layer.maskInput + ':v]scale=' + lw + ':' + lh + ':flags=lanczos,format=rgba,alphaextract[a' + i + ']');
-          filters.push('[l' + i + '][a' + i + ']alphamerge[lm' + i + ']');
+          // The desktop's graph: the mask is gray coverage in the layer's display space, multiplied
+          // into the source's own alpha before the layer is scaled to its transform.
+          filters.push('[l' + i + ']split=2[lr' + i + '][la' + i + ']');
+          filters.push('[la' + i + ']alphaextract[sa' + i + ']');
+          // The desktop canonicalises the mask to its alpha channel before ffmpeg reads it as gray;
+          // here the PNG is white with alpha = coverage, so the coverage is its alpha.
+          filters.push('[' + layer.maskInput + ':v]scale=' + dw + ':' + dh + ':flags=lanczos,format=rgba,alphaextract[cov' + i + ']');
+          filters.push('[sa' + i + '][cov' + i + ']blend=all_mode=multiply:shortest=1[ma' + i + ']');
+          filters.push('[lr' + i + '][ma' + i + ']alphamerge=shortest=1,format=rgba[lm' + i + ']');
           src = 'lm' + i;
         }
+        filters.push('[' + src + ']scale=' + lw + ':' + lh + ':flags=lanczos,format=rgba[ls' + i + ']');
+        src = 'ls' + i;
         filters.push('[' + last + '][' + src + ']overlay=x=' + x + ':y=' + y + ':format=auto:eof_action=pass[o' + i + ']');
         last = 'o' + i;
       });
@@ -1258,6 +1189,7 @@
       const token = filePath || ('web-video://' + seq + '/' + fileName);
       videoOutputs.set(token, { tool: 'video-merge', token, blob, fileName, url: '' });
       for (const entry of cache.values()) if (entry && entry.path === token) { entry.blob = blob; entry.bytes = blob.size; }
+      await saveToWarehouse(blob, fileName);
       report('done', 1, '视频合成完成');
       return { ok: true, jobId, filePath: token, path: token, blob, url: URL.createObjectURL(blob), bytes: blob.size, format, mimeType, width, height, fps };
     } catch (error) {
@@ -1919,7 +1851,6 @@
   };
 
 
-  // aiSeqFixHeadTailColor (颜色校正) is implemented in the first block, on ffmpeg.wasm.
 })(typeof globalThis !== 'undefined' ? globalThis : this);
 
 // ---------------------------------------------------------------------------
