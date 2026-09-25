@@ -7,6 +7,7 @@ input[type=number]{width:49px;min-width:49px;height:28px;padding:0 6px;text-alig
 input[type=range]{width:100%;min-width:0;height:3px;padding:0;margin:0;appearance:none;border:0;border-radius:0;background:linear-gradient(to right,var(--accent) var(--fill,0%),#383838 var(--fill,0%));cursor:pointer;align-self:center}
 input[type=range]::-webkit-slider-thumb{appearance:none;width:12px;height:12px;background:var(--accent);border:0;border-radius:50%}
 .animation-timing{--accent:#e9c55c}
+#range-duration,#range-delay{--accent:#59a8ed}
 input[type=checkbox]{accent-color:var(--accent);margin:0;width:12px;height:12px}input:disabled{opacity:.35}
 .param,.axiscontrol{display:grid;grid-template-columns:minmax(0,1fr) 49px;grid-template-rows:auto 28px;column-gap:6px;row-gap:2px;margin:0 0 8px;padding:0;border:0}
 .paramhead,.numberwrap,.axisrow,.axisrow>.row{display:contents}

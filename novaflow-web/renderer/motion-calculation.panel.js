@@ -6,7 +6,7 @@
   floating.style.cssText='position:fixed;z-index:60;visibility:hidden';document.body.append(floating);
   const curveRoot=floating.attachShadow({mode:'open'});
   const interval=document.createElement('div');interval.dataset.novaflowMotionInterval='1';interval.setAttribute('role','img');
-  interval.style.cssText='position:fixed;z-index:61;height:6px;border-radius:2px;background:#68c9a4;pointer-events:none;display:none';document.body.append(interval);
+  interval.style.cssText='position:fixed;z-index:61;height:3px;border-radius:2px;background:#59a8ed;pointer-events:none;display:none';document.body.append(interval);
   let bonePlayback=false;
   const playbackMode=document.createElement('div');playbackMode.dataset.novaflowMotionPlaybackMode='1';playbackMode.setAttribute('role','button');playbackMode.tabIndex=0;
   playbackMode.style.cssText='display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;height:28px;padding:0 8px;border:1px solid #343434;border-radius:5px;background:#272727;color:#d4d4d4;font:11px "Microsoft YaHei",sans-serif;cursor:pointer;user-select:none';
@@ -15,7 +15,7 @@
   playbackMode.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();playbackMode.click();}};
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20260925-3',document.baseURI).href;
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20260925-5',document.baseURI).href;
   style.onload=()=>{stylesReady=true;positionCurve();floating.style.visibility='visible';};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画计算编辑器');
   body.innerHTML=`
