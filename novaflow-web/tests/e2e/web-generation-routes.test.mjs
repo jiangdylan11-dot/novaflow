@@ -137,6 +137,11 @@ assert.equal(latentMapped.__args[5].inpaintMode, 'completion');
 const engineAsked = JSON.parse(JSON.stringify(latentOptions));
 engineAsked.__args[5].inpaintEngine = 'qwen-2.1';
 assert.equal(withReferences(engineAsked, ['task-image.png', 'task-mask.png'], latentRefs.slice(0, 2), 'defaultQwenInpaintWorkflow').__args[5].inpaintEngine, undefined);
+// 局部编辑 keeps its undug crop (renamed to the task's copy); one the task never uploaded is dropped.
+const editOptions = JSON.parse(JSON.stringify(latentOptions));
+editOptions.__args[5].inpaintMode = 'edit';
+assert.equal(withReferences(editOptions, ['task-image.png', 'task-mask.png', 'task-latent.png'], latentRefs, 'defaultQwenInpaintWorkflow').__args[5].latentInputName, 'task-latent.png');
+assert.equal(withReferences(editOptions, ['task-image.png', 'task-mask.png'], latentRefs.slice(0, 2), 'defaultQwenInpaintWorkflow').__args[5].latentInputName, undefined);
 
 const host = await createWorkflowHost({ rendererDir: fileURLToPath(new URL('../../worker-renderer/', import.meta.url)), objectInfo: {
   RMBG: { input: { required: { image: ['IMAGE'], model: [['RMBG-2.0']], sensitivity: ['FLOAT', { default: 1 }] } } }

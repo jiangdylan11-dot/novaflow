@@ -94,11 +94,15 @@ export function withReferences(parameters, filenames, references = [], method = 
     }
     // Smart completion stays on 2509 + eigen-banana until 2.1 has its own completion LoRA. The page
     // never asks for 2.1, and a task cannot either: the engine choice and the 2.1-only undug crop
-    // are dropped here, so a node that carries 2.1 still builds the 2509 graph.
+    // are dropped here, so a node that carries 2.1 still builds the 2509 graph. 局部编辑 always runs
+    // on 2.1 and needs that undug crop to see what it is changing, so edit keeps it when the task
+    // uploaded it.
     const inpaintOptions = method === 'defaultQwenInpaintWorkflow' ? args[5] : null;
     if (inpaintOptions && typeof inpaintOptions === 'object') {
       const { inpaintEngine, latentInputName, ...rest } = inpaintOptions;
-      if (inpaintEngine !== undefined || latentInputName !== undefined) args[5] = rest;
+      const edit = rest.inpaintMode === 'edit' || !!(rest.route && rest.route.mode === 'edit');
+      const keepLatent = edit && references.some((ref, index) => ref.name === latentInputName && filenames[index]);
+      if (inpaintEngine !== undefined || latentInputName !== undefined) args[5] = keepLatent ? { ...rest, latentInputName } : rest;
     }
     return { ...parameters, __args: rename(args) };
   }
