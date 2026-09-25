@@ -59116,8 +59116,9 @@
       if (attempt === 0) AI_ANIMATION_TOOL_OPENING = { tool: spec.tools[0], until: Date.now() + 1500 };
       nfSetAttrIfChanged(postSection, "data-novaflow-ai-active-tool", spec.key);
       const entry = document.querySelector(spec.entry);
-      if (entry instanceof HTMLElement && entry.getAttribute("aria-disabled") !== "true" && isVisible(entry.parentElement || entry)) { entry.click(); return; }
-      if (entry instanceof HTMLElement && entry.getAttribute("aria-disabled") !== "true" && attempt >= 3) { entry.click(); return; }
+      // The bundle's entry is hidden by design (the row stands in for it): click it as soon
+      // as it exists and is enabled, without waiting for it to become visible.
+      if (entry instanceof HTMLElement && entry.getAttribute("aria-disabled") !== "true") { entry.click(); return; }
       if (attempt < 14) window.setTimeout(() => clickEntry(attempt + 1), 60);
     };
     if (expanded && spec.tools.includes(activeTool)) {
