@@ -20,7 +20,7 @@ input[type=checkbox]{accent-color:var(--accent);margin:0;width:12px;height:12px}
 .help{display:none}.global-timing>.help,#effectTiming>.help{display:block;color:#777;font-size:10px;margin:4px 0 0}
 .segmented{display:flex;gap:2px}.segmented button{flex:1;min-width:0;padding:5px 1px;font-size:11px;background:transparent;color:#aaa;border-color:transparent;border-radius:5px;white-space:nowrap}
 .segmented button.selected{background:#193f35;color:#b7e5d4;border-color:#285b4b}#modes{margin-bottom:10px}
-.presets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;margin-bottom:10px}.presets button{font-size:10px;padding:4px 1px;border:0;min-height:30px;line-height:1.35}
+.presets{margin-bottom:10px}.preset-select{display:grid;gap:4px;color:#bdbdbd}.preset-select select{width:100%;height:30px;padding:0 7px}
 .controlsection{padding:0;margin:0;border:0}.controlsection>h2{display:none}
 #bounceHeightSection{padding-bottom:2px}#mainControls{margin-top:0}#effectTiming{margin-top:10px;padding-top:10px;border-top:1px solid #2c2c2c}
 .line{display:flex;justify-content:space-between;align-items:center;margin:8px 0;color:#bdbdbd}.line select{min-width:86px;padding:4px;height:28px}
@@ -30,3 +30,7 @@ input[type=checkbox]{accent-color:var(--accent);margin:0;width:12px;height:12px}
 #status{display:block;font-size:10px;color:#999;margin:8px 0;line-height:1.5;overflow-wrap:anywhere}
 summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}summary::-webkit-details-marker{display:none}summary:before{content:'›';margin-right:6px}details[open]>summary:before{content:'⌄'}summary>span{display:none}
 .curvepanel{border-top:1px solid #2c2c2c;margin-top:10px}.curvebar>.row{display:flex;align-items:center;justify-content:space-between;gap:4px;margin:6px 0}.curvebar button{font-size:10px;min-height:24px;padding:3px}.dim{color:#888;font-size:10px}.curvewrap{height:145px}canvas{width:100%;height:100%;display:block;touch-action:none}.curvefooter{font-size:10px;color:#888}.curvefooter>.row{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-top:4px}.curvefooter select{height:24px;max-width:84px}.curvefooter input{height:24px;width:49px}.curvefooter label{display:flex;align-items:center;gap:3px}
+.floating-curve{margin:0;border:1px solid #363636;border-radius:6px;background:#1c1c1c;padding:0 12px 8px}
+.floating-curve:not([open]){padding-bottom:0}.floating-curve summary{padding:8px 0;color:#d4d4d4}.floating-curve summary>span{display:inline;margin-left:12px;color:#888;font-size:10px}
+.floating-curve .curvebar{display:flex;align-items:center;justify-content:space-between;gap:12px}.floating-curve .curvebar>.row{gap:12px;margin:0}.floating-curve .segmented{min-width:180px;max-width:320px;flex:1}.floating-curve .curvewrap{height:var(--curve-height,145px)}
+.floating-curve .curvefooter{display:flex;justify-content:space-between;align-items:center;gap:8px}.floating-curve .curvefooter>.row{margin:0;gap:10px}

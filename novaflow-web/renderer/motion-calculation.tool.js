@@ -3,13 +3,13 @@
   'use strict';
   const A=window.NovaFlowMotionAnimation,E=window.NovaFlowMotionEngine;
   const records=new WeakMap();
-  let panel=null,view=null,session=null,context=null;
+  let panel=null,view=null,session=null,context=null,activeMode='bounce';
   const copy=x=>JSON.parse(JSON.stringify(x));
   // Registered before React mounts its global editing shortcuts. A shadow-root
   // input must not look like an empty canvas target to the rig editor's undo.
   window.addEventListener('keydown',event=>{
     const key=event.key.toLowerCase();
-    if(!(event.ctrlKey||event.metaKey)||!['z','y'].includes(key)||!panel||!event.composedPath().includes(panel))return;
+    if(!(event.ctrlKey||event.metaKey)||!['z','y'].includes(key)||!panel||!(event.composedPath().includes(panel)||view?.ownsEvent(event)))return;
     event.stopImmediatePropagation();
     const target=event.composedPath()[0];
     if(target?.matches?.('input:not([type=range]),textarea,select'))return;
@@ -86,7 +86,7 @@
   }
   function open(){
     close();context=getContext();
-    const body=panel.querySelector('.nf-motion-body');body.replaceChildren();
+    const body=panel.querySelector(`[data-motion-mode="${activeMode}"] .nf-motion-body`);body.replaceChildren();
     if(!context?.project.animations[context.activeAnimationName]||!context.selectedBoneName){body.textContent='请先选择动画和一个骨骼。';return;}
     session=createSession(context);const s=session;
     const host=document.createElement('div');body.append(host);const shadow=host.attachShadow({mode:'open'});
@@ -105,6 +105,7 @@
       panel.dataset.motionState='preview';panel.dataset.motionInterval=`${result.start},${result.end}`;
     };
     view=window.NovaFlowMotionPanel.mount(shadow,{
+      mode:activeMode,
       timing,initial:()=>s.config&&copy(s.config),label:()=>`当前骨骼：${s.bone} · 动画：${s.animation}`,
       time:()=>Number(window.__NovaFlowSkeletonTimelineOfficialProxy?.timeSec ?? context?.currentTimeSec)||0,
       seek:time=>{const p=getContext();if(sameScope(p,s)){p.onRibbonEventPreviewFocus?.(time);requestAnimationFrame(()=>{if(session===s)seek(time);});}},
@@ -123,11 +124,19 @@
     context=getContext();
     if(!ribbon||!context){if(panel){close();panel.remove();panel=null;}return;}
     if(!panel?.isConnected){
-      close();panel=document.createElement('div');panel.className='nf-panel';panel.dataset.panelId='bone-motion';panel.dataset.open='0';
-      panel.style.cssText='width:100%;border-bottom:1px solid #272727;padding:3px 0;font-size:12px';
-      panel.innerHTML='<button type="button" class="nf-panel-header" aria-expanded="false" style="width:100%;height:46px;padding:0 7px;display:flex;align-items:center;justify-content:space-between;text-align:left;background:transparent;color:#d4d4d4;border:0;font:inherit;cursor:pointer"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:5px" aria-hidden="true"></i>动画计算</span><span aria-hidden="true">⌄</span></button><div class="nf-motion-body" hidden style="padding:10px"></div>';
+      close();panel=document.createElement('div');panel.dataset.panelId='bone-motion';panel.dataset.open='0';
+      panel.style.cssText='width:100%;font-size:12px';
+      panel.innerHTML=Object.entries({bounce:'弹跳计算',expand:'扩张计算',shuttle:'往返计算',opacity:'透明度计算'}).map(([mode,label])=>`<section class="nf-panel" data-motion-mode="${mode}" style="width:100%;border-bottom:1px solid #272727;padding:3px 0"><button type="button" class="nf-panel-header" aria-expanded="false" style="width:100%;height:46px;padding:0 7px;display:flex;align-items:center;justify-content:space-between;text-align:left;background:transparent;color:#d4d4d4;border:0;font:inherit;cursor:pointer"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:5px" aria-hidden="true"></i>${label}</span><span aria-hidden="true">›</span></button><div class="nf-motion-body" hidden style="padding:10px"></div></section>`).join('');
       ribbon.after(panel);
-      panel.querySelector('button').onclick=()=>{const opened=panel.dataset.open==='1';panel.dataset.open=opened?'0':'1';panel.querySelector('button').setAttribute('aria-expanded',String(!opened));panel.querySelector('.nf-motion-body').hidden=opened;if(opened)close();else open();};
+      panel.querySelectorAll('[data-motion-mode]').forEach(section=>section.querySelector('button').onclick=()=>{
+        const next=section.dataset.motionMode,wasOpen=panel.dataset.open==='1',collapse=wasOpen&&next===activeMode;
+        const previous=panel.querySelector(`[data-motion-mode="${activeMode}"] .nf-motion-body`);
+        activeMode=next;panel.dataset.open=collapse?'0':'1';
+        panel.querySelectorAll('[data-motion-mode]').forEach(item=>{const show=!collapse&&item===section;item.querySelector('.nf-motion-body').hidden=!show;item.querySelector('button').setAttribute('aria-expanded',String(show));item.querySelector('button>span:last-child').textContent=show?'⌄':'›';});
+        if(collapse){close();previous.replaceChildren();}
+        else if(wasOpen&&view){section.querySelector('.nf-motion-body').append(...previous.childNodes);view.selectMode(next);}
+        else open();
+      });
     }
     if(panel.dataset.open==='1'&&(!session||!sameScope(context,session)))open();
   }

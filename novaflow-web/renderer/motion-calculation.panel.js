@@ -2,10 +2,36 @@
 (() => {
   'use strict';
   window.NovaFlowMotionPanel={mount(host,bridge){
-  const E=window.NovaFlowMotionEngine,$=id=>host.getElementById(id);
+  const floating=document.createElement('div');floating.dataset.novaflowMotionCurve='1';
+  floating.style.cssText='position:fixed;z-index:60;display:none';document.body.append(floating);
+  const curveRoot=floating.attachShadow({mode:'open'});
+  const E=window.NovaFlowMotionEngine,$=id=>host.getElementById(id)||curveRoot.getElementById(id);
   const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css',document.baseURI).href;host.append(style);
   const body=document.createElement('div');body.innerHTML="\n    <p class=\"help\" id=\"selection\"></p>\n    <div id=\"globalTiming\" class=\"global-timing\"></div>\n    <nav id=\"modes\" class=\"segmented\"><button data-mode=\"bounce\" class=\"selected\">弹跳</button><button data-mode=\"expand\">扩张</button><button data-mode=\"shuttle\">往返</button><button data-mode=\"opacity\">透明度</button></nav>\n    <section id=\"presetSection\" class=\"controlsection\"><h2>动作预设</h2><div id=\"presets\" class=\"presets\"></div></section>\n    <div id=\"bounceHeightSection\"><div id=\"bounceHeightControls\"></div><div id=\"impactControl\"></div><p id=\"groundRuleHint\" class=\"help\"></p></div>\n    <section id=\"opacityDetails\" class=\"controlsection\" hidden><h2>透明变化 <span id=\"opacitySummary\">100% → 100%</span></h2><div id=\"opacityPresets\" class=\"presets\"></div><div id=\"opacityControls\"></div><p class=\"help\">默认实心，调整后直接与其他动作叠加。</p></section>\n    <section id=\"mainControls\" class=\"controlsection main-controls\"><div id=\"primaryAxes\"></div><div id=\"params\"></div><div id=\"advancedParams\"></div><div id=\"scaleOptions\"><label class=\"check\"><input id=\"link\" type=\"checkbox\">缩放联动</label><p id=\"linkHelp\" class=\"help\"></p><div id=\"anchorSection\" class=\"anchor-picker\"><div>缩放中心 <span id=\"anchorName\"></span></div><div id=\"anchorGrid\" class=\"anchor-grid\" role=\"group\" aria-label=\"缩放中心\"></div></div></div><p id=\"modeHelp\" class=\"help\"></p></section>\n    <div id=\"effectTiming\"></div>\n    <details id=\"curveDetails\" class=\"curvepanel\"><summary>曲线微调 <span>位移 · 缩放 · 透明度</span></summary><div class=\"curvebar\"><div id=\"curveTabs\" class=\"segmented\"></div><div class=\"row\"><span id=\"curveState\" class=\"dim\">计算曲线</span><button id=\"resetCurve\">恢复本通道</button></div></div><div class=\"curvewrap\"><canvas id=\"curve\" aria-label=\"可编辑通道曲线，拖动圆点上下调整数值\"></canvas></div><div class=\"curvefooter\"><span>拖点调整 · 双击点还原</span><div class=\"row\"><label>控制点 <select id=\"pointSelect\" aria-label=\"曲线控制点\"></select></label><label>值 <input id=\"pointValue\" type=\"number\" step=\".01\" aria-label=\"所选控制点数值\"></label><span id=\"curveUnit\">px</span></div></div></details><p id=\"status\" role=\"status\" class=\"help\"></p><div class=\"save-action\"><button id=\"save\" class=\"primary\">保存动画</button><button id=\"resetAll\">恢复初始值</button></div>\n  ";host.append(body);
+  curveRoot.append(style.cloneNode(true),$('curveDetails'));
+  $('modes').hidden=true;
+  $('curveDetails').classList.add('floating-curve');$('curveDetails').open=true;
+  function positionCurve(){
+    const bar=document.querySelector('[data-novaflow-skeleton-bottom-playbar="1"]'),r=bar?.getBoundingClientRect();
+    if(!r||r.width<1||!host.host.isConnected){floating.style.display='none';return;}
+    floating.style.display='block';floating.style.left=`${r.left}px`;floating.style.width=`${r.width}px`;
+    floating.style.bottom=`${Math.max(0,innerHeight-r.top)+8}px`;
+    floating.style.setProperty('--curve-height',`${Math.max(70,Math.min(145,r.top-155))}px`);
+  }
   const names = { bounce: '弹跳计算', expand: '扩张计算', shuttle: '往返计算', opacity: '透明度计算' };
+  const presetChoices={};
+  function renderPresetSelect(target,items,apply){
+    if(!items.length){target.replaceChildren();return;}
+    const row=document.createElement('label');row.className='preset-select';
+    const label=document.createElement('span');label.textContent='动作预设';
+    const select=document.createElement('select');select.setAttribute('aria-label',(target.id==='opacityPresets'?names.opacity:names[mode])+'预设');
+    const blank=document.createElement('option');blank.value='';blank.textContent='选择预设';select.append(blank);
+    items.forEach(([name],i)=>{const option=document.createElement('option');option.value=i;option.textContent=name;select.append(option);});
+    const key=target.id==='opacityPresets'?'opacity':mode;
+    select.value=presetChoices[key]??'';
+    select.onchange=()=>{if(select.value!==''){presetChoices[key]=select.value;apply(items[Number(select.value)]);}};
+    row.append(label,select);target.replaceChildren(row);
+  }
   const labels = { x: '位移 X', y: '位移 Y', sx: '缩放 X', sy: '缩放 Y', alpha: '透明度' };
   const anchorNames = { 'top-left': '左上', top: '上方', 'top-right': '右上', left: '左侧', center: '中心', right: '右侧', 'bottom-left': '左下', bottom: '底部', 'bottom-right': '右下' };
   const channelEnabled = () => channel === 'alpha' ? p.opacity.on : p.enabled && p.axes[channel].on;
@@ -166,14 +192,13 @@
   function renderOpacity() {
     const o = p.opacity;
     $('opacitySummary').textContent = o.on ? (o.behavior === 'pulse' ? '循环变化' : `${fmt(o.from * 100)}% → ${fmt(o.to * 100)}%`) : '未启用';
-    $('opacityPresets').replaceChildren(...[
+    renderPresetSelect($('opacityPresets'),[
       ['透明到实心', { behavior: 'once', from: 0, to: 1, easing: 1, hold: 0 }],
       ['实心到透明', { behavior: 'once', from: 1, to: 0, easing: 1, hold: 0 }],
       ['呼吸闪烁', { behavior: 'pulse', from: .15, to: 1, cycles: 3, phase: 0, easing: 1, hold: .08 }]
-    ].map(([name, values]) => {
-      const b = document.createElement('button'); b.textContent = name;
-      b.onclick = () => { Object.assign(o, values, { on: true, begin: 0, finish: 1 }); p.corrections.alpha.fill(0); channel = 'alpha'; point = 0; curveBounds = null; syncEnabled(); renderOpacity(); renderTabs(); syncPoint(); restart(true); status(`已启用「${name}」，动作参数保留；可在透明度曲线上继续调节。`); }; return b;
-    }));
+    ],([name, values]) => {
+      Object.assign(o, values, { on: true, begin: 0, finish: 1 }); p.corrections.alpha.fill(0); channel = 'alpha'; point = 0; curveBounds = null; syncEnabled(); renderOpacity(); renderTabs(); syncPoint(); restart(true); status(`已应用「${name}」，动作参数保留；可在透明度曲线上继续调节。`);
+    });
     const selector = document.createElement('label'); selector.className = 'line';
     selector.innerHTML = '<span>变化方式</span><select aria-label="透明变化方式"><option value="once">单次渐变</option><option value="pulse">循环往返</option></select>';
     const select = selector.querySelector('select'); select.value = o.behavior; select.disabled = !o.on;
@@ -224,11 +249,9 @@
     $('advancedParams').replaceChildren(...modeKeys[mode].filter(k => k !== 'duration' && !commonKeys[mode].includes(k)).map(makeParam));
     $('primaryAxes').replaceChildren(...primaryChannels[mode].map(makeAxis));
     $('presetSection').hidden = mode === 'opacity'; $('opacityDetails').hidden = mode !== 'opacity'; $('scaleOptions').hidden = mode !== 'expand';
-    $('presets').replaceChildren(...presetSets[mode].map(([name, vals, axes]) => {
-      const b = document.createElement('button'); b.textContent = name;
-      b.onclick = () => { const duration = p.duration, delay = p.delay, opacity = p.opacity, alpha = p.corrections.alpha, groundY = p.groundY, ground = p.ground; p = sessions[mode] = E.freshStack()[mode]; p.duration = duration; p.delay = delay; p.opacity = opacity; p.corrections.alpha = alpha; p.enabled = true; if (mode === 'bounce') { p.groundY = groundY || 0; p.ground = ground !== false; } Object.assign(p, vals); for (const k of E.ownedChannels[mode]) p.axes[k].amp = axes[k]; renderPanel(); restart(true); status(`已应用「${name}」，其他分项调整保留并继续叠加。`); };
-      return b;
-    }));
+    renderPresetSelect($('presets'),presetSets[mode],([name, vals, axes]) => {
+      const duration = p.duration, delay = p.delay, opacity = p.opacity, alpha = p.corrections.alpha, groundY = p.groundY, ground = p.ground; p = sessions[mode] = E.freshStack()[mode]; p.duration = duration; p.delay = delay; p.opacity = opacity; p.corrections.alpha = alpha; p.enabled = true; if (mode === 'bounce') { p.groundY = groundY || 0; p.ground = ground !== false; } Object.assign(p, vals); for (const k of E.ownedChannels[mode]) p.axes[k].amp = axes[k]; renderPanel(); restart(true); status(`已应用「${name}」，其他分项调整保留并继续叠加。`);
+    });
     $('link').checked = p.link;
     $('anchorName').textContent = anchorNames[p.anchor];
     $('anchorGrid').replaceChildren(...Object.keys(E.anchors).map(key => {
@@ -264,7 +287,7 @@
     syncBounceHeights(); draw(); syncPoint();
   }
   function syncPoint() {
-    if (host.activeElement !== $('pointValue')) $('pointValue').value = fmt(displayValue(E.sample(p, point / 16)[channel]), channel.startsWith('s') ? 3 : 1); $('pointValue').disabled = !pointEditable();
+    if (curveRoot.activeElement !== $('pointValue')) $('pointValue').value = fmt(displayValue(E.sample(p, point / 16)[channel]), channel.startsWith('s') ? 3 : 1); $('pointValue').disabled = !pointEditable();
     $('pointValue').step = channel.startsWith('s') ? '.01' : '1'; $('curveUnit').textContent = channel === 'alpha' ? '%' : channel.startsWith('s') ? '倍' : 'px';
     $('pointSelect').value = point;
     const custom = p.corrections[channel].some(v => Math.abs(v) > .00001);
@@ -343,7 +366,7 @@
   $('pointValue').oninput = () => { if ($('pointValue').value === '') return; setPointValue(Number($('pointValue').value) / (channel === 'alpha' ? 100 : 1)); curveBounds = null; drawCurve(); };
   $('pointValue').onblur = () => { $('pointValue').value = fmt(displayValue(E.sample(p, point / 16)[channel]), channel.startsWith('s') ? 3 : 1); };
   $('resetCurve').onclick = () => { p.corrections[channel].fill(0); curveBounds = null; syncBounceHeights(); syncPoint(); draw(); status(`已恢复${labels[channel]}的计算曲线。`); };
-  $('modes').querySelectorAll('button').forEach(b => b.onclick = () => { mode = b.dataset.mode; p = sessions[mode]; channel = mode === 'opacity' ? 'alpha' : mode === 'expand' ? 'sx' : mode === 'bounce' ? 'y' : 'x'; drag = null; renderPanel(); status('已切换调整项；已有动画持续叠加，播放进度保留。'); });
+  function selectMode(next){mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':'x';drag=null;renderPanel();status('已切换调整项；已有动画持续叠加，播放进度保留。');}
   $('resetAll').onclick = () => {
     bridge.restore(); Object.assign(sessions,E.freshStack()); Object.assign(timing,bridge.timing()); shareDuration(timing.boneDuration); shareOpacity(sessions.opacity);p=sessions[mode];
     history.push(lastSnapshot);lastSnapshot=JSON.stringify({stack:sessions,timing});redo.length=0;previewError='';time=0;renderPanel();$('save').disabled=false;status('已恢复本骨骼计算前的动画；其他骨骼保留。');
@@ -355,8 +378,8 @@
   function undo(forward){const from=forward?redo:history,to=forward?history:redo;if(from.length){to.push(lastSnapshot);restoreSnapshot(from.pop());status(forward?'已重做本骨骼参数。':'已撤销本骨骼参数。');}}
   const observer=new ResizeObserver(()=>{curveBounds=null;drawCurve();});observer.observe($('curve'));
   let frameId;
-  function frame(){if(host.host.isConnected){if($('curveDetails').open){time=E.clamp(bridge.time()-timing.animationDelay,0,p.duration);lastSeek=time;drawCurve();}frameId=requestAnimationFrame(frame);}}
-  renderPanel();frameId=requestAnimationFrame(frame);
-  return {destroy(){observer.disconnect();cancelAnimationFrame(frameId);},status,undo};
+  function frame(){if(host.host.isConnected){positionCurve();if($('curveDetails').open){time=E.clamp(bridge.time()-timing.animationDelay,0,p.duration);lastSeek=time;drawCurve();}frameId=requestAnimationFrame(frame);}else floating.style.display='none';}
+  positionCurve();selectMode(bridge.mode||'bounce');frameId=requestAnimationFrame(frame);
+  return {destroy(){observer.disconnect();cancelAnimationFrame(frameId);floating.remove();},ownsEvent:event=>event.composedPath().includes(floating),selectMode,status,undo};
 }};
 })();

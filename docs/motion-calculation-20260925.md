@@ -2,9 +2,9 @@
 
 ## 正式入口与界面
 
-维护入口为 `novaflow-web/renderer/index.html`，载入 `motion-calculation.engine.js`、`motion-calculation.animation.js`、`motion-calculation.panel.js`、`motion-calculation.tool.js`。在骨骼动画左侧原有面板中增加“动画计算”，读写当前正式工程，使用正式 Spine 播放器和底部时间轴。
+维护入口为 `novaflow-web/renderer/index.html`，载入 `motion-calculation.engine.js`、`motion-calculation.animation.js`、`motion-calculation.panel.js`、`motion-calculation.tool.js`。在骨骼动画左侧原有面板中增加四个独立计算入口，读写当前正式工程，使用正式 Spine 播放器和底部时间轴。
 
-面板按现有飘带计算样式重排：上方参数名，下方细滑条和右侧数值框，沿用深灰底、绿色滑条、紧凑间距与灰色按钮。动画总时长、骨骼总时长和动画延迟在四个功能上方。弹跳、扩张、往返、透明度平级；预设置顶、各自只调自己的通道，切换后叠加保留。每项底部提供骨骼延迟，统一底部“保存动画”和“恢复初始值”。
+面板按现有飘带计算样式重排：上方参数名，下方细滑条和右侧数值框，沿用深灰底、绿色滑条、紧凑间距与灰色按钮。左侧直接提供与飘带计算同级的“弹跳计算、扩张计算、往返计算、透明度计算”四个入口，取消动画计算父级与内部功能页签。每个入口顶部都有动画总时长、骨骼总时长和动画延迟，使用当前骨骼同一组通用参数。动作预设为下拉框，各自只调自己的通道，切换后叠加保留。每项底部提供骨骼延迟、“保存动画”和“恢复初始值”。曲线编辑独立浮在正式时间轴上方，与预览区同宽，可收起；关闭计算面板时移除浮动曲线。
 
 ## 时间与作用范围
 
@@ -24,6 +24,8 @@
 5. 正式导出构造器产生的 JSON 动画与保存工程动画深度比较一致，并输出 ATLAS 和 PNG。此项使用本地测试文件接收器替代目录选择器；系统原生目录选择未纳入本次验收。
 
 本机截图和导出证据：`C:/Users/jiang/Documents/Codex/2026-09-25/za/outputs/formal-motion/`。`01-bounce-peak.png` 为弹跳，`02-combined-075.png` 与 `03-combined-125.png` 为组合效果。`saved-project.json`、`restored-project.json` 和 `export/` 为比较依据。
+
+随后按反馈完成四个独立入口、预设下拉框和时间轴上方浮动曲线，最新截图为 `04-independent-controls-floating-curve.png`。UI 实测弹跳→扩张→透明度保留共用的 2 秒动画、1 秒骨骼和 25% 动画延迟；曲线点改为 70% 后可保存。关闭后浮动面板数量为 0，重开后为 1，无残留重复面板。
 
 ## 验证边界
 
