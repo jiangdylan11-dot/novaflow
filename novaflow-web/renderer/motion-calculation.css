@@ -50,3 +50,5 @@ summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}s
 
 .effect-switches{display:flex;flex-direction:column;gap:8px;flex-shrink:0}
 .timing-row .param{align-content:start;grid-template-rows:auto 28px auto}.timing-hint{grid-row:3}
+.expand-mode .effect-scroll{overflow:visible;flex:0 0 auto}
+.expand-mode .effect-parameters #scaleOptions{border-top:0;padding-top:0}

@@ -3,12 +3,14 @@
   'use strict';
   window.NovaFlowMotionPanel={mount(host,bridge){
   const floating=document.createElement('div');floating.dataset.novaflowMotionCurve='1';
-  floating.style.cssText='position:fixed;z-index:60;display:none';document.body.append(floating);
+  floating.style.cssText='position:fixed;z-index:60;visibility:hidden';document.body.append(floating);
   const curveRoot=floating.attachShadow({mode:'open'});
   const interval=document.createElement('div');interval.dataset.novaflowMotionInterval='1';interval.setAttribute('role','img');
   interval.style.cssText='position:fixed;z-index:61;height:6px;border-radius:2px;background:#68c9a4;pointer-events:none;display:none';document.body.append(interval);
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css',document.baseURI).href;
+  let stylesReady=false;
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20260925-2',document.baseURI).href;
+  style.onload=()=>{stylesReady=true;positionCurve();floating.style.visibility='visible';};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画计算编辑器');
   body.innerHTML=`
     <header class="editor-header"><div class="editor-title"><strong id="editorTitle"></strong></div>
@@ -25,10 +27,10 @@
           <section id="mainControls" class="controlsection"><div id="primaryAxes"></div><div id="params"></div><div id="advancedParams"></div>
             <p id="modeHelp" class="help"></p>
           </section>
-          </div>
             <div id="scaleOptions"><div class="effect-switches"><label class="check"><input id="loop" type="checkbox">循环</label><label id="linkOption" class="check"><input id="link" type="checkbox">缩放联动</label></div><p id="linkHelp" class="help"></p>
               <div id="anchorSection" class="anchor-picker"><div>缩放中心</div><div id="anchorGrid" class="anchor-grid" role="group" aria-label="缩放中心"></div></div>
             </div>
+          </div>
         </div>
         <section id="curveDetails" class="curvepanel" aria-label="曲线微调">
           <div class="curvebar"><div id="curveTabs" class="segmented"></div><div class="row"><span id="curveState" class="dim"></span><button id="resetCurve">重置</button></div></div>
@@ -67,18 +69,26 @@
     resizePreviewCanvas(layer);
   }
   function positionCurve(){
+    if(!stylesReady)return;
     const bar=document.querySelector('[data-novaflow-skeleton-bottom-playbar="1"]'),r=bar?.getBoundingClientRect();
     if(!r||r.width<1||!host.host.isConnected){floating.style.display='none';return;}
     // Use the real central timeline bounds, never the window or the right sidebar.
     const left=Math.max(0,r.left),width=Math.max(0,Math.min(innerWidth,r.right)-left);
-    const available=Math.max(160,r.top-80),height=Math.min(400,Math.max(360,innerHeight*.4),available);
+    body.classList.toggle('compact',width<850);body.classList.toggle('narrow',width<620);
+    floating.style.width=width+'px';floating.style.display='block';
+    const available=Math.max(160,r.top-80);
+    let desired=Math.min(400,Math.max(360,innerHeight*.4));
+    if(mode==='expand'&&!collapsed){
+      const chrome=['.editor-header','.timing-row','.editor-footer'].reduce((sum,selector)=>sum+body.querySelector(selector).getBoundingClientRect().height,0);
+      desired=Math.max(desired,chrome+body.querySelector('.effect-scroll').scrollHeight+20);
+    }
+    const height=Math.min(desired,available);
     const signature=[left,width,r.top,height].join(',');
     floating.style.display='block';
     if(signature!==lastLayout){
       lastLayout=signature;floating.style.left=left+'px';floating.style.width=width+'px';
       floating.style.bottom=Math.max(0,innerHeight-r.top+8)+'px';
       floating.style.setProperty('--editor-height',height+'px');
-      body.classList.toggle('compact',width<850);body.classList.toggle('narrow',width<620);
     }
     reservePreviewSpace();
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
@@ -99,6 +109,7 @@
   const displayValue = v => channel === 'alpha' ? v * 100 : v;
 
   const initial=bridge.initial(); const sessions = initial?.stack || E.freshStack();
+  const visitedModes=new Set(Object.keys(sessions).filter(key=>sessions[key].initialized||sessions[key].enabled||(key==='opacity'&&(sessions[key].opacity.from!==1||sessions[key].opacity.to!==1||sessions[key].curves?.alpha))));
   const timing=E.fitTiming({...bridge.timing(),...initial?.timing}); let restoring=false,historyAt=0;const history=[],redo=[];let lastSeek=0;
   function shareOpacity(source) { for (const session of Object.values(sessions)) { session.opacity = source.opacity; session.corrections.alpha = source.corrections.alpha; } }
   for(const state of Object.values(sessions))state.loop??=state.mode==='shuttle'||(state.mode==='opacity'&&state.opacity.behavior==='pulse');shareOpacity(sessions.opacity);
@@ -260,7 +271,7 @@
       ['实心到透明', { behavior: 'once', from: 1, to: 0, easing: 1, hold: 0 }],
       ['呼吸闪烁', { behavior: 'pulse', from: .15, to: 1, cycles: 3, phase: 0, easing: 1, hold: .08 }]
     ],([name, values]) => {
-      Object.assign(o, values, { on: true, begin: 0, finish: 1 });p.loop=o.behavior==='pulse';$('loop').checked=p.loop; p.corrections.alpha.fill(0); if(p.curves)delete p.curves.alpha; channel = 'alpha'; point = 0; pointSelected=false; curveBounds = null; syncEnabled(); renderOpacity(); renderTabs(); syncPoint(); restart(true); status(`已应用「${name}」，动作参数保留；可在透明度曲线上继续调节。`);
+      p.initialized=true;Object.assign(o, values, { on: true, begin: 0, finish: 1 });p.loop=o.behavior==='pulse';$('loop').checked=p.loop; p.corrections.alpha.fill(0); if(p.curves)delete p.curves.alpha; channel = 'alpha'; point = 0; pointSelected=false; curveBounds = null; syncEnabled(); renderOpacity(); renderTabs(); syncPoint(); restart(true); status(`已应用「${name}」，动作参数保留；可在透明度曲线上继续调节。`);
     });
     const keys = ['from', 'to', 'finish', ...(o.behavior === 'pulse' ? ['cycles', 'hold'] : []), 'easing'];
     const controls = keys.map(key => {
@@ -311,6 +322,9 @@
     const delayHint=document.createElement('p');delayHint.className='help';delayHint.id='delayHint';delayHint.title='在本骨骼自然循环内向后偏移，周期不变。0% 与 100% 是相同起点。';delayHint.textContent=`偏移 ${fmt(p.delay)} 秒 · ${fmt(p.duration)} 秒周期内`;$('effectTiming').append(delayHint);
   }
   function renderPanel() {
+    body.classList.toggle('expand-mode',mode==='expand');
+    const optionsParent=body.querySelector(mode==='expand'?'.effect-scroll':'.effect-parameters');
+    if($('scaleOptions').parentElement!==optionsParent)optionsParent.append($('scaleOptions'));
     $('selection').textContent=bridge.label();$('editorTitle').textContent=names[mode];
     renderTiming();
     $('mainControls').hidden = mode === 'opacity';
@@ -319,7 +333,7 @@
     $('primaryAxes').replaceChildren(...primaryChannels[mode].map(makeAxis));
     $('presetSection').hidden = mode === 'opacity';$('opacityPresets').hidden=mode!=='opacity'; $('opacityDetails').hidden = mode !== 'opacity'; $('scaleOptions').hidden = mode === 'bounce';$('linkOption').hidden=mode!=='expand';$('loop').checked=!!p.loop;
     renderPresetButtons($('presets'),presetSets[mode],([name, vals, axes]) => {
-      pointSelected=false;const loop=p.loop,loopCount=p.loopCount,duration = p.duration, delay = p.delay, opacity = p.opacity, alpha = p.corrections.alpha, groundY = p.groundY, ground = p.ground; p = sessions[mode] = E.freshStack()[mode]; p.duration = duration; p.delay = delay;p.loop=loop;p.loopCount=loopCount; p.opacity = opacity; p.corrections.alpha = alpha; p.enabled = true; if (mode === 'bounce') { p.groundY = groundY || 0; p.ground = ground !== false; } Object.assign(p, vals); for (const k of E.ownedChannels[mode]) p.axes[k].amp = axes[k]; renderPanel(); restart(true); status(`已应用「${name}」，其他分项调整保留并继续叠加。`);
+      pointSelected=false;const loop=p.loop,loopCount=p.loopCount,duration = p.duration, delay = p.delay, opacity = p.opacity, alpha = p.corrections.alpha, groundY = p.groundY, ground = p.ground; p = sessions[mode] = E.freshStack()[mode];p.initialized=true; p.duration = duration; p.delay = delay;p.loop=loop;p.loopCount=loopCount; p.opacity = opacity; p.corrections.alpha = alpha; p.enabled = true; if (mode === 'bounce') { p.groundY = groundY || 0; p.ground = ground !== false; } Object.assign(p, vals); for (const k of E.ownedChannels[mode]) p.axes[k].amp = axes[k]; renderPanel(); restart(true); status(`已应用「${name}」，其他分项调整保留并继续叠加。`);
     });
     $('link').checked = p.link;
     $('anchorGrid').replaceChildren(...Object.keys(E.anchors).map(key => {
@@ -487,7 +501,7 @@
   $('pointValue').onblur = syncPoint;
   $('resetCurve').onclick = () => { pointSelected=false;p.corrections[channel].fill(0);if(p.curves)delete p.curves[channel];if(mode==='expand'&&p.link){const other=channel==='sx'?'sy':'sx';p.corrections[other].fill(0);if(p.curves)delete p.curves[other];}point=0; curveBounds = null; syncBounceHeights(); syncPoint(); draw(); status(`已恢复${labels[channel]}的计算曲线。`); };
   function setCollapsed(value){collapsed=value;$('editorContent').hidden=value;$('editorToggle').textContent=value?'展开':'收起';$('editorToggle').setAttribute('aria-expanded',String(!value));body.classList.toggle('collapsed',value);curveBounds=null;drawCurve();}
-  function selectMode(next){setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':'x';drag=null;pointSelected=false;renderPanel();status('切换功能保留调整 · 仅操作当前骨骼');}
+  function selectMode(next){setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':'x';drag=null;pointSelected=false;renderPanel();if(!visitedModes.has(mode)){visitedModes.add(mode);$(mode==='opacity'?'opacityPresets':'presets').querySelector('button')?.click();}status('切换功能保留调整 · 仅操作当前骨骼');}
   $('resetAll').onclick = () => {
     bridge.restore(); Object.assign(sessions,E.freshStack()); Object.assign(timing,bridge.timing()); shareDuration(timing.boneDuration); shareOpacity(sessions.opacity);p=sessions[mode];
     history.push(lastSnapshot);lastSnapshot=JSON.stringify({stack:sessions,timing});redo.length=0;previewError='';time=0;renderPanel();$('save').disabled=false;status('已恢复本骨骼计算前的动画；其他骨骼保留。');
