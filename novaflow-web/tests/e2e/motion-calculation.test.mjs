@@ -84,3 +84,59 @@ test('Spine 3.8 runtime reads saved tracks with matching displacement, scale, al
  assert.ok(Math.abs(slot.color.a-128/255)<1e-5);
  assert.equal(JSON.stringify(animation.bones.other),JSON.stringify(project.animations.idle.bones.other));
 });
+
+test('Bezier insertion preserves shape even with nonuniform time handles; interior deletion is reversible',()=>{
+ const p=E.freshStack().opacity;p.opacity.from=0;
+ const knots=E.curveFor(p,'alpha');assert.equal(knots.length,2);
+ const edited=JSON.parse(JSON.stringify(knots));edited[0].out={u:.12,v:.8};edited[1].in={u:.75,v:.2};
+ const before=Array.from({length:101},(_,i)=>E.evaluateCurve(edited,i/100));
+ const split=JSON.parse(JSON.stringify(edited)),index=E.insertCurvePoint(split,.43);
+ assert.equal(index,1);assert.equal(split.length,3);
+ before.forEach((v,i)=>assert.ok(Math.abs(v-E.evaluateCurve(split,i/100))<1e-8));
+ assert.equal(E.removeCurvePoint(split,0),false);assert.equal(E.removeCurvePoint(split,2),false);
+ assert.equal(E.removeCurvePoint(split,1),true);assert.equal(split.length,2);
+ E.storeCurve(p,'alpha',edited);
+ assert.ok(Math.abs(E.sample(p,.43).alpha-before[43])<1e-8);
+ const restored=JSON.parse(JSON.stringify(p));assert.equal(E.sample(restored,.43).alpha,E.sample(p,.43).alpha);
+});
+
+test('automatic Bezier nodes follow motion segments instead of a fixed sample grid',()=>{
+ const stack=E.freshStack();
+ for(const mode of Object.keys(E.ownedChannels))for(const key of E.ownedChannels[mode]){
+  const p=stack[mode],before=JSON.stringify(p),knots=E.curveFor(p,key);
+  assert.equal(JSON.stringify(p),before,'drawing the editor must not alter an untouched animation');
+  assert.equal(knots[0].u,0);assert.equal(knots.at(-1).u,1);
+  const values=Array.from({length:1001},(_,i)=>E.sample(p,i/1000,false,true)[key]);
+  const allowed=Math.max((Math.max(...values)-Math.min(...values))*.0035,key==='alpha'||key.startsWith('s')?.0006:.06);
+  values.forEach((v,i)=>assert.ok(Math.abs(E.evaluateCurve(knots,i/1000)-v)<allowed));
+  for(let i=1;i<knots.length;i++)assert.ok(knots[i-1].u<=knots[i-1].out.u&&knots[i-1].out.u<=knots[i].in.u&&knots[i].in.u<=knots[i].u);
+ }
+ assert.ok(E.curveFor(stack.bounce,'y').length<17);
+});
+
+test('Bezier edits retain slider influence, owned channels and loop timing',()=>{
+ const stack=E.freshStack(),p=stack.shuttle;p.enabled=true;p.duration=1;p.delay=.25;
+ const knots=JSON.parse(JSON.stringify(E.curveFor(p,'x'))),i=E.insertCurvePoint(knots,.3);
+ knots[i].v+=20;knots[i].in.v+=20;knots[i].out.v+=20;E.storeCurve(p,'x',knots);
+ const old=E.sample(p,.3).x,oldBase=E.sample(p,.3,true).x;
+ p.axes.x.amp+=40;
+ assert.ok(Math.abs(E.sample(p,.3).x-old-(E.sample(p,.3,true).x-oldBase))<1e-5);
+ assert.equal(E.sampleStack(stack,.55).sx,1);
+ assert.ok(Math.abs(E.sampleStack(stack,.55).x-E.sample(p,.3).x)<1e-6);
+ assert.equal(E.sampleStack(stack,0).x,E.sampleStack(stack,1).x);
+});
+
+test('saved native animation bakes edited Bezier scale and opacity, preserving other bones',()=>{
+ const stack=E.freshStack();stack.expand.enabled=true;
+ for(const [mode,key] of [['expand','sx'],['opacity','alpha']]){
+  const p=stack[mode],knots=JSON.parse(JSON.stringify(E.curveFor(p,key)));
+  const i=E.insertCurvePoint(knots,.5);assert.ok(i>0);
+  knots[i].v=key==='alpha'?.35:1.7;knots[i].in.v=knots[i].out.v=knots[i].v;E.storeCurve(p,key,knots);
+ }
+ const project=fixture(),out=calc(project,stack).animation;
+ assert.ok(Math.abs(A.scalar(out.bones.ball.scale,1,'x',1)-1.7)<1e-6);
+ assert.equal(out.slots.ballSlot.color.find(f=>Math.abs(f.time-1)<1e-8).color,'ff804059');
+ assert.equal(out.bones.other,project.animations.idle.bones.other);
+ delete stack.expand.curves.sx;
+ assert.equal(E.sample(stack.expand,.5).sx,E.sample(stack.expand,.5,true).sx);
+});

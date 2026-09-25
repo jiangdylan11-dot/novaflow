@@ -3,6 +3,7 @@
   'use strict';
   const A=window.NovaFlowMotionAnimation,E=window.NovaFlowMotionEngine;
   const records=new WeakMap();
+  const ribbonSelector='[data-panel-id="bone-ribbon"], [data-novaflow-ribbon-panel="1"]';
   let panel=null,view=null,session=null,context=null,activeMode='bounce';
   const copy=x=>JSON.parse(JSON.stringify(x));
   // Registered before React mounts its global editing shortcuts. A shadow-root
@@ -59,10 +60,20 @@
   }
   function sameScope(p,s){return p&&p.project.bones===s.identity&&p.activeAnimationName===s.animation&&p.selectedBoneName===s.bone;}
   function signature(animation,s){return JSON.stringify({bone:animation?.bones?.[s.bone],slots:s.slots.map(n=>animation?.slots?.[n])});}
+  function matchesExpected(animation,s){
+    const current=signature(animation,s);
+    if(current===signature(s.expected,s)){s.pendingSignatures?.clear();return true;}
+    // React may still expose an earlier frame while our own writes are queued.
+    // Only accept those exact snapshots, never an unrelated external edit.
+    return s.pendingSignatures?.has(current)||false;
+  }
   function write(s,animation){
     const p=getContext();if(!p||p.project.bones!==s.identity)throw Error('骨骼项目已切换，请重新选择骨骼。');
     const existing=p.project.animations[s.animation];
-    if(signature(existing,s)!==signature(s.expected,s))throw Error('本骨骼已被其他工具修改，请重新打开动画计算。');
+    if(!matchesExpected(existing,s))throw Error('本骨骼已被其他工具修改，请重新打开动画计算。');
+    s.pendingSignatures??=new Set();
+    s.pendingSignatures.add(signature(existing,s));
+    s.pendingSignatures.add(signature(s.expected,s));
     s.expected=animation;
     p.setProject(previous=>{
       if(previous.bones!==s.identity||!previous.animations[s.animation])return previous;
@@ -73,8 +84,8 @@
     const animation=p.activeAnimationName,bone=p.selectedBoneName,identity=p.project.bones;
     let group=records.get(identity);if(!group){group=new Map();records.set(identity,group);}
     const key=JSON.stringify([animation,bone]),existing=group.get(key),current=p.project.animations[animation];
-    if(existing&&signature(current,existing)===signature(existing.expected,existing)){
-      existing.expected=current;existing.dirty=false;return existing;
+    if(existing&&matchesExpected(current,existing)){
+      existing.dirty=false;return existing;
     }
     const s={identity,animation,bone,slots:slotNames(p.project,bone),base:current,committed:current,expected:current,channels:new Set(),alpha:false,dirty:false,config:null,group,key};
     group.set(key,s);return s;
@@ -93,10 +104,10 @@
     const timing=()=>{const d=Math.max(.05,A.duration(s.base)||2);return {animationDuration:d,boneDuration:Math.min(d,2.8),animationDelay:0};};
     const preview=(stack,t)=>{
       const p=getContext();if(!sameScope(p,s))throw Error('已切换骨骼，请在新骨骼面板中调整。');
-      if(signature(p.project.animations[s.animation],s)!==signature(s.expected,s))throw Error('本骨骼已被其他工具修改，请重新打开动画计算。');
+      if(!matchesExpected(p.project.animations[s.animation],s))throw Error('本骨骼已被其他工具修改，请重新打开动画计算。');
       if(stack.bounce.enabled||stack.shuttle.enabled||stack.expand.enabled)s.channels.add('translate');
       if(stack.expand.enabled)s.channels.add('scale');
-      if(stack.opacity.opacity.from!==1||stack.opacity.opacity.to!==1||stack.opacity.corrections.alpha.some(v=>v))s.alpha=true;
+      if(stack.opacity.opacity.from!==1||stack.opacity.opacity.to!==1||stack.opacity.corrections.alpha.some(v=>v)||stack.opacity.curves?.alpha)s.alpha=true;
       const baseline=patch(p.project.animations[s.animation],s.base,s);
       const project={...p.project,animations:{...p.project.animations,[s.animation]:baseline}};
       const result=A.calculate(project,s.animation,[s.bone],stack,t,E,window.NovaFlowBonesEditor);
@@ -120,7 +131,7 @@
     });
   }
   function refresh(){
-    const ribbon=document.querySelector('[data-panel-id="bone-ribbon"], [data-novaflow-ribbon-panel="1"]');
+    const ribbon=document.querySelector(ribbonSelector);
     context=getContext();
     // Keep the entry discoverable before importing a skeleton. open() explains
     // the required selection until the real editor context becomes available.
@@ -153,5 +164,14 @@
     }
     if(context&&panel.dataset.open==='1'&&panel.dataset.editorOpen==='1'&&(!session||!sameScope(context,session)))open();
   }
+  // Mount in the same DOM-update cycle as the native bone panels, rather than
+  // waiting for the selection polling interval and appearing a frame later.
+  const containsRibbon=node=>node.nodeType===1&&(node.matches(ribbonSelector)||node.querySelector(ribbonSelector));
+  const entryObserver=new MutationObserver(changes=>{
+    if((panel&&!panel.isConnected)||changes.some(change=>change.type==='attributes'
+      ? change.target.matches(ribbonSelector)
+      : [...change.addedNodes,...change.removedNodes].some(containsRibbon)))refresh();
+  });
+  entryObserver.observe(document.getElementById('root')||document.body,{childList:true,subtree:true,attributes:true,attributeFilter:['data-panel-id','data-novaflow-ribbon-panel']});
   setInterval(refresh,350);refresh();
 })();

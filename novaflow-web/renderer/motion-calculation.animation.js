@@ -89,7 +89,7 @@
     if(n(timing.animationDuration)+1e-6<keyDuration)throw Error('动画总时长不能短于已有关键帧；其他骨骼不会被裁切。');
     const animation={...original,bones:{...original.bones},slots:{...original.slots},duration:n(timing.animationDuration)};
     const translate=!!(params.bounce.enabled||params.shuttle.enabled),scale=!!params.expand.enabled;
-    const opacity=params.opacity.opacity,alpha=opacity.on&&(opacity.from!==1||opacity.to!==1||params.opacity.corrections.alpha.some(v=>v!==0));
+    const opacity=params.opacity.opacity,alpha=opacity.on&&(opacity.from!==1||opacity.to!==1||params.opacity.corrections.alpha.some(v=>v!==0)||params.opacity.curves?.alpha);
     const affected=new Set(targets), slots=(project.slots||[]).filter(s=>affected.has(s.bone));
     const fps=Math.max(15,Math.min(120,n(project.skeleton?.fps,60))), times=new Set([start,end]);
     for(let i=1;i<span*fps;i++)times.add(start+i/fps);

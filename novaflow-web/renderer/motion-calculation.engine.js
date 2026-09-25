@@ -68,7 +68,7 @@
     const a = pinEnds && i === 0 ? 0 : values[i], b = pinEnds && i + 1 === values.length - 1 ? 0 : values[i + 1];
     return a + (b - a) * smooth(pos - i);
   }
-  function sample(p, u, noCorrections = false, unclamped = false) {
+  function rawSample(p, u, noCorrections = false, unclamped = false) {
     u = clamp(u, 0, 1);
     const base = p.mode === 'opacity' ? { x: 0, y: 0, sx: 0, sy: 0 } : p.mode === 'bounce' ? bounceBase(p, u) : p.mode === 'expand' ? Object.fromEntries(channels.map(k => [k, expansion(p, u)])) : Object.fromEntries(channels.map(k => [k, wave(p, p.axes[k], u)]));
     const out = {};
@@ -88,6 +88,92 @@
       const progress = o.behavior === 'pulse' ? (wave(o, o, t) + 1) / 2 : t * (1 - o.easing) + smooth(t) * o.easing;
       out.alpha = o.from + (o.to - o.from) * progress + (noCorrections ? 0 : correction(p.corrections.alpha, u));
       if (!unclamped) out.alpha = clamp(out.alpha, 0, 1);
+    }
+    return out;
+  }
+  // Cubic curves use time/value coordinates, not uniformly spaced correction samples.
+  const curveCache = new WeakMap();
+  const mixPoint = (a, b, t) => ({ u: a.u + (b.u - a.u) * t, v: a.v + (b.v - a.v) * t });
+  function cubicPoint(a, b, t) {
+    const q0 = mixPoint(a, a.out, t), q1 = mixPoint(a.out, b.in, t), q2 = mixPoint(b.in, b, t);
+    return mixPoint(mixPoint(q0, q1, t), mixPoint(q1, q2, t), t);
+  }
+  function cubicTime(a, b, u) {
+    let lo = 0, hi = 1;
+    for (let i = 0; i < 32; i++) { const t = (lo + hi) / 2; if (cubicPoint(a, b, t).u < u) lo = t; else hi = t; }
+    return (lo + hi) / 2;
+  }
+  function evaluateCurve(knots, u) {
+    if (u <= knots[0].u) return knots[0].v;
+    if (u >= knots.at(-1).u) return knots.at(-1).v;
+    const i = knots.findIndex((n, j) => j && n.u >= u), a = knots[i - 1], b = knots[i];
+    return cubicPoint(a, b, cubicTime(a, b, u)).v;
+  }
+  function fitCurve(p, key) {
+    const value = u => rawSample(p, u, false, true)[key];
+    const values = Array.from({ length: 361 }, (_, i) => value(i / 360));
+    const tolerance = Math.max((Math.max(...values) - Math.min(...values)) * .003, key === 'alpha' || key.startsWith('s') ? .0005 : .05);
+    const breaks = [0, 1];
+    if (p.mode === 'bounce' && key === 'y') {
+      const sch = bounceSchedule(p); for (const s of sch.segments) breaks.push(s.start / sch.total, s.end / sch.total);
+    }
+    // Flight/contact boundaries already describe each bounce; avoid extra sampled peak nodes.
+    if (p.mode !== 'bounce') for (let i = 1; i < 360; i++) if ((values[i] - values[i - 1]) * (values[i + 1] - values[i]) < 0) breaks.push(i / 360);
+    const stops = [...new Set(breaks)].sort((a, b) => a - b), pieces = [];
+    function fit(lo, hi, depth) {
+      const a = { u: lo, v: value(lo) }, b = { u: hi, v: value(hi) }, span = hi - lo;
+      const x = 27 * value(lo + span / 3) - 8 * a.v - b.v, y = 27 * value(lo + span * 2 / 3) - a.v - 8 * b.v;
+      a.out = { u: lo + span / 3, v: (2 * x - y) / 18 }; b.in = { u: lo + span * 2 / 3, v: (2 * y - x) / 18 };
+      let error = 0; for (let i = 1; i < 16; i++) error = Math.max(error, Math.abs(cubicPoint(a, b, i / 16).v - value(lo + span * i / 16)));
+      if (error > tolerance && depth < 8) { fit(lo, (lo + hi) / 2, depth + 1); fit((lo + hi) / 2, hi, depth + 1); }
+      else pieces.push([a, b]);
+    }
+    for (let i = 1; i < stops.length; i++) fit(stops[i - 1], stops[i], 0);
+    const knots = [pieces[0][0]];
+    for (const [a, b] of pieces) { knots.at(-1).out = a.out; knots.push(b); }
+    knots[0].in = { u: 0, v: knots[0].v }; knots.at(-1).out = { u: 1, v: knots.at(-1).v };
+    return knots;
+  }
+  function curveFor(p, key) {
+    const signature = JSON.stringify(p); let cache = curveCache.get(p);
+    if (!cache || cache.signature !== signature) { cache = { signature, channels: {} }; curveCache.set(p, cache); }
+    if (cache.channels[key]) return cache.channels[key];
+    const saved = p.curves?.[key];
+    const knots = saved ? saved.knots.map((n, i) => {
+      // Retain manual edits while sliders change the underlying calculated motion.
+      const shift = (q, baseline) => ({ u: q.u, v: q.v + rawSample(p, q.u, false, true)[key] - baseline });
+      return { ...shift(n, saved.baseline[i].v), in: shift(n.in, saved.baseline[i].in), out: shift(n.out, saved.baseline[i].out) };
+    }) : fitCurve(p, key);
+    cache.channels[key] = knots; return knots;
+  }
+  function storeCurve(p, key, knots) {
+    p.curves ??= {};
+    p.curves[key] = { knots: JSON.parse(JSON.stringify(knots)), baseline: knots.map(n => ({
+      v: rawSample(p, n.u, false, true)[key], in: rawSample(p, n.in.u, false, true)[key], out: rawSample(p, n.out.u, false, true)[key]
+    })) };
+  }
+  function insertCurvePoint(knots, u) {
+    const i = knots.findIndex((n, j) => j && n.u >= u);
+    if (i < 1 || u - knots[i - 1].u < .0001 || knots[i].u - u < .0001) return -1;
+    const a = knots[i - 1], b = knots[i], t = cubicTime(a, b, u);
+    const q0 = mixPoint(a, a.out, t), q1 = mixPoint(a.out, b.in, t), q2 = mixPoint(b.in, b, t);
+    const r0 = mixPoint(q0, q1, t), r1 = mixPoint(q1, q2, t), n = { ...mixPoint(r0, r1, t), in: r0, out: r1 };
+    a.out = q0; b.in = q2; knots.splice(i, 0, n); return i;
+  }
+  function removeCurvePoint(knots, index) {
+    if (index <= 0 || index >= knots.length - 1) return false;
+    knots.splice(index, 1); return true;
+  }
+  function sample(p, u, noCorrections = false, unclamped = false) {
+    const out = rawSample(p, u, noCorrections, unclamped);
+    if (!noCorrections && p.curves) for (const key of Object.keys(p.curves)) {
+      if (!(key === 'alpha' ? p.opacity.on : p.axes[key]?.on)) continue;
+      out[key] = evaluateCurve(curveFor(p, key), clamp(u, 0, 1));
+      if (!unclamped) {
+        if (key === 'alpha') out[key] = clamp(out[key], 0, 1);
+        if (key.startsWith('s')) out[key] = Math.max(.08, out[key]);
+        if (key === 'y' && p.mode === 'bounce' && p.ground !== false) out[key] = Math.max(p.groundY || 0, out[key]);
+      }
     }
     return out;
   }
@@ -176,7 +262,7 @@
       effects: Object.keys(stack).filter(mode => mode === 'opacity' ? stack.opacity.opacity.on : stack[mode].enabled),
       units: { time: 'seconds', x: 'pixels', y: 'pixels', sx: 'ratio', sy: 'ratio', alpha: 'opacity' }, tracks };
   }
-  const api = { fresh, sample, bake, events, peaks, channels, clamp, defaults, ownedChannels, freshStack, sampleStack, stackAnchor, bakeStack, anchors, objectRect, effectTime, timelineTime };
+  const api = { fresh, sample, bake, events, peaks, channels, clamp, defaults, ownedChannels, freshStack, sampleStack, stackAnchor, bakeStack, anchors, objectRect, effectTime, timelineTime, curveFor, storeCurve, evaluateCurve, insertCurvePoint, removeCurvePoint };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.NovaFlowMotionEngine = api;
 })(typeof window !== 'undefined' ? window : globalThis);
