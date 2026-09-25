@@ -101,7 +101,7 @@
     if(!context?.project.animations[context.activeAnimationName]||!context.selectedBoneName){body.textContent='请先选择动画和一个骨骼。';return;}
     session=createSession(context);const s=session;
     const host=document.createElement('div');body.append(host);const shadow=host.attachShadow({mode:'open'});
-    const timing=()=>{const d=Math.max(.05,A.duration(s.base)||2);return {animationDuration:d,boneDuration:Math.min(d,2.8),animationDelay:0};};
+    const timing=()=>{const minimumDuration=Math.max(.05,A.duration({...s.base,duration:0})),d=Math.max(minimumDuration,A.duration(s.base)||2);return {animationDuration:d,boneDuration:Math.min(d,2.8),animationDelay:0,minimumDuration};};
     const preview=(stack,t)=>{
       const p=getContext();if(!sameScope(p,s))throw Error('已切换骨骼，请在新骨骼面板中调整。');
       if(!matchesExpected(p.project.animations[s.animation],s))throw Error('本骨骼已被其他工具修改，请重新打开动画计算。');
@@ -150,7 +150,8 @@
         [data-panel-id="bone-motion"] [data-motion-mode]:hover,[data-panel-id="bone-motion"] [data-motion-mode][aria-pressed="true"]{background:#262626;color:#dedede}
         [data-panel-id="bone-motion"] .nf-motion-body{font-size:11px;color:#999}
       </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:7px;font-size:14px;color:#bdbdbd" aria-hidden="true"></i>动画计算</span><i class="fas fa-chevron-right nf-motion-chevron" aria-hidden="true"></i></button><div class="nf-motion-tools" role="group" aria-label="动画计算工具" hidden>${Object.entries({bounce:'弹跳计算',expand:'扩张计算',shuttle:'往返计算',opacity:'透明度计算'}).map(([mode,label])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}</div><div class="nf-motion-body"></div>`;
-      ribbon.after(panel);
+      const lastTool=ribbon.parentElement.querySelector('[data-panel-id="bone-auto-weights"]');
+      (lastTool||ribbon.parentElement.lastElementChild).after(panel);
       panel.querySelector('.nf-panel-header').onclick=()=>{
         const expanded=panel.dataset.open!=='1';panel.dataset.open=expanded?'1':'0';
         panel.querySelector('.nf-motion-tools').hidden=!expanded;panel.querySelector('.nf-panel-header').setAttribute('aria-expanded',String(expanded));panel.querySelector('.nf-motion-chevron').className=`fas fa-chevron-${expanded?'down':'right'} nf-motion-chevron`;
@@ -159,7 +160,7 @@
       panel.querySelectorAll('[data-motion-mode]').forEach(button=>button.onclick=()=>{
         activeMode=button.dataset.motionMode;panel.dataset.editorOpen='1';
         panel.querySelectorAll('[data-motion-mode]').forEach(item=>item.setAttribute('aria-pressed',String(item===button)));
-        if(view)view.selectMode(activeMode);else open();
+        if(view&&sameScope(getContext(),session))view.selectMode(activeMode);else open();
       });
     }
     if(context&&panel.dataset.open==='1'&&panel.dataset.editorOpen==='1'&&(!session||!sameScope(context,session)))open();

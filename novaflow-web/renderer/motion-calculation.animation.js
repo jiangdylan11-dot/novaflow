@@ -4,7 +4,7 @@
   const n = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
   function curve(t, f) {
     if (f?.curve === 'stepped') return 0;
-    const c = Array.isArray(f?.curve) ? f.curve : typeof f?.curve === 'number' ? [f.curve, f.c2, f.c3, f.c4] : null;
+    const c = Array.isArray(f?.curve) ? f.curve : typeof f?.curve === 'number' ? [f.curve, f.c2 ?? 0, f.c3 ?? 1, f.c4 ?? 1] : null;
     if (!c || !c.slice(0, 4).every(Number.isFinite)) return t;
     const bez = (v, a, b) => 3 * (1-v)**2 * v * a + 3 * (1-v) * v*v * b + v*v*v;
     let lo = 0, hi = 1;
@@ -50,9 +50,18 @@
     const setup=pose(project,{},0,math), index=new Map(project.bones.map((b,i)=>[b.name,i])), target=setup.world[index.get(name)], children=descendants(project,[name]);
     const points=[];const add=(bone,x,y)=>{const w=setup.world[index.get(bone)];if(!w)return;points.push(invVector(target,w.worldX+w.a*x+w.b*y-target.worldX,w.worldY+w.c*x+w.d*y-target.worldY));};
     const skins=Array.isArray(project.skins)?project.skins.map(s=>s.attachments||{}):Object.values(project.skins||{});
-    for(const slot of project.slots||[])if(children.has(slot.bone))for(const skin of skins)for(const a of Object.values(skin?.[slot.name]||{})){
+    for(const slot of project.slots||[])for(const skin of skins)for(const a of Object.values(skin?.[slot.name]||{})){
       if(a.type==='boundingbox'||a.type==='clipping'||a.type==='path')continue;
-      if(a.vertices&&a.uvs&&a.vertices.length===a.uvs.length){for(let i=0;i<a.vertices.length;i+=2)add(slot.bone,a.vertices[i],a.vertices[i+1]);}
+      if(a.vertices&&a.uvs&&a.vertices.length!==a.uvs.length){
+        // Weighted meshes can be driven by this bone even when their slot is
+        // attached to an ancestor. Resolve the weighted setup vertices first.
+        for(let i=0;i<a.vertices.length;){const count=a.vertices[i++];let wx=0,wy=0,affected=false;
+          for(let j=0;j<count;j++){const bi=a.vertices[i++],x=a.vertices[i++],y=a.vertices[i++],weight=a.vertices[i++],w=setup.world[bi];if(!w)continue;wx+=(w.worldX+w.a*x+w.b*y)*weight;wy+=(w.worldY+w.c*x+w.d*y)*weight;affected ||= children.has(project.bones[bi]?.name);}
+          if(affected)points.push(invVector(target,wx-target.worldX,wy-target.worldY));
+        }
+      }
+      else if(!children.has(slot.bone))continue;
+      else if(a.vertices&&a.uvs&&a.vertices.length===a.uvs.length){for(let i=0;i<a.vertices.length;i+=2)add(slot.bone,a.vertices[i],a.vertices[i+1]);}
       else if(a.width&&a.height){const r=n(a.rotation)*Math.PI/180,c=Math.cos(r),s=Math.sin(r);for(const x of [-a.width/2,a.width/2])for(const y of [-a.height/2,a.height/2]){const px=x*n(a.scaleX,1),py=y*n(a.scaleY,1);add(slot.bone,n(a.x)+c*px-s*py,n(a.y)+s*px+c*py);}}
     }
     if(!points.length){const length=n(project.bones[index.get(name)].length,60);points.push([0,-10],[Math.max(length,1),10]);}

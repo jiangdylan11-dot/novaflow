@@ -15,7 +15,7 @@
   };
   function fresh(mode) {
     const p = JSON.parse(JSON.stringify(defaults[mode]));
-    p.mode = mode; p.link = mode !== 'shuttle'; p.delay = 0;
+    p.mode = mode; p.link = mode !== 'shuttle'; p.delay = 0; p.loop = mode === 'shuttle'; p.loopCount = 2;
     p.opacity = { on: false, behavior: 'once', from: 0, to: 1, begin: 0, finish: 1, cycles: 2, phase: 0, easing: 1, hold: 0 };
     p.corrections = Object.fromEntries([...channels, 'alpha'].map(k => [k, Array(17).fill(0)]));
     return p;
@@ -51,13 +51,15 @@
     return { x: smooth(u / last), y: h, sx: deformation, sy: deformation };
   }
   function expansion(p, u) {
+    if(p.loop)u=u>=1?1:(u*Math.max(1,p.loopCount||2))%1;
     if (u <= p.attack) return smooth(u / p.attack);
     const q = (u - p.attack) / (1 - p.attack);
     // Squared exponential time preserves zero speed at the peak; tail reaches rest exactly.
     return Math.cos(2 * Math.PI * p.frequency * q) * Math.exp(-p.damping * q * q) * (1 - smooth((q - .78) / .22));
   }
   function wave(p, axis, u) {
-    const phase = ((u * axis.cycles + axis.phase / 360) % 1 + 1) % 1;
+    const cycles=p.mode==='shuttle'&&p.loop===false?1:axis.cycles;
+    const phase = ((u * cycles + axis.phase / 360) % 1 + 1) % 1;
     const half = phase < .5 ? phase * 2 : (1 - phase) * 2;
     const q = clamp((half - p.hold) / (1 - 2 * p.hold), 0, 1);
     const eased = q * (1 - p.easing) + ((1 - Math.cos(Math.PI * q)) / 2) * p.easing;
@@ -152,6 +154,16 @@
       v: rawSample(p, n.u, false, true)[key], in: rawSample(p, n.in.u, false, true)[key], out: rawSample(p, n.out.u, false, true)[key]
     })) };
   }
+  function storeLinkedCurve(p, key, knots) {
+    if(key==='alpha'&&p.opacity.behavior==='once'){p.opacity.from=clamp(knots[0].v,0,1);p.opacity.to=clamp(knots.at(-1).v,0,1);}
+    if (p.mode === 'expand' && p.link && (key === 'sx' || key === 'sy')) {
+      const other = key === 'sx' ? 'sy' : 'sx', amplitude = p.axes[key].amp;
+      const ratio = Math.abs(amplitude) > .0001 ? p.axes[other].amp / amplitude : 1;
+      const scale = q => ({u:q.u,v:Math.max(.08,1+(q.v-1)*ratio)});
+      storeCurve(p,other,knots.map(n=>({...scale(n),in:scale(n.in),out:scale(n.out)})));
+    }
+    storeCurve(p,key,knots);
+  }
   function insertCurvePoint(knots, u) {
     const i = knots.findIndex((n, j) => j && n.u >= u);
     if (i < 1 || u - knots[i - 1].u < .0001 || knots[i].u - u < .0001) return -1;
@@ -217,6 +229,12 @@
     return stack;
   }
   const anchors = { 'top-left': [0, 0], top: [.5, 0], 'top-right': [1, 0], left: [0, .5], center: [.5, .5], right: [1, .5], 'bottom-left': [0, 1], bottom: [.5, 1], 'bottom-right': [1, 1] };
+  function fitTiming(timing) {
+    timing.animationDuration = Math.max(.05, timing.minimumDuration || .05, Number(timing.animationDuration) || .05);
+    timing.boneDuration = clamp(Number(timing.boneDuration) || .05, .05, timing.animationDuration);
+    timing.animationDelay = clamp(Number(timing.animationDelay) || 0, 0, Math.max(0,timing.animationDuration-timing.boneDuration));
+    return timing;
+  }
   function stackAnchor(stack) { return stack.expand.enabled ? stack.expand.anchor : stack.bounce.enabled ? 'bottom' : 'center'; }
   function effectTime(p, u) {
     const offset = ((p.delay || 0) / Math.max(.05, p.duration)) % 1;
@@ -262,7 +280,7 @@
       effects: Object.keys(stack).filter(mode => mode === 'opacity' ? stack.opacity.opacity.on : stack[mode].enabled),
       units: { time: 'seconds', x: 'pixels', y: 'pixels', sx: 'ratio', sy: 'ratio', alpha: 'opacity' }, tracks };
   }
-  const api = { fresh, sample, bake, events, peaks, channels, clamp, defaults, ownedChannels, freshStack, sampleStack, stackAnchor, bakeStack, anchors, objectRect, effectTime, timelineTime, curveFor, storeCurve, evaluateCurve, insertCurvePoint, removeCurvePoint };
+  const api = { fresh, sample, bake, events, peaks, channels, clamp, defaults, ownedChannels, freshStack, sampleStack, stackAnchor, bakeStack, anchors, objectRect, effectTime, timelineTime, curveFor, storeCurve, storeLinkedCurve, evaluateCurve, insertCurvePoint, removeCurvePoint, fitTiming };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.NovaFlowMotionEngine = api;
 })(typeof window !== 'undefined' ? window : globalThis);

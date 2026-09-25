@@ -5,6 +5,8 @@
   const floating=document.createElement('div');floating.dataset.novaflowMotionCurve='1';
   floating.style.cssText='position:fixed;z-index:60;display:none';document.body.append(floating);
   const curveRoot=floating.attachShadow({mode:'open'});
+  const interval=document.createElement('div');interval.dataset.novaflowMotionInterval='1';interval.setAttribute('role','img');
+  interval.style.cssText='position:fixed;z-index:61;height:6px;border-radius:2px;background:#68c9a4;pointer-events:none;display:none';document.body.append(interval);
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css',document.baseURI).href;
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画计算编辑器');
@@ -24,12 +26,12 @@
             <p id="modeHelp" class="help"></p>
           </section>
           </div>
-            <div id="scaleOptions"><label class="check"><input id="link" type="checkbox">缩放联动</label><p id="linkHelp" class="help"></p>
-              <div id="anchorSection" class="anchor-picker"><div>缩放中心 <span id="anchorName"></span></div><div id="anchorGrid" class="anchor-grid" role="group" aria-label="缩放中心"></div></div>
+            <div id="scaleOptions"><div class="effect-switches"><label class="check"><input id="loop" type="checkbox">循环</label><label id="linkOption" class="check"><input id="link" type="checkbox">缩放联动</label></div><p id="linkHelp" class="help"></p>
+              <div id="anchorSection" class="anchor-picker"><div>缩放中心</div><div id="anchorGrid" class="anchor-grid" role="group" aria-label="缩放中心"></div></div>
             </div>
         </div>
         <section id="curveDetails" class="curvepanel" aria-label="曲线微调">
-          <div class="curvebar"><div id="curveTabs" class="segmented"></div><div class="row"><span id="curveState" class="dim"></span><button id="resetCurve">重置曲线</button></div></div>
+          <div class="curvebar"><div id="curveTabs" class="segmented"></div><div class="row"><span id="curveState" class="dim"></span><button id="resetCurve">重置</button></div></div>
           <div class="curvewrap"><canvas id="curve" aria-label="贝塞尔曲线，点击曲线加点，双击节点删点，拖动节点或方向手柄调整"></canvas></div>
           <div class="curvefooter"><span>点击曲线加点 · 双击节点删点 · 拖动手柄调弧度</span><div class="row"><label>值 <input id="pointValue" type="number" step=".01" aria-label="所选控制点数值"></label><span id="curveUnit">px</span></div></div>
         </section>
@@ -37,15 +39,16 @@
       <footer class="editor-footer"><div class="editor-context"><p id="selection"></p><p id="status" role="status" hidden></p></div><div class="save-action"><button id="resetAll">恢复初始值</button><button id="save" class="primary">保存动画</button></div></footer>
     </div>`;
   curveRoot.append(style,body);
-  let collapsed=false,lastLayout='',previewLayer=null,previousBlockSize='',previousBlockPriority='';
+  let collapsed=false,lastLayout='',previewLayer=null,previewStage=null,previousBlockSize='',previousBlockPriority='',lastInterval='';
   function resizePreviewCanvas(layer){
     const proxy=window.__NovaFlowSkeletonTimelineOfficialProxy,canvas=layer?.querySelector('canvas');
     if(!canvas||proxy?.canvas!==canvas)return;
-    const r=canvas.getBoundingClientRect(),dpr=devicePixelRatio||1;
+    const r=canvas.getBoundingClientRect(),dpr=Math.max(1,Math.min(3,devicePixelRatio||1));
     const width=Math.max(1,Math.round(r.width*dpr)),height=Math.max(1,Math.round(r.height*dpr));
     if(canvas.width!==width||canvas.height!==height){canvas.width=width;canvas.height=height;proxy.player?.renderCurrentPose?.();}
   }
   function releasePreviewSpace(){
+    previewStage?.removeAttribute('data-novaflow-motion-preview-height');previewStage=null;
     if(previewLayer){if(previousBlockSize)previewLayer.style.setProperty('block-size',previousBlockSize,previousBlockPriority);else previewLayer.style.removeProperty('block-size');resizePreviewCanvas(previewLayer);}
     previewLayer=null;
   }
@@ -55,7 +58,9 @@
     while(layer&&layer.parentElement!==stage)layer=layer.parentElement;
     if(!layer)return;
     if(layer!==previewLayer){releasePreviewSpace();previewLayer=layer;previousBlockSize=layer.style.getPropertyValue('block-size');previousBlockPriority=layer.style.getPropertyPriority('block-size');}
-    const height=Math.max(80,floating.getBoundingClientRect().top-stage.getBoundingClientRect().top-8)+'px';
+    previewStage=stage;
+    const pixels=Math.max(80,Math.round(floating.getBoundingClientRect().top-stage.getBoundingClientRect().top-8)),height=pixels+'px';
+    if(stage.getAttribute('data-novaflow-motion-preview-height')!==String(pixels))stage.setAttribute('data-novaflow-motion-preview-height',String(pixels));
     // The player fits to its own container, leaving the model above the editor.
     // Logical block-size avoids fighting the native shell's physical height rule.
     if(layer.style.getPropertyValue('block-size')!==height)layer.style.setProperty('block-size',height,'important');
@@ -76,6 +81,8 @@
       body.classList.toggle('compact',width<850);body.classList.toggle('narrow',width<620);
     }
     reservePreviewSpace();
+    const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
+    if(tr&&timing&&[tr.left,tr.top,tr.width,timing.animationDuration,timing.boneDuration,timing.animationDelay].join(',')!==lastInterval){lastInterval=[tr.left,tr.top,tr.width,timing.animationDuration,timing.boneDuration,timing.animationDelay].join(',');const total=timing.animationDuration,span=Math.max(0,tr.width-12);interval.style.display='block';interval.style.left=(tr.left+6+span*timing.animationDelay/total)+'px';interval.style.width=(span*timing.boneDuration/total)+'px';interval.style.top=(tr.top-8)+'px';interval.setAttribute('aria-label',`本骨骼时段 ${fmt(timing.animationDelay)}–${fmt(timing.animationDelay+timing.boneDuration)} 秒，动画总时长 ${fmt(total)} 秒`);}
   }
   const names = { bounce: '弹跳计算', expand: '扩张计算', shuttle: '往返计算', opacity: '透明度计算' };
   function renderPresetButtons(target,items,apply){
@@ -88,16 +95,16 @@
   const anchorNames = { 'top-left': '左上', top: '上方', 'top-right': '右上', left: '左侧', center: '中心', right: '右侧', 'bottom-left': '左下', bottom: '底部', 'bottom-right': '右下' };
   const channelEnabled = () => channel === 'alpha' ? p.opacity.on : p.enabled && p.axes[channel].on;
   const pointEditable = () => channelEnabled();
-  const channelLoops = () => channel === 'alpha' ? p.opacity.behavior === 'pulse' : mode === 'shuttle';
+  const channelLoops = () => mode==='shuttle'||(p.loop&&(mode==='expand'||channel==='alpha'));
   const displayValue = v => channel === 'alpha' ? v * 100 : v;
 
   const initial=bridge.initial(); const sessions = initial?.stack || E.freshStack();
-  const timing=initial?.timing || bridge.timing(); let restoring=false,historyAt=0;const history=[],redo=[];let lastSeek=0;
+  const timing=E.fitTiming({...bridge.timing(),...initial?.timing}); let restoring=false,historyAt=0;const history=[],redo=[];let lastSeek=0;
   function shareOpacity(source) { for (const session of Object.values(sessions)) { session.opacity = source.opacity; session.corrections.alpha = source.corrections.alpha; } }
-  shareOpacity(sessions.opacity);
+  for(const state of Object.values(sessions))state.loop??=state.mode==='shuttle'||(state.mode==='opacity'&&state.opacity.behavior==='pulse');shareOpacity(sessions.opacity);
   function shareDuration(value) { for (const session of Object.values(sessions)) { session.delay = (session.delay || 0) / session.duration * value; session.duration = value; } }
   shareDuration(timing.boneDuration); let lastSnapshot=JSON.stringify({stack:sessions,timing});
-  let mode = 'bounce', p = sessions[mode], channel = 'y', time = 0, playing = false, last = 0, point = 0, picture = null, pictureURL = null, drag = null, curveBounds = null;
+  let mode = 'bounce', p = sessions[mode], channel = 'y', time = 0, playing = false, last = 0, point = 0, pointSelected = false, picture = null, pictureURL = null, drag = null, curveBounds = null;
   let stageDrag = null, stageGeometry = null, peakCache = [];
   const presetSets = {
     opacity: [],
@@ -118,6 +125,7 @@
     ]
   };
   const schema = {
+    loopCount: ['循环次数',1,8,1,'',1],
     duration: ['骨骼总时长', .05, 30, .05, 's', 1],
     delay: ['骨骼延迟', 0, 1, .01, '%', 1],
     restitution: ['反弹高度保留', 0, .9, .01, '%', 100],
@@ -163,7 +171,7 @@
   }
   function setBounceHeight(kind, value) {
     if (mode !== 'bounce' || !Number.isFinite(value)) return;
-    const oldGround = p.groundY || 0, oldPeak = oldGround + p.axes.y.amp;
+    pointSelected=false;const oldGround = p.groundY || 0, oldPeak = oldGround + p.axes.y.amp;
     if (kind === 'ground') {
       p.groundY = E.clamp(value, Math.max(-200, oldPeak - 600), Math.min(200, oldPeak));
       p.axes.y.amp = oldPeak - p.groundY;
@@ -172,7 +180,7 @@
     // A new height constraint regenerates only the Y trajectory; preserve all other channels.
     p.corrections.y.fill(0); if(p.curves)delete p.curves.y;
     $('axis-num-y').value = fmt(p.axes.y.amp); $('axis-range-y').value = p.axes.y.amp;
-    $('axis-num-y').disabled = $('axis-range-y').disabled = false; $('enable-y').checked = true;
+    $('axis-num-y').disabled = $('axis-range-y').disabled = false;
     time = kind === 'ground' ? 0 : E.timelineTime(p, E.peaks(p)[0]?.u || 0);
     setPlaying(false); parameterChanged();
     status('已更新高点／地面并重新计算 Y 轨迹；其他通道保留。');
@@ -192,7 +200,7 @@
     syncBounceHeights();
   }
   function makeParam(key) {
-    const [label, min, schemaMax, schemaStep, unit, schemaFactor] = schema[key], factor = key === 'delay' ? 100 / p.duration : schemaFactor, step = key === 'delay' ? p.duration / 100 : schemaStep, max = key === 'delay' ? p.duration : schemaMax, div = document.createElement('div'); div.className = 'param';
+    const [label, min, schemaMax, schemaStep, unit, schemaFactor] = schema[key], factor = key === 'delay' ? 100 / p.duration : schemaFactor, step = key === 'delay' ? p.duration / 100 : schemaStep, max = key === 'delay' ? p.duration : key === 'duration' ? timing.animationDuration : schemaMax, div = document.createElement('div'); div.className = 'param';
     div.innerHTML = `<div class="paramhead"><label for="range-${key}">${label}</label><span class="numberwrap"><input id="num-${key}" type="number" aria-label="${label}数值" min="${min * factor}" max="${max * factor}" step="${step * factor}" value="${fmt(p[key] * factor)}"><span>${unit}</span></span></div><input id="range-${key}" aria-label="${label}" type="range" min="${min}" max="${max}" step="${step}" value="${p[key]}">`;
     const number = div.querySelector('input[type=number]'), range = div.querySelector('input[type=range]');
     range.oninput = () => { if(key==='duration')p.delay=p.delay/p.duration*Number(range.value);p[key] = Number(range.value); if (key === 'duration') {timing.boneDuration=p[key];shareDuration(p[key]);renderEffectTiming();} number.value = fmt(p[key] * factor); parameterChanged(key !== 'duration'); };
@@ -202,6 +210,11 @@
   }
   function axisSpec(k) { return k[0] === 's' ? [-.85, 1.8, .01, 100, '%'] : k === 'y' && mode === 'bounce' ? [0, 600, 1, 1, 'px'] : [-200, 200, 1, 1, 'px']; }
   function setAmplitude(k, v) {
+    if(pointSelected){
+      const selected=E.curveFor(p,channel)[point],knots=JSON.parse(JSON.stringify(E.curveFor(p,k)));
+      let index=knots.findIndex(n=>Math.abs(n.u-selected.u)<.0001);if(index<0)index=E.insertCurvePoint(knots,selected.u);
+      if(index>=0){const oldChannel=channel;channel=k;moveKnot(knots,index,selected.u,v+(k.startsWith('s')?1:0));E.storeLinkedCurve(p,k,knots);channel=oldChannel;p.enabled=true;draw();syncPoint();}return;
+    }
     const old = p.axes[k].amp; p.axes[k].amp = v;
     if (p.link && k.startsWith('s')) {
       const other = k === 'sx' ? 'sy' : 'sx';
@@ -214,17 +227,16 @@
     parameterChanged();
   }
   function makeAxis(k) {
-    const a = p.axes[k], [min, max, step, factor, unit] = axisSpec(k), div = document.createElement('div'); div.className = 'axiscontrol';
-    div.innerHTML = `<div class="axisrow"><label class="check"><input id="enable-${k}" type="checkbox" ${a.on ? 'checked' : ''}>${labels[k]}</label><div class="row"><input id="axis-num-${k}" class="axisnumber" type="number" aria-label="${labels[k]}幅度数值" min="${min * factor}" max="${max * factor}" step="${step * factor}" value="${fmt(a.amp * factor)}"><span class="axisunit">${unit}</span></div></div><input id="axis-range-${k}" type="range" aria-label="${labels[k]}幅度" min="${min}" max="${max}" step="${step}" value="${a.amp}">`;
-    const number = div.querySelector('input[type=number]'), range = div.querySelector('input[type=range]'), check = div.querySelector('input[type=checkbox]');
-    const visibleLabel = mode === 'bounce' ? (k === 'y' ? '起跳高度' : k === 'x' ? '横向移动' : labels[k]) : labels[k];
-    div.querySelector('.check').lastChild.textContent = visibleLabel;
+    const a = p.axes[k];a.on=true;const [min, max, step, factor, unit] = axisSpec(k), div = document.createElement('div'); div.className = 'axiscontrol';
+    div.innerHTML = `<div class="axisrow"><label class="axis-label" for="axis-range-${k}">${labels[k]}</label><div class="row"><input id="axis-num-${k}" class="axisnumber" type="number" aria-label="${labels[k]}幅度数值" min="${min * factor}" max="${max * factor}" step="${step * factor}" value="${fmt(a.amp * factor)}"><span class="axisunit">${unit}</span></div></div><input id="axis-range-${k}" type="range" aria-label="${labels[k]}幅度" min="${min}" max="${max}" step="${step}" value="${a.amp}">`;
+    const number = div.querySelector('input[type=number]'), range = div.querySelector('input[type=range]');
+    div.querySelector('.axis-label').textContent=labels[k];
     number.disabled = range.disabled = !a.on;
     range.oninput = () => { number.value = fmt(Number(range.value) * factor); setAmplitude(k, Number(range.value)); };
-    number.oninput = () => { if (number.value === '') return; const val = validInput(number, min * factor, max * factor, a.amp * factor) / factor; range.value = val; setAmplitude(k, val); };
-    number.onblur = () => { number.value = fmt(a.amp * factor); };
-    check.onchange = () => { a.on = check.checked; div.querySelectorAll('input:not([type=checkbox])').forEach(n => n.disabled = !a.on); parameterChanged(); };
-    if (mode === 'shuttle') {
+    number.oninput = () => { if (number.value === '') return; const val = validInput(number, Number(number.min), Number(number.max), a.amp * factor) / factor; range.value = val; setAmplitude(k, val); };
+    number.onblur = syncAxisControls;
+
+    if (mode === 'shuttle' && p.loop) {
       const extra = document.createElement('div'); extra.className = 'axisextra';
       extra.innerHTML = `<label>次数 <input type="number" min="1" max="6" step="1" value="${a.cycles}" aria-label="${labels[k]}次数"></label>`;
       const nums = extra.querySelectorAll('input'); nums.forEach(n => n.disabled = !a.on);
@@ -248,12 +260,8 @@
       ['实心到透明', { behavior: 'once', from: 1, to: 0, easing: 1, hold: 0 }],
       ['呼吸闪烁', { behavior: 'pulse', from: .15, to: 1, cycles: 3, phase: 0, easing: 1, hold: .08 }]
     ],([name, values]) => {
-      Object.assign(o, values, { on: true, begin: 0, finish: 1 }); p.corrections.alpha.fill(0); if(p.curves)delete p.curves.alpha; channel = 'alpha'; point = 0; curveBounds = null; syncEnabled(); renderOpacity(); renderTabs(); syncPoint(); restart(true); status(`已应用「${name}」，动作参数保留；可在透明度曲线上继续调节。`);
+      Object.assign(o, values, { on: true, begin: 0, finish: 1 });p.loop=o.behavior==='pulse';$('loop').checked=p.loop; p.corrections.alpha.fill(0); if(p.curves)delete p.curves.alpha; channel = 'alpha'; point = 0; pointSelected=false; curveBounds = null; syncEnabled(); renderOpacity(); renderTabs(); syncPoint(); restart(true); status(`已应用「${name}」，动作参数保留；可在透明度曲线上继续调节。`);
     });
-    const selector = document.createElement('label'); selector.className = 'line';
-    selector.innerHTML = '<span>变化方式</span><select aria-label="透明变化方式"><option value="once">单次渐变</option><option value="pulse">循环往返</option></select>';
-    const select = selector.querySelector('select'); select.value = o.behavior; select.disabled = !o.on;
-    select.onchange = () => { o.behavior = select.value; p.corrections.alpha.fill(0); if(p.curves)delete p.curves.alpha; renderOpacity(); parameterChanged(); status('透明变化方式已切换，透明度曲线微调已重置。'); };
     const keys = ['from', 'to', 'finish', ...(o.behavior === 'pulse' ? ['cycles', 'hold'] : []), 'easing'];
     const controls = keys.map(key => {
       const [label, min, max, step, unit, factor] = opacitySchema[key], div = document.createElement('div'); div.className = 'param';
@@ -271,26 +279,32 @@
       return div;
     });
     const note = document.createElement('p'); note.className = 'help'; note.textContent = '结束时间相对本骨骼的完整周期；骨骼延迟平移循环位置，不压缩渐变。';
-    $('opacityControls').replaceChildren(...controls.filter((_, i) => ['from','to'].includes(keys[i])), selector, ...controls.filter((_, i) => !['from','to'].includes(keys[i])), note);
+    $('opacityControls').replaceChildren(...controls.filter((_, i) => ['from','to'].includes(keys[i])), ...controls.filter((_, i) => !['from','to'].includes(keys[i])), note);
     $('opacityControls').hidden = !o.on;
   }
 
   function renderTiming(){
-    const fields=[['animationDuration','动画总时长',.05,120,.05,'s',1],['animationDelay','动画延迟',0,timing.animationDuration,.01,'%',100/timing.animationDuration]];
+    const fields=[['animationDuration','动画总时长',timing.minimumDuration||.05,120,.05,'s',1],['animationDelay','动画延迟',0,Math.max(0,timing.animationDuration-timing.boneDuration),.01,'%',100/timing.animationDuration]];
     const nodes=fields.map(([key,label,min,max,step,unit,factor])=>{
       const div=document.createElement('div');div.className='param animation-timing';
       div.innerHTML=`<div class="paramhead"><label for="outer-${key}">${label}</label><span class="numberwrap"><input aria-label="${label}数值" type="number" min="${min*factor}" max="${max*factor}" step="${step*factor}" value="${fmt(timing[key]*factor)}"><span>${unit}</span></span></div><input id="outer-${key}" aria-label="${label}" type="range" min="${min}" max="${max}" step="${step}" value="${timing[key]}">`;
       const range=div.querySelector('[type=range]'),num=div.querySelector('[type=number]');
       const currentFactor=()=>key==='animationDelay'?100/timing.animationDuration:1;
-      const update=value=>{const ratio=timing.animationDelay/timing.animationDuration;timing[key]=value;if(key==='animationDuration'){timing.animationDelay=ratio*value;const delay=$('outer-animationDelay');delay.max=value;delay.value=timing.animationDelay;}draw();};
+      const update=value=>{timing[key]=value;E.fitTiming(timing);shareDuration(timing.boneDuration);syncTimingControls();draw();};
       range.oninput=()=>{num.value=fmt(Number(range.value)*currentFactor());update(Number(range.value));};
       num.oninput=()=>{if(num.value==='')return;const f=currentFactor();update(validInput(num,min*f,key==='animationDelay'?100:max,timing[key]*f)/f);range.value=timing[key];};
       num.onblur=()=>{num.value=fmt(timing[key]*currentFactor());};
       return div;
     });
-    const help=document.createElement('p');help.className='help';help.id='timingHint';help.textContent=`本骨骼：${fmt(timing.animationDelay)}–${fmt(timing.animationDelay+timing.boneDuration)} 秒`;help.title='动画延迟只调整本骨骼在整段时间轴的位置。';
-    $('globalTiming').replaceChildren(nodes[0],nodes[1],makeParam('duration'),help);
+    const help=document.createElement('p');help.className='timing-hint';help.id='timingHint';help.title='只调整本骨骼在整体动画中的开始时间。';nodes[1].append(help);
+    $('globalTiming').replaceChildren(nodes[0],nodes[1],makeParam('duration'));
     renderEffectTiming();
+  }
+  function syncTimingControls(){
+    const delay=$('outer-animationDelay'),number=delay?.parentElement.querySelector('[type=number]');
+    if(delay){delay.max=Math.max(0,timing.animationDuration-timing.boneDuration);delay.value=timing.animationDelay;number.max=100*Number(delay.max)/timing.animationDuration;if(curveRoot.activeElement!==number)number.value=fmt(100*timing.animationDelay/timing.animationDuration);}
+    if($('range-duration')){$('range-duration').max=timing.animationDuration;$('range-duration').value=timing.boneDuration;$('num-duration').max=timing.animationDuration;if(curveRoot.activeElement!==$('num-duration'))$('num-duration').value=fmt(timing.boneDuration);}
+    if($('range-delay')){$('range-delay').max=p.duration;$('range-delay').value=p.delay;}
   }
   function renderEffectTiming(){
     $('effectTiming').replaceChildren(makeParam('delay'));
@@ -300,15 +314,14 @@
     $('selection').textContent=bridge.label();$('editorTitle').textContent=names[mode];
     renderTiming();
     $('mainControls').hidden = mode === 'opacity';
-    $('params').replaceChildren(...commonKeys[mode].map(makeParam));
+    $('params').replaceChildren(...commonKeys[mode].map(makeParam),...(mode==='expand'&&p.loop?[makeParam('loopCount')]:[]));
     $('advancedParams').replaceChildren(...modeKeys[mode].filter(k => k !== 'duration' && !commonKeys[mode].includes(k)).map(makeParam));
     $('primaryAxes').replaceChildren(...primaryChannels[mode].map(makeAxis));
-    $('presetSection').hidden = mode === 'opacity';$('opacityPresets').hidden=mode!=='opacity'; $('opacityDetails').hidden = mode !== 'opacity'; $('scaleOptions').hidden = mode !== 'expand';
+    $('presetSection').hidden = mode === 'opacity';$('opacityPresets').hidden=mode!=='opacity'; $('opacityDetails').hidden = mode !== 'opacity'; $('scaleOptions').hidden = mode === 'bounce';$('linkOption').hidden=mode!=='expand';$('loop').checked=!!p.loop;
     renderPresetButtons($('presets'),presetSets[mode],([name, vals, axes]) => {
-      const duration = p.duration, delay = p.delay, opacity = p.opacity, alpha = p.corrections.alpha, groundY = p.groundY, ground = p.ground; p = sessions[mode] = E.freshStack()[mode]; p.duration = duration; p.delay = delay; p.opacity = opacity; p.corrections.alpha = alpha; p.enabled = true; if (mode === 'bounce') { p.groundY = groundY || 0; p.ground = ground !== false; } Object.assign(p, vals); for (const k of E.ownedChannels[mode]) p.axes[k].amp = axes[k]; renderPanel(); restart(true); status(`已应用「${name}」，其他分项调整保留并继续叠加。`);
+      pointSelected=false;const loop=p.loop,loopCount=p.loopCount,duration = p.duration, delay = p.delay, opacity = p.opacity, alpha = p.corrections.alpha, groundY = p.groundY, ground = p.ground; p = sessions[mode] = E.freshStack()[mode]; p.duration = duration; p.delay = delay;p.loop=loop;p.loopCount=loopCount; p.opacity = opacity; p.corrections.alpha = alpha; p.enabled = true; if (mode === 'bounce') { p.groundY = groundY || 0; p.ground = ground !== false; } Object.assign(p, vals); for (const k of E.ownedChannels[mode]) p.axes[k].amp = axes[k]; renderPanel(); restart(true); status(`已应用「${name}」，其他分项调整保留并继续叠加。`);
     });
     $('link').checked = p.link;
-    $('anchorName').textContent = anchorNames[p.anchor];
     $('anchorGrid').replaceChildren(...Object.keys(E.anchors).map(key => {
       const button = document.createElement('button'); button.type = 'button'; button.title = anchorNames[key];
       button.setAttribute('aria-label', '缩放中心：' + anchorNames[key]); button.setAttribute('aria-pressed', p.anchor === key);
@@ -316,7 +329,7 @@
       button.onclick = () => { p.anchor = key; parameterChanged(); renderPanel(); }; return button;
     }));
     $('anchorSection').hidden = mode !== 'expand';
-    $('linkHelp').textContent = p.link ? '缩放幅度保持当前 X:Y 比例；取消勾选可独立调节。曲线始终可分别微调。' : '缩放 X / Y 独立调节；原始尺寸为 100%。';
+    $('linkHelp').textContent = p.link ? '锁定当前 X:Y 比例，滑条和曲线同步调整；取消勾选可独立调节。' : '缩放 X / Y 独立调节；原始尺寸为 100%。';
     $('modeHelp').textContent = {
       bounce: '只控制弹跳位移，往返位移在此基础上叠加。',
       expand: '点击格子选择缩放中心；与已有位移动画同时生效。',
@@ -327,11 +340,13 @@
     curveBounds = null; refreshEvents(); renderBounceHeights(); renderOpacity(); renderTabs(); syncPoint(); draw();
   }
   function renderTabs() {
-    $('curveTabs').replaceChildren(...E.ownedChannels[mode].map(k => { const b = document.createElement('button'); b.textContent = labels[k]; b.classList.toggle('selected', k === channel); b.setAttribute('aria-pressed', k === channel); b.onclick = () => { channel = k; curveBounds = null; renderTabs(); syncPoint(); drawCurve(); }; return b; }));
+    $('curveTabs').hidden=mode==='opacity';
+    $('curveTabs').replaceChildren(...E.ownedChannels[mode].map(k => { const b = document.createElement('button'); b.textContent = labels[k]; b.classList.toggle('selected', k === channel); b.setAttribute('aria-pressed', k === channel); b.onclick = () => { channel = k; pointSelected=false; curveBounds = null; renderTabs(); syncPoint(); drawCurve(); }; return b; }));
   }
   function setPointValue(value) {
     if (!pointEditable() || !Number.isFinite(value)) return;
-    const knots=editableKnots(); moveKnot(knots,point,knots[point].u,value); E.storeCurve(p,channel,knots);
+    pointSelected=true;
+    const knots=editableKnots(); moveKnot(knots,point,knots[point].u,value); E.storeLinkedCurve(p,channel,knots);
     time = E.timelineTime(p, knots[point].u); setPlaying(false);
     syncBounceHeights(); draw(); syncPoint();
   }
@@ -354,7 +369,21 @@
     const knots=E.curveFor(p,channel); point=E.clamp(point,0,knots.length-1);
     if (curveRoot.activeElement !== $('pointValue')) $('pointValue').value = fmt(displayValue(knots[point].v), channel.startsWith('s') ? 3 : 1); $('pointValue').disabled = !pointEditable();
     $('pointValue').step = channel.startsWith('s') ? '.01' : '1'; $('curveUnit').textContent = channel === 'alpha' ? '%' : channel.startsWith('s') ? '倍' : 'px';
+    syncAxisControls();
     $('curveState').textContent = !channelEnabled() ? '通道关闭' : '贝塞尔曲线';
+  }
+  function syncAxisControls(){
+    if(mode==='opacity')for(const k of ['from','to']){const range=$('opacity-range-'+k),number=$('opacity-num-'+k);if(range){range.value=p.opacity[k];if(curveRoot.activeElement!==number)number.value=fmt(p.opacity[k]*100);range.style.setProperty('--fill',`${p.opacity[k]*100}%`);}}
+    const u=E.curveFor(p,channel)[point]?.u||0;
+    for(const k of E.ownedChannels[mode]){
+      if(k==='alpha')continue;
+      const range=$('axis-range-'+k),number=$('axis-num-'+k);if(!range||!number)continue;
+      const value=pointSelected?E.sample(p,u)[k]-(k.startsWith('s')?1:0):p.axes[k].amp,factor=k.startsWith('s')?100:1;
+      const spec=axisSpec(k);range.min=Math.min(spec[0],value);range.max=Math.max(spec[1],value);number.min=Number(range.min)*factor;number.max=Number(range.max)*factor;
+      range.value=value;if(curveRoot.activeElement!==number)number.value=fmt(value*factor);
+      range.style.setProperty('--fill',`${100*(value-Number(range.min))/(Number(range.max)-Number(range.min))}%`);
+      range.title=number.title=pointSelected?'所选节点的通道数值':'通道幅度';
+    }
   }
   function canvasContext(id) {
     const canvas = $(id), r = canvas.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
@@ -393,18 +422,19 @@
     ctx.strokeStyle = '#e9c668'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(xp(E.effectTime(p, time / p.duration)), g.top); ctx.lineTo(xp(E.effectTime(p, time / p.duration)), g.bottom); ctx.stroke();
     if(channelEnabled()){
       const n=knots[point];ctx.strokeStyle='#b69d60';ctx.fillStyle='#e9c668';ctx.lineWidth=1;
-      for(const side of ['in','out'])if(side==='in'?point>0:point<knots.length-1){const q=n[side];ctx.beginPath();ctx.moveTo(xp(n.u),yp(n.v));ctx.lineTo(xp(q.u),yp(q.v));ctx.stroke();ctx.fillRect(xp(q.u)-3,yp(q.v)-3,6,6);}
+      if(pointSelected)for(const side of ['in','out'])if(side==='in'?point>0:point<knots.length-1){const q=n[side];ctx.beginPath();ctx.moveTo(xp(n.u),yp(n.v));ctx.lineTo(xp(q.u),yp(q.v));ctx.stroke();ctx.fillRect(xp(q.u)-3,yp(q.v)-3,6,6);}
       for (let i = 0; i < knots.length; i++) {
-      const n=knots[i],y = yp(n.v); ctx.fillStyle = i === point ? '#e9c668' : '#1e2220'; ctx.strokeStyle = i === point ? '#e9c668' : '#6ed3a7'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(xp(n.u), y, i === point ? 4.6 : 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      const n=knots[i],y = yp(n.v); ctx.fillStyle = i === point && pointSelected ? '#e9c668' : '#1e2220'; ctx.strokeStyle = i === point && pointSelected ? '#e9c668' : '#6ed3a7'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(xp(n.u), y, i === point && pointSelected ? 4.6 : 3.5, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       }
     }
     $('curve').dataset.knotCount=String(knots.length);
     ctx.restore();
   }
   function draw() {
-    if($('timingHint'))$('timingHint').textContent=`本骨骼：${fmt(timing.animationDelay)}–${fmt(timing.animationDelay+timing.boneDuration)} 秒`;
-    curveRoot.querySelectorAll('input[type=range]').forEach(input=>{input.style.setProperty('--fill',`${100*(Number(input.value)-Number(input.min))/(Number(input.max)-Number(input.min))}%`);});
+    E.fitTiming(timing);shareDuration(timing.boneDuration);syncTimingControls();
+    if($('timingHint'))$('timingHint').textContent=`偏移 ${fmt(timing.animationDelay)} 秒 · ${fmt(timing.animationDuration)} 秒时间轴内`;
+    curveRoot.querySelectorAll('input[type=range]').forEach(input=>{input.style.setProperty('--fill',`${Number(input.max)>Number(input.min)?100*(Number(input.value)-Number(input.min))/(Number(input.max)-Number(input.min)):0}%`);});
     if($('delayHint'))$('delayHint').textContent=`偏移 ${fmt(p.delay)} 秒 · ${fmt(p.duration)} 秒周期内`;
     drawCurve();
     const snapshot = JSON.stringify({stack:sessions,timing});
@@ -414,7 +444,8 @@
       try { bridge.preview(sessions,timing); previewError='';if($('save').disabled)$('save').disabled=false; status(''); }
       catch(error){previewError=error.message;if(!$('save').disabled)$('save').disabled=true;status(error.message);}
     }
-    if(time!==lastSeek){lastSeek=time;bridge.seek(timing.animationDelay+time);}
+    const seekTime=timing.animationDelay+time;
+    if(seekTime!==lastSeek){lastSeek=seekTime;bridge.seek(seekTime);}
   }
   function curvePosition(event) { const r = $('curve').getBoundingClientRect(); return { x: event.clientX - r.left, y: event.clientY - r.top }; }
   function nearestPoint(pos, g) {
@@ -433,10 +464,10 @@
     }
     if(index<0&&channelEnabled()&&e.detail<2){
       const q=screenPoint({u,v:E.evaluateCurve(knots,u)},g);
-      if(Math.abs(q.y-pos.y)<10){index=E.insertCurvePoint(knots,u);if(index>=0)E.storeCurve(p,channel,knots);}
+      if(Math.abs(q.y-pos.y)<10){index=E.insertCurvePoint(knots,u);if(index>=0)E.storeLinkedCurve(p,channel,knots);}
     }
     if(index>=0&&channelEnabled()){
-      point=index;time=E.timelineTime(p,knots[point].u);
+      point=index;pointSelected=true;time=E.timelineTime(p,knots[point].u);
       drag={bounds:{min:g.min,max:g.max},side,start:pos,knots:editableKnots()};
       $('curve').setPointerCapture(e.pointerId);syncPoint();draw();
     }else{time=E.timelineTime(p,u);draw();}
@@ -447,20 +478,21 @@
     const knots=JSON.parse(JSON.stringify(drag.knots)),n=knots[point],du=(pos.x-drag.start.x)/(g.right-g.left),dv=(drag.start.y-pos.y)/(g.bottom-g.top)*(g.max-g.min);
     if(drag.side){const q=n[drag.side];q.u=E.clamp(q.u+du,drag.side==='in'?knots[point-1].out.u:n.u,drag.side==='in'?n.u:knots[point+1].in.u);q.v=limitValue(q.v+dv);}
     else moveKnot(knots,point,n.u+du,n.v+dv);
-    E.storeCurve(p,channel,knots);time=E.timelineTime(p,n.u);syncBounceHeights();draw();syncPoint();
+    E.storeLinkedCurve(p,channel,knots);time=E.timelineTime(p,n.u);syncBounceHeights();draw();syncPoint();
   };
   const endDrag = () => { if (!drag) return; drag = null; curveBounds = null; drawCurve(); };
   $('curve').onpointerup = endDrag; $('curve').onpointercancel = endDrag; $('curve').onlostpointercapture = endDrag;
-  $('curve').ondblclick = e => { if(!channelEnabled())return;const index=nearestPoint(curvePosition(e),curveGeometry()),knots=editableKnots();if(E.removeCurvePoint(knots,index)){E.storeCurve(p,channel,knots);point=Math.min(index,knots.length-1);curveBounds=null;syncBounceHeights();draw();syncPoint();} };
+  $('curve').ondblclick = e => { if(!channelEnabled())return;const index=nearestPoint(curvePosition(e),curveGeometry()),knots=editableKnots();if(E.removeCurvePoint(knots,index)){E.storeLinkedCurve(p,channel,knots);point=Math.min(index,knots.length-1);curveBounds=null;syncBounceHeights();draw();syncPoint();} };
   $('pointValue').oninput = () => { if ($('pointValue').value === '') return; setPointValue(Number($('pointValue').value) / (channel === 'alpha' ? 100 : 1)); curveBounds = null; drawCurve(); };
   $('pointValue').onblur = syncPoint;
-  $('resetCurve').onclick = () => { p.corrections[channel].fill(0);if(p.curves)delete p.curves[channel];point=0; curveBounds = null; syncBounceHeights(); syncPoint(); draw(); status(`已恢复${labels[channel]}的计算曲线。`); };
+  $('resetCurve').onclick = () => { pointSelected=false;p.corrections[channel].fill(0);if(p.curves)delete p.curves[channel];if(mode==='expand'&&p.link){const other=channel==='sx'?'sy':'sx';p.corrections[other].fill(0);if(p.curves)delete p.curves[other];}point=0; curveBounds = null; syncBounceHeights(); syncPoint(); draw(); status(`已恢复${labels[channel]}的计算曲线。`); };
   function setCollapsed(value){collapsed=value;$('editorContent').hidden=value;$('editorToggle').textContent=value?'展开':'收起';$('editorToggle').setAttribute('aria-expanded',String(!value));body.classList.toggle('collapsed',value);curveBounds=null;drawCurve();}
-  function selectMode(next){setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':'x';drag=null;renderPanel();status('切换功能保留调整 · 仅操作当前骨骼');}
+  function selectMode(next){setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':'x';drag=null;pointSelected=false;renderPanel();status('切换功能保留调整 · 仅操作当前骨骼');}
   $('resetAll').onclick = () => {
     bridge.restore(); Object.assign(sessions,E.freshStack()); Object.assign(timing,bridge.timing()); shareDuration(timing.boneDuration); shareOpacity(sessions.opacity);p=sessions[mode];
     history.push(lastSnapshot);lastSnapshot=JSON.stringify({stack:sessions,timing});redo.length=0;previewError='';time=0;renderPanel();$('save').disabled=false;status('已恢复本骨骼计算前的动画；其他骨骼保留。');
   };
+  $('loop').onchange=()=>{p.loop=$('loop').checked;pointSelected=false;if(mode==='opacity'){p.opacity.behavior=p.loop?'pulse':'once';p.corrections.alpha.fill(0);if(p.curves)delete p.curves.alpha;}parameterChanged();renderPanel();};
   $('link').onchange = () => { p.link = $('link').checked; parameterChanged(false); };
   $('editorToggle').onclick=()=>setCollapsed(!collapsed);
   $('save').onclick = () => { try{bridge.save(sessions,timing);status('');}catch(error){status(error.message,true);} };
@@ -468,8 +500,8 @@
   function undo(forward){const from=forward?redo:history,to=forward?history:redo;if(from.length){to.push(lastSnapshot);restoreSnapshot(from.pop());status(forward?'已重做本骨骼参数。':'已撤销本骨骼参数。');}}
   const observer=new ResizeObserver(()=>{curveBounds=null;drawCurve();});observer.observe($('curve'));
   let frameId;
-  function frame(){if(host.host.isConnected){positionCurve();if(!collapsed){time=E.clamp(bridge.time()-timing.animationDelay,0,p.duration);lastSeek=time;drawCurve();}frameId=requestAnimationFrame(frame);}else floating.style.display='none';}
+  function frame(){if(host.host.isConnected){positionCurve();if(!collapsed){const currentTime=bridge.time();time=E.clamp(currentTime-timing.animationDelay,0,p.duration);lastSeek=currentTime;drawCurve();}frameId=requestAnimationFrame(frame);}else {floating.style.display='none';interval.style.display='none';}}
   positionCurve();selectMode(bridge.mode||'bounce');frameId=requestAnimationFrame(frame);
-  return {destroy(){observer.disconnect();cancelAnimationFrame(frameId);releasePreviewSpace();floating.remove();},ownsEvent:event=>event.composedPath().includes(floating),selectMode,status:message=>status(message,true),undo};
+  return {destroy(){observer.disconnect();cancelAnimationFrame(frameId);releasePreviewSpace();floating.remove();interval.remove();},ownsEvent:event=>event.composedPath().includes(floating),selectMode,status:message=>status(message,true),undo};
 }};
 })();

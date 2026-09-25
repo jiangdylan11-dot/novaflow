@@ -140,3 +140,36 @@ test('saved native animation bakes edited Bezier scale and opacity, preserving o
  delete stack.expand.curves.sx;
  assert.equal(E.sample(stack.expand,.5).sx,E.sample(stack.expand,.5,true).sx);
 });
+
+test('timing edits keep the whole bone interval inside the animation',()=>{
+ const timing={animationDuration:6,boneDuration:3,animationDelay:4.3,minimumDuration:2};
+ E.fitTiming(timing);assert.equal(timing.animationDelay,3);
+ timing.animationDuration=1;E.fitTiming(timing);
+ assert.equal(timing.animationDuration,2);assert.equal(timing.boneDuration,2);assert.equal(timing.animationDelay,0);
+});
+
+test('linked scale curve edits lock the ratio; unchecked edits leave the other channel intact',()=>{
+ const p=E.freshStack().expand;p.enabled=true;
+ const knots=JSON.parse(JSON.stringify(E.curveFor(p,'sx'))),i=E.insertCurvePoint(knots,.5);
+ knots[i].v=1.7;E.storeLinkedCurve(p,'sx',knots);
+ for(const u of [0,.25,.5,.75,1])assert.ok(Math.abs(E.sample(p,u).sx-E.sample(p,u).sy)<1e-8);
+ p.link=false;const other=JSON.stringify(p.curves.sy);knots[i].v=1.9;E.storeLinkedCurve(p,'sx',knots);
+ assert.equal(JSON.stringify(p.curves.sy),other);assert.ok(Math.abs(E.sample(p,.5).sx-1.9)<1e-8);
+});
+
+test('looping subdivides the bone interval and never extends its placement',()=>{
+ const stack=E.freshStack(),p=stack.expand;p.enabled=true;
+ const single=E.sample(p,.3).sx;p.loop=true;p.loopCount=3;
+ for(const u of [.1,.1+1/3,.1+2/3])assert.ok(Math.abs(E.sample(p,u).sx-single)<1e-7);
+ const result=calc(fixture(),stack);assert.equal(result.start,.5);assert.equal(result.end,1.5);
+ const shuttle=stack.shuttle;shuttle.axes.x.cycles=3;shuttle.loop=false;
+ const once=E.sample(shuttle,.25).x;shuttle.axes.x.cycles=1;assert.equal(E.sample(shuttle,.25).x,once);
+});
+
+test('weighted mesh bounds follow influencing bones instead of slot attachment and image width',()=>{
+ const project={bones:[{name:'root'},{name:'driver',parent:'root',x:100,length:10}],slots:[{name:'mesh',bone:'root'}],skins:[{attachments:{mesh:{shape:{type:'mesh',width:1,height:1,uvs:[0,0,1,1],vertices:[1,1,0,-20,1,1,1,200,30,1]}}}}],animations:{idle:{duration:2,bones:{}}}};
+ const box=A.bounds(project,'driver',M);for(const [k,v]of Object.entries({minX:0,maxX:200,minY:-20,maxY:30}))assert.ok(Math.abs(box[k]-v)<1e-8);
+ const stack=E.freshStack();stack.expand.enabled=true;stack.expand.anchor='bottom';
+ const out=A.calculate(project,'idle',['driver'],stack,timing,E,M).animation;
+ assert.ok(out.bones.driver.scale.length>20);assert.equal(out.bones.root,undefined);
+});

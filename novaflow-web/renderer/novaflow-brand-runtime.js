@@ -72484,7 +72484,11 @@
     });
     const stageRect = previewStage.getBoundingClientRect();
     const stageWidth = Math.max(1, Math.round(stageRect.width || previewStage.clientWidth || 1));
-    const stageHeight = Math.max(1, Math.round(stageRect.height || previewStage.clientHeight || 1));
+    // Animation calculation reserves space inside the preview for its editor.
+    // Use the same height as its frame instead of resizing the backing canvas
+    // to the entire stage on every layout pass (which clears WebGL repeatedly).
+    const motionHeight = Number(previewStage.getAttribute("data-novaflow-motion-preview-height"));
+    const stageHeight = Math.max(1, Math.round(motionHeight > 0 ? motionHeight : stageRect.height || previewStage.clientHeight || 1));
     const canvasScale = Math.max(1, Math.min(3, Number(window.devicePixelRatio) || 1));
     const canvasWidth = Math.max(1, Math.round(stageWidth * canvasScale));
     const canvasHeight = Math.max(1, Math.round(stageHeight * canvasScale));
