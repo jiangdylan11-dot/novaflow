@@ -45,6 +45,7 @@ summary{cursor:pointer;list-style:none;font-size:11px;color:#aaa;padding:8px 0}s
 .compact .editor-title{display:block}.compact .curvebar .dim{display:none}.compact .curvefooter>span{display:none}.compact .editor-workspace{grid-template-columns:minmax(225px,43%) minmax(0,1fr);gap:10px}.compact .effect-parameters{gap:7px;padding-right:8px}.compact .effect-scroll{gap:7px 10px}.compact .timing-row,.compact .global-timing{column-gap:10px}
 .narrow .editor-header{flex-wrap:wrap;gap:6px}.narrow .timing-row{grid-template-columns:minmax(0,3fr) minmax(0,1fr);gap:6px}.narrow .global-timing{gap:6px}.narrow .editor-workspace{grid-template-columns:minmax(160px,42%) minmax(0,1fr)}.narrow .effect-scroll{grid-template-columns:minmax(0,1fr)}.narrow .timing-row .help{display:none}.narrow #selection{white-space:normal}.narrow .curvefooter select{max-width:65px}.narrow .save-action button{min-width:78px;padding:4px 6px}
 .narrow .effect-parameters #scaleOptions{display:block}
+.narrow .presets{display:grid;grid-template-columns:repeat(3,max-content)}
 
 #resetCurve{width:48px;min-width:48px}.curvebar>.row{margin-left:auto}.timing-hint{grid-column:1/-1;font-size:10px;color:#777;margin:1px 0 0;white-space:normal}
 

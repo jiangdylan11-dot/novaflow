@@ -15,7 +15,7 @@
   playbackMode.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();playbackMode.click();}};
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20260925-5',document.baseURI).href;
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20260926-direction-1',document.baseURI).href;
   style.onload=()=>{stylesReady=true;positionCurve();floating.style.visibility='visible';};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画计算编辑器');
   body.innerHTML=`
@@ -33,7 +33,7 @@
           <section id="mainControls" class="controlsection"><div id="primaryAxes"></div><div id="params"></div><div id="advancedParams"></div>
             <p id="modeHelp" class="help"></p>
           </section>
-            <div id="scaleOptions"><div class="effect-switches"><label id="linkOption" class="check"><input id="link" type="checkbox">缩放联动</label><label class="check"><input id="loop" type="checkbox">循环</label></div><p id="linkHelp" class="help"></p></div>
+            <div id="scaleOptions"><div class="effect-switches"><label id="linkOption" class="check"><input id="link" type="checkbox">缩放联动</label><label class="check"><input id="loop" type="checkbox"><span id="directionLabel">循环</span></label></div><p id="linkHelp" class="help"></p></div>
           </div>
         </div>
         <section id="curveDetails" class="curvepanel" aria-label="曲线微调">
@@ -101,7 +101,7 @@
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
     if(tr&&timing&&[tr.left,tr.top,tr.width,timing.animationDuration,timing.boneDuration,timing.animationDelay].join(',')!==lastInterval){lastInterval=[tr.left,tr.top,tr.width,timing.animationDuration,timing.boneDuration,timing.animationDelay].join(',');const total=timing.animationDuration,span=Math.max(0,tr.width-12);interval.style.display='block';interval.style.left=(tr.left+6+span*timing.animationDelay/total)+'px';interval.style.width=(span*timing.boneDuration/total)+'px';interval.style.top=(tr.top-8)+'px';interval.setAttribute('aria-label',`本骨骼时段 ${fmt(timing.animationDelay)}–${fmt(timing.animationDelay+timing.boneDuration)} 秒，动画总时长 ${fmt(total)} 秒`);}
   }
-  const names = { bounce: '弹跳计算', expand: '扩张计算', shuttle: '往返计算', opacity: '透明度计算' };
+  const names = { bounce: '弹跳计算', expand: '缩放计算', shuttle: '移动计算', opacity: '透明度计算' };
   function renderPresetButtons(target,items,apply){
     if(!items.length){target.replaceChildren();return;}
     const key=target.id==='opacityPresets'?'opacity':mode;
@@ -111,7 +111,7 @@
   const labels = { x: '位移 X', y: '位移 Y', sx: '缩放 X', sy: '缩放 Y', alpha: '透明度' };
   const channelEnabled = () => channel === 'alpha' ? p.opacity.on : p.enabled && p.axes[channel].on;
   const pointEditable = () => channelEnabled();
-  const channelLoops = () => mode==='shuttle'||(p.loop&&(mode==='expand'||channel==='alpha'));
+  const channelLoops = () => !p.oneWay&&(mode==='shuttle'||(p.loop&&(mode==='expand'||channel==='alpha')));
   const displayValue = v => channel === 'alpha' ? v * 100 : v;
 
   const initial=bridge.initial(); const sessions = initial?.stack || E.freshStack();
@@ -133,12 +133,18 @@
     expand: [
       ['弹性放大', { attack: .20, frequency: 2.5, damping: 5 }, { x: 0, y: 0, sx: .55, sy: .55 }],
       ['受击压扁', { attack: .12, frequency: 3.5, damping: 8 }, { x: 0, y: 0, sx: .42, sy: -.35 }],
-      ['柔和呼吸', { attack: .48, frequency: .25, damping: 1.3 }, { x: 0, y: 0, sx: .12, sy: .18 }]
+      ['柔和呼吸', { attack: .48, frequency: .25, damping: 1.3 }, { x: 0, y: 0, sx: .12, sy: .18 }],
+      ['匀速放大', { oneWay:'linear',easing:0,hold:0 }, { sx:.55,sy:.55 }],
+      ['柔和放大', { oneWay:'smooth',easing:1,hold:0 }, { sx:.55,sy:.55 }],
+      ['渐停放大', { oneWay:'out',easing:1,hold:0 }, { sx:.55,sy:.55 }]
     ],
     shuttle: [
       ['左右往返', { easing: 1, hold: .06 }, { x: 145, y: 0, sx: .12, sy: -.12 }],
       ['上下浮动', { easing: 1, hold: 0 }, { x: 0, y: 95, sx: .10, sy: -.10 }],
-      ['椭圆运动', { easing: 1, hold: 0 }, { x: 140, y: 80, sx: .12, sy: -.12 }]
+      ['椭圆运动', { easing: 1, hold: 0 }, { x: 140, y: 80, sx: .12, sy: -.12 }],
+      ['向左移动', { oneWay:'smooth',easing:1,hold:0 }, { x:-145,y:0 }],
+      ['向上移动', { oneWay:'smooth',easing:1,hold:0 }, { x:0,y:95 }],
+      ['斜向移动', { oneWay:'smooth',easing:1,hold:0 }, { x:140,y:80 }]
     ]
   };
   const schema = {
@@ -253,7 +259,7 @@
     number.oninput = () => { if (number.value === '') return; const val = validInput(number, Number(number.min), Number(number.max), a.amp * factor) / factor; range.value = val; setAmplitude(k, val); };
     number.onblur = syncAxisControls;
 
-    if (mode === 'shuttle' && p.loop) {
+    if (mode === 'shuttle' && !p.oneWay && p.loop) {
       const extra = document.createElement('div'); extra.className = 'axisextra';
       extra.innerHTML = `<label>次数 <input type="number" min="1" max="6" step="1" value="${a.cycles}" aria-label="${labels[k]}次数"></label>`;
       const nums = extra.querySelectorAll('input'); nums.forEach(n => n.disabled = !a.on);
@@ -334,19 +340,20 @@
     $('selection').textContent=bridge.label();$('editorTitle').textContent=names[mode];
     renderTiming();
     $('mainControls').hidden = mode === 'opacity';
-    $('params').replaceChildren(...commonKeys[mode].map(makeParam),...(mode==='expand'&&p.loop?[makeParam('loopCount')]:[]));
-    $('advancedParams').replaceChildren(...modeKeys[mode].filter(k => k !== 'duration' && !commonKeys[mode].includes(k)).map(makeParam));
+    const singleExpansion=mode==='expand'&&p.oneWay;
+    $('params').replaceChildren(...(singleExpansion?[]:commonKeys[mode]).map(makeParam));
+    $('advancedParams').replaceChildren(...(singleExpansion?(p.oneWay==='linear'?['hold']:['easing','hold']):modeKeys[mode].filter(k => k !== 'duration' && !commonKeys[mode].includes(k))).map(makeParam));
     $('primaryAxes').replaceChildren(...primaryChannels[mode].map(makeAxis));
-    $('presetSection').hidden = mode === 'opacity';$('opacityPresets').hidden=mode!=='opacity'; $('opacityDetails').hidden = mode !== 'opacity'; $('scaleOptions').hidden = mode === 'bounce';$('linkOption').hidden=mode!=='expand';$('loop').checked=!!p.loop;
+    $('presetSection').hidden = mode === 'opacity';$('opacityPresets').hidden=mode!=='opacity'; $('opacityDetails').hidden = mode !== 'opacity'; $('scaleOptions').hidden = mode === 'bounce';$('linkOption').hidden=mode!=='expand';$('directionLabel').textContent=mode==='opacity'?'循环':'反向';$('loop').checked=mode==='opacity'?!!p.loop:!!p.reverse;
     renderPresetButtons($('presets'),presetSets[mode],([name, vals, axes]) => {
-      pointSelected=false;const loop=p.loop,loopCount=p.loopCount,duration = p.duration, delay = p.delay, opacity = p.opacity, alpha = p.corrections.alpha, groundY = p.groundY, ground = p.ground; p = sessions[mode] = E.freshStack()[mode];p.initialized=true; p.duration = duration; p.delay = delay;p.loop=loop;p.loopCount=loopCount; p.opacity = opacity; p.corrections.alpha = alpha; p.enabled = true; if (mode === 'bounce') { p.groundY = groundY || 0; p.ground = ground !== false; } Object.assign(p, vals); for (const k of E.ownedChannels[mode]) p.axes[k].amp = axes[k]; renderPanel(); restart(true); status(`已应用「${name}」，其他分项调整保留并继续叠加。`);
+      pointSelected=false;const reverse=p.reverse,loop=p.loop,loopCount=p.loopCount,duration = p.duration, delay = p.delay, opacity = p.opacity, alpha = p.corrections.alpha, groundY = p.groundY, ground = p.ground; p = sessions[mode] = E.freshStack()[mode];p.initialized=true; p.duration = duration; p.delay = delay;p.reverse=!!reverse;p.loop=loop;p.loopCount=loopCount; p.opacity = opacity; p.corrections.alpha = alpha; p.enabled = true; if (mode === 'bounce') { p.groundY = groundY || 0; p.ground = ground !== false; } Object.assign(p, vals); for (const k of E.ownedChannels[mode]) p.axes[k].amp = axes[k]; renderPanel(); restart(true); status(`已应用「${name}」，其他分项调整保留并继续叠加。`);
     });
     $('link').checked = p.link;
     $('linkHelp').textContent = p.link ? '锁定当前 X:Y 比例，滑条和曲线同步调整；取消勾选可独立调节。' : '缩放 X / Y 独立调节；原始尺寸为 100%。';
     $('modeHelp').textContent = {
-      bounce: '只控制弹跳位移，往返位移在此基础上叠加。',
+      bounce: '只控制弹跳位移，移动计算在此基础上叠加。',
       expand: '围绕骨骼原点缩放，与已有位移动画同时生效。',
-      shuttle: '只控制往返位移，叠加在已有弹跳上。X/Y 的幅度与次数分别调整。',
+      shuttle: 'X/Y 独立调整。反向交换当前动作的起点和终点，保留曲线微调。',
       opacity: '独立调整透明度，也可叠加到其他动作。'
     }[mode];
     syncEnabled();
@@ -505,7 +512,7 @@
     bridge.restore(); Object.assign(sessions,E.freshStack()); Object.assign(timing,bridge.timing()); shareDuration(timing.boneDuration); shareOpacity(sessions.opacity);p=sessions[mode];
     history.push(lastSnapshot);lastSnapshot=JSON.stringify({stack:sessions,timing});redo.length=0;previewError='';time=0;renderPanel();$('save').disabled=false;status('已恢复本骨骼计算前的动画；其他骨骼保留。');
   };
-  $('loop').onchange=()=>{p.loop=$('loop').checked;pointSelected=false;if(mode==='opacity'){p.opacity.behavior=p.loop?'pulse':'once';p.corrections.alpha.fill(0);if(p.curves)delete p.curves.alpha;}parameterChanged();renderPanel();};
+  $('loop').onchange=()=>{pointSelected=false;if(mode==='opacity'){p.loop=$('loop').checked;p.opacity.behavior=p.loop?'pulse':'once';p.corrections.alpha.fill(0);if(p.curves)delete p.curves.alpha;}else p.reverse=$('loop').checked;parameterChanged();renderPanel();};
   $('link').onchange = () => { p.link = $('link').checked; parameterChanged(false); };
   $('editorToggle').onclick=()=>setCollapsed(!collapsed);
   $('save').onclick = () => { try{bridge.save(sessions,timing);status('');}catch(error){status(error.message,true);} };

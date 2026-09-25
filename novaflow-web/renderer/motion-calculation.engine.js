@@ -15,7 +15,7 @@
   };
   function fresh(mode) {
     const p = JSON.parse(JSON.stringify(defaults[mode]));
-    p.mode = mode; p.link = mode !== 'shuttle'; p.delay = 0; p.loop = mode === 'shuttle'; p.loopCount = 2;
+    p.mode = mode; p.link = mode !== 'shuttle'; p.delay = 0; p.loop = mode === 'shuttle'; p.loopCount = 2; p.reverse = false;
     p.opacity = { on: false, behavior: 'once', from: 0, to: 1, begin: 0, finish: 1, cycles: 2, phase: 0, easing: 1, hold: 0 };
     p.corrections = Object.fromEntries([...channels, 'alpha'].map(k => [k, Array(17).fill(0)]));
     return p;
@@ -51,6 +51,7 @@
     return { x: smooth(u / last), y: h, sx: deformation, sy: deformation };
   }
   function expansion(p, u) {
+    if(p.oneWay)return oneWayProgress(p,u);
     if(p.loop)u=u>=1?1:(u*Math.max(1,p.loopCount||2))%1;
     if (u <= p.attack) return smooth(u / p.attack);
     const q = (u - p.attack) / (1 - p.attack);
@@ -58,6 +59,7 @@
     return Math.cos(2 * Math.PI * p.frequency * q) * Math.exp(-p.damping * q * q) * (1 - smooth((q - .78) / .22));
   }
   function wave(p, axis, u) {
+    if(p.mode==='shuttle'&&p.oneWay)return oneWayProgress(p,u);
     const cycles=p.mode==='shuttle'&&p.loop===false?1:axis.cycles;
     const phase = ((u * cycles + axis.phase / 360) % 1 + 1) % 1;
     const half = phase < .5 ? phase * 2 : (1 - phase) * 2;
@@ -65,6 +67,13 @@
     const eased = q * (1 - p.easing) + ((1 - Math.cos(Math.PI * q)) / 2) * p.easing;
     return -1 + 2 * eased;
   }
+  function oneWayProgress(p,u){
+    const hold=p.hold||0,q=clamp((u-hold)/(1-2*hold),0,1);
+    const eased=p.oneWay==='out'?1-(1-q)**3:p.oneWay==='linear'?q:smooth(q);
+    return q+(eased-q)*(p.easing??1);
+  }
+  const reversed=(p,key)=>!!p.reverse&&((p.mode==='expand'&&(key==='sx'||key==='sy'))||(p.mode==='shuttle'&&(key==='x'||key==='y')));
+  const reverseKnots=knots=>knots.slice().reverse().map(n=>({u:1-n.u,v:n.v,in:{u:1-n.out.u,v:n.out.v},out:{u:1-n.in.u,v:n.in.v}}));
   function correction(values, u, pinEnds = false) {
     const pos = clamp(u, 0, 1) * (values.length - 1), i = Math.min(values.length - 2, Math.floor(pos));
     const a = pinEnds && i === 0 ? 0 : values[i], b = pinEnds && i + 1 === values.length - 1 ? 0 : values[i + 1];
@@ -72,11 +81,11 @@
   }
   function rawSample(p, u, noCorrections = false, unclamped = false) {
     u = clamp(u, 0, 1);
-    const base = p.mode === 'opacity' ? { x: 0, y: 0, sx: 0, sy: 0 } : p.mode === 'bounce' ? bounceBase(p, u) : p.mode === 'expand' ? Object.fromEntries(channels.map(k => [k, expansion(p, u)])) : Object.fromEntries(channels.map(k => [k, wave(p, p.axes[k], u)]));
+    const base = p.mode === 'opacity' ? { x: 0, y: 0, sx: 0, sy: 0 } : p.mode === 'bounce' ? bounceBase(p, u) : p.mode === 'expand' ? Object.fromEntries(channels.map(k => [k, expansion(p, reversed(p,k)?1-u:u)])) : Object.fromEntries(channels.map(k => [k, wave(p, p.axes[k], reversed(p,k)?1-u:u)]));
     const out = {};
     for (const k of channels) {
       const scale = k[0] === 's', a = p.axes[k];
-      out[k] = (scale ? 1 : 0) + (a.on ? a.amp * base[k] + (noCorrections ? 0 : correction(p.corrections[k], u, p.mode === 'bounce' && k === 'y')) : 0);
+      out[k] = (scale ? 1 : 0) + (a.on ? a.amp * base[k] + (noCorrections ? 0 : correction(p.corrections[k], reversed(p,k)?1-u:u, p.mode === 'bounce' && k === 'y')) : 0);
       if (scale && !unclamped) out[k] = Math.max(.08, out[k]);
     }
     if (p.mode === 'bounce') {
@@ -140,18 +149,20 @@
     const signature = JSON.stringify(p); let cache = curveCache.get(p);
     if (!cache || cache.signature !== signature) { cache = { signature, channels: {} }; curveCache.set(p, cache); }
     if (cache.channels[key]) return cache.channels[key];
-    const saved = p.curves?.[key];
+    const saved = p.curves?.[key],reverse=reversed(p,key),forward=reverse?{...p,reverse:false}:p;
     const knots = saved ? saved.knots.map((n, i) => {
       // Retain manual edits while sliders change the underlying calculated motion.
-      const shift = (q, baseline) => ({ u: q.u, v: q.v + rawSample(p, q.u, false, true)[key] - baseline });
+      const shift = (q, baseline) => ({ u: q.u, v: q.v + rawSample(forward, q.u, false, true)[key] - baseline });
       return { ...shift(n, saved.baseline[i].v), in: shift(n.in, saved.baseline[i].in), out: shift(n.out, saved.baseline[i].out) };
-    }) : fitCurve(p, key);
-    cache.channels[key] = knots; return knots;
+    }) : fitCurve(forward, key);
+    cache.channels[key] = reverse?reverseKnots(knots):knots; return cache.channels[key];
   }
   function storeCurve(p, key, knots) {
+    const forward=reversed(p,key)?{...p,reverse:false}:p;
+    if(reversed(p,key))knots=reverseKnots(knots);
     p.curves ??= {};
     p.curves[key] = { knots: JSON.parse(JSON.stringify(knots)), baseline: knots.map(n => ({
-      v: rawSample(p, n.u, false, true)[key], in: rawSample(p, n.in.u, false, true)[key], out: rawSample(p, n.out.u, false, true)[key]
+      v: rawSample(forward, n.u, false, true)[key], in: rawSample(forward, n.in.u, false, true)[key], out: rawSample(forward, n.out.u, false, true)[key]
     })) };
   }
   function storeLinkedCurve(p, key, knots) {

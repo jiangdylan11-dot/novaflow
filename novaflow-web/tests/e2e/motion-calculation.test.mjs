@@ -175,3 +175,57 @@ test('weighted mesh bounds follow influencing bones instead of slot attachment a
  const out=A.calculate(project,'idle',['driver'],stack,timing,E,M).animation;
  assert.ok(out.bones.driver.scale.length>20);assert.equal(out.bones.root,undefined);
 });
+
+const panelSource=readFileSync(new URL('../../renderer/motion-calculation.panel.js',import.meta.url),'utf8');
+const presets=vm.runInNewContext('('+panelSource.match(/const presetSets = (\{[\s\S]*?\n  \});/)[1]+')');
+function presetMotion(mode,index){const [name,values,axes]=presets[mode][index],p=E.freshStack()[mode];Object.assign(p,values);for(const key of E.ownedChannels[mode])p.axes[key].amp=axes[key];p.enabled=true;return p;}
+
+test('scale and move keep their three original presets and add three one-way motions',()=>{
+ assert.deepEqual(Array.from(presets.expand.slice(0,3),p=>p[0]),['弹性放大','受击压扁','柔和呼吸']);
+ assert.deepEqual(Array.from(presets.shuttle.slice(0,3),p=>p[0]),['左右往返','上下浮动','椭圆运动']);
+ for(const mode of ['expand','shuttle']){
+  assert.equal(presets[mode].length,6);
+  for(let i=0;i<3;i++)assert.equal(presetMotion(mode,i).oneWay,undefined);
+  for(let i=3;i<6;i++){
+   const p=presetMotion(mode,i);
+   for(const key of E.ownedChannels[mode]){
+    const base=key.startsWith('s')?1:0,amp=p.axes[key].amp;
+    assert.ok(Math.abs(E.sample(p,0)[key]-base)<1e-8);
+    assert.ok(Math.abs(E.sample(p,1)[key]-(base+amp))<1e-8,'single motion ends at target instead of returning');
+    let previous=E.sample(p,0)[key];
+    for(let j=1;j<=100;j++){const v=E.sample(p,j/100)[key];assert.ok((v-previous)*Math.sign(amp)>=-1e-8);previous=v;}
+   }
+  }
+ }
+});
+
+test('reverse swaps full motion including edited Bezier handles without changing opacity or other effects',()=>{
+ for(const mode of ['expand','shuttle'])for(let i=0;i<6;i++){
+  const p=presetMotion(mode,i),key=mode==='expand'?'sx':'x';
+  p.opacity.on=true;p.opacity.from=0;p.opacity.to=1;
+  const knots=JSON.parse(JSON.stringify(E.curveFor(p,key))),at=E.insertCurvePoint(knots,.37);
+  if(at>=0){knots[at].v+=key==='x'?17:.12;knots[at].in.v=knots[at].v;knots[at].out.v=knots[at].v;}
+  E.storeCurve(p,key,knots);
+  const original=Array.from({length:101},(_,j)=>E.sample(p,j/100)[key]);
+  const alpha=E.sample(p,.2).alpha;p.reverse=true;
+  for(let j=0;j<=100;j++)assert.ok(Math.abs(E.sample(p,j/100)[key]-original[100-j])<1e-6);
+  assert.equal(E.sample(p,.2).alpha,alpha);
+  const reversed=JSON.parse(JSON.stringify(E.curveFor(p,key)));E.storeCurve(p,key,reversed);
+  p.reverse=false;
+  for(let j=0;j<=100;j++)assert.ok(Math.abs(E.sample(p,j/100)[key]-original[j])<1e-6,'saving while reversed must not double-reverse');
+ }
+});
+
+test('one-way and reversed curves bake to native tracks and hold their target after the bone interval',()=>{
+ for(const mode of ['expand','shuttle'])for(const reverse of [false,true]){
+  const stack=E.freshStack();stack[mode]=presetMotion(mode,3);stack[mode].reverse=reverse;
+  const project=fixture();project.bones[0].rotation=0;delete project.animations.idle.bones.ball;
+  const {animation}=calc(project,stack);
+  const track=mode==='expand'?'scale':'translate',key=mode==='expand'?'sx':'x',fallback=mode==='expand'?1:0;
+  for(const t of [.5,.7,1,1.5,1.8]){
+   const expected=E.sampleStack(stack,Math.min(1,(t-.5)))[key];
+   assert.ok(Math.abs(A.scalar(animation.bones.ball[track],t,'x',fallback)-expected)<.01);
+  }
+  assert.equal(animation.bones.other,project.animations.idle.bones.other);
+ }
+});
