@@ -122,7 +122,9 @@
   function refresh(){
     const ribbon=document.querySelector('[data-panel-id="bone-ribbon"], [data-novaflow-ribbon-panel="1"]');
     context=getContext();
-    if(!ribbon||!context){if(panel){close();panel.remove();panel=null;}return;}
+    // Keep the entry discoverable before importing a skeleton. open() explains
+    // the required selection until the real editor context becomes available.
+    if(!ribbon){if(panel){close();panel.remove();panel=null;}return;}
     if(!panel?.isConnected){
       close();panel=document.createElement('div');panel.className='nf-panel';panel.dataset.panelId='bone-motion';panel.dataset.open='0';
       panel.style.cssText='width:100%;font-size:12px';
@@ -149,7 +151,7 @@
         if(view)view.selectMode(activeMode);else open();
       });
     }
-    if(panel.dataset.open==='1'&&panel.dataset.editorOpen==='1'&&(!session||!sameScope(context,session)))open();
+    if(context&&panel.dataset.open==='1'&&panel.dataset.editorOpen==='1'&&(!session||!sameScope(context,session)))open();
   }
   setInterval(refresh,350);refresh();
 })();
