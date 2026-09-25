@@ -5677,7 +5677,11 @@
   }
 
   function isVideoMergeOwnedAutoFitControl(node) {
-    return Boolean(node instanceof HTMLElement && node.matches('[data-novaflow-ai-video-merge-auto-fit="1"]'));
+    // The merge shell draws its own zoom HUD (readout + 自动适配); none of it is the board's.
+    return Boolean(node instanceof HTMLElement && (
+      node.matches('[data-novaflow-ai-video-merge-auto-fit="1"], [data-novaflow-ai-video-merge-zoom-hud="1"]') ||
+      node.closest('[data-novaflow-ai-video-merge-workspace="1"]')
+    ));
   }
 
   function styleAutoFitOnlyControl(controls) {
@@ -18869,6 +18873,16 @@
     if (!target) return;
     [150, 500, 1000].forEach((delay) => window.setTimeout(syncAiAnimationStageBottomToDock, delay));
   }, true);
+  // Focus frames are for keyboard users: after a mouse click no control keeps a ring.
+  document.addEventListener("pointerdown", () => {
+    if (document.documentElement) document.documentElement.setAttribute("data-novaflow-input-modality", "pointer");
+  }, true);
+  document.addEventListener("keydown", (event) => {
+    if (!document.documentElement) return;
+    if (event.key === "Tab" || event.key === "Enter" || event.key === " " || String(event.key || "").startsWith("Arrow")) {
+      document.documentElement.setAttribute("data-novaflow-input-modality", "keyboard");
+    }
+  }, true);
   function syncAiAnimationStageBottomToDock() {
     const dock = document.querySelector('[data-novaflow-ai-bottom-workspace="1"]');
     const workspace = dock instanceof HTMLElement ? dock.closest('[data-novaflow-ai-main-workspace="1"]') : null;
@@ -22257,6 +22271,11 @@
         column-gap: ${SECONDARY_GROUP_PILL_GAP}px !important;
         row-gap: 0 !important;
       }
+      /* Mouse clicks leave no focus frame; the ring stays for keyboard focus. */
+      html[data-novaflow-input-modality="pointer"] :is(button, summary, a, [role="button"], [role="tab"], [tabindex]:not(input):not(textarea):not(select)):focus {
+        outline: 0 !important;
+        outline-offset: 0 !important;
+      }
       [data-novaflow-secondary-entry="1"]:not([data-novaflow-source-layout="1"]) {
         width: 100% !important;
         min-width: 0 !important;
@@ -24839,7 +24858,8 @@
         line-height: var(--novaflow-top-control-height, 34px) !important;
         box-sizing: border-box !important;
       }
-      body.novaflow-ai-animation-section-layers[data-novaflow-ai-sequence-mode="editing"][data-novaflow-ai-sequence-active-tool="video-merge"] [data-novaflow-ai-main-stage="1"] > [data-novaflow-ai-zoom-controls="1"] {
+      body.novaflow-ai-animation-section-layers[data-novaflow-ai-sequence-mode="editing"][data-novaflow-ai-sequence-active-tool="video-merge"] [data-novaflow-ai-main-stage="1"] > [data-novaflow-ai-zoom-controls="1"],
+      body.novaflow-ai-animation-section-layers[data-novaflow-ai-sequence-mode="editing"][data-novaflow-ai-sequence-active-tool="video-merge"] [data-novaflow-ai-zoom-controls="1"]:not([data-novaflow-ai-video-merge-zoom-hud="1"]) {
         display: none !important;
         visibility: hidden !important;
         opacity: 0 !important;
@@ -59335,6 +59355,7 @@
     const controls = Array.from(workspace.querySelectorAll("div"))
       .filter((node) => {
         if (!(node instanceof HTMLElement) || !isVisible(node)) return false;
+        if (isVideoMergeOwnedAutoFitControl(node)) return false;
         const rect = readRect(node);
         const text = normalizeText(node.textContent || "");
         return (

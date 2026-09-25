@@ -59,6 +59,7 @@
     let maskEditing = null
     let hoverPoint = null
     let viewZoom = 1
+    let lastZoomPercent = -1
     let viewPanX = 0
     let viewPanY = 0
     let resizeObserver = null
@@ -463,6 +464,11 @@
       const state = store.getState()
       syncMedia(state)
       const stage = stageMetrics(state)
+      const zoomPercent = Math.round(finite(stage.scale, 1) * 100)
+      if (zoomPercent !== lastZoomPercent) {
+        lastZoomPercent = zoomPercent
+        try { config.onZoomPercent?.(zoomPercent) } catch (_) {}
+      }
       context.clearRect(0, 0, canvas.width, canvas.height)
       if (state.layers.some(function (layer) { return Boolean(layer.source) })) {
         context.save()
