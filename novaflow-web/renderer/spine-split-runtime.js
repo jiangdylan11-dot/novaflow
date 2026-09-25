@@ -233,16 +233,6 @@
   const IMAGE_ANGLE_ADJUST_TIMEOUT_MS = 600000
   const IMAGE_ANGLE_ADJUST_FILENAME_PREFIX = 'NovaFlow_angle_adjust'
   // fp8mixed is preferred when present; the bf16 release is the copy kept in the legacy runtime.
-  const IMAGE_ANGLE_ADJUST_UNET = ['qwen_image_edit_2511_fp8mixed.safetensors', 'qwen_image_edit_2511_bf16.safetensors']
-  const IMAGE_ANGLE_ADJUST_CLIP = 'qwen_2.5_vl_7b_fp8_scaled.safetensors'
-  const IMAGE_ANGLE_ADJUST_VAE = 'qwen_image_vae.safetensors'
-  const IMAGE_ANGLE_ADJUST_LIGHTNING_LORAS = [
-    'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
-    'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
-    'Qwen-Image-Lightning-8steps-V2.0.safetensors',
-    'Qwen-Image-Lightning-8steps-V1.0.safetensors'
-  ]
-  const IMAGE_ANGLE_ADJUST_MULTIANGLE_LORA = 'qwen-image-edit-2511-multiple-angles-lora.safetensors'
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_DEFAULT = 0
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_MIN = 0
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_MAX = 359
@@ -5909,129 +5899,99 @@
     }
   }
 
-  function normalizeComfyModelChoiceName(value) {
-    return String(value || '').replace(/\\/g, '/').toLowerCase()
-  }
-
-  function comfyModelChoiceMatches(choice, wanted) {
-    const left = normalizeComfyModelChoiceName(choice)
-    const right = normalizeComfyModelChoiceName(wanted)
-    if (!left || !right) return false
-    if (left === right) return true
-    if (left.endsWith(`/${right}`)) return true
-    const leftBase = left.split('/').pop()
-    const rightBase = right.split('/').pop()
-    return !!leftBase && leftBase === rightBase
-  }
-
-
-  
-
-  
-
-  
-
-  
-
-  
-
-  
-
-  
-
-
-  function requiredImageAngleChoice(nodeInfo, key, candidates, label) {
-    const list = comfyComboChoices(nodeInfo, key)
-    const wanted = (Array.isArray(candidates) ? candidates : [candidates]).filter(Boolean)
-    if (!wanted.length) return ''
-    if (!list.length) throw new Error(`NovaFlow AI Runtime 未暴露 ${label || key} 列表，请确认模型已安装并重启 Runtime。`)
-    for (const item of wanted) {
-      const match = list.find((choice) => comfyModelChoiceMatches(choice, item))
-      if (match) return match
-    }
-    throw new Error(`NovaFlow AI Runtime 缺少 ${label || key}：${wanted[0]}`)
+  // 角度调整 on Qwen-Image-2.1 (measured 2026-09-26 against 2511 + the multiple-angles LoRA on three
+  // pictures x six angles). The panel's H/V/Z go into the same buckets QwenMultiangleCameraNode used
+  // (8 azimuths, 4 elevations, 3 distances), but are written as what the new picture shows: 2.1 ignored
+  // "the camera orbits N degrees" wording and stayed at eye level, while "we look down on the subject,
+  // the ground fills the background" gave a real high angle. Named body parts leak into the result
+  // (a robot seen "from behind, back of the head and hair" grew hair), and the scene line keeps a
+  // second figure (the dog) that a back view otherwise dropped.
+  function imageAngleAdjustPromptText(horizontalAngle, verticalAngle, zoom) {
+    const h = ((Math.round(Number(horizontalAngle) || 0) % 360) + 360) % 360
+    const v = Math.max(-30, Math.min(60, Math.round(Number(verticalAngle) || 0)))
+    const z = Number(zoom) || 0
+    let side
+    if (h < 22.5 || h >= 337.5) side = 'from the front, as in the original, with the subject facing the viewer.'
+    else if (h < 67.5) side = `from the front-right: the camera has moved about ${h} degrees around to the subject's right, so the subject is seen in a three-quarter view: its body and face are turned about 45 degrees toward the right side of the picture, the far side of the face is partly hidden, and both its front and its right side are visible.`
+    else if (h < 112.5) side = `from the subject's right side: the camera has moved about ${h} degrees around the subject, so the subject is seen in a side profile, facing toward the right edge of the picture, showing its right side; only one eye and one side of the face are visible.`
+    else if (h < 157.5) side = `from behind and to the right: the camera has moved about ${h} degrees around the subject, so the subject is seen mostly from the back, turned away from the viewer toward the right side of the picture; the back and the right side are visible and the face is hidden or seen only as the edge of a cheek.`
+    else if (h < 202.5) side = 'from directly behind: the subject is seen from the back, facing away from the viewer; we see the back of the head and the back of the body, and the face is not visible.'
+    else if (h < 247.5) side = `from behind and to the left: the camera has moved about ${360 - h} degrees around to the subject's left from behind, so the subject is seen mostly from the back, turned away from the viewer toward the left side of the picture; the back and the left side are visible and the face is hidden or seen only as the edge of a cheek.`
+    else if (h < 292.5) side = `from the subject's left side: the camera has moved about ${360 - h} degrees around the subject, so the subject is seen in a side profile, facing toward the left edge of the picture, showing its left side; only one eye and one side of the face are visible.`
+    else side = `from the front-left: the camera has moved about ${360 - h} degrees around to the subject's left, so the subject is seen in a three-quarter view: its body and face are turned about 45 degrees toward the left side of the picture, the far side of the face is partly hidden, and both its front and its left side are visible.`
+    let height
+    if (v < -15) height = `The camera is low, looking up at the subject at about ${-v} degrees: we see the underside of the chin and the subject looms above the viewer, the legs look longer, and the sky or ceiling fills the background behind the subject.`
+    else if (v < 15) height = 'The camera is at eye level with the subject, looking straight at it.'
+    else if (v < 45) height = `The camera is raised above the subject, looking down at it at about ${v} degrees: the top of the head and the shoulders are visible, the body is foreshortened and gets smaller toward the feet, and the ground around the subject fills most of the background instead of the sky.`
+    else height = `The camera is high above the subject, looking steeply down at about ${v} degrees, almost top-down: we mostly see the top of the head and the shoulders, the body is strongly foreshortened, and the ground fills the whole background.`
+    let distance
+    if (z < 2) distance = 'The camera is farther away: the whole subject is small in the frame with plenty of surroundings around it.'
+    else if (z < 6) distance = 'Keep about the same framing distance as the original picture.'
+    else distance = "The camera is close: a close-up where the subject's head and upper body fill the frame."
+    return `Redraw this picture from a new camera position. The subject is now seen ${side} ${height} ${distance} Every character, animal and object in the scene stays in the picture, each seen from the new side. It is the same subject with the same face, hairstyle, outfit, colors, proportions and art style, in the same scene and lighting; only the viewpoint changes, and the parts that come into view are drawn consistently with the original design.`
   }
 
   function buildImageAngleAdjustWorkflow(info, imageName, options = {}) {
-    const required = [
-      'LoadImage',
-      'UNETLoader',
-      'CLIPLoader',
-      'VAELoader',
-      'LoraLoaderModelOnly',
-      'ModelSamplingAuraFlow',
-      'CFGNorm',
-      'VAEEncode',
-      'TextEncodeQwenImageEditPlus',
-      'QwenMultiangleCameraNode',
-      'ConditioningZeroOut',
-      'KSampler',
-      'VAEDecode',
-      'SaveImage'
-    ]
-    required.forEach((name) => requiredComfyNode(info, name))
-    const unet = requiredComfyNode(info, 'UNETLoader')
-    const clip = requiredComfyNode(info, 'CLIPLoader')
-    const vae = requiredComfyNode(info, 'VAELoader')
-    const lora = requiredComfyNode(info, 'LoraLoaderModelOnly')
-    const aura = requiredComfyNode(info, 'ModelSamplingAuraFlow')
-    const cfgNorm = requiredComfyNode(info, 'CFGNorm')
-    const vaeEncode = requiredComfyNode(info, 'VAEEncode')
-    const qwenText = requiredComfyNode(info, 'TextEncodeQwenImageEditPlus')
-    const multiangle = requiredComfyNode(info, 'QwenMultiangleCameraNode')
-    const ksampler = requiredComfyNode(info, 'KSampler')
-    const vaeDecode = requiredComfyNode(info, 'VAEDecode')
-    const saveImage = requiredComfyNode(info, 'SaveImage')
+    const required = ['LoadImage', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'SaveImage']
+    const runtime = required.every((name) => info && info[name]) ? qwen21Runtime(info) : null
+    if (!runtime) throw new Error('当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行角度调整。请在本地助手里重新启动 NovaFlow 后再试')
     const horizontalAngle = normalizeImageAngleHorizontal(options.horizontalAngle)
     const verticalAngle = normalizeImageAngleVertical(options.verticalAngle)
     const zoom = normalizeImageAngleZoom(options.zoom)
-    const unetName = requiredImageAngleChoice(unet, 'unet_name', IMAGE_ANGLE_ADJUST_UNET, 'Qwen angle UNET')
-    const clipName = requiredImageAngleChoice(clip, 'clip_name', IMAGE_ANGLE_ADJUST_CLIP, 'Qwen CLIP')
-    const vaeName = requiredImageAngleChoice(vae, 'vae_name', IMAGE_ANGLE_ADJUST_VAE, 'Qwen VAE')
-    const lightningLora = requiredImageAngleChoice(lora, 'lora_name', IMAGE_ANGLE_ADJUST_LIGHTNING_LORAS, 'Qwen angle Lightning LoRA')
-    const multiangleLora = requiredImageAngleChoice(lora, 'lora_name', IMAGE_ANGLE_ADJUST_MULTIANGLE_LORA, 'Qwen Multiangle LoRA')
+    const prompt = imageAngleAdjustPromptText(horizontalAngle, verticalAngle, zoom)
+    const seed = Math.floor(Math.random() * 1000000000)
+    // Same shape as the 万物迁移 2.1 graph: the picture is image_1 at its own size (resolution 0), the
+    // sampler runs on the encoder's latent at denoise 1, and the RGBA decode is split to RGB.
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '2': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' }) },
-      '3': { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: ['2', 0], lora_name: lightningLora, strength_model: 1 }) },
-      '4': { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: ['3', 0], lora_name: multiangleLora, strength_model: 1 }) },
-      '5': { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: ['4', 0], shift: 3 }) },
-      '6': { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: ['5', 0], strength: 1 }) },
-      '7': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) },
-      '8': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: clipName, type: 'qwen_image', device: 'default' }) },
-      '9': { class_type: 'QwenMultiangleCameraNode', inputs: buildComfyNodeInputs(multiangle, { image: ['1', 0], horizontal_angle: horizontalAngle, vertical_angle: verticalAngle, zoom, default_prompts: false, camera_view: false }) },
-      '10': { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { clip: ['8', 0], vae: ['7', 0], image1: ['1', 0], prompt: ['9', 0] }) },
-      '11': { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['10', 0] } },
-      '12': { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(vaeEncode, { pixels: ['1', 0], vae: ['7', 0] }) },
-      '13': {
-        class_type: 'KSampler',
-        inputs: buildComfyNodeInputs(ksampler, {
-          model: ['6', 0],
-          positive: ['10', 0],
-          negative: ['11', 0],
-          latent_image: ['12', 0],
-          seed: Math.floor(Math.random() * 1000000000),
-          steps: 6,
-          cfg: 1,
-          sampler_name: 'euler',
-          scheduler: 'simple',
-          denoise: 1
-        })
-      },
-      '14': { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(vaeDecode, { samples: ['13', 0], vae: ['7', 0] }) },
-      '15': { class_type: 'SaveImage', inputs: buildComfyNodeInputs(saveImage, { images: ['14', 0], filename_prefix: IMAGE_ANGLE_ADJUST_FILENAME_PREFIX }) }
+      '2': { class_type: 'UnetLoaderGGUF', inputs: buildComfyNodeInputs(info.UnetLoaderGGUF, { unet_name: runtime.unetName }) },
+      '3': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: runtime.clipName, type: 'qwen_image', device: 'default' }) },
+      '4': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: runtime.vaeName }) },
+      '5': {
+        class_type: 'TextEncodeQwenImage21',
+        inputs: buildComfyNodeInputs(info.TextEncodeQwenImage21, { clip: ['3', 0], vae: ['4', 0], prompt, negative_prompt: '', resolution: 0, 'images.image_1': ['1', 0] })
+      }
     }
+    let modelRef = ['2', 0]
+    let nextId = 6
+    if (info.QwenImage21Cache) {
+      workflow[String(nextId)] = { class_type: 'QwenImage21Cache', inputs: buildComfyNodeInputs(info.QwenImage21Cache, { model: modelRef, device: 'auto', dtype: 'default' }) }
+      modelRef = [String(nextId), 0]
+      nextId += 1
+    }
+    const samplerId = String(nextId++)
+    workflow[samplerId] = {
+      class_type: 'KSampler',
+      inputs: buildComfyNodeInputs(info.KSampler, {
+        model: modelRef,
+        positive: ['5', 0],
+        negative: ['5', 1],
+        latent_image: ['5', 2],
+        seed,
+        steps: QWEN21_STEPS,
+        cfg: 1,
+        sampler_name: 'euler',
+        scheduler: 'simple',
+        denoise: 1
+      })
+    }
+    const decodeId = String(nextId++)
+    workflow[decodeId] = { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(info.VAEDecode, { samples: [samplerId, 0], vae: ['4', 0] }) }
+    const rgbId = String(nextId++)
+    workflow[rgbId] = { class_type: 'SplitImageWithAlpha', inputs: buildComfyNodeInputs(info.SplitImageWithAlpha, { image: [decodeId, 0] }) }
+    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { images: [rgbId, 0], filename_prefix: IMAGE_ANGLE_ADJUST_FILENAME_PREFIX }) }
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       imageAngleAdjust: {
-        unet: unetName,
-        clip: clipName,
-        vae: vaeName,
-        loras: [lightningLora, multiangleLora],
+        engine: 'qwen-2.1',
+        unet: runtime.unetName,
+        clip: runtime.clipName,
+        vae: runtime.vaeName,
         horizontalAngle,
         verticalAngle,
         zoom,
-        qwenMultiangleNodeCount: Object.values(workflow).filter((node) => node && node.class_type === 'QwenMultiangleCameraNode').length,
+        seed,
+        prompt,
         nodeCount: Object.keys(workflow).length
       }
     }
@@ -6043,7 +6003,7 @@
     const horizontalAngle = normalizeImageAngleHorizontal(options && options.horizontalAngle)
     const verticalAngle = normalizeImageAngleVertical(options && options.verticalAngle)
     const zoom = normalizeImageAngleZoom(options && options.zoom)
-    setSplitBusyDetail(`Qwen Multiangle\nH ${horizontalAngle}\u00b0 / V ${verticalAngle}\u00b0 / Z ${zoom.toFixed(1)}`)
+    setSplitBusyDetail(`Qwen-Image-2.1\nH ${horizontalAngle}\u00b0 / V ${verticalAngle}\u00b0 / Z ${zoom.toFixed(1)}`)
     const info = await comfyAllObjectInfo(baseUrl)
     const uploadName = await uploadDataUrl(baseUrl, safeDownloadFileName(fileName || 'source.png', 'source.png'), dataUrl)
     const workflow = buildImageAngleAdjustWorkflow(info, uploadName, { horizontalAngle, verticalAngle, zoom })
@@ -6074,7 +6034,7 @@
     state.busy = true
     state.busyAction = 'imageAngleAdjust'
     state.busyStartedAt = Date.now()
-    state.busyDetail = `Qwen Multiangle\nH ${horizontalAngle}\u00b0 / V ${verticalAngle}\u00b0 / Z ${zoom.toFixed(1)}`
+    state.busyDetail = `Qwen-Image-2.1\nH ${horizontalAngle}\u00b0 / V ${verticalAngle}\u00b0 / Z ${zoom.toFixed(1)}`
     setMessage('正在角度调整生成...')
     render()
     syncSplitWorkspace()
@@ -13761,7 +13721,7 @@
         { action: 'imageUpscale', label: '\u9ad8\u6e05\u653e\u5927', title: '\u4f7f\u7528 SeedVR2 3B FP8 \u5bf9\u5f53\u524d\u539f\u56fe\u6267\u884c\u5355\u56fe\u9ad8\u6e05\u653e\u5927' },
         { action: 'imageOutpaint', label: '无限扩图', title: '扩展画布后使用 Qwen 生成新增区域，原图区域强制保留' },
         { action: 'objectTransfer', label: '\u4e07\u7269\u8fc1\u79fb', title: '\u4e0a\u4f20\u53c2\u8003\u7269\uff0c\u81ea\u52a8\u63d0\u53d6\u4e3b\u4f53\u540e\u62d6\u653e\u5230\u753b\u5e03\u76ee\u6807\u4f4d\u7f6e\u5e76\u6267\u884c\u878d\u5408\u8fc1\u79fb' },
-        { action: 'imageAngleAdjust', label: '角度调整', title: '使用 Qwen Multiangle Camera 对当前原图执行单图角度调整' }
+        { action: 'imageAngleAdjust', label: '角度调整', title: '使用 Qwen-Image-2.1 按设定的角度重画当前原图' }
       ]
     }
   ]
