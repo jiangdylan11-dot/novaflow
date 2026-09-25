@@ -343,7 +343,7 @@
     $('pointValue').step = channel.startsWith('s') ? '.01' : '1'; $('curveUnit').textContent = channel === 'alpha' ? '%' : channel.startsWith('s') ? '倍' : 'px';
     $('pointSelect').value = point;
     const custom = p.corrections[channel].some(v => Math.abs(v) > .00001);
-    $('curveState').textContent = !channelEnabled() ? '通道关闭' : !pointEditable() ? '起止点固定在地面' : custom ? '已微调 · 参数仍可调整' : '计算曲线';
+    $('curveState').textContent = !channelEnabled() ? '通道关闭' : !pointEditable() ? '' : custom ? '已微调 · 参数仍可调整' : '计算曲线';
   }
   function canvasContext(id) {
     const canvas = $(id), r = canvas.getBoundingClientRect(), dpr = Math.min(devicePixelRatio || 1, 2);
