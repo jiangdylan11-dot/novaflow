@@ -5474,107 +5474,76 @@
     return Math.round(Math.max(1, Math.min(100, Math.max(4, minExpansion * 0.5), minExpansion)))
   }
 
+  // Qwen-Image-2.1 outpaint. Measured 2026-09-26 against the 2511 edit route on five pictures: 2511
+  // ("remove the blue padded region", 5 Lightning steps) sprinkled dots over road, sand and water, and
+  // 2.1 did not. The original stays locked through SetLatentNoiseMask; letting 2.1 re-encode the whole
+  // plate (the encoder's own latent) recomposed the picture and moved the figure.
+  //   * the pad is ImagePadForOutpaint's 0.5 grey, which the prompt names as the empty canvas
+  //   * the regenerated mask is grown 32 px into the original: an original edge off the 16 px latent
+  //     grid left a half-kept latent cell that decoded as a dark 8 px band along the seam. The grown
+  //     strip is overwritten again when the page restores the original (24 px edge feather)
+  //   * TextEncodeQwenImage21 rounds its reference to multiples of 32, so the pad is extended
+  //     right/bottom to 32 and the result is cropped back to the requested size
+  //   * no LoRA, no shift, cfg 1, 25 steps: the same schedule as the other 2.1 graphs
   function imageOutpaintPromptText() {
     return [
-      'Remove the blue padded region and naturally outpaint only the newly expanded canvas area.',
-      'Preserve the original character, face, body, clothing, alpha/transparent area, line art, colors, lighting, and all non-expanded pixels.',
-      'The added area must continue the original style and edges cleanly without changing the original image.'
+      'The image is a picture whose canvas has been enlarged; the flat grey border is empty new canvas.',
+      'Paint the grey border so the picture continues seamlessly into it: extend the scene, ground, background and any cut-off figure naturally, with the same art style, colors, lighting, perspective and level of detail.',
+      'Keep everything outside the grey border exactly as it is.'
     ].join(' ')
   }
 
+  const IMAGE_OUTPAINT_SEAM_REDRAW_PX = 32
+
   function buildQwenImageOutpaintWorkflow(info, imageName, prefix, delta, options = {}) {
-    const required = [
-      'LoadImage',
-      'ImagePadForOutpaint',
-      'GetImageSizeAndCount',
-      'Image Blank',
-      'JoinImageWithAlpha',
-      'ImageCompositeMasked',
-      'FluxKontextImageScale',
-      'UNETLoader',
-      'CLIPLoader',
-      'VAELoader',
-      'VAEEncode',
-      'TextEncodeQwenImageEditPlus',
-      'ConditioningZeroOut',
-      'ReferenceLatent',
-      'KSampler',
-      'VAEDecode',
-      'SaveImage'
-    ]
-    required.forEach((name) => requiredComfyNode(info, name))
-    const unet = requiredComfyNode(info, 'UNETLoader')
-    const clip = requiredComfyNode(info, 'CLIPLoader')
-    const vae = requiredComfyNode(info, 'VAELoader')
-    const qwenText = requiredComfyNode(info, 'TextEncodeQwenImageEditPlus')
-    const ksampler = requiredComfyNode(info, 'KSampler')
-    const lora = info.LoraLoaderModelOnly || null
-    const aura = info.ModelSamplingAuraFlow || null
-    const cfgNorm = info.CFGNorm || null
-    const unetName = comfyChoiceFromCandidates(unet, 'unet_name', [
-      'qwen_image_edit_2511_fp8mixed.safetensors',
-      'qwen_image_edit_2511_bf16.safetensors'
-    ], 'Qwen Edit UNET')
-    const clipName = requireComfyChoice(clip, 'clip_name', 'qwen_2.5_vl_7b_fp8_scaled.safetensors', 'Qwen CLIP')
-    const vaeName = requireComfyChoice(vae, 'vae_name', 'qwen_image_vae.safetensors', 'Qwen VAE')
-    const lightningLora = lora
-      ? comfyChoiceFromCandidates(lora, 'lora_name', [
-        'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
-        'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
-        'Qwen-Image-Lightning-8steps-V2.0.safetensors',
-        'Qwen-Image-Lightning-8steps-V1.0.safetensors'
-      ], 'Qwen Edit Lightning LoRA', { optional: true })
-      : ''
+    const required = ['LoadImage', 'ImagePadForOutpaint', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'ImageCrop', 'SaveImage']
+    const runtime = required.every((name) => info && info[name]) ? qwen21Runtime(info) : null
+    if (!runtime) throw new Error('当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行无限扩图。请在本地助手里重新启动 NovaFlow 后再试')
+    const side = (value) => Math.max(0, Math.round(Number(value) || 0))
+    const pad = { left: side(delta && delta.left), top: side(delta && delta.top), right: side(delta && delta.right), bottom: side(delta && delta.bottom) }
+    const output = options.safeSize || null
+    const width = side(output && output.width)
+    const height = side(output && output.height)
+    if (width) pad.right += Math.ceil(width / 32) * 32 - width
+    if (height) pad.bottom += Math.ceil(height / 32) * 32 - height
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '2': { class_type: 'ImagePadForOutpaint', inputs: { left: Math.max(0, Math.round(Number(delta.left) || 0)), top: Math.max(0, Math.round(Number(delta.top) || 0)), right: Math.max(0, Math.round(Number(delta.right) || 0)), bottom: Math.max(0, Math.round(Number(delta.bottom) || 0)), feathering: imageOutpaintFeather(delta), image: ['1', 0] } },
-      '3': { class_type: 'GetImageSizeAndCount', inputs: { image: ['2', 0] } },
-      '4': { class_type: 'Image Blank', inputs: { width: ['3', 1], height: ['3', 2], red: 0, green: 0, blue: 255 } },
-      '5': { class_type: 'JoinImageWithAlpha', inputs: { image: ['4', 0], alpha: ['2', 1] } },
-      '6': { class_type: 'ImageCompositeMasked', inputs: { x: 0, y: 0, resize_source: false, destination: ['2', 0], source: ['5', 0], mask: ['2', 1] } },
-      '7': { class_type: 'FluxKontextImageScale', inputs: { image: ['6', 0] } },
-      '8': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: unetName, weight_dtype: 'fp8_e4m3fn' }) },
-      '9': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: clipName, type: 'qwen_image', device: 'default' }) },
-      '10': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) }
+      '2': { class_type: 'ImagePadForOutpaint', inputs: { ...pad, feathering: 0, image: ['1', 0] } },
+      '3': { class_type: 'GrowMask', inputs: { mask: ['2', 1], expand: IMAGE_OUTPAINT_SEAM_REDRAW_PX, tapered_corners: true } },
+      '4': { class_type: 'UnetLoaderGGUF', inputs: buildComfyNodeInputs(info.UnetLoaderGGUF, { unet_name: runtime.unetName }) },
+      '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: runtime.clipName, type: 'qwen_image', device: 'default' }) },
+      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: runtime.vaeName }) },
+      '7': { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(info.VAEEncode, { pixels: ['2', 0], vae: ['6', 0] }) },
+      '8': { class_type: 'SetLatentNoiseMask', inputs: buildComfyNodeInputs(info.SetLatentNoiseMask, { samples: ['7', 0], mask: ['3', 0] }) },
+      '9': {
+        class_type: 'TextEncodeQwenImage21',
+        inputs: buildComfyNodeInputs(info.TextEncodeQwenImage21, {
+          clip: ['5', 0],
+          vae: ['6', 0],
+          resolution: 0,
+          prompt: imageOutpaintPromptText(),
+          negative_prompt: '',
+          'images.image_1': ['2', 0]
+        })
+      }
     }
-    let modelRef = ['8', 0]
-    let nextId = 11
-    if (lora && lightningLora) {
-      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: lightningLora, strength_model: 1 }) }
+    let modelRef = ['4', 0]
+    let nextId = 10
+    if (info.QwenImage21Cache) {
+      workflow[String(nextId)] = { class_type: 'QwenImage21Cache', inputs: buildComfyNodeInputs(info.QwenImage21Cache, { model: modelRef, device: 'auto', dtype: 'default' }) }
       modelRef = [String(nextId), 0]
       nextId += 1
     }
-    if (aura) {
-      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 3 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (cfgNorm) {
-      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: { pixels: ['6', 0], vae: ['10', 0] } }
-    const latentRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(qwenText, { prompt: imageOutpaintPromptText(), clip: ['9', 0], image1: ['7', 0] }) }
-    const positiveRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'ReferenceLatent', inputs: { conditioning: positiveRef, latent: latentRef } }
-    const referencePositiveRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'ConditioningZeroOut', inputs: { conditioning: positiveRef } }
-    const negativeRef = [String(nextId), 0]
-    nextId += 1
+    const seed = Math.floor(Math.random() * 1000000000)
     workflow[String(nextId)] = {
       class_type: 'KSampler',
-      inputs: buildComfyNodeInputs(ksampler, {
+      inputs: buildComfyNodeInputs(info.KSampler, {
         model: modelRef,
-        positive: referencePositiveRef,
-        negative: negativeRef,
-        latent_image: latentRef,
-        seed: Math.floor(Math.random() * 1000000000),
-        steps: 5,
+        positive: ['9', 0],
+        negative: ['9', 1],
+        latent_image: ['8', 0],
+        seed,
+        steps: QWEN21_STEPS,
         cfg: 1,
         sampler_name: 'euler',
         scheduler: 'simple',
@@ -5583,21 +5552,30 @@
     }
     const samplesRef = [String(nextId), 0]
     nextId += 1
-    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: { samples: samplesRef, vae: ['10', 0] } }
-    const imageRef = [String(nextId), 0]
+    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: { samples: samplesRef, vae: ['6', 0] } }
+    const decodedRef = [String(nextId), 0]
     nextId += 1
+    workflow[String(nextId)] = { class_type: 'SplitImageWithAlpha', inputs: { image: decodedRef } }
+    let imageRef = [String(nextId), 0]
+    nextId += 1
+    if (width && height) {
+      workflow[String(nextId)] = { class_type: 'ImageCrop', inputs: { image: imageRef, width, height, x: 0, y: 0 } }
+      imageRef = [String(nextId), 0]
+      nextId += 1
+    }
     workflow[String(nextId)] = { class_type: 'SaveImage', inputs: { images: imageRef, filename_prefix: prefix } }
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       imageOutpaint: {
-        unet: unetName,
-        clip: clipName,
-        vae: vaeName,
-        lora: lightningLora,
-        feathering: imageOutpaintFeather(delta),
+        engine: 'qwen-2.1',
+        unet: runtime.unetName,
+        clip: runtime.clipName,
+        vae: runtime.vaeName,
+        steps: QWEN21_STEPS,
+        seed,
+        seamRedraw: IMAGE_OUTPAINT_SEAM_REDRAW_PX,
         delta: { top: delta.top, bottom: delta.bottom, left: delta.left, right: delta.right },
-        latentSource: 'target-padded-composite',
-        referenceSource: 'flux-kontext-scale',
+        pad,
         requestedSize: options.requestedSize || null,
         safeSize: options.safeSize || null,
         dimensionOptimized: !!options.optimized,
@@ -5613,7 +5591,7 @@
     const uploadName = await uploadDataUrl(baseUrl, safeDownloadFileName(fileName || 'source.png', 'source.png'), dataUrl)
     const prefix = `novaflow_outpaint_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
     const workflow = buildQwenImageOutpaintWorkflow(info, uploadName, prefix, delta, options)
-    setSplitBusyDetail(`Qwen Image Edit 2511\n${nextSize.width} x ${nextSize.height} px`)
+    setSplitBusyDetail(`Qwen-Image-2.1\n${nextSize.width} x ${nextSize.height} px`)
     return await runPromptForFirstImage(baseUrl, workflow, prefix, IMAGE_OUTPAINT_TIMEOUT_MS)
   }
 
@@ -5767,7 +5745,7 @@
     state.busy = true
     state.busyAction = 'imageOutpaint'
     state.busyStartedAt = Date.now()
-    state.busyDetail = `Qwen Image Edit 2511\n${nextSize.width} x ${nextSize.height} px`
+    state.busyDetail = `Qwen-Image-2.1\n${nextSize.width} x ${nextSize.height} px`
     syncSplitGlobalBusyOverlay()
     try {
       const rawResult = await runQwenImageOutpaint(dataUrl, fileName, plan.delta, nextSize, {
@@ -5901,7 +5879,7 @@
     state.busy = true
     state.busyAction = 'imageOutpaint'
     state.busyStartedAt = Date.now()
-    state.busyDetail = `Qwen Image Edit 2511\n${nextSize.width} x ${nextSize.height} px`
+    state.busyDetail = `Qwen-Image-2.1\n${nextSize.width} x ${nextSize.height} px`
     setMessage(plan && plan.optimized ? `无限扩图生成中... 尺寸已优化为 ${nextSize.width} x ${nextSize.height}` : '无限扩图生成中...')
     render()
     syncSplitWorkspace()
