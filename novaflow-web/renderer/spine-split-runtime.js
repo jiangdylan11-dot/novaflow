@@ -4426,7 +4426,8 @@
     state.layerScrollTop = 0
     state.viewMode = 'source'
     state.canvasFit = true
-    state.canvasZoom = 1
+    // The zoom readout shows the fit, not 100%, until the next scale pass.
+    state.canvasZoom = state.lastCanvasFitScale || 1
     state.canvasPanX = 0
     state.canvasPanY = 0
     state.sourceDragOver = false
@@ -4483,7 +4484,8 @@
       state.layerScrollTop = 0
       state.viewMode = 'source'
       state.canvasFit = true
-      state.canvasZoom = 1
+      // The zoom readout shows the fit, not 100%, until the next scale pass.
+      state.canvasZoom = state.lastCanvasFitScale || 1
       state.canvasPanX = 0
       state.canvasPanY = 0
       state.sourceDragOver = false
@@ -4547,7 +4549,8 @@
     state.layerScrollTop = 0
     state.viewMode = 'source'
     state.canvasFit = true
-    state.canvasZoom = 1
+    // The zoom readout shows the fit, not 100%, until the next scale pass.
+    state.canvasZoom = state.lastCanvasFitScale || 1
     state.canvasPanX = 0
     state.canvasPanY = 0
     state.sourceDragOver = false
@@ -13971,12 +13974,18 @@
     }, items)
   }
 
+  // One host for the life of the page: the 生图 controls (model, LoRA list, account) stay
+  // mounted across left-panel rebuilds instead of remounting and reloading on every import.
+  let splitArtGenerateControlHost = null
   function renderSplitDrawingItem(item) {
     if (item && item.artGenerateControlHost) {
-      return h('div', {
-        'data-novaflow-art-generate-control-host': '1',
-        style: { gridColumn: '1 / -1', minWidth: '0', width: '100%' }
-      })
+      if (!(splitArtGenerateControlHost instanceof HTMLElement)) {
+        splitArtGenerateControlHost = h('div', {
+          'data-novaflow-art-generate-control-host': '1',
+          style: { gridColumn: '1 / -1', minWidth: '0', width: '100%' }
+        })
+      }
+      return splitArtGenerateControlHost
     }
     return item && item.placeholder ? renderSplitDrawingPlaceholderButton(item) : renderSplitDrawingControlButton(item)
   }
@@ -13988,7 +13997,9 @@
       [CONTROL_CATEGORY_ATTR]: section.id,
       'data-panel-id': `drawing-${section.id}`,
       'data-open': expanded ? '1' : '0',
-      style: SPLIT_LEFT_PANEL_ACCORDION?.panelStyle?.() || {
+      // The brand spec's final box (flex column, 3 above and below, #272727 rule), so a
+      // rebuilt group does not render 7 shorter first and jump when the spec lands.
+      style: Object.assign({}, SPLIT_LEFT_PANEL_ACCORDION?.panelStyle?.() || {
         display: 'block',
         width: '100%',
         minWidth: 0,
@@ -14002,7 +14013,20 @@
         borderRadius: '8px',
         boxShadow: 'none',
         boxSizing: 'border-box'
-      }
+      }, {
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'stretch',
+        justifyContent: 'flex-start',
+        gap: '0',
+        minHeight: '46px',
+        margin: '0',
+        marginBottom: '0',
+        borderRadius: '0',
+        borderBottom: '1px solid #272727',
+        paddingTop: section === splitDrawingControlSections[0] ? '0' : '3px',
+        paddingBottom: '3px'
+      })
     }, [
       h('button', {
         className: 'nf-panel-header',
@@ -15656,13 +15680,17 @@
 
   function resetSplitCanvasSourceViewport() {
     state.canvasFit = true
-    // The fit is recomputed at the next sync; until then the board keeps the last fit scale
-    // instead of showing a frame at 100% (the jump the user saw when switching 原图资源).
+    const root = document.getElementById(WORKSPACE_OVERLAY_ID)
+    // Fit the new source now: the first frame and the zoom readout show its own scale, not
+    // the previous source's (that wobbled the board and the HUD on every card switch).
+    const size = state.sourceSize && Number(state.sourceSize.width) > 0 && Number(state.sourceSize.height) > 0
+      ? { width: Math.round(Number(state.sourceSize.width)), height: Math.round(Number(state.sourceSize.height)) }
+      : null
+    if (root && size) splitCanvasScaleInfo(size, root.getBoundingClientRect(), splitCanvasReservedHeightForMode('source'))
     state.canvasZoom = state.lastCanvasFitScale || 1
     state.canvasPanX = 0
     state.canvasPanY = 0
     cancelSplitCanvasPanIntent()
-    const root = document.getElementById(WORKSPACE_OVERLAY_ID)
     if (root) applySplitCanvasPanTransform(root)
   }
 
@@ -32637,7 +32665,8 @@
     state.activePartId = ''
     state.selectedPartIds = []
     state.canvasFit = true
-    state.canvasZoom = 1
+    // The zoom readout shows the fit, not 100%, until the next scale pass.
+    state.canvasZoom = state.lastCanvasFitScale || 1
     state.canvasPanX = 0
     state.canvasPanY = 0
     const canvas = canvasOfSize(900, 1200)
@@ -35703,7 +35732,8 @@
       state.selectedPartIds = []
       state.layerScrollTop = 0
       state.canvasFit = true
-      state.canvasZoom = 1
+      // The zoom readout shows the fit, not 100%, until the next scale pass.
+      state.canvasZoom = state.lastCanvasFitScale || 1
       state.dragLayerId = ''
       state.dragLayerSetId = ''
       state.renamingPartId = ''
@@ -35907,7 +35937,8 @@
     state.source = { fileName: 'pan-fixture.png', name: 'pan-fixture.png', dataUrl: splitCanvasPanSmokeSourceDataUrl() }
     state.sourceSize = { width: 360, height: 520 }
     state.canvasFit = true
-    state.canvasZoom = 1
+    // The zoom readout shows the fit, not 100%, until the next scale pass.
+    state.canvasZoom = state.lastCanvasFitScale || 1
     state.canvasPanX = 0
     state.canvasPanY = 0
     resetMaskEditor()
@@ -35962,7 +35993,8 @@
     state.source = { fileName: 'pan-smoke.png', name: 'pan-smoke.png', dataUrl: splitCanvasPanSmokeSourceDataUrl() }
     state.sourceSize = { width: 360, height: 520 }
     state.canvasFit = true
-    state.canvasZoom = 1
+    // The zoom readout shows the fit, not 100%, until the next scale pass.
+    state.canvasZoom = state.lastCanvasFitScale || 1
     state.canvasPanX = 0
     state.canvasPanY = 0
     resetMaskEditor()
@@ -36704,6 +36736,8 @@
   window.addEventListener('resize', () => syncSplitWorkspace())
   // The brand runtime switches the layout tier a beat after the resize itself.
   window.addEventListener('novaflow:layout-tier', () => syncSplitWorkspace())
+  // The brand runtime publishes a new stage box (生图's dock up or down): lay the overlay out now.
+  window.addEventListener('novaflow:stage-box', () => syncSplitWorkspace())
   window.addEventListener('keydown', handleLayerHotkeys, true)
   window.addEventListener('keyup', handlePenModifierKeyChange, true)
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { mount(); startSplitMountRetry() })

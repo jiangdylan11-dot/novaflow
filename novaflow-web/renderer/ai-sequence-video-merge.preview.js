@@ -73,7 +73,7 @@
       'data-novaflow-ai-video-merge-preview': '1',
       style: {
         position: 'relative', width: '100%', height: '100%', minWidth: '0', minHeight: '0', overflow: 'hidden',
-        backgroundColor: '#0b0b0b', backgroundImage: 'none',
+        backgroundColor: 'transparent', backgroundImage: 'none',
       },
     })
     const canvas = createElement(documentRef, 'canvas', {

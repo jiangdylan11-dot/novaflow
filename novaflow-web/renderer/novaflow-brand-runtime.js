@@ -16324,6 +16324,7 @@
 
   function lockAiSequenceCutoutActionRow(node, toolOrMode) {
     if (!(node instanceof HTMLElement)) return;
+    if (node.hasAttribute("data-novaflow-ai-tool-heading")) return;
     const mode = getAiSequenceCutoutModeFromTool(toolOrMode);
     if (!mode) return;
     node.setAttribute("data-novaflow-ai-post-action-button", "1");
@@ -16418,6 +16419,7 @@
     }
     syncRangeFillsInNode(postSection);
     styleAiAnimationCutoutParameterLayout(postSection);
+    styleAiAnimationCutoutBrushPanel(postSection);
     applyAiSequenceToolDetailState(postSection, session);
     if (actionButton instanceof HTMLElement) {
       lockAiSequenceCutoutActionRow(actionButton, tool);
@@ -18875,6 +18877,9 @@
     const dockRect = dock.getBoundingClientRect();
     const workspaceRect = workspace.getBoundingClientRect();
     if (!(dockRect.height > 0) || !(workspaceRect.height > 0)) return;
+    // Only a dock laid out inside the workspace (below the stage) says where the stage ends.
+    if (dockRect.top <= workspaceRect.top + 40 || dockRect.bottom > workspaceRect.bottom + 4) return;
+    if (document.body.getAttribute("data-novaflow-ai-sequence-mode") === "editing") return;
     const dockHeight = Math.round(dockRect.height);
     if (dockHeight === aiAnimationDockHeightSeen) return;
     const previous = aiAnimationDockHeightSeen;
@@ -19426,11 +19431,18 @@
     setStylePropertyIfChanged(viewport, "--novaflow-ai-sequence-effective-top", `${Math.round(effectiveRect.top - rect.top)}px`);
     const backgroundToggle = viewport.querySelector('[data-novaflow-ai-preview-bg-toggle="1"]');
     if (backgroundToggle instanceof HTMLElement) {
+      // With 视频合并 open the merge stage and its timeline say where the toggle goes.
+      const mergeStage = viewport.querySelector('[data-novaflow-ai-video-merge-workspace="1"] .nf-vm-stage');
+      const mergeTimeline = viewport.querySelector('[data-novaflow-ai-video-merge-workspace="1"] .nf-vm-timeline');
+      const mergeStageRect = mergeStage instanceof HTMLElement ? mergeStage.getBoundingClientRect() : null;
+      const mergeTimelineRect = mergeTimeline instanceof HTMLElement ? mergeTimeline.getBoundingClientRect() : null;
+      const mergeLeft = mergeStageRect && mergeStageRect.width > 0 ? `${Math.round(mergeStageRect.left + mergeStageRect.width / 2 - rect.left)}px` : null;
+      const mergeTop = mergeTimelineRect && mergeTimelineRect.height > 0 ? `${Math.max(0, Math.round(mergeTimelineRect.top - rect.top - 26))}px` : null;
       // Follow the visible stage, above either generation controls or the editing timeline.
-      setStylePropertyIfChanged(backgroundToggle, "left", `${localCenterX}px`, "important");
+      setStylePropertyIfChanged(backgroundToggle, "left", mergeLeft || `${localCenterX}px`, "important");
       // Where the reference spec puts it when the dock is up, so the two do
       // not move it back and forth.
-      setStylePropertyIfChanged(backgroundToggle, "top", aiPreviewBgToggleDockTop(backgroundToggle) || `${Math.max(0, Math.round(bottom - rect.top - 26))}px`, "important");
+      setStylePropertyIfChanged(backgroundToggle, "top", mergeTop || aiPreviewBgToggleDockTop(backgroundToggle) || `${Math.max(0, Math.round(bottom - rect.top - 26))}px`, "important");
     }
     return effectiveRect;
   }
@@ -21521,8 +21533,17 @@
         background: transparent !important;
         background-image: none !important;
       }
-      [data-novaflow-ai-preview-bg] :is(.nf-vm-body, .nf-vm-center, [data-novaflow-ai-video-merge-preview="1"]) {
-        background: var(--novaflow-ai-preview-color, #0b0b0b) !important;
+      /* 视频合并 paints the chosen preview backdrop (深色 / 白色 / 灰色) over the stage; the
+         shell, centre and preview stay clear so the colour is one flat plate. */
+      [data-novaflow-ai-video-merge-workspace="1"] .nf-vm-body {
+        background: var(--novaflow-ai-preview-color, ${AI_ANIMATION_PREVIEW_BACKGROUND_COLOR}) !important;
+        background-color: var(--novaflow-ai-preview-color, ${AI_ANIMATION_PREVIEW_BACKGROUND_COLOR}) !important;
+      }
+      [data-novaflow-ai-video-merge-workspace="1"],
+      [data-novaflow-ai-video-merge-workspace="1"] .nf-vm-center,
+      [data-novaflow-ai-video-merge-preview="1"] {
+        background: transparent !important;
+        background-color: transparent !important;
       }
       .nf-brand[data-novaflow-brand="20260516-chain-unified"] img[alt="logo"] {
         width: ${UI_TOPBAR_LOGO_WIDTH}px !important;
@@ -23030,11 +23051,20 @@
         background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2016%2016'%20fill%3D'none'%20stroke%3D'%23bdbdbd'%20stroke-width%3D'1.3'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Crect%20x%3D'2'%20y%3D'2'%20width%3D'12'%20height%3D'12'%20rx%3D'2'%20stroke-dasharray%3D'2.6%201.9'%2F%3E%3Ccircle%20cx%3D'8'%20cy%3D'6.5'%20r%3D'1.9'%2F%3E%3Cpath%20d%3D'M4.9%2012.4c.5-1.9%201.7-2.9%203.1-2.9s2.6%201%203.1%202.9'%2F%3E%3C%2Fsvg%3E") !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading]::after {
-        content: "" !important;
+        content: none !important;
+        display: none !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading] > [data-novaflow-ai-tool-heading-chevron] {
+        display: block !important;
         position: absolute !important;
         left: auto !important;
         right: 12px !important;
         top: 50% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: transparent !important;
+        opacity: 1 !important;
+        visibility: visible !important;
         width: ${NOVAFLOW_THIN_ARROW_SIZE} !important;
         height: ${NOVAFLOW_THIN_ARROW_SIZE} !important;
         border-left: 0 !important;
@@ -23047,7 +23077,7 @@
         transition: transform 120ms ease-out !important;
         pointer-events: none !important;
       }
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading][data-collapsed="1"]::after {
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading][data-collapsed="1"] > [data-novaflow-ai-tool-heading-chevron] {
         transform: translateY(-50%) rotate(-45deg) !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading="post"][data-novaflow-ai-collapse-disabled="1"] {
@@ -23342,7 +23372,7 @@
         text-align: center !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-primary-action="1"],
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-action-button="1"] {
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-action-button="1"]:not([data-novaflow-ai-tool-heading]) {
         width: 100% !important;
         min-width: 0 !important;
         max-width: none !important;
@@ -23384,6 +23414,116 @@
         color: #fff1f3 !important;
         font-weight: 400 !important;
         outline: 0 !important;
+      }
+      /* 视频抠图's brush block: 单帧 / 全局 and 擦除 / 修复 as 2级入口 pills, each slider on
+         its own line under its label and number box. */
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-panel="1"] {
+        display: grid !important;
+        gap: 10px !important;
+        margin-top: 12px !important;
+        padding: 12px 0 0 !important;
+        box-sizing: border-box !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope-row="1"],
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-mode-row="1"] {
+        display: grid !important;
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: ${SECONDARY_GROUP_PILL_GAP}px !important;
+        align-items: stretch !important;
+        justify-content: stretch !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        padding: ${SECONDARY_GROUP_INSET}px !important;
+        border-radius: ${SECONDARY_GROUP_RADIUS_PX} !important;
+        background: ${SECONDARY_GROUP_BACKGROUND} !important;
+        background-color: ${SECONDARY_GROUP_BACKGROUND} !important;
+        box-sizing: border-box !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope],
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-mode="1"] {
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        position: relative !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        height: ${SECONDARY_ENTRY_HEIGHT}px !important;
+        min-height: ${SECONDARY_ENTRY_HEIGHT}px !important;
+        max-height: ${SECONDARY_ENTRY_HEIGHT}px !important;
+        margin: 0 !important;
+        padding: 0 6px !important;
+        border: 0 !important;
+        border-radius: ${NOVAFLOW_RECT_RADIUS_PX} !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        background-image: none !important;
+        color: ${UI_SEGMENT_IDLE_TEXT} !important;
+        font-size: 12px !important;
+        font-weight: ${NOVAFLOW_MEDIUM_FONT_WEIGHT} !important;
+        line-height: 1 !important;
+        box-shadow: none !important;
+        outline: 0 !important;
+        opacity: 1 !important;
+        cursor: pointer !important;
+        user-select: none !important;
+        box-sizing: border-box !important;
+        transition: none !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope][data-novaflow-ai-brush-scope-active="0"]:not([aria-disabled="true"]):hover,
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-mode="1"][data-novaflow-ai-brush-mode-active="0"]:not(:disabled):hover {
+        background: ${SECONDARY_ENTRY_HOVER_BACKGROUND} !important;
+        background-color: ${SECONDARY_ENTRY_HOVER_BACKGROUND} !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope][data-novaflow-ai-brush-scope-active="1"],
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-mode="1"][data-novaflow-ai-brush-mode-active="1"] {
+        border-radius: 5px !important;
+        background: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
+        background-color: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
+        color: ${UI_SEGMENT_SELECTED_TEXT} !important;
+        box-shadow: inset 0 0 0 1px ${UI_SEGMENT_SELECTED_BORDER} !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope][aria-disabled="true"],
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-mode="1"]:disabled {
+        opacity: 0.48 !important;
+        cursor: not-allowed !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope="global"] > input[type="checkbox"] {
+        position: absolute !important;
+        width: 1px !important;
+        height: 1px !important;
+        margin: 0 !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-param-row="1"] {
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) ${NOVAFLOW_NUMBER_INPUT_WIDTH}px !important;
+        grid-template-areas: "label value" "range range" !important;
+        gap: 6px 8px !important;
+        align-items: center !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        box-sizing: border-box !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-param-row="1"] > div {
+        grid-area: label !important;
+        color: rgba(255, 255, 255, 0.7) !important;
+        font-size: 11px !important;
+        font-weight: ${NOVAFLOW_MEDIUM_FONT_WEIGHT} !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-param-row="1"] > input[type="range"] {
+        grid-area: range !important;
+        width: 100% !important;
+        justify-self: stretch !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-param-row="1"] > input:not([type="range"]) {
+        grid-area: value !important;
+        justify-self: end !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-param-row="1"] {
         display: grid !important;
@@ -36298,7 +36438,7 @@
 
   // The drawing page's own runtime places its stage overlay from this box, so
   // it and the spec agree on the stage for every tier.
-  function publishNovaflowStageBox() {
+  function publishNovaflowStageBox(options = {}) {
     const box = novaflowStageBox(true);
     const height = NOVAFLOW_LAYOUT_TIER === "stack"
       ? NOVAFLOW_STACK_CENTER_MIN_HEIGHT
@@ -36308,13 +36448,33 @@
     // With 绘图's generation dock up, the stage panel itself stops 9 above
     // it, as the reference's does; the dock sits on the page, not the panel.
     let surfaceHeight = height;
+    let dockCounted = false;
     const dock = document.querySelector(`#${ART_GENERATE_WORKSPACE_ID} .novaflow-art-generate-bottom`);
-    if (document.body && document.body.getAttribute(ART_GENERATE_ACTIVE_ATTR) === "1" && dock instanceof HTMLElement && dock.offsetHeight > 0) {
+    if (!options.ignoreDock && document.body && document.body.getAttribute(ART_GENERATE_ACTIVE_ATTR) === "1" && dock instanceof HTMLElement && dock.offsetHeight > 0) {
+      // Until the spec has sized the dock its raw height is far taller; keep the last box.
+      if (dock.style.getPropertyPriority("padding") !== "important") return;
       surfaceHeight = Math.max(160, height - dock.offsetHeight - AI_ANIMATION_PANEL_TIMELINE_GAP);
+      dockCounted = true;
     }
     const surface = [box.left, box.top, box.width, surfaceHeight].map((n) => Math.round(n)).join(",");
+    const changed = document.documentElement.getAttribute("data-novaflow-stage-surface-box") !== surface;
     nfSetAttrIfChanged(document.documentElement, "data-novaflow-stage-surface-box", surface);
+    // The drawing runtime lays its overlay out from this box at once, in this same task.
+    if (changed) {
+      try { window.dispatchEvent(new CustomEvent("novaflow:stage-box", { detail: { surface } })); } catch (_) { /* its own cadence */ }
+    }
+    // The drawing runtime refits when this box changes; hand it the preview rect in the same
+    // tick so 生图 opens in one step instead of fitting to the box and then to the rect.
+    if (changed && dockCounted && !options.skipPreviewSync) {
+      try { syncArtGeneratePreviewViewportProxy({ skipStageBox: true }); } catch (_) { /* next pass */ }
+    }
   }
+  // Closing 生图: the full stage is published before the drawing runtime's own sync refits.
+  document.addEventListener("click", (event) => {
+    const toggle = event.target instanceof Element ? event.target.closest('[data-novaflow-spine-split-control-category-toggle="generate"]') : null;
+    if (!toggle || !document.body || document.body.getAttribute(ART_GENERATE_ACTIVE_ATTR) !== "1") return;
+    publishNovaflowStageBox({ ignoreDock: true, skipPreviewSync: true });
+  }, true);
 
   function applyNovaflowReferenceSpec() {
     // Always the whole document. The rhythm pass is often called with a
@@ -57896,6 +58056,7 @@
     });
     Array.from(postSection.querySelectorAll('button, [role="button"]')).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
+      if (node.hasAttribute("data-novaflow-ai-tool-heading")) return;
       const text = getText(node);
       if (text === normalizedTokens.repair) {
         setAttributeIfChanged(node, "data-novaflow-ai-post-primary-action", "1");
@@ -58057,6 +58218,7 @@
     });
     Array.from(postSection.querySelectorAll('div[role="button"], button')).forEach((node) => {
       if (!(node instanceof HTMLElement)) return;
+      if (node.hasAttribute("data-novaflow-ai-tool-heading")) return;
       const text = normalizeText(node.textContent || "");
       if (text === "\u989c\u8272\u6821\u6b63") {
         node.setAttribute("data-novaflow-ai-post-primary-action", "1");
@@ -58109,6 +58271,123 @@
     postSection.style.removeProperty("overscroll-behavior");
     postSection.style.setProperty("overflow", "visible", "important");
   }
+
+  // The bundle's brush block (单帧 / 全局, 擦除 / 修复, 笔刷, 羽化) takes the 2级入口 pill look.
+  // The checkbox behind 全局 keeps its React handler; the pills only click it.
+  function styleAiAnimationCutoutBrushPanel(postSection) {
+    if (!(postSection instanceof HTMLElement)) return;
+    Array.from(postSection.querySelectorAll('[data-novaflow-manual-brush="1"]')).forEach((panel) => {
+      if (!(panel instanceof HTMLElement)) return;
+      nfSetAttrIfChanged(panel, "data-novaflow-ai-brush-panel", "1");
+      Array.from(panel.children).forEach((row) => {
+        if (!(row instanceof HTMLElement)) return;
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        const range = row.querySelector('input[type="range"]');
+        const numberInput = Array.from(row.querySelectorAll("input")).find((input) => (
+          input instanceof HTMLInputElement && input.type !== "range" && input.type !== "checkbox"
+        ));
+        const buttons = Array.from(row.children).filter((node) => node instanceof HTMLButtonElement);
+        const first = row.firstElementChild;
+        const firstText = first instanceof HTMLElement ? normalizeText(first.textContent || "") : "";
+        if (checkbox instanceof HTMLInputElement || firstText.startsWith("\u5355\u5e27")) {
+          nfSetAttrIfChanged(row, "data-novaflow-ai-brush-scope-row", "1");
+          const global = checkbox instanceof HTMLInputElement && checkbox.checked;
+          const locked = checkbox instanceof HTMLInputElement ? checkbox.disabled : false;
+          if (first instanceof HTMLElement && !first.querySelector("input")) {
+            if (first.textContent !== "\u5355\u5e27") first.textContent = "\u5355\u5e27";
+            nfSetAttrIfChanged(first, "data-novaflow-ai-brush-scope", "single");
+            nfSetAttrIfChanged(first, "role", "button");
+            nfSetAttrIfChanged(first, "tabindex", "0");
+            nfSetAttrIfChanged(first, "aria-pressed", global ? "false" : "true");
+            nfSetAttrIfChanged(first, "data-novaflow-ai-brush-scope-active", global ? "0" : "1");
+            nfSetAttrIfChanged(first, "aria-disabled", locked ? "true" : "false");
+            if (first.getAttribute("data-novaflow-ai-brush-scope-bound") !== "1") {
+              first.setAttribute("data-novaflow-ai-brush-scope-bound", "1");
+              const toSingle = (event) => {
+                if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+                event.preventDefault();
+                const box = row.querySelector('input[type="checkbox"]');
+                if (box instanceof HTMLInputElement && box.checked && !box.disabled) box.click();
+              };
+              first.addEventListener("click", toSingle);
+              first.addEventListener("keydown", toSingle);
+            }
+          }
+          const label = checkbox instanceof HTMLInputElement ? checkbox.closest("label") : null;
+          if (label instanceof HTMLElement) {
+            nfSetAttrIfChanged(label, "data-novaflow-ai-brush-scope", "global");
+            nfSetAttrIfChanged(label, "aria-pressed", global ? "true" : "false");
+            nfSetAttrIfChanged(label, "data-novaflow-ai-brush-scope-active", global ? "1" : "0");
+            nfSetAttrIfChanged(label, "aria-disabled", locked ? "true" : "false");
+            if (label.getAttribute("data-novaflow-ai-brush-scope-bound") !== "1") {
+              label.setAttribute("data-novaflow-ai-brush-scope-bound", "1");
+              // A selected pill stays selected; the bare label would untick the box.
+              label.addEventListener("click", (event) => {
+                const box = label.querySelector('input[type="checkbox"]');
+                if (box instanceof HTMLInputElement && box.checked && event.target !== box) event.preventDefault();
+              });
+              checkbox.addEventListener("change", () => window.setTimeout(() => styleAiAnimationCutoutBrushPanel(postSection), 0));
+            }
+          }
+          return;
+        }
+        if (buttons.length === 2 && !(range instanceof HTMLInputElement)) {
+          nfSetAttrIfChanged(row, "data-novaflow-ai-brush-mode-row", "1");
+          buttons.forEach((button) => {
+            const inline = String(button.style.background || button.style.backgroundColor || "").toLowerCase();
+            const active = inline.includes("1ea672") || inline.includes("30, 166, 114");
+            nfSetAttrIfChanged(button, "data-novaflow-ai-brush-mode", "1");
+            nfSetAttrIfChanged(button, "data-novaflow-ai-brush-mode-active", active ? "1" : "0");
+            nfSetAttrIfChanged(button, "aria-pressed", active ? "true" : "false");
+          });
+          return;
+        }
+        if (range instanceof HTMLInputElement && numberInput instanceof HTMLInputElement) {
+          nfSetAttrIfChanged(row, "data-novaflow-ai-brush-param-row", "1");
+          nfSetAttrIfChanged(range, "data-novaflow-ai-cutout-param-range", "1");
+          nfSetAttrIfChanged(numberInput, "data-novaflow-ai-cutout-param-value", "1");
+          syncRangeFillVisual(range);
+          if (range.getAttribute("data-novaflow-ai-brush-range-bound") !== "1") {
+            range.setAttribute("data-novaflow-ai-brush-range-bound", "1");
+            range.addEventListener("input", () => syncRangeFillVisual(range));
+          }
+        }
+      });
+    });
+  }
+
+  let aiAnimationBrushPanelObserver = null;
+  let aiAnimationBrushPanelSyncQueued = false;
+  function queueAiAnimationBrushPanelSync() {
+    if (aiAnimationBrushPanelSyncQueued) return;
+    aiAnimationBrushPanelSyncQueued = true;
+    // A timer, not rAF: a hidden pane stalls frames and would hold the restyle.
+    window.setTimeout(() => {
+      aiAnimationBrushPanelSyncQueued = false;
+      const section = document.querySelector('[data-novaflow-ai-post-section="1"]');
+      if (section instanceof HTMLElement) styleAiAnimationCutoutBrushPanel(section);
+    }, 0);
+  }
+  function observeAiAnimationBrushPanel() {
+    if (aiAnimationBrushPanelObserver || typeof MutationObserver !== "function" || !document.body) return;
+    aiAnimationBrushPanelObserver = new MutationObserver((records) => {
+      for (const record of records) {
+        const target = record.target;
+        if (!(target instanceof Element)) continue;
+        if (target.closest('[data-novaflow-manual-brush="1"]')) { queueAiAnimationBrushPanelSync(); return; }
+        if (record.type !== "childList") continue;
+        for (const node of record.addedNodes) {
+          if (node instanceof Element && (node.matches('[data-novaflow-manual-brush="1"]') || node.querySelector('[data-novaflow-manual-brush="1"]'))) {
+            queueAiAnimationBrushPanelSync();
+            return;
+          }
+        }
+      }
+    });
+    aiAnimationBrushPanelObserver.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["style"] });
+  }
+  if (document.body) observeAiAnimationBrushPanel();
+  else document.addEventListener("DOMContentLoaded", observeAiAnimationBrushPanel, { once: true });
 
   function styleAiAnimationCutoutParameterLayout(postSection) {
     if (!(postSection instanceof HTMLElement)) return;
@@ -58377,6 +58656,7 @@
     };
     const bindCutoutRefresh = (node) => {
       if (!(node instanceof HTMLElement) || node.getAttribute("data-novaflow-ai-cutout-refresh-bound") === "1") return;
+      if (node.hasAttribute("data-novaflow-ai-tool-heading")) return;
       node.setAttribute("data-novaflow-ai-cutout-refresh-bound", "1");
       const schedulePostRefreshIfUncontrolled = () => {
         const tool = aiSequenceToolFromNode(node);
@@ -58459,6 +58739,7 @@
     };
     const styleActionButtonBase = (node) => {
       if (!(node instanceof HTMLElement)) return;
+      if (node.hasAttribute("data-novaflow-ai-tool-heading")) return;
       node.setAttribute("data-novaflow-ai-post-action-button", "1");
       if (node.parentElement instanceof HTMLElement) {
         node.parentElement.setAttribute("data-novaflow-ai-post-action-row", "1");
@@ -58642,6 +58923,7 @@
     }
     styleAiAnimationChromaColorRows(postSection);
     styleAiAnimationCutoutParameterLayout(postSection);
+    styleAiAnimationCutoutBrushPanel(postSection);
     syncAiAnimationProcessingStateClasses();
     styleAiAnimationChromaColorRows(postSection);
 
@@ -58739,10 +59021,12 @@
     if (!(postHeading instanceof HTMLElement)) return;
     const expanded = !AI_ANIMATION_COLLAPSE_STATE.post;
     const activeTool = aiAnimationActiveToolKey();
-    // The rows read the session state; re-read it once the group has moved.
-    [0, 160, 420, 900].forEach((delay) => window.setTimeout(() => {
+    // The rows read the session state; re-read it once the group has moved. The preview
+    // geometry is primed again so the 背景 toggle follows the tool's stage at once.
+    [0, 160, 420, 900, 1500].forEach((delay) => window.setTimeout(() => {
       const section = document.querySelector('[data-novaflow-ai-post-section="1"]');
       if (section instanceof HTMLElement) ensureAiAnimationToolHeadings(section, section.querySelector('[data-novaflow-ai-collapse-heading="post"]'));
+      primeAiSequencePreviewEffectiveRectVars(document);
     }, delay));
     const clickEntry = (attempt = 0) => {
       const entry = document.querySelector(spec.entry);
@@ -58775,6 +59059,10 @@
         heading.setAttribute("tabindex", "0");
         heading.setAttribute("aria-label", spec.label);
         heading.textContent = spec.label;
+        const chevron = document.createElement("span");
+        chevron.setAttribute("data-novaflow-ai-tool-heading-chevron", "1");
+        chevron.setAttribute("aria-hidden", "true");
+        heading.appendChild(chevron);
         const activate = (event) => {
           event.preventDefault();
           event.stopPropagation();
@@ -60140,10 +60428,13 @@
       const detectedBottomTop = Number.isFinite(bottomSurfaceTops[0]) ? bottomSurfaceTops[0] : bottomRect.top;
       const bottomTop = Math.min(bottomRect.top, detectedBottomTop);
       const stageBottom = Math.max(220, Math.round(workspaceRect.bottom - bottomTop + 10));
-      setStylePropertyIfChanged(document.body, "--novaflow-ai-main-stage-bottom", `${stageBottom}px`);
+      // A hidden dock (编辑 modes such as 视频合并) has no top edge; keep the last stage
+      // bottom instead of padding the stage by the whole workspace height.
+      const dockLaidOut = bottomRect.height > 0 && bottomTop > workspaceRect.top;
+      if (dockLaidOut) setStylePropertyIfChanged(document.body, "--novaflow-ai-main-stage-bottom", `${stageBottom}px`);
       if (isSourceOwnedLayout(workspace)) {
         clearRuntimeSourceWorkspaceStyles(workspace);
-      } else {
+      } else if (dockLaidOut) {
         setStylePropertyIfChanged(workspace, "--novaflow-ai-main-stage-bottom", `${stageBottom}px`);
       }
       if (!isSourceOwnedLayout(bottomWorkspace)) {
@@ -79328,6 +79619,9 @@
     }
     renderArtGenerateSurfaces();
     scheduleArtGeneratePreviewRefresh([0, 16, 80]);
+    // The stage box was published with the dock up; the board takes the whole stage again.
+    publishNovaflowStageBox();
+    [16, 80, 200].forEach((delay) => window.setTimeout(publishNovaflowStageBox, delay));
   }
 
   function scheduleArtGeneratePanelOpenSettle(panel) {
@@ -79514,6 +79808,10 @@
     const bottomPanel = root.querySelector(".novaflow-art-generate-bottom");
     const topRect = topBar instanceof HTMLElement && isVisible(topBar) ? topBar.getBoundingClientRect() : null;
     const bottomRect = bottomPanel instanceof HTMLElement && isVisible(bottomPanel) ? bottomPanel.getBoundingClientRect() : null;
+    // A bar the spec has not sized yet (its inline !important sizing missing) is still at
+    // its raw height; a rect taken then fitted the picture small and again a frame later.
+    if (topRect && topBar.style.getPropertyPriority("height") !== "important") return null;
+    if (bottomRect && bottomPanel.style.getPropertyPriority("padding") !== "important") return null;
     const left = overlayRect.left;
     const right = overlayRect.right;
     // Before the 文生图 / 图生图 bar is up, its place is known: the canvas bar
@@ -79581,6 +79879,8 @@
     const overlayRect = getArtGenerateOverlayNativeRect(overlay);
     const previewRect = getArtGeneratePreviewEffectiveRectForOverlay(overlay);
     if (!overlayRect || !previewRect) return null;
+    // The stage box with the dock's gap goes out in the same tick as the preview rect.
+    if (!options.skipStageBox) publishNovaflowStageBox({ skipPreviewSync: true });
     saveArtGenerateContentRootViewportStyle(contentRoot);
     contentRoot.setAttribute("data-novaflow-art-generate-preview-viewport", "1");
     contentRoot.style.setProperty("inset", "auto", "important");
@@ -79649,15 +79949,55 @@
     return clampNumber(Math.min(availableW / Math.max(1, size.width), availableH / Math.max(1, size.height)), 0.02, 8);
   }
 
+  // The stage box the drawing runtime lays its overlay out from (see publishNovaflowStageBox).
+  function getPublishedNovaflowStageSurfaceBox() {
+    const raw = document.documentElement ? document.documentElement.getAttribute("data-novaflow-stage-surface-box") : "";
+    if (!raw) return null;
+    const [left, top, width, height] = String(raw).split(",").map(Number);
+    if (![left, top, width, height].every(Number.isFinite) || !(width > 0) || !(height > 0)) return null;
+    return createArtGenerateDomRectLike(left, top, width, height);
+  }
+
+  // The drawing runtime rebuilds the picture whenever its overlay changes size, and the
+  // rebuilt picture carries no fit correction; put it back before that frame paints.
+  const ART_GENERATE_FIT_ART_OBSERVED = new WeakSet();
+  function observeArtGenerateFitArt(contentRoot) {
+    if (!(contentRoot instanceof HTMLElement) || ART_GENERATE_FIT_ART_OBSERVED.has(contentRoot) || typeof MutationObserver !== "function") return;
+    ART_GENERATE_FIT_ART_OBSERVED.add(contentRoot);
+    const observer = new MutationObserver((records) => {
+      if (!ART_GENERATE_STATE.active || !contentRoot.isConnected) return;
+      const rebuilt = records.some((record) => record.type === "childList" && Array.from(record.addedNodes).some((node) => (
+        node instanceof Element && (node.matches('[data-novaflow-split-canvas-art="1"]') || node.querySelector('[data-novaflow-split-canvas-art="1"]'))
+      )));
+      if (!rebuilt) return;
+      const apply = () => {
+        if (!ART_GENERATE_STATE.active) return true;
+        const overlay = document.getElementById("novaflow-spine-split-workspace-overlay");
+        const previewRect = getArtGeneratePreviewEffectiveRectForOverlay(overlay);
+        return previewRect ? syncArtGeneratePreviewArtFit(previewRect, getArtGenerateOverlayNativeRect(overlay)) : false;
+      };
+      if (apply()) return;
+      // The picture is not decoded yet: fit it the moment it is, and on a few short retries.
+      const media = contentRoot.querySelector('[data-novaflow-split-canvas-art="1"] img, [data-novaflow-split-canvas-art="1"] video');
+      if (media instanceof HTMLImageElement) media.addEventListener("load", () => apply(), { once: true });
+      else if (media instanceof HTMLVideoElement) media.addEventListener("loadedmetadata", () => apply(), { once: true });
+      [16, 64, 160, 400].forEach((delay) => window.setTimeout(apply, delay));
+    });
+    observer.observe(contentRoot, { childList: true, subtree: true });
+  }
+
   function syncArtGeneratePreviewArtFit(previewRect, overlayRect = null) {
     if (!ART_GENERATE_STATE.active || !previewRect) return false;
     const contentRoot = document.getElementById("novaflow-spine-split-workspace-content");
+    observeArtGenerateFitArt(contentRoot);
     const art = contentRoot instanceof HTMLElement ? contentRoot.querySelector('[data-novaflow-split-canvas-art="1"]') : null;
     if (!(art instanceof HTMLElement)) return false;
     const media = art.querySelector("img, canvas, video");
     const size = getArtGeneratePreviewMediaSize(media);
     if (!size.ready) return false;
-    const baseRect = overlayRect || getArtGenerateOverlayNativeRect(document.getElementById("novaflow-spine-split-workspace-overlay"));
+    // Measure against the box the overlay is taking, not the size it still has: the
+    // correction is then right for the refit that follows instead of one frame behind it.
+    const baseRect = getPublishedNovaflowStageSurfaceBox() || overlayRect || getArtGenerateOverlayNativeRect(document.getElementById("novaflow-spine-split-workspace-overlay"));
     if (!baseRect) return false;
     const nativeFit = getArtGeneratePreviewFitScale(size, baseRect);
     const previewFit = getArtGeneratePreviewFitScale(size, previewRect);

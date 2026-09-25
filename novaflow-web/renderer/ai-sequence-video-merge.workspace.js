@@ -28,13 +28,13 @@
   let activeHandle = null
 
   const CSS = `
-    [${WORKSPACE_ATTRIBUTE}="1"]{position:absolute;top:0;bottom:0;left:0;right:calc(var(--novaflow-ai-resource-sidebar-width,260px) + var(--novaflow-ai-resource-sidebar-gap,8px));z-index:120;display:block;min-width:0;overflow:hidden;background:#0b0b0b;color:#f5f5f5;font-family:Inter,"Microsoft YaHei",sans-serif;box-sizing:border-box}
+    [${WORKSPACE_ATTRIBUTE}="1"]{position:absolute;top:0;bottom:0;left:0;right:calc(var(--novaflow-ai-resource-sidebar-width,260px) + var(--novaflow-ai-resource-sidebar-gap,8px));z-index:120;display:block;min-width:0;overflow:hidden;background:transparent;color:#f5f5f5;font-family:Inter,"Microsoft YaHei",sans-serif;box-sizing:border-box}
     [${HOST_ACTIVE_ATTRIBUTE}="1"] [data-novaflow-ai-board-controls-top-left="1"]{display:none!important}
     [${WORKSPACE_ATTRIBUTE}="1"] *{box-sizing:border-box}
     [${WORKSPACE_ATTRIBUTE}="1"] button,[${WORKSPACE_ATTRIBUTE}="1"] select,[${WORKSPACE_ATTRIBUTE}="1"] input{font:inherit}
     .nf-vm-panel,.nf-vm-panel *{box-sizing:border-box}.nf-vm-panel button,.nf-vm-panel select,.nf-vm-panel input{font:inherit}
-    .nf-vm-body{height:100%;min-height:0;display:block;background:#0b0b0b}.nf-vm-body[data-controls-inline="1"]{display:grid;grid-template-columns:220px minmax(0,1fr);gap:1px;background:rgba(255,255,255,.08)}
-    .nf-vm-panel{width:calc(100% - 22px);min-width:0;min-height:0;margin:0 11px;padding:10px 0 14px;background:transparent;overflow:visible}.nf-vm-body[data-controls-inline="1"]>.nf-vm-panel{width:auto;margin:0;padding:12px;background:#1b1b1b;overflow:auto}.nf-vm-center{width:100%;height:100%;min-width:0;min-height:0;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:8px;padding:0 12px 12px;background:#0b0b0b}
+    .nf-vm-body{height:100%;min-height:0;display:block;background:var(--novaflow-ai-preview-color,#242424)}.nf-vm-body[data-controls-inline="1"]{display:grid;grid-template-columns:220px minmax(0,1fr);gap:1px;background:rgba(255,255,255,.08)}
+    .nf-vm-panel{width:calc(100% - 22px);min-width:0;min-height:0;margin:0 11px;padding:10px 0 14px;background:transparent;overflow:visible}.nf-vm-body[data-controls-inline="1"]>.nf-vm-panel{width:auto;margin:0;padding:12px;background:#1b1b1b;overflow:auto}.nf-vm-center{width:100%;height:100%;min-width:0;min-height:0;display:grid;grid-template-rows:minmax(0,1fr) auto;gap:8px;padding:0 12px 12px;background:transparent}
     .nf-vm-stage{min-width:0;min-height:0;position:relative;overflow:hidden}[${WORKSPACE_ATTRIBUTE}="1"][data-novaflow-ai-video-merge-controls-external="1"] .nf-vm-stage{margin:0 -12px}.nf-vm-timeline{display:grid;grid-template-columns:34px minmax(0,1fr) 94px;gap:9px;align-items:center;min-height:58px;padding:10px 16px;border:0;border-radius:8px;background:rgba(24,24,24,.96);overflow:hidden}
     .nf-vm-section{margin:0 0 14px}.nf-vm-section:last-child{margin-bottom:0}.nf-vm-section-title{margin:0 0 8px;color:rgba(255,255,255,.72);font-size:11px;font-weight:800;letter-spacing:.04em}
     .nf-vm-layer-toolbar{display:flex;justify-content:flex-end;gap:5px;height:25px;margin-bottom:5px}.nf-vm-btn.nf-vm-layer-move{width:33px;min-width:33px;min-height:25px;height:25px;padding:0;border:0;border-radius:8px;background:#333;color:rgba(238,244,252,.9)}.nf-vm-btn.nf-vm-layer-move:disabled{background:#202020;color:rgba(238,244,252,.38);opacity:1!important}.nf-vm-layer-move i{font-size:11px;pointer-events:none}
@@ -45,12 +45,12 @@
     .nf-vm-btn-primary{background:linear-gradient(135deg,#1ea672,#188f64);border-color:rgba(84,234,178,.3);color:#effcf6;font-weight:800}.nf-vm-btn-danger{background:#5b2929;color:#ffd6d6}.nf-vm-icon{width:28px;min-width:28px;padding:0}
     [data-novaflow-ai-video-merge-edit-mask="1"]{height:34px;min-height:34px}
     .nf-vm-auto-fit{position:absolute;top:8px;right:0;z-index:14;width:92px;min-width:92px;height:34px;min-height:34px;padding:0 18px;border:0;border-radius:8px;background:#2a2a2a;color:#fff;font-size:13px;font-weight:400;line-height:34px;cursor:pointer}
-    .nf-vm-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin:7px 0}.nf-vm-label{color:rgba(255,255,255,.7);font-size:10px}.nf-vm-value{min-width:30px;color:#fff;font-size:10px;text-align:right}
+    .nf-vm-row{display:grid;grid-template-columns:minmax(0,1fr) 49px;gap:8px;align-items:center;margin:8px 0 2px}.nf-vm-label{color:rgba(255,255,255,.7);font-size:11px}input.nf-vm-value{width:49px;min-width:49px;max-width:49px;height:24px;min-height:24px;max-height:24px;padding:0 8px;border:0;border-radius:8px;background:#272727;color:#fff;font-size:11px;line-height:24px;text-align:center;outline:0;box-sizing:border-box;-moz-appearance:textfield;appearance:textfield}input.nf-vm-value::-webkit-inner-spin-button,input.nf-vm-value::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}input.nf-vm-value:disabled{opacity:.48}
     .nf-vm-select{width:100%;height:30px;padding:0 8px;border:1px solid rgba(255,255,255,.12);border-radius:7px;background:#282828;color:#eee;font-size:11px}.nf-vm-range{width:100%;accent-color:#27c889}
     input.nf-vm-range{appearance:none!important;-webkit-appearance:none!important;height:20px!important;min-height:20px!important;padding:0!important;border:0!important;border-radius:0!important;outline:none;background:linear-gradient(to right,#1fc896 0%,#1fc896 var(--nf-vm-fill,0%),#333 var(--nf-vm-fill,0%),#333 100%) center/100% 2px no-repeat!important;cursor:pointer}
     input.nf-vm-range::-webkit-slider-runnable-track{height:2px!important;background:transparent!important;border:0!important}
     input.nf-vm-range::-webkit-slider-thumb{appearance:none!important;-webkit-appearance:none!important;width:12px!important;height:12px!important;margin-top:-5px!important;border:0!important;border-radius:50%!important;background:#d9e2e8!important;box-shadow:none!important}
-    .nf-vm-mode{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-vm-mode button[aria-pressed="true"]{background:#1ea672;color:#fff;border-color:rgba(84,234,178,.35)}
+    .nf-vm-mode{display:grid;grid-template-columns:1fr 1fr;gap:3px;padding:4px;border-radius:8px;background:#101010}.nf-vm-mode .nf-vm-btn{min-height:29px;height:29px;padding:0 6px;border:0;border-radius:7px;background:transparent;color:#eaeaea;font-size:12px;font-weight:500}.nf-vm-mode .nf-vm-btn:hover:not(:disabled){filter:none;background:#303030}.nf-vm-mode .nf-vm-btn[aria-pressed="true"]{border-radius:5px;background:#1c4136;color:#9be4cd;box-shadow:inset 0 0 0 1px #2c604f}.nf-vm-mode .nf-vm-btn:disabled{opacity:.48;cursor:not-allowed}
     .nf-vm-mask-actions{display:grid;grid-template-columns:1fr 1fr;gap:6px}.nf-vm-mask-help{margin-top:8px;color:rgba(255,255,255,.43);font-size:9px;line-height:1.55}
     .nf-vm-status{min-height:34px;padding:8px;border-radius:7px;background:rgba(255,255,255,.045);color:rgba(255,255,255,.62);font-size:10px;line-height:1.45;word-break:break-word}.nf-vm-status[data-error="1"]{background:rgba(239,68,68,.12);color:#fca5a5}.nf-vm-status[data-success="1"]{background:rgba(39,200,137,.11);color:#8ff0c7}
     .nf-vm-progress{height:5px;margin-top:7px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.nf-vm-progress>i{display:block;width:0;height:100%;background:#27c889;transition:width .15s linear}
@@ -850,14 +850,29 @@
       const wrapper = createElement(documentRef, 'div')
       const row = createElement(documentRef, 'div', { className: 'nf-vm-row' })
       const labelNode = createElement(documentRef, 'span', { className: 'nf-vm-label', text: label })
-      const valueNode = createElement(documentRef, 'span', { className: 'nf-vm-value', text: `${Math.round(value)}${suffix || ''}` })
+      const valueNode = createElement(documentRef, 'input', { className: 'nf-vm-value', type: 'number', min: String(minimum), max: String(maximum), step: String(step), value: String(Math.round(value)), 'aria-label': label })
       const input = createElement(documentRef, 'input', { className: 'nf-vm-range', type: 'range', min: String(minimum), max: String(maximum), step: String(step), value: String(value) })
       paintRange(input)
       input.addEventListener('input', function () {
         paintRange(input)
-        valueNode.textContent = `${Math.round(finite(input.value, value))}${suffix || ''}`
+        valueNode.value = String(Math.round(finite(input.value, value)))
         onInput(finite(input.value, value))
       })
+      const commitValue = function () {
+        const next = clamp(finite(valueNode.value, finite(input.value, value)), minimum, maximum)
+        valueNode.value = String(Math.round(next))
+        input.value = String(next)
+        paintRange(input)
+        onInput(next)
+      }
+      valueNode.addEventListener('change', commitValue)
+      valueNode.addEventListener('keydown', function (event) {
+        if (event.key !== 'Enter') return
+        event.preventDefault()
+        commitValue()
+        valueNode.blur()
+      })
+      void suffix
       row.append(labelNode, valueNode)
       wrapper.append(row, input)
       return wrapper
@@ -874,7 +889,7 @@
         mode.append(button(documentRef, '擦除', { disabled: true }), button(documentRef, '修复', { disabled: true }))
         maskSection.appendChild(mode)
         for (const row of [rangeRow('笔刷', 22, 1, 200, 1, () => {}, ''), rangeRow('羽化', 0, 0, 100, 1, () => {}, '')]) {
-          row.querySelector('[type="range"]').disabled = true
+          row.querySelectorAll('input').forEach(function (node) { node.disabled = true })
           maskSection.appendChild(row)
         }
         maskSection.appendChild(createElement(documentRef, 'div', { className: 'nf-vm-mask-help', text: '载入并选中视频图层后，可直接擦除或修复蒙版。' }))
