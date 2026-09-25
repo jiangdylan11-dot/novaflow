@@ -105,15 +105,14 @@
     // Preserve the exact seam when a non-periodic channel is shifted around its cycle.
     for(const p of Object.values(params))if(p.delay>0&&p.delay<span){times.add(start+p.delay);times.add(start+p.delay-1/6000);}
     for(const event of engine.events(params.bounce))if(params.bounce.enabled)times.add(start+engine.timelineTime(params.bounce,event.u));
-    const entries=targets.map(name=>{const i=project.bones.findIndex(b=>b.name===name),box=bounds(project,name,math),a=engine.anchors[params.expand.anchor]||[.5,.5];return {name,i,box,pivot:[box.minX+(box.maxX-box.minX)*a[0],box.maxY-(box.maxY-box.minY)*a[1]],translate:[],scale:[]};});
+    const entries=targets.map(name=>({name,i:project.bones.findIndex(b=>b.name===name),translate:[],scale:[]}));
     const slotFrames=new Map(slots.map(s=>[s.name,[]]));
     for(const time of [...times].sort((a,b)=>a-b)){
       const t=time-start, value=engine.sampleStack(params,t/span), evaluated=pose(project,original,time,math);
       for(const item of entries){const b=evaluated.bones[item.i],w=evaluated.world[item.i],parent=w.parent>=0?evaluated.world[w.parent]:null,old=original.bones?.[item.name]||{};
         let dx=translate?value.x:0,dy=translate?value.y:0;
-        if(scale){const [x,y]=item.pivot;dx+=w.a*x*(1-value.sx)+w.b*y*(1-value.sy);dy+=w.c*x*(1-value.sx)+w.d*y*(1-value.sy);}
         const [lx,ly]=invVector(parent,dx,dy);
-        if(translate||scale)item.translate.push({time,x:scalar(old.translate,time,'x',0)+lx,y:scalar(old.translate,time,'y',0)+ly});
+        if(translate)item.translate.push({time,x:scalar(old.translate,time,'x',0)+lx,y:scalar(old.translate,time,'y',0)+ly});
         if(scale)item.scale.push({time,x:scalar(old.scale,time,'x',1)*value.sx,y:scalar(old.scale,time,'y',1)*value.sy});
       }
       if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},rgba=color(old.rgba||old.color,time,slot.color);rgba[3]*=value.alpha;slotFrames.get(slot.name).push({time,color:rgba.map(v=>Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0')).join('')});}

@@ -9,7 +9,7 @@
   interval.style.cssText='position:fixed;z-index:61;height:6px;border-radius:2px;background:#68c9a4;pointer-events:none;display:none';document.body.append(interval);
   const E=window.NovaFlowMotionEngine,$=id=>curveRoot.getElementById(id);
   let stylesReady=false;
-  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20260925-2',document.baseURI).href;
+  const style=document.createElement('link');style.rel='stylesheet';style.href=new URL('motion-calculation.css?v=20260925-3',document.baseURI).href;
   style.onload=()=>{stylesReady=true;positionCurve();floating.style.visibility='visible';};
   const body=document.createElement('article');body.id='editor';body.setAttribute('aria-label','动画计算编辑器');
   body.innerHTML=`
@@ -27,9 +27,7 @@
           <section id="mainControls" class="controlsection"><div id="primaryAxes"></div><div id="params"></div><div id="advancedParams"></div>
             <p id="modeHelp" class="help"></p>
           </section>
-            <div id="scaleOptions"><div class="effect-switches"><label class="check"><input id="loop" type="checkbox">循环</label><label id="linkOption" class="check"><input id="link" type="checkbox">缩放联动</label></div><p id="linkHelp" class="help"></p>
-              <div id="anchorSection" class="anchor-picker"><div>缩放中心</div><div id="anchorGrid" class="anchor-grid" role="group" aria-label="缩放中心"></div></div>
-            </div>
+            <div id="scaleOptions"><div class="effect-switches"><label id="linkOption" class="check"><input id="link" type="checkbox">缩放联动</label><label class="check"><input id="loop" type="checkbox">循环</label></div><p id="linkHelp" class="help"></p></div>
           </div>
         </div>
         <section id="curveDetails" class="curvepanel" aria-label="曲线微调">
@@ -102,7 +100,6 @@
     target.replaceChildren(...items.map(item=>{const button=document.createElement('button');button.textContent=item[0];button.onclick=()=>apply(item);return button;}));
   }
   const labels = { x: '位移 X', y: '位移 Y', sx: '缩放 X', sy: '缩放 Y', alpha: '透明度' };
-  const anchorNames = { 'top-left': '左上', top: '上方', 'top-right': '右上', left: '左侧', center: '中心', right: '右侧', 'bottom-left': '左下', bottom: '底部', 'bottom-right': '右下' };
   const channelEnabled = () => channel === 'alpha' ? p.opacity.on : p.enabled && p.axes[channel].on;
   const pointEditable = () => channelEnabled();
   const channelLoops = () => mode==='shuttle'||(p.loop&&(mode==='expand'||channel==='alpha'));
@@ -125,9 +122,9 @@
       ['重物落地', { restitution: .10, count: 2, contact: .10, impact: .5 }, { x: 30, y: 190 }]
     ],
     expand: [
-      ['弹性放大', { attack: .20, frequency: 2.5, damping: 5, anchor: 'center' }, { x: 0, y: 0, sx: .55, sy: .55 }],
-      ['受击压扁', { attack: .12, frequency: 3.5, damping: 8, anchor: 'bottom' }, { x: 0, y: 0, sx: .42, sy: -.35 }],
-      ['柔和呼吸', { attack: .48, frequency: .25, damping: 1.3, anchor: 'center' }, { x: 0, y: 0, sx: .12, sy: .18 }]
+      ['弹性放大', { attack: .20, frequency: 2.5, damping: 5 }, { x: 0, y: 0, sx: .55, sy: .55 }],
+      ['受击压扁', { attack: .12, frequency: 3.5, damping: 8 }, { x: 0, y: 0, sx: .42, sy: -.35 }],
+      ['柔和呼吸', { attack: .48, frequency: .25, damping: 1.3 }, { x: 0, y: 0, sx: .12, sy: .18 }]
     ],
     shuttle: [
       ['左右往返', { easing: 1, hold: .06 }, { x: 145, y: 0, sx: .12, sy: -.12 }],
@@ -336,17 +333,10 @@
       pointSelected=false;const loop=p.loop,loopCount=p.loopCount,duration = p.duration, delay = p.delay, opacity = p.opacity, alpha = p.corrections.alpha, groundY = p.groundY, ground = p.ground; p = sessions[mode] = E.freshStack()[mode];p.initialized=true; p.duration = duration; p.delay = delay;p.loop=loop;p.loopCount=loopCount; p.opacity = opacity; p.corrections.alpha = alpha; p.enabled = true; if (mode === 'bounce') { p.groundY = groundY || 0; p.ground = ground !== false; } Object.assign(p, vals); for (const k of E.ownedChannels[mode]) p.axes[k].amp = axes[k]; renderPanel(); restart(true); status(`已应用「${name}」，其他分项调整保留并继续叠加。`);
     });
     $('link').checked = p.link;
-    $('anchorGrid').replaceChildren(...Object.keys(E.anchors).map(key => {
-      const button = document.createElement('button'); button.type = 'button'; button.title = anchorNames[key];
-      button.setAttribute('aria-label', '缩放中心：' + anchorNames[key]); button.setAttribute('aria-pressed', p.anchor === key);
-      button.classList.toggle('selected', p.anchor === key); button.textContent = p.anchor === key ? '●' : '';
-      button.onclick = () => { p.anchor = key; parameterChanged(); renderPanel(); }; return button;
-    }));
-    $('anchorSection').hidden = mode !== 'expand';
     $('linkHelp').textContent = p.link ? '锁定当前 X:Y 比例，滑条和曲线同步调整；取消勾选可独立调节。' : '缩放 X / Y 独立调节；原始尺寸为 100%。';
     $('modeHelp').textContent = {
       bounce: '只控制弹跳位移，往返位移在此基础上叠加。',
-      expand: '点击格子选择缩放中心；与已有位移动画同时生效。',
+      expand: '围绕骨骼原点缩放，与已有位移动画同时生效。',
       shuttle: '只控制往返位移，叠加在已有弹跳上。X/Y 的幅度与次数分别调整。',
       opacity: '独立调整透明度，也可叠加到其他动作。'
     }[mode];

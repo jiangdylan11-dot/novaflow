@@ -61,11 +61,13 @@ test('impact overshoots floor, zero impact stays above; owned effects do not lea
  assert.ok(sample().every(v=>v.y>=0&&v.sx===1&&v.sy===1));
  stack.bounce.impact=.6;assert.ok(sample().some(v=>v.y<0));
 });
-test('scale pivot compensation fixes selected anchor under rotated parent',()=>{
+test('scale uses the bone origin and preserves translation under a rotated parent, ignoring legacy anchors',()=>{
  const project=fixture(),stack=E.freshStack();stack.expand.enabled=true;stack.expand.anchor='bottom-left';
- const result=calc(project,stack).animation,box=A.bounds(project,'ball',M),t=.75;
+ const result=calc(project,stack).animation,t=.75;
  const old=A.pose(project,project.animations.idle,t,M).world[1],next=A.pose(project,result,t,M).world[1];
- const xy=m=>[m.worldX+m.a*box.minX+m.b*box.minY,m.worldY+m.c*box.minX+m.d*box.minY];
+ assert.deepEqual(result.bones.ball.translate,project.animations.idle.bones.ball.translate);
+ assert.notDeepEqual(result.bones.ball.scale,project.animations.idle.bones.ball.scale);
+ const xy=m=>[m.worldX,m.worldY];
  xy(old).forEach((v,i)=>assert.ok(Math.abs(v-xy(next)[i])<1e-6));
 });
 test('Spine 3.8 runtime reads saved tracks with matching displacement, scale, alpha and duration',()=>{

@@ -1,5 +1,9 @@
 # 骨骼动画：动画计算接入验收
 
+## 最新调整：取消缩放中心
+
+扩张参数下方按“缩放联动、循环”同排显示，取消缩放中心文字及九宫格。正式计算围绕骨骼自身原点缩放，不再生成锚点位移补偿；旧配置中的 anchor 不再影响正式计算。回归验证旋转父骨骼下原点不变、原位移轨道保留，动画计算 19 项测试通过。运行同步、运行文件与入口检查通过。实际导入用户 test 工程确认两个开关顺序、锚点控件数量为 0，开启循环后全部参数可见且无滚动溢出；截图为 `18-bone-origin-scale.png`。以下保留此前迭代记录，涉及缩放中心的描述已被本次调整替代。
+
 ## 正式入口与界面
 
 维护入口为 `novaflow-web/renderer/index.html`，载入 `motion-calculation.engine.js`、`motion-calculation.animation.js`、`motion-calculation.panel.js`、`motion-calculation.tool.js`。在骨骼动画左侧原有面板中增加“动画计算”入口，读写当前正式工程，使用正式 Spine 播放器和底部时间轴。
