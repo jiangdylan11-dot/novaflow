@@ -114,3 +114,22 @@ test('curve clock follows the native timeline through delayed bone playback and 
   f.ctx.document.querySelector=()=>null;f.props.currentTimeSec=.61;
   assert.equal(f.bridge.playbackTime(),.61,'fresh React context is the fallback before timeline mounting');
 });
+
+test('shipped skeleton clock advances each display frame at real-time speed',()=>{
+  const bundle=readFileSync(new URL('../../renderer/assets/index-BbIa-2NM.js',import.meta.url),'utf8');
+  const interval=bundle.match(/je=\(0,_\.useMemo\)\(\(\)=>([^,]+),\[Ae\]\)/);
+  const callback=bundle.match(/let t=n=>\{be\.current=requestAnimationFrame\(t\);let r=n-xe\.current;[^}]+\}/);
+  assert.ok(interval&&callback,'exercise the maintained native playback clock');
+  let time=0,updates=0;
+  const ctx=vm.createContext({window:{},be:{current:0},xe:{current:0},
+    requestAnimationFrame:()=>1,B:update=>{time=update(time);updates++;},$r:(t,d)=>t%d,e:10});
+  ctx.je=vm.runInContext(interval[1],ctx);
+  vm.runInContext(callback[0]+';this.tick=t;',ctx);
+  for(let frame=1;frame<=60;frame++)ctx.tick(frame*1000/60);
+  assert.equal(updates,60,'no quarter-second stepping');
+  assert.ok(Math.abs(time-1)<1e-9,'one wall-clock second advances one animation second');
+  updates=0;time=0;ctx.xe.current=0;
+  for(let frame=1;frame<=144;frame++)ctx.tick(frame*1000/144);
+  assert.ok(updates>=45&&updates<=60,'high-refresh displays stay bounded');
+  assert.ok(time>.97&&time<=1.001,'high-refresh displays preserve elapsed time');
+});
