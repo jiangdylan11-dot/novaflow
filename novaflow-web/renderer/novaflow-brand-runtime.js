@@ -24858,6 +24858,13 @@
         line-height: var(--novaflow-top-control-height, 34px) !important;
         box-sizing: border-box !important;
       }
+      /* The generation dock goes the moment the session enters 视频合并 (the same frame the
+         merge shell mounts), not on React's later commit: on layouts where the dock is a
+         flex sibling of the stage, the shell otherwise mounted into a shorter stage and then
+         grew a frame later. */
+      body.novaflow-ai-animation-section-layers[data-novaflow-ai-sequence-mode="editing"][data-novaflow-ai-sequence-active-tool="video-merge"] [data-novaflow-ai-bottom-workspace="1"] {
+        display: none !important;
+      }
       body.novaflow-ai-animation-section-layers[data-novaflow-ai-sequence-mode="editing"][data-novaflow-ai-sequence-active-tool="video-merge"] [data-novaflow-ai-main-stage="1"] > [data-novaflow-ai-zoom-controls="1"],
       body.novaflow-ai-animation-section-layers[data-novaflow-ai-sequence-mode="editing"][data-novaflow-ai-sequence-active-tool="video-merge"] [data-novaflow-ai-zoom-controls="1"]:not([data-novaflow-ai-video-merge-zoom-hud="1"]) {
         display: none !important;
