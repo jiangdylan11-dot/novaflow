@@ -9065,8 +9065,21 @@
     return `${QWEN21_COMPLETION_INSTRUCTION} ${body}`.trim()
   }
 
+  // 局部编辑 on 2.1 (measured 2026-09-26 against the 2511 Edit V5 route on eight selections, two of
+  // them transparent layers): 2511 painted a transparency checkerboard into the selection on four of
+  // them and redrew things it was not asked to (hair under a hat, a robot's whole face for "blue
+  // eyes"); 2.1 changed only what was asked and kept the picture's own style. The 2511 instruction
+  // says "game-art layer", which is where the checkerboard comes from, so 2.1 gets plain words.
+  function qwen21EditPromptText(promptText, promptParts) {
+    const user = String(promptParts && promptParts.user || promptText || '').trim()
+    return `The first image is a picture. The second image marks one area in white. Inside the white area only: ${user} Blend the change naturally into the surrounding picture with the same art style, line art, lighting, colors and perspective, and keep everything outside the white area exactly as it is.`
+  }
+
   function buildQwen21InpaintWorkflow(info, runtime, imageName, maskName, prefix, promptText, route, latentInputName, inputSize, promptParts) {
-    const text = qwen21CompletionPromptText(promptText, promptParts)
+    // Edit mode shows the model the undug crop everywhere (it has to see what it is changing) and
+    // puts that same crop back under any pixel 2.1 leaves transparent.
+    const edit = !!(route && route.mode === 'edit' && latentInputName)
+    const text = edit ? qwen21EditPromptText(promptText, promptParts) : qwen21CompletionPromptText(promptText, promptParts)
     // The 2.1 VAE centre-crops anything that is not a multiple of 16 before encoding, and
     // TextEncodeQwenImage21 rounds its references to multiples of 32. cropPadEngine aligns the crop to
     // 64 only until it hits the layer edge, so a 450x700 crop decoded as 448x688 and landed 1px left
@@ -9114,8 +9127,8 @@
     // for 2509's LoRA but 2.1 continues the fade: on a leg-shaped hole the shins came out as pale
     // translucent stockings with a hard line where the hole starts. With the undug crop at hand the
     // reference keeps the layer crisp and only the hole core (mask >= 0.9) shows the dug plate.
-    let referenceRef = plateRef
-    if (latentInputName) {
+    let referenceRef = edit ? latentPixelsRef : plateRef
+    if (latentInputName && !edit) {
       workflow[String(nextId)] = { class_type: 'ThresholdMask', inputs: { mask: ['8', 0], value: 0.9 } }
       const coreId = String(nextId)
       nextId += 1
@@ -9178,7 +9191,7 @@
     workflow[String(nextId)] = {
       class_type: 'ImageCompositeMasked',
       inputs: buildComfyNodeInputs(info.ImageCompositeMasked, {
-        destination: plateRef,
+        destination: edit ? latentPixelsRef : plateRef,
         source: [splitId, 0],
         x: 0,
         y: 0,
@@ -9201,10 +9214,13 @@
     const route = options && options.route || resolveInpaintWorkflowRoute(options && options.inpaintMode, options && options.inpaintProvider)
     const info = await comfyAllObjectInfo(baseUrl).catch(() => ({}))
     const qwen21 = qwen21Runtime(info)
-    // Opt-in only (see DEFAULT_COMPLETION_ENGINE), and completion only: it is the one mode with a
-    // measured 2.1 recipe. Edit keeps the 2511 route.
-    const wantsQwen21 = !!(options && options.inpaintEngine === QWEN21_COMPLETION_ENGINE)
-    if (wantsQwen21 && qwen21 && route.mode === 'completion' && info.VAEEncode && info.SetLatentNoiseMask && info.ImageToMask && info.KSampler && info.SplitImageWithAlpha && info.InvertMask && info.ImageCompositeMasked && info.ImagePadForOutpaint && info.ImageCrop && info.MaskComposite && info.ThresholdMask) {
+    const can21 = !!(qwen21 && info.VAEEncode && info.SetLatentNoiseMask && info.ImageToMask && info.KSampler && info.SplitImageWithAlpha && info.InvertMask && info.ImageCompositeMasked && info.ImagePadForOutpaint && info.ImageCrop && info.MaskComposite && info.ThresholdMask)
+    // 局部编辑 always runs on 2.1 (see qwen21EditPromptText); every node carries it. Completion is
+    // opt-in only (see DEFAULT_COMPLETION_ENGINE).
+    const editOn21 = route.mode === 'edit'
+    if (editOn21 && !can21) throw new Error('当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行局部编辑。请在本地助手里重新启动 NovaFlow 后再试')
+    const wantsQwen21 = editOn21 || !!(options && options.inpaintEngine === QWEN21_COMPLETION_ENGINE && route.mode === 'completion')
+    if (wantsQwen21 && can21) {
       setInpaintDebugAttr('workflow-engine', 'qwen-2.1')
       setInpaintDebugAttr('workflow-mode', normalizeSelectionInpaintMode(options && options.inpaintMode))
       setInpaintDebugAttr('workflow-provider', route.provider)
@@ -19251,6 +19267,13 @@
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     ctx.fillStyle = `rgb(${matte.r}, ${matte.g}, ${matte.b})`
     ctx.fillRect(0, 0, canvas.width, canvas.height)
+    // The same matte-backed crop before the selection is diffused away. The 2.1 edit graph reads it as
+    // both reference and starting latent, so an instruction like "make it red" still sees the object.
+    const latentInput = canvasOfSize(width, height)
+    const latentCtx = latentInput.getContext('2d', { willReadFrequently: true })
+    latentCtx.fillStyle = ctx.fillStyle
+    latentCtx.fillRect(0, 0, width, height)
+    latentCtx.drawImage(cropImageCanvas, 0, 0, width, height)
     ctx.drawImage(seeded, 0, 0)
     const image = ctx.getImageData(0, 0, canvas.width, canvas.height)
     for (let i = 0; i < image.data.length; i += 4) image.data[i + 3] = 255
@@ -19259,7 +19282,7 @@
     canvas.__qwenEditV5Preprocess = meta
     modelMask.__qwenEditV5Preprocess = meta
     hardMask.__qwenEditV5Preprocess = meta
-    return { modelInput: canvas, guide: seeded, maskForModel: modelMask, pasteMask: thresholdMaskCanvas(cropMaskCanvas, 8), meta }
+    return { modelInput: canvas, latentInput, guide: seeded, maskForModel: modelMask, pasteMask: thresholdMaskCanvas(cropMaskCanvas, 8), meta }
   }
 
   function buildQwenCompletionV4Canvases(cropImageCanvas, cropMaskCanvas) {
@@ -23335,7 +23358,7 @@
         promptParts: { user: userInpaintPrompt, part: baseInpaintPrompt },
         // Only the 2.1 graph reads the undug crop. Rapid AIO NSFW builds from the same V4 canvases but
         // never reads it, and in web mode an upload no task references is never released.
-        latentInputDataUrl: inputCanvases.latentInput && executionRoute.workflow === 'qwen' && DEFAULT_COMPLETION_ENGINE === QWEN21_COMPLETION_ENGINE ? inputCanvases.latentInput.toDataURL('image/png') : ''
+        latentInputDataUrl: inputCanvases.latentInput && executionRoute.workflow === 'qwen' && (executionRoute.mode === 'edit' || DEFAULT_COMPLETION_ENGINE === QWEN21_COMPLETION_ENGINE) ? inputCanvases.latentInput.toDataURL('image/png') : ''
       })
       const normalizedFullMask = normalizeMaskCanvas(cloneCanvas(processingMaskCanvas))
       const patchPart = executionRoute.outputMode === 'replacement'
