@@ -17,13 +17,16 @@
       <div class="timing-row"><div id="globalTiming" class="global-timing"></div><div id="effectTiming"></div></div>
       <div class="editor-workspace">
         <div class="effect-parameters" aria-label="当前功能参数">
+          <div class="effect-scroll">
           <div id="bounceHeightSection"><div id="bounceHeightControls"></div><div id="impactControl"></div><p id="groundRuleHint" class="help"></p></div>
           <section id="opacityDetails" class="controlsection" hidden><h2>透明变化 <span id="opacitySummary"></span></h2><div id="opacityControls"></div></section>
           <section id="mainControls" class="controlsection"><div id="primaryAxes"></div><div id="params"></div><div id="advancedParams"></div>
+            <p id="modeHelp" class="help"></p>
+          </section>
+          </div>
             <div id="scaleOptions"><label class="check"><input id="link" type="checkbox">缩放联动</label><p id="linkHelp" class="help"></p>
               <div id="anchorSection" class="anchor-picker"><div>缩放中心 <span id="anchorName"></span></div><div id="anchorGrid" class="anchor-grid" role="group" aria-label="缩放中心"></div></div>
-            </div><p id="modeHelp" class="help"></p>
-          </section>
+            </div>
         </div>
         <section id="curveDetails" class="curvepanel" aria-label="曲线微调">
           <div class="curvebar"><div id="curveTabs" class="segmented"></div><div class="row"><span id="curveState" class="dim"></span><button id="resetCurve">重置曲线</button></div></div>
