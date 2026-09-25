@@ -111,7 +111,8 @@
     brushOverlay.append(brushFeather, brushCore)
     shell.append(canvas, mediaHost, brushOverlay)
     host.replaceChildren(shell)
-    const context = canvas.getContext('2d', { alpha: true, desynchronized: true })
+    // Not a low-latency context: on GPU compositing it is presented opaque (a black plate).
+    const context = canvas.getContext('2d', { alpha: true })
     if (!context) throw new Error('video_merge_canvas_2d_unavailable')
 
     function requestFrame(callback) {
@@ -331,7 +332,7 @@
       if (!video || video.readyState < 2 || time > duration + 0.001) return
       const geometry = layerGeometry(layer, state, stage)
       const offscreen = offscreenForLayer(layer.id)
-      const layerContext = offscreen.getContext('2d', { alpha: true, desynchronized: true })
+      const layerContext = offscreen.getContext('2d', { alpha: true })
       layerContext.clearRect(0, 0, offscreen.width, offscreen.height)
       layerContext.save()
       layerContext.translate(stage.originX + geometry.centerX * stage.scale, stage.originY + geometry.centerY * stage.scale)

@@ -21535,11 +21535,12 @@
       }
       /* 视频合并 paints the chosen preview backdrop (深色 / 白色 / 灰色) over the stage; the
          shell, centre and preview stay clear so the colour is one flat plate. */
-      [data-novaflow-ai-video-merge-workspace="1"] .nf-vm-body {
+      [data-novaflow-ai-video-merge-workspace="1"] .nf-vm-stage {
         background: var(--novaflow-ai-preview-color, ${AI_ANIMATION_PREVIEW_BACKGROUND_COLOR}) !important;
         background-color: var(--novaflow-ai-preview-color, ${AI_ANIMATION_PREVIEW_BACKGROUND_COLOR}) !important;
       }
       [data-novaflow-ai-video-merge-workspace="1"],
+      [data-novaflow-ai-video-merge-workspace="1"] .nf-vm-body,
       [data-novaflow-ai-video-merge-workspace="1"] .nf-vm-center,
       [data-novaflow-ai-video-merge-preview="1"] {
         background: transparent !important;
@@ -23425,7 +23426,7 @@
         box-sizing: border-box !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope-row="1"],
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-mode-row="1"] {
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-brush-mode-row="1"] {
         display: grid !important;
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
         gap: ${SECONDARY_GROUP_PILL_GAP}px !important;
@@ -23441,7 +23442,7 @@
         box-sizing: border-box !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope],
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-mode="1"] {
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-brush-mode="1"] {
         appearance: none !important;
         -webkit-appearance: none !important;
         position: relative !important;
@@ -23474,12 +23475,12 @@
         transition: none !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope][data-novaflow-ai-brush-scope-active="0"]:not([aria-disabled="true"]):hover,
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-mode="1"][data-novaflow-ai-brush-mode-active="0"]:not(:disabled):hover {
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-brush-mode="1"][data-novaflow-ai-cutout-brush-mode-active="0"]:not(:disabled):hover {
         background: ${SECONDARY_ENTRY_HOVER_BACKGROUND} !important;
         background-color: ${SECONDARY_ENTRY_HOVER_BACKGROUND} !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope][data-novaflow-ai-brush-scope-active="1"],
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-mode="1"][data-novaflow-ai-brush-mode-active="1"] {
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-brush-mode="1"][data-novaflow-ai-cutout-brush-mode-active="1"] {
         border-radius: 5px !important;
         background: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
         background-color: ${SECONDARY_ENTRY_ACTIVE_BACKGROUND} !important;
@@ -23487,7 +23488,7 @@
         box-shadow: inset 0 0 0 1px ${UI_SEGMENT_SELECTED_BORDER} !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope][aria-disabled="true"],
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-mode="1"]:disabled {
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-brush-mode="1"]:disabled {
         opacity: 0.48 !important;
         cursor: not-allowed !important;
       }
@@ -58332,12 +58333,12 @@
           return;
         }
         if (buttons.length === 2 && !(range instanceof HTMLInputElement)) {
-          nfSetAttrIfChanged(row, "data-novaflow-ai-brush-mode-row", "1");
+          nfSetAttrIfChanged(row, "data-novaflow-ai-cutout-brush-mode-row", "1");
           buttons.forEach((button) => {
             const inline = String(button.style.background || button.style.backgroundColor || "").toLowerCase();
             const active = inline.includes("1ea672") || inline.includes("30, 166, 114");
-            nfSetAttrIfChanged(button, "data-novaflow-ai-brush-mode", "1");
-            nfSetAttrIfChanged(button, "data-novaflow-ai-brush-mode-active", active ? "1" : "0");
+            nfSetAttrIfChanged(button, "data-novaflow-ai-cutout-brush-mode", "1");
+            nfSetAttrIfChanged(button, "data-novaflow-ai-cutout-brush-mode-active", active ? "1" : "0");
             nfSetAttrIfChanged(button, "aria-pressed", active ? "true" : "false");
           });
           return;
@@ -59008,11 +59009,14 @@
     { key: "video-merge", label: "视频合并", entry: '[data-novaflow-ai-video-merge-entry="1"]', tools: ["video-merge"] },
     { key: "ai-cutout", label: "视频抠图", entry: '[data-novaflow-video-cutout="1"]', tools: ["ai-cutout", "chroma-key"] }
   ]);
+  let AI_ANIMATION_TOOL_OPENING = null;
   function aiAnimationActiveToolKey() {
     const session = getAiSequenceCurrentSession();
     const tool = String(session?.activeTool || session?.editingDraft?.tool || "");
     if (tool) return tool;
     if (document.querySelector('[data-novaflow-ai-video-merge-layer-panel="1"]')) return "video-merge";
+    // A tool a row is opening counts as active until the session has switched.
+    if (AI_ANIMATION_TOOL_OPENING && Date.now() < AI_ANIMATION_TOOL_OPENING.until) return AI_ANIMATION_TOOL_OPENING.tool;
     return "";
   }
   function activateAiAnimationToolHeading(spec) {
@@ -59029,12 +59033,15 @@
       primeAiSequencePreviewEffectiveRectVars(document);
     }, delay));
     const clickEntry = (attempt = 0) => {
+      // The tool's panel is mounted under this row before the rows re-read the session.
+      if (attempt === 0) AI_ANIMATION_TOOL_OPENING = { tool: spec.tools[0], until: Date.now() + 1500 };
+      nfSetAttrIfChanged(postSection, "data-novaflow-ai-active-tool", spec.key);
       const entry = document.querySelector(spec.entry);
       if (entry instanceof HTMLElement && entry.getAttribute("aria-disabled") !== "true" && isVisible(entry.parentElement || entry)) { entry.click(); return; }
       if (entry instanceof HTMLElement && entry.getAttribute("aria-disabled") !== "true" && attempt >= 3) { entry.click(); return; }
       if (attempt < 14) window.setTimeout(() => clickEntry(attempt + 1), 60);
     };
-    if (expanded && spec.tools.includes(activeTool)) { postHeading.click(); return; }
+    if (expanded && spec.tools.includes(activeTool)) { AI_ANIMATION_TOOL_OPENING = null; postHeading.click(); return; }
     if (!expanded) { postHeading.click(); clickEntry(); return; }
     if (activeTool) {
       // Leave the other tool through the group's own collapse, then open this one.
