@@ -26,9 +26,9 @@
           </section>
         </div>
         <section id="curveDetails" class="curvepanel" aria-label="曲线微调">
-          <div class="curvebar"><div id="curveTabs" class="segmented"></div><div class="row"><span id="curveState" class="dim"></span><button id="resetCurve">重置当前曲线</button></div></div>
+          <div class="curvebar"><div id="curveTabs" class="segmented"></div><div class="row"><span id="curveState" class="dim"></span><button id="resetCurve">重置曲线</button></div></div>
           <div class="curvewrap"><canvas id="curve" aria-label="可编辑通道曲线，拖动圆点上下调整数值"></canvas></div>
-          <div class="curvefooter"><span>拖点调整 · 双击点还原</span><div class="row"><label>控制点 <select id="pointSelect" aria-label="曲线控制点"></select></label><label>值 <input id="pointValue" type="number" step=".01" aria-label="所选控制点数值"></label><span id="curveUnit">px</span></div></div>
+          <div class="curvefooter"><span>拖点调整 · 双击点还原</span><div class="row"><label>值 <input id="pointValue" type="number" step=".01" aria-label="所选控制点数值"></label><span id="curveUnit">px</span></div></div>
         </section>
       </div>
       <footer class="editor-footer"><p id="status" role="status"></p><div class="save-action"><button id="resetAll">恢复初始值</button><button id="save" class="primary">保存动画</button></div></footer>
@@ -341,7 +341,6 @@
   function syncPoint() {
     if (curveRoot.activeElement !== $('pointValue')) $('pointValue').value = fmt(displayValue(E.sample(p, point / 16)[channel]), channel.startsWith('s') ? 3 : 1); $('pointValue').disabled = !pointEditable();
     $('pointValue').step = channel.startsWith('s') ? '.01' : '1'; $('curveUnit').textContent = channel === 'alpha' ? '%' : channel.startsWith('s') ? '倍' : 'px';
-    $('pointSelect').value = point;
     const custom = p.corrections[channel].some(v => Math.abs(v) > .00001);
     $('curveState').textContent = !channelEnabled() ? '通道关闭' : !pointEditable() ? '' : custom ? '已微调 · 参数仍可调整' : '计算曲线';
   }
@@ -415,8 +414,6 @@
   const endDrag = () => { if (!drag) return; drag = null; curveBounds = null; drawCurve(); };
   $('curve').onpointerup = endDrag; $('curve').onpointercancel = endDrag; $('curve').onlostpointercapture = endDrag;
   $('curve').ondblclick = e => { const index = nearestPoint(curvePosition(e), curveGeometry()); if (index >= 0) { point = index; p.corrections[channel][index] = 0; if (channelLoops() && (index === 0 || index === 16)) p.corrections[channel][index === 0 ? 16 : 0] = 0; curveBounds = null; syncBounceHeights(); draw(); syncPoint(); } };
-  $('pointSelect').replaceChildren(...Array.from({ length: 17 }, (_, i) => { const o = document.createElement('option'); o.value = i; o.textContent = `${i + 1} · ${fmt(i / 16 * 100, 1)}%`; return o; }));
-  $('pointSelect').onchange = () => { point = Number($('pointSelect').value); time = E.timelineTime(p, point / 16); setPlaying(false); syncPoint(); draw(); };
   $('pointValue').oninput = () => { if ($('pointValue').value === '') return; setPointValue(Number($('pointValue').value) / (channel === 'alpha' ? 100 : 1)); curveBounds = null; drawCurve(); };
   $('pointValue').onblur = () => { $('pointValue').value = fmt(displayValue(E.sample(p, point / 16)[channel]), channel.startsWith('s') ? 3 : 1); };
   $('resetCurve').onclick = () => { p.corrections[channel].fill(0); curveBounds = null; syncBounceHeights(); syncPoint(); draw(); status(`已恢复${labels[channel]}的计算曲线。`); };
