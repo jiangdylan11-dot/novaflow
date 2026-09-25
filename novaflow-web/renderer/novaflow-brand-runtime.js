@@ -23436,17 +23436,36 @@
         gap: ${SECONDARY_GROUP_PILL_GAP}px !important;
         align-items: stretch !important;
         justify-content: stretch !important;
+        position: relative !important;
         width: 100% !important;
         min-width: 0 !important;
         height: 37px !important;
         min-height: 37px !important;
         margin: 0 !important;
         padding: 3px !important;
+        border: 0 !important;
+        border-radius: ${SECONDARY_GROUP_RADIUS_PX} !important;
+        background: transparent !important;
+        background-color: transparent !important;
+        box-sizing: border-box !important;
+        overflow: visible !important;
+      }
+      /* The tray plate is a pseudo-element: rewrites of the row's own background or border
+         (inline or by rule) cannot take it away. */
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope-row="1"]::before,
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-brush-mode-row="1"]::before {
+        content: "" !important;
+        position: absolute !important;
+        inset: 0 !important;
         border: 1px solid #262626 !important;
         border-radius: ${SECONDARY_GROUP_RADIUS_PX} !important;
         background: ${SECONDARY_GROUP_BACKGROUND} !important;
-        background-color: ${SECONDARY_GROUP_BACKGROUND} !important;
-        box-sizing: border-box !important;
+        pointer-events: none !important;
+        z-index: 0 !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-tray-disabled="1"]::before,
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-tray-disabled="1"] > * {
+        opacity: 0.55 !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope],
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-brush-mode="1"] {
@@ -23498,10 +23517,7 @@
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-brush-mode="1"]:disabled {
         cursor: not-allowed !important;
       }
-      /* A locked tray dims as a whole; every pill keeps its shape and fill. */
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-tray-disabled="1"] {
-        opacity: 0.55 !important;
-      }
+      /* A locked tray dims as a whole (plate and pills); every pill keeps its shape and fill. */
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope="global"] > input[type="checkbox"] {
         position: absolute !important;
         width: 1px !important;
@@ -35528,7 +35544,7 @@
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
-        selector: '[data-novaflow-ai-mode-section="1"] label:not([data-novaflow-ai-collapse-heading])',
+        selector: '[data-novaflow-ai-mode-section="1"] label:not([data-novaflow-ai-collapse-heading]):not([data-novaflow-ai-brush-scope])',
         style: {
           "font-size": "11px",
           "line-height": "16.5px",
@@ -58286,7 +58302,7 @@
   // The bundle's brush block (单帧 / 全局, 擦除 / 修复, 笔刷, 羽化) takes the 2级入口 pill look.
   // The checkbox behind 全局 keeps its React handler; the pills only click it.
   const AI_ANIMATION_BRUSH_PILL_STYLE = Object.freeze({
-    appearance: "none", "-webkit-appearance": "none", position: "relative", display: "flex", "align-items": "center", "justify-content": "center",
+    appearance: "none", "-webkit-appearance": "none", position: "relative", "z-index": "1", display: "flex", "align-items": "center", "justify-content": "center",
     width: "100%", "min-width": "0", "max-width": "none", height: "29px", "min-height": "29px", "max-height": "29px", margin: "0", padding: "0 6px",
     border: "0", "border-radius": NOVAFLOW_RECT_RADIUS_PX, background: "transparent", "background-color": "transparent", "background-image": "none",
     color: UI_SEGMENT_IDLE_TEXT, "font-size": "12px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "line-height": "1", "box-shadow": "none", outline: "0",
@@ -58545,6 +58561,8 @@
           if (normalizeText(globalControl.textContent || "").includes("\u5168\u5c40")) break;
           globalControl = globalControl.parentElement;
         }
+        // The brush block's 全局 is a pill of its own tray; leave its row alone.
+        if (globalControl instanceof HTMLElement && globalControl.closest('[data-novaflow-manual-brush="1"]')) return;
         const globalText = globalControl instanceof HTMLElement ? normalizeText(globalControl.textContent || "") : "";
         const globalRect = globalControl instanceof HTMLElement ? globalControl.getBoundingClientRect() : null;
         if (
