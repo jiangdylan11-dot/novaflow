@@ -23465,7 +23465,7 @@
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-tray-disabled="1"]::before,
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-tray-disabled="1"] > * {
-        opacity: 0.55 !important;
+        opacity: 0.7 !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-brush-scope],
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-cutout-brush-mode="1"] {
@@ -58384,6 +58384,12 @@
         }
         if (buttons.length >= 2 && !(range instanceof HTMLInputElement)) {
           nfSetAttrIfChanged(row, "data-novaflow-ai-cutout-brush-mode-row", "1");
+          // Leftovers of the older 擦除/修复 styling would strip the tray and recolour the pills.
+          removeAttributeIfPresent(row, "data-novaflow-ai-brush-action-row");
+          buttons.forEach((button) => {
+            removeAttributeIfPresent(button, "data-novaflow-ai-brush-mode");
+            removeAttributeIfPresent(button, "data-novaflow-ai-brush-active");
+          });
           nfSetAttrIfChanged(row, "data-novaflow-ai-brush-tray-disabled", buttons.every((button) => button.disabled) ? "1" : "0");
           buttons.forEach((button) => {
             // React writes the bundle's green as the active mark; read it before it is overridden.
@@ -58995,10 +59001,13 @@
     styleAiAnimationChromaColorRows(postSection);
 
     syncAiSequencePanelEntryPresentation(postSection);
+    // The 抠图 brush block and the 视频合并 panel draw their own 擦除/修复 pill tray: this
+    // older styling (action-row tagging, accent / #272727 buttons) must not touch them.
+    const ownsOwnBrushTray = (button) => Boolean(button.closest('[data-novaflow-manual-brush="1"], [data-novaflow-ai-video-merge-layer-panel="1"], [data-novaflow-runtime-ignore="1"]'));
     const eraseButton = Array.from(postSection.querySelectorAll("button"))
-      .find((button) => button instanceof HTMLButtonElement && isVisible(button) && normalizeText(button.textContent || "") === "\u64e6\u9664");
+      .find((button) => button instanceof HTMLButtonElement && isVisible(button) && !ownsOwnBrushTray(button) && normalizeText(button.textContent || "") === "\u64e6\u9664");
     const repairButton = Array.from(postSection.querySelectorAll("button"))
-      .find((button) => button instanceof HTMLButtonElement && isVisible(button) && normalizeText(button.textContent || "") === "\u4fee\u590d");
+      .find((button) => button instanceof HTMLButtonElement && isVisible(button) && !ownsOwnBrushTray(button) && normalizeText(button.textContent || "") === "\u4fee\u590d");
     if (!(eraseButton instanceof HTMLButtonElement) || !(repairButton instanceof HTMLButtonElement)) return;
     const brushActionRow = eraseButton.parentElement === repairButton.parentElement ? eraseButton.parentElement : null;
     if (brushActionRow instanceof HTMLElement) {
