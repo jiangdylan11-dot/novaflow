@@ -13,7 +13,7 @@ function select(name) {
   selected.set(name, code);
   for (const match of code.matchAll(/\b(\w+)\s*\(/g)) if (functions.has(match[1])) select(match[1]);
 }
-['getRibbonUniformWaveLayout', 'buildRibbonUniformWaveRotateMap', 'normalizeRibbonParameterPresetValues', 'serializeRibbonRotateFramesForTimeline'].forEach(select);
+['getRibbonUniformWaveLayout', 'buildRibbonUniformWaveRotateMap', 'buildRibbonParameterPresetPreview', 'normalizeRibbonParameterPresetValues', 'serializeRibbonRotateFramesForTimeline'].forEach(select);
 const code = [...selected.values()].join('\n');
 const constants = [...new Set(code.match(/\bRIBBON_[A-Z_]+\b/g))].map(name => {
   const match = source.match(new RegExp(`^  const ${name} = ([^;]+);`, 'm'));
@@ -132,18 +132,56 @@ test('Spine 4.2 value frames and 3.8 angle frames preserve their writeback forma
   assert.ok(v38.every(frame => Number.isFinite(frame.angle) && !Object.hasOwn(frame, 'value')));
 });
 
-test('retuned built-in presets keep 5- and 15-bone chains open and avoid folding backwards', () => {
-  for (const preset of presets) for (const count of [5, 15]) {
+test('built-in and saved-parameter thumbnails use the production solver on ten equal bones', () => {
+  const fixture = chain(10, 'bone', Array(10).fill(32));
+  const builtin = presets.find(preset => preset.label === '鞭梢甩尾').values;
+  const custom = { ...builtin, waveCount: 1.35, amplitude: 42 };
+  const preview = api.buildRibbonParameterPresetPreview(custom);
+  assert.equal(preview.boneCount, 10);
+  assert.equal(preview.segmentLength, 32);
+  assert.equal(preview.duration, 2);
+  assert.deepEqual(plain(preview.curves), plain([...run(fixture, custom).values()]));
+  assert.notDeepEqual(plain(preview.curves), plain(api.buildRibbonParameterPresetPreview(builtin).curves));
+  assert.equal(custom.waveCount, 1.35);
+  assert.equal(api.buildRibbonParameterPresetPreview(null), null);
+});
+
+test('approved built-ins replace the old catalog and keep ten-bone chains in closed, non-crossing loops', () => {
+  assert.deepEqual(Array.from(presets, preset => preset.label), [
+    '轻风细摆', '丝带长浪', '双浪游动', '厚重垂摆', '硬链摆锤', '鞭梢甩尾', '侧风翻卷', '快速颤动'
+  ]);
+  const cross = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  for (const preset of presets) {
     assert.ok(preset.values.uniformWeight > 0);
-    const fixture = chain(count), curves = run(fixture, preset.values);
-    for (let frame = 0; frame <= 120; frame++) {
-      let direction = 0;
+    assert.deepEqual(plain(api.normalizeRibbonParameterPresetValues(preset.values)), plain(preset.values));
+    const fixture = chain(10, 'bone', Array(10).fill(32)), curves = run(fixture, preset.values);
+    const tailY = [];
+    let maxJoint = 0;
+    for (let frame = 0; frame <= 480; frame++) {
+      let direction = 0, x = 0, y = 0;
+      const points = [{ x, y }];
       for (const entry of fixture.entries) {
         const frames = curves.get(entry.name);
         assert.equal(frames[0].angle, frames.at(-1).angle);
-        direction += api.sampleRibbonUniformLoop(frames, frame / 60, 2);
-        assert.ok(Number.isFinite(direction) && Math.abs(direction) < 90, `${preset.label}, ${count} bones folds back at ${frame}`);
+        const angle = api.sampleRibbonUniformLoop(frames, frame / 240, 2);
+        assert.ok(Number.isFinite(angle));
+        if (entry.chainIndex > 0) maxJoint = Math.max(maxJoint, Math.abs(angle));
+        direction += angle * Math.PI / 180;
+        x += Math.cos(direction) * 32;
+        y += Math.sin(direction) * 32;
+        points.push({ x, y });
       }
+      tailY.push(y);
+      for (let a = 0; a < 10; a++) for (let b = a + 2; b < 10; b++) {
+        const intersects = cross(points[a], points[a + 1], points[b]) * cross(points[a], points[a + 1], points[b + 1]) < -1e-8 &&
+          cross(points[b], points[b + 1], points[a]) * cross(points[b], points[b + 1], points[a + 1]) < -1e-8;
+        assert.equal(intersects, false, `${preset.label} crosses itself at frame ${frame}`);
+      }
+    }
+    if (preset.label === '鞭梢甩尾') {
+      assert.ok(maxJoint < 27, 'the rounded whip must avoid concentrated joint bends');
+      const travel = Math.max(...tailY) - Math.min(...tailY);
+      assert.ok(travel > 430 && travel < 455, 'the rounded whip must retain the approved tail swing');
     }
   }
 });

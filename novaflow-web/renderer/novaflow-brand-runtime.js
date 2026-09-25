@@ -4655,11 +4655,13 @@
       ? anchorRect
       : { left: margin, right: margin + 220, top: TOPBAR_HEIGHT + margin, bottom: TOPBAR_HEIGHT + 36, width: 220, height: 28 };
     const width = Math.max(140, Math.min(viewportWidth - margin * 2, Math.ceil(preferredWidth || rect.width || 180)));
-    const estimatedHeight = Math.max(28, Math.min(360, itemCount * 26 + 2));
+    const ribbonPresets = isRibbonParameterPresetNativeSelect(anchor);
+    const heightLimit = ribbonPresets ? 560 : 360;
+    const estimatedHeight = Math.max(28, Math.min(heightLimit, itemCount * (ribbonPresets ? 64 : 26) + (ribbonPresets ? 24 : 2)));
     const below = viewportHeight - rect.bottom - margin - gap;
     const above = rect.top - margin - gap;
     const openAbove = below < Math.min(estimatedHeight, 128) && above > below;
-    const maxHeight = Math.max(72, Math.min(360, openAbove ? above : below));
+    const maxHeight = Math.max(72, Math.min(heightLimit, openAbove ? above : below));
     const height = Math.min(estimatedHeight, maxHeight);
     const top = openAbove
       ? Math.max(margin, Math.round(rect.top - gap - height))
@@ -4802,10 +4804,20 @@
   }
 
   function renderNativeSelectDropdown(select) {
-    const options = getSelectDropdownEntries(select);
+    const ribbonPresets = isRibbonParameterPresetNativeSelect(select);
+    const options = getSelectDropdownEntries(select).filter(entry => !ribbonPresets || entry.value);
+    const presetEntries = ribbonPresets ? new Map(getRibbonParameterPresetEntries().map(entry => [entry.id, entry])) : null;
+    const previews = [];
     DROPDOWN_CONTROLLER.activeOptionsSignature = getNativeDropdownOptionsSignature(select);
-    const panel = createGlobalDropdownPanel(select, getSelectPreferredDropdownWidth(select), options.length);
+    const preferredWidth = ribbonPresets ? Math.max(Math.ceil(select.getBoundingClientRect().width), 210) : getSelectPreferredDropdownWidth(select);
+    const panel = createGlobalDropdownPanel(select, preferredWidth, options.length);
     if (!(panel instanceof HTMLElement)) return;
+    if (ribbonPresets) {
+      const heading = document.createElement("div");
+      heading.setAttribute("data-novaflow-ribbon-preset-preview-heading", "1");
+      heading.textContent = "10 根骨骼 · 动态预览";
+      panel.appendChild(heading);
+    }
     options.forEach((entry) => {
       const { option, disabled, selected } = entry;
       const item = document.createElement("div");
@@ -4818,7 +4830,7 @@
         (isRibbonParameterPresetNativeSelect(select) && entry.customKind === "ribbon-parameter") ||
         (isRibbonEventPresetNativeSelect(select) && entry.customKind === "ribbon-event")
       );
-      if (canDelete) {
+      if (canDelete || ribbonPresets) {
         item.setAttribute("data-novaflow-dropdown-rich", "1");
         item.setAttribute(isRibbonEventPresetNativeSelect(select)
           ? "data-novaflow-dropdown-ribbon-event-preset"
@@ -4826,7 +4838,20 @@
         const label = document.createElement("span");
         label.setAttribute("data-novaflow-dropdown-label", "1");
         label.textContent = entry.label;
+        label.title = entry.label;
         item.appendChild(label);
+        if (ribbonPresets) {
+          item.setAttribute("data-novaflow-ribbon-preset-preview-row", "1");
+          const host = document.createElement("span");
+          host.setAttribute("data-novaflow-ribbon-preset-preview-host", "1");
+          item.appendChild(host);
+          const preset = presetEntries.get(entry.value);
+          if (preset) previews.push({ host, label: entry.label, values: preset.values });
+        }
+      } else {
+        item.textContent = entry.label;
+      }
+      if (canDelete) {
         const deleteButton = document.createElement("button");
         deleteButton.type = "button";
         deleteButton.setAttribute("data-novaflow-dropdown-delete", "1");
@@ -4844,8 +4869,6 @@
           try { select.focus({ preventScroll: true }); } catch (_) { select.focus(); }
         });
         item.appendChild(deleteButton);
-      } else {
-        item.textContent = entry.label;
       }
       if (!disabled) {
         item.addEventListener("click", (event) => {
@@ -4860,6 +4883,7 @@
       }
       panel.appendChild(item);
     });
+    if (previews.length) window.NovaFlowRibbonPresetPreview?.mount(panel, previews, buildRibbonParameterPresetPreview);
     const selectedItem = panel.querySelector('[data-selected="1"]');
     if (selectedItem instanceof HTMLElement) {
       window.requestAnimationFrame(() => {
@@ -5290,6 +5314,7 @@
   }
 
   function closeGlobalDropdown(options = {}) {
+    window.NovaFlowRibbonPresetPreview?.stop();
     const shouldDeferOriginalRestore = Boolean(
       options.deferOriginalRestore &&
       DROPDOWN_CONTROLLER.activeType === "custom-listbox" &&
@@ -21216,6 +21241,53 @@
         gap: 4px !important;
         padding: 0 6px 0 8px !important;
       }
+      [data-novaflow-ribbon-preset-preview-heading="1"] {
+        height: 24px !important;
+        box-sizing: border-box !important;
+        padding: 3px 10px !important;
+        font-size: 11px !important;
+        line-height: 18px !important;
+        color: #969b99 !important;
+      }
+      [data-novaflow-dropdown-item="1"][data-novaflow-ribbon-preset-preview-row="1"] {
+        height: 64px !important;
+        min-height: 64px !important;
+        max-height: 64px !important;
+        line-height: 18px !important;
+        gap: 6px !important;
+        padding: 4px 8px 4px 10px !important;
+        box-sizing: border-box !important;
+      }
+      [data-novaflow-ribbon-preset-preview-row="1"] [data-novaflow-dropdown-label="1"] {
+        flex: 1 1 76px !important;
+        min-width: 52px !important;
+        white-space: normal !important;
+        overflow-wrap: anywhere !important;
+        max-height: 36px !important;
+        line-height: 18px !important;
+      }
+      [data-novaflow-dropdown-item="1"][data-novaflow-ribbon-preset-preview-row="1"][data-selected="1"] {
+        background: #203b32 !important;
+        color: #e3eee9 !important;
+      }
+      [data-novaflow-ribbon-preset-preview-host="1"] {
+        display: block !important;
+        flex: 0 0 80px !important;
+        min-width: 80px !important;
+        height: 56px !important;
+        pointer-events: none !important;
+      }
+      [data-novaflow-ribbon-preset-preview="1"] {
+        display: block !important;
+        width: 100% !important;
+        height: 56px !important;
+        overflow: hidden !important;
+      }
+      [data-novaflow-ribbon-preset-preview="1"] [data-ribbon-shape="1"] { fill: #5fcdb0; fill-opacity: 0.8; }
+      [data-novaflow-ribbon-preset-preview="1"] [data-ribbon-bone="1"] { fill: none; stroke: #c8e7dc; stroke-width: 0.65; stroke-opacity: 0.62; }
+      [data-novaflow-ribbon-preset-preview="1"] [data-ribbon-joint="1"] { fill: #dbeee7; }
+      [data-novaflow-ribbon-preset-preview="1"] [data-ribbon-tip="1"] { fill: #1c2522; stroke: #b7e4d4; stroke-width: 0.9; }
+      [data-novaflow-ribbon-preset-preview-row="1"] [data-novaflow-dropdown-delete="1"] { opacity: 0.55 !important; }
       [data-novaflow-dropdown-preview="1"] {
         width: 42px !important;
         height: 18px !important;
@@ -44415,11 +44487,14 @@
   };
   const RIBBON_FREE_NUMBER_PARAMETER_KEYS = new Set(["amplitude", "wind", "delay"]);
   const RIBBON_PARAMETER_PRESET_OVERRIDES = [
-    { label: "\u57fa\u7840\u67d4\u987a", values: { stiffness: 0, amplitude: 70, wind: 0, delay: 57, offset: 0, elasticity: 18, swingCount: 1, wavePhase: 36, waveCount: 1, uniformWeight: 60, whip: 20 } },
-    { label: "\u539a\u91cd\u6447\u6446", values: { stiffness: 25, amplitude: 90, wind: 0, delay: 80, offset: 14, elasticity: 12, swingCount: 1, wavePhase: 0, waveCount: 0.65, uniformWeight: 45, whip: 18 } },
-    { label: "\u62bd\u97ad\u7529\u5c3e", values: { stiffness: 0, amplitude: 80, wind: 0, delay: 57, offset: 8, elasticity: 18, swingCount: 2, wavePhase: 36, waveCount: 1, uniformWeight: 60, whip: 45 } },
-    { label: "\u98ce\u4e2d\u6446\u52a8", values: { stiffness: 10, amplitude: 64, wind: 18, delay: 45, offset: 20, elasticity: 20, swingCount: 1, wavePhase: 45, waveCount: 1.25, uniformWeight: 85, whip: 16 } },
-    { label: "\u8f7b\u67d4\u98d8\u52a8", values: { stiffness: 0, amplitude: 48, wind: 0, delay: 48, offset: 8, elasticity: 12, swingCount: 1, wavePhase: 50, waveCount: 0.9, uniformWeight: 85, whip: 15 } }
+    { label: "轻风细摆", values: { stiffness: 0, amplitude: 25, wind: 0, delay: 60, offset: 0, elasticity: 8, swingCount: 1, wavePhase: 36, waveCount: 0.65, uniformWeight: 85, whip: 4 } },
+    { label: "丝带长浪", values: { stiffness: 0, amplitude: 70, wind: 0, delay: 57, offset: 0, elasticity: 18, swingCount: 1, wavePhase: 36, waveCount: 1, uniformWeight: 90, whip: 20 } },
+    { label: "双浪游动", values: { stiffness: 0, amplitude: 92, wind: 0, delay: 40, offset: 0, elasticity: 12, swingCount: 1, wavePhase: 36, waveCount: 1.75, uniformWeight: 100, whip: 8 } },
+    { label: "厚重垂摆", values: { stiffness: 8, amplitude: 100, wind: 0, delay: 85, offset: 0, elasticity: 5, swingCount: 1, wavePhase: 36, waveCount: 0.35, uniformWeight: 45, whip: 10 } },
+    { label: "硬链摆锤", values: { stiffness: 85, amplitude: 100, wind: 0, delay: 15, offset: 0, elasticity: 0, swingCount: 1, wavePhase: 36, waveCount: 0.25, uniformWeight: 10, whip: 0 } },
+    { label: "鞭梢甩尾", values: { stiffness: 0, amplitude: 65, wind: 0, delay: 68, offset: 0, elasticity: 0, swingCount: 2, wavePhase: 36, waveCount: 0.65, uniformWeight: 70, whip: 90 } },
+    { label: "侧风翻卷", values: { stiffness: 5, amplitude: 65, wind: 40, delay: 52, offset: 0, elasticity: 20, swingCount: 1, wavePhase: 36, waveCount: 1.3, uniformWeight: 90, whip: 24 } },
+    { label: "快速颤动", values: { stiffness: 10, amplitude: 42, wind: 0, delay: 25, offset: 0, elasticity: 55, swingCount: 4, wavePhase: 36, waveCount: 2.2, uniformWeight: 85, whip: 35 } }
   ];
 
   function sanitizeRibbonParameterPresetLabel(value) {
@@ -44488,6 +44563,19 @@
     } catch (_) {
       return Array.isArray(presets) ? presets : [];
     }
+  }
+
+  function buildRibbonParameterPresetPreview(values) {
+    const normalized = normalizeRibbonParameterPresetValues(values);
+    if (!normalized) return null;
+    const bones = [{ name: "preview_root" }];
+    for (let index = 0; index < 10; index++) {
+      bones.push({ name: `preview_${index}`, parent: index ? `preview_${index - 1}` : "preview_root", length: 32, x: index ? 32 : 0, y: 0, rotation: 0 });
+    }
+    const entries = bones.slice(1).map((bone, chainIndex) => ({ name: bone.name, chainIndex, sourceName: "preview_0" }));
+    const layout = getRibbonUniformWaveLayout({ bones }, entries);
+    const output = buildRibbonUniformWaveRotateMap(layout, { ...normalized, duration: 2, fps: 30, nativeSwingCount: 1 });
+    return { boneCount: 10, segmentLength: 32, duration: 2, curves: entries.map(entry => output.get(entry.name)) };
   }
 
   function getRibbonParameterPresetEntries() {
