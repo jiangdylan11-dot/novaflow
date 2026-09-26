@@ -33937,14 +33937,17 @@
           const icon = Object.keys(PLAYBACK_ICON_BY_TITLE).reduce((found, key) => found || (key.replace(/\s+/g, "") === title ? PLAYBACK_ICON_BY_TITLE[key] : ""), "");
           if (icon) nfSetAttrIfChanged(node, "data-novaflow-playback-icon", icon);
           const disabled = node.disabled === true;
-          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", disabled ? "disabled" : "idle");
+          const active = !disabled && particleDockToggleOn(node);
+          nfSetAttrIfChanged(node, "data-novaflow-dock-toggle-on", active ? "1" : "0");
+          nfSetAttrIfChanged(node, "data-novaflow-canvas-bar-button", active ? "active" : (disabled ? "disabled" : "idle"));
           const idle = `var(--nf-cb-hover-bg, ${UI_ICON_BUTTON_BACKGROUND})`;
+          const fill = active ? UI_SEGMENT_SELECTED_BACKGROUND : (disabled ? CANVAS_BAR_DISABLED_BACKGROUND : idle);
           return {
             width: `${PLAYBACK_BUTTON_SIZE}px`, "min-width": `${PLAYBACK_BUTTON_SIZE}px`, "max-width": `${PLAYBACK_BUTTON_SIZE}px`,
             height: `${PLAYBACK_BUTTON_SIZE}px`, "min-height": `${PLAYBACK_BUTTON_SIZE}px`, "max-height": `${PLAYBACK_BUTTON_SIZE}px`,
-            padding: "6px", border: "1px solid transparent", "border-radius": NOVAFLOW_RECT_RADIUS_PX,
-            background: disabled ? CANVAS_BAR_DISABLED_BACKGROUND : idle, "background-color": disabled ? CANVAS_BAR_DISABLED_BACKGROUND : idle,
-            color: disabled ? CANVAS_BAR_DISABLED_TEXT : `var(--nf-cb-hover-fg, ${UI_ICON_BUTTON_TEXT})`,
+            padding: "6px", border: `1px solid ${active ? UI_SEGMENT_SELECTED_BORDER : "transparent"}`, "border-radius": NOVAFLOW_RECT_RADIUS_PX,
+            background: fill, "background-color": fill,
+            color: active ? UI_SEGMENT_SELECTED_TEXT : (disabled ? CANVAS_BAR_DISABLED_TEXT : `var(--nf-cb-hover-fg, ${UI_ICON_BUTTON_TEXT})`),
             opacity: disabled ? NOVAFLOW_DISABLED_OPACITY : "1", "box-shadow": "none",
             display: "inline-flex", "align-items": "center", "justify-content": "center", "box-sizing": "border-box"
           };
@@ -35648,7 +35651,8 @@
     "data-novaflow-toggle-enabled",
     "data-novaflow-ribbon-chain-enabled",
     "data-novaflow-ribbon-preview-enabled",
-    "data-novaflow-spine-split-tool-active"
+    "data-novaflow-spine-split-tool-active",
+    "data-novaflow-dock-toggle-on"
   ]);
   let NOVAFLOW_SPEC_DESIRED = new WeakMap();
   let NOVAFLOW_SPEC_REASSERTS = new WeakMap();
@@ -35674,9 +35678,21 @@
     applyNovaflowReferenceSpec();
   }
 
+  // 发射器形状 / 力场向量 / 背景图 toggles: the bundle marks "on" with a green fill,
+  // which the dock rule paints over; read it off React's props instead.
+  function particleDockToggleOn(node) {
+    const props = getAiSequenceReactDomProps(node);
+    return String(props && props.style && props.style.background || "").toLowerCase() === "#1ea672";
+  }
+
   function reassertNovaflowSpecNode(node) {
     const desired = NOVAFLOW_SPEC_DESIRED.get(node);
     if (!desired) return;
+    // React repainted a dock toggle: flip its state attribute so a full pass restyles it.
+    if (node.hasAttribute("data-novaflow-dock-toggle-on")) {
+      const on = particleDockToggleOn(node) ? "1" : "0";
+      if (node.getAttribute("data-novaflow-dock-toggle-on") !== on) node.setAttribute("data-novaflow-dock-toggle-on", on);
+    }
     let drifted = false;
     for (const [property, value] of desired) {
       if (node.style.getPropertyValue(property) !== value || node.style.getPropertyPriority(property) !== "important") {
