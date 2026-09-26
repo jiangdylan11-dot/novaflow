@@ -101,20 +101,23 @@
     const track=bar.querySelector('[data-novaflow-skeleton-timeline-range="1"]'),tr=track?.getBoundingClientRect();
     if(tr&&timing&&[tr.left,tr.top,tr.width,timing.animationDuration,timing.boneDuration,timing.animationDelay].join(',')!==lastInterval){lastInterval=[tr.left,tr.top,tr.width,timing.animationDuration,timing.boneDuration,timing.animationDelay].join(',');const total=timing.animationDuration,span=Math.max(0,tr.width-12);interval.style.display='block';interval.style.left=(tr.left+6+span*timing.animationDelay/total)+'px';interval.style.width=(span*timing.boneDuration/total)+'px';interval.style.top=(tr.top-8)+'px';interval.setAttribute('aria-label',`本骨骼时段 ${fmt(timing.animationDelay)}–${fmt(timing.animationDelay+timing.boneDuration)} 秒，动画总时长 ${fmt(total)} 秒`);}
   }
-  const names = { bounce: '弹跳计算', expand: '缩放计算', shuttle: '移动计算', opacity: '透明度计算' };
+  const names = { bounce: '弹跳计算', expand: '缩放计算', shuttle: '移动计算', rotate: '旋转计算', opacity: '透明度计算' };
   function renderPresetButtons(target,items,apply){
     if(!items.length){target.replaceChildren();return;}
     const key=target.id==='opacityPresets'?'opacity':mode;
     target.setAttribute('aria-label',names[key]+'预设');
     target.replaceChildren(...items.map(item=>{const button=document.createElement('button');button.textContent=item[0];button.onclick=()=>apply(item);return button;}));
   }
-  const labels = { x: '位移 X', y: '位移 Y', sx: '缩放 X', sy: '缩放 Y', alpha: '透明度' };
+  const labels = { x: '位移 X', y: '位移 Y', sx: '缩放 X', sy: '缩放 Y', r: '旋转角度', alpha: '透明度' };
   const channelEnabled = () => channel === 'alpha' ? p.opacity.on : p.enabled && p.axes[channel].on;
   const pointEditable = () => channelEnabled();
-  const channelLoops = () => !p.oneWay&&(mode==='shuttle'||(p.loop&&(mode==='expand'||channel==='alpha')));
+  const swinging = () => (mode==='shuttle'||mode==='rotate')&&!p.oneWay&&!p.spring;
+  const channelLoops = () => !p.oneWay&&(swinging()||(p.loop&&(mode==='expand'||channel==='alpha')));
   const displayValue = v => channel === 'alpha' ? v * 100 : v;
 
   const initial=bridge.initial(); const sessions = initial?.stack || E.freshStack();
+  // Configs saved before the rotation mode existed have no rotate session.
+  sessions.rotate ??= E.freshStack().rotate; for (const state of Object.values(sessions)) state.axes.r ??= { on: false, amp: 0 }, state.corrections.r ??= Array(17).fill(0);
   const visitedModes=new Set(Object.keys(sessions).filter(key=>sessions[key].initialized||sessions[key].enabled||(key==='opacity'&&(sessions[key].opacity.from!==1||sessions[key].opacity.to!==1||sessions[key].curves?.alpha))));
   const timing=E.fitTiming({...bridge.timing(),...initial?.timing}); let restoring=false,historyAt=0;const history=[],redo=[];let lastSeek=0;
   function shareOpacity(source) { for (const session of Object.values(sessions)) { session.opacity = source.opacity; session.corrections.alpha = source.corrections.alpha; } }
@@ -145,10 +148,17 @@
       ['向左移动', { oneWay:'smooth',easing:1,hold:0 }, { x:-145,y:0 }],
       ['向上移动', { oneWay:'smooth',easing:1,hold:0 }, { x:0,y:95 }],
       ['斜向移动', { oneWay:'smooth',easing:1,hold:0 }, { x:140,y:80 }]
+    ],
+    rotate: [
+      ['左右摇摆', { loop:true, easing:1, hold:.06 }, { r: 25 }],
+      ['匀速旋转', { oneWay:'linear', easing:0, hold:0 }, { r: 360 }],
+      ['单向旋转', { oneWay:'smooth', easing:1, hold:0 }, { r: 90 }],
+      ['受击回正', { spring:true, loop:false, attack:.15, frequency:3, damping:6 }, { r: 40 }]
     ]
   };
   const schema = {
     loopCount: ['循环次数',1,8,1,'',1],
+    cycles: ['次数', 1, 10, 1, '次', 1],
     duration: ['骨骼总时长', .05, 30, .05, 's', 1],
     delay: ['骨骼延迟', 0, 1, .01, '%', 1],
     restitution: ['反弹高度保留', 0, .9, .01, '%', 100],
@@ -162,9 +172,9 @@
     easing: ['两端缓动', 0, 1, .01, '%', 100],
     hold: ['两端停留', 0, .35, .01, '%', 100]
   };
-  const modeKeys = { bounce: ['duration', 'restitution', 'count', 'contact'], expand: ['duration', 'attack', 'frequency', 'damping'], shuttle: ['duration', 'easing', 'hold'], opacity: ['duration'] };
-  const commonKeys = { bounce: ['restitution', 'count'], expand: ['attack'], shuttle: [], opacity: [] };
-  const primaryChannels = { bounce: ['y', 'x'], expand: ['sx', 'sy'], shuttle: ['x', 'y'], opacity: [] };
+  const modeKeys = { bounce: ['duration', 'restitution', 'count', 'contact'], expand: ['duration', 'attack', 'frequency', 'damping'], shuttle: ['duration', 'easing', 'hold'], rotate: ['duration', 'easing', 'hold'], opacity: ['duration'] };
+  const commonKeys = { bounce: ['restitution', 'count'], expand: ['attack'], shuttle: [], rotate: [], opacity: [] };
+  const primaryChannels = { bounce: ['y', 'x'], expand: ['sx', 'sy'], shuttle: ['x', 'y'], rotate: ['r'], opacity: [] };
   const fmt = (n, d = 2) => Number(n.toFixed(d)).toString();
   let previewError='';
   const status = (message,isError=false) => { const text=previewError||(isError?message:''),node=$('status');if(node.textContent!==text)node.textContent=text;if(node.hidden!==!text)node.hidden=!text; };
@@ -227,11 +237,11 @@
     div.innerHTML = `<div class="paramhead"><label for="range-${key}">${label}</label><span class="numberwrap"><input id="num-${key}" type="number" aria-label="${label}数值" min="${min * factor}" max="${max * factor}" step="${step * factor}" value="${fmt(p[key] * factor)}"><span>${unit}</span></span></div><input id="range-${key}" aria-label="${label}" type="range" min="${min}" max="${max}" step="${step}" value="${p[key]}">`;
     const number = div.querySelector('input[type=number]'), range = div.querySelector('input[type=range]');
     range.oninput = () => { if(key==='duration')p.delay=p.delay/p.duration*Number(range.value);p[key] = Number(range.value); if (key === 'duration') {timing.boneDuration=p[key];shareDuration(p[key]);renderEffectTiming();} number.value = fmt(p[key] * factor); parameterChanged(key !== 'duration'); };
-    number.oninput = () => { if (number.value === '') return; const oldDuration=p.duration;p[key] = validInput(number, min * factor, max * factor, p[key] * factor) / factor; if(key==='duration')p.delay=p.delay/oldDuration*p.duration; if (key === 'count') p[key] = Math.round(p[key]); if (key === 'duration') {timing.boneDuration=p[key];shareDuration(p[key]);renderEffectTiming();} range.value = p[key]; parameterChanged(key !== 'duration'); };
+    number.oninput = () => { if (number.value === '') return; const oldDuration=p.duration;p[key] = validInput(number, min * factor, max * factor, p[key] * factor) / factor; if(key==='duration')p.delay=p.delay/oldDuration*p.duration; if (key === 'count' || key === 'cycles') p[key] = Math.round(p[key]); if (key === 'duration') {timing.boneDuration=p[key];shareDuration(p[key]);renderEffectTiming();} range.value = p[key]; parameterChanged(key !== 'duration'); };
     number.onblur = () => { number.value = fmt(p[key] * factor); };
     return div;
   }
-  function axisSpec(k) { return k[0] === 's' ? [-.85, 10, .01, 100, '%'] : mode === 'shuttle' ? [-1000, 1000, 1, 1, 'px'] : k === 'y' && mode === 'bounce' ? [0, 600, 1, 1, 'px'] : [-200, 200, 1, 1, 'px']; }
+  function axisSpec(k) { return k[0] === 's' ? [-.85, 10, .01, 100, '%'] : k === 'r' ? [-720, 720, 1, 1, '°'] : mode === 'shuttle' ? [-1000, 1000, 1, 1, 'px'] : k === 'y' && mode === 'bounce' ? [0, 600, 1, 1, 'px'] : [-200, 200, 1, 1, 'px']; }
   function setAmplitude(k, v) {
     if(pointSelected){
       const selected=E.curveFor(p,channel)[point],knots=JSON.parse(JSON.stringify(E.curveFor(p,k)));
@@ -342,7 +352,8 @@
     $('mainControls').hidden = mode === 'opacity';
     const singleExpansion=mode==='expand'&&p.oneWay;
     $('params').replaceChildren(...(singleExpansion?[]:commonKeys[mode]).map(makeParam));
-    $('advancedParams').replaceChildren(...(singleExpansion?(p.oneWay==='linear'?['hold']:['easing','hold']):modeKeys[mode].filter(k => k !== 'duration' && !commonKeys[mode].includes(k))).map(makeParam));
+    const rotateKeys=['cycles',...(p.spring?['attack','frequency','damping']:p.oneWay==='linear'?['hold']:['easing','hold'])];
+    $('advancedParams').replaceChildren(...(singleExpansion?(p.oneWay==='linear'?['hold']:['easing','hold']):mode==='rotate'?rotateKeys:modeKeys[mode].filter(k => k !== 'duration' && !commonKeys[mode].includes(k))).map(makeParam));
     $('primaryAxes').replaceChildren(...primaryChannels[mode].map(makeAxis));
     $('presetSection').hidden = mode === 'opacity';$('opacityPresets').hidden=mode!=='opacity'; $('opacityDetails').hidden = mode !== 'opacity'; $('scaleOptions').hidden = mode === 'bounce';$('linkOption').hidden=mode!=='expand';$('directionLabel').textContent=mode==='opacity'?'循环':'反向';$('loop').checked=mode==='opacity'?!!p.loop:!!p.reverse;
     renderPresetButtons($('presets'),presetSets[mode],([name, vals, axes]) => {
@@ -354,13 +365,15 @@
       bounce: '只控制弹跳位移，移动计算在此基础上叠加。',
       expand: '围绕骨骼原点缩放，与已有位移动画同时生效。',
       shuttle: 'X/Y 独立调整。反向交换当前动作的起点和终点，保留曲线微调。',
+      rotate: '围绕骨骼原点旋转，叠加在已有旋转关键帧上；次数是一个周期内摆动/击打/步进的次数，反向改变转向。',
       opacity: '独立调整透明度，也可叠加到其他动作。'
     }[mode];
     syncEnabled();
     curveBounds = null; refreshEvents(); renderBounceHeights(); renderOpacity(); renderTabs(); syncPoint(); draw();
   }
   function renderTabs() {
-    $('curveTabs').hidden=mode==='opacity';
+    // A single channel needs no tab bar; the curve is that channel.
+    $('curveTabs').hidden=E.ownedChannels[mode].length<2;
     $('curveTabs').replaceChildren(...E.ownedChannels[mode].map(k => { const b = document.createElement('button'); b.textContent = labels[k]; b.classList.toggle('selected', k === channel); b.setAttribute('aria-pressed', k === channel); b.onclick = () => { channel = k; pointSelected=false; curveBounds = null; renderTabs(); syncPoint(); drawCurve(); }; return b; }));
   }
   function setPointValue(value) {
@@ -371,7 +384,7 @@
     syncBounceHeights(); draw(); syncPoint();
   }
   const editableKnots=()=>JSON.parse(JSON.stringify(E.curveFor(p,channel)));
-  function limitValue(value){return E.clamp(value,channel==='alpha'?0:channel.startsWith('s')?.08:-1000,channel==='alpha'?1:channel.startsWith('s')?11:1000);}
+  function limitValue(value){return E.clamp(value,channel==='alpha'?0:channel.startsWith('s')?.08:channel==='r'?-3600:-1000,channel==='alpha'?1:channel.startsWith('s')?11:channel==='r'?3600:1000);}
   function moveKnot(knots,index,u,value){
     const n=knots[index],end=knots.length-1;
     u=index===0?0:index===end?1:E.clamp(u,knots[index-1].u+.0001,knots[index+1].u-.0001);
@@ -388,7 +401,7 @@
   function syncPoint() {
     const knots=E.curveFor(p,channel); point=E.clamp(point,0,knots.length-1);
     if (curveRoot.activeElement !== $('pointValue')) $('pointValue').value = fmt(displayValue(knots[point].v), channel.startsWith('s') ? 3 : 1); $('pointValue').disabled = !pointEditable();
-    $('pointValue').step = channel.startsWith('s') ? '.01' : '1'; $('curveUnit').textContent = channel === 'alpha' ? '%' : channel.startsWith('s') ? '倍' : 'px';
+    $('pointValue').step = channel.startsWith('s') ? '.01' : '1'; $('curveUnit').textContent = channel === 'alpha' ? '%' : channel.startsWith('s') ? '倍' : channel === 'r' ? '°' : 'px';
     syncAxisControls();
     $('curveState').textContent = !channelEnabled() ? '通道关闭' : '贝塞尔曲线';
   }
@@ -507,7 +520,7 @@
   $('pointValue').onblur = syncPoint;
   $('resetCurve').onclick = () => { pointSelected=false;p.corrections[channel].fill(0);if(p.curves)delete p.curves[channel];if(mode==='expand'&&p.link){const other=channel==='sx'?'sy':'sx';p.corrections[other].fill(0);if(p.curves)delete p.curves[other];}point=0; curveBounds = null; syncBounceHeights(); syncPoint(); draw(); status(`已恢复${labels[channel]}的计算曲线。`); };
   function setCollapsed(value){collapsed=value;$('editorContent').hidden=value;$('editorToggle').textContent=value?'展开':'收起';$('editorToggle').setAttribute('aria-expanded',String(!value));body.classList.toggle('collapsed',value);curveBounds=null;drawCurve();}
-  function selectMode(next){setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':'x';drag=null;pointSelected=false;renderPanel();if(!visitedModes.has(mode)){visitedModes.add(mode);$(mode==='opacity'?'opacityPresets':'presets').querySelector('button')?.click();}status('切换功能保留调整 · 仅操作当前骨骼');}
+  function selectMode(next){setCollapsed(false);mode=next;p=sessions[mode];channel=mode==='opacity'?'alpha':mode==='expand'?'sx':mode==='bounce'?'y':mode==='rotate'?'r':'x';drag=null;pointSelected=false;renderPanel();if(!visitedModes.has(mode)){visitedModes.add(mode);$(mode==='opacity'?'opacityPresets':'presets').querySelector('button')?.click();}status('切换功能保留调整 · 仅操作当前骨骼');}
   $('resetAll').onclick = () => {
     bridge.restore(); Object.assign(sessions,E.freshStack()); Object.assign(timing,bridge.timing()); shareDuration(timing.boneDuration); shareOpacity(sessions.opacity);p=sessions[mode];
     history.push(lastSnapshot);lastSnapshot=JSON.stringify({stack:sessions,timing});redo.length=0;previewError='';time=0;renderPanel();$('save').disabled=false;status('已恢复本骨骼计算前的动画；其他骨骼保留。');

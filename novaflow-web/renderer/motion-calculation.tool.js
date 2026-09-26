@@ -139,11 +139,12 @@
       if(!matchesExpected(p.project.animations[s.animation],s))throw Error('本骨骼已被其他工具修改，请重新打开动画计算。');
       if(stack.bounce.enabled||stack.shuttle.enabled||stack.expand.enabled)s.channels.add('translate');
       if(stack.expand.enabled)s.channels.add('scale');
+      if(stack.rotate?.enabled)s.channels.add('rotate');
       if(stack.opacity.opacity.from!==1||stack.opacity.opacity.to!==1||stack.opacity.corrections.alpha.some(v=>v)||stack.opacity.curves?.alpha)s.alpha=true;
       const baseline=calculationBaseline(p.project.animations[s.animation],s);
       const project={...p.project,animations:{...p.project.animations,[s.animation]:baseline}};
       const result=A.calculate(project,s.animation,[s.bone],stack,t,E,window.NovaFlowBonesEditor);
-      for(const key of ['translate','scale'])if(result.animation.bones[s.bone]?.[key]!==baseline.bones?.[s.bone]?.[key])s.channels.add(key);
+      for(const key of ['translate','scale','rotate'])if(result.animation.bones[s.bone]?.[key]!==baseline.bones?.[s.bone]?.[key])s.channels.add(key);
       write(s,result.animation);s.dirty=true;s.pending=copy({stack,timing:t});
       panel.dataset.motionState='preview';panel.dataset.motionInterval=`${result.start},${result.end}`;
     };
@@ -182,7 +183,7 @@
         [data-panel-id="bone-motion"] [data-motion-mode]{width:100%;min-width:0;height:32px;padding:0 10px;text-align:left;line-height:1.2;background:transparent;border:0;border-radius:7px;color:#b4b4b4;font:inherit;font-size:12px;font-weight:500;cursor:pointer;box-shadow:none}
         [data-panel-id="bone-motion"] [data-motion-mode]:hover,[data-panel-id="bone-motion"] [data-motion-mode][aria-pressed="true"]{background:#262626;color:#dedede}
         [data-panel-id="bone-motion"] .nf-motion-body{font-size:11px;color:#999}
-      </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:7px;font-size:14px;color:#bdbdbd" aria-hidden="true"></i>动画计算</span><i class="fas fa-chevron-right nf-motion-chevron" aria-hidden="true"></i></button><div class="nf-motion-tools" role="group" aria-label="动画计算工具" hidden>${Object.entries({bounce:'弹跳计算',expand:'缩放计算',shuttle:'移动计算',opacity:'透明度计算'}).map(([mode,label])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}</div><div class="nf-motion-body"></div>`;
+      </style><button type="button" class="nf-panel-header" aria-expanded="false"><span style="display:flex;align-items:center"><i class="fas fa-calculator" style="width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;margin-right:8px;background:#292929;border-radius:7px;font-size:14px;color:#bdbdbd" aria-hidden="true"></i>动画计算</span><i class="fas fa-chevron-right nf-motion-chevron" aria-hidden="true"></i></button><div class="nf-motion-tools" role="group" aria-label="动画计算工具" hidden>${Object.entries({bounce:'弹跳计算',expand:'缩放计算',shuttle:'移动计算',rotate:'旋转计算',opacity:'透明度计算'}).map(([mode,label])=>`<button type="button" data-motion-mode="${mode}" aria-pressed="false">${label}</button>`).join('')}</div><div class="nf-motion-body"></div>`;
       const lastTool=ribbon.parentElement.querySelector('[data-panel-id="bone-auto-weights"]');
       (lastTool||ribbon.parentElement.lastElementChild).after(panel);
       panel.querySelector('.nf-panel-header').onclick=()=>{

@@ -229,3 +229,38 @@ test('one-way and reversed curves bake to native tracks and hold their target af
   assert.equal(animation.bones.other,project.animations.idle.bones.other);
  }
 });
+
+test('rotation presets swing, spin, step and spring; cycles multiply inside the bone interval',()=>{
+ assert.deepEqual(Array.from(presets.rotate,p=>p[0]),['左右摇摆','匀速旋转','单向旋转','受击回正']);
+ const at=(p,u)=>E.sample(p,u).r,near=(a,b)=>Math.abs(a-b)<1e-6;
+ const swing=presetMotion('rotate',0);
+ assert.ok(near(at(swing,0),0)&&near(at(swing,.25),25)&&near(at(swing,.75),-25)&&near(at(swing,1),0),'swing starts at rest and alternates');
+ swing.reverse=true;assert.ok(near(at(swing,.25),-25),'reverse flips the swing direction');
+ const spin=presetMotion('rotate',1);
+ for(const u of [0,.25,.5,1])assert.ok(near(at(spin,u),360*u),'one linear turn per period');
+ spin.cycles=3;assert.ok(near(at(spin,.5),540)&&near(at(spin,1),1080),'cycles are whole turns');
+ const step=presetMotion('rotate',2);
+ assert.ok(near(at(step,1),90));
+ step.cycles=3;assert.ok(near(at(step,1/3),90)&&near(at(step,2/3),180)&&near(at(step,1),270),'cycles are consecutive eased steps');
+ let previous=0;for(let j=1;j<=120;j++){const v=at(step,j/120);assert.ok(v-previous>=-1e-8,'steps never turn back');previous=v;}
+ const spring=presetMotion('rotate',3);
+ assert.ok(near(at(spring,0),0)&&near(at(spring,1),0)&&Math.max(...Array.from({length:101},(_,j)=>at(spring,j/100)))>30,'spring leaves and returns to rest');
+ spring.cycles=2;assert.ok(near(at(spring,.5),0),'each hit returns to rest');
+ assert.equal(E.curveFor(spin,'r').length,2,'a linear turn is a single Bezier segment');
+});
+
+test('rotation bakes only a rotate track on top of existing keys; other channels and bones stay intact',()=>{
+ const stack=E.freshStack();stack.rotate=presetMotion('rotate',1);
+ const project=fixture();
+ const {animation}=calc(project,stack);
+ const ball=animation.bones.ball,source=project.animations.idle.bones.ball;
+ assert.equal(ball.translate,source.translate,'translate keys are untouched');
+ assert.equal(ball.scale,undefined,'no scale track is invented');
+ assert.ok(ball.rotate.every(f=>typeof f.angle==='number'),'Spine 3.8 rotate keys use angle');
+ for(const t of [.5,.75,1,1.5]){const expected=4+E.sampleStack(stack,t-.5).r;assert.ok(Math.abs(A.scalar(ball.rotate,t,'angle',0)-expected)<.01,'existing 4° key plus the calculated angle at '+t);}
+ assert.ok(Math.abs(A.scalar(ball.rotate,.2,'angle',0)-4)<1e-6,'before the interval the original key remains');
+ assert.ok(Math.abs(A.scalar(ball.rotate,1.8,'angle',0)-364)<.01,'after the interval the reached angle holds');
+ assert.equal(animation.bones.other,project.animations.idle.bones.other);
+ assert.equal(animation.bones.child,project.animations.idle.bones.child);
+ assert.equal(animation.slots.ballSlot,project.animations.idle.slots.ballSlot,'no opacity change means no slot keys');
+});

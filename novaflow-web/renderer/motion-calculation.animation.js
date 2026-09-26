@@ -97,7 +97,7 @@
     const keyDuration=duration({...original,duration:0});
     if(n(timing.animationDuration)+1e-6<keyDuration)throw Error('动画总时长不能短于已有关键帧；其他骨骼不会被裁切。');
     const animation={...original,bones:{...original.bones},slots:{...original.slots},duration:n(timing.animationDuration)};
-    const translate=!!(params.bounce.enabled||params.shuttle.enabled),scale=!!params.expand.enabled;
+    const translate=!!(params.bounce.enabled||params.shuttle.enabled),scale=!!params.expand.enabled,rotate=!!params.rotate?.enabled;
     const opacity=params.opacity.opacity,alpha=opacity.on&&(opacity.from!==1||opacity.to!==1||params.opacity.corrections.alpha.some(v=>v!==0)||params.opacity.curves?.alpha);
     const affected=new Set(targets), slots=(project.slots||[]).filter(s=>affected.has(s.bone));
     const fps=Math.max(15,Math.min(120,n(project.skeleton?.fps,60))), times=new Set([start,end]);
@@ -105,7 +105,7 @@
     // Preserve the exact seam when a non-periodic channel is shifted around its cycle.
     for(const p of Object.values(params))if(p.delay>0&&p.delay<span){times.add(start+p.delay);times.add(start+p.delay-1/6000);}
     for(const event of engine.events(params.bounce))if(params.bounce.enabled)times.add(start+engine.timelineTime(params.bounce,event.u));
-    const entries=targets.map(name=>({name,i:project.bones.findIndex(b=>b.name===name),translate:[],scale:[]}));
+    const entries=targets.map(name=>({name,i:project.bones.findIndex(b=>b.name===name),translate:[],scale:[],rotate:[]}));
     const slotFrames=new Map(slots.map(s=>[s.name,[]]));
     for(const time of [...times].sort((a,b)=>a-b)){
       const t=time-start, value=engine.sampleStack(params,t/span), evaluated=pose(project,original,time,math);
@@ -114,17 +114,19 @@
         const [lx,ly]=invVector(parent,dx,dy);
         if(translate)item.translate.push({time,x:scalar(old.translate,time,'x',0)+lx,y:scalar(old.translate,time,'y',0)+ly});
         if(scale)item.scale.push({time,x:scalar(old.scale,time,'x',1)*value.sx,y:scalar(old.scale,time,'y',1)*value.sy});
+        // Local rotation adds to the existing key directly; no parent transform involved.
+        if(rotate)item.rotate.push({time,angle:scalar(old.rotate,time,'angle',0)+value.r});
       }
       if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},rgba=color(old.rgba||old.color,time,slot.color);rgba[3]*=value.alpha;slotFrames.get(slot.name).push({time,color:rgba.map(v=>Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0')).join('')});}
     }
-    for(const item of entries){const old=original.bones?.[item.name]||{},next={...old};for(const channel of ['translate','scale'])if(item[channel].length)next[channel]=merge(old[channel],item[channel],start,end,t=>({x:scalar(old[channel],t,'x',channel==='scale'?1:0),y:scalar(old[channel],t,'y',channel==='scale'?1:0)}));animation.bones[item.name]=next;}
+    for(const item of entries){const old=original.bones?.[item.name]||{},next={...old};for(const channel of ['translate','scale','rotate'])if(item[channel].length)next[channel]=merge(old[channel],item[channel],start,end,channel==='rotate'?t=>({angle:scalar(old.rotate,t,'angle',0)}):t=>({x:scalar(old[channel],t,'x',channel==='scale'?1:0),y:scalar(old[channel],t,'y',channel==='scale'?1:0)}));animation.bones[item.name]=next;}
     if(alpha)for(const slot of slots){const old=original.slots?.[slot.name]||{},key=old.rgba?'rgba':'color';animation.slots[slot.name]={...old,[key]:merge(old[key],slotFrames.get(slot.name),start,end,t=>({color:color(old[key],t,slot.color).map(v=>Math.round(v).toString(16).padStart(2,'0')).join('')}))};}
     // Spine derives duration from keys, not the editor's duration metadata.
     // Extend only a selected-bone channel so exported playback has the same length.
     if(duration({...animation,duration:0})<animation.duration){
-      const target=animation.bones[targets[0]],key=target.scale?.length?'scale':'translate',base=key==='scale'?1:0;
+      const target=animation.bones[targets[0]],key=['scale','translate','rotate'].find(k=>target[k]?.length)||'translate',base=key==='scale'?1:0;
       const frames=target[key]||[],time=animation.duration;
-      target[key]=[...frames,{time,x:scalar(frames,time,'x',base),y:scalar(frames,time,'y',base)}];
+      target[key]=[...frames,key==='rotate'?{time,angle:scalar(frames,time,'angle',0)}:{time,x:scalar(frames,time,'x',base),y:scalar(frames,time,'y',base)}];
     }
     return {animation,targets,slots:alpha?slots.map(s=>s.name):[],start,end};
   }

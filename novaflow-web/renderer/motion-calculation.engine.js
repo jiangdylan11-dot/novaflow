@@ -2,20 +2,23 @@
   'use strict';
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const smooth = t => { t = clamp(t, 0, 1); return t * t * (3 - 2 * t); };
-  const channels = ['x', 'y', 'sx', 'sy'];
+  const channels = ['x', 'y', 'sx', 'sy', 'r'];
   const defaults = {
     opacity: { duration: 2.8, anchor: 'center', ground: false,
-      axes: { x: { on: false, amp: 0 }, y: { on: false, amp: 0 }, sx: { on: false, amp: 0 }, sy: { on: false, amp: 0 } } },
+      axes: { x: { on: false, amp: 0 }, y: { on: false, amp: 0 }, sx: { on: false, amp: 0 }, sy: { on: false, amp: 0 }, r: { on: false, amp: 0 } } },
     bounce: { duration: 2.8, restitution: .58, count: 3, contact: .12, impact: .45, stretch: .28, anchor: 'bottom', ground: false, groundY: 0,
-      axes: { x: { on: true, amp: 110 }, y: { on: true, amp: 190 }, sx: { on: true, amp: .34 }, sy: { on: true, amp: -.30 } } },
+      axes: { x: { on: true, amp: 110 }, y: { on: true, amp: 190 }, sx: { on: true, amp: .34 }, sy: { on: true, amp: -.30 }, r: { on: false, amp: 0 } } },
     expand: { duration: 2.4, attack: .22, frequency: 3, damping: 5, anchor: 'center', ground: false,
-      axes: { x: { on: true, amp: 0 }, y: { on: true, amp: 0 }, sx: { on: true, amp: .55 }, sy: { on: true, amp: .55 } } },
+      axes: { x: { on: true, amp: 0 }, y: { on: true, amp: 0 }, sx: { on: true, amp: .55 }, sy: { on: true, amp: .55 }, r: { on: false, amp: 0 } } },
     shuttle: { duration: 3, easing: 1, hold: .06, anchor: 'center', ground: false,
-      axes: { x: { on: true, amp: 140, cycles: 1, phase: 0 }, y: { on: true, amp: 80, cycles: 1, phase: 90 }, sx: { on: false, amp: .12, cycles: 1, phase: 0 }, sy: { on: false, amp: -.12, cycles: 1, phase: 0 } } }
+      axes: { x: { on: true, amp: 140, cycles: 1, phase: 0 }, y: { on: true, amp: 80, cycles: 1, phase: 90 }, sx: { on: false, amp: .12, cycles: 1, phase: 0 }, sy: { on: false, amp: -.12, cycles: 1, phase: 0 }, r: { on: false, amp: 0, cycles: 1, phase: 0 } } },
+    // Rotation in degrees around the bone origin. Phase 90 starts the swing at rest.
+    rotate: { duration: 3, cycles: 1, easing: 1, hold: .06, attack: .15, frequency: 3, damping: 6, anchor: 'center', ground: false,
+      axes: { x: { on: false, amp: 0 }, y: { on: false, amp: 0 }, sx: { on: false, amp: 0 }, sy: { on: false, amp: 0 }, r: { on: true, amp: 25, cycles: 1, phase: 90 } } }
   };
   function fresh(mode) {
     const p = JSON.parse(JSON.stringify(defaults[mode]));
-    p.mode = mode; p.link = mode !== 'shuttle'; p.delay = 0; p.loop = mode === 'shuttle'; p.loopCount = 2; p.reverse = false;
+    p.mode = mode; p.link = mode !== 'shuttle'; p.delay = 0; p.loop = mode === 'shuttle' || mode === 'rotate'; p.loopCount = 2; p.reverse = false;
     p.opacity = { on: false, behavior: 'once', from: 0, to: 1, begin: 0, finish: 1, cycles: 2, phase: 0, easing: 1, hold: 0 };
     p.corrections = Object.fromEntries([...channels, 'alpha'].map(k => [k, Array(17).fill(0)]));
     return p;
@@ -48,8 +51,17 @@
     // Elastic overshoot is part of the motion; the optional hard floor clips only its output.
     if (s.kind === 'contact') h = -.55 * (p.impact || 0) * s.height * Math.sin(Math.PI * q);
     const last = sch.segments.at(-2).end / sch.total;
-    return { x: smooth(u / last), y: h, sx: deformation, sy: deformation };
+    return { x: smooth(u / last), y: h, sx: deformation, sy: deformation, r: 0 };
   }
+  const periodic = p => p.mode === 'shuttle' || p.mode === 'rotate';
+  // Swing reuses the shuttle wave; the spring variant reuses the expansion overshoot.
+  // `cycles` counts swings, hits, or one-way steps (turns for a 360° step) per period.
+  const rotation = (p, u) => {
+    const n = Math.max(1, Math.round(p.cycles || 1));
+    if (p.spring) return expansion({ ...p, loop: false }, n > 1 ? (u >= 1 ? 1 : (u * n) % 1) : u);
+    if (p.oneWay) { const k = Math.min(n - 1, Math.floor(u * n)); return k + oneWayProgress(p, u * n - k); }
+    return wave(p, { ...p.axes.r, cycles: n }, u);
+  };
   function expansion(p, u) {
     if(p.oneWay)return oneWayProgress(p,u);
     if(p.loop)u=u>=1?1:(u*Math.max(1,p.loopCount||2))%1;
@@ -59,8 +71,8 @@
     return Math.cos(2 * Math.PI * p.frequency * q) * Math.exp(-p.damping * q * q) * (1 - smooth((q - .78) / .22));
   }
   function wave(p, axis, u) {
-    if(p.mode==='shuttle'&&p.oneWay)return oneWayProgress(p,u);
-    const cycles=p.mode==='shuttle'&&p.loop===false?1:axis.cycles;
+    if(p.oneWay&&periodic(p))return oneWayProgress(p,u);
+    const cycles=periodic(p)&&p.loop===false?1:axis.cycles;
     const phase = ((u * cycles + axis.phase / 360) % 1 + 1) % 1;
     const half = phase < .5 ? phase * 2 : (1 - phase) * 2;
     const q = clamp((half - p.hold) / (1 - 2 * p.hold), 0, 1);
@@ -72,7 +84,7 @@
     const eased=p.oneWay==='out'?1-(1-q)**3:p.oneWay==='linear'?q:smooth(q);
     return q+(eased-q)*(p.easing??1);
   }
-  const reversed=(p,key)=>!!p.reverse&&((p.mode==='expand'&&(key==='sx'||key==='sy'))||(p.mode==='shuttle'&&(key==='x'||key==='y')));
+  const reversed=(p,key)=>!!p.reverse&&((p.mode==='expand'&&(key==='sx'||key==='sy'))||(p.mode==='shuttle'&&(key==='x'||key==='y'))||(p.mode==='rotate'&&key==='r'));
   const reverseKnots=knots=>knots.slice().reverse().map(n=>({u:1-n.u,v:n.v,in:{u:1-n.out.u,v:n.out.v},out:{u:1-n.in.u,v:n.in.v}}));
   function correction(values, u, pinEnds = false) {
     const pos = clamp(u, 0, 1) * (values.length - 1), i = Math.min(values.length - 2, Math.floor(pos));
@@ -81,7 +93,7 @@
   }
   function rawSample(p, u, noCorrections = false, unclamped = false) {
     u = clamp(u, 0, 1);
-    const base = p.mode === 'opacity' ? { x: 0, y: 0, sx: 0, sy: 0 } : p.mode === 'bounce' ? bounceBase(p, u) : p.mode === 'expand' ? Object.fromEntries(channels.map(k => [k, expansion(p, reversed(p,k)?1-u:u)])) : Object.fromEntries(channels.map(k => [k, wave(p, p.axes[k], reversed(p,k)?1-u:u)]));
+    const base = p.mode === 'opacity' ? { x: 0, y: 0, sx: 0, sy: 0, r: 0 } : p.mode === 'bounce' ? bounceBase(p, u) : p.mode === 'expand' ? Object.fromEntries(channels.map(k => [k, expansion(p, reversed(p,k)?1-u:u)])) : p.mode === 'rotate' ? Object.fromEntries(channels.map(k => [k, rotation(p, reversed(p,k)?1-u:u)])) : Object.fromEntries(channels.map(k => [k, wave(p, p.axes[k], reversed(p,k)?1-u:u)]));
     const out = {};
     for (const k of channels) {
       const scale = k[0] === 's', a = p.axes[k];
@@ -227,9 +239,9 @@
       for (const key of keys) tracks[key].push({ time, value: value[key] });
     }
     return { schema: 'novaflow-animation-preview-v1', mode: p.mode, duration: p.duration, fps,
-      anchor: p.anchor, units: { time: 'seconds', x: 'pixels', y: 'pixels', sx: 'ratio', sy: 'ratio', alpha: 'opacity' }, tracks };
+      anchor: p.anchor, units: { time: 'seconds', x: 'pixels', y: 'pixels', sx: 'ratio', sy: 'ratio', r: 'degrees', alpha: 'opacity' }, tracks };
   }
-  const ownedChannels = { bounce: ['x', 'y'], shuttle: ['x', 'y'], expand: ['sx', 'sy'], opacity: ['alpha'] };
+  const ownedChannels = { bounce: ['x', 'y'], shuttle: ['x', 'y'], expand: ['sx', 'sy'], rotate: ['r'], opacity: ['alpha'] };
   function freshStack() {
     const stack = Object.fromEntries(Object.keys(ownedChannels).map(mode => [mode, fresh(mode)]));
     for (const p of Object.values(stack)) {
@@ -265,8 +277,8 @@
       width: width * pose.sx, height: height * pose.sy, ax, ay };
   }
   function sampleStack(stack, u) {
-    const out = { x: 0, y: 0, sx: 1, sy: 1, alpha: 1 };
-    for (const mode of ['bounce', 'shuttle', 'expand']) {
+    const out = { x: 0, y: 0, sx: 1, sy: 1, r: 0, alpha: 1 };
+    for (const mode of ['bounce', 'shuttle', 'expand', 'rotate']) {
       if (!stack[mode].enabled) continue;
       const value = sample(stack[mode], effectTime(stack[mode], u));
       for (const key of ownedChannels[mode]) {
@@ -289,7 +301,7 @@
     }
     return { schema: 'novaflow-animation-preview-v2', duration, fps, anchor: stackAnchor(stack), positionOrigin: stack.bounce.enabled ? 'bottom' : 'center',
       effects: Object.keys(stack).filter(mode => mode === 'opacity' ? stack.opacity.opacity.on : stack[mode].enabled),
-      units: { time: 'seconds', x: 'pixels', y: 'pixels', sx: 'ratio', sy: 'ratio', alpha: 'opacity' }, tracks };
+      units: { time: 'seconds', x: 'pixels', y: 'pixels', sx: 'ratio', sy: 'ratio', r: 'degrees', alpha: 'opacity' }, tracks };
   }
   const api = { fresh, sample, bake, events, peaks, channels, clamp, defaults, ownedChannels, freshStack, sampleStack, stackAnchor, bakeStack, anchors, objectRect, effectTime, timelineTime, curveFor, storeCurve, storeLinkedCurve, evaluateCurve, insertCurvePoint, removeCurvePoint, fitTiming };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
