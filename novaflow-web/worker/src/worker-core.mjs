@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { createGateway, sweepTaskFiles } from './gateway/gateway.mjs';
 import { createTunnel } from './tunnel.mjs';
 import { createComfyClient, collectOutputs, assertLocalOnly } from './comfy/comfy-client.mjs';
+import { videoRuntimeUrl } from './runtime-services.mjs';
 import { loadWorkflow, buildGraph, resolvedSeed, videoFrameLength } from './comfy/workflow-runner.mjs';
 import { createWorkflowHost } from './comfy/workflow-host.mjs';
 import { workflowModule } from '../../packages/shared/src/workflow-modules.mjs';
@@ -197,7 +198,7 @@ export function createWorker(options) {
     workflowDir,
     configPath,
     comfyImageUrl = 'http://127.0.0.1:8188',
-    comfyVideoUrl = 'http://127.0.0.1:8189',
+    comfyVideoUrl: configuredVideoUrl = '',
     modelsRoot = '',
     gatewayPort = 8790,
     gatewayHost = '0.0.0.0',
@@ -215,6 +216,8 @@ export function createWorker(options) {
     logger
   } = options;
   const promptAssistantRef = () => (typeof promptAssistant === 'function' ? promptAssistant() : promptAssistant) || null;
+  // Video (MiniMax H3) runs on the image runtime since 2026-09-26; see videoRuntimeUrl.
+  const comfyVideoUrl = videoRuntimeUrl(configuredVideoUrl, comfyImageUrl);
 
   // Refuse to run if ComfyUI is configured off loopback (spec 9).
   assertLocalOnly(comfyImageUrl);
@@ -312,6 +315,8 @@ export function createWorker(options) {
   const loraCatalog = createWorkerLoraCatalog({ modelsRoot, image: comfyImage, video: comfyVideo });
   let lastModelReportAt = 0;
   let lastFeatureProbeAt = 0;
+
+  let lastRuntimeKind = '';
 
   function comfyFor(runtime) {
     return runtime === 'video' ? comfyVideo : comfyImage;
@@ -422,8 +427,8 @@ export function createWorker(options) {
       if (!state.comfy[runtime]) continue;
       const found = await inspectViaComfy(comfyFor(runtime)).catch(() => null);
       for (const model of found || []) {
-        // Model files visible on 8188 do not make the separate 8189 service
-        // usable. Advertise the endpoint that runTask will actually select.
+        // Advertise a model only through the runtime runTask will select for it (both are the same
+        // ComfyUI unless a node configured video elsewhere).
         if (runtimeFor(model.model_id) === runtime) byId.set(model.model_id, model);
       }
     }
@@ -592,6 +597,16 @@ export function createWorker(options) {
       await reportModels();
       throw new Error((runtime === 'video' ? '视频' : '图像') + '算力服务未启动或已断开：' + comfy.baseUrl + '，请启动本地算力服务后重试');
     }
+
+    // Image and video share one ComfyUI (H3 moved onto the 0.37 runtime). Its own eviction only makes
+    // room in VRAM and keeps the evicted weights in RAM, and H3 (32B text encoder) next to Qwen-Image-2.1
+    // does not fit a 16 GB card either way: unload everything whenever the task kind changes, and keep
+    // the models loaded between tasks of the same kind.
+    if (lastRuntimeKind && lastRuntimeKind !== runtime) {
+      await reportProgress(task.id, TASK_STATE.PROCESSING, 1, 'freeing memory for the ' + runtime + ' models');
+      await comfy.freeMemory().catch((error) => log('free failed', { error: String(error?.message || error) }));
+    }
+    lastRuntimeKind = runtime;
 
     checkCancelled(task.id);
     state.currentTaskId = task.id;

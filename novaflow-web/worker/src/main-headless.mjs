@@ -9,6 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createWorker } from './worker-core.mjs';
 import { createPromptAssistant } from './prompt-assistant.mjs';
+import { videoRuntimeUrl } from './runtime-services.mjs';
 
 import { existsSync } from 'node:fs';
 
@@ -39,7 +40,8 @@ export async function loadConfig(overrides = {}) {
     registrationCode: overrides.registrationCode || process.env.NOVAFLOW_WORKER_REGISTRATION_CODE || fileConfig.registrationCode || '',
     ownerSessionToken: overrides.ownerSessionToken || process.env.NOVAFLOW_OWNER_SESSION_TOKEN || '',
     comfyImageUrl: overrides.comfyImageUrl || process.env.NOVAFLOW_COMFY_IMAGE_URL || fileConfig.comfyImageUrl || 'http://127.0.0.1:8188',
-    comfyVideoUrl: overrides.comfyVideoUrl || process.env.NOVAFLOW_COMFY_VIDEO_URL || fileConfig.comfyVideoUrl || 'http://127.0.0.1:8189',
+    // Video runs on the image runtime unless a node points it at another one on purpose (8189 is the retired H3 runtime).
+    comfyVideoUrl: videoRuntimeUrl(overrides.comfyVideoUrl || process.env.NOVAFLOW_COMFY_VIDEO_URL || fileConfig.comfyVideoUrl, overrides.comfyImageUrl || process.env.NOVAFLOW_COMFY_IMAGE_URL || fileConfig.comfyImageUrl || 'http://127.0.0.1:8188'),
     modelsRoot: overrides.modelsRoot || process.env.NOVAFLOW_MODELS_ROOT || fileConfig.modelsRoot || '',
     gatewayPort: Number(overrides.gatewayPort || process.env.NOVAFLOW_GATEWAY_PORT || fileConfig.gatewayPort || 8790),
     gatewayHost: overrides.gatewayHost || process.env.NOVAFLOW_GATEWAY_HOST || fileConfig.gatewayHost || '0.0.0.0',
@@ -91,7 +93,7 @@ export async function startHeadlessWorker(overrides = {}) {
   // whose runtime.json or service script is missing simply reports it absent.
   promptAssistant = createPromptAssistant({
     worker, logger: overrides.logger,
-    comfyUrls: [config.comfyImageUrl, config.comfyVideoUrl].map(url => String(url).replace(/\/+$/, ''))
+    comfyUrls: [...new Set([config.comfyImageUrl, config.comfyVideoUrl].map(url => String(url).replace(/\/+$/, '')))]
   });
   await worker.start();
   return worker;

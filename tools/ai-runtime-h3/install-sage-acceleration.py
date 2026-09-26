@@ -1,12 +1,15 @@
-"""Install pinned Windows attention packages into the isolated H3 runtime only."""
+"""Install the pinned Windows attention packages (SageAttention + Triton) the H3 video nodes use.
+
+H3 runs on the single AI-Runtime (ComfyUI 0.37) since 2026-09-26; --runtime targets another install
+and --wheel-cache reuses wheels already downloaded (the SHA256 is still checked).
+"""
+import argparse
 import hashlib
 import json
 from pathlib import Path
 import subprocess
 import urllib.request
 
-RUNTIME = Path(r'C:\ProgramData\NovaFlow\AI-Runtime-H3')
-PYTHON = RUNTIME / 'engine/python/python.exe'
 PACKAGES = [
     ('sageattention-2.2.0+cu130torch2.9.0andhigher.post4-cp39-abi3-win_amd64.whl',
      'https://github.com/woct0rdho/SageAttention/releases/download/v2.2.0-windows.post4/sageattention-2.2.0%2Bcu130torch2.9.0andhigher.post4-cp39-abi3-win_amd64.whl',
@@ -17,7 +20,13 @@ PACKAGES = [
 ]
 
 if __name__ == '__main__':
-    cache = RUNTIME / 'generated/sage-packages'
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--runtime', default=r'C:\ProgramData\NovaFlow\AI-Runtime')
+    parser.add_argument('--wheel-cache', default='')
+    args = parser.parse_args()
+    RUNTIME = Path(args.runtime)
+    PYTHON = RUNTIME / 'engine/python/python.exe'
+    cache = Path(args.wheel_cache) if args.wheel_cache else RUNTIME / 'generated/sage-packages'
     cache.mkdir(parents=True, exist_ok=True)
     subprocess.run([str(PYTHON), '-c', "import sys,importlib.metadata as m; assert sys.version_info[:2]==(3,12); assert m.version('torch')=='2.10.0+cu130'"], check=True)
     wheels = []

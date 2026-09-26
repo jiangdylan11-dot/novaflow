@@ -95,6 +95,11 @@ export function createComfyClient({ baseUrl, fetchImpl, logger }) {
       try { await json('/interrupt', { method: 'POST' }); } catch { /* best effort */ }
     },
 
+    /** Unload every model and release cached memory (VRAM and the RAM copies ComfyUI keeps). */
+    async freeMemory() {
+      await json('/free', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ unload_models: true, free_memory: true }) });
+    },
+
     async cancelPrompt(promptId) {
       const signal = AbortSignal.timeout(5000);
       await json('/queue', { method: 'POST', signal, headers: { 'content-type': 'application/json' }, body: JSON.stringify({ delete: [promptId] }) });

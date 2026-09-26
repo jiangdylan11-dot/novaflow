@@ -4,7 +4,7 @@ import { createWorker } from './worker-core.mjs';
 import { createLocalTasks } from './local-tasks.mjs';
 import { startLocalServer } from './local-server.mjs';
 import { createLocalLicense } from './local-license.mjs';
-import { createRuntimeServices } from './runtime-services.mjs';
+import { createRuntimeServices, videoRuntimeUrl } from './runtime-services.mjs';
 import { createPromptAssistant } from './prompt-assistant.mjs';
 
 export async function createLocalAssistant(options) {
@@ -24,7 +24,7 @@ export async function createLocalAssistant(options) {
   // to ask for the memory back before it loads its own model.
   promptAssistant = createPromptAssistant({
     worker, logger: options.logger,
-    comfyUrls: [options.comfyImageUrl || 'http://127.0.0.1:8188', options.comfyVideoUrl || 'http://127.0.0.1:8189'].map(url => String(url).replace(/\/+$/, '')),
+    comfyUrls: [...new Set([options.comfyImageUrl || 'http://127.0.0.1:8188', videoRuntimeUrl(options.comfyVideoUrl, options.comfyImageUrl || 'http://127.0.0.1:8188')].map(url => String(url).replace(/\/+$/, '')))],
     ...(options.promptAssistant || {})
   });
   let server = null;

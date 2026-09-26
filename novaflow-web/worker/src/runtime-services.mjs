@@ -18,11 +18,27 @@ export function runRuntimeLauncher(command, args, { env = process.env, timeoutMs
   });
 }
 
-export function createRuntimeServices({ imageUrl = 'http://127.0.0.1:8188', videoUrl = 'http://127.0.0.1:8189', logger = () => {} } = {}) {
+// MiniMax H3 moved from its own runtime (AI-Runtime-H3, ComfyUI 0.31.1, port 8189) onto the one
+// AI-Runtime (ComfyUI 0.37, port 8188) on 2026-09-26: its 4 NovaFlow nodes and SageAttention were
+// installed there and the same H3 graphs ran at the same speed. Configs written before that still say
+// 8189 (electron/main.cjs wrote it as the default), so 8189 or nothing means the image runtime; any
+// other address is still honoured for a node that deliberately runs video elsewhere.
+export const LEGACY_VIDEO_PORT = 8189;
+
+export function videoRuntimeUrl(configured, imageUrl = 'http://127.0.0.1:8188') {
+  const url = String(configured || '').trim().replace(/\/+$/, '');
+  if (!url) return imageUrl;
+  try { if (Number(new URL(url).port) === LEGACY_VIDEO_PORT) return imageUrl; } catch { return imageUrl; }
+  return url;
+}
+
+export function createRuntimeServices({ imageUrl = 'http://127.0.0.1:8188', videoUrl = '', logger = () => {} } = {}) {
+  const video = videoRuntimeUrl(videoUrl, imageUrl);
   const entries = [
-    { kind: 'image', url: assertLocalOnly(imageUrl), root: join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow', 'AI-Runtime') },
-    { kind: 'video', url: assertLocalOnly(videoUrl), root: join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow', 'AI-Runtime-H3') }
+    { kind: 'image', url: assertLocalOnly(imageUrl), root: join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow', 'AI-Runtime') }
   ];
+  // Only a node that points video at a runtime of its own still has a second one to start.
+  if (video !== imageUrl) entries.push({ kind: 'video', url: assertLocalOnly(video), root: join(process.env.ProgramData || 'C:/ProgramData', 'NovaFlow', 'AI-Runtime-H3') });
   const owned = new Set();
   async function up(url) {
     try { return (await fetch(url + '/system_stats', { signal: AbortSignal.timeout(2500) })).ok; } catch { return false; }

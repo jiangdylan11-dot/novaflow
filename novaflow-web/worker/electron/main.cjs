@@ -89,7 +89,6 @@ function readConfig() {
       workerName: 'novaflow-' + require('node:os').hostname().toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 40),
       registrationCode: '',
       comfyImageUrl: 'http://127.0.0.1:8188',
-      comfyVideoUrl: 'http://127.0.0.1:8189',
       gatewayPort: 8790,
       publicEndpoint: '',
       modelsRoot: ''
@@ -139,7 +138,8 @@ async function ensureWorker() {
     ]),
     configPath: path.join(DATA_DIR, 'identity.json'),
     comfyImageUrl: config.comfyImageUrl || 'http://127.0.0.1:8188',
-    comfyVideoUrl: config.comfyVideoUrl || 'http://127.0.0.1:8189',
+    // Empty (and the retired 8189 older configs still hold) means the image runtime; see videoRuntimeUrl.
+    comfyVideoUrl: config.comfyVideoUrl || '',
     modelsRoot: config.modelsRoot || '',
     gatewayPort: Number(config.gatewayPort) || 8790,
     gatewayHost: '0.0.0.0',
