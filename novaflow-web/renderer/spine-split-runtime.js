@@ -12197,6 +12197,8 @@
     if (ownerSet && ownerSet.sourceResourceId && ownerSet.sourceResourceId !== state.activeSourceResourceId) {
       activateSourceResource(ownerSet.sourceResourceId, { resetViewport: false })
       if (ownerSet.id === state.activeSplitSetId) scheduleSplitPreviewRefresh({ delayMs: 40, idle: false })
+    } else if (ownerSet && ownerSet.id === state.activeSplitSetId && splitPreviewDrawnForOtherFrame()) {
+      scheduleSplitPreviewRefresh({ delayMs: 40, idle: false })
     }
     const previousViewMode = state.viewMode || 'parts'
     const secondaryButton = !!(event && event.button === 2)
@@ -12525,8 +12527,12 @@
     if (tagged) return tagged
     // Cards made before this rule carry no originKind: the one already holding this
     // source's 原图 layer is that source's card, so adopt it instead of duplicating it.
+    // A card that names another 原图 is not: 无限扩图 moves the old picture's card onto the
+    // new one and its 原图 layer keeps the old id, so adopting it drew the outpainted
+    // composite squeezed into the old picture's frame.
     return sets.find((set) => set
       && String(set.originKind || '') !== 'split'
+      && (!set.sourceResourceId || String(set.sourceResourceId) === sourceId)
       && (set.parts || []).some((part) => part
         && part.autoSourceLayer
         && String(part.sourceResourceId || '') === sourceId)) || null
@@ -12678,6 +12684,11 @@
     state.renameDraft = ''
     normalizeSelection()
     state.viewMode = 'parts'
+    // Its stored composite may have been drawn while another 原图 was on screen. Only redraw it in its
+    // own picture: a card whose 原图 was deleted stays as it was.
+    if (set.sourceResourceId && set.sourceResourceId === state.activeSourceResourceId && splitPreviewDrawnForOtherFrame()) {
+      scheduleSplitPreviewRefresh({ delayMs: 40, idle: false })
+    }
     if (!sourceChanged && sameActiveSet && isMountedCardVisible() && patchCurrentSplitSetExpansionInRightPanel(id, shouldExpand)) {
       return
     }
@@ -12754,6 +12765,30 @@
       ctx.drawImage(img, part.x, part.y)
     }
     return canvas.toDataURL('image/png')
+  }
+
+  // Pixel size of a composite, read from its PNG header without decoding it.
+  function splitPreviewPixelSize(dataUrl) {
+    const text = String(dataUrl || '')
+    if (!text.startsWith('data:image/png;base64,')) return null
+    try {
+      const head = atob(text.slice(22, 66))
+      if (head.slice(12, 16) !== 'IHDR') return null
+      const u32 = (at) => ((head.charCodeAt(at) << 24) >>> 0) + (head.charCodeAt(at + 1) << 16) + (head.charCodeAt(at + 2) << 8) + head.charCodeAt(at + 3)
+      return { width: u32(16), height: u32(20) }
+    } catch {
+      return null
+    }
+  }
+
+  // The composite about to be shown was drawn in another picture's frame: a card edited while another
+  // 原图 was on screen (its tile clicked, then a layer eye, delete or reorder) is built at that
+  // picture's size and would show squeezed into its own. Callers redraw it first.
+  function splitPreviewDrawnForOtherFrame() {
+    const size = splitPreviewPixelSize(state.splitPreviewDataUrl)
+    const frame = state.sourceSize
+    return !!(size && frame && frame.width && frame.height
+      && (size.width !== Math.round(frame.width) || size.height !== Math.round(frame.height)))
   }
 
   async function refreshSplitPreview() {
@@ -14300,6 +14335,9 @@
   function sourceEditableLayerForCurrentResource() {
     const sourceId = String(state.activeSourceResourceId || state.source && state.source.id || '')
     if (!sourceId) return null
+    // The expanded card may belong to another 原图 (see sourceToolSplitSetForCurrentResource).
+    const active = splitSetById(state.activeSplitSetId)
+    if (active && active.sourceResourceId && String(active.sourceResourceId) !== sourceId) return null
     return state.parts.find((part) => part && part.dataUrl && part.autoSourceLayer && String(part.sourceResourceId || '') === sourceId) || null
   }
 
@@ -20955,6 +20993,10 @@
           syncActiveSplitSet()
           adoptSplitSetForParts(existing.set)
         }
+        if (splitPreviewDrawnForOtherFrame()) {
+          await refreshSplitPreview()
+          syncActiveSplitSet()
+        }
         state.activePartId = existing.part.id
         state.selectedPartIds = [existing.part.id]
         return existing.part
@@ -26823,11 +26865,12 @@
     if (maskEditorApplyPromise) return maskEditorApplyPromise
     if (state.busy) return
     if (isMaskStencilActive()) resetMaskStencil({ silent: true, render: false })
-    const entrySnapshot = splitLayerHistorySnapshot('mask edit entry', state.activePartId || '')
+    let entrySnapshot = splitLayerHistorySnapshot('mask edit entry', state.activePartId || '')
     resetSelectionTool()
     resetPenTool()
     let part = currentEditableLayerPart()
     if (!part || !part.dataUrl) {
+      const setBefore = state.activeSplitSetId
       part = await ensureSourceAsEditableLayer('蒙版编辑')
       if (!part || !part.dataUrl) {
         setMessage('请先选择一个要使用蒙版编辑的图层', true)
@@ -26835,6 +26878,10 @@
         syncSplitWorkspace()
         return
       }
+      // The 原图 layer opened (or created) this picture's own card while another card was open:
+      // cancelling returns to it, since going back to that card put another picture's layers into
+      // this frame. With no card open before, cancelling still empties (and drops) the new card.
+      if (setBefore && state.activeSplitSetId !== setBefore) entrySnapshot = splitLayerHistorySnapshot('mask edit entry', part.id)
     }
     state.activePartId = part.id
     state.selectedPartIds = [part.id]
@@ -28981,6 +29028,8 @@
     const ownerSet = viewMode !== 'source' ? splitSetById(state.activeSplitSetId) : null
     if (ownerSet && ownerSet.sourceResourceId && ownerSet.sourceResourceId !== state.activeSourceResourceId) {
       activateSourceResource(ownerSet.sourceResourceId, { resetViewport: false })
+      scheduleSplitPreviewRefresh({ delayMs: 40, idle: false })
+    } else if (ownerSet && splitPreviewDrawnForOtherFrame()) {
       scheduleSplitPreviewRefresh({ delayMs: 40, idle: false })
     }
     state.activePartId = id || ''
