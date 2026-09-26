@@ -129,10 +129,10 @@ const latentInpaint = sandbox.NovaFlowWebRuntime.serverOnly('spine-split-runtime
 ]);
 const latentOptions = JSON.parse(String(latentInpaint)).options;
 const latentRefs = [{ name: 'image.png' }, { name: 'mask.png' }, { name: 'latent.png' }];
-// A task cannot switch smart completion to 2.1: the worker drops the engine choice and the undug crop.
+// Smart completion keeps the undug crop this task uploaded, renamed to the task's copy.
 const latentMapped = withReferences(latentOptions, ['task-image.png', 'task-mask.png', 'task-latent.png'], latentRefs, 'defaultQwenInpaintWorkflow');
 assert.deepEqual(latentMapped.__args.slice(1, 3), ['task-image.png', 'task-mask.png']);
-assert.equal(latentMapped.__args[5].latentInputName, undefined);
+assert.equal(latentMapped.__args[5].latentInputName, 'task-latent.png');
 assert.equal(latentMapped.__args[5].inpaintMode, 'completion');
 const engineAsked = JSON.parse(JSON.stringify(latentOptions));
 engineAsked.__args[5].inpaintEngine = 'qwen-2.1';
@@ -205,9 +205,8 @@ const build21 = async (inputSize, extra = {}, promptText = 'leg') => {
 };
 // The graph is built inside the host's vm context; bring it into this realm before deep comparisons.
 const byClass = (graph, type) => Object.entries(JSON.parse(JSON.stringify(graph))).filter(([, node]) => node.class_type === type);
-// Completion stays on 2509 unless the 2.1 engine is asked for: without it the 2.1-capable fixture falls
-// through to the 2509 graph, which this fixture cannot satisfy.
-await assert.rejects(build21({ width: 450, height: 700 }, { inpaintEngine: '' }), /UNETLoader/);
+// Completion runs on 2.1 whatever engine the task names.
+assert.equal(byClass(JSON.parse(JSON.stringify(await build21({ width: 450, height: 700 }, { inpaintEngine: '' }))), 'TextEncodeQwenImage21').length, 1);
 const g21 = JSON.parse(JSON.stringify(await build21({ width: 450, height: 700 })));
 assert.equal(byClass(g21, 'TextEncodeQwenImage21').length, 1);
 assert.equal(g21['3'].inputs.image, 'task-latent.png');
@@ -216,13 +215,8 @@ assert.equal(Object.keys(pads).length, 3);
 for (const pad of Object.values(pads)) assert.deepEqual([pad.left, pad.top, pad.right, pad.bottom, pad.feathering], [0, 0, 30, 4, 0]);
 const encodeFrom = byClass(g21, 'VAEEncode')[0][1].inputs.pixels[0];
 assert.deepEqual(pads[encodeFrom].image, ['3', 0]);
-// The reference is the undug crop with only the hole core taken from the dug plate.
-const reference = g21[g21['10'].inputs['images.image_1'][0]];
-assert.equal(reference.class_type, 'ImageCompositeMasked');
-assert.deepEqual(pads[reference.inputs.destination[0]].image, ['3', 0]);
-assert.deepEqual(pads[reference.inputs.source[0]].image, ['1', 0]);
-const core = g21[reference.inputs.mask[0]];
-assert.deepEqual([core.class_type, core.inputs.mask, core.inputs.value], ['ThresholdMask', ['8', 0], 0.9]);
+// The reference is the undug crop, the same one the latent is encoded from.
+assert.deepEqual(g21['10'].inputs['images.image_1'], [encodeFrom, 0]);
 assert.deepEqual(pads[g21['10'].inputs['images.image_2'][0]].image, ['2', 0]);
 // The noise mask is 1 across the pad strip, not the pad's grey.
 const noiseMask = g21[byClass(g21, 'SetLatentNoiseMask')[0][1].inputs.mask[0]];
@@ -270,7 +264,10 @@ assert.equal(i2iRelayout[byClass(i2iRelayout, 'KSampler')[0][1].inputs.latent_im
 assert.equal(byClass(await buildArt('img2img', ['ref.png'], [], { nsfw: true }), 'TextEncodeQwenImage21').length, 0);
 const template = ['User instruction, highest priority:', '补全腿部', '', 'Complete the masked missing area.', 'Transparent background.', '', 'Original protective context:', 'leg'].join(String.fromCharCode(10));
 const withParts = promptOf(JSON.parse(JSON.stringify(await build21(undefined, { promptParts: { user: '补全腿部，赤脚', part: 'Extend the leg.' } }, template))));
-assert.ok(withParts.includes('补全腿部，赤脚') && withParts.includes('Extend the leg.') && withParts.includes('bare feet'));
+// The user's own words lead (with the bare-feet rule they trigger); the layer's part guidance is only
+// used when the user wrote nothing.
+assert.ok(withParts.includes('补全腿部，赤脚') && withParts.includes('bare feet') && !withParts.includes('Extend the leg.'));
+assert.ok(promptOf(JSON.parse(JSON.stringify(await build21(undefined, { promptParts: { user: '', part: 'Extend the leg.' } }, template)))).includes('Extend the leg.'));
 assert.ok(!/Transparent background|Complete the masked missing area/.test(withParts));
 const merged = promptOf(JSON.parse(JSON.stringify(await build21(undefined, {}, template))));
 assert.ok(merged.includes('Complete the masked missing area.') && !/Transparent background/.test(merged));

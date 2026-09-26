@@ -8936,12 +8936,12 @@
   ]
   const QWEN21_VAE = 'qwen_image_2.1_vae_bf16.safetensors'
   const QWEN21_STEPS = 25
-  // Smart completion stays on 2509 + eigen-banana. In blind tests (15 box-selection cases, 3 judges each)
-  // 2509 still won hands, props, UI text and scene backgrounds, and removing eigen-banana from 2509
-  // brought back the same failure bare 2.1 shows (the pale hole kept as a flat block), so the gap is the
-  // missing completion LoRA rather than the base model. The 2.1 branch stays available on request.
+  // Smart completion runs on 2.1 since 2026-09-26. The earlier blind test that kept it on 2509 used the
+  // "game-art layer with a pale blank hole" wording below; with the 局部编辑 recipe (plain "picture"
+  // wording, the undug crop as reference, the user's own 补全...缺失结构 words) 2.1 beat 2509 +
+  // eigen-banana on real split layers (a qipao torso, a stocking thigh) and matched it on a bare leg.
   const QWEN21_COMPLETION_ENGINE = 'qwen-2.1'
-  const DEFAULT_COMPLETION_ENGINE = ''
+  const DEFAULT_COMPLETION_ENGINE = QWEN21_COMPLETION_ENGINE
 
   // Strict: the weight must actually appear in that loader's choice list. comfyChoiceFromCandidates
   // falls back to candidates[0] when a node reports no choices at all, which would light 2.1 up on a
@@ -8980,25 +8980,18 @@
   //     and carrying them over makes 2.1 stop inpainting altogether
   //   * negative_prompt is left empty on purpose: at cfg=1 ComfyUI drops uncond entirely
   //     (comfy/samplers.py cond_scale==1 -> uncond_ = null), so it would be dead weight
-  // The 2509 completion instruction ("infer the missing structure inside the selected mask") only works
-  // there because the completion LoRA was trained on it. 2.1 reads it as "nothing to add": on a layer
-  // whose name matches no part word it left 99% of the hole empty and erased a hand that was cut out.
-  // Describing the hole and what belongs in it made it fill 100% of the hole on legs and on a hand, and
-  // it still honours the part-word guidance (bare feet for leg layers).
-  const QWEN21_COMPLETION_INSTRUCTION = 'The first image is a game-art character layer with a pale blank hole cut into it. The second image marks that hole in white. Redraw inside the hole the missing parts of the figure that the surrounding pixels lead into (body, limbs, hands, feet, clothing, hair, weapon or object), continuing their outlines, colors, line art and shading so the figure is whole again. Keep the same game-art style, lighting, color palette and perspective, and keep everything outside the hole exactly as it is.'
-
-  // The 2509 completion template (SELECTION_INPAINT_MODE_TEMPLATES.completion, added whenever the user
-  // types a 修图要求) ends with "Transparent background.". 2509 cannot output alpha and ignores it; 2.1
-  // decodes RGBA and has a strong cut-out prior, so with that line 57% of a leg-shaped hole came out
-  // semi-transparent and the result was grey smears. Build the 2.1 prompt from the user's own
-  // words and the part guidance instead; a caller that only has the merged text loses that line.
+  // The 2509 completion template ends with "Transparent background." and calls the input a game-art
+  // layer with a hole; 2.1 reads both as "leave it empty / cut out" (grey smears, half-transparent legs).
+  // Plain picture wording plus what is missing works: without it 2.1 invents things to put in the hole
+  // (an extra garter strap, a second chest shape), with it it draws the named part.
   function qwen21CompletionPromptText(promptText, promptParts) {
     const user = String(promptParts && promptParts.user || '').trim()
     const part = String(promptParts && promptParts.part || '').trim()
-    const body = promptParts
-      ? [user ? inpaintUserInstructionText(user) : '', part].filter(Boolean).join('\n')
-      : String(promptText || '').replace(/^\s*Transparent background\.?\s*$/gim, '').trim()
-    return `${QWEN21_COMPLETION_INSTRUCTION} ${body}`.trim()
+    const task = user
+      ? `Inside the white area only: ${inpaintUserInstructionText(user).replace(/\s+/g, ' ')}`
+      : 'Inside the white area only: redraw the missing part of the subject so that it is whole again.'
+    const hint = !user && part ? ` ${part}` : !promptParts ? ` ${String(promptText || '').replace(/^\s*Transparent background\.?\s*$/gim, '').trim()}` : ''
+    return `The first image is a picture. The second image marks one area in white. Part of the subject is missing inside the white area. ${task} Continue its outlines, shapes, colors, line art, texture and shading from the surrounding pixels, blend it naturally into the surrounding picture with the same art style, lighting, colors and perspective, and keep everything outside the white area exactly as it is.${hint}`.trim()
   }
 
   // 局部编辑 on 2.1 (measured 2026-09-26 against the 2511 Edit V5 route on eight selections, two of
@@ -9012,11 +9005,11 @@
   }
 
   function buildQwen21InpaintWorkflow(info, runtime, imageName, maskName, prefix, promptText, route, latentInputName, inputSize, promptParts) {
-    // Edit mode shows the model the undug crop everywhere (it has to see what it is changing) and
-    // puts that same crop back under any pixel 2.1 leaves transparent. A page older than the node
-    // sends no undug crop; edit still keeps its own prompt and falls back to the plate, because the
-    // completion prompt drew sunglasses half-transparent over the fringe.
+    // Both modes show the model the undug crop everywhere (it has to see what it is changing or
+    // continuing) and put that same crop back under any pixel 2.1 leaves transparent. A page older than
+    // the node sends no undug crop and falls back to the dug plate; the prompt still follows the mode.
     const edit = !!(route && route.mode === 'edit')
+    const undug = !!latentInputName
     const text = edit ? qwen21EditPromptText(promptText, promptParts) : qwen21CompletionPromptText(promptText, promptParts)
     // The 2.1 VAE centre-crops anything that is not a multiple of 16 before encoding, and
     // TextEncodeQwenImage21 rounds its references to multiples of 32. cropPadEngine aligns the crop to
@@ -9061,22 +9054,7 @@
       nextId += 1
     }
     workflow['9'] = { class_type: 'SetLatentNoiseMask', inputs: buildComfyNodeInputs(info.SetLatentNoiseMask, { samples: ['7', 0], mask: noiseMaskRef }) }
-    // The dug plate fades the layer into the pale hole across the feathered mask edge, which is right
-    // for 2509's LoRA but 2.1 continues the fade: on a leg-shaped hole the shins came out as pale
-    // translucent stockings with a hard line where the hole starts. With the undug crop at hand the
-    // reference keeps the layer crisp and only the hole core (mask >= 0.9) shows the dug plate.
-    let referenceRef = edit ? latentPixelsRef : plateRef
-    if (latentInputName && !edit) {
-      workflow[String(nextId)] = { class_type: 'ThresholdMask', inputs: { mask: ['8', 0], value: 0.9 } }
-      const coreId = String(nextId)
-      nextId += 1
-      workflow[String(nextId)] = {
-        class_type: 'ImageCompositeMasked',
-        inputs: buildComfyNodeInputs(info.ImageCompositeMasked, { destination: latentPixelsRef, source: plateRef, x: 0, y: 0, resize_source: false, mask: [coreId, 0] })
-      }
-      referenceRef = [String(nextId), 0]
-      nextId += 1
-    }
+    const referenceRef = undug ? latentPixelsRef : plateRef
     workflow['10'] = {
       class_type: 'TextEncodeQwenImage21',
       inputs: buildComfyNodeInputs(info.TextEncodeQwenImage21, {
@@ -9129,7 +9107,7 @@
     workflow[String(nextId)] = {
       class_type: 'ImageCompositeMasked',
       inputs: buildComfyNodeInputs(info.ImageCompositeMasked, {
-        destination: edit ? latentPixelsRef : plateRef,
+        destination: undug ? latentPixelsRef : plateRef,
         source: [splitId, 0],
         x: 0,
         y: 0,
@@ -9152,13 +9130,12 @@
     const route = options && options.route || resolveInpaintWorkflowRoute(options && options.inpaintMode, options && options.inpaintProvider)
     const info = await comfyAllObjectInfo(baseUrl).catch(() => ({}))
     const qwen21 = qwen21Runtime(info)
-    const can21 = !!(qwen21 && info.VAEEncode && info.SetLatentNoiseMask && info.ImageToMask && info.KSampler && info.SplitImageWithAlpha && info.InvertMask && info.ImageCompositeMasked && info.ImagePadForOutpaint && info.ImageCrop && info.MaskComposite && info.ThresholdMask)
-    // 局部编辑 always runs on 2.1 (see qwen21EditPromptText); every node carries it. Completion is
-    // opt-in only (see DEFAULT_COMPLETION_ENGINE).
-    const editOn21 = route.mode === 'edit'
-    if (editOn21 && !can21) throw new Error('当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行局部编辑。请在本地助手里重新启动 NovaFlow 后再试')
-    const wantsQwen21 = editOn21 || !!(options && options.inpaintEngine === QWEN21_COMPLETION_ENGINE && route.mode === 'completion')
-    if (wantsQwen21 && can21) {
+    const can21 = !!(qwen21 && info.VAEEncode && info.SetLatentNoiseMask && info.ImageToMask && info.KSampler && info.SplitImageWithAlpha && info.InvertMask && info.ImageCompositeMasked && info.ImagePadForOutpaint && info.ImageCrop && info.MaskComposite)
+    // 局部编辑 and 智能补全 always run on 2.1 (see qwen21EditPromptText / qwen21CompletionPromptText);
+    // every node carries it.
+    const wantsQwen21 = route.mode === 'edit' || route.mode === 'completion'
+    if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行${route.mode === 'edit' ? '局部编辑' : '智能补全'}。请在本地助手里重新启动 NovaFlow 后再试`)
+    if (wantsQwen21) {
       setInpaintDebugAttr('workflow-engine', 'qwen-2.1')
       setInpaintDebugAttr('workflow-mode', normalizeSelectionInpaintMode(options && options.inpaintMode))
       setInpaintDebugAttr('workflow-provider', route.provider)
