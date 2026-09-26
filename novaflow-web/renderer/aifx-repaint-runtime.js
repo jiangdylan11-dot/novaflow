@@ -1230,13 +1230,12 @@
         position: relative;
       }
       #${APP_ID} .aifx-candidates[data-candidates] button.aifx-candidate {
-        border: 2px solid rgba(255,255,255,0.12) !important;
+        border: 1px solid rgba(255,255,255,0.12) !important;
         box-shadow: none !important;
       }
       #${APP_ID} .aifx-candidates[data-candidates] button.aifx-candidate:hover,
       #${APP_ID} .aifx-candidates[data-candidates] button.aifx-candidate.is-active {
         border-color: ${AIFX_ACCENT} !important;
-        box-shadow: 0 0 0 1px ${AIFX_ACCENT} !important;
       }
       .aifx-candidate canvas { width: 100%; height: 100%; display: block; }
       .aifx-candidate-index {
