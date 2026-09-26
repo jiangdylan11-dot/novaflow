@@ -1092,15 +1092,17 @@
       /(?:保留|沿用|跟随|保持)[^。\n]{0,35}(?:原|源|参考|相同)[^。\n]{0,20}(?:镜头|相机|摄像机|机位)|(?:镜头|相机|摄像机|机位)[^。\n]{0,35}(?:沿用|跟随|保留)[^。\n]{0,20}(?:原|源|参考)/u.test(narrative)
       || /(?:保留|沿用|保持)[^。\n]{0,80}(?:镜头|相机|摄像机|机位)|(?:镜头|相机|摄像机|机位)[^。\n]{0,80}(?:保留|沿用|保持)|\b(?:keep|retain\w*|preserv\w*|maintain\w*)\b[^.\n]{0,80}\bcamera\b|\bcamera\b[^.\n]{0,80}\b(?:retain\w*|preserv\w*|maintain\w*|unchanged)\b/iu.test(sourceCameraBindings)
     )
-    // The Chinese display prompt only translates the already gated model prompt.
-    const translation = options?.translation === true
-    if (!translation && !ACTION_PROGRESSION_EXPRESSION.test(narrative) && !hasIdleOrStillMotion && !hasSourceMotion && !sourceVideoEdit) {
+    // Keyword gates misread real 多参 motion ("approaches", "meet") as a static
+    // caption. The reference validator already completes a missing camera, so
+    // these gates stay for the single-protocol modes only.
+    const skipKeywordGates = protocol.mode === 'multi_reference'
+    if (!skipKeywordGates && !ACTION_PROGRESSION_EXPRESSION.test(narrative) && !hasIdleOrStillMotion && !hasSourceMotion && !sourceVideoEdit) {
       throw new Error('MiniMax H3 narrative must describe action progression, not only a static image caption')
     }
     // An edit inherits the source camera unless the edit asks to change it.
     // Requiring users/models to restate that implicit choice rejected valid
     // wardrobe, color and style edits with otherwise complete video bindings.
-    if (!translation && !CAMERA_DIRECTION_EXPRESSION.test(narrative) && !hasSourceCamera && !sourceVideoEdit) {
+    if (!skipKeywordGates && !CAMERA_DIRECTION_EXPRESSION.test(narrative) && !hasSourceCamera && !sourceVideoEdit) {
       throw new Error('MiniMax H3 narrative must state an explicit camera movement or locked-camera choice')
     }
     return deepFreeze({
@@ -1139,7 +1141,7 @@
     }
     if (pair) pair = globalThis.NovaFlowH3PromptFormat.referenceResult(globalThis.NovaFlowH3PromptFormat.validateReferenceResult(input.text, {requirements:'Available resource labels: ' + catalog.references.map(r=>r.modelToken).join('; '), durationSeconds:context.durationSeconds, currentPrompt:input.current?.prompt || ''}))
     const validation = validatePromptText(pair ? serialized(pair.modelPrompt) : input.text, validationOptions)
-    const displayed = pair ? validatePromptText(serialized(pair.displayPrompt), {...validationOptions, translation: true}) : validation
+    const displayed = pair ? validatePromptText(serialized(pair.displayPrompt), validationOptions) : validation
     const restoredText = context.mode === 'multi_reference'
       ? globalThis.NovaFlowH3PromptFormat.toReferenceDisplay(toDisplayReferences(displayed.text, catalog))
       : validation.text

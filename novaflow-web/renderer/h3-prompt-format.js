@@ -169,7 +169,6 @@ function compileReferenceFields(value, options) {
   fields.retention_analysis = retention;
   return fields;
 }
-const referenceActionPattern = /\b(?:begin(?:s)?|then|next|gradually|progress(?:es|ion)?|continues?|turns?|moves?|raises?|lowers?|completes?|finally|resolves?|transition|motion|action|repeat\w*|repetition|rhythm\w*|cycl\w*|thrust\w*|accelerat\w*|decelerat\w*|oscillat\w*|pulse\w*|rotat\w*|return\w*|spins?|breath\w*|idle|remain\w* still|completely still)\b/i;
 function validateReferenceResult(value, options = {}) {
   const pair = referenceResult(value);
   if (!pair) {
@@ -196,9 +195,6 @@ function validateReferenceResult(value, options = {}) {
     modelPrompt = appendNarrative(modelPrompt, 'The camera remains static and the framing stays stable.');
     if (!cameraPattern.test(narrativeOf(displayPrompt))) displayPrompt = appendNarrative(displayPrompt, '镜头固定，构图保持稳定。');
   }
-  // A static caption gives H3 nothing to animate. Fail with a named reason so
-  // the provider repair asks for the action instead of the editor rejecting it.
-  if (!/summary:\s*\[[^\]]*\bvideo editing\b/.test(modelPrompt) && !referenceActionPattern.test(narrativeOf(modelPrompt))) throw new Error('H3 多参画面缺少动作过程');
   const narrative = modelPrompt.split('detailed_description:')[1]?.split('overall_soundscape:')[0] || '';
   const prose = narrative.replace(/<d>[\s\S]*?<\/d>|<(?:Picture|Video|Audio|Subject) \d+>|\[Shot \d+\]|"[^"\n]*"|“[^”\n]*”/g, '');
   const han = (prose.match(/[\u3400-\u9fff]/g)||[]).length;
@@ -322,6 +318,12 @@ function validateReference(value, options = {}) {
   }
   if (ids.some(id => !fields.detailed_description.includes('<Subject ' + id + '>'))) throw new Error('H3 多参镜头必须引用已定义主体');
   if (!fields.detailed_description.includes('[Shot 1]')) throw new Error('H3 多参缺少镜头描述');
+  // Later shots need a cut time. When the model gives none, space the cuts evenly.
+  const shotCount = (fields.detailed_description.match(/\[Shot [1-9]\d*\]/g) || []).length;
+  if (shotCount > 1 && !/\[Shot \d+\] At \d/.test(fields.detailed_description)) {
+    const at = s => { const ms = Math.round(s * 1000); return String(Math.floor(ms / 60000)).padStart(2, '0') + ':' + String(Math.floor(ms / 1000) % 60).padStart(2, '0') + '.' + String(ms % 1000).padStart(3, '0'); };
+    fields.detailed_description = fields.detailed_description.replace(/\[Shot ([2-9]|[1-9]\d+)\]/g, (tag, n) => tag + ' At ' + at(Number(options.durationSeconds || 30) * (n - 1) / shotCount));
+  }
   for (const m of fields.detailed_description.matchAll(/\[Shot \d+\] At (\d+):(\d+)\.(\d+)/g)) {
     if (Number(m[1])*60 + Number(m[2]) + Number('0.'+m[3]) > Number(options.durationSeconds || 30)) throw new Error('H3 多参镜头超出所选时长');
   }
@@ -336,7 +338,7 @@ const validationIssues = [
   ['references', ['H3 多参引用与已上传素材不一致', 'H3 多参主体缺少独立定义', 'H3 多参主体必须说明外观或动作的素材来源', 'H3 多参缺少主体或声音的保留规则', 'H3 多参镜头必须引用已定义主体']],
   ['sections', ['H3 多参需要完整的六个参考字段', 'H3 多参字段不能为空']],
   ['references', ['H3 多参缺少明确任务关系', 'H3 视频编辑必须指定源视频']],
-  ['timeline', ['H3 多参缺少镜头描述', 'H3 多参镜头超出所选时长', 'H3 多参画面缺少动作过程']],
+  ['timeline', ['H3 多参缺少镜头描述', 'H3 多参镜头超出所选时长']],
   ['language', ['请将任务定位、整体描述、时间段及约束改为简体中文，保留原台词和媒体标签']],
   ['sections', ['五段提示词字段缺失或为空', '请按任务定位、说话者、递进式详细提示词、台词、连续性与约束输出完整五段', '五段提示词内容不能为空']],
   ['timeline', ['详细提示词缺少分时段动作', '动作时间段必须从 0 连续递进且不超过所选时长', '动作时间段未覆盖完整时长']],
