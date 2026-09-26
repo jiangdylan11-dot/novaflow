@@ -9118,9 +9118,10 @@
   // Measured 2026-09-26 on a split back leg hidden behind the front leg: 2.1 filled the selection with a
   // flat skin block whatever it was shown (it keeps what the reference holds there), 2509 drew a whole
   // lower body with underwear or a skirt, and Flux Fill (the 去除物体 base model, without the removal
-  // LoRA) drew a thigh, knee and calf. Its colours drift, so the page colour-matches the result
-  // (fluxCompletionColorMatch); a white matte made it paint a whole new figure into the hole, so the
-  // canvases keep the average-colour matte. T5 reads English only, so the user's 补全...缺失结构 goes
+  // LoRA) drew a thigh, knee and calf. Its output is used as it
+  // comes: a page-side colour shift was tried and, on a skin layer whose matte is skin, it misread the leg
+  // as background and pushed it 30 levels lighter than the shin it joins. A white matte made it paint a
+  // whole new figure into the hole, so the canvases keep the average-colour matte. T5 reads English only, so the user's 补全...缺失结构 goes
   // through a part-word table.
   const FLUX_COMPLETION_PROVIDER = 'flux-fill'
   const FLUX_COMPLETION_PART_WORDS = [
@@ -18975,77 +18976,6 @@
     return finalCanvas
   }
 
-  // Flux Fill paints limbs in its own tone (pinker on one split leg, paler on another). Shift what it drew
-  // to the colour of the layer pixels right around the hole, or of the whole layer when only a sliver of
-  // it is left there (a back leg keeps a few pixels near the hole and its own darker shin further down).
-  // Only a mean shift, clamped to 30 levels: matching the spread as well pulled a leg to grey. Pixels
-  // close to the matte it was given (the background it continued) stay out of the statistics.
-  async function fluxCompletionColorMatch(resultDataUrl, cropImageCanvas, maskCanvas) {
-    const width = Math.max(1, Math.round(cropImageCanvas && cropImageCanvas.width || 1))
-    const height = Math.max(1, Math.round(cropImageCanvas && cropImageCanvas.height || 1))
-    const resultCanvas = await canvasFromDataUrl(resultDataUrl, width, height)
-    const resultCtx = resultCanvas.getContext('2d', { willReadFrequently: true })
-    const out = resultCtx.getImageData(0, 0, width, height)
-    const layer = cropImageCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const mask = maskCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
-    const total = width * height
-    const radius = 30
-    const sat = new Int32Array((width + 1) * (height + 1))
-    for (let y = 0; y < height; y += 1) {
-      let row = 0
-      for (let x = 0; x < width; x += 1) {
-        row += maskPixelValue(mask, (y * width + x) * 4) > 5 ? 1 : 0
-        sat[(y + 1) * (width + 1) + x + 1] = sat[y * (width + 1) + x + 1] + row
-      }
-    }
-    const matte = averageVisibleRgb(cropImageCanvas)
-    const ring = [0, 0, 0]
-    const whole = [0, 0, 0]
-    const gen = [0, 0, 0]
-    let ringCount = 0
-    let wholeCount = 0
-    let genCount = 0
-    for (let y = 0; y < height; y += 1) {
-      const y0 = Math.max(0, y - radius)
-      const y1 = Math.min(height, y + radius + 1)
-      for (let x = 0; x < width; x += 1) {
-        const i = (y * width + x) * 4
-        const m = maskPixelValue(mask, i)
-        if (m > 5) {
-          const d = Math.max(Math.abs(out.data[i] - matte.r), Math.abs(out.data[i + 1] - matte.g), Math.abs(out.data[i + 2] - matte.b))
-          if (m > 200 && d > 24) { for (let c = 0; c < 3; c += 1) gen[c] += out.data[i + c]; genCount += 1 }
-          continue
-        }
-        if (layer[i + 3] <= 200) continue
-        for (let c = 0; c < 3; c += 1) whole[c] += layer[i + c]
-        wholeCount += 1
-        const x0 = Math.max(0, x - radius)
-        const x1 = Math.min(width, x + radius + 1)
-        if (sat[y1 * (width + 1) + x1] - sat[y0 * (width + 1) + x1] - sat[y1 * (width + 1) + x0] + sat[y0 * (width + 1) + x0]) {
-          for (let c = 0; c < 3; c += 1) ring[c] += layer[i + c]
-          ringCount += 1
-        }
-      }
-    }
-    const useRing = ringCount >= 2000
-    const refSum = useRing ? ring : whole
-    const refCount = useRing ? ringCount : wholeCount
-    const stats = { ringCount, wholeCount, genCount, reference: useRing ? 'ring' : 'layer', applied: false }
-    if (refCount >= 200 && genCount >= 200) {
-      const shift = [0, 1, 2].map((c) => clampNumber(refSum[c] / refCount - gen[c] / genCount, -30, 30))
-      for (let p = 0; p < total; p += 1) {
-        const i = p * 4
-        const w = maskPixelValue(mask, i) / 255
-        if (w <= 0) continue
-        for (let c = 0; c < 3; c += 1) out.data[i + c] = Math.round(clampNumber(out.data[i + c] + shift[c] * w, 0, 255))
-      }
-      resultCtx.putImageData(out, 0, 0)
-      Object.assign(stats, { applied: true, shift: shift.map(Math.round) })
-    }
-    state.lastProcessingDebug = { ...(state.lastProcessingDebug || {}), fluxColorMatch: stats }
-    return stats.applied ? resultCanvas.toDataURL('image/png') : resultDataUrl
-  }
-
   function averageVisibleRgb(canvas) {
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
     const image = ctx.getImageData(0, 0, canvas.width, canvas.height)
@@ -23270,7 +23200,7 @@
       setInpaintDebugAttr('execute-provider', executionRoute.provider)
       setInpaintDebugAttr('execute-restore-strategy', restoreStrategy ? restoreStrategy.id : '')
       setInpaintDebugAttr('execute-prompt-head', inpaintPrompt.slice(0, 1000))
-      const rawResult = await runLayerInpaintValidated(inputCanvases.modelInput.toDataURL('image/png'), modelMaskCanvas.toDataURL('image/png'), inpaintPrompt, qwenCrop, part, {
+      const result = await runLayerInpaintValidated(inputCanvases.modelInput.toDataURL('image/png'), modelMaskCanvas.toDataURL('image/png'), inpaintPrompt, qwenCrop, part, {
         inpaintMode: selectionInpaintMode,
         route: executionRoute,
         inpaintEngine: DEFAULT_COMPLETION_ENGINE,
@@ -23280,7 +23210,6 @@
         // never reads it, and in web mode an upload no task references is never released.
         latentInputDataUrl: inputCanvases.latentInput && executionRoute.workflow === 'qwen' && (executionRoute.mode === 'edit' || DEFAULT_COMPLETION_ENGINE === QWEN21_COMPLETION_ENGINE) ? inputCanvases.latentInput.toDataURL('image/png') : ''
       })
-      const result = executionRoute.flux ? await fluxCompletionColorMatch(rawResult, qwenCrop.cropImage, modelMaskCanvas) : rawResult
       const normalizedFullMask = normalizeMaskCanvas(cloneCanvas(processingMaskCanvas))
       const patchPart = executionRoute.outputMode === 'replacement'
         ? await mergeRemovalInpaintResult(part, qwenCrop, layerOriginalCanvas, normalizedFullMask, result)
