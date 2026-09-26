@@ -125,10 +125,11 @@
     const deadline = Date.now() + (Number(options.timeoutMs) || DEFAULT_TIMEOUT_MS)
     while (Date.now() < deadline) {
       if (options.signal && options.signal.aborted) throw new Error('AI 特效生成已取消')
+      let entry = null
       const historyResponse = await fetch(BASE_URL + '/history/' + promptId)
       if (historyResponse.ok) {
         const history = await historyResponse.json()
-        const entry = history[promptId]
+        entry = history[promptId]
         if (entry) {
           const status = entry.status || {}
           if (status.status_str === 'error') throw failureFrom(status)
@@ -143,7 +144,9 @@
           if (status.completed) throw new Error('AI 特效：生成完成但没有输出')
         }
       }
-      if (typeof options.onProgress === 'function') options.onProgress({ promptId })
+      // On the Web the history entry carries the node's reported percentage; ComfyUI's own has none.
+      const progress = entry && entry.novaflow ? entry.novaflow.progress : null
+      if (typeof options.onProgress === 'function') options.onProgress({ promptId, progress })
       await sleep(POLL_INTERVAL_MS)
     }
     throw new Error('AI 特效生成超时')

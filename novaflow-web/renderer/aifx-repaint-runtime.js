@@ -1111,6 +1111,49 @@
         white-space: nowrap;
       }
       .aifx-preview-status-detail:empty { display: none; }
+      /* A run's progress sits under its status line, the bar and a square stop as the other docks have. */
+      .aifx-preview-status { flex-wrap: wrap; }
+      .aifx-preview-progress {
+        flex: 0 0 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        pointer-events: auto;
+      }
+      .aifx-preview-progress[hidden] { display: none; }
+      .aifx-preview-progress-track {
+        flex: 0 1 360px;
+        width: 360px;
+        height: 3px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.12);
+        overflow: hidden;
+      }
+      .aifx-preview-progress-fill {
+        height: 100%;
+        width: 0%;
+        background: #1ea672;
+        transition: width 0.3s ease;
+      }
+      #${APP_ID} .aifx-preview-progress-cancel {
+        flex: 0 0 24px;
+        width: 24px;
+        min-width: 24px;
+        height: 24px;
+        min-height: 24px;
+        padding: 0;
+        border-radius: 5px;
+        border: 1px solid rgba(239, 68, 68, 0.55);
+        background: rgba(239, 68, 68, 0.18);
+        color: #fff;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+      }
+      #${APP_ID} .aifx-preview-progress-cancel:hover { background: rgba(239, 68, 68, 0.28); }
       .aifx-preview-status[data-tone="working"] { color: rgba(140, 240, 210, 0.96); }
       .aifx-preview-status[data-tone="success"] { color: rgba(170, 245, 222, 0.92); }
       .aifx-preview-status[data-tone="warning"] { color: rgba(250, 214, 137, 0.96); }
@@ -1280,6 +1323,10 @@
             <div class="aifx-preview-status" data-preview-status data-tone="idle" role="status" aria-live="polite" aria-atomic="true">
               <span class="aifx-preview-status-title" data-preview-status-title>等待素材</span>
               <span class="aifx-preview-status-detail" data-preview-status-detail>上传一段黑底特效动画，或载入内置模板。</span>
+              <div class="aifx-preview-progress" data-preview-progress hidden>
+                <div class="aifx-preview-progress-track"><div class="aifx-preview-progress-fill" data-preview-progress-fill></div></div>
+                <button class="aifx-preview-progress-cancel" data-action="cancel-generate" type="button" title="中止生成" aria-label="中止生成">×</button>
+              </div>
             </div>
           </section>
           <section class="aifx-candidates" data-candidates hidden></section>
@@ -1885,6 +1932,15 @@
       Boolean(String(state.supplement || '').trim()))
   }
 
+  // The stop under the status line: the poll loop sees the signal, and /interrupt cancels the task on
+  // the node - including one still waiting for a node, which ends the upload wait with it.
+  const cancelGenerate = () => {
+    if (!state.isGenerating || !state.abort || state.abort.signal.aborted) return
+    state.abort.abort()
+    setStatus('正在中止', '')
+    CLIENT()?.interrupt?.()
+  }
+
   const runGenerate = async () => {
     const restyle = RESTYLE()
     const client = CLIENT()
@@ -1898,20 +1954,42 @@
     }
     state.isGenerating = true
     state.abort = new AbortController()
+    state.progress = 0
     refreshUi()
+    let stageLabel = ''
+    let stageBase = 0
+    let stageSpan = 1
+    // One run is 1..4 candidates in a row; each owns an equal slice of the bar.
+    const setProgress = (fraction) => {
+      state.progress = stageBase + stageSpan * clamp(fraction, 0, 1)
+      refreshUi()
+    }
+    const onWait = (event) => {
+      if (!state.isGenerating || signal.aborted) return
+      state.detail = [stageLabel, '等待算力节点 ' + (event.detail?.seconds || 0) + ' 秒'].filter(Boolean).join(' \u00b7 ')
+      setProgress(0.04)
+    }
+    window.addEventListener('novaflow:web-task-wait', onWait)
+    // 中止 must end the run at once: the runtime check and the node wait do not look at the signal.
+    const signal = state.abort.signal
+    const stoppable = (promise) => new Promise((resolve, reject) => {
+      if (signal.aborted) { reject(new Error('AI 特效生成已取消')); return }
+      signal.addEventListener('abort', () => reject(new Error('AI 特效生成已取消')), { once: true })
+      promise.then(resolve, reject)
+    })
     try {
       setStatus('准备运行时', '正在确认 H3 运行时。')
-      await client.ensureRuntime({ reason: 'aifx-restyle' })
+      await stoppable(client.ensureRuntime({ reason: 'aifx-restyle' }))
 
       // On the Web a staged upload belongs to the one task that takes it, so every run (and every
       // candidate below) uploads afresh; the desktop runtime keeps the files and the names stay valid.
       const web = !!(typeof window === 'object' && window.NovaFlowWebRuntime && window.NovaFlowWebRuntime.isWeb)
       const uploadInputs = async () => {
         setStatus('上传素材', state.source.fileName)
-        state.source.uploadedName = await client.uploadFile(state.source.blob, state.source.fileName)
+        state.source.uploadedName = await stoppable(client.uploadFile(state.source.blob, state.source.fileName))
         if (state.reference) {
           setStatus('上传参考图', state.reference.fileName)
-          state.reference.uploadedName = await client.uploadFile(state.reference.blob, state.reference.fileName)
+          state.reference.uploadedName = await stoppable(client.uploadFile(state.reference.blob, state.reference.fileName))
         }
       }
       if (web || !state.source.uploadedName || (state.reference && !state.reference.uploadedName)) await uploadInputs()
@@ -1920,7 +1998,11 @@
       const total = Math.max(1, Math.min(4, Math.round(state.candidateCount) || 1))
       state.candidates = []
       state.selectedCandidate = 0
+      stageSpan = 1 / total
       for (let index = 0; index < total; index += 1) {
+        if (state.abort.signal.aborted) throw new Error('AI 特效生成已取消')
+        stageBase = index / total
+        setProgress(0.01)
         if (web && index > 0) await uploadInputs()
         const seed = state.lockedSeed == null
           ? Math.floor(Math.random() * 0xffffffff)
@@ -1944,11 +2026,26 @@
           seed,
         })
         restyle.validateWorkflow(workflow)
-        setStatus('生成中', total > 1 ? label + ' \u00b7 \u5019\u9009 ' + (index + 1) + '/' + total : label)
-        refreshUi()
-        const result = await client.submit(workflow, { signal: state.abort.signal })
+        stageLabel = [label, total > 1 ? '\u5019\u9009 ' + (index + 1) + '/' + total : ''].filter(Boolean).join(' \u00b7 ')
+        setStatus('生成中', stageLabel)
+        setProgress(0.03)
+        const startedAt = Date.now()
+        const result = await stoppable(client.submit(workflow, {
+          signal,
+          // The node's own percentage when it reports one; otherwise a slow creep so the bar is alive.
+          onProgress: ({ progress } = {}) => {
+            if (signal.aborted) return
+            const reported = Number(progress)
+            const creep = 1 - Math.exp(-(Date.now() - startedAt) / 90000)
+            state.detail = stageLabel
+            setProgress(0.05 + 0.85 * (reported > 0 ? reported / 100 : creep))
+          },
+        }))
         const frames = []
-        for (const url of result.frames) frames.push(await client.loadImage(url))
+        for (const url of result.frames) {
+          frames.push(await client.loadImage(url))
+          setProgress(0.9 + 0.1 * frames.length / Math.max(1, result.frames.length))
+        }
         state.candidates.push({ seed, result, frames })
         // Show the first one the moment it lands rather than leaving the canvas
         // empty while the rest render.
@@ -1962,12 +2059,19 @@
         }
         renderCandidates()
       }
+    } catch (error) {
+      // A stopped run ends quietly; the candidates that did land stay.
+      if (!state.abort?.signal.aborted) throw error
     } finally {
+      window.removeEventListener('novaflow:web-task-wait', onWait)
+      const stopped = Boolean(state.abort?.signal.aborted)
+      state.progress = 0
       // The summary has to be written after the flag clears: setStatusFromState
       // deliberately leaves a run's progress text alone while one is in flight.
       state.isGenerating = false
       state.abort = null
-      setStatusFromState()
+      if (stopped) setStatus('已中止', '')
+      else setStatusFromState()
       refreshUi()
       drawPreview()
     }
@@ -2006,7 +2110,7 @@
   const renderCandidates = () => {
     const host = state.refs.candidates
     if (!host) return
-    host.hidden = state.candidates.length < 2
+    host.hidden = state.candidates.length < 1
     host.innerHTML = ''
     state.candidates.forEach((candidate, index) => {
       const button = document.createElement('button')
@@ -2788,6 +2892,9 @@
     refs.previewStatus = root.querySelector('[data-preview-status]')
     refs.previewStatusTitle = root.querySelector('[data-preview-status-title]')
     refs.previewStatusDetail = root.querySelector('[data-preview-status-detail]')
+    refs.previewProgress = root.querySelector('[data-preview-progress]')
+    refs.previewProgressFill = root.querySelector('[data-preview-progress-fill]')
+    root.querySelector('[data-action="cancel-generate"]')?.addEventListener('click', cancelGenerate)
     refs.styleCurrent = root.querySelector('[data-style-current]')
     refs.openStyle = root.querySelector('[data-action="open-style-library"]')
     refs.openTemplate = root.querySelector('[data-action="open-template-library"]')
@@ -2988,6 +3095,10 @@
       refs.previewStatus.style.display = hasPixels && !state.isGenerating && statusText !== '出错了' ? 'none' : ''
       refs.previewStatus.setAttribute('data-tone', statusText === '出错了' ? 'warning' : 'idle')
       refs.previewStatus.setAttribute('title', [statusText, detailText].filter(Boolean).join(' · '))
+    }
+    if (refs.previewProgress) refs.previewProgress.hidden = !state.isGenerating
+    if (refs.previewProgressFill) {
+      refs.previewProgressFill.style.width = (clamp(Number(state.progress) || 0, 0, 1) * 100).toFixed(1) + '%'
     }
 
     const total = frameCount()
@@ -3480,7 +3591,8 @@
           if (normalize(action.textContent) !== '特效') beginPrimaryLeave()
           return
         }
-        if (!action || !isAiEffectLabel(action.textContent)) hideApp()
+        // Nothing else outside the shell leaves it: the top bar, the rail's gaps and 仓库, or the click a
+        // drag out of the shell ends with, all hid it while the AI特效 entry stayed selected.
       }
       if (!action || !isAiEffectLabel(action.textContent)) return
       event.preventDefault()

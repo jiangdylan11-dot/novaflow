@@ -34920,7 +34920,8 @@
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-generation-progress="1"] > div:first-child > button',
-        style: { position: "absolute", right: "0", top: "0", width: "18px", height: "18px", "min-width": "18px", padding: "0", margin: "0", transform: "none" }
+        // Square: the bundle's own min-height 26 had turned it into an 18 x 26 bar.
+        style: { position: "absolute", right: "0", top: "0", width: "18px", height: "18px", "min-width": "18px", "max-width": "18px", "min-height": "18px", "max-height": "18px", padding: "0", margin: "0", transform: "none" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",

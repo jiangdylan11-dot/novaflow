@@ -365,7 +365,9 @@
   // whichever the scheduler picked - so there is nobody to send it to until
   // the task is assigned, and the grant that authorises the write is minted
   // against that worker.
-  async function waitForAssignment(taskId, { timeoutMs = 60000, onWait } = {}) {
+  // Two minutes, the same the node then gives the browser to upload: a node that claims late
+  // (a 60s limit gave up just before the claim) must still find the upload coming.
+  async function waitForAssignment(taskId, { timeoutMs = 120000, onWait } = {}) {
     const started = Date.now();
     for (;;) {
       const res = await control('GET', '/api/web/tasks/' + taskId);
@@ -389,7 +391,10 @@
   }
 
   async function putReferences(taskId, refs) {
-    const task = await waitForAssignment(taskId);
+    // Panels that submit through the /prompt shim have no callback to pass; they listen for this.
+    const task = await waitForAssignment(taskId, {
+      onWait: (seconds) => root.dispatchEvent && root.dispatchEvent(new CustomEvent('novaflow:web-task-wait', { detail: { taskId, seconds } }))
+    });
     const grant = await grantFor(task, 'upload');
     const base = String(grant.endpoint || '').replace(/\/+$/, '');
     if (!base) throw new Error('算力节点没有可用地址');
