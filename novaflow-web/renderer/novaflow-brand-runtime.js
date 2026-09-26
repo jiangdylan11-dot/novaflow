@@ -30536,6 +30536,8 @@
     });
     Array.from(card.querySelectorAll("button")).forEach((button) => {
       if (!(button instanceof HTMLElement)) return;
+      // The particle-system row's × stays a plain small glyph, not a grey square.
+      if (button.hasAttribute("data-novaflow-system-row-delete")) return;
       const label = normalizeText(button.textContent || "");
       const icon = button.querySelector("i, svg") instanceof Element;
       // Only a button that says nothing, or says it in one glyph, is an icon
@@ -64321,18 +64323,11 @@
     );
 
     const rowEntries = [];
-    Array.from(leftColumn.querySelectorAll("div")).forEach((node) => {
+    Array.from(leftColumn.querySelectorAll('[data-novaflow-system-row-delete="1"]')).forEach((deleteButton) => {
+      const node = deleteButton.parentElement && deleteButton.parentElement.parentElement;
       if (!(node instanceof HTMLElement) || !isVisible(node)) return;
-      if (node.querySelector('input, select, textarea, [role="slider"]')) return;
-      const rect = node.getBoundingClientRect();
-      if (!inLeftContent(rect)) return;
-      if (rect.width < 180 || rect.width > 340 || rect.height < 36 || rect.height > 72) return;
+      if (!inLeftContent(node.getBoundingClientRect())) return;
       const text = normalizeText(node.textContent || "");
-      if (!text.includes("层级")) return;
-      const buttons = Array.from(node.querySelectorAll("button")).filter((button) => (
-        button instanceof HTMLButtonElement && isVisible(button)
-      ));
-      if (buttons.length < 2 || buttons.length > 4) return;
       const style = window.getComputedStyle(node);
       const rgb = getRgb(style.backgroundColor);
       const activeByFrame = hasVisibleFrame(style);
