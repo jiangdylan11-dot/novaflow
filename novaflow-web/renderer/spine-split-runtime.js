@@ -8701,6 +8701,10 @@
   // wording, the undug crop as reference, the user's own 补全...缺失结构 words) 2.1 beat 2509 +
   // eigen-banana on real split layers (a qipao torso, a stocking thigh) and matched it on a bare leg.
   const QWEN21_COMPLETION_ENGINE = 'qwen-2.1'
+  // 智能补图 keeps one seed (2.1 and the NSFW Rapid route); 局部编辑 draws a new one per run. Drawing a
+  // missing limb on a near-empty split layer is hit or miss per seed: on the user's 2026-09-27 test
+  // (lower legs below a cropped skirt) this one drew both legs, as did one random seed in three.
+  const INPAINT_COMPLETION_SEED = 746924259
   const DEFAULT_COMPLETION_ENGINE = QWEN21_COMPLETION_ENGINE
 
   // Strict: the weight must actually appear in that loader's choice list. comfyChoiceFromCandidates
@@ -8970,8 +8974,9 @@
     const wantsQwen21 = route.mode === 'edit' || route.mode === 'completion'
     if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行${route.mode === 'edit' ? '局部编辑' : '智能补全'}。请在本地助手里重新启动 NovaFlow 后再试`)
     if (wantsQwen21) {
-      // A new seed per run unless the caller pins one: a rerun of 局部编辑 / 智能补图 should give another result.
-      const seed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed))) : Math.floor(Math.random() * 1000000000)
+      // 局部编辑 draws a new seed per run (a rerun gives another result); 智能补图 keeps INPAINT_COMPLETION_SEED.
+      const seed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed)))
+        : route.mode === 'completion' ? INPAINT_COMPLETION_SEED : Math.floor(Math.random() * 1000000000)
       setInpaintDebugAttr('workflow-engine', 'qwen-2.1')
       setInpaintDebugAttr('workflow-mode', normalizeSelectionInpaintMode(options && options.inpaintMode))
       setInpaintDebugAttr('workflow-provider', route.provider)
@@ -9003,7 +9008,7 @@
     const info = await comfyAllObjectInfo(baseUrl)
     const support = api.assertRuntimeSupport(info)
     const fixedSeed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed))) : null
-    const seed = fixedSeed == null ? Math.floor(Math.random() * 1000000000) : fixedSeed
+    const seed = fixedSeed != null ? fixedSeed : route.mode === 'completion' ? INPAINT_COMPLETION_SEED : Math.floor(Math.random() * 1000000000)
     const workflow = api.buildWorkflow({
       runtimeInfo: info,
       mode: route.mode,

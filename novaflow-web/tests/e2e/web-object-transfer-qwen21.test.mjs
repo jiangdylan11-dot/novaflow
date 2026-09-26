@@ -179,7 +179,10 @@ section('特效去除 writes the de-effected crop straight onto the layer (no pa
 section('去除物体 samples a new seed unless the caller pins one');
 {
   check('the removal graph draws its default seed at random', /const seed = fixedSeed == null \? Math\.floor\(Math\.random\(\) \* 1000000000\) : fixedSeed/.test(source) && !/4819261740/.test(source), null);
-  check('局部编辑 / 智能补图 (2.1 and the NSFW Rapid route) no longer pin seed 746924259', !/746924259/.test(source), null);
+  check('智能补图 keeps seed 746924259, 局部编辑 draws a new one (2.1 and the NSFW Rapid route)',
+    /const INPAINT_COMPLETION_SEED = 746924259/.test(source)
+      && /: route\.mode === 'completion' \? INPAINT_COMPLETION_SEED : Math\.floor\(Math\.random\(\) \* 1000000000\)/.test(source)
+      && /fixedSeed != null \? fixedSeed : route\.mode === 'completion' \? INPAINT_COMPLETION_SEED : Math\.floor\(Math\.random\(\) \* 1000000000\)/.test(source), null);
   check('the 2.1 inpaint graph samples with the seed its caller drew (the debug record names the same one)',
     /function buildQwen21InpaintWorkflow\([^)]*, seed\)/.test(source) && /options && options\.promptParts, seed\)/.test(source) && /steps: QWEN21_STEPS,\s*seed,\s*provider: route\.provider/.test(source), null);
 }
