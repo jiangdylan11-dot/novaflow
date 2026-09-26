@@ -237,13 +237,12 @@
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_MIN = 0
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_MAX = 359
   const IMAGE_ANGLE_ADJUST_VERTICAL_DEFAULT = 42
-  const IMAGE_ANGLE_ADJUST_VERTICAL_MIN = -30
-  const IMAGE_ANGLE_ADJUST_VERTICAL_MAX = 60
+  const IMAGE_ANGLE_ADJUST_VERTICAL_MIN = -60
+  const IMAGE_ANGLE_ADJUST_VERTICAL_MAX = 90
   const IMAGE_ANGLE_ADJUST_ZOOM_DEFAULT = 4.3
   const IMAGE_ANGLE_ADJUST_ZOOM_MIN = 1
   const IMAGE_ANGLE_ADJUST_ZOOM_MAX = 8
   const IMAGE_ANGLE_ADJUST_ZOOM_STEP = 0.1
-  const IMAGE_ANGLE_ADJUST_HORIZONTAL_SCREEN_OFFSET = 141
   const OBJECT_TRANSFER_TIMEOUT_MS = 30 * 60 * 1000
   // Qwen's CONST flow scales the input latent by (1 - sigma), and sigma starts at 1.0 for anything at or
   // above 0.81 on a 4-step schedule — the canvas latent is multiplied by zero either way. Denoise is not
@@ -2200,23 +2199,51 @@
     }
   }
 
-  function showImageAngleAdjustDialog(sourceSize) {
+  // The panel's own reading of H/V/Z, in the same buckets imageAngleAdjustPromptText sends to the model,
+  // so what the dialog says is what gets drawn.
+  function imageAngleAdjustViewLabel(horizontalAngle, verticalAngle, zoom) {
+    const h = normalizeImageAngleHorizontal(horizontalAngle)
+    const v = normalizeImageAngleVertical(verticalAngle)
+    const z = normalizeImageAngleZoom(zoom)
+    const sides = [
+      ['人物正前方', '人物面向镜头'],
+      ['人物左前方', '人物朝画面左侧转'],
+      ['人物左侧', '侧脸朝画面左侧'],
+      ['人物左后方', '背身，偏向画面左侧'],
+      ['人物正后方', '背影'],
+      ['人物右后方', '背身，偏向画面右侧'],
+      ['人物右侧', '侧脸朝画面右侧'],
+      ['人物右前方', '人物朝画面右侧转']
+    ]
+    const side = sides[Math.floor(((h + 22.5) % 360) / 45)]
+    const height = v <= -45 ? `贴地仰视 ${-v}°`
+      : v < -15 ? `仰拍 ${-v}°`
+        : v < 15 ? '平视'
+          : v < 45 ? `俯拍 ${v}°`
+            : v < 75 ? `高角度俯拍 ${v}°`
+              : `正上方俯视 ${v}°`
+    const distance = z < 2 ? '远景' : z < 6 ? '保持原取景' : '特写'
+    return { camera: `镜头在${side[0]}`, subject: side[1], height, distance }
+  }
+
+  function showImageAngleAdjustDialog(sourceSize, sourceDataUrl) {
     removeSplitModeDialog()
     if (!document.body) return Promise.resolve(null)
     const width = Math.max(1, Math.round(Number(sourceSize && sourceSize.width) || 1))
     const height = Math.max(1, Math.round(Number(sourceSize && sourceSize.height) || 1))
+    const COLORS = { h: '#ff4f93', v: '#2dd4bf', z: '#fbbf24' }
     let resolved = false
-    let dragMode = ''
+    let drag = null
     let canvasNode = null
-    let horizontalValueNode = null
-    let verticalValueNode = null
-    let zoomValueNode = null
+    let captionNode = null
+    let sourceImage = null
+    const sliders = {}
     const values = imageAngleAdjustDefaultOptions()
     return new Promise((resolve) => {
       ensureSplitModeDialogStyle()
       const cleanup = () => {
         document.removeEventListener('keydown', handleKeydown, true)
-        window.removeEventListener('resize', handleCanvasResize, true)
+        window.removeEventListener('resize', drawControl, true)
         window.removeEventListener('pointermove', handlePointerMove, true)
         window.removeEventListener('pointerup', handlePointerUp, true)
         removeSplitModeDialog()
@@ -2237,13 +2264,6 @@
           zoom: normalizeImageAngleZoom(values.zoom)
         })
       }
-      const resetValues = () => {
-        const defaults = imageAngleAdjustDefaultOptions()
-        values.horizontalAngle = defaults.horizontalAngle
-        values.verticalAngle = defaults.verticalAngle
-        values.zoom = defaults.zoom
-        syncValues()
-      }
       function handleKeydown(event) {
         if (!event) return
         if (event.key === 'Escape') {
@@ -2256,363 +2276,341 @@
           finish()
         }
       }
-      const applyButtonState = (event, hovering, tone) => {
-        const buttonNode = event && event.currentTarget
-        if (!(buttonNode instanceof HTMLElement)) return
-        const primary = tone === 'primary'
-        const base = primary ? '#21ad78' : 'rgba(255,255,255,0.08)'
-        const hover = primary ? SPLIT_ACTIVE_HOVER_BACKGROUND : 'rgba(255,255,255,0.14)'
-        buttonNode.style.background = hovering ? hover : base
-        buttonNode.style.backgroundColor = hovering ? hover : base
-        buttonNode.style.boxShadow = 'none'
-        buttonNode.style.transform = 'none'
+      const setButtonLook = (node, tone, hovering) => {
+        if (!(node instanceof HTMLElement)) return
+        const active = node.getAttribute('data-novaflow-angle-active') === '1'
+        const look = tone === 'primary'
+          ? (hovering ? SPLIT_ACTIVE_HOVER_BACKGROUND : '#21ad78')
+          : active ? 'rgba(255,255,255,0.18)' : hovering ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)'
+        node.style.background = look
+        node.style.backgroundColor = look
+        node.style.color = tone === 'primary' || active ? '#fff' : 'rgba(255,255,255,0.78)'
       }
-      const applyCloseButtonState = (event, hovering) => {
-        const buttonNode = event && event.currentTarget
-        if (!(buttonNode instanceof HTMLElement)) return
-        buttonNode.style.background = hovering ? 'rgba(255,255,255,0.08)' : 'transparent'
-        buttonNode.style.backgroundColor = hovering ? 'rgba(255,255,255,0.08)' : 'transparent'
-        buttonNode.style.color = hovering ? 'rgba(255,255,255,0.86)' : 'rgba(255,255,255,0.58)'
-      }
-      const actionButton = (label, onClick, tone) => h('button', {
-        type: 'button',
-        onclick: onClick,
-        onmouseenter: (event) => applyButtonState(event, true, tone),
-        onmouseleave: (event) => applyButtonState(event, false, tone),
-        onfocus: (event) => applyButtonState(event, true, tone),
-        onblur: (event) => applyButtonState(event, false, tone),
-        style: {
-          height: '32px',
-          minWidth: tone === 'primary' ? '220px' : '86px',
-          padding: '0 14px',
-          borderRadius: '8px',
-          border: '0',
-          background: tone === 'primary' ? '#21ad78' : 'rgba(255,255,255,0.08)',
-          color: '#fff',
-          cursor: 'pointer',
-          fontSize: '12px',
-          fontWeight: '900',
-          boxShadow: 'none',
-          transform: 'none',
-          transition: 'none'
-        }
-      }, label)
-      const statNode = (label, color) => {
-        const valueNode = h('div', {
+      const button = (label, onClick, tone, extra = {}) => {
+        const node = h('button', {
+          type: 'button',
+          onclick: onClick,
+          onmouseenter: (event) => setButtonLook(event.currentTarget, tone, true),
+          onmouseleave: (event) => setButtonLook(event.currentTarget, tone, false),
           style: {
-            color,
-            fontSize: '18px',
-            lineHeight: '1.15',
-            fontWeight: '900',
-            textAlign: 'center'
+            height: tone === 'primary' ? '36px' : '26px',
+            minWidth: tone === 'primary' ? '200px' : '0',
+            padding: tone === 'primary' ? '0 18px' : '0 10px',
+            borderRadius: tone === 'primary' ? '8px' : '999px',
+            border: tone === 'primary' ? '0' : '1px solid rgba(255,255,255,0.10)',
+            color: '#fff',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: tone === 'primary' ? '900' : '600',
+            whiteSpace: 'nowrap',
+            boxShadow: 'none',
+            transform: 'none',
+            transition: 'none',
+            ...extra
           }
-        }, '')
-        const node = h('div', { style: { display: 'grid', gap: '4px', justifyItems: 'center', minWidth: 0 } }, [
-          h('div', { style: { color: 'rgba(226,232,240,0.68)', fontSize: '11px', lineHeight: '1.2' } }, label),
-          valueNode
-        ])
-        node.__novaflowAngleValueNode = valueNode
+        }, label)
+        setButtonLook(node, tone, false)
         return node
       }
-      const syncCanvasBackingSize = () => {
-        if (!canvasNode) return
-        const rect = canvasNode.getBoundingClientRect()
-        const nextWidth = Math.max(1, Math.round(Number(rect && rect.width) || 640))
-        const nextHeight = Math.max(1, Math.round(Number(rect && rect.height) || 332))
-        if (canvasNode.width !== nextWidth) canvasNode.width = nextWidth
-        if (canvasNode.height !== nextHeight) canvasNode.height = nextHeight
+
+      // --- the 3D view: subject card at the origin facing +z, the camera orbiting its centre ---------
+      // H 90 puts the camera on the subject's left (+x), matching imageAngleAdjustPromptText.
+      const VIEW_AZIMUTH = 30 * Math.PI / 180
+      const VIEW_ELEVATION = 22 * Math.PI / 180
+      const viewDir = { x: Math.cos(VIEW_ELEVATION) * Math.sin(VIEW_AZIMUTH), y: Math.sin(VIEW_ELEVATION), z: Math.cos(VIEW_ELEVATION) * Math.cos(VIEW_AZIMUTH) }
+      const viewRight = { x: Math.cos(VIEW_AZIMUTH), y: 0, z: -Math.sin(VIEW_AZIMUTH) }
+      const viewUp = { x: -Math.sin(VIEW_ELEVATION) * Math.sin(VIEW_AZIMUTH), y: Math.cos(VIEW_ELEVATION), z: -Math.sin(VIEW_ELEVATION) * Math.cos(VIEW_AZIMUTH) }
+      const aspect = width / height
+      const cardHeight = aspect >= 1 ? 0.78 / aspect : 0.78
+      const cardWidth = cardHeight * aspect
+      const orbitCenter = { x: 0, y: cardHeight * 0.5, z: 0 }
+      const frame = () => {
+        const cw = canvasNode ? canvasNode.width : 700
+        const ch = canvasNode ? canvasNode.height : 320
+        // Scale so the whole vertical arc (-60..90 degrees at radius 1) fits, centred on the orbit centre.
+        const s = Math.min(cw * 0.3, ch * 0.44)
+        return { cw, ch, cx: cw * 0.5, cy: ch * 0.53 + s * orbitCenter.y * viewUp.y, s }
       }
-      const pointFromEvent = (event) => {
-        if (!canvasNode) return null
-        syncCanvasBackingSize()
-        const rect = canvasNode.getBoundingClientRect()
-        if (!rect || rect.width <= 0 || rect.height <= 0) return null
+      const project = (p, f = frame()) => ({
+        x: f.cx + f.s * (p.x * viewRight.x + p.y * viewRight.y + p.z * viewRight.z),
+        y: f.cy - f.s * (p.x * viewUp.x + p.y * viewUp.y + p.z * viewUp.z),
+        depth: p.x * viewDir.x + p.y * viewDir.y + p.z * viewDir.z
+      })
+      const orbitPoint = (hDeg, vDeg, radius) => {
+        const a = hDeg * Math.PI / 180
+        const e = vDeg * Math.PI / 180
         return {
-          x: (Number(event.clientX) - rect.left) * canvasNode.width / rect.width,
-          y: (Number(event.clientY) - rect.top) * canvasNode.height / rect.height
+          x: orbitCenter.x + radius * Math.cos(e) * Math.sin(a),
+          y: orbitCenter.y + radius * Math.sin(e),
+          z: orbitCenter.z + radius * Math.cos(e) * Math.cos(a)
         }
       }
-      const geometry = () => {
-        const cw = canvasNode ? canvasNode.width : 640
-        const ch = canvasNode ? canvasNode.height : 332
-        const scale = Math.max(0.78, Math.min(1.16, Math.min(cw / 640, ch / 332)))
-        const cx = cw * 0.55
-        const cy = ch * 0.57
-        const rx = Math.max(170 * scale, Math.min(cw * 0.31, 220 * scale))
-        const ry = Math.max(58 * scale, Math.min(ch * 0.21, 72 * scale))
-        const verticalHeight = Math.max(196 * scale, Math.min(ch * 0.72, 238 * scale))
-        return { cw, ch, scale, cx, cy, rx, ry, verticalX: cx - rx * 0.95, verticalTop: cy - verticalHeight * 0.5, verticalBottom: cy + verticalHeight * 0.5 }
+      const cameraRadius = () => {
+        const t = (normalizeImageAngleZoom(values.zoom) - IMAGE_ANGLE_ADJUST_ZOOM_MIN) / (IMAGE_ANGLE_ADJUST_ZOOM_MAX - IMAGE_ANGLE_ADJUST_ZOOM_MIN)
+        return 1.18 - t * 0.62
       }
-      const planeFrame = (g = geometry()) => {
-        const leftX = g.cx - 34 * g.scale
-        const rightX = g.cx + 28 * g.scale
-        const topY = g.cy - 70 * g.scale
-        const slantY = 18 * g.scale
-        const height = 60 * g.scale
-        const points = [
-          { x: leftX, y: topY },
-          { x: rightX, y: topY + slantY },
-          { x: rightX, y: topY + slantY + height },
-          { x: leftX, y: topY + height }
-        ]
-        return {
-          points,
-          anchor: { x: g.cx - 15 * g.scale, y: g.cy - 38 * g.scale }
+      const strokePath = (ctx, points, color, widthPx, alpha, dash) => {
+        if (points.length < 2) return
+        ctx.save()
+        ctx.globalAlpha = alpha
+        ctx.strokeStyle = color
+        ctx.lineWidth = widthPx
+        ctx.lineCap = 'round'
+        if (dash) ctx.setLineDash(dash)
+        ctx.beginPath()
+        ctx.moveTo(points[0].x, points[0].y)
+        for (let i = 1; i < points.length; i += 1) ctx.lineTo(points[i].x, points[i].y)
+        ctx.stroke()
+        ctx.restore()
+      }
+      // Split a projected loop into runs in front of / behind the orbit centre so the card can sit
+      // between them.
+      const depthRuns = (points, front) => {
+        const runs = []
+        let run = []
+        const centreDepth = project(orbitCenter).depth
+        for (const point of points) {
+          if ((point.depth >= centreDepth) === front) run.push(point)
+          else if (run.length) { runs.push(run); run = [] }
         }
-      }
-      const zoomRay = (g = geometry()) => {
-        const plane = planeFrame(g)
-        const length = Math.max(112 * g.scale, Math.min(g.rx * 0.74, 168 * g.scale))
-        const rad = (IMAGE_ANGLE_ADJUST_HORIZONTAL_SCREEN_OFFSET - normalizeImageAngleHorizontal(values.horizontalAngle)) * Math.PI / 180
-        const vx = Math.cos(rad)
-        const vy = Math.sin(rad) * 0.58 - 0.08
-        const vLen = Math.max(0.001, Math.hypot(vx, vy))
-        return { start: plane.anchor, dx: vx / vLen * length, dy: vy / vLen * length, length }
-      }
-      const verticalArcPoint = (topToBottomT, g = geometry()) => {
-        const t = 1 - Math.max(0, Math.min(1, Number(topToBottomT) || 0))
-        const u = 1 - t
-        const bottom = { x: g.verticalX + 4 * g.scale, y: g.verticalBottom }
-        const c1 = { x: g.verticalX - 58 * g.scale, y: g.cy + 54 * g.scale }
-        const c2 = { x: g.verticalX - 24 * g.scale, y: g.cy - 54 * g.scale }
-        const top = { x: g.verticalX + 28 * g.scale, y: g.verticalTop }
-        return {
-          x: u * u * u * bottom.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * top.x,
-          y: u * u * u * bottom.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * top.y
-        }
-      }
-      const nearestVerticalArcPoint = (point, g = geometry()) => {
-        let best = { t: 0, point: verticalArcPoint(0, g), dist: Infinity }
-        for (let i = 0; i <= 72; i += 1) {
-          const t = i / 72
-          const candidate = verticalArcPoint(t, g)
-          const dist = Math.hypot((point && point.x || 0) - candidate.x, (point && point.y || 0) - candidate.y)
-          if (dist < best.dist) best = { t, point: candidate, dist }
-        }
-        return best
-      }
-      const horizontalHandlePoint = () => {
-        const g = geometry()
-        const rad = (IMAGE_ANGLE_ADJUST_HORIZONTAL_SCREEN_OFFSET - normalizeImageAngleHorizontal(values.horizontalAngle)) * Math.PI / 180
-        return { x: g.cx + Math.cos(rad) * g.rx, y: g.cy + Math.sin(rad) * g.ry }
-      }
-      const verticalHandlePoint = () => {
-        const g = geometry()
-        const range = IMAGE_ANGLE_ADJUST_VERTICAL_MAX - IMAGE_ANGLE_ADJUST_VERTICAL_MIN
-        const t = (IMAGE_ANGLE_ADJUST_VERTICAL_MAX - normalizeImageAngleVertical(values.verticalAngle)) / range
-        return verticalArcPoint(t, g)
-      }
-      const zoomHandlePoint = () => {
-        const g = geometry()
-        const ratio = (normalizeImageAngleZoom(values.zoom) - IMAGE_ANGLE_ADJUST_ZOOM_MIN) / (IMAGE_ANGLE_ADJUST_ZOOM_MAX - IMAGE_ANGLE_ADJUST_ZOOM_MIN)
-        const ray = zoomRay(g)
-        const visibleRatio = Math.max(0.08, Math.min(1, ratio))
-        return {
-          x: ray.start.x + ray.dx * visibleRatio,
-          y: ray.start.y + ray.dy * visibleRatio
-        }
-      }
-      const distance = (a, b) => Math.hypot((a && a.x || 0) - (b && b.x || 0), (a && a.y || 0) - (b && b.y || 0))
-      const dragModeFromPoint = (point) => {
-        const candidates = [
-          { mode: 'horizontal', dist: distance(point, horizontalHandlePoint()) },
-          { mode: 'vertical', dist: distance(point, verticalHandlePoint()) },
-          { mode: 'zoom', dist: distance(point, zoomHandlePoint()) }
-        ].sort((a, b) => a.dist - b.dist)
-        if (candidates[0] && candidates[0].dist <= 44) return candidates[0].mode
-        const nearestVertical = nearestVerticalArcPoint(point)
-        return nearestVertical.dist < 68 ? 'vertical' : 'horizontal'
-      }
-      const applyPoint = (point) => {
-        const g = geometry()
-        if (dragMode === 'vertical') {
-          const t = nearestVerticalArcPoint(point, g).t
-          values.verticalAngle = normalizeImageAngleVertical(IMAGE_ANGLE_ADJUST_VERTICAL_MAX - t * (IMAGE_ANGLE_ADJUST_VERTICAL_MAX - IMAGE_ANGLE_ADJUST_VERTICAL_MIN))
-        } else if (dragMode === 'zoom') {
-          const ray = zoomRay(g)
-          const len2 = Math.max(1, ray.dx * ray.dx + ray.dy * ray.dy)
-          const ratio = Math.max(0, Math.min(1, ((point.x - ray.start.x) * ray.dx + (point.y - ray.start.y) * ray.dy) / len2))
-          values.zoom = normalizeImageAngleZoom(IMAGE_ANGLE_ADJUST_ZOOM_MIN + ratio * (IMAGE_ANGLE_ADJUST_ZOOM_MAX - IMAGE_ANGLE_ADJUST_ZOOM_MIN))
-        } else {
-          const radDeg = Math.atan2(point.y - g.cy, point.x - g.cx) * 180 / Math.PI
-          values.horizontalAngle = normalizeImageAngleHorizontal(IMAGE_ANGLE_ADJUST_HORIZONTAL_SCREEN_OFFSET - radDeg)
-        }
-        syncValues()
-      }
-      function handlePointerMove(event) {
-        if (!dragMode) return
-        const point = pointFromEvent(event)
-        if (!point) return
-        if (typeof event.preventDefault === 'function') event.preventDefault()
-        applyPoint(point)
-      }
-      function handlePointerUp() {
-        dragMode = ''
-        window.removeEventListener('pointermove', handlePointerMove, true)
-        window.removeEventListener('pointerup', handlePointerUp, true)
-      }
-      const canvasPointerDown = (event) => {
-        const point = pointFromEvent(event)
-        if (!point) return
-        if (typeof event.preventDefault === 'function') event.preventDefault()
-        dragMode = dragModeFromPoint(point)
-        window.addEventListener('pointermove', handlePointerMove, true)
-        window.addEventListener('pointerup', handlePointerUp, true)
-        applyPoint(point)
-      }
-      const canvasWheel = (event) => {
-        if (!event) return
-        if (typeof event.preventDefault === 'function') event.preventDefault()
-        const delta = Number(event.deltaY || 0) > 0 ? -IMAGE_ANGLE_ADJUST_ZOOM_STEP : IMAGE_ANGLE_ADJUST_ZOOM_STEP
-        values.zoom = normalizeImageAngleZoom(values.zoom + delta)
-        syncValues()
+        if (run.length) runs.push(run)
+        return runs
       }
       const drawControl = () => {
         if (!canvasNode) return
-        syncCanvasBackingSize()
+        const rect = canvasNode.getBoundingClientRect()
+        const ratio = Math.max(1, Math.min(2, window.devicePixelRatio || 1))
+        const cssW = Math.max(1, Math.round(rect.width || 700))
+        const cssH = Math.max(1, Math.round(rect.height || 320))
+        if (canvasNode.width !== Math.round(cssW * ratio)) canvasNode.width = Math.round(cssW * ratio)
+        if (canvasNode.height !== Math.round(cssH * ratio)) canvasNode.height = Math.round(cssH * ratio)
         const ctx = canvasNode.getContext('2d')
         if (!ctx) return
-        const g = geometry()
-        ctx.clearRect(0, 0, g.cw, g.ch)
-        ctx.fillStyle = '#07080c'
-        ctx.fillRect(0, 0, g.cw, g.ch)
-        ctx.save()
-        ctx.translate(g.cx, g.cy + 34)
-        ctx.strokeStyle = 'rgba(45,59,82,0.35)'
-        ctx.lineWidth = 1
-        for (let i = -9; i <= 9; i += 1) {
-          ctx.beginPath()
-          ctx.moveTo(i * 26, -116)
-          ctx.lineTo(i * 46, 68)
-          ctx.stroke()
+        const f = frame()
+        const px = ratio
+        const bg = ctx.createRadialGradient(f.cx, f.cy - f.s * 0.3, f.s * 0.1, f.cx, f.cy, f.s * 1.6)
+        bg.addColorStop(0, '#171a22')
+        bg.addColorStop(1, '#0a0b0f')
+        ctx.fillStyle = bg
+        ctx.fillRect(0, 0, f.cw, f.ch)
+        // ground: concentric rings and spokes on y = 0
+        for (let r = 0.4; r <= 1.61; r += 0.4) {
+          const ring = []
+          for (let i = 0; i <= 96; i += 1) ring.push(project({ x: r * Math.sin(i / 96 * Math.PI * 2), y: 0, z: r * Math.cos(i / 96 * Math.PI * 2) }, f))
+          strokePath(ctx, ring, '#8aa0c8', 1 * px, 0.14)
         }
-        for (let j = -5; j <= 6; j += 1) {
-          ctx.beginPath()
-          ctx.moveTo(-230, j * 18)
-          ctx.lineTo(230, j * 18)
-          ctx.stroke()
+        for (let i = 0; i < 12; i += 1) {
+          const a = i / 12 * Math.PI * 2
+          strokePath(ctx, [project({ x: 0.2 * Math.sin(a), y: 0, z: 0.2 * Math.cos(a) }, f), project({ x: 1.6 * Math.sin(a), y: 0, z: 1.6 * Math.cos(a) }, f)], '#8aa0c8', 1 * px, 0.08)
+        }
+        const hDeg = normalizeImageAngleHorizontal(values.horizontalAngle)
+        const vDeg = normalizeImageAngleVertical(values.verticalAngle)
+        const ringPoints = []
+        for (let i = 0; i <= 120; i += 1) ringPoints.push(project(orbitPoint(i * 3, 0, 1), f))
+        const arcPoints = []
+        for (let d = IMAGE_ANGLE_ADJUST_VERTICAL_MIN; d <= IMAGE_ANGLE_ADJUST_VERTICAL_MAX; d += 2) arcPoints.push(project(orbitPoint(hDeg, d, 1), f))
+        // behind the card
+        depthRuns(ringPoints, false).forEach((run) => strokePath(ctx, run, COLORS.h, 2 * px, 0.35))
+        depthRuns(arcPoints, false).forEach((run) => strokePath(ctx, run, COLORS.v, 2 * px, 0.35))
+        // the subject card, textured with the source picture
+        const corners = [
+          project({ x: -cardWidth / 2, y: cardHeight, z: 0 }, f),
+          project({ x: cardWidth / 2, y: cardHeight, z: 0 }, f),
+          project({ x: cardWidth / 2, y: 0, z: 0 }, f),
+          project({ x: -cardWidth / 2, y: 0, z: 0 }, f)
+        ]
+        const shadow = []
+        for (let i = 0; i <= 48; i += 1) shadow.push(project({ x: cardWidth * 0.62 * Math.sin(i / 48 * Math.PI * 2), y: 0, z: cardWidth * 0.3 * Math.cos(i / 48 * Math.PI * 2) }, f))
+        ctx.save()
+        ctx.fillStyle = 'rgba(0,0,0,0.35)'
+        ctx.beginPath()
+        shadow.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)))
+        ctx.fill()
+        ctx.restore()
+        ctx.save()
+        ctx.beginPath()
+        corners.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)))
+        ctx.closePath()
+        ctx.fillStyle = '#23262f'
+        ctx.fill()
+        if (sourceImage && sourceImage.complete && sourceImage.naturalWidth) {
+          ctx.clip()
+          const iw = sourceImage.naturalWidth
+          const ih = sourceImage.naturalHeight
+          ctx.setTransform((corners[1].x - corners[0].x) / iw, (corners[1].y - corners[0].y) / iw, (corners[3].x - corners[0].x) / ih, (corners[3].y - corners[0].y) / ih, corners[0].x, corners[0].y)
+          ctx.drawImage(sourceImage, 0, 0)
+          ctx.setTransform(1, 0, 0, 1, 0, 0)
         }
         ctx.restore()
-        ctx.beginPath()
-        ctx.ellipse(g.cx, g.cy, g.rx, g.ry, 0, 0, Math.PI * 2)
-        ctx.strokeStyle = '#d92878'
-        ctx.lineWidth = 5
-        ctx.stroke()
-        ctx.beginPath()
-        let verticalPoint = verticalArcPoint(1, g)
-        ctx.moveTo(verticalPoint.x, verticalPoint.y)
-        for (let i = 71; i >= 0; i -= 1) {
-          verticalPoint = verticalArcPoint(i / 72, g)
-          ctx.lineTo(verticalPoint.x, verticalPoint.y)
-        }
-        ctx.strokeStyle = '#15d6c0'
-        ctx.lineWidth = 5
-        ctx.stroke()
-        const h = horizontalHandlePoint()
-        const v = verticalHandlePoint()
-        const z = zoomHandlePoint()
-        const plane = planeFrame(g)
-        const ray = zoomRay(g)
-        ctx.beginPath()
-        ctx.ellipse(g.cx, g.cy + 23 * g.scale, 50 * g.scale, 17 * g.scale, 0, 0, Math.PI * 2)
-        ctx.strokeStyle = 'rgba(217,40,120,0.45)'
-        ctx.lineWidth = 2
-        ctx.stroke()
-        ctx.beginPath()
-        ctx.moveTo(plane.points[0].x, plane.points[0].y)
-        ctx.lineTo(plane.points[1].x, plane.points[1].y)
-        ctx.lineTo(plane.points[2].x, plane.points[2].y)
-        ctx.lineTo(plane.points[3].x, plane.points[3].y)
-        ctx.closePath()
-        ctx.fillStyle = '#2a2931'
-        ctx.fill()
-        ctx.strokeStyle = '#df2f82'
-        ctx.lineWidth = 3
-        ctx.stroke()
-        ctx.beginPath()
-        ctx.moveTo(ray.start.x, ray.start.y)
-        ctx.lineTo(z.x, z.y)
-        ctx.strokeStyle = '#f4b000'
-        ctx.lineWidth = 4
-        ctx.stroke()
-        const drawHandle = (point, fill, radius) => {
+        strokePath(ctx, [...corners, corners[0]], '#ffffff', 1.5 * px, 0.55)
+        // in front of the card
+        depthRuns(ringPoints, true).forEach((run) => strokePath(ctx, run, COLORS.h, 3 * px, 0.95))
+        depthRuns(arcPoints, true).forEach((run) => strokePath(ctx, run, COLORS.v, 3 * px, 0.95))
+        // camera: height line to the ground, line of sight, body
+        const radius = cameraRadius()
+        const camera = project(orbitPoint(hDeg, vDeg, radius), f)
+        const cameraGround = project({ ...orbitPoint(hDeg, vDeg, radius), y: 0 }, f)
+        const ringMark = project(orbitPoint(hDeg, 0, 1), f)
+        const arcMark = project(orbitPoint(hDeg, vDeg, 1), f)
+        const target = project(orbitCenter, f)
+        strokePath(ctx, [camera, cameraGround], '#ffffff', 1 * px, 0.35, [4 * px, 4 * px])
+        strokePath(ctx, [camera, target], COLORS.z, 2.5 * px, 0.95)
+        const dot = (p, color, r) => {
+          ctx.save()
           ctx.beginPath()
-          ctx.arc(point.x, point.y, radius, 0, Math.PI * 2)
-          ctx.fillStyle = fill
+          ctx.arc(p.x, p.y, r * px, 0, Math.PI * 2)
+          ctx.fillStyle = color
           ctx.fill()
-          ctx.strokeStyle = 'rgba(255,255,255,0.22)'
-          ctx.lineWidth = 3
+          ctx.lineWidth = 2 * px
+          ctx.strokeStyle = 'rgba(10,11,15,0.9)'
           ctx.stroke()
+          ctx.restore()
         }
-        drawHandle(h, '#e83283', 15)
-        drawHandle(v, '#20d9c3', 14)
-        drawHandle(z, '#ffbf00', 14)
-        ctx.fillStyle = 'rgba(226,232,240,0.68)'
-        ctx.font = '12px sans-serif'
-        ctx.fillText('H', h.x + 18, h.y + 4)
-        ctx.fillText('V', v.x + 18, v.y + 4)
-        ctx.fillText('Z', z.x + 18, z.y + 4)
+        dot(ringMark, COLORS.h, 6)
+        dot(arcMark, COLORS.v, 6)
+        dot(cameraGround, 'rgba(255,255,255,0.5)', 3)
+        // camera body pointing at the subject
+        const angle = Math.atan2(target.y - camera.y, target.x - camera.x)
+        ctx.save()
+        ctx.translate(camera.x, camera.y)
+        ctx.rotate(angle)
+        ctx.fillStyle = '#f5f7fb'
+        ctx.strokeStyle = 'rgba(10,11,15,0.9)'
+        ctx.lineWidth = 2 * px
+        ctx.beginPath()
+        ctx.roundRect ? ctx.roundRect(-16 * px, -10 * px, 22 * px, 20 * px, 4 * px) : ctx.rect(-16 * px, -10 * px, 22 * px, 20 * px)
+        ctx.fill()
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.moveTo(6 * px, -6 * px)
+        ctx.lineTo(16 * px, -11 * px)
+        ctx.lineTo(16 * px, 11 * px)
+        ctx.lineTo(6 * px, 6 * px)
+        ctx.closePath()
+        ctx.fillStyle = COLORS.z
+        ctx.fill()
+        ctx.stroke()
+        ctx.restore()
       }
-      function handleCanvasResize() {
-        drawControl()
-      }
-      function syncValues() {
+
+      // --- values, sliders, presets -------------------------------------------------------------
+      const syncValues = () => {
         values.horizontalAngle = normalizeImageAngleHorizontal(values.horizontalAngle)
         values.verticalAngle = normalizeImageAngleVertical(values.verticalAngle)
         values.zoom = normalizeImageAngleZoom(values.zoom)
-        if (horizontalValueNode) horizontalValueNode.textContent = `${values.horizontalAngle}\u00b0`
-        if (verticalValueNode) verticalValueNode.textContent = `${values.verticalAngle}\u00b0`
-        if (zoomValueNode) zoomValueNode.textContent = values.zoom.toFixed(1)
+        const current = { h: values.horizontalAngle, v: values.verticalAngle, z: values.zoom }
+        Object.keys(sliders).forEach((key) => {
+          const slider = sliders[key]
+          if (String(slider.input.value) !== String(current[key])) slider.input.value = String(current[key])
+          const t = (current[key] - slider.min) / (slider.max - slider.min) * 100
+          slider.input.style.background = `linear-gradient(90deg, ${slider.color} 0%, ${slider.color} ${t}%, rgba(255,255,255,0.14) ${t}%, rgba(255,255,255,0.14) 100%)`
+          slider.value.textContent = key === 'z' ? current.z.toFixed(1) : `${current[key]}°`
+        })
+        presetButtons.forEach((item) => {
+          const active = item.key === 'h' ? current.h === item.value : current.v === item.value
+          item.node.setAttribute('data-novaflow-angle-active', active ? '1' : '0')
+          setButtonLook(item.node, 'chip', false)
+        })
+        if (captionNode) {
+          const label = imageAngleAdjustViewLabel(current.h, current.v, current.z)
+          captionNode.textContent = `${label.camera} · ${label.height} · ${label.distance}\n${label.subject}`
+        }
         drawControl()
       }
-      const horizontalStat = statNode('水平角度', '#e83283')
-      const verticalStat = statNode('垂直角度', '#20d9c3')
-      const zoomStat = statNode('距离', '#ffbf00')
-      horizontalValueNode = horizontalStat.__novaflowAngleValueNode
-      verticalValueNode = verticalStat.__novaflowAngleValueNode
-      zoomValueNode = zoomStat.__novaflowAngleValueNode
-      const resetButton = h('button', {
-        type: 'button',
-        title: '重置',
-        onclick: resetValues,
-        onmouseenter: (event) => applyButtonState(event, true, 'secondary'),
-        onmouseleave: (event) => applyButtonState(event, false, 'secondary'),
-        onfocus: (event) => applyButtonState(event, true, 'secondary'),
-        onblur: (event) => applyButtonState(event, false, 'secondary'),
-        style: {
-          width: '34px',
-          height: '34px',
-          borderRadius: '8px',
-          border: '1px solid rgba(255,255,255,0.12)',
-          background: 'rgba(255,255,255,0.08)',
-          color: '#fff',
-          cursor: 'pointer',
-          fontSize: '17px',
-          fontWeight: '900',
-          lineHeight: '1',
-          boxShadow: 'none',
-          transform: 'none',
-          transition: 'none'
-        }
-      }, '\u21bb')
+      const sliderRow = (key, label, min, max, step, color) => {
+        const input = h('input', {
+          type: 'range',
+          'data-novaflow-split-step-range': '1',
+          min: String(min),
+          max: String(max),
+          step: String(step),
+          oninput: (event) => {
+            const next = Number(event && event.target && event.target.value)
+            if (key === 'h') values.horizontalAngle = next
+            else if (key === 'v') values.verticalAngle = next
+            else values.zoom = next
+            syncValues()
+          },
+          style: { width: '100%', WebkitAppearance: 'none', appearance: 'none', border: '0', outline: 'none', margin: '0' }
+        })
+        const value = h('div', { style: { color, fontSize: '14px', fontWeight: '800', textAlign: 'right', fontVariantNumeric: 'tabular-nums' } }, '')
+        sliders[key] = { input, value, min, max, color }
+        return h('div', { style: { display: 'grid', gridTemplateColumns: '64px 1fr 52px', alignItems: 'center', gap: '12px' } }, [
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: 'rgba(226,232,240,0.78)' } }, [
+            h('span', { style: { width: '8px', height: '8px', borderRadius: '999px', background: color, flex: '0 0 auto' } }),
+            label
+          ]),
+          input,
+          value
+        ])
+      }
+      const presetButtons = []
+      const presetRow = (title, key, items) => h('div', { style: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' } }, [
+        h('div', { style: { width: '64px', fontSize: '11px', color: 'rgba(226,232,240,0.5)' } }, title),
+        ...items.map(([label, value]) => {
+          const node = button(label, () => {
+            if (key === 'h') values.horizontalAngle = value
+            else values.verticalAngle = value
+            syncValues()
+          }, 'chip')
+          presetButtons.push({ key, value, node })
+          return node
+        })
+      ])
+      function handlePointerMove(event) {
+        if (!drag) return
+        if (typeof event.preventDefault === 'function') event.preventDefault()
+        values.horizontalAngle = drag.h + (Number(event.clientX) - drag.x) * 0.5
+        values.verticalAngle = drag.v - (Number(event.clientY) - drag.y) * 0.5
+        syncValues()
+      }
+      function handlePointerUp() {
+        drag = null
+        if (canvasNode) canvasNode.style.cursor = 'grab'
+        window.removeEventListener('pointermove', handlePointerMove, true)
+        window.removeEventListener('pointerup', handlePointerUp, true)
+      }
       canvasNode = h('canvas', {
         'data-novaflow-angle-adjust-canvas': '1',
-        onpointerdown: canvasPointerDown,
-        onwheel: canvasWheel,
-        style: {
-          width: '100%',
-          height: '332px',
-          display: 'block',
-          borderRadius: '8px',
-          border: '1px solid rgba(217,40,120,0.32)',
-          background: '#07080c',
-          cursor: 'grab',
-          boxSizing: 'border-box',
-          touchAction: 'none'
-        }
+        onpointerdown: (event) => {
+          if (typeof event.preventDefault === 'function') event.preventDefault()
+          drag = { x: Number(event.clientX), y: Number(event.clientY), h: values.horizontalAngle, v: values.verticalAngle }
+          canvasNode.style.cursor = 'grabbing'
+          window.addEventListener('pointermove', handlePointerMove, true)
+          window.addEventListener('pointerup', handlePointerUp, true)
+        },
+        onwheel: (event) => {
+          if (typeof event.preventDefault === 'function') event.preventDefault()
+          values.zoom = values.zoom + (Number(event.deltaY || 0) > 0 ? -IMAGE_ANGLE_ADJUST_ZOOM_STEP : IMAGE_ANGLE_ADJUST_ZOOM_STEP) * 3
+          syncValues()
+        },
+        style: { width: '100%', height: '320px', display: 'block', cursor: 'grab', touchAction: 'none' }
       })
-      canvasNode.width = 640
-      canvasNode.height = 332
+      captionNode = h('div', {
+        style: {
+          position: 'absolute',
+          left: '12px',
+          top: '10px',
+          maxWidth: 'calc(100% - 24px)',
+          padding: '6px 10px',
+          borderRadius: '8px',
+          background: 'rgba(10,11,15,0.72)',
+          border: '1px solid rgba(255,255,255,0.08)',
+          color: '#fff',
+          fontSize: '12px',
+          lineHeight: '1.55',
+          whiteSpace: 'pre-line',
+          pointerEvents: 'none'
+        }
+      }, '')
+      const hint = h('div', {
+        style: { position: 'absolute', right: '12px', bottom: '10px', fontSize: '11px', color: 'rgba(226,232,240,0.45)', pointerEvents: 'none' }
+      }, '拖动旋转视角 · 滚轮调距离')
+      if (sourceDataUrl) {
+        sourceImage = new Image()
+        sourceImage.onload = () => drawControl()
+        sourceImage.src = sourceDataUrl
+      }
       const overlay = h('div', {
         id: SPLIT_MODE_DIALOG_ID,
         role: 'dialog',
@@ -2628,7 +2626,8 @@
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'rgba(0,0,0,0.46)',
+          padding: '16px',
+          background: 'rgba(0,0,0,0.52)',
           pointerEvents: 'auto',
           boxSizing: 'border-box',
           webkitAppRegion: 'no-drag'
@@ -2636,87 +2635,54 @@
       }, h('div', {
         style: {
           position: 'relative',
-          width: 'min(760px, calc(100vw - 44px))',
-          maxHeight: 'calc(100vh - 52px)',
+          width: 'min(740px, 100%)',
+          maxHeight: 'calc(100vh - 32px)',
           overflow: 'auto',
-          borderRadius: '8px',
-          border: '1px solid rgba(255,255,255,0.14)',
-          background: '#202020',
-          boxShadow: '0 22px 60px rgba(0,0,0,0.42)',
+          borderRadius: '12px',
+          border: '1px solid rgba(255,255,255,0.10)',
+          background: '#1d1e22',
+          boxShadow: '0 24px 64px rgba(0,0,0,0.5)',
           color: '#fff'
         }
       }, [
         h('div', {
-          style: {
-            minHeight: '48px',
-            padding: '14px 14px',
-            borderBottom: '1px solid rgba(255,255,255,0.10)',
-            background: '#1a1a1a',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '12px',
-            boxSizing: 'border-box'
-          }
+          style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '14px 16px 10px' }
         }, [
-          h('div', { style: { minWidth: '0', display: 'grid', gap: '5px' } }, [
-            h('div', { style: { fontSize: '14px', fontWeight: SPLIT_TOOL_FONT_WEIGHT, lineHeight: '1.2' } }, '角度调整')
+          h('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', minWidth: '0' } }, [
+            h('div', { style: { fontSize: '15px', fontWeight: SPLIT_TOOL_FONT_WEIGHT } }, '角度调整'),
+            h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.5)' } }, `原图 ${width} × ${height}`)
           ]),
           h('button', {
             type: 'button',
             onclick: close,
-            onmouseenter: (event) => applyCloseButtonState(event, true),
-            onmouseleave: (event) => applyCloseButtonState(event, false),
-            onfocus: (event) => applyCloseButtonState(event, true),
-            onblur: (event) => applyCloseButtonState(event, false),
             'aria-label': '关闭',
-            style: {
-              flex: '0 0 auto',
-              width: '24px',
-              height: '24px',
-              borderRadius: '6px',
-              border: '0',
-              background: 'transparent',
-              color: 'rgba(255,255,255,0.58)',
-              cursor: 'pointer',
-              fontSize: '16px',
-              lineHeight: '1',
-              boxShadow: 'none',
-              outline: '0',
-              transform: 'none',
-              transition: 'none'
-            }
-          }, '\u00d7')
+            style: { width: '26px', height: '26px', borderRadius: '6px', border: '0', background: 'transparent', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: '17px', lineHeight: '1', boxShadow: 'none', transform: 'none', transition: 'none' }
+          }, '×')
         ]),
-        h('div', { style: { padding: '16px 18px 15px', display: 'grid', gap: '12px', background: '#242424' } }, [
-          h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.72)', lineHeight: '1.35', textAlign: 'center' } }, `当前原图 ${width} x ${height} px`),
-          canvasNode,
+        h('div', { style: { padding: '0 16px 16px', display: 'grid', gap: '14px' } }, [
           h('div', {
-            style: {
-              display: 'grid',
-              gridTemplateColumns: '1fr 1fr 1fr 42px',
-              alignItems: 'center',
-              gap: '12px',
-              minHeight: '58px',
-              padding: '9px 12px',
-              borderRadius: '8px',
-              border: '1px solid rgba(217,40,120,0.38)',
-              background: '#08090d',
-              boxSizing: 'border-box'
-            }
-          }, [
-            horizontalStat,
-            verticalStat,
-            zoomStat,
-            h('div', { style: { display: 'flex', justifyContent: 'center' } }, resetButton)
+            style: { position: 'relative', borderRadius: '10px', overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)', background: '#0a0b0f' }
+          }, [canvasNode, captionNode, hint]),
+          h('div', { style: { display: 'grid', gap: '12px', padding: '2px 4px' } }, [
+            sliderRow('h', '水平', IMAGE_ANGLE_ADJUST_HORIZONTAL_MIN, IMAGE_ANGLE_ADJUST_HORIZONTAL_MAX, 1, COLORS.h),
+            sliderRow('v', '垂直', IMAGE_ANGLE_ADJUST_VERTICAL_MIN, IMAGE_ANGLE_ADJUST_VERTICAL_MAX, 1, COLORS.v),
+            sliderRow('z', '距离', IMAGE_ANGLE_ADJUST_ZOOM_MIN, IMAGE_ANGLE_ADJUST_ZOOM_MAX, IMAGE_ANGLE_ADJUST_ZOOM_STEP, COLORS.z)
           ]),
-          h('div', { style: { display: 'flex', justifyContent: 'center', gap: '10px', paddingTop: '2px' } }, [
-            actionButton('开始生成', finish, 'primary')
+          h('div', { style: { display: 'grid', gap: '8px', padding: '10px 4px 0', borderTop: '1px solid rgba(255,255,255,0.06)' } }, [
+            presetRow('方位', 'h', [['正面', 0], ['左前', 45], ['左侧', 90], ['背面', 180], ['右侧', 270], ['右前', 315]]),
+            presetRow('高度', 'v', [['仰视', -30], ['平视', 0], ['俯拍', 30], ['高俯', 60], ['顶视', 90]])
+          ]),
+          h('div', { style: { display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px' } }, [
+            button('重置', () => {
+              Object.assign(values, imageAngleAdjustDefaultOptions())
+              syncValues()
+            }, 'chip', { height: '36px', borderRadius: '8px', padding: '0 16px' }),
+            button('开始生成', finish, 'primary')
           ])
         ])
       ]))
       document.addEventListener('keydown', handleKeydown, true)
-      window.addEventListener('resize', handleCanvasResize, true)
+      window.addEventListener('resize', drawControl, true)
       document.body.appendChild(overlay)
       syncValues()
     })
@@ -5908,7 +5874,7 @@
   // second figure (the dog) that a back view otherwise dropped.
   function imageAngleAdjustPromptText(horizontalAngle, verticalAngle, zoom) {
     const h = ((Math.round(Number(horizontalAngle) || 0) % 360) + 360) % 360
-    const v = Math.max(-30, Math.min(60, Math.round(Number(verticalAngle) || 0)))
+    const v = Math.max(IMAGE_ANGLE_ADJUST_VERTICAL_MIN, Math.min(IMAGE_ANGLE_ADJUST_VERTICAL_MAX, Math.round(Number(verticalAngle) || 0)))
     const z = Number(zoom) || 0
     // Directions follow the 2511 multiple-angles LoRA the panel was tuned against: H 90 ("right side
     // view") is a profile facing the picture's LEFT edge, H 315 ("front-left") turns toward the RIGHT.
@@ -5923,10 +5889,12 @@
     else if (h < 292.5) side = `in a side profile: the viewpoint has moved about ${360 - h} degrees around the subject the other way, so it faces the RIGHT edge of the picture; only one eye and one side of the face are visible.`
     else side = `in a three-quarter view: the viewpoint has moved about ${360 - h} degrees around the subject the other way, so its body and face are turned about 45 degrees toward the RIGHT side of the picture, and the far side of the face is partly hidden.`
     let height
-    if (v < -15) height = `The camera is low, looking up at the subject at about ${-v} degrees: we see the underside of the chin and the subject looms above the viewer, the legs look longer, and the sky or ceiling fills the background behind the subject.`
+    if (v <= -45) height = `The camera is down at ground level, looking steeply up at the subject at about ${-v} degrees (a worm's-eye view): the subject towers overhead with strong upward perspective, the feet and legs are closest and largest, the head is small and far above, we see the underside of the chin, and the sky or ceiling fills the whole background.`
+    else if (v < -15) height = `The camera is low, looking up at the subject at about ${-v} degrees: we see the underside of the chin and the subject looms above the viewer, the legs look longer, and the sky or ceiling fills the background behind the subject.`
     else if (v < 15) height = 'The camera is at eye level with the subject, looking straight at it.'
     else if (v < 45) height = `The camera is raised above the subject, looking down at it at about ${v} degrees: the top of the head and the shoulders are visible, the body is foreshortened and gets smaller toward the feet, and the ground around the subject fills most of the background instead of the sky.`
-    else height = `The camera is high above the subject, looking steeply down at about ${v} degrees, almost top-down: we mostly see the top of the head and the shoulders, the body is strongly foreshortened, and the ground fills the whole background.`
+    else if (v < 75) height = `The camera is high above the subject, looking steeply down at about ${v} degrees: we mostly see the top of the head and the shoulders, the body is strongly foreshortened, and the ground fills the whole background.`
+    else height = `The camera is directly overhead, looking straight down at the subject from about ${v} degrees (a bird's-eye view): we see the top of the head and the shoulders, the rest of the body is almost hidden below them, the subject's shadow lies on the ground around it, the ground fills the entire picture and no horizon or sky is visible.`
     let distance
     if (z < 2) distance = 'The camera is farther away: the whole subject is small in the frame with plenty of surroundings around it.'
     else if (z < 6) distance = 'Keep about the same framing distance as the original picture.'
@@ -6027,7 +5995,7 @@
     } catch {
       currentSize = state.sourceSize || { width: 1, height: 1 }
     }
-    const options = await showImageAngleAdjustDialog(currentSize)
+    const options = await showImageAngleAdjustDialog(currentSize, String(state.source && state.source.dataUrl || ''))
     if (!options) return
     const horizontalAngle = normalizeImageAngleHorizontal(options.horizontalAngle)
     const verticalAngle = normalizeImageAngleVertical(options.verticalAngle)
