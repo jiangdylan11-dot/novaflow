@@ -3285,7 +3285,7 @@
 
   function markNovaflowPromptActionButton(button) {
     if (!(button instanceof HTMLElement)) return;
-    button.setAttribute(NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR, "1");
+    setAttributeIfChanged(button, NOVAFLOW_PROMPT_ACTION_BUTTON_ATTR, "1");
   }
 
   function applyNovaflowPromptActionButtonStyle(button) {
@@ -62083,15 +62083,9 @@
     if (!(actions instanceof HTMLElement)) return [];
     return Array.from(actions.children || []).filter((child) => (
       child instanceof HTMLElement &&
-      child.getAttribute("data-novaflow-smart-ai-button") === "1"
+      (child.getAttribute("data-novaflow-smart-ai-button") === "1" ||
+        child.getAttribute("data-novaflow-ai-prompt-expand-button") === "1")
     ));
-  }
-
-  function restoreAiAnimationPromptAssistantExternalButtons(actions, buttons) {
-    if (!(actions instanceof HTMLElement)) return;
-    Array.from(buttons || []).forEach((button) => {
-      if (button instanceof HTMLElement) actions.appendChild(button);
-    });
   }
 
   function isAiAnimationStoryboardPromptFrame(frame) {
@@ -62525,7 +62519,7 @@
     }
     const preservedExternalButtons = preserveAiAnimationPromptAssistantExternalButtons(actions);
     if (topRow) {
-      topRow.setAttribute("data-novaflow-ai-prompt-history-row", "1");
+      setAttributeIfChanged(topRow, "data-novaflow-ai-prompt-history-row", "1");
       // Above the 参考图 tiles (z 8, their × at 33): the popover is fixed but lives in this row's
       // stacking context, so the row itself has to sit on top.
       setImportantStyles(topRow, {
@@ -62570,8 +62564,12 @@
       "pointer-events": "auto",
       margin: "0"
     });
-    actions.innerHTML = "";
-    restoreAiAnimationPromptAssistantExternalButtons(actions, preservedExternalButtons);
+    // Clearing the row and putting the buttons back detached AI 助手 / 编辑
+    // on every layout pass (six per refresh): they blinked, and a press that
+    // landed between two passes never became a click. Only strangers leave.
+    Array.from(actions.children).forEach((child) => {
+      if (!preservedExternalButtons.includes(child)) child.remove();
+    });
     // AI 助手 and 编辑 are mounted by the smart-AI script a frame after it
     // sees this row - after the page's first frame, so they popped in. Asking
     // it now puts them in that first frame.
@@ -80693,8 +80691,25 @@
     syncArtGenerateElementFromRender(currentTop, renderArtGenerateTopBar());
     syncArtGenerateElementFromRender(currentStage, renderArtGenerateStage());
     if (!shouldKeepArtGenerateBottomContent(currentBottom, forceBottomRender)) {
-      syncArtGenerateElementFromRender(currentBottom, renderArtGenerateBottomPanel());
+      const nextBottom = renderArtGenerateBottomPanel();
+      carryArtGenerateAssistantButtons(currentBottom, nextBottom);
+      syncArtGenerateElementFromRender(currentBottom, nextBottom);
     }
+  }
+
+  // The smart-AI script mounts AI 助手 / 编辑 into the prompt's action row a
+  // frame after it appears. A rebuilt bottom panel (every progress tick while
+  // generating) dropped them and had them mounted again: they blinked, and a
+  // press between two rebuilds never became a click. The same nodes move over.
+  function carryArtGenerateAssistantButtons(currentBottom, nextBottom) {
+    const from = currentBottom?.querySelector?.(".novaflow-art-generate-assistant-actions");
+    const to = nextBottom?.querySelector?.(".novaflow-art-generate-assistant-actions");
+    if (!(from instanceof HTMLElement) || !(to instanceof HTMLElement)) return;
+    Array.from(from.children).forEach((child) => {
+      if (!(child instanceof HTMLElement) || child.getAttribute("data-novaflow-smart-ai-button") !== "1") return;
+      if (child.getAttribute("data-novaflow-ai-prompt-expand-button") === "1") to.appendChild(child);
+      else to.insertBefore(child, to.firstChild);
+    });
   }
 
   function renderArtGenerateTopBar() {
