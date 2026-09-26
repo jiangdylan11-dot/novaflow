@@ -47,6 +47,8 @@ export function createWorkerLoraCatalog({ modelsRoot, image, video }) {
       const { items } = await read('qwen', qwen21 ? { engine: 'qwen-2.1' } : { nsfw });
       const names = new Set(items.map(item => item.name));
       for (const [, node] of userQwen) if (!names.has(node.inputs?.lora_name)) throw new Error('Qwen LoRA 已变化或不兼容，请刷新列表重新选择');
+      // A 2.1 LoRA trained on the fused MLP runs from its split copy on a split 2.1 build.
+      if (qwen21) for (const [, node] of userQwen) node.inputs.lora_name = qwen.runtimeName21(node.inputs.lora_name);
     }
     for (const item of parameters.loras || []) {
       if (item.enabled === false) continue;

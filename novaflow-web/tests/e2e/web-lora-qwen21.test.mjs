@@ -53,6 +53,7 @@ const q21Tensors = [];
 for (let b = 0; b < 2; b += 1) {
   for (const m of ['to_q', 'to_k', 'to_v', 'to_out.0']) q21Tensors.push([`transformer_blocks.${b}.attn.${m}.weight`, [WIDTH, WIDTH]]);
   q21Tensors.push([`transformer_blocks.${b}.img_mlp.gate_layer.weight`, [WIDTH * 3, WIDTH]]);
+  q21Tensors.push([`transformer_blocks.${b}.img_mlp.proj.weight`, [WIDTH * 3, WIDTH]]);
 }
 q21Tensors.push(['img_in.weight', [WIDTH, 16]], ['norm_out.norm.weight', [WIDTH]]);
 // The older 20B layout: a different width, and modules 2.1 does not have.
@@ -91,6 +92,14 @@ try {
     'for21_kohya.safetensors': lora(q21Tensors, 'kohya'),
     'for2511.safetensors': lora(oldTensors),
     'for2511_kohya.safetensors': lora(oldTensors, 'kohya'),
+    // Trained on the fused 2.1 release: img_mlp.gate_up is [gate; up], the split GGUF has the halves.
+    'for21_fused.safetensors': {
+      ...lora(q21Tensors, 'comfy'),
+      ...Object.fromEntries([0, 1].flatMap((b) => [
+        [`diffusion_model.transformer_blocks.${b}.img_mlp.gate_up.lora_A.weight`, [2, WIDTH]],
+        [`diffusion_model.transformer_blocks.${b}.img_mlp.gate_up.lora_B.weight`, [WIDTH * 6, 2]]
+      ]))
+    },
   };
   for (const [name, tensors] of Object.entries(files)) await writeFile(join(models, 'loras', 'qwen', name), safetensors(tensors));
   // Right names, one pair of the wrong shape.
@@ -124,7 +133,7 @@ try {
   // Each list holds only the LoRAs that fit its model: 2.1 ones for 2.1 (in any of the naming
   // styles ComfyUI maps), 20B ones for 2511 and Rapid AIO; a file with one wrong shape in none.
   const for21 = await listed({ engine: 'qwen-2.1' });
-  check(() => assert.deepEqual(for21, ['qwen/for21.safetensors', 'qwen/for21_comfy.safetensors', 'qwen/for21_img_in.safetensors', 'qwen/for21_kohya.safetensors']));
+  check(() => assert.deepEqual(for21, ['qwen/for21.safetensors', 'qwen/for21_comfy.safetensors', 'qwen/for21_fused.safetensors', 'qwen/for21_img_in.safetensors', 'qwen/for21_kohya.safetensors']));
   const for2511 = await listed({});
   check(() => assert.deepEqual(for2511, ['qwen/for2511.safetensors', 'qwen/for2511_kohya.safetensors']));
   const forRapid = await listed({ nsfw: true });
@@ -143,8 +152,17 @@ try {
     1: { class_type: 'UnetLoaderGGUF', inputs: { unet_name: 'qwen-image-2.1-test-Q8_0.gguf' } },
     nf_art_lora_1: { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: loraName, strength_model: 1 } }
   });
-  await workerCatalog.validateGraph(graph21('qwen/for21.safetensors'));
-  checks += 1;
+  const plain = graph21('qwen/for21.safetensors');
+  await workerCatalog.validateGraph(plain);
+  check(() => assert.equal(plain.nf_art_lora_1.inputs.lora_name, 'qwen/for21.safetensors'));
+  // A fused-MLP LoRA runs from a split copy the Runtime can map onto gate_layer / proj.
+  const fused = graph21('qwen/for21_fused.safetensors');
+  await workerCatalog.validateGraph(fused);
+  check(() => assert.equal(fused.nf_art_lora_1.inputs.lora_name, 'qwen21-split/for21_fused.safetensors'));
+  const split = catalogLib.readHeader(join(models, 'loras', 'qwen21-split', 'for21_fused.safetensors'));
+  check(() => assert.deepEqual(split['diffusion_model.transformer_blocks.1.img_mlp.proj.lora_B.weight'].shape, [WIDTH * 3, 2]));
+  check(() => assert.ok(!Object.keys(split).some((k) => k.includes('gate_up'))));
+  check(() => assert.ok(catalogLib.compatible(split, header)));
   await assert.rejects(workerCatalog.validateGraph(graph21('qwen/for2511.safetensors')), /不兼容/);
   checks += 1;
 
