@@ -598,16 +598,6 @@ export function createWorker(options) {
       throw new Error((runtime === 'video' ? '视频' : '图像') + '算力服务未启动或已断开：' + comfy.baseUrl + '，请启动本地算力服务后重试');
     }
 
-    // Image and video share one ComfyUI (H3 moved onto the 0.37 runtime). Its own eviction only makes
-    // room in VRAM and keeps the evicted weights in RAM, and H3 (32B text encoder) next to Qwen-Image-2.1
-    // does not fit a 16 GB card either way: unload everything whenever the task kind changes, and keep
-    // the models loaded between tasks of the same kind.
-    if (lastRuntimeKind && lastRuntimeKind !== runtime) {
-      await reportProgress(task.id, TASK_STATE.PROCESSING, 1, 'freeing memory for the ' + runtime + ' models');
-      await comfy.freeMemory().catch((error) => log('free failed', { error: String(error?.message || error) }));
-    }
-    lastRuntimeKind = runtime;
-
     checkCancelled(task.id);
     state.currentTaskId = task.id;
     state.status = 'busy';
@@ -636,6 +626,17 @@ export function createWorker(options) {
         referenceFilenames[i] = target;
       }
     }
+
+    // Image and video share one ComfyUI (H3 moved onto the 0.37 runtime). Its own eviction only makes
+    // room in VRAM and keeps the evicted weights in RAM, and H3 (32B text encoder) next to Qwen-Image-2.1
+    // does not fit a 16 GB card either way: unload everything whenever the task kind changes, and keep
+    // the models loaded between tasks of the same kind. Only after the references are in: a task still
+    // waiting for its upload must stay 'uploading', or the control plane refuses the browser's grant.
+    if (lastRuntimeKind && lastRuntimeKind !== runtime) {
+      await reportProgress(task.id, TASK_STATE.PROCESSING, 4, 'freeing memory for the ' + runtime + ' models');
+      await comfy.freeMemory().catch((error) => log('free failed', { error: String(error?.message || error) }));
+    }
+    lastRuntimeKind = runtime;
 
     await reportProgress(task.id, TASK_STATE.PROCESSING, 8, 'submitting to ComfyUI');
 

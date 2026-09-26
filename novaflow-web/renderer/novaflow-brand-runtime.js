@@ -33542,7 +33542,8 @@
       {
         when: "body.novaflow-primary-target-art",
         selector: '[data-novaflow-art-generate-progress] > div:first-child > button',
-        style: { position: "absolute", right: "0", top: "0", width: "18px", height: "18px", "min-width": "18px", padding: "0", margin: "0", "line-height": "18px", "font-size": "12px", transform: "none" }
+        // Square like the animation stop: the stylesheet's min-height 26 had made it an 18 x 26 bar.
+        style: { position: "absolute", right: "0", top: "0", width: "18px", height: "18px", "min-width": "18px", "max-width": "18px", "min-height": "18px", "max-height": "18px", padding: "0", margin: "0", "line-height": "18px", "font-size": "12px", transform: "none" }
       },
       {
         when: "body.novaflow-primary-target-art",
@@ -77797,6 +77798,9 @@
   const ART_GENERATE_CONNECT_TIMEOUT_MS = 8000;
   const ART_GENERATE_WORKFLOW_TIMEOUT_MS = 20000;
   const ART_GENERATE_PROMPT_TIMEOUT_MS = 30000;
+  // On the Web /prompt returns only once a node has claimed the task and the reference is uploaded;
+  // the shim waits up to 120s for the claim, so the panel must outlast it.
+  const ART_GENERATE_WEB_PROMPT_TIMEOUT_MS = 180000;
   const ART_GENERATE_HISTORY_TIMEOUT_MS = 20000;
   const ART_GENERATE_DOWNLOAD_TIMEOUT_MS = 30000;
   const ART_GENERATE_QUEUE_TIMEOUT_MS = 6000;
@@ -83306,7 +83310,10 @@
     // size and the run is an edit; another aspect is a new layout on an empty latent of that size.
     const firstAspect = firstPixels > 0 ? first.width / first.height : 0;
     const editInPlace = firstAspect > 0 && Math.abs(requested.width / requested.height - firstAspect) <= firstAspect * 0.02;
-    const scaleTo = (index, image, width, height) => {
+    // The result is laid back over the source 1:1, and the model now and then redraws the subject a
+    // little smaller or shifted. Ask it to hold the framing, unless the user asked for a new one.
+    if (editInPlace) encode.prompt += "\n\n未要求改变构图、姿势或取景时，保持图1中主体的位置、大小和画面取景不变。";
+    const scaleTo =(index, image, width, height) => {
       const scaleId = String(200 + index);
       workflow[scaleId] = { class_type: "ImageScale", inputs: { image, upscale_method: "lanczos", width, height, crop: "disabled" } };
       return [scaleId, 0];
@@ -83896,15 +83903,27 @@
         }
         setArtGenerateProgress("\u6b63\u5728\u4e0b\u53d1\u751f\u6210\u4efb\u52a1...", 0.28);
         setArtGenerateStatus("\u6b63\u5728\u4e0b\u53d1\u751f\u6210\u4efb\u52a1...");
-        const sent = await withArtGenerateTimeout(
-          () => artRequestJson(baseUrl, "/prompt", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ client_id: clientId, prompt: workflow })
-          }),
-          ART_GENERATE_PROMPT_TIMEOUT_MS,
-          "\u4e0b\u53d1\u751f\u6210\u4efb\u52a1\u8d85\u65f6\uff0cRuntime \u672a\u8fd4\u56de prompt_id"
-        );
+        const onNodeWait = (event) => {
+          if (!isArtGenerateRunCurrent(runToken)) return;
+          const text = "\u7b49\u5f85\u7b97\u529b\u8282\u70b9 " + (event.detail && event.detail.seconds || 0) + " \u79d2";
+          setArtGenerateProgress(text, 0.28);
+          setArtGenerateStatus(text);
+        };
+        window.addEventListener("novaflow:web-task-wait", onNodeWait);
+        let sent;
+        try {
+          sent = await withArtGenerateTimeout(
+            () => artRequestJson(baseUrl, "/prompt", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ client_id: clientId, prompt: workflow })
+            }),
+            window.NovaFlowWebRuntime ? ART_GENERATE_WEB_PROMPT_TIMEOUT_MS : ART_GENERATE_PROMPT_TIMEOUT_MS,
+            "\u4e0b\u53d1\u751f\u6210\u4efb\u52a1\u8d85\u65f6\uff0cRuntime \u672a\u8fd4\u56de prompt_id"
+          );
+        } finally {
+          window.removeEventListener("novaflow:web-task-wait", onNodeWait);
+        }
         if (!isArtGenerateRunCurrent(runToken)) return;
         const promptId = String(sent && sent.data && sent.data.prompt_id || "");
         if (!sent || !sent.ok || !promptId) {

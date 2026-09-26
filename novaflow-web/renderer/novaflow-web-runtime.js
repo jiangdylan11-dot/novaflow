@@ -521,7 +521,9 @@
       } catch (error) {
         // Say which step failed. "timed out waiting for the browser to upload"
         // arrives from the worker two minutes later and points at the wrong
-        // side of the wire.
+        // side of the wire. Cancel the task too: otherwise a node claims it later and sits two
+        // minutes waiting for bytes this page will never send, failing every run queued behind it.
+        await control('POST', '/api/web/tasks/' + promptId + '/cancel').catch(() => {});
         throw new Error('参考图上传失败：' + String(error.message || error));
       }
     }
