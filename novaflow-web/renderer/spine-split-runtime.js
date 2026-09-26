@@ -5898,7 +5898,13 @@
     if (z < 2) distance = 'The camera is farther away: the whole subject is small in the frame with plenty of surroundings around it.'
     else if (z < 6) distance = 'Keep about the same framing distance as the original picture.'
     else distance = "The camera is close: a close-up where the subject's head and upper body fill the frame."
-    return `Redraw this picture from a new camera position. The subject is now seen ${side} ${height} ${distance} Every character, animal and object in the scene stays in the picture, each seen from the new side. It is the same subject with the same face, hairstyle, outfit, colors, proportions and art style, in the same scene and lighting; only the viewpoint changes, and the parts that come into view are drawn consistently with the original design.`
+    // Left/right is the weak spot (measured 2026-09-26: the model keeps the original's layout, so one
+    // mirror side often came out as the other). Naming which half of the ORIGINAL picture comes round
+    // to the camera fixed one more cell in seven and holds for any subject, unlike body-part words.
+    let facing = ''
+    if (h >= 22.5 && h < 157.5) facing = ' Direction check against the original picture: the side of the subject that was on the RIGHT half of the original picture is now the side nearest to the camera and fully visible, and the side that was on the LEFT half has turned away and is hidden behind.'
+    else if (h >= 202.5 && h < 337.5) facing = ' Direction check against the original picture: the side of the subject that was on the LEFT half of the original picture is now the side nearest to the camera and fully visible, and the side that was on the RIGHT half has turned away and is hidden behind.'
+    return `Redraw this picture from a new camera position. The subject is now seen ${side} ${height} ${distance} Every character, animal and object in the scene stays in the picture, each seen from the new side. It is the same subject with the same face, hairstyle, outfit, colors, proportions and art style, in the same scene and lighting; only the viewpoint changes, and the parts that come into view are drawn consistently with the original design.${facing}`
   }
 
   function buildImageAngleAdjustWorkflow(info, imageName, options = {}) {
