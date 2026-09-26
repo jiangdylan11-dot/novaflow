@@ -277,40 +277,12 @@
     if (provider === 'local') {
       if (!options.localWorkflow || typeof options.localWorkflow !== 'object') throw new Error('Local Art Generate workflow is required')
       const taskProfile = normalizeOptionalText(options.taskProfile).toLowerCase()
-      let localWorkflow = options.localWorkflow
+      const localWorkflow = options.localWorkflow
       let uiLocal = null
-      let uiRefine = null
-      if (taskProfile === 'ui-design' && String(options.localModelKey || '') === 'qwen-image-2.1-ui') {
-        uiLocal = { workflow: localWorkflow, metadata: Object.freeze({ taskProfile, engine: 'qwen-2.1', mode }) }
-      } else if (taskProfile === 'ui-design') {
-        const localUiWorkflow = root?.NovaFlowUiDesignLocalWorkflow
-        if (typeof localUiWorkflow?.build !== 'function') {
-          throw new Error('Local UI workflow module is required for taskProfile=ui-design')
-        }
-        uiLocal = localUiWorkflow.build({
-          taskProfile,
-          mode,
-          referenceRoles: options.referenceRoles,
-          layoutGuideEncoding: options.layoutGuideEncoding,
-          localWorkflow,
-          state: options.state,
-        })
-        localWorkflow = uiLocal.workflow
-      } else if (taskProfile === 'ui-design-refine') {
-        const localUiRefineWorkflow = root?.NovaFlowUiDesignLocalRefineWorkflow
-        if (typeof localUiRefineWorkflow?.build !== 'function') {
-          throw new Error('Local UI refinement workflow module is required for taskProfile=ui-design-refine')
-        }
-        uiRefine = localUiRefineWorkflow.build({
-          taskProfile,
-          mode,
-          localWorkflow,
-          uploadedNames: options.uploadedNames,
-          preset: options.state?.localUiRefinePreset,
-          denoise: options.state?.localUiRefineDenoise,
-          state: options.state,
-        })
-        localWorkflow = uiRefine.workflow
+      if (taskProfile === 'ui-design') {
+        // Local UI runs only on Qwen-Image-2.1.
+        if (String(options.localModelKey || '') !== 'qwen-image-2.1-ui') throw new Error('本地 UI 设计只支持 Qwen-Image-2.1 工作流')
+        uiLocal = Object.freeze({ taskProfile, engine: 'qwen-2.1', mode })
       }
       return {
         workflow: localWorkflow,
@@ -318,8 +290,7 @@
         providerNodeType: '',
         modelKey: String(options.localModelKey || 'local'),
         taskType: TASK_TYPE,
-        uiLocal: uiLocal?.metadata || null,
-        uiRefine: uiRefine?.metadata || null,
+        uiLocal,
       }
     }
     const built = buildWorkflow(options)

@@ -3,7 +3,7 @@ NovaFlow AI Runtime 模型清单
 以下路径都相对于资源目录下的 models 文件夹（默认 D:\NovaFlow\models）。
 文件名必须完全一致；大小为参考值。
 
-一、必需：Qwen-Image-2.1（绘图、扩图、局部编辑、智能补图、角度调整、万物迁移）
+一、必需：Qwen-Image-2.1（绘图、UI 设计、扩图、局部编辑、智能补图、角度调整、万物迁移、特效提取、去特效）
   diffusion_models\qwen-image-2.1-UC-Q8_0.gguf                       7.6 GB
   text_encoders\qwen3vl_8b_w4a8_heretic.safetensors                  6.3 GB
   vae\qwen_image_2.1_vae_bf16.safetensors                            0.7 GB
@@ -22,35 +22,31 @@ NovaFlow AI Runtime 模型清单
   vae\ae.safetensors                                                 0.34 GB
   loras\removal_timestep_alpha-2-1740.safetensors                    0.09 GB（去除物体用）
 
-四、Qwen Image Edit 2511（特效提取、去特效、UI 设计精修等仍在用）
-  diffusion_models\qwen_image_edit_2511_fp8mixed.safetensors         20.5 GB
-  text_encoders\qwen_2.5_vl_7b_fp8_scaled.safetensors                9.4 GB
-  vae\qwen_image_vae.safetensors                                     0.25 GB
-  loras\Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors  1.7 GB
-  loras\Qwen-Image-Lightning-8steps-V2.0.safetensors                 1.7 GB
-
-五、NSFW 开关（局部编辑 / 智能补图 / 绘图的 NSFW）
+四、NSFW 开关（局部编辑 / 智能补图 / 绘图的 NSFW）
   checkpoints\Qwen-Rapid-AIO-NSFW-v20.safetensors                    28.4 GB
 
-六、拆图（一键拆图，See-through）
+五、拆图（一键拆图，See-through）
   SeeThrough\seethroughv0.0.2_layerdiff3d\   （整个文件夹）          约 10.2 GB
   SeeThrough\seethroughv0.0.1_marigold\      （整个文件夹）          约 3.3 GB
 
-七、抠图、选区
+六、抠图、选区
   RMBG\RMBG-2.0\   （model.safetensors、config.json 等整个文件夹）   0.9 GB
   RMBG\BiRefNet\BiRefNet-general.safetensors                         0.9 GB
   sam\sam_vit_h_4b8939.pth                                           2.6 GB
   vitmatte\   （整个文件夹）                                         0.2 GB
 
-八、放大（SeedVR2）
+七、放大（SeedVR2）
   SEEDVR2\seedvr2_ema_3b_fp8_e4m3fn.safetensors                      3.4 GB
   SEEDVR2\ema_vae_fp16.safetensors                                   0.5 GB
 
-九、提示词助手（本地反推 / 优化提示词）
+八、提示词助手（本地反推 / 优化提示词）
   prompt_assistant\Huihui-Qwen3-VL-8B-Instruct-Abliterated\   （整个文件夹）  约 17.5 GB
+  text_encoders\qwen_2.5_vl_7b_fp8_scaled.safetensors                9.4 GB（提示词助手必需）
 
 一般不需要：
   unet\qwen_image_layered_control_bf16.safetensors 和 vae\qwen_image_layered_vae.safetensors
   只在旧的默认拆图工作流里出现，现在拆图走 See-through，可以不放。
+  Qwen Image Edit 2511（qwen_image_edit_2511_*.safetensors、qwen_image_vae.safetensors 和 2511 Lightning LoRA）
+  已经没有功能在用，可以删掉。
 
 只用部分功能时，只放对应分组即可；缺少的功能在 NovaFlow 里会提示缺哪个模型。

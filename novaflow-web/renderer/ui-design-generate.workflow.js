@@ -9,33 +9,16 @@
   const MODE = 'img2img'
   const LOCAL_REDESIGN_MODE = MODE
   const UI_TASK_PROFILE = 'ui-design'
-  const UI_REFINE_TASK_PROFILE = 'ui-design-refine'
   const FILLED_REGIONS_VISUAL_ENCODING = 'filled-regions-only'
   const SOFT_LAYOUT_GUIDE_ENCODING = 'soft-occupancy-heatmap-v1'
   const SOFT_UI_SEMANTIC_SCAFFOLD_ENCODING = 'soft-ui-semantic-scaffold-v2'
-  const REFINEMENT_BASE_ENCODING = 'ui-candidate-base-v1'
-  const REPAIR_MASK_ENCODING = 'semantic-repair-mask-v1'
   const LOCAL_REDESIGN_MODEL_PROMPT_MAX_CHARS = 1800
-  const LOCAL_REFINEMENT_MODEL_PROMPT_MAX_CHARS = 1800
   const LOCAL_PROMPT_LOCK_MAX_CHARS = 480
   // A local compute node whose ComfyUI carries Qwen-Image-2.1 takes every connected reference in one
   // pass, instead of 2511's three slots: up to 10, the model card's limit (the encoder node has 16
   // inputs, but the model supports 10).
   const LOCAL_UI_ENGINE_QWEN21 = 'qwen-2.1'
   const QWEN21_UI_PROMPT_MAX_CHARS = 4000
-  const CONTROLLED_STRUCTURE_REFINEMENT_CONTRACT = [
-    'Image 1 is the only visual base and already establishes one screen-native full-screen digital interface.',
-    'Preserve every correct theme, subject, region order and control group from Image 1. Reconstruct only the missing or incorrect regions, item counts and controls explicitly required below.',
-    'Keep all repaired regions and controls as screen-native software graphics on the same flat orthographic viewport.',
-    'The image boundary remains the interface viewport boundary, with every visible element integrated into the existing digital screen composition.',
-    'The written user target and quality correction below are a literal content identity lock: every named subject, stated identity attribute, required item, required count and required control must visibly match. Never substitute a generic archetype for a named subject.',
-    'Keep the same edge-to-edge screen composition while closing the missing functional structure. Output only the finished interface pixels.',
-  ]
-  const POLISH_REFINEMENT_CONTRACT = [
-    'Image 1 is the current finished UI candidate and the only visual base for this refinement pass.',
-    'Preserve its requested theme, subjects, page regions, control positions, item counts and functional meaning unless the correction requirements explicitly say otherwise.',
-    'Improve only the identified hierarchy, material coherence, lighting coherence, asset consistency, readability and commercial completeness problems. Do not redesign unrelated content.',
-  ]
   const DIGITAL_UI_CANVAS_CONTRACT = [
     'Render one screen-native software interface as the image itself, viewed straight-on and edge-to-edge.',
     'The image boundary is exactly the viewport boundary, and every visible element belongs to the same flat digital interface.',
@@ -188,12 +171,6 @@
     return values.some((value) => /(?:老虎机|数字转轴|slot(?:\s+machine)?|spin|reel|wild|scatter|jackpot)/i.test(cleanText(value)))
   }
 
-  function localRefinementContract(state = {}) {
-    return cleanText(state.localUiRefinePreset).toLowerCase().replace(/[\s_]+/g, '-') === 'enhanced-redraw'
-      ? CONTROLLED_STRUCTURE_REFINEMENT_CONTRACT
-      : POLISH_REFINEMENT_CONTRACT
-  }
-
   function trustedStateContentLock(state = {}) {
     const source = state && typeof state === 'object' && !Array.isArray(state) ? state : {}
     const sourcePrompt = cleanText(source.localUiContentLockSourcePrompt)
@@ -220,52 +197,6 @@
     return lock && typeof director?.contentLockPromptFromContract === 'function'
       ? cleanText(director.contentLockPromptFromContract(lock))
       : ''
-  }
-
-  function compileLocalRefinementPrompt(basePrompt, state = {}, options = {}) {
-    const carrierIntent = cleanText(options.carrierIntent).toLowerCase() === 'hardware' ? 'hardware' : 'screen'
-    const repairTokens = [...new Set(
-      (Array.isArray(options.repairTokens) ? options.repairTokens : [])
-        .map((item) => cleanText(item).toLowerCase())
-        .filter((item) => /^[a-z0-9][a-z0-9-]{0,63}$/.test(item)),
-    )]
-    const maskedTargets = repairTokens.length
-      ? `[MASKED TARGETS] ${repairTokens.join(', ')}; every listed UI item must be visibly present, distinct and legible inside the editable mask; preserve all unmasked pixels`
-      : ''
-    const qualityCorrection = compactLocalModelText(
-      normalizeScreenNativeUiText(options.qualityCorrectionPrompt, carrierIntent),
-      280,
-    )
-    const enhancedRedraw = cleanText(state.localUiRefinePreset)
-      .toLowerCase()
-      .replace(/[\s_]+/g, '-') === 'enhanced-redraw'
-    const contract = localRefinementContract(state)
-      .filter((item, index) => !enhancedRedraw || index !== 3)
-      .join('； ')
-    const contentLock = compactLocalModelText(
-      normalizeScreenNativeUiText(trustedStateContentLockPrompt(state), carrierIntent),
-      420,
-    )
-    const fixedParts = [
-      maskedTargets,
-      qualityCorrection ? `[FIX - HIGHEST PRIORITY] ${qualityCorrection}` : '',
-      contract,
-      contentLock,
-    ].filter(Boolean)
-    const fixedText = fixedParts.join('； ')
-    const separatorBudget = fixedText ? 2 : 0
-    const baseBudget = Math.max(
-      160,
-      LOCAL_REFINEMENT_MODEL_PROMPT_MAX_CHARS - fixedText.length - separatorBudget,
-    )
-    const compactBase = compactLocalModelText(
-      normalizeScreenNativeUiText(basePrompt, carrierIntent),
-      baseBudget,
-    )
-    const prompt = [...fixedParts, compactBase].filter(Boolean).join('； ')
-    return prompt.length <= LOCAL_REFINEMENT_MODEL_PROMPT_MAX_CHARS
-      ? prompt
-      : compactLocalModelText(prompt, LOCAL_REFINEMENT_MODEL_PROMPT_MAX_CHARS)
   }
 
   function finiteNumber(value) {
@@ -520,21 +451,9 @@
   function synthesisReferencePlan(options = {}) {
     const provider = normalizeProvider(options.provider)
     const intent = cleanText(options.intent).toLowerCase()
-    const refinementCandidate = options.refinementCandidate || null
     const layoutGuide = options.layoutGuide || null
     const modelRefs = Array.isArray(options.modelRefs) ? options.modelRefs : []
     const primaryReferencePlan = options.primaryReferencePlan || null
-    if (refinementCandidate) {
-      return Object.freeze({
-        references: Object.freeze([refinementCandidate]),
-        externalModelImageNumbers: Object.freeze([]),
-        layoutGuideIndex: 0,
-        layoutGuideImageNumber: 1,
-        primaryModelImageNumber: 0,
-        guideLast: false,
-      })
-    }
-
     const guideLast = provider === 'local'
       && intent === 'redesign'
       && primaryReferencePlan?.applied === true
@@ -922,13 +841,9 @@
       semantic?.requirement,
       ...blocks.flatMap((block) => [block?.purpose, block?.description, block?.requirements, block?.requirement, block?.prompt]),
     )
-    const refinementBase = options.refinementBase === true
-      || cleanText(options.layoutGuideEncoding) === REFINEMENT_BASE_ENCODING
-    const softLayout = !refinementBase
-      && ['local', 'google'].includes(normalizeProvider(options.provider))
+    const softLayout = ['local', 'google'].includes(normalizeProvider(options.provider))
       && cleanText(options.layoutGuideEncoding) === SOFT_LAYOUT_GUIDE_ENCODING
-    const semanticScaffold = !refinementBase
-      && normalizeProvider(options.provider) === 'local'
+    const semanticScaffold = normalizeProvider(options.provider) === 'local'
       && cleanText(options.layoutGuideEncoding) === SOFT_UI_SEMANTIC_SCAFFOLD_ENCODING
     const textSemanticLayout = semanticScaffold && options.textOnlyLayout === true
     const enforceDigitalCanvas = carrierIntent === 'screen'
@@ -939,13 +854,7 @@
     const lines = ['Create one complete, polished, review-ready game UI design.']
     if (enforceDigitalCanvas) lines.push(...DIGITAL_UI_CANVAS_CONTRACT)
     if (digitalReelUi) lines.push(...DIGITAL_REEL_UI_CONTRACT)
-    if (refinementBase && options.refinementContractOwned !== true) {
-      lines.push(
-        'Image 1 is the current finished UI candidate and the only visual base for this refinement pass.',
-        'Preserve its requested theme, subjects, page regions, control positions, item counts and functional meaning unless the correction requirements explicitly say otherwise.',
-        'Improve only the identified hierarchy, material coherence, lighting coherence, asset consistency, readability and commercial completeness problems. Do not redesign unrelated content.',
-      )
-    } else if (textSemanticLayout) {
+    if (textSemanticLayout) {
       lines.push(
         'There is no visual layout reference in this synthesis pass. Build the interface directly from the semantic region requirements below.',
         'Treat region order, relative coverage, required item counts and functional groups as a layout contract, while inventing all finished shapes, materials and styling.',
@@ -979,9 +888,7 @@
     if (effectiveRequirement) lines.push(`设计时满足${effectiveRequirement}，不得把这句话作为界面文案。`)
 
     if (blocks.length) {
-      lines.push(refinementBase
-        ? 'Use the following semantic requirements only to verify and refine the existing candidate. Never quote, list or typeset their wording.'
-        : 'Use the following ideas only to choose visual content. Never quote, list or typeset their wording.')
+      lines.push('Use the following ideas only to choose visual content. Never quote, list or typeset their wording.')
       blocks.forEach((block) => {
         const purpose = normalizeScreenNativeUiText(block.purpose || block.description, carrierIntent)
           || semanticRoleInstruction(block.role)
@@ -991,9 +898,7 @@
           carrierIntent,
         )
         const requirementText = blockRequirement ? `，同时满足${blockRequirement}` : ''
-        lines.push(refinementBase
-          ? `一个已有区域用于${purpose}${requirementText}；保持候选成品中的对应区域、数量关系和操作语义，只修正明确指出的问题。`
-          : textSemanticLayout
+        lines.push(textSemanticLayout
           ? `A required region serves ${purpose}${requirementText}. Preserve its functional group, relative order and required item count, but design every final shape, material and ornament from scratch.`
           : semanticScaffold
           ? `一个区域用于${purpose}${requirementText}；只从图${layoutGuideImageNumber}读取功能组、相对位置、数量、顺序和留白；必须重新设计所有最终形状、材质和装饰，不得实体化任何柔性标记。`
@@ -1951,45 +1856,6 @@
     return cleanText(value?.name || value?.filename || value?.fileName) || fallback
   }
 
-  function normalizeRefinementCandidate(value) {
-    if (!value || typeof value !== 'object') return null
-    const dataUrl = cleanText(value.dataUrl || value.imageUrl || value.url || value.src)
-    if (!/^data:image\/(?:png|jpe?g|webp);base64,/i.test(dataUrl)) {
-      throw new TypeError('Local UI refinement requires a PNG, JPEG or WebP candidate data URL')
-    }
-    return Object.freeze({
-      id: cleanText(value.id || value.resultId),
-      name: uploadedName(value, 'ui_design_first_pass.png'),
-      role: 'ui_base',
-      treatment: 'base',
-      dataUrl,
-      width: positiveInteger(value.width, 0),
-      height: positiveInteger(value.height, 0),
-    })
-  }
-
-  function normalizeRepairMask(value) {
-    if (!value || typeof value !== 'object') return null
-    const dataUrl = cleanText(value.dataUrl || value.imageUrl || value.url || value.src)
-    const visualEncoding = cleanText(value.visualEncoding)
-    const selectedTokens = [...new Set(
-      (Array.isArray(value.selectedTokens) ? value.selectedTokens : [])
-        .map(cleanText)
-        .filter(Boolean),
-    )]
-    if (
-      visualEncoding !== REPAIR_MASK_ENCODING
-      || !/^data:image\/png;base64,/i.test(dataUrl)
-      || !selectedTokens.length
-    ) return null
-    return Object.freeze({
-      name: uploadedName(value, 'ui_semantic_repair_mask.png'),
-      dataUrl,
-      visualEncoding,
-      selectedTokens: Object.freeze(selectedTokens),
-    })
-  }
-
   function historyItem(response, promptId) {
     const data = responseData(response)
     return data && typeof data === 'object' && data[promptId] ? data[promptId] : data
@@ -2009,14 +1875,6 @@
     state.mode = MODE
     const provider = normalizeProvider(options.provider || state.provider)
     state.provider = provider
-    const refinementCandidate = options.refinementCandidate
-      ? normalizeRefinementCandidate(options.refinementCandidate)
-      : null
-    const repairMask = refinementCandidate ? normalizeRepairMask(options.repairMask) : null
-    if (refinementCandidate && provider !== 'local') {
-      throw new Error('UI candidate refinement is available only for the Local provider')
-    }
-    if (repairMask) state.localUiRepairMaskEncoding = repairMask.visualEncoding
     const signal = options.signal || null
     const onProgress = options.onProgress || options.progress
     const project = options.project && typeof options.project === 'object' ? options.project : {}
@@ -2024,8 +1882,7 @@
     // upload order and workflow reference metadata.
     const refs = externalReferenceSnapshot(options.refs || options.references)
     // Asked on every run: the assistant may point at another ComfyUI than when the page loaded.
-    // Refinement passes are 2511-only and never reach here from a 2.1 run.
-    const qwen21 = provider === 'local' && !refinementCandidate && await refreshLocalQwen21Available()
+    const qwen21 = provider === 'local' && await refreshLocalQwen21Available()
     const capability = validateExternalReferenceCount(provider, refs, providerCapability(provider, { qwen21 }))
     if (qwen21) state.localUiEngine = LOCAL_UI_ENGINE_QWEN21
     else delete state.localUiEngine
@@ -2071,10 +1928,7 @@
     if (provider === 'local') {
       const localWorkflow = localWorkflowApi()
       const referenceWorkflow = localReferenceApi()
-      if (refinementCandidate) {
-        localIntent = 'refinement'
-        modelRefs = []
-      } else if (qwen21) {
+      if (qwen21) {
         // Qwen-Image-2.1 gets every connected reference as it is: no automatic primary, material
         // proxy or three-slot selection. Palette-only colour references keep their low-frequency
         // proxy, and the director's deterministic fallback still supplies the content lock.
@@ -2196,7 +2050,6 @@
     }
     const referenceGuidedRedesign = provider === 'local'
       && localIntent === 'redesign'
-      && !refinementCandidate
       && !qwen21
     const executionMode = MODE
     state.mode = executionMode
@@ -2216,7 +2069,6 @@
       : synthesisReferencePlan({
           provider,
           intent: localIntent,
-          refinementCandidate,
           layoutGuide,
           modelRefs,
           primaryReferencePlan,
@@ -2229,25 +2081,19 @@
     const references = synthesisPlan.references
     const referenceRoles = references.map((reference, index) => ({
       index,
-      role: refinementCandidate && index === 0
-        ? 'ui_base'
-        : index === synthesisPlan.layoutGuideIndex
-          ? 'ui_layout'
+      role: index === synthesisPlan.layoutGuideIndex
+        ? 'ui_layout'
         : normalizeReferenceRole(reference.role),
       name: reference.name,
       sourceId: cleanText(reference.sourceId),
       targetNodeId: cleanText(reference.targetNodeId),
       autoPrimary: reference.autoPrimary === true,
       roleSource: cleanText(reference.roleSource),
-      treatment: refinementCandidate && index === 0
-        ? 'base'
-        : index === synthesisPlan.layoutGuideIndex
-          ? 'layout-guide'
+      treatment: index === synthesisPlan.layoutGuideIndex
+        ? 'layout-guide'
         : cleanText(reference.treatment),
-      proxyEncoding: refinementCandidate && index === 0
-        ? REFINEMENT_BASE_ENCODING
-        : index === synthesisPlan.layoutGuideIndex
-          ? layoutGuideEncoding
+      proxyEncoding: index === synthesisPlan.layoutGuideIndex
+        ? layoutGuideEncoding
         : cleanText(reference.proxyEncoding),
     }))
     const compiled = referenceGuidedRedesign || qwen21
@@ -2257,9 +2103,7 @@
           localIntent,
           carrierIntent,
           userPrompt: originalUserPrompt,
-          layoutGuideEncoding: refinementCandidate ? REFINEMENT_BASE_ENCODING : layoutGuideEncoding,
-          refinementBase: Boolean(refinementCandidate),
-          refinementContractOwned: provider === 'local' && Boolean(refinementCandidate),
+          layoutGuideEncoding,
           textOnlyLayout: false,
           layoutGuideImageNumber: synthesisPlan.layoutGuideImageNumber,
           referenceImageNumbers: synthesisPlan.externalModelImageNumbers,
@@ -2302,11 +2146,7 @@
         )
       : directedUserPrompt
     const compiledMentions = assertValidUiMentions(compileUiMentions(conciseRedesignMentionSource, refs, {
-      analysisOnly: provider === 'local' && localIntent === 'refinement',
       analysisOnlyReferenceIndexes: localSynthesisSelection?.analysisOnlyReferenceIndexes,
-      analysisOnlyReplacement: refinementCandidate
-        ? '当前候选成品中已经建立的原始视觉方向'
-        : '',
       modelImageNumbers: sourceModelImageNumbers,
       imageToken: qwen21 ? 'angle' : '',
     }))
@@ -2342,29 +2182,21 @@
     const requestedNegativePrompt = cleanText(options.negativePrompt ?? state.negativePrompt)
     const prompt = provider === 'local'
       ? (
-          refinementCandidate
-            ? compileLocalRefinementPrompt(basePrompt, state, {
+          referenceGuidedRedesign || qwen21
+            ? basePrompt
+            : localWorkflowApi().compileAntiCopyPrompt(basePrompt, {
+                state,
+                referenceRoles,
+                textOnly: false,
                 carrierIntent,
-                qualityCorrectionPrompt: options.qualityCorrectionPrompt,
-                repairTokens: repairMask?.selectedTokens,
               })
-            : (
-                referenceGuidedRedesign || qwen21
-                  ? basePrompt
-                  : localWorkflowApi().compileAntiCopyPrompt(basePrompt, {
-                      state,
-                      referenceRoles,
-                      textOnly: false,
-                      carrierIntent,
-                    })
-              )
         )
       : basePrompt
     const directedNegativePrompt = cleanText(directorResult?.negativePrompt)
     const digitalCanvasNegativePrompt = provider === 'local'
-      && ['redesign', 'refinement'].includes(localIntent)
+      && localIntent === 'redesign'
       ? (
-          referenceGuidedRedesign || refinementCandidate
+          referenceGuidedRedesign
             ? LOCAL_REFERENCE_UI_NEGATIVE_PROMPT
             : DIGITAL_UI_CANVAS_NEGATIVE_PROMPT
         )
@@ -2413,11 +2245,9 @@
       for (let index = 0; index < references.length; index += 1) {
         const reference = references[index]
         const externalReferenceIndex = modelRefs.indexOf(reference)
-        const label = refinementCandidate && index === 0
-          ? '正在上传当前 UI 候选图'
-          : index === synthesisPlan.layoutGuideIndex
-            ? '正在上传干净布局控制图'
-            : `正在上传参考图${externalReferenceIndex + 1}`
+        const label = index === synthesisPlan.layoutGuideIndex
+          ? '正在上传干净布局控制图'
+          : `正在上传参考图${externalReferenceIndex + 1}`
         emitProgress(onProgress, 'upload', label, 0.08 + (index / Math.max(1, references.length)) * 0.12, {
           referenceIndex: index,
           referenceRole: reference.role || 'reference',
@@ -2431,14 +2261,6 @@
         ? await Promise.all(uploadDataUrls.map((dataUrl) => measureDataUrl(dataUrl)))
         : null
       throwIfAborted(signal)
-      if (repairMask) {
-        emitProgress(onProgress, 'upload', '正在上传语义局部修复蒙版', 0.21, {
-          referenceRole: 'repair_mask',
-        })
-        const upload = await bridge.uploadDataUrl(baseUrl, repairMask.name, repairMask.dataUrl)
-        throwIfAborted(signal)
-        uploadedNames.push(uploadedName(upload, repairMask.name))
-      }
 
       emitProgress(onProgress, 'build', '正在构建 UI 生成工作流', 0.23)
       const workflowRun = await buildRunWorkflow(bridge, {
@@ -2453,29 +2275,19 @@
         project,
         settings: workflowSettings(state, provider, executionMode),
         negativePrompt,
-        taskProfile: refinementCandidate ? UI_REFINE_TASK_PROFILE : UI_TASK_PROFILE,
-        layoutGuideEncoding: refinementCandidate ? REFINEMENT_BASE_ENCODING : layoutGuideEncoding,
+        taskProfile: UI_TASK_PROFILE,
+        layoutGuideEncoding,
         systemPrompt: provider === 'google' ? GOOGLE_UI_SYSTEM_PROMPT : '',
         semanticLayout,
-        layoutGuide: refinementCandidate
-          ? {
-              kind: 'ui-design-candidate-base',
-              role: 'ui_base',
-              source: 'quality-refinement',
-              clean: true,
-              width: refinementCandidate.width || semanticLayout.canvas.width,
-              height: refinementCandidate.height || semanticLayout.canvas.height,
-              visualEncoding: REFINEMENT_BASE_ENCODING,
-            }
-          : {
-              kind: layoutGuide.kind,
-              role: layoutGuide.role,
-              source: layoutGuide.source,
-              clean: layoutGuide.clean,
-              width: layoutGuide.width,
-              height: layoutGuide.height,
-              visualEncoding: layoutGuideEncoding,
-            },
+        layoutGuide: {
+          kind: layoutGuide.kind,
+          role: layoutGuide.role,
+          source: layoutGuide.source,
+          clean: layoutGuide.clean,
+          width: layoutGuide.width,
+          height: layoutGuide.height,
+          visualEncoding: layoutGuideEncoding,
+        },
         referenceRoles,
         referenceSizes: references.map((reference, index) => (
           measuredSizes && measuredSizes[index].width > 0
@@ -2583,22 +2395,12 @@
         referenceCount: references.length,
         externalReferenceCount: refs.length,
         synthesisReferenceCount: references.length,
-        analysisOnlyReferenceCount: provider === 'local' && localIntent === 'refinement'
-          ? refs.length
-          : (localSynthesisSelection?.analysisOnlyReferences?.length || 0),
+        analysisOnlyReferenceCount: localSynthesisSelection?.analysisOnlyReferences?.length || 0,
         analysisOnlyMentions: compiledMentions.analysisOnlyMentions,
         referenceRoles: referenceRoles.map((reference) => reference.role),
         semanticLayoutVersion: positiveInteger(semanticLayout.schemaVersion, 1),
-        layoutGuideSource: refinementCandidate
-          ? 'quality-refinement'
-          : (cleanText(layoutGuide.source) || 'semantic-layout-compiler'),
-        layoutGuideEncoding: refinementCandidate ? REFINEMENT_BASE_ENCODING : layoutGuideEncoding,
-        ...(repairMask
-          ? {
-              repairMaskEncoding: repairMask.visualEncoding,
-              repairMaskSelectedTokens: [...repairMask.selectedTokens],
-            }
-          : {}),
+        layoutGuideSource: cleanText(layoutGuide.source) || 'semantic-layout-compiler',
+        layoutGuideEncoding,
         localIntent,
         referenceGuidedRedesign,
         localReferenceTreatments: localReferencePlan
@@ -2650,7 +2452,6 @@
         localReferenceContentContract: directorResult?.referenceContentContract || null,
         localReferenceContentPrompt: cleanText(directorResult?.referenceContentPrompt),
         localWorkflow: workflowRun?.uiLocal || null,
-        localRefinement: workflowRun?.uiRefine || null,
         localEngine: qwen21 ? LOCAL_UI_ENGINE_QWEN21 : '',
       }
       emitProgress(onProgress, 'complete', 'UI 设计生成完成', 1, { promptId, result })
@@ -2674,13 +2475,7 @@
     MODE,
     LOCAL_REDESIGN_MODE,
     LOCAL_REDESIGN_MODEL_PROMPT_MAX_CHARS,
-    LOCAL_REFINEMENT_MODEL_PROMPT_MAX_CHARS,
     UI_TASK_PROFILE,
-    UI_REFINE_TASK_PROFILE,
-    REFINEMENT_BASE_ENCODING,
-    REPAIR_MASK_ENCODING,
-    CONTROLLED_STRUCTURE_REFINEMENT_CONTRACT,
-    POLISH_REFINEMENT_CONTRACT,
     trustedStateContentLock,
     trustedStateContentLockPrompt,
     MAX_EXTERNAL_REFERENCES,
@@ -2700,9 +2495,6 @@
     assertStableUiMentionBindings,
     resolveSemanticLayout,
     resolveCleanLayoutGuide,
-    normalizeRefinementCandidate,
-    localRefinementContract,
-    compileLocalRefinementPrompt,
     positivelyRequestsHardwareCarrier,
     resolveUiOutputCarrier,
     normalizeScreenNativeUiText,

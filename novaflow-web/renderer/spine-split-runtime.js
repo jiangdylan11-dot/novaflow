@@ -228,11 +228,10 @@
   const IMAGE_OUTPAINT_TIMEOUT_MS = 600000
   const IMAGE_OUTPAINT_SAFE_DIMENSION_STEP = 8
   const IMAGE_OUTPAINT_ORIGINAL_EDGE_FEATHER_PX = 24
-  // NSFW option for local editing and completion; the default chains use Qwen Image Edit 2511.
+  // NSFW option for local editing and completion; the default chains use Qwen-Image-2.1.
   const QWEN_RAPID_CHECKPOINT = 'Qwen-Rapid-AIO-NSFW-v20.safetensors'
   const IMAGE_ANGLE_ADJUST_TIMEOUT_MS = 600000
   const IMAGE_ANGLE_ADJUST_FILENAME_PREFIX = 'NovaFlow_angle_adjust'
-  // fp8mixed is preferred when present; the bf16 release is the copy kept in the legacy runtime.
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_DEFAULT = 0
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_MIN = 0
   const IMAGE_ANGLE_ADJUST_HORIZONTAL_MAX = 359
@@ -244,65 +243,14 @@
   const IMAGE_ANGLE_ADJUST_ZOOM_MAX = 8
   const IMAGE_ANGLE_ADJUST_ZOOM_STEP = 0.1
   const OBJECT_TRANSFER_TIMEOUT_MS = 30 * 60 * 1000
-  // Qwen's CONST flow scales the input latent by (1 - sigma), and sigma starts at 1.0 for anything at or
-  // above 0.81 on a 4-step schedule — the canvas latent is multiplied by zero either way. Denoise is not
-  // a strength dial here; it is 1, and the picture is held by the reference tokens instead.
-  const OBJECT_TRANSFER_DENOISE = 1
-  // Lifted verbatim from the 图生图 graph the user got a good result out of (novaflow-brand-runtime's
-  // ART_GENERATE_WORKFLOW_TEMPLATES.img2img): shift 3.1, 4 steps on the Lightning LoRA, euler/simple.
-  // My own 万物迁移 numbers (shift 1.5, 6 steps) were the reason its output never matched that quality.
-  const OBJECT_TRANSFER_SHIFT = 3.1
-  const OBJECT_TRANSFER_STEPS = 4
-  // cfg 1 disables the negative branch outright (ComfyUI skips it, and CFGNorm collapses to identity), so
-  // the negative prompt below only does anything above 1. Swept live over three seeds each: at 1.5 the
-  // ground repaint lands but two seeds in three re-lit the whole picture (R-B +2.9 and +6.3 against the
-  // original's -24.8, drift 54 and 47). At 1.2 all three held (-20.4, -20.4, -19.7, drift 26-29) and the
-  // contact shading still appeared. The extra push at 1.5 was buying variance, not fidelity.
-  const OBJECT_TRANSFER_CFG = 1.2
-  // Deliberately says nothing about light, tone or shadow. A negative term is a direction to move AWAY
-  // from, so every word about the ground's appearance pushed the picture the opposite way: adding
-  // 地面发亮 and 画面变暖 to this list turned all three seeds into a huge black blot under the object with
-  // the whole frame gone blue (R-B -34 to -49 against the original's -24.8). These five name only the
-  // sticker failure modes the user kept rejecting, and nothing about how anything is lit.
-  const OBJECT_TRANSFER_NEGATIVE_PROMPT = '\u7269\u4f53\u6d6e\u5728\u534a\u7a7a\uff0c\u8d34\u7eb8\uff0c\u63cf\u8fb9\uff0c\u62fc\u63a5\u8fb9\u7f18\uff0c\u5e73\u6d82\u8272\u5757'
-  // 1.4, and the value is a three-way balance that was found by sweeping it against the finished picture,
-  // not against this pass's own output. What this pass paints under the object matters more than how it
-  // looks on the plate, because RMBG-2.0 keeps a ground shadow as part of the subject and the composite
-  // guide carries it into the integration pass:
-  //   cfg 2.5 paints a HARD ellipse. It survives the cutout and shows through the finished picture as a
-  //     stray grey blot, and the object itself comes back dark and high-contrast, lit for the grey plate.
-  //   cfg 1 paints nothing the cutout keeps. The object is bright and correct, but the integration pass
-  //     has no anchor and draws an isolated ellipse at the feet instead of a shadow that extends.
-  //   cfg 1.4 paints a FAINT contact darkening: light enough that it never shows through, strong enough
-  //     to survive RMBG and tell the integration pass where the object meets the ground.
-  // Measured on the tuned picture across three seeds at 1.4: darkened ground 52.6 / 50.5 / 37.5%, R-B
-  // -25.4 / -21.5 / -20.9 against the original's -24.8. The cfg 2.5 run it replaces drew 42.4% at -19.4.
-  // Asking the integration pass for an extending shadow directly does not work and never will on this
-  // graph: naming the picture's light relights the whole frame, and "extend and fade" returns a hard
-  // black silhouette. The anchor is the only lever.
-  const OBJECT_TRANSFER_RESTYLE_STEPS = 6
-  const OBJECT_TRANSFER_RESTYLE_CFG = 1.4
   const OBJECT_TRANSFER_RESTYLE_BACKGROUND = '#808080'
   const OBJECT_TRANSFER_FILENAME_PREFIX = 'NovaFlow_object_transfer'
   // The reference object may hang off the plate: half a robot at the frame edge is a real composition,
   // so placement is only held back far enough to keep a grabbable sliver of it on the canvas.
   const OBJECT_TRANSFER_MIN_VISIBLE_RATIO = 0.1
   const OBJECT_TRANSFER_MIN_VISIBLE_PX = 16
-  const OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE = '\u5f53\u524d Runtime \u672a\u5b89\u88c5\u4e07\u7269\u8fc1\u79fb\u7ec4\u4ef6\uff0c\u8bf7\u5b89\u88c5\u5bf9\u5e94 Runtime \u6a21\u578b\u5305\u540e\u91cd\u8bd5\u3002'
   const OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE = '\u53c2\u8003\u7269\u4e3b\u4f53\u4e0d\u6e05\u6670\uff0c\u8bf7\u6362\u4e00\u5f20\u80cc\u666f\u66f4\u7b80\u5355\u7684\u56fe\u7247\u3002'
-  // fp8mixed is the 2511 release the Runtime keeps (the 40 GB bf16 file is retired to save disk). The
-  // loader below casts either file to fp8_e4m3fn, so the graph is the same on both; bf16 stays only as
-  // the fallback for a Runtime that still has just that one.
-  const OBJECT_TRANSFER_QWEN_UNETS = ['qwen_image_edit_2511_fp8mixed.safetensors', 'qwen_image_edit_2511_bf16.safetensors']
-  const OBJECT_TRANSFER_QWEN_CLIP = 'qwen_2.5_vl_7b_fp8_scaled.safetensors'
-  const OBJECT_TRANSFER_QWEN_VAE = 'qwen_image_vae.safetensors'
-  const OBJECT_TRANSFER_QWEN_LIGHTNING_LORAS = [
-    'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
-    'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
-    'Qwen-Image-Lightning-8steps-V2.0.safetensors',
-    'Qwen-Image-Lightning-8steps-V1.0.safetensors'
-  ]
-  // 万物迁移 on Qwen-Image-2.1, taken whenever the node reports the 2.1 weights (objectTransferEngine).
+  // 万物迁移 runs on Qwen-Image-2.1 only.
   // Both passes run one graph shape: no Lightning LoRA, no AuraFlow shift, cfg 1 with an empty negative
   // (ComfyUI never evaluates the negative branch at cfg 1), 25 steps as the 2.1 completion route uses.
   // Measured 2026-09-24 with the real pipeline (RMBG -> 画风转换 -> placement -> integration -> decode) on the
@@ -319,23 +267,14 @@
   const OBJECT_TRANSFER_QWEN21_RESTYLE_CFG = 1
   const EFFECT_EXTRACT_TIMEOUT_MS = 10 * 60 * 1000
   const EFFECT_EXTRACT_FILENAME_PREFIX = 'NovaFlow_effect_extract'
-  const EFFECT_EXTRACT_SEED = 916202601
   const EFFECT_EXTRACT_ALPHA_FLOOR = 3
-  const EFFECT_REMOVE_PROVIDER = 'Qwen Image Edit 2511 key + de-effect'
+  const EFFECT_REMOVE_PROVIDER = 'Qwen-Image-2.1 de-effect'
   const QWEN_EDIT_REFERENCE_PIXELS = 1024 * 1024
   const QWEN_EDIT_PLATE_ALIGN = 8
   const QWEN_EDIT_PLATE_MIN = 320
   const QWEN_EDIT_PLATE_MAX = 1600
   const QWEN_EDIT_PLATE_ROUNDING_MARGIN = 0.1
   const EFFECT_REMOVE_FILENAME_PREFIX = 'NovaFlow_effect_remove'
-  // Everything the extraction kept is effect (it already floors VAE noise at EFFECT_EXTRACT_ALPHA_FLOOR);
-  // a higher floor left the faint glitter on the skin behind.
-  const EFFECT_REMOVE_MASK_FLOOR = EFFECT_EXTRACT_ALPHA_FLOOR
-  // The de-effect plate is pixel aligned with the crop (see qwenEditPlateSize), so the key only has to
-  // grow far enough to cover the glow's own soft edge. It used to be ~12px because the plate was not.
-  const EFFECT_REMOVE_MASK_GROW_RATIO = 0.008
-  const EFFECT_REMOVE_MASK_GROW_MIN = 4
-  const EFFECT_REMOVE_MASK_GROW_MAX = 16
   
   
   
@@ -7831,7 +7770,7 @@
     return canvas
   }
 
-  async function objectTransferBuildInputCanvases(styledCutoutDataUrl, engine) {
+  async function objectTransferBuildInputCanvases(styledCutoutDataUrl) {
     // The guide is the picture with the object already sitting in it at the size and place the user
     // dragged it to. That is the whole of 定位 and 大小控制: the model is not told where to put anything,
     // it is handed a frame that is already arranged and asked to repaint it into one picture.
@@ -7849,7 +7788,7 @@
     const stats = objectTransferMaskStats(hardAlphaMask)
     if (stats.max <= 8 || stats.pixels < 16) throw new Error(OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE)
     const placementGuideCanvas = objectTransferCompGuideCanvas(baseCanvas, transferSubjectCanvas)
-    const plateSize = objectTransferPlateSize(engine, size.width, size.height)
+    const plateSize = qwen21EditPlateSize(size.width, size.height)
     const plateCanvas = qwenEditPlateCanvas(placementGuideCanvas, plateSize)
     return {
       size,
@@ -7857,7 +7796,6 @@
       baseCanvas,
       subjectMaskCanvas: hardAlphaMask,
       transferMaskCanvas: hardAlphaMask,
-      denoise: OBJECT_TRANSFER_DENOISE,
       plateSize,
       plateContent: plateCanvas.__plateContent,
       plateDataUrl: plateCanvas.toDataURL('image/png'),
@@ -7869,85 +7807,35 @@
     }
   }
 
-  function objectTransferChoice(nodeInfo, key, candidates, label) {
-    const list = (Array.isArray(candidates) ? candidates : [candidates]).filter(Boolean).map((item) => String(item))
-    const choices = comfyComboChoices(nodeInfo, key)
-    if (!choices.length) return list[0] || ''
-    for (const item of list) {
-      const exact = comfyComboChoice(nodeInfo, key, item)
-      if (exact) return exact
-    }
-    throw new Error(OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE)
-  }
-
-  function resolveObjectTransferQwenRuntime(info) {
-    const requiredNodes = [
-      'LoadImage',
-      'FluxKontextImageScale',
-      'UNETLoader',
-      'CLIPLoader',
-      'VAELoader',
-      'VAEEncode',
-      'TextEncodeQwenImageEditPlus',
-      'ConditioningZeroOut',
-      'KSampler',
-      'VAEDecode',
-      'SaveImage'
-    ]
-    const missing = requiredNodes.filter((name) => !info || !info[name])
-    if (missing.length) throw new Error(OBJECT_TRANSFER_MISSING_COMPONENT_MESSAGE)
-    const unetName = objectTransferChoice(info.UNETLoader, 'unet_name', OBJECT_TRANSFER_QWEN_UNETS, 'Qwen Edit UNET')
-    const clipName = objectTransferChoice(info.CLIPLoader, 'clip_name', OBJECT_TRANSFER_QWEN_CLIP, 'Qwen CLIP')
-    const vaeName = objectTransferChoice(info.VAELoader, 'vae_name', OBJECT_TRANSFER_QWEN_VAE, 'Qwen VAE')
-    const loraName = info.LoraLoaderModelOnly
-      ? comfyChoiceFromCandidates(info.LoraLoaderModelOnly, 'lora_name', OBJECT_TRANSFER_QWEN_LIGHTNING_LORAS, 'Qwen Edit Lightning LoRA', { optional: true })
-      : ''
-    return { unetName, clipName, vaeName, loraName }
-  }
-
   function objectTransferUsableRuntime(resolved) {
     return resolved && typeof resolved === 'object' && resolved.unetName ? resolved : null
   }
 
-  function objectTransferEngine() {
-    // Which model 万物迁移 runs on. The page cannot read the node's catalogue itself; it learns whether the
-    // node carries Qwen-Image-2.1 the way the drawing and UI-design panels do, from the local assistant's
-    // capability snapshot (runtimeFeaturesSync). Without that answer it stays on 2511.
-    try {
-      const api = window.electronAPI
-      const features = api && typeof api.runtimeFeaturesSync === 'function' ? api.runtimeFeaturesSync() : null
-      if (features && features.qwenImage21 === true) return 'qwen-2.1'
-    } catch (_) { /* no snapshot: 2511 */ }
-    return 'qwen-2511'
-  }
-
-  function resolveObjectTransferRuntime(info, engine) {
-    if (engine !== 'qwen-2.1') return Object.assign({ engine: 'qwen-2511' }, resolveObjectTransferQwenRuntime(info))
-    // Asked for 2.1 on a node that cannot build it: an error, never a silent 2511 run on a 32-aligned
-    // plate that the 2511 encoder would resample.
+  function resolveQwen21EditRuntime(info, featureName) {
+    // A node that cannot build the 2.1 graph is an error, never a silent run on another model.
     const requiredNodes = ['LoadImage', 'UnetLoaderGGUF', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImage21', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'SaveImage']
     const runtime = requiredNodes.every((name) => info && info[name]) ? qwen21Runtime(info) : null
-    if (!runtime) throw new Error('当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行万物迁移。请在本地助手里重新启动 NovaFlow 后再试')
+    if (!runtime) throw new Error(`当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行${featureName}。请在本地助手里重新启动 NovaFlow 后再试`)
     return { engine: 'qwen-2.1', unetName: runtime.unetName, clipName: runtime.clipName, vaeName: runtime.vaeName, loraName: '' }
+  }
+
+  function resolveObjectTransferRuntime(info) {
+    return resolveQwen21EditRuntime(info, '万物迁移')
   }
 
   function qwen21EditPlateSize(width, height) {
     // TextEncodeQwenImage21 at resolution 0 rounds every reference to a multiple of 32 and resamples it
-    // when it is not one already, and the sampled latent is image_1's grid. Round the 2511 plate up to
-    // 32 so the plate is never resampled and the decode comes back at exactly the plate size; the
-    // content stays uniformly scaled with a black band of at most 31 px, as on the 2511 plate.
+    // when it is not one already, and the sampled latent is image_1's grid. Round the Qwen edit plate up
+    // to 32 so the plate is never resampled and the decode comes back at exactly the plate size; the
+    // content stays uniformly scaled with a black band of at most 31 px.
     const base = qwenEditPlateSize(width, height)
     return { width: Math.ceil(base.width / 32) * 32, height: Math.ceil(base.height / 32) * 32, aspectError: base.aspectError }
-  }
-
-  function objectTransferPlateSize(engine, width, height) {
-    return engine === 'qwen-2.1' ? qwen21EditPlateSize(width, height) : qwenEditPlateSize(width, height)
   }
 
   function buildObjectTransferQwen21Workflow(info, uploads, prefix, resolved, prompt, options) {
     // On the Web the page cannot read the node catalogue, so the runtime it resolved arrives here (replayed
     // on the node) as a server-only marker string. Resolve against the catalogue this node holds instead.
-    resolved = objectTransferUsableRuntime(resolved) || resolveObjectTransferRuntime(info, 'qwen-2.1')
+    resolved = objectTransferUsableRuntime(resolved) || resolveObjectTransferRuntime(info)
     // The 2.1 graph for both passes: the arranged plate is image_1 and the untouched scene is image_2,
     // each at its own size (resolution 0, so the 32-aligned plate is never resampled); the sampler runs
     // on the encoder's own latent (image_1's grid) at denoise 1, and the RGBA decode is split to RGB
@@ -8084,27 +7972,21 @@
     ].join(' ')
   }
 
-  function buildObjectTransferRestyleWorkflow(info, uploads, prefix, resolved, sceneArtStyle, engine) {
-    if (engine === 'qwen-2.1') {
-      return buildObjectTransferQwen21Workflow(info, uploads, prefix, resolved, objectTransferRestylePromptText(sceneArtStyle), {
-        steps: OBJECT_TRANSFER_QWEN21_RESTYLE_STEPS,
-        cfg: OBJECT_TRANSFER_QWEN21_RESTYLE_CFG
-      })
-    }
-    return buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferRestylePromptText(sceneArtStyle), null, 1, {
-      steps: OBJECT_TRANSFER_RESTYLE_STEPS,
-      cfg: OBJECT_TRANSFER_RESTYLE_CFG
+  function buildObjectTransferRestyleWorkflow(info, uploads, prefix, resolved, sceneArtStyle) {
+    return buildObjectTransferQwen21Workflow(info, uploads, prefix, resolved, objectTransferRestylePromptText(sceneArtStyle), {
+      steps: OBJECT_TRANSFER_QWEN21_RESTYLE_STEPS,
+      cfg: OBJECT_TRANSFER_QWEN21_RESTYLE_CFG
     })
   }
 
-  async function objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, cutoutDataUrl, sceneCanvas, runId, sceneArtStyle, engine) {
+  async function objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, cutoutDataUrl, sceneCanvas, runId, sceneArtStyle) {
     // The object is repainted on its own, on flat grey, so the model has nothing to do but change how it
     // is drawn. Placing an already in-style object is what makes the integration pass an integration
     // instead of a rescue: no colour grade afterwards can do this, it is a rendering change.
     const cutout = await loadImage(cutoutDataUrl)
     const width = Math.max(1, Math.round(cutout.naturalWidth || cutout.width || 1))
     const height = Math.max(1, Math.round(cutout.naturalHeight || cutout.height || 1))
-    const plateSize = objectTransferPlateSize(engine, width, height)
+    const plateSize = qwen21EditPlateSize(width, height)
     const content = qwenEditPlateContent(width, height, plateSize)
     const plate = canvasOfSize(plateSize.width, plateSize.height)
     const ctx = plate.getContext('2d', { willReadFrequently: true })
@@ -8114,7 +7996,7 @@
     setSplitBusyDetail('正在把参考物体转成画面的画风...')
     const objectName = await uploadDataUrl(baseUrl, `${runId}_restyle_object.png`, plate.toDataURL('image/png'))
     const sceneName = await uploadDataUrl(baseUrl, `${runId}_restyle_scene.png`, sceneCanvas.toDataURL('image/png'))
-    const workflow = buildObjectTransferRestyleWorkflow(info, { placementName: objectName, referenceName: sceneName }, `${runId}_restyle`, resolved, sceneArtStyle, engine)
+    const workflow = buildObjectTransferRestyleWorkflow(info, { placementName: objectName, referenceName: sceneName }, `${runId}_restyle`, resolved, sceneArtStyle)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, `${runId}_restyle`, OBJECT_TRANSFER_TIMEOUT_MS)
     const decoded = await qwenEditPlateResultCanvas(resultDataUrl, plateSize, content, width, height, '画风转换')
     setSplitBusyDetail('正在抠出转换后的物体...')
@@ -8123,16 +8005,16 @@
     return { styledCutout, plateDataUrl: plate.toDataURL('image/png'), resultDataUrl, plateSize }
   }
 
-  async function objectTransferStyledCutoutForRun(baseUrl, info, resolved, runId, engine) {
+  async function objectTransferStyledCutoutForRun(baseUrl, info, resolved, runId) {
     // Cached on the cutout it was made from: dragging the object around or resizing it does not change how
     // it is painted, so a second run on the same reference skips this pass entirely.
     const tool = objectTransferState()
     const sceneCanvas = await sourceFullCanvas(await sourceSize())
     const sceneArtStyle = await objectTransferSceneArtStyleText(sceneCanvas)
     // Keyed on the style too: the same object dropped onto a different picture has to be repainted again.
-    const key = `${String(engine || '')}|${String(tool.referenceCutoutDataUrl || '').slice(-96)}|${sceneArtStyle.slice(0, 200)}`
+    const key = `${String(tool.referenceCutoutDataUrl || '').slice(-96)}|${sceneArtStyle.slice(0, 200)}`
     if (tool.referenceStyledDataUrl && tool.referenceStyledKey === key) return tool.referenceStyledDataUrl
-    const restyled = await objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, tool.referenceCutoutDataUrl, sceneCanvas, runId, sceneArtStyle, engine)
+    const restyled = await objectTransferStyledCutoutDataUrl(baseUrl, info, resolved, tool.referenceCutoutDataUrl, sceneCanvas, runId, sceneArtStyle)
     tool.referenceStyledDataUrl = restyled.styledCutout
     tool.referenceStyledKey = key
     return restyled.styledCutout
@@ -8157,129 +8039,21 @@
     ].join('')
   }
 
-  function buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, prompt, maskName, denoise, options) {
-    // On the Web the page cannot read the node catalogue, so the runtime it resolved arrives here (replayed
-    // on the node) as a server-only marker string. Resolve against the catalogue this node holds instead.
-    resolved = objectTransferUsableRuntime(resolved) || resolveObjectTransferRuntime(info, 'qwen-2511')
-    // The 万物迁移 graph: the composite placement guide on an unscaled plate, the untouched picture as the
-    // second image, and one denoise for the whole frame. The centre-cropping rescale node is not here —
-    // it picked a preset by aspect and cropped one axis, and there is no inverse.
-    // Anything the caller does not override keeps the 画风转换 pass's settings, which are already tuned.
-    const settings = options || {}
-    const ksampler = info.KSampler
-    const workflow = {
-      '1': { class_type: 'LoadImage', inputs: { image: uploads.placementName } },
-      '2': { class_type: 'LoadImage', inputs: { image: uploads.referenceName } },
-      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: resolved.unetName, weight_dtype: 'fp8_e4m3fn' }) },
-      '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
-      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: resolved.vaeName }) }
-    }
-    if (maskName) workflow['3'] = { class_type: 'LoadImage', inputs: { image: maskName } }
-    let modelRef = ['4', 0]
-    let nextId = 7
-    if (info.LoraLoaderModelOnly && resolved.loraName) {
-      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(info.LoraLoaderModelOnly, { model: modelRef, lora_name: resolved.loraName, strength_model: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (info.ModelSamplingAuraFlow) {
-      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(info.ModelSamplingAuraFlow, { model: modelRef, shift: settings.shift == null ? 1.5 : settings.shift }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (info.CFGNorm) {
-      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(info.CFGNorm, { model: modelRef, strength: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(info.VAEEncode, { pixels: ['1', 0], vae: ['6', 0] }) }
-    let latentRef = [String(nextId), 0]
-    nextId += 1
-    if (maskName) {
-      workflow[String(nextId)] = { class_type: 'ImageToMask', inputs: { image: ['3', 0], channel: 'red' } }
-      const maskRef = [String(nextId), 0]
-      nextId += 1
-      workflow[String(nextId)] = { class_type: 'SetLatentNoiseMask', inputs: { samples: latentRef, mask: maskRef } }
-      latentRef = [String(nextId), 0]
-      nextId += 1
-    }
-    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(info.TextEncodeQwenImageEditPlus, { prompt, clip: ['5', 0], vae: ['6', 0], image1: ['1', 0], image2: ['2', 0] }) }
-    let positiveRef = [String(nextId), 0]
-    nextId += 1
-    let negativeRef
-    if (settings.negativePrompt) {
-      // A real negative branch, encoded over the same two images, exactly as the 图生图 graph does. It is
-      // only reachable because cfg is above 1; at cfg 1 ComfyUI never evaluates it and ConditioningZeroOut
-      // is the cheaper equivalent.
-      workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(info.TextEncodeQwenImageEditPlus, { prompt: settings.negativePrompt, clip: ['5', 0], vae: ['6', 0], image1: ['1', 0], image2: ['2', 0] }) }
-      negativeRef = [String(nextId), 0]
-      nextId += 1
-    } else {
-      workflow[String(nextId)] = { class_type: 'ConditioningZeroOut', inputs: { conditioning: positiveRef } }
-      negativeRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (settings.referenceLatentsMethod && info.FluxKontextMultiReferenceLatentMethod) {
-      // 2511 already defaults to index_timestep_zero, so this node is a no-op on this model — it is here
-      // because the 图生图 graph has it, and pinning the method means an older Runtime cannot silently
-      // fall back to offset, which stacks the reference latents and moves everything.
-      workflow[String(nextId)] = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: buildComfyNodeInputs(info.FluxKontextMultiReferenceLatentMethod, { conditioning: positiveRef, reference_latents_method: settings.referenceLatentsMethod }) }
-      positiveRef = [String(nextId), 0]
-      nextId += 1
-      workflow[String(nextId)] = { class_type: 'FluxKontextMultiReferenceLatentMethod', inputs: buildComfyNodeInputs(info.FluxKontextMultiReferenceLatentMethod, { conditioning: negativeRef, reference_latents_method: settings.referenceLatentsMethod }) }
-      negativeRef = [String(nextId), 0]
-      nextId += 1
-    }
-    workflow[String(nextId)] = {
-      class_type: 'KSampler',
-      inputs: buildComfyNodeInputs(ksampler, {
-        seed: Math.floor(Math.random() * 1000000000),
-        steps: resolved.loraName ? (settings.steps || 6) : 30,
-        cfg: settings.cfg == null ? 1 : settings.cfg,
-        sampler_name: 'euler',
-        scheduler: 'simple',
-        denoise: denoise == null ? 1 : denoise,
-        model: modelRef,
-        positive: positiveRef,
-        negative: negativeRef,
-        latent_image: latentRef
-      })
-    }
-    const samplerRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(info.VAEDecode, { samples: samplerRef, vae: ['6', 0] }) }
-    const decodedRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: decodedRef }) }
-    return workflow
-  }
-
-  function buildObjectTransferQwenWorkflow(info, uploads, prefix, resolved, engine) {
-    const qwen21 = engine === 'qwen-2.1'
-    const workflow = qwen21
-      ? buildObjectTransferQwen21Workflow(info, uploads, prefix, resolved, objectTransferPromptText(), {
-        steps: OBJECT_TRANSFER_QWEN21_STEPS,
-        cfg: OBJECT_TRANSFER_QWEN21_CFG
-      })
-      : buildQwenEditPlateWorkflow(info, uploads, prefix, resolved, objectTransferPromptText(), null, OBJECT_TRANSFER_DENOISE, {
-        shift: OBJECT_TRANSFER_SHIFT,
-        steps: OBJECT_TRANSFER_STEPS,
-        cfg: OBJECT_TRANSFER_CFG,
-        negativePrompt: OBJECT_TRANSFER_NEGATIVE_PROMPT,
-        referenceLatentsMethod: 'index_timestep_zero'
-      })
+  function buildObjectTransferQwenWorkflow(info, uploads, prefix, resolved) {
+    const workflow = buildObjectTransferQwen21Workflow(info, uploads, prefix, resolved, objectTransferPromptText(), {
+      steps: OBJECT_TRANSFER_QWEN21_STEPS,
+      cfg: OBJECT_TRANSFER_QWEN21_CFG
+    })
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
-        workflow: qwen21 ? 'qwen-image-2.1-object-transfer' : 'qwen-image-edit-object-transfer',
-        engine: qwen21 ? 'qwen-2.1' : 'qwen-2511',
+        workflow: 'qwen-image-2.1-object-transfer',
+        engine: 'qwen-2.1',
         unet: resolved.unetName,
-        lora: resolved.loraName,
         clip: resolved.clipName,
         vae: resolved.vaeName,
-        shift: qwen21 ? null : OBJECT_TRANSFER_SHIFT,
-        steps: qwen21 ? OBJECT_TRANSFER_QWEN21_STEPS : OBJECT_TRANSFER_STEPS,
-        cfg: qwen21 ? OBJECT_TRANSFER_QWEN21_CFG : OBJECT_TRANSFER_CFG,
+        steps: OBJECT_TRANSFER_QWEN21_STEPS,
+        cfg: OBJECT_TRANSFER_QWEN21_CFG,
         promptHead: objectTransferPromptText().slice(0, 1000)
       }
     }
@@ -8348,7 +8122,7 @@
       objectTransfer: {
         ...((state.lastProcessingDebug && state.lastProcessingDebug.objectTransfer) || {}),
         pasteBack: 'none-single-pass-decode',
-        pasteMask: { postprocess: 'none', denoise: assets.denoise, pixelsChangedOutsideTheObject: drift }
+        pasteMask: { postprocess: 'none', pixelsChangedOutsideTheObject: drift }
       }
     }
     return finalCanvas.toDataURL('image/png')
@@ -8358,21 +8132,20 @@
     const baseUrl = await detectComfyBaseUrl()
     setSplitBusyDetail('\u6b63\u5728\u68c0\u67e5\u4e07\u7269\u8fc1\u79fb Runtime \u7ec4\u4ef6...')
     const info = await comfyAllObjectInfo(baseUrl)
-    const engine = objectTransferEngine()
-    const resolved = resolveObjectTransferRuntime(info, engine)
+    const resolved = resolveObjectTransferRuntime(info)
     const stamp = Date.now()
     const runId = `${OBJECT_TRANSFER_FILENAME_PREFIX}_${stamp}_${Math.random().toString(16).slice(2, 8)}`
     // 画风转换 first, on its own, against flat grey. The integration pass is handed an object already
     // painted in the picture's language, so it only has to place and light it. That is why the user's rule
     // holds here: the restyle can only be dropped if fusion alone made the object match, and it does not.
-    const styledCutoutDataUrl = await objectTransferStyledCutoutForRun(baseUrl, info, resolved, runId, engine)
-    const assets = await objectTransferBuildInputCanvases(styledCutoutDataUrl, engine)
+    const styledCutoutDataUrl = await objectTransferStyledCutoutForRun(baseUrl, info, resolved, runId)
+    const assets = await objectTransferBuildInputCanvases(styledCutoutDataUrl)
     setSplitBusyDetail('\u6b63\u5728\u4e0a\u4f20\u4e07\u7269\u8fc1\u79fb\u4e34\u65f6\u8f93\u5165...')
     const placementName = await uploadDataUrl(baseUrl, runId + '_placement.png', assets.plateDataUrl)
     // Reference 2 is the UNTOUCHED picture, not the reference photo. The guide already carries the object,
     // so what the model still needs is an un-arranged copy of the scene to hold everything else to.
     const referenceName = await uploadDataUrl(baseUrl, runId + '_scene.png', assets.sceneDataUrl)
-    const workflow = buildObjectTransferQwenWorkflow(info, { placementName, referenceName }, runId, resolved, engine)
+    const workflow = buildObjectTransferQwenWorkflow(info, { placementName, referenceName }, runId, resolved)
     state.lastProcessingDebug = {
       ...(state.lastProcessingDebug || {}),
       objectTransfer: {
@@ -8384,11 +8157,10 @@
         runtimeInputs: { placementName, referenceName },
         plateSize: assets.plateSize,
         restyled: assets.restyled,
-        denoise: assets.denoise,
-        engine
+        engine: 'qwen-2.1'
       }
     }
-    setSplitBusyDetail(`${engine === 'qwen-2.1' ? 'Qwen-Image-2.1' : 'Qwen Image Edit 2511'}\n${assets.plateSize.width} x ${assets.plateSize.height} px`)
+    setSplitBusyDetail(`Qwen-Image-2.1\n${assets.plateSize.width} x ${assets.plateSize.height} px`)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, runId, OBJECT_TRANSFER_TIMEOUT_MS)
     return await objectTransferDecodedResultDataUrl(resultDataUrl, assets)
   }
@@ -9277,8 +9049,9 @@
     const clipName1 = requireComfyChoiceFrom(dualClip, 'clip_name1', 'clip_l.safetensors', 'Removal CLIP-L')
     const clipName2 = requireComfyChoiceFrom(dualClip, 'clip_name2', 't5xxl_fp8_e4m3fn.safetensors', 'Removal T5')
     const removalLora = requireComfyChoice(lora, 'lora_name', 'removal_timestep_alpha-2-1740.safetensors', 'Removal LoRA')
+    // A new seed per run unless the caller pins one: a rerun of 去除物体 should give another result.
     const fixedSeed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed))) : null
-    const seed = fixedSeed == null ? 4819261740 : fixedSeed
+    const seed = fixedSeed == null ? Math.floor(Math.random() * 1000000000) : fixedSeed
     const restoreStrategy = removalRestoreStrategyFromText(promptText)
     const basePrompt = String(promptText || '').trim() || 'Remove the selected object inside the white mask area and reconstruct the surrounding layer naturally. Preserve all unmasked pixels, style, lighting, perspective, and texture.'
     const prompt = restoreStrategy ? removalRestoreStrategyPrompt(basePrompt, restoreStrategy) : basePrompt
@@ -9324,7 +9097,7 @@
         restoreStrategy: restoreStrategy ? restoreStrategy.id : '',
         promptHead: prompt.slice(0, 1000),
         seed,
-        seedMode: fixedSeed == null ? 'stable-default' : 'explicit'
+        seedMode: fixedSeed == null ? 'random' : 'explicit'
       }
     }
     return workflow
@@ -22363,81 +22136,66 @@
   }
 
   function effectExtractPromptText() {
-    // Tuned 2026-09-16 on the 4-step Lightning LoRA: a concise English instruction removes the
-    // subject and keeps the existing light effects in place. Listing effect kinds (fire, lightning,
-    // magic circle...) made the model paint every one of them, and the Chinese wording kept the
-    // character; denoise below 1 kept the whole picture.
-    return [
-      'Remove the person, all objects, the stairs and the whole background, and fill them with pure black (#000000).',
-      'Keep only the glowing light effects and sparkle particles that are already in the image, exactly in their original positions, shapes, sizes, colors and brightness.',
-      'Do not add new effects, do not move or redraw them.',
-      'Output: the original light effects on a pure black background.'
-    ].join(' ')
+    // Qwen-Image-2.1 redraws the effects of image 2 onto a black canvas (image 1) instead of editing the
+    // picture. Measured 2026-09-27 on a real layer (sparkle trail over a seated figure's legs):
+    //   * "remove the person ... fill with black" (the 2511 wording) removes the figure object-wise and
+    //     takes every particle lying on it along; any wording that keeps those particles keeps the figure;
+    //   * on the black canvas nothing has to be removed, so the figure is never drawn, and "complete it
+    //     along its path" brings back the trail over the dress and legs.
+    // How complete the trail comes out depends on the seed (one seed in two or three drew all of it), so
+    // the graph samples a new seed per run and a rerun gives another result.
+    return '图1是一张纯黑画布，图2是参考图。参考图2里的发光特效，在图1上重新画一份：沿着图2里特效原来的走向、位置和大小来画，颜色和风格与图2一致。被人物或物体挡住、或者在图2里不够明显的部分，顺着走向补画完整，让每一条光带和粒子流从头到尾连贯。图1上只画发光特效，其余保持纯黑，不画人物、物体和背景。'
   }
 
   function buildEffectExtractQwenWorkflow(info, imageName, prefix, resolved) {
     // On the Web the page cannot read the node catalogue, so the runtime it resolved arrives here (replayed
     // on the node) as a server-only marker string. Resolve against the catalogue this node holds instead.
-    resolved = objectTransferUsableRuntime(resolved) || resolveObjectTransferQwenRuntime(info)
-    const lora = info.LoraLoaderModelOnly || null
-    const aura = info.ModelSamplingAuraFlow || null
-    const cfgNorm = info.CFGNorm || null
+    resolved = objectTransferUsableRuntime(resolved) || resolveQwen21EditRuntime(info, '特效提取')
+    if (!info || !info.GetImageSize || !info.EmptyImage) throw new Error('当前算力节点缺少 GetImageSize / EmptyImage 节点，无法执行特效提取。请在本地助手里重新启动 NovaFlow 后再试')
+    // image_1 is a pure black canvas the size of the plate (so the sampled latent is the plate's grid and
+    // the result lands back on the crop), image_2 the plate itself, each at its own size (resolution 0;
+    // the plate is 32-aligned, so it is never resampled). The sampler runs on the encoder's latent at
+    // denoise 1 and the RGBA decode is split to RGB. No LoRA, shift or CFGNorm: those were 2511 settings.
     const workflow = {
-      // No FluxKontextImageScale: it center-crops one axis (29 columns off each side of a 756x816 crop,
-      // measured with a grid probe on 2026-09-17) and that crop cannot be inverted. The caller sends a
-      // plate that is already at a Qwen-friendly size (qwenEditPlateSize), so the graph rescales nothing.
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: resolved.unetName, weight_dtype: 'fp8_e4m3fn' }) },
-      '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
-      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: resolved.vaeName }) }
+      '2': { class_type: 'UnetLoaderGGUF', inputs: buildComfyNodeInputs(info.UnetLoaderGGUF, { unet_name: resolved.unetName }) },
+      '3': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
+      '4': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: resolved.vaeName }) },
+      '5': {
+        class_type: 'TextEncodeQwenImage21',
+        inputs: buildComfyNodeInputs(info.TextEncodeQwenImage21, { clip: ['3', 0], vae: ['4', 0], prompt: effectExtractPromptText(), negative_prompt: '', resolution: 0, 'images.image_1': ['7', 0], 'images.image_2': ['1', 0] })
+      },
+      '6': { class_type: 'GetImageSize', inputs: buildComfyNodeInputs(info.GetImageSize, { image: ['1', 0] }) },
+      '7': { class_type: 'EmptyImage', inputs: buildComfyNodeInputs(info.EmptyImage, { width: ['6', 0], height: ['6', 1], batch_size: 1, color: 0 }) }
     }
-    let modelRef = ['4', 0]
-    let nextId = 7
-    if (lora && resolved.loraName) {
-      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: resolved.loraName, strength_model: 1 }) }
+    let modelRef = ['2', 0]
+    let nextId = 8
+    if (info.QwenImage21Cache) {
+      workflow[String(nextId)] = { class_type: 'QwenImage21Cache', inputs: buildComfyNodeInputs(info.QwenImage21Cache, { model: modelRef, device: 'auto', dtype: 'default' }) }
       modelRef = [String(nextId), 0]
       nextId += 1
     }
-    if (aura) {
-      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 1.5 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (cfgNorm) {
-      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(info.VAEEncode, { pixels: ['1', 0], vae: ['6', 0] }) }
-    const latentRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(info.TextEncodeQwenImageEditPlus, { prompt: effectExtractPromptText(), clip: ['5', 0], vae: ['6', 0], image1: ['1', 0] }) }
-    const positiveRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'ConditioningZeroOut', inputs: { conditioning: positiveRef } }
-    const negativeRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = {
+    const samplerId = String(nextId++)
+    workflow[samplerId] = {
       class_type: 'KSampler',
       inputs: buildComfyNodeInputs(info.KSampler, {
-        seed: EFFECT_EXTRACT_SEED,
-        steps: resolved.loraName ? 6 : 30,
+        model: modelRef,
+        positive: ['5', 0],
+        negative: ['5', 1],
+        latent_image: ['5', 2],
+        seed: Math.floor(Math.random() * 1000000000),
+        steps: QWEN21_STEPS,
         cfg: 1,
         sampler_name: 'euler',
         scheduler: 'simple',
-        denoise: 1,
-        model: modelRef,
-        positive: positiveRef,
-        negative: negativeRef,
-        latent_image: latentRef
+        denoise: 1
       })
     }
-    const samplerRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(info.VAEDecode, { samples: samplerRef, vae: ['6', 0] }) }
-    const decodedRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: decodedRef }) }
+    const decodeId = String(nextId++)
+    workflow[decodeId] = { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(info.VAEDecode, { samples: [samplerId, 0], vae: ['4', 0] }) }
+    const rgbId = String(nextId++)
+    workflow[rgbId] = { class_type: 'SplitImageWithAlpha', inputs: buildComfyNodeInputs(info.SplitImageWithAlpha, { image: [decodeId, 0] }) }
+    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: [rgbId, 0] }) }
     return workflow
   }
 
@@ -22470,7 +22228,7 @@
     ctx.fillRect(0, 0, cropBox.width, cropBox.height)
     ctx.drawImage(cropImage, 0, 0, cropBox.width, cropBox.height)
     // What actually goes to the model: the same crop at a size whose reference rescale is a no-op.
-    const plateSize = qwenEditPlateSize(cropBox.width, cropBox.height)
+    const plateSize = qwen21EditPlateSize(cropBox.width, cropBox.height)
     const plateCanvas = qwenEditPlateCanvas(inputCanvas, plateSize)
     const plateContent = plateCanvas.__plateContent
     return { cropBox, cropImage, inputCanvas, plateCanvas, plateSize, plateContent, originalSize, softMask: masks ? masks.softRoiMask : null, hardMask: masks ? masks.hardRoiMask : null, gateGrow: masks ? masks.softGrow : 0 }
@@ -22527,7 +22285,7 @@
     const baseUrl = await detectComfyBaseUrl()
     setSplitBusyDetail(`正在检查${stageLabel} Runtime 组件...`)
     const info = await comfyAllObjectInfo(baseUrl)
-    const resolved = resolveObjectTransferQwenRuntime(info)
+    const resolved = resolveQwen21EditRuntime(info, stageLabel)
     const api = window.NovaFlowBackgroundRemoval
     if (!api || typeof api.unmultBlackBackgroundDataUrl !== 'function') throw new Error('去黑能力未加载，请重启 NovaFlow 后重试')
     const input = effectExtractModelInput(session, bounds)
@@ -22537,7 +22295,7 @@
     setSplitBusyDetail(`正在上传${stageLabel}输入...`)
     const imageName = await uploadDataUrl(baseUrl, `${runId}_input.png`, input.plateCanvas.toDataURL('image/png'))
     const workflow = buildEffectExtractQwenWorkflow(info, imageName, runId, resolved)
-    setSplitBusyDetail(`Qwen Image Edit 2511 黑底化\n${input.plateSize.width} x ${input.plateSize.height} px`)
+    setSplitBusyDetail(`Qwen-Image-2.1 黑底化\n${input.plateSize.width} x ${input.plateSize.height} px`)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, runId, EFFECT_EXTRACT_TIMEOUT_MS)
     setSplitBusyDetail('正在去黑（与工具版 PNG 去黑相同）...')
     // The same pure unmult the 工具 → PNG 去黑 tool uses (alpha = max(R,G,B), RGB / alpha), run at
@@ -22564,7 +22322,7 @@
     const finalDataUrl = finalCanvas.toDataURL('image/png')
     const finalAlpha = await alphaCanvasFromDataUrl(finalDataUrl, input.originalSize.width, input.originalSize.height)
     return {
-      provider: 'Qwen Image Edit 2511 + unmult',
+      provider: 'Qwen-Image-2.1 + unmult',
       baseUrl,
       info,
       runtime: resolved,
@@ -22670,108 +22428,119 @@
   function buildEffectDeeffectQwenWorkflow(info, imageName, prefix, resolved) {
     // On the Web the page cannot read the node catalogue, so the runtime it resolved arrives here (replayed
     // on the node) as a server-only marker string. Resolve against the catalogue this node holds instead.
-    resolved = objectTransferUsableRuntime(resolved) || resolveObjectTransferQwenRuntime(info)
-    // Identical graph to the extraction, one prompt apart, so both passes see the same plate geometry.
-    const lora = info.LoraLoaderModelOnly || null
-    const aura = info.ModelSamplingAuraFlow || null
-    const cfgNorm = info.CFGNorm || null
+    resolved = objectTransferUsableRuntime(resolved) || resolveQwen21EditRuntime(info, '特效去除')
+    // Same shape as the 角度调整 2.1 graph: the plate is image_1 at its own size (resolution 0; the plate is
+    // 32-aligned, so it is never resampled), the sampler runs on the encoder's latent at denoise 1, and the
+    // RGBA decode is split to RGB. No LoRA, shift or CFGNorm: those were 2511 settings.
     const workflow = {
       '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: resolved.unetName, weight_dtype: 'fp8_e4m3fn' }) },
-      '5': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
-      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: resolved.vaeName }) }
+      '2': { class_type: 'UnetLoaderGGUF', inputs: buildComfyNodeInputs(info.UnetLoaderGGUF, { unet_name: resolved.unetName }) },
+      '3': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(info.CLIPLoader, { clip_name: resolved.clipName, type: 'qwen_image', device: 'default' }) },
+      '4': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: resolved.vaeName }) },
+      '5': {
+        class_type: 'TextEncodeQwenImage21',
+        inputs: buildComfyNodeInputs(info.TextEncodeQwenImage21, { clip: ['3', 0], vae: ['4', 0], prompt: effectDeeffectPromptText(), negative_prompt: '', resolution: 0, 'images.image_1': ['1', 0] })
+      }
     }
-    let modelRef = ['4', 0]
-    let nextId = 7
-    if (lora && resolved.loraName) {
-      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: resolved.loraName, strength_model: 1 }) }
+    let modelRef = ['2', 0]
+    let nextId = 6
+    if (info.QwenImage21Cache) {
+      workflow[String(nextId)] = { class_type: 'QwenImage21Cache', inputs: buildComfyNodeInputs(info.QwenImage21Cache, { model: modelRef, device: 'auto', dtype: 'default' }) }
       modelRef = [String(nextId), 0]
       nextId += 1
     }
-    if (aura) {
-      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 1.5 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (cfgNorm) {
-      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    workflow[String(nextId)] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(info.VAEEncode, { pixels: ['1', 0], vae: ['6', 0] }) }
-    const latentRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'TextEncodeQwenImageEditPlus', inputs: buildComfyNodeInputs(info.TextEncodeQwenImageEditPlus, { prompt: effectDeeffectPromptText(), clip: ['5', 0], vae: ['6', 0], image1: ['1', 0] }) }
-    const positiveRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'ConditioningZeroOut', inputs: { conditioning: positiveRef } }
-    const negativeRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = {
+    const samplerId = String(nextId++)
+    workflow[samplerId] = {
       class_type: 'KSampler',
       inputs: buildComfyNodeInputs(info.KSampler, {
-        seed: EFFECT_EXTRACT_SEED,
-        steps: resolved.loraName ? 6 : 30,
+        model: modelRef,
+        positive: ['5', 0],
+        negative: ['5', 1],
+        latent_image: ['5', 2],
+        seed: Math.floor(Math.random() * 1000000000),
+        steps: QWEN21_STEPS,
         cfg: 1,
         sampler_name: 'euler',
         scheduler: 'simple',
-        denoise: 1,
-        model: modelRef,
-        positive: positiveRef,
-        negative: negativeRef,
-        latent_image: latentRef
+        denoise: 1
       })
     }
-    const samplerRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(info.VAEDecode, { samples: samplerRef, vae: ['6', 0] }) }
-    const decodedRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: decodedRef }) }
+    const decodeId = String(nextId++)
+    workflow[decodeId] = { class_type: 'VAEDecode', inputs: buildComfyNodeInputs(info.VAEDecode, { samples: [samplerId, 0], vae: ['4', 0] }) }
+    const rgbId = String(nextId++)
+    workflow[rgbId] = { class_type: 'SplitImageWithAlpha', inputs: buildComfyNodeInputs(info.SplitImageWithAlpha, { image: [decodeId, 0] }) }
+    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: buildComfyNodeInputs(info.SaveImage, { filename_prefix: prefix, images: [rgbId, 0] }) }
     return workflow
   }
 
   async function runEffectDeeffectPass(extraction, runId) {
-    // Same plate, same geometry as the key: only the masked pixels of this are kept, so the rest of the
-    // layer stays byte for byte even though the model repainted the whole plate.
+    // `extraction` carries the crop's plate (input), the node catalogue, the resolved runtime and the base
+    // URL; the plate is pixel aligned with the crop, so the result lands back on the pixels it came from.
     const plateSize = extraction.input.plateSize
     setSplitBusyDetail('\u6b63\u5728\u4e0a\u4f20\u53bb\u7279\u6548\u5316\u8f93\u5165...')
     const imageName = await uploadDataUrl(extraction.baseUrl, `${runId}_plate_input.png`, extraction.input.plateCanvas.toDataURL('image/png'))
     const workflow = buildEffectDeeffectQwenWorkflow(extraction.info, imageName, runId, extraction.runtime)
-    setSplitBusyDetail(`Qwen Image Edit 2511 去特效化\n${plateSize.width} x ${plateSize.height} px`)
+    setSplitBusyDetail(`Qwen-Image-2.1 去特效化\n${plateSize.width} x ${plateSize.height} px`)
     const dataUrl = await runPromptForFirstImage(extraction.baseUrl, workflow, runId, EFFECT_EXTRACT_TIMEOUT_MS)
     const plate = await qwenEditPlateResultCanvas(dataUrl, plateSize, extraction.input.plateContent, extraction.input.cropBox.width, extraction.input.cropBox.height, '去特效化')
     return { plate, dataUrl, plateSize }
   }
 
-  function effectRemovalMaskGrowPx(canvas) {
-    const shortest = Math.max(1, Math.min(Math.round(canvas && canvas.width || 1), Math.round(canvas && canvas.height || 1)))
-    return Math.round(clampNumber(shortest * EFFECT_REMOVE_MASK_GROW_RATIO, EFFECT_REMOVE_MASK_GROW_MIN, EFFECT_REMOVE_MASK_GROW_MAX))
+  // The de-effected crop written straight onto the layer (2026-09-27: pasting it back only where the
+  // extraction keyed an effect left every particle the extraction missed on the body, while the de-effect
+  // pass itself had removed them). Accepted costs: inside the region every pixel is 2.1's redraw (about
+  // 0.2% scale drift, up to ~1.5 px across a picture, and regenerated texture, not visible by eye), and a
+  // tiny highlight can go with the effects. The plate is the crop over black, so a result pixel is a premultiplied
+  // colour: the new alpha is the original alpha scaled by how much of the pixel's brightness survived (a
+  // glow floating over transparency goes, an opaque pixel stays opaque), capped so the model can never
+  // paint into transparency. `mask` (0..255 per pixel, or null for all of it) limits the change to the
+  // stroke and feathers its edge. Arrays are RGBA; returns a new RGBA array.
+  function effectDeeffectPixels(original, result, mask, pixelCount) {
+    const out = new Uint8ClampedArray(pixelCount * 4)
+    for (let p = 0; p < pixelCount; p += 1) {
+      const i = p * 4
+      const a0 = (original[i + 3] || 0) / 255
+      const m = mask ? (mask[p] || 0) / 255 : 1
+      if (m <= 0) {
+        out[i] = original[i]
+        out[i + 1] = original[i + 1]
+        out[i + 2] = original[i + 2]
+        out[i + 3] = original[i + 3]
+        continue
+      }
+      let a1 = a0
+      if (a0 < 1) {
+        const before = Math.max(original[i], original[i + 1], original[i + 2]) * a0
+        const after = Math.max(result[i], result[i + 1], result[i + 2])
+        if (before >= 6) a1 = a0 * Math.min(1, after / before)
+      }
+      const outA = a1 * m + a0 * (1 - m)
+      for (let c = 0; c < 3; c += 1) {
+        const premultiplied = Math.min(result[i + c] || 0, 255 * a1) * m + (original[i + c] || 0) * a0 * (1 - m)
+        out[i + c] = outA > 0 ? Math.round(premultiplied / outA) : 0
+      }
+      out[i + 3] = Math.round(outA * 255)
+    }
+    return out
   }
 
-  function effectRemovalMaskCanvas(effectCanvas, floor, grow) {
-    // White where the model keyed an effect, transparent elsewhere: the same shape the brush paints,
-    // so every downstream mask helper treats it exactly like a hand-painted stroke.
-    const width = Math.max(1, Math.round(effectCanvas && effectCanvas.width || 1))
-    const height = Math.max(1, Math.round(effectCanvas && effectCanvas.height || 1))
-    const seed = canvasOfSize(width, height)
-    const ctx = seed.getContext('2d', { willReadFrequently: true })
-    const effect = effectCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height)
-    const image = ctx.getImageData(0, 0, width, height)
-    const limit = clampNumber(Number(floor) || 0, 1, 255)
-    let count = 0
-    for (let i = 0; i + 3 < image.data.length && i + 3 < effect.data.length; i += 4) {
-      const on = (effect.data[i + 3] || 0) >= limit
-      image.data[i] = 255
-      image.data[i + 1] = 255
-      image.data[i + 2] = 255
-      image.data[i + 3] = on ? 255 : 0
-      if (on) count += 1
+  function effectDeeffectCanvas(layerOriginalCanvas, plateCanvas, cropBox, softMask) {
+    const finalCanvas = cloneCanvas(layerOriginalCanvas)
+    const ctx = finalCanvas.getContext('2d', { willReadFrequently: true })
+    const width = cropBox.width
+    const height = cropBox.height
+    const original = ctx.getImageData(cropBox.x, cropBox.y, width, height)
+    const result = plateCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height)
+    let mask = null
+    if (softMask) {
+      const maskData = softMask.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+      mask = new Uint8ClampedArray(width * height)
+      for (let p = 0; p < mask.length; p += 1) mask[p] = maskPixelValue(maskData, p * 4)
     }
-    ctx.putImageData(image, 0, 0)
-    const grown = expandedMaskCanvas(seed, Math.max(0, Math.round(grow || 0)), 0)
-    grown.__effectMaskPixels = count
-    return grown
+    const next = ctx.createImageData(width, height)
+    next.data.set(effectDeeffectPixels(original.data, result.data, mask, width * height))
+    ctx.putImageData(next, cropBox.x, cropBox.y)
+    return finalCanvas
   }
 
   async function executeEffectRemoveTool() {
@@ -22808,52 +22577,31 @@
     let committedPart = null
     try {
       const layerOriginalCanvas = await fullCanvasFromPart(part, { width: session.width, height: session.height })
-      // Step 1 is 智能抠图's 特效提取, unchanged: it tells us exactly which pixels are effect.
-      const extraction = await runEffectExtractPipeline({ baseCanvas: layerOriginalCanvas, maskCanvas: processingMaskCanvas }, bounds, {
-        prefix: EFFECT_REMOVE_FILENAME_PREFIX,
-        stageLabel: '特效识别',
-        emptyMessage: '没有识别到可去除的特效，请涂抹更靠近特效的区域后重试',
-        gateBySoftMask: false // the stroke bounds the crop, not the key
-      })
-      // The key says WHERE the effect is. Pass 2 says what belongs there: the same Qwen 2511 edit with the
-      // prompt inverted, on the very same plate, so its result is pixel aligned with the crop and only the
-      // keyed pixels have to be taken from it. Subtracting the key instead leaves black holes wherever the
-      // glow covered something, and running any pass on the raw stroke repaints everything it touched.
-      const effectMask = effectRemovalMaskCanvas(extraction.finalCanvas, EFFECT_REMOVE_MASK_FLOOR, effectRemovalMaskGrowPx(layerOriginalCanvas))
-      let maskBounds = null
-      try {
-        maskBounds = maskBBoxEngine(cloneCanvas(effectMask), 8)
-      } catch {
-        maskBounds = null
-      }
-      if (!maskBounds || maskBounds.count < 16) throw new Error('没有识别到可去除的特效，请涂抹更靠近特效的区域后重试')
+      // One pass: the de-effect edit on the crop's plate, written straight back. The stroke (when there is
+      // one) chooses the crop and is the region that changes; without one the whole layer is de-effected.
+      const baseUrl = await detectComfyBaseUrl()
+      setSplitBusyDetail('正在检查特效去除 Runtime 组件...')
+      const info = await comfyAllObjectInfo(baseUrl)
+      const runtime = resolveQwen21EditRuntime(info, '特效去除')
+      const input = effectExtractModelInput({ baseCanvas: layerOriginalCanvas, maskCanvas: processingMaskCanvas }, bounds)
       const runId = `${EFFECT_REMOVE_FILENAME_PREFIX}_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
-      const plate = await runEffectDeeffectPass(extraction, runId)
-      const cropBox = extraction.input.cropBox
-      const cropMask = cropMaskToBlackWhite(effectMask, cropBox)
-      // Mask-limited composite: only pixels inside the keyed effect are written back.
-      const finalCanvas = compositeRemovalRgbResult(layerOriginalCanvas, plate.plate, cropMask, cropBox)
-      const removalStats = finalCanvas.__removalCompositeStats || {}
-      const changedOutsideMask = countUnmaskedPixelChanges(layerOriginalCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(effectMask)), 8)
+      const plate = await runEffectDeeffectPass({ baseUrl, info, runtime, input }, runId)
+      const cropBox = input.cropBox
+      const regionMask = bounds ? input.softMask : null
+      const finalCanvas = effectDeeffectCanvas(layerOriginalCanvas, plate.plate, cropBox, regionMask)
+      const changedOutsideRegion = regionMask ? countUnmaskedPixelChanges(layerOriginalCanvas, finalCanvas, normalizeMaskCanvas(cloneCanvas(processingMaskCanvas)), 8) : 0
       const finalDataUrl = finalCanvas.toDataURL('image/png')
       await saveProcessingDebug('effectRemove', [
-        { name: '01_effect_model_input', dataUrl: extraction.input.inputCanvas.toDataURL('image/png') },
-        { name: '02_effect_black_background', dataUrl: extraction.resultDataUrl },
-        { name: '03_effect_rgba', dataUrl: extraction.finalDataUrl },
-        { name: '04_effect_mask', dataUrl: effectMask.toDataURL('image/png') },
-        { name: '05_deeffect_plate_input', dataUrl: extraction.input.plateCanvas.toDataURL('image/png') },
-        { name: '06_deeffect_plate', dataUrl: plate.dataUrl },
-        { name: '07_effect_removed', dataUrl: finalDataUrl }
+        { name: '01_effect_model_input', dataUrl: input.inputCanvas.toDataURL('image/png') },
+        { name: '02_deeffect_plate_input', dataUrl: input.plateCanvas.toDataURL('image/png') },
+        { name: '03_deeffect_plate', dataUrl: plate.dataUrl },
+        { name: '04_effect_removed', dataUrl: finalDataUrl }
       ], {
         provider: EFFECT_REMOVE_PROVIDER,
-        region: bounds ? 'mask' : 'whole',
+        region: bounds ? 'stroke' : 'whole',
         cropBox,
         plateSize: plate.plateSize,
-        effectMaskPixels: effectMask.__effectMaskPixels || 0,
-        gateStats: extraction.gateStats,
-        unmultStats: extraction.unmultStats,
-        removalStats,
-        nonMaskChangedPixels: changedOutsideMask,
+        nonStrokeChangedPixels: changedOutsideRegion,
         sourceLayerId: part.id
       })
       const id = uniqueManualPartId(`${part.id || 'layer'}_effect_removed`)
@@ -22870,11 +22618,9 @@
           kind: 'effect-removal',
           source: 'executeEffectRemoveTool',
           provider: EFFECT_REMOVE_PROVIDER,
-          region: bounds ? 'mask' : 'whole',
+          region: bounds ? 'stroke' : 'whole',
           sourceLayerId: part.id,
-          effectMaskPixels: effectMask.__effectMaskPixels || 0,
-          replacedPixels: removalStats.compositedPixels || 0,
-          nonMaskChangedPixels: changedOutsideMask
+          nonStrokeChangedPixels: changedOutsideRegion
         }
       )
       const patchPart = { ...cropped, id, name: id, prompt, layer, manualLayer: true, pivot: part.pivot, visible: true, needsInpaint: false, spineReady: true, sourceLayerId: part.id, replacementForPartId: part.id }
@@ -34780,7 +34526,7 @@
     await wait(200)
     if (!objectTransferReady()) throw new Error('object transfer state is not ready')
     if (options.execute === false) {
-      const assets = await objectTransferBuildInputCanvases(objectTransferEngine())
+      const assets = await objectTransferBuildInputCanvases()
       return { prepared: true, plateSize: assets.plateSize, regionRect: assets.regionRect, regionStrength: assets.regionStrength, bounds: assets.bounds, guideMode: assets.guideMode }
     }
     const startedAt = Date.now()
@@ -35536,12 +35282,10 @@
     buildObjectTransferQwenWorkflow,
     buildObjectTransferQwen21Workflow,
     resolveObjectTransferRuntime,
-    objectTransferEngine,
     qwen21EditPlateSize,
     selectionEffectModeAvailable,
     selectionEffectRemovalActive,
-    effectRemovalMaskCanvas,
-    effectRemovalMaskGrowPx,
+    effectDeeffectPixels,
     effectDeeffectPromptText,
     buildEffectDeeffectQwenWorkflow,
     qwenEditReferenceSize,

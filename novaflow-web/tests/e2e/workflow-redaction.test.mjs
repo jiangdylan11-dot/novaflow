@@ -140,7 +140,7 @@ section('brace matcher');
 
 // ---------------------------------------------------------------------------
 const files = (await readdir(RENDERER)).filter((f) => f.endsWith('.workflow.js')).sort();
-check('renderer workflow modules found', files.length >= 18, files.length);
+check('renderer workflow modules found', files.length >= 16, files.length);
 
 let totalRedacted = 0;
 let totalHelpers = 0;

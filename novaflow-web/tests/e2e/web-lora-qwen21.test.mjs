@@ -131,11 +131,12 @@ try {
   const catalog = catalogLib.createQwenLoraCatalog({ root: join(models, 'loras', 'qwen'), listRuntimeLoraNames: async () => objectInfo });
   const listed = async (input) => (await catalog.catalog(input)).map((item) => item.name).sort();
   // Each list holds only the LoRAs that fit its model: 2.1 ones for 2.1 (in any of the naming
-  // styles ComfyUI maps), 20B ones for 2511 and Rapid AIO; a file with one wrong shape in none.
+  // styles ComfyUI maps), 20B ones for Rapid AIO; a file with one wrong shape in none. A request
+  // that is neither names the retired 2511 route: no LoRAs, even with the 2511 file on disk.
   const for21 = await listed({ engine: 'qwen-2.1' });
   check(() => assert.deepEqual(for21, ['qwen/for21.safetensors', 'qwen/for21_comfy.safetensors', 'qwen/for21_fused.safetensors', 'qwen/for21_img_in.safetensors', 'qwen/for21_kohya.safetensors']));
-  const for2511 = await listed({});
-  check(() => assert.deepEqual(for2511, ['qwen/for2511.safetensors', 'qwen/for2511_kohya.safetensors']));
+  const plainList = await listed({});
+  check(() => assert.deepEqual(plainList, []));
   const forRapid = await listed({ nsfw: true });
   check(() => assert.deepEqual(forRapid, ['qwen/for2511.safetensors', 'qwen/for2511_kohya.safetensors']));
 
@@ -147,7 +148,8 @@ try {
   });
   const report = await workerCatalog.report('image');
   check(() => assert.deepEqual(report.qwen21.items.map((i) => i.name).sort(), for21));
-  check(() => assert.deepEqual(report.qwen.items.map((i) => i.name).sort(), for2511));
+  check(() => assert.deepEqual(report.qwen.items, []));
+  check(() => assert.deepEqual(report.qwen_nsfw.items.map((i) => i.name).sort(), forRapid));
   const graph21 = (loraName) => ({
     1: { class_type: 'UnetLoaderGGUF', inputs: { unet_name: 'qwen-image-2.1-test-Q8_0.gguf' } },
     nf_art_lora_1: { class_type: 'LoraLoaderModelOnly', inputs: { model: ['1', 0], lora_name: loraName, strength_model: 1 } }

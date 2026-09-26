@@ -1,8 +1,10 @@
-// 万物迁移 runs on Qwen-Image-2.1 when the node reports the 2.1 weights, and on the 2511 fp8mixed release
-// otherwise (the 40 GB bf16 file is retired to disk-saving; it is only a fallback name). Measured
-// 2026-09-24 on the same inputs and seed: 2.1 kept the picture outside the object (mean |diff| 3.6/255
-// against 9.2 on bf16 and 17.0 on fp8mixed) and drew a soft contact shadow where both 2511 runs painted a
-// hard black blot. The graphs here are the ones the renderer builds; the browser only records them.
+// 万物迁移, 特效提取 and 去特效 run on Qwen-Image-2.1 only; the 2511 route and its fallback are gone.
+// 特效提取 redraws the plate's effects onto a black canvas (image 1 black, image 2 the plate) with a new
+// seed per run: asked to remove the figure, 2.1 took the particles lying on it along.
+// Measured 2026-09-24 for 万物迁移 on the same inputs and seed: 2.1 kept the picture outside the object
+// (mean |diff| 3.6/255 against 9.2 on bf16 and 17.0 on fp8mixed) and drew a soft contact shadow where both
+// 2511 runs painted a hard black blot. The graphs here are the ones the renderer builds; the browser only
+// records them.
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
@@ -18,8 +20,8 @@ const { loadSpine } = require(join(ROOT, 'tools/qwen-rapid-migration-smoke.cjs')
 
 const source = await readFile(join(ROOT, RENDERER), 'utf8');
 const s = loadSpine(RENDERER);
-// The 2.1 model lists live after the slice loadSpine captures; feed the real ones to the resolver.
-runInContext(source.match(/^  const QWEN21_UNETS = \[[\s\S]*?^  const QWEN21_VAE = '[^']+'/m)[0], s);
+// The 2.1 model lists and step count live after the slice loadSpine captures; feed the real ones in.
+runInContext(source.match(/^  const QWEN21_UNETS = \[[\s\S]*?^  const QWEN21_STEPS = \d+/m)[0], s);
 
 const combo = (options) => [options, {}];
 const nodes = () => ({
@@ -45,48 +47,41 @@ const nodes = () => ({
 });
 const byType = (graph, type) => Object.entries(graph).filter(([, node]) => node.class_type === type);
 const uploads = { placementName: 'plate.png', referenceName: 'scene.png' };
+const PIECES_2511 = ['UNETLoader', 'LoraLoaderModelOnly', 'ModelSamplingAuraFlow', 'CFGNorm', 'TextEncodeQwenImageEditPlus', 'ConditioningZeroOut', 'VAEEncode', 'FluxKontextImageScale'];
 
-section('the engine follows the node capability snapshot the drawing and UI panels read');
+section('no 2511 route is left: no engine switch, no 2511 file names');
 {
-  s.window = { electronAPI: { runtimeFeaturesSync: () => ({ qwenImage21: true }) } };
-  checkEqual('a node that reports the 2.1 weights runs 2.1', s.objectTransferEngine(), 'qwen-2.1');
-  s.window = { electronAPI: { runtimeFeaturesSync: () => ({ qwenImage21: false }) } };
-  checkEqual('a node without them stays on 2511', s.objectTransferEngine(), 'qwen-2511');
-  s.window = {};
-  checkEqual('no snapshot at all is 2511', s.objectTransferEngine(), 'qwen-2511');
+  checkEqual('the engine switch is gone', typeof s.objectTransferEngine, 'undefined');
+  checkEqual('the 2511 plate graph is gone', typeof s.buildQwenEditPlateWorkflow, 'undefined');
+  check('the runtime names no 2511 model file', !/qwen_image_edit_2511|Qwen-Image-Edit-2511-Lightning/.test(source), null);
 }
 
-section('runtime resolution: 2.1 by name, 2511 on fp8mixed with bf16 only as the fallback');
+section('runtime resolution: 2.1 by name, an error on a node that cannot build it');
 {
   const info = nodes();
-  const resolved21 = s.resolveObjectTransferRuntime(info, 'qwen-2.1');
-  checkEqual('2.1 resolves the GGUF, the Qwen3-VL encoder and the 2.1 VAE, no LoRA', resolved21,
+  checkEqual('2.1 resolves the GGUF, the Qwen3-VL encoder and the 2.1 VAE, no LoRA', s.resolveObjectTransferRuntime(info),
     { engine: 'qwen-2.1', unetName: 'qwen-image-2.1-UC-Q8_0.gguf', clipName: 'qwen3vl_8b_w4a8_heretic.safetensors', vaeName: 'qwen_image_2.1_vae_bf16.safetensors', loraName: '' });
-  const resolved2511 = s.resolveObjectTransferRuntime(info, 'qwen-2511');
-  checkEqual('2511 picks fp8mixed although bf16 is listed first', resolved2511.unetName, 'qwen_image_edit_2511_fp8mixed.safetensors');
-  checkEqual('and keeps the 2511 encoder, VAE and Lightning LoRA', [resolved2511.engine, resolved2511.clipName, resolved2511.vaeName, resolved2511.loraName],
-    ['qwen-2511', 'qwen_2.5_vl_7b_fp8_scaled.safetensors', 'qwen_image_vae.safetensors', 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors']);
-  const bf16Only = nodes();
-  bf16Only.UNETLoader.input.required.unet_name = combo(['qwen_image_edit_2511_bf16.safetensors']);
-  checkEqual('a node that still has only bf16 keeps working on it', s.resolveObjectTransferRuntime(bf16Only, 'qwen-2511').unetName, 'qwen_image_edit_2511_bf16.safetensors');
   const no21 = nodes();
   delete no21.TextEncodeQwenImage21;
-  await checkThrows('2.1 asked of a node that cannot build it is an error, never a silent 2511 run', () => s.resolveObjectTransferRuntime(no21, 'qwen-2.1'), /Qwen-Image-2\.1/);
+  await checkThrows('a node without the 2.1 encoder is an error, never a 2511 run', () => s.resolveObjectTransferRuntime(no21), /Qwen-Image-2\.1.*万物迁移/);
   const noWeights = nodes();
   noWeights.UnetLoaderGGUF.input.required.unet_name = combo(['other.gguf']);
-  await checkThrows('and so is a node with the loader but not the weights', () => s.resolveObjectTransferRuntime(noWeights, 'qwen-2.1'), /Qwen-Image-2\.1/);
-  check('the source prefers fp8mixed', /OBJECT_TRANSFER_QWEN_UNETS = \['qwen_image_edit_2511_fp8mixed\.safetensors', 'qwen_image_edit_2511_bf16\.safetensors'\]/.test(source), null);
+  await checkThrows('and so is a node with the loader but not the weights', () => s.resolveObjectTransferRuntime(noWeights), /Qwen-Image-2\.1/);
+  const only2511 = nodes();
+  delete only2511.UnetLoaderGGUF;
+  await checkThrows('a node that has only the 2511 files cannot run it either', () => s.resolveObjectTransferRuntime(only2511), /Qwen-Image-2\.1/);
+  await checkThrows('the effect tools name themselves in the same error', () => s.resolveQwen21EditRuntime(no21, '特效提取'), /无法执行特效提取/);
 }
 
-section('the 2.1 graph: two references at their own size, the encoder latent, RGB out');
+section('the 万物迁移 graph: two references at their own size, the encoder latent, RGB out');
 {
   const info = nodes();
-  const resolved = s.resolveObjectTransferRuntime(info, 'qwen-2.1');
+  const resolved = s.resolveObjectTransferRuntime(info);
   for (const [label, graph, steps, cfg] of [
-    ['integration', s.buildObjectTransferQwenWorkflow(info, uploads, 'NovaFlow_object_transfer_x', resolved, 'qwen-2.1'), 25, 1],
-    ['restyle', s.buildObjectTransferRestyleWorkflow(info, uploads, 'NovaFlow_object_transfer_x_restyle', resolved, '', 'qwen-2.1'), 25, 1]
+    ['integration', s.buildObjectTransferQwenWorkflow(info, uploads, 'NovaFlow_object_transfer_x', resolved), 25, 1],
+    ['restyle', s.buildObjectTransferRestyleWorkflow(info, uploads, 'NovaFlow_object_transfer_x_restyle', resolved, ''), 25, 1]
   ]) {
-    checkEqual(label + ': no 2511 pieces', ['UNETLoader', 'LoraLoaderModelOnly', 'ModelSamplingAuraFlow', 'CFGNorm', 'TextEncodeQwenImageEditPlus', 'ConditioningZeroOut', 'VAEEncode', 'FluxKontextImageScale'].filter((type) => byType(graph, type).length), []);
+    checkEqual(label + ': no 2511 pieces', PIECES_2511.filter((type) => byType(graph, type).length), []);
     checkEqual(label + ': the GGUF loader carries the 2.1 file', byType(graph, 'UnetLoaderGGUF').map(([, n]) => n.inputs.unet_name), ['qwen-image-2.1-UC-Q8_0.gguf']);
     checkEqual(label + ': the encoder is Qwen3-VL as qwen_image', byType(graph, 'CLIPLoader').map(([, n]) => [n.inputs.clip_name, n.inputs.type]), [['qwen3vl_8b_w4a8_heretic.safetensors', 'qwen_image']]);
     const [encodeId, encode] = byType(graph, 'TextEncodeQwenImage21')[0];
@@ -110,33 +105,91 @@ section('the 2.1 graph: two references at their own size, the encoder latent, RG
   checkEqual('the debug record names the engine', [s.state.lastProcessingDebug.objectTransfer.workflow, s.state.lastProcessingDebug.objectTransfer.engine], ['qwen-image-2.1-object-transfer', 'qwen-2.1']);
   const noCache = nodes();
   delete noCache.QwenImage21Cache;
-  const plain = s.buildObjectTransferQwenWorkflow(noCache, uploads, 'x', resolved, 'qwen-2.1');
+  const plain = s.buildObjectTransferQwenWorkflow(noCache, uploads, 'x', resolved);
   checkEqual('without the cache node the sampler takes the loader directly', byType(plain, 'KSampler')[0][1].inputs.model, ['4', 0]);
+  const noGguf = nodes();
+  delete noGguf.UnetLoaderGGUF;
+  await checkThrows('replayed on a node without 2.1 (the page sent a marker), the graph is refused', () => s.buildObjectTransferQwenWorkflow(noGguf, uploads, 'x', 'marker'), /Qwen-Image-2\.1/);
 }
 
-section('the 2511 graph is the one it was, on the fp8mixed file');
+section('特效提取 / 去特效 on 2.1: the extract redraws the plate onto a black canvas, a new seed per run, RGB out');
 {
   const info = nodes();
-  const resolved = s.resolveObjectTransferRuntime(info, 'qwen-2511');
-  for (const engine of ['qwen-2511', undefined]) {
-    const graph = s.buildObjectTransferQwenWorkflow(info, uploads, 'x', resolved, engine);
-    checkEqual(String(engine) + ': the 2511 loader casts fp8mixed as before', byType(graph, 'UNETLoader').map(([, n]) => n.inputs), [{ unet_name: 'qwen_image_edit_2511_fp8mixed.safetensors', weight_dtype: 'fp8_e4m3fn' }]);
-    checkEqual(String(engine) + ': no 2.1 pieces', ['UnetLoaderGGUF', 'TextEncodeQwenImage21', 'QwenImage21Cache', 'SplitImageWithAlpha'].filter((type) => byType(graph, type).length), []);
-    const [, sampler] = byType(graph, 'KSampler')[0];
-    checkEqual(String(engine) + ': 4 Lightning steps at cfg 1.2 with the 3.1 shift', [sampler.inputs.steps, sampler.inputs.cfg, byType(graph, 'ModelSamplingAuraFlow')[0][1].inputs.shift], [4, 1.2, 3.1]);
+  info.GetImageSize = { input: { required: { image: ['IMAGE', {}] }, hidden: { unique_id: ['UNIQUE_ID'] } } };
+  info.EmptyImage = { input: { required: { width: ['INT', { default: 512 }], height: ['INT', { default: 512 }], batch_size: ['INT', { default: 1 }], color: ['INT', { default: 0 }] } } };
+  const resolved = s.resolveQwen21EditRuntime(info, '特效提取');
+  const seeds = [];
+  for (const [label, build, promptText] of [
+    ['extract', s.buildEffectExtractQwenWorkflow, s.effectExtractPromptText()],
+    ['de-effect', s.buildEffectDeeffectQwenWorkflow, s.effectDeeffectPromptText()]
+  ]) {
+    for (const [how, given] of [['page-resolved', resolved], ['node-resolved (Web marker)', 'marker']]) {
+      const graph = build(info, 'plate_input.png', 'NovaFlow_effect_x', given);
+      checkEqual(`${label} ${how}: no 2511 pieces`, PIECES_2511.filter((type) => byType(graph, type).length), []);
+      checkEqual(`${label} ${how}: the 2.1 files`, [byType(graph, 'UnetLoaderGGUF')[0][1].inputs.unet_name, byType(graph, 'CLIPLoader')[0][1].inputs.clip_name, byType(graph, 'VAELoader')[0][1].inputs.vae_name],
+        ['qwen-image-2.1-UC-Q8_0.gguf', 'qwen3vl_8b_w4a8_heretic.safetensors', 'qwen_image_2.1_vae_bf16.safetensors']);
+      const [encodeId, encode] = byType(graph, 'TextEncodeQwenImage21')[0];
+      if (label === 'extract') {
+        const canvas = graph[encode.inputs['images.image_1'][0]];
+        const [sizeId, size] = byType(graph, 'GetImageSize')[0];
+        checkEqual(`extract ${how}: image_1 is a black canvas the plate's size`, [canvas.class_type, canvas.inputs.width, canvas.inputs.height, canvas.inputs.batch_size, canvas.inputs.color, graph[size.inputs.image[0]].inputs.image],
+          ['EmptyImage', [sizeId, 0], [sizeId, 1], 1, 0, 'plate_input.png']);
+        checkEqual(`extract ${how}: image_2 is the plate, both at their own size`, [graph[encode.inputs['images.image_2'][0]].inputs.image, encode.inputs.resolution], ['plate_input.png', 0]);
+      } else {
+        checkEqual(`de-effect ${how}: the plate is the only image, at its own size`, [graph[encode.inputs['images.image_1'][0]].inputs.image, encode.inputs['images.image_2'], encode.inputs.resolution], ['plate_input.png', undefined, 0]);
+      }
+      checkEqual(`${label} ${how}: its own prompt, empty negative`, [encode.inputs.prompt, encode.inputs.negative_prompt], [promptText, '']);
+      const [, sampler] = byType(graph, 'KSampler')[0];
+      checkEqual(`${label} ${how}: 25 steps at cfg 1 on the encoder latent`,
+        [sampler.inputs.steps, sampler.inputs.cfg, sampler.inputs.denoise, sampler.inputs.latent_image, sampler.inputs.negative],
+        [25, 1, 1, [encodeId, 2], [encodeId, 1]]);
+      check(`${label} ${how}: the seed is a non-negative integer`, Number.isInteger(sampler.inputs.seed) && sampler.inputs.seed >= 0, sampler.inputs.seed);
+      seeds.push(sampler.inputs.seed);
+      const [splitId] = byType(graph, 'SplitImageWithAlpha')[0];
+      checkEqual(`${label} ${how}: RGB is saved under the run prefix`, [byType(graph, 'SaveImage')[0][1].inputs.images, byType(graph, 'SaveImage')[0][1].inputs.filename_prefix], [[splitId, 0], 'NovaFlow_effect_x']);
+      for (const [id, node] of Object.entries(graph)) {
+        for (const value of Object.values(node.inputs)) if (Array.isArray(value)) check(`${label} ${how}: ${id} links to a node`, Boolean(graph[value[0]]), value);
+      }
+    }
   }
-  checkEqual('the debug record names 2511', s.state.lastProcessingDebug.objectTransfer.engine, 'qwen-2511');
+  check('each run samples a new seed (a rerun gives another result)', new Set(seeds).size === seeds.length, seeds);
+  check('no fixed effect seed is left in the runtime', !/EFFECT_EXTRACT_SEED|916202601/.test(source), null);
+  check('the extract prompt redraws onto the black canvas and never asks to remove the figure', /纯黑画布/.test(s.effectExtractPromptText()) && !/Remove the person/.test(s.effectExtractPromptText()), s.effectExtractPromptText());
+  const no21 = nodes();
+  delete no21.TextEncodeQwenImage21;
+  await checkThrows('the extract graph refuses a node without 2.1', () => s.buildEffectExtractQwenWorkflow(no21, 'x.png', 'x', 'marker'), /无法执行特效提取/);
+  await checkThrows('and so does the de-effect graph', () => s.buildEffectDeeffectQwenWorkflow(no21, 'x.png', 'x', 'marker'), /无法执行特效去除/);
+  await checkThrows('the extract graph names the canvas nodes it lacks', () => s.buildEffectExtractQwenWorkflow(nodes(), 'x.png', 'x', 'marker'), /GetImageSize \/ EmptyImage/);
 }
 
-section('the plate: 2.1 rounds the 2511 plate up to 32 so the encoder never resamples it');
+section('特效去除 writes the de-effected crop straight onto the layer (no paste-back through a key)');
+{
+  const px = (...pixels) => Uint8ClampedArray.from(pixels.flat());
+  const run = (original, result, mask) => Array.from(s.effectDeeffectPixels(px(...original), px(...result), mask ? Uint8ClampedArray.from(mask) : null, original.length));
+  checkEqual('an opaque pixel takes the de-effected colour', run([[200, 100, 50, 255]], [[10, 20, 30, 255]]), [10, 20, 30, 255]);
+  checkEqual('a glow floating over transparency becomes transparent', run([[255, 200, 100, 128]], [[0, 0, 0, 255]]), [0, 0, 0, 0]);
+  checkEqual('the model cannot paint into a transparent pixel', run([[0, 0, 0, 0]], [[255, 255, 255, 255]]), [0, 0, 0, 0]);
+  const edge = run([[200, 100, 50, 128]], [[100, 50, 25, 255]]);
+  check('a soft edge the pass left alone keeps its alpha and colour', Math.abs(edge[3] - 128) <= 1 && Math.abs(edge[0] - 200) <= 2 && Math.abs(edge[1] - 100) <= 2 && Math.abs(edge[2] - 50) <= 2, edge);
+  checkEqual('outside the stroke nothing changes', run([[200, 100, 50, 255]], [[10, 20, 30, 255]], [0]), [200, 100, 50, 255]);
+  checkEqual('on the feathered stroke edge the two blend', run([[200, 100, 50, 255]], [[0, 0, 0, 255]], [128]), [100, 50, 25, 255]);
+  check('the removal no longer composites through an extraction key', !/effectRemovalMaskCanvas|EFFECT_REMOVE_MASK_/.test(source) && /effectDeeffectCanvas\(layerOriginalCanvas, plate\.plate, cropBox, regionMask\)/.test(source), null);
+}
+
+section('去除物体 samples a new seed unless the caller pins one');
+{
+  check('the removal graph draws its default seed at random', /const seed = fixedSeed == null \? Math\.floor\(Math\.random\(\) \* 1000000000\) : fixedSeed/.test(source) && !/4819261740/.test(source), null);
+}
+
+section('the plate: 2.1 rounds the Qwen edit plate up to 32 so the encoder never resamples it');
 {
   for (const [w, h] of [[756, 1137], [626, 1360], [1024, 1024], [1920, 1080]]) {
-    const plate2511 = s.qwenEditPlateSize(w, h);
+    const base = s.qwenEditPlateSize(w, h);
     const plate21 = s.qwen21EditPlateSize(w, h);
     check(`${w}x${h}: both edges are multiples of 32`, plate21.width % 32 === 0 && plate21.height % 32 === 0, plate21);
-    check(`${w}x${h}: never smaller than the 2511 plate, at most 31 px larger`, plate21.width >= plate2511.width && plate21.height >= plate2511.height && plate21.width - plate2511.width < 32 && plate21.height - plate2511.height < 32, [plate2511, plate21]);
-    checkEqual(`${w}x${h}: the engine picks the plate`, [s.objectTransferPlateSize('qwen-2.1', w, h), s.objectTransferPlateSize('qwen-2511', w, h)], [plate21, plate2511]);
+    check(`${w}x${h}: never smaller than the base plate, at most 31 px larger`, plate21.width >= base.width && plate21.height >= base.height && plate21.width - base.width < 32 && plate21.height - base.height < 32, [base, plate21]);
   }
+  check('万物迁移 and the effect tools use the 2.1 plate', /const plateSize = qwen21EditPlateSize\(cropBox\.width, cropBox\.height\)/.test(source) && !/objectTransferPlateSize/.test(source), null);
 }
 
 finish('web-object-transfer-qwen21');

@@ -197,12 +197,10 @@ assert.equal(byClass(drawNegative, 'KSampler')[0][1].inputs.cfg, 2.5);
 // Steps / CFG typed on the panel for this route are what the run uses.
 const drawTyped = await drawT2i('', '', { samplingOverrides: { 'qwen-2.1:txt2img': { steps: 25, cfg: 3 } } });
 assert.deepEqual([byClass(drawTyped, 'KSampler')[0][1].inputs.steps, byClass(drawTyped, 'KSampler')[0][1].inputs.cfg], [25, 3]);
-// The worker builds 2.1 only when the page's panel showed it (localDrawEngine); without it a node
-// that has 2.1 still runs the route the panel showed, and asked for 2.1 a node without it is an
-// error rather than a 2511 graph that keeps three references.
-const notAsked = await buildDraw(['ref.png'], [{ width: 512, height: 720 }], 512, 720, '', { localDrawEngine: '' });
-assert.equal(byClass(notAsked, 'TextEncodeQwenImage21').length, 0);
-assert.ok(byClass(notAsked, 'TextEncodeQwenImageEditPlus').length > 0);
+// The page always sends localDrawEngine for a non-NSFW local drawing. Without it (an old cached page)
+// there is no 2511 template left to fall back on: the run is refused. Asked for 2.1, a node without it
+// is an error rather than a 2511 graph that keeps three references.
+await assert.rejects(buildDraw(['ref.png'], [{ width: 512, height: 720 }], 512, 720, '', { localDrawEngine: '' }), /本地生成只支持 Qwen-Image-2\.1 或 NSFW 路线/);
 const noQwen21Host = await createWorkflowHost({ rendererDir, objectInfo: { LoadImage: qwen21Info.LoadImage, KSampler: qwen21Info.KSampler } });
 await assert.rejects(noQwen21Host.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
   'local', 'txt2img', [], 'NovaFlow_Art', 'a knight', '', 'client', [],
@@ -212,8 +210,8 @@ await assert.rejects(noQwen21Host.buildGraph({ module: 'novaflow-brand-runtime',
 // Asked for 2.1 on a node without it: an error, never a 2511 graph that keeps three references.
 const hostOld = await createWorkflowHost({ rendererDir, objectInfo: { LoadImage: qwen21Info.LoadImage, KSampler: qwen21Info.KSampler } });
 await assert.rejects(buildUi(hostOld, names, sizes, roles), /缺少 Qwen-Image-2.1/);
-// Without the engine flag the UI run never becomes a 2.1 graph.
-await assert.rejects(buildUi(host21, names.slice(0, 3), sizes.slice(0, 3), ['style', 'content', 'ui_layout'], { localUiEngine: '' }), (error) => !/Qwen-Image-2.1/.test(error.message));
+// Without the engine flag (an old cached page) there is no 2511 route to run the UI on: it is refused.
+await assert.rejects(buildUi(host21, names.slice(0, 3), sizes.slice(0, 3), ['style', 'content', 'ui_layout'], { localUiEngine: '' }), /本地生成只支持 Qwen-Image-2\.1 或 NSFW 路线/);
 
 // The worker renames all ten uploads.
 const refs15 = Array.from({ length: 10 }, (_, i) => ({ name: `ui_q21_${i}.png` }));

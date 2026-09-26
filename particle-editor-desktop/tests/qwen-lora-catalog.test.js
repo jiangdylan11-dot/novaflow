@@ -24,7 +24,6 @@ test('catalog enforces exact root, all tensor pairs, payload integrity and actua
   const root = path.join(temp, 'models/loras/qwen');
   const baseKey = 'transformer_blocks.0.attn.add_k_proj';
   write(path.join(temp, 'models', BASE_MODELS.rapid), { [`model.diffusion_model.${baseKey}.weight`]: [4, 6], [`model.diffusion_model.${baseKey}.weight_scale`]: [] }, 'F8_E4M3');
-  write(path.join(temp, 'models', BASE_MODELS.edit), { [`model.diffusion_model.${baseKey}.weight`]: [4, 6] }, 'BF16');
   const pair = (out = 4, prefix = 'diffusion_model', a = 'lora_A', b = 'lora_B') => ({ [`${prefix}.${baseKey}.${a}.weight`]: [2, 6], [`${prefix}.${baseKey}.${b}.weight`]: [out, 2] });
   write(path.join(root, 'valid.safetensors'), pair());
   write(path.join(root, 'sub/alternate.safetensors'), { ...pair(4, 'transformer', 'lora_down', 'lora_up'), [`transformer.${baseKey}.alpha`]: [] });
@@ -36,18 +35,16 @@ test('catalog enforces exact root, all tensor pairs, payload integrity and actua
   write(path.join(root, '../outside.safetensors'), pair());
   const names = ['qwen/valid.safetensors', 'qwen/sub/alternate.safetensors', 'qwen/rapid.safetensors', 'qwen/wrong.safetensors', 'qwen/partial.safetensors', 'qwen/broken.safetensors', 'qwen/../outside.safetensors', 'outside.safetensors', 'other/qwen/valid.safetensors'];
   const catalog = createQwenLoraCatalog({ root, listRuntimeLoraNames: async () => ({ LoraLoaderModelOnly: { input: { required: { lora_name: [names] } } } }) });
-  assert.deepEqual((await catalog.catalog()).map(x => x.name).sort(), ['qwen/sub/alternate.safetensors', 'qwen/valid.safetensors']);
-  assert.equal(BASE_MODELS.edit, 'diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors');
   assert.equal(BASE_MODELS.rapid, 'checkpoints/Qwen-Rapid-AIO-NSFW-v20.safetensors');
   assert.deepEqual((await catalog.catalog({ nsfw: true })).map(x => x.name).sort(), ['qwen/sub/alternate.safetensors', 'qwen/valid.safetensors']);
   // A changed file is re-read instead of trusting an earlier compatibility verdict.
   write(path.join(root, 'valid.safetensors'), pair(7));
-  assert.equal((await catalog.catalog()).some(x => x.name === 'qwen/valid.safetensors'), false);
+  assert.equal((await catalog.catalog({ nsfw: true })).some(x => x.name === 'qwen/valid.safetensors'), false);
   fs.mkdirSync(path.join(root, 'escape'));
   fs.rmdirSync(path.join(root, 'escape'));
   fs.symlinkSync(path.join(root, '..'), path.join(root, 'escape'), 'junction');
   names.push('qwen/escape/outside.safetensors');
-  assert.equal((await catalog.catalog()).some(x => x.name.includes('escape')), false);
+  assert.equal((await catalog.catalog({ nsfw: true })).some(x => x.name.includes('escape')), false);
 });
 
 test('LoKr modules count when kron(w1, w2) lands exactly on the weight, as ComfyUI applies them', () => {
@@ -83,20 +80,15 @@ test('LoKr modules count when kron(w1, w2) lands exactly on the weight, as Comfy
   assert.equal(compatible({ 'lycoris_transformer_blocks_0_attn_norm_q.lokr_w1': t([2, 1]), 'lycoris_transformer_blocks_0_attn_norm_q.lokr_w2': t([64, 1]) }, base), false);
 });
 
-test('the ordinary list reads fp8mixed, and the bf16 release only where fp8mixed is not on disk', async t => {
-  const { EDIT_MODEL_FALLBACKS } = require('../main/qwen-lora-catalog');
-  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'nf-qwen-fallback-'));
+test('a request that is neither 2.1 nor NSFW has no LoRAs: the 2511 route is retired', async t => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'nf-qwen-plain-'));
   t.after(() => fs.rmSync(temp, { recursive: true, force: true }));
   const root = path.join(temp, 'models/loras/qwen');
   const baseKey = 'transformer_blocks.0.attn.to_q';
   write(path.join(root, 'fits.safetensors'), { [`diffusion_model.${baseKey}.lora_A.weight`]: [2, 6], [`diffusion_model.${baseKey}.lora_B.weight`]: [4, 2] });
   const catalog = createQwenLoraCatalog({ root, listRuntimeLoraNames: async () => ({ LoraLoaderModelOnly: { input: { required: { lora_name: [['qwen/fits.safetensors']] } } } }) });
-  // Neither file: the list is an error, never a silent empty list.
-  await assert.rejects(catalog.catalog(), /2511/);
-  assert.deepEqual(EDIT_MODEL_FALLBACKS, ['diffusion_models/qwen_image_edit_2511_bf16.safetensors']);
-  write(path.join(temp, 'models', EDIT_MODEL_FALLBACKS[0]), { [`${baseKey}.weight`]: [4, 6] }, 'BF16');
-  assert.deepEqual((await catalog.catalog()).map(x => x.name), ['qwen/fits.safetensors']);
-  // fp8mixed present: it is the one read (its differently shaped weight flips the verdict).
-  write(path.join(temp, 'models', BASE_MODELS.edit), { [`${baseKey}.weight`]: [5, 6], [`${baseKey}.weight_scale`]: [] }, 'F8_E4M3');
+  // Even with the old 2511 file still on disk, a LoRA that fits it is not offered.
+  write(path.join(temp, 'models', 'diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors'), { [`${baseKey}.weight`]: [4, 6] }, 'BF16');
   assert.deepEqual(await catalog.catalog(), []);
+  assert.equal(require('../main/qwen-lora-catalog').EDIT_MODEL_FALLBACKS, undefined);
 });

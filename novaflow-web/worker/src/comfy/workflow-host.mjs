@@ -276,7 +276,6 @@ export const CATALOGUE_FIRST = new Set([
   'buildQwenImageOutpaintWorkflow',
   'buildImageAngleAdjustWorkflow',
   'buildObjectTransferQwen21Workflow',
-  'buildQwenEditPlateWorkflow',
   'buildEffectExtractQwenWorkflow',
   'buildEffectDeeffectQwenWorkflow'
 ]);

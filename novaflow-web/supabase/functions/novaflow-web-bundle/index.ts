@@ -731,7 +731,7 @@ const WORKFLOW_MODULES = Object.freeze({
     methods: [
       'defaultQwenInpaintWorkflow', 'defaultRemovalInpaintWorkflow', 'defaultRmbgWorkflow', 'samPointWorkflowFromPrompts',
       'buildSeeThroughSplitWorkflow', 'buildSeedVr2ImageUpscaleWorkflow', 'buildQwenImageOutpaintWorkflow',
-      'buildImageAngleAdjustWorkflow', 'buildObjectTransferQwen21Workflow', 'buildQwenEditPlateWorkflow',
+      'buildImageAngleAdjustWorkflow', 'buildObjectTransferQwen21Workflow',
       'buildEffectExtractQwenWorkflow', 'buildEffectDeeffectQwenWorkflow'
     ]
   },
@@ -755,25 +755,7 @@ const WORKFLOW_MODULES = Object.freeze({
     methods: ['build', 'buildWorkflow']
   },
 
-  // ---- UI 设计 ----------------------------------------------------------
-  NovaFlowUiDesignLocalWorkflow: {
-    label: 'UI 设计',
-    modelId: 'qwen-image-2511',
-    minVramMb: 16000,
-    runtime: 'image',
-    kind: 'image',
-    price: 'image',
-    methods: ['build', 'buildLocalUiWorkflow']
-  },
-  NovaFlowUiDesignLocalRefineWorkflow: {
-    label: 'UI 设计 · 精修',
-    modelId: 'qwen-image-2511',
-    minVramMb: 16000,
-    runtime: 'image',
-    kind: 'image',
-    price: 'image',
-    methods: ['build']
-  },
+  // UI 设计 runs through the 绘图 builders on Qwen-Image-2.1; it has no builder of its own.
 
   // ---- AI 序列动画 ------------------------------------------------------
   NovaFlowAiSequenceMiniMaxH3Workflow: {
@@ -823,8 +805,6 @@ const WORKFLOW_MODULES = Object.freeze({
 const WORKFLOW_SOURCE_MODULES = Object.freeze({
   'art-generate-provider.workflow': 'NovaFlowArtGenerateProviderWorkflow',
   'art-generate-ideogram.workflow': 'NovaFlowArtGenerateIdeogramWorkflow',
-  'ui-design-local.workflow': 'NovaFlowUiDesignLocalWorkflow',
-  'ui-design-local-refine.workflow': 'NovaFlowUiDesignLocalRefineWorkflow',
   'ai-sequence-minimax-h3.workflow': 'NovaFlowAiSequenceMiniMaxH3Workflow',
   'ai-sequence-video-merge-export.workflow': 'NovaFlowAiSequenceVideoMergeExportWorkflow',
   'aifx-restyle.workflow': 'NovaFlowAifxRestyleWorkflow',
