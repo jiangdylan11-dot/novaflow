@@ -5910,15 +5910,18 @@
     const h = ((Math.round(Number(horizontalAngle) || 0) % 360) + 360) % 360
     const v = Math.max(-30, Math.min(60, Math.round(Number(verticalAngle) || 0)))
     const z = Number(zoom) || 0
+    // Directions follow the 2511 multiple-angles LoRA the panel was tuned against: H 90 ("right side
+    // view") is a profile facing the picture's LEFT edge, H 315 ("front-left") turns toward the RIGHT.
+    // Only picture directions are named; "shows its right side" made 2.1 turn the other way.
     let side
     if (h < 22.5 || h >= 337.5) side = 'from the front, as in the original, with the subject facing the viewer.'
-    else if (h < 67.5) side = `from the front-right: the camera has moved about ${h} degrees around to the subject's right, so the subject is seen in a three-quarter view: its body and face are turned about 45 degrees toward the right side of the picture, the far side of the face is partly hidden, and both its front and its right side are visible.`
-    else if (h < 112.5) side = `from the subject's right side: the camera has moved about ${h} degrees around the subject, so the subject is seen in a side profile, facing toward the right edge of the picture, showing its right side; only one eye and one side of the face are visible.`
-    else if (h < 157.5) side = `from behind and to the right: the camera has moved about ${h} degrees around the subject, so the subject is seen mostly from the back, turned away from the viewer toward the right side of the picture; the back and the right side are visible and the face is hidden or seen only as the edge of a cheek.`
+    else if (h < 67.5) side = `in a three-quarter view: the viewpoint has moved about ${h} degrees around the subject, so its body and face are turned about 45 degrees toward the LEFT side of the picture, and the far side of the face is partly hidden.`
+    else if (h < 112.5) side = `in a side profile: the viewpoint has moved about ${h} degrees around the subject, so it faces the LEFT edge of the picture; only one eye and one side of the face are visible.`
+    else if (h < 157.5) side = `mostly from behind: the viewpoint has moved about ${h} degrees around the subject, so it is turned away from the viewer and toward the LEFT side of the picture; the face is hidden or seen only as the edge of a cheek.`
     else if (h < 202.5) side = 'from directly behind: the subject is seen from the back, facing away from the viewer; we see the back of the head and the back of the body, and the face is not visible.'
-    else if (h < 247.5) side = `from behind and to the left: the camera has moved about ${360 - h} degrees around to the subject's left from behind, so the subject is seen mostly from the back, turned away from the viewer toward the left side of the picture; the back and the left side are visible and the face is hidden or seen only as the edge of a cheek.`
-    else if (h < 292.5) side = `from the subject's left side: the camera has moved about ${360 - h} degrees around the subject, so the subject is seen in a side profile, facing toward the left edge of the picture, showing its left side; only one eye and one side of the face are visible.`
-    else side = `from the front-left: the camera has moved about ${360 - h} degrees around to the subject's left, so the subject is seen in a three-quarter view: its body and face are turned about 45 degrees toward the left side of the picture, the far side of the face is partly hidden, and both its front and its left side are visible.`
+    else if (h < 247.5) side = `mostly from behind: the viewpoint has moved about ${360 - h} degrees around the subject the other way, so it is turned away from the viewer and toward the RIGHT side of the picture; the face is hidden or seen only as the edge of a cheek.`
+    else if (h < 292.5) side = `in a side profile: the viewpoint has moved about ${360 - h} degrees around the subject the other way, so it faces the RIGHT edge of the picture; only one eye and one side of the face are visible.`
+    else side = `in a three-quarter view: the viewpoint has moved about ${360 - h} degrees around the subject the other way, so its body and face are turned about 45 degrees toward the RIGHT side of the picture, and the far side of the face is partly hidden.`
     let height
     if (v < -15) height = `The camera is low, looking up at the subject at about ${-v} degrees: we see the underside of the chin and the subject looms above the viewer, the legs look longer, and the sky or ceiling fills the background behind the subject.`
     else if (v < 15) height = 'The camera is at eye level with the subject, looking straight at it.'
