@@ -637,7 +637,8 @@
       maskDataUrl: '',
       inpaintPrompt: '',
       inpaintMode: SELECTION_INPAINT_MODE_DEFAULT,
-      inpaintNsfwEnabled: false
+      inpaintNsfwEnabled: false,
+      inpaintFluxEnabled: false
     },
     penTool: {
       active: false,
@@ -8654,16 +8655,6 @@
     return wanted
   }
 
-  function optionalComfyChoice(nodeInfo, key, wanted, fallbackList) {
-    const choices = comfyChoices(nodeInfo && nodeInfo.input && nodeInfo.input.required && nodeInfo.input.required[key])
-    if (!choices.length) return wanted
-    if (wanted && choices.includes(wanted)) return wanted
-    for (const item of (fallbackList || [])) {
-      if (choices.includes(item)) return item
-    }
-    return ''
-  }
-
   function comfyChoiceFromCandidates(nodeInfo, key, candidates, label, options) {
     const choices = comfyChoices(nodeInfo && nodeInfo.input && nodeInfo.input.required && nodeInfo.input.required[key])
     const list = (candidates || []).filter(Boolean)
@@ -8695,6 +8686,20 @@
       }
     }
     const rapidAioNsfwRequested = provider === true || provider === 'qwen-rapid-aio-nsfw-v20' || provider === 'rapid-aio-nsfw'
+    // 智能补图 + FLUX: Flux Fill for structure a split layer barely shows (a limb hidden behind another).
+    // Same canvases and merge as the 2.1 completion; only the graph differs (buildFluxCompletionWorkflow).
+    if (normalizedMode === 'completion' && provider === FLUX_COMPLETION_PROVIDER) {
+      return {
+        mode: normalizedMode,
+        provider: FLUX_COMPLETION_PROVIDER,
+        label: 'Flux Fill',
+        workflow: 'qwen',
+        outputMode: 'patch',
+        qwenControlMode: 2,
+        v4: true,
+        flux: true
+      }
+    }
     if (selectionInpaintNsfwAvailable(normalizedMode) && rapidAioNsfwRequested) {
       return {
         mode: normalizedMode,
@@ -8900,23 +8905,6 @@
       if (visualReference) parts.push('', visualReference)
     }
     return parts.join('\n')
-  }
-
-  function qwenRetouchPromptParts(promptText, route) {
-    const targetPrompt = String(promptText || '').trim()
-    if (!route || !route.v4) {
-      const prompt = `${targetPrompt || 'Apply the selected AI inpaint task only inside the translucent red marked area.'} Remove all red mask color from the final image. Keep unmasked pixels unchanged. Match nearby material, color, texture, lighting, outline, and perspective where applicable. Do not add a new background, scene, checkerboard, black block, white patch, gray filler, or content unrelated to the selected task.`
-      const instruction = `The input is an isolated game-art layer on a temporary matte background. The translucent red overlay marks the masked area for the selected AI inpaint task. ${targetPrompt ? `Task prompt: ${targetPrompt} ` : ''}Apply the task prompt only inside the red marked area, remove the red overlay, preserve all unmarked content, and match surrounding material, color, lighting, outline, and perspective where applicable.`
-      return { prompt, instruction }
-    }
-    if (route.mode === 'edit') {
-      const prompt = targetPrompt || 'Apply the requested local edit inside the selected mask area.'
-      const instruction = `The first image is the editable game-art layer crop. The second image is a black and white selection mask: white pixels are the only area to modify, black pixels must remain unchanged. Follow the user's text instruction exactly inside the selected mask. Keep the original character identity, line art, lighting, perspective, material, and style outside the selected mask. User instruction: ${prompt}`
-      return { prompt, instruction }
-    }
-    const prompt = targetPrompt || 'Complete the selected missing area naturally.'
-    const instruction = `The first image is the editable game-art layer crop. The second image is a black and white selection mask: white pixels are the missing area to complete, black pixels must remain unchanged. Infer the missing structure inside the selected mask, connect it naturally to the surrounding body, clothing, hair, accessory, or object, and keep the same game-art style, line art, lighting, color palette, and perspective. ${targetPrompt ? `Additional user guidance: ${targetPrompt}` : 'No extra text instruction is required for completion mode.'}`
-    return { prompt, instruction }
   }
 
   // --- Qwen-Image-2.1 engine ---------------------------------------------------------------
@@ -9126,9 +9114,82 @@
     return workflow
   }
 
+  // --- 智能补图 + FLUX (Flux Fill) ------------------------------------------------------------
+  // Measured 2026-09-26 on a split back leg hidden behind the front leg: 2.1 filled the selection with a
+  // flat skin block whatever it was shown (it keeps what the reference holds there), 2509 drew a whole
+  // lower body with underwear or a skirt, and Flux Fill (the 去除物体 base model, without the removal
+  // LoRA) drew a thigh, knee and calf. Its colours drift, so the page colour-matches the result
+  // (fluxCompletionColorMatch); a white matte made it paint a whole new figure into the hole, so the
+  // canvases keep the average-colour matte. T5 reads English only, so the user's 补全...缺失结构 goes
+  // through a part-word table.
+  const FLUX_COMPLETION_PROVIDER = 'flux-fill'
+  const FLUX_COMPLETION_PART_WORDS = [
+    ['左手臂', 'left arm'], ['右手臂', 'right arm'], ['左腿', 'left leg'], ['右腿', 'right leg'], ['左手', 'left hand'], ['右手', 'right hand'],
+    ['左脚', 'left foot'], ['右脚', 'right foot'], ['大腿', 'thigh'], ['小腿', 'calf'], ['膝盖', 'knee'], ['腿部', 'leg'], ['腿', 'leg'],
+    ['手臂', 'arm'], ['胳膊', 'arm'], ['手肘', 'elbow'], ['手指', 'fingers'], ['手部', 'hand'], ['手', 'hand'], ['脚部', 'foot'], ['脚', 'foot'],
+    ['头发', 'hair'], ['头部', 'head'], ['头', 'head'], ['脸部', 'face'], ['脸', 'face'], ['耳朵', 'ear'], ['眼睛', 'eye'], ['脖子', 'neck'],
+    ['肩膀', 'shoulder'], ['身体', 'body'], ['躯干', 'torso'], ['腰部', 'waist'], ['腰', 'waist'], ['胸部', 'chest'], ['胸', 'chest'], ['背部', 'back'],
+    ['臀部', 'hips'], ['衣服', 'clothing'], ['裙子', 'skirt'], ['裤子', 'trousers'], ['袖子', 'sleeve'], ['丝袜', 'stocking'], ['袜子', 'sock'],
+    ['鞋子', 'shoe'], ['鞋', 'shoe'], ['靴子', 'boot'], ['帽子', 'hat'], ['披风', 'cape'], ['翅膀', 'wing'], ['尾巴', 'tail'], ['角', 'horn'],
+    ['武器', 'weapon'], ['剑', 'sword'], ['盾', 'shield'], ['乌龟', 'turtle'], ['龟壳', 'turtle shell'], ['猫', 'cat'], ['狗', 'dog'], ['鸟', 'bird'],
+    ['马', 'horse'], ['龙', 'dragon'], ['鱼', 'fish'], ['兔子', 'rabbit'], ['狐狸', 'fox'], ['熊', 'bear'], ['机器人', 'robot'], ['怪物', 'monster']
+  ]
+
+  function fluxCompletionPromptText(userText) {
+    const text = String(userText || '')
+    let rest = text
+    const found = []
+    for (const [zh, en] of [...FLUX_COMPLETION_PART_WORDS].sort((x, y) => y[0].length - x[0].length)) {
+      if (rest.includes(zh)) { found.push(en); rest = rest.split(zh).join(' ') }
+    }
+    // Words already in English (someone typing "tentacle") pass through as they are.
+    const latin = (text.match(/[A-Za-z][A-Za-z -]*/g) || []).map((word) => word.trim()).filter(Boolean)
+    const parts = [...new Set([...found, ...latin])]
+    const what = parts.length ? `the missing structure of the ${parts.join(' and ')}` : 'the missing structure'
+    return `complete ${what}, continuing the surrounding shapes, colors, line art and shading in the same art style, seamless`
+  }
+
+  function buildFluxCompletionWorkflow(info, imageName, maskName, prefix, options = {}) {
+    const required = ['LoadImage', 'ImageToMask', 'UNETLoader', 'DualCLIPLoader', 'VAELoader', 'CLIPTextEncode', 'ConditioningZeroOut', 'FluxGuidance', 'InpaintModelConditioning', 'DifferentialDiffusion', 'KSampler', 'VAEDecode', 'SaveImage']
+    const missing = required.filter((name) => !info || !info[name])
+    if (missing.length) throw new Error(`当前算力节点缺少 Flux Fill 所需的节点：${missing.join('、')}。请在本地助手里重新启动 NovaFlow 后再试`)
+    const unetName = requireComfyChoice(info.UNETLoader, 'unet_name', 'fill-dev-OneReward-fp8.safetensors', 'Flux Fill UNET')
+    const vaeName = requireComfyChoice(info.VAELoader, 'vae_name', 'ae.safetensors', 'Flux VAE')
+    const clipName1 = requireComfyChoiceFrom(info.DualCLIPLoader, 'clip_name1', 'clip_l.safetensors', 'Flux CLIP-L')
+    const clipName2 = requireComfyChoiceFrom(info.DualCLIPLoader, 'clip_name2', 't5xxl_fp8_e4m3fn.safetensors', 'Flux T5')
+    const prompt = fluxCompletionPromptText(options.promptParts && options.promptParts.user)
+    // A fixed seed would hand back the same failed limb on every retry, and FLUX is the switch people rerun.
+    const seed = Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed))) : Math.floor(Math.random() * 1000000000)
+    // The undug crop (hole filled with the layer's average colour) is what Flux Fill drew limbs on.
+    const pixelsName = options.latentInputName || imageName
+    const workflow = {
+      '1': { class_type: 'LoadImage', inputs: { image: pixelsName } },
+      '2': { class_type: 'LoadImage', inputs: { image: maskName } },
+      '3': { class_type: 'ImageToMask', inputs: { image: ['2', 0], channel: 'red' } },
+      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(info.UNETLoader, { unet_name: unetName, weight_dtype: 'default' }) },
+      '5': { class_type: 'DualCLIPLoader', inputs: buildComfyNodeInputs(info.DualCLIPLoader, { clip_name1: clipName1, clip_name2: clipName2, type: 'flux', device: 'default' }) },
+      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(info.VAELoader, { vae_name: vaeName }) },
+      '7': { class_type: 'CLIPTextEncode', inputs: buildComfyNodeInputs(info.CLIPTextEncode, { clip: ['5', 0], text: prompt }) },
+      '8': { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['7', 0] } },
+      '9': { class_type: 'FluxGuidance', inputs: buildComfyNodeInputs(info.FluxGuidance, { conditioning: ['7', 0], guidance: 30 }) },
+      '10': { class_type: 'InpaintModelConditioning', inputs: buildComfyNodeInputs(info.InpaintModelConditioning, { positive: ['9', 0], negative: ['8', 0], vae: ['6', 0], pixels: ['1', 0], mask: ['3', 0], noise_mask: true }) },
+      '11': { class_type: 'DifferentialDiffusion', inputs: { model: ['4', 0] } },
+      '12': { class_type: 'KSampler', inputs: buildComfyNodeInputs(info.KSampler, { model: ['11', 0], positive: ['10', 0], negative: ['10', 1], latent_image: ['10', 2], seed, steps: 28, cfg: 1, sampler_name: 'euler', scheduler: 'normal', denoise: 1 }) },
+      '13': { class_type: 'VAEDecode', inputs: { samples: ['12', 0], vae: ['6', 0] } },
+      '14': { class_type: 'SaveImage', inputs: { images: ['13', 0], filename_prefix: prefix } }
+    }
+    setInpaintDebugAttr('workflow-engine', 'flux-fill')
+    state.lastProcessingDebug = {
+      ...(state.lastProcessingDebug || {}),
+      qwenInpaint: { engine: 'flux-fill', unet: unetName, clip: [clipName1, clipName2], vae: vaeName, seed, prompt, provider: FLUX_COMPLETION_PROVIDER }
+    }
+    return workflow
+  }
+
   async function defaultQwenInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
     const route = options && options.route || resolveInpaintWorkflowRoute(options && options.inpaintMode, options && options.inpaintProvider)
     const info = await comfyAllObjectInfo(baseUrl).catch(() => ({}))
+    if (route.provider === FLUX_COMPLETION_PROVIDER) return buildFluxCompletionWorkflow(info, imageName, maskName, prefix, options || {})
     const qwen21 = qwen21Runtime(info)
     const can21 = !!(qwen21 && info.VAEEncode && info.SetLatentNoiseMask && info.ImageToMask && info.KSampler && info.SplitImageWithAlpha && info.InvertMask && info.ImageCompositeMasked && info.ImagePadForOutpaint && info.ImageCrop && info.MaskComposite)
     // 局部编辑 and 智能补全 always run on 2.1 (see qwen21EditPromptText / qwen21CompletionPromptText);
@@ -9155,178 +9216,7 @@
       }
       return buildQwen21InpaintWorkflow(info, qwen21, imageName, maskName, prefix, promptText, route, options && options.latentInputName || '', options && options.inputSize, options && options.promptParts)
     }
-    setInpaintDebugAttr('workflow-engine', 'qwen-2509-2511')
-    const textNodeName = info.TextEncodeQwenImageEditPlusAdvance_lrzjason
-      ? 'TextEncodeQwenImageEditPlusAdvance_lrzjason'
-      : 'TextEncodeQwenImageEditPlusAdvance'
-    const required = [
-      'UNETLoader',
-      'CLIPLoader',
-      'VAELoader',
-      'TextEncodeQwenImageEdit',
-      textNodeName,
-      'KSampler',
-      'VAEDecode',
-      'SaveImage',
-      'ImageToMask'
-    ]
-    required.forEach((name) => requiredComfyNode(info, name))
-    const unet = requiredComfyNode(info, 'UNETLoader')
-    const clip = requiredComfyNode(info, 'CLIPLoader')
-    const vae = requiredComfyNode(info, 'VAELoader')
-    const qwenText = requiredComfyNode(info, textNodeName)
-    const negText = requiredComfyNode(info, 'TextEncodeQwenImageEdit')
-    const ksampler = requiredComfyNode(info, 'KSampler')
-    const isEditV5 = !!(route && route.mode === 'edit' && route.editV5)
-    const editV5NoLightningLora = '__novaflow_edit_v5_no_lightning_lora__'
-    const lora = route.v4 && !isEditV5 ? requiredComfyNode(info, 'LoraLoaderModelOnly') : (info.LoraLoaderModelOnly || null)
-    const aura = info.ModelSamplingAuraFlow || null
-    const cfgNorm = info.CFGNorm || null
-    // The 2511 test line also accepts the bf16 release kept in the legacy runtime; it is cast to fp8 at load time.
-    const unetName = isEditV5
-      ? comfyChoiceFromCandidates(unet, 'unet_name', [
-        'qwen_image_edit_2511_fp8mixed.safetensors',
-        'qwen_image_edit_2511_bf16.safetensors'
-      ], 'Qwen Edit UNET')
-      : comfyChoiceFromCandidates(unet, 'unet_name', [
-        'Qwen-Image-Edit-2509_fp8_e4m3fn.safetensors',
-        'qwen_image_edit_2511_fp8mixed.safetensors',
-        'qwen_image_edit_2511_bf16.safetensors'
-      ], 'Qwen UNET')
-    const qwenInpaintUses2511 = /2511/.test(unetName)
-    const unetWeightDtype = /bf16/.test(unetName) ? 'fp8_e4m3fn' : 'default'
-    const clipName = requireComfyChoice(clip, 'clip_name', 'qwen_2.5_vl_7b_fp8_scaled.safetensors', 'Qwen CLIP')
-    const vaeName = requireComfyChoice(vae, 'vae_name', 'qwen_image_vae.safetensors', 'Qwen VAE')
-    const eigenLora = lora
-      ? isEditV5
-        ? ''
-        : qwenInpaintUses2511
-          ? '' // The 2509 adapter stays off the 2511 base.
-          : (route.v4 ? requireComfyChoice(lora, 'lora_name', 'eigen-banana-qwen-image-edit-2509-fp16-lora.safetensors', 'Qwen edit LoRA') : optionalComfyChoice(lora, 'lora_name', 'eigen-banana-qwen-image-edit-2509-fp16-lora.safetensors', []))
-      : ''
-    const lightningLora = lora
-      ? isEditV5
-        ? comfyChoiceFromCandidates(lora, 'lora_name', [
-          'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors',
-          'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
-          'Qwen-Image-Lightning-8steps-V2.0.safetensors',
-          'Qwen-Image-Lightning-8steps-V1.0.safetensors'
-        ], 'Qwen Edit Lightning LoRA', { optional: true }) || editV5NoLightningLora
-        : qwenInpaintUses2511
-          ? optionalComfyChoice(lora, 'lora_name', 'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors', [
-            'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
-            'Qwen-Image-Lightning-8steps-V2.0.safetensors',
-            'Qwen-Image-Lightning-8steps-V1.0.safetensors'
-          ])
-          : optionalComfyChoice(lora, 'lora_name', 'Qwen-Image-Lightning-8steps-V2.0.safetensors', [
-            'Qwen-Image-Lightning-8steps-V1.0.safetensors',
-            'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors',
-            'Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors'
-          ])
-      : ''
-    if (lora && !lightningLora) throw new Error('NovaFlow AI Runtime 缺少 Qwen inpaint 加速 LoRA，不能输出假修图')
-    const inpaintMode = normalizeSelectionInpaintMode(options && options.inpaintMode)
-    const stableInpaintSeed = 746924259
-    const fixedSeed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed))) : null
-    const seed = fixedSeed == null ? stableInpaintSeed : fixedSeed
-    const { prompt, instruction } = qwenRetouchPromptParts(promptText, route)
-    setInpaintDebugAttr('workflow-mode', inpaintMode)
-    setInpaintDebugAttr('workflow-provider', route.provider)
-    setInpaintDebugAttr('workflow-prompt-head', prompt.slice(0, 1000))
-    const workflow = {
-      '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '2': { class_type: 'LoadImage', inputs: { image: maskName } },
-      '3': { class_type: 'ImageToMask', inputs: { image: ['2', 0], channel: 'red' } },
-      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: unetName, weight_dtype: unetWeightDtype }) },
-      '5': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) },
-      '6': { class_type: 'CLIPLoader', inputs: buildComfyNodeInputs(clip, { clip_name: clipName, type: 'qwen_image', device: 'default' }) },
-      '7': { class_type: 'TextEncodeQwenImageEdit', inputs: buildComfyNodeInputs(negText, { clip: ['6', 0], vae: ['5', 0], prompt: 'low quality' }) }
-    }
-    let modelRef = ['4', 0]
-    let nextId = 8
-    if (lora && eigenLora) {
-      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: eigenLora, strength_model: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (lora && lightningLora && lightningLora !== editV5NoLightningLora) {
-      workflow[String(nextId)] = { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: modelRef, lora_name: lightningLora, strength_model: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (aura) {
-      workflow[String(nextId)] = { class_type: 'ModelSamplingAuraFlow', inputs: buildComfyNodeInputs(aura, { model: modelRef, shift: 3.1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    if (cfgNorm) {
-      workflow[String(nextId)] = { class_type: 'CFGNorm', inputs: buildComfyNodeInputs(cfgNorm, { model: modelRef, strength: 1 }) }
-      modelRef = [String(nextId), 0]
-      nextId += 1
-    }
-    const qwenInputs = {
-      clip: ['6', 0],
-      vae: ['5', 0],
-      vl_resize_image1: ['1', 0],
-      prompt,
-      target_size: 1024,
-      target_vl_size: 384,
-      upscale_method: 'lanczos',
-      crop_method: 'pad',
-      instruction
-    }
-    if (route.v4) qwenInputs.vl_resize_image2 = ['2', 0]
-    workflow[String(nextId)] = {
-      class_type: textNodeName,
-      inputs: buildComfyNodeInputs(qwenText, qwenInputs)
-    }
-    const positiveRef = [String(nextId), 0]
-    const latentRef = [String(nextId), 1]
-    nextId += 1
-    workflow[String(nextId)] = {
-      class_type: 'KSampler',
-      inputs: buildComfyNodeInputs(ksampler, {
-        model: modelRef,
-        positive: positiveRef,
-        negative: ['7', 0],
-        latent_image: latentRef,
-        seed,
-        steps: qwenInpaintUses2511 ? 6 : 8,
-        cfg: 1,
-        sampler_name: 'euler',
-        scheduler: 'simple',
-        denoise: 1
-      })
-    }
-    const sampleRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'VAEDecode', inputs: { samples: sampleRef, vae: ['5', 0] } }
-    const imageRef = [String(nextId), 0]
-    nextId += 1
-    workflow[String(nextId)] = { class_type: 'SaveImage', inputs: { images: imageRef, filename_prefix: prefix } }
-    state.lastProcessingDebug = {
-      ...(state.lastProcessingDebug || {}),
-      qwenInpaint: {
-        unet: unetName,
-        weightDtype: unetWeightDtype,
-        clip: clipName,
-        vae: vaeName,
-        loras: [eigenLora, lightningLora].filter((item) => item && item !== editV5NoLightningLora),
-        model: qwenInpaintUses2511 ? '2511' : '2509',
-        textNode: textNodeName,
-        provider: route.provider,
-        controlMode: route.qwenControlMode || 2,
-        editV5: isEditV5 ? {
-          model: '2511',
-          lightningOptional: true,
-          lightningApplied: lightningLora && lightningLora !== editV5NoLightningLora ? lightningLora : '',
-          steps: 6
-        } : null,
-        seed,
-        seedMode: fixedSeed == null ? 'stable-default' : 'explicit'
-      }
-    }
-    return workflow
+    throw new Error(`未知的补图模式：${route.mode}`)
   }
 
   async function defaultRapidAioNsfwInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
@@ -16339,6 +16229,7 @@
       inpaintPrompt: String(current.inpaintPrompt || ''),
       inpaintMode: normalizeSelectionInpaintMode(current.inpaintMode),
       inpaintNsfwEnabled: false,
+      inpaintFluxEnabled: false,
       effectMode: false
     }
     selectionToolSession = null
@@ -16380,7 +16271,7 @@
   function selectionInpaintModePromptPlaceholder(mode) {
     const normalized = normalizeSelectionInpaintMode(mode)
     if (normalized === 'edit') return '\u5fc5\u586b\uff1a\u589e\u52a0\u3001\u66ff\u6362\u3001\u4fee\u6539\u6216\u6062\u590d\u7ed3\u6784'
-    return '\u53ef\u9009\uff1a\u8865\u5168\u7f3a\u5931\u7ed3\u6784\u3001\u6062\u590d\u76ae\u80a4\u3001\u5934\u53d1\u6216\u8863\u670d'
+    return '可选：补全缺失结构、恢复皮肤、头发或衣服；零散拆分图建议开启 FLUX'
   }
 
   function selectionInpaintModePanelText(mode) {
@@ -16415,6 +16306,7 @@
       state.selectionTool.inpaintMode = next
       if (!selectionInpaintModeHasPrompt(next)) state.selectionTool.inpaintPrompt = ''
       if (previous !== next || !selectionInpaintNsfwAvailable(next)) state.selectionTool.inpaintNsfwEnabled = false
+      if (previous !== next || next !== 'completion') state.selectionTool.inpaintFluxEnabled = false
       if (next !== 'repair') state.selectionTool.effectMode = false // 特效 只存在于 智能抠图 和 去除物体
     }
     return next
@@ -16491,6 +16383,7 @@
       inpaintPrompt: nextInpaintPrompt,
       inpaintMode: nextInpaintMode,
       inpaintNsfwEnabled: false,
+      inpaintFluxEnabled: false,
       effectMode: false,
       sourceTargetLocked: mode === 'cutout' && sourceTarget
     }
@@ -16571,11 +16464,38 @@
       return
     }
     state.selectionTool.inpaintNsfwEnabled = !!enabled
+    if (enabled) state.selectionTool.inpaintFluxEnabled = false // one model switch at a time
     setInpaintDebugAttr('nsfw-enabled', state.selectionTool.inpaintNsfwEnabled ? '1' : '0')
     refreshSelectionToolSurface() // In-place toolbar refresh, same as the paint-mode switches.
   }
 
+  // Hover text of the two model switches: what each is for, then its state.
+  function selectionInpaintNsfwTitle(enabled) {
+    return `NSFW：改用 Qwen Rapid AIO NSFW 模型，适合补画或修改裸露、成人内容；普通内容保持关闭效果更好。
+当前：${enabled ? '已开启' : '已关闭'}`
+  }
+
+  function selectionInpaintFluxTitle(enabled) {
+    return `FLUX：改用 Flux Fill 补图，适合拆图后被遮挡、几乎看不到的肢体或身体结构（例如被前腿挡住的后腿）。画风和颜色贴合度不如默认的 Qwen-Image-2.1，普通补图保持关闭；补得不好可再生成一次。
+当前：${enabled ? '已开启' : '已关闭'}`
+  }
+
   function toggleSelectionInpaintNsfw() { setSelectionInpaintNsfwEnabled(!(state.selectionTool && state.selectionTool.inpaintNsfwEnabled)) }
+
+  function setSelectionInpaintFluxEnabled(enabled) {
+    if (state.busy) return
+    if (!state.selectionTool || !state.selectionTool.active || state.selectionTool.mode !== 'inpaint') return
+    if (normalizeSelectionInpaintMode(state.selectionTool.inpaintMode) !== 'completion') {
+      state.selectionTool.inpaintFluxEnabled = false
+      return
+    }
+    state.selectionTool.inpaintFluxEnabled = !!enabled
+    if (enabled) state.selectionTool.inpaintNsfwEnabled = false
+    setInpaintDebugAttr('flux-enabled', state.selectionTool.inpaintFluxEnabled ? '1' : '0')
+    refreshSelectionToolSurface()
+  }
+
+  function toggleSelectionInpaintFlux() { setSelectionInpaintFluxEnabled(!(state.selectionTool && state.selectionTool.inpaintFluxEnabled)) }
 
   function patchSelectionToolChrome() {
     if (!state.selectionTool || !state.selectionTool.active) return false
@@ -16590,9 +16510,21 @@
       patchSplitToolButtonVisual('selectionNsfw', nsfwEnabled)
       nsfwButton.setAttribute('aria-checked', nsfwEnabled ? 'true' : 'false')
       nsfwButton.setAttribute('data-novaflow-selection-inpaint-nsfw', nsfwEnabled ? 'on' : 'off')
+      nsfwButton.title = selectionInpaintNsfwTitle(nsfwEnabled)
       nsfwButton.disabled = state.busy
       nsfwButton.setAttribute('aria-disabled', state.busy ? 'true' : 'false')
       nsfwButton.style.setProperty('cursor', state.busy ? 'default' : 'pointer', 'important')
+    }
+    const fluxButton = document.querySelector(`[${TOOL_ACTION_ATTR}="selectionFlux"]`)
+    if (fluxButton instanceof HTMLButtonElement) {
+      const fluxEnabled = !!state.selectionTool.inpaintFluxEnabled
+      patchSplitToolButtonVisual('selectionFlux', fluxEnabled)
+      fluxButton.setAttribute('aria-checked', fluxEnabled ? 'true' : 'false')
+      fluxButton.setAttribute('data-novaflow-selection-inpaint-flux', fluxEnabled ? 'on' : 'off')
+      fluxButton.title = selectionInpaintFluxTitle(fluxEnabled)
+      fluxButton.disabled = state.busy
+      fluxButton.setAttribute('aria-disabled', state.busy ? 'true' : 'false')
+      fluxButton.style.setProperty('cursor', state.busy ? 'default' : 'pointer', 'important')
     }
     const effectButton = document.querySelector(`[${TOOL_ACTION_ATTR}="selectionEffect"]`)
     if (effectButton instanceof HTMLButtonElement) {
@@ -19041,6 +18973,77 @@
     finalCtx.putImageData(original, 0, 0)
     finalCanvas.__pasteBackChangedPixels = changed
     return finalCanvas
+  }
+
+  // Flux Fill paints limbs in its own tone (pinker on one split leg, paler on another). Shift what it drew
+  // to the colour of the layer pixels right around the hole, or of the whole layer when only a sliver of
+  // it is left there (a back leg keeps a few pixels near the hole and its own darker shin further down).
+  // Only a mean shift, clamped to 30 levels: matching the spread as well pulled a leg to grey. Pixels
+  // close to the matte it was given (the background it continued) stay out of the statistics.
+  async function fluxCompletionColorMatch(resultDataUrl, cropImageCanvas, maskCanvas) {
+    const width = Math.max(1, Math.round(cropImageCanvas && cropImageCanvas.width || 1))
+    const height = Math.max(1, Math.round(cropImageCanvas && cropImageCanvas.height || 1))
+    const resultCanvas = await canvasFromDataUrl(resultDataUrl, width, height)
+    const resultCtx = resultCanvas.getContext('2d', { willReadFrequently: true })
+    const out = resultCtx.getImageData(0, 0, width, height)
+    const layer = cropImageCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+    const mask = maskCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, width, height).data
+    const total = width * height
+    const radius = 30
+    const sat = new Int32Array((width + 1) * (height + 1))
+    for (let y = 0; y < height; y += 1) {
+      let row = 0
+      for (let x = 0; x < width; x += 1) {
+        row += maskPixelValue(mask, (y * width + x) * 4) > 5 ? 1 : 0
+        sat[(y + 1) * (width + 1) + x + 1] = sat[y * (width + 1) + x + 1] + row
+      }
+    }
+    const matte = averageVisibleRgb(cropImageCanvas)
+    const ring = [0, 0, 0]
+    const whole = [0, 0, 0]
+    const gen = [0, 0, 0]
+    let ringCount = 0
+    let wholeCount = 0
+    let genCount = 0
+    for (let y = 0; y < height; y += 1) {
+      const y0 = Math.max(0, y - radius)
+      const y1 = Math.min(height, y + radius + 1)
+      for (let x = 0; x < width; x += 1) {
+        const i = (y * width + x) * 4
+        const m = maskPixelValue(mask, i)
+        if (m > 5) {
+          const d = Math.max(Math.abs(out.data[i] - matte.r), Math.abs(out.data[i + 1] - matte.g), Math.abs(out.data[i + 2] - matte.b))
+          if (m > 200 && d > 24) { for (let c = 0; c < 3; c += 1) gen[c] += out.data[i + c]; genCount += 1 }
+          continue
+        }
+        if (layer[i + 3] <= 200) continue
+        for (let c = 0; c < 3; c += 1) whole[c] += layer[i + c]
+        wholeCount += 1
+        const x0 = Math.max(0, x - radius)
+        const x1 = Math.min(width, x + radius + 1)
+        if (sat[y1 * (width + 1) + x1] - sat[y0 * (width + 1) + x1] - sat[y1 * (width + 1) + x0] + sat[y0 * (width + 1) + x0]) {
+          for (let c = 0; c < 3; c += 1) ring[c] += layer[i + c]
+          ringCount += 1
+        }
+      }
+    }
+    const useRing = ringCount >= 2000
+    const refSum = useRing ? ring : whole
+    const refCount = useRing ? ringCount : wholeCount
+    const stats = { ringCount, wholeCount, genCount, reference: useRing ? 'ring' : 'layer', applied: false }
+    if (refCount >= 200 && genCount >= 200) {
+      const shift = [0, 1, 2].map((c) => clampNumber(refSum[c] / refCount - gen[c] / genCount, -30, 30))
+      for (let p = 0; p < total; p += 1) {
+        const i = p * 4
+        const w = maskPixelValue(mask, i) / 255
+        if (w <= 0) continue
+        for (let c = 0; c < 3; c += 1) out.data[i + c] = Math.round(clampNumber(out.data[i + c] + shift[c] * w, 0, 255))
+      }
+      resultCtx.putImageData(out, 0, 0)
+      Object.assign(stats, { applied: true, shift: shift.map(Math.round) })
+    }
+    state.lastProcessingDebug = { ...(state.lastProcessingDebug || {}), fluxColorMatch: stats }
+    return stats.applied ? resultCanvas.toDataURL('image/png') : resultDataUrl
   }
 
   function averageVisibleRgb(canvas) {
@@ -23233,7 +23236,9 @@
     baseCtx.drawImage(img, Math.round((part.x || 0) - rect.x), Math.round((part.y || 0) - rect.y), Math.max(1, Math.round(part.width || img.width || 1)), Math.max(1, Math.round(part.height || img.height || 1)))
     const layerOriginalCanvas = await fullCanvasFromPart(part, { width: session.width, height: session.height })
     const selectionInpaintMode = normalizeSelectionInpaintMode(state.selectionTool && state.selectionTool.inpaintMode)
-    const route = resolveInpaintWorkflowRoute(selectionInpaintMode, state.selectionTool && state.selectionTool.inpaintNsfwEnabled)
+    const route = resolveInpaintWorkflowRoute(selectionInpaintMode, state.selectionTool && state.selectionTool.inpaintFluxEnabled && selectionInpaintMode === 'completion'
+      ? FLUX_COMPLETION_PROVIDER
+      : state.selectionTool && state.selectionTool.inpaintNsfwEnabled)
     const selectionLong = Math.max(Number(bounds && bounds.width) || 1, Number(bounds && bounds.height) || 1)
     const completionV4ContextPad = route.v4 && route.mode === 'completion'
       ? Math.round(clampNumber(Math.max(160, Math.min(session.width, session.height) * 0.18), 160, 256))
@@ -23265,7 +23270,7 @@
       setInpaintDebugAttr('execute-provider', executionRoute.provider)
       setInpaintDebugAttr('execute-restore-strategy', restoreStrategy ? restoreStrategy.id : '')
       setInpaintDebugAttr('execute-prompt-head', inpaintPrompt.slice(0, 1000))
-      const result = await runLayerInpaintValidated(inputCanvases.modelInput.toDataURL('image/png'), modelMaskCanvas.toDataURL('image/png'), inpaintPrompt, qwenCrop, part, {
+      const rawResult = await runLayerInpaintValidated(inputCanvases.modelInput.toDataURL('image/png'), modelMaskCanvas.toDataURL('image/png'), inpaintPrompt, qwenCrop, part, {
         inpaintMode: selectionInpaintMode,
         route: executionRoute,
         inpaintEngine: DEFAULT_COMPLETION_ENGINE,
@@ -23275,6 +23280,7 @@
         // never reads it, and in web mode an upload no task references is never released.
         latentInputDataUrl: inputCanvases.latentInput && executionRoute.workflow === 'qwen' && (executionRoute.mode === 'edit' || DEFAULT_COMPLETION_ENGINE === QWEN21_COMPLETION_ENGINE) ? inputCanvases.latentInput.toDataURL('image/png') : ''
       })
+      const result = executionRoute.flux ? await fluxCompletionColorMatch(rawResult, qwenCrop.cropImage, modelMaskCanvas) : rawResult
       const normalizedFullMask = normalizeMaskCanvas(cloneCanvas(processingMaskCanvas))
       const patchPart = executionRoute.outputMode === 'replacement'
         ? await mergeRemovalInpaintResult(part, qwenCrop, layerOriginalCanvas, normalizedFullMask, result)
@@ -23376,6 +23382,8 @@
     const effectModeEnabled = effectToolAvailable && !!state.selectionTool.effectMode
     const showInpaintNsfw = isInpaint && selectionInpaintNsfwAvailable(selectedInpaintMode)
     const inpaintNsfwEnabled = showInpaintNsfw && !!(state.selectionTool && state.selectionTool.inpaintNsfwEnabled)
+    const showInpaintFlux = isInpaint && selectedInpaintMode === 'completion'
+    const inpaintFluxEnabled = showInpaintFlux && !!(state.selectionTool && state.selectionTool.inpaintFluxEnabled)
     const showInpaintPrompt = isInpaint && selectionInpaintModeHasPrompt(selectedInpaintMode)
     const inpaintPromptLabel = selectionInpaintModePromptLabel(selectedInpaintMode)
     const inpaintPromptPlaceholder = selectionInpaintModePromptPlaceholder(selectedInpaintMode)
@@ -23418,7 +23426,17 @@
           role: 'switch',
           'aria-checked': inpaintNsfwEnabled ? 'true' : 'false',
           'aria-label': `NSFW ${inpaintNsfwEnabled ? '已开启' : '已关闭'}`,
-          title: inpaintNsfwEnabled ? 'NSFW 已开启：使用 Qwen Rapid AIO NSFW V20' : 'NSFW 已关闭：使用当前默认修图模型',
+          title: selectionInpaintNsfwTitle(inpaintNsfwEnabled),
+          disabled: state.busy,
+          style: { marginLeft: '2px', minWidth: '48px' }
+        }) : null,
+        showInpaintFlux ? button('FLUX', () => toggleSelectionInpaintFlux(), inpaintFluxEnabled, {
+          [TOOL_ACTION_ATTR]: 'selectionFlux',
+          'data-novaflow-selection-inpaint-flux': inpaintFluxEnabled ? 'on' : 'off',
+          role: 'switch',
+          'aria-checked': inpaintFluxEnabled ? 'true' : 'false',
+          'aria-label': `FLUX ${inpaintFluxEnabled ? '已开启' : '已关闭'}`,
+          title: selectionInpaintFluxTitle(inpaintFluxEnabled),
           disabled: state.busy,
           style: { marginLeft: '2px', minWidth: '48px' }
         }) : null
@@ -28586,6 +28604,7 @@
       mode: String(tool.mode || ''),
       inpaintMode: normalizeSelectionInpaintMode(tool.inpaintMode),
       inpaintNsfwEnabled: !!tool.inpaintNsfwEnabled,
+      inpaintFluxEnabled: !!tool.inpaintFluxEnabled,
       cutoutSource: String(tool.cutoutSource || ''),
       scene: tool.active ? selectionSceneSignature() : ''
     }
