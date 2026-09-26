@@ -2672,11 +2672,7 @@
             presetRow('方位', 'h', [['正面', 0], ['左前', 45], ['左侧', 90], ['背面', 180], ['右侧', 270], ['右前', 315]]),
             presetRow('高度', 'v', [['仰视', -30], ['平视', 0], ['俯拍', 30], ['高俯', 60], ['顶视', 90]])
           ]),
-          h('div', { style: { display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '10px' } }, [
-            button('重置', () => {
-              Object.assign(values, imageAngleAdjustDefaultOptions())
-              syncValues()
-            }, 'chip', { height: '36px', borderRadius: '8px', padding: '0 16px' }),
+          h('div', { style: { display: 'flex', justifyContent: 'center', alignItems: 'center' } }, [
             button('开始生成', finish, 'primary')
           ])
         ])
