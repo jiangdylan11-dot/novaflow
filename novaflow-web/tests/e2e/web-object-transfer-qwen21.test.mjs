@@ -9,7 +9,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { runInContext } from 'node:vm';
+import { createContext, runInContext } from 'node:vm';
 import { check, checkEqual, checkThrows, section, finish } from '../helpers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -196,6 +196,62 @@ section('the plate: 2.1 rounds the Qwen edit plate up to 32 so the encoder never
     check(`${w}x${h}: never smaller than the base plate, at most 31 px larger`, plate21.width >= base.width && plate21.height >= base.height && plate21.width - base.width < 32 && plate21.height - base.height < 32, [base, plate21]);
   }
   check('万物迁移 and the effect tools use the 2.1 plate', /const plateSize = qwen21EditPlateSize\(cropBox\.width, cropBox\.height\)/.test(source) && !/objectTransferPlateSize/.test(source), null);
+}
+
+section('无限扩图 / 画布扩展 move only the cards of the picture that grew');
+{
+  // The real functions, run against stubs: two 原图 (A 1016x1018, Z 512x720), a card on each and a
+  // card from before multiple sources. Every card used to be shifted, so Z's layers came back 244 px
+  // to the right and clipped after A was outpainted to 1504 wide.
+  const fn = (head) => source.match(new RegExp(`^  ${head}\\([\\s\\S]*?^  \\}\\r?$`, 'm'))[0];
+  const delta = { left: 244, top: 3, right: 244, bottom: 3 };
+  const run = async (activeSetId, body) => {
+    const cards = {
+      a: { id: 'a', sourceResourceId: 'A', parts: [{ id: 'a1', x: 10, y: 20 }], previewDataUrl: 'a.png' },
+      z: { id: 'z', sourceResourceId: 'Z', parts: [{ id: 'z1', x: 5, y: 6 }], previewDataUrl: 'z.png' },
+      old: { id: 'old', parts: [{ id: 'o1', x: 1, y: 2 }], previewDataUrl: 'o.png' }
+    };
+    const ctx = {
+      Math, Date, String, Number, Error,
+      refreshed: 0,
+      state: {
+        activeSourceResourceId: 'A', activeSplitSetId: activeSetId, busy: false,
+        source: { id: 'A', dataUrl: 'data:a' },
+        splitSets: Object.values(cards),
+        parts: cards[activeSetId].parts.map((part) => ({ ...part }))
+      },
+      imageOutpaintStateSnapshot: () => null, restoreImageOutpaintStateSnapshot: () => {},
+      addSourceDataUrlResource: async () => { ctx.state.activeSourceResourceId = 'A2'; return true },
+      normalizeSpineLayerOrder: (parts) => parts,
+      splitSetById: (id) => ctx.state.splitSets.find((set) => set.id === id) || null,
+      syncActiveSplitSet: () => { ctx.splitSetById(ctx.state.activeSplitSetId).parts = ctx.state.parts.map((part) => ({ ...part })) },
+      refreshSplitPreview: async () => { ctx.refreshed += 1 },
+      sourceSize: async () => ({ width: 1016, height: 1018 }),
+      showCanvasResizeDialog: async () => 'raw', parseCanvasResizeInput: () => delta, sourceFullCanvas: async () => ({}),
+      canvasOfSize: () => ({ getContext: () => ({ drawImage() {} }), toDataURL: () => 'data:a-wide' }),
+      syncActiveSourceResourceFromState: () => {}, cacheTempSplitPackage: async () => {},
+      resetSelectionTool() {}, resetMaskEditor() {}, resetPenTool() {}, resetSplitCanvasViewport() {},
+      setMessage() {}, render() {}, updatePreviewOverlay() {}, syncSplitWorkspace() {}
+    };
+    runInContext(`${fn('function shiftPartForCanvasResize')}\n${fn('async function commitImageOutpaintResult')}\n${fn('async function executeCanvasResizeTool')}`, Object.assign(createContext(ctx), ctx));
+    await body(ctx);
+    return { ...ctx, cards };
+  };
+  const outpaint = (ctx) => runInContext('commitImageOutpaintResult("a_outpaint.png", "data:x", ' + JSON.stringify(delta) + ', { width: 1504, height: 1024 })', ctx);
+  const resize = (ctx) => runInContext('executeCanvasResizeTool()', ctx);
+  for (const [name, act] of [['无限扩图', outpaint], ['画布扩展', resize]]) {
+    const onZ = await run('z', act);
+    checkEqual(`${name} with Z's card open: Z's layers stay put`, [onZ.cards.z.parts[0].x, onZ.cards.z.parts[0].y, onZ.cards.z.parts[0].sourceWidth], [5, 6, undefined]);
+    checkEqual(`${name} with Z's card open: A's layers move onto the new frame`, [onZ.cards.a.parts[0].x, onZ.cards.a.parts[0].y, onZ.cards.a.parts[0].sourceWidth], [254, 23, 1504]);
+    checkEqual(`${name} with Z's card open: a card from before multiple sources still moves`, [onZ.cards.old.parts[0].x, onZ.cards.old.parts[0].y], [245, 5]);
+    checkEqual(`${name} with Z's card open: Z keeps its preview, the moved cards drop theirs`, [onZ.cards.z.previewDataUrl, onZ.cards.a.previewDataUrl], ['z.png', '']);
+    checkEqual(`${name} with Z's card open: no composite is drawn for Z at A's size`, onZ.refreshed, 0);
+    const onA = await run('a', act);
+    checkEqual(`${name} with A's card open: A's layers move and Z's stay`, [onA.cards.a.parts[0].x, onA.cards.a.parts[0].y, onA.cards.z.parts[0].x], [254, 23, 5]);
+    checkEqual(`${name} with A's card open: A's composite is rebuilt`, onA.refreshed, 1);
+  }
+  const outpainted = await run('z', outpaint);
+  checkEqual('无限扩图 re-points A\'s card at the outpainted picture, Z\'s card keeps Z', [outpainted.cards.a.sourceResourceId, outpainted.cards.z.sourceResourceId], ['A2', 'Z']);
 }
 
 finish('web-object-transfer-qwen21');

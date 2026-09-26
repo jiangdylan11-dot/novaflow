@@ -5272,11 +5272,15 @@
       state.canvasBoundaryGuide = { width: nextSize.width, height: nextSize.height }
       syncActiveSourceResourceFromState()
       const shift = (part) => shiftPartForCanvasResize(part, delta, nextSize)
-      state.parts = normalizeSpineLayerOrder(state.parts.map(shift))
-      
       const activeSourceResourceId = String(state.activeSourceResourceId || '')
+      // Only the cards of the resized 原图 move (a card without a 原图 predates multiple sources);
+      // shifting every card moved another 原图's layers off its own frame.
+      const ownCard = (set) => !!set && (!set.sourceResourceId || set.sourceResourceId === activeSourceResourceId)
+      const activeSet = splitSetById(state.activeSplitSetId)
+      const activeOwn = !activeSet || ownCard(activeSet)
+      if (activeOwn) state.parts = normalizeSpineLayerOrder(state.parts.map(shift))
       state.splitSets.forEach((set) => {
-        if (!set || set.id === state.activeSplitSetId) return
+        if (!set || set.id === state.activeSplitSetId || !ownCard(set)) return
         set.parts = (set.parts || []).map(shift)
         set.previewDataUrl = ''
         set.updatedAt = new Date().toISOString()
@@ -5284,10 +5288,10 @@
       resetSelectionTool()
       resetMaskEditor()
       resetPenTool()
-      await refreshSplitPreview()
+      if (activeOwn) await refreshSplitPreview()
       if (state.splitSets.length) syncActiveSplitSet()
       await cacheTempSplitPackage()
-      state.viewMode = state.parts.length ? 'parts' : 'source'
+      state.viewMode = activeOwn && state.parts.length ? 'parts' : 'source'
       resetSplitCanvasViewport()
       setMessage(`已无限扩图至 ${nextSize.width} x ${nextSize.height}`)
       render()
@@ -5721,9 +5725,14 @@
       }
       state.canvasBoundaryGuide = { width: nextSize.width, height: nextSize.height }
       const shift = (part) => shiftPartForCanvasResize(part, delta, nextSize)
-      state.parts = normalizeSpineLayerOrder((state.parts || []).map(shift))
+      // Only the cards of the outpainted picture move (a card without a 原图 predates multiple sources);
+      // shifting every card moved another 原图's layers off its own frame.
+      const ownCard = (set) => !!set && (!set.sourceResourceId || set.sourceResourceId === nextSourceId)
+      const activeSet = splitSetById(state.activeSplitSetId)
+      const activeOwn = !activeSet || ownCard(activeSet)
+      if (activeOwn) state.parts = normalizeSpineLayerOrder((state.parts || []).map(shift))
       state.splitSets.forEach((set) => {
-        if (!set || set.id === state.activeSplitSetId) return
+        if (!set || set.id === state.activeSplitSetId || !ownCard(set)) return
         set.parts = (set.parts || []).map(shift)
         set.previewDataUrl = ''
         set.updatedAt = new Date().toISOString()
@@ -5731,7 +5740,7 @@
       resetSelectionTool()
       resetMaskEditor()
       resetPenTool()
-      if (state.parts.length) await refreshSplitPreview()
+      if (activeOwn && state.parts.length) await refreshSplitPreview()
       if (state.splitSets.length) syncActiveSplitSet()
       await cacheTempSplitPackage()
       state.viewMode = 'source'
@@ -8786,8 +8795,10 @@
     // face): regenerating only the selection through SetLatentNoiseMask left the skin under the glasses
     // pale and soft on every seed tried, since the selection covered a few 16 px latent cells and the
     // face had to be redrawn inside them; the whole-picture edit kept skin tone, nose and mouth. The
-    // selection is still image 2, so the model knows where to change. 智能补图 keeps the noise mask.
-    const fullEdit = edit && undug
+    // selection is still image 2, so the model knows where to change. 智能补图 does the same: on the
+    // user's missing-legs run the noise mask drew full legs on 0 of 9 seeds (a grey foot, faded legs
+    // or nothing), the whole picture on 6 of 9, including the pinned INPAINT_COMPLETION_SEED.
+    const fullEdit = undug
     const text = edit ? qwen21EditPromptText(promptText, promptParts) : qwen21CompletionPromptText(promptText, promptParts)
     // The 2.1 VAE centre-crops anything that is not a multiple of 16 before encoding, and
     // TextEncodeQwenImage21 rounds its references to multiples of 32. cropPadEngine aligns the crop to

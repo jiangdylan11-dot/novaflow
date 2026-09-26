@@ -213,16 +213,27 @@ assert.equal(g21['3'].inputs.image, 'task-latent.png');
 const pads = Object.fromEntries(byClass(g21, 'ImagePadForOutpaint').map(([id, node]) => [id, node.inputs]));
 assert.equal(Object.keys(pads).length, 3);
 for (const pad of Object.values(pads)) assert.deepEqual([pad.left, pad.top, pad.right, pad.bottom, pad.feathering], [0, 0, 30, 4, 0]);
-const encodeFrom = byClass(g21, 'VAEEncode')[0][1].inputs.pixels[0];
-assert.deepEqual(pads[encodeFrom].image, ['3', 0]);
-// The reference is the undug crop, the same one the latent is encoded from.
-assert.deepEqual(g21['10'].inputs['images.image_1'], [encodeFrom, 0]);
+// 智能补图 samples the whole picture on the encoder's latent like 局部编辑 (the page pastes it back
+// through the selection): the noise mask drew full legs on 0 of 9 seeds of the user's run, this on 6.
+assert.equal(byClass(g21, 'SetLatentNoiseMask').length + byClass(g21, 'VAEEncode').length + byClass(g21, 'MaskComposite').length, 0);
+assert.deepEqual(byClass(g21, 'KSampler')[0][1].inputs.latent_image, ['10', 2]);
+// The reference is the padded undug crop and the hole is image 2.
+assert.deepEqual(pads[g21['10'].inputs['images.image_1'][0]].image, ['3', 0]);
 assert.deepEqual(pads[g21['10'].inputs['images.image_2'][0]].image, ['2', 0]);
-// The noise mask is 1 across the pad strip, not the pad's grey.
-const noiseMask = g21[byClass(g21, 'SetLatentNoiseMask')[0][1].inputs.mask[0]];
-assert.equal(noiseMask.class_type, 'MaskComposite');
-assert.deepEqual([noiseMask.inputs.destination, noiseMask.inputs.operation], [['8', 0], 'add']);
-assert.deepEqual(noiseMask.inputs.source, [g21['10'].inputs['images.image_2'][0], 1]);
+// Without the undug crop (an older page) completion falls back to the noise mask on the dug plate,
+// 1 across the pad strip, not the pad's grey.
+{
+  const gOld = JSON.parse(JSON.stringify(await build21({ width: 450, height: 700 }, { latentInputName: '' })));
+  const oldPads = Object.fromEntries(byClass(gOld, 'ImagePadForOutpaint').map(([id, node]) => [id, node.inputs]));
+  const encodeFrom = byClass(gOld, 'VAEEncode')[0][1].inputs.pixels[0];
+  assert.deepEqual(oldPads[encodeFrom].image, ['1', 0]);
+  assert.deepEqual(gOld['10'].inputs['images.image_1'], [encodeFrom, 0]);
+  const noiseMask = gOld[byClass(gOld, 'SetLatentNoiseMask')[0][1].inputs.mask[0]];
+  assert.equal(noiseMask.class_type, 'MaskComposite');
+  assert.deepEqual([noiseMask.inputs.destination, noiseMask.inputs.operation], [['8', 0], 'add']);
+  assert.deepEqual(noiseMask.inputs.source, [gOld['10'].inputs['images.image_2'][0], 1]);
+  assert.deepEqual(byClass(gOld, 'KSampler')[0][1].inputs.latent_image, ['9', 0]);
+}
 const [[cropId, crop]] = byClass(g21, 'ImageCrop');
 assert.deepEqual([crop.inputs.width, crop.inputs.height, crop.inputs.x, crop.inputs.y], [450, 700, 0, 0]);
 assert.deepEqual(byClass(g21, 'SaveImage')[0][1].inputs.images, [cropId, 0]);
@@ -248,7 +259,8 @@ assert.deepEqual(byClass(g21, 'SaveImage')[0][1].inputs.images, [cropId, 0]);
 }
 const g21Aligned = JSON.parse(JSON.stringify(await build21(undefined)));
 assert.equal(byClass(g21Aligned, 'ImagePadForOutpaint').length + byClass(g21Aligned, 'ImageCrop').length + byClass(g21Aligned, 'MaskComposite').length, 0);
-assert.deepEqual(byClass(g21Aligned, 'VAEEncode')[0][1].inputs.pixels, ['3', 0]);
+assert.deepEqual(g21Aligned['10'].inputs['images.image_1'], ['3', 0]);
+assert.deepEqual(byClass(g21Aligned, 'KSampler')[0][1].inputs.latent_image, ['10', 2]);
 // The 2.1 prompt is built from the user's words and the part guidance, never from the 2509 template's
 // "Transparent background." line; a merged prompt without the parts loses that line.
 const promptOf = (graph) => byClass(graph, 'TextEncodeQwenImage21')[0][1].inputs.prompt;
