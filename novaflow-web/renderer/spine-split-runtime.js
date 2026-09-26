@@ -8764,7 +8764,7 @@
     return `The first image is a picture. The second image marks one area in white. Inside the white area only: ${user} Blend the change naturally into the surrounding picture with the same art style, line art, lighting, colors and perspective, and keep everything outside the white area exactly as it is.`
   }
 
-  function buildQwen21InpaintWorkflow(info, runtime, imageName, maskName, prefix, promptText, route, latentInputName, inputSize, promptParts) {
+  function buildQwen21InpaintWorkflow(info, runtime, imageName, maskName, prefix, promptText, route, latentInputName, inputSize, promptParts, seed) {
     // Both modes show the model the undug crop everywhere (it has to see what it is changing or
     // continuing) and put that same crop back under any pixel 2.1 leaves transparent. A page older than
     // the node sends no undug crop and falls back to the dug plate; the prompt still follows the mode.
@@ -8840,7 +8840,7 @@
         positive: ['10', 0],
         negative: ['10', 1],
         latent_image: ['9', 0],
-        seed: 746924259,
+        seed: Number.isFinite(Number(seed)) ? Math.max(0, Math.floor(Number(seed))) : Math.floor(Math.random() * 1000000000),
         steps: QWEN21_STEPS,
         cfg: 1,
         sampler_name: 'euler',
@@ -8970,6 +8970,8 @@
     const wantsQwen21 = route.mode === 'edit' || route.mode === 'completion'
     if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行${route.mode === 'edit' ? '局部编辑' : '智能补全'}。请在本地助手里重新启动 NovaFlow 后再试`)
     if (wantsQwen21) {
+      // A new seed per run unless the caller pins one: a rerun of 局部编辑 / 智能补图 should give another result.
+      const seed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed))) : Math.floor(Math.random() * 1000000000)
       setInpaintDebugAttr('workflow-engine', 'qwen-2.1')
       setInpaintDebugAttr('workflow-mode', normalizeSelectionInpaintMode(options && options.inpaintMode))
       setInpaintDebugAttr('workflow-provider', route.provider)
@@ -8983,11 +8985,11 @@
           vae: qwen21.vaeName,
           loras: [],
           steps: QWEN21_STEPS,
-          seed: 746924259,
+          seed,
           provider: route.provider
         }
       }
-      return buildQwen21InpaintWorkflow(info, qwen21, imageName, maskName, prefix, promptText, route, options && options.latentInputName || '', options && options.inputSize, options && options.promptParts)
+      return buildQwen21InpaintWorkflow(info, qwen21, imageName, maskName, prefix, promptText, route, options && options.latentInputName || '', options && options.inputSize, options && options.promptParts, seed)
     }
     throw new Error(`未知的补图模式：${route.mode}`)
   }
@@ -9001,7 +9003,7 @@
     const info = await comfyAllObjectInfo(baseUrl)
     const support = api.assertRuntimeSupport(info)
     const fixedSeed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed))) : null
-    const seed = fixedSeed == null ? 746924259 : fixedSeed
+    const seed = fixedSeed == null ? Math.floor(Math.random() * 1000000000) : fixedSeed
     const workflow = api.buildWorkflow({
       runtimeInfo: info,
       mode: route.mode,
