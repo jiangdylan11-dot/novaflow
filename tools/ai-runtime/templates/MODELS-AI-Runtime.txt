@@ -43,10 +43,15 @@ NovaFlow AI Runtime 模型清单
   prompt_assistant\Huihui-Qwen3-VL-8B-Instruct-Abliterated\   （整个文件夹）  约 17.5 GB
   text_encoders\qwen_2.5_vl_7b_fp8_scaled.safetensors                9.4 GB（提示词助手必需）
 
-不需要：
+不需要（没有功能在用，可以删掉）：
   unet\qwen_image_layered_control_bf16.safetensors 和 vae\qwen_image_layered_vae.safetensors
-  拆图已经改走 See-through，没有功能在用，可以删掉。
-  Qwen Image Edit 2511（qwen_image_edit_2511_*.safetensors、qwen_image_vae.safetensors 和 2511 Lightning LoRA）
-  已经没有功能在用，可以删掉。
+  （拆图已经改走 See-through）
+  Qwen Image Edit 2511 / 2509 一代（已经升级到 Qwen-Image-2.1）：
+    diffusion_models\qwen_image_edit_2511_*.safetensors
+    vae\qwen_image_vae.safetensors
+    loras\Qwen-Image-Edit-2511-Lightning-4steps-V1.0-fp32.safetensors
+    loras\Qwen-Image-Lightning-8steps-V2.0.safetensors
+  controlnet\Qwen-Image-ControlNet-Union.safetensors
+  checkpoints\sdpose_wholebody_fp16.safetensors
 
 只用部分功能时，只放对应分组即可；缺少的功能在 NovaFlow 里会提示缺哪个模型。
