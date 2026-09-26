@@ -235,14 +235,17 @@ function validateReference(value, options = {}) {
   }
   const task = /^\[([^\]]+)\]/.exec(fields.summary);
   let tasks = task?.[1].split(/\s*\+\s*/) || [];
-  if (!tasks.length || tasks.some(t => !['reference generation','keyframe completion','video editing','video continuation','audio reuse','audio reference'].includes(t))) throw new Error('H3 多参缺少明确任务关系');
+  // Without a source video the task can only be reference generation; a
+  // missing [task] prefix is filled in from the uploads below instead of failing.
+  const inferTasks = !task && inventory && !media(inventory[1]).some(t => t.startsWith('<Video '));
+  if (!inferTasks && (!tasks.length || tasks.some(t => !['reference generation','keyframe completion','video editing','video continuation','audio reuse','audio reference'].includes(t)))) throw new Error('H3 多参缺少明确任务关系');
   if (inventory) {
     // The uploads decide the task list: no video means nothing to edit or
     // continue, no audio means no audio task. Trim the guess instead of failing.
     const reconciled = reconcileReferenceTasks(tasks, media(inventory[1]));
     if (reconciled.join(' + ') !== tasks.join(' + ')) {
       tasks = reconciled;
-      fields.summary = '[' + tasks.join(' + ') + ']' + fields.summary.slice(task[0].length);
+      fields.summary = '[' + tasks.join(' + ') + ']' + (task ? fields.summary.slice(task[0].length) : ' ' + fields.summary);
       text = referenceFields.map(k => k + ':\n' + fields[k]).join('\n\n');
     }
   }
@@ -254,10 +257,12 @@ function validateReference(value, options = {}) {
     const relation = m[1] === 'Audio' ? /:\s*(?:fully_copy|partially_copy|reference|weak_reference)\b/ : /:\s*(?:fully_preserved|partially_preserved|attribute_transfer|weak_reference)\b/;
     if (!line || !relation.test(line)) throw new Error('H3 多参缺少主体或声音的保留规则');
   }
-  // A single explicitly defined subject is unambiguous. Bind its prose to the
-  // existing ID without changing appearance or action. Never guess with many.
-  if (ids.length === 1 && !/<Subject [1-9]\d*>/.test(fields.detailed_description)) {
-    fields.detailed_description = fields.detailed_description.replace('[Shot 1]', '[Shot 1] The shot shows <Subject 1>.');
+  // A single explicitly defined subject is unambiguous, and so is generation
+  // without a source video, where every defined subject is visible content.
+  // State that the shot shows it without changing appearance or action.
+  const unbound = ids.filter(id => !fields.detailed_description.includes('<Subject ' + id + '>'));
+  if (unbound.length && (ids.length === 1 || !tasks.some(t => t.startsWith('video ')))) {
+    fields.detailed_description = fields.detailed_description.replace('[Shot 1]', '[Shot 1] ' + unbound.map(id => 'The shot shows <Subject ' + id + '>.').join(' '));
   }
   if (ids.some(id => !fields.detailed_description.includes('<Subject ' + id + '>'))) throw new Error('H3 多参镜头必须引用已定义主体');
   if (!fields.detailed_description.includes('[Shot 1]')) throw new Error('H3 多参缺少镜头描述');

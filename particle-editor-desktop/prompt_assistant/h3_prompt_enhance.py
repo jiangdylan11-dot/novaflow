@@ -262,15 +262,18 @@ def validate_reference(value, requirements="", duration=30):
         raise ValueError("H3 多参主体缺少独立定义")
     if re.search(r"<(?:Picture|Video) [1-9]\d*>", inventory.group(1) if inventory else text) and any(not re.search(r"<(?:Picture|Video) [1-9]\d*>", m.group()) for m in definitions):
         raise ValueError("H3 多参主体必须说明外观或动作的素材来源")
-    task = re.match(r"\[([^\]]+)\]", fields["summary"])
-    tasks = re.split(r"\s*\+\s*", task.group(1)) if task else []
-    if not tasks or any(t not in ("reference generation", "keyframe completion", "video editing", "video continuation", "audio reuse", "audio reference") for t in tasks):
+    task = re.match(r"\[([^\]]*)\]", fields["summary"])
+    tasks = [t for t in re.split(r"\s*\+\s*", task.group(1).strip()) if t] if task else []
+    # Without a source video the task can only be reference generation; a
+    # missing [task] prefix is filled in from the uploads below instead of failing.
+    infer_tasks = not tasks and inventory and not re.search(r"<Video [1-9]\d*>", inventory.group(1))
+    if not infer_tasks and not tasks or any(t not in ("reference generation", "keyframe completion", "video editing", "video continuation", "audio reuse", "audio reference") for t in tasks):
         raise ValueError("H3 多参缺少明确任务关系")
     if inventory:
         reconciled = reconcile_tasks(tasks, set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory.group(1))))
         if reconciled != tasks:
             tasks = reconciled
-            fields["summary"] = "[" + " + ".join(tasks) + "]" + fields["summary"][task.end():]
+            fields["summary"] = "[" + " + ".join(tasks) + "] " + fields["summary"][task.end() if task else 0:].lstrip()
             text = "\n\n".join(k + ":\n" + fields[k].strip() for k in REFERENCE_FIELDS)
     if 'reference generation' in tasks and '<Picture ' in text and not ids:
         raise ValueError("H3 多参主体缺少独立定义")
@@ -281,8 +284,11 @@ def validate_reference(value, requirements="", duration=30):
         relations = "fully_copy|partially_copy|reference|weak_reference" if m.group(1) == "Audio" else "fully_preserved|partially_preserved|attribute_transfer|weak_reference"
         if not re.search(r":\s*(?:" + relations + r")\b", line):
             raise ValueError("H3 多参缺少主体或声音的保留规则")
-    if len(ids) == 1 and not re.search(r"<Subject [1-9]\d*>", fields["detailed_description"]):
-        fields["detailed_description"] = fields["detailed_description"].replace("[Shot 1]", "[Shot 1] 画面中呈现 <Subject 1>。")
+    # One subject, or generation without a source video: every defined subject
+    # is visible content, so state it without changing appearance or action.
+    unbound = [n for n in ids if f"<Subject {n}>" not in fields["detailed_description"]]
+    if unbound and (len(ids) == 1 or not any(t.startswith("video ") for t in tasks)):
+        fields["detailed_description"] = fields["detailed_description"].replace("[Shot 1]", "[Shot 1] " + "".join(f"画面中呈现 <Subject {n}>。" for n in unbound))
     if any(f"<Subject {n}>" not in fields["detailed_description"] for n in ids):
         raise ValueError("H3 多参镜头必须引用已定义主体")
     if "[Shot 1]" not in fields["detailed_description"]:
