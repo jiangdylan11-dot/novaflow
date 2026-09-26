@@ -2205,15 +2205,17 @@
     const h = normalizeImageAngleHorizontal(horizontalAngle)
     const v = normalizeImageAngleVertical(verticalAngle)
     const z = normalizeImageAngleZoom(zoom)
+    // Named from the viewer's side, as a photographer would say it: walking the camera to the right
+    // (H 90) shows the subject facing the picture's left edge.
     const sides = [
-      ['人物正前方', '人物面向镜头'],
-      ['人物左前方', '人物朝画面左侧转'],
-      ['人物左侧', '侧脸朝画面左侧'],
-      ['人物左后方', '背身，偏向画面左侧'],
-      ['人物正后方', '背影'],
-      ['人物右后方', '背身，偏向画面右侧'],
-      ['人物右侧', '侧脸朝画面右侧'],
-      ['人物右前方', '人物朝画面右侧转']
+      ['镜头在正前方', '人物面向镜头'],
+      ['镜头移到右前方', '人物朝画面左侧转'],
+      ['镜头移到右侧', '侧脸朝画面左侧'],
+      ['镜头移到右后方', '背身，偏向画面左侧'],
+      ['镜头移到正后方', '背影'],
+      ['镜头移到左后方', '背身，偏向画面右侧'],
+      ['镜头移到左侧', '侧脸朝画面右侧'],
+      ['镜头移到左前方', '人物朝画面右侧转']
     ]
     const side = sides[Math.floor(((h + 22.5) % 360) / 45)]
     const height = v <= -45 ? `贴地仰视 ${-v}°`
@@ -2223,7 +2225,7 @@
             : v < 75 ? `高角度俯拍 ${v}°`
               : `正上方俯视 ${v}°`
     const distance = z < 2 ? '远景' : z < 6 ? '保持原取景' : '特写'
-    return { camera: `镜头在${side[0]}`, subject: side[1], height, distance }
+    return { camera: side[0], subject: side[1], height, distance }
   }
 
   function showImageAngleAdjustDialog(sourceSize, sourceDataUrl) {
@@ -2314,7 +2316,8 @@
       }
 
       // --- the 3D view: subject card at the origin facing +z, the camera orbiting its centre ---------
-      // H 90 puts the camera on the subject's left (+x), matching imageAngleAdjustPromptText.
+      // H 90 puts the camera on the subject's left (+x), which is the viewer's right: the panel calls it
+      // 右侧 and the subject turns to face the picture's left edge (imageAngleAdjustPromptText).
       const VIEW_AZIMUTH = 30 * Math.PI / 180
       const VIEW_ELEVATION = 22 * Math.PI / 180
       const viewDir = { x: Math.cos(VIEW_ELEVATION) * Math.sin(VIEW_AZIMUTH), y: Math.sin(VIEW_ELEVATION), z: Math.cos(VIEW_ELEVATION) * Math.cos(VIEW_AZIMUTH) }
@@ -2669,7 +2672,7 @@
             sliderRow('z', '距离', IMAGE_ANGLE_ADJUST_ZOOM_MIN, IMAGE_ANGLE_ADJUST_ZOOM_MAX, IMAGE_ANGLE_ADJUST_ZOOM_STEP, COLORS.z)
           ]),
           h('div', { style: { display: 'grid', gap: '8px', padding: '10px 4px 0', borderTop: '1px solid rgba(255,255,255,0.06)' } }, [
-            presetRow('方位', 'h', [['正面', 0], ['左前', 45], ['左侧', 90], ['背面', 180], ['右侧', 270], ['右前', 315]]),
+            presetRow('方位', 'h', [['正面', 0], ['左前', 315], ['左侧', 270], ['左后', 225], ['背面', 180], ['右后', 135], ['右侧', 90], ['右前', 45]]),
             presetRow('高度', 'v', [['仰视', -30], ['平视', 0], ['俯拍', 30], ['高俯', 60], ['顶视', 90]])
           ]),
           h('div', { style: { display: 'flex', justifyContent: 'center', alignItems: 'center' } }, [
