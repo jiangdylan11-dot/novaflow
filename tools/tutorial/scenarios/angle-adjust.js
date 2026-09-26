@@ -12,7 +12,7 @@ module.exports = {
     await C.enterArtDraw(t);
 
     await t.step('② 展开「增强」分组');
-    await t.say('角度调整在「增强」分组里。', '用 Qwen Multiangle Camera，对整张原图换机位');
+    await t.say('角度调整在「增强」分组里。', '用 Qwen-Image-2.1，对整张原图换机位');
     await t.wait(700);
     await C.openGroup(t, '增强');
     await t.wait(600);

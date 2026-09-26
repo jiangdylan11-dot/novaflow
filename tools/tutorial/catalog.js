@@ -292,7 +292,7 @@ module.exports = [
     label: '角度调整',
     action: 'imageAngleAdjust',
     tagline: '换一个机位看同一张图。',
-    official: '使用 Qwen Multiangle Camera 对当前原图执行单图角度调整。',
+    official: '使用 Qwen-Image-2.1 按设定的镜头角度重画当前原图。',
     steps: [
       '拖入原图。',
       '等原图就绪（没就绪时按钮是禁用的）。',
