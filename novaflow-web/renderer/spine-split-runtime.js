@@ -298,7 +298,6 @@
   const SPLIT_CHECKER_BACKGROUND_IMAGE = 'none'
   const SPLIT_CHECKER_BACKGROUND_SIZE = '100% 100%'
   const SPLIT_CHECKER_BACKGROUND_POSITION = '0 0'
-  const WORKFLOW_KEY = 'bone_ai_split_workflow_json'
   const CUTOUT_WORKFLOW_KEY = 'bone_ai_cutout_workflow_json'
   const INPAINT_WORKFLOW_KEY = 'bone_ai_inpaint_workflow_json'
   const CUTOUT_WORKFLOW_ENABLED_KEY = 'bone_ai_cutout_workflow_enabled'
@@ -388,26 +387,6 @@
   const ART_UI_HOST_SELECTOR = '[data-novaflow-art-ui-host="1"]'
   
   const splitPreviewImageCache = new Map()
-  const DEFAULT_WORKFLOW = String.raw`{
-  "60": {"inputs": {"filename_prefix": "Qwen-image-layers", "images": ["83:8", 0]}, "class_type": "SaveImage", "_meta": {"title": "保存图像"}},
-  "74": {"inputs": {"image": "input.png"}, "class_type": "LoadImage", "_meta": {"title": "加载图像"}},
-  "82": {"inputs": {"upscale_method": "lanczos", "largest_size": 640, "image": ["74", 0]}, "class_type": "ImageScaleToMaxDimension", "_meta": {"title": "图像缩放到最大尺寸"}},
-  "83:7": {"inputs": {"text": "", "clip": ["83:38", 0]}, "class_type": "CLIPTextEncode", "_meta": {"title": "CLIP Text Encode (Negative Prompt)"}},
-  "83:70": {"inputs": {"conditioning": ["83:7", 0], "latent": ["83:71", 0]}, "class_type": "ReferenceLatent", "_meta": {"title": "参考Latent"}},
-  "83:69": {"inputs": {"conditioning": ["83:6", 0], "latent": ["83:71", 0]}, "class_type": "ReferenceLatent", "_meta": {"title": "参考Latent"}},
-  "83:66": {"inputs": {"shift": 1, "model": ["83:37", 0]}, "class_type": "ModelSamplingAuraFlow", "_meta": {"title": "采样算法（AuraFlow）"}},
-  "83:76": {"inputs": {"dim": "t", "slice_size": 1, "samples": ["83:3", 0]}, "class_type": "LatentCutToBatch", "_meta": {"title": "Latent切割"}},
-  "83:71": {"inputs": {"pixels": ["82", 0], "vae": ["83:39", 0]}, "class_type": "VAEEncode", "_meta": {"title": "VAE编码"}},
-  "83:8": {"inputs": {"samples": ["83:76", 0], "vae": ["83:39", 0]}, "class_type": "VAEDecode", "_meta": {"title": "VAE解码"}},
-  "83:6": {"inputs": {"text": "guitar", "clip": ["83:38", 0]}, "class_type": "CLIPTextEncode", "_meta": {"title": "CLIP Text Encode (Positive Prompt)"}},
-  "83:3": {"inputs": {"seed": 657641993490688, "steps": 20, "cfg": 2.5, "sampler_name": "euler", "scheduler": "simple", "denoise": 1, "model": ["83:66", 0], "positive": ["83:69", 0], "negative": ["83:70", 0], "latent_image": ["83:123", 0]}, "class_type": "KSampler", "_meta": {"title": "K采样器"}},
-  "83:78": {"inputs": {"image": ["82", 0]}, "class_type": "GetImageSize", "_meta": {"title": "获取图像尺寸"}},
-  "83:123": {"inputs": {"width": ["83:78", 0], "height": ["83:78", 1], "layers": 2, "batch_size": 1}, "class_type": "EmptyQwenImageLayeredLatentImage", "_meta": {"title": "空Latent图像（QwenImageLayerd）"}},
-  "83:37": {"inputs": {"unet_name": "qwen_image_layered_control_bf16.safetensors", "weight_dtype": "fp8_e4m3fn"}, "class_type": "UNETLoader", "_meta": {"title": "UNet加载器"}},
-  "83:38": {"inputs": {"clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors", "type": "qwen_image", "device": "default"}, "class_type": "CLIPLoader", "_meta": {"title": "加载CLIP"}},
-  "83:39": {"inputs": {"vae_name": "qwen_image_layered_vae.safetensors"}, "class_type": "VAELoader", "_meta": {"title": "加载VAE"}}
-}`
-
   const PRESETS = [
     { id: 'background', label: '背景', prompt: 'background only, 背景', aliases: ['background', 'bg', '背景'], pivot: { x: 0.5, y: 0.5 }, layer: 0 },
     { id: 'character', label: '人物', prompt: 'full character, person, 人物, 全身角色', aliases: ['character', 'person', '人物', '角色'], pivot: { x: 0.5, y: 0.5 }, layer: 50 },
@@ -6880,41 +6859,6 @@
     throw new Error('NovaFlow AI Runtime 未连接')
   }
 
-  function patchWorkflow(workflow, part, uploadedName, prefix, size) {
-    const obj = workflow.prompt && typeof workflow.prompt === 'object' ? workflow.prompt : workflow
-    Object.keys(obj || {}).forEach((key) => {
-      const node = obj[key]
-      const type = String(node && node.class_type || '')
-      const inputs = node && node.inputs && typeof node.inputs === 'object' ? node.inputs : null
-      if (!inputs) return
-      if (type === 'LoadImage') {
-        if ('image' in inputs) inputs.image = uploadedName
-        if ('filename' in inputs) inputs.filename = uploadedName
-      }
-      if (type === 'SaveImage' && 'filename_prefix' in inputs) inputs.filename_prefix = prefix
-      if (type === 'CLIPTextEncode' && 'text' in inputs) {
-        const title = String(node._meta && node._meta.title || '').toLowerCase()
-        if (title.includes('negative')) inputs.text = ''
-        else inputs.text = buildPrompt(part)
-      }
-      if (type === 'KSampler' && 'seed' in inputs) inputs.seed = Math.floor(Math.random() * 1000000000)
-      if (type === 'EmptyQwenImageLayeredLatentImage') {
-        if ('layers' in inputs) inputs.layers = 1
-        if (typeof inputs.width === 'number') inputs.width = size.width
-        if (typeof inputs.height === 'number') inputs.height = size.height
-      }
-      if (type === 'ImageScaleToMaxDimension' && 'largest_size' in inputs) inputs.largest_size = Math.max(size.width, size.height)
-    })
-    return workflow
-  }
-
-  function buildPrompt(part) {
-    const quality = state.quality === 'fine' ? 'high precision, detailed alpha matte, clean edge' : state.quality === 'fast' ? 'fast clean alpha matte' : 'standard precision, clean alpha matte'
-    const inpaint = state.inpaintMode === 'off' ? '' : state.inpaintMode === 'strong' ? 'complete all occluded and hidden areas, infer missing structure widely' : state.inpaintMode === 'light' ? 'repair small edge holes and joint overlap only' : 'complete common occluded areas and missing inner structure'
-    const spine = state.purpose === 'spine' && state.spineFix ? 'Spine 2D skeletal animation layer, extend joint connection area for rotation, avoid broken seams' : ''
-    return [`Extract only: ${part.prompt}.`, state.prompt ? `User request: ${state.prompt}.` : '', quality, inpaint, spine, 'Output isolated part on transparent background. Do not include unrelated parts.'].filter(Boolean).join(' ')
-  }
-
   function extractFiles(history) {
     const out = []
     const seen = new Set()
@@ -6950,36 +6894,6 @@
       }
     }
     return 'NovaFlow AI Runtime 执行失败'
-  }
-
-  async function runComfyPart(part) {
-    const baseUrl = await detectComfyBaseUrl()
-    const uploadedName = await uploadImage(baseUrl)
-    const size = await sourceSize()
-    const workflowText = String(localStorage.getItem(WORKFLOW_KEY) || '').trim() || DEFAULT_WORKFLOW
-    const workflow = patchWorkflow(JSON.parse(workflowText), part, uploadedName, `split_${part.id}`, size)
-    const clientId = `novaflow_split_${Date.now()}_${Math.random().toString(16).slice(2)}`
-    const sent = await requestJson(baseUrl, '/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: clientId, prompt: workflow.prompt || workflow }) })
-    const promptId = String(sent && sent.data && sent.data.prompt_id || '')
-    if (!sent || !sent.ok || !promptId) throw new Error('NovaFlow AI Runtime 下发失败')
-    let files = []
-    const start = Date.now()
-    while (Date.now() - start < 180000) {
-      const history = await requestJson(baseUrl, `/history/${promptId}`, { method: 'GET' })
-      const item = history && history.data && (history.data[promptId] || history.data)
-      files = extractFiles(item).filter((file) => String(file.filename || '').startsWith(`split_${part.id}`))
-      if (files.length) break
-      await new Promise((resolve) => setTimeout(resolve, 900))
-    }
-    if (!files.length) throw new Error(`mask 生成失败：${part.label}`)
-    const file = files[0]
-    const qs = new URLSearchParams()
-    qs.set('filename', file.filename)
-    if (file.subfolder) qs.set('subfolder', file.subfolder)
-    qs.set('type', file.type || 'output')
-    const blob = await fetchBlob(baseUrl, `/view?${qs.toString()}`)
-    if (!blob) throw new Error(`PNG 导出失败：${part.label}`)
-    return await blobToDataUrl(blob)
   }
 
   function workflowObject(workflow) {
