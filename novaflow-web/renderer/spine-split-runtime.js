@@ -5706,12 +5706,19 @@
 
   async function commitImageOutpaintResult(resultName, resultDataUrl, delta, nextSize) {
     const snapshot = imageOutpaintStateSnapshot()
+    const previousSourceId = state.activeSourceResourceId
     try {
       const added = await addSourceDataUrlResource(resultName, resultDataUrl, {
         resetViewport: true,
         message: `无限扩图完成：${nextSize.width} x ${nextSize.height}`
       })
       if (!added) throw new Error('无限扩图结果资源写入失败')
+      // The layers move onto the outpainted picture below, so the cards of the old 原图 now belong to it;
+      // left pointing at the old one, the 图层 button / a layer row would switch back to the smaller frame.
+      const nextSourceId = state.activeSourceResourceId
+      if (previousSourceId && nextSourceId && nextSourceId !== previousSourceId) {
+        state.splitSets.forEach((set) => { if (set && set.sourceResourceId === previousSourceId) set.sourceResourceId = nextSourceId })
+      }
       state.canvasBoundaryGuide = { width: nextSize.width, height: nextSize.height }
       const shift = (part) => shiftPartForCanvasResize(part, delta, nextSize)
       state.parts = normalizeSpineLayerOrder((state.parts || []).map(shift))
@@ -12264,6 +12271,7 @@
     const ownerSet = [splitSetById(state.activeSplitSetId), ...state.splitSets].find((set) => set && (set.parts || []).some((part) => part.id === partId))
     if (ownerSet && ownerSet.sourceResourceId && ownerSet.sourceResourceId !== state.activeSourceResourceId) {
       activateSourceResource(ownerSet.sourceResourceId, { resetViewport: false })
+      if (ownerSet.id === state.activeSplitSetId) scheduleSplitPreviewRefresh({ delayMs: 40, idle: false })
     }
     const previousViewMode = state.viewMode || 'parts'
     const secondaryButton = !!(event && event.button === 2)
@@ -29048,6 +29056,7 @@
     const ownerSet = viewMode !== 'source' ? splitSetById(state.activeSplitSetId) : null
     if (ownerSet && ownerSet.sourceResourceId && ownerSet.sourceResourceId !== state.activeSourceResourceId) {
       activateSourceResource(ownerSet.sourceResourceId, { resetViewport: false })
+      scheduleSplitPreviewRefresh({ delayMs: 40, idle: false })
     }
     state.activePartId = id || ''
     state.viewMode = viewMode || (id ? 'single' : 'parts')
