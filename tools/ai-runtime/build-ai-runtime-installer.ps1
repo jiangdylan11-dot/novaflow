@@ -2,7 +2,8 @@
 param(
   [string] $RuntimeSourcePath = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime/package/AI-Runtime")),
   [string] $OutputRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot "../../_exports/NovaFlow-AI-Runtime-Installer")),
-  [string] $Version = "0.2.5"
+  [string] $Version = "0.4.0",
+  [string] $CustomNodesSource = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -245,8 +246,40 @@ Write-RuntimeScriptShim -RuntimeRoot $runtimeDest -ScriptName "start-runtime.bat
 Write-RuntimeScriptShim -RuntimeRoot $runtimeDest -ScriptName "stop-runtime.bat"
 Write-RuntimeScriptShim -RuntimeRoot $runtimeDest -ScriptName "check-runtime.bat"
 
-Write-Host "Writing README..."
+# Every custom node NovaFlow's graphs name ships with the Runtime (setup.exe copies them into the
+# assets folder's custom_nodes); the models are delivered separately (MODELS.txt). The H3 video nodes
+# come from this repository, the rest from the build machine's working Runtime.
+$releaseCustomNodes = Join-Path $releaseRuntimeRoot "custom_nodes"
+New-Item -ItemType Directory -Force -Path $releaseCustomNodes | Out-Null
+if (-not $CustomNodesSource) {
+  $installedRuntimeJson = Join-Path $env:ProgramData "NovaFlow\AI-Runtime\runtime.json"
+  if (Test-Path -LiteralPath $installedRuntimeJson) {
+    $CustomNodesSource = [string]((Get-Content -Raw -LiteralPath $installedRuntimeJson | ConvertFrom-Json).customNodesPath)
+  }
+}
+if (-not $CustomNodesSource -or -not (Test-Path -LiteralPath $CustomNodesSource)) {
+  throw "Custom nodes source was not found. Pass -CustomNodesSource <assets>\custom_nodes."
+}
+Write-Host "Copying custom nodes from $CustomNodesSource..."
+& robocopy $CustomNodesSource $releaseCustomNodes /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XD __pycache__ .git /XF *.pyc *.log | Out-Null
+if ($LASTEXITCODE -gt 7) { throw "Copying custom nodes failed with robocopy exit code $LASTEXITCODE" }
+$h3Nodes = Convert-ToFullPath (Join-Path $scriptRoot "..\ai-runtime-h3\nodes")
+foreach ($node in Get-ChildItem -LiteralPath $h3Nodes -Directory) {
+  & robocopy $node.FullName (Join-Path $releaseCustomNodes $node.Name) /E /R:2 /W:1 /NFL /NDL /NJH /NJS /NP /XD __pycache__ /XF *.pyc | Out-Null
+  if ($LASTEXITCODE -gt 7) { throw "Copying $($node.Name) failed with robocopy exit code $LASTEXITCODE" }
+}
+foreach ($required in @('ComfyUI-GGUF-leejet', 'ComfyUI-RMBG', 'ComfyUI-See-through', 'seedvr2_videoupscaler', 'novaflow_h3_attention', 'novaflow_h3_reference', 'novaflow_h3_refstrength', 'novaflow_h3_v2v')) {
+  if (-not (Test-Path -LiteralPath (Join-Path $releaseCustomNodes $required))) { throw "Required custom node missing from the package: $required" }
+}
+# SageAttention / Triton (the H3 attention node imports them) must be in the shipped Python.
+# Through cmd: PowerShell 5.1 with ErrorActionPreference Stop turns torch's pynvml FutureWarning on
+# stderr into a terminating error.
+& cmd /c ('"' + (Join-Path $runtimeDest "engine\python\python.exe") + '" -W ignore -c "import sageattention, triton, scipy" 2>nul')
+if ($LASTEXITCODE -ne 0) { throw "The Runtime's Python lacks sageattention/triton; run tools\ai-runtime-h3\install-sage-acceleration.py on the source Runtime first." }
+
+Write-Host "Writing README and MODELS..."
 Copy-Item -LiteralPath $readmeTemplate -Destination $readmeDest -Force
+Copy-Item -LiteralPath (Join-Path $scriptRoot "templates\MODELS-AI-Runtime.txt") -Destination (Join-Path $releaseRoot "MODELS.txt") -Force
 
 Write-Host "Compiling WinForms setup.exe..."
 $csc = Find-CSharpCompiler

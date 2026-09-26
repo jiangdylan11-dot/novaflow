@@ -340,6 +340,14 @@ namespace NovaFlow.AiRuntimeSetup
             Directory.CreateDirectory(customNodesPath);
             Directory.CreateDirectory(Path.Combine(runtimePath, "logs"));
 
+            // The custom nodes NovaFlow's graphs need ship beside the Runtime; they go into the assets
+            // folder ComfyUI reads them from. Nodes the user added there themselves stay untouched.
+            string sourceCustomNodes = Path.Combine(Path.Combine(setupDirectory, "Runtime"), "custom_nodes");
+            if (Directory.Exists(sourceCustomNodes))
+            {
+                CopyDirectory(sourceCustomNodes, customNodesPath, reporter);
+            }
+
             reporter.ReportProgress(0, U("6B63", "5728", "5199", "5165", "0020", "runtime.json", "002E", "002E", "002E"));
             string version = ReadRuntimeVersion(Path.Combine(sourceRuntime, "runtime.json"));
             File.WriteAllText(Path.Combine(runtimePath, "runtime.json"), BuildRuntimeJson(version, runtimePath, assetsPath, modelsPath, customNodesPath), new UTF8Encoding(false));
