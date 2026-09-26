@@ -314,7 +314,7 @@ test('blank unrequested audio and an omitted source-video row compile without in
  for(const api of [local,edge,context.NovaFlowH3PromptFormat]) {
   const result=JSON.parse(api.validateReferenceResult(JSON.stringify({modelPrompt:model,displayPrompt:display}),chineseOptions));
   assert.match(result.modelPrompt,/overall_soundscape:\nN\/A/);
-  assert.match(result.displayPrompt,/<Video 1> [：:]本次编辑的源视频/);
+  assert.match(result.displayPrompt,/<Video 1>\s*[：:]\s*本次编辑的源视频/);
   assert.throws(()=>api.validateReferenceResult(JSON.stringify({modelPrompt:model,displayPrompt:display}),{...chineseOptions,currentPrompt:'保留原有音乐'}),/六个参考字段/);
   assert.throws(()=>api.validateReferenceResult(JSON.stringify({modelPrompt:{...model,summary:''},displayPrompt:display}),chineseOptions),/六个参考字段/);
  }

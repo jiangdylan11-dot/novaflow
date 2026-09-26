@@ -60,7 +60,7 @@ function referenceFrames(value, requirements = '') {
     return {label, dataUrl, timeSeconds};
   });
 }
-const referenceFieldSchema = language => ({type:'object', additionalProperties:false, properties:Object.fromEntries(referenceFields.map(k=>[k,{type:'string',minLength:1,description:(language==='zh'?'本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括任务说明和保留属性；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文。':'Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue.') + (k==='subject_definitions'?' Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately.':k==='retention_analysis'?' One rule per defined Subject and source Video; image attributes belong to the Subject using that picture.':k==='overall_soundscape'||k==='non_diegetic_music'?' Use N/A for absent or unrequested audio, never an empty string.':'')}])), required:referenceFields});
+const referenceFieldSchema = language => ({type:'object', additionalProperties:false, properties:Object.fromEntries(referenceFields.map(k=>[k,{type:'string',minLength:1,description:(language==='zh'?'本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括主体定义、任务说明、保留规则中关系枚举后的说明和画面动作；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文，也不得夹带英文单词或短语。':'Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue.') + (k==='subject_definitions'?' Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately. Describe identity and appearance only (face, hair, body, clothing, colors, materials, props), not the picture\'s pose, action or background, unless the subject is itself a place or scene. Start each line with "<Subject N>: " and end it with its source, e.g. "from <Picture 1>".':k==='summary'?' Start with the task tags in brackets, e.g. [reference generation]. Then one short paragraph stating the event with <Subject N> labels: who does what, how the other reacts and how it ends. Use the labels themselves as the actors, never "the woman from <Subject 1>". No duration or "A N-second video" wording.':k==='retention_analysis'?' One rule per defined Subject and source Video; image attributes belong to the Subject using that picture. After the relation and " - ", list the concrete kept features.':k==='detailed_description'?' Name every defined subject with its <Subject N> label: characters and objects as the actor of their first action (never "the woman from <Subject 1>"), a place subject as the setting (e.g. "inside <Subject 3>"), a style subject in the opening style sentence (e.g. "in the art style of <Subject 2>"). End with one sentence stating the camera: locked, or its movement, direction and speed.':k==='overall_soundscape'?' Diegetic ambience and action sounds matching the visible events; N/A only when the user explicitly asks for silence. Never an empty string.':k==='non_diegetic_music'?' Off-screen score only when the user asks for music; otherwise N/A. Never an empty string.':'')}])), required:referenceFields});
 const referenceEditPolicySchema = {type:'object',additionalProperties:false,properties:{preserveBackground:{type:'boolean'},preserveMotion:{type:'boolean'},sameShapeAppearanceOnly:{type:'boolean'}},required:['preserveBackground','preserveMotion','sameShapeAppearanceOnly']};
 const referenceResultSchema = {type:'object', additionalProperties:false, properties:{modelPrompt:referenceFieldSchema('en'),displayPrompt:referenceFieldSchema('zh'),editPolicy:referenceEditPolicySchema},required:['modelPrompt','displayPrompt','editPolicy']};
 function referenceEditPolicy(value) {
@@ -113,7 +113,7 @@ function compileReferenceFields(value, options) {
   if (sourceVideo && !definitions.has(sourceVideo) && retention.split('\n').some(l=>l.startsWith(sourceVideo))) {
     definitions.set(sourceVideo, options.requireChineseOutput ? '：本次编辑的源视频。' : ': The source video for this edit.');
   }
-  fields.subject_definitions = [...definitions].map(([label,description])=>label+' '+description).join('\n');
+  fields.subject_definitions = [...definitions].map(([label,description])=>label+(/^[:：]/.test(description) ? ': '+description.replace(/^[:：]\s*/, '') : ' '+description)).join('\n');
   fields.retention_analysis = retention;
   return fields;
 }
@@ -138,7 +138,7 @@ function validateReferenceResult(value, options = {}) {
     modelPrompt = appendNarrative(modelPrompt, 'It ends by returning smoothly to the starting pose and motion phase so the loop joins naturally.');
     if (!new RegExp(policy.closurePattern, 'i').test(narrativeOf(displayPrompt))) displayPrompt = appendNarrative(displayPrompt, '结束时平滑回到起始姿态与运动相位，使循环自然衔接。');
   }
-  const cameraPattern = /镜头|相机|摄像|机位|运镜|\bcamera\b|\bzoom\b|\bdolly\b|\bpanning\b/i;
+  const cameraPattern = /镜头|相机|摄像|机位|运镜|\bcamera\b|\bzoom\b|\bdolly\b|\bpanning\b|\bpans?\b|\btracking\b|\bpush(?:es)?[- ]in\b|\b(?:static|medium|wide|close-up|two)[- ]?shot\b/i;
   if (!/summary:\s*\[[^\]]*\bvideo editing\b/.test(modelPrompt) && !cameraPattern.test(narrativeOf(modelPrompt) + intent)) {
     modelPrompt = appendNarrative(modelPrompt, 'The camera remains static and the framing stays stable.');
     if (!cameraPattern.test(narrativeOf(displayPrompt))) displayPrompt = appendNarrative(displayPrompt, '镜头固定，构图保持稳定。');
@@ -167,8 +167,8 @@ function toReferenceDisplay(value) {
   referenceFields.forEach((field, i) => { text = text.replace(new RegExp('^' + field + ':[ \\t]*', 'gm'), '【' + referenceDisplayFields[i] + '】\n'); });
   text = text.replace(/<Subject ([1-9]\d*)>/g, '<主体 $1>').replace(/\[Shot ([1-9]\d*)\]/g, '【镜头 $1】')
     .replace(/The target video is an edited version of (<Video [1-9]\d*>|@视频参考)\./g, '输出视频由 $1 编辑而成。')
-    .replace(/Source assets:/g, '素材来源：').replace(/The shot shows (<主体 [1-9]\d*>)\./g, '画面中呈现 $1。')
-    .replace(/^(<主体 [1-9]\d*>) is /gm, '$1：').replace(/^N\/A\.?$/gm, '无');
+    .replace(/Source assets:/g, '素材来源：').replace(/The shot shows (<主体 [1-9]\d*>)\./g, '画面中呈现 $1。').replace(/The shot features ((?:<主体 [1-9]\d*>(?:, | and )?)+)\./g, (_, list) => '画面中有 ' + list.replace(/, | and /g, '、') + '。')
+    .replace(/^(<主体 [1-9]\d*>) is /gm, '$1：').replace(/^(<主体 [1-9]\d*>) appearance from ([^\n:：]+?)\s*[:：]\s*/gm, (_, subject, from) => subject + '：外观来自 ' + from.trim().replace(/\s*(?:,|\band\b)\s*/g, '、') + '，').replace(/^N\/A\.?$/gm, '无');
   text = text.replace(/\[([^\]\n]+)\]/g, (all, terms) => terms.split(/\s*\+\s*/).every(t => referenceDisplayTerms[t]) ? '[' + terms.split(/\s*\+\s*/).map(t => referenceDisplayTerms[t]).join(' + ') + ']' : all);
   return text.replace(/:\s*(fully_preserved|partially_preserved|attribute_transfer|weak_reference|fully_copy|partially_copy|reference)\b/g, (_, term) => ': ' + referenceDisplayTerms[term]);
 }
@@ -218,7 +218,7 @@ function validateReference(value, options = {}) {
       const prose = fields[field].replace(/<(?:Picture|Video|Audio|Subject) \d+>|<d>.*?<\/d>|\[[^\]]+\]|The target video is an edited version of|\([^)]*\)|fully_preserved|partially_preserved|attribute_transfer|weak_reference|fully_copy|partially_copy/g, '');
       const words = prose.match(/[A-Za-z]{2,}/g) || [];
       const han = (prose.match(/[\u3400-\u9fff]/g) || []).length;
-      if (words.length >= 8 && words.join('').length > han * 2) throw new Error('请将多参主体、任务说明和画面动作改为简体中文，保留原台词和媒体标签');
+      if (words.length >= 8 && words.join('').length > han * 2) throw new Error('请将多参主体、任务说明、保留规则和画面动作改为简体中文，保留原台词和媒体标签');
     }
   }
   const inventory = String(options.requirements || '').match(/^Available resource labels:([^\n]*)/im);
@@ -235,14 +235,17 @@ function validateReference(value, options = {}) {
   }
   const task = /^\[([^\]]+)\]/.exec(fields.summary);
   let tasks = task?.[1].split(/\s*\+\s*/) || [];
-  if (!tasks.length || tasks.some(t => !['reference generation','keyframe completion','video editing','video continuation','audio reuse','audio reference'].includes(t))) throw new Error('H3 多参缺少明确任务关系');
+  // Without a source video the task can only be reference generation; a
+  // missing [task] prefix is filled in from the uploads below instead of failing.
+  const inferTasks = !task && inventory && !media(inventory[1]).some(t => t.startsWith('<Video '));
+  if (!inferTasks && (!tasks.length || tasks.some(t => !['reference generation','keyframe completion','video editing','video continuation','audio reuse','audio reference'].includes(t)))) throw new Error('H3 多参缺少明确任务关系');
   if (inventory) {
     // The uploads decide the task list: no video means nothing to edit or
     // continue, no audio means no audio task. Trim the guess instead of failing.
     const reconciled = reconcileReferenceTasks(tasks, media(inventory[1]));
     if (reconciled.join(' + ') !== tasks.join(' + ')) {
       tasks = reconciled;
-      fields.summary = '[' + tasks.join(' + ') + ']' + fields.summary.slice(task[0].length);
+      fields.summary = '[' + tasks.join(' + ') + ']' + (task ? fields.summary.slice(task[0].length) : ' ' + fields.summary);
       text = referenceFields.map(k => k + ':\n' + fields[k]).join('\n\n');
     }
   }
@@ -254,13 +257,24 @@ function validateReference(value, options = {}) {
     const relation = m[1] === 'Audio' ? /:\s*(?:fully_copy|partially_copy|reference|weak_reference)\b/ : /:\s*(?:fully_preserved|partially_preserved|attribute_transfer|weak_reference)\b/;
     if (!line || !relation.test(line)) throw new Error('H3 多参缺少主体或声音的保留规则');
   }
-  // A single explicitly defined subject is unambiguous. Bind its prose to the
-  // existing ID without changing appearance or action. Never guess with many.
-  if (ids.length === 1 && !/<Subject [1-9]\d*>/.test(fields.detailed_description)) {
-    fields.detailed_description = fields.detailed_description.replace('[Shot 1]', '[Shot 1] The shot shows <Subject 1>.');
+  // A single explicitly defined subject is unambiguous, and so is generation
+  // without a source video, where every defined subject is visible content.
+  // State that the shot shows it without changing appearance or action.
+  const unbound = ids.filter(id => !fields.detailed_description.includes('<Subject ' + id + '>'));
+  if (unbound.length && (ids.length === 1 || !tasks.some(t => t.startsWith('video ')))) {
+    const names = unbound.map(id => '<Subject ' + id + '>');
+    fields.detailed_description = fields.detailed_description.replace('[Shot 1]', '[Shot 1] The shot features ' + (names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0]) + '.');
   }
   if (ids.some(id => !fields.detailed_description.includes('<Subject ' + id + '>'))) throw new Error('H3 多参镜头必须引用已定义主体');
   if (!fields.detailed_description.includes('[Shot 1]')) throw new Error('H3 多参缺少镜头描述');
+  // "In a watercolor style, [Shot 1] ..." leaves the style sentence unfinished.
+  fields.detailed_description = fields.detailed_description.replace(/(\S)\s*[,，]\s*(\[Shot 1\])/, (_, last, shot) => last + (/[\u3400-\u9fff]/.test(last) ? '。' : '.') + ' ' + shot);
+  // Later shots need a cut time. When the model gives none, space the cuts evenly.
+  const shotCount = (fields.detailed_description.match(/\[Shot [1-9]\d*\]/g) || []).length;
+  if (shotCount > 1 && !/\[Shot \d+\] At \d/.test(fields.detailed_description)) {
+    const at = s => { const ms = Math.round(s * 1000); return String(Math.floor(ms / 60000)).padStart(2, '0') + ':' + String(Math.floor(ms / 1000) % 60).padStart(2, '0') + '.' + String(ms % 1000).padStart(3, '0'); };
+    fields.detailed_description = fields.detailed_description.replace(/\[Shot ([2-9]|[1-9]\d+)\]/g, (tag, n) => tag + ' At ' + at(Number(options.durationSeconds || 30) * (n - 1) / shotCount));
+  }
   for (const m of fields.detailed_description.matchAll(/\[Shot \d+\] At (\d+):(\d+)\.(\d+)/g)) {
     if (Number(m[1])*60 + Number(m[2]) + Number('0.'+m[3]) > Number(options.durationSeconds || 30)) throw new Error('H3 多参镜头超出所选时长');
   }
@@ -269,7 +283,7 @@ function validateReference(value, options = {}) {
 // Only return application-owned messages. Provider text must never become a
 // diagnostic or a repair instruction, even when it resembles an error message.
 const validationIssues = [
-  ['language', ['请将多参主体、任务说明和画面动作改为简体中文，保留原台词和媒体标签']],
+  ['language', ['请将多参主体、任务说明、保留规则和画面动作改为简体中文，保留原台词和媒体标签']],
   ['references', ['H3 中英文提示词的素材关系不一致']],
   ['language', ['H3 模型侧提示词需要英文正文，中文内容仅用于编辑器显示']],
   ['references', ['H3 多参引用与已上传素材不一致', 'H3 多参主体缺少独立定义', 'H3 多参主体必须说明外观或动作的素材来源', 'H3 多参缺少主体或声音的保留规则', 'H3 多参镜头必须引用已定义主体']],

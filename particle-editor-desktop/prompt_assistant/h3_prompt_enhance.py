@@ -69,7 +69,8 @@ def normalize_reference_plan(value, requirements="", source="", user_requirement
     from the model's own sources and the uploaded inventory, never filenames.
     """
     text = re.sub(r"^```(?:json)?\s*\n([\s\S]*?)\n```$", r"\1", str(value).strip()).strip()
-    plan = json.loads(text)
+    # A small model may break a long description across lines inside a string.
+    plan = json.loads(text, strict=False)
     if not isinstance(plan, dict):
         raise ValueError("H3 多参关系计划不完整")
     for alias, name in (("subjects", "references"), ("detailed_description", "description"), ("overall_soundscape", "soundscape"), ("non_diegetic_music", "music")):
@@ -124,7 +125,11 @@ def normalize_reference_plan(value, requirements="", source="", user_requirement
             if label.startswith('<Video ') and editing:
                 item['relation'] = 'partially_preserved'
             elif label.startswith('<Subject ') and origins:
-                item['relation'] = ('attribute_transfer' if any(origin.startswith('<Picture ') for origin in origins) else 'partially_preserved') if editing else 'weak_reference'
+                pictures = [origin for origin in origins if origin.startswith('<Picture ')]
+                # A generated subject taken from one picture keeps that identity;
+                # several pictures combine an identity with borrowed attributes.
+                item['relation'] = ('attribute_transfer' if pictures else 'partially_preserved') if editing else (
+                    'fully_preserved' if len(pictures) == 1 else 'partially_preserved' if pictures else 'weak_reference')
             else:
                 # In particular never guess copy versus reference for audio.
                 raise ValueError("H3 多参缺少主体或声音的保留规则")
@@ -133,7 +138,12 @@ def normalize_reference_plan(value, requirements="", source="", user_requirement
         if label in merged:
             old = merged[label]
             if old['relation'] != item['relation']:
-                raise ValueError("H3 同一主体的保留规则冲突")
+                # Generating from pictures, one subject may be written as its
+                # identity row plus a borrowed-attribute row (a girl from one
+                # picture, armour from another): that is a partial retention.
+                if editing or 'attribute_transfer' not in (old['relation'], item['relation']):
+                    raise ValueError("H3 同一主体的保留规则冲突")
+                old['relation'] = 'partially_preserved'
             old['sources'] = list(dict.fromkeys(old['sources'] + item['sources']))
             for field in ('description', 'keep'):
                 old[field] = old.get(field, '') + '; ' + item.get(field, '')
@@ -288,7 +298,7 @@ def validate_reference(value, requirements="", duration=30):
     # is visible content, so state it without changing appearance or action.
     unbound = [n for n in ids if f"<Subject {n}>" not in fields["detailed_description"]]
     if unbound and (len(ids) == 1 or not any(t.startswith("video ") for t in tasks)):
-        fields["detailed_description"] = fields["detailed_description"].replace("[Shot 1]", "[Shot 1] " + "".join(f"画面中呈现 <Subject {n}>。" for n in unbound))
+        fields["detailed_description"] = fields["detailed_description"].replace("[Shot 1]", "[Shot 1] 画面中有 " + "、".join(f"<Subject {n}>" for n in unbound) + "。")
     if any(f"<Subject {n}>" not in fields["detailed_description"] for n in ids):
         raise ValueError("H3 多参镜头必须引用已定义主体")
     if "[Shot 1]" not in fields["detailed_description"]:
