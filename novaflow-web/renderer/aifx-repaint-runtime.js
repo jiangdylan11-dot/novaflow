@@ -1195,20 +1195,28 @@
         left: 18px;
         bottom: 150px;
         z-index: 5;
-        padding: 3px 10px;
+        padding: 5px 12px;
         border-radius: 6px;
-        background: #2a2a2a;
-        color: #cbd0d6;
         font: inherit;
-        font-size: 11px;
+        font-size: 12px;
         white-space: nowrap;
         cursor: pointer;
       }
-      .aifx-seed-lock[data-action="lock-seed"]:hover {
-        color: #fff;
+      /* The host flattens every button's border, shadow and colours with
+         !important through selectors stronger than a class, so the ring and
+         fills carry the app id to outrank them. */
+      #${APP_ID} .aifx-seed-lock[data-action="lock-seed"] {
+        background: #1f1f1f !important;
+        color: #fff !important;
         box-shadow: 0 0 0 1px ${AIFX_ACCENT} inset !important;
       }
-      .aifx-seed-lock[data-action="lock-seed"].is-on { color: ${AIFX_ACCENT}; }
+      #${APP_ID} .aifx-seed-lock[data-action="lock-seed"]:hover {
+        background: rgba(23,165,130,0.22) !important;
+      }
+      #${APP_ID} .aifx-seed-lock[data-action="lock-seed"].is-on {
+        background: ${AIFX_ACCENT} !important;
+        color: #fff !important;
+      }
       .aifx-seed-lock[hidden] { display: none; }
       .aifx-candidate {
         width: 62px;
@@ -1221,7 +1229,15 @@
         overflow: hidden;
         position: relative;
       }
-      .aifx-candidate.is-active { border-color: ${AIFX_ACCENT}; }
+      #${APP_ID} .aifx-candidates[data-candidates] button.aifx-candidate {
+        border: 2px solid rgba(255,255,255,0.12) !important;
+        box-shadow: none !important;
+      }
+      #${APP_ID} .aifx-candidates[data-candidates] button.aifx-candidate:hover,
+      #${APP_ID} .aifx-candidates[data-candidates] button.aifx-candidate.is-active {
+        border-color: ${AIFX_ACCENT} !important;
+        box-shadow: 0 0 0 1px ${AIFX_ACCENT} !important;
+      }
       .aifx-candidate canvas { width: 100%; height: 100%; display: block; }
       .aifx-candidate-index {
         position: absolute;
