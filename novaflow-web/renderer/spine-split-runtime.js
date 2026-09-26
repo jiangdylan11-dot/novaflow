@@ -8774,6 +8774,13 @@
     // the node sends no undug crop and falls back to the dug plate; the prompt still follows the mode.
     const edit = !!(route && route.mode === 'edit')
     const undug = !!latentInputName
+    // 局部编辑 samples the whole picture on the encoder's own latent and lets the page paste it back
+    // through the selection (mergeInpaintResult). Measured 2026-09-27 on the user's run ("戴上墨镜" on a
+    // face): regenerating only the selection through SetLatentNoiseMask left the skin under the glasses
+    // pale and soft on every seed tried, since the selection covered a few 16 px latent cells and the
+    // face had to be redrawn inside them; the whole-picture edit kept skin tone, nose and mouth. The
+    // selection is still image 2, so the model knows where to change. 智能补图 keeps the noise mask.
+    const fullEdit = edit && undug
     const text = edit ? qwen21EditPromptText(promptText, promptParts) : qwen21CompletionPromptText(promptText, promptParts)
     // The 2.1 VAE centre-crops anything that is not a multiple of 16 before encoding, and
     // TextEncodeQwenImage21 rounds its references to multiples of 32. cropPadEngine aligns the crop to
@@ -8805,19 +8812,21 @@
     const plateRef = padded('plate', ['1', 0])
     const maskImageRef = padded('mask', ['2', 0])
     const latentPixelsRef = latentInputName ? padded('latent', ['3', 0]) : plateRef
-    workflow['7'] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(info.VAEEncode, { pixels: latentPixelsRef, vae: ['6', 0] }) }
-    workflow['8'] = { class_type: 'ImageToMask', inputs: buildComfyNodeInputs(info.ImageToMask, { image: maskImageRef, channel: 'red' }) }
-    let noiseMaskRef = ['8', 0]
-    if (padIds.mask) {
-      // The pad is filled with 0.5 grey. The mask is shrunk to the 16px latent grid bilinearly, so a
-      // latent cell straddling the layer edge sampled that grey and kept 25-50% of the starting latent
-      // on the last few pixels of a hole reaching the edge. Add the pad's own mask (1 in the pad, 0
-      // inside) so the strip is fully regenerated; it is cropped off afterwards anyway.
-      workflow[String(nextId)] = { class_type: 'MaskComposite', inputs: { destination: ['8', 0], source: [padIds.mask, 1], x: 0, y: 0, operation: 'add' } }
-      noiseMaskRef = [String(nextId), 0]
-      nextId += 1
+    if (!fullEdit) {
+      workflow['7'] = { class_type: 'VAEEncode', inputs: buildComfyNodeInputs(info.VAEEncode, { pixels: latentPixelsRef, vae: ['6', 0] }) }
+      workflow['8'] = { class_type: 'ImageToMask', inputs: buildComfyNodeInputs(info.ImageToMask, { image: maskImageRef, channel: 'red' }) }
+      let noiseMaskRef = ['8', 0]
+      if (padIds.mask) {
+        // The pad is filled with 0.5 grey. The mask is shrunk to the 16px latent grid bilinearly, so a
+        // latent cell straddling the layer edge sampled that grey and kept 25-50% of the starting latent
+        // on the last few pixels of a hole reaching the edge. Add the pad's own mask (1 in the pad, 0
+        // inside) so the strip is fully regenerated; it is cropped off afterwards anyway.
+        workflow[String(nextId)] = { class_type: 'MaskComposite', inputs: { destination: ['8', 0], source: [padIds.mask, 1], x: 0, y: 0, operation: 'add' } }
+        noiseMaskRef = [String(nextId), 0]
+        nextId += 1
+      }
+      workflow['9'] = { class_type: 'SetLatentNoiseMask', inputs: buildComfyNodeInputs(info.SetLatentNoiseMask, { samples: ['7', 0], mask: noiseMaskRef }) }
     }
-    workflow['9'] = { class_type: 'SetLatentNoiseMask', inputs: buildComfyNodeInputs(info.SetLatentNoiseMask, { samples: ['7', 0], mask: noiseMaskRef }) }
     const referenceRef = undug ? latentPixelsRef : plateRef
     workflow['10'] = {
       class_type: 'TextEncodeQwenImage21',
@@ -8843,7 +8852,7 @@
         model: modelRef,
         positive: ['10', 0],
         negative: ['10', 1],
-        latent_image: ['9', 0],
+        latent_image: fullEdit ? ['10', 2] : ['9', 0],
         seed: Number.isFinite(Number(seed)) ? Math.max(0, Math.floor(Number(seed))) : Math.floor(Math.random() * 1000000000),
         steps: QWEN21_STEPS,
         cfg: 1,
@@ -12250,6 +12259,12 @@
     if (isSplitEditToolActive()) return
     const partId = String(id || '')
     if (!partId) return
+    // A row of a card whose 原图 is not the active one (another source was clicked since): bring that
+    // 原图 back first, as toggleSplitSet does, or the layers are drawn into the other source's frame.
+    const ownerSet = [splitSetById(state.activeSplitSetId), ...state.splitSets].find((set) => set && (set.parts || []).some((part) => part.id === partId))
+    if (ownerSet && ownerSet.sourceResourceId && ownerSet.sourceResourceId !== state.activeSourceResourceId) {
+      activateSourceResource(ownerSet.sourceResourceId, { resetViewport: false })
+    }
     const previousViewMode = state.viewMode || 'parts'
     const secondaryButton = !!(event && event.button === 2)
     const additiveSelect = !!(event && (event.ctrlKey || event.metaKey) && !secondaryButton)
@@ -29029,6 +29044,11 @@
     if (state.maskEditor && state.maskEditor.active && viewMode !== 'maskEdit') resetMaskEditor()
     if (state.penTool && state.penTool.active && viewMode !== 'penTool') resetPenTool()
     if (state.selectionTool && state.selectionTool.active && viewMode !== 'selectionTool') resetSelectionTool()
+    // Entering a layer view (the 图层 button) while another source is active: bring the card's 原图 back.
+    const ownerSet = viewMode !== 'source' ? splitSetById(state.activeSplitSetId) : null
+    if (ownerSet && ownerSet.sourceResourceId && ownerSet.sourceResourceId !== state.activeSourceResourceId) {
+      activateSourceResource(ownerSet.sourceResourceId, { resetViewport: false })
+    }
     state.activePartId = id || ''
     state.viewMode = viewMode || (id ? 'single' : 'parts')
     if (state.viewMode === 'source' || state.viewMode === 'parts' || state.viewMode === 'single' || state.viewMode === 'mask') resetSplitCanvasViewport()

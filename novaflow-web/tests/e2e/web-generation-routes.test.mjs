@@ -226,6 +226,26 @@ assert.deepEqual(noiseMask.inputs.source, [g21['10'].inputs['images.image_2'][0]
 const [[cropId, crop]] = byClass(g21, 'ImageCrop');
 assert.deepEqual([crop.inputs.width, crop.inputs.height, crop.inputs.x, crop.inputs.y], [450, 700, 0, 0]);
 assert.deepEqual(byClass(g21, 'SaveImage')[0][1].inputs.images, [cropId, 0]);
+// 局部编辑 samples the whole picture on the encoder's latent (no noise mask; the page pastes it back
+// through the selection): the local repaint left the skin under a "戴上墨镜" edit pale and soft.
+{
+  const editRoute = { mode: 'edit', provider: 'qwen-edit-v5', label: 'Qwen Edit V5', workflow: 'qwen', outputMode: 'patch', qwenControlMode: 1, editV5: true, v4: true };
+  const gEdit = JSON.parse(JSON.stringify(await build21({ width: 450, height: 700 }, { inpaintMode: 'edit', route: editRoute }, '戴上墨镜')));
+  assert.equal(byClass(gEdit, 'SetLatentNoiseMask').length + byClass(gEdit, 'VAEEncode').length + byClass(gEdit, 'MaskComposite').length, 0);
+  const editSampler = byClass(gEdit, 'KSampler')[0][1].inputs;
+  assert.deepEqual(editSampler.latent_image, ['10', 2]);
+  const editPads = Object.fromEntries(byClass(gEdit, 'ImagePadForOutpaint').map(([id, node]) => [id, node.inputs]));
+  // The reference is the padded undug crop, the selection is image 2, and the output is cropped back.
+  assert.deepEqual(editPads[gEdit['10'].inputs['images.image_1'][0]].image, ['3', 0]);
+  assert.deepEqual(editPads[gEdit['10'].inputs['images.image_2'][0]].image, ['2', 0]);
+  assert.match(gEdit['10'].inputs.prompt, /Inside the white area only: 戴上墨镜/);
+  const [[editCropId, editCrop]] = byClass(gEdit, 'ImageCrop');
+  assert.deepEqual([editCrop.inputs.width, editCrop.inputs.height], [450, 700]);
+  assert.deepEqual(byClass(gEdit, 'SaveImage')[0][1].inputs.images, [editCropId, 0]);
+  // Without the undug crop (an older page) 局部编辑 falls back to the noise-mask graph on the dug plate.
+  const gEditOld = JSON.parse(JSON.stringify(await build21({ width: 450, height: 700 }, { inpaintMode: 'edit', route: editRoute, latentInputName: '' }, '戴上墨镜')));
+  assert.equal(byClass(gEditOld, 'SetLatentNoiseMask').length, 1);
+}
 const g21Aligned = JSON.parse(JSON.stringify(await build21(undefined)));
 assert.equal(byClass(g21Aligned, 'ImagePadForOutpaint').length + byClass(g21Aligned, 'ImageCrop').length + byClass(g21Aligned, 'MaskComposite').length, 0);
 assert.deepEqual(byClass(g21Aligned, 'VAEEncode')[0][1].inputs.pixels, ['3', 0]);
