@@ -37169,10 +37169,27 @@
     };
   }
 
+  // The cached computed style is live: reading display/visibility from it
+  // recalculated style after every write in between. Entering 动画 looked up
+  // the active board dozens of times per pass, ~20% of the entry. The two
+  // values are kept per frame here, stale the same way the cached rect is.
+  var NOVAFLOW_VISIBLE_STYLE_CACHE = new WeakMap();
+  var NOVAFLOW_VISIBLE_STYLE_CACHE_FRAME = -1;
   function isVisible(element) {
     const rect = nfAnimationPerfRunVisualRhythmStep("computeStyle", () => getRafCachedClientRect(element));
-    const style = nfAnimationPerfRunVisualRhythmStep("computeStyle", () => getRafCachedComputedStyle(element));
-    return rect.width > 1 && rect.height > 1 && style.display !== "none" && style.visibility !== "hidden";
+    if (!(rect.width > 1 && rect.height > 1)) return false;
+    if (!(element instanceof Element)) return true;
+    if (NOVAFLOW_VISIBLE_STYLE_CACHE_FRAME !== NOVAFLOW_RAF_COMPUTED_STYLE_CACHE_FRAME) {
+      NOVAFLOW_VISIBLE_STYLE_CACHE = new WeakMap();
+      NOVAFLOW_VISIBLE_STYLE_CACHE_FRAME = NOVAFLOW_RAF_COMPUTED_STYLE_CACHE_FRAME;
+    }
+    let shown = NOVAFLOW_VISIBLE_STYLE_CACHE.get(element);
+    if (shown === undefined) {
+      const style = nfAnimationPerfRunVisualRhythmStep("computeStyle", () => getRafCachedComputedStyle(element));
+      shown = style.display !== "none" && style.visibility !== "hidden";
+      NOVAFLOW_VISIBLE_STYLE_CACHE.set(element, shown);
+    }
+    return shown;
   }
 
   function getRgb(color) {
@@ -77717,18 +77734,22 @@
   // next paint. Waiting 48 ms for them painted the bare bundle layout first -
   // switching 骨骼动画 -> AI序列动画 showed the resource header, the board dots
   // and the prompt row at the wrong place and size for a few frames.
-  // Only right after a click or key: what the user just opened is laid out
-  // before it paints, every batch of it. A once-per-200ms limit let an unlucky
-  // expand (飘带计算) paint its raw 1047px body for a frame when a background
-  // update had used the slot. Background updates keep the 48 ms batching.
+  // Only right after a click or key, and once per 200 ms: the first batch of
+  // what the user opened is laid out before it paints. Background updates
+  // never take the slot (with them, an unlucky 飘带计算 expand painted its raw
+  // 1047px body); flushing every batch after a click doubled entering 动画.
   var BRAND_RUNTIME_LAST_INPUT_AT = -Infinity;
   ["pointerdown", "keydown", "click"].forEach((type) => {
     document.addEventListener(type, () => { BRAND_RUNTIME_LAST_INPUT_AT = performance.now(); }, true);
   });
+  var BRAND_RUNTIME_IMMEDIATE_FLUSH_AT = -Infinity;
   function brandRuntimeMutationQueueAddsElements() {
     if (performance.now() - BRAND_RUNTIME_LAST_INPUT_AT > 500) return false;
-    return BRAND_RUNTIME_MUTATION_QUEUE.some((mutation) => mutation.type === "childList"
+    if (performance.now() - BRAND_RUNTIME_IMMEDIATE_FLUSH_AT < 200) return false;
+    const adds = BRAND_RUNTIME_MUTATION_QUEUE.some((mutation) => mutation.type === "childList"
       && Array.from(mutation.addedNodes).some((node) => node instanceof HTMLElement));
+    if (adds) BRAND_RUNTIME_IMMEDIATE_FLUSH_AT = performance.now();
+    return adds;
   }
 
   function scheduleBrandRuntimeMutationFlush() {
