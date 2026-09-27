@@ -17,6 +17,13 @@ NF4_CACHE_SUFFIX = "-novaflow-bnb-nf4-v1"
 NF4_CACHE_LOCK_SUFFIX = ".build-lock"
 NF4_CACHE_TMP_MARKER = ".build-tmp-"
 NF4_CACHE_INVALID_MARKER = ".novaflow-cache-invalid.json"
+NF4_CACHE_QUANTIZATION = {
+    "method": "bitsandbytes",
+    "bits": 4,
+    "quantType": "nf4",
+    "doubleQuant": True,
+    "computeDtype": "float16",
+}
 
 
 class Qwen3VLProviderError(RuntimeError):
@@ -87,6 +94,8 @@ class Qwen3VLAbliteratedAdapter:
                 "cacheBytes",
                 "errorCode",
                 "modelSource",
+                "cacheOnly",
+                "runtimeVersionsDrift",
                 "allocatedBytes",
                 "reservedBeforeBytes",
                 "reservedAfterBytes",
@@ -170,7 +179,19 @@ class Qwen3VLAbliteratedAdapter:
         }
 
     def readiness(self) -> dict[str, Any]:
-        return self._model_readiness(self.model_path)
+        """Usable when the raw folder is complete, or the NF4 cache alone is."""
+
+        source = self._model_readiness(self.model_path)
+        if source.get("available"):
+            return source
+        if self.cache_readiness().get("available"):
+            return {
+                "available": True,
+                "code": "cache-only",
+                "detail": str(self.cache_path),
+                "cacheOnly": True,
+            }
+        return source
 
     @staticmethod
     def _sha256(path: Path) -> str:
@@ -181,7 +202,7 @@ class Qwen3VLAbliteratedAdapter:
         return digest.hexdigest()
 
     def source_fingerprint(self) -> dict[str, Any]:
-        readiness = self.readiness()
+        readiness = self._model_readiness(self.model_path)
         if not readiness.get("available"):
             raise Qwen3VLProviderError(readiness["code"], readiness["detail"])
         weights = []
@@ -213,14 +234,34 @@ class Qwen3VLAbliteratedAdapter:
             "schema": NF4_CACHE_SCHEMA,
             "sourceFingerprint": self.source_fingerprint(),
             "runtimeVersions": dict(runtime_versions),
-            "quantization": {
-                "method": "bitsandbytes",
-                "bits": 4,
-                "quantType": "nf4",
-                "doubleQuant": True,
-                "computeDtype": "float16",
-            },
+            "quantization": dict(NF4_CACHE_QUANTIZATION),
         }
+
+    @staticmethod
+    def _portable_fingerprint(fingerprint: Any) -> dict[str, Any]:
+        # The folder path and file times change when the raw folder is copied
+        # or moved; the content hashes and sizes identify the source.
+        value = fingerprint if isinstance(fingerprint, dict) else {}
+        return {
+            "configSha256": value.get("configSha256"),
+            "indexSha256": value.get("indexSha256"),
+            "weights": [
+                {"name": item.get("name"), "size": item.get("size")}
+                for item in (value.get("weights") or [])
+                if isinstance(item, dict)
+            ],
+        }
+
+    @staticmethod
+    def _cache_runtime_files_missing(path: Path) -> list[str]:
+        """Tokenizer and chat template files the processor needs from the cache."""
+
+        missing = []
+        if not any((path / name).is_file() for name in ("tokenizer.json", "vocab.json")):
+            missing.append("tokenizer.json")
+        if not any((path / name).is_file() for name in ("chat_template.jinja", "chat_template.json")):
+            missing.append("chat_template.jinja")
+        return missing
 
     def _cache_target_safety(self) -> dict[str, Any]:
         source = self.model_path.resolve(strict=False)
@@ -269,7 +310,13 @@ class Qwen3VLAbliteratedAdapter:
             "metadata": metadata_files,
         }
 
-    def cache_readiness(self, runtime_versions: dict[str, str]) -> dict[str, Any]:
+    def cache_readiness(self, runtime_versions: dict[str, str] | None = None) -> dict[str, Any]:
+        """Check the NF4 cache; the raw folder is compared when present, never required.
+
+        A cache built by other torch/transformers/bitsandbytes versions stays
+        available with runtimeVersionsDrift; _load tries it before any fallback.
+        """
+
         path = self.cache_path
         target_safety = self._cache_target_safety()
         if not target_safety.get("safe"):
@@ -279,25 +326,40 @@ class Qwen3VLAbliteratedAdapter:
                 "detail": "unsafe cache target",
             }
         model_state = self._model_readiness(path)
-        if not model_state.get("available"):
+        missing_files = (
+            self._cache_runtime_files_missing(path)
+            if model_state.get("available")
+            else []
+        )
+        if not model_state.get("available") or missing_files:
             return {
                 "available": False,
                 "code": "cache-missing" if not path.exists() else "cache-incomplete",
-                "detail": str(model_state.get("code") or "cache-invalid"),
+                "detail": ", ".join(missing_files) or str(model_state.get("code") or "cache-invalid"),
             }
         manifest_path = path / NF4_CACHE_MANIFEST
         try:
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         except Exception as exc:
             return {"available": False, "code": "cache-manifest-invalid", "detail": str(exc)}
-        expected = self._expected_cache_manifest(runtime_versions)
-        for field in ("schema", "sourceFingerprint", "runtimeVersions", "quantization"):
+        expected = {"schema": NF4_CACHE_SCHEMA, "quantization": NF4_CACHE_QUANTIZATION}
+        for field in ("schema", "quantization"):
             if manifest.get(field) != expected[field]:
                 return {
                     "available": False,
                     "code": f"cache-{field}-mismatch",
                     "detail": field,
                 }
+        cache_only = not self._model_readiness(self.model_path).get("available")
+        if not cache_only and (
+            self._portable_fingerprint(manifest.get("sourceFingerprint"))
+            != self._portable_fingerprint(self.source_fingerprint())
+        ):
+            return {
+                "available": False,
+                "code": "cache-sourceFingerprint-mismatch",
+                "detail": "sourceFingerprint",
+            }
         if (path / NF4_CACHE_INVALID_MARKER).exists():
             return {
                 "available": False,
@@ -334,6 +396,11 @@ class Qwen3VLAbliteratedAdapter:
             "code": "cache-ready",
             "detail": str(path),
             "cacheBytes": cache_bytes,
+            "cacheOnly": cache_only,
+            "runtimeVersionsDrift": (
+                runtime_versions is not None
+                and manifest.get("runtimeVersions") != dict(runtime_versions)
+            ),
         }
 
     @staticmethod
@@ -519,7 +586,7 @@ class Qwen3VLAbliteratedAdapter:
             except OSError:
                 pass
 
-    def _load(self, *, allow_cache_rebuild: bool = False) -> None:
+    def _load(self, *, allow_cache_rebuild: bool = False, skip_cache: bool = False) -> None:
         readiness = self.readiness()
         if not readiness["available"]:
             raise Qwen3VLProviderError(readiness["code"], readiness["detail"])
@@ -536,7 +603,7 @@ class Qwen3VLAbliteratedAdapter:
             raise Qwen3VLProviderError("cuda-unavailable", "Qwen3-VL NF4 provider requires CUDA")
         runtime_versions = self._runtime_versions(torch, transformers, bitsandbytes)
         cache_state = self.cache_readiness(runtime_versions)
-        cache_hit = bool(cache_state.get("available"))
+        cache_hit = bool(cache_state.get("available")) and not skip_cache
         if not cache_hit and self.require_prequantized_cache and not allow_cache_rebuild:
             cache_error_code = (
                 "cache-preparation-required"
@@ -553,6 +620,12 @@ class Qwen3VLAbliteratedAdapter:
             )
             raise Qwen3VLProviderError(
                 cache_error_code,
+                str(cache_state.get("code") or "cache unavailable"),
+            )
+        source_ready = bool(self._model_readiness(self.model_path).get("available"))
+        if not cache_hit and not source_ready:
+            raise Qwen3VLProviderError(
+                "cache-rebuild-requires-source",
                 str(cache_state.get("code") or "cache unavailable"),
             )
         selected_model_path = self.cache_path if cache_hit else self.model_path
@@ -598,6 +671,7 @@ class Qwen3VLAbliteratedAdapter:
                 ),
                 "cacheBuildMs": int(cache_build.get("elapsedMs") or 0),
                 "modelSource": model_source,
+                "cacheOnly": not source_ready,
             }
             self._emit_stage(
                 "model-load-done",
@@ -606,6 +680,8 @@ class Qwen3VLAbliteratedAdapter:
                 cacheState=self.last_load_diagnostics["cacheState"],
                 cacheBuildMs=self.last_load_diagnostics["cacheBuildMs"],
                 modelSource=model_source,
+                cacheOnly=not source_ready,
+                runtimeVersionsDrift=bool(cache_hit and cache_state.get("runtimeVersionsDrift")),
             )
             if cache_hit:
                 try:
@@ -614,13 +690,17 @@ class Qwen3VLAbliteratedAdapter:
                     pass
         except Exception as exc:
             self.unload()
-            if cache_hit:
+            resource_error = self._is_resource_error(exc)
+            # Only a cache the raw folder can rebuild is marked invalid, and
+            # never for memory pressure (CUDA OOM, modules dispatched on the CPU).
+            if cache_hit and source_ready and not resource_error:
                 try:
                     (self.cache_path / NF4_CACHE_INVALID_MARKER).write_text(
                         json.dumps({
                             "schema": NF4_CACHE_SCHEMA,
                             "createdAt": time.time(),
                             "errorCode": type(exc).__name__[:80],
+                            "runtimeVersions": dict(runtime_versions),
                         }),
                         encoding="utf-8",
                     )
@@ -633,8 +713,31 @@ class Qwen3VLAbliteratedAdapter:
                 cacheState=str(cache_state.get("code") or "unavailable"),
                 modelSource=model_source,
                 errorCode=type(exc).__name__[:80],
+                cacheOnly=not source_ready,
             )
+            if cache_hit and cache_state.get("runtimeVersionsDrift") and not resource_error:
+                # The cache was built by other torch/transformers/bitsandbytes
+                # versions and does not load here; only the raw folder can help.
+                if not source_ready:
+                    raise Qwen3VLProviderError("cache-incompatible-source-missing", str(exc)) from exc
+                if self.require_prequantized_cache and not allow_cache_rebuild:
+                    raise Qwen3VLProviderError("cache-invalid-rebuild-required", str(exc)) from exc
+                return self._load(allow_cache_rebuild=allow_cache_rebuild, skip_cache=True)
             raise Qwen3VLProviderError("model-load-failed", str(exc)) from exc
+
+    @staticmethod
+    def _is_resource_error(exc: BaseException) -> bool:
+        """GPU memory pressure says nothing about the cache files."""
+
+        current: BaseException | None = exc
+        for _depth in range(4):
+            if current is None:
+                break
+            text = f"{type(current).__name__} {current}".lower()
+            if "outofmemory" in text or "out of memory" in text or "dispatched on the cpu" in text:
+                return True
+            current = current.__cause__ or current.__context__
+        return False
 
     def prepare_prequantized_cache(self) -> dict[str, Any]:
         """Build or validate the disk NF4 cache without running visual inference."""
@@ -655,6 +758,7 @@ class Qwen3VLAbliteratedAdapter:
                 "cacheState": "ready",
                 "cacheBuildMs": 0,
                 "modelSource": "prequantized-cache",
+                "cacheOnly": bool(cache_state.get("cacheOnly")),
             }
             self.last_load_diagnostics = dict(result)
             self._emit_stage(
@@ -664,8 +768,15 @@ class Qwen3VLAbliteratedAdapter:
                 cacheState="ready",
                 cacheBytes=int(cache_state.get("cacheBytes") or 0),
                 modelSource="prequantized-cache",
+                cacheOnly=bool(cache_state.get("cacheOnly")),
+                runtimeVersionsDrift=bool(cache_state.get("runtimeVersionsDrift")),
             )
             return result
+        if not self._model_readiness(self.model_path).get("available"):
+            raise Qwen3VLProviderError(
+                "cache-rebuild-requires-source",
+                str(cache_state.get("code") or "cache unavailable"),
+            )
         try:
             self._load(allow_cache_rebuild=True)
             result = {"ok": True, **dict(self.last_load_diagnostics or {})}

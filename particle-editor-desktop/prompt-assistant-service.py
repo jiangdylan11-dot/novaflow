@@ -11967,6 +11967,8 @@ class PromptAssistant:
                     "cacheBytes",
                     "errorCode",
                     "modelSource",
+                    "cacheOnly",
+                    "runtimeVersionsDrift",
                 }
                 and isinstance(value, (str, int, float, bool))
             }
@@ -11999,6 +12001,7 @@ class PromptAssistant:
                     "cacheState",
                     "cacheBuildMs",
                     "modelSource",
+                    "cacheOnly",
                 }
                 and isinstance(value, (str, int, float, bool))
             }
@@ -13953,6 +13956,8 @@ class PromptAssistant:
                         "generationTokenLimit",
                         "generationHitTokenLimit",
                         "modelSource",
+                        "cacheOnly",
+                        "runtimeVersionsDrift",
                     }
                     and isinstance(value, (str, int, float, bool))
                 }
