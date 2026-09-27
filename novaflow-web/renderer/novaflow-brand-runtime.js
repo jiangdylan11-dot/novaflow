@@ -3583,26 +3583,42 @@
     // 特效's canvas frame is fitted by the bundle a frame after the page
     // mounts (it learns the dock's reserve late): 408 -> 337 in a narrow
     // window. The veil waits until that frame holds still for a frame.
-    const previewFrameBox = () => {
+    // Only that frame waits now, not the page: the veil lifts with the groups
+    // and, in a narrow window, the frame alone stays hidden until its box
+    // holds still (blanking the whole page for it read as a flash).
+    const findPreviewFrame = () => {
       const workspace = document.querySelector('[data-novaflow-preview-workspace="1"]');
-      if (!(workspace instanceof HTMLElement)) return "";
+      if (!(workspace instanceof HTMLElement)) return null;
       const frame = Array.from(workspace.querySelectorAll("div[data-preview-ui]")).find((node) => {
         const rect = node.getBoundingClientRect();
         return rect.width > 150 && Math.abs(rect.width - rect.height) < 2;
       });
-      if (!(frame instanceof HTMLElement)) return "";
+      return frame instanceof HTMLElement ? frame : null;
+    };
+    const previewFrameBox = () => {
+      const frame = findPreviewFrame();
+      if (!frame) return "";
       const rect = frame.getBoundingClientRect();
       return [rect.left, rect.top, rect.width].map(Math.round).join(",");
     };
-    let lastPreviewFrameBox = null;
-    const previewFrameSettled = () => {
-      // Only a narrow window refits the frame; a wide one had it in place
-      // from the first frame, and waiting blanked 特效 for two frames.
-      if (html.getAttribute("data-novaflow-layout-tier") === "wide") return true;
-      const box = previewFrameBox();
-      const settled = box === "" || box === lastPreviewFrameBox;
-      lastPreviewFrameBox = box;
-      return settled;
+    const holdPreviewFrameUntilSettled = () => {
+      if (html.getAttribute("data-novaflow-layout-tier") === "wide") return;
+      const frame = findPreviewFrame();
+      if (!frame) return;
+      frame.setAttribute("data-novaflow-fit-frame", "1");
+      html.setAttribute("data-novaflow-preview-frame-settling", "1");
+      const settleStartedAt = performance.now();
+      let last = previewFrameBox();
+      const settle = () => {
+        const box = previewFrameBox();
+        if (box === last || performance.now() - settleStartedAt > 400) {
+          html.removeAttribute("data-novaflow-preview-frame-settling");
+          return;
+        }
+        last = box;
+        window.requestAnimationFrame(settle);
+      };
+      window.requestAnimationFrame(settle);
     };
     if (NOVAFLOW_SWITCH_VEIL_FRAME) window.cancelAnimationFrame(NOVAFLOW_SWITCH_VEIL_FRAME);
     const check = () => {
@@ -3613,8 +3629,9 @@
       // further frame there kept the column blank ~200ms longer).
       const groupsIn = newGroupsIn();
       const ready = groupsIn || (runs > runsAtClick && frames >= 2);
-      if ((ready && previewFrameSettled()) || performance.now() - startedAt > 260) {
+      if (ready || performance.now() - startedAt > 260) {
         NOVAFLOW_SWITCH_VEIL_FRAME = 0;
+        holdPreviewFrameUntilSettled();
         html.removeAttribute("data-novaflow-switch-veil");
         return;
       }
@@ -3631,8 +3648,7 @@
           node instanceof Element && (node.matches(GROUP_SELECTOR) || node.querySelector(GROUP_SELECTOR))
         )));
         if (addedGroup && newGroupsIn()) {
-          // A page with a fitted canvas frame lifts from the frame check once it holds still.
-          if (previewFrameBox() !== "") return;
+          holdPreviewFrameUntilSettled();
           html.removeAttribute("data-novaflow-switch-veil");
           watcher.disconnect();
         }

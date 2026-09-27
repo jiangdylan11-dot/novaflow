@@ -2261,3 +2261,25 @@ html body :is([data-novaflow-ribbon-preset-select="1"], [data-novaflow-ribbon-ev
   font-size: 12px !important;
   box-sizing: border-box !important;
 }
+
+/* 2.5 特效's dock sits on the workspace's bottom edge from the first frame.
+   The runtime's pass placed it a frame late: first painted 8px in from the
+   sides and bottom (the bundle's inset), the canvas frame fitted to that
+   (512 at y143) and refitted to 507 at y129 a frame later - a jump the
+   page-switch veil had to hide in a narrow window. */
+html body.novaflow-primary-target-particle [data-novaflow-preview-workspace="1"] > [data-novaflow-bottom-controls="1"] {
+  position: absolute !important;
+  inset: auto 0 0 !important;
+  margin: 0 !important;
+  width: auto !important;
+  padding: 13px 14px !important;
+  min-height: 99px !important;
+  gap: 11px !important;
+  box-sizing: border-box !important;
+}
+
+/* 2.6 While 特效's canvas frame refits after a page switch in a narrow
+   window (one or two frames), only the frame is held back, not the page. */
+html[data-novaflow-preview-frame-settling="1"] [data-novaflow-fit-frame="1"] {
+  visibility: hidden !important;
+}
