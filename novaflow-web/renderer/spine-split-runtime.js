@@ -4699,8 +4699,18 @@
     })
   }
 
+  // 生成用时 on a source card: 生图 passes its own; a result of a Comfy tool (扩图, 角度, 放大, 万物迁移)
+  // takes the 已用时 its busy overlay counted. An imported picture has none.
+  function sourceResourceGenerationElapsedSec(options) {
+    const explicit = Number(options && options.generationElapsedSec)
+    if (Number.isFinite(explicit) && explicit > 0) return Math.max(1, Math.round(explicit))
+    if (!state.busy || !COMFY_BUSY_ACTIONS.has(state.busyAction) || !state.busyStartedAt) return 0
+    return Math.max(1, splitBusyElapsedSeconds(state.busyStartedAt))
+  }
+
   async function addSourceDataUrlResource(fileName, dataUrl, options = {}) {
     const activate = options.activate !== false
+    const generationElapsedSec = sourceResourceGenerationElapsedSec(options)
     const finishSourceImportBusy = activate ? beginSplitSourceResourceImportBusy() : () => {}
     const src = String(dataUrl || '')
     try {
@@ -4732,7 +4742,8 @@
         sourceImageSize: { ...size },
         sourceOffset: { x: 0, y: 0 },
         origin: String(options.origin || ''),
-        externalId: String(options.externalId || '')
+        externalId: String(options.externalId || ''),
+        ...(generationElapsedSec ? { generationElapsedSec } : {})
       }, { resetViewport: options.resetViewport !== false, activate })
       if (activate) {
         state.tempDir = ''
@@ -30710,7 +30721,13 @@
           splitSetPreviewImageNode(sourceResourcePreviewSrc(resource), resource.fileName || resource.name || 'source.png')),
         h('div', { style: { minWidth: 0, height: '30px', display: 'grid', gridTemplateRows: '14px 12px', alignContent: 'center', alignSelf: 'center', gap: '2px' } }, [
           h('div', { style: { fontSize: '12px', lineHeight: '14px', fontWeight: '500', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, source.fileName || resource.name || 'source.png'),
-          h('div', { style: { fontSize: '10px', lineHeight: '12px', color: 'rgba(160,160,160,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, `${Math.max(0, Math.round(Number(size.width) || 0))}x${Math.max(0, Math.round(Number(size.height) || 0))}`)
+          // The 生成用时 never shrinks: at 94px the size gives way first (only a 4096 size with 100S+ gets there).
+          h('div', { style: { display: 'flex', gap: '3px', minWidth: 0, fontSize: '10px', lineHeight: '12px', color: 'rgba(160,160,160,0.9)', overflow: 'hidden', whiteSpace: 'nowrap' } }, [
+            h('span', { style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' } }, `${Math.max(0, Math.round(Number(size.width) || 0))}x${Math.max(0, Math.round(Number(size.height) || 0))}`),
+            Number(resource.generationElapsedSec) > 0
+              ? h('span', { 'data-novaflow-source-resource-elapsed': '1', style: { flexShrink: '0', color: '#1EA672' } }, `生成${Math.round(Number(resource.generationElapsedSec))}S`)
+              : null
+          ])
         ]),
         h('button', {
           type: 'button',

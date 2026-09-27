@@ -2134,7 +2134,6 @@
   const AI_SEQUENCE_RUNTIME_DURATION_DATE_ATTR = "data-novaflow-ai-runtime-duration-date";
   const AI_SEQUENCE_RUNTIME_DURATION_TIME_ROW_ATTR = "data-novaflow-ai-runtime-duration-time-row";
   const AI_SEQUENCE_RUNTIME_DURATION_TIME_ATTR = "data-novaflow-ai-runtime-duration-time";
-  const AI_SEQUENCE_MEDIA_DURATION_ATTR = "data-novaflow-ai-media-duration-sec";
   const AI_SEQUENCE_GENERATION_ELAPSED_ATTR = "data-novaflow-ai-generation-elapsed-sec";
   const AI_SEQUENCE_RUNTIME_DURATION_EMPTY_LABEL = "\u00a0";
   const AI_SEQUENCE_RUNTIME_DURATION_LINE_HEIGHT_PX = 12;
@@ -17481,7 +17480,6 @@
 
   function getAiSequenceResourceStableTiming(card) {
     return {
-      mediaDurationSec: readAiSequenceResourceTimingMetric(card, AI_SEQUENCE_MEDIA_DURATION_ATTR, 60, false),
       generationElapsedSec: readAiSequenceResourceTimingMetric(card, AI_SEQUENCE_GENERATION_ELAPSED_ATTR, 86400, true)
     };
   }
@@ -17498,11 +17496,6 @@
       if (seconds) return seconds;
     }
     return findAiSequenceRuntimeDurationByFilenameToken(filename);
-  }
-
-  function formatAiSequenceMediaDurationSeconds(value) {
-    const rounded = Math.round(Number(value) * 100) / 100;
-    return Number.isFinite(rounded) ? String(rounded) : "";
   }
 
   function normalizeAiSequenceRuntimeDurationText(value) {
@@ -17685,7 +17678,7 @@
     if (!(card instanceof HTMLElement)) return;
     const stableTiming = getAiSequenceResourceStableTiming(card);
     const seconds = getAiSequenceResourceRuntimeDurationSeconds(card);
-    const hasStableTiming = stableTiming.mediaDurationSec !== null || stableTiming.generationElapsedSec !== null;
+    const hasStableTiming = stableTiming.generationElapsedSec !== null;
     const timestampNode = findAiSequenceResourceCardTimestampNode(card);
     if (!(timestampNode instanceof HTMLElement)) {
       if (!hasStableTiming && !seconds) removeAiSequenceResourceRuntimeDurationLabel(card);
@@ -17717,14 +17710,8 @@
       });
       return;
     }
-    const timingParts = [];
-    if (stableTiming.mediaDurationSec !== null) {
-      timingParts.push(`视频${formatAiSequenceMediaDurationSeconds(stableTiming.mediaDurationSec)}S`);
-    }
-    if (stableTiming.generationElapsedSec !== null) {
-      timingParts.push(`生成${Math.round(stableTiming.generationElapsedSec)}S`);
-    }
-    const text = timingParts.length ? timingParts.join(" · ") : `${seconds} S`;
+    // Only how long the run took: the video's own length (视频10.13S) read as the 生成用时 and is left out.
+    const text = hasStableTiming ? `生成${Math.round(stableTiming.generationElapsedSec)}S` : `${seconds} S`;
     if (label.textContent !== text) label.textContent = text;
     setAttributeIfChanged(label, "title", text);
     if (seconds !== null && seconds !== undefined) {
@@ -17732,20 +17719,9 @@
     } else {
       removeAttributeIfPresent(card, "data-novaflow-ai-runtime-duration-seconds");
     }
-    const expandedTimingLabel = timingParts.length > 1;
     const infoColumn = timestampNode.parentElement;
-    const metaRow = infoColumn instanceof HTMLElement ? infoColumn.parentElement : null;
-    const timestampRect = timestampNode.getBoundingClientRect();
-    const metaRowRect = metaRow instanceof HTMLElement ? metaRow.getBoundingClientRect() : null;
-    const expandedLabelLeft = metaRowRect ? Math.round(metaRowRect.left - timestampRect.left) : 0;
-    const expandedLabelWidth = metaRowRect ? Math.max(1, Math.round(metaRowRect.width)) : 0;
-    if (expandedTimingLabel) {
-      setImportantStyles(timestampNode, { position: "relative", overflow: "visible" });
-      if (infoColumn instanceof HTMLElement) setImportantStyles(infoColumn, { overflow: "visible" });
-    } else {
-      setImportantStyles(timestampNode, { position: "static", overflow: "hidden" });
-      if (infoColumn instanceof HTMLElement) setImportantStyles(infoColumn, { overflow: "hidden" });
-    }
+    setImportantStyles(timestampNode, { position: "static", overflow: "hidden" });
+    if (infoColumn instanceof HTMLElement) setImportantStyles(infoColumn, { overflow: "hidden" });
     setImportantStyles(label, {
       display: "block",
       "align-items": "center",
@@ -17754,10 +17730,10 @@
       "margin-bottom": "0",
       "flex-shrink": "0",
       color: "rgba(30, 166, 114, 0.96)",
-      "font-size": timingParts.length > 1 ? "9px" : "10px",
+      "font-size": "10px",
       "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
       "line-height": `${AI_SEQUENCE_RUNTIME_DURATION_LINE_HEIGHT_PX}px`,
-      "letter-spacing": timingParts.length > 1 ? "-0.15px" : "normal",
+      "letter-spacing": "normal",
       "white-space": "nowrap",
       "font-variant-numeric": "tabular-nums",
       "font-synthesis": "none",
@@ -17765,12 +17741,12 @@
       height: `${AI_SEQUENCE_RUNTIME_DURATION_LINE_HEIGHT_PX}px`,
       "min-height": `${AI_SEQUENCE_RUNTIME_DURATION_LINE_HEIGHT_PX}px`,
       "max-height": `${AI_SEQUENCE_RUNTIME_DURATION_LINE_HEIGHT_PX}px`,
-      position: expandedTimingLabel ? "absolute" : "static",
-      left: expandedTimingLabel ? `${expandedLabelLeft}px` : "auto",
-      top: expandedTimingLabel ? `${AI_SEQUENCE_RUNTIME_DURATION_LINE_HEIGHT_PX + AI_SEQUENCE_RUNTIME_DURATION_LABEL_GAP_PX}px` : "auto",
-      width: expandedTimingLabel ? `${expandedLabelWidth}px` : "auto",
-      "max-width": expandedTimingLabel ? `${expandedLabelWidth}px` : "none",
-      "text-align": expandedTimingLabel ? "left" : "start",
+      position: "static",
+      left: "auto",
+      top: "auto",
+      width: "auto",
+      "max-width": "none",
+      "text-align": "start",
       transition: "none"
     });
   }
@@ -83043,12 +83019,14 @@
     try {
       if (typeof bridge.addSourceDataUrlResource === "function") {
         return !!(await bridge.addSourceDataUrlResource(result.name || "novaflow_generate.png", result.imageUrl, {
-          message: "\u751f\u6210\u56fe\u5df2\u65b0\u589e\u4e3a\u539f\u56fe\u8d44\u6e90"
+          message: "\u751f\u6210\u56fe\u5df2\u65b0\u589e\u4e3a\u539f\u56fe\u8d44\u6e90",
+          generationElapsedSec: result.generationElapsedSec
         }));
       }
       if (typeof bridge.importSourceDataUrl !== "function") return false;
       return !!(await bridge.importSourceDataUrl(result.name || "novaflow_generate.png", result.imageUrl, {
-        message: "\u751f\u6210\u56fe\u5df2\u65b0\u589e\u4e3a\u539f\u56fe\u8d44\u6e90"
+        message: "\u751f\u6210\u56fe\u5df2\u65b0\u589e\u4e3a\u539f\u56fe\u8d44\u6e90",
+        generationElapsedSec: result.generationElapsedSec
       }));
     } catch (error) {
       console.warn("[NovaFlow] Art generate source placement failed", error);
@@ -84114,6 +84092,8 @@
       }
     }
     const runToken = beginArtGenerateRun();
+    // 生成用时 on the source card: the first image counts from the click, each next one from the last result.
+    let artImageStartedAt = Date.now();
     ART_GENERATE_STATE.running = true;
     ART_GENERATE_STATE.error = "";
     resetArtGenerateProgress(`\u6b63\u5728\u8fde\u63a5 ${providerLabel}...`, 0.04);
@@ -84283,8 +84263,10 @@
           name: file.filename || `${prefix}.png`,
           imageUrl,
           createdAt: new Date().toISOString(),
+          generationElapsedSec: Math.max(1, Math.round((Date.now() - artImageStartedAt) / 1000)),
           workflow: runProvider === "local" ? artWorkflowKey() : `${runProvider}:${workflowRun.modelKey}`
         };
+        artImageStartedAt = Date.now();
         ART_GENERATE_STATE.results.unshift(result);
         ART_GENERATE_STATE.selectedResultId = result.id;
         lastPromptId = promptId;

@@ -321,6 +321,11 @@
     }
 
     const failed = task.status === 'failed' || task.status === 'cancelled' || task.status === 'expired';
+    // A resource card's 生成用时 is read from these two, the way ComfyUI reports a run. It counts from
+    // the submit to the result, the wait for a node included: that is the time the user waited.
+    const submittedAt = Date.parse(task.created_at || '');
+    const completedAt = Date.parse(task.completed_at || '');
+    const timed = task.status === 'completed' && Number.isFinite(submittedAt) && Number.isFinite(completedAt) && completedAt >= submittedAt;
     return {
       prompt: [0, task.id, {}, {}, []],
       outputs: outputs,
@@ -329,7 +334,9 @@
         status_str: task.status === 'completed' ? 'success' : (failed ? 'error' : 'running'),
         messages: failed
           ? [['execution_error', { exception_message: task.error_message || task.error_code || task.status }]]
-          : []
+          : timed
+            ? [['execution_start', { prompt_id: task.id, timestamp: submittedAt }], ['execution_success', { prompt_id: task.id, timestamp: completedAt }]]
+            : []
       },
       // Extra, ignored by the renderer but useful when debugging in the console.
       novaflow: {
