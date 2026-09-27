@@ -428,7 +428,7 @@
         isolation: isolate;
         overflow: hidden;
         background: #000000;
-        border-top: 1px solid rgba(148, 163, 184, 0.14);
+        border-top: 1px solid rgba(160, 160, 160, 0.14);
         pointer-events: auto;
       }
       .aifx-main::before {
@@ -469,10 +469,10 @@
         align-items: center;
         gap: 12px;
         padding: 0 20px;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+        border-bottom: 1px solid rgba(160, 160, 160, 0.14);
       }
       .aifx-title { font-size: 15px; font-weight: 600; letter-spacing: 0; }
-      .aifx-subtitle { font-size: 12px; color: rgba(226, 232, 240, 0.6); }
+      .aifx-subtitle { font-size: 12px; color: rgba(230, 230, 230, 0.6); }
       .aifx-close {
         margin-left: auto;
         height: 32px;
@@ -622,7 +622,7 @@
       .aifx-help {
         font-size: 11px;
         line-height: 1.45;
-        color: rgba(203, 213, 225, 0.82);
+        color: rgba(208, 208, 208, 0.82);
       }
       .aifx-template-current {
         margin-bottom: 8px;
@@ -732,7 +732,7 @@
         position: static; width: 100%; padding: 0; background: transparent; text-align: left;
       }
       .aifx-prompt-field { display: grid; gap: 6px; margin: 10px 0 2px; }
-      .aifx-prompt-field > label { font-size: 12px; color: rgba(226, 232, 240, 0.72); }
+      .aifx-prompt-field > label { font-size: 12px; color: rgba(230, 230, 230, 0.72); }
       #${APP_ID} .aifx-side textarea.aifx-prompt-input {
         width: 100%;
         min-height: 60px;
@@ -750,10 +750,10 @@
         box-sizing: border-box;
       }
       #${APP_ID} .aifx-side textarea.aifx-prompt-input:focus { border-color: ${AIFX_ACCENT}; }
-      .aifx-prompt-hint { font-size: 11px; line-height: 1.4; color: rgba(203, 213, 225, 0.58); }
+      .aifx-prompt-hint { font-size: 11px; line-height: 1.4; color: rgba(208, 208, 208, 0.58); }
       .aifx-row { display: flex; align-items: center; gap: 8px; }
       .aifx-row[hidden] { display: none; }
-      .aifx-row > label { min-width: 74px; font-size: 12px; color: rgba(226, 232, 240, 0.72); }
+      .aifx-row > label { min-width: 74px; font-size: 12px; color: rgba(230, 230, 230, 0.72); }
       .aifx-slider,
       .aifx-timeline input {
         flex: 1;
@@ -1078,7 +1078,7 @@
         border: 0;
         border-radius: 0;
         background: transparent;
-        color: rgba(226, 232, 240, 0.72);
+        color: rgba(230, 230, 230, 0.72);
         opacity: 1;
         pointer-events: none;
         box-shadow: none;
@@ -1102,7 +1102,7 @@
       .aifx-preview-status-detail {
         min-width: 0;
         overflow: hidden;
-        color: rgba(226, 232, 240, 0.56);
+        color: rgba(230, 230, 230, 0.56);
         font-size: 11px;
         line-height: 1.5;
       }
@@ -3326,7 +3326,7 @@
     }
 
     const caption = (text, x, y, boxWidth) => {
-      ctx.fillStyle = 'rgba(226, 232, 240, 0.72)'
+      ctx.fillStyle = 'rgba(230, 230, 230, 0.72)'
       ctx.font = (12 * ratio) + 'px sans-serif'
       ctx.textAlign = 'center'
       ctx.fillText(text, x + boxWidth / 2, y + 18 * ratio)

@@ -1168,7 +1168,7 @@
         border: 1px solid rgba(255, 255, 255, 0.08);
         border-radius: 6px;
         background: rgba(255, 255, 255, 0.035);
-        color: rgba(148, 163, 184, 0.96);
+        color: rgba(160, 160, 160, 0.96);
         font-size: 11px;
         line-height: 17px;
         text-align: left;
@@ -1206,7 +1206,7 @@
         font-weight: 600;
       }
       .novaflow-smart-ai-result-copy {
-        color: rgba(226,232,240,0.74);
+        color: rgba(230,230,230,0.74);
         font-size: 11px;
         line-height: 1.55;
         white-space: pre-wrap;
@@ -1221,7 +1221,7 @@
         align-items: flex-start;
         justify-content: space-between;
         gap: 12px;
-        color: rgba(203,213,225,0.68);
+        color: rgba(208,208,208,0.68);
         font-size: 11px;
         line-height: 1.45;
       }
@@ -1242,7 +1242,7 @@
         line-height: 1.5;
       }
       .novaflow-smart-ai-result-muted {
-        color: rgba(148,163,184,0.72);
+        color: rgba(160,160,160,0.72);
         font-size: 11px;
         line-height: 1.45;
       }

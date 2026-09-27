@@ -142,7 +142,7 @@
         'aria-label': `${reference.label}本次分析职责`,
         style: {
           height: '28px', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '6px',
-          background: '#111416', color: '#fff', fontSize: '10px', padding: '0 6px',
+          background: '#141414', color: '#fff', fontSize: '10px', padding: '0 6px',
         },
       })
       ;[
@@ -386,7 +386,7 @@
       'aria-label': ariaLabel,
       style: {
         width: '100%', height: '34px', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '7px',
-        background: '#111416', color: '#fff', fontSize: '11px', padding: '0 8px',
+        background: '#141414', color: '#fff', fontSize: '11px', padding: '0 8px',
       },
     })
     for (const item of items || []) {
@@ -420,7 +420,7 @@
       'data-nf-dialog': 'panel',
       style: {
         width: '520px', maxWidth: '100%', maxHeight: 'min(760px, calc(100vh - 48px))', overflow: 'hidden',
-        display: 'grid', gridTemplateRows: 'auto minmax(0,1fr) auto', background: '#1b1f21',
+        display: 'grid', gridTemplateRows: 'auto minmax(0,1fr) auto', background: '#1E1E1E',
         border: '1px solid rgba(52,211,153,0.38)', borderRadius: '12px', boxShadow: '0 24px 80px rgba(0,0,0,0.45)',
       },
     })
@@ -454,7 +454,7 @@
         rows: '3', placeholder: '补充视觉风格、配色、材质、信息层级或必须保留的要求。',
         style: {
           width: '100%', minHeight: '72px', resize: 'vertical', boxSizing: 'border-box', padding: '9px',
-          borderRadius: '7px', border: '1px solid rgba(255,255,255,0.12)', background: '#111416', color: '#fff',
+          borderRadius: '7px', border: '1px solid rgba(255,255,255,0.12)', background: '#141414', color: '#fff',
           font: 'inherit', fontSize: '11px', lineHeight: '1.5',
         },
       }),

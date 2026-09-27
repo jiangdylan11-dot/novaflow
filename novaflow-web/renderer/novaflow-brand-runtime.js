@@ -5190,7 +5190,7 @@
       y1: baseY,
       x2: right,
       y2: baseY,
-      stroke: "rgba(148,163,184,0.74)",
+      stroke: "rgba(160,160,160,0.74)",
       "stroke-width": 1.15,
       "stroke-linecap": "round"
     });
@@ -15658,7 +15658,7 @@
       setImportantStyles(lockLabel, {
         opacity: locked ? "0.36" : "1",
         filter: locked ? "grayscale(1) saturate(0) brightness(0.62)" : "none",
-        color: locked ? "rgba(148,163,184,0.50)" : "rgba(255,255,255,0.75)",
+        color: locked ? "rgba(160,160,160,0.50)" : "rgba(255,255,255,0.75)",
         cursor: locked ? "not-allowed" : "pointer"
       });
       if (locked) setAttributeIfChanged(lockLabel, "title", "\u62a0\u56fe\u7f16\u8f91\u4f7f\u7528\u6e90\u89c6\u9891\u5b8c\u6574\u5e27\u6570");
@@ -27217,7 +27217,7 @@
         background: ${UI_FIELD_BACKGROUND} !important;
         background-color: ${UI_FIELD_BACKGROUND} !important;
         border: 0 !important;
-        color: rgba(226, 232, 240, 0.88) !important;
+        color: rgba(230, 230, 230, 0.88) !important;
         width: 100% !important;
         height: 98px !important;
         min-height: 98px !important;
@@ -28939,11 +28939,11 @@
       body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[data-selected="1"],
       body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img).active,
       body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img).selected,
-      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[style*="rgb(30, 41, 59)"],
+      body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[style*="rgb(36, 36, 36)"],
       body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[style*="30, 41, 59"],
       body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[style*="29, 78, 216"],
       body.novaflow-blackgray-preview-with-bottom-controls .novaflow-app .nf-app-body > div:first-child button:has(img)[style*="blue"],
-      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-preset-button="1"][style*="rgb(30, 41, 59)"],
+      body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-preset-button="1"][style*="rgb(36, 36, 36)"],
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-preset-button="1"][style*="30, 41, 59"],
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-preset-button="1"][style*="29, 78, 216"],
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-sprite-preset-button="1"][style*="blue"] {
@@ -53486,8 +53486,8 @@
         background: selected ? RIBBON_EVENT_MARKER_ACTIVE : RIBBON_EVENT_MARKER_IDLE,
         "background-color": selected ? RIBBON_EVENT_MARKER_ACTIVE : RIBBON_EVENT_MARKER_IDLE,
         "box-shadow": selected
-          ? "0 0 0 1px rgba(15, 23, 42, 0.95), 0 0 8px rgba(32, 201, 151, 0.78)"
-          : "0 0 0 1px rgba(15, 23, 42, 0.9), 0 0 5px rgba(229, 235, 242, 0.18)"
+          ? "0 0 0 1px rgba(20, 20, 20, 0.95), 0 0 8px rgba(32, 201, 151, 0.78)"
+          : "0 0 0 1px rgba(20, 20, 20, 0.9), 0 0 5px rgba(229, 235, 242, 0.18)"
       });
       wrapper.appendChild(marker);
       overlay.appendChild(wrapper);
@@ -70799,7 +70799,7 @@
       }
       #${ART_EXPORT_MODAL_ROOT_ID} .novaflow-art-export-status {
         min-height: 17px !important;
-        color: rgba(148,163,184,0.96) !important;
+        color: rgba(160,160,160,0.96) !important;
         font-size: 11px !important;
         line-height: 17px !important;
         text-align: center !important;
@@ -78202,7 +78202,7 @@
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        color: #cbd5e1;
+        color: #D0D0D0;
         font-size: 12px;
         min-width: 0;
         white-space: nowrap;
@@ -78830,11 +78830,11 @@
         height: 18px !important;
         min-width: 64px !important;
         padding: 0 10px !important;
-        border: 1px solid rgba(226,232,240,0.18) !important;
+        border: 1px solid rgba(230,230,230,0.18) !important;
         border-radius: 6px !important;
         background: rgba(255,255,255,0.045) !important;
         background-color: rgba(255,255,255,0.045) !important;
-        color: rgba(226,232,240,0.84) !important;
+        color: rgba(230,230,230,0.84) !important;
         box-shadow: none !important;
         outline: none !important;
         appearance: none !important;
@@ -78842,15 +78842,15 @@
       }
       .novaflow-art-generate-reverse-menu .novaflow-art-generate-reverse-menu-option:hover,
       .novaflow-art-generate-reverse-menu button:hover {
-        border-color: rgba(226,232,240,0.26) !important;
+        border-color: rgba(230,230,230,0.26) !important;
         background: rgba(255,255,255,0.075) !important;
         background-color: rgba(255,255,255,0.075) !important;
-        color: rgba(226,232,240,0.92) !important;
+        color: rgba(230,230,230,0.92) !important;
       }
       .novaflow-art-generate-reverse-menu .novaflow-art-generate-reverse-menu-option:focus-visible,
       .novaflow-art-generate-reverse-menu button:focus-visible {
-        border-color: rgba(226,232,240,0.30) !important;
-        color: rgba(226,232,240,0.94) !important;
+        border-color: rgba(230,230,230,0.30) !important;
+        color: rgba(230,230,230,0.94) !important;
       }
       @container (max-width: 520px) {
         .novaflow-art-generate-prompt .novaflow-art-generate-history-slot:nth-child(5) {
@@ -79352,7 +79352,7 @@
         white-space: nowrap !important;
       }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-history strong {
-        color: rgba(226, 232, 240, 0.72) !important;
+        color: rgba(230, 230, 230, 0.72) !important;
       }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-history .novaflow-art-generate-history-label,
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-history .novaflow-art-generate-history-slot {
@@ -79370,7 +79370,7 @@
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-history .novaflow-art-generate-history-label[aria-expanded="true"],
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-history .novaflow-art-generate-history-slot:not(:disabled):hover,
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-history .novaflow-art-generate-history-slot[aria-pressed="true"] {
-        color: rgba(226, 232, 240, 0.78) !important;
+        color: rgba(230, 230, 230, 0.78) !important;
       }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-history .novaflow-art-generate-history-label:disabled,
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-history .novaflow-art-generate-history-slot:disabled {
@@ -79401,7 +79401,7 @@
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-history .novaflow-art-generate-history-label[aria-expanded="true"],
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-history .novaflow-art-generate-history-slot:hover,
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-history .novaflow-art-generate-history-slot[aria-pressed="true"] {
-        color: rgba(226, 232, 240, 0.90) !important;
+        color: rgba(230, 230, 230, 0.90) !important;
       }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-prompt-history .novaflow-art-generate-history-slot[data-empty="1"] {
         color: rgba(154, 160, 168, 0.48) !important;
@@ -79471,7 +79471,7 @@
         border: 0 !important;
         background: transparent !important;
         background-color: transparent !important;
-        color: rgba(226, 232, 240, 0.88) !important;
+        color: rgba(230, 230, 230, 0.88) !important;
         font-size: 12px !important;
         line-height: 1.36 !important;
         pointer-events: auto !important;
@@ -79573,7 +79573,7 @@
         align-items: center;
         justify-content: center;
         text-align: center;
-        color: rgba(226,232,240,0.78);
+        color: rgba(230,230,230,0.78);
         font-size: 12px;
         line-height: 1.7;
         padding: 18px;
@@ -82601,7 +82601,7 @@
       createArtEl("div", { className: "novaflow-art-generate-set-preview" }, createArtEl("img", { src: result.imageUrl, alt: title })),
       createArtEl("div", { style: { minWidth: "0", display: "grid", gap: "3px" } }, [
         createArtEl("div", { style: { fontSize: "12px", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, text: title }),
-        createArtEl("div", { style: { fontSize: "11px", color: "rgba(148,163,184,0.9)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, text: result.name || "novaflow_generate.png" })
+        createArtEl("div", { style: { fontSize: "11px", color: "rgba(160,160,160,0.9)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, text: result.name || "novaflow_generate.png" })
       ]),
       createArtEl("div", { text: "\u2304", style: { color: "rgba(255,255,255,0.70)", textAlign: "center", fontSize: "15px" } })
     ]));

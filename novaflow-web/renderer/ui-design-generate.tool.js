@@ -493,7 +493,7 @@
       ...(attributeName ? { [attributeName]: '1' } : {}),
       style: {
         width: '100%', height: '34px', minWidth: '0', borderRadius: '7px',
-        border: '1px solid rgba(255,255,255,0.12)', background: '#24282b',
+        border: '1px solid rgba(255,255,255,0.12)', background: '#282828',
         color: '#fff', padding: '0 9px', boxSizing: 'border-box', cursor: 'pointer',
         fontSize: '11px', fontWeight: '600',
       },
@@ -513,7 +513,7 @@
       style: {
         minWidth: '0', height: '30px', display: 'flex', alignItems: 'center', gap: '6px',
         padding: '0 8px', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.08)',
-        background: '#171a1c', boxSizing: 'border-box', overflow: 'hidden',
+        background: '#1A1A1A', boxSizing: 'border-box', overflow: 'hidden',
       },
     }, [
       createElement(record.documentRef, 'span', {
@@ -627,7 +627,7 @@
         style: {
           width: '34px', height: '34px', padding: '0', display: 'grid', placeItems: 'center',
           border: '0', borderLeft: landscape ? '0' : '1px solid rgba(255,255,255,0.1)', borderRadius: '0',
-          background: active ? 'rgba(34,183,132,0.15)' : '#292d30',
+          background: active ? 'rgba(34,183,132,0.15)' : '#2D2D2D',
           color: '#fff', cursor: 'pointer', boxSizing: 'border-box',
         },
       }, [icon])
@@ -706,7 +706,7 @@
       'data-novaflow-ui-design-dimension-input': axis,
       style: {
         width: '100%', height: '32px', minWidth: '0', borderRadius: '7px',
-        border: '1px solid rgba(255,255,255,0.12)', background: '#24282b', color: '#fff',
+        border: '1px solid rgba(255,255,255,0.12)', background: '#282828', color: '#fff',
         padding: '0 8px', boxSizing: 'border-box', fontSize: '11px',
       },
     })
@@ -792,7 +792,7 @@
       style: {
         width: '100%', minWidth: '0', minHeight: '88px', resize: record.variant === 'node' ? 'none' : 'vertical',
         padding: '8px 9px', borderRadius: '7px', border: '1px solid rgba(255,255,255,0.12)',
-        background: '#171a1c', color: '#fff', boxSizing: 'border-box', outline: 'none',
+        background: '#1A1A1A', color: '#fff', boxSizing: 'border-box', outline: 'none',
         fontSize: '10px', lineHeight: '1.45', fontFamily: 'inherit',
       },
     })

@@ -1480,7 +1480,7 @@
           }, '\u00d7')
         ]),
         h('div', { style: { padding: '16px 14px 15px', display: 'grid', gap: '14px', background: '#242424' } }, [
-          h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.66)', lineHeight: '1.35', textAlign: 'center' } }, `\u539f\u56fe ${sourceSizeText}\uff0c\u9009\u62e9\u540e\u7acb\u5373\u8fdb\u5165\u6267\u884c\u63d0\u793a\u3002`),
+          h('div', { style: { fontSize: '11px', color: 'rgba(230,230,230,0.66)', lineHeight: '1.35', textAlign: 'center' } }, `\u539f\u56fe ${sourceSizeText}\uff0c\u9009\u62e9\u540e\u7acb\u5373\u8fdb\u5165\u6267\u884c\u63d0\u793a\u3002`),
           h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' } }, [
             modeButton('default', '\u9ed8\u8ba4\u62c6\u56fe\uff08\u63a8\u8350\uff09', 'default'),
             modeButton('high', '\u9ad8\u6e05\u62c6\u56fe', 'high')
@@ -1498,11 +1498,11 @@
           }, [
             h('div', { style: { minWidth: '0', display: 'grid', gap: '4px' } }, [
               h('div', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.86)', fontWeight: '600' } }, '五官单独成层'),
-              h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.62)', lineHeight: '1.35' } }, '做眨眼、口型时打开：眉毛、眼白、眼珠、睫毛、鼻子、嘴巴、耳朵各自成层。关闭时由模型直接生成带五官的整脸，多约 2 分钟')
+              h('div', { style: { fontSize: '11px', color: 'rgba(230,230,230,0.62)', lineHeight: '1.35' } }, '做眨眼、口型时打开：眉毛、眼白、眼珠、睫毛、鼻子、嘴巴、耳朵各自成层。关闭时由模型直接生成带五官的整脸，多约 2 分钟')
             ]),
             faceDetailsInput
           ]),
-          h('div', { style: { display: 'grid', gap: '6px', fontSize: '11px', lineHeight: '1.45', color: 'rgba(226,232,240,0.72)' } }, [
+          h('div', { style: { display: 'grid', gap: '6px', fontSize: '11px', lineHeight: '1.45', color: 'rgba(230,230,230,0.72)' } }, [
             h('div', null, '1. \u9ed8\u8ba4\u62c6\u56fe\uff1a\u901f\u5ea6\u66f4\u5feb\uff0c\u9002\u5408\u5e38\u89c4\u89d2\u8272\u62c6\u5c42\u3002'),
             h('div', null, '2. \u9ad8\u6e05\u62c6\u56fe\uff1a\u4fdd\u7559\u66f4\u591a\u7ec6\u8282\uff0c\u8017\u65f6\u660e\u663e\u589e\u52a0\u3002'),
             h('div', null, '3. \u6b65\u6570\uff1a\u8d8a\u9ad8\u8d8a\u7a33\u5b9a\uff0c\u4f46\u8017\u65f6\u8d8a\u957f\u3002'),
@@ -1609,7 +1609,7 @@
         borderRadius: '0',
         border: '0',
         background: 'transparent',
-        color: 'rgba(226,232,240,0.82)',
+        color: 'rgba(230,230,230,0.82)',
         fontSize: '12px',
         fontWeight: '400',
         boxSizing: 'border-box'
@@ -1623,7 +1623,7 @@
           justifyContent: 'center'
         }
       }, [
-        h('div', { style: { color: 'rgba(226,232,240,0.82)', fontSize: '12px', fontWeight: '400', textAlign: 'right' } }, label),
+        h('div', { style: { color: 'rgba(230,230,230,0.82)', fontSize: '12px', fontWeight: '400', textAlign: 'right' } }, label),
         inputNode,
         h('div', { style: unitStyle }, '像素')
       ])
@@ -1796,7 +1796,7 @@
           transition: 'none'
         },
         bodyNode: h('div', { style: { padding: '13px 16px 15px', display: 'grid', gap: '10px', background: '#242424' } }, [
-          h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.72)', lineHeight: '1.35', fontWeight: '400', textAlign: 'center' } }, `当前大小：${currentWidth} x ${currentHeight} 像素`),
+          h('div', { style: { fontSize: '11px', color: 'rgba(230,230,230,0.72)', lineHeight: '1.35', fontWeight: '400', textAlign: 'center' } }, `当前大小：${currentWidth} x ${currentHeight} 像素`),
           h('div', { style: { display: 'grid', gap: '7px', padding: '3px 0 0', boxSizing: 'border-box' } }, [
             fieldRow('宽度(W)', widthInput),
             fieldRow('高度(H)', heightInput),
@@ -2005,7 +2005,7 @@
           transition: 'none'
         }
       }, label)
-      previewNode = h('div', { style: { minHeight: '18px', color: 'rgba(226,232,240,0.72)', fontSize: '11px', lineHeight: '1.4', textAlign: 'center' } }, '')
+      previewNode = h('div', { style: { minHeight: '18px', color: 'rgba(230,230,230,0.72)', fontSize: '11px', lineHeight: '1.4', textAlign: 'center' } }, '')
       const shell = createDialogShell({
         id: SPLIT_MODE_DIALOG_ID,
         ariaLabel: '\u9ad8\u6e05\u653e\u5927',
@@ -2073,7 +2073,7 @@
           transition: 'none'
         },
         bodyNode: h('div', { style: { padding: '16px 32px 15px', display: 'grid', gap: '14px', justifyItems: 'center', background: '#242424' } }, [
-          h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.72)', lineHeight: '1.35', textAlign: 'center' } }, `\u5f53\u524d\u539f\u56fe ${width} x ${height} px`),
+          h('div', { style: { fontSize: '11px', color: 'rgba(230,230,230,0.72)', lineHeight: '1.35', textAlign: 'center' } }, `\u5f53\u524d\u539f\u56fe ${width} x ${height} px`),
           h('div', { style: { width: '100%', maxWidth: '274px', display: 'grid', gridTemplateColumns: '1fr', alignItems: 'center' } }, [
             h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' } }, [
               scaleButton(2),
@@ -2471,7 +2471,7 @@
         const value = h('div', { style: { color, fontSize: '14px', fontWeight: '600', textAlign: 'right', fontVariantNumeric: 'tabular-nums' } }, '')
         sliders[key] = { input, value, min, max, color }
         return h('div', { style: { display: 'grid', gridTemplateColumns: '64px 1fr 52px', alignItems: 'center', gap: '12px' } }, [
-          h('div', { style: { display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: 'rgba(226,232,240,0.78)' } }, [
+          h('div', { style: { display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: 'rgba(230,230,230,0.78)' } }, [
             h('span', { style: { width: '8px', height: '8px', borderRadius: '999px', background: color, flex: '0 0 auto' } }),
             label
           ]),
@@ -2481,7 +2481,7 @@
       }
       const presetButtons = []
       const presetRow = (title, key, items) => h('div', { style: { display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' } }, [
-        h('div', { style: { width: '64px', fontSize: '11px', color: 'rgba(226,232,240,0.5)' } }, title),
+        h('div', { style: { width: '64px', fontSize: '11px', color: 'rgba(230,230,230,0.5)' } }, title),
         ...items.map(([label, value]) => {
           const node = button(label, () => {
             if (key === 'h') values.horizontalAngle = value
@@ -2541,7 +2541,7 @@
         }
       }, '')
       const hint = h('div', {
-        style: { position: 'absolute', right: '12px', bottom: '10px', fontSize: '11px', color: 'rgba(226,232,240,0.45)', pointerEvents: 'none' }
+        style: { position: 'absolute', right: '12px', bottom: '10px', fontSize: '11px', color: 'rgba(230,230,230,0.45)', pointerEvents: 'none' }
       }, '拖动旋转视角 · 滚轮调距离')
       if (sourceDataUrl) {
         sourceImage = new Image()
@@ -2588,7 +2588,7 @@
         }, [
           h('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', minWidth: '0' } }, [
             h('div', { 'data-nf-dialog': 'title', style: { fontSize: '15px', fontWeight: SPLIT_TOOL_FONT_WEIGHT } }, '角度调整'),
-            h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.5)' } }, `原图 ${width} × ${height}`)
+            h('div', { style: { fontSize: '11px', color: 'rgba(230,230,230,0.5)' } }, `原图 ${width} × ${height}`)
           ]),
           h('button', {
             type: 'button',
@@ -2985,7 +2985,7 @@
           'data-novaflow-spine-split-busy-elapsed': '1',
           style: {
             marginTop: '6px',
-            color: 'rgba(226,232,240,0.74)',
+            color: 'rgba(230,230,230,0.74)',
             fontSize: '11px',
             fontWeight: '600',
             lineHeight: '1.3'
@@ -2995,7 +2995,7 @@
           'data-novaflow-spine-split-busy-detail': '1',
           style: {
             marginTop: '8px',
-            color: 'rgba(226,232,240,0.66)',
+            color: 'rgba(230,230,230,0.66)',
             fontSize: '11px',
             fontWeight: '600',
             lineHeight: '1.45',
@@ -3021,7 +3021,7 @@
         'data-novaflow-spine-split-busy-elapsed': '1',
         style: {
           marginTop: '6px',
-          color: 'rgba(226,232,240,0.74)',
+          color: 'rgba(230,230,230,0.74)',
           fontSize: '11px',
           fontWeight: '600',
           lineHeight: '1.3'
@@ -3040,7 +3040,7 @@
         'data-novaflow-spine-split-busy-detail': '1',
         style: {
           marginTop: '8px',
-          color: 'rgba(226,232,240,0.66)',
+          color: 'rgba(230,230,230,0.66)',
           fontSize: '11px',
           fontWeight: '600',
           lineHeight: '1.45',
@@ -4110,7 +4110,7 @@
 
   function field(label, control) {
     return h('label', { style: { display: 'grid', gap: '4px', minWidth: '0' } }, [
-      h('span', { style: { fontSize: '10px', color: 'rgba(148,163,184,0.85)' } }, label),
+      h('span', { style: { fontSize: '10px', color: 'rgba(160,160,160,0.85)' } }, label),
       control
     ])
   }
@@ -7474,7 +7474,7 @@
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          color: 'rgba(226,232,240,0.62)',
+          color: 'rgba(230,230,230,0.62)',
           fontSize: '12px',
           fontWeight: '600',
           overflow: 'hidden',
@@ -7485,7 +7485,7 @@
       statusSlot = h('div', {
         style: {
           minHeight: '18px',
-          color: 'rgba(226,232,240,0.72)',
+          color: 'rgba(230,230,230,0.72)',
           fontSize: '11px',
           lineHeight: '1.4',
           textAlign: 'center'
@@ -7556,7 +7556,7 @@
         }, [
           h('div', { style: { display: 'grid', gap: '3px' } }, [
             h('div', { 'data-nf-dialog': 'title', style: { fontSize: '14px', fontWeight: '600', lineHeight: '1.2' } }, '\u4e07\u7269\u8fc1\u79fb'),
-            h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.62)', lineHeight: '1.35' } }, '\u4e0a\u4f20\u8981\u8fc1\u79fb\u5230\u753b\u5e03\u4e2d\u7684\u53c2\u8003\u7269')
+            h('div', { style: { fontSize: '11px', color: 'rgba(230,230,230,0.62)', lineHeight: '1.35' } }, '\u4e0a\u4f20\u8981\u8fc1\u79fb\u5230\u753b\u5e03\u4e2d\u7684\u53c2\u8003\u7269')
           ]),
           h('button', {
             type: 'button',
@@ -12054,7 +12054,7 @@
     if (!(node instanceof HTMLElement)) return false
     const message = String(state.message || '')
     node.textContent = message
-    node.style.setProperty('color', state.messageError ? 'rgba(239,68,68,0.95)' : 'rgba(148,163,184,0.95)', 'important')
+    node.style.setProperty('color', state.messageError ? 'rgba(239,68,68,0.95)' : 'rgba(160,160,160,0.95)', 'important')
     node.style.setProperty('visibility', message ? 'visible' : 'hidden', 'important')
     return true
   }
@@ -13229,11 +13229,11 @@
         if (state.viewMode === 'mask' && selectedPart) state.activePartId = selectedPart.id
         render()
       },
-      style: { width: '100%', borderRadius: '10px', border: '1px solid rgba(96,165,250,0.34)', background: 'rgba(15,23,42,0.58)', padding: '8px', cursor: 'default', textAlign: 'left' }
+      style: { width: '100%', borderRadius: '10px', border: '1px solid rgba(96,165,250,0.34)', background: 'rgba(20,20,20,0.58)', padding: '8px', cursor: 'default', textAlign: 'left' }
     }, [
       h('div', { style: checkerStyle({ height: '148px', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }) },
         h('img', { src: previewSource.src, alt: previewSource.label, style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' } })),
-      h('div', { style: { marginTop: '6px', fontSize: '10px', color: 'rgba(191,219,254,0.95)', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' } }, previewSource.label)
+      h('div', { style: { marginTop: '6px', fontSize: '10px', color: 'rgba(111,217,184,0.95)', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' } }, previewSource.label)
     ]) : null
     const previewTile = state.splitPreviewDataUrl ? h('button', {
       type: 'button',
@@ -13242,7 +13242,7 @@
     }, [
       h('div', { style: checkerStyle({ width: '100%', aspectRatio: '1/1', borderRadius: '8px', overflow: 'hidden' }) },
         h('img', { src: state.splitPreviewDataUrl, alt: 'split preview', style: { width: '100%', height: '100%', objectFit: 'contain', display: 'block' } })),
-      h('div', { style: { marginTop: '6px', fontSize: '10px', color: state.viewMode === 'parts' ? 'rgba(191,219,254,0.98)' : 'rgba(148,163,184,0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, `拆分预览图 · ${state.parts.length} 层`)
+      h('div', { style: { marginTop: '6px', fontSize: '10px', color: state.viewMode === 'parts' ? 'rgba(111,217,184,0.98)' : 'rgba(160,160,160,0.85)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, `拆分预览图 · ${state.parts.length} 层`)
     ]) : null
     return h('div', { style: { display: 'grid', gap: '6px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '8px' } }, [
       h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, [
@@ -13266,7 +13266,7 @@
           style: { borderRadius: '10px', border: blocked ? '1px solid rgba(239,68,68,0.58)' : issueCount ? '1px solid rgba(245,158,11,0.50)' : selected ? '1px solid rgba(96,165,250,0.92)' : '1px solid rgba(255,255,255,0.10)', background: selected ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.02)', boxShadow: selected ? '0 0 0 1px rgba(59,130,246,0.22) inset' : 'none', padding: '6px', cursor: 'pointer' }
         }, [
           h('div', { style: { width: '100%', aspectRatio: '1/1', borderRadius: '8px', overflow: 'hidden', background: 'rgba(255,255,255,0.04)' } }, h('img', { src, alt: part.name, style: { width: '100%', height: '100%', objectFit: 'contain', display: 'block' } })),
-          h('div', { style: { marginTop: '6px', fontSize: '10px', color: blocked ? 'rgba(252,165,165,0.95)' : issueCount ? 'rgba(251,191,36,0.95)' : selected ? 'rgba(191,219,254,0.98)' : 'rgba(148,163,184,0.85)', fontWeight: selected ? '600' : '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, issueCount ? `${part.name} · QA ${issueCount}` : part.name)
+          h('div', { style: { marginTop: '6px', fontSize: '10px', color: blocked ? 'rgba(252,165,165,0.95)' : issueCount ? 'rgba(251,191,36,0.95)' : selected ? 'rgba(111,217,184,0.98)' : 'rgba(160,160,160,0.85)', fontWeight: selected ? '600' : '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, issueCount ? `${part.name} · QA ${issueCount}` : part.name)
         ])
       })
       ].filter(Boolean))
@@ -13808,7 +13808,7 @@
       renderSplitDrawingActionGrid([
         renderSplitDrawingControlButton({ action: 'export', label: 'PSD导出', style: { gridColumn: '1 / -1' } })
       ], { gridTemplateColumns: 'minmax(0, 1fr)' }),
-      h('div', { [CONTROL_MESSAGE_ATTR]: '1', style: { minWidth: 0, maxWidth: '100%', minHeight: '17px', overflow: 'hidden', overflowWrap: 'anywhere', wordBreak: 'break-all', boxSizing: 'border-box', fontSize: '11px', color: state.messageError ? 'rgba(239,68,68,0.95)' : 'rgba(148,163,184,0.95)', lineHeight: '17px', textAlign: 'center', visibility: state.message ? 'visible' : 'hidden' } }, state.message || ''),
+      h('div', { [CONTROL_MESSAGE_ATTR]: '1', style: { minWidth: 0, maxWidth: '100%', minHeight: '17px', overflow: 'hidden', overflowWrap: 'anywhere', wordBreak: 'break-all', boxSizing: 'border-box', fontSize: '11px', color: state.messageError ? 'rgba(239,68,68,0.95)' : 'rgba(160,160,160,0.95)', lineHeight: '17px', textAlign: 'center', visibility: state.message ? 'visible' : 'hidden' } }, state.message || ''),
       null
     ])
     mountedCard.appendChild(dropZone)
@@ -14906,8 +14906,8 @@
         height: '30px',
         minWidth: '48px',
         borderRadius: '7px',
-        background: 'rgba(15,23,42,0.78)',
-        border: '1px solid rgba(148,163,184,0.30)',
+        background: 'rgba(20,20,20,0.78)',
+        border: '1px solid rgba(160,160,160,0.30)',
         color: 'rgba(219,234,254,0.96)',
         display: 'inline-flex',
         alignItems: 'center',
@@ -23310,7 +23310,7 @@
           borderRadius: '8px',
           background: 'rgba(255,255,255,0.06)',
           border: '1px solid rgba(255,255,255,0.12)',
-          color: 'rgba(226,232,240,0.92)',
+          color: 'rgba(230,230,230,0.92)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -23334,7 +23334,7 @@
           borderRadius: '8px',
           background: 'rgba(255,255,255,0.06)',
           border: '1px solid rgba(255,255,255,0.12)',
-          color: 'rgba(226,232,240,0.92)',
+          color: 'rgba(230,230,230,0.92)',
           display: 'flex',
           alignItems: 'center',
           gap: '8px',
@@ -23816,7 +23816,7 @@
           ctx.lineTo(handle.x, handle.y)
           ctx.stroke()
           ctx.fillStyle = key === 'in' ? 'rgba(251,191,36,0.98)' : 'rgba(34,197,94,0.98)'
-          ctx.strokeStyle = 'rgba(15,23,42,0.94)'
+          ctx.strokeStyle = 'rgba(20,20,20,0.94)'
           ctx.lineWidth = Math.max(1, unit)
           const r = penCanvasUnit(canvas, 4.5)
           ctx.beginPath()
@@ -23834,7 +23834,7 @@
           ? 'rgba(127,29,29,0.98)'
           : modifier === 'corner'
             ? 'rgba(120,53,15,0.98)'
-            : 'rgba(15,23,42,0.96)'
+            : 'rgba(20,20,20,0.96)'
         ctx.lineWidth = Math.max(1, unit)
         ctx.beginPath()
         if (modifier === 'corner') ctx.rect(item.x - r, item.y - r, r * 2, r * 2)
@@ -23856,7 +23856,7 @@
         const marker = tool.hover.point
         const r = penCanvasUnit(canvas, 5.5)
         ctx.fillStyle = 'rgba(96,165,250,0.96)'
-        ctx.strokeStyle = 'rgba(15,23,42,0.96)'
+        ctx.strokeStyle = 'rgba(20,20,20,0.96)'
         ctx.lineWidth = Math.max(1, unit)
         ctx.beginPath()
         ctx.arc(marker.x, marker.y, r, 0, Math.PI * 2)
@@ -26948,7 +26948,7 @@
 
   function renderPenToolCanvas(source, rect) {
     const part = state.penTool && state.penTool.target === 'layer' ? penToolPart() : null
-    if (state.penTool && state.penTool.target === 'layer' && !part) return h('div', { style: { color: 'rgba(191,219,254,0.96)', fontSize: '13px', fontWeight: '600' } }, '请选择图层后使用钢笔工具')
+    if (state.penTool && state.penTool.target === 'layer' && !part) return h('div', { style: { color: 'rgba(111,217,184,0.96)', fontSize: '13px', fontWeight: '600' } }, '请选择图层后使用钢笔工具')
     const size = splitCanvasSizeForSource(source, part)
     const { scale } = splitCanvasScaleInfo(size, rect, 108)
     const cssW = Math.max(1, Math.round(size.width * scale))
@@ -28019,7 +28019,7 @@
 
   function renderMaskEditorCanvas(source, rect) {
     const part = source.part || maskEditorPart()
-    if (!part || !part.dataUrl) return h('div', { style: { color: 'rgba(191,219,254,0.96)', fontSize: '13px', fontWeight: '600' } }, '请选择图层后使用蒙版编辑')
+    if (!part || !part.dataUrl) return h('div', { style: { color: 'rgba(111,217,184,0.96)', fontSize: '13px', fontWeight: '600' } }, '请选择图层后使用蒙版编辑')
     const size = sourceCanvasSizeSync(part)
     const width = size.width
     const height = size.height
@@ -28334,7 +28334,7 @@
       h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'center', maxWidth: '96%' } }, [
         button('\u91cd\u7f6e', () => resetObjectTransferPlacement(size), false),
         button('\u9000\u51fa', () => stopObjectTransferEdit(), false, { [TOOL_ACTION_ATTR]: 'objectTransferExit' }),
-        h('span', { style: { height: '28px', borderRadius: '8px', background: SPLIT_PANEL_BACKGROUND, color: error ? 'rgba(252,165,165,0.96)' : 'rgba(226,232,240,0.72)', display: 'inline-flex', alignItems: 'center', padding: '0 9px', fontSize: '11px', fontWeight: '600', maxWidth: '420px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, error || '\u62d6\u52a8\u4e3b\u4f53\u5b9a\u4f4d\uff0c\u6eda\u8f6e\u6216\u53f3\u4e0b\u89d2\u7b49\u6bd4\u7f29\u653e')
+        h('span', { style: { height: '28px', borderRadius: '8px', background: SPLIT_PANEL_BACKGROUND, color: error ? 'rgba(252,165,165,0.96)' : 'rgba(230,230,230,0.72)', display: 'inline-flex', alignItems: 'center', padding: '0 9px', fontSize: '11px', fontWeight: '600', maxWidth: '420px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, error || '\u62d6\u52a8\u4e3b\u4f53\u5b9a\u4f4d\uff0c\u6eda\u8f6e\u6216\u53f3\u4e0b\u89d2\u7b49\u6bd4\u7f29\u653e')
       ]),
       h('div', Object.assign(splitCanvasPanHandlers(), { onwheel: handleSplitCanvasWheel, style: transparentEditCanvasStyle({ width: '100%', height: '100%', minHeight: 0, overflow: 'auto', borderRadius: '10px', border: '0', padding: '10px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: splitCanvasIdlePanCursor() }) }), art)
     ])
@@ -30710,7 +30710,7 @@
           splitSetPreviewImageNode(sourceResourcePreviewSrc(resource), resource.fileName || resource.name || 'source.png')),
         h('div', { style: { minWidth: 0, height: '30px', display: 'grid', gridTemplateRows: '14px 12px', alignContent: 'center', alignSelf: 'center', gap: '2px' } }, [
           h('div', { style: { fontSize: '12px', lineHeight: '14px', fontWeight: '500', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, source.fileName || resource.name || 'source.png'),
-          h('div', { style: { fontSize: '10px', lineHeight: '12px', color: 'rgba(148,163,184,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, `${Math.max(0, Math.round(Number(size.width) || 0))}x${Math.max(0, Math.round(Number(size.height) || 0))}`)
+          h('div', { style: { fontSize: '10px', lineHeight: '12px', color: 'rgba(160,160,160,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, `${Math.max(0, Math.round(Number(size.width) || 0))}x${Math.max(0, Math.round(Number(size.height) || 0))}`)
         ]),
         h('button', {
           type: 'button',
@@ -30842,13 +30842,13 @@
               splitSetPreviewImageNode(set.previewDataUrl, set.name)),
             h('div', { style: { minWidth: 0, display: 'grid', gap: '3px' } }, [
               h('div', { [SPLIT_SET_TITLE_ATTR]: '1', style: { fontSize: '12px', fontWeight: '400', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, `${set.name}  ·  ${setParts.length} 层`),
-              h('div', { [SPLIT_SET_SOURCE_ATTR]: '1', style: { fontSize: '10px', color: 'rgba(148,163,184,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, set.sourceName || 'source.png')
+              h('div', { [SPLIT_SET_SOURCE_ATTR]: '1', style: { fontSize: '10px', color: 'rgba(160,160,160,0.9)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, set.sourceName || 'source.png')
             ]),
             splitSetChevronNode(expanded)
           ]),
           expanded ? h('div', { style: { display: 'grid', gap: SPLIT_RIGHT_CHILD_LAYER_GAP, padding: `0 ${SPLIT_RIGHT_CHILD_LAYER_INSET}`, minHeight: '0', boxSizing: 'border-box' } }, setParts.slice().reverse().map((part) => renderLayerRow(part, setParts, set.id))) : null
         ])
-      })])) : h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', minHeight: '0', height: '100%', color: 'rgba(226,232,240,0.78)', fontSize: '12px', lineHeight: '1.7', padding: '18px', boxSizing: 'border-box' } }, '资源和图层区域'),
+      })])) : h('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', minHeight: '0', height: '100%', color: 'rgba(230,230,230,0.78)', fontSize: '12px', lineHeight: '1.7', padding: '18px', boxSizing: 'border-box' } }, '资源和图层区域'),
       showRightWorkspaceMergeButton ? renderRightWorkspaceMergeButton() : null
     ]))
     restoreLayerScroll(panel)
@@ -31177,7 +31177,7 @@
             height: '9px',
             borderRadius: '999px',
             background: 'rgba(56,189,248,1)',
-            boxShadow: '0 0 0 2px rgba(15,23,42,0.95), 0 0 8px rgba(56,189,248,0.9)'
+            boxShadow: '0 0 0 2px rgba(20,20,20,0.95), 0 0 8px rgba(56,189,248,0.9)'
           }
         }),
         h('div', {
@@ -31189,7 +31189,7 @@
             height: '9px',
             borderRadius: '999px',
             background: 'rgba(56,189,248,1)',
-            boxShadow: '0 0 0 2px rgba(15,23,42,0.95), 0 0 8px rgba(56,189,248,0.9)'
+            boxShadow: '0 0 0 2px rgba(20,20,20,0.95), 0 0 8px rgba(56,189,248,0.9)'
           }
         })
       ])
@@ -32736,7 +32736,7 @@
     const height = 1200
     const canvas = canvasOfSize(width, height)
     const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    ctx.fillStyle = '#0f172a'
+    ctx.fillStyle = '#141414'
     ctx.fillRect(0, 0, width, height)
     ctx.fillStyle = '#22c55e'
     ctx.fillRect(180, 140, 520, 860)

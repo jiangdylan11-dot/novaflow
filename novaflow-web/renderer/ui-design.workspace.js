@@ -278,7 +278,7 @@
         (shade + 12) + ',' + (shade + 20) + ')" fill-opacity="0.88"/>'
     }).join('')
     const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="' + width + '" height="' + height +
-      '" viewBox="0 0 ' + width + ' ' + height + '"><rect width="100%" height="100%" fill="#12161c"/>' +
+      '" viewBox="0 0 ' + width + ' ' + height + '"><rect width="100%" height="100%" fill="#171717"/>' +
       regions + '</svg>'
     return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg)
   }
@@ -511,7 +511,7 @@
         minWidth: '0',
         minHeight: '0',
         overflow: 'hidden',
-        background: '#0f1113',
+        background: '#111111',
         color: '#fff',
         userSelect: 'none',
       },
@@ -525,7 +525,7 @@
         inset: '0',
         overflow: 'hidden',
         outline: '0',
-        backgroundColor: '#101315',
+        backgroundColor: '#131313',
         backgroundImage: 'linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)',
         cursor: 'default',
       },
@@ -575,7 +575,7 @@
     })
     const emptyHint = createElement(documentRef, 'div', {
       text: '参考图、页面结构、生成器和结果都会成为可连接的画布节点',
-      style: { fontSize: '12px', lineHeight: '1.6', color: 'rgba(226,232,240,0.55)' },
+      style: { fontSize: '12px', lineHeight: '1.6', color: 'rgba(230,230,230,0.55)' },
     })
     const emptyActions = createElement(documentRef, 'div', {
       style: { display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '8px' },
@@ -817,7 +817,7 @@
         const node = graph.nodes.find(function (item) { return item.id === nodeId })
         if (!node || !card || !card.style) return
         const selected = Boolean(selection && selection.nodeId === nodeId)
-        const accent = NODE_ACCENTS[node.type] || '#94a3b8'
+        const accent = NODE_ACCENTS[node.type] || '#A0A0A0'
         card.style.border = selected ? '2px solid ' + accent : '1px solid rgba(255,255,255,0.14)'
         card.style.boxShadow = selected
           ? '0 0 0 2px rgba(255,255,255,0.08), 0 18px 40px rgba(0,0,0,0.42)'
@@ -1428,7 +1428,7 @@
 
     function nodeCardBase(node, selected) {
       const size = nodeSize(node)
-      const accent = NODE_ACCENTS[node.type] || '#94a3b8'
+      const accent = NODE_ACCENTS[node.type] || '#A0A0A0'
       return {
         position: 'absolute',
         left: finite(node.position && node.position.x, 0) + 'px',
@@ -1440,7 +1440,7 @@
         overflow: 'visible',
         border: selected ? '2px solid ' + accent : '1px solid rgba(255,255,255,0.14)',
         borderRadius: '11px',
-        background: '#202326',
+        background: '#232323',
         boxShadow: selected ? '0 0 0 2px rgba(255,255,255,0.08), 0 18px 40px rgba(0,0,0,0.42)' : '0 12px 30px rgba(0,0,0,0.34)',
         boxSizing: 'border-box',
         color: '#fff',
@@ -1771,7 +1771,7 @@
           top: '50%',
           width: '12px',
           height: '12px',
-          border: '2px solid #202326',
+          border: '2px solid #232323',
           borderRadius: '50%',
           background: accent,
           boxSizing: 'border-box',
@@ -1801,7 +1801,7 @@
           left: port.direction === 'in' ? '11px' : 'auto',
           right: port.direction === 'out' ? '11px' : 'auto',
           top: (port.y - 6) + 'px',
-          color: 'rgba(226,232,240,0.58)',
+          color: 'rgba(230,230,230,0.58)',
           fontSize: '10px',
           lineHeight: '12px',
           pointerEvents: 'none',
@@ -1811,7 +1811,7 @@
     }
 
     function cardHeader(node) {
-      const accent = NODE_ACCENTS[node.type] || '#94a3b8'
+      const accent = NODE_ACCENTS[node.type] || '#A0A0A0'
       const header = createElement(documentRef, 'header', {
         'data-novaflow-ui-design-node-drag-handle': node.id,
         style: {
@@ -1936,12 +1936,12 @@
           src: src,
           alt: resource && resource.name || '参考图',
           draggable: false,
-          style: { width: '100%', height: '100%', minHeight: '0', objectFit: 'contain', borderRadius: '7px', background: '#111315' },
+          style: { width: '100%', height: '100%', minHeight: '0', objectFit: 'contain', borderRadius: '7px', background: '#131313' },
         }))
       } else {
         body.appendChild(createElement(documentRef, 'div', {
           text: '资源不可用',
-          style: { display: 'grid', placeItems: 'center', borderRadius: '7px', background: '#151719', color: 'rgba(255,255,255,0.38)', fontSize: '11px' },
+          style: { display: 'grid', placeItems: 'center', borderRadius: '7px', background: '#171717', color: 'rgba(255,255,255,0.38)', fontSize: '11px' },
         }))
       }
       const actionRow = createElement(documentRef, 'div', {
@@ -1983,7 +1983,7 @@
           overflow: 'hidden',
           border: '1px solid rgba(255,255,255,0.13)',
           borderRadius: '7px',
-          background: '#15191d',
+          background: '#191919',
           backgroundImage: 'linear-gradient(rgba(255,255,255,0.026) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.026) 1px,transparent 1px)',
           backgroundSize: '14px 14px',
           cursor: activeTool === 'region' ? 'crosshair' : 'default',
@@ -2084,7 +2084,7 @@
           padding: '3px 6px',
           borderRadius: '5px',
           background: 'rgba(8,11,14,0.82)',
-          color: 'rgba(226,232,240,0.72)',
+          color: 'rgba(230,230,230,0.72)',
           fontSize: '9px',
           lineHeight: '12px',
           pointerEvents: 'none',
@@ -2190,7 +2190,7 @@
           'aria-haspopup': 'dialog',
           title: '点击放大查看',
           'data-novaflow-ui-design-result-preview': node.id,
-          style: { width: '100%', height: '100%', minHeight: '0', objectFit: 'contain', borderRadius: '7px', background: '#111315', cursor: 'zoom-in' },
+          style: { width: '100%', height: '100%', minHeight: '0', objectFit: 'contain', borderRadius: '7px', background: '#131313', cursor: 'zoom-in' },
         })
         function openPreview(event) {
           event && event.preventDefault && event.preventDefault()
@@ -2226,7 +2226,7 @@
       } else {
         body.appendChild(createElement(documentRef, 'div', {
           text: '结果资源不可用',
-          style: { display: 'grid', placeItems: 'center', borderRadius: '7px', background: '#151719', color: 'rgba(255,255,255,0.38)', fontSize: '11px' },
+          style: { display: 'grid', placeItems: 'center', borderRadius: '7px', background: '#171717', color: 'rgba(255,255,255,0.38)', fontSize: '11px' },
         }))
       }
       const actions = createElement(documentRef, 'div', { style: { display: 'flex', gap: '6px' } })
@@ -2235,7 +2235,7 @@
         text: '设为修改底图',
         title: '把这张结果作为下一次生成的修改底图，不会立即生成',
         'data-novaflow-ui-design-result-iterate': node.id,
-        style: { width: '100%', border: '0', borderRadius: '6px', background: '#303036', color: '#ddd6fe', fontSize: '9px', cursor: 'pointer' },
+        style: { width: '100%', border: '0', borderRadius: '6px', background: '#323232', color: '#ddd6fe', fontSize: '9px', cursor: 'pointer' },
       })
       iterate.addEventListener('click', function (event) {
         event && event.stopPropagation && event.stopPropagation()
@@ -2286,7 +2286,7 @@
             padding: '0',
             border: '2px solid #fbbf24',
             borderRadius: '5px',
-            background: '#202326',
+            background: '#232323',
             cursor: 'nwse-resize',
             boxShadow: '0 0 0 2px rgba(0,0,0,0.34)',
             zIndex: '7',
@@ -2365,7 +2365,7 @@
           cx: '0',
           cy: '0',
           r: '9',
-          fill: '#202326',
+          fill: '#232323',
           stroke: color,
           'stroke-width': '1.5',
         }))
@@ -2463,7 +2463,7 @@
             padding: '0 10px',
             border: primary ? '1px solid rgba(86,239,180,0.55)' : '1px solid rgba(255,255,255,0.12)',
             borderRadius: '8px',
-            background: primary ? '#176b50' : '#25282b',
+            background: primary ? '#176b50' : '#282828',
             color: '#fff',
             fontSize: '11px',
             fontWeight: '850',
