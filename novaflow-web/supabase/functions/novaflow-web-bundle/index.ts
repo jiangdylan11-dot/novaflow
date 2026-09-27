@@ -729,7 +729,7 @@ const WORKFLOW_MODULES = Object.freeze({
     runtime: 'image', kind: 'image', price: 'image',
     positional: true,
     methods: [
-      'defaultQwenInpaintWorkflow', 'defaultRmbgWorkflow', 'samPointWorkflowFromPrompts',
+      'defaultQwenInpaintWorkflow', 'defaultRemovalInpaintWorkflow', 'defaultRmbgWorkflow', 'samPointWorkflowFromPrompts',
       'buildSeeThroughSplitWorkflow', 'buildSeedVr2ImageUpscaleWorkflow', 'buildQwenImageOutpaintWorkflow',
       'buildImageAngleAdjustWorkflow', 'buildObjectTransferQwen21Workflow',
       'buildEffectExtractQwenWorkflow', 'buildEffectDeeffectQwenWorkflow'
