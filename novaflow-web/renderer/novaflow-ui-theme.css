@@ -2283,3 +2283,11 @@ html body.novaflow-primary-target-particle [data-novaflow-preview-workspace="1"]
 html[data-novaflow-preview-frame-settling="1"] [data-novaflow-fit-frame="1"] {
   visibility: hidden !important;
 }
+
+/* 2.7 The 动画 prompt box shows focus the way 生图's does: a 1px green line
+   under its header (the textarea's outline, clipped by the frame). */
+html body [data-novaflow-ai-prompt-frame] textarea:focus,
+html body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] [data-novaflow-ai-prompt-frame] textarea:focus {
+  outline: 1px solid var(--nf-focus) !important;
+  outline-offset: 1px !important;
+}

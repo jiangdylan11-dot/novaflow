@@ -24411,8 +24411,9 @@
         box-shadow: none !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-generation-progress="1"]:has(button:not([disabled])) > div:nth-child(2) {
-        width: calc(100% - 36px) !important;
-        max-width: calc(100% - 36px) !important;
+        /* Full length while generating too: the cancel x sits in the label row above. */
+        width: 100% !important;
+        max-width: 100% !important;
         height: ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px !important;
         min-height: ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px !important;
         max-height: ${PARTICLE_DENSITY_SLIDER_TRACK_HEIGHT}px !important;
@@ -78386,9 +78387,10 @@
         border: 1px solid rgba(255,255,255,0.10);
         box-sizing: border-box;
       }
+      /* Full length while running too: the cancel x sits in the text row above. */
       .novaflow-art-generate-progress[data-running="1"] .novaflow-art-generate-progress-track {
-        width: calc(100% - 36px);
-        max-width: calc(100% - 36px);
+        width: 100%;
+        max-width: 100%;
       }
       .novaflow-art-generate-progress-cancel {
         position: absolute;
@@ -79216,8 +79218,8 @@
         overflow: hidden !important;
       }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-progress[data-running="1"] .novaflow-art-generate-progress-track {
-        width: calc(100% - 36px) !important;
-        max-width: calc(100% - 36px) !important;
+        width: 100% !important;
+        max-width: 100% !important;
       }
       #${ART_GENERATE_WORKSPACE_ID}.novaflow-app .novaflow-art-generate-progress-cancel {
         position: absolute !important;
