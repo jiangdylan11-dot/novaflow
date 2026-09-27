@@ -138,6 +138,31 @@ test('Grok retry receives the exact safe failed gate and final error retains rea
   assert.ok(!JSON.stringify(miniMaxH3FailureEnvelope({errorCode:'h3_contract_five_sections',message:privateMessage})).includes('PRIVATE SOURCE'));
 });
 
+test('local I2V/FL2V optimize sends the first/last frames; Grok and T2V stay text-only', async()=>{
+  const renderer=new URL('../../novaflow-web/renderer/',import.meta.url);
+  const source=fs.readFileSync(new URL('novaflow-smart-ai.js',renderer),'utf8').replace(/\r\n/g,'\n');
+  assert.match(source,/captureH3ReferenceFrames\(state\.context\?\.miniMaxH3, miniMaxH3Prepared, !useGrok\)/);
+  const start=source.indexOf('  async function captureH3ReferenceFrames(');
+  const capture=source.slice(start,source.indexOf('\n  }\n',start)+4);
+  const h3={console};h3.globalThis=h3;
+  for(const file of ['h3-prompt-format.js','ai-sequence-minimax-h3-prompt.workflow.js']) vm.runInNewContext(fs.readFileSync(new URL(file,renderer),'utf8'),h3);
+  const context=vm.createContext({
+    Image:class{naturalWidth=1024;naturalHeight=512;async decode(){}},
+    document:{createElement:()=>({getContext:()=>({fillRect(){},drawImage(){}}),toDataURL(){return `data:image/jpeg;base64,${this.width}x${this.height}`;}})},
+    miniMaxH3ImageDataUrl:async src=>src,
+    getMiniMaxH3PromptWorkflow:()=>h3.NovaFlowAiSequenceMiniMaxH3PromptWorkflow,
+  });
+  const captureH3ReferenceFrames=vm.runInContext(`(${capture.trim()})`,context);
+  const slot=(key,name)=>({key,identity:name,occupied:true,kind:'image',fileName:name+'.png',mimeType:'image/png',previewUrl:'data:image/png;base64,'+name});
+  const i2v={mode:'image_video',resources:[slot('first_frame','first')]};
+  const fl2v={mode:'first_last',resources:[slot('first_frame','first'),slot('last_frame','last')]};
+  const frames=async(...args)=>JSON.parse(JSON.stringify(await captureH3ReferenceFrames(...args)));
+  assert.deepEqual(await frames(i2v,null,true),[{label:'<Picture 1>',dataUrl:'data:image/jpeg;base64,768x384'}]);
+  assert.deepEqual((await frames(fl2v,null,true)).map(frame=>frame.label),['<Picture 1>','<Picture 2>']);
+  for(const captured of [i2v,fl2v]) assert.deepEqual(await frames(captured,null,false),[]);
+  assert.deepEqual(await frames({mode:'text_video',resources:[]},null,true),[]);
+});
+
 test('seconds abbreviation in the task is equivalent, mismatched duration remains invalid',()=>{
   for(const api of [local,edge]) {
     assert.match(api.validateFormat(formatted.replace('时长10秒','时长10s'),options),/时长10s/);

@@ -327,7 +327,9 @@ def compact(value):
     return re.sub(r"[^a-z0-9\u3400-\u9fff]", "", unicodedata.normalize("NFKC", value).lower())
 
 
-def validate_enhancement(output, source, user_requirement=""):
+def validate_enhancement(output, source, user_requirement="", loop=None):
+    """loop=None infers a requested loop from the policy words; the five-section
+    path passes its own decision (a first/last-frame video never loops)."""
     if re.search(POLICY["formatOnlyPattern"], user_requirement or "", re.I):
         return output
     source_narrative, result_narrative = narrative(source), narrative(output)
@@ -339,8 +341,10 @@ def validate_enhancement(output, source, user_requirement=""):
         if not after.replace(before, "") or (len(before) >= 40 and len(novel) < 6 and len(after) >= len(before) * 0.9):
             raise ValueError(POLICY["noChangeMessage"])
     intent = user_requirement or source_narrative
-    if (re.search(POLICY["loopPattern"], source_narrative + "\n" + (user_requirement or ""), re.I)
-            and not re.search(POLICY["cancelLoopPattern"], intent, re.I)):
+    if loop is None:
+        loop = (re.search(POLICY["loopPattern"], source_narrative + "\n" + (user_requirement or ""), re.I)
+                and not re.search(POLICY["cancelLoopPattern"], intent, re.I))
+    if loop:
         if not re.search(POLICY["closurePattern"], result_narrative, re.I):
             raise ValueError(POLICY["loopMessage"])
     return output
@@ -351,29 +355,148 @@ SECTION_FIELDS = ["task", "speakers", "description", "dialogue", "constraints"]
 FORMAT_INSTRUCTION = "\n".join(POLICY["formatInstructions"])
 
 
-def compile_action_phases(output, mode, duration, source, requirements="", user_requirement=""):
-    """The model rewrites content; the application owns timing and literal speech."""
-    raw = re.sub(r"\*\*([^*\n]+)\*\*", r"\1", str(output).strip())
-    matches = list(re.finditer(r"(?m)^\s*(?:[1-5][.、)]\s*)?(概述|起始|递进|收束|约束)\s*[:：]\s*", raw))
-    if [m[1] for m in matches] != ["概述", "起始", "递进", "收束", "约束"] or raw[:matches[0].start()].strip():
-        raise ValueError("模型未返回完整的概述、三阶段动作与融合后的约束")
-    parts = [raw[m.end():matches[i+1].start() if i+1<len(matches) else len(raw)].strip() for i,m in enumerate(matches)]
-    if any(not re.search(r"[\u3400-\u9fffA-Za-z]", p) for p in parts):
-        raise ValueError("优化内容不能为空")
-    overview, phases, constraints = parts[0], parts[1:4], parts[4]
-    # Sustained idle/stillness can span several phases; a loop may end at its
-    # initial pose. Novelty belongs to the whole rewrite, not pairwise stages.
-    validate_enhancement(overview + "\n" + "\n".join(phases), source, user_requirement)
+PHASE_LABELS = ("概述", "起始", "递进", "收束", "约束")
+MODE_NAMES = {"T2VA": "文生视频", "I2VA": "图生视频", "FL2VA": "首尾帧视频", "L2VA": "视频参考", "REF2VA": "多参视频"}
+# Special-case rules reach the local model only when the user's own words ask
+# for them; sent unconditionally they hijack ordinary actions. "leak" finds the
+# same rule copied into an answer whose user never asked for it.
+CONDITIONAL_RULES = (
+    {"name": "idle", "ask": r"待机|(?:仅|只)[^，。；,;\n]{0,4}呼吸|\bidle\b|only\s+breath",
+     "rule": "仅呼吸待机：只写胸肩随呼吸微微起伏、回落；头部朝向、手臂和身体位置保持不变，不要写成抬头、转头或抬手。状态不变时，几个阶段可以写同样的内容。",
+     "leak": r"胸肩|呼吸待机|仅呼吸", "label": "呼吸待机、胸肩起伏"},
+    {"name": "still", "ask": r"完全静止|保持静止|静止不动|一动不动|纹丝不动|\bmotionless\b",
+     "rule": "静止：用户要求静止的主体或部分全程不动，只保留用户允许的变化；状态不变时几个阶段可以写同样的内容。", "leak": None, "label": ""},
+    {"name": "loop", "ask": r"循环|无缝(?:循环|衔接|回到)|\bloop(?:ing)?\b|seamless\s+loop",
+     "rule": "循环：收束时动作平滑回到起始姿态，首尾无缝衔接。",
+     "leak": r"(?:动作|姿态|视频|画面|片段|整体|\d+(?:\.\d+)?秒)循环|循环(?:播放|周期|衔接|往复|(?=[，,。；;\s]|$))"
+             r"|无缝(?:循环|回到|衔接下一)|下一轮|首尾(?:姿态|动作|状态)?(?:一致|闭合|重合|无缝)", "label": "循环、无缝衔接"},
+    {"name": "background", "ask": r"绿幕|蓝幕|绿色(?:的)?(?:幕布|背景|屏幕)|纯色背景|纯(?:白|黑|绿|蓝|灰)色?背景|白底|黑底|green\s*screen|chroma",
+     "rule": "纯色背景：背景颜色、亮度和质感全程不变，不添加阴影、渐变、场景或光效。",
+     "leak": r"绿幕|蓝幕|绿色(?:的)?(?:幕布|背景|屏幕)|纯绿", "label": "绿幕背景"},
+    {"name": "camera", "ask": r"固定机位|机位固定|镜头固定|固定镜头|锁定镜头|镜头不动|静态镜头|static camera|locked camera",
+     "rule": "镜头固定：全程不推拉、不摇移。", "leak": None, "label": ""},
+)
+
+
+POSE_FREEZE = r"(?:不改变|不改|保持)(?:初始|原有|原来的)?姿[态势]|姿[态势](?:和[^，,。；;]{0,4})?(?:保持)?不变"
+
+
+def requested_rules(user_text):
+    """Names of the special-case rules the user's own source or requirement asks for."""
+    text = str(user_text or "")
+    names = {rule["name"] for rule in CONDITIONAL_RULES if re.search(rule["ask"], text, re.I)}
+    if "loop" in names and re.search(POLICY["cancelLoopPattern"], text, re.I):
+        names.discard("loop")
+    return names
+
+
+def phase_edges(duration):
+    return [round(float(duration) * i / 3, 3) for i in range(4)]
+
+
+def split_action_phases(output):
+    """Find the five labels, accepting 【概述】, **概述**, a bare label line or a short preamble."""
+    text = str(output or "").replace("\ufffd", "").replace("\r\n", "\n").strip()
+    text = re.sub(r"^```[A-Za-z]*[ \t]*\n?|\n?```$", "", text).strip()
+    text = re.sub(r"\*\*|__", "", text)
+    text = re.sub(r"<\s*(Picture|Video|Audio)\s*([1-9]\d*)\s*>", lambda m: f"<{m[1].capitalize()} {m[2]}>", text, flags=re.I)
+    labels = "|".join(PHASE_LABELS)
+    note = r"(?:[ \t]*[（(][^（）()\n]{0,24}[）)])?"
+    # Labels run together on one line.
+    text = re.sub(rf"(?<=[。；;！!？? \t])[ \t]*(?=(?:{labels}){note}[ \t]*[:：])", "\n", text)
+    header = re.compile(
+        rf"(?m)^[ \t>#*\-•]*(?:[1-5][.、)）][ \t]*)?"
+        rf"(?:【({labels})】|\[({labels})\]|({labels})(?:[ \t]*[1-9]\d*)?(?={note}[ \t]*(?:[:：]|$)))"
+        rf"{note}[ \t]*[:：]?[ \t]*")
+    found = []
+    for match in header.finditer(text):
+        if len(found) < len(PHASE_LABELS) and (match[1] or match[2] or match[3]) == PHASE_LABELS[len(found)]:
+            found.append(match)
+    if len(found) < len(PHASE_LABELS) - 1:
+        raise ValueError("模型没有按格式给出概述、起始、递进、收束、约束五个标签")
+    parts = [text[m.end():found[i + 1].start() if i + 1 < len(found) else len(text)].strip() for i, m in enumerate(found)]
+    if len(parts) < len(PHASE_LABELS):
+        # Only the 约束 label is missing: its numbered list follows the last phase.
+        split = re.search(r"(?m)^[ \t]*(?:1[.、)）]|[（(]1[)）]|[-•])[ \t]*\S", parts[-1])
+        at = split.start() if split else len(parts[-1])
+        parts[-1:] = [parts[-1][:at].strip(), parts[-1][at:].strip()]
+    return parts
+
+
+def clean_phase_text(value):
+    """One readable paragraph: no list marks, quote marks or copied time ranges."""
+    lines = []
+    for line in str(value or "").splitlines():
+        line = re.sub(r"^[ \t>#*\-•]+", "", line).strip()
+        line = re.sub(r"^[（(]?\d+(?:\.\d+)?\s*(?:s|秒)?\s*[-–—~～至]\s*\d+(?:\.\d+)?\s*(?:s|秒)[）)]?\s*[:：，,]?\s*", "", line, flags=re.I)
+        if line:
+            lines.append(line if re.search(r"[。！？!?；;…，,、：:]$", line) else line + "。")
+    return "".join(lines)
+
+
+def clean_constraints(value):
+    """Constraint items, whatever list style the model used."""
+    text = re.sub(r"(?<=[。；; ])\s*(?=(?:\d+[.、)）]|[（(]\d+[)）])(?!\d))", "\n", str(value or ""))
+    items = []
+    for line in text.splitlines():
+        line = re.sub(r"^[ \t>#*\-•]*(?:约束[ \t]*\d*[ \t]*[:：])?[ \t]*(?:(?:\d+[.、)）]|[（(]\d+[)）])(?!\d)[ \t]*)?", "", line)
+        line = re.sub(r"[；;，,、\s]+$", "", line).strip()
+        line = line if re.search(r"[。！？!?…]$", line) else line + "。"
+        if re.search(r"[\u3400-\u9fffA-Za-z]", line):
+            items.append(line)
+    return items
+
+
+def drop_matching_clauses(text, pattern):
+    clauses = re.findall(r"[^，,。！？；;!?\n]*[，,。！？；;!?\n]?", str(text or ""))
+    kept = "".join(clause for clause in clauses if clause and not re.search(pattern, clause, re.I))
+    return re.sub(r"[，,、]+(?=[。！？；;!?\n]|$)", "。", kept).strip(" ，,\n")
+
+
+def compile_action_phases(output, mode, duration, source, requirements="", user_requirement="", strict_rules=False):
+    """The model rewrites content; the application owns timing and literal speech.
+
+    With strict_rules an answer that copies a special-case rule the user never
+    asked for is rejected, so the caller can ask once more; otherwise only the
+    clauses carrying that rule are dropped.
+    """
+    parts = split_action_phases(output)
+    mode = str(mode or "").upper()
     inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements)
     refs = sorted(set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory[1] if inventory else source)))
-    if mode.upper() == "I2VA":
+    if mode == "I2VA":
         refs = ["<Picture 1>"]
         binding = "<Picture 1> 为起始首帧。"
-    elif mode.upper() == "FL2VA":
+    elif mode == "FL2VA":
         refs = ["<Picture 1>", "<Picture 2>"]
         binding = "<Picture 1> 为起始首帧，<Picture 2> 为结束尾帧。"
     else:
         binding = "参考媒体：" + "、".join(refs) + "。" if refs else "无参考媒体。"
+    # The program owns media bindings; a label the model invented is dropped.
+    keep_refs = lambda s: re.sub(r"<(?:Picture|Video|Audio) [1-9]\d*>", lambda m: m[0] if m[0] in refs else "", s)
+    overview = keep_refs(clean_phase_text(parts[0]))
+    phases = [keep_refs(clean_phase_text(p)) for p in parts[1:4]]
+    constraints = [keep_refs(item) for item in clean_constraints(parts[4])]
+    asked = requested_rules(source + "\n" + (user_requirement or ""))
+    everything = "\n".join([overview, *phases, *constraints])
+    leaked = [rule for rule in CONDITIONAL_RULES if rule["leak"] and rule["name"] not in asked and re.search(rule["leak"], everything, re.I)]
+    if leaked and strict_rules:
+        raise ValueError("写入了用户没有要求的" + "、".join(rule["label"] for rule in leaked))
+    for rule in leaked:
+        overview = drop_matching_clauses(overview, rule["leak"])
+        phases = [drop_matching_clauses(p, rule["leak"]) for p in phases]
+        constraints = [item for item in constraints if not re.search(rule["leak"], item, re.I)]
+    has_text = lambda s: re.search(r"[\u3400-\u9fffA-Za-z]", s)
+    if not asked & {"idle", "still"}:
+        # A constraint freezing the pose contradicts the motion the phases describe.
+        constraints = [item for item in (drop_matching_clauses(item, POSE_FREEZE) for item in constraints) if has_text(item)]
+    if not has_text(overview) or not any(has_text(p) for p in phases):
+        raise ValueError("优化内容不能为空")
+    if not constraints:
+        constraints = ["保持主体身份、外观与场景前后一致。"]
+    # Sustained idle/stillness can span several phases; a loop may end at its
+    # initial pose. Novelty belongs to the whole rewrite, not pairwise stages.
+    validate_enhancement(overview + "\n" + "\n".join(phases), source, user_requirement, loop="loop" in asked and mode != "FL2VA")
     speech = re.findall(r'[（(]S([1-9]\d*)[）)]\s*[:：]\s*[“"]([^”"]+)[”"]', source)
     speakers = sorted({int(n) for n, _ in speech} | {int(n) for n in re.findall(r"<Subject ([1-9]\d*)>", source)})
     speaker_lines = {}
@@ -383,16 +506,20 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
             speaker_lines[int(definition[1])] = line.strip()
     speaker_text = "\n".join(speaker_lines.get(n, f"<Subject {n}> = (S{n})，原提示词对应的说话者。") for n in speakers) or "无说话者"
     dialogue = "\n".join(f'(S{n})：“{words}”' for n, words in speech) or "无台词"
-    edges = [round(float(duration)*i/3, 3) for i in range(4)]
+    edges = phase_edges(duration)
     spans = []
     for i, phase in enumerate(phases):
-        if spans and compact(spans[-1][2]) == compact(phase):
-            spans[-1][1] = edges[i+1]
-        else:
-            spans.append([edges[i], edges[i+1], phase])
-    timeline = "\n\n".join(f"{start:g}-{end:g}s：{phase}" for start,end,phase in spans)
-    value = {"task": f"{mode}，时长{float(duration):g}秒。{binding}", "speakers":speaker_text,
-             "description": overview + "\n\n" + timeline, "dialogue":dialogue, "constraints":constraints}
+        # An emptied or repeated phase extends the one before it.
+        if spans and (not has_text(phase) or compact(spans[-1][2]) == compact(phase)):
+            spans[-1][1] = edges[i + 1]
+        elif has_text(phase):
+            spans.append([spans[-1][1] if spans else 0, edges[i + 1], phase])
+    if mode == "FL2VA" and "<Picture 2>" not in spans[-1][2]:
+        spans[-1][2] += "结束时画面与 <Picture 2> 一致。"
+    timeline = "\n\n".join(f"{start:g}-{end:g}s：{phase}" for start, end, phase in spans)
+    value = {"task": f"{MODE_NAMES.get(mode, mode)}，时长{float(duration):g}秒。{binding}", "speakers": speaker_text,
+             "description": overview + "\n\n" + timeline, "dialogue": dialogue,
+             "constraints": "\n".join(f"{n}. {item}" for n, item in enumerate(constraints, 1))}
     return validate_format(json.dumps(value, ensure_ascii=False), mode, duration, source, requirements)
 
 

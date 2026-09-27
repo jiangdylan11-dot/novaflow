@@ -567,10 +567,13 @@
     return Object.freeze(hydrated);
   }
 
-  async function captureH3ReferenceFrames(captured, prepared) {
-    if (captured?.mode !== 'multi_reference') return [];
+  // 图生视频/首尾帧 send their frames only to the local model (localFrames),
+  // so it animates what the pictures show; Grok requests stay text-only.
+  async function captureH3ReferenceFrames(captured, prepared, localFrames = false) {
+    const frameMode = captured?.mode === 'image_video' || captured?.mode === 'first_last';
+    if (captured?.mode !== 'multi_reference' && !(localFrames && frameMode)) return [];
     const catalog = prepared?.protocol?.references?.references
-      || getMiniMaxH3PromptWorkflow().createReferenceCatalog({mode:'multi_reference', resources:captured.resources}).references;
+      || getMiniMaxH3PromptWorkflow().createReferenceCatalog({mode:captured.mode, resources:captured.resources}).references;
     const frames = [];
     const draw = media => {
       const w = media.videoWidth || media.naturalWidth, h = media.videoHeight || media.naturalHeight;
@@ -4331,7 +4334,11 @@
         )
         : null;
       const h3ReferenceFrames = isMiniMaxH3OptimizeRequest
-        ? await captureH3ReferenceFrames(state.context?.miniMaxH3, miniMaxH3Prepared)
+        ? await captureH3ReferenceFrames(state.context?.miniMaxH3, miniMaxH3Prepared, !useGrok).catch((error) => {
+          // An unreadable first/last frame must not block 优化提示词; the text still goes.
+          if (state.context?.miniMaxH3?.mode === 'multi_reference') throw error;
+          return [];
+        })
         : [];
       miniMaxH3ReversePrepared = isMiniMaxH3ReverseRequest
         ? await prepareMiniMaxH3ReverseRequest(prompt, requirements)

@@ -1,8 +1,10 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sys
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -108,7 +110,7 @@ class H3EnhancementTest(unittest.TestCase):
         requirement = '镜头缓慢拉近，机器人抬起右手再放下。'
         assistant = service.PromptAssistant()
         def generate(prompt, **kwargs):
-            self.assertIn('User requirement:\n' + requirement, prompt)
+            self.assertRegex(prompt, r'补充要求[^\n]*\n' + re.escape(requirement))
             return five_wrap(requirement + '手臂先到胸前短暂停留，然后逐步回落到身侧。')
         assistant.generate = generate
         result = assistant.optimize_prompt({'purpose':'minimax-h3-prompt-enhance', 'h3Mode':'T2VA', 'durationSeconds':2, 'currentPrompt':source, 'requirements':'Source prompt:\n'+source+'\n\n'+requirement})
@@ -146,8 +148,10 @@ class H3EnhancementTest(unittest.TestCase):
         assistant.generate = generate
         result = assistant.optimize_prompt({"purpose":"minimax-h3-prompt-enhance", "h3Mode":"T2VA", "durationSeconds":2, "currentPrompt":case["source"]})
         self.assertEqual(len(calls), 2)
-        self.assertIn(INSTRUCTION, calls[0][1]["llama_template"])
-        self.assertIn(INSTRUCTION, calls[1][1]["llama_template"])
+        for _, kwargs in calls:
+            # The local model gets its own short Chinese instruction, not the shared policy block.
+            self.assertIn(service.MINIMAX_H3_FIVE_SECTION_RULES, kwargs["llama_template"])
+            self.assertNotIn(INSTRUCTION, kwargs["llama_template"])
         self.assertIn("回到起始", result["positivePrompt"])
         self.assertIn("【连续性与约束】", result["positivePrompt"])
 
@@ -162,6 +166,128 @@ class H3EnhancementTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "原提示词未修改"):
             assistant.optimize_prompt({"purpose":"minimax-h3-prompt-enhance", "h3Mode":"T2VA", "durationSeconds":2, "currentPrompt":source})
         self.assertEqual(len(calls), 2)
+
+
+PHASES = ["橘猫趴在洒满阳光的窗台上，镜头从侧面跟随。", "橘猫前爪向前伸直，背部下压，缓慢伸懒腰。",
+          "后腿蹬起，身体前倾，从窗台一跃而下。", "四爪落地，尾巴轻摆，站稳后抬头。", "1. 保持橘猫外观一致\n2. 动作连贯"]
+CAT = "一只橘猫在窗台上伸懒腰，然后跳下窗台"
+
+
+def phases(labels=("概述", "起始", "递进", "收束", "约束"), form="{label}：{text}", joiner="\n"):
+    return joiner.join(form.format(label=label, text=text) for label, text in zip(labels, PHASES))
+
+
+class H3FiveSectionLocalTest(unittest.TestCase):
+    def run_local(self, outputs, payload):
+        assistant = service.PromptAssistant()
+        calls = []
+        answers = iter(outputs)
+
+        def generate(prompt, **kwargs):
+            calls.append((prompt, kwargs))
+            return next(answers)
+        assistant.generate = generate
+        base = {"purpose": "minimax-h3-prompt-enhance", "durationSeconds": 5, "h3Mode": "text_video", "currentPrompt": CAT}
+        return assistant.optimize_prompt({**base, **payload}), calls
+
+    def test_label_spellings_and_garbage_characters_are_normalized(self):
+        expected = compile_action_phases(phases(), "T2VA", 5, CAT)
+        self.assertTrue(expected.startswith("【任务定位】\n文生视频，时长5秒。无参考媒体。"))
+        self.assertIn("0-1.667s：橘猫前爪向前伸直", expected)
+        variants = [
+            phases(form="【{label}】{text}"), phases(form="**{label}**：{text}"), phases(form="**{label}：**{text}"),
+            phases(form="{label}\n{text}"), phases(form="### {label}\n{text}"), "好的，以下是优化后的提示词：\n" + phases(),
+            phases(joiner=" ").replace("\n", " "), phases().replace("起始：", "起始（0-1.7秒）：").replace("1. 保持", "1. " + chr(0xFFFD) + "保持"),
+        ]
+        for variant in variants:
+            with self.subTest(variant=variant[:24]):
+                self.assertEqual(compile_action_phases(variant, "T2VA", 5, CAT), expected)
+        # A missing 约束 label: the numbered list after the last phase is the constraints.
+        self.assertEqual(compile_action_phases(phases().replace("约束：", "\n"), "T2VA", 5, CAT), expected)
+        numbered = phases().replace("约束：1. 保持橘猫外观一致\n2. 动作连贯", "约束1：保持橘猫外观一致\n约束2：动作连贯")
+        self.assertEqual(compile_action_phases(numbered, "T2VA", 5, CAT), expected)
+        with self.assertRaises(ValueError):
+            compile_action_phases(phases().replace("递进：", ""), "T2VA", 5, CAT)
+
+    def test_constraint_freezing_the_pose_is_dropped_unless_asked(self):
+        answer = phases().replace("1. 保持橘猫外观一致", "1. 动作从图中姿态自然开始，不改变初始姿态\n3. 姿态和背景保持不变")
+        text = compile_action_phases(answer, "T2VA", 5, CAT)
+        self.assertIn("【连续性与约束】\n1. 动作从图中姿态自然开始。\n2. 动作连贯。", text)
+        self.assertNotIn("不改变初始姿态", text)
+        self.assertIn("不改变初始姿态", compile_action_phases(answer, "T2VA", 5, "橘猫蹲坐在窗台上，保持静止"))
+
+    def test_first_last_frame_video_ends_on_its_last_frame_not_a_loop(self):
+        answer = ("概述：女神在台阶上静坐，镜头固定。\n起始：权杖上的光点缓缓飘起。\n递进：光点绕着权杖慢慢旋转。\n"
+                  "收束：光点落定，画面与 < Picture 2 > 一致。\n约束：1. 外观与背景和两张图一致")
+        result, _ = self.run_local([answer], {"h3Mode": "first_last", "currentPrompt": "从首帧无缝过渡到尾帧"})
+        self.assertIn("画面与 <Picture 2> 一致。", result["positivePrompt"])
+        # A requested loop in text-to-video still has to close.
+        with self.assertRaisesRegex(ValueError, "循环"):
+            self.run_local([phases(), phases()], {"currentPrompt": CAT + "，无缝循环"})
+
+    def test_rules_are_sent_only_when_the_user_asks(self):
+        _, calls = self.run_local([phases()], {})
+        prompt, kwargs = calls[0]
+        for leaked in ["胸肩", "呼吸", "绿", "循环", "无缝", "下一轮", "User requirement", "补充要求", "I2VA", "T2VA"]:
+            self.assertNotIn(leaked, prompt + kwargs["llama_template"])
+        self.assertIn("任务：文生视频，时长5秒。", prompt)
+        self.assertIn("起始（0-1.7秒）", prompt)
+        idle = "一位女战士站立，角色仅呼吸待机，绿幕背景，无缝循环，镜头固定"
+        prompt = service.build_minimax_h3_five_section_request(idle, "", "T2VA", 3)
+        for asked in ["仅呼吸待机：", "纯色背景：", "循环：", "镜头固定："]:
+            self.assertIn(asked, prompt)
+        self.assertNotIn("保持静止：", prompt)
+        self.assertIn("收束（2-3秒）：动作怎样平滑回到起始姿态", prompt)
+
+    def test_copied_rule_text_is_asked_once_then_dropped(self):
+        leaky = phases().replace("镜头从侧面跟随。", "背景为纯绿色幕布，镜头从侧面跟随。").replace(
+            "站稳后抬头。", "站稳后抬头，准备进入下一轮循环。") + "\n3. 仅呼吸待机，胸肩随呼吸起伏"
+        result, calls = self.run_local([leaky, leaky], {})
+        self.assertEqual(len(calls), 2)
+        self.assertIn("写入了用户没有要求的", calls[1][0])
+        text = result["positivePrompt"]
+        for leaked in ["绿", "下一轮", "循环", "胸肩", "仅呼吸"]:
+            self.assertNotIn(leaked, text)
+        self.assertIn("从窗台一跃而下", text)
+        self.assertIn("站稳后抬头。", text)
+        # A broken retry still returns the first answer without the copied rule text.
+        result, calls = self.run_local([leaky, "无法完成"], {})
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn("绿", result["positivePrompt"])
+        self.assertIn("伸懒腰", result["positivePrompt"])
+        # When the user asked for it, the same text is kept.
+        asked = CAT + "，绿幕背景"
+        result, calls = self.run_local([leaky.replace("准备进入下一轮循环", "停在原地").replace("\n3. 仅呼吸待机，胸肩随呼吸起伏", "")], {"currentPrompt": asked})
+        self.assertEqual(len(calls), 1)
+        self.assertIn("纯绿色幕布", result["positivePrompt"])
+
+    def test_i2v_and_fl2v_models_see_their_frames(self):
+        frame = "data:image/jpeg;base64,/9j/AAAA"
+        with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)):
+            result, calls = self.run_local([phases()], {"h3Mode": "image_video", "currentPrompt": "她转身向镜头挥手",
+                                                        "h3ReferenceFrames": [{"label": "<Picture 1>", "dataUrl": frame}]})
+            prompt, kwargs = calls[0]
+            self.assertEqual(kwargs["images"], [("tensor", frame)])
+            self.assertEqual(prompt.count(service.QWEN3_CHAT_VISION_TOKEN), 1)
+            self.assertIn("<Picture 1> 是视频的第一帧", prompt)
+            self.assertTrue(result["positivePrompt"].startswith("【任务定位】\n图生视频，时长5秒。<Picture 1> 为起始首帧。"))
+            frames = [{"label": "<Picture 1>", "dataUrl": frame}, {"label": "<Picture 2>", "dataUrl": frame + "B"}]
+            result, calls = self.run_local([phases()], {"h3Mode": "first_last", "currentPrompt": "从首帧自然过渡到尾帧", "h3ReferenceFrames": frames})
+            prompt, kwargs = calls[0]
+            self.assertEqual(len(kwargs["images"]), 2)
+            self.assertEqual(prompt.count(service.QWEN3_CHAT_VISION_TOKEN), 2)
+            self.assertIn("收束（3.3-5秒）：动作怎样完成，最后的画面与 <Picture 2> 一致", prompt)
+            self.assertIn("首尾帧视频，时长5秒。<Picture 1> 为起始首帧，<Picture 2> 为结束尾帧。", result["positivePrompt"])
+            self.assertIn("3.333-5s：四爪落地，尾巴轻摆，站稳后抬头。结束时画面与 <Picture 2> 一致。", result["positivePrompt"])
+        # An unreadable picture never fails the request; the model is told it cannot see it.
+        with mock.patch.object(service, "data_url_to_tensor", side_effect=OSError("broken")):
+            result, calls = self.run_local([phases()], {"h3Mode": "image_video", "currentPrompt": "她转身向镜头挥手",
+                                                        "h3ReferenceFrames": [{"label": "<Picture 1>", "dataUrl": frame}]})
+        prompt, kwargs = calls[0]
+        self.assertIsNone(kwargs["images"])
+        self.assertNotIn(service.QWEN3_CHAT_VISION_TOKEN, prompt)
+        self.assertIn("你看不到这张图", prompt)
+        self.assertIn("【任务定位】\n图生视频", result["positivePrompt"])
 
 
 if __name__ == "__main__":
