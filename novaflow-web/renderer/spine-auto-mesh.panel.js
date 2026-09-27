@@ -1288,7 +1288,7 @@
       width: '100%', height: '30px', borderRadius: '6px', border: '0',
       cursor: 'pointer', fontSize: '12px', fontWeight: '600',
       color: primary ? '#ffffff' : 'rgba(255,255,255,0.86)',
-      background: primary ? '#17A582' : '#3a3a3a'
+      background: primary ? '#1EA672' : '#3a3a3a'
     })
     if (primary) btn.setAttribute('data-novaflow-solid-green', '1')
   }
@@ -3077,7 +3077,7 @@
       for (const id of Object.keys(toolBtns)) {
         const b = toolBtns[id]
         const on = bones.editing && st.tool === id
-        setStyle(b, 'background', on ? '#17A582' : '#333333')
+        setStyle(b, 'background', on ? '#1EA672' : '#333333')
         setStyle(b, 'color', on ? '#ffffff' : 'rgba(255,255,255,0.92)')
         setDisabled(b, !bones.editing)
         setStyle(b, 'opacity', bones.editing ? '1' : '0.5')

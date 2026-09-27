@@ -37,7 +37,7 @@
     bodyPadding: '6px 12px 8px',
     bodyGap: '6px',
   })
-  const AIFX_ACCENT = '#17A582'
+  const AIFX_ACCENT = '#1EA672'
   const AIFX_SLIDER_ACCENT = '#20c997'
   const AIFX_SURFACE_BASE = '#181818'
   const AIFX_SURFACE_ELEVATED = '#333333'
@@ -1211,14 +1211,14 @@
         box-shadow: 0 0 0 1px ${AIFX_ACCENT} inset !important;
       }
       #${APP_ID} .aifx-seed-lock[data-action="lock-seed"]:not(:disabled):hover {
-        background: rgba(23,165,130,0.22) !important;
+        background: rgba(30,166,114,0.22) !important;
       }
       #${APP_ID} .aifx-seed-lock[data-action="lock-seed"].is-on {
         background: ${AIFX_ACCENT} !important;
         color: #fff !important;
       }
       #${APP_ID} .aifx-seed-lock[data-action="lock-seed"].is-on:not(:disabled):hover {
-        background: #1AB891 !important;
+        background: #22B87F !important;
       }
       #${APP_ID} .aifx-seed-lock[data-action="lock-seed"]:disabled {
         opacity: 0.45;
@@ -1241,7 +1241,7 @@
         box-shadow: none !important;
       }
       #${APP_ID} .aifx-candidates[data-candidates] button.aifx-candidate:hover {
-        border-color: rgba(23,165,130,0.5) !important;
+        border-color: rgba(30,166,114,0.5) !important;
       }
       #${APP_ID} .aifx-candidates[data-candidates] button.aifx-candidate.is-active {
         border-color: ${AIFX_ACCENT} !important;

@@ -549,7 +549,7 @@
       }, '取消')
       const okBtn = el('button', {
         height: '28px', padding: '0 16px', borderRadius: '6px', border: '0',
-        background: '#17A582', color: '#ffffff', cursor: 'pointer', fontSize: '12px', fontWeight: '600'
+        background: '#1EA672', color: '#ffffff', cursor: 'pointer', fontSize: '12px', fontWeight: '600'
       }, '完成')
       bar.appendChild(undoBtn); bar.appendChild(resetBtn); bar.appendChild(cancelBtn); bar.appendChild(okBtn)
       overlay.appendChild(bar)
@@ -591,7 +591,7 @@
       function syncTools() {
         for (const t of TOOLS) {
           const b = toolButtons[t.id]
-          b.style.background = tool === t.id ? '#17A582' : '#3a3a3a'
+          b.style.background = tool === t.id ? '#1EA672' : '#3a3a3a'
           b.style.color = tool === t.id ? '#ffffff' : 'rgba(255,255,255,0.86)'
         }
         canvas.style.cursor = tool === 'move' ? 'default' : 'crosshair'

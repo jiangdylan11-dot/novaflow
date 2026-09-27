@@ -24,9 +24,9 @@
  * alter what anything does. Nothing here reads or writes application state.
  *
  * Colour carries rank, not decoration:
- *   green  #17A582  the one main action of a surface
+ *   green  #1EA672  the one main action of a surface
  *   green  #1C4136  the selected entry (fill + text, never an edge light)
- *   green  #1BB28C  "on" - switches, slider fills, checkboxes
+ *   green  #1EA672  "on" - switches, slider fills, checkboxes
  *   grey            everything else - 导出 and AI 助手 included
  *
  * Yellow is NOT an action colour here. It was specified for AI 助手 and then
@@ -55,13 +55,13 @@
   --nf-text-faint: #6E747A;
 
   /* Rank colours. */
-  --nf-primary: #17A582;
-  --nf-primary-hover: #1AB891;
-  --nf-primary-press: #148F71;
+  --nf-primary: #1EA672;
+  --nf-primary-hover: #22B87F;
+  --nf-primary-press: #1A8F62;
   --nf-selected-bg: #1C4136;
   --nf-selected-fg: #6FD9B8;
   --nf-selected-line: #29594A;
-  --nf-on: #1BB28C;
+  --nf-on: #1EA672;
   /* Accent on one descriptive login tag only; not an action colour. */
   --nf-helper: #E9C55C;
 
@@ -668,7 +668,7 @@ html[data-novaflow-layout-tier="stack"] [data-novaflow-ai-connection-status] {
 }
 
 /* 2.0i Sliders.
-   The reference draws every slider as the browser's own, tinted #1BB28C, on a
+   The reference draws every slider as the browser's own, tinted #1EA672, on a
    3px box (accent-color; light scheme). The runtime had fifteen custom thumb
    and track skins; the :not(#id) lifts this over all of them. */
 html body input[type="range"]:not(#nf-native-range) {
@@ -677,7 +677,7 @@ html body input[type="range"]:not(#nf-native-range) {
      focus ring (below) stays. */
   -webkit-appearance: none !important;
   appearance: none !important;
-  background: linear-gradient(90deg, #1bb28c 0, #1bb28c var(--nf-range-pct, 0%), #3b3b3b var(--nf-range-pct, 0%), #3b3b3b 100%) !important;
+  background: linear-gradient(90deg, #1ea672 0, #1ea672 var(--nf-range-pct, 0%), #3b3b3b var(--nf-range-pct, 0%), #3b3b3b 100%) !important;
   height: 3px !important;
   min-height: 3px !important;
   max-height: 3px !important;
@@ -701,7 +701,7 @@ html body input[type="range"]:not(#nf-native-range)::-webkit-slider-thumb {
   height: 13px !important;
   margin-top: -5px !important;
   border-radius: 50% !important;
-  background: #1bb28c !important;
+  background: #1ea672 !important;
   border: 0 !important;
   box-shadow: none !important;
 }
@@ -709,11 +709,11 @@ html body input[type="range"]:not(#nf-native-range):disabled::-webkit-slider-thu
   background: #5a5a5a !important;
 }
 html body input[type="range"]:not(#nf-native-range):focus-visible {
-  outline: 2px solid #1bb28c !important;
+  outline: 2px solid #1ea672 !important;
   outline-offset: 4px !important;
 }
 html body input[type="checkbox"]:not(#nf-native-check) {
-  accent-color: #1bb28c !important;
+  accent-color: #1ea672 !important;
   color-scheme: dark !important;
 }
 
@@ -811,7 +811,7 @@ html body [data-novaflow-ai-state-toggle]::after {
 html body [data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"]:hover,
 html body [data-novaflow-ai-reference-column="1"] [data-nf-upload-dropzone="1"][data-novaflow-ai-reference-hover="1"] {
   --nf-dz-bg: #262626;
-  --nf-dz-bd: #1bb28c;
+  --nf-dz-bd: #1ea672;
 }
 
 /* 2.0q 自动链条 / 实时预览's checkbox drawn as the 27x15 switch; the knob is
@@ -820,7 +820,7 @@ html body :is([data-novaflow-ribbon-chain-toggle-input], [data-novaflow-ribbon-p
   background: radial-gradient(circle at 7.5px 50%, #cacaca 4.5px, transparent 5px), #3e3e3e !important;
 }
 html body :is([data-novaflow-ribbon-chain-toggle-input], [data-novaflow-ribbon-preview-toggle-input], #nf-lift):checked {
-  background: radial-gradient(circle at 19.5px 50%, #ffffff 4.5px, transparent 5px), #1bb28c !important;
+  background: radial-gradient(circle at 19.5px 50%, #ffffff 4.5px, transparent 5px), #1ea672 !important;
 }
 html body :is([data-novaflow-ai-state-toggle], #nf-lift):focus:not(:focus-visible) {
   outline: 0 !important;
@@ -906,7 +906,7 @@ html body [data-novaflow-pair-switch="on"]::after {
   background: #ffffff !important;
 }
 html body [data-novaflow-pair-switch]:has(> button:focus-visible) {
-  outline: 2px solid #1bb28c !important;
+  outline: 2px solid #1ea672 !important;
   outline-offset: 3px !important;
 }
 
@@ -918,8 +918,8 @@ html body [data-novaflow-sprite-editor-lifecycle-stop-delete]:hover {
 /* 2.0x 特效's 模板库, as AI 特效's: the ring on the card under the pointer,
    the red × on hover, the name answering the pointer, the rename field. */
 html body [data-novaflow-template-popup-layer="1"] [data-novaflow-template-tile="1"]:hover {
-  --nf-tpl-bd: #1bb28c;
-  box-shadow: 0 0 0 1px #1bb28c inset !important;
+  --nf-tpl-bd: #1ea672;
+  box-shadow: 0 0 0 1px #1ea672 inset !important;
 }
 html body [data-novaflow-template-popup-layer="1"] [data-novaflow-template-label]:hover {
   background: rgba(255, 255, 255, 0.10) !important;
@@ -932,7 +932,7 @@ html body input.novaflow-template-rename {
   padding: 0 2px !important;
   margin: 0 !important;
   background: #0f0f0f !important;
-  border: 1px solid #1bb28c !important;
+  border: 1px solid #1ea672 !important;
   border-radius: 4px !important;
   color: #ffffff !important;
   font-size: 11px !important;
@@ -1099,7 +1099,7 @@ html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-r
 }
 html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref:hover,
 html body #novaflow-art-generate-workspace.novaflow-app .novaflow-art-generate-ref[data-novaflow-art-generate-ref-drag="1"] {
-  border-color: #1bb28c !important;
+  border-color: #1ea672 !important;
   background: #262626 !important;
   background-color: #262626 !important;
 }
@@ -1210,11 +1210,11 @@ html body .novaflow-app .nf-app-body > div[data-preview-ui][style*="position: fi
 }
 
 /* 3.0h The bundle's solid buttons painted #1ea672 (导出's 序列帧 and its
-   export button, and the like) take the app's one green: #17A582, lit
+   export button, and the like) take the app's one green: #1EA672, lit
    #20b490. The particle chips / segments keep their own "on" look. */
 html body button[style*="background: rgb(30, 166, 114)"]:not([data-novaflow-particle-chip]):not([aria-pressed]) {
-  background: #17A582 !important;
-  background-color: #17A582 !important;
+  background: #1EA672 !important;
+  background-color: #1EA672 !important;
   color: #ffffff !important;
 }
 html body button[style*="background: rgb(30, 166, 114)"]:not([data-novaflow-particle-chip]):not([aria-pressed]):hover:not(:disabled) {
@@ -1591,7 +1591,7 @@ html body #novaflow-png-remove-black-root .nf-prb-upload {
 }
 html body #novaflow-png-remove-black-root .nf-prb-upload:hover {
   background: #262626 !important;
-  border-color: #1bb28c !important;
+  border-color: #1ea672 !important;
 }
 html body #novaflow-png-remove-black-root .nf-prb-btn {
   height: 32px !important;
@@ -1602,7 +1602,7 @@ html body #novaflow-png-remove-black-root .nf-prb-btn {
   box-shadow: none !important;
 }
 html body #novaflow-png-remove-black-root .nf-prb-btn:not(.alt):not(:disabled) {
-  background: #17A582 !important;
+  background: #1EA672 !important;
   color: #ffffff !important;
 }
 html body #novaflow-png-remove-black-root .nf-prb-btn:not(.alt):not(:disabled):hover {
@@ -1759,7 +1759,7 @@ html body #novaflow-video-format-convert-root .nf-vfc-upload {
 }
 html body #novaflow-video-format-convert-root .nf-vfc-upload:hover {
   background: #262626 !important;
-  border-color: #1bb28c !important;
+  border-color: #1ea672 !important;
 }
 html body #novaflow-video-format-convert-root .nf-vfc-btn {
   height: 32px !important;
@@ -1770,7 +1770,7 @@ html body #novaflow-video-format-convert-root .nf-vfc-btn {
   box-shadow: none !important;
 }
 html body #novaflow-video-format-convert-root .nf-vfc-btn:not(.alt):not(:disabled) {
-  background: #17A582 !important;
+  background: #1EA672 !important;
   color: #ffffff !important;
 }
 html body #novaflow-video-format-convert-root .nf-vfc-btn:not(.alt):not(:disabled):hover {
@@ -1927,7 +1927,7 @@ html body #novaflow-spine-atlas-webp-root .nf-saw-upload {
 }
 html body #novaflow-spine-atlas-webp-root .nf-saw-upload:hover {
   background: #262626 !important;
-  border-color: #1bb28c !important;
+  border-color: #1ea672 !important;
 }
 html body #novaflow-spine-atlas-webp-root .nf-saw-btn {
   height: 32px !important;
@@ -1938,7 +1938,7 @@ html body #novaflow-spine-atlas-webp-root .nf-saw-btn {
   box-shadow: none !important;
 }
 html body #novaflow-spine-atlas-webp-root .nf-saw-btn:not(.alt):not(:disabled) {
-  background: #17A582 !important;
+  background: #1EA672 !important;
   color: #ffffff !important;
 }
 html body #novaflow-spine-atlas-webp-root .nf-saw-btn:not(.alt):not(:disabled):hover {
@@ -2095,7 +2095,7 @@ html body #novaflow-mp4-compress-root .nf-mp4-upload {
 }
 html body #novaflow-mp4-compress-root .nf-mp4-upload:hover {
   background: #262626 !important;
-  border-color: #1bb28c !important;
+  border-color: #1ea672 !important;
 }
 html body #novaflow-mp4-compress-root .nf-mp4-btn {
   height: 32px !important;
@@ -2106,7 +2106,7 @@ html body #novaflow-mp4-compress-root .nf-mp4-btn {
   box-shadow: none !important;
 }
 html body #novaflow-mp4-compress-root .nf-mp4-btn:not(.alt):not(:disabled) {
-  background: #17A582 !important;
+  background: #1EA672 !important;
   color: #ffffff !important;
 }
 html body #novaflow-mp4-compress-root .nf-mp4-btn:not(.alt):not(:disabled):hover {
@@ -2192,8 +2192,8 @@ html body :is(.nf-prb-panel-head, .nf-mp4-panel-head, .nf-vfc-panel-head, .nf-sa
   gap: 8px !important;
 }
 html body :is([data-novaflow-ui-design-switch-field], #nf-lift) > button[aria-checked="true"] {
-  background: #17A582 !important;
-  background-color: #17A582 !important;
+  background: #1EA672 !important;
+  background-color: #1EA672 !important;
   box-shadow: none !important;
 }
 

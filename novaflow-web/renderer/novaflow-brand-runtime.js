@@ -2331,7 +2331,7 @@
     "[role='button']"
   ].join(",");
   const NOVAFLOW_PRIMARY_FONT_WEIGHT = "600";
-  const NOVAFLOW_PRIMARY_BUTTON_FILL = "rgb(23, 165, 130)";
+  const NOVAFLOW_PRIMARY_BUTTON_FILL = "rgb(30, 166, 114)";
   // 工具's self-drawn panels: their buttons take the sections' one weight, not
   // the green main action's 600.
   const NOVAFLOW_TOOLS_OWN_PANEL_SELECTOR = "#novaflow-png-remove-black-root, #novaflow-mp4-compress-root, #novaflow-video-format-convert-root, #novaflow-spine-atlas-webp-root";
@@ -2798,7 +2798,7 @@
   const DOCK_PROMPT_TEXT = "#c9c9c9";
   const DOCK_PROMPT_ACTION_TEXT = "#9f9f9f";
   const DOCK_TOGGLE_ON_TEXT = "#8ee0c5";
-  const DOCK_SWITCH_ON = "#1bb28c";
+  const DOCK_SWITCH_ON = "#1ea672";
   const DOCK_SWITCH_OFF = "#3e3e3e";
   const DOCK_SWITCH_KNOB_ON = "#f2f2f2";
   const DOCK_SWITCH_KNOB_OFF = "#cacaca";
@@ -3176,7 +3176,7 @@
   // (生成 / 登录 / the active tool's own run button). The selected entry is a
   // dark green fill with light green text and a hairline edge - never a solid
   // accent block, and never an edge light along one side.
-  const UI_ACCENT = "#17a582";
+  const UI_ACCENT = "#1ea672";
   // The reference's main action under the pointer (#20b490).
   const UI_ACCENT_HOVER = "#20b490";
   const UI_ACCENT_TEXT = "#6fd9b8";
@@ -3190,13 +3190,13 @@
   const UI_SEGMENT_IDLE_TEXT = "#eaeaea";
   // "On" reads slightly brighter than a main action so a live switch or a
   // filled slider is legible at 2px.
-  const UI_TOGGLE_ON_BACKGROUND = "#1bb28c";
+  const UI_TOGGLE_ON_BACKGROUND = "#1ea672";
   const UI_ACCENT_SOFT = "rgba(32, 37, 42, 0.96)";
   const UI_ACCENT_GLOW = "rgba(33, 196, 135, 0.12)";
   const UI_ACCENT_KNOB = "#e8e8e8";
   const UI_TOGGLE_ON_FRAME = "none";
   const UI_TOGGLE_KNOB_SHADOW = "0 1px 5px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.16)";
-  const UI_RANGE_ACCENT = "#1bb28c";
+  const UI_RANGE_ACCENT = "#1ea672";
   const UPLOAD_ZONE_BACKGROUND = "#1B1B1B";
   const UPLOAD_ZONE_BACKGROUND_ALT = "#171717";
   const UPLOAD_ZONE_PANEL_BACKGROUND = "#202020";
@@ -34177,7 +34177,7 @@
             position: "relative", display: "inline-block", flex: "0 0 27px",
             width: "27px", "min-width": "27px", "max-width": "27px", height: "15px", "min-height": "15px", "max-height": "15px",
             padding: "0", border: "0", "border-radius": "15px", "box-shadow": "none",
-            background: on ? "#1bb28c" : "#3e3e3e", "background-color": on ? "#1bb28c" : "#3e3e3e"
+            background: on ? "#1ea672" : "#3e3e3e", "background-color": on ? "#1ea672" : "#3e3e3e"
           };
         }
       },
@@ -34519,7 +34519,7 @@
             height: "15px", "min-height": "15px", "max-height": "15px", margin: "0", padding: "0", border: "0", "border-radius": "15px",
             "box-shadow": "none", flex: "0 0 27px", cursor: "pointer",
             background: on
-              ? "radial-gradient(circle at 19.5px 50%, #ffffff 4.5px, transparent 5px), #1bb28c"
+              ? "radial-gradient(circle at 19.5px 50%, #ffffff 4.5px, transparent 5px), #1ea672"
               : "radial-gradient(circle at 7.5px 50%, #cacaca 4.5px, transparent 5px), #3e3e3e"
           };
         }
@@ -34571,7 +34571,7 @@
           return {
             position: "relative", width: "27px", "min-width": "27px", "max-width": "27px", height: "15px", "min-height": "15px", "max-height": "15px",
             flex: "0 0 27px", padding: "0", margin: "0", border: "0", "border-radius": "15px", overflow: "hidden", "box-shadow": "none",
-            background: on ? "#1bb28c" : "#3e3e3e", "background-color": on ? "#1bb28c" : "#3e3e3e", display: "block"
+            background: on ? "#1ea672" : "#3e3e3e", "background-color": on ? "#1ea672" : "#3e3e3e", display: "block"
           };
         }
       },

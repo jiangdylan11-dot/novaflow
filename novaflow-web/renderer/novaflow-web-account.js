@@ -250,7 +250,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     // Signed in this is a quiet chip, exactly as the reference draws it;
     // signed out it is the one action on the screen, so it keeps the green.
     const colour = who ? '#e5e7eb' : '#ffffff';
-    const background = who ? '#171717' : '#17a582';
+    const background = who ? '#171717' : '#1ea672';
     const border = who ? '1px solid #333333' : '0';
     btn.style.setProperty('color', colour, 'important');
     btn.style.setProperty('background', background, 'important');
@@ -271,7 +271,7 @@ html body [data-novaflow-client-auth-panel="1"]{display:none!important}
     const styles = {
       height: '28px', 'min-height': '28px', 'max-height': '28px',
       padding: '0 13px', border: '0', 'border-radius': '7px',
-      background: '#17a582', 'background-image': 'none',
+      background: '#1ea672', 'background-image': 'none',
       color: '#ffffff', 'font-size': '12px', 'font-weight': '500',
       'line-height': '1', 'box-shadow': 'none', 'white-space': 'nowrap',
       cursor: 'pointer', '-webkit-app-region': 'no-drag'
