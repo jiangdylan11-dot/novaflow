@@ -167,8 +167,8 @@ class DeterministicCandidateTest(unittest.TestCase):
     def test_subject_that_mentions_another_keeps_its_own_identity(self):
         raw = TWO_SUBJECT_LINES.replace("S2:橘色长毛猫，坐在下层台阶", "S2:橘色长毛猫，坐台阶下方仰视女性")
         text = candidate("I2VA", [raw])
-        self.assertIn("主体2：数量一个; 身份橘色长毛猫", text)
-        self.assertIn("主体1：数量一名; 身份紫发女性角色", text)
+        self.assertIn("主体2：数量：一只；身份：橘色长毛猫；", text)
+        self.assertIn("主体1：数量：一名；身份：紫发女性角色；", text)
 
     def test_semicolon_output_of_the_old_format_now_succeeds(self):
         text = candidate("I2VA", [SEMICOLON_SLOTS])
@@ -183,17 +183,72 @@ class DeterministicCandidateTest(unittest.TestCase):
             for paragraph in narrative.split("\n\n") if paragraph.strip()
         ]
         self.assertEqual(labels[:4], ["主体1", "场景", "画面", "光色材质"])
-        self.assertIn("动作站立于公路中央，面向镜头", narrative)
+        self.assertIn("动作：站立于公路中央，面向镜头", narrative)
         self.assertEqual(narrative.count("站立于公路中央"), 1)
         self.assertNotIn("可见接触关系", text)
 
     def test_first_last_frames_with_two_subjects_keep_both_endpoints(self):
         last = TWO_SUBJECT_LINES.replace("坐在下层台阶", "趴在下层台阶")
         text = candidate("FL2VA", [TWO_SUBJECT_LINES, last])
-        self.assertIn("<Picture 1>: 主体2：", text)
-        self.assertIn("<Picture 2>: 主体2：", text)
+        self.assertIn("<Picture 1> 首帧：\n主体2：", text)
+        self.assertIn("<Picture 2> 尾帧：\n主体2：", text)
         self.assertIn("趴在下层台阶", text)
-        self.assertIn("<Picture 1> + <Picture 2>: 主体1：", text)
+        self.assertIn("<Picture 1> 与 <Picture 2> 共同：\n主体1：", text)
+        # One heading per group, no per-paragraph frame prefixes.
+        self.assertNotIn("<Picture 1>:", text)
+        self.assertEqual(text.count("<Picture 1> 首帧："), 1)
+
+
+class ReadableSubjectLineTest(unittest.TestCase):
+    def test_subject_line_has_labelled_fields_and_chinese_separators(self):
+        raw = ONE_SUBJECT_LINES.replace(
+            "S1:短发少女，橙色衬衫，绿色短裤，背着绿色背包",
+            "S1:男性武将，金色铠甲，红色披风，金色头冠，手持长枪，呈跃起姿态",
+        )
+        text = candidate("I2VA", [raw])
+        line = next(item for item in text.split("\n\n") if "主体1：" in item)
+        self.assertIn("主体1：数量：一名；身份：男性武将；外观：金色铠甲、红色披风、金色头冠、手持长枪；姿态：呈跃起姿态；", line)
+        for ascii_separator in ("; ", ", "):
+            self.assertNotIn(ascii_separator, text.split("overall_soundscape:")[0])
+
+    def test_measure_word_follows_the_head_noun(self):
+        for name, count in (
+            ("橘色长毛猫", "一只"), ("手", "一只"), ("折扇", "一把"), ("青蛇", "一条"),
+            ("武将", "一名"), ("紫发女性角色", "一名"), ("机器人", "一个"), ("金色奖杯", "一个"),
+        ):
+            self.assertEqual(service.minimax_h3_default_count(name), count, name)
+        text = candidate("I2VA", [
+            "S1:手，佩戴金色手镯\nS2:折扇，黑色扇面\nR:手握着折扇\nE:纯灰色背景\nL:柔和光源\nC:特写",
+        ])
+        self.assertIn("主体1：数量：一只；身份：手", text)
+        self.assertIn("主体2：数量：一把；身份：折扇", text)
+
+    def test_a_scene_worded_slightly_fuller_in_one_frame_is_shared_once(self):
+        last = TWO_SUBJECT_LINES.replace("远处山峦与建筑", "远处山峦与古典建筑")
+        text = candidate("FL2VA", [TWO_SUBJECT_LINES, last])
+        self.assertEqual(text.count("场景："), 1)
+        self.assertIn("场景：大理石台阶，远处山峦与古典建筑", text)
+        changed = TWO_SUBJECT_LINES.replace("大理石台阶", "木质台阶")
+        text = candidate("FL2VA", [TWO_SUBJECT_LINES, changed])
+        self.assertEqual(text.count("场景："), 2)
+
+    def test_a_subject_that_only_adds_a_particle_is_shared_but_a_new_detail_is_not(self):
+        particle = TWO_SUBJECT_LINES.replace("坐在下层台阶", "坐下层台阶")
+        text = candidate("FL2VA", [particle, TWO_SUBJECT_LINES])
+        self.assertEqual(text.count("主体2："), 1)
+        self.assertIn("主体2：数量：一只；身份：橘色长毛猫；姿态：坐在下层台阶。", text)
+        detail = TWO_SUBJECT_LINES.replace("坐在下层台阶", "坐在下层台阶，闭眼")
+        text = candidate("FL2VA", [TWO_SUBJECT_LINES, detail])
+        self.assertEqual(text.count("主体2："), 2)
+
+    def test_first_last_sentences_follow_each_other_without_spaces(self):
+        text = candidate("FL2VA", [TWO_SUBJECT_LINES, TWO_SUBJECT_LINES.replace("坐在", "趴在")])
+        narrative = service.minimax_h3_output_field_value(text, "integrated_multimodal_description")
+        self.assertNotRegex(narrative, r"[。！？] ")
+        self.assertIn("镜头保持构图。动作在 5.00 秒连续抵达尾帧状态。", narrative)
+
+    def test_visual_instruction_keeps_gaze_to_what_is_visible(self):
+        self.assertIn("不写看向某人或某物", service.minimax_h3_faithful_rich_primary_instruction())
 
 
 class ReverseServiceTest(unittest.TestCase):
@@ -254,7 +309,7 @@ class ReverseServiceTest(unittest.TestCase):
             [TWO_SUBJECT_LINES, TWO_SUBJECT_LINES.replace("坐在下层台阶", "趴在下层台阶")],
         )
         self.assertEqual([call[1] for call in self.Adapter.calls], ["first", "last"])
-        self.assertIn("<Picture 2>: 主体2：", result["positivePrompt"])
+        self.assertIn("<Picture 2> 尾帧：\n主体2：", result["positivePrompt"])
         self.assertIn("趴在下层台阶", result["positivePrompt"])
 
     def test_complete_output_without_stop_marker_is_not_reasked(self):

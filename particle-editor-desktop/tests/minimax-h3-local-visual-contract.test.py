@@ -1350,7 +1350,7 @@ class H3LocalVisualContractTest(unittest.TestCase):
             ],
         )
         for retained in (
-            "动作主体1接触：右手握住阴茎",
+            "动作：主体1接触：右手握住阴茎",
             "主体2位置：位于主体1大腿之间",
             "阴茎插入主体1阴道",
             "阴茎与主体1阴道直接接触",
@@ -1358,8 +1358,8 @@ class H3LocalVisualContractTest(unittest.TestCase):
             self.assertIn(retained, prompt)
         scope = SERVICE.minimax_h3_picture_scope(prompt, 1, 1)
         second_scope = SERVICE.minimax_h3_deterministic_entity_scope(scope, 2)
-        self.assertIn("主体2：数量一个", second_scope)
-        self.assertIn("身份可见物体2", second_scope)
+        self.assertIn("主体2：数量：一个", second_scope)
+        self.assertIn("身份：可见物体2", second_scope)
         self.assertEqual(compile_calls, [])
 
     def test_h3_faithful_rich_projector_keeps_redraw_style_structure(self):
@@ -2977,17 +2977,17 @@ class H3LocalVisualContractTest(unittest.TestCase):
             ),
             candidate,
         )
-        self.assertIn("主体1：数量一名", candidate)
-        self.assertIn("主体2：数量三把", candidate)
+        self.assertIn("主体1：数量：一名", candidate)
+        self.assertIn("主体2：数量：三把", candidate)
         self.assertEqual(candidate.count("共享蓝色徽记"), 2)
 
         misbound_count = candidate.replace(
-            "主体2：数量三把",
-            "主体2：数量一个",
+            "主体2：数量：三把",
+            "主体2：数量：一个",
             1,
         ).replace(
-            "主体1：数量一名",
-            "主体1：数量一名, 三把",
+            "主体1：数量：一名",
+            "主体1：数量：一名、三把",
             1,
         )
         with self.assertRaisesRegex(ValueError, "主体2.*数量事实"):

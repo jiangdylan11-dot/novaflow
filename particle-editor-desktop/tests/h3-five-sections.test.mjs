@@ -42,6 +42,45 @@ test('validated legacy reverse text is displayed in five sections with audio and
   }
 });
 
+test('reverse facts stay in the overall description; the middle time range only gets the motion',()=>{
+  const i2v='参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒\n\nintegrated_multimodal_description: [Shot 1] 主体1：数量：一名；身份：少女；外观：黑色短发、橙色衬衫；姿态：站立。\n\n主体2：数量：一只；身份：橘色长毛猫；姿态：坐在路边。\n\n关系：少女与猫并排。\n\n场景：乡村公路。\n\n画面：中景，平视。\n\n光色材质：动漫风格，阳光明亮。\n\n画面从首帧状态自然延续，动作连贯。镜头保持构图。\n\noverall_soundscape: 风声。\n\nnon_diegetic_music: N/A';
+  const fl2v='参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；<Picture 2> 对应 [Shot 1] = 5.00 秒\n\nintegrated_multimodal_description: [Shot 1]\n<Picture 1> 与 <Picture 2> 共同：\n主体1：数量：一名；身份：紫发女性角色。\n场景：大理石台阶。\n\n<Picture 1> 首帧：\n主体2：数量：一只；身份：橘色长毛猫；姿态：坐在台阶上。\n\n<Picture 2> 尾帧：\n主体2：数量：一只；身份：橘色长毛猫；姿态：趴在台阶上。\n\n画面从首帧状态自然延续，动作连贯。镜头保持构图。动作在 5.00 秒连续抵达尾帧状态。\n\noverall_soundscape: 风声。\n\nnon_diegetic_music: N/A';
+  // The prompt workflow reflows a legacy narrative into space-joined sentences before the conversion.
+  const reflowed=text=>text.replace(/(integrated_multimodal_description: )([\s\S]*?)(\n\noverall_soundscape)/,(_,head,body,tail)=>head+body.replace(/\s*\n\s*/g,' ')+tail);
+  for(const api of [local,edge]) {
+    for(const [text,mode] of [[i2v,'image_video'],[fl2v,'first_last'],[reflowed(i2v),'image_video'],[reflowed(fl2v),'first_last']]) {
+      const value=api.fromValidatedLegacy(text,{mode,durationSeconds:5});
+      const middle=value.match(/^1\.667-3\.333s：(.*)$/m)[1];
+      assert.match(middle,/^画面从首帧状态自然延续，动作连贯。镜头保持构图。/);
+      assert.doesNotMatch(middle,/主体\d|关系：|场景：|画面：|光色材质：|<Picture/);
+      assert.doesNotMatch(value,/[。！？] /);
+      assert.match(value,/主体1：数量：一名；身份：/);
+    }
+    const grouped=api.fromValidatedLegacy(reflowed(fl2v),{mode:'first_last',durationSeconds:5});
+    assert.match(grouped,/\n<Picture 1> 与 <Picture 2> 共同：\n主体1：[^\n]+\n场景：大理石台阶。\n\n<Picture 1> 首帧：\n主体2：[^\n]+\n\n<Picture 2> 尾帧：\n主体2：[^\n]+\n\n画面从首帧状态/);
+    const separate=api.fromValidatedLegacy(reflowed(i2v),{mode:'image_video',durationSeconds:5});
+    assert.match(separate,/姿态：站立。\n\n主体2：[^\n]+\n\n关系：少女与猫并排。\n\n场景：乡村公路。/);
+  }
+});
+
+test('多参 display joins Chinese sentences without spaces and starts each subject sentence on its own line',()=>{
+  const display=[
+    'subject_definitions:\n<Subject 1>：黑短发女性。\n<Subject 2>：铜绿色机器人。',
+    'summary:\n[reference generation] <Subject 1> 走向 <Subject 2>。',
+    'retention_analysis:\n<Subject 1>: fully_preserved - 黑短发\n<Subject 2>: fully_preserved - 铜绿色',
+    'detailed_description: [Shot 1] 动漫插画风格。 场景是乡村公路。 <Subject 1> 向右侧行走。 <Subject 2> 转头望向来者。 镜头跟拍 <Subject 1>。 <Subject 1> 说：“出发。 等等！”',
+    'overall_soundscape: 风声。',
+    'non_diegetic_music: N/A',
+  ].join('\n\n');
+  for(const api of [local,edge]) {
+    const shown=api.toReferenceDisplay(display);
+    assert.match(shown,/【画面与动作】\n【镜头 1】 动漫插画风格。场景是乡村公路。\n<主体 1> 向右侧行走。\n<主体 2> 转头望向来者。镜头跟拍 <主体 1>。\n<主体 1> 说：“出发。 等等！”\n/);
+    // Quoted dialogue keeps its own spacing.
+    assert.doesNotMatch(shown.replace(/“[^”]*”/g,''),/[。！？] /);
+    assert.match(api.fromReferenceDisplay(shown),/detailed_description:\n+\[Shot 1\] 动漫插画风格。场景是乡村公路。\n<Subject 1> 向右侧行走。/);
+  }
+});
+
 test('example format accepted by desktop, Edge and renderer and preserves speaker and dialogue', () => {
   assert.equal(local.formatInstruction, edge.formatInstruction);
   assert.equal(edge.validateFormat(formatted, options), formatted);

@@ -208,6 +208,10 @@ function validateReferenceResult(value, options = {}) {
   if (editPolicy && !/<Picture [1-9]\d*>/.test(modelPrompt)) editPolicy.sameShapeAppearanceOnly = false;
   return JSON.stringify({modelPrompt,displayPrompt,...(editPolicy ? {editPolicy} : {})});
 }
+// Drop the space a sentence reflow leaves after a Chinese full stop; quoted dialogue stays verbatim.
+function joinChineseSentences(text) {
+  return String(text).replace(/(<d>[\s\S]*?<\/d>|“[^”]*”|"[^"\n]*")|([。！？])[ \t]+(?=\S)/gu, (all, quoted, stop) => quoted || stop);
+}
 const referenceDisplayFields = ['主体定义', '任务说明', '保留规则', '画面与动作', '环境声音', '背景音乐'];
 const referenceDisplayTerms = {
   'reference generation': '参考生成', 'keyframe completion': '关键帧补全', 'video editing': '视频编辑',
@@ -223,6 +227,9 @@ function toReferenceDisplay(value) {
     .replace(/Source assets:/g, '素材来源：').replace(/The shot shows (<主体 [1-9]\d*>)\./g, '画面中呈现 $1。').replace(/The shot features ((?:<主体 [1-9]\d*>(?:, | and )?)+)\./g, (_, list) => '画面中有 ' + list.replace(/, | and /g, '、') + '。')
     .replace(/^(<主体 [1-9]\d*>) is /gm, '$1：').replace(/^(<主体 [1-9]\d*>) appearance from ([^\n:：]+?)\s*[:：]\s*/gm, (_, subject, from) => subject + '：外观来自 ' + from.trim().replace(/\s*(?:,|\band\b)\s*/g, '、') + '，').replace(/^N\/A\.?$/gm, '无');
   text = text.replace(/\[([^\]\n]+)\]/g, (all, terms) => terms.split(/\s*\+\s*/).every(t => referenceDisplayTerms[t]) ? '[' + terms.split(/\s*\+\s*/).map(t => referenceDisplayTerms[t]).join(' + ') + ']' : all);
+  // Chinese sentences follow each other without a space; in 画面与动作 each subject's sentence starts a line.
+  text = joinChineseSentences(text)
+    .replace(/(^【画面与动作】\n)([\s\S]*?)(?=\n【(?:环境声音|背景音乐)】|$(?![\s\S]))/m, (_, head, body) => head + body.replace(/([。！？])(?=<主体 [1-9]\d*>)/g, '$1\n'));
   return text.replace(/:\s*(fully_preserved|partially_preserved|attribute_transfer|weak_reference|fully_copy|partially_copy|reference)\b/g, (_, term) => ': ' + referenceDisplayTerms[term]);
 }
 function fromReferenceDisplay(value) {
@@ -433,6 +440,20 @@ function validateFormat(value, options = {}) {
   }
   return sectionNames.map((name, i) => `【${name}】\n${sections[i]}`).join('\n\n');
 }
+// Verified fact slots of a reverse narrative: per-frame group headings and slot labels.
+const legacyFactHeading = '<Picture [12]>(?: (?:\\+|与|and) <Picture [12]>)?(?: (?:共同|首帧|尾帧|shared|opening frame|ending frame))?[:：]';
+const legacyFactLabel = '(?:主体\\d+|关系|场景|画面|光色材质|敏感可见事实|类型|可见人物)[：:]|(?:Subject \\d+|Relations|Scene|Framing|Look|Visible sensitive facts|Type|Visible people):';
+// The prompt workflow reflows a legacy narrative into long space-joined paragraphs. Put each fact slot
+// back on its own line (one line per slot inside a frame group, one paragraph per slot otherwise),
+// start the text after the facts on a new paragraph, and join Chinese sentences without spaces.
+function relayoutLegacyFacts(visual) {
+  const grouped = new RegExp(legacyFactHeading, 'u').test(visual);
+  return joinChineseSentences(String(visual)
+    .replace(new RegExp(`[ \\t]*\\n*[ \\t]*(${legacyFactHeading})\\s*`, 'gu'), '\n\n$1\n')
+    .replace(new RegExp(`(。|\\.(?=[ \\t\\n]))[ \\t]*\\n?[ \\t]*(?=${legacyFactLabel})`, 'gu'), grouped ? '$1\n' : '$1\n\n')
+    .replace(new RegExp(`(^|\\n)((?:${legacyFactLabel})[^\\n]*?(?:。|\\.(?=[ \\t\\n])))[ \\t]*\\n?[ \\t]*(?=[^\\s<])(?!${legacyFactLabel})`, 'gu'), '$1$2\n\n'))
+    .replace(/\n{3,}/g, '\n\n').trim();
+}
 // Presentation only: call after the legacy visual-fact and H3 protocol gates.
 // Keep all validated narrative and audio values; never run a second model pass.
 function fromValidatedLegacy(text, options = {}) {
@@ -440,7 +461,7 @@ function fromValidatedLegacy(text, options = {}) {
   const fields = [...String(text).matchAll(/^(integrated_multimodal_description|overall_soundscape|non_diegetic_music)\s*:\s*/gm)];
   if (fields.length !== 3) throw new Error('反推结果缺少已验证的 H3 字段');
   const values = Object.fromEntries(fields.map((m,i)=>[m[1],String(text).slice(m.index+m[0].length,fields[i+1]?.index ?? text.length).trim()]));
-  const visual=values.integrated_multimodal_description;
+  const visual=relayoutLegacyFacts(values.integrated_multimodal_description);
   const duration=Number(options.durationSeconds);
   const fl2v=['first_last','fl2va','fl2v'].includes(String(options.mode || '').toLowerCase());
   const ratio=String(options.currentPrompt || '').match(/\b\d{1,2}:\d{1,2}\b/)?.[0];
@@ -460,11 +481,14 @@ function fromValidatedLegacy(text, options = {}) {
     const userMotion=String(options.userPrompt || '').trim();
     const simpleUserMotion=userMotion && !/【|\[Shot|\d\s*[-–]\s*\d.*(?:s|秒)/u.test(userMotion) ? userMotion : '';
     const paragraphs=visual.replace(/\[Shot \d+\]/g,'').split(/\n\s*\n/).map(p=>p.trim()).filter(Boolean);
-    const motion=simpleUserMotion || paragraphs.slice(1).filter(p=>!/^到 \d.*秒|^By \d|^镜头保持固定|^The camera holds/u.test(p)).join(' ') || '动作从首帧姿态轻缓开始，以小幅、连续的姿态变化自然推进。';
+    // Static fact paragraphs (subjects, relations, scene, framing, look and per-frame fact groups) stay in the overall description only.
+    const staticFact=new RegExp(`^(?:${legacyFactHeading}|${legacyFactLabel})`, 'u');
+    const joinSentences=(a,b)=>a+(a && !/[。！？]$/u.test(a)?' ':'')+b;
+    const motion=simpleUserMotion || paragraphs.slice(1).filter(p=>!staticFact.test(p) && !/^到 \d.*秒|^By \d|^镜头保持固定|^The camera holds/u.test(p)).reduce(joinSentences,'') || '动作从首帧姿态轻缓开始，以小幅、连续的姿态变化自然推进。';
     const finalAction=simpleUserMotion.match(/(?:最后|最终|结束时)[^。.!]+[。.!]?/u)?.[0] || '延续上述状态和构图，结束片段。';
     phases=[
       `${edges[0]}-${edges[1]}s：以 <Picture 1> 为起始帧，开始执行上述动作，保持原文指定的身份和构图。`,
-      `${edges[1]}-${edges[2]}s：${motion}${speech.length?' 同步完成上述台词与口型。':''}`,
+      `${edges[1]}-${edges[2]}s：${speech.length?joinSentences(motion,'同步完成上述台词与口型。'):motion}`,
       `${edges[2]}-${edges[3]}s：${fl2v?'收束至 <Picture 2> 的结束姿态和构图。':finalAction}`
     ];
   }

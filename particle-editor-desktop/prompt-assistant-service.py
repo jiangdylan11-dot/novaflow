@@ -2052,14 +2052,14 @@ MINIMAX_H3_QWEN3_BASE_MAX_NEW_TOKENS = 256
 
 MINIMAX_H3_DETERMINISTIC_FACT_SLOT_LIMITS = {
     "I2VA": {
-        "appearance": 4, "entity_materials": 1, "colors": 1,
-        "relations": 1, "spatial_layers": 0, "lighting": 1,
+        "appearance": 6, "entity_materials": 1, "colors": 1,
+        "relations": 2, "spatial_layers": 0, "lighting": 1,
         "palette": 0, "look_materials": 1, "style": 0,
     },
     "FL2VA": {
-        "appearance": 1, "entity_materials": 1, "colors": 0,
-        "relations": 1, "spatial_layers": 0, "lighting": 0,
-        "palette": 0, "look_materials": 0, "style": 0,
+        "appearance": 3, "entity_materials": 1, "colors": 1,
+        "relations": 1, "spatial_layers": 0, "lighting": 1,
+        "palette": 0, "look_materials": 1, "style": 0,
     },
 }
 
@@ -2149,6 +2149,16 @@ def minimax_h3_compact_verified_visual_fact_slots(
                 break
         return rendered
 
+    # Chinese reads as prose: items of one field are joined with 、, the
+    # fields of one paragraph with ；, and one value's own clauses with ，.
+    item_separator = ", " if use_english else "、"
+    field_separator = "; " if use_english else "；"
+
+    def joined(values: list[str], separator: str = ", " if use_english else "；") -> str:
+        if use_english:
+            return separator.join(values)
+        return separator.join(re.sub(r"\s*[；;]\s*", "，", value) for value in values)
+
     parts: list[str] = []
     entities = [
         entity for entity in (contract.get("entities") or [])
@@ -2156,7 +2166,7 @@ def minimax_h3_compact_verified_visual_fact_slots(
     ]
     asset_type = unique_values([contract.get("asset_type")])
     if asset_type and not entities:
-        parts.append(("Type: " if use_english else "类型：") + ", ".join(asset_type))
+        parts.append(("Type: " if use_english else "类型：") + joined(asset_type))
 
     people_count = int((contract.get("content_safety") or {}).get("visible_person_count") or 0)
     if people_count > 0 and not entities:
@@ -2166,43 +2176,34 @@ def minimax_h3_compact_verified_visual_fact_slots(
         )
 
     for index, entity in enumerate(entities, start=1):
-        identity = unique_values([
-            entity.get("name"),
-        ])
-        appearance = unique_values(
-            entity.get("appearance") or [], limits["appearance"], char_budgets["appearance"],
-        )
-        colors = unique_values(
-            entity.get("colors") or [], limits["colors"], char_budgets["colors"],
-        )
-        materials = unique_values(
-            entity.get("materials") or [], limits["entity_materials"], char_budgets["entity_materials"],
-        )
-        identity_seen = {value.casefold() for value in identity}
-        for item in (*appearance, *colors, *materials):
-            if item.casefold() in identity_seen:
-                continue
-            identity_seen.add(item.casefold())
-            identity.append(item)
-        entity_parts = []
-        count = unique_values([entity.get("count")])
-        if count:
-            entity_parts.append(
-                ("count " if use_english else "数量") + ", ".join(count)
+        # 身份 holds only the name; everything seen on the subject is 外观.
+        identity = unique_values([entity.get("name")])
+        seen = {value.casefold() for value in identity}
+        looks: list[str] = []
+        for item in (
+            *unique_values(entity.get("appearance") or [], limits["appearance"], char_budgets["appearance"]),
+            *unique_values(entity.get("colors") or [], limits["colors"], char_budgets["colors"]),
+            *unique_values(
+                entity.get("materials") or [], limits["entity_materials"], char_budgets["entity_materials"],
+            ),
+        ):
+            if item.casefold() not in seen:
+                seen.add(item.casefold())
+                looks.append(item)
+        entity_parts = [
+            (english if use_english else chinese) + joined(values, item_separator)
+            for english, chinese, values in (
+                ("count ", "数量：", unique_values([entity.get("count")])),
+                ("", "身份：", identity + looks if use_english else identity),
+                ("", "外观：", [] if use_english else looks),
+                ("pose ", "姿态：", unique_values([entity.get("pose")])),
+                ("action ", "动作：", unique_values([entity.get("action")])),
             )
-        if identity:
-            entity_parts.append(
-                ("" if use_english else "身份") + ", ".join(identity)
-            )
-        pose = unique_values([entity.get("pose")])
-        if pose:
-            entity_parts.append(("pose " if use_english else "姿态") + ", ".join(pose))
-        action = unique_values([entity.get("action")])
-        if action:
-            entity_parts.append(("action " if use_english else "动作") + ", ".join(action))
+            if values
+        ]
         if entity_parts:
             prefix = f"Subject {index}: " if use_english else f"主体{index}："
-            parts.append(prefix + "; ".join(entity_parts))
+            parts.append(prefix + field_separator.join(entity_parts))
 
     # A relation already written as a subject's action is not repeated.
     shown_actions = [clean_text(entity.get("action") or "") for entity in entities]
@@ -2215,7 +2216,7 @@ def minimax_h3_compact_verified_visual_fact_slots(
         char_budgets["relations"],
     )
     if relations:
-        parts.append(("Relations: " if use_english else "关系：") + ", ".join(relations))
+        parts.append(("Relations: " if use_english else "关系：") + joined(relations))
 
     scene = contract.get("scene") or {}
     scene_values = unique_values([
@@ -2226,7 +2227,7 @@ def minimax_h3_compact_verified_visual_fact_slots(
         ),
     ])
     if scene_values:
-        parts.append(("Scene: " if use_english else "场景：") + ", ".join(scene_values))
+        parts.append(("Scene: " if use_english else "场景：") + joined(scene_values))
 
     camera = contract.get("camera_cues") or {}
     camera_candidates = [
@@ -2237,7 +2238,7 @@ def minimax_h3_compact_verified_visual_fact_slots(
         camera_candidates.append(camera.get("composition"))
     camera_values = unique_values(camera_candidates)
     if camera_values:
-        parts.append(("Framing: " if use_english else "画面：") + ", ".join(camera_values))
+        parts.append(("Framing: " if use_english else "画面：") + joined(camera_values))
 
     look = contract.get("look") or {}
     look_values = unique_values([
@@ -2247,7 +2248,7 @@ def minimax_h3_compact_verified_visual_fact_slots(
         *unique_values(look.get("style") or [], limits["style"], char_budgets["style"]),
     ])
     if look_values:
-        parts.append(("Look: " if use_english else "光色材质：") + ", ".join(look_values))
+        parts.append(("Look: " if use_english else "光色材质：") + joined(look_values))
 
     raw_sensitive_facts = (
         (contract.get("content_safety") or {}).get("sensitive_visible_facts") or []
@@ -2263,11 +2264,55 @@ def minimax_h3_compact_verified_visual_fact_slots(
     if sensitive_facts:
         parts.append(
             ("Visible sensitive facts: " if use_english else "敏感可见事实：")
-            + ", ".join(sensitive_facts)
+            + joined(sensitive_facts)
         )
 
     separator = ".\n\n" if use_english else "。\n\n"
     return separator.join(parts) + ("." if use_english and parts else "。" if parts else "")
+
+
+# A FL2VA fact group heading: "<Picture 1> 与 <Picture 2> 共同：", "<Picture 1> 首帧：",
+# "<Picture 2> 尾帧：" (or the English forms), plus the older "<Picture 1> + <Picture 2>:" prefix.
+MINIMAX_H3_FRAME_GROUP_HEADING = (
+    r"(<Picture [12]>(?: (?:\+|与|and) <Picture [12]>)?)"
+    r"(?: (?:共同|首帧|尾帧|shared|opening frame|ending frame))?[:：]"
+)
+
+
+def minimax_h3_frames_share_slot(first: str, last: str) -> bool:
+    """Whether two endpoint slots state the same fact.
+
+    A slot that only adds particles (蹲坐于 / 蹲坐) is the same fact; scene,
+    framing and look written with a few extra words in one frame (建筑轮廓 /
+    古典建筑轮廓) are too. Any replaced word is a change.
+    """
+
+    if first == last:
+        return True
+    label = re.match(r"(?:主体\d+|Subject \d+|关系|Relations|场景|画面|光色材质|Scene|Framing|Look)[：:]", first)
+    if not label or not last.startswith(label.group(0)):
+        return False
+    short, long = sorted(
+        (re.sub(r"[\s，,；;、。.：:]+", "", item) for item in (first, last)),
+        key=len,
+    )
+    extra: list[str] = []
+    matched = 0
+    for char in long:
+        if matched < len(short) and char == short[matched]:
+            matched += 1
+        else:
+            extra.append(char)
+    if matched < len(short):
+        return False
+    if minimax_h3_apparel_categories(first) != minimax_h3_apparel_categories(last):
+        return False
+    if all(char in "于在的着了地得之" for char in extra):
+        return True
+    return (
+        re.match(r"(?:场景|画面|光色材质|Scene|Framing|Look)[：:]", label.group(0)) is not None
+        and len(extra) <= max(2, len(short) // 5)
+    )
 
 
 def build_minimax_h3_deterministic_verified_visual_candidate(
@@ -2369,20 +2414,41 @@ def build_minimax_h3_deterministic_verified_visual_candidate(
             else f"参考帧对齐：<Picture 1> 对应 [Shot 1] = 0.00 秒；"
             f"<Picture 2> 对应 [Shot 1] = {duration_text} 秒"
         )
-        # Share only identical complete semantic slots, never attributes across
-        # different subjects. Explicit frame labels retain endpoint ownership.
-        frame_slots = [item.split("\n\n") for item in facts]
-        common = [slot for slot in frame_slots[0] if slot in frame_slots[1]]
-        blocks = [f"<Picture 1> + <Picture 2>: {slot}" for slot in common]
-        for index, slots in enumerate(frame_slots, start=1):
-            blocks.extend(f"<Picture {index}>: {slot}" for slot in slots if slot not in common)
+        # Share only complete semantic slots, never attributes across
+        # different subjects. One heading per group keeps endpoint ownership.
+        shared: list[str] = []
+        first_only: list[str] = []
+        last_only = facts[1].split("\n\n")
+        for slot in facts[0].split("\n\n"):
+            twin = next(
+                (other for other in last_only if minimax_h3_frames_share_slot(slot, other)),
+                None,
+            )
+            if twin is None:
+                first_only.append(slot)
+            else:
+                last_only.remove(twin)
+                shared.append(max(slot, twin, key=len))
+        headings = (
+            ("<Picture 1> and <Picture 2> shared:", "<Picture 1> opening frame:", "<Picture 2> ending frame:")
+            if use_english
+            else ("<Picture 1> 与 <Picture 2> 共同：", "<Picture 1> 首帧：", "<Picture 2> 尾帧：")
+        )
         ending = (
             f"Motion resolves into the ending state at {duration_text} seconds."
             if use_english
             else f"动作在 {duration_text} 秒连续抵达尾帧状态。"
         )
-        narrative = "[Shot 1]\n" + "\n\n".join(blocks)
-        narrative += f"\n\n{action_progression} {camera_progression} {ending}"
+        narrative = "[Shot 1]\n" + "\n\n".join(
+            heading + "\n" + "\n".join(slots)
+            for heading, slots in zip(headings, (shared, first_only, last_only))
+            if slots
+        )
+        narrative += (
+            f"\n\n{action_progression} {camera_progression} {ending}"
+            if use_english
+            else f"\n\n{action_progression}{camera_progression}{ending}"
+        )
 
     dialogue = minimax_h3_explicit_dialogue(user_prompt, user_requirements)
     if dialogue:
@@ -2687,11 +2753,11 @@ def minimax_h3_interaction_rich_confirmation_instruction() -> str:
 MINIMAX_H3_BOUNDED_VISUAL_SLOT_LIMITS = {"S": 30, "R": 40, "E": 18, "L": 22, "C": 15}
 MINIMAX_H3_BOUNDED_VISUAL_MAX_SUBJECTS = 3
 MINIMAX_H3_BOUNDED_VISUAL_SLOT_GUIDE = {
-    "S": "每个主要主体（人物、动物、角色或画面焦点物体）单独一行，先写身份或种类，再写外观特征"
-         "（如发型发色、服饰、颜色、材质）和姿态；手持的武器或道具写进持有者这一行，"
+    "S": "每个主要主体（人物、动物、角色或画面焦点物体）单独一行，先写身份或种类，再按醒目程度写外观特征"
+         "（如发型发色、脸部、服饰和配饰、颜色、材质）和姿态；手持的武器或道具写进持有者这一行，"
          "主体之间的位置和关系写进R",
     "R": "可见的动作与接触，写清谁在做什么、接触什么；有多个主体时写清它们之间的位置和关系",
-    "E": "环境类型与背景结构",
+    "E": "环境类型与背景结构；主体周围可见的飘浮物和光效也写在这里",
     "L": "画面风格、光源与高光阴影、主色",
     "C": "景别、视角与景深",
 }
@@ -2743,7 +2809,8 @@ def minimax_h3_faithful_rich_primary_instruction() -> str:
         f"2. 长度：每个S最多{limits['S']}字，R最多{limits['R']}字，E最多{limits['E']}字，"
         f"L最多{limits['L']}字，C最多{limits['C']}字，必须在160 token内写完。\n"
         "3. 没有更多细节时写最短的可见事实；不得添加画面中不可见的背景、特效或情节。\n"
-        "4. 不得因题材敏感省略解剖、接触或体液；不得推断或补写成年；"
+        "4. 视线只写看向镜头或看向哪个方向，不写看向某人或某物；看不清时不写视线。\n"
+        "5. 不得因题材敏感省略解剖、接触或体液；不得推断或补写成年；"
         "只有图片有明确未成年人文字或直接证据时才如实写入S。"
     )
 
@@ -3085,6 +3152,10 @@ MINIMAX_H3_RICH_PERSON_PATTERN = re.compile(
     r"(?<![a-z])(?:woman|man|girl|boy|person|character|figure|knight|warrior|humanoid)(?![a-z]))",
     re.I,
 )
+# A subject phrase that states how the body is placed belongs to 姿态, not 外观.
+MINIMAX_H3_RICH_POSTURE_PATTERN = re.compile(
+    r"(?:坐|站|立于|蹲|跪|趴|躺|卧|倚|跃|腾空|悬空|俯身|弯腰|侧身|姿态|姿势)"
+)
 MINIMAX_H3_RICH_BODY_EXPOSURE_PATTERN = re.compile(
     r"(?:全裸|裸体|赤裸|裸露|一丝不挂|nude|naked)", re.I,
 )
@@ -3092,6 +3163,30 @@ MINIMAX_H3_RICH_PARTIAL_EXPOSURE_PATTERN = re.compile(
     r"(?:半裸|胸部暴露|乳房(?:与乳头)?(?:清楚)?可见|topless|partially\s+nude|bare\s+breasts?)",
     re.I,
 )
+
+
+# A subject's default count takes the measure word of its head noun, the end
+# of its name: people 名, animals and hands 只, snakes/fish/dragons 条,
+# hand-held tools 把, anything else 个.
+MINIMAX_H3_PERSON_NAME_END_PATTERN = re.compile(
+    r"(?:(?<!机器)(?<!稻草)(?<![雪纸木])人|女|男|将|士|兵|神|仙|侠|客|者|师|王|帝|妃|僧|童|孩|娃|姬|娘|郎|"
+    r"(?<=[歌选水舵旗高杀帮助射炮鼓琴能新老对])手)$"
+)
+MINIMAX_H3_COUNT_MEASURE_WORDS = (
+    ("只", re.compile(r"(?:猫|狗|犬|鸟|兔|鼠|狐|狼|虎|狮|豹|熊|猴|鹿|马|牛|羊|猪|鸡|鸭|鹅|鹰|雀|鸽|蝶|蜂|蛙|龟|鹤|动物|宠物|手|爪|脚)$")),
+    ("条", re.compile(r"(?:蛇|鱼|(?<!恐)龙)$")),
+    ("把", re.compile(r"(?:扇|伞|剑|刀|枪|斧|椅)$")),
+)
+
+
+def minimax_h3_default_count(name: str, person: bool = False) -> str:
+    head = clean_text(name).strip(" ，,、；;。.")
+    if MINIMAX_H3_RICH_PERSON_PATTERN.search(head) or MINIMAX_H3_PERSON_NAME_END_PATTERN.search(head):
+        return "一名"
+    for word, pattern in MINIMAX_H3_COUNT_MEASURE_WORDS:
+        if pattern.search(head):
+            return "一" + word
+    return "一名" if person else "一个"
 
 
 def minimax_h3_rich_primary_subject_entities(
@@ -3151,17 +3246,20 @@ def minimax_h3_rich_primary_subject_entities(
                 pose_atoms = [
                     item for item in safe_atoms
                     if item != named
-                    and any(concept.startswith("pose_") for concept in minimax_h3_fact_concepts(item))
+                    and (
+                        any(concept.startswith("pose_") for concept in minimax_h3_fact_concepts(item))
+                        or MINIMAX_H3_RICH_POSTURE_PATTERN.search(item)
+                    )
                 ]
-                if pose_atoms and not entity["pose"]:
-                    entity["pose"] = "；".join(pose_atoms)
+                if pose_atoms:
+                    entity["pose"] = "；".join(dict.fromkeys(filter(None, [entity["pose"], *pose_atoms])))
                 entity["appearance"].extend(
                     item for item in safe_atoms if item != named and item not in pose_atoms
                 )
             elif re.search(r"(?:数量|个数)", slot):
                 entity["count"] = value
             elif re.search(r"(?:姿势|姿态)", slot):
-                entity["pose"] = "；".join(safe_atoms) or None
+                entity["pose"] = "；".join(dict.fromkeys(filter(None, [entity["pose"], *safe_atoms]))) or None
             elif re.search(r"(?:动作|行为)", slot):
                 entity["action"] = "；".join(atoms) or None
             elif re.search(r"(?:接触|关系|位置)", slot):
@@ -3229,9 +3327,9 @@ def minimax_h3_rich_primary_subject_entities(
         if minimax_h3_rich_fact_is_sensitive(entity["name"]):
             entity["name"] = "人物" if entity["_person"] else f"可见物体{index}"
         if entity["count"] is None:
-            entity["count"] = "一名" if entity["_person"] and (
-                not several_subjects or MINIMAX_H3_RICH_PERSON_PATTERN.search(entity["name"])
-            ) else "一个"
+            entity["count"] = minimax_h3_default_count(
+                entity["name"], entity["_person"] and not several_subjects,
+            )
         if index == 1 and loose_subject_values:
             entity["appearance"].extend(
                 minimax_h3_neutralize_rich_adult_assertion(item)
@@ -4220,7 +4318,7 @@ def minimax_h3_deterministic_entity_scope(scope: str, entity_index: int) -> str:
 
     def is_slot_marker(match: re.Match) -> bool:
         if re.match(
-            r"\s*(?:数量|身份|姿态|动作|count\b|identity\b|pose\b|action\b)",
+            r"\s*(?:数量|身份|外观|姿态|动作|count\b|identity\b|appearance\b|pose\b|action\b)",
             scope[match.end():],
             re.I,
         ):
@@ -4410,6 +4508,10 @@ def validate_minimax_h3_user_motion_intent_coverage(
         position for marker in ("frame facts:", "画面事实：", "首帧事实：", "主体1：", "Subject 1:", "<Picture 1>:", "<Picture 1> + <Picture 2>:")
         if (position := narrative.find(marker)) >= 0
     ]
+    fact_markers.extend(
+        match.start()
+        for match in re.finditer(r"(?m)^" + MINIMAX_H3_FRAME_GROUP_HEADING, narrative)
+    )
     first_fact_marker = min(fact_markers) if fact_markers else -1
     for clause in required:
         position = narrative.rfind(clause)
@@ -4581,10 +4683,10 @@ def minimax_h3_picture_scope(text: str, picture_index: int, picture_count: int) 
 
     shot_matches = list(re.finditer(r"\[Shot ([1-9][0-9]*)\]", narrative))
     if len(shot_matches) == 1:
-        # Single-shot FL2VA has explicit shared/endpoint fact paragraphs, not
+        # Single-shot FL2VA has explicit shared/endpoint fact groups, not
         # separate shots. Never borrow another endpoint's private paragraphs.
         blocks = re.findall(
-            r"(?m)^(<Picture [12]>(?: \+ <Picture [12]>)?): ([\s\S]*?)(?=\n\s*\n|\Z)",
+            r"(?m)^" + MINIMAX_H3_FRAME_GROUP_HEADING + r"[ \t]*\n?([\s\S]*?)(?=\n\s*\n|\Z)",
             narrative,
         )
         if blocks:
@@ -17926,7 +18028,7 @@ def format_minimax_h3_prompt_layout(text: str) -> str:
         value = re.sub(r"(?<!^)\s*(?=\[Shot [2-9][0-9]*\])", "\n\n", value)
         paragraphs = []
         for paragraph in re.split(r"\n\s*\n", value.strip()):
-            if re.search(r"(?m)^(?:<Picture [12]>(?: \+ <Picture [12]>)?:|(?:主体|Subject)\s*[1-9][0-9]*[:：])", paragraph):
+            if re.search(r"(?m)^(?:" + MINIMAX_H3_FRAME_GROUP_HEADING + r"|(?:主体|Subject)\s*[1-9][0-9]*[:：])", paragraph):
                 paragraphs.append(paragraph)
                 continue
             units = re.split(r"(?<=[。！？])|(?<=[.!?])\s+", paragraph)
