@@ -363,6 +363,24 @@
           const media = node(video ? 'video' : 'img', null, thumb); media.className = 'nf-wh-thumbnail'; media.src = url; media.alt = ''; media.muted = true; media.preload = 'metadata';
           const stamp = () => { const dims = dimensionsOf(media); if (dims) { item.dimensions = dims; meta.textContent = dims + ' · ' + metaText; } };
           if (video) media.onloadedmetadata = () => { stamp(); if (Number.isFinite(media.duration) && media.duration > 0) media.currentTime = Math.min(0.1, media.duration / 2); };
+          // A video card keeps a still of that frame, not a live <video>: dozens of
+          // decoders alive at once made scrolling the list stutter.
+          if (video) media.onseeked = () => {
+            media.onseeked = null;
+            try {
+              const scale = Math.min(1, 360 / Math.max(1, media.videoWidth));
+              const canvas = root.document.createElement('canvas');
+              canvas.width = Math.max(1, Math.round(media.videoWidth * scale)); canvas.height = Math.max(1, Math.round(media.videoHeight * scale));
+              canvas.getContext('2d').drawImage(media, 0, 0, canvas.width, canvas.height);
+              canvas.toBlob(blob => {
+                if (!blob || !media.isConnected) return;
+                const still = root.document.createElement('img'); still.className = 'nf-wh-thumbnail'; still.alt = '';
+                const stillUrl = URL.createObjectURL(blob); thumbnailUrls.add(stillUrl); still.src = stillUrl;
+                media.replaceWith(still); media.removeAttribute('src'); media.load();
+                URL.revokeObjectURL(url); thumbnailUrls.delete(url);
+              }, 'image/jpeg', 0.82);
+            } catch { /* Keeps the live frame. */ }
+          };
           else media.onload = stamp;
         } catch { /* A moved file keeps its placeholder; opening reports the error. */ }
       };
@@ -481,6 +499,9 @@
 `, root.document.head);
       style.dataset.novaflowWarehouse = '1';
       panel = node('div', null, root.document.body); panel.id = 'novaflow-local-warehouse'; panel.hidden = true;
+      // Styled by its own sheet: the brand runtime skips it, or every thumbnail
+      // loaded while scrolling set off a page-wide style pass over its cards.
+      panel.setAttribute('data-novaflow-runtime-ignore', '1');
       const card = node('section', null, panel); card.className = 'nf-wh-card'; card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true'); card.setAttribute('aria-label', '本地仓库');
       const header = node('header', null, card); header.className = 'nf-wh-header';
       const title = node('div', null, header); title.className = 'nf-wh-title'; node('h2', '本地仓库', title);
