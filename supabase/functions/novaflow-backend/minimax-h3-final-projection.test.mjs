@@ -1427,3 +1427,71 @@ test("H3 rich-primary counts the subject from the safety evidence, not from a su
     "an object-only frame must not be projected into a person frame"
   );
 });
+
+const reverseGirlRich = [
+  "[风格设定]",
+  "日系动漫插画，线条干净，色彩明亮，阴影柔和。",
+  "",
+  "[主体物品]",
+  "一名少女留着黑色短发，穿橙色衬衫和绿色短裤，背着绿色背包，站在公路中央面向镜头。",
+  "",
+  "[环境背景]",
+  "乡间公路向远处延伸，两侧是绿色田野和木桩围栏，远处有山丘和蓝天白云。",
+  "",
+  "[光线与色彩]",
+  "阳光从左上方照射，形成柔和阴影，整体色调明亮，以蓝绿为主色。",
+  "",
+  "[拍摄参数]",
+  "中景，平视视角，人物居中，景深清晰，镜头固定。"
+].join("\n");
+
+// Grok's real wording for the robot end frame: concrete, but none of the listed subject words.
+const reverseRobotRich = [
+  "[风格设定]",
+  "3D 数字渲染风格，金属表面质感细腻，边缘线条清晰。",
+  "",
+  "[主体物品]",
+  "画面中央站立一个复古机器人，头部为圆形金属头盔，双目橙光闪烁，躯干呈青绿色金属装甲，右臂握持银色喷壶。",
+  "",
+  "[环境背景]",
+  "温室内的石板小路，两侧是绿色植物，背景是玻璃墙。",
+  "",
+  "[光线与色彩]",
+  "自然光从上方照入，金属表面有高光，整体色调偏暖。",
+  "",
+  "[拍摄参数]",
+  "全景，平视视角，主体居中，景深适中。"
+].join("\n");
+
+test("H3 rich facts accept a concrete subject described outside the keyword list", () => {
+  const request = buildH3({ contentPolicy: { sensitiveVisualAnalysis: true, allSubjectsConfirmedAdult: false } });
+  const richOptions = { ...request.resultOptions, minimaxH3RichVisualStage: true };
+  assert.doesNotThrow(() => grokResponsesPublicResult({ output_text: reverseRobotRich }, richOptions));
+});
+
+test("H3 first/last reverse turns the editor's @首帧/@尾帧 mentions into picture labels", async () => {
+  const first = { dataUrl: "data:image/png;base64,FIRST", role: "first_frame", label: "首帧" };
+  const last = { dataUrl: "data:image/png;base64,LAST", role: "last_frame", label: "尾帧" };
+  const request = buildH3({
+    purpose: "minimax-h3-fl2v-reverse",
+    images: [first, last],
+    userPrompt: "@首帧 在旅途中遇到了 @尾帧 中的机器人",
+    contentPolicy: { sensitiveVisualAnalysis: true, allSubjectsConfirmedAdult: false }
+  });
+  const resultOptions = { ...request.resultOptions, visualRetryAllowed: true, providerCallBudget: 2, h3RepairAllowed: false };
+  let calls = 0;
+  const result = await callGrokResponseWithVisualRetry(request.body, request.inputMeta, resultOptions, async () => {
+    calls += 1;
+    return {
+      ok: true,
+      data: grokResponsesPublicResult(
+        { output_text: calls === 1 ? reverseGirlRich : reverseRobotRich },
+        { ...resultOptions, supportsNegativePrompt: false }
+      ),
+      providerCallCount: 1
+    };
+  });
+  assert.equal(calls, 2);
+  assert.match(result.data.output_text, /<Picture 1> 在旅途中遇到了 <Picture 2> 中的机器人/);
+  assert.doesNotMatch(result.data.output_text, /@首帧|@尾帧/);
+});

@@ -2180,9 +2180,12 @@ function miniMaxH3RichVisualValidationLeaf(text) {
     /(?:光源|侧光|顶光|逆光|自然光|轮廓光|高光|阴影|暖色|冷色|色板|色调|side light|top light|backlight|natural light|rim light|highlight|shadow|warm|cool|palette|tone)/iu,
     /(?:特写|近景|中近景|中景|全景|远景|仰拍|俯拍|低角度|高角度|平视|构图|透视|景深|虚化|close-up|medium shot|wide shot|long shot|low angle|high angle|eye level|composition|perspective|depth of field|bokeh)/iu
   ];
-  const missingConcreteSection = sectionBodies.findIndex((body, index) => !concreteSectionPatterns[index].test(
-    normalizeGrokVisualIrScanText(body)
-  ));
+  // A concrete section may name its subject in words the list lacks (a robot's 躯干/装甲);
+  // only a short section with none of the listed facts is empty filler.
+  const missingConcreteSection = sectionBodies.findIndex((body, index) => {
+    const scan = normalizeGrokVisualIrScanText(body);
+    return !concreteSectionPatterns[index].test(scan) && scan.replace(/[\s\p{P}\p{S}]/gu, "").length < 24;
+  });
   if (missingConcreteSection >= 0) return `rich_section_${missingConcreteSection + 1}_facts_missing`;
   const subjectText = normalizeGrokVisualIrScanText(sectionBodies[1] || "");
   const categories = miniMaxH3SensitiveCategories(subjectText, { affirmativeOnly: true });
@@ -2855,7 +2858,10 @@ function miniMaxH3AssertVisualFactsPolicy(ir, options = {}) {
 
 function miniMaxH3IntentFacts(options = {}) {
   const parts = [options.currentPrompt, options.requirements]
-    .map((value) => String(value || "").replace(/\r\n/g, "\n").trim())
+    // The editor's frame mentions (@首帧/@尾帧/@参考图) are the bound frames' protocol labels.
+    .map((value) => String(value || "").replace(/\r\n/g, "\n").trim()
+      .replace(/@(?:首帧|参考图|图片1)(?![0-9])(?:\s*\(image\))?/gu, "<Picture 1>")
+      .replace(/@(?:尾帧|结束帧|图片2)(?![0-9])(?:\s*\(image\))?/gu, "<Picture 2>"))
     .filter(Boolean);
   return [...new Set(parts)];
 }
