@@ -43,6 +43,23 @@ export function createRuntimeServices({ imageUrl = 'http://127.0.0.1:8188', vide
   async function up(url) {
     try { return (await fetch(url + '/system_stats', { signal: AbortSignal.timeout(2500) })).ok; } catch { return false; }
   }
+  // One reset connection during accept makes asyncio on Windows close ComfyUI's listening socket.
+  // The process lives on with the GPU and its log files, so a new one cannot even open its logs and
+  // the start script's check (a listener) never sees it. Clear such a runtime before starting;
+  // five minutes keeps one that is still booting for another launcher.
+  async function reap(entry) {
+    try {
+      await runRuntimeLauncher('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+        "$main=$env:NOVAFLOW_ASSISTANT_RUNTIME_MAIN.ToLowerInvariant(); $port=$env:NOVAFLOW_ASSISTANT_RUNTIME_PORT;" +
+        " $listening=@(Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue | ForEach-Object OwningProcess);" +
+        " Get-CimInstance Win32_Process -Filter \"Name='python.exe'\" | Where-Object { $c=([string]$_.CommandLine).ToLowerInvariant().Replace('/','\\');" +
+        " $c.Contains($main) -and $c -match ('--port\\s+' + $port + '(\\s|$)') -and $listening -notcontains $_.ProcessId -and $_.CreationDate -lt (Get-Date).AddMinutes(-5) }" +
+        " | ForEach-Object { taskkill.exe /PID $_.ProcessId /T /F | Out-Null }; exit 0"], {
+        env: { ...process.env, NOVAFLOW_ASSISTANT_RUNTIME_MAIN: join(entry.root, 'engine', 'ComfyUI', 'main.py'), NOVAFLOW_ASSISTANT_RUNTIME_PORT: new URL(entry.url).port },
+        timeoutMs: 30000
+      });
+    } catch (error) { logger(entry.kind + ' stale runtime check failed: ' + String(error.message || error)); }
+  }
   async function script(entry, name) {
     const file = join(entry.root, 'scripts', name + '-runtime.bat');
     await access(file);
@@ -58,6 +75,7 @@ export function createRuntimeServices({ imageUrl = 'http://127.0.0.1:8188', vide
         try {
           const config = JSON.parse((await readFile(join(entry.root, 'runtime.json'), 'utf8')).replace(/^\uFEFF/, ''));
           if (Number(config.port) !== Number(new URL(entry.url).port)) throw new Error('运行环境端口与设置不一致');
+          await reap(entry);
           await script(entry, 'start');
           onProgress('正在等待' + (entry.kind === 'image' ? '图像' : '视频') + '服务就绪');
           owned.add(entry);
