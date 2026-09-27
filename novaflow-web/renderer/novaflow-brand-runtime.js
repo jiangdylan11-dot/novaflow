@@ -25316,7 +25316,6 @@
         margin: 0 !important;
         border: 0 !important;
         border-radius: ${NOVAFLOW_RECT_RADIUS_PX}px !important;
-        background: ${UI_SELECT_BACKGROUND} !important;
         background-color: ${UI_SELECT_BACKGROUND} !important;
         color: rgba(244, 247, 251, 0.94) !important;
         font-size: 12px !important;
@@ -25868,7 +25867,6 @@
         margin: 0 !important;
         border: 0 !important;
         border-radius: ${NOVAFLOW_RECT_RADIUS_PX}px !important;
-        background: ${UI_SELECT_BACKGROUND} !important;
         background-color: ${UI_SELECT_BACKGROUND} !important;
         color: rgba(244, 247, 251, 0.94) !important;
         font-size: 12px !important;
@@ -52220,7 +52218,6 @@
         padding: "0 28px 0 12px",
         border: "0",
         "border-radius": `${NOVAFLOW_RECT_RADIUS_PX}px`,
-        background: UI_SELECT_BACKGROUND,
         "background-color": UI_SELECT_BACKGROUND,
         color: "rgba(244, 247, 251, 0.94)",
         "font-size": "12px",
@@ -54006,7 +54003,6 @@
         padding: "0 28px 0 12px",
         border: "0",
         "border-radius": `${NOVAFLOW_RECT_RADIUS_PX}px`,
-        background: UI_SELECT_BACKGROUND,
         "background-color": UI_SELECT_BACKGROUND,
         color: "rgba(244, 247, 251, 0.94)",
         "font-size": "12px",
