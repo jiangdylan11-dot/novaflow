@@ -286,14 +286,15 @@ class Qwen3ArtFlows(unittest.TestCase):
         self.assertIn('水墨', prompt)
         self.assertIn('用户要求（优先于图片内容，写进相关段落，不单独成段）：画面改为夜晚', prompt)
         self.assertLess(prompt.index('用户要求（优先于图片内容'), prompt.index('[风格设定]\n……'))
-        self.assertIn('[光线与色彩]：时间是夜晚：按夜晚写光源方向、软硬与明暗，不照搬图片里的光线；', prompt)
+        self.assertIn('[光线与色彩]：时间是夜晚：按夜晚写光源方向、软硬与明暗（主光来自月光或灯光，暗部加深，整体色调偏暗），不照搬图片里的光线；', prompt)
         self.assertNotIn('用户生成要求', prompt)
         # An answer that ignored "夜晚" is asked about once; if it still ignores it, the time is written in.
         self.assertEqual(captured['trace_label'], 'artRoleReferenceRepair')
         self.assertIn('用户要求“画面改为夜晚”没有写进结果', prompt)
         text = result['positivePrompt']
+        # The style palette comes with one fixed clause that keeps the subject's own colours.
         self.assertEqual(text, service.art_close_sentences(service.art_positive_only_wording(service.normalize_art_sections(
-            output.replace('[光线与色彩]\n', '[光线与色彩]\n夜晚，')))))
+            output.replace('[光线与色彩]\n', '[光线与色彩]\n夜晚，').replace('红黑强对比', '红黑强对比，主体原有颜色保持不变')))))
         self.assertEqual(service.art_five_section_failure(text), '')
         for leaked in ('补充约束', '用户生成要求', '严格保留主体图'):
             self.assertNotIn(leaked, text)
@@ -308,6 +309,7 @@ class Qwen3ArtFlows(unittest.TestCase):
         self.assertIn('主色与辅色都只从图2里取颜色', prompt)
         self.assertNotIn('作为整幅画面的配色基调', prompt)
         self.assertIn('[拍摄参数]：看图1', prompt)
+        self.assertIn('到脚写全身，到膝盖或大腿写七分身，到腰写中景，到胸写近景', prompt)
         self.assertEqual(prompt.count('<|vision_start|><|image_pad|><|vision_end|>'), 3)
         self.assertEqual(service.art_five_section_failure(result['positivePrompt']), '')
 
@@ -408,6 +410,10 @@ class ArtPromptCleanup(unittest.TestCase):
     def test_role_requirement_check(self):
         self.assertTrue(service.art_requirement_missing('画面改为夜晚', '[光线与色彩]\n柔光，暖米白'))
         self.assertFalse(service.art_requirement_missing('画面改为夜晚', '[光线与色彩]\n夜色中月光洒落'))
+        # Moonlight answers the night; "夜晚" itself is written in afterwards, no repair needed.
+        self.assertFalse(service.art_requirement_missing('画面改为夜晚', '[光线与色彩]\n主光来自上方的月光，整体偏暗'))
+        self.assertTrue(service.art_requirement_missing('画面改为下雪', '[环境背景]\n地面铺满积雪'))
+        self.assertFalse(service.art_requirement_missing('画面改为下雪', '[环境背景]\n雪花纷飞'))
         self.assertTrue(service.art_requirement_missing('背景换成海边', '[环境背景]\n乡间公路'))
         self.assertFalse(service.art_requirement_missing('背景换成海边', '[环境背景]\n海边沙滩'))
         self.assertFalse(service.art_requirement_missing('去掉背包', '[主体物品]\n短发少女'))
@@ -424,6 +430,112 @@ class ArtPromptCleanup(unittest.TestCase):
         self.assertNotIn('没有人物时', service.ART_CREATE_INSTRUCTION)
         self.assertIn('视角只写一种', service.ART_CREATE_INSTRUCTION)
         self.assertIn('不添加底稿和修改要求都没有的', service.ART_OWN_SECTION_OUTPUT_RULE)
+        # 创作 wording that came back in the prompt: "地面铺着地毯", "最醒目的建筑群", "远处保持清晰".
+        for copied in ('地面、水面', '最醒目', '保持清晰'):
+            self.assertNotIn(copied, service.ART_CREATE_INSTRUCTION)
+        self.assertIn('以及画面下方是什么', service.ART_CREATE_INSTRUCTION)
+        self.assertNotIn('主体下方', service.ART_CREATE_INSTRUCTION)
+        self.assertNotIn('承托', service.ART_CREATE_INSTRUCTION)
+        # A subject in one spot is framed whole; only a large scene gets a long shot.
+        self.assertIn('时用全景', service.ART_CREATE_INSTRUCTION)
+        self.assertIn('大场景', service.ART_CREATE_INSTRUCTION)
+        # The rewrite keeps its own section guide.
+        self.assertIn('脚下或下方的地面、水面或云层', service.ART_FIVE_SECTION_OUTPUT_RULE)
+
+    def test_weather_edit_writes_the_weather_and_drops_the_sun(self):
+        text = (
+            '[环境背景]\n冬季雪林，枯枝挂雪，地面铺满积雪\n\n'
+            '[光线与色彩]\n晴朗天空下，阳光穿透云层洒下冷白光，主色为雪白'
+        )
+        self.assertEqual(service.art_write_requested_weather(text, '改成冬天，下着雪'), (
+            '[环境背景]\n雪花飘落，冬季雪林，枯枝挂雪，地面铺满积雪\n\n'
+            '[光线与色彩]\n阳光穿透云层洒下冷白光，主色为雪白'
+        ))
+        # Snowfall already written: nothing is added.
+        falling = text.replace('枯枝挂雪', '雪花纷飞')
+        self.assertIn('[环境背景]\n冬季雪林，雪花纷飞', service.art_write_requested_weather(falling, '下着雪'))
+        # The user's own strength is kept; fog goes in front of the environment too.
+        self.assertIn('[环境背景]\n大雨，冬季雪林', service.art_write_requested_weather(text, '改成大雨'))
+        self.assertIn('[环境背景]\n薄雾弥漫，冬季雪林', service.art_write_requested_weather(text, '加一点雾气'))
+        # Removing weather, rain that has stopped, or no weather at all changes nothing.
+        for instruction in ('去掉下雪', '不要下雨', '改成雨后的街道', '改成夜晚'):
+            with self.subTest(instruction=instruction):
+                self.assertEqual(service.art_write_requested_weather(text, instruction), text)
+        # A key = "value" draft gets the words inside the quotes.
+        keyed = '[环境背景]\n地点 = "海边"'
+        self.assertEqual(service.art_write_requested_weather(keyed, '下雨'), '[环境背景]\n地点 = "细雨飘落，海边"')
+
+    def test_rewrite_drops_weather_and_camera_blur_nobody_asked_for(self):
+        source = '一位身穿银色铠甲的骑士骑着白马穿过秋天的森林，阳光透过金黄的树叶洒在小路上，写实摄影风格'
+        candidate = (
+            '[环境背景]\n秋天的森林，金黄落叶铺满小径，远景有薄雾笼罩的树影，桌面呈雾面质感\n\n'
+            '[拍摄参数]\n中景平视构图，景深适中，背景虚化突出主体，画面留白自然'
+        )
+        cleaned = service.art_drop_invented_clauses(candidate, source, '改成水彩风格')
+        self.assertEqual(cleaned, (
+            '[环境背景]\n秋天的森林，金黄落叶铺满小径，桌面呈雾面质感\n\n'
+            '[拍摄参数]\n中景平视构图，画面留白自然'
+        ))
+        # Fog the draft or the edit names stays; a photographic edit keeps its blur.
+        self.assertIn('薄雾', service.art_drop_invented_clauses(candidate, source + '，薄雾', '改成水彩风格'))
+        kept = service.art_drop_invented_clauses(candidate, source, '把背景改成海边')
+        self.assertIn('景深适中，背景虚化突出主体', kept)
+        # A blur the draft itself has is not the model's addition.
+        self.assertIn('景深适中', service.art_drop_invented_clauses(candidate, source + '，景深适中', '改成水彩风格'))
+        # A piece that carries the draft's own content is not dropped for its weather word.
+        subject = '[主体物品]\n骑士骑着白马穿过雨中的秋天森林'
+        self.assertEqual(service.art_drop_invented_clauses(subject, source, '改成水彩风格'), subject)
+
+    def test_negation_after_a_place_is_dropped(self):
+        self.assertEqual(
+            service.art_positive_only_wording('[环境背景]\n城堡下方是云海，脚下无地面无水面，全为云层托举城堡'),
+            '[环境背景]\n城堡下方是云海，全为云层托举城堡',
+        )
+        self.assertEqual(
+            service.art_positive_only_wording('[环境背景]\n纯色背景，背景中没有其他物体'),
+            '[环境背景]\n纯色背景',
+        )
+        self.assertEqual(
+            service.art_positive_only_wording('[环境背景]\n云海翻涌，城堡下方无地面承托，仅由云气托举悬浮'),
+            '[环境背景]\n云海翻涌，仅由云气托举悬浮',
+        )
+        # "面无表情" and "画面无比开阔" describe the picture.
+        for kept in ('[主体物品]\n少女面无表情', '[环境背景]\n画面无比开阔，远山连绵'):
+            with self.subTest(text=kept):
+                self.assertEqual(service.art_positive_only_wording(kept), kept)
+
+    def test_role_reference_cleanup_keeps_each_picture_to_its_sections(self):
+        text = (
+            '[风格设定]\n写实摄影，线条干净，材质肌理呈现细腻的毛发与织物纹理，整幅画面按这种画风重新绘制\n\n'
+            '[主体物品]\n一只橘猫\n\n'
+            '[环境背景]\n室内大厅\n\n'
+            '[光线与色彩]\n主光源来自左前方，整体色调以暖黄色为主，辅以主体原有的金色与黑色，主体原有橙色保留于[主体物品]段\n\n'
+            '[拍摄参数]\n全身景别，前景与背景有明显虚实对比，突出主体'
+        )
+        self.assertEqual(service.art_role_reference_cleanup(text, ['subject', 'style', 'background']), (
+            '[风格设定]\n写实摄影，线条干净，整幅画面按这种画风重新绘制\n\n'
+            '[主体物品]\n一只橘猫\n\n'
+            '[环境背景]\n室内大厅\n\n'
+            '[光线与色彩]\n主光源来自左前方，整体色调以暖黄色为主，主体原有颜色保持不变。\n\n'
+            '[拍摄参数]\n全身景别，突出主体'
+        ))
+        # A keep-statement the model wrote stays and needs no fixed clause.
+        kept = '[光线与色彩]\n整体色调以暖黄色为主，主体服装颜色保持橙色与军绿色不变'
+        self.assertEqual(service.art_role_reference_cleanup(kept, ['subject', 'style']), kept)
+        # A painted style picture drops the photographic blur; a photographic one keeps it.
+        camera = '\n\n[拍摄参数]\n全身景别，平视视角，背景虚化处理，突出人物主体'
+        painted = service.art_role_reference_cleanup('[风格设定]\n国潮插画风格，粗犷黑色勾线' + camera, ['subject', 'style'])
+        self.assertIn('[拍摄参数]\n全身景别，平视视角，突出人物主体', painted)
+        photo = service.art_role_reference_cleanup('[风格设定]\n写实摄影风格' + camera, ['subject', 'style'])
+        self.assertIn('背景虚化处理', photo)
+        # Without a style picture only the section names go; the subject's fur and the blur stay.
+        alone = service.art_role_reference_cleanup(text, ['subject'])
+        self.assertIn('毛发', alone)
+        self.assertIn('虚实对比', alone)
+        self.assertNotIn('[主体物品]段', alone)
+        for echo in ('主体原有橙色写在主体物品中', '颜色见光线与色彩段', '颜色保留于【主体物品】'):
+            with self.subTest(echo=echo):
+                self.assertEqual(service.art_drop_section_mentions(f'[光线与色彩]\n暖黄色为主，{echo}'), '[光线与色彩]\n暖黄色为主')
 
 
 class ArtCreateRuns(unittest.TestCase):
@@ -456,6 +568,16 @@ class ArtCreateRuns(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertEqual(service.art_five_section_failure(result['positivePrompt']), '')
         self.assertIn('蜷缩在窗台上', result['positivePrompt'])
+        # rawOutput is the model text the kept answer came from, not the repair and not the cleaned prompt.
+        self.assertEqual(result['rawOutput'], curled)
+
+    def test_create_raw_output_is_the_model_text_and_negations_go_from_every_section(self):
+        written = QWEN3_INLINE_SECTIONS.replace('积雪覆盖的岩石', '脚下无地面无水面，积雪覆盖的岩石').replace(
+            '一个穿红色斗篷的少女站在雪山顶', '一只橘猫趴在窗台上')
+        _, result = self.run_create([written])
+        self.assertEqual(result['rawOutput'], written)
+        self.assertNotIn('无地面', result['positivePrompt'])
+        self.assertIn('积雪覆盖的岩石', result['positivePrompt'])
 
 
 if __name__ == '__main__':

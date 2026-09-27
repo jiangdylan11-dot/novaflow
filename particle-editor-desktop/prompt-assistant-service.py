@@ -5074,6 +5074,35 @@ ART_TIME_OF_DAY_GROUPS = (
 )
 # Light that already tells the time: a draft or edit that has none of these asked for no time of day.
 ART_TIME_OF_DAY_LIGHT = ("月光", "月色", "星空", "星光", "朝阳", "日出", "晨光", "黎明", "拂晓")
+ART_TIME_OF_DAY_GROUP_LIGHT = {
+    ART_TIME_OF_DAY_GROUPS[0]: ("朝阳", "日出", "晨光", "黎明", "拂晓"),
+    ART_TIME_OF_DAY_GROUPS[2]: ("月光", "月色", "星空", "星光"),
+}
+# What each time of day looks like, for a 多图反推 requirement that changes the time (same order as the groups).
+ART_TIME_OF_DAY_LOOK = (
+    "阳光明亮，影子清晰",
+    "低角度的暖色斜阳，影子拉长，天色偏橙红",
+    "主光来自月光或灯光，暗部加深，整体色调偏暗",
+)
+# Weather an edit asks for: (words that ask for it, words that show it in a prompt, what is written when it is missing).
+# Snow on the ground (积雪、覆雪) is not snowfall.
+ART_WEATHER_GROUPS = (
+    (r"下着?雪|下起雪|飘雪|落雪|雪花|飞雪|大雪|暴雪|风雪|小雪|雪天|雪中",
+     r"下着?雪|下起雪|飘雪|落雪|雪花|飞雪|雪片|大雪|暴雪|风雪|小雪|降雪|雪落|雪飘", "雪花飘落"),
+    (r"下着?雨|下起雨|雨天|雨中|雨夜|细雨|小雨|大雨|暴雨|雷雨|阵雨|毛毛雨|烟雨|雨丝",
+     r"下着?雨|下起雨|雨丝|雨滴|雨点|雨幕|细雨|小雨|大雨|暴雨|雷雨|阵雨|毛毛雨|烟雨|降雨|雨水|雨中|雨夜", "细雨飘落"),
+    (r"起雾|大雾|浓雾|薄雾|雾天|雾气|雾中|晨雾|云雾", r"(?<!喷)雾(?!面)", "薄雾弥漫"),
+)
+# "去掉雨", "不要下雪", "雨后": the weather is not asked for.
+ART_WEATHER_NOT_ASKED = re.compile(r"(?:去掉|删除|删去|移除|不要|别|没有|无|停止|不再)[^，,；;。]{0,4}$")
+# Sunny wording that falling snow, rain or fog replaces.
+ART_SUNNY_PATTERN = re.compile(r"晴朗|晴空|晴天|晴日|放晴|烈日|艳阳|骄阳|万里无云|碧空|阳光明媚|阳光灿烂")
+# Weather a rewrite must not invent: rain (not 雨林/雨衣), fog (not 雾面 finish), falling snow.
+ART_INVENTED_WEATHER_PATTERNS = (
+    re.compile(r"雨(?![林衣伞靴])"),
+    re.compile(r"(?<!喷)雾(?!面)"),
+    re.compile(r"雪花|飘雪|落雪|飞雪|风雪|暴雪|降雪|下着?雪|雪片"),
+)
 
 # Header names Qwen3 (and older outputs) use for the five sections.  Only an answer that covers all
 # five sections is renamed to the canonical headers; any other layout keeps the headers it has.
@@ -5228,8 +5257,15 @@ def art_finish_model_prompt(output: str, *, truncated: bool = False) -> str:
 
 
 # "无佩戴任何饰品", "没有其他人物": a positive prompt that names what is absent tends to draw it.
-# "无数/无尽/无边…" are not negations.
-ART_NEGATED_CLAUSE = re.compile(r"^(?:无(?!数|尽|边|瑕|限|垠|比|暇|穷|际|论|袖|人机)|没有|并无|不含|不带|不出现)")
+# "无数/无尽/无边…" are not negations.  A place may come first: "脚下无地面无水面", "城堡下方无地面承托",
+# "背景中没有人物".
+ART_NEGATION_PLACE = (
+    r"[一-鿿]{0,4}?(?:脚下|下方|周围|四周|身旁|身边|身后|背景|画面|远处|近处|前景|中景|后景|远景|地面|天空|场景|环境|其余|其他|周边)"
+    r"(?:中|里|上|内)?(?:均|皆|都|则|也|并|完全)?"
+)
+ART_NEGATED_CLAUSE = re.compile(
+    r"^(?:" + ART_NEGATION_PLACE + r")?(?:无(?!数|尽|边|瑕|限|垠|比|暇|穷|际|论|袖|人机)|没有|并无|不含|不带|不出现)"
+)
 ART_DANGLING_CONNECTIVE = re.compile(r"^(?:但是|但|却|不过|只是|然而)")
 # "城市夜景中无明确主体": a note about the prompt, not something to draw.
 ART_ABSENT_SUBJECT_CLAUSE = re.compile(r"(?:无|没有|并无)(?:明确|具体|特定|其他|任何)?的?(?:主体|人物|角色)")
@@ -5366,16 +5402,28 @@ ART_CREATE_SYSTEM_TEXT = (
     "你是 NovaFlow 的美术提示词作者，把简短的创作需求写成可直接用于 AI 绘图的中文提示词。"
     "严格按用户消息里的版式作答，只输出提示词正文。"
 )
+# 创作的段落说明不点名地面、水面（Qwen3 照填成“地面铺着地毯”“脚下无地面无水面”），也不假定画面有主体
+# （“主体下方”“人物的姿态”让只写了城市夜景的需求多出一座塔或两个人）。
+ART_CREATE_SECTION_GUIDE = (
+    "各段写什么：\n"
+    "- [风格设定]：媒介与画风、整体氛围、完成质感。\n"
+    "- [主体物品]：主体是谁或是什么（连同数量，如一个、两只）、外观、服装或材质、颜色、姿态动作，以及主体之间的关系。\n"
+    "- [环境背景]：所处环境、前中后景，以及画面下方是什么。\n"
+    "- [光线与色彩]：光源方向与软硬、明暗关系、主色与辅色。\n"
+    "- [拍摄参数]：景别、视角、构图与景深。"
+)
 ART_CREATE_INSTRUCTION = (
     "请根据用户的创作需求从零构建一份可直接用于 AI 绘图的中文提示词，按下面五段输出，"
-    + ART_FIVE_SECTION_LAYOUT_RULE + "\n\n"
+    "每段标题单独占一行，下一行写正文，段与段之间空一行：\n"
+    + ART_FIVE_SECTION_SKELETON + "\n\n" + ART_CREATE_SECTION_GUIDE + "\n\n"
     "写作要求：\n"
     "1. 紧扣用户需求：需求里写明的主体、数量、动作、场景和画风必须保留，不要改成别的题材；动作和状态词（如站在、躺在、飞在、漂浮在）按原词写进 [主体物品]。\n"
     "2. 用户指定了画风就照用；没有指定时，选一种最适合这个题材的画风写明，不要混用互相矛盾的画风。\n"
     "3. 需求没写到的地方，只补充与题材相符的常见细节，每段一到三句，写能画出来的具体内容。\n"
     "4. 不要添加需求以外的人物、动物、道具、文字或标志，也不要添加需求没提到的发光、光晕、粒子、魔法等特效。\n"
-    "5. [拍摄参数] 按画面选景别：主体所在的地点也是画面重点时，用全景或远景让主体和地点一起完整入画，远处保持清晰；视角只写一种。\n"
-    "6. [主体物品] 写画面的主要对象和它的外观（需求只写了场景时，写场景里最醒目的建筑或景物）；不写“高质量”“细节丰富”“精美”之类的空泛词，也不写否定说法。\n"
+    "5. [拍摄参数] 按画面选景别：主体待在某个位置上（如站在屋顶、坐在树枝上）时用全景，主体完整入画并占画面的主要位置；"
+    "只有画面本身是大场景（如整座城市、大片海面、连绵山脉）时才用远景，景深拉长；视角只写一种。\n"
+    "6. [主体物品] 写画面的主要对象和它的外观（需求只写了场景时，写组成这个场景的几样主要景物，以及它们的形状、材质和颜色）；不写“高质量”“细节丰富”“精美”之类的空泛词，也不写否定说法。\n"
     "7. 只输出五段正文，每句以句号结尾，不要前言、解释、Markdown 符号或负向提示词。"
 )
 
@@ -5422,8 +5470,11 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
     # A time-of-day or new-background requirement goes into that section's duty itself: as a separate
     # line Qwen3 still copied the pictures' daylight and background.
     requested_time = art_requested_time(requirement)
+    # "夜晚" alone came back as one word before a daylight studio description; the duty says what the time looks like.
+    time_look = ART_TIME_OF_DAY_LOOK[ART_TIME_OF_DAY_GROUPS.index(requested_time[0])] if requested_time else ""
     scene_change = bool(requirement) and bool(re.search(ART_FUSION_SCENE_CHANGE, requirement))
-    camera = "写景别、视角与构图（景别按主体露出的范围写，从头到脚都在画面里就写全身）；图中背景确实模糊时才写景深。"
+    camera = ("写景别、视角与构图（景别按主体露出到哪里写：到脚写全身，到膝盖或大腿写七分身，到腰写中景，到胸写近景）；"
+              "图中背景确实模糊时才写景深。")
     sources = [
         ("[风格设定]", f"只看{style}，{medium}，并写明整幅画面按这种画风重新绘制。只写这张图本身的画法与表面质感（笔触、颗粒、光泽、纸面），"
          f"不提它画的是什么，不拿它画的东西作比喻，也不写{subject}里主体的毛发、皮肤或背景。" if style
@@ -5435,9 +5486,11 @@ def art_role_reference_request(roles: list[str], requirement: str) -> str:
         ("[环境背景]", f"按用户要求写新环境（{requirement}）：写它的前中后景和地面，{subject}原来的背景一律不写。" if scene_change
          else f"只看{background}，写它的环境、前中后景和地面，以及主体站或坐在这个环境的什么位置；{subject}原来的背景一律不写。" if background
          else f"看{subject}，写所处环境、前中后景和地面。"),
-        ("[光线与色彩]", (f"时间是{requested_time[1]}：按{requested_time[1]}写光源方向、软硬与明暗，不照搬图片里的光线；" if requested_time
+        ("[光线与色彩]", (f"时间是{requested_time[1]}：按{requested_time[1]}写光源方向、软硬与明暗（{time_look}），不照搬图片里的光线；" if requested_time
                       else f"光线看{background or subject}" + ("（用户要求改了光线或天气时按用户要求写）" if requirement else "")
                       + "，写光源方向、软硬与明暗；")
+         # Without saying where the subject's own colours go, Qwen3 lists them as the palette's; the section
+         # name it sometimes echoes ("保留于[主体物品]段") is cleaned out afterwards.
          + (f"整体色调、主色与辅色都只从{palette}里取颜色（只写颜色，不写它画的东西）；主体原有的颜色写在 [主体物品]。" if palette
             else f"色彩看{subject}，写整体色调、主色与辅色和对比关系。")),
         ("[拍摄参数]", f"只看{composition or layout}，{camera}" if composition or layout else f"看{subject}，{camera}"),
@@ -5545,6 +5598,20 @@ ART_STYLE_NAME_PATTERN = re.compile(
 ART_AGE_PATTERN = re.compile(r"[一二三四五六七八九十两\d]{1,4}[来多余]?岁|年龄|年纪")
 ART_HAIR_PATTERN = re.compile(r"头发|发型|发色|发丝|秀发|长发|短发|卷发|直发|盘发|马尾|辫|刘海|束于脑后|[黑金棕褐银白红蓝粉紫灰]发")
 ART_TIME_WORD_PATTERN = re.compile("|".join((*(word for group in ART_TIME_OF_DAY_GROUPS for word in group), *ART_TIME_OF_DAY_LIGHT)))
+# Painted styles: a photographic 景深 or 虚化 does not belong to them.
+ART_PAINTED_STYLE = r"水彩|油画|水墨|国画|工笔|二次元|动漫|动画|卡通|Q版|像素|素描|铅笔|彩铅|蜡笔|版画|扁平|矢量|手绘|漫画|国风|国潮|厚涂|插画|赛璐璐|黏土|低多边形|剪纸|浮世绘"
+ART_PAINTED_STYLE_EDIT = re.compile(
+    r"(?:改成|改为|换成|变成|转成|转为|做成|画成)[^，,；;。]{0,6}(?:" + ART_PAINTED_STYLE + r")"
+    r"|(?:" + ART_PAINTED_STYLE + r")[^，,；;。]{0,4}(?:风格|画风|效果|质感)",
+    re.I,
+)
+ART_FOCUS_PATTERN = re.compile(r"景深|虚化|焦外|散景|背景模糊|虚实")
+
+
+def art_content_bigrams(value: str) -> set[str]:
+    """Word pairs without a particle in them: "的树" says nothing about what the piece shows."""
+
+    return {pair for pair in ordinary_art_retention_bigrams(value) if not re.search(r"[的之与和在是有着了及并而其为]", pair)}
 
 
 def art_drop_invented_clauses(text: str, source: str, instruction: str) -> str:
@@ -5553,15 +5620,24 @@ def art_drop_invented_clauses(text: str, source: str, instruction: str) -> str:
     Qwen3 adds a painting style, an age or a hairstyle, or a time of day ("夕阳余晖洒在海面" for
     "背景改成海边") that neither asked for, and keeps the reverse note "保持参考图现有…" next to
     the new text it wrote.  Such a piece is dropped unless it shares words with the draft or the edit.
+    Invented weather ("远景有薄雾笼罩的树影") goes unless it shares two content words with them, and a
+    painted style asked for by the edit loses the photographic 景深/虚化 the model added.
     """
 
     known = ordinary_art_retention_bigrams(f"{source}\n{instruction}")
+    known_content = art_content_bigrams(f"{source}\n{instruction}")
     given = f"{source}\n{instruction}"
 
     def invented(pattern):
         return lambda piece: bool(pattern.search(piece)) and not (ordinary_art_retention_bigrams(piece) & known)
 
     edits = []
+    for pattern in ART_INVENTED_WEATHER_PATTERNS:
+        if not pattern.search(given):
+            edits.append((None, lambda piece, pattern=pattern: bool(pattern.search(piece))
+                          and len(art_content_bigrams(piece) & known_content) < 2))
+    if ART_PAINTED_STYLE_EDIT.search(instruction) and not re.search(r"摄影|照片|相机|" + ART_FOCUS_PATTERN.pattern, instruction):
+        edits.append((("拍摄参数",), lambda piece: bool(ART_FOCUS_PATTERN.search(piece)) and piece not in source))
     if not ART_STYLE_NAME_PATTERN.search(given):
         edits.append((("风格设定",), invented(ART_STYLE_NAME_PATTERN)))
     # A request for more detail may name the hair; any other edit keeps the person as the draft has it.
@@ -5599,7 +5675,12 @@ def art_write_requested_time(text: str, instruction: str, sections=("光线与�
     requested = art_requested_time(instruction)
     if not requested or any(word in text for word in requested[0]):
         return text
-    word = requested[1]
+    return art_write_in_front(text, requested[1], sections)
+
+
+def art_write_in_front(text: str, word: str, sections) -> str:
+    """Put "word，" in front of the first text line of the first of `sections` that the prompt has."""
+
     lines = str(text or "").split("\n")
     section = ""
     first_line = {}
@@ -5619,6 +5700,37 @@ def art_write_requested_time(text: str, instruction: str, sections=("光线与�
             )
             break
     return "\n".join(lines)
+
+
+def art_requested_weather(instruction: str) -> list:
+    """The falling snow, rain or fog an edit asks for, as [(pattern that shows it, words to write)]."""
+
+    asked = []
+    for ask, present, phrase in ART_WEATHER_GROUPS:
+        for match in re.finditer(ask, str(instruction or "")):
+            if ART_WEATHER_NOT_ASKED.search(instruction[:match.start()]) or re.match(r"[后停过]", instruction[match.end():]):
+                continue
+            word = match.group(0)
+            # "大雪", "浓雾" keep the user's strength; "下着雪", "雨天" are written as what falls.
+            asked.append((present, word if re.fullmatch(r"[大小暴细浓薄毛烟晨雷阵风飞]{1,2}[雪雨雾]|雨丝", word) else phrase))
+            break
+    return asked
+
+
+def art_write_requested_weather(text: str, instruction: str, sections=("环境背景", "光线与色彩")) -> str:
+    """Weather is written like a time of day: "下着雪" answered with only 积雪 gets "雪花飘落，" in front,
+    and the sunny wording ("晴朗", "烈日") it replaces goes."""
+
+    asked = art_requested_weather(instruction)
+    if not asked:
+        return text
+    if not ART_SUNNY_PATTERN.search(instruction):
+        text = art_edit_section_lines(text, None, lambda line: art_edit_line_segments(
+            line, lambda piece: bool(ART_SUNNY_PATTERN.search(piece))))
+    for present, phrase in asked:
+        if not re.search(present, text):
+            text = art_write_in_front(text, phrase, sections)
+    return text
 
 
 def art_close_sentences(text: str) -> str:
@@ -5663,6 +5775,73 @@ def art_plain_background_focus(text: str) -> str:
         line, lambda piece: bool(re.search(r"景深|虚化|焦外|散景|背景模糊", piece))))
 
 
+# "主体原有橙色保留于[主体物品]段": a section name in the text is the instructions talking, not the picture.
+ART_SECTION_MENTION = re.compile(
+    r"\[[^\]\n]{1,20}\]|【[^】\n]{1,20}】|(?:" + "|".join(ART_FIVE_SECTION_NAMES) + r")段|主体物品|光线与色彩|风格设定|拍摄参数"
+)
+
+
+def art_drop_section_mentions(text: str, source: str = "") -> str:
+    return art_edit_section_lines(text, None, lambda line: art_edit_line_segments(
+        line, lambda piece: bool(ART_SECTION_MENTION.search(piece)) and piece not in source))
+
+
+ART_COLOUR_WORD = r"[红橙黄绿青蓝紫黑白灰金银棕褐粉米]|色"
+# The subject's own look, which a style picture's [风格设定] leaves to [主体物品].
+ART_SUBJECT_TEXTURE = re.compile(r"毛发|绒毛|毛皮|皮毛|羽毛|皮肤|肤质|肤色|毛色")
+
+
+def art_role_reference_cleanup(text: str, roles: list) -> str:
+    """多图反推: each picture keeps to its sections.
+
+    With a style picture, [风格设定] loses the subject's fur or skin, and [光线与色彩] loses the
+    subject's own colours listed next to the style palette ("辅以主体原有的金色与黑色"); one fixed
+    clause keeps the subject's colours instead.  With a background picture the depth of field the
+    subject picture showed ("背景虚化") says nothing about the new background, and a painted style
+    picture has no photographic blur, so it goes.
+    """
+
+    text = art_drop_section_mentions(text)
+    palette = "color" in roles or "style" in roles
+    if "style" in roles:
+        text = art_edit_section_lines(text, ("风格设定",), lambda line: art_edit_line_segments(
+            line, lambda piece: bool(ART_SUBJECT_TEXTURE.search(piece))))
+    if palette:
+        keep = re.compile(r"保持|不变|保留")
+        text = art_edit_section_lines(text, ("光线与色彩",), lambda line: art_edit_line_segments(
+            line, lambda piece: "原有" in piece and bool(re.search(ART_COLOUR_WORD, piece)) and not keep.search(piece)))
+        colours = art_section_map(text).get("光线与色彩", "")
+        if colours and not re.search(r"(?:保持|不变|保留)", colours):
+            text = art_append_to_section(text, "光线与色彩", "主体原有颜色保持不变")
+    style = art_section_map(text).get("风格设定", "")
+    painted = "style" in roles and re.search(ART_PAINTED_STYLE, style, re.I) and not re.search(r"摄影|照片", style)
+    if "background" in roles or painted:
+        text = art_edit_section_lines(text, ("拍摄参数",), lambda line: art_edit_line_segments(
+            line, lambda piece: bool(ART_FOCUS_PATTERN.search(piece))))
+    return text
+
+
+def art_append_to_section(text: str, name: str, clause: str) -> str:
+    """Add "，clause" to the last text line of one section."""
+
+    lines = str(text or "").split("\n")
+    section = ""
+    last = None
+    for index, line in enumerate(lines):
+        header = re.fullmatch(r"\s*\[([^\]\n]{1,40})\]\s*", line)
+        if header:
+            section = ART_SECTION_CANONICAL.get(header.group(1).strip(), header.group(1).strip())
+        elif line.strip() and section == name:
+            last = index
+    if last is None:
+        return text
+    value = lines[last].rstrip()
+    end = value[-1] if value and value[-1] in "。！？!?" else ""
+    value = re.sub(r"[，,、；;：:]+$", "", value[:len(value) - len(end)] if end else value)
+    lines[last] = f"{value}，{clause}{end or '。'}"
+    return "\n".join(lines)
+
+
 # Posture and state words of a 提示词创作 request that the prompt must keep ("趴" is not "蜷缩").
 ART_STATE_WORD_PATTERN = re.compile(r"漂浮|悬浮|飘浮|飞翔|翱翔|盘旋|趴|躺|蹲|跪|坐|站|倚|靠|骑|奔跑|行走|跳跃|游泳|依偎|拥抱")
 
@@ -5675,8 +5854,12 @@ def art_requirement_missing(requirement: str, text: str) -> bool:
     """A 多图反推 requirement the answer ignored: its time of day, or every word it wrote."""
 
     requested = art_requested_time(requirement)
-    if requested:
-        return not any(word in text for word in requested[0])
+    weather = art_requested_weather(requirement)
+    if requested or weather:
+        # "主光来自月光" answered the night; the missing word itself is written in afterwards.
+        shown = (*requested[0], *ART_TIME_OF_DAY_GROUP_LIGHT.get(requested[0], ())) if requested else ()
+        return bool(requested and not any(word in text for word in shown)
+                    or any(not re.search(present, text) for present, _ in weather))
     if not requirement or re.search(r"去掉|删除|删去|移除|不要|别|没有|无", requirement):
         return False
     words = re.sub(r"改为|改成|换成|变成|变为|增加|添加|加上|加入|画面|整体|整幅|背景|场景|环境|风格|颜色|一些|一点|更加|稍微|要|把|让|将|的", " ", requirement)
@@ -14300,7 +14483,8 @@ class PromptAssistant:
             positive = finalize_art_semantic_fusion(art_positive_only_wording(art_drop_unknown_references(
                 art_finish_model_prompt(normalize_ordinary_art_positive_only_output(positive_output)), source,
             ), source), instruction)
-            positive = art_write_requested_time(art_drop_invented_clauses(positive, source, instruction), instruction)
+            positive = art_drop_section_mentions(art_write_requested_weather(art_write_requested_time(
+                art_drop_invented_clauses(positive, source, instruction), instruction), instruction), source)
             if payload.get("nsfw") is True and ordinary_art_core_affirmative_minor_present(positive):
                 raise ValueError("提示词融合未通过内容检查，原提示词未修改")
             failure = patch_failure or art_semantic_fusion_failure(source, instruction, positive)
@@ -14332,6 +14516,7 @@ class PromptAssistant:
         output = ""
         positive = ""
         laid_out = ""
+        laid_out_raw = ""
         for attempt in range(2):
             repair = (
                 "\n\n上次输出未通过检查：" + art_failure_text(failure, ART_FAILURE_REPAIR_HINTS, failure)
@@ -14343,10 +14528,11 @@ class PromptAssistant:
                                    temperature=0.0 if attempt else 0.5, top_p=1.0 if attempt else 0.9,
                                    trace_label="artCreateRepair" if attempt else "artCreate")
             truncated = bool((getattr(self, "last_generate_profile", None) or {}).get("hitTokenLimit"))
-            positive = art_single_view_angle(art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated)))
+            positive = art_drop_section_mentions(art_single_view_angle(
+                art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated))))
             failure = art_five_section_failure(positive)
             if not failure:
-                laid_out = positive
+                laid_out, laid_out_raw = positive, output
                 word = art_missing_state_word(requirement, positive)
                 failure = "未保留需求里的动作：" + word if word else ""
             if not failure:
@@ -14365,7 +14551,8 @@ class PromptAssistant:
             if ordinary_art_supports_negative_prompt(payload) else ""
         )
         self.status = "模型可用"
-        return {"positivePrompt": positive, "negativePrompt": negative, "rawOutput": positive}
+        # rawOutput is what the model wrote, for tracing; the user gets positivePrompt.
+        return {"positivePrompt": positive, "negativePrompt": negative, "rawOutput": laid_out_raw or output}
 
     def reverse_art_role_prompt(self, image_items: list, requirements: str, purpose: str) -> str:
         """美工多图反推：主体、画风、背景等参考图各自只贡献对应段落，输出五段提示词。"""
@@ -14399,8 +14586,8 @@ class PromptAssistant:
                 trace_label="artRoleReferenceRepair" if attempt else "artRoleReference",
             )
             truncated = bool((getattr(self, "last_generate_profile", None) or {}).get("hitTokenLimit"))
-            description = art_plain_background_focus(art_single_view_angle(
-                art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated))))
+            description = art_role_reference_cleanup(art_plain_background_focus(art_single_view_angle(
+                art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated)))), roles)
             failure = art_five_section_failure(description)
             if not failure:
                 laid_out = description
@@ -14414,7 +14601,8 @@ class PromptAssistant:
             log_prompt_assistant_event("art_role_reference_layout_accepted", command="reverseImagePrompt", failure=failure)
         elif failure:
             log_prompt_assistant_event("art_role_reference_check_accepted", command="reverseImagePrompt", failure=failure[:240])
-        return art_close_sentences(art_write_requested_time(laid_out or description, requirement))
+        return art_close_sentences(art_write_requested_weather(
+            art_write_requested_time(laid_out or description, requirement), requirement))
 
     def optimize_prompt(self, payload: dict) -> dict:
         is_minimax_h3 = is_minimax_h3_prompt_payload(payload)
