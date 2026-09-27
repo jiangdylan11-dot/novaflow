@@ -32,7 +32,7 @@ assistant.optimize_prompt({
     "currentPrompt": "白衣剑客站在竹林中",
     "requirements": "人物缓慢拔剑，镜头轻微推进",
 })
-animation_optimize_prompt = optimize_prompts[2]
+animation_optimize_prompt = optimize_prompts[-1]
 for token in [
     "视频生成 Prompt 设计助手",
     "动作开始状态",
@@ -46,6 +46,9 @@ for token in [
     "人物缓慢拔剑，镜头轻微推进",
 ]:
     assert token in animation_optimize_prompt, f"missing animation optimize contract: {token}"
+# The negative prompt is built by rules, so the model is asked for the positive only, under its own system turn.
+assert "<|im_start|>system\n你是 NovaFlow 的视频生成 Prompt 设计助手" in animation_optimize_prompt
+assert "负向：" not in animation_optimize_prompt
 
 for purpose in ["video", "video_prompt", "image_to_video", "video_reverse"]:
     assert service["is_animation_prompt_payload"]({"purpose": purpose})
@@ -57,8 +60,8 @@ assistant.reverse_image_prompt.__globals__["data_url_to_tensor"] = lambda _value
 reverse_prompts = []
 
 
-def fake_reverse(prompt, **_kwargs):
-    reverse_prompts.append(prompt)
+def fake_reverse(prompt, **kwargs):
+    reverse_prompts.append(f"{kwargs.get('llama_template') or ''}{prompt}")
     return "东方幻想风格的银色长剑，精细金属纹理，蓝色月光"
 
 
@@ -67,8 +70,9 @@ assistant.reverse_image_prompt({
     "images": [{"dataUrl": "data:image/png;base64,test"}],
     "requirements": "改为东方幻想风格并增加蓝色月光",
 })
-assert "改为东方幻想风格并增加蓝色月光" in reverse_prompts[0]
-assert "图生视频 Prompt 设计助手" not in reverse_prompts[0]
+assert "改为东方幻想风格并增加蓝色月光" in reverse_prompts[-1]
+assert "图生视频 Prompt 设计助手" not in reverse_prompts[-1]
+assert "<|im_start|>system\n你是 NovaFlow 的 AI反推助手" in reverse_prompts[-1]
 
 assistant.reverse_image_prompt({
     "images": [{"dataUrl": "data:image/png;base64,test", "role": "first_frame"}],
@@ -77,7 +81,7 @@ assistant.reverse_image_prompt({
     "currentPrompt": "人物保持正面并缓慢转身",
     "requirements": "镜头缓慢推进",
 })
-animation_reverse_prompt = reverse_prompts[1]
+animation_reverse_prompt = reverse_prompts[-1]
 for token in [
     "图生视频 Prompt 设计助手",
     "视为视频首帧",
@@ -90,6 +94,7 @@ for token in [
     "镜头缓慢推进",
 ]:
     assert token in animation_reverse_prompt, f"missing animation reverse contract: {token}"
+assert "<|im_start|>system\n你是 NovaFlow 的图生视频 Prompt 设计助手" in animation_reverse_prompt
 
 # The first/last-frame route must remain the established two-stage analysis -> final
 # workflow, while current prompt and requirements are merged only into the final prompt.

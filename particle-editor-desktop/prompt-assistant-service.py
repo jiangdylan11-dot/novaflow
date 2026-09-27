@@ -100,6 +100,29 @@ ART_STYLE_QUESTION = (
     "metal, marble, stone, sky, water, particles, sparkles, glow, light effects, or any other thing that "
     "appears in this picture. Do not mention the subject, the people, the place, the colours or the mood."
 )
+# Without its own system turn the adapter falls back to its JSON fact-extractor role, which fights the question.
+ART_STYLE_SYSTEM_TEXT = (
+    "You describe how pictures are rendered, for an artist who will redraw other objects in the same style. "
+    "Start with the medium, for example photograph, photorealistic 3D render, oil painting, ink wash, pixel art "
+    "or cel-shaded illustration. Reply with exactly one plain English instruction of at most 40 words: "
+    "no preamble, quotes, lists or JSON."
+)
+# System turns for the video prompt features (WAN and other non-H3 models); each user turn carries the rules.
+VIDEO_OPTIMIZE_SYSTEM_TEXT = (
+    "你是 NovaFlow 的视频生成 Prompt 设计助手。你把用户的视频提示改写成一段可直接用于 WAN 等视频模型的中文 Prompt："
+    "忠于用户原意，写清动作从开始到结束的过程，并给出一种方向明确的运镜。只输出这段 Prompt 本身。"
+)
+VIDEO_I2V_SYSTEM_TEXT = (
+    "你是 NovaFlow 的图生视频 Prompt 设计助手。用户给出的图片就是视频的第一帧，你要写出从这一帧开始、约5秒内自然发生的动作，"
+    "写成一段可直接用于 WAN 等图生视频模型的中文 Prompt。只输出这段 Prompt 本身。"
+)
+VIDEO_CAMERA_RULE = (
+    "写清主体朝哪个方向移动，镜头只用一种单一连贯运镜（固定、推进、拉远、跟随、环绕或平移）并写明方向，两者要配合：\n"
+    "   - 主体朝镜头走来（例如正对镜头向前走）：镜头缓慢后退或保持固定，不要推进；\n"
+    "   - 主体背对镜头走远：镜头向前跟随推进；\n"
+    "   - 主体向画面左侧或右侧移动：镜头向同一侧平移跟随；\n"
+    "   - 主体原地动作：镜头固定或缓慢推进。"
+)
 
 QWEN3_CHAT_VISION_TOKEN = "<|vision_start|><|image_pad|><|vision_end|>"
 # Every local feature runs on the Qwen3-VL instruct model.  A call without its own chat template still
@@ -927,10 +950,10 @@ FIRST_LAST_ACTION_TERMS = [
     "从", "逐渐", "缓慢", "进入", "转向", "转身", "抬起", "举起", "放下", "挥动",
     "挥剑", "迈步", "移动", "后移", "前移", "侧身", "回头", "低头", "抬头", "瞄准",
     "拉弓", "射箭", "起身", "蹲下", "奔跑", "走路", "保持相近姿态", "轻微",
+    # A pair whose frames barely differ is honestly described as still apart from small motion.
+    "缓缓", "渐渐", "慢慢", "随后", "最终", "最后", "静止",
 ]
-FIRST_LAST_BODY_TERMS = ["身体", "姿态", "头部", "手臂", "腿部", "重心", "视线", "道具", "剑", "弓", "枪", "衣摆"]
-FIRST_LAST_CAMERA_TERMS = ["镜头", "运镜", "固定镜头", "缓慢推进", "缓慢拉远", "跟随主体", "画面"]
-FIRST_LAST_BACKGROUND_TERMS = ["背景", "场景", "环境", "保持不变"]
+FIRST_LAST_CAMERA_TERMS = ["镜头", "运镜", "机位"]
 UI_DESIGN_QUALITY_SCORE_KEYS = (
     "themeAdherence",
     "structureAdherence",
@@ -13406,55 +13429,59 @@ class PromptAssistant:
         if is_minimax_h3:
             system_prompt = build_minimax_h3_prompt_instruction(raw_prompt, requirements)
         elif is_ui_design:
-            include_negative = ui_design_uses_negative_prompt(payload)
+            # The negative prompt is built by rules from the positive, so the model writes the positive only.
             task_instruction = (
                 "根据页面结构、参考图职责和用户要求，从零建立一段可直接用于生成成品 UI 的中文设计要求。"
                 if is_create else
                 "优化当前 UI 设计要求，同时严格保留页面功能、信息层级、结构约束和所有资源引用占位符。"
             )
-            output_contract = (
-                "请严格输出两行，冒号后填写内容：\n正向：\n负向："
-                if include_negative else
-                "只输出一段最终正向设计要求，不要添加标题、前缀或负面要求。"
-            )
             negative_instruction = (
-                "负向要求只使用逗号分隔的中文关键词，针对 UI 自动包含布局混乱、元素重叠、文字错乱、按钮变形、"
-                "图标畸形、边距不一致、对齐错误、水印和 Logo。"
-                if include_negative else
-                "当前生成模型不使用独立负面提示通道，禁止输出负向或避免项。"
+                "" if ui_design_uses_negative_prompt(payload) else
+                "5. 当前生成模型不使用独立负面提示通道，禁止输出负向或避免项。\n"
             )
-            system_prompt = (
-                f"你是 NovaFlow UI 版块专用的设计助手。{task_instruction}"
-                "这不是普通绘画提示词：重点必须是页面目标、功能分区、信息层级、视觉风格、配色、材质、控件状态、"
-                "间距、对齐和可读性。不得擅自改变页面结构或删减用户指定功能。"
-                "参考图只允许贡献被指定的职责；布局、风格、配色、材质、内容素材和主体必须彼此隔离，禁止整图照抄。"
-                "如果输入中出现 __NOVAFLOW_ 开头并以双下划线结尾的资源引用占位符，必须原样、原次数保留，"
-                "不得改写、翻译、移动到负向内容或重复。"
-                "最终结果只能描述成品 UI，不得输出分析过程、多个方案、JSON、坐标、百分比、节点、连线、矩形标注、"
-                "画布操作或软件界面说明；也不得把提示文字和区块说明当成最终 UI 文案照抄。"
-                "正向要求使用连贯、明确的中文自然语言。"
+            system_prompt = qwen3_chatml(
+                "你是 NovaFlow UI 版块专用的设计助手。你把界面需求写成一段可直接用于生成成品 UI 的中文设计要求，只输出这段设计要求本身。",
+                f"任务：{task_instruction}\n\n"
+                "要求：\n"
+                "1. 这不是普通绘画提示词：重点必须是页面目标、功能分区、信息层级、视觉风格、配色、材质、控件状态、"
+                "间距、对齐和可读性。不得擅自改变页面结构或删减用户指定功能。\n"
+                "2. 参考图只允许贡献被指定的职责；布局、风格、配色、材质、内容素材和主体必须彼此隔离，禁止整图照抄。\n"
+                "3. 如果输入中出现 __NOVAFLOW_ 开头并以双下划线结尾的资源引用占位符，必须原样、原次数保留，"
+                "不得改写、翻译或重复。\n"
+                "4. 最终结果只能描述成品 UI，不得输出分析过程、多个方案、JSON、坐标、百分比、节点、连线、矩形标注、"
+                "画布操作或软件界面说明；也不得把提示文字和区块说明当成最终 UI 文案照抄。\n"
                 f"{negative_instruction}"
                 f"{requirements_section if not is_create else ''}"
-                "\n现在处理：\n"
-                f"{'用户创作需求' if is_create else '当前设计要求'}：{requirements if is_create else raw_prompt}\n"
-                f"{output_contract}"
+                f"\n{'用户创作需求' if is_create else '当前设计要求'}：\n{requirements if is_create else raw_prompt}\n\n"
+                "输出格式：只输出一段连贯、明确的中文自然语言设计要求，不要标题、前缀、负向词或负面要求。",
             )
         elif is_animation:
-            system_prompt = (
-                "你是 NovaFlow 的视频生成 Prompt 设计助手。请把用户当前提示改写成一段可直接用于 WAN 等视频或图生视频模型的中文自然语言 Prompt。"
-                "最终只保留一个合并后的方案，不要输出原提示、多个备选、解释、JSON、英文或 SD 标签。"
-                "必须保持主体身份、数量、外观、服装和道具一致；明确动作开始状态、连续动作过程和动作结束状态，不能只写静态画面。"
-                "必须写清动作速度与节奏；若用户没有指定时长，按约5秒的自然动作设计，不能在短时长内堆叠过多动作。"
-                "必须写清镜头是固定、推进、拉远、跟随、环绕或其他单一连贯运镜，避免互相冲突的镜头指令。"
-                "除非用户明确要求改变场景，否则背景、构图、光线和主体位置关系保持稳定，并避免身份漂移、穿模和画面闪烁。"
-                "用户附加要求必须与当前提示融合进同一段最终 Prompt，不能只是机械追加。"
-                "同时生成中文负向关键词列表，只允许用逗号分隔关键词，必须包含动作抖动、画面闪烁、身份漂移、人物变形、背景漂移等视频约束。"
-                f"{requirements_section}"
-                "\n现在处理：\n"
-                f"当前视频提示：{raw_prompt}\n"
-                "请严格输出两行，冒号后填写内容：\n"
-                "正向：\n"
-                "负向："
+            # The negative prompt is built by rules (build_targeted_negative_prompt), so only the positive is asked for.
+            animation_rules = [
+                "忠于原意：保留用户写明的主体身份、数量、外观、服装、道具、场景和动作，不改主题。",
+                "只补充让动作更清楚的姿态、肢体和节奏细节；不添加用户没写的角色、道具、特效（火花、光效、轨迹拖尾、粒子、烟雾等）、声音或文字，"
+                "也不编造背景物件、天气或光线，场景只按用户写到的内容简要交代。",
+                "动作分三步写清：动作开始状态 → 连续动作过程 → 动作结束状态（最后停在什么姿态），并写清速度与节奏，例如缓慢、匀速、先快后慢。",
+                "按约5秒设计动作量，只安排一两个能自然完成的动作；时长只用来控制动作量，不要把“5秒”“持续约5秒”“全程”等时长说明写进 Prompt。",
+                VIDEO_CAMERA_RULE,
+                "除非用户明确要求改变场景，否则背景、构图、光线和主体位置关系保持稳定。",
+                "只写画面里应该出现的内容，不写“无抖动”“不闪烁”“避免变形”这类否定句，也不写“营造……氛围”“突出……感”这类抽象总结。",
+            ]
+            if re.search(r"__NOVAFLOW_", f"{raw_prompt}{requirements}"):
+                animation_rules.append(
+                    "文中以 __NOVAFLOW_ 开头、双下划线结尾的资源引用占位符，每个都原样保留一次，放在它指代的对象处，不改写、不翻译、不重复。"
+                )
+            if requirements:
+                animation_rules.append("用户附加要求必须与当前视频提示融合进同一段 Prompt，不能只是机械追加在末尾。")
+            system_prompt = qwen3_chatml(
+                VIDEO_OPTIMIZE_SYSTEM_TEXT,
+                "任务：把“当前视频提示”改写成一段可直接用于 WAN 等视频生成模型的中文视频 Prompt。\n\n"
+                "写作要求：\n"
+                + "".join(f"{index}. {rule}\n" for index, rule in enumerate(animation_rules, 1))
+                + f"{requirements_section}"
+                f"\n当前视频提示：\n{raw_prompt or '（为空，请直接按用户附加要求写）'}\n\n"
+                "输出格式：只输出一段连贯的中文自然语言 Prompt，以句号结尾；不要标题、前缀、编号、解释、多个方案、"
+                "英文、SD 标签、JSON 或负向词。",
             )
         else:
             task_instruction = (
@@ -13684,6 +13711,10 @@ class PromptAssistant:
             if is_ordinary_art and not art_supports_negative:
                 negative = ""
                 output = positive
+        if is_animation:
+            positive = tidy_video_prompt(positive, f"{raw_prompt}\n{requirements}")
+        if is_animation or is_ui_design:
+            positive = keep_resource_placeholders_once(positive, raw_prompt or requirements)
         if not positive:
             raise ValueError("模型未返回可用的正向提示词")
         negative_source = f"视频 动画 图生视频 {raw_prompt}" if is_animation else (raw_prompt or requirements)
@@ -16238,9 +16269,12 @@ class PromptAssistant:
             ART_STYLE_QUESTION,
             tensor,
             unload_after=True,
+            system_text=ART_STYLE_SYSTEM_TEXT,
             max_new_tokens=ART_STYLE_MAX_NEW_TOKENS,
         )
-        style = " ".join(clean_text(str(raw or "")).split())[:ART_STYLE_MAX_CHARS]
+        style = " ".join(clean_text(str(raw or "")).split())
+        style = re.sub(r"^(?:instruction|style|answer)\s*:\s*", "", style.strip(" \"'“”"), flags=re.I).strip(" \"'“”")
+        style = style[:ART_STYLE_MAX_CHARS]
         return {"style": style, "model": self.reverse_model_path().name[:160]}
 
     def reverse_image_prompt(self, payload: dict) -> dict:
@@ -16707,7 +16741,7 @@ class PromptAssistant:
                 max_length=320,
                 trace_label="uiDesignReferenceAssistant",
             )
-            description = clean_reverse_output(output)
+            description = keep_resource_placeholders_once(clean_reverse_output(output), current_prompt)
             if not description:
                 raise ValueError("模型未返回可用的 UI 设计要求")
             negative_prompt = ""
@@ -16733,15 +16767,31 @@ class PromptAssistant:
         if len(image_tensors) == 1:
             if is_animation:
                 prompt = (
-                    "你是 NovaFlow 的图生视频 Prompt 设计助手。将这张图片视为视频首帧，直接生成一段可用于 WAN 等图生视频模型的中文自然语言 Prompt，"
-                    "不能只复述图片内容或写成静态图描述。"
-                    "保持图片中的主体身份、数量、面部、服装、道具和场景一致；明确首帧的开始状态、连续动作过程和结束状态。"
-                    "写清动作速度与节奏；未指定时长时按约5秒设计自然、可完成的动作，避免堆叠过多动作。"
-                    "写清固定、推进、拉远、跟随或环绕等单一连贯运镜；除非用户要求变化，否则背景、构图、光线和主体位置关系保持稳定。"
-                    "最终只输出一段合并后的中文视频 Prompt，不要输出图片分析、多个方案、英文、SD 标签、JSON 或项目符号。"
+                    "任务：将这张图片视为视频首帧，写一段可直接用于 WAN 等图生视频模型的中文视频 Prompt，"
+                    "描述从这一帧开始发生的动作；不能只复述图片内容或写成静态图描述。\n\n"
+                    "写作要求：\n"
+                    "1. 开头用一句话点明首帧主体、最关键的可见外观特征（身份、颜色、服装或材质、手中的道具）和它此刻的姿态"
+                    "（例如站着、坐着、正在腾空、正对镜头），只写图中真实可见的内容；主体身份、数量、面部、服装、道具和场景保持一致。\n"
+                    "2. 动作从首帧的真实状态出发：主体当前的朝向、姿势、位置和手里已有的道具就是起点，顺着这个状态自然发展，"
+                    "不要让主体突然放下、丢掉或更换道具；如果首帧已处在腾空、奔跑、挥动等动作的中途，就从这个中途接着写"
+                    "（例如从半空落地），不要把动作从头再做一遍。\n"
+                    "3. 按开始状态 → 连续动作过程 → 结束状态写清动作，并写出速度与节奏；按约5秒设计，只安排一两个能完成的动作，"
+                    "最后停在明确的结束姿态。\n"
+                    f"4. {VIDEO_CAMERA_RULE}\n"
+                    "5. 除非用户要求变化，否则背景、构图、光线和主体位置关系保持首帧的样子；不添加图中没有的物体、特效（火花、光效、轨迹拖尾、粒子、烟雾等）、"
+                    "声音、文字或新角色，也不写景深或焦点变化。\n"
+                    "6. 不写“5秒”“全程”等时长说明，不写“无抖动”这类否定句，也不写“营造……氛围”这类抽象总结。\n"
                     f"{merge_instruction}"
+                    "\n\n输出格式：只输出一段连贯的中文自然语言 Prompt，以句号结尾；不要标题、图片分析、编号、多个方案、"
+                    "英文、SD 标签或 JSON。"
                 )
-                output = self.generate(prompt, images=image_tensors, max_length=260)
+                output = self.generate(
+                    prompt,
+                    images=image_tensors,
+                    llama_template=qwen3_chatml(VIDEO_I2V_SYSTEM_TEXT, "{}"),
+                    max_length=320,
+                )
+                description = tidy_video_prompt(output, f"{current_prompt}\n{requirements}")
             elif purpose.lower().replace("_", "-") == "static-image-reverse":
                 static_result = self.reverse_plain_static_image(payload, image_tensors[0], requirements)
                 description = static_result["description"]
@@ -16788,12 +16838,22 @@ class PromptAssistant:
                     })
             else:
                 prompt = (
-                    "你是 NovaFlow 的 AI反推助手。请根据图片内容生成适合图像生成模型使用的中文自然语言提示词。"
-                    "不要输出英文，不要输出 SD 标签，不要输出 JSON，不要写成分析报告。"
-                    "请直接输出可用于生成图片的自然语言描述。"
+                    "任务：根据图片内容写一段适合图像生成模型使用的中文自然语言提示词。\n\n"
+                    "要求：\n"
+                    "1. 依次写清主体（身份、外观、服装、姿态）、场景与背景、构图与视角、光线与色彩、画风与材质。\n"
+                    "2. 只写图中真实可见的内容，不猜测、不添加图中没有的物体或特效。\n"
                     f"{merge_instruction}"
+                    "\n\n输出格式：直接输出一段连贯的中文描述；不要标题、分析报告、编号、英文、SD 标签或 JSON。"
                 )
-                output = self.generate(prompt, images=image_tensors, max_length=180)
+                output = self.generate(
+                    prompt,
+                    images=image_tensors,
+                    llama_template=qwen3_chatml(
+                        "你是 NovaFlow 的 AI反推助手。你看图写出可直接用于图像生成模型的中文自然语言提示词，只输出提示词本身。",
+                        "{}",
+                    ),
+                    max_length=300,
+                )
         else:
             def image_role(item, index):
                 marker = " ".join([
@@ -16824,15 +16884,16 @@ class PromptAssistant:
                     max_length=analysis_max_length,
                 )
                 action_notes = clean_text(analysis_output)
+                duration_source = f"{current_prompt}\n{requirements}"
                 prompt, llama_template, max_length = build_first_last_final_prompt(action_notes, image_tokens)
                 prompt = f"{prompt}{merge_instruction}"
                 output = self.generate(prompt, images=image_tensors, llama_template=llama_template, max_length=max_length)
-                description = clean_reverse_output(output)
+                description = tidy_video_prompt(output, duration_source)
                 if not is_first_last_action_prompt_quality_ok(description):
                     retry_prompt, retry_template, retry_max_length = build_first_last_final_prompt(action_notes, image_tokens, description)
                     retry_prompt = f"{retry_prompt}{merge_instruction}"
                     retry_output = self.generate(retry_prompt, images=image_tensors, llama_template=retry_template, max_length=retry_max_length, seed=2)
-                    retry_description = clean_reverse_output(retry_output)
+                    retry_description = tidy_video_prompt(retry_output, duration_source)
                     if retry_description:
                         output = retry_output
                         description = retry_description
@@ -16849,16 +16910,21 @@ class PromptAssistant:
                 if is_animation:
                     prompt = (
                         f"{image_tokens}"
-                        "请联合参考这些图片，生成一段可直接用于视频生成的中文自然语言 Prompt，不能只写静态图片描述。"
-                        "保持主体身份、外观、服装、道具和场景锚点一致，明确动作开始、连续过程、结束状态、速度节奏、时长和单一连贯运镜。"
-                        "未被要求改变时，背景、构图与光线保持稳定。不要输出英文、SD 标签、JSON、项目符号或分析报告。"
+                        "任务：联合参考这些图片，写一段可直接用于视频生成的中文视频 Prompt，不能只写静态图片描述。\n\n"
+                        "写作要求：\n"
+                        "1. 主体身份、外观、服装、道具和场景锚点与参考图保持一致，只写图中真实可见的内容。\n"
+                        "2. 按开始状态 → 连续动作过程 → 结束状态写清动作，并写出速度与节奏；按约5秒设计，只安排一两个能完成的动作。\n"
+                        f"3. {VIDEO_CAMERA_RULE}\n"
+                        "4. 未被要求改变时，背景、构图与光线保持稳定；不写“5秒”等时长说明。\n"
                         f"{merge_instruction}"
+                        "\n\n输出格式：只输出一段连贯的中文自然语言 Prompt，以句号结尾；不要英文、SD 标签、JSON、项目符号或分析报告。"
                     )
                     llama_template = (
                         "<|im_start|>system\n你是 NovaFlow 的视频 Prompt 设计助手。请把参考图和用户意图合并成一段最终中文视频 Prompt。<|im_end|>\n"
                         "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
                     )
-                    output = self.generate(prompt, images=image_tensors, llama_template=llama_template, max_length=280)
+                    output = self.generate(prompt, images=image_tensors, llama_template=llama_template, max_length=320)
+                    description = tidy_video_prompt(output, f"{current_prompt}\n{requirements}")
                 elif purpose == "styleTransfer" or (
                     purpose == "roleReference" and len(image_tensors) == 2 and "subject" in role_labels and "style" in role_labels
                 ):
@@ -17003,39 +17069,34 @@ def data_url_to_tensor(data_url: str):
     return torch.from_numpy(array).unsqueeze(0)
 
 
-def strip_label(value: str, label: str) -> str:
-    return re.sub(rf"^\s*{label}\s*[:：]\s*", "", value.strip())
+OPTIMIZED_POSITIVE_LABEL = r"(?:正向|正面)(?:提示词|提示|描述|关键词)?[ \t]*[:：][ \t]*"
+OPTIMIZED_NEGATIVE_LABEL = r"(?:推荐)?(?:负向|负面|反向|反面)(?:提示词|提示|关键词|词)?[ \t]*[:：][ \t]*"
 
 
 def split_optimized_output(output: str) -> tuple[str, str]:
-    text = clean_text(output)
-    positive = ""
-    negative = ""
-    if "负向" in text:
-        before, after = re.split(r"负向\s*[:：]", text, maxsplit=1)
-        negative = after.strip()
-        positive = re.sub(r"^\s*正向\s*[:：]\s*", "", before.strip())
-    elif "推荐负面" in text:
-        before, after = re.split(r"推荐负面提示词\s*[:：]", text, maxsplit=1)
-        negative = after.strip()
-        positive = strip_label(before, "正向")
-    else:
-        lines = [line.strip() for line in text.splitlines() if line.strip()]
-        positive_lines = []
-        negative_lines = []
-        for line in lines:
-            if re.match(r"^(负向|负面|反向|反面)\s*[:：]", line):
-                negative_lines.append(re.sub(r"^(负向|负面|反向|反面)\s*[:：]\s*", "", line))
-            elif re.match(r"^正向\s*[:：]", line):
-                positive_lines.append(strip_label(line, "正向"))
-            else:
-                positive_lines.append(line)
-        positive = "\n".join(positive_lines).strip()
-        negative = "\n".join(negative_lines).strip()
+    """Split a model answer into (positive, negative).
+
+    Tolerates 正向提示词/负向提示词 style labels, markdown bold or headings around them, a positive that only
+    mentions 负向 without a colon, the two parts in either order, and a missing negative part.
+    """
+    text = clean_text(output).replace("**", "")
+    text = re.sub(r"(?m)^[ \t]*#{1,6}[ \t]+", "", text)
+    # A heading such as "正向提示词" alone on its line works like a label with a colon.
+    text = re.sub(
+        r"(?m)^[ \t]*((?:推荐)?(?:正向|正面|负向|负面|反向|反面)(?:提示词|提示|关键词|描述|词)?)[ \t]*$", r"\1：", text
+    )
+    negative_label = re.search(OPTIMIZED_NEGATIVE_LABEL, text)
+    positive, negative = (
+        (text[:negative_label.start()], text[negative_label.end():]) if negative_label else (text, "")
+    )
+    positive = re.sub(rf"^\s*{OPTIMIZED_POSITIVE_LABEL}", "", positive.strip())
+    positive_label = re.search(OPTIMIZED_POSITIVE_LABEL, negative)
+    if positive_label:
+        if not positive.strip():
+            positive = negative[positive_label.end():]
+        negative = negative[:positive_label.start()]
     positive = re.sub(r"\n{2,}", "\n", positive).strip()
-    positive = strip_label(positive, "正向")
-    negative = re.split(r"(?:\n\s*)?正向\s*[:：]", negative, maxsplit=1)[0].strip()
-    return positive, negative
+    return positive, negative.strip()
 
 
 def minimax_h3_prompt_fields_are_ordered(text: str, fields: tuple[str, ...]) -> bool:
@@ -17663,83 +17724,79 @@ def remove_negative_prompt_keywords(value: str, blocked: set[str]) -> str:
     return ", ".join(items)
 
 
+FIRST_LAST_RECORD_LABELS = (
+    "主体", "首帧姿态", "尾帧姿态", "身体变化", "头部变化", "手臂变化",
+    "腿部变化", "道具变化", "镜头变化", "背景变化", "合理动作过渡",
+)
+
+
 def build_first_last_analysis_prompt(image_tokens: str) -> tuple[str, str, int]:
+    """Stage 1 of the 首尾帧 pair: both frames in one call, compared into a short labelled record."""
     prompt = (
         f"{image_tokens}"
-        "你正在处理首尾帧视频反推。图片1/首帧是动作开始，图片2/尾帧是动作结束。"
-        "先不要写最终提示词。请只比较两张图的可见差异，输出一份简短的内部动作记录。"
-        "必须分别写清：主体、首帧姿态、尾帧姿态、身体姿态变化、头部变化、手臂变化、腿部变化、道具位置变化、镜头变化、背景变化。"
-        "如果某项没有明显变化，就写“无明显变化”或“保持不变”。"
-        "必须根据可见差异合理推断，不能强行夸张动作。"
-        "不要重点描述服装、发型和背景，只保留必要信息。不要输出英文，不要输出 JSON。"
-        "请按以下格式输出：\n"
-        "主体：\n"
-        "首帧姿态：\n"
-        "尾帧姿态：\n"
-        "身体变化：\n"
-        "头部变化：\n"
-        "手臂变化：\n"
-        "腿部变化：\n"
-        "道具变化：\n"
-        "镜头变化：\n"
-        "背景变化：\n"
-        "合理动作过渡："
+        "任务：比较首帧（图片1，动作开始）和尾帧（图片2，动作结束），写一份简短的动作记录，供下一步写视频 Prompt 使用。"
+        "现在不要写最终 Prompt。\n\n"
+        "要求：\n"
+        "1. 只写两张图中真实可见的内容和差异，按可见差异合理推断，不猜测、不夸大动作。\n"
+        "2. “主体”写清是谁或是什么，以及最关键的外观特征；“镜头变化”看取景、景别和角度；“背景变化”也包括光线。\n"
+        "3. 主体不是人物时，把身体、头部、手臂、腿部换成主体相应的部位或状态（形状、位置、朝向、开合等）来写。\n"
+        "4. 某一项没有明显变化时写“无明显变化”。“合理动作过渡”用一句话写出从首帧到尾帧的连续动作。\n"
+        "5. 每行一句，不输出英文或 JSON。\n\n"
+        "按以下格式逐行输出：\n"
+        + "\n".join(f"{label}：" for label in FIRST_LAST_RECORD_LABELS)
     )
     llama_template = (
         "<|im_start|>system\n"
-        "你是 NovaFlow 的首尾帧动作差异分析助手。你的任务是比较首帧和尾帧，不是描述单张图片。"
-        "请输出中文内部动作记录，不输出 JSON，不输出英文。"
+        "你是 NovaFlow 的首尾帧动作差异分析助手。你比较视频的首帧和尾帧，用中文逐行写出一份简短的动作记录；"
+        "不描述单张图片，不输出 JSON 或英文。"
         "<|im_end|>\n"
         "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
     )
-    return prompt, llama_template, 360
+    return prompt, llama_template, 400
 
 
 def build_first_last_final_prompt(action_notes: str, image_tokens: str = "", previous_output: str = "") -> tuple[str, str, int]:
-    retry_note = ""
-    if previous_output:
-        retry_note = (
-            f"\n上一次输出偏静态，不能直接复用。上一次输出：{previous_output[:180]}\n"
-            "请重新改写，必须把内部动作记录里的差异写成视频动作过渡。"
-        )
-    frame_context = f"{image_tokens}\n" if image_tokens else ""
+    """Stage 2 of the 首尾帧 pair: the same two frames plus the record, written up as one video prompt."""
+    retry_note = (
+        "\n\n上一次的输出没有写清过渡动作或镜头，不能直接复用：\n"
+        f"{previous_output[:180]}\n"
+        "请重写：把动作记录里的差异写成连续的动作过渡，并写明镜头。"
+        if previous_output else ""
+    )
     prompt = (
-        f"{frame_context}"
-        "请根据以上首帧和尾帧图片，以及以下内部动作记录，写成一段可直接用于首尾帧视频生成的中文自然语言 Prompt。\n"
-        f"{action_notes[:900]}\n"
-        "如果内部动作记录不完整，请重新观察首帧和尾帧的可见差异，再补足合理但不过度夸张的动作过渡。\n"
-        "最终输出必须包含主体、从首帧到尾帧的动作变化、镜头变化、背景变化。"
-        "重点写身体姿态变化、头部变化、手臂变化、腿部变化、道具位置变化。"
-        "服装、发型、背景只简要描述一次，不要把重点放在外观。"
-        "如果背景没有明显变化，必须明确写“背景保持不变”。"
-        "如果镜头没有明显变化，写“镜头保持固定”；如果能合理推断镜头运动，可写缓慢推进、缓慢拉远或跟随主体。"
-        "必须根据可见差异合理推断，不能强行夸张动作。"
-        "如果两张图差异很小，允许写：角色保持相近姿态，仅出现轻微头部、手臂或衣摆变化，镜头保持固定，背景保持不变。"
-        "最终视频 Prompt 应包含“从……逐渐……”“缓慢……”“进入……”“转向……”或“保持相近姿态，仅出现轻微……”这类动作过渡表达。"
-        "不要写成图片分析报告，不要输出英文，不要输出 SD 标签，不要输出 JSON，不要输出项目符号。"
-        "只输出最终视频 Prompt。"
+        f"{image_tokens}"
+        "任务：根据首帧（图片1）、尾帧（图片2）和下面的动作记录，写一段可直接用于首尾帧视频生成（如 WAN）的中文视频 Prompt。\n\n"
+        "动作记录（以图片为准；记录有遗漏或错误时，请重新观察两张图）：\n"
+        f"{action_notes[:900]}\n\n"
+        "写作要求：\n"
+        "1. 开头用一句话点明主体和最关键的外观特征，只写两张图中都能看到的内容；服装、发型等外观只简要写一次。\n"
+        "2. 重点写变化：从首帧的状态出发，经过连续、合理的过渡动作，最后停在与尾帧一致的状态，并写出速度与节奏。"
+        "两张图差异很小时，只写轻微的变化（例如保持相近姿态，仅头部、手臂或衣摆轻微变化），不要夸大。\n"
+        "3. 写明镜头：取景没有变化时写“镜头保持固定”；有变化时只写一种运镜（缓慢推进、缓慢拉远、平移或跟随主体）并写明方向。\n"
+        "4. 背景没有变化时写“背景保持不变”；有变化时如实写出。不添加图中没有的物体、特效、声音或文字。\n"
+        "5. 用画面内容描述状态，不写“首帧”“尾帧”“图片1”这类说明词，不写“5秒”等时长说明，也不写“营造……氛围”这类抽象总结。\n\n"
+        "输出格式：只输出一段连贯的中文自然语言 Prompt，以句号结尾；不要标题、编号、分析报告、英文、SD 标签或 JSON。"
         f"{retry_note}"
     )
     llama_template = (
         "<|im_start|>system\n"
-        "你是 NovaFlow 的首尾帧视频 Prompt 写作助手。请把首尾帧差异记录改写成最终视频 Prompt。"
-        "重点描述身体姿态变化、手臂变化、腿部变化、头部变化、道具变化、镜头变化和背景变化。"
-        "不要重点描述服装和外观。不要写成图片分析报告。不要输出英文、SD 标签、JSON 或项目符号。只输出最终视频 Prompt。"
+        "你是 NovaFlow 的首尾帧视频 Prompt 写作助手。你根据首帧、尾帧和动作记录，写出主体如何从首帧的状态连续变化到尾帧的状态，"
+        "写成一段可直接用于视频生成的中文 Prompt。只输出这段 Prompt 本身。"
         "<|im_end|>\n"
         "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
     )
-    return prompt, llama_template, 300
+    return prompt, llama_template, 320
 
 
 def is_first_last_action_prompt_quality_ok(text: str) -> bool:
+    """A usable pair prompt names a transition and the camera, and is prose rather than the stage-1 record."""
     value = clean_text(text)
     if not value:
         return False
     has_action = any(term in value for term in FIRST_LAST_ACTION_TERMS)
-    has_body = any(term in value for term in FIRST_LAST_BODY_TERMS)
     has_camera = any(term in value for term in FIRST_LAST_CAMERA_TERMS)
-    has_background = any(term in value for term in FIRST_LAST_BACKGROUND_TERMS)
-    return has_action and has_body and has_camera and has_background
+    record_labels = sum(1 for label in FIRST_LAST_RECORD_LABELS if re.search(rf"{label}\s*[:：]", value))
+    return has_action and has_camera and record_labels < 2
 
 
 def log_prompt_assistant_event(event: str, **fields) -> None:
@@ -17750,11 +17807,76 @@ def log_prompt_assistant_event(event: str, **fields) -> None:
         pass
 
 
-def clean_reverse_output(output: str) -> str:
+def clean_reverse_output(output: str, *, keep_final_period: bool = False) -> str:
     text = clean_text(output)
-    text = re.sub(r"^(这张图片展示了|这张图片显示了|图片展示了|图片显示了|画面展示了|画面显示了)", "", text).strip(" ：:，,。")
+    text = re.sub(r"^(这张图片展示了|这张图片显示了|图片展示了|图片显示了|画面展示了|画面显示了)", "", text)
+    text = text.lstrip(" ：:，,。").rstrip(" ：:，," if keep_final_period else " ：:，,。")
     text = re.sub(r"\n{2,}", "\n", text).strip()
     return text
+
+
+def qwen3_chatml(system_text: str, user_text: str) -> str:
+    """A system turn plus one user turn; qwen3_chat_parts reads both back ("{}" as user_text makes a llama_template)."""
+    return (
+        f"<|im_start|>system\n{system_text}<|im_end|>\n"
+        f"<|im_start|>user\n{user_text}<|im_end|>\n<|im_start|>assistant\n"
+    )
+
+
+def keep_resource_placeholders_once(text: str, source: str) -> str:
+    """Every __NOVAFLOW_…__ placeholder of the source exactly once, as the renderer's restore step requires.
+
+    Later duplicates are dropped and a placeholder the model lost goes back in front of the text.
+    """
+    value = str(text or "")
+    tokens = list(dict.fromkeys(re.findall(r"__NOVAFLOW_[A-Z0-9_:-]+__", str(source or ""), flags=re.I)))
+    for token in tokens:
+        first = value.find(token)
+        if first >= 0:
+            end = first + len(token)
+            value = value[:end] + value[end:].replace(token, "")
+    missing = [token for token in tokens if token not in value]
+    value = value.strip()
+    return f"{''.join(missing)}{value}" if missing and value else value
+
+
+# "全程约5秒" and the like echo the duration hint the instructions give the model; they mean nothing to WAN.
+# The phrase is cut out ("5秒后停在画面中央" keeps "停在画面中央"); a clause left with only filler goes.
+VIDEO_DURATION_ECHO = re.compile(
+    r"(?:在|于|用|经过)?\s*(?:约|大约|大概)?\s*(?<![0-9.])(?:5|５|五)\s*秒钟?(?:内|之内|以内|左右|后|之后)?"
+)
+VIDEO_DURATION_FILLER = re.compile(
+    r"^(?:整个|整段|全程|总时长|时长|动作|视频|画面|过程|持续|历时|用时|总共|共|大约|约|的|时间|完成|[\s，,。；;！!？?])*$"
+)
+VIDEO_PROMPT_LABEL = re.compile(
+    r"^\s*(?:最终)?(?:图生视频|首尾帧视频|视频)?\s*(?:Prompt|提示词|正向提示词|正向)\s*[:：]\s*", re.I
+)
+
+
+def tidy_video_prompt(text: str, source: str = "") -> str:
+    """One readable paragraph ending in 。, without labels, markdown or an echoed duration hint.
+
+    A duration the user wrote (any 秒 in the source) is kept.
+    """
+    value = VIDEO_PROMPT_LABEL.sub("", clean_reverse_output(text, keep_final_period=True).replace("**", ""))
+    lines = [line.strip(" \t-•*") for line in value.splitlines() if line.strip(" \t-•*")]
+    value = "".join(
+        line if index == len(lines) - 1 or re.search(r"[。！？!?；;，,、：:]$", line) else f"{line}，"
+        for index, line in enumerate(lines)
+    )
+    if "秒" not in str(source or ""):
+        kept: list[str] = []
+        for clause in re.findall(r"[^，,。；;！!？?]+[，,。；;！!？?]*", value):
+            rest = VIDEO_DURATION_ECHO.sub("", clause)
+            if not VIDEO_DURATION_FILLER.match(rest):
+                kept.append(rest)
+            elif kept and re.search(r"[。！!？?]$", clause):
+                kept[-1] = re.sub(r"[，,；;]+$", "。", kept[-1])
+        value = "".join(kept)
+    value = value.strip().rstrip("，,、；;：: ")
+    if value and not re.search(r"[。！!？?…”」）)]$", value):
+        value += "。"
+    return value
 
 
 assistant = PromptAssistant()
