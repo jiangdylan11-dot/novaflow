@@ -80784,8 +80784,10 @@
     syncArtGenerateElementFromRender(currentStage, renderArtGenerateStage());
     if (!shouldKeepArtGenerateBottomContent(currentBottom, forceBottomRender)) {
       const nextBottom = renderArtGenerateBottomPanel();
+      const restorePromptFocus = carryArtGeneratePromptFrames(currentBottom, nextBottom);
       carryArtGenerateAssistantButtons(currentBottom, nextBottom);
       syncArtGenerateElementFromRender(currentBottom, nextBottom);
+      restorePromptFocus();
     }
     fitArtGenerateStackedWorkspace(root, rect);
   }
@@ -80801,6 +80803,37 @@
     const bottom = getArtGenerateWorkspaceDirectChild(root, "novaflow-art-generate-bottom");
     const dockHeight = bottom instanceof HTMLElement ? bottom.offsetHeight : 0;
     root.style.height = `${Math.round(rect.height + dockHeight)}px`;
+  }
+
+  // A dock rebuild (a dropdown, a selected result, every progress tick while
+  // generating) replaced both prompt boxes: the caret, the box's scroll and a
+  // half-typed IME word went with them. The same boxes move over instead; one
+  // whose text was set from outside (AI 助手, history) takes the new text.
+  function carryArtGeneratePromptFrames(currentBottom, nextBottom) {
+    const active = document.activeElement;
+    const focus = active instanceof HTMLElement && currentBottom?.contains?.(active)
+      ? { node: active, start: active.selectionStart, end: active.selectionEnd }
+      : null;
+    [["positive", "prompt"], ["negative", "negativePrompt"]].forEach(([kind, key]) => {
+      const selector = `[data-novaflow-art-generate-prompt-frame="1"][data-novaflow-art-generate-prompt-kind="${kind}"]`;
+      const from = currentBottom?.querySelector?.(selector);
+      const to = nextBottom?.querySelector?.(selector);
+      if (!(from instanceof HTMLElement) || !(to instanceof HTMLElement)) return;
+      to.replaceWith(from);
+      const textarea = from.querySelector("textarea");
+      if (!(textarea instanceof HTMLTextAreaElement)) return;
+      const value = String(ART_GENERATE_STATE[key] || "");
+      if (textarea.value !== value) textarea.value = value;
+      // Mounts or drops the @ mention editor for the current mode, and redraws it.
+      if (key === "prompt") mountArtGenerateResourceMentionTextarea(textarea);
+    });
+    return () => {
+      if (!focus || !focus.node.isConnected || document.activeElement === focus.node) return;
+      try { focus.node.focus({ preventScroll: true }); } catch (_) { return; }
+      if (typeof focus.node.setSelectionRange === "function" && Number.isFinite(focus.start)) {
+        try { focus.node.setSelectionRange(focus.start, focus.end); } catch (_) { /* not a text field */ }
+      }
+    };
   }
 
   // The smart-AI script mounts AI 助手 / 编辑 into the prompt's action row a
