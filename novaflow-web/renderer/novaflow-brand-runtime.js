@@ -38150,8 +38150,10 @@
     }
     stopAiAnimationEntryTitleObserver();
     if (!document.body) return;
-    document.body.classList.remove("novaflow-ai-animation-intent");
-    document.body.classList.remove("novaflow-ai-sequence-intent");
+    // classList.remove rewrites the class attribute even when the class is absent,
+    // and that record sends the spec into another full pass that calls this again.
+    if (document.body.classList.contains("novaflow-ai-animation-intent")) document.body.classList.remove("novaflow-ai-animation-intent");
+    if (document.body.classList.contains("novaflow-ai-sequence-intent")) document.body.classList.remove("novaflow-ai-sequence-intent");
   }
 
   function scheduleAiAnimationEntryIntentRelease(delayMs = 1400) {

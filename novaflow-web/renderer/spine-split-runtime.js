@@ -36316,6 +36316,16 @@
       || target.hasAttribute('data-novaflow-layer-pointer-drop-line')
       || !!target.closest(`#${SELECTION_CURSOR_ID}, #${SELECTION_PAINT_OVERLAY_ID}, #${MASK_CURSOR_ID}, #${LAYER_DROP_LINE_ID}, [data-novaflow-selection-brush-cursor="1"], [data-novaflow-selection-paint-overlay="1"], [data-novaflow-mask-brush-cursor="1"], [data-novaflow-layer-pointer-drop-line="1"]`)
   }
+  function isTextOnlyMutation(mutation) {
+    if (!mutation) return false
+    if (mutation.type === 'characterData') return true
+    // A playing timeline repaints its range fill through style on every frame.
+    if (mutation.type === 'attributes' && mutation.attributeName === 'style' && mutation.target instanceof HTMLInputElement && mutation.target.type === 'range') return true
+    if (mutation.type !== 'childList') return false
+    const onlyText = (nodes) => Array.from(nodes || []).every((node) => node.nodeType === 3)
+    return onlyText(mutation.addedNodes) && onlyText(mutation.removedNodes)
+  }
+
   function isPreviewOverlayMutation(mutation) {
     const target = mutation && mutation.target
     const attr = mutation && mutation.attributeName || ''
@@ -36465,7 +36475,9 @@
       if (debugEnabled) {
         nfTopbarHelpSplitDebug('surfaceObserver:route-inactive', { hasSurface: hasSplitWorkspaceSurface() }, debugEnabled)
       }
-      hideLegacyBoneSplitPanel()
+      // A running clock or frame counter changes text every frame; text alone
+      // cannot bring the legacy panel back, so only element changes rescan the page.
+      if (!mutations.every(isTextOnlyMutation)) hideLegacyBoneSplitPanel()
       if (hasSplitWorkspaceSurface()) scheduleSurfaceSync()
       return
     }

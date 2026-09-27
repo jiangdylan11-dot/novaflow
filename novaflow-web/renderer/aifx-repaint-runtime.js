@@ -3101,50 +3101,60 @@
     }
   }
 
+  // refreshUi runs on every preview frame. Writing an unchanged value still
+  // records a mutation (title, disabled, hidden, text), and each one sends the
+  // host's observers into a full pass, so only changed values are written.
+  const put = (node, key, value) => { if (node && node[key] !== value) node[key] = value }
+  const putAttr = (node, name, value) => { if (node && node.getAttribute(name) !== value) node.setAttribute(name, value) }
+
   const refreshUi = () => {
     const refs = state.refs
     if (!refs.root) return
     const restyle = RESTYLE()
     const statusText = String(state.status || IDLE_STATUS).trim() || IDLE_STATUS
     const detailText = String(state.detail || '').trim()
-    if (refs.previewStatusTitle) refs.previewStatusTitle.textContent = statusText
-    if (refs.previewStatusDetail) refs.previewStatusDetail.textContent = detailText
+    put(refs.previewStatusTitle, 'textContent', statusText)
+    put(refs.previewStatusDetail, 'textContent', detailText)
     if (refs.previewStatus) {
       // Centred only while there is nothing on the canvas to cover.
-      refs.previewStatus.setAttribute('data-placement', state.source ? 'top' : 'center')
+      putAttr(refs.previewStatus, 'data-placement', state.source ? 'top' : 'center')
       // The overlay is an empty-state and an error surface, not a permanent
       // banner: once there is something on the canvas it gets out of the way.
       const hasPixels = frameCount() > 0
       // ... except a failure: with frames on the canvas an error would otherwise never be seen.
-      refs.previewStatus.style.display = hasPixels && !state.isGenerating && statusText !== '出错了' ? 'none' : ''
-      refs.previewStatus.setAttribute('data-tone', statusText === '出错了' ? 'warning' : 'idle')
-      refs.previewStatus.setAttribute('title', [statusText, detailText].filter(Boolean).join(' · '))
+      put(refs.previewStatus.style, 'display', hasPixels && !state.isGenerating && statusText !== '出错了' ? 'none' : '')
+      putAttr(refs.previewStatus, 'data-tone', statusText === '出错了' ? 'warning' : 'idle')
+      putAttr(refs.previewStatus, 'title', [statusText, detailText].filter(Boolean).join(' · '))
     }
-    if (refs.previewProgress) refs.previewProgress.hidden = !state.isGenerating
+    put(refs.previewProgress, 'hidden', !state.isGenerating)
     if (refs.previewProgressFill) {
-      refs.previewProgressFill.style.width = (clamp(Number(state.progress) || 0, 0, 1) * 100).toFixed(1) + '%'
+      put(refs.previewProgressFill.style, 'width', (clamp(Number(state.progress) || 0, 0, 1) * 100).toFixed(1) + '%')
     }
 
     const total = frameCount()
     if (refs.timeline) {
-      refs.timeline.max = String(Math.max(0, total - 1))
-      refs.timeline.value = String(Math.min(state.playhead, Math.max(0, total - 1)))
-      refs.timeline.disabled = total < 2
+      put(refs.timeline, 'max', String(Math.max(0, total - 1)))
+      put(refs.timeline, 'value', String(Math.min(state.playhead, Math.max(0, total - 1))))
+      put(refs.timeline, 'disabled', total < 2)
     }
     if (refs.frameLabel) {
-      refs.frameLabel.textContent = total ? `${Math.min(state.playhead + 1, total)} / ${total}` : '0 / 0'
+      put(refs.frameLabel, 'textContent', total ? `${Math.min(state.playhead + 1, total)} / ${total}` : '0 / 0')
     }
     if (refs.playButton) {
-      refs.playButton.innerHTML = state.playing
-        ? '<i class="fas fa-pause" aria-hidden="true"></i>'
-        : '<i class="fas fa-play" aria-hidden="true"></i>'
-      refs.playButton.disabled = total < 2
+      // Rebuilt only when play / pause flips, not on every frame.
+      if (refs.playButton.dataset.aifxPlayIcon !== (state.playing ? 'pause' : 'play')) {
+        refs.playButton.dataset.aifxPlayIcon = state.playing ? 'pause' : 'play'
+        refs.playButton.innerHTML = state.playing
+          ? '<i class="fas fa-pause" aria-hidden="true"></i>'
+          : '<i class="fas fa-play" aria-hidden="true"></i>'
+      }
+      put(refs.playButton, 'disabled', total < 2)
     }
     if (refs.generate) {
       const chosen = Boolean(state.reference) || Boolean(restyle && restyle.getPreset(state.attribute))
         || Boolean(String(state.supplement || '').trim())
-      refs.generate.disabled = state.isGenerating || !state.source || !restyle || !chosen
-      refs.generate.textContent = state.isGenerating ? '生成中…' : '生成特效'
+      put(refs.generate, 'disabled', state.isGenerating || !state.source || !restyle || !chosen)
+      put(refs.generate, 'textContent', state.isGenerating ? '生成中…' : '生成特效')
     }
     if (refs.templateMeta) {
       const builtin = BUILTIN_TEMPLATES.find(item => item.id === state.builtinId)
@@ -3167,12 +3177,12 @@
           notes.push(`生成 ${size.width}×${size.height}`)
         }
       }
-      refs.templateMeta.textContent = state.source
+      put(refs.templateMeta, 'textContent', state.source
         ? [`${shown} · ${state.source.width}×${state.source.height} · ${state.sourceFrames.length} 帧`]
           .concat(notes).join(' · ')
-        : ''
+        : '')
     }
-    if (refs.templateEmpty) refs.templateEmpty.textContent = state.source ? '✓' : '+'
+    put(refs.templateEmpty, 'textContent', state.source ? '✓' : '+')
     // Rebuilt only when the file changes: refreshUi runs on every playhead
     // tick and a recreated <video> would restart on each one.
     syncDropzonePreview(refs.templateZone, refs.templatePreview, state.source, (entry) => {
@@ -3194,49 +3204,47 @@
       image.src = entry.objectUrl
       return image
     })
-    if (refs.styleMeta) refs.styleMeta.textContent = state.reference ? state.reference.fileName : ''
-    if (refs.styleEmpty) refs.styleEmpty.textContent = state.reference ? '✓' : '+'
+    put(refs.styleMeta, 'textContent', state.reference ? state.reference.fileName : '')
+    put(refs.styleEmpty, 'textContent', state.reference ? '✓' : '+')
     // A reference image supplies the material outright - naming one as well
     // just overrides the picture - so the style buttons go quiet while one is
     // loaded rather than pretending to still apply.
     renderCurrentStyle()
-    if (refs.openStyle) refs.openStyle.disabled = state.isGenerating || Boolean(state.reference)
-    if (refs.openTemplate) refs.openTemplate.disabled = state.isGenerating
-    if (refs.styleClearRow) refs.styleClearRow.hidden = !state.reference
+    put(refs.openStyle, 'disabled', state.isGenerating || Boolean(state.reference))
+    put(refs.openTemplate, 'disabled', state.isGenerating)
+    put(refs.styleClearRow, 'hidden', !state.reference)
     if (refs.supplement) {
       if (refs.supplement.value !== state.supplement) refs.supplement.value = state.supplement
-      refs.supplement.disabled = state.isGenerating
+      put(refs.supplement, 'disabled', state.isGenerating)
     }
     // Detection is not a control any more - the artist uploads and the panel
     // reads the clip - but what it read is still shown, so an odd result has
     // an explanation.
     if (refs.templateDetected) {
-      refs.templateDetected.textContent = ''
-      if (state.source && state.shapeAuto) {
-        refs.templateDetected.appendChild(document.createTextNode(
-          '已识别：' + state.shapeAuto + (state.lifecycleAuto ? ' · ' + state.lifecycleAuto : '')))
-      }
+      put(refs.templateDetected, 'textContent', state.source && state.shapeAuto
+        ? '已识别：' + state.shapeAuto + (state.lifecycleAuto ? ' · ' + state.lifecycleAuto : '')
+        : '')
     }
     if (refs.seedLock) {
       const locked = state.lockedSeed != null
-      refs.seedLock.hidden = !state.candidates.length
-      refs.seedLock.disabled = state.isGenerating
-      refs.seedLock.classList.toggle('is-on', locked)
-      refs.seedLock.textContent = locked ? '已锁定这版种子 · 点此解锁' : '以这版为准再生成'
+      put(refs.seedLock, 'hidden', !state.candidates.length)
+      put(refs.seedLock, 'disabled', state.isGenerating)
+      if (refs.seedLock.classList.contains('is-on') !== locked) refs.seedLock.classList.toggle('is-on', locked)
+      put(refs.seedLock, 'textContent', locked ? '已锁定这版种子 · 点此解锁' : '以这版为准再生成')
     }
     if (refs.candidateCount) {
-      refs.candidateCount.value = String(state.candidateCount)
-      if (refs.candidateCountValue) refs.candidateCountValue.textContent = String(state.candidateCount)
-      refs.candidateCount.disabled = state.isGenerating
+      put(refs.candidateCount, 'value', String(state.candidateCount))
+      put(refs.candidateCountValue, 'textContent', String(state.candidateCount))
+      put(refs.candidateCount, 'disabled', state.isGenerating)
     }
     if (refs.effectType && restyle) {
       // The style card above already says where the material comes from, so
       // this line only carries what it cannot: that the picked style has not
       // been render-checked.
       const preset = restyle.getPreset(state.attribute)
-      refs.effectType.textContent = !state.reference && preset && !preset.verified
+      put(refs.effectType, 'textContent', !state.reference && preset && !preset.verified
         ? preset.label + ' 尚未逐条验证，可多出几个候选'
-        : ''
+        : '')
     }
     syncAllRangeProgress()
   }
