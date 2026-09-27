@@ -274,6 +274,18 @@ ipcMain.handle('worker:openLocal', async () => {
     return { ok: true };
   } catch (error) { return { ok: false, error: String(error.message || error) }; }
 });
+// 释放显存: the hand-over the prompt assistant makes before loading its own
+// model - refused while anything draws or waits, then ComfyUI unloads it all.
+ipcMain.handle('worker:freeMemory', async () => {
+  try {
+    if (!worker) throw new Error('请先启动 NovaFlow');
+    const result = await worker.promptAssistant.releaseRuntimes();
+    if (!result.ok) throw new Error(result.errorCode === 'runtime-generation-busy' ? '正在生成，完成后再释放显存' : result.error);
+    if (!result.released) throw new Error('生成服务未运行，无需释放');
+    log('memory released on request');
+    return { ok: true };
+  } catch (error) { return { ok: false, error: String(error.message || error) }; }
+});
 
 const respond = (action, kind) => {
   if (kind) {

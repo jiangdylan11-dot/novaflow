@@ -580,6 +580,8 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
       const result = await requestWithCache('describeArtStyle', { images: [{ name: sanitizeFileName(payload?.name, 'scene.png'), dataUrl }] }, 240000);
       return result?.ok ? { ok: true, style: String(result.data?.style || '').slice(0, 400), model: String(result.data?.model || '') } : result;
     },
+    /** The assistant window's 释放显存 button: the same GPU hand-over, with no request behind it. */
+    releaseRuntimes,
     stop
   };
   return api;

@@ -52,6 +52,7 @@
   .metric .v { display: block; text-align: left; font-size: 16px; margin-top: 4px; font-variant-numeric: tabular-nums; }
   .connection { display: flex; align-items: center; gap: 16px; padding-top: 12px; min-width: 0; }
   #comfy { flex: none; font-size: 12px; color: #d3d3d3; }
+  #freeMemoryBtn { margin-left: auto; height: 28px; padding: 0 12px; font-size: 12px; font-weight: 500; }
   #tab-status > .card { gap: 0; }
   button, a { transition: background .15s, border-color .15s, box-shadow .15s; }
   button:focus-visible, a:focus-visible { outline: 2px solid #1EA672; outline-offset: 2px; }
@@ -160,7 +161,7 @@
         <div class="metric"><span class="k">本机排队</span><span class="v" id="localQueue">0</span></div>
         <div class="metric"><span class="k">已完成 / 失败</span><span class="v" id="stats">0 / 0</span></div>
       </div>
-      <div class="connection"><span class="k">生成服务</span><span id="comfy">—</span></div>
+      <div class="connection"><span class="k">生成服务</span><span id="comfy">—</span><button id="freeMemoryBtn" disabled>释放显存</button></div>
     </div>
     <div id="launcher-actions">
       <div class="launch-column">
@@ -260,7 +261,7 @@
   const STATUS_DOT = { idle: 'on', busy: 'busy', offline: '', maintenance: '' };
 
   let lastState = null;
-    let localBusy = false, localClosing = false, shareBusy = false;
+    let localBusy = false, localClosing = false, shareBusy = false, freeBusy = false, freeLabel = '释放显存';
     function renderProgress() {
       for (const kind of ['local', 'share']) {
         const item = lastState?.operations?.[kind], box = $(kind + 'Progress');
@@ -289,6 +290,9 @@
     $('activityBadge').textContent = state?.currentTaskId ? '工作中' : running || state?.sharing ? '空闲' : '待启动';
     $('activityBadge').dataset.active = String(Boolean(running || state?.sharing));
     $('localQueue').textContent = state?.queuedLocal || 0;
+    // 释放显存 needs a running generation service and nothing drawing.
+    $('freeMemoryBtn').disabled = freeBusy || !(state?.comfy?.image || state?.comfy?.video) || Boolean(state?.currentTaskId);
+    $('freeMemoryBtn').textContent = freeBusy ? '释放中…' : freeLabel;
 
     $('version').textContent = state?.version ? 'v' + state.version : '';
     if (!state) {
@@ -392,6 +396,16 @@
       if (!res.ok) showError(res.error);
     } catch (error) { showError(String(error.message)); }
     finally { shareBusy = false; render(lastState); }
+  });
+  $('freeMemoryBtn').addEventListener('click', async () => {
+    if (freeBusy) return;
+    freeBusy = true; showError(''); render(lastState);
+    try {
+      const res = await api.freeMemory();
+      if (res.ok) { freeLabel = '已释放'; setTimeout(() => { freeLabel = '释放显存'; render(lastState); }, 1500); }
+      else showError(res.error);
+    } catch (error) { showError(String(error.message)); }
+    finally { freeBusy = false; render(lastState); }
   });
     $('websiteLink').addEventListener('click', async event => {
     event.preventDefault();

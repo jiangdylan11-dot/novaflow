@@ -22,6 +22,7 @@ f.identity.controlUrl = 'https://control.test';
 equal(f.windows[0].options.minWidth >= 620, true);
 equal((await f.call('start')).needsLicense, true);
 equal(f.instances.length, 0);
+equal((await f.call('freeMemory')).error, '请先启动 NovaFlow'); // Nothing holds the GPU before the assistant runs.
 equal((await f.call('license')).state.machineId, 'TEST-MACHINE-ONLY');
 f.config.registrationCode = 'bad-code';
 equal((await f.call('share')).ok, false);
@@ -70,6 +71,13 @@ const count = f.instances.length;
 equal((await f.call('openLocal')).ok, true);
 equal(f.instances.length, count);
 equal(f.opened.at(-1), f.instances.at(-1).openUrl);
+// 释放显存: ComfyUI unloads on request, a drawing in flight wins, a stopped service has nothing to give back.
+equal((await f.call('freeMemory')).ok, true);
+f.releaseResult = { ok: false, errorCode: 'runtime-generation-busy', error: 'busy' };
+equal((await f.call('freeMemory')).error, '正在生成，完成后再释放显存');
+f.releaseResult = { ok: true, released: false };
+equal((await f.call('freeMemory')).error, '生成服务未运行，无需释放');
+f.releaseResult = null;
 equal((await f.call('getState')).operations.local.percent, 100);
 await f.call('share');
 let prevented = false;

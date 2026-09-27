@@ -70,6 +70,7 @@ export async function createLauncherFixture() {
       const instance = { stopped: false, onChange() {},
         getState: () => ({ localRunning, sharing, version: '0.4.4', status: localRunning || sharing ? 'idle' : 'offline' }),
         openUrl: 'http://127.0.0.1:4784/#local-pair=test-only',
+        promptAssistant: { releaseRuntimes: async () => fixture.releaseResult || { ok: true, released: true } },
         async start() {
           if (fixture.localFailure) throw new Error('Local fixture failure');
           localRunning = true; return this.getState();

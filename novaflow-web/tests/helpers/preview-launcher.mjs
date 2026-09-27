@@ -10,7 +10,7 @@ fixture.config.registrationCode = '';
 const source = await readFile(new URL('../../worker/electron/ui.html', import.meta.url), 'utf8');
 const bridge = `<script>
 const invoke = async (name, payload) => (await fetch('/ipc', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({name,payload}) })).json();
-window.novaflowWorker = Object.fromEntries(['getConfig','setConfig','getState','getLogs','start','stop','share','unshare','openWebsite','license','licenseImportText','licenseImportFile','pickModelsFolder','openLogFolder'].map(name => [name, payload => invoke(name,payload)]));
+window.novaflowWorker = Object.fromEntries(['getConfig','setConfig','getState','getLogs','start','stop','share','unshare','openWebsite','openLocal','freeMemory','license','licenseImportText','licenseImportFile','pickModelsFolder','openLogFolder'].map(name => [name, payload => invoke(name,payload)]));
 window.novaflowWorker.onState = () => {};
 window.novaflowWorker.onLog = () => {};
 </script>`;

@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('novaflowWorker', {
   unshare: () => ipcRenderer.invoke('worker:unshare'),
   openWebsite: () => ipcRenderer.invoke('worker:openWebsite'),
   openLocal: () => ipcRenderer.invoke('worker:openLocal'),
+  freeMemory: () => ipcRenderer.invoke('worker:freeMemory'),
   license: () => ipcRenderer.invoke('worker:license'),
   licenseImportText: text => ipcRenderer.invoke('worker:licenseImportText', text),
   licenseImportFile: () => ipcRenderer.invoke('worker:licenseImportFile'),
