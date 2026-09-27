@@ -36356,8 +36356,11 @@
       const host = document.getElementById("novaflow-spine-split-right-workspace-host");
       const uiShell = firstVisible('[data-novaflow-ui-design-shell="1"]');
       if (overlay instanceof HTMLElement && overlay.getBoundingClientRect().width > 0) {
-        // The overlay itself follows data-novaflow-stage-box.
-        const resourcesTop = workspaceTop + NOVAFLOW_STACK_CENTER_MIN_HEIGHT + NOVAFLOW_STACK_GAP;
+        // The overlay itself follows data-novaflow-stage-box; with 生图 up its
+        // workspace runs on past the stage by the dock, so the resources follow that.
+        const artWorkspace = body.getAttribute(ART_GENERATE_ACTIVE_ATTR) === "1" ? document.getElementById(ART_GENERATE_WORKSPACE_ID) : null;
+        const artWorkspaceHeight = artWorkspace instanceof HTMLElement ? artWorkspace.offsetHeight : 0;
+        const resourcesTop = workspaceTop + Math.max(NOVAFLOW_STACK_CENTER_MIN_HEIGHT, artWorkspaceHeight) + NOVAFLOW_STACK_GAP;
         placeNovaflowStackNode(host, {
           top: `${resourcesTop}px`, bottom: "auto", left: `${columnLeft}px`, right: "auto",
           width: `${columnWidth}px`, "min-width": `${columnWidth}px`, "max-width": `${columnWidth}px`,
@@ -36549,7 +36552,9 @@
     if (!options.ignoreDock && document.body && document.body.getAttribute(ART_GENERATE_ACTIVE_ATTR) === "1" && dock instanceof HTMLElement && dock.offsetHeight > 0) {
       // Until the spec has sized the dock its raw height is far taller; keep the last box.
       if (dock.style.getPropertyPriority("padding") !== "important") return;
-      surfaceHeight = Math.max(160, height - dock.offsetHeight - AI_ANIMATION_PANEL_TIMELINE_GAP);
+      surfaceHeight = NOVAFLOW_LAYOUT_TIER === "stack"
+        ? height
+        : Math.max(160, height - dock.offsetHeight - AI_ANIMATION_PANEL_TIMELINE_GAP);
       dockCounted = true;
     }
     const surface = [box.left, box.top, box.width, surfaceHeight].map((n) => Math.round(n)).join(",");
@@ -80769,6 +80774,7 @@
     const currentBottom = getArtGenerateWorkspaceDirectChild(root, "novaflow-art-generate-bottom");
     if (!(currentTop instanceof HTMLElement) || !(currentStage instanceof HTMLElement) || !(currentBottom instanceof HTMLElement)) {
       root.replaceChildren(renderArtGenerateTopBar(), renderArtGenerateStage(), renderArtGenerateBottomPanel());
+      fitArtGenerateStackedWorkspace(root, rect);
       return;
     }
     syncArtGenerateWorkspaceOrder(root, currentTop, currentStage, currentBottom);
@@ -80779,6 +80785,20 @@
       carryArtGenerateAssistantButtons(currentBottom, nextBottom);
       syncArtGenerateElementFromRender(currentBottom, nextBottom);
     }
+    fitArtGenerateStackedWorkspace(root, rect);
+  }
+
+  // Stacked, the stage keeps the full stage box, as with 生图 closed, and the dock
+  // follows under it, as on the 动画 page; beside the stage it shares the box.
+  function fitArtGenerateStackedWorkspace(root, rect) {
+    if (!(root instanceof HTMLElement)) return;
+    // The stacked page scrolls and the stage box is in page coordinates; these
+    // panels hang off <body>, so they are placed on the page, not the screen.
+    root.style.position = NOVAFLOW_LAYOUT_TIER === "stack" ? "absolute" : "";
+    if (NOVAFLOW_LAYOUT_TIER !== "stack") return;
+    const bottom = getArtGenerateWorkspaceDirectChild(root, "novaflow-art-generate-bottom");
+    const dockHeight = bottom instanceof HTMLElement ? bottom.offsetHeight : 0;
+    root.style.height = `${Math.round(rect.height + dockHeight)}px`;
   }
 
   // The smart-AI script mounts AI 助手 / 编辑 into the prompt's action row a
@@ -82390,8 +82410,9 @@
     panel.setAttribute("data-novaflow-art-generate-layer-panel", "1");
     panel.setAttribute("data-novaflow-art-generate-result-count", String(ART_GENERATE_STATE.results.length));
     Object.assign(panel.style, {
-      left: `${rect.left}px`,
-      top: `${rect.top}px`,
+      position: NOVAFLOW_LAYOUT_TIER === "stack" ? "absolute" : "",
+      left: `${rect.left + (NOVAFLOW_LAYOUT_TIER === "stack" ? window.scrollX : 0)}px`,
+      top: `${rect.top + (NOVAFLOW_LAYOUT_TIER === "stack" ? window.scrollY : 0)}px`,
       width: `${rect.width}px`,
       height: `${rect.height}px`,
       zIndex: "2147482629"

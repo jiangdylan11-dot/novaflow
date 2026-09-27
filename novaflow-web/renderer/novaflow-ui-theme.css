@@ -642,7 +642,9 @@ html[data-novaflow-layout-tier="stack"] body {
 html[data-novaflow-layout-tier="stack"] #root {
   height: auto !important;
 }
-html[data-novaflow-layout-tier="stack"] .novaflow-app {
+/* Not 生图's workspace: it carries .novaflow-app for the theme, but it is a
+   fixed grid (bar, stage, dock); flow-root and the page height flattened it. */
+html[data-novaflow-layout-tier="stack"] .novaflow-app:not(.novaflow-art-generate-shell) {
   /* flow-root keeps .nf-app-body's 54 top margin inside, which overflow:hidden
      used to do; without it the margin collapses through and drops the page. */
   display: flow-root !important;
