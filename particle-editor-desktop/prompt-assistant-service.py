@@ -70,11 +70,9 @@ if hasattr(sys.stdin, "reconfigure"):
     sys.stdin.reconfigure(encoding="utf-8")
 
 
-MODEL_TYPE = "qwen2_5_vl_7b_fp8"
+MODEL_TYPE = "qwen3_vl_8b_abliterated_nf4"
 DEFAULT_RUNTIME_JSON = Path(r"C:\ProgramData\NovaFlow\AI-Runtime\runtime.json")
 DEFAULT_COMFY_ROOT = Path(r"C:\ProgramData\NovaFlow\AI-Runtime\engine\ComfyUI")
-DEFAULT_MODEL_PATH = Path(r"E:\BaiduNetdiskDownload\qwen_2.5_vl_7b_fp8_scaled.safetensors")
-DEFAULT_MODEL_NAME = "qwen_2.5_vl_7b_fp8_scaled.safetensors"
 DEFAULT_REVERSE_QWEN3_MODEL_PATH = Path(
     r"E:\BaiduNetdiskDownload\prompt_generator\Huihui-Qwen3-VL-8B-Instruct-Abliterated"
 )
@@ -99,7 +97,10 @@ ART_STYLE_QUESTION = (
     "appears in this picture. Do not mention the subject, the people, the place, the colours or the mood."
 )
 
-STOP_TOKENS = [151645, 151643]
+QWEN3_CHAT_VISION_TOKEN = "<|vision_start|><|image_pad|><|vision_end|>"
+# Every local feature runs on the Qwen3-VL instruct model.  A call without its own chat template still
+# needs a system turn; the old ComfyUI default ("Describe the image...") contradicted most tasks.
+QWEN3_DEFAULT_SYSTEM_TEXT = "你是 NovaFlow 的本地提示词助手。严格按用户消息里的要求和输出格式作答，只输出要求的内容，不解释。"
 NEGATIVE_COMMON_PREFIX = ["低质量", "模糊"]
 NEGATIVE_SUFFIX = ["水印", "Logo"]
 NEGATIVE_MAX_COUNT = 18
@@ -11913,20 +11914,16 @@ def current_prompt_from_payload(payload: dict, fallback: str = "", limit: int = 
 
 class PromptAssistant:
     def __init__(self) -> None:
-        self.clip = None
         self.status = "未配置模型"
         self.error = ""
-        self.loaded_model_path = ""
         self.last_generate_profile = {}
+        self._qwen3_adapter = None
 
     def runtime_json_path(self) -> Path:
         return Path(os.environ.get("NOVAFLOW_RUNTIME_JSON") or str(DEFAULT_RUNTIME_JSON))
 
     def comfy_root(self) -> Path:
         return Path(os.environ.get("NOVAFLOW_COMFY_ROOT") or str(DEFAULT_COMFY_ROOT))
-
-    def model_path(self) -> Path:
-        return Path(os.environ.get("NOVAFLOW_PROMPT_ASSISTANT_MODEL_PATH") or str(DEFAULT_MODEL_PATH))
 
     def reverse_model_path(self) -> Path:
         return Path(
@@ -12031,53 +12028,25 @@ class PromptAssistant:
             return {}
         return json.loads(path.read_text(encoding="utf-8"))
 
-    def add_comfy_paths(self) -> None:
-        comfy_root = self.comfy_root()
-        if not comfy_root.exists():
-            raise FileNotFoundError(f"ComfyUI root not found: {comfy_root}")
-        os.chdir(str(comfy_root))
-        if str(comfy_root) not in sys.path:
-            sys.path.insert(0, str(comfy_root))
-
-    def add_model_paths(self, runtime_config: dict, model_path: Path | None) -> None:
-        import folder_paths
-
-        models_path = runtime_config.get("modelsPath")
-        if models_path:
-            models_root = Path(models_path)
-            folder_paths.add_model_folder_path("text_encoders", str(models_root / "text_encoders"))
-            folder_paths.add_model_folder_path("embeddings", str(models_root / "embeddings"))
-
-        if model_path is not None:
-            folder_paths.add_model_folder_path("text_encoders", str(model_path.parent), is_default=True)
-
-    def force_qwen_lm_head(self) -> None:
-        import comfy.text_encoders.llama as llama
-
-        if getattr(llama.Qwen25_7BVLI, "_novaflow_prompt_assistant_lm_head", False):
-            return
-
-        original_init = llama.Qwen25_7BVLI.__init__
-
-        def patched_init(instance, config_dict, dtype, device, operations):
-            next_config = dict(config_dict)
-            next_config["lm_head"] = True
-            original_init(instance, next_config, dtype, device, operations)
-
-        llama.Qwen25_7BVLI.__init__ = patched_init
-        llama.Qwen25_7BVLI._novaflow_prompt_assistant_lm_head = True
-
-    def ensure_stop_tokens(self) -> None:
-        try:
-            qwen_model = getattr(self.clip.cond_stage_model, "qwen25_7b")
-            config = qwen_model.transformer.model.config
-            if not hasattr(config, "stop_tokens"):
-                config.stop_tokens = STOP_TOKENS
-        except AttributeError:
-            return
+    def qwen3_adapter(self):
+        adapter = getattr(self, "_h3_reference_adapter", None) or getattr(self, "_qwen3_adapter", None)
+        if adapter is None:
+            adapter = Qwen3VLAbliteratedAdapter(
+                self.reverse_model_path(),
+                max_side=768,
+                max_new_tokens=1200,
+                trim_transient_cuda_cache=True,
+            )
+            self._qwen3_adapter = adapter
+        return adapter
 
     def reset_loaded_clip(self) -> None:
-        self.clip = None
+        """Release the shared Qwen3 model before a feature loads its own adapter."""
+
+        adapter = getattr(self, "_qwen3_adapter", None)
+        self._qwen3_adapter = None
+        if adapter is not None:
+            adapter.unload()
         gc.collect()
         try:
             import torch
@@ -12086,43 +12055,19 @@ class PromptAssistant:
         except Exception:
             pass
 
-    def load(self) -> None:
-        if self.clip is not None:
-            return
-
-        model_path = self.model_path()
-        runtime_config = self.read_runtime_config()
-        runtime_model_path = Path(str(runtime_config.get("modelsPath") or "")) / "text_encoders" / DEFAULT_MODEL_NAME
-        selected_model_path = model_path if model_path.exists() else (runtime_model_path if runtime_model_path.exists() else None)
-        if selected_model_path is None:
-            self.status = "未配置模型"
-            raise FileNotFoundError(f"未找到 Qwen2.5-VL 模型：{model_path}")
-
-        self.status = "加载中"
-        self.add_comfy_paths()
-        self.force_qwen_lm_head()
-        self.add_model_paths(runtime_config, selected_model_path)
-
-        import nodes
-
-        self.clip = nodes.CLIPLoader().load_clip(selected_model_path.name, type="qwen_image", device="default")[0]
-        self.ensure_stop_tokens()
-        self.loaded_model_path = str(selected_model_path)
-        self.status = "模型可用"
-        self.error = ""
-
     def status_payload(self) -> dict:
-        model_path = self.model_path()
-        configured = model_path.exists()
-        if not configured and self.loaded_model_path:
-            configured = Path(self.loaded_model_path).exists()
+        model_path = self.reverse_model_path()
+        try:
+            configured = bool(Qwen3VLAbliteratedAdapter(model_path).readiness().get("available"))
+        except Exception:
+            configured = False
         runtime_status = self.status if configured else "未配置模型"
         if configured and runtime_status == "未配置模型":
             runtime_status = "模型可用"
         return {
             "modelType": MODEL_TYPE,
-            "modelPath": self.loaded_model_path or str(model_path),
-            "enabled": bool(configured),
+            "modelPath": str(model_path),
+            "enabled": configured,
             "runtimeStatus": runtime_status,
             "error": self.error,
         }
@@ -12193,52 +12138,10 @@ class PromptAssistant:
                             'totalMs': round((time.perf_counter() - total_started) * 1000)})
             log_prompt_assistant_event('prompt_assistant_generate_done', command=trace_label, generateProfile=profile)
             return output
-        load_started = time.perf_counter()
-        self.load()
-        profile["loadMs"] = round((time.perf_counter() - load_started) * 1000)
-        prompt = prompt_assistant_tokenizer_safe_text(prompt)
-        profile["safePromptChars"] = len(prompt)
-        tokenize_started = time.perf_counter()
-        if trace_label:
-            log_prompt_assistant_event(
-                "prompt_assistant_tokenize_start",
-                command=trace_label,
-                elapsedMs=round((time.perf_counter() - total_started) * 1000),
-                loadMs=profile["loadMs"],
-                safePromptChars=profile["safePromptChars"],
-            )
-        try:
-            tokens = self.clip.tokenize(prompt, images=images or [], llama_template=llama_template, min_length=1)
-        except TypeError as exc:
-            if "TextEncodeInput must be" not in str(exc):
-                raise
-            profile["tokenizeRetry"] = True
-            profile["tokenizeRetryError"] = str(exc)
-            log_prompt_assistant_event(
-                "prompt_assistant_tokenize_retry",
-                error=str(exc),
-                promptChars=len(prompt),
-                maxLength=max_length,
-            )
-            self.reset_loaded_clip()
-            self.load()
-            tokens = self.clip.tokenize(prompt, images=images or [], llama_template=llama_template, min_length=1)
-        profile["tokenizeMs"] = round((time.perf_counter() - tokenize_started) * 1000)
-        if trace_label.startswith('minimaxH3Reference') and images:
-            embedded_images = sum(1 for rows in tokens.values() for row in rows for item in row
-                                  if isinstance(item[0], dict) and item[0].get('type') == 'image')
-            profile['embeddedImageCount'] = embedded_images
-            if embedded_images != len(images):
-                raise ValueError('H3 参考像素没有完整进入本地视觉编码器')
-        if trace_label:
-            log_prompt_assistant_event(
-                "prompt_assistant_tokenize_done",
-                command=trace_label,
-                elapsedMs=round((time.perf_counter() - total_started) * 1000),
-                tokenizeMs=profile["tokenizeMs"],
-                tokenizeRetry=profile["tokenizeRetry"],
-                embeddedImageCount=profile.get('embeddedImageCount', 0),
-            )
+        adapter = self.qwen3_adapter()
+        system_text, parts = qwen3_chat_parts(prompt, llama_template, images)
+        profile["provider"] = "qwen3-vl-instruct"
+        profile["embeddedImageCount"] = sum(1 for part in parts if not isinstance(part, str))
         generate_started = time.perf_counter()
         if trace_label:
             log_prompt_assistant_event(
@@ -12246,40 +12149,22 @@ class PromptAssistant:
                 command=trace_label,
                 elapsedMs=round((time.perf_counter() - total_started) * 1000),
                 maxLength=max_length,
+                imageCount=profile["embeddedImageCount"],
             )
-        generated_ids = self.clip.generate(
-            tokens,
+        output = adapter.generate_parts(
+            parts,
+            system_text=system_text,
+            unload_after=False,
+            max_new_tokens=max_length,
             do_sample=bool(do_sample),
-            max_length=max_length,
             temperature=float(temperature or 0.0),
-            top_k=0,
             top_p=float(top_p or 1.0),
-            min_p=0.0,
-            repetition_penalty=1.0,
             seed=seed,
-            presence_penalty=0.0,
         )
+        diagnostics = dict(getattr(adapter, "last_generation_diagnostics", {}) or {})
         profile["generateMs"] = round((time.perf_counter() - generate_started) * 1000)
-        try:
-            profile["generatedTokenCount"] = max(0, int(len(generated_ids)))
-        except (TypeError, ValueError):
-            profile["generatedTokenCount"] = 0
-        profile["hitTokenLimit"] = bool(
-            profile["maxLength"] > 0
-            and profile["generatedTokenCount"] >= profile["maxLength"]
-        )
-        if trace_label:
-            log_prompt_assistant_event(
-                "prompt_assistant_generate_model_done",
-                command=trace_label,
-                elapsedMs=round((time.perf_counter() - total_started) * 1000),
-                generateMs=profile["generateMs"],
-                generatedTokenCount=profile["generatedTokenCount"],
-                hitTokenLimit=profile["hitTokenLimit"],
-            )
-        decode_started = time.perf_counter()
-        output = self.clip.decode(generated_ids).strip()
-        profile["decodeMs"] = round((time.perf_counter() - decode_started) * 1000)
+        profile["generatedTokenCount"] = int(diagnostics.get("generatedTokens", 0) or 0)
+        profile["hitTokenLimit"] = bool(diagnostics.get("generationHitTokenLimit", False))
         profile["outputChars"] = len(output)
         profile["totalMs"] = round((time.perf_counter() - total_started) * 1000)
         self.last_generate_profile = dict(profile)
@@ -12731,7 +12616,7 @@ class PromptAssistant:
             adapter = None
         try:
             result = self._optimize_h3_reference(source, requirements, duration, media_frames, reverse)
-            result['localProvider'] = 'qwen3-vl-instruct' if adapter else 'qwen2.5-vl'
+            result['localProvider'] = 'qwen3-vl-instruct'
             return result
         finally:
             self._h3_reference_adapter = None
@@ -14937,7 +14822,7 @@ class PromptAssistant:
                         **(
                             {}
                             if requested_schema == VISUAL_SCHEMA_VERSION_V2
-                            else {"toProvider": "qwen2_5_vl_fp8"}
+                            else {"toProvider": "qwen3_vl_generic"}
                         ),
                         fallbackCode=fallback_code,
                         modelName=reverse_model_path.name[:160],
@@ -14967,7 +14852,7 @@ class PromptAssistant:
                         **(
                             {}
                             if requested_schema == VISUAL_SCHEMA_VERSION_V2
-                            else {"toProvider": "qwen2_5_vl_fp8"}
+                            else {"toProvider": "qwen3_vl_generic"}
                         ),
                         fallbackCode=fallback_code,
                         modelName=reverse_model_path.name[:160],
@@ -15005,7 +14890,7 @@ class PromptAssistant:
                     **(
                         {}
                         if requested_schema == VISUAL_SCHEMA_VERSION_V2
-                        else {"toProvider": "qwen2_5_vl_fp8"}
+                        else {"toProvider": "qwen3_vl_generic"}
                     ),
                     fallbackCode=fallback_code,
                     modelName=reverse_model_path.name[:160],
@@ -15055,12 +14940,12 @@ class PromptAssistant:
                     requirements,
                     nsfw=nsfw_enabled,
                 )
-                model_name = Path(self.loaded_model_path or self.model_path()).name[:160]
+                model_name = self.reverse_model_path().name[:160]
                 log_prompt_assistant_event(
                     "reverse_provider_selected",
                     command="reverseImagePrompt",
                     requestedProvider=requested_provider,
-                    reverseProvider="qwen2_5_vl_fp8",
+                    reverseProvider="qwen3_vl_generic",
                     visualSchema=requested_schema,
                     modelName=model_name,
                     fallbackCode=fallback_code,
@@ -15078,7 +14963,7 @@ class PromptAssistant:
                     "qualityGateFailed": False,
                     "qualityGateRetried": quality_gate_retried,
                     "visualSchema": requested_schema,
-                    "reverseProvider": "qwen2_5_vl_fp8",
+                    "reverseProvider": "qwen3_vl_generic",
                     "reverseModelPath": model_name,
                     "reverseFallbackReason": fallback_code,
                     "visualHasOcr": bool(contract["ocr"]),
@@ -15090,7 +14975,7 @@ class PromptAssistant:
                 log_prompt_assistant_event(
                     "reverse_visual_contract_retry",
                     command="reverseImagePrompt",
-                    provider="qwen2_5_vl_fp8",
+                    provider="qwen3_vl_generic",
                     attempt=attempt,
                     errorCode=contract_error,
                     outputChars=len(raw_output),
@@ -15118,13 +15003,13 @@ class PromptAssistant:
                 f"{visual_prompt.rstrip('。')}。"
                 f"用户附加要求：{generation_requirements.rstrip('。')}。"
             )
-        model_name = Path(self.loaded_model_path or self.model_path()).name[:160]
+        model_name = self.reverse_model_path().name[:160]
         combined_fallback = fallback_code or contract_error or "visual-contract-unavailable"
         log_prompt_assistant_event(
             "reverse_provider_selected",
             command="reverseImagePrompt",
             requestedProvider=requested_provider,
-            reverseProvider="qwen2_5_vl_legacy",
+            reverseProvider="qwen3_vl_legacy",
             visualSchema="",
             modelName=model_name,
             fallbackCode=combined_fallback,
@@ -15140,7 +15025,7 @@ class PromptAssistant:
             "qualityGateFailed": True,
             "qualityGateRetried": False,
             "visualSchema": "",
-            "reverseProvider": "qwen2_5_vl_legacy",
+            "reverseProvider": "qwen3_vl_legacy",
             "reverseModelPath": model_name,
             "reverseFallbackReason": combined_fallback,
             "visualHasOcr": False,
@@ -16086,7 +15971,7 @@ class PromptAssistant:
             "qualityGateFailed": False,
             **({
                 "visualSchema": visual_policy.get("schema") or "",
-                "reverseProvider": "qwen3_vl_abliterated_nf4+h3_qwen2_5_vl",
+                "reverseProvider": "qwen3_vl_abliterated_nf4+h3_generic",
                 "generationGate": visual_generation_gate,
                 "contentSafety": safe_visual_metadata,
                 "contentWarnings": [],
@@ -17334,6 +17219,37 @@ def clean_text(value: str) -> str:
     return text
 
 
+def qwen3_chat_parts(prompt, llama_template=None, images=None) -> tuple[str, list]:
+    """Turn a ChatML template plus vision markers into a system text and ordered user parts."""
+
+    text = str(prompt or "")
+    frames = [image for image in (images or []) if image is not None]
+    if text.startswith("<|im_start|>"):
+        full = text
+    elif llama_template:
+        full = str(llama_template).format(text)
+    else:
+        full = ""
+    system_text = QWEN3_DEFAULT_SYSTEM_TEXT
+    user_text = text
+    if full:
+        system = re.search(r"<\|im_start\|>system\n([\s\S]*?)<\|im_end\|>", full)
+        user = re.search(r"<\|im_start\|>user\n([\s\S]*?)<\|im_end\|>", full)
+        if system and system.group(1).strip():
+            system_text = system.group(1).strip()
+        user_text = user.group(1) if user else text
+    pieces = user_text.replace("\ufffd", "").split(QWEN3_CHAT_VISION_TOKEN)
+    placed = min(len(frames), len(pieces) - 1)
+    # Pictures the prompt text never placed still reach the model, ahead of the text.
+    parts: list = list(frames[placed:])
+    for index, piece in enumerate(pieces):
+        if piece:
+            parts.append(piece)
+        if index < placed:
+            parts.append(frames[index])
+    return system_text, parts
+
+
 def prompt_assistant_tokenizer_safe_text(value: str) -> str:
     text = str(value or "").replace("\x00", "")
     # Comfy parses ASCII parentheses as prompt-weight syntax. Prompt Assistant
@@ -17729,7 +17645,10 @@ def main() -> int:
             try:
                 payload = json.loads(line)
                 request_id = payload.get("id")
-                result = handle_request(payload)
+                try:
+                    result = handle_request(payload)
+                finally:
+                    assistant.reset_loaded_clip()
                 emit({"id": request_id, "ok": True, "data": result, "elapsedSeconds": round(time.time() - started, 2)})
             except SystemExit:
                 raise

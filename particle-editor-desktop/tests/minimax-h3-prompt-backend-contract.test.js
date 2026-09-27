@@ -298,17 +298,14 @@ for mode, expected in expected_repair_budgets.items():
 assert service["minimax_h3_prompt_max_length"]("") == service["MINIMAX_H3_PROMPT_MAX_LENGTH"]
 assert service["minimax_h3_prompt_max_length"]("unknown", repair=True) == service["MINIMAX_H3_PROMPT_REPAIR_MAX_LENGTH"]
 
-class FakeProfileClip:
-    def tokenize(self, prompt, **kwargs):
-        return [prompt]
-    def generate(self, tokens, **kwargs):
-        return [101, 102, 103]
-    def decode(self, generated_ids):
+class FakeProfileAdapter:
+    last_generation_diagnostics = {}
+    def generate_parts(self, parts, **kwargs):
+        self.last_generation_diagnostics = {"generatedTokens": 3, "generationHitTokenLimit": True}
         return "decoded output"
 
 profile_assistant = service["PromptAssistant"]()
-profile_assistant.clip = FakeProfileClip()
-profile_assistant.load = lambda: None
+profile_assistant._qwen3_adapter = FakeProfileAdapter()
 assert profile_assistant.generate("profile", max_length=3, trace_label="budgetProfile") == "decoded output"
 assert profile_assistant.last_generate_profile["generatedTokenCount"] == 3
 assert profile_assistant.last_generate_profile["hitTokenLimit"] is True

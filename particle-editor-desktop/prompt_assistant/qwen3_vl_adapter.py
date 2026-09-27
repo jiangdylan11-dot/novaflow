@@ -728,6 +728,33 @@ class Qwen3VLAbliteratedAdapter:
         max_new_tokens: int | None = None,
         stop_strings: tuple[str, ...] | list[str] | None = None,
     ) -> str:
+        parts = ([image_tensor] if image_tensor is not None else []) + [str(prompt or "")]
+        return self.generate_parts(
+            parts,
+            unload_after=unload_after,
+            system_text=system_text,
+            do_sample=do_sample,
+            temperature=temperature,
+            top_p=top_p,
+            max_new_tokens=max_new_tokens,
+            stop_strings=stop_strings,
+        )
+
+    def generate_parts(
+        self,
+        parts,
+        *,
+        unload_after: bool = True,
+        system_text: str | None = None,
+        do_sample: bool = False,
+        temperature: float = 0.8,
+        top_p: float = 0.9,
+        max_new_tokens: int | None = None,
+        stop_strings: tuple[str, ...] | list[str] | None = None,
+        seed: int | None = None,
+    ) -> str:
+        """One user turn made of text strings and image tensors, in order."""
+
         self.last_generation_diagnostics = {}
         try:
             if self.model is None or self.processor is None:
@@ -735,13 +762,26 @@ class Qwen3VLAbliteratedAdapter:
             import torch
             from PIL import Image
 
-            image = self._tensor_to_pil(image_tensor) if image_tensor is not None else None
-            if image is not None and max(image.size) > self.max_side:
-                scale = self.max_side / max(image.size)
-                image = image.resize(
-                    (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
-                    Image.Resampling.LANCZOS,
-                )
+            content = []
+            images = []
+            for part in parts or []:
+                if part is None:
+                    continue
+                if isinstance(part, str):
+                    if part:
+                        content.append({"type": "text", "text": part})
+                    continue
+                image = self._tensor_to_pil(part)
+                if max(image.size) > self.max_side:
+                    scale = self.max_side / max(image.size)
+                    image = image.resize(
+                        (max(1, round(image.width * scale)), max(1, round(image.height * scale))),
+                        Image.Resampling.LANCZOS,
+                    )
+                images.append(image)
+                content.append({"type": "image", "image": image})
+            if not any(item["type"] == "text" for item in content):
+                content.append({"type": "text", "text": ""})
             messages = [
                 {
                     "role": "system",
@@ -754,12 +794,7 @@ class Qwen3VLAbliteratedAdapter:
                         ),
                     }],
                 },
-                {
-                    "role": "user",
-                    "content": ([{"type": "image", "image": image}] if image is not None else []) + [
-                        {"type": "text", "text": str(prompt or "")},
-                    ],
-                },
+                {"role": "user", "content": content},
             ]
             text_prompt = self.processor.apply_chat_template(
                 messages,
@@ -768,7 +803,7 @@ class Qwen3VLAbliteratedAdapter:
             )
             inputs = self.processor(
                 text=[text_prompt],
-                **({"images": [image]} if image is not None else {}),
+                **({"images": images} if images else {}),
                 padding=True,
                 return_tensors="pt",
             )
@@ -806,6 +841,8 @@ class Qwen3VLAbliteratedAdapter:
                     "temperature": max(0.01, min(2.0, float(temperature))),
                     "top_p": max(0.01, min(1.0, float(top_p))),
                 })
+                if seed is not None:
+                    torch.manual_seed(int(seed))
             self._trim_cuda_cache(torch, "prefill-cache-trim")
             generation_started = time.perf_counter()
             if self.trim_transient_cuda_cache:

@@ -7287,7 +7287,7 @@ class VisualContractTests(unittest.TestCase):
             result = assistant.reverse_plain_static_image({}, object(), "")
         finally:
             service.Qwen3VLAbliteratedAdapter = original_adapter
-        self.assertEqual(result["reverseProvider"], "qwen2_5_vl_fp8")
+        self.assertEqual(result["reverseProvider"], "qwen3_vl_generic")
         self.assertEqual(result["reverseFallbackReason"], "qwen3-contract-invalid")
 
     def test_static_reverse_response_exposes_compatibility_and_partitioned_fields(self):
