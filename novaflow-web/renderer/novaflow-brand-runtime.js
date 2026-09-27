@@ -23045,9 +23045,9 @@
         align-items: center !important;
         justify-content: space-between !important;
         width: 100% !important;
-        height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT - 11}px !important;
-        min-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT - 11}px !important;
-        max-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT - 11}px !important;
+        height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT}px !important;
+        min-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT}px !important;
+        max-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT}px !important;
         margin: 0 !important;
         padding: 0 30px 0 ${AI_ANIMATION_GROUP_HEADER_INSET + AI_ANIMATION_GROUP_ICON_PLATE + AI_ANIMATION_GROUP_ICON_GAP}px !important;
         box-sizing: border-box !important;
@@ -23098,6 +23098,30 @@
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading]::after {
         content: none !important;
         display: none !important;
+      }
+      /* 视频合并 / 视频抠图 are group rows like 美工's 生图 / 编辑: 46 tall, 3 above
+         and below, a 1px rule between (they were 35 tall, 5 apart, no rule). */
+      /* The section's 5px gap and the rows' zero margins are written inline by
+         the spacing pass, so 视频抠图 carries the missing 2px above and the 3px
+         under it as clear borders; its fill stays the 46px row. */
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="ai-cutout"] {
+        height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y * 2 - 1}px !important;
+        min-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y * 2 - 1}px !important;
+        max-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y * 2 - 1}px !important;
+        border-top: ${AI_ANIMATION_GROUP_PAD_Y * 2 + 1 - 5}px solid transparent !important;
+        border-bottom: ${AI_ANIMATION_GROUP_PAD_Y}px solid transparent !important;
+        background-clip: padding-box !important;
+      }
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="ai-cutout"]::after {
+        content: "" !important;
+        display: block !important;
+        position: absolute !important;
+        left: 0 !important;
+        right: 0 !important;
+        top: -${AI_ANIMATION_GROUP_PAD_Y + 1}px !important;
+        height: 1px !important;
+        background: #272727 !important;
+        pointer-events: none !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading] > [data-novaflow-ai-tool-heading-chevron] {
         display: block !important;
