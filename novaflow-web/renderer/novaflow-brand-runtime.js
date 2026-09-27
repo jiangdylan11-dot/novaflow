@@ -3568,7 +3568,8 @@
     html.setAttribute("data-novaflow-switch-veil", "1");
     // Only the new page's groups count: the old page's are still in the
     // column when the first mutations arrive.
-    const GROUP_SELECTOR = ".nf-panel-header, [data-novaflow-spine-split-control-category-toggle]";
+    // 工具 has no group headers: its tool list stands in for them, or the veil sat out its timeout there.
+    const GROUP_SELECTOR = ".nf-panel-header, [data-novaflow-spine-split-control-category-toggle], [data-novaflow-tools-entry]";
     const oldGroups = new Set(document.querySelectorAll(GROUP_SELECTOR));
     const newGroupsIn = () => {
       const root = document.querySelector('[data-novaflow-left-content-root="1"]');
