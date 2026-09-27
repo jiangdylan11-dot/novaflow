@@ -192,6 +192,46 @@ class VideoPromptFeatureTests(unittest.TestCase):
         self.assertEqual(captured["system_text"], SERVICE.ART_STYLE_SYSTEM_TEXT)
         self.assertEqual(result["style"], "Render with loose ink washes that bleed into the paper.")
 
+    def test_describe_art_style_question_asks_for_the_medium_first_without_a_medium_example(self):
+        question = SERVICE.ART_STYLE_QUESTION
+        self.assertIn("Begin with the medium name followed by a colon", question)
+        self.assertIn("<medium>: <mark>, <mark>, <mark>.", question)
+        self.assertIn("paper, canvas or print", question)
+        self.assertIn("the lighting", question)
+        self.assertNotIn("ink that bleeds", question)
+
+    def test_describe_art_style_unwraps_json_and_drops_what_is_absent(self):
+        replies = iter([
+            '{"instruction": "Cel-shaded illustration: flat colour blocks, crisp outlines."}',
+            "Photorealistic 3D render: smooth surfaces, clean hard edges, no visible seams or textures, "
+            "without grain.",
+            "No outlines at all.",
+            "ink wash: thick black strokes, bold red washes, gold line loops, paper grain.",
+            "cel-shaded illustration: flat colour blocks, uniform shading without gradients or texture.",
+        ])
+
+        class FakeAdapter:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def generate(self, _prompt, _tensor, **_kwargs):
+                return next(replies)
+
+        assistant = SERVICE.PromptAssistant()
+        with mock.patch.object(SERVICE, "Qwen3VLAbliteratedAdapter", FakeAdapter), \
+                mock.patch.object(SERVICE, "data_url_to_tensor", lambda _value: object()):
+            styles = [
+                assistant.describe_art_style({"images": [{"dataUrl": "data:image/png;base64,x"}]})["style"]
+                for _ in range(5)
+            ]
+        self.assertEqual(styles[0], "Cel-shaded illustration: flat colour blocks, crisp outlines.")
+        self.assertEqual(styles[1], "Photorealistic 3D render: smooth surfaces, clean hard edges.")
+        # A reply that is nothing but an absent clause is left alone rather than emptied.
+        self.assertEqual(styles[2], "No outlines at all.")
+        # Colour words in front of a mark would make 万物迁移 recolour the object.
+        self.assertEqual(styles[3], "Ink wash: thick strokes, bold washes, line loops, paper grain.")
+        self.assertEqual(styles[4], "Cel-shaded illustration: flat colour blocks, uniform shading.")
+
 
 if __name__ == "__main__":
     unittest.main()

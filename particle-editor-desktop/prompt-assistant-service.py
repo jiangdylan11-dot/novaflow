@@ -87,25 +87,44 @@ DEFAULT_REVERSE_QWEN3_MODEL_PATH = Path(
 # pools at the edges" and the object came back as ink. The ban on naming materials is there because the
 # concrete wording then started describing the picture's own contents - "luminous skin gradients, glowing
 # particle effects" - and a description that says "glowing" makes the edit model light the object up,
-# which is exactly the defect 画风转换 pins against.
+# which is exactly the defect 画风转换 pins against. The example is a neutral format, not an ink sentence:
+# with the ink sentence Qwen3 rewrote it for an ink-and-watercolour picture ("pooling at seams, stark white
+# voids") and dropped the medium name, which is what 万物迁移 keys on (OBJECT_TRANSFER_NON_PAINTERLY_STYLE).
 ART_STYLE_MAX_NEW_TOKENS = 120
 ART_STYLE_MAX_CHARS = 400
 ART_STYLE_QUESTION = (
     "Look at this picture and write ONE English instruction, at most 40 words, telling an artist how to "
-    "render ANY object in exactly this picture's style. Name the medium or technique, then the two or "
-    "three marks that make it recognisable at a glance: what the strokes, blocks, pixels, lines or edges "
-    "actually look like. Be concrete and executable: write \"ink that bleeds into the paper and pools at "
-    "the edges, large areas left bare\" rather than \"soft outlines, continuous blends\". CRITICAL: "
-    "describe only how marks are made, never what carries them. Do not write skin, hair, fabric, cloth, "
-    "metal, marble, stone, sky, water, particles, sparkles, glow, light effects, or any other thing that "
-    "appears in this picture. Do not mention the subject, the people, the place, the colours or the mood."
+    "render ANY object in exactly this picture's style. Begin with the medium name followed by a colon, "
+    "then the two or three marks that make it recognisable at a glance: what the strokes, washes, blocks, "
+    "pixels, lines or edges actually look like, and the paper, canvas or print grain only where it is clearly "
+    "visible. "
+    "Format: \"<medium>: <mark>, <mark>, <mark>.\" Be concrete and executable: say what each mark looks like, "
+    "not vague words such as \"soft outlines, continuous blends\". CRITICAL: describe only how marks are made, "
+    "never what carries them. Do not write skin, hair, fabric, cloth, metal, marble, stone, sky, water, "
+    "particles, sparkles, glow, light effects, or any other thing that appears in this picture. Never name a "
+    "colour, the subject, the people, the place, the mood or the lighting. Write only what is there, never "
+    "what is absent."
 )
 # Without its own system turn the adapter falls back to its JSON fact-extractor role, which fights the question.
+# Digital painting and watercolour are named because without them a painted CG figure came back as
+# "cel-shaded illustration".
 ART_STYLE_SYSTEM_TEXT = (
     "You describe how pictures are rendered, for an artist who will redraw other objects in the same style. "
-    "Start with the medium, for example photograph, photorealistic 3D render, oil painting, ink wash, pixel art "
-    "or cel-shaded illustration. Reply with exactly one plain English instruction of at most 40 words: "
-    "no preamble, quotes, lists or JSON."
+    "Start with the medium, for example photograph, photorealistic 3D render, digital painting, oil painting, "
+    "watercolour, ink wash, pixel art or cel-shaded illustration. Reply with exactly one plain English "
+    "instruction of at most 40 words: no preamble, quotes, lists or JSON."
+)
+# Qwen3 still adds "no visible seams" / "without texture" now and then; a clause about what is absent
+# makes the edit model strip the object's own texture, so it is dropped.
+ART_STYLE_ABSENT_CLAUSE = re.compile(r"^(?:(?:and|but|with)\s+)?(?:no|not|without|avoid|avoiding|never|free of)\b", re.I)
+# It also names the picture's colours ("bold red washes") whatever the question says, and a colour in
+# the style makes 万物迁移 recolour the object, so a colour word in front of a mark is dropped.
+_ART_STYLE_COLOURS = (
+    r"red|orange|yellow|gold|golden|green|blue|purple|violet|pink|brown|beige|grey|gray|silver|white|black|"
+    r"cyan|teal|crimson|scarlet"
+)
+ART_STYLE_COLOUR_WORD = re.compile(
+    rf"\b(?:{_ART_STYLE_COLOURS})(?:\s+and\s+(?:{_ART_STYLE_COLOURS}))?\s+(?=[a-z])", re.I
 )
 # System turns for the video prompt features (WAN and other non-H3 models); each user turn carries the rules.
 VIDEO_OPTIMIZE_SYSTEM_TEXT = (
@@ -14643,12 +14662,16 @@ class PromptAssistant:
         )
         salient_inventory_prompt = (
             "重新观察当前图片，只补查主视觉合同容易遗漏的显著元素；不复述主角、普通服装、环境、风格、镜头、年龄、性别或内容安全判断。"
-            "只记录清楚可见且位置关系明确的三类内容：非主角的边缘或遮挡人物、显著独立武器或道具、具有独立轮廓的能量火焰或光环。"
-            "不确定就留空，禁止猜测。严格输出且只输出以下三行，顺序和英文前缀必须完全一致：\n"
+            "逐一检查并记录清楚可见的三类内容：非主角的边缘或遮挡人物；主角手持、佩带或身边的武器与道具，"
+            "以及贴在道具上、飘在主角周围的小物件（纸片、叶片、碎片、花瓣等）；具有独立轮廓的火焰、光效或光环。"
+            "武器、道具和小物件都写在OBJECTS行，火焰、光效和光环写在EFFECTS行。"
+            "位置关系里的主要人物一律称主角；看不清的不写。"
+            "严格输出且只输出以下三行，顺序和英文前缀必须完全一致：\n"
             "PARTIAL_PEOPLE=名称|简短外观|边缘遮挡或背景位置\n"
             "OBJECTS=名称|简短外观|与主角、主体或画面的位置接触关系\n"
             "EFFECTS=名称|简短外观|与主角、主体或画面的位置关系\n"
-            "同类多项仅用半角分号;分隔；每项必须恰好三个非空字段并仅用半角竖线|分隔；该类没有内容时等号后保持为空。"
+            "每类只占一行，同类多项仅用半角分号;分隔，同类小物件合并成一项，每行最多3项；"
+            "每项必须恰好三个非空字段并仅用半角竖线|分隔；该类没有内容时等号后保持为空。"
         )
         contract_prompt = keyed_v2_first_prompt
         fallback_code = ""
@@ -17081,8 +17104,24 @@ class PromptAssistant:
             max_new_tokens=ART_STYLE_MAX_NEW_TOKENS,
         )
         style = " ".join(clean_text(str(raw or "")).split())
+        if style.startswith("{"):
+            # Qwen3 sometimes answers {"instruction": "..."}; keep the sentence, not the JSON.
+            try:
+                parsed = json.loads(style)
+            except ValueError:
+                parsed = None
+            if isinstance(parsed, dict):
+                style = next((value.strip() for value in parsed.values() if isinstance(value, str) and value.strip()), style)
         style = re.sub(r"^(?:instruction|style|answer)\s*:\s*", "", style.strip(" \"'“”"), flags=re.I).strip(" \"'“”")
-        style = style[:ART_STYLE_MAX_CHARS]
+        medium, colon, marks = style.partition(":")
+        if colon:
+            style = medium + colon + ART_STYLE_COLOUR_WORD.sub("", marks)
+        style = re.sub(r"\s+(?:without|with no)\s+[^,;.]+", "", style, flags=re.I)
+        clauses = [clause.strip() for clause in re.split(r"[,;]", style.rstrip(". "))]
+        kept = [clause for clause in clauses if clause and not ART_STYLE_ABSENT_CLAUSE.match(clause)]
+        if kept and len(kept) < len(clauses):
+            style = ", ".join(kept) + "."
+        style = (style[:1].upper() + style[1:])[:ART_STYLE_MAX_CHARS]
         return {"style": style, "model": self.reverse_model_path().name[:160]}
 
     def reverse_image_prompt(self, payload: dict) -> dict:

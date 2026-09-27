@@ -1723,12 +1723,29 @@ class VisualContractTests(unittest.TestCase):
             "```\n" + raw + "```",
             raw.replace("OBJECTS=", "OBJECTS==", 1),
             raw.replace("黑色斧头金色装饰", "黑色斧头|金色装饰", 1),
-            raw.replace(";战斧", "；战斧", 1),
         )
         for invalid in invalid_outputs:
             with self.subTest(invalid=invalid[:40]):
                 with self.assertRaises(VisualContractError):
                     parse_local_salient_inventory(invalid)
+
+        # Qwen3 separates items with the full-width semicolon; it is read as the separator.
+        full_width = parse_local_salient_inventory(
+            "PARTIAL_PEOPLE=\n"
+            "OBJECTS=长剑|红底金纹剑身|被主角右手握持；符纸|黄色纸片|贴在剑身上并飘在主角周围\n"
+            "EFFECTS="
+        )
+        self.assertEqual(
+            [item["name"] for item in full_width["objects"]],
+            ["长剑", "符纸"],
+        )
+        # Sparkles and smoke are effects too; one of them no longer voids the whole sidecar.
+        sparkles = parse_local_salient_inventory(
+            "PARTIAL_PEOPLE=\n"
+            "OBJECTS=权杖|发光环形|被主角手持\n"
+            "EFFECTS=光点|闪烁微光|环绕权杖及主角脚边"
+        )
+        self.assertEqual(sparkles["effects"][0]["name"], "光点")
 
     def test_local_salient_inventory_parser_enforces_limits_language_and_safety(self):
         valid = (
@@ -2407,6 +2424,91 @@ class VisualContractTests(unittest.TestCase):
         candidate = append_rich_generation_requirements(rich, "REQ_INDEPENDENT")
         self.assertEqual(candidate.count("[用户附加要求]"), 1)
         self.assertEqual(candidate.count("REQ_INDEPENDENT"), 1)
+
+    def test_deterministic_rich_visual_prompt_leaves_out_empty_and_repeated_fields(self):
+        contract = {
+            "schema": SCHEMA_VERSION_V2,
+            "asset_type": "红衣持剑武将",
+            "entities": [
+                {
+                    "name": "武将",
+                    "count": "一名",
+                    "appearance": ["浓密胡须", "怒目圆睁"],
+                    "pose": "持剑跃动",
+                    "action": "持剑跃动",
+                    "materials": ["丝绸红袍", "金属铠甲", "皮革腰带"],
+                    "colors": ["红色", "金色"],
+                },
+                {
+                    "name": "火焰",
+                    "count": "一个",
+                    "appearance": ["金色飘带状"],
+                    "pose": None,
+                    "action": None,
+                    "materials": [],
+                    "colors": [],
+                },
+            ],
+            "relations": ["火焰位于剑尖上方"],
+            "scene": {"environment": "纯白背景", "background": "纯白", "spatial_layers": []},
+            "look": {
+                "lighting": ["右上方柔光"],
+                "palette": ["红", "金"],
+                "materials": ["布料", "金属", "皮革"],
+                "style": ["中国风插画", "动态构图"],
+                "atmosphere": "激昂",
+                "finish": "",
+            },
+            "camera_cues": {
+                "shot": "全身",
+                "angle": "正面",
+                "composition": "",
+                "depth_of_field": "浅景深",
+            },
+            "ocr": [],
+            "uncertain": [],
+            "content_safety": {
+                "level": "safe",
+                "body_exposure": "none",
+                "interaction_category": "none",
+                "age_assessment": "adult_appearing",
+                "visible_person_count": 1,
+                "signals": [],
+                "sensitive_visible_facts": [],
+            },
+        }
+        rich = compile_deterministic_rich_visual_prompt(contract)
+        self.assertEqual(validate_rich_visual_prompt(rich, minimum_body_chars=0), rich)
+        self.assertNotIn("保持参考图", rich)
+        self.assertNotIn("完成质感", rich)
+        self.assertNotIn("类别", rich)
+        self.assertEqual(rich.count("持剑跃动"), 1)
+        self.assertEqual(rich.count("激昂"), 1)
+        self.assertIn('主体2 = "火焰"', rich)
+        self.assertIn('全局材质 = "布料"', rich)
+        self.assertIn('视觉风格 = "中国风插画"', rich)
+        self.assertIn('构图 = "动态构图"', rich)
+        self.assertIn('背景 = "纯白背景"', rich)
+        self.assertNotIn("地点", rich)
+        self.assertNotIn("空间层次", rich)
+        self.assertNotIn("景深", rich)
+
+        empty = json.loads(json.dumps(contract, ensure_ascii=False))
+        empty["scene"] = {"environment": "", "background": "", "spatial_layers": []}
+        empty["look"] = {
+            "lighting": [], "palette": [], "materials": [], "style": [], "atmosphere": "", "finish": "",
+        }
+        empty["camera_cues"] = {"shot": "", "angle": "", "composition": "", "depth_of_field": ""}
+        rich = compile_deterministic_rich_visual_prompt(empty)
+        self.assertEqual(validate_rich_visual_prompt(rich, minimum_body_chars=0), rich)
+        self.assertNotIn("保持参考图", rich)
+        self.assertIn('说明 = "图中未见明确环境"', rich)
+
+        scene = json.loads(json.dumps(contract, ensure_ascii=False))
+        scene["scene"] = {"environment": "雪山", "background": "远处山峰", "spatial_layers": ["前景飞雪"]}
+        rich = compile_deterministic_rich_visual_prompt(scene)
+        self.assertIn('空间层次 = "前景飞雪"', rich)
+        self.assertIn('景深 = "浅景深"', rich)
 
     def test_rich_interaction_requires_strong_or_sensitive_target_action_in_subject(self):
         passing_evidence = (
@@ -3733,7 +3835,7 @@ class VisualContractTests(unittest.TestCase):
         self.assertFalse(adapter.loaded)
         self.assertEqual(result["generationGate"], "direct")
         self.assertIn("[风格设定]", result["description"])
-        self.assertIn('主体2 = "一个长剑"', result["description"])
+        self.assertIn('主体2 = "长剑"', result["description"])
         self.assertIn("女性战士右手握持长剑", result["description"])
         self.assertIn("[用户附加要求]", result["description"])
         self.assertEqual(result["description"].count("REQ_DIRECT_KEEP_COMPOSITION"), 1)
@@ -3810,6 +3912,8 @@ class VisualContractTests(unittest.TestCase):
             (False, 128),
         )
         self.assertIn("PARTIAL_PEOPLE=", adapter.calls[1]["prompt"])
+        # Small attached or floating things (paper slips, leaves, fragments) are asked for as OBJECTS.
+        self.assertIn("贴在道具上、飘在主角周围的小物件", adapter.calls[1]["prompt"])
         self.assertIn("只返回指定的三行纯文本协议", adapter.calls[1]["system_text"])
         self.assertEqual(adapter.unload_calls, 1)
         self.assertEqual(result["rawOutput"], primary_raw)

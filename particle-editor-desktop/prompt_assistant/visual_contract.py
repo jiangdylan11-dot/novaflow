@@ -438,11 +438,14 @@ LOCAL_SALIENT_GENERIC_OBJECT_PATTERN = re.compile(
 LOCAL_SALIENT_POSITION_RELATION_PATTERN = re.compile(
     r"(?:位于|处于|靠近|贴近|接触|贴合|环绕|悬浮|悬挂|放置|固定|"
     r"持于|手持|握持|抓住|背负|佩戴|系于|装在|"
+    r"持握|握着|握住|拿着|举着|"
+    r"贴在|贴于|附着|附在|飘在|飘浮|漂浮|飘散|散落|周围|四周|旁边|"
     r"左(?:侧|边|手)?|右(?:侧|边|手)?|上方|下方|前方|后方|身后|肩后|"
     r"腰间|脚边|手中|画面中央|画面中心|画面边缘)"
 )
 LOCAL_SALIENT_EFFECT_PATTERN = re.compile(
     r"(?:能量|火焰|火光|光环|光效|特效|发光|辉光|光芒|光带|光束|光翼|"
+    r"光点|微光|光粒|粒子|烟雾|雾气|"
     r"电弧|闪电|雷电|粒子效果|魔法阵)"
 )
 RICH_VISUAL_SECTIONS = (
@@ -453,6 +456,12 @@ RICH_VISUAL_SECTIONS = (
     "[拍摄参数]",
 )
 RICH_VISUAL_MIN_CHARS = 300
+# A plain studio backdrop such as "纯白背景", "白底" or "浅灰色背景".
+RICH_PLAIN_BACKGROUND_PATTERN = re.compile(
+    r"(?:干净|简洁|简单)?(?:的)?(?:纯|单)?"
+    r"(?:白|黑|灰|浅灰|深灰|米白|浅色|深色|单色|纯色|透明)(?:色)?(?:的)?(?:渐变)?"
+    r"(?:背景色|背景|底色|底)?"
+)
 RICH_VISUAL_SYSTEM_TEXT = (
     "你是 NovaFlow 的像素级反推生图提示词编辑器，只输出最终中文TOML分区内容。"
 )
@@ -2475,7 +2484,8 @@ def parse_local_salient_inventory(
                 f"local salient inventory line {line_index + 1} has an invalid prefix",
                 code="visual-contract-salient-inventory-invalid",
             )
-        payload = line[len(prefix):]
+        # Qwen3 separates items with the full-width "；" even when told to use ";".
+        payload = line[len(prefix):].replace("；", ";")
         if not payload:
             parsed[key] = []
             continue
@@ -3615,28 +3625,48 @@ def compile_deterministic_rich_visual_prompt(
     def quoted(value: Any) -> str:
         return json.dumps(value, ensure_ascii=False)
 
-    style_lines = [
-        f"资产类型 = {quoted(normalized['asset_type'])}",
-        f"视觉风格 = {quoted('、'.join(look['style']) or '保持参考图可见的原有视觉风格')}",
-        f"核心氛围 = {quoted(look['atmosphere'] or '保持参考图现有氛围与情绪表达')}",
-        f"完成质感 = {quoted(look['finish'] or '保持参考图原有完成质感')}",
-    ]
+    def line(key: str, value: Any) -> list[str]:
+        # An empty field is left out; it never becomes "保持参考图…" filler,
+        # because the prompt is used as text without the reference picture.
+        text = "、".join(value) if isinstance(value, list) else str(value or "")
+        return [f"{key} = {quoted(text)}"] if text.strip() else []
 
-    subject_lines = [f"类别 = {quoted(normalized['asset_type'])}"]
+    # "动态构图" and the like describe the camera, not the rendering style.
+    style_terms = [item for item in look["style"] if not item.endswith("构图")]
+    composition = camera["composition"] or next(
+        (item for item in look["style"] if item.endswith("构图")), ""
+    )
+    style_lines = [
+        *line("资产类型", normalized["asset_type"]),
+        *line("视觉风格", style_terms),
+        *line("核心氛围", look["atmosphere"]),
+        *line("完成质感", look["finish"]),
+    ] or ['说明 = "图中未见明确风格"']
+
+    subject_lines: list[str] = []
+    entity_materials: list[str] = []
     for index, entity in enumerate(normalized["entities"], start=1):
         prefix = f"主体{index}"
-        identity = "".join(
-            part for part in (entity["count"] or "", entity["name"] or "主体") if part
-        )
+        # "一个" is the default count for any object ("一个长剑", "一个火焰");
+        # a single object reads naturally without it.
+        count = "" if entity["count"] == "一个" else entity["count"] or ""
+        identity = "".join(part for part in (count, entity["name"] or "主体") if part)
         subject_lines.append(f"{prefix} = {quoted(identity)}")
         if entity["appearance"]:
             subject_lines.append(
                 f"{prefix}.外观 = {quoted('、'.join(entity['appearance']))}"
             )
-        if entity["pose"]:
-            subject_lines.append(f"{prefix}.姿态 = {quoted(entity['pose'])}")
-        if entity["action"]:
-            subject_lines.append(f"{prefix}.动作 = {quoted(entity['action'])}")
+        pose = entity["pose"] or ""
+        action = entity["action"] or ""
+        if pose and action and pose in action:
+            pose = ""
+        elif pose and action and action in pose:
+            action = ""
+        if pose:
+            subject_lines.append(f"{prefix}.姿态 = {quoted(pose)}")
+        if action:
+            subject_lines.append(f"{prefix}.动作 = {quoted(action)}")
+        entity_materials.extend(entity["materials"])
         if entity["materials"]:
             subject_lines.append(
                 f"{prefix}.材质 = {quoted('、'.join(entity['materials']))}"
@@ -3657,23 +3687,42 @@ def compile_deterministic_rich_visual_prompt(
             f"{quoted('；'.join(content_safety['sensitive_visible_facts']))}"
         )
 
+    if not subject_lines:
+        subject_lines = line("类别", normalized["asset_type"])
+
+    environment = scene["environment"] or ""
+    background = scene["background"] or ""
+    if environment and background and (
+        environment in background or background in environment
+    ):
+        environment, background = "", max(environment, background, key=len)
+    plain_background = any((environment, background)) and all(
+        RICH_PLAIN_BACKGROUND_PATTERN.fullmatch(re.sub(r"\s+", "", value))
+        for value in (environment, background)
+        if value
+    )
     environment_lines = [
-        f"地点 = {quoted(scene['environment'] or '保持参考图现有环境')}",
-        f"背景 = {quoted(scene['background'] or '保持参考图现有背景内容')}",
-        f"空间层次 = {quoted('、'.join(scene['spatial_layers']) or '保持参考图现有前中后景关系')}",
-    ]
+        *line("地点", environment),
+        *line("背景", background),
+        # A plain backdrop has no depth to lay out or blur.
+        *([] if plain_background else line("空间层次", scene["spatial_layers"])),
+    ] or ['说明 = "图中未见明确环境"']
     light_lines = [
-        f"主光线 = {quoted('、'.join(look['lighting']) or '保持参考图现有光线方向与强度')}",
-        f"色彩倾向 = {quoted('、'.join(look['palette']) or '保持参考图现有色彩关系')}",
-        f"全局材质 = {quoted('、'.join(look['materials']) or '保持参考图现有材质差异')}",
-        f"氛围 = {quoted(look['atmosphere'] or '保持参考图现有氛围')}",
-    ]
+        *line("主光线", look["lighting"]),
+        *line("色彩倾向", look["palette"]),
+        # Materials already named on a subject are not repeated globally.
+        *line("全局材质", [
+            item
+            for item in look["materials"]
+            if not any(item in material for material in entity_materials)
+        ]),
+    ] or ['说明 = "图中未见明确光线与色彩"']
     camera_lines = [
-        f"景别 = {quoted(camera['shot'] or '保持参考图现有景别')}",
-        f"视角 = {quoted(camera['angle'] or '保持参考图现有视角')}",
-        f"构图 = {quoted(camera['composition'] or '保持参考图现有构图')}",
-        f"景深 = {quoted(camera['depth_of_field'] or '保持参考图现有景深关系')}",
-    ]
+        *line("景别", camera["shot"]),
+        *line("视角", camera["angle"]),
+        *line("构图", composition),
+        *([] if plain_background else line("景深", camera["depth_of_field"])),
+    ] or ['说明 = "图中未见明确镜头信息"']
     sections = (
         (RICH_VISUAL_SECTIONS[0], style_lines),
         (RICH_VISUAL_SECTIONS[1], subject_lines),
