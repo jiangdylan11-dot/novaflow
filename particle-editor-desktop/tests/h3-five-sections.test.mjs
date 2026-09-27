@@ -65,7 +65,7 @@ test('reverse facts stay in the overall description; the middle time range only 
 
 test('多参 display joins Chinese sentences without spaces and starts each subject sentence on its own line',()=>{
   const display=[
-    'subject_definitions:\n<Subject 1>：黑短发女性。\n<Subject 2>：铜绿色机器人。',
+    'subject_definitions:\n<Subject 1>：黑短发女性 素材来源：<Picture 1>。\n<Subject 2>：铜绿色机器人。',
     'summary:\n[reference generation] <Subject 1> 走向 <Subject 2>。',
     'retention_analysis:\n<Subject 1>: fully_preserved - 黑短发\n<Subject 2>: fully_preserved - 铜绿色',
     'detailed_description: [Shot 1] 动漫插画风格。 场景是乡村公路。 <Subject 1> 向右侧行走。 <Subject 2> 转头望向来者。 镜头跟拍 <Subject 1>。 <Subject 1> 说：“出发。 等等！”',
@@ -74,10 +74,16 @@ test('多参 display joins Chinese sentences without spaces and starts each subj
   ].join('\n\n');
   for(const api of [local,edge]) {
     const shown=api.toReferenceDisplay(display);
-    assert.match(shown,/【画面与动作】\n【镜头 1】 动漫插画风格。场景是乡村公路。\n<主体 1> 向右侧行走。\n<主体 2> 转头望向来者。镜头跟拍 <主体 1>。\n<主体 1> 说：“出发。 等等！”\n/);
+    assert.match(shown,/【画面与动作】\n【镜头 1】动漫插画风格。场景是乡村公路。\n<主体 1> 向右侧行走。\n<主体 2> 转头望向来者。镜头跟拍 <主体 1>。\n<主体 1> 说：“出发。 等等！”\n/);
+    // The definition ends its sentence before 素材来源 instead of a bare space.
+    assert.match(shown,/\n<主体 1>：黑短发女性。素材来源：<Picture 1>。\n/);
     // Quoted dialogue keeps its own spacing.
     assert.doesNotMatch(shown.replace(/“[^”]*”/g,''),/[。！？] /);
     assert.match(api.fromReferenceDisplay(shown),/detailed_description:\n+\[Shot 1\] 动漫插画风格。场景是乡村公路。\n<Subject 1> 向右侧行走。/);
+    // A later shot keeps the space before its timestamp both ways.
+    const timed=display.replace('镜头跟拍 <Subject 1>。','[Shot 2] At 00:02.000 镜头跟拍 <Subject 1>。');
+    assert.match(api.toReferenceDisplay(timed),/【镜头 2】 At 00:02\.000 镜头跟拍/);
+    assert.match(api.fromReferenceDisplay(api.toReferenceDisplay(timed)),/\[Shot 2\] At 00:02\.000 镜头跟拍/);
   }
 });
 

@@ -85,6 +85,27 @@ class TranslationTest(unittest.TestCase):
                 self.assertEqual(len(calls[1]), 1)
                 self.assertIn('Replace the coin', pair['modelPrompt'])
 
+    def test_a_short_chinese_phrase_is_translated_alone_without_rerunning_the_batch(self):
+        calls, phrases = [], []
+        fields = dict(FIELDS, subject_definitions='<Subject 1>：外观来自 <Picture 1>，背着绿色双肩包。\n<Video 1>：原始视频。')
+        translations = dict(TRANSLATIONS, **{'外观来自 TOKEN_0，背着绿色双肩包。': 'Appearance from TOKEN_0,背着a green backpack.'})
+
+        class FakeAssistant:
+            translate = scope['translate_h3_reference']
+
+            def generate(self, request, **kwargs):
+                if 'Input JSON:\n' not in request:
+                    phrases.append(request.rsplit('\n', 1)[1])
+                    return 'carrying'
+                pending = json.loads(request.split('Input JSON:\n', 1)[1])
+                calls.append(pending)
+                return json.dumps({key: translations[value] for key, value in pending.items()})
+        result = FakeAssistant().translate(json.dumps(fields, ensure_ascii=False), 'Available resource labels: <Picture 1>; <Video 1>', 3)
+        pair = json.loads(result['positivePrompt'])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(phrases, ['背着'])
+        self.assertIn('Appearance from <Picture 1>, carrying a green backpack.', pair['modelPrompt'])
+
     def test_spatial_translation_may_introduce_3d_without_changing_literal_timing(self):
         pair, calls = self.run_translation(spatial=True)
         self.assertEqual(len(calls), 1)

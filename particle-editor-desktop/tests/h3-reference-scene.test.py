@@ -49,7 +49,7 @@ class SceneTest(unittest.TestCase):
                                     {'<Picture 2>': ['水墨手绘画风']}, {'<Picture 1>': ROBOT, '<Picture 2>': panda},
                                     {'<Picture 2>': {'style': '动漫插画', 'background': '纯黄色背景'}})
         panda_row = result['references'][1]
-        self.assertEqual(panda_row['description'], '仅借用此图的画风：水墨手绘，此图中的角色不出现')
+        self.assertEqual(panda_row['description'], '仅借用此图的画风（水墨手绘），此图中的角色不出现')
         self.assertEqual(panda_row['keep'], '水墨手绘风格')
         self.assertEqual(panda_row['relation'], 'attribute_transfer')
         self.assertNotIn('熊猫', prompt)
@@ -92,7 +92,7 @@ class SceneTest(unittest.TestCase):
         result, _ = self.write(plan, '把 <Picture 2> 的衣服给 <Picture 1> 的女孩换上，朝镜头走来', output,
                                {'<Picture 2>': ['衣服']}, {'<Picture 1>': GIRL, '<Picture 2>': zhongkui})
         girl, clothes = result['references']
-        self.assertEqual(clothes['description'], '仅借用此图中的衣服：红金相间服饰，衣袍有金色纹饰，黑色裤子，图中人物不出现')
+        self.assertEqual(clothes['description'], '仅借用此图中的衣服（红金相间服饰，衣袍有金色纹饰，黑色裤子），图中人物不出现')
         self.assertEqual(clothes['keep'], '衣服、红金相间服饰、衣袍有金色纹饰、黑色裤子')
         self.assertEqual(girl['keep'], '脸部、黑短发、绿色双肩包')
 
@@ -140,7 +140,87 @@ class SceneTest(unittest.TestCase):
         result, prompt = self.write(plan, '', output, requirement='根据已上传的参考图反推视频提示词')
         self.assertNotIn('已确定事件', prompt)
         self.assertIn('物品不会自己移动', prompt)
+        self.assertIn('只写角色看见它、走过去拾起并端详', prompt)
         self.assertEqual(result['summary'], '<Subject 1> 看见 <Subject 2>，走过去把它拾起。')
+
+    def test_event_line_uses_labels_and_drops_filler_and_unasked_glow(self):
+        robot = '一个铜绿色与铜色相间的机器人，头部有两盏发光的圆形眼睛，手持一个金属洒水壶'
+        plan = {'references': [subject(1, '<Picture 1>', robot, '铜绿色'), subject(2, '<Picture 2>', '一颗球形糖果，表面有粉白条纹', '球形')],
+                'summary': '<Subject 1> 用洒水壶浇灌<Subject 2>，糖果在水滴中微微融化并旋转'}
+        output = ('事件：<Subject 1> 走到 <Subject 2> 旁，用洒水壶轻浇糖果表面，<Subject 2> 未动，洒水后铜绿机器人收手退后一步，糖果表面泛起微光。\n'
+                  '画风：3D渲染\n场景：温室\n动作1：<Subject 1> 走向 <Subject 2>\n动作2：<Subject 1> 弯腰拾起 <Subject 2>，糖果表面泛起微光\n'
+                  '动作3：<Subject 1> 发光的眼睛望着 <Subject 2>\n镜头：固定\n声音：脚步声\n配乐：无')
+        result, _ = self.write(plan, '', output, requirement='根据已上传的参考图反推视频提示词')
+        self.assertEqual(result['summary'], '<Subject 1> 走到 <Subject 2> 旁，用洒水壶轻浇 <Subject 2> 表面，洒水后 <Subject 1> 收手退后一步。')
+        self.assertNotIn('微光', result['description'])
+        # Light that belongs to a subject's own look is not an effect.
+        self.assertIn('<Subject 1> 发光的眼睛望着 <Subject 2>。', result['description'])
+        # The user asked for light: the clause stays.
+        result, _ = self.write(plan, '<Picture 1> 的机器人拾起 <Picture 2>，糖果发出光芒', output)
+        self.assertIn('微光', result['summary'])
+
+    def test_still_filler_goes_and_labels_are_spaced(self):
+        plan = {'references': [subject(1, '<Picture 1>', ROBOT, '铜绿色'), subject(2, '<Picture 2>', '一颗球形糖果', '球形')],
+                'summary': '<Subject 1> 拾起 <Subject 2>'}
+        output = ('事件：<Subject 1> 走向<Subject 2>，弯腰把它拾起，<Subject 2> 保持原样静置不动。\n画风：3D渲染\n场景：温室\n'
+                  '动作1：<Subject 1> 走向<Subject 2>\n动作2：<Subject 1> 右手轻托<Subject 2>举到面前\n镜头：固定\n声音：脚步声\n配乐：无')
+        result, _ = self.write(plan, '', output, requirement='根据已上传的参考图反推视频提示词')
+        self.assertEqual(result['summary'], '<Subject 1> 走向 <Subject 2>，弯腰把它拾起。')
+        self.assertIn('<Subject 1> 右手轻托 <Subject 2> 举到面前。', result['description'])
+        # Stillness the user asked for is not filler.
+        result, _ = self.write(plan, '<Picture 1> 的机器人拾起 <Picture 2>，安安静静的', output)
+        self.assertIn('静置不动', result['summary'])
+
+    def test_event_line_names_resolve_only_to_one_subject(self):
+        plan = {'references': [subject(1, '<Picture 1>', GIRL, '黑短发'), subject(2, '<Picture 2>', ROBOT, '铜绿色')],
+                'summary': '<Subject 1> 遇到 <Subject 2>，机器人停下洒水壶抬头注视，女人惊讶后退一步'}
+        output = ('事件：<Subject 1> 遇到 <Subject 2>，机器人停下洒水壶抬头注视，女人惊讶后退一步\n画风：动漫插画\n场景：乡村公路\n'
+                  '动作1：<Subject 1> 沿路走来\n动作2：<Subject 2> 转向 <Subject 1>\n镜头：固定\n声音：风声\n配乐：无')
+        result, prompt = self.write(plan, '<Picture 1> 的女人遇到了 <Picture 2> 的机器人', output)
+        self.assertEqual(result['summary'], '<Subject 1> 遇到 <Subject 2>，<Subject 2> 停下洒水壶抬头注视，<Subject 1> 惊讶后退一步。')
+        # The writer still sees the plan's own wording.
+        self.assertIn('已确定事件：<Subject 1> 遇到 <Subject 2>，机器人停下洒水壶抬头注视，女人惊讶后退一步\n', prompt)
+        # Two women: "女人" names neither of them.
+        plan['references'][1] = subject(2, '<Picture 2>', '长发女子，穿白裙', '长发')
+        result, _ = self.write(plan, '<Picture 1> 的女人遇到了 <Picture 2> 的女人', output.replace('机器人', '她'))
+        self.assertIn('女人惊讶后退一步', result['summary'])
+
+    def test_style_definition_gains_observed_brush_words_but_the_writer_line_is_unchanged(self):
+        panda = '熊猫，脸部有红色心形图案，头顶金色卷云纹饰，手持红色长棍'
+        plan = {'references': [subject(1, '<Picture 1>', ROBOT, '铜绿色'), subject(2, '<Picture 2>', panda, '水墨手绘风格')],
+                'summary': '<Subject 1> 在细雨里给花浇水'}
+        output = ('事件：<Subject 1> 在细雨里给花浇水\n画风：水墨手绘\n场景：花园\n'
+                  '动作1：<Subject 1> 走向花坛\n动作2：<Subject 1> 倾斜洒水壶\n镜头：固定\n声音：雨声\n配乐：无')
+        result, prompt = self.write(plan, '用 <Picture 2> 的水墨手绘画风，拍 <Picture 1> 的机器人在细雨里给花浇水', output,
+                                    {'<Picture 2>': ['水墨手绘画风']}, {'<Picture 1>': ROBOT, '<Picture 2>': panda},
+                                    {'<Picture 2>': {'style': '动漫插画', 'background': '纯黄色背景', 'technique': ['墨线勾边', '纸张纹理']}})
+        self.assertEqual(result['references'][1]['description'], '仅借用此图的画风（水墨手绘，墨线勾边，纸张纹理），此图中的角色不出现')
+        self.assertEqual(result['references'][1]['keep'], '水墨手绘风格、墨线勾边、纸张纹理')
+        self.assertIn('另有一张参考图只借用画风：水墨手绘，那张图里的角色和物品都不出现\n', prompt)
+
+
+class StyleTechniqueTest(unittest.TestCase):
+    def observe(self, output):
+        method = next(n for n in assistant_class.body if isinstance(n, ast.FunctionDef) and n.name == 'observe_h3_style_technique')
+        local = {'json': json, 're': re}
+        exec(compile(ast.Module(body=[method], type_ignores=[]), str(ROOT / 'prompt-assistant-service.py'), 'exec'), local)
+
+        class FakeAssistant:
+            observe = local['observe_h3_style_technique']
+
+            def generate(self, prompt, **kwargs):
+                if isinstance(output, Exception):
+                    raise output
+                return output
+        return FakeAssistant().observe(object(), '熊猫，脸部有红色心形图案，头顶金色卷云纹饰，手持红色长棍')
+
+    def test_keeps_brush_paper_and_tone_words_without_the_pictures_content(self):
+        self.assertEqual(self.observe('技法：粗犷墨线勾边、卷云纹金色勾线、纸张纹理、暖黄色调、熊猫黑白分明'),
+                         ['粗犷墨线勾边', '纸张纹理', '暖黄色调'])
+
+    def test_an_unusable_or_failed_answer_adds_nothing(self):
+        self.assertEqual(self.observe('动漫插画'), [])
+        self.assertEqual(self.observe(RuntimeError('model busy')), [])
 
 
 if __name__ == '__main__':
