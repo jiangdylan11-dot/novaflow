@@ -25,7 +25,7 @@ const REAL = [
   'function prepareSourceOriginSplitSet', 'async function addManualPart', 'function registerSplitSet',
   'function splitPreviewPixelSize', 'function splitPreviewDrawnForOtherFrame', 'async function refreshSplitPreview',
   'function toggleSplitSet', 'function selectSplitPart', 'function shiftPartForCanvasResize',
-  'async function commitImageOutpaintResult'
+  'async function commitImageOutpaintResult', 'function pruneEmptySplitSets', 'function activateSetAfterLayerMove'
 ];
 
 // A PNG data URL whose header carries the size; '#…' after it names the picture and layers drawn.
@@ -39,7 +39,7 @@ const png = (width, height, label) => {
   return `data:image/png;base64,${bytes.toString('base64')}#${label}`;
 };
 const label = (url) => String(url || '').split('#')[1] || String(url || '');
-const SIZES = { A: [1016, 1018], B: [715, 911], A2: [1504, 1024] };
+const SIZES = { A: [1016, 1018], B: [715, 911], A2: [1504, 1024], J: [626, 1360] };
 
 // Sources A (a.png), B (3.png); the outpaint adds A2.
 const world = () => {
@@ -210,6 +210,78 @@ section('a new card for a second picture is drawn from its own layers');
   ctx.state.parts = [{ id: 'arm' }, { id: 'body' }];
   await runInContext('refreshSplitPreview()', ctx);
   checkEqual('refreshSplitPreview draws the layers it is given in the picture on screen', label(ctx.state.splitPreviewDataUrl), 'B:arm+body');
+}
+
+section('deleting the last layer of a card never opens another picture\'s card');
+{
+  // The user's case: jimeng (J) on screen, its only card emptied by deleting its 原图 layer, a.png's
+  // card last in the list. The last card used to open in jimeng's frame (a.png squeezed to 0.46).
+  const setup = (extra = []) => {
+    const w = world();
+    w.resources.push({ id: 'J', fileName: 'jimeng.png' });
+    w.ctx.state.splitSets.push({ id: 'j', originKind: 'source-tool', sourceResourceId: 'J', parts: [], previewDataUrl: '' }, ...extra);
+    w.ctx.activateSourceResource('J');
+    w.ctx.state.activeSplitSetId = 'j';
+    w.ctx.state.parts = [];
+    w.ctx.state.viewMode = 'parts';
+    return w;
+  };
+  const alone = setup();
+  runInContext("pruneEmptySplitSets('j')", alone.ctx);
+  const expanded = (w) => w.ctx.state.splitSets.filter((set) => set.expanded).map((set) => set.id);
+  checkEqual('no other card of jimeng: the last card stays current but closed, jimeng\'s 原图 shows',
+    [alone.ctx.state.activeSplitSetId, expanded(alone), alone.ctx.state.viewMode, alone.ctx.state.activeSourceResourceId], ['b', [], 'source', 'J']);
+  checkEqual('with none of its hidden layers selected (a Delete key cannot reach them)', [alone.ctx.state.activePartId, alone.ctx.state.selectedPartIds], ['', []]);
+  // There is always a current card while cards exist: syncActiveSplitSet writes state.parts into it.
+  runInContext('syncActiveSplitSet()', alone.ctx);
+  checkEqual('and the current card keeps its own layers (nothing is emptied)', [alone.cards.a.parts.map((p) => p.id), alone.cards.b.parts.map((p) => p.id)], [['src'], ['leg']]);
+  const sibling = setup([{ id: 'j2', originKind: 'split', sourceResourceId: 'J', parts: [{ id: 'arm' }], previewDataUrl: png(626, 1360, 'J:arm') }]);
+  sibling.ctx.log.length = 0;
+  runInContext("pruneEmptySplitSets('j')", sibling.ctx);
+  checkEqual('another card of jimeng: that one opens', [sibling.ctx.state.activeSplitSetId, expanded(sibling), sibling.ctx.state.parts.map((p) => p.id), sibling.ctx.log], ['j2', ['j2'], ['arm'], []]);
+  const stale = setup([{ id: 'j2', originKind: 'split', sourceResourceId: 'J', parts: [{ id: 'arm' }], previewDataUrl: png(1016, 1018, 'A:arm') }]);
+  stale.ctx.log.length = 0;
+  runInContext("pruneEmptySplitSets('j')", stale.ctx);
+  checkEqual('its composite drawn while a.png was on screen is redrawn', stale.ctx.log, ['schedule refresh']);
+  const legacy = setup([{ id: 'old', parts: [{ id: 'o1' }], previewDataUrl: '' }]);
+  runInContext("pruneEmptySplitSets('j')", legacy.ctx);
+  checkEqual('a card from before multiple sources still counts as this picture\'s', legacy.ctx.state.activeSplitSetId, 'old');
+}
+
+section('a layer moved into another picture\'s card opens that picture');
+{
+  // 3.png's card open with 3.png on screen; a layer moved into a.png's card.
+  const { ctx, cards } = world();
+  ctx.activateSourceResource('B');
+  openCard(ctx, cards, 'b');
+  cards.a.previewDataUrl = png(715, 911, 'B:src');   // rebuilt before the switch, in 3.png's frame
+  ctx.log.length = 0;
+  runInContext("activateSetAfterLayerMove(splitSetById('a'), 'src')", ctx);
+  checkEqual('switches to a.png and redraws the card there', [ctx.log, ctx.state.activeSplitSetId, ctx.state.viewMode], [['activate A', 'schedule refresh'], 'a', 'parts']);
+  const same = world();
+  same.ctx.log.length = 0;
+  runInContext("activateSetAfterLayerMove(splitSetById('a'), 'src')", same.ctx);
+  checkEqual('a card of the picture on screen: nothing to switch or redraw', [same.ctx.log, same.ctx.state.viewMode], [[], 'parts']);
+  // a.png's card still open after clicking 3.png's tile, rows reordered inside it: callers may only
+  // patch the rows, so the picture is not switched and 3.png's 原图 stays on screen.
+  const reorder = world();
+  reorder.ctx.activateSourceResource('B');
+  reorder.ctx.log.length = 0;
+  runInContext("activateSetAfterLayerMove(splitSetById('a'), 'src')", reorder.ctx);
+  checkEqual('reordering inside the open card of another picture keeps this picture\'s 原图 view', [reorder.ctx.log, reorder.ctx.state.activeSourceResourceId, reorder.ctx.state.viewMode], [[], 'B', 'source']);
+  // a.png deleted: its cards have no picture to switch to, so they behave as before.
+  const orphan = world();
+  orphan.ctx.activateSourceResource('B');
+  openCard(orphan.ctx, orphan.cards, 'b');
+  orphan.resources.splice(0, 1);
+  orphan.ctx.log.length = 0;
+  runInContext("activateSetAfterLayerMove(splitSetById('a'), 'src')", orphan.ctx);
+  checkEqual('a card whose 原图 was deleted opens as before, without a switch', [orphan.ctx.log, orphan.ctx.state.activeSplitSetId, orphan.ctx.state.viewMode], [[], 'a', 'parts']);
+  const orphanReorder = world();
+  orphanReorder.ctx.activateSourceResource('B');
+  orphanReorder.resources.splice(0, 1);
+  runInContext("activateSetAfterLayerMove(splitSetById('a'), 'src')", orphanReorder.ctx);
+  checkEqual('and reordering inside it keeps the layer view', orphanReorder.ctx.state.viewMode, 'parts');
 }
 
 finish('web-split-source-cards');

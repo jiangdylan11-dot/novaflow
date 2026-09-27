@@ -12123,8 +12123,11 @@
     state.splitSets = next
     const retainedIds = new Set(next.map((set) => String(set && set.id || '')))
     const activeRemoved = !!previousActiveId && !next.some((set) => String(set && set.id || '') === previousActiveId)
+    // When the open card went away (its last layer deleted), prefer another card of the picture on screen.
+    const onScreen = (set) => !set.sourceResourceId || !state.activeSourceResourceId || set.sourceResourceId === state.activeSourceResourceId
     const active = next.find((set) => String(set && set.id || '') === preferredId)
       || next.find((set) => String(set && set.id || '') === previousActiveId)
+      || next.slice().reverse().find((set) => set && onScreen(set))
       || next[next.length - 1]
       || null
     if (!active) {
@@ -12145,9 +12148,23 @@
     }
     state.activeSplitSetId = active.id
     if (activeRemoved || previousActiveId !== active.id || !state.splitSets.some((set) => !!set.expanded)) {
-      state.splitSets.forEach((set) => { set.expanded = set.id === active.id })
+      // Only another 原图's card is left: it stays the current card (the parts must belong to a card),
+      // but closed, with this picture's 原图 on screen, as after clicking a tile. Opening it here drew
+      // its layers into this picture's frame.
+      const otherPicture = !onScreen(active)
+      state.splitSets.forEach((set) => { set.expanded = !otherPicture && set.id === active.id })
       state.parts = (active.parts || []).map(normalizeLayerRecord)
       state.splitPreviewDataUrl = active.previewDataUrl || ''
+      if (otherPicture) {
+        // Nothing of it is selected either (its rows are hidden): a Delete key must not reach them.
+        state.viewMode = 'source'
+        state.activePartId = ''
+        state.selectedPartIds = []
+        state.renamingPartId = ''
+        state.renameDraft = ''
+        return true
+      }
+      if (splitPreviewDrawnForOtherFrame()) scheduleSplitPreviewRefresh({ delayMs: 40, idle: false })
     }
     const ids = new Set(state.parts.map((part) => part.id))
     if (!ids.has(state.activePartId)) state.activePartId = (state.selectedPartIds || []).find((item) => ids.has(item)) || (state.parts[0] && state.parts[0].id) || ''
@@ -29906,6 +29923,14 @@
 
   function activateSetAfterLayerMove(set, activePartId) {
     if (!set) return
+    // A layer moved into another card that belongs to another 原图: open that 原图 too, or the card is
+    // drawn in this frame. Reordering inside the open card while another picture is on screen keeps
+    // that picture's 原图 view (callers may patch the rows without a full render).
+    const otherPicture = !!set.sourceResourceId && !!state.activeSourceResourceId && set.sourceResourceId !== state.activeSourceResourceId
+      && sourceResourceList().some((item) => item && item.id === set.sourceResourceId)
+    const sameCard = set.id === state.activeSplitSetId
+    if (otherPicture && !sameCard) activateSourceResource(set.sourceResourceId, { resetViewport: false })
+    const keepSourceView = otherPicture && sameCard
     resetMaskEditor()
     state.splitSets.forEach((item) => { item.expanded = item.id === set.id })
     state.activeSplitSetId = set.id
@@ -29915,8 +29940,13 @@
     state.selectedPartIds = state.activePartId ? [state.activePartId] : []
     state.renamingPartId = ''
     state.renameDraft = ''
-    state.viewMode = 'parts'
+    state.viewMode = keepSourceView ? 'source' : 'parts'
     normalizeSelection()
+    // Its composite may have been built before the switch, in the other picture's frame. Only redraw it
+    // in its own picture: a card whose 原图 was deleted stays as it was (see toggleSplitSet).
+    if ((!set.sourceResourceId || set.sourceResourceId === state.activeSourceResourceId) && splitPreviewDrawnForOtherFrame()) {
+      scheduleSplitPreviewRefresh({ delayMs: 40, idle: false })
+    }
   }
 
   async function reorderPartLayerByDrop(sourceId, targetId, insertAfterTarget, sourceSetId, targetSetId) {
@@ -30062,6 +30092,7 @@
     if (targetSet) {
       targetSet.parts = nextParts
       await refreshSplitSetPreview(targetSet)
+      // It sets the view: a row of the open card of another 原图 keeps that picture's 原图 view.
       activateSetAfterLayerMove(targetSet, target)
     } else {
       state.parts = nextParts
@@ -30070,8 +30101,8 @@
       state.activePartId = target
       state.selectedPartIds = [target]
       normalizeSelection()
+      state.viewMode = 'parts'
     }
-    state.viewMode = 'parts'
     setMessage(`已替换图层：${targetPart.name || targetPart.id}`)
     render()
     updatePreviewOverlay()
