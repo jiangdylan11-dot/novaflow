@@ -36613,6 +36613,16 @@
     NOVAFLOW_SPEC_WRITING = true;
     try {
       applyNovaflowReferenceSpecPass(root, body);
+      // Stacked, a pass sizes the column from content it is about to narrow, so
+      // on a page switch the first pass came out ~18px too tall and the next
+      // one, a frame later, pulled the stage up: the shake on entering 美工.
+      // When this pass changed that height, one more pass settles it in the
+      // same task, before anything is painted.
+      if (NOVAFLOW_LAYOUT_TIER === "stack") {
+        const plannedTop = NOVAFLOW_STACK_WORKSPACE_TOP;
+        const settledTop = TOPBAR_HEIGHT + PRIMARY_PANEL_TOP_GAP + novaflowStackSidebarHeight() + NOVAFLOW_STACK_GAP;
+        if (settledTop !== plannedTop) applyNovaflowReferenceSpecPass(root, body);
+      }
     } finally {
       NOVAFLOW_SPEC_WRITING = wasWriting;
       const stats = window.__novaflowSpecStats || (window.__novaflowSpecStats = { runs: 0, totalMs: 0, maxMs: 0 });
