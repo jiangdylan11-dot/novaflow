@@ -349,10 +349,11 @@
       });
       card.className = 'nf-wh-asset'; card.title = item.name; card.setAttribute('aria-label', (folder ? '打开文件夹 ' : '预览 ') + item.name);
       const thumb = node('div', null, card); thumb.className = 'nf-wh-thumb' + (folder ? ' nf-wh-folder' : ''); icon(folder ? 'folder' : video ? 'video' : 'image', thumb);
-      if (!folder) { const type = node('span', item.pending ? '待保存' : item.name.split('.').pop().toUpperCase(), thumb); type.className = 'nf-wh-type'; }
+      const typeLabel = item.pending ? '待保存' : item.name.split('.').pop().toUpperCase();
+      const type = folder ? null : node('span', item.dimensions ? typeLabel + ' · ' + item.dimensions : typeLabel, thumb); if (type) type.className = 'nf-wh-type';
       const info = node('div', null, card); info.className = 'nf-wh-asset-info'; node('strong', item.name, info);
       const metaText = folder ? '文件夹' : item.pending ? formatBytes(item.blob.size) + ' · 等待保存' : formatBytes(item.size) + ' · ' + new Date(item.modified).toLocaleDateString('zh-CN');
-      const meta = node('span', (item.dimensions ? item.dimensions + ' · ' : '') + metaText, info);
+      node('span', metaText, info);
       if (folder) continue;
       const actions = node('div', null, wrapper); actions.className = 'nf-wh-asset-actions'; addDelete(item, actions);
       const load = async () => {
@@ -361,7 +362,7 @@
           if (version !== listingVersion || panel.hidden) return;
           const url = URL.createObjectURL(file); thumbnailUrls.add(url);
           const media = node(video ? 'video' : 'img', null, thumb); media.className = 'nf-wh-thumbnail'; media.src = url; media.alt = ''; media.muted = true; media.preload = 'metadata';
-          const stamp = () => { const dims = dimensionsOf(media); if (dims) { item.dimensions = dims; meta.textContent = dims + ' · ' + metaText; } };
+          const stamp = () => { const dims = dimensionsOf(media); if (dims) { item.dimensions = dims; type.textContent = typeLabel + ' · ' + dims; } };
           if (video) media.onloadedmetadata = () => { stamp(); if (Number.isFinite(media.duration) && media.duration > 0) media.currentTime = Math.min(0.1, media.duration / 2); };
           // A video card keeps a still of that frame, not a live <video>: dozens of
           // decoders alive at once made scrolling the list stutter.
@@ -419,7 +420,7 @@
 #novaflow-local-warehouse *{box-sizing:border-box}
 #novaflow-local-warehouse [hidden],#novaflow-local-warehouse[hidden]{display:none!important}
 #novaflow-local-warehouse h2,#novaflow-local-warehouse h3,#novaflow-local-warehouse p{color:inherit;margin:0;padding:0;line-height:1.5}
-#novaflow-local-warehouse .nf-wh-card{position:relative;width:min(1000px,94vw);height:min(680px,85vh);display:flex;flex-direction:column;background:#212121;border:1px solid rgba(255,255,255,.1);border-radius:8px;box-shadow:none;overflow:hidden}
+#novaflow-local-warehouse .nf-wh-card{position:relative;width:min(1000px,94vw);height:min(760px,88vh);display:flex;flex-direction:column;background:#212121;border:1px solid rgba(255,255,255,.1);border-radius:8px;box-shadow:none;overflow:hidden}
 #novaflow-local-warehouse button{font:inherit;color:inherit;background:none;border:1px solid transparent;border-radius:8px;padding:8px 12px;cursor:pointer;box-shadow:none;transition:background .15s,border-color .15s;flex-shrink:0;line-height:1.5}
 #novaflow-local-warehouse button:hover{background:#ffffff0c}
 #novaflow-local-warehouse button:focus-visible,#novaflow-local-warehouse input:focus-visible,#novaflow-local-warehouse select:focus-visible{outline:2px solid #1EA672;outline-offset:3px}
@@ -447,36 +448,36 @@
 #novaflow-local-warehouse .nf-wh-folder-info p{color:#888;font-size:11px;line-height:1.8}
 #novaflow-local-warehouse .nf-wh-folder-info button{margin-top:12px;font-size:11px;padding:5px 8px;color:#999;border-color:#ffffff10}
 #novaflow-local-warehouse .nf-wh-main{flex:1;min-width:0;display:flex;flex-direction:column}
-#novaflow-local-warehouse .nf-wh-toolbar{display:flex;align-items:center;gap:8px;padding:14px 18px 12px;flex-wrap:wrap}
+#novaflow-local-warehouse .nf-wh-toolbar{display:flex;align-items:center;gap:8px;padding:10px 18px 8px;flex-wrap:wrap}
 #novaflow-local-warehouse .nf-wh-breadcrumbs{display:flex;align-items:center;gap:3px;flex:1;min-width:100px;flex-wrap:wrap;color:#888}
 #novaflow-local-warehouse .nf-wh-crumb{padding:5px 7px;color:#ccc;max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #novaflow-local-warehouse .nf-wh-secondary{border-color:#ffffff16;background:#333;color:#ccc;font-size:12px}
 #novaflow-local-warehouse .nf-wh-primary{background:#1ba879;color:#fff;border-color:transparent;font-weight:550}
 #novaflow-local-warehouse .nf-wh-primary:hover{background:#22b988}
-#novaflow-local-warehouse .nf-wh-filters{display:flex;align-items:center;gap:12px;padding:0 18px 14px;border-bottom:1px solid #ffffff08}
+#novaflow-local-warehouse .nf-wh-filters{display:flex;align-items:center;gap:12px;padding:0 18px 10px;border-bottom:1px solid #ffffff08}
 #novaflow-local-warehouse .nf-wh-search{display:flex;align-items:center;gap:9px;max-width:340px;flex:1;border:1px solid #ffffff0f;border-radius:8px;background:#090909;padding:7px 11px;color:#777}
 #novaflow-local-warehouse input{color:#ddd;background:none;border:0;outline:none;font:inherit;width:100%;min-width:60px;padding:0;height:22px}
 #novaflow-local-warehouse input::placeholder{color:#777}
 #novaflow-local-warehouse select{font:inherit;font-size:12px;background:#303030;border:1px solid #ffffff10;color:#aaa;border-radius:7px;padding:8px;max-width:130px}
 #novaflow-local-warehouse .nf-wh-summary{color:#888;margin-left:auto;white-space:nowrap;font-size:12px}
-#novaflow-local-warehouse .nf-wh-list{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(165px,1fr));grid-auto-rows:max-content;align-content:start;gap:14px;padding:18px;scrollbar-width:thin;scrollbar-color:#3d4b44 transparent}
+#novaflow-local-warehouse .nf-wh-list{flex:1;min-height:0;overflow:auto;display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));grid-auto-rows:max-content;align-content:start;gap:10px;padding:14px;scrollbar-width:thin;scrollbar-color:#3d4b44 transparent}
 #novaflow-local-warehouse .nf-wh-asset{min-width:0;overflow:hidden;background:#292929;border:1px solid #ffffff0b;padding:0;border-radius:10px;text-align:left}
 #novaflow-local-warehouse .nf-wh-asset:hover{background:#333;border-color:#46bc9266}
 #novaflow-local-warehouse .nf-wh-asset-wrap{min-width:0;border:1px solid #ffffff12;border-radius:8px;overflow:hidden;background:#262626}
 #novaflow-local-warehouse .nf-wh-asset-wrap .nf-wh-asset{width:100%;border:0;border-radius:0}
-#novaflow-local-warehouse .nf-wh-asset-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:4px;padding:3px 6px;font-size:11px}
-#novaflow-local-warehouse .nf-wh-asset-actions button{padding:4px 6px;font-size:11px}
+#novaflow-local-warehouse .nf-wh-asset-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:4px;padding:1px 5px;font-size:11px}
+#novaflow-local-warehouse .nf-wh-asset-actions button{padding:2px 6px;font-size:11px}
 #novaflow-local-warehouse .nf-wh-delete{color:#e6a3a3}
 #novaflow-local-warehouse button:disabled{opacity:.45;cursor:default}
 #novaflow-local-warehouse .nf-wh-thumb{position:relative;aspect-ratio:4/3;background:#141414;display:grid;place-items:center;color:#516c5b;overflow:hidden}
-#novaflow-local-warehouse .nf-wh-thumb>.nf-wh-icon{width:36px;height:36px}
+#novaflow-local-warehouse .nf-wh-thumb>.nf-wh-icon{width:28px;height:28px}
 #novaflow-local-warehouse .nf-wh-folder{background:#242424;color:#76cfa6}
-#novaflow-local-warehouse .nf-wh-folder>.nf-wh-icon{width:55px;height:55px}
+#novaflow-local-warehouse .nf-wh-folder>.nf-wh-icon{width:40px;height:40px}
 #novaflow-local-warehouse .nf-wh-thumbnail{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#141414}
-#novaflow-local-warehouse .nf-wh-type{position:absolute;bottom:8px;left:8px;z-index:1;border-radius:4px;background:#0a100ecc;color:#d9e8df;padding:2px 6px;font-size:9px;letter-spacing:.6px}
-#novaflow-local-warehouse .nf-wh-asset-info{padding:11px 12px;display:flex;flex-direction:column;gap:5px}
+#novaflow-local-warehouse .nf-wh-type{position:absolute;bottom:6px;left:6px;z-index:1;border-radius:4px;background:#0a100ecc;color:#d9e8df;padding:2px 6px;font-size:9px;letter-spacing:.3px;white-space:nowrap}
+#novaflow-local-warehouse .nf-wh-asset-info{padding:6px 9px;display:flex;flex-direction:column;gap:2px}
 #novaflow-local-warehouse .nf-wh-asset-info strong{font-size:12px;font-weight:500;color:#ccc;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#novaflow-local-warehouse .nf-wh-asset-info>span{color:#888;font-size:10px}
+#novaflow-local-warehouse .nf-wh-asset-info>span{color:#888;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #novaflow-local-warehouse .nf-wh-empty{grid-column:1/-1;min-height:320px;height:100%;display:flex;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:32px}
 #novaflow-local-warehouse .nf-wh-empty>.nf-wh-icon{width:68px;height:68px;background:#24ae7d0a;border:1px solid #38aa7a20;border-radius:20px;padding:17px;color:#588c72;margin-bottom:22px}
 #novaflow-local-warehouse .nf-wh-empty h3{font-size:17px;font-weight:500;color:#ccc;margin-bottom:9px}
