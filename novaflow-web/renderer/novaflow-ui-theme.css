@@ -497,7 +497,7 @@
   background-color: #242424 !important;
   background-image: radial-gradient(#3d3d3d 1px, transparent 1px) !important;
   background-size: 24px 24px !important;
-  background-position: center center !important;
+  background-position: 0 0 !important;
 }
 
 .novaflow-app [data-novaflow-preview-workspace="1"] canvas {

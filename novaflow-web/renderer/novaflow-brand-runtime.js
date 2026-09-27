@@ -22439,11 +22439,9 @@
       body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-main::before {
         inset: 0 0 ${SKELETON_PLAYBAR_HEIGHT + AI_ANIMATION_PANEL_TIMELINE_GAP}px 0 !important;
         border-radius: ${PRIMARY_RAIL_PANEL_RADIUS}px !important;
-        /* The same dot field as 粒子特效's workspace (centred there): centred
-           across, and down by half the band this layer leaves free below, so
-           switching 粒子特效 <-> AI特效 keeps every dot in place (it was
-           anchored top-left: 2px across and 5px down off). */
-        background: radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px) center calc(50% + ${(SKELETON_PLAYBAR_HEIGHT + AI_ANIMATION_PANEL_TIMELINE_GAP) / 2}px) / ${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px, ${PREVIEW_OUTSIDE_BACKGROUND} !important;
+        /* Anchored top-left like 粒子特效's workspace field, so the two tabs'
+           dots coincide and the first column is always 12px in. */
+        background: radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px) 0 0 / ${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px, ${PREVIEW_OUTSIDE_BACKGROUND} !important;
       }
       body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-main::after {
         content: none !important;
@@ -27923,7 +27921,9 @@
         background: ${PREVIEW_OUTSIDE_BACKGROUND} !important;
         background-image: radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px) !important;
         background-size: ${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px !important;
-        background-position: center center !important;
+        /* Top-left, not centred: centred, the edge column moved with the window
+           width and at some widths sat under the rounded edge - a column gone. */
+        background-position: 0 0 !important;
         margin: ${PRIMARY_PANEL_TOP_GAP}px ${WORKSPACE_SIDE_GAP}px ${PRIMARY_PANEL_BOTTOM_GAP}px 0 !important;
         border: 0 !important;
         border-radius: ${PRIMARY_RAIL_PANEL_RADIUS}px !important;
