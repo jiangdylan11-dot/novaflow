@@ -14833,8 +14833,9 @@ class PromptAssistant:
                 "这不是普通绘画提示词：写出这个页面由哪些具体区域和控件组成、各自在画面中的位置和主次，"
                 "再写视觉风格、配色、材质、间距和对齐；用这些具体内容代替“功能分区明确”“信息层级清晰”这类概括词。"
                 "不得擅自改变页面结构或删减用户指定功能。",
-                "只写成品画面上看得见的内容：配色写颜色名称，大小和间距写大、中、小与相对位置；"
-                "用户没写的色号、像素和字号数值不写。",
+                "只写成品画面上看得见的内容：配色写颜色名称；大小、间距和对齐用自然的中文短语写，"
+                "例如“大号标题居中”“按钮等宽并排”；用户没写的色号、像素、字号数值、比例和几分之几不写。"
+                "界面上的文字只写用户给出的字或通用的短标签，不编数量和统计数字。",
                 "参考图只允许贡献被指定的职责；布局、风格、配色、材质、内容素材和主体必须彼此隔离，禁止整图照抄。",
             ]
             if has_resource_placeholders:
@@ -15124,6 +15125,7 @@ class PromptAssistant:
                 output = positive
         if is_animation:
             positive = tidy_video_prompt(positive, f"{raw_prompt}\n{requirements}")
+            positive = tidy_video_optimize_prompt(positive, raw_prompt, requirements)
         if is_ui_design:
             positive = tidy_ui_design_prompt(positive, f"{raw_prompt}\n{requirements}")
         if is_animation or is_ui_design:
@@ -17742,8 +17744,7 @@ class PromptAssistant:
             "\n当前已有视频提示（必须与图片可见信息合并）：\n"
             f"{current_prompt}\n"
             "最终只输出一段合并后的提示词；保留当前提示中的动作与镜头意图，但不得覆盖图片中可见的主体身份、外观和场景锚点。"
-            "把当前提示里的动作按这种主体真实的做法，写成具体的身体部位运动：哪个部位、朝哪个方向、动到什么姿态，"
-            "不要只用“完成××动作”一笔带过。"
+            "当前提示里的动作词原样写进动作过程，紧接着按这种主体真实的做法补充具体的身体部位运动：哪个部位、朝哪个方向、动到什么姿态。"
             if current_prompt and is_animation else ""
         )
         requirements_instruction = (
@@ -18230,10 +18231,12 @@ class PromptAssistant:
                     "2. 动作从首帧的真实状态出发：主体当前的朝向、姿势、位置和手里已有的道具就是起点，顺着这个状态自然发展；"
                     "手里已有的道具要用进动作里（例如挥动、举起、倾倒、指向），不要让主体突然放下、丢掉或更换道具；"
                     "如果首帧已处在腾空、奔跑、挥动等动作的中途，就从这个中途接着写（例如从半空落地），不要把动作从头再做一遍。"
-                    "写到手臂、腿和移动方向时，一律按画面左侧、右侧来写（例如“画面左侧的手臂”），不写主体自己的左手、右手。\n"
+                    "区分肢体时用它在做什么来称呼（例如拿着道具的手臂、空着的手、迈出的脚），不写左手、右手、左臂、右臂、左脚、右脚；"
+                    "朝前后、上下的动作按画面所见照实写。\n"
                     "3. 按开始状态 → 连续动作过程 → 结束状态写清动作，并写出速度与节奏；按约5秒设计，只安排一两个能完成的动作，"
                     "最后写出具体的结束结果（例如停下脚步站稳、落地站稳、转头看向画面一侧），不写“威严”“优雅”这类评价词。\n"
-                    f"4. {VIDEO_CAMERA_RULE}\n"
+                    "4. 移动方向顺着首帧朝向：正面朝镜头站立的主体要走动时朝镜头走来，侧身的主体朝它面对的一侧移动。"
+                    f"{VIDEO_CAMERA_RULE}\n"
                     "5. 除非用户要求变化，否则背景、构图、光线和主体位置关系保持首帧的样子；不添加图中没有的物体、特效（火花、光效、轨迹拖尾、粒子、烟雾等）、"
                     "声音、文字或新角色，也不写景深或焦点变化。\n"
                     "6. 不写“5秒”“全程”等时长说明，不写“无抖动”这类否定句，也不写“营造……氛围”这类抽象总结。\n"
@@ -18247,7 +18250,10 @@ class PromptAssistant:
                     llama_template=qwen3_chatml(VIDEO_I2V_SYSTEM_TEXT, "{}"),
                     max_length=320,
                 )
-                description = tidy_video_prompt(output, f"{current_prompt}\n{requirements}")
+                description = keep_short_prompt_action(
+                    name_limbs_by_picture_side(tidy_video_prompt(output, f"{current_prompt}\n{requirements}")),
+                    current_prompt,
+                )
             elif purpose.lower().replace("_", "-") == "static-image-reverse":
                 static_result = self.reverse_plain_static_image(payload, image_tensors[0], requirements)
                 description = static_result["description"]
@@ -18344,12 +18350,14 @@ class PromptAssistant:
                 prompt, llama_template, max_length = build_first_last_final_prompt(action_notes, image_tokens)
                 prompt = f"{prompt}{merge_instruction}"
                 output = self.generate(prompt, images=image_tensors, llama_template=llama_template, max_length=max_length)
-                description = tidy_video_prompt(output, duration_source)
+                description = drop_frame_reference_clauses(tidy_video_prompt(output, duration_source), duration_source)
                 if not is_first_last_action_prompt_quality_ok(description):
                     retry_prompt, retry_template, retry_max_length = build_first_last_final_prompt(action_notes, image_tokens, description)
                     retry_prompt = f"{retry_prompt}{merge_instruction}"
                     retry_output = self.generate(retry_prompt, images=image_tensors, llama_template=retry_template, max_length=retry_max_length, seed=2)
-                    retry_description = tidy_video_prompt(retry_output, duration_source)
+                    retry_description = drop_frame_reference_clauses(
+                        tidy_video_prompt(retry_output, duration_source), duration_source
+                    )
                     if retry_description:
                         output = retry_output
                         description = retry_description
@@ -19202,7 +19210,8 @@ def build_first_last_final_prompt(action_notes: str, image_tokens: str = "", pre
         "3. 写明镜头：取景没有变化时写“镜头保持固定”；有变化时只写一种运镜（缓慢推进、缓慢拉远、平移或跟随主体）并写明方向。\n"
         "4. 光线和阴影有变化时如实写出（例如光线渐渐变暗、阴影渐渐变淡）；背景其余部分没有变化时写“背景保持不变”。"
         "不添加图中没有的物体、特效、声音或文字。\n"
-        "5. 用画面内容描述状态，不写“首帧”“尾帧”“图片1”这类说明词，不写“5秒”等时长说明，也不写“营造……氛围”这类抽象总结。\n\n"
+        "5. 用画面内容描述状态，不写“首帧”“尾帧”“图片1”这类说明词，不写“5秒”等时长说明，也不写“营造……氛围”这类抽象总结。"
+        "用平实的动作和状态词来写，不用比喻和修辞。\n\n"
         "输出格式：只输出一段连贯的中文自然语言 Prompt，以句号结尾；不要标题、编号、分析报告、英文、SD 标签或 JSON。"
         f"{retry_note}"
     )
@@ -19310,6 +19319,47 @@ VIDEO_DURATION_FILLER = re.compile(
 )
 # The instructions ask for no sound; a clause the model still spends on one goes unless the user wrote a sound.
 VIDEO_SOUND_CLAUSE = re.compile(r"(?<![无悄])声(?![势名誉])|(?<!影)响(?!应)|轰鸣|嗡鸣")
+# "长剑出鞘时带起金属锐响": the action in front of the sound stays ("长剑出鞘").
+VIDEO_SOUND_TAIL = re.compile(
+    r"^(?P<keep>.{2,}?)(?:的同时|之时|同时|并且|并|时)(?:带起|带出|发出|传出|伴随着?|伴着|响起|激起|传来)"
+)
+TEXT_CLAUSE_PATTERN = r"[^，,。；;！!？?]+[，,。；;！!？?]*"
+TEXT_CLAUSE_END = "，,。；;！!？?"
+# "最终停在原地" followed by more action ("…，前爪完全伸展后收回") breaks the order of events; a camera,
+# background or held state after it does not.
+VIDEO_STAY_PUT_ONLY = re.compile(r"^(?:最终|最后|随后|然后|之后|便|就|再|又|并)?(?:它|他|她)?(?:稳稳地?)?停在原地$")
+VIDEO_AFTER_STOP = re.compile(r"镜头|背景|仍|依然|依旧|始终|保持")
+# A subject that never went anywhere ("猫咪坐着伸展前爪") has nothing to stop.
+VIDEO_TRAVELLED = re.compile(r"移动|走|跑|奔|爬|迈|前进|后退|拖动|游|飞|冲|跃|滑|挪|靠近|远离|前行|行进|踱")
+# Qwen names arms by the side of the picture they are on, while WAN reads "右臂" as the subject's own
+# right arm (the opposite one for a subject facing the camera), so the side of the picture is written out.
+# Which foot steps first does not matter and stays as written.
+VIDEO_SIDE_LIMB = re.compile(r"(?<![画面左右])([左右])(手臂|臂膀|臂|手掌|手腕|手|肩|前爪)")
+# The pair prompt describes what is seen; "归于首帧的辉光" names the input pictures instead.
+VIDEO_FRAME_REFERENCE = re.compile(r"首帧|尾帧|图片\s*[12一二]|第[一二12]张图")
+# A text request without one of these words moves nothing across the frame ("浇花", "起跳投篮"),
+# and one that names a camera keeps the camera the user asked for.
+VIDEO_TRAVEL_OR_CAMERA_WORD = re.compile(
+    r"[走跑奔冲飞追逐游驶爬行移逃骑滑飘漂穿越进退离赶踱驰翔涌]|[向往朝][前后左右]|镜头|运镜|跟随|跟拍|环绕|摇"
+)
+VIDEO_PAN_CAMERA = re.compile(r"平移|横移|跟随|跟拍")
+# Light and wind the user never wrote ("光线柔和均匀", "水洼反射微光", "耳朵随风微颤"): a clause about them
+# goes, a phrase is cut.
+VIDEO_LIGHT_WIND_SOURCE = re.compile(r"[光风灯阳晖辉亮暗晨昏夕夜月]")
+VIDEO_LIGHT_WIND_CLAUSE = re.compile(
+    r"^(?:背景)?(?:光线|光影|光照|阳光|灯光|日光|微风|清风|风(?![格度采景味]))|微光|光斑|光晕|反光|闪光|光芒"
+)
+VIDEO_LIGHT_WIND_PHRASE = re.compile(
+    r"[在于](?:柔和|明亮|温暖)?的?(?:光线|阳光|灯光|日光|微风)(?:下|中|里)|在风中|随(?:微)?风|被(?:微)?风|迎风"
+)
+# Trails are effects the rules forbid ("剑刃划出锐利轨迹").
+VIDEO_TRAIL_WORD = r"(?:轨迹|弧线|残影|光弧|光痕|拖尾|尾迹|光带|弧光|水痕|拖影|虚影)"
+VIDEO_TRAIL_CLAUSE = re.compile(rf"(?:划出|划过|拖出|拖着|留下|拉出|带出|甩出)[^，,。；;！!？?]{{0,8}}?{VIDEO_TRAIL_WORD}")
+# The subject the request opens with ("少年在篮球场上…"), for a "主体" copied from the camera rule.
+VIDEO_SOURCE_SUBJECT = re.compile(
+    r"^\s*(?:一(?:只|个|位|名|条|头|匹|群|辆|架|艘|对))?"
+    r"(?P<name>[^\s，,。；;！!？?、的里在正从把将被向朝往]{1,8}?)(?:在|正在|从|把|将|被|向|朝|往)"
+)
 # "画面保持静止" asks the video model for a frozen clip and contradicts any motion beside it.
 VIDEO_FROZEN_CLAUSE = re.compile(r"^(?:整个)?画面(?:保持|始终|完全|基本)?(?:静止|定格)(?:不动)?[，,。；;！!？?]*$")
 VIDEO_PROMPT_LABEL = re.compile(
@@ -19335,28 +19385,146 @@ def tidy_video_prompt(text: str, source: str = "") -> str:
             value, lambda clause: VIDEO_DURATION_FILLER.match(VIDEO_DURATION_ECHO.sub("", clause)),
         ))
     if not re.search(r"[声响音叫鸣唱]", source):
+        value = map_text_clauses(value, cut_video_sound_tail)
         value = drop_text_clauses(value, VIDEO_SOUND_CLAUSE.search) or value
     value = drop_text_clauses(value, lambda clause: VIDEO_FROZEN_CLAUSE.match(clause.strip())) or value
     if "停在原地" not in source:
-        # A subject that walked a few steps is no longer where it started; "停下" is right either way.
-        value = value.replace("停在原地", "停下")
+        value = settle_video_stay_put(value)
     value = value.strip().rstrip("，,、；;：: ")
     if value and not re.search(r"[。！!？?…”」）)]$", value):
         value += "。"
     return value
 
 
+def map_text_clauses(value: str, edit) -> str:
+    """value with the words of every clause passed through edit(); each clause keeps its punctuation."""
+
+    def one(match) -> str:
+        clause = match.group(0)
+        body = clause.rstrip(TEXT_CLAUSE_END)
+        return edit(body) + clause[len(body):]
+
+    return re.sub(TEXT_CLAUSE_PATTERN, one, value)
+
+
+def cut_video_sound_tail(clause: str) -> str:
+    """"长剑出鞘时带起金属锐响" → "长剑出鞘"; any other clause as it is."""
+    match = VIDEO_SOUND_TAIL.match(clause) if VIDEO_SOUND_CLAUSE.search(clause) else None
+    keep = match.group("keep") if match else ""
+    return keep if keep.strip() and not VIDEO_SOUND_CLAUSE.search(keep) else clause
+
+
+def settle_video_stay_put(value: str) -> str:
+    """"停在原地" as the last action of its sentence becomes "停下" (a subject that walked a few steps is no
+    longer where it started).  A bare "最终停在原地" goes when more action follows it in the same sentence
+    or the subject never moved."""
+    kept: list[str] = []
+    for sentence in re.findall(r"[^。；;！!？?]+[。；;！!？?]*", value):
+        clauses = re.findall(TEXT_CLAUSE_PATTERN, sentence)
+        for index, clause in enumerate(clauses):
+            if "停在原地" not in clause:
+                continue
+            later_action = any(not VIDEO_AFTER_STOP.search(later) for later in clauses[index + 1:])
+            travelled = VIDEO_TRAVELLED.search("".join(kept) + "".join(clauses[:index]))
+            if (later_action or not travelled) and VIDEO_STAY_PUT_ONLY.match(clause.rstrip(TEXT_CLAUSE_END).strip()):
+                clauses[index] = ""
+                if index and index == len(clauses) - 1:
+                    # The clause before now ends the sentence.
+                    clauses[index - 1] = clauses[index - 1].rstrip(TEXT_CLAUSE_END) + clause[len(clause.rstrip(TEXT_CLAUSE_END)):]
+            else:
+                clauses[index] = clause.replace("停在原地", "停下")
+        kept.append("".join(clauses))
+    return "".join(kept) or value
+
+
+def name_limbs_by_picture_side(text: str) -> str:
+    """"右臂前伸，左臂持枪" → "画面右侧的手臂前伸，画面左侧的手臂持枪" in a prompt written from a picture."""
+    return VIDEO_SIDE_LIMB.sub(
+        lambda match: f"画面{match.group(1)}侧的{'手臂' if match.group(2) == '臂' else match.group(2)}", str(text or "")
+    )
+
+
+def keep_short_prompt_action(text: str, current_prompt: str) -> str:
+    """A short current prompt ("猫咪伸懒腰") whose closing words the answer lost opens the answer, so the
+    action the user asked for is not swapped for another one."""
+    source = clean_text(current_prompt).rstrip("，,、。 ")
+    if not text or not source or len(source) > 20 or re.search(r"[\n。；;！!？?]", source):
+        return text
+    tail = source[-2:]
+    if not re.fullmatch(r"[一-鿿]{2}", tail) or tail in text:
+        return text
+    return f"{source}。{text}"
+
+
+def drop_frame_reference_clauses(text: str, source: str = "") -> str:
+    """The 首尾帧 prompt without clauses that name the input pictures ("又渐渐归于首帧的温柔辉光")."""
+    if not text or VIDEO_FRAME_REFERENCE.search(str(source or "")):
+        return text
+    return drop_text_clauses(text, VIDEO_FRAME_REFERENCE.search) or text
+
+
+def tidy_video_optimize_prompt(text: str, prompt: str, requirements: str = "") -> str:
+    """The optimized text-only video prompt without what the request never asked for.
+
+    An action that goes nowhere gets a fixed camera instead of a pan; light, wind and trails the user
+    never wrote go, and a "主体" copied from the camera rule becomes the subject's name.
+    """
+    value = str(text or "")
+    source = f"{prompt or ''}\n{requirements or ''}"
+    if not VIDEO_TRAVEL_OR_CAMERA_WORD.search(source):
+        value = map_text_clauses(
+            value, lambda clause: "镜头保持固定" if "镜头" in clause and VIDEO_PAN_CAMERA.search(clause) else clause,
+        )
+    if not VIDEO_LIGHT_WIND_SOURCE.search(source):
+        value = drop_text_clauses(value, lambda clause: VIDEO_LIGHT_WIND_CLAUSE.search(clause.strip())) or value
+        value = VIDEO_LIGHT_WIND_PHRASE.sub("", value)
+    if not re.search(VIDEO_TRAIL_WORD, source):
+        value = drop_text_clauses(value, VIDEO_TRAIL_CLAUSE.search) or value
+    if "主体" in value and "主体" not in source:
+        match = VIDEO_SOURCE_SUBJECT.match(str(prompt or requirements or ""))
+        name = match.group("name") if match and match.group("name") in value else ""
+        pronoun = re.search(r"[他她它]", value)
+        name = name or (pronoun.group(0) if pronoun else "")
+        if name:
+            value = value.replace("主体", name)
+    return value
+
+
 # Hover, pressed or scrolling states, resolution and "只展示常态" notes are no part of one finished UI picture.
 UI_NON_PICTURE_CLAUSE = re.compile(
-    r"悬停|点击[态时]|点击状态|按下[态时]|按下状态|按压[态时]|滚动时|交互状态|状态变化|动效|过渡动画|分辨率|常态"
+    r"悬停|点击[态时]|点击状态|按下[态时]|按下状态|按压[态时]|选中时|滚动时|交互状态|状态变化|动效|过渡动画|分辨率|常态"
 )
 
 
+# Ratios and fractions ("与主界面保持1/3屏幕宽度的视觉留白", "共持有 12/50 件") are numbers the user never gave.
+UI_RATIO = re.compile(r"\d+\s*/\s*\d+|[一二三四五六七八九十两]分之[一二三四五六七八九十]|百分之|\d+\s*[%％]")
+# "字号大，对齐左，文字白" is a form filled in; the same words as design text.
+UI_FORM_FRAGMENTS = (
+    (re.compile(r"^(字号|字体|间距|行距|边距|留白)(大|小)$"), r"\2\1"),
+    (re.compile(r"^(字号|字体|间距|行距|边距|留白)中等?$"), r"中等\1"),
+    (re.compile(r"^对齐(左|右)$"), r"\1对齐"),
+    (re.compile(r"^对齐居?中$"), "居中对齐"),
+    (re.compile(r"^(?:文字|字体|字色|文字颜色)(白|黑|金|红|灰|蓝|绿|黄|紫|棕|橙|银)色?$"), r"\1色文字"),
+)
+
+
+def rephrase_ui_form_fragment(clause: str) -> str:
+    stripped = clause.strip()
+    for pattern, replacement in UI_FORM_FRAGMENTS:
+        if pattern.match(stripped):
+            return clause.replace(stripped, pattern.sub(replacement, stripped))
+    return clause
+
+
 def tidy_ui_design_prompt(text: str, source: str = "") -> str:
-    """The UI design text without non-picture requirements the user never wrote, ending on a whole sentence."""
+    """The UI design text without non-picture requirements or ratios the user never wrote, in design phrases
+    rather than form fragments, ending on a whole sentence."""
     value = str(text or "").strip()
     if not UI_NON_PICTURE_CLAUSE.search(str(source or "")):
         value = drop_text_clauses(value, UI_NON_PICTURE_CLAUSE.search) or value
+    if not UI_RATIO.search(str(source or "")):
+        value = drop_text_clauses(value, UI_RATIO.search) or value
+    value = map_text_clauses(value, rephrase_ui_form_fragment)
     if value and not re.search(r"[。！!？?…”」）)]$", value):
         # Cut off at the length limit: end on the last whole sentence when that keeps most of the text.
         cut = max(value.rfind("。"), value.rfind("；"))

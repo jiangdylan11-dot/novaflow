@@ -81,6 +81,99 @@ class VideoPromptTidyTests(unittest.TestCase):
             SERVICE.tidy_video_prompt("机器人缓缓向前迈步，最终停在原地，洒水壶仍握在手中。"),
             "机器人缓缓向前迈步，最终停下，洒水壶仍握在手中。",
         )
+        self.assertEqual(
+            SERVICE.tidy_video_prompt("蛇怪向右爬行，四爪稳稳踏地，最终停在原地；镜头向右平移跟随。"),
+            "蛇怪向右爬行，四爪稳稳踏地，最终停下；镜头向右平移跟随。",
+        )
+        # With more action after it in the same sentence, a bare "最终停在原地" goes rather than turning the
+        # order of events around ("最终停下，前爪完全伸展后收回").
+        self.assertEqual(
+            SERVICE.tidy_video_prompt("橘猫伸懒腰，尾巴轻轻摆动，最终停在原地，前爪完全伸展后收回，重新坐正；镜头保持固定。"),
+            "橘猫伸懒腰，尾巴轻轻摆动，前爪完全伸展后收回，重新坐正；镜头保持固定。",
+        )
+        # A subject that never moved has nothing to stop.
+        self.assertEqual(
+            SERVICE.tidy_video_prompt("橘猫坐着缓缓伸展前爪，背部拱起，最终停在原地。"),
+            "橘猫坐着缓缓伸展前爪，背部拱起。",
+        )
+        # The user's own "停在原地" stays.
+        self.assertEqual(
+            SERVICE.tidy_video_prompt("女孩跑到路口，停在原地，回头张望。", "女孩跑到路口停在原地"),
+            "女孩跑到路口，停在原地，回头张望。",
+        )
+
+    def test_sound_goes_but_the_action_in_front_of_it_stays(self):
+        self.assertEqual(
+            SERVICE.tidy_video_prompt("骑士右臂猛然发力，长剑出鞘时带起金属锐响，剑尖直指前方。", "骑士拔出长剑"),
+            "骑士右臂猛然发力，长剑出鞘，剑尖直指前方。",
+        )
+        self.assertEqual(
+            SERVICE.tidy_video_prompt("机器人张开双臂并发出嗡鸣，镜头固定。", "机器人张开双臂"),
+            "机器人张开双臂，镜头固定。",
+        )
+
+    def test_optimized_text_prompt_loses_what_the_request_never_asked_for(self):
+        tidy = SERVICE.tidy_video_optimize_prompt
+        # An action that goes nowhere gets a fixed camera rather than a pan.
+        self.assertEqual(
+            tidy("机器人在花园里浇花。它手持喷壶。镜头缓慢向右平移跟随，机器人始终位于画面左侧。", "机器人在花园里浇花"),
+            "机器人在花园里浇花。它手持喷壶。镜头保持固定，机器人始终位于画面左侧。",
+        )
+        # "主体" copied from the camera rule becomes the subject the request opens with.
+        self.assertEqual(
+            tidy("少年在篮球场上起跳投篮。他双脚蹬地。镜头跟随他向画面右侧平移，保持主体在画面中居中。", "少年在篮球场上起跳投篮"),
+            "少年在篮球场上起跳投篮。他双脚蹬地。镜头保持固定，保持少年在画面中居中。",
+        )
+        # Without a plain subject in front, the model's own pronoun for it.
+        self.assertEqual(
+            tidy("骑士向前冲锋，他高举长剑，镜头缓慢后退，主体始终在画面中央。", f"{PLACEHOLDER}里的骑士冲锋"),
+            "骑士向前冲锋，他高举长剑，镜头缓慢后退，他始终在画面中央。",
+        )
+        # A subject that travels, or a camera the user asked for, keeps the pan.
+        running = "女孩持续向画面右侧移动，镜头向右侧平移跟随，保持她位于画面中央。"
+        self.assertEqual(tidy(running, "女孩在雨中撑伞奔跑"), running)
+        self.assertEqual(tidy("镜头缓慢向右平移跟随。", "机器人浇花", "镜头跟随机器人"), "镜头缓慢向右平移跟随。")
+        # Light, wind and trails the user never wrote go; only the phrase when the clause says more.
+        self.assertEqual(
+            tidy("小狗向海浪奔去，耳朵随风微颤，发梢被风拂动，镜头向右侧平移跟随，背景海天线稳定，光线明亮。", "小狗追逐海浪"),
+            "小狗向海浪奔去，耳朵微颤，发梢拂动，镜头向右侧平移跟随，背景海天线稳定。",
+        )
+        self.assertEqual(
+            tidy("骑士挥剑，剑刃在光线下划出锐利轨迹，镜头后退。", "骑士挥剑冲锋"),
+            "骑士挥剑，镜头后退。",
+        )
+        self.assertEqual(
+            tidy("女孩向前奔跑，雨丝在她身后拉出模糊水痕，镜头后退，地面水洼反射微光。", "女孩在雨中奔跑"),
+            "女孩向前奔跑，镜头后退。",
+        )
+        kept = "女孩在夕阳下奔跑，光线温暖，裙摆随风飘动，镜头跟随。"
+        self.assertEqual(tidy(kept, "女孩在夕阳下迎风奔跑"), kept)
+
+    def test_picture_prompt_names_arms_by_the_side_of_the_picture(self):
+        self.assertEqual(
+            SERVICE.name_limbs_by_picture_side("右臂前伸掌心向外，左手持枪，右脚先迈出，画面左侧的手臂抬起，左右手交替。"),
+            "画面右侧的手臂前伸掌心向外，画面左侧的手持枪，右脚先迈出，画面左侧的手臂抬起，左右手交替。",
+        )
+
+    def test_short_prompt_action_is_kept(self):
+        keep = SERVICE.keep_short_prompt_action
+        self.assertEqual(keep("橘猫坐着，前爪向前伸直。", "猫咪伸懒腰"), "猫咪伸懒腰。橘猫坐着，前爪向前伸直。")
+        # Already there, too long, or no Chinese action word: the answer as it is.
+        self.assertEqual(keep("橘猫伸懒腰，前爪向前伸直。", "猫咪伸懒腰"), "橘猫伸懒腰，前爪向前伸直。")
+        self.assertEqual(keep("橘猫坐着。", "猫咪在午后的阳光里慢慢伸了一个长长的懒腰然后睡着"), "橘猫坐着。")
+        self.assertEqual(keep("橘猫坐着。", "cat stretching"), "橘猫坐着。")
+        self.assertEqual(keep("橘猫坐着。", ""), "橘猫坐着。")
+
+    def test_first_last_prompt_does_not_name_the_frames(self):
+        self.assertEqual(
+            SERVICE.drop_frame_reference_clauses("女子静坐在台阶上，光晕缓缓明灭，又渐渐归于首帧的辉光。"),
+            "女子静坐在台阶上，光晕缓缓明灭。",
+        )
+        self.assertEqual(
+            SERVICE.drop_frame_reference_clauses("从图片1的坐姿缓缓起身，镜头固定。"),
+            "镜头固定。",
+        )
+        self.assertEqual(SERVICE.drop_frame_reference_clauses("首帧的女孩转身。", "首帧的女孩转身"), "首帧的女孩转身。")
 
     def test_frozen_picture_clause_is_dropped(self):
         self.assertEqual(
@@ -134,6 +227,22 @@ class VideoPromptTidyTests(unittest.TestCase):
         self.assertEqual(
             SERVICE.tidy_ui_design_prompt("按钮悬停时发出金光。", "按钮悬停时发光"),
             "按钮悬停时发出金光。",
+        )
+        # Ratios the user never gave go; form fragments read as design phrases.
+        self.assertEqual(
+            SERVICE.tidy_ui_design_prompt(
+                "顶部居中显示标题，字号大，对齐左。底部按钮等宽，文字白，间距中。"
+                "右下角是设置图标，与主界面保持1/3屏幕宽度的视觉留白。"
+            ),
+            "顶部居中显示标题，大字号，左对齐。底部按钮等宽，白色文字，中等间距。右下角是设置图标。",
+        )
+        self.assertEqual(
+            SERVICE.tidy_ui_design_prompt("左侧栏占三分之一宽度，右侧为内容区。", "左侧栏占三分之一宽度"),
+            "左侧栏占三分之一宽度，右侧为内容区。",
+        )
+        self.assertEqual(
+            SERVICE.tidy_ui_design_prompt("标签背景为朱砂色，文字为墨黑，选中时高亮金边。"),
+            "标签背景为朱砂色，文字为墨黑。",
         )
         # A text cut off at the length limit ends on its last whole sentence.
         self.assertEqual(
@@ -235,6 +344,11 @@ class VideoPromptFeatureTests(unittest.TestCase):
         payload = {"surface": "ui-design", "purpose": "ui-design-generation", "supportsNegativePrompt": True}
         result = assistant.optimize_prompt({**payload, "prompt": "武侠手游的背包界面，金色边框"})
         self.assertNotIn("占位符", calls[-1])
+        # Sizes in design phrases rather than "字号大"; no ratios and no counts the user never gave.
+        self.assertIn("自然的中文短语", calls[-1])
+        self.assertNotIn("大、中、小", calls[-1])
+        self.assertIn("比例和几分之几不写", calls[-1])
+        self.assertIn("不编数量和统计数字", calls[-1])
         self.assertEqual(result["positivePrompt"], "背包界面四周是金色边框；道具格子在中部。")
         assistant.optimize_prompt({**payload, "prompt": f"{PLACEHOLDER}风格的背包界面"})
         self.assertIn("资源引用占位符", calls[-1])
@@ -245,19 +359,31 @@ class VideoPromptFeatureTests(unittest.TestCase):
 
         def generate(prompt: str, **kwargs):
             calls.append(prompt)
-            return "一只橘猫侧身朝画面右侧趴着，前爪向前伸直，镜头保持固定。"
+            return "一只橘猫正面朝镜头坐着，右前爪缓缓向前伸直，背部拱起，最终停在原地，镜头保持固定。"
 
         assistant.generate = generate
         with mock.patch.object(SERVICE, "data_url_to_tensor", lambda _value: object()):
-            assistant.reverse_image_prompt({
+            result = assistant.reverse_image_prompt({
                 "images": [{"dataUrl": "data:image/png;base64,x", "role": "参考图"}],
                 "surface": "animation",
                 "currentPrompt": "猫咪伸懒腰",
             })
-        # No "正对镜头" example that every answer would copy; limbs by the side of the picture.
+        # No "正对镜头" example that every answer would copy; limbs by what they do, not by a left or right
+        # the video model reads from the subject's side.
         self.assertNotIn("正对镜头", calls[-1])
-        self.assertIn("画面左侧的手臂", calls[-1])
+        self.assertNotIn("画面左侧的手臂", calls[-1])
+        self.assertIn("拿着道具的手臂", calls[-1])
+        self.assertIn("正面朝镜头站立的主体要走动时朝镜头走来", calls[-1])
+        # The user's action word stays and gets the body motion after it ("伸懒腰" is no "前爪向左伸展").
+        self.assertIn("动作词原样写进动作过程", calls[-1])
         self.assertIn("身体部位运动", calls[-1])
+        self.assertNotIn("完成××动作", calls[-1])
+        # An answer that lost the action word opens with the user's words; a side the model wrote is the
+        # side of the picture; a cat that never moved does not "stop".
+        self.assertEqual(
+            result["prompt"],
+            "猫咪伸懒腰。一只橘猫正面朝镜头坐着，画面右侧的前爪缓缓向前伸直，背部拱起，镜头保持固定。",
+        )
 
     def test_wan_first_frame_reverse_keeps_final_period_and_uses_its_own_system_turn(self):
         assistant = SERVICE.PromptAssistant()
@@ -289,7 +415,7 @@ class VideoPromptFeatureTests(unittest.TestCase):
             calls.append((prompt, kwargs))
             if len(calls) == 1:
                 return "主体：女子\n首帧姿态：坐着\n尾帧姿态：坐着\n合理动作过渡：保持相近姿态"
-            return "女子保持相近姿态坐在台阶上，仅头部轻微转动，镜头保持固定，背景保持不变。"
+            return "女子保持相近姿态坐在台阶上，仅头部轻微转动，镜头保持固定，背景保持不变，又渐渐归于首帧的姿态。"
 
         assistant.generate = generate
         with mock.patch.object(SERVICE, "data_url_to_tensor", lambda value: value):
@@ -305,12 +431,14 @@ class VideoPromptFeatureTests(unittest.TestCase):
         # Light and shadow get their own line, so a pair that differs only there is not written as still.
         self.assertIn("光影变化：", calls[0][0])
         self.assertIn("阴影", calls[1][0])
+        self.assertIn("不用比喻和修辞", calls[1][0])
         for prompt, kwargs in calls:
             system_text, parts = SERVICE.qwen3_chat_parts(prompt, kwargs.get("llama_template"), kwargs.get("images"))
             self.assertIn("首尾帧", system_text)
             self.assertEqual([part for part in parts if part in ("first", "last")], ["first", "last"])
         self.assertFalse(result["qualityGateFailed"])
-        self.assertTrue(result["prompt"].endswith("。"))
+        # A clause naming the input frames goes.
+        self.assertEqual(result["prompt"], "女子保持相近姿态坐在台阶上，仅头部轻微转动，镜头保持固定，背景保持不变。")
 
     def test_describe_art_style_passes_its_own_system_text(self):
         captured = {}
