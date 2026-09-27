@@ -36534,7 +36534,13 @@
       ? NOVAFLOW_STACK_CENTER_MIN_HEIGHT
       : Math.max(160, Math.round((window.innerHeight || 0) - box.top - PRIMARY_PANEL_BOTTOM_GAP));
     const value = [box.left, box.top, box.width, height].map((n) => Math.round(n)).join(",");
+    const stageBoxChanged = document.documentElement.getAttribute("data-novaflow-stage-box") !== value;
     nfSetAttrIfChanged(document.documentElement, "data-novaflow-stage-box", value);
+    // 生图's workspace and result panel are placed from this box. A window resize
+    // renders them before the spec republishes it, so lay them out again once it moves.
+    if (stageBoxChanged && document.body && document.body.getAttribute(ART_GENERATE_ACTIVE_ATTR) === "1") {
+      scheduleArtGenerateStageBoxRender();
+    }
     // With 绘图's generation dock up, the stage panel itself stops 9 above
     // it, as the reference's does; the dock sits on the page, not the panel.
     let surfaceHeight = height;
@@ -44349,8 +44355,11 @@
       if (container.closest('[data-novaflow-art-lora="1"]')) return;
       if (container.closest("[data-novaflow-ai-mode-section='1'], [data-novaflow-ai-post-section='1'], [data-novaflow-ai-bottom-workspace='1']")) return;
       const rect = container.getBoundingClientRect();
-      if (rect.left < rootRect.left - 4 || rect.right > rootRect.right + 4) return;
-      if (rect.width < targetWidth - 44 || rect.width > targetWidth + 8) return;
+      // A group pinned before keeps its old width when the window crosses a layout
+      // tier; it no longer looks like a column-wide group, so re-pin it by its mark.
+      const pinnedBefore = container.getAttribute("data-novaflow-entry-group-pinned") === "1";
+      if (!pinnedBefore && (rect.left < rootRect.left - 4 || rect.right > rootRect.right + 4)) return;
+      if (!pinnedBefore && (rect.width < targetWidth - 44 || rect.width > targetWidth + 8)) return;
       const children = Array.from(container.children).filter((child) => child instanceof HTMLElement && isVisible(child));
       if (children.length < 2 || children.length > 8) return;
       const particleDensity = isInsideParticleDensityPanel(container);
@@ -44358,13 +44367,14 @@
       const entryColumnGap = particleDensity ? PARTICLE_DENSITY_SECTION_GAP : 0;
       const entryChildren = children.filter((child) => {
         const childRect = child.getBoundingClientRect();
-        if (childRect.width < targetWidth - 54 || childRect.width > targetWidth + 8) return false;
+        if (!pinnedBefore && (childRect.width < targetWidth - 54 || childRect.width > targetWidth + 8)) return false;
         if (childRect.height < 34 || childRect.height > 96) return false;
         const text = normalizeText(child.textContent || child.getAttribute("aria-label") || "");
         return Boolean(text);
       });
       if (entryChildren.length < 2) return;
       normalizedAny = true;
+      nfSetAttrIfChanged(container, "data-novaflow-entry-group-pinned", "1");
       container.style.setProperty("display", "flex", "important");
       container.style.setProperty("flex-direction", "column", "important");
       container.style.setProperty("align-items", "stretch", "important");
@@ -80372,8 +80382,47 @@
     };
   }
 
+  var artGenerateStageBoxRenderFrame = 0;
+  function scheduleArtGenerateStageBoxRender() {
+    if (artGenerateStageBoxRenderFrame) return;
+    artGenerateStageBoxRenderFrame = window.requestAnimationFrame(() => {
+      artGenerateStageBoxRenderFrame = 0;
+      if (ART_GENERATE_STATE.active) renderArtGenerateSurfaces();
+    });
+  }
+
   function getArtGenerateRightRect() {
-    const panel = artGenerateRectFromElement(document.getElementById("novaflow-spine-split-right-workspace"));
+    const rect = getArtGenerateRightColumnRect();
+    // Beside the stage the column runs the stage's full height, as on first open;
+    // after a resize out of the stacked layout its slot can keep the stacked top.
+    const stage = String(document.documentElement?.getAttribute("data-novaflow-stage-box") || "").split(",").map(Number);
+    if (NOVAFLOW_LAYOUT_TIER !== "stack" && stage.length === 4 && stage.every(Number.isFinite) && stage[3] > 0) {
+      return { ...rect, top: stage[1], height: stage[3] };
+    }
+    return rect;
+  }
+
+  function getArtGenerateRightColumnRect() {
+    // While 生图 is up the split workspace is moved into this panel, so measuring it
+    // would give the panel its own old box; its host keeps the column's real slot.
+    const splitWorkspace = document.getElementById("novaflow-spine-split-right-workspace");
+    const hostNode = document.getElementById("novaflow-spine-split-right-workspace-host");
+    if (splitWorkspace && splitWorkspace.parentElement?.id === ART_GENERATE_RIGHT_PANEL_ID && hostNode instanceof HTMLElement) {
+      // In the stacked layout the host sits below the fold, so no on-screen test here.
+      const host = hostNode.getBoundingClientRect();
+      if (host.width > 0 && host.height > 0) {
+        const pad = window.getComputedStyle(hostNode);
+        const padLeft = parseFloat(pad.paddingLeft) || 0;
+        const padTop = parseFloat(pad.paddingTop) || 0;
+        return {
+          left: Math.round(host.left + padLeft),
+          top: Math.round(host.top + padTop),
+          width: Math.round(host.width - padLeft - (parseFloat(pad.paddingRight) || 0)),
+          height: Math.round(host.height - padTop - (parseFloat(pad.paddingBottom) || 0))
+        };
+      }
+    }
+    const panel = artGenerateRectFromElement(splitWorkspace);
     if (panel) return panel;
     const root = artGenerateRectFromElement(document.querySelector('[data-novaflow-spine-split-right-root="1"]'));
     if (root) return root;
