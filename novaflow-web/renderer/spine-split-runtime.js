@@ -306,7 +306,7 @@
   const SELECTION_INPAINT_MODE_OPTIONS = [
     { id: 'completion', label: '\u667a\u80fd\u8865\u56fe', help: '\u4f7f\u7528 V4 Qwen \u8865\u56fe workflow\uff0c\u8865\u5168\u7f3a\u5931\u7ed3\u6784\u5e76\u4fdd\u6301\u8854\u63a5' },
     { id: 'edit', label: '\u5c40\u90e8\u7f16\u8f91', help: '\u4f7f\u7528 V4 Qwen Edit workflow\uff0c\u5728\u9009\u533a\u5185\u65b0\u589e\u6216\u4fee\u6539\u6307\u5b9a\u5185\u5bb9' },
-    { id: 'repair', label: '\u53bb\u9664\u7269\u4f53', help: '\u4f7f\u7528\u72ec\u7acb Removal workflow \u53bb\u9664\u7269\u4f53\u5e76\u91cd\u5efa\u5468\u56f4\u5185\u5bb9' }
+    { id: 'repair', label: '\u53bb\u9664\u7269\u4f53', help: '\u7528 Qwen-Image-2.1 \u53bb\u9664\u6d82\u62b9\u533a\u57df\u91cc\u7684\u7269\u4f53\u5e76\u8865\u5168\u80cc\u666f' }
   ]
   const SELECTION_INPAINT_MODE_IDS = new Set(SELECTION_INPAINT_MODE_OPTIONS.map((option) => option.id))
   const SELECTION_INPAINT_MODE_TEMPLATES = {
@@ -8342,10 +8342,6 @@
     return { workflow, outputMode }
   }
 
-  function requiredComfyNode(info, name) {
-    if (!info || !info[name]) throw new Error(`NovaFlow AI Runtime 缺少节点：${name}`)
-    return info[name]
-  }
 
   function comfyChoices(spec) {
     return Array.isArray(spec) && Array.isArray(spec[0]) ? spec[0] : []
@@ -8378,13 +8374,21 @@
 
   function resolveInpaintWorkflowRoute(mode, provider) {
     const normalizedMode = normalizeSelectionInpaintMode(mode)
+    // 去除物体 is a 2.1 whole-picture edit with a built-in instruction (QWEN21_REMOVAL_PROMPT), pasted
+    // back as a replacement layer. Measured 2026-09-27: FLUX + removal LoRA filled large holes with a
+    // hazy, lighter patch and redrew a backpack instead of removing it; 2.1 drew clean, continuous
+    // background. The graph is the 局部编辑 one (mode 'edit').
     if (normalizedMode === 'repair') {
       return {
-        mode: normalizedMode,
-        provider: 'removal-v4',
-        label: 'Removal V4',
-        workflow: 'removal',
-        outputMode: 'replacement'
+        mode: 'edit',
+        removal: true,
+        provider: 'qwen21-removal',
+        label: 'Qwen 2.1 Removal',
+        workflow: 'qwen',
+        outputMode: 'replacement',
+        qwenControlMode: 1,
+        editV5: true,
+        v4: true
       }
     }
     const rapidAioNsfwRequested = provider === true || provider === 'qwen-rapid-aio-nsfw-v20' || provider === 'rapid-aio-nsfw'
@@ -8482,74 +8486,7 @@
     return /光腿|裸腿|赤脚|光脚|bare\s*legs?|bare\s*feet|barefoot/i.test(String(text || ''))
   }
 
-  function removalRestoreStrategyFromText(text) {
-    const raw = String(text || '')
-    const lower = raw.toLowerCase()
-    if (!raw.trim()) return null
-    if (/(恢复(?:完整)?(?:大腿|小腿|腿部|手部|手臂|身体|人体)?皮肤|恢复(?:人体|身体)结构|恢复(?:大腿|小腿)|去(?:掉|除)(?:腿环|腿带|绑带)|移除(?:腿环|腿带|绑带)|删除(?:腿环|腿带|绑带))/i.test(raw)
-      || /\b(?:bare\s+skin|restore\s+(?:bare\s+)?skin|restore\s+anatomy|remove\s+(?:thigh\s+ring|leg\s+band|strap))\b/i.test(lower)) {
-      return { id: 'restore-skin', label: 'Restore Skin', target: 'skin' }
-    }
-    if (/(恢复(?:耳朵|耳部)(?:结构)?|去(?:掉|除)(?:耳环|耳饰)|移除(?:耳环|耳饰)|删除(?:耳环|耳饰))/i.test(raw)
-      || /\b(?:restore\s+ear|restore\s+ear\s+structure|remove\s+(?:earring|earrings|ear\s+accessory))\b/i.test(lower)) {
-      return { id: 'restore-ear', label: 'Restore Ear Structure', target: 'ear' }
-    }
-    if (/(恢复(?:头发|发丝|发型)(?:结构)?|去(?:掉|除)(?:发夹|发饰|头饰)|移除(?:发夹|发饰|头饰)|删除(?:发夹|发饰|头饰))/i.test(raw)
-      || /\b(?:restore\s+hair|restore\s+hair\s+structure|remove\s+(?:hairpin|hair\s+pin|hair\s+clip|hairclip|hair\s+accessory))\b/i.test(lower)) {
-      return { id: 'restore-hair', label: 'Restore Hair Structure', target: 'hair' }
-    }
-    if (/(恢复(?:衣服|服装|布料|衣料|衣服纹理|衣纹)(?:结构)?|去(?:掉|除)(?:徽章|纽扣|肩章|胸针)|移除(?:徽章|纽扣|肩章|胸针)|删除(?:徽章|纽扣|肩章|胸针))/i.test(raw)
-      || /\b(?:restore\s+(?:clothing|cloth|fabric|garment)|restore\s+fabric\s+texture|remove\s+(?:badge|button|buttons|epaulette|brooch))\b/i.test(lower)) {
-      return { id: 'restore-clothing', label: 'Restore Clothing Structure', target: 'clothing' }
-    }
-    if (/(恢复结构|恢复物体结构|恢复原本结构)/i.test(raw)
-      || /\b(?:restore\s+structure|restore\s+underlying\s+structure|remove\s+accessory|remove\s+close-fitting\s+accessory)\b/i.test(lower)) {
-      return { id: 'restore-structure', label: 'Restore Structure', target: 'structure' }
-    }
-    return null
-  }
 
-  function removalRestoreStrategyPrompt(basePrompt, strategy) {
-    const sourcePrompt = String(basePrompt || '').trim()
-    const target = strategy && strategy.target || 'structure'
-    const targetLines = {
-      skin: [
-        'Reconstruct continuous natural bare skin and anatomy under the removed item.',
-        'Match surrounding skin color, shading, contour, texture, and game-art line style.',
-        'No leg ring, leg band, strap, accessory, clothing trim, black band, red band, outline, tattoo-like mark, or decorative replacement.'
-      ],
-      ear: [
-        'Reconstruct the natural ear structure under the removed jewelry.',
-        'Match surrounding skin color, ear contour, shading, and game-art line style.',
-        'No earring, ear accessory, clasp, jewel, metal part, black mark, or decorative replacement.'
-      ],
-      hair: [
-        'Reconstruct continuous natural hair strands and hair volume under the removed clip.',
-        'Match surrounding hair color, strand direction, lighting, silhouette, and game-art line style.',
-        'No hairpin, hair clip, accessory, jewel, bow, band, black mark, or decorative replacement.'
-      ],
-      clothing: [
-        'Reconstruct the underlying clothing or fabric under the removed decoration.',
-        'Match surrounding fabric color, folds, trim continuity, texture, shading, and game-art line style.',
-        'No badge, button, epaulette, brooch, patch, emblem, black mark, or decorative replacement.'
-      ],
-      structure: [
-        'Reconstruct the underlying body, hair, clothing, or object structure under the removed close-fitting accessory.',
-        'Match surrounding material, contour, texture, shading, lighting, and game-art line style.',
-        'No accessory, strap, band, jewelry, badge, button, armor trim, black mark, or decorative replacement.'
-      ]
-    }
-    return [
-      'Restore Strategy, highest priority:',
-      'Remove the selected close-fitting accessory or decoration completely inside the white mask area.',
-      'Do not replace it with another accessory, band, strap, ring, jewel, clasp, badge, button, armor trim, painted mark, or redesigned decoration.',
-      'Only change masked pixels. Preserve all unmasked pixels exactly.',
-      ...(targetLines[target] || targetLines.structure),
-      '',
-      'Original removal instruction:',
-      sourcePrompt || 'Remove the selected object inside the white mask area and reconstruct the surrounding layer naturally.'
-    ].join('\n')
-  }
 
   function inpaintUserInstructionText(text) {
     const instruction = String(text || '').trim()
@@ -8636,6 +8573,12 @@
   // (lower legs below a cropped skirt) this one drew both legs, as did one random seed in three.
   const INPAINT_COMPLETION_SEED = 746924259
   const DEFAULT_COMPLETION_ENGINE = QWEN21_COMPLETION_ENGINE
+  // 去除物体's instruction; nobody types one. The wording matters (2026-09-27, same picture and stroke):
+  // "去掉白色区域里的所有物体…" kept the person 3 of 3 and once emptied the background, the English
+  // "Delete the person or object…" kept her 2 of 2; this one removed a person, a backpack worn by a
+  // person, a fence post, a hat in a hand and a dog.
+  const QWEN21_REMOVAL_PROMPT = '去掉白色区域里的人物或物体，只保留它后面的背景，背景要和周围连起来。'
+  const QWEN21_REMOVAL_REDO_DRIFT = 30
 
   // Strict: the weight must actually appear in that loader's choice list. comfyChoiceFromCandidates
   // falls back to candidates[0] when a node reports no choices at all, which would light 2.1 up on a
@@ -8913,7 +8856,7 @@
     // 局部编辑 and 智能补全 always run on 2.1 (see qwen21EditPromptText / qwen21CompletionPromptText);
     // every node carries it.
     const wantsQwen21 = route.mode === 'edit' || route.mode === 'completion'
-    if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行${route.mode === 'edit' ? '局部编辑' : '智能补全'}。请在本地助手里重新启动 NovaFlow 后再试`)
+    if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行${route.removal ? '去除物体' : route.mode === 'edit' ? '局部编辑' : '智能补全'}。请在本地助手里重新启动 NovaFlow 后再试`)
     if (wantsQwen21) {
       // 局部编辑 draws a new seed per run (a rerun gives another result); 智能补图 keeps INPAINT_COMPLETION_SEED.
       const seed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed)))
@@ -8966,96 +8909,11 @@
     return workflow
   }
 
-  async function defaultRemovalInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
-    const info = await comfyAllObjectInfo(baseUrl).catch(() => ({}))
-    const required = [
-      'UNETLoader',
-      'DualCLIPLoader',
-      'VAELoader',
-      'CLIPTextEncode',
-      'FluxGuidance',
-      'ConditioningZeroOut',
-      'InpaintModelConditioning',
-      'DifferentialDiffusion',
-      'KSampler',
-      'VAEDecode',
-      'SaveImage',
-      'ImageToMask',
-      'LoraLoaderModelOnly'
-    ]
-    required.forEach((name) => requiredComfyNode(info, name))
-    const unet = requiredComfyNode(info, 'UNETLoader')
-    const dualClip = requiredComfyNode(info, 'DualCLIPLoader')
-    const vae = requiredComfyNode(info, 'VAELoader')
-    const clipText = requiredComfyNode(info, 'CLIPTextEncode')
-    const fluxGuidance = requiredComfyNode(info, 'FluxGuidance')
-    const inpaintConditioning = requiredComfyNode(info, 'InpaintModelConditioning')
-    const ksampler = requiredComfyNode(info, 'KSampler')
-    const lora = requiredComfyNode(info, 'LoraLoaderModelOnly')
-    const unetName = requireComfyChoice(unet, 'unet_name', 'fill-dev-OneReward-fp8.safetensors', 'Removal UNET')
-    const vaeName = requireComfyChoice(vae, 'vae_name', 'ae.safetensors', 'Removal VAE')
-    const clipName1 = requireComfyChoiceFrom(dualClip, 'clip_name1', 'clip_l.safetensors', 'Removal CLIP-L')
-    const clipName2 = requireComfyChoiceFrom(dualClip, 'clip_name2', 't5xxl_fp8_e4m3fn.safetensors', 'Removal T5')
-    const removalLora = requireComfyChoice(lora, 'lora_name', 'removal_timestep_alpha-2-1740.safetensors', 'Removal LoRA')
-    // A new seed per run unless the caller pins one: a rerun of 去除物体 should give another result.
-    const fixedSeed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed))) : null
-    const seed = fixedSeed == null ? Math.floor(Math.random() * 1000000000) : fixedSeed
-    const restoreStrategy = removalRestoreStrategyFromText(promptText)
-    const basePrompt = String(promptText || '').trim() || 'Remove the selected object inside the white mask area and reconstruct the surrounding layer naturally. Preserve all unmasked pixels, style, lighting, perspective, and texture.'
-    const prompt = restoreStrategy ? removalRestoreStrategyPrompt(basePrompt, restoreStrategy) : basePrompt
-    const workflow = {
-      '1': { class_type: 'LoadImage', inputs: { image: imageName } },
-      '2': { class_type: 'LoadImage', inputs: { image: maskName } },
-      '3': { class_type: 'ImageToMask', inputs: { image: ['2', 0], channel: 'red' } },
-      '4': { class_type: 'UNETLoader', inputs: buildComfyNodeInputs(unet, { unet_name: unetName, weight_dtype: 'default' }) },
-      '5': { class_type: 'DualCLIPLoader', inputs: buildComfyNodeInputs(dualClip, { clip_name1: clipName1, clip_name2: clipName2, type: 'flux', device: 'default' }) },
-      '6': { class_type: 'VAELoader', inputs: buildComfyNodeInputs(vae, { vae_name: vaeName }) },
-      '7': { class_type: 'CLIPTextEncode', inputs: buildComfyNodeInputs(clipText, { clip: ['5', 0], text: prompt }) },
-      '8': { class_type: 'FluxGuidance', inputs: buildComfyNodeInputs(fluxGuidance, { conditioning: ['7', 0], guidance: 50 }) },
-      '9': { class_type: 'ConditioningZeroOut', inputs: { conditioning: ['7', 0] } },
-      '10': { class_type: 'LoraLoaderModelOnly', inputs: buildComfyNodeInputs(lora, { model: ['4', 0], lora_name: removalLora, strength_model: 1 }) },
-      '11': { class_type: 'DifferentialDiffusion', inputs: { model: ['10', 0] } },
-      '12': { class_type: 'InpaintModelConditioning', inputs: buildComfyNodeInputs(inpaintConditioning, { positive: ['8', 0], negative: ['9', 0], vae: ['6', 0], pixels: ['1', 0], mask: ['3', 0], noise_mask: true }) },
-      '13': {
-        class_type: 'KSampler',
-        inputs: buildComfyNodeInputs(ksampler, {
-          model: ['11', 0],
-          positive: ['12', 0],
-          negative: ['12', 1],
-          latent_image: ['12', 2],
-          seed,
-          steps: 25,
-          cfg: 1,
-          sampler_name: 'euler',
-          scheduler: 'simple',
-          denoise: 1
-        })
-      },
-      '14': { class_type: 'VAEDecode', inputs: { samples: ['13', 0], vae: ['6', 0] } },
-      '15': { class_type: 'SaveImage', inputs: { images: ['14', 0], filename_prefix: prefix } }
-    }
-    state.lastProcessingDebug = {
-      ...(state.lastProcessingDebug || {}),
-      removalInpaint: {
-        provider: 'removal-v4',
-        unet: unetName,
-        clip: [clipName1, clipName2],
-        vae: vaeName,
-        lora: removalLora,
-        restoreStrategy: restoreStrategy ? restoreStrategy.id : '',
-        promptHead: prompt.slice(0, 1000),
-        seed,
-        seedMode: fixedSeed == null ? 'random' : 'explicit'
-      }
-    }
-    return workflow
-  }
 
   async function defaultAiRetouchWorkflow(baseUrl, imageName, maskName, prefix, promptText, options) {
     const route = options && options.route || resolveInpaintWorkflowRoute(options && options.inpaintMode, options && options.inpaintProvider)
-    // Removal and Rapid AIO never report an engine; without this they would inherit the last Qwen run's.
+    // Rapid AIO never reports an engine; without this it would inherit the last Qwen run's.
     setInpaintDebugAttr('workflow-engine', '')
-    if (route.workflow === 'removal') return await defaultRemovalInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, options || {})
     if (route.workflow === 'rapid-aio-nsfw') return await defaultRapidAioNsfwInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, { ...(options || {}), route })
     return await defaultQwenInpaintWorkflow(baseUrl, imageName, maskName, prefix, promptText, { ...(options || {}), route })
   }
@@ -18961,22 +18819,9 @@
     return { modelInput: canvas, latentInput, guide: hardMask, maskForModel: modelMask, pasteMask, meta }
   }
 
-  function buildRemovalInpaintCanvases(cropImageCanvas) {
-    const matte = averageVisibleRgb(cropImageCanvas)
-    const canvas = canvasOfSize(cropImageCanvas.width, cropImageCanvas.height)
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    ctx.fillStyle = `rgb(${matte.r}, ${matte.g}, ${matte.b})`
-    ctx.fillRect(0, 0, canvas.width, canvas.height)
-    ctx.drawImage(cropImageCanvas, 0, 0)
-    const image = ctx.getImageData(0, 0, canvas.width, canvas.height)
-    for (let i = 0; i < image.data.length; i += 4) image.data[i + 3] = 255
-    ctx.putImageData(image, 0, 0)
-    return { modelInput: canvas, guide: canvas }
-  }
 
   function inpaintInputCanvasesForRoute(cropImageCanvas, cropMaskCanvas, route) {
     const resolved = route || resolveInpaintWorkflowRoute('completion')
-    if (resolved.workflow === 'removal') return buildRemovalInpaintCanvases(cropImageCanvas)
     if (resolved.v4 && resolved.mode === 'completion') return buildQwenCompletionV4Canvases(cropImageCanvas, cropMaskCanvas)
     if (resolved.v4) return buildQwenV4RetouchCanvases(cropImageCanvas, cropMaskCanvas)
     return buildQwenInpaintCanvases(cropImageCanvas, cropMaskCanvas)
@@ -22851,15 +22696,38 @@
     return src
   }
 
-  // FLUX with the removal LoRA decodes the whole crop ~9 levels darker than the source (the new fill
-  // shifts the VAE decoder's statistics), so the pasted hole met the original with a dark ring. Measure
-  // source - result in a band just outside the stroke and spread it inward; the caller fades it out
-  // across the feather, so the edge meets the original tone and the middle stays as FLUX drew it.
-  function removalSeamOffsets(finalData, finalWidth, finalHeight, resultData, hardData, softData, cropBox) {
+  // Least squares for a 3x4 colour matrix: rows of `normal` / `rhs` are [r, g, b, 1] sums. Solved by
+  // elimination with partial pivoting; null when the system is degenerate.
+  function solveColourMatrix(normal, rhs) {
+    const a = normal.map((row, i) => [...row, ...rhs[i]])
+    for (let col = 0; col < 4; col += 1) {
+      let pivot = col
+      for (let row = col + 1; row < 4; row += 1) if (Math.abs(a[row][col]) > Math.abs(a[pivot][col])) pivot = row
+      if (Math.abs(a[pivot][col]) < 1e-9) return null
+      const swap = a[col]
+      a[col] = a[pivot]
+      a[pivot] = swap
+      for (let row = 0; row < 4; row += 1) {
+        if (row === col) continue
+        const f = a[row][col] / a[col][col]
+        for (let k = col; k < 7; k += 1) a[row][k] -= f * a[col][k]
+      }
+    }
+    // matrix[c] = [kr, kg, kb, bias] for output channel c
+    return [0, 1, 2].map((c) => [0, 1, 2, 3].map((k) => a[k][4 + c] / a[k][k]))
+  }
+
+  // 2.1 redraws the whole crop and its colours drift per run: usually 0-6 levels, now and then a
+  // washed-out picture (22 levels lighter, 40% less saturated). Every opaque pixel outside the stroke is
+  // a sample of that drift, so fit result -> source with one colour matrix (pulled towards the identity,
+  // so a flat surround cannot make it singular), then spread what the fit leaves in the band just outside
+  // the stroke inward, falling back to the band's mean far from it.
+  function removalToneMatch(finalData, finalWidth, finalHeight, resultData, hardData, softData, cropBox) {
     const w = cropBox.width
     const h = cropBox.height
-    const weight = new Float32Array(w * h)
-    const diff = [new Float32Array(w * h), new Float32Array(w * h), new Float32Array(w * h)]
+    const normal = [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]
+    const rhs = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    const band = new Uint8Array(w * h)
     let samples = 0
     for (let y = 0; y < h; y += 1) {
       const fy = cropBox.y + y
@@ -22869,27 +22737,54 @@
         if (fx < 0 || fx >= finalWidth) continue
         const p = y * w + x
         const ci = p * 4
-        // Outside the stroke, within ~2 feather widths of it; transparent pixels have no tone to match.
-        if (maskPixelValue(hardData, ci) > 8 || maskPixelValue(softData, ci) < 3) continue
         const fi = (fy * finalWidth + fx) * 4
-        if (finalData[fi + 3] < 250) continue
-        weight[p] = 1
-        for (let c = 0; c < 3; c += 1) diff[c][p] = finalData[fi + c] - resultData[ci + c]
+        if (maskPixelValue(hardData, ci) > 8 || finalData[fi + 3] < 250) continue
+        if (maskPixelValue(softData, ci) >= 3) band[p] = 1 // within ~2 feather widths of the stroke
+        const v = [resultData[ci], resultData[ci + 1], resultData[ci + 2], 1]
+        for (let i = 0; i < 4; i += 1) {
+          for (let k = 0; k < 4; k += 1) normal[i][k] += v[i] * v[k]
+          for (let c = 0; c < 3; c += 1) rhs[i][c] += v[i] * finalData[fi + c]
+        }
         samples += 1
       }
     }
-    if (samples < 16) return null
-    const spread = boxBlurField(weight, w, h, 24)
-    const offsets = diff.map((channel) => boxBlurField(channel, w, h, 24))
-    for (let p = 0; p < w * h; p += 1) {
-      const k = spread[p] > 0.001 ? 1 / spread[p] : 0
-      offsets[0][p] *= k
-      offsets[1][p] *= k
-      offsets[2][p] *= k
+    if (samples < 64) return null
+    const ridge = samples * 100
+    for (let i = 0; i < 3; i += 1) {
+      normal[i][i] += ridge
+      rhs[i][i] += ridge
     }
-    return offsets
+    const matrix = solveColourMatrix(normal, rhs) || [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]]
+    const fitted = (data, ci, c) => matrix[c][0] * data[ci] + matrix[c][1] * data[ci + 1] + matrix[c][2] * data[ci + 2] + matrix[c][3]
+    const weight = new Float32Array(w * h)
+    const diff = [new Float32Array(w * h), new Float32Array(w * h), new Float32Array(w * h)]
+    const total = [0, 0, 0]
+    let bandSamples = 0
+    for (let p = 0; p < w * h; p += 1) {
+      if (!band[p]) continue
+      const ci = p * 4
+      const fi = ((cropBox.y + Math.floor(p / w)) * finalWidth + cropBox.x + (p % w)) * 4
+      weight[p] = 1
+      for (let c = 0; c < 3; c += 1) {
+        const d = finalData[fi + c] - fitted(resultData, ci, c)
+        diff[c][p] = d
+        total[c] += d
+      }
+      bandSamples += 1
+    }
+    const mean = total.map((sum) => bandSamples ? sum / bandSamples : 0)
+    const eps = 0.01
+    const spread = boxBlurField(weight, w, h, 32)
+    const offsets = diff.map((channel, c) => {
+      const field = boxBlurField(channel, w, h, 32)
+      for (let p = 0; p < w * h; p += 1) field[p] = (field[p] + eps * mean[c]) / (spread[p] + eps)
+      return field
+    })
+    return { matrix, fitted, offsets }
   }
 
+  // The stroke is replaced outright and the feather runs outside it, over background: feathering inside
+  // the stroke kept half of the removed object's own edge (hair, line art) and left a thin dark line.
   function compositeRemovalRgbResult(layerOriginalCanvas, resultCropCanvas, cropMaskCanvas, cropBox) {
     const finalCanvas = cloneCanvas(layerOriginalCanvas)
     const finalCtx = finalCanvas.getContext('2d', { willReadFrequently: true })
@@ -22899,7 +22794,8 @@
     const softMaskCanvas = featherMaskCanvas(hardMaskCanvas, 8)
     const hard = hardMaskCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, cropBox.width, cropBox.height)
     const soft = softMaskCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, cropBox.width, cropBox.height)
-    const offsets = removalSeamOffsets(finalImage.data, finalCanvas.width, finalCanvas.height, result.data, hard.data, soft.data, cropBox)
+    const tone = removalToneMatch(finalImage.data, finalCanvas.width, finalCanvas.height, result.data, hard.data, soft.data, cropBox)
+    const original = new Uint8ClampedArray(finalImage.data)
     let compositedPixels = 0
     let featherPixels = 0
     for (let y = 0; y < cropBox.height; y += 1) {
@@ -22908,31 +22804,46 @@
       for (let x = 0; x < cropBox.width; x += 1) {
         const fx = cropBox.x + x
         if (fx < 0 || fx >= finalCanvas.width) continue
-        const ci = (y * cropBox.width + x) * 4
-        if (maskPixelValue(hard.data, ci) <= 8) continue
-        const fi = (fy * finalCanvas.width + fx) * 4
-        const m = clampNumber(maskPixelValue(soft.data, ci) / 255, 0, 1)
-        if (m <= 0.002) continue
-        const originalAlpha = finalImage.data[fi + 3]
-        const resultAlpha = result.data[ci + 3] > 8 ? result.data[ci + 3] : 255
-        // Full tone correction at the stroke edge (m ~ 0.5), none once the feather is done (m ~ 1).
         const p = y * cropBox.width + x
-        const fade = offsets ? clampNumber((1 - m) * 2, 0, 1) : 0
-        const r = result.data[ci] + (fade ? offsets[0][p] * fade : 0)
-        const g = result.data[ci + 1] + (fade ? offsets[1][p] * fade : 0)
-        const b = result.data[ci + 2] + (fade ? offsets[2][p] * fade : 0)
-        finalImage.data[fi] = Math.round(r * m + finalImage.data[fi] * (1 - m))
-        finalImage.data[fi + 1] = Math.round(g * m + finalImage.data[fi + 1] * (1 - m))
-        finalImage.data[fi + 2] = Math.round(b * m + finalImage.data[fi + 2] * (1 - m))
-        finalImage.data[fi + 3] = Math.max(originalAlpha, Math.round(resultAlpha * m + originalAlpha * (1 - m)), Math.round(255 * m))
+        const ci = p * 4
+        const fi = (fy * finalCanvas.width + fx) * 4
+        const inside = maskPixelValue(hard.data, ci) > 8
+        const originalAlpha = original[fi + 3]
+        if (!inside && originalAlpha < 250) continue
+        const m = inside ? 1 : clampNumber(maskPixelValue(soft.data, ci) / 255 * 2, 0, 1)
+        if (m <= 0.002) continue
+        for (let c = 0; c < 3; c += 1) {
+          const value = tone ? tone.fitted(result.data, ci, c) + tone.offsets[c][p] : result.data[ci + c]
+          finalImage.data[fi + c] = Math.round(value * m + original[fi + c] * (1 - m))
+        }
+        if (inside) finalImage.data[fi + 3] = Math.max(originalAlpha, result.data[ci + 3] > 8 ? result.data[ci + 3] : 255)
         compositedPixels += 1
         if (m < 0.995) featherPixels += 1
       }
     }
     finalCtx.putImageData(finalImage, 0, 0)
-    finalCanvas.__removalCompositeStats = { compositedPixels, featherPixels, feather: 8, postprocess: 'rgb-mask-composite-no-rmbg' }
+    finalCanvas.__removalCompositeStats = { compositedPixels, featherPixels, feather: 8, colourMatrix: tone ? tone.matrix : null, postprocess: 'qwen21-removal-colour-matched' }
     finalCanvas.__removalCompositeMask = softMaskCanvas
     return finalCanvas
+  }
+
+  // How far 2.1 moved the picture outside the stroke: mean |result - source| over opaque pixels more than
+  // ~2 feather widths away. A normal run moves it 3-6 levels, a washed-out one ~22; now and then 2.1
+  // empties the whole background to white instead of the stroke, and it moves 50-60.
+  async function removalOutsideDrift(crop, resultDataUrl) {
+    const w = crop.cropBox.width
+    const h = crop.cropBox.height
+    const result = (await canvasFromDataUrl(resultDataUrl, w, h)).getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data
+    const source = crop.cropImage.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data
+    const soft = featherMaskCanvas(thresholdMaskCanvas(crop.cropMask, 8), 8).getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data
+    let sum = 0
+    let count = 0
+    for (let i = 0; i < source.length; i += 4) {
+      if (source[i + 3] < 250 || maskPixelValue(soft, i) >= 3) continue
+      sum += Math.abs(result[i] - source[i]) + Math.abs(result[i + 1] - source[i + 1]) + Math.abs(result[i + 2] - source[i + 2])
+      count += 3
+    }
+    return count ? sum / count : 0
   }
 
   async function mergeRemovalInpaintResult(part, crop, layerOriginalCanvas, fullMaskCanvas, resultDataUrl) {
@@ -22951,7 +22862,7 @@
       { name: '05_removal_rgb_used', dataUrl: resultCropCanvas.toDataURL('image/png') },
       { name: '06_removal_soft_merge_mask', dataUrl: (finalCanvas.__removalCompositeMask || crop.cropMask).toDataURL('image/png') },
       { name: '07_replacement_layer_preview', dataUrl: finalCanvas.toDataURL('image/png') }
-    ], { cropBox: crop.cropBox, padInfo: crop.padInfo, originalSize: crop.originalSize, nonMaskChangedPixels: changedOutsideMask, replacedPixels: removalStats.compositedPixels || 0, clearedPixels: 0, compositedPixels: removalStats.compositedPixels || 0, featherPixels: removalStats.featherPixels || 0, replacementLayerId: id, sourceLayerId: part.id, validation: state.lastInpaintCandidateValidation || null, postprocess: 'removal-rgb-mask-composite-no-rmbg' })
+    ], { cropBox: crop.cropBox, padInfo: crop.padInfo, originalSize: crop.originalSize, nonMaskChangedPixels: changedOutsideMask, replacedPixels: removalStats.compositedPixels || 0, clearedPixels: 0, compositedPixels: removalStats.compositedPixels || 0, featherPixels: removalStats.featherPixels || 0, replacementLayerId: id, sourceLayerId: part.id, validation: state.lastInpaintCandidateValidation || null, postprocess: removalStats.postprocess || '' })
     return { ...cropped, id, name: id, prompt: `Removal replacement for ${part.name || part.id}`, layer, manualLayer: true, pivot: part.pivot, visible: true, needsInpaint: false, spineReady: true, sourceLayerId: part.id, replacementForPartId: part.id, nonMaskChangedPixels: changedOutsideMask, replacedPixels: removalStats.compositedPixels || 0, clearedPixels: 0, compositedPixels: removalStats.compositedPixels || 0, featherPixels: removalStats.featherPixels || 0 }
   }
 
@@ -23025,18 +22936,18 @@
     let committedPart = null
     try {
       const baseInpaintPrompt = inpaintPromptForPart(part, qwenCrop)
-      const userInpaintPrompt = selectionInpaintModeHasPrompt(selectionInpaintMode) ? String(state.selectionTool && state.selectionTool.inpaintPrompt || '').trim() : ''
+      const userInpaintPrompt = route.removal
+        ? QWEN21_REMOVAL_PROMPT
+        : selectionInpaintModeHasPrompt(selectionInpaintMode) ? String(state.selectionTool && state.selectionTool.inpaintPrompt || '').trim() : ''
       if (route.mode === 'edit' && !userInpaintPrompt) throw new Error('局部编辑需要输入修图要求')
       const inpaintPrompt = buildInpaintPrompt(baseInpaintPrompt, userInpaintPrompt, selectionInpaintMode)
-      const restoreStrategy = route.workflow === 'removal' ? removalRestoreStrategyFromText(`${userInpaintPrompt}\n${inpaintPrompt}`) : null
-      const executionRoute = restoreStrategy ? { ...route, restoreStrategy: restoreStrategy.id, restoreStrategyLabel: restoreStrategy.label } : route
+      const executionRoute = route
       const inputCanvases = inpaintInputCanvasesForRoute(qwenCrop.cropImage, qwenCrop.cropMask, executionRoute)
       const modelMaskCanvas = inputCanvases.maskForModel || qwenCrop.cropMask
       setInpaintDebugAttr('execute-mode', selectionInpaintMode)
       setInpaintDebugAttr('execute-provider', executionRoute.provider)
-      setInpaintDebugAttr('execute-restore-strategy', restoreStrategy ? restoreStrategy.id : '')
       setInpaintDebugAttr('execute-prompt-head', inpaintPrompt.slice(0, 1000))
-      const result = await runLayerInpaintValidated(inputCanvases.modelInput.toDataURL('image/png'), modelMaskCanvas.toDataURL('image/png'), inpaintPrompt, qwenCrop, part, {
+      const runInpaint = () => runLayerInpaintValidated(inputCanvases.modelInput.toDataURL('image/png'), modelMaskCanvas.toDataURL('image/png'), inpaintPrompt, qwenCrop, part, {
         inpaintMode: selectionInpaintMode,
         route: executionRoute,
         inpaintEngine: DEFAULT_COMPLETION_ENGINE,
@@ -23046,6 +22957,19 @@
         // never reads it, and in web mode an upload no task references is never released.
         latentInputDataUrl: inputCanvases.latentInput && executionRoute.workflow === 'qwen' && (executionRoute.mode === 'edit' || DEFAULT_COMPLETION_ENGINE === QWEN21_COMPLETION_ENGINE) ? inputCanvases.latentInput.toDataURL('image/png') : ''
       })
+      let result = await runInpaint()
+      if (executionRoute.removal) {
+        // Now and then 2.1 empties the whole background instead of the stroke (2-3 runs in 10 on
+        // 2026-09-27). That moves the picture outside the stroke 50-60 levels against 3-6 (22 for a
+        // washed-out run the colour match repairs), so run once more on a new seed and keep the closer one.
+        const drift = await removalOutsideDrift(qwenCrop, result)
+        if (drift > QWEN21_REMOVAL_REDO_DRIFT) {
+          setMessage('去除结果改动了笔刷外的画面，正在换一个种子重跑...')
+          render()
+          const retry = await runInpaint()
+          if (await removalOutsideDrift(qwenCrop, retry) < drift) result = retry
+        }
+      }
       const normalizedFullMask = normalizeMaskCanvas(cloneCanvas(processingMaskCanvas))
       const patchPart = executionRoute.outputMode === 'replacement'
         ? await mergeRemovalInpaintResult(part, qwenCrop, layerOriginalCanvas, normalizedFullMask, result)

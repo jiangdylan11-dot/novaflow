@@ -87,7 +87,7 @@ export function withReferences(parameters, filenames, references = [], method = 
       });
       return { ...parameters, __args: args };
     }
-    if (method === 'defaultQwenInpaintWorkflow' || method === 'defaultRemovalInpaintWorkflow') {
+    if (method === 'defaultQwenInpaintWorkflow') {
       for (const index of [1, 2]) {
         const found = references.findIndex((ref) => ref.name === args[index]);
         if (found < 0 || !filenames[found]) throw new Error('workflow input is not an uploaded task reference');
