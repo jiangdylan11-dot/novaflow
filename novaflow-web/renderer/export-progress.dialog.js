@@ -36,6 +36,7 @@
     });
 
     const dialog = document.createElement("div");
+    dialog.setAttribute("data-nf-dialog", "panel");
     Object.assign(dialog.style, {
       width: "360px",
       maxWidth: "100%",
@@ -49,6 +50,7 @@
 
     const titleNode = document.createElement("div");
     titleNode.setAttribute("data-novaflow-export-progress-title", "1");
+    titleNode.setAttribute("data-nf-dialog", "title");
     Object.assign(titleNode.style, {
       fontSize: "14px",
       fontWeight: "600",

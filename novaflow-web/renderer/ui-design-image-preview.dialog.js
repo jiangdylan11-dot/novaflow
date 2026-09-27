@@ -127,6 +127,7 @@
       },
     })
     const panel = element(documentRef, 'div', {
+      'data-nf-dialog': 'panel',
       style: {
         width: '100%', height: '100%', minWidth: '0', minHeight: '0', overflow: 'hidden',
         display: 'grid', gridTemplateRows: '52px minmax(0,1fr)', borderRadius: '12px',
@@ -137,6 +138,7 @@
     const title = element(documentRef, 'div', {
       text: text(options.name || '生成结果'),
       title: text(options.name || '生成结果'),
+      'data-nf-dialog': 'title',
       style: {
         minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         fontSize: '13px', fontWeight: '600',
@@ -160,6 +162,7 @@
       type: 'button',
       text: '×',
       'aria-label': '关闭大图预览',
+      'data-nf-dialog': 'close',
       style: {
         width: '32px', height: '32px', border: '0', borderRadius: '7px', background: 'transparent',
         color: 'rgba(255,255,255,0.78)', fontSize: '22px', lineHeight: '1', cursor: 'pointer',

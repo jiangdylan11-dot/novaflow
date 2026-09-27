@@ -2263,6 +2263,8 @@
   const AI_ANIMATION_STABLE_CENTER_MIN_SHIFT = 12;
   const NOVAFLOW_UNIFORM_GAP = 5;
   const NOVAFLOW_RECT_RADIUS_PX = "7px";
+  // Dialog titles are 600 (theme 2.1), whatever the weight pass would give them.
+  const NOVAFLOW_DIALOG_TITLE_SELECTOR = '[data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title';
   const NOVAFLOW_RECT_RADIUS_TOP_PX = `${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX} 0 0`;
   const NOVAFLOW_RECT_RADIUS_BOTTOM_PX = `0 0 ${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX}`;
   const SECONDARY_CONTENT_GAP = NOVAFLOW_UNIFORM_GAP;
@@ -15738,6 +15740,7 @@
       overlay.style.pointerEvents = "auto";
       const modal = document.createElement("div");
       modal.setAttribute("data-novaflow-ai-cutout-saving-modal", "1");
+      modal.setAttribute("data-nf-dialog", "panel");
       modal.style.minWidth = "240px";
       modal.style.maxWidth = "calc(100vw - 48px)";
       modal.style.padding = "18px 22px";
@@ -28955,7 +28958,7 @@
       .novaflow-app {
         font-weight: ${NOVAFLOW_NORMAL_FONT_WEIGHT} !important;
       }
-      .novaflow-app :where(button, input, select, textarea, label, div, span, p, small, strong, b, h1, h2, h3, h4, h5, h6, [role="button"]):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fa-solid):not([class*="fa-"]) {
+      .novaflow-app :where(button, input, select, textarea, label, div, span, p, small, strong, b, h1, h2, h3, h4, h5, h6, [role="button"]):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fa-solid):not([class*="fa-"]):not(${NOVAFLOW_DIALOG_TITLE_SELECTOR}) {
         font-weight: ${NOVAFLOW_NORMAL_FONT_WEIGHT} !important;
       }
       .novaflow-app .fa,
@@ -29564,8 +29567,8 @@
       body.${PRIMARY_ANIMATION_ENTRY_GEOMETRY_GUARD_CLASS} [data-novaflow-ai-main-stage="1"] {
         visibility: hidden !important;
       }
-      body.novaflow-blackgray-preview-with-bottom-controls :not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fa-solid):not([class*="fa-"]),
-      body.novaflow-ai-animation-section-layers :not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fa-solid):not([class*="fa-"]) {
+      body.novaflow-blackgray-preview-with-bottom-controls :not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fa-solid):not([class*="fa-"]):not(${NOVAFLOW_DIALOG_TITLE_SELECTOR}),
+      body.novaflow-ai-animation-section-layers :not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fa-solid):not([class*="fa-"]):not(${NOVAFLOW_DIALOG_TITLE_SELECTOR}) {
         font-weight: ${NOVAFLOW_NORMAL_FONT_WEIGHT} !important;
       }
       /* The blanket rule above flattens everything on the page, including the
@@ -30912,6 +30915,7 @@
         if (!primaryByButton.has(button)) primaryByButton.set(button, window.getComputedStyle(button).backgroundColor === NOVAFLOW_PRIMARY_BUTTON_FILL);
         primary = primaryByButton.get(button);
       }
+      if (node.matches(NOVAFLOW_DIALOG_TITLE_SELECTOR)) primary = true;
       setStylePropertyIfChanged(node, "font-weight", primary ? NOVAFLOW_PRIMARY_FONT_WEIGHT : (medium ? NOVAFLOW_MEDIUM_FONT_WEIGHT : NOVAFLOW_NORMAL_FONT_WEIGHT), "important");
     };
     if (root.matches(selector)) apply(root);
@@ -32294,6 +32298,12 @@
       "[data-novaflow-toggle-switch='1']",
       "[data-novaflow-toggle-knob='1']",
       "[data-novaflow-keep-radius='1']",
+      // Dialog panels take theme 2.1's 8px, not the 7px rect radius.
+      "[data-nf-dialog='panel']",
+      "[data-novaflow-export-modal-dialog='1']",
+      ".nf-wh-card",
+      ".novaflow-art-export-dialog",
+      ".novaflow-smart-ai-dialog",
       "[data-novaflow-preview-workspace='1']",
       "[data-novaflow-bottom-controls='1']",
       "[data-novaflow-particle-project-action]",
@@ -64708,9 +64718,15 @@
       const visibleColor = borderColor !== "transparent" && borderColor !== "rgba(0,0,0,0)";
       return width > 0 && borderStyle !== "none" && borderStyle !== "hidden" && visibleColor;
     });
-    if (!hasBorder) {
-      dialogCard.style.setProperty("border", "1px solid rgba(255, 255, 255, 0.10)", "important");
-      dialogCard.style.setProperty("border-color", "rgba(255, 255, 255, 0.10)", "important");
+    // Theme 2.1's flat dialog: #1F1F1F, 1px #2E2E2E, radius 8. The header's
+    // first text is the title (导出).
+    void hasBorder;
+    nfSetStyleIfChanged(dialogCard, "border", "1px solid #2E2E2E", "important");
+    nfSetStyleIfChanged(dialogCard, "border-radius", "8px", "important");
+    nfSetStyleIfChanged(dialogCard, "background", "#1F1F1F", "important");
+    const title = dialogCard.querySelector(":scope > div:first-child > div:first-child");
+    if (title instanceof HTMLElement && title.childElementCount === 0 && normalizeText(title.textContent || "")) {
+      setAttributeIfChanged(title, "data-nf-dialog", "title");
     }
   }
 

@@ -417,6 +417,7 @@
       },
     })
     const panel = element(documentRef, 'div', {
+      'data-nf-dialog': 'panel',
       style: {
         width: '520px', maxWidth: '100%', maxHeight: 'min(760px, calc(100vh - 48px))', overflow: 'hidden',
         display: 'grid', gridTemplateRows: 'auto minmax(0,1fr) auto', background: '#1b1f21',
@@ -424,19 +425,19 @@
       },
     })
     const closeButton = element(documentRef, 'button', {
-      type: 'button', text: '×', 'aria-label': '关闭设计助手',
+      type: 'button', text: '×', 'aria-label': '关闭设计助手', 'data-nf-dialog': 'close',
       style: { border: '0', background: 'transparent', color: 'rgba(255,255,255,0.68)', fontSize: '20px', cursor: 'pointer' },
     })
     closeButton.addEventListener('click', () => { if (!active?.pending) close('close') })
     const contextSummary = element(documentRef, 'div', {
       text: '正在读取页面结构与参考图…',
-      style: { color: 'rgba(255,255,255,0.48)', fontSize: '10px', marginTop: '2px' },
+      style: { color: 'rgba(255,255,255,0.48)', fontSize: '11px', marginTop: '2px' },
     })
     const header = element(documentRef, 'header', {
       style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '13px 15px', borderBottom: '1px solid rgba(255,255,255,0.08)' },
     }, [
       element(documentRef, 'div', {}, [
-        element(documentRef, 'div', { text: '设计助手', style: { fontSize: '14px', fontWeight: '600' } }),
+        element(documentRef, 'div', { text: '设计助手', 'data-nf-dialog': 'title', style: { fontSize: '14px', fontWeight: '600' } }),
         contextSummary,
       ]),
       closeButton,
@@ -458,7 +459,7 @@
         },
       }),
       referencesHost: element(documentRef, 'div', { style: { display: 'grid', gap: '6px' } }),
-      status: element(documentRef, 'div', { 'aria-live': 'polite', style: { minHeight: '16px', fontSize: '10px', lineHeight: '1.5' } }),
+      status: element(documentRef, 'div', { 'aria-live': 'polite', style: { minHeight: '16px', fontSize: '11px', lineHeight: '1.5' } }),
       session: workflow.createSession(),
     }
     const section = (label, content) => element(documentRef, 'section', { style: { display: 'grid', gap: '7px' } }, [

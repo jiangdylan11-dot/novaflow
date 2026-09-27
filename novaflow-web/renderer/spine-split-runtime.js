@@ -1423,6 +1423,7 @@
           webkitAppRegion: 'no-drag'
         }
       }, h('div', {
+        'data-nf-dialog': 'panel',
         style: {
           position: 'relative',
           width: 'min(420px, calc(100vw - 44px))',
@@ -1449,10 +1450,11 @@
           }
         }, [
           h('div', { style: { minWidth: '0', display: 'grid', gap: '5px' } }, [
-            h('div', { style: { fontSize: '14px', fontWeight: SPLIT_TOOL_FONT_WEIGHT, lineHeight: '1.2' } }, '\u9009\u62e9\u62c6\u56fe\u65b9\u5f0f')
+            h('div', { 'data-nf-dialog': 'title', style: { fontSize: '14px', fontWeight: SPLIT_TOOL_FONT_WEIGHT, lineHeight: '1.2' } }, '\u9009\u62e9\u62c6\u56fe\u65b9\u5f0f')
           ]),
           h('button', {
             type: 'button',
+            'data-nf-dialog': 'close',
             onclick: close,
             onmouseenter: (event) => applyCloseButtonState(event, true),
             onmouseleave: (event) => applyCloseButtonState(event, false),
@@ -1857,13 +1859,15 @@
       type: 'button',
       onclick: close,
       'aria-label': options.closeAriaLabel || '关闭',
+      'data-nf-dialog': 'close',
       style: options.closeButtonStyle || {}
     }, options.closeButtonEvents || {}), options.closeButtonLabel || '×')
     const titleNode = options.titleNode || null
     const bodyNode = options.bodyNode || null
     const footerNode = options.footerNode || null
     const header = h('div', { style: options.headerStyle || {} }, [titleNode, closeButton])
-    const dialog = h('div', { style: options.dialogStyle || {} }, [header, bodyNode, footerNode])
+    if (titleNode && typeof titleNode.setAttribute === 'function') titleNode.setAttribute('data-nf-dialog', 'title')
+    const dialog = h('div', { 'data-nf-dialog': 'panel', style: options.dialogStyle || {} }, [header, bodyNode, footerNode])
     const overlay = h('div', {
       id: options.id || '',
       role: 'dialog',
@@ -2566,6 +2570,7 @@
           webkitAppRegion: 'no-drag'
         }
       }, h('div', {
+        'data-nf-dialog': 'panel',
         style: {
           position: 'relative',
           width: 'min(740px, 100%)',
@@ -2582,11 +2587,12 @@
           style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', padding: '14px 16px 10px' }
         }, [
           h('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', minWidth: '0' } }, [
-            h('div', { style: { fontSize: '15px', fontWeight: SPLIT_TOOL_FONT_WEIGHT } }, '角度调整'),
+            h('div', { 'data-nf-dialog': 'title', style: { fontSize: '15px', fontWeight: SPLIT_TOOL_FONT_WEIGHT } }, '角度调整'),
             h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.5)' } }, `原图 ${width} × ${height}`)
           ]),
           h('button', {
             type: 'button',
+            'data-nf-dialog': 'close',
             onclick: close,
             'aria-label': '关闭',
             style: { width: '26px', height: '26px', borderRadius: '6px', border: '0', background: 'transparent', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: '17px', lineHeight: '1', boxShadow: 'none', transform: 'none', transition: 'none' }
@@ -7519,6 +7525,7 @@
           webkitAppRegion: 'no-drag'
         }
       }, h('div', {
+        'data-nf-dialog': 'panel',
         onpointerdown: objectTransferStopEvent,
         onclick: objectTransferStopEvent,
         ondragenter: handleDialogDragOver,
@@ -7548,11 +7555,12 @@
           }
         }, [
           h('div', { style: { display: 'grid', gap: '3px' } }, [
-            h('div', { style: { fontSize: '14px', fontWeight: '600', lineHeight: '1.2' } }, '\u4e07\u7269\u8fc1\u79fb'),
+            h('div', { 'data-nf-dialog': 'title', style: { fontSize: '14px', fontWeight: '600', lineHeight: '1.2' } }, '\u4e07\u7269\u8fc1\u79fb'),
             h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.62)', lineHeight: '1.35' } }, '\u4e0a\u4f20\u8981\u8fc1\u79fb\u5230\u753b\u5e03\u4e2d\u7684\u53c2\u8003\u7269')
           ]),
           h('button', {
             type: 'button',
+            'data-nf-dialog': 'close',
             onclick: close,
             style: {
               width: '30px',
