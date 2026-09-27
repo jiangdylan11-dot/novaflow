@@ -137,9 +137,9 @@ VIDEO_I2V_SYSTEM_TEXT = (
 )
 VIDEO_CAMERA_RULE = (
     "写清主体朝哪个方向移动，镜头只用一种单一连贯运镜（固定、推进、拉远、跟随、环绕或平移）并写明方向，两者要配合：\n"
-    "   - 主体朝镜头走来（例如正对镜头向前走）：镜头缓慢后退或保持固定，不要推进；\n"
+    "   - 主体朝镜头走来：镜头缓慢后退或保持固定，不要推进；\n"
     "   - 主体背对镜头走远：镜头向前跟随推进；\n"
-    "   - 主体向画面左侧或右侧移动：镜头向同一侧平移跟随；\n"
+    "   - 主体向画面左侧或右侧移动：镜头向同一侧平移跟随，主体始终保持在画面中的同一位置；\n"
     "   - 主体原地动作：镜头固定或缓慢推进。"
 )
 
@@ -920,7 +920,7 @@ NEGATIVE_CATEGORY_DEFINITIONS = [
         "name": "video",
         # Video callers prefix their context with "视频 动画 图生视频"; a still-art "动画风格" is no video.
         "context_pattern": r"视频|首帧|尾帧|运镜",
-        "negative": ["动作抖动", "画面闪烁", "身份漂移", "背景漂移", "物体变形"],
+        "negative": ["动作抖动", "画面闪烁", "身份漂移", "背景漂移", "物体变形", "穿模"],
         # Only when a person is in the video.
         "person_negative": ["人物变形", "肢体扭曲", "错误手部"],
     },
@@ -930,10 +930,11 @@ NEGATIVE_CATEGORY_DEFINITIONS = [
             r"人物|角色|人像|肖像|立绘|全身像|半身像|人体|人类|女孩|男孩|少女|少年|女性|男性|女人|男人|"
             r"女子|男子|姑娘|妇女|小孩|孩子|儿童|婴儿|老人|老者|青年|美女|帅哥|战士|法师|武士|骑士|士兵|"
             r"将军|武将|神将|侠客|剑客|刺客|忍者|巫师|国王|女王|王子|公主|皇帝|皇后|仙女|仙子|女神|天使|"
-            r"恶魔|魅魔|精灵|判官|僧人|道士|她|身穿|身着|穿着|"
-            # Faces and legs belong to animals too; hands and fingers do not.
-            r"(?<!机械)(?<!机器)(?:手指|手掌|手臂|双手|手部|双脚)"
+            r"恶魔|魅魔|精灵|判官|僧人|道士|厨师|她|(?<![其吉])他|身穿|身着|穿着"
         ),
+        # Faces and legs belong to animals too; hands and fingers point to a person unless a robot owns them.
+        "body_pattern": r"(?<!机械)(?<!机器)(?:手指|手掌|手臂|双手|手部|双脚)",
+        "body_owner_pattern": r"机器人|机甲|机械|人偶|玩偶|木偶|雕像|雕塑",
         "negative": [
             "错误解剖", "畸形肢体", "多余手指", "缺失手指", "错误手部", "重复肢体",
             "身体比例错误", "畸形面部", "眼睛错位", "五官错位", "扭曲手臂", "扭曲腿部",
@@ -942,8 +943,10 @@ NEGATIVE_CATEGORY_DEFINITIONS = [
     {
         "name": "animal",
         "pattern": (
-            r"动物|宠物|猫|狗|犬|鸟(?!瞰)|熊猫|狐狸|狼|老虎|狮子|兔子|鹿|马匹|骏马|金鱼|锦鲤|巨龙|"
-            r"猴子|松鼠|鹦鹉|企鹅|海豚|鲸"
+            r"动物|宠物|猫|狗|犬|鸟(?!瞰)|熊猫|狐狸|狼|老虎|狮子|兔子|鹿|马匹|骏马|金鱼|锦鲤|"
+            r"猴子|松鼠|鹦鹉|企鹅|海豚|鲸|"
+            # Creatures with limbs; 龙卷风、龙袍、水龙头、蛇形走位 are no animal.
+            r"(?<!水)龙(?![卷袍纹舟井须眼虾门宫])|蛇(?![形皮纹])|怪兽|魔兽|怪物|野兽|猛兽|(?<!机械)爪"
         ),
         "negative": ["错误解剖", "畸形肢体", "多余肢体", "五官错位"],
     },
@@ -981,6 +984,8 @@ NEGATIVE_ABSENT_SUBJECT_PATTERN = (
     r"(?:无|没有|并无|不含|不出现|不要|避免|禁止)(?:明确的?|任何|其他|多余的?)?(?:主体)?(?:人物|人像|角色|人类|人|动物)"
 )
 NEGATIVE_FALLBACK = ["细节混乱", "结构错误", "画面脏污", "噪点"]
+# Near-synonyms that different categories bring in; only the first one present is kept.
+NEGATIVE_SYNONYM_GROUPS = (("结构畸形", "结构错误", "形状畸形"),)
 
 FIRST_LAST_ACTION_TERMS = [
     "从", "逐渐", "缓慢", "进入", "转向", "转身", "抬起", "举起", "放下", "挥动",
@@ -14257,38 +14262,55 @@ class PromptAssistant:
             system_prompt = build_minimax_h3_prompt_instruction(raw_prompt, requirements)
         elif is_ui_design:
             # The negative prompt is built by rules from the positive, so the model writes the positive only.
+            has_resource_placeholders = bool(re.search(r"__NOVAFLOW_", f"{raw_prompt}{requirements}"))
             task_instruction = (
                 "根据页面结构、参考图职责和用户要求，从零建立一段可直接用于生成成品 UI 的中文设计要求。"
                 if is_create else
-                "优化当前 UI 设计要求，同时严格保留页面功能、信息层级、结构约束和所有资源引用占位符。"
+                "优化当前 UI 设计要求，同时严格保留页面功能、信息层级和结构约束"
+                f"{'，以及所有资源引用占位符' if has_resource_placeholders else ''}。"
             )
-            negative_instruction = (
-                "" if ui_design_uses_negative_prompt(payload) else
-                "5. 当前生成模型不使用独立负面提示通道，禁止输出负向或避免项。\n"
+            ui_rules = [
+                "这不是普通绘画提示词：写出这个页面由哪些具体区域和控件组成、各自在画面中的位置和主次，"
+                "再写视觉风格、配色、材质、间距和对齐；用这些具体内容代替“功能分区明确”“信息层级清晰”这类概括词。"
+                "不得擅自改变页面结构或删减用户指定功能。",
+                "只写成品画面上看得见的内容：配色写颜色名称，大小和间距写大、中、小与相对位置；"
+                "用户没写的色号、像素和字号数值不写。",
+                "参考图只允许贡献被指定的职责；布局、风格、配色、材质、内容素材和主体必须彼此隔离，禁止整图照抄。",
+            ]
+            if has_resource_placeholders:
+                ui_rules.append(
+                    "文中以 __NOVAFLOW_ 开头、双下划线结尾的资源引用占位符，每个都原样保留一次，不改写、不翻译、不重复。"
+                )
+            ui_rules.append(
+                "最终结果只能描述成品 UI，不得输出分析过程、多个方案、JSON、坐标、百分比、节点、连线、矩形标注、"
+                "画布操作或软件界面说明；也不得把提示文字和区块说明当成最终 UI 文案照抄。"
             )
+            if not ui_design_uses_negative_prompt(payload):
+                ui_rules.append("当前生成模型不使用独立负面提示通道，禁止输出负向或避免项。")
             system_prompt = qwen3_chatml(
                 "你是 NovaFlow UI 版块专用的设计助手。你把界面需求写成一段可直接用于生成成品 UI 的中文设计要求，只输出这段设计要求本身。",
                 f"任务：{task_instruction}\n\n"
                 "要求：\n"
-                "1. 这不是普通绘画提示词：重点必须是页面目标、功能分区、信息层级、视觉风格、配色、材质、控件状态、"
-                "间距、对齐和可读性。不得擅自改变页面结构或删减用户指定功能。\n"
-                "2. 参考图只允许贡献被指定的职责；布局、风格、配色、材质、内容素材和主体必须彼此隔离，禁止整图照抄。\n"
-                "3. 如果输入中出现 __NOVAFLOW_ 开头并以双下划线结尾的资源引用占位符，必须原样、原次数保留，"
-                "不得改写、翻译或重复。\n"
-                "4. 最终结果只能描述成品 UI，不得输出分析过程、多个方案、JSON、坐标、百分比、节点、连线、矩形标注、"
-                "画布操作或软件界面说明；也不得把提示文字和区块说明当成最终 UI 文案照抄。\n"
-                f"{negative_instruction}"
-                f"{requirements_section if not is_create else ''}"
+                + "".join(f"{index}. {rule}\n" for index, rule in enumerate(ui_rules, 1))
+                + f"{requirements_section if not is_create else ''}"
                 f"\n{'用户创作需求' if is_create else '当前设计要求'}：\n{requirements if is_create else raw_prompt}\n\n"
-                "输出格式：只输出一段连贯、明确的中文自然语言设计要求，不要标题、前缀、负向词或负面要求。",
+                "输出格式：只输出一段约150到300字的中文设计要求，分成几句，每句以句号结尾：第一句写整体风格与配色，"
+                "之后按从上到下的顺序每句写一个区域，写清它的位置、包含的控件和样式；不要标题、前缀、负向词或负面要求。",
             )
         elif is_animation:
             # The negative prompt is built by rules (build_targeted_negative_prompt), so only the positive is asked for.
+            # A short request is copied first, so every action the user wrote survives in the user's words.
+            short_request = len(raw_prompt + requirements) <= 80
             animation_rules = [
-                "忠于原意：保留用户写明的主体身份、数量、外观、服装、道具、场景和动作，不改主题。",
-                "只补充让动作更清楚的姿态、肢体和节奏细节；不添加用户没写的角色、道具、特效（火花、光效、轨迹拖尾、粒子、烟雾等）、声音或文字，"
-                "也不编造背景物件、天气或光线，场景只按用户写到的内容简要交代。",
-                "动作分三步写清：动作开始状态 → 连续动作过程 → 动作结束状态（最后停在什么姿态），并写清速度与节奏，例如缓慢、匀速、先快后慢。",
+                "第一句原样照抄“当前视频提示”的原句"
+                f"{'，只改用户附加要求明确要改的词' if requirements else '，一字不改'}；"
+                "之后按原句里动作的先后顺序，把每个动作展开成具体的姿态、肢体动作和节奏。"
+                if short_request and raw_prompt else
+                "以“当前视频提示”的原句为骨架来扩写：原句写到的主体、场景和每个动作都照原词保留，并按原句的先后顺序出现，不改主题。",
+                "主体只用用户写的称呼，不加形容词，也不另写用户没写的衣着、颜色和材质；背景、天气和光线用户写到才写。"
+                "不添加用户没写的角色、道具、特效（火花、光效、轨迹拖尾、粒子、烟雾等）、声音或文字。",
+                "动作分三步写清：动作开始状态 → 连续动作过程 → 动作结束状态，并写清速度与节奏，例如缓慢、匀速、先快后慢。"
+                "结束状态写一个具体姿态；持续进行的动作（如奔跑、飞行）就写它仍在进行时的样子。",
                 "按约5秒设计动作量，只安排一两个能自然完成的动作；时长只用来控制动作量，不要把“5秒”“持续约5秒”“全程”等时长说明写进 Prompt。",
                 VIDEO_CAMERA_RULE,
                 "除非用户明确要求改变场景，否则背景、构图、光线和主体位置关系保持稳定。",
@@ -14307,7 +14329,9 @@ class PromptAssistant:
                 + "".join(f"{index}. {rule}\n" for index, rule in enumerate(animation_rules, 1))
                 + f"{requirements_section}"
                 f"\n当前视频提示：\n{raw_prompt or '（为空，请直接按用户附加要求写）'}\n\n"
-                "输出格式：只输出一段连贯的中文自然语言 Prompt，以句号结尾；不要标题、前缀、编号、解释、多个方案、"
+                # A short request padded out to 200 characters is where invented clothes and streets come from.
+                f"输出格式：只输出一段连贯的中文自然语言 Prompt{'，约60到150字' if short_request else ''}，"
+                "按“主体和场景 → 动作过程 → 结束状态 → 镜头”的顺序写，以句号结尾；不要标题、前缀、编号、解释、多个方案、"
                 "英文、SD 标签、JSON 或负向词。",
             )
         else:
@@ -14540,6 +14564,8 @@ class PromptAssistant:
                 output = positive
         if is_animation:
             positive = tidy_video_prompt(positive, f"{raw_prompt}\n{requirements}")
+        if is_ui_design:
+            positive = tidy_ui_design_prompt(positive, f"{raw_prompt}\n{requirements}")
         if is_animation or is_ui_design:
             positive = keep_resource_placeholders_once(positive, raw_prompt or requirements)
         if not positive:
@@ -17137,6 +17163,8 @@ class PromptAssistant:
             "\n当前已有视频提示（必须与图片可见信息合并）：\n"
             f"{current_prompt}\n"
             "最终只输出一段合并后的提示词；保留当前提示中的动作与镜头意图，但不得覆盖图片中可见的主体身份、外观和场景锚点。"
+            "把当前提示里的动作按这种主体真实的做法，写成具体的身体部位运动：哪个部位、朝哪个方向、动到什么姿态，"
+            "不要只用“完成××动作”一笔带过。"
             if current_prompt and is_animation else ""
         )
         requirements_instruction = (
@@ -17617,20 +17645,22 @@ class PromptAssistant:
                     "任务：将这张图片视为视频首帧，写一段可直接用于 WAN 等图生视频模型的中文视频 Prompt，"
                     "描述从这一帧开始发生的动作；不能只复述图片内容或写成静态图描述。\n\n"
                     "写作要求：\n"
-                    "1. 开头用一句话点明首帧主体、最关键的可见外观特征（身份、颜色、服装或材质、手中的道具）和它此刻的姿态"
-                    "（例如站着、坐着、正在腾空、正对镜头），只写图中真实可见的内容；主体身份、数量、面部、服装、道具和场景保持一致。\n"
-                    "2. 动作从首帧的真实状态出发：主体当前的朝向、姿势、位置和手里已有的道具就是起点，顺着这个状态自然发展，"
-                    "不要让主体突然放下、丢掉或更换道具；如果首帧已处在腾空、奔跑、挥动等动作的中途，就从这个中途接着写"
-                    "（例如从半空落地），不要把动作从头再做一遍。\n"
+                    "1. 开头用一句话点明首帧主体、最醒目的可见外观特征（身份、颜色、服装或材质、头饰、手中的道具）和它此刻的姿态与朝向："
+                    "姿态如站着、坐着、正在腾空；朝向按图中所见写，如侧身朝画面左侧或右侧、正面朝镜头、背对镜头。"
+                    "只写图中真实可见的内容；主体身份、数量、面部、服装、道具和场景保持一致。\n"
+                    "2. 动作从首帧的真实状态出发：主体当前的朝向、姿势、位置和手里已有的道具就是起点，顺着这个状态自然发展；"
+                    "手里已有的道具要用进动作里（例如挥动、举起、倾倒、指向），不要让主体突然放下、丢掉或更换道具；"
+                    "如果首帧已处在腾空、奔跑、挥动等动作的中途，就从这个中途接着写（例如从半空落地），不要把动作从头再做一遍。"
+                    "写到手臂、腿和移动方向时，一律按画面左侧、右侧来写（例如“画面左侧的手臂”），不写主体自己的左手、右手。\n"
                     "3. 按开始状态 → 连续动作过程 → 结束状态写清动作，并写出速度与节奏；按约5秒设计，只安排一两个能完成的动作，"
-                    "最后停在明确的结束姿态。\n"
+                    "最后写出具体的结束结果（例如停下脚步站稳、落地站稳、转头看向画面一侧），不写“威严”“优雅”这类评价词。\n"
                     f"4. {VIDEO_CAMERA_RULE}\n"
                     "5. 除非用户要求变化，否则背景、构图、光线和主体位置关系保持首帧的样子；不添加图中没有的物体、特效（火花、光效、轨迹拖尾、粒子、烟雾等）、"
                     "声音、文字或新角色，也不写景深或焦点变化。\n"
                     "6. 不写“5秒”“全程”等时长说明，不写“无抖动”这类否定句，也不写“营造……氛围”这类抽象总结。\n"
                     f"{merge_instruction}"
-                    "\n\n输出格式：只输出一段连贯的中文自然语言 Prompt，以句号结尾；不要标题、图片分析、编号、多个方案、"
-                    "英文、SD 标签或 JSON。"
+                    "\n\n输出格式：只输出一段连贯的中文自然语言 Prompt，按“主体与姿态 → 动作过程 → 结束结果 → 镜头”的顺序写，"
+                    "以句号结尾；不要标题、图片分析、编号、多个方案、英文、SD 标签或 JSON。"
                 )
                 output = self.generate(
                     prompt,
@@ -18404,11 +18434,29 @@ def detect_negative_categories(
         else:
             hit = bool(
                 (category.get("pattern") and re.search(category["pattern"], text))
-                or (category.get("context_pattern") and re.search(category["context_pattern"], context))
+                or (category.get("context_pattern") and re.search(category["context_pattern"], context)
+                    # A UI page's "背景" is its backdrop colour, not a scene.
+                    and not (name == "scene" and any(item["name"] == "ui" for item in matched)))
+                or (category.get("body_pattern") and re.search(category["body_pattern"], text)
+                    and not re.search(category["body_owner_pattern"], text))
             )
         if hit:
             matched.append(category)
     return matched
+
+
+def without_negative_synonyms(items: list[str], taken: list[str] = ()) -> list[str]:
+    """items without a keyword whose near-synonym is already in taken or earlier in items."""
+    used = {index for index, group in enumerate(NEGATIVE_SYNONYM_GROUPS) if set(group) & set(taken)}
+    kept = []
+    for item in items:
+        group = next((index for index, words in enumerate(NEGATIVE_SYNONYM_GROUPS) if item in words), None)
+        if group is not None:
+            if group in used:
+                continue
+            used.add(group)
+        kept.append(item)
+    return kept
 
 
 def category_negative_keywords(categories: list[dict]) -> list[str]:
@@ -18424,7 +18472,6 @@ def category_negative_keywords(categories: list[dict]) -> list[str]:
         selected = merge_keyword_list(
             video.get("negative") or [],
             video.get("person_negative") or [] if "person" in by_name else [],
-            max_count=8,
         )
         remaining_limit = max(0, body_limit - len(selected))
         per_category = max(2, remaining_limit // max(1, len(rest))) if rest else 0
@@ -18434,7 +18481,7 @@ def category_negative_keywords(categories: list[dict]) -> list[str]:
         if len(selected) >= body_limit:
             break
         selected = merge_keyword_list(
-            selected, category.get("negative") or [],
+            selected, without_negative_synonyms(category.get("negative") or [], selected),
             max_count=min(body_limit, len(selected) + per_category),
         )
     return selected[:body_limit]
@@ -18483,14 +18530,14 @@ def build_targeted_negative_prompt(
     typed_keywords = category_negative_keywords(categories)
     body_limit = NEGATIVE_MAX_COUNT - len(NEGATIVE_COMMON_PREFIX) - len(NEGATIVE_SUFFIX)
     fixed_keys = {item.lower() for item in NEGATIVE_COMMON_PREFIX + NEGATIVE_SUFFIX}
-    middle = [
+    middle = without_negative_synonyms([
         item for item in merge_keyword_list(
             typed_keywords[:10],
             negative_model_extras(model_negative, categories),
             typed_keywords[10:],
         )
         if item.lower() not in fixed_keys
-    ]
+    ])
     ordered = merge_keyword_list(
         NEGATIVE_COMMON_PREFIX, middle[:body_limit], NEGATIVE_SUFFIX, max_count=NEGATIVE_MAX_COUNT,
     )
@@ -18525,7 +18572,7 @@ def remove_negative_prompt_keywords(value: str, blocked: set[str]) -> str:
 
 FIRST_LAST_RECORD_LABELS = (
     "主体", "首帧姿态", "尾帧姿态", "身体变化", "头部变化", "手臂变化",
-    "腿部变化", "道具变化", "镜头变化", "背景变化", "合理动作过渡",
+    "腿部变化", "道具变化", "镜头变化", "背景变化", "光影变化", "合理动作过渡",
 )
 
 
@@ -18537,7 +18584,8 @@ def build_first_last_analysis_prompt(image_tokens: str) -> tuple[str, str, int]:
         "现在不要写最终 Prompt。\n\n"
         "要求：\n"
         "1. 只写两张图中真实可见的内容和差异，按可见差异合理推断，不猜测、不夸大动作。\n"
-        "2. “主体”写清是谁或是什么，以及最关键的外观特征；“镜头变化”看取景、景别和角度；“背景变化”也包括光线。\n"
+        "2. “主体”写清是谁或是什么，以及最关键的外观特征；“镜头变化”看取景、景别和角度；"
+        "“光影变化”逐一对比光线的明暗、颜色，以及主体和物体脚下阴影的大小、深浅。\n"
         "3. 主体不是人物时，把身体、头部、手臂、腿部换成主体相应的部位或状态（形状、位置、朝向、开合等）来写。\n"
         "4. 某一项没有明显变化时写“无明显变化”。“合理动作过渡”用一句话写出从首帧到尾帧的连续动作。\n"
         "5. 每行一句，不输出英文或 JSON。\n\n"
@@ -18569,10 +18617,12 @@ def build_first_last_final_prompt(action_notes: str, image_tokens: str = "", pre
         f"{action_notes[:900]}\n\n"
         "写作要求：\n"
         "1. 开头用一句话点明主体和最关键的外观特征，只写两张图中都能看到的内容；服装、发型等外观只简要写一次。\n"
-        "2. 重点写变化：从首帧的状态出发，经过连续、合理的过渡动作，最后停在与尾帧一致的状态，并写出速度与节奏。"
-        "两张图差异很小时，只写轻微的变化（例如保持相近姿态，仅头部、手臂或衣摆轻微变化），不要夸大。\n"
+        "2. 重点写变化：从首帧的状态出发，经过连续、合理的过渡动作，最后停在与尾帧一致的状态，并写出速度与节奏（例如缓缓、渐渐、先快后慢）。"
+        "两张图差异很小时，主体保持相近姿态，写出一两处图中已有元素的细微动态（例如呼吸起伏、发丝或衣摆轻动、图中已有的光点缓缓飘动），"
+        "不要夸大，也不写“画面保持静止”。\n"
         "3. 写明镜头：取景没有变化时写“镜头保持固定”；有变化时只写一种运镜（缓慢推进、缓慢拉远、平移或跟随主体）并写明方向。\n"
-        "4. 背景没有变化时写“背景保持不变”；有变化时如实写出。不添加图中没有的物体、特效、声音或文字。\n"
+        "4. 光线和阴影有变化时如实写出（例如光线渐渐变暗、阴影渐渐变淡）；背景其余部分没有变化时写“背景保持不变”。"
+        "不添加图中没有的物体、特效、声音或文字。\n"
         "5. 用画面内容描述状态，不写“首帧”“尾帧”“图片1”这类说明词，不写“5秒”等时长说明，也不写“营造……氛围”这类抽象总结。\n\n"
         "输出格式：只输出一段连贯的中文自然语言 Prompt，以句号结尾；不要标题、编号、分析报告、英文、SD 标签或 JSON。"
         f"{retry_note}"
@@ -18622,13 +18672,44 @@ def qwen3_chatml(system_text: str, user_text: str) -> str:
     )
 
 
+def drop_text_clauses(value: str, drop, *, sentences: bool = False) -> str:
+    """value without the clauses (or whole sentences) that drop() marks.
+
+    When a dropped part ended its sentence, the part before it now ends the sentence.
+    """
+    pattern = r"[^。；;！!？?]+[。；;！!？?]*" if sentences else r"[^，,。；;！!？?]+[，,。；;！!？?]*"
+    kept: list[str] = []
+    for part in re.findall(pattern, value):
+        if not drop(part):
+            kept.append(part)
+        elif kept and re.search(r"[。！!？?]$", part):
+            kept[-1] = re.sub(r"[，,；;]+$", "。", kept[-1])
+    return "".join(kept)
+
+
+RESOURCE_PLACEHOLDER = r"__NOVAFLOW_[A-Z0-9_:-]+__"
+# The placeholder rule echoed back ("所有 __NOVAFLOW_ 开头的资源占位符必须原样保留"); a real placeholder is no echo.
+RESOURCE_PLACEHOLDER_RULE_ECHO = re.compile(r"资源(?:引用)?占位符|__NOVAFLOW_(?![A-Z0-9_:-]+__)")
+
+
+def drop_placeholder_rule_echo(value: str) -> str:
+    """A sentence that opens with the placeholder rule goes whole; elsewhere only the clause that echoes it."""
+
+    def echo(part: str) -> bool:
+        return bool(RESOURCE_PLACEHOLDER_RULE_ECHO.search(part)) and not re.search(RESOURCE_PLACEHOLDER, part)
+
+    value = drop_text_clauses(value, lambda sentence: echo(re.split(r"[，,]", sentence, 1)[0]), sentences=True) or value
+    return drop_text_clauses(value, echo) or value
+
+
 def keep_resource_placeholders_once(text: str, source: str) -> str:
     """Every __NOVAFLOW_…__ placeholder of the source exactly once, as the renderer's restore step requires.
 
-    Later duplicates are dropped and a placeholder the model lost goes back in front of the text.
+    Later duplicates are dropped and a placeholder the model lost goes back in front of the text.  An echo of
+    the placeholder rule itself is removed.
     """
-    value = str(text or "")
-    tokens = list(dict.fromkeys(re.findall(r"__NOVAFLOW_[A-Z0-9_:-]+__", str(source or ""), flags=re.I)))
+    value = drop_placeholder_rule_echo(str(text or ""))
+    tokens = list(dict.fromkeys(re.findall(RESOURCE_PLACEHOLDER, str(source or ""), flags=re.I)))
     for token in tokens:
         first = value.find(token)
         if first >= 0:
@@ -18640,20 +18721,26 @@ def keep_resource_placeholders_once(text: str, source: str) -> str:
 
 
 # "全程约5秒" and the like echo the duration hint the instructions give the model; they mean nothing to WAN.
-# The phrase is cut out ("5秒后停在画面中央" keeps "停在画面中央"); a clause left with only filler goes.
+# The phrase is cut out ("持续约5秒后停住" keeps "停住"); a clause left with only filler goes.
 VIDEO_DURATION_ECHO = re.compile(
-    r"(?:在|于|用|经过)?\s*(?:约|大约|大概)?\s*(?<![0-9.])(?:5|５|五)\s*秒钟?(?:内|之内|以内|左右|后|之后)?"
+    r"(?:持续|历时|用时|经过|在|于|用)?\s*(?:约|大约|大概)?\s*(?<![0-9.])(?:5|５|五)\s*秒钟?"
+    r"(?:内|之内|以内|左右|后|之后)?"
 )
 VIDEO_DURATION_FILLER = re.compile(
     r"^(?:整个|整段|全程|总时长|时长|动作|视频|画面|过程|持续|历时|用时|总共|共|大约|约|的|时间|完成|[\s，,。；;！!？?])*$"
 )
+# The instructions ask for no sound; a clause the model still spends on one goes unless the user wrote a sound.
+VIDEO_SOUND_CLAUSE = re.compile(r"(?<![无悄])声(?![势名誉])|(?<!影)响(?!应)|轰鸣|嗡鸣")
+# "画面保持静止" asks the video model for a frozen clip and contradicts any motion beside it.
+VIDEO_FROZEN_CLAUSE = re.compile(r"^(?:整个)?画面(?:保持|始终|完全|基本)?(?:静止|定格)(?:不动)?[，,。；;！!？?]*$")
 VIDEO_PROMPT_LABEL = re.compile(
     r"^\s*(?:最终)?(?:图生视频|首尾帧视频|视频)?\s*(?:Prompt|提示词|正向提示词|正向)\s*[:：]\s*", re.I
 )
 
 
 def tidy_video_prompt(text: str, source: str = "") -> str:
-    """One readable paragraph ending in 。, without labels, markdown or an echoed duration hint.
+    """One readable paragraph ending in 。, without labels, markdown, an echoed duration hint,
+    a sound the user never asked for or a "画面保持静止".
 
     A duration the user wrote (any 秒 in the source) is kept.
     """
@@ -18663,18 +18750,40 @@ def tidy_video_prompt(text: str, source: str = "") -> str:
         line if index == len(lines) - 1 or re.search(r"[。！？!?；;，,、：:]$", line) else f"{line}，"
         for index, line in enumerate(lines)
     )
-    if "秒" not in str(source or ""):
-        kept: list[str] = []
-        for clause in re.findall(r"[^，,。；;！!？?]+[，,。；;！!？?]*", value):
-            rest = VIDEO_DURATION_ECHO.sub("", clause)
-            if not VIDEO_DURATION_FILLER.match(rest):
-                kept.append(rest)
-            elif kept and re.search(r"[。！!？?]$", clause):
-                kept[-1] = re.sub(r"[，,；;]+$", "。", kept[-1])
-        value = "".join(kept)
+    source = str(source or "")
+    if "秒" not in source:
+        value = VIDEO_DURATION_ECHO.sub("", drop_text_clauses(
+            value, lambda clause: VIDEO_DURATION_FILLER.match(VIDEO_DURATION_ECHO.sub("", clause)),
+        ))
+    if not re.search(r"[声响音叫鸣唱]", source):
+        value = drop_text_clauses(value, VIDEO_SOUND_CLAUSE.search) or value
+    value = drop_text_clauses(value, lambda clause: VIDEO_FROZEN_CLAUSE.match(clause.strip())) or value
+    if "停在原地" not in source:
+        # A subject that walked a few steps is no longer where it started; "停下" is right either way.
+        value = value.replace("停在原地", "停下")
     value = value.strip().rstrip("，,、；;：: ")
     if value and not re.search(r"[。！!？?…”」）)]$", value):
         value += "。"
+    return value
+
+
+# Hover, pressed or scrolling states, resolution and "只展示常态" notes are no part of one finished UI picture.
+UI_NON_PICTURE_CLAUSE = re.compile(
+    r"悬停|点击[态时]|点击状态|按下[态时]|按下状态|按压[态时]|滚动时|交互状态|状态变化|动效|过渡动画|分辨率|常态"
+)
+
+
+def tidy_ui_design_prompt(text: str, source: str = "") -> str:
+    """The UI design text without non-picture requirements the user never wrote, ending on a whole sentence."""
+    value = str(text or "").strip()
+    if not UI_NON_PICTURE_CLAUSE.search(str(source or "")):
+        value = drop_text_clauses(value, UI_NON_PICTURE_CLAUSE.search) or value
+    if value and not re.search(r"[。！!？?…”」）)]$", value):
+        # Cut off at the length limit: end on the last whole sentence when that keeps most of the text.
+        cut = max(value.rfind("。"), value.rfind("；"))
+        if cut >= len(value) // 2:
+            value = value[:cut]
+        value = value.rstrip("，,、；;：: ") + "。"
     return value
 
 

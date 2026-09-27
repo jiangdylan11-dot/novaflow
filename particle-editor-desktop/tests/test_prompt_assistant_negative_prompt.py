@@ -45,6 +45,26 @@ class TargetedNegativePrompt(unittest.TestCase):
                 negative = service.build_targeted_negative_prompt(context, positive, video=False)
                 self.assertFalse({'多余手指', '错误手部', '身体比例错误'} & set(terms(negative)))
 
+    def test_robot_arms_are_no_person(self):
+        robot = service.build_targeted_negative_prompt(
+            '视频 动画 图生视频 机器人在花园里浇花', '机器人手持喷壶，手臂微微下压，壶嘴喷出水流',
+        )
+        self.assertFalse(set(PERSON_TERMS) & set(terms(robot)))
+        girl = service.build_targeted_negative_prompt('视频 动画 图生视频 ', '双手紧握长剑，向前冲锋')
+        self.assertIn('错误手部', terms(girl))
+
+    def test_ui_backdrop_is_no_scene(self):
+        ui = service.build_targeted_negative_prompt(
+            '音乐播放器 App 的播放页，深色背景', '深灰背景，顶部是圆形专辑封面，底部是播放按钮',
+        )
+        self.assertTrue(set(UI_TERMS) <= set(terms(ui)))
+        self.assertFalse({'透视错误', '空间混乱', '光影不一致'} & set(terms(ui)))
+        # A singer's name on the page is text, not a person in the picture.
+        player = service.build_targeted_negative_prompt('音乐播放器 App 的播放页', '封面下方是歌曲标题与歌手名')
+        self.assertFalse({'错误解剖', '多余手指'} & set(terms(player)))
+        art = service.build_targeted_negative_prompt('少女的背景是雪山', '少女站着', video=False)
+        self.assertIn('透视错误', terms(art))
+
     def test_ui_words_only_for_ui_context(self):
         art = service.build_targeted_negative_prompt('木质卡片与面板上的图标插画', '木质面板，卡片，菜单式排列的图标')
         self.assertFalse(set(UI_TERMS) & set(terms(art)))
@@ -59,6 +79,30 @@ class TargetedNegativePrompt(unittest.TestCase):
         self.assertTrue(set(VIDEO_TERMS) <= set(terms(girl)))
         self.assertIn('人物变形', terms(girl))
         self.assertIn('错误解剖', terms(girl))
+
+    def test_video_names_clipping(self):
+        knight = service.build_targeted_negative_prompt('视频 动画 图生视频 骑士挥剑', '骑士挥动长剑向前冲锋')
+        self.assertIn('穿模', terms(knight))
+        self.assertIn('错误手部', terms(knight))
+        still = service.build_targeted_negative_prompt('骑士持剑', '骑士持剑站立', video=False)
+        self.assertNotIn('穿模', terms(still))
+
+    def test_creatures_with_limbs_get_animal_words(self):
+        for positive in ('一条紫绿相间的龙缓缓前行', '戴冠的蛇怪昂起头', '怪兽张开利爪'):
+            with self.subTest(positive=positive):
+                negative = service.build_targeted_negative_prompt('视频 动画 图生视频 ', positive)
+                self.assertTrue({'错误解剖', '畸形肢体', '多余肢体'} <= set(terms(negative)))
+        for positive in ('龙卷风席卷海面', '身穿龙袍的皇帝', '机械爪抓起零件'):
+            with self.subTest(positive=positive):
+                negative = service.build_targeted_negative_prompt('', positive, video=False)
+                self.assertNotIn('多余肢体', terms(negative))
+
+    def test_near_synonyms_keep_one(self):
+        negative = service.build_targeted_negative_prompt(
+            '少女站在雪山顶的城堡前，手持长剑', '少女站在雪山顶的城堡前，手持长剑，披风飘动',
+        )
+        self.assertEqual(len({'结构畸形', '结构错误', '形状畸形'} & set(terms(negative))), 1)
+        self.assertIn('材质错误', terms(negative))
 
     def test_chinese_keywords_and_separators(self):
         negative = service.build_targeted_negative_prompt('一只猫', '一只猫')

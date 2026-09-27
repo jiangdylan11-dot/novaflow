@@ -22,8 +22,11 @@ assistant.optimize_prompt({
 assert "增加精细金属纹理和蓝色月光" in optimize_prompts[0]
 assert "视频生成 Prompt 设计助手" not in optimize_prompts[0]
 
+# Art edits may take a second (repair) call, so only the calls of this request are checked.
+plain_start = len(optimize_prompts)
 assistant.optimize_prompt({"prompt": "石台上的银色长剑"})
-assert "用户附加要求" not in optimize_prompts[1]
+assert optimize_prompts[plain_start:]
+assert all("增加精细金属纹理和蓝色月光" not in prompt for prompt in optimize_prompts[plain_start:])
 
 assistant.optimize_prompt({
     "prompt": "白衣剑客站在竹林中",

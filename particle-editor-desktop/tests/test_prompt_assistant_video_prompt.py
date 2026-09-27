@@ -56,6 +56,41 @@ class VideoPromptTidyTests(unittest.TestCase):
             SERVICE.tidy_video_prompt("蛇怪缓缓向右爬行，镜头向右平移跟随，5秒后停在画面中央，头部微昂。"),
             "蛇怪缓缓向右爬行，镜头向右平移跟随，停在画面中央，头部微昂。",
         )
+        # "持续约5秒后停住" goes with its verb instead of leaving "持续停住".
+        self.assertEqual(
+            SERVICE.tidy_video_prompt("机器人缓慢倾斜水壶，动作匀速，持续约5秒后停住，壶身恢复直立。"),
+            "机器人缓慢倾斜水壶，动作匀速，停住，壶身恢复直立。",
+        )
+
+    def test_sound_the_user_never_asked_for_is_dropped(self):
+        self.assertEqual(
+            SERVICE.tidy_video_prompt("骑士向前冲锋，剑刃在空中发出金属锐响，镜头缓慢后退。", "骑士拔出长剑，向前冲锋"),
+            "骑士向前冲锋，镜头缓慢后退。",
+        )
+        self.assertEqual(
+            SERVICE.tidy_video_prompt("铠甲铿锵作响。", ""),
+            "铠甲铿锵作响。",  # nothing else is left, so the output is kept rather than emptied
+        )
+        self.assertEqual(
+            SERVICE.tidy_video_prompt("小狗张嘴发出欢快的叫声，镜头固定。", "小狗汪汪叫"),
+            "小狗张嘴发出欢快的叫声，镜头固定。",
+        )
+
+    def test_end_state_after_walking(self):
+        self.assertEqual(
+            SERVICE.tidy_video_prompt("机器人缓缓向前迈步，最终停在原地，洒水壶仍握在手中。"),
+            "机器人缓缓向前迈步，最终停下，洒水壶仍握在手中。",
+        )
+
+    def test_frozen_picture_clause_is_dropped(self):
+        self.assertEqual(
+            SERVICE.tidy_video_prompt("女子静坐在台阶上，周身光点缓缓飘动，画面保持静止，镜头固定。"),
+            "女子静坐在台阶上，周身光点缓缓飘动，镜头固定。",
+        )
+        self.assertEqual(
+            SERVICE.tidy_video_prompt("女子静坐在台阶上，裙摆轻动，画面保持静止。"),
+            "女子静坐在台阶上，裙摆轻动。",
+        )
 
     def test_user_duration_labels_and_lines(self):
         self.assertEqual(
@@ -80,6 +115,52 @@ class VideoPromptTidyTests(unittest.TestCase):
             f"{PLACEHOLDER}骑士和 __NOVAFLOW_RESOURCE_MENTION_2_2__ 的战马冲锋",
         )
         self.assertEqual(SERVICE.keep_resource_placeholders_once("骑士冲锋", ""), "骑士冲锋")
+
+    def test_ui_design_text_keeps_only_the_picture(self):
+        self.assertEqual(
+            SERVICE.tidy_ui_design_prompt(
+                "整体为古风配色；道具格子排列在中部，所有控件无悬停或点击状态变化，画面仅展示常态布局。"
+                "确保在不同分辨率下可读性稳定。"
+            ),
+            "整体为古风配色；道具格子排列在中部。",
+        )
+        self.assertEqual(
+            SERVICE.tidy_ui_design_prompt(
+                "按钮为圆形，背景深灰，按压态带轻微浮起阴影。底部是歌词区域，文字浅灰，滚动时带轻微模糊过渡。"
+            ),
+            "按钮为圆形，背景深灰。底部是歌词区域，文字浅灰。",
+        )
+        # What the user asked for stays.
+        self.assertEqual(
+            SERVICE.tidy_ui_design_prompt("按钮悬停时发出金光。", "按钮悬停时发光"),
+            "按钮悬停时发出金光。",
+        )
+        # A text cut off at the length limit ends on its last whole sentence.
+        self.assertEqual(
+            SERVICE.tidy_ui_design_prompt("深色背景。顶部是圆形专辑封面，居中悬浮于上方；底部是进度条，颜色#e0"),
+            "深色背景。顶部是圆形专辑封面，居中悬浮于上方。",
+        )
+
+    def test_echoed_placeholder_rule_is_dropped(self):
+        self.assertEqual(
+            SERVICE.keep_resource_placeholders_once(
+                "背包界面四周是金色边框；道具格子整齐排列在中部；"
+                "所有 __NOVAFLOW_ 开头的资源占位符必须原样保留，不得改动或删减。",
+                "武侠手游的背包界面",
+            ),
+            "背包界面四周是金色边框；道具格子整齐排列在中部。",
+        )
+        self.assertEqual(
+            SERVICE.keep_resource_placeholders_once(
+                f"{PLACEHOLDER}里的骑士冲锋，资源占位符原样保留，镜头后退。", f"{PLACEHOLDER}里的骑士"
+            ),
+            f"{PLACEHOLDER}里的骑士冲锋，镜头后退。",
+        )
+        # A login form's placeholder text is page content, not the rule.
+        self.assertEqual(
+            SERVICE.keep_resource_placeholders_once("输入框内是灰色占位符文字，按钮在底部。", "登录页"),
+            "输入框内是灰色占位符文字，按钮在底部。",
+        )
 
 
 class FirstLastQualityGateTests(unittest.TestCase):
@@ -122,6 +203,61 @@ class VideoPromptFeatureTests(unittest.TestCase):
         self.assertIn("动作要有力量感", parts[0])
         self.assertEqual(result["positivePrompt"], f"{PLACEHOLDER}里的骑士拔出长剑，向前冲锋，镜头后退跟随。")
         self.assertTrue(result["negativePrompt"])
+
+    def test_animation_optimize_keeps_every_user_action(self):
+        assistant = SERVICE.PromptAssistant()
+        calls = []
+
+        def generate(prompt: str, **kwargs):
+            calls.append(prompt)
+            return "骑士拔出长剑，向前冲锋。他右手握住剑柄，将长剑抽出，镜头缓慢后退。"
+
+        assistant.generate = generate
+        payload = {"surface": "animation", "purpose": "optimize"}
+        assistant.optimize_prompt({**payload, "prompt": "骑士拔出长剑，向前冲锋"})
+        # A short request is copied first, so no action the user wrote gets lost.
+        self.assertIn("第一句原样照抄", calls[-1])
+        self.assertIn("约60到150字", calls[-1])
+        long_prompt = "骑士在黄昏的城堡广场上拔出长剑，" * 6
+        assistant.optimize_prompt({**payload, "prompt": long_prompt})
+        self.assertIn("原句为骨架", calls[-1])
+        self.assertNotIn("约60到150字", calls[-1])
+
+    def test_ui_optimize_names_the_placeholder_rule_only_for_placeholders(self):
+        assistant = SERVICE.PromptAssistant()
+        calls = []
+
+        def generate(prompt: str, **kwargs):
+            calls.append(prompt)
+            return "背包界面四周是金色边框；道具格子在中部；所有 __NOVAFLOW_ 开头的资源占位符必须原样保留。"
+
+        assistant.generate = generate
+        payload = {"surface": "ui-design", "purpose": "ui-design-generation", "supportsNegativePrompt": True}
+        result = assistant.optimize_prompt({**payload, "prompt": "武侠手游的背包界面，金色边框"})
+        self.assertNotIn("占位符", calls[-1])
+        self.assertEqual(result["positivePrompt"], "背包界面四周是金色边框；道具格子在中部。")
+        assistant.optimize_prompt({**payload, "prompt": f"{PLACEHOLDER}风格的背包界面"})
+        self.assertIn("资源引用占位符", calls[-1])
+
+    def test_wan_first_frame_reverse_writes_orientation_as_seen(self):
+        assistant = SERVICE.PromptAssistant()
+        calls = []
+
+        def generate(prompt: str, **kwargs):
+            calls.append(prompt)
+            return "一只橘猫侧身朝画面右侧趴着，前爪向前伸直，镜头保持固定。"
+
+        assistant.generate = generate
+        with mock.patch.object(SERVICE, "data_url_to_tensor", lambda _value: object()):
+            assistant.reverse_image_prompt({
+                "images": [{"dataUrl": "data:image/png;base64,x", "role": "参考图"}],
+                "surface": "animation",
+                "currentPrompt": "猫咪伸懒腰",
+            })
+        # No "正对镜头" example that every answer would copy; limbs by the side of the picture.
+        self.assertNotIn("正对镜头", calls[-1])
+        self.assertIn("画面左侧的手臂", calls[-1])
+        self.assertIn("身体部位运动", calls[-1])
 
     def test_wan_first_frame_reverse_keeps_final_period_and_uses_its_own_system_turn(self):
         assistant = SERVICE.PromptAssistant()
@@ -166,6 +302,9 @@ class VideoPromptFeatureTests(unittest.TestCase):
                 "purpose": "",
             })
         self.assertEqual(len(calls), 2)
+        # Light and shadow get their own line, so a pair that differs only there is not written as still.
+        self.assertIn("光影变化：", calls[0][0])
+        self.assertIn("阴影", calls[1][0])
         for prompt, kwargs in calls:
             system_text, parts = SERVICE.qwen3_chat_parts(prompt, kwargs.get("llama_template"), kwargs.get("images"))
             self.assertIn("首尾帧", system_text)
