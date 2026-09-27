@@ -13929,7 +13929,7 @@ class PromptAssistant:
             protected_fragments[fragment] = (protected.sub(protect, fragment), tokens)
         translated = {}
         raw_outputs = []
-        template = '<|im_start|>system\nYou are a Chinese to English translator. Translate text values into English. Return JSON, preserving keys, numbers and every TOKEN_N placeholder. Translate complete sentences without omitting edit verbs or constraints, and do not add or remove actions. Do not copy Chinese text. In ancient, mythological or martial scenes 枪 is a spear (出枪 = thrusts the spear), never a gun; 信子 of a snake is its forked tongue.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n'
+        template = '<|im_start|>system\nYou are a Chinese to English translator. Translate text values into English. Return JSON, preserving keys, numbers and every TOKEN_N placeholder. Translate complete sentences without omitting edit verbs or constraints, and do not add or remove actions. Keep a TOKEN_N even when the words after it name the same thing: TOKEN_0 两只小鸟飞向 TOKEN_1 -> TOKEN_0, the two birds, fly toward TOKEN_1. Do not copy Chinese text. In ancient, mythological or martial scenes 枪 is a spear (出枪 = thrusts the spear), never a gun; 信子 of a snake is its forked tongue.<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n'
 
         def patch_leftover(key, candidate):
             # The model may keep one phrase in Chinese on every attempt (背着 in
@@ -13977,6 +13977,11 @@ class PromptAssistant:
                         # "TheTOKEN_0 in the picture" repeats a placeholder glued
                         # to a word; drop such extras when that restores the set.
                         unglued = re.sub(r'(?<=[A-Za-z])TOKEN_\d+', '', candidate)
+                        # "TOKEN_0 三个石板缓缓升空" comes back as "The three stone
+                        # slabs rise": the opening tag folds into its noun. Put it back.
+                        lead = re.match(r'TOKEN_\d+', original)
+                        if lead and sorted(re.findall(r'TOKEN_\d+', lead[0] + ' ' + unglued)) == expected_tokens:
+                            unglued = lead[0] + ' ' + unglued.strip()
                         if sorted(re.findall(r'TOKEN_\d+', unglued)) != expected_tokens:
                             continue
                         candidate = unglued

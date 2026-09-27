@@ -106,6 +106,16 @@ class TranslationTest(unittest.TestCase):
         self.assertEqual(phrases, ['背着'])
         self.assertIn('Appearance from <Picture 1>, carrying a green backpack.', pair['modelPrompt'])
 
+    def test_an_opening_tag_folded_into_its_noun_is_put_back(self):
+        # Qwen3 read "<Subject 1> 三个石板" as one noun on every attempt and the
+        # whole 多参 generation failed with 本地翻译未完整保留内容.
+        pair, calls = self.run_translation(
+            fields={'detailed_description': '[Shot 1] <Subject 1> 三个石板缓缓升空，向 <Picture 1> 方向聚拢飞行。'},
+            translations={'TOKEN_0 三个石板缓缓升空，向 TOKEN_1 方向聚拢飞行。':
+                          'The three stone slabs slowly rise into the air and fly toward TOKEN_1.'})
+        self.assertEqual(len(calls), 1)
+        self.assertIn('[Shot 1] <Subject 1> The three stone slabs slowly rise into the air and fly toward <Picture 1>.', pair['modelPrompt'])
+
     def test_spatial_translation_may_introduce_3d_without_changing_literal_timing(self):
         pair, calls = self.run_translation(spatial=True)
         self.assertEqual(len(calls), 1)
