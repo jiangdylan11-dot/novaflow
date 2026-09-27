@@ -1356,9 +1356,7 @@
           <section class="aifx-candidates" data-candidates hidden></section>
           <button class="aifx-seed-lock" data-action="lock-seed" type="button" hidden></button>
           <section class="aifx-timeline">
-            <button class="aifx-button aifx-icon-button" data-action="prev" type="button" title="上一帧" aria-label="上一帧"><i class="fas fa-step-backward" aria-hidden="true"></i></button>
             <button class="aifx-button aifx-icon-button" data-action="play" type="button" title="播放" aria-label="播放"><i class="fas fa-play" aria-hidden="true"></i></button>
-            <button class="aifx-button aifx-icon-button" data-action="next" type="button" title="下一帧" aria-label="下一帧"><i class="fas fa-step-forward" aria-hidden="true"></i></button>
             <input data-action="timeline" type="range" min="0" max="0" value="0">
             <div data-frame-label>0 / 0</div>
           </section>
@@ -2201,15 +2199,6 @@
     refreshUi()
   }
 
-  const stepFrame = (delta) => {
-    const total = frameCount()
-    if (!total) return
-    stopPlayback()
-    state.playhead = (state.playhead + delta + total) % total
-    refreshUi()
-    drawPreview()
-  }
-
 
   // --- libraries ------------------------------------------------------------
   // Both pickers are what the particle editor's 模板库 is: a panel over the
@@ -3035,10 +3024,6 @@
       .addEventListener('click', guard(() => { clearReference() }))
     root.querySelector('[data-action="generate"]')
       .addEventListener('click', guard(() => runGenerate()))
-    root.querySelector('[data-action="prev"]')
-      .addEventListener('click', guard(() => stepFrame(-1)))
-    root.querySelector('[data-action="next"]')
-      .addEventListener('click', guard(() => stepFrame(1)))
     refs.playButton?.addEventListener('click', guard(() => togglePlayback()))
 
     for (const dropzone of Array.from(root.querySelectorAll('[data-nf-upload-dropzone]'))) {
@@ -3144,6 +3129,9 @@
       // Rebuilt only when play / pause flips, not on every frame.
       if (refs.playButton.dataset.aifxPlayIcon !== (state.playing ? 'pause' : 'play')) {
         refs.playButton.dataset.aifxPlayIcon = state.playing ? 'pause' : 'play'
+        // The host draws the playback icon from the button's title.
+        refs.playButton.title = state.playing ? '暂停' : '播放'
+        refs.playButton.setAttribute('aria-label', state.playing ? '暂停' : '播放')
         refs.playButton.innerHTML = state.playing
           ? '<i class="fas fa-pause" aria-hidden="true"></i>'
           : '<i class="fas fa-play" aria-hidden="true"></i>'
