@@ -950,21 +950,25 @@ const MODEL_MANIFEST = Object.freeze([
     }
   },
   {
-    // 提示词助手's own model. 'local' like BiRefNet: ComfyUI never loads it, the
-    // files on disk say whether it is here, and worker-core then asks the
-    // Python service itself (reportModels) before advertising it.
+    // 提示词助手's own model, Qwen3-VL 8B in NF4. 'local' like BiRefNet: ComfyUI
+    // never loads it. Either folder is enough ('any'): the NF4 cache the
+    // assistant loads, or the raw model it builds that cache from on first use.
+    // worker-core then asks the assistant itself (reportModels), which checks
+    // the whole folder and its Python service, before advertising it.
     model_id: 'prompt-assistant',
-    display_name: '提示词助手 (Qwen2.5-VL 7B)',
-    version: '1.0.0',
+    display_name: '提示词助手 (Qwen3-VL 8B)',
+    version: '2.0.0',
     runtime: 'local',
     min_vram_mb: 8000,
     compatible_workflows: ['prompt_assistant'],
+    required_match: 'any',
     required_files: [
-      { path: 'text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors', min_bytes: 5_000_000_000, sha256: null }
+      { path: 'prompt_assistant/cache/Huihui-Qwen3-VL-8B-Instruct-Abliterated-novaflow-bnb-nf4-v1/novaflow_nf4_cache.json', min_bytes: 100, sha256: null },
+      { path: 'prompt_assistant/Huihui-Qwen3-VL-8B-Instruct-Abliterated/model.safetensors.index.json', min_bytes: 10_000, sha256: null }
     ],
     download: {
       mode: 'import_or_configured_url',
-      hint: '从已有的 NovaFlow 模型目录导入（例如 E:/NovaFlow/models/text_encoders）。'
+      hint: '从已有的 NovaFlow 模型目录导入 prompt_assistant/cache 下的 NF4 缓存文件夹（例如 E:/NovaFlow/models/prompt_assistant）。'
     }
   },
   {

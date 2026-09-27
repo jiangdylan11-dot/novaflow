@@ -25,6 +25,11 @@ NovaFlow AI Runtime
 需要哪些文件、放在哪个子目录、各自用于什么功能，见同目录的 MODELS.txt。
 Qwen-Image-2.1 的三个文件是必需的：扩图、局部编辑、智能补图、角度调整、绘图都只用 2.1，
 缺少时这些功能会直接提示"缺少 Qwen-Image-2.1 所需的模型"。
+提示词助手（本地反推 / 优化提示词）只需要 NF4 缓存文件夹
+prompt_assistant\cache\Huihui-Qwen3-VL-8B-Instruct-Abliterated-novaflow-bnb-nf4-v1\（约 6.4 GB）；
+原始模型文件夹 prompt_assistant\Huihui-Qwen3-VL-8B-Instruct-Abliterated\（约 17.5 GB）是可选的，
+只在没有缓存、或升级 Python 运行环境后要重建缓存时才需要。
+text_encoders\qwen_2.5_vl_7b_fp8_scaled.safetensors 已不再使用，可以删掉。
 
 升级已有的 Runtime：
 - 先退出 NovaFlow。setup.exe 会把旧的 engine 挪到 engine.previous，再装新的；

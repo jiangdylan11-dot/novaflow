@@ -39,9 +39,13 @@ NovaFlow AI Runtime 模型清单
   SEEDVR2\seedvr2_ema_3b_fp8_e4m3fn.safetensors                      3.4 GB
   SEEDVR2\ema_vae_fp16.safetensors                                   0.5 GB
 
-八、提示词助手（本地反推 / 优化提示词）
-  prompt_assistant\Huihui-Qwen3-VL-8B-Instruct-Abliterated\   （整个文件夹）  约 17.5 GB
-  text_encoders\qwen_2.5_vl_7b_fp8_scaled.safetensors                9.4 GB（提示词助手必需）
+八、提示词助手（本地反推 / 优化提示词，千问 3 模型 Qwen3-VL 8B）
+  必需，只要这一个文件夹：
+  prompt_assistant\cache\Huihui-Qwen3-VL-8B-Instruct-Abliterated-novaflow-bnb-nf4-v1\   （整个文件夹，NF4 缓存）  约 6.4 GB
+  可选：
+  prompt_assistant\Huihui-Qwen3-VL-8B-Instruct-Abliterated\   （整个文件夹，原始模型）  约 17.5 GB
+    原始模型只在两种情况下需要：没有缓存文件夹；或者升级了 Python 运行环境里的
+    torch / transformers / bitsandbytes，需要重建缓存。只放原始模型时，第一次使用会自动生成缓存，会慢一些。
 
 不需要（没有功能在用，可以删掉）：
   unet\qwen_image_layered_control_bf16.safetensors 和 vae\qwen_image_layered_vae.safetensors
@@ -53,5 +57,7 @@ NovaFlow AI Runtime 模型清单
     loras\Qwen-Image-Lightning-8steps-V2.0.safetensors
   controlnet\Qwen-Image-ControlNet-Union.safetensors
   checkpoints\sdpose_wholebody_fp16.safetensors
+  text_encoders\qwen_2.5_vl_7b_fp8_scaled.safetensors
+  （提示词助手已经全部改用千问 3 模型）
 
 只用部分功能时，只放对应分组即可；缺少的功能在 NovaFlow 里会提示缺哪个模型。

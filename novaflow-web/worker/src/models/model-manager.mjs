@@ -102,6 +102,12 @@ export async function inspectModel(modelsRoot, model, { verifyHashes = false } =
       verified: required.sha256 ? 'size_only_hash_skipped' : 'size_only_no_hash_pinned'
     });
   }
+  // Files that are alternatives to each other (required_match 'any'): one good one is enough.
+  if (model.required_match === 'any') {
+    const usable = files.some((f) => f.present && f.verified !== 'too_small' && f.verified !== 'hash_mismatch');
+    status = usable ? WORKER_MODEL_STATUS.READY
+      : files.some((f) => f.present) ? WORKER_MODEL_STATUS.INVALID : WORKER_MODEL_STATUS.MISSING;
+  }
 
   return {
     model_id: model.model_id,
@@ -190,7 +196,7 @@ export async function inspectViaComfy(comfy, { manifest = MODEL_MANIFEST, timeou
       const present = [...known].some((k) => k.endsWith(base));
       return { path: f.path, present, verified: present ? 'comfy_can_load' : 'comfy_cannot_see' };
     });
-    const allPresent = files.every((f) => f.present);
+    const allPresent = model.required_match === 'any' ? files.some((f) => f.present) : files.every((f) => f.present);
     return {
       model_id: model.model_id,
       model_version: model.version,

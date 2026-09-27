@@ -3,8 +3,12 @@
 // The desktop client starts prompt-assistant-service.py beside ComfyUI's own
 // Python and talks to it over stdin/stdout, one JSON line per request. The
 // browser opened by 启动NovaFlow reaches the same script through the local
-// server here, so 本地模型 in 智能 AI means this machine's Qwen text encoder
-// - the file 绘图 already loads - instead of a refusal.
+// server here, so 本地模型 in 智能 AI means this machine's Qwen3-VL 8B instead
+// of a refusal.
+//
+// Every command runs on that one model. It is here when its NF4 cache folder
+// is (what the script loads), or its raw folder is (what that cache is built
+// from); either one is enough.
 //
 // The model shares the GPU with the drawing runtime, so a request follows the
 // desktop's order: refuse while a task runs, ask ComfyUI to unload, run the
@@ -15,11 +19,15 @@ import { StringDecoder } from 'node:string_decoder';
 import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const MODEL_TYPE = 'qwen2_5_vl_7b_fp8';
-export const MODEL_NAME = 'qwen_2.5_vl_7b_fp8_scaled.safetensors';
-export const REVERSE_MODEL_TYPE = 'qwen3_vl_8b_abliterated_nf4';
-export const REVERSE_MODEL_DIR = 'Huihui-Qwen3-VL-8B-Instruct-Abliterated';
-const REVERSE_CACHE_DIR = REVERSE_MODEL_DIR + '-novaflow-bnb-nf4-v1';
+export const MODEL_TYPE = 'qwen3_vl_8b_abliterated_nf4';
+export const MODEL_DIR = 'Huihui-Qwen3-VL-8B-Instruct-Abliterated';
+export const CACHE_DIR = MODEL_DIR + '-novaflow-bnb-nf4-v1';
+// The cache folder's own marks, as prompt_assistant/qwen3_vl_adapter.py writes them.
+const CACHE_MANIFEST = 'novaflow_nf4_cache.json';
+const CACHE_SCHEMA = 'nf.qwen3-vl.bnb-nf4-cache.v1';
+const CACHE_INVALID_MARKER = '.novaflow-cache-invalid.json';
+export const MODEL_MISSING_ERROR = '未配置千问 3 提示词模型：请把 NF4 缓存文件夹放到模型目录的 prompt_assistant\\cache\\' + CACHE_DIR
+  + '，或把原始模型文件夹放到 prompt_assistant\\' + MODEL_DIR;
 const H3_REVERSE_PURPOSES = ['minimax-h3-i2v-reverse', 'minimax-h3-fl2v-reverse'];
 const START_TIMEOUT_MS = 12000;
 const STOP_TIMEOUT_MS = 5000;
@@ -47,26 +55,52 @@ function readRuntime(path) {
 }
 
 function isFile(path) { try { return Boolean(path) && statSync(path).isFile(); } catch { return false; } }
+function isDir(path) { try { return Boolean(path) && statSync(path).isDirectory(); } catch { return false; } }
+const readJson = path => JSON.parse(readFileSync(path, 'utf8').replace(/^\uFEFF/, ''));
+const isQwen3Config = config => Array.isArray(config?.architectures) && config.architectures.includes('Qwen3VLForConditionalGeneration');
 
+/** model.safetensors, or every shard model.safetensors.index.json names, inside the folder. */
+function hasWeights(folder) {
+  if (existsSync(join(folder, 'model.safetensors'))) return true;
+  const indexPath = join(folder, 'model.safetensors.index.json');
+  if (!existsSync(indexPath)) return false;
+  const shards = Array.from(new Set(Object.values(readJson(indexPath)?.weight_map || {}))).map(name => String(name || '').trim()).filter(Boolean);
+  return shards.length > 0 && shards.every(name => {
+    const full = resolve(folder, name);
+    const rel = relative(resolve(folder), full);
+    return rel && !rel.startsWith('..') && !isAbsolute(rel) && isFile(full);
+  });
+}
+
+/** The raw Huihui-Qwen3-VL-8B folder: what the NF4 cache is built from. */
 function isReverseModelDir(candidate) {
-  if (!candidate) return false;
   try {
-    if (!statSync(candidate).isDirectory()) return false;
+    if (!isDir(candidate)) return false;
     for (const name of ['config.json', 'tokenizer_config.json', 'preprocessor_config.json']) {
       if (!existsSync(join(candidate, name))) return false;
     }
-    const config = JSON.parse(readFileSync(join(candidate, 'config.json'), 'utf8'));
-    if (!Array.isArray(config?.architectures) || !config.architectures.includes('Qwen3VLForConditionalGeneration')) return false;
-    if (existsSync(join(candidate, 'model.safetensors'))) return true;
-    const indexPath = join(candidate, 'model.safetensors.index.json');
-    if (!existsSync(indexPath)) return false;
-    const manifest = JSON.parse(readFileSync(indexPath, 'utf8'));
-    const shards = Array.from(new Set(Object.values(manifest?.weight_map || {}))).map(name => String(name || '').trim()).filter(Boolean);
-    return shards.length > 0 && shards.every(name => {
-      const full = resolve(candidate, name);
-      const rel = relative(resolve(candidate), full);
-      return rel && !rel.startsWith('..') && !isAbsolute(rel) && isFile(full);
-    });
+    return isQwen3Config(readJson(join(candidate, 'config.json'))) && hasWeights(candidate);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The NF4 cache folder the script loads the model from. The structure only:
+ * whether it still matches this machine's torch / transformers / bitsandbytes
+ * is the script's call when it loads it.
+ */
+export function isReverseCacheDir(candidate) {
+  try {
+    if (!isDir(candidate) || existsSync(join(candidate, CACHE_INVALID_MARKER))) return false;
+    if (readJson(join(candidate, CACHE_MANIFEST))?.schema !== CACHE_SCHEMA) return false;
+    const config = readJson(join(candidate, 'config.json'));
+    if (!isQwen3Config(config) || config?.quantization_config?.quant_method !== 'bitsandbytes') return false;
+    const has = name => isFile(join(candidate, name));
+    if (!has('tokenizer.json') && !has('tokenizer_config.json')) return false;
+    if (!has('processor_config.json') && !has('preprocessor_config.json')) return false;
+    if (!has('chat_template.jinja') && !(has('tokenizer_config.json') && readJson(join(candidate, 'tokenizer_config.json'))?.chat_template)) return false;
+    return hasWeights(candidate);
   } catch {
     return false;
   }
@@ -177,7 +211,10 @@ export function normalizeOptimizeRequest(payload = {}) {
   const surface = String(payload.surface || '').trim().slice(0, 80);
   const purpose = String(payload.purpose || '').trim().slice(0, 80);
   const usesH3 = purpose.toLowerCase().replace(/_/g, '-') === 'minimax-h3-prompt-enhance';
-  const requirements = String(payload.requirements || '').trim().slice(0, usesH3 ? 12000 : 2000);
+  // H3 requirements carry the whole source prompt, the labels and then the
+  // user's own request last; the script takes up to 48000, so a shorter cut
+  // here would drop exactly that request.
+  const requirements = String(payload.requirements || '').trim().slice(0, usesH3 ? 48000 : 2000);
   const currentPrompt = String(payload.currentPrompt ?? payload.current_prompt ?? prompt).trim().slice(0, 20000);
   const h3Mode = String(payload.h3Mode ?? payload.h3_mode ?? '').trim().slice(0, 80);
   const h3Duration = payload.durationSeconds ?? payload.duration_seconds ?? payload.duration;
@@ -234,7 +271,6 @@ export function normalizeReverseRequest(payload = {}) {
   const usesVisualV2 = purpose === 'static-image-reverse' && images.length === 1 && visualSchema === 'nf.visual.v2';
   return {
     usesVisualV2,
-    staticImageReverse: purpose === 'static-image-reverse',
     timeoutMs: usesH3 ? 180000 * Math.max(1, images.length) : 300000,
     request: {
       images, requirements, surface, purpose, provider: 'local', currentPrompt,
@@ -276,7 +312,7 @@ async function freeMemory(baseUrl, timeoutMs = 15000) {
   return first.status === 404 ? post('/api/free') : first;
 }
 
-export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPath, serviceScript, runtimeJsonPath, modelPath, reverseModelPath, reverseCachePath, env } = {}) {
+export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPath, serviceScript, runtimeJsonPath, modelPath, cachePath, env } = {}) {
   const log = logger || (() => {});
   let proc = null, startPromise = null, stopPromise = null, lease = null;
   let nextId = 1, buffer = '', stderrTail = [], pending = new Map();
@@ -290,28 +326,26 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     const script = serviceScript || serviceScriptPath();
     const python = pythonPath || process.env.NOVAFLOW_PROMPT_ASSISTANT_PYTHON
       || [join(runtime.installPath, 'engine', 'python', 'python.exe')].find(existsSync) || 'python';
-    const models = [modelPath, process.env.NOVAFLOW_PROMPT_ASSISTANT_MODEL_PATH, runtime.modelsPath && join(runtime.modelsPath, 'text_encoders', MODEL_NAME)].filter(Boolean);
-    const model = models.find(isFile) || models[0] || '';
-    const reverses = [reverseModelPath, process.env.NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH,
-      runtime.modelsPath && join(runtime.modelsPath, 'prompt_assistant', REVERSE_MODEL_DIR), runtime.modelsPath && join(runtime.modelsPath, 'vlm', REVERSE_MODEL_DIR)].filter(Boolean);
-    const reverse = reverses.find(isReverseModelDir) || reverses[0] || '';
-    const cache = reverseCachePath || process.env.NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH
-      || (runtime.modelsPath ? join(runtime.modelsPath, 'prompt_assistant', 'cache', REVERSE_CACHE_DIR) : join(dirname(reverse || script), '.novaflow-cache', REVERSE_CACHE_DIR));
-    const modelExists = isFile(model), serviceExists = isFile(script), reverseModelEnabled = isReverseModelDir(reverse);
+    const folders = [modelPath, process.env.NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH,
+      runtime.modelsPath && join(runtime.modelsPath, 'prompt_assistant', MODEL_DIR), runtime.modelsPath && join(runtime.modelsPath, 'vlm', MODEL_DIR)].filter(Boolean);
+    const folder = folders.find(isReverseModelDir) || folders[0] || '';
+    const cache = cachePath || process.env.NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH
+      || (runtime.modelsPath ? join(runtime.modelsPath, 'prompt_assistant', 'cache', CACHE_DIR) : join(dirname(folder || script), '.novaflow-cache', CACHE_DIR));
+    const modelFolderReady = isReverseModelDir(folder), cacheReady = isReverseCacheDir(cache);
+    const modelExists = modelFolderReady || cacheReady, serviceExists = isFile(script);
     return {
-      modelType: MODEL_TYPE, modelPath: model, modelExists,
-      reverseModelType: REVERSE_MODEL_TYPE, reverseModelPath: reverse, reverseModelEnabled, reverseCachePath: cache,
+      modelType: MODEL_TYPE, modelPath: folder, modelFolderReady, cachePath: cache, cacheReady, modelExists,
       serviceScript: script, serviceExists, pythonPath: python,
       comfyRoot: process.env.NOVAFLOW_COMFY_ROOT || join(runtime.installPath, 'engine', 'ComfyUI'), runtimeJsonPath: runtimeJson,
       enabled: modelExists && serviceExists,
-      runtimeStatus: lease ? '推理中' : modelExists ? '模型可用' : reverseModelEnabled ? '图片反推模型可用' : '未配置模型',
-      error: !serviceExists ? 'Prompt Assistant 服务脚本不存在' : modelExists || reverseModelEnabled ? lastError : '未配置模型'
+      runtimeStatus: lease ? '推理中' : modelExists ? '模型可用' : '未配置模型',
+      error: !serviceExists ? 'Prompt Assistant 服务脚本不存在' : modelExists ? lastError : MODEL_MISSING_ERROR
     };
   }
 
   const publicConfig = cfg => ({
-    modelType: cfg.modelType, modelPath: cfg.modelPath, reverseModelType: cfg.reverseModelType, reverseModelPath: cfg.reverseModelPath,
-    reverseModelEnabled: cfg.reverseModelEnabled, enabled: cfg.enabled, runtimeStatus: cfg.runtimeStatus
+    modelType: cfg.modelType, modelPath: cfg.modelPath, modelFolderReady: cfg.modelFolderReady,
+    cachePath: cfg.cachePath, cacheReady: cfg.cacheReady, enabled: cfg.enabled, runtimeStatus: cfg.runtimeStatus
   });
 
   function rejectPending(message) {
@@ -356,10 +390,9 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
         env: {
           ...process.env, ...(env || {}), PYTHONIOENCODING: 'utf-8',
           NOVAFLOW_RUNTIME_JSON: cfg.runtimeJsonPath, NOVAFLOW_COMFY_ROOT: cfg.comfyRoot,
-          NOVAFLOW_PROMPT_ASSISTANT_MODEL_PATH: cfg.modelPath,
-          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH: cfg.reverseModelPath,
-          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_TYPE: cfg.reverseModelType,
-          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH: cfg.reverseCachePath
+          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH: cfg.modelPath,
+          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_TYPE: cfg.modelType,
+          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH: cfg.cachePath
         }
       });
       proc = child; buffer = ''; stderrTail = [];
@@ -467,13 +500,9 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
    * hands over the GPU first, and the script is stopped again afterwards so
    * the next 绘图 finds its memory free.
    */
-  async function request(command, payload, timeoutMs, { reverseOnly = false } = {}) {
+  async function request(command, payload, timeoutMs) {
     const cfg = config();
-    const commandEnabled = cfg.serviceExists && (cfg.modelExists || (reverseOnly && cfg.reverseModelEnabled));
-    if (!commandEnabled) {
-      const error = cfg.serviceExists && command === 'reverseImagePrompt' && !reverseOnly && !cfg.modelExists ? '当前反推模式需要 Qwen2.5-VL 旧模型，但该模型未配置' : cfg.error;
-      return { ...publicConfig(cfg), ok: false, enabled: false, error };
-    }
+    if (!cfg.enabled) return { ...publicConfig(cfg), ok: false, error: cfg.error };
     if (lease) return { ...publicConfig(cfg), ok: false, runtimeStatus: '推理中', error: 'Prompt Assistant 正在处理另一项任务，请等待完成后重试', errorCode: 'prompt-assistant-busy', failureCategory: 'resource_busy', retryable: true };
     lease = { command, startedAt: Date.now() };
     let result, started = false;
@@ -518,7 +547,7 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     },
     status() {
       const cfg = config();
-      return { ok: true, ...publicConfig(cfg), error: cfg.enabled || cfg.reverseModelEnabled ? lastError : cfg.error, warning: lastWarning };
+      return { ok: true, ...publicConfig(cfg), error: cfg.error, warning: lastWarning };
     },
     async optimizePrompt(payload) {
       let normalized;
@@ -528,14 +557,13 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     async reverseImagePrompt(payload) {
       let normalized;
       try { normalized = normalizeReverseRequest(payload); } catch (error) { return invalid(error); }
-      const options = { reverseOnly: normalized.staticImageReverse };
-      let result = await request('reverseImagePrompt', normalized.request, normalized.timeoutMs, options);
+      let result = await request('reverseImagePrompt', normalized.request, normalized.timeoutMs);
       if (normalized.usesVisualV2 && isCachePreparationFailure(result)) {
-        // The NF4 copy of the reverse model is built once on disk; the desktop
+        // The NF4 copy of the model is built once on disk; the desktop
         // does the same when the script asks for it.
-        const prepared = await request('prepareReverseCache', {}, 900000, { reverseOnly: true });
+        const prepared = await request('prepareReverseCache', {}, 900000);
         if (prepared?.ok !== true) return { ...prepared, ok: false, runtimeStatus: '反推模型准备失败', error: '本地反推模型的 NF4 磁盘缓存准备失败，请重试', errorCode: String(prepared?.errorCode || 'reverse-cache-prepare-failed'), failureCategory: 'model_preparation', retryable: true };
-        result = await request('reverseImagePrompt', normalized.request, normalized.timeoutMs, options);
+        result = await request('reverseImagePrompt', normalized.request, normalized.timeoutMs);
       }
       return result;
     },

@@ -16,7 +16,9 @@ createInterface({ input: process.stdin }).on('line', line => {
       positivePrompt: 'optimized: ' + request.prompt,
       negativePrompt: 'blurry',
       echo: { provider: request.provider, surface: request.surface, purpose: request.purpose, currentPrompt: request.currentPrompt,
-        modelPath: process.env.NOVAFLOW_PROMPT_ASSISTANT_MODEL_PATH, comfyRoot: process.env.NOVAFLOW_COMFY_ROOT, runtimeJson: process.env.NOVAFLOW_RUNTIME_JSON }
+        modelPath: process.env.NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH, cachePath: process.env.NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH,
+        legacyModelPath: process.env.NOVAFLOW_PROMPT_ASSISTANT_MODEL_PATH ?? null,
+        comfyRoot: process.env.NOVAFLOW_COMFY_ROOT, runtimeJson: process.env.NOVAFLOW_RUNTIME_JSON }
     };
     if (request.prompt === 'delay') setTimeout(() => answer(request, data), 400);
     else if (request.prompt === 'fail') emit({ id: request.id, ok: false, error: 'model refused', errorCode: 'generation-blocked', retryable: false });

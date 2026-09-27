@@ -4,13 +4,17 @@
 // local server. The hosted site keeps refusing, since no machine stands behind it.
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createContext, runInContext } from 'node:vm';
 import { createLocalAssistant } from '../../worker/src/local-assistant.mjs';
-import { createPromptAssistant, MODEL_NAME, normalizeOptimizeRequest } from '../../worker/src/prompt-assistant.mjs';
+import { createPromptAssistant, isReverseCacheDir, normalizeOptimizeRequest, CACHE_DIR, MODEL_DIR, MODEL_MISSING_ERROR } from '../../worker/src/prompt-assistant.mjs';
+import { createWorker } from '../../worker/src/worker-core.mjs';
+import { inspectModel } from '../../worker/src/models/model-manager.mjs';
+import { findModel } from '../../packages/shared/src/model-manifest.mjs';
+import { PROMPT_ASSISTANT_MODEL_ID } from '../../packages/shared/src/protocol.mjs';
 import { createDomSandbox } from '../../worker/src/comfy/dom-shim.mjs';
 let checks = 0;
 function check(value, message) { assert.ok(value, message); checks++; }
@@ -31,11 +35,36 @@ const comfy = createServer(async (req, res) => {
 });
 const comfyUrl = await listen(comfy);
 
+// The two folders the Qwen3-VL model comes in, shaped as the script writes and reads them.
+const writeJson = (path, value) => writeFile(path, JSON.stringify(value));
+async function writeModelFolder(dir) {
+  await mkdir(dir, { recursive: true });
+  await writeJson(join(dir, 'config.json'), { architectures: ['Qwen3VLForConditionalGeneration'] });
+  await writeJson(join(dir, 'tokenizer_config.json'), {});
+  await writeJson(join(dir, 'preprocessor_config.json'), {});
+  const shards = ['model-00001-of-00002.safetensors', 'model-00002-of-00002.safetensors'];
+  await writeJson(join(dir, 'model.safetensors.index.json'), { metadata: { note: 'x'.repeat(12000) }, weight_map: { a: shards[0], b: shards[1] } });
+  for (const shard of shards) await writeFile(join(dir, shard), 'not really weights');
+}
+async function writeCacheFolder(dir) {
+  await mkdir(dir, { recursive: true });
+  await writeJson(join(dir, 'novaflow_nf4_cache.json'), { schema: 'nf.qwen3-vl.bnb-nf4-cache.v1', quantization: { method: 'bitsandbytes', bits: 4, quantType: 'nf4' }, runtimeVersions: { torch: 'fixture' } });
+  await writeJson(join(dir, 'config.json'), { architectures: ['Qwen3VLForConditionalGeneration'], quantization_config: { quant_method: 'bitsandbytes' } });
+  await writeJson(join(dir, 'tokenizer.json'), {});
+  await writeJson(join(dir, 'tokenizer_config.json'), {});
+  await writeJson(join(dir, 'processor_config.json'), {});
+  await writeFile(join(dir, 'chat_template.jinja'), '{{ messages }}');
+  await writeJson(join(dir, 'model.safetensors.index.json'), { weight_map: { a: 'model-00001-of-00001.safetensors' } });
+  await writeFile(join(dir, 'model-00001-of-00001.safetensors'), 'not really weights');
+}
+
 // The runtime layout the desktop reads: runtime.json names where the models are.
+// This machine has only the NF4 cache, the one folder a new install needs.
 const dataDir = await mkdtemp(join(tmpdir(), 'novaflow-prompt-assistant-test-'));
 const runtimeDir = join(dataDir, 'AI-Runtime'); await mkdir(join(runtimeDir, 'engine', 'ComfyUI'), { recursive: true });
-const modelsDir = join(dataDir, 'models'); await mkdir(join(modelsDir, 'text_encoders'), { recursive: true });
-await writeFile(join(modelsDir, 'text_encoders', MODEL_NAME), 'not really weights');
+const modelsDir = join(dataDir, 'models');
+const cacheDir = join(modelsDir, 'prompt_assistant', 'cache', CACHE_DIR);
+await writeCacheFolder(cacheDir);
 const runtimeJsonPath = join(runtimeDir, 'runtime.json');
 await writeFile(runtimeJsonPath, '﻿' + JSON.stringify({ installPath: runtimeDir, modelsPath: modelsDir, port: 8188 }));
 const webRoot = join(dataDir, 'web'); await mkdir(webRoot); await writeFile(join(webRoot, 'index.html'), '<html><head></head><body>NovaFlow</body></html>');
@@ -43,7 +72,7 @@ const workflowDir = join(dataDir, 'workflows'); await mkdir(workflowDir);
 const license = { state: async () => ({ status: 'licensed', machineId: 'fixture' }), assertAllowed: async () => {}, importLicense: async () => { throw new Error('fixture'); } };
 const services = { start: async () => [{ kind: 'image', running: true, reused: true }], stop: async () => {} };
 const promptAssistantOptions = { pythonPath: process.execPath, serviceScript: fixture, runtimeJsonPath };
-const assistant = await createLocalAssistant({ dataDir, configPath: join(dataDir, 'identity.json'), workflowDir, webRoot,
+const assistant = await createLocalAssistant({ dataDir, configPath: join(dataDir, 'identity.json'), workflowDir, webRoot, modelsRoot: modelsDir,
   localPort: 0, gatewayPort: 0, gatewayHost: '127.0.0.1', tunnel: false, workerName: 'prompt-assistant-test',
   comfyImageUrl: comfyUrl, comfyVideoUrl: comfyUrl, license, services, pollIntervalMs: 30, promptAssistant: promptAssistantOptions });
 let origin, pairing;
@@ -57,8 +86,10 @@ try {
   // -- paired local routes, desktop-shaped answers ---------------------------
   equal((await fetch(origin + '/local/prompt-assistant/status')).status, 401, 'status needs the pairing key');
   const status = (await call('GET', '/local/prompt-assistant/status')).body;
-  check(status.ok === true && status.enabled === true && status.runtimeStatus === '模型可用', 'the drawing text encoder makes the assistant available');
-  check(status.modelPath.endsWith(MODEL_NAME) && status.reverseModelEnabled === false, 'status names the model it found and the reverse model it did not');
+  check(status.ok === true && status.enabled === true && status.runtimeStatus === '模型可用', 'the NF4 cache folder alone makes the assistant available');
+  equal(status.modelType, 'qwen3_vl_8b_abliterated_nf4', 'status names the Qwen3-VL model');
+  check(status.cacheReady === true && status.cachePath === cacheDir && status.modelFolderReady === false, 'status names the cache it found and the raw folder it did not need');
+  equal(assistant.getState().models.find(m => m.model_id === PROMPT_ASSISTANT_MODEL_ID)?.status, 'ready', 'the node reports 提示词助手 ready from the cache alone');
   check(!assistant.promptAssistant.running, 'the script is not started until asked');
 
   const optimize = await call('POST', '/local/prompt-assistant/optimize-prompt', { prompt: 'hello', surface: 'art', purpose: 'optimize', provider: 'gpt', requirements: 'more light' });
@@ -67,7 +98,9 @@ try {
   equal(optimize.body.runtimeStatus, '模型可用');
   equal(optimize.body.data.echo.provider, 'local', 'a browser cannot pick a cloud provider on this machine');
   equal(optimize.body.data.echo.currentPrompt, 'hello', 'currentPrompt defaults to the prompt as on desktop');
-  equal(optimize.body.data.echo.modelPath, join(modelsDir, 'text_encoders', MODEL_NAME), 'the script gets the model path in its environment');
+  equal(optimize.body.data.echo.cachePath, cacheDir, 'the script gets the NF4 cache path in its environment');
+  equal(optimize.body.data.echo.modelPath, join(modelsDir, 'prompt_assistant', MODEL_DIR), 'and where the raw folder would be');
+  equal(optimize.body.data.echo.legacyModelPath, null, 'the retired Qwen2.5 file is no longer passed');
   equal(optimize.body.data.echo.comfyRoot, join(runtimeDir, 'engine', 'ComfyUI'), 'the script gets ComfyUI from the runtime install');
   equal(optimize.body.data.echo.runtimeJson, runtimeJsonPath);
   equal(freeCalls.length, 1, 'ComfyUI was asked to unload before the model loaded');
@@ -103,6 +136,11 @@ try {
   const dataUrl = 'data:image/png;base64,' + 'A'.repeat(1500000);
   const reverse = (await call('POST', '/local/prompt-assistant/reverse-image-prompt', { purpose: 'static-image-reverse', images: [{ name: '../x.png', dataUrl }], visualSchema: 'nf.visual.v2' })).body;
   check(reverse.ok === true && reverse.data.images === 1 && reverse.data.bytes === dataUrl.length, 'a 1.5 MB reference image reaches the script whole');
+  const small = [{ name: 'a.png', dataUrl: 'data:image/png;base64,QQ==' }];
+  const artReverse = (await call('POST', '/local/prompt-assistant/reverse-image-prompt', { purpose: 'art-reverse', surface: 'art', images: small })).body;
+  check(artReverse.ok === true && artReverse.data.purpose === 'art-reverse', 'every reverse mode runs on the one Qwen3 model, not only the static one');
+  const h3Reverse = (await call('POST', '/local/prompt-assistant/reverse-image-prompt', { purpose: 'minimax-h3-i2v-reverse', visualSchema: 'nf.h3.visual.v1', userPrompt: '', userRequirements: '', images: small })).body;
+  check(h3Reverse.ok === true && h3Reverse.data.purpose === 'minimax-h3-i2v-reverse', 'H3 reverse needs no second model either');
   equal((await call('POST', '/local/bind-account', { token: 'x'.repeat(300000) })).status, 413, 'other local routes keep their small limit');
   const invalid = (await call('POST', '/local/prompt-assistant/reverse-image-prompt', { purpose: 'minimax-h3-i2v-reverse', images: [{ dataUrl }] })).body;
   check(invalid.ok === false && invalid.errorCode === 'invalid-request' && /nf\.h3\.visual\.v1/.test(invalid.error), 'the desktop request contract is enforced');
@@ -116,11 +154,72 @@ try {
   const patch = normalizeOptimizeRequest({ purpose: 'optimize', currentPrompt: 'a cat' });
   check(patch.request.promptSchema === undefined && patch.timeoutMs === 900000, 'a plain rewrite gets the desktop\'s long budget');
   assert.throws(() => normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance', h3ReferenceFrames: [{ label: '<Picture 1>', dataUrl: 'data:image/png;base64,QQ==' }] }), /H3 参考画面与素材不匹配/); checks++;
+  // An H3 requirement carries the whole source prompt first and the user's own request last.
+  const longH3 = normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance', requirements: 'x'.repeat(30000) + '\n用户修改要求：镜头慢慢推近' });
+  check(longH3.request.requirements.endsWith('用户修改要求：镜头慢慢推近'), 'a long H3 requirement keeps the user request at its end');
+  equal(normalizeOptimizeRequest({ purpose: 'minimax-h3-prompt-enhance', requirements: 'x'.repeat(60000) }).request.requirements.length, 48000, 'the H3 cap is the script\'s own 48000');
 
   // -- without the model the answer says so; another instance holding it too --
   const bare = createPromptAssistant({ ...promptAssistantOptions, runtimeJsonPath: join(dataDir, 'missing.json'), comfyUrls: [] });
-  check(bare.status().enabled === false && bare.status().error === '未配置模型', 'no runtime.json means no model');
+  check(bare.status().enabled === false && bare.status().runtimeStatus === '未配置模型' && bare.status().error === MODEL_MISSING_ERROR, 'no runtime.json means no model');
+  check(/千问 3 提示词模型/.test(MODEL_MISSING_ERROR) && MODEL_MISSING_ERROR.includes(CACHE_DIR) && MODEL_MISSING_ERROR.includes(MODEL_DIR), 'the missing-model answer names both folders');
   check((await bare.optimizePrompt({ prompt: 'x' })).ok === false, 'nothing is started without a model');
+
+  // -- which folders make the model: the NF4 cache or the raw folder, never the Qwen2.5 file --
+  const layouts = [
+    { name: 'cache-only', cache: true, enabled: true },
+    { name: 'raw-only', raw: true, enabled: true },
+    { name: 'neither', enabled: false },
+    { name: 'qwen25-only', qwen25: true, enabled: false },
+    { name: 'qwen25-and-cache', qwen25: true, cache: true, enabled: true },
+    { name: 'cache-marked-invalid', cache: true, invalid: true, enabled: false }
+  ];
+  for (const layout of layouts) {
+    const root = join(dataDir, 'layout-' + layout.name), models = join(root, 'models');
+    await mkdir(models, { recursive: true });
+    if (layout.raw) await writeModelFolder(join(models, 'prompt_assistant', MODEL_DIR));
+    if (layout.cache) await writeCacheFolder(join(models, 'prompt_assistant', 'cache', CACHE_DIR));
+    if (layout.invalid) await writeJson(join(models, 'prompt_assistant', 'cache', CACHE_DIR, '.novaflow-cache-invalid.json'), { errorCode: 'fixture' });
+    if (layout.qwen25) {
+      await mkdir(join(models, 'text_encoders'), { recursive: true });
+      await writeFile(join(models, 'text_encoders', 'qwen_2.5_vl_7b_fp8_scaled.safetensors'), 'x'.repeat(1000));
+    }
+    await writeJson(join(root, 'runtime.json'), { installPath: root, modelsPath: models });
+    const local = createPromptAssistant({ ...promptAssistantOptions, runtimeJsonPath: join(root, 'runtime.json'), comfyUrls: [] });
+    const state = local.status();
+    equal(state.enabled, layout.enabled, layout.name + ': the assistant is ' + (layout.enabled ? 'on' : 'off'));
+    equal(state.runtimeStatus, layout.enabled ? '模型可用' : '未配置模型', layout.name + ': runtime status');
+    equal(state.error, layout.enabled ? '' : MODEL_MISSING_ERROR, layout.name + ': error');
+    if (layout.enabled) {
+      // Every command, including the ones that used to need the Qwen2.5 file.
+      check((await local.optimizePrompt({ prompt: 'x', purpose: 'optimize' })).ok === true, layout.name + ': optimize runs');
+      check((await local.reverseImagePrompt({ purpose: 'art-reverse', images: small })).ok === true, layout.name + ': reverse runs');
+      check((await local.describeArtStyle({ dataUrl: small[0].dataUrl })).ok === true, layout.name + ': style runs');
+    } else {
+      const refused = await local.reverseImagePrompt({ purpose: 'art-reverse', images: small });
+      check(refused.ok === false && refused.error === MODEL_MISSING_ERROR && !/Qwen2\.5/.test(refused.error), layout.name + ': a request says which model is missing');
+      check(!local.running, layout.name + ': nothing was started');
+    }
+    // Pool readiness: the manifest's own disk check, and what the node reports.
+    const disk = await inspectModel(models, findModel(PROMPT_ASSISTANT_MODEL_ID));
+    equal(disk.status, layout.cache || layout.raw ? 'ready' : 'missing', layout.name + ': manifest disk check');
+    const node = createWorker({ dataDir: root, configPath: join(root, 'identity.json'), modelsRoot: models, tunnel: false, promptAssistant: local, logger: () => {} });
+    const reported = (await node.reportModels()).find(m => m.model_id === PROMPT_ASSISTANT_MODEL_ID);
+    equal(reported.status, layout.enabled ? 'ready' : 'missing', layout.name + ': the node advertises 提示词助手 only when the assistant can run');
+    equal(reported.detail.prompt_assistant.enabled, layout.enabled, layout.name + ': the report says why');
+  }
+  check(!isReverseCacheDir(join(dataDir, 'layout-neither', 'models', 'prompt_assistant', 'cache', CACHE_DIR)), 'a missing cache folder is no cache');
+  const partial = join(dataDir, 'partial-cache'); await writeCacheFolder(partial);
+  await writeJson(join(partial, 'model.safetensors.index.json'), { weight_map: { a: 'model-00001-of-00002.safetensors', b: 'model-00002-of-00002.safetensors' } });
+  check(!isReverseCacheDir(partial), 'a cache with a shard missing is no cache');
+  const unquantized = join(dataDir, 'unquantized-cache'); await writeCacheFolder(unquantized);
+  await writeJson(join(unquantized, 'config.json'), { architectures: ['Qwen3VLForConditionalGeneration'] });
+  check(!isReverseCacheDir(unquantized), 'a folder that is not NF4-quantized is no cache');
+  const templated = join(dataDir, 'template-in-tokenizer'); await writeCacheFolder(templated);
+  await rm(join(templated, 'chat_template.jinja'));
+  check(!isReverseCacheDir(templated), 'a cache without a chat template is no cache');
+  await writeJson(join(templated, 'tokenizer_config.json'), { chat_template: '{{ messages }}' });
+  check(isReverseCacheDir(templated), 'the chat template may live in tokenizer_config.json');
   const taken = createPromptAssistant({ ...promptAssistantOptions, comfyUrls: [], env: { FAKE_PROMPT_ASSISTANT_STARTUP: 'already-running' } });
   const elsewhere = await taken.optimizePrompt({ prompt: 'x' });
   check(elsewhere.ok === false && elsewhere.errorCode === 'prompt-assistant-already-running' && elsewhere.retryable === true, 'the desktop client holding the model is reported, not fought');

@@ -463,18 +463,21 @@ export function createWorker(options) {
       matting.detail = { ...matting.detail, matting: capability };
       if (!capability.ok) matting.status = 'missing';
     }
-    // The model file alone is not the assistant: the Python service and its
-    // runtime must be here too, and only the assistant knows.
+    // 提示词助手 is ready exactly when the assistant says so: it finds its own
+    // model (the NF4 cache folder or the raw Qwen3-VL folder, from runtime.json
+    // or its environment) and needs its Python service, so it answers for this
+    // model rather than the disk scan above, which only looks under modelsRoot.
     const prompt = models.find(model => model.model_id === PROMPT_ASSISTANT_MODEL_ID);
     if (prompt) {
       const assistant = promptAssistantRef();
       let status = null;
       try { status = assistant && typeof assistant.status === 'function' ? assistant.status() : null; } catch (_) { status = null; }
-      const enabled = Boolean(status && (status.enabled || status.reverseModelEnabled));
+      const enabled = status?.enabled === true;
+      prompt.status = enabled ? 'ready' : 'missing';
       prompt.detail = { ...(prompt.detail || {}), prompt_assistant: status
         ? { enabled, runtimeStatus: status.runtimeStatus || '', error: status.error || '' }
         : { enabled: false, reason: 'no_prompt_assistant' } };
-      if (!enabled) prompt.status = 'missing';
+      if (enabled) delete prompt.detail.reason;
     }
     onProgress(82, '正在检测 LoRA 兼容性');
     for (const model of models) {
