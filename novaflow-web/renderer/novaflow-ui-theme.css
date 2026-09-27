@@ -2285,7 +2285,12 @@ html[data-novaflow-preview-frame-settling="1"] [data-novaflow-fit-frame="1"] {
 }
 
 /* 2.7 The 动画 prompt box shows focus the way 生图's does: a 1px green line
-   under its header (the textarea's outline, clipped by the frame). */
+   under its header. The textarea's own outline did not paint there (the
+   frame clips it and the header row sits over its top edge), so the
+   header's bottom rule itself turns green while the box has focus. */
+html body [data-novaflow-ai-prompt-frame]:focus-within > [data-novaflow-ai-prompt-history-row] {
+  border-bottom-color: var(--nf-focus) !important;
+}
 html body [data-novaflow-ai-prompt-frame] textarea:focus,
 html body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-bottom-workspace="1"] [data-novaflow-ai-prompt-frame] textarea:focus {
   outline: 1px solid var(--nf-focus) !important;
