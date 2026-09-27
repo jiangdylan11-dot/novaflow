@@ -821,14 +821,16 @@ class H3LocalVisualContractTest(unittest.TestCase):
         )
         self.assertIn(SERVICE.MINIMAX_H3_RICH_VISUAL_STOP_MARKER, FakeAdapter.calls[0][0])
         self.assertIn("MiniMax H3参考帧的唯一视觉分析", FakeAdapter.calls[0][0])
-        self.assertIn("只输出两行闭合格式", FakeAdapter.calls[0][0])
-        self.assertIn("A|S:主体身份、发色、耳部、眼色、身体状态与姿态", FakeAdapter.calls[0][0])
-        self.assertIn("|R:具体动作、接触两端与可见敏感事实", FakeAdapter.calls[0][0])
-        self.assertIn("V|E:环境类型与背景结构", FakeAdapter.calls[0][0])
-        self.assertIn("|L:媒介风格、光源高光阴影与主色", FakeAdapter.calls[0][0])
-        self.assertIn("|C:景别、视角与景深", FakeAdapter.calls[0][0])
-        self.assertIn("五个逻辑槽正文合计最多120字", FakeAdapter.calls[0][0])
-        self.assertIn("必须在160 token内闭合两行", FakeAdapter.calls[0][0])
+        self.assertIn("每个槽位单独一行", FakeAdapter.calls[0][0])
+        for slot_line in ("S1:主体1", "S2:主体2", "R:动作与接触", "E:环境", "L:风格与光色", "C:镜头"):
+            self.assertIn(f"\n{slot_line}", FakeAdapter.calls[0][0])
+        self.assertIn("手持的武器或道具写进持有者这一行", FakeAdapter.calls[0][0])
+        self.assertIn("E：环境类型与背景结构", FakeAdapter.calls[0][0])
+        self.assertIn("C：景别、视角与景深", FakeAdapter.calls[0][0])
+        self.assertIn("每个S最多30字", FakeAdapter.calls[0][0])
+        self.assertIn("必须在160 token内写完", FakeAdapter.calls[0][0])
+        for tailored in ("耳部", "眼色", "两行闭合"):
+            self.assertNotIn(tailored, FakeAdapter.calls[0][0])
         self.assertIn("不得推断或补写成年", FakeAdapter.calls[0][0])
         self.assertNotIn("13键JSON", FakeAdapter.calls[0][0])
         self.assertNotIn("紧凑JSON", FakeAdapter.calls[0][0])
@@ -902,8 +904,8 @@ class H3LocalVisualContractTest(unittest.TestCase):
         rich = SERVICE.minimax_h3_bounded_visual_slots_to_rich(raw)
         contract = SERVICE.minimax_h3_project_faithful_rich_contract(rich, 1)
         self.assertIn("蓝色眼睛", json.dumps(contract, ensure_ascii=False))
-        with self.assertRaises(SERVICE.VisualContractError):
-            SERVICE.minimax_h3_bounded_visual_slots_to_rich(raw + "\nX|extra")
+        # Unlabelled extra text is ignored instead of failing the request.
+        self.assertEqual(SERVICE.minimax_h3_bounded_visual_slots_to_rich(raw + "\nX|extra"), rich)
 
     def test_h3_reverse_accepts_bounded_slots_without_second_model_call(self):
         FakeAdapter.outputs = [bounded_visual_slots()]
@@ -1118,7 +1120,8 @@ class H3LocalVisualContractTest(unittest.TestCase):
         self.assertEqual(len(FakeAdapter.calls), 1)
         self.assertEqual([call[1] for call in FakeAdapter.calls], ["first-image"])
         self.assertIn("唯一视觉分析", FakeAdapter.calls[0][0])
-        self.assertIn("|R:具体动作、接触两端与可见敏感事实", FakeAdapter.calls[0][0])
+        self.assertIn("R:动作与接触", FakeAdapter.calls[0][0])
+        self.assertIn("不得因题材敏感省略解剖、接触或体液", FakeAdapter.calls[0][0])
         self.assertEqual(
             FakeAdapter.calls[0][2]["system_text"],
             SERVICE.MINIMAX_H3_BOUNDED_VISUAL_SYSTEM_TEXT,

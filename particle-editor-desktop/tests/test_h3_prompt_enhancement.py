@@ -76,9 +76,11 @@ class H3EnhancementTest(unittest.TestCase):
         expected = service.minimax_h3_bounded_visual_slots_to_rich(original)
         self.assertEqual(service.minimax_h3_bounded_visual_slots_to_rich(reordered), expected)
         self.assertEqual(service.minimax_h3_bounded_visual_slots_to_rich(original.replace('|','\n')), expected)
-        for broken in [original.replace('|C:中景；正面',''), original+'|S:重复主体', original.replace('|R:', '|X:')]:
+        for broken in [original.replace('|C:中景；正面',''), original.replace('|R:', '|X:')]:
             with self.assertRaises(service.VisualContractError):
                 service.minimax_h3_bounded_visual_slots_to_rich(broken)
+        # A repeated S is the next subject, never a failure.
+        self.assertIn('主体2 = "重复主体"', service.minimax_h3_bounded_visual_slots_to_rich(original+'|S:重复主体'))
 
     def test_camera_keyword_is_not_required_for_meaningful_action(self):
         assistant = service.PromptAssistant()

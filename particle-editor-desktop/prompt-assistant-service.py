@@ -2009,8 +2009,15 @@ def minimax_h3_compact_verified_visual_fact_slots(
             prefix = f"Subject {index}: " if use_english else f"主体{index}："
             parts.append(prefix + "; ".join(entity_parts))
 
+    # A relation already written as a subject's action is not repeated.
+    shown_actions = [clean_text(entity.get("action") or "") for entity in entities]
     relations = unique_values(
-        contract.get("relations") or [], limits["relations"], char_budgets["relations"],
+        [
+            item for item in (contract.get("relations") or [])
+            if not any(clean_text(item) and clean_text(item) in action for action in shown_actions)
+        ],
+        limits["relations"],
+        char_budgets["relations"],
     )
     if relations:
         parts.append(("Relations: " if use_english else "关系：") + ", ".join(relations))
@@ -2127,7 +2134,7 @@ def build_minimax_h3_deterministic_verified_visual_candidate(
         action_progression = (
             "The opening state continues naturally."
             if use_english
-            else "画面从首帧状态自然延续。"
+            else "画面从首帧状态自然延续，动作连贯。"
         )
     if camera_intent:
         camera_progression = (
@@ -2271,7 +2278,7 @@ MINIMAX_H3_RICH_VISUAL_STOP_MARKER = "<NF_H3_END>"
 MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS = ("S", "R", "E", "L", "C")
 MINIMAX_H3_BOUNDED_VISUAL_LINE_TAGS = ("A", "V")
 MINIMAX_H3_BOUNDED_VISUAL_SYSTEM_TEXT = (
-    "你是 NovaFlow 的本地参考帧事实提取器。只输出用户指定的两个闭合事实信封，"
+    "你是 NovaFlow 的本地参考帧事实提取器。只按用户指定的槽位格式逐行输出，"
     "不得输出标题、解释、Markdown 或未在图片中直接可见的事实。"
 )
 MINIMAX_H3_RICH_VISUAL_SECTION_ALIASES = {
@@ -2480,153 +2487,251 @@ def minimax_h3_interaction_rich_confirmation_instruction() -> str:
     )
 
 
-def minimax_h3_faithful_rich_primary_instruction() -> str:
-    """Request two closed envelopes containing five bounded fact slots.
+# Nominal per-slot lengths shown to the model.  Parsing accepts up to twice
+# this length and trims a longer value at a phrase boundary instead of failing.
+MINIMAX_H3_BOUNDED_VISUAL_SLOT_LIMITS = {"S": 30, "R": 40, "E": 18, "L": 22, "C": 15}
+MINIMAX_H3_BOUNDED_VISUAL_MAX_SUBJECTS = 3
+MINIMAX_H3_BOUNDED_VISUAL_SLOT_GUIDE = {
+    "S": "每个主要主体（人物、动物、角色或画面焦点物体）单独一行，先写身份或种类，再写外观特征"
+         "（如发型发色、服饰、颜色、材质）和姿态；手持的武器或道具写进持有者这一行，"
+         "主体之间的位置和关系写进R",
+    "R": "可见的动作与接触，写清谁在做什么、接触什么；有多个主体时写清它们之间的位置和关系",
+    "E": "环境类型与背景结构",
+    "L": "画面风格、光源与高光阴影、主色",
+    "C": "景别、视角与景深",
+}
+MINIMAX_H3_BOUNDED_RELATION_KEY = "可见接触关系"
+# A slot label is an ASCII tag (S may be numbered) plus a colon at the start
+# of the text or after any separator: Qwen3 sometimes closes a slot with a
+# Chinese semicolon or comma instead of a pipe or a line break.
+MINIMAX_H3_BOUNDED_VISUAL_LABEL_PATTERN = re.compile(
+    r"(?:\A|(?<=[|｜\r\n；;，,、\s]))([SRELC])[1-9]?\s*[:：]"
+)
+MINIMAX_H3_BOUNDED_VISUAL_EMPTY_VALUE_PATTERN = re.compile(
+    r"(?:无|没有|暂无|不适用|none|n/?a)", re.I,
+)
 
-    The previous implementation asked the model to author five complete TOML
-    sections, then five physical slot lines.  Both could consume the whole
-    generation budget before reaching the camera facts.  Two physical lines
-    close all five logical slots earlier.  Python owns the section skeleton and
-    all later canonical-v2/H3 validation; the model still owns every fact value.
+
+def minimax_h3_faithful_rich_primary_instruction() -> str:
+    """Ask for one fact slot per line: S1..S3, R, E, L and C.
+
+    The earlier two-line pipe envelope was often closed with Chinese
+    semicolons, which merged slots and failed the whole request.  One slot per
+    line is the format Qwen3 follows most reliably.  Python owns the section
+    skeleton and all later canonical-v2/H3 validation; the model still owns
+    every fact value.
     """
 
+    limits = MINIMAX_H3_BOUNDED_VISUAL_SLOT_LIMITS
+    guide = MINIMAX_H3_BOUNDED_VISUAL_SLOT_GUIDE
+    subject_tags = "、".join(
+        f"S{index}" for index in range(1, MINIMAX_H3_BOUNDED_VISUAL_MAX_SUBJECTS + 1)
+    )
     return (
-        "这是MiniMax H3参考帧的唯一视觉分析。重新观察图片，只输出两行闭合格式，随后另起一行输出终止标记；"
-        "ASCII标签、竖线、冒号和顺序必须完全一致，值使用中文短语及中文分号，不要引号、标题或解释。\n"
-        "A|S:主体身份、发色、耳部、眼色、身体状态与姿态，最多30字|R:具体动作、接触两端与可见敏感事实，最多35字\n"
-        "V|E:环境类型与背景结构，最多18字|L:媒介风格、光源高光阴影与主色，最多22字|C:景别、视角与景深，最多15字\n"
-        f"{MINIMAX_H3_RICH_VISUAL_STOP_MARKER}\n"
-        "只写图片直接可见事实；不得因题材敏感省略解剖、接触或体液，也不得添加不可见内容。"
-        "不得推断或补写成年；只有图片有明确未成年人文字或直接证据时才如实写入S。"
-        "即使某槽位没有更多细节，也写最小可见事实；五个逻辑槽正文合计最多120字，必须在160 token内闭合两行。"
+        "这是MiniMax H3参考帧的唯一视觉分析。请重新观察图片，只写图片中直接可见的事实，按下面的格式逐行输出。\n\n"
+        "【输出格式】每个槽位单独一行，行首是ASCII标签加英文冒号，按此顺序：\n"
+        "S1:主体1\n"
+        f"S2:主体2（画面中确有第二个主要主体时才写，最多写到S{MINIMAX_H3_BOUNDED_VISUAL_MAX_SUBJECTS}）\n"
+        "R:动作与接触\n"
+        "E:环境\n"
+        "L:风格与光色\n"
+        "C:镜头\n"
+        f"最后另起一行输出{MINIMAX_H3_RICH_VISUAL_STOP_MARKER}\n\n"
+        "【每行写什么】\n"
+        f"{subject_tags}：{guide['S']}。\n"
+        f"R：{guide['R']}。\n"
+        f"E：{guide['E']}。\n"
+        f"L：{guide['L']}。\n"
+        f"C：{guide['C']}。\n\n"
+        "【规则】\n"
+        "1. 值用中文短语，短语之间用中文逗号；不要引号、标题、编号列表或解释。\n"
+        f"2. 长度：每个S最多{limits['S']}字，R最多{limits['R']}字，E最多{limits['E']}字，"
+        f"L最多{limits['L']}字，C最多{limits['C']}字，必须在160 token内写完。\n"
+        "3. 没有更多细节时写最短的可见事实；不得添加画面中不可见的背景、特效或情节。\n"
+        "4. 不得因题材敏感省略解剖、接触或体液；不得推断或补写成年；"
+        "只有图片有明确未成年人文字或直接证据时才如实写入S。"
     )
 
 
-def minimax_h3_repair_bounded_visual_slots(raw_output: str, generate_missing) -> str:
-    """Complete only missing/invalid slots from the same image, once.
+def minimax_h3_fit_bounded_visual_slot_value(value: str, limit: int) -> str:
+    """Keep whole phrases; trim a value only beyond twice its nominal length."""
+
+    text = clean_text(value).strip(" \t\"'“”‘’「」；;，,、。")
+    cap = max(1, int(limit)) * 2
+    if len(text) <= cap:
+        return text
+    kept = ""
+    for phrase in re.split(r"(?<=[，,、；;])", text):
+        if len(kept) + len(phrase) > cap:
+            break
+        kept += phrase
+    return (kept or text[:cap]).strip(" ；;，,、。")
+
+
+def minimax_h3_parse_bounded_visual_slots(
+    raw_output: str,
+) -> tuple[dict[str, list[str]], set[str], str]:
+    """Read S/R/E/L/C values by their labels, whatever separates them.
+
+    Returns the model-owned values per tag, the tags whose label appeared
+    (an explicit "无" still answers the slot) and the tag of the last label.
+    A repeated S is the next subject; any other repeat or unlabelled text is
+    ignored instead of failing the request.
+    """
+
+    text = str(raw_output or "")
+    marker_position = text.find(MINIMAX_H3_RICH_VISUAL_STOP_MARKER)
+    if marker_position >= 0:
+        text = text[:marker_position]
+    text = re.sub(r"^\s*```[^\r\n]*[\r\n]+|[\r\n]+```\s*$", "", text.strip()).strip()
+    labels = list(MINIMAX_H3_BOUNDED_VISUAL_LABEL_PATTERN.finditer(text))
+    values: dict[str, list[str]] = {tag: [] for tag in MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS}
+    present: set[str] = set()
+    for index, match in enumerate(labels):
+        end = labels[index + 1].start() if index + 1 < len(labels) else len(text)
+        # A value ends at its line or pipe; an A|/V| envelope marker or stray
+        # text after it is not part of the fact.
+        segment = re.split(r"[|｜\r\n]", text[match.end():end], maxsplit=1)[0]
+        segment = re.sub(r"[；;，,、\s]+[AV]\s*$", "", segment)
+        tag = match.group(1)
+        present.add(tag)
+        value = minimax_h3_fit_bounded_visual_slot_value(
+            segment, MINIMAX_H3_BOUNDED_VISUAL_SLOT_LIMITS[tag],
+        )
+        if (
+            re.search(r"[一-鿿A-Za-z0-9]", value)
+            and not MINIMAX_H3_BOUNDED_VISUAL_EMPTY_VALUE_PATTERN.fullmatch(value)
+            and value not in values[tag]
+        ):
+            values[tag].append(value)
+    return values, present, (labels[-1].group(1) if labels else "")
+
+
+def minimax_h3_missing_bounded_visual_slots(
+    values: dict[str, list[str]],
+    present: set[str],
+) -> list[str]:
+    # "R:无" is a valid answer for a still subject; every other slot needs a
+    # visible fact.
+    return [
+        tag for tag in MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS
+        if not values[tag] and not (tag == "R" and tag in present)
+    ]
+
+
+def minimax_h3_render_bounded_visual_rich(values: dict[str, list[str]]) -> str:
+    """Place parsed slot values into the rich five-section skeleton."""
+
+    quote = lambda value: json.dumps(value, ensure_ascii=False)
+    subject_lines = [
+        f"主体{index} = {quote(value)}"
+        for index, value in enumerate(
+            values["S"][:MINIMAX_H3_BOUNDED_VISUAL_MAX_SUBJECTS], start=1,
+        )
+    ]
+    # Several R lines describe one scene; keep them as one relation fact so
+    # the H3 layout shows every part of it together.
+    relation = "，".join(
+        re.sub(r"\s*[；;]\s*", "，", value)
+        for value in values["R"][:MINIMAX_H3_BOUNDED_VISUAL_MAX_SUBJECTS]
+    )
+    if relation:
+        subject_lines.append(f"{MINIMAX_H3_BOUNDED_RELATION_KEY} = {quote(relation)}")
+    return (
+        "[风格设定]\n"
+        f"风格与完成质感 = {quote(values['L'][0])}\n\n"
+        "[主体物品]\n"
+        + "\n".join(subject_lines)
+        + "\n\n[环境背景]\n"
+        f"环境与层次 = {quote(values['E'][0])}\n\n"
+        "[光线与色彩]\n"
+        f"光线色彩与材质 = {quote(values['L'][0])}\n\n"
+        "[拍摄参数]\n"
+        f"镜头与构图 = {quote(values['C'][0])}"
+    )
+
+
+def minimax_h3_repair_bounded_visual_slots(
+    raw_output: str,
+    generate_missing,
+    truncated: bool | None = None,
+) -> str:
+    """Complete only missing slots from the same image, once.
 
     Existing complete facts stay model-owned and unchanged. No prose fallback
-    or invented defaults can satisfy a missing slot.
+    or invented defaults can satisfy a missing slot.  ``truncated`` says the
+    first answer hit its token limit; when unknown, a missing stop marker
+    stands in for it.
     """
     try:
         return minimax_h3_bounded_visual_slots_to_rich(raw_output)
     except VisualContractError as original_error:
-        text = str(raw_output).split(MINIMAX_H3_RICH_VISUAL_STOP_MARKER, 1)[0].strip()
-        limits = {"S": 30, "R": 35, "E": 18, "L": 22, "C": 15}
-        values, seen = {}, set()
-        for part in re.split(r"[|｜\r\n]+", text):
-            match = re.fullmatch(r"\s*([SRELC])\s*[:：]\s*(.+?)\s*", part)
-            if not match:
-                continue
-            tag, value = match[1], match[2].strip("；;。")
-            if tag in seen:
-                values.pop(tag, None)
-            elif 0 < len(value) <= limits[tag] and re.search(r"[\u4e00-\u9fffA-Za-z0-9]", value):
-                values[tag] = value
-            seen.add(tag)
-        if not values:
+        values, present, last_tag = minimax_h3_parse_bounded_visual_slots(raw_output)
+        if not any(values.values()):
             raise original_error
-        # The final partial field may have been cut off together with the
-        # missing slots. Re-observe it rather than treating a fragment as fact.
-        final = re.search(r"(?:^|[|｜\r\n])\s*([SRELC])\s*[:：][^|｜\r\n]+$", text)
-        if final and MINIMAX_H3_RICH_VISUAL_STOP_MARKER not in str(raw_output):
-            values.pop(final[1], None)
-        missing = [tag for tag in limits if tag not in values]
+        if truncated is None:
+            truncated = MINIMAX_H3_RICH_VISUAL_STOP_MARKER not in str(raw_output)
+        if truncated and last_tag:
+            # The final value may have been cut off together with the missing
+            # slots. Re-observe it rather than treating a fragment as fact.
+            values[last_tag] = values[last_tag][:-1]
+            present.discard(last_tag)
+        missing = minimax_h3_missing_bounded_visual_slots(values, present)
         if not missing:
             raise original_error
-        descriptions = {"S": "主体身份、发色、身体状态与姿态", "R": "具体动作及可见接触关系", "E": "环境与背景结构", "L": "媒介风格、光线与主色", "C": "景别、视角与景深"}
+        limits = MINIMAX_H3_BOUNDED_VISUAL_SLOT_LIMITS
+        guide = MINIMAX_H3_BOUNDED_VISUAL_SLOT_GUIDE
+        lines = []
+        for tag in missing:
+            label = "S1" if tag == "S" else tag
+            lines.append(f"{label}:{guide[tag]}，最多{limits[tag]}字")
         instruction = (
-            "重新观察同一张参考图，补全以下缺失字段。只写直接可见事实，不补写不可见内容或年龄推断。\n"
-            "只输出下列标签，每项一行，使用中文短语。不要标题、解释或重复其它字段：\n"
-            + "\n".join(f"{tag}:{descriptions[tag]}，最多{limits[tag]}字" for tag in missing)
+            "重新观察同一张参考图，只补写下列缺少的槽位。只写图片中直接可见的事实，不补写不可见内容，不推断年龄。\n"
+            "每个槽位单独一行，行首是ASCII标签加英文冒号，值用中文短语，短语之间用中文逗号；"
+            "不要标题、解释或其它槽位：\n"
+            + "\n".join(lines)
             + f"\n最后另起一行输出 {MINIMAX_H3_RICH_VISUAL_STOP_MARKER}"
         )
-        repaired = str(generate_missing(instruction)).split(MINIMAX_H3_RICH_VISUAL_STOP_MARKER, 1)[0]
-        additions = []
-        for part in re.split(r"[|｜\r\n]+", repaired):
-            match = re.fullmatch(r"\s*([SRELC])\s*[:：]\s*(.+?)\s*", part)
-            if match and match[1] in missing:
-                additions.append(f"{match[1]}:{match[2]}")
-        merged = "\n".join([f"{tag}:{value}" for tag,value in values.items()] + additions)
-        return minimax_h3_bounded_visual_slots_to_rich(merged)
+        repaired, repaired_present, _ = minimax_h3_parse_bounded_visual_slots(
+            generate_missing(instruction)
+        )
+        for tag in missing:
+            values[tag] = repaired[tag]
+            if tag in repaired_present:
+                present.add(tag)
+        if minimax_h3_missing_bounded_visual_slots(values, present):
+            raise original_error
+        return minimax_h3_render_bounded_visual_rich(values)
 
 
 def minimax_h3_bounded_visual_slots_to_rich(raw_output: str) -> str:
-    """Turn two closed envelopes with five fact slots into the rich skeleton.
+    """Turn labelled fact slots into the rich five-section skeleton.
 
     This is a structural projection only: every returned value is copied from
-    a complete model-owned slot.  Missing, duplicated or oversized
-    slots fail closed.  The legacy five-section input remains accepted for
-    deterministic fixtures and already-produced cached values.
+    a model-owned slot.  A missing slot fails closed; repeated subjects become
+    主体1、主体2…, and an over-long value is trimmed at a phrase boundary.  The
+    legacy five-section input remains accepted for deterministic fixtures and
+    already-produced cached values.
     """
 
     text = str(raw_output or "").strip()
     if text.startswith(MINIMAX_H3_RICH_VISUAL_SECTIONS[0]):
         return minimax_h3_canonicalize_rich_visual_sections(text)
-    marker_position = text.find(MINIMAX_H3_RICH_VISUAL_STOP_MARKER)
-    if marker_position >= 0:
-        text = text[:marker_position].rstrip()
-    text = re.sub(r"^```[^\r\n]*[\r\n]+|[\r\n]+```$", "", text).strip()
-    def slot_diagnostics(leaf: str, slot_count: int) -> dict:
-        return {
-            "errorCode": "h3-bounded-visual-slots-invalid",
-            "validationLeaf": leaf,
-            "slotCount": max(0, min(9, int(slot_count))),
-            "expectedSlotCount": len(MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS),
-        }
-
-    # Labels, not their physical order or line wrapping, own the fact values.
-    parts = [part.strip() for part in re.split(r"[|｜\r\n]+", text) if part.strip()]
-    slots = []
-    invalid_part = False
-    for part in parts:
-        if re.fullmatch(r"[AV]\s*[:：]?", part):
-            continue
-        match = re.fullmatch(r"([SRELC])\s*[:：]\s*(.+)", part)
-        if match is None:
-            invalid_part = True
-        else:
-            slots.append((match[1], match[2]))
-    values = dict(slots)
-    if invalid_part or len(slots) != 5 or set(values) != set(MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS):
+    values, present, _ = minimax_h3_parse_bounded_visual_slots(text)
+    if minimax_h3_missing_bounded_visual_slots(values, present):
+        found = sum(1 for tag in MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS if values[tag])
         raise VisualContractError(
-            "MiniMax H3 视觉槽位缺失、重复或无法识别",
+            "MiniMax H3 参考帧视觉事实缺失或无法识别",
             code="h3-bounded-visual-slots-invalid",
             semantic=True,
-            diagnostics=slot_diagnostics("slot_count" if len(slots) != 5 or len(values) != 5 else "slot_labels", len(slots)),
+            diagnostics={
+                "errorCode": "h3-bounded-visual-slots-invalid",
+                "validationLeaf": "slot_count",
+                "slotCount": found,
+                "expectedSlotCount": len(MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS),
+            },
         )
-    limits = {"S": 30, "R": 35, "E": 18, "L": 22, "C": 15}
-    for expected_tag in MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS:
-        value = clean_text(values[expected_tag]).strip("；;。")
-        if (
-            not re.search(r"[\u4e00-\u9fffA-Za-z0-9]", value)
-            or len(value) > limits[expected_tag]
-            or re.search(r"(?:^|[|｜])\s*(?:S|R|E|L|C)\s*[:：]", value)
-        ):
-            raise VisualContractError(
-                "MiniMax H3 闭合视觉槽位事实无效",
-                code="h3-bounded-visual-slots-invalid",
-                semantic=True,
-                diagnostics=slot_diagnostics(
-                    f"slot_{expected_tag.lower()}",
-                    len(MINIMAX_H3_BOUNDED_VISUAL_SLOT_TAGS),
-                ),
-            )
-        values[expected_tag] = value
-    values = {key: json.dumps(value, ensure_ascii=False) for key, value in values.items()}
-    return (
-        "[风格设定]\n"
-        f"风格与完成质感 = {values['L']}\n\n"
-        "[主体物品]\n"
-        f"主体1 = {values['S']}\n"
-        f"可见接触关系 = {values['R']}\n\n"
-        "[环境背景]\n"
-        f"环境与层次 = {values['E']}\n\n"
-        "[光线与色彩]\n"
-        f"光线色彩与材质 = {values['L']}\n\n"
-        "[拍摄参数]\n"
-        f"镜头与构图 = {values['C']}"
-    )
+    return minimax_h3_render_bounded_visual_rich(values)
 
 
 def minimax_h3_rich_visual_section_body(rich_prompt: str, header: str) -> str:
@@ -2807,6 +2912,13 @@ def minimax_h3_rich_primary_subject_entities(
     loose_action: list[str] = []
     relations: list[str] = []
     sensitive_values: list[str] = []
+    shared_relation = False
+    # With several subjects a later phrase may name another one ("仰视女性");
+    # each subject's identity is its first phrase.
+    several_subjects = sum(
+        1 for key, _ in subject_pairs
+        if re.fullmatch(r"(?:主体|物体|参与者)[1-9][0-9]*", re.sub(r"\s+", "", key))
+    ) > 1
 
     def subject(index: int) -> dict:
         return subjects.setdefault(index, {
@@ -2833,14 +2945,18 @@ def minimax_h3_rich_primary_subject_entities(
             ):
                 entity["_person"] = True
             if not slot:
-                named = next(
-                    (item for item in safe_atoms if MINIMAX_H3_RICH_PERSON_PATTERN.search(item)),
-                    safe_atoms[0] if safe_atoms else "",
+                named = (
+                    safe_atoms[0] if several_subjects and safe_atoms
+                    else next(
+                        (item for item in safe_atoms if MINIMAX_H3_RICH_PERSON_PATTERN.search(item)),
+                        safe_atoms[0] if safe_atoms else "",
+                    )
                 )
                 entity["name"] = named
                 pose_atoms = [
                     item for item in safe_atoms
-                    if any(concept.startswith("pose_") for concept in minimax_h3_fact_concepts(item))
+                    if item != named
+                    and any(concept.startswith("pose_") for concept in minimax_h3_fact_concepts(item))
                 ]
                 if pose_atoms and not entity["pose"]:
                     entity["pose"] = "；".join(pose_atoms)
@@ -2871,9 +2987,13 @@ def minimax_h3_rich_primary_subject_entities(
             # Per-entity counts remain deterministic from the numbered keys.
             continue
         elif re.search(r"(?:接触|关系|位置|遮挡)", normalized_key):
-            relations.extend(minimax_h3_rich_split_facts(f"{key}：{value}"))
+            # The bounded R slot is written under one generic key; its label
+            # carries no fact and must not leak into the visible text.
+            shared_relation = shared_relation or key == MINIMAX_H3_BOUNDED_RELATION_KEY
+            rendered = value if key == MINIMAX_H3_BOUNDED_RELATION_KEY else f"{key}：{value}"
+            relations.extend(minimax_h3_rich_split_facts(rendered))
             if minimax_h3_rich_fact_is_sensitive(value):
-                sensitive_values.extend(minimax_h3_rich_split_facts(f"{key}：{value}"))
+                sensitive_values.extend(minimax_h3_rich_split_facts(rendered))
         elif re.search(r"(?:姿势|姿态|动作|行为)", normalized_key):
             if re.search(r"(?:姿势|姿态)", normalized_key):
                 loose_pose.extend(minimax_h3_rich_split_facts(value))
@@ -2914,7 +3034,9 @@ def minimax_h3_rich_primary_subject_entities(
         if minimax_h3_rich_fact_is_sensitive(entity["name"]):
             entity["name"] = "人物" if entity["_person"] else f"可见物体{index}"
         if entity["count"] is None:
-            entity["count"] = "一名" if entity["_person"] else "一个"
+            entity["count"] = "一名" if entity["_person"] and (
+                not several_subjects or MINIMAX_H3_RICH_PERSON_PATTERN.search(entity["name"])
+            ) else "一个"
         if index == 1 and loose_subject_values:
             entity["appearance"].extend(
                 minimax_h3_neutralize_rich_adult_assertion(item)
@@ -2947,7 +3069,11 @@ def minimax_h3_rich_primary_subject_entities(
         minimax_h3_neutralize_rich_adult_assertion(item)
         for item in sensitive_values if clean_text(item)
     ))[:12]
-    if relations and entities and not entities[0].get("action"):
+    # A shared relation slot describes the whole scene; with several subjects
+    # it stays a relation instead of becoming the first subject's action.
+    if relations and entities and not entities[0].get("action") and not (
+        shared_relation and len(entities) > 1
+    ):
         entities[0]["action"] = "；".join(relations[:3])
     return entities, relations, sensitive_values, visible_person_slots
 
@@ -15142,6 +15268,14 @@ class PromptAssistant:
                         max_new_tokens=160,
                         stop_strings=(MINIMAX_H3_RICH_VISUAL_STOP_MARKER,),
                     )
+                    # The adapter strips the stop marker, so its token-limit
+                    # flag is what tells a cut-off final slot apart.
+                    primary_diagnostics = getattr(adapter, "last_generation_diagnostics", None)
+                    primary_truncated = (
+                        bool(primary_diagnostics.get("generationHitTokenLimit"))
+                        if isinstance(primary_diagnostics, dict) and primary_diagnostics
+                        else None
+                    )
                     try:
                         def generate_missing_slots(instruction):
                             nonlocal rich_visual_slot_repair_calls
@@ -15157,7 +15291,9 @@ class PromptAssistant:
                                 do_sample=False, max_new_tokens=160,
                                 stop_strings=(MINIMAX_H3_RICH_VISUAL_STOP_MARKER,),
                             )
-                        rich_primary = minimax_h3_repair_bounded_visual_slots(rich_primary, generate_missing_slots)
+                        rich_primary = minimax_h3_repair_bounded_visual_slots(
+                            rich_primary, generate_missing_slots, truncated=primary_truncated,
+                        )
                         contract = minimax_h3_project_faithful_rich_contract(
                             rich_primary,
                             index,
