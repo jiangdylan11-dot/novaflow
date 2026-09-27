@@ -22419,7 +22419,7 @@
         height: ${SKELETON_PLAYBAR_HEIGHT}px !important;
         padding: 10px 12px !important;
         gap: 8px !important;
-        grid-template-columns: ${PLAYBACK_BUTTON_SIZE}px ${PLAYBACK_BUTTON_SIZE}px ${PLAYBACK_BUTTON_SIZE}px minmax(120px, 1fr) auto !important;
+        grid-template-columns: ${PLAYBACK_BUTTON_SIZE}px minmax(120px, 1fr) auto !important;
         background: ${AI_ANIMATION_STACK_SURFACE} !important;
         border: 1px solid ${AI_ANIMATION_TIMELINE_BORDER_COLOR} !important;
         border-radius: ${AI_ANIMATION_TIMELINE_RADIUS}px !important;

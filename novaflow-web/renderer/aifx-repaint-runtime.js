@@ -1170,7 +1170,7 @@
         padding: 14px 16px;
         background: #181818;
         display: grid;
-        grid-template-columns: auto auto auto minmax(120px, 1fr) auto;
+        grid-template-columns: auto minmax(120px, 1fr) auto;
         gap: 10px;
         align-items: center;
       }
