@@ -77808,18 +77808,30 @@
   // next paint. Waiting 48 ms for them painted the bare bundle layout first -
   // switching 骨骼动画 -> AI序列动画 showed the resource header, the board dots
   // and the prompt row at the wrong place and size for a few frames.
-  // Only right after a click or key, and once per 200 ms: the first batch of
-  // what the user opened is laid out before it paints. Background updates
-  // never take the slot (with them, an unlucky 飘带计算 expand painted its raw
-  // 1047px body); flushing every batch after a click doubled entering 动画.
+  // Only right after a click or key. A page switch (rail or 绘图/UI-style tab)
+  // mounts in many batches, and laying out each before paint doubled entering
+  // 动画, so there only the first batch goes early. Anything else - opening a
+  // panel - is laid out batch by batch for 300 ms: its content arrives in two
+  // or three batches, and with only the first early the panel grew in steps
+  // (骨骼 groups clicked open and shut quickly). Background updates never.
   var BRAND_RUNTIME_LAST_INPUT_AT = -Infinity;
+  var BRAND_RUNTIME_LAST_INPUT_SWITCH = false;
   ["pointerdown", "keydown", "click"].forEach((type) => {
-    document.addEventListener(type, () => { BRAND_RUNTIME_LAST_INPUT_AT = performance.now(); }, true);
+    document.addEventListener(type, (event) => {
+      BRAND_RUNTIME_LAST_INPUT_AT = performance.now();
+      const target = event.target instanceof Element ? event.target : null;
+      BRAND_RUNTIME_LAST_INPUT_SWITCH = Boolean(target && target.closest('[data-novaflow-primary-entry="1"], [data-novaflow-secondary-entry="1"]'));
+    }, true);
   });
   var BRAND_RUNTIME_IMMEDIATE_FLUSH_AT = -Infinity;
   function brandRuntimeMutationQueueAddsElements() {
-    if (performance.now() - BRAND_RUNTIME_LAST_INPUT_AT > 500) return false;
-    if (performance.now() - BRAND_RUNTIME_IMMEDIATE_FLUSH_AT < 200) return false;
+    const sinceInput = performance.now() - BRAND_RUNTIME_LAST_INPUT_AT;
+    if (sinceInput > 500) return false;
+    if (BRAND_RUNTIME_LAST_INPUT_SWITCH) {
+      if (BRAND_RUNTIME_IMMEDIATE_FLUSH_AT >= BRAND_RUNTIME_LAST_INPUT_AT) return false;
+    } else if (sinceInput > 300) {
+      return false;
+    }
     const adds = BRAND_RUNTIME_MUTATION_QUEUE.some((mutation) => mutation.type === "childList"
       && Array.from(mutation.addedNodes).some((node) => node instanceof HTMLElement));
     if (adds) BRAND_RUNTIME_IMMEDIATE_FLUSH_AT = performance.now();
