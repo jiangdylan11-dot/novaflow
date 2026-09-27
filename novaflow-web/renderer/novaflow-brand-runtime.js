@@ -14366,15 +14366,18 @@
 
   function getAiSequenceActiveBoardId(root = document) {
     const scope = root && typeof root.querySelectorAll === "function" ? root : document;
+    // Called from every session lookup: the label tests are cheap, the visibility
+    // test reads layout, so it runs last and only on the few board-like buttons.
     const explicitActive = Array.from(scope.querySelectorAll('button[aria-pressed="true"], [role="button"][aria-pressed="true"], [data-active="true"], [data-active="1"]'))
-      .filter((node) => node instanceof HTMLElement && isVisible(node))
       .find((node) => {
+        if (!(node instanceof HTMLElement)) return false;
         if (node.getAttribute("data-novaflow-ai-collapse-heading")) return false;
         if (node.getAttribute("data-novaflow-ai-post-action-button") === "1") return false;
         if (isAiSequenceBoardMutationControl(node)) return false;
         const label = normalizeText(node.getAttribute("aria-label") || node.getAttribute("title") || node.textContent || "");
         if (!label) return false;
-        return label.includes("\u753b\u677f") || /^#?\d+$/.test(label) || /^board[-\s]?\d+$/i.test(label);
+        if (!(label.includes("\u753b\u677f") || /^#?\d+$/.test(label) || /^board[-\s]?\d+$/i.test(label))) return false;
+        return isVisible(node);
       });
     if (explicitActive instanceof HTMLElement) {
       const label = normalizeText(explicitActive.getAttribute("aria-label") || explicitActive.getAttribute("title") || explicitActive.textContent || "");
@@ -58738,9 +58741,11 @@
   function styleAiAnimationChromaColorRows(postSection) {
     if (!(postSection instanceof HTMLElement)) return;
     Array.from(postSection.querySelectorAll("div")).forEach((row) => {
-      if (!(row instanceof HTMLElement) || !isVisible(row)) return;
+      if (!(row instanceof HTMLElement)) return;
+      // Text first: the visibility test reads layout and ran for every div here.
       const text = normalizeText(row.textContent || "");
       if (!text.includes("\u80cc\u666f\u8272") || !text.includes("\u6dfb\u52a0")) return;
+      if (!isVisible(row)) return;
       const colorInput = row.querySelector('input[type="color"]');
       const addButton = Array.from(row.querySelectorAll("button"))
         .find((button) => button instanceof HTMLButtonElement && normalizeText(button.textContent || "") === "\u6dfb\u52a0");
