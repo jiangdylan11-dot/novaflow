@@ -403,7 +403,7 @@
 #novaflow-local-warehouse .nf-wh-card{position:relative;width:min(1000px,94vw);height:min(680px,85vh);display:flex;flex-direction:column;background:#212121;border:1px solid rgba(255,255,255,.1);border-radius:8px;box-shadow:none;overflow:hidden}
 #novaflow-local-warehouse button{font:inherit;color:inherit;background:none;border:1px solid transparent;border-radius:8px;padding:8px 12px;cursor:pointer;box-shadow:none;transition:background .15s,border-color .15s;flex-shrink:0;line-height:1.5}
 #novaflow-local-warehouse button:hover{background:#ffffff0c}
-#novaflow-local-warehouse button:focus-visible,#novaflow-local-warehouse input:focus-visible,#novaflow-local-warehouse select:focus-visible{outline:2px solid #37c99c;outline-offset:3px}
+#novaflow-local-warehouse button:focus-visible,#novaflow-local-warehouse input:focus-visible,#novaflow-local-warehouse select:focus-visible{outline:2px solid #1EA672;outline-offset:3px}
 #novaflow-local-warehouse .nf-wh-icon{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex-shrink:0}
 #novaflow-local-warehouse .nf-wh-icon svg{width:100%;height:100%}
 #novaflow-local-warehouse .nf-wh-header{display:flex;align-items:center;gap:14px;padding:12px 14px;background:#1d1d1d;border-bottom:1px solid #333}

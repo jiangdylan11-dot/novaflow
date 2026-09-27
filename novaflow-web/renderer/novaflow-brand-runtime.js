@@ -2264,7 +2264,7 @@
   const NOVAFLOW_UNIFORM_GAP = 5;
   const NOVAFLOW_RECT_RADIUS_PX = "7px";
   // Dialog titles are 600 (theme 2.1), whatever the weight pass would give them.
-  const NOVAFLOW_DIALOG_TITLE_SELECTOR = '[data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title';
+  const NOVAFLOW_DIALOG_TITLE_SELECTOR = '[data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title, #novaflow-web-account-title';
   const NOVAFLOW_RECT_RADIUS_TOP_PX = `${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX} 0 0`;
   const NOVAFLOW_RECT_RADIUS_BOTTOM_PX = `0 0 ${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX}`;
   const SECONDARY_CONTENT_GAP = NOVAFLOW_UNIFORM_GAP;
@@ -15471,7 +15471,10 @@
     records.forEach((record) => {
       const node = record.node;
       if (!(node instanceof HTMLElement)) return;
-      if ("disabled" in node && record.disabled !== null) {
+      // Only a lock still in place is undone: a control another module
+      // enabled or re-rendered during the save keeps its new state.
+      if (node.getAttribute("data-novaflow-ai-cutout-save-disabled") !== "1") return;
+      if ("disabled" in node && record.disabled !== null && node.disabled === true) {
         try {
           node.disabled = record.disabled;
         } catch {}
@@ -32302,6 +32305,7 @@
       "[data-nf-dialog='panel']",
       "[data-novaflow-export-modal-dialog='1']",
       ".nf-wh-card",
+      ".nf-account-card",
       ".novaflow-art-export-dialog",
       ".novaflow-smart-ai-dialog",
       "[data-novaflow-preview-workspace='1']",
@@ -52337,7 +52341,9 @@
       arrow.setAttribute("aria-hidden", "true");
       arrow.textContent = "";
       selectWrap.appendChild(select);
-      selectWrap.appendChild(arrow);
+      // The select draws its own chevron; a second arrow beside it was hidden
+      // a pass later and showed at two wrong places while 飘带计算 opened.
+      void arrow;
       controls.appendChild(selectWrap);
 
       const saveRow = document.createElement("div");
@@ -54162,7 +54168,9 @@
       arrow.setAttribute("aria-hidden", "true");
       arrow.textContent = "";
       selectWrap.appendChild(nextSelect);
-      selectWrap.appendChild(arrow);
+      // The select draws its own chevron; a second arrow beside it was hidden
+      // a pass later and showed at two wrong places while 飘带计算 opened.
+      void arrow;
       controls.appendChild(selectWrap);
 
       const saveRow = document.createElement("div");
@@ -77737,15 +77745,18 @@
   // next paint. Waiting 48 ms for them painted the bare bundle layout first -
   // switching 骨骼动画 -> AI序列动画 showed the resource header, the board dots
   // and the prompt row at the wrong place and size for a few frames.
-  // Once per 200 ms: the first batch of a mount is laid out at once, and the
-  // nodes that keep arriving after it are batched on the usual 48 ms again.
-  var BRAND_RUNTIME_IMMEDIATE_FLUSH_AT = 0;
+  // Only right after a click or key: what the user just opened is laid out
+  // before it paints, every batch of it. A once-per-200ms limit let an unlucky
+  // expand (飘带计算) paint its raw 1047px body for a frame when a background
+  // update had used the slot. Background updates keep the 48 ms batching.
+  var BRAND_RUNTIME_LAST_INPUT_AT = -Infinity;
+  ["pointerdown", "keydown", "click"].forEach((type) => {
+    document.addEventListener(type, () => { BRAND_RUNTIME_LAST_INPUT_AT = performance.now(); }, true);
+  });
   function brandRuntimeMutationQueueAddsElements() {
-    if (performance.now() - BRAND_RUNTIME_IMMEDIATE_FLUSH_AT < 200) return false;
-    const adds = BRAND_RUNTIME_MUTATION_QUEUE.some((mutation) => mutation.type === "childList"
+    if (performance.now() - BRAND_RUNTIME_LAST_INPUT_AT > 500) return false;
+    return BRAND_RUNTIME_MUTATION_QUEUE.some((mutation) => mutation.type === "childList"
       && Array.from(mutation.addedNodes).some((node) => node instanceof HTMLElement));
-    if (adds) BRAND_RUNTIME_IMMEDIATE_FLUSH_AT = performance.now();
-    return adds;
   }
 
   function scheduleBrandRuntimeMutationFlush() {
