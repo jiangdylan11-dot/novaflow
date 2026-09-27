@@ -30781,16 +30781,16 @@
     
     const sets = splitRightWorkspaceSetsForRender()
     const showRightWorkspaceMergeButton = sets.some((set) => normalizeSpineLayerOrder(set && set.parts || []).length > 0)
-    const sourceEntries = sourceResourceList().slice().reverse()
-      .map((resource) => ({ id: String(resource && resource.id || ''), node: renderSourceResourceCard(resource) }))
-      .filter((entry) => entry.node)
-    const sourceCards = sourceEntries.map((entry) => entry.node)
-    
     const panelSignature = splitRightWorkspaceRenderSignature(sets, selected, selectedIds, layerListHeight)
     if (panel.__novaflowSpineSplitRightSignature === panelSignature && panel.firstChild) {
       restoreLayerScroll(panel)
       return
     }
+    // Built after the signature check: an unchanged panel used to build every card and drop them.
+    const sourceEntries = sourceResourceList().slice().reverse()
+      .map((resource) => ({ id: String(resource && resource.id || ''), node: renderSourceResourceCard(resource) }))
+      .filter((entry) => entry.node)
+    const sourceCards = sourceEntries.map((entry) => entry.node)
     panel.__novaflowSpineSplitRightSignature = panelSignature
     panel.innerHTML = ''
     panel.appendChild(h('div', { style: { height: '100%', minHeight: '0', display: 'grid', gridTemplateRows: showRightWorkspaceMergeButton ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr)', gap: showRightWorkspaceMergeButton ? '8px' : '0', padding: SPLIT_RIGHT_PANEL_INSET, boxSizing: 'border-box', background: SPLIT_RIGHT_PANEL_BACKGROUND, color: '#e5e7eb', overflow: 'hidden' } }, [
