@@ -3659,6 +3659,39 @@
     } catch (_) { void 0; }
   }
 
+  // Opening a group must not move the column under the pointer. A screen
+  // recording showed 骨骼's column scrolling itself 47px (then 4px more) when
+  // 自动权重 / 动画计算 were opened near its foot. For 0.8 s after a click on a
+  // group header, every scrolling ancestor of that header keeps its scrollTop
+  // (put back in the scroll event, before the frame paints); the wheel or a
+  // key hands scrolling back at once.
+  function pinNovaflowGroupScrollOnOpen(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const header = target && target.closest('.nf-panel-header, [data-novaflow-ai-tool-heading], [data-novaflow-ai-collapse-heading]');
+    if (!(header instanceof HTMLElement)) return;
+    const pinned = new Map();
+    for (let node = header.parentElement; node && node !== document.body; node = node.parentElement) {
+      if (/(auto|scroll)/.test(window.getComputedStyle(node).overflowY)) pinned.set(node, node.scrollTop);
+    }
+    if (!pinned.size) return;
+    let released = false;
+    const release = () => { released = true; };
+    const hold = (scrollEvent) => {
+      if (released) return;
+      const node = scrollEvent.target;
+      if (pinned.has(node) && node.scrollTop !== pinned.get(node)) node.scrollTop = pinned.get(node);
+    };
+    document.addEventListener("scroll", hold, true);
+    window.addEventListener("wheel", release, { capture: true, passive: true });
+    window.addEventListener("keydown", release, true);
+    window.setTimeout(() => {
+      document.removeEventListener("scroll", hold, true);
+      window.removeEventListener("wheel", release, { capture: true });
+      window.removeEventListener("keydown", release, true);
+    }, 800);
+  }
+  document.addEventListener("pointerdown", pinNovaflowGroupScrollOnOpen, true);
+
   hushNovaflowTransitions();
   document.addEventListener("click", veilNovaflowPrimarySwitch, true);
   document.addEventListener("pointerdown", hushNovaflowTransitionsForSwitch, true);
