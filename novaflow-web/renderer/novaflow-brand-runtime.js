@@ -3692,6 +3692,27 @@
   }
   document.addEventListener("pointerdown", pinNovaflowGroupScrollOnOpen, true);
 
+  // A panel the runtime modules build themselves (骨骼架设, 自动蒙皮, 自动权重)
+  // opens by flipping its body's display and data-open - attributes the brand
+  // observer does not watch - so its content stayed at the module's raw inline
+  // spacing (a 5px button margin, weight 400) until some unrelated DOM change
+  // ran a full pass: opening 飘带计算 next moved everything under 骨骼架设 by
+  // 2-5px a second later. On the click that opens such a panel, the column's
+  // rhythm pass and the panel's overflow pass run in the next frame, before
+  // it paints, so the first painted frame is the settled one.
+  document.addEventListener("click", (event) => {
+    if (event.isTrusted === false) return;
+    const header = event.target instanceof Element ? event.target.closest(".nf-panel-header") : null;
+    const panel = header && header.closest('[data-novaflow-editor-panel="1"][data-novaflow-source-layout="1"]');
+    if (!(panel instanceof HTMLElement)) return;
+    window.requestAnimationFrame(() => {
+      if (!panel.isConnected || panel.getAttribute("data-open") !== "1") return;
+      const column = panel.closest('[data-novaflow-left-content-root="1"]');
+      try { normalizeNovaflowVisualRhythm(column instanceof HTMLElement ? column : document.body); } catch (_) { void 0; }
+      try { normalizeExpandedPanelBodyOverflow(panel); } catch (_) { void 0; }
+    });
+  }, false);
+
   hushNovaflowTransitions();
   document.addEventListener("click", veilNovaflowPrimarySwitch, true);
   document.addEventListener("pointerdown", hushNovaflowTransitionsForSwitch, true);
@@ -55783,7 +55804,9 @@
         if (particleDensity) {
           nfSetStyleIfChanged(header, "padding", `0 ${PARTICLE_DENSITY_PANEL_BODY_PADDING_X}px`, "important");
         }
-        nfSetStyleIfChanged(header, "font-weight", NOVAFLOW_NORMAL_FONT_WEIGHT, "important");
+        // 500, the weight the font pass gives every group header: writing 400 here
+        // had the two passes flip 骨骼架设's title 400/500 every 50-100 ms for a second.
+        nfSetStyleIfChanged(header, "font-weight", NOVAFLOW_MEDIUM_FONT_WEIGHT, "important");
         nfSetStyleIfChanged(header, "box-sizing", "border-box", "important");
       }
       const body = panel.querySelector(":scope > .nf-panel-body");
@@ -56425,7 +56448,7 @@
           height: headerHeight,
           "min-height": headerHeight,
           "max-height": headerHeight,
-          "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT,
+          "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
           margin: "0",
           "box-sizing": "border-box",
           cursor: null,
