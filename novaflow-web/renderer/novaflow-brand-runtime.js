@@ -77713,9 +77713,31 @@
     });
   }
 
+  // New elements (a panel or page React just mounted) are laid out before the
+  // next paint. Waiting 48 ms for them painted the bare bundle layout first -
+  // switching 骨骼动画 -> AI序列动画 showed the resource header, the board dots
+  // and the prompt row at the wrong place and size for a few frames.
+  // Once per 200 ms: the first batch of a mount is laid out at once, and the
+  // nodes that keep arriving after it are batched on the usual 48 ms again.
+  var BRAND_RUNTIME_IMMEDIATE_FLUSH_AT = 0;
+  function brandRuntimeMutationQueueAddsElements() {
+    if (performance.now() - BRAND_RUNTIME_IMMEDIATE_FLUSH_AT < 200) return false;
+    const adds = BRAND_RUNTIME_MUTATION_QUEUE.some((mutation) => mutation.type === "childList"
+      && Array.from(mutation.addedNodes).some((node) => node instanceof HTMLElement));
+    if (adds) BRAND_RUNTIME_IMMEDIATE_FLUSH_AT = performance.now();
+    return adds;
+  }
+
   function scheduleBrandRuntimeMutationFlush() {
     nfTopbarHelpDebug("scheduleBrandRuntimeMutationFlush", { queued: BRAND_RUNTIME_MUTATION_QUEUE.length });
-    if (BRAND_RUNTIME_MUTATION_FLUSH_PENDING) return;
+    if (BRAND_RUNTIME_MUTATION_FLUSH_PENDING) {
+      if (BRAND_RUNTIME_MUTATION_FLUSH_TIMER && brandRuntimeMutationQueueAddsElements()) {
+        window.clearTimeout(BRAND_RUNTIME_MUTATION_FLUSH_TIMER);
+        BRAND_RUNTIME_MUTATION_FLUSH_TIMER = 0;
+        queueMicrotask(flushBrandRuntimeMutations);
+      }
+      return;
+    }
     if (isAiAnimationRangeDragGuardActive()) {
       if (isSkeletonAnimationRuntimeSurfaceActive()) {
         cancelAiAnimationRangeDragGuardForSkeletonLayout();
@@ -77731,7 +77753,7 @@
     nfAnimationPerfCount("brandMutationFlushScheduled");
     const animationActive = document.body && document.body.classList.contains("novaflow-primary-target-animation");
     const toolsActive = isNovaflowToolsSectionActive();
-    const delay = animationActive || toolsActive ? 48 : 0;
+    const delay = (animationActive || toolsActive) && !brandRuntimeMutationQueueAddsElements() ? 48 : 0;
     nfTopbarHelpDebug("scheduleBrandRuntimeMutationFlush:scheduled", { delay, animationActive, toolsActive, queued: BRAND_RUNTIME_MUTATION_QUEUE.length });
     if (delay > 0) {
       BRAND_RUNTIME_MUTATION_FLUSH_TIMER = window.setTimeout(flushBrandRuntimeMutations, delay);
