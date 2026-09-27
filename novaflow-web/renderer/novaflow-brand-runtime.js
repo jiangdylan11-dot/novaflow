@@ -22439,7 +22439,11 @@
       body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-main::before {
         inset: 0 0 ${SKELETON_PLAYBAR_HEIGHT + AI_ANIMATION_PANEL_TIMELINE_GAP}px 0 !important;
         border-radius: ${PRIMARY_RAIL_PANEL_RADIUS}px !important;
-        background: radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px) 0 0 / ${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px, ${PREVIEW_OUTSIDE_BACKGROUND} !important;
+        /* The same dot field as 粒子特效's workspace (centred there): centred
+           across, and down by half the band this layer leaves free below, so
+           switching 粒子特效 <-> AI特效 keeps every dot in place (it was
+           anchored top-left: 2px across and 5px down off). */
+        background: radial-gradient(${STAGE_DOT_COLOR} 1px, transparent 1px) center calc(50% + ${(SKELETON_PLAYBAR_HEIGHT + AI_ANIMATION_PANEL_TIMELINE_GAP) / 2}px) / ${STAGE_DOT_SIZE_PX}px ${STAGE_DOT_SIZE_PX}px, ${PREVIEW_OUTSIDE_BACKGROUND} !important;
       }
       body.novaflow-aifx-open #novaflow-aifx-mvp .aifx-main::after {
         content: none !important;
