@@ -1,6 +1,7 @@
 // Stands in for prompt-assistant-service.py: the same ready line on start,
 // the same one-JSON-line-per-request protocol, none of the model.
 import { createInterface } from 'node:readline';
+import { existsSync, writeFileSync } from 'node:fs';
 const emit = value => process.stdout.write(JSON.stringify(value) + '\n');
 if (process.env.FAKE_PROMPT_ASSISTANT_STARTUP === 'already-running') {
   emit({ type: 'startup-error', ok: false, errorCode: 'prompt-assistant-already-running', error: 'busy elsewhere' });
@@ -8,9 +9,19 @@ if (process.env.FAKE_PROMPT_ASSISTANT_STARTUP === 'already-running') {
 }
 emit({ type: 'ready', status: { runtimeStatus: '模型可用' } });
 const answer = (request, data) => emit({ id: request.id, ok: true, data, elapsedSeconds: 0 });
+// FAKE_PROMPT_ASSISTANT_CACHE_MARKER: until prepareReverseCache writes this file, every model
+// command answers like the real script on a machine that has only the raw model folder.
+const cacheMarker = process.env.FAKE_PROMPT_ASSISTANT_CACHE_MARKER;
 createInterface({ input: process.stdin }).on('line', line => {
   const request = JSON.parse(line);
   if (request.command === 'shutdown') process.exit(0);
+  if (request.command === 'prepareReverseCache') {
+    if (cacheMarker) writeFileSync(cacheMarker, 'built');
+    return answer(request, { ok: true, cacheHit: false, cacheState: 'cache-ready' });
+  }
+  if (cacheMarker && !existsSync(cacheMarker)) {
+    return emit({ id: request.id, ok: false, error: 'cache-preparation-required: Qwen3-VL NF4 cache is missing', errorCode: 'cache-preparation-required' });
+  }
   if (request.command === 'optimizePrompt') {
     const data = {
       positivePrompt: 'optimized: ' + request.prompt,
@@ -18,6 +29,7 @@ createInterface({ input: process.stdin }).on('line', line => {
       echo: { provider: request.provider, surface: request.surface, purpose: request.purpose, currentPrompt: request.currentPrompt,
         modelPath: process.env.NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH, cachePath: process.env.NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH,
         legacyModelPath: process.env.NOVAFLOW_PROMPT_ASSISTANT_MODEL_PATH ?? null,
+        requireCache: process.env.NOVAFLOW_PROMPT_ASSISTANT_REVERSE_REQUIRE_CACHE ?? null,
         comfyRoot: process.env.NOVAFLOW_COMFY_ROOT, runtimeJson: process.env.NOVAFLOW_RUNTIME_JSON }
     };
     if (request.prompt === 'delay') setTimeout(() => answer(request, data), 400);

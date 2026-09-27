@@ -72,7 +72,12 @@ class Qwen3VLAbliteratedAdapter:
             else bool(build_cache)
         )
         self.event_sink = event_sink
-        self.require_prequantized_cache = bool(require_prequantized_cache)
+        # The launcher sets this so a missing NF4 copy is reported (and built once) instead of the raw
+        # folder being quantized again on every request.
+        cache_required = str(
+            os.environ.get("NOVAFLOW_PROMPT_ASSISTANT_REVERSE_REQUIRE_CACHE") or ""
+        ).strip().lower() in {"1", "true", "yes", "on"}
+        self.require_prequantized_cache = bool(require_prequantized_cache) or cache_required
         self.trim_transient_cuda_cache = bool(trim_transient_cuda_cache)
         self.model = None
         self.processor = None

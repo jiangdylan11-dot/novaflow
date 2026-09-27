@@ -104,6 +104,15 @@ class Qwen3NF4CacheTests(unittest.TestCase):
             kill_guard.start()
             self.addCleanup(kill_guard.stop)
 
+    def test_launcher_can_require_the_prequantized_cache_for_every_adapter(self):
+        with patch.dict(os.environ, {"NOVAFLOW_PROMPT_ASSISTANT_REVERSE_REQUIRE_CACHE": ""}):
+            self.assertFalse(Qwen3VLAbliteratedAdapter(Path("model")).require_prequantized_cache)
+            self.assertTrue(
+                Qwen3VLAbliteratedAdapter(Path("model"), require_prequantized_cache=True).require_prequantized_cache
+            )
+        with patch.dict(os.environ, {"NOVAFLOW_PROMPT_ASSISTANT_REVERSE_REQUIRE_CACHE": "1"}):
+            self.assertTrue(Qwen3VLAbliteratedAdapter(Path("model")).require_prequantized_cache)
+
     @unittest.skipUnless(os.name == "nt", "Windows process query")
     def test_windows_pid_probe_queries_state_and_closes_handle(self):
         api = Mock()

@@ -220,6 +220,19 @@ try {
   check(!isReverseCacheDir(templated), 'a cache without a chat template is no cache');
   await writeJson(join(templated, 'tokenizer_config.json'), { chat_template: '{{ messages }}' });
   check(isReverseCacheDir(templated), 'the chat template may live in tokenizer_config.json');
+  // A machine with only the raw model folder: the script reports the missing NF4 copy once,
+  // the assistant builds it and retries, and later requests find it on disk.
+  const cacheMarker = join(dataDir, 'nf4-cache-built.txt');
+  const rawOnly = createPromptAssistant({ ...promptAssistantOptions, comfyUrls: [], env: { FAKE_PROMPT_ASSISTANT_CACHE_MARKER: cacheMarker } });
+  const firstOptimize = await rawOnly.optimizePrompt({ prompt: 'raw only' });
+  check(firstOptimize.ok === true && firstOptimize.data.positivePrompt === 'optimized: raw only', 'a missing NF4 copy is built once and the optimize request retried');
+  equal(firstOptimize.data.echo.requireCache, '1', 'the script is told to report a missing NF4 copy instead of quantizing every time');
+  check((await readFile(cacheMarker, 'utf8')) === 'built', 'the NF4 copy was prepared on disk');
+  const styleAfterBuild = await rawOnly.describeArtStyle({ dataUrl: 'data:image/png;base64,QQ==' });
+  check(styleAfterBuild.ok === true && styleAfterBuild.style === 'flat vector', '画风提取 runs straight away once the copy exists');
+  await rm(cacheMarker);
+  const reverseRetried = await rawOnly.reverseImagePrompt({ images: [{ name: 'a.png', dataUrl: 'data:image/png;base64,QQ==' }], purpose: 'roleReference' });
+  check(reverseRetried.ok === true && reverseRetried.data.prompt === 'a cat on a mat', 'every reverse purpose, not only static reverse, prepares and retries');
   const taken = createPromptAssistant({ ...promptAssistantOptions, comfyUrls: [], env: { FAKE_PROMPT_ASSISTANT_STARTUP: 'already-running' } });
   const elsewhere = await taken.optimizePrompt({ prompt: 'x' });
   check(elsewhere.ok === false && elsewhere.errorCode === 'prompt-assistant-already-running' && elsewhere.retryable === true, 'the desktop client holding the model is reported, not fought');

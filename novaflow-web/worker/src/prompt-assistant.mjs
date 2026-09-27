@@ -143,7 +143,10 @@ function failureCodes(result) {
   return codes;
 }
 
-const isCachePreparationFailure = result => failureCodes(result).some(code => code === 'cache-preparation-required' || code === 'cache-invalid-rebuild-required');
+const CACHE_PREPARATION_CODES = ['cache-preparation-required', 'cache-invalid-rebuild-required'];
+// Some feature paths wrap the adapter error into their own message; the code still shows in the text.
+const isCachePreparationFailure = result => failureCodes(result).some(code => CACHE_PREPARATION_CODES.includes(code))
+  || (result?.ok === false && CACHE_PREPARATION_CODES.some(code => String(result?.error || '').includes(code)));
 
 // ---------------------------------------------------------------- payloads
 // The same limits the desktop's IPC handlers apply before the script sees a
@@ -392,7 +395,10 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
           NOVAFLOW_RUNTIME_JSON: cfg.runtimeJsonPath, NOVAFLOW_COMFY_ROOT: cfg.comfyRoot,
           NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_PATH: cfg.modelPath,
           NOVAFLOW_PROMPT_ASSISTANT_REVERSE_MODEL_TYPE: cfg.modelType,
-          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH: cfg.cachePath
+          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_CACHE_PATH: cfg.cachePath,
+          // A missing NF4 copy is reported instead of quantizing the raw folder on every request;
+          // requestWithCache below builds it once and retries.
+          NOVAFLOW_PROMPT_ASSISTANT_REVERSE_REQUIRE_CACHE: '1'
         }
       });
       proc = child; buffer = ''; stderrTail = [];
@@ -533,6 +539,15 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     return result;
   }
 
+  /** A machine with only the raw model folder builds the NF4 copy once on disk, then retries. */
+  async function requestWithCache(command, payload, timeoutMs) {
+    const result = await request(command, payload, timeoutMs);
+    if (!isCachePreparationFailure(result)) return result;
+    const prepared = await request('prepareReverseCache', {}, 900000);
+    if (prepared?.ok !== true) return { ...prepared, ok: false, runtimeStatus: '模型准备失败', error: '千问 3 提示词模型的 NF4 磁盘缓存准备失败，请重试', errorCode: String(prepared?.errorCode || 'reverse-cache-prepare-failed'), failureCategory: 'model_preparation', retryable: true };
+    return request(command, payload, timeoutMs);
+  }
+
   const invalid = error => ({ ok: false, error: String(error?.message || error), errorCode: 'invalid-request' });
 
   const api = {
@@ -552,25 +567,17 @@ export function createPromptAssistant({ worker, comfyUrls = [], logger, pythonPa
     async optimizePrompt(payload) {
       let normalized;
       try { normalized = normalizeOptimizeRequest(payload); } catch (error) { return invalid(error); }
-      return request('optimizePrompt', normalized.request, normalized.timeoutMs);
+      return requestWithCache('optimizePrompt', normalized.request, normalized.timeoutMs);
     },
     async reverseImagePrompt(payload) {
       let normalized;
       try { normalized = normalizeReverseRequest(payload); } catch (error) { return invalid(error); }
-      let result = await request('reverseImagePrompt', normalized.request, normalized.timeoutMs);
-      if (normalized.usesVisualV2 && isCachePreparationFailure(result)) {
-        // The NF4 copy of the model is built once on disk; the desktop
-        // does the same when the script asks for it.
-        const prepared = await request('prepareReverseCache', {}, 900000);
-        if (prepared?.ok !== true) return { ...prepared, ok: false, runtimeStatus: '反推模型准备失败', error: '本地反推模型的 NF4 磁盘缓存准备失败，请重试', errorCode: String(prepared?.errorCode || 'reverse-cache-prepare-failed'), failureCategory: 'model_preparation', retryable: true };
-        result = await request('reverseImagePrompt', normalized.request, normalized.timeoutMs);
-      }
-      return result;
+      return requestWithCache('reverseImagePrompt', normalized.request, normalized.timeoutMs);
     },
     async describeArtStyle(payload) {
       const dataUrl = String(payload?.dataUrl || '');
       if (!dataUrl.startsWith('data:image/')) return invalid(new Error('请先选择可分析的图片'));
-      const result = await request('describeArtStyle', { images: [{ name: sanitizeFileName(payload?.name, 'scene.png'), dataUrl }] }, 240000);
+      const result = await requestWithCache('describeArtStyle', { images: [{ name: sanitizeFileName(payload?.name, 'scene.png'), dataUrl }] }, 240000);
       return result?.ok ? { ok: true, style: String(result.data?.style || '').slice(0, 400), model: String(result.data?.model || '') } : result;
     },
     stop
