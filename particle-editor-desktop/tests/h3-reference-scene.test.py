@@ -1,0 +1,147 @@
+"""多参 scene step: borrowed looks stay out of the shot, the user's event order holds."""
+import ast
+import json
+import re
+import sys
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+module = ast.parse((ROOT / 'prompt-assistant-service.py').read_text(encoding='utf-8-sig'))
+assistant_class = next(n for n in module.body if isinstance(n, ast.ClassDef) and n.name == 'PromptAssistant')
+method = next(n for n in assistant_class.body if isinstance(n, ast.FunctionDef) and n.name == 'write_h3_reference_scene')
+scope = {'json': json, 're': re}
+exec(compile(ast.Module(body=[method], type_ignores=[]), str(ROOT / 'prompt-assistant-service.py'), 'exec'), scope)
+
+ROBOT = '铜绿色机器人，头部有发光的圆形眼睛，手持金属洒水壶'
+GIRL = '黑短发女性，穿橙色短袖衬衫和绿色短裤，背着绿色双肩包'
+HALL = '一条宽阔的白色地毯通道，两侧对称排列着灰色座椅，通道尽头是木质门'
+
+
+def subject(n, picture, description, keep, relation='fully_preserved'):
+    return {'label': f'<Subject {n}>', 'sources': [picture], 'description': description, 'keep': keep, 'relation': relation}
+
+
+class SceneTest(unittest.TestCase):
+    def write(self, plan, source, output, attribute_pictures=None, observed=None, observed_scene=None, requirement=''):
+        prompts = []
+
+        class FakeAssistant:
+            write = scope['write_h3_reference_scene']
+
+            def generate(self, prompt, **kwargs):
+                prompts.append(prompt)
+                return output
+        plan = dict({'tasks': ['reference generation'], 'description': '计划描述', 'soundscape': 'N/A', 'music': 'N/A'}, **plan)
+        result = FakeAssistant().write(plan, source, requirement, 5, False, observed or {}, observed_scene or {}, attribute_pictures or {})
+        return result, prompts[0] if prompts else ''
+
+    def test_style_picture_lends_only_its_style(self):
+        panda = '熊猫，脸部有红色心形图案，头顶金色卷云纹饰，手持红色长棍'
+        plan = {'references': [subject(1, '<Picture 1>', ROBOT, '铜绿色、发光圆形眼睛'),
+                               subject(2, '<Picture 2>', panda, '水墨手绘风格、红色心形图案、红色长棍')],
+                'summary': '<Subject 1> 在细雨里给花浇水，<Subject 2> 安静地站在一旁观看'}
+        output = ('事件：<Subject 1> 在细雨中走向花坛，手持洒水壶轻倾水流，<Subject 2> 静立一旁未动，雨丝轻拂其红心纹饰，最终水珠落花无声。\n'
+                  '画风：水墨手绘\n场景：花园里的泥土小径，细雨飘洒\n'
+                  '动作1：<Subject 1> 脚步轻缓向花坛移动\n动作2：<Subject 1> 低头倾斜洒水壶，水流落在花上\n'
+                  '动作3：<Subject 2> 保持原位，卷云纹饰在雨中微湿\n镜头：固定\n声音：雨声\n配乐：无')
+        result, prompt = self.write(plan, '用 <Picture 2> 的水墨手绘画风，拍 <Picture 1> 的机器人在细雨里给花浇水', output,
+                                    {'<Picture 2>': ['水墨手绘画风']}, {'<Picture 1>': ROBOT, '<Picture 2>': panda},
+                                    {'<Picture 2>': {'style': '动漫插画', 'background': '纯黄色背景'}})
+        panda_row = result['references'][1]
+        self.assertEqual(panda_row['description'], '仅借用此图的画风：水墨手绘，此图中的角色不出现')
+        self.assertEqual(panda_row['keep'], '水墨手绘风格')
+        self.assertEqual(panda_row['relation'], 'attribute_transfer')
+        self.assertNotIn('熊猫', prompt)
+        # The writer never sees the style picture's label, so it cannot cast it.
+        self.assertIn('另有一张参考图只借用画风：水墨手绘，那张图里的角色和物品都不出现\n', prompt)
+        self.assertNotIn('<Subject 2>', prompt.split('用户要求：')[0])
+        self.assertIn('已确定事件：<Subject 1> 在细雨里给花浇水\n', prompt)
+        self.assertEqual(result['summary'], '<Subject 1> 在细雨中走向花坛，手持洒水壶轻倾水流，最终水珠落花无声。')
+        self.assertNotIn('卷云', result['description'])
+        self.assertIn('画面采用 <Subject 2> 的画风。', result['description'])
+
+    def test_borrowed_armour_replaces_the_wearers_clothes_only(self):
+        erlang = '男性角色，黑色短发，身穿金色铠甲，披着红色披风，手持金色长枪'
+        plan = {'references': [subject(1, '<Picture 1>', GIRL, '黑短发、橙色短袖衬衫、绿色短裤、绿色双肩包'),
+                               subject(2, '<Picture 2>', erlang, '金色铠甲、红色披风、金色长枪', 'attribute_transfer')],
+                'summary': '<Subject 1> 穿上 <Subject 2> 的金色盔甲，站在原地转身展示新装'}
+        output = ('事件：<Subject 1> 穿上 <Subject 2> 的金色盔甲，<Subject 2> 的盔甲静静伫立，最终她转身展示。\n'
+                  '画风：动漫插画\n场景：乡村公路\n动作1：<Subject 1> 站在路中央，身披金色盔甲\n'
+                  '动作2：<Subject 1> 缓缓转身展示盔甲\n镜头：固定\n声音：风声\n配乐：无')
+        result, prompt = self.write(plan, '让 <Picture 1> 的女孩穿上 <Picture 2> 的金色盔甲', output,
+                                    {'<Picture 2>': ['金色盔甲']}, {'<Picture 1>': GIRL, '<Picture 2>': erlang})
+        girl, armour = result['references']
+        self.assertEqual(armour['description'], '仅借用此图中的金色盔甲，图中人物不出现')
+        self.assertEqual(armour['keep'], '金色盔甲')
+        self.assertEqual(girl['description'], '黑短发女性，背着绿色双肩包，换上 <Subject 2> 的金色盔甲')
+        self.assertEqual(girl['keep'], '脸部、黑短发、绿色双肩包')
+        self.assertEqual(girl['relation'], 'partially_preserved')
+        self.assertNotIn('男性', prompt)
+        self.assertEqual(result['summary'], '<Subject 1> 穿上 <Subject 2> 的金色盔甲，最终她转身展示。')
+        self.assertIn('金色盔甲来自 <Subject 2>，<Subject 2> 中的人物不出现。', result['description'])
+
+    def test_borrowed_clothes_keep_the_donors_clothing_details(self):
+        zhongkui = '黑发束发、浓密胡须的男性，身穿红金相间服饰，衣袍有金色纹饰，下着黑色裤子，手持长剑'
+        plan = {'references': [subject(1, '<Picture 1>', GIRL, '黑短发、橙色短袖、绿色短裤、绿色双肩包'),
+                               subject(2, '<Picture 2>', zhongkui, '红金相间服饰、长剑', 'attribute_transfer')],
+                'summary': '<Subject 1> 换上 <Subject 2> 的衣服，朝镜头走来'}
+        output = ('事件：<Subject 1> 换上 <Subject 2> 的衣服，朝镜头走来\n画风：动漫插画\n场景：乡村公路\n'
+                  '动作1：<Subject 1> 朝镜头迈步\n动作2：<Subject 1> 停在镜头前\n镜头：固定\n声音：脚步声\n配乐：无')
+        # "把图2的衣服给图1的女孩": the wearer is named after the borrowed picture.
+        result, _ = self.write(plan, '把 <Picture 2> 的衣服给 <Picture 1> 的女孩换上，朝镜头走来', output,
+                               {'<Picture 2>': ['衣服']}, {'<Picture 1>': GIRL, '<Picture 2>': zhongkui})
+        girl, clothes = result['references']
+        self.assertEqual(clothes['description'], '仅借用此图中的衣服：红金相间服饰，衣袍有金色纹饰，黑色裤子，图中人物不出现')
+        self.assertEqual(clothes['keep'], '衣服、红金相间服饰、衣袍有金色纹饰、黑色裤子')
+        self.assertEqual(girl['keep'], '脸部、黑短发、绿色双肩包')
+
+    def test_a_dropped_hovering_clause_hands_over_its_subject(self):
+        plan = {'references': [subject(1, '<Picture 1>', GIRL, '黑短发'), subject(2, '<Picture 2>', ROBOT, '铜绿色')],
+                'summary': '<Subject 1> 遇到 <Subject 2>'}
+        output = ('事件：<Subject 1> 遇到 <Subject 2>\n画风：动漫插画\n场景：乡村公路\n动作1：<Subject 1> 沿路走来\n'
+                  '动作2：<Subject 2> 的洒水壶悬停在身侧，两盏眼睛灯亮起\n镜头：固定\n声音：风声\n配乐：无')
+        result, _ = self.write(plan, '<Picture 1> 的女人遇到了 <Picture 2> 的机器人', output)
+        self.assertIn('<Subject 2> 两盏眼睛灯亮起。', result['description'])
+        self.assertNotIn('悬停', result['description'])
+
+    def test_music_only_when_the_user_asks_for_it(self):
+        plan = {'references': [subject(1, '<Picture 1>', ROBOT, '铜绿色'), subject(2, '<Picture 2>', '金色奖杯', '金色')],
+                'summary': '<Subject 1> 举起 <Subject 2>'}
+        output = ('事件：<Subject 1> 举起 <Subject 2>\n画风：3D渲染\n场景：温室\n动作1：<Subject 1> 走向 <Subject 2>\n'
+                  '动作2：<Subject 1> 举起 <Subject 2>\n镜头：固定\n声音：金属碰撞声\n配乐：胜利主题轻快音乐')
+        result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯', output)
+        self.assertEqual(result['music'], 'N/A')
+        self.assertEqual(result['soundscape'], '金属碰撞声。')
+        result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯，配上欢快的音乐', output)
+        self.assertEqual(result['music'], '胜利主题轻快音乐。')
+
+    def test_picture_place_is_the_scene_and_unrequested_hovering_is_dropped(self):
+        plan = {'references': [subject(1, '<Picture 1>', ROBOT, '铜绿色'), subject(2, '<Picture 2>', '球形糖果', '球形'),
+                               subject(3, '<Picture 3>', HALL, '白色地毯通道')],
+                'summary': '<Subject 1> 在 <Subject 3> 的大厅里拾起 <Subject 2>'}
+        output = ('事件：<Subject 1> 在大厅里拾起 <Subject 2>，洒水壶悬停在旁。\n画风：3D渲染\n'
+                  '场景：宽阔的白色地毯通道大厅，两侧对称灰色座椅，尽头木质门\n'
+                  '动作1：<Subject 1> 走向 <Subject 2>\n动作2：<Subject 1> 弯腰拾起 <Subject 2>，洒水壶悬停于身旁\n'
+                  '动作3：<Subject 1> 把 <Subject 2> 举到面前\n镜头：固定\n声音：脚步声\n配乐：无')
+        result, prompt = self.write(plan, '<Picture 1> 的机器人在 <Picture 3> 的大厅里拾起 <Picture 2> 的糖果', output)
+        self.assertIn('场景是 <Subject 3>：宽阔的白色地毯通道大厅', result['description'])
+        self.assertNotIn('悬停', result['description'] + result['summary'])
+        self.assertIn('<Subject 1> 弯腰拾起 <Subject 2>。', result['description'])
+        # The user asked for it: the clause stays.
+        result, _ = self.write(plan, '<Picture 1> 的机器人拾起 <Picture 2>，洒水壶悬停在旁', output)
+        self.assertIn('悬停', result['description'])
+
+    def test_without_a_written_request_the_writer_designs_the_event(self):
+        plan = {'references': [subject(1, '<Picture 1>', ROBOT, '铜绿色'), subject(2, '<Picture 2>', '球形糖果', '球形')],
+                'summary': '<Subject 1> 用洒水壶浇灌 <Subject 2>，糖果微微融化'}
+        output = ('事件：<Subject 1> 看见 <Subject 2>，走过去把它拾起\n画风：3D渲染\n场景：温室\n'
+                  '动作1：<Subject 1> 走向 <Subject 2>\n动作2：<Subject 1> 弯腰拾起 <Subject 2>\n镜头：固定\n声音：脚步声\n配乐：无')
+        result, prompt = self.write(plan, '', output, requirement='根据已上传的参考图反推视频提示词')
+        self.assertNotIn('已确定事件', prompt)
+        self.assertIn('物品不会自己移动', prompt)
+        self.assertEqual(result['summary'], '<Subject 1> 看见 <Subject 2>，走过去把它拾起。')
+
+
+if __name__ == '__main__':
+    unittest.main()

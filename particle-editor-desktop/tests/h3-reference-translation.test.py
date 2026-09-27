@@ -30,15 +30,15 @@ TRANSLATIONS = {
     '把 TOKEN_0 中的金币替换成 TOKEN_1，保持背景。': 'Replace the coin in TOKEN_0 with TOKEN_1, keeping the background.',
     '保留图片外观。': 'Keep the image appearance.',
     '保留背景和运动。': 'Preserve background and motion.',
-    '按原视频旋转，角色说TOKEN_0。在TOKEN_1秒呈现侧面。': 'Rotate as in the source video; the character says TOKEN_0. Show the side at TOKEN_1 seconds.',
+    'TOKEN_0 按原视频旋转，角色说TOKEN_1。在TOKEN_2秒呈现侧面。': 'TOKEN_0 rotates as in the source video; the character says TOKEN_1. Show the side at TOKEN_2 seconds.',
 }
 
 
 class TranslationTest(unittest.TestCase):
-    def run_translation(self, corrupt=None, spatial=False):
+    def run_translation(self, corrupt=None, spatial=False, fields=None, translations=None):
         calls = []
-        fields = dict(FIELDS)
-        translations = dict(TRANSLATIONS)
+        fields = dict(FIELDS, **(fields or {}))
+        translations = dict(TRANSLATIONS, **(translations or {}))
         if spatial:
             fields['subject_definitions'] = fields['subject_definitions'].replace('原始视频。', '带立体浮雕的原始视频。')
             translations['带立体浮雕的原始视频。'] = 'The original video with a 3D relief.'
@@ -62,7 +62,20 @@ class TranslationTest(unittest.TestCase):
         self.assertIn('Replace the coin in <Video 1> with <Subject 1>, keeping the background.', pair['modelPrompt'])
         self.assertIn('“你好”', pair['modelPrompt'])
         self.assertIn('1.500 seconds', pair['modelPrompt'])
+        self.assertIn('[Shot 1] <Subject 1> rotates as in the source video', pair['modelPrompt'])
         self.assertIn('把 <Video 1> 中的金币替换成 <Subject 1>', pair['displayPrompt'])
+
+    def test_sentence_openers_join_their_clause_and_quoted_sounds_are_translated(self):
+        # "3D" and a leading tag used to stay outside the translated clause
+        # ("3DRendering style", "<Subject 1> Walking…"); a quoted sound is not dialogue.
+        pair, calls = self.run_translation(
+            fields={'detailed_description': '[Shot 1] 3D渲染风格。<Subject 1> 按原视频旋转，靴子发出“嗒”的一声，角色喊：“你好”。'},
+            translations={'3D渲染风格。TOKEN_0 按原视频旋转，靴子发出“嗒”的一声，角色喊：TOKEN_1。':
+                          '3D rendering style. TOKEN_0 rotates as in the source video, the boots give a tap, and the character shouts: TOKEN_1.'})
+        self.assertEqual(len(calls), 1)
+        self.assertIn('[Shot 1] 3D rendering style. <Subject 1> rotates', pair['modelPrompt'])
+        self.assertIn('shouts: “你好”', pair['modelPrompt'])
+        self.assertNotIn('嗒', pair['modelPrompt'])
 
     def test_bad_translation_retries_only_the_failed_clause(self):
         for corrupt in (lambda value: value.replace('TOKEN_1', 'TOKEN_7'), lambda value: '照抄中文'):
