@@ -3659,50 +3659,6 @@
     } catch (_) { void 0; }
   }
 
-  // Keyboard focus ring for controls whose outline is cleared inline with
-  // !important (about 140 places), which no stylesheet can put back: a fixed
-  // ring drawn over the focused control, only when it shows no outline itself.
-  function bindNovaflowFocusRing() {
-    let ring = null;
-    let target = null;
-    const place = () => {
-      if (!ring || !target || !target.isConnected) return;
-      const rect = target.getBoundingClientRect();
-      ring.style.left = `${Math.round(rect.left) - 2}px`;
-      ring.style.top = `${Math.round(rect.top) - 2}px`;
-      ring.style.width = `${Math.round(rect.width) + 4}px`;
-      ring.style.height = `${Math.round(rect.height) + 4}px`;
-      ring.style.borderRadius = window.getComputedStyle(target).borderRadius || "6px";
-    };
-    const hide = () => {
-      target = null;
-      if (ring) ring.style.display = "none";
-    };
-    document.addEventListener("focusin", (event) => {
-      const node = event.target;
-      if (!(node instanceof HTMLElement) || !node.matches(":focus-visible")) { hide(); return; }
-      if (node.matches("textarea, input:not([type=checkbox]):not([type=radio]):not([type=range]), [contenteditable]")) { hide(); return; }
-      const style = window.getComputedStyle(node);
-      if (style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0) { hide(); return; }
-      if (!ring) {
-        ring = document.createElement("div");
-        ring.setAttribute("data-novaflow-focus-ring", "1");
-        ring.setAttribute("data-novaflow-runtime-ignore", "1");
-        ring.setAttribute("aria-hidden", "true");
-        ring.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;box-sizing:border-box;border:2px solid #1EA672;display:none";
-        document.body.appendChild(ring);
-      }
-      target = node;
-      ring.style.display = "block";
-      place();
-    }, true);
-    document.addEventListener("focusout", hide, true);
-    document.addEventListener("pointerdown", hide, true);
-    window.addEventListener("scroll", place, true);
-    window.addEventListener("resize", place);
-  }
-  bindNovaflowFocusRing();
-
   hushNovaflowTransitions();
   document.addEventListener("click", veilNovaflowPrimarySwitch, true);
   document.addEventListener("pointerdown", hushNovaflowTransitionsForSwitch, true);
@@ -23192,6 +23148,13 @@
         max-height: ${AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y * 2 - 1}px !important;
         border-top: ${AI_ANIMATION_GROUP_PAD_Y * 2 + 1 - 5}px solid transparent !important;
         border-bottom: ${AI_ANIMATION_GROUP_PAD_Y}px solid transparent !important;
+        background-clip: padding-box !important;
+      }
+      /* Those borders stay clear on hover too: the generic button hover tinted
+         them 20% white, a rim above and below the row. */
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="ai-cutout"]:is(:hover, :focus, :active) {
+        border-top-color: transparent !important;
+        border-bottom-color: transparent !important;
         background-clip: padding-box !important;
       }
       /* The rule between the two rows is a 1px stripe of the section's own

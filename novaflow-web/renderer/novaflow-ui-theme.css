@@ -547,34 +547,12 @@
   filter: none !important;
 }
 
-/* 2.3 Keyboard focus.
-   The controls above set `outline: 0` inline to drop the browser default.
-   Removing the inner shadow must not also cost a focus indicator, so it is
-   put back here for keyboard users only. */
-.novaflow-app button:focus-visible,
-.novaflow-app [role="button"]:focus-visible,
+/* 2.3 Focus. The app is used with the mouse, not Tab: buttons show no focus
+   ring (a click that left a button focused drew a green ring round it).
+   Fields that take typing keep theirs. */
 .novaflow-app input:focus-visible,
 .novaflow-app select:focus-visible,
-.novaflow-app textarea:focus-visible {
-  outline: 2px solid var(--nf-focus) !important;
-  outline-offset: 1px !important;
-}
-
-/* The ranked entries clear their outline from rules carrying three attribute
-   selectors, which outrank the plain rule above. These carry a fourth so the
-   ring wins on specificity rather than on source order. */
-.novaflow-app [data-novaflow-secondary-entry="1"][aria-pressed]:focus-visible,
-.novaflow-app [data-novaflow-primary-entry="1"][data-novaflow-primary-active]:focus-visible,
-.novaflow-app [data-novaflow-spine-split-persistent-tool][data-novaflow-spine-split-tool-active]:focus-visible {
-  outline: 2px solid var(--nf-focus) !important;
-  /* Inset, because these controls clip to their own rounded box. */
-  outline-offset: -2px !important;
-}
-
-/* The split workspace clears outlines from an id-scoped rule, which outranks
-   the selector above. Matched here with the id so focus survives there too. */
-.novaflow-app #novaflow-spine-split-workspace-overlay button:focus-visible,
-.novaflow-app #novaflow-spine-split-workspace-overlay [role="button"]:focus-visible,
+.novaflow-app textarea:focus-visible,
 .novaflow-app #novaflow-spine-split-workspace-overlay input:focus-visible,
 .novaflow-app #novaflow-spine-split-workspace-overlay select:focus-visible,
 .novaflow-app #novaflow-spine-split-workspace-overlay textarea:focus-visible {
@@ -904,10 +882,6 @@ html body [data-novaflow-pair-switch]::after {
 html body [data-novaflow-pair-switch="on"]::after {
   left: 15px !important;
   background: #ffffff !important;
-}
-html body [data-novaflow-pair-switch]:has(> button:focus-visible) {
-  outline: 2px solid #1ea672 !important;
-  outline-offset: 3px !important;
 }
 
 html body [data-novaflow-sprite-editor-lifecycle-stop-delete]:hover {
@@ -2225,17 +2199,11 @@ html body :is([data-nf-dialog="close"], .novaflow-art-export-close, .novaflow-sm
 /* 2.2 Interaction feedback, one rule each.
    - Disabled: half strength and a not-allowed cursor. Several disabled
      buttons (设计助手 生成, LoRA 重试/移除, 权重 自动) looked live.
-   - Keyboard focus inside dialogs mounted on body, outside .novaflow-app,
-     which the 2.3 ring does not reach.
    - Hover on the controls that had none: a brightness lift, so a selected
      fill or border keeps its own colour. */
 html body :is(button, [role="button"]):is(:disabled, [aria-disabled="true"]) {
   opacity: 0.5 !important;
   cursor: not-allowed !important;
-}
-html body :is([role="dialog"], dialog, [data-nf-dialog="panel"], .nf-wh-card) :is(button, [role="button"], input, select, textarea):focus-visible {
-  outline: 2px solid var(--nf-focus, #1EA672) !important;
-  outline-offset: 1px !important;
 }
 html body [data-novaflow-ui-design-toolbar] :is(button, [role="button"]):not(:disabled):hover,
 html body [data-novaflow-ui-design-toolbar-action]:not(:disabled):hover,
