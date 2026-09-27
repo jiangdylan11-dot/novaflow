@@ -3578,6 +3578,27 @@
     const runsAtClick = (window.__novaflowSpecStats || {}).runs || 0;
     const startedAt = performance.now();
     let frames = 0;
+    // 特效's canvas frame is fitted by the bundle a frame after the page
+    // mounts (it learns the dock's reserve late): 408 -> 337 in a narrow
+    // window. The veil waits until that frame holds still for a frame.
+    const previewFrameBox = () => {
+      const workspace = document.querySelector('[data-novaflow-preview-workspace="1"]');
+      if (!(workspace instanceof HTMLElement)) return "";
+      const frame = Array.from(workspace.querySelectorAll("div[data-preview-ui]")).find((node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.width > 150 && Math.abs(rect.width - rect.height) < 2;
+      });
+      if (!(frame instanceof HTMLElement)) return "";
+      const rect = frame.getBoundingClientRect();
+      return [rect.left, rect.top, rect.width].map(Math.round).join(",");
+    };
+    let lastPreviewFrameBox = null;
+    const previewFrameSettled = () => {
+      const box = previewFrameBox();
+      const settled = box === "" || box === lastPreviewFrameBox;
+      lastPreviewFrameBox = box;
+      return settled;
+    };
     if (NOVAFLOW_SWITCH_VEIL_FRAME) window.cancelAnimationFrame(NOVAFLOW_SWITCH_VEIL_FRAME);
     const check = () => {
       frames += 1;
@@ -3586,7 +3607,8 @@
       // (a slow page such as 美工 has them only after its mount; waiting a
       // further frame there kept the column blank ~200ms longer).
       const groupsIn = newGroupsIn();
-      if (groupsIn || (runs > runsAtClick && frames >= 2) || performance.now() - startedAt > 260) {
+      const ready = groupsIn || (runs > runsAtClick && frames >= 2);
+      if ((ready && previewFrameSettled()) || performance.now() - startedAt > 260) {
         NOVAFLOW_SWITCH_VEIL_FRAME = 0;
         html.removeAttribute("data-novaflow-switch-veil");
         return;
@@ -3604,6 +3626,8 @@
           node instanceof Element && (node.matches(GROUP_SELECTOR) || node.querySelector(GROUP_SELECTOR))
         )));
         if (addedGroup && newGroupsIn()) {
+          // A page with a fitted canvas frame lifts from the frame check once it holds still.
+          if (previewFrameBox() !== "") return;
           html.removeAttribute("data-novaflow-switch-veil");
           watcher.disconnect();
         }
@@ -33248,6 +33272,14 @@
           "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT,
           color: PRIMARY_LEFT_CARD_TITLE_COLOR
         }
+      },
+      {
+        // 工具's list box is the node 美工 had as its left content, and it kept
+        // 美工's full-height sizing: after 美工 the stacked column came out a
+        // row taller (378 vs 324) with empty space under the list.
+        when: "body.novaflow-primary-target-tools",
+        selector: "[data-novaflow-left-content-shell] > div",
+        style: { height: "auto", "max-height": "none", inset: "auto" }
       },
       {
         // 工具: the tool list is a navigation column - 198x40 entries on the
