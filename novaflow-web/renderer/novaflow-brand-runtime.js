@@ -3054,14 +3054,21 @@
   const NOVAFLOW_TOPBAR_HELP_ITEM_LABELS = new Set(["\u5feb\u6377\u952e", "\u5173\u4e8eNovaFlow", "\u8054\u7cfb\u6211\u4eec"]);
   const NF_TOPBAR_HELP_DEBUG_PREFIX = "[NF_TOPBAR_HELP_DEBUG]";
 
+  // Called from every mutation flush; re-read the URL and storage at most once a second.
+  var nfTopbarHelpDebugStoredAt = 0;
+  var nfTopbarHelpDebugStored = false;
   function nfTopbarHelpDebugEnabled() {
+    if (window.__NF_TOPBAR_HELP_DEBUG === true) return true;
+    const now = Date.now();
+    if (now - nfTopbarHelpDebugStoredAt < 1000) return nfTopbarHelpDebugStored;
+    nfTopbarHelpDebugStoredAt = now;
     try {
-      if (window.__NF_TOPBAR_HELP_DEBUG === true) return true;
-      if (new URLSearchParams(window.location.search || "").get("__NF_TOPBAR_HELP_DEBUG") === "1") return true;
-      return window.localStorage?.getItem("__NF_TOPBAR_HELP_DEBUG") === "1";
+      nfTopbarHelpDebugStored = new URLSearchParams(window.location.search || "").get("__NF_TOPBAR_HELP_DEBUG") === "1"
+        || window.localStorage?.getItem("__NF_TOPBAR_HELP_DEBUG") === "1";
     } catch {
-      return window.__NF_TOPBAR_HELP_DEBUG === true;
+      nfTopbarHelpDebugStored = false;
     }
+    return nfTopbarHelpDebugStored;
   }
 
   function nfTopbarHelpDebugRunId() {
@@ -29719,6 +29726,7 @@
     }
     if (!window.__novaflowTopbarAiRuntimeStatusTimer) {
       window.__novaflowTopbarAiRuntimeStatusTimer = window.setInterval(() => {
+        if (document.hidden) return;
         refreshTopbarAiRuntimeStatus({ timeoutMs: 1800 });
       }, TOPBAR_AI_RUNTIME_STATUS_REFRESH_MS);
     }
@@ -35694,7 +35702,7 @@
     if (!desired) return;
     // React repainted a dock toggle: flip its state attribute so a full pass restyles it.
     if (node.hasAttribute("data-novaflow-dock-toggle-on")) {
-      const on = particleDockToggleOn(node) ? "1" : "0";
+      const on = node.disabled !== true && particleDockToggleOn(node) ? "1" : "0";
       if (node.getAttribute("data-novaflow-dock-toggle-on") !== on) node.setAttribute("data-novaflow-dock-toggle-on", on);
     }
     let drifted = false;
@@ -56404,7 +56412,23 @@
         await api.runtimeOpenLogsFolder();
         return;
       }
-      await refreshRuntimeManagerPanel(panel, action);
+      // One restart / check at a time; the buttons stay dimmed until it answers.
+      if (!(panel instanceof HTMLElement) || panel.getAttribute("data-novaflow-runtime-busy") === "1") return;
+      const actionButtons = Array.from(panel.querySelectorAll('button[data-novaflow-runtime-bound="1"]'));
+      panel.setAttribute("data-novaflow-runtime-busy", "1");
+      actionButtons.forEach((node) => {
+        node.disabled = true;
+        node.style.setProperty("opacity", "0.6", "important");
+      });
+      try {
+        await refreshRuntimeManagerPanel(panel, action);
+      } finally {
+        panel.removeAttribute("data-novaflow-runtime-busy");
+        actionButtons.forEach((node) => {
+          node.disabled = false;
+          node.style.removeProperty("opacity");
+        });
+      }
     }, true);
   }
 
@@ -67682,6 +67706,7 @@
     bindSpineImageImportButtonCapture();
     bindSpineImportFileInputPrepareCapture();
     window.setInterval(() => {
+      if (document.hidden) return;
       nfAnimationPerfCount("spineImportButtonInterval");
       try {
         bindSpineImageElectronMultiPicker();
@@ -68577,6 +68602,11 @@
       }
       const api = window.electronAPI;
       if (api && typeof api.licenseImportText === "function") {
+        if (importButton.disabled) return;
+        importButton.disabled = true;
+        importButton.setAttribute("aria-busy", "true");
+        importButton.style.setProperty("opacity", "0.6", "important");
+        setPreviewLicenseStatus("\u6b63\u5728\u5bfc\u5165\u2026");
         try {
           const result = await api.licenseImportText({ text });
           if (result && result.ok) {
@@ -68586,6 +68616,10 @@
           setPreviewLicenseStatus(`\u5bfc\u5165\u5931\u8d25\uff1a${String(result && result.error || "unknown")}`, "error");
         } catch (error) {
           setPreviewLicenseStatus(`\u5bfc\u5165\u5931\u8d25\uff1a${String(error && error.message || error)}`, "error");
+        } finally {
+          importButton.disabled = false;
+          importButton.removeAttribute("aria-busy");
+          importButton.style.removeProperty("opacity");
         }
         return;
       }
@@ -76679,6 +76713,7 @@
       markNovaflowNumberInputOverlayScrolling();
     }, { capture: true, passive: true });
     window.__NovaFlowParticleTimelineTimeDisplayTimer = window.setInterval(() => {
+      if (document.hidden) return;
       nfAnimationPerfCount("particleTimelineTimeDisplayInterval");
       const refreshRoot = resolveIdleRefreshScope();
       if (!(refreshRoot instanceof HTMLElement)) return;
@@ -77466,7 +77501,7 @@
     }
     const visibleMutations = BRAND_RUNTIME_MUTATION_QUEUE.splice(0);
     const mutationFlushToken = ++BRAND_RUNTIME_MUTATION_FLUSH_TOKEN;
-    nfTopbarHelpDebug("flushBrandRuntimeMutations:visible", { mutationFlushToken, mutations: nfTopbarHelpDebugMutationSummary(visibleMutations) });
+    if (nfTopbarHelpDebugEnabled()) nfTopbarHelpDebug("flushBrandRuntimeMutations:visible", { mutationFlushToken, mutations: nfTopbarHelpDebugMutationSummary(visibleMutations) });
     nfAnimationPerfRecordBrandMutationAttribution(visibleMutations, { flush: true });
     if (isSkeletonAnimationRuntimeSurfaceActive()) {
       nfTopbarHelpDebug("flushBrandRuntimeMutations:skeleton-surface", { mutationFlushToken });
@@ -84255,10 +84290,18 @@
         attributeFilter: ["data-open"]
       });
     }
+    // A window drag fires resize faster than frames; rebuild the surfaces once per frame.
+    let artGenerateResizeFrame = 0;
     window.addEventListener("resize", () => {
-      if (ART_GENERATE_STATE.active) renderArtGenerateSurfaces();
+      if (artGenerateResizeFrame) return;
+      artGenerateResizeFrame = window.requestAnimationFrame(() => {
+        artGenerateResizeFrame = 0;
+        if (ART_GENERATE_STATE.active) renderArtGenerateSurfaces();
+      });
     }, { passive: true });
-    window.setInterval(syncArtGenerateRuntime, 1200);
+    window.setInterval(() => {
+      if (!document.hidden) syncArtGenerateRuntime();
+    }, 1200);
     scheduleArtGenerateSync([0, 80, 240, 600, 1200, 2400]);
   }
 

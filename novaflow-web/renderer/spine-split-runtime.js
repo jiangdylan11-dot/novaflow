@@ -13324,14 +13324,21 @@
 
   let mountedCard = null
 
+  // Called for every observed mutation batch; re-read the URL and storage at most once a second.
+  var nfTopbarHelpDebugStoredAt = 0
+  var nfTopbarHelpDebugStored = false
   function nfTopbarHelpDebugEnabled() {
+    if (window.__NF_TOPBAR_HELP_DEBUG === true) return true
+    const now = Date.now()
+    if (now - nfTopbarHelpDebugStoredAt < 1000) return nfTopbarHelpDebugStored
+    nfTopbarHelpDebugStoredAt = now
     try {
-      if (window.__NF_TOPBAR_HELP_DEBUG === true) return true
-      if (new URLSearchParams(window.location.search || '').get('__NF_TOPBAR_HELP_DEBUG') === '1') return true
-      return window.localStorage?.getItem('__NF_TOPBAR_HELP_DEBUG') === '1'
+      nfTopbarHelpDebugStored = new URLSearchParams(window.location.search || '').get('__NF_TOPBAR_HELP_DEBUG') === '1'
+        || window.localStorage?.getItem('__NF_TOPBAR_HELP_DEBUG') === '1'
     } catch (_) {
-      return window.__NF_TOPBAR_HELP_DEBUG === true
+      nfTopbarHelpDebugStored = false
     }
+    return nfTopbarHelpDebugStored
   }
 
   function nfTopbarHelpDebugRunId() {
