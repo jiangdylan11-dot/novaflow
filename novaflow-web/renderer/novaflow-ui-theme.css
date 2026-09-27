@@ -2208,17 +2208,17 @@ html body :is(.novaflow-art-generate-switch, #nf-lift)::before {
    Every dialog marks its panel, title and close button with data-nf-dialog;
    the look lives here so they cannot drift apart again (five backgrounds,
    radii 8-12, titles 13-15px and 20-22px close glyphs before). */
-html body :is([data-nf-dialog="panel"], .novaflow-art-export-dialog, .novaflow-smart-ai-dialog, .nf-wh-card, .nf-account-card, [data-novaflow-export-modal-dialog="1"]) {
+html body :is([data-nf-dialog="panel"], .novaflow-art-export-dialog, .novaflow-smart-ai-dialog, .nf-wh-card, .nf-account-card, .nf-node-card, [data-novaflow-export-modal-dialog="1"]) {
   background: #1F1F1F !important;
   border: 1px solid #2E2E2E !important;
   border-radius: 8px !important;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
 }
-html body :is([data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title, #novaflow-web-account-title) {
+html body :is([data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title, #novaflow-web-account-title, .nf-node-header h2) {
   font-size: 14px !important;
   font-weight: 600 !important;
 }
-html body :is([data-nf-dialog="close"], .novaflow-art-export-close, .novaflow-smart-ai-close, .nf-wh-close, .nf-account-close) {
+html body :is([data-nf-dialog="close"], .novaflow-art-export-close, .novaflow-smart-ai-close, .nf-wh-close, .nf-account-close, .nf-node-close) {
   font-size: 16px !important;
 }
 

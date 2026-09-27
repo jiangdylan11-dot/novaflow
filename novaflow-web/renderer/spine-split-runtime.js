@@ -656,6 +656,7 @@
   let splitActionHoverButton = null
   let splitActionHoverOverlayButton = null
   const splitActionHoverOriginalStyles = new WeakMap()
+  const splitActionHoverAppliedStyles = new WeakMap()
   const splitActionHoverInlineStyle = {
     background: SPLIT_PANEL_HOVER_BACKGROUND,
     'background-color': SPLIT_PANEL_HOVER_BACKGROUND,
@@ -3094,10 +3095,14 @@
       })
       splitActionHoverOriginalStyles.set(button, original)
     }
+    const applied = {}
     Object.entries(splitActionHoverInlineStyleForButton(button)).forEach(([name, value]) => {
-      if (button.style.getPropertyValue(name) === value && button.style.getPropertyPriority(name) === 'important') return
-      button.style.setProperty(name, value, 'important')
+      if (button.style.getPropertyValue(name) !== value || button.style.getPropertyPriority(name) !== 'important') {
+        button.style.setProperty(name, value, 'important')
+      }
+      applied[name] = button.style.getPropertyValue(name)
     })
+    splitActionHoverAppliedStyles.set(button, applied)
     button.setAttribute('data-novaflow-split-hover-active', '1')
     showSplitActionHoverOverlay(button)
   }
@@ -3106,12 +3111,18 @@
     if (!(button instanceof HTMLElement)) return
     const original = splitActionHoverOriginalStyles.get(button)
     if (original) {
+      // Only what still carries the hover value goes back: a style the button
+      // took while hovered (a click made it active, a pass restyled it) stays,
+      // or leaving put back the look it had before the click.
+      const applied = splitActionHoverAppliedStyles.get(button) || {}
       Object.entries(original).forEach(([name, value]) => {
+        if (name in applied && button.style.getPropertyValue(name) !== applied[name]) return
         const [originalValue, originalPriority] = value
         if (originalValue) button.style.setProperty(name, originalValue, originalPriority)
         else button.style.removeProperty(name)
       })
       splitActionHoverOriginalStyles.delete(button)
+      splitActionHoverAppliedStyles.delete(button)
     }
     button.removeAttribute('data-novaflow-split-hover-active')
     if (splitActionHoverOverlayButton === button) hideSplitActionHoverOverlay()

@@ -2263,7 +2263,7 @@
   const NOVAFLOW_UNIFORM_GAP = 5;
   const NOVAFLOW_RECT_RADIUS_PX = "7px";
   // Dialog titles are 600 (theme 2.1), whatever the weight pass would give them.
-  const NOVAFLOW_DIALOG_TITLE_SELECTOR = '[data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title, #novaflow-web-account-title';
+  const NOVAFLOW_DIALOG_TITLE_SELECTOR = '[data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title, #novaflow-web-account-title, .nf-node-header h2';
   const NOVAFLOW_RECT_RADIUS_TOP_PX = `${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX} 0 0`;
   const NOVAFLOW_RECT_RADIUS_BOTTOM_PX = `0 0 ${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX}`;
   const SECONDARY_CONTENT_GAP = NOVAFLOW_UNIFORM_GAP;
@@ -3657,6 +3657,50 @@
       window.setTimeout(() => watcher.disconnect(), 600);
     } catch (_) { void 0; }
   }
+
+  // Keyboard focus ring for controls whose outline is cleared inline with
+  // !important (about 140 places), which no stylesheet can put back: a fixed
+  // ring drawn over the focused control, only when it shows no outline itself.
+  function bindNovaflowFocusRing() {
+    let ring = null;
+    let target = null;
+    const place = () => {
+      if (!ring || !target || !target.isConnected) return;
+      const rect = target.getBoundingClientRect();
+      ring.style.left = `${Math.round(rect.left) - 2}px`;
+      ring.style.top = `${Math.round(rect.top) - 2}px`;
+      ring.style.width = `${Math.round(rect.width) + 4}px`;
+      ring.style.height = `${Math.round(rect.height) + 4}px`;
+      ring.style.borderRadius = window.getComputedStyle(target).borderRadius || "6px";
+    };
+    const hide = () => {
+      target = null;
+      if (ring) ring.style.display = "none";
+    };
+    document.addEventListener("focusin", (event) => {
+      const node = event.target;
+      if (!(node instanceof HTMLElement) || !node.matches(":focus-visible")) { hide(); return; }
+      if (node.matches("textarea, input:not([type=checkbox]):not([type=radio]):not([type=range]), [contenteditable]")) { hide(); return; }
+      const style = window.getComputedStyle(node);
+      if (style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0) { hide(); return; }
+      if (!ring) {
+        ring = document.createElement("div");
+        ring.setAttribute("data-novaflow-focus-ring", "1");
+        ring.setAttribute("data-novaflow-runtime-ignore", "1");
+        ring.setAttribute("aria-hidden", "true");
+        ring.style.cssText = "position:fixed;pointer-events:none;z-index:2147483647;box-sizing:border-box;border:2px solid #1EA672;display:none";
+        document.body.appendChild(ring);
+      }
+      target = node;
+      ring.style.display = "block";
+      place();
+    }, true);
+    document.addEventListener("focusout", hide, true);
+    document.addEventListener("pointerdown", hide, true);
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+  }
+  bindNovaflowFocusRing();
 
   hushNovaflowTransitions();
   document.addEventListener("click", veilNovaflowPrimarySwitch, true);
@@ -14953,7 +14997,10 @@
       }
       setAttributeIfChanged(dropzone, "data-novaflow-ai-cutout-reference-disabled", "1");
       setAttributeIfChanged(dropzone, "aria-disabled", "true");
-      setAiSequenceCutoutReferenceStyleProperty(dropzone, "pointer-events", "none", "important");
+      // Clicks and drops are refused by guardAiSequenceCutoutReferenceDisabled, so the
+      // zone keeps its pointer events and shows the not-allowed cursor.
+      guardAiSequenceCutoutReferenceDisabled();
+      setAiSequenceCutoutReferenceStyleProperty(dropzone, "pointer-events", "auto", "important");
       setAiSequenceCutoutReferenceStyleProperty(dropzone, "opacity", "0.55", "important");
       setAiSequenceCutoutReferenceStyleProperty(dropzone, "cursor", "not-allowed", "important");
       setAiSequenceCutoutReferenceInputDisabled(linkedInput, true);
@@ -15604,6 +15651,22 @@
     });
   }
 
+  var AI_SEQUENCE_CUTOUT_REFERENCE_GUARD_BOUND = false;
+  function guardAiSequenceCutoutReferenceDisabled() {
+    if (AI_SEQUENCE_CUTOUT_REFERENCE_GUARD_BOUND) return;
+    AI_SEQUENCE_CUTOUT_REFERENCE_GUARD_BOUND = true;
+    const refuse = (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target || !target.closest('[data-novaflow-ai-cutout-reference-disabled="1"]')) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "none";
+    };
+    ["pointerdown", "mousedown", "click", "dragenter", "dragover", "drop"].forEach((type) => {
+      document.addEventListener(type, refuse, true);
+    });
+  }
+
   function applyAiSequenceTimelineMutedVisual(node, locked, cursor) {
     if (!(node instanceof HTMLElement)) return;
     const type = node instanceof HTMLInputElement ? String(node.type || "").toLowerCase() : "";
@@ -15642,7 +15705,9 @@
       setDisabledIfChanged(node, true);
       setAttributeIfChanged(node, "aria-disabled", "true");
       setAttributeIfChanged(node, "data-novaflow-ai-timeline-edit-locked", "1");
-      setStylePropertyIfChanged(node, "pointer-events", "none");
+      // A disabled control already ignores clicks; without pointer-events none
+      // its not-allowed cursor can show (it never did). Others still block.
+      setStylePropertyIfChanged(node, "pointer-events", "disabled" in node ? "auto" : "none");
       setStylePropertyIfChanged(node, "cursor", "not-allowed");
       applyAiSequenceTimelineMutedVisual(node, true, cursor);
       return;

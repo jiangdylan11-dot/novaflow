@@ -67,7 +67,8 @@
     let node = root.document.getElementById('novaflow-warehouse-notice');
     if (!node) {
       node = root.document.createElement('button'); node.id = 'novaflow-warehouse-notice';
-      node.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:2147483645;padding:12px 18px;border:1px solid #477266;border-radius:10px;background:#173e32;color:#fff;cursor:pointer';
+      // Under the full-screen editors (2147483640) and dialogs: it sat on their bottom-right buttons.
+      node.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:2147483000;padding:10px 16px;border:1px solid #29594A;border-radius:8px;background:#1C4136;color:#fff;font-size:12px;cursor:pointer';
       node.onclick = () => open(); root.document.body.appendChild(node);
     }
     node.textContent = lastError ? '仓库保存未完成 · 点击查看' : '有 ' + pendingCount() + ' 个生成结果待保存 · 连接本地仓库';

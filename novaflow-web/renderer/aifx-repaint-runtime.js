@@ -1144,16 +1144,16 @@
         min-height: 24px;
         padding: 0;
         border-radius: 5px;
-        border: 1px solid rgba(239, 68, 68, 0.55);
-        background: rgba(239, 68, 68, 0.18);
-        color: #fff;
+        border: 1px solid rgba(239, 68, 68, 0.55) !important;
+        background: rgba(239, 68, 68, 0.18) !important;
+        color: #fff !important;
         cursor: pointer;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         box-sizing: border-box;
       }
-      #${APP_ID} .aifx-preview-progress-cancel:hover { background: rgba(239, 68, 68, 0.28); }
+      #${APP_ID} .aifx-preview-progress-cancel:not(:disabled):hover { background: rgba(239, 68, 68, 0.28) !important; }
       .aifx-preview-status[data-tone="working"] { color: rgba(140, 240, 210, 0.96); }
       .aifx-preview-status[data-tone="success"] { color: rgba(170, 245, 222, 0.92); }
       .aifx-preview-status[data-tone="warning"] { color: rgba(250, 214, 137, 0.96); }
@@ -1959,6 +1959,9 @@
   const cancelGenerate = () => {
     if (!state.isGenerating || !state.abort || state.abort.signal.aborted) return
     state.abort.abort()
+    // Pressed once is enough: the stop dims until the next run.
+    const stop = document.querySelector(`#${APP_ID} [data-action="cancel-generate"]`)
+    if (stop) stop.disabled = true
     setStatus('正在中止', '')
     CLIENT()?.interrupt?.()
   }
@@ -1976,6 +1979,8 @@
     }
     state.isGenerating = true
     state.abort = new AbortController()
+    const stop = document.querySelector(`#${APP_ID} [data-action="cancel-generate"]`)
+    if (stop) stop.disabled = false
     state.progress = 0
     refreshUi()
     let stageLabel = ''

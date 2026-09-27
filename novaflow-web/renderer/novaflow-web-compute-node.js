@@ -59,7 +59,7 @@
     '#' + DIALOG_ID + ' .nf-node-list{display:grid;gap:6px;max-height:min(52vh,420px);overflow:auto}',
     // Keep this dialog's selection border above the global transparent-button border.
     '#' + DIALOG_ID + ' .nf-node-row{appearance:none;display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:11px 12px;border:1px solid #353535!important;border-radius:6px;background:#282828;color:#dddddd;font:inherit;text-align:left;cursor:pointer}',
-    '#' + DIALOG_ID + ' .nf-node-row:hover{border-color:#505050!important;background:#2e2e2e}',
+    '#' + DIALOG_ID + ' .nf-node-row:not([aria-disabled="true"]):hover{border-color:#505050!important;background:#2e2e2e}',
     '#' + DIALOG_ID + ' .nf-node-row[aria-current="true"]{border-color:#399b80!important;background:#252b29}',
     '#' + DIALOG_ID + ' .nf-node-row[aria-disabled="true"]{opacity:.55;cursor:not-allowed}',
     '#' + DIALOG_ID + ' .nf-node-main{min-width:0}',
@@ -67,7 +67,7 @@
     '#' + DIALOG_ID + ' .nf-node-hint{margin-top:3px;font-size:11px;line-height:17px;color:#a7a7a7;overflow-wrap:anywhere}',
     '#' + DIALOG_ID + ' .nf-node-group{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:2px 12px;padding:8px 1px 1px;font-size:11px;color:#949494}',
     '#' + DIALOG_ID + ' .nf-node-group b{font-size:12px;font-weight:500;color:#c5c5c5}',
-    '#' + DIALOG_ID + ' .nf-node-tier{display:inline-block;padding:1px 5px;border:1px solid #414141;border-radius:4px;font-size:10px;font-weight:400;line-height:15px;background:#2c2c2c;color:#b3b3b3;white-space:nowrap}',
+    '#' + DIALOG_ID + ' .nf-node-tier{display:inline-block;padding:1px 5px;border:1px solid #414141;border-radius:4px;font-size:11px;font-weight:400;line-height:15px;background:#2c2c2c;color:#b3b3b3;white-space:nowrap}',
     '#' + DIALOG_ID + ' .nf-node-badge{flex:0 0 auto;display:inline-flex;align-items:center;gap:5px;padding:3px 7px;border-radius:4px;font-size:11px;line-height:16px;background:#333333;color:#bcbcbc;white-space:nowrap}',
     '#' + DIALOG_ID + ' .nf-node-badge[data-status="idle"]::before,#' + DIALOG_ID + ' .nf-node-badge[data-status="busy"]::before,#' + DIALOG_ID + ' .nf-node-badge[data-status="offline"]::before{content:"";width:4px;height:4px;border-radius:50%;background:#878787}',
     '#' + DIALOG_ID + ' .nf-node-badge[data-status="idle"]::before{background:#49b895}',
