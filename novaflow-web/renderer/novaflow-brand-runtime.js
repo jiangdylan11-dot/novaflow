@@ -30475,7 +30475,9 @@
     // Also from here, not only from the visual rhythm pass: that pass returns
     // early while a range drag is pending, so a page whose spec entries only
     // ever ran from there could keep its own values indefinitely.
-    applyNovaflowReferenceSpec();
+    // Scheduled, not run: this is called on every shortcut recovery tick, and
+    // a page switch made ~100 full passes (~280 ms) through here.
+    scheduleNovaflowReferenceSpec();
   }
 
   /**
@@ -30758,15 +30760,32 @@
     setPrimaryExportShortcutHover(exportButton, exportButton.matches(":hover") || document.activeElement === exportButton);
   }
 
+  // Several callers schedule this for the same page switch, each with its own
+  // delay list; runs already due within a frame of each other are merged.
+  var PRIMARY_OUTPUT_SHORTCUT_RECOVERY_FRAME = 0;
+  var PRIMARY_OUTPUT_SHORTCUT_RECOVERY_DUE = [];
   function schedulePrimaryOutputShortcutRecovery(delays = PRIMARY_OUTPUT_SHORTCUT_RECOVERY_DELAYS) {
     if (!(document.body instanceof HTMLElement)) return;
     const run = () => {
       try { ensurePrimaryOutputShortcut(); } catch {}
     };
-    try { requestAnimationFrame(run); } catch {}
+    if (!PRIMARY_OUTPUT_SHORTCUT_RECOVERY_FRAME) {
+      try {
+        PRIMARY_OUTPUT_SHORTCUT_RECOVERY_FRAME = requestAnimationFrame(() => {
+          PRIMARY_OUTPUT_SHORTCUT_RECOVERY_FRAME = 0;
+          run();
+        });
+      } catch {}
+    }
+    const now = performance.now();
+    PRIMARY_OUTPUT_SHORTCUT_RECOVERY_DUE = PRIMARY_OUTPUT_SHORTCUT_RECOVERY_DUE.filter((due) => due > now);
     const items = Array.isArray(delays) && delays.length ? delays : PRIMARY_OUTPUT_SHORTCUT_RECOVERY_DELAYS;
     items.forEach((delay) => {
-      window.setTimeout(run, Math.max(0, Number(delay) || 0));
+      const wait = Math.max(0, Number(delay) || 0);
+      const due = now + wait;
+      if (PRIMARY_OUTPUT_SHORTCUT_RECOVERY_DUE.some((other) => Math.abs(other - due) < 16)) return;
+      PRIMARY_OUTPUT_SHORTCUT_RECOVERY_DUE.push(due);
+      window.setTimeout(run, wait);
     });
   }
 
