@@ -23112,16 +23112,15 @@
         border-bottom: ${AI_ANIMATION_GROUP_PAD_Y}px solid transparent !important;
         background-clip: padding-box !important;
       }
-      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading="ai-cutout"]::after {
-        content: "" !important;
-        display: block !important;
-        position: absolute !important;
-        left: 0 !important;
-        right: 0 !important;
-        top: -${AI_ANIMATION_GROUP_PAD_Y + 1}px !important;
-        height: 1px !important;
-        background: #272727 !important;
-        pointer-events: none !important;
+      /* The rule between the two rows is a 1px stripe of the section's own
+         background (the row button's ::after never painted): 3 under 视频合并's
+         46px row, which starts 3 below the section's top border. While 视频合并
+         is open its panel sits there instead. */
+      body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"][data-novaflow-ai-tool-headings="1"]:has(> [data-novaflow-ai-tool-heading="video-merge"][aria-expanded="false"]) {
+        background-image: linear-gradient(#272727, #272727) !important;
+        background-repeat: no-repeat !important;
+        background-size: 100% 1px !important;
+        background-position: 0 ${AI_ANIMATION_GROUP_PAD_Y + AI_ANIMATION_GROUP_HEADER_HEIGHT + AI_ANIMATION_GROUP_PAD_Y}px !important;
       }
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-post-section="1"] > [data-novaflow-ai-tool-heading] > [data-novaflow-ai-tool-heading-chevron] {
         display: block !important;
