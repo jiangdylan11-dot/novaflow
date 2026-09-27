@@ -2888,7 +2888,15 @@
     if (!supplied && typeof options.onProjectChange === 'function') {
       options.onProjectChange(project, { reason: 'initialize' })
     }
-    if (windowRef && typeof windowRef.requestAnimationFrame === 'function') {
+    // Fit now when the viewport is already laid out: the bridge mounts from an
+    // animation frame, so a frame requested here came a frame late and 绘图 -> UI
+    // painted the nodes unfitted (small, top-left) before they jumped into place.
+    const mountedRect = viewport.isConnected && typeof viewport.getBoundingClientRect === 'function'
+      ? viewport.getBoundingClientRect()
+      : null
+    if (mountedRect && mountedRect.width > 0 && mountedRect.height > 0) {
+      fitAll()
+    } else if (windowRef && typeof windowRef.requestAnimationFrame === 'function') {
       fitFrame = windowRef.requestAnimationFrame(function () {
         fitFrame = 0
         if (active) fitAll()
