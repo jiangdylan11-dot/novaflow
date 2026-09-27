@@ -293,12 +293,88 @@ class H3FiveSectionLocalTest(unittest.TestCase):
             self.assertIn(kept, asked)
         self.assertNotIn("镜头推近", asked)
 
+    def test_constraints_keep_only_what_stays_the_same(self):
+        answer = phases().replace("1. 保持橘猫外观一致\n2. 动作连贯", (
+            "1. 主体始终为橘猫\n2. 动作必须按“伸懒腰→跳下”顺序展开\n3. 风声必须在起始阶段开始，递进阶段增强\n"
+            "4. 动作节奏从“缓慢”转“加速”再“收束”\n5. 镜头全程为“跟随”或“平移”，不切换角度或推拉\n"
+            "6. 动作从轻旋到高甩再到稳落，节奏递进明确\n7. 金色光粒飘动与舒缓要求同步\n8. 动作全程缓慢，无跳跃或快速变化\n"
+            "9. 橘猫动作必须包含伸展、跳跃，尾巴始终可见"))
+        text = compile_action_phases(answer, "T2VA", 5, CAT)
+        self.assertIn("【连续性与约束】\n1. 主体始终为橘猫。\n2. 镜头全程跟随。\n3. 动作全程缓慢。\n4. 尾巴始终可见。", text)
+        # The user's own camera ban stays; the either-or move falls to the user's fixed camera.
+        fixed = compile_action_phases(answer.replace("镜头从侧面跟随", "镜头固定"), "T2VA", 5, CAT + "，镜头固定，不要推拉")
+        self.assertIn("不切换角度或推拉", fixed)
+        self.assertNotIn("跟随", fixed)
+
+    def test_light_effects_come_from_the_user(self):
+        answer = ("概述：二郎神持刀向前劈砍，镜头跟随。\n起始：二郎神右手举刀。\n递进：右臂向前挥出，刀锋划出一道金色刀光，披风翻飞。\n"
+                  "收束：刀停在身前，刀身光晕渐次明灭。\n约束：1. 主体始终是二郎神")
+        text = compile_action_phases(answer, "I2VA", 5, "二郎神举刀向前劈砍")
+        self.assertIn("1.7-3.3s：右臂向前挥出，披风翻飞。", text)
+        self.assertIn("3.3-5s：刀停在身前。", text)
+        self.assertIn("金色刀光", compile_action_phases(answer, "I2VA", 5, "二郎神举刀向前劈砍，刀身发出金光"))
+        # Two differing first/last frames may really change their light; nearly identical ones keep theirs.
+        self.assertIn("光晕", compile_action_phases(answer, "FL2VA", 5, "从首帧过渡到尾帧"))
+        self.assertNotIn("光晕", compile_action_phases(answer, "FL2VA", 5, "从首帧过渡到尾帧", keep_pose=True))
+
+    def test_dialogue_mouth_becomes_plain_speaking(self):
+        source = '小机器人给花浇水，抬头对镜头说话\n(S1)："今天的花开得真好。"'
+        answer = ("概述：小机器人在花园里给花浇水，镜头固定。\n起始：小机器人右手持洒水壶，壶嘴朝向花坛，壶身倾斜，水流落下。\n"
+                  "递进：小机器人抬头面向镜头，嘴巴微张开始说话。\n收束：他口型随台词开合，水流渐停。\n约束：1. 主体始终是小机器人")
+        text = compile_action_phases(answer, "I2VA", 5, source)
+        self.assertIn("壶嘴朝向花坛", text)
+        self.assertIn("1.7-3.3s：小机器人抬头面向镜头，开始说话。", text)
+        self.assertIn("3.3-5s：他说完这句话，水流渐停。", text)
+        self.assertIn("嘴巴微张", compile_action_phases(answer, "I2VA", 5, "小机器人给花浇水，抬头张嘴"))
+
+    def test_endings_stay_on_the_result_and_effects_slow_down(self):
+        answer = ("概述：金色奖杯在灰色背景前缓慢旋转，镜头固定。\n起始：奖杯从图中姿态开始顺时针缓慢旋转。\n递进：奖杯持续旋转，灯光扫过表面。\n"
+                  "收束：奖杯旋转至图中姿态，灯光移到右侧，奖杯静止。\n约束：1. 主体和场景前后保持一致")
+        text = compile_action_phases(answer, "I2VA", 5, "奖杯缓缓旋转，灯光扫过表面")
+        self.assertIn("3.3-5s：灯光移到右侧，奖杯静止。", text)
+        self.assertIn("奖杯从图中姿态开始", text)
+        text = compile_action_phases(answer.replace("旋转至图中姿态", "旋转至图中初始倾斜角度"), "I2VA", 5, "奖杯缓缓旋转，灯光扫过表面")
+        self.assertIn("3.3-5s：灯光移到右侧，奖杯静止。", text)
+        # "锅里火焰窜起" does not end with the fire going out, unless the user says so.
+        chef = ("概述：厨师在厨房里颠锅炒菜，镜头固定。\n起始：厨师双手握锅柄向上提锅。\n递进：食材在锅里翻起，火焰随锅势窜起。\n"
+                "收束：锅落回灶台，火焰瞬间熄灭，厨师手仍握锅柄。\n约束：1. 场景始终为厨房")
+        self.assertIn("3.3-5s：锅落回灶台，厨师手仍握锅柄。", compile_action_phases(chef, "T2VA", 5, "厨师在厨房里颠锅炒菜，锅里火焰窜起"))
+        self.assertIn("火焰瞬间熄灭", compile_action_phases(chef, "T2VA", 5, "厨师颠锅，锅里火焰窜起后熄灭"))
+        # A roar the user never asked for is an invented sound; a quoted line keeps its own full stop.
+        answer = ("概述：钟馗持剑怒视前方，镜头固定。\n起始：钟馗身体前倾。\n递进：钟馗怒吼发力，剑身向上挑起。\n"
+                  "收束：钟馗说出“收！”\n约束：1. 背景始终为纯白")
+        text = compile_action_phases(answer, "I2VA", 5, "钟馗拔剑怒视前方")
+        self.assertIn("1.7-3.3s：剑身向上挑起。", text)
+        self.assertIn("3.3-5s：钟馗说出“收！”\n", text)
+        answer = ("概述：女神静坐台阶手持权杖，固定镜头。\n起始：女神轻转权杖，金色光粒飘动。\n递进：权杖继续转动，光粒轻轻飘动。\n"
+                  "收束：权杖转回原位，光粒飘落定格，画面复刻<Picture 2>。\n约束：1. 主体位置全程不变")
+        text = compile_action_phases(answer, "FL2VA", 6, "女神轻轻转动权杖", "", "金色光粒轻轻飘动", keep_pose=True)
+        self.assertIn("4-6s：权杖转回原位，光粒飘落渐渐放缓，画面与 <Picture 2> 一致。", text)
+        text = compile_action_phases(answer.replace("画面复刻<Picture 2>", "画面回归至与< Picture 2>完全一致的静止状态"), "FL2VA", 6, "女神轻轻转动权杖")
+        self.assertIn("画面与 <Picture 2> 一致。", text)
+        text = compile_action_phases(answer.replace("光粒飘落定格", "镜头定格于权杖"), "FL2VA", 6, "女神轻轻转动权杖", "", "金色光粒轻轻飘动")
+        self.assertIn("镜头停在权杖", text)
+
+    def test_request_asks_for_the_real_action_without_a_default_amplitude(self):
+        prompt = service.build_minimax_h3_five_section_request("她转身向镜头挥手", "", "I2VA", 5, sees_frames=True)
+        self.assertIn("起始（0-1.7秒）：动作怎样开始，朝哪个方向\n", prompt)
+        self.assertIn("递进（1.7-3.3秒）：动作怎样继续发展、真正做出来，节奏怎样变化", prompt)
+        self.assertIn("最后停在动作完成后的样子，图中拿着的东西继续拿着", prompt)
+        self.assertNotIn("幅度多大", prompt + service.MINIMAX_H3_FIVE_SECTION_RULES)
+        kite = service.build_minimax_h3_five_section_request("一个小男孩在草地上放风筝", "镜头缓慢推近，加上风声", "T2VA", 5)
+        self.assertIn("最后停在动作完成后的样子，描述里拿着的东西继续拿着", kite)
+        self.assertNotIn("要求", kite.split("约束：")[1])
+        self.assertIn("用视频描述里的原词写主体、场景和动作", kite)
+        self.assertNotIn("真正做出来", service.build_minimax_h3_five_section_request("女战士站立，仅呼吸待机", "", "T2VA", 3))
+
     def test_breathing_idle_keeps_breathing_to_the_end(self):
         answer = ("概述：女战士站在绿幕前呼吸待机，镜头固定。\n起始：胸肩随吸气微微抬起。\n递进：胸肩随呼气缓缓回落。\n"
                   "收束：胸肩再次微微抬起，呼吸节奏归于静止。\n约束：1. 头部和手臂不动")
         text = compile_action_phases(answer, "T2VA", 3, "女战士站立，仅呼吸待机，绿幕背景")
         self.assertIn("2-3s：胸肩再次微微抬起。", text)
         self.assertNotIn("归于静止", text)
+        text = compile_action_phases(answer.replace("呼吸节奏归于静止", "胸肩起伏回落至静止"), "T2VA", 3, "女战士站立，仅呼吸待机，绿幕背景")
+        self.assertIn("2-3s：胸肩再次微微抬起。", text)
         self.assertIn("收束（2-3秒）：呼吸继续平稳起伏", service.build_minimax_h3_five_section_request("女战士站立，仅呼吸待机", "", "T2VA", 3))
 
     def test_speaker_and_request_describe_the_user_actions(self):
@@ -307,7 +383,8 @@ class H3FiveSectionLocalTest(unittest.TestCase):
         self.assertIn("<Subject 1> = (S1)，<Picture 1> 中说这句台词的角色。", text)
         prompt = service.build_minimax_h3_five_section_request(source, "", "I2VA", 5, sees_frames=True, dialogue_lines=['(S1)："今天的花开得真好。"'])
         self.assertIn("- 小机器人给花浇水\n- 抬头对镜头说话\n", prompt)
-        self.assertIn("没有嘴就只写点头或图中已有的灯光闪动", prompt)
+        self.assertIn("只写说话，不写嘴和口型", prompt)
+        self.assertNotIn("灯光", prompt)
         self.assertIn("写清它从画面哪里出现", prompt)
         self.assertNotIn("三阶段", prompt)
         kite = service.build_minimax_h3_five_section_request("一个小男孩在草地上放风筝", "镜头缓慢推近，加上风声", "T2VA", 5)
@@ -329,9 +406,13 @@ class H3FiveSectionLocalTest(unittest.TestCase):
         self.assertFalse(service.minimax_h3_frames_nearly_same(pair((10, 10, 40, 40), (50, 50, 90, 90))))
         self.assertFalse(service.minimax_h3_frames_nearly_same([{"label": "<Picture 1>", "dataUrl": "data:image/jpeg;base64,/9j/AAAA"}]))
         same = service.build_minimax_h3_five_section_request("从首帧自然过渡到尾帧", "", "FL2VA", 5, sees_frames=True, same_frames=True)
-        self.assertIn("这两张图几乎相同：主体全程保持图中的姿态和位置", same)
-        self.assertNotRegex(same, "胸肩|呼吸待机|- 从首帧")
-        self.assertNotIn("几乎相同", service.build_minimax_h3_five_section_request("从首帧自然过渡到尾帧", "", "FL2VA", 5, sees_frames=True))
+        self.assertIn("这两张图几乎相同：画面里每个人物和动物全程保持图中的姿态和位置", same)
+        self.assertIn("不加图中没有的光效", same)
+        self.assertIn("收束（3.3-5秒）：动作怎样平稳完成，最后的画面与 <Picture 2> 一致\n", same)
+        self.assertNotRegex(same, "胸肩|呼吸待机|- 从首帧|光影轻微变化|光效变成|真正做出来")
+        differing = service.build_minimax_h3_five_section_request("从首帧自然过渡到尾帧", "", "FL2VA", 5, sees_frames=True)
+        self.assertNotIn("几乎相同", differing)
+        self.assertIn("姿态、位置和光效变成 <Picture 2> 的样子", differing)
         answer = phases().replace("1. 保持橘猫外观一致", "1. 保持图中的姿态不变")
         self.assertIn("保持图中的姿态不变", compile_action_phases(answer, "FL2VA", 5, "从首帧自然过渡到尾帧", keep_pose=True))
         self.assertNotIn("保持图中的姿态不变", compile_action_phases(answer, "FL2VA", 5, "从首帧自然过渡到尾帧"))

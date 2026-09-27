@@ -385,20 +385,41 @@ POSE_FREEZE = (rf"(?:不改变|不改|保持)(?:初始|原有|原来的)?{POSE_W
 POSE_LISTED = rf"{POSE_WORD}[、和与及]|[、和与及]{POSE_WORD}"
 # A non-loop ending stays on the requested result instead of undoing it.
 RETURN_TO_START = (r"回(?:到|归|落|复)(?:至|到)?(?:初始|起始|原来|最初|原本|开始时?)的?(?:姿[态势]|状态|位置|样子|方位|高度)"
-                   r"|恢复(?:至|到|成)?(?:初始|起始|原来|最初|原本)的?(?:姿[态势]|状态|位置|样子)")
+                   r"|恢复(?:至|到|成)?(?:初始|起始|原来|最初|原本)的?(?:姿[态势]|状态|位置|样子)"
+                   r"|(?:旋转|转回|转|回|返回)(?:至|到)图中[^，,。；;\n]{0,6}?(?:姿[态势]|位置|角度|状态|朝向|样子)")
 USER_RETURN = r"回到|回归|恢复|复原|还原|放回|收回|回原"
-BREATH_STOPS = r"呼吸(?:节奏|起伏|动作)?(?:归于|趋于|逐渐|渐渐|慢慢|最终)?(?:静止|停止|停下|消失|结束)"
+# "锅里火焰窜起" does not end with "火焰瞬间熄灭": the ending keeps what the user's thing became.
+VANISH = r"熄灭|消失|消散|散去|散尽|褪去"
+UNDONE = rf"([\u3400-\u9fff]{{2}})(?:瞬间|渐渐|逐渐|慢慢|随即|缓缓|最终|完全|骤然|迅速)?(?:{VANISH})"
+BREATH_STOPS = r"(?:呼吸|起伏)(?:节奏|起伏|动作)?(?:回落|归于|趋于|逐渐|渐渐|慢慢|最终)?(?:至|到)?(?:静止|停止|停下|消失|结束)"
 # Constraints that talk about the prompt itself rather than the video.
-META_CONSTRAINT = r"原句|原提示词|原文|描述|三阶段|三个阶段|按阶段|各阶段|核心逻辑|补充要求|提示词|用户(?:明确)?(?:提出|要求)"
+META_CONSTRAINT = r"原句|原提示词|原文|描述|三阶段|三个阶段|按阶段|各阶段|核心逻辑|补充要求|提示词|要求|用户(?:明确)?提出"
+# A constraint that repeats the template's stage names or the action order
+# instead of what stays the same ("风声在起始阶段开始", "按“伸懒腰→跳下”顺序展开").
+STAGE_CONSTRAINT = (r"(?:起始|递进|收束)(?:阶段|段)|[“\"‘'](?:起始|递进|收束)[”\"’']|节奏递进|递进明确|(?:按|依)[^，,。；;]{0,16}顺序"
+                    r"|顺序(?:展开|进行|完成)|→|(?:动作|过程)[^，,。；;]{0,4}(?:必须|需要?|应)?包含|(?:动作|节奏)[^，,。；;]{0,4}从[^，,。；;]{1,10}(?:到|转|过渡)[^，,。；;]{1,10}(?:再|最后|最终)")
 # A ban the model added on its own. Kept when it protects consistency or repeats the user's words.
 BAN_START = (r"^(?:且|并且?|同时|也|但)?(?:不可|不得|不能|不要|不许|不应|禁止|避免|切勿|严禁|杜绝|不使用|不添加|不加入?|不出现"
              r"|不跟随|不跟拍|不推|不拉|不摇|不环绕|不移动|不跳|无(?!缝))")
-BAN_KEEPS = r"改变|更改|改动|更换|切换|替换|变形|走样|变化"
+BAN_KEEPS = r"改变|更改|改动|更换|切换|替换|变形|走样|(?<!快速)(?<!突然)(?<!剧烈)变化"
+# "不切换角度或推拉", "不切换镜头": a camera ban stays only when the user asked for one.
+CAMERA_TERMS = r"镜头|机位|角度|视角|景别|运镜|推拉|推近|拉远|摇移|平移|环绕|跟随|跟拍|变焦|切镜"
+CAMERA_BAN = rf"^(?:且|并且?|同时|也|但)?(?:不可|不得|不能|不要|不许|不应|禁止|避免|切勿|严禁|不|无)[^，,。；;\n]{{0,4}}?(?:{CAMERA_TERMS})"
+USER_CAMERA_BAN = rf"(?:不|无|禁止|避免|别)[^，,。；;\n]{{0,4}}?(?:{CAMERA_TERMS})"
+# Light effects an answer made up ("金色刀光", "光晕渐次明灭"); the user's own light, fire or effect keeps them.
+LIGHT_EFFECTS = r"刀光|剑光|寒光|金光|微光|灯光|光芒|光晕|光圈|光环|光带|光轨|光弧|光痕|流光|光效|光影|光斑|光束|光柱|闪光|辉光"
+USER_LIGHT = r"光|亮|闪|辉|灯|霓虹|火|焰|电|特效"
+# Particles and effects slow down; they do not freeze mid-air ("光粒飘落定格").
+EFFECT_SUBJECT = r"光|粒|烟|雾|尘|火|焰|花瓣|落叶|雪|雨|水花|特效"
+# H3 lip-syncs from 【台词】 itself; a mouth the answer describes may not exist (a robot's visor).
+MOUTH = r"(?:微微|轻轻)?(?:张开|微张|张|开合|轻启)?(?<![壶瓶烟喷奶油])(?:嘴巴|嘴唇|嘴角|双唇|唇部|唇瓣|口型|口部|嘴)|[开张]口(?=说|讲|道)"
+SPEAKING = r"说|讲|台词|念"
+SPEAK_STEPS = ("开始说话", "继续说话", "说完这句话")
 # Lighting, weather and grading a text-to-video answer made up on its own.
 LOOK_WORDS = (r"色调|调色|灯光|光线|光照|光影|阳光|日光|月光|暖光|冷光|逆光|侧光|顶光|柔光|暖色|冷色|高对比|对比度|饱和"
               r"|明亮|昏暗|晴空|晴朗|晴天|夕阳|黄昏|清晨|夜色|雨[夜水幕滴丝中后]|[下细大小阵暴]雨|雪[花地景中]|[下飘大小白]雪|[薄浓晨大云]雾|雾气")
 # A sound the user never asked for ("刀锋带起风声"); speech, a named sound or music keeps them.
-SOUND_WORDS = r"声(?![势色称明望誉名])|音效|音乐|配乐|作响|嗡鸣|轰鸣"
+SOUND_WORDS = r"声(?![势色称明望誉名])|音效|音乐|配乐|作响|嗡鸣|轰鸣|怒吼|吼叫|大吼|嘶吼|咆哮|呐喊|尖叫"
 USER_SOUND = r"声|音|响|乐|唱|说|讲|喊|叫|吼|哭|台词|对白"
 CAMERA_WORD = r"镜头|机位|运镜|摄像机|相机"
 CAMERA_MOVES = (("fixed", r"固定|静止|不动|锁定"), ("follow", r"跟随|跟拍|跟踪|追随"), ("in", r"推近|推进|拉近|推向|推至"),
@@ -411,8 +432,18 @@ def camera_moves(text):
             if re.search(rf"(?:{CAMERA_WORD})[^，,。；;\n]{{0,10}}?(?:{move})|(?:{move})的?(?:{CAMERA_WORD})", str(text or ""))}
 
 
-def invented_ban(clause, asked_text):
+def either_camera_move(text, context):
+    """'镜头全程为“跟随”或“平移”' keeps the move the answer uses first."""
+    moves = "|".join(move for _, move in CAMERA_MOVES)
+    first = lambda word: context.find(word) if word in context else len(context) + 1
+    return re.sub(rf"((?:{CAMERA_WORD})[^，,。；;\n]{{0,8}}?)(?:为|是)?[“\"]?({moves})[”\"]?(?:或者?|或是)[“\"]?({moves})[”\"]?",
+                  lambda m: m[1] + min((m[2], m[3]), key=first), str(text or ""))
+
+
+def invented_ban(clause, asked_text, camera_asked=True):
     body = re.sub(r"^[\s，,。；;、]+", "", clause)
+    if re.match(CAMERA_BAN, body):
+        return not camera_asked
     start = re.match(BAN_START, body)
     if not start or re.search(BAN_KEEPS, body):
         return False
@@ -480,7 +511,7 @@ def clean_phase_text(value):
         line = re.sub(r"^[ \t>#*\-•]+", "", line).strip()
         line = re.sub(r"^[（(]?\d+(?:\.\d+)?\s*(?:s|秒)?\s*[-–—~～至]\s*\d+(?:\.\d+)?\s*(?:s|秒)[）)]?\s*[:：，,]?\s*", "", line, flags=re.I)
         if line:
-            lines.append(line if re.search(r"[。！？!?；;…，,、：:]$", line) else line + "。")
+            lines.append(line if re.search(r"[。！？!?；;…，,、：:][”’」]?$", line) else line + "。")
     return "".join(lines)
 
 
@@ -505,6 +536,44 @@ def drop_clauses(text, drop):
 
 def drop_matching_clauses(text, pattern):
     return drop_clauses(text, lambda clause: re.search(pattern, clause, re.I))
+
+
+def map_clauses(text, change):
+    return "".join(change(clause) for clause in re.findall(r"[^，,。！？；;!?\n]*[，,。！？；;!?\n]?", str(text or "")) if clause)
+
+
+def settle_freeze(clause):
+    """"定格" reads as a frozen picture: the shot stops there, particles and effects slow down."""
+    if "定格" not in clause:
+        return clause
+    if re.search(EFFECT_SUBJECT, clause) and not re.search(CAMERA_WORD, clause):
+        return re.sub(r"定格(?:(?:于|在)[^，,。！？；;!?\n]*)?", "渐渐放缓", clause)
+    return re.sub(r"定格", "停住", re.sub(r"定格(?:于|在)", "停在", clause))
+
+
+def neutral_speech(phase, step):
+    """With dialogue, mouth clauses become plain speaking steps; H3 lip-syncs from 【台词】."""
+    clauses = [c for c in re.findall(r"[^，,。！？；;!?\n]*[，,。！？；;!?\n]?", str(phase or "")) if c]
+    result, carry = [], ""
+    for i, clause in enumerate(clauses):
+        if not re.search(MOUTH, clause):
+            # "她嘴唇轻动，说出台词": the subject moves to the speaking clause.
+            result.append(carry + clause if carry and re.match(rf"(?:开始|继续|接着|轻声|低声)?(?:{SPEAKING})", clause) else clause)
+            carry = ""
+            continue
+        end = re.search(r"[，,。！？；;!?\n]$", clause)
+        end = end[0] if end else ""
+        lead = re.match(rf"[^，,。！？；;!?\n]*?(?={MOUTH})", clause)
+        subject = re.sub(r"的$", "", lead[0]) if lead and len(lead[0]) <= 6 else ""
+        stripped = re.sub(rf"(?:{MOUTH})[^，,。！？；;!?\n]{{0,6}}?(?=开始|继续|接着|说|讲|[，,。！？；;!?\n]|$)", "", clause)
+        carry = ""
+        if re.search(SPEAKING, stripped) and re.search(r"[\u3400-\u9fff]", stripped):
+            result.append(stripped)
+        elif not re.search(SPEAKING, "".join(clauses[:i] + clauses[i + 1:])):
+            result.append(subject + SPEAK_STEPS[min(step, len(SPEAK_STEPS) - 1)] + (end or "，"))
+        else:
+            carry = subject
+    return re.sub(r"[，,、]+(?=[。！？；;!?\n]|$)", "。", "".join(result)).strip(" ，,\n")
 
 
 def compile_action_phases(output, mode, duration, source, requirements="", user_requirement="", strict_rules=False, keep_pose=False):
@@ -543,12 +612,14 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
         constraints = [item for item in constraints if not re.search(rule["leak"], item, re.I)]
     has_text = lambda s: re.search(r"[\u3400-\u9fffA-Za-z]", s)
     user_text = source + "\n" + (user_requirement or "")
-    # "定格" reads as a frozen picture; the shot simply stops there.
-    stop = lambda s: s if "定格" in user_text else re.sub(r"定格", "停住", re.sub(r"定格(?:于|在)", "停在", s))
+    stop = lambda s: s if "定格" in user_text else map_clauses(s, settle_freeze)
     overview, phases, constraints = stop(overview), [stop(p) for p in phases], [stop(item) for item in constraints]
     if "loop" not in asked and mode != "FL2VA" and not re.search(USER_RETURN, user_text):
         phases = [drop_matching_clauses(p, RETURN_TO_START) for p in phases]
         constraints = [drop_matching_clauses(item, RETURN_TO_START) for item in constraints]
+        if not re.search(VANISH, user_text):
+            ending = drop_clauses(phases[-1], lambda clause: any(m[1] in user_text for m in re.finditer(UNDONE, clause)))
+            phases[-1] = ending if has_text(ending) else phases[-1]
     if "idle" in asked:
         # Breathing idle keeps breathing to the last frame.
         phases = [drop_matching_clauses(p, BREATH_STOPS) for p in phases]
@@ -557,6 +628,9 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
         # A constraint freezing the pose contradicts the motion the phases describe.
         constraints = [drop_matching_clauses(re.sub(POSE_LISTED, "", item), POSE_FREEZE) for item in constraints]
     # One camera move for the whole clip: the user's, else the first one the answer gives.
+    context = "\n".join([overview, *phases])
+    either = lambda s: either_camera_move(s, context)
+    overview, phases, constraints = either(overview), [either(p) for p in phases], [either(item) for item in constraints]
     user_anchor = camera_moves(user_text)
     anchor = user_anchor or next(
         (moves for moves in map(camera_moves, re.split(r"[，,。；;\n]", "\n".join([overview, *phases]))) if moves), set())
@@ -572,8 +646,21 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     if not re.search(USER_SOUND, user_text):
         overview, phases = drop_matching_clauses(overview, SOUND_WORDS), [drop_matching_clauses(p, SOUND_WORDS) for p in phases]
         constraints = [drop_matching_clauses(item, SOUND_WORDS) for item in constraints]
+    if not re.search(USER_LIGHT, user_text) and (mode != "FL2VA" or keep_pose):
+        # Like sound, light effects come from the user's words; two differing
+        # first/last frames may really change their light.
+        lit = (drop_matching_clauses(overview, LIGHT_EFFECTS), [drop_matching_clauses(p, LIGHT_EFFECTS) for p in phases],
+               [drop_matching_clauses(item, LIGHT_EFFECTS) for item in constraints])
+        if has_text(lit[0]) and any(has_text(p) for p in lit[1]):
+            overview, phases, constraints = lit
+    if re.search(r'[（(]S[1-9]\d*[）)]\s*[:：]\s*[“"]', source):
+        phases = [neutral_speech(p, i) for i, p in enumerate(phases)]
+    if mode == "FL2VA":
+        phases = [re.sub(r"画面(?:回归|复归|复刻|还原|恢复|回到)(?:为|成|到|至)?与?\s*(<Picture 2>)(?:完全)?(?:一致|相同)?的?(?:静止)?(?:状态|形态|画面|样子)?", r"画面与 \1 一致", p) for p in phases]
     asked_text = compact(user_text + "\n" + "\n".join(rule["rule"] for rule in CONDITIONAL_RULES if rule["name"] in asked))
-    constraints = [drop_clauses(item, lambda clause: re.search(META_CONSTRAINT, clause) or invented_ban(clause, asked_text)) for item in constraints]
+    camera_asked = "camera" in asked or bool(re.search(USER_CAMERA_BAN, user_text))
+    constraints = [drop_clauses(item, lambda clause: re.search(META_CONSTRAINT, clause) or re.search(STAGE_CONSTRAINT, clause)
+                                or invented_ban(clause, asked_text, camera_asked)) for item in constraints]
     constraints = [item for item in constraints if has_text(item)]
     if not has_text(overview) or not any(has_text(p) for p in phases):
         raise ValueError("优化内容不能为空")

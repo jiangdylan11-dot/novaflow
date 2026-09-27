@@ -1366,7 +1366,7 @@ def minimax_h3_prompt_enhance_user_requirement(requirements: str, current_prompt
 MINIMAX_H3_FIVE_SECTION_RULES = (
     "你是 MiniMax H3 视频提示词优化助手，把用户的视频想法改写成清楚、能直接用来生成视频的中文提示词。\n"
     "1. 保留用户写明的主体、动作、场景和每一条明确要求，不删除、不替换，也不改成别的动作。\n"
-    "2. 把动作展开成连续、看得见的过程：谁在动，朝哪个方向，幅度多大，节奏快慢，怎样开始、怎样结束。用户写“轻轻”“缓缓”的动作就保持小幅、缓慢。\n"
+    "2. 把动作展开成连续、看得见的过程：谁在动，朝哪个方向，节奏快慢，怎样开始、怎样结束；动作要真正做出来，不只写准备或摆好姿势。幅度照视频描述写：“轻轻”就小幅，“缓缓”就缓慢，“大幅”“舒展”就充分伸展，没写幅度就不写。\n"
     "3. 用“缓慢”“迅速”“小幅”“大幅”这类看得见的说法，不写厘米、角度、速度、频率等数字，阶段内容里也不写秒数。\n"
     "4. 写清镜头怎样拍：固定、跟随、推近、拉远或环绕，选最适合这个动作的一种，全程只用这一种；用户指定了镜头就按用户的写。\n"
     "5. 不添加用户没有提到的台词、声音、音乐、特效、服装、光线色调或新场景；可以细化用户写到的场景，但不要换成别的场景。用户写到的特效保持原来的样子和程度。\n"
@@ -1429,7 +1429,8 @@ def build_minimax_h3_five_section_request(source, user_requirement, mode, durati
     edges = [f"{edge:.1f}".rstrip("0").rstrip(".") for edge in h3_phase_edges(duration)]
     image = QWEN3_CHAT_VISION_TOKEN
     overview_hint = "用一两句通顺的话点明主体、场景和镜头怎样拍（镜头全程只选一种），不细写外观"
-    ending_hint = "动作怎样收尾，最后停在动作完成后的样子"
+    # Only a held thing the picture or the user's words show; a bare "手里的东西" invents one.
+    ending_hint = "动作怎样收尾，最后停在动作完成后的样子，" + ("图中" if mode == "I2VA" and sees_frames else "描述里") + "拿着的东西继续拿着"
     appearance = (
         "外观、服装和背景都以图为准，不要重新描述，也不要改变。" if sees_frames else
         "你看不到这张图，不要猜测或描述图中的外观、服装和背景，只写动作和镜头。"
@@ -1447,19 +1448,22 @@ def build_minimax_h3_five_section_request(source, user_requirement, mode, durati
             f"任务：首尾帧视频，时长{seconds}秒。\n第一帧 <Picture 1>：\n{image}\n第{seconds}秒的最后一帧 <Picture 2>：\n{image}\n"
             "对比两张图，看清主体的姿态、位置、朝向、表情和光线从第一帧到最后一帧有哪些变化，写出从第一帧连续过渡到最后一帧的过程，并把视频描述里的动作安排在这个过程中。"
             "只写两张图之间真实看得见的变化，两张图里相同的部分（姿态、手的位置、睁眼或闭眼）全程保持原样。"
-            + ("这两张图几乎相同：主体全程保持图中的姿态和位置，只写视频描述里的动作和小幅的局部变化（例如头发或衣角轻动、光影轻微变化），最后回到与 <Picture 2> 相同的画面。"
+            + ("这两张图几乎相同：画面里每个人物和动物全程保持图中的姿态和位置，只写视频描述里的动作和小幅的局部变化（例如头发或衣角轻动），不加图中没有的光效，最后回到与 <Picture 2> 相同的画面。"
                if same_frames else "")
             + "镜头要与两张图的取景一致：取景相同就固定镜头，取景不同才写推近、拉远或移动。"
             if sees_frames else
             f"任务：首尾帧视频，时长{seconds}秒。<Picture 1> 是第一帧，<Picture 2> 是第{seconds}秒的最后一帧，写出从第一帧连续过渡到最后一帧的过程。"
         ) + appearance.replace("这张图", "这两张图")
-        overview_hint = "用一两句写主体的姿态和所在位置（坐着还是站着、手里拿着什么）和镜头怎样拍，不写服装和长相"
-        ending_hint = "动作怎样平稳完成，姿态、位置和光效变成 <Picture 2> 的样子，最后的画面与 <Picture 2> 一致"
+        overview_hint = "用一两句写画面里每个人物和动物的姿态和所在位置（坐着还是站着、手里拿着什么）和镜头怎样拍，不写服装和长相"
+        ending_hint = (
+            "动作怎样平稳完成，最后的画面与 <Picture 2> 一致" if same_frames and sees_frames else
+            "动作怎样平稳完成，姿态、位置和光效变成 <Picture 2> 的样子，最后的画面与 <Picture 2> 一致"
+        )
     else:
         task = f"任务：{H3_MODE_NAMES.get(mode, mode)}，时长{seconds}秒。把下面的视频描述写成一段完整、连贯的视频提示词。"
         if media_tokens:
             task += "本次参考媒体：" + "、".join(media_tokens) + "，保持各自原来的作用。"
-        overview_hint = "一到两句，只写视频描述里的主体、场景和动作，再写镜头怎样拍（镜头全程只选一种）"
+        overview_hint = "一到两句，用视频描述里的原词写主体、场景和动作，再写镜头怎样拍（镜头全程只选一种）"
     asked = h3_requested_rules(source + "\n" + user_requirement)
     if "loop" in asked and mode != "FL2VA":
         ending_hint = "动作怎样平滑回到起始姿态，首尾衔接"
@@ -1472,17 +1476,18 @@ def build_minimax_h3_five_section_request(source, user_requirement, mode, durati
     if rules:
         lines += ["", "用户明确要求："] + ["- " + rule for rule in rules]
     if dialogue_lines:
-        lines += ["", "本次有对白：在起始、递进、收束里写出说话者开始说、继续说、说完。先看清说话的角色脸上有没有嘴：有嘴才写口型；没有嘴就只写点头或图中已有的灯光闪动，不写嘴和口型。原句由程序完整保留，不要改写：", *dialogue_lines]
+        lines += ["", "本次有对白：在起始、递进、收束里写出说话者开始说、继续说、说完，只写说话，不写嘴和口型。原句由程序完整保留，不要改写：", *dialogue_lines]
     points = minimax_h3_five_section_points(source, user_requirement)
     if points:
         lines += ["", "下面每一条都要写进起始、递进或收束，不能只写在概述里："] + ["- " + point for point in points]
     lines += [
         "", "按下面的格式输出五行，每行以标签开头，冒号后面换成你写的内容" + ("：" if points else "；视频描述里每个主体的每个动作都要写进起始、递进或收束："),
         f"概述：{overview_hint}",
-        f"起始（{edges[0]}-{edges[1]}秒）：动作怎样开始，朝哪个方向，幅度多大",
-        f"递进（{edges[1]}-{edges[2]}秒）：动作怎样继续发展，节奏怎样变化",
+        f"起始（{edges[0]}-{edges[1]}秒）：动作怎样开始，朝哪个方向",
+        # A held pose is not the action: the watering can tilts, the hand waves.
+        f"递进（{edges[1]}-{edges[2]}秒）：动作怎样继续发展" + ("" if mode == "FL2VA" or asked & {"idle", "still"} else "、真正做出来") + "，节奏怎样变化",
         f"收束（{edges[2]}-{edges[3]}秒）：{ending_hint}",
-        "约束：写2到3条，用 1. 2. 3. 编号：主体和场景前后保持一致" + ("，以及用户提出的要求" if user_requirement or rules else ""),
+        "约束：写2到3条，用 1. 2. 3. 编号，只写全程保持不变的内容：主体和场景前后保持一致" + ("，以及用户写明要一直保持的内容" if user_requirement or rules else ""),
     ]
     return "\n".join(lines)
 
