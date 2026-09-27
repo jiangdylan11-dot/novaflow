@@ -193,7 +193,7 @@ class H3FiveSectionLocalTest(unittest.TestCase):
     def test_label_spellings_and_garbage_characters_are_normalized(self):
         expected = compile_action_phases(phases(), "T2VA", 5, CAT)
         self.assertTrue(expected.startswith("【任务定位】\n文生视频，时长5秒。无参考媒体。"))
-        self.assertIn("0-1.667s：橘猫前爪向前伸直", expected)
+        self.assertIn("0-1.7s：橘猫前爪向前伸直", expected)
         variants = [
             phases(form="【{label}】{text}"), phases(form="**{label}**：{text}"), phases(form="**{label}：**{text}"),
             phases(form="{label}\n{text}"), phases(form="### {label}\n{text}"), "好的，以下是优化后的提示词：\n" + phases(),
@@ -206,13 +206,16 @@ class H3FiveSectionLocalTest(unittest.TestCase):
         self.assertEqual(compile_action_phases(phases().replace("约束：", "\n"), "T2VA", 5, CAT), expected)
         numbered = phases().replace("约束：1. 保持橘猫外观一致\n2. 动作连贯", "约束1：保持橘猫外观一致\n约束2：动作连贯")
         self.assertEqual(compile_action_phases(numbered, "T2VA", 5, CAT), expected)
+        kept = phases().replace("约束：1. 保持橘猫外观一致\n2. 动作连贯", "保持项1：保持橘猫外观一致\n保持项2：动作连贯")
+        self.assertEqual(compile_action_phases(kept, "T2VA", 5, CAT), expected)
         with self.assertRaises(ValueError):
             compile_action_phases(phases().replace("递进：", ""), "T2VA", 5, CAT)
 
     def test_constraint_freezing_the_pose_is_dropped_unless_asked(self):
         answer = phases().replace("1. 保持橘猫外观一致", "1. 动作从图中姿态自然开始，不改变初始姿态\n3. 姿态和背景保持不变")
         text = compile_action_phases(answer, "T2VA", 5, CAT)
-        self.assertIn("【连续性与约束】\n1. 动作从图中姿态自然开始。\n2. 动作连贯。", text)
+        # The pose leaves "姿态和背景保持不变"; the background item stays.
+        self.assertIn("【连续性与约束】\n1. 动作从图中姿态自然开始。\n2. 背景保持不变。\n3. 动作连贯。", text)
         self.assertNotIn("不改变初始姿态", text)
         self.assertIn("不改变初始姿态", compile_action_phases(answer, "T2VA", 5, "橘猫蹲坐在窗台上，保持静止"))
 
@@ -261,6 +264,78 @@ class H3FiveSectionLocalTest(unittest.TestCase):
         self.assertEqual(len(calls), 1)
         self.assertIn("纯绿色幕布", result["positivePrompt"])
 
+    def test_answer_loses_invented_bans_meta_text_and_undone_results(self):
+        answer = ("概述：巨蛇在灰色背景中缓缓抬头，镜头固定。\n起始：巨蛇头部缓慢向上抬起。\n递进：头部继续抬升，信子从口中探出，发出嘶嘶声。\n"
+                  "收束：信子收回，巨蛇头部回落至初始姿态，镜头定格于巨蛇头部。\n"
+                  "约束：1. 主体姿态、外观和背景须与图一致\n2. 按三阶段完成抬头动作，不脱离原提示词的核心逻辑\n3. 镜头全程固定，不添加台词、音乐或特效")
+        text = compile_action_phases(answer, "I2VA", 8, "巨蛇缓缓抬头，吐出信子")
+        self.assertIn("5.3-8s：信子收回，镜头停在巨蛇头部。", text)
+        self.assertIn("【连续性与约束】\n1. 主体外观和背景须与图一致。\n2. 镜头全程固定。", text)
+        self.assertIn("2.7-5.3s：头部继续抬升，信子从口中探出。", text)
+        for gone in ["初始姿态", "定格", "三阶段", "原提示词", "音乐", "嘶嘶声"]:
+            self.assertNotIn(gone, text)
+        self.assertIn("发出嘶嘶声", compile_action_phases(answer, "I2VA", 8, "巨蛇缓缓抬头，发出嘶嘶声"))
+        # The user's own return, loop or ban is kept.
+        self.assertIn("回落至初始姿态", compile_action_phases(answer, "I2VA", 8, "巨蛇抬头，再回到原来的位置"))
+        self.assertIn("音乐", compile_action_phases(answer, "I2VA", 8, "巨蛇缓缓抬头，不要音乐"))
+
+    def test_one_camera_move_and_no_invented_lighting_without_a_picture(self):
+        answer = ("概述：厨师在厨房颠锅炒菜，镜头跟随锅身，暖色调灯光下火光交织。\n起始：厨师手臂下压，锅身前倾。\n"
+                  "递进：厨师手腕上抖，食材翻起，镜头推近捕捉火光。\n收束：锅落回灶台，镜头拉远展现厨房。\n"
+                  "约束：1. 场景始终为厨房，光线保持明亮\n2. 镜头全程跟随，不使用俯拍或仰拍\n3. 不得添加其他人物或道具")
+        text = compile_action_phases(answer, "T2VA", 5, "厨师在厨房里颠锅炒菜，锅里火焰窜起")
+        self.assertIn("厨师在厨房颠锅炒菜，镜头跟随锅身。", text)
+        self.assertIn("1.7-3.3s：厨师手腕上抖，食材翻起。", text)
+        self.assertIn("3.3-5s：锅落回灶台。", text)
+        self.assertIn("【连续性与约束】\n1. 场景始终为厨房。\n2. 镜头全程跟随。", text)
+        asked = compile_action_phases(answer, "T2VA", 5, "厨师在厨房里颠锅炒菜，暖色调灯光，镜头先跟随再拉远，不得添加其他人物")
+        for kept in ["暖色调灯光", "镜头拉远展现厨房", "不得添加其他人物或道具"]:
+            self.assertIn(kept, asked)
+        self.assertNotIn("镜头推近", asked)
+
+    def test_breathing_idle_keeps_breathing_to_the_end(self):
+        answer = ("概述：女战士站在绿幕前呼吸待机，镜头固定。\n起始：胸肩随吸气微微抬起。\n递进：胸肩随呼气缓缓回落。\n"
+                  "收束：胸肩再次微微抬起，呼吸节奏归于静止。\n约束：1. 头部和手臂不动")
+        text = compile_action_phases(answer, "T2VA", 3, "女战士站立，仅呼吸待机，绿幕背景")
+        self.assertIn("2-3s：胸肩再次微微抬起。", text)
+        self.assertNotIn("归于静止", text)
+        self.assertIn("收束（2-3秒）：呼吸继续平稳起伏", service.build_minimax_h3_five_section_request("女战士站立，仅呼吸待机", "", "T2VA", 3))
+
+    def test_speaker_and_request_describe_the_user_actions(self):
+        source = '小机器人给花浇水，抬头对镜头说话\n(S1)："今天的花开得真好。"'
+        text = compile_action_phases(phases(), "I2VA", 5, source)
+        self.assertIn("<Subject 1> = (S1)，<Picture 1> 中说这句台词的角色。", text)
+        prompt = service.build_minimax_h3_five_section_request(source, "", "I2VA", 5, sees_frames=True, dialogue_lines=['(S1)："今天的花开得真好。"'])
+        self.assertIn("- 小机器人给花浇水\n- 抬头对镜头说话\n", prompt)
+        self.assertIn("没有嘴就只写点头或图中已有的灯光闪动", prompt)
+        self.assertIn("写清它从画面哪里出现", prompt)
+        self.assertNotIn("三阶段", prompt)
+        kite = service.build_minimax_h3_five_section_request("一个小男孩在草地上放风筝", "镜头缓慢推近，加上风声", "T2VA", 5)
+        self.assertIn("- 加上风声", kite)
+        self.assertNotIn("光线", kite.split("概述：")[1])
+
+    def test_nearly_identical_first_and_last_frames_keep_the_pose(self):
+        from PIL import Image, ImageDraw
+        import base64, io
+
+        def url(box):
+            image = Image.new("RGB", (96, 96), "gray")
+            ImageDraw.Draw(image).rectangle(box, fill="white")
+            buffer = io.BytesIO()
+            image.save(buffer, "PNG")
+            return "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+        pair = lambda a, b: [{"label": "<Picture 1>", "dataUrl": url(a)}, {"label": "<Picture 2>", "dataUrl": url(b)}]
+        self.assertTrue(service.minimax_h3_frames_nearly_same(pair((10, 10, 40, 40), (11, 10, 41, 40))))
+        self.assertFalse(service.minimax_h3_frames_nearly_same(pair((10, 10, 40, 40), (50, 50, 90, 90))))
+        self.assertFalse(service.minimax_h3_frames_nearly_same([{"label": "<Picture 1>", "dataUrl": "data:image/jpeg;base64,/9j/AAAA"}]))
+        same = service.build_minimax_h3_five_section_request("从首帧自然过渡到尾帧", "", "FL2VA", 5, sees_frames=True, same_frames=True)
+        self.assertIn("这两张图几乎相同：主体全程保持图中的姿态和位置", same)
+        self.assertNotRegex(same, "胸肩|呼吸待机|- 从首帧")
+        self.assertNotIn("几乎相同", service.build_minimax_h3_five_section_request("从首帧自然过渡到尾帧", "", "FL2VA", 5, sees_frames=True))
+        answer = phases().replace("1. 保持橘猫外观一致", "1. 保持图中的姿态不变")
+        self.assertIn("保持图中的姿态不变", compile_action_phases(answer, "FL2VA", 5, "从首帧自然过渡到尾帧", keep_pose=True))
+        self.assertNotIn("保持图中的姿态不变", compile_action_phases(answer, "FL2VA", 5, "从首帧自然过渡到尾帧"))
+
     def test_i2v_and_fl2v_models_see_their_frames(self):
         frame = "data:image/jpeg;base64,/9j/AAAA"
         with mock.patch.object(service, "data_url_to_tensor", side_effect=lambda url: ("tensor", url)):
@@ -276,9 +351,9 @@ class H3FiveSectionLocalTest(unittest.TestCase):
             prompt, kwargs = calls[0]
             self.assertEqual(len(kwargs["images"]), 2)
             self.assertEqual(prompt.count(service.QWEN3_CHAT_VISION_TOKEN), 2)
-            self.assertIn("收束（3.3-5秒）：动作怎样完成，最后的画面与 <Picture 2> 一致", prompt)
+            self.assertIn("收束（3.3-5秒）：动作怎样平稳完成，姿态、位置和光效变成 <Picture 2> 的样子，最后的画面与 <Picture 2> 一致", prompt)
             self.assertIn("首尾帧视频，时长5秒。<Picture 1> 为起始首帧，<Picture 2> 为结束尾帧。", result["positivePrompt"])
-            self.assertIn("3.333-5s：四爪落地，尾巴轻摆，站稳后抬头。结束时画面与 <Picture 2> 一致。", result["positivePrompt"])
+            self.assertIn("3.3-5s：四爪落地，尾巴轻摆，站稳后抬头。结束时画面与 <Picture 2> 一致。", result["positivePrompt"])
         # An unreadable picture never fails the request; the model is told it cannot see it.
         with mock.patch.object(service, "data_url_to_tensor", side_effect=OSError("broken")):
             result, calls = self.run_local([phases()], {"h3Mode": "image_video", "currentPrompt": "她转身向镜头挥手",

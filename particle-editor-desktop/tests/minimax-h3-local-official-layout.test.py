@@ -64,7 +64,7 @@ class LocalH3OfficialLayoutTest(unittest.TestCase):
                 self.assertEqual(len(calls), 1)
                 self.assertIn(SERVICE.MINIMAX_H3_FIVE_SECTION_RULES, calls[0]["llama_template"])
                 self.assertTrue(text.startswith("【任务定位】\n" + task))
-                self.assertIn("0-1.667s：她缓慢抬起右手。", text)
+                self.assertIn("0-1.7s：她缓慢抬起右手。", text)
                 self.assertIn("【连续性与约束】\n1. 保持红色战甲与雪山背景。", text)
                 self.assertNotIn("[Shot", text)
 

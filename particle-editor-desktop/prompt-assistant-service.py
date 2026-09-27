@@ -1342,10 +1342,10 @@ def minimax_h3_prompt_enhance_user_requirement(requirements: str, current_prompt
 MINIMAX_H3_FIVE_SECTION_RULES = (
     "你是 MiniMax H3 视频提示词优化助手，把用户的视频想法改写成清楚、能直接用来生成视频的中文提示词。\n"
     "1. 保留用户写明的主体、动作、场景和每一条明确要求，不删除、不替换，也不改成别的动作。\n"
-    "2. 把动作展开成连续、看得见的过程：谁在动，朝哪个方向，幅度多大，节奏快慢，怎样开始、怎样结束。\n"
+    "2. 把动作展开成连续、看得见的过程：谁在动，朝哪个方向，幅度多大，节奏快慢，怎样开始、怎样结束。用户写“轻轻”“缓缓”的动作就保持小幅、缓慢。\n"
     "3. 用“缓慢”“迅速”“小幅”“大幅”这类看得见的说法，不写厘米、角度、速度、频率等数字，阶段内容里也不写秒数。\n"
-    "4. 写清镜头怎样拍：固定、跟随、推近、拉远或环绕，选最适合这个动作的一种；用户指定了镜头就按用户的写。\n"
-    "5. 不添加用户没有提到的台词、声音、音乐、特效或新场景；可以细化用户写到的场景，但不要换成别的场景。\n"
+    "4. 写清镜头怎样拍：固定、跟随、推近、拉远或环绕，选最适合这个动作的一种，全程只用这一种；用户指定了镜头就按用户的写。\n"
+    "5. 不添加用户没有提到的台词、声音、音乐、特效、服装、光线色调或新场景；可以细化用户写到的场景，但不要换成别的场景。用户写到的特效保持原来的样子和程度。\n"
     "6. 只输出规定的五个标签和内容，不写标题、解释或备注。"
 )
 
@@ -1376,13 +1376,36 @@ def minimax_h3_five_section_frames(mode: str, frames) -> list:
         return []
 
 
-def build_minimax_h3_five_section_request(source, user_requirement, mode, duration, media_tokens=(), sees_frames=False, dialogue_lines=()) -> str:
+def minimax_h3_frames_nearly_same(frames) -> bool:
+    """首尾帧 whose two pictures differ only in small details: the mean absolute
+    difference of 64x64 grayscale thumbnails is under 8 of 255."""
+    urls = {item.get("label"): str(item.get("dataUrl") or "") for item in frames if isinstance(item, dict)} if isinstance(frames, list) else {}
+    try:
+        import numpy as np
+        from PIL import Image
+
+        thumbs = [np.asarray(Image.open(io.BytesIO(base64.b64decode(urls[label].split(",", 1)[1]))).convert("L").resize((64, 64)), dtype="float32")
+                  for label in ("<Picture 1>", "<Picture 2>")]
+        return float(np.abs(thumbs[0] - thumbs[1]).mean()) < 8
+    except Exception:
+        return False
+
+
+def minimax_h3_five_section_points(source, user_requirement) -> list:
+    """The user's actions and requirements, one per line, so each one lands in a phase."""
+    text = re.sub(r"(?m)^.*[（(]S[1-9]\d*[）)]\s*[:：].*$|^\s*<Subject [1-9]\d*>\s*=.*$", "", source)
+    points = list(dict.fromkeys(p.strip() for p in re.split(r"[，,。；;！!？?\n]+", text + "\n" + user_requirement)
+                                if re.search(r"[\u3400-\u9fffA-Za-z]", p)))
+    return points if 2 <= len(points) <= 8 and all(len(p) <= 40 for p in points) else []
+
+
+def build_minimax_h3_five_section_request(source, user_requirement, mode, duration, media_tokens=(), sees_frames=False, dialogue_lines=(), same_frames=False) -> str:
     mode = clean_text(mode).upper()
     seconds = f"{float(duration):g}"
     edges = [f"{edge:.1f}".rstrip("0").rstrip(".") for edge in h3_phase_edges(duration)]
     image = QWEN3_CHAT_VISION_TOKEN
-    overview_hint = "用一两句通顺的话点明主体、场景和镜头怎样拍，不细写外观"
-    ending_hint = "动作怎样收尾，画面最后是什么样"
+    overview_hint = "用一两句通顺的话点明主体、场景和镜头怎样拍（镜头全程只选一种），不细写外观"
+    ending_hint = "动作怎样收尾，最后停在动作完成后的样子"
     appearance = (
         "外观、服装和背景都以图为准，不要重新描述，也不要改变。" if sees_frames else
         "你看不到这张图，不要猜测或描述图中的外观、服装和背景，只写动作和镜头。"
@@ -1391,6 +1414,7 @@ def build_minimax_h3_five_section_request(source, user_requirement, mode, durati
         task = (
             f"任务：图生视频，时长{seconds}秒。<Picture 1> 是视频的第一帧，就是这张图：\n{image}\n"
             "视频从这张图的画面直接开始。先看清图中的主体是谁、在什么地方、朝向和姿态怎样，让动作从这个姿态自然开始。"
+            "视频描述里的动作如果图中已经做到一部分（已经抬起、伸出或拿在手里），起始就是图中的样子，从这里接着往下做；动作要用到但图中没有的物体，写清它从画面哪里出现。"
             if sees_frames else
             f"任务：图生视频，时长{seconds}秒。<Picture 1> 是视频的第一帧，视频从这张图的画面直接开始。"
         ) + appearance
@@ -1398,34 +1422,43 @@ def build_minimax_h3_five_section_request(source, user_requirement, mode, durati
         task = (
             f"任务：首尾帧视频，时长{seconds}秒。\n第一帧 <Picture 1>：\n{image}\n第{seconds}秒的最后一帧 <Picture 2>：\n{image}\n"
             "对比两张图，看清主体的姿态、位置、朝向、表情和光线从第一帧到最后一帧有哪些变化，写出从第一帧连续过渡到最后一帧的过程，并把视频描述里的动作安排在这个过程中。"
-            "镜头要与两张图的取景一致：取景相同就固定镜头，取景不同才写推近、拉远或移动。"
+            "只写两张图之间真实看得见的变化，两张图里相同的部分（姿态、手的位置、睁眼或闭眼）全程保持原样。"
+            + ("这两张图几乎相同：主体全程保持图中的姿态和位置，只写视频描述里的动作和小幅的局部变化（例如头发或衣角轻动、光影轻微变化），最后回到与 <Picture 2> 相同的画面。"
+               if same_frames else "")
+            + "镜头要与两张图的取景一致：取景相同就固定镜头，取景不同才写推近、拉远或移动。"
             if sees_frames else
             f"任务：首尾帧视频，时长{seconds}秒。<Picture 1> 是第一帧，<Picture 2> 是第{seconds}秒的最后一帧，写出从第一帧连续过渡到最后一帧的过程。"
         ) + appearance.replace("这张图", "这两张图")
-        ending_hint = "动作怎样完成，最后的画面与 <Picture 2> 一致"
+        overview_hint = "用一两句写主体的姿态和所在位置（坐着还是站着、手里拿着什么）和镜头怎样拍，不写服装和长相"
+        ending_hint = "动作怎样平稳完成，姿态、位置和光效变成 <Picture 2> 的样子，最后的画面与 <Picture 2> 一致"
     else:
         task = f"任务：{H3_MODE_NAMES.get(mode, mode)}，时长{seconds}秒。把下面的视频描述写成一段完整、连贯的视频提示词。"
         if media_tokens:
             task += "本次参考媒体：" + "、".join(media_tokens) + "，保持各自原来的作用。"
-        overview_hint = "一到两句，写主体、场景、光线和镜头怎样拍"
+        overview_hint = "一到两句，只写视频描述里的主体、场景和动作，再写镜头怎样拍（镜头全程只选一种）"
     asked = h3_requested_rules(source + "\n" + user_requirement)
     if "loop" in asked and mode != "FL2VA":
         ending_hint = "动作怎样平滑回到起始姿态，首尾衔接"
+    elif "idle" in asked and mode != "FL2VA":
+        ending_hint = "呼吸继续平稳起伏，画面最后是什么样"
     lines = [task, "", "视频描述：", source]
     if user_requirement:
-        lines += ["", "补充要求（本次修改；与视频描述冲突时以补充要求为准，要写进概述或对应的动作里）：", user_requirement]
+        lines += ["", "补充要求（本次修改；与视频描述冲突时以补充要求为准；每一条都写进对应阶段，声音和动作同步）：", user_requirement]
     rules = [rule["rule"] for rule in H3_CONDITIONAL_RULES if rule["name"] in asked]
     if rules:
         lines += ["", "用户明确要求："] + ["- " + rule for rule in rules]
     if dialogue_lines:
-        lines += ["", "本次已提供对白，三阶段应安排对应说话者开始说话、继续说话、说完的过程。原句由程序完整保留，不要改写：", *dialogue_lines]
+        lines += ["", "本次有对白：在起始、递进、收束里写出说话者开始说、继续说、说完。先看清说话的角色脸上有没有嘴：有嘴才写口型；没有嘴就只写点头或图中已有的灯光闪动，不写嘴和口型。原句由程序完整保留，不要改写：", *dialogue_lines]
+    points = minimax_h3_five_section_points(source, user_requirement)
+    if points:
+        lines += ["", "下面每一条都要写进起始、递进或收束，不能只写在概述里："] + ["- " + point for point in points]
     lines += [
-        "", "按下面的格式输出五行，每行以标签开头，冒号后面换成你写的内容；视频描述里每个主体的每个动作都要写进起始、递进或收束：",
+        "", "按下面的格式输出五行，每行以标签开头，冒号后面换成你写的内容" + ("：" if points else "；视频描述里每个主体的每个动作都要写进起始、递进或收束："),
         f"概述：{overview_hint}",
         f"起始（{edges[0]}-{edges[1]}秒）：动作怎样开始，朝哪个方向，幅度多大",
         f"递进（{edges[1]}-{edges[2]}秒）：动作怎样继续发展，节奏怎样变化",
         f"收束（{edges[2]}-{edges[3]}秒）：{ending_hint}",
-        "约束：2到3条编号的限制：用户明确提出的要求，以及主体外观和场景前后一致；不要限制上面写的动作，也不要另加禁止项",
+        "约束：写2到3条，用 1. 2. 3. 编号：主体和场景前后保持一致" + ("，以及用户提出的要求" if user_requirement or rules else ""),
     ]
     return "\n".join(lines)
 
@@ -13699,12 +13732,14 @@ class PromptAssistant:
         inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements)
         media_tokens = sorted(set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory.group(1) if inventory else source)))
         dialogue_lines = re.findall(r'[（(]S[1-9]\d*[）)]\s*[:：]\s*[“"][^”"]+[”"]', source)
-        rules = MINIMAX_H3_FIVE_SECTION_RULES + ("\n按原台词安排说话动作与口型，不改写台词。" if dialogue_lines else "")
+        rules = MINIMAX_H3_FIVE_SECTION_RULES + ("\n按原台词安排说话的过程，不改写台词。" if dialogue_lines else "")
         template = "<|im_start|>system\n" + rules + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
         # 图生视频/首尾帧: the model sees the frames it animates, so it neither
         # invents the scene nor starts from a pose the picture does not show.
         images = minimax_h3_five_section_frames(mode, frames)
-        request = build_minimax_h3_five_section_request(source, user_requirement, mode, duration, media_tokens, bool(images), dialogue_lines)
+        # Two nearly identical 首尾帧 keep their pose; the model is not pushed to find a big change.
+        same_frames = len(images) == 2 and minimax_h3_frames_nearly_same(frames)
+        request = build_minimax_h3_five_section_request(source, user_requirement, mode, duration, media_tokens, bool(images), dialogue_lines, same_frames)
         # Only the user's own words ask for a loop; a first/last-frame video ends on its last frame.
         loop = "loop" in h3_requested_rules(source + "\n" + user_requirement) and clean_text(mode).upper() != "FL2VA"
 
@@ -13712,7 +13747,7 @@ class PromptAssistant:
             positive = (
                 validate_h3_five_sections(output, mode, duration, source, requirements)
                 if output.strip().startswith("【任务定位】") else
-                compile_h3_action_phases(output, mode, duration, source, requirements, user_requirement, strict_rules=strict_rules)
+                compile_h3_action_phases(output, mode, duration, source, requirements, user_requirement, strict_rules=strict_rules, keep_pose=same_frames)
             )
             return validate_h3_prompt_enhancement(positive, source, user_requirement, loop=loop)
 
