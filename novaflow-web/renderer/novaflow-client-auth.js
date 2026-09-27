@@ -297,7 +297,7 @@
         justify-content: space-between !important;
       }
       [${HOST_ATTR}="1"] .nf-client-auth-title {
-        font-weight: 900 !important;
+        font-weight: 600 !important;
         color: #ffffff !important;
         white-space: nowrap !important;
       }
@@ -309,7 +309,7 @@
         align-items: center !important;
         justify-content: center !important;
         font-size: 10px !important;
-        font-weight: 900 !important;
+        font-weight: 600 !important;
         white-space: nowrap !important;
         background: rgba(255, 255, 255, 0.07) !important;
         color: rgba(238, 244, 252, 0.84) !important;
@@ -352,7 +352,7 @@
         background: #2f2f2f !important;
         color: #ffffff !important;
         font-size: 12px !important;
-        font-weight: 900 !important;
+        font-weight: 600 !important;
         cursor: pointer !important;
         white-space: nowrap !important;
       }
@@ -410,7 +410,7 @@
         text-overflow: ellipsis !important;
         white-space: nowrap !important;
         color: #ffffff !important;
-        font-weight: 900 !important;
+        font-weight: 600 !important;
       }
       [${HOST_ATTR}="1"] .nf-client-auth-metrics {
         display: grid !important;
@@ -432,7 +432,7 @@
       [${HOST_ATTR}="1"] .nf-client-auth-metric-value {
         color: #ffffff !important;
         font-size: 12px !important;
-        font-weight: 900 !important;
+        font-weight: 600 !important;
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;

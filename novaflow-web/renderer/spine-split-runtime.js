@@ -1331,7 +1331,7 @@
             cursor: 'pointer',
             textAlign: 'center',
             fontSize: '12px',
-            fontWeight: '900',
+            fontWeight: '600',
             lineHeight: '1.2',
             whiteSpace: 'nowrap',
             boxShadow: 'none',
@@ -1384,7 +1384,7 @@
           background: '#050505',
           color: '#fff',
           textAlign: 'center',
-          fontWeight: '800',
+          fontWeight: '600',
           outline: 'none',
           MozAppearance: 'textfield'
         }
@@ -1484,7 +1484,7 @@
             modeButton('high', '\u9ad8\u6e05\u62c6\u56fe', 'high')
           ]),
           h('div', { style: { display: 'grid', gap: '10px' } }, [
-            h('div', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.86)', fontWeight: '900' } }, '\u6b65\u6570\u8bbe\u7f6e'),
+            h('div', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.86)', fontWeight: '600' } }, '\u6b65\u6570\u8bbe\u7f6e'),
             h('div', { style: { display: 'grid', gridTemplateColumns: '1fr 50px', gap: '14px', alignItems: 'center' } }, [
               stepRange,
               stepNumber
@@ -1495,7 +1495,7 @@
             style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px', cursor: 'pointer' }
           }, [
             h('div', { style: { minWidth: '0', display: 'grid', gap: '4px' } }, [
-              h('div', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.86)', fontWeight: '900' } }, '五官单独成层'),
+              h('div', { style: { fontSize: '12px', color: 'rgba(255,255,255,0.86)', fontWeight: '600' } }, '五官单独成层'),
               h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.62)', lineHeight: '1.35' } }, '做眨眼、口型时打开：眉毛、眼白、眼珠、睫毛、鼻子、嘴巴、耳朵各自成层。关闭时由模型直接生成带五官的整脸，多约 2 分钟')
             ]),
             faceDetailsInput
@@ -1968,7 +1968,7 @@
             color: '#fff',
             cursor: 'pointer',
             fontSize: '12px',
-            fontWeight: '900',
+            fontWeight: '600',
             boxShadow: 'none',
             transform: 'none',
             transition: 'none'
@@ -1995,7 +1995,7 @@
           color: '#fff',
           cursor: 'pointer',
           fontSize: '12px',
-          fontWeight: '900',
+          fontWeight: '600',
           boxShadow: 'none',
           transform: 'none',
           transition: 'none'
@@ -2222,7 +2222,7 @@
             color: '#fff',
             cursor: 'pointer',
             fontSize: '12px',
-            fontWeight: tone === 'primary' ? '900' : '600',
+            fontWeight: tone === 'primary' ? '600' : '600',
             whiteSpace: 'nowrap',
             boxShadow: 'none',
             transform: 'none',
@@ -2464,7 +2464,7 @@
           },
           style: { width: '100%', WebkitAppearance: 'none', appearance: 'none', border: '0', outline: 'none', margin: '0' }
         })
-        const value = h('div', { style: { color, fontSize: '14px', fontWeight: '800', textAlign: 'right', fontVariantNumeric: 'tabular-nums' } }, '')
+        const value = h('div', { style: { color, fontSize: '14px', fontWeight: '600', textAlign: 'right', fontVariantNumeric: 'tabular-nums' } }, '')
         sliders[key] = { input, value, min, max, color }
         return h('div', { style: { display: 'grid', gridTemplateColumns: '64px 1fr 52px', alignItems: 'center', gap: '12px' } }, [
           h('div', { style: { display: 'flex', alignItems: 'center', gap: '7px', fontSize: '12px', color: 'rgba(226,232,240,0.78)' } }, [
@@ -2968,7 +2968,7 @@
           boxShadow: '0 20px 52px rgba(0,0,0,0.42)',
           color: '#fff',
           fontSize: '13px',
-          fontWeight: '900',
+          fontWeight: '600',
           lineHeight: '1.45',
           textAlign: 'center',
           boxSizing: 'border-box'
@@ -2981,7 +2981,7 @@
             marginTop: '6px',
             color: 'rgba(226,232,240,0.74)',
             fontSize: '11px',
-            fontWeight: '800',
+            fontWeight: '600',
             lineHeight: '1.3'
           }
         }, busy.elapsedText || ''),
@@ -2991,7 +2991,7 @@
             marginTop: '8px',
             color: 'rgba(226,232,240,0.66)',
             fontSize: '11px',
-            fontWeight: '700',
+            fontWeight: '600',
             lineHeight: '1.45',
             whiteSpace: 'pre-line'
           }
@@ -3017,7 +3017,7 @@
           marginTop: '6px',
           color: 'rgba(226,232,240,0.74)',
           fontSize: '11px',
-          fontWeight: '800',
+          fontWeight: '600',
           lineHeight: '1.3'
         }
       }, '')
@@ -3036,7 +3036,7 @@
           marginTop: '8px',
           color: 'rgba(226,232,240,0.66)',
           fontSize: '11px',
-          fontWeight: '700',
+          fontWeight: '600',
           lineHeight: '1.45',
           whiteSpace: 'pre-line'
         }
@@ -7344,7 +7344,7 @@
       color: '#fff',
       cursor: 'pointer',
       fontSize: '12px',
-      fontWeight: '900',
+      fontWeight: '600',
       boxShadow: 'none',
       transform: 'none',
       transition: 'none'
@@ -7470,7 +7470,7 @@
           justifyContent: 'center',
           color: 'rgba(226,232,240,0.62)',
           fontSize: '12px',
-          fontWeight: '800',
+          fontWeight: '600',
           overflow: 'hidden',
           cursor: 'pointer',
           outline: '0'
@@ -7548,7 +7548,7 @@
           }
         }, [
           h('div', { style: { display: 'grid', gap: '3px' } }, [
-            h('div', { style: { fontSize: '14px', fontWeight: '900', lineHeight: '1.2' } }, '\u4e07\u7269\u8fc1\u79fb'),
+            h('div', { style: { fontSize: '14px', fontWeight: '600', lineHeight: '1.2' } }, '\u4e07\u7269\u8fc1\u79fb'),
             h('div', { style: { fontSize: '11px', color: 'rgba(226,232,240,0.62)', lineHeight: '1.35' } }, '\u4e0a\u4f20\u8981\u8fc1\u79fb\u5230\u753b\u5e03\u4e2d\u7684\u53c2\u8003\u7269')
           ]),
           h('button', {
@@ -7564,7 +7564,7 @@
               cursor: 'pointer',
               fontSize: '18px',
               lineHeight: '1',
-              fontWeight: '700'
+              fontWeight: '600'
             }
           }, '\u00d7')
         ]),
@@ -9727,7 +9727,7 @@
       if (!marker) {
         marker = document.createElement('div')
         marker.id = 'novaflow-split-runtime-trace-marker'
-        marker.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147483647;background:#111827;color:#bfdbfe;border:1px solid rgba(96,165,250,.7);border-radius:6px;padding:4px 8px;font:700 11px monospace;pointer-events:none'
+        marker.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:2147483647;background:#111827;color:#bfdbfe;border:1px solid rgba(96,165,250,.7);border-radius:6px;padding:4px 8px;font:600 11px monospace;pointer-events:none'
         document.body.appendChild(marker)
       }
       marker.textContent = text
@@ -13225,7 +13225,7 @@
     }, [
       h('div', { style: checkerStyle({ height: '148px', borderRadius: '8px', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }) },
         h('img', { src: previewSource.src, alt: previewSource.label, style: { maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' } })),
-      h('div', { style: { marginTop: '6px', fontSize: '10px', color: 'rgba(191,219,254,0.95)', fontWeight: '900', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' } }, previewSource.label)
+      h('div', { style: { marginTop: '6px', fontSize: '10px', color: 'rgba(191,219,254,0.95)', fontWeight: '600', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' } }, previewSource.label)
     ]) : null
     const previewTile = state.splitPreviewDataUrl ? h('button', {
       type: 'button',
@@ -13238,7 +13238,7 @@
     ]) : null
     return h('div', { style: { display: 'grid', gap: '6px', borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '8px' } }, [
       h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } }, [
-        h('div', { style: { fontSize: '11px', fontWeight: '900', color: 'rgba(255,255,255,0.86)' } }, '拆图结果'),
+        h('div', { style: { fontSize: '11px', fontWeight: '600', color: 'rgba(255,255,255,0.86)' } }, '拆图结果'),
         h('div', { style: { display: 'flex', gap: '6px' } }, [
           button('原图', () => { state.viewMode = 'source'; render(); updatePreviewOverlay() }, state.viewMode === 'source'),
           button('图层', () => { state.viewMode = 'parts'; render(); updatePreviewOverlay() }, state.viewMode === 'parts')
@@ -13258,7 +13258,7 @@
           style: { borderRadius: '10px', border: blocked ? '1px solid rgba(239,68,68,0.58)' : issueCount ? '1px solid rgba(245,158,11,0.50)' : selected ? '1px solid rgba(96,165,250,0.92)' : '1px solid rgba(255,255,255,0.10)', background: selected ? 'rgba(59,130,246,0.18)' : 'rgba(255,255,255,0.02)', boxShadow: selected ? '0 0 0 1px rgba(59,130,246,0.22) inset' : 'none', padding: '6px', cursor: 'pointer' }
         }, [
           h('div', { style: { width: '100%', aspectRatio: '1/1', borderRadius: '8px', overflow: 'hidden', background: 'rgba(255,255,255,0.04)' } }, h('img', { src, alt: part.name, style: { width: '100%', height: '100%', objectFit: 'contain', display: 'block' } })),
-          h('div', { style: { marginTop: '6px', fontSize: '10px', color: blocked ? 'rgba(252,165,165,0.95)' : issueCount ? 'rgba(251,191,36,0.95)' : selected ? 'rgba(191,219,254,0.98)' : 'rgba(148,163,184,0.85)', fontWeight: selected ? '900' : '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, issueCount ? `${part.name} · QA ${issueCount}` : part.name)
+          h('div', { style: { marginTop: '6px', fontSize: '10px', color: blocked ? 'rgba(252,165,165,0.95)' : issueCount ? 'rgba(251,191,36,0.95)' : selected ? 'rgba(191,219,254,0.98)' : 'rgba(148,163,184,0.85)', fontWeight: selected ? '600' : '700', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, issueCount ? `${part.name} · QA ${issueCount}` : part.name)
         ])
       })
       ].filter(Boolean))
@@ -14905,7 +14905,7 @@
         alignItems: 'center',
         justifyContent: 'center',
         fontSize: '11px',
-        fontWeight: '900',
+        fontWeight: '600',
         lineHeight: '1',
         padding: '0 10px',
         boxSizing: 'border-box',
@@ -23356,7 +23356,7 @@
             background: 'transparent',
             color: '#fff',
             fontSize: '11px',
-            fontWeight: '700'
+            fontWeight: '600'
           }
         })
       ]) : null,
@@ -26940,7 +26940,7 @@
 
   function renderPenToolCanvas(source, rect) {
     const part = state.penTool && state.penTool.target === 'layer' ? penToolPart() : null
-    if (state.penTool && state.penTool.target === 'layer' && !part) return h('div', { style: { color: 'rgba(191,219,254,0.96)', fontSize: '13px', fontWeight: '900' } }, '请选择图层后使用钢笔工具')
+    if (state.penTool && state.penTool.target === 'layer' && !part) return h('div', { style: { color: 'rgba(191,219,254,0.96)', fontSize: '13px', fontWeight: '600' } }, '请选择图层后使用钢笔工具')
     const size = splitCanvasSizeForSource(source, part)
     const { scale } = splitCanvasScaleInfo(size, rect, 108)
     const cssW = Math.max(1, Math.round(size.width * scale))
@@ -28011,7 +28011,7 @@
 
   function renderMaskEditorCanvas(source, rect) {
     const part = source.part || maskEditorPart()
-    if (!part || !part.dataUrl) return h('div', { style: { color: 'rgba(191,219,254,0.96)', fontSize: '13px', fontWeight: '900' } }, '请选择图层后使用蒙版编辑')
+    if (!part || !part.dataUrl) return h('div', { style: { color: 'rgba(191,219,254,0.96)', fontSize: '13px', fontWeight: '600' } }, '请选择图层后使用蒙版编辑')
     const size = sourceCanvasSizeSync(part)
     const width = size.width
     const height = size.height
@@ -28290,7 +28290,7 @@
             background: 'rgba(0,0,0,0.58)',
             color: '#fff',
             fontSize: '11px',
-            fontWeight: '900',
+            fontWeight: '600',
             lineHeight: '20px',
             textAlign: 'center',
             pointerEvents: 'none'
@@ -28326,7 +28326,7 @@
       h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'center', justifyContent: 'center', maxWidth: '96%' } }, [
         button('\u91cd\u7f6e', () => resetObjectTransferPlacement(size), false),
         button('\u9000\u51fa', () => stopObjectTransferEdit(), false, { [TOOL_ACTION_ATTR]: 'objectTransferExit' }),
-        h('span', { style: { height: '28px', borderRadius: '8px', background: SPLIT_PANEL_BACKGROUND, color: error ? 'rgba(252,165,165,0.96)' : 'rgba(226,232,240,0.72)', display: 'inline-flex', alignItems: 'center', padding: '0 9px', fontSize: '11px', fontWeight: '800', maxWidth: '420px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, error || '\u62d6\u52a8\u4e3b\u4f53\u5b9a\u4f4d\uff0c\u6eda\u8f6e\u6216\u53f3\u4e0b\u89d2\u7b49\u6bd4\u7f29\u653e')
+        h('span', { style: { height: '28px', borderRadius: '8px', background: SPLIT_PANEL_BACKGROUND, color: error ? 'rgba(252,165,165,0.96)' : 'rgba(226,232,240,0.72)', display: 'inline-flex', alignItems: 'center', padding: '0 9px', fontSize: '11px', fontWeight: '600', maxWidth: '420px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, error || '\u62d6\u52a8\u4e3b\u4f53\u5b9a\u4f4d\uff0c\u6eda\u8f6e\u6216\u53f3\u4e0b\u89d2\u7b49\u6bd4\u7f29\u653e')
       ]),
       h('div', Object.assign(splitCanvasPanHandlers(), { onwheel: handleSplitCanvasWheel, style: transparentEditCanvasStyle({ width: '100%', height: '100%', minHeight: 0, overflow: 'auto', borderRadius: '10px', border: '0', padding: '10px', boxSizing: 'border-box', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: splitCanvasIdlePanCursor() }) }), art)
     ])
@@ -28342,7 +28342,7 @@
           textAlign: 'center',
           color: 'rgba(245,245,245,0.96)',
           fontSize: '16px',
-          fontWeight: '900',
+          fontWeight: '600',
           textShadow: '0 1px 2px rgba(0,0,0,0.58)'
         }
       }, source.label)
@@ -30613,7 +30613,7 @@
         splitLayerThumbNode(part),
         splitLayerStencilButtonNode(part, setId, editToolLocked, commandButtonStyle),
         splitLayerNameSlotNode(part, isRenaming),
-        h('button', { type: 'button', disabled: editToolLocked, 'aria-disabled': editToolLocked ? 'true' : 'false', draggable: 'false', [LAYER_COMMAND_ATTR]: 'delete', [LAYER_COMMAND_TARGET_ATTR]: part.id, title: '删除当前图层', ondragstart: (event) => { event.preventDefault(); event.stopPropagation() }, onclick: (event) => { event.preventDefault(); event.stopPropagation(); if (editToolLocked || wasLayerCommandHandledRecently('delete', part.id)) return; deleteSinglePart(part.id, setId) }, style: commandButtonStyle({ width: '20px', height: '20px', minWidth: '20px', borderRadius: '5px', border: '0', background: 'transparent', color: 'rgba(255,255,255,0.50)', cursor: 'pointer', fontWeight: '900', lineHeight: '1', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', padding: '0', boxSizing: 'border-box' }) }, '×')
+        h('button', { type: 'button', disabled: editToolLocked, 'aria-disabled': editToolLocked ? 'true' : 'false', draggable: 'false', [LAYER_COMMAND_ATTR]: 'delete', [LAYER_COMMAND_TARGET_ATTR]: part.id, title: '删除当前图层', ondragstart: (event) => { event.preventDefault(); event.stopPropagation() }, onclick: (event) => { event.preventDefault(); event.stopPropagation(); if (editToolLocked || wasLayerCommandHandledRecently('delete', part.id)) return; deleteSinglePart(part.id, setId) }, style: commandButtonStyle({ width: '20px', height: '20px', minWidth: '20px', borderRadius: '5px', border: '0', background: 'transparent', color: 'rgba(255,255,255,0.50)', cursor: 'pointer', fontWeight: '600', lineHeight: '1', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', padding: '0', boxSizing: 'border-box' }) }, '×')
       ])
     }
     const renderSourceResourceCard = (resource) => {
@@ -30761,7 +30761,7 @@
             background: 'transparent',
             color: resourceLocked ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.70)',
             cursor: resourceLocked ? 'default' : 'pointer',
-            fontWeight: '900',
+            fontWeight: '600',
             lineHeight: '20px',
             display: 'inline-flex',
             alignItems: 'center',

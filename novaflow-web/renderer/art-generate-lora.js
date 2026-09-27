@@ -238,7 +238,7 @@
         record.signature = JSON.stringify([state.loras, state.running, record.names, record.loading, record.error])
       })
       control.append(label, range)
-      const remove = element('button', '×', 'flex:none;width:28px;height:28px;padding:0;border-radius:8px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fca5a5;cursor:pointer;font-weight:900;font-size:14px;line-height:26px;')
+      const remove = element('button', '×', 'flex:none;width:28px;height:28px;padding:0;border-radius:8px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fca5a5;cursor:pointer;font-weight:600;font-size:14px;line-height:26px;')
       remove.type = 'button'
       remove.disabled = Boolean(state.running)
       remove.setAttribute('aria-label', `移除 ${item.name}`)

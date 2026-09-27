@@ -139,7 +139,7 @@
       title: text(options.name || '生成结果'),
       style: {
         minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        fontSize: '13px', fontWeight: '800',
+        fontSize: '13px', fontWeight: '600',
       },
     })
     const scaleLabel = element(documentRef, 'span', {
@@ -153,7 +153,7 @@
       'aria-label': '恢复适配窗口',
       style: {
         height: '30px', padding: '0 12px', border: '1px solid rgba(255,255,255,0.15)', borderRadius: '7px',
-        background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: '11px', fontWeight: '700', cursor: 'pointer',
+        background: 'rgba(255,255,255,0.07)', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer',
       },
     })
     const closeButton = element(documentRef, 'button', {

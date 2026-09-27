@@ -120,7 +120,7 @@
     })
     const label = createElement(documentRef, 'label', {
       text: '模型方式',
-      style: { color: 'rgba(255,255,255,0.78)', fontSize: '11px', fontWeight: '800' },
+      style: { color: 'rgba(255,255,255,0.78)', fontSize: '11px', fontWeight: '600' },
     })
     const select = createElement(documentRef, 'select', {
       'aria-label': '模型方式',

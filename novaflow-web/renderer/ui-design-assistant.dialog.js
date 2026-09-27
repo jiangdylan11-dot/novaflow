@@ -436,7 +436,7 @@
       style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', padding: '13px 15px', borderBottom: '1px solid rgba(255,255,255,0.08)' },
     }, [
       element(documentRef, 'div', {}, [
-        element(documentRef, 'div', { text: '设计助手', style: { fontSize: '14px', fontWeight: '900' } }),
+        element(documentRef, 'div', { text: '设计助手', style: { fontSize: '14px', fontWeight: '600' } }),
         contextSummary,
       ]),
       closeButton,
@@ -520,7 +520,7 @@
       type: 'button', text: '生成并写入设计要求',
       style: {
         width: 'min(320px, 100%)', height: '38px', border: '0', borderRadius: '8px', background: '#1ead7a', color: '#fff',
-        fontSize: '12px', fontWeight: '900', cursor: 'pointer',
+        fontSize: '12px', fontWeight: '600', cursor: 'pointer',
       },
     })
     record.submit = submit

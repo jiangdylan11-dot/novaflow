@@ -438,7 +438,7 @@
       color: active ? '#65e1ae' : 'rgba(255,255,255,0.78)',
       cursor: 'pointer',
       fontSize: '11px',
-      fontWeight: '800',
+      fontWeight: '600',
     }
   }
 
@@ -500,13 +500,13 @@
       style: {
         width: '100%', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '0 10px', border: '0', borderRadius: '8px', background: '#282828',
-        color: 'rgba(255,255,255,0.42)', fontSize: '12px', fontWeight: '900', cursor: 'not-allowed',
+        color: 'rgba(255,255,255,0.42)', fontSize: '12px', fontWeight: '600', cursor: 'not-allowed',
       },
     }, [
       createElement(documentRef, 'span', { text: 'UI 拆图' }),
       createElement(documentRef, 'span', {
         text: '第二阶段',
-        style: { fontSize: '9px', fontWeight: '700', color: 'rgba(255,255,255,0.32)' },
+        style: { fontSize: '9px', fontWeight: '600', color: 'rgba(255,255,255,0.32)' },
       }),
     ])
   }

@@ -51,7 +51,7 @@
     titleNode.setAttribute("data-novaflow-export-progress-title", "1");
     Object.assign(titleNode.style, {
       fontSize: "14px",
-      fontWeight: "900",
+      fontWeight: "600",
       color: "rgba(255,255,255,0.92)"
     });
 

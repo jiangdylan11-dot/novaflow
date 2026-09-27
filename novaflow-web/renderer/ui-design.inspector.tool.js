@@ -202,7 +202,7 @@
           color: tone === 'danger' ? '#fecaca' : '#f8fafc',
           cursor: 'pointer',
           fontSize: '11px',
-          fontWeight: '800',
+          fontWeight: '600',
         },
       })
       button.addEventListener('click', function () {

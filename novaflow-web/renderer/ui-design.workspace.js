@@ -1370,7 +1370,7 @@
           color: config.disabled ? 'rgba(255,255,255,0.28)' : '#f4f4f5',
           cursor: config.disabled ? 'not-allowed' : 'pointer',
           fontSize: '11px',
-          fontWeight: '800',
+          fontWeight: '600',
           whiteSpace: 'nowrap',
         },
       })
@@ -1895,7 +1895,7 @@
           })
           chip.appendChild(createElement(documentRef, 'span', {
             text: '修改底图 ' + modificationName,
-            style: { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '8px', fontWeight: '800' },
+            style: { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: '8px', fontWeight: '600' },
           }))
           const clear = createElement(documentRef, 'button', {
             type: 'button',
@@ -1949,7 +1949,7 @@
       })
       actionRow.appendChild(createElement(documentRef, 'div', {
         text: REFERENCE_ROLES[role] || REFERENCE_ROLES.reference,
-        style: { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#7dd3fc', fontSize: '10px', fontWeight: '800' },
+        style: { minWidth: '0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#7dd3fc', fontSize: '10px', fontWeight: '600' },
       }))
       body.appendChild(actionRow)
       return body
@@ -2018,7 +2018,7 @@
             cursor: block.locked ? 'not-allowed' : 'move',
             fontSize: '8px',
             lineHeight: '1.2',
-            fontWeight: '800',
+            fontWeight: '600',
           },
         }, [createElement(documentRef, 'span', { text: block.name })])
         element.__novaflowBaseBorder = '1.5px solid ' + color
@@ -2159,7 +2159,7 @@
           'data-novaflow-ui-design-node-generate-action': '1',
           style: {
             margin: '14px 12px', height: '36px', border: '0', borderRadius: '7px',
-            background: '#1ea672', color: '#fff', fontSize: '11px', fontWeight: '900', cursor: 'pointer',
+            background: '#1ea672', color: '#fff', fontSize: '11px', fontWeight: '600', cursor: 'pointer',
           },
         })
         fallback.addEventListener('click', function (event) {

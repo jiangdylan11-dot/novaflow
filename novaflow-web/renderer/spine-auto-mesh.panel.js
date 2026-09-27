@@ -1333,7 +1333,7 @@
 
     const row = el('div', { display: 'flex', alignItems: 'center', justifyContent: 'space-between' })
     row.appendChild(el('span', { fontSize: '12px', color: 'rgba(255,255,255,0.72)' }, '默认密度'))
-    const value = el('span', { fontSize: '12px', color: '#22c98a', fontWeight: '700' }, String(state.density))
+    const value = el('span', { fontSize: '12px', color: '#22c98a', fontWeight: '600' }, String(state.density))
     row.appendChild(value)
 
     const slider = el('input')
@@ -2037,7 +2037,7 @@
     if (!box) {
       box = el('div', { display: 'flex', flexDirection: 'column', minHeight: '0', gap: '6px' })
       box.setAttribute(HIER_MARK, '1')
-      const title = el('div', { fontSize: '12px', fontWeight: '900', color: 'rgba(255,255,255,0.86)' }, '工程')
+      const title = el('div', { fontSize: '12px', fontWeight: '600', color: 'rgba(255,255,255,0.86)' }, '工程')
       // a deep chain outgrows the sidebar: the rows keep their indent and the box scrolls sideways
       const scroll = el('div', { overflowY: 'auto', overflowX: 'auto', minHeight: '0', display: 'grid', gap: '1px', alignContent: 'start' })
       scroll.setAttribute('data-nf-hier-scroll', '1')
@@ -2091,7 +2091,7 @@
         const color = (roles[r.role] && roles[r.role].line) || '#8fd3ff'
         row.appendChild(el('span', { width: '8px', height: '8px', borderRadius: '2px', background: color, flex: '0 0 auto' }))
       }
-      const label = el('span', { fontSize: '11px', color: r.active ? '#7ce8b5' : 'rgba(255,255,255,0.88)', fontWeight: r.group && r.depth <= 1 ? '800' : '400', flex: '0 0 auto', whiteSpace: 'nowrap' }, r.label)
+      const label = el('span', { fontSize: '11px', color: r.active ? '#7ce8b5' : 'rgba(255,255,255,0.88)', fontWeight: r.group && r.depth <= 1 ? '600' : '400', flex: '0 0 auto', whiteSpace: 'nowrap' }, r.label)
       label.dataset.nfHierLabel = '1'
       row.appendChild(label)
       if (r.count !== undefined) { const c = el('span', { fontSize: '10px', color: 'rgba(255,255,255,0.35)', marginLeft: 'auto', flex: '0 0 auto' }, String(r.count)); c.dataset.nfHierTrail = '1'; row.appendChild(c) }

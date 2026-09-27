@@ -487,7 +487,7 @@
         display: 'flex', alignItems: 'center', gap: '8px',
         padding: '10px 14px', background: '#1d1d1f', flex: '0 0 auto'
       })
-      const title = el('span', { fontSize: '13px', fontWeight: '700', color: 'rgba(255,255,255,0.9)', marginRight: '6px' },
+      const title = el('span', { fontSize: '13px', fontWeight: '600', color: 'rgba(255,255,255,0.9)', marginRight: '6px' },
         '编辑网格' + (opts.name ? ' · ' + opts.name : ''))
       bar.appendChild(title)
 
@@ -514,7 +514,7 @@
         dIn.step = '1'
         dIn.value = String(opts.density || 22)
         Object.assign(dIn.style, { width: '110px', accentColor: '#22c98a' })
-        const dVal = el('span', { fontSize: '12px', color: '#22c98a', fontWeight: '700', width: '20px' },
+        const dVal = el('span', { fontSize: '12px', color: '#22c98a', fontWeight: '600', width: '20px' },
           String(opts.density || 22))
         dIn.addEventListener('input', () => { dVal.textContent = dIn.value })
         dIn.addEventListener('change', () => {
@@ -549,7 +549,7 @@
       }, '取消')
       const okBtn = el('button', {
         height: '28px', padding: '0 16px', borderRadius: '6px', border: '0',
-        background: '#17A582', color: '#ffffff', cursor: 'pointer', fontSize: '12px', fontWeight: '700'
+        background: '#17A582', color: '#ffffff', cursor: 'pointer', fontSize: '12px', fontWeight: '600'
       }, '完成')
       bar.appendChild(undoBtn); bar.appendChild(resetBtn); bar.appendChild(cancelBtn); bar.appendChild(okBtn)
       overlay.appendChild(bar)

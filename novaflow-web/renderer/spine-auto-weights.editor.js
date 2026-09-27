@@ -241,7 +241,7 @@
   function button(label, primary) {
     const b = el('button', {
       height: '28px', padding: '0 12px', borderRadius: '6px', border: '0', cursor: 'pointer',
-      fontSize: '12px', fontWeight: primary ? '700' : '600', whiteSpace: 'nowrap',
+      fontSize: '12px', fontWeight: primary ? '600' : '600', whiteSpace: 'nowrap',
       background: primary ? '#22c98a' : '#3a3a3a', color: primary ? '#062a18' : 'rgba(255,255,255,0.86)'
     }, label)
     return b
@@ -308,7 +308,7 @@
 
       // ---- top bar
       const bar = el('div', { display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 14px', background: '#1d1d1f', flex: '0 0 auto', flexWrap: 'wrap' })
-      bar.appendChild(el('span', { fontSize: '13px', fontWeight: '700', color: 'rgba(255,255,255,0.9)', marginRight: '6px' }, '编辑权重' + (opts.name ? ' · ' + opts.name : '')))
+      bar.appendChild(el('span', { fontSize: '13px', fontWeight: '600', color: 'rgba(255,255,255,0.9)', marginRight: '6px' }, '编辑权重' + (opts.name ? ' · ' + opts.name : '')))
       const modeButtons = {}
       for (const m of MODES) {
         const b = button(m.label)
@@ -323,7 +323,7 @@
         const input = el('input')
         input.type = 'range'; input.min = String(min); input.max = String(max); input.step = String(step); input.value = String(value)
         Object.assign(input.style, { width: '110px', accentColor: '#22c98a' })
-        const val = el('span', { fontSize: '12px', color: '#22c98a', fontWeight: '700', minWidth: '30px' }, String(value))
+        const val = el('span', { fontSize: '12px', color: '#22c98a', fontWeight: '600', minWidth: '30px' }, String(value))
         input.addEventListener('input', () => { val.textContent = input.value; onInput(Number(input.value)) })
         wrap.appendChild(input); wrap.appendChild(val)
         return { wrap, input, val }

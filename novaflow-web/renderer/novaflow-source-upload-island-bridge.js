@@ -192,14 +192,14 @@
       #${ROOT_ID} [data-novaflow-source-upload-card-icon="1"] {
         font-size: 24px;
         line-height: 1;
-        font-weight: 800;
+        font-weight: 600;
         color: #e8e8e8;
       }
       #${ROOT_ID} [data-novaflow-source-upload-card-title="1"] {
         color: #e8e8e8;
         font-size: 13px;
         line-height: 1.35;
-        font-weight: 800;
+        font-weight: 600;
         text-align: center;
       }
       #${ROOT_ID} [data-novaflow-source-upload-card-hint="1"] {

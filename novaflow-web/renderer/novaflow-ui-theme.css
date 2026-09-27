@@ -729,6 +729,11 @@ html body #novaflow-web-login-gate {
 html body .novaflow-app {
   line-height: 1.5 !important;
 }
+/* The bundle's Vite template asks for "light dark": on a light Windows theme
+   native selects, date pickers and scrollbars came up white. */
+:root {
+  color-scheme: dark !important;
+}
 
 /* 2.0k No fades while a page is being put together.
    Transitions are for hover and press. A page switch restyles hundreds of

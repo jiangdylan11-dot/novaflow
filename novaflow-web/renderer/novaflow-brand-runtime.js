@@ -2335,7 +2335,7 @@
   // 工具's self-drawn panels: their buttons take the sections' one weight, not
   // the green main action's 600.
   const NOVAFLOW_TOOLS_OWN_PANEL_SELECTOR = "#novaflow-png-remove-black-root, #novaflow-mp4-compress-root, #novaflow-video-format-convert-root, #novaflow-spine-atlas-webp-root";
-  const NOVAFLOW_STRONG_FONT_WEIGHT = "700";
+  const NOVAFLOW_STRONG_FONT_WEIGHT = "600";
   const NOVAFLOW_ICON_FONT_WEIGHT = "900";
   const NOVAFLOW_THIN_ARROW_STROKE = "1.35px";
   const NOVAFLOW_THIN_ARROW_SIZE = "7px";
@@ -10037,7 +10037,7 @@
         color: #ffffff !important;
         font-size: 16px !important;
         line-height: 18px !important;
-        font-weight: 700 !important;
+        font-weight: 600 !important;
         box-shadow: none !important;
         opacity: 0.88 !important;
         z-index: 4 !important;
@@ -10072,7 +10072,7 @@
         color: #ffffff !important;
         font-size: 16px !important;
         line-height: 18px !important;
-        font-weight: 700 !important;
+        font-weight: 600 !important;
         box-shadow: none !important;
       }
       /* A helper action, and helpers are grey - this was the only olive
@@ -33590,7 +33590,7 @@
       {
         when: "body.novaflow-primary-target-art",
         selector: '[data-novaflow-art-generate-progress] > div:first-child > div',
-        style: { "font-size": "10px", color: DOCK_PROGRESS_TEXT, "line-height": "15px", height: "15px", width: "auto", "max-width": "none", overflow: "visible", "text-overflow": "clip", "white-space": "nowrap" }
+        style: { "font-size": "11px", color: DOCK_PROGRESS_TEXT, "line-height": "15px", height: "15px", width: "auto", "max-width": "none", overflow: "visible", "text-overflow": "clip", "white-space": "nowrap" }
       },
       {
         when: "body.novaflow-primary-target-art",
@@ -34969,7 +34969,7 @@
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-generation-progress="1"] > div:first-child > div',
-        style: { "font-size": "10px", color: DOCK_PROGRESS_TEXT, "line-height": "15px", height: "15px", width: "auto", "max-width": "none", overflow: "visible", "text-overflow": "clip", "white-space": "nowrap" }
+        style: { "font-size": "11px", color: DOCK_PROGRESS_TEXT, "line-height": "15px", height: "15px", width: "auto", "max-width": "none", overflow: "visible", "text-overflow": "clip", "white-space": "nowrap" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
@@ -35086,7 +35086,7 @@
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-bottom-workspace="1"] > div:not([data-novaflow-ai-generation-panel]) > div > div:nth-child(2) > div > div:first-child > div',
-        style: (node) => ({ "font-size": "10px", "line-height": "14px", color: node.nextElementSibling ? PLAYBACK_RULER_TEXT : node.style.color || PLAYBACK_RULER_TEXT })
+        style: (node) => ({ "font-size": "11px", "line-height": "14px", color: node.nextElementSibling ? PLAYBACK_RULER_TEXT : node.style.color || PLAYBACK_RULER_TEXT })
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
@@ -35156,7 +35156,7 @@
             border: "1px solid transparent", "border-radius": NOVAFLOW_RECT_RADIUS_PX,
             background: "var(--nf-cb-hover-bg, transparent)", "background-color": "var(--nf-cb-hover-bg, transparent)",
             color: `var(--nf-cb-hover-fg, ${DOCK_PROMPT_ACTION_TEXT})`, "box-shadow": "none",
-            "font-size": "10px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "line-height": "1", "box-sizing": "border-box"
+            "font-size": "11px", "font-weight": NOVAFLOW_MEDIUM_FONT_WEIGHT, "line-height": "1", "box-sizing": "border-box"
           };
         }
       },
@@ -42069,7 +42069,7 @@
         deleteButton.style.setProperty("color", "#ffffff", "important");
         deleteButton.style.setProperty("font-size", "16px", "important");
         deleteButton.style.setProperty("line-height", "18px", "important");
-        deleteButton.style.setProperty("font-weight", "700", "important");
+        deleteButton.style.setProperty("font-weight", "600", "important");
         deleteButton.style.setProperty("box-shadow", "none", "important");
       });
       let deleteButton = button.querySelector('[data-novaflow-tools-batch-item-delete="1"]');
@@ -42126,7 +42126,7 @@
       deleteButton.style.setProperty("color", "#ffffff", "important");
       deleteButton.style.setProperty("font-size", "16px", "important");
       deleteButton.style.setProperty("line-height", "18px", "important");
-      deleteButton.style.setProperty("font-weight", "700", "important");
+      deleteButton.style.setProperty("font-weight", "600", "important");
       deleteButton.style.setProperty("box-shadow", "none", "important");
       deleteButton.style.setProperty("z-index", "4", "important");
       deleteButton.style.setProperty("pointer-events", "auto", "important");
@@ -62838,7 +62838,7 @@
       flex: "0 0 auto",
       "margin-right": "2px",
       color: "rgba(255, 255, 255, 0.78)",
-      "font-weight": "900",
+      "font-weight": "600",
       "font-size": "12px",
       "line-height": "1",
       "white-space": "nowrap"
@@ -63678,7 +63678,7 @@
       "padding:0 8px",
       "font:inherit",
       "font-size:12px",
-      "font-weight:800",
+      "font-weight:600",
       "outline:none"
     ].join(";");
     let finished = false;
@@ -67860,7 +67860,7 @@
     button.style.setProperty("background-image", "none", "important");
     button.style.setProperty("color", "#ffffff", "important");
     button.style.setProperty("font-size", "12px", "important");
-    button.style.setProperty("font-weight", "900", "important");
+    button.style.setProperty("font-weight", "600", "important");
     button.style.setProperty("line-height", "38px", "important");
     button.style.setProperty("display", "inline-flex", "important");
     button.style.setProperty("align-items", "center", "important");
@@ -68540,7 +68540,7 @@
     button.style.setProperty("background-image", "none", "important");
     button.style.setProperty("color", "#ffffff", "important");
     button.style.setProperty("font-size", "12px", "important");
-    button.style.setProperty("font-weight", "900", "important");
+    button.style.setProperty("font-weight", "600", "important");
     button.style.setProperty("display", "inline-flex", "important");
     button.style.setProperty("align-items", "center", "important");
     button.style.setProperty("justify-content", "center", "important");
@@ -68594,7 +68594,7 @@
     const title = document.createElement("div");
     title.textContent = "\u9700\u8981\u6388\u6743";
     title.style.setProperty("font-size", "16px", "important");
-    title.style.setProperty("font-weight", "800", "important");
+    title.style.setProperty("font-weight", "600", "important");
     const close = document.createElement("button");
     close.type = "button";
     close.textContent = "\u00d7";
@@ -68622,7 +68622,7 @@
     const machineTitle = document.createElement("div");
     machineTitle.textContent = "\u673a\u5668\u7801";
     machineTitle.style.setProperty("font-size", "12px", "important");
-    machineTitle.style.setProperty("font-weight", "700", "important");
+    machineTitle.style.setProperty("font-weight", "600", "important");
     machineTitle.style.setProperty("color", "rgba(255,255,255,0.8)", "important");
     const machine = document.createElement("div");
     machine.textContent = getPreviewLicenseMachineId();
@@ -68639,7 +68639,7 @@
     label.style.setProperty("padding-top", "12px", "important");
     label.style.setProperty("border-top", "1px solid rgba(255,255,255,0.08)", "important");
     label.style.setProperty("font-size", "12px", "important");
-    label.style.setProperty("font-weight", "700", "important");
+    label.style.setProperty("font-weight", "600", "important");
     label.style.setProperty("color", "rgba(255,255,255,0.8)", "important");
 
     const textarea = document.createElement("textarea");
@@ -68759,21 +68759,21 @@
     const machineId = getPreviewLicenseMachineId();
     dialog.innerHTML = [
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">',
-      '<div style="font-size:16px;font-weight:800">\u9700\u8981\u6388\u6743</div>',
+      '<div style="font-size:16px;font-weight:600">\u9700\u8981\u6388\u6743</div>',
       '<button type="button" data-preview-license-close="1" style="background:transparent;border:0;color:#9a9a9a;font-size:18px;cursor:pointer">\u00d7</button>',
       '</div>',
       '<div style="margin-top:12px;font-size:12px;line-height:1.5;color:rgba(255,255,255,0.72)">\u672a\u6388\u6743\u6a21\u5f0f\u4e0b\u5bfc\u51fa\u9700\u8981\u5bfc\u5165\u6388\u6743\u3002\u5c06\u4e0b\u65b9\u673a\u5668\u7801\u53d1\u7ed9\u7ba1\u7406\u5458\u7b7e\u53d1\u6388\u6743\u6587\u4ef6\u3002</div>',
       '<div style="margin-top:14px;background:#151515;border:1px solid rgba(255,255,255,0.10);border-radius:8px;padding:12px">',
       '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px">',
-      '<div style="font-size:12px;font-weight:700;color:rgba(255,255,255,0.8)">\u673a\u5668\u7801</div>',
-      '<button type="button" data-preview-license-copy="1" style="min-width:64px;height:28px;border:1px solid rgba(255,255,255,0.12);border-radius:7px;background:#303030;color:#fff;font-size:12px;font-weight:800;cursor:pointer">\u590d\u5236</button>',
+      '<div style="font-size:12px;font-weight:600;color:rgba(255,255,255,0.8)">\u673a\u5668\u7801</div>',
+      '<button type="button" data-preview-license-copy="1" style="min-width:64px;height:28px;border:1px solid rgba(255,255,255,0.12);border-radius:7px;background:#303030;color:#fff;font-size:12px;font-weight:600;cursor:pointer">\u590d\u5236</button>',
       '</div>',
       `<div data-preview-machine-id="1" style="margin-top:8px;font-family:Consolas,monospace;font-size:12px;word-break:break-all">${machineId}</div>`,
       '</div>',
       '<textarea placeholder="\u7c98\u8d34\u6388\u6743 JSON \u5185\u5bb9" style="width:100%;height:110px;margin-top:14px;background:#050505;border:0;border-radius:8px;color:#fff;padding:10px;box-sizing:border-box;resize:vertical"></textarea>',
       '<div style="display:flex;justify-content:center;gap:12px;margin-top:16px">',
-      '<button type="button" data-preview-license-refresh="1" style="min-width:120px;height:38px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;background:#303030;color:#fff;font-weight:800;cursor:pointer">\u5237\u65b0</button>',
-      '<button type="button" data-preview-license-import="1" style="min-width:120px;height:38px;border:0;border-radius:8px;background:#1ea672;color:#fff;font-weight:800;cursor:pointer">\u5bfc\u5165</button>',
+      '<button type="button" data-preview-license-refresh="1" style="min-width:120px;height:38px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;background:#303030;color:#fff;font-weight:600;cursor:pointer">\u5237\u65b0</button>',
+      '<button type="button" data-preview-license-import="1" style="min-width:120px;height:38px;border:0;border-radius:8px;background:#1ea672;color:#fff;font-weight:600;cursor:pointer">\u5bfc\u5165</button>',
       '</div>'
     ].join("");
     overlay.appendChild(dialog);
@@ -78087,7 +78087,7 @@
         color: #fff;
         background: #2f2f2f;
         font-size: 13px;
-        font-weight: 700;
+        font-weight: 600;
         cursor: pointer;
         transition: background-color .12s ease-out, border-color .12s ease-out;
       }
@@ -78152,7 +78152,7 @@
       .novaflow-art-generate-placeholder {
         color: #f8fafc;
         font-size: 15px;
-        font-weight: 800;
+        font-weight: 600;
         text-align: center;
       }
       .novaflow-art-generate-bottom {
@@ -78201,7 +78201,7 @@
         box-sizing: border-box;
         padding: 4px 8px;
         font-size: 12px;
-        font-weight: 800;
+        font-weight: 600;
       }
       .novaflow-art-generate-switch {
         display: inline-flex;
@@ -78213,7 +78213,7 @@
         padding: 0 4px;
         cursor: pointer;
         font-size: 12px;
-        font-weight: 800;
+        font-weight: 600;
       }
       .novaflow-art-generate-switch:hover {
         color: #fff;
@@ -78251,7 +78251,7 @@
         background: #1ea672;
         color: #fff;
         font-size: 13px;
-        font-weight: 800;
+        font-weight: 600;
         cursor: pointer;
         transition: background-color .12s ease-out, opacity .12s ease-out;
       }
@@ -78343,7 +78343,7 @@
         color: #fff;
         cursor: pointer;
         font-size: 14px;
-        font-weight: 900;
+        font-weight: 600;
         line-height: 1;
         display: inline-flex;
         align-items: center;
@@ -78410,7 +78410,7 @@
       }
       .novaflow-art-generate-ref span {
         font-size: 13px;
-        font-weight: 800;
+        font-weight: 600;
         line-height: 1.25;
       }
       .novaflow-art-generate-ref button {
@@ -78424,7 +78424,7 @@
         background: rgba(0,0,0,0.55);
         color: #fff;
         cursor: pointer;
-        font-weight: 900;
+        font-weight: 600;
         line-height: 1;
       }
       .novaflow-art-generate-ref button.novaflow-art-generate-ref-size {
@@ -78443,7 +78443,7 @@
         color: #E8E8E8;
         box-sizing: border-box;
         font-size: 11px;
-        font-weight: 700;
+        font-weight: 600;
         letter-spacing: .2px;
         line-height: 20px;
         text-align: center;
@@ -78495,7 +78495,7 @@
       .novaflow-art-generate-history-slot {
         color: rgba(255,255,255,0.75);
         font-size: 12px;
-        font-weight: 800;
+        font-weight: 600;
         white-space: nowrap;
       }
       .novaflow-art-generate-history-label,
@@ -78527,7 +78527,7 @@
         color: rgba(255,255,255,0.60);
         cursor: pointer;
         font-size: 11px;
-        font-weight: 900;
+        font-weight: 600;
         line-height: 18px;
         white-space: nowrap;
       }
@@ -78633,7 +78633,7 @@
         border: 1px solid rgba(255,255,255,0.14);
         color: rgba(255,255,255,0.86);
         cursor: pointer;
-        font-weight: 900;
+        font-weight: 600;
         font-size: 11px;
         white-space: nowrap;
         display: inline-flex;
@@ -78660,7 +78660,7 @@
         border: 1px solid rgba(239,68,68,0.40);
         color: rgba(255,255,255,0.92);
         cursor: pointer;
-        font-weight: 900;
+        font-weight: 600;
         line-height: 1;
       }
       .novaflow-art-generate-history-popover-delete:hover {
@@ -79173,7 +79173,7 @@
         color: #fff !important;
         cursor: pointer !important;
         font-size: 14px !important;
-        font-weight: 900 !important;
+        font-weight: 600 !important;
         line-height: 1 !important;
         display: inline-flex !important;
         align-items: center !important;
@@ -79544,7 +79544,7 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         font-size: 12px;
-        font-weight: 900;
+        font-weight: 600;
       }
       .novaflow-art-generate-empty {
         height: 100%;
@@ -82580,8 +82580,8 @@
     set.appendChild(createArtEl("div", { className: "novaflow-art-generate-set-card" }, [
       createArtEl("div", { className: "novaflow-art-generate-set-preview" }, createArtEl("img", { src: result.imageUrl, alt: title })),
       createArtEl("div", { style: { minWidth: "0", display: "grid", gap: "3px" } }, [
-        createArtEl("div", { style: { fontSize: "12px", fontWeight: "900", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, text: title }),
-        createArtEl("div", { style: { fontSize: "10px", color: "rgba(148,163,184,0.9)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, text: result.name || "novaflow_generate.png" })
+        createArtEl("div", { style: { fontSize: "12px", fontWeight: "600", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, text: title }),
+        createArtEl("div", { style: { fontSize: "11px", color: "rgba(148,163,184,0.9)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }, text: result.name || "novaflow_generate.png" })
       ]),
       createArtEl("div", { text: "\u2304", style: { color: "rgba(255,255,255,0.70)", textAlign: "center", fontSize: "15px" } })
     ]));
