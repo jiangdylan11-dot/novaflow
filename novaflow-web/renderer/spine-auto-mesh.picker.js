@@ -866,7 +866,7 @@
     // the panel's observer into a livelock against the brand runtime
     const obs = new MutationObserver((m) => { if (mutationAddsElement(m)) schedule() })
     obs.observe(document.documentElement, { childList: true, subtree: true })
-    window.setInterval(() => { try { mount() } catch { /* keep polling */ } }, 1000)
+    window.setInterval(() => { if (document.hidden) return; try { mount() } catch { /* keep polling */ } }, 1000)
   }
 
   if (document.readyState === 'loading') {

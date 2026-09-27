@@ -359,6 +359,6 @@
   })
   observer.observe(document.documentElement, { childList: true, subtree: true })
   window.addEventListener('resize', syncBounds)
-  window.setInterval(ensureEntry, 1000)
+  window.setInterval(() => { if (!document.hidden) ensureEntry() }, 1000)
   ensureEntry()
 })()

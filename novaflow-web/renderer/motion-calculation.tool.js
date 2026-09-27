@@ -166,7 +166,6 @@
   }
   function refresh(){
     const ribbon=document.querySelector(ribbonSelector);
-    context=getContext();
     // Keep the entry discoverable before importing a skeleton. open() explains
     // the required selection until the real editor context becomes available.
     if(!ribbon){if(panel){close();panel.remove();panel=null;}return;}
@@ -197,7 +196,10 @@
         if(view&&sameScope(getContext(),session))view.selectMode(activeMode);else open();
       });
     }
-    if(context&&panel.dataset.open==='1'&&panel.dataset.editorOpen==='1'&&(!session||!sameScope(context,session)))open();
+    // The fiber walk is the costly part of this poll; only an open editor needs it.
+    if(panel.dataset.open!=='1'||panel.dataset.editorOpen!=='1'||document.hidden)return;
+    context=getContext();
+    if(context&&(!session||!sameScope(context,session)))open();
   }
   // Mount in the same DOM-update cycle as the native bone panels, rather than
   // waiting for the selection polling interval and appearing a frame later.

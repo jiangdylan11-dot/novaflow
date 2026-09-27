@@ -319,7 +319,13 @@
   window.addEventListener('resize', schedule, true)
   window.addEventListener('scroll', schedule, true)
 
-  const observer = new MutationObserver(schedule)
+  // Redrawing the markers mutates the overlay; reacting to that would redraw forever.
+  const isOwnMutation = (record) =>
+    !!state.overlay && (record.target === state.overlay || state.overlay.contains(record.target))
+  const observer = new MutationObserver((records) => {
+    if (records.every(isOwnMutation)) return
+    schedule()
+  })
   observer.observe(document.documentElement, {
     childList: true,
     subtree: true,

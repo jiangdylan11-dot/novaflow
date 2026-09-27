@@ -1187,11 +1187,13 @@
       const blob = new Blob([bytes], { type: mimeType });
       const fileName = (filePath.split('/').pop() || ('novaflow_video_merge.' + format));
       const token = filePath || ('web-video://' + seq + '/' + fileName);
-      videoOutputs.set(token, { tool: 'video-merge', token, blob, fileName, url: '' });
+      // Keep the returned URL on the held entry so releaseVideoOutputs can revoke it.
+      const url = URL.createObjectURL(blob);
+      videoOutputs.set(token, { tool: 'video-merge', token, blob, fileName, url });
       for (const entry of cache.values()) if (entry && entry.path === token) { entry.blob = blob; entry.bytes = blob.size; }
       await saveToWarehouse(blob, fileName);
       report('done', 1, '视频合成完成');
-      return { ok: true, jobId, filePath: token, path: token, blob, url: URL.createObjectURL(blob), bytes: blob.size, format, mimeType, width, height, fps };
+      return { ok: true, jobId, filePath: token, path: token, blob, url, bytes: blob.size, format, mimeType, width, height, fps };
     } catch (error) {
       const message = String((error && error.message) || error);
       if (/RuntimeError|memory access|unreachable|abort/i.test(message)) {

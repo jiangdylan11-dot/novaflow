@@ -2439,6 +2439,15 @@
         }
         drawControl()
       }
+      // Pointer, wheel and slider input fire faster than frames; paint once per frame.
+      let syncFrame = 0
+      const scheduleSyncValues = () => {
+        if (syncFrame) return
+        syncFrame = requestAnimationFrame(() => {
+          syncFrame = 0
+          syncValues()
+        })
+      }
       const sliderRow = (key, label, min, max, step, color) => {
         const input = h('input', {
           type: 'range',
@@ -2451,7 +2460,7 @@
             if (key === 'h') values.horizontalAngle = next
             else if (key === 'v') values.verticalAngle = next
             else values.zoom = next
-            syncValues()
+            scheduleSyncValues()
           },
           style: { width: '100%', WebkitAppearance: 'none', appearance: 'none', border: '0', outline: 'none', margin: '0' }
         })
@@ -2484,13 +2493,14 @@
         if (typeof event.preventDefault === 'function') event.preventDefault()
         values.horizontalAngle = drag.h + (Number(event.clientX) - drag.x) * 0.5
         values.verticalAngle = drag.v - (Number(event.clientY) - drag.y) * 0.5
-        syncValues()
+        scheduleSyncValues()
       }
       function handlePointerUp() {
         drag = null
         if (canvasNode) canvasNode.style.cursor = 'grab'
         window.removeEventListener('pointermove', handlePointerMove, true)
         window.removeEventListener('pointerup', handlePointerUp, true)
+        window.removeEventListener('pointercancel', handlePointerUp, true)
       }
       canvasNode = h('canvas', {
         'data-novaflow-angle-adjust-canvas': '1',
@@ -2500,11 +2510,12 @@
           canvasNode.style.cursor = 'grabbing'
           window.addEventListener('pointermove', handlePointerMove, true)
           window.addEventListener('pointerup', handlePointerUp, true)
+          window.addEventListener('pointercancel', handlePointerUp, true)
         },
         onwheel: (event) => {
           if (typeof event.preventDefault === 'function') event.preventDefault()
           values.zoom = values.zoom + (Number(event.deltaY || 0) > 0 ? -IMAGE_ANGLE_ADJUST_ZOOM_STEP : IMAGE_ANGLE_ADJUST_ZOOM_STEP) * 3
-          syncValues()
+          scheduleSyncValues()
         },
         style: { width: '100%', height: '320px', display: 'block', cursor: 'grab', touchAction: 'none' }
       })
@@ -16264,6 +16275,7 @@
       nsfwButton.disabled = state.busy
       nsfwButton.setAttribute('aria-disabled', state.busy ? 'true' : 'false')
       nsfwButton.style.setProperty('cursor', state.busy ? 'default' : 'pointer', 'important')
+      nsfwButton.style.setProperty('opacity', state.busy ? '0.54' : '1', 'important')
     }
     const fluxButton = document.querySelector(`[${TOOL_ACTION_ATTR}="selectionFlux"]`)
     if (fluxButton instanceof HTMLButtonElement) {
@@ -16275,6 +16287,7 @@
       fluxButton.disabled = state.busy
       fluxButton.setAttribute('aria-disabled', state.busy ? 'true' : 'false')
       fluxButton.style.setProperty('cursor', state.busy ? 'default' : 'pointer', 'important')
+      fluxButton.style.setProperty('opacity', state.busy ? '0.54' : '1', 'important')
     }
     const effectButton = document.querySelector(`[${TOOL_ACTION_ATTR}="selectionEffect"]`)
     if (effectButton instanceof HTMLButtonElement) {
@@ -16285,6 +16298,7 @@
       effectButton.disabled = state.busy
       effectButton.setAttribute('aria-disabled', state.busy ? 'true' : 'false')
       effectButton.style.setProperty('cursor', state.busy ? 'default' : 'pointer', 'important')
+      effectButton.style.setProperty('opacity', state.busy ? '0.54' : '1', 'important')
     }
     patchSplitToolValue('selectionBrush', `画笔 ${brush}`, brush)
     return true
@@ -36299,6 +36313,8 @@
     const target = mutation && mutation.target
     const attr = mutation && mutation.attributeName || ''
     if (isSplitTransientOverlayElement(target)) return true
+    // Slider, preset and caption updates inside the split / angle dialog never change the workspace behind it.
+    if (target instanceof Element && target.closest(`#${SPLIT_MODE_DIALOG_ID}`)) return true
     if (target instanceof Element
       && target.matches(`button[${CONTROL_ACTION_ATTR}],button[${CONTROL_PLACEHOLDER_ATTR}]`)
       && (attr === 'style' || attr === 'class' || attr === 'data-novaflow-split-hover-active' || attr === 'data-novaflow-split-hover-wired')) {

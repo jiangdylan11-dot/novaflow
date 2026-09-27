@@ -3354,7 +3354,7 @@
     // the window changes -- that is what kept it stuck at its first height.
     const refit = () => { try { if (state.fitList) state.fitList() } catch { /* not built yet */ } }
     window.addEventListener('resize', refit)
-    window.setInterval(refit, 1000)
+    window.setInterval(() => { if (!document.hidden) refit() }, 1000)
     // the picker may not have loaded yet, so keep trying until it answers
     let hoverBound = false
     const bindHover = () => {
@@ -3380,7 +3380,7 @@
     })
     observer.observe(document.documentElement, { childList: true, subtree: true })
     window.setInterval(() => {
-      if (state.busy) return
+      if (state.busy || document.hidden) return
       try { mount(true) } catch { /* keep polling */ }
       hookPlayerFactory()
       try { syncLayersFromSource() } catch { /* keep polling */ }

@@ -1210,12 +1210,19 @@
         color: #fff !important;
         box-shadow: 0 0 0 1px ${AIFX_ACCENT} inset !important;
       }
-      #${APP_ID} .aifx-seed-lock[data-action="lock-seed"]:hover {
+      #${APP_ID} .aifx-seed-lock[data-action="lock-seed"]:not(:disabled):hover {
         background: rgba(23,165,130,0.22) !important;
       }
       #${APP_ID} .aifx-seed-lock[data-action="lock-seed"].is-on {
         background: ${AIFX_ACCENT} !important;
         color: #fff !important;
+      }
+      #${APP_ID} .aifx-seed-lock[data-action="lock-seed"].is-on:not(:disabled):hover {
+        background: #1AB891 !important;
+      }
+      #${APP_ID} .aifx-seed-lock[data-action="lock-seed"]:disabled {
+        opacity: 0.45;
+        cursor: default;
       }
       .aifx-seed-lock[hidden] { display: none; }
       .aifx-candidate {
@@ -1233,7 +1240,9 @@
         border: 1px solid rgba(255,255,255,0.12) !important;
         box-shadow: none !important;
       }
-      #${APP_ID} .aifx-candidates[data-candidates] button.aifx-candidate:hover,
+      #${APP_ID} .aifx-candidates[data-candidates] button.aifx-candidate:hover {
+        border-color: rgba(23,165,130,0.5) !important;
+      }
       #${APP_ID} .aifx-candidates[data-candidates] button.aifx-candidate.is-active {
         border-color: ${AIFX_ACCENT} !important;
       }
