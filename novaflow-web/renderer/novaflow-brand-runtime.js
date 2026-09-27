@@ -45747,9 +45747,14 @@
     return guarded;
   }
 
+  // A walk that found no ribbon project is remembered for 600 ms: with no
+  // project open, every call walked the whole React tree again - 169 walks in
+  // the 4 s after opening 飘带计算 beside 骨骼架设, seconds of main thread.
+  var RIBBON_REACT_FIBER_MISS_AT = 0;
   function findRibbonReactFiber(options = {}) {
     const allowIncompatible = options?.allowIncompatible === true;
     const now = Date.now();
+    if (now - RIBBON_REACT_FIBER_MISS_AT < 600) return null;
     const startElements = [
       document.getElementById("root"),
       document.body,
@@ -45834,6 +45839,7 @@
       const bestSnapshot = getRibbonProjectIdentitySnapshot(best?.project, bestAnimationName);
       if (!isRibbonProjectIdentitySnapshotCompatible(bestSnapshot)) return null;
     }
+    if (!candidates.length) RIBBON_REACT_FIBER_MISS_AT = Date.now();
     return cacheFiber(candidates[0]?.fiber || null);
   }
 
@@ -55435,6 +55441,10 @@
     const isInsideSpriteEditorMaterialCard = (node) => {
       if (!(node instanceof HTMLElement)) return false;
       if (node.closest('[data-novaflow-sprite-editor-card="1"], [data-novaflow-sprite-editor-body="1"]')) return true;
+      // The unmarked sprite card is a 特效 (particle) panel only. Elsewhere this
+      // walk - a layout read and two subtree queries per ancestor, for every
+      // container - was most of opening 飘带计算 beside an open 骨骼架设.
+      if (!particleDensity) return false;
       let current = node;
       while (current instanceof HTMLElement && current !== body) {
         const rect = current.getBoundingClientRect();
@@ -55618,7 +55628,9 @@
         });
       });
     };
+    let passChanged = false;
     const normalizePass = () => {
+      passChanged = false;
       Array.from(body.querySelectorAll(":scope > *, div, section, [role='group'], .nf-slider")).forEach((container) => {
         if (!(container instanceof HTMLElement) || container === body || !isVisible(container)) return;
         if (container.closest('[data-novaflow-art-lora="1"]')) return;
@@ -55632,6 +55644,7 @@
         const isButtonOnlyRow = directButtons.length > 1 && directButtons.length === directChildren.length;
         const isSliderContainer = container.classList.contains("nf-slider") || !!container.querySelector(":scope input[type='range']");
         if (!hasFrozenWideWidth && !isSliderContainer) return;
+        if (hasFrozenWideWidth) passChanged = true;
         container.setAttribute("data-novaflow-expanded-body-row", "1");
         setImportantStyles(container, {
           width: "100%",
@@ -55668,7 +55681,8 @@
       });
     };
     normalizePass();
-    normalizePass();
+    // Again only when a row was still too wide: fixing it can free its neighbours.
+    if (passChanged) normalizePass();
     const ownerCard = body.closest('[data-novaflow-editor-panel="1"]');
     if (ownerCard instanceof HTMLElement) stylePrimaryLeftCardControls(ownerCard);
   }
@@ -55728,7 +55742,12 @@
       ? `${PARTICLE_DENSITY_PANEL_BODY_PADDING_Y}px ${PARTICLE_DENSITY_PANEL_BODY_PADDING_X}px`
       : "";
     const panelGap = PARTICLE_DENSITY_PANEL_STACK_GAP;
-    const panelInnerGap = artDrawingTarget ? 0 : panelGap;
+    // Elsewhere (骨骼, ...) the visual-rhythm pass writes these panels 5 / 5.
+    // Writing 7 / 0 here made the two passes undo each other without end: an
+    // open panel's body moved 2px and the groups below 4-6px, over and over,
+    // with seconds of layout work (opening 飘带计算 beside 骨骼架设).
+    const panelInnerGap = artDrawingTarget ? 0 : (particleDensity ? panelGap : NOVAFLOW_UNIFORM_GAP);
+    const panelInnerColumnGap = artDrawingTarget || particleDensity ? "0" : `${NOVAFLOW_UNIFORM_GAP}px`;
     const panelColumnGap = particleDensity ? PARTICLE_DENSITY_PANEL_STACK_GAP : SECONDARY_CONTENT_COLUMN_GAP;
     const wrappers = new Set();
     Array.from(root.querySelectorAll(".nf-panel, [data-novaflow-editor-panel='1']")).forEach((panel) => {
@@ -55752,7 +55771,7 @@
       nfSetStyleIfChanged(panel, "justify-content", "flex-start", "important");
       nfSetStyleIfChanged(panel, "gap", `${panelInnerGap}px`, "important");
       nfSetStyleIfChanged(panel, "row-gap", `${panelInnerGap}px`, "important");
-      nfSetStyleIfChanged(panel, "column-gap", "0", "important");
+      nfSetStyleIfChanged(panel, "column-gap", panelInnerColumnGap, "important");
       const header = panel.querySelector(":scope > .nf-panel-header");
       if (header instanceof HTMLElement) {
         nfSetStyleIfChanged(header, "width", "100%", "important");
