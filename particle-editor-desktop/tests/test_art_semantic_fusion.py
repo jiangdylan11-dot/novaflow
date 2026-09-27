@@ -177,8 +177,12 @@ class Qwen3ArtFlows(unittest.TestCase):
             'requirements': '用户本次修改要求（最高优先级）：改成夜晚；加上月光\n高完成度角色CG质量：线条纤细轻淡。\n基础质量由系统自动负责：人物增强面部。',
         })
         self.assertEqual(len(calls), 1)
-        self.assertEqual(result['positivePrompt'], service.normalize_art_sections(QWEN3_INLINE_SECTIONS))
-        self.assertTrue(result['positivePrompt'].startswith('[风格设定]\n厚涂插画'))
+        # The draft names no painting style, so the "厚涂插画" Qwen3 chose is dropped; lines end with 。.
+        self.assertEqual(
+            result['positivePrompt'],
+            service.art_close_sentences(service.normalize_art_sections(QWEN3_INLINE_SECTIONS.replace('厚涂插画，', ''))),
+        )
+        self.assertTrue(result['positivePrompt'].startswith('[风格设定]\n静谧的夜晚氛围。'))
         self.assertIn('\n\n[主体物品]\n', result['positivePrompt'])
         # The director text is for the generator, never for the writer.
         self.assertNotIn('高完成度角色CG质量', calls[0])
@@ -280,10 +284,16 @@ class Qwen3ArtFlows(unittest.TestCase):
         self.assertIn('[风格设定]：只看图2', prompt)
         self.assertIn('[主体物品]：看图1', prompt)
         self.assertIn('水墨', prompt)
-        self.assertIn('用户要求（优先落实，写进相关段落，不要单独成段）：画面改为夜晚', prompt)
+        self.assertIn('用户要求（优先于图片内容，写进相关段落，不单独成段）：画面改为夜晚', prompt)
+        self.assertLess(prompt.index('用户要求（优先于图片内容'), prompt.index('[风格设定]\n……'))
+        self.assertIn('[光线与色彩]：时间是夜晚：按夜晚写光源方向、软硬与明暗，不照搬图片里的光线；', prompt)
         self.assertNotIn('用户生成要求', prompt)
+        # An answer that ignored "夜晚" is asked about once; if it still ignores it, the time is written in.
+        self.assertEqual(captured['trace_label'], 'artRoleReferenceRepair')
+        self.assertIn('用户要求“画面改为夜晚”没有写进结果', prompt)
         text = result['positivePrompt']
-        self.assertEqual(text, service.art_positive_only_wording(service.normalize_art_sections(output)))
+        self.assertEqual(text, service.art_close_sentences(service.art_positive_only_wording(service.normalize_art_sections(
+            output.replace('[光线与色彩]\n', '[光线与色彩]\n夜晚，')))))
         self.assertEqual(service.art_five_section_failure(text), '')
         for leaked in ('补充约束', '用户生成要求', '严格保留主体图'):
             self.assertNotIn(leaked, text)
@@ -295,10 +305,157 @@ class Qwen3ArtFlows(unittest.TestCase):
         self.assertIn('[环境背景]：只看图3', prompt)
         self.assertIn('图1原来的背景一律不写', prompt)
         self.assertIn('光线看图3', prompt)
-        self.assertIn('色彩只取图2的配色', prompt)
+        self.assertIn('主色与辅色都只从图2里取颜色', prompt)
+        self.assertNotIn('作为整幅画面的配色基调', prompt)
         self.assertIn('[拍摄参数]：看图1', prompt)
         self.assertEqual(prompt.count('<|vision_start|><|image_pad|><|vision_end|>'), 3)
         self.assertEqual(service.art_five_section_failure(result['positivePrompt']), '')
+
+
+class ArtPromptCleanup(unittest.TestCase):
+    """Small deterministic fixes for what Qwen3 reliably writes despite the instructions."""
+
+    def test_rewrite_drops_style_age_and_hair_nobody_asked_for(self):
+        source = '一个穿红色斗篷的少女站在雪山顶，白天，晴朗'
+        candidate = (
+            '[风格设定]\n写实风格，高细节渲染，冷冽静谧的氛围\n\n'
+            '[主体物品]\n一位穿红色斗篷的少女，独自站立，年龄约十六七岁，发色深褐，长发束于脑后\n\n'
+            '[环境背景]\n夜晚的雪山之巅，远景是连绵雪峰'
+        )
+        cleaned = service.art_drop_invented_clauses(candidate, source, '改成夜晚；加上月光')
+        self.assertEqual(cleaned, (
+            '[风格设定]\n高细节渲染，冷冽静谧的氛围\n\n'
+            '[主体物品]\n一位穿红色斗篷的少女，独自站立\n\n'
+            '[环境背景]\n夜晚的雪山之巅，远景是连绵雪峰'
+        ))
+        # A style, age or hairstyle that the draft or the edit names stays.
+        self.assertEqual(service.art_drop_invented_clauses(candidate, source + '，写实风格，十六岁，长发', '改成夜晚'), candidate)
+        # A request for more detail may add hair; only the invented style goes.
+        self.assertIn('发色深褐', service.art_drop_invented_clauses(candidate, source, '增加人物细节'))
+        # A draft without a camera angle gets one angle only; a draft that names angles keeps them.
+        camera = '[拍摄参数]\n中景平视构图，镜头轻微仰角突出雪山'
+        self.assertEqual(service.art_drop_invented_clauses(camera, source, '改成夜晚'), '[拍摄参数]\n中景平视构图')
+        self.assertEqual(service.art_drop_invented_clauses(camera, source + '，仰视', '改成夜晚'), camera)
+
+    def test_scene_change_keeps_the_time_and_drops_the_reverse_note(self):
+        source = '[环境背景]\n地点 = "纯白背景"\n空间层次 = "保持参考图现有前中后景关系"\n\n[光线与色彩]\n主光线 = "高光、明暗对比"'
+        candidate = (
+            '[环境背景]\n地点 = "海边"\n背景 = "海浪翻涌、礁石嶙峋、夕阳余晖洒在海面"\n'
+            '空间层次 = "保持参考图现有前中后景关系，前景为武将，远景为海天交界处"\n\n'
+            '[光线与色彩]\n主光线 = "高光、明暗对比，来自夕阳斜射"'
+        )
+        self.assertEqual(service.art_drop_invented_clauses(candidate, source, '把背景改成海边'), (
+            '[环境背景]\n地点 = "海边"\n背景 = "海浪翻涌、礁石嶙峋"\n'
+            '空间层次 = "前景为武将，远景为海天交界处"\n\n'
+            '[光线与色彩]\n主光线 = "高光、明暗对比"'
+        ))
+        # A line is never emptied, and a draft with a reference picture keeps the note.
+        alone = '[环境背景]\n空间层次 = "保持参考图现有前中后景关系"'
+        self.assertEqual(service.art_drop_invented_clauses(alone, source, '把背景改成海边'), alone)
+        self.assertIn('保持参考图现有', service.art_drop_invented_clauses(candidate, source + '\n__NOVAFLOW_IMAGE_1__', '把背景改成海边'))
+        # A time the user asked for is kept.
+        self.assertIn('夕阳', service.art_drop_invented_clauses(candidate, source, '把背景改成黄昏的海边'))
+
+    def test_time_of_day_edit_writes_the_time(self):
+        text = '[风格设定]\n静谧氛围\n\n[光线与色彩]\n月光从左上方斜射，冷调阴影'
+        self.assertEqual(
+            service.art_write_requested_time(text, '改成夜晚；加上月光'),
+            '[风格设定]\n静谧氛围\n\n[光线与色彩]\n夜晚，月光从左上方斜射，冷调阴影',
+        )
+        self.assertEqual(service.art_write_requested_time(text.replace('月光', '夜色中月光'), '改成夜晚'), text.replace('月光', '夜色中月光'))
+        self.assertEqual(service.art_write_requested_time(text, '加上月光'), text)
+        self.assertIn('夜晚，月光', service.art_write_requested_time(text, '把白天改成夜晚'))
+        keyed = '[光线与色彩]\n主光线 = "高光、明暗对比"'
+        self.assertEqual(service.art_write_requested_time(keyed, '改成黄昏'), '[光线与色彩]\n主光线 = "黄昏，高光、明暗对比"')
+        self.assertEqual(service.art_write_requested_time('少女站在雪山顶', '改成夜晚'), '夜晚，少女站在雪山顶')
+
+    def test_dropped_negation_takes_its_but_along(self):
+        self.assertEqual(
+            service.art_positive_only_wording('[主体物品]\n主体为城市夜景，无明确人物，但可见高耸摩天楼'),
+            '[主体物品]\n主体为城市夜景，可见高耸摩天楼',
+        )
+        self.assertEqual(service.art_positive_only_wording('[主体物品]\n高楼林立，但夜色很深'), '[主体物品]\n高楼林立，但夜色很深')
+        self.assertEqual(
+            service.art_positive_only_wording('[光线与色彩]\n整体色调以图2中的暖黄色为主'),
+            '[光线与色彩]\n整体色调以暖黄色为主',
+        )
+        # A note that the picture has no subject is not something to draw either.
+        self.assertEqual(
+            service.art_positive_only_wording('[主体物品]\n城市夜景中无明确主体，聚焦于高耸的摩天楼群'),
+            '[主体物品]\n聚焦于高耸的摩天楼群',
+        )
+        self.assertEqual(service.art_positive_only_wording('[主体物品]\n一架无人机悬停'), '[主体物品]\n一架无人机悬停')
+
+    def test_one_camera_angle_and_no_blur_on_a_plain_backdrop(self):
+        text = '[环境背景]\n纯色中性灰背景\n\n[拍摄参数]\n广角镜头俯拍，低角度仰视城市天际线，景深浅，背景虚化处理。'
+        self.assertEqual(
+            service.art_single_view_angle(text),
+            '[环境背景]\n纯色中性灰背景\n\n[拍摄参数]\n广角镜头俯拍，景深浅，背景虚化处理。',
+        )
+        self.assertEqual(
+            service.art_plain_background_focus(service.art_single_view_angle(text)),
+            '[环境背景]\n纯色中性灰背景\n\n[拍摄参数]\n广角镜头俯拍。',
+        )
+        scene = text.replace('纯色中性灰背景', '秋日森林小路')
+        self.assertEqual(service.art_plain_background_focus(scene), scene)
+
+    def test_sentences_are_closed_but_key_value_lines_stay(self):
+        self.assertEqual(
+            service.art_close_sentences('[风格设定]\n古风插画，黄昏氛围\n\n[主体物品]\n一座城堡。\n景别 = "全身"'),
+            '[风格设定]\n古风插画，黄昏氛围。\n\n[主体物品]\n一座城堡。\n景别 = "全身"',
+        )
+
+    def test_role_requirement_check(self):
+        self.assertTrue(service.art_requirement_missing('画面改为夜晚', '[光线与色彩]\n柔光，暖米白'))
+        self.assertFalse(service.art_requirement_missing('画面改为夜晚', '[光线与色彩]\n夜色中月光洒落'))
+        self.assertTrue(service.art_requirement_missing('背景换成海边', '[环境背景]\n乡间公路'))
+        self.assertFalse(service.art_requirement_missing('背景换成海边', '[环境背景]\n海边沙滩'))
+        self.assertFalse(service.art_requirement_missing('去掉背包', '[主体物品]\n短发少女'))
+        self.assertFalse(service.art_requirement_missing('', '[主体物品]\n短发少女'))
+        # A new background is written into the environment duty, not next to "看图1".
+        request = service.art_role_reference_request(['subject', 'style'], '背景换成海边沙滩')
+        self.assertIn('[环境背景]：按用户要求写新环境（背景换成海边沙滩）', request)
+        self.assertNotIn('[环境背景]：看图1', request)
+
+    def test_instructions_carry_no_copyable_rule_text(self):
+        self.assertNotIn('清晰可辨', service.ART_SEMANTIC_FUSION_RULES)
+        self.assertNotIn('一起调整', service.ART_SEMANTIC_FUSION_RULES)
+        self.assertNotIn('承托面', service.ART_CREATE_INSTRUCTION)
+        self.assertNotIn('没有人物时', service.ART_CREATE_INSTRUCTION)
+        self.assertIn('视角只写一种', service.ART_CREATE_INSTRUCTION)
+        self.assertIn('不添加底稿和修改要求都没有的', service.ART_OWN_SECTION_OUTPUT_RULE)
+
+
+class ArtCreateRuns(unittest.TestCase):
+    def run_create(self, outputs, requirement='一只橘猫趴在窗台上晒太阳'):
+        assistant = service.PromptAssistant()
+        calls = []
+        assistant.generate = lambda prompt, **kwargs: calls.append((prompt, kwargs)) or outputs[len(calls) - 1]
+        result = assistant.optimize_prompt({'surface': 'art', 'prompt': '', 'requirements': requirement})
+        return calls, result
+
+    def test_create_draws_anew_each_run_and_repairs_greedily(self):
+        lying = QWEN3_INLINE_SECTIONS.replace('一个穿红色斗篷的少女站在雪山顶', '一只橘猫趴在窗台上')
+        curled = lying.replace('趴在', '蜷缩在')
+        calls, result = self.run_create([curled, lying])
+        first, repair = calls[0][1], calls[1][1]
+        self.assertTrue(first['do_sample'])
+        self.assertGreater(first['temperature'], 0)
+        self.assertFalse(repair['do_sample'])
+        self.assertEqual(repair['trace_label'], 'artCreateRepair')
+        self.assertIn('需求里的“趴”要按原词写进 [主体物品]', calls[1][0])
+        self.assertIn('趴在窗台上', result['positivePrompt'])
+        self.assertTrue(all(line.endswith('。') for line in result['positivePrompt'].split('\n') if line and not line.startswith('[')))
+        # Two runs draw two seeds.
+        seeds = {self.run_create([lying])[0][0][1]['seed'] for _ in range(3)}
+        self.assertGreater(len(seeds), 1)
+
+    def test_create_keeps_a_laid_out_answer_when_the_repair_breaks_the_layout(self):
+        curled = QWEN3_INLINE_SECTIONS.replace('一个穿红色斗篷的少女站在雪山顶', '一只橘猫蜷缩在窗台上')
+        calls, result = self.run_create([curled, '一只橘猫趴在窗台上。'])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(service.art_five_section_failure(result['positivePrompt']), '')
+        self.assertIn('蜷缩在窗台上', result['positivePrompt'])
 
 
 if __name__ == '__main__':
