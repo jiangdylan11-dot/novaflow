@@ -29564,9 +29564,10 @@
       body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-active [data-novaflow-ai-collapse-heading][data-collapsed="1"] {
         border-radius: 6px !important;
       }
-      body.${PRIMARY_ANIMATION_ENTRY_GEOMETRY_GUARD_CLASS} [data-novaflow-ai-main-stage="1"] {
-        visibility: hidden !important;
-      }
+      /* The entry geometry guard no longer hides the stage: its layout is final
+         from the first frame at every width (checked 1400, 1000 and 700 wide),
+         and waiting for frames that agree showed the left column first and the
+         preview (board tabs, background dots) 2-3 frames later - a flash. */
       body.novaflow-blackgray-preview-with-bottom-controls :not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fa-solid):not([class*="fa-"]):not(${NOVAFLOW_DIALOG_TITLE_SELECTOR}),
       body.novaflow-ai-animation-section-layers :not([data-novaflow-source-layout="1"]):not([data-novaflow-source-layout="1"] *):not(.fa):not(.fas):not(.far):not(.fal):not(.fab):not(.fa-solid):not([class*="fa-"]):not(${NOVAFLOW_DIALOG_TITLE_SELECTOR}) {
         font-weight: ${NOVAFLOW_NORMAL_FONT_WEIGHT} !important;
