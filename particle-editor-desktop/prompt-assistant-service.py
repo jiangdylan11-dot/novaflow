@@ -129,8 +129,9 @@ QWEN3_CHAT_VISION_TOKEN = "<|vision_start|><|image_pad|><|vision_end|>"
 # needs a system turn; the old ComfyUI default ("Describe the image...") contradicted most tasks.
 QWEN3_DEFAULT_SYSTEM_TEXT = "你是 NovaFlow 的本地提示词助手。严格按用户消息里的要求和输出格式作答，只输出要求的内容，不解释。"
 NEGATIVE_COMMON_PREFIX = ["低质量", "模糊"]
-NEGATIVE_SUFFIX = ["水印", "Logo"]
+NEGATIVE_SUFFIX = ["水印", "标志"]
 NEGATIVE_MAX_COUNT = 18
+NEGATIVE_JOINER = "，"
 ORDINARY_ART_PROMPT_BASE_MAX_LENGTH = 180
 ORDINARY_ART_PROMPT_MAX_LENGTH = 1024
 ORDINARY_ART_PROMPT_BASE_CHAR_THRESHOLD = 320
@@ -891,25 +892,48 @@ MINIMAX_H3_AMBIGUOUS_AGE_VALIDATED_MARKER = "_minimax_h3_ambiguous_age_validated
 
 
 
+# Negative keywords follow what the picture really contains.  "pattern" is read from the caller's
+# context text and the positive prompt; "context_pattern" only from the context text (the surface
+# marker plus the user's own request), never from the model's positive prompt.  So a still picture
+# whose prompt says 动作/镜头/面板/手持 does not get video, UI or anatomy words.
 NEGATIVE_CATEGORY_DEFINITIONS = [
     {
+        "name": "video",
+        # Video callers prefix their context with "视频 动画 图生视频"; a still-art "动画风格" is no video.
+        "context_pattern": r"视频|首帧|尾帧|运镜",
+        "negative": ["动作抖动", "画面闪烁", "身份漂移", "背景漂移", "物体变形"],
+        # Only when a person is in the video.
+        "person_negative": ["人物变形", "肢体扭曲", "错误手部"],
+    },
+    {
         "name": "person",
-        "keywords": [
-            "人物", "角色", "女孩", "男孩", "女性", "男性", "少女", "少年", "女人", "男人",
-            "战士", "法师", "武士", "骑士", "魅魔", "立绘", "全身像", "半身像", "肖像", "人像",
-            "表情", "手", "腿", "脸", "身体",
-        ],
+        "pattern": (
+            r"人物|角色|人像|肖像|立绘|全身像|半身像|人体|人类|女孩|男孩|少女|少年|女性|男性|女人|男人|"
+            r"女子|男子|姑娘|妇女|小孩|孩子|儿童|婴儿|老人|老者|青年|美女|帅哥|战士|法师|武士|骑士|士兵|"
+            r"将军|武将|神将|侠客|剑客|刺客|忍者|巫师|国王|女王|王子|公主|皇帝|皇后|仙女|仙子|女神|天使|"
+            r"恶魔|魅魔|精灵|判官|僧人|道士|她|身穿|身着|穿着|"
+            # Faces and legs belong to animals too; hands and fingers do not.
+            r"(?<!机械)(?<!机器)(?:手指|手掌|手臂|双手|手部|双脚)"
+        ),
         "negative": [
             "错误解剖", "畸形肢体", "多余手指", "缺失手指", "错误手部", "重复肢体",
             "身体比例错误", "畸形面部", "眼睛错位", "五官错位", "扭曲手臂", "扭曲腿部",
         ],
     },
     {
+        "name": "animal",
+        "pattern": (
+            r"动物|宠物|猫|狗|犬|鸟(?!瞰)|熊猫|狐狸|狼|老虎|狮子|兔子|鹿|马匹|骏马|金鱼|锦鲤|巨龙|"
+            r"猴子|松鼠|鹦鹉|企鹅|海豚|鲸"
+        ),
+        "negative": ["错误解剖", "畸形肢体", "多余肢体", "五官错位"],
+    },
+    {
         "name": "ui",
-        "keywords": [
-            "UI", "界面", "登录页", "登录界面", "首页", "按钮", "图标", "弹窗", "面板", "卡片",
-            "导航栏", "菜单", "APP", "移动端", "网页", "布局", "组件", "玻璃拟态", "科技风",
-        ],
+        "context_pattern": (
+            r"(?<![a-z])ui(?![a-z])|界面|按钮|控件|弹窗|导航栏|登录页|首页|页面|网页|"
+            r"(?<![a-z])app(?![a-z])|(?<![a-z])hud(?![a-z])|移动端|玻璃拟态"
+        ),
         "negative": [
             "布局混乱", "元素重叠", "文字错乱", "错误文字", "按钮变形", "图标畸形",
             "边距不一致", "对齐错误",
@@ -917,33 +941,26 @@ NEGATIVE_CATEGORY_DEFINITIONS = [
     },
     {
         "name": "scene",
-        "keywords": [
-            "场景", "背景", "房间", "城市", "森林", "山脉", "海边", "建筑", "街道", "室内",
-            "室外", "风景", "环境", "天空", "废墟", "科幻城市",
-        ],
+        "pattern": (
+            r"场景|房间|城市|森林|山脉|雪山|山顶|海边|海滩|沙滩|建筑|街道|室内|室外|户外|风景|环境|"
+            r"天空|废墟|草地|花园|庭院|宫殿|城堡|田野|山谷|湖|河流|夜景"
+        ),
+        "context_pattern": r"背景",
         "negative": ["透视错误", "空间混乱", "光影不一致", "结构畸形", "边缘破碎", "噪点"],
     },
     {
         "name": "prop",
-        "keywords": [
-            "道具", "武器", "剑", "枪", "法杖", "盾牌", "车辆", "机甲", "装备", "宝箱",
-            "图标", "物品", "产品", "包装", "服装", "披风", "盔甲",
-        ],
+        "pattern": (
+            r"道具|武器|剑|枪|法杖|盾牌|车辆|机甲|装备|宝箱|图标|物品|包装|服装|披风|斗篷|盔甲"
+        ),
+        "context_pattern": r"产品",
         "negative": ["结构错误", "形状畸形", "材质错误", "细节混乱", "边缘破碎", "多余部件", "缺失部件"],
-    },
-    {
-        "name": "video",
-        "keywords": [
-            "视频", "动画", "运镜", "镜头", "转身", "走路", "跑步", "跳跃", "摆动", "飘动",
-            "回头", "移动", "动作", "首帧", "尾帧", "图生视频",
-        ],
-        "negative": [
-            "动作抖动", "画面闪烁", "身份漂移", "人物变形", "肢体扭曲", "错误手部",
-            "背景漂移", "物体变形",
-        ],
     },
 ]
 
+NEGATIVE_ABSENT_SUBJECT_PATTERN = (
+    r"(?:无|没有|并无|不含|不出现|不要|避免|禁止)(?:明确的?|任何|其他|多余的?)?(?:主体)?(?:人物|人像|角色|人类|人|动物)"
+)
 NEGATIVE_FALLBACK = ["细节混乱", "结构错误", "画面脏污", "噪点"]
 
 FIRST_LAST_ACTION_TERMS = [
@@ -4825,23 +4842,152 @@ def is_ui_design_prompt_payload(payload: dict) -> bool:
 
 
 
-ART_SEMANTIC_FUSION_RULES = '你是图像提示词的视觉编辑。将完整底稿和补充要求融合成唯一的最终画面。\n先理解每项修改涉及的段落，再通读全篇消除冲突。新要求覆盖冲突旧描述；未被要求改变的身份、人数、年龄、发色、服饰、姿态、物品、画风和构图完整保留。\n修改场景时同步环境段落、光线和景深。例如白底改室外，必须替换白底、无其他物体、后景无层次等旧设定，写出适合主体的具体室外环境，不能在风格段追加室外而保留旧背景。环境细节应可辨，不能又完全虚化。\n要求增加人物细节时，必须在主体段落补充与已有角色一致的五官、发丝、手部、服饰或配饰细节，不只改风格或背景。不能改变原来的动作或暴露程度。\n质量、精美度、丰富感等要求，落实为具体的纹理、材质反光、光影过渡、空间层次或色彩关系，不能照抄提升画面质量等口号。结合原画风，不能把水彩、漫画、像素画擅自改成摄影或三维渲染。\n每项补充要求都必须体现在相关正文中；保留原段落标题，未受影响的句子尽量原样保留。底稿没有标题时，必须按 [风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数] 五段重新组织，不保持自然段，也不得自创段名。\n完成后检查每项要求是否已落实、是否有冲突旧描述残留、是否遗漏未修改细节。只输出最终完整提示词，不输出修改建议、分析过程、用户附加要求段落或原文与新版并列。不添加未提供的图片事实。姿态可能写在环境段里；更换背景也不能丢掉站立、坐姿等原动作。人物细节要求必须在主体物品段产生至少两处具体新细节，不允许该段完全照抄。'
+ART_SEMANTIC_FUSION_RULES = (
+    "你是 NovaFlow 的绘图提示词编辑。用户会给你一份完整底稿和修改要求，请把修改融合进底稿，输出修改后的完整提示词。\n"
+    "规则：\n"
+    "1. 修改要求优先。与修改冲突的旧描述要删除或改写，不能新旧并存；修改要求里的关键内容（如时间、天气、背景、画风、颜色）要在对应段落里明确写出来。\n"
+    "2. 修改场景时，环境、光线、色调和景深一起调整，旧背景的描述要换掉；环境细节要清晰可辨，不要又完全虚化。\n"
+    "3. 没被要求改变的内容全部保留：人物身份、人数、年龄、发色、服饰、姿态动作、物品、画风和构图。姿态可能写在环境段里；更换背景也不能丢掉站立、坐姿等原有动作。\n"
+    "4. 不要新增底稿和修改要求都没有提到的人物、动物、服饰、饰品、道具、植物、建筑或特效，也不要换成修改要求没提到的画风。\n"
+    "5. 只输出最终完整提示词：不要分析过程、修改说明、新旧对比或负向提示词，也不要把修改要求原文或“用户附加要求”写进提示词。"
+)
+# Conditional rules go into the request only when the edit asks for them; listed on every request,
+# Qwen3 reads "五官、发丝、手部、服饰纹理" as details to add.
+ART_FUSION_PERSON_DETAIL_CHECK = (
+    "\n本次验收：主体物品段在完整保留原人物的同时，必须新增至少两处与原角色一致的具体人物细节（例如五官、发丝、手指或服饰纹理），"
+    "不能原样复制，也不改变原来的动作和暴露程度。"
+)
+ART_FUSION_QUALITY_CHECK = (
+    "\n本次验收：提升质量、精美度或丰富度，要写成具体的材质纹理、光影过渡、空间层次或色彩关系，"
+    "不写“提升画面质量”之类的口号；保持底稿原有的画风。"
+)
 
 # An empty requirement box still asks for work: enrich the draft instead of echoing it.
 ART_SEMANTIC_FUSION_AUTO_ENRICH = (
     "没有额外修改要求：保留全部原设定、身份、人数、动作、构图与画风不变，只针对底稿已有对象补足具体视觉细节，至少覆盖材质纹理、光影过渡、空间层次、色彩关系中的两项，并修复模糊或互相矛盾的表述。禁止原样返回底稿，禁止只追加高质量、精美、丰富等空泛词，禁止新增底稿没有的人物、道具或场景。"
 )
 
-# 单图反推产出的五段结构是用户认可的版式；多图反推与提示词优化统一对齐到它。
+# 单图反推产出的五段结构是用户认可的版式；提示词创作、提示词优化和多图反推统一对齐到它。
 ART_FIVE_SECTIONS = ("[风格设定]", "[主体物品]", "[环境背景]", "[光线与色彩]", "[拍摄参数]")
+ART_FIVE_SECTION_NAMES = tuple(section[1:-1] for section in ART_FIVE_SECTIONS)
+ART_FIVE_SECTION_SKELETON = "\n\n".join(f"{section}\n……" for section in ART_FIVE_SECTIONS)
+ART_FIVE_SECTION_GUIDE = (
+    "各段写什么：\n"
+    "- [风格设定]：媒介与画风、整体氛围、完成质感。\n"
+    "- [主体物品]：主体是谁或是什么、数量、外观、服装或材质、颜色、姿态动作，以及主体之间的关系。\n"
+    "- [环境背景]：所处环境、前中后景、地面或承托面。\n"
+    "- [光线与色彩]：光源方向与软硬、明暗关系、主色与辅色。\n"
+    "- [拍摄参数]：景别、视角、构图与景深。"
+)
+ART_FIVE_SECTION_LAYOUT_RULE = (
+    "每段标题单独占一行，下一行写正文，段与段之间空一行：\n"
+    + ART_FIVE_SECTION_SKELETON + "\n\n" + ART_FIVE_SECTION_GUIDE
+)
 
+# 提示词优化时，没有自带分段的底稿整理成五段。
 ART_FIVE_SECTION_OUTPUT_RULE = (
-    "最终正向提示词的版式（覆盖前面任何“写成一段自然语言”的说法）：只允许按顺序输出五个且仅五个 TOML 风格 section，每个 section 标题单独占一行——[风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数]。\n[风格设定]写媒介、绘画或渲染语言、氛围与完成质感；[主体物品]逐个写主体与物品的数量、外观、姿势、动作、材质、颜色，以及彼此的空间、遮挡与接触关系；[环境背景]写环境、前中后景、承托面与遮挡层次；[光线与色彩]写光源方向、软硬、明暗、轮廓光、主辅色与局部颜色；[拍摄参数]只写景别、视角、构图、裁切、透视与景深。\n每个 section 都必须有具体内容，不得新增、合并、重命名或省略 section，不得输出 [用户附加要求]，不得输出 Markdown 代码围栏、标题、前言、总结或解释。版式化不得改变语义：底稿里的人物、数量、身份、年龄、动作、相互关系、道具、场景、风格、色彩、构图以及全部要求项与避免项，必须逐条落进对应 section；可以换措辞和重新组织，但不得删除、弱化、合并或改变含义，也不得新增底稿没有的事实。底稿中形如 __NOVAFLOW_…__ 的资源引用占位符是 @参考图 等引用的载体，必须原样、原次数出现在对应 section 中，不得翻译、改写、拆分、合并或删除。"
+    "输出版式：把完整提示词整理成下面五段，" + ART_FIVE_SECTION_LAYOUT_RULE + "\n"
+    "整理只改变排版，不改变意思：底稿里的人物、数量、身份、年龄、动作、关系、道具、场景、风格、色彩、构图以及所有要求和避免项，都要放进对应段落。"
+    "底稿没写到的内容只补一两句常见设定（如自然光、中景平视）；底稿没写画风时，[风格设定] 只写氛围和质感。"
+    "除非补充要求要求增加细节，不要补充底稿没有的年龄、服饰细节、饰品、花纹、手部动作或物件。"
+    "只输出这五段，不要输出 [用户附加要求] 或其他段落，也不要写“保持原画风”之类的说明。"
+)
+# 底稿自带分段时保留它的段落。
+ART_OWN_SECTION_OUTPUT_RULE = (
+    "输出版式：保留底稿原有的段落标题和顺序，每段标题单独占一行（例如“[风格设定]”），下一行写正文，段与段之间空一行。"
+)
+# Only a draft that carries references gets this sentence; otherwise Qwen3 reads it as "add one".
+ART_REFERENCE_TOKEN_PATTERN = r"__NOVAFLOW_[A-Z0-9_:-]+__|<(?:Picture|Video|Audio) [1-9]\d*>|@(?:参考图[1-9]\d*|视频参考|声音参考)"
+ART_REFERENCE_KEEP_RULE = "底稿中的 __NOVAFLOW_…__ 占位符是参考图引用，必须原样、原次数保留在它原来所在的段落里，不要新增。"
+# A time-of-day edit must not leave the old time behind ("改成夜晚" with "晴朗白天" still in the prompt).
+ART_TIME_OF_DAY_GROUPS = (
+    ("白天", "白昼", "正午", "中午", "午后", "清晨", "早晨", "上午", "下午", "日间"),
+    ("黄昏", "傍晚", "日落", "夕阳"),
+    ("夜晚", "夜间", "深夜", "午夜", "夜景", "夜空", "月夜", "雪夜"),
+)
+
+# Header names Qwen3 (and older outputs) use for the five sections.  Only an answer that covers all
+# five sections is renamed to the canonical headers; any other layout keeps the headers it has.
+ART_SECTION_ALIASES = {
+    "风格设定": ("风格设定", "风格与设定", "风格设置", "风格", "画风", "画面风格", "艺术风格", "媒介与风格", "风格与氛围"),
+    "主体物品": ("主体物品", "主体与物品", "主体及物品", "主体和物品", "主体与道具", "主体及道具", "主体和道具", "主体", "主体描述"),
+    "环境背景": ("环境背景", "环境与背景", "环境及背景", "环境和背景", "场景与背景", "场景及背景", "场景环境", "背景环境", "环境", "背景", "场景"),
+    "光线与色彩": ("光线与色彩", "光线及色彩", "光线和色彩", "光线色彩", "光影与色彩", "光影及色彩", "光影色彩", "光照与色彩", "光线与色调", "光影与色调", "色彩与光线"),
+    "拍摄参数": ("拍摄参数", "摄影参数", "镜头参数", "拍摄与构图", "拍摄及构图", "镜头与构图", "镜头及构图", "构图与镜头", "构图", "镜头"),
+}
+ART_SECTION_CANONICAL = {alias: name for name, aliases in ART_SECTION_ALIASES.items() for alias in aliases}
+# A bare "标签：" line is a header only for these longer names, so body lines like "背景：蓝天" stay text.
+ART_SECTION_PLAIN_HEADERS = sorted((alias for alias in ART_SECTION_CANONICAL if len(alias) >= 4), key=len, reverse=True)
+# "[风格设定]", "[风格设定]：正文", "**[风格设定]**", "【风格设定】", "### 风格设定", "1. 风格设定：正文"…
+ART_SECTION_HEADER_PATTERN = re.compile(
+    r"^[ \t]*(?:#{1,6}[ \t]*)?(?:(?:\d{1,2}|[一二三四五六七八九十])[.．、)）][ \t]*)?(?:[-•][ \t]+)?(?:\*\*)?[ \t]*"
+    r"(?:\[(?P<bracket>[^\[\]\r\n]{1,20})\]|【(?P<cjk>[^【】\r\n]{1,20})】"
+    r"|(?P<plain>" + "|".join(map(re.escape, ART_SECTION_PLAIN_HEADERS)) + r")(?=[ \t]*(?:\*\*)?[ \t]*(?:[:：]|$)))"
+    r"[ \t]*(?:\*\*)?[ \t]*[:：]?[ \t]*(?:\*\*)?[ \t]*(?P<body>[^\n]*)$",
+    re.M,
+)
+# Sections that never belong in the positive prompt.
+ART_SECTION_DROPPED = re.compile(r"^(?:用户附加要求|补充要求|修改要求|(?:负向|负面|反向)(?:提示词)?|说明|备注|注意事项?)$")
+ART_TRIVIAL_PREAMBLE = re.compile(r"^(?:(?:以下|下面|这是|好的|最终|优化后|修改后|完整|根据)[^\n]{0,40}|[^\n]{0,40}[:：])$")
+# Director wording that is for the prompt writer only (the renderer refuses a prompt that contains it).
+ART_LEAKED_INSTRUCTION_PATTERN = re.compile(
+    r"用户附加要求|用户补充要求|用户生成要求|补充约束|基础质量由系统自动负责|只作为最终提示词约束|"
+    r"不作为图片可见事实|用户本次(?:修改|创作)要求|提示词(?:编辑|创作)模式"
 )
 
 
+def art_prompt_sections(text: str) -> tuple[str, list[tuple[str, str]]]:
+    """Split a prompt into (text before the first header, [(header, body)])."""
+
+    value = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    matches = list(ART_SECTION_HEADER_PATTERN.finditer(value))
+    if not matches:
+        return value.strip(), []
+    sections = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(value)
+        name = re.sub(r"\s+", "", match.group("bracket") or match.group("cjk") or match.group("plain"))
+        sections.append((name, (match.group("body") + value[match.end():end]).strip()))
+    return value[:matches[0].start()].strip(), sections
+
+
+def art_section_body(body: str) -> str:
+    lines = (re.sub(r"^[-•][ \t]+", "", line.strip()).replace("**", "").strip() for line in str(body or "").split("\n"))
+    return "\n".join(line for line in lines if line)
+
+
+def normalize_art_sections(text: str) -> str:
+    """Lay a sectioned prompt out as '[标题]\\n正文' blocks separated by one blank line.
+
+    Qwen3 writes a header and its text on one line, adds a colon, bold or 【】 brackets, or uses a
+    near name such as [镜头参数].  That is layout trivia: it is rewritten here, never rejected.
+    """
+
+    value = str(text or "").strip()
+    preamble, sections = art_prompt_sections(value)
+    if not sections:
+        return value
+    sections = [(name, art_section_body(body)) for name, body in sections if not ART_SECTION_DROPPED.match(name)]
+    if not sections:
+        return preamble
+    canonical = [ART_SECTION_CANONICAL.get(name, "") for name, _ in sections]
+    if all(canonical) and set(canonical) == set(ART_FIVE_SECTION_NAMES):
+        merged: dict[str, str] = {}
+        for name, (_, body) in zip(canonical, sections):
+            merged[name] = "\n".join(part for part in (merged.get(name, ""), body) if part)
+        sections = [(name, merged[name]) for name in ART_FIVE_SECTION_NAMES]
+    blocks = [f"[{name}]\n{body}".rstrip() for name, body in sections]
+    if preamble and not ART_TRIVIAL_PREAMBLE.match(preamble):
+        blocks.insert(0, preamble)
+    return "\n\n".join(blocks)
+
+
+def art_section_map(text: str) -> dict[str, str]:
+    return dict(art_prompt_sections(normalize_art_sections(text))[1])
+
+
 def art_prompt_uses_own_sections(value: str) -> bool:
-    return bool(re.search(r"(?m)^[ \t]*\[[^\]\r\n]{1,40}\][ \t]*$", str(value or "")))
+    return bool(art_prompt_sections(value)[1])
 
 
 def art_five_section_failure(candidate: str) -> str:
@@ -4850,16 +4996,278 @@ def art_five_section_failure(candidate: str) -> str:
         return "未返回完整提示词"
     if "```" in text:
         return "输出包含代码围栏"
-    matches = list(re.finditer(r"(?m)^[ \t]*(\[[^\]\r\n]{1,40}\])[ \t]*$", text))
+    text = normalize_art_sections(text)
+    matches = list(re.finditer(r"(?m)^(\[[^\]\n]{1,40}\])$", text))
     if tuple(match.group(1) for match in matches) != ART_FIVE_SECTIONS:
         return "未按五个固定分段输出"
     if not text.startswith(ART_FIVE_SECTIONS[0]):
         return "五段正文前有多余内容"
     for index, match in enumerate(matches):
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
-        if not re.search(r"[\u4e00-\u9fffA-Za-z0-9]", text[match.end():end]):
+        if not re.search(r"[一-鿿A-Za-z0-9]", text[match.end():end]):
             return "分段为空：" + match.group(1)
     return ""
+
+
+def art_strip_leaked_instructions(text: str) -> str:
+    """Drop sentences that restate the writer's instructions instead of describing the picture."""
+
+    lines = []
+    for line in str(text or "").split("\n"):
+        if ART_LEAKED_INSTRUCTION_PATTERN.search(line) and not re.fullmatch(r"\[[^\]\n]{1,40}\]", line.strip()):
+            line = "".join(
+                sentence for sentence in re.split(r"(?<=[。！？!?；;])", line)
+                if not ART_LEAKED_INSTRUCTION_PATTERN.search(sentence)
+            ).strip()
+            if not line:
+                continue
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def art_trim_unfinished_tail(text: str) -> str:
+    """A reply cut at the token limit ends mid-sentence; keep only its finished part."""
+
+    value = str(text or "").rstrip()
+    if not value or re.search(r"[。！？!?…”」）)\]]$", value):
+        return value
+    line_start = value.rfind("\n") + 1
+    cut = max(value.rfind(mark) for mark in "。；;，,")
+    if cut > line_start:
+        return value[:cut].rstrip("，,；; ") + "。"
+    if re.fullmatch(r"\[[^\]\n]{1,40}\]", value[line_start:].strip()):
+        return value
+    return value[:line_start].rstrip()
+
+
+def art_finish_model_prompt(output: str, *, truncated: bool = False) -> str:
+    """Clean an art prompt the model wrote: fences, a 正向 label, a 负向 tail, leaked instructions, layout."""
+
+    text = str(output or "").replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"(?m)^[ \t]*```[A-Za-z]*[ \t]*$", "", text).strip()
+    text = re.sub(r"^正向(?:提示词)?\s*[:：]\s*", "", text)
+    negative_line = re.search(r"(?m)^\s*(?:负向|负面|反向)(?:提示词)?\s*[:：]", text)
+    if negative_line:
+        text = text[:negative_line.start()]
+    if truncated:
+        text = art_trim_unfinished_tail(text)
+    paragraphs = [part.strip() for part in re.split(r"\n[ \t]*\n", text.strip()) if part.strip()]
+    if not art_prompt_sections(text)[1] and len(paragraphs) == len(ART_FIVE_SECTIONS):
+        # Five paragraphs in the asked order, only the headers missing: label them instead of re-asking.
+        text = "\n\n".join(f"{title}\n{body}" for title, body in zip(ART_FIVE_SECTIONS, paragraphs))
+    return normalize_art_sections(art_strip_leaked_instructions(normalize_art_sections(text)))
+
+
+# "无佩戴任何饰品", "没有其他人物": a positive prompt that names what is absent tends to draw it.
+# "无数/无尽/无边…" are not negations.
+ART_NEGATED_CLAUSE = re.compile(r"^(?:无(?!数|尽|边|瑕|限|垠|比|暇|穷|际|论|袖|人机)|没有|并无|不含|不带|不出现)")
+
+
+def art_positive_only_wording(text: str, source: str | None = None) -> str:
+    """Keep only what the picture shows: drop clauses that say what is absent and, for prompts written
+    from pictures, the reference names (图2的…) the image model cannot see.  Section headers stay.
+
+    With a source (提示词优化), only what the model added is touched: the user's own clauses stay.
+    """
+
+    lines = []
+    for line in str(text or "").split("\n"):
+        if not line.strip() or re.fullmatch(r"\[[^\]\n]{1,40}\]", line.strip()):
+            lines.append(line)
+            continue
+        if source is None:
+            line = re.sub(r"(?:参考)?图[1-9](?:（[^）\n]{1,8}）)?的?", "", line)
+        sentences = []
+        dropped = False
+        for sentence in re.findall(r"[^。！？!?]+[。！？!?]?", line):
+            end = sentence[-1] if sentence[-1] in "。！？!?" else ""
+            clauses = [part.strip() for part in re.split(r"[，,；;]", sentence[:len(sentence) - len(end)])]
+            kept = [
+                part for part in clauses
+                if part and not (ART_NEGATED_CLAUSE.match(part) and (source is None or part not in source))
+            ]
+            dropped = dropped or len(kept) < len([part for part in clauses if part])
+            if kept:
+                sentences.append("，".join(kept) + end)
+        if not dropped:
+            lines.append(line)
+        elif sentences:
+            lines.append("".join(sentences))
+    return "\n".join(lines)
+
+
+def art_drop_unknown_references(text: str, source: str) -> str:
+    """A reference (@参考图, __NOVAFLOW_…__, <Picture N>) the draft never had is invented; drop it."""
+
+    known = set(re.findall(ART_REFERENCE_TOKEN_PATTERN + r"|@参考图", str(source or "")))
+    return re.sub(
+        r"[，,、；;]?[ \t]*(" + ART_REFERENCE_TOKEN_PATTERN + r"|@参考图)",
+        lambda match: match.group(0) if match.group(1) in known else "",
+        str(text or ""),
+    )
+
+
+# Renderer director lines are meant for the writer, never for the picture.
+ART_DIRECTOR_LINE_PATTERN = re.compile(
+    r"^(?:提示词(?:创作|编辑)模式|基础质量由系统自动负责|高完成度[^：:\n]{0,16}质量|商业[^：:\n]{0,16}(?:质量|完成度)"
+    r"|用户已明确提出衣装内容时|只输出用户要求的纯画面内容|风格优先级[:：]|背景处理[:：]|[^：:\n]{0,8}约束[:：])"
+)
+
+
+def art_user_requirement_text(requirements: str) -> str:
+    """The user's own words from a renderer requirement string, without the director text."""
+
+    text = clean_text(requirements).replace("\r\n", "\n").replace("\r", "\n")
+    kept = [line.strip() for line in text.split("\n") if line.strip() and not ART_DIRECTOR_LINE_PATTERN.match(line.strip())]
+    return re.sub(
+        r"^用户(?:本次(?:创作|修改)|生成|补充|附加)要求\s*(?:[（(][^）)\n]*[）)])?\s*[:：]\s*", "", "\n".join(kept),
+    ).strip()
+
+
+# Why an art edit failed, in the user's words; the internal code stays in diagnostics.
+ART_FAILURE_USER_TEXT = (
+    (r"^(?:未按五个固定分段输出|五段正文前有多余内容|分段为空|输出包含代码围栏)", "模型输出没有整理成五段版式"),
+    (r"^(?:未实际融合修改要求|requested-change-not-applied)", "模型返回的内容与原提示词相同"),
+    (r"^未落实对应段落：(.+)$", r"修改没有写进 [\1] 段"),
+    (r"^缺少原段落：(.+)$", r"丢失了原有的 [\1] 段"),
+    (r"^(缺少具体室外背景|室外背景仍与白底或空背景冲突)$", r"\1"),
+    (r"^仍保留冲突的旧描述：(.+)$", r"还保留着与修改冲突的旧描述“\1”"),
+    (r"^仅追加泛化质量词$", "只追加了空泛的质量词，没有具体细节"),
+    (r"^未补足视觉细节$", "没有补充具体的视觉细节"),
+    (r"^遗漏资源引用$", "遗漏了 @参考图 等资源引用"),
+    (r"^未返回完整提示词$", "模型没有返回完整提示词"),
+    (r"^core-redefinition-incomplete", "人物身份或动作的修改没有完整落实"),
+)
+# What the model is told before its one retry.
+ART_FAILURE_REPAIR_HINTS = (
+    (r"^(?:未按五个固定分段输出|五段正文前有多余内容|分段为空|输出包含代码围栏)",
+     "版式不对：请按 [风格设定]、[主体物品]、[环境背景]、[光线与色彩]、[拍摄参数] 五段输出，每段标题单独一行、下一行写正文，段与段之间空一行，标题前后不要加其他文字。"),
+    (r"^(?:未实际融合修改要求|requested-change-not-applied)",
+     "输出和底稿几乎一样，没有落实修改要求。请在相关段落中明确写出修改后的内容。"),
+    (r"^未落实对应段落：(.+)$", r"修改要求需要写进 [\1] 段，请改写该段。"),
+    (r"^缺少原段落：(.+)$", r"丢失了原有段落 [\1]，请完整保留它。"),
+    (r"^(?:缺少具体室外背景|室外背景仍与白底或空背景冲突)$", "请删除冲突的白底或空背景描述，写出具体的室外环境。"),
+    (r"^仍保留冲突的旧描述：(.+)$", r"请删除与修改要求冲突的旧描述“\1”，所有段落都改成修改后的内容。"),
+    (r"^(?:仅追加泛化质量词|未补足视觉细节)$",
+     "请针对底稿已有对象补充具体的材质、光影或空间细节，不要只加“精美”“高质量”之类的空泛词。"),
+    (r"^遗漏资源引用$", "底稿中的 __NOVAFLOW_…__ 或 <Picture N> 引用必须原样保留。"),
+    (r"^(?:missing-blocks|candidate-too-short|anchors-missing)",
+     "删掉了底稿中未要求修改的内容，请完整保留原有设定，只改动修改要求涉及的部分。"),
+    (r"^core-redefinition-incomplete", "修改要求改变了人物身份或动作，请在所有段落中统一替换旧的描述，不要保留旧身份或旧动作。"),
+)
+
+
+def art_failure_text(reason: str, table=ART_FAILURE_USER_TEXT, default: str = "修改结果没有通过检查") -> str:
+    reason = clean_text(reason)
+    for pattern, text in table:
+        match = re.match(pattern, reason)
+        if match:
+            return match.expand(text)
+    return default
+
+
+def art_failure_is_layout(reason: str) -> bool:
+    return bool(re.match(r"^(?:未按五个固定分段输出|五段正文前有多余内容|分段为空|输出包含代码围栏)", clean_text(reason)))
+
+
+def art_prompt_is_usable(text: str) -> bool:
+    """Enough real description to hand to the user even when its layout is off."""
+
+    return len(re.sub(r"[^一-鿿]", "", str(text or ""))) >= 12
+
+
+# 提示词创作：空提示词 + 创作要求。五段约 300-500 字，900 个 token 足够且不截断。
+ART_CREATE_MAX_LENGTH = 900
+ART_CREATE_SYSTEM_TEXT = (
+    "你是 NovaFlow 的美术提示词作者，把简短的创作需求写成可直接用于 AI 绘图的中文提示词。"
+    "严格按用户消息里的版式作答，只输出提示词正文。"
+)
+ART_CREATE_INSTRUCTION = (
+    "请根据用户的创作需求从零构建一份可直接用于 AI 绘图的中文提示词，按下面五段输出，"
+    + ART_FIVE_SECTION_LAYOUT_RULE + "\n\n"
+    "写作要求：\n"
+    "1. 紧扣用户需求：需求里写明的主体、数量、动作、场景和画风必须保留，不要改成别的题材。\n"
+    "2. 用户指定了画风就照用；没有指定时，选一种最适合这个题材的画风写明，不要混用互相矛盾的画风。\n"
+    "3. 需求没写到的地方，只补充与题材相符的常见细节，每段一到三句，写能画出来的具体内容。\n"
+    "4. 不要添加需求以外的人物、动物、道具、文字或标志，也不要添加需求没提到的发光、光晕、粒子、魔法等特效。\n"
+    "5. 不写“高质量”“细节丰富”“精美”之类的空泛词，也不写“不要……”“避免……”“无……”这类否定说法；画面里没有人物时，[主体物品] 直接写主要物体。\n"
+    "6. 只输出五段正文，不要前言、解释、Markdown 符号或负向提示词。"
+)
+
+# 多图反推（美工）：每张图只按职责贡献对应段落。
+ART_ROLE_REFERENCE_MAX_LENGTH = 900
+ART_ROLE_REFERENCE_SYSTEM_TEXT = (
+    "你是 NovaFlow 的美术反推助手：看参考图，按每张图的职责写出可直接用于 AI 绘图的中文提示词。"
+    "严格按用户消息里的版式作答，只输出提示词正文。"
+)
+ART_REFERENCE_ROLES = {
+    "subject": ("主体图", "主体的身份、外观、服装、道具和姿态"),
+    "style": ("画风参考", "画风（媒介、线条、笔触、上色方式、肌理）和整体色调"),
+    "background": ("背景参考", "环境与背景"),
+    "pose": ("姿势参考", "人物姿势"),
+    "composition": ("构图参考", "景别、视角与构图"),
+    "color": ("配色参考", "配色与色调"),
+    "material": ("材质参考", "材质与质感"),
+    "ui_layout": ("布局参考", "画面布局"),
+}
+ART_STYLE_MEDIUM_EXAMPLES = (
+    "水墨、水彩、油画、厚涂、赛璐璐动画、二次元插画、Q版卡通、像素画、素描或铅笔、版画、扁平矢量、低多边形、黏土、国潮插画、3D 渲染、写实摄影"
+)
+
+
+def art_reference_role(item: dict) -> str:
+    for key in ("role", "slotType"):
+        value = str(item.get(key) or "").strip().lower().replace("-", "_")
+        if value in ART_REFERENCE_ROLES:
+            return value
+    return "subject"
+
+
+def art_role_reference_request(roles: list[str], requirement: str) -> str:
+    """Tell Qwen3 which picture feeds which of the five sections."""
+
+    def pictures(role):
+        return "、".join(f"图{index + 1}" for index, value in enumerate(roles) if value == role)
+
+    subject, style, background = pictures("subject"), pictures("style"), pictures("background")
+    pose, composition, color = pictures("pose"), pictures("composition"), pictures("color")
+    material, layout = pictures("material"), pictures("ui_layout")
+    medium = f"先判断最接近的媒介与画风（例如{ART_STYLE_MEDIUM_EXAMPLES}），写出名称，再写线条、笔触、上色方式和纸张或材质肌理"
+    palette = color or style
+    sources = [
+        ("[风格设定]", f"只看{style}，{medium}，并写明整幅画面按这种画风重新绘制。只描述画法和质感，不要提它画的是什么，也不要拿它画的东西作比喻。" if style
+         else f"看{subject}，{medium}，以及整体氛围。"),
+        ("[主体物品]", f"看{subject}，写主体是谁或是什么、数量、外观、发型、服装、道具和颜色"
+         + (f"；姿势按{pose}" if pose else "、姿态动作")
+         + (f"；材质质感按{material}" if material else "")
+         + "，以及主体之间的关系。"),
+        ("[环境背景]", f"只看{background}，写它的环境、前中后景和地面，{subject}原来的背景一律不写。" if background
+         else f"看{subject}，写所处环境、前中后景和地面或承托面。"),
+        ("[光线与色彩]", f"光线看{background or subject}，写光源方向、软硬与明暗；"
+         + (f"色彩只取{palette}的配色：写整体色调、主色与辅色（只写颜色，不写它画的东西），作为整幅画面的配色基调，主体衣物等固有色保持不变。" if palette
+            else f"色彩看{subject}，写整体色调、主色与辅色和对比关系。")),
+        ("[拍摄参数]", f"只看{composition or layout}，写景别、视角、构图与景深。" if composition or layout
+         else f"看{subject}，写景别、视角、构图与景深。"),
+    ]
+    duties = "\n".join(
+        f"- {pictures(role)}（{label}）：提供{provides}。"
+        for role, (label, provides) in ART_REFERENCE_ROLES.items() if pictures(role)
+    )
+    rules = [
+        "每段只使用上面指定图片的信息。除主体图外，其他图片只按职责提供信息，它们画中的人物、动物、服装、道具和文字都不要写进结果。",
+        "参考图中可见的界面按钮、菜单、文字和水印都只是截图噪声，不要写进结果。",
+        "正文直接描述最终画面，不要出现“图1”“图2”“参考图”“主体图”等字样，也不写“不要……”“无……”这类否定说法。",
+    ]
+    if requirement:
+        rules.append(f"用户要求（优先落实，写进相关段落，不要单独成段）：{requirement}")
+    return (
+        "".join(f"图{index + 1}（{ART_REFERENCE_ROLES[role][0]}）：{QWEN3_CHAT_VISION_TOKEN}\n" for index, role in enumerate(roles))
+        + "请根据这些图片，为 AI 绘图写一份中文提示词。每张图的职责：\n" + duties + "\n\n"
+        + "按下面五段输出，每段标题单独占一行，下一行写正文，段与段之间空一行：\n" + ART_FIVE_SECTION_SKELETON + "\n\n"
+        + "各段写什么、看哪张图：\n" + "\n".join(f"- {title}：{text}" for title, text in sources) + "\n\n"
+        + "要求：\n" + "\n".join(f"{index + 1}. {rule}" for index, rule in enumerate(rules)) + "\n"
+        + "只输出这五段，不要前言、解释、Markdown 符号或负向提示词。"
+    )
 
 
 def art_semantic_fusion_input(source, requirements):
@@ -4877,9 +5285,24 @@ def finalize_art_semantic_fusion(candidate, instruction):
     return re.sub(r"背景(?:完全|彻底|全部)虚化(?:浅景深)?", "背景适度虚化，保留室外环境与空间层次", candidate)
 
 
-def art_semantic_fusion_failure(source, instruction, candidate):
+def art_stale_time_of_day(source, instruction, candidate):
+    """The old time of day that a time-of-day edit left in the prompt, if any."""
+
+    asked = [group for group in ART_TIME_OF_DAY_GROUPS if any(word in instruction for word in group)]
+    for group in ART_TIME_OF_DAY_GROUPS if asked else ():
+        if group in asked:
+            continue
+        for word in group:
+            if word in source and word in candidate and word not in instruction:
+                return word
+    return ""
+
+
+def art_semantic_fusion_failure(source, instruction, candidate, require_layout=True):
     if not candidate:
         return "未返回完整提示词"
+    # Candidates are laid out with blank lines between sections; compare a sectioned draft the same way.
+    source = normalize_art_sections(source) if art_prompt_uses_own_sections(source) else source
     if ordinary_art_retention_compact(source) == ordinary_art_retention_compact(candidate):
         # No instruction means "enrich the draft", not "return it"; an echo is a failure.
         if not instruction:
@@ -4888,13 +5311,11 @@ def art_semantic_fusion_failure(source, instruction, candidate):
     if re.search(r"用户补充要求（只作为最终提示词约束|\[用户附加要求\]|不作为图片可见事实", candidate):
         return "仍在照搬补充要求"
     # A draft that carries no layout of its own is normalized to the five-section layout.
-    if not art_prompt_uses_own_sections(source):
+    if require_layout and not art_prompt_uses_own_sections(source):
         layout_failure = art_five_section_failure(candidate)
         if layout_failure:
             return layout_failure
-    def sections(value):
-        return dict((m[0], m[1].strip()) for m in re.findall(r"(?:^|\n)\s*\[([^\]\n]+)\]\s*\n([\s\S]*?)(?=\n\s*\[|$)", value))
-    before, after = sections(source), sections(candidate)
+    before, after = art_section_map(source), art_section_map(candidate)
     for title in before:
         if not after.get(title):
             return "缺少原段落：" + title
@@ -4908,6 +5329,9 @@ def art_semantic_fusion_failure(source, instruction, candidate):
             return "室外背景仍与白底或空背景冲突"
         if not re.search(r"室外|户外|花园|庭院|森林|花海|草地|山谷|天空|街道|海滩|山林|屋外", after.get("环境背景", candidate)):
             return "缺少具体室外背景"
+    stale = art_stale_time_of_day(source, instruction, candidate)
+    if stale:
+        return "仍保留冲突的旧描述：" + stale
     failure = ordinary_art_retention_failure(source, instruction, candidate) or ordinary_art_core_redefinition_failure(source, instruction, candidate)
     if failure:
         return failure
@@ -4960,7 +5384,10 @@ class OrdinaryArtPromptEditNotAppliedError(ValueError):
     code = "art-prompt-edit-not-applied"
 
     def __init__(self, reason: str):
-        super().__init__("提示词优化未落实你的修改要求，原提示词保持不变；请重试或把修改要求写得更具体")
+        # The user sees why, in one short clause; the internal code stays in diagnostics.
+        super().__init__(
+            f"提示词优化未落实你的修改要求（{art_failure_text(reason)}），原提示词保持不变；请重试或把修改要求写得更具体"
+        )
         self.diagnostics = {
             "errorCode": self.code,
             "failureClass": "application",
@@ -13324,15 +13751,21 @@ class PromptAssistant:
         for requested, category in [(r"男|女|性别", r"女性|男性"), (r"动作|姿势|姿态|站|坐|躺|趴|跪",r"站立|坐姿|跪姿|俯卧|仰卧"), (r"右手|左手|手臂|抬手",r"右手|左手"), (r"构图|镜头|全身|半身|特写|俯视|仰视|平视|景别",r"全身|仰视")]:
             if re.search(requested, instruction):
                 preserve = [word for word in preserve if not re.search(category, word)]
+        preserved = "、".join(word for word in preserve if word not in instruction)
+        # The renderer's director text (quality profile, 基础质量…) is appended to the prompt when the
+        # picture is generated.  The writer never sees it, so it cannot be copied into the prompt.
         request = (
-            "必须保留的原设定（除非用户明确要求替换）：" + "、".join(word for word in preserve if word not in instruction) + "\n完整底稿：\n" + source + "\n\n补充要求（最高优先级）：\n" + (instruction or ART_SEMANTIC_FUSION_AUTO_ENRICH)
+            "完整底稿：\n" + source + "\n\n补充要求（最高优先级）：\n" + (instruction or ART_SEMANTIC_FUSION_AUTO_ENRICH)
             + ("" if instruction else "\n本次验收：最终提示词必须与底稿存在可辨的具体差异，新增细节必须落在底稿已有对象上。")
-            + ("\n其他调用约束（以用户补充要求为优先，不要照抄约束文字）：\n" + requirements if requirements and requirements != instruction else "")
-            + ("" if art_prompt_uses_own_sections(source) else "\n\n" + ART_FIVE_SECTION_OUTPUT_RULE)
-            + "\n\n只输出完整中文正向提示词，保留原段落标题。不要输出 JSON、负向提示词或解释。各段先保留未修改的原有细节，再融入对应修改，避免无关扩写。"
+            + ("\n必须保留的原设定（除非补充要求明确替换）：" + preserved if preserved else "")
+            + "\n\n" + (ART_OWN_SECTION_OUTPUT_RULE if art_prompt_uses_own_sections(source) else ART_FIVE_SECTION_OUTPUT_RULE)
+            + (ART_REFERENCE_KEEP_RULE if re.search(ART_REFERENCE_TOKEN_PATTERN, source) else "")
+            + "\n\n只输出完整中文正向提示词，不要输出 JSON、负向提示词或解释。未修改的原有细节先保留，再融入修改，不要无关扩写。"
         )
         if re.search(r"(?:增加|丰富|增强|细化|完善).{0,8}(?:人物|角色|主体).{0,6}细节", instruction):
-            request += "\n本次验收：主体物品段在完整保留原人物的同时，必须新增至少两处具体人物细节（例如五官、发丝、手指或服饰纹理），不能原样复制。"
+            request += ART_FUSION_PERSON_DETAIL_CHECK
+        if not instruction or re.search(r"质量|精美|丰富|细节|质感", instruction):
+            request += ART_FUSION_QUALITY_CHECK
         if re.search(r"(?:室外|户外)", instruction):
             request += "\n本次验收：环境背景段必须写出具体室外环境，删除冲突的白底、无其他物体、后景无层次，保留原人物姿态。光线及景深与新环境一致。"
         if payload.get("nsfw") is True:
@@ -13340,7 +13773,11 @@ class PromptAssistant:
         failure = ""
         output = ""
         for attempt in range(2):
-            repair = ("\n上次融合未通过检查：" + failure + "。请修复遗漏或冲突，重新输出完整提示词。\n上次结果：\n" + output) if attempt else ""
+            repair = (
+                "\n\n上次融合未通过检查：" + failure + "。"
+                + art_failure_text(failure, ART_FAILURE_REPAIR_HINTS, "请修复遗漏或冲突。")
+                + "请重新输出完整提示词。\n上次结果：\n" + output
+            ) if attempt else ""
             output = self.generate(request + repair, llama_template=template,
                                    max_length=min(4096, max(1024, len(source) * 2)),
                                    seed=attempt + 1, do_sample=False, temperature=0.0,
@@ -13358,17 +13795,102 @@ class PromptAssistant:
                     diagnostics = {}
                     positive_output = apply_ordinary_art_patch_output(source, requirements, output, diagnostics)
                     patch_failure = "" if positive_output else str(diagnostics.get("failureReason") or "patch-json-or-anchor-invalid")
-            positive = finalize_art_semantic_fusion(normalize_ordinary_art_positive_only_output(positive_output), instruction)
+            positive = finalize_art_semantic_fusion(art_positive_only_wording(art_drop_unknown_references(
+                art_finish_model_prompt(normalize_ordinary_art_positive_only_output(positive_output)), source,
+            ), source), instruction)
             if payload.get("nsfw") is True and ordinary_art_core_affirmative_minor_present(positive):
                 raise ValueError("提示词融合未通过内容检查，原提示词未修改")
             failure = patch_failure or art_semantic_fusion_failure(source, instruction, positive)
+            # On the last try a prompt that applied the edit is not thrown away for its layout alone.
+            if (failure and attempt and art_failure_is_layout(failure)
+                    and not art_semantic_fusion_failure(source, instruction, positive, require_layout=False)):
+                log_prompt_assistant_event("art_semantic_fusion_layout_accepted", command="optimizePrompt", failure=failure)
+                failure = ""
             if not failure:
-                negative = build_targeted_negative_prompt(source, positive, str(payload.get("negativePrompt") or "")) if ordinary_art_supports_negative_prompt(payload) else ""
+                negative = build_targeted_negative_prompt(source, positive, video=False) if ordinary_art_supports_negative_prompt(payload) else ""
                 self.status = "模型可用"
                 return {"positivePrompt": positive, "negativePrompt": negative, "rawOutput": positive, "editContract": "nf.art.semantic-fusion.v1"}
         if failure.startswith(("missing-blocks:", "candidate-too-short:", "anchors-missing:")):
             raise OrdinaryArtPromptRetentionError(failure)
         raise OrdinaryArtPromptEditNotAppliedError(failure)
+
+    def create_art_prompt(self, payload: dict, requirements: str) -> dict:
+        """美工提示词创作：提示词框为空，按用户的创作需求写一份五段提示词。"""
+
+        requirement = art_user_requirement_text(requirements)
+        if not requirement:
+            raise ValueError("请描述你想画的内容")
+        template = "<|im_start|>system\n" + ART_CREATE_SYSTEM_TEXT + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+        # Only the user's own words reach the writer; the director text is appended at generation time.
+        request = "用户的创作需求：\n" + requirement + "\n\n" + ART_CREATE_INSTRUCTION
+        failure = ""
+        output = ""
+        positive = ""
+        for attempt in range(2):
+            repair = (
+                "\n\n上次输出未通过检查：" + art_failure_text(failure, ART_FAILURE_REPAIR_HINTS, failure)
+                + "\n上次结果：\n" + output
+            ) if attempt else ""
+            output = self.generate(request + repair, llama_template=template, max_length=ART_CREATE_MAX_LENGTH,
+                                   seed=attempt + 1, do_sample=False, temperature=0.0,
+                                   trace_label="artCreateRepair" if attempt else "artCreate")
+            truncated = bool((getattr(self, "last_generate_profile", None) or {}).get("hitTokenLimit"))
+            positive = art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated))
+            failure = art_five_section_failure(positive)
+            if not failure:
+                break
+        if failure:
+            if not art_prompt_is_usable(positive):
+                raise ValueError("提示词创作未完成：模型没有返回可用的提示词，请重试")
+            log_prompt_assistant_event("art_create_layout_accepted", command="optimizePrompt", failure=failure)
+        if payload.get("nsfw") is True and ordinary_art_core_affirmative_minor_present(positive):
+            raise ValueError("提示词创作未通过内容检查，请修改描述后重试")
+        negative = (
+            build_targeted_negative_prompt(requirement, positive, video=False)
+            if ordinary_art_supports_negative_prompt(payload) else ""
+        )
+        self.status = "模型可用"
+        return {"positivePrompt": positive, "negativePrompt": negative, "rawOutput": positive}
+
+    def reverse_art_role_prompt(self, image_items: list, requirements: str, purpose: str) -> str:
+        """美工多图反推：主体、画风、背景等参考图各自只贡献对应段落，输出五段提示词。"""
+
+        roles = [art_reference_role(item) for item in image_items]
+        if purpose == "styleTransfer" and ("style" not in roles or len(roles) < 2):
+            raise ValueError("风格迁移需要一张主图和一张风格参考图")
+        if "subject" not in roles:
+            roles[0] = "subject"
+        request = art_role_reference_request(roles, art_user_requirement_text(requirements))
+        template = (
+            "<|im_start|>system\n" + ART_ROLE_REFERENCE_SYSTEM_TEXT
+            + "<|im_end|>\n<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+        )
+        failure = ""
+        output = ""
+        description = ""
+        for attempt in range(2):
+            repair = (
+                "\n\n上次输出未通过检查：" + art_failure_text(failure, ART_FAILURE_REPAIR_HINTS, failure)
+                + "\n上次结果：\n" + output
+            ) if attempt else ""
+            output = self.generate(
+                request + repair,
+                images=[item["tensor"] for item in image_items],
+                llama_template=template,
+                max_length=ART_ROLE_REFERENCE_MAX_LENGTH,
+                seed=attempt + 1, do_sample=False, temperature=0.0,
+                trace_label="artRoleReferenceRepair" if attempt else "artRoleReference",
+            )
+            truncated = bool((getattr(self, "last_generate_profile", None) or {}).get("hitTokenLimit"))
+            description = art_positive_only_wording(art_finish_model_prompt(output, truncated=truncated))
+            failure = art_five_section_failure(description)
+            if not failure:
+                break
+        if failure:
+            if not art_prompt_is_usable(description):
+                raise ValueError("多图反推未完成：模型没有返回可用的描述，原提示词未修改，请重试")
+            log_prompt_assistant_event("art_role_reference_layout_accepted", command="reverseImagePrompt", failure=failure)
+        return description
 
     def optimize_prompt(self, payload: dict) -> dict:
         is_minimax_h3 = is_minimax_h3_prompt_payload(payload)
@@ -13418,6 +13940,8 @@ class PromptAssistant:
         )
         if not raw_prompt and not requirements:
             raise ValueError("请选择预设或描述你的想法" if not is_animation else "请输入正向提示词")
+        if is_ordinary_art and is_create:
+            return self.create_art_prompt(payload, requirements)
 
         requirements_section = (
             "\n用户附加要求（高优先级输出约束）：\n"
@@ -16925,103 +17449,21 @@ class PromptAssistant:
                     )
                     output = self.generate(prompt, images=image_tensors, llama_template=llama_template, max_length=320)
                     description = tidy_video_prompt(output, f"{current_prompt}\n{requirements}")
-                elif purpose == "styleTransfer" or (
-                    purpose == "roleReference" and len(image_tensors) == 2 and "subject" in role_labels and "style" in role_labels
-                ):
-                    subject_index = next((i for i, role in enumerate(role_labels) if role == "subject"), 0)
-                    style_index = next((i for i, role in enumerate(role_labels) if role == "style"), -1)
-                    if style_index < 0 or style_index == subject_index:
-                        raise ValueError("风格迁移需要一张主图和一张风格参考图")
-                    isolation_prompt = (
-                        f"{image_tokens}"
-                        "执行双图风格迁移的隔离分析，但不要生成最终提示词。图1（subject）是唯一内容来源，图2（style）只提供抽象绘画语言。"
-                        "必须严格输出两行：\n"
-                        "CONTENT_LOCK: 用一段中文准确描述图1的人物或主体身份、脸和发型、服装、道具、姿势、构图、背景及空间关系；"
-                        "不得使用图2的任何内容。\n"
-                        "STYLE_ONLY: 开头明确图2最接近的视觉媒介和风格类别，例如二次元插画、赛璐璐、半厚涂、厚涂手绘、"
-                        "2.5D游戏美术、3D渲染或写实摄影；随后只描述造型概括程度、线条、笔触、上色、色块与渐变、材质表现、"
-                        "光影和边缘处理。严禁提及图2的人物、性别、脸、发型、服装、道具、动作、姿势、构图、背景、建筑、地点、文字、"
-                        "具体物体或剧情。除这两行外不要输出任何内容。"
-                    )
-                    isolation_template = (
-                        "<|im_start|>system\n你是严格的双图风格迁移分析器。图1只分析内容，图2只分析抽象风格，禁止交叉污染。<|im_end|>\n"
-                        "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
-                    )
-                    isolation_output = clean_text(self.generate(
-                        isolation_prompt,
-                        images=image_tensors,
-                        llama_template=isolation_template,
-                        max_length=160,
-                        trace_label="style_transfer_isolation",
-                    ))
-                    isolation_match = re.search(
-                        r"CONTENT_LOCK\s*[:：]\s*(.*?)\s*STYLE_ONLY\s*[:：]\s*(.*)",
-                        isolation_output,
-                        re.I | re.S,
-                    )
-                    subject_notes = clean_reverse_output(isolation_match.group(1)) if isolation_match else ""
-                    style_notes = clean_reverse_output(isolation_match.group(2)) if isolation_match else ""
-                    if not subject_notes or not style_notes:
-                        raise ValueError("模型未能建立主体内容锁或纯风格摘要")
-                    description = (
-                        f"严格保留主体图全部内容：{subject_notes}。"
-                        f"在人物身份、脸、发型、服装、道具、姿势、构图、背景和空间关系完全不变的前提下，"
-                        f"进行高强度风格迁移并彻底重新绘制为以下视觉语言：{style_notes}。"
-                        "必须明显改变视觉媒介、造型概括、线条、笔触、上色、色块、材质表现、光影和边缘处理，"
-                        "不得只做轻度美化、摄影调色或清晰度增强；主体图为照片且参考为插画时，必须去除摄影质感并重绘为对应插画风格。"
-                        "风格参考图只提供表现方式，严禁新增或替换其中的人物、服装、道具、动作、姿势、构图、背景、建筑、地点或具体物体。"
-                    )
-                    if requirements:
-                        description = f"{description}补充约束：{requirements}"
-                    output = description
+                elif purpose == "styleTransfer" or purpose == "roleReference":
+                    # 美工多图：主体、画风、背景等参考图各自只贡献对应段落，直接得到五段提示词。
+                    description = output = self.reverse_art_role_prompt(image_items, requirements, purpose)
                 else:
-                    role_isolation = (
-                        "必须严格按每张图的职责工作：subject只决定主体身份与核心设计；style只提取线条、笔触、上色、材质和光影语言；"
-                        "pose只提取姿势；composition只提取构图；color只提取配色；material只提取材质；ui_layout只提取UI布局。"
-                        "禁止把非subject图片中的人物身份、脸、服装、道具、背景、文字、布局或姿势带入结果，除非该维度被明确指定。"
-                        "参考图中可见的界面按钮、菜单、标签、提示词示例、说明文字、水印和软件窗口都只是截图噪声，严禁抄写、枚举或当成生成内容；"
-                        "不得输出主图/原图、风格参考、保持原风格、处理方式、模型名称等界面词。最终只描述目标画面本身。"
-                        if purpose == "roleReference" else ""
-                    )
-                    uses_five_sections = purpose == "roleReference"
                     prompt = (
                         f"{image_tokens}"
                         "请联合分析这些图片，生成适合图像生成模型使用的中文提示词。"
-                        f"{role_isolation}"
                         "不要输出英文，不要输出 SD 标签，不要输出 JSON，不要写成分析报告。"
                         f"{merge_instruction}"
-                        + ("\n\n" + ART_FIVE_SECTION_OUTPUT_RULE if uses_five_sections else "")
                     )
                     llama_template = (
-                        "<|im_start|>system\n"
-                        + ("你是 NovaFlow 的 AI反推助手。请按五段 TOML 版式输出可用于生成图片的中文描述。"
-                           if uses_five_sections
-                           else "你是 NovaFlow 的 AI反推助手。请直接输出可用于生成图片的中文自然语言描述。")
-                        + "<|im_end|>\n"
-                        + "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
+                        "<|im_start|>system\n你是 NovaFlow 的 AI反推助手。请直接输出可用于生成图片的中文自然语言描述。<|im_end|>\n"
+                        "<|im_start|>user\n{}<|im_end|>\n<|im_start|>assistant\n"
                     )
-                    layout_failure = ""
-                    for attempt in range(2 if uses_five_sections else 1):
-                        repair = (
-                            "\n上次输出未通过版式检查：" + layout_failure
-                            + "。请只重新输出正确版式的五段正文，不要解释。"
-                        ) if attempt else ""
-                        output = self.generate(
-                            prompt + repair,
-                            images=image_tensors,
-                            llama_template=llama_template,
-                            max_length=900 if uses_five_sections else 220,
-                        )
-                        layout_failure = (
-                            art_five_section_failure(clean_reverse_output(output))
-                            if uses_five_sections else ""
-                        )
-                        if not layout_failure:
-                            break
-                    if layout_failure:
-                        raise ValueError(
-                            "多图反推未按五段版式输出，原提示词未修改：" + layout_failure
-                        )
+                    output = self.generate(prompt, images=image_tensors, llama_template=llama_template, max_length=220)
 
         if not description:
             description = clean_reverse_output(output)
@@ -17616,40 +18058,32 @@ def merge_keyword_list(*groups, max_count: int | None = None) -> list[str]:
     return merged
 
 
-def negative_category_keyword_matches(text: str, keyword: str) -> bool:
-    key = str(keyword or "").lower()
-    if not key:
-        return False
-    if key == "移动":
-        return bool(re.search(r"移动(?!端|应用|设备|界面|页面|app)", text, flags=re.I))
-    return key in text
+def detect_negative_categories(
+    raw_prompt: str,
+    positive_prompt: str,
+    *,
+    video: bool | None = None,
+    ui: bool | None = None,
+) -> list[dict]:
+    """Categories present in the picture; video/UI may be forced by the caller's surface."""
 
-
-def detect_negative_categories(raw_prompt: str, positive_prompt: str) -> list[dict]:
-    raw_text = str(raw_prompt or "").lower()
-    positive_text = str(positive_prompt or "").lower()
-    text = f"{raw_text}\n{positive_text}"
+    context = str(raw_prompt or "").lower()
+    # Section headers such as [环境背景] are layout, not picture content.
+    positive = re.sub(r"(?m)^[ \t]*\[[^\]\r\n]{1,20}\][ \t]*$", " ", str(positive_prompt or "").lower())
+    # "无明确主体人物" / "背景没有其他人物" say who is absent, not present.
+    text = re.sub(NEGATIVE_ABSENT_SUBJECT_PATTERN, " ", f"{context}\n{positive}")
+    forced = {"video": video, "ui": ui}
     matched = []
     for category in NEGATIVE_CATEGORY_DEFINITIONS:
-        keywords = category.get("keywords") or []
-        category_name = str(category.get("name") or "")
-        category_matched = False
-        for keyword in keywords:
-            key = str(keyword)
-            if category_name == "scene" and key == "背景":
-                if negative_category_keyword_matches(raw_text, key):
-                    category_matched = True
-                    break
-                continue
-            if category_name == "prop":
-                if key == "产品" and not negative_category_keyword_matches(raw_text, key):
-                    continue
-                if key == "图标" and any(str(item.get("name")) == "ui" for item in matched):
-                    continue
-            if negative_category_keyword_matches(text, key):
-                category_matched = True
-                break
-        if category_matched:
+        name = category["name"]
+        if forced.get(name) is not None:
+            hit = bool(forced[name])
+        else:
+            hit = bool(
+                (category.get("pattern") and re.search(category["pattern"], text))
+                or (category.get("context_pattern") and re.search(category["context_pattern"], context))
+            )
+        if hit:
             matched.append(category)
     return matched
 
@@ -17658,50 +18092,86 @@ def category_negative_keywords(categories: list[dict]) -> list[str]:
     if not categories:
         return merge_keyword_list(NEGATIVE_FALLBACK)
 
-    category_by_name = {str(item.get("name")): item for item in categories}
-    ordered: list[dict] = []
-    if "video" in category_by_name:
-        ordered.append(category_by_name["video"])
-    for preferred in ["person", "ui", "scene", "prop"]:
-        if preferred in category_by_name and category_by_name[preferred] not in ordered:
-            ordered.append(category_by_name[preferred])
-    for category in categories:
-        if category not in ordered:
-            ordered.append(category)
-
+    by_name = {str(item.get("name")): item for item in categories}
+    rest = [by_name[name] for name in ("person", "animal", "ui", "scene", "prop") if name in by_name]
     body_limit = NEGATIVE_MAX_COUNT - len(NEGATIVE_COMMON_PREFIX) - len(NEGATIVE_SUFFIX)
     selected: list[str] = []
-    if ordered and ordered[0].get("name") == "video":
-        selected.extend(merge_keyword_list(ordered[0].get("negative") or [], max_count=8))
-        remaining_categories = ordered[1:]
+    if "video" in by_name:
+        video = by_name["video"]
+        selected = merge_keyword_list(
+            video.get("negative") or [],
+            video.get("person_negative") or [] if "person" in by_name else [],
+            max_count=8,
+        )
         remaining_limit = max(0, body_limit - len(selected))
-        per_category = max(2, remaining_limit // max(1, len(remaining_categories))) if remaining_categories else 0
-        for category in remaining_categories:
-            if len(selected) >= body_limit:
-                break
-            selected = merge_keyword_list(selected, category.get("negative") or [], max_count=min(body_limit, len(selected) + per_category))
+        per_category = max(2, remaining_limit // max(1, len(rest))) if rest else 0
     else:
-        per_category = max(3, min(8, body_limit // max(1, len(ordered))))
-        for category in ordered:
-            if len(selected) >= body_limit:
-                break
-            selected = merge_keyword_list(selected, category.get("negative") or [], max_count=min(body_limit, len(selected) + per_category))
-
+        per_category = max(3, min(8, body_limit // max(1, len(rest))))
+    for category in rest:
+        if len(selected) >= body_limit:
+            break
+        selected = merge_keyword_list(
+            selected, category.get("negative") or [],
+            max_count=min(body_limit, len(selected) + per_category),
+        )
     return selected[:body_limit]
 
 
-def build_targeted_negative_prompt(raw_prompt: str, positive_prompt: str, model_negative: str = "") -> str:
-    categories = detect_negative_categories(raw_prompt, positive_prompt)
+def negative_model_extras(model_negative: str, categories: list[dict]) -> list[str]:
+    """The model's own negative keywords that fit this picture.
+
+    They add what the rules cannot know (穿模、镜头突变…).  Garbled or truncated items, English
+    tokens and the rule words of categories the picture does not contain are dropped.
+    """
+
+    present = {str(item.get("name")) for item in categories}
+    blocked: set[str] = set()
+    for category in NEGATIVE_CATEGORY_DEFINITIONS:
+        if category["name"] not in present:
+            blocked.update(category.get("negative") or [])
+        if category["name"] not in present or "person" not in present:
+            blocked.update(category.get("person_negative") or [])
+    extras = []
+    for item in normalize_negative_keyword_list(model_negative or ""):
+        if item.lower() == "logo":
+            item = "标志"
+        if ("�" in item or not 2 <= len(item) <= 12
+                or not re.search(r"[一-鿿]", item) or item in blocked):
+            continue
+        extras.append(item)
+    return extras
+
+
+def build_targeted_negative_prompt(
+    raw_prompt: str,
+    positive_prompt: str,
+    model_negative: str = "",
+    *,
+    video: bool | None = None,
+    ui: bool | None = None,
+) -> str:
+    """Chinese negative keywords matched to the picture's content.
+
+    raw_prompt is the caller's context (surface marker plus the user's own request); positive_prompt
+    is the final positive.  video/ui force those categories when the caller knows its surface.
+    """
+
+    categories = detect_negative_categories(raw_prompt, positive_prompt, video=video, ui=ui)
     typed_keywords = category_negative_keywords(categories)
     body_limit = NEGATIVE_MAX_COUNT - len(NEGATIVE_COMMON_PREFIX) - len(NEGATIVE_SUFFIX)
-    middle = merge_keyword_list(typed_keywords, max_count=body_limit)
-    final = merge_keyword_list(NEGATIVE_COMMON_PREFIX, middle, NEGATIVE_SUFFIX, max_count=NEGATIVE_MAX_COUNT)
-
-    suffix_keys = {item.lower() for item in NEGATIVE_SUFFIX}
-    prefix_keys = {item.lower() for item in NEGATIVE_COMMON_PREFIX}
-    middle_items = [item for item in final if item.lower() not in prefix_keys and item.lower() not in suffix_keys]
-    ordered = merge_keyword_list(NEGATIVE_COMMON_PREFIX, middle_items[:body_limit], NEGATIVE_SUFFIX, max_count=NEGATIVE_MAX_COUNT)
-    return ", ".join(ordered)
+    fixed_keys = {item.lower() for item in NEGATIVE_COMMON_PREFIX + NEGATIVE_SUFFIX}
+    middle = [
+        item for item in merge_keyword_list(
+            typed_keywords[:10],
+            negative_model_extras(model_negative, categories),
+            typed_keywords[10:],
+        )
+        if item.lower() not in fixed_keys
+    ]
+    ordered = merge_keyword_list(
+        NEGATIVE_COMMON_PREFIX, middle[:body_limit], NEGATIVE_SUFFIX, max_count=NEGATIVE_MAX_COUNT,
+    )
+    return NEGATIVE_JOINER.join(ordered)
 
 
 def requirements_preserve_visible_text(value: str) -> bool:
@@ -17714,14 +18184,20 @@ def requirements_preserve_visible_text(value: str) -> bool:
     ))
 
 
+NEGATIVE_KEYWORD_ALIASES = {"logo": {"logo", "标志"}, "标志": {"logo", "标志"}}
+
+
 def remove_negative_prompt_keywords(value: str, blocked: set[str]) -> str:
-    blocked_keys = {str(item or "").strip().lower() for item in blocked}
+    blocked_keys = set()
+    for item in blocked:
+        key = str(item or "").strip().lower()
+        blocked_keys.update(NEGATIVE_KEYWORD_ALIASES.get(key, {key}))
     items = [
         item.strip()
         for item in re.split(r"[,，;；\n]+", str(value or ""))
         if item.strip() and item.strip().lower() not in blocked_keys
     ]
-    return ", ".join(items)
+    return NEGATIVE_JOINER.join(items)
 
 
 FIRST_LAST_RECORD_LABELS = (

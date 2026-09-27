@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import {buildGrokPromptOptimizeRequest, buildGrokImageReverseRequest, grokResponsesPublicResult} from '../../supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs';
-const source = fs.readFileSync(new URL('./fixtures/art-reverse-outdoor-fusion.txt',import.meta.url),'utf8');
+// A Windows checkout (core.autocrlf) gives the fixture CRLF line ends; the prompts are LF.
+const source = fs.readFileSync(new URL('./fixtures/art-reverse-outdoor-fusion.txt',import.meta.url),'utf8').replace(/\r\n/g,'\n');
 const instruction = '增加室外背景，提升画面质量和精美度。增加人物细节';
 const good = source.split('\n[用户附加要求]')[0].trim()
   .replace('纯白色背景，无其他物体，前景无遮挡，中景主体站立，后景无层次','室外花园，前景花草与石径引导视线，中景主体站立，后景绿树与天空形成空间层次')

@@ -190,10 +190,10 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             "nsfw": True,
         })
 
-        self.assertEqual(result["positivePrompt"], base.replace(
+        self.assertEqual(result["positivePrompt"], SERVICE.normalize_art_sections(base.replace(
             "两位成年东方女性身穿华服，坐在丝绸床榻上温柔亲吻",
             "成年男人裸体躺在床上，仅呈现下半身，成年女人坐在男人身上",
-        ))
+        )))
         self.assertEqual(result["editContract"], "nf.art.semantic-fusion.v1")
         self.assertIn("补充要求（最高优先级）", captured["prompt"])
         self.assertIn("用户已开启 NSFW", captured["prompt"])
@@ -216,7 +216,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             return source if len(calls) == 1 else target
         assistant.generate = generate
         result = assistant.optimize_prompt({"surface":"art", "prompt":source, "requirements":"将成年女性替换为成年男性"})
-        self.assertEqual(result["positivePrompt"], target)
+        self.assertEqual(result["positivePrompt"], SERVICE.normalize_art_sections(target))
         self.assertEqual(len(calls), 2)
         self.assertIn(source, calls[1])
 
@@ -421,7 +421,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             assistant.generate = generate
             result = assistant.optimize_prompt({"surface":"art", "prompt":source, "requirements":"增加光影层次"})
             self.assertEqual(captured["max_length"], min(4096,max(1024,len(source)*2)))
-            self.assertEqual(result["positivePrompt"],target)
+            self.assertEqual(result["positivePrompt"], SERVICE.normalize_art_sections(target))
 
     def test_core_gender_only_preserves_unmentioned_action(self):
         raw_prompt = (
@@ -894,7 +894,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
     def test_non_art_and_create_budgets_are_unchanged(self):
         long_prompt = "长提示" * 1000
         cases = (
-            ({"surface": "art", "prompt": "", "requirements": "从零创作一位成年角色"}, 180),
+            ({"surface": "art", "prompt": "", "requirements": "从零创作一位成年角色"}, SERVICE.ART_CREATE_MAX_LENGTH),
             ({"surface": "animation", "prompt": long_prompt, "requirements": "保持动作"}, 240),
             ({"surface": "ui-design", "prompt": long_prompt, "requirements": "保持结构"}, 260),
             ({
@@ -931,7 +931,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
         })
         self.assertEqual(len(prompts), 1)
         self.assertIn("只输出完整中文正向提示词", prompts[0])
-        self.assertEqual(result["positivePrompt"], candidate)
+        self.assertEqual(result["positivePrompt"], SERVICE.normalize_art_sections(candidate))
         self.assertTrue(result["negativePrompt"])
 
     def test_supports_negative_prompt_false_returns_positive_only(self):
@@ -956,10 +956,10 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             "supportsNegativePrompt": False,
         })
         self.assertIn("只输出完整中文正向提示词", captured["prompt"])
-        self.assertEqual(result["positivePrompt"], candidate)
+        self.assertEqual(result["positivePrompt"], SERVICE.normalize_art_sections(candidate))
         self.assertIn("避免真人摄影", result["positivePrompt"])
         self.assertEqual(result["negativePrompt"], "")
-        self.assertEqual(result["rawOutput"], candidate)
+        self.assertEqual(result["rawOutput"], SERVICE.normalize_art_sections(candidate))
 
     def test_unchanged_art_edit_triggers_one_repair_and_applies_instruction(self):
         base = self.long_art_base()
@@ -995,7 +995,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
         self.assertIn("背景过于曝光", calls[0]["prompt"])
         self.assertGreaterEqual(calls[0]["max_length"], 1024)
         self.assertGreaterEqual(calls[1]["max_length"], 1024)
-        self.assertEqual(result["positivePrompt"], repaired)
+        self.assertEqual(result["positivePrompt"], SERVICE.normalize_art_sections(repaired))
         self.assertEqual(result["negativePrompt"], "")
 
     def test_second_unchanged_art_edit_raises_specific_bounded_error(self):
@@ -1552,7 +1552,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
         })
 
         self.assertEqual(len(calls), 1)
-        self.assertEqual(result["positivePrompt"], base)
+        self.assertEqual(result["positivePrompt"], SERVICE.normalize_art_sections(base))
 
         for instruction in ("保留人物和构图", "keep as is"):
             with self.subTest(instruction=instruction):
@@ -1592,7 +1592,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
         })
         self.assertEqual(len(calls), 2)
         self.assertIn("没有额外修改要求", calls[0])
-        self.assertEqual(result["positivePrompt"], enriched)
+        self.assertEqual(result["positivePrompt"], SERVICE.normalize_art_sections(enriched))
 
         echoing = SERVICE.PromptAssistant()
         echoing.generate = lambda prompt, **_kwargs: base
@@ -1641,7 +1641,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
 
         self.assertEqual(len(calls), 2)
         self.assertIn("patch-json-or-anchor-invalid", calls[1])
-        self.assertEqual(result["positivePrompt"], repaired)
+        self.assertEqual(result["positivePrompt"], SERVICE.normalize_art_sections(repaired))
 
     def test_priority_block_loss_is_repaired_once_from_original_base(self):
         priority_block = "要求：两位角色必须明确成年，四只手结构正确且归属明确。"
@@ -1682,7 +1682,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
         self.assertIn("missing-blocks:要求", calls[1]["prompt"])
         self.assertGreaterEqual(calls[0]["max_length"], 1024)
         self.assertGreaterEqual(calls[1]["max_length"], 1024)
-        self.assertEqual(result["positivePrompt"], repaired)
+        self.assertEqual(result["positivePrompt"], SERVICE.normalize_art_sections(repaired))
 
     def test_second_retention_failure_raises_bounded_contract_error(self):
         priority_block = "要求：两位角色必须明确成年，四只手结构正确且归属明确。"
@@ -1748,7 +1748,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
         self.assertIn("target_quote", calls[1])
         self.assertIn("避免：真人摄影", result["positivePrompt"])
         self.assertEqual(result["negativePrompt"], "")
-        self.assertEqual(result["rawOutput"], repaired)
+        self.assertEqual(result["rawOutput"], SERVICE.normalize_art_sections(repaired))
 
     def test_renderer_user_change_line_excludes_appended_quality_policy(self):
         requirements = (
@@ -1803,7 +1803,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
             ),
         })
         self.assertEqual(len(calls), 1)
-        self.assertEqual(result["positivePrompt"], repaired)
+        self.assertEqual(result["positivePrompt"], SERVICE.normalize_art_sections(repaired))
         self.assertIn("要求：两位角色必须明确成年", result["positivePrompt"])
         self.assertIn("避免：真人摄影", result["positivePrompt"])
         self.assertIn("画面目标：高完成度", result["positivePrompt"])
@@ -2009,7 +2009,7 @@ class PromptAssistantArtEditBudgetTests(unittest.TestCase):
         })
         self.assertIn("负向空间", result["positivePrompt"])
         self.assertEqual(result["negativePrompt"], "")
-        self.assertEqual(result["rawOutput"], candidate)
+        self.assertEqual(result["rawOutput"], SERVICE.normalize_art_sections(candidate))
 
     def test_positive_only_folds_violating_negative_line_into_avoidance(self):
         base = self.long_art_base()
