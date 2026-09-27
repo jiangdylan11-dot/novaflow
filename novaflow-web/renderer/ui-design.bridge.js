@@ -1362,7 +1362,11 @@
     started = true
     const documentRef = root.document
     documentRef.addEventListener?.('click', (event) => {
-      if (isNavigationClick(event)) scheduleSync()
+      if (!isNavigationClick(event)) return
+      // Mount before the next paint: from a timer alone, 绘图 -> UI painted a
+      // frame with an empty canvas, no resource panel and 绘图's left panel.
+      root.requestAnimationFrame?.(() => sync())
+      scheduleSync()
     }, true)
     root.addEventListener?.('novaflow:app-ready', () => scheduleSync([0, 100, 300]))
     root.addEventListener?.('resize', () => {

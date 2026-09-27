@@ -3570,11 +3570,12 @@
     // column when the first mutations arrive.
     // 工具 has no group headers: its tool list stands in for them, or the veil sat out its timeout there.
     const GROUP_SELECTOR = ".nf-panel-header, [data-novaflow-spine-split-control-category-toggle], [data-novaflow-tools-entry]";
-    const oldGroups = new Set(document.querySelectorAll(GROUP_SELECTOR));
-    const newGroupsIn = () => {
-      const root = document.querySelector('[data-novaflow-left-content-root="1"]');
-      return Boolean(root && Array.from(root.querySelectorAll(GROUP_SELECTOR)).some((node) => !oldGroups.has(node) && node.getClientRects().length));
-    };
+    // Visible ones only: 美工's groups stay in the document while hidden, and
+    // counting them as old kept its veil down a blank frame after they showed.
+    const oldGroups = new Set(Array.from(document.querySelectorAll(GROUP_SELECTOR)).filter((node) => node.getClientRects().length));
+    // Anywhere on the page: 美工 UI's groups sit in their own root beside the column's.
+    const newGroupsIn = () => Array.from(document.querySelectorAll(GROUP_SELECTOR))
+      .some((node) => !oldGroups.has(node) && node.getClientRects().length);
     const runsAtClick = (window.__novaflowSpecStats || {}).runs || 0;
     const startedAt = performance.now();
     let frames = 0;
@@ -3594,6 +3595,9 @@
     };
     let lastPreviewFrameBox = null;
     const previewFrameSettled = () => {
+      // Only a narrow window refits the frame; a wide one had it in place
+      // from the first frame, and waiting blanked 特效 for two frames.
+      if (html.getAttribute("data-novaflow-layout-tier") === "wide") return true;
       const box = previewFrameBox();
       const settled = box === "" || box === lastPreviewFrameBox;
       lastPreviewFrameBox = box;
