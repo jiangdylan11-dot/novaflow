@@ -82423,16 +82423,33 @@
     panel.style.setProperty("visibility", "visible", "important");
     panel.style.setProperty("opacity", "1", "important");
     panel.style.setProperty("pointer-events", "auto", "important");
-    panel.innerHTML = "";
-    if (!ART_GENERATE_STATE.results.length) {
-      panel.appendChild(createArtEl("div", { className: "novaflow-art-generate-empty", text: "\u8d44\u6e90\u548c\u56fe\u5c42\u533a\u57df" }));
+    // Every 生图 render lands here (a click, a progress tick, a resize). Rebuilding
+    // re-decoded every result image, flashed them white and sent the list back to
+    // the top; the list is rebuilt only when the results themselves change.
+    const signature = ART_GENERATE_STATE.results.map((result) => {
+      const url = String(result.imageUrl || "");
+      return [result.id, result.mode, result.name, url.length, url.slice(-24)].join("|");
+    }).join(";");
+    if (panel.getAttribute("data-novaflow-art-generate-results-signature") === signature && panel.querySelector(":scope > [data-novaflow-art-generate-right-content]")) {
+      panel.querySelectorAll(`[${ART_GENERATE_RESULT_ATTR}]`).forEach((row) => {
+        nfSetAttrIfChanged(row, "data-selected", ART_GENERATE_STATE.selectedResultId === row.getAttribute(ART_GENERATE_RESULT_ATTR) ? "1" : "0");
+      });
       return;
     }
-    const scroll = createArtEl("div", { className: "novaflow-art-generate-right-scroll" });
+    const previousScroll = panel.querySelector(".novaflow-art-generate-right-scroll");
+    const scrollTop = previousScroll ? previousScroll.scrollTop : 0;
+    panel.innerHTML = "";
+    panel.setAttribute("data-novaflow-art-generate-results-signature", signature);
+    if (!ART_GENERATE_STATE.results.length) {
+      panel.appendChild(createArtEl("div", { className: "novaflow-art-generate-empty", "data-novaflow-art-generate-right-content": "1", text: "\u8d44\u6e90\u548c\u56fe\u5c42\u533a\u57df" }));
+      return;
+    }
+    const scroll = createArtEl("div", { className: "novaflow-art-generate-right-scroll", "data-novaflow-art-generate-right-content": "1" });
     ART_GENERATE_STATE.results.slice().reverse().forEach((result, index) => {
       scroll.appendChild(renderArtGenerateResultSet(result, ART_GENERATE_STATE.results.length - index));
     });
     panel.appendChild(scroll);
+    if (scrollTop) scroll.scrollTop = scrollTop;
   }
 
   function renderArtGenerateResultSet(result, index) {
