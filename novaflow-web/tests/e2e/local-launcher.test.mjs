@@ -1,8 +1,15 @@
 import assert from 'node:assert/strict';
+import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { createLauncherFixture } from '../helpers/launcher-fixture.mjs';
 let checks = 0;
 const equal = (a, b) => { assert.equal(a, b); checks++; };
 const f = await createLauncherFixture();
+// Launch clears what the last run left: task files and records, ComfyUI inputs, outputs and previews.
+const comfyDir = path.join(tmpdir(), 'NovaFlow', 'AI-Runtime', 'runtime-generated');
+const runFiles = [path.join(tmpdir(), 'data', 'tasks'), ...['input', 'output', 'temp-root'].map(dir => path.join(comfyDir, dir))]
+  .map(dir => path.join(dir, 'leftover')).concat(path.join(tmpdir(), 'data', 'local-tasks.json'));
+equal(JSON.stringify(f.removed), JSON.stringify(runFiles));
 equal(f.windows.length, 1);
 equal((await f.call('getState')).registration.status, 'new');
 f.identity = { workerId: 'test-node-id', workerSecret: 'private-secret-never-render', workerName: 'saved-node', controlUrl: 'https://control.test/', savedAt: '2026-09-22T00:00:00Z' };
@@ -79,7 +86,11 @@ f.tray.emit('click');
 equal(f.windows[0].hidden, false);
 equal(f.tray.tooltip, 'NovaFlow');
 equal(f.app.userData.endsWith('NovaFlow Worker'), true);
+f.removed.length = 0;
+f.config.warehouseFolders = [path.join(comfyDir, 'output', 'kept')];
 await f.tray.menu.find(item => item.label === '退出本地助手').click();
+// Quit clears the same files, but never a folder that holds the user's warehouse.
+equal(JSON.stringify(f.removed), JSON.stringify(runFiles.filter(file => !file.startsWith(path.join(comfyDir, 'output')))));
 equal(f.instances.at(-1).stopped, true);
 equal(f.app.quitCalled, true);
 prevented = false;

@@ -195,16 +195,40 @@ function showWindow() {
   win.focus();
 }
 
+// Everything a run leaves on this machine - local and shared tasks' files and
+// records, and ComfyUI's inputs, outputs and previews - is cleared on quit, and
+// on launch in case the last run never quit. The page saves each result it
+// fetches into the user's warehouse, and a folder that holds or sits inside a
+// known warehouse folder is never touched.
+function clearRunFiles() {
+  const comfy = process.env?.NOVAFLOW_AI_RUNTIME_GENERATED_DIR || path.join(app.getPath('temp'), 'NovaFlow', 'AI-Runtime', 'runtime-generated');
+  const warehouses = (readConfig().warehouseFolders || []).map(folder => path.resolve(folder));
+  const within = (inner, outer) => { const rel = path.relative(outer, inner); return !rel.startsWith('..') && !path.isAbsolute(rel); };
+  for (const dir of [path.join(DATA_DIR, 'tasks'), path.join(comfy, 'input'), path.join(comfy, 'output'), path.join(comfy, 'temp-root')]) {
+    if (warehouses.some(folder => within(folder, dir) || within(dir, folder))) continue;
+    let names = [];
+    try { names = fs.readdirSync(dir); } catch { continue; }
+    for (const name of names) {
+      try { fs.rmSync(path.join(dir, name), { recursive: true, force: true, maxRetries: 2 }); }
+      catch (error) { log('could not clear run file', { file: path.join(dir, name), error: String(error.message || error) }); }
+    }
+  }
+  try { fs.rmSync(path.join(DATA_DIR, 'local-tasks.json'), { force: true }); } catch { /* recreated on start */ }
+}
+
+async function quitAssistant() {
+  await command(async () => { await worker?.stop(); worker = null; }).catch(() => {});
+  clearRunFiles();
+  app.quit();
+}
+
 function createTray() {
   tray = new Tray(path.join(__dirname, 'assets/favicon.ico'));
   tray.setToolTip('NovaFlow');
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: '打开本地助手', click: showWindow },
     { type: 'separator' },
-    { label: '退出本地助手', click: async () => {
-      await command(async () => { await worker?.stop(); worker = null; }).catch(() => {});
-      app.quit();
-    } }
+    { label: '退出本地助手', click: quitAssistant }
   ]));
   tray.on('click', showWindow);
 }
@@ -352,10 +376,7 @@ app.whenReady().then(() => {
 });
 app.on('before-quit', () => { quitting = true; });
 
-app.on('window-all-closed', async () => {
-  await command(async () => { await worker?.stop(); worker = null; }).catch(() => {});
-  app.quit();
-});
+app.on('window-all-closed', quitAssistant);
 
 app.on('activate', showWindow);
 
@@ -364,6 +385,9 @@ app.on('activate', showWindow);
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
+  // Only the instance that owns the worker may clear its files; a second
+  // launch (e.g. a warehouse link) must not touch a running task's folder.
+  clearRunFiles();
   app.on('second-instance', (_event, argv = []) => {
     if (argv.some(value => typeof value === 'string' && value.startsWith('novaflow:'))) void handleWarehouseLink(argv);
     else showWindow();

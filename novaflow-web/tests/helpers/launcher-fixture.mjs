@@ -14,7 +14,7 @@ export async function createLauncherFixture() {
     quit() { this.emit('before-quit'); this.quitCalled = true; } });
   const fixture = { config: { controlUrl: 'https://control.test', registrationCode: 'test-node' },
     licenseState: { status: 'unlicensed', locked: true, machineId: 'TEST-MACHINE-ONLY' },
-    localFailure: false, fileCanceled: true, handlers, instances, windows, opened, events, app };
+    localFailure: false, fileCanceled: true, handlers, instances, windows, opened, events, app, removed: [] };
   const license = {
     state: async () => fixture.licenseState,
     async importLicense(text) {
@@ -45,6 +45,7 @@ export async function createLauncherFixture() {
   }
   const fakeFs = {
     mkdirSync() {}, existsSync() { return true; }, appendFileSync() {},
+    readdirSync: () => ['leftover'], rmSync: file => { fixture.removed.push(String(file)); },
     readFileSync: file => JSON.stringify(String(file).endsWith('identity.json') ? fixture.identity || {} : fixture.config),
     writeFileSync: (_file, data) => { fixture.config = JSON.parse(data); },
     promises: { readFile: async () => 'test-only-license' }
