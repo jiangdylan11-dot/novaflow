@@ -2291,3 +2291,32 @@ html body.novaflow-ai-animation-section-layers.novaflow-ai-bottom-workspace-acti
   outline: 1px solid var(--nf-focus) !important;
   outline-offset: 1px !important;
 }
+
+/* 2.8 One scrollbar: thin, #3A3A3A on nothing. Zero specificity, so every
+   rule that hides a scrollbar (nf-hide-scrollbar, scrollbar-width: none)
+   still wins. The left column had its own faint blue-grey one. */
+:where(html body *) {
+  scrollbar-width: thin;
+  scrollbar-color: #3A3A3A transparent;
+}
+:where(.nf-hide-scrollbar) {
+  scrollbar-width: none;
+}
+
+/* 2.9 The green 导入 of 骨骼's import rows is a main action: 600 like the others
+   (it stays 28 tall, the height of the fields in its row). */
+html body [data-novaflow-spine-inline-import-row="1"] > button[data-novaflow-spine-inline-import-action="1"] {
+  font-weight: 600 !important;
+}
+
+/* 2.10 特效's 选择预设 picker (a button standing in for a select) is a
+   dropdown like the others: 32 tall, 12/400 (it was 34 tall, 12/500). */
+html body.novaflow-primary-target-particle button[aria-haspopup="listbox"][data-novaflow-field-fill="1"] {
+  height: 32px !important;
+  min-height: 32px !important;
+  max-height: 32px !important;
+  padding: 0 10px !important;
+  font-size: 12px !important;
+  font-weight: 400 !important;
+  box-sizing: border-box !important;
+}

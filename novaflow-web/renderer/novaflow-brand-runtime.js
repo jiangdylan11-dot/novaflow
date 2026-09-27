@@ -2262,8 +2262,9 @@
   const AI_ANIMATION_STABLE_CENTER_MIN_SHIFT = 12;
   const NOVAFLOW_UNIFORM_GAP = 5;
   const NOVAFLOW_RECT_RADIUS_PX = "7px";
-  // Dialog titles are 600 (theme 2.1), whatever the weight pass would give them.
-  const NOVAFLOW_DIALOG_TITLE_SELECTOR = '[data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title, #novaflow-web-account-title, .nf-node-header h2';
+  // Dialog titles and the small green 导入 buttons of 骨骼's import rows are 600
+  // (theme 2.1 / 2.9), whatever the weight pass or the blanket 400 would give them.
+  const NOVAFLOW_DIALOG_TITLE_SELECTOR = '[data-nf-dialog="title"], .novaflow-art-export-title, .novaflow-smart-ai-title, .nf-wh-title, #novaflow-web-account-title, .nf-node-header h2, [data-novaflow-spine-inline-import-action="1"]';
   const NOVAFLOW_RECT_RADIUS_TOP_PX = `${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX} 0 0`;
   const NOVAFLOW_RECT_RADIUS_BOTTOM_PX = `0 0 ${NOVAFLOW_RECT_RADIUS_PX} ${NOVAFLOW_RECT_RADIUS_PX}`;
   const SECONDARY_CONTENT_GAP = NOVAFLOW_UNIFORM_GAP;
@@ -22696,7 +22697,7 @@
         overscroll-behavior: contain !important;
         pointer-events: auto !important;
         scrollbar-width: thin !important;
-        scrollbar-color: rgba(150, 156, 164, 0.16) transparent !important;
+        scrollbar-color: #3A3A3A transparent !important;
         -ms-overflow-style: auto !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-left-content-root="1"]:not([data-novaflow-source-layout="1"])::-webkit-scrollbar {
@@ -22729,7 +22730,7 @@
         height: 0 !important;
       }
       body.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-left-content-root="1"]:not([data-novaflow-source-layout="1"])::-webkit-scrollbar-thumb {
-        background: rgba(150, 156, 164, 0.16) !important;
+        background: #3A3A3A !important;
         border-radius: 999px !important;
         border: 0 !important;
         background-clip: content-box !important;
@@ -22742,7 +22743,7 @@
         background-color: transparent !important;
         background-image: none !important;
         scrollbar-width: thin !important;
-        scrollbar-color: rgba(150, 156, 164, 0.16) transparent !important;
+        scrollbar-color: #3A3A3A transparent !important;
       }
       body.novaflow-primary-target-particle.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-left-content-root="1"][data-novaflow-source-layout="1"]::-webkit-scrollbar {
         width: 6px !important;
@@ -22774,7 +22775,7 @@
         height: 0 !important;
       }
       body.novaflow-primary-target-particle.novaflow-blackgray-preview-with-bottom-controls [data-novaflow-left-content-root="1"][data-novaflow-source-layout="1"]::-webkit-scrollbar-thumb {
-        background: rgba(150, 156, 164, 0.16) !important;
+        background: #3A3A3A !important;
         border-radius: 999px !important;
         border: 0 !important;
         background-clip: content-box !important;
@@ -30999,7 +31000,9 @@
         primary = primaryByButton.get(button);
       }
       if (node.matches(NOVAFLOW_DIALOG_TITLE_SELECTOR)) primary = true;
-      setStylePropertyIfChanged(node, "font-weight", primary ? NOVAFLOW_PRIMARY_FONT_WEIGHT : (medium ? NOVAFLOW_MEDIUM_FONT_WEIGHT : NOVAFLOW_NORMAL_FONT_WEIGHT), "important");
+      // A button standing in for a select (特效's 选择预设) reads like a select: 400.
+      const picker = Boolean(node.closest('button[aria-haspopup="listbox"][data-novaflow-field-fill="1"]'));
+      setStylePropertyIfChanged(node, "font-weight", primary ? NOVAFLOW_PRIMARY_FONT_WEIGHT : (medium && !picker ? NOVAFLOW_MEDIUM_FONT_WEIGHT : NOVAFLOW_NORMAL_FONT_WEIGHT), "important");
     };
     if (root.matches(selector)) apply(root);
     nfAnimationPerfRunVisualRhythmStep("queryCandidates", () => Array.from(root.querySelectorAll(selector))).forEach(apply);
@@ -32446,7 +32449,9 @@
     if (isNovaflowTopOnlyRectRadius(element, profile)) {
       return {
         value: NOVAFLOW_RECT_RADIUS_TOP_PX,
-        corners: [8, 8, 0, 0]
+        // The corners it writes (7px): reporting 8 made every pass see these
+        // as off-target and rewrite them.
+        corners: [NOVAFLOW_RECT_RADIUS_NUMBER, NOVAFLOW_RECT_RADIUS_NUMBER, 0, 0]
       };
     }
     const hasSquareCorner = [profile.topLeft, profile.topRight, profile.bottomRight, profile.bottomLeft]
@@ -34407,7 +34412,7 @@
         // 选择预设 is a picker: the select's fill, not a black bar.
         when: "body.novaflow-primary-target-particle",
         selector: "[data-novaflow-sprite-editor-lifecycle-preset-button]",
-        style: { background: "#262626", "background-color": "#262626", border: "1px solid #343434", "border-radius": "6px", color: "#e9e9e9", height: "32px", "min-height": "32px" }
+        style: { background: "#262626", "background-color": "#262626", border: "1px solid #343434", "border-radius": "6px", color: "#e9e9e9", height: "32px", "min-height": "32px", "max-height": "32px", "box-sizing": "border-box", "font-size": "12px", "font-weight": NOVAFLOW_NORMAL_FONT_WEIGHT }
       },
       {
         when: "body.novaflow-primary-target-particle",
@@ -57367,7 +57372,7 @@
         nfSetStyleIfChanged(parent, "overflow-y", "auto", "important");
         nfSetStyleIfChanged(parent, "overscroll-behavior", "contain", "important");
         nfSetStyleIfChanged(parent, "scrollbar-width", "thin", "important");
-        nfSetStyleIfChanged(parent, "scrollbar-color", "rgba(150, 156, 164, 0.16) transparent", "important");
+        nfSetStyleIfChanged(parent, "scrollbar-color", "#3A3A3A transparent", "important");
         nfSetStyleIfChanged(parent, "pointer-events", "auto", "important");
         nfSetStyleIfChanged(parent, "touch-action", "pan-y", "important");
         nfSetStyleIfChanged(parent, "z-index", "30", "important");
