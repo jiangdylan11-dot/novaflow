@@ -2293,3 +2293,25 @@ html body.novaflow-primary-target-particle button[aria-haspopup="listbox"][data-
   font-weight: 400 !important;
   box-sizing: border-box !important;
 }
+
+/* 2.11 Every 工具 upload well reads like 压缩's: the plus above the label,
+   13/500 in the well's grey (MP4 压缩, PNG 去黑, 视频格式转换 and SPINE 图集转换
+   had "+  选择 …" on one line). */
+html body :is(.nf-mp4-upload, .nf-prb-upload, .nf-vfc-upload, .nf-saw-upload) {
+  flex-direction: column !important;
+  gap: 7px !important;
+  color: #B9B9B9 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+html body .nf-tool-upload-plus {
+  position: relative !important;
+  display: block !important;
+  flex: 0 0 auto !important;
+  width: 18px !important;
+  height: 18px !important;
+  font-size: 0 !important;
+}
+html body :is(.nf-mp4-upload, .nf-prb-upload, .nf-vfc-upload, .nf-saw-upload) > span {
+  color: #B9B9B9 !important;
+}

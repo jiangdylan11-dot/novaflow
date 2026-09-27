@@ -39,7 +39,7 @@
       #${ROOT_ID} :where(.nf-prb-upload,.nf-prb-btn,.nf-prb-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"]):hover{filter:brightness(1.08);border-color:rgba(255,255,255,.20)!important}
       #${ROOT_ID} :where(.nf-prb-upload,.nf-prb-btn,.nf-prb-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"]):hover::after{opacity:1}
       #${ROOT_ID} :where(.nf-prb-upload,.nf-prb-btn,.nf-prb-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"]):active{filter:brightness(1.02)}
-      #${ROOT_ID} :where(.nf-prb-upload,.nf-prb-btn,.nf-prb-top-actions button):focus-visible{outline:2px solid rgba(255,255,255,.22);outline-offset:2px}
+      #${ROOT_ID} :where(.nf-prb-upload,.nf-prb-btn,.nf-prb-top-actions button):focus-visible{outline:none}
       #${ROOT_ID} :where(.nf-prb-upload,.nf-prb-btn,.nf-prb-top-actions button):is(:disabled,[disabled],[aria-disabled="true"]){opacity:.45;cursor:default;filter:none}
       #${ROOT_ID} :where(.nf-prb-upload,.nf-prb-btn,.nf-prb-top-actions button):is(:disabled,[disabled],[aria-disabled="true"]):hover{filter:none}
       .nf-prb-top-actions{position:absolute;right:26px;top:14px;display:flex;gap:8px}#${ROOT_ID} .nf-prb-top-actions button{width:102px;height:36px;padding:0 12px;border:0;border-radius:8px;background:linear-gradient(135deg,rgba(30,166,114,.96),rgba(30,166,114,.92));color:#effcf5;font-size:12px!important;font-weight:400!important;line-height:normal!important}#${ROOT_ID} .nf-prb-top-actions button:last-child{background:#b98218;color:#fff2c0;border-color:rgba(255,211,105,.32)}#${ROOT_ID} .nf-prb-top-actions button:disabled{opacity:.45;cursor:default;filter:none}
@@ -314,7 +314,7 @@
     root.innerHTML = `
       <input data-prb-file type="file" accept="image/png,.png" multiple hidden>
       <div class="nf-prb-side">
-        <button class="nf-prb-upload" data-prb-pick>＋　选择 PNG</button>
+        <button class="nf-prb-upload" data-prb-pick><span class="nf-tool-upload-plus" data-novaflow-plus-glyph="1" aria-hidden="true"></span><span>选择 PNG</span></button>
         <div class="nf-prb-controls"><div class="nf-prb-actions"><button class="nf-prb-btn" data-prb-run ${state.processing || !state.items.length ? 'disabled' : ''}>${state.processing ? '处理中…' : '开始去黑'}</button><button class="nf-prb-btn alt" data-prb-clear ${state.processing || !state.items.length ? 'disabled' : ''}>清空</button></div><div class="nf-prb-count">已选 ${state.items.length} 张｜完成 ${done} 张｜可导出 ${done} 张</div><div class="nf-prb-status">${state.processing ? '正在按顺序处理 PNG，请稍候…' : ''}</div></div>
         <div class="nf-prb-list">${state.items.length ? state.items.map((item) => `<div class="nf-prb-item ${item.id === selected?.id ? 'active' : ''}" data-prb-item="${item.id}" role="button" tabindex="0"><img class="nf-prb-thumb" src="${item.dataUrl}"><div class="nf-prb-item-info"><div class="nf-prb-item-name">${escapeHtml(item.name)}</div><div class="nf-prb-item-meta">${item.width} × ${item.height}</div><div class="nf-prb-item-meta nf-prb-item-status">${escapeHtml(item.status)}</div></div><button class="nf-prb-item-delete" type="button" data-prb-delete="${item.id}" aria-label="删除 ${escapeHtml(item.name)}">×</button></div>`).join('') : '<div class="nf-prb-empty">支持批量 PNG 去黑</div>'}</div>
       </div>

@@ -80,7 +80,7 @@
       #${ROOT_ID} :where(.nf-vfc-upload,.nf-vfc-btn,.nf-vfc-format,.nf-vfc-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"]):hover{filter:brightness(1.08);border-color:rgba(255,255,255,.20)!important}
       #${ROOT_ID} :where(.nf-vfc-upload,.nf-vfc-btn,.nf-vfc-format,.nf-vfc-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"]):hover::after{opacity:1}
       #${ROOT_ID} :where(.nf-vfc-upload,.nf-vfc-btn,.nf-vfc-format,.nf-vfc-top-actions button):not(:disabled):not([disabled]):not([aria-disabled="true"]):active{filter:brightness(1.02)}
-      #${ROOT_ID} :where(.nf-vfc-upload,.nf-vfc-btn,.nf-vfc-format,.nf-vfc-top-actions button):focus-visible{outline:2px solid rgba(255,255,255,.22);outline-offset:2px}
+      #${ROOT_ID} :where(.nf-vfc-upload,.nf-vfc-btn,.nf-vfc-format,.nf-vfc-top-actions button):focus-visible{outline:none}
       #${ROOT_ID} :where(.nf-vfc-upload,.nf-vfc-btn,.nf-vfc-format,.nf-vfc-top-actions button):is(:disabled,[disabled],[aria-disabled="true"]){opacity:.45;cursor:default;filter:none}
       #${ROOT_ID} :where(.nf-vfc-upload,.nf-vfc-btn,.nf-vfc-format,.nf-vfc-top-actions button):is(:disabled,[disabled],[aria-disabled="true"]):hover{filter:none}
       .nf-vfc-top-actions{position:absolute;right:26px;top:14px;display:flex;gap:8px}#${ROOT_ID} .nf-vfc-top-actions button{width:102px;height:36px;padding:0 12px;border:0;border-radius:8px;background:linear-gradient(135deg,rgba(30,166,114,.96),rgba(30,166,114,.92));color:#effcf5;font-size:12px!important;font-weight:400!important;line-height:normal!important}#${ROOT_ID} .nf-vfc-top-actions button:disabled{opacity:.45;cursor:default;filter:none}
@@ -468,7 +468,7 @@
       <input data-vfc-file type="file" accept="video/*,${INPUT_EXTENSIONS.join(',')}" multiple hidden>
       <div class="nf-vfc-side">
         <div class="nf-vfc-formats">${FORMATS.map((format) => `<button class="nf-vfc-format ${format.id === state.format ? 'active' : ''}" data-vfc-format="${format.id}" ${state.processing ? 'disabled' : ''}>${format.label}</button>`).join('')}</div>
-        <button class="nf-vfc-upload" data-vfc-pick>＋　选择视频</button>
+        <button class="nf-vfc-upload" data-vfc-pick><span class="nf-tool-upload-plus" data-novaflow-plus-glyph="1" aria-hidden="true"></span><span>选择视频</span></button>
         <div class="nf-vfc-controls">
           <label class="nf-vfc-scale"><span>输出尺寸 ${state.scalePct}%</span><input data-vfc-scale data-novaflow-tools-range="1" type="range" min="10" max="200" value="${state.scalePct}" ${state.processing ? 'disabled' : ''}></label>
           <div class="nf-vfc-hint">${escapeHtml(active.id === 'webm' && window.electronAPI?.videoToolsEngine === 'ffmpeg.wasm' ? 'VP8 + Opus（网页版的 ffmpeg.wasm 暂不能编 VP9），网页内嵌可用；要 VP9 请用桌面版。' : active.note)}</div>
