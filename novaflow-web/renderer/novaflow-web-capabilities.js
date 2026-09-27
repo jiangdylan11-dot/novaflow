@@ -115,7 +115,8 @@
       const label = task.text + (task.progress01 == null ? '' : ' ' + Math.round(task.progress01 * 100) + '%');
       if (task.textNode.textContent !== label) task.textNode.textContent = label;
       task.textNode.title = task.text;
-      task.bar.style.display = task.progress01 == null ? 'none' : '';
+      // Kept in the layout: the card is centred, and a bar appearing mid-task moved it up.
+      task.bar.style.visibility = task.progress01 == null ? 'hidden' : 'visible';
       if (task.progress01 != null) task.fill.style.width = Math.round(task.progress01 * 100) + '%';
     }
     const clamp01 = (value) => (value == null ? null : Math.max(0, Math.min(1, Number(value) || 0)));
