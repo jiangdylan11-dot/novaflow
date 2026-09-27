@@ -22644,6 +22644,7 @@
       state.selectedPartIds = [patchPart.id]
       committedPart = patchPart
       resetSelectionTool()
+      state.viewMode = 'parts'
       await refreshSplitPreview()
       syncActiveSplitSet()
       await cacheTempSplitPackage()
@@ -22821,6 +22822,74 @@
     return { ...patchLayer, id, name: id, prompt: `Inpaint patch for ${part.name || part.id}`, layer, manualLayer: true, pivot: part.pivot, visible: true, needsInpaint: false, spineReady: true, sourceLayerId: part.id, nonMaskChangedPixels: changedOutsideMask }
   }
 
+  // Three passes of a separable box blur (close to a Gaussian of sigma ~ radius) over a float field.
+  function boxBlurField(values, width, height, radius) {
+    const span = radius * 2 + 1
+    const tmp = new Float32Array(values.length)
+    let src = values
+    for (let pass = 0; pass < 3; pass += 1) {
+      const out = new Float32Array(values.length)
+      for (let y = 0; y < height; y += 1) {
+        const row = y * width
+        let sum = 0
+        for (let k = -radius; k <= radius; k += 1) sum += src[row + Math.min(width - 1, Math.max(0, k))]
+        for (let x = 0; x < width; x += 1) {
+          tmp[row + x] = sum / span
+          sum += src[row + Math.min(width - 1, x + radius + 1)] - src[row + Math.max(0, x - radius)]
+        }
+      }
+      for (let x = 0; x < width; x += 1) {
+        let sum = 0
+        for (let k = -radius; k <= radius; k += 1) sum += tmp[Math.min(height - 1, Math.max(0, k)) * width + x]
+        for (let y = 0; y < height; y += 1) {
+          out[y * width + x] = sum / span
+          sum += tmp[Math.min(height - 1, y + radius + 1) * width + x] - tmp[Math.max(0, y - radius) * width + x]
+        }
+      }
+      src = out
+    }
+    return src
+  }
+
+  // FLUX with the removal LoRA decodes the whole crop ~9 levels darker than the source (the new fill
+  // shifts the VAE decoder's statistics), so the pasted hole met the original with a dark ring. Measure
+  // source - result in a band just outside the stroke and spread it inward; the caller fades it out
+  // across the feather, so the edge meets the original tone and the middle stays as FLUX drew it.
+  function removalSeamOffsets(finalData, finalWidth, finalHeight, resultData, hardData, softData, cropBox) {
+    const w = cropBox.width
+    const h = cropBox.height
+    const weight = new Float32Array(w * h)
+    const diff = [new Float32Array(w * h), new Float32Array(w * h), new Float32Array(w * h)]
+    let samples = 0
+    for (let y = 0; y < h; y += 1) {
+      const fy = cropBox.y + y
+      if (fy < 0 || fy >= finalHeight) continue
+      for (let x = 0; x < w; x += 1) {
+        const fx = cropBox.x + x
+        if (fx < 0 || fx >= finalWidth) continue
+        const p = y * w + x
+        const ci = p * 4
+        // Outside the stroke, within ~2 feather widths of it; transparent pixels have no tone to match.
+        if (maskPixelValue(hardData, ci) > 8 || maskPixelValue(softData, ci) < 3) continue
+        const fi = (fy * finalWidth + fx) * 4
+        if (finalData[fi + 3] < 250) continue
+        weight[p] = 1
+        for (let c = 0; c < 3; c += 1) diff[c][p] = finalData[fi + c] - resultData[ci + c]
+        samples += 1
+      }
+    }
+    if (samples < 16) return null
+    const spread = boxBlurField(weight, w, h, 24)
+    const offsets = diff.map((channel) => boxBlurField(channel, w, h, 24))
+    for (let p = 0; p < w * h; p += 1) {
+      const k = spread[p] > 0.001 ? 1 / spread[p] : 0
+      offsets[0][p] *= k
+      offsets[1][p] *= k
+      offsets[2][p] *= k
+    }
+    return offsets
+  }
+
   function compositeRemovalRgbResult(layerOriginalCanvas, resultCropCanvas, cropMaskCanvas, cropBox) {
     const finalCanvas = cloneCanvas(layerOriginalCanvas)
     const finalCtx = finalCanvas.getContext('2d', { willReadFrequently: true })
@@ -22830,6 +22899,7 @@
     const softMaskCanvas = featherMaskCanvas(hardMaskCanvas, 8)
     const hard = hardMaskCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, cropBox.width, cropBox.height)
     const soft = softMaskCanvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, cropBox.width, cropBox.height)
+    const offsets = removalSeamOffsets(finalImage.data, finalCanvas.width, finalCanvas.height, result.data, hard.data, soft.data, cropBox)
     let compositedPixels = 0
     let featherPixels = 0
     for (let y = 0; y < cropBox.height; y += 1) {
@@ -22845,9 +22915,15 @@
         if (m <= 0.002) continue
         const originalAlpha = finalImage.data[fi + 3]
         const resultAlpha = result.data[ci + 3] > 8 ? result.data[ci + 3] : 255
-        finalImage.data[fi] = Math.round(result.data[ci] * m + finalImage.data[fi] * (1 - m))
-        finalImage.data[fi + 1] = Math.round(result.data[ci + 1] * m + finalImage.data[fi + 1] * (1 - m))
-        finalImage.data[fi + 2] = Math.round(result.data[ci + 2] * m + finalImage.data[fi + 2] * (1 - m))
+        // Full tone correction at the stroke edge (m ~ 0.5), none once the feather is done (m ~ 1).
+        const p = y * cropBox.width + x
+        const fade = offsets ? clampNumber((1 - m) * 2, 0, 1) : 0
+        const r = result.data[ci] + (fade ? offsets[0][p] * fade : 0)
+        const g = result.data[ci + 1] + (fade ? offsets[1][p] * fade : 0)
+        const b = result.data[ci + 2] + (fade ? offsets[2][p] * fade : 0)
+        finalImage.data[fi] = Math.round(r * m + finalImage.data[fi] * (1 - m))
+        finalImage.data[fi + 1] = Math.round(g * m + finalImage.data[fi + 1] * (1 - m))
+        finalImage.data[fi + 2] = Math.round(b * m + finalImage.data[fi + 2] * (1 - m))
         finalImage.data[fi + 3] = Math.max(originalAlpha, Math.round(resultAlpha * m + originalAlpha * (1 - m)), Math.round(255 * m))
         compositedPixels += 1
         if (m < 0.995) featherPixels += 1
@@ -22982,6 +23058,7 @@
       state.selectedPartIds = [patchPart.id]
       committedPart = patchPart
       resetSelectionTool()
+      state.viewMode = 'parts' // the board shows every visible layer again, not just the new patch
       await refreshSplitPreview()
       syncActiveSplitSet()
       await cacheTempSplitPackage()

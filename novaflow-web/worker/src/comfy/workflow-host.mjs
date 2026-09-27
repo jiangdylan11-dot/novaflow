@@ -225,12 +225,21 @@ export async function createWorkflowHost({ rendererDir, logger, comfy, objectInf
       if (!GRAPH_METHODS.has(String(method))) {
         throw new Error('not a graph-building method: ' + method);
       }
+      // A builder that checks the node catalogue (runtimeInfo: the NSFW 修图 graph) gets this node's own,
+      // never the browser's: the browser has none, and its empty stand-in failed every NSFW run with
+      // "missing required node: CheckpointLoaderSimple".
+      let request = options;
+      if (options && typeof options === 'object' && Object.prototype.hasOwnProperty.call(options, 'runtimeInfo')) {
+        let catalogue = null;
+        try { catalogue = await sandbox.electronAPI.__refreshObjectInfo(); } catch (_) { catalogue = sandbox.electronAPI.__objectInfoSync(); }
+        request = Object.assign({}, options, { runtimeInfo: catalogue });
+      }
       // A builder validates its own options and throws when a panel sends
       // something it does not support. That is a task failure with a useful
       // message, not a crash.
       let result;
       try {
-        result = await builder(options);
+        result = await builder(request);
       } catch (error) {
         throw new Error(module + '.' + method + ' refused these options: ' +
           String(error && error.message ? error.message : error));

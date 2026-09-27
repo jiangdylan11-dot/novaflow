@@ -176,6 +176,27 @@ try {
   }
 
   // -------------------------------------------------------------------------
+  section('the NSFW 修图 graph checks this node\'s catalogue, not the browser\'s');
+  {
+    const node = { input: { required: {} } };
+    const objectInfo = {
+      CheckpointLoaderSimple: { input: { required: { ckpt_name: [['Qwen-Rapid-AIO-NSFW-v20.safetensors']] } } },
+      LoadImage: node, ImageToMask: node, TextEncodeQwenImageEditPlus: node, TextEncodeQwenImageEdit: node,
+      InpaintModelConditioning: node, KSampler: node, VAEDecode: node, SaveImage: node
+    };
+    const host = await createWorkflowHost({ rendererDir: RENDERER, objectInfo });
+    // What the browser sends: its own /object_info, which is empty on the Web.
+    const graph = await host.buildGraph({
+      module: 'NovaFlowSplitInpaintNsfwWorkflow',
+      method: 'buildWorkflow',
+      options: { runtimeInfo: {}, mode: 'edit', imageName: 'a.png', maskName: 'm.png', prefix: 'p', prompt: 'wear glasses', seed: 1 }
+    });
+    check('the NSFW graph builds from the node catalogue',
+      Object.values(graph).some((n) => n.class_type === 'CheckpointLoaderSimple' && n.inputs.ckpt_name === 'Qwen-Rapid-AIO-NSFW-v20.safetensors'),
+      Object.values(graph).map((n) => n.class_type).join(','));
+  }
+
+  // -------------------------------------------------------------------------
   section('end to end on real ComfyUI');
   const comfyReady = await comfyUp();
   check('local ComfyUI reachable', comfyReady, { COMFY_IMAGE });
