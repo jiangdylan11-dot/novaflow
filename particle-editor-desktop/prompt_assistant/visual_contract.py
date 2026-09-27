@@ -435,11 +435,13 @@ LOCAL_SALIENT_GENERIC_OBJECT_PATTERN = re.compile(
     r"^(?:(?:一个|某个|未知|显著|大型|小型)(?:的)?)?"
     r"(?:物体|物品|物件|东西|道具|武器|装备|装饰)$"
 )
+# "飘于主角身侧" and "佩于腰间" are positions too; one item worded that way
+# used to reject the whole inventory.
 LOCAL_SALIENT_POSITION_RELATION_PATTERN = re.compile(
     r"(?:位于|处于|靠近|贴近|接触|贴合|环绕|悬浮|悬挂|放置|固定|"
-    r"持于|手持|握持|抓住|背负|佩戴|系于|装在|"
+    r"持于|手持|握持|抓住|背负|佩戴|佩于|系于|装在|挂于|挂在|插于|插在|"
     r"持握|握着|握住|拿着|举着|"
-    r"贴在|贴于|附着|附在|飘在|飘浮|漂浮|飘散|散落|周围|四周|旁边|"
+    r"贴在|贴于|附着|附在|飘在|飘于|飘浮|漂浮|飘散|散落|周围|四周|旁边|身侧|身旁|两侧|背后|"
     r"左(?:侧|边|手)?|右(?:侧|边|手)?|上方|下方|前方|后方|身后|肩后|"
     r"腰间|脚边|手中|画面中央|画面中心|画面边缘)"
 )
@@ -3650,11 +3652,26 @@ def compile_deterministic_rich_visual_prompt(
         # "一个" is the default count for any object ("一个长剑", "一个火焰");
         # a single object reads naturally without it.
         count = "" if entity["count"] == "一个" else entity["count"] or ""
-        identity = "".join(part for part in (count, entity["name"] or "主体") if part)
+        name = entity["name"] or ""
+        appearance = list(entity["appearance"])
+        # An appearance that is only the name with a word in front
+        # ("剑" / "长剑", "飘带" / "红色飘带") becomes the name itself instead
+        # of a second line that repeats it.
+        restated = next(
+            (
+                item for item in appearance
+                if name and item.endswith(name) and len(item) - len(name) <= 4
+            ),
+            None,
+        )
+        if restated is not None:
+            name = restated
+            appearance.remove(restated)
+        identity = "".join(part for part in (count, name or "主体") if part)
         subject_lines.append(f"{prefix} = {quoted(identity)}")
-        if entity["appearance"]:
+        if appearance:
             subject_lines.append(
-                f"{prefix}.外观 = {quoted('、'.join(entity['appearance']))}"
+                f"{prefix}.外观 = {quoted('、'.join(appearance))}"
             )
         pose = entity["pose"] or ""
         action = entity["action"] or ""
@@ -3710,12 +3727,9 @@ def compile_deterministic_rich_visual_prompt(
     light_lines = [
         *line("主光线", look["lighting"]),
         *line("色彩倾向", look["palette"]),
-        # Materials already named on a subject are not repeated globally.
-        *line("全局材质", [
-            item
-            for item in look["materials"]
-            if not any(item in material for material in entity_materials)
-        ]),
+        # Once a subject names its own materials, a global list only repeats
+        # them in vaguer words ("布料" after "丝绸红袍").
+        *([] if entity_materials else line("全局材质", look["materials"])),
     ] or ['说明 = "图中未见明确光线与色彩"']
     camera_lines = [
         *line("景别", camera["shot"]),

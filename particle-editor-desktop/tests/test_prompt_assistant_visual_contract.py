@@ -1785,6 +1785,20 @@ class VisualContractTests(unittest.TestCase):
             "visual-contract-salient-inventory-safety-drift",
         )
 
+    def test_local_salient_inventory_accepts_worn_and_floating_positions(self):
+        # Real Qwen3 sidecar output: one item said "飘于主角身侧", which used to
+        # reject the whole inventory.
+        parsed = parse_local_salient_inventory(
+            "PARTIAL_PEOPLE=\n"
+            "OBJECTS=长剑|红金纹饰|主角右手握持;腰带|黑金配色|佩于腰间;飘带|红金流苏|飘于主角身侧\n"
+            "EFFECTS=火焰|金黄色焰纹|飘于剑尖上方"
+        )
+        self.assertEqual(
+            [item["relation"] for item in parsed["objects"]],
+            ["主角右手握持", "佩于腰间", "飘于主角身侧"],
+        )
+        self.assertEqual(parsed["effects"][0]["relation"], "飘于剑尖上方")
+
     def test_local_salient_inventory_parser_enforces_category_evidence(self):
         invalid_outputs = (
             (
@@ -2412,7 +2426,6 @@ class VisualContractTests(unittest.TestCase):
             contract["entities"][0]["action"],
             contract["relations"][0],
             contract["entities"][0]["materials"][0],
-            contract["look"]["materials"][0],
             contract["content_safety"]["sensitive_visible_facts"][0],
             contract["camera_cues"]["shot"],
             contract["camera_cues"]["angle"],
@@ -2420,6 +2433,8 @@ class VisualContractTests(unittest.TestCase):
             contract["camera_cues"]["depth_of_field"],
         ):
             self.assertIn(marker, rich)
+        # The subject names its own materials, so no global list repeats them.
+        self.assertNotIn("全局材质", rich)
         self.assertNotIn("[用户附加要求]", rich)
         candidate = append_rich_generation_requirements(rich, "REQ_INDEPENDENT")
         self.assertEqual(candidate.count("[用户附加要求]"), 1)
@@ -2485,7 +2500,8 @@ class VisualContractTests(unittest.TestCase):
         self.assertEqual(rich.count("持剑跃动"), 1)
         self.assertEqual(rich.count("激昂"), 1)
         self.assertIn('主体2 = "火焰"', rich)
-        self.assertIn('全局材质 = "布料"', rich)
+        # "布料" only restates "丝绸红袍" once the subject names its materials.
+        self.assertNotIn("全局材质", rich)
         self.assertIn('视觉风格 = "中国风插画"', rich)
         self.assertIn('构图 = "动态构图"', rich)
         self.assertIn('背景 = "纯白背景"', rich)
@@ -2509,6 +2525,48 @@ class VisualContractTests(unittest.TestCase):
         rich = compile_deterministic_rich_visual_prompt(scene)
         self.assertIn('空间层次 = "前景飞雪"', rich)
         self.assertIn('景深 = "浅景深"', rich)
+
+        # Without any subject materials the global list is the only one and stays.
+        bare = json.loads(json.dumps(contract, ensure_ascii=False))
+        bare["entities"][0]["materials"] = []
+        rich = compile_deterministic_rich_visual_prompt(bare)
+        self.assertIn('全局材质 = "布料、金属、皮革"', rich)
+
+    def test_deterministic_rich_visual_prompt_names_an_object_once(self):
+        contract = {
+            "schema": SCHEMA_VERSION_V2,
+            "asset_type": "持剑武将",
+            "entities": [
+                {"name": "武将", "count": "一名", "appearance": ["浓密胡须"], "pose": None,
+                 "action": None, "materials": [], "colors": []},
+                {"name": "剑", "count": "一个", "appearance": ["长剑"], "pose": None,
+                 "action": None, "materials": [], "colors": []},
+                {"name": "飘带", "count": "一个", "appearance": ["红色飘带", "末端有金色流苏"],
+                 "pose": None, "action": None, "materials": [], "colors": []},
+                {"name": "长剑", "count": "一个", "appearance": ["修长剑身"], "pose": None,
+                 "action": None, "materials": [], "colors": []},
+            ],
+            "relations": ["剑被主角右手握住"],
+            "scene": {"environment": "纯白背景", "background": "", "spatial_layers": []},
+            "look": {"lighting": [], "palette": [], "materials": [], "style": ["中国风插画"],
+                     "atmosphere": "", "finish": ""},
+            "camera_cues": {"shot": "全身", "angle": "正面", "composition": "", "depth_of_field": ""},
+            "ocr": [],
+            "uncertain": [],
+            "content_safety": {
+                "level": "safe", "body_exposure": "none", "interaction_category": "none",
+                "age_assessment": "adult_appearing", "visible_person_count": 1,
+                "signals": [], "sensitive_visible_facts": [],
+            },
+        }
+        rich = compile_deterministic_rich_visual_prompt(contract)
+        self.assertEqual(validate_rich_visual_prompt(rich, minimum_body_chars=0), rich)
+        self.assertIn('主体2 = "长剑"', rich)
+        self.assertNotIn("主体2.外观", rich)
+        self.assertIn('主体3 = "红色飘带"\n主体3.外观 = "末端有金色流苏"', rich)
+        # "修长剑身" describes the blade; it is not the name said again.
+        self.assertIn('主体4 = "长剑"\n主体4.外观 = "修长剑身"', rich)
+        self.assertIn('主体1 = "一名武将"\n主体1.外观 = "浓密胡须"', rich)
 
     def test_rich_interaction_requires_strong_or_sensitive_target_action_in_subject(self):
         passing_evidence = (
@@ -3377,11 +3435,12 @@ class VisualContractTests(unittest.TestCase):
             interaction_incomplete["relations"][0],
             interaction_incomplete["content_safety"]["sensitive_visible_facts"][0],
             interaction_incomplete["entities"][0]["materials"][0],
-            interaction_incomplete["look"]["materials"][0],
             "REQ_SECRET_KEEP_COMPOSITION",
         ):
             self.assertIn(expected, interaction_pending["prompt"])
             self.assertNotIn(expected, interaction_pending["visualPrompt"])
+        # The subject names its own materials, so no global list repeats them.
+        self.assertNotIn("全局材质", interaction_pending["prompt"])
         self.assertEqual(
             interaction_pending["contentSafety"]["sensitive_visible_facts"],
             [],
@@ -3909,7 +3968,7 @@ class VisualContractTests(unittest.TestCase):
         )
         self.assertEqual(
             (adapter.calls[1]["do_sample"], adapter.calls[1]["max_new_tokens"]),
-            (False, 128),
+            (False, 192),
         )
         self.assertIn("PARTIAL_PEOPLE=", adapter.calls[1]["prompt"])
         # Small attached or floating things (paper slips, leaves, fragments) are asked for as OBJECTS.
@@ -3978,7 +4037,7 @@ class VisualContractTests(unittest.TestCase):
             service.Qwen3VLAbliteratedAdapter = original_adapter
 
         self.assertEqual(len(FakeAdapter.calls), 2)
-        self.assertEqual(FakeAdapter.calls[1]["max_new_tokens"], 128)
+        self.assertEqual(FakeAdapter.calls[1]["max_new_tokens"], 192)
         self.assertEqual(FakeAdapter.unload_calls, 1)
         self.assertEqual(result["rawOutput"], primary_raw)
         self.assertFalse(result["qualityGateFailed"])
@@ -4178,6 +4237,7 @@ class VisualContractTests(unittest.TestCase):
                 deterministic_visual,
                 sensitive=True,
                 require_interaction_evidence=True,
+                minimum_body_chars=0,
             ),
             deterministic_visual,
         )
@@ -4250,6 +4310,7 @@ class VisualContractTests(unittest.TestCase):
                 deterministic_visual,
                 sensitive=True,
                 require_interaction_evidence=True,
+                minimum_body_chars=0,
             ),
             deterministic_visual,
         )
@@ -4509,6 +4570,7 @@ class VisualContractTests(unittest.TestCase):
                 deterministic_visual,
                 sensitive=True,
                 require_interaction_evidence=True,
+                minimum_body_chars=0,
             ),
             deterministic_visual,
         )
@@ -4516,7 +4578,6 @@ class VisualContractTests(unittest.TestCase):
             contract["entities"][0]["action"],
             contract["relations"][0],
             contract["entities"][0]["materials"][0],
-            contract["look"]["materials"][0],
             contract["content_safety"]["sensitive_visible_facts"][0],
             contract["camera_cues"]["shot"],
             contract["camera_cues"]["angle"],

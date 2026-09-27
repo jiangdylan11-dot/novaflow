@@ -371,6 +371,51 @@ class VideoPromptFeatureTests(unittest.TestCase):
         self.assertEqual(styles[3], "Ink wash: thick strokes, bold washes, line loops, paper grain.")
         self.assertEqual(styles[4], "Cel-shaded illustration: flat colour blocks, uniform shading.")
 
+    def test_describe_art_style_keeps_realistic_surfaces_detailed_and_returns_the_raw_reply(self):
+        replies = iter([
+            "Photorealistic 3D render: smooth continuous shading, precise straight lines, uniform flat surface texture.",
+            "Photograph: fine film grain, flat even surfaces, uniform texture.",
+            "Ink-and-watercolour cartoon illustration: dry-brush black outlines, flat pale washes, paper grain.",
+        ])
+
+        class FakeAdapter:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            def generate(self, _prompt, _tensor, **_kwargs):
+                return next(replies)
+
+        assistant = SERVICE.PromptAssistant()
+        events = []
+        with mock.patch.object(SERVICE, "Qwen3VLAbliteratedAdapter", FakeAdapter), \
+                mock.patch.object(SERVICE, "data_url_to_tensor", lambda _value: object()), \
+                mock.patch.object(SERVICE, "log_prompt_assistant_event", lambda event, **fields: events.append((event, fields))):
+            results = [
+                assistant.describe_art_style({"images": [{"dataUrl": "data:image/png;base64,x"}]})
+                for _ in range(3)
+            ]
+        self.assertEqual(
+            results[0]["style"],
+            "Photorealistic 3D render: smooth continuous shading, precise straight lines, true-to-life fine surface detail.",
+        )
+        self.assertEqual(results[1]["style"], "Photograph: fine film grain, true-to-life fine surface detail.")
+        # Flat washes are a real mark of a painted picture and stay.
+        self.assertEqual(
+            results[2]["style"],
+            "Ink-and-watercolour cartoon illustration: dry-brush outlines, flat pale washes, paper grain.",
+        )
+        self.assertEqual(
+            results[2]["rawStyle"],
+            "Ink-and-watercolour cartoon illustration: dry-brush black outlines, flat pale washes, paper grain.",
+        )
+        self.assertEqual(events[0][0], "art_style_described")
+        self.assertIn("uniform flat surface texture", events[0][1]["rawStyle"])
+
+    def test_describe_art_style_names_cartoon_media_and_marks_not_motifs(self):
+        self.assertIn("ink-and-watercolour illustration, cartoon", SERVICE.ART_STYLE_SYSTEM_TEXT)
+        self.assertIn("true-to-life fine surface detail", SERVICE.ART_STYLE_QUESTION)
+        self.assertIn("never the shapes or motifs drawn in the picture", SERVICE.ART_STYLE_QUESTION)
+
 
 if __name__ == "__main__":
     unittest.main()

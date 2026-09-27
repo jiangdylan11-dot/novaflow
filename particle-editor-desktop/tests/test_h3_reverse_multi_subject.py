@@ -250,6 +250,80 @@ class ReadableSubjectLineTest(unittest.TestCase):
     def test_visual_instruction_keeps_gaze_to_what_is_visible(self):
         self.assertIn("不写看向某人或某物", service.minimax_h3_faithful_rich_primary_instruction())
 
+    def test_visual_instruction_gives_a_large_held_object_its_own_line(self):
+        instruction = service.minimax_h3_faithful_rich_primary_instruction()
+        self.assertIn("占据画面大部分的手持物体单独写一行S", instruction)
+
+
+class RepeatedFactCleanupTest(unittest.TestCase):
+    def test_action_phrase_that_only_repeats_looks_or_pose_is_left_out(self):
+        raw = (
+            "S1:少女，黑色短发，橙色衬衫，背着绿色背包，站立在路中央\n"
+            "R:少女面向镜头站立，背包背在背上\n"
+            "E:乡村公路，远处有山丘\nL:动漫风格，阳光明媚\nC:中景，平视视角"
+        )
+        text = candidate("I2VA", [raw])
+        self.assertIn("姿态：站立在路中央；动作：少女面向镜头站立。", text)
+        self.assertNotIn("背包背在背上", text)
+        self.assertNotIn("关系：", text)
+        # Nothing new at all: no 动作 field.
+        text = candidate("I2VA", [raw.replace("R:少女面向镜头站立，背包背在背上", "R:背包背在背上")])
+        self.assertNotIn("动作：", text)
+        self.assertNotIn("关系：", text)
+
+    def test_action_with_a_new_hand_or_direction_is_kept(self):
+        raw = (
+            "S1:身穿金甲的武将，头戴金色冠饰，手持长枪，披红披风\n"
+            "R:武将呈跃起姿态，右手持枪，左手前伸\n"
+            "E:纯白色背景\nL:3D渲染风格，高光强烈\nC:全景，正面视角"
+        )
+        text = candidate("I2VA", [raw])
+        self.assertIn("动作：武将呈跃起姿态，右手持枪，左手前伸。", text)
+
+    def test_plain_backdrop_leaves_out_depth_of_field(self):
+        for scene in ("纯白色背景，无其他环境元素", "纯白背景，剑气与飘带环绕", "纯灰色背景"):
+            raw = ONE_SUBJECT_LINES.replace("E:乡村公路，两侧草地与远山", "E:" + scene)
+            text = candidate("I2VA", [raw])
+            self.assertIn("画面：中景，平视视角。", text, scene)
+            self.assertNotIn("景深", text, scene)
+        # A place keeps its depth of field.
+        text = candidate("I2VA", [ONE_SUBJECT_LINES])
+        self.assertIn("画面：中景，平视视角，浅景深。", text)
+        text = candidate("I2VA", [ONE_SUBJECT_LINES.replace("E:乡村公路，两侧草地与远山", "E:纯黑背景，远处城市灯光")])
+        self.assertIn("浅景深", text)
+
+    def test_first_last_subject_shares_its_unchanged_fields_once(self):
+        first = (
+            "S1:紫发女性角色，身着白色长裙配金色腰带，手持法杖坐台阶\n"
+            "S2:橘色长毛猫，蹲坐于台阶下方\nR:女性角色坐台阶，猫在下方台阶\n"
+            "E:石阶背景，远处山峦\nL:幻想风格，暖光\nC:全景，平视视角"
+        )
+        last = first.replace("手持法杖坐台阶", "赤脚坐台阶持法杖")
+        text = candidate("FL2VA", [first, last])
+        self.assertIn(
+            "<Picture 1> 与 <Picture 2> 共同：\n"
+            "主体1：数量：一名；身份：紫发女性角色；外观：身着白色长裙配金色腰带。\n"
+            "主体2：数量：一只；身份：橘色长毛猫；姿态：蹲坐于台阶下方。",
+            text,
+        )
+        self.assertIn("<Picture 1> 首帧：\n主体1：姿态：手持法杖坐台阶。", text)
+        self.assertIn("<Picture 2> 尾帧：\n主体1：姿态：赤脚坐台阶持法杖。", text)
+        self.assertEqual(text.count("紫发女性角色"), 1)
+
+    def test_first_last_different_subjects_are_not_merged(self):
+        first = TWO_SUBJECT_LINES
+        last = TWO_SUBJECT_LINES.replace("S1:紫发女性角色，白色长裙配金色腰带，赤脚坐台阶", "S1:黑发男性角色，蓝色长袍，站在台阶上")
+        text = candidate("FL2VA", [first, last])
+        self.assertIn("<Picture 1> 首帧：\n主体1：数量：一名；身份：紫发女性角色；", text)
+        self.assertIn("<Picture 2> 尾帧：\n主体1：数量：一名；身份：黑发男性角色；", text)
+
+    def test_entity_scope_reads_every_slot_of_one_subject(self):
+        scope = "主体1：数量：一名；身份：女性。\n主体2：数量：一只；身份：猫。\n主体1：姿态：坐台阶。\n关系：猫在下方。"
+        self.assertEqual(
+            service.minimax_h3_deterministic_entity_scope(scope, 1),
+            "主体1：数量：一名；身份：女性。\n\n主体1：姿态：坐台阶。\n",
+        )
+
 
 class ReverseServiceTest(unittest.TestCase):
     class Adapter:

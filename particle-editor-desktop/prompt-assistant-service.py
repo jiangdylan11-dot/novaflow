@@ -46,6 +46,7 @@ from prompt_assistant.art_prompt_contract import (
 )
 from prompt_assistant.qwen3_vl_adapter import Qwen3VLAbliteratedAdapter, Qwen3VLProviderError
 from prompt_assistant.visual_contract import (
+    RICH_PLAIN_BACKGROUND_PATTERN,
     RICH_VISUAL_SYSTEM_TEXT,
     SCHEMA_VERSION as VISUAL_SCHEMA_VERSION,
     SCHEMA_VERSION_V2 as VISUAL_SCHEMA_VERSION_V2,
@@ -99,20 +100,23 @@ ART_STYLE_QUESTION = (
     "pixels, lines or edges actually look like, and the paper, canvas or print grain only where it is clearly "
     "visible. "
     "Format: \"<medium>: <mark>, <mark>, <mark>.\" Be concrete and executable: say what each mark looks like, "
-    "not vague words such as \"soft outlines, continuous blends\". CRITICAL: describe only how marks are made, "
-    "never what carries them. Do not write skin, hair, fabric, cloth, metal, marble, stone, sky, water, "
+    "not vague words such as \"soft outlines, continuous blends\". For a photograph or a realistic render, "
+    "one mark is \"true-to-life fine surface detail\"; never call its surfaces flat or uniform. "
+    "CRITICAL: describe only how marks are made, never what carries them and never the shapes or motifs "
+    "drawn in the picture. Do not write skin, hair, fabric, cloth, metal, marble, stone, sky, water, "
     "particles, sparkles, glow, light effects, or any other thing that appears in this picture. Never name a "
     "colour, the subject, the people, the place, the mood or the lighting. Write only what is there, never "
     "what is absent."
 )
 # Without its own system turn the adapter falls back to its JSON fact-extractor role, which fights the question.
 # Digital painting and watercolour are named because without them a painted CG figure came back as
-# "cel-shaded illustration".
+# "cel-shaded illustration"; ink-and-watercolour illustration and cartoon because a coloured ink cartoon
+# came back as plain "Ink wash", which 万物迁移 renders as monochrome ink.
 ART_STYLE_SYSTEM_TEXT = (
     "You describe how pictures are rendered, for an artist who will redraw other objects in the same style. "
     "Start with the medium, for example photograph, photorealistic 3D render, digital painting, oil painting, "
-    "watercolour, ink wash, pixel art or cel-shaded illustration. Reply with exactly one plain English "
-    "instruction of at most 40 words: no preamble, quotes, lists or JSON."
+    "watercolour, ink wash, ink-and-watercolour illustration, cartoon, pixel art or cel-shaded illustration. "
+    "Reply with exactly one plain English instruction of at most 40 words: no preamble, quotes, lists or JSON."
 )
 # Qwen3 still adds "no visible seams" / "without texture" now and then; a clause about what is absent
 # makes the edit model strip the object's own texture, so it is dropped.
@@ -126,6 +130,12 @@ _ART_STYLE_COLOURS = (
 ART_STYLE_COLOUR_WORD = re.compile(
     rf"\b(?:{_ART_STYLE_COLOURS})(?:\s+and\s+(?:{_ART_STYLE_COLOURS}))?\s+(?=[a-z])", re.I
 )
+# A photo or realistic render read out as "uniform flat surface texture" makes 万物迁移 paint the
+# object as untextured plastic although the picture shows marble and wood grain; such a mark is
+# replaced by the fine surface detail a realistic picture actually has.
+ART_STYLE_REALISTIC_MEDIUM = re.compile(r"\b(?:photo\w*|hyper-?realistic|realistic\s+(?:3d|cg))", re.I)
+ART_STYLE_FLAT_SURFACE_MARK = re.compile(r"\b(?:flat|uniform)\b", re.I)
+ART_STYLE_REALISTIC_SURFACE_MARK = "true-to-life fine surface detail"
 # System turns for the video prompt features (WAN and other non-H3 models); each user turn carries the rules.
 VIDEO_OPTIMIZE_SYSTEM_TEXT = (
     "你是 NovaFlow 的视频生成 Prompt 设计助手。你把用户的视频提示改写成一段可直接用于 WAN 等视频模型的中文 Prompt："
@@ -2106,6 +2116,40 @@ def minimax_h3_humanize_verified_fact_labels(value: str, value_language: str) ->
     ).strip()
 
 
+# Particles and locatives carry no fact of their own when an action phrase is
+# compared with the subject's name, looks and pose.
+MINIMAX_H3_ACTION_FILLER_CHARACTERS = frozenset("的了着在于地得之呈为是其上中里")
+MINIMAX_H3_DEPTH_OF_FIELD_PATTERN = re.compile(r"(?:景深|虚化|焦外|背景模糊)")
+# A scene phrase naming a place, a distance or a layer has depth to blur.
+MINIMAX_H3_SCENE_DEPTH_CUE_PATTERN = re.compile(
+    r"(?:远|近|前景|后景|中景|层次|山|树|林|城|街|楼|建筑|房|室|屋|天空|地面|草|水|海|云|台阶|路)"
+)
+
+
+def minimax_h3_action_atom_repeats(atom: str, reference: str) -> bool:
+    """Whether every character of one action phrase is already in the reference."""
+
+    core = [
+        char for char in re.sub(r"[\s，,；;、。：:]+", "", clean_text(atom))
+        if char not in MINIMAX_H3_ACTION_FILLER_CHARACTERS
+    ]
+    return bool(core) and all(char in reference for char in core)
+
+
+def minimax_h3_scene_is_plain_backdrop(scene_values: list[str]) -> bool:
+    """A plain studio backdrop ("纯白色背景"), possibly with floating effects, and no place."""
+
+    atoms = [
+        atom.strip()
+        for value in scene_values
+        for atom in re.split(r"[，,；;、。]+", clean_text(value or ""))
+        if atom.strip()
+    ]
+    return any(
+        RICH_PLAIN_BACKGROUND_PATTERN.fullmatch(re.sub(r"\s+", "", atom)) for atom in atoms
+    ) and not any(MINIMAX_H3_SCENE_DEPTH_CUE_PATTERN.search(atom) for atom in atoms)
+
+
 def minimax_h3_compact_verified_visual_fact_slots(
     contract: dict,
     value_language: str,
@@ -2180,6 +2224,8 @@ def minimax_h3_compact_verified_visual_fact_slots(
             if use_english else f"可见人物：{people_count}"
         )
 
+    untrimmed_entity_lines: list[str] = []
+    entity_start = len(parts)
     for index, entity in enumerate(entities, start=1):
         # 身份 holds only the name; everything seen on the subject is 外观.
         identity = unique_values([entity.get("name")])
@@ -2195,20 +2241,47 @@ def minimax_h3_compact_verified_visual_fact_slots(
             if item.casefold() not in seen:
                 seen.add(item.casefold())
                 looks.append(item)
-        entity_parts = [
-            (english if use_english else chinese) + joined(values, item_separator)
-            for english, chinese, values in (
-                ("count ", "数量：", unique_values([entity.get("count")])),
-                ("", "身份：", identity + looks if use_english else identity),
-                ("", "外观：", [] if use_english else looks),
-                ("pose ", "姿态：", unique_values([entity.get("pose")])),
-                ("action ", "动作：", unique_values([entity.get("action")])),
-            )
-            if values
-        ]
-        if entity_parts:
+        pose = unique_values([entity.get("pose")])
+        action = unique_values([entity.get("action")])
+
+        def entity_line(action_values: list[str]) -> str:
+            entity_parts = [
+                (english if use_english else chinese) + joined(values, item_separator)
+                for english, chinese, values in (
+                    ("count ", "数量：", unique_values([entity.get("count")])),
+                    ("", "身份：", identity + looks if use_english else identity),
+                    ("", "外观：", [] if use_english else looks),
+                    ("pose ", "姿态：", pose),
+                    ("action ", "动作：", action_values),
+                )
+                if values
+            ]
+            if not entity_parts:
+                return ""
             prefix = f"Subject {index}: " if use_english else f"主体{index}："
-            parts.append(prefix + field_separator.join(entity_parts))
+            return prefix + field_separator.join(entity_parts)
+
+        line = entity_line(action)
+        if line:
+            untrimmed_entity_lines.append(line)
+        if action and not use_english:
+            # An 动作 phrase that only repeats the name, looks or pose
+            # ("背包背在背上" after 外观 "背着绿色背包") is left out; one that
+            # adds anything stays. The validator's action check must still
+            # hold on the shorter line, otherwise the full line is kept.
+            reference = "".join([*identity, *looks, *pose])
+            kept = [
+                atom for atom in re.split(r"[，,；;]+", action[0])
+                if atom.strip() and not minimax_h3_action_atom_repeats(atom, reference)
+            ]
+            shorter = entity_line(["；".join(kept)] if kept else [])
+            if shorter and shorter != line and minimax_h3_group_has_fidelity(
+                entity.get("action") or "", shorter, "action",
+            ):
+                line = shorter
+        if line:
+            parts.append(line)
+    entity_end = len(parts)
 
     # A relation already written as a subject's action is not repeated.
     shown_actions = [clean_text(entity.get("action") or "") for entity in entities]
@@ -2241,6 +2314,15 @@ def minimax_h3_compact_verified_visual_fact_slots(
     ]
     if clean_text(mode).upper() == "I2VA":
         camera_candidates.append(camera.get("composition"))
+    if minimax_h3_scene_is_plain_backdrop(scene_values):
+        # A plain backdrop has no depth to blur; "景深清晰" there says nothing.
+        camera_candidates = [
+            "；".join(
+                atom for atom in re.split(r"[，,；;]+", clean_text(value or ""))
+                if atom.strip() and not MINIMAX_H3_DEPTH_OF_FIELD_PATTERN.search(atom)
+            )
+            for value in camera_candidates
+        ]
     camera_values = unique_values(camera_candidates)
     if camera_values:
         parts.append(("Framing: " if use_english else "画面：") + joined(camera_values))
@@ -2273,6 +2355,17 @@ def minimax_h3_compact_verified_visual_fact_slots(
         )
 
     separator = ".\n\n" if use_english else "。\n\n"
+    relation_text = " ".join(
+        clean_text(item) for item in (contract.get("relations") or []) if clean_text(item)
+    )
+    if (
+        parts[entity_start:entity_end] != untrimmed_entity_lines
+        and relation_text
+        and not minimax_h3_group_has_fidelity(relation_text, separator.join(parts), "action")
+    ):
+        # The relation check reads the whole frame; keep every action phrase
+        # when a shorter subject line would no longer satisfy it.
+        parts[entity_start:entity_end] = untrimmed_entity_lines
     return separator.join(parts) + ("." if use_english and parts else "。" if parts else "")
 
 
@@ -2317,6 +2410,41 @@ def minimax_h3_frames_share_slot(first: str, last: str) -> bool:
     return (
         re.match(r"(?:场景|画面|光色材质|Scene|Framing|Look)[：:]", label.group(0)) is not None
         and len(extra) <= max(2, len(short) // 5)
+    )
+
+
+def minimax_h3_split_endpoint_subject(first: str, last: str) -> tuple[str, str, str] | None:
+    """Split one subject seen in both frames into its shared and changed fields.
+
+    "主体1：数量：一名；身份：女性；外观：白裙；姿态：坐" and the same subject with
+    another 姿态 give ("主体1：数量：一名；身份：女性；外观：白裙。", "主体1：姿态：坐。",
+    "主体1：姿态：…。"). Only a subject with the same number and the same 身份 is
+    split, and only fields written identically are shared, so each frame still
+    carries every one of its own fields. Returns None otherwise.
+    """
+
+    def fields(slot: str) -> tuple[str, list[str]]:
+        match = re.match(r"(主体[1-9][0-9]*：)(.*?)。?$", slot, re.S)
+        if not match:
+            return "", []
+        return match.group(1), [item for item in match.group(2).split("；") if item]
+
+    first_label, first_fields = fields(first)
+    last_label, last_fields = fields(last)
+    identity = next((item for item in first_fields if item.startswith("身份：")), "")
+    if not first_label or first_label != last_label or not identity or identity not in last_fields:
+        return None
+    shared = [item for item in first_fields if item in last_fields]
+    if len(shared) < 2:
+        return None
+
+    def line(items: list[str]) -> str:
+        return first_label + "；".join(items) + "。" if items else ""
+
+    return (
+        line(shared),
+        line([item for item in first_fields if item not in shared]),
+        line([item for item in last_fields if item not in shared]),
     )
 
 
@@ -2429,11 +2557,30 @@ def build_minimax_h3_deterministic_verified_visual_candidate(
                 (other for other in last_only if minimax_h3_frames_share_slot(slot, other)),
                 None,
             )
-            if twin is None:
-                first_only.append(slot)
-            else:
+            if twin is not None:
                 last_only.remove(twin)
                 shared.append(max(slot, twin, key=len))
+                continue
+            # The same subject with a changed pose: its unchanged fields are
+            # shared once, only the changed ones stay under each frame.
+            label = re.match(r"主体[1-9][0-9]*：", slot)
+            other = next(
+                (item for item in last_only if label and item.startswith(label.group(0))),
+                None,
+            )
+            split = (
+                minimax_h3_split_endpoint_subject(slot, other)
+                if other is not None and not use_english else None
+            )
+            if split is None:
+                first_only.append(slot)
+                continue
+            common, first_changed, last_changed = split
+            shared.append(common)
+            if first_changed:
+                first_only.append(first_changed)
+            position = last_only.index(other)
+            last_only[position:position + 1] = [last_changed] if last_changed else []
         headings = (
             ("<Picture 1> and <Picture 2> shared:", "<Picture 1> opening frame:", "<Picture 2> ending frame:")
             if use_english
@@ -2758,12 +2905,19 @@ def minimax_h3_interaction_rich_confirmation_instruction() -> str:
 MINIMAX_H3_BOUNDED_VISUAL_SLOT_LIMITS = {"S": 30, "R": 40, "E": 18, "L": 22, "C": 15}
 MINIMAX_H3_BOUNDED_VISUAL_MAX_SUBJECTS = 3
 MINIMAX_H3_BOUNDED_VISUAL_SLOT_GUIDE = {
+    # A held object that fills most of the frame (a fan held up to the
+    # camera) is its own subject; folded into the hand's line it lost its
+    # own colours and pattern.
     "S": "每个主要主体（人物、动物、角色或画面焦点物体）单独一行，先写身份或种类，再按醒目程度写外观特征"
          "（如发型发色、脸部、服饰和配饰、颜色、材质）和姿态；手持的武器或道具写进持有者这一行，"
+         "但占据画面大部分的手持物体单独写一行S并写出它的颜色和纹样，"
          "主体之间的位置和关系写进R",
     "R": "可见的动作与接触，写清谁在做什么、接触什么；有多个主体时写清它们之间的位置和关系",
     "E": "环境类型与背景结构；主体周围可见的飘浮物和光效也写在这里",
     "L": "画面风格、光源与高光阴影、主色",
+    # Shot-size definitions here (全身入画写全景…) changed nothing live: full-length
+    # figures still came back 中景 and one became 近景. 景深 on a plain backdrop
+    # is left out when the facts are laid out instead.
     "C": "景别、视角与景深",
 }
 MINIMAX_H3_BOUNDED_RELATION_KEY = "可见接触关系"
@@ -4343,30 +4497,32 @@ def minimax_h3_deterministic_entity_scope(scope: str, entity_index: int) -> str:
         )
         if is_slot_marker(match)
     ]
-    marker = next(
-        (
-            match for match in entity_markers
-            if int(match.group(1)) == int(entity_index)
-        ),
-        None,
-    )
-    if marker is None:
-        return ""
-    following_positions = [
-        match.start() for match in entity_markers if match.start() > marker.start()
-    ]
-    following_positions.extend(
+    label_positions = [
         match.start()
         for match in re.finditer(
             r"(?:关系|Relations|场景|Scene|画面|Framing|光色材质|Look|敏感可见事实|Visible sensitive facts)\s*[:：]",
             scope,
             re.I,
         )
-        if match.start() > marker.start()
-        and clean_text(scope[:match.start()]).endswith(("。", "."))
-    )
-    end = min(following_positions) if following_positions else len(scope)
-    return scope[marker.start():end]
+        if clean_text(scope[:match.start()]).endswith(("。", "."))
+    ]
+    # A first/last-frame subject may be written twice in one frame's scope:
+    # its shared fields once, its changed fields under the frame.
+    segments = []
+    for marker in entity_markers:
+        if int(marker.group(1)) != int(entity_index):
+            continue
+        following_positions = [
+            position
+            for position in (
+                *(match.start() for match in entity_markers),
+                *label_positions,
+            )
+            if position > marker.start()
+        ]
+        end = min(following_positions) if following_positions else len(scope)
+        segments.append(scope[marker.start():end])
+    return "\n".join(segments)
 
 
 def minimax_h3_entity_count_has_fidelity(count: str, scope: str) -> bool:
@@ -15095,12 +15251,15 @@ class PromptAssistant:
             "逐一检查并记录清楚可见的三类内容：非主角的边缘或遮挡人物；主角手持、佩带或身边的武器与道具，"
             "以及贴在道具上、飘在主角周围的小物件（纸片、叶片、碎片、花瓣等）；具有独立轮廓的火焰、光效或光环。"
             "武器、道具和小物件都写在OBJECTS行，火焰、光效和光环写在EFFECTS行。"
+            "简短外观写颜色、纹样或材质，不只重复名称。"
+            "位置接触关系只写看得见的接触：手握的物体写清是主角左手还是右手，两只手都握在同一物体上才写双手；"
+            "佩带在身上、没有被手握住的物品写佩于腰间或身后等位置。"
             "位置关系里的主要人物一律称主角；看不清的不写。"
             "严格输出且只输出以下三行，顺序和英文前缀必须完全一致：\n"
             "PARTIAL_PEOPLE=名称|简短外观|边缘遮挡或背景位置\n"
             "OBJECTS=名称|简短外观|与主角、主体或画面的位置接触关系\n"
             "EFFECTS=名称|简短外观|与主角、主体或画面的位置关系\n"
-            "每类只占一行，同类多项仅用半角分号;分隔，同类小物件合并成一项，每行最多3项；"
+            "每类只占一行，同类多项仅用半角分号;分隔，同类小物件合并成一项，OBJECTS行最多4项，其余每行最多3项；"
             "每项必须恰好三个非空字段并仅用半角竖线|分隔；该类没有内容时等号后保持为空。"
         )
         contract_prompt = keyed_v2_first_prompt
@@ -16119,7 +16278,9 @@ class PromptAssistant:
                                     unload_after=False,
                                     system_text=salient_inventory_system_text,
                                     do_sample=False,
-                                    max_new_tokens=128,
+                                    # Colours and patterns make each item longer;
+                                    # a cut-off third line would drop them all.
+                                    max_new_tokens=192,
                                 )
                                 salient_inventory = parse_local_salient_inventory(
                                     salient_raw_output
@@ -17551,8 +17712,22 @@ class PromptAssistant:
         kept = [clause for clause in clauses if clause and not ART_STYLE_ABSENT_CLAUSE.match(clause)]
         if kept and len(kept) < len(clauses):
             style = ", ".join(kept) + "."
+        medium, colon, marks = style.partition(":")
+        if colon and ART_STYLE_REALISTIC_MEDIUM.search(medium):
+            realistic_marks: list[str] = []
+            for mark in (item.strip() for item in re.split(r"[,;]", marks.rstrip(". "))):
+                if ART_STYLE_FLAT_SURFACE_MARK.search(mark):
+                    mark = ART_STYLE_REALISTIC_SURFACE_MARK
+                if mark and mark not in realistic_marks:
+                    realistic_marks.append(mark)
+            if realistic_marks:
+                style = f"{medium}: {', '.join(realistic_marks)}."
         style = (style[:1].upper() + style[1:])[:ART_STYLE_MAX_CHARS]
-        return {"style": style, "model": self.reverse_model_path().name[:160]}
+        # The raw reply is kept beside the cleaned style, so a colour or clause the
+        # filters removed can still be checked.
+        raw_style = " ".join(str(raw or "").split())[:ART_STYLE_MAX_CHARS * 2]
+        log_prompt_assistant_event("art_style_described", command="describeArtStyle", style=style, rawStyle=raw_style)
+        return {"style": style, "rawStyle": raw_style, "model": self.reverse_model_path().name[:160]}
 
     def reverse_image_prompt(self, payload: dict) -> dict:
         images = payload.get("images")
