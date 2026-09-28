@@ -967,14 +967,7 @@ function normalizeMiniMaxH3PromptOutput(text, options) {
       formatted = h3PromptEnhance.isReferenceMode(options)
         ? h3PromptEnhance.validateReferenceResult(value, checked)
         : basePair ? h3PromptEnhance.validateBaseResult(value, checked) : h3PromptEnhance.validateFormat(text, options);
-      // Pair parity compares the two halves only; speech the user quotes must also reach the model half verbatim.
-      // A requirement about the dialogue replaces the source lines: then one line it quotes (if any) must arrive instead.
-      const requirement = miniMaxH3PromptEnhanceUserRequirement(options.requirements, options.currentPrompt);
-      const aboutSpeech = /台词|对白|对话|说的?话|dialogue|speech|\blines?\b/i.test(requirement);
-      const lines = [...(aboutSpeech ? requirement : String(options.currentPrompt || "")).matchAll(aboutSpeech ? /[“\x22]([^”\x22\n]+)[”\x22]/g
-        : /(?:说|道|喊|问|唱|\b(?:says?|asks?|shouts?|sings?))\s*[:：,，]?\s*[“\x22]([^”\x22\n]+)[”\x22]|<d>(?:\s*\[[^\]\n]*\])?\s*([\s\S]*?)<\/d>/gi)].map((m) => (m[1] || m[2]).trim().replace(/[。！？.!?，,]+$/, ""));
-      const model = basePair ? String(h3PromptEnhance.referenceResult(formatted)?.modelPrompt ?? formatted) : "";
-      if (basePair && lines.length && !lines[aboutSpeech ? "some" : "every"]((line) => model.includes(line))) throw new Error("原台词未完整保留");
+      // The quoted-line gate runs inside validateBaseResult (shared module), so the edge and the renderer agree.
       // A translation leaves no Chinese outside <d> blocks and quoted text (the 多参 English check tolerates a few characters).
       if (translateOnly && /[\u3400-\u9fff]/.test(String(h3PromptEnhance.referenceResult(formatted)?.modelPrompt ?? "").replace(/<d>[\s\S]*?<\/d>|\x22[^\x22\n]*\x22|“[^”\n]*”/g, ""))) throw new Error("H3 模型侧提示词需要英文正文，中文内容仅用于编辑器显示");
     } catch (error) {

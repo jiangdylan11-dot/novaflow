@@ -1020,7 +1020,7 @@
     // alignment line) and keep the canonical three fields; the shared validator
     // completes a missing camera instead of rejecting it.
     value = base
-      ? format.validateBaseResult(value, { mode: protocol.mode, durationSeconds: protocol.durationSeconds, currentPrompt: stringValue(options?.currentPrompt), requirements: stringValue(options?.requirements) })
+      ? format.validateBaseResult(value, { mode: protocol.mode, durationSeconds: protocol.durationSeconds, currentPrompt: stringValue(options?.currentPrompt), requirements: stringValue(options?.requirements), quotedLines: options?.quotedLines })
       : format.validateReference(value, {
         mode: protocol.mode, durationSeconds: protocol.durationSeconds,
         requirements: 'Available resource labels: ' + protocol.references.references.map(r => r.modelToken).join('; '),
@@ -1090,6 +1090,8 @@
     const currentPrompt = base ? stringValue(context.compiledPrompt) : stringValue(input.current?.prompt)
     // The requirement tail after the source, as the engines receive it: the quoted-line check follows it.
     const requirements = 'Source prompt:\n' + currentPrompt + (context.userRequirement ? '\n\n' + context.userRequirement : '')
+    // quotedLines: false for a result rebuilt from the pictures (素材反推); its refinement keeps the lines.
+    const quotedLines = input.quotedLines !== false
     const validationOptions = {
       mode: context.mode,
       durationSeconds: context.durationSeconds,
@@ -1098,12 +1100,13 @@
       requireReady: true,
       currentPrompt,
       requirements,
+      quotedLines,
     }
     // Echoed aliases bind before the pair checks, so neither half reads them as prose.
     const text = typeof input.text === 'string' ? bindEchoedAliases(input.text, catalog) : input.text
     let pair = format.referenceResult(text)
     if (pair) pair = format.referenceResult(base
-      ? format.validateBaseResult(text, { mode: context.mode, durationSeconds: context.durationSeconds, currentPrompt, requirements })
+      ? format.validateBaseResult(text, { mode: context.mode, durationSeconds: context.durationSeconds, currentPrompt, requirements, quotedLines })
       : format.validateReferenceResult(text, {requirements:'Available resource labels: ' + catalog.references.map(r=>r.modelToken).join('; '), durationSeconds:context.durationSeconds, currentPrompt}))
     const validation = validatePromptText(pair ? serialized(pair.modelPrompt) : text, validationOptions)
     const displayed = pair ? validatePromptText(serialized(pair.displayPrompt), validationOptions) : validation

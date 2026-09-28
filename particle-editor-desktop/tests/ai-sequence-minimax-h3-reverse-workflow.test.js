@@ -133,6 +133,21 @@ test('refinement includes verified facts, original intent and supplementary requ
   assert.match(workflow.prepareRefinement({ text: idleVerified.text, context: idle.context }).requirements, /仅呼吸待机/)
 })
 
+test('a reverse is rebuilt from the pictures; only its refinement answer must keep the quoted lines', () => {
+  for (const options of [
+    imageVideoOptions({ requirements: '把台词改成“出发吧。”' }),
+    imageVideoOptions({ prompt: '【画面与动作】\n【镜头 1】@参考图 中的机器人挥手，(S1) 说：<d>[Chinese] 出发吧。</d>\n\n【环境声音】\n风声。\n\n【背景音乐】\n无', requirements: '' }),
+  ]) {
+    const prepared = workflow.prepareRequest(options)
+    assert.ok(workflow.validateAndRestore({ text: imageVideoOutput(), context: prepared.context, current: options }).text, options.prompt || options.requirements)
+  }
+  const options = imageVideoOptions({ prompt: '@参考图 中的机器人挥手并说：“出发吧。”', requirements: '镜头缓慢推近' })
+  const prepared = workflow.prepareRequest(options)
+  assert.throws(() => workflow.validateAndRestore({ text: imageVideoOutput(), refinement: true, context: prepared.context, current: options }), /原台词未完整保留/)
+  const spoken = imageVideoOutput().replace('completes one restrained turn', 'waves and (S1) says: <d>[Chinese] 出发吧。</d> It')
+  assert.match(workflow.validateAndRestore({ text: spoken, refinement: true, context: prepared.context, current: options }).text, /<d>\[Chinese\] 出发吧。<\/d>/)
+})
+
 test('exports one immutable pure reverse workflow through CommonJS and the browser global', () => {
   const browser = { console }
   browser.globalThis = browser

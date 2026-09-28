@@ -745,11 +745,11 @@ test('generation compiles the base display to the official English text', async 
 
 test('generation writes the mode-exact official alignment: none for 文生, bare labels and the final shot for 首尾帧', async () => {
   const t2v = await workflow.compileForGeneration({ modelId: 'minimax_h3_local', mode: 'text_video', durationSeconds: 5, prompt: textVideoPrompt(), resources: [] })
-  // A later shot always names its cut, as the official guide writes it ([Shot N] At MM:SS.mmm, the shot cuts to …).
-  assert.equal(t2v.modelText, 'integrated_multimodal_description: [Shot 1] A quiet city wakes before dawn while the locked camera remains static. [Shot 2] At 00:02.000, the shot cuts to warm sunlight travels gradually across the buildings while the camera slowly pans right.\n\noverall_soundscape: Distant traffic and a light morning breeze.\n\nnon_diegetic_music: Soft restrained strings.')
+  // A later shot always names its cut (the official "[Shot N] At MM:SS.mmm, the shot cuts to …"); a clause after it stands as its own sentence.
+  assert.equal(t2v.modelText, 'integrated_multimodal_description: [Shot 1] A quiet city wakes before dawn while the locked camera remains static. [Shot 2] At 00:02.000, the shot cuts. Warm sunlight travels gradually across the buildings while the camera slowly pans right.\n\noverall_soundscape: Distant traffic and a light morning breeze.\n\nnon_diegetic_music: Soft restrained strings.')
   const fl2v = await workflow.compileForGeneration({ modelId: 'minimax_h3_local', mode: 'first_last', durationSeconds: 5, prompt: firstLastPrompt(5).replace(/<Picture 1>/g, '@首帧').replace(/<Picture 2>/g, '@尾帧'), resources: [firstFrame(), lastFrame()] })
   assert.equal(fl2v.modelText.split('\n\n')[0], 'How the reference pictures align with the target video — Picture 1 (from Shot 1) aligns with the 0.00-second mark of the target video; Picture 2 (from Shot 2) aligns with the 5.00-second mark of the target video.')
-  assert.match(fl2v.modelText, /\[Shot 1\] Picture 1 is the exact opening composition[^\n]* \[Shot 2\] At 00:03\.500, the shot cuts to motion gradually resolves into Picture 2 /)
+  assert.match(fl2v.modelText, /\[Shot 1\] Picture 1 is the exact opening composition[^\n]* \[Shot 2\] At 00:03\.500, the shot cuts\. Motion gradually resolves into Picture 2 /)
   assert.doesNotMatch(fl2v.modelText, /<Picture|@/)
   // An empty prompt reaches the graph builder's own empty-prompt error unchanged.
   assert.equal((await workflow.compileForGeneration({ modelId: 'minimax_h3_local', mode: 'text_video', durationSeconds: 5, prompt: ' ', resources: [] })).modelText, '')
@@ -771,6 +771,12 @@ test('the policy follows the user\'s words, quoted lines follow the requirement,
   assert.throws(() => workflow.validateAndRestore({ text: said, context: workflow.prepareRequest(speaking).context, current: speaking }), /原台词未完整保留/)
   const renamed = workflow.prepareRequest({ ...speaking, requirements: '把台词改成“走吧。”' })
   assert.match(workflow.validateAndRestore({ text: said, context: renamed.context, current: speaking }).modelText, /<d>\[Chinese\] 走吧。<\/d>/)
+  // The requirement decides by what it says: a quoted replacement line replaces the old one, silence drops it.
+  for (const requirements of ['把“出发吧。”改成“走吧。”', '让她改说“走吧。”']) {
+    assert.match(workflow.validateAndRestore({ text: said, context: workflow.prepareRequest({ ...speaking, requirements }).context, current: speaking }).modelText, /<d>\[Chinese\] 走吧。<\/d>/, requirements)
+  }
+  assert.ok(workflow.validateAndRestore({ text: lost, context: workflow.prepareRequest({ ...speaking, requirements: '她不开口，只挥手' }).context, current: speaking }).modelText)
+  assert.throws(() => workflow.validateAndRestore({ text: lost, context: workflow.prepareRequest({ ...speaking, requirements: '保留原台词，把镜头改成缓慢推近' }).context, current: speaking }), /原台词未完整保留/)
   // A translation that drops part of the display is refused instead of reaching H3.
   const station = '[Shot 1] <Picture 1> 中的少女站在站台上，身穿米色风衣，背着棕色皮包，缓慢转身面向驶来的列车，抬起右手挥动三次，风吹起她的长发与衣摆，列车灯光在她脸上掠过。镜头保持固定，构图稳定。'
   const shown = format.toBaseDisplay(chineseFields(station), { mode: 'image_video', durationSeconds: 5 }).replace(/<Picture 1>/g, '@参考图')

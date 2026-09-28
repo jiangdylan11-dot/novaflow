@@ -365,4 +365,8 @@ test('多参 cuts read like the official guide: each shot on its own display lin
  // The Chinese half and a display keep their own wording.
  for(const api of [local,edge]) assert.match(api.validateReference(chinese,{mode:'multi_reference',durationSeconds:5,requirements:'Available resource labels: <Picture 1>; <Picture 2>'}),/\[Shot 2\] At 00:03\.000 <Subject 1> 与/);
  assert.match(local.toReferenceDisplay(chinese),/<主体 2>。镜头固定。\n【镜头 2】 At 00:03\.000 /);
+ // A short Chinese half full of subject tags stays Chinese: tags, shot markers and times are no English words.
+ const tagged=chinese.replace(/detailed_description:\n[^\n]*/,'detailed_description:\n[Shot 1] <Subject 1> 走向 <Subject 2>，镜头跟随。\n[Shot 2] At 00:03.000 <Subject 1> 与 <Subject 2> 的近景。');
+ for(const api of [local,edge]) assert.match(api.validateReference(tagged,{mode:'multi_reference',durationSeconds:5,requirements:'Available resource labels: <Picture 1>; <Picture 2>'}),/\n\[Shot 2\] At 00:03\.000 <Subject 1> 与 <Subject 2> 的近景。\n/);
+ assert.match(prompt.validateAndRestore({text:JSON.stringify({modelPrompt:english,displayPrompt:tagged}),context:prompt.prepareRequest(c).context,current:c}).text,/\n【镜头 2】 At 00:03\.000 <主体 1> 与 <主体 2> 的近景。\n/);
 });

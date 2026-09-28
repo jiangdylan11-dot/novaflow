@@ -706,7 +706,7 @@
     });
   }
 
-  async function validateMiniMaxH3ReverseResult(text, prepared, textareas) {
+  async function validateMiniMaxH3ReverseResult(text, prepared, textareas, refinement = false) {
     if (!prepared?.workflow || typeof prepared.workflow.validateAndRestore !== "function") {
       throw new Error("MiniMax H3 参考图反推校验模块不可用");
     }
@@ -714,6 +714,8 @@
     const resources = await hydrateMiniMaxH3ReverseResources(current);
     const validated = prepared.workflow.validateAndRestore({
       text: String(text || ""),
+      // Only the refinement answer (original prompt + requirement) must keep the user's quoted lines.
+      refinement,
       context: prepared.context,
       current: {
         modelId: current.modelId,
@@ -4686,7 +4688,7 @@
               const failure = readSmartAiFailureEnvelope(refined);
               throw Object.assign(new Error(failure.message || "补充要求融合优化失败，原提示词未修改"), failure);
             }
-            nextPrompt = await validateMiniMaxH3ReverseResult(readSmartAiResult(refined).prompt, miniMaxH3ReversePrepared, textareas);
+            nextPrompt = await validateMiniMaxH3ReverseResult(readSmartAiResult(refined).prompt, miniMaxH3ReversePrepared, textareas, true);
           }
         } catch (validationFailure) {
           const validationError = new Error(String(validationFailure?.message || validationFailure || "MiniMax H3 contract validation failed"));

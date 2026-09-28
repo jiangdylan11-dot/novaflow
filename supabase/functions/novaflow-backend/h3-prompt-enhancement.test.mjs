@@ -206,6 +206,10 @@ test('the quoted line is kept verbatim unless the user asks to change the dialog
   assert.throws(() => normalizeMiniMaxH3PromptOutput(answer(''), request('\n把台词改成“我们走吧。”')), /原台词未完整保留/);
   assert.throws(() => normalizeMiniMaxH3PromptOutput(answer('我们走吧。'), request('')), /原台词未完整保留/);
   assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(answer('出发吧。'), request('')));
+  // The edge runs the shared gate, so it reads the requirement the way the renderer does.
+  for (const tail of ['\n把“出发吧。”改成“我们走吧。”', '\n让她改说“我们走吧。”']) assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(answer('我们走吧。'), request(tail)), tail);
+  assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(answer(''), request('\n让她保持沉默，只挥手')));
+  assert.throws(() => normalizeMiniMaxH3PromptOutput(answer(''), request('\n保留原台词，把镜头改成缓慢推近')), /原台词未完整保留/);
 });
 
 test('the repair body carries the instruction for the pair schema and the specific registered failure', async () => {

@@ -544,6 +544,8 @@
     const current = normalizeRequestState(input.current)
     const restored = requirePromptWorkflow().validateAndRestore({
       text: stringValue(input.text),
+      // A reverse is rebuilt from the pictures: only the refinement answer must keep the user's quoted lines.
+      quotedLines: input.refinement === true,
       context: context.h3Context,
       current: {
         modelId: current.modelId,

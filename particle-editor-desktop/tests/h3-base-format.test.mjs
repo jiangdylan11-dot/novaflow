@@ -192,6 +192,9 @@ test('legacy five-section prompts convert to the display without a model', () =>
     assert.doesNotMatch(shown, /口型与说话自然|随机饰件|16:9/);
     // A generic speaker placeholder (…中说这句台词的角色) adds no identity.
     assert.equal(api.toBaseDisplay(fl2v), '【参考帧对齐】\n<Picture 1> 对齐视频第 0.00 秒（开头）；<Picture 2> 对齐第 5.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】穿红色战甲的女性站在雪山前，镜头固定。缓慢抬起右手，开口说话。(S1) 说：<d>[Chinese] 出发吧。</d>右手举到肩高，停顿片刻。右手缓缓放下，回到身侧。\n\n【环境声音】\n风声和铠甲摩擦声\n\n【背景音乐】\n无');
+    // Two speakers defined on one line each keep their own identity.
+    const twoSpeakers = fl2v.replace('<Subject 1> = (S1)，<Picture 1> 中说这句台词的角色。', '<Subject 1> = (S1)，红衣少女；<Subject 2> = (S2)，老人。').replace('(S1)：“出发吧。”', '(S1)：“出发吧。”\n(S2)：“再见。”');
+    assert.match(api.toBaseDisplay(twoSpeakers), /开口说话。红衣少女 \(S1\) 说：<d>\[Chinese\] 出发吧。<\/d>老人 \(S2\) 说：<d>\[Chinese\] 再见。<\/d>右手举到肩高/);
     // Explicit options win over the task line; the result validates as Chinese fields.
     assert.match(api.toBaseDisplay(fl2v, {mode:'first_last', durationSeconds:6}), /对齐第 6\.00 秒（结尾）/);
     assert.equal(api.validateBaseResult(fl2v, {mode:'first_last', durationSeconds:5, language:'zh'}), 'integrated_multimodal_description: [Shot 1] 穿红色战甲的女性站在雪山前，镜头固定。画面从 <Picture 1> 的位置与构图开始。缓慢抬起右手，开口说话。(S1) 说：<d>[Chinese] 出发吧。</d>右手举到肩高，停顿片刻。右手缓缓放下，回到身侧。结尾时，动作落定在 <Picture 2> 的姿态、位置与构图。\n\noverall_soundscape: 风声和铠甲摩擦声\n\nnon_diegetic_music: N/A');
@@ -210,8 +213,8 @@ test('reverse outputs: local fact slots become readable sentences, Grok prose pa
   for (const api of apis) {
     const expected = {
       localI2v: '【参考帧对齐】\n<Picture 1> 是视频第 0.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】一名红色战甲女性，黑色长发，站立，抬手。\n场景是雪山。\n画面为全身景，平视。\n光色与质感为自然光。\n随后，她转身向镜头挥手。镜头缓慢推近。\n她说：<d>[Chinese] 出发吧。</d>\n\n【环境声音】\n与场景一致的低强度环境底声。\n\n【背景音乐】\n无',
-      // FL2V frame groups read as time phrases; without a motion line a neutral sentence carries the opening into the ending.
-      localFl2v: '【参考帧对齐】\n<Picture 1> 对齐视频第 0.00 秒（开头）；<Picture 2> 对齐第 5.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】两帧中都有一名红色战甲女性，黑色长发，抬手。\n场景是雪山。\n画面为全身景，平视。\n光色与质感为自然光。\n开头画面 <Picture 1> 中，站立。\n随后画面从开头状态连续、自然地过渡到结尾状态。\n结尾画面 <Picture 2> 中，坐下。\n画面从首帧状态自然延续，动作连贯。镜头保持构图。动作在 5.00 秒连续抵达尾帧状态。\n\n【环境声音】\n与场景一致的低强度环境底声。\n\n【背景音乐】\n无',
+      // FL2V frame groups read as time phrases; the inventory's own transition sentence is told once.
+      localFl2v: '【参考帧对齐】\n<Picture 1> 对齐视频第 0.00 秒（开头）；<Picture 2> 对齐第 5.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】两帧中都有一名红色战甲女性，黑色长发，抬手。\n场景是雪山。\n画面为全身景，平视。\n光色与质感为自然光。\n开头画面 <Picture 1> 中，站立。\n结尾画面 <Picture 2> 中，坐下。\n画面从首帧状态自然延续，动作连贯。镜头保持构图。动作在 5.00 秒连续抵达尾帧状态。\n\n【环境声音】\n与场景一致的低强度环境底声。\n\n【背景音乐】\n无',
       grokFl2v: '【参考帧对齐】\n<Picture 1> 对齐视频第 0.00 秒（开头）；<Picture 2> 对齐第 5.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】写实摄影；中景；平视\n一名 少女；黑色短发；橙色衬衫；站在路边\n乡村公路；远处稻田\n午后自然光；暖橙色调\n动作从首帧姿态轻缓开始，以小幅、连续的姿态变化自然推进，随后逐渐收稳。\n镜头保持固定，延续首帧的视角与构图。\n过渡过程中逐步到达尾帧状态：坐在路边\n到 5.00 秒，动作连续收束至 <Picture 2> 的准确姿态、物体位置与构图。\n\n【环境声音】\n低声、平稳的环境底声贯穿画面，轻微的动作声随可见运动同步起落。\n\n【背景音乐】\n无',
     };
     assert.equal(api.toBaseDisplay(localI2v, i2v), expected.localI2v);
@@ -224,6 +227,11 @@ test('reverse outputs: local fact slots become readable sentences, Grok prose pa
     const styled = localFl2v.replace('光色材质：自然光。', '光色材质：自然光；国风插画。').replace('\n\n画面从首帧状态', '\n\n随后：她缓缓坐下。\n\n画面从首帧状态');
     assert.match(api.toBaseDisplay(styled), /【镜头 1】国风插画。\n两帧中都有[^\n]*\n场景是雪山。\n画面为全身景，平视。\n光色与质感为自然光。\n开头画面 <Picture 1> 中，站立。\n随后，她缓缓坐下。\n结尾画面 <Picture 2> 中，坐下。\n画面从首帧状态/);
     assert.doesNotMatch(api.toBaseDisplay(styled), /随后画面从开头状态/);
+    // Without a motion line or a transition sentence, one neutral sentence carries the opening into the ending.
+    assert.match(api.toBaseDisplay(localFl2v.replace('\n\n画面从首帧状态自然延续，动作连贯。镜头保持构图。动作在 5.00 秒连续抵达尾帧状态。', '')), /\n开头画面 <Picture 1> 中，站立。\n随后画面从开头状态连续、自然地过渡到结尾状态。\n结尾画面 <Picture 2> 中，坐下。\n\n/);
+    // Each frame keeps its own style (幻想 / 梦幻); only a shared style opens the shot.
+    const frameStyles = localFl2v.replace('主体1：姿态：站立。', '主体1：姿态：站立。\n光色材质：幻想风格；蓝紫色调。').replace('主体1：姿态：坐下。', '主体1：姿态：坐下。\n光色材质：梦幻风格；暖光。');
+    assert.match(api.toBaseDisplay(frameStyles), /【镜头 1】两帧中都有[^\n]*\n[^]*\n开头画面 <Picture 1> 中，站立。\n光色与质感为幻想风格，蓝紫色调。\n结尾画面 <Picture 2> 中，坐下。\n光色与质感为梦幻风格，暖光。\n/);
     assert.equal(api.toBaseDisplay(grokFl2v), expected.grokFl2v);
     assert.match(api.toBaseDisplay(grokI2v, i2v), /\n【镜头 1】写实摄影；中景；平视\n一名 少女；黑色短发；橙色衬衫；站在路边\n<Picture 1> 她转身向镜头挥手，说：“出发吧。”\n镜头保持固定/);
     // Every fact value survives, and the display is stable through another round.
@@ -318,6 +326,17 @@ test('the English half uses the official wording for cuts, a still camera and ve
     assert.match(api.composeBaseModelPrompt(fields('[Shot 1] A cat sits. [Shot 2] At 00:04.000, the camera cuts to a close-up.'), t2v), /\[Shot 2\] At 00:04\.000, the camera cuts to a close-up\./);
     const chinese = fields('[Shot 1] 猫坐着。镜头固定。\n[Shot 2] At 00:04.000 猫的特写。', '风声。');
     assert.equal(api.validateBaseFields(chinese, {...t2v, language:'zh'}), chinese);
+    // A pan becomes a tilt only for the camera; a still camera only at its clause end, never beside a camera move or inside an adjective list.
+    for (const narrative of ['[Shot 1] Live-action, a chef sets the pots and pans down and picks the frying pan up. Peter Pan up in the sky waves. The camera holds a static shot.',
+      '[Shot 1] Live-action, a runner sprints; the camera keeps the framing centered on her as it tracks right at fast speed.',
+      '[Shot 1] Live-action, an old man reads; the camera maintains the composition while slowly pushing in toward his hands.',
+      '[Shot 1] Live-action, a lighthouse at dusk; the camera slowly pulls back, ending on a wide, static shot.',
+      '[Shot 1] Live-action, a boy flies a kite on the beach, framed in a low-angle, static shot.']) {
+      assert.equal(api.validateBaseFields(fields(narrative), {...t2v, language:'en'}), fields(narrative), narrative);
+    }
+    // A later shot that opens with a clause stands as its own sentence after the cut.
+    assert.match(api.validateBaseFields(fields('[Shot 1] A city at night. The camera pans up to the sky. [Shot 2] At 00:04.000, the girl walks into a café. [Shot 3] At 00:06.000, she turns and waves.'), {...t2v, language:'en'}),
+      /The camera tilts up to the sky\.\n\[Shot 2\] At 00:04\.000, the shot cuts\. The girl walks into a café\.\n\[Shot 3\] At 00:06\.000, the shot cuts\. She turns and waves\./);
   }
 });
 
@@ -340,6 +359,15 @@ test('quoted speech, labelled or not, must reach a <d> block unless the requirem
     assert.doesNotThrow(() => api.validateBaseResult(renamed, {...i2v, currentPrompt:source, requirements:requirements('把台词改成“走吧。”')}));
     assert.throws(() => api.validateBaseResult(kept, {...i2v, currentPrompt:source, requirements:requirements('把台词改成“走吧。”')}), /原台词未完整保留/);
     assert.doesNotThrow(() => api.validateBaseResult(lost, {...i2v, currentPrompt:source, requirements:requirements('删掉台词')}));
+    // The requirement decides by what it says: a new line to say replaces the source line, silence drops it, keeping it keeps it.
+    for (const changed of ['把“出发吧。”改成“走吧。”', '让她改说“走吧。”']) {
+      assert.doesNotThrow(() => api.validateBaseResult(renamed, {...i2v, currentPrompt:source, requirements:requirements(changed)}), changed);
+      assert.throws(() => api.validateBaseResult(lost, {...i2v, currentPrompt:source, requirements:requirements(changed)}), /原台词未完整保留/, changed);
+    }
+    for (const silent of ['让她保持沉默，只挥手', '她不开口，只挥手']) assert.doesNotThrow(() => api.validateBaseResult(lost, {...i2v, currentPrompt:source, requirements:requirements(silent)}), silent);
+    assert.throws(() => api.validateBaseResult(lost, {...i2v, currentPrompt:source, requirements:requirements('保留原台词，把镜头改成缓慢推近')}), /原台词未完整保留/);
+    // A reverse result is rebuilt from the pictures (quotedLines: false); its refinement keeps the lines.
+    assert.doesNotThrow(() => api.validateBaseResult(lost, {...i2v, currentPrompt:source, quotedLines:false}));
     // Quoted on-screen text is no speech.
     assert.doesNotThrow(() => api.validateBaseResult(lost, {...i2v, currentPrompt:'<Picture 1> 旁的招牌写着“营业中”'}));
   }
@@ -351,7 +379,14 @@ test('looking at the lens names no camera; the idle-breathing rule only reaches 
     const completed = JSON.parse(api.validateBaseResult(pair, {mode:'text_video', durationSeconds:5, currentPrompt:'猫抬头看向镜头，慢慢眨眼'}));
     assert.match(completed.modelPrompt, /blinks slowly\. The camera holds a static shot and the framing stays stable\./);
     assert.match(completed.displayPrompt, /慢慢眨眼。镜头固定，构图保持稳定。/);
+    // A camera move of the lens (镜头前推, 镜头前移, 跟拍) is a camera; standing in front of the lens is not.
+    for (const moving of ['女孩向前奔跑，镜头前推，逐渐靠近她的背影。', '男孩踢球，镜头前移贴近足球。', '女孩看向镜头微笑，随后转身离开，跟拍她的背影。']) {
+      assert.equal(api.validateBaseResult(fields('[Shot 1] ' + moving, '风声。'), {mode:'text_video', durationSeconds:5, currentPrompt:moving}), fields('[Shot 1] ' + moving, '风声。'), moving);
+    }
+    assert.match(api.validateBaseResult(fields('[Shot 1] 女孩站在镜头前微笑。', '风声。'), {mode:'text_video', durationSeconds:5, currentPrompt:'女孩站在镜头前微笑'}), /微笑。镜头固定，构图保持稳定。/);
     assert.doesNotMatch(api.instructionFor('紫发女神闭目养神，晚风轻拂长发'), /仅呼吸待机/);
+    // Only the idle sentence leaves; the rest of its policy item (no invented events for sequencing) stays.
+    assert.match(api.instructionFor('一只橘猫在窗台上伸懒腰，然后跳下窗台'), /^静止或持续状态可以贯穿整个镜头的动作顺序，不必为了制造先后差异新增事件。\n/);
     for (const idle of ['机器人原地待机', '胸口随呼吸起伏', 'an idle loop', 'slow breathing']) assert.match(api.instructionFor(idle), /仅呼吸待机/, idle);
     assert.equal(api.instructionFor('原地待机'), api.instruction);
   }
