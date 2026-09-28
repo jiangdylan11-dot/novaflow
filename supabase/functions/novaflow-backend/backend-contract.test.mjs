@@ -3897,6 +3897,17 @@ test("ordinary Grok image reverse uses strict nf.visual.v1 while other image mod
   assert.equal(roleReference.body.max_output_tokens, 2048);
   assert.deepEqual(roleReference.resultOptions, { artFiveSectionPrompt: true });
   assert.doesNotMatch(roleReference.body.input[0].content.at(-1).text, /nf\.visual\.v1/);
+  // 美工's one image action may send the prompt box: role reference folds it into the same image call with the requirements.
+  const roleWithPrompt = buildGrokImageReverseRequest({
+    images: [{ ...image, role: "subject" }, { ...image, dataUrl: "data:image/png;base64,AQ==", role: "pose" }],
+    scenario: "role_reference",
+    surface: "art",
+    purpose: "roleReference",
+    currentPrompt: "穿红色斗篷的剑客站在雪地里",
+    requirements: "用户生成要求：改成夜景"
+  }, "grok-contract-test");
+  assert.equal(roleWithPrompt.inputMeta.imageCount, 2);
+  assert.match(roleWithPrompt.body.input[0].content.at(-1).text, /当前正向 Prompt:\n穿红色斗篷的剑客站在雪地里\n[\s\S]*附加要求:\n用户生成要求：改成夜景\n[\s\S]*最终必须把当前提示、图片可见信息和附加要求深度合并为一段提示/);
 
   const animation = buildGrokImageReverseRequest({ images: [image], surface: "animation" }, "grok-contract-test");
   assert.equal(animation.inputMeta.visualIrSchema, "");

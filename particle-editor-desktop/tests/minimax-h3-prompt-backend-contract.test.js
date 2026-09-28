@@ -222,6 +222,14 @@ const buildRequest = vm.runInNewContext(
       contentPolicy: { sensitiveVisualAnalysis: false, allSubjectsConfirmedAdult: false },
     }),
     miniMaxH3EnhanceMode: () => "full_reference",
+    miniMaxH3ValidateRawUserContent: () => ({ hasExplicitYouth: false, hasSensitiveRequest: false, sensitiveCategories: [] }),
+    miniMaxH3OptimizeSafetyRules: vm.runInNewContext(
+      `(${extractNamedFunction(serverSource, "miniMaxH3OptimizeSafetyRules")})`,
+      {
+        MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER: "H3_CONTENT_POLICY_BLOCKED",
+        MINIMAX_H3_FAITHFUL_PICTURE_RULE: vm.runInNewContext(extractNamedConstExpression(serverSource, "MINIMAX_H3_FAITHFUL_PICTURE_RULE")),
+      },
+    ),
     miniMaxH3OptimizeFrameContent: vm.runInNewContext(
       `(${extractNamedFunction(serverSource, "miniMaxH3OptimizeFrameContent")})`,
       {

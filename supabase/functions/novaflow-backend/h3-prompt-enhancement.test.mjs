@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import * as edge from './h3-prompt-enhance.mjs';
-import { buildGrokPromptOptimizeRequest, normalizeMiniMaxH3PromptOutput, callGrokResponseWithVisualRetry } from './smart-ai-grok.workflow.mjs';
+import { buildGrokPromptOptimizeRequest, normalizeMiniMaxH3PromptOutput, callGrokResponseWithVisualRetry, miniMaxH3FailureEnvelope } from './smart-ai-grok.workflow.mjs';
 const require = createRequire(import.meta.url);
 const local = require('../../../particle-editor-desktop/admin-server/h3-prompt-enhance.js');
 const cases = JSON.parse(fs.readFileSync(new URL('../../../particle-editor-desktop/tests/fixtures/h3-prompt-enhance-cases.json', import.meta.url), 'utf8'));
@@ -306,4 +306,63 @@ test('base I2V/FL2V optimize shows Grok its own frames; a translation, 文生 an
   // Without pixels the writer is told not to guess what the frames show.
   assert.match(content(optimize('image_video', []))[1].text, /^No frame pixels are attached\. Do not name a visual style/);
   assert.equal(optimize('image_video', []).inputMeta.imageCount, 0);
+});
+
+test('the optimize that sees pictures carries the reverse content safety in its one call', async () => {
+  const labels = {image_video:'Available resource labels: <Picture 1> = captured image slot first_frame. Never invent a resource label.',
+    full_reference:'Available resource labels: <Picture 1> = captured image slot multi_ref_image_1. Never invent a resource label.'};
+  const frame = {label:'<Picture 1>', dataUrl:'data:image/jpeg;base64,aGVsbG8='};
+  const policy = {sensitiveVisualAnalysis:true, allSubjectsConfirmedAdult:false};
+  const optimize = (source, {h3Mode = 'image_video', frames = [frame], contentPolicy = policy, markers = ['H3 response format: bilingual-v1']} = {}) => buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode, durationSeconds:6, prompt:source, h3ReferenceFrames:frames, contentPolicy,
+    requirements:[...markers, labels[h3Mode === 'multi_reference' ? 'full_reference' : h3Mode] || '', 'Source prompt:', source].join('\n')}, 'test-model');
+  const built = optimize('女孩挥手');
+  const schema = built.body.text.format.schema;
+  assert.deepEqual(schema.required, ['modelPrompt', 'displayPrompt', 'contentSafety']);
+  assert.deepEqual(schema.properties.contentSafety.required, ['explicitMinorEvidence', 'sensitiveContent']);
+  assert.deepEqual({...schema, properties:{modelPrompt:schema.properties.modelPrompt, displayPrompt:schema.properties.displayPrompt}, required:['modelPrompt', 'displayPrompt']}, JSON.parse(JSON.stringify(edge.baseResultSchema)));
+  // With pictures in a pair the person rule stays in the request text; the faithful-facts and fail-closed rules ride in the schema.
+  assert.match(userText(built), /Content safety: never state a person's age or age group \(成年, 未成年, N岁\)[\s\S]*keep 女孩 as 女孩 in displayPrompt and write girl in modelPrompt/);
+  assert.doesNotMatch(userText(built), /H3_CONTENT_POLICY_BLOCKED|sensitive details|\bminor\b|underage/);
+  assert.match(schema.properties.contentSafety.description, /both true, every prompt field is exactly H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content\.$/);
+  assert.match(schema.properties.contentSafety.properties.sensitiveContent.description, /sensitive details included: never omit or soften a visible fact/);
+  assert.equal(built.body.input[1].content.length, 4, 'the rules ride in the request text and schema, the frame items are unchanged');
+  assert.doesNotMatch(optimize('女孩挥手', {contentPolicy:{sensitiveVisualAnalysis:false, allSubjectsConfirmedAdult:false}}).body.text.format.schema.properties.contentSafety.properties.sensitiveContent.description, /sensitive details/);
+  // An old page's five sections with pictures have no schema field to carry them: they go in the request text.
+  assert.match(userText(optimize('女孩挥手', {markers:[]})), /sensitive details included: never omit or soften a visible fact, and add none that is not visible\.\nWhen explicit minor evidence coexists with sensitive content, write exactly H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content as every field value\./);
+  // 多参 reports the same signal next to editPolicy; without pixels the pair schema stays as it was.
+  assert.deepEqual(optimize('<Picture 1> 中的女孩奔跑', {h3Mode:'multi_reference'}).body.text.format.schema.required, ['modelPrompt', 'displayPrompt', 'editPolicy', 'contentSafety']);
+  assert.deepEqual(optimize('女孩挥手', {frames:[]}).body.text.format.schema, JSON.parse(JSON.stringify(edge.baseResultSchema)));
+  assert.match(userText(optimize('女孩挥手', {h3Mode:'text_video', frames:[]})), /keep 女孩 as 女孩 in displayPrompt and write girl in modelPrompt[\s\S]*as every field value\. A young-looking/);
+  assert.doesNotMatch(userText(translateRequest('image_video', cityDisplay)), /Content safety|H3_CONTENT_POLICY_BLOCKED/);
+  // Explicit minor wording with a sensitive request is refused before any call, as in reverse.
+  assert.throws(() => optimize('小孩全裸站在海边'), error => error.errorCode === 'provider_content_policy' && error.statusCode === 422);
+  assert.equal(optimize('小孩在海边奔跑').resultOptions.explicitYouthUserRequest, true);
+  const model = fields('[Shot 1] Live-action, the girl shown in <Picture 1> raises her right hand and waves toward the camera. The camera holds a static shot.', 'A soft breeze moves through the leaves.');
+  const display = fields('[Shot 1] 写实风格，<Picture 1> 中的女孩举起右手，朝镜头挥手。镜头保持固定。', '微风吹过树叶。');
+  const answer = (contentSafety, modelPrompt = model) => JSON.stringify({modelPrompt, displayPrompt:display, contentSafety});
+  // The signal never leaves the edge; a child or adult sensitive content alone is an ordinary answer.
+  assert.deepEqual(Object.keys(JSON.parse(normalizeMiniMaxH3PromptOutput(answer({explicitMinorEvidence:false, sensitiveContent:false}), built.resultOptions))), ['modelPrompt', 'displayPrompt']);
+  assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(answer({explicitMinorEvidence:true, sensitiveContent:false}), built.resultOptions));
+  assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(answer({explicitMinorEvidence:false, sensitiveContent:true}), built.resultOptions));
+  // Minor evidence with sensitive content, or the fail-closed marker, ends the one call as provider_content_policy: no repair, no retry.
+  const blocked = [
+    [answer({explicitMinorEvidence:true, sensitiveContent:true}), built],
+    [answer({explicitMinorEvidence:true, sensitiveContent:false}, model.replace('waves toward the camera', 'stands fully nude and waves toward the camera')), built],
+    [answer({explicitMinorEvidence:false, sensitiveContent:true}), optimize('小孩在海边奔跑')],
+    [JSON.stringify({modelPrompt:{integrated_multimodal_description:'H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content', overall_soundscape:'H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content', non_diegetic_music:'N/A'}, displayPrompt:display}), built],
+    ['H3_CONTENT_POLICY_BLOCKED: explicit_minor_sensitive_content', optimize('女孩挥手', {markers:[]})]
+  ];
+  for (const [text, request] of blocked) {
+    let calls = 0;
+    await assert.rejects(callGrokResponseWithVisualRetry(request.body, request.inputMeta, {...request.resultOptions, visualRetryAllowed:true}, async () => {
+      calls++;
+      return {ok:true, data:{output_text:normalizeMiniMaxH3PromptOutput(text, request.resultOptions)}, providerCallCount:1};
+    }), error => {
+      const envelope = miniMaxH3FailureEnvelope(error);
+      assert.equal(error.statusCode, 422);
+      assert.deepEqual([envelope.errorCode, envelope.retryable, envelope.retryCount, envelope.failureReason], ['provider_content_policy', false, 0, 'explicit_minor_sensitive']);
+      return true;
+    });
+    assert.equal(calls, 1);
+  }
 });
