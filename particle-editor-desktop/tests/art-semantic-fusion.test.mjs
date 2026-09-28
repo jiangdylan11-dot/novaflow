@@ -90,8 +90,15 @@ const briefTexts = [proseText, auto.body.input.at(-1).content[0].text, roleRever
 for (const text of briefTexts) {
   assert.ok(text.includes('像美术总监给画师的简报') && text.includes('光源只能是[环境背景]里已经写出的那些'), 'every five-section answer carries the brief');
   assert.doesNotMatch(text, /不得新增底稿没有的事实|禁止新增底稿没有的人物、道具或场景|不虚构图中没有的光源/, 'no rule forbids fitting detail');
+  // Natural light needs its sun or moon in the scene, feet mean a full shot, and the brief ends with a consistency check.
+  assert.ok(text.includes('那里没写月亮就不写月光') && text.includes('中景以内不写脚和鞋') && text.includes('输出前逐项核对并改正'), 'the sections are checked against each other');
 }
 assert.ok(roleReverse.body.input[0].content.at(-1).text.includes('用户写的姿势或位置取代主体图原有的姿势'), 'a requested pose replaces the reference pose');
+// The pictures stay the ground truth: every fixture of the background picture is counted, in-between colours stay mixed, and the
+// venue is named only from what its fixtures show. The brief samples closer to the pictures and has room to reason.
+assert.ok(['先逐一清点看得见的结构、陈设、灯具和材质', '介于两色之间的写成混合色', '场所类型只按看得见的陈设判断'].every((rule) => roleReverse.body.input[0].content.at(-1).text.includes(rule)), 'the background picture is read fixture by fixture');
+assert.equal(roleReverse.body.temperature, 0.45);
+assert.equal(roleReverse.body.max_output_tokens, 3072);
 assert.ok(!buildGrokPromptOptimizeRequest({surface:'art',purpose:'optimize',prompt:'[画面]\n一只猫趴在沙发上\n[镜头]\n中景平视',requirements:'提示词编辑模式：以底稿为准。',supportsNegativePrompt:false},'grok-contract-test').body.input.at(-1).content[0].text.includes('像美术总监给画师的简报'), 'a layout of its own gets no five-section brief');
 const styleReverse = buildGrokImageReverseRequest({images:[{...refImage,role:'subject'},{...refImage,dataUrl:'data:image/png;base64,AQ==',role:'style'}],scenario:'role_reference'},'grok-contract-test');
 assert.ok(styleReverse.body.input[0].content.at(-1).text.includes('风格迁移：画面内容只来自图1'), 'a style transfer keeps its content lock under the brief');
@@ -99,6 +106,11 @@ assert.ok(styleReverse.body.input[0].content.at(-1).text.includes('风格迁移�
 const roleNegative = negative => grokResponsesPublicResult({output_text:JSON.stringify({prompt:laidOut,negative_prompt:negative})},roleReverse.resultOptions).negative_prompt;
 assert.equal(roleNegative('画面模糊, 卡通风格偏差, 背景元素混入主体, 手部畸形'),'画面模糊，手部畸形');
 assert.equal(roleNegative('画面模糊、手部畸形、塑料质感'),'画面模糊、手部畸形、塑料质感');
+// An absence, a change or a negation would put the requested content into the negative channel; real defects stay.
+assert.equal(roleNegative('画面模糊，灯笼不发光，夜晚变白天，阴影缺失，缺少背包，改变动作，椅子不稳，窗外场景矛盾，人物变形，左右不对称，光影不自然，色彩渐变断层'),'画面模糊，人物变形，左右不对称，光影不自然，色彩渐变断层');
+assert.equal(roleNegative('手部畸形 面部扭曲 椅子不稳 光源方向错误'),'手部畸形，面部扭曲，光源方向错误');
+// A section title written in front of its text is a right layout on the wrong line: it is moved, no repair call is spent.
+assert.equal(roleResult(laidOut.replace(/\]\n/g, '] ')).output_text, laidOut);
 // The repair is a second call: a prompt optimize reserves one, so its fusion failure is final; an image action reserves two.
 for (const [budget, expected] of [[1, 1], [2, 2]]) {
   let calls = 0;

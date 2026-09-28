@@ -3894,7 +3894,7 @@ test("ordinary Grok image reverse uses strict nf.visual.v1 while other image mod
     scenario: "role_reference"
   }, "grok-contract-test");
   assert.equal(roleReference.inputMeta.visualIrSchema, "");
-  assert.equal(roleReference.body.max_output_tokens, 2048);
+  assert.equal(roleReference.body.max_output_tokens, 3072);
   assert.deepEqual(roleReference.resultOptions, { artFiveSectionPrompt: true });
   assert.doesNotMatch(roleReference.body.input[0].content.at(-1).text, /nf\.visual\.v1/);
   // 美工's one image action may send the prompt box: role reference folds it into the same image call with the requirements.
@@ -4139,7 +4139,7 @@ test("nf.visual.v2 is explicit opt-in for one static reference and never widens 
   ]) {
     const request = buildGrokImageReverseRequest(payload, "grok-contract-test");
     assert.equal(request.inputMeta.visualIrSchema, "");
-    assert.equal(request.body.max_output_tokens, 2048);
+    assert.equal(request.body.max_output_tokens, payload.scenario === "role_reference" ? 3072 : 2048);
     // Role reference answers its own strict prompt + contentSafety object, never the v2 visual contract.
     assert.equal(request.body.text?.format?.name, payload.scenario === "role_reference" ? "novaflow_art_reference_v1" : undefined);
     assert.deepEqual(request.resultOptions, payload.scenario === "role_reference"
