@@ -302,7 +302,8 @@ test('a translation that drops a block of the Chinese fails the per-shot coverag
 });
 
 test('the Chinese half of an optimize pair: common English words are written in Chinese, a rarer one is a display slip for the small fix; a translate-only source may keep words', () => {
-  const options = {mode:'text_video', durationSeconds:10, currentPrompt:'先是城市夜景全景，然后切到街角咖啡店里的女孩'};
+  // One shot, as the user asks (a requested cut must become its own shot, a gate of its own).
+  const options = {mode:'text_video', durationSeconds:10, currentPrompt:'城市夜景全景，街角咖啡店的灯亮着'};
   const model = fields('[Shot 1] Live-action, cinematic, a wide night view of the city skyline. The camera holds a static shot.', 'Distant traffic hums with faint city ambience.');
   const shown = (api, sound, extra = {}) => JSON.parse(api.validateBaseResult({modelPrompt:model, displayPrompt:fields('[Shot 1] 写实电影风格，城市夜景全景。镜头固定。', sound)}, {...options, ...extra})).displayPrompt;
   for (const api of apis) {
@@ -326,7 +327,7 @@ test('the English half uses the official wording for cuts, a still camera and ve
   for (const api of apis) {
     const english = api.validateBaseFields(fields('[Shot 1] Live-action. The camera remains static throughout the shot as she reads. A sign reads "The camera is static". [Shot 2] At 00:03.000 close-up of her hands. The camera slowly pans downward to the page. [Shot 3] At 00:05.000, A wide shot of the room, static shot. The camera holds its composition while she says: <d>[English] The camera maintains composition.</d>'), {...t2v, language:'en'});
     assert.match(english, /^integrated_multimodal_description: \[Shot 1\] Live-action\. The camera holds a static shot as she reads\. A sign reads "The camera is static"\.\n/);
-    assert.match(english, /\n\[Shot 2\] At 00:03\.000, the shot cuts to close-up of her hands\. The camera slowly tilts down to the page\.\n/);
+    assert.match(english, /\n\[Shot 2\] At 00:03\.000, the shot cuts to close-up of her hands\. The camera tilts down at slow speed to the page\.\n/);
     assert.match(english, /\n\[Shot 3\] At 00:05\.000, the shot cuts to a wide shot of the room\. The camera holds a static shot\. The camera holds a static shot while she says: <d>\[English\] The camera maintains composition\.<\/d>\n/);
     // An existing cut verb stays; the Chinese display and 'zh' fields are never rewritten.
     assert.match(api.composeBaseModelPrompt(fields('[Shot 1] A cat sits. [Shot 2] At 00:04.000, the camera cuts to a close-up.'), t2v), /\[Shot 2\] At 00:04\.000, the camera cuts to a close-up\./);
@@ -336,7 +337,7 @@ test('the English half uses the official wording for cuts, a still camera and ve
     for (const narrative of ['[Shot 1] Live-action, a chef sets the pots and pans down and picks the frying pan up. Peter Pan up in the sky waves. The camera holds a static shot.',
       '[Shot 1] Live-action, a runner sprints; the camera keeps the framing centered on her as it tracks right at fast speed.',
       '[Shot 1] Live-action, an old man reads; the camera maintains the composition while slowly pushing in toward his hands.',
-      '[Shot 1] Live-action, a lighthouse at dusk; the camera slowly pulls back, ending on a wide, static shot.',
+      '[Shot 1] Live-action, a lighthouse at dusk; the camera pulls out at slow speed, ending on a wide, static shot.',
       '[Shot 1] Live-action, a boy flies a kite on the beach, framed in a low-angle, static shot.']) {
       assert.equal(api.validateBaseFields(fields(narrative), {...t2v, language:'en'}), fields(narrative), narrative);
     }
@@ -519,12 +520,12 @@ test('shot sizes change only where the words differ: a cut size never lands in t
     // A timed cut written inside the shot, with no marker, starts its own shot in both halves, and that shot gets the user's size.
     const inline = JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, a full shot frames an old keeper standing by a lighthouse. Wind moves his coat. At 00:04.000, the camera cuts to a close-up of the keeper. The camera pulls out slowly, returning to the full shot of the lighthouse.',
       '[Shot 1] 写实风格，全景中老守塔人站在灯塔旁。风吹动他的外套。在 00:04.000 镜头切到守塔人的特写。镜头缓慢后拉，回到灯塔的全景。'), {mode:'text_video', durationSeconds:8, currentPrompt:'老守塔人站在灯塔旁，第4秒切到近景'}));
-    assert.match(inline.modelPrompt, /his coat\.\n\[Shot 2\] At 00:04\.000, the camera cuts to a medium close-up of the keeper\. The camera pulls out slowly, returning to the full shot of the lighthouse\./);
+    assert.match(inline.modelPrompt, /his coat\.\n\[Shot 2\] At 00:04\.000, the camera cuts to a medium close-up of the keeper\. The camera pulls out at slow speed, returning to the full shot of the lighthouse\./);
     assert.match(inline.displayPrompt, /外套。\n\[Shot 2\] At 00:04\.000 镜头切到守塔人的近景。镜头缓慢后拉，回到灯塔的全景。/);
     // The same two sizes in another order are already right: the push-in keeps its direction.
     const push = '[Shot 1] Live-action, the camera slowly pushes in to a close-up of a ginger cat on a windowsill, starting from a wide shot. The cat blinks.';
     assert.match(JSON.parse(api.validateBaseResult(pairOf(push, '[Shot 1] 写实风格，镜头从远景缓缓推进到窗台上橘猫的特写。猫眨了眨眼。'), {mode:'text_video', durationSeconds:5, currentPrompt:'一只橘猫坐在窗台上，镜头慢慢推近'})).modelPrompt,
-      /pushes in to a close-up of a ginger cat on a windowsill, starting from a wide shot\./);
+      /pushes in at slow speed to a close-up of a ginger cat on a windowsill, starting from a wide shot\./);
     // Prose whose clauses have their own actors is no tag list, even without articles.
     assert.doesNotThrow(() => api.validateBaseResult(pairOf('[Shot 1] 2D-animated, her crimson cloak ripples, golden leaves swirl around her boots, sparks drift upward from her lantern, embers glow, and her silver hair streams behind her as she strides forward. The camera trucks left at slow speed.',
       '[Shot 1] 二维动画，她的深红斗篷飘动，金色落叶在她靴边旋转，火星从她的灯笼向上飘散，余烬发光，她的银发在身后飘扬，她大步向前。镜头以慢速向左横移。'), {mode:'text_video', durationSeconds:5, currentPrompt:'女孩提着灯笼在风中向前走', strictPair:true}));
@@ -544,7 +545,7 @@ test('多参: a shot the user never asked to cut to continues the one before; su
   const answer = JSON.stringify({modelPrompt:english, displayPrompt:chinese});
   for (const api of apis) {
     const pair = JSON.parse(api.validateReferenceResult(answer, options));
-    assert.match(pair.modelPrompt, /in salute\. The camera pulls back as <Subject 1>/);
+    assert.match(pair.modelPrompt, /in salute\. The camera pulls out as <Subject 1>/);
     assert.match(pair.displayPrompt, /抱拳行礼。镜头后拉/);
     assert.doesNotMatch(pair.modelPrompt + pair.displayPrompt, /\[Shot 2\]/);
     assert.match(pair.modelPrompt, /^<Subject 1> is a man with olive skin[^\n]*\n<Subject 2> is a warrior with blonde hair/m);
@@ -582,5 +583,92 @@ test('承上启下 in a writer\'s pair: a place the action goes to outside a sti
       displayPrompt:fields('[Shot 1] 写实电影风格，全景中守塔人站在灯塔旁。风吹动他的外套。00:04.000 时镜头切到特写。\n[Shot 2] At 00:04.000 镜头切到守塔人的特写，他眯眼望向风中。', '风声和浪声。')}, {mode:'text_video', durationSeconds:8, currentPrompt:'守塔人站在灯塔旁，第4秒切到特写'}));
     assert.match(cut.modelPrompt, /Wind moves his coat\.\n\[Shot 2\] At 00:04\.000, the camera cuts to a close-up of the keeper/);
     assert.match(cut.displayPrompt, /风吹动他的外套。\n\[Shot 2\] At 00:04\.000 镜头切到守塔人的特写/);
+  }
+});
+
+test("多参: a writer's narrative in parts is joined into the official prose in both halves; a beat that restates the camera is dropped", () => {
+  const source = '图1的角色和图2的角色面对面抱拳行礼，然后并肩走向镜头';
+  const options = {durationSeconds:5, currentPrompt:source, requirements:'Available resource labels: <Picture 1>; <Picture 2>\nSource prompt:\n' + source};
+  const six = (zh, narrative) => ({subject_definitions:zh ? '<Subject 1> 是 <Picture 1> 中的金甲武将。\n<Subject 2> 是 <Picture 2> 中的红袍武者。' : '<Subject 1> is the golden-armoured general in <Picture 1>.\n<Subject 2> is the red-robed warrior in <Picture 2>.',
+    summary:'[reference generation] ' + (zh ? '<Subject 1> 与 <Subject 2> 抱拳行礼后并肩走向镜头。' : '<Subject 1> and <Subject 2> salute, then walk toward the camera side by side.'),
+    retention_analysis:zh ? '<Subject 1>: fully_preserved - 金甲\n<Subject 2>: fully_preserved - 红袍' : '<Subject 1>: fully_preserved - golden armour\n<Subject 2>: fully_preserved - red robe',
+    detailed_description:narrative, overall_soundscape:zh ? '脚步声在石板上回响。' : 'Footsteps echo on the flagstones.', non_diegetic_music:'N/A'});
+  const english = {style:'The target video is in a 3D CG style with bright daylight', shots:[{opening:'[Shot 1] A full shot frames a stone courtyard.',
+    subjects:[{place:'<Subject 1> stands on the left facing right.', head:'His black hair is tied under a golden crown.', outfit:'His golden armour gleams.', hands:'His right hand grips a spear.'}],
+    beats:['<Subject 1> plants the spear upright beside him.', 'The camera pushes in.', '<Subject 1> and <Subject 2> salute with the right fist covered by the left palm.'], ending:'They stand side by side.', camera:'The camera pulls out at slow speed as they walk toward it.'}]};
+  const chinese = {style:'目标视频采用三维 CG 风格，日光明亮', shots:[{opening:'[Shot 1] 全景展现石砌庭院。', subjects:[{place:'<Subject 1> 站在左侧面朝右。', head:'他的黑发束在金冠下。', outfit:'他的金甲闪亮。', hands:'他右手握着长枪。'}],
+    beats:['<Subject 1> 将长枪竖直插在身旁。', '镜头推近。', '<Subject 1> 与 <Subject 2> 右拳左掌抱拳行礼。'], ending:'两人并肩站立。', camera:'镜头缓慢后拉，他们走向镜头。'}]};
+  const answer = JSON.stringify({modelPrompt:six(false, english), displayPrompt:six(true, chinese)});
+  for (const api of apis) {
+    const pair = JSON.parse(api.validateReferenceResult(answer, options));
+    assert.match(pair.modelPrompt, /detailed_description:\nThe target video is in a 3D CG style with bright daylight\.\s\[Shot 1\] A full shot frames a stone courtyard\. <Subject 1> stands on the left facing right\. His black hair is tied under a golden crown\. His golden armour gleams\. His right hand grips a spear\. <Subject 1> plants the spear upright beside him\. <Subject 1> and <Subject 2> salute with the right fist covered by the left palm\. They stand side by side\. The camera pulls out at slow speed as they walk toward it\.\n/);
+    assert.match(pair.displayPrompt, /detailed_description:\n目标视频采用三维 CG 风格，日光明亮。\s?\[Shot 1\] 全景展现石砌庭院。<Subject 1> 站在左侧面朝右。他的黑发束在金冠下。他的金甲闪亮。他右手握着长枪。<Subject 1> 将长枪竖直插在身旁。<Subject 1> 与 <Subject 2> 右拳左掌抱拳行礼。两人并肩站立。镜头缓慢后拉，他们走向镜头。\n/);
+    // The writer's schema asks for the parts in both halves; a translation keeps the one prose field.
+    assert.equal(api.referenceWriterSchema.properties.modelPrompt.properties.detailed_description.type, 'object');
+    assert.deepEqual(json(api.referenceWriterSchema.properties.displayPrompt.properties.detailed_description.properties.shots.items.required), ['opening', 'subjects', 'beats', 'ending', 'camera']);
+    assert.equal(api.referenceResultSchema.properties.modelPrompt.properties.detailed_description.type, 'string');
+    // A requested cut: the bare marker takes no full stop; the cut announced in the shot before, the later shot's repeated looks and its
+    // "same setting" leave both halves (decided on the English), where each subject now stands stays.
+    const cutSource = '<Picture 1> 中的角色走向 <Picture 2> 中的角色，第3秒切到两人的近景';
+    const cutOptions = {durationSeconds:5, currentPrompt:cutSource, requirements:'Available resource labels: <Picture 1>; <Picture 2>\nSource prompt:\n' + cutSource};
+    const opening = (frame, setting, light) => ({frame, setting, light}), look = (place, head, outfit, hands) => ({place, head, outfit, hands});
+    const walkEn = {style:'The target video is in an anime style', shots:[
+      {opening:opening('[Shot 1]', 'A garden path runs between flower beds.', 'Morning sun lights the path.'), subjects:[look('<Subject 1> stands on the left facing right.', 'Her short hair frames her face.', 'She wears an orange shirt.', 'Her hands hang at her sides.'),
+        look('<Subject 2> stands on the right facing left.', 'Its round head has yellow eyes.', 'Its body is teal metal.', 'Its right hand holds a watering can.')], beats:['<Subject 1> walks toward <Subject 2>.', 'At the three-second mark the shot cuts.'], ending:'<Subject 1> is mid-stride.', camera:'The camera holds a static shot.'},
+      {opening:opening('[Shot 2] At 00:03.000, the shot cuts to a medium close-up of both.', 'The same garden path continues behind them.', 'Warm light falls on their faces.'), subjects:[look('<Subject 1> is now on the left, facing <Subject 2>.', 'Her short hair remains visible.', 'She still wears the orange shirt.', 'Her hands hang at her sides.')],
+        beats:['<Subject 1> stops and smiles at <Subject 2>.'], ending:'They face each other.', camera:'The camera holds a static shot.'}]};
+    const walkZh = {style:'目标视频采用动漫风格', shots:[
+      {opening:opening('[Shot 1]', '花坛之间有一条花园小路。', '晨光照亮小路。'), subjects:[look('<Subject 1> 站在左侧面朝右。', '她的短发衬着脸庞。', '她穿着橙色衬衫。', '她双手垂在身侧。'), look('<Subject 2> 站在右侧面朝左。', '它的圆脑袋上有黄色眼睛。', '它的身体是青绿色金属。', '它右手提着浇水壶。')],
+        beats:['<Subject 1> 走向 <Subject 2>。', '第3秒镜头切到近景。'], ending:'<Subject 1> 正迈着步子。', camera:'镜头固定。'},
+      {opening:opening('[Shot 2] At 00:03.000 镜头切到两人的近景。', '同一条花园小路在他们身后延续。', '暖光照在他们脸上。'), subjects:[look('<Subject 1> 现在在左侧，面向 <Subject 2>。', '她的短发依然可见。', '她仍穿着橙色衬衫。', '她双手垂在身侧。')],
+        beats:['<Subject 1> 停下脚步，对 <Subject 2> 微笑。'], ending:'两人面对面。', camera:'镜头固定。'}]};
+    const walk = JSON.parse(api.validateReferenceResult(JSON.stringify({modelPrompt:six(false, walkEn), displayPrompt:six(true, walkZh)}), cutOptions));
+    assert.match(walk.modelPrompt, /\[Shot 1\] A garden path runs between flower beds\. Morning sun lights the path\. <Subject 1> stands/);
+    assert.match(walk.modelPrompt, /<Subject 1> walks toward <Subject 2>\. <Subject 1> is mid-stride\. The camera holds a static shot\.\n\[Shot 2\] At 00:03\.000, the shot cuts to a medium close-up of both\. Warm light falls on their faces\. <Subject 1> is now on the left, facing <Subject 2>\. <Subject 1> stops and smiles at <Subject 2>\./);
+    assert.doesNotMatch(walk.modelPrompt, /three-second mark|same garden path|remains visible|still wears/);
+    assert.match(walk.displayPrompt, /<Subject 1> 走向 <Subject 2>。<Subject 1> 正迈着步子。镜头固定。\n\[Shot 2\] At 00:03\.000 镜头切到两人的近景。暖光照在他们脸上。<Subject 1> 现在在左侧，面向 <Subject 2>。<Subject 1> 停下脚步/);
+    assert.doesNotMatch(walk.displayPrompt, /第3秒镜头切到近景|同一条花园小路|依然可见|仍穿着/);
+  }
+});
+
+test("承上启下 and plausibility in a writer's pair: a pose no action produced or a hand still holding before a two-handed gesture is repaired; a silent sway, a still camera's size and vague camera words are fixed by the program", () => {
+  const i2v = (currentPrompt, strictPair = true) => ({mode:'image_video', durationSeconds:5, currentPrompt, strictPair});
+  const pose = 'H3 画面中的姿态没有动作过渡（如落地后直接坐着、爪子未抬起就被舔），请补上这一步动作', held = 'H3 双手动作前手里仍握着物品，请先交代物品放到哪里';
+  const pairOf = (model, display, sound = 'A soft thud as its paws land on the wood.', zhSound = '爪子落在木头上轻轻一声闷响。') => ({modelPrompt:fields(model, sound), displayPrompt:fields(display, zhSound)});
+  const table = '[Shot 1] 写实电影风格，<Picture 1> 中所示的猫坐在灰色背景前。右侧桌面齐肩高，它转向右侧跳上桌面，镜头随之右摇，回头看向镜头。';
+  const paw = '[Shot 1] 写实电影风格，<Picture 1> 中所示的猫坐在灰色背景前。猫低头舔了舔抬起的前爪。镜头固定。';
+  for (const api of apis) {
+    // Seated after a landing with no sit-down, and a raised paw nothing lifted, ask for the repair; the written action passes.
+    const jump = '[Shot 1] Live-action, cinematic, the cat shown in <Picture 1> sits on a gray backdrop. A wooden table stands just beyond the right edge at shoulder height. The cat turns right and leaps onto it as the camera pans right with it, lands on all four paws';
+    assert.throws(() => api.validateBaseResult(pairOf(jump + ' and looks back at the camera, seated on the table.', table), i2v('猫咪跳上桌子后回头看镜头')), error => error.issues?.includes(pose));
+    assert.doesNotThrow(() => api.validateBaseResult(pairOf(jump + ', settles onto its haunches and looks back at the camera, seated on the table.', table), i2v('猫咪跳上桌子后回头看镜头')));
+    assert.throws(() => api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, the cat shown in <Picture 1> sits on a gray backdrop. The cat lowers its head and licks its raised front paw. The camera holds a static shot.', paw), i2v('猫低头舔了舔前爪')), error => error.issues?.includes(pose));
+    assert.doesNotThrow(() => api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, the cat shown in <Picture 1> sits on a gray backdrop. The cat lifts its right front paw to its chest and licks the raised front paw. The camera holds a static shot.', paw), i2v('猫低头舔了舔前爪')));
+    assert.equal(api.validationIssue(new Error(pose)).reason, 'sections');
+    // A two-handed gesture while a hand still holds something asks for the repair; putting it away first passes. A spear is never sheathed.
+    const fan = '[Shot 1] 写实电影风格，<Picture 1> 中所示的女孩站在公园小路上，右手拿着一把纸扇，微笑着。她拍了两次手，纸扇随之晃动。镜头固定。';
+    const girl = '[Shot 1] Live-action, cinematic, the girl shown in <Picture 1> stands on a park path with a paper fan in her right hand, smiling.';
+    assert.throws(() => api.validateBaseResult(pairOf(girl + ' She claps her hands twice. The camera holds a static shot.', fan, 'Two crisp claps.', '两声清脆的拍手声。'), i2v('女孩拍手两次')), error => error.issues?.includes(held));
+    assert.doesNotThrow(() => api.validateBaseResult(pairOf(girl + ' She tucks the fan under her left arm, then claps her hands twice. The camera holds a static shot.', fan, 'Two crisp claps.', '两声清脆的拍手声。'), i2v('女孩拍手两次')));
+    assert.throws(() => api.validateBaseResult(pairOf(girl.replace('a paper fan', 'a spear') + ' She sheathes her spear and claps her hands twice. The camera holds a static shot.', fan, 'Two crisp claps.', '两声清脆的拍手声。'), i2v('女孩拍手两次')), error => error.issues?.includes(held));
+    assert.equal(api.validationIssue(new Error(held)).reason, 'sections');
+    // A slow tail sway is silent: its sound leaves both halves. A still camera names no size the user did not ask for (both halves).
+    const sway = pairOf('[Shot 1] Live-action, cinematic, the cat shown in <Picture 1> sits on a sunny windowsill and slowly sways its tail from side to side. The camera holds a static medium shot.',
+      '[Shot 1] 写实电影风格，<Picture 1> 中所示的猫坐在洒满阳光的窗台上，缓缓地左右摆动尾巴。镜头保持固定中景。', 'A soft breeze rustles the curtain. The cat\'s tail makes a soft swish with each slow sway.', '微风吹得窗帘沙沙作响。猫尾每次缓慢摆动都发出轻柔的嗖嗖声。');
+    const quiet = JSON.parse(api.validateBaseResult(sway, i2v('猫坐在窗台上慢慢摇尾巴', false)));
+    assert.match(quiet.modelPrompt, /The camera holds a static shot\.\n\noverall_soundscape: A soft breeze rustles the curtain\.\n\nnon_diegetic_music/);
+    assert.match(quiet.displayPrompt, /镜头保持固定。\n\noverall_soundscape: 微风吹得窗帘沙沙作响。\n\nnon_diegetic_music/);
+    assert.match(JSON.parse(api.validateBaseResult(sway, i2v('中景镜头，猫坐在窗台上慢慢摇尾巴', false))).displayPrompt, /镜头保持固定中景。/);
+    // A requested cut that stayed inside one shot drops the request: the repair writes it as its own shot.
+    const cutAsk = {mode:'text_video', durationSeconds:6, currentPrompt:'女孩在窗边读书，第3秒切到近景', strictPair:true};
+    assert.throws(() => api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, a girl reads by a window, and at the three-second mark the camera cuts to a medium close-up of her face. The camera holds a static shot.', '[Shot 1] 写实电影风格，女孩在窗边读书，第3秒镜头切到她脸部的近景。镜头固定。'), cutAsk), error => error.issues?.includes('H3 用户要求的切镜没有写成单独的镜头，请在要求的时间写出 [Shot N]'));
+    assert.equal(api.validationIssue(new Error('H3 用户要求的切镜没有写成单独的镜头，请在要求的时间写出 [Shot N]')).reason, 'sections');
+    assert.doesNotThrow(() => api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, a girl cuts a birthday cake on a kitchen table and smiles. The camera holds a static shot.', '[Shot 1] 写实电影风格，女孩在厨房餐桌上切生日蛋糕并露出微笑。镜头固定。', 'The knife sinks softly into the cake.', '刀轻轻切入蛋糕。'), {...cutAsk, currentPrompt:'女孩切蛋糕后笑了'}));
+    // Official camera speed words; a sound word before its own 声 or 响 keeps one.
+    assert.match(api.validateBaseFields(fields('[Shot 1] Live-action, a knight walks forward as the camera pulls back at medium speed. The camera stays locked in position. The camera holds the medium close-up framing, capturing her smile. The camera tracks right slowly.'), {mode:'text_video', durationSeconds:6, language:'en'}),
+      /as the camera pulls out\. The camera holds a static shot\. The camera holds a static shot, capturing her smile\. The camera tracks right at slow speed\./);
+    const crunch = JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, the cat shown in <Picture 1> walks across a gravel path. The camera trucks right at slow speed.', '[Shot 1] 写实电影风格，<Picture 1> 中所示的猫走过碎石小路。镜头缓慢右移。', 'Gravel crunches under its paws with a soft thud.', '碎石在爪下发出轻柔的 crunching 声响，落地一声 thud 声，随后是安静的环境室调声。'), i2v('猫走过碎石小路', false)));
+    assert.match(JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, cinematic, the cat shown in <Picture 1> sits on a gray backdrop. The camera pushes in to a medium close-up of its face.', '[Shot 1] 写实电影风格，<Picture 1> 中所示的猫坐在灰色背景前。镜头推进到它脸部的中景近景。'), i2v('猫坐着', false))).displayPrompt, /镜头推进到它脸部的近景。/);
+    assert.match(crunch.displayPrompt, /碎石在爪下发出轻柔的嘎吱声响，落地一声闷声，随后是安静的室内环境声。/);
   }
 });

@@ -71,6 +71,34 @@ function referenceFrames(value, requirements = '') {
 const referenceFieldSchema = language => ({type:'object', additionalProperties:false, properties:Object.fromEntries(referenceFields.map(k=>[k,{type:'string',minLength:1,description:(language==='zh'?'本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括主体定义、任务说明、保留规则中关系枚举后的说明和画面动作；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文，也不得夹带英文单词或短语；'+zhWordRule+'。':'Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue.') + (k==='subject_definitions'?' Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately. Describe identity and appearance only (face, hair, body, clothing, colors, materials, props), not the picture\'s pose, action or background, unless the subject is itself a place or scene. Read each picture closely: hair and headwear, facial expression, clothing and its colours, capes, marks and held items belong to the subject whose picture shows them; never an age or age group. ' + (language==='zh' ? '每行写成“<Subject N> 是……”并注明来源，如“<Subject 1> 是 <Picture 1> 中的老渔夫，灰白胡须，身穿黄色雨衣。”' : 'Write each line in the official form "<Subject N> is ..." and name its source, e.g. "<Subject 1> is the old fisherman in <Picture 1>, with a grey beard and a yellow raincoat."'):k==='summary'?' Start with the task tags in brackets, e.g. [reference generation]. Then one short paragraph stating the event with <Subject N> labels: who does what, how the other reacts and how it ends. Use the labels themselves as the actors, never "the woman from <Subject 1>". No duration or "A N-second video" wording.':k==='retention_analysis'?' One rule per defined Subject and source Video; image attributes belong to the Subject using that picture. After the relation and " - ", list the concrete kept features.':k==='detailed_description'?' Open with the style sentence The target video is in a ... style, naming the style the pictures show. Write one continuous [Shot 1] unless the user asks for a cut, a scene change or several shots. ' + (language==='zh' ? '与英文逐句对应。Each shot gives its composition and shot size, the setting and its light, where each subject starts in the frame and its key look at its first appearance, the actions in order, its camera and the sound each action makes, in complete sentences. ' : 'Normally 350-500 English words for a generation task (aim for about 400), even for one shot, in flowing present-tense prose. Each shot gives its composition and shot size, the setting and its light (3-4 sentences); each subject at its first appearance, where it stands and faces and its look as its picture shows: hair, face and expression, clothing and colours, what it holds (3-4 sentences each); the actions in the user\'s order, each with how it starts, develops and ends, the other subject\'s reaction and the secondary motion of hair, cloth and props (8-12 sentences), and before a two-handed action where each held object goes; one camera sentence; and the sounds of the actions (2-3 sentences). ') + 'Name every defined subject with its <Subject N> label: characters and objects as the actor of their first action (never "the woman from <Subject 1>"), a place subject as the setting (e.g. "inside <Subject 3>"), a style subject in the opening style sentence (e.g. "in the art style of <Subject 2>"). State the camera of each shot: locked, or its movement, direction and speed.':k==='overall_soundscape'?' Diegetic ambience and action sounds matching the visible events; N/A only when the user explicitly asks for silence. Never an empty string.':k==='non_diegetic_music'?' Off-screen score only when the user asks for music; otherwise N/A. Never an empty string.':'')}])), required:referenceFields});
 const referenceEditPolicySchema = {type:'object',additionalProperties:false,properties:{preserveBackground:{type:'boolean'},preserveMotion:{type:'boolean'},sameShapeAppearanceOnly:{type:'boolean'}},required:['preserveBackground','preserveMotion','sameShapeAppearanceOnly']};
 const referenceResultSchema = {type:'object', additionalProperties:false, properties:{modelPrompt:referenceFieldSchema('en'),displayPrompt:referenceFieldSchema('zh'),editPolicy:referenceEditPolicySchema},required:['modelPrompt','displayPrompt','editPolicy']};
+// A writer's 多参 narrative comes in parts, so its length follows from the structure the official 350-500 words need (a word target
+// alone gave 180-270 words, live); validateReferenceResult joins the parts into the official prose. A translation keeps the prose field.
+const narrativeSchema = zh => {
+  const text = en => ({type:'string', description:zh ? '对应英文部分的简体中文翻译。' : en});
+  const list = (items, en) => ({type:'array', items, description:zh ? '与英文逐条对应。' : en});
+  const object = (properties, description) => ({type:'object', additionalProperties:false, properties, required:Object.keys(properties), ...(description ? {description} : {})});
+  return object({
+    style: text('The official style sentence with its light, naming the style the pictures show with a concrete style word, e.g. The target video is in an anime style with bright daylight.'),
+    shots: list(object({
+      opening: object({
+        frame: text('Starts with its marker, [Shot 1], or for a cut the user asks for [Shot N] At MM:SS.mmm, the shot cuts to ..., then the composition and shot size in one sentence. A later shot keeps the place, light and clothing and opens on the action still in progress at the cut.'),
+        setting: text('One full sentence with a verb: the shared setting with two or three concrete set-dressing details that fit the pictures\' world, e.g. Weathered stone tiles cover the courtyard and red lanterns hang from the eaves; empty in a later shot.'),
+        light: text('One sentence: the light, its direction and the atmosphere (air, dust, leaves, mist); empty in a later shot.')
+      }),
+      subjects: list(object({
+        place: text('One sentence that starts with its <Subject N> label: where it stands in the frame, which way it faces and its pose.'),
+        head: text('One sentence that starts with His, Her or Its and describes the hair or headwear, face and expression as they look (read from its own picture; never name the picture).'),
+        outfit: text('One sentence that starts with His, Her or Its and describes the clothing, armour, cape or body with colours and materials (read from its own picture; never name the picture).'),
+        hands: text('One sentence: what each hand or paw holds or does, as its own picture shows.')
+      }), 'Each subject at its first appearance, one entry per subject; empty in later shots.'),
+      beats: list({type:'string'}, 'The user\'s actions in the user\'s order as 4-6 beats (2-4 in a short later shot). Each beat is one or two present-tense sentences with a new visible change: the actor named first, how it starts from the state the previous beat left (position, pose, what each hand holds, gaze) and how it ends, the other subject\'s reaction and expression, the secondary motion of hair, cloth and props, and the sound it makes in the same sentence (her footsteps crunch on the gravel as she walks). Before a two-handed gesture, one beat first puts each held object away: planted upright on the ground, leaned against the body, tucked under an arm or sheathed (only a sword or knife), and a later beat takes it back before the subject moves on. A beat never only says that something remains, stays, continues or is maintained, and names no camera or time.'),
+      ending: text('One or two sentences: where each subject ends, its pose, expression and what it holds.'),
+      camera: text('One sentence in official camera words that follows the direction of the main action, e.g. The camera pulls out at slow speed as they walk toward it; The camera holds a static shot.')
+    }), 'One entry per shot: a single [Shot 1] unless the user asks for a cut, a scene change or several shots; the actions after a cut belong to its later shot. The program joins the parts in order into the official prose of 350-500 English words.')
+  }, zh ? '与英文逐部分、逐条对应的简体中文翻译；' + zhWordRule + '；[Shot N]、At 时间与 <Subject N> 等标签原样保留。' : '');
+};
+const withNarrative = (schema, zh) => ({...schema, properties:{...schema.properties, detailed_description:narrativeSchema(zh)}});
+const referenceWriterSchema = {...referenceResultSchema, properties:{...referenceResultSchema.properties, modelPrompt:withNarrative(referenceFieldSchema('en'), false), displayPrompt:withNarrative(referenceFieldSchema('zh'), true)}};
 function referenceEditPolicy(value) {
   return Object.fromEntries(['preserveBackground','preserveMotion','sameShapeAppearanceOnly'].map(key=>[key,value?.[key]===true]));
 }
@@ -153,8 +181,34 @@ const cutTimesToMarkers = text => {
 };
 // MM:SS.mmm for a cut time in seconds.
 const shotStamp = s => { const ms = Math.round(s * 1000); return String(Math.floor(ms / 60000)).padStart(2, '0') + ':' + String(Math.floor(ms / 1000) % 60).padStart(2, '0') + '.' + String(ms % 1000).padStart(3, '0'); };
+// A writer's structured narrative (referenceWriterSchema) reads as the official prose: its parts joined in order, one line per shot.
+// Both halves drop the same parts, decided on the English one: a beat that only restates the camera (each shot has its camera
+// sentence), a cut announced inside the shot before it, and in a later shot the looks already given (only where each subject now
+// stands stays) or a setting and light that only say they continue.
+function joinNarrative(value, zh, english) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const items = list => Array.isArray(list) ? list : [];
+  const end = text => (line => !line || /[.!?。！？”"」』）)\]]$/.test(line) ? line : /^\[Shot [1-9]\d*\](?: At [\d:.]+)?,?$/.test(line) ? line.replace(/,$/, '') : line + (zh ? '。' : '.'))(String(text ?? '').trim());
+  const join = parts => parts.map(end).filter(Boolean).join(zh ? '' : ' ');
+  const cameraBeat = [/^(?:the\s+)?camera\b/i, /^(?:镜头|摄影机|摄像机|相机)/];
+  const cutNote = zh ? /[^。！？]*(?:镜头|画面)(?:切出|切换|切到|切至)[^。！？]*[。！？]/g : /(?:^|(?<=[.!?]\s))(?:At [^.!?]*?,?\s*)?(?:the )?(?:shot|camera|scene|view) (?:cuts|switches|transitions)\b[^.!?]*[.!?]\s*/gi;
+  const shots = items(value.shots), shotsEn = items(english?.shots);
+  return [end(value.style), ...shots.map((shot, i) => {
+    const en = shotsEn[i] || {}, later = i > 0, clean = part => i < shots.length - 1 ? String(part ?? '').replace(cutNote, '').trim() : part;
+    const opening = shot?.opening && typeof shot.opening === 'object'
+      ? join(['frame', 'setting', 'light'].filter(key => key === 'frame' || !later || !/\b(?:same|continues?|still|remains?)\b/i.test(String(en.opening?.[key] ?? ''))).map(key => shot.opening[key])) : shot?.opening;
+    const subjects = items(shot?.subjects).map(item => typeof item === 'string' ? item : join((later ? ['place'] : ['place', 'head', 'outfit', 'hands']).map(key => item?.[key])));
+    const aligned = items(shot?.beats).length === items(en.beats).length;
+    const beats = items(shot?.beats).filter((beat, j) => !(aligned ? cameraBeat[0].test(String(en.beats[j]).trim()) : cameraBeat[zh ? 1 : 0].test(String(beat).trim())));
+    const text = join([opening, ...subjects, ...beats.map(clean), clean(shot?.ending), clean(shot?.camera)]);
+    return /^\[Shot [1-9]\d*\]/.test(text) ? text : '[Shot ' + (i + 1) + '] ' + text;
+  })].filter(Boolean).join('\n');
+}
+const joinNarratives = pair => pair && ['modelPrompt', 'displayPrompt'].some(key => pair[key]?.detailed_description && typeof pair[key].detailed_description === 'object') ? {...pair,
+  modelPrompt:{...pair.modelPrompt, detailed_description:joinNarrative(pair.modelPrompt.detailed_description, false, pair.modelPrompt.detailed_description)},
+  displayPrompt:{...pair.displayPrompt, detailed_description:joinNarrative(pair.displayPrompt.detailed_description, true, pair.modelPrompt?.detailed_description)}} : pair;
 function validateReferenceResult(value, options = {}) {
-  const pair = referenceResult(value);
+  const pair = joinNarratives(referenceResult(value));
   if (!pair) {
     const compiled = compileReferenceFields(value, options);
     return validateReference(typeof compiled === 'string' ? compiled : JSON.stringify(compiled), options);
@@ -199,7 +253,8 @@ function validateReferenceResult(value, options = {}) {
     const gates = [shots(model.detailed_description) !== shots(display.detailed_description) && baseIssue.pairShots,
       spokenOf(modelPrompt) !== spokenOf(displayPrompt) && baseIssue.pairLiterals,
       ...(options.displayIsSource ? [] : [tagList(model.detailed_description) && baseIssue.prose,
-        /^N\/A\.?$/i.test(model.overall_soundscape) && !silenceAsked(intent) && baseIssue.silence, short && baseIssue.short])];
+        /^N\/A\.?$/i.test(model.overall_soundscape) && !silenceAsked(intent) && baseIssue.silence, short && baseIssue.short, cutMissing(model.detailed_description, intent) && baseIssue.cut,
+        heldObject(model.subject_definitions + '\n' + model.detailed_description, intent) && baseIssue.held])];
     // Display slips ride along with a content failure; alone they cost no rewrite (see the end).
     failIssues(gates.some(Boolean) ? [...gates, ...displayIssues] : []);
   }
@@ -384,15 +439,17 @@ const baseIssue = {
   colour: 'H3 中文显示稿的颜色与英文不一致，请逐词准确翻译颜色',
   short: 'H3 多参画面与动作过短，请按官方指南写到 350-500 个英文单词',
   offFrame: 'H3 动作去往画面外的物体，但镜头或方向与之矛盾，请让镜头随主体移向它',
+  pose: 'H3 画面中的姿态没有动作过渡（如落地后直接坐着、爪子未抬起就被舔），请补上这一步动作',
+  held: 'H3 双手动作前手里仍握着物品，请先交代物品放到哪里',
+  cut: 'H3 用户要求的切镜没有写成单独的镜头，请在要求的时间写出 [Shot N]',
 };
-// Clearly short: under 200 words, well below the official 350 (first answers measure 217-318 words with the length plan; a repair
-// for a nearly long enough answer only pads it).
-const referenceMinWords = 200;
+// Short: under 280 words, 80% of the official 350 (the structured first answers measure about 250-470 words; a repair asks for the rest).
+const referenceMinWords = 280;
 const referenceChineseIssue = '请将多参主体、任务说明、保留规则和画面动作改为简体中文，保留原台词和媒体标签';
 // Only return application-owned messages. Provider text must never become a
 // diagnostic or a repair instruction, even when it resembles an error message.
 const validationIssues = [
-  ['sections', [baseIssue.sections, baseIssue.silence, baseIssue.short, baseIssue.offFrame]],
+  ['sections', [baseIssue.sections, baseIssue.silence, baseIssue.short, baseIssue.offFrame, baseIssue.pose, baseIssue.held, baseIssue.cut]],
   ['timeline', [baseIssue.shotOrder, baseIssue.shotTime, baseIssue.pairShots]],
   ['references', [baseIssue.subject]],
   ['language', [baseIssue.chinese, baseIssue.english, baseIssue.pairCoverage, baseIssue.prose, baseIssue.colour]],
@@ -650,6 +707,40 @@ const offFrame = text => {
   return outside && (!/\b(?:pans?|panning|trucks?|trucking|tilts?|tilting|tracks?|tracking|follows?|following|pulls? (?:out|back)|pedestals?|arcs?)\b/i.test(prose)
     || /\b(?:bottom|lower)\s+(?:edge|border)\b|\bbelow the (?:frame|edge)\b/i.test(prose) && /\b(?:jump|leap|hop|spring|climb|clamber)(?:s|ed|ing)?\b[^.;]{0,30}\b(?:up|upward|upwards|onto)\b/i.test(prose));
 };
+// A pose no written action produced: a subject that rises, jumps or lands and is later seated, or a raised paw that nothing lifted.
+// The first sentence establishes the opening frame, so its poses stand.
+const poseJump = text => {
+  const prose = proseOf(text), first = prose.search(/[.!?](?=\s|$)/);
+  const lastBefore = (pattern, end) => Math.max(-1, ...[...prose.slice(0, end).matchAll(pattern)].map(m => m.index));
+  const moved = /\b(?:rises?|rising|gets? up|stands? up|lands?|landing|leaps?|leaping|jumps?|jumping|springs?|springing|hops?|hopping|walks?|walking|runs?|running|climbs?|climbing|pounces?)\b/gi;
+  const sat = /\b(?:sits?|sitting|settles?|settling|lowers (?:its|his|her) (?:hindquarters|haunches|rump))\b/gi;
+  return [...prose.matchAll(/\bseated\b|\b(?:remains?|stays?|still|keeps?)\s+sitting\b/gi)].some(m => m.index > first && lastBefore(moved, m.index) > Math.max(first, lastBefore(sat, m.index)))
+    || [...prose.matchAll(/\b(?:raised|lifted|upraised)\s+(?:(?:front|hind|back|left|right)\s+){0,2}(paw|hand|arm|leg|foot|hoof)s?\b/gi)].some(m => m.index > first
+      && !new RegExp('\\b(?:rais|lift|bring|brought|curl|pick)\\w*\\b[^.;]{0,40}\\b' + m[1], 'i').test(prose.slice(0, m.index)));
+};
+// A camera cut the user asks for (切到近景, 转场, cut to) that stayed inside one shot ("at the 3-second mark the camera cuts to ..."):
+// the request is dropped. Cutting a cake (切蛋糕) asks for no shot.
+const cutMissing = (text, intent) => cutAsked(intent) && /切(?:到|至|换|镜)|转场|分镜|第[二三四五2-5]个?镜头|多镜头|\bcuts? to\b|\bscene change\b/i.test(intent) && !/\[Shot (?:[2-9]|[1-9]\d+)\]/.test(text);
+// A two-handed gesture the user asks for (抱拳, 鼓掌, clap, salute) while a subject still holds something: a beat before it puts the
+// object away (planted, leaned, tucked, sheathed, passed to the other hand); a spear or staff is never sheathed.
+const handheld = '(?:weapon|sword|spear|staff|blade|saber|sabre|knife|knives|dagger|axe|shield|lance|halberd|trident|fan|cup|bowl|umbrella|lantern|book|scroll|flower|bouquet|basket|stick|cane|pole|rod|wand|torch|bottle|phone|bag|box|tray|flag|banner|brush)(?:e?s)?';
+const twoHandedGesture = /抱拳|拱手|作揖|合掌|合十|拍手|鼓掌|击掌|\b(?:clap|clasp|salute|applaud)/i;
+const heldObject = (text, intent) => {
+  if (!twoHandedGesture.test(intent)) return false;
+  const prose = proseOf(text), at = prose.search(/\b(?:salut\w*|clasp\w*|clap\w*|applau\w*|palms? together)\b|\bfists?\b[^.;]{0,50}\bpalms?\b|\bpalms?\b[^.;]{0,50}\bfists?\b/i);
+  const before = at < 0 ? '' : prose.slice(0, at);
+  // The last mention of a held object before the gesture; the put-away is read after it (set dressing in the opening never counts).
+  const held = [...before.matchAll(new RegExp('\\b(?:hold|grip|carr|clutch|wield|grasp)\\w*\\b[^.;]{0,40}\\b' + handheld + '\\b|\\b' + handheld + '\\b[^.;]{0,40}\\b(?:held|gripped|clutched|grasped|in (?:his|her|its|their|the) (?:right|left) hands?)\\b', 'gi'))].at(-1);
+  return /\bsheath\w*\b[^.;]{0,40}\b(?:spear|staff|pole|polearm|halberd|lance|trident|glaive)s?\b|\b(?:spear|staff|pole|polearm|halberd|lance|trident|glaive)s?\b[^.;]{0,25}\bsheath/i.test(prose) || Boolean(held)
+    && !/\b(?:plant|set|lay|lays|laid|plac|lean|sheath|tuck|sling|hang|stick|driv|stand|rest|prop)\w*\b[^.;]{0,50}\b(?:ground|floor|earth|sheath|scabbard|under|against|upright|vertical\w*|back|hip|shoulder|belt|waist)\b|\b(?:pass|transfer|shift|switch|mov|tak)\w*\b[^.;]{0,40}\b(?:other|left|free) hand\b/i.test(before.slice(held.index + held[0].length));
+};
+// A slow sway of a tail or hair is silent (policy): a soundscape sentence that gives one a sound leaves both halves.
+const swaySound = [/^(?:\W*[\w'’-]+){0,5}?\W*\b(?:tail|hair|mane|whiskers)\b[^.!?]*\b(?:sway|swing|swish|flick|drift|wave|flutter)/i, /^[^。！？]{0,8}(?:猫尾|尾巴|尾部|头发|长发|发丝|秀发|鬃毛|胡须)[^。！？]*(?:摆|摇|甩|飘|拂|扫)/];
+// With an opening frame the framing is the picture's: a still camera names no shot size the user did not ask for.
+const stillSize = (line, zh) => zh
+  ? line.replace(new RegExp('(固定|静止)的?(?:' + sizeWords + ')', 'g'), '$1').replace(new RegExp('(?:' + sizeWords + ')(?=的?(?:固定|静止))', 'g'), '')
+  : officialEnglish(line.replace(new RegExp('\\b(static|still|fixed|locked|stationary)\\s+in\\s+an?\\s+(?:' + enSize.source + ')', 'gi'), '$1')
+    .replace(new RegExp('\\b(static|still|fixed|locked)\\s+(?:' + enSize.source + ')', 'gi'), '$1 shot'));
 const tagList = text => proseOf(text).replace(/\[Shot \d+\](?: At [\d:.]+,?)?|<(?:Picture|Subject) \d+>/g, ' ').split(/[.!?](?=\s|$)/)
   .some(sentence => { const phrases = sentence.split(','); return phrases.length >= 5 && (sentence.match(/[A-Za-z]+/g) || []).length >= 18 && !/\b(?:a|an|the)\b/i.test(sentence)
     && phrases.filter(phrase => !/\b(?:her|his|its|their|this|that|these|those|she|he|it|they|is|are|was|were|has|have)\b/i.test(phrase)).length > phrases.length / 2; });
@@ -672,8 +763,8 @@ const displayTerms = Object.entries({
   red: '红色', orange: '橙色', yellow: '黄色', green: '绿色', blue: '蓝色', purple: '紫色', pink: '粉色', brown: '棕色', black: '黑色', white: '白色', 'gr[ae]y': '灰色',
   marble: '大理石', granite: '花岗岩', wooden: '木质', wood: '木头', gravel: '碎石', 'cobblestones?': '鹅卵石', stone: '石头', brick: '砖', concrete: '水泥', glass: '玻璃', steel: '钢', metallic: '金属质感', metal: '金属', brass: '黄铜',
   velvet: '天鹅绒', silk: '丝绸', satin: '缎面', leather: '皮革', denim: '牛仔布', chiffon: '雪纺', lace: '蕾丝', linen: '亚麻', wool: '羊毛', cotton: '棉布', moss: '苔藓', 'petals?': '花瓣',
-  whoosh: '呼啸声', swish: '嗖嗖声', 'thuds?': '闷响', 'rustl(?:e|es|ing)': '沙沙声', 'chim(?:e|es|ing)': '叮当声', 'clinks?': '叮当声', 'creak(?:s|ing)?': '吱呀声', 'hum(?:s|ming)?': '嗡嗡声', 'whir(?:s|ring)?': '呼呼声',
-  'patter(?:s|ing)?': '啪嗒声', 'crunch(?:es|ing)?': '嘎吱声', 'clatter(?:s|ing)?': '哐啷声', footsteps: '脚步声', breeze: '微风', 'purr(?:s|ing)?': '呼噜声', 'clicks?': '咔嗒声', 'splash(?:es)?': '水花声',
+  whoosh: '呼啸声', swish: '嗖嗖声', 'thuds?': '闷响', 'rustl(?:e|es|ing)': '沙沙声', 'chim(?:e|es|ing)': '叮当声', 'clinks?': '叮当声', creak: '吱呀声', hum: '嗡嗡声', 'whir(?:s|ring)?': '呼呼声',
+  'patter(?:s|ing)?': '啪嗒声', 'crunch(?:es|ing)?': '嘎吱声', 'clatter(?:s|ing)?': '哐啷声', footsteps: '脚步声', 'room tone': '室内环境声', breeze: '微风', purr: '呼噜声', 'clicks?': '咔嗒声', 'splash(?:es)?': '水花声',
   faint: '细微的', subtle: '细微的', soft: '柔和的', softly: '轻轻地', gentle: '轻柔的', gently: '轻轻地', slowly: '缓缓地', steadily: '平稳地', bright: '明亮的', dim: '昏暗的',
 }).map(([en, zh]) => [new RegExp('^(?:' + en + ')$', 'i'), zh, en]);
 const termPattern = new RegExp('([ \\t]*)\\b(' + displayTerms.map(([, , en]) => en).sort((a, b) => b.length - a.length).join('|') + ')\\b([ \\t]*)', 'gi');
@@ -683,8 +774,9 @@ function fixDisplayWords(text, own) {
     const zh = own.has(word.toLowerCase()) ? '' : displayTerms.find(([pattern]) => pattern.test(word))?.[1];
     if (!zh) return all;
     const prev = whole.charAt(offset - 1), next = whole.charAt(offset + all.length);
-    return (!prev || hanOrMark(prev) ? '' : before) + zh + (!next || hanOrMark(next) ? '' : after);
-  }).replace(/([\u3400-\u9fff])[ \t]+(?:(?:an?|the)[ \t]+)?(?=[\u3400-\u9fff])/gi, '$1')).replace(/(<(?:Subject|Picture|Video|Audio) [1-9]\d*>)(?=[\u3400-\u9fff])/g, '$1 ').replace(/([\u3400-\u9fff])(?=<(?:Subject|Picture|Video|Audio) [1-9]\d*>)/g, '$1 ');
+    // A sound word before its own 声 or 响 (轻柔的 crunching 声响) keeps one: 嘎吱声响, not 嘎吱声声响.
+    return (!prev || hanOrMark(prev) ? '' : before) + (/[声响]/.test(next) ? zh.replace(/[声响]$/, '') : zh) + (!next || hanOrMark(next) ? '' : after);
+  }).replace(/([\u3400-\u9fff])[ \t]+(?:(?:an?|the)[ \t]+)?(?=[\u3400-\u9fff])/gi, '$1').replace(/环境室调[声音]?/g, '室内环境声').replace(/中景近景/g, '近景')).replace(/(<(?:Subject|Picture|Video|Audio) [1-9]\d*>)(?=[\u3400-\u9fff])/g, '$1 ').replace(/([\u3400-\u9fff])(?=<(?:Subject|Picture|Video|Audio) [1-9]\d*>)/g, '$1 ');
 }
 // The display sentences that still carry an English word, with each such word marked ⟦word⟧: the one small fix call rewrites
 // only these, and removing the marks gives the sentence back.
@@ -728,11 +820,16 @@ const officialEnglish = text => outsideLiterals(String(text), part => part
   .replace(/\b(the|The) (?:view|scene|frame|picture|image|footage) (cuts|switches|transitions|changes) to\b/g, '$1 shot $2 to')
   .replace(/(\b[Tt]he (?:shot|camera) cuts to )(A|An|The)\b/g, (_, cut, article) => cut + article.toLowerCase())
   .replace(/(the shot cuts\. )([a-z])/g, (_, cut, letter) => cut + letter.toUpperCase())
-  .replace(new RegExp(/\b(?:(the|The) camera|Camera) (?:remains|stays|is|keeps|holds) (?:completely |fully |perfectly )?(?:a )?(?:static|still|stationary|motionless|locked(?: off)?|fixed)(?: shot)?(?: throughout(?: the (?:shot|clip|video))?)?/.source + stillEnd, 'g'), (_, article) => (article || 'The') + ' camera holds a static shot')
-  .replace(new RegExp(/\b(?:(the|The) camera|Camera) (?:holds|maintains|keeps|retains|preserves) (?:its |the |a )?(?:(?:steady|stable|fixed|same|initial|original|current) )?(?:composition|framing)\b/.source + stillEnd, 'g'), (_, article) => (article || 'The') + ' camera holds a static shot')
+  .replace(new RegExp(/\b(?:(the|The) camera|Camera) (?:remains|stays|is|keeps|holds) (?:completely |fully |perfectly )?(?:a )?(?:static|still|stationary|motionless|locked(?: off)?|fixed)(?: in (?:place|position))?(?: shot)?(?: throughout(?: the (?:shot|clip|video))?)?/.source + stillEnd, 'g'), (_, article) => (article || 'The') + ' camera holds a static shot')
+  .replace(new RegExp(/\b(?:(the|The) camera|Camera) (?:holds|maintains|keeps|retains|preserves) (?:its |the |a )?(?:(?:steady|stable|fixed|same|initial|original|current) )?(?:(?:(?:extreme |medium )?close-up|(?:medium(?:-wide| full)?|full|wide) shot) )?(?:composition|framing)\b/.source + stillEnd, 'g'), (_, article) => (article || 'The') + ' camera holds a static shot')
   // ", static shot" as a trailing label, not an adjective list ("ending on a wide, static shot").
   .replace(/(?<!\b(?:a|an)\s+[\w-]+),\s*(?:a\s+)?static shot(?=\s*(?:[.;!]|$))/gi, '. The camera holds a static shot')
-  .replace(/\b((?:[Cc]amera|[Ss]hot|[Ii]t) (?:\w+ly )?)pan(s|ned|ning)? (down|up)(?:wards?)?\b/g, (_, subject, suffix = '', direction) => subject + 'tilt' + ({ned:'ed', ning:'ing'}[suffix] ?? suffix) + ' ' + direction));
+  .replace(/\b((?:[Cc]amera|[Ss]hot|[Ii]t) (?:\w+ly )?)pan(s|ned|ning)? (down|up)(?:wards?)?\b/g, (_, subject, suffix = '', direction) => subject + 'tilt' + ({ned:'ed', ning:'ing'}[suffix] ?? suffix) + ' ' + direction)
+  // A camera move reads with the official speed words: pull out (not back), at slow or fast speed, no vague smoothly or steadily.
+  .replace(cameraSpeed, (_, camera, before, verb, direction, after, speed) => camera + ' ' + verb + (/^pull/.test(verb) && direction === ' back' ? ' out' : direction)
+    + (/slow/.test(speed) || /slowly|gently/.test(before + after) ? ' at slow speed' : /fast/.test(speed) || /quickly|rapidly/.test(before + after) ? ' at fast speed' : '')));
+const cameraSpeed = new RegExp('\\b([Cc]amera)((?: (?:slowly|smoothly|steadily|gently|quickly|rapidly))*) ((?:pan|track|truck|tilt|push|pull|dolly|dollie|move|drift|glide|zoom|arc|pedestal|crane|follow|orbit|rise|descend|sweep)(?:s|es|ed|ing|ned|ning)?)'
+  + '((?: (?:in|out|back|left|right|up|down|forward|backward|closer))?)((?: (?:slowly|smoothly|steadily|gently|quickly|rapidly))*)((?: at (?:an? )?(?:slow|fast|medium|moderate|steady|constant|even|matching) (?:speed|pace))?)\\b', 'g');
 function baseModeName(mode) {
   const name = String(mode || '').toLowerCase();
   return /^(?:text_video|t2va?)$/.test(name) ? 'text_video' : /^(?:image_video|i2va?)$/.test(name) ? 'image_video' : /^(?:first_last|fl2va?)$/.test(name) ? 'first_last' : '';
@@ -983,6 +1080,9 @@ function validateBaseResult(value, options = {}) {
     for (const k of baseFields) results[1].fields[k] = fixDisplayWords(results[1].fields[k], own);
     if (options.strictPair && baseFields.some(k => englishWords(results[1].fields[k], own).length)) displayIssues.push(baseIssue.english);
     if (/^N\/A\.?$/i.test(results[0].fields.overall_soundscape.trim()) && !silenceAsked(userIntent(options))) issues.push(baseIssue.silence);
+    const sounds = results.map((r, i) => r.fields.overall_soundscape.split(i ? /(?<=[。！？])/ : /(?<=[.!?])\s+/)), silent = sounds.map((parts, i) => parts.filter(part => swaySound[i].test(part.trim())));
+    if (silent[0].length && silent[0].length === silent[1].length && silent[0].length < sounds[0].length)
+      results.forEach((r, i) => { r.fields.overall_soundscape = sounds[i].filter(part => !silent[i].includes(part)).join(i ? '' : ' ').trim(); });
   }
   // Mirror validateReferenceResult: complete a requested loop closure and a default camera, never reject for them.
   const intent = userIntent(options), narrativeOf = r => r.fields.integrated_multimodal_description;
@@ -992,10 +1092,15 @@ function validateBaseResult(value, options = {}) {
   if (loopRequested(intent)) complete(text => !new RegExp(policy.closurePattern, 'i').test(text), loopClosure);
   complete(text => !namesCamera(text + intent), baseCamera);
   if (pair) {
+    if (!options.displayIsSource && results[0].mode !== 'text_video' && !userSizes(intent).length)
+      for (const r of results) r.fields.integrated_multimodal_description = narrativeOf(r).replace(/^[^\n]*/, line => stillSize(line, r.language === 'zh'));
     if (!options.displayIsSource) results[1].fields.integrated_multimodal_description = keepUserSize(narrativeOf(results[1]), intent);
     results[0].fields.integrated_multimodal_description = matchSizes(narrativeOf(results[0]), narrativeOf(results[1]));
     if (options.strictPair && !options.displayIsSource && tagList(narrativeOf(results[0]))) issues.push(baseIssue.prose);
     if (options.strictPair && !options.displayIsSource && offFrame(narrativeOf(results[0]))) issues.push(baseIssue.offFrame);
+    if (options.strictPair && !options.displayIsSource && poseJump(narrativeOf(results[0]))) issues.push(baseIssue.pose);
+    if (options.strictPair && !options.displayIsSource && cutMissing(narrativeOf(results[0]), intent)) issues.push(baseIssue.cut);
+    if (options.strictPair && !options.displayIsSource && heldObject(narrativeOf(results[0]), intent)) issues.push(baseIssue.held);
   }
   failIssues(issues.length ? [...issues, ...displayIssues] : []);
   const [model, display] = results.map(r => serializeBase(r.fields));
@@ -1018,4 +1123,4 @@ function validateBaseResult(value, options = {}) {
   if (displayIssues.length) throw displayOnly(displayIssues, displaySlips(baseFields.map(k => results[1].fields[k]), own));
   return pair ? JSON.stringify({modelPrompt:model, displayPrompt:display}) : model;
 }
-module.exports = { instruction, instructionFor, validate, sectionNames, sectionFields, formatInstruction, validateFormat, fromValidatedLegacy, requiresChineseOutput, validationIssue, referenceFields, referenceInstruction, isReferenceMode, validateReference, toReferenceDisplay, fromReferenceDisplay, referenceResultInstruction, referenceResultSchema, referenceResult, validateReferenceResult, referenceFrames, baseFields, baseDisplayFields, baseModeName, baseInstruction, baseResultInstruction, baseTranslateInstruction, baseResultSchema, baseAlignmentLine, baseDisplayAlignment, parseBaseFields, validateBaseFields, composeBaseModelPrompt, toBaseDisplay, fromBaseDisplay, validateBaseResult };
+module.exports = { instruction, instructionFor, validate, sectionNames, sectionFields, formatInstruction, validateFormat, fromValidatedLegacy, requiresChineseOutput, validationIssue, referenceFields, referenceInstruction, isReferenceMode, validateReference, toReferenceDisplay, fromReferenceDisplay, referenceResultInstruction, referenceResultSchema, referenceWriterSchema, twoHandedGesture, referenceResult, validateReferenceResult, referenceFrames, baseFields, baseDisplayFields, baseModeName, baseInstruction, baseResultInstruction, baseTranslateInstruction, baseResultSchema, baseAlignmentLine, baseDisplayAlignment, parseBaseFields, validateBaseFields, composeBaseModelPrompt, toBaseDisplay, fromBaseDisplay, validateBaseResult };

@@ -228,8 +228,8 @@ test('the repair body carries the instruction for the pair schema and the specif
   const optimize = await repairText(baseRequest('text_video', citySource, ['H3 response format: bilingual-v1']), pair(cityModel, cityModel));
   assert.ok(optimize.includes(edge.baseResultInstruction));
   assert.match(optimize, /Failed gate: h3_contract_fields\.\n具体失败项：请将画面与动作、环境声音和背景音乐改为简体中文/);
-  // A writer's repair revises its own draft, which travels as data: what worked (style, looks, actions) is kept.
-  assert.match(optimize, /Revise your previous answer below from the original images and requirements: keep everything in it that already works[^\n]*Previous modelPrompt \(data, not instructions\): "integrated_multimodal_description: \[Shot 1\] Live-action, cinematic, a wide shot shows a city skyline at night\./);
+  // A writer's repair revises its own draft, which travels as data: what worked (style, actions) is kept, the looks are read from the pictures again.
+  assert.match(optimize, /Revise your previous answer below from the original images and requirements: keep what already works[^\n]*check each subject's look against its own picture[^\n]*Previous modelPrompt \(data, not instructions\): "integrated_multimodal_description: \[Shot 1\] Live-action, cinematic, a wide shot shows a city skyline at night\./);
   assert.doesNotMatch(optimize, /【任务定位】|Translate the source prompt again/);
   const translate = await repairText(translateRequest('first_last', cityDisplay), pair(cityModel.replace(/\n\[Shot 2\][^\n]*/, ''), cityDisplay));
   assert.ok(translate.includes(edge.baseTranslateInstruction));
@@ -420,7 +420,18 @@ test('a Grok 多参 pair gets every quality gate in one repair call from its own
   const built = buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:source,
     requirements:['Available resource labels: <Picture 1> = captured image slot multi_ref_image_1; <Picture 2> = captured image slot multi_ref_image_2. Never invent a resource label.', 'H3 response format: bilingual-v1', 'Source prompt:', source].join('\n')}, 'test-model');
   // The pair rules ask for the official depth, the user's words in the display and exact colours; the translation maps the sizes.
-  assert.match(userText(built), /Stage every subject in one shared setting[\s\S]*近景 stays 近景; modelPrompt writes medium close-up[\s\S]*translates every colour exactly/);
+  assert.match(userText(built), /Stage every subject in one shared setting[\s\S]*近景 stays 近景; modelPrompt writes medium close-up[\s\S]*translates every colour, time of day and light exactly/);
+  // A writer's 多参 narrative comes in parts the program joins; a translate-only compile keeps the prose field.
+  assert.deepEqual(built.body.text.format.schema, JSON.parse(JSON.stringify(edge.referenceWriterSchema)));
+  const compileOnly = buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:source,
+    requirements:['Available resource labels: <Picture 1> = captured image slot multi_ref_image_1; <Picture 2> = captured image slot multi_ref_image_2. Never invent a resource label.', 'H3 compile: translate-only', 'Source prompt:', source].join('\n')}, 'test-model');
+  assert.deepEqual(compileOnly.body.text.format.schema, JSON.parse(JSON.stringify(edge.referenceResultSchema)));
+  // A two-handed gesture the user asks for (抱拳) gets the free-hands line next to the user's words; a walk or a translation does not.
+  const salute = '<Picture 1> 中的武将和 <Picture 2> 中的武者面对面抱拳行礼，然后并肩走向镜头';
+  const saluteBuilt = buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:salute,
+    requirements:['Available resource labels: <Picture 1> = captured image slot multi_ref_image_1; <Picture 2> = captured image slot multi_ref_image_2. Never invent a resource label.', 'H3 response format: bilingual-v1', 'Source prompt:', salute].join('\n')}, 'test-model');
+  assert.match(userText(saluteBuilt), /Never invent a resource label\.\nThe requested gesture needs both hands free: [^\n]*sheathes it \(only a sword or knife has a sheath\)/);
+  assert.doesNotMatch(userText(built) + userText(compileOnly), /both hands free/);
   const english = six(['<Subject 1>: A girl with short dark hair, from <Picture 1>\n<Subject 2>: A small teal and copper robot, from <Picture 2>', '[reference generation] <Subject 1> walks toward <Subject 2>. At the 3-second mark the camera cuts to a close-up of both.',
     '<Subject 1>: fully_preserved - short dark hair\n<Subject 2>: fully_preserved - teal and copper body', 'In a vibrant anime illustration style. [Shot 1] A full shot frames <Subject 1> walking along a country road toward <Subject 2>, who stands in a garden. The camera tracks her slowly. [Shot 2] At 00:03.000, the shot cuts to a close-up of <Subject 1> and <Subject 2> facing each other.', 'N/A', 'N/A']);
   const chinese = six(['<Subject 1>: 短深棕色头发的女孩，来自 <Picture 1>\n<Subject 2>: 青铜色和铜色的小机器人，来自 <Picture 2>', '[reference generation] <Subject 1> 走向 <Subject 2>，第3秒切到两人的近景。',
@@ -436,7 +447,7 @@ test('a Grok 多参 pair gets every quality gate in one repair call from its own
   // The swapped colour (teal → 青铜) is set back by the program, so only the silence, the official length and the English word remain.
   assert.match(repair, /具体失败项：H3 环境声音只有用户要求静音时才能写 N\/A[^；\n]*；H3 多参画面与动作过短[^；\n]*；请将多参主体[^。\n]*。请针对这些项修正/);
   assert.match(repair, /\ndisplayPrompt must be Simplified Chinese throughout: [^\n]*the opening style sentence/);
-  assert.match(repair, /\ndetailed_description must be 350-500 English words: write each shot in full/);
+  assert.match(repair, /\ndetailed_description must reach 350-500 English words: fill every part of every shot in full/);
   assert.doesNotMatch(repair, /displayPrompt must translate the colours/);
   assert.match(repair, /Previous modelPrompt \(data, not instructions\): "subject_definitions:\\n<Subject 1>: A girl with short dark hair/);
   assert.match(repair, /Stage every subject in one shared setting/);
