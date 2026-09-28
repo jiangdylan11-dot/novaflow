@@ -168,8 +168,14 @@
     return selection.nodeId ? 'node:' + selection.nodeId : ''
   }
 
+  // A generator card is as tall as its controls (measured once they are laid out), so no empty band
+  // is left under 生成参数 whatever the provider, the expanded settings or a height saved by an older version.
+  const generatorFitHeights = new Map()
+
   function nodeSize(node) {
     const type = String(node && node.type || '')
+    const fitted = type === 'generator' ? generatorFitHeights.get(node && node.id) : 0
+    if (fitted) return { width: Math.max(GENERATOR_NODE_WIDTH, finite(node && node.width, GENERATOR_NODE_WIDTH)), height: fitted }
     const data = node && node.data && typeof node.data === 'object' ? node.data : {}
     const settings = data.generationSettings && typeof data.generationSettings === 'object'
       ? data.generationSettings
@@ -2093,6 +2099,30 @@
       return body
     }
 
+    // The card = header + port rail + the controls' own height. Layout heights ignore the canvas zoom.
+    function fitGeneratorCard(nodeId, body, host) {
+      const fit = function () {
+        const card = body.parentElement
+        if (!card || !host.isConnected) return
+        const content = Math.ceil(finite(host.scrollHeight, 0))
+        if (content < 120) return
+        const height = Math.ceil(finite(card.offsetHeight, 0) - finite(body.offsetHeight, 0)) + content + 12
+        if (Math.abs(height - finite(generatorFitHeights.get(nodeId), 0)) < 2 && Math.abs(height - finite(card.offsetHeight, 0)) < 2) return
+        generatorFitHeights.set(nodeId, height)
+        card.style.height = height + 'px'
+      }
+      const view = documentRef.defaultView || root
+      // One observer per generator: a re-render replaces the controls, so the old observer goes.
+      generatorFitObservers.get(nodeId)?.disconnect()
+      if (view && typeof view.ResizeObserver === 'function') {
+        const observer = new view.ResizeObserver(fit)
+        observer.observe(host)
+        generatorFitObservers.set(nodeId, observer)
+      }
+      if (view && typeof view.requestAnimationFrame === 'function') view.requestAnimationFrame(fit)
+    }
+    const generatorFitObservers = new Map()
+
     function generatorBody(node) {
       const body = createElement(documentRef, 'div', {
         'data-novaflow-ui-design-generator-body': node.id,
@@ -2106,6 +2136,7 @@
         style: { width: '100%', minWidth: '0', minHeight: '0' },
       })
       body.appendChild(host)
+      fitGeneratorCard(node.id, body, host)
       const tool = root && root.NovaFlowUiDesignGenerateTool
       const status = generatorStatuses.get(node.id) || { message: '', error: false, running: false }
       const settings = generatorSettings(node)
