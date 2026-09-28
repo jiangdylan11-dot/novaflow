@@ -19,16 +19,49 @@ HAN = r"[㐀-鿿]"
 SHOT_MARK = r"\[Shot ([1-9]\d*)\](?:[ \t]*At[ \t]+(\d{2}):(\d{2})\.(\d{3}),?)?"
 # A cut, scene change or several shots in the user's own words. Only then do
 # later [Shot N] exist; otherwise the video is one continuous shot.
-CUT_PATTERN = (r"切镜|切换镜头|镜头切(?:换|到|至)|切(?:到|至|换到)[^，。,；;\n]{0,6}?(?:近景|中景|远景|全景|特写|镜头|画面|场景|视角)"
-               r"|(?:第\s*\d+(?:\.\d+)?\s*秒|秒后|然后|接着|随后|之后|再)\s*切(?:到|至|换)|转场|分镜|第[二三四五六2-6]个?镜头"
+SHOT_SIZE = r"近景|中景|远景|全景|特写"
+CUT_PATTERN = (r"切镜|切换镜头|镜头切(?:换|到|至|回)|切(?:到|至|换到|回)[^，。,；;\n]{0,6}?(?:" + SHOT_SIZE + r"|镜头|画面|场景|视角)"
+               # 第3秒切近景, 最后切一个特写, 切回全景: 切 + a shot size, not 切开西瓜/切菜.
+               r"|切(?![开菜断割片成碎块肉丝丁水西土苹香面蛋葱姜蒜])(?:到|至|换|回)?(?:一个|个)?[^，。,；;\n]{0,6}?(?:" + SHOT_SIZE + r")"
+               r"|(?:第\s*\d+(?:\.\d+)?\s*秒|秒后|然后|接着|随后|之后|再)\s*切(?:到|至|换|回)|转场|分镜|第[二三四五六2-6]个?镜头"
                r"|[两二三四五2-5]个镜头|多个镜头|多镜头|场景切换|切换场景|换(?:个|一个)?场景|\[Shot (?:[2-9]|[1-9]\d)\]|【镜头\s*[2-9]】"
-               r"|\bcuts? to\b|\b(?:camera|shot) cuts\b|\bmulti-shot\b|\bscene change\b")
-NO_CUT = r"(?:不要|不用|不需要|无需|不|别|禁止|避免|没有)[^，。,；;\n]{0,3}?(?:切镜|切换镜头|切换|转场|分镜|换场景|切)"
+               r"|\bcuts? (?:to|back)\b|\b(?:camera|shot) cuts\b|\bmulti-?\s?shots?\b|\bscene change\b|\b(?:two|three|four|several|multiple|[2-9])\s+shots\b")
+# A refused cut: the whole clause goes ("不要两个镜头", "请勿切镜", "don't cut to a close-up").
+CUT_WORDS = r"切镜|切换|转场|分镜|换场景|场景切换|切|(?:第[二三四五六2-9]个|多个|[两二三四五2-9]个)镜头|多镜头|镜头"
+NO_CUT = (r"(?:不要|不用|不需要|无需|不必|请勿|勿|不能|不得|不可以|不可|不许|不准|别|禁止|避免|没有)[^，。,；;\n]{0,6}?(?:" + CUT_WORDS + r")[^，。,；;\n]*"
+          r"|不(?:再|做|去)?(?:切|转场|分镜|换场景)[^，。,；;\n]*"
+          r"|(?:(?:第[二三四五六2-9]个|多个|[两二三四五2-9]个)镜头|切镜|切换|转场|分镜)也?(?:不要|不用|不需要|取消|去掉)[^，。,；;\n]*"
+          r"|\b(?:no|not|don[’']t|do not|never|without)\b[^.,;\n]{0,16}?\b(?:cuts?|cutting|scene changes?|shots?|transitions?)\b[^.,;\n]*")
+ONE_SHOT = r"一镜到底|(?:改成|改为|只要|只用|只有|保持|就)一个镜头|一个镜头(?:拍完|到底|完成)|单镜头|\b(?:one|single) (?:continuous )?(?:shot|take)\b"
 
 
 def requested_cut(text):
     """The user's own words ask for a cut, a scene change or several shots."""
-    return bool(re.search(CUT_PATTERN, re.sub(NO_CUT, "", str(text or "")), re.I))
+    return bool(re.search(CUT_PATTERN, re.sub(NO_CUT, "", str(text or ""), flags=re.I), re.I))
+
+
+def asks_cut(source, requirement=""):
+    """A cut the user asked for. The requirement's own word on cuts wins over shots already in the source."""
+    requirement = str(requirement or "")
+    if requested_cut(requirement) or re.search(NO_CUT + "|" + ONE_SHOT, requirement, re.I):
+        return requested_cut(requirement)
+    return requested_cut(str(source or "") + "\n" + requirement)
+
+
+def cut_seconds(text):
+    """The seconds the user gives each cut, in order: 第4秒切到近景, 3秒后切到远景, at 2s cut to …"""
+    return [float(m[1] or m[2] or m[3]) for m in re.finditer(
+        r"第\s*(\d+(?:\.\d+)?)\s*秒[^，。,；;\n]{0,6}?切|(\d+(?:\.\d+)?)\s*秒(?:后|之后|时|处)[^，。,；;\n]{0,6}?切"
+        r"|\bat\s+(\d+(?:\.\d+)?)\s*s(?:ec(?:ond)?s?)?\b[^.,;\n]{0,16}?\bcut", re.sub(NO_CUT, "", str(text or ""), flags=re.I), re.I)]
+
+
+# The opening "镜头切到近景，" / "近景，" of a later shot kept inside the one continuous shot.
+CUT_OPENING = (r"^[\s，,。；;]*(?:(?:镜头|画面)?(?:在[^，。,；;\n]{0,8})?切(?:换)?(?:到|至|回|成)?[^，。,；;\n]{0,12}[，,。；;]?"
+               r"|大?(?:" + SHOT_SIZE + r")(?:镜头)?[，,：:。]|(?:the )?camera cuts (?:back )?to [^,.;\n]*[,.;]?)\s*")
+
+
+def fold_cut(text):
+    return re.sub(CUT_OPENING, "", str(text or ""), count=1, flags=re.I).strip()
 
 
 def shot_stamp(seconds):
@@ -36,12 +69,25 @@ def shot_stamp(seconds):
     return f"{ms // 60000:02d}:{ms // 1000 % 60:02d}.{ms % 1000:03d}"
 
 
-def shot_times(asked, duration):
-    """Cut times of shots 2..n: the writer's seconds when they rise inside the clip, else evenly spaced."""
-    even = [round(float(duration) * k / (len(asked) + 1), 3) for k in range(1, len(asked) + 1)]
-    if all(t is not None for t in asked) and all(a < b for a, b in zip([0.0] + asked, asked + [float(duration)])):
-        return asked
-    return even
+def shot_times(asked, duration, hints=()):
+    """Cut times of shots 2..n: the writer's seconds (else the user's hint) when they rise inside
+    the clip; a missing or invalid one is spaced evenly between its neighbours."""
+    end = int(round(float(duration) * 1000))
+    known, last = [], 0
+    for i, seconds in enumerate(asked):
+        seconds = seconds if seconds is not None else hints[i] if i < len(hints) else None
+        ms = None if seconds is None else int(round(float(seconds) * 1000))
+        known.append(ms if ms is not None and last < ms < end else None)
+        last = known[-1] if known[-1] is not None else last
+    times = list(known)
+    for i, ms in enumerate(times):
+        if ms is None:
+            j = next((k for k in range(i, len(times)) if known[k] is not None), len(times))
+            low, high = times[i - 1] if i else 0, known[j] if j < len(times) else end
+            times[i] = low + round((high - low) / (j - i + 1))
+    if not all(a < b for a, b in zip([0] + times, times + [end])):
+        times = [round(end * k / (len(asked) + 1)) for k in range(1, len(asked) + 1)]
+    return [ms / 1000 for ms in times]
 
 
 def check_shots(narrative, duration, fill=False):
@@ -82,6 +128,25 @@ def literal_free(text):
 
 def dialogue_tag(words):
     return "[Chinese]" if re.search(HAN, words) else "[English]"
+
+
+# A spoken line in the writer's view: (S1)："…", (S1, S2)：[Japanese]"…".
+SPEECH_LINE = r'[（(](S[1-9]\d*(?:\s*,\s*S[1-9]\d*)*)[）)]\s*[:：]\s*(\[[A-Za-z ]+\])?\s*[“"]([^”"]+)[”"]'
+
+
+BASE_ANCHORS = {"open": {"en": "The shot begins in the position and framing established by <Picture 1>.", "zh": "画面从 <Picture 1> 的位置与构图开始。"},
+                "close": {"en": "At the end of the shot, the action settles into the pose, spacing, and composition established by <Picture 2>.",
+                          "zh": "结尾时，动作落定在 <Picture 2> 的姿态、位置与构图。"}}
+
+
+def append_sentence(text, sentence):
+    """Ends the text's last sentence and appends the next; Chinese sentences follow without a space."""
+    head = re.sub(r"[，,；;：:、]+$", "", str(text or "").strip())
+    if not head:
+        return sentence
+    letters = re.findall(r"[㐀-鿿A-Za-z]", re.sub(r"<[^<>]*>", "", head))
+    ended = head if re.search(r"(?:[。！？.!?…”\"」』）)]|</d>)$", head) else head + ("。" if letters and re.match(HAN, letters[-1]) else ".")
+    return ended + ("" if re.search(r"[。！？]$", ended) or (re.search(r"[”」』）>]$", ended) and re.match(HAN, sentence)) else " ") + sentence
 
 
 def parse_base_fields(value):
@@ -136,10 +201,23 @@ def validate_base_fields(value, mode="", duration=None, language=None, requireme
     named = set(re.findall(r"<Picture [12]>", narrative)) | {f"<Picture {n}>" for n in re.findall(r"(?<![<\w])Picture ([12])(?![\w>])", narrative)}
     if kind == "T2VA" and used:
         raise ValueError("H3 文生视频不能引用参考素材")
-    if kind == "I2VA" and (used - {"<Picture 1>"} or named != {"<Picture 1>"}):
+    if kind == "I2VA" and used - {"<Picture 1>"}:
         raise ValueError("H3 图生视频的画面描述必须引用 <Picture 1>，且不能引用其他素材")
-    if kind == "FL2VA" and (used - {"<Picture 1>", "<Picture 2>"} or named != {"<Picture 1>", "<Picture 2>"}):
+    if kind == "FL2VA" and used - {"<Picture 1>", "<Picture 2>"}:
         raise ValueError("H3 首尾帧视频的画面描述必须引用 <Picture 1> 和 <Picture 2>")
+    if kind in ("I2VA", "FL2VA"):
+        # Like the renderer's validateBaseFields: a frame the text does not name gets its anchor
+        # sentence, the opening frame after the style sentence, the last frame at the end.
+        lang = language or ("zh" if re.search(HAN, literal_free(narrative)) else "en")
+        if "<Picture 1>" not in named:
+            def opening(match):
+                first = re.match(r"^(.*?[。！？]|.*?[.!?](?=\s|$))\s*(.+)$", match[1])
+                anchor = BASE_ANCHORS["open"][lang]
+                return "[Shot 1] " + (append_sentence(append_sentence(first[1], anchor), first[2]) if first else append_sentence(match[1], anchor))
+            narrative = re.sub(r"^\[Shot 1\] ?([^\n]*)", opening, narrative, count=1)
+        if kind == "FL2VA" and "<Picture 2>" not in named:
+            narrative = append_sentence(narrative, BASE_ANCHORS["close"][lang])
+        everything = "\n".join((narrative, sound, music))
     if kind == "L2VA":
         inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements or "")
         if inventory and not used <= set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory[1])):
@@ -166,9 +244,12 @@ def base_source_view(source):
     spoken = []
 
     def speech(match):
-        spoken.append(f'({match[1]})："{match[2].strip()}"')
+        words = match[3].strip()
+        # A tag the program would not write itself ([Japanese]) travels with the line.
+        tag = match[2] if match[2] and match[2] != dialogue_tag(words) else ""
+        spoken.append(f'({match[1]})：{tag}"{words}"')
         return ""
-    text = re.sub(r"[（(](S[1-9]\d*(?:\s*,\s*S[1-9]\d*)*)[）)]\s*[^<\n]{0,12}?\s*<d>\s*(?:\[[A-Za-z ]+\]\s*)?([\s\S]*?)</d>", speech, text)
+    text = re.sub(r"[（(](S[1-9]\d*(?:\s*,\s*S[1-9]\d*)*)[）)]\s*[^<\n]{0,12}?\s*<d>\s*(\[[A-Za-z ]+\])?\s*([\s\S]*?)</d>", speech, text)
     text = re.sub(r"\s*\[Shot 1\]\s*", "", text)
     text = re.sub(r"\s*" + SHOT_MARK + r"\s*", lambda m: f"\n镜头{m[1]}" + (
         f"（第{int(m[2]) * 60 + int(m[3]) + int(m[4]) / 1000:g}秒）" if m[2] else "") + "：", text)
@@ -403,9 +484,13 @@ def render_reference_plan(value, requirements="", duration=30, source="", user_r
     # source camera. Default to a locked camera rather than rejecting the plan.
     if "video editing" not in plan["tasks"] and not re.search(CAMERA_PATTERN, description + " " + source + " " + user_requirement, re.I):
         description += " " + DEFAULT_CAMERA_ZH
-    if "video editing" in plan["tasks"] or not requested_cut(source + "\n" + user_requirement):
+    if "video editing" in plan["tasks"] or not asks_cut(source, user_requirement):
         # One continuous shot unless the user asked for a cut; an edit keeps the source's timing.
-        description = re.sub(r"\s*\[Shot (?:[2-9]|[1-9]\d+)\](?:[ \t]*At[ \t]+\d{2}:\d{2}\.\d{3},?)?\s*", " ", description).strip()
+        # A later shot's content stays without its "镜头切到近景" opening.
+        parts = re.split(r"\s*\[Shot (?:[2-9]|[1-9]\d+)\](?:[ \t]*At[ \t]+\d{2}:\d{2}\.\d{3},?)?\s*", description)
+        description = parts[0].strip()
+        for part in filter(None, map(fold_cut, parts[1:])):
+            description += ("" if re.search(r"[㐀-鿿。，；！？]$", description) else " ") + part
     if "[Shot 1]" not in description:
         description = "[Shot 1] " + description
     result = dict(zip(REFERENCE_FIELDS, ("\n".join(definitions), "[" + " + ".join(plan["tasks"]) + "] " + summary, "\n".join(retention), description, plan["soundscape"], plan["music"])))
@@ -577,7 +662,7 @@ SPEAK_STEPS = ("开始说话", "继续说话", "说完这句话")
 LOOK_WORDS = (r"色调|调色|灯光|光线|光照|光影|阳光|日光|月光|暖光|冷光|逆光|侧光|顶光|柔光|暖色|冷色|高对比|对比度|饱和"
               r"|明亮|昏暗|晴空|晴朗|晴天|夕阳|黄昏|清晨|夜色|雨[夜水幕滴丝中后]|[下细大小阵暴]雨|雪[花地景中]|[下飘大小白]雪|[薄浓晨大云]雾|雾气")
 # A sound the user never asked for ("刀锋带起风声"); speech, a named sound or music keeps them.
-SOUND_WORDS = r"声(?![势色称明望誉名])|音效|音乐|配乐|作响|嗡鸣|轰鸣|怒吼|吼叫|大吼|嘶吼|咆哮|呐喊|尖叫"
+SOUND_WORDS = r"(?<![齐轻低柔])声(?![势色称明望誉名])|音效|音乐|配乐|作响|嗡鸣|轰鸣|怒吼|吼叫|大吼|嘶吼|咆哮|呐喊|尖叫"
 USER_SOUND = r"声|音|响|乐|唱|说|讲|喊|叫|吼|哭|台词|对白"
 CAMERA_WORD = r"镜头|机位|运镜|摄像机|相机"
 CAMERA_MOVES = (("fixed", r"固定|静止|不动|锁定"), ("follow", r"跟随|跟拍|跟踪|追随"), ("in", r"推近|推进|拉近|推向|推至"),
@@ -628,11 +713,35 @@ def requested_rules(user_text):
     return names
 
 
+LEGACY_TIMED = r"^\s*\d+(?:\.\d+)?\s*[-–—~至]\s*\d+(?:\.\d+)?\s*(?:s|秒)\s*[:：]?\s*"
+
+
+def legacy_phases(text):
+    """An answer in the old five sections (【递进式详细提示词】 with timed lines) as the five labels."""
+    section = lambda name: (re.search(rf"【{name}】[ \t]*\n?([\s\S]*?)(?=\n?【|$)", text) or ["", ""])[1]
+    lines = [line.strip() for line in section("递进式详细提示词").splitlines() if line.strip()]
+    timed = [re.sub(LEGACY_TIMED, "", line) for line in lines if re.match(LEGACY_TIMED, line)]
+    if len(timed) < 2:
+        return text
+    kept = [item for item in section("连续性与约束").splitlines()
+            if item.strip() and not re.search(r"环境与动作声音\s*[:：]|配乐\s*[:：]|保持上述人物身份、参考帧绑定", item)]
+    return "\n".join(["概述：" + "".join(line for line in lines if not re.match(LEGACY_TIMED, line)),
+                      "起始：" + timed[0], "递进：" + "".join(timed[1:-1]), "收束：" + timed[-1], "约束：", *kept])
+
+
+def overview_preamble(text):
+    """Lines before 起始 without a 概述 label: the overview, minus assistant chatter and a 总述： label."""
+    text = re.sub(r"(?m)^.*(?:[:：][ \t]*$|好的|以下是|如下|优化后|提示词).*$", "", text).strip()
+    return re.sub(r"^(?:总述|综述|概要|概括|总览|简述|描述|总体|整体)\s*[:：]\s*", "", text).strip()
+
+
 def split_action_phases(output):
     """Find the five labels, accepting 【概述】, **概述**, a bare label line or a short preamble."""
     text = str(output or "").replace("\ufffd", "").replace("\r\n", "\n").strip()
     text = re.sub(r"^```[A-Za-z]*[ \t]*\n?|\n?```$", "", text).strip()
     text = re.sub(r"\*\*|__", "", text)
+    if "【递进式详细提示词】" in text:
+        text = legacy_phases(text)
     text = re.sub(r"<\s*(Picture|Video|Audio)\s*([1-9]\d*)\s*>", lambda m: f"<{m[1].capitalize()} {m[2]}>", text, flags=re.I)
     labels = "|".join(PHASE_LABELS)
     note = r"(?:[ \t]*[（(][^（）()\n]{0,24}[）)])?"
@@ -647,14 +756,14 @@ def split_action_phases(output):
         label = match[1] or match[2] or match[3]
         if len(found) < len(PHASE_LABELS) and label == PHASE_LABELS[len(found)]:
             found.append(match)
-        elif not found and label == PHASE_LABELS[1] and re.sub(r"(?m)^.*[:：][ \t]*$", "", text[:match.start()]).strip():
+        elif not found and label == PHASE_LABELS[1] and overview_preamble(text[:match.start()]):
             # No 概述 label: the lines before 起始 are the overview ("三维渲染：小机器人…").
             found += [None, match]
     if len(found) < len(PHASE_LABELS) - 1:
         raise ValueError("模型没有按格式给出概述、起始、递进、收束、约束五个标签")
     parts = [text[m.end() if m else 0:found[i + 1].start() if i + 1 < len(found) else len(text)].strip() for i, m in enumerate(found)]
     if found[0] is None:
-        parts[0] = re.sub(r"(?m)^.*[:：][ \t]*$", "", parts[0]).strip()
+        parts[0] = overview_preamble(parts[0])
     if len(parts) < len(PHASE_LABELS):
         # Only the 约束 label is missing: its numbered list (or "保持项1：") follows the last phase.
         split = re.search(r"(?m)^[ \t]*(?:(?:保持项?|限制项?)[ \t]*1[ \t]*[:：]|1[.、)）]|[（(]1[)）]|[-•])[ \t]*\S", parts[-1])
@@ -737,8 +846,27 @@ def neutral_speech(phase, step):
 
 # A later shot the writer adds when the user asked for a cut: 镜头2（第3秒）：…
 SHOT_LINE = r"(?m)^[ \t>#*\-•]*【?镜头\s*[2-9]\s*】?\s*([（(][^）)\n]{0,16}[）)])?\s*[:：][ \t]*(.*)$"
+# The writer's own soundscape line: 声音：…
+SOUND_LINE = r"(?m)^[ \t>#*\-•]*【?声音】?[ \t]*[:：][ \t]*(.*)$"
 # "保持橘猫外观一致", "动作连贯": talk about consistency, nothing visible (official rule).
 GENERIC_CONSTRAINT = r"(?:身份|外观|形象|样貌|造型)[^，,。；;]{0,8}(?:一致|不变|统一)|^(?:保持)?动作(?:连贯|流畅|自然|衔接)[^，,。；;]{0,4}[。]?$"
+# "温室背景不变": a statement that nothing changes, unless the user asked for it.
+UNCHANGED_SETTING = r"(?:背景|场景|环境)[^，,。；;]{0,6}(?:保持)?(?:不变|固定不动)"
+# "准备切换": an editing note, not something on screen.
+CUT_NOTE = r"准备切换|切换前|即将切换|等待切换"
+# Where a speaker talks; the line goes after that sentence.
+SPEAK_AT = r"说|讲|台词|念|回答|回应|答道|问道|喊|开口|打招呼"
+# The words that end a speaker's name at the start of a sentence ("女孩抬起右手" -> 女孩).
+NAME_END = r"[在从向朝把将对给抬举挥转走跑跳看望站坐蹲躺趴伸弯低点摇笑开说回停放拿握拍迈俯仰侧背面微轻缓慢快迅猛突再又也正都仍继已便就随同和与跟用以被让使，,。！？]"
+
+
+def speaker_name(sentence, user_text):
+    """The subject a speaking sentence opens with, when the user's own words name it too."""
+    head = re.sub(r"^(?:一只|一个|一位|一名|那只|这只|那个|这个)", "", sentence.strip())
+    name = re.match(rf"[㐀-鿿]{{2,6}}?(?={NAME_END})", head)
+    if name and name[0] in user_text:
+        return name[0]
+    return next((head[:n] for n in (4, 3, 2) if re.fullmatch(r"[㐀-鿿]+", head[:n]) and head[:n] in user_text), "")
 
 
 def compile_action_phases(output, mode, duration, source, requirements="", user_requirement="", strict_rules=False, keep_pose=False, audio=None, cut=False):
@@ -750,16 +878,22 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     clauses carrying that rule are dropped. keep_pose keeps constraints that
     hold the pose (two nearly identical first/last frames). cut: the user asked
     for a cut, so the writer's 镜头N lines become later shots; otherwise their
-    content stays in the one continuous shot. audio: (soundscape, music).
+    content stays in the one continuous shot. audio: (soundscape, music, cues);
+    a soundscape of None takes the writer's 声音 line plus the sounds the user
+    named (cues).
     """
-    later, shot_texts = [], []
+    later, shot_texts, heard = [], [], []
 
     def take(match):
         seconds = re.search(r"\d+(?:\.\d+)?", match[1] or "")
         later.append(float(seconds[0]) if seconds else None)
         shot_texts.append(match[2])
         return ""
-    parts = split_action_phases(re.sub(SHOT_LINE, take, str(output or "")))
+
+    def take_sound(match):
+        heard.append(match[1])
+        return ""
+    parts = split_action_phases(re.sub(SOUND_LINE, take_sound, re.sub(SHOT_LINE, take, str(output or ""))))
     mode = str(mode or "").upper()
     inventory = re.search(r"(?im)^Available resource labels:([^\n]*)", requirements)
     refs = sorted(set(re.findall(r"<(?:Picture|Video|Audio) [1-9]\d*>", inventory[1] if inventory else source))) if mode == "L2VA" else []
@@ -774,9 +908,11 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
                       keep_refs(clean_phase_text(parts[0])))
     phases = [keep_refs(clean_phase_text(p)) for p in parts[1:4]]
     if not cut:
-        # A cut nobody asked for: its content stays in the one shot.
-        phases[-1] += "".join(keep_refs(clean_phase_text(text)) for text in shot_texts)
+        # A cut nobody asked for: its content stays in the one shot, without the cut.
+        phases[-1] += "".join(keep_refs(clean_phase_text(fold_cut(text))) for text in shot_texts)
         later, shot_texts = [], []
+    # "准备切换" is an editing note, nothing on screen.
+    phases = [drop_matching_clauses(p, CUT_NOTE) for p in phases]
     beat_count = len(phases)
     phases += [keep_refs(clean_phase_text(text)) for text in shot_texts]
     constraints = [keep_refs(item) for item in clean_constraints(parts[4])]
@@ -836,14 +972,25 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
                [drop_matching_clauses(item, LIGHT_EFFECTS) for item in constraints])
         if has_text(lit[0]) and any(has_text(p) for p in lit[1]):
             overview, phases, constraints = lit
-    if re.search(r'[（(]S[1-9]\d*[）)]\s*[:：]\s*[“"]', source):
+    if re.search(SPEECH_LINE, source):
         phases = [neutral_speech(p, i) for i, p in enumerate(phases)]
+        # The program writes each line once in <d>; a copy the answer quoted goes.
+        for words in {m[3] for m in re.finditer(SPEECH_LINE, source)}:
+            phases = [re.sub(r"。(?=[。，,！？])", "", re.sub(r'[：:，,]?\s*[“"]' + re.escape(words) + r'[”"]', "。", p)) for p in phases]
+    # The answer's own quotes around a word ("幅度始终为“轻轻”", "“噗”一声") would stay Chinese in the
+    # English copy; the user's quoted text and quoted speech or signs keep theirs.
+    user_quotes = {m[1] or m[2] for m in re.finditer(r'“([^”\n]*)”|"([^"\n]*)"', user_text)}
+    unquote = lambda text: re.sub(r'(?<![说喊唱念道问答叫吼出着有示写印：:])[“"]([^”"\n]{1,12})[”"]', lambda m: m[0] if m[1] in user_quotes else m[1], text)
+    overview, phases, constraints = unquote(overview), [unquote(p) for p in phases], [unquote(item) for item in constraints]
     if mode == "FL2VA":
         phases = [re.sub(r"画面(?:回归|复归|复刻|还原|恢复|回到)(?:为|成|到|至)?与?\s*(<Picture 2>)(?:完全)?(?:一致|相同)?的?(?:静止)?(?:状态|形态|画面|样子)?", r"画面与 \1 一致", p) for p in phases]
     asked_text = compact(user_text + "\n" + "\n".join(rule["rule"] for rule in CONDITIONAL_RULES if rule["name"] in asked))
     camera_asked = "camera" in asked or bool(re.search(USER_CAMERA_BAN, user_text))
+    # "背景不变" stays only when the user asked for it; a constraint about the cut is not a constant fact.
+    unchanged = not (re.search(UNCHANGED_SETTING, user_text) or "background" in asked)
     constraints = [drop_clauses(item, lambda clause: re.search(META_CONSTRAINT, clause) or re.search(STAGE_CONSTRAINT, clause)
-                                or invented_ban(clause, asked_text, camera_asked)) for item in constraints]
+                                or invented_ban(clause, asked_text, camera_asked) or (unchanged and re.search(UNCHANGED_SETTING, clause))
+                                or requested_cut(clause)) for item in constraints]
     # A constraint that only repeats the overview, its camera or an action adds nothing.
     same_camera = lambda clause: re.match(r"\s*(?:且|并)?(?:镜头|机位)", clause) and camera_moves(clause) and camera_moves(clause) <= camera_moves(overview)
     # "镜头全程固定，无移动或切换": the bans after a repeated camera go with it.
@@ -868,23 +1015,40 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
     if cut and not shots and strict_rules:
         raise ValueError("用户要求切换镜头，请用“镜头2（第X秒）：”写出切换后的镜头")
     texts = beats + [text for _, text in shots]
-    speech = re.findall(r'[（(]S([1-9]\d*)[）)]\s*[:：]\s*[“"]([^”"]+)[”"]', source)
-    said = "".join(f"(S{n}) 说：<d>{dialogue_tag(words)} {words}</d>" for n, words in speech)
-    if said:
-        # The line goes where the answer has the speaker talk; H3 lip-syncs from it.
-        at = next((i for i, text in enumerate(texts) if re.search(SPEAKING, text)), None)
-        if at is None:
-            texts[len(beats) - 1] += said
+    at, left = (0, 0), []
+    for ids, tag, words in re.findall(SPEECH_LINE, source):
+        # Each line goes after the next sentence where the answer has someone talk, in order,
+        # named by that sentence's subject; H3 lip-syncs from it. The rest close the first shot.
+        line = f"({ids}) 说：<d>{tag or dialogue_tag(words)} {words}</d>"
+        spot = next(((i, talk) for i in range(at[0], len(texts))
+                     for talk in [re.compile(SPEAK_AT).search(texts[i], at[1] if i == at[0] else 0)] if talk), None)
+        if spot is None:
+            left.append(line)
+            continue
+        i, talk = spot
+        text = texts[i]
+        # The talking sentence starts after the last full stop or the line placed before it.
+        start = talk.start() - len(re.split(r"[。！？!?]|</d>", text[:talk.start()])[-1])
+        if text[talk.start():talk.start() + 2] == "说完":
+            # "他说完这句话" comes after the line itself.
+            split = start
         else:
-            text = texts[at]
-            talk = re.search(SPEAKING, text)
-            if text[talk.start():talk.start() + 2] == "说完":
-                # "他说完这句话" comes after the line itself.
-                split = talk.start() - len(re.split(r"[。！？!?]", text[:talk.start()])[-1])
-            else:
-                end = re.search(r"[。！？!?]", text[talk.end():])
-                split = talk.end() + end.end() if end else len(text)
-            texts[at] = text[:split] + said + text[split:]
+            # The sentence ends after any quoted words it carries.
+            end = re.search(r'^(?:“[^”]*”|"[^"]*"|[^。！？!?“"])*?[。！？!?]', text[talk.end():])
+            split = talk.end() + end.end() if end else len(text)
+        name = speaker_name(text[start:talk.start()], user_text)
+        line = (name + " " if name else "") + line
+        texts[i] = text[:split] + line + text[split:]
+        at = (i, split + len(line) if split >= talk.end() else talk.end() + len(line))
+    if left and strict_rules:
+        # A line with nobody talking lands after the action has ended; ask once for the speaking moment.
+        raise ValueError("对白没有安排说话的时刻，请在起始、递进或收束里写出说话者开口说话")
+    if left:
+        texts[len(beats) - 1] += "".join(left)
+    if shots:
+        # Several shots: the first shot's camera is not "全程" (for the whole video).
+        whole = lambda text: re.sub(r"((?:镜头|机位)[^，,。；;\n]{0,4}?)全程|全程(?=固定|跟随|跟拍|推近|拉远)", r"\1", text)
+        overview, constraints, texts = whole(overview), [whole(item) for item in constraints], [whole(t) for t in texts]
     if mode in ("I2VA", "FL2VA") and "<Picture 1>" not in overview + "".join(texts):
         texts[0] = "画面从 <Picture 1> 开始，" + texts[0]
     if mode == "FL2VA" and "<Picture 2>" not in texts[-1]:
@@ -893,8 +1057,20 @@ def compile_action_phases(output, mode, duration, source, requirements="", user_
         overview += DEFAULT_CAMERA_ZH
     # What stays the same belongs with the opening composition; the shot ends on its ending.
     narrative = "[Shot 1] " + overview + "".join(constraints) + "".join(texts[:len(beats)])
-    for number, (seconds, text) in enumerate(zip(shot_times([s for s, _ in shots], duration), texts[len(beats):]), 2):
+    # A cut time the writer left out comes from the user's own words ("第4秒切到近景").
+    times = shot_times([s for s, _ in shots], duration, cut_seconds(user_text))
+    for number, (seconds, text) in enumerate(zip(times, texts[len(beats):]), 2):
         narrative += f"\n[Shot {number}] At {shot_stamp(seconds)} " + ("" if re.match(r"镜头|画面", text) else "镜头" if text.startswith("切") else "镜头切到") + text
-    sound, music = audio or (DEFAULT_SOUNDSCAPE_ZH, "N/A")
+    sound, music, cues = (tuple(audio) + ((),))[:3] if audio else (None, "N/A", ())
+    if sound is None:
+        # The writer's sounds of what is on screen; speech, music and seconds belong elsewhere.
+        music_asked = re.search(r"音乐|配乐|乐曲|旋律|伴奏|BGM|music", user_text, re.I)
+        # A quoted sound ("啪") would read as on-screen text and stay Chinese in the English copy.
+        sound = drop_clauses(clean_phase_text(re.sub(r'[“”"]', "", "\n".join(heard))), lambda clause: re.search(
+            r"说话|台词|对白|人声|讲话|静音|无其他|没有其他|\d+(?:\.\d+)?\s*秒" + ("" if music_asked else r"|音乐|配乐|乐曲|旋律|伴奏"), clause))
+        sound = "" if not has_text(sound) or re.fullmatch(r"(?:无|没有|N/?A|静音)[。.]?", sound, re.I) else sound
+        # "海浪声" is already there as "海浪拍岸声"; a one-character source ("风声") must match whole.
+        missing = [cue for cue in cues if compact(cue) not in compact(sound) and not (len(cue) > 2 and cue[:2] in sound)]
+        sound = (append_sentence(sound, "、".join(missing) + "清晰可闻。") if missing else sound) or DEFAULT_SOUNDSCAPE_ZH
     return validate_base_fields("\n\n".join(f"{key}: {value}" for key, value in zip(BASE_FIELDS, (narrative, sound, music))),
                                 mode, duration, "zh", requirements)

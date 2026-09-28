@@ -9,7 +9,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from prompt_assistant.h3_prompt_enhance import (validate_enhancement, compile_action_phases, INSTRUCTION, requested_cut,
-                                                validate_base_fields, validate_reference, render_reference_plan)
+                                                validate_base_fields, validate_reference, render_reference_plan,
+                                                asks_cut, cut_seconds, shot_times, base_source_view)
 
 spec = importlib.util.spec_from_file_location("h3_enhance_service", ROOT / "prompt-assistant-service.py")
 service = importlib.util.module_from_spec(spec)
@@ -181,9 +182,14 @@ class H3EnhancementTest(unittest.TestCase):
         json_form = json.dumps({"integrated_multimodal_description": "[Shot 1] A girl in <Picture 1> raises her hand.",
                                 "overall_soundscape": "Wind.", "non_diegetic_music": ""})
         self.assertTrue(validate_base_fields(json_form, "I2VA", 5, "en").endswith("non_diegetic_music: N/A"))
+        # A frame the text does not name gets the renderer's anchor sentence (validateBaseFields), not an error.
+        self.assertIn("[Shot 1] 写实电影风格。画面从 <Picture 1> 的位置与构图开始。女孩抬手。",
+                      validate_base_fields(text.replace("<Picture 1> 中的", ""), "I2VA", 6, "zh"))
+        self.assertIn("She waves. At the end of the shot, the action settles into the pose, spacing, and composition established by <Picture 2>.\n\n",
+                      validate_base_fields(json_form.replace("raises her hand.", "raises her hand. She waves."), "FL2VA", 5, "en"))
         for broken, mode, language in [
-                (text.replace("<Picture 1> 中的", ""), "I2VA", None),                        # I2V must name its picture
-                (text, "text_video", None),                                                   # T2V has no pictures
+                (text.replace("<Picture 1>", "<Picture 2>"), "I2VA", None),                  # I2V has one picture
+                (text, "text_video", None),                                                 # T2V has no pictures
                 (text.replace("<Picture 1>", "<Picture 1> <Picture 2>"), "first_last", None),  # FL2V needs both, fine here
                 (text.replace("[Shot 2]", "[Shot 3]"), "I2VA", None),                         # numbering
                 (text.replace("[Shot 2]", "[Shot 2] At 00:07.000"), "I2VA", None),            # past the duration
@@ -208,6 +214,25 @@ class H3EnhancementTest(unittest.TestCase):
         for plain in ["一只猫跳下窗台，镜头跟随", "厨师把胡萝卜切成丁", "不要切镜，一镜到底", "镜头固定：全程不推拉、不摇移"]:
             self.assertFalse(requested_cut(plain), plain)
 
+    def test_refused_cuts_other_phrasings_and_user_cut_times(self):
+        for asked in ["第3秒切近景", "然后切近景", "最后切一个特写", "中间切一个猫的特写镜头", "第4秒切回全景", "two shots", "2 shots", "multiple shots"]:
+            self.assertTrue(requested_cut(asked), asked)
+        for refused in ["不要两个镜头，一个镜头拍完", "不需要任何镜头切换", "请勿切镜", "勿切换镜头", "不能切镜头", "不要出现第二个镜头", "不要多个镜头",
+                        "禁止切换镜头，第二个镜头也不要", "do not cut to another scene", "don't cut to a close-up", "no scene change",
+                        "without a scene change", "厨师切开西瓜的特写"]:
+            self.assertFalse(requested_cut(refused), refused)
+        # The requirement's own word on cuts wins over the shots a prompt already has.
+        shots = "integrated_multimodal_description: [Shot 1] 猫。\n[Shot 2] At 00:02.000 镜头切到近景。\n\noverall_soundscape: N/A\n\nnon_diegetic_music: N/A"
+        self.assertFalse(asks_cut(shots, "改成一个镜头"))
+        self.assertFalse(asks_cut(shots, "不要切镜头，动作慢一点"))
+        self.assertTrue(asks_cut(shots, "动作慢一点"))
+        self.assertTrue(asks_cut("猫跳下窗台", "第3秒切到近景"))
+        self.assertEqual(cut_seconds("女孩挥手，第4秒切到近景，6秒后切到远景"), [4.0, 6.0])
+        # Known times stay; a missing or invalid one is spaced between its neighbours; hints fill the writer's gaps.
+        for asked, hints, expected in [([2.0, None], (), [2.0, 3.5]), ([None, None], (), [1.667, 3.333]), ([4.9999], (), [2.5]),
+                                       ([3.0, 2.0], (), [3.0, 4.0]), ([None], (4.0,), [4.0]), ([1.0, 1.0004], (), [1.0, 3.0])]:
+            self.assertEqual(shot_times(asked, 5, hints), expected, asked)
+
     def test_reference_shots_are_numbered_in_order_inside_the_clip(self):
         base = ("subject_definitions:\n<Subject 1>：来自 <Picture 1> 的猫。\n\nsummary:\n[reference generation] 猫跳下。\n\n"
                 "retention_analysis:\n<Subject 1>: fully_preserved - 橘色长毛\n\ndetailed_description:\n{}\n\noverall_soundscape:\nN/A\n\nnon_diegetic_music:\nN/A")
@@ -225,7 +250,10 @@ class H3EnhancementTest(unittest.TestCase):
                 "description": "<Subject 1> 跳下桌子，镜头跟随。[Shot 2] At 00:03.000 镜头切到近景，<Subject 1> 回头。", "soundscape": "N/A", "music": "N/A"}
         single = render_reference_plan(json.dumps(plan, ensure_ascii=False), inventory, 5, "猫跳下桌子")
         self.assertNotIn("[Shot 2]", single)
-        self.assertIn("镜头切到近景", single)
+        # The folded shot keeps its action, not its cut, so a later optimize does not read a cut into it.
+        self.assertIn("镜头跟随。<Subject 1> 回头。", single)
+        self.assertFalse(requested_cut(single))
+        self.assertNotIn("[Shot 2]", render_reference_plan(json.dumps(plan, ensure_ascii=False), inventory, 5, "猫跳下桌子，不要两个镜头"))
         self.assertIn("\n[Shot 2] At 00:03.000 镜头切到近景",
                       render_reference_plan(json.dumps(plan, ensure_ascii=False).replace("[Shot 2]", "\\n[Shot 2]"), inventory, 5, "猫跳下桌子，第3秒切到近景"))
 
@@ -279,8 +307,10 @@ class H3BaseLocalTest(unittest.TestCase):
     def test_constraint_freezing_the_pose_is_dropped_unless_asked(self):
         answer = phases().replace("1. 保持橘猫外观一致", "1. 动作从图中姿态自然开始，不改变初始姿态\n3. 姿态和背景保持不变")
         text = compile_action_phases(answer, "T2VA", 5, CAT)
-        # The pose leaves "姿态和背景保持不变"; the background item stays, as a sentence after the opening.
-        self.assertIn("镜头从侧面跟随。动作从图中姿态自然开始。背景保持不变。橘猫前爪", text)
+        # The pose leaves "姿态和背景保持不变"; "背景保持不变" says nothing visible unless the user asked for it.
+        self.assertIn("镜头从侧面跟随。动作从图中姿态自然开始。橘猫前爪", text)
+        self.assertNotIn("背景保持不变", text)
+        self.assertIn("动作从图中姿态自然开始。背景保持不变。橘猫前爪", compile_action_phases(answer, "T2VA", 5, CAT + "，背景保持不变"))
         self.assertNotIn("不改变初始姿态", text)
         self.assertIn("不改变初始姿态", compile_action_phases(answer, "T2VA", 5, "橘猫蹲坐在窗台上，保持静止"))
 
@@ -388,7 +418,8 @@ class H3BaseLocalTest(unittest.TestCase):
                   "递进：小机器人抬头面向镜头，嘴巴微张开始说话。\n收束：他口型随台词开合，水流渐停。\n约束：1. 主体始终是小机器人")
         text = compile_action_phases(answer, "I2VA", 5, source)
         self.assertIn("壶嘴朝向花坛", text)
-        self.assertIn("小机器人抬头面向镜头，开始说话。(S1) 说：<d>[Chinese] 今天的花开得真好。</d>他说完这句话，水流渐停。", text)
+        # The speaker is named as the official "The robot (S1) says:" form asks.
+        self.assertIn("小机器人抬头面向镜头，开始说话。小机器人 (S1) 说：<d>[Chinese] 今天的花开得真好。</d>他说完这句话，水流渐停。", text)
         self.assertNotIn("<Subject", text)
         self.assertIn("嘴巴微张", compile_action_phases(answer, "I2VA", 5, "小机器人给花浇水，抬头张嘴"))
         # "说完" alone: the line comes before it. The official <d> form in the source is read the same way.
@@ -534,10 +565,11 @@ class H3BaseLocalTest(unittest.TestCase):
         text = compile_action_phases(two, "T2VA", 6, CAT + "，分三个镜头", cut=True)
         self.assertIn("\n[Shot 2] At 00:02.000 镜头切到近景", text)
         self.assertIn("\n[Shot 3] At 00:04.000 镜头切到特写，橘猫眯起眼睛。", text)
-        # Without a requested cut the writer's extra shot stays in the one shot.
+        # Without a requested cut the writer's extra shot stays in the one shot, without its cut.
         single = compile_action_phases(cut, "T2VA", 5, CAT)
         self.assertNotIn("[Shot 2]", single)
-        self.assertIn("站稳后抬头。近景，橘猫落地后回头看向镜头。", single)
+        self.assertIn("站稳后抬头。橘猫落地后回头看向镜头。", single)
+        self.assertFalse(requested_cut(single))
         # First/last frames: the last frame closes the final shot.
         text = compile_action_phases(cut, "FL2VA", 5, CAT + "，第3秒切到近景", cut=True)
         self.assertIn("\n[Shot 2] At 00:03.000 镜头切到近景，橘猫落地后回头看向镜头。结束时画面与 <Picture 2> 一致。", text)
@@ -563,9 +595,9 @@ class H3BaseLocalTest(unittest.TestCase):
         self.assertIn("overall_soundscape: 窗外鸟鸣，猫爪落在木地板上的轻响，风声。\n\nnon_diegetic_music: 钢琴曲", result["positivePrompt"])
         result, _ = self.run_local([answer], {"currentPrompt": source, "requirements": "Source prompt:\n" + source + "\n\n完全静音"})
         self.assertIn("overall_soundscape: N/A\n\nnon_diegetic_music: N/A", result["positivePrompt"])
-        # A plain source gets the user's facts, else natural ambience; music only when asked.
+        # A plain source gets the user's named sounds as a sentence, else natural ambience; music only when asked.
         result, _ = self.run_local([answer], {"requirements": "Source prompt:\n" + CAT + "\n\n加上风声"})
-        self.assertIn("overall_soundscape: 风声\n\nnon_diegetic_music: N/A", result["positivePrompt"])
+        self.assertIn("overall_soundscape: 风声清晰可闻。\n\nnon_diegetic_music: N/A", result["positivePrompt"])
 
     def test_translate_only_returns_the_english_copy_without_rewriting(self):
         english = {"写实电影风格，橘猫趴在窗台上，镜头固定，构图保持稳定。": "Live-action, cinematic, an orange cat lies on the windowsill. The camera holds a static shot.",
@@ -589,7 +621,7 @@ class H3BaseLocalTest(unittest.TestCase):
         self.assertEqual(pair["displayPrompt"], fields)
         self.assertEqual(pair["modelPrompt"],
                          "integrated_multimodal_description: [Shot 1] Live-action, cinematic, an orange cat lies on the windowsill. The camera holds a static shot.\n"
-                         "[Shot 2] At 00:03.000, the camera cuts to a close-up and the cat says: <d>[Chinese] 喵。</d>.\n\n"
+                         "[Shot 2] At 00:03.000, the camera cuts to a close-up and the cat says: <d>[Chinese] 喵。</d>\n\n"
                          "overall_soundscape: Natural ambience and action sounds that match the visuals.\n\nnon_diegetic_music: N/A")
         # English already: returned as is, no model call.
         calls.clear()
@@ -598,6 +630,113 @@ class H3BaseLocalTest(unittest.TestCase):
                                             "requirements": "H3 compile: translate-only\nSource prompt:\n"})
         self.assertEqual(calls, [])
         self.assertIn("Picture 1 turns into Picture 2.", json.loads(result["positivePrompt"])["modelPrompt"])
+
+    def test_translate_keeps_every_quote_verbatim_and_names_missing_frames(self):
+        english = {"写实电影风格，木门被推开，发出TOKEN_0一声。画面从 TOKEN_1 的位置与构图开始。镜头固定，构图保持稳定。":
+                   'Live-action, cinematic. The wooden door opens with a "TOKEN_0" creak. The shot begins in the position and framing established by TOKEN_1. The camera holds a static shot.',
+                   "风声。": "Wind."}
+        fields = "integrated_multimodal_description: [Shot 1] 写实电影风格，木门被推开，发出“吱呀”一声。镜头固定，构图保持稳定。\n\noverall_soundscape: 风声。\n\nnon_diegetic_music: N/A"
+        assistant = service.PromptAssistant()
+        templates = []
+
+        def generate(prompt, **kwargs):
+            templates.append(kwargs.get("llama_template", ""))
+            return json.dumps({key: english[value] for key, value in json.loads(prompt.split("Input JSON:\n", 1)[1]).items()})
+        assistant.generate = generate
+        pair = json.loads(assistant.translate_h3_base(fields, "I2VA", 5)["positivePrompt"])
+        # The quoted sound is the renderer's literal: identical in both halves; the translator's own quotes go.
+        self.assertIn("with a “吱呀” creak. The shot begins in the position and framing established by <Picture 1>.", pair["modelPrompt"])
+        self.assertIn("发出“吱呀”一声。画面从 <Picture 1> 的位置与构图开始。", pair["displayPrompt"])
+        self.assertIn("the camera holds a static shot", templates[0])
+
+    def test_user_turns_a_multi_shot_prompt_back_into_one_shot(self):
+        source = CAT_TEXT.replace("站稳后抬头。", "站稳后抬头。\n[Shot 2] At 00:03.000 镜头切到近景，橘猫回头。")
+        cut = phases().replace("\n约束", "\n镜头2（第3秒）：切到近景，橘猫落地后回头看向镜头。\n约束")
+        result, calls = self.run_local([cut], {"currentPrompt": source, "requirements": "Source prompt:\n" + source + "\n\n改成一个镜头，不要切镜头"})
+        prompt = calls[0][0]
+        self.assertNotIn("镜头2（第X秒）", prompt)
+        self.assertIn("站稳后抬头。橘猫回头。", prompt)
+        self.assertNotIn("- 不要切镜头", prompt)
+        self.assertNotIn("[Shot 2]", result["positivePrompt"])
+        self.assertIn("站稳后抬头。橘猫落地后回头看向镜头。", result["positivePrompt"])
+        # The same prompt with an unrelated edit keeps its shots.
+        _, calls = self.run_local([cut], {"currentPrompt": source, "requirements": "Source prompt:\n" + source + "\n\n动作慢一点"})
+        self.assertIn("镜头2（第X秒）", calls[0][0])
+
+    def test_sound_fields_follow_the_users_words(self):
+        source = CAT_TEXT.replace("与画面动作一致的自然环境声和动作声。", "海浪声。").replace("non_diegetic_music: N/A", "non_diegetic_music: 舒缓的钢琴曲，节奏缓慢。")
+        fields, view = service.parse_h3_base_fields(source), base_source_view(source)
+        for tail, expected in [("音乐节奏更快一点", ("海浪声。", "舒缓的钢琴曲，节奏缓慢。")), ("去掉背景音乐", ("海浪声。", "N/A")),
+                               ("加上海鸥叫声", ("海浪声，海鸥叫声。", "舒缓的钢琴曲，节奏缓慢。")), ("不要任何声音", ("N/A", "N/A")),
+                               ("音乐换成吉他", ("海浪声。", "吉他配乐。")), ("保留音乐，加上雷声", ("海浪声，雷声。", "舒缓的钢琴曲，节奏缓慢。")),
+                               ("去掉海浪声，加上雨声", ("雨声。", "舒缓的钢琴曲，节奏缓慢。"))]:
+            self.assertEqual(service.minimax_h3_base_audio(view, fields, tail)[:2], expected, tail)
+        # A plain prompt leaves the soundscape to the writer, with the sounds the user named.
+        self.assertEqual(service.minimax_h3_base_audio("女孩在海边挥手，配上钢琴配乐", None, ""), (None, "钢琴配乐。", []))
+        self.assertEqual(service.minimax_h3_base_audio("女孩在海边挥手，背景是海浪声和海鸥叫声", None, ""), (None, "N/A", ["海浪声", "海鸥叫声"]))
+        answer = phases().replace("\n约束", "\n声音：海浪拍岸声，风吹过窗台的轻响，远处传来钢琴音乐。\n约束")
+        text = compile_action_phases(answer, "T2VA", 5, CAT, audio=(None, "N/A", ["海浪声", "海鸥叫声"]))
+        self.assertIn("overall_soundscape: 海浪拍岸声，风吹过窗台的轻响。海鸥叫声清晰可闻。\n\nnon_diegetic_music: N/A", text)
+        self.assertIn("\n声音：用一两句写画面里听得到的环境声和动作声", service.build_minimax_h3_writer_request(CAT, "", "T2VA", 5))
+
+    def test_each_speaker_talks_where_the_answer_has_them_speak(self):
+        source = "女孩站在乡间公路上，朝迎面走来的朋友挥手打招呼，朋友走到她面前回应\n(S1)：“你好。”\n(S2)：“欢迎回来。”"
+        answer = ("概述：写实照片，女孩站在乡间小路上，镜头固定。\n起始：女孩抬起右手，朝前方挥手打招呼。\n递进：朋友从画面右侧走进，走到她面前，开口回应。\n"
+                  "收束：两人面对面站着，女孩放下手。\n约束：1. 小路始终可见")
+        text = compile_action_phases(answer, "I2VA", 5, source)
+        self.assertIn("挥手打招呼。女孩 (S1) 说：<d>[Chinese] 你好。</d>朋友从画面右侧走进，走到她面前，开口回应。朋友 (S2) 说：<d>[Chinese] 欢迎回来。</d>两人", text)
+        # Both lines in one beat, each after its own sentence (the live answer quoted them itself).
+        same_beat = answer.replace("起始：女孩抬起右手，朝前方挥手打招呼。", "起始：女孩抬起右手，女孩开口：“你好。”朋友停下脚步，看向她，回应：“欢迎回来。”")
+        self.assertIn("女孩开口。女孩 (S1) 说：<d>[Chinese] 你好。</d>朋友停下脚步，看向她，回应。朋友 (S2) 说：<d>[Chinese] 欢迎回来。</d>",
+                      compile_action_phases(same_beat, "I2VA", 5, source))
+        # An answer that drops the user's action is asked once more.
+        dropped = answer.replace("朋友从画面右侧走进，走到她面前，开口回应。", "女孩面带微笑注视前方走来的友人。").replace("女孩放下手", "友人开口说话")
+        result, calls = self.run_local([dropped, answer], {"h3Mode": "image_video", "currentPrompt": source})
+        self.assertEqual(len(calls), 2)
+        self.assertIn("漏写了视频描述里的“朋友走到她面前回应”", calls[1][0])
+        self.assertIn("朋友 (S2) 说：", result["positivePrompt"])
+        # So is an answer where nobody talks; a retry that still has nobody talking ends the shot with the lines.
+        silent = answer.replace("开口回应", "停下脚步").replace("挥手打招呼", "挥手")
+        result, calls = self.run_local([silent, silent], {"h3Mode": "image_video", "currentPrompt": source})
+        self.assertIn("对白没有安排说话的时刻", calls[1][0])
+        self.assertIn("女孩放下手。(S1) 说：<d>[Chinese] 你好。</d>(S2) 说：<d>[Chinese] 欢迎回来。</d>\n", result["positivePrompt"])
+        # Joint speakers and a language tag the program would not write survive a re-optimize.
+        fields = ("integrated_multimodal_description: [Shot 1] 两个孩子站在操场上，(S1, S2) 齐声说：<d>[Chinese] 加油！</d>女孩说：<d>[Japanese] がんばれ</d>\n\n"
+                  "overall_soundscape: 风声。\n\nnon_diegetic_music: N/A")
+        view = base_source_view(fields)
+        self.assertIn('(S1, S2)："加油！"', view)
+        answer = "概述：两个孩子站在操场上，镜头固定。\n起始：两个孩子举起拳头。\n递进：两个孩子齐声喊话。\n收束：两个孩子放下拳头。\n约束：1. 操场始终可见"
+        text = compile_action_phases(answer, "T2VA", 5, view.replace("女孩说：<d>[Japanese] がんばれ</d>", ""))
+        self.assertIn("两个孩子齐声喊话。两个孩子 (S1, S2) 说：<d>[Chinese] 加油！</d>", text)
+        # A line the answer quoted itself is written once, after its sentence; the answer's own quoted words lose their quotes.
+        robot = '小机器人给花浇水，抬头对镜头说话\n(S1)："今天的花开得真好。"'
+        copied = ("概述：三维渲染，小机器人在温室里浇水，镜头固定。\n起始：小机器人缓缓抬头，看向镜头。\n递进：小机器人双眼亮起，嘴唇微动开始说话：“今天的花开得真好。”\n"
+                  "收束：小机器人说完后静静站着，水珠“嗒”地落下。\n约束：1. 洒水壶始终在右手")
+        text = compile_action_phases(copied, "I2VA", 5, robot)
+        self.assertIn("双眼亮起，开始说话。小机器人 (S1) 说：<d>[Chinese] 今天的花开得真好。</d>小机器人说完后静静站着，水珠嗒地落下。", text)
+        self.assertEqual(text.count("今天的花开得真好"), 1)
+        japanese = "integrated_multimodal_description: [Shot 1] 女孩站在门口，(S1) 说：<d>[Japanese] こんにちは</d>\n\noverall_soundscape: 风声。\n\nnon_diegetic_music: N/A"
+        self.assertIn("(S1) 说：<d>[Japanese] こんにちは</d>", compile_action_phases(answer.replace("两个孩子", "女孩"), "T2VA", 5, base_source_view(japanese)))
+
+    def test_cut_times_and_the_first_shots_camera(self):
+        answer = ("概述：写实电影风格，一只橘猫在窗台上伸懒腰；镜头全程固定拍摄。\n起始：橘猫前爪前伸伸懒腰。\n递进：橘猫后腿蹬起，身体前倾。\n收束：橘猫跃出窗台，准备切换。\n"
+                  "镜头2：近景，橘猫落地后回头。\n约束：1. 窗台边缘始终可见\n2. 第3秒切近景后保持近景不拉远")
+        text = compile_action_phases(answer, "T2VA", 5, CAT + "，第4秒切近景", cut=True)
+        self.assertIn("镜头固定拍摄。窗台边缘始终可见。橘猫前爪前伸伸懒腰。橘猫后腿蹬起，身体前倾。橘猫跃出窗台。\n[Shot 2] At 00:04.000 镜头切到近景，橘猫落地后回头。", text)
+        self.assertNotRegex(text, "全程|准备切换|不拉远")
+        prompt = service.build_minimax_h3_writer_request(CAT, "第4秒切近景", "T2VA", 5, cut=True)
+        self.assertIn("再写第一个镜头怎样拍（只选一种）", prompt)
+        self.assertIn("视频描述写了位置就用原词", service.build_minimax_h3_writer_request("橘猫坐在台阶上摆尾", "", "FL2VA", 5, sees_frames=True))
+
+    def test_answer_preambles_and_old_five_sections(self):
+        rest = "\n起始：橘猫前爪向前伸直。\n递进：后腿蹬起，从窗台一跃而下。\n收束：四爪落地，站稳后抬头。\n约束：1. 窗台始终可见"
+        with self.assertRaises(ValueError):
+            compile_action_phases("好的，以下是优化后的视频提示词。" + rest, "T2VA", 5, CAT)
+        self.assertIn("[Shot 1] 写实电影风格，橘猫趴在窗台上，镜头固定。", compile_action_phases("总述：写实电影风格，橘猫趴在窗台上，镜头固定。" + rest, "T2VA", 5, CAT))
+        five = ("【任务定位】\n文生视频，时长5秒。\n\n【说话者】\n无说话者\n\n【递进式详细提示词】\n写实电影风格，橘猫趴在窗台上。\n\n0-1.7s：橘猫前爪向前伸直。\n\n"
+                "1.7-3.3s：后腿蹬起，从窗台一跃而下。\n\n3.3-5s：四爪落地，站稳后抬头。\n\n【台词】\n无台词\n\n【连续性与约束】\n1. 窗台始终可见\n2. 环境与动作声音：风声")
+        self.assertIn("[Shot 1] 写实电影风格，橘猫趴在窗台上。镜头固定，构图保持稳定。窗台始终可见。橘猫前爪向前伸直。后腿蹬起，从窗台一跃而下。四爪落地，站稳后抬头。\n\n",
+                      compile_action_phases(five, "T2VA", 5, CAT))
 
 
 if __name__ == "__main__":
