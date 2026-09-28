@@ -704,6 +704,7 @@
       max: String(MAX_OUTPUT_SIZE),
       'aria-label': axis === 'width' ? '自定义宽度' : '自定义高度',
       'data-novaflow-ui-design-dimension-input': axis,
+      'data-novaflow-number-fill': '1',
       style: {
         width: '100%', height: '32px', minWidth: '0', borderRadius: '7px',
         border: '1px solid rgba(255,255,255,0.12)', background: '#282828', color: '#fff',
@@ -1286,7 +1287,7 @@
       }
       existing.outputSizeOverride = null
       const nextSize = canvasSize(existing)
-      existing.customSizeMode = !presetForSize(nextSize.width, nextSize.height)
+      existing.customSizeMode = !presetForProviderSize(existing.state?.provider, nextSize.width, nextSize.height)
       mountAuth(existing)
       syncExpanded(existing)
       renderFields(existing)
@@ -1364,7 +1365,7 @@
       handle: null,
     }
     const initialSize = canvasSize(record)
-    record.customSizeMode = !presetForSize(initialSize.width, initialSize.height)
+    record.customSizeMode = !presetForProviderSize(record.state?.provider, initialSize.width, initialSize.height)
     header.addEventListener('click', () => {
       if (!record.active || record.options.accordion === false) return
       setExpanded(record, !record.expanded, true)
@@ -1395,7 +1396,7 @@
         }
         record.outputSizeOverride = null
         const nextSize = canvasSize(record)
-        record.customSizeMode = !presetForSize(nextSize.width, nextSize.height)
+        record.customSizeMode = !presetForProviderSize(record.state?.provider, nextSize.width, nextSize.height)
         mountAuth(record)
         renderFields(record)
         syncExpanded(record)

@@ -134,3 +134,12 @@ test('a press on the generator controls leaves the focus in 设计要求 (the ca
   assert.ok(guard > 0, 'the card handler checks for the generator controls');
   assert.ok(guard < handler.indexOf('focusViewport()'), 'before it focuses the canvas');
 });
+
+test("GPT's own presets stay selected, and W / H opt out of the page's 49px number width", () => {
+  const { host } = mountTool('gpt', { width: 1536, height: 1024 });
+  assert.equal(byAttr(host, 'data-novaflow-ui-design-custom-size', '1'), null, '1536 × 1024 is a GPT preset, not Custom');
+  const custom = mountTool('gpt', { width: 1536, height: 1008 }).host;
+  for (const axis of ['width', 'height']) assert.equal(byAttr(custom, 'data-novaflow-ui-design-dimension-input', axis).getAttribute('data-novaflow-number-fill'), '1');
+  const runtime = readFileSync(new URL('../../renderer/novaflow-brand-runtime.js', import.meta.url), 'utf8');
+  assert.match(runtime, /function setNovaflowNumericFieldWidth\(field\) \{\s*if \(!\(field instanceof HTMLElement\)\) return;\s*\/\/[^\n]*\n\s*if \(field\.getAttribute\("data-novaflow-number-fill"\) === "1"\) return;/);
+});

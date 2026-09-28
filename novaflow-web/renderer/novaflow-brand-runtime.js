@@ -31032,6 +31032,8 @@
 
   function setNovaflowNumericFieldWidth(field) {
     if (!(field instanceof HTMLElement)) return;
+    // A field that lays itself out to fill a column (the UI 生成器's W / H) keeps its own width.
+    if (field.getAttribute("data-novaflow-number-fill") === "1") return;
     const width = `${NOVAFLOW_NUMBER_INPUT_WIDTH}px`;
     const particleDensity = isInsideParticleDensityPanel(field);
     setRawStylePropertyIfChanged(field, "width", width, "important");
