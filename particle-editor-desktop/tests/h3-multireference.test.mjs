@@ -363,7 +363,8 @@ test('多参 cuts read like the official guide: each shot on its own display lin
  const narrative=restored.modelText.split('detailed_description:')[1].split('overall_soundscape:')[0].trim();
  // The style opening reads officially and the display's 近景 (the user's word) is a medium close-up in English, not a close-up.
  assert.equal(narrative,'The target video is in a vibrant anime illustration style.\n[Shot 1] <Subject 1> walks along a rural road toward <Subject 2> in a garden. The camera holds a static shot.\n[Shot 2] At 00:03.000, the shot cuts to medium close-up of <Subject 1> and <Subject 2> facing each other.');
- assert.match(restored.modelText,/^<Subject 1>: young woman[^\n]*\n<Subject 2>: small teal robot/m);
+ // Subjects are defined in the official form "<Subject 1> is the young woman in <Picture 1>, ...".
+ assert.match(restored.modelText,/^<Subject 1> is the young woman[^\n]*\n<Subject 2> is the small teal robot/m);
  // The compile of the same display reuses the translation and shows the same text.
  const compiled=await prompt.compileForGeneration({...c,prompt:restored.text},()=>{throw Error('the optimize pair is cached')});
  assert.equal(compiled.text,restored.text);assert.equal(compiled.modelText,restored.modelText);

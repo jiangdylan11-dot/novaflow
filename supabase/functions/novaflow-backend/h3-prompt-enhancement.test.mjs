@@ -52,7 +52,7 @@ const fields = (narrative, soundscape, music = 'N/A') => `integrated_multimodal_
 const t2v = {mode:'text_video', durationSeconds:6};
 const citySource = '先是城市夜景全景，然后切到街角咖啡店里的女孩说：“到了。”';
 const cityModel = fields('[Shot 1] Live-action, cinematic, a wide shot shows a city skyline at night. The camera holds a static shot.\n[Shot 2] At 00:03.000, the camera cuts to a medium shot of a girl in a corner café who looks up, and the girl with a soft voice (S1) says: <d>[Chinese] 到了。</d>', 'Distant traffic hums, then cups clink softly inside the café.');
-const cityDisplay = fields('[Shot 1] 写实电影风格，夜晚城市天际线的远景。镜头保持固定。\n[Shot 2] At 00:03.000 镜头切到街角咖啡店里女孩的中景，她抬起头，嗓音轻柔的女孩 (S1) 说：<d>[Chinese] 到了。</d>', '远处车流低鸣，随后咖啡店里杯子轻轻碰响。');
+const cityDisplay = fields('[Shot 1] 写实电影风格，夜晚城市天际线的全景。镜头保持固定。\n[Shot 2] At 00:03.000 镜头切到街角咖啡店里女孩的中景，她抬起头，嗓音轻柔的女孩 (S1) 说：<d>[Chinese] 到了。</d>', '远处车流低鸣，随后咖啡店里杯子轻轻碰响。');
 const pair = (modelPrompt, displayPrompt) => JSON.stringify({modelPrompt, displayPrompt});
 const baseRequest = (h3Mode, source, markers, head = [edge.instruction, edge.baseInstruction, edge.baseResultInstruction]) => buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode, durationSeconds:6, prompt:source,
   requirements:[...head, ...markers, `Protocol: ${h3Mode}; duration: 6.00 seconds.`, 'Source prompt:', source].join('\n')}, 'test-model');
@@ -79,7 +79,7 @@ test('base optimize with the bilingual flag asks Grok for the official pair; wit
     assert.deepEqual(built.body.text.format.schema, JSON.parse(JSON.stringify(edge.baseResultSchema)));
     assert.ok(systemText(built).includes(edge.instructionFor(citySource)) && systemText(built).includes(edge.baseInstruction));
     assert.ok(userText(built).includes(edge.baseResultInstruction));
-    assert.match(userText(built), /\[Shot 2\] At 00:04\.000 镜头切到近景/);
+    assert.match(userText(built), /\[Shot 2\] At 00:05\.000 镜头切到特写/);
     assert.doesNotMatch(userText(built) + systemText(built), /【任务定位】|five sections/);
     assert.equal(built.resultOptions.minimaxH3BaseResult, true);
     assert.equal(built.resultOptions.minimaxH3TranslateOnly, false);
@@ -94,7 +94,9 @@ test('base optimize with the bilingual flag asks Grok for the official pair; wit
 test('the base pair is normalized through validateBaseResult with the no-change gate on the Chinese display half', () => {
   const built = baseRequest('text_video', citySource, ['H3 response format: bilingual-v1']);
   const result = JSON.parse(normalizeMiniMaxH3PromptOutput(pair(cityModel, cityDisplay), built.resultOptions));
+  // The user's 城市夜景全景 is a whole scene: the English wide shot stays (全景 reads full shot or wide shot).
   assert.equal(result.modelPrompt, edge.validateBaseFields(cityModel, {...t2v, language:'en'}));
+  assert.match(result.modelPrompt, /a wide shot shows a city skyline/);
   assert.equal(result.displayPrompt, edge.validateBaseFields(cityDisplay, {...t2v, language:'zh'}));
   assert.match(edge.composeBaseModelPrompt(result.modelPrompt, t2v), /^integrated_multimodal_description: \[Shot 1\] Live-action, cinematic, [^\n]+ \[Shot 2\] At 00:03\.000, the camera cuts to /);
   // Object halves from the strict schema are accepted as well.
@@ -439,6 +441,15 @@ test('a Grok 多参 pair gets every quality gate in one repair call, and the rep
   assert.match(pair.displayPrompt, /面对面的近景。/);
   assert.equal(built.resultOptions.minimaxH3RepairAnswer, undefined);
   assert.equal(result.h3ContractRepairUsed, true);
+  // A user with one Grok call left gets no repair call (index.ts: visualRetryAllowed = budget >= 2): no gate asks for it, the answer is returned.
+  const lastCall = {...built.resultOptions, visualRetryAllowed:false, providerCallBudget:1};
+  const calls = [];
+  const kept = await callGrokResponseWithVisualRetry(built.body, built.inputMeta, lastCall, async body => {
+    calls.push(body);
+    return {ok:true, data:{output_text:normalizeMiniMaxH3PromptOutput(answer, lastCall)}, providerCallCount:1};
+  });
+  assert.equal(calls.length, 1);
+  assert.match(JSON.parse(kept.data.output_text).modelPrompt, /the shot cuts to a medium close-up of <Subject 1> and <Subject 2>/);
 });
 
 test('a base pair written as comma-stacked tags is repaired once; the translation carries the exact shot sizes', async () => {
@@ -447,6 +458,7 @@ test('a base pair written as comma-stacked tags is repaired once; the translatio
   const tags = pair(fields('[Shot 1] Live-action, ginger cat on sunny windowsill, fur glowing, tail curled around paws, eyes half closed, curtains moving behind, potted plants on sill, warm afternoon glow. The cat licks its paw. The camera holds a static shot.', 'Soft purring and a faint breeze.'),
     fields('[Shot 1] 写实风格，阳光照耀的窗台上的橘猫，毛发发光，尾巴卷在爪边，眼睛半闭，身后窗帘飘动，窗台上有盆栽，午后暖光。猫舔爪子。镜头固定。', '轻柔的呼噜声和微风。'));
   assert.throws(() => normalizeMiniMaxH3PromptOutput(tags, built.resultOptions), error => error.errorCode === 'h3_contract_fields' && /逗号堆叠标签/.test(error.message));
+  assert.doesNotThrow(() => normalizeMiniMaxH3PromptOutput(tags, {...built.resultOptions, visualRetryAllowed:false}));
   const repair = await (async () => {
     const bodies = [];
     await callGrokResponseWithVisualRetry(built.body, built.inputMeta, built.resultOptions, async body => {

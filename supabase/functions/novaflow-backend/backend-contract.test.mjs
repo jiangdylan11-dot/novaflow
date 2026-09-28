@@ -6579,4 +6579,8 @@ test("美工 role reference labels each picture with its number and role, and th
   // No picture names in the user's words: none in the answer; an alias the user typed stays.
   assert.match(written(build("女孩站在大厅中央").resultOptions), /\[主体物品\]\n女孩站在中央，看向镜头。\n\[环境背景\]\n大厅，白色 T 台/);
   assert.match(written(build("@参考图1 的女孩站在大厅中央").resultOptions), /\[主体物品\]\n@参考图1 中的女孩站在中央[\s\S]*\[环境背景\]\n大厅，白色 T 台/);
+  // Where the sentence needs the picture itself, the alias becomes the number the request shows beside it, never a hole.
+  const needed = five.replace("@参考图1 中的女孩站在中央", "女孩的发型与@参考图1相同，站在中央").replace("@参考图2 的大厅", "位于@参考图2所示的大厅");
+  assert.match(grokResponsesPublicResult({ output_text: JSON.stringify({ prompt: needed, negative_prompt: "模糊", contentSafety: safety }) }, build("女孩站在大厅中央").resultOptions).output_text,
+    /\[主体物品\]\n女孩的发型与图1相同，站在中央，看向镜头。\n\[环境背景\]\n位于图2所示的大厅，白色 T 台/);
 });

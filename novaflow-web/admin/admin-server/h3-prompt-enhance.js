@@ -37,12 +37,12 @@ const sectionFields = ['task', 'speakers', 'description', 'dialogue', 'constrain
 const formatInstruction = policy.formatInstructions.join('\n');
 const referenceFields = ['subject_definitions', 'summary', 'retention_analysis', 'detailed_description', 'overall_soundscape', 'non_diegetic_music'];
 const referenceInstruction = policy.referenceInstructions.join('\n');
-// Shot sizes as H3 reads them; the Chinese half keeps the user's own word.
-const shotSizes = {大特写:'extreme close-up', 特写:'close-up', 近景:'medium close-up', 中景:'medium shot', 全景:'full shot', 远景:'wide shot', 大远景:'extreme wide shot', 中近景:'medium close-up', 近中景:'medium close-up', 中全景:'medium full shot', 中远景:'medium-wide shot'};
-const shotSizeRule = 'Shot sizes map exactly: ' + Object.entries(shotSizes).map(([zh, en]) => zh + ' ' + en).join(', ') + '.';
+// Shot sizes as H3 reads them; the Chinese half keeps the user's own word. 全景 of a whole scene (城市全景) is a wide shot.
+const shotSizes = {大特写:['extreme close-up'], 特写:['close-up'], 近景:['medium close-up'], 中景:['medium shot'], 全景:['full shot', 'wide shot'], 远景:['wide shot'], 大远景:['extreme wide shot'], 中近景:['medium close-up'], 近中景:['medium close-up'], 中全景:['medium full shot'], 中远景:['medium-wide shot']};
+const shotSizeRule = 'Shot sizes map exactly: ' + Object.entries(shotSizes).map(([zh, [en, scene]]) => zh + ' ' + en + (scene ? ' (' + scene + ' for a whole scene)' : '')).join(', ') + '.';
 // Longest first, so 中远景 is not read as 远景.
 const sizeWords = Object.keys(shotSizes).sort((a, b) => b.length - a.length).join('|');
-const zhWordRule = '颜色词与景别词逐一准确对应英文（如 teal 青绿色、wide shot 远景、full shot 全景、medium close-up 近景、close-up 特写），不改动作和用户原词；开头的风格句同样译成中文（The target video is in a 2D-animated style 译为“目标视频采用二维动画风格”）';
+const zhWordRule = '颜色词与景别词逐一准确对应英文（如 navy 藏青色、beige 米色、wide shot 远景、full shot 全景、medium close-up 近景、close-up 特写），不改动作和用户原词；开头的官方风格词或风格句同样译成中文（Live-action, cinematic 写实电影风格、2D-animated 二维动画、3D CG 三维 CG、claymation 黏土动画、watercolor 水彩、vintage film 复古胶片；The target video is in a watercolor style 译为“目标视频采用水彩风格”）';
 const referenceResultInstruction = 'Return a bilingual object with modelPrompt, displayPrompt and editPolicy. The two prompts contain the same six H3 fields. editPolicy contains only the three internal booleans defined in the instructions. modelPrompt has English prose for H3; displayPrompt is its faithful Simplified Chinese translation for the editor. Keep every media tag, subject ID, task, retention relation, time, direction, dialogue and constraint identical in meaning. Do not add creative changes while translating.';
 function referenceFrames(value, requirements = '') {
   if (value == null) return [];
@@ -68,7 +68,7 @@ function referenceFrames(value, requirements = '') {
     return {label, dataUrl, timeSeconds};
   });
 }
-const referenceFieldSchema = language => ({type:'object', additionalProperties:false, properties:Object.fromEntries(referenceFields.map(k=>[k,{type:'string',minLength:1,description:(language==='zh'?'本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括主体定义、任务说明、保留规则中关系枚举后的说明和画面动作；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文，也不得夹带英文单词或短语；'+zhWordRule+'。':'Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue.') + (k==='subject_definitions'?' Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately. Describe identity and appearance only (face, hair, body, clothing, colors, materials, props), not the picture\'s pose, action or background, unless the subject is itself a place or scene. Start each line with "<Subject N>: " and end it with its source, e.g. "from <Picture 1>".':k==='summary'?' Start with the task tags in brackets, e.g. [reference generation]. Then one short paragraph stating the event with <Subject N> labels: who does what, how the other reacts and how it ends. Use the labels themselves as the actors, never "the woman from <Subject 1>". No duration or "A N-second video" wording.':k==='retention_analysis'?' One rule per defined Subject and source Video; image attributes belong to the Subject using that picture. After the relation and " - ", list the concrete kept features.':k==='detailed_description'?' Open with the style sentence The target video is in a ... style. Each shot gives its composition and shot size, each subject\'s position and key look at its first appearance, the setting and its light, the actions in order, its camera and the sounds of the actions, in complete sentences. Name every defined subject with its <Subject N> label: characters and objects as the actor of their first action (never "the woman from <Subject 1>"), a place subject as the setting (e.g. "inside <Subject 3>"), a style subject in the opening style sentence (e.g. "in the art style of <Subject 2>"). State the camera of each shot: locked, or its movement, direction and speed.':k==='overall_soundscape'?' Diegetic ambience and action sounds matching the visible events; N/A only when the user explicitly asks for silence. Never an empty string.':k==='non_diegetic_music'?' Off-screen score only when the user asks for music; otherwise N/A. Never an empty string.':'')}])), required:referenceFields});
+const referenceFieldSchema = language => ({type:'object', additionalProperties:false, properties:Object.fromEntries(referenceFields.map(k=>[k,{type:'string',minLength:1,description:(language==='zh'?'本字段是对应英文内容的完整中文翻译。所有说明句必须是简体中文，包括主体定义、任务说明、保留规则中关系枚举后的说明和画面动作；仅素材标签、任务标记、关系枚举以及固定源视频前缀保持英文，不得整句照抄英文，也不得夹带英文单词或短语；'+zhWordRule+'。':'Write the actual H3 field content in English. Preserve source media labels and user-supplied literal dialogue.') + (k==='subject_definitions'?' Define each Subject exactly once, merging its appearance and motion sources; define the source Video separately. Describe identity and appearance only (face, hair, body, clothing, colors, materials, props), not the picture\'s pose, action or background, unless the subject is itself a place or scene. ' + (language==='zh' ? '每行写成“<Subject N> 是……”并注明来源，如“<Subject 1> 是 <Picture 1> 中的老渔夫，灰白胡须，身穿黄色雨衣。”' : 'Write each line in the official form "<Subject N> is ..." and name its source, e.g. "<Subject 1> is the old fisherman in <Picture 1>, with a grey beard and a yellow raincoat."'):k==='summary'?' Start with the task tags in brackets, e.g. [reference generation]. Then one short paragraph stating the event with <Subject N> labels: who does what, how the other reacts and how it ends. Use the labels themselves as the actors, never "the woman from <Subject 1>". No duration or "A N-second video" wording.':k==='retention_analysis'?' One rule per defined Subject and source Video; image attributes belong to the Subject using that picture. After the relation and " - ", list the concrete kept features.':k==='detailed_description'?' Open with the style sentence The target video is in a ... style. Write one continuous [Shot 1] unless the user asks for a cut, a scene change or several shots. Each shot gives its composition and shot size, the setting and its light, where each subject starts in the frame and its key look at its first appearance, the actions in order, its camera and the sound each action makes, in complete sentences. Name every defined subject with its <Subject N> label: characters and objects as the actor of their first action (never "the woman from <Subject 1>"), a place subject as the setting (e.g. "inside <Subject 3>"), a style subject in the opening style sentence (e.g. "in the art style of <Subject 2>"). State the camera of each shot: locked, or its movement, direction and speed.':k==='overall_soundscape'?' Diegetic ambience and action sounds matching the visible events; N/A only when the user explicitly asks for silence. Never an empty string.':k==='non_diegetic_music'?' Off-screen score only when the user asks for music; otherwise N/A. Never an empty string.':'')}])), required:referenceFields});
 const referenceEditPolicySchema = {type:'object',additionalProperties:false,properties:{preserveBackground:{type:'boolean'},preserveMotion:{type:'boolean'},sameShapeAppearanceOnly:{type:'boolean'}},required:['preserveBackground','preserveMotion','sameShapeAppearanceOnly']};
 const referenceResultSchema = {type:'object', additionalProperties:false, properties:{modelPrompt:referenceFieldSchema('en'),displayPrompt:referenceFieldSchema('zh'),editPolicy:referenceEditPolicySchema},required:['modelPrompt','displayPrompt','editPolicy']};
 function referenceEditPolicy(value) {
@@ -135,10 +135,20 @@ const loopClosure = {en:'It ends by returning smoothly to the starting pose and 
 const cameraPattern = /镜头|相机|摄像|机位|运镜|跟拍|航拍|俯拍|仰拍|\bcamera\b|\bzoom\b|\bdolly\b|\bpanning\b|\bpans?\b|\btracking\b|\bpush(?:es)?[- ]in\b|\b(?:static|medium|wide|close-up|two)[- ]?shot\b/i;
 // A subject looking at the lens (看向镜头, 回头看镜头, 直视镜头, 站在镜头前, waves toward the camera) names no camera behaviour; 镜头前推 / 前移 does.
 const namesCamera = text => cameraPattern.test(String(text).replace(/(?:[看望面朝]?向|朝|对着?|[看望视])镜头|镜头前(?![推移进压拉])|\b(?:at|to|toward|towards|into|facing|faces|face)\s+the\s+(?:camera|lens)\b/gi, ''));
+// A cut, a scene change or several shots in the user's own words (the local optimizer's asks_cut); a refused cut (不要切镜, no cuts) is none.
+const cutAsked = text => /切(?![开菜断割片成碎块肉丝丁])|转场|分镜|(?:[两二三四五多2-5]个|第[二三四五2-5]个?)镜头|多镜头|场景切换|换(?:个|一个)?场景|\[Shot (?:[2-9]|[1-9]\d)\]|【镜头\s*[2-9]】|\bcuts?\b|\bscene change\b|\b(?:two|three|several|multiple|[2-9])\s+shots\b/i
+  .test(String(text).replace(/(?:不要|不用|不需要|无需|不必|请勿|勿|不能|不得|别|禁止|避免|没有)[^，。,；;\n]{0,6}?(?:切|转场|分镜|镜头|场景)[^，。,；;\n]*|不(?:再|做|去)?(?:切|转场|分镜|换场景)[^，。,；;\n]*|\b(?:no|not|don[’']t|do not|never|without)\b[^.,;\n]{0,16}?\b(?:cuts?|cutting|shots?|scene changes?)\b[^.,;\n]*/gi, ''));
 // A cut time written just before its marker belongs to that marker, with its cut verb:
 // "… At 00:03.000 the shot cuts to [Shot 2] a close-up …" → "[Shot 2] At 00:03.000, the shot cuts to a close-up …" (also 00:03.000 时画面切至 [Shot 2]).
-const cutTimesToMarkers = text => String(text).replace(/(?:\bAt |在)?(\d{2}:\d{2}\.\d{3})[ \t]*(?:时|秒)?[ \t]*[,，]?[ \t]*((?:the (?:shot|camera|view|scene) )?(?:cuts?|switches|transitions|changes)(?: to)?|(?:画面|镜头)?(?:切至|切到|切换到|切换至|切换|切))?\s*(\[Shot (?:[2-9]|[1-9]\d+)\])(?! At \d)[ \t]*/g,
-  (_, time, verb, shot) => shot + ' At ' + time + (verb ? (hanPattern.test(verb) ? ' ' : ', ') + verb + ' ' : ' '));
+// A timed cut written inside a shot with no marker at all ("… her dress. At 00:04.000, the camera cuts to a close-up …") starts its own shot.
+const cutTimesToMarkers = text => {
+  const marked = String(text).replace(/(?:\bAt |在)?(\d{2}:\d{2}\.\d{3})[ \t]*(?:时|秒)?[ \t]*[,，]?[ \t]*((?:the (?:shot|camera|view|scene) )?(?:cuts?|switches|transitions|changes)(?: to)?|(?:画面|镜头)?(?:切至|切到|切换到|切换至|切换|切))?\s*(\[Shot (?:[2-9]|[1-9]\d+)\])(?! At \d)[ \t]*/g,
+    (_, time, verb, shot) => shot + ' At ' + time + (verb ? (hanPattern.test(verb) ? ' ' : ', ') + verb + ' ' : ' '))
+    .replace(/([.。!?！？;；])[ \t]*(?:At |在[ \t]*)?(\d{2}:\d{2}\.\d{3})(?=[ \t]*(?:时|秒)?[ \t]*[,，]?[ \t]*(?:(?:the (?:shot|camera|view|scene) )?(?:cuts?|switches|transitions)\b|(?:画面|镜头)?切))/g, '$1\n[Shot 0] At $2');
+  // Renumber in order; text before the first new marker is [Shot 1] even when it has no marker yet.
+  let n = /\[Shot (\d+)\]/.exec(marked)?.[1] === '0' ? 1 : 0;
+  return marked.includes('[Shot 0]') ? marked.replace(/\[Shot \d+\]/g, () => '[Shot ' + ++n + ']') : marked;
+};
 // MM:SS.mmm for a cut time in seconds.
 const shotStamp = s => { const ms = Math.round(s * 1000); return String(Math.floor(ms / 60000)).padStart(2, '0') + ':' + String(Math.floor(ms / 1000) % 60).padStart(2, '0') + '.' + String(ms % 1000).padStart(3, '0'); };
 function validateReferenceResult(value, options = {}) {
@@ -176,12 +186,14 @@ function validateReferenceResult(value, options = {}) {
   // A writer's pair (strictPair, the Grok edge) gets the gates of the base pairs; a translation keeps its source as the display.
   if (options.strictPair) {
     const shots = text => (text.match(/\[Shot \d+\](?: At [\d:.]+)?/g) || []).join('|');
-    failIssues([shots(model.detailed_description) !== shots(display.detailed_description) && baseIssue.pairShots,
+    const gates = [shots(model.detailed_description) !== shots(display.detailed_description) && baseIssue.pairShots,
       spokenOf(modelPrompt) !== spokenOf(displayPrompt) && baseIssue.pairLiterals,
       ...(options.displayIsSource ? [] : [tagList(model.detailed_description) && baseIssue.prose,
         /^N\/A\.?$/i.test(model.overall_soundscape) && !silenceAsked(intent) && baseIssue.silence,
         englishLeft(displayPrompt, intent) && referenceChineseIssue,
-        coloursSwapped(model.subject_definitions, display.subject_definitions) && baseIssue.colour])]);
+        coloursSwapped(model.subject_definitions, display.subject_definitions) && baseIssue.colour])];
+    // A stray English word in the display alone costs no repair call (H3 reads the English half); it rides along with another failing gate.
+    failIssues(gates.some(issue => issue && issue !== referenceChineseIssue) ? gates : []);
   }
   const narrative = model.detailed_description;
   const prose = narrative.replace(/<d>[\s\S]*?<\/d>|<(?:Picture|Video|Audio|Subject) \d+>|\[Shot \d+\]|"[^"\n]*"|“[^”\n]*”/g, '');
@@ -320,22 +332,26 @@ function validateReference(value, options = {}) {
   // "In a watercolor style, [Shot 1] ..." (or no stop at all) leaves the style sentence unfinished.
   fields.detailed_description = fields.detailed_description.replace(/([^\s.。!?！？,，])\s*[,，]?\s*(\[Shot 1\])/, (_, last, shot) => last + (/[\u3400-\u9fff]/.test(last) ? '。' : '.') + ' ' + shot);
   fields.detailed_description = cutTimesToMarkers(fields.detailed_description);
-  // Later shots need a cut time. When the model gives none, space the cuts evenly.
+  // Later shots need a cut time. When the model gives none, space the cuts the user asked for evenly; a later shot
+  // the user never asked for (a writer splitting the beats of one action) continues the shot before it.
   const shotCount = (fields.detailed_description.match(/\[Shot [1-9]\d*\]/g) || []).length;
   if (shotCount > 1 && !/\[Shot \d+\] At \d/.test(fields.detailed_description)) {
-    fields.detailed_description = fields.detailed_description.replace(/\[Shot ([2-9]|[1-9]\d+)\]/g, (tag, n) => tag + ' At ' + shotStamp(Number(options.durationSeconds || 30) * (n - 1) / shotCount));
+    fields.detailed_description = !options.displayIsSource && !cutAsked(userIntent(options))
+      ? fields.detailed_description.replace(/(\S?)\s*\[Shot (?:[2-9]|[1-9]\d+)\]\s*/g, (_, last) => last + (!last || /[\u3400-\u9fff。！？，；：]/.test(last) ? '' : ' '))
+      : fields.detailed_description.replace(/\[Shot ([2-9]|[1-9]\d+)\]/g, (tag, n) => tag + ' At ' + shotStamp(Number(options.durationSeconds || 30) * (n - 1) / shotCount));
   }
   for (const m of fields.detailed_description.matchAll(/\[Shot \d+\] At (\d+):(\d+)\.(\d+)/g)) {
     if (Number(m[1])*60 + Number(m[2]) + Number('0.'+m[3]) > Number(options.durationSeconds || 30)) throw new Error('H3 多参镜头超出所选时长');
   }
-  // The English half (a Chinese name may appear in it) reads like the official guide: one line per shot, "<Subject N>: " definitions.
+  // The English half (a Chinese name may appear in it) reads like the official guide: one line per shot, "<Subject N> is ..." definitions.
   // Its language is read from the prose alone: <Subject N>, [Shot N] and At times are not English words.
   const prose = proseOf(fields.detailed_description).replace(/<(?:Subject|Picture|Video|Audio) \d+>|\[Shot \d+\]|\bAt \d{2}:\d{2}\.\d{3}/g, '');
   if (!options.requireChineseOutput && (prose.match(/[A-Za-z]/g) || []).length > (prose.match(/[\u3400-\u9fff]/g) || []).length * 2) {
     // The official style opening: "In a watercolor style." reads "The target video is in a watercolor style."
     fields.detailed_description = officialEnglish(fields.detailed_description.replace(/^In (an? [^.\n[]*?\bstyle\b[^.\n[]*?)\.\s*(?=\[Shot 1\])/, 'The target video is in $1. '))
       .replace(/\s*\n\s*\n\s*(?=\[Shot )/g, '\n').replace(/[ \t]*\n\s*\n\s*/g, ' ');
-    fields.subject_definitions = fields.subject_definitions.replace(/^(<Subject [1-9]\d*>)[ \t]*[：:][ \t]*/gm, '$1: ');
+    fields.subject_definitions = fields.subject_definitions.replace(/^(<Subject [1-9]\d*>(?: \(S\d+\))?)[ \t]*[：:][ \t]*(?:(An?|The|an?|the) )?(?=(.))/gm,
+      (_, id, article, next) => id + ' is ' + (article ? article.toLowerCase() + ' ' : /[a-z]/.test(next) ? 'the ' : ''));
   }
   return referenceFields.map(k => k + ':\n' + fields[k]).join('\n\n');
 }
@@ -528,7 +544,7 @@ const baseInstruction = policy.baseInstructions.join('\n');
 const baseResultInstruction = 'Return a bilingual object with modelPrompt and displayPrompt. Both contain the same three H3 fields integrated_multimodal_description, overall_soundscape and non_diegetic_music, without the reference-alignment line. modelPrompt has English prose for H3; Chinese appears only inside <d>...</d> and double-quoted on-screen text. displayPrompt is its faithful Simplified Chinese translation for the editor. Keep every [Shot N] marker and At MM:SS.mmm time, <Picture N> tag, speaker ID, <d> block and quoted text identical in both. Do not add creative changes while translating.';
 const baseTranslateInstruction = 'Translate only. The source prompt is a finished Simplified Chinese H3 prompt in the three fields integrated_multimodal_description, overall_soundscape and non_diegetic_music. Return modelPrompt as its faithful English translation and displayPrompt as the unchanged Chinese source. Keep the same shots, [Shot N] markers and At MM:SS.mmm times, <Picture N> tags, speaker IDs such as (S1), every <d>...</d> block and every double-quoted on-screen text exactly as written; N/A stays N/A. Where the Chinese names a camera move, use the official camera vocabulary: push in, pull out, pan, truck, tilt, pedestal, arc shot, tracking shot, static shot, zoom, shake, POV or roll, with small/large amplitude and at slow/fast speed. ' + shotSizeRule + ' Add, remove, reorder or improve nothing, and do not write the reference-alignment line.';
 const baseFieldNotes = {
-  en: ['English, in complete sentences, never a comma list of tags. Starts with [Shot 1] and one opening sentence: the official style word, a comma and the initial composition with its shot size; then the observable actions in order, one natural camera sentence and the ending state. Later shots only for a requested cut: [Shot N] At MM:SS.mmm, the camera cuts to ... Dialogue as (S1) says: <d>[Language] verbatim words</d>; on-screen text verbatim in double quotes. Only the supplied <Picture N> tags, never <Subject N>.',
+  en: ['English, in complete sentences, never a comma list of tags. Starts with [Shot 1] and one opening sentence: the official style word, a comma and the initial composition with its shot size (with an opening frame no shot size: the subject as shown in <Picture 1>); then the observable actions in order, one natural camera sentence and the ending state. Later shots only for a requested cut: [Shot N] At MM:SS.mmm, the camera cuts to ... Dialogue as (S1) says: <d>[Language] verbatim words</d>; on-screen text verbatim in double quotes. Only the supplied <Picture N> tags, never <Subject N>.',
     '1-4 English sentences of diegetic ambience and action sounds matching the visible events, no dialogue. N/A only when the user asks for silence. Never an empty string.',
     'Only when the user asks for music: 1-3 English sentences on instrumentation, tempo, rhythm and dynamics. Otherwise N/A. Never an empty string.'],
   zh: '本字段是对应英文内容的完整简体中文翻译，说明句全部使用简体中文，' + zhWordRule + '；[Shot N]、At 时间、<Picture N>、(S1)、<d>…</d> 与引号内文字和英文完全一致，N/A 保持 N/A。',
@@ -559,23 +575,28 @@ function keepUserSize(display, intent) {
   if (own.length !== 1 || proseOf(display).includes(own[0].size) || /前景|后景/.test(display)) return display;
   const sizes = text => [...new Set(proseOf(text).match(zhSize) || [])];
   const parts = display.split(/(?=\[Shot [1-9]\d*\])/);
-  // The shot that carries a size: a cut size goes to the one later shot that names a size, otherwise the whole text names one size.
+  // The shot that carries a size: a cut size goes only to the one later shot that names a size (never the opening): the size it cuts to
+  // (切到女神的特写), or its only size; otherwise the whole text names one size.
+  const cutTo = text => new RegExp('切[^，。,；;\\n]{0,8}?(' + sizeWords + ')').exec(proseOf(text))?.[1] || (sizes(text).length === 1 ? sizes(text)[0] : null);
   const targets = parts.map((part, i) => i).filter(i => /^\[Shot (?:[2-9]|[1-9]\d+)\]/.test(parts[i]) && sizes(parts[i]).length);
-  const at = own[0].cut && targets.length === 1 && sizes(parts[targets[0]]).length === 1 ? targets[0] : sizes(display).length === 1 ? -1 : null;
+  const at = own[0].cut ? (targets.length === 1 && cutTo(parts[targets[0]]) ? targets[0] : null) : sizes(display).length === 1 ? -1 : null;
   if (at === null) return display;
-  const swap = text => { const used = sizes(text)[0]; return outsideLiterals(text, part => part.split(used).join(own[0].size)); };
-  return at < 0 ? swap(display) : parts.map((part, i) => i === at ? swap(part) : part).join('');
+  const swap = (text, used) => outsideLiterals(text, part => part.split(used).join(own[0].size));
+  return at < 0 ? swap(display, sizes(display)[0]) : parts.map((part, i) => i === at ? swap(part, cutTo(part)) : part).join('');
 }
 function matchSizes(model, display) {
   const split = text => String(text).split(/(?=\[Shot [1-9]\d*\])/), shots = split(display), parts = split(model);
   if (parts.length !== shots.length) return model;
+  // The English sizes already are the display's, in any order ("pushes in to a close-up, starting from a wide shot"): nothing to fix.
+  const fits = (found, wanted) => !found.length || wanted.some((names, i) => names.includes(found[0]) && fits(found.slice(1), wanted.filter((_, j) => j !== i)));
   return parts.map((part, i) => {
     const wanted = /前景|后景/.test(shots[i]) ? [] : (proseOf(shots[i]).match(zhSize) || []).map(word => shotSizes[word]);
-    if (!wanted.length || (proseOf(part).match(enSize) || []).length !== wanted.length) return part;
+    const found = (proseOf(part).match(enSize) || []).map(enSizeName);
+    if (!wanted.length || found.length !== wanted.length || fits(found, wanted)) return part;
     let n = 0;
     return outsideLiterals(part, text => text.replace(new RegExp('\\b(?:(an?|An?)\\s+)?(' + enSize.source + ')', 'gi'), (all, article, phrase) => {
       const want = wanted[n++];
-      return enSizeName(phrase) === want ? all : (article ? article[0] + (/^[aeiou]/.test(want) ? 'n ' : ' ') : '') + want;
+      return want.includes(enSizeName(phrase)) ? all : (article ? article[0] + (/^[aeiou]/.test(want[0]) ? 'n ' : ' ') : '') + want[0];
     }));
   }).join('');
 }
@@ -600,9 +621,11 @@ function failIssues(issues) {
 }
 const spokenOf = text => [...String(text).matchAll(/<d>([\s\S]*?)<\/d>/g)].map(m => m[1].replace(/^\s*\[[^\]\n]*\]\s*/, '')).sort().join('\n');
 const silenceAsked = text => /静音|无声|没有(?:任何)?声音|不要(?:任何)?声音|去掉(?:所有|全部)?声音|silen(?:t|ce)|no sound|mute/i.test(text);
-// A telegraphic list of tags ("3D CG render, goddess on steps, cat on lower step, eyes closed, ..."): long, comma-stacked, article-free.
+// A telegraphic list of tags ("3D CG render, girl on steps, cat on lower step, eyes closed, ..."): long, comma-stacked, article-free,
+// and most of its phrases name nobody who acts ("her cloak ripples, sparks drift from her lantern, embers glow" is prose).
 const tagList = text => proseOf(text).replace(/\[Shot \d+\](?: At [\d:.]+,?)?|<(?:Picture|Subject) \d+>/g, ' ').split(/[.!?](?=\s|$)/)
-  .some(sentence => (sentence.match(/,/g) || []).length >= 4 && (sentence.match(/[A-Za-z]+/g) || []).length >= 18 && !/\b(?:a|an|the)\b/i.test(sentence));
+  .some(sentence => { const phrases = sentence.split(','); return phrases.length >= 5 && (sentence.match(/[A-Za-z]+/g) || []).length >= 18 && !/\b(?:a|an|the)\b/i.test(sentence)
+    && phrases.filter(phrase => !/\b(?:her|his|its|their|this|that|these|those|she|he|it|they|is|are|was|were|has|have)\b/i.test(phrase)).length > phrases.length / 2; });
 // English words left in a Chinese 多参 display; labels, task tags, relations and the user's own words stay.
 function englishLeft(text, intent) {
   const own = new Set((String(intent).match(/[A-Za-z]+/g) || []).map(word => word.toLowerCase()));
@@ -611,9 +634,10 @@ function englishLeft(text, intent) {
     .match(/[A-Za-z]+/g) || []).some(word => word.length > 2 && word === word.toLowerCase() && !own.has(word));
 }
 // Colour families; a subject whose display names another colour than its English definition (teal → 青铜色) was mistranslated.
-const colours = [['red|crimson|scarlet', '红|赤|绯'], ['orange', '橙|橘'], ['yellow', '黄'], ['green|olive|emerald', '绿|翠'], ['teal|cyan|turquoise|aqua', '青(?!铜)|蓝绿|松石|水鸭'],
-  ['blue|navy|azure', '蓝|藏青'], ['purple|violet|lavender|lilac', '紫'], ['pink', '粉'], ['brown|chestnut', '棕|褐|咖啡|栗'], ['black', '黑'], ['white', '白'],
-  ['gr[ae]y', '灰'], ['gold(?:en)?', '金'], ['silver', '银'], ['bronze', '青铜|古铜'], ['copper', '(?<![青古])铜']].map(([en, zh]) => [new RegExp('\\b(?:' + en + ')\\b', 'i'), new RegExp(zh)]);
+// Words that only contain a colour character name no colour: 金属, 白皙, 白天, 青年, 青春, 黑暗 (and 藏青 is navy).
+const colours = [['red|crimson|scarlet', '红|赤|绯'], ['orange', '橙|橘'], ['yellow', '黄'], ['green|olive|emerald', '绿|翠|橄榄'], ['teal|cyan|turquoise|aqua', '(?<!藏)青(?!铜|年|春)|蓝绿|松石|水鸭'],
+  ['blue|navy|azure', '蓝|藏青'], ['purple|violet|lavender|lilac', '紫'], ['pink', '粉'], ['brown|chestnut', '棕|褐|咖啡|栗'], ['black|dark(?=[ -]hair)', '黑(?!暗)'], ['white', '白(?!皙|天)'],
+  ['gr[ae]y', '灰'], ['gold(?:en)?|blonde?', '金(?!属)'], ['silver', '银'], ['bronze', '青铜|古铜'], ['copper', '(?<![青古])铜']].map(([en, zh]) => [new RegExp('\\b(?:' + en + ')\\b', 'i'), new RegExp(zh)]);
 function coloursSwapped(model, display) {
   const lines = text => new Map(String(text).split('\n').map(line => [/^<Subject [1-9]\d*>/.exec(line.trim())?.[0], line]).filter(([id]) => id));
   const english = lines(model), chinese = lines(display);

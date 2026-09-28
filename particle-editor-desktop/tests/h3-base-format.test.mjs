@@ -392,6 +392,16 @@ test('looking at the lens names no camera; the idle-breathing rule only reaches 
   }
 });
 
+test('a look at the lens (回头看镜头, 直视镜头) gets the default static camera; a lens move or an angle (镜头前推, 俯拍) does not', () => {
+  for (const api of apis) {
+    const camera = (source, en, zh) => JSON.parse(api.validateBaseResult({modelPrompt:fields('[Shot 1] ' + en), displayPrompt:fields('[Shot 1] ' + zh, '风声。')}, {mode:'text_video', durationSeconds:5, currentPrompt:source})).modelPrompt;
+    assert.match(camera('猫咪跳上桌子后回头看镜头', 'Live-action, a ginger cat jumps onto a wooden table and turns its head toward the lens.', '写实风格，橘猫跳上木桌，然后回头看向镜头。'), /toward the lens\. The camera holds a static shot/);
+    assert.match(camera('女孩直视镜头微笑', 'Live-action, a girl smiles into the lens.', '写实风格，女孩直视镜头微笑。'), /into the lens\. The camera holds a static shot/);
+    assert.doesNotMatch(camera('女孩向前奔跑，镜头前推', 'Live-action, a girl runs forward.', '写实风格，女孩向前奔跑。'), /static shot/);
+    assert.doesNotMatch(camera('俯拍一只橘猫在窗台上睡觉', 'Live-action, a ginger cat sleeps on a windowsill.', '写实风格，橘猫在窗台上睡觉。'), /static shot/);
+  }
+});
+
 test('the five copies stay in sync with the shared source and policy', () => {
   const read = path => fs.readFileSync(new URL(path, import.meta.url), 'utf8');
   assert.equal(read('../../novaflow-web/admin/admin-server/h3-prompt-enhance.js'), read('../admin-server/h3-prompt-enhance.js'));
@@ -480,5 +490,56 @@ test("a writer's pair (strictPair) reports every quality gate at once; the rende
     // A translation keeps its source display: no appearances are added to it and only the shot and speech parity is gated.
     const translated = JSON.parse(api.validateReferenceResult(answer, {...options, strictPair:true, displayIsSource:true}));
     assert.doesNotMatch(translated.displayPrompt, /出现在/);
+  }
+});
+
+test('shot sizes change only where the words differ: a cut size never lands in the opening, and an order swap stays', () => {
+  const pairOf = (model, display) => ({modelPrompt:fields(model, 'Soft purring.'), displayPrompt:fields(display, '轻柔的呼噜声。')});
+  const cut = '一只橘猫坐在窗台上，第3秒切到近景，它开始舔爪子';
+  for (const api of apis) {
+    // The cut shot names no size, or the writer kept one shot: the opening 全景 stays a full shot in both halves.
+    const noSize = JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, a full shot frames a ginger cat sitting on a sunny windowsill. The camera holds a static shot.\n[Shot 2] At 00:03.000, the camera cuts to the cat licking its paw.', '[Shot 1] 写实风格，全景中一只橘猫坐在阳光照耀的窗台上。镜头固定。\n[Shot 2] At 00:03.000 镜头切到猫舔爪子。'), {mode:'text_video', durationSeconds:6, currentPrompt:cut}));
+    assert.match(noSize.modelPrompt, /\[Shot 1\] Live-action, a full shot frames/);
+    assert.match(noSize.displayPrompt, /\[Shot 1\] 写实风格，全景中/);
+    const oneShot = JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, a full shot frames a ginger cat sitting on a sunny windowsill. The cat licks its paw. The camera holds a static shot.', '[Shot 1] 写实风格，全景中一只橘猫坐在阳光照耀的窗台上。猫舔爪子。镜头固定。'), {mode:'text_video', durationSeconds:6, currentPrompt:cut}));
+    assert.match(oneShot.modelPrompt, /a full shot frames/);
+    assert.match(oneShot.displayPrompt, /全景中/);
+    // A timed cut written inside the shot, with no marker, starts its own shot in both halves, and that shot gets the user's size.
+    const inline = JSON.parse(api.validateBaseResult(pairOf('[Shot 1] Live-action, a full shot frames an old keeper standing by a lighthouse. Wind moves his coat. At 00:04.000, the camera cuts to a close-up of the keeper. The camera pulls out slowly, returning to the full shot of the lighthouse.',
+      '[Shot 1] 写实风格，全景中老守塔人站在灯塔旁。风吹动他的外套。在 00:04.000 镜头切到守塔人的特写。镜头缓慢后拉，回到灯塔的全景。'), {mode:'text_video', durationSeconds:8, currentPrompt:'老守塔人站在灯塔旁，第4秒切到近景'}));
+    assert.match(inline.modelPrompt, /his coat\.\n\[Shot 2\] At 00:04\.000, the camera cuts to a medium close-up of the keeper\. The camera pulls out slowly, returning to the full shot of the lighthouse\./);
+    assert.match(inline.displayPrompt, /外套。\n\[Shot 2\] At 00:04\.000 镜头切到守塔人的近景。镜头缓慢后拉，回到灯塔的全景。/);
+    // The same two sizes in another order are already right: the push-in keeps its direction.
+    const push = '[Shot 1] Live-action, the camera slowly pushes in to a close-up of a ginger cat on a windowsill, starting from a wide shot. The cat blinks.';
+    assert.match(JSON.parse(api.validateBaseResult(pairOf(push, '[Shot 1] 写实风格，镜头从远景缓缓推进到窗台上橘猫的特写。猫眨了眨眼。'), {mode:'text_video', durationSeconds:5, currentPrompt:'一只橘猫坐在窗台上，镜头慢慢推近'})).modelPrompt,
+      /pushes in to a close-up of a ginger cat on a windowsill, starting from a wide shot\./);
+    // Prose whose clauses have their own actors is no tag list, even without articles.
+    assert.doesNotThrow(() => api.validateBaseResult(pairOf('[Shot 1] 2D-animated, her crimson cloak ripples, golden leaves swirl around her boots, sparks drift upward from her lantern, embers glow, and her silver hair streams behind her as she strides forward. The camera trucks left at slow speed.',
+      '[Shot 1] 二维动画，她的深红斗篷飘动，金色落叶在她靴边旋转，火星从她的灯笼向上飘散，余烬发光，她的银发在身后飘扬，她大步向前。镜头以慢速向左横移。'), {mode:'text_video', durationSeconds:5, currentPrompt:'女孩提着灯笼在风中向前走', strictPair:true}));
+  }
+});
+
+test('多参: a shot the user never asked to cut to continues the one before; subjects read "<Subject N> is ..."; correct colours and one stray English word cost no repair', () => {
+  const six = values => local.referenceFields.map((field, i) => field + ':\n' + values[i]).join('\n\n');
+  const source = '图1的角色和图2的角色面对面抱拳行礼，然后并肩走向镜头';
+  const options = {durationSeconds:5, currentPrompt:source, requirements:'Available resource labels: <Picture 1>; <Picture 2>\nSource prompt:\n' + source, strictPair:true};
+  const english = six(['<Subject 1>: A man with olive skin and dark hair in a metal breastplate, from <Picture 1>\n<Subject 2>: A warrior with blonde hair in a crimson robe, from <Picture 2>', '[reference generation] <Subject 1> and <Subject 2> salute each other, then walk toward the camera side by side.',
+    '<Subject 1>: fully_preserved - olive skin, dark hair, metal breastplate\n<Subject 2>: fully_preserved - blonde hair, crimson robe',
+    'The target video is in a 3D CG style. [Shot 1] A full shot frames <Subject 1> on the left and <Subject 2> on the right in a stone courtyard under soft daylight; they face each other and clasp their fists in salute. [Shot 2] The camera pulls back as <Subject 1> and <Subject 2> turn and walk toward it side by side.', 'Footsteps echo on the stone courtyard.', 'N/A']);
+  const chinese = six(['<Subject 1>: 橄榄色皮肤、黑发、身穿金属胸甲的男子，来自 <Picture 1>\n<Subject 2>: 金发、身穿深红长袍的武士，来自 <Picture 2>', '[reference generation] <Subject 1> 与 <Subject 2> 互相抱拳行礼，然后并肩走向镜头。',
+    '<Subject 1>: fully_preserved - 橄榄色皮肤、黑发、金属胸甲\n<Subject 2>: fully_preserved - 金发、深红长袍',
+    '目标视频采用三维CG风格。[Shot 1] 全景中 <Subject 1> 在左、<Subject 2> 在右，站在柔和日光下的石砌 courtyard 里，两人相对抱拳行礼。[Shot 2] 镜头后拉，<Subject 1> 与 <Subject 2> 转身并肩朝镜头走来。', '脚步声在石砌庭院中回响。', 'N/A']);
+  const answer = JSON.stringify({modelPrompt:english, displayPrompt:chinese});
+  for (const api of apis) {
+    const pair = JSON.parse(api.validateReferenceResult(answer, options));
+    assert.match(pair.modelPrompt, /in salute\. The camera pulls back as <Subject 1>/);
+    assert.match(pair.displayPrompt, /抱拳行礼。镜头后拉/);
+    assert.doesNotMatch(pair.modelPrompt + pair.displayPrompt, /\[Shot 2\]/);
+    assert.match(pair.modelPrompt, /^<Subject 1> is a man with olive skin[^\n]*\n<Subject 2> is a warrior with blonde hair/m);
+    // Asked for, the cut stays a cut at an even time.
+    const asked = source + '，第3秒切到两人的近景';
+    assert.match(JSON.parse(api.validateReferenceResult(answer, {...options, currentPrompt:asked, requirements:'Available resource labels: <Picture 1>; <Picture 2>\nSource prompt:\n' + asked})).modelPrompt, /\[Shot 2\] At 00:02\.500, the shot cuts\./);
+    // The stray word still rides along when another gate asks for the repair.
+    assert.throws(() => api.validateReferenceResult(answer.replace('Footsteps echo on the stone courtyard.', 'N/A'), options), error => error.issues.includes('请将多参主体、任务说明、保留规则和画面动作改为简体中文，保留原台词和媒体标签'));
   }
 });
