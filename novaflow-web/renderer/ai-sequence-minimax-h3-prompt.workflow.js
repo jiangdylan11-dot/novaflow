@@ -1017,25 +1017,25 @@
     })].filter(Boolean).join('\n\n').replace(/\[\s+Shot\s+([1-9]\d*)\]/g, '[Shot $1]')
   }
 
+  // The editor text round-trips through display aliases (@参考图1, @首帧); a
+  // translated or provider result may echo one for a bound resource. Bind it to
+  // the protocol token instead of failing; an alias without an upload stays an error.
+  function bindEchoedAliases(text, catalog) {
+    if (!UI_REFERENCE_ALIAS_EXPRESSION.test(text)) return text
+    const byDisplayToken = catalog.byDisplayToken || {}
+    const value = text.replace(new RegExp(UI_REFERENCE_ALIAS_EXPRESSION.source, 'giu'), (match) => byDisplayToken[match.replace(/\s*\((?:image|video|audio)\)$/i, '')] || match)
+    const remaining = UI_REFERENCE_ALIAS_EXPRESSION.exec(value)
+    if (remaining) throw new Error(`MiniMax H3 model output must use protocol references, not UI aliases (${remaining[0]})`)
+    return value
+  }
+
   function validatePromptText(text, options) {
     let value = stripResponseFence(text)
     if (!value) throw new Error('MiniMax H3 enhanced prompt is empty')
     const protocol = createPromptProtocol(options)
     const format = globalThis.NovaFlowH3PromptFormat
     const base = protocol.mode !== 'multi_reference'
-    if (UI_REFERENCE_ALIAS_EXPRESSION.test(value)) {
-      // The editor text round-trips through display aliases (@参考图1, @首帧);
-      // a translated or provider result may echo one for a bound resource.
-      // Bind it to the protocol token instead of failing; an alias without an
-      // upload stays an error.
-      const byDisplayToken = protocol.references.byDisplayToken || {}
-      value = value.replace(new RegExp(UI_REFERENCE_ALIAS_EXPRESSION.source, 'giu'), (match) => {
-        const alias = match.replace(/\s*\((?:image|video|audio)\)$/i, '')
-        return byDisplayToken[alias] || match
-      })
-      const remaining = UI_REFERENCE_ALIAS_EXPRESSION.exec(value)
-      if (remaining) throw new Error(`MiniMax H3 model output must use protocol references, not UI aliases (${remaining[0]})`)
-    }
+    value = bindEchoedAliases(value, protocol.references)
     // Base modes accept every engine shape (a bilingual half, Chinese fields, an old
     // five-section answer, a reverse fact inventory, official English with its
     // alignment line) and keep the canonical three fields; the shared validator
@@ -1106,7 +1106,9 @@
     const format = globalThis.NovaFlowH3PromptFormat
     const base = context.mode !== 'multi_reference'
     const serialized = value => typeof value === 'string' ? value : JSON.stringify(value)
-    const currentPrompt = stringValue(input.current?.prompt)
+    // The user's words for the default camera / loop checks: a base display's 【镜头 1】
+    // label is not a camera, so base modes read the source in fields form.
+    const currentPrompt = base ? stringValue(context.compiledPrompt) : stringValue(input.current?.prompt)
     const validationOptions = {
       mode: context.mode,
       durationSeconds: context.durationSeconds,
@@ -1115,11 +1117,13 @@
       requireReady: true,
       currentPrompt,
     }
-    let pair = format.referenceResult(input.text)
+    // Echoed aliases bind before the pair checks, so neither half reads them as prose.
+    const text = typeof input.text === 'string' ? bindEchoedAliases(input.text, catalog) : input.text
+    let pair = format.referenceResult(text)
     if (pair) pair = format.referenceResult(base
-      ? format.validateBaseResult(input.text, { mode: context.mode, durationSeconds: context.durationSeconds, currentPrompt })
-      : format.validateReferenceResult(input.text, {requirements:'Available resource labels: ' + catalog.references.map(r=>r.modelToken).join('; '), durationSeconds:context.durationSeconds, currentPrompt}))
-    const validation = validatePromptText(pair ? serialized(pair.modelPrompt) : input.text, validationOptions)
+      ? format.validateBaseResult(text, { mode: context.mode, durationSeconds: context.durationSeconds, currentPrompt })
+      : format.validateReferenceResult(text, {requirements:'Available resource labels: ' + catalog.references.map(r=>r.modelToken).join('; '), durationSeconds:context.durationSeconds, currentPrompt}))
+    const validation = validatePromptText(pair ? serialized(pair.modelPrompt) : text, validationOptions)
     const displayed = pair ? validatePromptText(serialized(pair.displayPrompt), validationOptions) : validation
     // The editor shows Chinese with the 多参 labels and its own aliases; H3 gets
     // the official English when a translation came back, otherwise the fields.
@@ -1141,6 +1145,12 @@
   }
 
   const COMPILE_UPDATE_REQUIRED = '云端或本机提示词服务需要更新后才能转换为官方英文提示词'
+  // Chinese is allowed only inside <d>…</d> and quoted on-screen text.
+  const LITERAL_EXPRESSION = /<d>([\s\S]*?)<\/d>|"([^"\n]*)"|“([^”\n]*)”/g
+  const hasChineseProse = (text) => /[\u3400-\u9fff]/.test(text.replace(LITERAL_EXPRESSION, ''))
+  // What a translation must keep from its source: shots and cut times, picture tags, dialogue and quoted text.
+  const baseShape = (text) => [(text.match(/\[Shot \d+\](?: At [\d:.]+)?/g) || []).join('|'), [...new Set(text.match(/<Picture [1-9]\d*>/g))].sort().join('|'),
+    Array.from(text.matchAll(LITERAL_EXPRESSION), (m) => m[1] ?? m[2] ?? m[3]).sort().join('\n')]
 
   // 文生 / 图生 / 首尾帧: the Chinese display becomes the official English base
   // format. English fields go straight through, a known text uses its cached
@@ -1154,14 +1164,17 @@
     const options = { mode: catalog.mode, durationSeconds: normalizeDurationSeconds(current.durationSeconds) }
     let tokens = toModelReferences(source, catalog)
     if (LEGACY_EXPRESSION.test(tokens)) tokens = format.toBaseDisplay(tokens, options)
-    if (!format.parseBaseFields(tokens)) return deepFreeze({ text: source, modelText: tokens, referenceEditPolicy: null })
+    // Only free text goes out as written; a broken display fails in validateBaseFields.
+    if (!format.parseBaseFields(tokens) && !/integrated_multimodal_description|overall_soundscape|non_diegetic_music|【画面与动作】|【任务定位】/.test(tokens)) {
+      return deepFreeze({ text: source, modelText: tokens, referenceEditPolicy: null })
+    }
     const fields = format.validateBaseFields(tokens, options)
     const finish = (compiled) => deepFreeze({
       text: toDisplayReferences(format.toBaseDisplay(compiled.displayPrompt, options), catalog),
       modelText: format.composeBaseModelPrompt(compiled.modelPrompt, options),
       referenceEditPolicy: null,
     })
-    if (!/[\u3400-\u9fff]/.test(fields.replace(/<d>[\s\S]*?<\/d>|"[^"\n]*"|“[^”\n]*”/g, ''))) return finish({ modelPrompt: fields, displayPrompt: fields })
+    if (!hasChineseProse(fields)) return finish({ modelPrompt: fields, displayPrompt: fields })
     const cached = referenceTranslations.get(translationKey(current, source))
     if (cached) return finish(cached)
     if (typeof optimize !== 'function') throw new Error('提示词编译服务不可用')
@@ -1175,15 +1188,21 @@
     })
     // An engine without the translate step answers with Chinese (or five sections):
     // never send that prose to H3 from a structured prompt.
-    const pair = format.referenceResult(text)
+    const pair = format.referenceResult(typeof text === 'string' ? bindEchoedAliases(text, catalog) : text)
     if (!pair) throw new Error(COMPILE_UPDATE_REQUIRED)
     let checked
     try {
       checked = format.validateBaseResult({ modelPrompt: pair.modelPrompt, displayPrompt: fields }, options)
     } catch (error) {
-      // English prose around a Chinese name is not a Chinese display; check the English half alone.
+      // English prose around a Chinese name is not a Chinese display: check the English half
+      // alone, still holding it to the source's shots, pictures, dialogue and quoted text.
       if (!/简体中文/.test(String(error?.message))) throw error
-      checked = JSON.stringify({ modelPrompt: format.validateBaseResult(pair.modelPrompt, { ...options, language: 'en' }), displayPrompt: fields })
+      const modelPrompt = format.validateBaseResult(pair.modelPrompt, { ...options, language: 'en' })
+      const [model, shown] = [modelPrompt, fields].map(baseShape)
+      if (model[0] !== shown[0]) throw new Error('H3 中英文提示词的镜头或切换时间不一致')
+      if (model[1] !== shown[1]) throw new Error('H3 中英文提示词的素材关系不一致')
+      if (model[2] !== shown[2]) throw new Error('H3 中英文提示词的台词或屏幕文字不一致')
+      checked = JSON.stringify({ modelPrompt, displayPrompt: fields })
     }
     const compiled = JSON.parse(checked)
     rememberTranslation(current, [source], compiled)
@@ -1205,8 +1224,9 @@
     }
     if (typeof optimize !== 'function') throw new Error('多参提示词编译服务不可用')
     const text = await optimize({
-      // A finished six-field prompt is only translated; free text is compiled into the fields.
-      prompt: prepared.prompt, requirements: structured ? prepared.requirements.replace('\nSource prompt:\n', '\nH3 compile: translate-only\nSource prompt:\n') : prepared.requirements,
+      // A finished Chinese six-field prompt is only translated; free text is compiled into the
+      // fields, and an English legacy video edit keeps its creative compile (with frames).
+      prompt: prepared.prompt, requirements: structured && hasChineseProse(prepared.prompt) ? prepared.requirements.replace('\nSource prompt:\n', '\nH3 compile: translate-only\nSource prompt:\n') : prepared.requirements,
       h3Mode: 'multi_reference', durationSeconds: current.durationSeconds,
       purpose: 'minimax-h3-prompt-enhance', surface: 'animation',
       visualSchema: H3_VISUAL_SCHEMA, contentPolicy: prepared.context.contentPolicy,

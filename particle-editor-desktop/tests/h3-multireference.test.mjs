@@ -83,7 +83,8 @@ test('a bound editor alias echoed in a multi-reference result binds to its proto
 test('generation compiles free text and upgrades legacy video edits with missing processing controls',async()=>{
  let calls=0;const result=await prompt.compileForGeneration(current,async payload=>{calls++;assert.equal(payload.h3Mode,'multi_reference');assert.doesNotMatch(payload.requirements,/H3 compile: translate-only/);return text});
  assert.equal(result.modelText.replace(/\s+/g,' '),text.replace(/\s+/g,' '));assert.equal(calls,1);
- await prompt.compileForGeneration({...current,prompt:text},async payload=>{calls++;assert.match(payload.prompt,/subject_definitions:/);assert.match(payload.requirements,/\nH3 compile: translate-only\nSource prompt:\n/);return text});
+ // An English legacy video edit is a creative compile (it fills the edit controls from the frames), never translate-only.
+ await prompt.compileForGeneration({...current,prompt:text},async payload=>{calls++;assert.match(payload.prompt,/subject_definitions:/);assert.doesNotMatch(payload.requirements,/H3 compile: translate-only/);return text});
  assert.equal(calls,2);
  await assert.rejects(prompt.compileForGeneration(current,async()=> '【任务定位】\nold output'),/六个参考字段/);
 });
@@ -175,7 +176,7 @@ test('Chinese editor uses English generation text and recompiles changed instruc
  // The generator compiles the mentions first (@参考图1 -> <Picture 1>); the cache is keyed on that model-token text.
  await prompt.compileForGeneration({...c,prompt:r.text.replace(/@参考图1/g,'<Picture 1>')},()=>{throw Error('compiled mentions should reuse the translation')});
  let translated=0;
- const again=await prompt.compileForGeneration({...c,prompt:r.text.replace('原金币轨迹','原金币轨迹和旋转方向')},()=>{translated++;return JSON.stringify({modelPrompt:{...english,detailed_description:english.detailed_description.replace('original coin trajectory','original coin trajectory and rotation direction')},displayPrompt:{...chinese,detailed_description:chinese.detailed_description.replace('原金币轨迹','原金币轨迹和旋转方向')}})});
+ const again=await prompt.compileForGeneration({...c,prompt:r.text.replace('原金币轨迹','原金币轨迹和旋转方向')},payload=>{translated++;assert.match(payload.requirements,/\nH3 compile: translate-only\nSource prompt:\n/);return JSON.stringify({modelPrompt:{...english,detailed_description:english.detailed_description.replace('original coin trajectory','original coin trajectory and rotation direction')},displayPrompt:{...chinese,detailed_description:chinese.detailed_description.replace('原金币轨迹','原金币轨迹和旋转方向')}})});
  assert.equal(translated,1);assert.match(again.modelText,/trajectory and rotation direction/);assert.doesNotMatch(again.modelText,/[\u3400-\u9fff]/);assert.match(again.text,/轨迹和旋转方向/);
  assert.throws(()=>local.validateReference(text,{...options,requireChineseOutput:true}),/简体中文/);
  const built=buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance',h3Mode:'multi_reference',durationSeconds:3,prompt:c.prompt,requirements:chineseOptions.requirements,visualSchema:'nf.h3.visual.v1'});

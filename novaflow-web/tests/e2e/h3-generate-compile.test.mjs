@@ -67,9 +67,9 @@ test('the bundle compiles 文生 / 图生 / 首尾帧 prompts before building th
   assert.equal(bundle.split('compileH3ForGeneration(').length - 1, 1);
   assert.equal(bundle.split('nfH3Prompt=nfH3Base.modelText}u=nfH3Workflow.buildWorkflow(').length - 1, 1);
   assert.match(bundle, /e\.setAiSeqJob\(\{state:`running`,message:`正在整理提示词…`\}\)/);
-  // The patched line keeps the bundle's CRLF endings and stays one line.
-  const line = bundle.split('\r\n').find((text) => text.includes('nfH3Base'));
-  assert.ok(line && !line.includes('\n'));
+  // The patch stays on the bundle's one Generate line, whatever the checkout's line endings.
+  const line = bundle.split(/\r?\n/).find((text) => text.includes('nfH3Base'));
+  assert.ok(line && line.includes('compileH3ForGeneration(') && line.includes('nfH3Prompt=nfH3Base.modelText}'));
 });
 
 test('图生视频: the Chinese display is translated once and H3 receives the official English text', async () => {

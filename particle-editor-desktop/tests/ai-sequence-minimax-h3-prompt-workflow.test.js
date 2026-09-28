@@ -665,6 +665,37 @@ test('base results: a bilingual pair gives the official English, Chinese fields 
   assert.throws(() => workflow.validateAndRestore({ text: JSON.stringify({ modelPrompt: englishFields().replace('slowly turns', 'slowly turns [Shot 2] At 00:02.000, the camera cuts to her hand'), displayPrompt: chineseFields() }), context, current }), /镜头或切换时间不一致/)
 })
 
+test('base pairs bind echoed aliases and complete the camera when the editor already holds a display', async () => {
+  const current = i2vCurrent('@参考图 中的少女转身挥手')
+  const { context } = workflow.prepareRequest(current)
+  const plain = workflow.validateAndRestore({ text: JSON.stringify({ modelPrompt: englishFields(), displayPrompt: chineseFields() }), context, current })
+  // An alias in the English half is no Chinese prose, and one in the Chinese half adds no second opening anchor.
+  const echoed = workflow.validateAndRestore({ text: JSON.stringify({ modelPrompt: englishFields().replace('<Picture 1>', '@首帧'), displayPrompt: chineseFields().replace('<Picture 1>', '@参考图') }), context, current })
+  assert.deepEqual([echoed.text, echoed.modelText], [plain.text, plain.modelText])
+  const boy = i2vCurrent(format.toBaseDisplay(chineseFields('[Shot 1] <Picture 1> 中的男孩挥手。镜头保持固定，构图稳定。'), { mode: 'image_video', durationSeconds: 5 }).replace(/<Picture 1>/g, '@参考图'))
+  const translated = await workflow.compileForGeneration(boy, async (payload) => JSON.stringify({ modelPrompt: englishFields().replace('<Picture 1>', '@参考图'), displayPrompt: payload.prompt }))
+  assert.equal(translated.modelText, plain.modelText)
+  // The display's 【镜头 1】 label is not a camera: a camera-less answer still gets the default.
+  const still = (text) => text.replace(' The camera holds a static shot and the framing stays stable.', '').replace('镜头保持固定，构图稳定。', '')
+  const again = i2vCurrent(format.toBaseDisplay(still(chineseFields()), { mode: 'image_video', durationSeconds: 5 }).replace(/<Picture 1>/g, '@参考图'))
+  const completed = workflow.validateAndRestore({ text: JSON.stringify({ modelPrompt: still(englishFields()), displayPrompt: still(chineseFields()) }), context: workflow.prepareRequest(again).context, current: again })
+  assert.equal(completed.modelText, I2V_LINE + '\n\n' + englishFields())
+  assert.match(completed.text, /抬手挥动。镜头固定，构图保持稳定。\n/)
+})
+
+test('generation keeps the cuts and dialogue of an English display around a Chinese name, and never sends a broken display', async () => {
+  const noEngine = async () => { throw new Error('no engine call expected') }
+  const narrative = '[Shot 1] Live-action, cinematic. A girl named 小红 walks to the door and waves. The girl (S1) says: <d>[Chinese] 出发吧。</d> The camera holds a static shot.\n[Shot 2] At 00:03.000, the camera cuts to the street as she walks away.'
+  const current = { modelId: 'minimax_h3_local', mode: 'text_video', durationSeconds: 5, resources: [], prompt: format.toBaseDisplay(englishFields(narrative), { mode: 'text_video', durationSeconds: 5 }) }
+  const translated = narrative.replace('小红', 'Xiaohong')
+  const answer = (text) => async () => JSON.stringify({ modelPrompt: englishFields(text), displayPrompt: '' })
+  await assert.rejects(workflow.compileForGeneration(current, answer(translated.replace(/\n\[Shot 2\].*/, ''))), /镜头或切换时间不一致/)
+  await assert.rejects(workflow.compileForGeneration(current, answer(translated.replace(/ The girl \(S1\) says: <d>.*?<\/d>/, ''))), /台词或屏幕文字不一致/)
+  assert.equal((await workflow.compileForGeneration(current, answer(translated))).modelText, englishFields(translated.replace('\n', ' ')))
+  // Sections that cannot be read are an error, never raw Chinese for H3.
+  await assert.rejects(workflow.compileForGeneration({ ...current, prompt: '【画面与动作】\n【镜头 1】女孩挥手。\n\n【环境声音】\n风声。\n\n【环境声音】\n鸟鸣。\n\n【背景音乐】\n无' }, noEngine), /三个字段/)
+})
+
 test('generation compiles the base display to the official English text', async () => {
   const noEngine = async () => { throw new Error('no engine call expected') }
   // A translation received while optimizing is reused, keyed on the model-token text.
