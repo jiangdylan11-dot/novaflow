@@ -37,6 +37,25 @@ class SceneTest(unittest.TestCase):
         result = FakeAssistant().write(plan, source, requirement, 5, False, observed or {}, observed_scene or {}, attribute_pictures or {}, cut=cut)
         return result, prompts[0] if prompts else ''
 
+    def test_a_character_whose_picture_names_its_style_is_no_style_picture(self):
+        # The planner may end a character with its picture's style ("…，3D渲染风格，纯白色背景"): it stays a character,
+        # described as its picture is observed, and is introduced with where it stands at its first appearance.
+        erlang = '男性角色，黑发束起，身穿金色铠甲，手持金色长枪'
+        plan = {'references': [subject(1, '<Picture 1>', erlang + '，3D渲染风格，纯白色背景', '金色铠甲'),
+                               subject(2, '<Picture 2>', GIRL + '，动漫插画风格', '黑短发')],
+                'summary': '<Subject 1> 与 <Subject 2> 面对面抱拳行礼'}
+        output = ('事件：<Subject 1> 与 <Subject 2> 面对面抱拳行礼\n画风：3D渲染\n场景：庭院\n景别：中景，两人分站左右\n'
+                  '站位：<Subject 1> 站在画面左侧，面朝右；<Subject 2> 站在画面右侧，面朝左\n'
+                  '动作1：<Subject 1> 抱拳行礼\n动作2：<Subject 2> 抱拳回礼\n镜头：固定\n声音：衣料轻响\n配乐：无')
+        result, _ = self.write(plan, '', output, observed={'<Picture 1>': erlang, '<Picture 2>': GIRL}, requirement='图1的角色和图2的角色面对面抱拳行礼')
+        self.assertEqual([row['description'] for row in result['references']], [erlang, GIRL])
+        self.assertIn('[Shot 1] 中景，两人分站左右。场景是庭院。<Subject 1> 是男性角色，黑发束起，身穿金色铠甲，手持金色长枪。<Subject 1> 站在画面左侧，面朝右。',
+                      result['description'])
+        # A label that ends its line takes the line after it; a conflict nobody asked for goes with its clause.
+        broken = output.replace('动作1：<Subject 1> 抱拳行礼', '动作1：\n<Subject 1> 抱拳行礼，两人对峙').replace('动作2：<Subject 2> 抱拳回礼', '动作2：\n<Subject 2> 抱拳回礼')
+        again, _ = self.write(plan, '', broken, observed={'<Picture 1>': erlang, '<Picture 2>': GIRL}, requirement='图1的角色和图2的角色面对面抱拳行礼')
+        self.assertEqual(again['description'], result['description'])
+
     def test_style_picture_lends_only_its_style(self):
         panda = '熊猫，脸部有红色心形图案，头顶金色卷云纹饰，手持红色长棍'
         plan = {'references': [subject(1, '<Picture 1>', ROBOT, '铜绿色、发光圆形眼睛'),
@@ -114,7 +133,7 @@ class SceneTest(unittest.TestCase):
         result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯', output)
         self.assertEqual(result['music'], 'N/A')
         # A sound written as a noun reads as a sentence.
-        self.assertEqual(result['soundscape'], '可以听到金属碰撞声。')
+        self.assertEqual(result['soundscape'], '金属碰撞声清晰可闻。')
         result, _ = self.write(plan, '<Picture 1> 的机器人举起 <Picture 2> 的奖杯，配上欢快的音乐', output)
         self.assertEqual(result['music'], '胜利主题轻快音乐。')
 
@@ -168,7 +187,8 @@ class SceneTest(unittest.TestCase):
                   '动作1：<Subject 1> 走向<Subject 2>\n动作2：<Subject 1> 右手轻托<Subject 2>举到面前\n镜头：固定\n声音：脚步声\n配乐：无')
         result, _ = self.write(plan, '', output, requirement='根据已上传的参考图反推视频提示词')
         self.assertEqual(result['summary'], '<Subject 1> 走向 <Subject 2>，弯腰把它拾起。')
-        self.assertIn('<Subject 1> 右手轻托 <Subject 2> 举到面前。', result['description'])
+        # The side the user never wrote goes, as in the base modes.
+        self.assertIn('<Subject 1> 一只手轻托 <Subject 2> 举到面前。', result['description'])
         # Stillness the user asked for is not filler.
         result, _ = self.write(plan, '<Picture 1> 的机器人拾起 <Picture 2>，安安静静的', output)
         self.assertIn('静置不动', result['summary'])
@@ -207,8 +227,10 @@ class SceneTest(unittest.TestCase):
         result, prompt = self.write(plan, '<Picture 1> 的猫跳下桌子，第3秒切到近景', output, cut=True)
         self.assertIn('\n镜头2（第X秒）：用户要求切换镜头', prompt)
         # The cut time is the user's; a shot acting out an undefined subject is dropped.
-        # The style sentence comes before [Shot 1], as in the official reference layout; every shot names its place and light.
-        self.assertEqual(result['description'], '视频采用写实照片风格。\n[Shot 1] 场景是客厅，午后阳光从窗外照进来。<Subject 1> 在桌边蹲低身体。<Subject 1> 向前跳下桌子。镜头跟随。'
+        # The style sentence with its light comes before [Shot 1], as in the official reference layout; the subject is
+        # described at its first appearance; every shot names its place and light and shows the subject's look again.
+        self.assertEqual(result['description'], '视频采用写实照片风格，午后阳光从窗外照进来。\n[Shot 1] 场景是客厅。<Subject 1> 是橘色长毛猫。<Subject 1> 在桌边蹲低身体。'
+                                                '<Subject 1> 向前跳下桌子。镜头跟随。'
                                                 '\n[Shot 2] At 00:03.000 镜头切到近景，<Subject 1> 落地后回头看向镜头。场景仍是客厅，午后阳光从窗外照进来。')
         # One camera move, said once, with an official speed only.
         result, _ = self.write(plan, '<Picture 1> 的猫跳下桌子', output.replace('镜头：跟随', '镜头：跟拍，镜头跟随 <Subject 1> 向前移动，速度适中'))
