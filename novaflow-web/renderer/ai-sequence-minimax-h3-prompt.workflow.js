@@ -1179,7 +1179,26 @@
     return finish(compiled)
   }
 
+  // Generation never fails because of how a prompt is written: the official English is a best
+  // effort for prompts the AI 助手 wrote. Anything it cannot turn into that (free-form text, a
+  // prompt from another mode, a translate step that is missing or fails) goes out as the user
+  // wrote it, the way every prompt did before the official layout. Only 任务中止 stops here.
   async function compileForGeneration(options, optimize) {
+    try {
+      return await compileOfficialForGeneration(options, optimize)
+    } catch (error) {
+      if (error?.novaflowStopped) throw error
+      const source = stringValue(options?.prompt).trim()
+      let modelText = source
+      try {
+        modelText = toModelReferences(source, createReferenceCatalog({ mode: normalizeMode(options?.mode || 'multi_reference'), resources: options?.resources }))
+      } catch (_) {}
+      try { globalThis.console?.warn?.('[NovaFlow] 提示词按原文生成：', String(error?.message || error)) } catch (_) {}
+      return deepFreeze({ text: source, modelText, referenceEditPolicy: null, asWritten: true })
+    }
+  }
+
+  async function compileOfficialForGeneration(options, optimize) {
     // 多参 callers predate the mode option.
     const current = { ...options, modelId: MINIMAX_H3_MODEL_ID, mode: normalizeMode(options?.mode || 'multi_reference') }
     if (current.mode !== 'multi_reference') return compileBaseForGeneration(current, optimize)

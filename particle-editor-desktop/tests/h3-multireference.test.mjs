@@ -78,7 +78,9 @@ test('a bound editor alias echoed in a multi-reference result binds to its proto
  const echoed=text.replace('<Subject 1> is the dollar coin from <Picture 1>','<Subject 1> is the dollar coin from @参考图1');
  const result=await prompt.compileForGeneration(current,async()=>echoed);
  assert.match(result.modelText,/from <Picture 1>/);assert.doesNotMatch(result.modelText,/@参考图/);
- await assert.rejects(prompt.compileForGeneration(current,async()=>text.replace('<Picture 1>','@参考图3')),/not UI aliases \(@参考图3\)/);
+ // An answer that cannot be bound never reaches H3; the prompt goes out as written.
+ const unbound=await prompt.compileForGeneration(current,async()=>text.replace('<Picture 1>','@参考图3'));
+ assert.equal(unbound.asWritten,true);assert.doesNotMatch(unbound.modelText,/@参考图3/);
 });
 test('generation compiles free text and upgrades legacy video edits with missing processing controls',async()=>{
  let calls=0;const result=await prompt.compileForGeneration(current,async payload=>{calls++;assert.equal(payload.h3Mode,'multi_reference');assert.doesNotMatch(payload.requirements,/H3 compile: translate-only/);return text});
@@ -86,7 +88,8 @@ test('generation compiles free text and upgrades legacy video edits with missing
  // An English legacy video edit is a creative compile (it fills the edit controls from the frames), never translate-only.
  await prompt.compileForGeneration({...current,prompt:text},async payload=>{calls++;assert.match(payload.prompt,/subject_definitions:/);assert.doesNotMatch(payload.requirements,/H3 compile: translate-only/);return text});
  assert.equal(calls,2);
- await assert.rejects(prompt.compileForGeneration(current,async()=> '【任务定位】\nold output'),/六个参考字段/);
+ const old=await prompt.compileForGeneration(current,async()=> '【任务定位】\nold output');
+ assert.equal(old.asWritten,true);assert.doesNotMatch(old.modelText,/【任务定位】|old output/);
 });
 test('full audio reuse really connects the input track; timbre/style references use generated audio',()=>{
  const params={mode:'r2v',prompt:text,referenceImages:['coin.png'],referenceVideo:'spin.mp4',referenceAudio:'music.wav',durationSeconds:3,seed:1};

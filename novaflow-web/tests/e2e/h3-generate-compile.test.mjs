@@ -106,7 +106,7 @@ test('首尾帧视频 uses bare picture labels, 文生视频 has no alignment li
   assert.equal(p.calls.local.length, 0);
 });
 
-test('the hosted site translates through Grok, an old engine fails clearly, a newer run discards the result', async () => {
+test('the hosted site translates through Grok, an old engine still generates with the prompt as written, a newer run discards the result', async () => {
   const web = page({ engine: (payload, route) => route === 'grok' ? translate('The girl shown in <Picture 1> waves. The camera holds a static shot.')(payload) : { ok: false, error: '提示词助手在 Web 版通过智能 AI 提供' } });
   const prompt = display('', '@参考图 中的少女挥手。镜头保持固定。');
   const built = await web.run('image_video', prompt, { aiSeqRefImage: frame('web') });
@@ -115,8 +115,11 @@ test('the hosted site translates through Grok, an old engine fails clearly, a ne
   assert.equal(built.prompt, I2V_LINE + '\n\n' + english('The girl shown in <Picture 1> waves. The camera holds a static shot.'));
 
   const old = page({ engine: () => ({ ok: true, prompt: '【任务定位】\n图生视频，时长5秒。' }) });
-  await assert.rejects(old.run('image_video', prompt, { aiSeqRefImage: frame('old') }), /云端或本机提示词服务需要更新后才能转换为官方英文提示词/);
-  assert.equal(old.calls.built.length, 0, 'Chinese prose never reaches H3 from a structured prompt');
+  // Generation never fails because of the prompt: without the translate step it goes out as written.
+  const sentOld = await old.run('image_video', prompt, { aiSeqRefImage: frame('old') });
+  assert.equal(old.calls.built.length, 1);
+  assert.match(sentOld.prompt, /<Picture 1> 中的少女挥手/);
+  assert.doesNotMatch(sentOld.prompt, /@参考图|【任务定位】/);
 
   const stale = page({ engine: translate('The girl shown in <Picture 1> waves. The camera holds a static shot.') });
   assert.equal(await stale.run('image_video', prompt, { aiSeqRefImage: frame('stale') }, { bumpTokenDuringCompile: true }), undefined);
@@ -134,4 +137,17 @@ test('prompt history saved in five sections opens as the new display before the 
   assert.ok(index.indexOf('./h3-prompt-format.js') < index.indexOf('./novaflow-smart-ai.js'));
   assert.match(index, /<script type="module" crossorigin src="\.\/assets\/index-BbIa-2NM\.js/);
   assert.doesNotMatch(index, /<script[^>]*(?:defer|async|type="module")[^>]*novaflow-smart-ai\.js/);
+});
+
+test('any prompt generates: a 多参 display in 图生视频 or free text with an engine error goes out as written', async () => {
+  // The prompt a user saw fail with 「提示词需要画面与动作、环境声音和背景音乐三个字段」 (2026-09-28).
+  const multi = '【主体定义】\n<主体 1>：@参考图1 中的少女，黑色短发，橙色衬衫。\n\n【任务说明】\n[参考生成] <主体 1> 沿公路走来。\n\n【保留规则】\n<主体 1>: 完全保留 - 发型与服装。\n\n【画面与动作】\n【镜头 1】<主体 1> 沿公路走向镜头。\n\n【环境声音】\n风声。\n\n【背景音乐】\n无';
+  const quiet = page({ engine: () => { throw new Error('no engine call expected'); } });
+  const built = await quiet.run('image_video', multi, { aiSeqRefImage: frame('multi') });
+  assert.equal(quiet.calls.built.length, 1);
+  assert.match(built.prompt, /【主体定义】/);
+  const failing = page({ engine: () => ({ ok: false, error: 'engine offline' }) });
+  const sent = await failing.run('image_video', display('', '@参考图 中的少女挥手。镜头保持固定。'), { aiSeqRefImage: frame('offline') });
+  assert.equal(failing.calls.built.length, 1);
+  assert.match(sent.prompt, /<Picture 1> 中的少女挥手/);
 });

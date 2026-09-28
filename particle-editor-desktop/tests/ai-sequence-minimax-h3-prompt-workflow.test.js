@@ -683,17 +683,24 @@ test('base pairs bind echoed aliases and complete the camera when the editor alr
   assert.match(completed.text, /抬手挥动。镜头固定，构图保持稳定。\n/)
 })
 
-test('generation keeps the cuts and dialogue of an English display around a Chinese name, and never sends a broken display', async () => {
+test('generation keeps the cuts and dialogue of an English display around a Chinese name, and sends what it cannot compile as written', async () => {
   const noEngine = async () => { throw new Error('no engine call expected') }
   const narrative = '[Shot 1] Live-action, cinematic. A girl named 小红 walks to the door and waves. The girl (S1) says: <d>[Chinese] 出发吧。</d> The camera holds a static shot.\n[Shot 2] At 00:03.000, the camera cuts to the street as she walks away.'
   const current = { modelId: 'minimax_h3_local', mode: 'text_video', durationSeconds: 5, resources: [], prompt: format.toBaseDisplay(englishFields(narrative), { mode: 'text_video', durationSeconds: 5 }) }
   const translated = narrative.replace('小红', 'Xiaohong')
   const answer = (text) => async () => JSON.stringify({ modelPrompt: englishFields(text), displayPrompt: '' })
-  await assert.rejects(workflow.compileForGeneration(current, answer(translated.replace(/\n\[Shot 2\].*/, ''))), /镜头或切换时间不一致/)
-  await assert.rejects(workflow.compileForGeneration(current, answer(translated.replace(/ The girl \(S1\) says: <d>.*?<\/d>/, ''))), /台词或屏幕文字不一致/)
+  // A translation that loses a cut or a line never reaches H3; the prompt goes out as written instead.
+  for (const broken of [translated.replace(/\n\[Shot 2\].*/, ''), translated.replace(/ The girl \(S1\) says: <d>.*?<\/d>/, '')]) {
+    const sent = await workflow.compileForGeneration(current, answer(broken))
+    assert.equal(sent.asWritten, true)
+    assert.equal(sent.modelText, current.prompt.trim())
+  }
   assert.equal((await workflow.compileForGeneration(current, answer(translated))).modelText, englishFields(translated.replace('\n', ' ')))
-  // Sections that cannot be read are an error, never raw Chinese for H3.
-  await assert.rejects(workflow.compileForGeneration({ ...current, prompt: '【画面与动作】\n【镜头 1】女孩挥手。\n\n【环境声音】\n风声。\n\n【环境声音】\n鸟鸣。\n\n【背景音乐】\n无' }, noEngine), /三个字段/)
+  // Sections that cannot be read go out as written: generation never fails because of the prompt's layout.
+  const unreadable = '【画面与动作】\n【镜头 1】女孩挥手。\n\n【环境声音】\n风声。\n\n【环境声音】\n鸟鸣。\n\n【背景音乐】\n无'
+  const sentAsWritten = await workflow.compileForGeneration({ ...current, prompt: unreadable }, noEngine)
+  assert.equal(sentAsWritten.asWritten, true)
+  assert.equal(sentAsWritten.modelText, unreadable)
 })
 
 test('generation compiles the base display to the official English text', async () => {
@@ -736,11 +743,16 @@ test('generation compiles the base display to the official English text', async 
   const legacy = await workflow.compileForGeneration(i2vCurrent(legacyI2v.replace('<Picture 1>', '@参考图'), 'compile-e'), translate)
   assert.match(requests[1].prompt, /^integrated_multimodal_description: \[Shot 1\] 少女站在站台上，镜头固定。画面从 <Picture 1> 的位置与构图开始。/)
   assert.equal(legacy.modelText, I2V_LINE + '\n\n' + englishFields())
-  // An engine without the translate step answers in Chinese or five sections: never sent to H3.
+  // An engine without the translate step answers in Chinese or five sections: that answer is dropped and
+  // the prompt goes out as written, its @参考图 bound to <Picture 1>.
   for (const answer of [legacyI2v, chineseFields()]) {
-    await assert.rejects(workflow.compileForGeneration(i2vCurrent(chinese.prompt.replace('女孩', '姑娘'), 'compile-f'), async () => answer), /云端或本机提示词服务需要更新后才能转换为官方英文提示词/)
+    const sent = await workflow.compileForGeneration(i2vCurrent(chinese.prompt.replace('女孩', '姑娘'), 'compile-f'), async () => answer)
+    assert.equal(sent.asWritten, true)
+    assert.equal(sent.text, chinese.prompt.replace('女孩', '姑娘').trim())
+    assert.doesNotMatch(sent.modelText, /@参考图|【任务定位】/)
   }
-  await assert.rejects(workflow.compileForGeneration(i2vCurrent(chinese.prompt.replace('女孩', '男孩'), 'compile-g'), async () => JSON.stringify({ modelPrompt: chineseFields(), displayPrompt: chineseFields() })), /英文正文/)
+  const chineseBack = await workflow.compileForGeneration(i2vCurrent(chinese.prompt.replace('女孩', '男孩'), 'compile-g'), async () => JSON.stringify({ modelPrompt: chineseFields(), displayPrompt: chineseFields() }))
+  assert.equal(chineseBack.asWritten, true)
 })
 
 test('generation writes the mode-exact official alignment: none for 文生, bare labels and the final shot for 首尾帧', async () => {
@@ -755,7 +767,7 @@ test('generation writes the mode-exact official alignment: none for 文生, bare
   assert.equal((await workflow.compileForGeneration({ modelId: 'minimax_h3_local', mode: 'text_video', durationSeconds: 5, prompt: ' ', resources: [] })).modelText, '')
 })
 
-test('the policy follows the user\'s words, quoted lines follow the requirement, and a short translation is refused', async () => {
+test('the policy follows the user\'s words, quoted lines follow the requirement, and a short translation falls back to the text as written', async () => {
   // The idle-breathing rule reaches only idle requests (source or requirement), for base and 多参 alike.
   assert.doesNotMatch(workflow.prepareRequest(i2vCurrent('@参考图 中的女神闭目养神，晚风轻拂长发')).requirements, /仅呼吸待机/)
   assert.match(workflow.prepareRequest(i2vCurrent('@参考图 中的机器人原地待机')).requirements, /仅呼吸待机/)
@@ -777,11 +789,13 @@ test('the policy follows the user\'s words, quoted lines follow the requirement,
   }
   assert.ok(workflow.validateAndRestore({ text: lost, context: workflow.prepareRequest({ ...speaking, requirements: '她不开口，只挥手' }).context, current: speaking }).modelText)
   assert.throws(() => workflow.validateAndRestore({ text: lost, context: workflow.prepareRequest({ ...speaking, requirements: '保留原台词，把镜头改成缓慢推近' }).context, current: speaking }), /原台词未完整保留/)
-  // A translation that drops part of the display is refused instead of reaching H3.
+  // A translation that drops part of the display never reaches H3: the display goes out as written.
   const station = '[Shot 1] <Picture 1> 中的少女站在站台上，身穿米色风衣，背着棕色皮包，缓慢转身面向驶来的列车，抬起右手挥动三次，风吹起她的长发与衣摆，列车灯光在她脸上掠过。镜头保持固定，构图稳定。'
   const shown = format.toBaseDisplay(chineseFields(station), { mode: 'image_video', durationSeconds: 5 }).replace(/<Picture 1>/g, '@参考图')
   const translate = (narrative) => async () => JSON.stringify({ modelPrompt: englishFields(narrative), displayPrompt: '' })
-  await assert.rejects(workflow.compileForGeneration(i2vCurrent(shown, 'compile-h'), translate('[Shot 1] The girl shown in <Picture 1> waves. The camera holds a static shot.')), /遗漏了中文内容/)
+  const shortSent = await workflow.compileForGeneration(i2vCurrent(shown, 'compile-h'), translate('[Shot 1] The girl shown in <Picture 1> waves. The camera holds a static shot.'))
+  assert.equal(shortSent.asWritten, true)
+  assert.doesNotMatch(shortSent.modelText, /waves/)
   const full = '[Shot 1] The girl shown in <Picture 1> stands on the platform in a beige trench coat with a brown leather bag, slowly turns toward the arriving train and waves her right hand three times while the wind lifts her long hair and coat hem and the train lights sweep across her face. The camera holds a static shot and the framing stays stable.'
   assert.equal((await workflow.compileForGeneration(i2vCurrent(shown, 'compile-h'), translate(full))).modelText, I2V_LINE + '\n\n' + englishFields(full))
 })

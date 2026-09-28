@@ -1270,7 +1270,11 @@ async function verifyGenerationCompile() {
   assert.equal(web.calls.grok.length, 1, "the hosted site translates through Grok");
   assert.equal(web.calls.grok[0].token, "session-token");
   assert.match(web.result.modelText, /turns and waves/);
-  await assert.rejects(run(function oldEngine() { return { ok: true, prompt: "【任务定位】\n图生视频" }; }), /需要更新后才能转换为官方英文提示词/);
+  // Generation never fails because of the prompt: an engine without the translate step leaves it as written.
+  const old = await run(function oldEngine() { return { ok: true, prompt: "【任务定位】\n图生视频" }; });
+  assert.equal(old.result.asWritten, true);
+  assert.match(old.result.modelText, /<Picture 1> 中的女孩转身挥手/);
+  assert.doesNotMatch(old.result.modelText, /@参考图|【任务定位】/);
 
   // History entries saved in the old five sections open in the new display with the editor aliases.
   const store = new Map([["nf_text_history:ai_seq_prompt", JSON.stringify({
