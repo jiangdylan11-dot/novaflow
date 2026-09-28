@@ -207,11 +207,14 @@ test('reverse outputs: local fact slots become readable lines, Grok prose passes
   const i2v = {mode:'image_video', durationSeconds:5};
   for (const api of apis) {
     const expected = {
-      localI2v: '【参考帧对齐】\n<Picture 1> 是视频第 0.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】一名，红色战甲女性，黑色长发，站立，抬手。\n场景：雪山。\n画面：全身景，平视。\n光色材质：自然光。\n随后，她转身向镜头挥手。按用户运镜：镜头缓慢推近。\n她说：<d>[Chinese] 出发吧。</d>\n\n【环境声音】\n与场景一致的低强度环境底声。\n\n【背景音乐】\n无',
-      localFl2v: '【参考帧对齐】\n<Picture 1> 对齐视频第 0.00 秒（开头）；<Picture 2> 对齐第 5.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】两帧共有：\n一名，红色战甲女性，黑色长发，抬手。\n场景：雪山。\n画面：全身景，平视。\n光色材质：自然光。\n开头（<Picture 1>）：\n站立。\n结尾（<Picture 2>）：\n坐下。\n画面从首帧状态自然延续，动作连贯。镜头保持构图。动作在 5.00 秒连续抵达尾帧状态。\n\n【环境声音】\n与场景一致的低强度环境底声。\n\n【背景音乐】\n无',
+      localI2v: '【参考帧对齐】\n<Picture 1> 是视频第 0.00 秒的起始画面，完整参考。\n\n【画面与动作】\n【镜头 1】一名红色战甲女性，黑色长发，站立，抬手。\n场景：雪山。\n画面：全身景，平视。\n光色材质：自然光。\n随后，她转身向镜头挥手。镜头缓慢推近。\n她说：<d>[Chinese] 出发吧。</d>\n\n【环境声音】\n与场景一致的低强度环境底声。\n\n【背景音乐】\n无',
+      localFl2v: '【参考帧对齐】\n<Picture 1> 对齐视频第 0.00 秒（开头）；<Picture 2> 对齐第 5.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】两帧共有：\n一名红色战甲女性，黑色长发，抬手。\n场景：雪山。\n画面：全身景，平视。\n光色材质：自然光。\n开头（<Picture 1>）：\n站立。\n结尾（<Picture 2>）：\n坐下。\n画面从首帧状态自然延续，动作连贯。镜头保持构图。动作在 5.00 秒连续抵达尾帧状态。\n\n【环境声音】\n与场景一致的低强度环境底声。\n\n【背景音乐】\n无',
       grokFl2v: '【参考帧对齐】\n<Picture 1> 对齐视频第 0.00 秒（开头）；<Picture 2> 对齐第 5.00 秒（结尾）。\n\n【画面与动作】\n【镜头 1】写实摄影；中景；平视\n一名 少女；黑色短发；橙色衬衫；站在路边\n乡村公路；远处稻田\n午后自然光；暖橙色调\n动作从首帧姿态轻缓开始，以小幅、连续的姿态变化自然推进，随后逐渐收稳。\n镜头保持固定，延续首帧的视角与构图。\n过渡过程中逐步到达尾帧状态：坐在路边\n到 5.00 秒，动作连续收束至 <Picture 2> 的准确姿态、物体位置与构图。\n\n【环境声音】\n低声、平稳的环境底声贯穿画面，轻微的动作声随可见运动同步起落。\n\n【背景音乐】\n无',
     };
     assert.equal(api.toBaseDisplay(localI2v, i2v), expected.localI2v);
+    // A count joins its identity, and the requested camera reads as a sentence on a line of its own too.
+    const cat = localI2v.replace('数量：一名；身份：红色战甲女性', '数量：两只；身份：橘猫').replace('挥手。按用户运镜：', '挥手。\n\n按用户运镜：');
+    assert.match(api.toBaseDisplay(cat, i2v), /【镜头 1】两只橘猫，黑色长发，站立，抬手。\n[\s\S]*\n随后，她转身向镜头挥手。\n镜头缓慢推近。\n/);
     // The mode and duration also come from the reverse alignment line itself.
     assert.equal(api.toBaseDisplay(localFl2v), expected.localFl2v);
     assert.equal(api.toBaseDisplay(grokFl2v), expected.grokFl2v);
@@ -223,7 +226,7 @@ test('reverse outputs: local fact slots become readable lines, Grok prose passes
       assert.equal(api.toBaseDisplay(api.fromBaseDisplay(shown), {mode:/<Picture 2>/.test(shown) ? 'first_last' : 'image_video', durationSeconds:5}), shown);
     }
     const english = api.toBaseDisplay(localEn, i2v);
-    assert.match(english, /\n【镜头 1】一名, 红色战甲女性, 黑色长发, 站立, 抬手\.\nScene: 雪山\.\nFraming: 全身景, 平视\.\nLook: 自然光\.\nThen, 她转身向镜头挥手\. Camera follows: 镜头缓慢推近\.\n她说：<d>\[Chinese\] 出发吧。<\/d>\n/);
+    assert.match(english, /\n【镜头 1】一名红色战甲女性, 黑色长发, 站立, 抬手\.\nScene: 雪山\.\nFraming: 全身景, 平视\.\nLook: 自然光\.\nThen, 她转身向镜头挥手\. Camera follows: 镜头缓慢推近\.\n她说：<d>\[Chinese\] 出发吧。<\/d>\n/);
     // The reverse display is valid Chinese fields for the later compile step.
     assert.match(api.validateBaseFields(expected.localFl2v, {mode:'first_last', durationSeconds:5, language:'zh'}), /^integrated_multimodal_description: \[Shot 1\] 两帧共有：\n/);
   }

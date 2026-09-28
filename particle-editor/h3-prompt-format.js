@@ -646,16 +646,20 @@ function readBase(value, options = {}) {
     duration:Number(options.durationSeconds ?? (legacy?.duration || alignmentDuration(parsed.alignment))) || undefined};
 }
 // Local reverse fact slots → one readable line each; prose paragraphs pass through.
+const countWord = /^(?:[一二两三四五六七八九十几数多]+|\d+)\s*[名位只个头条匹辆架群对件张把]$/;
 function relayoutBaseFacts(narrative) {
   if (!new RegExp(`(?:^|[\\n\\]。.] ?)(?:${legacyFactHeading}|${legacyFactLabel})`, 'u').test(narrative)) return narrative;
   const heading = new RegExp(`^(${legacyFactHeading})\\s*(.*)$`, 'u'), fact = new RegExp(`^(${legacyFactLabel}|随后[：:]|Then:)\\s*(.*)$`, 'u');
-  const line = text => {
-    const group = heading.exec(text);
+  // The camera the user asked for reads as a sentence, not behind a label.
+  const line = raw => {
+    const text = raw.replace(/按用户运镜[：:]\s*/g, ''), group = heading.exec(text);
     if (group) return (/<Picture [12]>.*<Picture [12]>|共同|shared/.test(group[1]) ? '两帧共有：' : /<Picture 2>|尾帧|ending/.test(group[1]) ? '结尾（<Picture 2>）：' : '开头（<Picture 1>）：') + group[2];
     const slot = fact.exec(text);
     if (!slot) return text;
     const label = slot[1].slice(0, -1), english = /^[A-Z]/.test(label);
-    let value = slot[2].split(/\s*[；;]\s*/).map(part => part.replace(/^(?:[\u4e00-\u9fff]{1,4}[：:]|(?:count|pose|action)\s+)/, '')).filter(Boolean).join(english ? ', ' : '，');
+    // A count belongs to its identity: 一名红色战甲女性, not 一名，红色战甲女性.
+    let value = slot[2].split(/\s*[；;]\s*/).map(part => part.replace(/^(?:[\u4e00-\u9fff]{1,4}[：:]|(?:count|pose|action)\s+)/, '')).filter(Boolean)
+      .reduce((all, part, i, parts) => all + (i && !countWord.test(parts[i - 1]) ? (english ? ', ' : '，') : '') + part, '');
     if (!/[。！？.!?]$/.test(value)) value += english ? '.' : '。';
     return /^(?:场景|画面|光色材质|Scene|Framing|Look)$/.test(label) ? slot[1] + (english ? ' ' : '') + value : /^(?:随后|Then)$/.test(label) ? label + (english ? ', ' : '，') + value : value;
   };
