@@ -1998,11 +1998,12 @@ function buildGrokVisualIrRetryBody(body, reason = "") {
   return retryBody;
 }
 
-// Specific failures of the shared validator (coverage, English left in the Chinese half, lost dialogue) each get the
-// instruction that fixes them, not only their message.
+// Specific failures of the shared validator on a bilingual pair (coverage, English left in the Chinese half, lost
+// dialogue) each get the instruction that fixes them, not only their message. Five sections keep their own contract.
 const MINIMAX_H3_REPAIR_FOCUS = [
   [/遗漏了中文内容/, "modelPrompt left out Chinese content: translate every sentence of every shot completely, including each subject, action, setting, light and camera detail; never summarize, merge away or drop a sentence."],
-  [/夹带英文单词|^请将(?:画面与动作|多参主体)/, "displayPrompt must be Simplified Chinese throughout: translate every remaining English word, including adjectives, sound words and camera phrases; only [Shot N], At MM:SS.mmm, <Picture N>, (S1), <d>...</d> blocks and double-quoted text stay literal."],
+  [/夹带英文单词|^请将画面与动作/, "displayPrompt must be Simplified Chinese throughout: translate every remaining English word, including adjectives, sound words and camera phrases; only [Shot N], At MM:SS.mmm, <Picture N>, (S1), <d>...</d> blocks and double-quoted text stay literal."],
+  [/^请将多参主体/, "displayPrompt must be Simplified Chinese throughout: translate every remaining English sentence and word of the subject definitions, the task explanation, the notes after each retention relation and the shots. Keep literal only the <Subject N>, <Picture N>, <Video N> and <Audio N> labels, the bracketed task tags such as [reference generation], the retention relation names (fully_preserved, partially_preserved, attribute_transfer, weak_reference, fully_copy, partially_copy, reference), the source-video prefix The target video is an edited version of <Video N>., [Shot N], At MM:SS.mmm, (S1), <d>...</d> blocks and double-quoted text."],
   [/^原台词未完整保留$|台词或屏幕文字不一致/, "Keep each line the user quoted in the source prompt, or the new line the requirements ask for, word for word where it is spoken (inside one <d>[Language] ...</d> block in the official fields) and identical in both halves of a bilingual answer; never paraphrase, translate or drop it."],
   [/模型侧提示词需要英文正文/, "modelPrompt prose is English; Chinese appears only inside <d>...</d> blocks and double-quoted on-screen text."]
 ];
@@ -2019,7 +2020,7 @@ function buildMiniMaxH3RepairBody(body, errorCode = "h3_contract_invalid", valid
     "DIRECTED H3 CONTRACT REPAIR (one final attempt).",
     `Failed gate: ${String(errorCode || "h3_contract_invalid").slice(0, 80)}.`,
     `具体失败项：${issue.message}。请针对这一项修正，同时保留原提示词事实、完整原台词和用户补充要求。`,
-    ...MINIMAX_H3_REPAIR_FOCUS.filter(([pattern]) => pattern.test(issue.message)).map(([, instruction]) => instruction),
+    ...(schema.modelPrompt ? MINIMAX_H3_REPAIR_FOCUS.filter(([pattern]) => pattern.test(issue.message)).map(([, instruction]) => instruction) : []),
     ...(errorCode === "h3_contract_enhancement_not_applied" ? [
       "The narrative was only a copy, generic padding, or an incomplete loop. Rewrite the actual motion into observable, feasible progression; for a requested loop connect the ending to the initial pose and movement phase. Preserve all hard constraints. Do not fix this by adding only headings or audio fields."
     ] : []),
@@ -2585,8 +2586,14 @@ function miniMaxH3RichHasConflict(existing, candidate, groups) {
 
 function miniMaxH3RichMergeScalar(existing, candidates, conflictGroups, limit = 200) {
   let output = normalizeSmartAiText(existing, limit).replace(/\s+/g, " ");
-  for (const candidate of candidates) {
-    if (miniMaxH3RichHasConflict(output, candidate, conflictGroups)) continue;
+  for (const sentence of candidates) {
+    // A sentence that names another shot size, angle or setting loses only that comma clause (景深清晰显示远景 after
+    // 中景构图), not the other facts it carries (轻微单点透视，镜头感自然).
+    const candidate = miniMaxH3RichHasConflict(output, sentence, conflictGroups)
+      ? sentence.split(/\s*[，,]\s*/u).filter((part) => part && !miniMaxH3RichHasConflict(output, part, conflictGroups))
+        .join(/\p{Script=Han}/u.test(sentence) ? "，" : ", ")
+      : sentence;
+    if (!candidate) continue;
     if (!output) output = candidate;
     else if (!output.toLowerCase().includes(candidate.toLowerCase())) output = `${output}；${candidate}`;
   }
@@ -2894,25 +2901,24 @@ function miniMaxH3VisualFactsSummary(ir, baseline = null) {
   };
   const current = groups(ir);
   const all = current.flat().map((text) => text.toLowerCase());
-  // An ending frame adds only what the motion changes: its subject, relation and sensitive comma clauses that the
-  // opening does not already tell (双腿交叠), never a second inventory of style, camera, scene and look, and no
-  // restatement in other words (most characters or words of the clause recur in the opening).
-  const words = (text) => miniMaxH3SafetyText(text).match(/\p{Script=Han}|[a-z]{4,}/gu) || [];
-  const opening = baseline ? new Set(words(groups(baseline).flat().join("\n"))) : null;
-  const inventory = new Set(opening ? [0, ir.entities.length + 2, ir.entities.length + 3] : []);
+  // Each subject is its own scope; style, camera, relations, scene, look and sensitive facts share one.
+  const scopeOf = (index, facts) => (index > 0 && index <= facts.entities.length ? `${index}:` : "");
+  // An ending frame states what differs from the opening in every group, a pose as much as a framing, a light or a
+  // setting (站 after 坐, 特写 after 中景): a comma clause is left out only when an opening clause of its scope already
+  // contains it (中景构图 in both frames). A subject is compared only with the same subject.
+  const comparable = baseline?.entities.length === ir.entities.length;
+  const opening = groups(baseline).flatMap((group, index) => (comparable || !scopeOf(index, baseline)
+    ? group.map((text) => [scopeOf(index, baseline), text.toLowerCase()]) : []));
   const written = new Set();
   const fresh = (clause, scope) => clause.split(/\s*[，,]\s*/u).filter((part) => {
-    const key = scope + part.toLowerCase();
-    if (!part || written.has(key)) return false;
-    written.add(key);
-    const tokens = words(part);
-    return !opening || tokens.filter((token) => opening.has(token)).length < tokens.length * 0.6;
+    const key = part.toLowerCase();
+    if (!part || written.has(scope + key)) return false;
+    written.add(scope + key);
+    return !opening.some(([openingScope, text]) => openingScope === scope && text.includes(key));
   }).join(/\p{Script=Han}/u.test(clause) ? "，" : ", ");
   const paragraphs = [];
   current.forEach((group, index) => {
-    if (inventory.has(index)) return;
-    // Each subject is its own scope; style, relations, scene, look and sensitive facts share one.
-    const scope = index > 0 && index <= ir.entities.length ? `${index}:` : "";
+    const scope = scopeOf(index, ir);
     let paragraph = "";
     for (const clause of group) {
       // Each fact once: a fragment inside a longer clause of the frame (交叠 in 双腿交叠) or a comma clause another

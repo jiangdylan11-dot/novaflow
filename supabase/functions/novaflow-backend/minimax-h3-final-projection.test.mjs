@@ -1569,7 +1569,7 @@ test("H3 rich-primary keeps the sentences Grok wrote whole, with the subject sen
   assert.equal(new Set(sentences).size, sentences.length, "each fact once");
 });
 
-test("H3 rich-primary FL2VA ending adds only what differs from the opening frame", async () => {
+const h3Fl2vVisual = async (openingRich, endingRich) => {
   const request = buildH3({
     purpose: "minimax-h3-fl2v-reverse",
     durationSeconds: 6,
@@ -1579,16 +1579,58 @@ test("H3 rich-primary FL2VA ending adds only what differs from the opening frame
   let calls = 0;
   const result = await callGrokResponseWithVisualRetry(request.body, request.inputMeta, request.resultOptions, async () => {
     calls += 1;
-    return h3AttemptFromText(calls === 1 ? liveGoddessOpeningRich : liveGoddessEndingRich, request.resultOptions, `h3-live-goddess-${calls}`);
+    return h3AttemptFromText(calls === 1 ? openingRich : endingRich, request.resultOptions, `h3-fl2v-${calls}`);
   });
-  const visual = h3Visual(result.data.output_text);
+  return h3Visual(result.data.output_text);
+};
+const h3Ending = (visual) => /过渡过程中逐步到达尾帧状态：([^\n]*)/u.exec(visual)?.[1] ?? "";
+
+test("H3 rich-primary FL2VA ending leaves out only the clauses the opening frame already states", async () => {
+  const visual = await h3Fl2vVisual(liveGoddessOpeningRich, liveGoddessEndingRich);
   for (const sentence of ["紫发女子坐在台阶上，长直紫发披肩，穿白色透视长裙配金色腰封与臂环", "猫与女子之间相隔数级台阶。", "上方柔和暮光照射台阶"]) {
     assert.ok(visual.includes(sentence), sentence);
   }
   assert.doesNotMatch(visual, /；|一名 /u);
-  const ending = /过渡过程中逐步到达尾帧状态：([^\n]*)/u.exec(visual)?.[1] || "";
-  // The pose change survives; the restated woman, cat, style, scene and light do not.
+  const ending = h3Ending(visual);
+  // The pose change survives once; 中景构图, which both frames state, is written only for the opening.
   assert.match(ending, /双腿交叠。/u);
-  assert.doesNotMatch(ending, /紫发女子|猫咪|渲染风格|大理石台阶延伸|暮光|星光|交叠[^。]*交叠/u);
+  assert.doesNotMatch(ending, /交叠[^。]*交叠|中景构图/u);
+  assert.equal(visual.split("中景构图").length, 2);
   assert.match(visual, /到 6\.00 秒，动作连续收束至 <Picture 2> 的准确姿态/u);
+});
+
+test("H3 rich-primary FL2VA ending keeps a changed pose, framing, light, setting and style", async () => {
+  const rich = ({ style = "写实摄影风格，自然肤色与布料质感。", subject, scene = "背景为公园草地与树木，前景是石阶，女子位于中景。",
+    light = "午后阳光从左侧照射，整体色板以绿色和暖黄为主。", camera = "中景构图，平视视角，浅景深。" }) => [
+    "[风格设定]", style, "[主体物品]", subject, "[环境背景]", scene, "[光线与色彩]", light, "[拍摄参数]", camera
+  ].join("\n");
+  const woman = "画面中有一名年轻女子，黑色长发披肩，身穿白色衬衫与蓝色牛仔裤。";
+  const seated = rich({ subject: woman + "女子坐在台阶上，面向镜头，双眼紧闭，右手握着一本书。一只白猫趴在她脚边的地上。" });
+  // Antonyms share almost every character with the opening (坐/站, 面向/背对, 闭/睁); only the unchanged clauses drop.
+  assert.equal(h3Ending(await h3Fl2vVisual(seated, rich({ subject: woman + "女子站在台阶上，背对镜头，双眼睁开，右手放下那本书。白猫跳到台阶上趴在她身旁。" }))),
+    "女子站在台阶上，背对镜头，双眼睁开，右手放下那本书。白猫跳到台阶上趴在她身旁。");
+  // A close-up, a new light, a new setting or a new style at <Picture 2> is stated as well.
+  assert.equal(h3Ending(await h3Fl2vVisual(seated, rich({
+    subject: woman + "女子坐在台阶上，面向镜头，双眼紧闭，右手握着一本书。一只白猫趴在她脚边的地上。",
+    style: "二维动漫插画风格，自然肤色与布料质感。",
+    scene: "背景为夜晚的城市街道，前景是石阶，女子位于中景。",
+    light: "冷白色路灯从正上方照射，整体色板以绿色和暖黄为主。",
+    camera: "特写构图，平视视角，浅景深。"
+  }))), "二维动漫插画风格。特写构图。背景为夜晚的城市街道。冷白色路灯从正上方照射。");
+  // An identical ending frame has nothing to add.
+  assert.equal(h3Ending(await h3Fl2vVisual(seated, seated)), "");
+});
+
+test("H3 rich-primary camera sentence that names another shot size keeps its other clauses", async () => {
+  const request = buildH3({ contentPolicy: { sensitiveVisualAnalysis: true, allSubjectsConfirmedAdult: false } });
+  const visualFor = async (camera) => h3Visual((await callGrokResponseWithVisualRetry(request.body, request.inputMeta, request.resultOptions, async () => (
+    h3AttemptFromText(liveRobotRich.replace(/(?<=\[拍摄参数\]\n).*/u, camera), request.resultOptions, "h3-camera")
+  ))).data.output_text);
+  // Round-2 live camera section (a_rfix1): 远景 here conflicts with 中景; only its comma clause drops.
+  const live = await visualFor("中景构图，平视视角。主体居中偏左，道路透视线引导构图。轻微单点透视，镜头感自然，景深清晰显示远景。");
+  assert.ok(live.includes("中景构图，平视视角。主体居中偏左，道路透视线引导构图。轻微单点透视，镜头感自然。"), live);
+  assert.doesNotMatch(live, /景深清晰显示远景/u);
+  const low = await visualFor("中景构图。低角度仰拍视角，前景草叶虚化，远景树林清晰可见。");
+  assert.ok(low.includes("中景构图。低角度仰拍视角，前景草叶虚化。"), low);
+  assert.doesNotMatch(low, /远景树林/u);
 });

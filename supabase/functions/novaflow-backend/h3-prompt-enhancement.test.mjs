@@ -250,6 +250,25 @@ test('the shared validator\'s coverage, English-leak and dialogue failures get t
   assert.match(english, /\nmodelPrompt prose is English; Chinese appears only inside <d>\.\.\.<\/d> blocks/);
 });
 
+test('a 多参 display repair keeps the reference literals, and five sections get no pair instruction', async () => {
+  // 多参's Chinese half keeps its labels, task tags and relation names in English; the base list would drop them.
+  const six = values => edge.referenceFields.map((field, i) => field + ':\n' + values[i]).join('\n\n');
+  const english = six(['<Subject 1>: A girl in a red cloak with long black hair, from <Picture 1>.', '[reference generation] <Subject 1> runs across the snow, stops and looks back over her shoulder.', '<Subject 1>: fully_preserved - red cloak, long black hair and face.', 'Realistic style. [Shot 1] <Subject 1> runs forward across the snow as the camera tracks her, then she stops and looks back.', 'Wind and footsteps crunching on snow.', 'N/A']);
+  const snow = '<Picture 1> 中的少女在雪地里奔跑，停下后回头看。';
+  const reference = await repairText(buildGrokPromptOptimizeRequest({purpose:'minimax-h3-prompt-enhance', h3Mode:'multi_reference', durationSeconds:5, prompt:snow,
+    requirements:['Available resource labels: <Picture 1> = captured image slot multi_ref_image_1. Never invent a resource label.', 'H3 response format: bilingual-v1', 'Source prompt:', snow].join('\n')}, 'test-model'),
+    JSON.stringify({modelPrompt:english, displayPrompt:english, editPolicy:{preserveBackground:false, preserveMotion:false, sameShapeAppearanceOnly:false}}));
+  assert.match(reference, /具体失败项：请将多参主体[^\n]*\ndisplayPrompt must be Simplified Chinese throughout: [^\n]*Keep literal only the <Subject N>, <Picture N>, <Video N> and <Audio N> labels, the bracketed task tags such as \[reference generation\], the retention relation names \(fully_preserved, partially_preserved, attribute_transfer, weak_reference, fully_copy, partially_copy, reference\), the source-video prefix/);
+  assert.doesNotMatch(reference, /only \[Shot N\]/);
+  // An old renderer's five sections write the line as (S1)：“…” in 【台词】, never as a <d> block.
+  const station = '女孩在车站挥手，(S1)：“出发吧。”';
+  const five = await repairText(baseRequest('image_video', station, ['Available resource labels: <Picture 1> = captured image slot first_frame. Never invent a resource label.'], [edge.instruction, edge.formatInstruction]),
+    JSON.stringify({task:'图生视频，<Picture 1> 为起始帧，时长6秒。', speakers:'<Subject 1> = (S1)，车站里的女孩。', description:'女孩站在车站站台上。0.0-3.0s：她抬起右手向远处挥动。3.0-6.0s：她放下手，微笑着看向前方，镜头保持固定。', dialogue:'无台词', constraints:'1. 保持 <Picture 1> 的人物身份和构图。'}));
+  assert.match(five, /具体失败项：原台词未完整保留。/);
+  assert.ok(five.includes(edge.formatInstruction));
+  assert.doesNotMatch(five, /Keep each line the user quoted|<d>\[Language\]|displayPrompt|modelPrompt/);
+});
+
 test('the idle-breathing rule reaches Grok only when the user\'s own words ask for idle breathing', () => {
   const idleRule = /^仅呼吸待机时[^。]*。/.exec(edge.instruction)[0];
   // The renderer sends the whole policy ahead of the source prompt; only the source and the requirement after it count.
