@@ -577,7 +577,7 @@
     if (state.provider === 'gpt') return `质量 ${String(state.gptQualityImg2img || 'low').toUpperCase()}`
     if (state.provider === 'google') return `分辨率 ${state.googleResolution || '1K'} · 画幅 ${state.googleAspectRatioImg2img}`
     const seed = state.randomSeed ? '随机种子' : `Seed ${Math.max(0, Number(state.seed) || 0)}`
-    if (localQwen21Engine()) return `Qwen-Image-2.1 · ${seed}`
+    if (localQwen21Engine()) return seed
     const strength = state.localEditStrength === 'enhanced' ? '增强' : '保真'
     return `${strength} · ${seed}`
   }
@@ -1069,10 +1069,29 @@
       event?.stopPropagation?.()
       handleGenerate(record)
     })
+    const running = Boolean(record.state.running) && typeof record.options.onStop === 'function'
+    const stop = running ? createElement(record.documentRef, 'button', {
+      type: 'button',
+      text: '任务中止',
+      'data-novaflow-ui-design-node-stop-action': '1',
+      style: {
+        height: '34px', padding: '0 12px', borderRadius: '7px', border: '1px solid rgba(239,68,68,0.55)',
+        background: 'rgba(239,68,68,0.18)', color: '#fff', fontSize: '11px', fontWeight: '500',
+        cursor: 'pointer', whiteSpace: 'nowrap', boxSizing: 'border-box',
+      },
+    }) : null
+    stop?.addEventListener('click', (event) => {
+      event?.preventDefault?.()
+      event?.stopPropagation?.()
+      if (record.options.onStop() !== false) {
+        stop.disabled = true
+        stop.textContent = '正在中止…'
+      }
+    })
     const primary = createElement(record.documentRef, 'div', {
       'data-novaflow-ui-design-node-primary-row': '1',
-      style: { minWidth: '0', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: '8px', alignItems: 'center' },
-    }, [generate])
+      style: { minWidth: '0', display: 'grid', gridTemplateColumns: stop ? 'minmax(0, 1fr) auto' : 'minmax(0, 1fr)', gap: '8px', alignItems: 'center' },
+    }, stop ? [generate, stop] : [generate])
     const children = [
       compactStatusRow(record),
       primary,
@@ -1349,7 +1368,7 @@
       },
       setStatus(message, statusOptions = {}) {
         if (!record.active) return false
-        record.status = String(message == null ? '' : message)
+        record.status = (root?.NovaFlowNeutralText || String)(message == null ? '' : message)
         record.statusError = statusOptions?.error === true
         record.error = record.statusError ? record.status : ''
         if (Object.prototype.hasOwnProperty.call(statusOptions || {}, 'running')) {

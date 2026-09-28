@@ -710,7 +710,7 @@
     }
 
     function showStatus(message, isError) {
-      statusBubble.textContent = String(message || '')
+      statusBubble.textContent = (root && root.NovaFlowNeutralText || String)(message || '')
       statusBubble.style.display = message ? 'block' : 'none'
       statusBubble.style.color = isError ? '#fecaca' : '#e5e7eb'
       statusBubble.style.border = isError ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(255,255,255,0.1)'
@@ -2141,6 +2141,9 @@
             return options.onOpenDesignAssistant(Object.assign({}, payload, {
               generatorNodeId: node.id,
             }))
+          },
+          onStop: function () {
+            return typeof options.onStopGenerateRequest === 'function' ? options.onStopGenerateRequest({ generatorNodeId: node.id }) : false
           },
           onGenerate: function (payload) {
             const flushed = patchGeneratorSettings(node.id, payload && payload.snapshot || {})

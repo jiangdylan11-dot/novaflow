@@ -53,7 +53,7 @@
       if (await isRuntimeUp()) return true
       await sleep(2000)
     }
-    throw new Error('AI 特效：H3 运行时未能启动')
+    throw new Error('AI 特效：生成服务未能启动')
   }
 
   async function uploadFile(file, fileName) {

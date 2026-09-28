@@ -96,7 +96,7 @@
     const wasLimitError = Boolean(record.referenceLimitError)
     record.referenceLimitError = selectedCount > limit
     if (record.referenceLimitError) {
-      const label = record.engine === 'local' ? '本地设计助手' : 'Grok 设计助手'
+      const label = record.engine === 'local' ? '本地设计助手' : '云端设计助手'
       setStatus(record, `${label}最多分析 ${limit} 张参考图；当前已选择 ${selectedCount} 张，请取消多余选择。`, true)
     } else if (wasLimitError) {
       setStatus(record, '')
@@ -112,7 +112,7 @@
     const limit = referenceLimit(record)
     record.referencesHost.appendChild(element(record.documentRef, 'div', {
       'data-novaflow-ui-design-assistant-reference-note': '1',
-      text: `${record.engine === 'local' ? '本地设计助手' : 'Grok 设计助手'}最多分析 ${limit} 张。未勾选的连接图仍会参与最终 UI 生成，只是不用于本次设计助手分析。`,
+      text: `${record.engine === 'local' ? '本地设计助手' : '云端设计助手'}最多分析 ${limit} 张。未勾选的连接图仍会参与最终 UI 生成，只是不用于本次设计助手分析。`,
       style: { color: 'rgba(255,255,255,0.5)', fontSize: '10px', lineHeight: '1.5' },
     }))
     if (!record.references.length) {
@@ -131,7 +131,7 @@
         const current = selectedReferences(record).length
         if (checkbox.checked && current >= referenceLimit(record)) {
           checkbox.checked = false
-          setStatus(record, `${record.engine === 'local' ? '本地设计助手' : 'Grok 设计助手'}一次最多分析 ${referenceLimit(record)} 张参考图。`, true)
+          setStatus(record, `${record.engine === 'local' ? '本地设计助手' : '云端设计助手'}一次最多分析 ${referenceLimit(record)} 张参考图。`, true)
           return
         }
         reference.selected = checkbox.checked
@@ -505,7 +505,7 @@
       style: { display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: '6px' },
     }, [contentTypeSelect, purposeHost, tendencySelect])
     const engineGrid = element(documentRef, 'div', { style: { display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '6px' } })
-    ;[['grok', 'Grok AI', '云端 · 深度处理'], ['local', '本地模型', '本地 · 快速处理']].forEach(([value, title, meta]) => {
+    ;[['grok', '云端模型', '云端 · 深度处理'], ['local', '本地模型', '本地 · 快速处理']].forEach(([value, title, meta]) => {
       engineGrid.appendChild(createEngineChoice(record, value, title, meta))
     })
     body.append(

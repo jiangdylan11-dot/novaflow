@@ -34,6 +34,35 @@
     pollIntervalMs: 900
   }, root.NOVAFLOW_WEB_CONFIG || {});
 
+  // Anti-copy rule: no text the user sees names a model, engine or plugin; it says what is being
+  // done. Every status line, progress box and error the panels show passes through this, and so
+  // does every failure a compute node reports.
+  const MODEL_WORDS = /\bMiniMax[ _-]?H3\b|\bMiniMax\b|\bQwen[\w.-]*(?:\s+Rapid\s+AIO(?:\s+NSFW)?(?:\s+V?\d+)?)?|\bRapid[ -]AIO(?:[ -]NSFW)?\b|\bFlux(?:\s+Fill)?\b|\bFLUX\b|\bSeedVR2?(?:\s+3B)?(?:\s+FP8)?\b|\bSee-?through\b|\bComfyUI\b|\bBiRefNet\w*|\bRMBG\b|\bSAM\b|\bWan\s?2[._]?2\b|\bGrok\b|\bIdeogram(?:\s+\d)?\b|\bH3\b/g;
+  function neutralText(value) {
+    const text = String(value == null ? '' : value);
+    MODEL_WORDS.lastIndex = 0;
+    if (!MODEL_WORDS.test(text)) return text;
+    MODEL_WORDS.lastIndex = 0;
+    return text.replace(MODEL_WORDS, '')
+      .replace(/[ \t]{2,}/g, ' ')
+      .replace(/([\u4e00-\u9fff]) (?=[\u4e00-\u9fff])/g, '$1')
+      .replace(/ +([，。；：、）,.;:])/g, '$1')
+      .replace(/（ +/g, '（')
+      .replace(/(^|\n)[ \t]*[·:：,，/+-][ \t]*/g, '$1')
+      .trim() || '处理中';
+  }
+  root.NovaFlowNeutralText = neutralText;
+  // A compute node's failure text is its engine's own exception (node class names, file names,
+  // stack lines); only a message the node wrote for people is passed on, neutralised.
+  function taskErrorText(task) {
+    const raw = String((task && (task.error_message || task.error_code)) || '');
+    if (task && task.status === 'cancelled') return '任务已中止';
+    if (task && task.status === 'expired') return '任务超时，请重试';
+    if (/out of memory|CUDA|显存/i.test(raw)) return '算力节点显存不足，请降低分辨率或数量后重试';
+    if (!/[\u4e00-\u9fff]/.test(raw)) return '生成失败，请重试';
+    return neutralText(raw);
+  }
+
   const SESSION_KEY = 'novaflow_web_session_v1';
   const CLIENT_AUTH_KEY = 'novaflow.client.auth.session.v1';
   // The launcher chooses the DEFAULT endpoint: the local assistant's own machine, or the shared pool on
@@ -168,7 +197,7 @@
       const task = (res && res.task) || {};
       if (task.status === 'completed') { tasks.set(taskId, task); return task; }
       if (task.status === 'failed' || task.status === 'cancelled' || task.status === 'expired') {
-        throw new Error(task.error_message || task.error_code || ('任务' + task.status));
+        throw new Error(taskErrorText(task));
       }
       if (Date.now() - started > timeoutMs) throw new Error('提示词助手等待超时，请检查算力节点后重试');
       await new Promise((r) => setTimeout(r, 1000));
@@ -333,7 +362,7 @@
         completed: task.status === 'completed',
         status_str: task.status === 'completed' ? 'success' : (failed ? 'error' : 'running'),
         messages: failed
-          ? [['execution_error', { exception_message: task.error_message || task.error_code || task.status }]]
+          ? [['execution_error', { exception_message: taskErrorText(task) }]]
           : timed
             ? [['execution_start', { prompt_id: task.id, timestamp: submittedAt }], ['execution_success', { prompt_id: task.id, timestamp: completedAt }]]
             : []
@@ -388,7 +417,7 @@
         try { onWait(Math.round((Date.now() - started) / 1000)); } catch (_) { /* a listener must not break the wait */ }
       }
       if (task.status === 'failed' || task.status === 'cancelled') {
-        throw new Error('任务在上传参考图前就结束了：' + (task.error_message || task.status));
+        throw new Error('任务在上传参考图前就结束了：' + taskErrorText(task));
       }
       if (Date.now() - started > timeoutMs) {
         throw new Error('等不到空闲算力节点，参考图没能送出');
@@ -1097,7 +1126,7 @@
     // business making. Say so rather than letting it hang on a dead port.
     return new Response(JSON.stringify({
       ok: false,
-      error: 'NovaFlow Web 不在浏览器里访问本机 ComfyUI；该请求应由算力节点执行'
+      error: '该请求应由算力节点执行'
     }), { status: 503, headers: { 'content-type': 'application/json' } });
   };
 

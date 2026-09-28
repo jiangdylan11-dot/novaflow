@@ -7,6 +7,9 @@
 
   const VERSION = '20260730-ui-design-generate-workflow-7'
   const MODE = 'img2img'
+  // The signal of the run in progress (one UI run at a time): a runtime call it is waiting on ends
+  // the moment 任务中止 is pressed instead of when the call returns.
+  let RUN_SIGNAL = null
   const LOCAL_REDESIGN_MODE = MODE
   const UI_TASK_PROFILE = 'ui-design'
   const FILLED_REGIONS_VISUAL_ENCODING = 'filled-regions-only'
@@ -1831,7 +1834,15 @@
   }
 
   async function bridgeTimeout(bridge, task, timeoutMs, message) {
-    return await bridge.withTimeout(task, timeoutMs, message)
+    const signal = RUN_SIGNAL
+    const pending = Promise.resolve(bridge.withTimeout(task, timeoutMs, message))
+    if (!signal || typeof signal.addEventListener !== 'function') return await pending
+    throwIfAborted(signal)
+    return await new Promise((resolve, reject) => {
+      const onAbort = () => reject(abortError(signal.reason))
+      signal.addEventListener('abort', onAbort, { once: true })
+      pending.then(resolve, reject).finally(() => signal.removeEventListener?.('abort', onAbort))
+    })
   }
 
   function workflowSettings(state, provider, mode = MODE) {
@@ -2225,6 +2236,8 @@
     }
 
     emitProgress(onProgress, 'start', '准备生成 UI', 0, { provider, mode: executionMode })
+    let runtimeBaseUrl = ''
+    RUN_SIGNAL = signal
     try {
       throwIfAborted(signal)
       emitProgress(onProgress, 'connect', '正在连接 NovaFlow AI Runtime', 0.04)
@@ -2236,6 +2249,7 @@
       )
       throwIfAborted(signal)
       if (!cleanText(baseUrl)) throw new Error('NovaFlow AI Runtime 未连接')
+      runtimeBaseUrl = baseUrl
 
       const uploadDataUrls = qwen21
         ? await Promise.all(references.map((reference) => flattenOnNeutralGray(reference.dataUrl)))
@@ -2458,10 +2472,14 @@
       return result
     } catch (error) {
       const cancelled = error?.name === 'AbortError' || signal?.aborted
+      if (cancelled && runtimeBaseUrl) {
+        Promise.resolve().then(() => bridge.requestJson(runtimeBaseUrl, '/interrupt', { method: 'POST' })).catch(() => {})
+      }
       const finalError = cancelled && error?.name !== 'AbortError' ? abortError(signal?.reason) : error
-      emitProgress(onProgress, cancelled ? 'cancelled' : 'error', cancelled ? '已取消 UI 生成' : cleanText(finalError?.message || finalError), 0, { error: finalError })
+      emitProgress(onProgress, cancelled ? 'cancelled' : 'error', cancelled ? '任务已中止' : cleanText(finalError?.message || finalError), 0, { error: finalError })
       throw finalError
     } finally {
+      if (RUN_SIGNAL === signal) RUN_SIGNAL = null
       try {
         authorizationContext?.release?.()
       } catch {

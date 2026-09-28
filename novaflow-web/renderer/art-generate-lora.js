@@ -14,6 +14,9 @@
   const MAX_LORAS = 8
   const managed = /lightning|turbo|(?:^|[\\/_-])(?:4|8)steps?/i
   const key = (name) => String(name || '').replace(/\\/g, '/').toLowerCase()
+  // What the page shows for a LoRA: its own file name, never the folder (it names the model) or the
+  // extension. The full name stays the value that is sent.
+  const displayName = (name) => String(name || '').split(/[\\/]/).pop().replace(/\.safetensors$/i, '')
 
   function supports(state = {}) {
     return state.provider === 'local' && (state.mode === 'img2img' || state.nsfw === true || qwen21Route(state))
@@ -49,9 +52,9 @@
       if (item?.enabled === false || !String(item?.name || '').trim()) continue
       const name = String(item.name).trim()
       const strength = Number(item.strength ?? 1)
-      if (!isSelectable(name)) throw new Error(`请选择 Qwen 风格或角色 LoRA：${name}`)
-      if (!Number.isFinite(strength) || strength < -2 || strength > 2) throw new Error(`LoRA 权重需在 -2 到 2 之间：${name}`)
-      if (seen.has(key(name))) throw new Error(`LoRA 重复选择：${name}`)
+      if (!isSelectable(name)) throw new Error(`请选择风格或角色 LoRA：${displayName(name)}`)
+      if (!Number.isFinite(strength) || strength < -2 || strength > 2) throw new Error(`LoRA 权重需在 -2 到 2 之间：${displayName(name)}`)
+      if (seen.has(key(name))) throw new Error(`LoRA 重复选择：${displayName(name)}`)
       seen.add(key(name))
       if (strength !== 0) active.push({ name, strength })
     }
@@ -75,7 +78,7 @@
     const bases = Object.entries(workflow).filter(([, node]) =>
       ['UNETLoader', 'UnetLoaderGGUF', 'CheckpointLoaderSimple'].includes(node?.class_type) &&
       /qwen/i.test(String(node.inputs?.unet_name || node.inputs?.ckpt_name || '')))
-    if (bases.length !== 1) throw new Error('当前工作流没有唯一的 Qwen 模型，无法添加 LoRA')
+    if (bases.length !== 1) throw new Error('当前生成流程无法添加 LoRA')
     const [baseId] = bases[0]
     const targets = []
     for (const node of Object.values(workflow)) {
@@ -83,7 +86,7 @@
         if (Array.isArray(link) && String(link[0]) === baseId && link[1] === 0) targets.push([node.inputs, input])
       }
     }
-    if (!targets.length) throw new Error('Qwen 模型没有连接到生成流程')
+    if (!targets.length) throw new Error('模型没有连接到生成流程')
     let model = [baseId, 0]
     for (const [index, item] of selected.entries()) {
       let id = `nf_art_lora_${index + 1}`
@@ -193,11 +196,11 @@
     select.setAttribute('data-novaflow-art-generate-select-field', '1')
     select.setAttribute('aria-label', '添加兼容 LoRA')
     const available = record.names.filter(name => !items.some(item => key(item.name) === key(name)))
-    const placeholder = element('option', record.loading ? '正在读取兼容 LoRA…' : available.length ? '请选择兼容 LoRA' : record.names.length ? '所有兼容 LoRA 已添加' : qwen21Route(state) ? '暂无 Qwen-Image-2.1 可用 LoRA' : '暂无兼容 LoRA')
+    const placeholder = element('option', record.loading ? '正在读取兼容 LoRA…' : available.length ? '请选择兼容 LoRA' : record.names.length ? '所有兼容 LoRA 已添加' : '暂无 LoRA 可用')
     placeholder.value = ''
     select.appendChild(placeholder)
     available.forEach(name => {
-      const option = element('option', name)
+      const option = element('option', displayName(name))
       option.value = name
       select.appendChild(option)
     })
@@ -210,7 +213,7 @@
     })
     children.push(select)
     if (record.error) {
-      const retry = element('button', `${record.error} · 重试`, 'color:#fca5a5;font-size:11px;background:transparent;border:0;padding:0;text-align:left;overflow-wrap:anywhere;cursor:pointer;')
+      const retry = element('button', `${(globalThis.NovaFlowNeutralText || String)(record.error)} · 重试`, 'color:#fca5a5;font-size:11px;background:transparent;border:0;padding:0;text-align:left;overflow-wrap:anywhere;cursor:pointer;')
       retry.type = 'button'
       retry.disabled = Boolean(state.running) || record.loading
       retry.addEventListener('click', () => { if (!state.running) void refresh(record) })
@@ -219,8 +222,8 @@
     items.forEach((item, index) => {
       const card = element('div', '', 'box-sizing:border-box;display:grid;gap:2px;min-width:0;padding:6px 8px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.10);border-radius:8px;')
       card.setAttribute('data-novaflow-art-lora-card', '1')
-      const filename = element('div', item.name, 'font-size:11px;color:rgba(244,247,251,.92);overflow-wrap:anywhere;line-height:14px;')
-      filename.title = item.name
+      const filename = element('div', displayName(item.name), 'font-size:11px;color:rgba(244,247,251,.92);overflow-wrap:anywhere;line-height:14px;')
+      filename.title = displayName(item.name)
       const row = element('div', '', 'display:flex;align-items:center;gap:10px;min-width:0;')
       const control = element('div', '', 'flex:1;min-width:0;')
       const label = element('div', `强度: ${Number(item.strength).toFixed(2)}`, 'font-size:11px;color:#999;line-height:14px;')
@@ -241,7 +244,7 @@
       const remove = element('button', '×', 'flex:none;width:28px;height:28px;padding:0;border-radius:8px;background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.35);color:#fca5a5;cursor:pointer;font-weight:600;font-size:14px;line-height:26px;')
       remove.type = 'button'
       remove.disabled = Boolean(state.running)
-      remove.setAttribute('aria-label', `移除 ${item.name}`)
+      remove.setAttribute('aria-label', `移除 ${displayName(item.name)}`)
       remove.addEventListener('click', () => { if (!state.running) { items.splice(index, 1); change() } })
       row.append(control, remove)
       card.append(filename, row)
@@ -250,5 +253,5 @@
     slot.replaceChildren(...children)
   }
 
-  return Object.freeze({ supports, qwen21Route, isQwen21Graph, catalogFromInfo, selection, apply, validate, mount })
+  return Object.freeze({ supports, qwen21Route, isQwen21Graph, catalogFromInfo, selection, apply, validate, mount, displayName })
 })

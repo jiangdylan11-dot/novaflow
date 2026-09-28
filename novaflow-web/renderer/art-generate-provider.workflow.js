@@ -281,7 +281,7 @@
       let uiLocal = null
       if (taskProfile === 'ui-design') {
         // Local UI runs only on Qwen-Image-2.1.
-        if (String(options.localModelKey || '') !== 'qwen-image-2.1-ui') throw new Error('本地 UI 设计只支持 Qwen-Image-2.1 工作流')
+        if (String(options.localModelKey || '') !== 'qwen-image-2.1-ui') throw new Error('本地 UI 设计工作流不可用，请刷新页面后重试')
         uiLocal = Object.freeze({ taskProfile, engine: 'qwen-2.1', mode })
       }
       return {

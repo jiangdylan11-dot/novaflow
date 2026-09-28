@@ -253,7 +253,7 @@ test('the dialog blocks until the prompt box or 补充要求 has words, and re-c
   const root = await open(p, h3Surface(p, 'image_video', '她转身挥手', H3_SURFACES.image_video));
   assert.equal(root.querySelector('.novaflow-smart-ai-submit').disabled, false);
   assert.equal(root.querySelector('.novaflow-smart-ai-submit').textContent, '优化并写入提示词');
-  assert.match(root.html, /H3 补充要求（可选）/);
+  assert.match(root.html, /补充要求（可选）/);
   assert.match(root.html, /将参考已上传的 首帧/);
 });
 

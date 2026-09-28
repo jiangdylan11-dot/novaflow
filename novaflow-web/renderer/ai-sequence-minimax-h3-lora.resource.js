@@ -149,8 +149,8 @@
   // the AI sequence panel fails with "starting" although nothing is wrong. Instead of leaving the error
   // until the user re-selects the model, keep retrying in the background until the runtime is up.
   const NOT_READY_ERROR_PATTERN = /Move-Item|MoveFileInfoItemIOError|runtime_(?:start|health|command)|^starting$/
-  const NOT_READY_ERROR_MESSAGE = 'H3 服务尚未就绪，请稍后重新选择模型重试。'
-  const NOT_READY_RETRY_MESSAGE = 'H3 服务启动中，兼容 LoRA 列表将自动加载…'
+  const NOT_READY_ERROR_MESSAGE = '视频服务尚未就绪，请稍后重新选择模型重试。'
+  const NOT_READY_RETRY_MESSAGE = '服务启动中，LoRA 列表将自动加载…'
   const DEFAULT_NOT_READY_RETRY_DELAY_MS = 4000
   const DEFAULT_MAX_NOT_READY_RETRIES = 8
 

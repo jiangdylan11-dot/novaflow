@@ -304,8 +304,8 @@
   const INPAINT_WORKFLOW_ENABLED_KEY = 'bone_ai_inpaint_workflow_enabled'
   const SELECTION_INPAINT_MODE_DEFAULT = 'completion'
   const SELECTION_INPAINT_MODE_OPTIONS = [
-    { id: 'completion', label: '\u667a\u80fd\u8865\u56fe', help: '\u4f7f\u7528 V4 Qwen \u8865\u56fe workflow\uff0c\u8865\u5168\u7f3a\u5931\u7ed3\u6784\u5e76\u4fdd\u6301\u8854\u63a5' },
-    { id: 'edit', label: '\u5c40\u90e8\u7f16\u8f91', help: '\u4f7f\u7528 V4 Qwen Edit workflow\uff0c\u5728\u9009\u533a\u5185\u65b0\u589e\u6216\u4fee\u6539\u6307\u5b9a\u5185\u5bb9' },
+    { id: 'completion', label: '\u667a\u80fd\u8865\u56fe', help: '补全缺失结构并保持衔接' },
+    { id: 'edit', label: '\u5c40\u90e8\u7f16\u8f91', help: '在选区内新增或修改指定内容' },
     { id: 'repair', label: '\u53bb\u9664\u7269\u4f53', help: '去除涂抹区域里的物体并补全背景；效果不好时，在输入框写上要去掉的东西再试' }
   ]
   const SELECTION_INPAINT_MODE_IDS = new Set(SELECTION_INPAINT_MODE_OPTIONS.map((option) => option.id))
@@ -2701,7 +2701,7 @@
     if (state.busy) {
       const action = String(state.busyAction || 'busy')
       const elapsedSeconds = COMFY_BUSY_ACTIONS.has(action) ? splitBusyElapsedSeconds(state.busyStartedAt) : 0
-      const busy = { visible: true, action, message: splitGlobalBusyMessage(action), detail: COMFY_BUSY_ACTIONS.has(action) ? String(state.busyDetail || '') : '', elapsedSeconds, elapsedText: '' }
+      const busy = { visible: true, action, message: splitGlobalBusyMessage(action), detail: COMFY_BUSY_ACTIONS.has(action) ? (window.NovaFlowNeutralText || String)(state.busyDetail || '') : '', elapsedSeconds, elapsedText: '' }
       busy.elapsedText = splitBusyElapsedText(busy)
       return busy
     }
@@ -2805,6 +2805,8 @@
 
   function handleSplitGlobalBusyGuardEvent(event) {
     if (!splitGlobalBusyInteractionLocked()) return
+    const target = event && event.target
+    if (target instanceof Element && target.closest('[data-novaflow-spine-split-busy-stop="1"]')) return
     clearActiveSplitActionButtonHover()
     blockSplitBusyOverlayEvent(event)
   }
@@ -2926,7 +2928,7 @@
     const busy = splitGlobalBusyState()
     const visible = !!(busy.visible && isMountedCardVisible())
     syncSplitBusyOverlayTimer(visible ? busy : null)
-    const signature = visible ? `${busy.action}|${busy.message}|${busy.elapsedText || ''}|${busy.detail || ''}` : ''
+    const signature = visible ? `${busy.action}|${busy.message}|${busy.elapsedText || ''}|${busy.detail || ''}|${splitStopRequested() ? 1 : 0}` : ''
     const existing = document.getElementById(SPLIT_BUSY_OVERLAY_ID)
     if (!visible || !document.body) {
       if (existing) removeSplitGlobalBusyOverlay()
@@ -3002,7 +3004,33 @@
             lineHeight: '1.45',
             whiteSpace: 'pre-line'
           }
-        }, busy.detail || '')
+        }, busy.detail || ''),
+        h('button', {
+          type: 'button',
+          'data-novaflow-spine-split-busy-stop': '1',
+          onclick: (event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            stopSplitRun()
+          },
+          style: {
+            display: 'none',
+            alignItems: 'center',
+            justifyContent: 'center',
+            margin: '12px auto 0',
+            height: '28px',
+            padding: '0 14px',
+            borderRadius: '6px',
+            border: '1px solid rgba(239,68,68,0.55)',
+            background: 'rgba(239,68,68,0.18)',
+            color: '#fff',
+            fontSize: '12px',
+            fontWeight: '500',
+            lineHeight: '1',
+            cursor: 'pointer',
+            boxSizing: 'border-box'
+          }
+        }, '\u4efb\u52a1\u4e2d\u6b62')
       ]))
     }
     applySplitGlobalBusyOverlayStyle(overlay)
@@ -3053,6 +3081,15 @@
     if (detail) {
       detail.textContent = busy.detail || ''
       detail.style.display = busy.detail ? 'block' : 'none'
+    }
+    const stop = overlay.querySelector('[data-novaflow-spine-split-busy-stop="1"]')
+    if (stop instanceof HTMLButtonElement) {
+      const stopping = splitStopRequested()
+      stop.style.display = COMFY_BUSY_ACTIONS.has(busy.action) ? 'flex' : 'none'
+      stop.disabled = stopping
+      stop.style.cursor = stopping ? 'default' : 'pointer'
+      stop.style.opacity = stopping ? '0.6' : '1'
+      stop.textContent = stopping ? '\u6b63\u5728\u4e2d\u6b62\u2026' : '\u4efb\u52a1\u4e2d\u6b62'
     }
   }
 
@@ -5415,7 +5452,7 @@
   function buildQwenImageOutpaintWorkflow(info, imageName, prefix, delta, options = {}) {
     const required = ['LoadImage', 'ImagePadForOutpaint', 'GrowMask', 'VAEEncode', 'SetLatentNoiseMask', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'ImageCrop', 'SaveImage']
     const runtime = required.every((name) => info && info[name]) ? qwen21Runtime(info) : null
-    if (!runtime) throw new Error('当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行无限扩图。请在本地助手里重新启动 NovaFlow 后再试')
+    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行无限扩图。请在本地助手里重新启动 NovaFlow 后再试')
     const side = (value) => Math.max(0, Math.round(Number(value) || 0))
     const pad = { left: side(delta && delta.left), top: side(delta && delta.top), right: side(delta && delta.right), bottom: side(delta && delta.bottom) }
     const output = options.safeSize || null
@@ -5508,7 +5545,7 @@
     const uploadName = await uploadDataUrl(baseUrl, safeDownloadFileName(fileName || 'source.png', 'source.png'), dataUrl)
     const prefix = `novaflow_outpaint_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
     const workflow = buildQwenImageOutpaintWorkflow(info, uploadName, prefix, delta, options)
-    setSplitBusyDetail(`Qwen-Image-2.1\n${nextSize.width} x ${nextSize.height} px`)
+    setSplitBusyDetail(`${nextSize.width} x ${nextSize.height} px`)
     return await runPromptForFirstImage(baseUrl, workflow, prefix, IMAGE_OUTPAINT_TIMEOUT_MS)
   }
 
@@ -5662,7 +5699,7 @@
     state.busy = true
     state.busyAction = 'imageOutpaint'
     state.busyStartedAt = Date.now()
-    state.busyDetail = `Qwen-Image-2.1\n${nextSize.width} x ${nextSize.height} px`
+    state.busyDetail = `${nextSize.width} x ${nextSize.height} px`
     syncSplitGlobalBusyOverlay()
     try {
       const rawResult = await runQwenImageOutpaint(dataUrl, fileName, plan.delta, nextSize, {
@@ -5808,7 +5845,7 @@
     state.busy = true
     state.busyAction = 'imageOutpaint'
     state.busyStartedAt = Date.now()
-    state.busyDetail = `Qwen-Image-2.1\n${nextSize.width} x ${nextSize.height} px`
+    state.busyDetail = `${nextSize.width} x ${nextSize.height} px`
     setMessage(plan && plan.optimized ? `无限扩图生成中... 尺寸已优化为 ${nextSize.width} x ${nextSize.height}` : '无限扩图生成中...')
     render()
     syncSplitWorkspace()
@@ -5884,7 +5921,7 @@
   function buildImageAngleAdjustWorkflow(info, imageName, options = {}) {
     const required = ['LoadImage', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'SaveImage']
     const runtime = required.every((name) => info && info[name]) ? qwen21Runtime(info) : null
-    if (!runtime) throw new Error('当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行角度调整。请在本地助手里重新启动 NovaFlow 后再试')
+    if (!runtime) throw new Error('当前算力节点缺少所需的模型或节点，无法执行角度调整。请在本地助手里重新启动 NovaFlow 后再试')
     const horizontalAngle = normalizeImageAngleHorizontal(options.horizontalAngle)
     const verticalAngle = normalizeImageAngleVertical(options.verticalAngle)
     const zoom = normalizeImageAngleZoom(options.zoom)
@@ -5953,7 +5990,7 @@
     const horizontalAngle = normalizeImageAngleHorizontal(options && options.horizontalAngle)
     const verticalAngle = normalizeImageAngleVertical(options && options.verticalAngle)
     const zoom = normalizeImageAngleZoom(options && options.zoom)
-    setSplitBusyDetail(`Qwen-Image-2.1\nH ${horizontalAngle}\u00b0 / V ${verticalAngle}\u00b0 / Z ${zoom.toFixed(1)}`)
+    setSplitBusyDetail(`H ${horizontalAngle}\u00b0 / V ${verticalAngle}\u00b0 / Z ${zoom.toFixed(1)}`)
     const info = await comfyAllObjectInfo(baseUrl)
     const uploadName = await uploadDataUrl(baseUrl, safeDownloadFileName(fileName || 'source.png', 'source.png'), dataUrl)
     const workflow = buildImageAngleAdjustWorkflow(info, uploadName, { horizontalAngle, verticalAngle, zoom })
@@ -5984,7 +6021,7 @@
     state.busy = true
     state.busyAction = 'imageAngleAdjust'
     state.busyStartedAt = Date.now()
-    state.busyDetail = `Qwen-Image-2.1\nH ${horizontalAngle}\u00b0 / V ${verticalAngle}\u00b0 / Z ${zoom.toFixed(1)}`
+    state.busyDetail = `H ${horizontalAngle}\u00b0 / V ${verticalAngle}\u00b0 / Z ${zoom.toFixed(1)}`
     setMessage('正在角度调整生成...')
     render()
     syncSplitWorkspace()
@@ -6597,7 +6634,45 @@
     }
   }
 
+  // 任务中止 on the busy box. The runtime is told to interrupt, and every request the running action
+  // makes or is still waiting on fails at once with 任务已中止, so the action unwinds through its own
+  // catch/finally. The stop belongs to one run: it is keyed to that run's busyStartedAt.
+  let splitStopKey = 0
+  let splitLastBaseUrl = ''
+  const splitStopWaiters = new Set()
+  function splitStopRequested() {
+    return !!(state.busy && splitStopKey && splitStopKey === state.busyStartedAt)
+  }
+  function splitStoppedError() {
+    const error = new Error('\u4efb\u52a1\u5df2\u4e2d\u6b62')
+    error.novaflowStopped = true
+    return error
+  }
+  function splitStoppable(run) {
+    if (splitStopRequested()) return Promise.reject(splitStoppedError())
+    return new Promise((resolve, reject) => {
+      const stop = () => reject(splitStoppedError())
+      splitStopWaiters.add(stop)
+      Promise.resolve().then(run).then((value) => {
+        if (splitStopRequested()) reject(splitStoppedError())
+        else resolve(value)
+      }, reject).finally(() => splitStopWaiters.delete(stop))
+    })
+  }
+  function stopSplitRun() {
+    if (!state.busy || !state.busyStartedAt || !COMFY_BUSY_ACTIONS.has(String(state.busyAction || '')) || splitStopRequested()) return
+    splitStopKey = state.busyStartedAt
+    syncSplitGlobalBusyOverlay()
+    if (splitLastBaseUrl) requestJsonDirect(splitLastBaseUrl, '/interrupt', { method: 'POST' }).catch(() => {})
+    Array.from(splitStopWaiters).forEach((stop) => stop())
+  }
+
   async function requestJson(baseUrl, path, init) {
+    if (baseUrl) splitLastBaseUrl = baseUrl
+    return await splitStoppable(() => requestJsonDirect(baseUrl, path, init))
+  }
+
+  async function requestJsonDirect(baseUrl, path, init) {
     const api = window.electronAPI
     if (api && typeof api.runtimeRequestJson === 'function') {
       return await api.runtimeRequestJson({ baseUrl, path, init: init || { method: 'GET' } })
@@ -6610,7 +6685,7 @@
   }
 
   function seeThroughRepairableError(message, baseUrl, missing) {
-    const error = new Error(String(message || 'See-through 环境异常'))
+    const error = new Error(String(message || '拆图环境异常'))
     error.novaflowSeeThroughRepairable = true
     error.novaflowComfyBaseUrl = String(baseUrl || '')
     error.novaflowSeeThroughMissing = Array.isArray(missing) ? missing.slice() : []
@@ -6625,7 +6700,7 @@
 
   function seeThroughRepairDetail(error) {
     const missing = error && Array.isArray(error.novaflowSeeThroughMissing) ? error.novaflowSeeThroughMissing.filter(Boolean) : []
-    const message = String(error && error.message || error || 'See-through 环境异常')
+    const message = String(error && error.message || error || '拆图环境异常')
     return missing.length ? `${message}\n缺失节点：${missing.join(', ')}` : message
   }
 
@@ -6646,12 +6721,12 @@
 
     const detail = seeThroughRepairDetail(error)
     const confirmed = window.confirm([
-      '一键拆图检测到 See-through 环境异常。',
+      '一键拆图检测到拆图环境异常。',
       '',
       detail,
       '',
       '风险提示：',
-      '1. 将修复 See-through 插件兼容层和 diffusers 文件。',
+      '1. 将修复拆图组件的兼容文件。',
       '2. 可能会重启本机 NovaFlow AI Runtime。',
       '3. 如果 Runtime 队列中还有任务，修复会自动拒绝重启。',
       '',
@@ -6659,29 +6734,33 @@
     ].join('\n'))
 
     if (!confirmed) {
-      setMessage(`已取消 See-through 自愈。${String(error && error.message || error || '')}`, true)
+      setMessage(`已取消拆图环境修复。${String(error && error.message || error || '')}`, true)
       return true
     }
 
-    setMessage('正在自愈 See-through 环境，可能需要 1-3 分钟…')
+    setMessage('正在修复拆图环境，可能需要 1-3 分钟…')
     render()
 
     try {
       const result = await api.repairSeeThroughEnv({ baseUrl: seeThroughRepairBaseUrl(error) })
       if (!result || !result.ok) {
         const tail = String(result && (result.stderr || result.stdout) || '').trim()
-        const reason = String(result && result.error || 'See-through 自愈失败')
+        const reason = String(result && result.error || '拆图环境修复失败')
         throw new Error(tail ? `${reason}\n${tail.slice(-1200)}` : reason)
       }
-      setMessage('See-through 环境自愈完成，请重新点击一键拆图。')
+      setMessage('拆图环境修复完成，请重新点击一键拆图。')
       return true
     } catch (repairError) {
-      setMessage(`See-through 自愈失败：${String(repairError && repairError.message || repairError || 'unknown')}`, true)
+      setMessage(`拆图环境修复失败：${String(repairError && repairError.message || repairError || 'unknown')}`, true)
       return true
     }
   }
 
   async function fetchBlob(baseUrl, path) {
+    return await splitStoppable(() => fetchBlobDirect(baseUrl, path))
+  }
+
+  async function fetchBlobDirect(baseUrl, path) {
     const api = window.electronAPI
     if (api && typeof api.runtimeRequestBinary === 'function') {
       const out = await api.runtimeRequestBinary({ baseUrl, path, init: { method: 'GET' } })
@@ -6696,6 +6775,11 @@
   }
 
   async function uploadImage(baseUrl) {
+    if (baseUrl) splitLastBaseUrl = baseUrl
+    return await splitStoppable(() => uploadImageDirect(baseUrl))
+  }
+
+  async function uploadImageDirect(baseUrl) {
     const api = window.electronAPI
     const fileName = state.source.fileName || 'source.png'
     if (api && typeof api.runtimeUploadImage === 'function') {
@@ -6718,6 +6802,11 @@
   }
 
   async function uploadDataUrl(baseUrl, fileName, dataUrl) {
+    if (baseUrl) splitLastBaseUrl = baseUrl
+    return await splitStoppable(() => uploadDataUrlDirect(baseUrl, fileName, dataUrl))
+  }
+
+  async function uploadDataUrlDirect(baseUrl, fileName, dataUrl) {
     const api = window.electronAPI
     const safeName = String(fileName || `novaflow_${Date.now()}.png`).replace(/[^\w.-]+/g, '_') || `novaflow_${Date.now()}.png`
     if (api && typeof api.runtimeUploadImage === 'function') {
@@ -6828,7 +6917,7 @@
 
   async function defaultRmbgNode(baseUrl) {
     const nodes = await defaultRmbgNodes(baseUrl)
-    if (!nodes.length) throw new Error('NovaFlow AI Runtime 未安装 RMBG / BiRefNet 抠图节点，无法执行抠图')
+    if (!nodes.length) throw new Error('算力节点缺少抠图组件，无法执行抠图')
     return nodes[0]
   }
 
@@ -7124,11 +7213,11 @@
 
   function missingSeedVr2NodeMessage(missing) {
     const list = Array.isArray(missing) && missing.length ? missing.join(', ') : 'SeedVR2'
-    return `NovaFlow AI Runtime \u5c1a\u672a\u52a0\u8f7d SeedVR2 \u9ad8\u6e05\u653e\u5927\u8282\u70b9\uff0c\u8bf7\u91cd\u542f Runtime \u540e\u91cd\u8bd5\u3002Missing: ${list}`
+    return '算力节点缺少高清放大组件，请在本地助手里重新启动 NovaFlow 后再试'
   }
 
   function missingSeedVr2ModelMessage(modelName) {
-    return `NovaFlow AI Runtime \u672a\u627e\u5230 SeedVR2 \u6a21\u578b\uff1a${modelName}\u3002\u8bf7\u786e\u8ba4\u6a21\u578b\u5df2\u653e\u5165 E:\\NovaFlow\\models\\SEEDVR2`
+    return '算力节点缺少高清放大模型，请确认模型已安装'
   }
 
   function buildSeedVr2ImageUpscaleWorkflow(info, imageName, prefix, options) {
@@ -7192,12 +7281,12 @@
 
   async function runSeedVr2ImageUpscale(dataUrl, fileName, options) {
     const baseUrl = await detectComfyBaseUrl()
-    setSplitBusyDetail('\u6b63\u5728\u68c0\u67e5 SeedVR2 \u9ad8\u6e05\u653e\u5927\u8282\u70b9...')
+    setSplitBusyDetail('正在检查高清放大组件...')
     const info = await comfyAllObjectInfo(baseUrl)
     const uploadName = await uploadDataUrl(baseUrl, safeDownloadFileName(fileName || 'source.png', 'source.png'), dataUrl)
     const prefix = `novaflow_upscale_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`
     const workflow = buildSeedVr2ImageUpscaleWorkflow(info, uploadName, prefix, options || {})
-    setSplitBusyDetail(`SeedVR2 3B FP8\n${options && options.targetWidth || '?'} x ${options && options.targetHeight || '?'} px`)
+    setSplitBusyDetail(`${options && options.targetWidth || '?'} x ${options && options.targetHeight || '?'} px`)
     return await runWorkflowTask({ baseUrl, workflow, prefix, timeoutMs: IMAGE_UPSCALE_TIMEOUT_MS })
   }
 
@@ -7220,7 +7309,7 @@
     state.busy = true
     state.busyAction = 'imageUpscale'
     state.busyStartedAt = Date.now()
-    state.busyDetail = `SeedVR2 3B FP8\n${options.targetWidth} x ${options.targetHeight} px`
+    state.busyDetail = `${options.targetWidth} x ${options.targetHeight} px`
     setMessage('\u6b63\u5728\u9ad8\u6e05\u653e\u5927...')
     render()
     syncSplitWorkspace()
@@ -7616,7 +7705,7 @@
     if (!/^data:image\//i.test(originalDataUrl)) throw new Error(OBJECT_TRANSFER_CUTOUT_FAILED_MESSAGE)
     setSplitBusyDetail('\u6b63\u5728\u81ea\u52a8\u63d0\u53d6\u53c2\u8003\u7269\u4e3b\u4f53...')
     const cutoutDataUrl = await runRmbgCutout(originalDataUrl)
-    await assertModelAlphaDataUrl(cutoutDataUrl, '\u4e07\u7269\u8fc1\u79fb RMBG')
+    await assertModelAlphaDataUrl(cutoutDataUrl, '万物迁移抠图')
     const referenceSize = await imageSizeFromDataUrl(cutoutDataUrl)
     const currentSize = await sourceSize()
     const scale = objectTransferInitialScale(referenceSize, currentSize)
@@ -7786,7 +7875,7 @@
     // A node that cannot build the 2.1 graph is an error, never a silent run on another model.
     const requiredNodes = ['LoadImage', 'UnetLoaderGGUF', 'CLIPLoader', 'VAELoader', 'TextEncodeQwenImage21', 'KSampler', 'VAEDecode', 'SplitImageWithAlpha', 'SaveImage']
     const runtime = requiredNodes.every((name) => info && info[name]) ? qwen21Runtime(info) : null
-    if (!runtime) throw new Error(`当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行${featureName}。请在本地助手里重新启动 NovaFlow 后再试`)
+    if (!runtime) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${featureName}。请在本地助手里重新启动 NovaFlow 后再试`)
     return { engine: 'qwen-2.1', unetName: runtime.unetName, clipName: runtime.clipName, vaeName: runtime.vaeName, loraName: '' }
   }
 
@@ -7972,7 +8061,7 @@
     const decoded = await qwenEditPlateResultCanvas(resultDataUrl, plateSize, content, width, height, '画风转换')
     setSplitBusyDetail('正在抠出转换后的物体...')
     const styledCutout = await runRmbgCutout(decoded.toDataURL('image/png'))
-    await assertModelAlphaDataUrl(styledCutout, '画风转换 RMBG')
+    await assertModelAlphaDataUrl(styledCutout, '画风转换抠图')
     return { styledCutout, plateDataUrl: plate.toDataURL('image/png'), resultDataUrl, plateSize }
   }
 
@@ -8131,7 +8220,7 @@
         engine: 'qwen-2.1'
       }
     }
-    setSplitBusyDetail(`Qwen-Image-2.1\n${assets.plateSize.width} x ${assets.plateSize.height} px`)
+    setSplitBusyDetail(`${assets.plateSize.width} x ${assets.plateSize.height} px`)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, runId, OBJECT_TRANSFER_TIMEOUT_MS)
     return await objectTransferDecodedResultDataUrl(resultDataUrl, assets)
   }
@@ -8347,9 +8436,9 @@
 
   function samPointWorkflowFromPrompts(info, imageName, prefix, prompts, options) {
     if (!info || !info['SAM Model Loader'] || !info['SAM Parameters'] || !info['SAM Image Mask']) {
-      throw new Error('NovaFlow AI Runtime 未安装 SAM 点选抠图节点')
+      throw new Error('算力节点缺少点选抠图组件')
     }
-    if (!prompts || !Array.isArray(prompts.points) || !prompts.points.length) throw new Error('笔触区域太小，无法生成 SAM 点提示')
+    if (!prompts || !Array.isArray(prompts.points) || !prompts.points.length) throw new Error('笔触区域太小，无法识别目标')
     const requestedSize = options && options.modelSize
     const modelSize = requestedSize && optionIncludes(info['SAM Model Loader'].input.required.model_size, requestedSize)
       ? requestedSize
@@ -8873,7 +8962,7 @@
   function buildFluxCompletionWorkflow(info, imageName, maskName, prefix, options = {}) {
     const required = ['LoadImage', 'ImageToMask', 'UNETLoader', 'DualCLIPLoader', 'VAELoader', 'CLIPTextEncode', 'ConditioningZeroOut', 'FluxGuidance', 'InpaintModelConditioning', 'DifferentialDiffusion', 'KSampler', 'VAEDecode', 'SaveImage']
     const missing = required.filter((name) => !info || !info[name])
-    if (missing.length) throw new Error(`当前算力节点缺少 Flux Fill 所需的节点：${missing.join('、')}。请在本地助手里重新启动 NovaFlow 后再试`)
+    if (missing.length) throw new Error('当前算力节点缺少补图所需的组件。请在本地助手里重新启动 NovaFlow 后再试')
     const unetName = requireComfyChoice(info.UNETLoader, 'unet_name', 'fill-dev-OneReward-fp8.safetensors', 'Flux Fill UNET')
     const vaeName = requireComfyChoice(info.VAELoader, 'vae_name', 'ae.safetensors', 'Flux VAE')
     const clipName1 = requireComfyChoiceFrom(info.DualCLIPLoader, 'clip_name1', 'clip_l.safetensors', 'Flux CLIP-L')
@@ -8916,7 +9005,7 @@
     // 局部编辑 and 智能补全 always run on 2.1 (see qwen21EditPromptText / qwen21CompletionPromptText);
     // every node carries it.
     const wantsQwen21 = route.mode === 'edit' || route.mode === 'completion'
-    if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法执行${route.removal ? '去除物体' : route.mode === 'edit' ? '局部编辑' : '智能补全'}。请在本地助手里重新启动 NovaFlow 后再试`)
+    if (wantsQwen21 && !can21) throw new Error(`当前算力节点缺少所需的模型或节点，无法执行${route.removal ? '去除物体' : route.mode === 'edit' ? '局部编辑' : '智能补全'}。请在本地助手里重新启动 NovaFlow 后再试`)
     if (wantsQwen21) {
       // 局部编辑 draws a new seed per run (a rerun gives another result); 智能补图 keeps INPAINT_COMPLETION_SEED.
       const seed = options && Number.isFinite(Number(options.seed)) ? Math.max(0, Math.floor(Number(options.seed)))
@@ -9075,7 +9164,7 @@
       return result
     }
     const nodes = await defaultRmbgNodes(baseUrl)
-    if (!nodes.length) throw new Error('NovaFlow AI Runtime 未安装可用的 RMBG / BiRefNet 模型节点，拒绝使用 mask 或阈值伪抠图')
+    if (!nodes.length) throw new Error('算力节点缺少抠图组件，无法执行抠图')
     const node = nodes[0]
     const nodePrefix = `${prefix}_${String(node.name).replace(/[^\w-]+/g, '_')}`
     const workflow = await defaultRmbgWorkflow(baseUrl, imageName, nodePrefix, node)
@@ -9111,7 +9200,7 @@
         errors.push(`${modelSize}: ${String(error && error.message || error || 'unknown error')}`)
       }
     }
-    throw new Error(`SAM 主物体分割失败：${errors.join('；') || '没有可用 SAM 模型'}`)
+    throw new Error('主物体分割失败，请调整笔触后重试')
   }
 
   function customAiWorkflowEnabled(kind) {
@@ -10657,7 +10746,7 @@
                       : low === 'objects' ? 'weapon'
                         : low.replace(/\s+/g, '_').replace(/-/g, '_').replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '') || 'layer'
     const base = presetFor(mapped)
-    return { ...base, id: mapped, label: raw, prompt: `See-through layer: ${raw}`, aliases: [mapped, raw] }
+    return { ...base, id: mapped, label: raw, prompt: `layer: ${raw}`, aliases: [mapped, raw] }
   }
 
   function viewOutputPath(filename) {
@@ -10672,11 +10761,11 @@
     try {
       info = await requestJson(baseUrl, '/object_info', { method: 'GET' })
     } catch (error) {
-      throw seeThroughRepairableError(`See-through 节点检查失败：${String(error && error.message || error || '')}`, baseUrl)
+      throw seeThroughRepairableError('拆图组件检查失败', baseUrl)
     }
     const data = info && info.data || {}
     const missing = ['SeeThrough_LoadLayerDiffModel', 'SeeThrough_LoadDepthModel', 'SeeThrough_GenerateLayers', 'SeeThrough_GenerateDepth', 'SeeThrough_PostProcess', 'SeeThrough_SavePSD'].filter((key) => !data[key])
-    if (!info || !info.ok || missing.length) throw seeThroughRepairableError(`See-through 节点未加载：${missing.join(', ')}`, baseUrl, missing)
+    if (!info || !info.ok || missing.length) throw seeThroughRepairableError('拆图组件未加载', baseUrl, missing)
     // NovaFlow's own helper node (shipped with the desktop app) paints the whole head as one layer.
     state.seeThroughHeadLayerNodeAvailable = !!data.NovaFlowSeeThroughHeadLayer
   }
@@ -10752,7 +10841,7 @@
         ...presetFor(id),
         id,
         label: item.name || id,
-        prompt: item.prompt || `See-through layer: ${id}`,
+        prompt: item.prompt || `layer: ${id}`,
         layer: Number.isFinite(Number(item.layer)) ? Number(item.layer) : spineLayerRank({ id }),
         sourceLayerId: item.sourceLayerId || '',
         sourcePartId: item.sourcePartId || '',
@@ -11129,7 +11218,7 @@
     const cropped = await cropSplitLayer(canvas.toDataURL('image/png'), { ...presetFor(part.id), id: part.id, label: part.name || part.id, prompt: part.prompt, layer: part.layer, pivot: part.pivot })
     const total = Math.max(1, sourceCount + generatedCount)
     const issues = [...(part.reviewIssues || [])]
-    if (sourceCount / total < 0.2) issues.push(reviewIssue('mostly_completed_pixels', 'warning', 'Layer mostly comes from See-through completion; compare before final rigging.', sourceCount / total))
+    if (sourceCount / total < 0.2) issues.push(reviewIssue('mostly_completed_pixels', 'warning', 'Layer mostly comes from generated completion; compare before final rigging.', sourceCount / total))
     return {
       ...part,
       ...cropped,
@@ -11807,7 +11896,7 @@
         debug.durationMs = elapsedMs
         state.lastProcessingDebug = debug
         const detail = seeThroughHistoryErrorDetail(status)
-        throw new Error(detail ? `See-through 执行失败：${detail}` : 'See-through 执行失败')
+        throw new Error(detail ? `拆图执行失败：${detail}` : '拆图执行失败')
       }
       if (status && status.completed) {
         debug.status = 'completed'
@@ -11837,7 +11926,7 @@
         debug.status = 'lost'
         debug.durationMs = Date.now() - start
         state.lastProcessingDebug = debug
-        throw new Error('\u0053\u0065\u0065\u002d\u0074\u0068\u0072\u006f\u0075\u0067\u0068 \u4efb\u52a1\u5df2\u4e0d\u5728\u961f\u5217\uff0c\u4e14\u6ca1\u6709\u5386\u53f2\u7ed3\u679c')
+        throw new Error('拆图任务已不在队列，且没有历史结果')
       }
 
       await new Promise((resolve) => setTimeout(resolve, SEE_THROUGH_PROMPT_POLL_INTERVAL_MS))
@@ -11846,7 +11935,7 @@
     debug.status = 'timeout'
     debug.durationMs = Date.now() - start
     state.lastProcessingDebug = debug
-    throw new Error('\u0053\u0065\u0065\u002d\u0074\u0068\u0072\u006f\u0075\u0067\u0068 \u6267\u884c\u8d85\u8fc7 30 \u5206\u949f\uff0c\u8bf7\u91cd\u542f Runtime \u540e\u91cd\u8bd5')
+    throw new Error('拆图执行超过 30 分钟，请重启本地助手后重试')
   }
 
   // The See-through split graph. The desktop page builds it against the local runtime; the Web build
@@ -11889,19 +11978,19 @@
     })
     const sent = await requestJson(baseUrl, '/prompt', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ client_id: `novaflow_spine_${Date.now()}`, prompt: workflow }) })
     const promptId = String(sent && sent.data && sent.data.prompt_id || '')
-    if (!sent || !sent.ok || !promptId) throw new Error('\u0053\u0065\u0065\u002d\u0074\u0068\u0072\u006f\u0075\u0067\u0068 \u4e0b\u53d1\u5931\u8d25')
+    if (!sent || !sent.ok || !promptId) throw new Error('拆图下发失败')
     const promptContext = { options, resolution, steps }
     setSplitBusyDetail(`${seeThroughModeLabel(options)} ${resolution}px / ${steps}\u6b65\n\u0052\u0075\u006e\u0074\u0069\u006d\u0065 \u5df2\u4e0b\u53d1\uff0c\u6b63\u5728\u786e\u8ba4\u961f\u5217`)
     await waitForSeeThroughPrompt(baseUrl, promptId, promptContext)
     // The shim answers a refused task with its reason (not logged in, 普通账户 on the shared pool, no
     // capable node); without it the panel says only 下发失败 and nobody can tell which.
-    if (!sent || !sent.ok || !promptId) throw new Error(sent && sent.error ? `See-through 下发失败：${sent.error}` : 'See-through 下发失败')
+    if (!sent || !sent.ok || !promptId) throw new Error(sent && sent.error ? `拆图下发失败：${sent.error}` : '拆图下发失败')
     const logBlob = await fetchBlob(baseUrl, viewOutputPath('seethrough_psd_info.log'))
-    if (!logBlob) throw new Error('See-through 未写入图层信息')
+    if (!logBlob) throw new Error('拆图未写入图层信息')
     const latest = (await logBlob.text()).trim()
-    if (!latest.startsWith(prefix)) throw new Error('See-through 图层信息不是本次任务输出')
+    if (!latest.startsWith(prefix)) throw new Error('拆图图层信息不是本次任务输出')
     const infoBlob = await fetchBlob(baseUrl, viewOutputPath(latest))
-    if (!infoBlob) throw new Error('See-through 图层信息下载失败')
+    if (!infoBlob) throw new Error('拆图图层信息下载失败')
     const info = JSON.parse(await infoBlob.text())
     const requested = state.mode === 'auto' ? [] : resolveParts().map((part) => part.id)
     const chosen = (info.layers || []).filter((layer) => {
@@ -11915,7 +12004,7 @@
     for (let i = 0; i < layers.length; i += 1) {
       const layer = layers[i]
       setSplitBusyDetail(`${seeThroughModeLabel(options)} ${resolution}px / ${steps}\u6b65\n\u6b63\u5728\u8bfb\u53d6\u56fe\u5c42 ${i + 1}/${layers.length}`)
-      setMessage(`See-through 图层：${layer.name}…`)
+      setMessage(`正在读取图层：${layer.name}…`)
       render()
       const blob = await fetchBlob(baseUrl, viewOutputPath(layer.filename))
       if (!blob) continue
@@ -11936,7 +12025,7 @@
       const headPart = await fetchSeeThroughHeadLayer(baseUrl, prefix, size, layers.length)
       if (headPart) parts.push(headPart)
     }
-    if (!parts.length) throw new Error('See-through 没有输出可用图层')
+    if (!parts.length) throw new Error('拆图没有输出可用图层')
     return normalizeSpineLayerOrder(parts)
   }
 
@@ -11968,7 +12057,7 @@
     const raw = await blobToDataUrl(blob)
     const normalized = await transformSeeThroughLayer(raw, info.layer, { width: info.width, height: info.height }, size)
     const preset = presetFor('head')
-    const cropped = await cropSplitLayer(normalized.dataUrl, { ...preset, id: 'head', label: 'head', prompt: 'See-through whole head layer (face with features)', aliases: ['head'], layer: spineLayerRank({ id: 'head' }) })
+    const cropped = await cropSplitLayer(normalized.dataUrl, { ...preset, id: 'head', label: 'head', prompt: 'whole head layer (face with features)', aliases: ['head'], layer: spineLayerRank({ id: 'head' }) })
     cropped.x += normalized.x
     cropped.y += normalized.y
     cropped.needsInpaint = false
@@ -12065,7 +12154,7 @@
   }
 
   function setMessage(message, isError) {
-    state.message = message
+    state.message = message && window.NovaFlowNeutralText ? window.NovaFlowNeutralText(message) : message
     state.messageError = !!isError
     syncSplitMessageNode()
   }
@@ -13344,10 +13433,10 @@
       label: '增强',
       icon: 'sliders-h',
       items: [
-        { action: 'imageUpscale', label: '\u9ad8\u6e05\u653e\u5927', title: '\u4f7f\u7528 SeedVR2 3B FP8 \u5bf9\u5f53\u524d\u539f\u56fe\u6267\u884c\u5355\u56fe\u9ad8\u6e05\u653e\u5927' },
-        { action: 'imageOutpaint', label: '无限扩图', title: '扩展画布后使用 Qwen 生成新增区域，原图区域强制保留' },
+        { action: 'imageUpscale', label: '\u9ad8\u6e05\u653e\u5927', title: '对当前原图执行单图高清放大' },
+        { action: 'imageOutpaint', label: '无限扩图', title: '扩展画布后生成新增区域，原图区域强制保留' },
         { action: 'objectTransfer', label: '\u4e07\u7269\u8fc1\u79fb', title: '\u4e0a\u4f20\u53c2\u8003\u7269\uff0c\u81ea\u52a8\u63d0\u53d6\u4e3b\u4f53\u540e\u62d6\u653e\u5230\u753b\u5e03\u76ee\u6807\u4f4d\u7f6e\u5e76\u6267\u884c\u878d\u5408\u8fc1\u79fb' },
-        { action: 'imageAngleAdjust', label: '角度调整', title: '使用 Qwen-Image-2.1 按设定的角度重画当前原图' }
+        { action: 'imageAngleAdjust', label: '角度调整', title: '按设定的角度重画当前原图' }
       ]
     }
   ]
@@ -16066,7 +16155,7 @@
     const normalized = normalizeSelectionInpaintMode(mode)
     if (normalized === 'repair') return '可选：不写就自动去除；效果不好时写上要去掉的东西再试（如 斧头、肩甲）'
     if (normalized === 'edit') return '\u5fc5\u586b\uff1a\u589e\u52a0\u3001\u66ff\u6362\u3001\u4fee\u6539\u6216\u6062\u590d\u7ed3\u6784'
-    return '可选：补全缺失结构、恢复皮肤、头发或衣服；零散拆分图建议开启 FLUX'
+    return '可选：补全缺失结构、恢复皮肤、头发或衣服；零散拆分图建议开启肢体补全'
   }
 
   function selectionInpaintModePanelText(mode) {
@@ -16269,12 +16358,12 @@
 
   // Hover text of the two model switches: what each is for, then its state.
   function selectionInpaintNsfwTitle(enabled) {
-    return `NSFW：改用 Qwen Rapid AIO NSFW 模型，适合补画或修改裸露、成人内容；普通内容保持关闭效果更好。
+    return `NSFW：适合补画或修改裸露、成人内容；普通内容保持关闭效果更好。
 当前：${enabled ? '已开启' : '已关闭'}`
   }
 
   function selectionInpaintFluxTitle(enabled) {
-    return `FLUX：改用 Flux Fill 补图，适合拆图后被遮挡、几乎看不到的肢体或身体结构（例如被前腿挡住的后腿）。画风和颜色贴合度不如默认的 Qwen-Image-2.1，普通补图保持关闭；补得不好可再生成一次。
+    return `肢体补全：适合拆图后被遮挡、几乎看不到的肢体或身体结构（例如被前腿挡住的后腿）。画风和颜色贴合度不如默认补图，普通补图保持关闭；补得不好可再生成一次。
 当前：${enabled ? '已开启' : '已关闭'}`
   }
 
@@ -18375,9 +18464,9 @@
 
   async function assertModelAlphaDataUrl(dataUrl, providerName) {
     const stats = await modelAlphaStats(dataUrl)
-    if (stats.alphaMax <= 8 || stats.visiblePixels < 16) throw new Error(`${providerName || 'RMBG'} 没有输出有效 alpha`)
-    if (stats.alphaMin > 8) throw new Error(`${providerName || 'RMBG'} 输出整图不透明，没有真实透明 alpha`)
-    if (!stats.continuousAlpha) throw new Error(`${providerName || 'RMBG'} alpha 不是连续蒙版，拒绝退回 mask/阈值抠图`)
+    if (stats.alphaMax <= 8 || stats.visiblePixels < 16) throw new Error(`${providerName || '抠图'} 没有输出有效 alpha`)
+    if (stats.alphaMin > 8) throw new Error(`${providerName || '抠图'} 输出整图不透明，没有真实透明 alpha`)
+    if (!stats.continuousAlpha) throw new Error(`${providerName || '抠图'} alpha 不是连续蒙版，拒绝退回 mask/阈值抠图`)
     return stats
   }
 
@@ -20731,7 +20820,7 @@
   }
 
   async function validateObjectCutoutResult(dataUrl, seedCanvas, label) {
-    const stats = await ensureUsableCutoutResult(dataUrl, label || 'SAM object cutout')
+    const stats = await ensureUsableCutoutResult(dataUrl, label || '点选抠图')
     const canvas = await canvasFromDataUrl(dataUrl)
     const width = Math.max(1, Math.round(canvas.width || 1))
     const height = Math.max(1, Math.round(canvas.height || 1))
@@ -20748,7 +20837,7 @@
       if (image[i + 3] > 16) overlapPixels += 1
     }
     if (seedPixels >= 8 && overlapPixels < Math.max(4, Math.round(seedPixels * 0.035))) {
-      throw new Error(`${label || 'SAM object cutout'} 与笔触区域重叠过少，请把笔触落在目标物体内部`)
+      throw new Error(`${label || '点选抠图'} 与笔触区域重叠过少，请把笔触落在目标物体内部`)
     }
     return { ...stats, seedPixels, overlapPixels, seedOverlapRatio: seedPixels ? overlapPixels / seedPixels : 0 }
   }
@@ -21736,7 +21825,7 @@
     const resultCropCanvas = cropCanvasFromFullCanvas(finalCanvas, crop.cropBox)
     const finalDataUrl = finalCanvas.toDataURL('image/png')
     const fullSeedMask = pasteCutoutToTransparent(userMaskLimit, crop.cropBox, crop.originalSize)
-    const finalStats = await validateObjectCutoutResult(finalDataUrl, fullSeedMask, 'SAM split object cutout')
+    const finalStats = await validateObjectCutoutResult(finalDataUrl, fullSeedMask, '主体分割')
     const finalAlpha = await alphaCanvasFromDataUrl(finalDataUrl, crop.originalSize.width, crop.originalSize.height)
     const localInput = {
       canvas: crop.cropImage,
@@ -21807,13 +21896,13 @@
       try {
         return await runObjectStructureSplitCutoutPipeline(session, bounds, components)
       } catch (error) {
-        errors.push(`SAM split object cutout:${String(error && error.message || error || 'failed')}`)
+        errors.push(`主体分割：${String(error && error.message || error || '失败')}`)
       }
     }
     try {
       return await runObjectStructureCutoutPipeline(session, bounds)
     } catch (error) {
-      errors.push(`SAM 主物体分割：${String(error && error.message || error || '失败')}`)
+      errors.push(`主物体分割：${String(error && error.message || error || '失败')}`)
     }
     try {
       const fallback = await runRmbgSelectionCutoutPipeline(session, bounds)
@@ -21826,7 +21915,7 @@
       }
       return fallback
     } catch (error) {
-      errors.push(`RMBG 兼容兜底：${String(error && error.message || error || '失败')}`)
+      errors.push(`兼容抠图：${String(error && error.message || error || '失败')}`)
     }
     throw new Error(errors.join('；'))
   }
@@ -21974,7 +22063,7 @@
       ? resizeCanvasHighQuality(baseCanvas, Math.round(width * modelScale), Math.round(height * modelScale))
       : baseCanvas
     const modelAlphaDataUrl = await runRmbgCutout(modelInputCanvas.toDataURL('image/png'))
-    const modelAlphaStats = await assertModelAlphaDataUrl(modelAlphaDataUrl, '去背 RMBG')
+    const modelAlphaStats = await assertModelAlphaDataUrl(modelAlphaDataUrl, '去背')
     const resultCanvas = await sourceRgbWithModelAlpha(baseCanvas, modelAlphaDataUrl, width, height, modelAlphaDataUrl)
     const ctx = resultCanvas.getContext('2d', { willReadFrequently: true })
     const image = ctx.getImageData(0, 0, width, height)
@@ -22156,7 +22245,7 @@
     const naturalWidth = Math.round(image.naturalWidth || image.width || 0)
     const naturalHeight = Math.round(image.naturalHeight || image.height || 0)
     if (naturalWidth !== plateSize.width || naturalHeight !== plateSize.height) {
-      throw new Error(`${label || 'Qwen'} 返回尺寸 ${naturalWidth}x${naturalHeight} 与送入的 ${plateSize.width}x${plateSize.height} 不一致，无法对齐回原图`)
+      throw new Error(`${label || '生成结果'} 返回尺寸 ${naturalWidth}x${naturalHeight} 与送入的 ${plateSize.width}x${plateSize.height} 不一致，无法对齐回原图`)
     }
     const box = content || { width: plateSize.width, height: plateSize.height }
     const canvas = canvasOfSize(targetWidth, targetHeight)
@@ -22327,7 +22416,7 @@
     setSplitBusyDetail(`正在上传${stageLabel}输入...`)
     const imageName = await uploadDataUrl(baseUrl, `${runId}_input.png`, input.plateCanvas.toDataURL('image/png'))
     const workflow = buildEffectExtractQwenWorkflow(info, imageName, runId, resolved)
-    setSplitBusyDetail(`Qwen-Image-2.1 黑底化\n${input.plateSize.width} x ${input.plateSize.height} px`)
+    setSplitBusyDetail(`正在分离特效\n${input.plateSize.width} x ${input.plateSize.height} px`)
     const resultDataUrl = await runPromptForFirstImage(baseUrl, workflow, runId, EFFECT_EXTRACT_TIMEOUT_MS)
     setSplitBusyDetail('正在去黑（与工具版 PNG 去黑相同）...')
     // The same pure unmult the 工具 → PNG 去黑 tool uses (alpha = max(R,G,B), RGB / alpha), run at
@@ -22512,7 +22601,7 @@
     setSplitBusyDetail('\u6b63\u5728\u4e0a\u4f20\u53bb\u7279\u6548\u5316\u8f93\u5165...')
     const imageName = await uploadDataUrl(extraction.baseUrl, `${runId}_plate_input.png`, extraction.input.plateCanvas.toDataURL('image/png'))
     const workflow = buildEffectDeeffectQwenWorkflow(extraction.info, imageName, runId, extraction.runtime)
-    setSplitBusyDetail(`Qwen-Image-2.1 去特效化\n${plateSize.width} x ${plateSize.height} px`)
+    setSplitBusyDetail(`正在去除特效\n${plateSize.width} x ${plateSize.height} px`)
     const dataUrl = await runPromptForFirstImage(extraction.baseUrl, workflow, runId, EFFECT_EXTRACT_TIMEOUT_MS)
     const plate = await qwenEditPlateResultCanvas(dataUrl, plateSize, extraction.input.plateContent, extraction.input.cropBox.width, extraction.input.cropBox.height, '去特效化')
     return { plate, dataUrl, plateSize }
@@ -22776,7 +22865,7 @@
     } catch (error) {
       foregroundError = String(error && error.message || error || '')
     }
-    if (!foregroundCanvas) throw new Error(`Qwen 修图已生成结构，但前景提取失败，已停止避免输出被 mask 挖坏的修图：${foregroundError || 'RMBG unavailable'}`)
+    if (!foregroundCanvas) throw new Error('修图已生成结构，但前景提取失败，已停止以免输出被遮罩挖坏')
     const completionV4Paste = !!(qwenCanvases && qwenCanvases.meta && qwenCanvases.meta.mode === 2)
     const patchCanvas = inpaintPatchCanvasFromCrop(foregroundCanvas, pasteMaskCanvas, crop.cropBox, crop.originalSize, {
       respectMask: true,
@@ -23309,12 +23398,12 @@
           disabled: state.busy,
           style: { marginLeft: '2px', minWidth: '48px' }
         }) : null,
-        showInpaintFlux ? button('FLUX', () => toggleSelectionInpaintFlux(), inpaintFluxEnabled, {
+        showInpaintFlux ? button('肢体补全', () => toggleSelectionInpaintFlux(), inpaintFluxEnabled, {
           [TOOL_ACTION_ATTR]: 'selectionFlux',
           'data-novaflow-selection-inpaint-flux': inpaintFluxEnabled ? 'on' : 'off',
           role: 'switch',
           'aria-checked': inpaintFluxEnabled ? 'true' : 'false',
-          'aria-label': `FLUX ${inpaintFluxEnabled ? '已开启' : '已关闭'}`,
+          'aria-label': `肢体补全 ${inpaintFluxEnabled ? '已开启' : '已关闭'}`,
           title: selectionInpaintFluxTitle(inpaintFluxEnabled),
           disabled: state.busy,
           style: { marginLeft: '2px', minWidth: '48px' }

@@ -123,7 +123,7 @@ assert.deepEqual([hugeFinish.width, hugeFinish.height], [4096, 4096]);
 // The host re-reads the node catalogue per build, so 2.1 installed while the worker runs is used.
 let liveCatalogue = { LoadImage: qwen21Info.LoadImage, KSampler: qwen21Info.KSampler };
 const liveHost = await createWorkflowHost({ rendererDir, comfy: { requestJson: async (_base, path) => (path === '/object_info' ? liveCatalogue : {}) } });
-await assert.rejects(buildUi(liveHost, names, sizes, roles), /缺少 Qwen-Image-2.1/);
+await assert.rejects(buildUi(liveHost, names, sizes, roles), /缺少所需的模型或节点/);
 liveCatalogue = qwen21Info;
 assert.equal(byClass(await buildUi(liveHost, names, sizes, roles), 'TextEncodeQwenImage21').length, 1);
 
@@ -200,18 +200,18 @@ assert.deepEqual([byClass(drawTyped, 'KSampler')[0][1].inputs.steps, byClass(dra
 // The page always sends localDrawEngine for a non-NSFW local drawing. Without it (an old cached page)
 // there is no 2511 template left to fall back on: the run is refused. Asked for 2.1, a node without it
 // is an error rather than a 2511 graph that keeps three references.
-await assert.rejects(buildDraw(['ref.png'], [{ width: 512, height: 720 }], 512, 720, '', { localDrawEngine: '' }), /本地生成只支持 Qwen-Image-2\.1 或 NSFW 路线/);
+await assert.rejects(buildDraw(['ref.png'], [{ width: 512, height: 720 }], 512, 720, '', { localDrawEngine: '' }), /当前本地生成路线不可用/);
 const noQwen21Host = await createWorkflowHost({ rendererDir, objectInfo: { LoadImage: qwen21Info.LoadImage, KSampler: qwen21Info.KSampler } });
 await assert.rejects(noQwen21Host.buildGraph({ module: 'novaflow-brand-runtime', method: 'buildArtGenerateRunWorkflow', options: { __args: [
   'local', 'txt2img', [], 'NovaFlow_Art', 'a knight', '', 'client', [],
   { provider: 'local', mode: 'txt2img', width: 1024, height: 1024, seed: 1, randomSeed: false, localDrawEngine: 'qwen-2.1' }, 4, {}
-] } }), /无法按 Qwen-Image-2.1 生成/);
+] } }), /当前算力节点无法生成/);
 
 // Asked for 2.1 on a node without it: an error, never a 2511 graph that keeps three references.
 const hostOld = await createWorkflowHost({ rendererDir, objectInfo: { LoadImage: qwen21Info.LoadImage, KSampler: qwen21Info.KSampler } });
-await assert.rejects(buildUi(hostOld, names, sizes, roles), /缺少 Qwen-Image-2.1/);
+await assert.rejects(buildUi(hostOld, names, sizes, roles), /缺少所需的模型或节点/);
 // Without the engine flag (an old cached page) there is no 2511 route to run the UI on: it is refused.
-await assert.rejects(buildUi(host21, names.slice(0, 3), sizes.slice(0, 3), ['style', 'content', 'ui_layout'], { localUiEngine: '' }), /本地生成只支持 Qwen-Image-2\.1 或 NSFW 路线/);
+await assert.rejects(buildUi(host21, names.slice(0, 3), sizes.slice(0, 3), ['style', 'content', 'ui_layout'], { localUiEngine: '' }), /当前本地生成路线不可用/);
 
 // The worker renames all ten uploads.
 const refs15 = Array.from({ length: 10 }, (_, i) => ({ name: `ui_q21_${i}.png` }));

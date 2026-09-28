@@ -1137,12 +1137,14 @@
         transition: width 0.3s ease;
       }
       #${APP_ID} .aifx-preview-progress-cancel {
-        flex: 0 0 24px;
-        width: 24px;
+        flex: 0 0 auto;
+        width: auto;
         min-width: 24px;
         height: 24px;
         min-height: 24px;
-        padding: 0;
+        padding: 0 10px;
+        font-size: 12px;
+        white-space: nowrap;
         border-radius: 5px;
         border: 1px solid rgba(239, 68, 68, 0.55) !important;
         background: rgba(239, 68, 68, 0.18) !important;
@@ -1359,7 +1361,7 @@
               <span class="aifx-preview-status-detail" data-preview-status-detail>上传一段黑底特效动画，或载入内置模板。</span>
               <div class="aifx-preview-progress" data-preview-progress hidden>
                 <div class="aifx-preview-progress-track"><div class="aifx-preview-progress-fill" data-preview-progress-fill></div></div>
-                <button class="aifx-preview-progress-cancel" data-action="cancel-generate" type="button" title="中止生成" aria-label="中止生成">×</button>
+                <button class="aifx-preview-progress-cancel" data-action="cancel-generate" type="button" title="任务中止" aria-label="任务中止">任务中止</button>
               </div>
             </div>
           </section>
@@ -1520,8 +1522,8 @@
   }
 
   const setStatus = (status, detail) => {
-    state.status = status
-    state.detail = detail || ''
+    state.status = (window.NovaFlowNeutralText || String)(status)
+    state.detail = (window.NovaFlowNeutralText || String)(detail || '')
     refreshUi()
   }
 
@@ -2018,7 +2020,7 @@
       promise.then(resolve, reject)
     })
     try {
-      setStatus('准备运行时', '正在确认 H3 运行时。')
+      setStatus('准备运行时', '正在准备生成环境。')
       await stoppable(client.ensureRuntime({ reason: 'aifx-restyle' }))
 
       // On the Web a staged upload belongs to the one task that takes it, so every run (and every

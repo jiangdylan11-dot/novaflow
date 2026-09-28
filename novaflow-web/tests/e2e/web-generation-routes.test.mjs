@@ -162,7 +162,7 @@ assert.equal(split['8'].inputs.filename_prefix, 'novaflow_spine_1_ab');
 assert.equal(split['10'].class_type, 'NovaFlowSeeThroughHeadLayer');
 assert.equal(split['10'].inputs.filename_prefix, 'novaflow_spine_1_ab');
 assert.equal((await (await createWorkflowHost({ rendererDir, objectInfo: seeThroughInfo })).buildGraph(splitCall))['10'], undefined);
-await assert.rejects((await createWorkflowHost({ rendererDir, objectInfo: { RMBG: {} } })).buildGraph(splitCall), /节点未加载/);
+await assert.rejects((await createWorkflowHost({ rendererDir, objectInfo: { RMBG: {} } })).buildGraph(splitCall), /拆图组件未加载/);
 
 // A runtime carrying the Qwen-Image-2.1 weights takes the 2.1 completion graph: latent from the
 // undug upload, and a crop that is not a multiple of 32 padded before encoding and cropped back after.
@@ -320,7 +320,7 @@ assert.equal(upscale['5'].class_type, 'SeedVR2VideoUpscaler');
 assert.equal(upscale['5'].inputs.resolution, 1080);
 assert.equal(upscale['6'].inputs.filename_prefix, 'novaflow_upscale_1');
 // Without the nodes the builder refuses on the node, with its own message.
-await assert.rejects(host.buildGraph({ module: 'spine-split-runtime', method: 'buildSeedVr2ImageUpscaleWorkflow', options: { __args: [{}, 'task-up.png', 'p', {}] } }), /SeedVR2/);
+await assert.rejects(host.buildGraph({ module: 'spine-split-runtime', method: 'buildSeedVr2ImageUpscaleWorkflow', options: { __args: [{}, 'task-up.png', 'p', {}] } }), /高清放大组件/);
 // SAM: the page sends the point prompts it read off the stroke; the node picks a model size it has.
 const samHost = await createWorkflowHost({ rendererDir, objectInfo: {
   ...catalogueOf('LoadImage', 'SAM Parameters', 'SAM Image Mask', 'JoinImageWithAlpha', 'SaveImage'),

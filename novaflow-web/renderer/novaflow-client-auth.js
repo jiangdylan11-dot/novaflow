@@ -843,7 +843,7 @@
 
   async function authorizeAiTaskWithToken(token, payload) {
     if (!token) {
-      return { ok: false, httpStatus: 401, error: "请先登录账号后再使用可灵/即梦本地工作流" };
+      return { ok: false, httpStatus: 401, error: "请先登录账号后再使用本地工作流" };
     }
     try {
       const result = await callBridge("clientAuthAiTaskAuthorize", { ...(payload || {}), token });
@@ -866,7 +866,7 @@
 
   async function commitAiTaskUsageWithToken(token, payload) {
     if (!token) {
-      return { ok: false, httpStatus: 401, error: "请先登录账号后再记录可灵/即梦本地工作流次数" };
+      return { ok: false, httpStatus: 401, error: "请先登录账号后再记录本地工作流次数" };
     }
     try {
       const result = await callBridge("clientAuthAiTaskCommitUsage", { ...(payload || {}), token });

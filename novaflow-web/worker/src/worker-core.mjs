@@ -537,7 +537,17 @@ export function createWorker(options) {
   // -------------------------------------------------------------------------
   // Task execution
   // -------------------------------------------------------------------------
+  // 任务中止 on the page cancels the task in the control plane (or in the local task list). The
+  // progress report is where this node learns it, and then the GPU job stops at once instead of
+  // running to its end unseen.
+  async function stopCancelledTask(taskId) {
+    if (activeTask?.id !== taskId || activeTask.controller.signal.aborted) return;
+    log('task cancelled by its owner, interrupting ComfyUI', { taskId });
+    await cancelActiveTask().catch((error) => log('interrupt failed', { taskId, error: String(error?.message || error) }));
+  }
+
   async function reportProgress(taskId, status, progress, note, promptId) {
+    if (localTasks?.get(taskId)?.status === 'cancelled') await stopCancelledTask(taskId);
     checkCancelled(taskId);
     try {
       await callControl('POST', '/api/worker/tasks/' + taskId + '/progress', {
@@ -545,7 +555,12 @@ export function createWorker(options) {
         body: { status, progress, note, prompt_id: promptId }
       });
     } catch (error) {
-      log('progress report failed', { taskId, error: String(error?.message || error) });
+      const message = String(error?.message || error);
+      log('progress report failed', { taskId, error: message });
+      if (/already cancelled/i.test(message)) {
+        await stopCancelledTask(taskId);
+        checkCancelled(taskId);
+      }
     }
   }
 
@@ -682,12 +697,24 @@ export function createWorker(options) {
     checkCancelled(task.id);
     await reportProgress(task.id, TASK_STATE.PROCESSING, 12, 'queued in ComfyUI', promptId);
 
-    const history = await comfy.waitForPrompt(promptId, {
-      signal: activeTask.controller.signal,
-      onProgress: async (pct, note) => {
-        await reportProgress(task.id, TASK_STATE.PROCESSING, pct, note, promptId);
-      }
-    });
+    // ComfyUI reports progress only when it changes, which can be minutes apart; the same report
+    // every few seconds is how a cancel from the page reaches a long render.
+    let lastReport = [12, 'queued in ComfyUI'];
+    const cancelWatch = setInterval(() => {
+      reportProgress(task.id, TASK_STATE.PROCESSING, lastReport[0], lastReport[1], promptId).catch(() => {});
+    }, 5000);
+    let history;
+    try {
+      history = await comfy.waitForPrompt(promptId, {
+        signal: activeTask.controller.signal,
+        onProgress: async (pct, note) => {
+          lastReport = [pct, note];
+          await reportProgress(task.id, TASK_STATE.PROCESSING, pct, note, promptId);
+        }
+      });
+    } finally {
+      clearInterval(cancelWatch);
+    }
 
     // 4. Pull results out of ComfyUI and into this task's folder, so the
     //    browser fetches them from the gateway and never touches ComfyUI.

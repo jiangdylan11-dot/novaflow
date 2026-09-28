@@ -107,14 +107,17 @@ try {
   warehouse = boot(); await warehouse.ready;
   await warehouse.authorize();
   check(writes, 2); check(requests, 1);
-  check((await readdir(dir)).some(name => name.endsWith('.mp4')), true);
+  // Saved names never carry the source name: Image_/Video_ + day + a per-day number.
+  const now = new Date();
+  const day = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+  check((await readdir(dir)).sort(), ['Image_' + day + '_001.png', 'Video_' + day + '_001.mp4']);
   const collision = new Blob(['next-image'], { type: 'image/png' });
-  const hash = Buffer.from(await webcrypto.subtle.digest('SHA-256', await collision.arrayBuffer())).toString('hex');
-  const occupied = 'existing_' + hash.slice(0, 12) + '.png';
+  const occupied = 'Image_' + day + '_005.png';
   await writeFile(join(dir, occupied), 'user-original');
-  await warehouse.save({ name: 'existing.png', blob: collision });
+  await warehouse.save({ name: 'MiniMax_H3_existing.png', blob: collision });
   check(await readFile(join(dir, occupied), 'utf8'), 'user-original');
-  check(await readFile(join(dir, 'existing_' + hash.slice(0, 12) + '_1.png'), 'utf8'), 'next-image');
+  const nextName = 'Image_' + day + '_006.png';
+  check(await readFile(join(dir, nextName), 'utf8'), 'next-image');
   cancel = true; await warehouse.connect();
   check(stores.settings.get('directory'), handle);
   await warehouse.disconnect();
@@ -148,7 +151,7 @@ try {
   await warehouse.removeAsset(selected);
   check((await readdir(dir)).includes(deleteName), false);
   check((await readdir(dir)).includes('.novaflow-trash'), false);
-  check((await readdir(dir)).some(name => name.startsWith('existing_') && name.endsWith('_1.png')), true);
+  check((await readdir(dir)).includes(nextName), true);
 
 } finally { await rm(dir, { recursive: true, force: true }); }
 console.log(checks + ' passed, 0 failed: local warehouse persistence and permissions');

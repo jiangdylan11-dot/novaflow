@@ -63,13 +63,13 @@ section('runtime resolution: 2.1 by name, an error on a node that cannot build i
     { engine: 'qwen-2.1', unetName: 'qwen-image-2.1-UC-Q8_0.gguf', clipName: 'qwen3vl_8b_w4a8_heretic.safetensors', vaeName: 'qwen_image_2.1_vae_bf16.safetensors', loraName: '' });
   const no21 = nodes();
   delete no21.TextEncodeQwenImage21;
-  await checkThrows('a node without the 2.1 encoder is an error, never a 2511 run', () => s.resolveObjectTransferRuntime(no21), /Qwen-Image-2\.1.*万物迁移/);
+  await checkThrows('a node without the 2.1 encoder is an error, never a 2511 run', () => s.resolveObjectTransferRuntime(no21), /缺少所需的模型或节点.*万物迁移/);
   const noWeights = nodes();
   noWeights.UnetLoaderGGUF.input.required.unet_name = combo(['other.gguf']);
-  await checkThrows('and so is a node with the loader but not the weights', () => s.resolveObjectTransferRuntime(noWeights), /Qwen-Image-2\.1/);
+  await checkThrows('and so is a node with the loader but not the weights', () => s.resolveObjectTransferRuntime(noWeights), /缺少所需的模型或节点/);
   const only2511 = nodes();
   delete only2511.UnetLoaderGGUF;
-  await checkThrows('a node that has only the 2511 files cannot run it either', () => s.resolveObjectTransferRuntime(only2511), /Qwen-Image-2\.1/);
+  await checkThrows('a node that has only the 2511 files cannot run it either', () => s.resolveObjectTransferRuntime(only2511), /缺少所需的模型或节点/);
   await checkThrows('the effect tools name themselves in the same error', () => s.resolveQwen21EditRuntime(no21, '特效提取'), /无法执行特效提取/);
 }
 
@@ -109,7 +109,7 @@ section('the 万物迁移 graph: two references at their own size, the encoder l
   checkEqual('without the cache node the sampler takes the loader directly', byType(plain, 'KSampler')[0][1].inputs.model, ['4', 0]);
   const noGguf = nodes();
   delete noGguf.UnetLoaderGGUF;
-  await checkThrows('replayed on a node without 2.1 (the page sent a marker), the graph is refused', () => s.buildObjectTransferQwenWorkflow(noGguf, uploads, 'x', 'marker'), /Qwen-Image-2\.1/);
+  await checkThrows('replayed on a node without 2.1 (the page sent a marker), the graph is refused', () => s.buildObjectTransferQwenWorkflow(noGguf, uploads, 'x', 'marker'), /缺少所需的模型或节点/);
 }
 
 section('特效提取 / 去特效 on 2.1: the extract redraws the plate onto a black canvas, a new seed per run, RGB out');

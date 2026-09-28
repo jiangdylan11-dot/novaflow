@@ -88,17 +88,23 @@
     const result = await root.crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
     return Array.from(new Uint8Array(result), value => value.toString(16).padStart(2, '0')).join('');
   }
+  // A saved file never carries the source's name (that named the model): Image_20260928_001.png,
+  // Video_20260928_001.mp4, numbered per day after the highest number already in the folder.
   async function write(record) {
-    const dot = record.name.lastIndexOf('.');
-    const base = record.name.slice(0, dot) + '_' + record.hash.slice(0, 12);
-    const ext = record.name.slice(dot);
-    for (let i = 0; i < 1000; i++) {
-      const name = base + (i ? '_' + i : '') + ext;
+    const ext = record.name.slice(record.name.lastIndexOf('.')).toLowerCase();
+    const kind = /^video\//.test(record.blob.type || '') || /^\.(mp4|webm|mov)$/.test(ext) ? 'Video' : 'Image';
+    const day = new Date(record.createdAt || Date.now());
+    const stem = kind + '_' + day.getFullYear() + String(day.getMonth() + 1).padStart(2, '0') + String(day.getDate()).padStart(2, '0') + '_';
+    let last = 0;
+    for await (const [existing] of directory.entries()) {
+      const match = existing.startsWith(stem) && /^(\d+)\.[^.]+$/.exec(existing.slice(stem.length));
+      if (match) last = Math.max(last, Number(match[1]));
+    }
+    for (let i = last + 1; i < last + 1000; i++) {
+      const name = stem + String(i).padStart(3, '0') + ext;
       let file;
       try {
-        file = await directory.getFileHandle(name);
-        const existing = await file.getFile();
-        if (existing.size === record.blob.size && await digest(existing) === record.hash) return name;
+        await directory.getFileHandle(name);
         continue; // Never replace a user's file, even if its name collides.
       } catch (error) { if (error.name !== 'NotFoundError') throw error; }
       file = await directory.getFileHandle(name, { create: true });

@@ -1274,6 +1274,27 @@
         cursor: not-allowed;
         opacity: 0.62;
       }
+      .novaflow-smart-ai-stop {
+        width: 100%;
+        min-width: 0;
+        height: 44px;
+        padding: 0 16px;
+        border: 1px solid rgba(239, 68, 68, 0.55);
+        border-radius: 6px;
+        background: rgba(239, 68, 68, 0.18);
+        color: #fff;
+        font-size: 13px;
+        font-weight: 500;
+        line-height: 1;
+        cursor: pointer;
+      }
+      .novaflow-smart-ai-stop:hover {
+        background: rgba(239, 68, 68, 0.28);
+      }
+      .novaflow-smart-ai-stop:disabled {
+        cursor: default;
+        opacity: 0.62;
+      }
       .novaflow-smart-ai-context-note {
         color: rgba(232, 237, 242, 0.56);
         font-size: 12px;
@@ -2406,13 +2427,13 @@
     const normalizedCategory = category.toLowerCase().replace(/[\s-]+/g, "_");
     if (isMiniMaxH3) {
       if (/content_policy|adult_confirmation|minor|young|age/.test(normalizedCategory)) {
-        return "参考图或补充要求未通过 H3 内容与年龄校验";
+        return "参考图或补充要求未通过内容与年龄校验";
       }
       if (/contract|schema|alignment|semantic|validation/.test(normalizedCategory)) {
         return "生成结果未通过 MiniMax H3 协议校验";
       }
       if (/timeout/.test(normalizedCategory)) return "MiniMax H3 分析超时";
-      if (/provider|http|upstream/.test(normalizedCategory)) return "Grok 未完成 MiniMax H3 分析";
+      if (/provider|http|upstream/.test(normalizedCategory)) return "分析服务未完成分析";
     }
     if (["semantic_contract", "contract_structure", "visual_contract_invalid", "contract_invalid"].includes(normalizedCategory)) {
       return "视觉分析结果未通过 v2 合同校验";
@@ -2997,6 +3018,25 @@
     }
   }
 
+  // 任务中止 while the assistant works: every call it is still waiting on fails at once and nothing
+  // it returns afterwards is written into the prompt box.
+  function smartAiStoppedError() {
+    const error = new Error("\u4efb\u52a1\u5df2\u4e2d\u6b62");
+    error.novaflowStopped = true;
+    return error;
+  }
+
+  function smartAiStoppableApi(api, stopped) {
+    return new Proxy(api, {
+      get(target, key) {
+        const value = target[key];
+        return typeof value === "function"
+          ? (...args) => Promise.race([Promise.resolve(value.apply(target, args)), stopped])
+          : value;
+      }
+    });
+  }
+
   function closeDialog() {
     const root = document.getElementById(ROOT_ID);
     if (root) root.remove();
@@ -3439,7 +3479,7 @@
         <div class="novaflow-smart-ai-engine-row">
           <label class="novaflow-smart-ai-engine-option">
             <input type="radio" name="novaflow-smart-ai-engine" value="grok" ${state.engine === "grok" ? "checked" : ""}>
-            <span>Grok AI<span class="novaflow-smart-ai-engine-meta">云端 · 深度处理</span></span>
+            <span>云端模型<span class="novaflow-smart-ai-engine-meta">云端 · 深度处理</span></span>
           </label>
           <label class="novaflow-smart-ai-engine-option">
             <input type="radio" name="novaflow-smart-ai-engine" value="local" ${state.engine === "local" ? "checked" : ""}>
@@ -3507,7 +3547,7 @@
       if (capability?.reverseKind === "single_image_motion") {
         return `<div class="novaflow-smart-ai-context-note">将仅分析当前图生视频参考图</div>`;
       }
-      return `<div class="novaflow-smart-ai-context-note">当前 H3 模式不支持参考图反推</div>`;
+      return `<div class="novaflow-smart-ai-context-note">当前模式不支持参考图反推</div>`;
     }
     if (state.imagesLoading) {
       return `<div class="novaflow-smart-ai-context-note">正在读取参考图...</div>`;
@@ -3852,7 +3892,7 @@
     const hasPromptText = Boolean(String(getPromptTextareasFromContext(state.context).positive?.value || "").trim());
     // 补充要求 is optional only while the prompt box already says what the user wants.
     const optionalMark = hasPromptText ? "（可选）" : "";
-    const requirementsLabel = isMiniMaxH3 ? `H3 补充要求${optionalMark}` : `动作与镜头要求${optionalMark}`;
+    const requirementsLabel = isMiniMaxH3 ? `补充要求${optionalMark}` : `动作与镜头要求${optionalMark}`;
     const isArtTextEdit = isArt && state.mode === "optimize" && Boolean(currentArtPrompt);
     const requirementsPlaceholder = isArt
       ? (state.mode === "reverse"
@@ -3877,7 +3917,7 @@
     const textNotice = !state.loading && !awaitingNeutralApply && smartAiUserTextMissing()
       ? SMART_AI_TEXT_REQUIRED_MESSAGE
       : "";
-    const visibleMessage = state.message || textNotice;
+    const visibleMessage = (window.NovaFlowNeutralText || String)(state.message || textNotice);
     const submitLabel = awaitingNeutralApply
       ? "应用中性提示词继续"
       : state.loading
@@ -3907,8 +3947,9 @@
           ${renderSmartAiAnalysisResult()}
         </div>
         <div class="novaflow-smart-ai-message" data-visible="${visibleMessage ? "1" : "0"}" data-tone="${state.messageTone === "error" ? "error" : (state.messageTone === "warning" ? "warning" : "")}" role="${state.messageTone === "error" ? "alert" : "status"}" aria-live="${state.messageTone === "error" ? "assertive" : "polite"}" aria-atomic="true">${escapeSmartAiHtml(visibleMessage)}</div>
-        <div class="novaflow-smart-ai-footer" data-single="1">
+        <div class="novaflow-smart-ai-footer" data-single="${state.loading ? "0" : "1"}">
           <button type="button" class="novaflow-smart-ai-submit" ${submitDisabled ? "disabled" : ""}>${submitLabel}</button>
+          ${state.loading ? `<button type="button" class="novaflow-smart-ai-stop" ${state.runStopped ? "disabled" : ""}>${state.runStopped ? "\u6b63\u5728\u4e2d\u6b62\u2026" : "\u4efb\u52a1\u4e2d\u6b62"}</button>` : ""}
         </div>
       </div>
     `;
@@ -3916,11 +3957,17 @@
     dialog?.addEventListener?.("pointerdown", (event) => event.stopPropagation());
     if (state.loading) {
       Array.from(root.querySelectorAll("input, textarea, select, button")).forEach((control) => {
-        if (!control.classList?.contains("novaflow-smart-ai-close")) control.disabled = true;
+        if (!control.classList?.contains("novaflow-smart-ai-close") && !control.classList?.contains("novaflow-smart-ai-stop")) control.disabled = true;
       });
     }
     root.querySelector(".novaflow-smart-ai-close")?.addEventListener("click", () => {
       if (!state.loading) closeDialog();
+    });
+    root.querySelector(".novaflow-smart-ai-stop")?.addEventListener("click", (event) => {
+      event.preventDefault();
+      if (!state.loading || state.runStopped) return;
+      state.stopRun?.();
+      renderDialog();
     });
     const textarea = root.querySelector(".novaflow-smart-ai-textarea");
     if (textarea instanceof HTMLTextAreaElement) {
@@ -3944,7 +3991,7 @@
           const notice = root.querySelector(".novaflow-smart-ai-message");
           if (notice instanceof HTMLElement) {
             const text = state.message || (smartAiUserTextMissing() ? SMART_AI_TEXT_REQUIRED_MESSAGE : "");
-            notice.textContent = text;
+            notice.textContent = (window.NovaFlowNeutralText || String)(text);
             notice.setAttribute("data-visible", text ? "1" : "0");
           }
         }
@@ -4258,7 +4305,7 @@
       return;
     }
     if (isMiniMaxH3ReverseRequest && miniMaxH3ReverseCapability()?.supportsReverse !== true) {
-      state.message = "当前 MiniMax H3 模式不支持参考图反推";
+      state.message = "当前模式不支持参考图反推";
       renderDialog();
       return;
     }
@@ -4313,8 +4360,16 @@
     state.revealAnalysisOnRender = false;
     renderDialog();
     let miniMaxH3ReversePrepared = null;
+    state.runStopped = false;
+    const stopped = new Promise((_, reject) => {
+      state.stopRun = () => {
+        state.runStopped = true;
+        reject(smartAiStoppedError());
+      };
+    });
+    stopped.catch(() => {});
     try {
-      const api = window.electronAPI || {};
+      const api = smartAiStoppableApi(window.electronAPI || {}, stopped);
       // 文生/图生/首尾帧 with only a 补充要求: it becomes the source prompt.
       const miniMaxH3Prepared = isMiniMaxH3OptimizeRequest
         ? prepareMiniMaxH3PromptRequest(
@@ -4796,6 +4851,7 @@
       if (isVisualV2Result && !["direct", "adult_confirmation"].includes(generationGate)) {
         throw new Error("图片反推返回的生成门状态无法应用，已阻止写入");
       }
+      if (state.runStopped) throw smartAiStoppedError();
       setPromptTextareasValue(currentTextareas, nextPrompt, {
         supportsNegativePrompt: isMiniMaxH3Request ? false : supportsNegativePrompt,
         negativePrompt: nextNegativePrompt,
@@ -4829,6 +4885,13 @@
       closeDialog();
     } catch (caughtError) {
       const err = caughtError;
+      if (err?.novaflowStopped || state.runStopped) {
+        state.loading = false;
+        state.messageTone = "";
+        state.message = "\u4efb\u52a1\u5df2\u4e2d\u6b62";
+        renderDialog();
+        return;
+      }
       if (isMiniMaxH3ReverseRequest
         && miniMaxH3ReversePrepared
         && miniMaxH3FailureAllowsGuaranteedFallback(err)) {
@@ -5012,10 +5075,10 @@
       const noLocalMachine = !response || (response.ok === false && /Web 版通过智能 AI/.test(String(response.error || "")));
       if (noLocalMachine && typeof api.smartAiPromptOptimize === "function") {
         const token = readSessionToken();
-        if (!token) throw new Error("H3 提示词编译需要先登录 NovaFlow 账号");
+        if (!token) throw new Error("提示词编译需要先登录 NovaFlow 账号");
         response = await api.smartAiPromptOptimize({ ...payload, h3ReferenceFrames, token });
       }
-      if (!response || response.ok === false) throw new Error(response?.error || "H3 提示词编译失败");
+      if (!response || response.ok === false) throw new Error(response?.error || "提示词编译失败");
       return readSmartAiResult(response).prompt;
     });
   }

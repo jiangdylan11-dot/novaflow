@@ -1641,7 +1641,7 @@
   };
 
   api.clientAuthAiTaskAuthorize = async (payload) => session(
-    '自有算力任务不计积分；付费 Provider（Grok / GPT / Google）按次结算',
+    '自有算力任务不计积分；付费模型按次结算',
     { requested: (payload && (payload.taskType || payload.task_type)) || null }
   );
 

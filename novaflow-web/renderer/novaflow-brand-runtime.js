@@ -33709,7 +33709,7 @@
       {
         when: "body.novaflow-primary-target-art",
         selector: '[data-novaflow-art-generate-progress] > div:first-child',
-        style: { flex: "0 0 auto", width: "100%", padding: "0 34px 0 0", gap: "8px", height: "18px", "min-height": "18px", display: "flex", "align-items": "center", position: "relative", "box-sizing": "border-box" }
+        style: { flex: "0 0 auto", width: "100%", padding: "0 72px 0 0", gap: "8px", height: "18px", "min-height": "18px", display: "flex", "align-items": "center", position: "relative", "box-sizing": "border-box" }
       },
       {
         when: "body.novaflow-primary-target-art",
@@ -33729,8 +33729,9 @@
       {
         when: "body.novaflow-primary-target-art",
         selector: '[data-novaflow-art-generate-progress] > div:first-child > button',
-        // Square like the animation stop: the stylesheet's min-height 26 had made it an 18 x 26 bar.
-        style: { position: "absolute", right: "0", top: "0", width: "18px", height: "18px", "min-width": "18px", "max-width": "18px", "min-height": "18px", "max-height": "18px", padding: "0", margin: "0", "line-height": "18px", "font-size": "12px", transform: "none" }
+        // 任务中止 in words at the row's right edge, 18 px tall like the row (the stylesheet's min-height
+        // 26 had made it a bar).
+        style: { position: "absolute", right: "0", top: "0", width: "auto", height: "18px", "min-width": "18px", "max-width": "none", "min-height": "18px", "max-height": "18px", padding: "0 8px", margin: "0", "line-height": "16px", "font-size": "11px", "font-weight": "500", "white-space": "nowrap", transform: "none" }
       },
       {
         when: "body.novaflow-primary-target-art",
@@ -35088,7 +35089,7 @@
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-generation-progress="1"] > div:first-child',
-        style: { flex: "0 0 auto", width: "100%", padding: "0 34px 0 0", gap: "8px", height: "18px", "min-height": "18px", "align-items": "center", "box-sizing": "border-box" }
+        style: { flex: "0 0 auto", width: "100%", padding: "0 72px 0 0", gap: "8px", height: "18px", "min-height": "18px", "align-items": "center", "box-sizing": "border-box" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
@@ -35108,8 +35109,8 @@
       {
         when: "body.novaflow-ai-animation-section-layers",
         selector: '[data-novaflow-ai-generation-progress="1"] > div:first-child > button',
-        // Square: the bundle's own min-height 26 had turned it into an 18 x 26 bar.
-        style: { position: "absolute", right: "0", top: "0", width: "18px", height: "18px", "min-width": "18px", "max-width": "18px", "min-height": "18px", "max-height": "18px", padding: "0", margin: "0", transform: "none" }
+        // 任务中止 in words, 18 px tall like the row: the bundle's own min-height 26 had made it a bar.
+        style: { position: "absolute", right: "0", top: "0", width: "auto", height: "18px", "min-width": "18px", "max-width": "none", "min-height": "18px", "max-height": "18px", padding: "0 8px", margin: "0", "line-height": "16px", "font-size": "11px", "font-weight": "500", "white-space": "nowrap", transform: "none" }
       },
       {
         when: "body.novaflow-ai-animation-section-layers",
@@ -71712,7 +71713,7 @@
         }, 0);
         return undefined;
       }
-      return nativeAlert(message);
+      return nativeAlert(window.NovaFlowNeutralText && message != null ? window.NovaFlowNeutralText(message) : message);
     };
   }
 
@@ -78523,19 +78524,20 @@
         position: absolute;
         right: 0;
         top: -6px;
-        width: 26px;
+        width: auto;
         min-width: 26px;
-        max-width: 26px;
+        max-width: none;
         height: 26px;
         min-height: 26px;
         max-height: 26px;
-        padding: 0;
+        padding: 0 8px;
         border-radius: 8px;
         border: 1px solid rgba(239,68,68,0.55);
         background: rgba(239,68,68,0.18);
         color: #fff;
         cursor: pointer;
-        font-size: 14px;
+        font-size: 11px;
+        white-space: nowrap;
         font-weight: 600;
         line-height: 1;
         display: inline-flex;
@@ -79352,20 +79354,21 @@
         position: absolute !important;
         right: 0 !important;
         top: -6px !important;
-        width: 26px !important;
+        width: auto !important;
         min-width: 26px !important;
-        max-width: 26px !important;
+        max-width: none !important;
         height: 26px !important;
         min-height: 26px !important;
         max-height: 26px !important;
-        padding: 0 !important;
+        padding: 0 8px !important;
         border-radius: ${NOVAFLOW_RECT_RADIUS_PX}px !important;
         border: 1px solid rgba(239,68,68,0.55) !important;
         background: rgba(239,68,68,0.18) !important;
         background-color: rgba(239,68,68,0.18) !important;
         color: #fff !important;
         cursor: pointer !important;
-        font-size: 14px !important;
+        font-size: 11px !important;
+        white-space: nowrap !important;
         font-weight: 600 !important;
         line-height: 1 !important;
         display: inline-flex !important;
@@ -80819,7 +80822,7 @@
   }
 
   function setArtGenerateStatus(message, isError = false) {
-    ART_GENERATE_STATE.status = String(message || "");
+    ART_GENERATE_STATE.status = (window.NovaFlowNeutralText || String)(message || "");
     ART_GENERATE_STATE.error = isError ? ART_GENERATE_STATE.status : "";
     renderArtGenerateSurfaces({ forceBottom: true });
   }
@@ -80857,8 +80860,8 @@
     ART_GENERATE_STATE.running = false;
     // pct is already batch-wide; drop the batch first so the cancel message is not mapped a second time.
     clearArtGenerateBatch();
-    setArtGenerateProgress("\u5df2\u53d6\u6d88", pct, { promptId });
-    setArtGenerateStatus("\u5df2\u53d6\u6d88", false);
+    setArtGenerateProgress("\u5df2\u4e2d\u6b62", pct, { promptId });
+    setArtGenerateStatus("\u5df2\u4e2d\u6b62", false);
     if (!baseUrl) {
       clearArtGenerateRunIfCurrent(cancelToken);
       return;
@@ -80866,8 +80869,8 @@
     try {
       const interrupted = await artRequestJson(baseUrl, "/interrupt", { method: "POST" });
       if (!interrupted || !interrupted.ok) {
-        setArtGenerateProgress("\u5df2\u8bf7\u6c42\u53d6\u6d88\uff08Runtime \u53ef\u80fd\u4e0d\u652f\u6301 interrupt\uff09", pct, { promptId });
-        setArtGenerateStatus("\u5df2\u8bf7\u6c42\u53d6\u6d88\uff08Runtime \u53ef\u80fd\u4e0d\u652f\u6301 interrupt\uff09", false);
+        setArtGenerateProgress("\u5df2\u8bf7\u6c42\u4e2d\u6b62", pct, { promptId });
+        setArtGenerateStatus("\u5df2\u8bf7\u6c42\u4e2d\u6b62", false);
       }
     } catch (error) {
       setArtGenerateProgress(`\u53d6\u6d88\u8bf7\u6c42\u5931\u8d25: ${String(error && error.message || error || "")}`, pct, { promptId });
@@ -81508,7 +81511,7 @@
     const label = ART_GENERATE_STATE.error
       ? ART_GENERATE_STATE.error
       : (running ? (ART_GENERATE_STATE.progressLabel || "\u751f\u6210\u4e2d..") : (ART_GENERATE_STATE.progressLabel || "\u7b49\u5f85\u751f\u6210"));
-    return { running, pct, label };
+    return { running, pct, label: (window.NovaFlowNeutralText || String)(label) };
   }
 
   function renderArtGenerateProgressRow() {
@@ -81549,8 +81552,8 @@
         state.running ? createArtEl("button", {
           type: "button",
           className: "novaflow-art-generate-progress-cancel",
-          title: "\u7ed3\u675f\u5f53\u524d\u8fd0\u884c",
-          "aria-label": "\u7ed3\u675f\u5f53\u524d\u8fd0\u884c",
+          title: "\u4efb\u52a1\u4e2d\u6b62",
+          "aria-label": "\u4efb\u52a1\u4e2d\u6b62",
           onclick: (event) => {
             event.preventDefault();
             event.stopPropagation();
@@ -81558,7 +81561,7 @@
               setArtGenerateProgress(`\u53d6\u6d88\u8bf7\u6c42\u5931\u8d25: ${String(error && error.message || error || "")}`, ART_GENERATE_STATE.progressPct, { promptId: ART_GENERATE_STATE.progressPromptId });
             });
           }
-        }, "\u00d7") : null
+        }, "\u4efb\u52a1\u4e2d\u6b62") : null
       ]),
       createArtEl("div", { className: "novaflow-art-generate-progress-track" }, createArtEl("div", {
         className: "novaflow-art-generate-progress-bar",
@@ -83337,7 +83340,7 @@
 
   function cloneArtWorkflowForState(state = ART_GENERATE_STATE) {
     const template = ART_GENERATE_WORKFLOW_TEMPLATES[artWorkflowKeyForState(state)];
-    if (!template) throw new Error("本地生成只支持 Qwen-Image-2.1 或 NSFW 路线，请刷新页面后重试");
+    if (!template) throw new Error("当前本地生成路线不可用，请刷新页面后重试");
     return JSON.parse(template);
   }
 
@@ -83880,11 +83883,11 @@
     const info = runtime?.info || {};
     const missing = ["LoadImage", "EmptyLatentImage", "ImageScale", "SplitImageWithAlpha"].filter((type) => !info[type]);
     if (!runtime || missing.length) {
-      throw new Error("当前算力节点缺少 Qwen-Image-2.1 所需的模型或节点，无法按多参考图生成 UI。请在本地助手里重新启动 NovaFlow 后再试");
+      throw new Error("当前算力节点缺少所需的模型或节点，无法按多参考图生成 UI。请在本地助手里重新启动 NovaFlow 后再试");
     }
     const names = (Array.isArray(uploadedNames) ? uploadedNames : []).filter(Boolean);
     if (names.length > QWEN21_UI_MAX_REFERENCES) {
-      throw new Error(`Qwen-Image-2.1 最多接收 ${QWEN21_UI_MAX_REFERENCES} 张参考图，当前 ${names.length} 张`);
+      throw new Error(`最多接收 ${QWEN21_UI_MAX_REFERENCES} 张参考图，当前 ${names.length} 张`);
     }
     const roles = Array.isArray(providerOptions?.referenceRoles) ? providerOptions.referenceRoles : [];
     const roleEntry = (index) => roles.find((item) => Number(item?.index) === index) || roles[index] || {};
@@ -84024,7 +84027,7 @@
     // Asked for 2.1 on a node that cannot build it: an error, never a 2511 graph that keeps three of
     // the references and other steps than the panel showed.
     if (drawQwen21 && !qwen21Build) {
-      throw new Error("当前算力节点无法按 Qwen-Image-2.1 生成（缺少模型或节点），请在本地助手里重新启动 NovaFlow 后再试");
+      throw new Error("当前算力节点无法生成（缺少模型或节点），请在本地助手里重新启动 NovaFlow 后再试");
     }
     if (qwen21Build) {
       localWorkflow = qwen21Build.workflow;
@@ -84039,7 +84042,7 @@
       if (shouldUseArtGenerateIdeogramWorkflow(provider, mode, state, providerOptions)) {
         const ideogramApi = window.NovaFlowArtGenerateIdeogramWorkflow;
         if (typeof ideogramApi?.build !== "function") {
-          throw new Error("NovaFlow Ideogram Instant \u5de5\u4f5c\u6d41\u6a21\u5757\u672a\u5c31\u7eea");
+          throw new Error("\u7ed8\u56fe\u5de5\u4f5c\u6d41\u6a21\u5757\u672a\u5c31\u7eea");
         }
         const ideogramSeed = state.randomSeed || Number(state.seed) < 0
           ? Math.floor(Math.random() * 1000000000)

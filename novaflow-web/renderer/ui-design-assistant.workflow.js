@@ -178,7 +178,7 @@
     const normalizedEngine = normalizeEngine(engine)
     const limit = analysisReferenceLimit(normalizedEngine)
     if (source.length > limit) {
-      const label = normalizedEngine === 'local' ? '本地设计助手' : 'Grok 设计助手'
+      const label = normalizedEngine === 'local' ? '本地设计助手' : '云端设计助手'
       throw new Error(`${label}一次最多分析 ${limit} 张参考图，请取消多余选择后再提交。`)
     }
     const references = source.map(normalizeReference).filter(Boolean)
@@ -295,7 +295,7 @@
     if (typeof helper?.normalizeReferencesForGrok !== 'function') return references
     const prepared = await helper.normalizeReferencesForGrok(references)
     if (!Array.isArray(prepared) || prepared.length !== references.length) {
-      throw new Error('Grok 参考图预处理失败，请重新选择参考图。')
+      throw new Error('参考图预处理失败，请重新选择参考图。')
     }
     return referenceSnapshot(prepared, 'grok')
   }
@@ -407,7 +407,7 @@
       : (references.length ? 'ui-design-reference' : (currentPrompt.trim() ? 'ui-design-optimize' : 'ui-design-create'))
 
     const call = engine === 'local' ? localApi(options, references) : grokApi(options, references)
-    if (typeof call !== 'function') throw new Error(engine === 'local' ? '本地设计助手未就绪' : 'Grok 设计助手未就绪')
+    if (typeof call !== 'function') throw new Error(engine === 'local' ? '本地设计助手未就绪' : '云端设计助手未就绪')
 
     let result
     if (engine === 'grok') {

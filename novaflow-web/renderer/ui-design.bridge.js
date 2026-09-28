@@ -17,6 +17,7 @@
   let mounted = null
   let selectedEntity = null
   let generationState = null
+  let generationAbort = null
   let generationPromise = null
   let featureRefresh = null
   let generationStatus = ''
@@ -1001,7 +1002,10 @@
         running: !['complete', 'error', 'cancelled'].includes(progress?.phase),
       })
     }
+    const abort = new AbortController()
+    generationAbort = abort
     const generationOptions = {
+      signal: abort.signal,
       project,
       layoutGuide,
       semanticLayout: layoutGuide.semantic || null,
@@ -1021,7 +1025,7 @@
           status: 'REVIEW',
           unavailable: true,
           reason: 'qwen21-single-pass',
-          summary: 'Qwen-Image-2.1 多参考图结果已生成，本次保留结果供人工验收。',
+          summary: '多参考图结果已生成，本次保留结果供人工验收。',
           hardFailures: [],
           failureCodes: [],
           scores: {},
@@ -1079,6 +1083,7 @@
       })
       throw error
     }).finally(() => {
+      if (generationAbort === abort) generationAbort = null
       generationPromise = null
       generationState = { ...currentGenerationState(context.generator, output), running: false }
     })
@@ -1189,6 +1194,12 @@
       },
       onGenerateRequest(payload) {
         return runGeneration(payload).catch(() => {})
+      },
+      // 任务中止: the workflow sees the signal, interrupts the runtime and reports 任务已中止.
+      onStopGenerateRequest() {
+        if (!generationAbort || generationAbort.signal.aborted) return false
+        generationAbort.abort('\u4efb\u52a1\u5df2\u4e2d\u6b62')
+        return true
       },
       mountPromptMentions(textarea, details) {
         return mountGeneratorPromptMentions(textarea, details)
