@@ -4,9 +4,11 @@ import test from "node:test";
 import vm from "node:vm";
 import { buildGrokImageReverseRequest, buildGrokPromptOptimizeRequest, callGrokResponseWithVisualRetry, grokResponsesPublicResult, normalizeMiniMaxH3PromptOutput } from "./smart-ai-grok.workflow.mjs";
 
-const browser = {};
-for (const name of ["prompt", "reverse"]) {
-  const url = new URL(`../../../particle-editor/ai-sequence-minimax-h3-${name}.workflow.js`, import.meta.url);
+// The shipped renderer copies, with the shared H3 format module they depend on.
+const browser = { console };
+browser.globalThis = browser;
+for (const name of ["h3-prompt-format.js", "ai-sequence-minimax-h3-prompt.workflow.js", "ai-sequence-minimax-h3-reverse.workflow.js"]) {
+  const url = new URL(`../../../novaflow-web/renderer/${name}`, import.meta.url);
   vm.runInNewContext(readFileSync(url, "utf8"), browser, { filename: url.pathname });
 }
 const workflow = browser.NovaFlowAiSequenceMiniMaxH3ReverseWorkflow;
@@ -245,38 +247,53 @@ test("bare official field headings are repaired without accepting absent or dupl
 });
 
 for (const [mode, keys] of [["text_video", []], ["image_video", ["first_frame"]], ["first_last", ["first_frame", "last_frame"]], ["multi_reference", ["multi_ref_image_1"]]]) {
-  test(`${mode} uses required structured fields and rejects empty sections before writeback`, () => {
+  test(`${mode} uses the bilingual structured pair and rejects empty sections before writeback`, () => {
     const options = { modelId: "minimax_h3_local", mode, durationSeconds: 5, prompt: "人物缓慢抬手，再放下，固定镜头。",
       resources: keys.map((key) => ({ key, identity: key, occupied: true, mimeType: "image/png" })) };
     const prepared = browser.NovaFlowAiSequenceMiniMaxH3PromptWorkflow.prepareRequest(options);
-    const built = buildGrokPromptOptimizeRequest({ prompt: prepared.prompt, requirements: prepared.requirements,
+    // Every mode of the current renderer is bilingual; add the marker for a renderer that predates the base-mode pair.
+    const requirements = /^H3 response format: bilingual-v1$/m.test(prepared.requirements) ? prepared.requirements
+      : prepared.requirements.replace("\nSource prompt:", "\nH3 response format: bilingual-v1\nSource prompt:");
+    const built = buildGrokPromptOptimizeRequest({ prompt: prepared.prompt, requirements,
       h3Mode: mode, durationSeconds: 5, visualSchema: "nf.h3.visual.v1", purpose: "minimax-h3-prompt-enhance" });
     const format = built.body.text.format;
     assert.equal(format.type, "json_schema");
     assert.equal(format.strict, true);
-    const fields = mode === "multi_reference" ? ["subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music"]
+    const reference = mode === "multi_reference";
+    const fields = reference ? ["subject_definitions", "summary", "retention_analysis", "detailed_description", "overall_soundscape", "non_diegetic_music"]
       : ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"];
-    const required = mode === "image_video" || mode === "first_last" ? ["reference_alignment", ...fields] : fields;
-    assert.deepEqual(format.schema.required, required);
-    const content = {
-      reference_alignment: '<Picture 1> from [Shot 1] = 0.00 seconds; <Picture 2> from [Shot 1] = 5.00 seconds (final shot)',
+    assert.deepEqual(format.schema.required, reference ? ["modelPrompt", "displayPrompt", "editPolicy"] : ["modelPrompt", "displayPrompt"]);
+    for (const half of ["modelPrompt", "displayPrompt"]) assert.deepEqual(format.schema.properties[half].required, fields);
+    const english = {
       subject_definitions: '<Subject 1>: the figure in <Picture 1>.', summary: '[reference generation] The figure waves.',
       retention_analysis: '<Subject 1>: fully_preserved - appearance.',
       integrated_multimodal_description: '[Shot 1] The figure begins to wave. The camera holds still.',
       detailed_description: 'Digital painting. [Shot 1] The figure begins to wave. The camera holds still.',
       overall_soundscape: 'Quiet room tone.', non_diegetic_music: 'N/A'
     };
-    const json = Object.fromEntries(required.map((key) => [key, content[key]]));
-    const text = normalizeMiniMaxH3PromptOutput(JSON.stringify(json), built.resultOptions);
-    assert.match(text, /\n\noverall_soundscape:/);
-    if (mode === "multi_reference") {
-      assert.match(format.schema.properties.subject_definitions.description, /<Picture 1>/);
-      assert.doesNotMatch(format.schema.properties.subject_definitions.description, /multi_ref_image_1|captured image slot/);
-      assert.throws(() => normalizeMiniMaxH3PromptOutput(JSON.stringify({ ...json, subject_definitions: "<Subject 1>: the figure." }), built.resultOptions),
-        (error) => error.errorCode === "h3_contract_references");
+    const chinese = {
+      subject_definitions: '<Subject 1>：<Picture 1> 中的人物。', summary: '[reference generation] 人物挥手。',
+      retention_analysis: '<Subject 1>: fully_preserved - 外貌。',
+      integrated_multimodal_description: '[Shot 1] 人物开始挥手，镜头保持不动。',
+      detailed_description: '数字绘画风格。[Shot 1] 人物开始挥手，镜头保持不动。',
+      overall_soundscape: '安静的室内环境声。', non_diegetic_music: 'N/A'
+    };
+    const answer = (changes = {}) => JSON.stringify({ modelPrompt: Object.fromEntries(fields.map((key) => [key, changes[key] ?? english[key]])),
+      displayPrompt: Object.fromEntries(fields.map((key) => [key, chinese[key]])),
+      ...(reference ? { editPolicy: { preserveBackground: false, preserveMotion: false, sameShapeAppearanceOnly: false } } : {}) });
+    const result = JSON.parse(normalizeMiniMaxH3PromptOutput(answer(), built.resultOptions));
+    assert.match(result.modelPrompt, reference ? /\n\noverall_soundscape:\n/ : /\n\noverall_soundscape: /);
+    assert.match(result.displayPrompt, /人物开始挥手/);
+    if (reference) {
+      assert.doesNotMatch(JSON.stringify(format.schema), /multi_ref_image_1|captured image slot/);
+      assert.throws(() => normalizeMiniMaxH3PromptOutput(answer({ subject_definitions: "<Subject 1>: the figure." }), built.resultOptions),
+        (error) => error.errorCode === "h3_contract_five_sections" && /素材来源/.test(error.message));
     }
-    for (const field of required) {
-      assert.throws(() => normalizeMiniMaxH3PromptOutput(JSON.stringify({ ...json, [field]: "" }), built.resultOptions), (error) => error.errorCode === "h3_contract_fields");
+    // Base modes complete missing music as N/A; every other empty section is rejected before writeback.
+    for (const field of fields) {
+      const empty = () => normalizeMiniMaxH3PromptOutput(answer({ [field]: "" }), built.resultOptions);
+      if (!reference && field === "non_diegetic_music") assert.match(JSON.parse(empty()).modelPrompt, /non_diegetic_music: N\/A$/);
+      else assert.throws(empty, (error) => error.errorCode === (reference ? "h3_contract_five_sections" : "h3_contract_fields"));
     }
   });
 }

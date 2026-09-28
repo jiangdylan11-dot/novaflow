@@ -440,8 +440,10 @@ test("MiniMax H3 prompt enhance falls back deterministically after repair contra
   assert.equal(result.providerCallCount, 2);
   assert.equal(result.h3ContractRepairUsed, true);
   assert.equal(result.data.h3DeterministicPromptFallback, true);
-  assert.match(result.data.output_text, /^参考帧对齐：<Picture 1> 对应 \[Shot 1\] = 0\.00 秒；<Picture 2> 对应 \[Shot 2\] = 4 秒/m);
-  assert.match(result.data.output_text, /integrated_multimodal_description:[\s\S]*\[Shot 1\][\s\S]*\[Shot 2\] At 00:04\.000/u);
+  // FL2VA stays one continuous shot: the final frame belongs to [Shot 1] at the selected duration.
+  assert.match(result.data.output_text, /^参考帧对齐：<Picture 1> 对应 \[Shot 1\] = 0\.00 秒；<Picture 2> 对应 \[Shot 1\] = 4\.00 秒（尾帧）/m);
+  assert.match(result.data.output_text, /integrated_multimodal_description: \[Shot 1\][\s\S]*在 4 秒准确抵达 <Picture 2> 的尾帧状态/u);
+  assert.doesNotMatch(result.data.output_text, /\[Shot 2\]/);
   assert.match(result.data.output_text, /让动画更生动/u);
   assert.match(result.data.output_text, /overall_soundscape:/);
   assert.match(result.data.output_text, /non_diegetic_music: N\/A/);

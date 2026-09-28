@@ -2003,6 +2003,8 @@ function buildMiniMaxH3RepairBody(body, errorCode = "h3_contract_invalid", valid
   const input = Array.isArray(next.input) ? next.input : [];
   const user = [...input].reverse().find((item) => item?.role === "user");
   if (!user || !Array.isArray(user.content)) return next;
+  const schema = next.text?.format?.schema?.properties || {};
+  const translateOnly = user.content.some((item) => /^H3 compile: translate-only$/m.test(String(item?.text || "")));
   user.content.push(smartAiInputText([
     "DIRECTED H3 CONTRACT REPAIR (one final attempt).",
     `Failed gate: ${String(errorCode || "h3_contract_invalid").slice(0, 80)}.`,
@@ -2010,11 +2012,17 @@ function buildMiniMaxH3RepairBody(body, errorCode = "h3_contract_invalid", valid
     ...(errorCode === "h3_contract_enhancement_not_applied" ? [
       "The narrative was only a copy, generic padding, or an incomplete loop. Rewrite the actual motion into observable, feasible progression; for a requested loop connect the ending to the initial pose and movement phase. Preserve all hard constraints. Do not fix this by adding only headings or audio fields."
     ] : []),
-    "Rebuild from the original images and requirements. Do not repeat or comment on the prior answer.",
+    translateOnly
+      ? "Translate the source prompt again under the translation rules. Do not repeat or comment on the prior answer."
+      : "Rebuild from the original images and requirements. Do not repeat or comment on the prior answer.",
     "Every captured reference label listed in Available resource labels must occur in the appropriate final section. Do not omit supplied references or leave definitions or retention_analysis empty.",
-    next.text?.format?.schema?.properties?.task
+    schema.task
       ? h3PromptEnhance.formatInstruction
-      : "Return only the exact mode-specific H3 structure: exact ordered fields; independent keyframe alignment when required; [Shot 1] timeline; concrete action progression; declared camera behavior; separately usable diegetic soundscape and non-diegetic music.",
+      : schema.modelPrompt?.properties?.integrated_multimodal_description
+        ? (translateOnly ? h3PromptEnhance.baseTranslateInstruction : h3PromptEnhance.baseResultInstruction + "\n" + MINIMAX_H3_BASE_PAIR_RULES)
+        : translateOnly
+          ? MINIMAX_H3_REFERENCE_TRANSLATE_INSTRUCTION
+          : "Return only the exact mode-specific H3 structure: exact ordered fields; independent keyframe alignment when required; [Shot 1] timeline; concrete action progression; declared camera behavior; separately usable diegetic soundscape and non-diegetic music.",
     `Return exactly ${MINIMAX_H3_CONTENT_POLICY_BLOCK_MARKER}: explicit_minor_sensitive_content only when explicit minor, underage, or child evidence coexists with sensitive content. Do not treat young_looking, age_unverifiable, or uncertain candidate wording alone as minor evidence, and never infer age from ambiguous appearance wording.`
   ].join("\n")));
   next.temperature = 0.15;
@@ -4546,32 +4554,52 @@ function miniMaxH3ValidateTimeline(visual, durationSeconds = 0) {
 }
 
 function miniMaxH3EnhanceMode(payload) {
+  const scan = (text) => /(?:ref2va|r2v|multi[-_\s]?reference|full[-_\s]?reference|全参考|多参)/i.test(text) ? "full_reference"
+    : /(?:fl2va|first[-_\s]?last|首尾帧)/i.test(text) ? "first_last"
+    : /(?:i2va|image[-_\s]?video|图生视频)/i.test(text) ? "image_video"
+    : /(?:l2va|video[-_\s]?reference|视频参考)/i.test(text) ? "video_reference"
+    : /(?:t2va|text[-_\s]?video|文生视频)/i.test(text) ? "text_video" : "";
   const source = normalizeSmartAiText(
     payload?.h3Mode || payload?.h3_mode || payload?.taskType || payload?.task_type || payload?.mode || "",
     80
-  ).toLowerCase();
-  const requirements = normalizeSmartAiText(payload?.requirements || payload?.requirement || "", 12000).toLowerCase();
-  const text = `${source} ${requirements}`;
-  if (/(?:ref2va|r2v|multi[-_\s]?reference|full[-_\s]?reference|全参考|多参)/i.test(text)) return "full_reference";
-  if (/(?:fl2va|first[-_\s]?last|首尾帧)/i.test(text)) return "first_last";
-  if (/(?:i2va|image[-_\s]?video|图生视频)/i.test(text)) return "image_video";
-  if (/(?:l2va|video[-_\s]?reference|视频参考)/i.test(text)) return "video_reference";
-  return "text_video";
+  );
+  // An explicit mode wins; the requirements also carry instruction text, so they are scanned only without one.
+  return h3PromptEnhance.baseModeName(source) || scan(source)
+    || scan(normalizeSmartAiText(payload?.requirements || payload?.requirement || "", 12000)) || "text_video";
 }
+
+// 多参 counterpart of h3PromptEnhance.baseTranslateInstruction for the translate-only compile.
+const MINIMAX_H3_REFERENCE_TRANSLATE_INSTRUCTION = "Translate only. The source prompt is a finished Simplified Chinese H3 multi-reference prompt in the six fields subject_definitions, summary, retention_analysis, detailed_description, overall_soundscape and non_diegetic_music. Return modelPrompt as its faithful English translation, displayPrompt as the unchanged Chinese source and editPolicy as defined in the instructions. Keep every <Subject N>, <Picture N>, <Video N> and <Audio N> label, bracketed task tag, retention relation, [Shot N] marker and At MM:SS.mmm time, speaker ID such as (S1), every <d>...</d> block and every double-quoted on-screen text exactly as written; N/A stays N/A. Where the Chinese names a camera move, use the official camera vocabulary: push in, pull out, pan, truck, tilt, pedestal, arc shot, tracking shot, static shot, zoom, shake, POV or roll, with small/large amplitude and at slow/fast speed. Add, remove, reorder or improve nothing.";
+const MINIMAX_H3_TRANSLATOR_ROLE = "You are NovaFlow's MiniMax H3 prompt translator. The source prompt is finished: translate it faithfully under the translation rules in the request, which override every writing rule below; the rules below only describe the official English H3 wording. Write natural English sentences (a long Chinese comma chain may become several sentences) and each camera move as an official sentence such as The camera trucks right at slow speed or The camera holds a static shot. Return only the requested JSON.";
+// Grok copies whole English phrases into the display half when told to keep the markers identical, and may time a cut without its marker.
+const MINIMAX_H3_BASE_PAIR_RULES = "Every cut starts its own numbered marker, e.g. [Shot 2] At 00:04.000, the camera cuts to a close-up of ...; never write a cut time inside the previous shot. Place each <d> line where it is spoken in the action order. overall_soundscape is N/A only when the user asks for silence; otherwise describe the ambience and the sounds of the visible actions, even when someone speaks. In displayPrompt only the markers stay literal ([Shot N], At MM:SS.mmm, <Picture N>, (S1), <d>...</d> blocks and quoted text); translate every other word into Simplified Chinese, including camera phrases, speech verbs and sound words (the camera cuts to → 镜头切到, says → 说, thud → 闷响), e.g. [Shot 2] At 00:04.000 镜头切到近景 and 女孩 (S1) 说：<d>[Chinese] 出发吧。</d>";
 
 function normalizeMiniMaxH3PromptOutput(text, options) {
   options = options && typeof options === "object" ? options : {};
   if (options.minimaxH3Enhance) {
+    const basePair = options.minimaxH3BaseResult === true;
     let formatted;
     try {
+      // A translate-only compile keeps the Chinese source as the display half.
+      const value = options.minimaxH3TranslateOnly === true
+        ? { ...(h3PromptEnhance.referenceResult(text) || { modelPrompt: text }), displayPrompt: options.currentPrompt }
+        : text;
       formatted = h3PromptEnhance.isReferenceMode(options)
-        ? h3PromptEnhance.validateReferenceResult(text, options)
-        : h3PromptEnhance.validateFormat(text, options);
+        ? h3PromptEnhance.validateReferenceResult(value, options)
+        : basePair ? h3PromptEnhance.validateBaseResult(value, options) : h3PromptEnhance.validateFormat(text, options);
+      // Pair parity compares the two halves only; speech the user quotes must also reach the model half verbatim.
+      const model = basePair ? String(h3PromptEnhance.referenceResult(formatted)?.modelPrompt ?? formatted) : "";
+      for (const m of String(options.currentPrompt || "").matchAll(/(?:说|道|喊|问|唱|\b(?:says?|asks?|shouts?|sings?))\s*[:：,，]?\s*[“\x22]([^”\x22\n]+)[”\x22]|<d>(?:\s*\[[^\]\n]*\])?\s*([\s\S]*?)<\/d>/gi)) {
+        if (basePair && !model.includes((m[1] || m[2]).trim().replace(/[。！？.!?，,]+$/, ""))) throw new Error("原台词未完整保留");
+      }
     } catch (error) {
-      throw miniMaxH3ContractError("h3_contract_five_sections", error.message);
+      throw miniMaxH3ContractError(basePair ? "h3_contract_fields" : "h3_contract_five_sections", error.message);
     }
+    if (options.minimaxH3TranslateOnly === true) return formatted;
     try {
-      h3PromptEnhance.validate(h3PromptEnhance.referenceResult(formatted)?.modelPrompt || formatted, options.currentPrompt,
+      // The no-change gate compares like with like: the Chinese display half of a base pair against a Chinese source.
+      const pair = h3PromptEnhance.referenceResult(formatted);
+      h3PromptEnhance.validate((basePair && /\p{Script=Han}/u.test(options.currentPrompt || "") ? pair?.displayPrompt : pair?.modelPrompt) || formatted, options.currentPrompt,
         miniMaxH3PromptEnhanceUserRequirement(options.requirements, options.currentPrompt));
       return formatted;
     } catch (error) {
@@ -8945,6 +8973,10 @@ function buildGrokPromptOptimizeRequest(payload) {
   const surface = normalizeSmartAiText(payload?.surface || "", 80);
   const provider = normalizeSmartAiText(payload?.provider || "grok", 80);
   const h3Mode = isMiniMaxH3 ? miniMaxH3EnhanceMode(payload) : "";
+  // New renderers ask for a bilingual pair (base modes: official three fields); old ones keep five sections.
+  const h3TranslateOnly = isMiniMaxH3 && /^H3 compile: translate-only$/m.test(requirements);
+  const h3Bilingual = h3TranslateOnly || (isMiniMaxH3 && /^H3 response format: bilingual-v1$/m.test(requirements));
+  const h3BasePair = h3Bilingual && Boolean(h3PromptEnhance.baseModeName(h3Mode));
   const h3DirectDuration = payload?.durationSeconds ?? payload?.duration_seconds ?? payload?.duration;
   const h3DurationSeconds = isMiniMaxH3
     ? (h3DirectDuration === undefined || h3DirectDuration === null || h3DirectDuration === ""
@@ -9031,7 +9063,10 @@ function buildGrokPromptOptimizeRequest(payload) {
         (miniMaxH3PromptEnhanceUserRequirement(requirements, prompt) || "N/A"),
         requirements.match(/^Available resource labels:[^\n]*/im)?.[0] || "",
         "",
-        h3Mode === "full_reference" ? h3PromptEnhance.referenceInstruction + (/^H3 response format: bilingual-v1$/m.test(requirements) ? '\n' + h3PromptEnhance.referenceResultInstruction : '') : h3PromptEnhance.formatInstruction
+        h3TranslateOnly
+          ? "H3 compile: translate-only\n" + (h3Mode === "full_reference" ? MINIMAX_H3_REFERENCE_TRANSLATE_INSTRUCTION : h3PromptEnhance.baseTranslateInstruction)
+          : h3Mode === "full_reference" ? h3PromptEnhance.referenceInstruction + (h3Bilingual ? '\n' + h3PromptEnhance.referenceResultInstruction : '')
+          : h3BasePair ? h3PromptEnhance.baseResultInstruction + "\n" + MINIMAX_H3_BASE_PAIR_RULES : h3PromptEnhance.formatInstruction
       ].join("\n")
     : (isOrdinaryArtOptimize
       ? (usesStructuredArtPrompt ? ordinaryArtStructuredUserText : ordinaryArtUserText)
@@ -9063,7 +9098,8 @@ function buildGrokPromptOptimizeRequest(payload) {
         role: "system",
         content: [
           smartAiInputText(isMiniMaxH3
-            ? "You are NovaFlow's dedicated MiniMax H3 prompt compiler. Follow the requested H3 field contract and return only the final structured audiovisual prompt.\n" + (h3Mode === "full_reference" ? h3PromptEnhance.referenceInstruction : h3PromptEnhance.instruction)
+            ? (h3TranslateOnly ? MINIMAX_H3_TRANSLATOR_ROLE : "You are NovaFlow's dedicated MiniMax H3 prompt compiler. Follow the requested H3 field contract and return only the final structured audiovisual prompt.") + "\n"
+              + (h3Mode === "full_reference" ? h3PromptEnhance.referenceInstruction : h3BasePair ? (h3TranslateOnly ? "" : h3PromptEnhance.instruction + "\n") + h3PromptEnhance.baseInstruction : h3PromptEnhance.instruction)
             : (isOrdinaryArtOptimize
               ? (usesStructuredArtPrompt
                 ? "你是 NovaFlow 的图片 Prompt 结构化重编译器。用一次艺术总监级决策把完整底稿和真实用户要求编译为严格 JSON 视觉 IR；只输出 schema 内字段，系统将确定性生成六段提示词。"
@@ -9089,10 +9125,10 @@ function buildGrokPromptOptimizeRequest(payload) {
       : ordinaryArtPromptPatchTextFormat(ordinaryArtLayout.blocks.map((block) => block.id));
   }
   if (isMiniMaxH3) {
-    body.temperature = 0.35;
+    body.temperature = h3TranslateOnly ? 0.1 : 0.35;
     body.max_output_tokens = MINIMAX_H3_PROMPT_MAX_OUTPUT_TOKENS;
     const responseFields = h3Mode === "full_reference" ? h3PromptEnhance.referenceFields : h3PromptEnhance.sectionFields;
-    body.text = { format: { type: "json_schema", name: "minimax_h3_prompt", strict: true, schema: h3Mode === "full_reference" && /^H3 response format: bilingual-v1$/m.test(requirements) ? h3PromptEnhance.referenceResultSchema : {
+    body.text = { format: { type: "json_schema", name: "minimax_h3_prompt", strict: true, schema: h3Mode === "full_reference" && h3Bilingual ? h3PromptEnhance.referenceResultSchema : h3BasePair ? h3PromptEnhance.baseResultSchema : {
       type: "object", additionalProperties: false,
       properties: Object.fromEntries(responseFields.map((field) => [field, {
         type: "string", minLength: 1,
@@ -9124,6 +9160,8 @@ function buildGrokPromptOptimizeRequest(payload) {
     resultOptions: isMiniMaxH3 ? {
       minimaxH3Prompt: true,
       minimaxH3Enhance: true,
+      minimaxH3BaseResult: h3BasePair,
+      minimaxH3TranslateOnly: h3TranslateOnly,
       requireChineseOutput: h3Mode === 'full_reference' ? false : h3PromptEnhance.requiresChineseOutput(miniMaxH3PromptEnhanceUserRequirement(requirements, prompt)),
       minimaxH3Mode: h3Mode,
       visualRetryAllowed: true,

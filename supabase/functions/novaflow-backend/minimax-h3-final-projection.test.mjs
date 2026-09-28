@@ -1206,6 +1206,17 @@ test.skip("H3 strict visual-fact failure returns only safe stage and leaf reason
   );
 });
 
+// The reverse output layout: one alignment line, then each official field once; FL2VA stays one shot.
+function assertH3ReverseLayout(text, mode = "image_video") {
+  const [alignment, ...rest] = text.split("\n\n");
+  assert.match(alignment, mode === "first_last" ? /<Picture 1>.*\[Shot 1\].*0\.00.*<Picture 2>.*8\.00/ : /^[^\n]*<Picture 1>[^\n]*\[Shot 1\][^\n]*0\.00/);
+  assert.match(rest.join("\n\n"), /^integrated_multimodal_description: \[Shot 1\] /);
+  for (const field of ["integrated_multimodal_description", "overall_soundscape", "non_diegetic_music"]) {
+    assert.equal(text.split(`\n${field}: `).length - 1, 1, field);
+  }
+  assert.doesNotMatch(text, /\[Shot 2\]/);
+}
+
 test("H3 rich-primary I2VA uses exactly one provider call and preserves the five-block visual facts", async () => {
   const request = buildH3({
     userPrompt: "保持首帧身份与构图，动作连续推进",
@@ -1238,8 +1249,7 @@ test("H3 rich-primary I2VA uses exactly one provider call and preserves the five
   assert.equal(result.h3ContractRepairUsed, false);
   assert.equal(result.h3RetryCount, 0);
   assert.equal(result.data.visualSchema, "nf.h3.visual.v1");
-  assert.equal(result.data.output_text.split("\n").length, 3);
-  assert.match(result.data.output_text, /^integrated_multimodal_description: \[Shot 1\] <Picture 1>/);
+  assertH3ReverseLayout(result.data.output_text);
   for (const fact of [
     "银白色长发", "白色猫耳", "蓝色眼睛", "日式室内房间", "木质框架", "白色床单",
     "右上方暖色自然光", "中近景低角度视角", "对角线构图", "右手直接握住", "插入", "透明液体"
@@ -1267,7 +1277,7 @@ test("H3 rich-primary deterministically archives sensitive light and camera clau
   assert.equal(result.providerCallCount, 1);
   assert.equal(result.h3ContractRepairUsed, false);
   assert.equal(result.data.visualSchema, "nf.h3.visual.v1");
-  assert.equal(result.data.output_text.split("\n").length, 3);
+  assertH3ReverseLayout(result.data.output_text);
   for (const fact of [
     "银白色长发", "白色猫耳", "蓝色眼睛", "日式室内背景", "侧上方自然光", "低角度仰视构图", "插入"
   ]) {
@@ -1293,7 +1303,7 @@ test("H3 rich-primary derives an ordinary safe contract from ordinary five-block
   assert.equal(calls, 1);
   assert.equal(result.providerCallCount, 1);
   assert.equal(result.h3ContractRepairUsed, false);
-  assert.equal(result.data.output_text.split("\n").length, 3);
+  assertH3ReverseLayout(result.data.output_text);
   for (const fact of ["银白色长发", "白色猫耳", "蓝色眼睛", "蓝色长袍", "日式室内房间", "右上方暖色自然光", "中近景平视构图"]) {
     assert.match(result.data.output_text, new RegExp(fact));
   }
@@ -1331,9 +1341,8 @@ test("H3 rich-primary FL2VA uses one call per endpoint and no repair budget", as
   assert.equal(result.h3BaselineStageCount, 2);
   assert.equal(result.h3ContractRepairUsed, false);
   assert.equal(result.h3RetryCount, 0);
-  assert.equal(result.data.output_text.split("\n").length, 3);
-  assert.match(result.data.output_text, /\[Shot 1\] <Picture 1>/);
-  assert.match(result.data.output_text, /\[Shot 2\] At 00:08\.000, <Picture 2>/);
+  assertH3ReverseLayout(result.data.output_text, "first_last");
+  assert.match(result.data.output_text, /<Picture 2>/);
   assert.match(result.data.output_text, /右手保持低位/);
   assert.match(result.data.output_text, /右手抬至胸前/);
 });

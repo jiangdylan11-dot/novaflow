@@ -822,6 +822,76 @@ assert.match(optimizeFl2vUserText, /exact final frame/);
 assert.equal(optimizedFl2v.resultOptions.minimaxH3Mode, "first_last");
 assert.equal(optimizedFl2v.resultOptions.durationSeconds, 4);
 
+// New renderers mark base modes bilingual (official three fields as a Chinese/English pair) and send
+// translate-only compiles. The desktop admin copy asks Grok what the Edge function asks and normalizes alike.
+{
+  const h3 = optimizeContext.h3PromptEnhance;
+  const constants = ["MINIMAX_H3_REFERENCE_TRANSLATE_INSTRUCTION", "MINIMAX_H3_TRANSLATOR_ROLE", "MINIMAX_H3_BASE_PAIR_RULES"];
+  for (const name of constants) {
+    assert.equal(extractNamedConstant(source, name), extractNamedConstant(edgeSource, name), `${name} must match the Edge copy`);
+    optimizeContext[name] = vm.runInNewContext(extractNamedConstant(source, name));
+  }
+  const lf = (text) => text.replace(/\r\n/g, "\n");
+  assert.equal(lf(extractNamedFunction(source, "miniMaxH3EnhanceMode")), lf(extractNamedFunction(edgeSource, "miniMaxH3EnhanceMode")));
+  const enhanceBranch = (text) => lf(extractNamedFunction(text, "normalizeMiniMaxH3PromptOutput")).split("const raw = normalizeGeneratedPrompt(text);")[0];
+  assert.equal(enhanceBranch(source), enhanceBranch(edgeSource));
+  const chineseFields = "integrated_multimodal_description: [Shot 1] 写实风格，<Picture 1> 中的白色纸飞机从桌面起飞，滑出窗外。镜头保持固定。\n\noverall_soundscape: 纸张轻响，窗外有风声。\n\nnon_diegetic_music: N/A";
+  const request = (h3Mode, markers, currentPrompt = "白色纸飞机从桌面起飞") => buildOptimize({
+    purpose: "minimax-h3-prompt-enhance", currentPrompt, h3Mode, durationSeconds: 5, surface: "animation", provider: "grok",
+    requirements: [...markers, "Available resource labels: <Picture 1> = captured image slot first_frame.", "Source prompt:", currentPrompt].join("\n"),
+  });
+  const system = (built) => built.body.input[0].content[0].text;
+  const user = (built) => built.body.input[1].content[0].text;
+  const pair = request("text_video", ["H3 response format: bilingual-v1"]);
+  assert.deepEqual(pair.body.text.format.schema, JSON.parse(JSON.stringify(h3.baseResultSchema)));
+  assert.ok(system(pair).includes(h3.instruction) && system(pair).includes(h3.baseInstruction));
+  assert.ok(user(pair).includes(h3.baseResultInstruction) && user(pair).includes(optimizeContext.MINIMAX_H3_BASE_PAIR_RULES));
+  assert.doesNotMatch(user(pair), /【任务定位】|consecutive time ranges/);
+  assert.equal(pair.resultOptions.minimaxH3BaseResult, true);
+  assert.equal(pair.resultOptions.minimaxH3TranslateOnly, false);
+  const translate = request("image_video", ["H3 compile: translate-only", "H3 response format: bilingual-v1"], chineseFields);
+  assert.deepEqual(translate.body.text.format.schema, JSON.parse(JSON.stringify(h3.baseResultSchema)));
+  assert.match(user(translate), /^H3 compile: translate-only$/m);
+  assert.ok(user(translate).includes(h3.baseTranslateInstruction));
+  assert.ok(system(translate).startsWith(optimizeContext.MINIMAX_H3_TRANSLATOR_ROLE) && !system(translate).includes(h3.instruction));
+  assert.equal(translate.body.temperature, 0.1);
+  assert.equal(translate.resultOptions.minimaxH3TranslateOnly, true);
+  const reference = request("full_reference", ["H3 response format: bilingual-v1", "H3 compile: translate-only"]);
+  assert.deepEqual(reference.body.text.format.schema.required, ["modelPrompt", "displayPrompt", "editPolicy"]);
+  assert.ok(user(reference).includes(optimizeContext.MINIMAX_H3_REFERENCE_TRANSLATE_INSTRUCTION));
+  assert.equal(reference.resultOptions.minimaxH3BaseResult, false);
+  // The old five-section request is unchanged.
+  assert.deepEqual(optimized.body.text.format.schema.required, h3.sectionFields);
+  assert.equal(optimized.resultOptions.minimaxH3BaseResult, false);
+
+  const normalizeDesktop = vm.runInNewContext(`(${extractNamedFunction(source, "normalizeMiniMaxH3PromptOutput")})`, {
+    h3PromptEnhance: h3,
+    miniMaxH3PromptEnhanceUserRequirement: vm.runInNewContext(`(${extractNamedFunction(source, "miniMaxH3PromptEnhanceUserRequirement")})`, {
+      normalizeSmartAiText: context.normalizeSmartAiText,
+    }),
+    miniMaxH3ContractError: context.miniMaxH3ContractError,
+    Error,
+  });
+  const english = "integrated_multimodal_description: [Shot 1] Live-action, the white paper plane in <Picture 1> lifts off the desk and glides out of the window. The camera holds a static shot.\n\noverall_soundscape: Paper rustles softly as wind blows outside.\n\nnon_diegetic_music: N/A";
+  const answer = JSON.stringify({ modelPrompt: english, displayPrompt: "改写过的显示稿" });
+  const translated = JSON.parse(normalizeDesktop(answer, translate.resultOptions));
+  assert.equal(translated.displayPrompt, h3.validateBaseFields(chineseFields, { mode: "image_video", durationSeconds: 5, language: "zh" }));
+  assert.equal(translated.modelPrompt, h3.validateBaseFields(english, { mode: "image_video", durationSeconds: 5, language: "en" }));
+  assert.throws(() => normalizeDesktop(JSON.stringify({ modelPrompt: chineseFields, displayPrompt: chineseFields }), translate.resultOptions),
+    (error) => error.errorCode === "h3_contract_fields" && /英文正文/.test(error.message));
+  import("../../supabase/functions/novaflow-backend/smart-ai-grok.workflow.mjs").then((edge) => {
+    const edgeTranslate = edge.buildGrokPromptOptimizeRequest({
+      purpose: "minimax-h3-prompt-enhance", prompt: chineseFields, h3Mode: "image_video", durationSeconds: 5,
+      requirements: ["H3 compile: translate-only", "H3 response format: bilingual-v1", "Source prompt:", chineseFields].join("\n"),
+    }, "grok-test");
+    assert.deepEqual(edgeTranslate.body.text.format.schema, translate.body.text.format.schema);
+    assert.equal(edge.normalizeMiniMaxH3PromptOutput(answer, edgeTranslate.resultOptions), JSON.stringify(translated));
+  }).catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+
 const fl2v = build({
   userPrompt: "",
   userRequirements: "",
