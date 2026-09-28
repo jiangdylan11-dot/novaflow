@@ -8,12 +8,8 @@
     "contracts"
   ],
   "knownRed": [
-    "particle-editor-desktop/tests/ai-sequence-minimax-h3-smart-ai-contract.test.js",
     "particle-editor-desktop/tests/ai-sequence-minimax-h3-surface.test.js",
     "particle-editor-desktop/tests/art-canvas-pan.test.js",
-    "particle-editor-desktop/tests/grok-static-reverse-retry-rich-contract.test.js",
-    "particle-editor-desktop/tests/minimax-h3-local-official-layout.test.py",
-    "particle-editor-desktop/tests/minimax-h3-official-layout.test.js",
     "particle-editor-desktop/tests/minimax-h3-output-runtime-ipc.test.js",
     "particle-editor-desktop/tests/prompt-assistant-local-negative-contract.test.js",
     "particle-editor-desktop/tests/prompt-assistant-release-contract.test.js",

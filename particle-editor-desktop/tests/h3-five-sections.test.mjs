@@ -134,9 +134,16 @@ test('new format rejects truncated output, timeline errors, missing references a
   }
 });
 
-test('Python accepts the same fixture and rejects invalid ranges', () => {
-  const script=`import sys,json\nsys.path.insert(0,'particle-editor-desktop')\nfrom prompt_assistant.h3_prompt_enhance import validate_format\nf=json.load(open('particle-editor-desktop/tests/fixtures/h3-five-sections.json',encoding='utf-8'))\ntext=validate_format(json.dumps(f,ensure_ascii=False),'I2VA',10)\nassert '<Subject 1> = (S1)' in text\ntry: validate_format(text.replace('2.0-4.0s','2.5-4.0s'),'I2VA',10)\nexcept ValueError: pass\nelse: raise AssertionError('timeline accepted')\nprint('ok')`;
-  const result=spawnSync('python',['-c',script],{encoding:'utf8'}); assert.equal(result.status,0,result.stderr);
+test('Python canonical base fields match the shared JS module', () => {
+  const cases=[
+    ['image_video',5,'integrated_multimodal_description: [Shot 1] 写实电影风格，<Picture 1> 中的女孩转身挥手，(S1) 说：<d>出发吧。</d>\n[Shot 2] 镜头切到站台近景。\n\noverall_soundscape: 站台广播声。\n\nnon_diegetic_music: 无'],
+    ['first_last',6,'integrated_multimodal_description: [Shot 1] 女孩从 <Picture 1> 的门口走到沙发前坐下，落定为 <Picture 2> 的构图。镜头固定。\n\noverall_soundscape: 脚步声。\n\nnon_diegetic_music: N/A'],
+    ['text_video',8,'integrated_multimodal_description: [Shot 1] 雨夜街头，一只橘猫跳上垃圾桶。\n[Shot 2] At 00:04.000 镜头切到猫的特写。\n\noverall_soundscape: 雨声。\n\nnon_diegetic_music: N/A'],
+  ];
+  const script=`import sys,json\nsys.path.insert(0,'particle-editor-desktop')\nfrom prompt_assistant.h3_prompt_enhance import validate_base_fields\ncases=json.loads(sys.stdin.read())\nprint(json.dumps([validate_base_fields(t,m,d,'zh') for m,d,t in cases],ensure_ascii=False))\ntry: validate_base_fields(cases[2][2].replace('00:04.000','00:09.000'),'text_video',8,'zh')\nexcept ValueError: pass\nelse: raise AssertionError('cut after the duration accepted')`;
+  const result=spawnSync('python',['-c',script],{encoding:'utf8',input:JSON.stringify(cases),env:{...process.env,PYTHONIOENCODING:'utf-8'}}); assert.equal(result.status,0,result.stderr);
+  const python=JSON.parse(result.stdout);
+  cases.forEach(([mode,durationSeconds,text],i)=>assert.equal(python[i],local.validateBaseFields(text,{mode,durationSeconds,language:'zh'})));
 });
 
 test('Grok defaults to Chinese and repairs English prose without changing literal dialogue',async()=>{
