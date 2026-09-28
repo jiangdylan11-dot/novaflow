@@ -1183,6 +1183,14 @@
         display: flex;
         gap: 8px;
         align-items: center;
+        /* Runs accumulate while the template stays, so the row scrolls
+           sideways instead of pushing past the preview. */
+        max-width: calc(100% - 36px);
+        overflow-x: auto;
+        overflow-y: hidden;
+        padding: 2px 2px 4px;
+        scrollbar-width: thin;
+        scrollbar-color: #3d4b44 transparent;
       }
       .aifx-candidates[hidden] { display: none; }
       /* Sits above the candidate strip in the preview column. It has to be
@@ -1193,7 +1201,8 @@
       .aifx-seed-lock[data-action="lock-seed"] {
         position: absolute;
         left: 18px;
-        bottom: 150px;
+        /* Clear of the strip below even when that shows its scrollbar. */
+        bottom: 168px;
         z-index: 5;
         padding: 5px 12px;
         border-radius: 6px;
@@ -1226,6 +1235,7 @@
       }
       .aifx-seed-lock[hidden] { display: none; }
       .aifx-candidate {
+        flex: 0 0 auto;
         width: 62px;
         height: 62px;
         border-radius: 6px;
@@ -1913,6 +1923,9 @@
 
   const loadBuiltinTemplate = async (id) => {
     const template = BUILTIN_TEMPLATES.find(item => item.id === id) || BUILTIN_TEMPLATES[0]
+    // Picking the template that is already loaded is not a change of
+    // template: the candidates made from it stay on the strip.
+    if (state.source && state.builtinId === template.id) return
     setStatus('载入中', builtinLabel(template.id))
     refreshUi()
     const response = await fetch(template.url)
@@ -2023,8 +2036,10 @@
 
       const label = restyle.getPreset(state.attribute)?.label || ''
       const total = Math.max(1, Math.min(4, Math.round(state.candidateCount) || 1))
-      state.candidates = []
-      state.selectedCandidate = 0
+      // Earlier runs stay on the strip while the template stays: a rerun with
+      // another style or wording adds to the row, and each candidate carries
+      // the recipe that made it so clicking it puts that recipe back.
+      const recipe = snapshotRecipe()
       stageSpan = 1 / total
       for (let index = 0; index < total; index += 1) {
         if (state.abort.signal.aborted) throw new Error('AI 特效生成已取消')
@@ -2073,10 +2088,12 @@
           frames.push(await client.loadImage(url))
           setProgress(0.9 + 0.1 * frames.length / Math.max(1, result.frames.length))
         }
-        state.candidates.push({ seed, result, frames })
+        const candidate = { seed, result, frames, recipe }
+        state.candidates.push(candidate)
         // Show the first one the moment it lands rather than leaving the canvas
         // empty while the rest render.
         if (index === 0) {
+          state.selectedCandidate = state.candidates.length - 1
           state.result = result
           state.resultFrames = frames
           state.playhead = 0
@@ -2085,6 +2102,7 @@
           drawPreview()
         }
         renderCandidates()
+        void saveCandidateToWarehouse(candidate)
       }
     } catch (error) {
       // A stopped run ends quietly; the candidates that did land stay.
@@ -2120,7 +2138,72 @@
     refreshUi()
   }
 
-  const selectCandidate = (index) => {
+  // What the panel was set to when a candidate was made. The reference image
+  // travels as its blob: adopting another one revokes the old object URL, so
+  // the entry itself cannot be kept.
+  const snapshotRecipe = () => ({
+    attribute: state.attribute,
+    supplement: state.supplement,
+    strength: state.strength,
+    reference: state.reference ? { blob: state.reference.blob, fileName: state.reference.fileName } : null,
+    shapeArchetype: state.shapeArchetype,
+    shapeAuto: state.shapeAuto,
+    lifecycle: state.lifecycle,
+    lifecycleAuto: state.lifecycleAuto,
+  })
+
+  const restoreRecipe = async (recipe) => {
+    if (!recipe) return
+    state.attribute = recipe.attribute
+    state.supplement = recipe.supplement
+    state.strength = recipe.strength
+    state.shapeArchetype = recipe.shapeArchetype
+    state.shapeAuto = recipe.shapeAuto
+    state.lifecycle = recipe.lifecycle
+    state.lifecycleAuto = recipe.lifecycleAuto
+    if (!recipe.reference) {
+      if (state.reference) clearReference()
+    } else if (!state.reference || state.reference.blob !== recipe.reference.blob) {
+      await adoptReference(recipe.reference.blob, recipe.reference.fileName)
+    }
+  }
+
+  // Each candidate goes to the 仓库 as the black-plate MP4 H3 rendered, one
+  // file per candidate. The web runtime keeps this panel's tasks out of the
+  // automatic save (dozens of raw PNG frames per candidate), and nothing else
+  // put the result anywhere. The plate is the finished clip and doubles as a
+  // template for another pass.
+  const candidateFileName = (candidate) => {
+    const restyle = RESTYLE()
+    const builtin = BUILTIN_TEMPLATES.find(item => item.id === state.builtinId)
+    const saved = state.userTemplates.find(item => item.id === state.userTemplateId)
+    const template = builtin ? builtinLabel(builtin.id) : saved ? saved.label
+      : String(state.source && state.source.fileName || 'template').replace(/\.[^.]+$/, '')
+    const recipe = candidate.recipe || {}
+    const preset = restyle && !recipe.reference ? restyle.getPreset(recipe.attribute) : null
+    const material = recipe.reference ? '参考图'
+      : preset ? preset.label
+        : String(recipe.supplement || '').trim().slice(0, 20) || '自定义'
+    const clean = (value) => String(value || '').replace(/[\\/<>:"|?*\u0000-\u001f\s·]+/g, '_').replace(/^_+|_+$/g, '')
+    return ['AI特效', clean(template), clean(material), candidate.seed].filter(Boolean).join('_') + '.mp4'
+  }
+
+  const saveCandidateToWarehouse = async (candidate) => {
+    const warehouse = window.NovaFlowWebWarehouse
+    if (!warehouse || typeof warehouse.save !== 'function') return
+    const videos = candidate.result && Array.isArray(candidate.result.videos) ? candidate.result.videos : []
+    if (!videos.length) return
+    try {
+      const response = await fetch(String(videos[0]))
+      if (!response.ok) throw new Error('HTTP ' + response.status)
+      const bytes = await response.arrayBuffer()
+      candidate.saved = await warehouse.save({ blob: new Blob([bytes], { type: 'video/mp4' }), name: candidateFileName(candidate) })
+    } catch (error) {
+      console.warn('[NovaFlow aifx] 结果入库失败', error)
+    }
+  }
+
+  const selectCandidate = async (index) => {
     const candidate = state.candidates[index]
     if (!candidate) return
     stopPlayback()
@@ -2130,6 +2213,10 @@
     state.playhead = 0
     syncPreviewMode()
     renderCandidates()
+    // The strip is the memory of what was tried: picking a candidate puts its
+    // style, wording and reference back so 生成 continues from that version.
+    // Not while a run is still reading these for its remaining candidates.
+    if (!state.isGenerating) await restoreRecipe(candidate.recipe)
     refreshUi()
     drawPreview()
   }
@@ -2162,9 +2249,14 @@
       badge.className = 'aifx-candidate-index'
       badge.textContent = String(index + 1)
       button.appendChild(badge)
-      button.addEventListener('click', () => selectCandidate(index))
+      button.addEventListener('click', guard(() => selectCandidate(index)))
       host.appendChild(button)
     })
+    // Keep the selected one in view once the row is longer than the column.
+    const active = host.children[state.selectedCandidate]
+    if (active && host.scrollWidth > host.clientWidth) {
+      host.scrollLeft = clamp(active.offsetLeft - (host.clientWidth - active.offsetWidth) / 2, 0, host.scrollWidth - host.clientWidth)
+    }
   }
 
   // The only place the preview mode is decided.
@@ -2428,6 +2520,7 @@
     await ensureTemplateStore()
     const item = state.userTemplates.find(entry => entry.id === String(id || ''))
     if (!item) throw new Error('AI 特效：这个模板已经不在库里')
+    if (state.source && state.userTemplateId === item.id) return
     setStatus('载入中', item.label)
     refreshUi()
     await adoptSource(base64ToBlob(item.data, item.mime), item.fileName)
